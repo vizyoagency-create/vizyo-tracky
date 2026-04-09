@@ -148,30 +148,17 @@ export class AlertsComponent implements OnInit {
     { value: 'INFO', label: 'Informations' },
   ];
 
+  private lastWsCount = -1;
+
   private syncEffect = effect(() => {
-    const wsAlerts = this.realtime.alerts();
-    const wsIds = new Set(wsAlerts.map((a) => a.id));
-
-    this.alerts.update((existing) => {
-      let changed = false;
-      const ids = new Set(existing.map((a) => a.id));
-      const fresh = wsAlerts.filter((a) => !ids.has(a.id));
-      if (fresh.length > 0) changed = true;
-
-      const updated = existing.map((a) => {
-        if (!this.isAcknowledged(a) && !wsIds.has(a.id) && ids.has(a.id)) {
-          changed = true;
-          return { ...a, acknowledgedAt: new Date().toISOString() } as any;
-        }
-        return a;
-      });
-
-      return changed ? [...fresh, ...updated] : updated;
-    });
+    const count = this.realtime.alerts().length;
+    if (count !== this.lastWsCount) {
+      this.lastWsCount = count;
+      this.loadAlerts();
+    }
   });
 
   ngOnInit(): void {
-    this.loadAlerts();
   }
 
   protected isAcknowledged(alert: any): boolean {
