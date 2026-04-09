@@ -139,6 +139,7 @@ model Position {
   heading    Float    @default(0)
   altitude   Float?
   satellites Int?
+  valid      Boolean  @default(true)
   timestamp  DateTime
   createdAt  DateTime @default(now())
 

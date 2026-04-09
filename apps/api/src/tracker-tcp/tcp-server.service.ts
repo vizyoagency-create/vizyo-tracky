@@ -1,9 +1,13 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { TrackerStatus } from '@prisma/client';
+import { decodeFrame } from '@vizyo/tracky-shared';
+import type { CobanFrame } from '@vizyo/tracky-shared';
 import { createServer, type Server, type Socket } from 'node:net';
 import type { Env } from '../config/env.validation';
-import { parseCobanFrame } from './coban.parser';
-import { SocketRegistryService } from './socket-registry.service';
+import { PositionsService } from '../positions/positions.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { SocketRegistryService } from '../socket-registry/socket-registry.service';
 
 @Injectable()
 export class TcpServerService implements OnModuleInit, OnModuleDestroy {
@@ -13,6 +17,8 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly config: ConfigService<Env, true>,
     private readonly registry: SocketRegistryService,
+    private readonly prisma: PrismaService,
+    private readonly positions: PositionsService,
   ) {}
 
   onModuleInit(): void {
@@ -39,7 +45,7 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
   }
 
   private handleConnection(socket: Socket): void {
-    socket.setKeepAlive(true, 60_000);
+    socket.setKeepAlive(true, 30_000);
     socket.setTimeout(300_000);
 
     const remote = `${socket.remoteAddress}:${socket.remotePort}`;
@@ -51,23 +57,24 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
     socket.on('data', (chunk) => {
       buffer += chunk.toString('ascii');
 
-      let endIdx: number;
-      while ((endIdx = buffer.indexOf('#')) !== -1) {
-        const raw = buffer.slice(0, endIdx + 1);
-        buffer = buffer.slice(endIdx + 1);
+      let idx: number;
+      while ((idx = buffer.search(/[;\r\n]/)) !== -1) {
+        const raw = buffer.slice(0, idx).trim();
+        buffer = buffer.slice(idx + 1);
+        if (!raw) continue;
 
-        const frame = parseCobanFrame(raw);
-        this.logger.debug(`Frame from ${remote}: ${raw}`);
+        this.logger.debug(`← [${remote}] ${raw}`);
 
-        if (frame.imei) {
-          if (!boundImei) {
-            boundImei = frame.imei;
-            this.registry.register(boundImei, socket);
-          } else {
-            this.registry.touch(boundImei);
-          }
+        try {
+          const frame = decodeFrame(raw);
+          this.dispatchFrame(frame, socket, boundImei, (newImei) => {
+            boundImei = newImei;
+          }).catch((err) => {
+            this.logger.error(`Frame dispatch failed: ${raw}`, err);
+          });
+        } catch (err) {
+          this.logger.error(`Unexpected decode error: ${raw}`, err);
         }
-        // TODO: dispatch vers PositionIngestService quand le parser sera complet
       }
     });
 
@@ -82,7 +89,78 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
 
     socket.on('close', () => {
       this.logger.debug(`Socket closed ${remote} (imei=${boundImei ?? 'unbound'})`);
-      if (boundImei) this.registry.unregister(boundImei);
+      if (boundImei) {
+        this.registry.unregister(boundImei);
+        this.prisma.tracker.updateMany({
+          where: { imei: boundImei },
+          data: { status: TrackerStatus.OFFLINE },
+        }).catch((e) => this.logger.error(`Failed to set offline: ${boundImei}`, e));
+      }
     });
+  }
+
+  private async dispatchFrame(
+    frame: CobanFrame,
+    socket: Socket,
+    currentImei: string | null,
+    setImei: (imei: string) => void,
+  ): Promise<void> {
+    switch (frame.type) {
+      case 'login': {
+        const tracker = await this.prisma.tracker.findUnique({
+          where: { imei: frame.imei },
+        });
+        if (!tracker) {
+          this.logger.warn(`Unknown IMEI attempting login: ${frame.imei}`);
+          socket.end();
+          return;
+        }
+        setImei(frame.imei);
+        this.registry.register(frame.imei, socket);
+        socket.write('LOAD');
+        await this.prisma.tracker.update({
+          where: { id: tracker.id },
+          data: { status: TrackerStatus.ONLINE, lastSeenAt: new Date() },
+        });
+        this.logger.log(`Tracker connected: ${frame.imei}`);
+        break;
+      }
+
+      case 'heartbeat': {
+        if (frame.imei !== currentImei) {
+          this.logger.warn(`Heartbeat IMEI mismatch: got ${frame.imei}, expected ${currentImei}`);
+          break;
+        }
+        this.registry.touch(frame.imei);
+        socket.write('ON');
+        break;
+      }
+
+      case 'position': {
+        if (!currentImei) {
+          this.logger.warn(`Position received before login: ${frame.raw}`);
+          break;
+        }
+        if (frame.imei !== currentImei) {
+          this.logger.warn(`Position IMEI mismatch: got ${frame.imei}, expected ${currentImei}`);
+          break;
+        }
+        await this.positions.ingest(frame);
+
+        if (frame.alarm === 'sos') {
+          socket.write(`**,imei:${currentImei},E;`);
+          this.logger.warn(`SOS alarm from ${currentImei}, ACK sent`);
+        }
+        if (['power_cut', 'accident', 'collision'].includes(frame.alarm)) {
+          this.logger.warn(`Critical alarm "${frame.alarm}" from ${currentImei}: ${frame.raw}`);
+        }
+        break;
+      }
+
+      case 'unknown': {
+        this.logger.warn(`Unknown frame (${frame.reason}): ${frame.raw}`);
+        break;
+      }
+    }
   }
 }

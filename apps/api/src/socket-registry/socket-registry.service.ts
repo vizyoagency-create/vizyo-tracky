@@ -1,9 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { Socket } from 'node:net';
+
+export interface TrackerSocket {
+  write(data: string | Buffer): boolean;
+  destroy(): void;
+  readonly remoteAddress?: string;
+  readonly destroyed?: boolean;
+}
 
 interface RegisteredSocket {
   imei: string;
-  socket: Socket;
+  socket: TrackerSocket;
   connectedAt: Date;
   lastSeenAt: Date;
   remoteAddress: string;
@@ -14,7 +20,7 @@ export class SocketRegistryService {
   private readonly logger = new Logger(SocketRegistryService.name);
   private readonly sockets = new Map<string, RegisteredSocket>();
 
-  register(imei: string, socket: Socket): void {
+  register(imei: string, socket: TrackerSocket): void {
     const existing = this.sockets.get(imei);
     if (existing && existing.socket !== socket) {
       this.logger.warn(`Replacing existing socket for IMEI ${imei}`);
@@ -27,7 +33,7 @@ export class SocketRegistryService {
       lastSeenAt: new Date(),
       remoteAddress: socket.remoteAddress ?? 'unknown',
     });
-    this.logger.log(`Tracker registered: ${imei} from ${socket.remoteAddress}`);
+    this.logger.log(`Tracker registered: ${imei} from ${socket.remoteAddress ?? 'unknown'}`);
   }
 
   touch(imei: string): void {
@@ -54,10 +60,6 @@ export class SocketRegistryService {
     return Array.from(this.sockets.keys());
   }
 
-  /**
-   * Envoie une commande brute à un tracker connecté.
-   * Retourne false si le tracker n'a pas de socket actif.
-   */
   send(imei: string, payload: string | Buffer): boolean {
     const entry = this.sockets.get(imei);
     if (!entry || entry.socket.destroyed) return false;

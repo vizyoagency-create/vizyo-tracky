@@ -17,6 +17,8 @@ export interface PositionUpdateEvent {
   speedKmh: number;
   heading: number;
   timestamp: string;
+  ignition: boolean;
+  valid: boolean;
 }
 
 export interface ServerToClientEvents {

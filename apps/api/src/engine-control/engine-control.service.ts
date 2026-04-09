@@ -4,12 +4,16 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { CommandStatus, EngineAction, UserRole } from '@prisma/client';
 import type { EngineControlCommand } from '@prisma/client';
+import type { CobanCommand } from '@vizyo/tracky-shared';
+import { encodeCommand } from '@vizyo/tracky-shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { SocketRegistryService } from '../socket-registry/socket-registry.service';
 
-const STALE_THRESHOLD_MS = 2 * 60 * 1000;
+const STALE_THRESHOLD_MS = 60 * 1000;
 const MAX_SPEED_FOR_CUT = 20;
 
 interface RequestedBy {
@@ -22,7 +26,10 @@ interface RequestedBy {
 export class EngineControlService {
   private readonly logger = new Logger(EngineControlService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly sessionRegistry: SocketRegistryService,
+  ) {}
 
   async requestCommand(
     trackerId: string,
@@ -86,6 +93,21 @@ export class EngineControlService {
         throw new ForbiddenException('Position trop ancienne (stale)');
       }
 
+      if (!lastPosition.valid) {
+        const cmd = await this.prisma.engineControlCommand.create({
+          data: {
+            trackerId,
+            action,
+            reason,
+            requestedBy: requestedBy.userId,
+            status: CommandStatus.REJECTED_SPEED,
+            lastError: 'Fix GPS invalide',
+          },
+        });
+        this.logger.warn(`Command ${cmd.id} REJECTED: fix GPS invalide`);
+        throw new ForbiddenException('Fix GPS invalide');
+      }
+
       if (lastPosition.speedKmh > MAX_SPEED_FOR_CUT) {
         const cmd = await this.prisma.engineControlCommand.create({
           data: {
@@ -112,11 +134,43 @@ export class EngineControlService {
       },
     });
 
-    this.logger.warn(
-      `TODO: dispatch command ${command.id} to BullMQ worker when Coban protocol is implemented`,
-    );
+    if (command.status === CommandStatus.PENDING) {
+      await this.dispatchCommand(tracker.imei, command, action);
+    }
 
     return command;
+  }
+
+  private async dispatchCommand(
+    imei: string,
+    command: EngineControlCommand,
+    action: EngineAction,
+  ): Promise<void> {
+    const entry = this.sessionRegistry.get(imei);
+    if (!entry) {
+      await this.prisma.engineControlCommand.update({
+        where: { id: command.id },
+        data: {
+          status: CommandStatus.FAILED,
+          lastError: 'Tracker offline — command not dispatched',
+        },
+      });
+      throw new ServiceUnavailableException('Tracker hors ligne, commande non envoyée');
+    }
+
+    const cobanCmd: CobanCommand =
+      action === EngineAction.CUT
+        ? { type: 'engine_stop' }
+        : { type: 'engine_resume' };
+
+    const payload = encodeCommand(imei, cobanCmd);
+    entry.socket.write(payload);
+    this.logger.log(`Command dispatched to ${imei}: ${payload}`);
+
+    await this.prisma.engineControlCommand.update({
+      where: { id: command.id },
+      data: { status: CommandStatus.SENT, sentAt: new Date() },
+    });
   }
 
   async listCommands(

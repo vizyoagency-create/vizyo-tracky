@@ -1,6 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { AuthService } from '../../core/services/auth.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 
 @Component({
@@ -67,11 +68,12 @@ import { RealtimeService } from '../../core/services/realtime.service';
   `,
 })
 export class LoginComponent {
-  protected email = '';
-  protected password = '';
+  protected email = 'admin@vizyo.fr';
+  protected password = 'admin123';
   protected readonly error = signal('');
   protected readonly loading = signal(false);
 
+  private readonly auth = inject(AuthService);
   private readonly realtime = inject(RealtimeService);
 
   constructor(private readonly router: Router) {}
@@ -93,7 +95,7 @@ export class LoginComponent {
       }
 
       const data = await res.json();
-      localStorage.setItem('vizyo-tracky-token', data.accessToken);
+      this.auth.setToken(data.accessToken);
       this.realtime.connect(data.accessToken);
       this.router.navigate(['/dashboard']);
     } catch {

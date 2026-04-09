@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
-import { SocketRegistryService } from './socket-registry.service';
+import { PositionsModule } from '../positions/positions.module';
 import { TcpServerService } from './tcp-server.service';
 
 @Module({
-  providers: [SocketRegistryService, TcpServerService],
-  exports: [SocketRegistryService],
+  imports: [PositionsModule],
+  providers: [TcpServerService],
 })
 export class TrackerTcpModule {}

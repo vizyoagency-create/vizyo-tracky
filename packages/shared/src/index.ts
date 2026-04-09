@@ -3,3 +3,4 @@ export * from './dto/tracker.dto';
 export * from './dto/position.dto';
 export * from './dto/alert.dto';
 export * from './events/ws-events';
+export * from './protocol';

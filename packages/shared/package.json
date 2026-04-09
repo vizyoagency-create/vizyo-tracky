@@ -15,9 +15,18 @@
     "lint": "echo 'no lint yet'",
     "build": "tsc",
     "dev": "tsc --watch",
-    "test": "echo 'no tests yet'"
+    "test": "jest"
   },
   "devDependencies": {
+    "jest": "^30.0.0",
+    "ts-jest": "^29.2.5",
+    "@types/jest": "^30.0.0",
     "typescript": "^5.7.3"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "rootDir": "src",
+    "testRegex": ".*\\.spec\\.ts$"
   }
 }

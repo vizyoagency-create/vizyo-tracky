@@ -12,11 +12,12 @@ import {
   Menu,
 } from 'lucide-angular';
 import { ThemeToggleComponent } from '../shared/components/theme-toggle.component';
+import { ToastContainerComponent } from '../shared/ui/toast/toast-container.component';
 
 @Component({
   selector: 'app-dashboard-layout',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, ThemeToggleComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, ThemeToggleComponent, ToastContainerComponent],
   template: `
     <div class="h-screen flex bg-bg-primary overflow-hidden">
       <aside
@@ -69,6 +70,7 @@ import { ThemeToggleComponent } from '../shared/components/theme-toggle.componen
           <router-outlet />
         </main>
       </div>
+      <app-toast-container />
     </div>
   `,
 })

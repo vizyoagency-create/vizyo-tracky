@@ -1,7 +1,13 @@
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { CommandStatus, EngineAction, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { SocketRegistryService } from '../socket-registry/socket-registry.service';
 import { EngineControlService } from './engine-control.service';
 
 const TRACKER_ID = '00000000-0000-0000-0000-000000000010';
@@ -30,7 +36,7 @@ const trackerWithoutVehicle = {
   vehicle: null,
 };
 
-function recentPosition(speedKmh: number, ageMs = 0) {
+function recentPosition(speedKmh: number, ageMs = 0, valid = true) {
   return {
     id: '00000000-0000-0000-0000-000000000040',
     trackerId: TRACKER_ID,
@@ -40,6 +46,7 @@ function recentPosition(speedKmh: number, ageMs = 0) {
     heading: 0,
     altitude: null,
     satellites: null,
+    valid,
     timestamp: new Date(Date.now() - ageMs),
     createdAt: new Date(),
   };
@@ -70,8 +77,9 @@ describe('EngineControlService', () => {
   let prisma: {
     tracker: { findUnique: jest.Mock };
     position: { findFirst: jest.Mock };
-    engineControlCommand: { create: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock };
+    engineControlCommand: { create: jest.Mock; update: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock };
   };
+  let registry: { get: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -79,65 +87,58 @@ describe('EngineControlService', () => {
       position: { findFirst: jest.fn() },
       engineControlCommand: {
         create: jest.fn().mockImplementation(({ data }) => Promise.resolve(createdCommand(data))),
+        update: jest.fn().mockResolvedValue(undefined),
         findMany: jest.fn().mockResolvedValue([]),
         findUnique: jest.fn(),
       },
+    };
+
+    registry = {
+      get: jest.fn().mockReturnValue(undefined),
     };
 
     const module = await Test.createTestingModule({
       providers: [
         EngineControlService,
         { provide: PrismaService, useValue: prisma },
+        { provide: SocketRegistryService, useValue: registry },
       ],
     }).compile();
 
     service = module.get(EngineControlService);
   });
 
-  // ────────────────────────────────────────────────────────────────
   // 1. CUT refusé si tracker introuvable
-  // ────────────────────────────────────────────────────────────────
   it('should throw NotFoundException when tracker does not exist', async () => {
     prisma.tracker.findUnique.mockResolvedValue(null);
-
     await expect(
       service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin),
     ).rejects.toThrow(NotFoundException);
   });
 
-  // ────────────────────────────────────────────────────────────────
   // 2. CUT refusé si tracker sans vehicle
-  // ────────────────────────────────────────────────────────────────
   it('should throw BadRequestException when tracker has no vehicle', async () => {
     prisma.tracker.findUnique.mockResolvedValue(trackerWithoutVehicle);
-
     await expect(
       service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin),
     ).rejects.toThrow(BadRequestException);
   });
 
-  // ────────────────────────────────────────────────────────────────
   // 3. CUT refusé si fleetId différent et pas SUPER_ADMIN
-  // ────────────────────────────────────────────────────────────────
   it('should throw ForbiddenException when fleet mismatch for non-SUPER_ADMIN', async () => {
     prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
-
     await expect(
       service.requestCommand(TRACKER_ID, EngineAction.CUT, null, otherFleetAdmin),
     ).rejects.toThrow(ForbiddenException);
   });
 
-  // ────────────────────────────────────────────────────────────────
   // 4. CUT refusé si aucune position → REJECTED_SPEED persistée
-  // ────────────────────────────────────────────────────────────────
   it('should reject CUT and persist REJECTED_SPEED when no position exists', async () => {
     prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
     prisma.position.findFirst.mockResolvedValue(null);
-
     await expect(
       service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin),
     ).rejects.toThrow(ForbiddenException);
-
     expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         status: CommandStatus.REJECTED_SPEED,
@@ -146,17 +147,13 @@ describe('EngineControlService', () => {
     });
   });
 
-  // ────────────────────────────────────────────────────────────────
-  // 5. CUT refusé si position > 2min (stale) → REJECTED_SPEED
-  // ────────────────────────────────────────────────────────────────
-  it('should reject CUT when position is stale (>2 min)', async () => {
+  // 5. CUT refusé si position > 60s (stale)
+  it('should reject CUT when position is stale (>60s)', async () => {
     prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
-    prisma.position.findFirst.mockResolvedValue(recentPosition(5, 3 * 60 * 1000));
-
+    prisma.position.findFirst.mockResolvedValue(recentPosition(5, 90 * 1000));
     await expect(
       service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin),
     ).rejects.toThrow(ForbiddenException);
-
     expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         status: CommandStatus.REJECTED_SPEED,
@@ -165,17 +162,28 @@ describe('EngineControlService', () => {
     });
   });
 
-  // ────────────────────────────────────────────────────────────────
-  // 6. CUT refusé si speedKmh === 21 → REJECTED_SPEED
-  // ────────────────────────────────────────────────────────────────
-  it('should reject CUT when speed is 21 km/h', async () => {
+  // 6. CUT refusé si fix GPS invalide
+  it('should reject CUT when GPS fix is invalid', async () => {
     prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
-    prisma.position.findFirst.mockResolvedValue(recentPosition(21));
-
+    prisma.position.findFirst.mockResolvedValue(recentPosition(5, 0, false));
     await expect(
       service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin),
     ).rejects.toThrow(ForbiddenException);
+    expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        status: CommandStatus.REJECTED_SPEED,
+        lastError: 'Fix GPS invalide',
+      }),
+    });
+  });
 
+  // 7. CUT refusé si speedKmh === 21
+  it('should reject CUT when speed is 21 km/h', async () => {
+    prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+    prisma.position.findFirst.mockResolvedValue(recentPosition(21));
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin),
+    ).rejects.toThrow(ForbiddenException);
     expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         status: CommandStatus.REJECTED_SPEED,
@@ -184,102 +192,89 @@ describe('EngineControlService', () => {
     });
   });
 
-  // ────────────────────────────────────────────────────────────────
-  // 7. CUT refusé si speedKmh === 20.01 → REJECTED_SPEED
-  // ────────────────────────────────────────────────────────────────
+  // 8. CUT refusé si speedKmh === 20.01
   it('should reject CUT when speed is 20.01 km/h', async () => {
     prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
     prisma.position.findFirst.mockResolvedValue(recentPosition(20.01));
-
     await expect(
       service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin),
     ).rejects.toThrow(ForbiddenException);
+  });
+
+  // 9. CUT ACCEPTÉ si speedKmh === 20.0 → PENDING puis 503 (tracker offline)
+  it('should accept CUT at 20.0 km/h then fail dispatch (offline)', async () => {
+    prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+    prisma.position.findFirst.mockResolvedValue(recentPosition(20.0));
+    registry.get.mockReturnValue(undefined);
+
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin),
+    ).rejects.toThrow(ServiceUnavailableException);
 
     expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        status: CommandStatus.REJECTED_SPEED,
-        lastError: 'Vitesse trop élevée : 20.01 km/h',
-      }),
+      data: expect.objectContaining({ status: CommandStatus.PENDING }),
+    });
+    expect(prisma.engineControlCommand.update).toHaveBeenCalledWith({
+      where: { id: expect.any(String) },
+      data: expect.objectContaining({ status: CommandStatus.FAILED }),
     });
   });
 
-  // ────────────────────────────────────────────────────────────────
-  // 8. CUT ACCEPTÉ si speedKmh === 20.0 (edge case: > 20, pas >= 20)
-  // ────────────────────────────────────────────────────────────────
-  it('should accept CUT when speed is exactly 20.0 km/h', async () => {
-    prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
-    prisma.position.findFirst.mockResolvedValue(recentPosition(20.0));
-
-    const result = await service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin);
-
-    expect(result.status).toBe(CommandStatus.PENDING);
-    expect(result.action).toBe(EngineAction.CUT);
-  });
-
-  // ────────────────────────────────────────────────────────────────
-  // 9. CUT ACCEPTÉ si speedKmh === 0 et position récente
-  // ────────────────────────────────────────────────────────────────
-  it('should accept CUT when speed is 0 and position is recent', async () => {
+  // 10. CUT ACCEPTÉ + dispatch réussi si tracker connecté
+  it('should dispatch CUT to connected tracker', async () => {
     prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
     prisma.position.findFirst.mockResolvedValue(recentPosition(0));
+    const mockSocket = { write: jest.fn() };
+    registry.get.mockReturnValue({ socket: mockSocket });
 
     const result = await service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin);
 
     expect(result.status).toBe(CommandStatus.PENDING);
+    expect(mockSocket.write).toHaveBeenCalledWith(
+      expect.stringContaining('**,imei:123456789012345,J;'),
+    );
+    expect(prisma.engineControlCommand.update).toHaveBeenCalledWith({
+      where: { id: expect.any(String) },
+      data: expect.objectContaining({ status: CommandStatus.SENT }),
+    });
   });
 
-  // ────────────────────────────────────────────────────────────────
-  // 10. SUPER_ADMIN peut CUT sur une autre flotte
-  // ────────────────────────────────────────────────────────────────
+  // 11. SUPER_ADMIN peut CUT sur une autre flotte
   it('should allow SUPER_ADMIN to CUT on any fleet', async () => {
     prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
     prisma.position.findFirst.mockResolvedValue(recentPosition(5));
+    registry.get.mockReturnValue(undefined);
 
     const crossFleetSuperAdmin = { ...superAdmin, fleetId: OTHER_FLEET_ID };
-    const result = await service.requestCommand(
-      TRACKER_ID,
-      EngineAction.CUT,
-      null,
-      crossFleetSuperAdmin,
-    );
-
-    expect(result.status).toBe(CommandStatus.PENDING);
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.CUT, null, crossFleetSuperAdmin),
+    ).rejects.toThrow(ServiceUnavailableException);
   });
 
-  // ────────────────────────────────────────────────────────────────
-  // 11. RESTORE accepté même avec speed = 100 (pas de garde-fou)
-  // ────────────────────────────────────────────────────────────────
+  // 12. RESTORE accepté même avec speed = 100
   it('should allow RESTORE even when speed is 100 km/h', async () => {
     prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
-    prisma.position.findFirst.mockResolvedValue(recentPosition(100));
+    registry.get.mockReturnValue(undefined);
 
-    const result = await service.requestCommand(
-      TRACKER_ID,
-      EngineAction.RESTORE,
-      null,
-      fleetAdmin,
-    );
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.RESTORE, null, fleetAdmin),
+    ).rejects.toThrow(ServiceUnavailableException);
 
-    expect(result.status).toBe(CommandStatus.PENDING);
-    expect(result.action).toBe(EngineAction.RESTORE);
+    expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ status: CommandStatus.PENDING, action: EngineAction.RESTORE }),
+    });
   });
 
-  // ────────────────────────────────────────────────────────────────
-  // 12. RESTORE accepté même sans aucune position en base
-  // ────────────────────────────────────────────────────────────────
+  // 13. RESTORE accepté même sans aucune position
   it('should allow RESTORE even when no position exists', async () => {
     prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
     prisma.position.findFirst.mockResolvedValue(null);
+    registry.get.mockReturnValue(undefined);
 
-    const result = await service.requestCommand(
-      TRACKER_ID,
-      EngineAction.RESTORE,
-      null,
-      fleetAdmin,
-    );
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.RESTORE, null, fleetAdmin),
+    ).rejects.toThrow(ServiceUnavailableException);
 
-    expect(result.status).toBe(CommandStatus.PENDING);
-    expect(result.action).toBe(EngineAction.RESTORE);
     expect(prisma.position.findFirst).not.toHaveBeenCalled();
   });
 });
