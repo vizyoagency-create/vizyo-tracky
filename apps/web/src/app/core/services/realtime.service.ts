@@ -1,6 +1,8 @@
+import { HttpClient } from '@angular/common/http';
 import { computed, inject, Injectable, signal } from '@angular/core';
 import type { AlertAcknowledgedEvent, AlertEvent, PositionUpdateEvent } from '@vizyo/tracky-shared';
 import { WS_EVENTS } from '@vizyo/tracky-shared';
+import { firstValueFrom } from 'rxjs';
 import { io, Socket } from 'socket.io-client';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 
@@ -17,6 +19,7 @@ export class RealtimeService {
 
   private socket: Socket | null = null;
   private readonly toast = inject(ToastService);
+  private readonly http = inject(HttpClient);
 
   connect(token: string): void {
     if (this.socket?.connected) return;
@@ -29,6 +32,7 @@ export class RealtimeService {
 
     this.socket.on('connect', () => {
       this.connected.set(true);
+      this.loadInitialAlerts();
     });
 
     this.socket.on('disconnect', () => {
@@ -66,5 +70,18 @@ export class RealtimeService {
     this.connected.set(false);
     this.positions.set(new Map());
     this._alerts.set([]);
+  }
+
+  private async loadInitialAlerts(): Promise<void> {
+    try {
+      const res = await firstValueFrom(
+        this.http.get<{ items: AlertEvent[] }>('/api/alerts', {
+          params: { acknowledged: 'false', limit: '50' },
+        }),
+      );
+      this._alerts.set(res.items ?? []);
+    } catch {
+      // Silent — alerts will come via WS
+    }
   }
 }

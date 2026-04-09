@@ -3,6 +3,7 @@ import { LucideAngularModule, AlertTriangle, AlertCircle, Info, Check, CheckChec
 import type { AlertEvent } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { AlertsApiService } from '../../core/services/alerts.service';
+import { RealtimeService } from '../../core/services/realtime.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { relativeTime } from '../../shared/utils/relative-time';
 
@@ -125,6 +126,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
 })
 export class AlertsComponent implements OnInit {
   private readonly alertsApi = inject(AlertsApiService);
+  private readonly realtime = inject(RealtimeService);
   private readonly toast = inject(ToastService);
 
   protected readonly alerts = signal<AlertEvent[]>([]);
@@ -166,13 +168,16 @@ export class AlertsComponent implements OnInit {
       this.alerts.update((list) =>
         list.map((a) => (a.id === id ? { ...a, acknowledgedAt: new Date().toISOString() } as any : a)),
       );
+      this.realtime.dismissAlert(id);
       this.toast.success('Alerte acquittee');
     } catch { /* handled */ }
   }
 
   protected async onAcknowledgeAll(): Promise<void> {
     try {
+      const ids = this.alerts().filter((a) => !this.isAcknowledged(a)).map((a) => a.id);
       const { count } = await firstValueFrom(this.alertsApi.acknowledgeAll());
+      ids.forEach((id) => this.realtime.dismissAlert(id));
       this.toast.success(`${count} alertes acquittees`);
       this.loadAlerts();
     } catch { /* handled */ }
