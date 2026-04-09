@@ -1,0 +1,215 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis, pgcrypto, uuidOssp(map: "uuid-ossp")]
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  FLEET_ADMIN
+  FLEET_MANAGER
+  VIEWER
+}
+
+enum TrackerStatus {
+  ONLINE
+  OFFLINE
+  IDLE
+}
+
+enum GeofenceType {
+  CIRCLE
+  POLYGON
+}
+
+enum GeofenceRule {
+  ENTER
+  EXIT
+  BOTH
+}
+
+enum AlertType {
+  SPEEDING
+  LOW_BATTERY
+  GEOFENCE_ENTER
+  GEOFENCE_EXIT
+  SOS
+  OFFLINE
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum EngineAction {
+  CUT
+  RESTORE
+}
+
+enum CommandStatus {
+  PENDING
+  SENT
+  ACKNOWLEDGED
+  FAILED
+  REJECTED_SPEED
+}
+
+model Fleet {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  clientId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users     User[]
+  vehicles  Vehicle[]
+  geofences Geofence[]
+
+  @@map("fleets")
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  passwordHash String
+  firstName    String?
+  lastName     String?
+  role         UserRole @default(VIEWER)
+  fleetId      String?  @db.Uuid
+  fleet        Fleet?   @relation(fields: [fleetId], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([fleetId])
+  @@map("users")
+}
+
+model Vehicle {
+  id        String   @id @default(uuid()) @db.Uuid
+  fleetId   String   @db.Uuid
+  fleet     Fleet    @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  plate     String
+  brand     String?
+  model     String?
+  year      Int?
+  color     String?
+  tracker   Tracker?
+  trips     Trip[]
+  alerts    Alert[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([fleetId, plate])
+  @@index([fleetId])
+  @@map("vehicles")
+}
+
+model Tracker {
+  id         String                 @id @default(uuid()) @db.Uuid
+  imei       String                 @unique
+  model      String                 @default("COBAN_GPS403D")
+  status     TrackerStatus          @default(OFFLINE)
+  lastSeenAt DateTime?
+  vehicleId  String?                @unique @db.Uuid
+  vehicle    Vehicle?               @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  positions  Position[]
+  commands   EngineControlCommand[]
+  createdAt  DateTime               @default(now())
+  updatedAt  DateTime               @updatedAt
+
+  @@index([status])
+  @@map("trackers")
+}
+
+/// `location` (geography Point 4326) ajouté manuellement dans la migration.
+model Position {
+  id         String   @id @default(uuid()) @db.Uuid
+  trackerId  String   @db.Uuid
+  tracker    Tracker  @relation(fields: [trackerId], references: [id], onDelete: Cascade)
+  lat        Float
+  lng        Float
+  speedKmh   Float    @default(0)
+  heading    Float    @default(0)
+  altitude   Float?
+  satellites Int?
+  timestamp  DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([trackerId, timestamp(sort: Desc)])
+  @@map("positions")
+}
+
+model Trip {
+  id         String    @id @default(uuid()) @db.Uuid
+  vehicleId  String    @db.Uuid
+  vehicle    Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  startedAt  DateTime
+  endedAt    DateTime?
+  distanceKm Float     @default(0)
+  maxSpeed   Float     @default(0)
+  avgSpeed   Float     @default(0)
+  polyline   String?
+  createdAt  DateTime  @default(now())
+
+  @@index([vehicleId, startedAt(sort: Desc)])
+  @@map("trips")
+}
+
+/// `geometry` (geography 4326) ajouté manuellement dans la migration.
+model Geofence {
+  id        String       @id @default(uuid()) @db.Uuid
+  fleetId   String       @db.Uuid
+  fleet     Fleet        @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  name      String
+  type      GeofenceType
+  rule      GeofenceRule @default(BOTH)
+  active    Boolean      @default(true)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@index([fleetId])
+  @@map("geofences")
+}
+
+model Alert {
+  id             String        @id @default(uuid()) @db.Uuid
+  vehicleId      String        @db.Uuid
+  vehicle        Vehicle       @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  type           AlertType
+  severity       AlertSeverity @default(WARNING)
+  message        String
+  payload        Json          @default("{}")
+  acknowledgedAt DateTime?
+  acknowledgedBy String?       @db.Uuid
+  createdAt      DateTime      @default(now())
+
+  @@index([vehicleId, createdAt(sort: Desc)])
+  @@index([acknowledgedAt])
+  @@map("alerts")
+}
+
+model EngineControlCommand {
+  id          String        @id @default(uuid()) @db.Uuid
+  trackerId   String        @db.Uuid
+  tracker     Tracker       @relation(fields: [trackerId], references: [id], onDelete: Cascade)
+  action      EngineAction
+  scheduledAt DateTime?
+  status      CommandStatus @default(PENDING)
+  reason      String?
+  requestedBy String        @db.Uuid
+  lastError   String?
+  sentAt      DateTime?
+  ackedAt     DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([trackerId, status])
+  @@map("engine_control_commands")
+}

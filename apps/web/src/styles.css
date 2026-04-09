@@ -1,0 +1,83 @@
+@import 'tailwindcss';
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@theme {
+  --color-tracky-light: #10e0a0;
+  --color-tracky: #059669;
+  --color-tracky-dark: #047857;
+
+  --font-display: 'Poppins', sans-serif;
+  --font-sans: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --radius-card: 16px;
+
+  --shadow-tracky-glow: 0 0 20px rgba(16, 224, 160, 0.15), 0 0 60px rgba(16, 224, 160, 0.05);
+
+  --ease-tracky: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@theme inline {
+  --color-bg-primary: var(--surface-primary);
+  --color-bg-secondary: var(--surface-secondary);
+  --color-bg-tertiary: var(--surface-tertiary);
+  --color-fg-primary: var(--text-primary);
+  --color-fg-secondary: var(--text-secondary);
+  --color-fg-tertiary: var(--text-tertiary);
+  --color-border-subtle: var(--border-color);
+  --color-border-strong: var(--border-strong-color);
+}
+
+:root,
+[data-theme='dark'] {
+  --surface-primary: #0A0F0D;
+  --surface-secondary: #0F1714;
+  --surface-tertiary: #14201C;
+  --text-primary: #F0FDF9;
+  --text-secondary: #A7C7BC;
+  --text-tertiary: #5C746C;
+  --border-color: rgba(16, 224, 160, 0.08);
+  --border-strong-color: rgba(16, 224, 160, 0.16);
+}
+
+[data-theme='light'] {
+  --surface-primary: #FFFFFF;
+  --surface-secondary: #F0FDF9;
+  --surface-tertiary: #DCFCE7;
+  --text-primary: #042F2A;
+  --text-secondary: #047857;
+  --text-tertiary: #6B8A81;
+  --border-color: rgba(4, 120, 87, 0.1);
+  --border-strong-color: rgba(4, 120, 87, 0.2);
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--surface-primary);
+  color: var(--text-primary);
+  transition: background-color 300ms var(--ease-tracky), color 300ms var(--ease-tracky);
+  margin: 0;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--surface-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong-color);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-tracky);
+}
+
+@utility bg-tracky-gradient {
+  background-image: linear-gradient(135deg, #10e0a0 0%, #047857 100%);
+}

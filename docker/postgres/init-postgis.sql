@@ -1,0 +1,2 @@
+-- Extensions managed by Prisma migrate, this file is kept minimal
+-- to avoid drift detection issues.
