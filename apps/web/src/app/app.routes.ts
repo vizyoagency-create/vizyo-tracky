@@ -62,8 +62,7 @@ export const routes: Routes = [
       {
         path: 'settings',
         loadComponent: () =>
-          import('./features/placeholder/placeholder.component').then((m) => m.PlaceholderComponent),
-        data: { title: 'Parametres' },
+          import('./features/settings/settings.component').then((m) => m.SettingsComponent),
       },
     ],
   },
