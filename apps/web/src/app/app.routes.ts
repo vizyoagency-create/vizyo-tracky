@@ -33,8 +33,8 @@ export const routes: Routes = [
       {
         path: 'map',
         loadComponent: () =>
-          import('./features/placeholder/placeholder.component').then((m) => m.PlaceholderComponent),
-        data: { title: 'Carte' },
+          import('./features/map/map.component').then((m) => m.MapComponent),
+        data: { fullscreen: true },
       },
       {
         path: 'alerts',

@@ -1,16 +1,14 @@
 import { Logger } from '@nestjs/common';
 import {
-  ConnectedSocket,
-  MessageBody,
   OnGatewayConnection,
   OnGatewayDisconnect,
-  SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
-import type { AlertDto, PositionUpdateDto, TrackerStatusChangedDto } from '@vizyo/tracky-shared';
+import type { AlertDto, PositionUpdateEvent, TrackerStatusChangedDto } from '@vizyo/tracky-shared';
 import { WS_EVENTS } from '@vizyo/tracky-shared';
 import { Server, Socket } from 'socket.io';
+import { AuthService } from '../auth/auth.service';
 
 @WebSocketGateway({
   cors: { origin: process.env.CORS_ORIGIN ?? 'http://localhost:4200', credentials: true },
@@ -22,33 +20,49 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   @WebSocketServer()
   server!: Server;
 
+  constructor(private readonly auth: AuthService) {}
+
   handleConnection(client: Socket): void {
-    this.logger.debug(`Client connected: ${client.id}`);
+    try {
+      const token = client.handshake.auth?.token as string | undefined;
+      if (!token) {
+        this.logger.warn(`Client ${client.id} rejected: no token`);
+        client.disconnect();
+        return;
+      }
+
+      const payload = this.auth.verify(token);
+      const fleetId = payload.fleetId;
+      const role = payload.role;
+
+      if (role === 'SUPER_ADMIN') {
+        client.join('fleet:*');
+      }
+
+      if (fleetId) {
+        client.join(`fleet:${fleetId}`);
+      }
+
+      this.logger.debug(`Client ${client.id} authenticated (${payload.email}, fleet=${fleetId})`);
+    } catch {
+      this.logger.warn(`Client ${client.id} rejected: invalid token`);
+      client.disconnect();
+    }
   }
 
   handleDisconnect(client: Socket): void {
     this.logger.debug(`Client disconnected: ${client.id}`);
   }
 
-  @SubscribeMessage('fleet:subscribe')
-  onSubscribe(@MessageBody() fleetId: string, @ConnectedSocket() client: Socket): void {
-    client.join(`fleet:${fleetId}`);
-  }
-
-  @SubscribeMessage('fleet:unsubscribe')
-  onUnsubscribe(@MessageBody() fleetId: string, @ConnectedSocket() client: Socket): void {
-    client.leave(`fleet:${fleetId}`);
-  }
-
-  emitPosition(fleetId: string, payload: PositionUpdateDto): void {
-    this.server.to(`fleet:${fleetId}`).emit(WS_EVENTS.POSITION_UPDATE, payload);
+  broadcastPosition(fleetId: string, payload: PositionUpdateEvent): void {
+    this.server.to(`fleet:${fleetId}`).to('fleet:*').emit(WS_EVENTS.POSITION_UPDATE, payload);
   }
 
   emitTrackerStatus(fleetId: string, payload: TrackerStatusChangedDto): void {
-    this.server.to(`fleet:${fleetId}`).emit(WS_EVENTS.TRACKER_STATUS, payload);
+    this.server.to(`fleet:${fleetId}`).to('fleet:*').emit(WS_EVENTS.TRACKER_STATUS, payload);
   }
 
   emitAlert(fleetId: string, payload: AlertDto): void {
-    this.server.to(`fleet:${fleetId}`).emit(WS_EVENTS.ALERT_NEW, payload);
+    this.server.to(`fleet:${fleetId}`).to('fleet:*').emit(WS_EVENTS.ALERT_NEW, payload);
   }
 }

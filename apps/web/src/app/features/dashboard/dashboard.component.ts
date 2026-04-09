@@ -1,11 +1,14 @@
-import { Component } from '@angular/core';
-import { Truck, Navigation, Activity, AlertTriangle } from 'lucide-angular';
+import { Component, inject } from '@angular/core';
+import { DatePipe } from '@angular/common';
+import { Truck, Navigation, Activity, AlertTriangle, Radio } from 'lucide-angular';
+import { LucideAngularModule } from 'lucide-angular';
 import { MetricCardComponent } from '../../shared/components/metric-card.component';
+import { RealtimeService } from '../../core/services/realtime.service';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [MetricCardComponent],
+  imports: [MetricCardComponent, LucideAngularModule, DatePipe],
   template: `
     <div class="flex flex-col gap-6">
       <h1 class="text-2xl font-display font-bold text-fg-primary">Vue d'ensemble</h1>
@@ -35,12 +38,65 @@ import { MetricCardComponent } from '../../shared/components/metric-card.compone
           [icon]="AlertTriangle"
         />
       </div>
+
+      <div class="flex flex-col gap-4">
+        <div class="flex items-center gap-3">
+          <h2 class="text-lg font-display font-semibold text-fg-primary">Suivi temps reel</h2>
+          @if (realtime.connected()) {
+            <span class="flex items-center gap-1.5 text-xs text-tracky-light">
+              <span class="w-2 h-2 rounded-full bg-tracky-light animate-pulse"></span>
+              Connecte
+            </span>
+          } @else {
+            <span class="flex items-center gap-1.5 text-xs text-fg-tertiary">
+              <span class="w-2 h-2 rounded-full bg-fg-tertiary animate-pulse"></span>
+              Connexion en cours...
+            </span>
+          }
+        </div>
+
+        @if (realtime.positionsList().length === 0) {
+          <div class="flex items-center justify-center h-32 rounded-[--radius-card]
+                      bg-bg-secondary border border-border-subtle">
+            <p class="text-fg-tertiary text-sm">Aucune position en temps reel</p>
+          </div>
+        } @else {
+          <div class="grid gap-3">
+            @for (pos of realtime.positionsList(); track pos.trackerId) {
+              <div class="flex items-center gap-4 p-4 rounded-[--radius-card]
+                          bg-bg-secondary border border-border-subtle
+                          transition-all duration-300 ease-tracky
+                          hover:border-border-strong hover:shadow-tracky-glow">
+                <lucide-icon [img]="Radio" [size]="20" class="text-tracky-light shrink-0"></lucide-icon>
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-medium text-fg-primary font-mono truncate">
+                    {{ pos.trackerId.slice(0, 8) }}...
+                  </p>
+                  <p class="text-xs text-fg-tertiary">
+                    {{ pos.lat.toFixed(4) }}, {{ pos.lng.toFixed(4) }}
+                  </p>
+                </div>
+                <div class="text-right shrink-0">
+                  <p class="text-sm font-semibold text-fg-primary">
+                    {{ pos.speedKmh.toFixed(0) }} km/h
+                  </p>
+                  <p class="text-xs text-fg-tertiary">
+                    {{ pos.timestamp | date:'HH:mm:ss' }}
+                  </p>
+                </div>
+              </div>
+            }
+          </div>
+        }
+      </div>
     </div>
   `,
 })
 export class DashboardComponent {
+  protected readonly realtime = inject(RealtimeService);
   protected readonly Truck = Truck;
   protected readonly Navigation = Navigation;
   protected readonly Activity = Activity;
   protected readonly AlertTriangle = AlertTriangle;
+  protected readonly Radio = Radio;
 }

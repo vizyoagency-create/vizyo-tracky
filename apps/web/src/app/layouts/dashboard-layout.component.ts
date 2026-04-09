@@ -1,5 +1,5 @@
-import { Component, signal } from '@angular/core';
-import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
+import { Component, inject, signal } from '@angular/core';
+import { ActivatedRoute, RouterOutlet, RouterLink, RouterLinkActive, NavigationEnd, Router } from '@angular/router';
 import {
   LucideAngularModule,
   LayoutDashboard,
@@ -18,9 +18,9 @@ import { ThemeToggleComponent } from '../shared/components/theme-toggle.componen
   standalone: true,
   imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, ThemeToggleComponent],
   template: `
-    <div class="min-h-screen flex bg-bg-primary">
+    <div class="h-screen flex bg-bg-primary overflow-hidden">
       <aside
-        class="flex flex-col border-r border-border-subtle bg-bg-secondary transition-all duration-300 ease-tracky"
+        class="flex flex-col border-r border-border-subtle bg-bg-secondary transition-all duration-300 ease-tracky shrink-0"
         [class]="collapsed() ? 'w-16' : 'w-60'"
       >
         <div class="flex items-center gap-3 px-4 h-16 border-b border-border-subtle">
@@ -58,14 +58,14 @@ import { ThemeToggleComponent } from '../shared/components/theme-toggle.componen
         </nav>
       </aside>
 
-      <div class="flex-1 flex flex-col">
-        <header class="flex items-center justify-between px-6 h-16 border-b border-border-subtle bg-bg-secondary">
+      <div class="flex-1 flex flex-col min-w-0">
+        <header class="flex items-center justify-between px-6 h-16 border-b border-border-subtle bg-bg-secondary shrink-0">
           <h2 class="text-lg font-display font-semibold text-fg-primary">Tableau de bord</h2>
           <div class="flex items-center gap-3">
             <app-theme-toggle />
           </div>
         </header>
-        <main class="flex-1 p-6 overflow-auto">
+        <main class="flex-1 relative" [class]="fullscreen() ? 'overflow-hidden' : 'p-6 overflow-auto'">
           <router-outlet />
         </main>
       </div>
@@ -74,7 +74,20 @@ import { ThemeToggleComponent } from '../shared/components/theme-toggle.componen
 })
 export class DashboardLayoutComponent {
   protected readonly collapsed = signal(false);
+  protected readonly fullscreen = signal(false);
   protected readonly Menu = Menu;
+
+  private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
+
+  constructor() {
+    this.router.events.subscribe((event) => {
+      if (event instanceof NavigationEnd) {
+        const child = this.route.firstChild;
+        this.fullscreen.set(child?.snapshot.data?.['fullscreen'] === true);
+      }
+    });
+  }
 
   protected readonly navItems = [
     { label: 'Tableau de bord', route: '/dashboard', icon: LayoutDashboard },

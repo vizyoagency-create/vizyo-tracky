@@ -1,0 +1,149 @@
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { Prisma, UserRole } from '@prisma/client';
+import type { Vehicle } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+import type { CreateVehicleDto } from './dto/create-vehicle.dto';
+import type { UpdateVehicleDto } from './dto/update-vehicle.dto';
+
+interface RequestedBy {
+  userId: string;
+  role: UserRole;
+  fleetId: string | null;
+}
+
+@Injectable()
+export class VehiclesService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async create(dto: CreateVehicleDto, requestedBy: RequestedBy): Promise<Vehicle> {
+    let fleetId: string;
+
+    if (requestedBy.role === UserRole.SUPER_ADMIN && dto.fleetId) {
+      fleetId = dto.fleetId;
+    } else if (requestedBy.fleetId) {
+      if (dto.fleetId && dto.fleetId !== requestedBy.fleetId && requestedBy.role !== UserRole.SUPER_ADMIN) {
+        throw new ForbiddenException('Impossible de créer un véhicule dans une autre flotte');
+      }
+      fleetId = requestedBy.fleetId;
+    } else {
+      throw new ForbiddenException('Aucune flotte associée à votre compte');
+    }
+
+    try {
+      return await this.prisma.vehicle.create({
+        data: {
+          fleetId,
+          plate: dto.plate,
+          brand: dto.brand,
+          model: dto.model,
+          year: dto.year,
+          color: dto.color,
+        },
+        include: { tracker: true },
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictException(`Plaque "${dto.plate}" déjà utilisée dans cette flotte`);
+      }
+      throw err;
+    }
+  }
+
+  async findAll(
+    requestedBy: RequestedBy,
+    filters?: { search?: string; hasTracker?: string; limit?: number; cursor?: string },
+  ): Promise<Vehicle[]> {
+    const limit = Math.min(filters?.limit ?? 50, 50);
+    const where: Prisma.VehicleWhereInput = {};
+
+    if (requestedBy.role !== UserRole.SUPER_ADMIN) {
+      where.fleetId = requestedBy.fleetId ?? undefined;
+    }
+
+    if (filters?.search) {
+      where.OR = [
+        { plate: { contains: filters.search, mode: 'insensitive' } },
+        { brand: { contains: filters.search, mode: 'insensitive' } },
+        { model: { contains: filters.search, mode: 'insensitive' } },
+      ];
+    }
+
+    if (filters?.hasTracker === 'true') {
+      where.tracker = { isNot: null };
+    } else if (filters?.hasTracker === 'false') {
+      where.tracker = { is: null };
+    }
+
+    return this.prisma.vehicle.findMany({
+      where,
+      include: { tracker: true },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      ...(filters?.cursor ? { skip: 1, cursor: { id: filters.cursor } } : {}),
+    });
+  }
+
+  async findOne(id: string, requestedBy: RequestedBy): Promise<Vehicle> {
+    const vehicle = await this.prisma.vehicle.findUnique({
+      where: { id },
+      include: { tracker: true },
+    });
+
+    if (!vehicle) throw new NotFoundException('Véhicule introuvable');
+
+    if (requestedBy.role !== UserRole.SUPER_ADMIN && vehicle.fleetId !== requestedBy.fleetId) {
+      throw new ForbiddenException('Accès refusé à ce véhicule');
+    }
+
+    return vehicle;
+  }
+
+  async update(id: string, dto: UpdateVehicleDto, requestedBy: RequestedBy): Promise<Vehicle> {
+    const vehicle = await this.findOne(id, requestedBy);
+
+    if (dto.fleetId && dto.fleetId !== vehicle.fleetId && requestedBy.role !== UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException('Impossible de changer la flotte du véhicule');
+    }
+
+    const data: Prisma.VehicleUpdateInput = {};
+    if (dto.plate !== undefined) data.plate = dto.plate;
+    if (dto.brand !== undefined) data.brand = dto.brand;
+    if (dto.model !== undefined) data.model = dto.model;
+    if (dto.year !== undefined) data.year = dto.year;
+    if (dto.color !== undefined) data.color = dto.color;
+    if (dto.fleetId !== undefined && requestedBy.role === UserRole.SUPER_ADMIN) {
+      data.fleet = { connect: { id: dto.fleetId } };
+    }
+
+    try {
+      return await this.prisma.vehicle.update({
+        where: { id },
+        data,
+        include: { tracker: true },
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictException(`Plaque "${dto.plate}" déjà utilisée dans cette flotte`);
+      }
+      throw err;
+    }
+  }
+
+  async remove(id: string, requestedBy: RequestedBy): Promise<void> {
+    const vehicle = await this.findOne(id, requestedBy);
+
+    if ((vehicle as any).tracker) {
+      await this.prisma.tracker.update({
+        where: { vehicleId: vehicle.id },
+        data: { vehicleId: null },
+      });
+    }
+
+    await this.prisma.vehicle.delete({ where: { id } });
+  }
+}

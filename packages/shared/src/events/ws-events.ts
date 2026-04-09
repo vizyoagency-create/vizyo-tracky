@@ -8,8 +8,19 @@ export const WS_EVENTS = {
   ALERT_NEW: 'alert:new',
 } as const;
 
+export interface PositionUpdateEvent {
+  trackerId: string;
+  vehicleId: string;
+  fleetId: string;
+  lat: number;
+  lng: number;
+  speedKmh: number;
+  heading: number;
+  timestamp: string;
+}
+
 export interface ServerToClientEvents {
-  'position:update': (payload: PositionUpdateDto) => void;
+  'position:update': (payload: PositionUpdateEvent) => void;
   'tracker:status': (payload: TrackerStatusChangedDto) => void;
   'alert:new': (payload: AlertDto) => void;
 }

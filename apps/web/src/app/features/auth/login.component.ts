@@ -1,6 +1,7 @@
-import { Component, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { RealtimeService } from '../../core/services/realtime.service';
 
 @Component({
   selector: 'app-login',
@@ -71,6 +72,8 @@ export class LoginComponent {
   protected readonly error = signal('');
   protected readonly loading = signal(false);
 
+  private readonly realtime = inject(RealtimeService);
+
   constructor(private readonly router: Router) {}
 
   async onSubmit(): Promise<void> {
@@ -91,6 +94,7 @@ export class LoginComponent {
 
       const data = await res.json();
       localStorage.setItem('vizyo-tracky-token', data.accessToken);
+      this.realtime.connect(data.accessToken);
       this.router.navigate(['/dashboard']);
     } catch {
       this.error.set('Erreur de connexion au serveur');
