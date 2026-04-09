@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, effect, inject, OnInit, signal } from '@angular/core';
 import { LucideAngularModule, AlertTriangle, AlertCircle, Info, Check, CheckCheck } from 'lucide-angular';
 import type { AlertEvent } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
@@ -147,6 +147,28 @@ export class AlertsComponent implements OnInit {
     { value: 'WARNING', label: 'Avertissements' },
     { value: 'INFO', label: 'Informations' },
   ];
+
+  private syncEffect = effect(() => {
+    const wsAlerts = this.realtime.alerts();
+    const wsIds = new Set(wsAlerts.map((a) => a.id));
+
+    this.alerts.update((existing) => {
+      let changed = false;
+      const ids = new Set(existing.map((a) => a.id));
+      const fresh = wsAlerts.filter((a) => !ids.has(a.id));
+      if (fresh.length > 0) changed = true;
+
+      const updated = existing.map((a) => {
+        if (!this.isAcknowledged(a) && !wsIds.has(a.id) && ids.has(a.id)) {
+          changed = true;
+          return { ...a, acknowledgedAt: new Date().toISOString() } as any;
+        }
+        return a;
+      });
+
+      return changed ? [...fresh, ...updated] : updated;
+    });
+  });
 
   ngOnInit(): void {
     this.loadAlerts();
