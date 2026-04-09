@@ -1,7 +1,8 @@
-import { computed, Injectable, signal } from '@angular/core';
-import type { PositionUpdateEvent } from '@vizyo/tracky-shared';
+import { computed, inject, Injectable, signal } from '@angular/core';
+import type { AlertAcknowledgedEvent, AlertEvent, PositionUpdateEvent } from '@vizyo/tracky-shared';
 import { WS_EVENTS } from '@vizyo/tracky-shared';
 import { io, Socket } from 'socket.io-client';
+import { ToastService } from '../../shared/ui/toast/toast.service';
 
 @Injectable({ providedIn: 'root' })
 export class RealtimeService {
@@ -9,7 +10,13 @@ export class RealtimeService {
   readonly connected = signal(false);
   readonly positionsList = computed(() => Array.from(this.positions().values()));
 
+  private readonly _alerts = signal<AlertEvent[]>([]);
+  readonly alerts = this._alerts.asReadonly();
+  readonly unacknowledgedCount = computed(() => this._alerts().length);
+  readonly hasCritical = computed(() => this._alerts().some((a) => a.severity === 'CRITICAL'));
+
   private socket: Socket | null = null;
+  private readonly toast = inject(ToastService);
 
   connect(token: string): void {
     if (this.socket?.connected) return;
@@ -33,6 +40,24 @@ export class RealtimeService {
       next.set(event.trackerId, event);
       this.positions.set(next);
     });
+
+    this.socket.on(WS_EVENTS.ALERT_NEW, (alert: AlertEvent) => {
+      this._alerts.update((list) => [alert, ...list]);
+      this.toast.show({
+        kind: alert.severity === 'CRITICAL' ? 'error' : alert.severity === 'WARNING' ? 'warning' : 'info',
+        title: alert.title,
+        message: alert.vehiclePlate ? `Vehicule ${alert.vehiclePlate}` : undefined,
+        duration: alert.severity === 'CRITICAL' ? 0 : 6000,
+      });
+    });
+
+    this.socket.on(WS_EVENTS.ALERT_ACK, (event: AlertAcknowledgedEvent) => {
+      this._alerts.update((list) => list.filter((a) => a.id !== event.id));
+    });
+  }
+
+  dismissAlert(id: string): void {
+    this._alerts.update((list) => list.filter((a) => a.id !== id));
   }
 
   disconnect(): void {
@@ -40,5 +65,6 @@ export class RealtimeService {
     this.socket = null;
     this.connected.set(false);
     this.positions.set(new Map());
+    this._alerts.set([]);
   }
 }

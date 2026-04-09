@@ -5,6 +5,7 @@ import { decodeFrame } from '@vizyo/tracky-shared';
 import type { CobanFrame } from '@vizyo/tracky-shared';
 import { createServer, type Server, type Socket } from 'node:net';
 import type { Env } from '../config/env.validation';
+import { AlertsService } from '../alerts/alerts.service';
 import { PositionsService } from '../positions/positions.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SocketRegistryService } from '../socket-registry/socket-registry.service';
@@ -19,6 +20,7 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
     private readonly registry: SocketRegistryService,
     private readonly prisma: PrismaService,
     private readonly positions: PositionsService,
+    private readonly alertsService: AlertsService,
   ) {}
 
   onModuleInit(): void {
@@ -147,12 +149,21 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
         }
         await this.positions.ingest(frame);
 
+        if (frame.alarm && frame.alarm !== 'none') {
+          const tracker = await this.prisma.tracker.findUnique({
+            where: { imei: frame.imei },
+            include: { vehicle: { include: { fleet: true } } },
+          });
+          if (tracker) {
+            await this.alertsService.createFromCobanFrame(frame, tracker as any).catch((err) =>
+              this.logger.error('Failed to create alert', err),
+            );
+          }
+        }
+
         if (frame.alarm === 'sos') {
           socket.write(`**,imei:${currentImei},E;`);
           this.logger.warn(`SOS alarm from ${currentImei}, ACK sent`);
-        }
-        if (['power_cut', 'accident', 'collision'].includes(frame.alarm)) {
-          this.logger.warn(`Critical alarm "${frame.alarm}" from ${currentImei}: ${frame.raw}`);
         }
         break;
       }

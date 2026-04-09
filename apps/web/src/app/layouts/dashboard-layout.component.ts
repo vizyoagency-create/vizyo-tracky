@@ -12,12 +12,13 @@ import {
   Menu,
 } from 'lucide-angular';
 import { ThemeToggleComponent } from '../shared/components/theme-toggle.component';
+import { AlertsBellComponent } from '../shared/ui/alerts-bell/alerts-bell.component';
 import { ToastContainerComponent } from '../shared/ui/toast/toast-container.component';
 
 @Component({
   selector: 'app-dashboard-layout',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, ThemeToggleComponent, ToastContainerComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, ThemeToggleComponent, AlertsBellComponent, ToastContainerComponent],
   template: `
     <div class="h-screen flex bg-bg-primary overflow-hidden">
       <aside
@@ -63,6 +64,7 @@ import { ToastContainerComponent } from '../shared/ui/toast/toast-container.comp
         <header class="flex items-center justify-between px-6 h-16 border-b border-border-subtle bg-bg-secondary shrink-0">
           <h2 class="text-lg font-display font-semibold text-fg-primary">Tableau de bord</h2>
           <div class="flex items-center gap-3">
+            <app-alerts-bell />
             <app-theme-toggle />
           </div>
         </header>

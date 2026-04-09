@@ -39,8 +39,7 @@ export const routes: Routes = [
       {
         path: 'alerts',
         loadComponent: () =>
-          import('./features/placeholder/placeholder.component').then((m) => m.PlaceholderComponent),
-        data: { title: 'Alertes' },
+          import('./features/alerts/alerts.component').then((m) => m.AlertsComponent),
       },
       {
         path: 'geofences',

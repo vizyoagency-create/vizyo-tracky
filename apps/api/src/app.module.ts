@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { AlertsModule } from './alerts/alerts.module';
 import { AuthModule } from './auth/auth.module';
 import { validateEnv } from './config/env.validation';
 import { EngineControlModule } from './engine-control/engine-control.module';
@@ -24,6 +25,7 @@ import { VehiclesModule } from './vehicles/vehicles.module';
     SocketRegistryModule,
     AuthModule,
     PositionsModule,
+    AlertsModule,
     EngineControlModule,
     VehiclesModule,
     TrackersModule,

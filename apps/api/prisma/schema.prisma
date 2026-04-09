@@ -34,12 +34,21 @@ enum GeofenceRule {
 }
 
 enum AlertType {
-  SPEEDING
-  LOW_BATTERY
-  GEOFENCE_ENTER
-  GEOFENCE_EXIT
   SOS
-  OFFLINE
+  POWER_CUT
+  ACCIDENT
+  COLLISION
+  LOW_BATTERY
+  OVERSPEED
+  GEOFENCE_EXIT
+  MOVEMENT_IDLE
+  HARSH_BRAKING
+  HARSH_ACCELERATION
+  HARSH_TURN
+  BONNET
+  DOOR
+  VIBRATION
+  UNKNOWN
 }
 
 enum AlertSeverity {
@@ -71,6 +80,7 @@ model Fleet {
   users     User[]
   vehicles  Vehicle[]
   geofences Geofence[]
+  alerts    Alert[]
 
   @@map("fleets")
 }
@@ -81,11 +91,12 @@ model User {
   passwordHash String
   firstName    String?
   lastName     String?
-  role         UserRole @default(VIEWER)
-  fleetId      String?  @db.Uuid
-  fleet        Fleet?   @relation(fields: [fleetId], references: [id], onDelete: SetNull)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  role               UserRole @default(VIEWER)
+  fleetId            String?  @db.Uuid
+  fleet              Fleet?   @relation(fields: [fleetId], references: [id], onDelete: SetNull)
+  acknowledgedAlerts Alert[]  @relation("AlertAcknowledgedBy")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   @@index([fleetId])
   @@map("users")
@@ -121,6 +132,7 @@ model Tracker {
   vehicle    Vehicle?               @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   positions  Position[]
   commands   EngineControlCommand[]
+  alerts     Alert[]
   createdAt  DateTime               @default(now())
   updatedAt  DateTime               @updatedAt
 
@@ -180,19 +192,29 @@ model Geofence {
 }
 
 model Alert {
-  id             String        @id @default(uuid()) @db.Uuid
-  vehicleId      String        @db.Uuid
-  vehicle        Vehicle       @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  type           AlertType
-  severity       AlertSeverity @default(WARNING)
-  message        String
-  payload        Json          @default("{}")
-  acknowledgedAt DateTime?
-  acknowledgedBy String?       @db.Uuid
-  createdAt      DateTime      @default(now())
+  id               String        @id @default(uuid()) @db.Uuid
+  fleetId          String        @db.Uuid
+  fleet            Fleet         @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  vehicleId        String?       @db.Uuid
+  vehicle          Vehicle?      @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  trackerId        String?       @db.Uuid
+  tracker          Tracker?      @relation(fields: [trackerId], references: [id], onDelete: SetNull)
+  type             AlertType
+  severity         AlertSeverity @default(WARNING)
+  title            String
+  message          String?
+  payload          Json?
+  latitude         Float?
+  longitude        Float?
+  acknowledgedAt   DateTime?
+  acknowledgedBy   String?       @db.Uuid
+  acknowledgedUser User?         @relation("AlertAcknowledgedBy", fields: [acknowledgedBy], references: [id], onDelete: SetNull)
+  createdAt        DateTime      @default(now())
 
-  @@index([vehicleId, createdAt(sort: Desc)])
-  @@index([acknowledgedAt])
+  @@index([fleetId, createdAt(sort: Desc)])
+  @@index([fleetId, acknowledgedAt])
+  @@index([vehicleId])
+  @@index([trackerId])
   @@map("alerts")
 }
 

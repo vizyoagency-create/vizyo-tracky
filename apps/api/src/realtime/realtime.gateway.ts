@@ -5,8 +5,9 @@ import {
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
-import type { AlertDto, PositionUpdateEvent, TrackerStatusChangedDto } from '@vizyo/tracky-shared';
+import type { AlertEvent, PositionUpdateEvent, TrackerStatusChangedDto } from '@vizyo/tracky-shared';
 import { WS_EVENTS } from '@vizyo/tracky-shared';
+import type { Alert, Vehicle, Tracker } from '@prisma/client';
 import { Server, Socket } from 'socket.io';
 import { AuthService } from '../auth/auth.service';
 
@@ -62,7 +63,32 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     this.server.to(`fleet:${fleetId}`).to('fleet:*').emit(WS_EVENTS.TRACKER_STATUS, payload);
   }
 
-  emitAlert(fleetId: string, payload: AlertDto): void {
-    this.server.to(`fleet:${fleetId}`).to('fleet:*').emit(WS_EVENTS.ALERT_NEW, payload);
+  broadcastAlert(alert: Alert & { vehicle?: Vehicle | null; tracker?: Tracker | null }): void {
+    const event: AlertEvent = {
+      id: alert.id,
+      fleetId: alert.fleetId,
+      vehicleId: alert.vehicleId,
+      trackerId: alert.trackerId,
+      type: alert.type,
+      severity: alert.severity,
+      title: alert.title,
+      message: alert.message,
+      latitude: alert.latitude,
+      longitude: alert.longitude,
+      createdAt: alert.createdAt.toISOString(),
+      vehiclePlate: (alert as any).vehicle?.plate,
+    };
+    this.server.to(`fleet:${alert.fleetId}`).to('fleet:*').emit(WS_EVENTS.ALERT_NEW, event);
+  }
+
+  broadcastAlertAcknowledged(alert: Alert): void {
+    this.server
+      .to(`fleet:${alert.fleetId}`)
+      .to('fleet:*')
+      .emit(WS_EVENTS.ALERT_ACK, {
+        id: alert.id,
+        acknowledgedAt: alert.acknowledgedAt?.toISOString(),
+        acknowledgedBy: alert.acknowledgedBy,
+      });
   }
 }

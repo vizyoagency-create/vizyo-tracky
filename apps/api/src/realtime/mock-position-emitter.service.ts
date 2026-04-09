@@ -1,7 +1,8 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { CobanPositionFrame } from '@vizyo/tracky-shared';
+import type { CobanAlarmType, CobanPositionFrame } from '@vizyo/tracky-shared';
 import type { Env } from '../config/env.validation';
+import { AlertsService } from '../alerts/alerts.service';
 import { PositionsService } from '../positions/positions.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SocketRegistryService } from '../socket-registry/socket-registry.service';
@@ -27,6 +28,7 @@ export class MockPositionEmitterService implements OnModuleInit, OnModuleDestroy
     private readonly config: ConfigService<Env, true>,
     private readonly prisma: PrismaService,
     private readonly positions: PositionsService,
+    private readonly alertsService: AlertsService,
     private readonly registry: SocketRegistryService,
   ) {}
 
@@ -111,10 +113,12 @@ export class MockPositionEmitterService implements OnModuleInit, OnModuleDestroy
         state.speedKmh = 0;
       }
 
+      const alarm = this.maybeInjectAlarm();
+
       const fakeFrame: CobanPositionFrame = {
         type: 'position',
         imei: state.imei,
-        alarm: 'none',
+        alarm,
         deviceTime: new Date(),
         valid: true,
         latitude: state.lat,
@@ -128,9 +132,35 @@ export class MockPositionEmitterService implements OnModuleInit, OnModuleDestroy
 
       try {
         await this.positions.ingest(fakeFrame);
+
+        if (alarm !== 'none') {
+          const tracker = await this.prisma.tracker.findUnique({
+            where: { imei: state.imei },
+            include: { vehicle: { include: { fleet: true } } },
+          });
+          if (tracker) {
+            await this.alertsService.createFromCobanFrame(fakeFrame, tracker as any);
+          }
+        }
       } catch (err) {
         this.logger.error(`Mock ingest failed for ${state.imei}`, err);
       }
     }
+  }
+
+  private readonly WARNING_ALARMS: CobanAlarmType[] = [
+    'harsh_braking', 'harsh_acceleration', 'overspeed', 'movement', 'low_battery',
+  ];
+  private readonly CRITICAL_ALARMS: CobanAlarmType[] = ['sos', 'accident', 'power_cut'];
+
+  private maybeInjectAlarm(): CobanAlarmType {
+    const r = Math.random();
+    if (r < 0.003) {
+      return this.CRITICAL_ALARMS[Math.floor(Math.random() * this.CRITICAL_ALARMS.length)]!;
+    }
+    if (r < 0.023) {
+      return this.WARNING_ALARMS[Math.floor(Math.random() * this.WARNING_ALARMS.length)]!;
+    }
+    return 'none';
   }
 }
