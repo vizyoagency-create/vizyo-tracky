@@ -246,7 +246,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       <strong style="font-family:monospace">${pos.trackerId.slice(0, 8)}...</strong><br>
       Vitesse : <strong>${pos.speedKmh.toFixed(0)} km/h</strong><br>
       Position : ${pos.lat.toFixed(5)}, ${pos.lng.toFixed(5)}<br>
-      <span style="color:#888">il y a ${ago}s</span>
+      <span style="color:#888">il y a ${ago}s</span><br>
+      <a href="/vehicles/${pos.vehicleId}" style="color:#10E0A0;text-decoration:underline;font-size:11px">Voir fiche vehicule</a>
     </div>`;
   }
 }

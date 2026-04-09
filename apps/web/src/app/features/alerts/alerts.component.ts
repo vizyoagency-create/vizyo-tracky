@@ -1,4 +1,5 @@
 import { Component, effect, inject, OnInit, signal } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { LucideAngularModule, AlertTriangle, AlertCircle, Info, Check, CheckCheck } from 'lucide-angular';
 import type { AlertEvent } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
@@ -10,7 +11,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
 @Component({
   selector: 'app-alerts',
   standalone: true,
-  imports: [LucideAngularModule],
+  imports: [LucideAngularModule, RouterLink],
   template: `
     <div class="flex flex-col gap-6">
       <div class="flex items-center justify-between">
@@ -85,7 +86,14 @@ import { relativeTime } from '../../shared/utils/relative-time';
                 </span>
               </div>
               <p class="text-xs text-fg-tertiary mt-0.5">
-                {{ alert.vehiclePlate ?? 'Vehicule inconnu' }} · {{ relativeTime(alert.createdAt) }}
+                @if (alert.vehicleId) {
+                  <a [routerLink]="['/vehicles', alert.vehicleId]" class="text-tracky-light hover:underline">
+                    {{ alert.vehiclePlate ?? 'Vehicule' }}
+                  </a> ·
+                } @else {
+                  {{ alert.vehiclePlate ?? 'Vehicule inconnu' }} ·
+                }
+                {{ relativeTime(alert.createdAt) }}
               </p>
               @if (alert.message) {
                 <p class="text-xs text-fg-secondary mt-1">{{ alert.message }}</p>

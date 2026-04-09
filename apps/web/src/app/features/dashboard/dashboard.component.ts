@@ -1,5 +1,6 @@
 import { Component, computed, inject } from '@angular/core';
 import { DatePipe } from '@angular/common';
+import { RouterLink } from '@angular/router';
 import { Truck, Navigation, Activity, AlertTriangle, Radio } from 'lucide-angular';
 import { LucideAngularModule } from 'lucide-angular';
 import { MetricCardComponent } from '../../shared/components/metric-card.component';
@@ -9,7 +10,7 @@ import { EngineControlButtonComponent } from '../engine-control/engine-control-b
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [MetricCardComponent, LucideAngularModule, DatePipe, EngineControlButtonComponent],
+  imports: [MetricCardComponent, LucideAngularModule, DatePipe, EngineControlButtonComponent, RouterLink],
   template: `
     <div class="flex flex-col gap-6">
       <h1 class="text-2xl font-display font-bold text-fg-primary">Vue d'ensemble</h1>
@@ -49,15 +50,18 @@ import { EngineControlButtonComponent } from '../engine-control/engine-control-b
                           bg-bg-secondary border border-border-subtle
                           transition-all duration-300 ease-tracky
                           hover:border-border-strong hover:shadow-tracky-glow">
-                <lucide-icon [img]="Radio" [size]="20" class="text-tracky-light shrink-0"></lucide-icon>
-                <div class="flex-1 min-w-0">
-                  <p class="text-sm font-medium text-fg-primary font-mono truncate">
-                    {{ item.trackerId.slice(0, 8) }}...
-                  </p>
-                  <p class="text-xs text-fg-tertiary">
-                    {{ item.lat.toFixed(4) }}, {{ item.lng.toFixed(4) }}
-                  </p>
-                </div>
+                <a [routerLink]="['/vehicles', item.vehicleId]"
+                   class="flex items-center gap-4 flex-1 min-w-0 cursor-pointer">
+                  <lucide-icon [img]="Radio" [size]="20" class="text-tracky-light shrink-0"></lucide-icon>
+                  <div class="min-w-0">
+                    <p class="text-sm font-medium text-fg-primary font-mono truncate">
+                      {{ item.trackerId.slice(0, 8) }}...
+                    </p>
+                    <p class="text-xs text-fg-tertiary">
+                      {{ item.lat.toFixed(4) }}, {{ item.lng.toFixed(4) }}
+                    </p>
+                  </div>
+                </a>
                 <div class="text-right shrink-0 mr-2">
                   <p class="text-sm font-semibold text-fg-primary">
                     {{ item.speedKmh.toFixed(0) }} km/h

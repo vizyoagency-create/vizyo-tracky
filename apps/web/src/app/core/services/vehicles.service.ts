@@ -1,0 +1,33 @@
+import { HttpClient } from '@angular/common/http';
+import { inject, Injectable } from '@angular/core';
+import { Observable } from 'rxjs';
+
+export interface VehicleDetailDto {
+  id: string;
+  plate: string;
+  brand: string | null;
+  model: string | null;
+  year: number | null;
+  color: string | null;
+  fleetId: string;
+  tracker: {
+    id: string;
+    imei: string;
+    status: string;
+    lastSeenAt: string | null;
+  } | null;
+  createdAt: string;
+}
+
+@Injectable({ providedIn: 'root' })
+export class VehiclesApiService {
+  private readonly http = inject(HttpClient);
+
+  findOne(id: string): Observable<VehicleDetailDto> {
+    return this.http.get<VehicleDetailDto>(`/api/vehicles/${id}`);
+  }
+
+  list(params?: Record<string, string>): Observable<VehicleDetailDto[]> {
+    return this.http.get<VehicleDetailDto[]>('/api/vehicles', { params });
+  }
+}
