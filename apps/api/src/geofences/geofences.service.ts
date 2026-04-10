@@ -62,12 +62,12 @@ export class GeofencesService {
       },
     });
 
-    await this.prisma.$executeRaw`
+    this.prisma.$executeRaw`
       UPDATE geofences SET geometry = ST_Buffer(
         ST_MakePoint(${dto.centerLng}, ${dto.centerLat})::geography,
         ${dto.radiusMeters}
       ) WHERE id = ${geofence.id}::uuid
-    `;
+    `.catch((err) => this.logger.warn('Failed to update PostGIS geometry (non-blocking)', err.message));
 
     this.invalidateCache(fleetId);
     return geofence;
@@ -112,12 +112,12 @@ export class GeofencesService {
     const radius = dto.radiusMeters ?? existing.radiusMeters;
 
     if (dto.centerLat !== undefined || dto.centerLng !== undefined || dto.radiusMeters !== undefined) {
-      await this.prisma.$executeRaw`
+      this.prisma.$executeRaw`
         UPDATE geofences SET geometry = ST_Buffer(
           ST_MakePoint(${lng}, ${lat})::geography,
           ${radius}
         ) WHERE id = ${id}::uuid
-      `;
+      `.catch((err) => this.logger.warn('Failed to update PostGIS geometry (non-blocking)', err.message));
     }
 
     this.invalidateCache(existing.fleetId);
