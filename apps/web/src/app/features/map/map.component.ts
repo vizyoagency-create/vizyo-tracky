@@ -8,7 +8,9 @@ import {
   viewChild,
 } from '@angular/core';
 import * as L from 'leaflet';
-import type { PositionUpdateEvent } from '@vizyo/tracky-shared';
+import type { GeofenceDto, PositionUpdateEvent } from '@vizyo/tracky-shared';
+import { firstValueFrom } from 'rxjs';
+import { GeofencesApiService } from '../../core/services/geofences.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 
 function speedColor(speed: number): string {
@@ -114,6 +116,7 @@ function createIcon(speed: number, heading: number): L.DivIcon {
 })
 export class MapComponent implements AfterViewInit, OnDestroy {
   protected readonly realtime = inject(RealtimeService);
+  private readonly geofencesApi = inject(GeofencesApiService);
   private readonly mapContainerRef = viewChild.required<ElementRef<HTMLDivElement>>('mapContainer');
 
   private map: L.Map | null = null;
@@ -121,6 +124,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private markers = new Map<string, L.Marker>();
   private trails = new Map<string, L.Polyline>();
   private trailPoints = new Map<string, L.LatLng[]>();
+  private geofenceCircles = new Map<string, L.Circle>();
   private hasFittedBounds = false;
 
   private positionsEffect = effect(() => {
@@ -154,6 +158,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     });
     this.resizeObserver.observe(container);
 
+    this.loadGeofences();
+
     this.map.invalidateSize();
   }
 
@@ -163,9 +169,11 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
     this.markers.forEach((m) => m.remove());
     this.trails.forEach((t) => t.remove());
+    this.geofenceCircles.forEach((c) => c.remove());
     this.markers.clear();
     this.trails.clear();
     this.trailPoints.clear();
+    this.geofenceCircles.clear();
 
     if (this.map) {
       this.map.remove();
@@ -238,6 +246,26 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       this.hasFittedBounds = true;
       this.centerAll();
     }
+  }
+
+  private async loadGeofences(): Promise<void> {
+    if (!this.map) return;
+    try {
+      const zones = await firstValueFrom(this.geofencesApi.list());
+      for (const z of zones) {
+        if (!z.active || !z.centerLat || !z.centerLng) continue;
+        const circle = L.circle([z.centerLat, z.centerLng], {
+          radius: z.radiusMeters,
+          color: z.color ?? '#10e0a0',
+          fillColor: z.color ?? '#10e0a0',
+          fillOpacity: 0.12,
+          weight: 2,
+          opacity: 0.6,
+        }).addTo(this.map);
+        circle.bindTooltip(`${z.name} (${z.rule})`, { sticky: true });
+        this.geofenceCircles.set(z.id, circle);
+      }
+    } catch { /* silent */ }
   }
 
   private popupContent(pos: PositionUpdateEvent): string {

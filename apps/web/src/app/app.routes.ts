@@ -54,8 +54,7 @@ export const routes: Routes = [
       {
         path: 'geofences',
         loadComponent: () =>
-          import('./features/placeholder/placeholder.component').then((m) => m.PlaceholderComponent),
-        data: { title: 'Geofences' },
+          import('./features/geofences/geofences-list.component').then((m) => m.GeofencesListComponent),
       },
       {
         path: 'reports',

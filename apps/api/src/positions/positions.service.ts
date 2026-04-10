@@ -8,6 +8,7 @@ import {
 import { Prisma, UserRole } from '@prisma/client';
 import type { Position } from '@prisma/client';
 import type { CobanPositionFrame, PositionUpdateEvent } from '@vizyo/tracky-shared';
+import { GeofencesService } from '../geofences/geofences.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 
@@ -23,6 +24,7 @@ export class PositionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly gateway: RealtimeGateway,
+    private readonly geofences: GeofencesService,
   ) {}
 
   async ingest(frame: CobanPositionFrame): Promise<void> {
@@ -83,6 +85,11 @@ export class PositionsService {
         valid: frame.valid,
       };
       this.gateway.broadcastPosition(tracker.vehicle.fleetId, event);
+
+      this.geofences.checkViolations(
+        tracker.id, frame.latitude, frame.longitude,
+        tracker.vehicle.fleetId, tracker.vehicle.id, tracker.imei,
+      ).catch((err) => this.logger.error('Geofence check failed', err));
     }
   }
 

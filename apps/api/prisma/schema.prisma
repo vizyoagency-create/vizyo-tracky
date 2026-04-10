@@ -40,6 +40,7 @@ enum AlertType {
   COLLISION
   LOW_BATTERY
   OVERSPEED
+  GEOFENCE_ENTER
   GEOFENCE_EXIT
   MOVEMENT_IDLE
   HARSH_BRAKING
@@ -177,15 +178,19 @@ model Trip {
 
 /// `geometry` (geography 4326) ajouté manuellement dans la migration.
 model Geofence {
-  id        String       @id @default(uuid()) @db.Uuid
-  fleetId   String       @db.Uuid
-  fleet     Fleet        @relation(fields: [fleetId], references: [id], onDelete: Cascade)
-  name      String
-  type      GeofenceType
-  rule      GeofenceRule @default(BOTH)
-  active    Boolean      @default(true)
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  id           String       @id @default(uuid()) @db.Uuid
+  fleetId      String       @db.Uuid
+  fleet        Fleet        @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  name         String
+  type         GeofenceType
+  rule         GeofenceRule @default(BOTH)
+  centerLat    Float        @default(0)
+  centerLng    Float        @default(0)
+  radiusMeters Int          @default(500)
+  color        String?      @default("#10e0a0")
+  active       Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
   @@index([fleetId])
   @@map("geofences")
