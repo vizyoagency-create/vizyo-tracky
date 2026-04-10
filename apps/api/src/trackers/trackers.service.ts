@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Prisma, UserRole } from '@prisma/client';
 import type { Tracker } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -19,7 +20,10 @@ interface RequestedBy {
 
 @Injectable()
 export class TrackersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly eventEmitter: EventEmitter2,
+  ) {}
 
   async create(dto: CreateTrackerDto, _requestedBy: RequestedBy): Promise<Tracker> {
     if (!/^\d{15}$/.test(dto.imei)) {
@@ -146,11 +150,14 @@ export class TrackersService {
       );
     }
 
-    return this.prisma.tracker.update({
+    const updated = await this.prisma.tracker.update({
       where: { id: trackerId },
       data: { vehicleId },
       include: { vehicle: true },
     });
+
+    this.eventEmitter.emit('tracker.assigned', { trackerId, imei: updated.imei });
+    return updated;
   }
 
   async unassign(trackerId: string, requestedBy: RequestedBy): Promise<Tracker> {
@@ -160,10 +167,13 @@ export class TrackersService {
       return tracker;
     }
 
-    return this.prisma.tracker.update({
+    const updated = await this.prisma.tracker.update({
       where: { id: trackerId },
       data: { vehicleId: null },
       include: { vehicle: true },
     });
+
+    this.eventEmitter.emit('tracker.unassigned', { trackerId, imei: updated.imei });
+    return updated;
   }
 }

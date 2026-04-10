@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test } from '@nestjs/testing';
 import { Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -66,7 +67,11 @@ describe('TrackersService', () => {
     };
 
     const module = await Test.createTestingModule({
-      providers: [TrackersService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        TrackersService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
+      ],
     }).compile();
 
     service = module.get(TrackersService);
