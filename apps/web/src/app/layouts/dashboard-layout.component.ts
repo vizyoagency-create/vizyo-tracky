@@ -27,11 +27,12 @@ import { ToastContainerComponent } from '../shared/ui/toast/toast-container.comp
         class="flex flex-col border-r border-border-subtle bg-bg-secondary transition-all duration-300 ease-tracky shrink-0"
         [class]="collapsed() ? 'w-16' : 'w-60'"
       >
-        <div class="flex items-center gap-3 px-4 h-16 border-b border-border-subtle">
-          @if (collapsed()) {
-            <app-logo variant="icon" [size]="28" />
-          } @else {
-            <app-logo variant="lockup" [size]="32" />
+        <div class="flex items-center gap-2 px-3 h-16 border-b border-border-subtle">
+          <app-logo variant="icon" [size]="30" />
+          @if (!collapsed()) {
+            <span class="text-sm font-display font-bold uppercase tracking-wider text-fg-primary whitespace-nowrap">
+              Vizyo <span class="text-tracky-light">Tracky</span>
+            </span>
           }
           <button
             (click)="collapsed.set(!collapsed())"

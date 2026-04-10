@@ -13,7 +13,7 @@ import { LogoComponent } from '../shared/ui/logo/logo.component';
       </div>
       <div class="relative z-10 w-full max-w-md px-6">
         <div class="flex flex-col items-center mb-8">
-          <app-logo variant="lockup" [size]="56" />
+          <app-logo variant="lockup" [size]="90" />
           <p class="text-fg-tertiary text-sm mt-3">Gestion de flottes GPS</p>
         </div>
         <router-outlet />
