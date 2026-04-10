@@ -74,9 +74,9 @@ import { EngineControlButtonComponent } from '../engine-control/engine-control-b
                   [trackerId]="item.trackerId"
                   [vehiclePlate]="item.trackerId.slice(0, 8)"
                   [currentSpeedKmh]="item.speedKmh"
-                  [validFix]="item.valid ?? true"
+                  [validFix]="item.valid"
                   [positionAge]="item.ageSeconds"
-                  [ignition]="item.ignition ?? true"
+                  [ignition]="item.ignition"
                 />
               </div>
             }
