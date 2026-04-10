@@ -4,6 +4,7 @@ import {
   LucideAngularModule,
   LayoutDashboard,
   Map,
+  Truck,
   Bell,
   Shield,
   FileBarChart,
@@ -96,6 +97,7 @@ export class DashboardLayoutComponent {
   protected readonly navItems = [
     { label: 'Tableau de bord', route: '/dashboard', icon: LayoutDashboard },
     { label: 'Carte', route: '/map', icon: Map },
+    { label: 'Vehicules', route: '/vehicles', icon: Truck },
     { label: 'Alertes', route: '/alerts', icon: Bell },
     { label: 'Geofences', route: '/geofences', icon: Shield },
     { label: 'Rapports', route: '/reports', icon: FileBarChart },

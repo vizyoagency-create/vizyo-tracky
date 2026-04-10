@@ -37,6 +37,11 @@ export const routes: Routes = [
         data: { fullscreen: true },
       },
       {
+        path: 'vehicles',
+        loadComponent: () =>
+          import('./features/vehicles/vehicles-list.component').then((m) => m.VehiclesListComponent),
+      },
+      {
         path: 'vehicles/:id',
         loadComponent: () =>
           import('./features/vehicles/vehicle-detail.component').then((m) => m.VehicleDetailComponent),

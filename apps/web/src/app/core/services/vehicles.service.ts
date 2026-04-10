@@ -27,6 +27,16 @@ export class VehiclesApiService {
     return this.http.get<VehicleDetailDto>(`/api/vehicles/${id}`);
   }
 
+  create(data: {
+    plate: string;
+    brand?: string;
+    model?: string;
+    year?: number;
+    color?: string;
+  }): Observable<VehicleDetailDto> {
+    return this.http.post<VehicleDetailDto>('/api/vehicles', data);
+  }
+
   list(params?: Record<string, string>): Observable<VehicleDetailDto[]> {
     return this.http.get<VehicleDetailDto[]>('/api/vehicles', { params });
   }
