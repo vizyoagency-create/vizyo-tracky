@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, effect, inject, OnInit, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
@@ -317,6 +317,22 @@ export class VehicleDetailComponent implements OnInit {
     { key: 'alerts' as const, label: 'Alertes' },
     { key: 'commands' as const, label: 'Commandes' },
   ];
+
+  private lastAlertCount = -1;
+  private alertRefreshEffect = effect(() => {
+    const wsAlerts = this.realtime.alerts();
+    if (wsAlerts.length !== this.lastAlertCount) {
+      this.lastAlertCount = wsAlerts.length;
+      const v = this.vehicle();
+      if (v) {
+        firstValueFrom(this.alertsApi.list({ vehicleId: v.id, limit: '20' }))
+          .then((res) => this.alerts.set((res as any).items ?? res))
+          .catch(() => {});
+      }
+    }
+  });
+
+  // TODO: add command:status WS event for live command updates
 
   protected readonly livePosition = computed(() => {
     const tracker = this.vehicle()?.tracker;

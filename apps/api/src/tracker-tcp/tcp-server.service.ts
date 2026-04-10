@@ -8,6 +8,7 @@ import type { Env } from '../config/env.validation';
 import { AlertsService } from '../alerts/alerts.service';
 import { PositionsService } from '../positions/positions.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SocketRegistryService } from '../socket-registry/socket-registry.service';
 
 @Injectable()
@@ -21,6 +22,7 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly positions: PositionsService,
     private readonly alertsService: AlertsService,
+    private readonly gateway: RealtimeGateway,
   ) {}
 
   onModuleInit(): void {
@@ -93,9 +95,24 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
       this.logger.debug(`Socket closed ${remote} (imei=${boundImei ?? 'unbound'})`);
       if (boundImei) {
         this.registry.unregister(boundImei);
-        this.prisma.tracker.updateMany({
+        this.prisma.tracker.findUnique({
           where: { imei: boundImei },
-          data: { status: TrackerStatus.OFFLINE },
+          include: { vehicle: true },
+        }).then((tracker) => {
+          if (!tracker) return;
+          return this.prisma.tracker.update({
+            where: { id: tracker.id },
+            data: { status: TrackerStatus.OFFLINE },
+          }).then(() => {
+            if (tracker.vehicle) {
+              this.gateway.emitTrackerStatus(tracker.vehicle.fleetId, {
+                trackerId: tracker.id,
+                imei: tracker.imei,
+                status: 'offline',
+                at: new Date().toISOString(),
+              });
+            }
+          });
         }).catch((e) => this.logger.error(`Failed to set offline: ${boundImei}`, e));
       }
     });

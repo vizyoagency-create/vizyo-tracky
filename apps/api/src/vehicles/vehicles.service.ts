@@ -146,4 +146,55 @@ export class VehiclesService {
 
     await this.prisma.vehicle.delete({ where: { id } });
   }
+
+  async stats(requestedBy: RequestedBy): Promise<{
+    total: number;
+    moving: number;
+    idle: number;
+    criticalAlerts: number;
+    newThisMonth: number;
+  }> {
+    const fleetFilter: Prisma.VehicleWhereInput =
+      requestedBy.role === UserRole.SUPER_ADMIN ? {} : { fleetId: requestedBy.fleetId ?? undefined };
+
+    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+
+    const [total, newThisMonth, movingVehicles, criticalAlerts] = await Promise.all([
+      this.prisma.vehicle.count({ where: fleetFilter }),
+      this.prisma.vehicle.count({ where: { ...fleetFilter, createdAt: { gte: monthStart } } }),
+      this.prisma.$queryRaw<{ count: bigint }[]>`
+        SELECT COUNT(DISTINCT v."id") as count
+        FROM vehicles v
+        JOIN trackers t ON t."vehicleId" = v."id"
+        JOIN positions p ON p."trackerId" = t."id"
+        WHERE p."timestamp" > ${fiveMinAgo}
+          AND p."speedKmh" > 5
+          ${requestedBy.role !== UserRole.SUPER_ADMIN && requestedBy.fleetId
+            ? Prisma.sql`AND v."fleetId" = ${requestedBy.fleetId}::uuid`
+            : Prisma.empty}
+      `,
+      this.prisma.alert.count({
+        where: {
+          severity: 'CRITICAL',
+          acknowledgedAt: null,
+          ...(requestedBy.role !== UserRole.SUPER_ADMIN && requestedBy.fleetId
+            ? { fleetId: requestedBy.fleetId }
+            : {}),
+        },
+      }),
+    ]);
+
+    const moving = Number(movingVehicles[0]?.count ?? 0);
+
+    return {
+      total,
+      moving,
+      idle: total - moving,
+      criticalAlerts,
+      newThisMonth,
+    };
+  }
 }

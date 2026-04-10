@@ -40,4 +40,16 @@ export class VehiclesApiService {
   list(params?: Record<string, string>): Observable<VehicleDetailDto[]> {
     return this.http.get<VehicleDetailDto[]>('/api/vehicles', { params });
   }
+
+  stats(): Observable<VehicleStatsDto> {
+    return this.http.get<VehicleStatsDto>('/api/vehicles/stats');
+  }
+}
+
+export interface VehicleStatsDto {
+  total: number;
+  moving: number;
+  idle: number;
+  criticalAlerts: number;
+  newThisMonth: number;
 }

@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { computed, inject, Injectable, signal } from '@angular/core';
-import type { AlertAcknowledgedEvent, AlertEvent, PositionUpdateEvent } from '@vizyo/tracky-shared';
+import type { AlertAcknowledgedEvent, AlertEvent, PositionUpdateEvent, TrackerStatusChangedDto } from '@vizyo/tracky-shared';
 import { WS_EVENTS } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { io, Socket } from 'socket.io-client';
@@ -16,6 +16,9 @@ export class RealtimeService {
   readonly alerts = this._alerts.asReadonly();
   readonly unacknowledgedCount = computed(() => this._alerts().length);
   readonly hasCritical = computed(() => this._alerts().some((a) => a.severity === 'CRITICAL'));
+
+  private readonly _trackerStatuses = signal<Map<string, string>>(new Map());
+  readonly trackerStatuses = this._trackerStatuses.asReadonly();
 
   private socket: Socket | null = null;
   private readonly toast = inject(ToastService);
@@ -58,6 +61,12 @@ export class RealtimeService {
     this.socket.on(WS_EVENTS.ALERT_ACK, (event: AlertAcknowledgedEvent) => {
       this._alerts.update((list) => list.filter((a) => a.id !== event.id));
     });
+
+    this.socket.on(WS_EVENTS.TRACKER_STATUS, (event: TrackerStatusChangedDto) => {
+      const next = new Map(this._trackerStatuses());
+      next.set(event.trackerId, event.status);
+      this._trackerStatuses.set(next);
+    });
   }
 
   dismissAlert(id: string): void {
@@ -70,6 +79,7 @@ export class RealtimeService {
     this.connected.set(false);
     this.positions.set(new Map());
     this._alerts.set([]);
+    this._trackerStatuses.set(new Map());
   }
 
   private async loadInitialAlerts(): Promise<void> {

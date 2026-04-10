@@ -2,6 +2,7 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { LucideAngularModule, Plus, Truck, ExternalLink } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
+import { RealtimeService } from '../../core/services/realtime.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { AddVehicleDialogComponent } from './add-vehicle-dialog/add-vehicle-dialog.component';
 
@@ -70,7 +71,7 @@ import { AddVehicleDialogComponent } from './add-vehicle-dialog/add-vehicle-dial
                   <td class="p-3 text-center">
                     @if (v.tracker) {
                       <span class="w-2 h-2 rounded-full inline-block"
-                            [class]="v.tracker.status === 'ONLINE' ? 'bg-tracky-light' : 'bg-fg-tertiary'"></span>
+                            [class]="isTrackerOnline(v.tracker.id, v.tracker.status) ? 'bg-tracky-light' : 'bg-fg-tertiary'"></span>
                     } @else {
                       <span class="w-2 h-2 rounded-full bg-fg-tertiary inline-block"></span>
                     }
@@ -98,6 +99,7 @@ import { AddVehicleDialogComponent } from './add-vehicle-dialog/add-vehicle-dial
 })
 export class VehiclesListComponent implements OnInit {
   private readonly vehiclesApi = inject(VehiclesApiService);
+  private readonly realtime = inject(RealtimeService);
 
   protected readonly vehicles = signal<VehicleDetailDto[]>([]);
   protected readonly loading = signal(true);
@@ -114,6 +116,12 @@ export class VehiclesListComponent implements OnInit {
   protected onDialogClosed(): void {
     this.showAddDialog.set(false);
     this.loadVehicles();
+  }
+
+  protected isTrackerOnline(trackerId: string, httpStatus: string): boolean {
+    const live = this.realtime.trackerStatuses().get(trackerId);
+    if (live) return live === 'online';
+    return httpStatus === 'ONLINE';
   }
 
   private async loadVehicles(): Promise<void> {

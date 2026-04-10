@@ -1,10 +1,13 @@
-import { Component, computed, inject } from '@angular/core';
+import { Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { Truck, Navigation, Activity, AlertTriangle, Radio } from 'lucide-angular';
 import { LucideAngularModule } from 'lucide-angular';
+import { interval, startWith, switchMap, catchError, of } from 'rxjs';
 import { MetricCardComponent } from '../../shared/components/metric-card.component';
 import { RealtimeService } from '../../core/services/realtime.service';
+import { VehiclesApiService, type VehicleStatsDto } from '../../core/services/vehicles.service';
 import { EngineControlButtonComponent } from '../engine-control/engine-control-button.component';
 
 @Component({
@@ -16,10 +19,29 @@ import { EngineControlButtonComponent } from '../engine-control/engine-control-b
       <h1 class="text-2xl font-display font-bold text-fg-primary">Vue d'ensemble</h1>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <app-metric-card label="Vehicules" [value]="24" trend="+2 ce mois" [icon]="Truck" />
-        <app-metric-card label="En mouvement" [value]="8" trend="33% de la flotte" [icon]="Navigation" />
-        <app-metric-card label="A l'arret" [value]="14" [icon]="Activity" />
-        <app-metric-card label="Alertes" [value]="3" trend="2 critiques" [icon]="AlertTriangle" />
+        <app-metric-card
+          label="Vehicules"
+          [value]="stats()?.total ?? '—'"
+          [trend]="stats()?.newThisMonth ? '+' + stats()!.newThisMonth + ' ce mois' : ''"
+          [icon]="Truck"
+        />
+        <app-metric-card
+          label="En mouvement"
+          [value]="stats()?.moving ?? '—'"
+          [trend]="stats()?.total ? Math.round((stats()!.moving / stats()!.total) * 100) + '% de la flotte' : ''"
+          [icon]="Navigation"
+        />
+        <app-metric-card
+          label="A l'arret"
+          [value]="stats()?.idle ?? '—'"
+          [icon]="Activity"
+        />
+        <app-metric-card
+          label="Alertes"
+          [value]="stats()?.criticalAlerts ?? '—'"
+          [trend]="stats()?.criticalAlerts ? stats()!.criticalAlerts + ' critiques' : ''"
+          [icon]="AlertTriangle"
+        />
       </div>
 
       <div class="flex flex-col gap-4">
@@ -88,11 +110,21 @@ import { EngineControlButtonComponent } from '../engine-control/engine-control-b
 })
 export class DashboardComponent {
   protected readonly realtime = inject(RealtimeService);
+  private readonly vehiclesApi = inject(VehiclesApiService);
   protected readonly Truck = Truck;
   protected readonly Navigation = Navigation;
   protected readonly Activity = Activity;
   protected readonly AlertTriangle = AlertTriangle;
   protected readonly Radio = Radio;
+  protected readonly Math = Math;
+
+  protected readonly stats = toSignal(
+    interval(30_000).pipe(
+      startWith(0),
+      switchMap(() => this.vehiclesApi.stats()),
+      catchError(() => of(null)),
+    ),
+  );
 
   protected readonly enrichedPositions = computed(() => {
     const now = Date.now();

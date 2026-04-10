@@ -25,6 +25,16 @@ import { VehiclesService } from './vehicles.service';
 export class VehiclesController {
   constructor(private readonly vehicles: VehiclesService) {}
 
+  @Get('stats')
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  stats(@Req() req: AuthenticatedRequest) {
+    return this.vehicles.stats({
+      userId: req.user.sub,
+      role: req.user.role as UserRole,
+      fleetId: req.user.fleetId,
+    });
+  }
+
   @Post()
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
   create(@Body() dto: CreateVehicleDto, @Req() req: AuthenticatedRequest) {

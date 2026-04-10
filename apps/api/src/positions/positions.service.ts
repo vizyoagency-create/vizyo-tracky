@@ -54,10 +54,20 @@ export class PositionsService {
       },
     });
 
+    const wasOffline = tracker.status !== 'ONLINE';
     await this.prisma.tracker.update({
       where: { id: tracker.id },
       data: { lastSeenAt: new Date(), status: 'ONLINE' },
     });
+
+    if (wasOffline && tracker.vehicle) {
+      this.gateway.emitTrackerStatus(tracker.vehicle.fleetId, {
+        trackerId: tracker.id,
+        imei: tracker.imei,
+        status: 'online',
+        at: new Date().toISOString(),
+      });
+    }
 
     if (tracker.vehicle) {
       const event: PositionUpdateEvent = {

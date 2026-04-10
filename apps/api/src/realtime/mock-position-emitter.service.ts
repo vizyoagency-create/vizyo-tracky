@@ -8,6 +8,7 @@ import { PositionsService } from '../positions/positions.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SocketRegistryService } from '../socket-registry/socket-registry.service';
 import { FakeTcpSocket } from './fake-tcp-socket';
+import { RealtimeGateway } from './realtime.gateway';
 
 interface TrackerState {
   imei: string;
@@ -33,6 +34,7 @@ export class MockPositionEmitterService implements OnModuleInit, OnModuleDestroy
     private readonly positions: PositionsService,
     private readonly alertsService: AlertsService,
     private readonly registry: SocketRegistryService,
+    private readonly gateway: RealtimeGateway,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -76,7 +78,7 @@ export class MockPositionEmitterService implements OnModuleInit, OnModuleDestroy
 
     if (this.fakeSockets.has(tracker.imei)) return;
 
-    this.registerFakeTracker(tracker.id, tracker.imei);
+    this.registerFakeTracker(tracker.id, tracker.imei, tracker.vehicle.fleetId);
     this.logger.warn(`[MOCK] Tracker ${tracker.imei} assigned — fake socket registered instantly`);
   }
 
@@ -113,7 +115,7 @@ export class MockPositionEmitterService implements OnModuleInit, OnModuleDestroy
 
     for (const t of assigned) {
       if (!this.fakeSockets.has(t.imei)) {
-        this.registerFakeTracker(t.id, t.imei);
+        this.registerFakeTracker(t.id, t.imei, t.vehicle?.fleetId);
         this.logger.warn(`[MOCK] Sync: registered fake socket for ${t.imei}`);
       }
     }
@@ -131,7 +133,7 @@ export class MockPositionEmitterService implements OnModuleInit, OnModuleDestroy
     }
   }
 
-  private registerFakeTracker(trackerId: string, imei: string): void {
+  private registerFakeTracker(trackerId: string, imei: string, fleetId?: string): void {
     const state: TrackerState = {
       imei,
       lat: 33.5731 + (Math.random() - 0.5) * 0.01,
@@ -148,6 +150,12 @@ export class MockPositionEmitterService implements OnModuleInit, OnModuleDestroy
     );
     this.fakeSockets.set(imei, fakeSocket);
     this.registry.register(imei, fakeSocket);
+
+    if (fleetId) {
+      this.gateway.emitTrackerStatus(fleetId, {
+        trackerId, imei, status: 'online', at: new Date().toISOString(),
+      });
+    }
   }
 
   private handleMockCommand(imei: string, action: 'CUT' | 'RESTORE'): void {
