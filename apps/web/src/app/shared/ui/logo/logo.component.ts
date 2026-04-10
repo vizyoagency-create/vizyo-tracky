@@ -8,7 +8,7 @@ type LogoTheme = 'dark' | 'light' | 'auto';
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <img [src]="src()" [height]="size()" [alt]="'Vizyo Tracky'" class="block" />
+    <img [src]="src()" [style.height.px]="size()" [alt]="'Vizyo Tracky'" style="width:auto;display:block" />
   `,
 })
 export class LogoComponent {
