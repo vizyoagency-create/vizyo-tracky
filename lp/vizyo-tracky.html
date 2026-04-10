@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Vizyo Tracky — Traçage GPS & Gestion de Flottes</title>
+<meta name="description" content="Vizyo Tracky : traçage GPS et gestion de flottes pour PME et transporteurs.">
+<script>(function(){try{var t=localStorage.getItem('vt-theme');if(!t){t=window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'}document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme='dark'}})();</script><link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&display=swap" rel="stylesheet">
+<style>
+:root{--v3:#6FF0C8;--v4:#10E0A0;--v5:#059669;--v6:#047857;--vg:linear-gradient(135deg,#10E0A0 0%,#047857 100%);--d9:#0A0F0D;--d8:#0F1714;--d7:#14201C;--g2:#e5e7eb;--g3:#d1d5db;--g4:#9ca3af;--g5:#6b7280;--g6:#4b5563;--grn:#10B981;--red:#ef4444;--ylw:#F59E0B;--orn:#f97316;--pur:#a855f7;--tw:#fff;--surf:rgba(15,23,20,.6);--surf2:rgba(15,23,20,.78);--elev:rgba(20,32,28,.6);--elev2:rgba(20,32,28,.8);--elev3:rgba(20,32,28,.9);--brd:rgba(255,255,255,.06);--brds:rgba(255,255,255,.1);--brdx:rgba(255,255,255,.05);--hdrbg:rgba(10,15,13,.85);--mmbg:rgba(10,15,13,.95);--orb-a:.08;--grid-a:.03;--dot-a:.07;color-scheme:dark}
+[data-theme="light"]{--d9:#FFFFFF;--d8:#F0FDF9;--d7:#DCFCE7;--g2:#042F2A;--g3:#064E3B;--g4:#475569;--g5:#64748B;--g6:#94A3B8;--tw:#042F2A;--surf:rgba(255,255,255,.85);--surf2:rgba(255,255,255,.92);--elev:rgba(240,253,249,.85);--elev2:rgba(220,252,231,.7);--elev3:rgba(255,255,255,.96);--brd:rgba(4,120,87,.12);--brds:rgba(4,120,87,.18);--brdx:rgba(4,120,87,.08);--hdrbg:rgba(255,255,255,.85);--mmbg:rgba(255,255,255,.96);--orb-a:.12;--grid-a:.06;--dot-a:.12;--v4:#047857;color-scheme:light}
+[data-theme="light"] body{background:#FFFFFF;color:#064E3B}
+[data-theme="light"] .grid-bg{background-image:linear-gradient(rgba(4,120,87,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(4,120,87,.06) 1px,transparent 1px)}
+[data-theme="light"] .dot-bg{background-image:radial-gradient(rgba(4,120,87,.13) 1px,transparent 1px)}
+[data-theme="light"] .bo{color:#064E3B;border-color:rgba(4,120,87,.2)}
+[data-theme="light"] .bo:hover{background:rgba(4,120,87,.06);border-color:rgba(4,120,87,.4);color:#042F2A}
+[data-theme="light"] .cd::before,[data-theme="light"] .pcd::before{background:linear-gradient(135deg,rgba(4,120,87,.25),rgba(4,120,87,.04),rgba(4,120,87,.15))}
+[data-theme="light"] .sim::before{background:linear-gradient(135deg,rgba(4,120,87,.3),rgba(4,120,87,.04),rgba(4,120,87,.18))}
+[data-theme="light"] .gt{background:linear-gradient(135deg,#059669,#047857);-webkit-background-clip:text;text-shadow:0 0 30px rgba(16,224,160,.18)}
+[data-theme="light"] .ftr{border-color:var(--brdx)}
+[data-theme="light"] .phone{box-shadow:0 30px 80px -20px rgba(4,120,87,.25),0 0 40px rgba(16,224,160,.15)}
+[data-theme="light"] .dash{box-shadow:0 20px 60px -10px rgba(4,120,87,.15)}
+[data-theme="light"] .vph{box-shadow:0 20px 60px -10px rgba(4,120,87,.15)}
+[data-theme="light"] .ctbg::before{background:linear-gradient(to bottom,#FFFFFF,#DCFCE7,#FFFFFF);opacity:.6}
+[data-theme="light"] .nav a{color:#475569}[data-theme="light"] .nav a:hover{color:#047857}
+[data-theme="light"] .ftrl{color:#64748B}
+[data-theme="light"] .pfn{color:#94A3B8}
+[data-theme="light"] .smc,[data-theme="light"] .ddb,[data-theme="light"] .vrow,[data-theme="light"] .plb{box-shadow:0 1px 3px rgba(4,120,87,.06)}
+[data-theme="light"] .anch{background:rgba(4,120,87,.05)}
+[data-theme="light"] input[type=range]{background:#DCFCE7}
+[data-theme="light"] .hbdg,[data-theme="light"] .vbdg{background:rgba(16,224,160,.12);border-color:rgba(4,120,87,.2)}
+[data-theme="light"] .badge,[data-theme="light"] .ptag-l{background:rgba(16,224,160,.12);color:#047857}
+[data-theme="light"] .stpi{box-shadow:0 4px 12px rgba(4,120,87,.08)}
+[data-theme="light"] .tab-sw button.act{background:rgba(16,224,160,.18);color:#047857}
+[data-theme="light"] .fcard{box-shadow:0 25px 50px rgba(4,120,87,.15),0 0 20px rgba(16,224,160,.2)}
+[data-theme="light"] .roi-fill{background:linear-gradient(90deg,#059669,#10B981)}
+[data-theme="light"] .ins-note{background:rgba(16,185,129,.06);border-color:rgba(16,185,129,.18);color:#047857}
+[data-theme="light"] .ins-note.free{background:rgba(16,185,129,.12);border-color:rgba(16,185,129,.3)}
+[data-theme="light"] .sb.sbg{background:rgba(16,185,129,.15);color:#047857}
+[data-theme="light"] .sb.sby{background:rgba(245,158,11,.18);color:#B45309}
+[data-theme="light"] .sb.sbr{background:rgba(239,68,68,.15);color:#B91C1C}
+[data-theme="light"] .ttg{color:#94A3B8}
+[data-theme="light"] .mmenu a:hover{background:rgba(4,120,87,.06)}
+.thm-tg{display:flex;align-items:center;justify-content:center;width:2.5rem;height:2.5rem;border-radius:.625rem;color:var(--g4);background:transparent;border:1px solid var(--brd);transition:all .25s;flex-shrink:0;cursor:pointer}
+.thm-tg svg{transition:transform .4s cubic-bezier(.16,1,.3,1)}
+.thm-tg:hover svg{transform:rotate(15deg)}
+.thm-tg:hover{color:var(--v4);border-color:var(--brds);background:var(--elev)}
+.thm-tg .ic-sun{display:none}.thm-tg .ic-moon{display:block}
+[data-theme="light"] .thm-tg .ic-sun{display:block}[data-theme="light"] .thm-tg .ic-moon{display:none}
+.rgrp{display:flex;align-items:center;gap:.625rem}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}
+body{font-family:'DM Sans',system-ui,sans-serif;background:var(--d9);color:var(--g3);-webkit-font-smoothing:antialiased;overflow-x:hidden;line-height:1.6}
+a{text-decoration:none;color:inherit}button{cursor:pointer;border:none;background:none;font:inherit;color:inherit}
+.mx{max-width:1280px;margin:0 auto;padding:0 1rem}.ms{max-width:768px;margin:0 auto;padding:0 1rem}.mm{max-width:1024px;margin:0 auto;padding:0 1rem}
+@media(min-width:640px){.mx,.ms,.mm{padding:0 1.5rem}}@media(min-width:1024px){.mx,.ms,.mm{padding:0 2rem}}
+.sec{padding:5rem 0}@media(min-width:1024px){.sec{padding:7rem 0}}
+.tc{text-align:center}.rel{position:relative}.ovh{overflow:hidden}
+.f{display:flex}.fi{align-items:center}.fj{justify-content:center}.fb{justify-content:space-between}.fw{flex-wrap:wrap}.fc{flex-direction:column}.f1{flex:1 1 0%}.s0{flex-shrink:0}
+.g2{gap:.5rem}.g3{gap:.75rem}.g4{gap:1rem}.g5{gap:1.25rem}.g6{gap:1.5rem}.g8{gap:2rem}
+.gr{display:grid;gap:1.25rem}.g2c{grid-template-columns:1fr}.g3c{grid-template-columns:1fr}.g4c{grid-template-columns:1fr}
+@media(min-width:640px){.g2c{grid-template-columns:repeat(2,1fr)}.g4c{grid-template-columns:repeat(2,1fr)}}
+@media(min-width:768px){.g3c{grid-template-columns:repeat(3,1fr)}}
+@media(min-width:1024px){.g4c{grid-template-columns:repeat(4,1fr)}.g2l{grid-template-columns:repeat(2,1fr);gap:4rem}}
+.tw{color:var(--tw)}.tv{color:var(--v4)}.tg{color:var(--g4)}.tg5{color:var(--g5)}.tg6{color:var(--g6)}.tgr{color:var(--grn)}
+.fb7{font-weight:700}.fb8{font-weight:800}.fb6{font-weight:600}.fb5{font-weight:500}
+.ts{font-size:.875rem}.tx{font-size:.75rem}.tl{font-size:1.125rem}.txl{font-size:1.25rem}
+.up{text-transform:uppercase}.trw{letter-spacing:.1em}.tru{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mb2{margin-bottom:.5rem}.mb3{margin-bottom:.75rem}.mb4{margin-bottom:1rem}.mb5{margin-bottom:1.25rem}.mb6{margin-bottom:1.5rem}.mb8{margin-bottom:2rem}.mb10{margin-bottom:2.5rem}.mt1{margin-top:.25rem}.mt2{margin-top:.5rem}.mt6{margin-top:1.5rem}
+.wf{width:100%}
+.lbl{color:var(--v4);font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.75rem}
+.hdg{font-size:1.875rem;font-weight:800;color:var(--tw);line-height:1.15;margin-bottom:1.25rem}
+@media(min-width:640px){.hdg{font-size:2.25rem}}@media(min-width:1024px){.hdg{font-size:3rem}}
+.hh{font-size:2.25rem;font-weight:800;color:var(--tw);line-height:1.1;margin-bottom:1.5rem}
+@media(min-width:640px){.hh{font-size:3rem}}@media(min-width:1024px){.hh{font-size:3.75rem}}
+.sub{color:var(--g4);font-size:1.125rem;max-width:42rem;margin:0 auto}
+.gt{background:linear-gradient(135deg,#10E0A0,#047857);-webkit-background-clip:text;-webkit-text-fill-color:transparent;text-shadow:0 0 30px rgba(16,224,160,.4)}
+.grid-bg{background-image:linear-gradient(rgba(16,224,160,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(16,224,160,.03) 1px,transparent 1px);background-size:60px 60px}
+.dot-bg{background-image:radial-gradient(rgba(16,224,160,.07) 1px,transparent 1px);background-size:24px 24px}
+.orb{position:absolute;border-radius:50%;filter:blur(120px);pointer-events:none}
+.cd{background:var(--surf);backdrop-filter:blur(12px);border-radius:1rem;padding:1.75rem;position:relative;transition:background .3s,transform .3s}
+.cd::before{content:'';position:absolute;inset:0;border-radius:inherit;padding:1px;background:linear-gradient(135deg,rgba(16,224,160,.3),rgba(16,224,160,.03),rgba(16,224,160,.15));-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+.cd:hover{background:var(--elev)}@media(min-width:768px){.cd:hover{transform:translateY(-4px)}}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:.625rem;font-weight:700;border-radius:.75rem;padding:1rem 1.75rem;font-size:1rem;transition:all .3s;line-height:1.2;white-space:nowrap}
+.bp{background:var(--vg);color:#fff;box-shadow:0 0 24px -4px rgba(16,224,160,.35)}.bp:hover{background:var(--vg);filter:brightness(1.08);box-shadow:0 0 48px -8px rgba(16,224,160,.5);transform:translateY(-2px)}
+.bo{border:1px solid var(--brds);color:var(--g3)}.bo:hover{border-color:rgba(16,224,160,.4);color:var(--tw);background:rgba(255,255,255,.03)}
+.bs{padding:.625rem 1.25rem;font-size:.875rem}.bl{padding:1rem 2rem;font-size:1.125rem}
+@keyframes ping{0%{transform:scale(1);opacity:.6}100%{transform:scale(2.5);opacity:0}}
+@keyframes pglow{0%,100%{box-shadow:0 0 20px rgba(16,224,160,.3)}50%{box-shadow:0 0 40px rgba(16,224,160,.6)}}
+@keyframes flt{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+@keyframes flt2{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+.rv{opacity:0;transform:translateY(30px);transition:opacity .7s cubic-bezier(.16,1,.3,1),transform .7s cubic-bezier(.16,1,.3,1)}.rv.vis{opacity:1;transform:translateY(0)}
+.stg .rv:nth-child(1){transition-delay:0ms}.stg .rv:nth-child(2){transition-delay:100ms}.stg .rv:nth-child(3){transition-delay:200ms}.stg .rv:nth-child(4){transition-delay:300ms}.stg .rv:nth-child(5){transition-delay:400ms}.stg .rv:nth-child(6){transition-delay:500ms}
+.hdr{position:fixed;top:0;left:0;right:0;z-index:50;transition:box-shadow .3s}
+.hdr-bg{position:absolute;inset:0;background:var(--hdrbg);backdrop-filter:blur(20px);border-bottom:1px solid var(--brdx)}
+.hdr-in{position:relative;max-width:1280px;margin:0 auto;padding:0 1rem;display:flex;align-items:center;justify-content:space-between;height:4rem}
+@media(min-width:1024px){.hdr-in{height:5rem;padding:0 2rem}}
+.logo{display:flex;align-items:center;gap:.625rem}
+.logo-i{width:2.25rem;height:2.25rem;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 0 12px rgba(16,224,160,.35))}
+.nav{display:none;align-items:center;gap:2rem}@media(min-width:1024px){.nav{display:flex}}.nav a{font-size:.875rem;color:var(--g4);transition:color .2s}.nav a:hover{color:var(--v4)}
+.hcta{display:none;align-items:center;gap:.75rem}@media(min-width:1024px){.hcta{display:flex}}
+.mt{display:flex;width:2.5rem;height:2.5rem;align-items:center;justify-content:center;color:var(--g4)}.mt:hover{color:var(--tw)}@media(min-width:1024px){.mt{display:none}}
+.mmenu{position:fixed;inset:0;z-index:100;background:var(--mmbg);backdrop-filter:blur(20px);display:flex;flex-direction:column;padding:5rem 1.5rem 2rem;gap:.5rem;transform:translateX(100%);transition:transform .3s cubic-bezier(.16,1,.3,1)}.mmenu.open{transform:translateX(0)}.mmenu a{color:var(--g3);padding:.75rem 1rem;border-radius:.75rem;font-size:1.125rem}.mmenu a:hover{color:var(--v4);background:rgba(255,255,255,.03)}
+.mcls{position:absolute;top:1.25rem;right:1.25rem;width:2.5rem;height:2.5rem;display:flex;align-items:center;justify-content:center;color:var(--g4)}
+.phone{width:280px;height:580px;background:var(--d7);border-radius:3rem;border:2px solid var(--brds);padding:.75rem;box-shadow:0 0 60px rgba(16,224,160,.2);animation:flt 4s ease-in-out infinite}@media(min-width:640px){.phone{width:300px;height:620px}}
+.phs{width:100%;height:100%;background:var(--d8);border-radius:2.4rem;overflow:hidden;display:flex;flex-direction:column}
+.phm{flex:1;position:relative;background:var(--d7);margin:.75rem;margin-top:.25rem;border-radius:1rem;overflow:hidden}
+.vd{position:absolute;width:.75rem;height:.75rem;border-radius:50%}
+.fcard{position:absolute;left:-2rem;top:33%;background:var(--elev3);backdrop-filter:blur(12px);border:1px solid var(--brds);border-radius:1rem;padding:1rem;box-shadow:0 25px 50px rgba(0,0,0,.3),0 0 20px rgba(16,224,160,.15);animation:flt2 5s ease-in-out infinite}@media(min-width:640px){.fcard{left:-4rem}}
+.ib{width:2.5rem;height:2.5rem;border-radius:.75rem;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.ibl{width:3rem;height:3rem}.ibx{width:3.5rem;height:3.5rem;border-radius:1rem}
+.dash{background:var(--d8);border-radius:1.5rem;border:1px solid var(--brdx);padding:2rem;box-shadow:0 0 40px rgba(16,224,160,.15)}
+.vrow{display:flex;align-items:center;gap:1rem;background:var(--elev2);border-radius:.75rem;padding:.75rem 1rem}
+.vi{width:2rem;height:2rem;background:rgba(16,224,160,.2);border-radius:.5rem;display:flex;align-items:center;justify-content:center}
+.sb{font-size:.75rem;padding:.25rem .625rem;border-radius:9999px;font-weight:500;white-space:nowrap}
+.sbg{background:rgba(16,185,129,.15);color:var(--grn)}.sby{background:rgba(245,158,11,.15);color:var(--ylw)}.sbr{background:rgba(239,68,68,.15);color:var(--red)}
+.chk{width:1.5rem;height:1.5rem;background:rgba(16,224,160,.2);border-radius:50%;display:flex;align-items:center;justify-content:center;margin-top:.125rem;flex-shrink:0}
+.fib{width:3.5rem;height:3.5rem;border-radius:1rem;display:flex;align-items:center;justify-content:center;margin-bottom:1.25rem;transition:all .3s}.cd:hover .fib{box-shadow:0 0 20px rgba(16,224,160,.15)}
+.vph{background:var(--d8);border-radius:1.5rem;border:1px solid var(--brdx);overflow:hidden;box-shadow:0 0 40px rgba(16,224,160,.15)}
+.vpin{aspect-ratio:16/9;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;gap:1.5rem}
+.play{width:6rem;height:6rem;background:rgba(16,224,160,.2);border-radius:50%;display:flex;align-items:center;justify-content:center;border:1px solid rgba(16,224,160,.3);animation:pglow 3s ease-in-out infinite}
+.vbdg{display:inline-flex;align-items:center;gap:.5rem;background:rgba(16,224,160,.1);border:1px solid rgba(16,224,160,.2);color:var(--v4);font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;padding:.5rem 1rem;border-radius:9999px}
+.stp{text-align:center}.stpw{display:inline-block;position:relative;margin-bottom:1.5rem}
+.stpi{width:5rem;height:5rem;background:var(--d7);border-radius:1rem;border:1px solid var(--brds);display:flex;align-items:center;justify-content:center;transition:all .3s}
+.stp:hover .stpi{border-color:rgba(16,224,160,.3);box-shadow:0 0 20px rgba(16,224,160,.15)}
+.stpn{position:absolute;top:-.5rem;right:-.5rem;width:2rem;height:2rem;background:var(--v5);border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:.875rem}
+.stp p{max-width:18rem;margin:0 auto}
+.sim{background:var(--surf2);backdrop-filter:blur(12px);border-radius:1.5rem;padding:2rem;position:relative}@media(min-width:640px){.sim{padding:2.5rem}}
+.sim::before{content:'';position:absolute;inset:0;border-radius:inherit;padding:1px;background:linear-gradient(135deg,rgba(16,224,160,.4),rgba(16,224,160,.03),rgba(16,224,160,.2));-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+input[type=range]{-webkit-appearance:none;width:100%;height:6px;background:var(--d7);border-radius:3px;outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:var(--v5);cursor:pointer;box-shadow:0 0 12px rgba(16,224,160,.5)}
+input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;background:var(--v5);cursor:pointer;border:none}
+.plgr{display:grid;grid-template-columns:repeat(3,1fr);gap:.75rem}
+.plb{background:var(--d7);border:1px solid var(--brds);border-radius:.75rem;padding:1rem;text-align:center;transition:all .3s;position:relative}.plb:hover{border-color:rgba(16,224,160,.3)}
+.plb.act{border:2px solid var(--v5);box-shadow:0 0 20px rgba(16,224,160,.15)}
+.plpop{position:absolute;top:-.625rem;left:50%;transform:translateX(-50%);background:var(--v5);color:#fff;font-size:.625rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:.125rem .5rem;border-radius:9999px;white-space:nowrap}
+.prc{font-size:3rem;font-weight:800;color:var(--tw);line-height:1}@media(min-width:640px){.prc{font-size:3.75rem}}
+.stars{display:flex;gap:.125rem}.star{width:1rem;height:1rem;color:var(--ylw)}
+.av{width:2.5rem;height:2.5rem;background:rgba(16,224,160,.2);border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--v4);font-weight:700;font-size:.875rem}
+.fqb{width:100%;display:flex;align-items:center;justify-content:space-between;padding:1.25rem 1.75rem;text-align:left}.fqb span{color:var(--tw);font-weight:600;padding-right:1rem}
+.fqi{width:1.25rem;height:1.25rem;color:var(--g4);flex-shrink:0;transition:transform .3s}
+.fqa{max-height:0;overflow:hidden;transition:max-height .4s cubic-bezier(.16,1,.3,1);padding:0 1.75rem}.fqa.open{max-height:300px;padding-bottom:1.25rem}
+.ctbg{position:relative;overflow:hidden}.ctbg::before{content:'';position:absolute;inset:0;background:linear-gradient(to bottom,var(--d9),#082B22,var(--d9));opacity:.6}
+.ftr{border-top:1px solid var(--brdx);padding:3rem 0 4rem}
+.ftri{display:flex;flex-direction:column;align-items:center;gap:1.5rem}@media(min-width:768px){.ftri{flex-direction:row;justify-content:space-between}}
+.ftrl{display:flex;align-items:center;gap:1.5rem;font-size:.875rem;color:var(--g5);flex-wrap:wrap;justify-content:center}.ftrl a:hover{color:var(--v4)}
+.sep{border:none;border-top:1px solid var(--brdx);margin:2rem 0}
+.pcg{display:grid;grid-template-columns:1fr;gap:1.5rem}@media(min-width:768px){.pcg{grid-template-columns:repeat(3,1fr)}}
+.pcd{background:var(--surf);backdrop-filter:blur(12px);border-radius:1.25rem;padding:2rem;position:relative;transition:all .4s;border:1px solid var(--brd)}
+.pcd::before{content:'';position:absolute;inset:0;border-radius:inherit;padding:1px;background:linear-gradient(135deg,rgba(16,224,160,.15),transparent,rgba(16,224,160,.08));-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+.pcd:hover{transform:translateY(-4px);background:var(--elev)}
+.pcd.pop{border:2px solid var(--v5);box-shadow:0 0 40px rgba(16,224,160,.12)}
+.pcd.pop::before{background:linear-gradient(135deg,rgba(16,224,160,.4),rgba(16,224,160,.05),rgba(16,224,160,.3))}
+.ppop{position:absolute;top:-0.75rem;left:50%;transform:translateX(-50%);background:var(--vg);color:#fff;font-size:.6875rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:.25rem .875rem;border-radius:9999px;white-space:nowrap;box-shadow:0 4px 12px rgba(16,224,160,.35)}
+.ptag{display:inline-flex;align-items:center;gap:.375rem;font-size:.6875rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;padding:.25rem .75rem;border-radius:9999px;margin-bottom:1rem}
+.ptag-l{background:rgba(16,224,160,.1);color:var(--v4)}
+.ptag-p{background:rgba(168,85,247,.12);color:var(--pur)}
+.ptag-f{background:rgba(249,115,22,.1);color:var(--orn)}
+.ppn{font-size:1.25rem;font-weight:700;color:var(--tw);margin-bottom:.25rem}
+.ppt{font-size:.8125rem;color:var(--g5);margin-bottom:1.25rem}
+.pprc{display:flex;align-items:baseline;gap:.25rem;margin-bottom:.25rem}
+.ppv{font-size:2.75rem;font-weight:800;color:var(--tw);line-height:1}
+.ppvu{font-size:.9375rem;color:var(--g4)}
+.pphw{font-size:.8125rem;color:var(--g5);margin-bottom:1.5rem}
+.pfl{list-style:none;display:flex;flex-direction:column;gap:.5rem;margin-bottom:1.75rem}
+.pfi{display:flex;align-items:flex-start;gap:.5rem;font-size:.8125rem;color:var(--g3);line-height:1.5}
+.pfi svg{flex-shrink:0;margin-top:2px}
+.pfn{color:var(--g6)}
+.pfn svg{opacity:.4}
+.ddl{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-bottom:1.5rem}
+.ddb{text-align:center;background:var(--elev2);border:1px solid var(--brd);border-radius:.625rem;padding:.625rem .5rem;transition:all .3s;cursor:pointer}
+.ddb:hover{border-color:rgba(16,224,160,.25)}
+.ddb.act{border-color:var(--v5);box-shadow:0 0 15px rgba(16,224,160,.12);background:rgba(16,224,160,.06)}
+.ddb .ddt{font-size:.75rem;color:var(--g5);margin-bottom:.125rem}
+.ddb .ddp{font-size:.9375rem;font-weight:700;color:var(--tw)}
+.ddb .dds{font-size:.6875rem;color:var(--grn);font-weight:600}
+.sres{display:grid;grid-template-columns:repeat(2,1fr);gap:.75rem}@media(min-width:640px){.sres{grid-template-columns:repeat(4,1fr)}}
+.smc{background:var(--elev);border:1px solid var(--brdx);border-radius:.75rem;padding:1rem;text-align:center}
+.sml{font-size:.6875rem;color:var(--g5);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.375rem}
+.smv{font-size:1.5rem;font-weight:800;color:var(--tw);line-height:1.2}
+.sms{font-size:.75rem;color:var(--g5);margin-top:.25rem}
+.roi-bar{height:4px;background:var(--d7);border-radius:2px;overflow:hidden;margin-top:.5rem}
+.roi-fill{height:100%;background:linear-gradient(90deg,var(--v5),var(--grn));border-radius:2px;transition:width .6s cubic-bezier(.16,1,.3,1)}
+.anch{display:inline-flex;align-items:center;gap:.375rem;font-size:.75rem;color:var(--g5);padding:.375rem .75rem;background:rgba(255,255,255,.03);border-radius:9999px;margin-bottom:1rem}
+.anch del{color:var(--g6);text-decoration:line-through}
+.anch strong{color:var(--grn);font-weight:700}
+.ins-note{display:flex;align-items:center;gap:.5rem;font-size:.75rem;color:var(--g5);padding:.75rem 1rem;background:rgba(16,185,129,.04);border:1px solid rgba(16,185,129,.1);border-radius:.625rem;margin-top:.75rem}
+.ins-note.free{color:var(--grn);background:rgba(16,185,129,.08);border-color:rgba(16,185,129,.2)}
+.tab-sw{display:flex;background:var(--d7);border-radius:.625rem;padding:3px;gap:3px;margin-bottom:1.5rem}
+.tab-sw button{flex:1;padding:.5rem 1rem;border-radius:.5rem;font-size:.8125rem;font-weight:600;color:var(--g5);transition:all .3s;background:transparent}
+.tab-sw button.act{background:rgba(16,224,160,.15);color:var(--v4)}
+/* --- Exit-intent modal --- */
+.eim-overlay{position:fixed;inset:0;z-index:300;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .35s}
+.eim-overlay.show{opacity:1;pointer-events:auto}
+.eim-overlay .eim-bg{position:absolute;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(8px)}
+.eim-card{position:relative;z-index:1;background:var(--elev3);border:1px solid var(--brds);border-radius:1.5rem;padding:2.5rem;max-width:440px;width:calc(100vw - 2rem);text-align:center;transform:scale(.85) translateY(20px);opacity:0;transition:transform .5s cubic-bezier(.16,1,.3,1),opacity .4s}
+.eim-overlay.show .eim-card{transform:scale(1) translateY(0);opacity:1}
+.eim-close{position:absolute;top:1rem;right:1rem;width:2rem;height:2rem;display:flex;align-items:center;justify-content:center;color:var(--g4);border-radius:50%;border:1px solid var(--brd);background:var(--surf);transition:color .2s;cursor:pointer}
+.eim-close:hover{color:var(--tw)}
+.eim-icon{width:4rem;height:4rem;background:rgba(16,224,160,.15);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 1.25rem;position:relative}
+.eim-icon::after{content:'';position:absolute;inset:-4px;border-radius:50%;border:2px solid rgba(16,224,160,.2);animation:pglow 3s ease-in-out infinite}
+/* --- Sticky bottom bar mobile --- */
+.sbb{position:fixed;bottom:0;left:0;right:0;z-index:85;background:var(--elev3);backdrop-filter:blur(16px);border-top:1px solid var(--brds);padding:.75rem 1rem;padding-bottom:calc(.75rem + env(safe-area-inset-bottom,0));display:none;align-items:center;gap:.5rem;transform:translateY(100%);transition:transform .4s cubic-bezier(.16,1,.3,1)}
+.sbb.show{transform:translateY(0)}
+.sbb .sbb-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:.5rem;font-weight:700;border-radius:.75rem;padding:.75rem 1rem;font-size:.875rem;transition:all .3s;white-space:nowrap;text-align:center}
+.sbb .sbb-wa{background:var(--vg);color:#fff}
+.sbb .sbb-call{border:1px solid var(--brds);color:var(--g3);background:var(--surf)}
+.sbb .sbb-call:hover{border-color:rgba(16,224,160,.3);color:var(--tw)}
+.sbb-dismiss{position:absolute;top:-.75rem;right:1rem;width:1.5rem;height:1.5rem;display:flex;align-items:center;justify-content:center;background:var(--elev3);border:1px solid var(--brds);border-radius:50%;color:var(--g5);font-size:.75rem;cursor:pointer;transition:color .2s}
+.sbb-dismiss:hover{color:var(--tw)}
+@media(min-width:1024px){.sbb{display:none !important}}
+@media(max-width:1023px){.sbb{display:flex}}
+/* --- Reassurance line --- */
+.reas{text-align:center;font-size:.6875rem;color:var(--g5);letter-spacing:.02em;margin-bottom:.75rem}
+/* --- Trust badges --- */
+.trust-row{display:flex;align-items:center;justify-content:center;gap:1.5rem;flex-wrap:wrap;margin-top:1.5rem;padding-top:1.5rem;border-top:1px solid var(--brdx)}
+.trust-b{display:flex;align-items:center;gap:.375rem;font-size:.6875rem;color:var(--g5);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+.trust-b svg{flex-shrink:0;opacity:.6}
+/* --- Install counter badge --- */
+.inst-counter{display:inline-flex;align-items:center;gap:.5rem;background:rgba(16,224,160,.08);border:1px solid rgba(16,224,160,.15);border-radius:9999px;padding:.375rem 1rem;margin-bottom:1rem}
+.inst-counter .ic-dot{width:.5rem;height:.5rem;background:var(--grn);border-radius:50%;position:relative}
+.inst-counter .ic-dot::after{content:'';position:absolute;inset:0;border-radius:50%;background:var(--grn);animation:ping 2s ease-out infinite}
+.inst-counter span{color:var(--g3);font-size:.8125rem;font-weight:600}
+/* --- Responsive overflow fixes --- */
+/* --- Overflow fixes: grid children + dash --- */
+.lo1,.lo2{min-width:0}
+.dash{max-width:100%;overflow:hidden}
+.dash .f.fi.fb>div:first-child{min-width:0}
+.dash .f.fi.fb>.f.fi.g2{flex-shrink:0}
+.dash .vrow{min-width:0}
+.dash .f1{min-width:0}
+.phone{max-width:100%}
+.fcard{max-width:calc(100vw - 2rem)}
+@media(max-width:639px){.fcard{left:-.5rem;max-width:200px}}
+.sim{max-width:100%;overflow:hidden}
+.sres{min-width:0}
+.smc{min-width:0;overflow:hidden}
+.pcg{min-width:0}
+.pcd{min-width:0;overflow:hidden}
+/* --- FAB Stack --- */
+.fab-stack{position:fixed;right:1rem;bottom:1rem;z-index:90;display:flex;flex-direction:column;gap:.75rem;align-items:flex-end;padding-bottom:env(safe-area-inset-bottom,0);transition:transform .4s cubic-bezier(.16,1,.3,1)}
+.fab-stack.shifted{transform:translateY(-3.5rem)}
+/* --- WhatsApp FAB --- */
+.wa-fab{display:flex;align-items:center;gap:.75rem;opacity:0;transform:translateY(20px);pointer-events:none;transition:opacity .5s cubic-bezier(.16,1,.3,1),transform .5s cubic-bezier(.16,1,.3,1)}
+.wa-fab.show{opacity:1;transform:translateY(0);pointer-events:auto}
+.wa-fab-label{background:var(--elev3);border:1px solid var(--brds);color:var(--tw);font-size:.8125rem;font-weight:600;padding:.5rem 1rem;border-radius:9999px;white-space:nowrap;opacity:0;transform:translateX(10px);transition:opacity .4s,transform .4s;pointer-events:none;backdrop-filter:blur(12px)}
+.wa-fab.lbl-show .wa-fab-label{opacity:1;transform:translateX(0);pointer-events:auto}
+.wa-fab-btn{width:3.5rem;height:3.5rem;border-radius:50%;background:var(--vg);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(16,224,160,.35);position:relative;transition:transform .3s,box-shadow .3s;flex-shrink:0}
+.wa-fab-btn:hover{transform:scale(1.08);box-shadow:0 6px 30px rgba(16,224,160,.5)}
+.wa-fab-badge{position:absolute;top:-.125rem;right:-.125rem;width:.75rem;height:.75rem;background:#25D366;border-radius:50%;border:2px solid var(--d9)}
+.wa-fab-badge::after{content:'';position:absolute;inset:-3px;border-radius:50%;background:rgba(37,211,102,.5);animation:ping 2s ease-out infinite}
+/* --- FAB Tracky App --- */
+.app-fab{display:flex;align-items:center;gap:.625rem;cursor:pointer;opacity:0;transform:translateY(20px);pointer-events:none;transition:opacity .5s cubic-bezier(.16,1,.3,1),transform .5s cubic-bezier(.16,1,.3,1)}
+.app-fab.show{opacity:1;transform:translateY(0);pointer-events:auto}
+.app-fab-btn{width:3.25rem;height:3.25rem;border-radius:.875rem;background:var(--elev3);backdrop-filter:blur(12px);border:1.5px solid var(--v5);display:flex;align-items:center;justify-content:center;position:relative;transition:transform .3s,box-shadow .3s,border-color .3s;flex-shrink:0}
+@media(min-width:1024px){.app-fab-btn{width:3.5rem;height:3.5rem}}
+.app-fab-btn:hover{transform:scale(1.06);box-shadow:0 0 20px rgba(16,224,160,.2);border-color:var(--v4)}
+.app-fab-btn svg{filter:drop-shadow(0 0 4px rgba(16,224,160,.3))}
+.app-fab-arrow{position:absolute;bottom:-.25rem;right:-.25rem;width:1.125rem;height:1.125rem;border-radius:50%;background:var(--tw);display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,.2)}
+.app-fab-label{background:var(--elev3);border:1px solid var(--brds);color:var(--tw);font-size:.75rem;font-weight:600;padding:.375rem .75rem;border-radius:9999px;white-space:nowrap;backdrop-filter:blur(12px);opacity:0;transform:translateX(8px);transition:opacity .4s,transform .4s;pointer-events:none}
+.app-fab-label.show{opacity:1;transform:translateX(0)}
+@media(max-width:1023px){.app-fab-label{display:none}}
+@media(min-width:1024px){.app-fab:hover .app-fab-label{opacity:1;transform:translateX(0)}}
+.app-card-overlay{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .35s}
+.app-card-overlay.show{opacity:1;pointer-events:auto}
+.app-card-overlay .ac-bg{position:absolute;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(6px)}
+.app-card{position:relative;z-index:1;background:var(--elev3);border:1px solid var(--brds);border-radius:1.5rem;padding:2.5rem;max-width:380px;width:calc(100vw - 2rem);text-align:center;transform:scale(.85);opacity:0;transition:transform .5s cubic-bezier(.16,1,.3,1),opacity .4s}
+.app-card-overlay.show .app-card{transform:scale(1);opacity:1}
+.app-card-close{position:absolute;top:1rem;right:1rem;width:2rem;height:2rem;display:flex;align-items:center;justify-content:center;color:var(--g4);border-radius:50%;border:1px solid var(--brd);background:var(--surf);transition:color .2s}
+.app-card-close:hover{color:var(--tw)}
+.app-card-mockup{width:100%;aspect-ratio:16/10;background:var(--d7);border-radius:1rem;border:1px solid var(--brdx);margin-bottom:1.5rem;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
+.app-card-mockup .grid-bg{position:absolute;inset:0}
+.app-card-mockup-inner{position:relative;z-index:1;text-align:center}
+@media(max-width:639px){.smh{display:none}}@media(max-width:1023px){.lgh{display:none}}
+@media(min-width:1024px){.lo1{order:1}.lo2{order:2}}
+.hbdg{display:inline-flex;align-items:center;gap:.5rem;background:rgba(16,224,160,.1);border:1px solid rgba(16,224,160,.2);border-radius:9999px;padding:.375rem 1rem;margin-bottom:1.5rem}
+.hbd{width:.5rem;height:.5rem;background:var(--v4);border-radius:50%;position:relative}.hbd::after{content:'';position:absolute;inset:0;border-radius:50%;background:var(--v4);animation:ping 2s ease-out infinite}
+</style>
+</head>
+<body>
+<header class="hdr" id="hdr"><div class="hdr-bg"></div><div class="hdr-in"><a href="#" class="logo"><div class="logo-i"><svg width="34" height="34" viewBox="0 0 283 290" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM190.5 171.13C191.5 173.13 194 178.3 194 183.5C194 188.7 194 190 191.5 196C188.5 202 185.8 204.23 181 206.63C176.2 209.029 169.209 209.025 164.5 207.63C159 206 155.8 203.029 153 198.63L179 149.13L190.5 171.13ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="url(#tg_h)"/><defs><linearGradient id="tg_h" x1="28" y1="280" x2="230" y2="79" gradientUnits="userSpaceOnUse"><stop stop-color="#10E0A0"/><stop offset="1" stop-color="#047857"/></linearGradient></defs></svg></div><div><span style="color:var(--tw);font-weight:700;font-size:1.125rem">Vizyo</span><span style="color:var(--v4);font-weight:700;font-size:1.125rem"> Tracky</span></div></a><nav class="nav"><a href="#feat">Fonctionnalités</a><a href="#how">Comment ça marche</a><a href="#price">Tarifs</a><a href="#faq">FAQ</a></nav><div class="rgrp"><button class="thm-tg" onclick="thmt()" aria-label="Changer de thème" title="Changer de thème"><svg class="ic-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><svg class="ic-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></button><div class="hcta"><a href="mailto:contact@vizyoagency.com" style="font-size:.875rem;color:var(--g4);padding:.5rem 1rem">Contact</a><a href="https://wa.me/33XXXXXXXXX?text=Bonjour%2C%20je%20souhaite%20en%20savoir%20plus%20sur%20Vizyo%20Tracky." class="btn bp bs"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479c0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>WhatsApp</a></div><button class="mt" onclick="tmm()" aria-label="Menu"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button></div></div></header>
+<div id="mm" class="mmenu"><button class="mcls" onclick="tmm()"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button><a href="#feat" onclick="tmm()">Fonctionnalités</a><a href="#how" onclick="tmm()">Comment ça marche</a><a href="#price" onclick="tmm()">Tarifs</a><a href="#faq" onclick="tmm()">FAQ</a><div style="border-top:1px solid var(--brds);margin:1rem 0"></div><a href="https://wa.me/33XXXXXXXXX" onclick="tmm()" style="background:var(--v5);color:#fff;text-align:center;font-weight:600;border-radius:.75rem">Nous contacter</a></div>
+
+<!-- HERO -->
+<section style="min-height:100vh;display:flex;align-items:center;padding-top:5rem" class="rel ovh grid-bg">
+<div class="orb" style="top:25%;left:-8rem;width:24rem;height:24rem;background:rgba(16,224,160,.08)"></div>
+<div class="orb" style="bottom:25%;right:-8rem;width:20rem;height:20rem;background:rgba(4,120,87,.06)"></div>
+<div class="mx" style="padding-top:4rem;padding-bottom:4rem"><div class="gr g2l" style="align-items:center">
+<div>
+<div class="rv hbdg"><div class="hbd"></div><span style="color:var(--v4);font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Traçage GPS Professionnel</span></div>
+<h1 class="rv hh">Votre flotte sous<br><span class="gt">contrôle total.</span></h1>
+<p class="rv tl" style="color:var(--g4);line-height:1.75;margin-bottom:2rem;max-width:36rem">Localisez vos véhicules en temps réel, programmez la coupure moteur, recevez des alertes intelligentes. <strong style="color:var(--g2)">Vizyo Tracky</strong> vous donne le pouvoir sur votre flotte — depuis votre téléphone.</p>
+<div class="rv f g3 fw mb10"><a href="https://wa.me/33XXXXXXXXX?text=Bonjour%2C%20je%20souhaite%20une%20démo%20de%20Vizyo%20Tracky." class="btn bp bl"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479c0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>Demander une démo</a><a href="#feat" class="btn bo">Découvrir <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></a></div>
+<div class="rv f fi g6 fw" style="font-size:.875rem;color:var(--g5)"><div class="f fi g2"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--grn)" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><span>Installation incluse</span></div><div class="f fi g2"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--grn)" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><span>Sans engagement</span></div><div class="f fi g2 smh"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--grn)" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><span>Support local</span></div></div>
+</div>
+<div class="rv" style="display:flex;justify-content:center"><div class="rel">
+<div class="phone"><div class="phs"><div class="f fi fb" style="padding:1rem 1.5rem .5rem"><span style="font-size:.75rem;color:var(--g5);font-family:monospace">09:41</span><div style="width:5rem;height:1.25rem;background:var(--d7);border-radius:9999px"></div><div style="width:1rem;height:.5rem;background:var(--g5);border-radius:2px"></div></div><div class="phm grid-bg" style="opacity:.7"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><div class="tc"><div style="width:4rem;height:4rem;background:rgba(16,224,160,.2);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 1rem;position:relative"><div style="position:absolute;inset:0;border-radius:50%;background:rgba(16,224,160,.3);animation:ping 2s ease-out infinite"></div><div style="width:2rem;height:2rem;background:var(--v5);border-radius:50%;display:flex;align-items:center;justify-content:center;position:relative;z-index:2;box-shadow:0 0 20px rgba(16,224,160,.5)"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/></svg></div></div><p style="font-size:.7rem;color:var(--g5);font-family:monospace">Aperçu de l'application</p></div></div><div class="vd" style="top:2rem;left:1.5rem;background:var(--grn);box-shadow:0 0 10px rgba(16,185,129,.5)"></div><div class="vd" style="top:5rem;right:2.5rem;background:var(--v4);box-shadow:0 0 10px rgba(16,224,160,.5)"></div><div class="vd" style="bottom:4rem;left:3rem;background:var(--ylw);box-shadow:0 0 10px rgba(245,158,11,.5)"></div><div class="vd" style="bottom:6rem;right:2rem;background:var(--grn);box-shadow:0 0 10px rgba(16,185,129,.5)"></div></div><div class="f fi" style="justify-content:space-around;padding:1rem .75rem"><div class="tc"><div style="width:1.25rem;height:1.25rem;border-radius:.25rem;background:rgba(16,224,160,.3);margin:0 auto .25rem"></div><span style="font-size:.625rem;color:var(--v4)">Carte</span></div><div class="tc"><div style="width:1.25rem;height:1.25rem;border-radius:.25rem;background:var(--brds);margin:0 auto .25rem"></div><span style="font-size:.625rem;color:var(--g5)">Véhicules</span></div><div class="tc"><div style="width:1.25rem;height:1.25rem;border-radius:.25rem;background:var(--brds);margin:0 auto .25rem"></div><span style="font-size:.625rem;color:var(--g5)">Alertes</span></div><div class="tc"><div style="width:1.25rem;height:1.25rem;border-radius:.25rem;background:var(--brds);margin:0 auto .25rem"></div><span style="font-size:.625rem;color:var(--g5)">Plus</span></div></div></div></div>
+<div class="fcard"><div class="f fi g3"><div class="ib" style="background:rgba(16,185,129,.15)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--grn)" stroke-width="2"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg></div><div><p class="tx tg">Renault Master</p><p class="ts fb6 tgr">En mouvement</p></div></div></div>
+</div></div>
+</div></div></section>
+
+<!-- PROBLÈME -->
+<section class="sec dot-bg"><div class="mx"><div class="tc" style="margin-bottom:3.5rem"><p class="rv lbl">Le problème</p><h2 class="rv hdg">Gérer une flotte sans visibilité,<br>c'est piloter à l'aveugle.</h2><p class="rv sub">Chaque jour sans traçage, c'est du carburant gaspillé et des risques qui s'accumulent.</p></div>
+<div class="gr g4c stg"><div class="rv cd"><div class="ibl mb4" style="background:rgba(239,68,68,.1)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2"><path d="M12 9v4m0 4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg></div><h3 class="tw fb7 mb2">Vols & détournements</h3><p class="ts tg" style="line-height:1.75">Impossible de réagir sans savoir où sont vos véhicules.</p></div><div class="rv cd"><div class="ibl mb4" style="background:rgba(249,115,22,.1)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--orn)" stroke-width="2"><path d="M3 3v18h18"/><path d="m7 16 4-8 4 4 4-12"/></svg></div><h3 class="tw fb7 mb2">Surconsommation</h3><p class="ts tg" style="line-height:1.75">Détours, ralenti moteur : votre budget carburant explose.</p></div><div class="rv cd"><div class="ibl mb4" style="background:rgba(245,158,11,.1)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--ylw)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div><h3 class="tw fb7 mb2">Retards invisibles</h3><p class="ts tg" style="line-height:1.75">Vous découvrez les problèmes trop tard.</p></div><div class="rv cd"><div class="ibl mb4" style="background:rgba(168,85,247,.1)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--pur)" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div><h3 class="tw fb7 mb2">Zéro visibilité</h3><p class="ts tg" style="line-height:1.75">Sans dashboard, vous gérez aux suppositions.</p></div></div>
+<div class="rv tc" style="margin-top:3rem">
+<p class="reas">Réponse en moins de 2h &bull; Pas de spam &bull; Sans engagement</p>
+<a href="https://wa.me/33XXXXXXXXX?text=Bonjour%2C%20je%20souhaite%20éviter%20ces%20pertes%20et%20en%20savoir%20plus%20sur%20Vizyo%20Tracky." class="btn bp"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479c0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>Évitez ces pertes <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg></a>
+</div>
+</div></section>
+
+<!-- SOLUTION -->
+<section class="sec rel ovh"><div class="orb" style="top:0;left:50%;transform:translateX(-50%);width:37rem;height:37rem;background:rgba(16,224,160,.04)"></div><div class="mx"><div class="gr g2l" style="align-items:center"><div class="rv lo1" style="order:2"><div class="dash"><div class="f fi fb mb6"><div><p class="tx tg5 up" style="letter-spacing:.05em">Dashboard</p><p class="tw fb7 tl">Ma Flotte</p></div><div class="f fi g2" style="background:rgba(16,185,129,.1);padding:.375rem .75rem;border-radius:9999px"><div style="width:.5rem;height:.5rem;background:var(--grn);border-radius:50%"></div><span class="tx fb6 tgr">8 véhicules actifs</span></div></div><div class="fc g3"><div class="vrow"><div class="vi"><svg width="14" height="14" viewBox="0 0 24 24" fill="var(--v5)"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg></div><div class="f1" style="min-width:0"><p class="ts tw fb5 tru">Renault Kangoo — AB-123-CD</p></div><span class="sb sbg">En route</span></div><div class="vrow"><div class="vi"><svg width="14" height="14" viewBox="0 0 24 24" fill="var(--v5)"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg></div><div class="f1" style="min-width:0"><p class="ts tw fb5 tru">Peugeot Expert — EF-456-GH</p></div><span class="sb sby">À l'arrêt</span></div><div class="vrow"><div class="vi"><svg width="14" height="14" viewBox="0 0 24 24" fill="var(--v5)"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg></div><div class="f1" style="min-width:0"><p class="ts tw fb5 tru">Citroën Berlingo — IJ-789-KL</p></div><span class="sb sbr">Moteur coupé</span></div></div></div></div><div class="lo2" style="order:1"><p class="rv lbl">La solution</p><h2 class="rv hdg" style="line-height:1.15">Un traceur GPS.<br>Une app.<br>Le contrôle complet.</h2><p class="rv tg tl" style="line-height:1.75;margin-bottom:2rem"><strong style="color:var(--g2)">Vizyo Tracky</strong> combine un boîtier GPS discret et une application centralisée. Conçu en interne.</p><div class="rv fc" style="gap:1rem"><div class="f" style="align-items:flex-start;gap:.75rem"><div class="chk"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--v5)" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div><p style="color:var(--g3)"><strong class="tw">Boîtier GPS compact</strong> — installation discrète, tous véhicules</p></div><div class="f" style="align-items:flex-start;gap:.75rem"><div class="chk"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--v5)" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div><p style="color:var(--g3)"><strong class="tw">Application propriétaire</strong> — pas une app chinoise rebrandée</p></div><div class="f" style="align-items:flex-start;gap:.75rem"><div class="chk"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--v5)" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div><p style="color:var(--g3)"><strong class="tw">Support local</strong> — équipe en France, réactive</p></div></div></div></div></div></section>
+
+<!-- FONCTIONNALITÉS -->
+<section id="feat" class="sec dot-bg"><div class="mx"><div class="tc" style="margin-bottom:3.5rem"><p class="rv lbl">Fonctionnalités</p><h2 class="rv hdg">Tout ce qu'il faut pour<br>reprendre le contrôle.</h2></div><div class="gr g3c stg"><div class="rv cd"><div class="fib" style="background:rgba(16,224,160,.1)"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--v5)" stroke-width="1.5"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg></div><h3 class="tw fb7 tl mb2">Géolocalisation temps réel</h3><p class="ts tg" style="line-height:1.75">Chaque véhicule sur la carte, en direct, toutes les 10 secondes.</p></div><div class="rv cd"><div class="fib" style="background:rgba(16,224,160,.1)"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--v5)" stroke-width="1.5"><path d="M3 12h4l3-9 4 18 3-9h4"/></svg></div><h3 class="tw fb7 tl mb2">Historique des trajets</h3><p class="ts tg" style="line-height:1.75">Rejouez chaque trajet, arrêts et km sur 90 jours.</p></div><div class="rv cd"><div class="fib" style="background:rgba(239,68,68,.1)"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="1.5"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h.01M12 12h.01m5-3-3 3 3 3"/></svg></div><h3 class="tw fb7 tl mb2">Coupure moteur programmée</h3><p class="ts tg" style="line-height:1.75">Plages horaires automatiques. Antivol et contrôle d'usage.</p></div><div class="rv cd"><div class="fib" style="background:rgba(245,158,11,.1)"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--ylw)" stroke-width="1.5"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><h3 class="tw fb7 tl mb2">Alertes intelligentes</h3><p class="ts tg" style="line-height:1.75">Vitesse, zone, batterie — alerté instantanément.</p></div><div class="rv cd"><div class="fib" style="background:rgba(16,224,160,.1)"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--v5)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></div><h3 class="tw fb7 tl mb2">Dashboard multi-véhicules</h3><p class="ts tg" style="line-height:1.75">Statut, position, vitesse — tout en un coup d'œil.</p></div><div class="rv cd"><div class="fib" style="background:rgba(16,185,129,.1)"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--grn)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></div><h3 class="tw fb7 tl mb2">Rapports automatisés</h3><p class="ts tg" style="line-height:1.75">Rapports hebdo : km, arrêts, conduite par véhicule.</p></div></div>
+<div class="rv tc" style="margin-top:3rem">
+<p class="reas">Réponse en moins de 2h &bull; Pas de spam &bull; Sans engagement</p>
+<a href="https://wa.me/33XXXXXXXXX?text=Bonjour%2C%20je%20souhaite%20voir%20l'app%20Vizyo%20Tracky%20en%20action." class="btn bp"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479c0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>Voir l'app en action</a>
+</div>
+</div></section>
+
+<!-- VIDÉO -->
+<section class="sec"><div class="mm"><div class="rv vph"><div class="vpin grid-bg"><div style="position:relative;z-index:1" class="fc fi" style="gap:1.5rem"><div class="play"><svg width="36" height="36" viewBox="0 0 24 24" fill="var(--v5)"><path d="M8 5v14l11-7z"/></svg></div><div class="tc" style="margin-top:1.5rem"><h3 class="tw fb7 txl mb2">Démo de l'application</h3><p class="tg ts">Découvrez Vizyo Tracky en action</p></div><div class="vbdg" style="margin-top:1rem"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Vidéo bientôt disponible</div></div></div></div></div></section>
+
+<!-- AVANTAGES -->
+<section class="sec dot-bg rel ovh"><div class="orb" style="top:50%;right:0;transform:translateY(-50%);width:25rem;height:25rem;background:rgba(16,224,160,.04)"></div><div class="mx"><div class="tc" style="margin-bottom:3.5rem"><p class="rv lbl">Pourquoi Vizyo Tracky</p><h2 class="rv hdg">Pas un énième traceur<br>générique.</h2></div><div class="gr g2c stg" style="max-width:56rem;margin:0 auto;gap:1.5rem"><div class="rv cd" style="padding:2rem"><div class="f fi g3 mb4"><div class="ib" style="background:rgba(16,224,160,.12)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--v5)" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M12 12h.01m5-3-3 3 3 3"/></svg></div><h3 class="tw fb7 tl">Coupure moteur par plage horaire</h3></div><p class="ts tg" style="line-height:1.75">Immobilisation automatique hors heures de travail. Unique sur le marché local.</p></div><div class="rv cd" style="padding:2rem"><div class="f fi g3 mb4"><div class="ib" style="background:rgba(16,224,160,.12)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--v5)" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><h3 class="tw fb7 tl">Interface propriétaire</h3></div><p class="ts tg" style="line-height:1.75">Développée en France. Pas de traduction approximative ni de serveur inconnu.</p></div><div class="rv cd" style="padding:2rem"><div class="f fi g3 mb4"><div class="ib" style="background:rgba(16,224,160,.12)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--v5)" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><h3 class="tw fb7 tl">Support humain & local</h3></div><p class="ts tg" style="line-height:1.75">Un vrai technicien, pas un chatbot. On s'occupe de tout.</p></div><div class="rv cd" style="padding:2rem"><div class="f fi g3 mb4"><div class="ib" style="background:rgba(16,224,160,.12)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--v5)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div><h3 class="tw fb7 tl">Pas d'app chinoise</h3></div><p class="ts tg" style="line-height:1.75">Solution 100 % maîtrisée. Vos données sous votre contrôle.</p></div></div></div></section>
+
+<!-- COMMENT ÇA MARCHE -->
+<section id="how" class="sec"><div class="mx"><div class="tc" style="margin-bottom:3.5rem"><p class="rv lbl">Comment ça marche</p><h2 class="rv hdg">Opérationnel en 3 étapes.</h2></div><div class="gr g3c stg" style="max-width:56rem;margin:0 auto;gap:2rem"><div class="rv stp"><div class="stpw"><div class="stpi"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--v5)" stroke-width="1.5"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></div><div class="stpn">1</div></div><h3 class="tw fb7 txl mb3">Installation</h3><p class="ts tg" style="line-height:1.75">Boîtier installé en -30 min. Discret, sans câblage visible.</p></div><div class="rv stp"><div class="stpw"><div class="stpi"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--v5)" stroke-width="1.5"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg></div><div class="stpn">2</div></div><h3 class="tw fb7 txl mb3">Connexion</h3><p class="ts tg" style="line-height:1.75">Téléchargez l'app et retrouvez vos véhicules.</p></div><div class="rv stp"><div class="stpw"><div class="stpi"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--v5)" stroke-width="1.5"><path d="M12 20V10m0 0l-3 3m3-3l3 3M4 4h16M4 8h16"/></svg></div><div class="stpn">3</div></div><h3 class="tw fb7 txl mb3">Pilotage</h3><p class="ts tg" style="line-height:1.75">Alertes, coupure moteur, rapports — tout depuis l'app.</p></div></div></div></section>
+
+<!-- TARIFS — 3 GAMMES -->
+<section id="price" class="sec dot-bg rel ovh">
+<div class="orb" style="top:20%;left:-10rem;width:30rem;height:30rem;background:rgba(16,224,160,.05)"></div>
+<div class="orb" style="bottom:10%;right:-8rem;width:20rem;height:20rem;background:rgba(168,85,247,.03)"></div>
+<div class="mx">
+<div class="tc" style="margin-bottom:3.5rem">
+<p class="rv lbl">Tarifs</p>
+<h2 class="rv hdg">Une offre claire.<br>Pas de surprises.</h2>
+<p class="rv sub">SIM & data incluses. Support français. Zéro frais cachés.</p>
+<div class="rv tc" style="margin-top:1.25rem"><div class="inst-counter"><div class="ic-dot"></div><span>27 installations cette semaine</span></div></div>
+</div>
+
+<div class="pcg stg" style="max-width:72rem;margin:0 auto">
+
+<!-- LITE — Decoy / porte d'entrée -->
+<div class="rv pcd">
+<div class="ptag ptag-l"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="10" r="3"/><path d="M12 2a8 8 0 0 0-8 8.2c0 7.3 8 11.8 8 11.8s8-4.5 8-11.8A8 8 0 0 0 12 2z"/></svg>Suivi GPS</div>
+<p class="ppn">Tracky Lite</p>
+<p class="ppt">Géolocalisation simple — sans coupe-circuit</p>
+<div class="pprc"><span class="ppv">9,90</span><span class="ppvu">€/véh/mois</span></div>
+<p class="pphw">Boîtier : 79 € · engagement 12 mois</p>
+<div class="anch"><span>En mensuel :</span><del>14,90 €</del></div>
+<ul class="pfl">
+<li class="pfi"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--grn)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Géoloc temps réel</li>
+<li class="pfi"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--grn)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Historique trajets 90 jours</li>
+<li class="pfi"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--grn)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Alertes vitesse & zone</li>
+<li class="pfi"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--grn)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>App mobile + dashboard web</li>
+<li class="pfi"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--grn)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>SIM & data incluses</li>
+<li class="pfi pfn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--g6)" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>Coupure moteur</li>
+<li class="pfi pfn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--g6)" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>Détection remorquage</li>
+</ul>
+<a href="https://wa.me/33XXXXXXXXX?text=Bonjour%2C%20je%20souhaite%20un%20devis%20Tracky%20Lite." class="btn bo wf bs">Demander un devis</a>
+</div>
+
+<!-- PRO — Produit cible (decoy effect) -->
+<div class="rv pcd pop">
+<div class="ppop">Le + populaire</div>
+<div class="ptag ptag-p"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>GPS + Coupe-circuit</div>
+<p class="ppn">Tracky Pro</p>
+<p class="ppt">Contrôle total — coupure moteur incluse</p>
+<div class="pprc"><span class="ppv">16,90</span><span class="ppvu">€/véh/mois</span></div>
+<p class="pphw">Boîtier : 149 € · engagement 12 mois</p>
+<div class="anch"><span>En mensuel :</span><del>24,90 €</del><strong>-32 %</strong></div>
+<ul class="pfl">
+<li class="pfi"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--grn)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Tout Tracky Lite inclus</li>
+<li class="pfi"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--v4)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg><strong style="color:var(--v4)">Coupure moteur manuelle</strong></li>
+<li class="pfi"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--v4)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg><strong style="color:var(--v4)">Coupure par plage horaire</strong></li>
+<li class="pfi"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--grn)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Alerte batterie & remorquage</li>
+<li class="pfi"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--grn)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Historique trajets 1 an</li>
+<li class="pfi"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--grn)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Support prioritaire</li>
+<li class="pfi"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--grn)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>SIM & data incluses</li>
+</ul>
+<a href="https://wa.me/33XXXXXXXXX?text=Bonjour%2C%20je%20souhaite%20un%20devis%20Tracky%20Pro." class="btn bp wf"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479c0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>Choisir Tracky Pro</a>
+</div>
+
+<!-- FLEET — Ancre haute / sur devis -->
+<div class="rv pcd">
+<div class="ptag ptag-f"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>10+ véhicules</div>
+<p class="ppn">Tracky Fleet</p>
+<p class="ppt">Solution sur-mesure pour flottes structurées</p>
+<div class="pprc"><span class="ppv" style="font-size:2rem">Sur devis</span></div>
+<p class="pphw">Tarif dégressif · installation offerte</p>
+<ul class="pfl">
+<li class="pfi"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--grn)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Tout Tracky Pro inclus</li>
+<li class="pfi"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--orn)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg><strong style="color:var(--orn)">Dashboard multi-flottes</strong></li>
+<li class="pfi"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--orn)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg><strong style="color:var(--orn)">Rapports automatisés PDF</strong></li>
+<li class="pfi"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--grn)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Account manager dédié</li>
+<li class="pfi"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--grn)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Formation de votre équipe</li>
+<li class="pfi"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--grn)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>SLA intervention 4h</li>
+<li class="pfi"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--grn)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Installation 100 % offerte</li>
+</ul>
+<a href="https://wa.me/33XXXXXXXXX?text=Bonjour%2C%20je%20gère%20une%20flotte%20de%2010%2B%20véhicules%20et%20souhaite%20un%20devis%20Tracky%20Fleet." class="btn bo wf bs">Contacter un expert</a>
+</div>
+
+</div>
+
+<!-- MENTION INSTALLATION -->
+<div class="rv tc mt6" style="max-width:42rem;margin-left:auto;margin-right:auto">
+<div class="f fj g6 fw" style="font-size:.8125rem;color:var(--g5)">
+<div class="f fi g2"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--v4)" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>Installation : 49 €/véh</div>
+<div class="f fi g2"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--v4)" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>29 € dès 5 véh.</div>
+<div class="f fi g2"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--grn)" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><span style="color:var(--grn)">Offerte dès 10 véh.</span></div>
+</div>
+</div>
+<div class="rv tc" style="margin-top:2.5rem">
+<p class="reas">Réponse en moins de 2h &bull; Pas de spam &bull; Sans engagement</p>
+<a href="https://wa.me/33XXXXXXXXX?text=Bonjour%2C%20je%20souhaite%20discuter%20de%20mon%20devis%20Vizyo%20Tracky." class="btn bp bl"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479c0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>Discuter de mon devis</a>
+</div>
+</div>
+</section>
+
+<!-- SIMULATEUR -->
+<section class="sec">
+<div class="ms">
+<div class="tc" style="margin-bottom:3rem">
+<p class="rv lbl">Simulateur</p>
+<h2 class="rv hdg">Estimez votre budget.</h2>
+<p class="rv sub">Moins d'un café par jour pour protéger un véhicule à 30 000 €.</p>
+</div>
+
+<div class="rv sim">
+
+<div class="tab-sw">
+<button onclick="setG('lite')" id="tg-lite" class="tab-sw-btn">Tracky Lite</button>
+<button onclick="setG('pro')" id="tg-pro" class="tab-sw-btn act">Tracky Pro</button>
+</div>
+
+<div class="mb8">
+<div class="f fi fb mb3"><label class="tw fb6">Nombre de véhicules</label><span id="vc" style="color:var(--v4);font-family:monospace;font-weight:700;font-size:1.5rem">5</span></div>
+<input type="range" id="vs" min="1" max="50" value="5" step="1" oninput="upd()">
+<div class="f fb mt1"><span class="tx tg5">1</span><span class="tx tg5">50</span></div>
+</div>
+
+<div class="mb8">
+<label class="tw fb6" style="display:block;margin-bottom:.75rem">Durée d'engagement</label>
+<div class="ddl">
+<button onclick="setD(0)" id="dd-0" class="ddb"><p class="ddt">Mensuel</p><p class="ddp" id="ddp-0">24,90 €</p><p class="ddt" style="margin-top:2px">sans engagement</p></button>
+<button onclick="setD(1)" id="dd-1" class="ddb"><p class="ddt">6 mois</p><p class="ddp" id="ddp-1">19,90 €</p><p class="dds">-20 %</p></button>
+<button onclick="setD(2)" id="dd-2" class="ddb act"><div class="plpop">Populaire</div><p class="ddt">12 mois</p><p class="ddp" id="ddp-2">16,90 €</p><p class="dds">-32 %</p></button>
+</div>
+</div>
+
+<hr class="sep">
+
+<div class="sres mb8">
+<div class="smc">
+<p class="sml">Par jour / véhicule</p>
+<p class="smv" id="r-day">0,94 €</p>
+<p class="sms">tout compris</p>
+</div>
+<div class="smc" style="border-color:rgba(16,224,160,.15)">
+<p class="sml">Mensuel total</p>
+<p class="smv tv" id="r-month">85 €</p>
+<p class="sms" id="r-ppv">soit 16,90 €/véh</p>
+</div>
+<div class="smc">
+<p class="sml">Coût 1re année</p>
+<p class="smv" id="r-year">1 765 €</p>
+<p class="sms" id="r-detail">boîtier + install + abo</p>
+</div>
+<div class="smc">
+<p class="sml">Économies estimées</p>
+<p class="smv tgr" id="r-roi">1 000 – 2 000 €</p>
+<div class="roi-bar"><div class="roi-fill" id="roi-bar" style="width:60%"></div></div>
+</div>
+</div>
+
+<div id="ins-note" class="ins-note">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+<span id="ins-text">Installation : 49 €/véhicule — offerte dès 10 véhicules</span>
+</div>
+
+<a id="qcta" href="#" class="btn bp wf" style="margin-top:1.5rem"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479c0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>Recevoir mon devis personnalisé</a>
+
+</div>
+</div>
+</section>
+
+<!-- TÉMOIGNAGES -->
+<section class="sec"><div class="mx"><div class="tc" style="margin-bottom:3.5rem"><p class="rv lbl">Témoignages</p><h2 class="rv hdg">Ils nous font confiance.</h2></div><div class="gr g3c stg" style="gap:1.5rem"><div class="rv cd"><div class="stars mb4"><svg class="star" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg><svg class="star" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg><svg class="star" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg><svg class="star" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg><svg class="star" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg></div><p class="ts" style="color:var(--g3);line-height:1.75;margin-bottom:1.25rem">« -18 % de carburant sur 12 utilitaires. La coupure moteur le week-end a tout changé. »</p><div class="f fi g3"><div class="av">MR</div><div><p class="tw ts fb6">Marc R.</p><p class="tx tg5">Gérant — Transport Express 13</p></div></div></div><div class="rv cd"><div class="stars mb4"><svg class="star" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg><svg class="star" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg><svg class="star" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg><svg class="star" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg><svg class="star" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg></div><p class="ts" style="color:var(--g3);line-height:1.75;margin-bottom:1.25rem">« App claire et rapide. Mes 6 camionnettes en un clin d'œil. Alertes de zone = détournement évité. »</p><div class="f fi g3"><div class="av">SB</div><div><p class="tw ts fb6">Sophie B.</p><p class="tx tg5">Directrice — LocaPro Services</p></div></div></div><div class="rv cd"><div class="stars mb4"><svg class="star" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg><svg class="star" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg><svg class="star" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg><svg class="star" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg><svg class="star" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg></div><p class="ts" style="color:var(--g3);line-height:1.75;margin-bottom:1.25rem">« On avait une app chinoise — horrible. Vizyo Tracky c'est le jour et la nuit. Enfin un outil pro. »</p><div class="f fi g3"><div class="av">KA</div><div><p class="tw ts fb6">Karim A.</p><p class="tx tg5">Resp. logistique — BTP Sud</p></div></div></div></div><p class="tc tx mt6" style="color:var(--g6);font-style:italic">* Témoignages illustratifs — vrais retours clients à venir</p></div></section>
+
+<!-- FAQ -->
+<section id="faq" class="sec dot-bg"><div class="ms"><div class="tc" style="margin-bottom:3.5rem"><p class="rv lbl">FAQ</p><h2 class="rv hdg">Questions fréquentes.</h2></div><div class="stg fc" style="gap:.75rem">
+<div class="rv cd" style="padding:0"><button onclick="tgf(this)" class="fqb"><span>Comment se passe l'installation ?</span><svg class="fqi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button><div class="fqa"><p class="ts tg" style="line-height:1.75">Technicien sur site, -30 min par véhicule. Discret, sans câblage visible. 49 €/véh (29 € dès 5, offerte dès 10).</p></div></div>
+<div class="rv cd" style="padding:0"><button onclick="tgf(this)" class="fqb"><span>Compatible tous véhicules ?</span><svg class="fqi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button><div class="fqa"><p class="ts tg" style="line-height:1.75">Oui. Utilitaires, camions, voitures, engins, deux-roues. Batterie 12V ou 24V.</p></div></div>
+<div class="rv cd" style="padding:0"><button onclick="tgf(this)" class="fqb"><span>Engagement minimum ?</span><svg class="fqi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button><div class="fqa"><p class="ts tg" style="line-height:1.75">Oui, mensuel sans engagement disponible. Formules 6 et 12 mois avec remises jusqu'à -32 %. Deux gammes : Lite (GPS) et Pro (GPS + coupure moteur).</p></div></div>
+<div class="rv cd" style="padding:0"><button onclick="tgf(this)" class="fqb"><span>La coupure moteur, comment ça marche ?</span><svg class="fqi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button><div class="fqa"><p class="ts tg" style="line-height:1.75">Plages horaires depuis l'app. Coupure manuelle aussi (véhicule à l'arrêt).</p></div></div>
+<div class="rv cd" style="padding:0"><button onclick="tgf(this)" class="fqb"><span>Problème technique ?</span><svg class="fqi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button><div class="fqa"><p class="ts tg" style="line-height:1.75">Support tel + WhatsApp. Remplacement boîtier gratuit. Vrai technicien.</p></div></div>
+<div class="rv cd" style="padding:0"><button onclick="tgf(this)" class="fqb"><span>Données sécurisées ?</span><svg class="fqi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button><div class="fqa"><p class="ts tg" style="line-height:1.75">Serveurs sécurisés, pas de transit en Chine. Conformité RGPD.</p></div></div>
+</div></div></section>
+
+<!-- CTA FINAL -->
+<section class="sec ctbg"><div class="orb" style="top:50%;left:50%;transform:translate(-50%,-50%);width:50rem;height:25rem;background:rgba(16,224,160,.06)"></div><div class="ms tc" style="position:relative;z-index:1"><div class="rv" style="display:inline-flex;align-items:center;gap:.5rem;background:rgba(16,224,160,.1);border:1px solid rgba(16,224,160,.2);border-radius:9999px;padding:.375rem 1rem;margin-bottom:1.5rem"><span style="width:.5rem;height:.5rem;background:var(--grn);border-radius:50%;display:inline-block"></span><span style="color:var(--v4);font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Installation sous 48h</span></div><h2 class="rv hdg">Prêt à reprendre le contrôle<br>de votre flotte ?</h2><p class="rv sub mb10">Démonstration gratuite. Installation sous 48h, aucun engagement.</p><p class="rv reas" style="margin-bottom:1rem">Réponse en moins de 2h &bull; Pas de spam &bull; Sans engagement</p><div class="rv f fj g4 fw"><a href="https://wa.me/33XXXXXXXXX?text=Bonjour%2C%20je%20souhaite%20une%20démo%20gratuite%20de%20Vizyo%20Tracky." class="btn bp bl"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479c0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>Démo gratuite via WhatsApp</a><a href="mailto:contact@vizyoagency.com" class="btn bo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>Envoyer un email</a></div></div></section>
+
+<!-- FOOTER -->
+<footer class="ftr"><div class="mx"><div class="ftri"><a href="#" class="logo"><div class="logo-i" style="width:2rem;height:2rem"><svg width="28" height="28" viewBox="0 0 283 290" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM190.5 171.13C191.5 173.13 194 178.3 194 183.5C194 188.7 194 190 191.5 196C188.5 202 185.8 204.23 181 206.63C176.2 209.029 169.209 209.025 164.5 207.63C159 206 155.8 203.029 153 198.63L179 149.13L190.5 171.13ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="url(#tg_f)"/><defs><linearGradient id="tg_f" x1="28" y1="280" x2="230" y2="79" gradientUnits="userSpaceOnUse"><stop stop-color="#10E0A0"/><stop offset="1" stop-color="#047857"/></linearGradient></defs></svg></div><div><span style="color:var(--tw);font-weight:700">Vizyo</span><span style="color:var(--v4);font-weight:700"> Tracky</span></div></a><div class="ftrl"><a href="https://www.vizyoagency.com" target="_blank">vizyoagency.com</a><a href="mailto:contact@vizyoagency.com">contact@vizyoagency.com</a><a href="#">Mentions légales</a></div></div><div class="trust-row">
+<div class="trust-b"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>RGPD</div>
+<div class="trust-b"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>Conçu en France</div>
+<div class="trust-b"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>Données hébergées en EU</div>
+</div>
+<div style="margin-top:2rem;padding-top:2rem;border-top:1px solid var(--brdx);text-align:center;font-size:.75rem;color:var(--g6)">© 2026 Vizyo Agency — Tous droits réservés. Conçu en France.</div></div></footer>
+
+<!-- Exit-intent modal -->
+<div class="eim-overlay" id="eim-overlay">
+<div class="eim-bg" onclick="closeEim()"></div>
+<div class="eim-card">
+<button class="eim-close" onclick="closeEim()" aria-label="Fermer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+<div class="eim-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--v5)" stroke-width="1.5"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg></div>
+<p class="lbl" style="margin-bottom:.5rem">Offre exclusive</p>
+<h3 class="tw fb7" style="font-size:1.5rem;margin-bottom:.5rem">Démo gratuite + audit flotte offert</h3>
+<p class="ts tg" style="line-height:1.6;margin-bottom:.5rem">Nos experts analysent votre flotte et vous proposent un plan d'optimisation personnalisé. Sans engagement.</p>
+<p class="reas" style="margin-bottom:1.25rem">Réponse en moins de 2h &bull; Pas de spam &bull; Sans engagement</p>
+<a href="https://wa.me/33XXXXXXXXX?text=Bonjour%2C%20je%20souhaite%20profiter%20de%20la%20démo%20gratuite%20et%20de%20l'audit%20flotte." class="btn bp wf" style="margin-bottom:.75rem"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479c0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>Réserver ma démo gratuite</a>
+<button onclick="closeEim()" style="font-size:.8125rem;color:var(--g5);background:none;border:none;cursor:pointer">Non merci</button>
+</div>
+</div>
+
+<!-- Sticky bottom bar mobile -->
+<div class="sbb" id="sbb">
+<button class="sbb-dismiss" onclick="dismissSbb()" aria-label="Fermer"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+<a href="https://wa.me/33XXXXXXXXX?text=Bonjour%2C%20je%20souhaite%20en%20savoir%20plus%20sur%20Vizyo%20Tracky." class="sbb-btn sbb-wa"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479c0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>WhatsApp</a>
+<a href="tel:+33XXXXXXXXX" class="sbb-btn sbb-call"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>Rappel gratuit</a>
+</div>
+
+
+<!-- FAB Stack -->
+<div class="fab-stack" id="fab-stack">
+<!-- FAB Tracky App -->
+<div class="app-fab" id="app-fab" onclick="openAppCard()">
+<span class="app-fab-label" id="app-fab-label">Espace Pro</span>
+<div class="app-fab-btn"><svg width="24" height="24" viewBox="0 0 283 290" fill="none"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM190.5 171.13C191.5 173.13 194 178.3 194 183.5C194 188.7 194 190 191.5 196C188.5 202 185.8 204.23 181 206.63C176.2 209.029 169.209 209.025 164.5 207.63C159 206 155.8 203.029 153 198.63L179 149.13L190.5 171.13ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="url(#fab-vg)"/><defs><linearGradient id="fab-vg" x1="28" y1="280" x2="230" y2="79" gradientUnits="userSpaceOnUse"><stop stop-color="#10E0A0"/><stop offset="1" stop-color="#047857"/></linearGradient></defs></svg><div class="app-fab-arrow"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--v6)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M17 7H7M17 7v10"/></svg></div></div>
+</div>
+<!-- WhatsApp FAB -->
+<div class="wa-fab" id="wa-fab">
+<span class="wa-fab-label">Discutons</span>
+<a href="https://wa.me/33XXXXXXXXX?text=Bonjour%2C%20je%20souhaite%20en%20savoir%20plus%20sur%20Vizyo%20Tracky." class="wa-fab-btn" aria-label="Nous contacter sur WhatsApp"><div class="wa-fab-badge"></div><svg width="22" height="22" viewBox="0 0 24 24" fill="#fff"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479c0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg></a>
+</div>
+</div>
+
+<!-- App Card Overlay -->
+<div class="app-card-overlay" id="app-card-overlay">
+<div class="ac-bg" onclick="closeAppCard()"></div>
+<div class="app-card">
+<button class="app-card-close" onclick="closeAppCard()" aria-label="Fermer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+<div class="app-card-mockup"><div class="grid-bg"></div><div class="app-card-mockup-inner"><div style="width:3.5rem;height:3.5rem;background:rgba(16,224,160,.2);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto .75rem;position:relative"><div style="position:absolute;inset:0;border-radius:50%;background:rgba(16,224,160,.3);animation:ping 2s ease-out infinite"></div><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--v5)" stroke-width="1.5" style="position:relative;z-index:2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></div><p style="font-size:.75rem;color:var(--g5)">Dashboard Vizyo Tracky</p></div></div>
+<p class="lbl" style="margin-bottom:.5rem">Espace Pro</p>
+<h3 class="tw fb7 txl" style="margin-bottom:.5rem">Votre tableau de bord</h3>
+<p class="ts tg" style="line-height:1.6;margin-bottom:1.5rem">Gérez votre flotte, visualisez les trajets et contrôlez vos véhicules depuis l'interface pro.</p>
+<a href="https://app.vizyo-tracky.fr" class="btn bp wf" target="_blank">Accéder à l'app<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-left:.25rem"><path d="M7 17l9.2-9.2M17 17V7H7"/></svg></a>
+</div>
+</div>
+
+<script>
+function tmm(){document.getElementById('mm').classList.toggle('open')}
+function thmt(){var c=document.documentElement.dataset.theme==='light'?'dark':'light';document.documentElement.dataset.theme=c;try{localStorage.setItem('vt-theme',c)}catch(e){}}
+// Reveal-on-scroll: immediate pass for above-the-fold elements + observer for the rest
+const _rvAll=document.querySelectorAll('.rv');
+const _vh=window.innerHeight||document.documentElement.clientHeight;
+_rvAll.forEach(el=>{const r=el.getBoundingClientRect();if(r.top<_vh&&r.bottom>0)el.classList.add('vis')});
+const obs=new IntersectionObserver(e=>{e.forEach(x=>{if(x.isIntersecting)x.target.classList.add('vis')})},{threshold:.1,rootMargin:'0px 0px -40px 0px'});
+_rvAll.forEach(el=>obs.observe(el));
+// Final safety net: ensure everything visible after load (in case observer never fires)
+window.addEventListener('load',()=>{setTimeout(()=>document.querySelectorAll('.rv:not(.vis)').forEach(el=>{const r=el.getBoundingClientRect();if(r.top<window.innerHeight)el.classList.add('vis')}),50)});
+window.addEventListener('scroll',()=>{document.getElementById('hdr').style.boxShadow=scrollY>50?'0 10px 30px rgba(0,0,0,.3)':'none'});
+function tgf(b){const a=b.nextElementSibling,i=b.querySelector('.fqi'),o=a.classList.contains('open');document.querySelectorAll('.fqa').forEach(x=>x.classList.remove('open'));document.querySelectorAll('.fqi').forEach(x=>x.style.transform='');if(!o){a.classList.add('open');i.style.transform='rotate(180deg)'}}
+const PR={lite:{hw:79,m:[14.90,12.90,9.90],d:['mensuel','6 mois','12 mois']},pro:{hw:149,m:[24.90,19.90,16.90],d:['mensuel','6 mois','12 mois']}};
+let cg='pro',cd=2;
+function setG(g){cg=g;document.getElementById('tg-lite').className=g==='lite'?'tab-sw-btn act':'tab-sw-btn';document.getElementById('tg-pro').className=g==='pro'?'tab-sw-btn act':'tab-sw-btn';updDur();upd()}
+function setD(d){cd=d;document.querySelectorAll('.ddb').forEach((b,i)=>{b.classList.remove('act');b.style.border='1px solid var(--brd)';b.style.boxShadow='none'});const e=document.getElementById('dd-'+d);e.classList.add('act');e.style.border='1px solid var(--v5)';e.style.boxShadow='0 0 15px rgba(16,224,160,.12)';upd()}
+function updDur(){const p=PR[cg];document.getElementById('ddp-0').textContent=p.m[0].toFixed(2).replace('.',',')+' \u20ac';document.getElementById('ddp-1').textContent=p.m[1].toFixed(2).replace('.',',')+' \u20ac';document.getElementById('ddp-2').textContent=p.m[2].toFixed(2).replace('.',',')+' \u20ac'}
+function upd(){const v=+document.getElementById('vs').value,p=PR[cg],pp=p.m[cd],tm=Math.round(v*pp);
+document.getElementById('vc').textContent=v;
+const ins=v>=10?0:v>=5?29:49,thw=v*p.hw,tins=v*ins,tyear=thw+tins+(tm*12);
+const perDay=(tyear/v/365);
+document.getElementById('r-day').textContent=perDay.toFixed(2).replace('.',',')+' \u20ac';
+document.getElementById('r-month').textContent=tm.toLocaleString('fr-FR')+' \u20ac';
+document.getElementById('r-ppv').textContent='soit '+pp.toFixed(2).replace('.',',')+' \u20ac/v\u00e9h';
+document.getElementById('r-year').textContent=tyear.toLocaleString('fr-FR')+' \u20ac';
+document.getElementById('r-detail').textContent='bo\u00eetier '+thw+' \u20ac + install '+tins+' \u20ac + abo '+(tm*12).toLocaleString('fr-FR')+' \u20ac';
+const sLo=v*200,sHi=v*400;
+document.getElementById('r-roi').textContent=sLo.toLocaleString('fr-FR')+' \u2013 '+sHi.toLocaleString('fr-FR')+' \u20ac/an';
+const roiPct=Math.min(100,Math.round((sLo/tyear)*100));
+document.getElementById('roi-bar').style.width=roiPct+'%';
+const nt=document.getElementById('ins-note'),ntx=document.getElementById('ins-text');
+if(v>=10){nt.className='ins-note free';ntx.textContent='\u2713 Installation offerte pour '+v+' v\u00e9hicules'}else if(v>=5){nt.className='ins-note';ntx.textContent='Installation : 29 \u20ac/v\u00e9hicule \u2014 offerte d\u00e8s 10 v\u00e9hicules'}else{nt.className='ins-note';ntx.textContent='Installation : 49 \u20ac/v\u00e9hicule \u2014 29 \u20ac d\u00e8s 5, offerte d\u00e8s 10'}
+}
+// Init simulateur
+setD(2);
+
+// --- WhatsApp FAB: delayed 4s, label at 30% scroll ---
+(function(){
+var fab=document.getElementById('wa-fab');
+var lblShown=false;
+setTimeout(function(){fab.classList.add('show')},4000);
+function chkScroll(){
+if(lblShown)return;
+var scrollPct=window.scrollY/(document.documentElement.scrollHeight-window.innerHeight);
+if(scrollPct>=0.3){lblShown=true;fab.classList.add('lbl-show')}
+}
+window.addEventListener('scroll',chkScroll,{passive:true});
+})();
+
+// --- FAB Tracky App: show after hero + Espace Pro label once ---
+(function(){
+var fab=document.getElementById('app-fab');
+var label=document.getElementById('app-fab-label');
+var shown=false;
+var labelShown=false;
+try{if(sessionStorage.getItem('vt-fab-label'))labelShown=true}catch(e){}
+function chk(){
+if(shown)return;
+if(window.scrollY>300){
+shown=true;fab.classList.add('show');
+if(!labelShown&&label){
+labelShown=true;
+try{sessionStorage.setItem('vt-fab-label','1')}catch(ex){}
+setTimeout(function(){label.classList.add('show')},400);
+setTimeout(function(){label.classList.remove('show')},5000);
+}
+}
+}
+window.addEventListener('scroll',chk,{passive:true});
+setTimeout(chk,100);
+})();
+function openAppCard(){
+var ov=document.getElementById('app-card-overlay');
+ov.classList.add('show');
+document.body.style.overflow='hidden';
+}
+function closeAppCard(){
+var ov=document.getElementById('app-card-overlay');
+ov.classList.remove('show');
+document.body.style.overflow='';
+}
+document.addEventListener('keydown',function(e){if(e.key==='Escape'){closeAppCard();closeEim()}});
+
+// --- Exit-intent modal (desktop, mouseleave top, >80% scroll, once per session) ---
+(function(){
+var fired=false;
+try{if(localStorage.getItem('vt-eim-shown'))fired=true}catch(e){}
+if(fired)return;
+document.addEventListener('mouseleave',function(e){
+if(fired)return;
+if(e.clientY>10)return;
+var scrollPct=window.scrollY/(document.documentElement.scrollHeight-window.innerHeight);
+if(scrollPct<0.8)return;
+if(window.innerWidth<1024)return;
+fired=true;
+try{localStorage.setItem('vt-eim-shown','1')}catch(ex){}
+document.getElementById('eim-overlay').classList.add('show');
+document.body.style.overflow='hidden';
+});
+})();
+function closeEim(){
+document.getElementById('eim-overlay').classList.remove('show');
+document.body.style.overflow='';
+}
+
+// --- Sticky bottom bar mobile at 60% scroll, dismissable ---
+(function(){
+var sbb=document.getElementById('sbb');
+var fabStack=document.getElementById('fab-stack');
+var dismissed=false;
+var shown=false;
+function chk(){
+if(dismissed)return;
+var scrollPct=window.scrollY/(document.documentElement.scrollHeight-window.innerHeight);
+if(scrollPct>=0.6&&!shown){shown=true;sbb.classList.add('show');if(fabStack)fabStack.classList.add('shifted')}
+else if(scrollPct<0.6&&shown){shown=false;sbb.classList.remove('show');if(fabStack)fabStack.classList.remove('shifted')}
+}
+window.addEventListener('scroll',chk,{passive:true});
+})();
+function dismissSbb(){
+var sbb=document.getElementById('sbb');
+var fabStack=document.getElementById('fab-stack');
+sbb.classList.remove('show');
+sbb.style.display='none';
+if(fabStack)fabStack.classList.remove('shifted');
+}
+
+</script>
+</body>
+</html>

@@ -14,12 +14,13 @@ import {
 } from 'lucide-angular';
 import { ThemeToggleComponent } from '../shared/components/theme-toggle.component';
 import { AlertsBellComponent } from '../shared/ui/alerts-bell/alerts-bell.component';
+import { LogoComponent } from '../shared/ui/logo/logo.component';
 import { ToastContainerComponent } from '../shared/ui/toast/toast-container.component';
 
 @Component({
   selector: 'app-dashboard-layout',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, ThemeToggleComponent, AlertsBellComponent, ToastContainerComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, ThemeToggleComponent, AlertsBellComponent, LogoComponent, ToastContainerComponent],
   template: `
     <div class="h-screen flex bg-bg-primary overflow-hidden">
       <aside
@@ -27,10 +28,10 @@ import { ToastContainerComponent } from '../shared/ui/toast/toast-container.comp
         [class]="collapsed() ? 'w-16' : 'w-60'"
       >
         <div class="flex items-center gap-3 px-4 h-16 border-b border-border-subtle">
-          @if (!collapsed()) {
-            <span class="text-lg font-display font-bold bg-tracky-gradient bg-clip-text text-transparent">
-              Vizyo Tracky
-            </span>
+          @if (collapsed()) {
+            <app-logo variant="icon" [size]="28" />
+          } @else {
+            <app-logo variant="lockup" [size]="32" />
           }
           <button
             (click)="collapsed.set(!collapsed())"
