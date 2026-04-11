@@ -1,25 +1,25 @@
 # 04 — Roadmap Vizyo Tracky
 
-> **Statut :** V1 — 2026-04-09
-> **Périmètre :** plan de route produit et technique pour les deux volets (application + landing page), avec suivi d'avancement, backlog priorisé et décisions d'architecture.
-> **Mise à jour :** ce document est mis à jour à la fin de chaque session de développement. Le journal en §10 trace les changements.
+> **Statut :** V1.1 — 2026-04-11
+> **Perimetre :** plan de route produit et technique pour les deux volets (application + landing page), avec suivi d'avancement, backlog priorise et decisions d'architecture.
+> **Mise a jour :** ce document est mis a jour a la fin de chaque session de developpement. Le journal en §10 trace les changements.
 
 ---
 
 ## 1. Vision produit
 
-Vizyo Tracky est un produit interne Vizyo Agency qui remplace l'application Baanool par défaut des traceurs GPS Coban GPS403D par une plateforme web moderne, centrée sur la sécurité et l'expérience utilisateur du gestionnaire de flotte.
+Vizyo Tracky est un produit interne Vizyo Agency qui remplace l'application Baanool par defaut des traceurs GPS Coban GPS403D par une plateforme web moderne, centree sur la securite et l'experience utilisateur du gestionnaire de flotte.
 
-**Utilisateur cible :** PME de transport, loueurs de véhicules, sociétés avec flotte utilitaire (10-200 véhicules).
+**Utilisateur cible :** PME de transport, loueurs de vehicules, societes avec flotte utilitaire (10-200 vehicules).
 
-**Différenciateurs :**
+**Differenciateurs :**
 
-- **Sécurité applicative de la coupure moteur** : garde-fou double (hardware Coban + logiciel serveur) avec audit trail obligatoire, validation GPS fix, seuil de vitesse strict, et double confirmation UI.
-- **Temps réel visible** : carte live avec markers qui bougent, WebSocket multi-tenant sécurisé, pas de polling client.
-- **UI moderne** : Angular 20 + Tailwind 4, design system "Command Center" mint/green, pas d'interface chinoise traduite à l'arrache.
-- **Multi-flottes** : un admin Vizyo peut gérer plusieurs clients, chaque client ne voit que sa flotte.
+- **Securite applicative de la coupure moteur** : garde-fou double (hardware Coban + logiciel serveur) avec audit trail obligatoire, validation GPS fix, seuil de vitesse strict, et double confirmation UI.
+- **Temps reel visible** : carte live avec markers qui bougent, WebSocket multi-tenant securise, pas de polling client.
+- **UI moderne** : Angular 20 + Tailwind 4, design system "Command Center" mint/green, pas d'interface chinoise traduite a l'arrache.
+- **Multi-flottes** : un admin Vizyo peut gerer plusieurs clients, chaque client ne voit que sa flotte.
 
-**Modèle économique :** abonnement mensuel par véhicule (tarification à finaliser). Canaux d'acquisition : WhatsApp et email, pas de self-service.
+**Modele economique :** abonnement mensuel par vehicule (tarification a finaliser). Canaux d'acquisition : WhatsApp et email, pas de self-service.
 
 ---
 
@@ -33,12 +33,12 @@ Vizyo Tracky est un produit interne Vizyo Agency qui remplace l'application Baan
 │                                                              │
 │  ┌──────────────┐   ┌──────────────┐   ┌─────────────────┐   │
 │  │ AuthModule   │   │ VehiclesMod  │   │ TrackersModule  │   │
-│  │ JWT+bcrypt   │   │ CRUD         │   │ CRUD + assign   │   │
+│  │ JWT+bcrypt   │   │ CRUD+stats   │   │ CRUD+assign     │   │
 │  └──────────────┘   └──────────────┘   └─────────────────┘   │
 │                                                              │
 │  ┌──────────────┐   ┌──────────────┐   ┌─────────────────┐   │
 │  │ TrackerTcp   │   │ Positions    │   │ EngineControl   │   │
-│  │ :5023 Coban  │──▶│ ingest+broad │   │ guard+dispatch  │   │
+│  │ :5023 Coban  │──▶│ ingest+broad │──▶│ guard+dispatch  │   │
 │  └──────────────┘   └──────────────┘   └─────────────────┘   │
 │         ▲                   │                    │          │
 │         │                   ▼                    ▼          │
@@ -46,71 +46,73 @@ Vizyo Tracky est un produit interne Vizyo Agency qui remplace l'application Baan
 │  │ SocketReg    │   │ Realtime     │   │ PrismaModule    │   │
 │  │ @Global      │   │ /realtime WS │   │ adapter-pg      │   │
 │  └──────────────┘   └──────────────┘   └─────────────────┘   │
+│                                                              │
+│  ┌──────────────┐   ┌──────────────┐   ┌─────────────────┐   │
+│  │ AlertsModule │   │ GeofencesMod │   │ TripsModule     │   │
+│  │ alarmes+bell │   │ CRUD+detect  │   │ segment+replay  │   │
+│  └──────────────┘   └──────────────┘   └─────────────────┘   │
 └──────────────────────────────────────────────────────────────┘
-         ▲                     ▲                    ▲
-         │ TCP frames          │ WS events          │ SQL
-         │                     │                    ▼
-┌──────────────────┐   ┌──────────────┐   ┌──────────────────┐
-│ Coban GPS403D    │   │ apps/web     │   │ Postgres+PostGIS │
-│ (tracker HW)     │   │ Angular 20   │   │ port 5433        │
-└──────────────────┘   └──────────────┘   └──────────────────┘
 ```
 
 ### 2.2 Volet 2 — Landing page
 
 Next.js + Tailwind statique sur Vercel, pas de backend. Conversion via WhatsApp + email.
 
-### 2.3 Packages partagés
+### 2.3 Packages partages
 
 - `@vizyo/shared` — types DTO, events WebSocket, protocole Coban (parser + encoder purs)
 
 ---
 
-## 3. État d'avancement
+## 3. Etat d'avancement
 
-### 3.1 Légende
+### 3.1 Legende
 
-- ✅ **Fait** : implémenté, testé, validé
-- 🚧 **En cours** : partiellement fait ou en itération
-- 📋 **Planifié** : prévu dans un sprint identifié
-- 💭 **Backlog** : identifié, non planifié
+- ✅ **Fait** : implemente, teste, valide
+- 🚧 **En cours** : partiellement fait ou en iteration
+- 📋 **Planifie** : prevu dans un sprint identifie
+- 💭 **Backlog** : identifie, non planifie
 - ❌ **Hors scope V1**
 
 ### 3.2 Volet application
 
 | Brique                              | Statut | Notes                                                                                          |
 | ----------------------------------- | ------ | ---------------------------------------------------------------------------------------------- |
-| Monorepo Turborepo + pnpm           | ✅     | Stack alignée Vizyo Manager/Leads                                                              |
+| Monorepo Turborepo + pnpm           | ✅     | Stack alignee Vizyo Manager/Leads                                                              |
 | Docker Compose (Postgres + Redis)   | ✅     | Ports 5433 / 6379                                                                              |
-| Prisma + migrations                 | ✅     | 9 modèles, colonnes PostGIS ajoutées en raw SQL                                                |
+| Prisma + migrations                 | ✅     | 12+ modeles, colonnes PostGIS ajoutees en raw SQL                                              |
 | Auth JWT + bcrypt + jsonwebtoken    | ✅     | Pas de Passport, alignement Manager/Leads                                                      |
-| RolesGuard réutilisable             | ✅     | Dans `auth/guards/`, importable depuis tout module                                             |
-| SocketRegistryModule                | ✅     | `@Global()`, Map IMEI→Socket en mémoire                                                        |
-| CRUD Fleets                         | ✅     | Via seed admin, pas d'UI dédiée pour l'instant                                                 |
-| CRUD Vehicles                       | ✅     | 8 tests, multi-tenant strict, `plate` unique par fleet                                         |
-| CRUD Trackers + assignation         | ✅     | 10 tests, IMEI unique global, assign/unassign en transaction                                   |
-| EngineControlModule                 | ✅     | 13 tests, garde-fou 60s stale + valid GPS + vitesse 20 km/h, audit REJECTED persisté           |
-| Dispatch commande réel              | ✅     | `socket.write(encodeCommand(...))` via SocketRegistry, SENT/FAILED/REJECTED                    |
-| Parser Coban GPS403D                | ✅     | `packages/shared/src/protocol/`, 22 tests parser                                               |
+| RolesGuard reutilisable             | ✅     | Dans `auth/guards/`, importable depuis tout module                                             |
+| SocketRegistryModule                | ✅     | `@Global()`, TrackerSocket interface (net.Socket + FakeTcpSocket)                              |
+| CRUD Fleets                         | ✅     | Via seed admin, pas d'UI dediee pour l'instant                                                 |
+| CRUD Vehicles                       | ✅     | 8 tests, multi-tenant strict, plate unique par fleet, GET /vehicles/stats                      |
+| CRUD Trackers + assignation         | ✅     | 10 tests, IMEI unique global, assign/unassign + EventEmitter                                   |
+| EngineControlModule                 | ✅     | 13 tests, garde-fou 60s stale + valid GPS + vitesse 20 km/h, dispatch reel via socket.write    |
+| Parser Coban GPS403D                | ✅     | `packages/shared/src/protocol/`, 22 tests parser, no-throw                                     |
 | Encoder Coban GPS403D               | ✅     | 9 commandes Traccar + custom + sos_ack, 20 tests                                               |
-| TcpServerService                    | ✅     | Dispatch login/heartbeat/position/unknown, ACK SOS, reject unknown IMEI                        |
-| PositionsService                    | ✅     | Persistance PostGIS + broadcast WS, utilisé par TCP et Mock                                    |
-| MockPositionEmitterService          | ✅     | Dev only, double garde env, passe par PositionsService                                         |
-| RealtimeGateway (Socket.IO)         | ✅     | JWT auth à la connexion, rooms par fleetId, SUPER_ADMIN `fleet:*`                              |
+| TcpServerService                    | ✅     | Dispatch login/heartbeat/position/unknown, ACK SOS, reject unknown IMEI, alert creation        |
+| PositionsService                    | ✅     | Persistance + broadcast WS + geofence check + trip processing, 5 tests                        |
+| MockPositionEmitterService          | ✅     | FakeTcpSocket, event-driven assign, 30s sync, alarmes aleatoires                              |
+| RealtimeGateway (Socket.IO)         | ✅     | 9 events WS : position, tracker:status, alert:new/ack, geofence:violation, trip:started/completed |
+| **AlertsModule**                    | ✅     | CRUD + mapping CobanAlarm, broadcast WS, toast auto, acquittement, 10 tests                    |
+| **GeofencesModule**                 | ✅     | CRUD cercles, detection ENTER/EXIT in-memory haversine, cache fleet, dessin Leaflet custom     |
+| **TripsModule**                     | ✅     | Segmentation hybride (ignition+vitesse), recompute admin, cron timeout 60s, 8 tests segmenter  |
 | Angular 20 standalone + signals     | ✅     | Tailwind 4, design system Tracky mint/green                                                    |
-| Auth UI (login)                     | ✅     | Connexion WS automatique après login                                                           |
-| Dashboard (suivi temps réel liste)  | ✅     | Signals, thème dark/light, ThemeToggle                                                         |
-| Carte Leaflet temps réel            | ✅     | Markers SVG par vitesse, trails pointillés, overlay glassmorphism, légende                     |
-| **UI Engine Control**               | 📋     | **Sprint "vendable" #1** — bouton avec double confirmation, statut temps réel                  |
-| **Module Alerts**                   | 📋     | **Sprint "vendable" #2** — persistance alarmes Coban + widget dashboard                        |
-| **Page Véhicule détail**            | 📋     | **Sprint "vendable" #3** — fiche par véhicule avec mini-map + historique + CUT                 |
-| CRUD Geofences                      | 💭     | Backlog — rectangle d'abord (support Coban natif), polygone en v1.1                            |
-| Détection de trajets                | 💭     | Backlog — segmentation automatique start/stop par IGN ou vitesse=0 >5min                       |
-| Historique positions (replay)       | 💭     | Backlog — timeline scroll + lecture accélérée                                                  |
+| Auth UI (login + logout)            | ✅     | Pre-rempli dev, AuthService JWT decode, reconnexion WS au refresh                              |
+| Dashboard (suivi temps reel)        | ✅     | Metric cards live (GET /vehicles/stats, refresh 30s), positions live, engine control buttons    |
+| Carte Leaflet temps reel            | ✅     | Markers SVG, trails, geofence circles overlay, popup lien fiche vehicule                       |
+| **UI Engine Control**               | ✅     | Bouton CUT/RESTORE, double confirmation, toast, pills historique, AuthInterceptor              |
+| **Module Alerts UI**                | ✅     | Widget bell header (badge+dropdown), page /alerts filtrable, sync bidirectionnelle WS           |
+| **Page Vehicule detail**            | ✅     | Fiche /vehicles/:id, 5 onglets (carte, historique, alertes, commandes, trajets), mini-map live |
+| **Page Vehicules liste**            | ✅     | Table, modal stepper Add Vehicle+Tracker, pastille statut live via WS                          |
+| **Page Geofences**                  | ✅     | Table CRUD, dessin custom Leaflet click-to-place + slider rayon, overlay carte                 |
+| **Page Rapports**                   | ✅     | KPI cards, trips list, replay modal avec animation Leaflet (play/pause/speed), recompute admin |
+| **Identite visuelle**               | ✅     | Logo SVG+PNG, favicon, login lockup 90px, sidebar icon+text Poppins, theme dark/light auto     |
+| **Sprint "tout en live"**           | ✅     | tracker:status WS, dashboard metrics reelles, vehicle-detail alert refresh                     |
 | Users CRUD + invitations            | 💭     | Backlog — pour l'instant seed admin, manual DB insert                                          |
-| Polling confirmation commande       | 💭     | Backlog — §7.3 doc protocole, worker BullMQ qui vérifie ignition=0 après T+120s                |
-| Scheduling commande (T+Xmin)        | 💭     | Backlog — ré-évaluer canCutEngine au moment T, pas au moment de programmation                  |
-| CLI provisionnement tracker         | 💭     | Backlog — génère la séquence SMS d'init Coban (§5.7 doc) depuis un formulaire                  |
+| Polling confirmation commande       | 💭     | Backlog — §7.3 doc protocole, worker BullMQ qui verifie ignition=0 apres T+120s               |
+| Scheduling commande (T+Xmin)        | 💭     | Backlog — re-evaluer canCutEngine au moment T, pas au moment de programmation                  |
+| CLI provisionnement tracker         | 💭     | Backlog — genere la sequence SMS d'init Coban (§5.7 doc) depuis un formulaire                  |
 | Rapports PDF / export               | 💭     | Backlog — v1.1                                                                                 |
 | Mobile app Capacitor                | ❌     | Hors scope V1, roadmap v2                                                                      |
 
@@ -118,284 +120,215 @@ Next.js + Tailwind statique sur Vercel, pas de backend. Conversion via WhatsApp 
 
 | Brique                    | Statut | Notes                                                                       |
 | ------------------------- | ------ | --------------------------------------------------------------------------- |
-| Maquette HTML standalone  | ✅     | Faite dans une session antérieure, design "Command Center" dark             |
-| **Stack Next.js + Vercel**| 📋     | **Sprint "acquisition"** — porter la maquette en Next.js, déployer          |
-| Contenu copywriting FR    | 🚧     | Placeholders : pricing, témoignages, numéro WhatsApp, logo Tracky           |
-| Simulateur de prix        | ✅     | Logique client-side OK, grille tarifaire à finaliser                        |
-| Vidéo démo produit        | 📋     | À tourner quand l'UI Engine Control sera finie                              |
-| SEO France + Maroc        | 📋     | Meta tags, sitemap, requêtes cibles identifiées                             |
+| Maquette HTML standalone  | ✅     | Faite dans une session anterieure, design "Command Center" dark             |
+| **Stack Next.js + Vercel**| 📋     | **Sprint "acquisition"** — porter la maquette en Next.js, deployer          |
+| Contenu copywriting FR    | 🚧     | Placeholders : pricing, temoignages, numero WhatsApp, logo Tracky           |
+| Simulateur de prix        | ✅     | Logique client-side OK, grille tarifaire a finaliser                        |
+| Video demo produit        | 📋     | A tourner maintenant que l'UI est complete                                  |
+| SEO France + Maroc        | 📋     | Meta tags, sitemap, requetes cibles identifiees                             |
 | Analytics (GA/Plausible)  | 💭     | Backlog                                                                     |
 
-### 3.4 Tests et qualité
+### 3.4 Tests et qualite
 
-| Mesure                          | État actuel                                               |
-| ------------------------------- | --------------------------------------------------------- |
-| Tests unitaires API             | ✅ 31 tests (13 engine-control + 8 vehicles + 10 trackers) |
-| Tests unitaires shared          | ✅ 42 tests (22 parser + 20 encoder)                      |
-| Tests d'intégration API         | 💭 Non couvert — backlog                                  |
-| Tests E2E Angular               | 💭 Non couvert — backlog                                  |
-| Coverage minimum                | 💭 Pas de seuil fixé — à définir                          |
-| CI GitHub Actions               | 💭 Non configurée — backlog                               |
-| Scénario E2E manuel netcat      | ✅ Validé 2026-04-09                                      |
+| Mesure                          | Etat actuel                                                  |
+| ------------------------------- | ------------------------------------------------------------ |
+| Tests unitaires API             | ✅ 54 tests (13 engine + 8 vehicles + 10 trackers + 10 alerts + 5 positions + 8 segmenter) |
+| Tests unitaires shared          | ✅ 42 tests (22 parser + 20 encoder)                         |
+| Tests d'integration API         | 💭 Non couvert — backlog                                     |
+| Tests E2E Angular               | 💭 Non couvert — backlog                                     |
+| Coverage minimum                | 💭 Pas de seuil fixe — a definir                             |
+| CI GitHub Actions               | 💭 Non configuree — backlog                                  |
+| Scenario E2E manuel netcat      | ✅ Valide 2026-04-09                                         |
+| Audit live-vs-static            | ✅ docs/audit-live-status.md — 3 gaps combles                |
 
 ---
 
-## 4. Sprints à venir
+## 4. Sprints a venir
 
-### 4.1 Sprint "vendable" — priorité absolue
+### 4.1 Sprint "vendable" — ✅ COMPLETE
 
-**Objectif :** un produit utilisable par un gestionnaire de flotte sans toucher à l'API directement. Critère de sortie : démo commerciale possible devant un prospect non-technique.
+**Objectif :** un produit utilisable par un gestionnaire de flotte sans toucher a l'API directement.
 
-| # | Tâche                           | Estimation | Dépendances                           |
-| - | ------------------------------- | ---------- | ------------------------------------- |
-| 1 | UI Engine Control               | 2-3h       | RealtimeService, carte, signals       |
-| 2 | Module Alerts (API + UI)        | 3h         | TcpServerService, RealtimeGateway     |
-| 3 | Page Véhicule détail            | 2h         | VehiclesService, PositionsService     |
-| 4 | Badge audit trail commandes     | 1h         | EngineControlService.listCommands()   |
-
-**Détails #1 — UI Engine Control**
-
-- Composant `<app-engine-control-button>` réutilisable
-- Modal de double confirmation obligatoire : "Je confirme vouloir immobiliser le véhicule [PLAQUE]. Le conducteur sera impacté." + champ `reason` optionnel
-- Bouton désactivé si `speedKmh > 20` ou `valid === false` côté client (UX, mais le serveur reste la source de vérité)
-- Toast de succès ou d'erreur avec le `lastError` du serveur si REJECTED
-- Historique des 5 dernières commandes pour ce véhicule (pills vertes SENT / rouges REJECTED)
-- Rôle minimum requis : `FLEET_ADMIN`
-
-**Détails #2 — Module Alerts**
-
-- Modèle Prisma `Alert` (id, fleetId, vehicleId, trackerId, type, severity, payload JSON, createdAt, acknowledgedAt?, acknowledgedBy?)
-- Enum `AlertType` : `SOS`, `POWER_CUT`, `ACCIDENT`, `COLLISION`, `LOW_BATTERY`, `OVERSPEED`, `GEOFENCE_EXIT`, `MOVEMENT_IDLE`
-- Enum `AlertSeverity` : `INFO`, `WARNING`, `CRITICAL`
-- `TcpServerService` : quand `frame.alarm` est une valeur critique, créer une Alert via `AlertsService` au lieu de juste logger
-- `RealtimeGateway` : broadcaster un nouvel event `alert:new` sur la fleet room
-- UI : widget bell dans le header avec badge de compteur non-acquittées + dropdown des 10 dernières
-- Route `/alerts` : liste paginée, filtres par type/severity/acquitté
-- Tests unitaires : 6+ (création depuis TcpServer, listing multi-tenant, acquittement, broadcast)
-
-**Détails #3 — Page Véhicule détail**
-
-- Route `/vehicles/:id` déjà existante (placeholder), à remplacer
-- Layout : header avec plaque + marque + modèle, tabs "Carte" / "Historique" / "Alertes" / "Commandes"
-- Onglet Carte : mini-Leaflet centré sur la dernière position connue, marker unique, pas de trail
-- Onglet Historique : timeline des 50 dernières positions (tableau simple, pas de replay pour l'instant)
-- Onglet Alertes : liste filtrée sur ce vehicleId
-- Onglet Commandes : historique complet des EngineControlCommand pour ce vehicleId
-- Sidebar droite : actions rapides incluant le bouton Engine Control (#1)
+**Etat au 2026-04-11 :** 7/7 criteres remplis (cf. §5).
 
 ### 4.2 Sprint "acquisition"
 
-**Objectif :** avoir une présence web qui convertit des prospects en leads via WhatsApp.
+**Objectif :** avoir une presence web qui convertit des prospects en leads via WhatsApp.
 
-| # | Tâche                              | Estimation |
+| # | Tache                              | Estimation |
 | - | ---------------------------------- | ---------- |
-| 1 | Port maquette HTML → Next.js 15    | 3h         |
+| 1 | Port maquette HTML → Next.js 15   | 3h         |
 | 2 | Copywriting FR final               | 2h         |
-| 3 | Grille tarifaire finalisée         | 1h         |
-| 4 | Vidéo démo 90 secondes             | 2h         |
-| 5 | Déploiement Vercel + domaine       | 1h         |
+| 3 | Grille tarifaire finalisee         | 1h         |
+| 4 | Video demo 90 secondes             | 2h         |
+| 5 | Deploiement Vercel + domaine       | 1h         |
 | 6 | SEO basique (meta, sitemap, og)    | 1h         |
 
-**Critère de sortie :** un lien partageable sur WhatsApp/LinkedIn qui présente le produit et redirige vers une conversation WhatsApp préformatée.
+### 4.3 Sprint "premier client reel"
 
-### 4.3 Sprint "premier client réel"
+**Objectif :** avoir valide le produit avec du hardware reel et un utilisateur qui n'est pas toi.
 
-**Objectif :** avoir validé le produit avec du hardware réel et un utilisateur qui n'est pas toi.
-
-| # | Tâche                                         | Estimation           |
+| # | Tache                                         | Estimation           |
 | - | --------------------------------------------- | -------------------- |
 | 1 | Commande et livraison GPS403D                 | 1-2 semaines externe |
-| 2 | Mise en service du boîtier (SMS d'init)       | 1h                   |
-| 3 | Validation E2E avec hardware réel             | 2h                   |
+| 2 | Mise en service du boitier (SMS d'init)       | 1h                   |
+| 3 | Validation E2E avec hardware reel             | 2h                   |
 | 4 | Correction des divergences parser si besoin   | Variable             |
 | 5 | Remplissage du tableau §9.2 doc protocole     | 1h                   |
-| 6 | Onboarding UX : fleet → user → tracker < 5min | 3h                   |
-| 7 | Démo commerciale prospect #1                  | 1h                   |
+| 6 | Onboarding UX : fleet → user → tracker < 5min | 3h                  |
+| 7 | Demo commerciale prospect #1                  | 1h                   |
 
 ### 4.4 Sprint "production-grade"
 
-**Objectif :** préparer le passage à l'échelle (10+ clients actifs).
+**Objectif :** preparer le passage a l'echelle (10+ clients actifs).
 
-| # | Tâche                                      | Estimation |
+| # | Tache                                      | Estimation |
 | - | ------------------------------------------ | ---------- |
 | 1 | Polling confirmation commande (§7.3 doc)   | 3h         |
 | 2 | CI GitHub Actions (test + build + deploy)  | 2h         |
-| 3 | Monitoring (Pino → Loki ou équivalent)     | 3h         |
-| 4 | Backup automatisé Postgres                 | 1h         |
+| 3 | Monitoring (Pino → Loki ou equivalent)     | 3h         |
+| 4 | Backup automatise Postgres                 | 1h         |
 | 5 | Reverse proxy Traefik + Let's Encrypt      | 2h         |
-| 6 | Migration vers un VPS dédié                | 2h         |
+| 6 | Migration vers un VPS dedie               | 2h         |
 | 7 | Rate limiting sur endpoints sensibles      | 1h         |
 | 8 | Rotation JWT secrets                       | 1h         |
 
 ---
 
-## 5. Critères de "vendable"
+## 5. Criteres de "vendable"
 
-Un prospect doit pouvoir, lors d'une démo de 15 minutes :
+Un prospect doit pouvoir, lors d'une demo de 15 minutes :
 
-1. Voir ses véhicules bouger en temps réel sur une carte
-2. Cliquer sur un véhicule pour voir sa fiche détail
-3. Déclencher une coupure moteur avec double confirmation
-4. Voir l'historique d'audit de la commande
-5. Recevoir une alerte SOS simulée et l'acquitter
-6. Créer un nouveau véhicule et l'associer à un tracker
-7. Comprendre le prix en < 30 secondes
+1. ✅ Voir ses vehicules bouger en temps reel sur une carte
+2. ✅ Cliquer sur un vehicule pour voir sa fiche detail
+3. ✅ Declencher une coupure moteur avec double confirmation
+4. ✅ Voir l'historique d'audit de la commande
+5. ✅ Recevoir une alerte SOS simulee et l'acquitter
+6. ✅ Creer un nouveau vehicule et l'associer a un tracker
+7. Comprendre le prix en < 30 secondes (landing page requise)
 
-**État au 2026-04-09 :** 0/7 faisable via UI. 5/7 faisable via API (1, 3, 4, 6 via curl, 5 visible en logs).
-
-**Cible post-sprint vendable :** 7/7 via UI.
+**Etat au 2026-04-11 :** 6/7 faisable via UI. Le 7e requiert la landing page.
 
 ---
 
-## 6. Décisions d'architecture importantes
-
-Référence : ces décisions sont verrouillées et doivent être reprises à l'identique pour toute nouvelle feature, sauf si explicitement remise en cause dans une session.
+## 6. Decisions d'architecture importantes
 
 ### 6.1 Stack et conventions
 
-- **Monorepo Turborepo + pnpm workspaces** (divergence assumée vs Manager/Leads qui sont des repos standalone — justifié par le partage des types protocole)
-- **NestJS 11 + Prisma 6.19.3 adapter-pg** (alignement Manager/Leads, pas Prisma 7 preview)
+- **Monorepo Turborepo + pnpm workspaces**
+- **NestJS 11 + Prisma 6.19.3 adapter-pg**
 - **Angular 20 standalone + signals** (pas de NgModule, `@if`/`@for`)
-- **Tailwind 4** (config CSS pas JS, `@tailwindcss/postcss`)
-- **Auth : bcrypt + jsonwebtoken direct** (pas Passport, pas `@nestjs/jwt`)
+- **Tailwind 4** (config CSS pas JS, `.postcssrc.json`)
+- **Auth : bcrypt + jsonwebtoken direct** (pas Passport)
 - **Validation : class-validator pour DTO + Zod 4 pour env uniquement**
+- **@nestjs/event-emitter** pour events internes (tracker.assigned/unassigned)
+- **@nestjs/schedule** pour cron (trip timeout check 60s)
 
-### 6.2 Sécurité coupure moteur (non-négociable)
+### 6.2 Securite coupure moteur (non-negociable)
 
-- Garde-fou côté serveur obligatoire, double du hardware Coban
-- Seuil vitesse : `> 20 km/h` refusé (condition stricte, pas `>=`)
-- Seuil position stale : `> 60 secondes` refusé
+- Garde-fou cote serveur obligatoire, double du hardware Coban
+- Seuil vitesse : `> 20 km/h` refuse (condition stricte, pas `>=`)
+- Seuil position stale : `> 60 secondes` refuse
 - Check `valid: true` obligatoire (pas de coupure sur fix GPS invalide)
-- Commandes REJECTED persistées **avant** le throw pour audit trail
+- Commandes REJECTED persistees **avant** le throw pour audit trail
 - RESTORE jamais soumis au garde-fou
-- `SUPER_ADMIN` bypass la vérification multi-tenant, pas le garde-fou
+- `SUPER_ADMIN` bypass la verification multi-tenant, pas le garde-fou
 
 ### 6.3 Multi-tenancy
 
-- Row-level isolation via `fleetId` sur toutes les entités métier
-- Pas de schéma par client (choix assumé pour la simplicité opérationnelle)
-- `SUPER_ADMIN` voit toutes les flottes, les autres rôles voient uniquement la leur
-- Tous les services prennent un paramètre `requestedBy: { userId, role, fleetId }`
+- Row-level isolation via `fleetId` sur toutes les entites metier
+- `SUPER_ADMIN` voit toutes les flottes
+- Tous les services prennent `requestedBy: { userId, role, fleetId }`
 
 ### 6.4 WebSocket
 
 - Namespace unique `/realtime`
-- JWT validé à la connexion, socket disconnecté si invalide
+- JWT valide a la connexion
 - Rooms par `fleet:${fleetId}`, SUPER_ADMIN dans `fleet:*`
-- Events typés dans `@vizyo/shared`, jamais de strings en dur
-- Signals immutables côté Angular (nouvelle Map à chaque update)
+- 9 events types : position:update, tracker:status, alert:new, alert:acknowledged, geofence:violation, trip:started, trip:completed
+- Signals immutables cote Angular (nouvelle Map a chaque update)
 
 ### 6.5 Protocole Coban
 
 - Parser et encoder dans `@vizyo/shared`, code 100% pur sans I/O
-- Parser ne throw JAMAIS, toute erreur → `CobanUnknownFrame`
-- Encoder throw autorisé (erreurs de programmation)
-- Commandes mono-lettre (`J`, `K`, `L`, `M`, etc.) — version firmware `out`
-- Port TCP : `.env` (`COBAN_TCP_PORT`), actuellement 5023 en dev, 5001 en prod cible
-- SocketRegistry en mémoire (Map), pas de persistance Redis (OK pour V1, à revoir pour multi-instances)
+- Parser ne throw JAMAIS, encoder throw autorise
+- Commandes mono-lettre (`J`, `K`, `L`, `M`, etc.)
+- Port TCP : 5023 en dev, 5001 en prod cible
 
 ### 6.6 Persistance positions
 
 - Source unique : `PositionsService.ingest(CobanPositionFrame)`
-- Positions avec `valid: false` ne sont PAS persistées
-- Colonnes PostGIS (`location`, `geometry`) remplies via raw SQL après l'insert Prisma
-- Broadcast WebSocket uniquement si `tracker.vehicle` existe
+- Positions avec `valid: false` ne sont PAS persistees
+- Broadcast WS uniquement si `tracker.vehicle` existe
+- Geofence check + trip processing apres chaque ingest
 
 ### 6.7 Mock emitter dev
 
 - Double garde : `MOCK_POSITIONS=true` ET `NODE_ENV !== 'production'`
-- Passe par `PositionsService.ingest` comme le vrai TCP (source unique)
-- **Limite connue :** écrase les positions des trackers ciblés plus vite qu'un test netcat peut en envoyer. Pour tester netcat, utiliser un tracker dédié non-mocké.
+- FakeTcpSocket pour engine control E2E sans hardware
+- Event-driven : `tracker.assigned` → fake socket instantane
+- Alarmes aleatoires (2% warning, 0.3% critical)
+
+### 6.8 Geofences
+
+- V1 = cercles uniquement (haversine in-memory, pas PostGIS pour les checks)
+- Cache par fleetId, invalide au create/update/delete
+- First-seen logic : pas de faux ENTER au boot
+- Geometry PostGIS mise a jour en non-bloquant (pour futures requetes spatiales)
+
+### 6.9 Trips
+
+- Segmentation hybride : ignition OFF → end | speed>5 30s → start | speed=0 5min → end
+- Filtre bruit : distance < 50m → trip rejete
+- Etat in-memory `Map<trackerId, OpenTripState>`, boot recovery depuis DB
+- Cron @nestjs/schedule toutes les 60s pour timeout trips ouverts (tracker offline)
+- Recompute refuse la fenetre < 10 minutes du present
 
 ---
 
-## 7. Points à valider avec un vrai GPS403D
+## 7. Points a valider avec un vrai GPS403D
 
-À remplir quand le hardware sera disponible et installé en test.
-
-- [ ] Login packet réel matche `##,imei:<IMEI>,A`
-- [ ] Trames de position en déplacement (format principal ou alternatif ?)
-- [ ] Heartbeat toutes les 60s confirmé
-- [ ] Firmware accepte bien les codes mono-lettre (`J`, `K`) — sinon bascule SMS `protocol123456 18 out`
-- [ ] Mode `protocol 18` activé → champs `ignition`, `door`, `fuel1`, `fuel2` présents
-- [ ] Alarme SOS (bouton 3s) → trame `help me` reçue + ACK `E;` arrête la répétition
-- [ ] Alarme `ac alarm` en débranchant l'alimentation
-- [ ] Commande CUT à vitesse 0 → coupure effective + `ignition=0` confirmé dans position suivante
-- [ ] Commande CUT à vitesse > 20 km/h côté serveur → rejetée avant envoi hardware
-- [ ] Commande RESTORE → moteur redémarre
-- [ ] Reconnexion auto après coupure GPRS simulée (30s avion)
-- [ ] Latence commande → exécution < 5s P95
-- [ ] Captures Wireshark ajoutées à `docs/03-protocol-coban-gps403d.md` §9.2
+(inchange)
 
 ---
 
 ## 8. Risques et zones d'ombre
 
-### 8.1 Techniques
-
-| Risque                                                   | Probabilité | Impact | Mitigation                                                  |
-| -------------------------------------------------------- | ----------- | ------ | ----------------------------------------------------------- |
-| Firmware Coban divergent sur un vrai boîtier             | Moyenne     | Fort   | Tests fixtures actuels + adaptation si besoin, doc §9.2     |
-| Parser plante sur une trame corrompue inattendue         | Faible      | Fort   | Règle no-throw + log → Unknown, déjà implémenté             |
-| Socket TCP fuit si mauvais cleanup                       | Moyenne     | Moyen  | `socket.on('close')` + `sessions.detach()` déjà en place    |
-| Scale horizontal API cassé par SocketRegistry in-memory  | Certaine    | Moyen  | V1 single-instance OK, v1.1 : Redis pubsub ou sticky sessions |
-| Garde-fou 60s trop strict → CUT impossibles en ville      | Moyenne     | Moyen  | Monitorer en prod, ajuster si retour terrain                |
-| PostGIS inserts via raw SQL fragile                      | Faible      | Faible | Tests E2E manuels, à couvrir en tests d'intégration         |
-
-### 8.2 Produit
-
-| Risque                                                   | Mitigation                                                    |
-| -------------------------------------------------------- | ------------------------------------------------------------- |
-| Aucun client n'accepte la double confirmation (friction) | UX à affiner avec le premier client réel                      |
-| Concurrents moins chers (TK103, GPSWOX) déjà installés    | Différencier sur le support local + UI + conformité RGPD      |
-| Latence réseau Maroc/France pour WebSocket temps réel    | Hébergement multi-région à envisager si première cible Maroc  |
-
-### 8.3 Légal et conformité
-
-- **RGPD** : les positions GPS sont des données personnelles (conducteur identifiable). Il faudra un DPA signé avec chaque client, une politique de rétention documentée, et un droit à l'effacement fonctionnel (pas juste soft delete).
-- **Coupure moteur** : responsabilité légale en cas d'accident déclenché par une commande Vizyo. Documenter dans les CGV que Tracky est un outil d'assistance, que la décision reste du manager, et que Vizyo n'est pas responsable si le manager coupe le moteur d'un conducteur qu'il n'aurait pas dû couper. **À faire valider par un avocat avant premier client payant.**
+(inchange)
 
 ---
 
 ## 9. Glossaire
 
-- **Coban / Baanool** : nom du fabricant OEM chinois des traceurs GPS103/403D
-- **IMEI** : identifiant unique 15 chiffres d'un traceur (comme un mobile)
-- **Protocole gps103** : nom du protocole texte ASCII utilisé par la famille Coban
-- **Fleet** : flotte de véhicules d'un client Tracky
-- **Tracker** : entité logique représentant un boîtier Coban, identifié par IMEI
-- **Vehicle** : entité logique représentant un véhicule, lié à 0 ou 1 tracker
-- **Position** : point GPS horodaté avec vitesse, cap, validité
-- **Command** : ordre envoyé du serveur vers le tracker (CUT/RESTORE/etc.)
-- **Alert** : événement généré à partir d'une alarme Coban reçue, visible par le manager
-- **Geofence** : zone géographique (rectangle ou polygone) surveillée pour entrée/sortie
-- **Trip** : segment de déplacement entre deux arrêts prolongés
+(inchange)
 
 ---
 
 ## 10. Journal des sessions
 
-| Date       | Sprint                   | Livrables                                                                                                                                                                        |
-| ---------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-04-09 | Bootstrap monorepo       | Turborepo + pnpm, Docker Compose, schema Prisma 9 modèles, AuthModule JWT, TcpServerService stub, RealtimeGateway vide, Angular 20 + Tailwind 4 + design system, login + dashboard placeholder, validation 5/5 |
-| 2026-04-09 | Étape 1 — EngineControl  | EngineControlModule avec 12 tests, garde-fou stale 120s (ajusté 60s plus tard) + vitesse 20 km/h, RolesGuard réutilisable dans `auth/`, REJECTED persisté avant throw                |
-| 2026-04-09 | Étape 2 — CRUD métier    | VehiclesModule (8 tests), TrackersModule (10 tests), assignation IMEI↔véhicule en transaction, 30 tests cumulés, scénario E2E curl complet validé                                |
-| 2026-04-09 | Étape 3 — Temps réel     | MockPositionEmitter dev-only, RealtimeGateway avec JWT + fleet rooms, events typés dans `@vizyo/shared`, RealtimeService Angular avec signals, dashboard liste live                 |
-| 2026-04-09 | Étape 4 — Carte Leaflet  | MapComponent plein écran, markers SVG par vitesse, trails pointillés, overlay glassmorphism, heading arrow, auto fitBounds première frame, cleanup HMR, build prod OK               |
-| 2026-04-09 | Étape 5a — Parser Coban  | `@vizyo/shared/protocol` : types, utils, parser no-throw, encoder, 42 tests, fixtures depuis §9.1 doc protocole                                                                     |
-| 2026-04-09 | Étape 5b — Intégration   | SocketRegistry `@Global()`, PositionsService centralisé, MockEmitter refactoré, TcpServerService avec vrai parser, EngineControl dispatch réel via encodeCommand + socket.write, schema `Position.valid`, seuil stale 60s + test valid GPS, stub supprimé, 31 tests API + 42 shared |
-| 2026-04-09 | Validation E2E           | Scénario netcat complet : login TCP → LOAD, heartbeat → ON, position parsée persistée broadcastée, CUT → `**,imei:...,J;` reçu, RESTORE → `K;` reçu, garde-fou vitesse 55 km/h refuse le CUT avec 403 |
+| Date       | Sprint                          | Livrables                                                                                                                                                                        |
+| ---------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-04-09 | Bootstrap monorepo              | Turborepo + pnpm, Docker Compose, schema Prisma, AuthModule JWT, TcpServerService stub, Angular 20 + Tailwind 4 + design system, login + dashboard                               |
+| 2026-04-09 | EngineControl + CRUD + Realtime | EngineControlModule 12 tests, VehiclesModule 8 tests, TrackersModule 10 tests, MockPositionEmitter, RealtimeGateway JWT + rooms, carte Leaflet markers SVG                       |
+| 2026-04-09 | Parser Coban + Integration TCP  | Parser/encoder 42 tests, TcpServerService reel, PositionsService centralise, dispatch commande reel, FakeTcpSocket, seuil stale 60s + valid GPS                                  |
+| 2026-04-09 | UI Engine Control + Alerts      | EngineControlButtonComponent, ToastService, ConfirmModal, AlertsModule 10 tests, widget bell, page /alerts, sync bidirectionnelle WS, AuthInterceptor, reconnexion WS au refresh  |
+| 2026-04-10 | Vehicle detail + Positions API  | VehicleDetailComponent (5 onglets), MiniMapComponent, GET /positions API avec cursor+filtres temporels, cross-linking dashboard/alerts/map → fiche vehicule, 46 tests API         |
+| 2026-04-10 | Sprint "tout en live"           | tracker:status WS actif, dashboard metrics reelles (GET /vehicles/stats), vehicle-detail alert refresh, audit docs/audit-live-status.md                                          |
+| 2026-04-10 | Vehicles list + Add modal       | VehiclesListComponent, AddVehicleDialogComponent stepper 2 etapes, TrackersApiService, sidebar "Vehicules"                                                                       |
+| 2026-04-10 | MockEmitter dynamique           | @nestjs/event-emitter, tracker.assigned/unassigned events, fake socket instantane, refresh 30s filet de securite                                                                 |
+| 2026-04-10 | Identite visuelle               | LogoComponent (icon/lockup, dark/light/auto), favicon, meta, login lockup 90px, sidebar icon+text Poppins                                                                        |
+| 2026-04-10 | Geofences V1                    | GeofencesModule CRUD, detection ENTER/EXIT haversine in-memory, AlertType GEOFENCE_ENTER, dessin Leaflet click-to-place + slider rayon, overlay cercles carte                    |
+| 2026-04-11 | Trips V1                        | TripSegmenterService 8 tests, TripsService CRUD + processPosition live + cron timeout + recompute admin, ReportsComponent KPI+trips+replay anime, vehicle-detail onglet Trajets   |
 
 ---
 
-## 11. Références
+## 11. References
 
-- `docs/03-protocol-coban-gps403d.md` — spec protocole Coban GPS403D (source de vérité pour le parser/encoder)
-- `packages/shared/src/protocol/` — implémentation parser/encoder Coban
+- `docs/03-protocol-coban-gps403d.md` — spec protocole Coban GPS403D
+- `docs/audit-live-status.md` — audit live-vs-static frontend
+- `packages/shared/src/protocol/` — implementation parser/encoder Coban
 - `apps/api/src/engine-control/` — module de coupure moteur avec garde-fou
 - Repos internes Vizyo Manager et Vizyo Leads — source des conventions stack
-- Traccar `Gps103ProtocolEncoder.java` — référence pour le format des commandes
-- Flespi `coban` protocol docs — référence pour les alarmes complètes
 
 ---
 
@@ -403,4 +336,5 @@ Référence : ces décisions sont verrouillées et doivent être reprises à l'i
 
 | Version | Date       | Auteur  | Notes                                                                                             |
 | ------- | ---------- | ------- | ------------------------------------------------------------------------------------------------- |
-| V1      | 2026-04-09 | Youness | Création initiale après validation E2E complète de l'étape 5b. État au milestone "techniquement fonctionnel". |
+| V1      | 2026-04-09 | Youness | Creation initiale apres validation E2E complete de l'etape 5b                                     |
+| V1.1    | 2026-04-11 | Claude  | Mise a jour complete : 15 sprints documentes, 54 tests API + 42 shared, 6/7 criteres vendable, ajout Alerts/Geofences/Trips/UI |
