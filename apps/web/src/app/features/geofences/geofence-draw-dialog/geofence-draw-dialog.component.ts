@@ -247,12 +247,19 @@ export class GeofenceDrawDialogComponent implements AfterViewInit, OnDestroy {
     this.map = L.map(el, { center: [33.5731, -7.5898], zoom: 12, zoomControl: true });
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(this.map);
 
+    const pinIcon = L.divIcon({
+      className: '',
+      html: `<div style="width:24px;height:24px;border-radius:50%;background:${this.color};border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3)"></div>`,
+      iconSize: [24, 24],
+      iconAnchor: [12, 12],
+    });
+
     this.map.on('click', (e: L.LeafletMouseEvent) => {
       this.center = e.latlng;
       if (this.marker) {
         this.marker.setLatLng(e.latlng);
       } else {
-        this.marker = L.marker(e.latlng).addTo(this.map!);
+        this.marker = L.marker(e.latlng, { icon: pinIcon }).addTo(this.map!);
       }
       this.updateCircle();
     });
