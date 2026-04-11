@@ -1,6 +1,9 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, Plus, Trash2, Users } from 'lucide-angular';
+import { LucideAngularModule, Plus, Trash2, Users, Shield } from 'lucide-angular';
+import { firstValueFrom } from 'rxjs';
+import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
+import { VehicleGroupsService, type VehicleGroup, type UserAccess } from '../../core/services/vehicle-groups.service';
 import { UsersApiService, type TrackyUser } from '../../core/services/users.service';
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
 
@@ -68,8 +71,15 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
                     <span class="w-2 h-2 rounded-full inline-block"
                           [class]="u.isActive ? 'bg-tracky-light' : 'bg-red-400'"></span>
                   </td>
-                  <td class="p-3 text-right">
+                  <td class="p-3 text-right flex items-center justify-end gap-1">
                     @if (u.role !== 'FLEET_ADMIN') {
+                      <button
+                        (click)="openAccessModal(u)"
+                        title="Gerer l'acces vehicules"
+                        class="p-1.5 rounded-lg text-fg-tertiary hover:text-tracky-light hover:bg-tracky/10
+                               transition-colors cursor-pointer">
+                        <lucide-icon [img]="ShieldIcon" [size]="16"></lucide-icon>
+                      </button>
                       <button
                         (click)="confirmDelete(u)"
                         class="p-1.5 rounded-lg text-fg-tertiary hover:text-red-400 hover:bg-red-400/10
@@ -127,6 +137,54 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
       (confirmed)="onDelete()"
       (cancelled)="showDeleteModal.set(false)"
     />
+
+    <!-- Access Modal -->
+    <app-confirm-modal
+      [open]="showAccessModal()"
+      [title]="'Acces vehicules — ' + (accessUser()?.email ?? '')"
+      confirmLabel="Enregistrer"
+      [loading]="savingAccess()"
+      (confirmed)="onSaveAccess()"
+      (cancelled)="showAccessModal.set(false)"
+    >
+      <div class="flex flex-col gap-3 mt-4">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="radio" name="accessType" value="ALL" [(ngModel)]="accessType"
+            class="accent-[var(--tracky)]" />
+          <span class="text-sm text-fg-primary">Tous les vehicules</span>
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="radio" name="accessType" value="CUSTOM" [(ngModel)]="accessType"
+            class="accent-[var(--tracky)]" />
+          <span class="text-sm text-fg-primary">Selection personnalisee</span>
+        </label>
+
+        @if (accessType === 'CUSTOM') {
+          @if (accessGroups().length > 0) {
+            <div class="mt-2">
+              <p class="text-xs font-semibold text-fg-tertiary uppercase mb-1">Groupes</p>
+              @for (g of accessGroups(); track g.id) {
+                <label class="flex items-center gap-2 py-1 cursor-pointer">
+                  <input type="checkbox" [checked]="selectedGroupIds.has(g.id)"
+                    (change)="toggleGroup(g.id)" class="accent-[var(--tracky)]" />
+                  <span class="text-sm text-fg-secondary">{{ g.name }} ({{ g._count.vehicles }})</span>
+                </label>
+              }
+            </div>
+          }
+          <div class="mt-2">
+            <p class="text-xs font-semibold text-fg-tertiary uppercase mb-1">Vehicules individuels</p>
+            @for (v of accessVehicles(); track v.id) {
+              <label class="flex items-center gap-2 py-1 cursor-pointer">
+                <input type="checkbox" [checked]="selectedVehicleIds.has(v.id)"
+                  (change)="toggleVehicle(v.id)" class="accent-[var(--tracky)]" />
+                <span class="text-sm text-fg-secondary">{{ v.plate }} — {{ v.brand ?? '' }}</span>
+              </label>
+            }
+          </div>
+        }
+      </div>
+    </app-confirm-modal>
   `,
 })
 export class UsersListComponent implements OnInit {
@@ -147,9 +205,23 @@ export class UsersListComponent implements OnInit {
   readonly deleting = signal(false);
   readonly userToDelete = signal<TrackyUser | null>(null);
 
+  private readonly vehiclesApi = inject(VehiclesApiService);
+  private readonly groupsService = inject(VehicleGroupsService);
+
+  // Access modal
+  readonly showAccessModal = signal(false);
+  readonly savingAccess = signal(false);
+  readonly accessUser = signal<TrackyUser | null>(null);
+  readonly accessGroups = signal<VehicleGroup[]>([]);
+  readonly accessVehicles = signal<VehicleDetailDto[]>([]);
+  accessType: 'ALL' | 'CUSTOM' = 'ALL';
+  selectedGroupIds = new Set<string>();
+  selectedVehicleIds = new Set<string>();
+
   protected readonly Plus = Plus;
   protected readonly Trash2 = Trash2;
   protected readonly UsersIcon = Users;
+  protected readonly ShieldIcon = Shield;
 
   async ngOnInit(): Promise<void> {
     await this.loadUsers();
@@ -214,5 +286,49 @@ export class UsersListComponent implements OnInit {
       await this.loadUsers();
     } catch { /* error */ }
     finally { this.deleting.set(false); }
+  }
+
+  // ─── Vehicle Access ──────────────────────────────────────
+
+  async openAccessModal(user: TrackyUser): Promise<void> {
+    this.accessUser.set(user);
+    this.showAccessModal.set(true);
+
+    const [groups, vehicles, currentAccess] = await Promise.all([
+      this.groupsService.list(),
+      firstValueFrom(this.vehiclesApi.list()),
+      this.groupsService.getUserAccess(user.id),
+    ]);
+
+    this.accessGroups.set(groups);
+    this.accessVehicles.set(vehicles);
+    this.accessType = currentAccess.type;
+    this.selectedGroupIds = new Set(currentAccess.groupIds);
+    this.selectedVehicleIds = new Set(currentAccess.vehicleIds);
+  }
+
+  toggleGroup(id: string): void {
+    if (this.selectedGroupIds.has(id)) this.selectedGroupIds.delete(id);
+    else this.selectedGroupIds.add(id);
+  }
+
+  toggleVehicle(id: string): void {
+    if (this.selectedVehicleIds.has(id)) this.selectedVehicleIds.delete(id);
+    else this.selectedVehicleIds.add(id);
+  }
+
+  async onSaveAccess(): Promise<void> {
+    const user = this.accessUser();
+    if (!user) return;
+    this.savingAccess.set(true);
+    try {
+      await this.groupsService.setUserAccess(user.id, {
+        type: this.accessType,
+        groupIds: this.accessType === 'ALL' ? [] : [...this.selectedGroupIds],
+        vehicleIds: this.accessType === 'ALL' ? [] : [...this.selectedVehicleIds],
+      });
+      this.showAccessModal.set(false);
+    } catch { /* error */ }
+    finally { this.savingAccess.set(false); }
   }
 }
