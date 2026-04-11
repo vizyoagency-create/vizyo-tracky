@@ -1,0 +1,5 @@
+export const TRIP_SPEED_THRESHOLD_KMH = 5;
+export const TRIP_STOP_TIMEOUT_MS = 5 * 60 * 1000;
+export const TRIP_MOVING_CONFIRM_MS = 30 * 1000;
+export const TRIP_MIN_DISTANCE_METERS = 50;
+export const TRIP_TIMEOUT_CHECK_MS = 60 * 1000;

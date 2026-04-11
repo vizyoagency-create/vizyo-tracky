@@ -59,8 +59,7 @@ export const routes: Routes = [
       {
         path: 'reports',
         loadComponent: () =>
-          import('./features/placeholder/placeholder.component').then((m) => m.PlaceholderComponent),
-        data: { title: 'Rapports' },
+          import('./features/reports/reports.component').then((m) => m.ReportsComponent),
       },
       {
         path: 'users',

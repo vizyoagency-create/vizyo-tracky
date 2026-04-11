@@ -4,6 +4,7 @@ import { UserRole } from '@prisma/client';
 import { GeofencesService } from '../geofences/geofences.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { TripsService } from '../trips/trips.service';
 import { PositionsService } from './positions.service';
 
 const FLEET_ID = '00000000-0000-0000-0000-000000000001';
@@ -59,6 +60,7 @@ describe('PositionsService.list', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: RealtimeGateway, useValue: { broadcastPosition: jest.fn(), emitTrackerStatus: jest.fn() } },
         { provide: GeofencesService, useValue: { checkViolations: jest.fn() } },
+        { provide: TripsService, useValue: { processPosition: jest.fn() } },
       ],
     }).compile();
 

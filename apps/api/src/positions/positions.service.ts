@@ -11,6 +11,7 @@ import type { CobanPositionFrame, PositionUpdateEvent } from '@vizyo/tracky-shar
 import { GeofencesService } from '../geofences/geofences.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { TripsService } from '../trips/trips.service';
 
 interface RequestedBy {
   role: UserRole | string;
@@ -25,6 +26,7 @@ export class PositionsService {
     private readonly prisma: PrismaService,
     private readonly gateway: RealtimeGateway,
     private readonly geofences: GeofencesService,
+    private readonly trips: TripsService,
   ) {}
 
   async ingest(frame: CobanPositionFrame): Promise<void> {
@@ -90,6 +92,18 @@ export class PositionsService {
         tracker.id, frame.latitude, frame.longitude,
         tracker.vehicle.fleetId, tracker.vehicle.id, tracker.imei,
       ).catch((err) => this.logger.error('Geofence check failed', err));
+
+      this.trips.processPosition({
+        trackerId: tracker.id,
+        vehicleId: tracker.vehicle.id,
+        fleetId: tracker.vehicle.fleetId,
+        lat: frame.latitude,
+        lng: frame.longitude,
+        speedKmh: frame.speedKph,
+        timestamp: frame.deviceTime,
+        ignition: frame.ignition ?? true,
+        vehiclePlate: tracker.vehicle.plate,
+      }).catch((err) => this.logger.error('Trip processing failed', err));
     }
   }
 

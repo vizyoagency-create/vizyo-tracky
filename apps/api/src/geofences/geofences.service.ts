@@ -9,6 +9,7 @@ import type { Geofence } from '@prisma/client';
 import type { GeofenceViolationEvent } from '@vizyo/tracky-shared';
 import { WS_EVENTS } from '@vizyo/tracky-shared';
 import { AlertsService } from '../alerts/alerts.service';
+import { distanceMeters } from '../common/utils/haversine';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import type { CreateGeofenceDto } from './dto/create-geofence.dto';
@@ -143,7 +144,7 @@ export class GeofencesService {
 
     const insideNow = new Set<string>();
     for (const zone of zones) {
-      const dist = this.haversineMeters(lat, lng, zone.centerLat, zone.centerLng);
+      const dist = distanceMeters(lat, lng, zone.centerLat, zone.centerLng);
       if (dist <= zone.radiusMeters) {
         insideNow.add(zone.id);
       }
@@ -239,14 +240,4 @@ export class GeofencesService {
     this.geofenceCache.delete(fleetId);
   }
 
-  private haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
-    const R = 6371000;
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLng = (lng2 - lng1) * Math.PI / 180;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-      Math.sin(dLng / 2) * Math.sin(dLng / 2);
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  }
 }

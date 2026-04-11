@@ -7,6 +7,8 @@ export const WS_EVENTS = {
   ALERT_NEW: 'alert:new',
   ALERT_ACK: 'alert:acknowledged',
   GEOFENCE_VIOLATION: 'geofence:violation',
+  TRIP_STARTED: 'trip:started',
+  TRIP_COMPLETED: 'trip:completed',
 } as const;
 
 export interface PositionUpdateEvent {

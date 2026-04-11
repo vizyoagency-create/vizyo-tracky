@@ -13,6 +13,7 @@ import { AlertsApiService } from '../../core/services/alerts.service';
 import { EngineControlService, type EngineControlCommandDto } from '../../core/services/engine-control.service';
 import { PositionsApiService, type PositionDto } from '../../core/services/positions.service';
 import { RealtimeService } from '../../core/services/realtime.service';
+import { TripsApiService } from '../../core/services/trips.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { MiniMapComponent } from '../../shared/ui/mini-map/mini-map.component';
@@ -287,14 +288,16 @@ export class VehicleDetailComponent implements OnInit {
   private readonly alertsApi = inject(AlertsApiService);
   private readonly engineControlApi = inject(EngineControlService);
   private readonly realtime = inject(RealtimeService);
+  private readonly tripsApi = inject(TripsApiService);
   private readonly toast = inject(ToastService);
 
   protected readonly vehicle = signal<VehicleDetailDto | null>(null);
   protected readonly recentPositions = signal<PositionDto[]>([]);
   protected readonly alerts = signal<AlertEvent[]>([]);
   protected readonly commands = signal<EngineControlCommandDto[]>([]);
+  protected readonly vehicleTrips = signal<any[]>([]);
   protected readonly loading = signal(true);
-  protected readonly activeTab = signal<'map' | 'history' | 'alerts' | 'commands'>('map');
+  protected readonly activeTab = signal<'map' | 'history' | 'alerts' | 'commands' | 'trips'>('map');
 
   protected readonly ArrowLeft = ArrowLeft;
   protected readonly Wifi = Wifi;
@@ -316,6 +319,7 @@ export class VehicleDetailComponent implements OnInit {
     { key: 'history' as const, label: 'Historique' },
     { key: 'alerts' as const, label: 'Alertes' },
     { key: 'commands' as const, label: 'Commandes' },
+    { key: 'trips' as const, label: 'Trajets' },
   ];
 
   private lastAlertCount = -1;
@@ -380,15 +384,17 @@ export class VehicleDetailComponent implements OnInit {
       this.vehicle.set(v);
 
       const trackerId = v.tracker?.id;
-      const [posRes, alertsRes, cmdsRes] = await Promise.all([
+      const [posRes, alertsRes, cmdsRes, tripsRes] = await Promise.all([
         trackerId ? firstValueFrom(this.positionsApi.list({ trackerId, limit: '100' })) : { items: [] },
         firstValueFrom(this.alertsApi.list({ vehicleId: v.id, limit: '20' })),
         trackerId ? firstValueFrom(this.engineControlApi.listCommands(trackerId, 20)) : [],
+        firstValueFrom(this.tripsApi.list({ vehicleId: v.id, limit: '20' })),
       ]);
 
       this.recentPositions.set(posRes.items);
       this.alerts.set((alertsRes as any).items ?? alertsRes);
       this.commands.set(Array.isArray(cmdsRes) ? cmdsRes : []);
+      this.vehicleTrips.set((tripsRes as any).items ?? []);
     } catch (err) {
       this.toast.error('Erreur de chargement', err instanceof HttpErrorResponse ? err.error?.message : String(err));
       this.router.navigate(['/dashboard']);
