@@ -43,11 +43,20 @@ export class UsersController {
 
     const displayName = [dto.firstName, dto.lastName].filter(Boolean).join(' ') || undefined;
 
-    const { id: authUserId } = await this.authClient.register(
+    const result = await this.authClient.register(
       dto.email,
       dto.password,
       displayName,
     );
+
+    // Auth returns { id } for new users, or { ok: true } for existing users linked to a new app
+    let authUserId: string = result.id ?? '';
+    if (!authUserId) {
+      // User already exists in Auth — login to get the authUserId from JWT
+      const tokens = await this.authClient.login(dto.email, dto.password);
+      const payload = JSON.parse(Buffer.from(tokens.accessToken.split('.')[1], 'base64').toString()) as { sub: string };
+      authUserId = payload.sub;
+    }
 
     const fleetId = req.user.role === UserRole.SUPER_ADMIN && dto.fleetId
       ? dto.fleetId

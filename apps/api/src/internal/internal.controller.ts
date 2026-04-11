@@ -76,7 +76,14 @@ export class InternalController {
     if (!fleet) throw new NotFoundException('Fleet not found');
 
     const displayName = [dto.firstName, dto.lastName].filter(Boolean).join(' ') || undefined;
-    const { id: authUserId } = await this.authClient.register(dto.email, dto.password, displayName);
+    const result = await this.authClient.register(dto.email, dto.password, displayName);
+
+    let authUserId = result.id;
+    if (!authUserId) {
+      const tokens = await this.authClient.login(dto.email, dto.password);
+      const payload = JSON.parse(Buffer.from(tokens.accessToken.split('.')[1], 'base64').toString());
+      authUserId = payload.sub as string;
+    }
 
     const user = await this.prisma.user.create({
       data: {
