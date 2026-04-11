@@ -193,7 +193,9 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
     const delta = (now - this.lastFrameTime) / 1000;
     this.lastFrameTime = now;
 
-    const step = delta * this.speed() * 2;
+    const replayDurationSeconds = 30;
+    const pointsPerSecond = this.points.length / replayDurationSeconds;
+    const step = delta * this.speed() * pointsPerSecond;
     let idx = this.currentIndex() + step;
 
     if (idx >= this.points.length - 1) {
