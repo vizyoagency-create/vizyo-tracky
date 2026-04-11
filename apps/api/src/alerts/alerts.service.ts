@@ -17,6 +17,7 @@ interface RequestedBy {
   userId: string;
   role: UserRole | string;
   fleetId: string | null;
+  accessibleVehicleIds?: string[] | 'ALL';
 }
 
 @Injectable()
@@ -78,6 +79,11 @@ export class AlertsService {
     if (requestedBy.role !== UserRole.SUPER_ADMIN) {
       if (!requestedBy.fleetId) return { items: [], nextCursor: null };
       where.fleetId = requestedBy.fleetId;
+    }
+
+    // Filtrage par accès véhicules
+    if (requestedBy.accessibleVehicleIds && requestedBy.accessibleVehicleIds !== 'ALL') {
+      where.vehicleId = { in: requestedBy.accessibleVehicleIds };
     }
 
     if (filters.type) where.type = filters.type;

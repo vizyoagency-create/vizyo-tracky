@@ -5,10 +5,12 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AlertsModule } from './alerts/alerts.module';
+import { AuthClientModule } from './auth-client/auth-client.module';
 import { AuthModule } from './auth/auth.module';
 import { validateEnv } from './config/env.validation';
 import { EngineControlModule } from './engine-control/engine-control.module';
 import { GeofencesModule } from './geofences/geofences.module';
+import { InternalModule } from './internal/internal.module';
 import { TripsModule } from './trips/trips.module';
 import { PositionsModule } from './positions/positions.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -16,12 +18,16 @@ import { RealtimeModule } from './realtime/realtime.module';
 import { SocketRegistryModule } from './socket-registry/socket-registry.module';
 import { TrackerTcpModule } from './tracker-tcp/tracker-tcp.module';
 import { TrackersModule } from './trackers/trackers.module';
+import { UsersModule } from './users/users.module';
+import { VehicleAccessModule } from './vehicle-access/vehicle-access.module';
+import { VehicleGroupsModule } from './vehicle-groups/vehicle-groups.module';
 import { VehiclesModule } from './vehicles/vehicles.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: ['../../.env', '.env'],
       validate: validateEnv,
     }),
     EventEmitterModule.forRoot(),
@@ -29,6 +35,7 @@ import { VehiclesModule } from './vehicles/vehicles.module';
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 100 }]),
     PrismaModule,
     SocketRegistryModule,
+    AuthClientModule,
     AuthModule,
     PositionsModule,
     AlertsModule,
@@ -39,6 +46,10 @@ import { VehiclesModule } from './vehicles/vehicles.module';
     TrackersModule,
     TrackerTcpModule,
     RealtimeModule,
+    VehicleAccessModule,
+    VehicleGroupsModule,
+    InternalModule,
+    UsersModule,
   ],
   providers: [
     {

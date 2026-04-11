@@ -10,10 +10,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { CreateVehicleDto } from './dto/create-vehicle.dto';
 import type { UpdateVehicleDto } from './dto/update-vehicle.dto';
 
-interface RequestedBy {
+export interface RequestedBy {
   userId: string;
   role: UserRole;
   fleetId: string | null;
+  accessibleVehicleIds?: string[] | 'ALL';
 }
 
 @Injectable()
@@ -65,6 +66,11 @@ export class VehiclesService {
       where.fleetId = requestedBy.fleetId ?? undefined;
     }
 
+    // Filtrage par accès véhicules (sous-utilisateurs)
+    if (requestedBy.accessibleVehicleIds && requestedBy.accessibleVehicleIds !== 'ALL') {
+      where.id = { in: requestedBy.accessibleVehicleIds };
+    }
+
     if (filters?.search) {
       where.OR = [
         { plate: { contains: filters.search, mode: 'insensitive' } },
@@ -97,6 +103,11 @@ export class VehiclesService {
     if (!vehicle) throw new NotFoundException('Véhicule introuvable');
 
     if (requestedBy.role !== UserRole.SUPER_ADMIN && vehicle.fleetId !== requestedBy.fleetId) {
+      throw new ForbiddenException('Accès refusé à ce véhicule');
+    }
+
+    // Vérifier accès véhicule pour les sous-utilisateurs
+    if (requestedBy.accessibleVehicleIds && requestedBy.accessibleVehicleIds !== 'ALL' && !requestedBy.accessibleVehicleIds.includes(vehicle.id)) {
       throw new ForbiddenException('Accès refusé à ce véhicule');
     }
 
@@ -154,8 +165,12 @@ export class VehiclesService {
     criticalAlerts: number;
     newThisMonth: number;
   }> {
-    const fleetFilter: Prisma.VehicleWhereInput =
+    let fleetFilter: Prisma.VehicleWhereInput =
       requestedBy.role === UserRole.SUPER_ADMIN ? {} : { fleetId: requestedBy.fleetId ?? undefined };
+
+    if (requestedBy.accessibleVehicleIds && requestedBy.accessibleVehicleIds !== 'ALL') {
+      fleetFilter = { ...fleetFilter, id: { in: requestedBy.accessibleVehicleIds } };
+    }
 
     const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
     const monthStart = new Date();

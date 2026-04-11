@@ -58,6 +58,12 @@ enum AlertSeverity {
   CRITICAL
 }
 
+enum AccessType {
+  ALL
+  GROUP
+  VEHICLE
+}
+
 enum EngineAction {
   CUT
   RESTORE
@@ -78,26 +84,29 @@ model Fleet {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users     User[]
-  vehicles  Vehicle[]
-  geofences Geofence[]
-  alerts    Alert[]
+  users         User[]
+  vehicles      Vehicle[]
+  geofences     Geofence[]
+  alerts        Alert[]
+  vehicleGroups VehicleGroup[]
 
   @@map("fleets")
 }
 
 model User {
-  id           String   @id @default(uuid()) @db.Uuid
-  email        String   @unique
-  passwordHash String
-  firstName    String?
-  lastName     String?
-  role               UserRole @default(VIEWER)
-  fleetId            String?  @db.Uuid
-  fleet              Fleet?   @relation(fields: [fleetId], references: [id], onDelete: SetNull)
-  acknowledgedAlerts Alert[]  @relation("AlertAcknowledgedBy")
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id         String   @id @default(uuid()) @db.Uuid
+  authUserId String   @unique
+  email      String   @unique
+  firstName  String?
+  lastName   String?
+  role       UserRole @default(VIEWER)
+  isActive   Boolean  @default(true)
+  fleetId    String?  @db.Uuid
+  fleet      Fleet?   @relation(fields: [fleetId], references: [id], onDelete: SetNull)
+  acknowledgedAlerts Alert[] @relation("AlertAcknowledgedBy")
+  vehicleAccess      UserVehicleAccess[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@index([fleetId])
   @@map("users")
@@ -112,11 +121,13 @@ model Vehicle {
   model     String?
   year      Int?
   color     String?
-  tracker   Tracker?
-  trips     Trip[]
-  alerts    Alert[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  tracker    Tracker?
+  trips      Trip[]
+  alerts     Alert[]
+  groups     VehicleGroupAssignment[]
+  userAccess UserVehicleAccess[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@unique([fleetId, plate])
   @@index([fleetId])
@@ -232,6 +243,44 @@ model Alert {
   @@index([vehicleId])
   @@index([trackerId])
   @@map("alerts")
+}
+
+model VehicleGroup {
+  id        String                   @id @default(uuid()) @db.Uuid
+  name      String
+  fleetId   String                   @db.Uuid
+  fleet     Fleet                    @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  vehicles  VehicleGroupAssignment[]
+  users     UserVehicleAccess[]
+  createdAt DateTime                 @default(now())
+
+  @@unique([fleetId, name])
+  @@index([fleetId])
+  @@map("vehicle_groups")
+}
+
+model VehicleGroupAssignment {
+  vehicleId String       @db.Uuid
+  groupId   String       @db.Uuid
+  vehicle   Vehicle      @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  group     VehicleGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@id([vehicleId, groupId])
+  @@map("vehicle_group_assignments")
+}
+
+model UserVehicleAccess {
+  id         String        @id @default(uuid()) @db.Uuid
+  userId     String        @db.Uuid
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessType AccessType
+  groupId    String?       @db.Uuid
+  group      VehicleGroup? @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  vehicleId  String?       @db.Uuid
+  vehicle    Vehicle?      @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_vehicle_access")
 }
 
 model EngineControlCommand {

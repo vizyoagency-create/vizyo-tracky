@@ -14,68 +14,69 @@ import {
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
-import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 import { CreateVehicleDto } from './dto/create-vehicle.dto';
 import { UpdateVehicleDto } from './dto/update-vehicle.dto';
+import type { RequestedBy } from './vehicles.service';
 import { VehiclesService } from './vehicles.service';
 
 @Controller('vehicles')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class VehiclesController {
-  constructor(private readonly vehicles: VehiclesService) {}
+  constructor(
+    private readonly vehicles: VehiclesService,
+    private readonly vehicleAccess: VehicleAccessService,
+  ) {}
+
+  private async buildRequestedBy(req: AuthenticatedRequest): Promise<RequestedBy> {
+    const accessibleVehicleIds = await this.vehicleAccess.getAccessibleVehicleIds(req.user);
+    return { userId: req.user.id, role: req.user.role, fleetId: req.user.fleetId, accessibleVehicleIds };
+  }
 
   @Get('stats')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
-  stats(@Req() req: AuthenticatedRequest) {
-    return this.vehicles.stats({
-      userId: req.user.sub,
-      role: req.user.role as UserRole,
-      fleetId: req.user.fleetId,
-    });
+  async stats(@Req() req: AuthenticatedRequest) {
+    return this.vehicles.stats(await this.buildRequestedBy(req));
   }
 
   @Post()
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
   create(@Body() dto: CreateVehicleDto, @Req() req: AuthenticatedRequest) {
     return this.vehicles.create(dto, {
-      userId: req.user.sub,
-      role: req.user.role as UserRole,
+      userId: req.user.id,
+      role: req.user.role,
       fleetId: req.user.fleetId,
     });
   }
 
   @Get()
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
-  findAll(
+  async findAll(
     @Req() req: AuthenticatedRequest,
     @Query('search') search?: string,
     @Query('hasTracker') hasTracker?: string,
     @Query('limit') limit?: string,
     @Query('cursor') cursor?: string,
   ) {
-    return this.vehicles.findAll(
-      { userId: req.user.sub, role: req.user.role as UserRole, fleetId: req.user.fleetId },
-      { search, hasTracker, limit: limit ? parseInt(limit, 10) : undefined, cursor },
-    );
+    const requestedBy = await this.buildRequestedBy(req);
+    return this.vehicles.findAll(requestedBy, { search, hasTracker, limit: limit ? parseInt(limit, 10) : undefined, cursor });
   }
 
   @Get(':id')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
-  findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    return this.vehicles.findOne(id, {
-      userId: req.user.sub,
-      role: req.user.role as UserRole,
-      fleetId: req.user.fleetId,
-    });
+  async findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.vehicles.findOne(id, await this.buildRequestedBy(req));
   }
 
   @Patch(':id')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
   update(@Param('id') id: string, @Body() dto: UpdateVehicleDto, @Req() req: AuthenticatedRequest) {
     return this.vehicles.update(id, dto, {
-      userId: req.user.sub,
-      role: req.user.role as UserRole,
+      userId: req.user.id,
+      role: req.user.role,
       fleetId: req.user.fleetId,
     });
   }
@@ -85,8 +86,8 @@ export class VehiclesController {
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
   remove(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.vehicles.remove(id, {
-      userId: req.user.sub,
-      role: req.user.role as UserRole,
+      userId: req.user.id,
+      role: req.user.role,
       fleetId: req.user.fleetId,
     });
   }

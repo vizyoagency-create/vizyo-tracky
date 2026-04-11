@@ -25,6 +25,7 @@ interface RequestedBy {
   userId: string;
   role: UserRole;
   fleetId: string | null;
+  accessibleVehicleIds?: string[] | 'ALL';
 }
 
 interface OpenTripState {
@@ -291,7 +292,14 @@ export class TripsService implements OnModuleInit {
     if (requestedBy.role !== UserRole.SUPER_ADMIN) {
       where.fleetId = requestedBy.fleetId;
     }
-    if (filters.vehicleId) where.vehicleId = filters.vehicleId;
+    // Filtrage par accès véhicules
+    if (requestedBy.accessibleVehicleIds && requestedBy.accessibleVehicleIds !== 'ALL') {
+      where.vehicleId = filters.vehicleId
+        ? (requestedBy.accessibleVehicleIds.includes(filters.vehicleId) ? filters.vehicleId : 'DENIED')
+        : { in: requestedBy.accessibleVehicleIds };
+    } else if (filters.vehicleId) {
+      where.vehicleId = filters.vehicleId;
+    }
     if (filters.from || filters.to) {
       where.startedAt = {};
       if (filters.from) (where.startedAt as any).gte = new Date(filters.from);

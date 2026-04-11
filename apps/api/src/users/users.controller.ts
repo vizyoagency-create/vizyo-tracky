@@ -1,19 +1,8 @@
 import {
-  Body,
-  Controller,
-  Delete,
-  ForbiddenException,
-  Get,
-  HttpCode,
-  HttpStatus,
-  NotFoundException,
-  Param,
-  Patch,
-  Post,
-  Req,
-  UseGuards,
+  Body, Controller, Delete, ForbiddenException, Get, HttpCode, HttpStatus,
+  NotFoundException, Param, Patch, Post, Put, Req, UseGuards,
 } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { AccessType, UserRole } from '@prisma/client';
 import { AuthClientService } from '../auth-client/auth-client.service';
 import { Roles } from '../auth/decorators/roles.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
@@ -21,6 +10,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
+import { SetUserAccessDto } from './dto/set-access.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
 const PRIVILEGED_ROLES: UserRole[] = [UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN];
@@ -181,5 +171,67 @@ export class UsersController {
 
     await this.authClient.removeUserFromApp(user.authUserId);
     await this.prisma.user.delete({ where: { id } });
+  }
+
+  // ─── Vehicle Access ──────────────────────────────────────
+
+  @Get(':id/access')
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  async getAccess(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException('User not found');
+    if (req.user.role !== UserRole.SUPER_ADMIN && user.fleetId !== req.user.fleetId) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    const rules = await this.prisma.userVehicleAccess.findMany({
+      where: { userId: id },
+      select: { id: true, accessType: true, groupId: true, vehicleId: true },
+    });
+
+    const hasAll = rules.some((r) => r.accessType === AccessType.ALL);
+    if (hasAll) return { type: 'ALL' as const, groupIds: [], vehicleIds: [] };
+
+    return {
+      type: 'CUSTOM' as const,
+      groupIds: rules.filter((r) => r.accessType === AccessType.GROUP && r.groupId).map((r) => r.groupId!),
+      vehicleIds: rules.filter((r) => r.accessType === AccessType.VEHICLE && r.vehicleId).map((r) => r.vehicleId!),
+    };
+  }
+
+  @Put(':id/access')
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  async setAccess(@Param('id') id: string, @Body() dto: SetUserAccessDto, @Req() req: AuthenticatedRequest) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException('User not found');
+    if (req.user.role !== UserRole.SUPER_ADMIN && user.fleetId !== req.user.fleetId) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    // Supprimer les règles existantes
+    await this.prisma.userVehicleAccess.deleteMany({ where: { userId: id } });
+
+    if (dto.type === 'ALL') {
+      await this.prisma.userVehicleAccess.create({
+        data: { userId: id, accessType: AccessType.ALL },
+      });
+      return { type: 'ALL', groupIds: [], vehicleIds: [] };
+    }
+
+    // Créer les règles CUSTOM
+    const creates: { userId: string; accessType: AccessType; groupId?: string; vehicleId?: string }[] = [];
+
+    for (const groupId of dto.groupIds ?? []) {
+      creates.push({ userId: id, accessType: AccessType.GROUP, groupId });
+    }
+    for (const vehicleId of dto.vehicleIds ?? []) {
+      creates.push({ userId: id, accessType: AccessType.VEHICLE, vehicleId });
+    }
+
+    if (creates.length > 0) {
+      await this.prisma.userVehicleAccess.createMany({ data: creates });
+    }
+
+    return { type: 'CUSTOM', groupIds: dto.groupIds ?? [], vehicleIds: dto.vehicleIds ?? [] };
   }
 }
