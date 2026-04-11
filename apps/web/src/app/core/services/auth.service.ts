@@ -8,6 +8,7 @@ export interface AuthUser {
 }
 
 const TOKEN_KEY = 'vizyo-tracky-token';
+const USER_KEY = 'vizyo-tracky-user';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -19,17 +20,30 @@ export class AuthService {
     return localStorage.getItem(TOKEN_KEY);
   }
 
+  setSession(token: string, user: AuthUser): void {
+    localStorage.setItem(TOKEN_KEY, token);
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+    this._user.set(user);
+  }
+
+  /** @deprecated Use setSession instead */
   setToken(token: string): void {
     localStorage.setItem(TOKEN_KEY, token);
-    this._user.set(this.decodeJwt(token));
+    this._user.set(this.loadUser());
   }
 
   logout(): void {
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
     this._user.set(null);
   }
 
   private loadUser(): AuthUser | null {
+    const stored = localStorage.getItem(USER_KEY);
+    if (stored) {
+      try { return JSON.parse(stored); } catch { /* fall through */ }
+    }
+    // Fallback: decode JWT (for backward compat)
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token) return null;
     return this.decodeJwt(token);

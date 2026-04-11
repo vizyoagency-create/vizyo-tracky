@@ -9,18 +9,24 @@ import { RealtimeService } from '../../core/services/realtime.service';
   standalone: true,
   imports: [FormsModule],
   template: `
-    <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-8">
-      <h2 class="text-xl font-display font-semibold text-fg-primary mb-6">Connexion</h2>
+    <div
+      class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-8"
+    >
+      <h2 class="text-xl font-display font-semibold text-fg-primary mb-6">
+        Connexion
+      </h2>
 
       <form (ngSubmit)="onSubmit()" class="flex flex-col gap-4">
         <div class="flex flex-col gap-1.5">
-          <label for="email" class="text-sm font-medium text-fg-secondary">Email</label>
+          <label for="email" class="text-sm font-medium text-fg-secondary"
+            >Email</label
+          >
           <input
             id="email"
             type="email"
             [(ngModel)]="email"
             name="email"
-            placeholder="admin@vizyo.fr"
+            placeholder="track1@gmail.com"
             class="w-full px-4 py-2.5 rounded-xl bg-bg-tertiary border border-border-subtle
                    text-fg-primary placeholder:text-fg-tertiary
                    focus:outline-none focus:border-tracky focus:ring-1 focus:ring-tracky
@@ -30,7 +36,9 @@ import { RealtimeService } from '../../core/services/realtime.service';
         </div>
 
         <div class="flex flex-col gap-1.5">
-          <label for="password" class="text-sm font-medium text-fg-secondary">Mot de passe</label>
+          <label for="password" class="text-sm font-medium text-fg-secondary"
+            >Mot de passe</label
+          >
           <input
             id="password"
             type="password"
@@ -68,8 +76,8 @@ import { RealtimeService } from '../../core/services/realtime.service';
   `,
 })
 export class LoginComponent {
-  protected email = 'admin@vizyo.fr';
-  protected password = 'admin123';
+  protected email = 'tracky1@gmail.com';
+  protected password = 'AdminTracky2026!';
   protected readonly error = signal('');
   protected readonly loading = signal(false);
 
@@ -95,7 +103,12 @@ export class LoginComponent {
       }
 
       const data = await res.json();
-      this.auth.setToken(data.accessToken);
+      this.auth.setSession(data.accessToken, {
+        sub: data.user.id,
+        email: data.user.email,
+        role: data.user.role,
+        fleetId: data.user.fleetId ?? null,
+      });
       this.realtime.connect(data.accessToken);
       this.router.navigate(['/dashboard']);
     } catch {
