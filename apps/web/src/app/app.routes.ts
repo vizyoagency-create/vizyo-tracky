@@ -64,8 +64,7 @@ export const routes: Routes = [
       {
         path: 'users',
         loadComponent: () =>
-          import('./features/placeholder/placeholder.component').then((m) => m.PlaceholderComponent),
-        data: { title: 'Utilisateurs' },
+          import('./features/users/users-list.component').then((m) => m.UsersListComponent),
       },
       {
         path: 'settings',
