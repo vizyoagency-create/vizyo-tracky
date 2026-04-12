@@ -29,8 +29,8 @@ const DEFAULTS: UserPreferences = {
     info: { enabled: false, duration: 4000 },
   },
   map: {
-    centerLat: 33.5731,
-    centerLng: -7.5898,
+    centerLat: 46.6034,
+    centerLng: 1.8883,
     zoom: 12,
     showTrails: true,
     trailLength: 20,
