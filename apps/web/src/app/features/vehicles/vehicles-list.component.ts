@@ -169,18 +169,30 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
   styles: [`
     .vlist-page { position: relative; overflow: hidden }
     .vlist-grid-bg {
-      position: absolute; inset: 0; pointer-events: none; z-index: 0;
-      background-image: radial-gradient(circle, var(--border-subtle) 1px, transparent 1px);
-      background-size: 24px 24px;
-      mask-image: radial-gradient(ellipse at 50% 0%, black 0%, transparent 70%);
-      -webkit-mask-image: radial-gradient(ellipse at 50% 0%, black 0%, transparent 70%);
-      opacity: .5;
+      position: absolute; inset: 0; pointer-events: none; z-index: 0; overflow: hidden;
+    }
+    .vlist-grid-bg::before {
+      content: ''; position: absolute; top: -10%; left: -15%; width: 55%; height: 60%;
+      background: radial-gradient(ellipse, rgba(16,224,160,.08) 0%, transparent 70%);
+      border-radius: 50% 40% 60% 30%;
+      animation: morph1 12s ease-in-out infinite alternate;
+    }
+    .vlist-grid-bg::after {
+      content: ''; position: absolute; bottom: -20%; right: -10%; width: 50%; height: 55%;
+      background: radial-gradient(ellipse, rgba(59,130,246,.06) 0%, transparent 70%);
+      border-radius: 40% 60% 30% 50%;
+      animation: morph2 10s ease-in-out infinite alternate;
     }
     .vlist-glow {
-      position: absolute; top: -80px; left: 50%; transform: translateX(-50%); width: 600px; height: 300px;
-      background: radial-gradient(ellipse, rgba(16,224,160,.07) 0%, transparent 70%);
+      position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%); width: 35%; height: 40%;
+      background: radial-gradient(ellipse, rgba(168,85,247,.05) 0%, transparent 70%);
+      border-radius: 60% 40% 50% 30%;
       pointer-events: none; z-index: 0;
+      animation: morph3 14s ease-in-out infinite alternate;
     }
+    @keyframes morph1 { 0%{border-radius:50% 40% 60% 30%; transform:translate(0,0)} 100%{border-radius:30% 60% 40% 50%; transform:translate(5%,8%)} }
+    @keyframes morph2 { 0%{border-radius:40% 60% 30% 50%; transform:translate(0,0)} 100%{border-radius:60% 30% 50% 40%; transform:translate(-5%,-5%)} }
+    @keyframes morph3 { 0%{border-radius:60% 40% 50% 30%; transform:translate(-50%,-50%) scale(1)} 100%{border-radius:40% 50% 30% 60%; transform:translate(-50%,-50%) scale(1.15)} }
 
     .vlist-header { position: relative; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px }
     .vlist-title { font-size: 24px; font-weight: 800; color: var(--fg-primary); letter-spacing: -.02em }
@@ -205,7 +217,10 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
 
     .vlist-empty {
       position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 10px;
-      padding: 50px 20px; border-radius: 16px; background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+      padding: 50px 20px; border-radius: 16px;
+      background: rgba(var(--bg-secondary-rgb, 15,23,20), .55);
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(16,224,160,.1);
     }
     .empty-icon { width: 60px; height: 60px; border-radius: 16px; background: var(--bg-tertiary); display: flex; align-items: center; justify-content: center; color: var(--fg-tertiary) }
     .empty-text { font-size: 14px; color: var(--fg-tertiary) }
@@ -216,10 +231,19 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
 
     .v-card {
       position: relative; display: flex; flex-direction: column; padding: 18px; border-radius: 14px; overflow: hidden;
-      background: var(--bg-secondary); border: 1px solid var(--border-subtle); text-decoration: none; color: inherit;
+      background: rgba(var(--bg-secondary-rgb, 15,23,20), .55);
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(16,224,160,.1); text-decoration: none; color: inherit;
       transition: all .3s; cursor: pointer;
     }
-    .v-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-tracky-glow); transform: translateY(-2px) }
+    .v-card:hover { border-color: rgba(16,224,160,.25); box-shadow: 0 0 30px rgba(16,224,160,.08), 0 8px 32px rgba(0,0,0,.2); transform: translateY(-2px) }
+
+    :host-context([data-theme="light"]) .v-card {
+      background: rgba(255,255,255,.6); border-color: rgba(16,224,160,.12);
+    }
+    :host-context([data-theme="light"]) .v-card:hover {
+      border-color: rgba(16,224,160,.3); box-shadow: 0 0 30px rgba(16,224,160,.06), 0 8px 32px rgba(0,0,0,.06);
+    }
 
     .v-card-glow {
       position: absolute; top: 0; right: 0; width: 70px; height: 70px; border-radius: 0 0 0 70px; opacity: .06; pointer-events: none;
