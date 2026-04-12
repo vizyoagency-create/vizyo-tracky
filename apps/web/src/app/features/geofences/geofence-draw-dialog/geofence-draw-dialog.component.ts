@@ -34,9 +34,9 @@ const RADIUS_STEPS = [50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000]
               </div>
               <div>
                 <h2 class="text-lg font-display font-bold text-fg-primary">
-                  {{ currentStep() === 1 ? 'Nouvelle geofence' : 'Placer sur la carte' }}
+                  {{ editData() ? (currentStep() === 1 ? 'Modifier la geofence' : 'Repositionner') : (currentStep() === 1 ? 'Nouvelle geofence' : 'Placer sur la carte') }}
                 </h2>
-                <p class="text-[10px] text-fg-tertiary">Etape {{ currentStep() }} sur 2</p>
+                <p class="text-[10px] text-fg-tertiary">{{ editData() ? editData()!.name : 'Etape ' + currentStep() + ' sur 2' }}</p>
               </div>
             </div>
             <button (click)="onClose()"
@@ -148,7 +148,7 @@ const RADIUS_STEPS = [50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000]
                 } @else {
                   <lucide-icon [img]="SaveIcon" [size]="14"></lucide-icon>
                 }
-                Creer la geofence
+                {{ editData() ? 'Enregistrer' : 'Creer la geofence' }}
               </button>
             }
           </div>
@@ -183,6 +183,7 @@ const RADIUS_STEPS = [50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000]
 })
 export class GeofenceDrawDialogComponent implements AfterViewInit, OnDestroy {
   readonly open = input.required<boolean>();
+  readonly editData = input<{ id: string; name: string; rule: 'ENTER' | 'EXIT' | 'BOTH'; color: string; centerLat: number; centerLng: number; radiusMeters: number } | null>(null);
   readonly created = output<void>();
 
   private readonly geofencesApi = inject(GeofencesApiService);
@@ -224,6 +225,20 @@ export class GeofenceDrawDialogComponent implements AfterViewInit, OnDestroy {
   ngAfterViewInit(): void {}
   ngOnDestroy(): void { this.destroyMap(); }
 
+  ngOnChanges(): void {
+    const d = this.editData();
+    if (d && this.open()) {
+      this.name = d.name;
+      this.rule = d.rule;
+      this.color = d.color;
+      this.center = L.latLng(d.centerLat, d.centerLng);
+      this._radiusMeters = d.radiusMeters;
+      const closest = RADIUS_STEPS.reduce((prev, curr, i) =>
+        Math.abs(curr - d.radiusMeters) < Math.abs(RADIUS_STEPS[prev]! - d.radiusMeters) ? i : prev, 0);
+      this._radiusIndex = closest;
+    }
+  }
+
   protected goToStep2(): void {
     this.currentStep.set(2);
     setTimeout(() => this.initMap(), 50);
@@ -258,10 +273,16 @@ export class GeofenceDrawDialogComponent implements AfterViewInit, OnDestroy {
     this.isLoading.set(true);
     this.errorMessage.set('');
     try {
-      await firstValueFrom(this.geofencesApi.create({
+      const data = {
         name: this.name.trim(), centerLat: this.center.lat, centerLng: this.center.lng,
         radiusMeters: this._radiusMeters, rule: this.rule, color: this.color,
-      }));
+      };
+      const ed = this.editData();
+      if (ed) {
+        await firstValueFrom(this.geofencesApi.update(ed.id, data));
+      } else {
+        await firstValueFrom(this.geofencesApi.create(data));
+      }
       this.reset();
       this.created.emit();
     } catch (err) {
@@ -277,7 +298,9 @@ export class GeofenceDrawDialogComponent implements AfterViewInit, OnDestroy {
     const el = this.mapRef()?.nativeElement;
     if (!el || this.map) return;
     const mapPrefs = this.preferences.prefs().map;
-    this.map = L.map(el, { center: [mapPrefs.centerLat, mapPrefs.centerLng], zoom: mapPrefs.zoom, zoomControl: true });
+    const initCenter = this.center ? [this.center.lat, this.center.lng] as [number, number] : [mapPrefs.centerLat, mapPrefs.centerLng] as [number, number];
+    const initZoom = this.center ? 14 : mapPrefs.zoom;
+    this.map = L.map(el, { center: initCenter, zoom: initZoom, zoomControl: true });
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(this.map);
     const pinIcon = L.divIcon({
       className: '',
@@ -289,6 +312,11 @@ export class GeofenceDrawDialogComponent implements AfterViewInit, OnDestroy {
       if (this.marker) { this.marker.setLatLng(e.latlng); } else { this.marker = L.marker(e.latlng, { icon: pinIcon }).addTo(this.map!); }
       this.updateCircle();
     });
+    // If editing, show existing marker and circle
+    if (this.center) {
+      this.marker = L.marker(this.center, { icon: pinIcon }).addTo(this.map);
+      this.updateCircle();
+    }
     setTimeout(() => this.map?.invalidateSize(), 100);
   }
 

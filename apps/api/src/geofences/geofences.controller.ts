@@ -25,11 +25,11 @@ export class GeofencesController {
   constructor(private readonly geofences: GeofencesService) {}
 
   @Post()
-  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
   create(@Body() dto: CreateGeofenceDto, @Req() req: AuthenticatedRequest) {
     return this.geofences.create(dto, {
-      userId: req.user.sub,
-      role: req.user.role as UserRole,
+      userId: req.user.id,
+      role: req.user.role,
       fleetId: req.user.fleetId,
     });
   }
@@ -38,8 +38,8 @@ export class GeofencesController {
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
   findAll(@Req() req: AuthenticatedRequest) {
     return this.geofences.findAll({
-      userId: req.user.sub,
-      role: req.user.role as UserRole,
+      userId: req.user.id,
+      role: req.user.role,
       fleetId: req.user.fleetId,
     });
   }
@@ -48,29 +48,29 @@ export class GeofencesController {
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
   findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.geofences.findOne(id, {
-      userId: req.user.sub,
-      role: req.user.role as UserRole,
+      userId: req.user.id,
+      role: req.user.role,
       fleetId: req.user.fleetId,
     });
   }
 
   @Patch(':id')
-  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
   update(@Param('id') id: string, @Body() dto: UpdateGeofenceDto, @Req() req: AuthenticatedRequest) {
     return this.geofences.update(id, dto, {
-      userId: req.user.sub,
-      role: req.user.role as UserRole,
+      userId: req.user.id,
+      role: req.user.role,
       fleetId: req.user.fleetId,
     });
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
   remove(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.geofences.remove(id, {
-      userId: req.user.sub,
-      role: req.user.role as UserRole,
+      userId: req.user.id,
+      role: req.user.role,
       fleetId: req.user.fleetId,
     });
   }

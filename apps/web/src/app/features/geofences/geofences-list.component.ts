@@ -1,5 +1,5 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
-import { LucideAngularModule, Plus, Shield, Trash2, MapPin, Circle, ArrowDownLeft, ArrowUpRight, ArrowLeftRight } from 'lucide-angular';
+import { LucideAngularModule, Plus, Shield, Trash2, Pencil, MapPin, Circle, ArrowDownLeft, ArrowUpRight, ArrowLeftRight } from 'lucide-angular';
 import type { GeofenceDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { PermissionsService } from '../../core/services/permissions.service';
@@ -24,7 +24,7 @@ import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-dra
           <p class="gf-sub">{{ geofences().length }} zone(s) configuree(s)</p>
         </div>
         @if (perms.can('geofences_manage')) {
-          <button (click)="showDrawDialog.set(true)" class="gf-add-btn">
+          <button (click)="editGeofence.set(null); showDrawDialog.set(true)" class="gf-add-btn">
             <lucide-icon [img]="Plus" [size]="15"></lucide-icon> Nouvelle zone
           </button>
         }
@@ -76,9 +76,14 @@ import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-dra
 
               <!-- Actions -->
               @if (perms.can('geofences_manage')) {
-                <button (click)="confirmDel(g)" class="gf-delete-btn">
-                  <lucide-icon [img]="Trash2" [size]="14"></lucide-icon>
-                </button>
+                <div class="gf-actions">
+                  <button (click)="openEdit(g)" class="gf-action-btn edit" title="Modifier">
+                    <lucide-icon [img]="Pencil" [size]="13"></lucide-icon>
+                  </button>
+                  <button (click)="confirmDel(g)" class="gf-action-btn delete" title="Supprimer">
+                    <lucide-icon [img]="Trash2" [size]="13"></lucide-icon>
+                  </button>
+                </div>
               }
             </div>
           }
@@ -86,7 +91,7 @@ import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-dra
       }
     </div>
 
-    <app-geofence-draw-dialog [open]="showDrawDialog()" (created)="onDialogClosed()" />
+    <app-geofence-draw-dialog [open]="showDrawDialog()" [editData]="editGeofence()" (created)="onDialogClosed()" />
 
     <app-confirm-modal
       [open]="showDeleteConfirm()"
@@ -179,11 +184,13 @@ import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-dra
     .gf-status.inactive { background: rgba(239,68,68,.1); color: #f87171 }
     .gf-coords { font-size: 10px; font-family: var(--font-mono, monospace); color: var(--fg-tertiary) }
 
-    .gf-delete-btn {
-      position: absolute; top: 12px; right: 12px; padding: 6px; border-radius: 8px;
-      background: transparent; border: none; color: var(--fg-tertiary); cursor: pointer; transition: all .2s;
+    .gf-actions { position: absolute; top: 10px; right: 10px; display: flex; gap: 4px }
+    .gf-action-btn {
+      padding: 5px; border-radius: 6px; background: transparent; border: none;
+      color: var(--fg-tertiary); cursor: pointer; transition: all .2s;
     }
-    .gf-delete-btn:hover { color: #f87171; background: rgba(239,68,68,.1) }
+    .gf-action-btn.edit:hover { color: var(--tracky-light); background: rgba(16,224,160,.1) }
+    .gf-action-btn.delete:hover { color: #f87171; background: rgba(239,68,68,.1) }
   `],
 })
 export class GeofencesListComponent implements OnInit {
@@ -197,9 +204,12 @@ export class GeofencesListComponent implements OnInit {
   protected readonly showDeleteConfirm = signal(false);
   protected readonly deleteTarget = signal<GeofenceDto | null>(null);
 
+  protected readonly editGeofence = signal<{ id: string; name: string; rule: 'ENTER' | 'EXIT' | 'BOTH'; color: string; centerLat: number; centerLng: number; radiusMeters: number } | null>(null);
+
   protected readonly Plus = Plus;
   protected readonly Shield = Shield;
   protected readonly Trash2 = Trash2;
+  protected readonly Pencil = Pencil;
   protected readonly MapPin = MapPin;
   protected readonly ArrowDownLeft = ArrowDownLeft;
   protected readonly ArrowUpRight = ArrowUpRight;
@@ -229,6 +239,14 @@ export class GeofencesListComponent implements OnInit {
     return m >= 1000 ? `${(m / 1000).toFixed(1)}km` : `${m}m`;
   }
 
+  protected openEdit(g: GeofenceDto): void {
+    this.editGeofence.set({
+      id: g.id, name: g.name, rule: g.rule as 'ENTER' | 'EXIT' | 'BOTH',
+      color: g.color ?? '#10e0a0', centerLat: g.centerLat, centerLng: g.centerLng, radiusMeters: g.radiusMeters,
+    });
+    this.showDrawDialog.set(true);
+  }
+
   protected confirmDel(g: GeofenceDto): void {
     this.deleteTarget.set(g);
     this.showDeleteConfirm.set(true);
@@ -247,6 +265,7 @@ export class GeofencesListComponent implements OnInit {
 
   protected onDialogClosed(): void {
     this.showDrawDialog.set(false);
+    this.editGeofence.set(null);
     this.loadGeofences();
   }
 
