@@ -42,6 +42,14 @@ export class VehiclesApiService {
     return this.http.get<VehicleDetailDto[]>('/api/vehicles', { params });
   }
 
+  update(id: string, data: Record<string, unknown>): Observable<VehicleDetailDto> {
+    return this.http.patch<VehicleDetailDto>(`/api/vehicles/${id}`, data);
+  }
+
+  delete(id: string): Observable<void> {
+    return this.http.delete<void>(`/api/vehicles/${id}`);
+  }
+
   stats(): Observable<VehicleStatsDto> {
     return this.http.get<VehicleStatsDto>('/api/vehicles/stats');
   }

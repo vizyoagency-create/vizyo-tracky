@@ -2,20 +2,21 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { LucideAngularModule, Plus, Truck, ExternalLink, FolderOpen, Radio, X, Save, Wifi } from 'lucide-angular';
+import { LucideAngularModule, Plus, Truck, ExternalLink, FolderOpen, Radio, X, Save, Wifi, Pencil, Trash2, Eye } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { TrackersApiService } from '../../core/services/trackers.service';
 import { getVehicleSvg, getVehicleTypeLabel } from '../../shared/utils/vehicle-icons';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
+import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
 import { AddVehicleDialogComponent } from './add-vehicle-dialog/add-vehicle-dialog.component';
 import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
 
 @Component({
   selector: 'app-vehicles-list',
   standalone: true,
-  imports: [RouterLink, FormsModule, LucideAngularModule, AddVehicleDialogComponent, VehicleGroupsTabComponent],
+  imports: [RouterLink, FormsModule, LucideAngularModule, AddVehicleDialogComponent, VehicleGroupsTabComponent, ConfirmModalComponent],
   template: `
     <div class="vlist-page">
       <div class="vlist-grid-bg"></div>
@@ -84,18 +85,35 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
                   }
                 </div>
                 <div class="v-card-bottom">
-                  @if (v.tracker) {
-                    <div class="v-tracker">
-                      <lucide-icon [img]="RadioIcon" [size]="11"></lucide-icon>
-                      <span>{{ v.tracker.imei }}</span>
-                    </div>
-                  } @else if (perms.can('vehicles_edit')) {
-                    <button (click)="$event.preventDefault(); $event.stopPropagation(); openAssignTracker(v.id)" class="v-assign-btn">
-                      + Assigner tracker
-                    </button>
-                  } @else {
-                    <span class="v-no-tracker">Pas de tracker</span>
-                  }
+                  <div class="v-tracker-info">
+                    @if (v.tracker) {
+                      <div class="v-tracker">
+                        <lucide-icon [img]="RadioIcon" [size]="11"></lucide-icon>
+                        <span>{{ v.tracker.imei }}</span>
+                      </div>
+                    } @else if (perms.can('vehicles_edit')) {
+                      <button (click)="$event.preventDefault(); $event.stopPropagation(); openAssignTracker(v.id)" class="v-assign-btn">
+                        + Assigner tracker
+                      </button>
+                    } @else {
+                      <span class="v-no-tracker">Pas de tracker</span>
+                    }
+                  </div>
+                  <div class="v-actions">
+                    <a [routerLink]="['/vehicles', v.id]" class="v-action-btn view" title="Voir" (click)="$event.stopPropagation()">
+                      <lucide-icon [img]="EyeIcon" [size]="13"></lucide-icon>
+                    </a>
+                    @if (perms.can('vehicles_edit')) {
+                      <button class="v-action-btn edit" title="Modifier" (click)="$event.preventDefault(); $event.stopPropagation(); openEditVehicle(v)">
+                        <lucide-icon [img]="PencilIcon" [size]="13"></lucide-icon>
+                      </button>
+                    }
+                    @if (perms.can('vehicles_delete')) {
+                      <button class="v-action-btn delete" title="Supprimer" (click)="$event.preventDefault(); $event.stopPropagation(); confirmDeleteVehicle(v)">
+                        <lucide-icon [img]="Trash2Icon" [size]="13"></lucide-icon>
+                      </button>
+                    }
+                  </div>
                 </div>
               </a>
             }
@@ -167,6 +185,18 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
           </div>
         </div>
       }
+
+      <!-- Delete Vehicle Modal -->
+      <app-confirm-modal
+        [open]="showDeleteVehicle()"
+        title="Supprimer le vehicule"
+        [description]="'Supprimer <strong>' + (vehicleToDelete()?.plate ?? '') + '</strong> ? Les trajets et alertes associes seront aussi supprimes.'"
+        confirmLabel="Supprimer"
+        [danger]="true"
+        [loading]="deleting()"
+        (confirmed)="onDeleteVehicle()"
+        (cancelled)="showDeleteVehicle.set(false)"
+      />
     </div>
   `,
   styles: [`
@@ -271,7 +301,17 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
     .v-brand { font-size: 13px; font-weight: 500; color: var(--fg-secondary) }
     .v-brand.muted { color: var(--fg-tertiary); font-style: italic }
 
-    .v-card-bottom { padding-top: 10px; border-top: 1px solid var(--border-subtle) }
+    .v-card-bottom { padding-top: 10px; border-top: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between }
+    .v-tracker-info { flex: 1; min-width: 0 }
+    .v-actions { display: flex; gap: 4px; flex-shrink: 0 }
+    .v-action-btn {
+      width: 28px; height: 28px; border-radius: 7px; display: flex; align-items: center; justify-content: center;
+      background: transparent; border: 1px solid var(--border-subtle); color: var(--fg-tertiary);
+      cursor: pointer; transition: all .2s; text-decoration: none;
+    }
+    .v-action-btn.view:hover { color: var(--tracky-light); border-color: rgba(16,224,160,.2); background: rgba(16,224,160,.06) }
+    .v-action-btn.edit:hover { color: #60a5fa; border-color: rgba(59,130,246,.2); background: rgba(59,130,246,.06) }
+    .v-action-btn.delete:hover { color: #f87171; border-color: rgba(239,68,68,.2); background: rgba(239,68,68,.06) }
     .v-tracker { display: flex; align-items: center; gap: 5px; font-size: 11px; font-family: var(--font-mono, monospace); color: var(--fg-tertiary) }
     .v-assign-btn {
       font-size: 11px; color: var(--tracky-light); background: none; border: none; cursor: pointer; font-weight: 600;
@@ -309,6 +349,14 @@ export class VehiclesListComponent implements OnInit {
   protected readonly ExternalLink = ExternalLink;
   protected readonly FolderOpenIcon = FolderOpen;
   protected readonly RadioIcon = Radio;
+  protected readonly PencilIcon = Pencil;
+  protected readonly Trash2Icon = Trash2;
+  protected readonly EyeIcon = Eye;
+
+  // Delete vehicle
+  readonly showDeleteVehicle = signal(false);
+  readonly deleting = signal(false);
+  readonly vehicleToDelete = signal<VehicleDetailDto | null>(null);
 
   private readonly sanitizer = inject(DomSanitizer);
 
@@ -334,6 +382,30 @@ export class VehiclesListComponent implements OnInit {
     const live = this.realtime.trackerStatuses().get(trackerId);
     if (live) return live === 'online';
     return httpStatus === 'ONLINE';
+  }
+
+  protected openEditVehicle(v: VehicleDetailDto): void {
+    // For now, navigate to detail page where edit is possible
+    // TODO: inline edit drawer
+    window.location.href = `/vehicles/${v.id}`;
+  }
+
+  protected confirmDeleteVehicle(v: VehicleDetailDto): void {
+    this.vehicleToDelete.set(v);
+    this.showDeleteVehicle.set(true);
+  }
+
+  protected async onDeleteVehicle(): Promise<void> {
+    const v = this.vehicleToDelete();
+    if (!v) return;
+    this.deleting.set(true);
+    try {
+      await firstValueFrom(this.vehiclesApi.delete(v.id));
+      this.showDeleteVehicle.set(false);
+      this.vehicleToDelete.set(null);
+      await this.loadVehicles();
+    } catch { /* error */ }
+    finally { this.deleting.set(false); }
   }
 
   protected openAssignTracker(vehicleId: string): void {
