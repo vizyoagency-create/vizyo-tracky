@@ -5,6 +5,7 @@ import { WS_EVENTS } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { io, Socket } from 'socket.io-client';
 import { ToastService } from '../../shared/ui/toast/toast.service';
+import { PreferencesService } from './preferences.service';
 
 @Injectable({ providedIn: 'root' })
 export class RealtimeService {
@@ -22,6 +23,7 @@ export class RealtimeService {
 
   private socket: Socket | null = null;
   private readonly toast = inject(ToastService);
+  private readonly preferences = inject(PreferencesService);
   private readonly http = inject(HttpClient);
 
   connect(token: string): void {
@@ -50,12 +52,18 @@ export class RealtimeService {
 
     this.socket.on(WS_EVENTS.ALERT_NEW, (alert: AlertEvent) => {
       this._alerts.update((list) => [alert, ...list]);
-      this.toast.show({
-        kind: alert.severity === 'CRITICAL' ? 'error' : alert.severity === 'WARNING' ? 'warning' : 'info',
-        title: alert.title,
-        message: alert.vehiclePlate ? `Vehicule ${alert.vehiclePlate}` : undefined,
-        duration: alert.severity === 'CRITICAL' ? 0 : 6000,
-      });
+      // Respecter les préférences de notification
+      const notifPrefs = this.preferences.prefs().notifications;
+      const sevKey = alert.severity === 'CRITICAL' ? 'critical' : alert.severity === 'WARNING' ? 'warning' : 'info';
+      const pref = notifPrefs[sevKey];
+      if (pref.enabled) {
+        this.toast.show({
+          kind: alert.severity === 'CRITICAL' ? 'error' : alert.severity === 'WARNING' ? 'warning' : 'info',
+          title: alert.title,
+          message: alert.vehiclePlate ? `Vehicule ${alert.vehiclePlate}` : undefined,
+          duration: pref.duration,
+        });
+      }
     });
 
     this.socket.on(WS_EVENTS.ALERT_ACK, (event: AlertAcknowledgedEvent) => {

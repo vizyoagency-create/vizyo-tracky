@@ -1,14 +1,15 @@
-import { Injectable, signal } from '@angular/core';
+import { inject, Injectable, signal } from '@angular/core';
+import { PreferencesService } from '../services/preferences.service';
 
 export type Theme = 'dark' | 'light';
 
-const STORAGE_KEY = 'vizyo-tracky-theme';
-
 @Injectable({ providedIn: 'root' })
 export class ThemeService {
-  readonly theme = signal<Theme>(this.loadTheme());
+  private readonly prefs = inject(PreferencesService);
+  readonly theme = signal<Theme>('dark');
 
   init(): void {
+    this.theme.set(this.prefs.prefs().theme);
     this.applyTheme(this.theme());
   }
 
@@ -16,13 +17,13 @@ export class ThemeService {
     const next: Theme = this.theme() === 'dark' ? 'light' : 'dark';
     this.theme.set(next);
     this.applyTheme(next);
-    localStorage.setItem(STORAGE_KEY, next);
+    this.prefs.update({ theme: next });
   }
 
-  private loadTheme(): Theme {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === 'light' || stored === 'dark') return stored;
-    return 'dark';
+  setTheme(theme: Theme): void {
+    this.theme.set(theme);
+    this.applyTheme(theme);
+    this.prefs.update({ theme });
   }
 
   private applyTheme(theme: Theme): void {

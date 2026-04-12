@@ -14,6 +14,7 @@ import type { GeofenceDto, PositionUpdateEvent } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { GeofencesApiService } from '../../core/services/geofences.service';
 import { RealtimeService } from '../../core/services/realtime.service';
+import { PreferencesService } from '../../core/services/preferences.service';
 import { VehiclesApiService } from '../../core/services/vehicles.service';
 
 function speedColor(speed: number): string {
@@ -121,6 +122,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   protected readonly realtime = inject(RealtimeService);
   private readonly geofencesApi = inject(GeofencesApiService);
   private readonly vehiclesApi = inject(VehiclesApiService);
+  private readonly preferences = inject(PreferencesService);
   private readonly mapContainerRef = viewChild.required<ElementRef<HTMLDivElement>>('mapContainer');
 
   private map: L.Map | null = null;
@@ -159,9 +161,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private initMap(): void {
     const container = this.mapContainerRef().nativeElement;
 
+    const mapPrefs = this.preferences.prefs().map;
     this.map = L.map(container, {
-      center: [33.5731, -7.5898],
-      zoom: 12,
+      center: [mapPrefs.centerLat, mapPrefs.centerLng],
+      zoom: mapPrefs.zoom,
       zoomControl: false,
     });
 
@@ -232,8 +235,13 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         points = [];
         this.trailPoints.set(pos.trackerId, points);
       }
-      points.push(latLng);
-      if (points.length > 20) points.shift();
+      const mapPrefsNow = this.preferences.prefs().map;
+      if (mapPrefsNow.showTrails) {
+        points.push(latLng);
+        if (points.length > mapPrefsNow.trailLength) points.shift();
+      } else {
+        points.length = 0;
+      }
 
       const color = speedColor(pos.speedKmh);
       const trail = this.trails.get(pos.trackerId);

@@ -2,7 +2,9 @@ import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../../core/services/auth.service';
+import { PreferencesService } from '../../core/services/preferences.service';
 import { RealtimeService } from '../../core/services/realtime.service';
+import { ThemeService } from '../../core/theme/theme.service';
 
 @Component({
   selector: 'app-login',
@@ -83,6 +85,8 @@ export class LoginComponent {
 
   private readonly auth = inject(AuthService);
   private readonly realtime = inject(RealtimeService);
+  private readonly preferences = inject(PreferencesService);
+  private readonly themeService = inject(ThemeService);
 
   constructor(private readonly router: Router) {}
 
@@ -110,6 +114,8 @@ export class LoginComponent {
         fleetId: data.user.fleetId ?? null,
         permissions: data.user.permissions ?? null,
       });
+      this.preferences.load(data.user.id);
+      this.themeService.init();
       this.realtime.connect(data.accessToken);
       this.router.navigate(['/dashboard']);
     } catch {
