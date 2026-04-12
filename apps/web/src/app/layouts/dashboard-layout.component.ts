@@ -11,6 +11,8 @@ import {
   Users,
   Settings,
   Menu,
+  X,
+  MoreHorizontal,
 } from 'lucide-angular';
 import { ThemeToggleComponent } from '../shared/components/theme-toggle.component';
 import { AlertsBellComponent } from '../shared/ui/alerts-bell/alerts-bell.component';
@@ -24,67 +26,215 @@ import { ToastContainerComponent } from '../shared/ui/toast/toast-container.comp
   standalone: true,
   imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, ThemeToggleComponent, AlertsBellComponent, LogoComponent, ToastContainerComponent],
   template: `
-    <div class="h-screen flex bg-bg-primary overflow-hidden">
-      <aside
-        class="flex flex-col border-r border-border-subtle bg-bg-secondary transition-all duration-300 ease-tracky shrink-0"
-        [class]="collapsed() ? 'w-16' : 'w-60'"
-      >
-        <div class="flex items-center gap-2 px-3 h-16 border-b border-border-subtle">
+    <div class="layout">
+      <!-- DESKTOP SIDEBAR -->
+      <aside class="desktop-sidebar" [class.collapsed]="collapsed()">
+        <div class="sidebar-top">
           <app-logo variant="icon" [size]="30" />
           @if (!collapsed()) {
-            <span class="text-sm font-display font-bold uppercase tracking-wider text-fg-primary whitespace-nowrap">
-              Vizyo <span class="text-tracky-light">Tracky</span>
-            </span>
+            <span class="sidebar-brand">Vizyo <span class="text-tracky-light">Tracky</span></span>
           }
-          <button
-            (click)="collapsed.set(!collapsed())"
-            class="ml-auto flex items-center justify-center w-8 h-8 rounded-lg
-                   text-fg-tertiary hover:text-fg-primary hover:bg-bg-tertiary
-                   transition-colors duration-200 cursor-pointer"
-          >
-            <lucide-icon [img]="Menu" [size]="18"></lucide-icon>
+          <button (click)="collapsed.set(!collapsed())" class="sidebar-toggle">
+            <lucide-icon [img]="MenuIcon" [size]="18"></lucide-icon>
           </button>
         </div>
-
-        <nav class="flex-1 flex flex-col gap-1 p-2 mt-2">
+        <nav class="sidebar-nav">
           @for (item of navItems(); track item.label) {
-            <a
-              [routerLink]="item.route"
-              routerLinkActive="bg-bg-tertiary text-tracky-light border-border-strong"
-              class="flex items-center gap-3 px-3 py-2.5 rounded-xl
-                     text-fg-secondary border border-transparent
-                     hover:bg-bg-tertiary hover:text-fg-primary
-                     transition-all duration-200"
-            >
+            <a [routerLink]="item.route" routerLinkActive="active" class="sidebar-link">
               <lucide-icon [img]="item.icon" [size]="20"></lucide-icon>
-              @if (!collapsed()) {
-                <span class="text-sm font-medium">{{ item.label }}</span>
-              }
+              @if (!collapsed()) { <span>{{ item.label }}</span> }
             </a>
           }
         </nav>
       </aside>
 
-      <div class="flex-1 flex flex-col min-w-0">
-        <header class="flex items-center justify-between px-6 h-16 border-b border-border-subtle bg-bg-secondary shrink-0">
-          <h2 class="text-lg font-display font-semibold text-fg-primary">Tableau de bord</h2>
-          <div class="flex items-center gap-3">
+      <!-- MOBILE DRAWER OVERLAY -->
+      @if (mobileMenuOpen()) {
+        <div class="mobile-overlay" (click)="mobileMenuOpen.set(false)"></div>
+        <aside class="mobile-drawer">
+          <div class="drawer-top">
+            <app-logo variant="icon" [size]="28" />
+            <span class="sidebar-brand">Vizyo <span class="text-tracky-light">Tracky</span></span>
+            <button (click)="mobileMenuOpen.set(false)" class="drawer-close">
+              <lucide-icon [img]="XIcon" [size]="18"></lucide-icon>
+            </button>
+          </div>
+          <nav class="drawer-nav">
+            @for (item of navItems(); track item.label) {
+              <a [routerLink]="item.route" routerLinkActive="active" class="drawer-link" (click)="mobileMenuOpen.set(false)">
+                <lucide-icon [img]="item.icon" [size]="20"></lucide-icon>
+                <span>{{ item.label }}</span>
+              </a>
+            }
+          </nav>
+        </aside>
+      }
+
+      <!-- MAIN CONTENT -->
+      <div class="main-area">
+        <header class="top-bar">
+          <button (click)="mobileMenuOpen.set(true)" class="mobile-burger">
+            <lucide-icon [img]="MenuIcon" [size]="20"></lucide-icon>
+          </button>
+          <h2 class="top-title">Tableau de bord</h2>
+          <div class="top-actions">
             <app-alerts-bell />
             <app-theme-toggle />
           </div>
         </header>
-        <main class="flex-1 relative" [class]="fullscreen() ? 'overflow-hidden' : 'p-6 overflow-auto'">
+        <main class="content" [class.fullscreen]="fullscreen()">
           <router-outlet />
         </main>
       </div>
+
+      <!-- MOBILE BOTTOM BAR -->
+      <nav class="bottom-bar">
+        @for (item of bottomItems; track item.label) {
+          @if (item.route === 'more') {
+            <button (click)="mobileMenuOpen.set(true)" class="bottom-item">
+              <lucide-icon [img]="item.icon" [size]="20"></lucide-icon>
+              <span>{{ item.label }}</span>
+            </button>
+          } @else {
+            <a [routerLink]="item.route" routerLinkActive="active" class="bottom-item">
+              <lucide-icon [img]="item.icon" [size]="20"></lucide-icon>
+              <span>{{ item.label }}</span>
+            </a>
+          }
+        }
+      </nav>
+
       <app-toast-container />
     </div>
   `,
+  styles: [`
+    .layout { height: 100vh; display: flex; background: var(--bg-primary); overflow: hidden }
+
+    /* ─── DESKTOP SIDEBAR ─── */
+    .desktop-sidebar {
+      display: flex; flex-direction: column; width: 240px; border-right: 1px solid var(--border-subtle);
+      background: var(--bg-secondary); transition: width .3s; shrink: 0;
+    }
+    .desktop-sidebar.collapsed { width: 64px }
+    .sidebar-top {
+      display: flex; align-items: center; gap: 8px; padding: 0 12px; height: 56px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .sidebar-brand { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: var(--fg-primary); white-space: nowrap }
+    .sidebar-toggle {
+      margin-left: auto; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
+      color: var(--fg-tertiary); background: transparent; border: none; cursor: pointer;
+    }
+    .sidebar-toggle:hover { color: var(--fg-primary); background: var(--bg-tertiary) }
+    .sidebar-nav { flex: 1; display: flex; flex-direction: column; gap: 2px; padding: 8px }
+    .sidebar-link {
+      display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px;
+      color: var(--fg-secondary); text-decoration: none; font-size: 13px; font-weight: 500;
+      border: 1px solid transparent; transition: all .2s;
+    }
+    .sidebar-link:hover { background: var(--bg-tertiary); color: var(--fg-primary) }
+    .sidebar-link.active { background: var(--bg-tertiary); color: var(--tracky-light); border-color: var(--border-strong) }
+
+    /* ─── MOBILE DRAWER ─── */
+    .mobile-overlay { display: none }
+    .mobile-drawer { display: none }
+
+    /* ─── TOP BAR ─── */
+    .top-bar {
+      display: flex; align-items: center; justify-content: space-between; padding: 0 24px; height: 56px;
+      border-bottom: 1px solid var(--border-subtle); background: var(--bg-secondary); shrink: 0;
+    }
+    .mobile-burger { display: none }
+    .top-title { font-size: 16px; font-weight: 700; color: var(--fg-primary) }
+    .top-actions { display: flex; align-items: center; gap: 12px }
+
+    /* ─── MAIN ─── */
+    .main-area { flex: 1; display: flex; flex-direction: column; min-width: 0 }
+    .content { flex: 1; padding: 24px; overflow: auto; position: relative }
+    .content.fullscreen { padding: 0; overflow: hidden }
+
+    /* ─── BOTTOM BAR ─── */
+    .bottom-bar { display: none }
+
+    /* ════════════════════════════════════════════════════════
+       MOBILE (< 768px)
+       ════════════════════════════════════════════════════════ */
+    @media (max-width: 768px) {
+      .desktop-sidebar { display: none }
+
+      .mobile-burger {
+        display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px;
+        background: transparent; border: none; color: var(--fg-secondary); cursor: pointer;
+      }
+      .mobile-burger:hover { background: var(--bg-tertiary) }
+
+      .mobile-overlay {
+        display: block; position: fixed; inset: 0; z-index: 8000; background: rgba(0,0,0,.5); backdrop-filter: blur(4px);
+        animation: fadeIn .2s ease;
+      }
+      .mobile-drawer {
+        display: flex; flex-direction: column; position: fixed; top: 0; left: 0; bottom: 0; width: 280px; z-index: 8001;
+        background: var(--bg-secondary); border-right: 1px solid var(--border-subtle); box-shadow: 8px 0 32px rgba(0,0,0,.3);
+        animation: slideRight .25s ease-out;
+      }
+      .drawer-top {
+        display: flex; align-items: center; gap: 8px; padding: 0 16px; height: 56px;
+        border-bottom: 1px solid var(--border-subtle);
+      }
+      .drawer-close {
+        margin-left: auto; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
+        background: transparent; border: none; color: var(--fg-tertiary); cursor: pointer;
+      }
+      .drawer-close:hover { color: var(--fg-primary); background: var(--bg-tertiary) }
+      .drawer-nav { flex: 1; display: flex; flex-direction: column; gap: 2px; padding: 12px }
+      .drawer-link {
+        display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px;
+        color: var(--fg-secondary); text-decoration: none; font-size: 14px; font-weight: 500; transition: all .2s;
+      }
+      .drawer-link:hover { background: var(--bg-tertiary) }
+      .drawer-link.active { background: var(--bg-tertiary); color: var(--tracky-light) }
+
+      .top-bar { padding: 0 12px; height: 52px }
+      .top-title { font-size: 14px }
+
+      .content { padding: 16px; padding-bottom: 80px }
+      .content.fullscreen { padding-bottom: 64px }
+
+      /* Bottom bar */
+      .bottom-bar {
+        display: flex; align-items: center; justify-content: space-around;
+        position: fixed; bottom: 0; left: 0; right: 0; z-index: 7000;
+        height: 60px; background: var(--bg-secondary); border-top: 1px solid var(--border-subtle);
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+      .bottom-item {
+        display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; min-width: 56px;
+        color: var(--fg-tertiary); text-decoration: none; font-size: 10px; font-weight: 600;
+        background: transparent; border: none; cursor: pointer; transition: color .2s;
+      }
+      .bottom-item.active { color: var(--tracky-light) }
+      .bottom-item:hover { color: var(--fg-secondary) }
+    }
+
+    @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+    @keyframes slideRight { from { transform: translateX(-100%) } to { transform: translateX(0) } }
+  `],
 })
 export class DashboardLayoutComponent {
   protected readonly collapsed = signal(false);
   protected readonly fullscreen = signal(false);
-  protected readonly Menu = Menu;
+  protected readonly mobileMenuOpen = signal(false);
+  protected readonly MenuIcon = Menu;
+  protected readonly XIcon = X;
+  protected readonly MoreIcon = MoreHorizontal;
+
+  protected readonly bottomItems = [
+    { label: 'Dashboard', route: '/dashboard', icon: LayoutDashboard },
+    { label: 'Carte', route: '/map', icon: Map },
+    { label: 'Vehicules', route: '/vehicles', icon: Truck },
+    { label: 'Alertes', route: '/alerts', icon: Bell },
+    { label: 'Plus', route: 'more', icon: MoreHorizontal },
+  ];
 
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
