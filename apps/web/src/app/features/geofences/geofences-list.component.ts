@@ -130,10 +130,10 @@ import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-dra
     .gf-sub { font-size: 13px; color: var(--fg-tertiary); margin-top: 2px }
     .gf-add-btn {
       display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 10px;
-      font-size: 12px; font-weight: 700; background: var(--tracky); color: white; border: none; cursor: pointer;
+      font-size: 12px; font-weight: 700; background: #059669; color: white; border: none; cursor: pointer;
       box-shadow: 0 2px 8px rgba(5,150,105,.3);
     }
-    .gf-add-btn:hover { opacity: .9 }
+    .gf-add-btn:hover { background: #047857 }
     :host-context([data-theme="light"]) .gf-blobs::before { background: radial-gradient(ellipse, rgba(16,224,160,.1) 0%, transparent 70%) }
     :host-context([data-theme="light"]) .gf-blobs::after { background: radial-gradient(ellipse, rgba(59,130,246,.08) 0%, transparent 70%) }
     :host-context([data-theme="light"]) .gf-blob-c { background: radial-gradient(ellipse, rgba(168,85,247,.06) 0%, transparent 70%) }

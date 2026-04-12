@@ -152,9 +152,10 @@ import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerR
     .u-sub { font-size: 13px; color: var(--fg-tertiary); margin-top: 2px }
     .u-add-btn {
       display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 10px;
-      font-size: 12px; font-weight: 700; background: var(--tracky); color: white; border: none; cursor: pointer; transition: opacity .2s;
+      font-size: 12px; font-weight: 700; background: #059669; color: white; border: none; cursor: pointer;
+      box-shadow: 0 2px 8px rgba(5,150,105,.3);
     }
-    .u-add-btn:hover { opacity: .9 }
+    .u-add-btn:hover { background: #047857 }
 
     .u-loading { position: relative; z-index: 1; display: flex; justify-content: center; padding: 60px 0 }
     .u-empty {

@@ -205,13 +205,13 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
       background: var(--bg-secondary); color: var(--fg-tertiary); cursor: pointer; transition: all .2s; border: none;
     }
     .tab-btn:hover { color: var(--fg-secondary) }
-    .tab-btn.active { background: var(--tracky); color: white }
+    .tab-btn.active { background: #059669; color: white }
 
     .add-btn {
       display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 10px; font-size: 12px; font-weight: 700;
-      background: var(--tracky); color: white; border: none; cursor: pointer; transition: opacity .2s;
+      background: #059669; color: white; border: none; cursor: pointer; box-shadow: 0 2px 8px rgba(5,150,105,.3);
     }
-    .add-btn:hover { opacity: .9 }
+    .add-btn:hover { background: #047857 }
 
     .vlist-loading { position: relative; z-index: 1; display: flex; justify-content: center; padding: 60px 0 }
 
