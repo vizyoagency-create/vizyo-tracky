@@ -39,7 +39,7 @@ import { TripReplayComponent } from './trip-replay.component';
 
         @if (isAdmin()) {
           <button (click)="onRecompute()" [disabled]="!selectedVehicleId || recomputing()"
-                  class="ml-auto px-3 py-1.5 text-xs rounded-lg border border-amber-500/30
+                  class="px-3 py-1.5 text-xs rounded-lg border border-amber-500/30
                          bg-amber-500/10 text-amber-400 hover:bg-amber-500/20
                          transition-colors cursor-pointer disabled:opacity-40">
             @if (recomputing()) { Recalcul... } @else { Recalculer }
@@ -88,8 +88,8 @@ import { TripReplayComponent } from './trip-replay.component';
           Aucun trajet pour cette periode
         </div>
       } @else {
-        <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-hidden">
-          <table class="w-full text-sm">
+        <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-x-auto">
+          <table class="w-full text-sm" style="min-width:600px">
             <thead class="border-b border-border-subtle text-fg-tertiary text-xs uppercase">
               <tr>
                 <th class="p-3 text-left">Depart</th>

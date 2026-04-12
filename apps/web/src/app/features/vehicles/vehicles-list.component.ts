@@ -194,10 +194,14 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
     @keyframes morph2 { 0%{border-radius:40% 60% 30% 50%; transform:translate(0,0)} 100%{border-radius:60% 30% 50% 40%; transform:translate(-5%,-5%)} }
     @keyframes morph3 { 0%{border-radius:60% 40% 50% 30%; transform:translate(-50%,-50%) scale(1)} 100%{border-radius:40% 50% 30% 60%; transform:translate(-50%,-50%) scale(1.15)} }
 
-    .vlist-header { position: relative; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px }
+    .vlist-header { position: relative; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; gap: 12px; flex-wrap: wrap }
     .vlist-title { font-size: 24px; font-weight: 800; color: var(--fg-primary); letter-spacing: -.02em }
     .vlist-sub { font-size: 13px; color: var(--fg-tertiary); margin-top: 2px }
-    .vlist-actions { display: flex; align-items: center; gap: 10px }
+    .vlist-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap }
+    @media (max-width: 640px) {
+      .vlist-header { flex-direction: column }
+      .vlist-actions { width: 100%; justify-content: space-between }
+    }
 
     .tab-switch { display: flex; border-radius: 10px; border: 1px solid var(--border-subtle); overflow: hidden }
     .tab-btn {
