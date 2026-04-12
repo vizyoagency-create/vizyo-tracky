@@ -12,6 +12,7 @@ import type { GeofenceDto, PositionUpdateEvent } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { GeofencesApiService } from '../../core/services/geofences.service';
 import { RealtimeService } from '../../core/services/realtime.service';
+import { VehiclesApiService } from '../../core/services/vehicles.service';
 
 function speedColor(speed: number): string {
   if (speed <= 0) return '#5C746C';
@@ -117,6 +118,7 @@ function createIcon(speed: number, heading: number): L.DivIcon {
 export class MapComponent implements AfterViewInit, OnDestroy {
   protected readonly realtime = inject(RealtimeService);
   private readonly geofencesApi = inject(GeofencesApiService);
+  private readonly vehiclesApi = inject(VehiclesApiService);
   private readonly mapContainerRef = viewChild.required<ElementRef<HTMLDivElement>>('mapContainer');
 
   private map: L.Map | null = null;
@@ -126,15 +128,22 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private trailPoints = new Map<string, L.LatLng[]>();
   private geofenceCircles = new Map<string, L.Circle>();
   private hasFittedBounds = false;
+  private accessibleVehicleIds: Set<string> | 'ALL' = 'ALL';
 
   private positionsEffect = effect(() => {
-    const positions = this.realtime.positionsList();
+    const all = this.realtime.positionsList();
+    const positions = this.accessibleVehicleIds === 'ALL'
+      ? all
+      : all.filter((p) => (this.accessibleVehicleIds as Set<string>).has(p.vehicleId));
     if (!this.map || positions.length === 0) return;
     this.updateMarkers(positions);
   });
 
   ngAfterViewInit(): void {
     setTimeout(() => this.initMap(), 0);
+    firstValueFrom(this.vehiclesApi.list()).then((vehicles) => {
+      this.accessibleVehicleIds = new Set(vehicles.map((v) => v.id));
+    }).catch(() => { /* fallback to ALL */ });
   }
 
   private initMap(): void {

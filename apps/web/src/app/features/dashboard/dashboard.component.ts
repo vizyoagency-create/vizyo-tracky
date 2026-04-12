@@ -1,4 +1,5 @@
-import { Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
@@ -108,7 +109,7 @@ import { EngineControlButtonComponent } from '../engine-control/engine-control-b
     </div>
   `,
 })
-export class DashboardComponent {
+export class DashboardComponent implements OnInit {
   protected readonly realtime = inject(RealtimeService);
   private readonly vehiclesApi = inject(VehiclesApiService);
   protected readonly Truck = Truck;
@@ -117,6 +118,8 @@ export class DashboardComponent {
   protected readonly AlertTriangle = AlertTriangle;
   protected readonly Radio = Radio;
   protected readonly Math = Math;
+
+  private readonly accessibleVehicleIds = signal<Set<string> | 'ALL'>('ALL');
 
   protected readonly stats = toSignal(
     interval(30_000).pipe(
@@ -128,9 +131,19 @@ export class DashboardComponent {
 
   protected readonly enrichedPositions = computed(() => {
     const now = Date.now();
-    return this.realtime.positionsList().map((pos) => ({
-      ...pos,
-      ageSeconds: Math.round((now - new Date(pos.timestamp).getTime()) / 1000),
-    }));
+    const ids = this.accessibleVehicleIds();
+    return this.realtime.positionsList()
+      .filter((pos) => ids === 'ALL' || ids.has(pos.vehicleId))
+      .map((pos) => ({
+        ...pos,
+        ageSeconds: Math.round((now - new Date(pos.timestamp).getTime()) / 1000),
+      }));
   });
+
+  async ngOnInit(): Promise<void> {
+    try {
+      const vehicles = await firstValueFrom(this.vehiclesApi.list());
+      this.accessibleVehicleIds.set(new Set(vehicles.map((v) => v.id)));
+    } catch { /* fallback to ALL */ }
+  }
 }
