@@ -135,11 +135,17 @@ export class UsersController {
       throw new ForbiddenException('Access denied');
     }
 
+    // FLEET_ADMIN ne peut pas assigner FLEET_ADMIN ou SUPER_ADMIN
+    if (dto.role && req.user.role === UserRole.FLEET_ADMIN && PRIVILEGED_ROLES.includes(dto.role)) {
+      throw new ForbiddenException('Cannot assign this role');
+    }
+
     const updated = await this.prisma.user.update({
       where: { id },
       data: {
         ...(dto.firstName !== undefined ? { firstName: dto.firstName } : {}),
         ...(dto.lastName !== undefined ? { lastName: dto.lastName } : {}),
+        ...(dto.role !== undefined ? { role: dto.role } : {}),
         ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
       },
       select: { id: true, email: true, firstName: true, lastName: true, role: true, fleetId: true, isActive: true, createdAt: true },

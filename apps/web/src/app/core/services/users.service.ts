@@ -49,6 +49,19 @@ export class UsersApiService {
     return res.json();
   }
 
+  async update(id: string, data: { firstName?: string; lastName?: string; role?: string; isActive?: boolean }): Promise<TrackyUser> {
+    const res = await fetch(`/api/users/${id}`, {
+      method: 'PATCH',
+      headers: this.headers,
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as Record<string, string>;
+      throw new Error(body['message'] ?? 'Failed to update user');
+    }
+    return res.json();
+  }
+
   async remove(id: string): Promise<void> {
     const res = await fetch(`/api/users/${id}`, {
       method: 'DELETE',

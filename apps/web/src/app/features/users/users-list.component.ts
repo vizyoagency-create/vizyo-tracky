@@ -1,7 +1,8 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, Plus, Trash2, Users, Shield } from 'lucide-angular';
+import { LucideAngularModule, Plus, Trash2, Users, Shield, Pencil } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
+import { AuthService } from '../../core/services/auth.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { VehicleGroupsService, type VehicleGroup, type UserAccess } from '../../core/services/vehicle-groups.service';
 import { UsersApiService, type TrackyUser } from '../../core/services/users.service';
@@ -15,13 +16,15 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
     <div class="flex flex-col gap-6">
       <div class="flex items-center justify-between">
         <h1 class="text-2xl font-display font-bold text-fg-primary">Utilisateurs</h1>
-        <button
-          (click)="showCreateModal.set(true)"
-          class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl
-                 bg-tracky hover:bg-tracky-dark text-white transition-colors cursor-pointer">
-          <lucide-icon [img]="Plus" [size]="16"></lucide-icon>
-          Ajouter un utilisateur
-        </button>
+        @if (isAdmin()) {
+          <button
+            (click)="showCreateModal.set(true)"
+            class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl
+                   bg-tracky hover:bg-tracky-dark text-white transition-colors cursor-pointer">
+            <lucide-icon [img]="Plus" [size]="16"></lucide-icon>
+            Ajouter un utilisateur
+          </button>
+        }
       </div>
 
       @if (loading()) {
@@ -72,7 +75,14 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
                           [class]="u.isActive ? 'bg-tracky-light' : 'bg-red-400'"></span>
                   </td>
                   <td class="p-3 text-right flex items-center justify-end gap-1">
-                    @if (u.role !== 'FLEET_ADMIN') {
+                    @if (u.role !== 'FLEET_ADMIN' && isAdmin()) {
+                      <button
+                        (click)="openEditModal(u)"
+                        title="Modifier l'utilisateur"
+                        class="p-1.5 rounded-lg text-fg-tertiary hover:text-tracky-light hover:bg-tracky/10
+                               transition-colors cursor-pointer">
+                        <lucide-icon [img]="PencilIcon" [size]="16"></lucide-icon>
+                      </button>
                       <button
                         (click)="openAccessModal(u)"
                         title="Gerer l'acces vehicules"
@@ -123,6 +133,12 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
             class="w-full px-3 py-2 rounded-xl bg-bg-tertiary border border-border-subtle text-fg-primary text-sm
                    placeholder:text-fg-tertiary focus:outline-none focus:border-tracky" />
         </div>
+        <select [(ngModel)]="newRole"
+          class="w-full px-3 py-2 rounded-xl bg-bg-tertiary border border-border-subtle text-fg-primary text-sm
+                 focus:outline-none focus:border-tracky">
+          <option value="VIEWER">Lecteur</option>
+          <option value="FLEET_MANAGER">Manager</option>
+        </select>
       </div>
     </app-confirm-modal>
 
@@ -185,6 +201,37 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
         }
       </div>
     </app-confirm-modal>
+
+    <!-- Edit Modal -->
+    <app-confirm-modal
+      [open]="showEditModal()"
+      [title]="'Modifier — ' + (editUser()?.email ?? '')"
+      confirmLabel="Enregistrer"
+      [loading]="saving()"
+      (confirmed)="onSaveEdit()"
+      (cancelled)="showEditModal.set(false)"
+    >
+      <div class="flex flex-col gap-3 mt-4">
+        <div class="grid grid-cols-2 gap-3">
+          <input type="text" [(ngModel)]="editFirstName" placeholder="Prenom"
+            class="w-full px-3 py-2 rounded-xl bg-bg-tertiary border border-border-subtle text-fg-primary text-sm
+                   placeholder:text-fg-tertiary focus:outline-none focus:border-tracky" />
+          <input type="text" [(ngModel)]="editLastName" placeholder="Nom"
+            class="w-full px-3 py-2 rounded-xl bg-bg-tertiary border border-border-subtle text-fg-primary text-sm
+                   placeholder:text-fg-tertiary focus:outline-none focus:border-tracky" />
+        </div>
+        <select [(ngModel)]="editRole"
+          class="w-full px-3 py-2 rounded-xl bg-bg-tertiary border border-border-subtle text-fg-primary text-sm
+                 focus:outline-none focus:border-tracky">
+          <option value="VIEWER">Lecteur</option>
+          <option value="FLEET_MANAGER">Manager</option>
+        </select>
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" [(ngModel)]="editIsActive" class="accent-[var(--tracky)]" />
+          <span class="text-sm text-fg-primary">Compte actif</span>
+        </label>
+      </div>
+    </app-confirm-modal>
   `,
 })
 export class UsersListComponent implements OnInit {
@@ -218,10 +265,30 @@ export class UsersListComponent implements OnInit {
   selectedGroupIds = new Set<string>();
   selectedVehicleIds = new Set<string>();
 
+  private readonly auth = inject(AuthService);
+
+  // Edit modal
+  readonly showEditModal = signal(false);
+  readonly saving = signal(false);
+  readonly editUser = signal<TrackyUser | null>(null);
+  editFirstName = '';
+  editLastName = '';
+  editRole = 'VIEWER';
+  editIsActive = true;
+
+  // Create form
+  newRole = 'VIEWER';
+
   protected readonly Plus = Plus;
   protected readonly Trash2 = Trash2;
   protected readonly UsersIcon = Users;
   protected readonly ShieldIcon = Shield;
+  protected readonly PencilIcon = Pencil;
+
+  protected isAdmin(): boolean {
+    const role = this.auth.user()?.role;
+    return role === 'FLEET_ADMIN' || role === 'SUPER_ADMIN';
+  }
 
   async ngOnInit(): Promise<void> {
     await this.loadUsers();
@@ -255,13 +322,14 @@ export class UsersListComponent implements OnInit {
         password: this.newPassword,
         firstName: this.newFirstName || undefined,
         lastName: this.newLastName || undefined,
-        role: 'VIEWER',
+        role: this.newRole,
       });
       this.showCreateModal.set(false);
       this.newEmail = '';
       this.newPassword = '';
       this.newFirstName = '';
       this.newLastName = '';
+      this.newRole = 'VIEWER';
       await this.loadUsers();
     } catch (e) {
       this.createError.set((e as Error).message);
@@ -286,6 +354,34 @@ export class UsersListComponent implements OnInit {
       await this.loadUsers();
     } catch { /* error */ }
     finally { this.deleting.set(false); }
+  }
+
+  // ─── Edit User ────────────────────────────────────────────
+
+  openEditModal(user: TrackyUser): void {
+    this.editUser.set(user);
+    this.editFirstName = user.firstName ?? '';
+    this.editLastName = user.lastName ?? '';
+    this.editRole = user.role;
+    this.editIsActive = user.isActive;
+    this.showEditModal.set(true);
+  }
+
+  async onSaveEdit(): Promise<void> {
+    const user = this.editUser();
+    if (!user) return;
+    this.saving.set(true);
+    try {
+      await this.usersService.update(user.id, {
+        firstName: this.editFirstName || undefined,
+        lastName: this.editLastName || undefined,
+        role: this.editRole,
+        isActive: this.editIsActive,
+      });
+      this.showEditModal.set(false);
+      await this.loadUsers();
+    } catch { /* error */ }
+    finally { this.saving.set(false); }
   }
 
   // ─── Vehicle Access ──────────────────────────────────────

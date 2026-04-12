@@ -37,15 +37,17 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
       @if (activeTab() === 'groups') {
         <app-vehicle-groups-tab />
       } @else {
-        <div class="flex items-center justify-end">
-          <button
-            (click)="showAddDialog.set(true)"
-            class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl
-                   bg-tracky hover:bg-tracky-dark text-white transition-colors cursor-pointer">
-            <lucide-icon [img]="Plus" [size]="16"></lucide-icon>
-            Ajouter un vehicule
-          </button>
-        </div>
+        @if (isAdmin()) {
+          <div class="flex items-center justify-end">
+            <button
+              (click)="showAddDialog.set(true)"
+              class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl
+                     bg-tracky hover:bg-tracky-dark text-white transition-colors cursor-pointer">
+              <lucide-icon [img]="Plus" [size]="16"></lucide-icon>
+              Ajouter un vehicule
+            </button>
+          </div>
+        }
 
         @if (loading()) {
           <div class="flex items-center justify-center h-40">
