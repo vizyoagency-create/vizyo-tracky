@@ -190,6 +190,9 @@ export class VehiclesService {
           ${requestedBy.role !== UserRole.SUPER_ADMIN && requestedBy.fleetId
             ? Prisma.sql`AND v."fleetId" = ${requestedBy.fleetId}::uuid`
             : Prisma.empty}
+          ${requestedBy.accessibleVehicleIds && requestedBy.accessibleVehicleIds !== 'ALL'
+            ? Prisma.sql`AND v."id" = ANY(${requestedBy.accessibleVehicleIds}::uuid[])`
+            : Prisma.empty}
       `,
       this.prisma.alert.count({
         where: {
@@ -197,6 +200,9 @@ export class VehiclesService {
           acknowledgedAt: null,
           ...(requestedBy.role !== UserRole.SUPER_ADMIN && requestedBy.fleetId
             ? { fleetId: requestedBy.fleetId }
+            : {}),
+          ...(requestedBy.accessibleVehicleIds && requestedBy.accessibleVehicleIds !== 'ALL'
+            ? { vehicleId: { in: requestedBy.accessibleVehicleIds } }
             : {}),
         },
       }),

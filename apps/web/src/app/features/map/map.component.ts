@@ -1,10 +1,12 @@
 import {
   AfterViewInit,
   Component,
+  computed,
   effect,
   ElementRef,
   inject,
   OnDestroy,
+  signal,
   viewChild,
 } from '@angular/core';
 import * as L from 'leaflet';
@@ -56,7 +58,7 @@ function createIcon(speed: number, heading: number): L.DivIcon {
           }
         </div>
         <p class="text-xs text-fg-secondary">
-          {{ realtime.positionsList().length }} vehicule(s) actif(s)
+          {{ filteredPositionCount() }} vehicule(s) actif(s)
         </p>
         <button
           (click)="centerAll()"
@@ -128,7 +130,15 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private trailPoints = new Map<string, L.LatLng[]>();
   private geofenceCircles = new Map<string, L.Circle>();
   private hasFittedBounds = false;
-  private accessibleVehicleIds: Set<string> | 'ALL' = 'ALL';
+  private readonly _accessibleIds = signal<Set<string> | 'ALL'>('ALL');
+  private get accessibleVehicleIds(): Set<string> | 'ALL' { return this._accessibleIds(); }
+
+  protected readonly filteredPositionCount = computed(() => {
+    const ids = this._accessibleIds();
+    return ids === 'ALL'
+      ? this.realtime.positionsList().length
+      : this.realtime.positionsList().filter((p) => (ids as Set<string>).has(p.vehicleId)).length;
+  });
 
   private positionsEffect = effect(() => {
     const all = this.realtime.positionsList();
@@ -142,7 +152,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   ngAfterViewInit(): void {
     setTimeout(() => this.initMap(), 0);
     firstValueFrom(this.vehiclesApi.list()).then((vehicles) => {
-      this.accessibleVehicleIds = new Set(vehicles.map((v) => v.id));
+      this._accessibleIds.set(new Set(vehicles.map((v) => v.id)));
     }).catch(() => { /* fallback to ALL */ });
   }
 
