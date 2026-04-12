@@ -1,7 +1,7 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { LucideAngularModule, Plus, Truck, ExternalLink, FolderOpen, Radio, X, Save } from 'lucide-angular';
+import { LucideAngularModule, Plus, Truck, ExternalLink, FolderOpen, Radio, X, Save, Wifi } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { RealtimeService } from '../../core/services/realtime.service';
@@ -15,23 +15,31 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
   standalone: true,
   imports: [RouterLink, FormsModule, LucideAngularModule, AddVehicleDialogComponent, VehicleGroupsTabComponent],
   template: `
-    <div class="flex flex-col gap-6">
-      <div class="flex items-center justify-between">
-        <h1 class="text-2xl font-display font-bold text-fg-primary">Vehicules</h1>
-        <div class="flex items-center gap-2">
+    <div class="vlist-page">
+      <div class="vlist-grid-bg"></div>
+      <div class="vlist-glow"></div>
+
+      <!-- Header -->
+      <div class="vlist-header">
+        <div>
+          <h1 class="vlist-title">Vehicules</h1>
+          <p class="vlist-sub">{{ vehicles().length }} vehicule(s) dans votre flotte</p>
+        </div>
+        <div class="vlist-actions">
           @if (perms.can('groups_view')) {
-            <div class="flex rounded-xl border border-border-subtle overflow-hidden">
-              <button (click)="activeTab.set('vehicles')"
-                class="px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer"
-                [class]="activeTab() === 'vehicles' ? 'bg-tracky text-white' : 'bg-bg-tertiary text-fg-secondary hover:text-fg-primary'">
-                <lucide-icon [img]="TruckIcon" [size]="12" class="inline mr-1"></lucide-icon> Vehicules
+            <div class="tab-switch">
+              <button (click)="activeTab.set('vehicles')" class="tab-btn" [class.active]="activeTab() === 'vehicles'">
+                <lucide-icon [img]="TruckIcon" [size]="13"></lucide-icon> Vehicules
               </button>
-              <button (click)="activeTab.set('groups')"
-                class="px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer"
-                [class]="activeTab() === 'groups' ? 'bg-tracky text-white' : 'bg-bg-tertiary text-fg-secondary hover:text-fg-primary'">
-                <lucide-icon [img]="FolderOpenIcon" [size]="12" class="inline mr-1"></lucide-icon> Groupes
+              <button (click)="activeTab.set('groups')" class="tab-btn" [class.active]="activeTab() === 'groups'">
+                <lucide-icon [img]="FolderOpenIcon" [size]="13"></lucide-icon> Groupes
               </button>
             </div>
+          }
+          @if (perms.can('vehicles_create') && activeTab() === 'vehicles') {
+            <button (click)="showAddDialog.set(true)" class="add-btn">
+              <lucide-icon [img]="Plus" [size]="15"></lucide-icon> Ajouter
+            </button>
           }
         </div>
       </div>
@@ -39,89 +47,55 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
       @if (activeTab() === 'groups') {
         <app-vehicle-groups-tab />
       } @else {
-        @if (perms.can('vehicles_create')) {
-          <div class="flex items-center justify-end">
-            <button
-              (click)="showAddDialog.set(true)"
-              class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl
-                     bg-tracky hover:bg-tracky-dark text-white transition-colors cursor-pointer">
-              <lucide-icon [img]="Plus" [size]="16"></lucide-icon>
-              Ajouter un vehicule
-            </button>
-          </div>
-        }
-
         @if (loading()) {
-          <div class="flex items-center justify-center h-40">
+          <div class="vlist-loading">
             <span class="w-6 h-6 border-2 border-fg-tertiary border-t-tracky-light rounded-full animate-spin"></span>
           </div>
         } @else if (vehicles().length === 0) {
-          <div class="flex flex-col items-center justify-center h-40 rounded-[--radius-card]
-                      bg-bg-secondary border border-border-subtle text-fg-tertiary gap-3">
-            <lucide-icon [img]="Truck" [size]="48" class="opacity-30"></lucide-icon>
-            <p>Aucun vehicule {{ perms.can('vehicles_create') ? 'dans votre flotte' : 'accessible' }}</p>
+          <div class="vlist-empty">
+            <div class="empty-icon"><lucide-icon [img]="Truck" [size]="36"></lucide-icon></div>
+            <p class="empty-text">Aucun vehicule {{ perms.can('vehicles_create') ? 'dans votre flotte' : 'accessible' }}</p>
             @if (perms.can('vehicles_create')) {
-              <button
-                (click)="showAddDialog.set(true)"
-                class="text-sm text-tracky-light hover:underline cursor-pointer">
-                Ajouter votre premier vehicule
-              </button>
+              <button (click)="showAddDialog.set(true)" class="empty-cta">Ajouter votre premier vehicule</button>
             }
           </div>
         } @else {
-          <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-hidden">
-            <table class="w-full text-sm">
-              <thead class="border-b border-border-subtle text-fg-tertiary text-xs uppercase">
-                <tr>
-                  <th class="p-3 text-left">Plaque</th>
-                  <th class="p-3 text-left">Marque / Modele</th>
-                  <th class="p-3 text-left">Annee</th>
-                  <th class="p-3 text-left">Tracker</th>
-                  <th class="p-3 text-center">Statut</th>
-                  <th class="p-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (v of vehicles(); track v.id) {
-                  <tr class="border-b border-border-subtle/50 hover:bg-bg-tertiary/50 transition-colors">
-                    <td class="p-3">
-                      <span class="font-semibold text-fg-primary">{{ v.plate }}</span>
-                    </td>
-                    <td class="p-3 text-fg-secondary">
-                      {{ v.brand ?? '—' }} {{ v.model ?? '' }}
-                    </td>
-                    <td class="p-3 text-fg-secondary">{{ v.year ?? '—' }}</td>
-                    <td class="p-3">
-                      @if (v.tracker) {
-                        <span class="font-mono text-xs text-fg-secondary">{{ v.tracker.imei }}</span>
-                      } @else if (perms.can('vehicles_edit')) {
-                        <button (click)="openAssignTracker(v.id)"
-                          class="text-xs text-tracky-light hover:underline cursor-pointer">
-                          Assigner un tracker
-                        </button>
-                      } @else {
-                        <span class="text-fg-tertiary text-xs">Non assigne</span>
-                      }
-                    </td>
-                    <td class="p-3 text-center">
-                      @if (v.tracker) {
-                        <span class="w-2 h-2 rounded-full inline-block"
-                              [class]="isTrackerOnline(v.tracker.id, v.tracker.status) ? 'bg-tracky-light' : 'bg-fg-tertiary'"></span>
-                      } @else {
-                        <span class="w-2 h-2 rounded-full bg-fg-tertiary inline-block"></span>
-                      }
-                    </td>
-                    <td class="p-3 text-right">
-                      <a [routerLink]="['/vehicles', v.id]"
-                         class="inline-flex items-center gap-1 text-xs text-tracky-light hover:underline cursor-pointer">
-                        Voir
-                        <lucide-icon [img]="ExternalLink" [size]="12"></lucide-icon>
-                      </a>
-                    </td>
-                  </tr>
-                }
-              </tbody>
-            </table>
+          <div class="v-grid">
+            @for (v of vehicles(); track v.id) {
+              <a [routerLink]="['/vehicles', v.id]" class="v-card">
+                <div class="v-card-glow" [class]="v.tracker ? 'online' : 'offline'"></div>
+                <div class="v-card-top">
+                  <div class="v-plate-wrap">
+                    <div class="v-status-dot" [class]="v.tracker && isTrackerOnline(v.tracker.id, v.tracker.status) ? 'online' : 'offline'"></div>
+                    <span class="v-plate">{{ v.plate }}</span>
+                  </div>
+                  @if (v.year) {
+                    <span class="v-year">{{ v.year }}</span>
+                  }
+                </div>
+                <div class="v-card-mid">
+                  @if (v.brand) {
+                    <span class="v-brand">{{ v.brand }} {{ v.model ?? '' }}</span>
+                  } @else {
+                    <span class="v-brand muted">Non renseigne</span>
+                  }
+                </div>
+                <div class="v-card-bottom">
+                  @if (v.tracker) {
+                    <div class="v-tracker">
+                      <lucide-icon [img]="RadioIcon" [size]="11"></lucide-icon>
+                      <span>{{ v.tracker.imei }}</span>
+                    </div>
+                  } @else if (perms.can('vehicles_edit')) {
+                    <button (click)="$event.preventDefault(); $event.stopPropagation(); openAssignTracker(v.id)" class="v-assign-btn">
+                      + Assigner tracker
+                    </button>
+                  } @else {
+                    <span class="v-no-tracker">Pas de tracker</span>
+                  }
+                </div>
+              </a>
+            }
           </div>
         }
 
@@ -193,6 +167,86 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
     </div>
   `,
   styles: [`
+    .vlist-page { position: relative; overflow: hidden }
+    .vlist-grid-bg {
+      position: absolute; inset: 0; pointer-events: none; z-index: 0;
+      background-image: radial-gradient(circle, var(--border-subtle) 1px, transparent 1px);
+      background-size: 24px 24px;
+      mask-image: radial-gradient(ellipse at 50% 0%, black 0%, transparent 70%);
+      -webkit-mask-image: radial-gradient(ellipse at 50% 0%, black 0%, transparent 70%);
+      opacity: .5;
+    }
+    .vlist-glow {
+      position: absolute; top: -80px; left: 50%; transform: translateX(-50%); width: 600px; height: 300px;
+      background: radial-gradient(ellipse, rgba(16,224,160,.07) 0%, transparent 70%);
+      pointer-events: none; z-index: 0;
+    }
+
+    .vlist-header { position: relative; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px }
+    .vlist-title { font-size: 24px; font-weight: 800; color: var(--fg-primary); letter-spacing: -.02em }
+    .vlist-sub { font-size: 13px; color: var(--fg-tertiary); margin-top: 2px }
+    .vlist-actions { display: flex; align-items: center; gap: 10px }
+
+    .tab-switch { display: flex; border-radius: 10px; border: 1px solid var(--border-subtle); overflow: hidden }
+    .tab-btn {
+      display: inline-flex; align-items: center; gap: 5px; padding: 7px 14px; font-size: 12px; font-weight: 600;
+      background: var(--bg-secondary); color: var(--fg-tertiary); cursor: pointer; transition: all .2s; border: none;
+    }
+    .tab-btn:hover { color: var(--fg-secondary) }
+    .tab-btn.active { background: var(--tracky); color: white }
+
+    .add-btn {
+      display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 10px; font-size: 12px; font-weight: 700;
+      background: var(--tracky); color: white; border: none; cursor: pointer; transition: opacity .2s;
+    }
+    .add-btn:hover { opacity: .9 }
+
+    .vlist-loading { position: relative; z-index: 1; display: flex; justify-content: center; padding: 60px 0 }
+
+    .vlist-empty {
+      position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 10px;
+      padding: 50px 20px; border-radius: 16px; background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+    }
+    .empty-icon { width: 60px; height: 60px; border-radius: 16px; background: var(--bg-tertiary); display: flex; align-items: center; justify-content: center; color: var(--fg-tertiary) }
+    .empty-text { font-size: 14px; color: var(--fg-tertiary) }
+    .empty-cta { font-size: 13px; color: var(--tracky-light); background: none; border: none; cursor: pointer; text-decoration: underline }
+
+    /* Vehicle grid */
+    .v-grid { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px }
+
+    .v-card {
+      position: relative; display: flex; flex-direction: column; padding: 18px; border-radius: 14px; overflow: hidden;
+      background: var(--bg-secondary); border: 1px solid var(--border-subtle); text-decoration: none; color: inherit;
+      transition: all .3s; cursor: pointer;
+    }
+    .v-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-tracky-glow); transform: translateY(-2px) }
+
+    .v-card-glow {
+      position: absolute; top: 0; right: 0; width: 70px; height: 70px; border-radius: 0 0 0 70px; opacity: .06; pointer-events: none;
+    }
+    .v-card-glow.online { background: var(--tracky-light) }
+    .v-card-glow.offline { background: var(--fg-tertiary) }
+
+    .v-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px }
+    .v-plate-wrap { display: flex; align-items: center; gap: 8px }
+    .v-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0 }
+    .v-status-dot.online { background: var(--tracky-light); box-shadow: 0 0 6px rgba(16,224,160,.4) }
+    .v-status-dot.offline { background: var(--fg-tertiary) }
+    .v-plate { font-size: 16px; font-weight: 800; color: var(--fg-primary); font-family: var(--font-mono, monospace); letter-spacing: .03em }
+    .v-year { font-size: 11px; font-weight: 600; color: var(--fg-tertiary); padding: 2px 8px; border-radius: 6px; background: var(--bg-tertiary) }
+
+    .v-card-mid { margin-bottom: 12px }
+    .v-brand { font-size: 13px; font-weight: 500; color: var(--fg-secondary) }
+    .v-brand.muted { color: var(--fg-tertiary); font-style: italic }
+
+    .v-card-bottom { padding-top: 10px; border-top: 1px solid var(--border-subtle) }
+    .v-tracker { display: flex; align-items: center; gap: 5px; font-size: 11px; font-family: var(--font-mono, monospace); color: var(--fg-tertiary) }
+    .v-assign-btn {
+      font-size: 11px; color: var(--tracky-light); background: none; border: none; cursor: pointer; font-weight: 600;
+    }
+    .v-assign-btn:hover { text-decoration: underline }
+    .v-no-tracker { font-size: 11px; color: var(--fg-tertiary); font-style: italic }
+
     .animate-slide-in { animation: slideIn .25s ease-out }
     @keyframes slideIn { from { transform: translateX(100%) } to { transform: translateX(0) } }
   `],
@@ -223,6 +277,7 @@ export class VehiclesListComponent implements OnInit {
   protected readonly ExternalLink = ExternalLink;
   protected readonly FolderOpenIcon = FolderOpen;
   protected readonly RadioIcon = Radio;
+  protected readonly WifiIcon = Wifi;
   protected readonly XIcon = X;
   protected readonly SaveIcon = Save;
 
