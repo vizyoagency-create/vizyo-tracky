@@ -24,7 +24,7 @@ import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-dra
           <p class="gf-sub">{{ geofences().length }} zone(s) configuree(s)</p>
         </div>
         @if (perms.can('geofences_manage')) {
-          <button (click)="editGeofence.set(null); showDrawDialog.set(true)" class="gf-add-btn">
+          <button (click)="openCreate()" class="gf-add-btn">
             <lucide-icon [img]="Plus" [size]="15"></lucide-icon> Nouvelle zone
           </button>
         }
@@ -37,7 +37,7 @@ import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-dra
           <div class="gf-empty-icon"><lucide-icon [img]="Shield" [size]="32"></lucide-icon></div>
           <p>Aucune geofence configuree</p>
           @if (perms.can('geofences_manage')) {
-            <button (click)="showDrawDialog.set(true)" class="gf-empty-cta">Creer votre premiere zone</button>
+            <button (click)="openCreate()" class="gf-empty-cta">Creer votre premiere zone</button>
           }
         </div>
       } @else {
@@ -237,6 +237,11 @@ export class GeofencesListComponent implements OnInit {
 
   protected formatRadius(m: number): string {
     return m >= 1000 ? `${(m / 1000).toFixed(1)}km` : `${m}m`;
+  }
+
+  protected openCreate(): void {
+    this.editGeofence.set(null);
+    this.showDrawDialog.set(true);
   }
 
   protected openEdit(g: GeofenceDto): void {
