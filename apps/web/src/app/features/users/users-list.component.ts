@@ -8,18 +8,19 @@ import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/v
 import { VehicleGroupsService, type VehicleGroup, type UserAccess } from '../../core/services/vehicle-groups.service';
 import { UsersApiService, type TrackyUser } from '../../core/services/users.service';
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
+import { UserDrawerComponent, type UserDrawerData, type UserDrawerResult } from './user-drawer.component';
 
 @Component({
   selector: 'app-users-list',
   standalone: true,
-  imports: [FormsModule, LucideAngularModule, ConfirmModalComponent],
+  imports: [FormsModule, LucideAngularModule, ConfirmModalComponent, UserDrawerComponent],
   template: `
     <div class="flex flex-col gap-6">
       <div class="flex items-center justify-between">
         <h1 class="text-2xl font-display font-bold text-fg-primary">Utilisateurs</h1>
         @if (perms.can('users_manage')) {
           <button
-            (click)="showCreateModal.set(true)"
+            (click)="openCreateDrawer()"
             class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl
                    bg-tracky hover:bg-tracky-dark text-white transition-colors cursor-pointer">
             <lucide-icon [img]="Plus" [size]="16"></lucide-icon>
@@ -39,7 +40,7 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
           <p>Aucun utilisateur dans votre flotte</p>
           @if (perms.can('users_manage')) {
             <button
-              (click)="showCreateModal.set(true)"
+              (click)="openCreateDrawer()"
               class="text-sm text-tracky-light hover:underline cursor-pointer">
               Ajouter votre premier utilisateur
             </button>
@@ -80,7 +81,7 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
                   <td class="p-3 text-right flex items-center justify-end gap-1">
                     @if (u.role !== 'FLEET_ADMIN' && perms.can('users_manage')) {
                       <button
-                        (click)="openEditModal(u)"
+                        (click)="openEditDrawer(u)"
                         title="Modifier l'utilisateur"
                         class="p-1.5 rounded-lg text-fg-tertiary hover:text-tracky-light hover:bg-tracky/10
                                transition-colors cursor-pointer">
@@ -109,41 +110,14 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
       }
     </div>
 
-    <!-- Create Modal -->
-    <app-confirm-modal
-      [open]="showCreateModal()"
-      title="Ajouter un utilisateur"
-      confirmLabel="Creer"
-      [loading]="creating()"
-      (confirmed)="onCreate()"
-      (cancelled)="showCreateModal.set(false)"
-    >
-      <div class="flex flex-col gap-3 mt-4">
-        @if (createError()) {
-          <p class="text-sm text-red-400">{{ createError() }}</p>
-        }
-        <input type="email" [(ngModel)]="newEmail" placeholder="Email"
-          class="w-full px-3 py-2 rounded-xl bg-bg-tertiary border border-border-subtle text-fg-primary text-sm
-                 placeholder:text-fg-tertiary focus:outline-none focus:border-tracky" />
-        <input type="password" [(ngModel)]="newPassword" placeholder="Mot de passe (min 12 car.)"
-          class="w-full px-3 py-2 rounded-xl bg-bg-tertiary border border-border-subtle text-fg-primary text-sm
-                 placeholder:text-fg-tertiary focus:outline-none focus:border-tracky" />
-        <div class="grid grid-cols-2 gap-3">
-          <input type="text" [(ngModel)]="newFirstName" placeholder="Prenom (optionnel)"
-            class="w-full px-3 py-2 rounded-xl bg-bg-tertiary border border-border-subtle text-fg-primary text-sm
-                   placeholder:text-fg-tertiary focus:outline-none focus:border-tracky" />
-          <input type="text" [(ngModel)]="newLastName" placeholder="Nom (optionnel)"
-            class="w-full px-3 py-2 rounded-xl bg-bg-tertiary border border-border-subtle text-fg-primary text-sm
-                   placeholder:text-fg-tertiary focus:outline-none focus:border-tracky" />
-        </div>
-        <select [(ngModel)]="newRole"
-          class="w-full px-3 py-2 rounded-xl bg-bg-tertiary border border-border-subtle text-fg-primary text-sm
-                 focus:outline-none focus:border-tracky">
-          <option value="VIEWER">Lecteur</option>
-          <option value="FLEET_MANAGER">Manager</option>
-        </select>
-      </div>
-    </app-confirm-modal>
+    <!-- User Drawer (create + edit) -->
+    <app-user-drawer
+      [open]="showDrawer()"
+      [data]="drawerData()"
+      [loading]="drawerLoading()"
+      (closed)="showDrawer.set(false)"
+      (saved)="onDrawerSave($event)"
+    />
 
     <!-- Delete Modal -->
     <app-confirm-modal
@@ -205,53 +179,6 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
       </div>
     </app-confirm-modal>
 
-    <!-- Edit Modal -->
-    <app-confirm-modal
-      [open]="showEditModal()"
-      [title]="'Modifier — ' + (editUser()?.email ?? '')"
-      confirmLabel="Enregistrer"
-      [loading]="saving()"
-      (confirmed)="onSaveEdit()"
-      (cancelled)="showEditModal.set(false)"
-    >
-      <div class="flex flex-col gap-3 mt-4">
-        <div class="grid grid-cols-2 gap-3">
-          <input type="text" [(ngModel)]="editFirstName" placeholder="Prenom"
-            class="w-full px-3 py-2 rounded-xl bg-bg-tertiary border border-border-subtle text-fg-primary text-sm
-                   placeholder:text-fg-tertiary focus:outline-none focus:border-tracky" />
-          <input type="text" [(ngModel)]="editLastName" placeholder="Nom"
-            class="w-full px-3 py-2 rounded-xl bg-bg-tertiary border border-border-subtle text-fg-primary text-sm
-                   placeholder:text-fg-tertiary focus:outline-none focus:border-tracky" />
-        </div>
-        <select [(ngModel)]="editRole" (ngModelChange)="onRoleChange($event)"
-          class="w-full px-3 py-2 rounded-xl bg-bg-tertiary border border-border-subtle text-fg-primary text-sm
-                 focus:outline-none focus:border-tracky">
-          <option value="VIEWER">Lecteur</option>
-          <option value="FLEET_MANAGER">Manager</option>
-        </select>
-        <label class="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" [(ngModel)]="editIsActive" class="accent-[var(--tracky)]" />
-          <span class="text-sm text-fg-primary">Compte actif</span>
-        </label>
-
-        <!-- Permissions -->
-        <div class="mt-2 border-t border-border-subtle pt-3">
-          <p class="text-xs font-semibold text-fg-tertiary uppercase mb-2">Permissions</p>
-          <div class="grid grid-cols-1 gap-1.5 text-sm">
-            @for (group of permissionGroups; track group.label) {
-              <p class="text-[10px] font-bold text-fg-tertiary uppercase mt-1">{{ group.label }}</p>
-              @for (p of group.items; track p.key) {
-                <label class="flex items-center justify-between gap-2 py-0.5 cursor-pointer">
-                  <span class="text-fg-secondary text-xs">{{ p.label }}</span>
-                  <input type="checkbox" [checked]="editPerms[p.key]"
-                    (change)="editPerms[p.key] = !editPerms[p.key]" class="accent-[var(--tracky)]" />
-                </label>
-              }
-            }
-          </div>
-        </div>
-      </div>
-    </app-confirm-modal>
   `,
 })
 export class UsersListComponent implements OnInit {
@@ -260,13 +187,10 @@ export class UsersListComponent implements OnInit {
   readonly loading = signal(true);
   readonly users = signal<TrackyUser[]>([]);
 
-  readonly showCreateModal = signal(false);
-  readonly creating = signal(false);
-  readonly createError = signal('');
-  newEmail = '';
-  newPassword = '';
-  newFirstName = '';
-  newLastName = '';
+  // Drawer (create + edit)
+  readonly showDrawer = signal(false);
+  readonly drawerData = signal<UserDrawerData | null>(null);
+  readonly drawerLoading = signal(false);
 
   readonly showDeleteModal = signal(false);
   readonly deleting = signal(false);
@@ -288,63 +212,11 @@ export class UsersListComponent implements OnInit {
   private readonly auth = inject(AuthService);
   protected readonly perms = inject(PermissionsService);
 
-  // Edit modal
-  readonly showEditModal = signal(false);
-  readonly saving = signal(false);
-  readonly editUser = signal<TrackyUser | null>(null);
-  editFirstName = '';
-  editLastName = '';
-  editRole = 'VIEWER';
-  editIsActive = true;
-
-  // Create form
-  newRole = 'VIEWER';
-
   protected readonly Plus = Plus;
   protected readonly Trash2 = Trash2;
   protected readonly UsersIcon = Users;
   protected readonly ShieldIcon = Shield;
   protected readonly PencilIcon = Pencil;
-
-  // Permission groups for the edit modal
-  editPerms: Record<string, boolean> = {};
-  readonly permissionGroups = [
-    { label: 'Vehicules', items: [
-      { key: 'vehicles_view', label: 'Voir la liste' },
-      { key: 'vehicles_create', label: 'Ajouter' },
-      { key: 'vehicles_edit', label: 'Modifier' },
-      { key: 'vehicles_delete', label: 'Supprimer' },
-    ]},
-    { label: 'Groupes', items: [
-      { key: 'groups_view', label: 'Voir les groupes' },
-      { key: 'groups_manage', label: 'Gerer les groupes' },
-    ]},
-    { label: 'Geofences', items: [
-      { key: 'geofences_view', label: 'Voir' },
-      { key: 'geofences_manage', label: 'Creer / Supprimer' },
-    ]},
-    { label: 'Alertes', items: [
-      { key: 'alerts_view', label: 'Voir' },
-      { key: 'alerts_acknowledge', label: 'Acquitter' },
-    ]},
-    { label: 'Rapports', items: [
-      { key: 'reports_view', label: 'Voir' },
-    ]},
-    { label: 'Utilisateurs', items: [
-      { key: 'users_view', label: 'Voir' },
-      { key: 'users_manage', label: 'Gerer' },
-    ]},
-  ];
-
-  // Default permissions per role (mirror of backend)
-  private readonly roleDefaults: Record<string, Record<string, boolean>> = {
-    VIEWER: { vehicles_view: true, vehicles_create: false, vehicles_edit: false, vehicles_delete: false, groups_view: false, groups_manage: false, geofences_view: true, geofences_manage: false, alerts_view: true, alerts_acknowledge: false, reports_view: true, users_view: false, users_manage: false },
-    FLEET_MANAGER: { vehicles_view: true, vehicles_create: true, vehicles_edit: true, vehicles_delete: true, groups_view: true, groups_manage: true, geofences_view: true, geofences_manage: true, alerts_view: true, alerts_acknowledge: true, reports_view: true, users_view: false, users_manage: false },
-  };
-
-  protected onRoleChange(role: string): void {
-    this.editPerms = { ...(this.roleDefaults[role] ?? this.roleDefaults['VIEWER']) };
-  }
 
   async ngOnInit(): Promise<void> {
     await this.loadUsers();
@@ -368,30 +240,51 @@ export class UsersListComponent implements OnInit {
     return map[role] ?? role;
   }
 
-  async onCreate(): Promise<void> {
-    if (!this.newEmail || !this.newPassword) return;
-    this.creating.set(true);
-    this.createError.set('');
+  openCreateDrawer(): void {
+    this.drawerData.set({ mode: 'create' });
+    this.showDrawer.set(true);
+  }
+
+  openEditDrawer(user: TrackyUser): void {
+    this.drawerData.set({ mode: 'edit', user });
+    this.showDrawer.set(true);
+  }
+
+  async onDrawerSave(result: UserDrawerResult): Promise<void> {
+    this.drawerLoading.set(true);
     try {
-      await this.usersService.create({
-        email: this.newEmail,
-        password: this.newPassword,
-        firstName: this.newFirstName || undefined,
-        lastName: this.newLastName || undefined,
-        role: this.newRole,
-      });
-      this.showCreateModal.set(false);
-      this.newEmail = '';
-      this.newPassword = '';
-      this.newFirstName = '';
-      this.newLastName = '';
-      this.newRole = 'VIEWER';
+      const mode = this.drawerData()?.mode;
+      if (mode === 'create') {
+        await this.usersService.create({
+          email: result.email!,
+          password: result.password!,
+          firstName: result.firstName,
+          lastName: result.lastName,
+          role: result.role,
+        });
+        // Update permissions after creation
+        const users = await this.usersService.findAll();
+        const created = users.find((u) => u.email === result.email);
+        if (created) {
+          await this.usersService.update(created.id, { permissions: result.permissions });
+        }
+      } else {
+        const userId = this.drawerData()?.user?.id;
+        if (userId) {
+          const roleChanged = result.role !== this.drawerData()?.user?.role;
+          await this.usersService.update(userId, {
+            firstName: result.firstName,
+            lastName: result.lastName,
+            role: result.role,
+            isActive: result.isActive,
+            ...(!roleChanged ? { permissions: result.permissions } : {}),
+          });
+        }
+      }
+      this.showDrawer.set(false);
       await this.loadUsers();
-    } catch (e) {
-      this.createError.set((e as Error).message);
-    } finally {
-      this.creating.set(false);
-    }
+    } catch { /* error handled in drawer */ }
+    finally { this.drawerLoading.set(false); }
   }
 
   confirmDelete(user: TrackyUser): void {
@@ -410,40 +303,6 @@ export class UsersListComponent implements OnInit {
       await this.loadUsers();
     } catch { /* error */ }
     finally { this.deleting.set(false); }
-  }
-
-  // ─── Edit User ────────────────────────────────────────────
-
-  openEditModal(user: TrackyUser): void {
-    this.editUser.set(user);
-    this.editFirstName = user.firstName ?? '';
-    this.editLastName = user.lastName ?? '';
-    this.editRole = user.role;
-    this.editIsActive = user.isActive;
-    // Load existing permissions or defaults for the role
-    const existing = (user as unknown as { permissions?: Record<string, boolean> }).permissions;
-    this.editPerms = existing ? { ...existing } : { ...(this.roleDefaults[user.role] ?? this.roleDefaults['VIEWER']) };
-    this.showEditModal.set(true);
-  }
-
-  async onSaveEdit(): Promise<void> {
-    const user = this.editUser();
-    if (!user) return;
-    this.saving.set(true);
-    try {
-      const roleChanged = this.editRole !== user.role;
-      await this.usersService.update(user.id, {
-        firstName: this.editFirstName || undefined,
-        lastName: this.editLastName || undefined,
-        role: this.editRole,
-        isActive: this.editIsActive,
-        // Si le rôle change, le backend reset les perms par défaut. Sinon envoyer les perms custom.
-        ...(!roleChanged ? { permissions: this.editPerms } : {}),
-      });
-      this.showEditModal.set(false);
-      await this.loadUsers();
-    } catch { /* error */ }
-    finally { this.saving.set(false); }
   }
 
   // ─── Vehicle Access ──────────────────────────────────────
