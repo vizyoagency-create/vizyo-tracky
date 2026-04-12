@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, HostListener, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, Truck, Radio, ChevronRight, X } from 'lucide-angular';
+import { LucideAngularModule, Truck, Radio, ChevronRight, X, Save, Check } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { TrackersApiService } from '../../../core/services/trackers.service';
 import { VehiclesApiService } from '../../../core/services/vehicles.service';
@@ -12,156 +12,178 @@ import { VehiclesApiService } from '../../../core/services/vehicles.service';
   imports: [FormsModule, LucideAngularModule],
   template: `
     @if (open()) {
-      <div class="fixed inset-0 z-[9000] flex items-center justify-center">
+      <div class="fixed inset-0 z-[9000] flex justify-end">
         <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" (click)="onClose()"></div>
 
-        <div class="relative bg-bg-secondary border border-border-subtle rounded-[--radius-card]
-                    p-6 max-w-lg w-full mx-4 shadow-2xl">
+        <div class="relative w-full max-w-md bg-bg-primary border-l border-border-subtle shadow-2xl
+                    flex flex-col animate-slide-in overflow-hidden">
 
           <!-- Header -->
-          <div class="flex items-center justify-between mb-6">
+          <div class="flex items-center justify-between px-6 py-4 border-b border-border-subtle">
             <div class="flex items-center gap-3">
               @if (currentStep() === 1) {
-                <lucide-icon [img]="Truck" [size]="20" class="text-tracky-light"></lucide-icon>
-                <h3 class="text-lg font-display font-semibold text-fg-primary">Nouveau vehicule</h3>
+                <div class="w-8 h-8 rounded-lg bg-tracky/15 flex items-center justify-center">
+                  <lucide-icon [img]="TruckIcon" [size]="16" class="text-tracky-light"></lucide-icon>
+                </div>
+                <div>
+                  <h2 class="text-lg font-display font-bold text-fg-primary">Nouveau vehicule</h2>
+                  <p class="text-[10px] text-fg-tertiary">Etape 1 — Informations du vehicule</p>
+                </div>
               } @else {
-                <lucide-icon [img]="RadioIcon" [size]="20" class="text-tracky-light"></lucide-icon>
-                <h3 class="text-lg font-display font-semibold text-fg-primary">Assigner un tracker</h3>
+                <div class="w-8 h-8 rounded-lg bg-tracky/15 flex items-center justify-center">
+                  <lucide-icon [img]="RadioIcon" [size]="16" class="text-tracky-light"></lucide-icon>
+                </div>
+                <div>
+                  <h2 class="text-lg font-display font-bold text-fg-primary">Assigner un tracker</h2>
+                  <p class="text-[10px] text-fg-tertiary">Etape 2 — Tracker GPS</p>
+                </div>
               }
             </div>
-            <button (click)="onClose()" class="text-fg-tertiary hover:text-fg-primary cursor-pointer">
+            <button (click)="onClose()"
+              class="p-1.5 rounded-lg text-fg-tertiary hover:text-fg-primary hover:bg-bg-tertiary transition-colors cursor-pointer">
               <lucide-icon [img]="XIcon" [size]="18"></lucide-icon>
             </button>
           </div>
 
-          <!-- Stepper indicator -->
-          <div class="flex items-center gap-2 mb-6">
+          <!-- Stepper -->
+          <div class="flex items-center gap-0 px-6 py-3 border-b border-border-subtle bg-bg-secondary">
             <div class="flex items-center gap-2 flex-1">
-              <span class="w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center"
-                    [class]="currentStep() >= 1 ? 'bg-tracky text-white' : 'bg-bg-tertiary text-fg-tertiary'">1</span>
-              <span class="text-xs" [class]="currentStep() >= 1 ? 'text-fg-primary' : 'text-fg-tertiary'">Vehicule</span>
+              <span class="w-6 h-6 rounded-full text-[10px] font-bold flex items-center justify-center"
+                [class]="currentStep() > 1 ? 'bg-tracky text-white' : currentStep() === 1 ? 'bg-tracky text-white' : 'bg-bg-tertiary text-fg-tertiary'">
+                @if (currentStep() > 1) {
+                  <lucide-icon [img]="CheckIcon" [size]="12"></lucide-icon>
+                } @else { 1 }
+              </span>
+              <span class="text-xs font-medium" [class]="currentStep() >= 1 ? 'text-fg-primary' : 'text-fg-tertiary'">Vehicule</span>
             </div>
-            <lucide-icon [img]="ChevronRight" [size]="14" class="text-fg-tertiary"></lucide-icon>
+            <div class="w-8 h-px bg-border-subtle mx-1"></div>
             <div class="flex items-center gap-2 flex-1">
-              <span class="w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center"
-                    [class]="currentStep() >= 2 ? 'bg-tracky text-white' : 'bg-bg-tertiary text-fg-tertiary'">2</span>
-              <span class="text-xs" [class]="currentStep() >= 2 ? 'text-fg-primary' : 'text-fg-tertiary'">Tracker</span>
+              <span class="w-6 h-6 rounded-full text-[10px] font-bold flex items-center justify-center"
+                [class]="currentStep() >= 2 ? 'bg-tracky text-white' : 'bg-bg-tertiary text-fg-tertiary'">2</span>
+              <span class="text-xs font-medium" [class]="currentStep() >= 2 ? 'text-fg-primary' : 'text-fg-tertiary'">Tracker</span>
             </div>
           </div>
 
-          <!-- Error -->
-          @if (errorMessage()) {
-            <div class="mb-4 p-3 rounded-lg bg-red-600/10 border border-red-600/20 text-red-400 text-sm">
-              {{ errorMessage() }}
-            </div>
-          }
+          <!-- Content -->
+          <div class="flex-1 overflow-y-auto px-6 py-5 space-y-5">
 
-          <!-- Step 1: Vehicle -->
-          @if (currentStep() === 1) {
-            <form (ngSubmit)="onSubmitStep1()" class="flex flex-col gap-4">
-              <div class="flex flex-col gap-1.5">
-                <label class="text-sm font-medium text-fg-secondary">Plaque d'immatriculation *</label>
-                <input type="text" [(ngModel)]="plate" name="plate" required maxlength="20"
-                       placeholder="AB-123-CD"
-                       class="input-tracky" />
+            <!-- Error -->
+            @if (errorMessage()) {
+              <div class="p-3 rounded-xl bg-red-600/10 border border-red-600/20 text-red-400 text-sm">
+                {{ errorMessage() }}
               </div>
-              <div class="grid grid-cols-2 gap-3">
-                <div class="flex flex-col gap-1.5">
-                  <label class="text-sm font-medium text-fg-secondary">Marque</label>
-                  <input type="text" [(ngModel)]="brand" name="brand" placeholder="Renault" class="input-tracky" />
-                </div>
-                <div class="flex flex-col gap-1.5">
-                  <label class="text-sm font-medium text-fg-secondary">Modele</label>
-                  <input type="text" [(ngModel)]="model" name="model" placeholder="Master" class="input-tracky" />
-                </div>
-              </div>
-              <div class="grid grid-cols-2 gap-3">
-                <div class="flex flex-col gap-1.5">
-                  <label class="text-sm font-medium text-fg-secondary">Annee</label>
-                  <input type="number" [(ngModel)]="year" name="year" placeholder="2024" min="1950" class="input-tracky" />
-                </div>
-                <div class="flex flex-col gap-1.5">
-                  <label class="text-sm font-medium text-fg-secondary">Couleur</label>
-                  <input type="text" [(ngModel)]="color" name="color" placeholder="Blanc" class="input-tracky" />
-                </div>
-              </div>
-              <div class="flex justify-end gap-3 mt-2">
-                <button type="button" (click)="onClose()"
-                        class="px-4 py-2 text-sm rounded-xl bg-bg-tertiary text-fg-secondary
-                               border border-border-subtle hover:text-fg-primary transition-colors cursor-pointer">
-                  Annuler
-                </button>
-                <button type="submit" [disabled]="isLoading() || !plate.trim()"
-                        class="px-4 py-2 text-sm font-medium rounded-xl text-white
-                               bg-tracky hover:bg-tracky-dark transition-colors cursor-pointer
-                               disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
-                  @if (isLoading()) {
-                    <span class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                  }
-                  Suivant
-                  <lucide-icon [img]="ChevronRight" [size]="16"></lucide-icon>
-                </button>
-              </div>
-            </form>
-          }
+            }
 
-          <!-- Step 2: Tracker -->
-          @if (currentStep() === 2) {
-            <form (ngSubmit)="onSubmitStep2()" class="flex flex-col gap-4">
-              <p class="text-sm text-fg-tertiary">
-                Vehicule <strong class="text-fg-primary">{{ plate }}</strong> cree avec succes.
-                Assignez maintenant un tracker GPS.
-              </p>
-              <div class="flex flex-col gap-1.5">
-                <label class="text-sm font-medium text-fg-secondary">IMEI du tracker *</label>
-                <input type="text" [(ngModel)]="imei" name="imei" required
-                       pattern="\\d{15}" maxlength="15"
-                       placeholder="123456789012345"
-                       class="input-tracky font-mono" />
-                <p class="text-[10px] text-fg-tertiary">Exactement 15 chiffres, visible sur l'etiquette du boitier</p>
+            <!-- Step 1: Vehicle info -->
+            @if (currentStep() === 1) {
+              <section>
+                <p class="section-title">Identification</p>
+                <div class="space-y-3">
+                  <div>
+                    <label class="field-label">Plaque d'immatriculation *</label>
+                    <input type="text" [(ngModel)]="plate" placeholder="AB-123-CD" maxlength="20" class="field-input font-mono" />
+                  </div>
+                </div>
+              </section>
+
+              <section>
+                <p class="section-title">Details (optionnel)</p>
+                <div class="space-y-3">
+                  <div class="grid grid-cols-2 gap-3">
+                    <div>
+                      <label class="field-label">Marque</label>
+                      <input type="text" [(ngModel)]="brand" placeholder="Renault" class="field-input" />
+                    </div>
+                    <div>
+                      <label class="field-label">Modele</label>
+                      <input type="text" [(ngModel)]="model" placeholder="Master" class="field-input" />
+                    </div>
+                  </div>
+                  <div class="grid grid-cols-2 gap-3">
+                    <div>
+                      <label class="field-label">Annee</label>
+                      <input type="number" [(ngModel)]="year" placeholder="2024" min="1950" class="field-input" />
+                    </div>
+                    <div>
+                      <label class="field-label">Couleur</label>
+                      <input type="text" [(ngModel)]="color" placeholder="Blanc" class="field-input" />
+                    </div>
+                  </div>
+                </div>
+              </section>
+            }
+
+            <!-- Step 2: Tracker -->
+            @if (currentStep() === 2) {
+              <div class="p-3 rounded-xl bg-tracky/8 border border-tracky/20 text-sm text-tracky-light flex items-center gap-2">
+                <lucide-icon [img]="CheckIcon" [size]="14"></lucide-icon>
+                Vehicule <strong class="text-fg-primary mx-1">{{ plate }}</strong> cree avec succes
               </div>
-              <div class="flex flex-col gap-1.5">
-                <label class="text-sm font-medium text-fg-secondary">Modele du tracker</label>
-                <input type="text" [(ngModel)]="trackerModel" name="trackerModel"
-                       placeholder="Coban GPS403D"
-                       class="input-tracky" />
-              </div>
-              <div class="flex justify-end gap-3 mt-2">
-                <button type="button" disabled
-                        class="px-4 py-2 text-sm rounded-xl bg-bg-tertiary text-fg-tertiary
-                               border border-border-subtle opacity-50 cursor-not-allowed">
-                  Precedent
-                </button>
-                <button type="submit" [disabled]="isLoading() || imei.length !== 15"
-                        class="px-4 py-2 text-sm font-medium rounded-xl text-white
-                               bg-tracky hover:bg-tracky-dark transition-colors cursor-pointer
-                               disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
-                  @if (isLoading()) {
-                    <span class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                  }
-                  Assigner et terminer
-                </button>
-              </div>
-            </form>
-          }
+
+              <section>
+                <p class="section-title">Tracker GPS</p>
+                <div class="space-y-3">
+                  <div>
+                    <label class="field-label">IMEI du tracker *</label>
+                    <input type="text" [(ngModel)]="imei" placeholder="123456789012345" pattern="\\d{15}" maxlength="15"
+                      class="field-input font-mono tracking-wider" />
+                    <p class="text-[10px] text-fg-tertiary mt-1">15 chiffres, visible sur l'etiquette du boitier GPS</p>
+                  </div>
+                  <div>
+                    <label class="field-label">Modele du tracker</label>
+                    <input type="text" [(ngModel)]="trackerModel" placeholder="Coban GPS403D" class="field-input" />
+                  </div>
+                </div>
+              </section>
+            }
+          </div>
+
+          <!-- Footer -->
+          <div class="px-6 py-4 border-t border-border-subtle flex items-center justify-end gap-3">
+            <button (click)="onClose()"
+              class="px-4 py-2.5 text-sm font-medium rounded-xl bg-bg-tertiary text-fg-secondary border border-border-subtle
+                     hover:text-fg-primary transition-colors cursor-pointer">
+              Annuler
+            </button>
+
+            @if (currentStep() === 1) {
+              <button (click)="onSubmitStep1()" [disabled]="isLoading() || !plate.trim()"
+                class="px-5 py-2.5 text-sm font-medium rounded-xl bg-tracky hover:bg-tracky-dark text-white
+                       transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2">
+                @if (isLoading()) {
+                  <span class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                }
+                Suivant
+                <lucide-icon [img]="ChevronRightIcon" [size]="14"></lucide-icon>
+              </button>
+            } @else {
+              <button (click)="onSubmitStep2()" [disabled]="isLoading() || imei.length !== 15"
+                class="px-5 py-2.5 text-sm font-medium rounded-xl bg-tracky hover:bg-tracky-dark text-white
+                       transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2">
+                @if (isLoading()) {
+                  <span class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                } @else {
+                  <lucide-icon [img]="SaveIcon" [size]="14"></lucide-icon>
+                }
+                Assigner et terminer
+              </button>
+            }
+          </div>
         </div>
       </div>
     }
   `,
   styles: [`
-    .input-tracky {
-      width: 100%;
-      padding: 0.625rem 1rem;
-      border-radius: 0.75rem;
-      background: var(--surface-tertiary);
-      border: 1px solid var(--border-color);
-      color: var(--text-primary);
-      font-size: 0.875rem;
-      outline: none;
-      transition: border-color 0.2s;
+    .animate-slide-in { animation: slideIn .25s ease-out }
+    @keyframes slideIn { from { transform: translateX(100%) } to { transform: translateX(0) } }
+    .section-title { font-size: 10px; font-weight: 700; color: var(--fg-tertiary); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px }
+    .field-label { display: block; font-size: 11px; font-weight: 600; color: var(--fg-tertiary); margin-bottom: 4px }
+    .field-input {
+      width: 100%; padding: 10px 14px; background: var(--bg-secondary); border: 1.5px solid var(--border-subtle);
+      border-radius: 12px; color: var(--fg-primary); font-size: 13px; outline: none; transition: border-color .2s;
     }
-    .input-tracky::placeholder { color: var(--text-tertiary); }
-    .input-tracky:focus { border-color: var(--color-tracky); }
+    .field-input:focus { border-color: var(--tracky) }
+    .field-input::placeholder { color: var(--fg-tertiary) }
   `],
 })
 export class AddVehicleDialogComponent {
@@ -184,15 +206,15 @@ export class AddVehicleDialogComponent {
   protected imei = '';
   protected trackerModel = '';
 
-  protected readonly Truck = Truck;
+  protected readonly TruckIcon = Truck;
   protected readonly RadioIcon = Radio;
-  protected readonly ChevronRight = ChevronRight;
+  protected readonly ChevronRightIcon = ChevronRight;
   protected readonly XIcon = X;
+  protected readonly SaveIcon = Save;
+  protected readonly CheckIcon = Check;
 
   @HostListener('document:keydown.escape')
-  onEscape() {
-    if (this.open() && !this.isLoading()) this.onClose();
-  }
+  onEscape() { if (this.open() && !this.isLoading()) this.onClose(); }
 
   onClose(): void {
     if (this.isLoading()) return;
@@ -209,15 +231,12 @@ export class AddVehicleDialogComponent {
       if (this.model.trim()) data['model'] = this.model.trim();
       if (this.year) data['year'] = this.year;
       if (this.color.trim()) data['color'] = this.color.trim();
-
       const vehicle = await firstValueFrom(this.vehiclesApi.create(data as any));
       this.createdVehicleId.set(vehicle.id);
       this.currentStep.set(2);
     } catch (err) {
       this.errorMessage.set(this.extractError(err));
-    } finally {
-      this.isLoading.set(false);
-    }
+    } finally { this.isLoading.set(false); }
   }
 
   async onSubmitStep2(): Promise<void> {
@@ -225,21 +244,14 @@ export class AddVehicleDialogComponent {
     this.errorMessage.set('');
     try {
       const tracker = await firstValueFrom(
-        this.trackersApi.create({
-          imei: this.imei.trim(),
-          model: this.trackerModel.trim() || undefined,
-        }),
+        this.trackersApi.create({ imei: this.imei.trim(), model: this.trackerModel.trim() || undefined }),
       );
-      await firstValueFrom(
-        this.trackersApi.assign(tracker.id, this.createdVehicleId()),
-      );
+      await firstValueFrom(this.trackersApi.assign(tracker.id, this.createdVehicleId()));
       this.reset();
       this.created.emit();
     } catch (err) {
       this.errorMessage.set(this.extractError(err));
-    } finally {
-      this.isLoading.set(false);
-    }
+    } finally { this.isLoading.set(false); }
   }
 
   private reset(): void {
