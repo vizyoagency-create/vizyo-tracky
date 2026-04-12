@@ -60,6 +60,7 @@ export class AuthService {
         email: decoded.email,
         role: decoded.role,
         fleetId: decoded.fleetId ?? null,
+        permissions: decoded.permissions ?? null,
       };
     } catch {
       return null;

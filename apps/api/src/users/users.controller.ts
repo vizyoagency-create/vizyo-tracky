@@ -2,7 +2,7 @@ import {
   Body, Controller, Delete, ForbiddenException, Get, HttpCode, HttpStatus,
   NotFoundException, Param, Patch, Post, Put, Req, UseGuards,
 } from '@nestjs/common';
-import { AccessType, UserRole } from '@prisma/client';
+import { AccessType, Prisma, UserRole } from '@prisma/client';
 import { AuthClientService } from '../auth-client/auth-client.service';
 import { Roles } from '../auth/decorators/roles.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
@@ -60,7 +60,7 @@ export class UsersController {
         firstName: dto.firstName,
         lastName: dto.lastName,
         role: dto.role,
-        permissions: getDefaultPermissions(dto.role),
+        permissions: getDefaultPermissions(dto.role) as unknown as Prisma.JsonObject,
         fleetId,
       },
     });
@@ -154,8 +154,8 @@ export class UsersController {
         ...(dto.firstName !== undefined ? { firstName: dto.firstName } : {}),
         ...(dto.lastName !== undefined ? { lastName: dto.lastName } : {}),
         ...(dto.role !== undefined ? { role: dto.role } : {}),
-        ...(roleChanged ? { permissions: getDefaultPermissions(dto.role!) } : {}),
-        ...(dto.permissions !== undefined && !roleChanged ? { permissions: dto.permissions } : {}),
+        ...(roleChanged ? { permissions: getDefaultPermissions(dto.role!) as unknown as Prisma.JsonObject } : {}),
+        ...(dto.permissions !== undefined && !roleChanged ? { permissions: dto.permissions as unknown as Prisma.JsonObject } : {}),
         ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
       },
       select: { id: true, email: true, firstName: true, lastName: true, role: true, permissions: true, fleetId: true, isActive: true, createdAt: true },
