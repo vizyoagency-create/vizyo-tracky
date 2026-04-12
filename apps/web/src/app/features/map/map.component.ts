@@ -16,7 +16,7 @@ import { GeofencesApiService } from '../../core/services/geofences.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { PreferencesService } from '../../core/services/preferences.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
-import { createTrackyIcon } from '../../shared/utils/leaflet-markers';
+import { createTrackyIcon, speedColor } from '../../shared/utils/leaflet-markers';
 
 @Component({
   selector: 'app-map',
