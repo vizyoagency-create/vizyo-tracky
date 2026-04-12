@@ -57,12 +57,14 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
           <div class="flex flex-col items-center justify-center h-40 rounded-[--radius-card]
                       bg-bg-secondary border border-border-subtle text-fg-tertiary gap-3">
             <lucide-icon [img]="Truck" [size]="48" class="opacity-30"></lucide-icon>
-            <p>Aucun vehicule dans votre flotte</p>
-            <button
-              (click)="showAddDialog.set(true)"
-              class="text-sm text-tracky-light hover:underline cursor-pointer">
-              Ajouter votre premier vehicule
-            </button>
+            <p>Aucun vehicule {{ isAdmin() ? 'dans votre flotte' : 'accessible' }}</p>
+            @if (isAdmin()) {
+              <button
+                (click)="showAddDialog.set(true)"
+                class="text-sm text-tracky-light hover:underline cursor-pointer">
+                Ajouter votre premier vehicule
+              </button>
+            }
           </div>
         } @else {
           <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-hidden">

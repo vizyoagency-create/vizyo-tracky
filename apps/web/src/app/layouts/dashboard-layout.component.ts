@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterOutlet, RouterLink, RouterLinkActive, NavigationEnd, Router } from '@angular/router';
 import {
   LucideAngularModule,
@@ -14,6 +14,7 @@ import {
 } from 'lucide-angular';
 import { ThemeToggleComponent } from '../shared/components/theme-toggle.component';
 import { AlertsBellComponent } from '../shared/ui/alerts-bell/alerts-bell.component';
+import { AuthService } from '../core/services/auth.service';
 import { LogoComponent } from '../shared/ui/logo/logo.component';
 import { ToastContainerComponent } from '../shared/ui/toast/toast-container.component';
 
@@ -45,7 +46,7 @@ import { ToastContainerComponent } from '../shared/ui/toast/toast-container.comp
         </div>
 
         <nav class="flex-1 flex flex-col gap-1 p-2 mt-2">
-          @for (item of navItems; track item.label) {
+          @for (item of navItems(); track item.label) {
             <a
               [routerLink]="item.route"
               routerLinkActive="bg-bg-tertiary text-tracky-light border-border-strong"
@@ -96,14 +97,20 @@ export class DashboardLayoutComponent {
     });
   }
 
-  protected readonly navItems = [
-    { label: 'Tableau de bord', route: '/dashboard', icon: LayoutDashboard },
-    { label: 'Carte', route: '/map', icon: Map },
-    { label: 'Vehicules', route: '/vehicles', icon: Truck },
-    { label: 'Alertes', route: '/alerts', icon: Bell },
-    { label: 'Geofences', route: '/geofences', icon: Shield },
-    { label: 'Rapports', route: '/reports', icon: FileBarChart },
-    { label: 'Utilisateurs', route: '/users', icon: Users },
-    { label: 'Parametres', route: '/settings', icon: Settings },
-  ];
+  private readonly auth = inject(AuthService);
+
+  protected readonly navItems = computed(() => {
+    const role = this.auth.user()?.role;
+    const isAdmin = role === 'FLEET_ADMIN' || role === 'SUPER_ADMIN';
+    return [
+      { label: 'Tableau de bord', route: '/dashboard', icon: LayoutDashboard },
+      { label: 'Carte', route: '/map', icon: Map },
+      { label: 'Vehicules', route: '/vehicles', icon: Truck },
+      { label: 'Alertes', route: '/alerts', icon: Bell },
+      { label: 'Geofences', route: '/geofences', icon: Shield },
+      { label: 'Rapports', route: '/reports', icon: FileBarChart },
+      ...(isAdmin ? [{ label: 'Utilisateurs', route: '/users', icon: Users }] : []),
+      { label: 'Parametres', route: '/settings', icon: Settings },
+    ];
+  });
 }

@@ -36,11 +36,13 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
                     bg-bg-secondary border border-border-subtle text-fg-tertiary gap-3">
           <lucide-icon [img]="UsersIcon" [size]="48" class="opacity-30"></lucide-icon>
           <p>Aucun utilisateur dans votre flotte</p>
-          <button
-            (click)="showCreateModal.set(true)"
-            class="text-sm text-tracky-light hover:underline cursor-pointer">
-            Ajouter votre premier utilisateur
-          </button>
+          @if (isAdmin()) {
+            <button
+              (click)="showCreateModal.set(true)"
+              class="text-sm text-tracky-light hover:underline cursor-pointer">
+              Ajouter votre premier utilisateur
+            </button>
+          }
         </div>
       } @else {
         <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-hidden">

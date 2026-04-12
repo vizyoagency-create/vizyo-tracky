@@ -4,6 +4,7 @@ import { LucideAngularModule, AlertTriangle, AlertCircle, Info, Check, CheckChec
 import type { AlertEvent } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { AlertsApiService } from '../../core/services/alerts.service';
+import { AuthService } from '../../core/services/auth.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { relativeTime } from '../../shared/utils/relative-time';
@@ -16,15 +17,17 @@ import { relativeTime } from '../../shared/utils/relative-time';
     <div class="flex flex-col gap-6">
       <div class="flex items-center justify-between">
         <h1 class="text-2xl font-display font-bold text-fg-primary">Alertes</h1>
-        <button
-          (click)="onAcknowledgeAll()"
-          class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl
-                 bg-tracky/20 text-tracky-light border border-tracky/30
-                 hover:bg-tracky/30 transition-colors cursor-pointer"
-        >
-          <lucide-icon [img]="CheckCheck" [size]="16"></lucide-icon>
-          Tout acquitter
-        </button>
+        @if (canAcknowledge()) {
+          <button
+            (click)="onAcknowledgeAll()"
+            class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl
+                   bg-tracky/20 text-tracky-light border border-tracky/30
+                   hover:bg-tracky/30 transition-colors cursor-pointer"
+          >
+            <lucide-icon [img]="CheckCheck" [size]="16"></lucide-icon>
+            Tout acquitter
+          </button>
+        }
       </div>
 
       <div class="flex items-center gap-3 flex-wrap">
@@ -100,7 +103,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
               }
             </div>
             <div class="shrink-0">
-              @if (!isAcknowledged(alert)) {
+              @if (!isAcknowledged(alert) && canAcknowledge()) {
                 <button
                   (click)="onAcknowledge(alert.id)"
                   class="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-lg
@@ -110,7 +113,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
                   <lucide-icon [img]="Check" [size]="12"></lucide-icon>
                   Acquitter
                 </button>
-              } @else {
+              } @else if (isAcknowledged(alert)) {
                 <span class="text-[10px] text-fg-tertiary">Acquittee</span>
               }
             </div>
@@ -136,6 +139,12 @@ export class AlertsComponent implements OnInit {
   private readonly alertsApi = inject(AlertsApiService);
   private readonly realtime = inject(RealtimeService);
   private readonly toast = inject(ToastService);
+  private readonly auth = inject(AuthService);
+
+  protected canAcknowledge(): boolean {
+    const role = this.auth.user()?.role;
+    return role !== 'VIEWER';
+  }
 
   protected readonly alerts = signal<AlertEvent[]>([]);
   protected readonly loading = signal(false);

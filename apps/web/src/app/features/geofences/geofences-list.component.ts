@@ -2,6 +2,7 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { LucideAngularModule, Plus, Shield, Trash2, Edit, MapPin } from 'lucide-angular';
 import type { GeofenceDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
+import { AuthService } from '../../core/services/auth.service';
 import { GeofencesApiService } from '../../core/services/geofences.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-draw-dialog.component';
@@ -14,13 +15,15 @@ import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-dra
     <div class="flex flex-col gap-6">
       <div class="flex items-center justify-between">
         <h1 class="text-2xl font-display font-bold text-fg-primary">Geofences</h1>
-        <button
-          (click)="showDrawDialog.set(true)"
-          class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl
-                 bg-tracky hover:bg-tracky-dark text-white transition-colors cursor-pointer">
-          <lucide-icon [img]="Plus" [size]="16"></lucide-icon>
-          Creer une geofence
-        </button>
+        @if (canManage()) {
+          <button
+            (click)="showDrawDialog.set(true)"
+            class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl
+                   bg-tracky hover:bg-tracky-dark text-white transition-colors cursor-pointer">
+            <lucide-icon [img]="Plus" [size]="16"></lucide-icon>
+            Creer une geofence
+          </button>
+        }
       </div>
 
       @if (loading()) {
@@ -65,10 +68,12 @@ import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-dra
                           [class]="g.active ? 'bg-tracky-light' : 'bg-fg-tertiary'"></span>
                   </td>
                   <td class="p-3 text-right">
-                    <button (click)="onDelete(g.id)"
-                            class="text-fg-tertiary hover:text-red-400 cursor-pointer p-1">
-                      <lucide-icon [img]="Trash2" [size]="14"></lucide-icon>
-                    </button>
+                    @if (canManage()) {
+                      <button (click)="onDelete(g.id)"
+                              class="text-fg-tertiary hover:text-red-400 cursor-pointer p-1">
+                        <lucide-icon [img]="Trash2" [size]="14"></lucide-icon>
+                      </button>
+                    }
                   </td>
                 </tr>
               }
@@ -87,6 +92,12 @@ import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-dra
 export class GeofencesListComponent implements OnInit {
   private readonly geofencesApi = inject(GeofencesApiService);
   private readonly toast = inject(ToastService);
+  private readonly auth = inject(AuthService);
+
+  protected canManage(): boolean {
+    const role = this.auth.user()?.role;
+    return role === 'FLEET_ADMIN' || role === 'SUPER_ADMIN' || role === 'FLEET_MANAGER';
+  }
 
   protected readonly geofences = signal<GeofenceDto[]>([]);
   protected readonly loading = signal(true);
