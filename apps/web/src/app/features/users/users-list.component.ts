@@ -5,15 +5,16 @@ import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
-import { VehicleGroupsService, type VehicleGroup, type UserAccess } from '../../core/services/vehicle-groups.service';
+import { VehicleGroupsService } from '../../core/services/vehicle-groups.service';
 import { UsersApiService, type TrackyUser } from '../../core/services/users.service';
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
 import { UserDrawerComponent, type UserDrawerData, type UserDrawerResult } from './user-drawer.component';
+import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerResult } from './vehicle-access-drawer.component';
 
 @Component({
   selector: 'app-users-list',
   standalone: true,
-  imports: [FormsModule, LucideAngularModule, ConfirmModalComponent, UserDrawerComponent],
+  imports: [FormsModule, LucideAngularModule, ConfirmModalComponent, UserDrawerComponent, VehicleAccessDrawerComponent],
   template: `
     <div class="flex flex-col gap-6">
       <div class="flex items-center justify-between">
@@ -131,53 +132,14 @@ import { UserDrawerComponent, type UserDrawerData, type UserDrawerResult } from 
       (cancelled)="showDeleteModal.set(false)"
     />
 
-    <!-- Access Modal -->
-    <app-confirm-modal
-      [open]="showAccessModal()"
-      [title]="'Acces vehicules — ' + (accessUser()?.email ?? '')"
-      confirmLabel="Enregistrer"
+    <!-- Vehicle Access Drawer -->
+    <app-vehicle-access-drawer
+      [open]="showAccessDrawer()"
+      [data]="accessDrawerData()"
       [loading]="savingAccess()"
-      (confirmed)="onSaveAccess()"
-      (cancelled)="showAccessModal.set(false)"
-    >
-      <div class="flex flex-col gap-3 mt-4">
-        <label class="flex items-center gap-2 cursor-pointer">
-          <input type="radio" name="accessType" value="ALL" [(ngModel)]="accessType"
-            class="accent-[var(--tracky)]" />
-          <span class="text-sm text-fg-primary">Tous les vehicules</span>
-        </label>
-        <label class="flex items-center gap-2 cursor-pointer">
-          <input type="radio" name="accessType" value="CUSTOM" [(ngModel)]="accessType"
-            class="accent-[var(--tracky)]" />
-          <span class="text-sm text-fg-primary">Selection personnalisee</span>
-        </label>
-
-        @if (accessType === 'CUSTOM') {
-          @if (accessGroups().length > 0) {
-            <div class="mt-2">
-              <p class="text-xs font-semibold text-fg-tertiary uppercase mb-1">Groupes</p>
-              @for (g of accessGroups(); track g.id) {
-                <label class="flex items-center gap-2 py-1 cursor-pointer">
-                  <input type="checkbox" [checked]="selectedGroupIds.has(g.id)"
-                    (change)="toggleGroup(g.id)" class="accent-[var(--tracky)]" />
-                  <span class="text-sm text-fg-secondary">{{ g.name }} ({{ g._count.vehicles }})</span>
-                </label>
-              }
-            </div>
-          }
-          <div class="mt-2">
-            <p class="text-xs font-semibold text-fg-tertiary uppercase mb-1">Vehicules individuels</p>
-            @for (v of accessVehicles(); track v.id) {
-              <label class="flex items-center gap-2 py-1 cursor-pointer">
-                <input type="checkbox" [checked]="selectedVehicleIds.has(v.id)"
-                  (change)="toggleVehicle(v.id)" class="accent-[var(--tracky)]" />
-                <span class="text-sm text-fg-secondary">{{ v.plate }} — {{ v.brand ?? '' }}</span>
-              </label>
-            }
-          </div>
-        }
-      </div>
-    </app-confirm-modal>
+      (closed)="showAccessDrawer.set(false)"
+      (saved)="onAccessDrawerSave($event)"
+    />
 
   `,
 })
@@ -199,15 +161,10 @@ export class UsersListComponent implements OnInit {
   private readonly vehiclesApi = inject(VehiclesApiService);
   private readonly groupsService = inject(VehicleGroupsService);
 
-  // Access modal
-  readonly showAccessModal = signal(false);
+  // Access drawer
+  readonly showAccessDrawer = signal(false);
+  readonly accessDrawerData = signal<AccessDrawerData | null>(null);
   readonly savingAccess = signal(false);
-  readonly accessUser = signal<TrackyUser | null>(null);
-  readonly accessGroups = signal<VehicleGroup[]>([]);
-  readonly accessVehicles = signal<VehicleDetailDto[]>([]);
-  accessType: 'ALL' | 'CUSTOM' = 'ALL';
-  selectedGroupIds = new Set<string>();
-  selectedVehicleIds = new Set<string>();
 
   private readonly auth = inject(AuthService);
   protected readonly perms = inject(PermissionsService);
@@ -305,11 +262,12 @@ export class UsersListComponent implements OnInit {
     finally { this.deleting.set(false); }
   }
 
-  // ─── Vehicle Access ──────────────────────────────────────
+  // ─── Vehicle Access Drawer ───────────────────────────────
+
+  private accessUserId = '';
 
   async openAccessModal(user: TrackyUser): Promise<void> {
-    this.accessUser.set(user);
-    this.showAccessModal.set(true);
+    this.accessUserId = user.id;
 
     const [groups, vehicles, currentAccess] = await Promise.all([
       this.groupsService.list(),
@@ -317,34 +275,26 @@ export class UsersListComponent implements OnInit {
       this.groupsService.getUserAccess(user.id),
     ]);
 
-    this.accessGroups.set(groups);
-    this.accessVehicles.set(vehicles);
-    this.accessType = currentAccess.type;
-    this.selectedGroupIds = new Set(currentAccess.groupIds);
-    this.selectedVehicleIds = new Set(currentAccess.vehicleIds);
+    this.accessDrawerData.set({
+      userEmail: user.email,
+      currentType: currentAccess.type,
+      currentGroupIds: currentAccess.groupIds,
+      currentVehicleIds: currentAccess.vehicleIds,
+      groups,
+      vehicles,
+    });
+    this.showAccessDrawer.set(true);
   }
 
-  toggleGroup(id: string): void {
-    if (this.selectedGroupIds.has(id)) this.selectedGroupIds.delete(id);
-    else this.selectedGroupIds.add(id);
-  }
-
-  toggleVehicle(id: string): void {
-    if (this.selectedVehicleIds.has(id)) this.selectedVehicleIds.delete(id);
-    else this.selectedVehicleIds.add(id);
-  }
-
-  async onSaveAccess(): Promise<void> {
-    const user = this.accessUser();
-    if (!user) return;
+  async onAccessDrawerSave(result: AccessDrawerResult): Promise<void> {
     this.savingAccess.set(true);
     try {
-      await this.groupsService.setUserAccess(user.id, {
-        type: this.accessType,
-        groupIds: this.accessType === 'ALL' ? [] : [...this.selectedGroupIds],
-        vehicleIds: this.accessType === 'ALL' ? [] : [...this.selectedVehicleIds],
+      await this.groupsService.setUserAccess(this.accessUserId, {
+        type: result.type,
+        groupIds: result.type === 'ALL' ? [] : result.groupIds,
+        vehicleIds: result.type === 'ALL' ? [] : result.vehicleIds,
       });
-      this.showAccessModal.set(false);
+      this.showAccessDrawer.set(false);
     } catch { /* error */ }
     finally { this.savingAccess.set(false); }
   }
