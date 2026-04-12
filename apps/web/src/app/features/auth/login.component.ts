@@ -113,7 +113,7 @@ export class LoginComponent {
         role: data.user.role,
         fleetId: data.user.fleetId ?? null,
         permissions: data.user.permissions ?? null,
-      });
+      }, data.refreshToken);
       this.preferences.load(data.user.id);
       this.themeService.init();
       this.realtime.connect(data.accessToken);
