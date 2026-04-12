@@ -6,6 +6,7 @@ import { firstValueFrom } from 'rxjs';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { TrackersApiService } from '../../core/services/trackers.service';
+import { getVehicleSvg, getVehicleTypeLabel } from '../../shared/utils/vehicle-icons';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { AddVehicleDialogComponent } from './add-vehicle-dialog/add-vehicle-dialog.component';
 import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
@@ -66,7 +67,8 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
                 <div class="v-card-glow" [class]="v.tracker ? 'online' : 'offline'"></div>
                 <div class="v-card-top">
                   <div class="v-plate-wrap">
-                    <div class="v-status-dot" [class]="v.tracker && isTrackerOnline(v.tracker.id, v.tracker.status) ? 'online' : 'offline'"></div>
+                    <div class="v-type-icon" [class]="v.tracker && isTrackerOnline(v.tracker.id, v.tracker.status) ? 'online' : 'offline'"
+                      [innerHTML]="getTypeIconHtml(v.type)"></div>
                     <span class="v-plate">{{ v.plate }}</span>
                   </div>
                   @if (v.year) {
@@ -257,9 +259,10 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
 
     .v-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px }
     .v-plate-wrap { display: flex; align-items: center; gap: 8px }
-    .v-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0 }
-    .v-status-dot.online { background: var(--tracky-light); box-shadow: 0 0 6px rgba(16,224,160,.4) }
-    .v-status-dot.offline { background: var(--fg-tertiary) }
+    .v-type-icon { width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0; display: flex; align-items: center; justify-content: center }
+    .v-type-icon.online { background: rgba(16,224,160,.15); color: var(--tracky-light) }
+    .v-type-icon.offline { background: var(--bg-tertiary); color: var(--fg-tertiary) }
+    .v-type-icon :deep(svg) { width: 16px; height: 16px }
     .v-plate { font-size: 16px; font-weight: 800; color: var(--fg-primary); font-family: var(--font-mono, monospace); letter-spacing: .03em }
     .v-year { font-size: 11px; font-weight: 600; color: var(--fg-tertiary); padding: 2px 8px; border-radius: 6px; background: var(--bg-tertiary) }
 
@@ -305,6 +308,10 @@ export class VehiclesListComponent implements OnInit {
   protected readonly ExternalLink = ExternalLink;
   protected readonly FolderOpenIcon = FolderOpen;
   protected readonly RadioIcon = Radio;
+
+  protected getTypeIconHtml(type: string): string {
+    return `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${getVehicleSvg(type)}</svg>`;
+  }
   protected readonly WifiIcon = Wifi;
   protected readonly XIcon = X;
   protected readonly SaveIcon = Save;

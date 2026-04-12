@@ -58,6 +58,17 @@ enum AlertSeverity {
   CRITICAL
 }
 
+enum VehicleType {
+  CAR
+  TRUCK
+  VAN
+  MOTORCYCLE
+  BICYCLE
+  BUS
+  CONSTRUCTION
+  OTHER
+}
+
 enum AccessType {
   ALL
   GROUP
@@ -118,6 +129,7 @@ model Vehicle {
   fleetId   String   @db.Uuid
   fleet     Fleet    @relation(fields: [fleetId], references: [id], onDelete: Cascade)
   plate     String
+  type      VehicleType @default(CAR)
   brand     String?
   model     String?
   year      Int?

@@ -1,9 +1,14 @@
-import { IsInt, IsOptional, IsString, IsUUID, Length, Max, Min } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, IsUUID, Length, Max, Min } from 'class-validator';
+import { VehicleType } from '@prisma/client';
 
 export class CreateVehicleDto {
   @IsString()
   @Length(1, 20)
   plate!: string;
+
+  @IsOptional()
+  @IsEnum(VehicleType)
+  type?: VehicleType;
 
   @IsOptional()
   @IsString()

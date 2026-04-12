@@ -5,6 +5,7 @@ import { Observable } from 'rxjs';
 export interface VehicleDetailDto {
   id: string;
   plate: string;
+  type: string;
   brand: string | null;
   model: string | null;
   year: number | null;

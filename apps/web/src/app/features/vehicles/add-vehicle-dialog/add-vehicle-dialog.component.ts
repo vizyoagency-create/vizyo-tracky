@@ -5,6 +5,7 @@ import { LucideAngularModule, Truck, Radio, ChevronRight, X, Save, Check } from 
 import { firstValueFrom } from 'rxjs';
 import { TrackersApiService } from '../../../core/services/trackers.service';
 import { VehiclesApiService } from '../../../core/services/vehicles.service';
+import { VEHICLE_TYPES } from '../../../shared/utils/vehicle-icons';
 
 @Component({
   selector: 'app-add-vehicle-dialog',
@@ -83,6 +84,18 @@ import { VehiclesApiService } from '../../../core/services/vehicles.service';
                     <label class="field-label">Plaque d'immatriculation *</label>
                     <input type="text" [(ngModel)]="plate" placeholder="AB-123-CD" maxlength="20" class="field-input font-mono" />
                   </div>
+                </div>
+              </section>
+
+              <section>
+                <p class="section-title">Type de vehicule</p>
+                <div class="type-grid">
+                  @for (t of vehicleTypes; track t.key) {
+                    <button (click)="vehicleType = t.key" class="type-btn" [class.active]="vehicleType === t.key">
+                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" [innerHTML]="t.svg"></svg>
+                      <span>{{ t.label }}</span>
+                    </button>
+                  }
                 </div>
               </section>
 
@@ -192,6 +205,15 @@ import { VehiclesApiService } from '../../../core/services/vehicles.service';
     }
     .field-input:focus { border-color: var(--tracky) }
     .field-input::placeholder { color: var(--fg-tertiary) }
+    .type-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px }
+    .type-btn {
+      display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 4px; border-radius: 10px;
+      background: var(--bg-secondary); border: 1.5px solid var(--border-subtle); color: var(--fg-tertiary);
+      cursor: pointer; transition: all .2s; font-size: 10px; font-weight: 600;
+    }
+    .type-btn:hover { border-color: var(--border-strong); color: var(--fg-secondary) }
+    .type-btn.active { border-color: var(--tracky); color: var(--tracky-light); background: rgba(16,224,160,.06) }
+    @media (max-width: 480px) { .type-grid { grid-template-columns: repeat(3, 1fr) } }
   `],
 })
 export class AddVehicleDialogComponent {
@@ -206,7 +228,9 @@ export class AddVehicleDialogComponent {
   protected readonly errorMessage = signal('');
   private readonly createdVehicleId = signal('');
 
+  protected readonly vehicleTypes = VEHICLE_TYPES;
   protected plate = '';
+  protected vehicleType = 'CAR';
   protected brand = '';
   protected model = '';
   protected year: number | undefined;
@@ -239,7 +263,7 @@ export class AddVehicleDialogComponent {
     this.isLoading.set(true);
     this.errorMessage.set('');
     try {
-      const data: Record<string, unknown> = { plate: this.plate.trim() };
+      const data: Record<string, unknown> = { plate: this.plate.trim(), type: this.vehicleType };
       if (this.brand.trim()) data['brand'] = this.brand.trim();
       if (this.model.trim()) data['model'] = this.model.trim();
       if (this.year) data['year'] = this.year;
@@ -272,6 +296,7 @@ export class AddVehicleDialogComponent {
     this.errorMessage.set('');
     this.createdVehicleId.set('');
     this.plate = '';
+    this.vehicleType = 'CAR';
     this.brand = '';
     this.model = '';
     this.year = undefined;

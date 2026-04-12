@@ -40,6 +40,7 @@ export class VehiclesService {
         data: {
           fleetId,
           plate: dto.plate,
+          type: dto.type,
           brand: dto.brand,
           model: dto.model,
           year: dto.year,
@@ -123,6 +124,7 @@ export class VehiclesService {
 
     const data: Prisma.VehicleUpdateInput = {};
     if (dto.plate !== undefined) data.plate = dto.plate;
+    if (dto.type !== undefined) data.type = dto.type;
     if (dto.brand !== undefined) data.brand = dto.brand;
     if (dto.model !== undefined) data.model = dto.model;
     if (dto.year !== undefined) data.year = dto.year;
