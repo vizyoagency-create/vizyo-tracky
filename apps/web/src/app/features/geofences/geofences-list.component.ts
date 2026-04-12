@@ -131,8 +131,12 @@ import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-dra
     .gf-add-btn {
       display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 10px;
       font-size: 12px; font-weight: 700; background: var(--tracky); color: white; border: none; cursor: pointer;
+      box-shadow: 0 2px 8px rgba(5,150,105,.3);
     }
     .gf-add-btn:hover { opacity: .9 }
+    :host-context([data-theme="light"]) .gf-blobs::before { background: radial-gradient(ellipse, rgba(16,224,160,.1) 0%, transparent 70%) }
+    :host-context([data-theme="light"]) .gf-blobs::after { background: radial-gradient(ellipse, rgba(59,130,246,.08) 0%, transparent 70%) }
+    :host-context([data-theme="light"]) .gf-blob-c { background: radial-gradient(ellipse, rgba(168,85,247,.06) 0%, transparent 70%) }
 
     .gf-loading { position: relative; z-index: 1; display: flex; justify-content: center; padding: 60px 0 }
     .gf-empty {
@@ -153,7 +157,9 @@ import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-dra
       border: 1px solid rgba(16,224,160,.08); transition: all .3s;
     }
     .gf-card:hover { border-color: rgba(16,224,160,.2); box-shadow: 0 0 24px rgba(16,224,160,.06), 0 6px 20px rgba(0,0,0,.12) }
-    :host-context([data-theme="light"]) .gf-card { background: rgba(255,255,255,.6); border-color: rgba(16,224,160,.1) }
+    :host-context([data-theme="light"]) .gf-card { background: rgba(255,255,255,.7); border-color: rgba(5,150,105,.15); box-shadow: 0 2px 12px rgba(0,0,0,.04) }
+    :host-context([data-theme="light"]) .gf-card:hover { border-color: rgba(5,150,105,.3); box-shadow: 0 4px 20px rgba(5,150,105,.08) }
+    :host-context([data-theme="light"]) .gf-empty { background: rgba(255,255,255,.7); border-color: rgba(5,150,105,.12) }
 
     /* Visual circle */
     .gf-visual { position: relative; width: 64px; height: 64px; flex-shrink: 0; display: flex; align-items: center; justify-content: center }
