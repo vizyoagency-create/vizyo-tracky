@@ -9,6 +9,7 @@ import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { PrismaService } from '../prisma/prisma.service';
+import { getDefaultPermissions } from './default-permissions';
 import { CreateUserDto } from './dto/create-user.dto';
 import { SetUserAccessDto } from './dto/set-access.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -59,6 +60,7 @@ export class UsersController {
         firstName: dto.firstName,
         lastName: dto.lastName,
         role: dto.role,
+        permissions: getDefaultPermissions(dto.role),
         fleetId,
       },
     });
@@ -69,6 +71,7 @@ export class UsersController {
       firstName: user.firstName,
       lastName: user.lastName,
       role: user.role,
+      permissions: user.permissions,
       fleetId: user.fleetId,
     };
   }
@@ -88,6 +91,7 @@ export class UsersController {
         firstName: true,
         lastName: true,
         role: true,
+        permissions: true,
         fleetId: true,
         isActive: true,
         createdAt: true,
@@ -109,6 +113,7 @@ export class UsersController {
         firstName: true,
         lastName: true,
         role: true,
+        permissions: true,
         fleetId: true,
         isActive: true,
         createdAt: true,
@@ -140,15 +145,20 @@ export class UsersController {
       throw new ForbiddenException('Cannot assign this role');
     }
 
+    // Si le rôle change, réinitialiser les permissions par défaut du nouveau rôle
+    const roleChanged = dto.role !== undefined && dto.role !== user.role;
+
     const updated = await this.prisma.user.update({
       where: { id },
       data: {
         ...(dto.firstName !== undefined ? { firstName: dto.firstName } : {}),
         ...(dto.lastName !== undefined ? { lastName: dto.lastName } : {}),
         ...(dto.role !== undefined ? { role: dto.role } : {}),
+        ...(roleChanged ? { permissions: getDefaultPermissions(dto.role!) } : {}),
+        ...(dto.permissions !== undefined && !roleChanged ? { permissions: dto.permissions } : {}),
         ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
       },
-      select: { id: true, email: true, firstName: true, lastName: true, role: true, fleetId: true, isActive: true, createdAt: true },
+      select: { id: true, email: true, firstName: true, lastName: true, role: true, permissions: true, fleetId: true, isActive: true, createdAt: true },
     });
 
     return updated;

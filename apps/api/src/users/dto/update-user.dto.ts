@@ -1,5 +1,6 @@
-import { IsBoolean, IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsEnum, IsObject, IsOptional, IsString } from 'class-validator';
 import { UserRole } from '@prisma/client';
+import type { UserPermissions } from '../default-permissions';
 
 export class UpdateUserDto {
   @IsString()
@@ -13,6 +14,10 @@ export class UpdateUserDto {
   @IsEnum(UserRole)
   @IsOptional()
   role?: UserRole;
+
+  @IsObject()
+  @IsOptional()
+  permissions?: UserPermissions;
 
   @IsBoolean()
   @IsOptional()

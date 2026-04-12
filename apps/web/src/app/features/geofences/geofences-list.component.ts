@@ -2,7 +2,7 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { LucideAngularModule, Plus, Shield, Trash2, Edit, MapPin } from 'lucide-angular';
 import type { GeofenceDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
-import { AuthService } from '../../core/services/auth.service';
+import { PermissionsService } from '../../core/services/permissions.service';
 import { GeofencesApiService } from '../../core/services/geofences.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-draw-dialog.component';
@@ -15,7 +15,7 @@ import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-dra
     <div class="flex flex-col gap-6">
       <div class="flex items-center justify-between">
         <h1 class="text-2xl font-display font-bold text-fg-primary">Geofences</h1>
-        @if (canManage()) {
+        @if (perms.can('geofences_manage')) {
           <button
             (click)="showDrawDialog.set(true)"
             class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl
@@ -68,7 +68,7 @@ import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-dra
                           [class]="g.active ? 'bg-tracky-light' : 'bg-fg-tertiary'"></span>
                   </td>
                   <td class="p-3 text-right">
-                    @if (canManage()) {
+                    @if (perms.can('geofences_manage')) {
                       <button (click)="onDelete(g.id)"
                               class="text-fg-tertiary hover:text-red-400 cursor-pointer p-1">
                         <lucide-icon [img]="Trash2" [size]="14"></lucide-icon>
@@ -92,12 +92,7 @@ import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-dra
 export class GeofencesListComponent implements OnInit {
   private readonly geofencesApi = inject(GeofencesApiService);
   private readonly toast = inject(ToastService);
-  private readonly auth = inject(AuthService);
-
-  protected canManage(): boolean {
-    const role = this.auth.user()?.role;
-    return role === 'FLEET_ADMIN' || role === 'SUPER_ADMIN' || role === 'FLEET_MANAGER';
-  }
+  protected readonly perms = inject(PermissionsService);
 
   protected readonly geofences = signal<GeofenceDto[]>([]);
   protected readonly loading = signal(true);

@@ -108,6 +108,7 @@ export class LoginComponent {
         email: data.user.email,
         role: data.user.role,
         fleetId: data.user.fleetId ?? null,
+        permissions: data.user.permissions ?? null,
       });
       this.realtime.connect(data.accessToken);
       this.router.navigate(['/dashboard']);

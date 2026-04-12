@@ -2,7 +2,7 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { LucideAngularModule, Plus, Truck, ExternalLink, FolderOpen } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
-import { AuthService } from '../../core/services/auth.service';
+import { PermissionsService } from '../../core/services/permissions.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { AddVehicleDialogComponent } from './add-vehicle-dialog/add-vehicle-dialog.component';
@@ -17,7 +17,7 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
       <div class="flex items-center justify-between">
         <h1 class="text-2xl font-display font-bold text-fg-primary">Vehicules</h1>
         <div class="flex items-center gap-2">
-          @if (isAdmin()) {
+          @if (perms.can('groups_view')) {
             <div class="flex rounded-xl border border-border-subtle overflow-hidden">
               <button (click)="activeTab.set('vehicles')"
                 class="px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer"
@@ -37,7 +37,7 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
       @if (activeTab() === 'groups') {
         <app-vehicle-groups-tab />
       } @else {
-        @if (isAdmin()) {
+        @if (perms.can('vehicles_create')) {
           <div class="flex items-center justify-end">
             <button
               (click)="showAddDialog.set(true)"
@@ -57,8 +57,8 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
           <div class="flex flex-col items-center justify-center h-40 rounded-[--radius-card]
                       bg-bg-secondary border border-border-subtle text-fg-tertiary gap-3">
             <lucide-icon [img]="Truck" [size]="48" class="opacity-30"></lucide-icon>
-            <p>Aucun vehicule {{ isAdmin() ? 'dans votre flotte' : 'accessible' }}</p>
-            @if (isAdmin()) {
+            <p>Aucun vehicule {{ perms.can('vehicles_create') ? 'dans votre flotte' : 'accessible' }}</p>
+            @if (perms.can('vehicles_create')) {
               <button
                 (click)="showAddDialog.set(true)"
                 class="text-sm text-tracky-light hover:underline cursor-pointer">
@@ -129,7 +129,7 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
 export class VehiclesListComponent implements OnInit {
   private readonly vehiclesApi = inject(VehiclesApiService);
   private readonly realtime = inject(RealtimeService);
-  private readonly auth = inject(AuthService);
+  protected readonly perms = inject(PermissionsService);
 
   protected readonly vehicles = signal<VehicleDetailDto[]>([]);
   protected readonly loading = signal(true);
@@ -141,11 +141,6 @@ export class VehiclesListComponent implements OnInit {
   protected readonly Truck = Truck;
   protected readonly ExternalLink = ExternalLink;
   protected readonly FolderOpenIcon = FolderOpen;
-
-  protected isAdmin(): boolean {
-    const role = this.auth.user()?.role;
-    return role === 'FLEET_ADMIN' || role === 'SUPER_ADMIN';
-  }
 
   ngOnInit(): void {
     this.loadVehicles();

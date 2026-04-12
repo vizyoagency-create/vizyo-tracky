@@ -43,7 +43,7 @@ export class VehiclesController {
   }
 
   @Post()
-  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
   create(@Body() dto: CreateVehicleDto, @Req() req: AuthenticatedRequest) {
     return this.vehicles.create(dto, {
       userId: req.user.id,

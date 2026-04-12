@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, Plus, Trash2, Users, Shield, Pencil } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
+import { PermissionsService } from '../../core/services/permissions.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { VehicleGroupsService, type VehicleGroup, type UserAccess } from '../../core/services/vehicle-groups.service';
 import { UsersApiService, type TrackyUser } from '../../core/services/users.service';
@@ -16,7 +17,7 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
     <div class="flex flex-col gap-6">
       <div class="flex items-center justify-between">
         <h1 class="text-2xl font-display font-bold text-fg-primary">Utilisateurs</h1>
-        @if (isAdmin()) {
+        @if (perms.can('users_manage')) {
           <button
             (click)="showCreateModal.set(true)"
             class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl
@@ -36,7 +37,7 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
                     bg-bg-secondary border border-border-subtle text-fg-tertiary gap-3">
           <lucide-icon [img]="UsersIcon" [size]="48" class="opacity-30"></lucide-icon>
           <p>Aucun utilisateur dans votre flotte</p>
-          @if (isAdmin()) {
+          @if (perms.can('users_manage')) {
             <button
               (click)="showCreateModal.set(true)"
               class="text-sm text-tracky-light hover:underline cursor-pointer">
@@ -77,7 +78,7 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
                           [class]="u.isActive ? 'bg-tracky-light' : 'bg-red-400'"></span>
                   </td>
                   <td class="p-3 text-right flex items-center justify-end gap-1">
-                    @if (u.role !== 'FLEET_ADMIN' && isAdmin()) {
+                    @if (u.role !== 'FLEET_ADMIN' && perms.can('users_manage')) {
                       <button
                         (click)="openEditModal(u)"
                         title="Modifier l'utilisateur"
@@ -222,7 +223,7 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
             class="w-full px-3 py-2 rounded-xl bg-bg-tertiary border border-border-subtle text-fg-primary text-sm
                    placeholder:text-fg-tertiary focus:outline-none focus:border-tracky" />
         </div>
-        <select [(ngModel)]="editRole"
+        <select [(ngModel)]="editRole" (ngModelChange)="onRoleChange($event)"
           class="w-full px-3 py-2 rounded-xl bg-bg-tertiary border border-border-subtle text-fg-primary text-sm
                  focus:outline-none focus:border-tracky">
           <option value="VIEWER">Lecteur</option>
@@ -232,6 +233,23 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
           <input type="checkbox" [(ngModel)]="editIsActive" class="accent-[var(--tracky)]" />
           <span class="text-sm text-fg-primary">Compte actif</span>
         </label>
+
+        <!-- Permissions -->
+        <div class="mt-2 border-t border-border-subtle pt-3">
+          <p class="text-xs font-semibold text-fg-tertiary uppercase mb-2">Permissions</p>
+          <div class="grid grid-cols-1 gap-1.5 text-sm">
+            @for (group of permissionGroups; track group.label) {
+              <p class="text-[10px] font-bold text-fg-tertiary uppercase mt-1">{{ group.label }}</p>
+              @for (p of group.items; track p.key) {
+                <label class="flex items-center justify-between gap-2 py-0.5 cursor-pointer">
+                  <span class="text-fg-secondary text-xs">{{ p.label }}</span>
+                  <input type="checkbox" [checked]="editPerms[p.key]"
+                    (change)="editPerms[p.key] = !editPerms[p.key]" class="accent-[var(--tracky)]" />
+                </label>
+              }
+            }
+          </div>
+        </div>
       </div>
     </app-confirm-modal>
   `,
@@ -268,6 +286,7 @@ export class UsersListComponent implements OnInit {
   selectedVehicleIds = new Set<string>();
 
   private readonly auth = inject(AuthService);
+  protected readonly perms = inject(PermissionsService);
 
   // Edit modal
   readonly showEditModal = signal(false);
@@ -287,9 +306,44 @@ export class UsersListComponent implements OnInit {
   protected readonly ShieldIcon = Shield;
   protected readonly PencilIcon = Pencil;
 
-  protected isAdmin(): boolean {
-    const role = this.auth.user()?.role;
-    return role === 'FLEET_ADMIN' || role === 'SUPER_ADMIN';
+  // Permission groups for the edit modal
+  editPerms: Record<string, boolean> = {};
+  readonly permissionGroups = [
+    { label: 'Vehicules', items: [
+      { key: 'vehicles_view', label: 'Voir la liste' },
+      { key: 'vehicles_create', label: 'Ajouter' },
+      { key: 'vehicles_edit', label: 'Modifier' },
+      { key: 'vehicles_delete', label: 'Supprimer' },
+    ]},
+    { label: 'Groupes', items: [
+      { key: 'groups_view', label: 'Voir les groupes' },
+      { key: 'groups_manage', label: 'Gerer les groupes' },
+    ]},
+    { label: 'Geofences', items: [
+      { key: 'geofences_view', label: 'Voir' },
+      { key: 'geofences_manage', label: 'Creer / Supprimer' },
+    ]},
+    { label: 'Alertes', items: [
+      { key: 'alerts_view', label: 'Voir' },
+      { key: 'alerts_acknowledge', label: 'Acquitter' },
+    ]},
+    { label: 'Rapports', items: [
+      { key: 'reports_view', label: 'Voir' },
+    ]},
+    { label: 'Utilisateurs', items: [
+      { key: 'users_view', label: 'Voir' },
+      { key: 'users_manage', label: 'Gerer' },
+    ]},
+  ];
+
+  // Default permissions per role (mirror of backend)
+  private readonly roleDefaults: Record<string, Record<string, boolean>> = {
+    VIEWER: { vehicles_view: true, vehicles_create: false, vehicles_edit: false, vehicles_delete: false, groups_view: false, groups_manage: false, geofences_view: true, geofences_manage: false, alerts_view: true, alerts_acknowledge: false, reports_view: true, users_view: false, users_manage: false },
+    FLEET_MANAGER: { vehicles_view: true, vehicles_create: true, vehicles_edit: true, vehicles_delete: true, groups_view: true, groups_manage: true, geofences_view: true, geofences_manage: true, alerts_view: true, alerts_acknowledge: true, reports_view: true, users_view: false, users_manage: false },
+  };
+
+  protected onRoleChange(role: string): void {
+    this.editPerms = { ...(this.roleDefaults[role] ?? this.roleDefaults['VIEWER']) };
   }
 
   async ngOnInit(): Promise<void> {
@@ -366,6 +420,9 @@ export class UsersListComponent implements OnInit {
     this.editLastName = user.lastName ?? '';
     this.editRole = user.role;
     this.editIsActive = user.isActive;
+    // Load existing permissions or defaults for the role
+    const existing = (user as unknown as { permissions?: Record<string, boolean> }).permissions;
+    this.editPerms = existing ? { ...existing } : { ...(this.roleDefaults[user.role] ?? this.roleDefaults['VIEWER']) };
     this.showEditModal.set(true);
   }
 
@@ -374,11 +431,14 @@ export class UsersListComponent implements OnInit {
     if (!user) return;
     this.saving.set(true);
     try {
+      const roleChanged = this.editRole !== user.role;
       await this.usersService.update(user.id, {
         firstName: this.editFirstName || undefined,
         lastName: this.editLastName || undefined,
         role: this.editRole,
         isActive: this.editIsActive,
+        // Si le rôle change, le backend reset les perms par défaut. Sinon envoyer les perms custom.
+        ...(!roleChanged ? { permissions: this.editPerms } : {}),
       });
       this.showEditModal.set(false);
       await this.loadUsers();

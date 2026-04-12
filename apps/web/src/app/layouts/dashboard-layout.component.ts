@@ -15,6 +15,7 @@ import {
 import { ThemeToggleComponent } from '../shared/components/theme-toggle.component';
 import { AlertsBellComponent } from '../shared/ui/alerts-bell/alerts-bell.component';
 import { AuthService } from '../core/services/auth.service';
+import { PermissionsService } from '../core/services/permissions.service';
 import { LogoComponent } from '../shared/ui/logo/logo.component';
 import { ToastContainerComponent } from '../shared/ui/toast/toast-container.component';
 
@@ -98,10 +99,9 @@ export class DashboardLayoutComponent {
   }
 
   private readonly auth = inject(AuthService);
+  private readonly perms = inject(PermissionsService);
 
   protected readonly navItems = computed(() => {
-    const role = this.auth.user()?.role;
-    const isAdmin = role === 'FLEET_ADMIN' || role === 'SUPER_ADMIN';
     return [
       { label: 'Tableau de bord', route: '/dashboard', icon: LayoutDashboard },
       { label: 'Carte', route: '/map', icon: Map },
@@ -109,7 +109,7 @@ export class DashboardLayoutComponent {
       { label: 'Alertes', route: '/alerts', icon: Bell },
       { label: 'Geofences', route: '/geofences', icon: Shield },
       { label: 'Rapports', route: '/reports', icon: FileBarChart },
-      ...(isAdmin ? [{ label: 'Utilisateurs', route: '/users', icon: Users }] : []),
+      ...(this.perms.can('users_view') ? [{ label: 'Utilisateurs', route: '/users', icon: Users }] : []),
       { label: 'Parametres', route: '/settings', icon: Settings },
     ];
   });

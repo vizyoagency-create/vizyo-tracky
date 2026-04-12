@@ -49,7 +49,7 @@ export class UsersApiService {
     return res.json();
   }
 
-  async update(id: string, data: { firstName?: string; lastName?: string; role?: string; isActive?: boolean }): Promise<TrackyUser> {
+  async update(id: string, data: { firstName?: string; lastName?: string; role?: string; isActive?: boolean; permissions?: Record<string, boolean> }): Promise<TrackyUser> {
     const res = await fetch(`/api/users/${id}`, {
       method: 'PATCH',
       headers: this.headers,

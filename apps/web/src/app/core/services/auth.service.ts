@@ -5,6 +5,7 @@ export interface AuthUser {
   email: string;
   role: string;
   fleetId: string | null;
+  permissions: Record<string, boolean> | null;
 }
 
 const TOKEN_KEY = 'vizyo-tracky-token';
