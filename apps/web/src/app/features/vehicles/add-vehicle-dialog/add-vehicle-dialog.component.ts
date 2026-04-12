@@ -146,6 +146,14 @@ import { VehiclesApiService } from '../../../core/services/vehicles.service';
               Annuler
             </button>
 
+            @if (currentStep() === 2) {
+              <button (click)="onSkipTracker()"
+                class="px-4 py-2.5 text-sm font-medium rounded-xl text-fg-tertiary
+                       hover:text-fg-secondary transition-colors cursor-pointer">
+                Passer
+              </button>
+            }
+
             @if (currentStep() === 1) {
               <button (click)="onSubmitStep1()" [disabled]="isLoading() || !plate.trim()"
                 class="px-5 py-2.5 text-sm font-medium rounded-xl bg-tracky hover:bg-tracky-dark text-white
@@ -218,6 +226,11 @@ export class AddVehicleDialogComponent {
 
   onClose(): void {
     if (this.isLoading()) return;
+    this.reset();
+    this.created.emit();
+  }
+
+  onSkipTracker(): void {
     this.reset();
     this.created.emit();
   }
