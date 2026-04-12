@@ -46,19 +46,19 @@ import { VehiclesApiService } from '../../../core/services/vehicles.service';
           </div>
 
           <!-- Stepper -->
-          <div class="flex items-center gap-0 px-6 py-3 border-b border-border-subtle bg-bg-secondary">
-            <div class="flex items-center gap-2 flex-1">
-              <span class="w-6 h-6 rounded-full text-[10px] font-bold flex items-center justify-center"
-                [class]="currentStep() > 1 ? 'bg-tracky text-white' : currentStep() === 1 ? 'bg-tracky text-white' : 'bg-bg-tertiary text-fg-tertiary'">
+          <div class="flex items-center px-6 py-3 border-b border-border-subtle bg-bg-secondary">
+            <div class="flex items-center gap-2">
+              <span class="w-6 h-6 rounded-full text-[10px] font-bold flex items-center justify-center shrink-0"
+                [class]="currentStep() > 1 ? 'bg-tracky text-white' : 'bg-tracky text-white'">
                 @if (currentStep() > 1) {
                   <lucide-icon [img]="CheckIcon" [size]="12"></lucide-icon>
                 } @else { 1 }
               </span>
               <span class="text-xs font-medium" [class]="currentStep() >= 1 ? 'text-fg-primary' : 'text-fg-tertiary'">Vehicule</span>
             </div>
-            <div class="w-8 h-px bg-border-subtle mx-1"></div>
-            <div class="flex items-center gap-2 flex-1">
-              <span class="w-6 h-6 rounded-full text-[10px] font-bold flex items-center justify-center"
+            <div class="flex-1 h-px bg-border-subtle mx-3"></div>
+            <div class="flex items-center gap-2">
+              <span class="w-6 h-6 rounded-full text-[10px] font-bold flex items-center justify-center shrink-0"
                 [class]="currentStep() >= 2 ? 'bg-tracky text-white' : 'bg-bg-tertiary text-fg-tertiary'">2</span>
               <span class="text-xs font-medium" [class]="currentStep() >= 2 ? 'text-fg-primary' : 'text-fg-tertiary'">Tracker</span>
             </div>
