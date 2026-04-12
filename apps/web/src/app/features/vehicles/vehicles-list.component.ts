@@ -167,9 +167,9 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
     </div>
   `,
   styles: [`
-    .vlist-page { position: relative; overflow: hidden }
+    .vlist-page { position: relative; min-height: 100% }
     .vlist-grid-bg {
-      position: absolute; inset: 0; pointer-events: none; z-index: 0; overflow: hidden;
+      position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden;
     }
     .vlist-grid-bg::before {
       content: ''; position: absolute; top: -10%; left: -15%; width: 55%; height: 60%;
@@ -184,7 +184,7 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
       animation: morph2 10s ease-in-out infinite alternate;
     }
     .vlist-glow {
-      position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%); width: 35%; height: 40%;
+      position: fixed; top: 30%; left: 50%; transform: translate(-50%, -50%); width: 35%; height: 40%;
       background: radial-gradient(ellipse, rgba(168,85,247,.05) 0%, transparent 70%);
       border-radius: 60% 40% 50% 30%;
       pointer-events: none; z-index: 0;
