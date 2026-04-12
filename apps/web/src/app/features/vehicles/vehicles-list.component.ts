@@ -1,4 +1,5 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
+import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { LucideAngularModule, Plus, Truck, ExternalLink, FolderOpen, Radio, X, Save, Wifi } from 'lucide-angular';
@@ -309,8 +310,12 @@ export class VehiclesListComponent implements OnInit {
   protected readonly FolderOpenIcon = FolderOpen;
   protected readonly RadioIcon = Radio;
 
-  protected getTypeIconHtml(type: string): string {
-    return `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${getVehicleSvg(type)}</svg>`;
+  private readonly sanitizer = inject(DomSanitizer);
+
+  protected getTypeIconHtml(type: string): SafeHtml {
+    return this.sanitizer.bypassSecurityTrustHtml(
+      `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${getVehicleSvg(type)}</svg>`
+    );
   }
   protected readonly WifiIcon = Wifi;
   protected readonly XIcon = X;

@@ -1,5 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, HostListener, inject, input, output, signal } from '@angular/core';
+import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, Truck, Radio, ChevronRight, X, Save, Check } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
@@ -92,7 +93,7 @@ import { VEHICLE_TYPES } from '../../../shared/utils/vehicle-icons';
                 <div class="type-grid">
                   @for (t of vehicleTypes; track t.key) {
                     <button (click)="vehicleType = t.key" class="type-btn" [class.active]="vehicleType === t.key">
-                      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" [innerHTML]="t.svg"></svg>
+                      <span class="type-icon" [innerHTML]="getSvgHtml(t.svg)"></span>
                       <span>{{ t.label }}</span>
                     </button>
                   }
@@ -213,6 +214,7 @@ import { VEHICLE_TYPES } from '../../../shared/utils/vehicle-icons';
     }
     .type-btn:hover { border-color: var(--border-strong); color: var(--fg-secondary) }
     .type-btn.active { border-color: var(--tracky); color: var(--tracky-light); background: rgba(16,224,160,.06) }
+    .type-icon { display: flex; align-items: center; justify-content: center; height: 24px }
     @media (max-width: 480px) { .type-grid { grid-template-columns: repeat(3, 1fr) } }
   `],
 })
@@ -222,6 +224,13 @@ export class AddVehicleDialogComponent {
 
   private readonly vehiclesApi = inject(VehiclesApiService);
   private readonly trackersApi = inject(TrackersApiService);
+  private readonly sanitizer = inject(DomSanitizer);
+
+  protected getSvgHtml(svgContent: string): SafeHtml {
+    return this.sanitizer.bypassSecurityTrustHtml(
+      `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${svgContent}</svg>`
+    );
+  }
 
   protected readonly currentStep = signal(1);
   protected readonly isLoading = signal(false);
