@@ -269,9 +269,16 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       }
     }
 
+    // Auto-center seulement si les prefs carte sont les valeurs par défaut
+    // (l'utilisateur n'a pas configuré de centre personnalisé)
     if (!this.hasFittedBounds && this.markers.size > 0) {
       this.hasFittedBounds = true;
-      this.centerAll();
+      const mapPrefs = this.preferences.prefs().map;
+      const defaults = this.preferences.getDefaults().map;
+      const isDefaultCenter = mapPrefs.centerLat === defaults.centerLat && mapPrefs.centerLng === defaults.centerLng;
+      if (isDefaultCenter) {
+        this.centerAll();
+      }
     }
   }
 
