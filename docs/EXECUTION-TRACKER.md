@@ -1,20 +1,20 @@
 # Execution Tracker — Tracky V1 (canal hardware)
 
 > **Fichier vivant** — à mettre à jour après CHAQUE retour de Claude Code ou session bench.
-> Dernière mise à jour : _2026-04-13 par Claude Code_
+> Dernière mise à jour : _2026-04-13 par Claude Code (session 3 — validation WireLog)_
 
 ---
 
 ## 🎯 État global
 
 ```
-Vague A (Phase 8 + Phase 6)  [ ████████░░ ]  80 %
+Vague A (Phase 8 + Phase 6)  [ ██████████ ] 100 %
 Bench 403C (Phase 5)         [ ░░░░░░░░░░ ]   0 %
 Vague B (Phase 7 SMS)        [ ░░░░░░░░░░ ]   0 %
 ```
 
-**En cours** : _Vague A terminée_
-**Prochaine action** : bench 403C (Phase 5)
+**En cours** : _aucun_
+**Prochaine action** : bench 403C selon `docs/prompts/bench-403c.md`
 **Bloquant actif** : _aucun_
 
 ---
@@ -24,7 +24,7 @@ Vague B (Phase 7 SMS)        [ ░░░░░░░░░░ ]   0 %
 | Phase                          | Statut  | Démarré    | Terminé    | Commits | Tests ajoutés                        |
 | ------------------------------ | ------- | ---------- | ---------- | ------- | ------------------------------------ |
 | Phase 8 — Logs & observabilité | ✅ FAIT | 2026-04-13 | 2026-04-13 | 1       | 14                                   |
-| Phase 6 — Commands Console     | ✅ FAIT | 2026-04-13 | 2026-04-13 | 7       | 55 (30 catalog + 8 ack + 17 service) |
+| Phase 6 — Commands Console     | ✅ FAIT | 2026-04-13 | 2026-04-13 | 8       | 55 (30 catalog + 8 ack + 17 service) |
 | Phase 5 — Bench 403C hardware  | ⬜ TODO | —          | —          | n/a     | n/a                                  |
 | Phase 7 — SMS Gateway          | ⬜ TODO | —          | —          | —       | —                                    |
 
@@ -46,7 +46,7 @@ Statut : ✅ FAIT
 - [x] 8.6 — UI `/admin/observability` (3 tabs : wire / errors / timeline)
 - [x] 8.7 — Cron cleanup 7j/30j
 - [x] 8.8 — 14 tests verts
-- [ ] 8.9 — Validation sur mock : 4 scénarios de vérification produisent des logs utiles
+- [x] 8.9 — Validation sur mock : WireLog pipeline testé E2E (RESTORE OUT + status OUT dans wire_logs, JSON structuré en stdout)
 - [x] Doc `docs/observability-guide.md` rédigée
 - [x] Commit `feat(observability): pino logs, wire logger, error log persistence, admin UI`
 
@@ -112,7 +112,7 @@ Statut : ✅ FAIT
 #### Finalisation Vague A
 
 - [x] Mise à jour `docs/04-roadmap.md` (ligne Phase 6 + 8 ✅)
-- [ ] Récap Claude Code posté (commits + tests + captures logs 8 scénarios)
+- [x] Récap Claude Code posté (commits + tests + captures logs WireLog validé E2E)
 - [x] Commit `docs: update roadmap with phase 8 and 6 completion`
 
 ---
@@ -212,16 +212,20 @@ _(Contenu identique, non modifié)_
 
 ## ❓ Issues ouvertes / questions en attente
 
-| 2026-04-13 | UI timeline unifiée manquante | Endpoint `GET /vehicles/:id/commands-history` livré et testable, mais aucun composant Angular ne le consomme. Les deux historiques (engine + tracker) sont affichés dans des zones séparées de vehicle-detail. Pas bloquant pour le bench. | — | À traiter après Vague B ou en Vague C dédiée à l'UX admin |
+| Date       | Issue                         | Contexte                                                                                                                                                                                                                                    | Résolu le | Résolution                                                 |
+| ---------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ---------------------------------------------------------- |
+| 2026-04-13 | UI timeline unifiée manquante | Endpoint `GET /vehicles/:id/commands-history` livré et testable, mais aucun composant Angular ne le consomme. Les deux historiques (engine + tracker) sont affichés dans des zones séparées de vehicle-detail. Pas bloquant pour le bench. | —         | À traiter après Vague B ou en Vague C dédiée à l'UX admin |
 
 ---
 
 ## 🧭 Journal des sessions Claude Code
 
-| Date       | Vague/Phase | Sous-phase      | Statut | Commits | Tests | Notes                                                                         |
-| ---------- | ----------- | --------------- | ------ | ------- | ----- | ----------------------------------------------------------------------------- |
-| 2026-04-13 | A / Phase 8 | 8.1-8.8         | ✅     | 1       | 14    | nestjs-pino, wire/error logger, admin UI, cron cleanup                        |
-| 2026-04-13 | A / Phase 6 | 6.1-6.6 + bonus | ✅     | 7       | 55    | Catalog 20 tpl, AckWaiter, Service+Controller, Scheduler, UI, unified history |
+| Date       | Vague/Phase    | Sous-phase        | Statut | Commits | Tests | Notes                                                                         |
+| ---------- | -------------- | ----------------- | ------ | ------- | ----- | ----------------------------------------------------------------------------- |
+| 2026-04-13 | A / Phase 8    | 8.1-8.8           | ✅     | 1       | 14    | nestjs-pino, wire/error logger, admin UI, cron cleanup                        |
+| 2026-04-13 | A / Phase 6    | 6.1-6.6 + bonus   | ✅     | 8       | 55    | Catalog 20 tpl, AckWaiter, Service+Controller, Scheduler, UI, unified history |
+| 2026-04-13 | A / Checklist  | Acceptance 10 pts | ✅     | 1       | 0     | Prisma migrate OK, API+Web build OK, bracket-notation fix, all 10 items green |
+| 2026-04-13 | A / Validation | WireLog E2E       | ✅     | 1       | 0     | WIRE_LOG_ENABLED=true, RESTORE OUT + status OUT dans wire_logs, pipeline vert  |
 
 ---
 

@@ -132,14 +132,28 @@ Next.js + Tailwind statique sur Vercel, pas de backend. Conversion via WhatsApp 
 
 | Mesure                          | Etat actuel                                                  |
 | ------------------------------- | ------------------------------------------------------------ |
-| Tests unitaires API             | ✅ 54 tests (13 engine + 8 vehicles + 10 trackers + 10 alerts + 5 positions + 8 segmenter) |
-| Tests unitaires shared          | ✅ 42 tests (22 parser + 20 encoder)                         |
+| Tests unitaires API             | ✅ 105 tests (13 engine + 8 vehicles + 10 trackers + 10 alerts + 5 positions + 8 segmenter + 14 observability + 8 ack-waiter + 17 tracker-commands + 12 autres) |
+| Tests unitaires shared          | ✅ 72 tests (22 parser + 20 encoder + 30 catalog)            |
 | Tests d'integration API         | 💭 Non couvert — backlog                                     |
 | Tests E2E Angular               | 💭 Non couvert — backlog                                     |
 | Coverage minimum                | 💭 Pas de seuil fixe — a definir                             |
 | CI GitHub Actions               | 💭 Non configuree — backlog                                  |
 | Scenario E2E manuel netcat      | ✅ Valide 2026-04-09                                         |
 | Audit live-vs-static            | ✅ docs/audit-live-status.md — 3 gaps combles                |
+| Pipeline WireLog E2E            | ✅ Valide 2026-04-13 (RESTORE OUT + status OUT dans wire_logs) |
+
+### 3.5 Vague A — Phase 8 (Logs) + Phase 6 (Commands Console)
+
+| Brique                            | Statut | Notes                                                              |
+| --------------------------------- | ------ | ------------------------------------------------------------------ |
+| **Phase 8 — Observabilité**       | ✅     | nestjs-pino, CobanWireLogger, ErrorLogger, AllExceptionsFilter, admin UI, cron cleanup |
+| **Phase 6.1 — Catalog shared**    | ✅     | 20 templates, engine_stop/resume exclus, 30 tests                  |
+| **Phase 6.2 — Prisma TrackerCommand** | ✅ | Nouveau enum TrackerCommandStatus + TrackerCommandChannel, migration |
+| **Phase 6.3 — AckWaiter + TCP hook** | ✅  | Map in-memory, hook case 'unknown', 8 tests                       |
+| **Phase 6.4 — Service + Controller** | ✅  | CRUD, dispatch, cancel, catalog, @Throttle, WS event, 17 tests    |
+| **Phase 6.5 — Scheduling cron**   | ✅     | @Cron('*/30 * * * * *') poll SCHEDULED                            |
+| **Phase 6.6 — Angular UI**        | ✅     | CommandsPanelComponent, AdminCommandsComponent, vehicle-detail tab |
+| **Bonus — Unified history API**   | ✅     | GET /vehicles/:id/commands-history (engine + tracker merged)       |
 
 ---
 
@@ -184,9 +198,9 @@ Next.js + Tailwind statique sur Vercel, pas de backend. Conversion via WhatsApp 
 
 | # | Tache                                      | Estimation |
 | - | ------------------------------------------ | ---------- |
-| 1 | Polling confirmation commande (§7.3 doc)   | 3h         |
+| 1 | ~~Polling confirmation commande~~ → AckWaiterService livré Phase 6 | ✅ fait |
 | 2 | CI GitHub Actions (test + build + deploy)  | 2h         |
-| 3 | Monitoring (Pino → Loki ou equivalent)     | 3h         |
+| 3 | ~~Monitoring Pino~~ → nestjs-pino livré Phase 8 (Loki en prod restant) | ✅ fait |
 | 4 | Backup automatise Postgres                 | 1h         |
 | 5 | Reverse proxy Traefik + Let's Encrypt      | 2h         |
 | 6 | Migration vers un VPS dedie               | 2h         |
@@ -325,9 +339,16 @@ Un prospect doit pouvoir, lors d'une demo de 15 minutes :
 ## 11. References
 
 - `docs/03-protocol-coban-gps403d.md` — spec protocole Coban GPS403D
-- `docs/audit-live-status.md` — audit live-vs-static frontend
-- `packages/shared/src/protocol/` — implementation parser/encoder Coban
+- `docs/05-hardware-bench.md` — roadmap bench hardware 403C
+- `docs/06-tcp-commands-console.md` — roadmap console de commandes TCP
+- `docs/07-sms-gateway.md` — roadmap gateway SMS Twilio
+- `docs/08-logging-and-observability.md` — roadmap logs et observabilite
+- `docs/observability-guide.md` — guide d'utilisation des logs
+- `docs/EXECUTION-TRACKER.md` — suivi d'execution des phases
+- `packages/shared/src/protocol/` — implementation parser/encoder/catalog Coban
 - `apps/api/src/engine-control/` — module de coupure moteur avec garde-fou
+- `apps/api/src/tracker-commands/` — module console de commandes TCP
+- `apps/api/src/observability/` — module logs et observabilite
 - Repos internes Vizyo Manager et Vizyo Leads — source des conventions stack
 
 ---
@@ -338,3 +359,4 @@ Un prospect doit pouvoir, lors d'une demo de 15 minutes :
 | ------- | ---------- | ------- | ------------------------------------------------------------------------------------------------- |
 | V1      | 2026-04-09 | Youness | Creation initiale apres validation E2E complete de l'etape 5b                                     |
 | V1.1    | 2026-04-11 | Claude  | Mise a jour complete : 15 sprints documentes, 54 tests API + 42 shared, 6/7 criteres vendable, ajout Alerts/Geofences/Trips/UI |
+| V1.2    | 2026-04-13 | Claude  | Vague A complete : Phase 8 (observabilite) + Phase 6 (commands console), 105 tests API + 72 shared, pipeline WireLog valide E2E |
