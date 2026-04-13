@@ -1,0 +1,430 @@
+/**
+ * Coban Command Catalog — V1
+ *
+ * 20 templates for GPS103/403 protocol family.
+ *
+ * IMPORTANT: engine_stop and engine_resume are INTENTIONALLY EXCLUDED.
+ * Engine cut/restore is handled exclusively by EngineControlModule
+ * which enforces critical safety guard rails (speed < 20 km/h, GPS valid,
+ * position freshness < 60s, double UI confirmation, full audit trail).
+ * Do NOT add engine commands here — redirect users to /engine-control.
+ */
+
+export type CobanCommandCategory =
+  | 'config_initial'
+  | 'reporting'
+  | 'alarm'
+  | 'geofence'
+  | 'power'
+  | 'info'
+  | 'custom';
+
+export interface CommandParamSpec {
+  name: string;
+  label: string;
+  type: 'number' | 'string' | 'select' | 'duration' | 'latlng';
+  required: boolean;
+  min?: number;
+  max?: number;
+  options?: { value: string; label: string }[];
+  validate?: (value: unknown) => string | null;
+}
+
+export interface CobanCommandTemplate {
+  id: string;
+  category: CobanCommandCategory;
+  label: string;
+  description: string;
+  requiresSuperAdmin: boolean;
+  requiresConfirmation: boolean;
+  dangerous: boolean;
+  params: CommandParamSpec[];
+  buildPayload: (imei: string, params: Record<string, unknown>) => string;
+  expectedAckPattern: RegExp;
+  ackTimeoutMs: number;
+  availableVia: ('tcp' | 'sms')[];
+}
+
+function tcpWrap(imei: string, code: string): string {
+  return `**,imei:${imei},${code};`;
+}
+
+export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
+  // ─── INFO ───
+  {
+    id: 'status',
+    category: 'info',
+    label: 'Statut',
+    description: 'Demander le statut du tracker (batterie, GPS, GSM)',
+    requiresSuperAdmin: false,
+    requiresConfirmation: false,
+    dangerous: false,
+    params: [],
+    buildPayload: (imei) => tcpWrap(imei, 'B'),
+    expectedAckPattern: /imei:\d{15},(tracker|[A-Z])/i,
+    ackTimeoutMs: 30000,
+    availableVia: ['tcp', 'sms'],
+  },
+  {
+    id: 'position_single',
+    category: 'info',
+    label: 'Position unique',
+    description: 'Demander une position GPS immédiate',
+    requiresSuperAdmin: false,
+    requiresConfirmation: false,
+    dangerous: false,
+    params: [],
+    buildPayload: (imei) => tcpWrap(imei, 'B'),
+    expectedAckPattern: /imei:\d{15},/i,
+    ackTimeoutMs: 30000,
+    availableVia: ['tcp', 'sms'],
+  },
+
+  // ─── POWER ───
+  {
+    id: 'reset',
+    category: 'power',
+    label: 'Reset',
+    description: 'Redémarrer le module GSM/GPS du tracker',
+    requiresSuperAdmin: false,
+    requiresConfirmation: true,
+    dangerous: true,
+    params: [],
+    buildPayload: () => 'reset123456',
+    expectedAckPattern: /reset\s*ok/i,
+    ackTimeoutMs: 30000,
+    availableVia: ['sms'],
+  },
+  {
+    id: 'factory',
+    category: 'power',
+    label: 'Factory reset',
+    description: 'Réinitialiser le tracker aux paramètres usine. ATTENTION: toute la config sera perdue!',
+    requiresSuperAdmin: true,
+    requiresConfirmation: true,
+    dangerous: true,
+    params: [],
+    buildPayload: () => 'factory123456',
+    expectedAckPattern: /factory\s*ok/i,
+    ackTimeoutMs: 30000,
+    availableVia: ['sms'],
+  },
+  {
+    id: 'sleep_on',
+    category: 'power',
+    label: 'Mode veille ON',
+    description: 'Activer le mode veille (économie batterie)',
+    requiresSuperAdmin: false,
+    requiresConfirmation: false,
+    dangerous: false,
+    params: [],
+    buildPayload: () => 'sleep123456 on',
+    expectedAckPattern: /sleep.*ok/i,
+    ackTimeoutMs: 15000,
+    availableVia: ['sms'],
+  },
+  {
+    id: 'sleep_off',
+    category: 'power',
+    label: 'Mode veille OFF',
+    description: 'Désactiver le mode veille',
+    requiresSuperAdmin: false,
+    requiresConfirmation: false,
+    dangerous: false,
+    params: [],
+    buildPayload: () => 'sleep123456 off',
+    expectedAckPattern: /sleep.*ok/i,
+    ackTimeoutMs: 15000,
+    availableVia: ['sms'],
+  },
+
+  // ─── REPORTING ───
+  {
+    id: 'fix_continuous',
+    category: 'reporting',
+    label: 'Position continue',
+    description: 'Configurer l\'envoi continu de positions à intervalle fixe',
+    requiresSuperAdmin: false,
+    requiresConfirmation: false,
+    dangerous: false,
+    params: [
+      {
+        name: 'interval',
+        label: 'Intervalle',
+        type: 'select',
+        required: true,
+        options: [
+          { value: '030s', label: '30 secondes' },
+          { value: '060s', label: '1 minute' },
+          { value: '002m', label: '2 minutes' },
+          { value: '005m', label: '5 minutes' },
+          { value: '010m', label: '10 minutes' },
+        ],
+      },
+    ],
+    buildPayload: (_imei, params) => `fix${params.interval as string}***n123456`,
+    expectedAckPattern: /fix.*ok/i,
+    ackTimeoutMs: 15000,
+    availableVia: ['sms'],
+  },
+  {
+    id: 'fix_stop',
+    category: 'reporting',
+    label: 'Arrêter les positions',
+    description: 'Arrêter l\'envoi automatique de positions',
+    requiresSuperAdmin: false,
+    requiresConfirmation: true,
+    dangerous: false,
+    params: [],
+    buildPayload: () => 'nofix123456',
+    expectedAckPattern: /nofix\s*ok/i,
+    ackTimeoutMs: 15000,
+    availableVia: ['sms'],
+  },
+  {
+    id: 'less_gprs_on',
+    category: 'reporting',
+    label: 'Less GPRS ON',
+    description: 'Activer le mode économie GPRS (envoi réduit)',
+    requiresSuperAdmin: false,
+    requiresConfirmation: false,
+    dangerous: false,
+    params: [],
+    buildPayload: () => 'less gprs123456 on',
+    expectedAckPattern: /less gprs.*ok/i,
+    ackTimeoutMs: 15000,
+    availableVia: ['sms'],
+  },
+  {
+    id: 'less_gprs_off',
+    category: 'reporting',
+    label: 'Less GPRS OFF',
+    description: 'Désactiver le mode économie GPRS',
+    requiresSuperAdmin: false,
+    requiresConfirmation: false,
+    dangerous: false,
+    params: [],
+    buildPayload: () => 'less gprs123456 off',
+    expectedAckPattern: /less gprs.*ok/i,
+    ackTimeoutMs: 15000,
+    availableVia: ['sms'],
+  },
+
+  // ─── ALARM ───
+  {
+    id: 'speed_alarm',
+    category: 'alarm',
+    label: 'Alarme vitesse',
+    description: 'Configurer une alarme de dépassement de vitesse',
+    requiresSuperAdmin: false,
+    requiresConfirmation: false,
+    dangerous: false,
+    params: [
+      {
+        name: 'speed_kmh',
+        label: 'Vitesse max (km/h)',
+        type: 'number',
+        required: true,
+        min: 20,
+        max: 200,
+      },
+    ],
+    buildPayload: (_imei, params) => {
+      const speed = String(params.speed_kmh).padStart(3, '0');
+      return `speed123456 ${speed}`;
+    },
+    expectedAckPattern: /speed\s*ok/i,
+    ackTimeoutMs: 15000,
+    availableVia: ['sms'],
+  },
+  {
+    id: 'move_alarm',
+    category: 'alarm',
+    label: 'Alarme mouvement',
+    description: 'Alerter si le véhicule bouge (mode parking)',
+    requiresSuperAdmin: false,
+    requiresConfirmation: false,
+    dangerous: false,
+    params: [],
+    buildPayload: () => 'move123456',
+    expectedAckPattern: /move\s*ok/i,
+    ackTimeoutMs: 15000,
+    availableVia: ['sms'],
+  },
+
+  // ─── GEOFENCE ───
+  {
+    id: 'stockade_set',
+    category: 'geofence',
+    label: 'Geofence rectangulaire',
+    description: 'Définir une zone rectangulaire (alerte si sortie)',
+    requiresSuperAdmin: false,
+    requiresConfirmation: false,
+    dangerous: false,
+    params: [
+      { name: 'lat1', label: 'Latitude coin 1', type: 'number', required: true, min: -90, max: 90 },
+      { name: 'lng1', label: 'Longitude coin 1', type: 'number', required: true, min: -180, max: 180 },
+      { name: 'lat2', label: 'Latitude coin 2', type: 'number', required: true, min: -90, max: 90 },
+      { name: 'lng2', label: 'Longitude coin 2', type: 'number', required: true, min: -180, max: 180 },
+    ],
+    buildPayload: (_imei, params) =>
+      `stockade123456 ${params.lat1},${params.lng1};${params.lat2},${params.lng2}`,
+    expectedAckPattern: /stockade\s*ok/i,
+    ackTimeoutMs: 15000,
+    availableVia: ['sms'],
+  },
+  {
+    id: 'stockade_clear',
+    category: 'geofence',
+    label: 'Supprimer geofence',
+    description: 'Supprimer la geofence rectangulaire active',
+    requiresSuperAdmin: false,
+    requiresConfirmation: true,
+    dangerous: false,
+    params: [],
+    buildPayload: () => 'nostockade123456',
+    expectedAckPattern: /nostockade\s*ok/i,
+    ackTimeoutMs: 15000,
+    availableVia: ['sms'],
+  },
+
+  // ─── CONFIG INITIAL ───
+  {
+    id: 'time_zone',
+    category: 'config_initial',
+    label: 'Fuseau horaire',
+    description: 'Configurer le fuseau horaire du tracker',
+    requiresSuperAdmin: false,
+    requiresConfirmation: false,
+    dangerous: false,
+    params: [
+      { name: 'offset', label: 'Offset UTC (-12 à +12)', type: 'number', required: true, min: -12, max: 12 },
+    ],
+    buildPayload: (_imei, params) => `time zone123456,${params.offset}`,
+    expectedAckPattern: /time zone\s*ok/i,
+    ackTimeoutMs: 15000,
+    availableVia: ['sms'],
+  },
+  {
+    id: 'apn',
+    category: 'config_initial',
+    label: 'APN',
+    description: 'Configurer l\'APN de la carte SIM',
+    requiresSuperAdmin: true,
+    requiresConfirmation: true,
+    dangerous: true,
+    params: [
+      { name: 'apn', label: 'Nom APN', type: 'string', required: true },
+      { name: 'user', label: 'Utilisateur', type: 'string', required: false },
+      { name: 'pass', label: 'Mot de passe', type: 'string', required: false },
+    ],
+    buildPayload: (_imei, params) => {
+      const parts = [params.apn as string];
+      if (params.user) parts.push(params.user as string);
+      if (params.pass) parts.push(params.pass as string);
+      return `apn123456 ${parts.join(',')}`;
+    },
+    expectedAckPattern: /APN\s*ok/i,
+    ackTimeoutMs: 15000,
+    availableVia: ['sms'],
+  },
+  {
+    id: 'adminip',
+    category: 'config_initial',
+    label: 'IP serveur',
+    description: 'Configurer l\'adresse IP et le port du serveur Tracky',
+    requiresSuperAdmin: true,
+    requiresConfirmation: true,
+    dangerous: true,
+    params: [
+      { name: 'ip', label: 'Adresse IP', type: 'string', required: true },
+      { name: 'port', label: 'Port', type: 'number', required: true, min: 1, max: 65535 },
+    ],
+    buildPayload: (_imei, params) => `adminip123456 ${params.ip} ${params.port}`,
+    expectedAckPattern: /adminip\s*ok/i,
+    ackTimeoutMs: 15000,
+    availableVia: ['sms'],
+  },
+  {
+    id: 'password_change',
+    category: 'config_initial',
+    label: 'Changer mot de passe',
+    description: 'Changer le mot de passe du tracker (6 chiffres)',
+    requiresSuperAdmin: true,
+    requiresConfirmation: true,
+    dangerous: true,
+    params: [
+      {
+        name: 'new_pass',
+        label: 'Nouveau mot de passe (6 chiffres)',
+        type: 'string',
+        required: true,
+        validate: (v) => /^\d{6}$/.test(String(v)) ? null : 'Doit être exactement 6 chiffres',
+      },
+    ],
+    buildPayload: (_imei, params) => `password123456 ${params.new_pass}`,
+    expectedAckPattern: /password\s*ok/i,
+    ackTimeoutMs: 15000,
+    availableVia: ['sms'],
+  },
+  {
+    id: 'protocol_18',
+    category: 'config_initial',
+    label: 'Protocol 18',
+    description: 'Activer le protocole enrichi (ACC, porte, carburant, température)',
+    requiresSuperAdmin: true,
+    requiresConfirmation: false,
+    dangerous: false,
+    params: [],
+    buildPayload: () => 'protocol123456 18',
+    expectedAckPattern: /protocol18\s*ok/i,
+    ackTimeoutMs: 15000,
+    availableVia: ['sms'],
+  },
+
+  // ─── CUSTOM / RAW ───
+  {
+    id: 'raw',
+    category: 'custom',
+    label: 'Commande brute',
+    description: 'Envoyer une commande brute. AUCUNE VALIDATION. Peut rendre le tracker inutilisable.',
+    requiresSuperAdmin: true,
+    requiresConfirmation: true,
+    dangerous: true,
+    params: [
+      { name: 'raw_payload', label: 'Payload brut', type: 'string', required: true },
+      { name: 'ack_pattern', label: 'Pattern ACK (regex)', type: 'string', required: false },
+    ],
+    buildPayload: (imei, params) => {
+      const raw = params.raw_payload as string;
+      if (raw.includes('imei:')) return raw;
+      return tcpWrap(imei, raw);
+    },
+    expectedAckPattern: /.+/,
+    ackTimeoutMs: 30000,
+    availableVia: ['tcp', 'sms'],
+  },
+];
+
+export function findTemplate(id: string): CobanCommandTemplate | undefined {
+  return COBAN_COMMAND_CATALOG.find((t) => t.id === id);
+}
+
+export function getCatalogByCategory(): Record<string, CobanCommandTemplate[]> {
+  const grouped: Record<string, CobanCommandTemplate[]> = {};
+  for (const tpl of COBAN_COMMAND_CATALOG) {
+    if (!grouped[tpl.category]) grouped[tpl.category] = [];
+    grouped[tpl.category]!.push(tpl);
+  }
+  return grouped;
+}
+
+export const CATEGORY_LABELS: Record<CobanCommandCategory, string> = {
+  info: 'Information',
+  power: 'Alimentation',
+  reporting: 'Reporting',
+  alarm: 'Alarmes',
+  geofence: 'Geofence',
+  config_initial: 'Configuration',
+  custom: 'Personnalisé',
+};
