@@ -21,12 +21,12 @@ Vague B (Phase 7 SMS)        [ ░░░░░░░░░░ ]   0 %
 
 ## 📊 Vue macro
 
-| Phase | Statut | Démarré | Terminé | Commits | Tests ajoutés |
-|-------|--------|---------|---------|---------|---------------|
-| Phase 8 — Logs & observabilité | ✅ FAIT | 2026-04-13 | 2026-04-13 | 1 | 14 |
-| Phase 6 — Commands Console | ✅ FAIT | 2026-04-13 | 2026-04-13 | 7 | 55 (30 catalog + 8 ack + 17 service) |
-| Phase 5 — Bench 403C hardware | ⬜ TODO | — | — | n/a | n/a |
-| Phase 7 — SMS Gateway | ⬜ TODO | — | — | — | — |
+| Phase                          | Statut  | Démarré    | Terminé    | Commits | Tests ajoutés                        |
+| ------------------------------ | ------- | ---------- | ---------- | ------- | ------------------------------------ |
+| Phase 8 — Logs & observabilité | ✅ FAIT | 2026-04-13 | 2026-04-13 | 1       | 14                                   |
+| Phase 6 — Commands Console     | ✅ FAIT | 2026-04-13 | 2026-04-13 | 7       | 55 (30 catalog + 8 ack + 17 service) |
+| Phase 5 — Bench 403C hardware  | ⬜ TODO | —          | —          | n/a     | n/a                                  |
+| Phase 7 — SMS Gateway          | ⬜ TODO | —          | —          | —       | —                                    |
 
 **Légende** : ⬜ TODO · 🟡 EN COURS · ✅ FAIT · 🔴 BLOQUÉ · ⏸️ EN PAUSE
 
@@ -162,8 +162,8 @@ Statut : ⬜ TODO
 _Remplir après bench — ajouter ligne par divergence._
 
 | Domaine | Attendu (doc 403D) | Observé (403C) | Impact | Fix |
-|---------|--------------------|----------------|--------|-----|
-| — | — | — | — | — |
+| ------- | ------------------ | -------------- | ------ | --- |
+| —       | —                  | —              | —      | —   |
 
 ### Livrables
 
@@ -196,32 +196,32 @@ _(Contenu identique, non modifié)_
 
 ## 📝 Décisions prises (historique chronologique)
 
-| Date | Décision | Rationale |
-|------|----------|-----------|
-| 2026-04-13 | Scheduling = cron poll DB (pas BullMQ) | Volume V1 faible, cohérent avec `@nestjs/schedule` existant |
-| 2026-04-13 | `TrackerCommand` = modèle séparé d'`EngineControlCommand` | Éviter régression, garder guard-rail vitesse isolé |
-| 2026-04-13 | `engine_stop`/`engine_resume` exclus du catalog | Accès exclusif via bouton EngineControl dédié |
-| 2026-04-13 | Phase 8 (logs) livrée AVANT Phase 6 | Besoin de logs utiles dès Phase 6 et pour bench |
-| 2026-04-13 | Enum `CommandStatus` actuel non modifié, nouveau `TrackerCommandStatus` | Non-régression EngineControl |
-| 2026-04-13 | Vague A = Phase 8 + 6, Vague B = Phase 7 après bench | Point de contrôle au milieu pour ajuster si 403C diverge |
-| 2026-04-13 | AckWaiter hook dans case `unknown` (pas avant position parser) | Plus propre, zéro risque de swallow position |
-| 2026-04-13 | Raw mode = textarea libre, SUPER_ADMIN only | Simplicité + placeholder avec 2 exemples |
-| 2026-04-13 | Historique = vehicle-detail + page admin globale + timeline unifiée | Deux scopes, une timeline agrégée engine+tracker |
+| Date       | Décision                                                                | Rationale                                                   |
+| ---------- | ----------------------------------------------------------------------- | ----------------------------------------------------------- |
+| 2026-04-13 | Scheduling = cron poll DB (pas BullMQ)                                  | Volume V1 faible, cohérent avec `@nestjs/schedule` existant |
+| 2026-04-13 | `TrackerCommand` = modèle séparé d'`EngineControlCommand`               | Éviter régression, garder guard-rail vitesse isolé          |
+| 2026-04-13 | `engine_stop`/`engine_resume` exclus du catalog                         | Accès exclusif via bouton EngineControl dédié               |
+| 2026-04-13 | Phase 8 (logs) livrée AVANT Phase 6                                     | Besoin de logs utiles dès Phase 6 et pour bench             |
+| 2026-04-13 | Enum `CommandStatus` actuel non modifié, nouveau `TrackerCommandStatus` | Non-régression EngineControl                                |
+| 2026-04-13 | Vague A = Phase 8 + 6, Vague B = Phase 7 après bench                    | Point de contrôle au milieu pour ajuster si 403C diverge    |
+| 2026-04-13 | AckWaiter hook dans case `unknown` (pas avant position parser)          | Plus propre, zéro risque de swallow position                |
+| 2026-04-13 | Raw mode = textarea libre, SUPER_ADMIN only                             | Simplicité + placeholder avec 2 exemples                    |
+| 2026-04-13 | Historique = vehicle-detail + page admin globale + timeline unifiée     | Deux scopes, une timeline agrégée engine+tracker            |
 
 ---
 
 ## ❓ Issues ouvertes / questions en attente
 
-_Rien pour l'instant._
+| 2026-04-13 | UI timeline unifiée manquante | Endpoint `GET /vehicles/:id/commands-history` livré et testable, mais aucun composant Angular ne le consomme. Les deux historiques (engine + tracker) sont affichés dans des zones séparées de vehicle-detail. Pas bloquant pour le bench. | — | À traiter après Vague B ou en Vague C dédiée à l'UX admin |
 
 ---
 
 ## 🧭 Journal des sessions Claude Code
 
-| Date | Vague/Phase | Sous-phase | Statut | Commits | Tests | Notes |
-|------|-------------|-----------|--------|---------|-------|-------|
-| 2026-04-13 | A / Phase 8 | 8.1-8.8 | ✅ | 1 | 14 | nestjs-pino, wire/error logger, admin UI, cron cleanup |
-| 2026-04-13 | A / Phase 6 | 6.1-6.6 + bonus | ✅ | 7 | 55 | Catalog 20 tpl, AckWaiter, Service+Controller, Scheduler, UI, unified history |
+| Date       | Vague/Phase | Sous-phase      | Statut | Commits | Tests | Notes                                                                         |
+| ---------- | ----------- | --------------- | ------ | ------- | ----- | ----------------------------------------------------------------------------- |
+| 2026-04-13 | A / Phase 8 | 8.1-8.8         | ✅     | 1       | 14    | nestjs-pino, wire/error logger, admin UI, cron cleanup                        |
+| 2026-04-13 | A / Phase 6 | 6.1-6.6 + bonus | ✅     | 7       | 55    | Catalog 20 tpl, AckWaiter, Service+Controller, Scheduler, UI, unified history |
 
 ---
 
