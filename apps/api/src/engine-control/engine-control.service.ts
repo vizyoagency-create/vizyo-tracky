@@ -10,6 +10,7 @@ import { CommandStatus, EngineAction, UserRole } from '@prisma/client';
 import type { EngineControlCommand } from '@prisma/client';
 import type { CobanCommand } from '@vizyo/tracky-shared';
 import { encodeCommand } from '@vizyo/tracky-shared';
+import { CobanWireLogger } from '../observability/coban-wire-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SocketRegistryService } from '../socket-registry/socket-registry.service';
 
@@ -29,6 +30,7 @@ export class EngineControlService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly sessionRegistry: SocketRegistryService,
+    private readonly wireLogger: CobanWireLogger,
   ) {}
 
   async requestCommand(
@@ -165,7 +167,8 @@ export class EngineControlService {
 
     const payload = encodeCommand(imei, cobanCmd);
     entry.socket.write(payload);
-    this.logger.log(`Command dispatched to ${imei}: ${payload}`);
+    this.wireLogger.out(imei, payload, { commandId: command.id, source: 'engine' });
+    this.logger.log({ commandId: command.id, imei, payload }, 'Command dispatched');
 
     await this.prisma.engineControlCommand.update({
       where: { id: command.id },

@@ -71,6 +71,16 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/settings/settings.component').then((m) => m.SettingsComponent),
       },
+      {
+        path: 'admin/observability',
+        loadComponent: () =>
+          import('./features/observability/observability.component').then((m) => m.ObservabilityComponent),
+      },
+      {
+        path: 'admin/commands',
+        loadComponent: () =>
+          import('./features/tracker-commands/admin-commands.component').then((m) => m.AdminCommandsComponent),
+      },
     ],
   },
   { path: '**', redirectTo: 'login' },

@@ -115,7 +115,8 @@ model User {
   isActive    Boolean  @default(true)
   fleetId    String?  @db.Uuid
   fleet      Fleet?   @relation(fields: [fleetId], references: [id], onDelete: SetNull)
-  acknowledgedAlerts Alert[] @relation("AlertAcknowledgedBy")
+  acknowledgedAlerts Alert[]           @relation("AlertAcknowledgedBy")
+  trackerCommands    TrackerCommand[]
   vehicleAccess      UserVehicleAccess[]
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -156,8 +157,9 @@ model Tracker {
   vehicleId  String?                @unique @db.Uuid
   vehicle    Vehicle?               @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   positions  Position[]
-  commands   EngineControlCommand[]
-  alerts     Alert[]
+  commands        EngineControlCommand[]
+  trackerCommands TrackerCommand[]
+  alerts          Alert[]
   createdAt  DateTime               @default(now())
   updatedAt  DateTime               @updatedAt
 
@@ -294,6 +296,81 @@ model UserVehicleAccess {
 
   @@index([userId])
   @@map("user_vehicle_access")
+}
+
+enum TrackerCommandStatus {
+  PENDING
+  SCHEDULED
+  SENT
+  ACKNOWLEDGED
+  FAILED
+  CANCELLED
+}
+
+enum TrackerCommandChannel {
+  TCP
+  SMS
+}
+
+model TrackerCommand {
+  id              String                @id @default(uuid()) @db.Uuid
+  trackerId       String                @db.Uuid
+  tracker         Tracker               @relation(fields: [trackerId], references: [id], onDelete: Cascade)
+  templateId      String
+  category        String
+  params          Json                  @default("{}")
+  payload         String
+  channel         TrackerCommandChannel @default(TCP)
+  status          TrackerCommandStatus  @default(PENDING)
+  scheduledAt     DateTime?
+  sentAt          DateTime?
+  ackedAt         DateTime?
+  ackResponse     String?
+  lastError       String?
+  requestedBy     String                @db.Uuid
+  requestedByUser User                  @relation(fields: [requestedBy], references: [id], onDelete: Restrict)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@index([trackerId, createdAt(sort: Desc)])
+  @@index([status])
+  @@index([scheduledAt])
+  @@map("tracker_commands")
+}
+
+model WireLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  imei      String
+  direction String   // 'IN' | 'OUT'
+  raw       String   @db.Text
+  frameType String?  // 'login' | 'heartbeat' | 'position' | 'unknown' | 'command' | 'ack'
+  commandId String?  @db.Uuid
+  context   Json?
+  createdAt DateTime @default(now())
+
+  @@index([imei, createdAt(sort: Desc)])
+  @@index([commandId])
+  @@index([createdAt])
+  @@map("wire_logs")
+}
+
+model ErrorLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  level     String   // 'ERROR' | 'CRITICAL'
+  source    String   // 'tcp-server' | 'engine-control' | 'tracker-commands' | 'http' | ...
+  message   String
+  stack     String?  @db.Text
+  imei      String?
+  commandId String?  @db.Uuid
+  userId    String?  @db.Uuid
+  context   Json?
+  createdAt DateTime @default(now())
+
+  @@index([source, createdAt(sort: Desc)])
+  @@index([imei])
+  @@index([commandId])
+  @@index([createdAt])
+  @@map("error_logs")
 }
 
 model EngineControlCommand {

@@ -9,6 +9,9 @@ import { AlertsService } from '../alerts/alerts.service';
 import { PositionsService } from '../positions/positions.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { CobanWireLogger } from '../observability/coban-wire-logger.service';
+import { AckWaiterService } from '../tracker-commands/ack-waiter.service';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { SocketRegistryService } from '../socket-registry/socket-registry.service';
 
 @Injectable()
@@ -23,6 +26,9 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
     private readonly positions: PositionsService,
     private readonly alertsService: AlertsService,
     private readonly gateway: RealtimeGateway,
+    private readonly wireLogger: CobanWireLogger,
+    private readonly errorLogger: ErrorLogger,
+    private readonly ackWaiter: AckWaiterService,
   ) {}
 
   onModuleInit(): void {
@@ -71,13 +77,28 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
 
         try {
           const frame = decodeFrame(raw);
+          if (boundImei || frame.type === 'login') {
+            this.wireLogger.in(
+              frame.type === 'login' ? (frame as any).imei : (boundImei ?? 'unknown'),
+              raw,
+              frame.type,
+            );
+          }
           this.dispatchFrame(frame, socket, boundImei, (newImei) => {
             boundImei = newImei;
           }).catch((err) => {
-            this.logger.error(`Frame dispatch failed: ${raw}`, err);
+            this.errorLogger.record(
+              err instanceof Error ? err : new Error(String(err)),
+              'tcp-server',
+              { imei: boundImei ?? undefined, frameRaw: raw },
+            ).catch(() => {});
           });
         } catch (err) {
-          this.logger.error(`Unexpected decode error: ${raw}`, err);
+          this.errorLogger.record(
+            err instanceof Error ? err : new Error(String(err)),
+            'tcp-server',
+            { imei: boundImei ?? undefined, frameRaw: raw },
+          ).catch(() => {});
         }
       }
     });
@@ -92,7 +113,7 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
     });
 
     socket.on('close', () => {
-      this.logger.debug(`Socket closed ${remote} (imei=${boundImei ?? 'unbound'})`);
+      this.logger.warn({ imei: boundImei, remoteAddr: remote }, `Socket closed (imei=${boundImei ?? 'unbound'})`);
       if (boundImei) {
         this.registry.unregister(boundImei);
         this.prisma.tracker.findUnique({
@@ -141,7 +162,7 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
           where: { id: tracker.id },
           data: { status: TrackerStatus.ONLINE, lastSeenAt: new Date() },
         });
-        this.logger.log(`Tracker connected: ${frame.imei}`);
+        this.logger.log({ imei: frame.imei, remoteAddr: socket.remoteAddress, frameRaw: frame.raw }, `Tracker connected: ${frame.imei}`);
         break;
       }
 
@@ -164,6 +185,10 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
           this.logger.warn(`Position IMEI mismatch: got ${frame.imei}, expected ${currentImei}`);
           break;
         }
+        this.logger.debug(
+          { imei: frame.imei, lat: frame.latitude, lng: frame.longitude, speed: frame.speedKph, valid: frame.valid },
+          `Position from ${frame.imei}`,
+        );
         await this.positions.ingest(frame);
 
         if (frame.alarm && frame.alarm !== 'none') {
@@ -186,7 +211,10 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
       }
 
       case 'unknown': {
-        this.logger.warn(`Unknown frame (${frame.reason}): ${frame.raw}`);
+        if (currentImei && this.ackWaiter.tryMatch(currentImei, frame.raw)) {
+          break;
+        }
+        this.logger.warn({ imei: currentImei, reason: frame.reason, frameRaw: frame.raw }, `Unknown frame`);
         break;
       }
     }

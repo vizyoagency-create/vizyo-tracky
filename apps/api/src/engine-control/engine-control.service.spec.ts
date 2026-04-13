@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { CommandStatus, EngineAction, UserRole } from '@prisma/client';
+import { CobanWireLogger } from '../observability/coban-wire-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SocketRegistryService } from '../socket-registry/socket-registry.service';
 import { EngineControlService } from './engine-control.service';
@@ -102,6 +103,7 @@ describe('EngineControlService', () => {
         EngineControlService,
         { provide: PrismaService, useValue: prisma },
         { provide: SocketRegistryService, useValue: registry },
+        { provide: CobanWireLogger, useValue: { out: jest.fn(), in: jest.fn(), ackMatch: jest.fn(), ackTimeout: jest.fn() } },
       ],
     }).compile();
 
