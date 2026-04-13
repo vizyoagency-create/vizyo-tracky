@@ -23,7 +23,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   constructor(private readonly auth: AuthService) {}
 
-  handleConnection(client: Socket): void {
+  async handleConnection(client: Socket): Promise<void> {
     try {
       const token = client.handshake.auth?.token as string | undefined;
       if (!token) {
@@ -32,21 +32,20 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         return;
       }
 
-      const payload = this.auth.verify(token);
-      const fleetId = payload.fleetId;
-      const role = payload.role;
+      const payload = this.auth.verifyAccessToken(token);
+      const localUser = await this.auth.resolveLocalUser(payload.sub);
 
-      if (role === 'SUPER_ADMIN') {
+      if (localUser.role === 'SUPER_ADMIN') {
         client.join('fleet:*');
       }
 
-      if (fleetId) {
-        client.join(`fleet:${fleetId}`);
+      if (localUser.fleetId) {
+        client.join(`fleet:${localUser.fleetId}`);
       }
 
-      this.logger.debug(`Client ${client.id} authenticated (${payload.email}, fleet=${fleetId})`);
-    } catch {
-      this.logger.warn(`Client ${client.id} rejected: invalid token`);
+      this.logger.debug(`Client ${client.id} authenticated (${localUser.email}, fleet=${localUser.fleetId})`);
+    } catch (err) {
+      this.logger.warn(`Client ${client.id} rejected: ${err instanceof Error ? err.message : 'invalid token'}`);
       client.disconnect();
     }
   }

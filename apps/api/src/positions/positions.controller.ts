@@ -15,7 +15,7 @@ export class PositionsController {
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
   list(@Req() req: AuthenticatedRequest, @Query() query: ListPositionsDto) {
     return this.positions.list(
-      { role: req.user.role as UserRole, fleetId: req.user.fleetId },
+      { role: req.user.role, fleetId: req.user.fleetId },
       query,
     );
   }

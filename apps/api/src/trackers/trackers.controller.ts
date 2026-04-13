@@ -30,8 +30,8 @@ export class TrackersController {
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
   create(@Body() dto: CreateTrackerDto, @Req() req: AuthenticatedRequest) {
     return this.trackers.create(dto, {
-      userId: req.user.sub,
-      role: req.user.role as UserRole,
+      userId: req.user.id,
+      role: req.user.role,
       fleetId: req.user.fleetId,
     });
   }
@@ -45,7 +45,7 @@ export class TrackersController {
     @Query('limit') limit?: string,
   ) {
     return this.trackers.findAll(
-      { userId: req.user.sub, role: req.user.role as UserRole, fleetId: req.user.fleetId },
+      { userId: req.user.id, role: req.user.role, fleetId: req.user.fleetId },
       { status, unassigned, limit: limit ? parseInt(limit, 10) : undefined },
     );
   }
@@ -54,8 +54,8 @@ export class TrackersController {
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
   findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.trackers.findOne(id, {
-      userId: req.user.sub,
-      role: req.user.role as UserRole,
+      userId: req.user.id,
+      role: req.user.role,
       fleetId: req.user.fleetId,
     });
   }
@@ -64,8 +64,8 @@ export class TrackersController {
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
   update(@Param('id') id: string, @Body() dto: UpdateTrackerDto, @Req() req: AuthenticatedRequest) {
     return this.trackers.update(id, dto, {
-      userId: req.user.sub,
-      role: req.user.role as UserRole,
+      userId: req.user.id,
+      role: req.user.role,
       fleetId: req.user.fleetId,
     });
   }
@@ -75,8 +75,8 @@ export class TrackersController {
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
   remove(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.trackers.remove(id, {
-      userId: req.user.sub,
-      role: req.user.role as UserRole,
+      userId: req.user.id,
+      role: req.user.role,
       fleetId: req.user.fleetId,
     });
   }
@@ -89,8 +89,8 @@ export class TrackersController {
     @Req() req: AuthenticatedRequest,
   ) {
     return this.trackers.assign(trackerId, dto.vehicleId, {
-      userId: req.user.sub,
-      role: req.user.role as UserRole,
+      userId: req.user.id,
+      role: req.user.role,
       fleetId: req.user.fleetId,
     });
   }
@@ -100,8 +100,8 @@ export class TrackersController {
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
   unassign(@Param('trackerId') trackerId: string, @Req() req: AuthenticatedRequest) {
     return this.trackers.unassign(trackerId, {
-      userId: req.user.sub,
-      role: req.user.role as UserRole,
+      userId: req.user.id,
+      role: req.user.role,
       fleetId: req.user.fleetId,
     });
   }

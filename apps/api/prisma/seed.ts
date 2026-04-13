@@ -1,6 +1,5 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient, UserRole } from '@prisma/client';
-import * as bcrypt from 'bcrypt';
 
 const adapter = new PrismaPg({
   connectionString: process.env.DATABASE_URL,
@@ -8,6 +7,14 @@ const adapter = new PrismaPg({
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
+  const adminAuthUserId = process.env.SEED_ADMIN_AUTH_USER_ID;
+  if (!adminAuthUserId) {
+    throw new Error(
+      'SEED_ADMIN_AUTH_USER_ID is required.\n' +
+      'Get it from Auth DB: SELECT id FROM "User" WHERE email = \'admin@vizyoagency.com\''
+    );
+  }
+
   const fleet = await prisma.fleet.upsert({
     where: { id: '00000000-0000-0000-0000-000000000001' },
     update: {},
@@ -18,22 +25,20 @@ async function main() {
     },
   });
 
-  const passwordHash = await bcrypt.hash('admin123', 12);
-
   await prisma.user.upsert({
-    where: { email: 'admin@vizyo.fr' },
+    where: { email: 'admin@vizyoagency.com' },
     update: {},
     create: {
-      email: 'admin@vizyo.fr',
-      passwordHash,
+      authUserId: adminAuthUserId,
+      email: 'admin@vizyoagency.com',
       firstName: 'Admin',
       lastName: 'Vizyo',
       role: UserRole.SUPER_ADMIN,
-      fleetId: fleet.id,
+      fleetId: null,
     },
   });
 
-  console.log('✅ Seed OK — admin@vizyo.fr / admin123');
+  console.log('✅ Seed OK — admin@vizyoagency.com linked to Auth userId:', adminAuthUserId);
 }
 
 main()

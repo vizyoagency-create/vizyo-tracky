@@ -28,8 +28,8 @@ export class EngineControlController {
     @Req() req: AuthenticatedRequest,
   ) {
     return this.engineControl.requestCommand(trackerId, dto.action, dto.reason ?? null, {
-      userId: req.user.sub,
-      role: req.user.role as UserRole,
+      userId: req.user.id,
+      role: req.user.role,
       fleetId: req.user.fleetId,
     });
   }
@@ -44,8 +44,8 @@ export class EngineControlController {
   ) {
     return this.engineControl.listCommands(
       {
-        userId: req.user.sub,
-        role: req.user.role as UserRole,
+        userId: req.user.id,
+        role: req.user.role,
         fleetId: req.user.fleetId,
       },
       {
@@ -60,8 +60,8 @@ export class EngineControlController {
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
   getCommand(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.engineControl.getCommand(id, {
-      userId: req.user.sub,
-      role: req.user.role as UserRole,
+      userId: req.user.id,
+      role: req.user.role,
       fleetId: req.user.fleetId,
     });
   }
