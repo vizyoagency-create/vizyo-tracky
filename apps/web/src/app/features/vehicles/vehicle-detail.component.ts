@@ -18,6 +18,7 @@ import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/v
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { MiniMapComponent } from '../../shared/ui/mini-map/mini-map.component';
 import { EngineControlButtonComponent } from '../engine-control/engine-control-button.component';
+import { CommandsPanelComponent } from '../tracker-commands/commands-panel.component';
 import { relativeTime } from '../../shared/utils/relative-time';
 
 @Component({
@@ -25,7 +26,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
   standalone: true,
   imports: [
     RouterLink, LucideAngularModule, DatePipe, DecimalPipe,
-    MiniMapComponent, EngineControlButtonComponent,
+    MiniMapComponent, EngineControlButtonComponent, CommandsPanelComponent,
   ],
   template: `
     @if (loading()) {
@@ -234,45 +235,13 @@ import { relativeTime } from '../../shared/utils/relative-time';
         }
 
         @if (activeTab() === 'commands') {
-          @if (commands().length > 0) {
-            <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-hidden">
-              <table class="w-full text-sm">
-                <thead class="border-b border-border-subtle text-fg-tertiary text-xs uppercase">
-                  <tr>
-                    <th class="p-3 text-left">Date</th>
-                    <th class="p-3 text-left">Action</th>
-                    <th class="p-3 text-left">Statut</th>
-                    <th class="p-3 text-left">Raison</th>
-                    <th class="p-3 text-left">Erreur</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  @for (cmd of commands(); track cmd.id) {
-                    <tr class="border-b border-border-subtle/50">
-                      <td class="p-3 text-fg-primary">{{ cmd.createdAt | date:'dd/MM HH:mm' }}</td>
-                      <td class="p-3">
-                        <span class="px-2 py-0.5 text-xs rounded-md"
-                              [class]="cmd.action === 'CUT' ? 'bg-red-600/20 text-red-400' : 'bg-tracky/20 text-tracky-light'">
-                          {{ cmd.action === 'CUT' ? 'Coupure' : 'Rallumage' }}
-                        </span>
-                      </td>
-                      <td class="p-3">
-                        <span class="px-2 py-0.5 text-xs rounded-md" [class]="statusClass(cmd.status)">
-                          {{ statusLabel(cmd.status) }}
-                        </span>
-                      </td>
-                      <td class="p-3 text-xs text-fg-tertiary">{{ cmd.reason ?? '—' }}</td>
-                      <td class="p-3 text-xs text-fg-tertiary">{{ cmd.lastError ?? '—' }}</td>
-                    </tr>
-                  }
-                </tbody>
-              </table>
-            </div>
+          @if (v.tracker) {
+            <app-commands-panel [trackerId]="v.tracker.id" />
           } @else {
             <div class="flex flex-col items-center justify-center h-40 rounded-[--radius-card]
                         bg-bg-secondary border border-border-subtle text-fg-tertiary gap-2">
               <lucide-icon [img]="Power" [size]="48" class="opacity-30"></lucide-icon>
-              <p>Aucune commande</p>
+              <p>Aucun tracker associe</p>
             </div>
           }
         }
