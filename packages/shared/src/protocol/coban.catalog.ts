@@ -162,7 +162,7 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
         ],
       },
     ],
-    buildPayload: (_imei, params) => `fix${params.interval as string}***n123456`,
+    buildPayload: (_imei, params) => `fix${params['interval'] as string}***n123456`,
     expectedAckPattern: /fix.*ok/i,
     ackTimeoutMs: 15000,
     availableVia: ['sms'],
@@ -230,7 +230,7 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
       },
     ],
     buildPayload: (_imei, params) => {
-      const speed = String(params.speed_kmh).padStart(3, '0');
+      const speed = String(params['speed_kmh']).padStart(3, '0');
       return `speed123456 ${speed}`;
     },
     expectedAckPattern: /speed\s*ok/i,
@@ -268,7 +268,7 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
       { name: 'lng2', label: 'Longitude coin 2', type: 'number', required: true, min: -180, max: 180 },
     ],
     buildPayload: (_imei, params) =>
-      `stockade123456 ${params.lat1},${params.lng1};${params.lat2},${params.lng2}`,
+      `stockade123456 ${params['lat1']},${params['lng1']};${params['lat2']},${params['lng2']}`,
     expectedAckPattern: /stockade\s*ok/i,
     ackTimeoutMs: 15000,
     availableVia: ['sms'],
@@ -300,7 +300,7 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
     params: [
       { name: 'offset', label: 'Offset UTC (-12 à +12)', type: 'number', required: true, min: -12, max: 12 },
     ],
-    buildPayload: (_imei, params) => `time zone123456,${params.offset}`,
+    buildPayload: (_imei, params) => `time zone123456,${params['offset']}`,
     expectedAckPattern: /time zone\s*ok/i,
     ackTimeoutMs: 15000,
     availableVia: ['sms'],
@@ -319,9 +319,9 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
       { name: 'pass', label: 'Mot de passe', type: 'string', required: false },
     ],
     buildPayload: (_imei, params) => {
-      const parts = [params.apn as string];
-      if (params.user) parts.push(params.user as string);
-      if (params.pass) parts.push(params.pass as string);
+      const parts = [params['apn'] as string];
+      if (params['user']) parts.push(params['user'] as string);
+      if (params['pass']) parts.push(params['pass'] as string);
       return `apn123456 ${parts.join(',')}`;
     },
     expectedAckPattern: /APN\s*ok/i,
@@ -340,7 +340,7 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
       { name: 'ip', label: 'Adresse IP', type: 'string', required: true },
       { name: 'port', label: 'Port', type: 'number', required: true, min: 1, max: 65535 },
     ],
-    buildPayload: (_imei, params) => `adminip123456 ${params.ip} ${params.port}`,
+    buildPayload: (_imei, params) => `adminip123456 ${params['ip']} ${params['port']}`,
     expectedAckPattern: /adminip\s*ok/i,
     ackTimeoutMs: 15000,
     availableVia: ['sms'],
@@ -362,7 +362,7 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
         validate: (v) => /^\d{6}$/.test(String(v)) ? null : 'Doit être exactement 6 chiffres',
       },
     ],
-    buildPayload: (_imei, params) => `password123456 ${params.new_pass}`,
+    buildPayload: (_imei, params) => `password123456 ${params['new_pass']}`,
     expectedAckPattern: /password\s*ok/i,
     ackTimeoutMs: 15000,
     availableVia: ['sms'],
@@ -396,7 +396,7 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
       { name: 'ack_pattern', label: 'Pattern ACK (regex)', type: 'string', required: false },
     ],
     buildPayload: (imei, params) => {
-      const raw = params.raw_payload as string;
+      const raw = params['raw_payload'] as string;
       if (raw.includes('imei:')) return raw;
       return tcpWrap(imei, raw);
     },
