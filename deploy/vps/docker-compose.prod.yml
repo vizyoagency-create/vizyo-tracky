@@ -83,7 +83,7 @@ services:
       - "traefik.enable=true"
       - "traefik.docker.network=${TRAEFIK_NETWORK}"
       # Router API — capte /api/* et /realtime/* sur app-tracky
-      - "traefik.http.routers.tracky-api.rule=Host(`${APP_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/realtime`))"
+      - "traefik.http.routers.tracky-api.rule=Host(`${APP_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/realtime`) || PathPrefix(`/socket.io`))"
       - "traefik.http.routers.tracky-api.entrypoints=${TRAEFIK_ENTRYPOINT}"
       - "traefik.http.routers.tracky-api.tls=true"
       - "traefik.http.routers.tracky-api.tls.certresolver=${TRAEFIK_CERT_RESOLVER}"
