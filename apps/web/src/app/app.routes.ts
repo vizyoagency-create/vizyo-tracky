@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/auth/auth.guard';
+import { superAdminGuard } from './core/guards/super-admin.guard';
 
 export const routes: Routes = [
   {
@@ -73,11 +74,13 @@ export const routes: Routes = [
       },
       {
         path: 'admin/observability',
+        canActivate: [superAdminGuard],
         loadComponent: () =>
           import('./features/observability/observability.component').then((m) => m.ObservabilityComponent),
       },
       {
         path: 'admin/commands',
+        canActivate: [superAdminGuard],
         loadComponent: () =>
           import('./features/tracker-commands/admin-commands.component').then((m) => m.AdminCommandsComponent),
       },

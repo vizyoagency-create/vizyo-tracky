@@ -13,6 +13,7 @@ import {
   Menu,
   X,
   MoreHorizontal,
+  Activity,
 } from 'lucide-angular';
 import { ThemeToggleComponent } from '../shared/components/theme-toggle.component';
 import { AlertsBellComponent } from '../shared/ui/alerts-bell/alerts-bell.component';
@@ -261,6 +262,7 @@ export class DashboardLayoutComponent {
       { label: 'Rapports', route: '/reports', icon: FileBarChart },
       ...(this.perms.can('users_view') ? [{ label: 'Utilisateurs', route: '/users', icon: Users }] : []),
       { label: 'Parametres', route: '/settings', icon: Settings },
+      ...(this.auth.user()?.role === 'SUPER_ADMIN' ? [{ label: 'Observabilité', route: '/admin/observability', icon: Activity }] : []),
     ];
   });
 }
