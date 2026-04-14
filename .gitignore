@@ -10,7 +10,10 @@ coverage
 
 # env
 .env
+.env.local
 .env.*.local
+.env.production
+.env.development
 
 # logs
 *.log
