@@ -1,0 +1,25 @@
+name: tracky-lp
+
+networks:
+  foodsqan-public:
+    external: true
+    name: ${TRAEFIK_NETWORK}
+
+services:
+  lp:
+    build:
+      context: ../..
+      dockerfile: deploy/vps/Dockerfile.lp
+    image: tracky-lp:latest
+    container_name: tracky-lp
+    restart: unless-stopped
+    networks:
+      - foodsqan-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK}"
+      - "traefik.http.routers.tracky-lp.rule=Host(`${LP_DOMAIN}`)"
+      - "traefik.http.routers.tracky-lp.entrypoints=${TRAEFIK_ENTRYPOINT}"
+      - "traefik.http.routers.tracky-lp.tls=true"
+      - "traefik.http.routers.tracky-lp.tls.certresolver=${TRAEFIK_CERT_RESOLVER}"
+      - "traefik.http.services.tracky-lp.loadbalancer.server.port=80"

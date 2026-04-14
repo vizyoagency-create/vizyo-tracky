@@ -1,0 +1,113 @@
+name: tracky-prod
+
+networks:
+  foodsqan-public:
+    external: true
+    name: ${TRAEFIK_NETWORK}
+  vizyo-tracky:
+    driver: bridge
+    name: vizyo-tracky
+
+volumes:
+  tracky-postgres-data:
+    name: tracky-postgres-data
+  tracky-redis-data:
+    name: tracky-redis-data
+  tracky-api-logs:
+    name: tracky-api-logs
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: tracky-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - tracky-postgres-data:/var/lib/postgresql/data
+      - ../../docker/postgres/init-postgis.sql:/docker-entrypoint-initdb.d/init-postgis.sql:ro
+    networks:
+      - vizyo-tracky
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    container_name: tracky-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - tracky-redis-data:/data
+    networks:
+      - vizyo-tracky
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: ../..
+      dockerfile: deploy/vps/Dockerfile.api
+    image: tracky-api:latest
+    container_name: tracky-api
+    restart: unless-stopped
+    env_file:
+      - .env.prod
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      REDIS_URL: redis://redis:6379
+      API_PORT: 3000
+      TRACKER_TCP_PORT: 5023
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "5023:5023"
+    volumes:
+      - tracky-api-logs:/app/apps/api/logs
+    networks:
+      - vizyo-tracky
+      - foodsqan-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK}"
+      # Router API — capte /api/* et /realtime/* sur app-tracky
+      - "traefik.http.routers.tracky-api.rule=Host(`${APP_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/realtime`))"
+      - "traefik.http.routers.tracky-api.entrypoints=${TRAEFIK_ENTRYPOINT}"
+      - "traefik.http.routers.tracky-api.tls=true"
+      - "traefik.http.routers.tracky-api.tls.certresolver=${TRAEFIK_CERT_RESOLVER}"
+      - "traefik.http.routers.tracky-api.priority=10"
+      - "traefik.http.services.tracky-api.loadbalancer.server.port=3000"
+      # Headers pour WebSocket
+      - "traefik.http.middlewares.tracky-api-ws.headers.customrequestheaders.X-Forwarded-Proto=https"
+
+  web:
+    build:
+      context: ../..
+      dockerfile: deploy/vps/Dockerfile.web
+    image: tracky-web:latest
+    container_name: tracky-web
+    restart: unless-stopped
+    networks:
+      - foodsqan-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK}"
+      # Router Web — catch-all sur app-tracky (priorité plus basse que l'API)
+      - "traefik.http.routers.tracky-web.rule=Host(`${APP_DOMAIN}`)"
+      - "traefik.http.routers.tracky-web.entrypoints=${TRAEFIK_ENTRYPOINT}"
+      - "traefik.http.routers.tracky-web.tls=true"
+      - "traefik.http.routers.tracky-web.tls.certresolver=${TRAEFIK_CERT_RESOLVER}"
+      - "traefik.http.routers.tracky-web.priority=1"
+      - "traefik.http.services.tracky-web.loadbalancer.server.port=80"

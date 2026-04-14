@@ -1,0 +1,43 @@
+# Dockerfile.api — build multi-stage NestJS + Prisma
+FROM node:20-alpine AS base
+RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
+WORKDIR /app
+
+FROM base AS deps
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+COPY apps/api/package.json apps/api/
+COPY packages/shared/package.json packages/shared/
+RUN pnpm install --frozen-lockfile
+
+FROM base AS builder
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
+COPY . .
+RUN pnpm --filter @vizyo/tracky-shared build
+RUN cd apps/api && pnpm prisma generate
+RUN pnpm --filter @vizyo/tracky-api build
+
+FROM node:20-alpine AS runtime
+RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
+RUN apk add --no-cache wget
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
+COPY --from=builder /app/packages/shared/package.json ./packages/shared/
+COPY --from=builder /app/apps/api/dist ./apps/api/dist
+COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=builder /app/apps/api/package.json ./apps/api/
+COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=60s \
+  CMD wget -qO- http://localhost:3000/api/health 2>&1 | grep -q "ok\|healthy" \
+      || wget -S --spider http://localhost:3000/api 2>&1 | grep -qE "(401|404|200)" \
+      || exit 1
+
+EXPOSE 3000 5023
+WORKDIR /app/apps/api
+
+CMD ["sh", "-c", "pnpm prisma migrate deploy && node dist/main.js"]

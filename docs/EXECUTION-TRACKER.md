@@ -17,6 +17,16 @@ Vague B (Phase 7 SMS)        [ ░░░░░░░░░░ ]   0 %
 **Prochaine action** : bench 403C selon `docs/prompts/bench-403c.md`
 **Bloquant actif** : _aucun_
 
+## 🌐 Infrastructure
+
+- **Prod** : https://app-tracky.vizyoagency.com (UI + API + WS)
+- **Landing** : https://tracky.vizyoagency.com
+- **TCP trackers** : app-tracky.vizyoagency.com:5023 (IP directe 72.62.26.240:5023)
+- **VPS** : Hostinger srv1201617 (IP 72.62.26.240)
+- **Auth partagée** : api.auth.vizyoagency.com
+- **Traefik** : foodsqan-traefik v3.6.6, réseau foodsqan-public, certresolver letsencrypt
+- **Pas de staging, pas de backup** (TODO ultérieur)
+
 ---
 
 ## 📊 Vue macro
@@ -126,7 +136,7 @@ Statut : ⬜ TODO
 
 - [ ] SIM data provisionnée + APN noté
 - [ ] 403C alimenté 12V, relais coupe-circuit câblé
-- [ ] API déployée sur endpoint TCP public (VPS staging ou ngrok TCP)
+- [x] API déployée sur endpoint TCP public (VPS prod 72.62.26.240:5023)
 - [ ] IMEI du 403C seedé en base
 - [ ] Multimètre à dispo
 
@@ -226,6 +236,7 @@ _(Contenu identique, non modifié)_
 | 2026-04-13 | A / Phase 6    | 6.1-6.6 + bonus   | ✅     | 8       | 55    | Catalog 20 tpl, AckWaiter, Service+Controller, Scheduler, UI, unified history |
 | 2026-04-13 | A / Checklist  | Acceptance 10 pts | ✅     | 1       | 0     | Prisma migrate OK, API+Web build OK, bracket-notation fix, all 10 items green |
 | 2026-04-13 | A / Validation | WireLog E2E       | ✅     | 1       | 0     | WIRE_LOG_ENABLED=true, RESTORE OUT + status OUT dans wire_logs, pipeline vert  |
+| 2026-04-14 | Infra          | Déploiement VPS   | ✅     | 1       | 0     | LP + API + Web + PostGIS + Redis déployés sur VPS Hostinger. DNS créés (tracky, app-tracky). UFW 5023 ouvert. Stack intégrée au réseau foodsqan-public, auth partagée via vizyo-auth. Seed admin OK. |
 
 ---
 
