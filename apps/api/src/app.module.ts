@@ -11,6 +11,7 @@ import { AuthClientModule } from './auth-client/auth-client.module';
 import { AuthModule } from './auth/auth.module';
 import { validateEnv } from './config/env.validation';
 import { EngineControlModule } from './engine-control/engine-control.module';
+import { FleetsModule } from './fleets/fleets.module';
 import { GeofencesModule } from './geofences/geofences.module';
 import { InternalModule } from './internal/internal.module';
 import { TripsModule } from './trips/trips.module';
@@ -67,6 +68,7 @@ import { VehiclesModule } from './vehicles/vehicles.module';
     PositionsModule,
     AlertsModule,
     EngineControlModule,
+    FleetsModule,
     GeofencesModule,
     TripsModule,
     VehiclesModule,

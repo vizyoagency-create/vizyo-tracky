@@ -1,9 +1,11 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, HostListener, inject, input, output, signal } from '@angular/core';
+import { Component, computed, effect, HostListener, inject, input, output, signal } from '@angular/core';
 import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, Truck, Radio, ChevronRight, X, Save, Check } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
+import { AuthService } from '../../../core/services/auth.service';
+import { FleetsApiService, type FleetSummary } from '../../../core/services/fleets.service';
 import { TrackersApiService } from '../../../core/services/trackers.service';
 import { VehiclesApiService } from '../../../core/services/vehicles.service';
 import { VEHICLE_TYPES } from '../../../shared/utils/vehicle-icons';
@@ -78,6 +80,36 @@ import { VEHICLE_TYPES } from '../../../shared/utils/vehicle-icons';
 
             <!-- Step 1: Vehicle info -->
             @if (currentStep() === 1) {
+              @if (isSuperAdmin()) {
+                <section>
+                  <p class="section-title">Flotte</p>
+                  @if (fleetsLoading()) {
+                    <div class="flex items-center gap-2 text-sm text-fg-tertiary py-2">
+                      <span class="w-4 h-4 border-2 border-fg-tertiary/30 border-t-fg-tertiary rounded-full animate-spin"></span>
+                      Chargement des flottes...
+                    </div>
+                  } @else if (fleetsError()) {
+                    <div class="p-3 rounded-xl bg-red-600/10 border border-red-600/20 text-red-400 text-sm">
+                      {{ fleetsError() }}
+                    </div>
+                  } @else if (fleets().length === 0) {
+                    <div class="p-3 rounded-xl bg-amber-600/10 border border-amber-600/20 text-amber-400 text-sm">
+                      Aucune flotte disponible, creez une flotte d'abord
+                    </div>
+                  } @else {
+                    <div>
+                      <label class="field-label">Flotte *</label>
+                      <select [(ngModel)]="selectedFleetId" class="field-input">
+                        <option value="" disabled>Selectionnez une flotte</option>
+                        @for (f of fleets(); track f.id) {
+                          <option [value]="f.id">{{ f.name }}</option>
+                        }
+                      </select>
+                    </div>
+                  }
+                </section>
+              }
+
               <section>
                 <p class="section-title">Identification</p>
                 <div class="space-y-3">
@@ -169,7 +201,7 @@ import { VEHICLE_TYPES } from '../../../shared/utils/vehicle-icons';
             }
 
             @if (currentStep() === 1) {
-              <button (click)="onSubmitStep1()" [disabled]="isLoading() || !plate.trim()"
+              <button (click)="onSubmitStep1()" [disabled]="isLoading() || !plate.trim() || (isSuperAdmin() && !selectedFleetId)"
                 class="px-5 py-2.5 text-sm font-medium rounded-xl bg-tracky hover:bg-tracky-dark text-white
                        transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2">
                 @if (isLoading()) {
@@ -206,6 +238,8 @@ import { VEHICLE_TYPES } from '../../../shared/utils/vehicle-icons';
     }
     .field-input:focus { border-color: var(--tracky) }
     .field-input::placeholder { color: var(--fg-tertiary) }
+    select.field-input { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px }
+    select.field-input option { background: var(--bg-secondary); color: var(--fg-primary) }
     .type-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px }
     .type-btn {
       display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 4px; border-radius: 10px;
@@ -224,6 +258,8 @@ export class AddVehicleDialogComponent {
 
   private readonly vehiclesApi = inject(VehiclesApiService);
   private readonly trackersApi = inject(TrackersApiService);
+  private readonly fleetsApi = inject(FleetsApiService);
+  private readonly authService = inject(AuthService);
   private readonly sanitizer = inject(DomSanitizer);
 
   protected getSvgHtml(svgContent: string): SafeHtml {
@@ -231,6 +267,12 @@ export class AddVehicleDialogComponent {
       `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${svgContent}</svg>`
     );
   }
+
+  protected readonly isSuperAdmin = computed(() => this.authService.user()?.role === 'SUPER_ADMIN');
+  protected readonly fleets = signal<FleetSummary[]>([]);
+  protected readonly fleetsLoading = signal(false);
+  protected readonly fleetsError = signal('');
+  protected selectedFleetId = '';
 
   protected readonly currentStep = signal(1);
   protected readonly isLoading = signal(false);
@@ -254,6 +296,14 @@ export class AddVehicleDialogComponent {
   protected readonly SaveIcon = Save;
   protected readonly CheckIcon = Check;
 
+  constructor() {
+    effect(() => {
+      if (this.open() && this.isSuperAdmin()) {
+        this.loadFleets();
+      }
+    });
+  }
+
   @HostListener('document:keydown.escape')
   onEscape() { if (this.open() && !this.isLoading()) this.onClose(); }
 
@@ -268,6 +318,22 @@ export class AddVehicleDialogComponent {
     this.created.emit();
   }
 
+  private async loadFleets(): Promise<void> {
+    this.fleetsLoading.set(true);
+    this.fleetsError.set('');
+    try {
+      const list = await firstValueFrom(this.fleetsApi.list());
+      this.fleets.set(list);
+      if (list.length === 1) {
+        this.selectedFleetId = list[0].id;
+      }
+    } catch {
+      this.fleetsError.set('Impossible de charger les flottes');
+    } finally {
+      this.fleetsLoading.set(false);
+    }
+  }
+
   async onSubmitStep1(): Promise<void> {
     this.isLoading.set(true);
     this.errorMessage.set('');
@@ -277,6 +343,7 @@ export class AddVehicleDialogComponent {
       if (this.model.trim()) data['model'] = this.model.trim();
       if (this.year) data['year'] = this.year;
       if (this.color.trim()) data['color'] = this.color.trim();
+      if (this.selectedFleetId) data['fleetId'] = this.selectedFleetId;
       const vehicle = await firstValueFrom(this.vehiclesApi.create(data as any));
       this.createdVehicleId.set(vehicle.id);
       this.currentStep.set(2);
@@ -304,6 +371,7 @@ export class AddVehicleDialogComponent {
     this.currentStep.set(1);
     this.errorMessage.set('');
     this.createdVehicleId.set('');
+    this.selectedFleetId = '';
     this.plate = '';
     this.vehicleType = 'CAR';
     this.brand = '';

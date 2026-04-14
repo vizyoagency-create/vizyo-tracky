@@ -34,6 +34,7 @@ export class VehiclesApiService {
     model?: string;
     year?: number;
     color?: string;
+    fleetId?: string;
   }): Observable<VehicleDetailDto> {
     return this.http.post<VehicleDetailDto>('/api/vehicles', data);
   }

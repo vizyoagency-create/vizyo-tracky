@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -24,11 +25,18 @@ export class VehiclesService {
   async create(dto: CreateVehicleDto, requestedBy: RequestedBy): Promise<Vehicle> {
     let fleetId: string;
 
-    if (requestedBy.role === UserRole.SUPER_ADMIN && dto.fleetId) {
+    if (requestedBy.role === UserRole.SUPER_ADMIN) {
+      if (!dto.fleetId) {
+        throw new BadRequestException(
+          'En tant que SUPER_ADMIN, vous devez sélectionner une flotte',
+        );
+      }
       fleetId = dto.fleetId;
     } else if (requestedBy.fleetId) {
-      if (dto.fleetId && dto.fleetId !== requestedBy.fleetId && requestedBy.role !== UserRole.SUPER_ADMIN) {
-        throw new ForbiddenException('Impossible de créer un véhicule dans une autre flotte');
+      if (dto.fleetId && dto.fleetId !== requestedBy.fleetId) {
+        throw new ForbiddenException(
+          'Impossible de créer un véhicule dans une autre flotte',
+        );
       }
       fleetId = requestedBy.fleetId;
     } else {
