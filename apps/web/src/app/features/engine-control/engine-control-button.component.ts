@@ -19,7 +19,17 @@ import { relativeTime } from '../../shared/utils/relative-time';
   template: `
     @if (canCut().allowed || canRestore()) {
       <div class="flex items-center gap-2">
-        @if (ignition()) {
+        @if (isCutActive()) {
+          <button
+            (click)="isOpen.set('restore')"
+            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg
+                   bg-tracky/20 text-tracky-light border border-tracky/30
+                   hover:bg-tracky/30 transition-all cursor-pointer"
+          >
+            <lucide-icon [img]="Power" [size]="14"></lucide-icon>
+            Rallumer le moteur
+          </button>
+        } @else {
           <button
             (click)="canCut().allowed ? isOpen.set('cut') : null"
             [disabled]="!canCut().allowed"
@@ -31,17 +41,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
               : 'bg-bg-tertiary text-fg-tertiary border border-border-subtle'"
           >
             <lucide-icon [img]="PowerOff" [size]="14"></lucide-icon>
-            Couper
-          </button>
-        } @else {
-          <button
-            (click)="isOpen.set('restore')"
-            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg
-                   bg-tracky/20 text-tracky-light border border-tracky/30
-                   hover:bg-tracky/30 transition-all cursor-pointer"
-          >
-            <lucide-icon [img]="Power" [size]="14"></lucide-icon>
-            Rallumer
+            Couper le moteur
           </button>
         }
       </div>
@@ -116,6 +116,13 @@ export class EngineControlButtonComponent implements OnInit {
   private readonly authService = inject(AuthService);
   private readonly engineControl = inject(EngineControlService);
   private readonly toast = inject(ToastService);
+
+  readonly isCutActive = computed(() => {
+    const cmds = this.recentCommands();
+    if (cmds.length === 0) return false;
+    const last = cmds[0];
+    return last.action === 'CUT' && (last.status === 'SENT' || last.status === 'ACKNOWLEDGED');
+  });
 
   readonly canCut = computed(() => {
     const role = this.authService.user()?.role;

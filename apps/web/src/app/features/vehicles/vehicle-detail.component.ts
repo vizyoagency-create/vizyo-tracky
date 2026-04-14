@@ -80,6 +80,14 @@ import { relativeTime } from '../../shared/utils/relative-time';
             <p class="text-xl font-semibold" [class]="isOnline() ? 'text-tracky-light' : 'text-fg-tertiary'">
               {{ isOnline() ? 'En ligne' : 'Hors ligne' }}
             </p>
+            @if (currentPosition(); as pos) {
+              <div class="flex items-center gap-1.5 mt-2">
+                <lucide-icon [img]="ZapIcon" [size]="12" [class]="pos.ignition ? 'text-tracky-light' : 'text-fg-tertiary'"></lucide-icon>
+                <span class="text-[11px] font-medium" [class]="pos.ignition ? 'text-tracky-light' : 'text-fg-tertiary'">
+                  Contact {{ pos.ignition ? 'ON' : 'OFF' }}
+                </span>
+              </div>
+            }
           </div>
 
           <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4">
@@ -281,6 +289,7 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly Power = Power;
   protected readonly BellOff = BellOff;
   protected readonly HistoryIcon = History;
+  protected readonly ZapIcon = Zap;
   protected readonly relativeTime = relativeTime;
 
   protected readonly tabs = [
