@@ -10,13 +10,13 @@ import { TrackersApiService } from '../../core/services/trackers.service';
 import { getVehicleSvg, getVehicleTypeLabel } from '../../shared/utils/vehicle-icons';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
-import { AddVehicleDialogComponent } from './add-vehicle-dialog/add-vehicle-dialog.component';
+import { VehicleDialogComponent } from './vehicle-dialog/vehicle-dialog.component';
 import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
 
 @Component({
   selector: 'app-vehicles-list',
   standalone: true,
-  imports: [RouterLink, FormsModule, LucideAngularModule, AddVehicleDialogComponent, VehicleGroupsTabComponent, ConfirmModalComponent],
+  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, ConfirmModalComponent],
   template: `
     <div class="vlist-page">
       <div class="vlist-grid-bg"></div>
@@ -120,9 +120,11 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
           </div>
         }
 
-        <app-add-vehicle-dialog
-          [open]="showAddDialog()"
-          (created)="onDialogClosed()"
+        <app-vehicle-dialog
+          [open]="showAddDialog() || showEditDialog()"
+          [mode]="showEditDialog() ? 'edit' : 'create'"
+          [vehicleId]="editVehicleId()"
+          (done)="onDialogClosed()"
         />
       }
 
@@ -332,6 +334,8 @@ export class VehiclesListComponent implements OnInit {
   protected readonly vehicles = signal<VehicleDetailDto[]>([]);
   protected readonly loading = signal(true);
   protected readonly showAddDialog = signal(false);
+  protected readonly showEditDialog = signal(false);
+  protected readonly editVehicleId = signal('');
   protected readonly activeTab = signal<'vehicles' | 'groups'>('vehicles');
 
   // Assign tracker drawer
@@ -375,6 +379,8 @@ export class VehiclesListComponent implements OnInit {
 
   protected onDialogClosed(): void {
     this.showAddDialog.set(false);
+    this.showEditDialog.set(false);
+    this.editVehicleId.set('');
     this.loadVehicles();
   }
 
@@ -385,9 +391,8 @@ export class VehiclesListComponent implements OnInit {
   }
 
   protected openEditVehicle(v: VehicleDetailDto): void {
-    // For now, navigate to detail page where edit is possible
-    // TODO: inline edit drawer
-    window.location.href = `/vehicles/${v.id}`;
+    this.editVehicleId.set(v.id);
+    this.showEditDialog.set(true);
   }
 
   protected confirmDeleteVehicle(v: VehicleDetailDto): void {
