@@ -38,6 +38,7 @@ export class EngineControlService {
     action: EngineAction,
     reason: string | null,
     requestedBy: RequestedBy,
+    source: 'MANUAL' | 'SCHEDULER' = 'MANUAL',
   ): Promise<EngineControlCommand> {
     const tracker = await this.prisma.tracker.findUnique({
       where: { id: trackerId },
@@ -71,6 +72,7 @@ export class EngineControlService {
             action,
             reason,
             requestedBy: requestedBy.userId,
+            source,
             status: CommandStatus.REJECTED_SPEED,
             lastError: 'Aucune position connue pour ce tracker',
           },
@@ -88,6 +90,7 @@ export class EngineControlService {
             reason,
             requestedBy: requestedBy.userId,
             status: CommandStatus.REJECTED_SPEED,
+            source,
             lastError: 'Position trop ancienne (stale)',
           },
         });
@@ -103,6 +106,7 @@ export class EngineControlService {
             reason,
             requestedBy: requestedBy.userId,
             status: CommandStatus.REJECTED_SPEED,
+            source,
             lastError: 'Fix GPS invalide',
           },
         });
@@ -118,11 +122,23 @@ export class EngineControlService {
             reason,
             requestedBy: requestedBy.userId,
             status: CommandStatus.REJECTED_SPEED,
+            source,
             lastError: `Vitesse trop élevée : ${lastPosition.speedKmh} km/h`,
           },
         });
         this.logger.warn(`Command ${cmd.id} REJECTED: vitesse ${lastPosition.speedKmh} km/h`);
         throw new ForbiddenException(`Vitesse trop élevée : ${lastPosition.speedKmh} km/h`);
+      }
+    }
+
+    // If manual action → set override on schedule so scheduler doesn't fight
+    if (source === 'MANUAL') {
+      const vehicle = tracker.vehicle;
+      if (vehicle) {
+        await this.prisma.vehicleSchedule.updateMany({
+          where: { vehicleId: vehicle.id, enabled: true },
+          data: { overrideUntil: new Date(Date.now() + 60 * 60 * 1000) },
+        });
       }
     }
 
@@ -132,6 +148,7 @@ export class EngineControlService {
         action,
         reason,
         requestedBy: requestedBy.userId,
+        source,
         status: CommandStatus.PENDING,
       },
     });

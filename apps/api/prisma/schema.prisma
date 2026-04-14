@@ -136,6 +136,7 @@ model Vehicle {
   year      Int?
   color     String?
   tracker    Tracker?
+  schedule   VehicleSchedule?
   trips      Trip[]
   alerts     Alert[]
   groups     VehicleGroupAssignment[]
@@ -382,6 +383,7 @@ model EngineControlCommand {
   status      CommandStatus @default(PENDING)
   reason      String?
   requestedBy String        @db.Uuid
+  source      String        @default("MANUAL") // "MANUAL" | "SCHEDULER"
   lastError   String?
   sentAt      DateTime?
   ackedAt     DateTime?
@@ -390,4 +392,43 @@ model EngineControlCommand {
 
   @@index([trackerId, status])
   @@map("engine_control_commands")
+}
+
+model VehicleSchedule {
+  id        String @id @default(uuid()) @db.Uuid
+  vehicleId String @unique @db.Uuid
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  enabled   Boolean @default(false)
+  timezone  String  @default("Europe/Paris")
+
+  mondayEnabled    Boolean @default(true)
+  mondayStart      String? // "08:00"
+  mondayEnd        String? // "20:00"
+  tuesdayEnabled   Boolean @default(true)
+  tuesdayStart     String?
+  tuesdayEnd       String?
+  wednesdayEnabled Boolean @default(true)
+  wednesdayStart   String?
+  wednesdayEnd     String?
+  thursdayEnabled  Boolean @default(true)
+  thursdayStart    String?
+  thursdayEnd      String?
+  fridayEnabled    Boolean @default(true)
+  fridayStart      String?
+  fridayEnd        String?
+  saturdayEnabled  Boolean @default(false)
+  saturdayStart    String?
+  saturdayEnd      String?
+  sundayEnabled    Boolean @default(false)
+  sundayStart      String?
+  sundayEnd        String?
+
+  lastEvaluatedAt    DateTime?
+  lastEvaluatedState String?   // "IN_WINDOW" | "OUT_OF_WINDOW"
+  overrideUntil      DateTime? // scheduler ignores until this time after manual action
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("vehicle_schedules")
 }

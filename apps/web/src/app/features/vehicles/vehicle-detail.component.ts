@@ -5,7 +5,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
   LucideAngularModule, ArrowLeft, Wifi, WifiOff, Gauge, MapPin, Radio,
   AlertTriangle, AlertCircle, Info, Check, Power, Route, BellOff, Map,
-  History, Bell, Zap,
+  History, Bell, Zap, Clock,
 } from 'lucide-angular';
 import type { AlertEvent } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
@@ -19,6 +19,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 import { MiniMapComponent } from '../../shared/ui/mini-map/mini-map.component';
 import { EngineControlButtonComponent } from '../engine-control/engine-control-button.component';
 import { CommandsPanelComponent } from '../tracker-commands/commands-panel.component';
+import { VehicleScheduleComponent } from './vehicle-schedule/vehicle-schedule.component';
 import { relativeTime } from '../../shared/utils/relative-time';
 
 @Component({
@@ -27,6 +28,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
   imports: [
     RouterLink, LucideAngularModule, DatePipe, DecimalPipe,
     MiniMapComponent, EngineControlButtonComponent, CommandsPanelComponent,
+    VehicleScheduleComponent,
   ],
   template: `
     @if (loading()) {
@@ -253,6 +255,13 @@ import { relativeTime } from '../../shared/utils/relative-time';
             </div>
           }
         }
+
+        @if (activeTab() === 'schedule') {
+          <app-vehicle-schedule
+            [vehicleId]="v.id"
+            [hasTracker]="!!v.tracker"
+          />
+        }
       </div>
     }
   `,
@@ -274,7 +283,7 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly commands = signal<EngineControlCommandDto[]>([]);
   protected readonly vehicleTrips = signal<any[]>([]);
   protected readonly loading = signal(true);
-  protected readonly activeTab = signal<'map' | 'history' | 'alerts' | 'commands' | 'trips'>('map');
+  protected readonly activeTab = signal<'map' | 'history' | 'alerts' | 'commands' | 'schedule' | 'trips'>('map');
 
   protected readonly ArrowLeft = ArrowLeft;
   protected readonly Wifi = Wifi;
@@ -297,6 +306,7 @@ export class VehicleDetailComponent implements OnInit {
     { key: 'history' as const, label: 'Historique' },
     { key: 'alerts' as const, label: 'Alertes' },
     { key: 'commands' as const, label: 'Commandes' },
+    { key: 'schedule' as const, label: 'Horaires' },
     { key: 'trips' as const, label: 'Trajets' },
   ];
 
