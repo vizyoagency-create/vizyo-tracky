@@ -33,9 +33,7 @@ COPY --from=builder /app/apps/api/package.json ./apps/api/
 COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=60s \
-  CMD wget -qO- http://localhost:3000/api/health 2>&1 | grep -q "ok\|healthy" \
-      || wget -S --spider http://localhost:3000/api 2>&1 | grep -qE "(401|404|200)" \
-      || exit 1
+  CMD wget -qO- http://localhost:3000/api/health | grep -q '"ok"' || exit 1
 
 EXPOSE 3000 5023
 WORKDIR /app/apps/api

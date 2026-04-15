@@ -36,7 +36,13 @@ function createController() {
     },
   } as unknown as PrismaService;
 
-  return { controller: new InternalController(prisma), prisma };
+  const authClient = {
+    register: jest.fn(),
+    login: jest.fn(),
+    removeUserFromApp: jest.fn(),
+  } as unknown as import('../auth-client/auth-client.service').AuthClientService;
+
+  return { controller: new InternalController(prisma, authClient), prisma };
 }
 
 describe('InternalSecretGuard', () => {

@@ -27,6 +27,7 @@ import { VehicleGroupsModule } from './vehicle-groups/vehicle-groups.module';
 import { ObservabilityModule } from './observability/observability.module';
 import { TrackerCommandsModule } from './tracker-commands/tracker-commands.module';
 import { VehicleSchedulesModule } from './vehicle-schedules/vehicle-schedules.module';
+import { HealthController } from './health/health.controller';
 import { VehiclesModule } from './vehicles/vehicles.module';
 
 @Module({
@@ -84,6 +85,7 @@ import { VehiclesModule } from './vehicles/vehicles.module';
     InternalModule,
     UsersModule,
   ],
+  controllers: [HealthController],
   providers: [
     {
       provide: APP_GUARD,

@@ -34,6 +34,7 @@ const localUser = {
   firstName: 'Test',
   lastName: 'User',
   role: UserRole.FLEET_ADMIN,
+  permissions: null,
   fleetId: FLEET_ID,
   isActive: true,
   createdAt: new Date(),
@@ -86,6 +87,7 @@ describe('AuthService', () => {
         email: 'test@example.com',
         role: UserRole.FLEET_ADMIN,
         fleetId: FLEET_ID,
+        permissions: null,
       });
     });
 

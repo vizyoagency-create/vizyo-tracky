@@ -79,6 +79,7 @@ describe('EngineControlService', () => {
     tracker: { findUnique: jest.Mock };
     position: { findFirst: jest.Mock };
     engineControlCommand: { create: jest.Mock; update: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock };
+    vehicleSchedule: { updateMany: jest.Mock };
   };
   let registry: { get: jest.Mock };
 
@@ -91,6 +92,9 @@ describe('EngineControlService', () => {
         update: jest.fn().mockResolvedValue(undefined),
         findMany: jest.fn().mockResolvedValue([]),
         findUnique: jest.fn(),
+      },
+      vehicleSchedule: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
     };
 
