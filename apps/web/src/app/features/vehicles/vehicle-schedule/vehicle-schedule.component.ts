@@ -9,6 +9,7 @@ import {
   type VehicleScheduleDto,
 } from '../../../core/services/vehicle-schedules.service';
 import { ToastService } from '../../../shared/ui/toast/toast.service';
+import { ConfirmModalComponent } from '../../../shared/ui/confirm-modal/confirm-modal.component';
 
 interface DayRow {
   key: string;
@@ -48,7 +49,7 @@ const TIMEZONES = [
 @Component({
   selector: 'app-vehicle-schedule',
   standalone: true,
-  imports: [FormsModule, LucideAngularModule],
+  imports: [FormsModule, LucideAngularModule, ConfirmModalComponent],
   template: `
     @if (loading()) {
       <div class="flex items-center justify-center h-40">
@@ -68,7 +69,7 @@ const TIMEZONES = [
               <span class="text-xs text-fg-tertiary">{{ globalEnabled() ? 'Active' : 'Inactive' }}</span>
               <button
                 type="button"
-                (click)="toggleGlobal()"
+                (click)="onToggleGlobal()"
                 [disabled]="readonly()"
                 class="relative w-10 h-5 rounded-full transition-colors cursor-pointer disabled:opacity-50"
                 [class]="globalEnabled() ? 'bg-tracky' : 'bg-bg-tertiary border border-border-subtle'"
@@ -198,6 +199,19 @@ const TIMEZONES = [
           </div>
         }
       </div>
+
+      <!-- Confirmation modal for disabling when vehicle is cut -->
+      <app-confirm-modal
+        [open]="showDisableConfirm()"
+        title="Desactiver l'automatisation"
+        description="Ce vehicule est actuellement immobilise par l'automatisation horaire. Desactiver va rallumer le moteur automatiquement."
+        confirmLabel="Desactiver et rallumer"
+        cancelLabel="Annuler"
+        [danger]="true"
+        [loading]="saving()"
+        (confirmed)="confirmDisable()"
+        (cancelled)="cancelDisable()"
+      />
     }
   `,
 })
@@ -222,6 +236,7 @@ export class VehicleScheduleComponent {
   protected readonly globalEnabled = signal(false);
   protected readonly timezone = signal('Europe/Paris');
   protected readonly days = signal<DayRow[]>(this.defaultDays());
+  protected readonly showDisableConfirm = signal(false);
 
   protected readonly readonly = computed(() => {
     const role = this.auth.user()?.role;
@@ -231,7 +246,6 @@ export class VehicleScheduleComponent {
   protected readonly todayPreview = computed(() => {
     if (!this.globalEnabled()) return null;
     const now = new Date();
-    // JS getDay: 0=Sun ... 6=Sat → map to our array (Mon=0 ... Sun=6)
     const jsDay = now.getDay();
     const idx = jsDay === 0 ? 6 : jsDay - 1;
     const day = this.days()[idx];
@@ -276,9 +290,32 @@ export class VehicleScheduleComponent {
     }
   }
 
-  protected toggleGlobal(): void {
+  /** Toggle global: if disabling while vehicle is cut, show confirmation first. */
+  protected onToggleGlobal(): void {
+    const currentlyEnabled = this.globalEnabled();
+    if (currentlyEnabled) {
+      // Disabling — check if vehicle is currently cut by scheduler
+      const isCutByScheduler = this.schedule()?.lastEvaluatedState === 'OUT_OF_WINDOW';
+      if (isCutByScheduler) {
+        this.showDisableConfirm.set(true);
+        return;
+      }
+    }
+    // Enable, or disable without cut state → direct toggle
     this.globalEnabled.update((v) => !v);
     this.dirty.set(true);
+  }
+
+  protected confirmDisable(): void {
+    this.showDisableConfirm.set(false);
+    this.globalEnabled.set(false);
+    this.dirty.set(true);
+    // Auto-save immediately so the RESTORE is emitted right away
+    this.save();
+  }
+
+  protected cancelDisable(): void {
+    this.showDisableConfirm.set(false);
   }
 
   protected toggleDay(key: string): void {
