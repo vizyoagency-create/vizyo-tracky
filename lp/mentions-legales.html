@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Mentions légales — Vizyo Tracky</title>
+<meta name="description" content="Mentions légales du site Vizyo Tracky — traçage GPS et gestion de flottes.">
+<script>(function(){try{var t=localStorage.getItem('vt-theme');if(!t){t=window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'}document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme='dark'}})();</script>
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon-180.png">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&display=swap" rel="stylesheet">
+<style>
+:root{--v3:#6FF0C8;--v4:#10E0A0;--v5:#059669;--v6:#047857;--vg:linear-gradient(135deg,#10E0A0 0%,#047857 100%);--d9:#0A0F0D;--d8:#0F1714;--d7:#14201C;--g2:#e5e7eb;--g3:#d1d5db;--g4:#9ca3af;--g5:#6b7280;--g6:#4b5563;--grn:#10B981;--tw:#fff;--surf:rgba(15,23,20,.6);--elev:rgba(20,32,28,.6);--brd:rgba(255,255,255,.06);--brds:rgba(255,255,255,.1);--brdx:rgba(255,255,255,.05);--hdrbg:rgba(10,15,13,.85);color-scheme:dark}
+[data-theme="light"]{--d9:#FFFFFF;--d8:#F0FDF9;--d7:#DCFCE7;--g2:#042F2A;--g3:#064E3B;--g4:#475569;--g5:#64748B;--g6:#94A3B8;--tw:#042F2A;--surf:rgba(255,255,255,.85);--elev:rgba(240,253,249,.85);--brd:rgba(4,120,87,.12);--brds:rgba(4,120,87,.18);--brdx:rgba(4,120,87,.08);--hdrbg:rgba(255,255,255,.85);--v4:#047857;color-scheme:light}
+[data-theme="light"] body{background:#FFFFFF;color:#064E3B}
+[data-theme="light"] .ftrl{color:#64748B}
+[data-theme="light"] .thm-tg .ic-sun{display:block}[data-theme="light"] .thm-tg .ic-moon{display:none}
+[data-theme="light"] .hdr-bg{background:var(--hdrbg)}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:'DM Sans',system-ui,-apple-system,sans-serif;background:var(--d9);color:var(--g3);line-height:1.6;-webkit-font-smoothing:antialiased}
+a{color:var(--v4);text-decoration:none;transition:color .2s}
+a:hover{color:var(--v3)}
+
+/* Header */
+.hdr{position:fixed;top:0;left:0;right:0;z-index:100;padding:.75rem 0}
+.hdr-bg{position:absolute;inset:0;background:var(--hdrbg);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid var(--brd)}
+.hdr-in{position:relative;max-width:72rem;margin:0 auto;padding:0 1.5rem;display:flex;align-items:center;justify-content:space-between}
+.logo{display:flex;align-items:center;gap:.625rem}
+.logo-i{width:2.25rem;height:2.25rem;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 0 12px rgba(16,224,160,.35))}
+.thm-tg{display:flex;align-items:center;justify-content:center;width:2.5rem;height:2.5rem;border-radius:.625rem;color:var(--g4);background:transparent;border:1px solid var(--brd);transition:all .25s;flex-shrink:0;cursor:pointer}
+.thm-tg svg{transition:transform .4s cubic-bezier(.16,1,.3,1)}
+.thm-tg:hover svg{transform:rotate(15deg)}
+.thm-tg:hover{color:var(--v4);border-color:var(--brds);background:var(--elev)}
+.thm-tg .ic-sun{display:none}.thm-tg .ic-moon{display:block}
+
+/* Content */
+.mx{max-width:72rem;margin:0 auto;padding:0 1.5rem}
+.content{max-width:48rem;margin:0 auto;padding:6rem 1.5rem 4rem}
+.content h1{font-size:clamp(1.5rem,4vw,2rem);font-weight:800;color:var(--tw);margin-bottom:.5rem;letter-spacing:-.02em}
+.content .subtitle{font-size:1rem;color:var(--g5);margin-bottom:3rem}
+.content h2{font-size:1.125rem;font-weight:700;color:var(--tw);margin-top:2.5rem;margin-bottom:1rem;padding-bottom:.5rem;border-bottom:1px solid var(--brdx)}
+.content p{margin-bottom:.75rem;color:var(--g4);line-height:1.75}
+.content ul{list-style:none;padding:0;margin-bottom:1rem}
+.content li{position:relative;padding-left:1.25rem;margin-bottom:.5rem;color:var(--g4);line-height:1.75}
+.content li::before{content:'';position:absolute;left:0;top:.65em;width:.375rem;height:.375rem;background:var(--v4);border-radius:50%}
+.content strong{color:var(--tw);font-weight:600}
+.content a{color:var(--v4);text-decoration:underline;text-decoration-color:rgba(16,224,160,.3);text-underline-offset:3px}
+.content a:hover{text-decoration-color:var(--v4)}
+
+/* Footer */
+.ftr{border-top:1px solid var(--brdx);padding:3rem 0 4rem}
+.ftri{display:flex;flex-direction:column;align-items:center;gap:1.5rem}
+@media(min-width:768px){.ftri{flex-direction:row;justify-content:space-between}}
+.ftrl{display:flex;align-items:center;gap:1.5rem;font-size:.875rem;color:var(--g5);flex-wrap:wrap;justify-content:center}
+.ftrl a{color:inherit;text-decoration:none}.ftrl a:hover{color:var(--v4)}
+.trust-row{display:flex;align-items:center;justify-content:center;gap:1.5rem;flex-wrap:wrap;margin-top:1.5rem;padding-top:1.5rem;border-top:1px solid var(--brdx)}
+.trust-b{display:flex;align-items:center;gap:.375rem;font-size:.6875rem;color:var(--g5);text-transform:uppercase;letter-spacing:.06em;font-weight:600}
+.trust-b svg{flex-shrink:0;opacity:.6}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="hdr">
+<div class="hdr-bg"></div>
+<div class="hdr-in">
+<a href="vizyo-tracky.html" class="logo">
+<div class="logo-i">
+<svg width="34" height="34" viewBox="0 0 283 290" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM190.5 171.13C191.5 173.13 194 178.3 194 183.5C194 188.7 194 190 191.5 196C188.5 202 185.8 204.23 181 206.63C176.2 209.029 169.209 209.025 164.5 207.63C159 206 155.8 203.029 153 198.63L179 149.13L190.5 171.13ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="url(#tg_ml)"/><defs><linearGradient id="tg_ml" x1="28" y1="280" x2="230" y2="79" gradientUnits="userSpaceOnUse"><stop stop-color="#10E0A0"/><stop offset="1" stop-color="#047857"/></linearGradient></defs></svg>
+</div>
+<div>
+<span style="color:var(--tw);font-weight:700;font-size:1.125rem">Vizyo</span><span style="color:var(--v4);font-weight:700;font-size:1.125rem"> Tracky</span>
+</div>
+</a>
+<div style="display:flex;align-items:center;gap:.75rem">
+<a href="vizyo-tracky.html" style="font-size:.875rem;color:var(--g4);padding:.5rem 1rem;transition:color .2s">Retour au site</a>
+<button class="thm-tg" onclick="thmt()" aria-label="Changer de thème" title="Changer de thème">
+<svg class="ic-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+<svg class="ic-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+</button>
+</div>
+</div>
+</header>
+
+<!-- CONTENT -->
+<main class="content">
+
+<h1>Mentions légales</h1>
+<p class="subtitle">Conformément à l'article 6 III de la loi n° 2004-575 du 21 juin 2004 (LCEN).</p>
+
+<h2>1. Éditeur du site</h2>
+<ul>
+<li><strong>Raison sociale :</strong> Vizyo Agency</li>
+<li><strong>Forme juridique :</strong> Entrepreneur individuel</li>
+<li><strong>Responsable de publication :</strong> Haddou Youness</li>
+<li><strong>Siège :</strong> 20 Rue Hermès, 31520 Ramonville-Saint-Agne, France</li>
+<li><strong>SIRET :</strong> 983 726 563 00015</li>
+<li><strong>Numéro de TVA :</strong> TVA non applicable, art. 293 B du CGI (franchise en base de TVA)</li>
+<li><strong>Email :</strong> <a href="mailto:contact@vizyoagency.com">contact@vizyoagency.com</a></li>
+<li><strong>Téléphone :</strong> <a href="tel:+33652077038">+33 6 52 07 70 38</a></li>
+</ul>
+
+<h2>2. Hébergement du site et des données applicatives</h2>
+<ul>
+<li><strong>Hébergeur :</strong> Hostinger International Ltd</li>
+<li><strong>Filiale :</strong> Hostinger France</li>
+<li><strong>Infrastructure :</strong> Serveurs dédiés localisés en France</li>
+</ul>
+
+<h2>3. Propriété intellectuelle</h2>
+<p>Le site et son contenu (textes, images, logos, code source) sont protégés par le droit d'auteur. Toute reproduction, représentation ou diffusion sans autorisation écrite préalable de Vizyo Agency est interdite.</p>
+
+<h2>4. Données personnelles</h2>
+<p>Le traitement des données personnelles est décrit dans la section <a href="vizyo-tracky.html#securite">Sécurité &amp; Conformité</a> de la page d'accueil et dans la Politique de confidentialité (à venir).</p>
+<p>Pour toute demande d'exercice des droits RGPD (accès, rectification, effacement, portabilité, opposition), contactez : <a href="mailto:contact@vizyoagency.com">contact@vizyoagency.com</a>.</p>
+
+<h2>5. Cookies</h2>
+<p>Le site n'utilise que des cookies techniques strictement nécessaires à son fonctionnement. Aucun cookie tiers, aucun traceur publicitaire ou analytique sans consentement explicite.</p>
+
+<h2>6. Crédits</h2>
+<p>Conception et développement : <a href="https://www.vizyoagency.com" target="_blank">Vizyo Agency</a>.</p>
+
+</main>
+
+<!-- FOOTER -->
+<footer class="ftr">
+<div class="mx">
+<div class="ftri">
+<a href="vizyo-tracky.html" class="logo">
+<div class="logo-i" style="width:2rem;height:2rem">
+<svg width="28" height="28" viewBox="0 0 283 290" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM190.5 171.13C191.5 173.13 194 178.3 194 183.5C194 188.7 194 190 191.5 196C188.5 202 185.8 204.23 181 206.63C176.2 209.029 169.209 209.025 164.5 207.63C159 206 155.8 203.029 153 198.63L179 149.13L190.5 171.13ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="url(#tg_f2)"/><defs><linearGradient id="tg_f2" x1="28" y1="280" x2="230" y2="79" gradientUnits="userSpaceOnUse"><stop stop-color="#10E0A0"/><stop offset="1" stop-color="#047857"/></linearGradient></defs></svg>
+</div>
+<div><span style="color:var(--tw);font-weight:700">Vizyo</span><span style="color:var(--v4);font-weight:700"> Tracky</span></div>
+</a>
+<div class="ftrl">
+<a href="https://www.vizyoagency.com" target="_blank">vizyoagency.com</a>
+<a href="mailto:contact@vizyoagency.com">contact@vizyoagency.com</a>
+<a href="mentions-legales.html">Mentions légales</a>
+</div>
+</div>
+<div class="trust-row">
+<div class="trust-b"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>RGPD</div>
+<div class="trust-b"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>Conçu en France</div>
+<div class="trust-b"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>Données hébergées en EU</div>
+</div>
+<div style="margin-top:2rem;padding-top:2rem;border-top:1px solid var(--brdx);text-align:center;font-size:.75rem;color:var(--g6)">© 2026 Vizyo Agency — Tous droits réservés. Conçu en France.</div>
+</div>
+</footer>
+
+<script>
+function thmt(){var r=document.documentElement;var c=r.dataset.theme==='light'?'dark':'light';r.dataset.theme=c;try{localStorage.setItem('vt-theme',c)}catch(e){}}
+</script>
+</body>
+</html>
