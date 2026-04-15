@@ -1,6 +1,6 @@
 # 04 — Roadmap Vizyo Tracky
 
-> **Statut :** V1.1 — 2026-04-11
+> **Statut :** V1.3 — 2026-04-15
 > **Perimetre :** plan de route produit et technique pour les deux volets (application + landing page), avec suivi d'avancement, backlog priorise et decisions d'architecture.
 > **Mise a jour :** ce document est mis a jour a la fin de chaque session de developpement. Le journal en §10 trace les changements.
 
@@ -103,15 +103,17 @@ Next.js + Tailwind statique sur Vercel, pas de backend. Conversion via WhatsApp 
 | Carte Leaflet temps reel            | ✅     | Markers SVG, trails, geofence circles overlay, popup lien fiche vehicule                       |
 | **UI Engine Control**               | ✅     | Bouton CUT/RESTORE, double confirmation, toast, pills historique, AuthInterceptor              |
 | **Module Alerts UI**                | ✅     | Widget bell header (badge+dropdown), page /alerts filtrable, sync bidirectionnelle WS           |
-| **Page Vehicule detail**            | ✅     | Fiche /vehicles/:id, 5 onglets (carte, historique, alertes, commandes, trajets), mini-map live |
-| **Page Vehicules liste**            | ✅     | Table, modal stepper Add Vehicle+Tracker, pastille statut live via WS                          |
+| **Page Vehicule detail**            | ✅     | Fiche /vehicles/:id, 6 onglets (carte, historique, alertes, commandes, horaires, trajets), mini-map live |
+| **Page Vehicules liste**            | ✅     | Table, modal stepper Add Vehicle+Tracker, edit dialog, pastille statut live via WS             |
 | **Page Geofences**                  | ✅     | Table CRUD, dessin custom Leaflet click-to-place + slider rayon, overlay carte                 |
 | **Page Rapports**                   | ✅     | KPI cards, trips list, replay modal avec animation Leaflet (play/pause/speed), recompute admin |
 | **Identite visuelle**               | ✅     | Logo SVG+PNG, favicon, login lockup 90px, sidebar icon+text Poppins, theme dark/light auto     |
 | **Sprint "tout en live"**           | ✅     | tracker:status WS, dashboard metrics reelles, vehicle-detail alert refresh                     |
-| Users CRUD + invitations            | 💭     | Backlog — pour l'instant seed admin, manual DB insert                                          |
+| **Scheduling horaire (plages)**     | ✅     | VehicleScheduleModule, cron 1min, 7j configurable, toggle global, timezone, override 1h, RESTORE auto a la desactivation |
+| **Bench hardware terrain**          | ✅     | 2 trackers (405CD + 403C) valides, CUT/RESTORE physique, 3172 positions, scheduling auto       |
+| **VPS production deploy**           | ✅     | LP + API + Web + PostGIS + Redis sur Hostinger, Traefik TLS, auth partagee vizyo-auth           |
+| Users CRUD + invitations            | ✅     | CRUD complet, permissions granulaires, groupes vehicules, acces par vehicule/groupe             |
 | Polling confirmation commande       | 💭     | Backlog — §7.3 doc protocole, worker BullMQ qui verifie ignition=0 apres T+120s               |
-| Scheduling commande (T+Xmin)        | 💭     | Backlog — re-evaluer canCutEngine au moment T, pas au moment de programmation                  |
 | CLI provisionnement tracker         | 💭     | Backlog — genere la sequence SMS d'init Coban (§5.7 doc) depuis un formulaire                  |
 | Rapports PDF / export               | 💭     | Backlog — v1.1                                                                                 |
 | Mobile app Capacitor                | ❌     | Hors scope V1, roadmap v2                                                                      |
@@ -132,13 +134,14 @@ Next.js + Tailwind statique sur Vercel, pas de backend. Conversion via WhatsApp 
 
 | Mesure                          | Etat actuel                                                  |
 | ------------------------------- | ------------------------------------------------------------ |
-| Tests unitaires API             | ✅ 105 tests (13 engine + 8 vehicles + 10 trackers + 10 alerts + 5 positions + 8 segmenter + 14 observability + 8 ack-waiter + 17 tracker-commands + 12 autres) |
+| Tests unitaires API             | ✅ 112 tests (13 engine + 8 vehicles + 10 trackers + 10 alerts + 5 positions + 8 segmenter + 14 observability + 8 ack-waiter + 17 tracker-commands + 7 schedule-cron + 12 autres) |
 | Tests unitaires shared          | ✅ 72 tests (22 parser + 20 encoder + 30 catalog)            |
 | Tests d'integration API         | 💭 Non couvert — backlog                                     |
 | Tests E2E Angular               | 💭 Non couvert — backlog                                     |
 | Coverage minimum                | 💭 Pas de seuil fixe — a definir                             |
 | CI GitHub Actions               | 💭 Non configuree — backlog                                  |
 | Scenario E2E manuel netcat      | ✅ Valide 2026-04-09                                         |
+| Bench hardware terrain          | ✅ Valide 2026-04-14 (2 trackers, CUT/RESTORE physique, scheduling auto) |
 | Audit live-vs-static            | ✅ docs/audit-live-status.md — 3 gaps combles                |
 | Pipeline WireLog E2E            | ✅ Valide 2026-04-13 (RESTORE OUT + status OUT dans wire_logs) |
 
@@ -333,6 +336,10 @@ Un prospect doit pouvoir, lors d'une demo de 15 minutes :
 | 2026-04-10 | Identite visuelle               | LogoComponent (icon/lockup, dark/light/auto), favicon, meta, login lockup 90px, sidebar icon+text Poppins                                                                        |
 | 2026-04-10 | Geofences V1                    | GeofencesModule CRUD, detection ENTER/EXIT haversine in-memory, AlertType GEOFENCE_ENTER, dessin Leaflet click-to-place + slider rayon, overlay cercles carte                    |
 | 2026-04-11 | Trips V1                        | TripSegmenterService 8 tests, TripsService CRUD + processPosition live + cron timeout + recompute admin, ReportsComponent KPI+trips+replay anime, vehicle-detail onglet Trajets   |
+| 2026-04-13 | Vague A (Phase 8 + 6)           | Observabilite (pino, wire/error logs, admin UI) + Commands Console (catalog 20 tpl, AckWaiter, service+controller, scheduler, UI). 69 tests ajoutes. |
+| 2026-04-14 | Deploy VPS + bench terrain      | Stack prod deployee (LP + API + Web + PostGIS + Redis). 2 trackers valides (405CD + 403C), CUT/RESTORE physique. Multiples fixes deploy. |
+| 2026-04-14 | Scheduling horaire              | VehicleScheduleModule, cron 1min, onglet "Horaires" UI, source MANUAL/SCHEDULER, override 1h, 7 tests. 3 transitions auto validees terrain. |
+| 2026-04-15 | Bugfix auto-restore + docs      | RESTORE auto a la desactivation scheduler, modal confirmation UI, nettoyage DB, mise a jour docs complete. |
 
 ---
 
@@ -344,6 +351,7 @@ Un prospect doit pouvoir, lors d'une demo de 15 minutes :
 - `docs/07-sms-gateway.md` — roadmap gateway SMS Twilio
 - `docs/08-logging-and-observability.md` — roadmap logs et observabilite
 - `docs/observability-guide.md` — guide d'utilisation des logs
+- `docs/09-roadmap-v2.md` — roadmap V2 (post-V1, scaling)
 - `docs/EXECUTION-TRACKER.md` — suivi d'execution des phases
 - `packages/shared/src/protocol/` — implementation parser/encoder/catalog Coban
 - `apps/api/src/engine-control/` — module de coupure moteur avec garde-fou
@@ -360,3 +368,4 @@ Un prospect doit pouvoir, lors d'une demo de 15 minutes :
 | V1      | 2026-04-09 | Youness | Creation initiale apres validation E2E complete de l'etape 5b                                     |
 | V1.1    | 2026-04-11 | Claude  | Mise a jour complete : 15 sprints documentes, 54 tests API + 42 shared, 6/7 criteres vendable, ajout Alerts/Geofences/Trips/UI |
 | V1.2    | 2026-04-13 | Claude  | Vague A complete : Phase 8 (observabilite) + Phase 6 (commands console), 105 tests API + 72 shared, pipeline WireLog valide E2E |
+| V1.3    | 2026-04-15 | Claude  | Deploy VPS prod, bench terrain 2 trackers, scheduling horaire MVP, bugfix auto-restore, 112 tests API, docs a jour |

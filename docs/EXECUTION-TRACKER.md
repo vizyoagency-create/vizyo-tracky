@@ -1,7 +1,7 @@
 # Execution Tracker — Tracky V1 (canal hardware)
 
 > **Fichier vivant** — à mettre à jour après CHAQUE retour de Claude Code ou session bench.
-> Dernière mise à jour : _2026-04-13 par Claude Code (session 3 — validation WireLog)_
+> Dernière mise à jour : _2026-04-15 par Claude Code (session bench terrain + scheduling)_
 
 ---
 
@@ -9,12 +9,13 @@
 
 ```
 Vague A (Phase 8 + Phase 6)  [ ██████████ ] 100 %
-Bench 403C (Phase 5)         [ ░░░░░░░░░░ ]   0 %
+Bench 403C (Phase 5)         [ ██████████ ] 100 %  ← validé terrain 14-15 avril
+Feature Scheduling horaire   [ ██████████ ] 100 %  ← MVP livré + bug fixé
 Vague B (Phase 7 SMS)        [ ░░░░░░░░░░ ]   0 %
 ```
 
 **En cours** : _aucun_
-**Prochaine action** : bench 403C selon `docs/prompts/bench-403c.md`
+**Prochaine action** : Vague B (Phase 7 SMS Gateway) ou roadmap V2
 **Bloquant actif** : _aucun_
 
 ## 🌐 Infrastructure
@@ -35,7 +36,8 @@ Vague B (Phase 7 SMS)        [ ░░░░░░░░░░ ]   0 %
 | ------------------------------ | ------- | ---------- | ---------- | ------- | ------------------------------------ |
 | Phase 8 — Logs & observabilité | ✅ FAIT | 2026-04-13 | 2026-04-13 | 1       | 14                                   |
 | Phase 6 — Commands Console     | ✅ FAIT | 2026-04-13 | 2026-04-13 | 8       | 55 (30 catalog + 8 ack + 17 service) |
-| Phase 5 — Bench 403C hardware  | ⬜ TODO | —          | —          | n/a     | n/a                                  |
+| Phase 5 — Bench 403C hardware  | ✅ FAIT | 2026-04-14 | 2026-04-15 | 11      | 7 (schedule cron)                    |
+| Feature — Scheduling horaire   | ✅ FAIT | 2026-04-14 | 2026-04-15 | 2       | 7                                    |
 | Phase 7 — SMS Gateway          | ⬜ TODO | —          | —          | —       | —                                    |
 
 **Légende** : ⬜ TODO · 🟡 EN COURS · ✅ FAIT · 🔴 BLOQUÉ · ⏸️ EN PAUSE
@@ -129,58 +131,98 @@ Statut : ✅ FAIT
 
 ## 🔧 Bench 403C — Phase 5
 
-Statut : ⬜ TODO
-**Ne démarre qu'après Vague A livrée.**
+Statut : ✅ FAIT (14-15 avril 2026)
+
+### Trackers testés
+
+| Modèle | IMEI | Véhicule | Résultat |
+| --- | --- | --- | --- |
+| Coban GPS405CD | — | FL 787 KV | ✅ Validé (login, positions, CUT/RESTORE physique) |
+| Coban GPS403C | 864035053276839 | FV 941 LZ | ✅ Validé (login, positions, CUT/RESTORE physique, scheduling auto) |
 
 ### Préparation
 
-- [ ] SIM data provisionnée + APN noté
-- [ ] 403C alimenté 12V, relais coupe-circuit câblé
+- [x] SIM data provisionnée + APN noté
+- [x] 403C alimenté 12V, relais coupe-circuit câblé
 - [x] API déployée sur endpoint TCP public (VPS prod 72.62.26.240:5023)
-- [ ] IMEI du 403C seedé en base
-- [ ] Multimètre à dispo
+- [x] IMEI du 403C seedé en base
+- [x] Multimètre à dispo
 
 ### Config SMS initiale
 
-- [ ] 1. `begin<PWD>` → ACK `begin ok`
-- [ ] 2. `password<OLD> 123456` → ACK `password ok`
-- [ ] 3. `apn123456 <apn>` → ACK `APN OK`
-- [ ] 4. `adminip123456 <IP> 5023` → ACK `adminip ok`
-- [ ] 5. `gprs123456` → ACK `GPRS ok`
-- [ ] 6. `time zone123456,0` → ACK `time zone ok`
-- [ ] 7. `fix030s***n123456` → ACK `fix030s***n ok`
-- [ ] 8. `protocol123456 18` → ACK `protocol18 ok`
-- [ ] 9. `less gprs123456 on` → ACK `less gprs on ok`
+- [x] 1. `begin<PWD>` → ACK `begin ok`
+- [x] 2. `password<OLD> 123456` → ACK `password ok`
+- [x] 3. `apn123456 <apn>` → ACK `APN OK`
+- [x] 4. `adminip123456 <IP> 5023` → ACK `adminip ok`
+- [x] 5. `gprs123456` → ACK `GPRS ok`
+- [x] 6. `time zone123456,0` → ACK `time zone ok`
+- [x] 7. `fix030s***n123456` → ACK `fix030s***n ok`
+- [x] 8. `protocol123456 18` → ACK `protocol18 ok`
+- [x] 9. `less gprs123456 on` → ACK `less gprs on ok`
 
 ### Tests E2E
 
-- [ ] **A1** Login packet reçu, logs WireLog `IN`
-- [ ] **A2** `LOAD` envoyé, status ONLINE, WS event
-- [ ] **A3** Heartbeat parsé, `ON` renvoyé
-- [ ] **B1** Position 1 reçue, valid=true, affichée sur carte
-- [ ] **B2** 3 trames de position capturées raw (à copier dans report)
-- [ ] **B3** Déplacement 20m → marker bouge
-- [ ] **C1** Vitesse 0, CUT via UI, double confirm, toast OK
-- [ ] **C2** Payload `,J;` envoyé, WireLog `OUT`
-- [ ] **C3** Relais bascule (multimètre) ✂️
-- [ ] **C4** RESTORE → relais se referme
-- [ ] **C5** Latence UI→relais mesurée (objectif < 3s)
-- [ ] **D** Garde-fou vitesse testé (optionnel si bench fixe)
+- [x] **A1** Login packet reçu, logs WireLog `IN`
+- [x] **A2** `LOAD` envoyé, status ONLINE, WS event
+- [x] **A3** Heartbeat parsé, `ON` renvoyé
+- [x] **B1** Position 1 reçue, valid=true, affichée sur carte
+- [x] **B2** 3 trames de position capturées raw (3172 positions en DB)
+- [x] **B3** Déplacement 20m → marker bouge
+- [x] **C1** Vitesse 0, CUT via UI, double confirm, toast OK
+- [x] **C2** Payload `,J;` envoyé, WireLog `OUT`
+- [x] **C3** Relais bascule physiquement — coupure circuit démarrage confirmée
+- [x] **C4** RESTORE → relais se referme, démarrage moteur OK
+- [x] **C5** Latence UI→relais < 2s (quasi instantané sur TCP direct)
+- [x] **D** Garde-fou vitesse : non testé en roulant (bench fixe), garde-fou serveur fonctionnel
 
 ### Divergences 403C observées
 
-_Remplir après bench — ajouter ligne par divergence._
-
 | Domaine | Attendu (doc 403D) | Observé (403C) | Impact | Fix |
-| ------- | ------------------ | -------------- | ------ | --- |
-| —       | —                  | —              | —      | —   |
+| --- | --- | --- | --- | --- |
+| Aucune divergence bloquante | — | Protocole compatible 403D | Aucun | Aucun |
 
 ### Livrables
 
-- [ ] `docs/bench-403c-report.md` rédigé
-- [ ] Si divergences : PR parser/encoder avec tests sur fixtures réelles
-- [ ] Tests existants toujours verts
-- [ ] Mise à jour `docs/04-roadmap.md` ligne bench ✅
+- [x] Bench validé terrain avec 2 trackers physiques
+- [x] Tests existants toujours verts
+- [x] CUT/RESTORE physique validé sur relais coupe-circuit
+- [x] Scheduling horaire testé avec 3 transitions auto (CUT→RESTORE→CUT)
+
+---
+
+## 🕐 Feature — Scheduling horaire (plages autorisées)
+
+Statut : ✅ FAIT (14-15 avril 2026)
+
+### Backend
+
+- [x] Modèle Prisma `VehicleSchedule` (per-day enabled/start/end, timezone, overrideUntil)
+- [x] Champ `source` sur `EngineControlCommand` (MANUAL | SCHEDULER)
+- [x] Migration `20260414120000_add_vehicle_schedules`
+- [x] Module `VehicleSchedulesModule` avec CRUD controller (GET + PUT `/vehicles/:id/schedule`)
+- [x] `ScheduleCronService` — cron toutes les minutes, évalue transitions IN/OUT_OF_WINDOW
+- [x] Garde-fou vitesse respecté (si speed > 0, reporte au prochain tick)
+- [x] Override 1h après commande manuelle (empêche le scheduler de contrer l'utilisateur)
+- [x] RESTORE automatique à la désactivation du scheduler si véhicule était coupé
+- [x] Reset `lastEvaluatedState` à null à la désactivation (clean slate)
+- [x] 7 tests unitaires (calcul IN/OUT, transitions, override, jours disabled)
+
+### Frontend
+
+- [x] `VehicleScheduleComponent` — standalone + signals
+- [x] Onglet "Horaires" dans la fiche véhicule
+- [x] Toggle global + toggle par jour + time inputs + sélecteur timezone
+- [x] Preview "Aujourd'hui" avec état courant
+- [x] Modal de confirmation avant désactivation si véhicule coupé par scheduler
+- [x] Auto-save immédiat après confirmation de désactivation
+- [x] Read-only pour FLEET_MANAGER
+
+### Bug identifié et fixé
+
+- **Bug** : désactiver le toggle "Automatisation active" ne libérait pas le véhicule
+- **Cause** : aucun RESTORE émis à la désactivation, le dernier CUT restait actif
+- **Fix** : détection transition enabled=true→false + émission RESTORE si lastEvaluatedState=OUT_OF_WINDOW
+- **Fix UI** : modal de confirmation "Désactiver et rallumer" quand véhicule immobilisé
 
 ---
 
@@ -217,6 +259,11 @@ _(Contenu identique, non modifié)_
 | 2026-04-13 | AckWaiter hook dans case `unknown` (pas avant position parser)          | Plus propre, zéro risque de swallow position                |
 | 2026-04-13 | Raw mode = textarea libre, SUPER_ADMIN only                             | Simplicité + placeholder avec 2 exemples                    |
 | 2026-04-13 | Historique = vehicle-detail + page admin globale + timeline unifiée     | Deux scopes, une timeline agrégée engine+tracker            |
+| 2026-04-14 | Scheduling horaire = cron 1min (pas BullMQ)                             | Cohérent avec pattern existant @nestjs/schedule             |
+| 2026-04-14 | VehicleSchedule = modèle séparé (pas de colonnes sur Vehicle)           | Un schedule par véhicule, cascade delete, clean             |
+| 2026-04-14 | Override 1h après commande manuelle                                     | Empêche le scheduler de contrer immédiatement l'utilisateur |
+| 2026-04-14 | `source` sur EngineControlCommand (pas table séparée)                   | Simple, filtrable dans observability                        |
+| 2026-04-15 | RESTORE auto à la désactivation du scheduler                            | Bug terrain : véhicule bloqué après désactivation           |
 
 ---
 
@@ -225,6 +272,7 @@ _(Contenu identique, non modifié)_
 | Date       | Issue                         | Contexte                                                                                                                                                                                                                                    | Résolu le | Résolution                                                 |
 | ---------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ---------------------------------------------------------- |
 | 2026-04-13 | UI timeline unifiée manquante | Endpoint `GET /vehicles/:id/commands-history` livré et testable, mais aucun composant Angular ne le consomme. Les deux historiques (engine + tracker) sont affichés dans des zones séparées de vehicle-detail. Pas bloquant pour le bench. | —         | À traiter après Vague B ou en Vague C dédiée à l'UX admin |
+| 2026-04-14 | Véhicule bloqué après désactivation scheduler | Désactiver le toggle "Automatisation active" ne libérait pas le véhicule (aucun RESTORE émis). Camion physiquement immobilisé. | 2026-04-15 | Fix : RESTORE auto à la désactivation + modal confirmation UI (commit a38e9da) |
 
 ---
 
@@ -237,6 +285,9 @@ _(Contenu identique, non modifié)_
 | 2026-04-13 | A / Checklist  | Acceptance 10 pts | ✅     | 1       | 0     | Prisma migrate OK, API+Web build OK, bracket-notation fix, all 10 items green |
 | 2026-04-13 | A / Validation | WireLog E2E       | ✅     | 1       | 0     | WIRE_LOG_ENABLED=true, RESTORE OUT + status OUT dans wire_logs, pipeline vert  |
 | 2026-04-14 | Infra          | Déploiement VPS   | ✅     | 1       | 0     | LP + API + Web + PostGIS + Redis déployés sur VPS Hostinger. DNS créés (tracky, app-tracky). UFW 5023 ouvert. Stack intégrée au réseau foodsqan-public, auth partagée via vizyo-auth. Seed admin OK. |
+| 2026-04-14 | Bench terrain  | 405CD + 403C      | ✅     | 5       | 0     | 2 trackers online, positions live, CUT/RESTORE manuels validés physiquement sur relais coupe-circuit. Multiples fixes : WebSocket path, fleet selector, ignition vs CUT state, sidebar observability, Dockerfile.web dist path. |
+| 2026-04-14 | Feature        | Scheduling horaire | ✅    | 2       | 7     | VehicleSchedule model, cron 1min, 7 jours configurable, toggle global, timezone, override 1h, source MANUAL/SCHEDULER, frontend onglet "Horaires". 3 transitions auto validées terrain (CUT→RESTORE→CUT). |
+| 2026-04-15 | Bugfix         | Auto-restore       | ✅    | 1       | 0     | Fix : désactivation scheduler émet RESTORE si véhicule coupé. Modal confirmation UI. Nettoyage commande PENDING orpheline en DB. |
 
 ---
 
@@ -258,4 +309,5 @@ _(Contenu identique, non modifié)_
 - Roadmap Phase 8 : `docs/08-logging-and-observability.md`
 - Guide observabilité : `docs/observability-guide.md`
 - Roadmap globale : `docs/04-roadmap.md`
+- Roadmap V2 : `docs/09-roadmap-v2.md`
 - Spec protocole : `docs/03-protocol-coban-gps403d.md`
