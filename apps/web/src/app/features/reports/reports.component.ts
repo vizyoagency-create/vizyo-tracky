@@ -128,6 +128,7 @@ import { TripReplayComponent } from './trip-replay.component';
     <app-trip-replay
       [open]="!!replayTrip()"
       [trip]="replayTrip()"
+      [vehicleType]="replayVehicleType()"
       (closed)="replayTrip.set(null)"
     />
   `,
@@ -168,6 +169,13 @@ export class ReportsComponent implements OnInit {
       totalDuration: t.reduce((s, tr) => s + tr.durationSeconds, 0),
       maxSpeed: t.reduce((s, tr) => Math.max(s, tr.maxSpeed), 0),
     };
+  });
+
+  protected readonly replayVehicleType = computed(() => {
+    const trip = this.replayTrip();
+    if (!trip) return 'OTHER';
+    const v = this.vehicles().find((v) => v.id === trip.vehicleId);
+    return v?.type ?? 'OTHER';
   });
 
   protected readonly isAdmin = computed(() => {

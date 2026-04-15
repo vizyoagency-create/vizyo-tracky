@@ -77,6 +77,7 @@ import { createTrackyIcon } from '../../shared/utils/leaflet-markers';
 export class TripReplayComponent implements AfterViewInit, OnDestroy {
   readonly open = input.required<boolean>();
   readonly trip = input<TripDto | null>(null);
+  readonly vehicleType = input<string>('OTHER');
   readonly closed = output<void>();
 
   private readonly mapRef = viewChild<ElementRef<HTMLDivElement>>('mapContainer');
@@ -96,6 +97,7 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
   private points: L.LatLng[] = [];
   private animId: number | null = null;
   private lastFrameTime = 0;
+  private floatIndex = 0;
 
   private initEffect = effect(() => {
     const t = this.trip();
@@ -126,12 +128,14 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
     } else {
       this.playing.set(true);
       this.lastFrameTime = performance.now();
+      this.floatIndex = this.currentIndex();
       this.animate();
     }
   }
 
   protected seekTo(event: Event): void {
     const idx = parseInt((event.target as HTMLInputElement).value, 10);
+    this.floatIndex = idx;
     this.currentIndex.set(idx);
     if (this.points[idx] && this.marker) {
       this.marker.setLatLng(this.points[idx]!);
@@ -177,7 +181,7 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
 
     if (this.points.length > 0) {
       this.marker = L.marker(this.points[0]!, {
-        icon: createTrackyIcon(0, 0),
+        icon: createTrackyIcon(0, 0, this.vehicleType()),
       }).addTo(this.map);
 
       this.map.fitBounds(this.polyline.getBounds(), { padding: [40, 40] });
@@ -196,13 +200,14 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
     const replayDurationSeconds = 30;
     const pointsPerSecond = this.points.length / replayDurationSeconds;
     const step = delta * this.speed() * pointsPerSecond;
-    let idx = this.currentIndex() + step;
+    let idx = this.floatIndex + step;
 
     if (idx >= this.points.length - 1) {
       idx = this.points.length - 1;
       this.playing.set(false);
     }
 
+    this.floatIndex = idx;
     this.currentIndex.set(Math.round(idx));
     const pt = this.points[Math.round(idx)];
     if (pt && this.marker) {

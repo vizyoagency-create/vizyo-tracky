@@ -84,7 +84,7 @@ export class TripSegmenterService {
     };
 
     for (const pos of sorted) {
-      if (pos.ignition === false) {
+      if (pos.ignition === false && pos.speedKmh <= TRIP_SPEED_THRESHOLD_KMH) {
         if (tripPositions.length > 0) {
           tripPositions.push(pos);
           source = 'ignition';

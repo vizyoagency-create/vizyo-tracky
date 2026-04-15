@@ -119,7 +119,7 @@ export class TripsService implements OnModuleInit {
     const state = this.openTrips.get(data.trackerId);
 
     if (!state) {
-      if (data.ignition === false) {
+      if (data.ignition === false && data.speedKmh <= TRIP_SPEED_THRESHOLD_KMH) {
         this.movingCandidates.delete(data.trackerId);
         return;
       }
@@ -158,7 +158,7 @@ export class TripsService implements OnModuleInit {
       state.polyPoints.push({ lat: data.lat, lng: data.lng });
     }
 
-    if (data.ignition === false) {
+    if (data.ignition === false && data.speedKmh <= TRIP_SPEED_THRESHOLD_KMH) {
       await this.finalizeTrip(state, data.timestamp, 'ignition');
       return;
     }
@@ -369,9 +369,6 @@ export class TripsService implements OnModuleInit {
     dto: { vehicleId: string; from: string; to: string },
   ): Promise<{ deleted: number; created: number }> {
     const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000);
-    if (new Date(dto.to) > tenMinAgo) {
-      throw new BadRequestException('Impossible de recalculer une periode incluant les 10 dernieres minutes');
-    }
 
     const vehicle = await this.prisma.vehicle.findUnique({
       where: { id: dto.vehicleId },
@@ -386,7 +383,7 @@ export class TripsService implements OnModuleInit {
     this.openTrips.delete(vehicle.tracker.id);
 
     const fromDate = new Date(dto.from);
-    const toDate = new Date(dto.to);
+    const toDate = new Date(dto.to) > tenMinAgo ? tenMinAgo : new Date(dto.to);
 
     const { count: deleted } = await this.prisma.trip.deleteMany({
       where: {
