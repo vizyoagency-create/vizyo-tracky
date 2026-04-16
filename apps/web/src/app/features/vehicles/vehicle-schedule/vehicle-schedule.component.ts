@@ -58,15 +58,15 @@ const TIMEZONES = [
     } @else {
       <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-hidden">
         <!-- Header -->
-        <div class="flex items-center justify-between p-4 border-b border-border-subtle">
-          <div class="flex items-center gap-3">
-            <lucide-icon [img]="ShieldIcon" [size]="20" class="text-tracky-light"></lucide-icon>
-            <span class="text-sm font-semibold text-fg-primary">Automatisation horaire</span>
+        <div class="flex items-center justify-between gap-3 p-3 sm:p-4 border-b border-border-subtle">
+          <div class="flex items-center gap-2 sm:gap-3 min-w-0">
+            <lucide-icon [img]="ShieldIcon" [size]="20" class="text-tracky-light shrink-0"></lucide-icon>
+            <span class="text-sm font-semibold text-fg-primary truncate">Automatisation horaire</span>
           </div>
-          <div class="flex items-center gap-3">
+          <div class="flex items-center gap-3 shrink-0">
             <!-- Global toggle -->
             <label class="flex items-center gap-2 cursor-pointer">
-              <span class="text-xs text-fg-tertiary">{{ globalEnabled() ? 'Active' : 'Inactive' }}</span>
+              <span class="text-xs text-fg-tertiary hidden sm:inline">{{ globalEnabled() ? 'Active' : 'Inactive' }}</span>
               <button
                 type="button"
                 (click)="onToggleGlobal()"
@@ -84,15 +84,15 @@ const TIMEZONES = [
         </div>
 
         <!-- Timezone -->
-        <div class="flex items-center gap-3 px-4 py-3 border-b border-border-subtle/50">
-          <lucide-icon [img]="ClockIcon" [size]="14" class="text-fg-tertiary"></lucide-icon>
-          <span class="text-xs text-fg-tertiary">Fuseau horaire</span>
+        <div class="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 border-b border-border-subtle/50">
+          <lucide-icon [img]="ClockIcon" [size]="14" class="text-fg-tertiary shrink-0"></lucide-icon>
+          <span class="text-xs text-fg-tertiary shrink-0">Fuseau horaire</span>
           <select
             [ngModel]="timezone()"
             (ngModelChange)="timezone.set($event); dirty.set(true)"
             [disabled]="readonly()"
-            class="ml-auto text-xs bg-bg-tertiary text-fg-primary border border-border-subtle
-                   rounded-lg px-2 py-1 outline-none focus:border-tracky/50"
+            class="ml-auto min-w-0 max-w-[60%] text-xs bg-bg-tertiary text-fg-primary border border-border-subtle
+                   rounded-lg px-2 py-1 outline-none focus:border-tracky/50 truncate"
           >
             @for (tz of timezones; track tz.value) {
               <option [value]="tz.value">{{ tz.label }}</option>
@@ -103,7 +103,7 @@ const TIMEZONES = [
         <!-- Days -->
         <div class="divide-y divide-border-subtle/50">
           @for (day of days(); track day.key) {
-            <div class="flex items-center gap-3 px-4 py-3"
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 sm:px-4 py-3"
                  [class]="day.enabled ? '' : 'opacity-50'">
               <!-- Day toggle -->
               <button
@@ -119,32 +119,36 @@ const TIMEZONES = [
                 ></span>
               </button>
 
-              <!-- Day name -->
-              <span class="text-sm font-medium text-fg-primary w-24">{{ day.label }}</span>
+              <!-- Day name: takes remaining row on mobile, fixed width on sm+ -->
+              <span class="flex-1 min-w-0 sm:flex-none sm:w-24 text-sm font-medium text-fg-primary">
+                {{ day.label }}
+              </span>
 
               @if (day.enabled) {
-                <!-- Time inputs -->
-                <input
-                  type="time"
-                  [ngModel]="day.start"
-                  (ngModelChange)="updateDayTime(day.key, 'start', $event)"
-                  [disabled]="readonly()"
-                  class="text-xs bg-bg-tertiary text-fg-primary border border-border-subtle
-                         rounded-lg px-2 py-1.5 outline-none focus:border-tracky/50
-                         disabled:opacity-50"
-                />
-                <span class="text-fg-tertiary text-xs">→</span>
-                <input
-                  type="time"
-                  [ngModel]="day.end"
-                  (ngModelChange)="updateDayTime(day.key, 'end', $event)"
-                  [disabled]="readonly()"
-                  class="text-xs bg-bg-tertiary text-fg-primary border border-border-subtle
-                         rounded-lg px-2 py-1.5 outline-none focus:border-tracky/50
-                         disabled:opacity-50"
-                />
+                <!-- Time inputs: full new row on mobile, inline on sm+ -->
+                <div class="flex items-center gap-2 w-full sm:w-auto sm:ml-0">
+                  <input
+                    type="time"
+                    [ngModel]="day.start"
+                    (ngModelChange)="updateDayTime(day.key, 'start', $event)"
+                    [disabled]="readonly()"
+                    class="flex-1 sm:flex-none text-xs bg-bg-tertiary text-fg-primary border border-border-subtle
+                           rounded-lg px-2 py-1.5 outline-none focus:border-tracky/50
+                           disabled:opacity-50"
+                  />
+                  <span class="text-fg-tertiary text-xs shrink-0">→</span>
+                  <input
+                    type="time"
+                    [ngModel]="day.end"
+                    (ngModelChange)="updateDayTime(day.key, 'end', $event)"
+                    [disabled]="readonly()"
+                    class="flex-1 sm:flex-none text-xs bg-bg-tertiary text-fg-primary border border-border-subtle
+                           rounded-lg px-2 py-1.5 outline-none focus:border-tracky/50
+                           disabled:opacity-50"
+                  />
+                </div>
               } @else {
-                <span class="text-xs text-fg-tertiary italic">— vehicule immobilise —</span>
+                <span class="text-xs text-fg-tertiary italic w-full sm:w-auto">— vehicule immobilise —</span>
               }
             </div>
           }

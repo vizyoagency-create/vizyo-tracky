@@ -134,15 +134,21 @@ import { relativeTime } from '../../shared/utils/relative-time';
     @keyframes ab2 { 0%{border-radius:40% 60% 30% 50%;transform:translate(0,0)} 100%{border-radius:60% 30% 50% 40%;transform:translate(3%,-3%)} }
     @keyframes ab3 { 0%{border-radius:60% 40% 50% 30%;transform:translate(-50%,-50%) scale(1)} 100%{border-radius:40% 50% 30% 60%;transform:translate(-50%,-50%) scale(1.1)} }
 
-    .a-header { position: relative; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px }
+    .a-header { position: relative; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px }
     .a-title { font-size: 24px; font-weight: 800; color: var(--fg-primary); letter-spacing: -.02em }
     .a-sub { font-size: 13px; color: var(--fg-tertiary); margin-top: 2px }
     .a-ack-all {
-      display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 10px;
+      display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 10px;
       font-size: 12px; font-weight: 700; background: rgba(16,224,160,.1); color: var(--tracky-light);
-      border: 1px solid rgba(16,224,160,.2); cursor: pointer; transition: all .2s;
+      border: 1px solid rgba(16,224,160,.2); cursor: pointer; transition: all .2s; white-space: nowrap;
     }
     .a-ack-all:hover { background: rgba(16,224,160,.18) }
+    @media (max-width: 480px) {
+      .a-title { font-size: 20px }
+      .a-ack-all { padding: 6px 12px; font-size: 11px }
+      .tl-item { gap: 10px }
+      .tl-card { padding: 12px 14px }
+    }
 
     .a-filters { position: relative; z-index: 1; display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px }
     .a-filter {

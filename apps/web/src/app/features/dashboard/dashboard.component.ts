@@ -197,7 +197,13 @@ import { EngineControlButtonComponent } from '../engine-control/engine-control-b
     .live-time { font-size: 10px; color: var(--fg-tertiary); min-width: 50px; text-align: right }
 
     @media (max-width: 1024px) { .metrics-grid { grid-template-columns: repeat(2, 1fr) } }
-    @media (max-width: 640px) { .metrics-grid { grid-template-columns: 1fr } }
+    @media (max-width: 640px) {
+      .metrics-grid { grid-template-columns: 1fr }
+      .live-row { gap: 10px; padding: 10px 12px }
+      .live-speed { min-width: 58px; font-size: 16px }
+      .live-time { display: none }
+      .live-coords { display: none }
+    }
   `],
 })
 export class DashboardComponent implements OnInit {

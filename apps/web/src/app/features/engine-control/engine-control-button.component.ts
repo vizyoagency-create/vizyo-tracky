@@ -10,24 +10,24 @@ import {
 } from '../../core/services/engine-control.service';
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
-import { relativeTime } from '../../shared/utils/relative-time';
 
 @Component({
   selector: 'app-engine-control-button',
   standalone: true,
   imports: [LucideAngularModule, ConfirmModalComponent, FormsModule],
   template: `
-    @if (canCut().allowed || canRestore()) {
-      <div class="flex items-center gap-2">
+    <div class="inline-flex items-center shrink-0" (click)="$event.stopPropagation()">
+      @if (canCut().allowed || canRestore()) {
         @if (isCutActive()) {
           <button
             (click)="isOpen.set('restore')"
             class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg
                    bg-tracky/20 text-tracky-light border border-tracky/30
-                   hover:bg-tracky/30 transition-all cursor-pointer"
+                   hover:bg-tracky/30 transition-all cursor-pointer whitespace-nowrap"
           >
             <lucide-icon [img]="Power" [size]="14"></lucide-icon>
-            Rallumer le moteur
+            <span class="hidden sm:inline">Rallumer le moteur</span>
+            <span class="sm:hidden">ON</span>
           </button>
         } @else {
           <button
@@ -35,66 +35,53 @@ import { relativeTime } from '../../shared/utils/relative-time';
             [disabled]="!canCut().allowed"
             [title]="canCut().reason ?? ''"
             class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg
-                   transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                   transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
             [class]="canCut().allowed
               ? 'bg-red-600/20 text-red-400 border border-red-600/30 hover:bg-red-600/30'
               : 'bg-bg-tertiary text-fg-tertiary border border-border-subtle'"
           >
             <lucide-icon [img]="PowerOff" [size]="14"></lucide-icon>
-            Couper le moteur
+            <span class="hidden sm:inline">Couper le moteur</span>
+            <span class="sm:hidden">CUT</span>
           </button>
         }
-      </div>
-    }
+      }
 
-    @if (recentCommands().length > 0) {
-      <div class="flex items-center gap-1 mt-1 flex-wrap">
-        @for (cmd of recentCommands(); track cmd.id) {
-          <span
-            [title]="pillTooltip(cmd)"
-            class="inline-flex items-center px-1.5 py-0.5 text-[10px] rounded-md border"
-            [class]="pillClass(cmd.status)"
-          >
-            {{ cmd.action === 'CUT' ? 'CUT' : 'ON' }} {{ relativeTime(cmd.createdAt) }}
-          </span>
-        }
-      </div>
-    }
+      <app-confirm-modal
+        [open]="isOpen() === 'cut'"
+        title="Couper le moteur ?"
+        [description]="cutDescription()"
+        confirmLabel="Oui, couper le moteur"
+        cancelLabel="Annuler"
+        [danger]="true"
+        [loading]="loading()"
+        (confirmed)="onConfirm('CUT')"
+        (cancelled)="isOpen.set(null)"
+      >
+        <textarea
+          [ngModel]="reason()"
+          (ngModelChange)="reason.set($event)"
+          placeholder="Raison (ex: vehicule vole, non-paiement...)"
+          maxlength="500"
+          rows="2"
+          class="w-full mt-3 px-3 py-2 text-sm rounded-lg bg-bg-tertiary border border-border-subtle
+                 text-fg-primary placeholder:text-fg-tertiary resize-none
+                 focus:outline-none focus:border-tracky"
+        ></textarea>
+      </app-confirm-modal>
 
-    <app-confirm-modal
-      [open]="isOpen() === 'cut'"
-      title="Couper le moteur ?"
-      [description]="cutDescription()"
-      confirmLabel="Oui, couper le moteur"
-      cancelLabel="Annuler"
-      [danger]="true"
-      [loading]="loading()"
-      (confirmed)="onConfirm('CUT')"
-      (cancelled)="isOpen.set(null)"
-    >
-      <textarea
-        [ngModel]="reason()"
-        (ngModelChange)="reason.set($event)"
-        placeholder="Raison (ex: vehicule vole, non-paiement...)"
-        maxlength="500"
-        rows="2"
-        class="w-full mt-3 px-3 py-2 text-sm rounded-lg bg-bg-tertiary border border-border-subtle
-               text-fg-primary placeholder:text-fg-tertiary resize-none
-               focus:outline-none focus:border-tracky"
-      ></textarea>
-    </app-confirm-modal>
-
-    <app-confirm-modal
-      [open]="isOpen() === 'restore'"
-      title="Rallumer le moteur ?"
-      [description]="'Le vehicule <strong>' + vehiclePlate() + '</strong> sera a nouveau utilisable.'"
-      confirmLabel="Oui, rallumer"
-      cancelLabel="Annuler"
-      [danger]="false"
-      [loading]="loading()"
-      (confirmed)="onConfirm('RESTORE')"
-      (cancelled)="isOpen.set(null)"
-    />
+      <app-confirm-modal
+        [open]="isOpen() === 'restore'"
+        title="Rallumer le moteur ?"
+        [description]="'Le vehicule <strong>' + vehiclePlate() + '</strong> sera a nouveau utilisable.'"
+        confirmLabel="Oui, rallumer"
+        cancelLabel="Annuler"
+        [danger]="false"
+        [loading]="loading()"
+        (confirmed)="onConfirm('RESTORE')"
+        (cancelled)="isOpen.set(null)"
+      />
+    </div>
   `,
 })
 export class EngineControlButtonComponent implements OnInit {
@@ -189,29 +176,6 @@ export class EngineControlButtonComponent implements OnInit {
     } finally {
       this.loading.set(false);
     }
-  }
-
-  protected relativeTime = relativeTime;
-
-  protected pillClass(status: string): string {
-    switch (status) {
-      case 'SENT':
-      case 'ACKNOWLEDGED':
-        return 'bg-tracky/10 text-tracky-light border-tracky/20';
-      case 'REJECTED_SPEED':
-        return 'bg-red-600/10 text-red-400 border-red-600/20';
-      case 'FAILED':
-        return 'bg-amber-500/10 text-amber-400 border-amber-500/20';
-      default:
-        return 'bg-bg-tertiary text-fg-tertiary border-border-subtle';
-    }
-  }
-
-  protected pillTooltip(cmd: EngineControlCommandDto): string {
-    let tip = `${cmd.action} - ${cmd.status}`;
-    if (cmd.lastError) tip += ` - ${cmd.lastError}`;
-    if (cmd.reason) tip += `\nRaison: ${cmd.reason}`;
-    return tip;
   }
 
   private async loadRecentCommands(): Promise<void> {

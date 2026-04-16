@@ -36,18 +36,18 @@ import { relativeTime } from '../../shared/utils/relative-time';
         <span class="w-6 h-6 border-2 border-fg-tertiary border-t-tracky-light rounded-full animate-spin"></span>
       </div>
     } @else if (vehicle(); as v) {
-      <div class="flex flex-col gap-6">
+      <div class="flex flex-col gap-4 sm:gap-6">
         <!-- Header -->
-        <div class="flex items-start justify-between gap-4">
-          <div class="flex items-center gap-4">
-            <a routerLink="/dashboard" class="flex items-center justify-center w-10 h-10 rounded-xl
+        <div class="flex items-start justify-between gap-3 flex-wrap">
+          <div class="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
+            <a routerLink="/dashboard" class="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-xl
                 bg-bg-secondary border border-border-subtle text-fg-tertiary
-                hover:text-fg-primary transition-colors cursor-pointer">
+                hover:text-fg-primary transition-colors cursor-pointer shrink-0">
               <lucide-icon [img]="ArrowLeft" [size]="20"></lucide-icon>
             </a>
-            <div>
-              <h1 class="text-3xl font-display font-bold text-fg-primary">{{ v.plate }}</h1>
-              <p class="text-sm text-fg-tertiary">
+            <div class="min-w-0">
+              <h1 class="text-2xl sm:text-3xl font-display font-bold text-fg-primary truncate">{{ v.plate }}</h1>
+              <p class="text-xs sm:text-sm text-fg-tertiary truncate">
                 {{ v.brand }} {{ v.model }}
                 @if (v.year) { · {{ v.year }} }
                 @if (v.color) { · {{ v.color }} }
@@ -68,8 +68,8 @@ import { relativeTime } from '../../shared/utils/relative-time';
         </div>
 
         <!-- Stats -->
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+          <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-3 sm:p-4">
             <div class="flex items-center gap-2 mb-2">
               @if (isOnline()) {
                 <lucide-icon [img]="Wifi" [size]="16" class="text-tracky-light"></lucide-icon>
@@ -92,7 +92,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
             }
           </div>
 
-          <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4">
+          <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-3 sm:p-4">
             <div class="flex items-center gap-2 mb-2">
               <lucide-icon [img]="Gauge" [size]="16" class="text-tracky-light"></lucide-icon>
               <span class="text-xs text-fg-tertiary">Vitesse</span>
@@ -102,7 +102,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
             </p>
           </div>
 
-          <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4">
+          <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-3 sm:p-4">
             <div class="flex items-center gap-2 mb-2">
               <lucide-icon [img]="MapPin" [size]="16" class="text-tracky-light"></lucide-icon>
               <span class="text-xs text-fg-tertiary">Derniere position</span>
@@ -112,7 +112,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
             </p>
           </div>
 
-          <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4">
+          <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-3 sm:p-4">
             <div class="flex items-center gap-2 mb-2">
               <lucide-icon [img]="Radio" [size]="16" class="text-tracky-light"></lucide-icon>
               <span class="text-xs text-fg-tertiary">Tracker</span>
@@ -124,11 +124,11 @@ import { relativeTime } from '../../shared/utils/relative-time';
         </div>
 
         <!-- Tabs -->
-        <div class="flex gap-1 border-b border-border-subtle">
+        <div class="flex gap-1 border-b border-border-subtle overflow-x-auto scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">
           @for (tab of tabs; track tab.key) {
             <button
               (click)="activeTab.set(tab.key)"
-              class="px-4 py-2.5 text-sm font-medium transition-colors cursor-pointer border-b-2 -mb-px"
+              class="px-3 sm:px-4 py-2.5 text-sm font-medium transition-colors cursor-pointer border-b-2 -mb-px shrink-0 whitespace-nowrap"
               [class]="activeTab() === tab.key
                 ? 'text-tracky-light border-tracky-light'
                 : 'text-fg-tertiary border-transparent hover:text-fg-secondary'"
@@ -163,8 +163,8 @@ import { relativeTime } from '../../shared/utils/relative-time';
 
         @if (activeTab() === 'history') {
           @if (recentPositions().length > 0) {
-            <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-hidden">
-              <table class="w-full text-sm">
+            <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-x-auto">
+              <table class="w-full text-sm min-w-[560px]">
                 <thead class="border-b border-border-subtle text-fg-tertiary text-xs uppercase">
                   <tr>
                     <th class="p-3 text-left">Horodatage</th>

@@ -25,11 +25,11 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
       </div>
 
       <!-- Tabs -->
-      <div class="flex gap-1 border-b border-border-subtle">
+      <div class="flex gap-1 border-b border-border-subtle overflow-x-auto scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">
         @for (tab of tabs; track tab.key) {
           <button
             (click)="activeTab.set(tab.key)"
-            class="px-4 py-2.5 text-sm font-medium transition-colors cursor-pointer border-b-2 -mb-px"
+            class="px-3 sm:px-4 py-2.5 text-sm font-medium transition-colors cursor-pointer border-b-2 -mb-px shrink-0 whitespace-nowrap"
             [class]="activeTab() === tab.key
               ? 'text-tracky-light border-tracky-light'
               : 'text-fg-tertiary border-transparent hover:text-fg-secondary'"
@@ -41,11 +41,11 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 
       <!-- Wire Logs Tab -->
       @if (activeTab() === 'wire') {
-        <div class="flex gap-3 items-end">
-          <div class="flex flex-col gap-1">
+        <div class="flex flex-wrap gap-3 items-end">
+          <div class="flex flex-col gap-1 flex-1 min-w-[180px]">
             <label class="text-xs text-fg-tertiary">IMEI</label>
             <input [(ngModel)]="wireImeiFilter" placeholder="865328021056352"
-                   class="bg-bg-secondary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary w-48" />
+                   class="bg-bg-secondary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary w-full" />
           </div>
           <div class="flex flex-col gap-1">
             <label class="text-xs text-fg-tertiary">Direction</label>
@@ -57,15 +57,15 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
             </select>
           </div>
           <button (click)="loadWireLogs()" class="px-4 py-2 bg-tracky text-white rounded-lg text-sm font-medium
-                  hover:bg-tracky-dark cursor-pointer flex items-center gap-2">
+                  hover:bg-tracky-dark cursor-pointer flex items-center gap-2 shrink-0">
             <lucide-icon [img]="RefreshCw" [size]="14"></lucide-icon>
             Rafraichir
           </button>
         </div>
 
         @if (wireLogs().length > 0) {
-          <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-hidden">
-            <table class="w-full text-sm">
+          <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-x-auto">
+            <table class="w-full text-sm min-w-[700px]">
               <thead class="border-b border-border-subtle text-fg-tertiary text-xs uppercase">
                 <tr>
                   <th class="p-3 text-left">Date</th>
@@ -92,7 +92,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
                     </td>
                     <td class="p-3 font-mono text-xs text-fg-primary">{{ log.imei.slice(0,4) }}...{{ log.imei.slice(-4) }}</td>
                     <td class="p-3 text-xs text-fg-tertiary">{{ log.frameType ?? '—' }}</td>
-                    <td class="p-3 font-mono text-xs text-fg-primary truncate max-w-[400px]">{{ log.raw }}</td>
+                    <td class="p-3 font-mono text-xs text-fg-primary truncate max-w-[320px] sm:max-w-[400px]">{{ log.raw }}</td>
                   </tr>
                 }
               </tbody>
@@ -110,11 +110,11 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 
       <!-- Errors Tab -->
       @if (activeTab() === 'errors') {
-        <div class="flex gap-3 items-end">
-          <div class="flex flex-col gap-1">
+        <div class="flex flex-wrap gap-3 items-end">
+          <div class="flex flex-col gap-1 flex-1 min-w-[180px]">
             <label class="text-xs text-fg-tertiary">Source</label>
             <select [(ngModel)]="errorSourceFilter"
-                    class="bg-bg-secondary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary">
+                    class="bg-bg-secondary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary w-full">
               <option value="">Toutes</option>
               <option value="tcp-server">tcp-server</option>
               <option value="http">http</option>
@@ -124,7 +124,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
             </select>
           </div>
           <button (click)="loadErrorLogs()" class="px-4 py-2 bg-tracky text-white rounded-lg text-sm font-medium
-                  hover:bg-tracky-dark cursor-pointer flex items-center gap-2">
+                  hover:bg-tracky-dark cursor-pointer flex items-center gap-2 shrink-0">
             <lucide-icon [img]="RefreshCw" [size]="14"></lucide-icon>
             Rafraichir
           </button>
