@@ -26,6 +26,9 @@ pnpm-debug.log*
 .idea
 .DS_Store
 
+# Claude Code
+.claude/
+
 # npm lockfile (project uses pnpm)
 package-lock.json
 
