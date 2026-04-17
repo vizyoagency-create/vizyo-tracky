@@ -12,6 +12,24 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "@vizyo/tracky-web", "dev"],
       "port": 4200
+    },
+    {
+      "name": "manager-dist",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "-s", "D:/www/vizyo-agency/vizyo-manager/vizyo-manager-dashboard/dist/vizyo-manager-dashboard/browser", "-l", "4321", "--no-clipboard"],
+      "port": 4321
+    },
+    {
+      "name": "leads-dist",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "-s", "D:/www/vizyo-agency/vizyo-leads/vizyo-leads-dashboard/dist/vizyo-leads-dashboard/browser", "-l", "4210", "--no-clipboard"],
+      "port": 4210
+    },
+    {
+      "name": "auth-web",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["D:/www/vizyo-agency/vizyo-auth/apps/web/node_modules/next/dist/bin/next", "dev", "D:/www/vizyo-agency/vizyo-auth/apps/web"],
+      "autoPort": true
     }
   ]
 }
