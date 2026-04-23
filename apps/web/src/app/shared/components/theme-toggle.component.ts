@@ -23,6 +23,34 @@ import { ThemeService } from '../../core/theme/theme.service';
       }
     </button>
   `,
+  styles: [`
+    @keyframes theme-toggle-pulse {
+      0%   { box-shadow: 0 0 0 0 rgba(16, 224, 160, 0.35); }
+      70%  { box-shadow: 0 0 0 8px rgba(16, 224, 160, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(16, 224, 160, 0); }
+    }
+    :host button {
+      animation: theme-toggle-pulse 3s ease-out infinite;
+    }
+    :host button:hover {
+      animation: none;
+      transform: scale(1.08);
+    }
+    :host button:active {
+      transform: scale(0.94);
+    }
+    :host lucide-icon {
+      display: inline-flex;
+      transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    :host button:hover lucide-icon {
+      transform: rotate(-25deg);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      :host button { animation: none; }
+      :host lucide-icon { transition: none; }
+    }
+  `],
 })
 export class ThemeToggleComponent {
   protected readonly theme = inject(ThemeService);

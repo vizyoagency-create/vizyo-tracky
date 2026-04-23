@@ -22,7 +22,7 @@ export interface UserPreferences {
 }
 
 const DEFAULTS: UserPreferences = {
-  theme: 'dark',
+  theme: 'light',
   notifications: {
     critical: { enabled: true, duration: 0 },
     warning: { enabled: true, duration: 6000 },
