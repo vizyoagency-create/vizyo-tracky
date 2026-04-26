@@ -242,7 +242,7 @@ export class TripsService implements OnModuleInit {
 
   private async finalizeTrip(state: OpenTripState, endTime: Date, source: string): Promise<void> {
     if (state.dist < TRIP_MIN_DISTANCE_METERS) {
-      await this.prisma.trip.delete({ where: { id: state.tripId } }).catch(() => {});
+      await this.prisma.trip.delete({ where: { id: state.tripId } }).catch((e) => this.logger.warn(`Trip delete failed: ${state.tripId}`, e));
       this.openTrips.delete(state.trackerId);
       return;
     }

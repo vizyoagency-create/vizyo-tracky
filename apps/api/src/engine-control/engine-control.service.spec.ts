@@ -7,8 +7,11 @@ import {
 import { Test } from '@nestjs/testing';
 import { CommandStatus, EngineAction, UserRole } from '@prisma/client';
 import { CobanWireLogger } from '../observability/coban-wire-logger.service';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SocketRegistryService } from '../socket-registry/socket-registry.service';
+import { AckWaiterService } from '../tracker-commands/ack-waiter.service';
 import { EngineControlService } from './engine-control.service';
 
 const TRACKER_ID = '00000000-0000-0000-0000-000000000010';
@@ -81,7 +84,9 @@ describe('EngineControlService', () => {
     engineControlCommand: { create: jest.Mock; update: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock };
     vehicleSchedule: { updateMany: jest.Mock };
   };
-  let registry: { get: jest.Mock };
+  let registry: { get: jest.Mock; send: jest.Mock };
+  let ackWaiter: { waitForAck: jest.Mock; cancelAll: jest.Mock };
+  let gateway: { emitEngineCommandUpdate: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -89,7 +94,7 @@ describe('EngineControlService', () => {
       position: { findFirst: jest.fn() },
       engineControlCommand: {
         create: jest.fn().mockImplementation(({ data }) => Promise.resolve(createdCommand(data))),
-        update: jest.fn().mockResolvedValue(undefined),
+        update: jest.fn().mockImplementation(({ data }) => Promise.resolve(createdCommand(data))),
         findMany: jest.fn().mockResolvedValue([]),
         findUnique: jest.fn(),
       },
@@ -100,6 +105,16 @@ describe('EngineControlService', () => {
 
     registry = {
       get: jest.fn().mockReturnValue(undefined),
+      send: jest.fn().mockReturnValue(false),
+    };
+
+    ackWaiter = {
+      waitForAck: jest.fn().mockResolvedValue('ack-frame'),
+      cancelAll: jest.fn(),
+    };
+
+    gateway = {
+      emitEngineCommandUpdate: jest.fn(),
     };
 
     const module = await Test.createTestingModule({
@@ -108,6 +123,9 @@ describe('EngineControlService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: SocketRegistryService, useValue: registry },
         { provide: CobanWireLogger, useValue: { out: jest.fn(), in: jest.fn(), ackMatch: jest.fn(), ackTimeout: jest.fn() } },
+        { provide: AckWaiterService, useValue: ackWaiter },
+        { provide: RealtimeGateway, useValue: gateway },
+        { provide: ErrorLogger, useValue: { record: jest.fn().mockResolvedValue('error-id') } },
       ],
     }).compile();
 
@@ -151,6 +169,7 @@ describe('EngineControlService', () => {
         lastError: 'Aucune position connue pour ce tracker',
       }),
     });
+    expect(gateway.emitEngineCommandUpdate).toHaveBeenCalled();
   });
 
   // 5. CUT refusé si position > 60s (stale)
@@ -207,11 +226,11 @@ describe('EngineControlService', () => {
     ).rejects.toThrow(ForbiddenException);
   });
 
-  // 9. CUT ACCEPTÉ si speedKmh === 20.0 → PENDING puis 503 (tracker offline)
+  // 9. CUT ACCEPTÉ si speedKmh === 20.0 → PENDING puis FAILED (tracker offline)
   it('should accept CUT at 20.0 km/h then fail dispatch (offline)', async () => {
     prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
     prisma.position.findFirst.mockResolvedValue(recentPosition(20.0));
-    registry.get.mockReturnValue(undefined);
+    registry.send.mockReturnValue(false);
 
     await expect(
       service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin),
@@ -224,32 +243,40 @@ describe('EngineControlService', () => {
       where: { id: expect.any(String) },
       data: expect.objectContaining({ status: CommandStatus.FAILED }),
     });
+    expect(gateway.emitEngineCommandUpdate).toHaveBeenCalled();
   });
 
   // 10. CUT ACCEPTÉ + dispatch réussi si tracker connecté
-  it('should dispatch CUT to connected tracker', async () => {
+  it('should dispatch CUT to connected tracker and start ACK wait', async () => {
     prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
     prisma.position.findFirst.mockResolvedValue(recentPosition(0));
-    const mockSocket = { write: jest.fn() };
-    registry.get.mockReturnValue({ socket: mockSocket });
+    registry.send.mockReturnValue(true);
 
     const result = await service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin);
 
     expect(result.status).toBe(CommandStatus.PENDING);
-    expect(mockSocket.write).toHaveBeenCalledWith(
+    expect(registry.send).toHaveBeenCalledWith(
+      '123456789012345',
       expect.stringContaining('**,imei:123456789012345,J;'),
     );
     expect(prisma.engineControlCommand.update).toHaveBeenCalledWith({
       where: { id: expect.any(String) },
       data: expect.objectContaining({ status: CommandStatus.SENT }),
     });
+    expect(ackWaiter.waitForAck).toHaveBeenCalledWith(
+      '123456789012345',
+      expect.any(RegExp),
+      15000,
+      expect.any(String),
+    );
+    expect(gateway.emitEngineCommandUpdate).toHaveBeenCalled();
   });
 
   // 11. SUPER_ADMIN peut CUT sur une autre flotte
   it('should allow SUPER_ADMIN to CUT on any fleet', async () => {
     prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
     prisma.position.findFirst.mockResolvedValue(recentPosition(5));
-    registry.get.mockReturnValue(undefined);
+    registry.send.mockReturnValue(false);
 
     const crossFleetSuperAdmin = { ...superAdmin, fleetId: OTHER_FLEET_ID };
     await expect(
@@ -260,7 +287,7 @@ describe('EngineControlService', () => {
   // 12. RESTORE accepté même avec speed = 100
   it('should allow RESTORE even when speed is 100 km/h', async () => {
     prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
-    registry.get.mockReturnValue(undefined);
+    registry.send.mockReturnValue(false);
 
     await expect(
       service.requestCommand(TRACKER_ID, EngineAction.RESTORE, null, fleetAdmin),
@@ -275,12 +302,52 @@ describe('EngineControlService', () => {
   it('should allow RESTORE even when no position exists', async () => {
     prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
     prisma.position.findFirst.mockResolvedValue(null);
-    registry.get.mockReturnValue(undefined);
+    registry.send.mockReturnValue(false);
 
     await expect(
       service.requestCommand(TRACKER_ID, EngineAction.RESTORE, null, fleetAdmin),
     ).rejects.toThrow(ServiceUnavailableException);
 
     expect(prisma.position.findFirst).not.toHaveBeenCalled();
+  });
+
+  // 14. ACK timeout → command set to FAILED
+  it('should set command to FAILED when ACK times out', async () => {
+    prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+    prisma.position.findFirst.mockResolvedValue(recentPosition(0));
+    registry.send.mockReturnValue(true);
+    ackWaiter.waitForAck.mockRejectedValue(new Error('ACK timeout after 15000ms'));
+
+    await service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin);
+
+    // Wait for the background ACK promise to settle
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(prisma.engineControlCommand.update).toHaveBeenCalledWith({
+      where: { id: expect.any(String) },
+      data: expect.objectContaining({
+        status: CommandStatus.FAILED,
+        lastError: expect.stringContaining('ACK timeout'),
+      }),
+    });
+  });
+
+  // 15. WS event emitted on REJECTED_SPEED
+  it('should emit WS event when CUT is rejected for speed', async () => {
+    prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+    prisma.position.findFirst.mockResolvedValue(recentPosition(25));
+
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin),
+    ).rejects.toThrow(ForbiddenException);
+
+    expect(gateway.emitEngineCommandUpdate).toHaveBeenCalledWith(
+      FLEET_ID,
+      expect.objectContaining({
+        trackerId: TRACKER_ID,
+        action: EngineAction.CUT,
+        status: CommandStatus.REJECTED_SPEED,
+      }),
+    );
   });
 });

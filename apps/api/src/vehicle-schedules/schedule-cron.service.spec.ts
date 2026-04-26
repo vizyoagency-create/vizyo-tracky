@@ -43,7 +43,7 @@ describe('ScheduleCronService.computeState', () => {
 
   beforeEach(() => {
     // Only testing computeState — no DB/engine dependencies needed
-    service = new ScheduleCronService(null as any, null as any);
+    service = new ScheduleCronService(null as any, null as any, null as any);
   });
 
   it('should return IN_WINDOW when within allowed hours on an enabled day', () => {
@@ -189,7 +189,7 @@ describe('ScheduleCronService.evaluateOne override', () => {
   it('should skip evaluation when overrideUntil is in the future', async () => {
     const prisma = { vehicleSchedule: { update: jest.fn() } } as any;
     const engine = { requestCommand: jest.fn() } as any;
-    const service = new ScheduleCronService(prisma, engine);
+    const service = new ScheduleCronService(prisma, engine, { record: jest.fn().mockResolvedValue('id') } as any);
 
     const schedule = {
       ...makeSchedule({

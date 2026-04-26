@@ -82,6 +82,7 @@ describe('CobanWireLogger', () => {
       providers: [
         CobanWireLogger,
         { provide: PrismaService, useValue: prisma },
+        { provide: ErrorLogger, useValue: { record: jest.fn().mockResolvedValue('id') } },
         {
           provide: ConfigService,
           useValue: { get: jest.fn().mockReturnValue('true') },
@@ -149,6 +150,7 @@ describe('CobanWireLogger (disabled)', () => {
       providers: [
         CobanWireLogger,
         { provide: PrismaService, useValue: prisma },
+        { provide: ErrorLogger, useValue: { record: jest.fn().mockResolvedValue('id') } },
         {
           provide: ConfigService,
           useValue: { get: jest.fn().mockReturnValue('false') },

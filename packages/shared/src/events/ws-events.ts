@@ -9,6 +9,7 @@ export const WS_EVENTS = {
   GEOFENCE_VIOLATION: 'geofence:violation',
   TRIP_STARTED: 'trip:started',
   TRIP_COMPLETED: 'trip:completed',
+  ENGINE_COMMAND_UPDATED: 'engine-command:updated',
 } as const;
 
 export interface PositionUpdateEvent {
@@ -45,11 +46,20 @@ export interface AlertAcknowledgedEvent {
   acknowledgedBy: string;
 }
 
+export interface EngineCommandUpdatedEvent {
+  commandId: string;
+  trackerId: string;
+  action: 'CUT' | 'RESTORE';
+  status: 'PENDING' | 'SENT' | 'ACKNOWLEDGED' | 'FAILED' | 'REJECTED_SPEED';
+  lastError: string | null;
+}
+
 export interface ServerToClientEvents {
   'position:update': (payload: PositionUpdateEvent) => void;
   'tracker:status': (payload: TrackerStatusChangedDto) => void;
   'alert:new': (payload: AlertEvent) => void;
   'alert:acknowledged': (payload: AlertAcknowledgedEvent) => void;
+  'engine-command:updated': (payload: EngineCommandUpdatedEvent) => void;
 }
 
 export interface ClientToServerEvents {

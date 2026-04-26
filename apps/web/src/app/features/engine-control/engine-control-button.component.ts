@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, inject, input, OnInit, signal } from '@angular/core';
+import { Component, computed, DestroyRef, effect, inject, input, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, Power, PowerOff } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
@@ -8,6 +8,7 @@ import {
   EngineControlService,
   type EngineControlCommandDto,
 } from '../../core/services/engine-control.service';
+import { RealtimeService } from '../../core/services/realtime.service';
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 
@@ -103,12 +104,25 @@ export class EngineControlButtonComponent implements OnInit {
   private readonly authService = inject(AuthService);
   private readonly engineControl = inject(EngineControlService);
   private readonly toast = inject(ToastService);
+  private readonly realtime = inject(RealtimeService);
 
   readonly isCutActive = computed(() => {
     const cmds = this.recentCommands();
     if (cmds.length === 0) return false;
-    const last = cmds[0];
-    return last.action === 'CUT' && (last.status === 'SENT' || last.status === 'ACKNOWLEDGED');
+
+    const lastCut = cmds.find(
+      (c) => c.action === 'CUT' && (c.status === 'SENT' || c.status === 'ACKNOWLEDGED'),
+    );
+    const lastRestore = cmds.find(
+      (c) => c.action === 'RESTORE' && (c.status === 'SENT' || c.status === 'ACKNOWLEDGED'),
+    );
+
+    // If there's an active CUT with no subsequent RESTORE → engine is cut
+    if (lastCut && (!lastRestore || new Date(lastCut.createdAt) > new Date(lastRestore.createdAt))) {
+      return true;
+    }
+
+    return false;
   });
 
   readonly canCut = computed(() => {
@@ -148,6 +162,15 @@ export class EngineControlButtonComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadRecentCommands();
+
+    // React to real-time engine command updates for this tracker
+    effect(() => {
+      const updates = this.realtime.engineCommandUpdates();
+      const update = updates.get(this.trackerId());
+      if (update) {
+        this.loadRecentCommands();
+      }
+    });
   }
 
   protected async onConfirm(action: 'CUT' | 'RESTORE'): Promise<void> {

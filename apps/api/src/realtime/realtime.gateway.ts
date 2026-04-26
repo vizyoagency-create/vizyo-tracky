@@ -5,7 +5,7 @@ import {
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
-import type { AlertEvent, GeofenceViolationEvent, PositionUpdateEvent, TrackerStatusChangedDto, TripStartedEvent, TripCompletedEvent } from '@vizyo/tracky-shared';
+import type { AlertEvent, EngineCommandUpdatedEvent, GeofenceViolationEvent, PositionUpdateEvent, TrackerStatusChangedDto, TripStartedEvent, TripCompletedEvent } from '@vizyo/tracky-shared';
 import { WS_EVENTS } from '@vizyo/tracky-shared';
 import type { Alert, Vehicle, Tracker } from '@prisma/client';
 import { Server, Socket } from 'socket.io';
@@ -101,5 +101,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   emitTripCompleted(fleetId: string, event: TripCompletedEvent): void {
     this.server.to(`fleet:${fleetId}`).to('fleet:*').emit(WS_EVENTS.TRIP_COMPLETED, event);
+  }
+
+  emitEngineCommandUpdate(fleetId: string, payload: EngineCommandUpdatedEvent): void {
+    this.server.to(`fleet:${fleetId}`).to('fleet:*').emit(WS_EVENTS.ENGINE_COMMAND_UPDATED, payload);
   }
 }

@@ -11,6 +11,7 @@ export interface PositionDto {
   heading: number;
   altitude: number | null;
   valid: boolean;
+  ignition: boolean | null;
   timestamp: string;
 }
 

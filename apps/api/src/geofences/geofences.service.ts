@@ -10,6 +10,7 @@ import type { GeofenceViolationEvent } from '@vizyo/tracky-shared';
 import { WS_EVENTS } from '@vizyo/tracky-shared';
 import { AlertsService } from '../alerts/alerts.service';
 import { distanceMeters } from '../common/utils/haversine';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import type { CreateGeofenceDto } from './dto/create-geofence.dto';
@@ -43,6 +44,7 @@ export class GeofencesService {
     private readonly prisma: PrismaService,
     private readonly gateway: RealtimeGateway,
     private readonly alertsService: AlertsService,
+    private readonly errorLogger: ErrorLogger,
   ) {}
 
   async create(dto: CreateGeofenceDto, requestedBy: RequestedBy): Promise<Geofence> {
@@ -68,7 +70,10 @@ export class GeofencesService {
         ST_MakePoint(${dto.centerLng}, ${dto.centerLat})::geography,
         ${dto.radiusMeters}
       ) WHERE id = ${geofence.id}::uuid
-    `.catch((err) => this.logger.warn('Failed to update PostGIS geometry (non-blocking)', err.message));
+    `.catch((err) => {
+      this.logger.warn('Failed to update PostGIS geometry (non-blocking)', err.message);
+      this.errorLogger.record(err instanceof Error ? err : new Error(String(err)), 'geofences').catch((e2) => this.logger.error('ErrorLogger persist failed', e2));
+    });
 
     this.invalidateCache(fleetId);
     return geofence;
@@ -118,7 +123,10 @@ export class GeofencesService {
           ST_MakePoint(${lng}, ${lat})::geography,
           ${radius}
         ) WHERE id = ${id}::uuid
-      `.catch((err) => this.logger.warn('Failed to update PostGIS geometry (non-blocking)', err.message));
+      `.catch((err) => {
+      this.logger.warn('Failed to update PostGIS geometry (non-blocking)', err.message);
+      this.errorLogger.record(err instanceof Error ? err : new Error(String(err)), 'geofences').catch((e2) => this.logger.error('ErrorLogger persist failed', e2));
+    });
     }
 
     this.invalidateCache(existing.fleetId);
@@ -207,7 +215,10 @@ export class GeofencesService {
       },
     }).then((alert) => {
       this.gateway.broadcastAlert({ ...alert, vehicle: null, tracker: null });
-    }).catch((err) => this.logger.error('Failed to create geofence alert', err));
+    }).catch((err) => {
+      this.logger.error('Failed to create geofence alert', err);
+      this.errorLogger.record(err instanceof Error ? err : new Error(String(err)), 'geofences', { trackerId, vehicleId: vehicleId ?? undefined }).catch((e2) => this.logger.error('ErrorLogger persist failed', e2));
+    });
 
     const event: GeofenceViolationEvent = {
       geofenceId: zone.id,

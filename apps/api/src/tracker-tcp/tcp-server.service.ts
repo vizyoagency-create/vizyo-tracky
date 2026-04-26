@@ -91,14 +91,14 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
               err instanceof Error ? err : new Error(String(err)),
               'tcp-server',
               { imei: boundImei ?? undefined, frameRaw: raw },
-            ).catch(() => {});
+            ).catch((e) => this.logger.error('ErrorLogger persist failed', e));
           });
         } catch (err) {
           this.errorLogger.record(
             err instanceof Error ? err : new Error(String(err)),
             'tcp-server',
             { imei: boundImei ?? undefined, frameRaw: raw },
-          ).catch(() => {});
+          ).catch((e) => this.logger.error('ErrorLogger persist failed', e));
         }
       }
     });
@@ -116,6 +116,7 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn({ imei: boundImei, remoteAddr: remote }, `Socket closed (imei=${boundImei ?? 'unbound'})`);
       if (boundImei) {
         this.registry.unregister(boundImei);
+        this.ackWaiter.cancelAll(boundImei);
         this.prisma.tracker.findUnique({
           where: { imei: boundImei },
           include: { vehicle: true },
@@ -134,7 +135,14 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
               });
             }
           });
-        }).catch((e) => this.logger.error(`Failed to set offline: ${boundImei}`, e));
+        }).catch((e) => {
+          this.logger.error(`Failed to set offline: ${boundImei}`, e);
+          this.errorLogger.record(
+            e instanceof Error ? e : new Error(String(e)),
+            'tcp-server',
+            { imei: boundImei ?? undefined },
+          ).catch((e2) => this.logger.error('ErrorLogger persist failed', e2));
+        });
       }
     });
   }
@@ -197,9 +205,14 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
             include: { vehicle: { include: { fleet: true } } },
           });
           if (tracker) {
-            await this.alertsService.createFromCobanFrame(frame, tracker as any).catch((err) =>
-              this.logger.error('Failed to create alert', err),
-            );
+            await this.alertsService.createFromCobanFrame(frame, tracker as any).catch((err) => {
+              this.logger.error('Failed to create alert', err);
+              this.errorLogger.record(
+                err instanceof Error ? err : new Error(String(err)),
+                'tcp-server',
+                { imei: frame.imei, alarm: frame.alarm },
+              ).catch((e2) => this.logger.error('ErrorLogger persist failed', e2));
+            });
           }
         }
 

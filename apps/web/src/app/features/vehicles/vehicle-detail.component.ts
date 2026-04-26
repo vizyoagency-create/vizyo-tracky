@@ -183,7 +183,13 @@ import { relativeTime } from '../../shared/utils/relative-time';
                         {{ pos.lat | number:'1.4-4' }}, {{ pos.lng | number:'1.4-4' }}
                       </td>
                       <td class="p-3 text-center">
-                        <span class="w-2 h-2 rounded-full inline-block" [class]="pos.valid ? 'bg-tracky-light' : 'bg-fg-tertiary'"></span>
+                        @if (pos.ignition === true) {
+                          <span class="w-2 h-2 rounded-full inline-block bg-tracky-light" title="Contact ON"></span>
+                        } @else if (pos.ignition === false) {
+                          <span class="w-2 h-2 rounded-full inline-block bg-red-500" title="Contact OFF"></span>
+                        } @else {
+                          <span class="w-2 h-2 rounded-full inline-block bg-fg-tertiary" title="Inconnu"></span>
+                        }
                       </td>
                       <td class="p-3 text-center text-fg-tertiary">
                         @if (pos.valid) { ✓ } @else { ✗ }
@@ -383,7 +389,7 @@ export class VehicleDetailComponent implements OnInit {
     }
     const last = this.recentPositions()[0];
     if (last) {
-      return { lat: last.lat, lng: last.lng, speedKmh: last.speedKmh, timestamp: last.timestamp, ignition: true, valid: last.valid };
+      return { lat: last.lat, lng: last.lng, speedKmh: last.speedKmh, timestamp: last.timestamp, ignition: last.ignition ?? this.vehicle()?.tracker?.lastKnownIgnition ?? true, valid: last.valid };
     }
     return null;
   });

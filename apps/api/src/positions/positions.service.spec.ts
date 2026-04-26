@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, NotFoundException } from '@nes
 import { Test } from '@nestjs/testing';
 import { UserRole } from '@prisma/client';
 import { GeofencesService } from '../geofences/geofences.service';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { TripsService } from '../trips/trips.service';
@@ -61,6 +62,7 @@ describe('PositionsService.list', () => {
         { provide: RealtimeGateway, useValue: { broadcastPosition: jest.fn(), emitTrackerStatus: jest.fn() } },
         { provide: GeofencesService, useValue: { checkViolations: jest.fn() } },
         { provide: TripsService, useValue: { processPosition: jest.fn() } },
+        { provide: ErrorLogger, useValue: { record: jest.fn().mockResolvedValue('id') } },
       ],
     }).compile();
 

@@ -150,12 +150,14 @@ model Vehicle {
 }
 
 model Tracker {
-  id         String                 @id @default(uuid()) @db.Uuid
-  imei       String                 @unique
-  model      String                 @default("COBAN_GPS403D")
-  status     TrackerStatus          @default(OFFLINE)
-  lastSeenAt DateTime?
-  vehicleId  String?                @unique @db.Uuid
+  id                   String                 @id @default(uuid()) @db.Uuid
+  imei                 String                 @unique
+  model                String                 @default("COBAN_GPS403D")
+  status               TrackerStatus          @default(OFFLINE)
+  lastSeenAt           DateTime?
+  lastKnownIgnition    Boolean?
+  lastIgnitionChangeAt DateTime?
+  vehicleId            String?                @unique @db.Uuid
   vehicle    Vehicle?               @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   positions  Position[]
   commands        EngineControlCommand[]
@@ -180,6 +182,7 @@ model Position {
   altitude   Float?
   satellites Int?
   valid      Boolean  @default(true)
+  ignition   Boolean?
   timestamp  DateTime
   createdAt  DateTime @default(now())
 

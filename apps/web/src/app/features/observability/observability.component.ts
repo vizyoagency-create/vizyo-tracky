@@ -111,7 +111,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
       <!-- Errors Tab -->
       @if (activeTab() === 'errors') {
         <div class="flex flex-wrap gap-3 items-end">
-          <div class="flex flex-col gap-1 flex-1 min-w-[180px]">
+          <div class="flex flex-col gap-1 flex-1 min-w-[140px]">
             <label class="text-xs text-fg-tertiary">Source</label>
             <select [(ngModel)]="errorSourceFilter"
                     class="bg-bg-secondary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary w-full">
@@ -121,7 +121,25 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
               <option value="engine-control">engine-control</option>
               <option value="tracker-commands">tracker-commands</option>
               <option value="positions">positions</option>
+              <option value="geofences">geofences</option>
+              <option value="trips">trips</option>
+              <option value="schedule-cron">schedule-cron</option>
+              <option value="wire-logger">wire-logger</option>
             </select>
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-xs text-fg-tertiary">Niveau</label>
+            <select [(ngModel)]="errorLevelFilter"
+                    class="bg-bg-secondary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary">
+              <option value="">Tous</option>
+              <option value="CRITICAL">CRITICAL</option>
+              <option value="ERROR">ERROR</option>
+            </select>
+          </div>
+          <div class="flex flex-col gap-1 flex-1 min-w-[140px]">
+            <label class="text-xs text-fg-tertiary">IMEI</label>
+            <input [(ngModel)]="errorImeiFilter" placeholder="865328021056352"
+                   class="bg-bg-secondary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary w-full" />
           </div>
           <button (click)="loadErrorLogs()" class="px-4 py-2 bg-tracky text-white rounded-lg text-sm font-medium
                   hover:bg-tracky-dark cursor-pointer flex items-center gap-2 shrink-0">
@@ -255,6 +273,8 @@ export class ObservabilityComponent implements OnInit {
   protected readonly wireImeiFilter = signal('');
   protected readonly wireDirectionFilter = signal('');
   protected readonly errorSourceFilter = signal('');
+  protected readonly errorLevelFilter = signal('');
+  protected readonly errorImeiFilter = signal('');
   protected readonly timelineImei = signal('');
 
   async ngOnInit(): Promise<void> {
@@ -281,7 +301,11 @@ export class ObservabilityComponent implements OnInit {
     try {
       const params: Record<string, string> = { limit: '100' };
       const source = this.errorSourceFilter();
+      const level = this.errorLevelFilter();
+      const imei = this.errorImeiFilter();
       if (source) params['source'] = source;
+      if (level) params['level'] = level;
+      if (imei) params['imei'] = imei;
       const res = await firstValueFrom(this.logsApi.listErrorLogs(params));
       this.errorLogs.set(res.items);
     } catch {
