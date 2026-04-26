@@ -316,10 +316,54 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
 
 
     /* ════════════════════════════════════════════════════════
+       MOBILE BOTTOM BAR (visible < 768px uniquement)
+       ════════════════════════════════════════════════════════ */
+    .bottom-bar { display: none }
+
+
+    /* ════════════════════════════════════════════════════════
        MOBILE (< 768px)
        ════════════════════════════════════════════════════════ */
     @media (max-width: 768px) {
       .desktop-sidebar { display: none }
+
+      .bottom-bar {
+        display: flex;
+        position: fixed;
+        bottom: 0; left: 0; right: 0;
+        z-index: 7000;
+        background: var(--bg-secondary);
+        border-top: 1px solid var(--border-subtle);
+        backdrop-filter: blur(12px);
+        padding: 6px 8px;
+        padding-bottom: calc(env(safe-area-inset-bottom) + 6px);
+        gap: 4px;
+      }
+      .bottom-item {
+        flex: 1;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 3px;
+        padding: 8px 4px;
+        background: transparent; border: 0;
+        color: var(--fg-tertiary);
+        font-size: 10px; font-weight: 600;
+        text-decoration: none;
+        border-radius: 10px;
+        transition: color .15s, background .15s;
+        min-height: 48px;
+      }
+      .bottom-item:hover { background: var(--bg-tertiary) }
+      .bottom-item.active { color: var(--tracky-light); background: var(--bg-tertiary) }
+      .bottom-item lucide-icon { display: block }
+
+      /* Padding-bottom du content pour ne pas masquer le dernier element
+         derriere la bottom-bar (56px barre + safe-area + petit espace). */
+      .content {
+        padding-bottom: calc(72px + env(safe-area-inset-bottom)) !important;
+      }
+      .content.fullscreen {
+        padding-bottom: calc(56px + env(safe-area-inset-bottom)) !important;
+      }
 
       .mobile-burger {
         display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px;

@@ -26,7 +26,7 @@ import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-dra
           <p class="gf-sub">{{ geofences().length }} zone(s) configurée(s)</p>
         </div>
         @if (perms.can('geofences_manage')) {
-          <div class="gf-actions">
+          <div class="gf-header-actions">
             <button (click)="onImportClick()" class="gf-import-btn" [disabled]="importing()" title="Importer un fichier GeoJSON (FeatureCollection)">
               <lucide-icon [img]="Upload" [size]="15"></lucide-icon> {{ importing() ? 'Import...' : 'Importer GeoJSON' }}
             </button>
@@ -136,7 +136,7 @@ import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-dra
     .gf-header { position: relative; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px }
     .gf-title { font-size: 24px; font-weight: 800; color: var(--fg-primary); letter-spacing: -.02em }
     .gf-sub { font-size: 13px; color: var(--fg-tertiary); margin-top: 2px }
-    .gf-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center }
+    .gf-header-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center }
     .gf-import-btn {
       display: inline-flex; align-items: center; gap: 6px;
       padding: 8px 14px; border-radius: 8px;

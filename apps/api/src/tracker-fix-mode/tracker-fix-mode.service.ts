@@ -248,6 +248,15 @@ export class TrackerFixModeService {
       return null;
     }
 
+    // V1.6 — Cooldown apres FAILING : si le tracker est marque FAILING, on
+    // arrete de tenter de nouvelles commandes jusqu'a ce qu'un admin l'acquitte
+    // via /admin/alerts/trackers/:id/clear-failing OU jusqu'a ce qu'on observe
+    // a nouveau l'intervalle attendu (reconcile remet failureCount a 0).
+    // Sinon le service spam Twilio/TCP en boucle quand un boitier est cape.
+    if (tracker.fixCommandFailing) {
+      return null;
+    }
+
     // Feature flag fleet.
     if (!tracker.vehicle || !tracker.vehicle.fleet.adaptiveFixModeEnabled) {
       return null;

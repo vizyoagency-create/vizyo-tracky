@@ -38,7 +38,26 @@ async function main() {
     },
   });
 
-  console.log('✅ Seed OK — admin@vizyoagency.com linked to Auth userId:', adminAuthUserId);
+  // V1.5+ — User systeme pour les commandes auto (engine cut/restore detecte
+  // par le boitier, fix mode adaptatif, schedule auto). Reference par
+  // SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000' dans
+  // positions.service.ts + tracker-fix-mode.service.ts.
+  await prisma.user.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000000' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000000000',
+      authUserId: '00000000-0000-0000-0000-000000000000', // pas un vrai user Vizyo Auth
+      email: 'system@tracky.local',
+      firstName: 'System',
+      lastName: '',
+      role: UserRole.SUPER_ADMIN,
+      fleetId: null,
+      isActive: false, // ne peut pas se connecter — sert juste de FK target
+    },
+  });
+
+  console.log('✅ Seed OK — admin@vizyoagency.com + system user linked');
 }
 
 main()

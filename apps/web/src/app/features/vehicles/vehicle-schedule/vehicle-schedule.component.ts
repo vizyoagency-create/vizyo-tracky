@@ -261,7 +261,7 @@ const TIMEZONES = [
                     <div class="vsched-adv-day">
                       <span class="vsched-adv-day-label">{{ d.label }}</span>
                       <span class="vsched-adv-base">{{ d.start }}–{{ d.end }}</span>
-                      @for (slot of extraSlotsByDay()[d.key] ?? []; track $index; let i = $index) {
+                      @for (slot of slotsForDay(d.key); track $index; let i = $index) {
                         <span class="vsched-adv-slot">
                           <input type="time" [value]="slot.start" [disabled]="readonly()"
                                  (input)="updateSlot(d.key, i, 'start', $any($event.target).value)" />
@@ -275,7 +275,7 @@ const TIMEZONES = [
                           }
                         </span>
                       }
-                      @if (!readonly() && (extraSlotsByDay()[d.key] ?? []).length < 2) {
+                      @if (!readonly() && slotsForDay(d.key).length < 2) {
                         <button type="button" class="vsched-adv-slot-add" (click)="addSlot(d.key)">
                           + plage
                         </button>
@@ -699,7 +699,9 @@ export class VehicleScheduleComponent {
   // V1.6 (P1) — multi-plages par jour + jours feries + dates speciales.
   // mondaySlots = 2-3 plages cumulables sur un meme jour (ex: 08:00-12:00 + 14:00-18:00).
   // Si un jour a des slots, ils prennent le pas sur start/end "simple".
-  protected readonly extraSlotsByDay = signal<Record<string, Array<{ start: string; end: string }>>>({});
+  // Le type Record autorise `undefined` pour les jours sans extras — d'ou le `?? []`
+  // explicite dans le template.
+  protected readonly extraSlotsByDay = signal<Record<string, Array<{ start: string; end: string }> | undefined>>({});
   protected readonly countryCode = signal<string>('FR');
   protected readonly customDates = signal<CustomDateRow[]>([]);
   protected readonly advancedExpanded = signal(false);
@@ -940,6 +942,11 @@ export class VehicleScheduleComponent {
       countryCode: this.countryCode() || undefined,
       customDates: customDates.length > 0 ? customDates : undefined,
     } as UpsertSchedulePayload;
+  }
+
+  /** V1.6 (P1) — Helper qui retourne toujours un array (jamais undefined) pour le @for du template. */
+  protected slotsForDay(dayKey: string): Array<{ start: string; end: string }> {
+    return this.extraSlotsByDay()[dayKey] ?? [];
   }
 
   // V1.6 (P1) — gestion des plages additionnelles par jour.

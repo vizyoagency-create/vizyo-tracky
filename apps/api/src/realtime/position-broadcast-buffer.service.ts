@@ -52,14 +52,19 @@ export class PositionBroadcastBuffer {
 
     const server = this.gateway.server;
     if (!server) return;
+    // Le Socket.IO server peut etre defini mais sans `sockets.adapter` initialise
+    // pendant les premieres millisecondes du boot (avant qu'aucun client n'ait
+    // jamais ete connecte). On guard pour eviter le crash du cron @Interval(1s).
+    const adapter = server.sockets?.adapter;
+    if (!adapter) return;
 
     for (const [fleetId, fleetBucket] of this.buffer) {
       if (fleetBucket.size === 0) continue;
 
       // Filtrage room vide : si aucun client connecte sur cette fleet ET que la
       // room super-admin est vide aussi, on droppe le batch silencieusement.
-      const fleetRoom = server.sockets.adapter.rooms.get(`fleet:${fleetId}`);
-      const wildcardRoom = server.sockets.adapter.rooms.get('fleet:*');
+      const fleetRoom = adapter.rooms.get(`fleet:${fleetId}`);
+      const wildcardRoom = adapter.rooms.get('fleet:*');
       const hasListeners = (fleetRoom && fleetRoom.size > 0) || (wildcardRoom && wildcardRoom.size > 0);
       if (!hasListeners) {
         fleetBucket.clear();
