@@ -248,6 +248,27 @@ body {
   border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
   pointer-events: none;
 }
+
+/* ════════════════════════════════════════════════════════════
+   MapLibre — masquer l'attribution "i" partout (notre app
+   garde une mention OSM dans les CGU/footer si nécessaire)
+   et tous les contrôles natifs (zoom +/-, geolocate, scale)
+   en mobile pour éviter le chevauchement avec notre FAB.
+   ════════════════════════════════════════════════════════════ */
+.maplibregl-ctrl-attrib,
+.maplibregl-ctrl-attrib.maplibregl-compact,
+.mapboxgl-ctrl-attrib {
+  display: none !important;
+}
+
+@media (max-width: 767px) {
+  .maplibregl-ctrl-bottom-right,
+  .maplibregl-ctrl-bottom-left,
+  .maplibregl-ctrl-top-right,
+  .maplibregl-ctrl-top-left {
+    display: none !important;
+  }
+}
 .tracky-marker--no-plate .tracky-marker__plate { display: none; }
 
 /* Hydrate (cache REST, pas live) — opacite reduite jusqu'au prochain WS */

@@ -8,6 +8,21 @@ export interface NotificationPrefs {
   duration: number; // ms, 0 = permanent
 }
 
+/** Widgets activables sur le tableau de bord. Permet à l'utilisateur de
+ *  personnaliser l'affichage et l'ordre des sections. */
+export type DashboardWidgetKey =
+  | 'kpis'        // KPIs 2x2 (véhicules, mouvement, arrêt, alertes)
+  | 'actions'     // Quick actions chips
+  | 'map'         // Carte temps réel
+  | 'activity'    // Activité en direct
+  | 'alerts'      // Alertes récentes
+  | 'schedule';   // Automatisation horaire
+
+export interface DashboardWidgetConfig {
+  key: DashboardWidgetKey;
+  enabled: boolean;
+}
+
 export interface UserPreferences {
   theme: 'dark' | 'light';
   notifications: {
@@ -26,6 +41,8 @@ export interface UserPreferences {
     /** Mode camera par defaut au chargement (`free` recommande). */
     cameraMode: CameraMode;
   };
+  /** Widgets activés et ordre d'affichage sur le tableau de bord. */
+  dashboardWidgets: DashboardWidgetConfig[];
 }
 
 const DEFAULTS: UserPreferences = {
@@ -45,6 +62,14 @@ const DEFAULTS: UserPreferences = {
     showPlates: true,
     cameraMode: 'free',
   },
+  dashboardWidgets: [
+    { key: 'kpis', enabled: true },
+    { key: 'actions', enabled: true },
+    { key: 'map', enabled: true },
+    { key: 'activity', enabled: true },
+    { key: 'alerts', enabled: true },
+    { key: 'schedule', enabled: true },
+  ],
 };
 
 const KEY_PREFIX = 'vizyo-tracky-prefs-';
@@ -84,9 +109,21 @@ export class PreferencesService {
     if (partial.map) {
       merged.map = { ...current.map, ...partial.map };
     }
+    if (partial.dashboardWidgets) {
+      merged.dashboardWidgets = partial.dashboardWidgets;
+    }
 
     this._prefs.set(merged);
     this.save(merged);
+  }
+
+  /** Active ou désactive un widget du tableau de bord. */
+  toggleDashboardWidget(key: DashboardWidgetKey): void {
+    const current = this._prefs().dashboardWidgets;
+    const updated = current.map((w) =>
+      w.key === key ? { ...w, enabled: !w.enabled } : w,
+    );
+    this.update({ dashboardWidgets: updated });
   }
 
   /** Réinitialiser toutes les préférences */
@@ -116,6 +153,23 @@ export class PreferencesService {
         info: { ...defaults.notifications.info, ...saved.notifications?.info },
       },
       map: { ...defaults.map, ...saved.map },
+      // Si la liste sauvegardée existe, on s'assure que les widgets manquants
+      // sont ajoutés (par défaut activés) — utile pour évoluer le set sans casser.
+      dashboardWidgets: this.mergeDashboardWidgets(saved.dashboardWidgets, defaults.dashboardWidgets),
     };
+  }
+
+  private mergeDashboardWidgets(
+    saved: DashboardWidgetConfig[] | undefined,
+    defaults: DashboardWidgetConfig[],
+  ): DashboardWidgetConfig[] {
+    if (!saved || !Array.isArray(saved)) return defaults;
+    const savedKeys = new Set(saved.map((w) => w.key));
+    const merged: DashboardWidgetConfig[] = [...saved];
+    // Ajouter les widgets par défaut absents du saved (ex: nouveau widget)
+    defaults.forEach((d) => {
+      if (!savedKeys.has(d.key)) merged.push(d);
+    });
+    return merged;
   }
 }

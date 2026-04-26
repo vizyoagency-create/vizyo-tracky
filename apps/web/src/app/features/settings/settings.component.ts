@@ -240,9 +240,16 @@ import { ThemeService } from '../../core/theme/theme.service';
     .notif-desc { font-size: 10px; color: var(--fg-tertiary); margin-top: 1px }
     .permanent-badge { font-size: 11px; color: var(--fg-tertiary); padding: 2px 8px; border-radius: 6px; background: var(--bg-tertiary) }
     .duration-select {
-      padding: 3px 6px; border-radius: 8px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle);
-      color: var(--fg-secondary); font-size: 11px; font-weight: 600; outline: none; cursor: pointer;
+      padding: 4px 24px 4px 10px; border-radius: 9999px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle);
+      color: var(--fg-secondary); font-size: 11px; font-weight: 700; outline: none; cursor: pointer;
+      appearance: none; -webkit-appearance: none; -moz-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2310E0A0' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 8px center;
+      transition: all .15s;
     }
+    .duration-select:hover { border-color: var(--tracky); color: var(--fg-primary); }
+    .duration-select:focus { border-color: var(--tracky); }
 
     /* Map settings */
     .map-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border-subtle) }
@@ -318,8 +325,8 @@ export class SettingsComponent {
 
   protected readonly notifItems = [
     { key: 'critical' as const, label: 'Critiques', desc: 'Accidents, coupures, SOS', color: 'red' },
-    { key: 'warning' as const, label: 'Warning', desc: 'Vitesse, inactivité, géofence', color: 'amber' },
-    { key: 'info' as const, label: 'Info', desc: 'Freinage, vibrations, portes', color: 'blue' },
+    { key: 'warning' as const, label: 'Avertissements', desc: 'Vitesse, inactivité, géofence', color: 'amber' },
+    { key: 'info' as const, label: 'Informations', desc: 'Freinage, vibrations, portes', color: 'blue' },
   ];
 
   protected initials(): string {

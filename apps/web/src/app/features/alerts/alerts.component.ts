@@ -74,7 +74,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
               <div class="tl-card-top">
                 <div class="tl-card-info">
                   <span class="tl-alert-title">{{ alert.title }}</span>
-                  <span class="tl-severity" [class]="severityBadge(alert.severity)">{{ alert.severity }}</span>
+                  <span class="tl-severity" [class]="severityBadge(alert.severity)">{{ severityLabel(alert.severity) }}</span>
                 </div>
                 <span class="tl-time">{{ relativeTime(alert.createdAt) }}</span>
               </div>
@@ -290,6 +290,13 @@ export class AlertsComponent implements OnInit {
     if (severity === 'CRITICAL') return 'bg-red-500/20 text-red-400';
     if (severity === 'WARNING') return 'bg-amber-500/20 text-amber-400';
     return 'bg-sky-500/20 text-sky-400';
+  }
+
+  protected severityLabel(severity: string): string {
+    if (severity === 'CRITICAL') return 'Critique';
+    if (severity === 'WARNING') return 'Avertissement';
+    if (severity === 'INFO') return 'Info';
+    return severity;
   }
 
   protected async onAcknowledge(id: string): Promise<void> {

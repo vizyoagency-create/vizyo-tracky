@@ -67,80 +67,73 @@ import { relativeTime } from '../../shared/utils/relative-time';
           }
         </div>
 
-        <!-- Stats -->
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
-          <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-3 sm:p-4">
-            <div class="flex items-center gap-2 mb-2">
-              @if (isOnline()) {
-                <lucide-icon [img]="Wifi" [size]="16" class="text-tracky-light"></lucide-icon>
-                <span class="text-xs text-fg-tertiary">Statut</span>
-              } @else {
-                <lucide-icon [img]="WifiOff" [size]="16" class="text-fg-tertiary"></lucide-icon>
-                <span class="text-xs text-fg-tertiary">Statut</span>
-              }
-            </div>
-            <p class="text-xl font-semibold" [class]="isOnline() ? 'text-tracky-light' : 'text-fg-tertiary'">
-              {{ isOnline() ? 'En ligne' : 'Hors ligne' }}
-            </p>
-            @if (currentPosition(); as pos) {
-              <div class="flex items-center gap-1.5 mt-2">
-                <lucide-icon [img]="ZapIcon" [size]="12" [class]="pos.ignition ? 'text-tracky-light' : 'text-fg-tertiary'"></lucide-icon>
-                <span class="text-[11px] font-medium" [class]="pos.ignition ? 'text-tracky-light' : 'text-fg-tertiary'">
-                  Contact {{ pos.ignition ? 'ON' : 'OFF' }}
-                </span>
-              </div>
+        <!-- Stats compactes (info-bar horizontale) -->
+        <div class="vd-stats-bar">
+          <div class="vd-stat" [class.vd-stat--online]="isOnline()">
+            @if (isOnline()) {
+              <lucide-icon [img]="Wifi" [size]="14"></lucide-icon>
+            } @else {
+              <lucide-icon [img]="WifiOff" [size]="14"></lucide-icon>
             }
+            <div class="vd-stat-content">
+              <span class="vd-stat-label">Statut</span>
+              <span class="vd-stat-value">
+                {{ isOnline() ? 'En ligne' : 'Hors ligne' }}
+                @if (currentPosition(); as pos) {
+                  · <span [class]="pos.ignition ? 'text-tracky-light' : 'text-fg-tertiary'">{{ pos.ignition ? 'ON' : 'OFF' }}</span>
+                }
+              </span>
+            </div>
           </div>
 
-          <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-3 sm:p-4">
-            <div class="flex items-center gap-2 mb-2">
-              <lucide-icon [img]="Gauge" [size]="16" class="text-tracky-light"></lucide-icon>
-              <span class="text-xs text-fg-tertiary">Vitesse</span>
+          <div class="vd-stat">
+            <lucide-icon [img]="Gauge" [size]="14"></lucide-icon>
+            <div class="vd-stat-content">
+              <span class="vd-stat-label">Vitesse</span>
+              <span class="vd-stat-value">
+                @if (currentPosition(); as pos) { {{ pos.speedKmh | number:'1.0-0' }} km/h } @else { — }
+              </span>
             </div>
-            <p class="text-xl font-semibold text-fg-primary">
-              @if (currentPosition(); as pos) { {{ pos.speedKmh | number:'1.0-0' }} km/h } @else { — }
-            </p>
           </div>
 
-          <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-3 sm:p-4">
-            <div class="flex items-center gap-2 mb-2">
-              <lucide-icon [img]="MapPin" [size]="16" class="text-tracky-light"></lucide-icon>
-              <span class="text-xs text-fg-tertiary">Dernière position</span>
+          <div class="vd-stat">
+            <lucide-icon [img]="MapPin" [size]="14"></lucide-icon>
+            <div class="vd-stat-content">
+              <span class="vd-stat-label">Position</span>
+              <span class="vd-stat-value">
+                @if (currentPosition(); as pos) { {{ relativeTime(pos.timestamp) }} } @else { Jamais }
+              </span>
             </div>
-            <p class="text-xl font-semibold text-fg-primary">
-              @if (currentPosition(); as pos) { {{ relativeTime(pos.timestamp) }} } @else { Jamais }
-            </p>
           </div>
 
-          <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-3 sm:p-4">
-            <div class="flex items-center gap-2 mb-2">
-              <lucide-icon [img]="Radio" [size]="16" class="text-tracky-light"></lucide-icon>
-              <span class="text-xs text-fg-tertiary">Tracker</span>
+          <div class="vd-stat vd-stat--mono">
+            <lucide-icon [img]="Radio" [size]="14"></lucide-icon>
+            <div class="vd-stat-content">
+              <span class="vd-stat-label">Tracker</span>
+              <span class="vd-stat-value">
+                @if (v.tracker) { {{ v.tracker.imei.slice(0,4) }}…{{ v.tracker.imei.slice(-4) }} } @else { — }
+              </span>
             </div>
-            <p class="text-lg font-mono font-semibold text-fg-primary">
-              @if (v.tracker) { {{ v.tracker.imei.slice(0,4) }}...{{ v.tracker.imei.slice(-4) }} } @else { Non assigné }
-            </p>
           </div>
         </div>
 
-        <!-- Tabs -->
-        <div class="flex gap-1 border-b border-border-subtle overflow-x-auto scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">
-          @for (tab of tabs; track tab.key) {
-            <button
-              (click)="activeTab.set(tab.key)"
-              class="px-3 sm:px-4 py-2.5 text-sm font-medium transition-colors cursor-pointer border-b-2 -mb-px shrink-0 whitespace-nowrap"
-              [class]="activeTab() === tab.key
-                ? 'text-tracky-light border-tracky-light'
-                : 'text-fg-tertiary border-transparent hover:text-fg-secondary'"
-            >
-              {{ tab.label }}
-              @if (tab.key === 'alerts' && alerts().length > 0) {
-                <span class="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-amber-500/20 text-amber-400">
-                  {{ alerts().length }}
-                </span>
-              }
-            </button>
-          }
+        <!-- Tabs avec icônes + fade scroll indicator -->
+        <div class="vd-tabs-wrapper">
+          <div class="vd-tabs">
+            @for (tab of tabs; track tab.key) {
+              <button
+                (click)="activeTab.set(tab.key)"
+                class="vd-tab"
+                [class.vd-tab--active]="activeTab() === tab.key"
+              >
+                <lucide-icon [img]="tab.icon" [size]="16"></lucide-icon>
+                <span class="vd-tab-label">{{ tab.label }}</span>
+                @if (tab.key === 'alerts' && alerts().length > 0) {
+                  <span class="vd-tab-badge">{{ alerts().length }}</span>
+                }
+              </button>
+            }
+          </div>
         </div>
 
         <!-- Tab content -->
@@ -167,41 +160,33 @@ import { relativeTime } from '../../shared/utils/relative-time';
 
         @if (activeTab() === 'history') {
           @if (recentPositions().length > 0) {
-            <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-x-auto">
-              <table class="w-full text-sm min-w-[560px]">
-                <thead class="border-b border-border-subtle text-fg-tertiary text-xs uppercase">
-                  <tr>
-                    <th class="p-3 text-left">Horodatage</th>
-                    <th class="p-3 text-right">Vitesse</th>
-                    <th class="p-3 text-left">Coordonnées</th>
-                    <th class="p-3 text-center">Moteur</th>
-                    <th class="p-3 text-center">Fix</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  @for (pos of recentPositions(); track pos.id) {
-                    <tr class="border-b border-border-subtle/50 hover:bg-bg-tertiary/50">
-                      <td class="p-3 text-fg-primary">{{ pos.timestamp | date:'dd/MM HH:mm:ss' }}</td>
-                      <td class="p-3 text-right font-mono text-fg-primary">{{ pos.speedKmh | number:'1.0-1' }} km/h</td>
-                      <td class="p-3 font-mono text-xs text-fg-tertiary">
-                        {{ pos.lat | number:'1.4-4' }}, {{ pos.lng | number:'1.4-4' }}
-                      </td>
-                      <td class="p-3 text-center">
-                        @if (pos.ignition === true) {
-                          <span class="w-2 h-2 rounded-full inline-block bg-tracky-light" title="Contact ON"></span>
-                        } @else if (pos.ignition === false) {
-                          <span class="w-2 h-2 rounded-full inline-block bg-red-500" title="Contact OFF"></span>
-                        } @else {
-                          <span class="w-2 h-2 rounded-full inline-block bg-fg-tertiary" title="Inconnu"></span>
-                        }
-                      </td>
-                      <td class="p-3 text-center text-fg-tertiary">
-                        @if (pos.valid) { ✓ } @else { ✗ }
-                      </td>
-                    </tr>
-                  }
-                </tbody>
-              </table>
+            <!-- Liste de cards (mobile-first) -->
+            <div class="vd-history-list">
+              @for (pos of recentPositions(); track pos.id) {
+                <div class="vd-history-card">
+                  <div class="vd-history-row">
+                    <span class="vd-history-time">{{ pos.timestamp | date:'dd/MM HH:mm:ss' }}</span>
+                    <span class="vd-history-speed" [class.zero]="pos.speedKmh < 1">
+                      {{ pos.speedKmh | number:'1.0-1' }} <span class="vd-history-speed-unit">km/h</span>
+                    </span>
+                  </div>
+                  <div class="vd-history-row vd-history-row--meta">
+                    <span class="vd-history-coords">{{ pos.lat | number:'1.4-4' }}, {{ pos.lng | number:'1.4-4' }}</span>
+                    <span class="vd-history-flags">
+                      @if (pos.ignition === true) {
+                        <span class="vd-history-flag vd-history-flag--on">Contact ON</span>
+                      } @else if (pos.ignition === false) {
+                        <span class="vd-history-flag vd-history-flag--off">Contact OFF</span>
+                      }
+                      @if (pos.valid) {
+                        <span class="vd-history-flag vd-history-flag--ok">Fix ✓</span>
+                      } @else {
+                        <span class="vd-history-flag vd-history-flag--ko">Fix ✗</span>
+                      }
+                    </span>
+                  </div>
+                </div>
+              }
             </div>
           } @else {
             <div class="flex flex-col items-center justify-center h-40 rounded-[--radius-card]
@@ -275,37 +260,42 @@ import { relativeTime } from '../../shared/utils/relative-time';
 
         @if (activeTab() === 'trips') {
           @if (vehicleTrips().length > 0) {
-            <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-x-auto">
-              <table class="w-full text-sm min-w-[640px]">
-                <thead class="border-b border-border-subtle text-fg-tertiary text-xs uppercase">
-                  <tr>
-                    <th class="p-3 text-left">Début</th>
-                    <th class="p-3 text-left">Fin</th>
-                    <th class="p-3 text-right">Durée</th>
-                    <th class="p-3 text-right">Distance</th>
-                    <th class="p-3 text-right">Vitesse max</th>
-                    <th class="p-3 text-right">Vitesse moy.</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  @for (trip of vehicleTrips(); track trip.id) {
-                    <tr class="border-b border-border-subtle/50 hover:bg-bg-tertiary/50">
-                      <td class="p-3 text-fg-primary">{{ trip.startedAt | date:'dd/MM HH:mm' }}</td>
-                      <td class="p-3 text-fg-primary">
+            <div class="vd-trips-list">
+              @for (trip of vehicleTrips(); track trip.id) {
+                <div class="vd-trip-card">
+                  <div class="vd-trip-header">
+                    <div class="vd-trip-period">
+                      <span class="vd-trip-date">{{ trip.startedAt | date:'dd MMM' }}</span>
+                      <span class="vd-trip-times">
+                        {{ trip.startedAt | date:'HH:mm' }}
                         @if (trip.endedAt) {
-                          {{ trip.endedAt | date:'dd/MM HH:mm' }}
+                          → {{ trip.endedAt | date:'HH:mm' }}
                         } @else {
-                          <span class="text-tracky-light">En cours</span>
+                          <span class="vd-trip-live">· en cours</span>
                         }
-                      </td>
-                      <td class="p-3 text-right font-mono text-fg-primary">{{ formatDuration(trip.durationSeconds) }}</td>
-                      <td class="p-3 text-right font-mono text-fg-primary">{{ (trip.distanceMeters / 1000) | number:'1.1-1' }} km</td>
-                      <td class="p-3 text-right font-mono text-fg-primary">{{ trip.maxSpeed | number:'1.0-0' }} km/h</td>
-                      <td class="p-3 text-right font-mono text-fg-tertiary">{{ trip.avgSpeed | number:'1.0-0' }} km/h</td>
-                    </tr>
-                  }
-                </tbody>
-              </table>
+                      </span>
+                    </div>
+                    <div class="vd-trip-distance">
+                      <strong>{{ (trip.distanceMeters / 1000) | number:'1.1-1' }}</strong>
+                      <span class="vd-trip-distance-unit">km</span>
+                    </div>
+                  </div>
+                  <div class="vd-trip-stats">
+                    <div class="vd-trip-stat">
+                      <span class="vd-trip-stat-label">Durée</span>
+                      <span class="vd-trip-stat-value">{{ formatDuration(trip.durationSeconds) }}</span>
+                    </div>
+                    <div class="vd-trip-stat">
+                      <span class="vd-trip-stat-label">V. max</span>
+                      <span class="vd-trip-stat-value vd-trip-stat-value--max">{{ trip.maxSpeed | number:'1.0-0' }} km/h</span>
+                    </div>
+                    <div class="vd-trip-stat">
+                      <span class="vd-trip-stat-label">V. moy.</span>
+                      <span class="vd-trip-stat-value">{{ trip.avgSpeed | number:'1.0-0' }} km/h</span>
+                    </div>
+                  </div>
+                </div>
+              }
             </div>
           } @else {
             <div class="flex flex-col items-center justify-center h-40 rounded-[--radius-card]
@@ -318,6 +308,272 @@ import { relativeTime } from '../../shared/utils/relative-time';
       </div>
     }
   `,
+  styles: [`
+    /* ─── Stats bar horizontale compacte ─── */
+    .vd-stats-bar {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+    .vd-stat {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      min-width: 0;
+    }
+    .vd-stat lucide-icon {
+      flex-shrink: 0;
+      color: var(--fg-tertiary);
+    }
+    .vd-stat--online lucide-icon { color: var(--tracky-light); }
+    .vd-stat-content {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      flex: 1;
+    }
+    .vd-stat-label {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--fg-tertiary);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      line-height: 1.2;
+    }
+    .vd-stat-value {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--fg-primary);
+      line-height: 1.3;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .vd-stat--mono .vd-stat-value {
+      font-family: var(--font-mono, monospace);
+      font-size: 12px;
+    }
+
+    /* ─── Tabs avec icônes + fade scroll indicator ─── */
+    .vd-tabs-wrapper {
+      position: relative;
+      border-bottom: 1px solid var(--border-subtle);
+      margin-left: -16px;
+      margin-right: -16px;
+    }
+    /* Fade gradient à droite indiquant qu'il y a plus de tabs */
+    .vd-tabs-wrapper::after {
+      content: '';
+      position: absolute;
+      right: 0; top: 0; bottom: 1px;
+      width: 32px;
+      pointer-events: none;
+      background: linear-gradient(to right, transparent, var(--bg-primary) 70%);
+      z-index: 1;
+    }
+    .vd-tabs {
+      display: flex;
+      gap: 2px;
+      overflow-x: auto;
+      scrollbar-width: none;
+      padding: 0 16px;
+      scroll-snap-type: x proximity;
+    }
+    .vd-tabs::-webkit-scrollbar { display: none; }
+
+    .vd-tab {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 12px;
+      background: transparent;
+      border: 0;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      color: var(--fg-tertiary);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: color .15s, border-color .15s;
+      flex-shrink: 0;
+      white-space: nowrap;
+      scroll-snap-align: start;
+    }
+    .vd-tab:hover { color: var(--fg-secondary); }
+    .vd-tab--active {
+      color: var(--tracky-light) !important;
+      border-bottom-color: var(--tracky-light);
+    }
+    .vd-tab-badge {
+      padding: 2px 6px;
+      border-radius: 9999px;
+      background: rgba(245,158,11,.18);
+      color: #f59e0b;
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    /* Mobile : tabs plus compacts (icône + texte) */
+    @media (max-width: 640px) {
+      .vd-tab { padding: 10px 10px; font-size: 12px; gap: 5px; }
+      .vd-tab-label { display: inline; }
+    }
+
+    /* ─── Historique : cards mobile-first ─── */
+    .vd-history-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .vd-history-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 12px 14px;
+      transition: border-color .15s;
+    }
+    .vd-history-card:hover { border-color: var(--border-strong); }
+    .vd-history-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .vd-history-row--meta { margin-top: 6px; }
+    .vd-history-time {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--fg-primary);
+      font-family: var(--font-mono, monospace);
+    }
+    .vd-history-speed {
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--tracky-light);
+      font-family: var(--font-display, Poppins, sans-serif);
+      letter-spacing: -.02em;
+    }
+    .vd-history-speed.zero { color: var(--fg-tertiary); }
+    .vd-history-speed-unit { font-size: 10px; font-weight: 500; opacity: .7; }
+    .vd-history-coords {
+      font-size: 11px;
+      color: var(--fg-tertiary);
+      font-family: var(--font-mono, monospace);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+      min-width: 0;
+    }
+    .vd-history-flags {
+      display: flex;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .vd-history-flag {
+      font-size: 9px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 9999px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      white-space: nowrap;
+    }
+    .vd-history-flag--on { background: rgba(16,224,160,.12); color: var(--tracky-light); }
+    .vd-history-flag--off { background: rgba(239,68,68,.12); color: #ef4444; }
+    .vd-history-flag--ok { background: var(--bg-tertiary); color: var(--fg-tertiary); }
+    .vd-history-flag--ko { background: rgba(239,68,68,.08); color: #ef4444; }
+
+    /* ─── Trajets : cards mobile-first ─── */
+    .vd-trips-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .vd-trip-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      padding: 14px;
+      transition: border-color .15s;
+    }
+    .vd-trip-card:hover { border-color: var(--border-strong); }
+    .vd-trip-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .vd-trip-period { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+    .vd-trip-date {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--fg-tertiary);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .vd-trip-times {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--fg-primary);
+      font-family: var(--font-mono, monospace);
+      margin-top: 2px;
+    }
+    .vd-trip-live { color: var(--tracky-light); font-weight: 600; }
+    .vd-trip-distance {
+      display: flex;
+      align-items: baseline;
+      gap: 3px;
+      flex-shrink: 0;
+    }
+    .vd-trip-distance strong {
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--tracky-light);
+      font-family: var(--font-display, Poppins, sans-serif);
+      letter-spacing: -.02em;
+    }
+    .vd-trip-distance-unit { font-size: 11px; color: var(--fg-tertiary); font-weight: 600; }
+
+    .vd-trip-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border-subtle);
+    }
+    .vd-trip-stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .vd-trip-stat-label {
+      font-size: 9px;
+      font-weight: 700;
+      color: var(--fg-tertiary);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .vd-trip-stat-value {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--fg-primary);
+    }
+    .vd-trip-stat-value--max { color: #f59e0b; }
+
+    /* Desktop : 4 stats en ligne, plus d'espace */
+    @media (min-width: 1024px) {
+      .vd-stats-bar { grid-template-columns: repeat(4, 1fr); gap: 12px; }
+      .vd-stat { padding: 12px 14px; }
+      .vd-stat-value { font-size: 14px; }
+      .vd-stat-label { font-size: 11px; }
+      .vd-tabs-wrapper { margin-left: 0; margin-right: 0; }
+      .vd-tabs { padding: 0; }
+      .vd-tabs-wrapper::after { display: none; }
+    }
+  `],
 })
 export class VehicleDetailComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
@@ -356,12 +612,12 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly relativeTime = relativeTime;
 
   protected readonly tabs = [
-    { key: 'map' as const, label: 'Carte' },
-    { key: 'history' as const, label: 'Historique' },
-    { key: 'alerts' as const, label: 'Alertes' },
-    { key: 'commands' as const, label: 'Commandes' },
-    { key: 'schedule' as const, label: 'Horaires' },
-    { key: 'trips' as const, label: 'Trajets' },
+    { key: 'map' as const, label: 'Carte', icon: Map },
+    { key: 'history' as const, label: 'Historique', icon: History },
+    { key: 'alerts' as const, label: 'Alertes', icon: Bell },
+    { key: 'trips' as const, label: 'Trajets', icon: Route },
+    { key: 'commands' as const, label: 'Commandes', icon: Zap },
+    { key: 'schedule' as const, label: 'Horaires', icon: Clock },
   ];
 
   private lastAlertCount = -1;

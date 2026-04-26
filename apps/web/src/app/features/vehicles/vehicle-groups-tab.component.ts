@@ -12,12 +12,13 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
   imports: [FormsModule, LucideAngularModule, ConfirmModalComponent],
   template: `
     <div class="flex flex-col gap-4">
-      <!-- Header -->
-      <div class="flex items-center justify-between">
-        <p class="text-sm text-fg-secondary">Organisez vos véhicules en groupes pour gérer les accès.</p>
+      <!-- Header : description + bouton (stack en mobile, row en desktop) -->
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p class="text-sm text-fg-secondary flex-1">Organisez vos véhicules en groupes pour gérer les accès.</p>
         <button (click)="showCreateModal.set(true)"
-          class="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-xl
-                 bg-tracky hover:bg-tracky-dark text-white transition-colors cursor-pointer">
+          class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl
+                 bg-tracky hover:bg-tracky-dark text-white transition-colors cursor-pointer
+                 whitespace-nowrap shrink-0 self-start sm:self-auto">
           <lucide-icon [img]="Plus" [size]="14"></lucide-icon>
           Nouveau groupe
         </button>

@@ -21,11 +21,11 @@ const COLOR_MAP: Record<ToastKind, string> = {
   standalone: true,
   imports: [LucideAngularModule],
   template: `
-    <div class="toast-stack fixed right-4 z-[9999] flex flex-col gap-2 pointer-events-none">
+    <div class="toast-stack fixed right-4 z-[6000] flex flex-col gap-2 pointer-events-none">
       @for (toast of toastService.toasts(); track toast.id) {
         <div class="pointer-events-auto animate-slide-in
                     bg-bg-secondary/95 backdrop-blur-md border border-border-subtle
-                    rounded-xl p-4 min-w-[300px] max-w-[400px]
+                    rounded-xl p-4 min-w-[260px] max-w-[400px]
                     flex items-start gap-3 shadow-lg">
           <lucide-icon
             [img]="iconFor(toast.kind)"
@@ -55,12 +55,29 @@ const COLOR_MAP: Record<ToastKind, string> = {
     }
     .animate-slide-in { animation: slideIn 0.3s ease-out; }
 
-    /* Sit above the bottom-bar on mobile (60px bar + safe-area + 16px gap). */
+    /* Position : bas-droite, plus de bottom-bar à éviter. Mobile : safe-area + 16px. */
     .toast-stack { bottom: 1rem; }
     @media (max-width: 768px) {
       .toast-stack {
-        bottom: calc(60px + env(safe-area-inset-bottom) + 16px);
+        bottom: calc(env(safe-area-inset-bottom) + 16px);
+        right: 12px;
+        left: 12px;
+        max-width: none;
       }
+      /* Sur mobile, les toasts prennent toute la largeur disponible */
+      .toast-stack > div {
+        min-width: 0 !important;
+        max-width: none !important;
+        width: 100%;
+      }
+    }
+    /* Quand un modal/drawer est ouvert (body scroll lock ou overlay actif),
+       on déplace le toast vers le haut pour ne pas masquer les actions. */
+    body:has(.mobile-overlay) .toast-stack,
+    body:has(.tracky-mobile-sheet--open) .toast-stack,
+    body:has(.dash-customizer-overlay) .toast-stack {
+      bottom: auto !important;
+      top: calc(env(safe-area-inset-top) + 12px) !important;
     }
   `],
 })

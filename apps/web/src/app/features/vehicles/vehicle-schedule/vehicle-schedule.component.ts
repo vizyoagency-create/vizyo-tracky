@@ -1,6 +1,6 @@
 import { Component, computed, effect, inject, input, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, Clock, Save, X, Shield } from 'lucide-angular';
+import { LucideAngularModule, Clock, Save, X, Shield, Briefcase, Calendar, Settings2, Zap } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../../core/services/auth.service';
 import {
@@ -56,43 +56,83 @@ const TIMEZONES = [
         <span class="w-6 h-6 border-2 border-fg-tertiary border-t-tracky-light rounded-full animate-spin"></span>
       </div>
     } @else {
-      <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-hidden">
-        <!-- Header -->
-        <div class="flex items-center justify-between gap-3 p-3 sm:p-4 border-b border-border-subtle">
-          <div class="flex items-center gap-2 sm:gap-3 min-w-0">
-            <lucide-icon [img]="ShieldIcon" [size]="20" class="text-tracky-light shrink-0"></lucide-icon>
-            <span class="text-sm font-semibold text-fg-primary truncate">Automatisation horaire</span>
+      <div class="vsched-container">
+        <!-- Header avec status pill -->
+        <div class="vsched-header">
+          <div class="vsched-header-left">
+            <div class="vsched-header-icon">
+              <lucide-icon [img]="ShieldIcon" [size]="18"></lucide-icon>
+            </div>
+            <div>
+              <h3 class="vsched-header-title">Automatisation horaire</h3>
+              <p class="vsched-header-sub">
+                @if (globalEnabled()) {
+                  <span class="vsched-status vsched-status--on">● Activée</span>
+                } @else {
+                  <span class="vsched-status vsched-status--off">○ Désactivée</span>
+                }
+                · {{ enabledDaysCount() }} jour{{ enabledDaysCount() > 1 ? 's' : '' }} actif{{ enabledDaysCount() > 1 ? 's' : '' }}
+              </p>
+            </div>
           </div>
-          <div class="flex items-center gap-3 shrink-0">
-            <!-- Global toggle -->
-            <label class="flex items-center gap-2 cursor-pointer">
-              <span class="text-xs text-fg-tertiary hidden sm:inline">{{ globalEnabled() ? 'Activée' : 'Inactive' }}</span>
-              <button
-                type="button"
-                (click)="onToggleGlobal()"
-                [disabled]="readonly()"
-                class="relative w-10 h-5 rounded-full transition-colors cursor-pointer disabled:opacity-50"
-                [class]="globalEnabled() ? 'bg-tracky' : 'bg-bg-tertiary border border-border-subtle'"
-              >
-                <span
-                  class="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform"
-                  [class]="globalEnabled() ? 'translate-x-5' : 'translate-x-0.5'"
-                ></span>
-              </button>
-            </label>
-          </div>
+          <button
+            type="button"
+            (click)="onToggleGlobal()"
+            [disabled]="readonly()"
+            class="vsched-toggle"
+            [class.vsched-toggle--on]="globalEnabled()"
+            aria-label="Activer / désactiver l'automatisation"
+          >
+            <span class="vsched-toggle-knob"></span>
+          </button>
         </div>
 
-        <!-- Timezone -->
-        <div class="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 border-b border-border-subtle/50">
-          <lucide-icon [img]="ClockIcon" [size]="14" class="text-fg-tertiary shrink-0"></lucide-icon>
-          <span class="text-xs text-fg-tertiary shrink-0">Fuseau horaire</span>
+        <!-- Aperçu d'aujourd'hui -->
+        @if (todayPreview(); as preview) {
+          <div class="vsched-today">
+            <lucide-icon [img]="ClockIcon" [size]="14"></lucide-icon>
+            <span>{{ preview }}</span>
+          </div>
+        }
+
+        <!-- Presets rapides -->
+        @if (!readonly()) {
+          <div class="vsched-presets">
+            <p class="vsched-section-title">
+              <lucide-icon [img]="ZapIcon" [size]="12"></lucide-icon>
+              Presets rapides
+            </p>
+            <div class="vsched-preset-grid">
+              <button type="button" (click)="applyPreset('weekday')" class="vsched-preset">
+                <lucide-icon [img]="BriefcaseIcon" [size]="14"></lucide-icon>
+                <span>Bureau</span>
+                <small>Lun–Ven · 8h–18h</small>
+              </button>
+              <button type="button" (click)="applyPreset('all-day')" class="vsched-preset">
+                <lucide-icon [img]="CalendarIcon" [size]="14"></lucide-icon>
+                <span>7j/7</span>
+                <small>Tous les jours</small>
+              </button>
+              <button type="button" (click)="applyPreset('reset-default')" class="vsched-preset">
+                <lucide-icon [img]="Settings2Icon" [size]="14"></lucide-icon>
+                <span>Standard</span>
+                <small>Lun–Ven · 8h–20h</small>
+              </button>
+            </div>
+          </div>
+        }
+
+        <!-- Fuseau horaire -->
+        <div class="vsched-timezone">
+          <span class="vsched-section-title">
+            <lucide-icon [img]="ClockIcon" [size]="12"></lucide-icon>
+            Fuseau horaire
+          </span>
           <select
             [ngModel]="timezone()"
             (ngModelChange)="timezone.set($event); dirty.set(true)"
             [disabled]="readonly()"
-            class="ml-auto min-w-0 max-w-[60%] text-xs bg-bg-tertiary text-fg-primary border border-border-subtle
-                   rounded-lg px-2 py-1 outline-none focus:border-tracky/50 truncate"
+            class="vsched-tz-select"
           >
             @for (tz of timezones; track tz.value) {
               <option [value]="tz.value">{{ tz.label }}</option>
@@ -100,103 +140,82 @@ const TIMEZONES = [
           </select>
         </div>
 
-        <!-- Days -->
-        <div class="divide-y divide-border-subtle/50">
-          @for (day of days(); track day.key) {
-            <div class="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 sm:px-4 py-3"
-                 [class]="day.enabled ? '' : 'opacity-50'">
-              <!-- Day toggle -->
-              <button
-                type="button"
-                (click)="toggleDay(day.key)"
-                [disabled]="readonly()"
-                class="relative w-8 h-4 rounded-full transition-colors cursor-pointer shrink-0 disabled:opacity-50"
-                [class]="day.enabled ? 'bg-tracky' : 'bg-bg-tertiary border border-border-subtle'"
-              >
-                <span
-                  class="absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform"
-                  [class]="day.enabled ? 'translate-x-4' : 'translate-x-0.5'"
-                ></span>
-              </button>
-
-              <!-- Day name: takes remaining row on mobile, fixed width on sm+ -->
-              <span class="flex-1 min-w-0 sm:flex-none sm:w-24 text-sm font-medium text-fg-primary">
-                {{ day.label }}
-              </span>
-
-              @if (day.enabled) {
-                <!-- Time inputs: full new row on mobile, inline on sm+ -->
-                <div class="flex items-center gap-2 w-full sm:w-auto sm:ml-0">
-                  <input
-                    type="time"
-                    [ngModel]="day.start"
-                    (ngModelChange)="updateDayTime(day.key, 'start', $event)"
+        <!-- Jours sous forme de cards -->
+        <div class="vsched-days">
+          <p class="vsched-section-title">Planning hebdomadaire</p>
+          <div class="vsched-days-grid">
+            @for (day of days(); track day.key) {
+              <div class="vsched-day-card"
+                   [class.vsched-day-card--off]="!day.enabled">
+                <div class="vsched-day-header">
+                  <span class="vsched-day-name">{{ day.label }}</span>
+                  <button
+                    type="button"
+                    (click)="toggleDay(day.key)"
                     [disabled]="readonly()"
-                    class="flex-1 sm:flex-none text-xs bg-bg-tertiary text-fg-primary border border-border-subtle
-                           rounded-lg px-2 py-1.5 outline-none focus:border-tracky/50
-                           disabled:opacity-50"
-                  />
-                  <span class="text-fg-tertiary text-xs shrink-0">→</span>
-                  <input
-                    type="time"
-                    [ngModel]="day.end"
-                    (ngModelChange)="updateDayTime(day.key, 'end', $event)"
-                    [disabled]="readonly()"
-                    class="flex-1 sm:flex-none text-xs bg-bg-tertiary text-fg-primary border border-border-subtle
-                           rounded-lg px-2 py-1.5 outline-none focus:border-tracky/50
-                           disabled:opacity-50"
-                  />
+                    class="vsched-day-toggle"
+                    [class.vsched-day-toggle--on]="day.enabled"
+                    [attr.aria-label]="(day.enabled ? 'Désactiver ' : 'Activer ') + day.label"
+                  >
+                    <span class="vsched-day-toggle-knob"></span>
+                  </button>
                 </div>
-              } @else {
-                <span class="text-xs text-fg-tertiary italic w-full sm:w-auto">— véhicule immobilisé —</span>
-              }
-            </div>
-          }
-        </div>
 
-        <!-- Preview -->
-        @if (todayPreview(); as preview) {
-          <div class="px-4 py-3 border-t border-border-subtle bg-bg-tertiary/30">
-            <p class="text-xs text-fg-secondary">
-              {{ preview }}
-            </p>
+                @if (day.enabled) {
+                  <div class="vsched-day-times">
+                    <input
+                      type="time"
+                      [ngModel]="day.start"
+                      (ngModelChange)="updateDayTime(day.key, 'start', $event)"
+                      [disabled]="readonly()"
+                      class="vsched-time-input"
+                    />
+                    <span class="vsched-time-arrow">→</span>
+                    <input
+                      type="time"
+                      [ngModel]="day.end"
+                      (ngModelChange)="updateDayTime(day.key, 'end', $event)"
+                      [disabled]="readonly()"
+                      class="vsched-time-input"
+                    />
+                  </div>
+                } @else {
+                  <p class="vsched-day-off">Véhicule immobilisé</p>
+                }
+              </div>
+            }
           </div>
-        }
+        </div>
 
         <!-- Override warning -->
         @if (schedule()?.overrideUntil; as overrideUntil) {
           @if (isOverrideActive(overrideUntil)) {
-            <div class="px-4 py-2 border-t border-amber-500/20 bg-amber-500/5">
-              <p class="text-xs text-amber-400">
-                Commande manuelle en cours — automatisation suspendue temporairement
-              </p>
+            <div class="vsched-override">
+              <lucide-icon [img]="ZapIcon" [size]="14"></lucide-icon>
+              <span>Commande manuelle en cours — automatisation suspendue temporairement</span>
             </div>
           }
         }
 
-        <!-- Actions -->
-        @if (!readonly()) {
-          <div class="flex items-center justify-end gap-2 p-4 border-t border-border-subtle">
-            @if (dirty()) {
-              <button
-                (click)="reset()"
-                class="px-3 py-1.5 text-xs rounded-lg bg-bg-tertiary text-fg-tertiary
-                       border border-border-subtle hover:text-fg-primary transition-colors cursor-pointer"
-              >
-                <lucide-icon [img]="XIcon" [size]="12" class="inline mr-1"></lucide-icon>
-                Annuler
-              </button>
-            }
+        <!-- Actions sticky en bas -->
+        @if (!readonly() && dirty()) {
+          <div class="vsched-actions">
+            <button
+              (click)="reset()"
+              class="vsched-btn vsched-btn--ghost"
+            >
+              <lucide-icon [img]="XIcon" [size]="14"></lucide-icon>
+              Annuler
+            </button>
             <button
               (click)="save()"
-              [disabled]="saving() || !dirty()"
-              class="px-4 py-1.5 text-xs rounded-lg bg-tracky hover:bg-tracky-dark text-white
-                     transition-colors cursor-pointer disabled:opacity-50"
+              [disabled]="saving()"
+              class="vsched-btn vsched-btn--primary"
             >
               @if (saving()) {
-                <span class="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin inline-block mr-1"></span>
+                <span class="vsched-spinner"></span>
               } @else {
-                <lucide-icon [img]="SaveIcon" [size]="12" class="inline mr-1"></lucide-icon>
+                <lucide-icon [img]="SaveIcon" [size]="14"></lucide-icon>
               }
               Enregistrer
             </button>
@@ -218,6 +237,247 @@ const TIMEZONES = [
       />
     }
   `,
+  styles: [`
+    .vsched-container {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-card);
+      overflow: hidden;
+    }
+
+    /* Header */
+    .vsched-header {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .vsched-header-left { display: flex; align-items: center; gap: 12px; min-width: 0 }
+    .vsched-header-icon {
+      width: 36px; height: 36px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(16,224,160,.12); color: var(--tracky-light);
+      flex-shrink: 0;
+    }
+    .vsched-header-title { font-size: 15px; font-weight: 700; color: var(--fg-primary); line-height: 1.2 }
+    .vsched-header-sub { font-size: 11px; color: var(--fg-tertiary); margin-top: 3px; line-height: 1.2 }
+    .vsched-status { font-weight: 700 }
+    .vsched-status--on { color: var(--tracky-light) }
+    .vsched-status--off { color: var(--fg-tertiary) }
+
+    /* Toggle global */
+    .vsched-toggle {
+      position: relative; flex-shrink: 0;
+      width: 44px; height: 24px;
+      border-radius: 9999px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-subtle);
+      cursor: pointer;
+      transition: background .2s;
+    }
+    .vsched-toggle--on { background: var(--tracky); border-color: var(--tracky) }
+    .vsched-toggle:disabled { opacity: .5; cursor: not-allowed }
+    .vsched-toggle-knob {
+      position: absolute; top: 2px; left: 2px;
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: white;
+      transition: transform .25s cubic-bezier(0.34, 1.56, 0.64, 1);
+      box-shadow: 0 2px 4px rgba(0,0,0,.15);
+    }
+    .vsched-toggle--on .vsched-toggle-knob { transform: translateX(20px) }
+
+    /* Today preview */
+    .vsched-today {
+      display: flex; align-items: flex-start; gap: 8px;
+      padding: 10px 16px;
+      background: rgba(16,224,160,.06);
+      border-bottom: 1px solid var(--border-subtle);
+      color: var(--tracky-light);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .vsched-today lucide-icon { flex-shrink: 0; margin-top: 1px }
+
+    /* Section title */
+    .vsched-section-title {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 10px; font-weight: 700;
+      color: var(--fg-tertiary);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      margin-bottom: 8px;
+    }
+
+    /* Presets */
+    .vsched-presets { padding: 14px 16px; border-bottom: 1px solid var(--border-subtle) }
+    .vsched-preset-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    .vsched-preset {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 4px;
+      padding: 10px 6px;
+      border-radius: 10px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-subtle);
+      color: var(--fg-secondary);
+      cursor: pointer;
+      transition: all .2s;
+      min-height: 64px;
+    }
+    .vsched-preset:hover, .vsched-preset:active {
+      border-color: var(--tracky);
+      color: var(--tracky-light);
+      transform: translateY(-1px);
+    }
+    .vsched-preset lucide-icon { color: var(--tracky-light) }
+    .vsched-preset span { font-size: 12px; font-weight: 700 }
+    .vsched-preset small { font-size: 9px; color: var(--fg-tertiary); line-height: 1.2 }
+
+    /* Timezone */
+    .vsched-timezone {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .vsched-timezone .vsched-section-title { margin: 0 }
+    .vsched-tz-select {
+      max-width: 60%;
+      font-size: 12px;
+      background: var(--bg-tertiary);
+      color: var(--fg-primary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 6px 10px;
+      outline: none;
+    }
+    .vsched-tz-select:focus { border-color: var(--tracky) }
+    .vsched-tz-select:disabled { opacity: .5 }
+
+    /* Days grid */
+    .vsched-days { padding: 14px 16px }
+    .vsched-days-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+    .vsched-day-card {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 10px 12px;
+      transition: opacity .2s, border-color .2s;
+    }
+    .vsched-day-card--off { opacity: .55 }
+    .vsched-day-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .vsched-day-name {
+      font-size: 13px; font-weight: 700;
+      color: var(--fg-primary);
+    }
+    .vsched-day-toggle {
+      position: relative;
+      width: 32px; height: 18px;
+      border-radius: 9999px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
+      cursor: pointer;
+      transition: background .2s;
+    }
+    .vsched-day-toggle--on { background: var(--tracky); border-color: var(--tracky) }
+    .vsched-day-toggle:disabled { opacity: .5; cursor: not-allowed }
+    .vsched-day-toggle-knob {
+      position: absolute; top: 1px; left: 1px;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: white;
+      transition: transform .25s cubic-bezier(0.34, 1.56, 0.64, 1);
+      box-shadow: 0 1px 2px rgba(0,0,0,.15);
+    }
+    .vsched-day-toggle--on .vsched-day-toggle-knob { transform: translateX(14px) }
+
+    .vsched-day-times {
+      display: flex; align-items: center; gap: 6px;
+    }
+    .vsched-time-input {
+      flex: 1; min-width: 0;
+      font-size: 12px; font-weight: 600;
+      background: var(--bg-secondary);
+      color: var(--fg-primary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 6px 8px;
+      outline: none;
+      font-family: var(--font-mono, monospace);
+    }
+    .vsched-time-input:focus { border-color: var(--tracky) }
+    .vsched-time-input:disabled { opacity: .5 }
+    .vsched-time-arrow { color: var(--fg-tertiary); font-size: 11px; flex-shrink: 0 }
+    .vsched-day-off { font-size: 11px; color: var(--fg-tertiary); font-style: italic }
+
+    /* Override warning */
+    .vsched-override {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 16px;
+      border-top: 1px solid rgba(245,158,11,.2);
+      background: rgba(245,158,11,.06);
+      color: #f59e0b;
+      font-size: 12px;
+    }
+
+    /* Actions sticky */
+    .vsched-actions {
+      display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+      padding: 12px 16px;
+      border-top: 1px solid var(--border-subtle);
+      background: var(--bg-tertiary);
+    }
+    .vsched-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 14px;
+      border-radius: 10px;
+      font-size: 12px; font-weight: 700;
+      cursor: pointer;
+      transition: all .15s;
+      border: 0;
+    }
+    .vsched-btn:disabled { opacity: .5; cursor: not-allowed }
+    .vsched-btn--ghost {
+      background: var(--bg-secondary);
+      color: var(--fg-secondary);
+      border: 1px solid var(--border-subtle);
+    }
+    .vsched-btn--ghost:hover { color: var(--fg-primary) }
+    .vsched-btn--primary {
+      background: var(--tracky);
+      color: white;
+    }
+    .vsched-btn--primary:hover:not(:disabled) { background: var(--tracky-dark) }
+    .vsched-spinner {
+      width: 12px; height: 12px;
+      border: 2px solid rgba(255,255,255,.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: vsched-spin 0.6s linear infinite;
+      display: inline-block;
+    }
+    @keyframes vsched-spin { to { transform: rotate(360deg) } }
+
+    /* Tablet & Desktop : grille 2 colonnes pour les jours */
+    @media (min-width: 600px) {
+      .vsched-days-grid { grid-template-columns: repeat(2, 1fr) }
+    }
+    @media (min-width: 1024px) {
+      .vsched-days-grid { grid-template-columns: repeat(7, 1fr) }
+      .vsched-day-card { padding: 10px }
+      .vsched-day-name { font-size: 11px }
+      .vsched-time-input { font-size: 11px; padding: 5px 6px }
+    }
+  `],
 })
 export class VehicleScheduleComponent {
   readonly vehicleId = input.required<string>();
@@ -231,6 +491,10 @@ export class VehicleScheduleComponent {
   protected readonly SaveIcon = Save;
   protected readonly XIcon = X;
   protected readonly ShieldIcon = Shield;
+  protected readonly BriefcaseIcon = Briefcase;
+  protected readonly CalendarIcon = Calendar;
+  protected readonly Settings2Icon = Settings2;
+  protected readonly ZapIcon = Zap;
   protected readonly timezones = TIMEZONES;
 
   protected readonly loading = signal(true);
@@ -246,6 +510,40 @@ export class VehicleScheduleComponent {
     const role = this.auth.user()?.role;
     return role !== 'FLEET_ADMIN' && role !== 'SUPER_ADMIN';
   });
+
+  /** Nombre de jours actifs (utilisé dans le sub-titre header). */
+  protected readonly enabledDaysCount = computed(() =>
+    this.days().filter((d) => d.enabled).length,
+  );
+
+  /** Applique un preset rapide aux jours. */
+  protected applyPreset(preset: 'weekday' | 'all-day' | 'reset-default'): void {
+    const map: Record<typeof preset, (key: string) => DayRow> = {
+      'weekday': (key) => ({
+        key,
+        label: DAY_LABELS[key]!,
+        enabled: !['saturday', 'sunday'].includes(key),
+        start: '08:00',
+        end: '18:00',
+      }),
+      'all-day': (key) => ({
+        key,
+        label: DAY_LABELS[key]!,
+        enabled: true,
+        start: '00:00',
+        end: '23:59',
+      }),
+      'reset-default': (key) => ({
+        key,
+        label: DAY_LABELS[key]!,
+        enabled: !['saturday', 'sunday'].includes(key),
+        start: '08:00',
+        end: '20:00',
+      }),
+    };
+    this.days.set(DAY_KEYS.map((key) => map[preset](key)));
+    this.dirty.set(true);
+  }
 
   protected readonly todayPreview = computed(() => {
     if (!this.globalEnabled()) return null;

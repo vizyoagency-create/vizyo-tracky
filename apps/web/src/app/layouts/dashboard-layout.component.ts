@@ -74,10 +74,23 @@ import { ToastContainerComponent } from '../shared/ui/toast/toast-container.comp
       <!-- MAIN CONTENT -->
       <div class="main-area">
         <header class="top-bar">
-          <button (click)="mobileMenuOpen.set(true)" class="mobile-burger">
-            <lucide-icon [img]="MenuIcon" [size]="20"></lucide-icon>
-          </button>
-          <h2 class="top-title">{{ pageTitle() }}</h2>
+          <!-- Wave layers (effet vague glassy tracky) -->
+          <span class="top-bar-wave top-bar-wave--1"></span>
+          <span class="top-bar-wave top-bar-wave--2"></span>
+
+          <div class="top-bar-left">
+            <button (click)="mobileMenuOpen.set(true)" class="mobile-burger" aria-label="Menu">
+              <lucide-icon [img]="MenuIcon" [size]="18"></lucide-icon>
+            </button>
+            <a routerLink="/dashboard" class="top-bar-brand">
+              <app-logo variant="icon" [size]="26" />
+              <span class="top-bar-brand-text">
+                <span class="top-bar-brand-name">Vizyo</span>
+                <span class="top-bar-brand-name top-bar-brand-name--accent">Tracky</span>
+              </span>
+            </a>
+            <h2 class="top-title">{{ pageTitle() }}</h2>
+          </div>
           <div class="top-actions">
             <app-alerts-bell />
             <app-theme-toggle />
@@ -87,23 +100,6 @@ import { ToastContainerComponent } from '../shared/ui/toast/toast-container.comp
           <router-outlet />
         </main>
       </div>
-
-      <!-- MOBILE BOTTOM BAR -->
-      <nav class="bottom-bar">
-        @for (item of bottomItems; track item.label) {
-          @if (item.route === 'more') {
-            <button (click)="mobileMenuOpen.set(true)" class="bottom-item">
-              <lucide-icon [img]="item.icon" [size]="20"></lucide-icon>
-              <span>{{ item.label }}</span>
-            </button>
-          } @else {
-            <a [routerLink]="item.route" routerLinkActive="active" class="bottom-item">
-              <lucide-icon [img]="item.icon" [size]="20"></lucide-icon>
-              <span>{{ item.label }}</span>
-            </a>
-          }
-        }
-      </nav>
 
       <app-toast-container />
     </div>
@@ -140,22 +136,102 @@ import { ToastContainerComponent } from '../shared/ui/toast/toast-container.comp
     .mobile-overlay { display: none }
     .mobile-drawer { display: none }
 
-    /* ─── TOP BAR ─── */
+    /* ─── TOP BAR avec effet vague glassy ─── */
     .top-bar {
-      display: flex; align-items: center; justify-content: space-between; padding: 0 24px; height: 56px;
-      border-bottom: 1px solid var(--border-subtle); background: var(--bg-secondary); shrink: 0;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 20px; height: 56px;
+      flex-shrink: 0;
+      position: relative;
+      overflow: hidden;
+      z-index: 50;
+      border-bottom: 1px solid color-mix(in srgb, var(--tracky-light, #10E0A0) 14%, var(--border-subtle));
+      background: color-mix(in srgb, var(--bg-secondary) 70%, transparent);
+      backdrop-filter: blur(14px) saturate(1.5);
+      -webkit-backdrop-filter: blur(14px) saturate(1.5);
     }
+    .top-bar-wave {
+      content: '';
+      position: absolute;
+      top: 0; bottom: 0;
+      width: 250%;
+      pointer-events: none;
+      z-index: 0;
+    }
+    .top-bar-wave--1 {
+      left: -75%;
+      background:
+        radial-gradient(ellipse 30% 140% at 20% 50%, rgba(16,224,160,.30), transparent 70%),
+        radial-gradient(ellipse 25% 120% at 55% 40%, rgba(94,234,212,.20), transparent 60%),
+        radial-gradient(ellipse 20% 100% at 80% 55%, rgba(167,243,208,.14), transparent 55%);
+      animation: tracky-nav-wave-1 8s ease-in-out infinite alternate;
+    }
+    .top-bar-wave--2 {
+      right: -75%;
+      background:
+        radial-gradient(ellipse 28% 130% at 35% 55%, rgba(52,211,153,.22), transparent 65%),
+        radial-gradient(ellipse 22% 110% at 65% 45%, rgba(103,232,249,.16), transparent 55%),
+        radial-gradient(ellipse 30% 120% at 85% 50%, rgba(16,224,160,.28), transparent 60%);
+      animation: tracky-nav-wave-2 11s ease-in-out infinite alternate;
+    }
+    @keyframes tracky-nav-wave-1 {
+      0%   { transform: translateX(0%);  opacity: .55 }
+      30%  { opacity: .85 }
+      50%  { transform: translateX(18%); opacity: .6 }
+      70%  { opacity: .9 }
+      100% { transform: translateX(35%); opacity: .65 }
+    }
+    @keyframes tracky-nav-wave-2 {
+      0%   { transform: translateX(0%);   opacity: .5 }
+      25%  { opacity: .8 }
+      50%  { transform: translateX(-12%); opacity: .55 }
+      75%  { opacity: .85 }
+      100% { transform: translateX(-30%); opacity: .6 }
+    }
+    /* Light theme : version plus douce (le fond est déjà clair) */
+    :host-context([data-theme='light']) .top-bar-wave--1 {
+      background:
+        radial-gradient(ellipse 30% 140% at 20% 50%, rgba(16,224,160,.16), transparent 70%),
+        radial-gradient(ellipse 25% 120% at 55% 40%, rgba(94,234,212,.10), transparent 60%),
+        radial-gradient(ellipse 20% 100% at 80% 55%, rgba(5,150,105,.06), transparent 55%);
+    }
+    :host-context([data-theme='light']) .top-bar-wave--2 {
+      background:
+        radial-gradient(ellipse 28% 130% at 35% 55%, rgba(52,211,153,.10), transparent 65%),
+        radial-gradient(ellipse 22% 110% at 65% 45%, rgba(103,232,249,.08), transparent 55%),
+        radial-gradient(ellipse 30% 120% at 85% 50%, rgba(16,224,160,.14), transparent 60%);
+    }
+    /* Respecter prefers-reduced-motion */
+    @media (prefers-reduced-motion: reduce) {
+      .top-bar-wave--1, .top-bar-wave--2 { animation: none }
+    }
+
+    .top-bar-left { display: flex; align-items: center; gap: 12px; min-width: 0; position: relative; z-index: 1 }
+    .top-bar-brand {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+      transition: opacity .2s;
+    }
+    .top-bar-brand:hover { opacity: .85 }
+    .top-bar-brand-text {
+      display: flex; align-items: baseline; gap: 4px;
+      font-size: 14px; font-weight: 800;
+      letter-spacing: -.01em;
+      line-height: 1;
+    }
+    .top-bar-brand-name { color: var(--fg-primary) }
+    .top-bar-brand-name--accent { color: var(--tracky-light) }
+
     .mobile-burger { display: none }
-    .top-title { font-size: 16px; font-weight: 700; color: var(--fg-primary) }
-    .top-actions { display: flex; align-items: center; gap: 12px }
+    .top-title { font-size: 16px; font-weight: 700; color: var(--fg-primary); position: relative; z-index: 1 }
+    .top-actions { display: flex; align-items: center; gap: 12px; position: relative; z-index: 1 }
 
     /* ─── MAIN ─── */
     .main-area { flex: 1; display: flex; flex-direction: column; min-width: 0 }
     .content { flex: 1; padding: 24px; overflow: auto; position: relative }
     .content.fullscreen { padding: 0; overflow: hidden }
 
-    /* ─── BOTTOM BAR ─── */
-    .bottom-bar { display: none }
 
     /* ════════════════════════════════════════════════════════
        MOBILE (< 768px)
@@ -195,32 +271,20 @@ import { ToastContainerComponent } from '../shared/ui/toast/toast-container.comp
       .drawer-link:hover { background: var(--bg-tertiary) }
       .drawer-link.active { background: var(--bg-tertiary); color: var(--tracky-light) }
 
-      .top-bar { padding: 0 12px; height: 52px }
-      .top-title { font-size: 14px }
+      .top-bar { padding: 0 14px; height: 56px }
+      /* Sur mobile, on cache le titre de page (présent dans la page) et on affiche
+         le logo + brand pour rappeler l'identité Vizyo Tracky. */
+      .top-title { display: none }
+      .top-bar-brand { display: flex }
+      .top-bar-brand-text { font-size: 13px }
 
       .content {
         padding: 16px;
-        /* 60px bottom bar + safe-area inset + 24px breathing room */
-        padding-bottom: calc(60px + env(safe-area-inset-bottom) + 24px);
+        padding-bottom: calc(env(safe-area-inset-bottom) + 24px);
       }
       .content.fullscreen {
-        padding-bottom: calc(60px + env(safe-area-inset-bottom));
-      }
-
-      /* Bottom bar */
-      .bottom-bar {
-        display: flex; align-items: center; justify-content: space-around;
-        position: fixed; bottom: 0; left: 0; right: 0; z-index: 7000;
-        height: 60px; background: var(--bg-secondary); border-top: 1px solid var(--border-subtle);
         padding-bottom: env(safe-area-inset-bottom);
       }
-      .bottom-item {
-        display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; min-width: 56px;
-        color: var(--fg-tertiary); text-decoration: none; font-size: 10px; font-weight: 600;
-        background: transparent; border: none; cursor: pointer; transition: color .2s;
-      }
-      .bottom-item.active { color: var(--tracky-light) }
-      .bottom-item:hover { color: var(--fg-secondary) }
     }
 
     @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }

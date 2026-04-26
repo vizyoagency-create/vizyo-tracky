@@ -1,20 +1,31 @@
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { Truck, Navigation, Activity, AlertTriangle, Radio } from 'lucide-angular';
+import {
+  Truck, Navigation, Activity, AlertTriangle, Map as MapIcon, Plus,
+  FileBarChart, Shield, ChevronRight, Bell, Radio, Gauge, Clock,
+  Settings2, X, Check,
+} from 'lucide-angular';
 import { LucideAngularModule } from 'lucide-angular';
 import { interval, startWith, switchMap, catchError, of } from 'rxjs';
-// MetricCardComponent replaced by inline metrics
+import { toSignal } from '@angular/core/rxjs-interop';
 import { RealtimeService } from '../../core/services/realtime.service';
-import { VehiclesApiService, type VehicleStatsDto } from '../../core/services/vehicles.service';
-import { EngineControlButtonComponent } from '../engine-control/engine-control-button.component';
+import { VehiclesApiService } from '../../core/services/vehicles.service';
+import { AlertsApiService } from '../../core/services/alerts.service';
+import { PreferencesService, type DashboardWidgetKey } from '../../core/services/preferences.service';
+import { MiniMapComponent } from '../../shared/ui/mini-map/mini-map.component';
+
+interface WidgetMeta {
+  key: DashboardWidgetKey;
+  label: string;
+  description: string;
+}
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [LucideAngularModule, DatePipe, EngineControlButtonComponent, RouterLink],
+  imports: [LucideAngularModule, DatePipe, RouterLink, MiniMapComponent],
   template: `
     <div class="dash-page">
       <!-- Background grid -->
@@ -27,77 +38,295 @@ import { EngineControlButtonComponent } from '../engine-control/engine-control-b
           <h1 class="dash-title">Vue d'ensemble</h1>
           <p class="dash-sub">Suivi en temps réel de votre flotte</p>
         </div>
-        <div class="dash-status">
-          @if (realtime.connected()) {
-            <span class="status-dot online"></span>
-            <span class="status-text online">Connecté</span>
-          } @else {
-            <span class="status-dot"></span>
-            <span class="status-text">Connexion...</span>
-          }
+        <div class="dash-header-actions">
+          <button (click)="customizerOpen.set(true)" class="dash-customize-btn" aria-label="Personnaliser">
+            <lucide-icon [img]="Settings2" [size]="14"></lucide-icon>
+            <span class="dash-customize-label">Personnaliser</span>
+          </button>
+          <div class="dash-status">
+            @if (realtime.connected()) {
+              <span class="status-dot online"></span>
+              <span class="status-text online">Connecté</span>
+            } @else {
+              <span class="status-dot"></span>
+              <span class="status-text">Connexion...</span>
+            }
+          </div>
         </div>
       </div>
 
-      <!-- Metrics -->
-      <div class="metrics-grid">
-        @for (m of metrics(); track m.label) {
-          <div class="metric-card" [class]="m.accent">
-            <div class="metric-icon-wrap" [class]="m.accent">
-              <lucide-icon [img]="m.icon" [size]="18"></lucide-icon>
+      <!-- KPIs compactes (2x2 mobile, 4x1 desktop) -->
+      @if (isWidgetEnabled('kpis')) {
+        <div class="metrics-grid">
+          <a routerLink="/vehicles" class="metric-card metric-card--link green">
+            <div class="metric-icon-wrap green">
+              <lucide-icon [img]="Truck" [size]="16"></lucide-icon>
             </div>
             <div class="metric-content">
-              <span class="metric-value">{{ m.value }}</span>
-              <span class="metric-label">{{ m.label }}</span>
+              <span class="metric-value">{{ stats()?.total ?? '—' }}</span>
+              <span class="metric-label">Véhicules</span>
             </div>
-            @if (m.trend) {
-              <span class="metric-trend">{{ m.trend }}</span>
-            }
-          </div>
-        }
-      </div>
+            <lucide-icon [img]="ChevronRight" [size]="14" class="metric-arrow"></lucide-icon>
+          </a>
 
-      <!-- Live tracking -->
-      <div class="live-section">
-        <div class="live-header">
-          <h2 class="live-title">
-            <lucide-icon [img]="Radio" [size]="18" class="text-tracky-light"></lucide-icon>
-            Suivi temps réel
-          </h2>
-          <span class="live-count">{{ enrichedPositions().length }} actif(s)</span>
+          <a routerLink="/map" class="metric-card metric-card--link blue">
+            <div class="metric-icon-wrap blue">
+              <lucide-icon [img]="Navigation" [size]="16"></lucide-icon>
+            </div>
+            <div class="metric-content">
+              <span class="metric-value">{{ stats()?.moving ?? '—' }}</span>
+              <span class="metric-label">En mouvement</span>
+            </div>
+            <lucide-icon [img]="ChevronRight" [size]="14" class="metric-arrow"></lucide-icon>
+          </a>
+
+          <a routerLink="/map" class="metric-card metric-card--link amber">
+            <div class="metric-icon-wrap amber">
+              <lucide-icon [img]="Activity" [size]="16"></lucide-icon>
+            </div>
+            <div class="metric-content">
+              <span class="metric-value">{{ stats()?.idle ?? '—' }}</span>
+              <span class="metric-label">À l'arrêt</span>
+            </div>
+            <lucide-icon [img]="ChevronRight" [size]="14" class="metric-arrow"></lucide-icon>
+          </a>
+
+          <a routerLink="/alerts" class="metric-card metric-card--link red">
+            <div class="metric-icon-wrap red">
+              <lucide-icon [img]="AlertTriangle" [size]="16"></lucide-icon>
+            </div>
+            <div class="metric-content">
+              <span class="metric-value">{{ stats()?.criticalAlerts ?? '—' }}</span>
+              <span class="metric-label">Alertes</span>
+            </div>
+            <lucide-icon [img]="ChevronRight" [size]="14" class="metric-arrow"></lucide-icon>
+          </a>
         </div>
+      }
 
-        @if (enrichedPositions().length === 0) {
-          <div class="live-empty">
-            <lucide-icon [img]="Radio" [size]="32" style="opacity:.2"></lucide-icon>
-            <p>Aucune position en temps réel</p>
+      <!-- Quick actions chips -->
+      @if (isWidgetEnabled('actions')) {
+        <div class="quick-actions">
+          <a routerLink="/map" class="quick-chip">
+            <lucide-icon [img]="MapIcon" [size]="14"></lucide-icon>
+            <span>Carte</span>
+          </a>
+          <a routerLink="/vehicles" class="quick-chip">
+            <lucide-icon [img]="Plus" [size]="14"></lucide-icon>
+            <span>Véhicule</span>
+          </a>
+          <a routerLink="/reports" class="quick-chip">
+            <lucide-icon [img]="FileBarChart" [size]="14"></lucide-icon>
+            <span>Rapports</span>
+          </a>
+          <a routerLink="/geofences" class="quick-chip">
+            <lucide-icon [img]="Shield" [size]="14"></lucide-icon>
+            <span>Géofences</span>
+          </a>
+        </div>
+      }
+
+      <!-- Mini-map widget -->
+      @if (isWidgetEnabled('map')) {
+        <a routerLink="/map" class="widget widget--map">
+          <div class="widget-header">
+            <h3 class="widget-title">
+              <lucide-icon [img]="MapIcon" [size]="16" class="text-tracky-light"></lucide-icon>
+              Carte temps réel
+            </h3>
+            <span class="widget-action">
+              Voir
+              <lucide-icon [img]="ChevronRight" [size]="14"></lucide-icon>
+            </span>
           </div>
-        } @else {
-          <div class="live-list">
-            @for (item of enrichedPositions(); track item.trackerId) {
-              <a [routerLink]="['/vehicles', item.vehicleId]" class="live-row">
-                <div class="live-indicator" [class]="item.speedKmh > 5 ? 'moving' : 'idle'"></div>
-                <div class="live-info">
-                  <p class="live-id">{{ item.trackerId.slice(0, 8) }}...</p>
-                  <p class="live-coords">{{ item.lat.toFixed(4) }}, {{ item.lng.toFixed(4) }}</p>
-                </div>
-                <div class="live-speed" [class]="item.speedKmh > 90 ? 'fast' : item.speedKmh > 50 ? 'medium' : item.speedKmh > 0 ? 'slow' : 'stopped'">
-                  {{ item.speedKmh.toFixed(0) }} <span class="speed-unit">km/h</span>
-                </div>
-                <span class="live-time">{{ item.timestamp | date:'HH:mm:ss' }}</span>
-                <app-engine-control-button
-                  [trackerId]="item.trackerId"
-                  [vehiclePlate]="item.trackerId.slice(0, 8)"
-                  [currentSpeedKmh]="item.speedKmh"
-                  [validFix]="item.valid"
-                  [positionAge]="item.ageSeconds"
-                  [ignition]="item.ignition"
-                />
+          @if (firstActivePosition(); as pos) {
+            <app-mini-map
+              [center]="pos"
+              [zoom]="13"
+              [vehicleType]="firstVehicleMeta().type"
+              [plate]="firstVehicleMeta().plate"
+              [speedKmh]="firstVehicleMeta().speedKmh"
+              [heading]="firstVehicleMeta().heading"
+              [ignition]="firstVehicleMeta().ignition"
+              height="180px" />
+            <div class="widget-map-overlay">
+              <div class="widget-map-stat">
+                <strong>{{ enrichedPositions().length }}</strong>
+                <span>actif{{ enrichedPositions().length > 1 ? 's' : '' }}</span>
+              </div>
+            </div>
+          } @else {
+            <div class="widget-empty widget-empty--map">
+              <lucide-icon [img]="Radio" [size]="28" style="opacity:.3"></lucide-icon>
+              <p>Aucune position en temps réel</p>
+            </div>
+          }
+        </a>
+      }
+
+      <!-- Widget : Activité en direct -->
+      @if (isWidgetEnabled('activity')) {
+        <div class="widget">
+          <div class="widget-header">
+            <h3 class="widget-title">
+              <lucide-icon [img]="Gauge" [size]="16" class="text-tracky-light"></lucide-icon>
+              Activité en direct
+            </h3>
+            <a routerLink="/vehicles" class="widget-action">
+              Tous
+              <lucide-icon [img]="ChevronRight" [size]="14"></lucide-icon>
+            </a>
+          </div>
+          @if (topActiveVehicles().length === 0) {
+            <div class="widget-empty">
+              <lucide-icon [img]="Radio" [size]="24" style="opacity:.3"></lucide-icon>
+              <p>Aucun véhicule actif</p>
+            </div>
+          } @else {
+            <div class="widget-list">
+              @for (item of topActiveVehicles(); track item.trackerId) {
+                <a [routerLink]="['/vehicles', item.vehicleId]" class="widget-row">
+                  <div class="widget-row-indicator" [class]="item.speedKmh > 5 ? 'moving' : 'idle'"></div>
+                  <div class="widget-row-info">
+                    <p class="widget-row-title">{{ item.plate || item.trackerId.slice(0, 8) }}</p>
+                    <p class="widget-row-sub">{{ item.timestamp | date:'HH:mm:ss' }}</p>
+                  </div>
+                  <div class="widget-row-speed" [class]="speedClass(item.speedKmh)">
+                    {{ item.speedKmh.toFixed(0) }}<span class="speed-unit">km/h</span>
+                  </div>
+                  <lucide-icon [img]="ChevronRight" [size]="14" class="widget-row-chevron"></lucide-icon>
+                </a>
+              }
+            </div>
+          }
+        </div>
+      }
+
+      <!-- Widget : Alertes récentes -->
+      @if (isWidgetEnabled('alerts')) {
+        <div class="widget">
+          <div class="widget-header">
+            <h3 class="widget-title">
+              <lucide-icon [img]="Bell" [size]="16" class="text-amber-400"></lucide-icon>
+              Alertes récentes
+            </h3>
+            <a routerLink="/alerts" class="widget-action">
+              Toutes
+              <lucide-icon [img]="ChevronRight" [size]="14"></lucide-icon>
+            </a>
+          </div>
+          @if (recentAlerts().length === 0) {
+            <div class="widget-empty">
+              <lucide-icon [img]="Bell" [size]="24" style="opacity:.3"></lucide-icon>
+              <p>Aucune alerte en cours</p>
+            </div>
+          } @else {
+            <div class="widget-list">
+              @for (alert of recentAlerts(); track alert.id) {
+                <a routerLink="/alerts" class="widget-row widget-row--alert">
+                  <div class="widget-alert-severity"
+                       [class.crit]="alert.severity === 'CRITICAL'"
+                       [class.warn]="alert.severity === 'WARNING'"
+                       [class.info]="alert.severity === 'INFO'">
+                    <lucide-icon [img]="AlertTriangle" [size]="14"></lucide-icon>
+                  </div>
+                  <div class="widget-row-info">
+                    <p class="widget-row-title widget-row-title--small">{{ alert.title || alertLabel(alert.type) }}</p>
+                    <p class="widget-row-sub">
+                      @if (alert.vehiclePlate) { {{ alert.vehiclePlate }} · }
+                      {{ alert.createdAt | date:'dd MMM HH:mm' }}
+                    </p>
+                  </div>
+                  <lucide-icon [img]="ChevronRight" [size]="14" class="widget-row-chevron"></lucide-icon>
+                </a>
+              }
+            </div>
+          }
+        </div>
+      }
+
+      <!-- Widget : Automatisation horaire -->
+      @if (isWidgetEnabled('schedule')) {
+        <div class="widget widget--schedule">
+          <div class="widget-header">
+            <h3 class="widget-title">
+              <lucide-icon [img]="Clock" [size]="16" class="text-tracky-light"></lucide-icon>
+              Automatisation horaire
+            </h3>
+            <a routerLink="/vehicles" class="widget-action">
+              Configurer
+              <lucide-icon [img]="ChevronRight" [size]="14"></lucide-icon>
+            </a>
+          </div>
+          <div class="widget-schedule-content">
+            <div class="widget-schedule-card">
+              <div class="widget-schedule-icon">
+                <lucide-icon [img]="Shield" [size]="18"></lucide-icon>
+              </div>
+              <div class="widget-schedule-info">
+                <p class="widget-schedule-title">Pilotez les plages horaires de chaque véhicule</p>
+                <p class="widget-schedule-sub">Coupez automatiquement le moteur en dehors des heures de service</p>
+              </div>
+            </div>
+            <div class="widget-schedule-presets">
+              <a routerLink="/vehicles" class="widget-schedule-preset">
+                <lucide-icon [img]="Truck" [size]="14"></lucide-icon>
+                <span>{{ stats()?.total ?? 0 }} véhicule{{ (stats()?.total ?? 0) > 1 ? 's' : '' }} à configurer</span>
               </a>
-            }
+            </div>
           </div>
-        }
-      </div>
+        </div>
+      }
+
+      @if (allWidgetsDisabled()) {
+        <div class="dash-empty-state">
+          <lucide-icon [img]="Settings2" [size]="32" style="opacity:.3"></lucide-icon>
+          <p>Aucun widget activé</p>
+          <button (click)="customizerOpen.set(true)" class="dash-empty-btn">
+            Personnaliser le tableau de bord
+          </button>
+        </div>
+      }
     </div>
+
+    <!-- Customizer dialog -->
+    @if (customizerOpen()) {
+      <div class="dash-customizer-overlay" (click)="customizerOpen.set(false)"></div>
+      <div class="dash-customizer">
+        <div class="dash-customizer-header">
+          <h3>Personnaliser</h3>
+          <button (click)="customizerOpen.set(false)" class="dash-customizer-close" aria-label="Fermer">
+            <lucide-icon [img]="X" [size]="16"></lucide-icon>
+          </button>
+        </div>
+        <p class="dash-customizer-sub">Activez ou désactivez les widgets affichés sur le tableau de bord.</p>
+        <div class="dash-customizer-list">
+          @for (widget of widgetMeta; track widget.key) {
+            <label class="dash-customizer-item">
+              <div class="dash-customizer-item-info">
+                <span class="dash-customizer-item-label">{{ widget.label }}</span>
+                <span class="dash-customizer-item-desc">{{ widget.description }}</span>
+              </div>
+              <button
+                type="button"
+                (click)="toggleWidget(widget.key)"
+                class="dash-customizer-toggle"
+                [class.dash-customizer-toggle--on]="isWidgetEnabled(widget.key)"
+                [attr.aria-label]="(isWidgetEnabled(widget.key) ? 'Désactiver ' : 'Activer ') + widget.label"
+              >
+                <span class="dash-customizer-toggle-knob"></span>
+              </button>
+            </label>
+          }
+        </div>
+        <div class="dash-customizer-footer">
+          <button (click)="customizerOpen.set(false)" class="dash-customizer-done">
+            <lucide-icon [img]="Check" [size]="14"></lucide-icon>
+            Terminé
+          </button>
+        </div>
+      </div>
+    }
   `,
   styles: [`
     .dash-page { position: relative; overflow: hidden }
@@ -105,8 +334,7 @@ import { EngineControlButtonComponent } from '../engine-control/engine-control-b
     /* Grid background */
     .dash-grid-bg {
       position: absolute; inset: 0; pointer-events: none; z-index: 0;
-      background-image:
-        radial-gradient(circle, var(--border-subtle) 1px, transparent 1px);
+      background-image: radial-gradient(circle, var(--border-subtle) 1px, transparent 1px);
       background-size: 24px 24px;
       mask-image: radial-gradient(ellipse at 50% 0%, black 0%, transparent 70%);
       -webkit-mask-image: radial-gradient(ellipse at 50% 0%, black 0%, transparent 70%);
@@ -119,110 +347,301 @@ import { EngineControlButtonComponent } from '../engine-control/engine-control-b
     }
 
     /* Header */
-    .dash-header { position: relative; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24px }
-    .dash-title { font-size: 24px; font-weight: 800; color: var(--fg-primary); letter-spacing: -.02em }
-    .dash-sub { font-size: 13px; color: var(--fg-tertiary); margin-top: 2px }
-    .dash-status { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; background: var(--bg-secondary); border: 1px solid var(--border-subtle) }
-    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fg-tertiary); animation: pulse 2s ease infinite }
+    .dash-header { position: relative; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 18px }
+    .dash-title { font-size: 22px; font-weight: 800; color: var(--fg-primary); letter-spacing: -.02em }
+    .dash-sub { font-size: 12px; color: var(--fg-tertiary); margin-top: 2px }
+    .dash-header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end }
+    .dash-customize-btn {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 5px 10px; border-radius: 9999px;
+      background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+      color: var(--fg-secondary); font-size: 11px; font-weight: 600;
+      cursor: pointer; transition: all .15s;
+    }
+    .dash-customize-btn:hover { color: var(--tracky-light); border-color: var(--tracky) }
+    .dash-customize-label { display: none }
+    @media (min-width: 380px) { .dash-customize-label { display: inline } }
+
+    .dash-status { display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 20px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); flex-shrink: 0 }
+    .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fg-tertiary); animation: pulse 2s ease infinite }
     .status-dot.online { background: var(--tracky-light) }
-    .status-text { font-size: 11px; font-weight: 600; color: var(--fg-tertiary) }
+    .status-text { font-size: 10px; font-weight: 600; color: var(--fg-tertiary) }
     .status-text.online { color: var(--tracky-light) }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
 
-    /* Metrics */
-    .metrics-grid { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 28px }
+    /* Metrics grid : 2x2 mobile, 4x1 desktop */
+    .metrics-grid { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px }
     .metric-card {
-      position: relative; padding: 18px; border-radius: 14px; overflow: hidden;
+      position: relative; display: flex; align-items: center; gap: 10px;
+      padding: 12px; border-radius: 14px;
       background: var(--bg-secondary); border: 1px solid var(--border-subtle);
-      transition: all .3s var(--ease-tracky, ease);
+      overflow: hidden; transition: all .25s var(--ease-tracky, ease);
+      text-decoration: none; color: inherit;
     }
-    .metric-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-tracky-glow) }
+    .metric-card:hover, .metric-card:active {
+      border-color: var(--border-strong); transform: translateY(-1px);
+      box-shadow: var(--shadow-tracky-glow);
+    }
     .metric-card::before {
-      content: ''; position: absolute; top: 0; right: 0; width: 80px; height: 80px;
-      border-radius: 0 0 0 80px; opacity: .06; pointer-events: none;
+      content: ''; position: absolute; top: 0; right: 0; width: 60px; height: 60px;
+      border-radius: 0 0 0 60px; opacity: .06; pointer-events: none;
     }
     .metric-card.green::before { background: var(--tracky-light) }
     .metric-card.blue::before { background: #3b82f6 }
     .metric-card.amber::before { background: #f59e0b }
     .metric-card.red::before { background: #ef4444 }
 
-    .metric-icon-wrap {
-      width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 14px;
-    }
+    .metric-icon-wrap { width: 32px; height: 32px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0 }
     .metric-icon-wrap.green { background: rgba(16,224,160,.12); color: var(--tracky-light) }
     .metric-icon-wrap.blue { background: rgba(59,130,246,.12); color: #3b82f6 }
     .metric-icon-wrap.amber { background: rgba(245,158,11,.12); color: #f59e0b }
     .metric-icon-wrap.red { background: rgba(239,68,68,.12); color: #ef4444 }
 
-    .metric-content { display: flex; flex-direction: column }
-    .metric-value { font-size: 28px; font-weight: 800; color: var(--fg-primary); font-family: var(--font-display, Poppins, sans-serif); letter-spacing: -.02em; line-height: 1 }
-    .metric-label { font-size: 12px; font-weight: 500; color: var(--fg-tertiary); margin-top: 4px }
-    .metric-trend { font-size: 11px; color: var(--fg-secondary); margin-top: 8px }
+    .metric-content { display: flex; flex-direction: column; min-width: 0; flex: 1 }
+    .metric-value { font-size: 22px; font-weight: 800; color: var(--fg-primary); font-family: var(--font-display, Poppins, sans-serif); letter-spacing: -.02em; line-height: 1 }
+    /* Label complet sans tronquer : on autorise le wrap sur 2 lignes */
+    .metric-label { font-size: 11px; font-weight: 500; color: var(--fg-tertiary); margin-top: 3px; line-height: 1.2 }
+    .metric-arrow { color: var(--fg-tertiary); flex-shrink: 0; opacity: .5 }
+    .metric-card--link:active .metric-arrow { opacity: 1; transform: translateX(2px) }
 
-    /* Live section */
-    .live-section { position: relative; z-index: 1 }
-    .live-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px }
-    .live-title { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; color: var(--fg-primary) }
-    .live-count { font-size: 11px; font-weight: 600; color: var(--fg-tertiary); padding: 4px 10px; border-radius: 20px; background: var(--bg-secondary); border: 1px solid var(--border-subtle) }
+    /* Quick actions chips */
+    .quick-actions { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 18px }
+    .quick-chip {
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
+      padding: 12px 6px; border-radius: 12px;
+      background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+      color: var(--fg-secondary); text-decoration: none; font-size: 11px; font-weight: 600;
+      transition: all .2s; min-height: 64px;
+    }
+    .quick-chip:hover, .quick-chip:active { border-color: var(--border-strong); color: var(--tracky-light); transform: translateY(-1px) }
+    .quick-chip lucide-icon { color: var(--tracky-light) }
 
-    .live-empty {
-      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
-      height: 120px; border-radius: 14px; background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+    /* Widget générique */
+    .widget {
+      position: relative; z-index: 1;
+      background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+      border-radius: 14px; padding: 14px; margin-bottom: 12px;
+      text-decoration: none; color: inherit; display: block;
+      transition: border-color .2s;
+    }
+    .widget:hover { border-color: var(--border-strong) }
+    .widget-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px }
+    .widget-title { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; color: var(--fg-primary) }
+    .widget-action { display: flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 600; color: var(--tracky-light); text-decoration: none }
+    .widget-action lucide-icon { transition: transform .2s }
+    .widget-action:hover lucide-icon { transform: translateX(2px) }
+
+    .widget-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 20px 0; color: var(--fg-tertiary); font-size: 12px }
+    .widget-empty--map { padding: 40px 0 }
+
+    /* Widget map */
+    .widget--map { padding: 14px; position: relative }
+    .widget--map app-mini-map { display: block; border-radius: 10px; overflow: hidden }
+    .widget-map-overlay { position: absolute; bottom: 22px; left: 22px; z-index: 2; pointer-events: none }
+    .widget-map-stat {
+      display: inline-flex; align-items: baseline; gap: 4px;
+      padding: 6px 12px; border-radius: 9999px;
+      background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+      backdrop-filter: blur(8px); box-shadow: 0 4px 12px rgba(0,0,0,.08);
+      font-size: 11px; color: var(--fg-secondary);
+    }
+    .widget-map-stat strong { font-size: 14px; color: var(--tracky-light); font-weight: 800 }
+
+    /* Widget list */
+    .widget-list { display: flex; flex-direction: column; gap: 4px }
+    .widget-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 8px; border-radius: 10px;
+      text-decoration: none; color: inherit; transition: background .2s;
+    }
+    .widget-row:hover, .widget-row:active { background: var(--bg-tertiary) }
+    .widget-row-indicator { width: 8px; height: 8px; border-radius: 50%; background: var(--fg-tertiary); flex-shrink: 0 }
+    .widget-row-indicator.moving { background: var(--tracky-light); box-shadow: 0 0 8px rgba(16,224,160,.4); animation: pulse 2s ease infinite }
+    .widget-row-info { flex: 1; min-width: 0 }
+    .widget-row-title { font-size: 13px; font-weight: 700; color: var(--fg-primary); font-family: var(--font-mono, monospace) }
+    .widget-row-title--small { font-size: 12px; font-family: var(--font-sans, sans-serif); font-weight: 600 }
+    .widget-row-sub { font-size: 10px; color: var(--fg-tertiary); margin-top: 1px }
+    .widget-row-speed { font-size: 16px; font-weight: 800; font-family: var(--font-display, Poppins, sans-serif); letter-spacing: -.02em }
+    .widget-row-speed.fast { color: #ef4444 }
+    .widget-row-speed.medium { color: #f59e0b }
+    .widget-row-speed.slow { color: var(--tracky-light) }
+    .widget-row-speed.stopped { color: var(--fg-tertiary) }
+    .speed-unit { font-size: 9px; font-weight: 500; opacity: .65; margin-left: 2px }
+    .widget-row-chevron { color: var(--fg-tertiary); opacity: .5; flex-shrink: 0 }
+
+    /* Alert severity */
+    .widget-row--alert .widget-alert-severity { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0 }
+    .widget-alert-severity.crit { background: rgba(239,68,68,.12); color: #ef4444 }
+    .widget-alert-severity.warn { background: rgba(245,158,11,.12); color: #f59e0b }
+    .widget-alert-severity.info { background: rgba(59,130,246,.12); color: #3b82f6 }
+
+    /* Widget Schedule */
+    .widget-schedule-content { display: flex; flex-direction: column; gap: 12px }
+    .widget-schedule-card {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 12px; border-radius: 10px;
+      background: var(--bg-tertiary); border: 1px solid var(--border-subtle);
+    }
+    .widget-schedule-icon {
+      width: 36px; height: 36px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(16,224,160,.12); color: var(--tracky-light);
+      flex-shrink: 0;
+    }
+    .widget-schedule-info { flex: 1; min-width: 0 }
+    .widget-schedule-title { font-size: 12px; font-weight: 700; color: var(--fg-primary); line-height: 1.3 }
+    .widget-schedule-sub { font-size: 11px; color: var(--fg-tertiary); margin-top: 3px; line-height: 1.4 }
+    .widget-schedule-presets { display: flex; gap: 8px; flex-wrap: wrap }
+    .widget-schedule-preset {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 12px; border-radius: 9999px;
+      background: rgba(16,224,160,.08); color: var(--tracky-light);
+      border: 1px solid rgba(16,224,160,.25);
+      font-size: 11px; font-weight: 600;
+      text-decoration: none; transition: all .2s;
+    }
+    .widget-schedule-preset:hover { background: rgba(16,224,160,.15); transform: translateY(-1px) }
+
+    /* Empty dashboard */
+    .dash-empty-state {
+      position: relative; z-index: 1;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 10px; padding: 40px 20px;
+      background: var(--bg-secondary); border: 1px dashed var(--border-subtle);
+      border-radius: 14px;
       color: var(--fg-tertiary); font-size: 13px;
     }
-
-    .live-list { display: flex; flex-direction: column; gap: 6px }
-    .live-row {
-      display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-radius: 12px;
-      background: var(--bg-secondary); border: 1px solid var(--border-subtle); text-decoration: none; color: inherit;
-      transition: all .25s; cursor: pointer;
+    .dash-empty-btn {
+      padding: 8px 16px; border-radius: 9999px;
+      background: var(--tracky); color: white;
+      border: 0; font-size: 12px; font-weight: 700; cursor: pointer;
     }
-    .live-row:hover { border-color: var(--border-strong); box-shadow: var(--shadow-tracky-glow) }
 
-    .live-indicator { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; background: var(--fg-tertiary) }
-    .live-indicator.moving { background: var(--tracky-light); box-shadow: 0 0 8px rgba(16,224,160,.4); animation: pulse 2s ease infinite }
-    .live-indicator.idle { background: var(--fg-tertiary) }
+    /* Customizer */
+    .dash-customizer-overlay {
+      position: fixed; inset: 0; z-index: 8000;
+      background: rgba(0,0,0,.4); backdrop-filter: blur(2px);
+      animation: fade-in .2s ease;
+    }
+    @keyframes fade-in { from { opacity: 0 } to { opacity: 1 } }
+    .dash-customizer {
+      position: fixed; left: 16px; right: 16px; bottom: 76px;
+      max-width: 480px; margin: 0 auto;
+      z-index: 8001;
+      background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+      border-radius: 18px;
+      box-shadow: 0 20px 50px rgba(0,0,0,.25);
+      padding: 16px;
+      animation: slide-up .25s cubic-bezier(0.16, 1, 0.3, 1);
+      max-height: 70vh; overflow-y: auto;
+    }
+    @keyframes slide-up { from { transform: translateY(20px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
+    .dash-customizer-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px }
+    .dash-customizer-header h3 { font-size: 16px; font-weight: 800; color: var(--fg-primary) }
+    .dash-customizer-close {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: var(--bg-tertiary); border: 0; color: var(--fg-secondary);
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+    }
+    .dash-customizer-sub { font-size: 12px; color: var(--fg-tertiary); margin-bottom: 14px }
+    .dash-customizer-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px }
+    .dash-customizer-item {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 10px 12px; border-radius: 12px;
+      background: var(--bg-tertiary); border: 1px solid var(--border-subtle);
+      cursor: pointer;
+    }
+    .dash-customizer-item-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 }
+    .dash-customizer-item-label { font-size: 13px; font-weight: 700; color: var(--fg-primary) }
+    .dash-customizer-item-desc { font-size: 11px; color: var(--fg-tertiary); line-height: 1.3 }
+    .dash-customizer-toggle {
+      position: relative; flex-shrink: 0;
+      width: 38px; height: 22px; border-radius: 9999px;
+      background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+      cursor: pointer; transition: background .2s;
+    }
+    .dash-customizer-toggle--on { background: var(--tracky); border-color: var(--tracky) }
+    .dash-customizer-toggle-knob {
+      position: absolute; top: 2px; left: 2px;
+      width: 16px; height: 16px; border-radius: 50%;
+      background: white;
+      transition: transform .25s cubic-bezier(0.34, 1.56, 0.64, 1);
+      box-shadow: 0 1px 3px rgba(0,0,0,.18);
+    }
+    .dash-customizer-toggle--on .dash-customizer-toggle-knob { transform: translateX(16px) }
+    .dash-customizer-footer { display: flex; justify-content: flex-end }
+    .dash-customizer-done {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 9px 16px; border-radius: 10px;
+      background: var(--tracky); color: white; border: 0;
+      font-size: 12px; font-weight: 700; cursor: pointer;
+    }
+    .dash-customizer-done:hover { background: var(--tracky-dark) }
 
-    .live-info { flex: 1; min-width: 0 }
-    .live-id { font-size: 13px; font-weight: 600; color: var(--fg-primary); font-family: var(--font-mono, monospace) }
-    .live-coords { font-size: 10px; color: var(--fg-tertiary); margin-top: 1px }
-
-    .live-speed { font-size: 18px; font-weight: 800; font-family: var(--font-display, Poppins, sans-serif); min-width: 70px; text-align: right }
-    .live-speed.fast { color: #ef4444 }
-    .live-speed.medium { color: #f59e0b }
-    .live-speed.slow { color: var(--tracky-light) }
-    .live-speed.stopped { color: var(--fg-tertiary) }
-    .speed-unit { font-size: 10px; font-weight: 500; opacity: .6 }
-
-    .live-time { font-size: 10px; color: var(--fg-tertiary); min-width: 50px; text-align: right }
-
-    @media (max-width: 1024px) { .metrics-grid { grid-template-columns: repeat(2, 1fr) } }
-    @media (max-width: 640px) {
-      .metrics-grid { grid-template-columns: 1fr }
-      .live-row { gap: 10px; padding: 10px 12px }
-      .live-speed { min-width: 58px; font-size: 16px }
-      .live-time { display: none }
-      .live-coords { display: none }
+    /* Desktop */
+    @media (min-width: 1024px) {
+      .metrics-grid { grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 24px }
+      .metric-card { padding: 16px }
+      .metric-icon-wrap { width: 36px; height: 36px }
+      .metric-value { font-size: 26px }
+      .metric-label { font-size: 12px }
+      .quick-actions { grid-template-columns: repeat(4, 1fr); gap: 12px; max-width: 600px }
+      .dash-title { font-size: 26px }
+      .dash-sub { font-size: 13px }
+      .dash-customizer { right: auto; left: 50%; transform: translateX(-50%); bottom: auto; top: 100px; width: 480px }
     }
   `],
 })
 export class DashboardComponent implements OnInit {
   protected readonly realtime = inject(RealtimeService);
+  protected readonly preferences = inject(PreferencesService);
   private readonly vehiclesApi = inject(VehiclesApiService);
+  private readonly alertsApi = inject(AlertsApiService);
+
+  protected readonly Truck = Truck;
+  protected readonly Navigation = Navigation;
+  protected readonly Activity = Activity;
+  protected readonly AlertTriangle = AlertTriangle;
+  protected readonly MapIcon = MapIcon;
+  protected readonly Plus = Plus;
+  protected readonly FileBarChart = FileBarChart;
+  protected readonly Shield = Shield;
+  protected readonly ChevronRight = ChevronRight;
+  protected readonly Bell = Bell;
   protected readonly Radio = Radio;
-  protected readonly Math = Math;
+  protected readonly Gauge = Gauge;
+  protected readonly Clock = Clock;
+  protected readonly Settings2 = Settings2;
+  protected readonly X = X;
+  protected readonly Check = Check;
+
+  protected readonly customizerOpen = signal(false);
+
+  protected readonly widgetMeta: WidgetMeta[] = [
+    { key: 'kpis', label: 'KPIs', description: 'Compteurs Véhicules / En mouvement / Arrêt / Alertes' },
+    { key: 'actions', label: 'Actions rapides', description: 'Boutons Carte / Véhicule / Rapports / Géofences' },
+    { key: 'map', label: 'Carte temps réel', description: 'Aperçu live des véhicules sur une mini-carte' },
+    { key: 'activity', label: 'Activité en direct', description: 'Top des véhicules les plus actifs' },
+    { key: 'alerts', label: 'Alertes récentes', description: '3 dernières alertes non acquittées' },
+    { key: 'schedule', label: 'Automatisation horaire', description: 'Accès rapide à la configuration des plages horaires' },
+  ];
+
+  protected isWidgetEnabled(key: DashboardWidgetKey): boolean {
+    const widgets = this.preferences.prefs().dashboardWidgets;
+    return widgets.find((w) => w.key === key)?.enabled ?? true;
+  }
+
+  protected toggleWidget(key: DashboardWidgetKey): void {
+    this.preferences.toggleDashboardWidget(key);
+  }
+
+  protected readonly allWidgetsDisabled = computed(() => {
+    const widgets = this.preferences.prefs().dashboardWidgets;
+    return widgets.length > 0 && widgets.every((w) => !w.enabled);
+  });
 
   private readonly accessibleVehicleIds = signal<Set<string> | 'ALL'>('ALL');
-
-  protected readonly metrics = computed(() => {
-    const s = this.stats();
-    return [
-      { label: 'Véhicules', value: s?.total ?? '—', trend: s?.newThisMonth ? `+${s.newThisMonth} ce mois` : '', icon: Truck, accent: 'green' },
-      { label: 'En mouvement', value: s?.moving ?? '—', trend: s?.total ? `${Math.round((s.moving / s.total) * 100)}% de la flotte` : '', icon: Navigation, accent: 'blue' },
-      { label: 'À l\'arrêt', value: s?.idle ?? '—', trend: '', icon: Activity, accent: 'amber' },
-      { label: 'Alertes', value: s?.criticalAlerts ?? '—', trend: s?.criticalAlerts ? `${s.criticalAlerts} critiques` : '', icon: AlertTriangle, accent: 'red' },
-    ];
-  });
+  private readonly vehicleMetaMap = signal<Map<string, { type: string; plate: string }>>(new Map());
 
   protected readonly stats = toSignal(
     interval(30_000).pipe(
@@ -233,20 +652,96 @@ export class DashboardComponent implements OnInit {
   );
 
   protected readonly enrichedPositions = computed(() => {
-    const now = Date.now();
     const ids = this.accessibleVehicleIds();
+    const meta = this.vehicleMetaMap();
     return this.realtime.positionsList()
       .filter((pos) => ids === 'ALL' || ids.has(pos.vehicleId))
       .map((pos) => ({
         ...pos,
-        ageSeconds: Math.round((now - new Date(pos.timestamp).getTime()) / 1000),
+        plate: meta.get(pos.vehicleId)?.plate ?? '',
       }));
   });
+
+  protected readonly topActiveVehicles = computed(() => {
+    return [...this.enrichedPositions()]
+      .sort((a, b) => {
+        if (a.speedKmh > 5 && b.speedKmh <= 5) return -1;
+        if (a.speedKmh <= 5 && b.speedKmh > 5) return 1;
+        return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+      })
+      .slice(0, 3);
+  });
+
+  protected readonly firstActivePosition = computed(() => {
+    const list = this.enrichedPositions();
+    if (list.length === 0) return null;
+    const first = list[0]!;
+    return { lat: first.lat, lng: first.lng };
+  });
+
+  protected readonly firstVehicleMeta = computed(() => {
+    const list = this.enrichedPositions();
+    const meta = this.vehicleMetaMap();
+    if (list.length === 0) return { type: 'OTHER', plate: '', speedKmh: 0, heading: 0, ignition: false };
+    const first = list[0]!;
+    const m = meta.get(first.vehicleId);
+    return {
+      type: m?.type ?? 'OTHER',
+      plate: m?.plate ?? '',
+      speedKmh: first.speedKmh,
+      heading: first.heading,
+      ignition: first.ignition,
+    };
+  });
+
+  protected readonly liveAlerts = this.realtime.alerts;
+  private readonly fetchedAlerts = toSignal(
+    interval(60_000).pipe(
+      startWith(0),
+      switchMap(() => this.alertsApi.list({ limit: '3', acknowledged: 'false' })),
+      catchError(() => of({ items: [], nextCursor: null })),
+    ),
+    { initialValue: { items: [], nextCursor: null } },
+  );
+  protected readonly recentAlerts = computed(() => {
+    const live = this.liveAlerts();
+    if (live.length > 0) return live.slice(0, 3);
+    return (this.fetchedAlerts()?.items ?? []).slice(0, 3);
+  });
+
+  protected speedClass(speed: number): string {
+    if (speed > 90) return 'fast';
+    if (speed > 50) return 'medium';
+    if (speed > 0) return 'slow';
+    return 'stopped';
+  }
+
+  protected alertLabel(kind: string): string {
+    const labels: Record<string, string> = {
+      OVERSPEED: 'Excès de vitesse',
+      MOVE_AT_STOP: 'Mouvement à l\'arrêt',
+      HARSH_BRAKE: 'Freinage brusque',
+      HARSH_ACCEL: 'Accélération forte',
+      GEOFENCE_ENTER: 'Entrée géofence',
+      GEOFENCE_EXIT: 'Sortie géofence',
+      ENGINE_CUT: 'Coupure moteur',
+      ENGINE_RESTORED: 'Moteur restauré',
+      OFFLINE: 'Hors-ligne',
+      LOW_BATTERY: 'Batterie faible',
+    };
+    return labels[kind] ?? kind;
+  }
 
   async ngOnInit(): Promise<void> {
     try {
       const vehicles = await firstValueFrom(this.vehiclesApi.list());
       this.accessibleVehicleIds.set(new Set(vehicles.map((v) => v.id)));
+      const meta = new Map<string, { type: string; plate: string }>();
+      vehicles.forEach((v) => {
+        const cast = v as { id: string; plate: string; type?: string };
+        meta.set(v.id, { type: cast.type ?? 'OTHER', plate: v.plate });
+      });
+      this.vehicleMetaMap.set(meta);
     } catch { /* fallback to ALL */ }
   }
 }

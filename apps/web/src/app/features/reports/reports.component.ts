@@ -1,7 +1,7 @@
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, BarChart3, Route, Clock, Gauge, Play } from 'lucide-angular';
+import { LucideAngularModule, BarChart3, Route, Clock, Gauge, Play, ChevronDown, Truck, Check } from 'lucide-angular';
 import type { TripDailySummaryDto, TripDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { TripsApiService } from '../../core/services/trips.service';
@@ -18,14 +18,47 @@ import { TripReplayComponent } from './trip-replay.component';
     <div class="flex flex-col gap-6">
       <h1 class="text-2xl font-display font-bold text-fg-primary">Rapports</h1>
 
-      <div class="flex items-center gap-3 flex-wrap">
-        <select [(ngModel)]="selectedVehicleId" (ngModelChange)="loadData()"
-                class="px-3 py-2 text-sm rounded-xl bg-bg-secondary border border-border-subtle text-fg-primary">
-          <option value="">Tous les véhicules</option>
-          @for (v of vehicles(); track v.id) {
-            <option [value]="v.id">{{ v.plate }}</option>
+      <div class="flex items-center gap-2 flex-wrap">
+        <!-- Dropdown véhicule custom -->
+        <div class="rep-dropdown-wrapper">
+          <button type="button"
+                  (click)="vehicleDropdownOpen.set(!vehicleDropdownOpen())"
+                  class="rep-dropdown-trigger"
+                  [class.rep-dropdown-trigger--open]="vehicleDropdownOpen()">
+            <lucide-icon [img]="TruckIcon" [size]="14"></lucide-icon>
+            <span class="rep-dropdown-label">{{ selectedVehicleLabel() }}</span>
+            <lucide-icon [img]="ChevronDown" [size]="14" class="rep-dropdown-chevron"></lucide-icon>
+          </button>
+          @if (vehicleDropdownOpen()) {
+            <div class="rep-dropdown-backdrop" (click)="vehicleDropdownOpen.set(false)"></div>
+            <div class="rep-dropdown-menu">
+              <button type="button"
+                      (click)="onSelectVehicle('')"
+                      class="rep-dropdown-item"
+                      [class.rep-dropdown-item--active]="!selectedVehicleId()">
+                <span>Tous les véhicules</span>
+                @if (!selectedVehicleId()) { <lucide-icon [img]="Check" [size]="14"></lucide-icon> }
+              </button>
+              @if (vehicles().length > 0) {
+                <div class="rep-dropdown-divider"></div>
+              }
+              @for (v of vehicles(); track v.id) {
+                <button type="button"
+                        (click)="onSelectVehicle(v.id)"
+                        class="rep-dropdown-item"
+                        [class.rep-dropdown-item--active]="selectedVehicleId() === v.id">
+                  <span class="rep-dropdown-item-content">
+                    <span class="rep-dropdown-item-plate">{{ v.plate }}</span>
+                    @if (v.brand || v.model) {
+                      <span class="rep-dropdown-item-meta">{{ v.brand }} {{ v.model }}</span>
+                    }
+                  </span>
+                  @if (selectedVehicleId() === v.id) { <lucide-icon [img]="Check" [size]="14"></lucide-icon> }
+                </button>
+              }
+            </div>
           }
-        </select>
+        </div>
 
         @for (p of periods; track p.label) {
           <button (click)="setPeriod(p.from, p.to)"
@@ -38,7 +71,7 @@ import { TripReplayComponent } from './trip-replay.component';
         }
 
         @if (isAdmin()) {
-          <button (click)="onRecompute()" [disabled]="!selectedVehicleId || recomputing()"
+          <button (click)="onRecompute()" [disabled]="!selectedVehicleId() || recomputing()"
                   class="px-3 py-1.5 text-xs rounded-lg border border-amber-500/30
                          bg-amber-500/10 text-amber-400 hover:bg-amber-500/20
                          transition-colors cursor-pointer disabled:opacity-40">
@@ -132,6 +165,118 @@ import { TripReplayComponent } from './trip-replay.component';
       (closed)="replayTrip.set(null)"
     />
   `,
+  styles: [`
+    /* ─── Dropdown véhicule custom ─── */
+    .rep-dropdown-wrapper {
+      position: relative;
+      min-width: 0;
+    }
+    .rep-dropdown-trigger {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      min-width: 180px;
+      max-width: 240px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      color: var(--fg-primary);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .rep-dropdown-trigger:hover { border-color: var(--border-strong) }
+    .rep-dropdown-trigger--open {
+      border-color: var(--tracky);
+      background: var(--bg-tertiary);
+    }
+    .rep-dropdown-trigger lucide-icon { color: var(--tracky-light); flex-shrink: 0 }
+    .rep-dropdown-label {
+      flex: 1;
+      text-align: left;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .rep-dropdown-chevron {
+      transition: transform .2s;
+      color: var(--fg-tertiary) !important;
+    }
+    .rep-dropdown-trigger--open .rep-dropdown-chevron { transform: rotate(180deg) }
+
+    .rep-dropdown-backdrop {
+      position: fixed; inset: 0; z-index: 50;
+      background: transparent;
+    }
+    .rep-dropdown-menu {
+      position: absolute; top: calc(100% + 6px); left: 0;
+      min-width: 240px; max-width: 320px;
+      max-height: 320px; overflow-y: auto;
+      z-index: 60;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      box-shadow: 0 12px 32px rgba(0,0,0,.18), 0 4px 12px rgba(0,0,0,.08);
+      padding: 6px;
+      animation: rep-dropdown-pop 180ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes rep-dropdown-pop {
+      from { opacity: 0; transform: translateY(-6px) scale(.98) }
+      to   { opacity: 1; transform: translateY(0) scale(1) }
+    }
+    .rep-dropdown-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      width: 100%;
+      padding: 9px 12px;
+      border-radius: 10px;
+      background: transparent;
+      border: 0;
+      color: var(--fg-secondary);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      text-align: left;
+      transition: all .12s;
+    }
+    .rep-dropdown-item:hover { background: var(--bg-tertiary); color: var(--fg-primary) }
+    .rep-dropdown-item--active {
+      background: rgba(16,224,160,.10);
+      color: var(--tracky-light);
+      font-weight: 700;
+    }
+    .rep-dropdown-item--active lucide-icon { color: var(--tracky-light) }
+    .rep-dropdown-item-content {
+      display: flex; flex-direction: column;
+      min-width: 0; flex: 1;
+    }
+    .rep-dropdown-item-plate {
+      font-family: var(--font-mono, monospace);
+      font-weight: 700;
+      font-size: 13px;
+      color: inherit;
+    }
+    .rep-dropdown-item-meta {
+      font-size: 11px;
+      color: var(--fg-tertiary);
+      font-weight: 400;
+      margin-top: 2px;
+    }
+    .rep-dropdown-divider {
+      height: 1px;
+      background: var(--border-subtle);
+      margin: 6px 4px;
+    }
+
+    @media (max-width: 640px) {
+      .rep-dropdown-trigger { min-width: 0; max-width: none; flex: 1 }
+      .rep-dropdown-menu { left: 0; right: 0; max-width: none }
+    }
+  `],
 })
 export class ReportsComponent implements OnInit {
   private readonly tripsApi = inject(TripsApiService);
@@ -145,7 +290,7 @@ export class ReportsComponent implements OnInit {
   protected readonly recomputing = signal(false);
   protected readonly replayTrip = signal<TripDto | null>(null);
 
-  protected selectedVehicleId = '';
+  protected readonly selectedVehicleId = signal('');
   protected periodFrom = '';
   protected periodTo = '';
 
@@ -154,6 +299,25 @@ export class ReportsComponent implements OnInit {
   protected readonly Clock = Clock;
   protected readonly Gauge = Gauge;
   protected readonly Play = Play;
+  protected readonly ChevronDown = ChevronDown;
+  protected readonly TruckIcon = Truck;
+  protected readonly Check = Check;
+
+  protected readonly vehicleDropdownOpen = signal(false);
+
+  /** Label affiché dans le bouton du dropdown selon la sélection courante. */
+  protected readonly selectedVehicleLabel = computed(() => {
+    const id = this.selectedVehicleId();
+    if (!id) return 'Tous les véhicules';
+    const v = this.vehicles().find((x) => x.id === id);
+    return v?.plate ?? 'Tous les véhicules';
+  });
+
+  protected onSelectVehicle(id: string): void {
+    this.selectedVehicleId.set(id);
+    this.vehicleDropdownOpen.set(false);
+    this.loadData();
+  }
 
   protected readonly periods = [
     { label: 'Aujourd\'hui', from: new Date().toISOString().slice(0, 10), to: new Date(Date.now() + 86400000).toISOString().slice(0, 10) },
@@ -205,7 +369,8 @@ export class ReportsComponent implements OnInit {
     this.loading.set(true);
     try {
       const params: Record<string, string> = { limit: '100' };
-      if (this.selectedVehicleId) params['vehicleId'] = this.selectedVehicleId;
+      const id = this.selectedVehicleId();
+      if (id) params['vehicleId'] = id;
       if (this.periodFrom) params['from'] = this.periodFrom;
       if (this.periodTo) params['to'] = this.periodTo;
 
@@ -220,11 +385,12 @@ export class ReportsComponent implements OnInit {
   }
 
   protected async onRecompute(): Promise<void> {
-    if (!this.selectedVehicleId || !this.periodFrom || !this.periodTo) return;
+    const id = this.selectedVehicleId();
+    if (!id || !this.periodFrom || !this.periodTo) return;
     this.recomputing.set(true);
     try {
       const res = await firstValueFrom(this.tripsApi.recompute({
-        vehicleId: this.selectedVehicleId,
+        vehicleId: id,
         from: this.periodFrom,
         to: this.periodTo,
       }));

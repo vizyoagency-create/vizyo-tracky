@@ -32,10 +32,10 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
           @if (perms.can('groups_view')) {
             <div class="tab-switch">
               <button (click)="activeTab.set('vehicles')" class="tab-btn" [class.active]="activeTab() === 'vehicles'">
-                <lucide-icon [img]="TruckIcon" [size]="13"></lucide-icon> Véhicules
+                <lucide-icon [img]="TruckIcon" [size]="15"></lucide-icon> Véhicules
               </button>
               <button (click)="activeTab.set('groups')" class="tab-btn" [class.active]="activeTab() === 'groups'">
-                <lucide-icon [img]="FolderOpenIcon" [size]="13"></lucide-icon> Groupes
+                <lucide-icon [img]="FolderOpenIcon" [size]="15"></lucide-icon> Groupes
               </button>
             </div>
           }
@@ -101,16 +101,16 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
                   </div>
                   <div class="v-actions">
                     <a [routerLink]="['/vehicles', v.id]" class="v-action-btn view" title="Voir" (click)="$event.stopPropagation()">
-                      <lucide-icon [img]="EyeIcon" [size]="13"></lucide-icon>
+                      <lucide-icon [img]="EyeIcon" [size]="15"></lucide-icon>
                     </a>
                     @if (perms.can('vehicles_edit')) {
                       <button class="v-action-btn edit" title="Modifier" (click)="$event.preventDefault(); $event.stopPropagation(); openEditVehicle(v)">
-                        <lucide-icon [img]="PencilIcon" [size]="13"></lucide-icon>
+                        <lucide-icon [img]="PencilIcon" [size]="15"></lucide-icon>
                       </button>
                     }
                     @if (perms.can('vehicles_delete')) {
                       <button class="v-action-btn delete" title="Supprimer" (click)="$event.preventDefault(); $event.stopPropagation(); confirmDeleteVehicle(v)">
-                        <lucide-icon [img]="Trash2Icon" [size]="13"></lucide-icon>
+                        <lucide-icon [img]="Trash2Icon" [size]="15"></lucide-icon>
                       </button>
                     }
                   </div>
@@ -305,12 +305,13 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
 
     .v-card-bottom { padding-top: 10px; border-top: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between }
     .v-tracker-info { flex: 1; min-width: 0 }
-    .v-actions { display: flex; gap: 4px; flex-shrink: 0 }
+    .v-actions { display: flex; gap: 6px; flex-shrink: 0 }
     .v-action-btn {
-      width: 28px; height: 28px; border-radius: 7px; display: flex; align-items: center; justify-content: center;
+      width: 36px; height: 36px; border-radius: 9px; display: flex; align-items: center; justify-content: center;
       background: transparent; border: 1px solid var(--border-subtle); color: var(--fg-tertiary);
       cursor: pointer; transition: all .2s; text-decoration: none;
     }
+    .v-action-btn lucide-icon { width: 16px; height: 16px; }
     .v-action-btn.view:hover { color: var(--tracky-light); border-color: rgba(16,224,160,.2); background: rgba(16,224,160,.06) }
     .v-action-btn.edit:hover { color: #60a5fa; border-color: rgba(59,130,246,.2); background: rgba(59,130,246,.06) }
     .v-action-btn.delete:hover { color: #f87171; border-color: rgba(239,68,68,.2); background: rgba(239,68,68,.06) }

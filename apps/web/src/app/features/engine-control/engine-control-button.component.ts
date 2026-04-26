@@ -28,7 +28,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
           >
             <lucide-icon [img]="Power" [size]="14"></lucide-icon>
             <span class="hidden sm:inline">Rallumer le moteur</span>
-            <span class="sm:hidden">ON</span>
+            <span class="sm:hidden">Rallumer</span>
           </button>
         } @else {
           <button
@@ -43,7 +43,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
           >
             <lucide-icon [img]="PowerOff" [size]="14"></lucide-icon>
             <span class="hidden sm:inline">Couper le moteur</span>
-            <span class="sm:hidden">CUT</span>
+            <span class="sm:hidden">Couper</span>
           </button>
         }
       }
@@ -160,17 +160,17 @@ export class EngineControlButtonComponent implements OnInit {
       `<span class="text-fg-tertiary text-xs">Cette action sera enregistrée dans l'audit trail.</span>`,
   );
 
+  // React to real-time engine command updates for this tracker (field initializer = injection context)
+  private readonly engineUpdateEffect = effect(() => {
+    const updates = this.realtime.engineCommandUpdates();
+    const update = updates.get(this.trackerId());
+    if (update) {
+      this.loadRecentCommands();
+    }
+  });
+
   ngOnInit(): void {
     this.loadRecentCommands();
-
-    // React to real-time engine command updates for this tracker
-    effect(() => {
-      const updates = this.realtime.engineCommandUpdates();
-      const update = updates.get(this.trackerId());
-      if (update) {
-        this.loadRecentCommands();
-      }
-    });
   }
 
   protected async onConfirm(action: 'CUT' | 'RESTORE'): Promise<void> {

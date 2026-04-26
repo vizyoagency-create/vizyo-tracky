@@ -52,7 +52,7 @@ const STATUS_LABELS: Record<string, string> = {
           <!-- Category -->
           <select [(ngModel)]="selectedCategory"
                   (ngModelChange)="onCategoryChange()"
-                  class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary">
+                  class="cmd-select">
             <option value="">Catégorie...</option>
             @for (cat of categories(); track cat) {
               <option [value]="cat">{{ categoryLabel(cat) }}</option>
@@ -63,7 +63,7 @@ const STATUS_LABELS: Record<string, string> = {
           @if (selectedCategory()) {
             <select [(ngModel)]="selectedTemplateId"
                     (ngModelChange)="onTemplateChange()"
-                    class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary flex-1">
+                    class="cmd-select cmd-select--flex">
               <option value="">Commande...</option>
               @for (tpl of filteredTemplates(); track tpl.id) {
                 <option [value]="tpl.id">{{ tpl.label }}</option>
@@ -83,7 +83,7 @@ const STATUS_LABELS: Record<string, string> = {
                   <div class="flex flex-col gap-1">
                     <label class="text-xs text-fg-tertiary">{{ param.label }}</label>
                     <select [(ngModel)]="paramValues[param.name]"
-                            class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary">
+                            class="cmd-select">
                       @for (opt of param.options; track opt.value) {
                         <option [value]="opt.value">{{ opt.label }}</option>
                       }
@@ -217,6 +217,27 @@ const STATUS_LABELS: Record<string, string> = {
       }
     </div>
   `,
+  styles: [`
+    /* Select stylé cohérent avec le reste de l'app (chevron custom, no native arrow) */
+    .cmd-select {
+      appearance: none; -webkit-appearance: none; -moz-appearance: none;
+      background-color: var(--bg-tertiary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 8px 32px 8px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--fg-primary);
+      cursor: pointer;
+      outline: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2310E0A0' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      transition: all .15s;
+    }
+    .cmd-select:hover, .cmd-select:focus { border-color: var(--tracky); }
+    .cmd-select--flex { flex: 1; min-width: 0; }
+  `],
 })
 export class CommandsPanelComponent implements OnInit {
   trackerId = input.required<string>();
