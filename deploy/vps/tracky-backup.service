@@ -1,0 +1,11 @@
+[Unit]
+Description=Vizyo Tracky — Backup PostgreSQL quotidien
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/tracky-backup.env
+ExecStart=/opt/vizyo-tracky/deploy/vps/backup-db.sh
+StandardOutput=journal
+StandardError=journal

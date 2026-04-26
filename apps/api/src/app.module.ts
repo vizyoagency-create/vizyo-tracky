@@ -25,6 +25,8 @@ import { UsersModule } from './users/users.module';
 import { VehicleAccessModule } from './vehicle-access/vehicle-access.module';
 import { VehicleGroupsModule } from './vehicle-groups/vehicle-groups.module';
 import { ObservabilityModule } from './observability/observability.module';
+import { BackupHealthModule } from './backup-health/backup-health.module';
+import { SmsModule } from './sms/sms.module';
 import { TrackerCommandsModule } from './tracker-commands/tracker-commands.module';
 import { TrackerFixModeModule } from './tracker-fix-mode/tracker-fix-mode.module';
 import { VehicleSchedulesModule } from './vehicle-schedules/vehicle-schedules.module';
@@ -79,6 +81,8 @@ import { VehiclesModule } from './vehicles/vehicles.module';
     TrackerCommandsModule,
     TrackerFixModeModule,
     TrackerTcpModule,
+    SmsModule,
+    BackupHealthModule,
     ObservabilityModule,
     RealtimeModule,
     VehicleAccessModule,

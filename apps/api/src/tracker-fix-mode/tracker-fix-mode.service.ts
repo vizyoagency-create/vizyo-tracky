@@ -4,6 +4,7 @@ import { TrackerCommandStatus } from '@prisma/client';
 import { findTemplate } from '@vizyo/tracky-shared';
 import { CobanWireLogger } from '../observability/coban-wire-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SmsGatewayService } from '../sms/sms-gateway.service';
 import { SocketRegistryService } from '../socket-registry/socket-registry.service';
 
 /**
@@ -56,7 +57,33 @@ export class TrackerFixModeService {
     private readonly prisma: PrismaService,
     private readonly registry: SocketRegistryService,
     private readonly wireLogger: CobanWireLogger,
+    private readonly sms: SmsGatewayService,
   ) {}
+
+  /**
+   * V1.5 (Sprint I) — fallback SMS quand la socket TCP est indisponible > 5min.
+   * Necessite que `Tracker.simPhoneNumber` soit renseigne (au provisionnement
+   * SMS via /admin/sms/provision). Retourne true si le SMS a ete accepte
+   * par le provider (pas de garantie de reception cote boitier).
+   */
+  private async tryFallbackSms(
+    tracker: Pick<Tracker, 'imei' | 'simPhoneNumber' | 'lastSeenAt'>,
+    payload: string,
+    commandId: string,
+  ): Promise<boolean> {
+    if (!tracker.simPhoneNumber) return false;
+    const offlineMs = tracker.lastSeenAt
+      ? Date.now() - tracker.lastSeenAt.getTime()
+      : Number.POSITIVE_INFINITY;
+    if (offlineMs < 5 * 60 * 1000) return false;
+    if (!this.sms.isEnabled()) return false;
+    const result = await this.sms.send(tracker.simPhoneNumber, payload, {
+      imei: tracker.imei,
+      commandId,
+      source: 'fix-mode-fallback',
+    });
+    return result.ok;
+  }
 
   /**
    * Convert an interval in seconds to the Coban param string ('030s', '005m', etc.).
@@ -283,12 +310,38 @@ export class TrackerFixModeService {
     });
 
     if (!sent) {
-      // Boitier offline — la prochaine reconnexion permettra un retry au prochain reconcile.
+      // Tentative fallback SMS si tracker offline > 5min ET simPhoneNumber connu.
+      const smsSent = await this.tryFallbackSms(tracker, payload, command.id);
+      if (smsSent) {
+        await this.prisma.trackerCommand.update({
+          where: { id: command.id },
+          data: {
+            status: TrackerCommandStatus.SENT,
+            sentAt: new Date(),
+            channel: 'SMS',
+            diagnosticHint,
+          },
+        });
+        await this.prisma.tracker.update({
+          where: { id: tracker.id },
+          data: {
+            desiredFixIntervalS: target,
+            lastFixIntervalSyncAt: new Date(),
+          },
+        });
+        this.logger.log(
+          { trackerId: tracker.id, imei: tracker.imei, target },
+          `Fix mode change envoye via SMS fallback (TCP indisponible)`,
+        );
+        return { commandId: command.id };
+      }
+
+      // Pas de fallback possible — la prochaine reconnexion permettra un retry au prochain reconcile.
       await this.prisma.trackerCommand.update({
         where: { id: command.id },
         data: {
           status: TrackerCommandStatus.FAILED,
-          lastError: 'Tracker offline — socket TCP indisponible',
+          lastError: 'Tracker offline — socket TCP indisponible et fallback SMS impossible',
           diagnosticHint,
         },
       });

@@ -95,6 +95,13 @@ export const routes: Routes = [
         data: { title: 'Centre d\'alertes' },
       },
       {
+        path: 'admin/sms',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/observability/admin-sms.component').then((m) => m.AdminSmsComponent),
+        data: { title: 'SMS & Backup' },
+      },
+      {
         path: 'admin/trackers/:id/sampling',
         canActivate: [superAdminGuard],
         loadComponent: () =>

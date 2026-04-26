@@ -23,6 +23,14 @@ const envSchema = z.object({
 
   // Observability
   WIRE_LOG_ENABLED: z.string().default('false'),
+
+  // SMS Gateway (Twilio) — Sprint I, SUPER_ADMIN only.
+  // Si TWILIO_ACCOUNT_SID est vide, le module SMS est en mode no-op (UI affiche
+  // "SMS desactive" mais ne plante pas — utile en dev sans credentials).
+  TWILIO_ACCOUNT_SID: z.string().default(''),
+  TWILIO_AUTH_TOKEN: z.string().default(''),
+  TWILIO_PHONE_NUMBER: z.string().default(''),
+  TWILIO_WEBHOOK_URL: z.string().default(''),
 });
 
 export type Env = z.infer<typeof envSchema>;

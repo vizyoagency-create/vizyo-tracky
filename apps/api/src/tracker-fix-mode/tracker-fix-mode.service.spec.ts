@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { CobanWireLogger } from '../observability/coban-wire-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SmsGatewayService } from '../sms/sms-gateway.service';
 import { SocketRegistryService } from '../socket-registry/socket-registry.service';
 import { TrackerFixModeService } from './tracker-fix-mode.service';
 
@@ -94,6 +95,7 @@ describe('TrackerFixModeService.desiredIntervalFor', () => {
         { provide: PrismaService, useValue: {} },
         { provide: SocketRegistryService, useValue: {} },
         { provide: CobanWireLogger, useValue: {} },
+        { provide: SmsGatewayService, useValue: { isEnabled: () => false, send: jest.fn() } },
       ],
     }).compile();
     service = module.get(TrackerFixModeService);
@@ -144,6 +146,7 @@ describe('TrackerFixModeService.reconcile', () => {
         { provide: PrismaService, useValue: {} },
         { provide: SocketRegistryService, useValue: {} },
         { provide: CobanWireLogger, useValue: {} },
+        { provide: SmsGatewayService, useValue: { isEnabled: () => false, send: jest.fn() } },
       ],
     }).compile();
     service = module.get(TrackerFixModeService);

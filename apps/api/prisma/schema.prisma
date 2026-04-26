@@ -200,6 +200,10 @@ model Tracker {
   // Timestamp deviceTime de la derniere trame valide observee — sert au reconciler
   // pour calculer le delta entre 2 trames et inferer l'intervalle reel.
   lastValidFrameAt        DateTime?
+  // V1.5 (Sprint I) — numero E.164 de la SIM data du boitier. Permet le fallback
+  // SMS quand la socket TCP est indisponible. Renseigne au moment du provisionnement
+  // SMS via /admin/sms/provision.
+  simPhoneNumber          String?
   vehicleId            String?                @unique @db.Uuid
   vehicle    Vehicle?               @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   positions  Position[]
@@ -384,6 +388,14 @@ enum TrackerCommandStatus {
   CANCELLED
 }
 
+enum TrackerProvisioningStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
 enum TrackerCommandChannel {
   TCP
   SMS
@@ -462,6 +474,76 @@ model ErrorLog {
   @@index([commandId])
   @@index([createdAt])
   @@map("error_logs")
+}
+
+/// V1.5 (Sprint I) — Etat de la sequence d'init SMS d'un tracker neuf.
+/// Le SUPER_ADMIN lance le workflow depuis /admin/sms/provision/:imei,
+/// le service envoie 9 SMS sequentiels avec ACK entre chaque etape.
+model TrackerProvisioning {
+  id              String                    @id @default(uuid()) @db.Uuid
+  imei            String
+  phoneNumber     String
+  status          TrackerProvisioningStatus @default(PENDING)
+  currentStep     Int                       @default(0)
+  apn             String?
+  apnUser         String?
+  apnPasswd       String?
+  serverIp        String?
+  serverPort      Int?
+  lowBatteryPhone String?
+  steps           Json                      @default("[]")
+  startedAt       DateTime?
+  completedAt     DateTime?
+  failedAt        DateTime?
+  failureReason   String?
+  startedBy       String                    @db.Uuid
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+
+  @@index([imei])
+  @@index([status])
+  @@map("tracker_provisionings")
+}
+
+/// V1.5 (Sprint I) — Trace complete des SMS sortants/entrants pour audit.
+/// Reuse du wire_logs n'est pas adapte (different vocabulaire). Retention 90j.
+/// V1.5 (Sprint I) — Trace de chaque backup Postgres pour monitoring.
+/// Le script `deploy/vps/backup-db.sh` ping l'endpoint /internal/backup-health
+/// apres chaque execution. Si le dernier ping est > 30h, l'admin voit une
+/// alerte rouge dans /admin/alerts.
+model BackupRun {
+  id           String   @id @default(uuid()) @db.Uuid
+  status       String   // 'OK' | 'FAILED'
+  sizeBytes    BigInt?
+  durationMs   Int?
+  destination  String?  // 'local' | 's3' | 'backblaze' | 'rclone:remote_name'
+  filename     String?
+  errorMessage String?
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt(sort: Desc)])
+  @@map("backup_runs")
+}
+
+model SmsLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  direction   String   // 'OUT' | 'IN'
+  fromNumber  String?
+  toNumber    String?
+  body        String   @db.Text
+  twilioSid   String?
+  status      String?  // queued / sent / delivered / failed / received / undelivered
+  errorCode   String?
+  errorMessage String?
+  imei        String?
+  provisioningId String?  @db.Uuid
+  context     Json?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt(sort: Desc)])
+  @@index([imei])
+  @@index([provisioningId])
+  @@map("sms_logs")
 }
 
 model EngineControlCommand {
