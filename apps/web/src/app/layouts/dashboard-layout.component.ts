@@ -198,8 +198,14 @@ import { ToastContainerComponent } from '../shared/ui/toast/toast-container.comp
       .top-bar { padding: 0 12px; height: 52px }
       .top-title { font-size: 14px }
 
-      .content { padding: 16px; padding-bottom: 80px }
-      .content.fullscreen { padding-bottom: 64px }
+      .content {
+        padding: 16px;
+        /* 60px bottom bar + safe-area inset + 24px breathing room */
+        padding-bottom: calc(60px + env(safe-area-inset-bottom) + 24px);
+      }
+      .content.fullscreen {
+        padding-bottom: calc(60px + env(safe-area-inset-bottom));
+      }
 
       /* Bottom bar */
       .bottom-bar {
