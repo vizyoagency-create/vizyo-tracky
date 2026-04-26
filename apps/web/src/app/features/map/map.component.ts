@@ -2460,48 +2460,79 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     const meta = this.vehicleMeta.get(pos.vehicleId) ?? { type: 'OTHER', plate: '?' };
     const ago = Math.round((Date.now() - new Date(pos.timestamp).getTime()) / 1000);
     const agoStr = ago < 60 ? `${ago}s` : `${Math.round(ago / 60)}min`;
+    // Logique CUT/RESTORE : un seul bouton selon l'état moteur
+    // - ignition ON  → on propose de couper
+    // - ignition OFF → on propose de restaurer (au cas où il a été coupé par commande)
+    const engineBtn = pos.ignition
+      ? `<button data-action="cut" class="tk-popup-btn tk-popup-btn--danger">
+           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+             <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/>
+           </svg>
+           <span>Couper le moteur</span>
+         </button>`
+      : `<button data-action="restore" class="tk-popup-btn tk-popup-btn--success">
+           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+             <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/>
+           </svg>
+           <span>Rallumer le moteur</span>
+         </button>`;
+
+    // Couleur de la pastille vitesse selon le seuil
+    const speedColor = pos.speedKmh > 90 ? '#ef4444' :
+                       pos.speedKmh > 50 ? '#f59e0b' :
+                       pos.speedKmh > 0  ? '#10E0A0' : 'var(--text-tertiary)';
+
     return `
-      <div style="padding:14px;font-family:Inter,sans-serif">
-        <div style="font-family:Poppins,sans-serif;font-weight:600;font-size:14px;color:#fff;margin-bottom:2px">
-          ${escapeHtml(meta.plate)}
-        </div>
-        <div style="font-size:11px;color:rgba(255,255,255,0.6);margin-bottom:10px">
-          ${escapeHtml(meta.type)} · il y a ${agoStr}
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;font-size:11px;color:rgba(255,255,255,0.85)">
-          <div>Vitesse : <strong>${pos.speedKmh.toFixed(0)} km/h</strong></div>
-          <div>Cap : <strong>${Math.round(pos.heading)}°</strong></div>
-          <div>ACC : <strong style="color:${pos.ignition ? '#10E0A0' : '#9ca3af'}">${pos.ignition ? 'ON' : 'OFF'}</strong></div>
-          <div style="font-family:JetBrains Mono,monospace;font-size:10px">${pos.lat.toFixed(4)}, ${pos.lng.toFixed(4)}</div>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:6px">
-          <button data-action="follow"
-                  style="padding:6px 10px;border-radius:8px;background:rgba(16,224,160,0.15);
-                         color:#10E0A0;border:1px solid rgba(16,224,160,0.3);font-size:11px;cursor:pointer">
-            Suivre
-          </button>
-          <button data-action="detail"
-                  style="padding:6px 10px;border-radius:8px;background:rgba(255,255,255,0.06);
-                         color:#fff;border:1px solid rgba(255,255,255,0.1);font-size:11px;cursor:pointer">
-            Voir fiche detaillee
-          </button>
-          <button data-action="replay1h"
-                  style="padding:6px 10px;border-radius:8px;background:rgba(59,130,246,0.15);
-                         color:#3b82f6;border:1px solid rgba(59,130,246,0.3);font-size:11px;cursor:pointer">
-            Voir derniere heure
-          </button>
-          <div style="display:flex;gap:6px">
-            <button data-action="cut"
-                    style="flex:1;padding:6px 10px;border-radius:8px;background:rgba(239,68,68,0.15);
-                           color:#EF4444;border:1px solid rgba(239,68,68,0.3);font-size:11px;cursor:pointer">
-              Couper moteur
-            </button>
-            <button data-action="restore"
-                    style="flex:1;padding:6px 10px;border-radius:8px;background:rgba(16,224,160,0.1);
-                           color:#10E0A0;border:1px solid rgba(16,224,160,0.2);font-size:11px;cursor:pointer">
-              Restaurer
-            </button>
+      <div class="tk-popup">
+        <div class="tk-popup-header">
+          <div class="tk-popup-header-text">
+            <div class="tk-popup-plate">${escapeHtml(meta.plate)}</div>
+            <div class="tk-popup-meta">${escapeHtml(meta.type)} · il y a ${agoStr}</div>
           </div>
+          <div class="tk-popup-status ${pos.ignition ? 'is-on' : 'is-off'}">
+            <span class="tk-popup-status-dot"></span>
+            ${pos.ignition ? 'Contact ON' : 'Contact OFF'}
+          </div>
+        </div>
+
+        <div class="tk-popup-stats">
+          <div class="tk-popup-stat">
+            <span class="tk-popup-stat-label">Vitesse</span>
+            <span class="tk-popup-stat-value" style="color:${speedColor}">${pos.speedKmh.toFixed(0)} <small>km/h</small></span>
+          </div>
+          <div class="tk-popup-stat">
+            <span class="tk-popup-stat-label">Cap</span>
+            <span class="tk-popup-stat-value">${Math.round(pos.heading)}°</span>
+          </div>
+        </div>
+
+        <div class="tk-popup-coords">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+          </svg>
+          ${pos.lat.toFixed(4)}, ${pos.lng.toFixed(4)}
+        </div>
+
+        <div class="tk-popup-actions">
+          <button data-action="follow" class="tk-popup-btn tk-popup-btn--primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polygon points="3 11 22 2 13 21 11 13 3 11"/>
+            </svg>
+            <span>Suivre ce véhicule</span>
+          </button>
+          <button data-action="detail" class="tk-popup-btn tk-popup-btn--ghost">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+            </svg>
+            <span>Fiche détaillée</span>
+          </button>
+          <button data-action="replay1h" class="tk-popup-btn tk-popup-btn--info">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <span>Voir la dernière heure</span>
+          </button>
+          ${engineBtn}
         </div>
       </div>
     `;

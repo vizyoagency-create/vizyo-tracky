@@ -40,12 +40,19 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
             </div>
           }
           @if (perms.can('vehicles_create') && activeTab() === 'vehicles') {
-            <button (click)="showAddDialog.set(true)" class="add-btn">
+            <button (click)="showAddDialog.set(true)" class="add-btn add-btn--inline">
               <lucide-icon [img]="Plus" [size]="15"></lucide-icon> Ajouter
             </button>
           }
         </div>
       </div>
+
+      <!-- FAB mobile : bouton flottant Ajouter (cohérent avec la page Map) -->
+      @if (perms.can('vehicles_create') && activeTab() === 'vehicles') {
+        <button (click)="showAddDialog.set(true)" class="vlist-fab" aria-label="Ajouter un véhicule">
+          <lucide-icon [img]="Plus" [size]="22"></lucide-icon>
+        </button>
+      }
 
       @if (activeTab() === 'groups') {
         <app-vehicle-groups-tab />
@@ -100,17 +107,25 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
                     }
                   </div>
                   <div class="v-actions">
-                    <a [routerLink]="['/vehicles', v.id]" class="v-action-btn view" title="Voir" (click)="$event.stopPropagation()">
-                      <lucide-icon [img]="EyeIcon" [size]="15"></lucide-icon>
+                    <a [routerLink]="['/vehicles', v.id]" class="v-action-btn view"
+                       [attr.aria-label]="'Voir le véhicule ' + v.plate"
+                       title="Voir" (click)="$event.stopPropagation()">
+                      <lucide-icon [img]="EyeIcon" [size]="15" aria-hidden="true"></lucide-icon>
                     </a>
                     @if (perms.can('vehicles_edit')) {
-                      <button class="v-action-btn edit" title="Modifier" (click)="$event.preventDefault(); $event.stopPropagation(); openEditVehicle(v)">
-                        <lucide-icon [img]="PencilIcon" [size]="15"></lucide-icon>
+                      <button class="v-action-btn edit"
+                              [attr.aria-label]="'Modifier le véhicule ' + v.plate"
+                              title="Modifier"
+                              (click)="$event.preventDefault(); $event.stopPropagation(); openEditVehicle(v)">
+                        <lucide-icon [img]="PencilIcon" [size]="15" aria-hidden="true"></lucide-icon>
                       </button>
                     }
                     @if (perms.can('vehicles_delete')) {
-                      <button class="v-action-btn delete" title="Supprimer" (click)="$event.preventDefault(); $event.stopPropagation(); confirmDeleteVehicle(v)">
-                        <lucide-icon [img]="Trash2Icon" [size]="15"></lucide-icon>
+                      <button class="v-action-btn delete"
+                              [attr.aria-label]="'Supprimer le véhicule ' + v.plate"
+                              title="Supprimer"
+                              (click)="$event.preventDefault(); $event.stopPropagation(); confirmDeleteVehicle(v)">
+                        <lucide-icon [img]="Trash2Icon" [size]="15" aria-hidden="true"></lucide-icon>
                       </button>
                     }
                   </div>
@@ -251,6 +266,48 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
       background: #059669; color: white; border: none; cursor: pointer; box-shadow: 0 2px 8px rgba(5,150,105,.3);
     }
     .add-btn:hover { background: #047857 }
+
+    /* FAB mobile : visible uniquement < 768px (cohérent avec Map FAB) */
+    .vlist-fab {
+      display: none;
+      position: fixed;
+      bottom: calc(env(safe-area-inset-bottom) + 18px);
+      right: 16px;
+      z-index: 1500;
+      width: 52px; height: 52px;
+      border-radius: 50%;
+      border: 0;
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+      isolation: isolate;
+      overflow: hidden;
+      color: #FFFFFF;
+      background: linear-gradient(135deg,
+        #A7F3D0 0%, #5EEAD4 20%, #6EE7B7 40%, #34D399 55%, #67E8F9 75%, #A7F3D0 100%);
+      background-size: 240% 240%;
+      animation: vlist-fab-gradient 8s ease-in-out infinite;
+      box-shadow:
+        0 8px 22px rgba(94,234,212,.35),
+        0 2px 8px rgba(16,224,160,.22),
+        inset 0 1px 0 rgba(255,255,255,.55);
+      opacity: .92;
+      transition: transform .25s cubic-bezier(0.34, 1.56, 0.64, 1), filter .2s, opacity .2s;
+    }
+    .vlist-fab:hover { opacity: 1; filter: brightness(1.05); }
+    .vlist-fab:active { transform: scale(.92); opacity: 1; filter: brightness(1.08); }
+    :host-context([data-theme='dark']) .vlist-fab { color: #000000; }
+    @keyframes vlist-fab-gradient {
+      0%, 100% { background-position: 0% 50% }
+      50%      { background-position: 100% 50% }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .vlist-fab { animation: none; }
+    }
+    @media (max-width: 640px) {
+      .vlist-fab { display: flex; }
+      .add-btn--inline { display: none; }
+    }
 
     .vlist-loading { position: relative; z-index: 1; display: flex; justify-content: center; padding: 60px 0 }
 

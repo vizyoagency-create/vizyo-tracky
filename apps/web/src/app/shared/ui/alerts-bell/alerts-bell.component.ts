@@ -17,13 +17,17 @@ import { relativeTime } from '../../utils/relative-time';
         class="relative flex items-center justify-center w-10 h-10 rounded-full
                bg-bg-secondary border border-border-subtle text-fg-secondary
                hover:text-fg-primary transition-colors cursor-pointer"
+        [attr.aria-label]="'Notifications, ' + (realtime.unacknowledgedCount() > 0 ? realtime.unacknowledgedCount() + ' alerte(s) non acquittée(s)' : 'aucune nouvelle alerte')"
+        [attr.aria-expanded]="open()"
+        aria-haspopup="true"
       >
-        <lucide-icon [img]="Bell" [size]="18"></lucide-icon>
+        <lucide-icon [img]="Bell" [size]="18" aria-hidden="true"></lucide-icon>
         @if (realtime.unacknowledgedCount() > 0) {
           <span class="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1
                        rounded-full text-[10px] font-bold text-white
                        flex items-center justify-center"
-                [class]="realtime.hasCritical() ? 'bg-red-500 animate-pulse' : 'bg-amber-500'">
+                [class]="realtime.hasCritical() ? 'bg-red-500 animate-pulse' : 'bg-amber-500'"
+                aria-hidden="true">
             {{ realtime.unacknowledgedCount() }}
           </span>
         }

@@ -250,6 +250,73 @@ body {
 }
 
 /* ════════════════════════════════════════════════════════════
+   ACCESSIBILITÉ — focus-visible global, skip link, sr-only
+   Conformité WCAG 2.1 AA : navigation clavier visible et claire.
+   ════════════════════════════════════════════════════════════ */
+
+/* Focus-visible : outline net + offset pour tous les éléments interactifs.
+   Utilise :focus-visible (pas :focus) pour éviter le ring sur clic souris. */
+*:focus { outline: none; }
+*:focus-visible {
+  outline: 2px solid var(--color-tracky-light, #10E0A0);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[role='button']:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--color-tracky-light, #10E0A0);
+  outline-offset: 2px;
+}
+
+/* Skip-to-content : invisible jusqu'au focus clavier */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 99999;
+  padding: 12px 20px;
+  background: var(--surface-secondary, #0F1714);
+  color: var(--text-primary, #F0FDF9);
+  border: 2px solid var(--color-tracky-light, #10E0A0);
+  border-radius: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: left .2s;
+}
+.skip-link:focus,
+.skip-link:focus-visible {
+  left: 0;
+  outline: 2px solid var(--color-tracky-light, #10E0A0);
+  outline-offset: -4px;
+}
+
+/* sr-only : texte visible uniquement par screen readers */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Touch targets : garantir minimum 44px sur tous les éléments interactifs en mobile */
+@media (max-width: 768px) and (pointer: coarse) {
+  button, a, input[type='checkbox'], input[type='radio'] {
+    min-height: 36px;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════
    MapLibre — masquer l'attribution "i" partout (notre app
    garde une mention OSM dans les CGU/footer si nécessaire)
    et tous les contrôles natifs (zoom +/-, geolocate, scale)
@@ -276,24 +343,233 @@ body {
   opacity: 0.85;
 }
 
-/* ----- Popover marker (info card) ----- */
+/* ════════════════════════════════════════════════════════════
+   Popover marker (info card véhicule) — design tracky cohérent
+   theme-aware (light/dark) avec fond glassy + boutons stylés.
+   ════════════════════════════════════════════════════════════ */
 .maplibregl-popup {
-  max-width: 320px !important;
+  max-width: 300px !important;
 }
 .maplibregl-popup-content {
-  background: var(--surface-secondary, #1a1d24) !important;
-  color: var(--text-primary, white) !important;
-  border-radius: 12px !important;
-  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  background: var(--surface-secondary) !important;
+  color: var(--text-primary) !important;
+  border-radius: 16px !important;
+  border: 1px solid var(--border-color);
   padding: 0 !important;
   overflow: hidden;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.18), 0 4px 12px rgba(0, 0, 0, 0.08);
+  font-family: 'Inter', sans-serif;
 }
-.maplibregl-popup-tip {
-  border-top-color: var(--surface-secondary, #1a1d24) !important;
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+  border-top-color: var(--surface-secondary) !important;
+}
+.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+  border-bottom-color: var(--surface-secondary) !important;
+}
+.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: var(--surface-secondary) !important;
+}
+.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: var(--surface-secondary) !important;
 }
 .maplibregl-popup-close-button {
-  color: var(--text-tertiary, rgba(255, 255, 255, 0.6)) !important;
-  font-size: 18px !important;
-  padding: 4px 8px !important;
+  color: var(--text-tertiary) !important;
+  font-size: 22px !important;
+  padding: 6px 12px !important;
+  line-height: 1 !important;
+  background: transparent !important;
+  border: 0 !important;
+  cursor: pointer;
+  transition: color .15s, background .15s;
+  border-radius: 8px !important;
+  margin: 4px !important;
+}
+.maplibregl-popup-close-button:hover {
+  color: var(--text-primary) !important;
+  background: var(--surface-tertiary) !important;
+}
+
+/* Contenu du popover véhicule */
+.tk-popup {
+  padding: 14px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 240px;
+}
+.tk-popup-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.tk-popup-header-text { min-width: 0; }
+.tk-popup-plate {
+  font-family: 'Poppins', sans-serif;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+.tk-popup-meta {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.tk-popup-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.tk-popup-status.is-on {
+  background: rgba(16, 224, 160, 0.12);
+  color: #10E0A0;
+}
+.tk-popup-status.is-off {
+  background: rgba(156, 163, 175, 0.15);
+  color: var(--text-tertiary);
+}
+.tk-popup-status-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.tk-popup-status.is-on .tk-popup-status-dot {
+  box-shadow: 0 0 0 2px rgba(16, 224, 160, 0.25);
+}
+
+.tk-popup-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.tk-popup-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  background: var(--surface-tertiary);
+  border-radius: 10px;
+}
+.tk-popup-stat-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.tk-popup-stat-value {
+  font-family: 'Poppins', sans-serif;
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.tk-popup-stat-value small {
+  font-size: 9px;
+  font-weight: 500;
+  opacity: 0.7;
+  margin-left: 2px;
+}
+
+.tk-popup-coords {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--text-tertiary);
+  padding: 4px 0;
+}
+
+.tk-popup-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 2px;
+}
+.tk-popup-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s;
+  min-height: 38px;
+}
+.tk-popup-btn:active { transform: scale(0.97); }
+.tk-popup-btn--primary {
+  background: rgba(16, 224, 160, 0.14);
+  color: #059669;
+  border-color: rgba(16, 224, 160, 0.32);
+}
+[data-theme='dark'] .tk-popup-btn--primary {
+  color: #10E0A0;
+}
+.tk-popup-btn--primary:hover {
+  background: rgba(16, 224, 160, 0.22);
+  border-color: rgba(16, 224, 160, 0.48);
+}
+.tk-popup-btn--ghost {
+  background: var(--surface-tertiary);
+  color: var(--text-secondary);
+  border-color: var(--border-color);
+}
+.tk-popup-btn--ghost:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong-color);
+}
+.tk-popup-btn--info {
+  background: rgba(59, 130, 246, 0.10);
+  color: #3b82f6;
+  border-color: rgba(59, 130, 246, 0.30);
+}
+.tk-popup-btn--info:hover {
+  background: rgba(59, 130, 246, 0.18);
+}
+.tk-popup-btn--danger {
+  background: rgba(239, 68, 68, 0.10);
+  color: #dc2626;
+  border-color: rgba(239, 68, 68, 0.30);
+}
+[data-theme='dark'] .tk-popup-btn--danger {
+  color: #f87171;
+}
+.tk-popup-btn--danger:hover {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.48);
+}
+.tk-popup-btn--success {
+  background: rgba(16, 224, 160, 0.14);
+  color: #059669;
+  border-color: rgba(16, 224, 160, 0.32);
+}
+[data-theme='dark'] .tk-popup-btn--success {
+  color: #10E0A0;
+}
+.tk-popup-btn--success:hover {
+  background: rgba(16, 224, 160, 0.22);
+  border-color: rgba(16, 224, 160, 0.48);
 }

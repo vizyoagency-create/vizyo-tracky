@@ -7,20 +7,24 @@ import { LucideAngularModule, AlertTriangle, Info } from 'lucide-angular';
   imports: [LucideAngularModule],
   template: `
     @if (open()) {
-      <div class="fixed inset-0 z-[9000] flex items-center justify-center">
-        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" (click)="onCancel()"></div>
+      <div class="fixed inset-0 z-[9000] flex items-center justify-center"
+           role="dialog"
+           aria-modal="true"
+           [attr.aria-labelledby]="'confirm-modal-title-' + uid"
+           [attr.aria-describedby]="description() ? 'confirm-modal-desc-' + uid : null">
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" (click)="onCancel()" aria-hidden="true"></div>
         <div class="relative bg-bg-secondary border border-border-subtle rounded-[--radius-card]
                     p-6 max-w-md w-full mx-4 shadow-2xl">
           <div class="flex items-start gap-3 mb-4">
             @if (danger()) {
-              <lucide-icon [img]="AlertTriangle" [size]="24" class="text-red-400 shrink-0 mt-0.5"></lucide-icon>
+              <lucide-icon [img]="AlertTriangle" [size]="24" class="text-red-400 shrink-0 mt-0.5" aria-hidden="true"></lucide-icon>
             } @else {
-              <lucide-icon [img]="Info" [size]="24" class="text-tracky-light shrink-0 mt-0.5"></lucide-icon>
+              <lucide-icon [img]="Info" [size]="24" class="text-tracky-light shrink-0 mt-0.5" aria-hidden="true"></lucide-icon>
             }
             <div>
-              <h3 class="text-lg font-display font-semibold text-fg-primary">{{ title() }}</h3>
+              <h3 [id]="'confirm-modal-title-' + uid" class="text-lg font-display font-semibold text-fg-primary">{{ title() }}</h3>
               @if (description()) {
-                <p class="text-sm text-fg-secondary mt-1" [innerHTML]="description()"></p>
+                <p [id]="'confirm-modal-desc-' + uid" class="text-sm text-fg-secondary mt-1" [innerHTML]="description()"></p>
               }
             </div>
           </div>
@@ -70,6 +74,8 @@ export class ConfirmModalComponent {
 
   protected readonly AlertTriangle = AlertTriangle;
   protected readonly Info = Info;
+  /** Identifiant unique pour relier title/desc via aria-labelledby/describedby */
+  protected readonly uid = Math.random().toString(36).slice(2, 9);
 
   @HostListener('document:keydown.escape')
   onEscape() {

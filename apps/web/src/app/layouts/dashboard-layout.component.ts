@@ -27,22 +27,30 @@ import { ToastContainerComponent } from '../shared/ui/toast/toast-container.comp
   standalone: true,
   imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, ThemeToggleComponent, AlertsBellComponent, LogoComponent, ToastContainerComponent],
   template: `
+    <a href="#main-content" class="skip-link">Aller au contenu principal</a>
     <div class="layout">
       <!-- DESKTOP SIDEBAR -->
-      <aside class="desktop-sidebar" [class.collapsed]="collapsed()">
+      <aside class="desktop-sidebar" [class.collapsed]="collapsed()" aria-label="Navigation principale">
         <div class="sidebar-top">
           <app-logo variant="icon" [size]="30" />
           @if (!collapsed()) {
             <span class="sidebar-brand">Vizyo <span class="text-tracky-light">Tracky</span></span>
           }
-          <button (click)="collapsed.set(!collapsed())" class="sidebar-toggle">
+          <button (click)="collapsed.set(!collapsed())"
+                  class="sidebar-toggle"
+                  [attr.aria-label]="collapsed() ? 'Déplier le menu' : 'Replier le menu'"
+                  [attr.aria-expanded]="!collapsed()">
             <lucide-icon [img]="MenuIcon" [size]="18"></lucide-icon>
           </button>
         </div>
-        <nav class="sidebar-nav">
+        <nav class="sidebar-nav" aria-label="Sections">
           @for (item of navItems(); track item.label) {
-            <a [routerLink]="item.route" routerLinkActive="active" class="sidebar-link">
-              <lucide-icon [img]="item.icon" [size]="20"></lucide-icon>
+            <a [routerLink]="item.route" routerLinkActive="active"
+               #rla="routerLinkActive"
+               class="sidebar-link"
+               [attr.aria-current]="rla.isActive ? 'page' : null"
+               [attr.aria-label]="collapsed() ? item.label : null">
+              <lucide-icon [img]="item.icon" [size]="20" aria-hidden="true"></lucide-icon>
               @if (!collapsed()) { <span>{{ item.label }}</span> }
             </a>
           }
@@ -51,19 +59,26 @@ import { ToastContainerComponent } from '../shared/ui/toast/toast-container.comp
 
       <!-- MOBILE DRAWER OVERLAY -->
       @if (mobileMenuOpen()) {
-        <div class="mobile-overlay" (click)="mobileMenuOpen.set(false)"></div>
-        <aside class="mobile-drawer">
+        <div class="mobile-overlay" (click)="mobileMenuOpen.set(false)" aria-hidden="true"></div>
+        <aside class="mobile-drawer"
+               role="dialog"
+               aria-modal="true"
+               aria-label="Menu de navigation">
           <div class="drawer-top">
             <app-logo variant="icon" [size]="28" />
             <span class="sidebar-brand">Vizyo <span class="text-tracky-light">Tracky</span></span>
-            <button (click)="mobileMenuOpen.set(false)" class="drawer-close">
-              <lucide-icon [img]="XIcon" [size]="18"></lucide-icon>
+            <button (click)="mobileMenuOpen.set(false)" class="drawer-close" aria-label="Fermer le menu">
+              <lucide-icon [img]="XIcon" [size]="18" aria-hidden="true"></lucide-icon>
             </button>
           </div>
-          <nav class="drawer-nav">
+          <nav class="drawer-nav" aria-label="Sections">
             @for (item of navItems(); track item.label) {
-              <a [routerLink]="item.route" routerLinkActive="active" class="drawer-link" (click)="mobileMenuOpen.set(false)">
-                <lucide-icon [img]="item.icon" [size]="20"></lucide-icon>
+              <a [routerLink]="item.route" routerLinkActive="active"
+                 #rla="routerLinkActive"
+                 class="drawer-link"
+                 [attr.aria-current]="rla.isActive ? 'page' : null"
+                 (click)="mobileMenuOpen.set(false)">
+                <lucide-icon [img]="item.icon" [size]="20" aria-hidden="true"></lucide-icon>
                 <span>{{ item.label }}</span>
               </a>
             }
@@ -73,18 +88,21 @@ import { ToastContainerComponent } from '../shared/ui/toast/toast-container.comp
 
       <!-- MAIN CONTENT -->
       <div class="main-area">
-        <header class="top-bar">
+        <header class="top-bar" role="banner">
           <!-- Wave layers (effet vague glassy tracky) -->
-          <span class="top-bar-wave top-bar-wave--1"></span>
-          <span class="top-bar-wave top-bar-wave--2"></span>
+          <span class="top-bar-wave top-bar-wave--1" aria-hidden="true"></span>
+          <span class="top-bar-wave top-bar-wave--2" aria-hidden="true"></span>
 
           <div class="top-bar-left">
-            <button (click)="mobileMenuOpen.set(true)" class="mobile-burger" aria-label="Menu">
-              <lucide-icon [img]="MenuIcon" [size]="18"></lucide-icon>
+            <button (click)="mobileMenuOpen.set(true)"
+                    class="mobile-burger"
+                    aria-label="Ouvrir le menu de navigation"
+                    [attr.aria-expanded]="mobileMenuOpen()">
+              <lucide-icon [img]="MenuIcon" [size]="18" aria-hidden="true"></lucide-icon>
             </button>
-            <a routerLink="/dashboard" class="top-bar-brand">
+            <a routerLink="/dashboard" class="top-bar-brand" aria-label="Vizyo Tracky — Tableau de bord">
               <app-logo variant="icon" [size]="26" />
-              <span class="top-bar-brand-text">
+              <span class="top-bar-brand-text" aria-hidden="true">
                 <span class="top-bar-brand-name">Vizyo</span>
                 <span class="top-bar-brand-name top-bar-brand-name--accent">Tracky</span>
               </span>
@@ -96,7 +114,7 @@ import { ToastContainerComponent } from '../shared/ui/toast/toast-container.comp
             <app-theme-toggle />
           </div>
         </header>
-        <main class="content" [class.fullscreen]="fullscreen()">
+        <main id="main-content" class="content" [class.fullscreen]="fullscreen()" tabindex="-1">
           <router-outlet />
         </main>
       </div>

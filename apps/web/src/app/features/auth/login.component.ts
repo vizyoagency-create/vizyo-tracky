@@ -28,7 +28,8 @@ import { ThemeService } from '../../core/theme/theme.service';
             type="email"
             [(ngModel)]="email"
             name="email"
-            placeholder=""
+            placeholder="vous@example.com"
+            autocomplete="email"
             class="w-full px-4 py-2.5 rounded-xl bg-bg-tertiary border border-border-subtle
                    text-fg-primary placeholder:text-fg-tertiary
                    focus:outline-none focus:border-tracky focus:ring-1 focus:ring-tracky
@@ -47,7 +48,8 @@ import { ThemeService } from '../../core/theme/theme.service';
               [type]="showPassword() ? 'text' : 'password'"
               [(ngModel)]="password"
               name="password"
-              placeholder=""
+              placeholder="••••••••"
+              autocomplete="current-password"
               class="w-full px-4 py-2.5 pr-11 rounded-xl bg-bg-tertiary border border-border-subtle
                      text-fg-primary placeholder:text-fg-tertiary
                      focus:outline-none focus:border-tracky focus:ring-1 focus:ring-tracky

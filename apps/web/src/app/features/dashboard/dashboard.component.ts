@@ -425,6 +425,21 @@ interface WidgetMeta {
       transition: border-color .2s;
     }
     .widget:hover { border-color: var(--border-strong) }
+    /* Désactive le tooltip/preview natif du lien (long-press iOS, hover desktop)
+       sur les widgets entiers — l'utilisateur clique pour naviguer, sans preview parasite. */
+    a.widget,
+    a.widget--map,
+    a.metric-card {
+      -webkit-touch-callout: none;
+      -webkit-user-drag: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    a.widget *,
+    a.widget--map *,
+    a.metric-card * {
+      -webkit-user-drag: none;
+    }
     .widget-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px }
     .widget-title { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; color: var(--fg-primary) }
     .widget-action { display: flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 600; color: var(--tracky-light); text-decoration: none }

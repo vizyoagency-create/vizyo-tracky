@@ -15,11 +15,12 @@ import { ThemeService } from '../../core/theme/theme.service';
              transition-all duration-300 ease-tracky
              hover:shadow-tracky-glow cursor-pointer"
       [attr.aria-label]="theme.theme() === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'"
+      [attr.aria-pressed]="theme.theme() === 'dark'"
     >
       @if (theme.theme() === 'dark') {
-        <lucide-icon [img]="Sun" [size]="18"></lucide-icon>
+        <lucide-icon [img]="Sun" [size]="18" aria-hidden="true"></lucide-icon>
       } @else {
-        <lucide-icon [img]="Moon" [size]="18"></lucide-icon>
+        <lucide-icon [img]="Moon" [size]="18" aria-hidden="true"></lucide-icon>
       }
     </button>
   `,

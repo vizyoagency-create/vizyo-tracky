@@ -21,16 +21,23 @@ const COLOR_MAP: Record<ToastKind, string> = {
   standalone: true,
   imports: [LucideAngularModule],
   template: `
-    <div class="toast-stack fixed right-4 z-[6000] flex flex-col gap-2 pointer-events-none">
+    <div class="toast-stack fixed right-4 z-[6000] flex flex-col gap-2 pointer-events-none"
+         role="region"
+         aria-label="Notifications"
+         aria-live="polite"
+         aria-atomic="false">
       @for (toast of toastService.toasts(); track toast.id) {
         <div class="pointer-events-auto animate-slide-in
                     bg-bg-secondary/95 backdrop-blur-md border border-border-subtle
                     rounded-xl p-4 min-w-[260px] max-w-[400px]
-                    flex items-start gap-3 shadow-lg">
+                    flex items-start gap-3 shadow-lg"
+             [attr.role]="toast.kind === 'error' ? 'alert' : 'status'"
+             [attr.aria-live]="toast.kind === 'error' ? 'assertive' : 'polite'">
           <lucide-icon
             [img]="iconFor(toast.kind)"
             [size]="20"
             [class]="colorFor(toast.kind) + ' shrink-0 mt-0.5'"
+            aria-hidden="true"
           ></lucide-icon>
           <div class="flex-1 min-w-0">
             <p class="text-sm font-semibold text-fg-primary">{{ toast.title }}</p>
@@ -41,8 +48,9 @@ const COLOR_MAP: Record<ToastKind, string> = {
           <button
             (click)="toastService.dismiss(toast.id)"
             class="text-fg-tertiary hover:text-fg-primary shrink-0 cursor-pointer"
+            aria-label="Fermer la notification"
           >
-            <lucide-icon [img]="X" [size]="14"></lucide-icon>
+            <lucide-icon [img]="X" [size]="14" aria-hidden="true"></lucide-icon>
           </button>
         </div>
       }
