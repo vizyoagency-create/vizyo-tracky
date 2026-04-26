@@ -21,7 +21,7 @@ import { TripReplayComponent } from './trip-replay.component';
       <div class="flex items-center gap-3 flex-wrap">
         <select [(ngModel)]="selectedVehicleId" (ngModelChange)="loadData()"
                 class="px-3 py-2 text-sm rounded-xl bg-bg-secondary border border-border-subtle text-fg-primary">
-          <option value="">Tous les vehicules</option>
+          <option value="">Tous les véhicules</option>
           @for (v of vehicles(); track v.id) {
             <option [value]="v.id">{{ v.plate }}</option>
           }
@@ -65,7 +65,7 @@ import { TripReplayComponent } from './trip-replay.component';
         <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4">
           <div class="flex items-center gap-2 mb-2">
             <lucide-icon [img]="Clock" [size]="16" class="text-tracky-light"></lucide-icon>
-            <span class="text-xs text-fg-tertiary">Duree totale</span>
+            <span class="text-xs text-fg-tertiary">Durée totale</span>
           </div>
           <p class="text-xl font-semibold text-fg-primary">{{ formatDuration(kpis().totalDuration) }}</p>
         </div>
@@ -85,16 +85,16 @@ import { TripReplayComponent } from './trip-replay.component';
       } @else if (trips().length === 0) {
         <div class="flex items-center justify-center h-32 rounded-[--radius-card]
                     bg-bg-secondary border border-border-subtle text-fg-tertiary">
-          Aucun trajet pour cette periode
+          Aucun trajet pour cette période
         </div>
       } @else {
         <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-x-auto">
           <table class="w-full text-sm" style="min-width:600px">
             <thead class="border-b border-border-subtle text-fg-tertiary text-xs uppercase">
               <tr>
-                <th class="p-3 text-left">Depart</th>
-                <th class="p-3 text-left">Arrivee</th>
-                <th class="p-3 text-right">Duree</th>
+                <th class="p-3 text-left">Départ</th>
+                <th class="p-3 text-left">Arrivée</th>
+                <th class="p-3 text-right">Durée</th>
                 <th class="p-3 text-right">Distance</th>
                 <th class="p-3 text-right">V. moy</th>
                 <th class="p-3 text-right">V. max</th>
@@ -221,9 +221,9 @@ export class ReportsComponent implements OnInit {
         from: this.periodFrom,
         to: this.periodTo,
       }));
-      this.toast.success(`Recalcul termine`, `${res.deleted} supprimes, ${res.created} crees`);
+      this.toast.success(`Recalcul terminé`, `${res.deleted} supprimés, ${res.created} créés`);
       await this.loadData();
-    } catch { this.toast.error('Echec du recalcul'); }
+    } catch { this.toast.error('Échec du recalcul'); }
     finally { this.recomputing.set(false); }
   }
 

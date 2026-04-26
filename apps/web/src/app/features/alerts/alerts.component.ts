@@ -42,7 +42,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
         }
         <button (click)="showAcknowledged.set(!showAcknowledged())"
           class="a-filter" [class.active]="showAcknowledged()">
-          <lucide-icon [img]="Check" [size]="11"></lucide-icon> Acquittees
+          <lucide-icon [img]="Check" [size]="11"></lucide-icon> Acquittées
         </button>
       </div>
 
@@ -81,7 +81,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
               <div class="tl-card-mid">
                 @if (alert.vehicleId) {
                   <a [routerLink]="['/vehicles', alert.vehicleId]" class="tl-vehicle">
-                    {{ alert.vehiclePlate ?? 'Vehicule' }}
+                    {{ alert.vehiclePlate ?? 'Véhicule' }}
                   </a>
                 }
                 @if (alert.message) {
@@ -96,7 +96,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
                 </div>
               } @else if (isAcknowledged(alert)) {
                 <div class="tl-card-bottom">
-                  <span class="tl-acked"><lucide-icon [img]="Check" [size]="10"></lucide-icon> Acquittee</span>
+                  <span class="tl-acked"><lucide-icon [img]="Check" [size]="10"></lucide-icon> Acquittée</span>
                 </div>
               }
             </div>
@@ -289,7 +289,7 @@ export class AlertsComponent implements OnInit {
         list.map((a) => (a.id === id ? { ...a, acknowledgedAt: new Date().toISOString() } as any : a)),
       );
       this.realtime.dismissAlert(id);
-      this.toast.success('Alerte acquittee');
+      this.toast.success('Alerte acquittée');
     } catch { /* handled */ }
   }
 
@@ -298,7 +298,7 @@ export class AlertsComponent implements OnInit {
       const ids = this.alerts().filter((a) => !this.isAcknowledged(a)).map((a) => a.id);
       const { count } = await firstValueFrom(this.alertsApi.acknowledgeAll());
       ids.forEach((id) => this.realtime.dismissAlert(id));
-      this.toast.success(`${count} alertes acquittees`);
+      this.toast.success(`${count} alertes acquittées`);
       this.loadAlerts();
     } catch { /* handled */ }
   }

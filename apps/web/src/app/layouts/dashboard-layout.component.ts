@@ -232,7 +232,7 @@ export class DashboardLayoutComponent {
   protected readonly bottomItems = [
     { label: 'Dashboard', route: '/dashboard', icon: LayoutDashboard },
     { label: 'Carte', route: '/map', icon: Map },
-    { label: 'Vehicules', route: '/vehicles', icon: Truck },
+    { label: 'Véhicules', route: '/vehicles', icon: Truck },
     { label: 'Alertes', route: '/alerts', icon: Bell },
     { label: 'Plus', route: 'more', icon: MoreHorizontal },
   ];
@@ -256,12 +256,12 @@ export class DashboardLayoutComponent {
     return [
       { label: 'Tableau de bord', route: '/dashboard', icon: LayoutDashboard },
       { label: 'Carte', route: '/map', icon: Map },
-      { label: 'Vehicules', route: '/vehicles', icon: Truck },
+      { label: 'Véhicules', route: '/vehicles', icon: Truck },
       { label: 'Alertes', route: '/alerts', icon: Bell },
-      { label: 'Geofences', route: '/geofences', icon: Shield },
+      { label: 'Géofences', route: '/geofences', icon: Shield },
       { label: 'Rapports', route: '/reports', icon: FileBarChart },
       ...(this.perms.can('users_view') ? [{ label: 'Utilisateurs', route: '/users', icon: Users }] : []),
-      { label: 'Parametres', route: '/settings', icon: Settings },
+      { label: 'Paramètres', route: '/settings', icon: Settings },
       ...(this.auth.user()?.role === 'SUPER_ADMIN' ? [{ label: 'Observabilité', route: '/admin/observability', icon: Activity }] : []),
     ];
   });

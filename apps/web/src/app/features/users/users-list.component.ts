@@ -77,8 +77,8 @@ import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerR
                   <button (click)="openEditDrawer(u)" class="u-action-btn" title="Modifier">
                     <lucide-icon [img]="PencilIcon" [size]="14"></lucide-icon> Modifier
                   </button>
-                  <button (click)="openAccessModal(u)" class="u-action-btn" title="Acces vehicules">
-                    <lucide-icon [img]="ShieldIcon" [size]="14"></lucide-icon> Acces
+                  <button (click)="openAccessModal(u)" class="u-action-btn" title="Accès véhicules">
+                    <lucide-icon [img]="ShieldIcon" [size]="14"></lucide-icon> Accès
                   </button>
                   <button (click)="confirmDelete(u)" class="u-action-btn danger" title="Supprimer">
                     <lucide-icon [img]="Trash2" [size]="14"></lucide-icon>
@@ -104,7 +104,7 @@ import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerR
     <app-confirm-modal
       [open]="showDeleteModal()"
       title="Supprimer l'utilisateur"
-      [description]="'Voulez-vous supprimer <strong>' + (userToDelete()?.email ?? '') + '</strong> ? Cette action est irreversible.'"
+      [description]="'Voulez-vous supprimer <strong>' + (userToDelete()?.email ?? '') + '</strong> ? Cette action est irréversible.'"
       confirmLabel="Supprimer"
       [danger]="true"
       [loading]="deleting()"

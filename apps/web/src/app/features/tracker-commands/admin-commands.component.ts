@@ -11,11 +11,11 @@ import { relativeTime } from '../../shared/utils/relative-time';
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: 'En attente',
-  SCHEDULED: 'Planifiee',
-  SENT: 'Envoyee',
-  ACKNOWLEDGED: 'Confirmee',
-  FAILED: 'Echouee',
-  CANCELLED: 'Annulee',
+  SCHEDULED: 'Planifiée',
+  SENT: 'Envoyée',
+  ACKNOWLEDGED: 'Confirmée',
+  FAILED: 'Échouée',
+  CANCELLED: 'Annulée',
 };
 
 @Component({
@@ -29,7 +29,7 @@ const STATUS_LABELS: Record<string, string> = {
         <button (click)="load()" class="px-4 py-2 bg-tracky text-white rounded-lg text-sm font-medium
                 hover:bg-tracky-dark cursor-pointer flex items-center gap-2">
           <lucide-icon [img]="RefreshCw" [size]="14"></lucide-icon>
-          Rafraichir
+          Rafraîchir
         </button>
       </div>
 
@@ -41,15 +41,15 @@ const STATUS_LABELS: Record<string, string> = {
                   class="bg-bg-secondary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary">
             <option value="">Tous</option>
             <option value="PENDING">En attente</option>
-            <option value="SENT">Envoyee</option>
-            <option value="ACKNOWLEDGED">Confirmee</option>
-            <option value="FAILED">Echouee</option>
-            <option value="SCHEDULED">Planifiee</option>
-            <option value="CANCELLED">Annulee</option>
+            <option value="SENT">Envoyée</option>
+            <option value="ACKNOWLEDGED">Confirmée</option>
+            <option value="FAILED">Échouée</option>
+            <option value="SCHEDULED">Planifiée</option>
+            <option value="CANCELLED">Annulée</option>
           </select>
         </div>
         <div class="flex flex-col gap-1">
-          <label class="text-xs text-fg-tertiary">Categorie</label>
+          <label class="text-xs text-fg-tertiary">Catégorie</label>
           <select [(ngModel)]="categoryFilter"
                   class="bg-bg-secondary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary">
             <option value="">Toutes</option>
@@ -57,9 +57,9 @@ const STATUS_LABELS: Record<string, string> = {
             <option value="power">Alimentation</option>
             <option value="reporting">Reporting</option>
             <option value="alarm">Alarmes</option>
-            <option value="geofence">Geofence</option>
+            <option value="geofence">Géofence</option>
             <option value="config_initial">Configuration</option>
-            <option value="custom">Personnalise</option>
+            <option value="custom">Personnalisé</option>
           </select>
         </div>
         <button (click)="load()" class="px-3 py-2 bg-bg-secondary border border-border-subtle rounded-lg text-sm text-fg-primary hover:bg-bg-tertiary cursor-pointer">
@@ -74,10 +74,10 @@ const STATUS_LABELS: Record<string, string> = {
               <tr>
                 <th class="p-3 text-left">Date</th>
                 <th class="p-3 text-left">Template</th>
-                <th class="p-3 text-left">Categorie</th>
+                <th class="p-3 text-left">Catégorie</th>
                 <th class="p-3 text-left">Statut</th>
                 <th class="p-3 text-left">Payload</th>
-                <th class="p-3 text-left">Reponse</th>
+                <th class="p-3 text-left">Réponse</th>
                 <th class="p-3 text-left">Utilisateur</th>
               </tr>
             </thead>

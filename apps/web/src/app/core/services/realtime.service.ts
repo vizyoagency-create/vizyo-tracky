@@ -60,7 +60,7 @@ export class RealtimeService {
         this.toast.show({
           kind: alert.severity === 'CRITICAL' ? 'error' : alert.severity === 'WARNING' ? 'warning' : 'info',
           title: alert.title,
-          message: alert.vehiclePlate ? `Vehicule ${alert.vehiclePlate}` : undefined,
+          message: alert.vehiclePlate ? `Véhicule ${alert.vehiclePlate}` : undefined,
           duration: pref.duration,
         });
       }

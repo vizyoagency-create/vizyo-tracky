@@ -28,7 +28,7 @@ import { createTrackyIcon, speedColor } from '../../shared/utils/leaflet-markers
       <div class="bg-bg-secondary/80 backdrop-blur-md border border-border-subtle
                   rounded-[--radius-card] p-4 min-w-[200px]">
         <div class="flex items-center gap-2 mb-2">
-          <h3 class="text-sm font-display font-semibold text-fg-primary">Suivi temps reel</h3>
+          <h3 class="text-sm font-display font-semibold text-fg-primary">Suivi temps réel</h3>
           @if (realtime.connected()) {
             <span class="w-2 h-2 rounded-full bg-tracky-light animate-pulse"></span>
           } @else {
@@ -36,7 +36,7 @@ import { createTrackyIcon, speedColor } from '../../shared/utils/leaflet-markers
           }
         </div>
         <p class="text-xs text-fg-secondary">
-          {{ filteredPositionCount() }} vehicule(s) actif(s)
+          {{ filteredPositionCount() }} véhicule(s) actif(s)
         </p>
         <button
           (click)="centerAll()"
@@ -78,7 +78,7 @@ import { createTrackyIcon, speedColor } from '../../shared/utils/leaflet-markers
            class="bg-bg-secondary/90 backdrop-blur-md border border-border-subtle
                   rounded-xl px-4 py-2 flex items-center gap-2">
         <span class="w-3 h-3 border-2 border-fg-tertiary border-t-tracky-light rounded-full animate-spin"></span>
-        <span class="text-xs text-fg-secondary">Connexion temps reel interrompue...</span>
+        <span class="text-xs text-fg-secondary">Connexion temps réel interrompue...</span>
       </div>
     }
   `,
@@ -288,7 +288,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       Vitesse : <strong>${pos.speedKmh.toFixed(0)} km/h</strong><br>
       Position : ${pos.lat.toFixed(5)}, ${pos.lng.toFixed(5)}<br>
       <span style="color:#888">il y a ${ago}s</span><br>
-      <a href="/vehicles/${pos.vehicleId}" style="color:#10E0A0;text-decoration:underline;font-size:11px">Voir fiche vehicule</a>
+      <a href="/vehicles/${pos.vehicleId}" style="color:#10E0A0;text-decoration:underline;font-size:11px">Voir fiche véhicule</a>
     </div>`;
   }
 }

@@ -20,8 +20,8 @@ import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-dra
       <!-- Header -->
       <div class="gf-header">
         <div>
-          <h1 class="gf-title">Geofences</h1>
-          <p class="gf-sub">{{ geofences().length }} zone(s) configuree(s)</p>
+          <h1 class="gf-title">Géofences</h1>
+          <p class="gf-sub">{{ geofences().length }} zone(s) configurée(s)</p>
         </div>
         @if (perms.can('geofences_manage')) {
           <button (click)="openCreate()" class="gf-add-btn">
@@ -35,9 +35,9 @@ import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-dra
       } @else if (geofences().length === 0) {
         <div class="gf-empty">
           <div class="gf-empty-icon"><lucide-icon [img]="Shield" [size]="32"></lucide-icon></div>
-          <p>Aucune geofence configuree</p>
+          <p>Aucune géofence configurée</p>
           @if (perms.can('geofences_manage')) {
-            <button (click)="openCreate()" class="gf-empty-cta">Creer votre premiere zone</button>
+            <button (click)="openCreate()" class="gf-empty-cta">Créer votre première zone</button>
           }
         </div>
       } @else {
@@ -66,7 +66,7 @@ import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-dra
                     {{ ruleLabel(g.rule) }}
                   </span>
                   <span class="gf-status" [class]="g.active ? 'active' : 'inactive'">
-                    {{ g.active ? 'Active' : 'Inactive' }}
+                    {{ g.active ? 'Activée' : 'Inactive' }}
                   </span>
                 </div>
                 <div class="gf-coords">
@@ -95,8 +95,8 @@ import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-dra
 
     <app-confirm-modal
       [open]="showDeleteConfirm()"
-      title="Supprimer la geofence"
-      [description]="'Supprimer <strong>' + (deleteTarget()?.name ?? '') + '</strong> ? Cette action est irreversible.'"
+      title="Supprimer la géofence"
+      [description]="'Supprimer <strong>' + (deleteTarget()?.name ?? '') + '</strong> ? Cette action est irréversible.'"
       confirmLabel="Supprimer"
       [danger]="true"
       (confirmed)="onDeleteConfirmed()"
@@ -224,9 +224,9 @@ export class GeofencesListComponent implements OnInit {
   ngOnInit(): void { this.loadGeofences(); }
 
   protected ruleLabel(rule: string): string {
-    if (rule === 'ENTER') return 'Entree';
+    if (rule === 'ENTER') return 'Entrée';
     if (rule === 'EXIT') return 'Sortie';
-    return 'Entree + Sortie';
+    return 'Entrée + Sortie';
   }
 
   protected ruleClass(rule: string): string {
@@ -269,8 +269,8 @@ export class GeofencesListComponent implements OnInit {
     try {
       await firstValueFrom(this.geofencesApi.delete(g.id));
       this.geofences.update((list) => list.filter((x) => x.id !== g.id));
-      this.toast.success('Geofence supprimee');
-    } catch { this.toast.error('Echec de la suppression'); }
+      this.toast.success('Géofence supprimée');
+    } catch { this.toast.error('Échec de la suppression'); }
     this.showDeleteConfirm.set(false);
   }
 

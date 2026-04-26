@@ -105,7 +105,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
           <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-3 sm:p-4">
             <div class="flex items-center gap-2 mb-2">
               <lucide-icon [img]="MapPin" [size]="16" class="text-tracky-light"></lucide-icon>
-              <span class="text-xs text-fg-tertiary">Derniere position</span>
+              <span class="text-xs text-fg-tertiary">Dernière position</span>
             </div>
             <p class="text-xl font-semibold text-fg-primary">
               @if (currentPosition(); as pos) { {{ relativeTime(pos.timestamp) }} } @else { Jamais }
@@ -118,7 +118,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
               <span class="text-xs text-fg-tertiary">Tracker</span>
             </div>
             <p class="text-lg font-mono font-semibold text-fg-primary">
-              @if (v.tracker) { {{ v.tracker.imei.slice(0,4) }}...{{ v.tracker.imei.slice(-4) }} } @else { Non assigne }
+              @if (v.tracker) { {{ v.tracker.imei.slice(0,4) }}...{{ v.tracker.imei.slice(-4) }} } @else { Non assigné }
             </p>
           </div>
         </div>
@@ -169,7 +169,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
                   <tr>
                     <th class="p-3 text-left">Horodatage</th>
                     <th class="p-3 text-right">Vitesse</th>
-                    <th class="p-3 text-left">Coordonnees</th>
+                    <th class="p-3 text-left">Coordonnées</th>
                     <th class="p-3 text-center">Moteur</th>
                     <th class="p-3 text-center">Fix</th>
                   </tr>
@@ -251,7 +251,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
             <div class="flex flex-col items-center justify-center h-40 rounded-[--radius-card]
                         bg-bg-secondary border border-border-subtle text-fg-tertiary gap-2">
               <lucide-icon [img]="Power" [size]="48" class="opacity-30"></lucide-icon>
-              <p>Aucun tracker associe</p>
+              <p>Aucun tracker associé</p>
             </div>
           }
         }
@@ -395,7 +395,7 @@ export class VehicleDetailComponent implements OnInit {
     try {
       await firstValueFrom(this.alertsApi.acknowledge(id));
       this.alerts.update((list) => list.filter((a) => a.id !== id));
-      this.toast.success('Alerte acquittee');
+      this.toast.success('Alerte acquittée');
     } catch { /* handled */ }
   }
 
@@ -405,8 +405,8 @@ export class VehicleDetailComponent implements OnInit {
 
   protected statusLabel(status: string): string {
     const labels: Record<string, string> = {
-      PENDING: 'En attente', SENT: 'Envoyee', ACKNOWLEDGED: 'Confirmee',
-      FAILED: 'Echouee', REJECTED_SPEED: 'Refusee',
+      PENDING: 'En attente', SENT: 'Envoyée', ACKNOWLEDGED: 'Confirmée',
+      FAILED: 'Échouée', REJECTED_SPEED: 'Refusée',
     };
     return labels[status] ?? status;
   }

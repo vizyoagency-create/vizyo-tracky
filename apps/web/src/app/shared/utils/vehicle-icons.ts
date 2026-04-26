@@ -32,7 +32,7 @@ export const VEHICLE_TYPES: VehicleTypeInfo[] = [
   },
   {
     key: 'BICYCLE',
-    label: 'Velo',
+    label: 'Vélo',
     svg: '<circle cx="6" cy="17" r="3"/><circle cx="18" cy="17" r="3"/><path d="M6 17l3-7h6l3 7M12 5l-3 5m3-5l3 5m-3-5v2"/>',
   },
   {

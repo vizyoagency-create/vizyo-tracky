@@ -68,7 +68,7 @@ const ROLE_DEFAULTS: Record<string, Record<string, boolean>> = {
                   </div>
                   <div>
                     <label class="field-label">Mot de passe</label>
-                    <input type="password" [(ngModel)]="password" placeholder="Minimum 12 caracteres"
+                    <input type="password" [(ngModel)]="password" placeholder="Minimum 12 caractères"
                       class="field-input" />
                   </div>
                 </div>
@@ -79,8 +79,8 @@ const ROLE_DEFAULTS: Record<string, Record<string, boolean>> = {
               <h3 class="section-title">Informations</h3>
               <div class="grid grid-cols-2 gap-3">
                 <div>
-                  <label class="field-label">Prenom</label>
-                  <input type="text" [(ngModel)]="firstName" placeholder="Prenom" class="field-input" />
+                  <label class="field-label">Prénom</label>
+                  <input type="text" [(ngModel)]="firstName" placeholder="Prénom" class="field-input" />
                 </div>
                 <div>
                   <label class="field-label">Nom</label>
@@ -91,7 +91,7 @@ const ROLE_DEFAULTS: Record<string, Record<string, boolean>> = {
 
             <!-- Section: Rôle -->
             <section>
-              <h3 class="section-title">Role</h3>
+              <h3 class="section-title">Rôle</h3>
               <div class="flex gap-2">
                 <button (click)="setRole('VIEWER')"
                   class="role-btn" [class.active]="role === 'VIEWER'" [class.viewer]="role === 'VIEWER'">
@@ -161,7 +161,7 @@ const ROLE_DEFAULTS: Record<string, Record<string, boolean>> = {
               } @else {
                 <lucide-icon [img]="SaveIcon" [size]="14"></lucide-icon>
               }
-              {{ data()?.mode === 'create' ? 'Creer' : 'Enregistrer' }}
+              {{ data()?.mode === 'create' ? 'Créer' : 'Enregistrer' }}
             </button>
           </div>
         </div>
@@ -247,7 +247,7 @@ export class UserDrawerComponent {
   protected readonly SaveIcon = Save;
 
   readonly permGroups = [
-    { label: 'Vehicules', icon: Truck, items: [
+    { label: 'Véhicules', icon: Truck, items: [
       { key: 'vehicles_view', label: 'Voir la liste' },
       { key: 'vehicles_create', label: 'Ajouter' },
       { key: 'vehicles_edit', label: 'Modifier' },
@@ -255,11 +255,11 @@ export class UserDrawerComponent {
     ]},
     { label: 'Groupes', icon: FolderOpen, items: [
       { key: 'groups_view', label: 'Voir les groupes' },
-      { key: 'groups_manage', label: 'Gerer les groupes' },
+      { key: 'groups_manage', label: 'Gérer les groupes' },
     ]},
-    { label: 'Geofences', icon: Shield, items: [
+    { label: 'Géofences', icon: Shield, items: [
       { key: 'geofences_view', label: 'Voir' },
-      { key: 'geofences_manage', label: 'Creer / Supprimer' },
+      { key: 'geofences_manage', label: 'Créer / Supprimer' },
     ]},
     { label: 'Alertes', icon: Bell, items: [
       { key: 'alerts_view', label: 'Voir' },
@@ -270,7 +270,7 @@ export class UserDrawerComponent {
     ]},
     { label: 'Utilisateurs', icon: Users, items: [
       { key: 'users_view', label: 'Voir' },
-      { key: 'users_manage', label: 'Gerer' },
+      { key: 'users_manage', label: 'Gérer' },
     ]},
   ];
 
