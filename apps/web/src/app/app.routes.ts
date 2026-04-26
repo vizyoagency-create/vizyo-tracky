@@ -88,11 +88,25 @@ export const routes: Routes = [
         data: { title: 'Observabilité' },
       },
       {
+        path: 'admin/alerts',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/observability/admin-alerts.component').then((m) => m.AdminAlertsComponent),
+        data: { title: 'Centre d\'alertes' },
+      },
+      {
         path: 'admin/trackers/:id/sampling',
         canActivate: [superAdminGuard],
         loadComponent: () =>
           import('./features/observability/admin-sampling.component').then((m) => m.AdminSamplingComponent),
         data: { title: 'Sampling adaptatif' },
+      },
+      {
+        path: 'admin/trackers/:id/fix-mode',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/observability/admin-fix-mode.component').then((m) => m.AdminFixModeComponent),
+        data: { title: 'Fix mode tracker' },
       },
       {
         path: 'admin/commands',

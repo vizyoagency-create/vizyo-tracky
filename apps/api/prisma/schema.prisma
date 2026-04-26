@@ -97,6 +97,10 @@ model Fleet {
   // economiser le stockage. UX-first : le broadcast WS reste integral.
   // Opt-out par fleet pour les contrats imposant un tracage continu (legal).
   adaptiveSamplingEnabled Boolean @default(true)
+  // V1.5 (Sprint H3) — pilotage adaptatif du fix interval boitier (fix030s en
+  // mouvement, fix120s/300s a l'arret). Reduit la conso batterie + data SIM.
+  // Opt-out pour les contrats imposant le mode 30s permanent.
+  adaptiveFixModeEnabled  Boolean @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -180,6 +184,22 @@ model Tracker {
   lastWriteAt          DateTime?
   lastSampledState     String?
   verboseUntil         DateTime?
+  // V1.5 (Sprint H3) — pilotage du fix interval boitier (commande Coban `fix...***n`).
+  // desired = ce que le serveur veut que le boitier emette ; current = ce qu'on observe
+  // reellement. Si desired != current pendant > 6 trames, on incrementre le compteur
+  // d'echec et on marque le tracker FAILING.
+  desiredFixIntervalS     Int       @default(30)
+  currentFixIntervalS     Int?
+  lastFixIntervalSyncAt   DateTime?
+  // Compteur d'echecs consecutifs (commande envoyee non prise en compte par le boitier).
+  fixCommandFailureCount  Int       @default(0)
+  fixCommandFailing       Boolean   @default(false)
+  // Override admin : si > now, le serveur ne tente pas de nouvelles transitions
+  // automatiques (utile pour figer le tracker en mode 30s pour 24h depuis l'admin).
+  fixModeOverrideUntil    DateTime?
+  // Timestamp deviceTime de la derniere trame valide observee — sert au reconciler
+  // pour calculer le delta entre 2 trames et inferer l'intervalle reel.
+  lastValidFrameAt        DateTime?
   vehicleId            String?                @unique @db.Uuid
   vehicle    Vehicle?               @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   positions  Position[]
@@ -384,6 +404,19 @@ model TrackerCommand {
   ackedAt         DateTime?
   ackResponse     String?
   lastError       String?
+  // V1.5 (Sprint H3) — observabilite admin enrichie. `expectedResult`/`observedResult`
+  // sont des descriptions textuelles courtes, `contextSnapshot` est l'instantane JSON
+  // capture au moment de l'envoi (etat vehicule, signal, derniere position).
+  // `diagnosticHint` est une suggestion textuelle generee par le service quand la
+  // commande echoue (ex: "tester reset SMS"). `acknowledgedBy` permet a un admin de
+  // marquer une erreur comme traitee depuis le centre d'alertes.
+  expectedResult   String?
+  observedResult   String?
+  contextSnapshot  Json?
+  diagnosticHint   String?
+  outcomeReason    String?
+  acknowledgedBy   String?              @db.Uuid
+  acknowledgedAt   DateTime?
   requestedBy     String                @db.Uuid
   requestedByUser User                  @relation(fields: [requestedBy], references: [id], onDelete: Restrict)
   createdAt       DateTime              @default(now())
@@ -392,6 +425,7 @@ model TrackerCommand {
   @@index([trackerId, createdAt(sort: Desc)])
   @@index([status])
   @@index([scheduledAt])
+  @@index([category, status])
   @@map("tracker_commands")
 }
 

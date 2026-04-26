@@ -14,6 +14,7 @@ import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PositionBroadcastBuffer } from '../realtime/position-broadcast-buffer.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { TrackerFixModeService } from '../tracker-fix-mode/tracker-fix-mode.service';
 import { TripsService } from '../trips/trips.service';
 import { PositionSamplingService } from './position-sampling.service';
 
@@ -40,6 +41,7 @@ export class PositionsService {
     private readonly errorLogger: ErrorLogger,
     private readonly sampling: PositionSamplingService,
     private readonly broadcastBuffer: PositionBroadcastBuffer,
+    private readonly fixMode: TrackerFixModeService,
   ) {}
 
   async ingest(frame: CobanPositionFrame): Promise<void> {
@@ -107,6 +109,7 @@ export class PositionsService {
     // pilote le `prisma.position.create` plus bas. Le broadcast WS reste
     // integral quel que soit l'outcome (UX-first).
     let samplingOutcome: ReturnType<PositionSamplingService['decide']> | null = null;
+    let samplingState: ReturnType<PositionSamplingService['classify']>['state'] | null = null;
     if (frame.valid) {
       const adaptiveEnabled = tracker.vehicle?.fleet?.adaptiveSamplingEnabled ?? true;
       const { state, distanceM } = this.sampling.classify({
@@ -117,12 +120,28 @@ export class PositionsService {
         prevLat: tracker.lastLat,
         prevLng: tracker.lastLng,
       });
+      samplingState = state;
       samplingOutcome = this.sampling.decide(tracker, state, distanceM, adaptiveEnabled);
 
       if (samplingOutcome.shouldInsert) {
         trackerUpdate.lastWriteAt = new Date();
         trackerUpdate.lastSampledState = samplingOutcome.state;
       }
+
+      // V1.5 (Sprint H3) — reconcile observed fix interval. Compare deltaT entre
+      // deviceTime de cette trame et lastValidFrameAt pour detecter si le boitier
+      // honore l'intervalle desire (ou si on doit incrementer le compteur d'echec).
+      const reconciled = this.fixMode.reconcile(tracker, {
+        deviceTime: frame.deviceTime,
+        speedKmh: frame.speedKph,
+        ignition: resolvedIgnition,
+        lat: frame.latitude,
+        lng: frame.longitude,
+      });
+      trackerUpdate.currentFixIntervalS = reconciled.nextCurrentFixIntervalS;
+      trackerUpdate.fixCommandFailureCount = reconciled.nextFailureCount;
+      trackerUpdate.fixCommandFailing = reconciled.nextFailing;
+      trackerUpdate.lastValidFrameAt = frame.deviceTime;
     }
 
     const wasOffline = tracker.status !== 'ONLINE';
@@ -181,6 +200,40 @@ export class PositionsService {
         this.gateway.broadcastPosition(tracker.vehicle.fleetId, event);
       }
       return;
+    }
+
+    // V1.5 (Sprint H3) — pilotage fix mode boitier. Sur transition d'etat, on
+    // demande au boitier d'ajuster son intervalle d'envoi via la commande
+    // Coban `fix...***n`. Fire-and-forget : l'echec n'impacte pas l'ingestion.
+    if (samplingState && tracker.vehicle?.fleet) {
+      const stateChanged = tracker.lastSampledState !== samplingState;
+      const desiredS = this.fixMode.desiredIntervalFor(samplingState, tracker);
+      if (stateChanged || desiredS !== tracker.desiredFixIntervalS) {
+        this.fixMode
+          .requestChange(
+            tracker as Tracker & { vehicle: Vehicle & { fleet: NonNullable<typeof tracker.vehicle>['fleet'] } },
+            desiredS,
+            stateChanged ? `${tracker.lastSampledState ?? 'NEW'}_TO_${samplingState}` : 'STOPPED_GRACE_ELAPSED',
+            {
+              vehicleId: tracker.vehicle.id,
+              fleetId: tracker.vehicle.fleetId,
+              plate: tracker.vehicle.plate,
+              speedKmh: frame.speedKph,
+              ignition: resolvedIgnition ?? null,
+              latitude: frame.latitude,
+              longitude: frame.longitude,
+              previousState: tracker.lastSampledState,
+              newState: samplingState,
+              lastSeenAt: tracker.lastSeenAt?.toISOString() ?? null,
+              lastIgnitionChangeAt: tracker.lastIgnitionChangeAt?.toISOString() ?? null,
+            },
+          )
+          .catch((err) => {
+            this.logger.warn(
+              `Fix mode requestChange failed for ${tracker.imei}: ${err instanceof Error ? err.message : err}`,
+            );
+          });
+      }
     }
 
     // V1.5 (Sprint H1) — persistance Position conditionnee par le sampling.

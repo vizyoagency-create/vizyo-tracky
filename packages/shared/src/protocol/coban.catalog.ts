@@ -165,7 +165,9 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
     buildPayload: (_imei, params) => `fix${params['interval'] as string}***n123456`,
     expectedAckPattern: /fix.*ok/i,
     ackTimeoutMs: 15000,
-    availableVia: ['sms'],
+    // Disponible via TCP (canal descendant deja ouvert par le boitier) ET SMS.
+    // Utilise par le pilotage adaptatif fix mode (Sprint H3).
+    availableVia: ['sms', 'tcp'],
   },
   {
     id: 'fix_stop',
