@@ -14,7 +14,7 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
     <div class="flex flex-col gap-4">
       <!-- Header -->
       <div class="flex items-center justify-between">
-        <p class="text-sm text-fg-secondary">Organisez vos vehicules en groupes pour gerer les acces.</p>
+        <p class="text-sm text-fg-secondary">Organisez vos véhicules en groupes pour gérer les accès.</p>
         <button (click)="showCreateModal.set(true)"
           class="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-xl
                  bg-tracky hover:bg-tracky-dark text-white transition-colors cursor-pointer">
@@ -31,7 +31,7 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
         <div class="flex flex-col items-center justify-center h-32 rounded-xl
                     bg-bg-secondary border border-border-subtle text-fg-tertiary gap-2">
           <lucide-icon [img]="FolderOpen" [size]="36" class="opacity-30"></lucide-icon>
-          <p class="text-sm">Aucun groupe cree</p>
+          <p class="text-sm">Aucun groupe créé</p>
         </div>
       } @else {
         <div class="flex flex-col gap-3">
@@ -41,7 +41,7 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
                 <div class="flex items-center gap-2">
                   <lucide-icon [img]="FolderOpen" [size]="16" class="text-tracky-light"></lucide-icon>
                   <span class="font-semibold text-fg-primary text-sm">{{ g.name }}</span>
-                  <span class="text-xs text-fg-tertiary">({{ g._count.vehicles }} vehicule{{ g._count.vehicles > 1 ? 's' : '' }})</span>
+                  <span class="text-xs text-fg-tertiary">({{ g._count.vehicles }} véhicule{{ g._count.vehicles > 1 ? 's' : '' }})</span>
                 </div>
                 <button (click)="confirmDeleteGroup(g)"
                   class="p-1 rounded-lg text-fg-tertiary hover:text-red-400 hover:bg-red-400/10 transition-colors cursor-pointer">
@@ -60,7 +60,7 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
                   </span>
                 }
                 @if (g.vehicles.length === 0) {
-                  <span class="text-xs text-fg-tertiary italic">Aucun vehicule assigne</span>
+                  <span class="text-xs text-fg-tertiary italic">Aucun véhicule assigné</span>
                 }
               </div>
 
@@ -69,7 +69,7 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
                 <select [(ngModel)]="selectedVehicleForGroup[g.id]"
                   class="flex-1 px-2.5 py-1.5 rounded-lg bg-bg-tertiary border border-border-subtle text-fg-primary text-xs
                          focus:outline-none focus:border-tracky">
-                  <option value="">Ajouter un vehicule...</option>
+                  <option value="">Ajouter un véhicule...</option>
                   @for (v of availableVehicles(g); track v.id) {
                     <option [value]="v.id">{{ v.plate }} — {{ v.brand ?? '' }} {{ v.model ?? '' }}</option>
                   }
@@ -91,7 +91,7 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
     <app-confirm-modal
       [open]="showCreateModal()"
       title="Nouveau groupe"
-      confirmLabel="Creer"
+      confirmLabel="Créer"
       [loading]="creating()"
       (confirmed)="onCreate()"
       (cancelled)="showCreateModal.set(false)"
@@ -110,7 +110,7 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
     <app-confirm-modal
       [open]="showDeleteModal()"
       title="Supprimer le groupe"
-      [description]="'Supprimer le groupe <strong>' + (groupToDelete()?.name ?? '') + '</strong> ? Les vehicules ne seront pas supprimes.'"
+      [description]="'Supprimer le groupe <strong>' + (groupToDelete()?.name ?? '') + '</strong> ? Les véhicules ne seront pas supprimés.'"
       confirmLabel="Supprimer"
       [danger]="true"
       [loading]="deleting()"

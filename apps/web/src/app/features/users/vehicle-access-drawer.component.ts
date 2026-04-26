@@ -34,7 +34,7 @@ export interface AccessDrawerResult {
           <!-- Header -->
           <div class="flex items-center justify-between px-6 py-4 border-b border-border-subtle">
             <div>
-              <h2 class="text-lg font-display font-bold text-fg-primary">Acces vehicules</h2>
+              <h2 class="text-lg font-display font-bold text-fg-primary">Accès véhicules</h2>
               <p class="text-xs text-fg-tertiary mt-0.5">{{ data()?.userEmail }}</p>
             </div>
             <button (click)="onClose()"
@@ -48,17 +48,17 @@ export interface AccessDrawerResult {
 
             <!-- Mode selection -->
             <section>
-              <p class="section-title">Mode d'acces</p>
+              <p class="section-title">Mode d'accès</p>
               <div class="flex gap-2">
                 <button (click)="accessType = 'ALL'"
                   class="mode-btn" [class.active]="accessType === 'ALL'">
                   <lucide-icon [img]="GlobeIcon" [size]="16"></lucide-icon>
-                  <span>Tous les vehicules</span>
+                  <span>Tous les véhicules</span>
                 </button>
                 <button (click)="accessType = 'CUSTOM'"
                   class="mode-btn" [class.active]="accessType === 'CUSTOM'">
                   <lucide-icon [img]="TruckIcon" [size]="16"></lucide-icon>
-                  <span>Selection</span>
+                  <span>Sélection</span>
                 </button>
               </div>
             </section>
@@ -93,7 +93,7 @@ export interface AccessDrawerResult {
               <section>
                 <div class="section-header">
                   <lucide-icon [img]="TruckIcon" [size]="14" class="text-tracky-light"></lucide-icon>
-                  <span class="section-title" style="margin:0">Vehicules individuels</span>
+                  <span class="section-title" style="margin:0">Véhicules individuels</span>
                 </div>
                 <div class="access-list">
                   @for (v of data()!.vehicles; track v.id) {
@@ -115,7 +115,7 @@ export interface AccessDrawerResult {
                     </div>
                   }
                   @if (!data()?.vehicles?.length) {
-                    <p class="text-xs text-fg-tertiary py-3 text-center">Aucun vehicule dans la flotte</p>
+                    <p class="text-xs text-fg-tertiary py-3 text-center">Aucun véhicule dans la flotte</p>
                   }
                 </div>
               </section>
@@ -124,7 +124,7 @@ export interface AccessDrawerResult {
             @if (accessType === 'ALL') {
               <div class="flex flex-col items-center justify-center py-8 text-center gap-2">
                 <lucide-icon [img]="GlobeIcon" [size]="32" class="text-tracky-light opacity-40"></lucide-icon>
-                <p class="text-sm text-fg-secondary">Cet utilisateur a acces a <strong class="text-fg-primary">tous les vehicules</strong> de la flotte.</p>
+                <p class="text-sm text-fg-secondary">Cet utilisateur a accès à <strong class="text-fg-primary">tous les véhicules</strong> de la flotte.</p>
               </div>
             }
           </div>

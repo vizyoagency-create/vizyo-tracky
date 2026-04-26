@@ -21,7 +21,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
   template: `
     <div class="flex flex-col gap-6">
       <div class="flex items-center justify-between">
-        <h1 class="text-2xl font-display font-bold text-fg-primary">Observabilite</h1>
+        <h1 class="text-2xl font-display font-bold text-fg-primary">Observabilité</h1>
       </div>
 
       <!-- Tabs -->
@@ -59,7 +59,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
           <button (click)="loadWireLogs()" class="px-4 py-2 bg-tracky text-white rounded-lg text-sm font-medium
                   hover:bg-tracky-dark cursor-pointer flex items-center gap-2 shrink-0">
             <lucide-icon [img]="RefreshCw" [size]="14"></lucide-icon>
-            Rafraichir
+            Rafraîchir
           </button>
         </div>
 
@@ -98,7 +98,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
               </tbody>
             </table>
           </div>
-          <p class="text-xs text-fg-tertiary">{{ wireTotal() }} resultats</p>
+          <p class="text-xs text-fg-tertiary">{{ wireTotal() }} résultats</p>
         } @else {
           <div class="flex flex-col items-center justify-center h-40 rounded-[--radius-card]
                       bg-bg-secondary border border-border-subtle text-fg-tertiary gap-2">
@@ -126,7 +126,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
           <button (click)="loadErrorLogs()" class="px-4 py-2 bg-tracky text-white rounded-lg text-sm font-medium
                   hover:bg-tracky-dark cursor-pointer flex items-center gap-2 shrink-0">
             <lucide-icon [img]="RefreshCw" [size]="14"></lucide-icon>
-            Rafraichir
+            Rafraîchir
           </button>
         </div>
 
@@ -219,7 +219,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
           <div class="flex flex-col items-center justify-center h-40 rounded-[--radius-card]
                       bg-bg-secondary border border-border-subtle text-fg-tertiary gap-2">
             <lucide-icon [img]="Clock" [size]="48" class="opacity-30"></lucide-icon>
-            <p>Aucun evenement pour cet IMEI</p>
+            <p>Aucun événement pour cet IMEI</p>
           </div>
         }
       }

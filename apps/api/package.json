@@ -69,14 +69,6 @@
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@nestjs/core",
-      "@prisma/engines",
-      "prisma",
-      "unrs-resolver"
-    ]
-  },
   "jest": {
     "moduleFileExtensions": [
       "js",

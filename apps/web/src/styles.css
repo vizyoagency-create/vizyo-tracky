@@ -38,6 +38,7 @@
   --text-tertiary: #5C746C;
   --border-color: rgba(16, 224, 160, 0.08);
   --border-strong-color: rgba(16, 224, 160, 0.16);
+  --surface-secondary-rgb: 15, 23, 20;
 }
 
 [data-theme='light'] {
@@ -49,6 +50,23 @@
   --text-tertiary: #6B8A81;
   --border-color: rgba(4, 120, 87, 0.1);
   --border-strong-color: rgba(4, 120, 87, 0.2);
+  --surface-secondary-rgb: 240, 253, 249;
+}
+
+/* Aliases — bare names used directly in component styles (without --color- prefix). */
+:root {
+  --bg-primary: var(--surface-primary);
+  --bg-secondary: var(--surface-secondary);
+  --bg-tertiary: var(--surface-tertiary);
+  --bg-secondary-rgb: var(--surface-secondary-rgb);
+  --fg-primary: var(--text-primary);
+  --fg-secondary: var(--text-secondary);
+  --fg-tertiary: var(--text-tertiary);
+  --border-subtle: var(--border-color);
+  --border-strong: var(--border-strong-color);
+  --tracky: var(--color-tracky);
+  --tracky-light: var(--color-tracky-light);
+  --tracky-dark: var(--color-tracky-dark);
 }
 
 body {

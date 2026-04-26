@@ -7,7 +7,7 @@ import { ActivatedRoute } from '@angular/router';
   template: `
     <div class="flex items-center justify-center h-64 rounded-[--radius-card]
                 bg-bg-secondary border border-border-subtle">
-      <p class="text-fg-tertiary text-lg font-display">{{ title }} — bientot disponible</p>
+      <p class="text-fg-tertiary text-lg font-display">{{ title }} — bientôt disponible</p>
     </div>
   `,
 })

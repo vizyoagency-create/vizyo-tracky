@@ -25,14 +25,14 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
       <!-- Header -->
       <div class="vlist-header">
         <div>
-          <h1 class="vlist-title">Vehicules</h1>
-          <p class="vlist-sub">{{ vehicles().length }} vehicule(s) dans votre flotte</p>
+          <h1 class="vlist-title">Véhicules</h1>
+          <p class="vlist-sub">{{ vehicles().length }} véhicule(s) dans votre flotte</p>
         </div>
         <div class="vlist-actions">
           @if (perms.can('groups_view')) {
             <div class="tab-switch">
               <button (click)="activeTab.set('vehicles')" class="tab-btn" [class.active]="activeTab() === 'vehicles'">
-                <lucide-icon [img]="TruckIcon" [size]="13"></lucide-icon> Vehicules
+                <lucide-icon [img]="TruckIcon" [size]="13"></lucide-icon> Véhicules
               </button>
               <button (click)="activeTab.set('groups')" class="tab-btn" [class.active]="activeTab() === 'groups'">
                 <lucide-icon [img]="FolderOpenIcon" [size]="13"></lucide-icon> Groupes
@@ -57,9 +57,9 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
         } @else if (vehicles().length === 0) {
           <div class="vlist-empty">
             <div class="empty-icon"><lucide-icon [img]="Truck" [size]="36"></lucide-icon></div>
-            <p class="empty-text">Aucun vehicule {{ perms.can('vehicles_create') ? 'dans votre flotte' : 'accessible' }}</p>
+            <p class="empty-text">Aucun véhicule {{ perms.can('vehicles_create') ? 'dans votre flotte' : 'accessible' }}</p>
             @if (perms.can('vehicles_create')) {
-              <button (click)="showAddDialog.set(true)" class="empty-cta">Ajouter votre premier vehicule</button>
+              <button (click)="showAddDialog.set(true)" class="empty-cta">Ajouter votre premier véhicule</button>
             }
           </div>
         } @else {
@@ -81,7 +81,7 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
                   @if (v.brand) {
                     <span class="v-brand">{{ v.brand }} {{ v.model ?? '' }}</span>
                   } @else {
-                    <span class="v-brand muted">Non renseigne</span>
+                    <span class="v-brand muted">Non renseigné</span>
                   }
                 </div>
                 <div class="v-card-bottom">
@@ -141,7 +141,7 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
                 </div>
                 <div>
                   <h2 class="text-lg font-display font-bold text-fg-primary">Assigner un tracker</h2>
-                  <p class="text-[10px] text-fg-tertiary">Vehicule {{ assignPlate() }}</p>
+                  <p class="text-[10px] text-fg-tertiary">Véhicule {{ assignPlate() }}</p>
                 </div>
               </div>
               <button (click)="showAssignTracker.set(false)"
@@ -158,10 +158,10 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
                 <input type="text" [(ngModel)]="assignImei" placeholder="123456789012345" maxlength="15"
                   class="w-full px-3.5 py-2.5 rounded-xl bg-bg-secondary border-[1.5px] border-border-subtle text-fg-primary text-sm font-mono tracking-wider
                          placeholder:text-fg-tertiary focus:outline-none focus:border-[var(--tracky)]" />
-                <p class="text-[10px] text-fg-tertiary mt-1">15 chiffres, visible sur l'etiquette du boitier</p>
+                <p class="text-[10px] text-fg-tertiary mt-1">15 chiffres, visible sur l'étiquette du boîtier</p>
               </div>
               <div>
-                <label class="block text-[11px] font-semibold text-fg-tertiary mb-1">MODELE (OPTIONNEL)</label>
+                <label class="block text-[11px] font-semibold text-fg-tertiary mb-1">MODÈLE (OPTIONNEL)</label>
                 <input type="text" [(ngModel)]="assignModel" placeholder="Coban GPS403D"
                   class="w-full px-3.5 py-2.5 rounded-xl bg-bg-secondary border-[1.5px] border-border-subtle text-fg-primary text-sm
                          placeholder:text-fg-tertiary focus:outline-none focus:border-[var(--tracky)]" />
@@ -191,8 +191,8 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
       <!-- Delete Vehicle Modal -->
       <app-confirm-modal
         [open]="showDeleteVehicle()"
-        title="Supprimer le vehicule"
-        [description]="'Supprimer <strong>' + (vehicleToDelete()?.plate ?? '') + '</strong> ? Les trajets et alertes associes seront aussi supprimes.'"
+        title="Supprimer le véhicule"
+        [description]="'Supprimer <strong>' + (vehicleToDelete()?.plate ?? '') + '</strong> ? Les trajets et alertes associés seront aussi supprimés.'"
         confirmLabel="Supprimer"
         [danger]="true"
         [loading]="deleting()"

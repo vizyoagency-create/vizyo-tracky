@@ -21,7 +21,7 @@ const COLOR_MAP: Record<ToastKind, string> = {
   standalone: true,
   imports: [LucideAngularModule],
   template: `
-    <div class="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none">
+    <div class="toast-stack fixed right-4 z-[9999] flex flex-col gap-2 pointer-events-none">
       @for (toast of toastService.toasts(); track toast.id) {
         <div class="pointer-events-auto animate-slide-in
                     bg-bg-secondary/95 backdrop-blur-md border border-border-subtle
@@ -54,6 +54,14 @@ const COLOR_MAP: Record<ToastKind, string> = {
       to { transform: translateX(0); opacity: 1; }
     }
     .animate-slide-in { animation: slideIn 0.3s ease-out; }
+
+    /* Sit above the bottom-bar on mobile (60px bar + safe-area + 16px gap). */
+    .toast-stack { bottom: 1rem; }
+    @media (max-width: 768px) {
+      .toast-stack {
+        bottom: calc(60px + env(safe-area-inset-bottom) + 16px);
+      }
+    }
   `],
 })
 export class ToastContainerComponent {

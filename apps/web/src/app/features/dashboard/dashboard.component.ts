@@ -25,12 +25,12 @@ import { EngineControlButtonComponent } from '../engine-control/engine-control-b
       <div class="dash-header">
         <div>
           <h1 class="dash-title">Vue d'ensemble</h1>
-          <p class="dash-sub">Suivi en temps reel de votre flotte</p>
+          <p class="dash-sub">Suivi en temps réel de votre flotte</p>
         </div>
         <div class="dash-status">
           @if (realtime.connected()) {
             <span class="status-dot online"></span>
-            <span class="status-text online">Connecte</span>
+            <span class="status-text online">Connecté</span>
           } @else {
             <span class="status-dot"></span>
             <span class="status-text">Connexion...</span>
@@ -61,7 +61,7 @@ import { EngineControlButtonComponent } from '../engine-control/engine-control-b
         <div class="live-header">
           <h2 class="live-title">
             <lucide-icon [img]="Radio" [size]="18" class="text-tracky-light"></lucide-icon>
-            Suivi temps reel
+            Suivi temps réel
           </h2>
           <span class="live-count">{{ enrichedPositions().length }} actif(s)</span>
         </div>
@@ -69,7 +69,7 @@ import { EngineControlButtonComponent } from '../engine-control/engine-control-b
         @if (enrichedPositions().length === 0) {
           <div class="live-empty">
             <lucide-icon [img]="Radio" [size]="32" style="opacity:.2"></lucide-icon>
-            <p>Aucune position en temps reel</p>
+            <p>Aucune position en temps réel</p>
           </div>
         } @else {
           <div class="live-list">
@@ -217,9 +217,9 @@ export class DashboardComponent implements OnInit {
   protected readonly metrics = computed(() => {
     const s = this.stats();
     return [
-      { label: 'Vehicules', value: s?.total ?? '—', trend: s?.newThisMonth ? `+${s.newThisMonth} ce mois` : '', icon: Truck, accent: 'green' },
+      { label: 'Véhicules', value: s?.total ?? '—', trend: s?.newThisMonth ? `+${s.newThisMonth} ce mois` : '', icon: Truck, accent: 'green' },
       { label: 'En mouvement', value: s?.moving ?? '—', trend: s?.total ? `${Math.round((s.moving / s.total) * 100)}% de la flotte` : '', icon: Navigation, accent: 'blue' },
-      { label: 'A l\'arret', value: s?.idle ?? '—', trend: '', icon: Activity, accent: 'amber' },
+      { label: 'À l\'arrêt', value: s?.idle ?? '—', trend: '', icon: Activity, accent: 'amber' },
       { label: 'Alertes', value: s?.criticalAlerts ?? '—', trend: s?.criticalAlerts ? `${s.criticalAlerts} critiques` : '', icon: AlertTriangle, accent: 'red' },
     ];
   });

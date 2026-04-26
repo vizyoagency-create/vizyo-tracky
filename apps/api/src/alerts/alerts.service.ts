@@ -50,7 +50,9 @@ export class AlertsService {
         type: mapping.type,
         severity: mapping.severity,
         title: mapping.title,
-        message: `Vehicule ${tracker.vehicle.plate}`,
+        // The vehicle plate is already shown by the UI alongside this alert,
+        // so the message stays null unless we ever attach extra context.
+        message: null,
         payload: { raw: frame.raw, alarm: frame.alarm } as any,
         latitude: frame.latitude,
         longitude: frame.longitude,

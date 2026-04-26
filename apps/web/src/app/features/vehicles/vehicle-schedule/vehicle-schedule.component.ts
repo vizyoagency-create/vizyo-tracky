@@ -66,7 +66,7 @@ const TIMEZONES = [
           <div class="flex items-center gap-3 shrink-0">
             <!-- Global toggle -->
             <label class="flex items-center gap-2 cursor-pointer">
-              <span class="text-xs text-fg-tertiary hidden sm:inline">{{ globalEnabled() ? 'Active' : 'Inactive' }}</span>
+              <span class="text-xs text-fg-tertiary hidden sm:inline">{{ globalEnabled() ? 'Activée' : 'Inactive' }}</span>
               <button
                 type="button"
                 (click)="onToggleGlobal()"
@@ -148,7 +148,7 @@ const TIMEZONES = [
                   />
                 </div>
               } @else {
-                <span class="text-xs text-fg-tertiary italic w-full sm:w-auto">— vehicule immobilise —</span>
+                <span class="text-xs text-fg-tertiary italic w-full sm:w-auto">— véhicule immobilisé —</span>
               }
             </div>
           }
@@ -207,9 +207,9 @@ const TIMEZONES = [
       <!-- Confirmation modal for disabling when vehicle is cut -->
       <app-confirm-modal
         [open]="showDisableConfirm()"
-        title="Desactiver l'automatisation"
-        description="Ce vehicule est actuellement immobilise par l'automatisation horaire. Desactiver va rallumer le moteur automatiquement."
-        confirmLabel="Desactiver et rallumer"
+        title="Désactiver l'automatisation"
+        description="Ce véhicule est actuellement immobilisé par l'automatisation horaire. Désactiver va rallumer le moteur automatiquement."
+        confirmLabel="Désactiver et rallumer"
         cancelLabel="Annuler"
         [danger]="true"
         [loading]="saving()"
@@ -257,12 +257,12 @@ export class VehicleScheduleComponent {
 
     const dayLabel = day.label;
     if (!day.enabled) {
-      return `Aujourd'hui (${dayLabel}) : vehicule immobilise toute la journee`;
+      return `Aujourd'hui (${dayLabel}) : véhicule immobilisé toute la journée`;
     }
     if (!day.start || !day.end) {
       return `Aujourd'hui (${dayLabel}) : aucune restriction horaire`;
     }
-    return `Aujourd'hui (${dayLabel}) : autorise de ${day.start} a ${day.end} (${this.timezone()})`;
+    return `Aujourd'hui (${dayLabel}) : autorisé de ${day.start} à ${day.end} (${this.timezone()})`;
   });
 
   constructor() {
@@ -363,7 +363,7 @@ export class VehicleScheduleComponent {
       );
       this.schedule.set(result);
       this.dirty.set(false);
-      this.toast.success('Horaires enregistres');
+      this.toast.success('Horaires enregistrés');
     } catch (err: any) {
       this.toast.error(
         'Erreur',

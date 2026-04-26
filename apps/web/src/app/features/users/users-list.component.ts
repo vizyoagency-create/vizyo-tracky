@@ -77,8 +77,8 @@ import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerR
                   <button (click)="openEditDrawer(u)" class="u-action-btn" title="Modifier">
                     <lucide-icon [img]="PencilIcon" [size]="14"></lucide-icon> Modifier
                   </button>
-                  <button (click)="openAccessModal(u)" class="u-action-btn" title="Acces vehicules">
-                    <lucide-icon [img]="ShieldIcon" [size]="14"></lucide-icon> Acces
+                  <button (click)="openAccessModal(u)" class="u-action-btn" title="Accès véhicules">
+                    <lucide-icon [img]="ShieldIcon" [size]="14"></lucide-icon> Accès
                   </button>
                   <button (click)="confirmDelete(u)" class="u-action-btn danger" title="Supprimer">
                     <lucide-icon [img]="Trash2" [size]="14"></lucide-icon>
@@ -104,7 +104,7 @@ import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerR
     <app-confirm-modal
       [open]="showDeleteModal()"
       title="Supprimer l'utilisateur"
-      [description]="'Voulez-vous supprimer <strong>' + (userToDelete()?.email ?? '') + '</strong> ? Cette action est irreversible.'"
+      [description]="'Voulez-vous supprimer <strong>' + (userToDelete()?.email ?? '') + '</strong> ? Cette action est irréversible.'"
       confirmLabel="Supprimer"
       [danger]="true"
       [loading]="deleting()"
@@ -168,7 +168,7 @@ import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerR
     .u-empty-cta { font-size: 13px; color: var(--tracky-light); background: none; border: none; cursor: pointer; text-decoration: underline }
 
     /* Grid */
-    .u-grid { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px }
+    .u-grid { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px }
 
     /* Card */
     .u-card {

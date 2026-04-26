@@ -34,9 +34,9 @@ const RADIUS_STEPS = [50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000]
               </div>
               <div>
                 <h2 class="text-lg font-display font-bold text-fg-primary">
-                  {{ editData() ? (currentStep() === 1 ? 'Modifier la geofence' : 'Repositionner') : (currentStep() === 1 ? 'Nouvelle geofence' : 'Placer sur la carte') }}
+                  {{ editData() ? (currentStep() === 1 ? 'Modifier la géofence' : 'Repositionner') : (currentStep() === 1 ? 'Nouvelle géofence' : 'Placer sur la carte') }}
                 </h2>
-                <p class="text-[10px] text-fg-tertiary">{{ editData() ? editData()!.name : 'Etape ' + currentStep() + ' sur 2' }}</p>
+                <p class="text-[10px] text-fg-tertiary">{{ editData() ? editData()!.name : 'Étape ' + currentStep() + ' sur 2' }}</p>
               </div>
             </div>
             <button (click)="onClose()"
@@ -75,11 +75,11 @@ const RADIUS_STEPS = [50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000]
                 <p class="section-title">Zone</p>
                 <div>
                   <label class="field-label">Nom de la zone *</label>
-                  <input type="text" [(ngModel)]="name" placeholder="Ex: Depot central" class="field-input" />
+                  <input type="text" [(ngModel)]="name" placeholder="Ex: Dépôt central" class="field-input" />
                 </div>
               </section>
               <section>
-                <p class="section-title">Regle de declenchement</p>
+                <p class="section-title">Règle de déclenchement</p>
                 <div class="flex gap-2">
                   @for (r of rules; track r.value) {
                     <button (click)="rule = r.value" class="rule-btn" [class.active]="rule === r.value">{{ r.label }}</button>
@@ -122,7 +122,7 @@ const RADIUS_STEPS = [50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000]
               <button (click)="currentStep.set(1)"
                 class="px-4 py-2.5 text-sm font-medium rounded-xl bg-bg-tertiary text-fg-secondary border border-border-subtle
                        hover:text-fg-primary transition-colors cursor-pointer">
-                Precedent
+                Précédent
               </button>
             } @else {
               <button (click)="onClose()"
@@ -148,7 +148,7 @@ const RADIUS_STEPS = [50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000]
                 } @else {
                   <lucide-icon [img]="SaveIcon" [size]="14"></lucide-icon>
                 }
-                {{ editData() ? 'Enregistrer' : 'Creer la geofence' }}
+                {{ editData() ? 'Enregistrer' : 'Créer la géofence' }}
               </button>
             }
           </div>
@@ -206,7 +206,7 @@ export class GeofenceDrawDialogComponent implements AfterViewInit, OnDestroy {
   protected center: L.LatLng | null = null;
 
   protected readonly rules = [
-    { value: 'ENTER' as const, label: 'Entree' },
+    { value: 'ENTER' as const, label: 'Entrée' },
     { value: 'EXIT' as const, label: 'Sortie' },
     { value: 'BOTH' as const, label: 'Les deux' },
   ];
