@@ -77,7 +77,7 @@ import { ToastContainerComponent } from '../shared/ui/toast/toast-container.comp
           <button (click)="mobileMenuOpen.set(true)" class="mobile-burger">
             <lucide-icon [img]="MenuIcon" [size]="20"></lucide-icon>
           </button>
-          <h2 class="top-title">Tableau de bord</h2>
+          <h2 class="top-title">{{ pageTitle() }}</h2>
           <div class="top-actions">
             <app-alerts-bell />
             <app-theme-toggle />
@@ -224,6 +224,7 @@ import { ToastContainerComponent } from '../shared/ui/toast/toast-container.comp
 export class DashboardLayoutComponent {
   protected readonly collapsed = signal(false);
   protected readonly fullscreen = signal(false);
+  protected readonly pageTitle = signal('Tableau de bord');
   protected readonly mobileMenuOpen = signal(false);
   protected readonly MenuIcon = Menu;
   protected readonly XIcon = X;
@@ -244,7 +245,10 @@ export class DashboardLayoutComponent {
     this.router.events.subscribe((event) => {
       if (event instanceof NavigationEnd) {
         const child = this.route.firstChild;
-        this.fullscreen.set(child?.snapshot.data?.['fullscreen'] === true);
+        const data = child?.snapshot.data ?? {};
+        this.fullscreen.set(data['fullscreen'] === true);
+        const title = typeof data['title'] === 'string' ? data['title'] : 'Tableau de bord';
+        this.pageTitle.set(title);
       }
     });
   }
