@@ -101,6 +101,13 @@ model Fleet {
   // mouvement, fix120s/300s a l'arret). Reduit la conso batterie + data SIM.
   // Opt-out pour les contrats imposant le mode 30s permanent.
   adaptiveFixModeEnabled  Boolean @default(true)
+  // V1.5 (Sprint L) — Tarif litre essence pour estimer la consommation dans
+  // les rapports. Default 1.85 EUR/L (moyenne FR fin 2025). Override par fleet.
+  fuelPriceEurL           Float   @default(1.85)
+  // V1.5 (Sprint L) — Email de contact pour le rapport hebdomadaire automatique
+  // envoye chaque lundi 08:00 UTC. Si null, fallback sur l'email du premier
+  // FLEET_ADMIN de la fleet. Si vide explicite ('-'), on n'envoie pas le rapport.
+  weeklyReportEmail       String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -178,6 +185,10 @@ model Vehicle {
   model     String?
   year      Int?
   color     String?
+  // V1.5 (Sprint L) — Estimation consommation pour les rapports : litres
+  // au 100km par defaut selon le type vehicule. Si null, on utilise une valeur
+  // par defaut cote service (CAR=7, TRUCK=22, VAN=10, MOTO=4, BUS=28).
+  fuelConsumptionL100km Float?
   tracker    Tracker?
   schedule   VehicleSchedule?
   trips      Trip[]
