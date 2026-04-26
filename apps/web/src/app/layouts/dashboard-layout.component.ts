@@ -14,6 +14,9 @@ import {
   X,
   MoreHorizontal,
   Activity,
+  AlertTriangle,
+  MessageSquare,
+  Terminal,
 } from 'lucide-angular';
 import { ThemeToggleComponent } from '../shared/components/theme-toggle.component';
 import { AlertsBellComponent } from '../shared/ui/alerts-bell/alerts-bell.component';
@@ -464,6 +467,7 @@ export class DashboardLayoutComponent {
   protected readonly network = inject(NetworkStatusService);
 
   protected readonly navItems = computed(() => {
+    const isSuperAdmin = this.auth.user()?.role === 'SUPER_ADMIN';
     return [
       { label: 'Tableau de bord', route: '/dashboard', icon: LayoutDashboard },
       { label: 'Carte', route: '/map', icon: Map },
@@ -473,7 +477,16 @@ export class DashboardLayoutComponent {
       { label: 'Rapports', route: '/reports', icon: FileBarChart },
       ...(this.perms.can('users_view') ? [{ label: 'Utilisateurs', route: '/users', icon: Users }] : []),
       { label: 'Paramètres', route: '/settings', icon: Settings },
-      ...(this.auth.user()?.role === 'SUPER_ADMIN' ? [{ label: 'Observabilité', route: '/admin/observability', icon: Activity }] : []),
+      // V1.6 — Section admin : visible uniquement pour SUPER_ADMIN.
+      // /admin/trackers/:id/sampling et /fix-mode sont accessibles depuis
+      // /admin/alerts (bouton "Inspecter") et la fiche vehicule, pas dans
+      // le menu (necessitent un trackerId).
+      ...(isSuperAdmin ? [
+        { label: 'Centre d\'alertes', route: '/admin/alerts', icon: AlertTriangle },
+        { label: 'Observabilité', route: '/admin/observability', icon: Activity },
+        { label: 'Commandes tracker', route: '/admin/commands', icon: Terminal },
+        { label: 'SMS & Backup', route: '/admin/sms', icon: MessageSquare },
+      ] : []),
     ];
   });
 }
