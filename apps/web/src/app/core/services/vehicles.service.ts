@@ -16,6 +16,7 @@ export interface VehicleDetailDto {
     imei: string;
     status: string;
     lastSeenAt: string | null;
+    lastKnownIgnition: boolean | null;
   } | null;
   createdAt: string;
 }

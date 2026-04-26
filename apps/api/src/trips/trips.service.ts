@@ -284,12 +284,14 @@ export class TripsService implements OnModuleInit {
   }
 
   private async finalizeTrip(state: OpenTripState, endTime: Date, source: string): Promise<void> {
-    // Clamp defensif sur la distance accumulee : haversine est toujours >= 0,
-    // mais une valeur negative ne doit jamais etre persistee.
+    // Clamp defensif (V1.4 Sprint 4) : haversine est toujours >= 0, mais une
+    // valeur negative ne doit jamais etre persistee. Defense en profondeur.
     const safeDist = Math.max(0, state.dist);
 
     if (safeDist < TRIP_MIN_DISTANCE_METERS) {
-      await this.prisma.trip.delete({ where: { id: state.tripId } }).catch(() => {});
+      await this.prisma.trip.delete({ where: { id: state.tripId } }).catch(
+        (e) => this.logger.warn(`Trip delete failed: ${state.tripId}`, e),
+      );
       this.openTrips.delete(state.trackerId);
       return;
     }

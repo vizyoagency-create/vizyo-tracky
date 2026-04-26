@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Env } from '../config/env.validation';
 import { PrismaService } from '../prisma/prisma.service';
+import { ErrorLogger } from './error-logger.service';
 
 export interface WireLogContext {
   commandId?: string;
@@ -19,6 +20,7 @@ export class CobanWireLogger {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly errorLogger: ErrorLogger,
     config: ConfigService<Env, true>,
   ) {
     this.enabled = config.get('WIRE_LOG_ENABLED', { infer: true }) === 'true';
@@ -27,7 +29,7 @@ export class CobanWireLogger {
   in(imei: string, rawFrame: string, frameType: string): void {
     this.logger.debug({ imei, frameType, direction: 'IN', frameRaw: rawFrame }, `Frame IN from ${imei}`);
     if (this.enabled) {
-      this.persist(imei, 'IN', rawFrame, frameType, undefined, undefined).catch(() => {});
+      this.persist(imei, 'IN', rawFrame, frameType, undefined, undefined).catch((e) => this.errorLogger.record(e instanceof Error ? e : new Error(String(e)), 'wire-logger').catch((e2) => this.logger.error('ErrorLogger persist failed', e2)));
     }
   }
 
@@ -37,7 +39,7 @@ export class CobanWireLogger {
       `Frame OUT to ${imei}`,
     );
     if (this.enabled) {
-      this.persist(imei, 'OUT', payload, 'command', context?.commandId, context).catch(() => {});
+      this.persist(imei, 'OUT', payload, 'command', context?.commandId, context).catch((e) => this.errorLogger.record(e instanceof Error ? e : new Error(String(e)), 'wire-logger').catch((e2) => this.logger.error('ErrorLogger persist failed', e2)));
     }
   }
 
@@ -47,7 +49,7 @@ export class CobanWireLogger {
       `ACK matched for command ${commandId.slice(0, 8)} (${latencyMs}ms)`,
     );
     if (this.enabled) {
-      this.persist(imei, 'IN', rawFrame, 'ack', commandId, { latencyMs }).catch(() => {});
+      this.persist(imei, 'IN', rawFrame, 'ack', commandId, { latencyMs }).catch((e) => this.errorLogger.record(e instanceof Error ? e : new Error(String(e)), 'wire-logger').catch((e2) => this.logger.error('ErrorLogger persist failed', e2)));
     }
   }
 
@@ -57,7 +59,7 @@ export class CobanWireLogger {
       `ACK timeout for command ${commandId.slice(0, 8)} after ${elapsedMs}ms`,
     );
     if (this.enabled) {
-      this.persist(imei, 'OUT', `ACK_TIMEOUT pattern=${pattern}`, 'ack', commandId, { elapsedMs }).catch(() => {});
+      this.persist(imei, 'OUT', `ACK_TIMEOUT pattern=${pattern}`, 'ack', commandId, { elapsedMs }).catch((e) => this.errorLogger.record(e instanceof Error ? e : new Error(String(e)), 'wire-logger').catch((e2) => this.logger.error('ErrorLogger persist failed', e2)));
     }
   }
 

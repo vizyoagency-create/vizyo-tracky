@@ -72,7 +72,7 @@ export class AuthClientService {
     });
 
     if (!res.ok) {
-      const text = await res.text().catch(() => '');
+      const text = await res.text().catch(() => '(body unreadable)');
       this.logger.warn(`Vizyo Auth ${method} ${path} → ${res.status}: ${text}`);
       if (res.status === 401 || res.status === 403) {
         throw new UnauthorizedException('Authentication failed');

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { TrackerCommandStatus } from '@prisma/client';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TrackerCommandsService } from './tracker-commands.service';
 
@@ -11,6 +12,7 @@ export class TrackerCommandsSchedulerService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly commandsService: TrackerCommandsService,
+    private readonly errorLogger: ErrorLogger,
   ) {}
 
   @Cron('*/30 * * * * *')
@@ -40,6 +42,11 @@ export class TrackerCommandsSchedulerService {
           { commandId: command.id, error: (err as Error).message },
           `Failed to dispatch scheduled command`,
         );
+        this.errorLogger.record(
+          err instanceof Error ? err : new Error(String(err)),
+          'tracker-commands',
+          { commandId: command.id, imei: command.tracker.imei },
+        ).catch((e2) => this.logger.error('ErrorLogger persist failed', e2));
       }
     }
   }

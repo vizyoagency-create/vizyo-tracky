@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { CommandStatus, EngineAction, type VehicleSchedule } from '@prisma/client';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EngineControlService } from '../engine-control/engine-control.service';
 
@@ -26,6 +27,7 @@ export class ScheduleCronService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly engineControl: EngineControlService,
+    private readonly errorLogger: ErrorLogger,
   ) {}
 
   /** Runs every minute. */
@@ -50,6 +52,11 @@ export class ScheduleCronService {
           { vehicleId: schedule.vehicleId, error: (err as Error).message },
           'Schedule evaluation failed',
         );
+        this.errorLogger.record(
+          err instanceof Error ? err : new Error(String(err)),
+          'schedule-cron',
+          { vehicleId: schedule.vehicleId },
+        ).catch((e2) => this.logger.error('ErrorLogger persist failed', e2));
       }
     }
   }

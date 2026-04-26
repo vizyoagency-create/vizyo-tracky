@@ -94,6 +94,10 @@ export class VehicleGroupsController {
 
     await this.prisma.vehicleGroupAssignment.delete({
       where: { vehicleId_groupId: { vehicleId, groupId: id } },
-    }).catch(() => { /* already removed */ });
+    }).catch((e) => {
+      // Prisma P2025 = record not found (already removed), ignore
+      if ((e as any)?.code === 'P2025') return;
+      throw e;
+    });
   }
 }

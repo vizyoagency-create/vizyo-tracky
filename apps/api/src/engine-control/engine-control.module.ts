@@ -1,10 +1,16 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { RealtimeModule } from '../realtime/realtime.module';
+import { TrackerCommandsModule } from '../tracker-commands/tracker-commands.module';
 import { EngineControlController } from './engine-control.controller';
 import { EngineControlService } from './engine-control.service';
 
 @Module({
-  imports: [AuthModule],
+  imports: [
+    AuthModule,
+    forwardRef(() => TrackerCommandsModule),
+    forwardRef(() => RealtimeModule),
+  ],
   controllers: [EngineControlController],
   providers: [EngineControlService],
   exports: [EngineControlService],
