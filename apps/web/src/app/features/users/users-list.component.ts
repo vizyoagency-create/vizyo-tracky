@@ -168,7 +168,7 @@ import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerR
     .u-empty-cta { font-size: 13px; color: var(--tracky-light); background: none; border: none; cursor: pointer; text-decoration: underline }
 
     /* Grid */
-    .u-grid { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px }
+    .u-grid { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px }
 
     /* Card */
     .u-card {

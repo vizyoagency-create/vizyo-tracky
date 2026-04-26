@@ -81,7 +81,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
               <div class="tl-card-mid">
                 @if (alert.vehicleId) {
                   <a [routerLink]="['/vehicles', alert.vehicleId]" class="tl-vehicle">
-                    {{ alert.vehiclePlate ?? 'Véhicule' }}
+                    {{ alertVehiclePlate(alert) }}
                   </a>
                 }
                 @if (alert.message) {
@@ -274,6 +274,16 @@ export class AlertsComponent implements OnInit {
 
   protected isAcknowledged(alert: any): boolean {
     return !!alert.acknowledgedAt;
+  }
+
+  /**
+   * REST `/api/alerts` returns the plate via the nested `vehicle.plate`,
+   * while the WebSocket payload exposes a flat `vehiclePlate`. Read both so
+   * the UI does not fall back to the literal "Véhicule" + a redundant
+   * "Véhicule TE001ST" message side-by-side.
+   */
+  protected alertVehiclePlate(alert: any): string {
+    return alert?.vehicle?.plate ?? alert?.vehiclePlate ?? 'Véhicule';
   }
 
   protected severityBadge(severity: string): string {
