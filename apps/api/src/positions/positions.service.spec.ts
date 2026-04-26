@@ -4,8 +4,11 @@ import { UserRole } from '@prisma/client';
 import { GeofencesService } from '../geofences/geofences.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { PositionBroadcastBuffer } from '../realtime/position-broadcast-buffer.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { TrackerFixModeService } from '../tracker-fix-mode/tracker-fix-mode.service';
 import { TripsService } from '../trips/trips.service';
+import { PositionSamplingService } from './position-sampling.service';
 import { PositionsService } from './positions.service';
 
 const FLEET_ID = '00000000-0000-0000-0000-000000000001';
@@ -63,6 +66,17 @@ describe('PositionsService.list', () => {
         { provide: GeofencesService, useValue: { checkViolations: jest.fn() } },
         { provide: TripsService, useValue: { processPosition: jest.fn() } },
         { provide: ErrorLogger, useValue: { record: jest.fn().mockResolvedValue('id') } },
+        { provide: PositionSamplingService, useValue: {
+          classify: jest.fn().mockReturnValue({ state: 'MOVING', distanceM: null }),
+          decide: jest.fn().mockReturnValue({ shouldInsert: true, decision: 'INSERTED', state: 'MOVING', reason: 'test', distanceM: null }),
+          recordDecision: jest.fn().mockResolvedValue(undefined),
+        } },
+        { provide: PositionBroadcastBuffer, useValue: { enqueue: jest.fn().mockReturnValue(true) } },
+        { provide: TrackerFixModeService, useValue: {
+          desiredIntervalFor: jest.fn().mockReturnValue(30),
+          reconcile: jest.fn().mockReturnValue({ nextCurrentFixIntervalS: 30, nextFailureCount: 0, nextFailing: false }),
+          requestChange: jest.fn().mockResolvedValue(null),
+        } },
       ],
     }).compile();
 

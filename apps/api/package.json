@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit",
     "test": "jest",
     "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio"
@@ -90,9 +91,40 @@
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "collectCoverageFrom": [
-      "**/*.(t|j)s"
+      "**/*.(t|j)s",
+      "!**/*.spec.ts",
+      "!**/*.module.ts",
+      "!**/*.dto.ts",
+      "!**/dto/*.ts",
+      "!main.ts"
     ],
     "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "coverageThreshold": {
+      "./src/positions/position-sampling.service.ts": {
+        "statements": 49,
+        "branches": 57
+      },
+      "./src/tracker-fix-mode/tracker-fix-mode.service.ts": {
+        "statements": 50,
+        "branches": 44
+      },
+      "./src/sms/tracker-provisioning.service.ts": {
+        "statements": 24,
+        "branches": 11
+      },
+      "./src/invitations/invitations.service.ts": {
+        "statements": 52,
+        "branches": 32
+      },
+      "./src/geofences/corridor-geometry.ts": {
+        "statements": 81,
+        "branches": 73
+      },
+      "./src/vehicle-schedules/schedule-evaluator.ts": {
+        "statements": 6,
+        "branches": 0
+      }
+    }
   }
 }
