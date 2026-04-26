@@ -722,3 +722,60 @@ Les points suivants sont identifies mais **hors scope** de cette roadmap correct
 | 2026-04-26 | Younesshs | Creation de la roadmap correctifs urgents apres retours utilisateur final post-deploiement V1. |
 | 2026-04-26 | Younesshs | Chantier 2 precise apres audit mahlem-now (`D:/www/mahlem-now/`) : stack confirmee MapLibre GL JS 5.24.0, plan de migration detaille avec reference `MapService`, effort revise 12h -> 14h. |
 | 2026-04-26 | Younesshs | Chantier 2 elargi : mahlem-now devient reference **technique** uniquement, perimetre fonctionnel adapte au metier flotte (multi-fonds, modes camera follow/heading-up/chase/overview, popover actions metier, calques, recherche adresse, clustering, mobile bottom-sheet, etc.). Decoupage en 4 sprints B1->B4. Effort MVP P0 14h -> 37h30, total avec polish ~50h. Total roadmap MVP ~58h30. |
+| 2026-04-26 | Younesshs | **Implementation V1.4 livree** sur la branche `feat/roadmap-v1.4-correctifs`. 7 commits, 31 fichiers modifies, +3760/-340 lignes. Detail couverture ↓ |
+
+---
+
+## 9. Couverture finale livree (V1.4)
+
+### ✅ Livre — testes en preview
+
+| Sprint | Contenu | Statut |
+| --- | --- | --- |
+| **A — Chantier 1** | Hydratation positions au login (Tracker.last\* denormalises, snapshot endpoint, hydratation frontend) | ✅ |
+| **A — Chantier 4** | Correctifs rapports (gps-sanity 4 etages, CHECK constraint, polypoints 100->500, Douglas-Peucker, clamp Math.max(0,...)) | ✅ |
+| **B1 — Fondations** | MapLibre GL 5.24.0, MapService porte de mahlem-now, 6 fonds (Plan/Dark/Light/Satellite/Hybride/Topo), markers heading rotatif tous types, ACC indicateur, plaque flottante, pulse vehicule actif, compass reset conditionnel, trail gradient | ✅ |
+| **B2 — Interactions** | 4 modes camera (Free/Follow/Heading-up/Chase 3D pitch 60deg), popover marker (Suivre/Fiche/CUT/RESTORE moteur avec confirm + audit), right-click menu (copier coords/centrer/reset Nord), recherche adresse Nominatim, calques panel (filtres statut + geofences/trails/plates), raccourcis F/C/O/M, fullscreen API | ✅ |
+| **B3 — Composants derives** | MiniMap MapLibre (vehicle-detail), TripReplay MapLibre, GeofenceDialog MapLibre (cercle GeoJSON, marker draggable, slider rayon temps-reel) | ✅ |
+| **C — Lissage live** | Catmull-Rom spline trails (6 samples/segment), interpolation marker 28s entre 2 events WS, heading lerp circulaire (gestion wrap 360->0) | ✅ |
+| **D.1 — Polish P1** | Fix MiniMap vehicleType (passe le bon type depuis vehicle-detail) | ✅ |
+| **D.2 — Polish P1** | Mini-replay 1h depuis carte live (bouton popover, polyligne bleue distincte, banner HUD) | ✅ |
+| **D.4 — Polish P1** | Outil mesure distance (click-to-add, polyligne violet dashed, banner pts/km, reset) | ✅ |
+| **D.5 — Polish P1** | Partage URL view-state (lat/lng/zoom/bearing/pitch/style en query, restoreFromUrl au load) | ✅ |
+| **E.1 — Bonus P2** | Mode Cinema (cycle automatique flyTo 8s sur les vehicules) | ✅ |
+
+### ⏸ Reporte a V1.5 (documente, justifications)
+
+| Item | Pourquoi reporte |
+| --- | --- |
+| **Clustering markers > 50** | Notre flotte mock a 2 vehicules. La feature est utile a partir de ~50+ markers visibles. Necessite supercluster + switch GeoJSON layer / DOM dynamique au zoom. ~3h dev. |
+| **Mobile bottom-sheet** | Les overlays HUD actuels sont utilisables sur mobile (testes en mobile portrait). Refonte sheet => meilleure UX mais ~2h dev. |
+| **D.3 Stop markers automatiques** | Necessite analyse historique 24h ; mieux place dans TripReplay (qui a deja la timeline) ou dans vehicle-detail tab "Historique". |
+| **OSRM map-matching** | Snap polylines aux routes en replay. Necessite hosting OSRM ou cle Mapbox payante. ~5h dev + infra. Cf. roadmap V2 §3.3. |
+| **Geofences polygones** | Backend a deja `type: 'POLYGON'` mais pas la table dedier. Evolution shared roadmap V2 §2.4. |
+| **E.2 Mode Locked** | Peu d'usage reel (depot fixe). Backlog. |
+| **Mode Heatmap** | P2, low-priority. |
+
+### Estimation effort livre
+
+- **Total commit-ready** : 7 commits sur `feat/roadmap-v1.4-correctifs`.
+- **Volume** : ~3760 lignes ajoutees, 340 lignes supprimees, 31 fichiers.
+- **Effort dev** : ~40h sur ~50h roadmap initial. Le reste (~10h) est planifie V1.5.
+
+### Tests & qualite
+
+- Build : ✅ 3 packages (shared, API, web)
+- Tests unitaires : ✅ 90/90 shared + 119/119 API
+- Verification preview : ✅ login, hydratation, multi-fonds, modes camera, popover engine actions, right-click menu, Nominatim, MiniMap, TripReplay, GeofenceDialog, mesure, cinema, mini-replay 1h
+- Erreurs console : ✅ aucune
+
+### Migration DB requise
+
+Avant deploiement, executer sur prod :
+```bash
+cd apps/api && npx prisma migrate deploy
+```
+
+Migrations :
+- `20260426120000_tracker_last_position_denorm` (ajout colonnes Tracker.last\* + backfill)
+- `20260426130000_trip_distance_non_negative` (CHECK constraint distance >= 0 + nettoyage)
