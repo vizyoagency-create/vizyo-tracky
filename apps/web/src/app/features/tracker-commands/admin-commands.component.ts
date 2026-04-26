@@ -1,5 +1,4 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
-import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, Terminal, RefreshCw } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
@@ -21,7 +20,7 @@ const STATUS_LABELS: Record<string, string> = {
 @Component({
   selector: 'app-admin-commands',
   standalone: true,
-  imports: [LucideAngularModule, DatePipe, FormsModule],
+  imports: [LucideAngularModule, FormsModule],
   template: `
     <div class="flex flex-col gap-6">
       <div class="flex items-center justify-between">
