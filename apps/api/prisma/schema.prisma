@@ -152,6 +152,48 @@ model User {
   @@map("users")
 }
 
+/// V1.5 (Sprint M) — Subscription Web Push d'un utilisateur (1 abonnement
+/// par device/browser). Une ligne = un endpoint push valide.
+model PushSubscription {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  endpoint    String   @unique
+  p256dh      String
+  auth        String
+  userAgent   String?
+  lastSeenAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@map("push_subscriptions")
+}
+
+/// V1.5 (Sprint M) — Regles de notification personnalisables par fleet/vehicule.
+/// Si vehicleId est null, la regle s'applique a tous les vehicules de la fleet.
+/// Si alertType est '*', la regle s'applique a tous les types d'alerte.
+/// channels = ['IN_APP', 'WEB_PUSH', 'EMAIL', 'WHATSAPP'] — l'in-app est
+/// toujours actif (legacy ALERT_NEW WS) ; cette table active push/email/whatsapp.
+model AlertRule {
+  id           String   @id @default(uuid()) @db.Uuid
+  fleetId      String   @db.Uuid
+  vehicleId    String?  @db.Uuid
+  alertType    String   // ex: 'OVERSPEED', 'SOS', '*' = tous
+  enabled      Boolean  @default(true)
+  channels     Json     @default("[]") // ['WEB_PUSH', 'EMAIL', 'WHATSAPP']
+  // Escalade : si l'alerte n'est pas acquittee en `escalateAfterMin` minutes
+  // ET sa severity est CRITICAL, on notifie escalateTo (ou User.escalationContactUserId
+  // si null).
+  escalateAfterMin Int?
+  escalateToUserId String? @db.Uuid
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([fleetId])
+  @@index([vehicleId])
+  @@index([alertType])
+  @@map("alert_rules")
+}
+
 /// V1.5 (Sprint J) — Invitations utilisateur.
 /// SUPER_ADMIN ou FLEET_ADMIN cree une invitation pour un email + role + fleet.
 /// Tracky envoie un email avec lien `/accept-invite?token=...` (JWT 24h).
@@ -377,6 +419,9 @@ model Alert {
   acknowledgedAt   DateTime?
   acknowledgedBy   String?       @db.Uuid
   acknowledgedUser User?         @relation("AlertAcknowledgedBy", fields: [acknowledgedBy], references: [id], onDelete: SetNull)
+  // V1.5 (Sprint M) — escalade automatique si CRITICAL non-ack > N min.
+  // Une alerte ne peut etre escaladee qu'une seule fois (escalatedAt non null).
+  escalatedAt      DateTime?
   createdAt        DateTime      @default(now())
 
   @@index([fleetId, createdAt(sort: Desc)])

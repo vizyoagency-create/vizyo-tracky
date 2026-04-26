@@ -9,6 +9,7 @@ import {
 import type { Alert, Fleet, Tracker, Vehicle } from '@prisma/client';
 import { AlertSeverity, AlertType, Prisma, UserRole } from '@prisma/client';
 import type { CobanPositionFrame } from '@vizyo/tracky-shared';
+import { NotificationDispatchService } from '../notifications/notification-dispatch.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { mapCobanAlarm } from './alert-mapping';
@@ -28,6 +29,7 @@ export class AlertsService {
     private readonly prisma: PrismaService,
     @Inject(forwardRef(() => RealtimeGateway))
     private readonly gateway: RealtimeGateway,
+    private readonly dispatch: NotificationDispatchService,
   ) {}
 
   async createFromCobanFrame(
@@ -62,6 +64,14 @@ export class AlertsService {
 
     this.gateway.broadcastAlert(alert);
     this.logger.warn(`[ALERT] ${mapping.severity} ${mapping.type} for ${tracker.vehicle.plate}`);
+
+    // V1.5 (Sprint M) — dispatch externe (push / email / WhatsApp) selon les
+    // AlertRule configurees pour la fleet. Fire-and-forget — l'echec d'un
+    // canal ne casse pas l'ingestion.
+    this.dispatch.dispatchAlert(alert).catch((err) => {
+      this.logger.warn(`Notification dispatch failed for alert ${alert.id}: ${err instanceof Error ? err.message : err}`);
+    });
+
     return alert;
   }
 

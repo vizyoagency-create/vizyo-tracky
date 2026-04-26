@@ -47,6 +47,14 @@ const envSchema = z.object({
   // sur VIZYO_AUTH_JWT_ACCESS_SECRET. Differencier permet de revoquer les
   // invitations sans casser les sessions actives.
   INVITATION_JWT_SECRET: z.string().default(''),
+
+  // Web Push (Sprint M). Generer une fois via :
+  //   npx web-push generate-vapid-keys
+  // VAPID_SUBJECT doit etre un mailto: ou https:// (cf. RFC 8292).
+  // Si VAPID_PUBLIC_KEY est vide, le push est desactive (mode no-op).
+  VAPID_PUBLIC_KEY: z.string().default(''),
+  VAPID_PRIVATE_KEY: z.string().default(''),
+  VAPID_SUBJECT: z.string().default('mailto:contact@vizyoagency.com'),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -10,6 +10,7 @@ import type { GeofenceViolationEvent } from '@vizyo/tracky-shared';
 import { WS_EVENTS } from '@vizyo/tracky-shared';
 import { AlertsService } from '../alerts/alerts.service';
 import { distanceMeters } from '../common/utils/haversine';
+import { NotificationDispatchService } from '../notifications/notification-dispatch.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -48,6 +49,7 @@ export class GeofencesService {
     private readonly gateway: RealtimeGateway,
     private readonly alertsService: AlertsService,
     private readonly errorLogger: ErrorLogger,
+    private readonly dispatch: NotificationDispatchService,
   ) {}
 
   async create(dto: CreateGeofenceDto, requestedBy: RequestedBy): Promise<Geofence> {
@@ -242,8 +244,13 @@ export class GeofencesService {
         latitude: lat,
         longitude: lng,
       },
+      include: { vehicle: true },
     }).then((alert) => {
-      this.gateway.broadcastAlert({ ...alert, vehicle: null, tracker: null });
+      this.gateway.broadcastAlert({ ...alert, tracker: null });
+      // V1.5 (Sprint M) — dispatch externe (push / email / WhatsApp).
+      this.dispatch.dispatchAlert(alert).catch((err) => {
+        this.logger.warn(`Notification dispatch failed for geofence alert ${alert.id}: ${err instanceof Error ? err.message : err}`);
+      });
     }).catch((err) => {
       this.logger.error('Failed to create geofence alert', err);
       this.errorLogger.record(err instanceof Error ? err : new Error(String(err)), 'geofences', { trackerId, vehicleId: vehicleId ?? undefined }).catch((e2) => this.logger.error('ErrorLogger persist failed', e2));

@@ -2,6 +2,7 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { UserRole } from '@prisma/client';
 import type { CobanPositionFrame } from '@vizyo/tracky-shared';
+import { NotificationDispatchService } from '../notifications/notification-dispatch.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { AlertsService } from './alerts.service';
@@ -79,6 +80,7 @@ describe('AlertsService', () => {
         AlertsService,
         { provide: PrismaService, useValue: prisma },
         { provide: RealtimeGateway, useValue: gateway },
+        { provide: NotificationDispatchService, useValue: { dispatchAlert: jest.fn().mockResolvedValue({ channels: [] }) } },
       ],
     }).compile();
 

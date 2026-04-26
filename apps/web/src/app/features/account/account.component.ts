@@ -16,6 +16,7 @@ import {
   UserCircle2,
   XCircle,
 } from 'lucide-angular';
+import { NotificationsApiService } from '../../core/services/notifications.service';
 import { OnboardingService } from '../../core/services/onboarding.service';
 import {
   InvitationDto,
@@ -24,7 +25,7 @@ import {
 } from '../../core/services/users.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 
-type Tab = 'profile' | 'invitations' | 'security';
+type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
 
 /**
  * V1.5 (Sprint J) — Page "Mon compte".
@@ -204,6 +205,90 @@ type Tab = 'profile' | 'invitations' | 'security';
         </section>
       }
 
+      @if (activeTab() === 'notifications') {
+        <section class="card">
+          <h2>Notifications push</h2>
+          @if (notif.pushEnabled() === false) {
+            <div class="info-box">
+              <lucide-icon [img]="ShieldAlert" [size]="20"></lucide-icon>
+              <div>
+                <strong>Push desactive cote serveur</strong>
+                <p>Les VAPID keys ne sont pas configurees. Ajouter VAPID_PUBLIC_KEY et
+                VAPID_PRIVATE_KEY a la config serveur pour activer.</p>
+              </div>
+            </div>
+          } @else if (!notif.isPushSupported()) {
+            <div class="info-box">
+              <lucide-icon [img]="ShieldAlert" [size]="20"></lucide-icon>
+              <div>
+                <strong>Navigateur incompatible</strong>
+                <p>Votre navigateur ne supporte pas les Web Push. Essayez Chrome, Firefox ou Edge.</p>
+              </div>
+            </div>
+          } @else {
+            <p class="muted" style="margin: 0 0 12px;">
+              Recevez les alertes critiques (SOS, accidents, geofence) directement
+              sur ce device, meme app fermee.
+            </p>
+            <div class="row-actions">
+              @if (!notif.isSubscribed()) {
+                <button (click)="subscribePush()" class="btn-primary" [disabled]="subscribing()">
+                  <lucide-icon [img]="Bell" [size]="14"></lucide-icon>
+                  {{ subscribing() ? 'Activation...' : 'Activer les notifications push' }}
+                </button>
+              } @else {
+                <button (click)="unsubscribePush()" class="btn-ghost">
+                  <lucide-icon [img]="XCircle" [size]="14"></lucide-icon>
+                  Desactiver sur ce device
+                </button>
+              }
+            </div>
+          }
+        </section>
+
+        @if (notif.devices().length > 0) {
+          <section class="card">
+            <h2>Devices abonnes</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Device</th>
+                    <th>Dernier vu</th>
+                    <th>Cree</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (d of notif.devices(); track d.id) {
+                    <tr>
+                      <td class="muted" style="font-size: 11px;">{{ d.userAgent ?? '—' }}</td>
+                      <td class="muted">{{ d.lastSeenAt | date: 'dd/MM HH:mm' }}</td>
+                      <td class="muted">{{ d.createdAt | date: 'dd/MM HH:mm' }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </section>
+        }
+
+        <section class="card">
+          <h2>Email & WhatsApp</h2>
+          <div class="info-box">
+            <lucide-icon [img]="Mail" [size]="20"></lucide-icon>
+            <div>
+              <strong>Configuration via les regles d'alerte</strong>
+              <p>Les notifications email et WhatsApp sont configurees par flotte
+              et par type d'alerte. Un FLEET_ADMIN peut les activer via
+              l'API <code>/notifications/rules</code> (UI dediee a venir).</p>
+              <p style="margin-top: 8px; font-size: 12px;">
+                WhatsApp utilise votre numero de telephone (configure dans l'onglet Profil).
+              </p>
+            </div>
+          </div>
+        </section>
+      }
+
       @if (activeTab() === 'security') {
         <section class="card">
           <h2>Securite</h2>
@@ -372,6 +457,8 @@ export class AccountComponent implements OnInit {
   private readonly usersApi = inject(UsersApiService);
   private readonly toast = inject(ToastService);
   private readonly onboardingSvc = inject(OnboardingService);
+  protected readonly notif = inject(NotificationsApiService);
+  protected readonly subscribing = signal(false);
 
   protected readonly Bell = Bell;
   protected readonly CheckCircle = CheckCircle;
@@ -412,6 +499,7 @@ export class AccountComponent implements OnInit {
     if (this.canInvite()) {
       tabs.push({ key: 'invitations', label: 'Invitations', icon: Mail });
     }
+    tabs.push({ key: 'notifications', label: 'Notifications', icon: Bell });
     tabs.push({ key: 'security', label: 'Securite', icon: KeyRound });
     return tabs;
   });
@@ -419,6 +507,29 @@ export class AccountComponent implements OnInit {
   async ngOnInit(): Promise<void> {
     await this.loadProfile();
     if (this.canInvite()) await this.loadInvitations();
+    await this.notif.loadStatus();
+    this.notif.listDevices().catch(() => {/* non-bloquant */});
+  }
+
+  async subscribePush(): Promise<void> {
+    this.subscribing.set(true);
+    try {
+      const result = await this.notif.subscribePush();
+      if (result.ok) {
+        this.toast.success('Notifications push activees sur ce device');
+        await this.notif.listDevices();
+      } else {
+        this.toast.error(result.reason ?? 'Echec de l\'activation');
+      }
+    } finally {
+      this.subscribing.set(false);
+    }
+  }
+
+  async unsubscribePush(): Promise<void> {
+    await this.notif.unsubscribePush();
+    this.toast.success('Notifications desactivees sur ce device');
+    await this.notif.listDevices();
   }
 
   async loadProfile(): Promise<void> {
