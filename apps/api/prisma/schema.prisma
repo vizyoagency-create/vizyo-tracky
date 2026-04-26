@@ -234,6 +234,9 @@ model Geofence {
   centerLat    Float        @default(0)
   centerLng    Float        @default(0)
   radiusMeters Int          @default(500)
+  /// Pour les geofences POLYGON : liste ordonnee de sommets [{lat, lng}, ...].
+  /// Sprint F.2 V1.4. Ignore si type = CIRCLE.
+  polygonPoints Json?
   color        String?      @default("#10e0a0")
   active       Boolean      @default(true)
   createdAt    DateTime     @default(now())

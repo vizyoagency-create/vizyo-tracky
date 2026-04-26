@@ -78,6 +78,13 @@ const RADIUS_STEPS = [50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000]
                 </div>
               </section>
               <section>
+                <p class="section-title">Forme</p>
+                <div class="flex gap-2">
+                  <button (click)="shape = 'CIRCLE'" class="rule-btn" [class.active]="shape === 'CIRCLE'">Cercle</button>
+                  <button (click)="shape = 'POLYGON'" class="rule-btn" [class.active]="shape === 'POLYGON'">Polygone</button>
+                </div>
+              </section>
+              <section>
                 <p class="section-title">Regle de declenchement</p>
                 <div class="flex gap-2">
                   @for (r of rules; track r.value) {
@@ -99,19 +106,39 @@ const RADIUS_STEPS = [50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000]
 
           @if (currentStep() === 2) {
             <div class="px-6 py-3 text-xs text-fg-tertiary border-b border-border-subtle">
-              Cliquez sur la carte pour placer le centre, puis ajustez le rayon.
+              @if (shape === 'CIRCLE') {
+                Cliquez sur la carte pour placer le centre, puis ajustez le rayon.
+              } @else {
+                Cliquez pour ajouter chaque sommet ({{ polygonVertices().length }}). Au moins 3 sommets requis.
+              }
             </div>
             <div #mapContainer class="flex-1" style="min-height:300px"></div>
-            <div class="px-6 py-3 border-t border-border-subtle flex items-center gap-4">
-              <label class="text-xs text-fg-tertiary shrink-0 font-semibold">RAYON</label>
-              <input type="range" [min]="0" [max]="RADIUS_STEPS.length - 1" [step]="1"
-                     [(ngModel)]="radiusIndex" class="flex-1 accent-[var(--tracky)]" />
-              <div class="flex items-center gap-1">
-                <input type="number" [(ngModel)]="radiusMeters" min="50" max="5000"
-                       class="w-16 px-2 py-1 text-xs rounded-lg bg-bg-tertiary border border-border-subtle text-fg-primary text-center font-mono" />
-                <span class="text-[10px] text-fg-tertiary">m</span>
+            @if (shape === 'CIRCLE') {
+              <div class="px-6 py-3 border-t border-border-subtle flex items-center gap-4">
+                <label class="text-xs text-fg-tertiary shrink-0 font-semibold">RAYON</label>
+                <input type="range" [min]="0" [max]="RADIUS_STEPS.length - 1" [step]="1"
+                       [(ngModel)]="radiusIndex" class="flex-1 accent-[var(--tracky)]" />
+                <div class="flex items-center gap-1">
+                  <input type="number" [(ngModel)]="radiusMeters" min="50" max="5000"
+                         class="w-16 px-2 py-1 text-xs rounded-lg bg-bg-tertiary border border-border-subtle text-fg-primary text-center font-mono" />
+                  <span class="text-[10px] text-fg-tertiary">m</span>
+                </div>
               </div>
-            </div>
+            } @else {
+              <div class="px-6 py-3 border-t border-border-subtle flex items-center gap-3 text-xs">
+                <span class="text-fg-tertiary">{{ polygonVertices().length }} sommet(s)</span>
+                <button (click)="undoLastVertex()" [disabled]="polygonVertices().length === 0"
+                        class="px-3 py-1 rounded-lg bg-bg-tertiary border border-border-subtle text-fg-secondary
+                               hover:text-fg-primary disabled:opacity-50 cursor-pointer">
+                  Annuler dernier
+                </button>
+                <button (click)="clearPolygon()" [disabled]="polygonVertices().length === 0"
+                        class="px-3 py-1 rounded-lg bg-bg-tertiary border border-border-subtle text-fg-secondary
+                               hover:text-fg-primary disabled:opacity-50 cursor-pointer">
+                  Effacer
+                </button>
+              </div>
+            }
           }
 
           <div class="px-6 py-4 border-t border-border-subtle flex items-center justify-end gap-3">
@@ -137,7 +164,7 @@ const RADIUS_STEPS = [50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000]
                 <lucide-icon [img]="ChevronRightIcon" [size]="14"></lucide-icon>
               </button>
             } @else {
-              <button (click)="onSubmit()" [disabled]="isLoading() || !center"
+              <button (click)="onSubmit()" [disabled]="isLoading() || (shape === 'CIRCLE' ? !center : polygonVertices().length < 3)"
                 class="px-5 py-2.5 text-sm font-medium rounded-xl bg-tracky hover:bg-tracky-dark text-white
                        transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2">
                 @if (isLoading()) {
@@ -179,7 +206,17 @@ const RADIUS_STEPS = [50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000]
 })
 export class GeofenceDrawDialogComponent implements AfterViewInit, OnDestroy {
   readonly open = input.required<boolean>();
-  readonly editData = input<{ id: string; name: string; rule: 'ENTER' | 'EXIT' | 'BOTH'; color: string; centerLat: number; centerLng: number; radiusMeters: number } | null>(null);
+  readonly editData = input<{
+    id: string;
+    name: string;
+    rule: 'ENTER' | 'EXIT' | 'BOTH';
+    color: string;
+    type?: 'CIRCLE' | 'POLYGON';
+    centerLat: number;
+    centerLng: number;
+    radiusMeters: number;
+    polygonPoints?: Array<{ lat: number; lng: number }> | null;
+  } | null>(null);
   readonly created = output<void>();
 
   private readonly geofencesApi = inject(GeofencesApiService);
@@ -198,9 +235,12 @@ export class GeofenceDrawDialogComponent implements AfterViewInit, OnDestroy {
   protected readonly RADIUS_STEPS = RADIUS_STEPS;
 
   protected name = '';
+  protected shape: 'CIRCLE' | 'POLYGON' = 'CIRCLE';
   protected rule: 'ENTER' | 'EXIT' | 'BOTH' = 'BOTH';
   protected color = '#10e0a0';
   protected center: { lat: number; lng: number } | null = null;
+  /** Sprint F.2 — sommets du polygone en cours de dessin. */
+  protected readonly polygonVertices = signal<Array<{ lat: number; lng: number }>>([]);
 
   protected readonly rules = [
     { value: 'ENTER' as const, label: 'Entree' },
@@ -226,6 +266,7 @@ export class GeofenceDrawDialogComponent implements AfterViewInit, OnDestroy {
     const d = this.editData();
     if (d && this.open()) {
       this.name = d.name;
+      this.shape = d.type === 'POLYGON' ? 'POLYGON' : 'CIRCLE';
       this.rule = d.rule;
       this.color = d.color;
       this.center = { lat: d.centerLat, lng: d.centerLng };
@@ -233,6 +274,7 @@ export class GeofenceDrawDialogComponent implements AfterViewInit, OnDestroy {
       const closest = RADIUS_STEPS.reduce((prev, curr, i) =>
         Math.abs(curr - d.radiusMeters) < Math.abs(RADIUS_STEPS[prev]! - d.radiusMeters) ? i : prev, 0);
       this._radiusIndex = closest;
+      this.polygonVertices.set(d.polygonPoints ?? []);
     }
   }
 
@@ -266,17 +308,44 @@ export class GeofenceDrawDialogComponent implements AfterViewInit, OnDestroy {
   private _radiusMeters = 500;
 
   protected async onSubmit(): Promise<void> {
-    if (!this.center) return;
+    // Validation selon le mode
+    if (this.shape === 'CIRCLE' && !this.center) return;
+    if (this.shape === 'POLYGON' && this.polygonVertices().length < 3) return;
+
     this.isLoading.set(true);
     this.errorMessage.set('');
     try {
-      const data = {
-        name: this.name.trim(), centerLat: this.center.lat, centerLng: this.center.lng,
-        radiusMeters: this._radiusMeters, rule: this.rule, color: this.color,
-      };
+      let data: Parameters<typeof this.geofencesApi.create>[0];
+      if (this.shape === 'POLYGON') {
+        const verts = this.polygonVertices();
+        // Centre = centroid pour la compat (centerLat/Lng/radius restent obligatoires backend).
+        const cLat = verts.reduce((s, p) => s + p.lat, 0) / verts.length;
+        const cLng = verts.reduce((s, p) => s + p.lng, 0) / verts.length;
+        data = {
+          name: this.name.trim(),
+          type: 'POLYGON',
+          centerLat: cLat,
+          centerLng: cLng,
+          radiusMeters: 100, // valeur factice ; backend ignore pour POLYGON
+          rule: this.rule,
+          color: this.color,
+          polygonPoints: verts,
+        };
+      } else {
+        data = {
+          name: this.name.trim(),
+          type: 'CIRCLE',
+          centerLat: this.center!.lat,
+          centerLng: this.center!.lng,
+          radiusMeters: this._radiusMeters,
+          rule: this.rule,
+          color: this.color,
+        };
+      }
+
       const ed = this.editData();
       if (ed) {
-        await firstValueFrom(this.geofencesApi.update(ed.id, data));
+        await firstValueFrom(this.geofencesApi.update(ed.id, data as unknown as Record<string, unknown>));
       } else {
         await firstValueFrom(this.geofencesApi.create(data));
       }
@@ -289,6 +358,51 @@ export class GeofenceDrawDialogComponent implements AfterViewInit, OnDestroy {
           : String(err),
       );
     } finally { this.isLoading.set(false); }
+  }
+
+  protected undoLastVertex(): void {
+    const verts = this.polygonVertices();
+    if (verts.length === 0) return;
+    this.polygonVertices.set(verts.slice(0, -1));
+    this.refreshPolygonLayer();
+  }
+
+  protected clearPolygon(): void {
+    this.polygonVertices.set([]);
+    this.refreshPolygonLayer();
+  }
+
+  private refreshPolygonLayer(): void {
+    if (!this.map) return;
+    const src = this.map.getSource('draw-polygon') as GeoJSONSource | undefined;
+    if (!src) return;
+    const verts = this.polygonVertices();
+    const features: GeoJSON.Feature[] = [];
+    // Sommets visibles
+    for (const v of verts) {
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [v.lng, v.lat] },
+        properties: { color: this.color },
+      });
+    }
+    // Polygone si >= 3 sommets, sinon ligne ouverte
+    if (verts.length >= 3) {
+      const ring = verts.map((v) => [v.lng, v.lat] as [number, number]);
+      ring.push(ring[0]!);
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Polygon', coordinates: [ring] },
+        properties: { color: this.color },
+      });
+    } else if (verts.length >= 2) {
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: verts.map((v) => [v.lng, v.lat]) },
+        properties: { color: this.color },
+      });
+    }
+    src.setData({ type: 'FeatureCollection', features });
   }
 
   private initMap(): void {
@@ -307,19 +421,58 @@ export class GeofenceDrawDialogComponent implements AfterViewInit, OnDestroy {
 
     this.map.on('load', () => {
       this.setupCircleLayer();
-      if (this.center) {
+      this.setupPolygonLayer();
+      if (this.shape === 'CIRCLE' && this.center) {
         this.placeMarker(this.center.lat, this.center.lng);
         this.updateCircle();
+      } else if (this.shape === 'POLYGON' && this.polygonVertices().length > 0) {
+        this.refreshPolygonLayer();
       }
     });
 
     this.map.on('click', (e) => {
-      this.center = { lat: e.lngLat.lat, lng: e.lngLat.lng };
-      this.placeMarker(e.lngLat.lat, e.lngLat.lng);
-      this.updateCircle();
+      if (this.shape === 'POLYGON') {
+        const verts = [...this.polygonVertices(), { lat: e.lngLat.lat, lng: e.lngLat.lng }];
+        this.polygonVertices.set(verts);
+        this.refreshPolygonLayer();
+      } else {
+        this.center = { lat: e.lngLat.lat, lng: e.lngLat.lng };
+        this.placeMarker(e.lngLat.lat, e.lngLat.lng);
+        this.updateCircle();
+      }
     });
 
     setTimeout(() => this.map?.resize(), 100);
+  }
+
+  /** Sprint F.2 — setup layer pour le polygone en cours de dessin. */
+  private setupPolygonLayer(): void {
+    if (!this.map || this.map.getSource('draw-polygon')) return;
+    this.map.addSource('draw-polygon', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] },
+    });
+    this.map.addLayer({
+      id: 'draw-polygon-fill',
+      type: 'fill',
+      source: 'draw-polygon',
+      filter: ['==', ['geometry-type'], 'Polygon'],
+      paint: { 'fill-color': ['coalesce', ['get', 'color'], '#10e0a0'], 'fill-opacity': 0.2 },
+    });
+    this.map.addLayer({
+      id: 'draw-polygon-line',
+      type: 'line',
+      source: 'draw-polygon',
+      filter: ['in', ['geometry-type'], ['literal', ['Polygon', 'LineString']]],
+      paint: { 'line-color': ['coalesce', ['get', 'color'], '#10e0a0'], 'line-width': 2 },
+    });
+    this.map.addLayer({
+      id: 'draw-polygon-points',
+      type: 'circle',
+      source: 'draw-polygon',
+      filter: ['==', ['geometry-type'], 'Point'],
+      paint: { 'circle-radius': 5, 'circle-color': '#ffffff', 'circle-stroke-width': 2, 'circle-stroke-color': ['coalesce', ['get', 'color'], '#10e0a0'] },
+    });
   }
 
   private setupCircleLayer(): void {
@@ -389,8 +542,9 @@ export class GeofenceDrawDialogComponent implements AfterViewInit, OnDestroy {
   private reset(): void {
     this.destroyMap();
     this.currentStep.set(1); this.errorMessage.set('');
-    this.name = ''; this.rule = 'BOTH'; this.color = '#10e0a0';
+    this.name = ''; this.shape = 'CIRCLE'; this.rule = 'BOTH'; this.color = '#10e0a0';
     this._radiusMeters = 500; this._radiusIndex = 4; this.center = null;
+    this.polygonVertices.set([]);
   }
 }
 

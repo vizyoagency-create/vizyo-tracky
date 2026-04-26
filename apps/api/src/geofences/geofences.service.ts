@@ -26,9 +26,12 @@ interface CachedGeofence {
   name: string;
   fleetId: string;
   rule: GeofenceRule;
+  type: GeofenceType;
   centerLat: number;
   centerLng: number;
   radiusMeters: number;
+  /** Sprint F.2 V1.4 : sommets pour les geofences POLYGON. */
+  polygonPoints: Array<{ lat: number; lng: number }> | null;
 }
 
 @Injectable()
@@ -46,20 +49,38 @@ export class GeofencesService {
   ) {}
 
   async create(dto: CreateGeofenceDto, requestedBy: RequestedBy): Promise<Geofence> {
-    const fleetId = requestedBy.role === UserRole.SUPER_ADMIN && dto.color
-      ? requestedBy.fleetId!
-      : requestedBy.fleetId!;
+    // Resolution du fleetId :
+    // - utilisateur normal (FLEET_ADMIN/MANAGER) : utilise sa propre flotte.
+    // - SUPER_ADMIN sans flotte assignee : par defaut la premiere flotte de la
+    //   base. Permet a l'admin technique de creer des geofences en dev/seed
+    //   sans imposer de selection UI (Sprint F.2 V1.4).
+    let fleetId: string;
+    if (requestedBy.fleetId) {
+      fleetId = requestedBy.fleetId;
+    } else if (requestedBy.role === UserRole.SUPER_ADMIN) {
+      const firstFleet = await this.prisma.fleet.findFirst({ orderBy: { createdAt: 'asc' } });
+      if (!firstFleet) throw new ForbiddenException('Aucune flotte existante a laquelle rattacher la geofence');
+      fleetId = firstFleet.id;
+    } else {
+      throw new ForbiddenException('Aucune flotte associee a votre compte');
+    }
+
+    const type = dto.type ?? GeofenceType.CIRCLE;
+    if (type === GeofenceType.POLYGON && (!dto.polygonPoints || dto.polygonPoints.length < 3)) {
+      throw new ForbiddenException('Une geofence POLYGON doit avoir au moins 3 sommets');
+    }
 
     const geofence = await this.prisma.geofence.create({
       data: {
         fleetId,
         name: dto.name,
-        type: GeofenceType.CIRCLE,
+        type,
         rule: dto.rule,
         centerLat: dto.centerLat,
         centerLng: dto.centerLng,
         radiusMeters: dto.radiusMeters,
         color: dto.color ?? '#10e0a0',
+        polygonPoints: type === GeofenceType.POLYGON ? (dto.polygonPoints as unknown as Prisma.InputJsonValue) : undefined,
       },
     });
 
@@ -99,12 +120,16 @@ export class GeofencesService {
 
     const data: Prisma.GeofenceUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name;
+    if (dto.type !== undefined) data.type = dto.type;
     if (dto.rule !== undefined) data.rule = dto.rule;
     if (dto.centerLat !== undefined) data.centerLat = dto.centerLat;
     if (dto.centerLng !== undefined) data.centerLng = dto.centerLng;
     if (dto.radiusMeters !== undefined) data.radiusMeters = dto.radiusMeters;
     if (dto.color !== undefined) data.color = dto.color;
     if (dto.active !== undefined) data.active = dto.active;
+    if (dto.polygonPoints !== undefined) {
+      data.polygonPoints = dto.polygonPoints as unknown as Prisma.InputJsonValue;
+    }
 
     const updated = await this.prisma.geofence.update({ where: { id }, data });
 
@@ -144,10 +169,14 @@ export class GeofencesService {
 
     const insideNow = new Set<string>();
     for (const zone of zones) {
-      const dist = distanceMeters(lat, lng, zone.centerLat, zone.centerLng);
-      if (dist <= zone.radiusMeters) {
-        insideNow.add(zone.id);
+      let inside = false;
+      if (zone.type === GeofenceType.POLYGON && zone.polygonPoints && zone.polygonPoints.length >= 3) {
+        inside = pointInPolygon(lat, lng, zone.polygonPoints);
+      } else {
+        const dist = distanceMeters(lat, lng, zone.centerLat, zone.centerLng);
+        inside = dist <= zone.radiusMeters;
       }
+      if (inside) insideNow.add(zone.id);
     }
 
     if (!this.trackerFirstSeen.has(trackerId)) {
@@ -224,20 +253,53 @@ export class GeofencesService {
   }
 
   private async getActiveZones(fleetId: string): Promise<CachedGeofence[]> {
-    const cached = this.geofenceCache.get(fleetId);
-    if (cached) return cached;
+    const existing = this.geofenceCache.get(fleetId);
+    if (existing) return existing;
 
     const zones = await this.prisma.geofence.findMany({
       where: { fleetId, active: true },
-      select: { id: true, name: true, fleetId: true, rule: true, centerLat: true, centerLng: true, radiusMeters: true },
+      select: {
+        id: true, name: true, fleetId: true, rule: true, type: true,
+        centerLat: true, centerLng: true, radiusMeters: true, polygonPoints: true,
+      },
     });
 
-    this.geofenceCache.set(fleetId, zones);
-    return zones;
+    const mapped: CachedGeofence[] = zones.map((z) => ({
+      id: z.id,
+      name: z.name,
+      fleetId: z.fleetId,
+      rule: z.rule,
+      type: z.type,
+      centerLat: z.centerLat,
+      centerLng: z.centerLng,
+      radiusMeters: z.radiusMeters,
+      polygonPoints: Array.isArray(z.polygonPoints)
+        ? (z.polygonPoints as Array<{ lat: number; lng: number }>)
+        : null,
+    }));
+    this.geofenceCache.set(fleetId, mapped);
+    return mapped;
   }
 
   private invalidateCache(fleetId: string): void {
     this.geofenceCache.delete(fleetId);
   }
 
+}
+
+/**
+ * Test point-in-polygon par ray casting.
+ * Le polygone est ferme implicitement (le dernier sommet est connecte au premier).
+ * En projection lat/lng plane — acceptable a l'echelle d'une zone urbaine
+ * (les distances en degres sont quasi-lineaires sur quelques km).
+ */
+function pointInPolygon(lat: number, lng: number, ring: Array<{ lat: number; lng: number }>): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i]!.lng, yi = ring[i]!.lat;
+    const xj = ring[j]!.lng, yj = ring[j]!.lat;
+    const intersect = ((yi > lat) !== (yj > lat)) && (lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
 }

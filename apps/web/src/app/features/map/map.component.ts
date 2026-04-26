@@ -160,10 +160,11 @@ const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible a
       </div>
     </div>
 
-    <!-- Style picker top-right -->
-    <div style="position:absolute;top:16px;right:16px;z-index:1000">
+    <!-- Style picker top-right (wrappable on mobile) -->
+    <div class="tracky-style-picker"
+         style="position:absolute;top:16px;right:16px;z-index:1000;max-width:calc(100% - 32px)">
       <div class="bg-bg-secondary/85 backdrop-blur-md border border-border-subtle
-                  rounded-[--radius-card] p-2 flex gap-1">
+                  rounded-[--radius-card] p-2 flex gap-1 flex-wrap">
         @for (s of styles.catalog; track s.id) {
           <button
             (click)="setStyle(s.id)"
@@ -179,7 +180,7 @@ const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible a
 
       <!-- Camera mode pills -->
       <div class="mt-2 bg-bg-secondary/85 backdrop-blur-md border border-border-subtle
-                  rounded-[--radius-card] p-2 flex gap-1">
+                  rounded-[--radius-card] p-2 flex gap-1 flex-wrap">
         @for (m of cameraModes; track m.id) {
           <button
             (click)="setCameraMode(m.id)"
@@ -194,8 +195,22 @@ const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible a
       </div>
     </div>
 
-    <!-- Calques (filtres statut) - bottom-left -->
-    <div style="position:absolute;bottom:90px;left:16px;z-index:1000">
+    <!-- FAB mobile : toggle bottom-sheet (calques + actions). Visible < 768px. -->
+    <button
+      (click)="mobileSheetOpen.set(!mobileSheetOpen())"
+      class="md:hidden"
+      style="position:absolute;bottom:24px;right:80px;z-index:1500;
+             width:48px;height:48px;border-radius:9999px;
+             background:#10E0A0;color:#0a0a0a;font-size:20px;font-weight:700;
+             border:0;cursor:pointer;
+             box-shadow:0 6px 20px rgba(16,224,160,0.4)">
+      ☰
+    </button>
+
+    <!-- Calques (filtres statut) - bottom-left desktop, sheet mobile -->
+    <div [class]="mobileSheetOpen() ? 'tracky-mobile-sheet--open' : ''"
+         class="tracky-calques-panel"
+         style="position:absolute;bottom:90px;left:16px;z-index:1000">
       <div class="bg-bg-secondary/85 backdrop-blur-md border border-border-subtle
                   rounded-[--radius-card] p-3 min-w-[180px]">
         <p class="text-[10px] font-semibold text-fg-secondary mb-2 uppercase tracking-wider">Calques</p>
@@ -232,6 +247,10 @@ const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible a
           <label class="flex items-center gap-2 text-[11px] text-fg-secondary cursor-pointer">
             <input type="checkbox" [checked]="showPlates()" (change)="togglePlates()" />
             <span>Plaques</span>
+          </label>
+          <label class="flex items-center gap-2 text-[11px] text-fg-secondary cursor-pointer">
+            <input type="checkbox" [checked]="showStops()" (change)="toggleStops()" />
+            <span>Arrets > 5min (24h)</span>
           </label>
         </div>
       </div>
@@ -320,6 +339,28 @@ const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible a
       height: 100%;
       min-height: 0;
     }
+    /* Sprint F.3 — Mobile bottom-sheet pour le panneau Calques.
+       En desktop (>=768px) : affichage normal en panneau flottant.
+       En mobile (<768px)   : caché par défaut, slide-up depuis le bas si .tracky-mobile-sheet--open. */
+    @media (max-width: 767px) {
+      .tracky-calques-panel {
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        transform: translateY(100%);
+        transition: transform 240ms cubic-bezier(0.16, 1, 0.3, 1);
+        max-height: 60vh;
+        overflow: auto;
+      }
+      .tracky-calques-panel.tracky-mobile-sheet--open {
+        transform: translateY(0);
+      }
+      .tracky-calques-panel > div {
+        border-radius: 16px 16px 0 0 !important;
+        min-width: 0 !important;
+        margin: 0 !important;
+      }
+    }
   `],
 })
 export class MapComponent implements AfterViewInit, OnDestroy {
@@ -364,6 +405,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   protected readonly showGeofences = signal(true);
   protected readonly showTrails = signal(true);
   protected readonly showPlates = signal(true);
+  /** Sprint F.1 — affichage des arrets > 5min calcules sur les 24 dernieres heures. */
+  protected readonly showStops = signal(false);
+  /** Sprint F.3 — sheet mobile pour les calques (FAB toggle). */
+  protected readonly mobileSheetOpen = signal(false);
 
   protected readonly filters = signal<{ moving: boolean; idle: boolean; off: boolean; offline: boolean }>({
     moving: true, idle: true, off: true, offline: true,
@@ -490,6 +535,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       this.setupTrailsLayer();
       this.setupMiniReplayLayer();
       this.setupMeasureLayer();
+      this.setupStopsLayer();
       this.loadGeofences();
       this.applyPositions(this.applyFilters(this.realtime.positionsList()));
       this.restoreFromUrl();
@@ -608,12 +654,14 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       this.setupTrailsLayer();
       this.setupMiniReplayLayer();
       this.setupMeasureLayer();
+      this.setupStopsLayer();
       this.loadGeofences();
       this.applyPositions(this.applyFilters(this.realtime.positionsList()));
       // Mini-replay : si actif, recharger.
       const vid = this.miniReplayVehicleId();
       if (vid) this.loadMiniReplay(vid).catch(() => { /* silent */ });
       this.refreshMeasureLayer();
+      if (this.showStops()) this.loadStops().catch(() => { /* silent */ });
     });
   }
 
@@ -845,6 +893,110 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     this.setLayerVisibility('trails-line', v);
   }
 
+  /** Sprint F.1 — toggle l'affichage des arrets > 5min (24h). */
+  protected toggleStops(): void {
+    const v = !this.showStops();
+    this.showStops.set(v);
+    this.setLayerVisibility('stops-circle', v);
+    this.setLayerVisibility('stops-label', v);
+    if (v) this.loadStops().catch(() => { /* silent */ });
+  }
+
+  /**
+   * Charge les positions des 24 dernieres heures de tous les vehicules accessibles
+   * et detecte les "stop clusters" : groupes de positions consecutives avec
+   * speedKmh ~= 0 separees de moins de 50m, durant >= 5min. Place un picto P
+   * au centre de chaque cluster.
+   */
+  private async loadStops(): Promise<void> {
+    if (!this.map) return;
+    const STOP_MIN_DURATION_MS = 5 * 60 * 1000;
+    const STOP_MAX_RADIUS_M = 50;
+    const STOP_MAX_SPEED = 2; // km/h — bruit GPS tolere
+
+    const fromIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const features: Array<GeoJSON.Feature<GeoJSON.Point, Record<string, unknown>>> = [];
+
+    const ids = this._accessibleIds();
+    const vehiclesToScan = ids === 'ALL'
+      ? Array.from(this.vehicleMeta.keys())
+      : Array.from(ids as Set<string>);
+
+    for (const vehicleId of vehiclesToScan) {
+      try {
+        const res = await firstValueFrom(
+          this.http.get<{ items: Array<{ lat: number; lng: number; speedKmh: number; timestamp: string }> }>(
+            `/api/positions?vehicleId=${vehicleId}&from=${encodeURIComponent(fromIso)}&limit=500`,
+          ),
+        );
+        const items = (res.items ?? []).slice().reverse(); // chronologique
+        if (items.length < 2) continue;
+
+        let clusterStart: typeof items[0] | null = null;
+        let clusterCenterLat = 0, clusterCenterLng = 0, clusterCount = 0;
+
+        for (let i = 0; i < items.length; i++) {
+          const p = items[i]!;
+          if (p.speedKmh <= STOP_MAX_SPEED) {
+            if (!clusterStart) {
+              clusterStart = p;
+              clusterCenterLat = p.lat;
+              clusterCenterLng = p.lng;
+              clusterCount = 1;
+              continue;
+            }
+            // Verifier si le point est dans le rayon du cluster
+            const d = haversineMeters(clusterCenterLat, clusterCenterLng, p.lat, p.lng);
+            if (d > STOP_MAX_RADIUS_M) {
+              // Sortie du cluster — verifier sa duree
+              this.maybePushStopFeature(features, clusterStart, items[i - 1]!, clusterCenterLat, clusterCenterLng, STOP_MIN_DURATION_MS);
+              clusterStart = p;
+              clusterCenterLat = p.lat;
+              clusterCenterLng = p.lng;
+              clusterCount = 1;
+            } else {
+              // Moyenne mobile pour le centre
+              clusterCenterLat = (clusterCenterLat * clusterCount + p.lat) / (clusterCount + 1);
+              clusterCenterLng = (clusterCenterLng * clusterCount + p.lng) / (clusterCount + 1);
+              clusterCount++;
+            }
+          } else if (clusterStart) {
+            // Mouvement detecte — fermer le cluster precedent
+            this.maybePushStopFeature(features, clusterStart, items[i - 1]!, clusterCenterLat, clusterCenterLng, STOP_MIN_DURATION_MS);
+            clusterStart = null;
+            clusterCount = 0;
+          }
+        }
+        // Cluster final
+        if (clusterStart) {
+          this.maybePushStopFeature(features, clusterStart, items[items.length - 1]!, clusterCenterLat, clusterCenterLng, STOP_MIN_DURATION_MS);
+        }
+      } catch { /* silent per vehicle */ }
+    }
+
+    const src = this.map.getSource('stops') as GeoJSONSource | undefined;
+    src?.setData({ type: 'FeatureCollection', features });
+  }
+
+  private maybePushStopFeature(
+    features: Array<GeoJSON.Feature<GeoJSON.Point, Record<string, unknown>>>,
+    start: { timestamp: string },
+    end: { timestamp: string },
+    lat: number,
+    lng: number,
+    minDurationMs: number,
+  ): void {
+    const dur = new Date(end.timestamp).getTime() - new Date(start.timestamp).getTime();
+    if (dur < minDurationMs) return;
+    const minutes = Math.round(dur / 60000);
+    const label = minutes >= 60 ? `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, '0')}` : `${minutes}min`;
+    features.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [lng, lat] },
+      properties: { duration: label, startedAt: start.timestamp },
+    });
+  }
+
   protected togglePlates(): void {
     const v = !this.showPlates();
     this.showPlates.set(v);
@@ -914,6 +1066,40 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     });
   }
 
+  /** Sprint F.1 — setup layer pour les stop markers (pictos P aux arrets > 5min). */
+  private setupStopsLayer(): void {
+    if (!this.map || this.map.getSource('stops')) return;
+    this.map.addSource('stops', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    this.map.addLayer({
+      id: 'stops-circle',
+      type: 'circle',
+      source: 'stops',
+      paint: {
+        'circle-radius': 14,
+        'circle-color': '#1f2937',
+        'circle-stroke-width': 2,
+        'circle-stroke-color': '#fbbf24',
+        'circle-opacity': 0.9,
+      },
+    });
+    this.map.addLayer({
+      id: 'stops-label',
+      type: 'symbol',
+      source: 'stops',
+      layout: {
+        'text-field': 'P',
+        'text-size': 14,
+        'text-allow-overlap': true,
+        'text-ignore-placement': true,
+      },
+      paint: {
+        'text-color': '#fbbf24',
+        'text-halo-color': '#1f2937',
+        'text-halo-width': 1,
+      },
+    });
+  }
+
   /** Sprint D.4 — setup layer pour l'outil de mesure (ligne + points). */
   private setupMeasureLayer(): void {
     if (!this.map || this.map.getSource('measure')) return;
@@ -938,11 +1124,16 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     if (!this.map) return;
     try {
       const zones = await firstValueFrom(this.geofencesApi.list());
-      const features = (zones as GeofenceDto[])
-        .filter((z) => z.active && z.centerLat != null && z.centerLng != null && z.radiusMeters != null)
-        .map((z) => circleFeature(z.centerLat!, z.centerLng!, z.radiusMeters!, {
-          id: z.id, name: z.name, rule: z.rule, color: z.color ?? '#10e0a0',
-        }));
+      const features: GeoJSON.Feature[] = [];
+      for (const z of zones as GeofenceDto[]) {
+        if (!z.active) continue;
+        const props = { id: z.id, name: z.name, rule: z.rule, color: z.color ?? '#10e0a0' };
+        if (z.type === 'POLYGON' && z.polygonPoints && z.polygonPoints.length >= 3) {
+          features.push(polygonFeature(z.polygonPoints, props));
+        } else if (z.centerLat != null && z.centerLng != null && z.radiusMeters != null) {
+          features.push(circleFeature(z.centerLat, z.centerLng, z.radiusMeters, props));
+        }
+      }
       const src = this.map.getSource('geofences') as maplibregl.GeoJSONSource | undefined;
       src?.setData({ type: 'FeatureCollection', features });
     } catch { /* silent */ }
@@ -1322,6 +1513,23 @@ function escapeHtml(s: string): string {
  * Construit un Polygon GeoJSON approximant un cercle (64 segments) autour
  * d'un centre lat/lng et rayon en metres. Utilise pour les geofences.
  */
+/** Sprint F.2 — feature GeoJSON pour un polygone defini par ses sommets. */
+function polygonFeature(
+  points: Array<{ lat: number; lng: number }>,
+  props: Record<string, unknown>,
+): GeoJSON.Feature<GeoJSON.Polygon, Record<string, unknown>> {
+  const ring: Array<[number, number]> = points.map((p) => [p.lng, p.lat]);
+  // Fermer le polygone (premier == dernier).
+  if (ring.length > 0 && (ring[0]![0] !== ring[ring.length - 1]![0] || ring[0]![1] !== ring[ring.length - 1]![1])) {
+    ring.push(ring[0]!);
+  }
+  return {
+    type: 'Feature',
+    geometry: { type: 'Polygon', coordinates: [ring] },
+    properties: props,
+  };
+}
+
 function circleFeature(
   centerLat: number,
   centerLng: number,

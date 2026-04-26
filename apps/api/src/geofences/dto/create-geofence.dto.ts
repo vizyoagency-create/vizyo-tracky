@@ -1,9 +1,26 @@
-import { IsBoolean, IsEnum, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
-import { GeofenceRule } from '@prisma/client';
+import { ArrayMinSize, IsArray, IsEnum, IsNumber, IsObject, IsOptional, IsString, Max, Min, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+import { GeofenceRule, GeofenceType } from '@prisma/client';
+
+export class PolygonPointDto {
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  lat!: number;
+
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  lng!: number;
+}
 
 export class CreateGeofenceDto {
   @IsString()
   name!: string;
+
+  @IsOptional()
+  @IsEnum(GeofenceType)
+  type?: GeofenceType;
 
   @IsNumber()
   @Min(-90)
@@ -26,4 +43,12 @@ export class CreateGeofenceDto {
   @IsOptional()
   @IsString()
   color?: string;
+
+  /** Sprint F.2 V1.4 : sommets polygon (>= 3) si type === POLYGON. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(3)
+  @ValidateNested({ each: true })
+  @Type(() => PolygonPointDto)
+  polygonPoints?: PolygonPointDto[];
 }

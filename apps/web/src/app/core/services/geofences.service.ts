@@ -17,11 +17,13 @@ export class GeofencesApiService {
 
   create(data: {
     name: string;
+    type?: 'CIRCLE' | 'POLYGON';
     centerLat: number;
     centerLng: number;
     radiusMeters: number;
     rule: 'ENTER' | 'EXIT' | 'BOTH';
     color?: string;
+    polygonPoints?: Array<{ lat: number; lng: number }>;
   }): Observable<GeofenceDto> {
     return this.http.post<GeofenceDto>('/api/geofences', data);
   }

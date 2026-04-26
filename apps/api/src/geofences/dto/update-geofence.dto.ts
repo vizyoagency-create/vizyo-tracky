@@ -1,10 +1,16 @@
-import { IsBoolean, IsEnum, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
-import { GeofenceRule } from '@prisma/client';
+import { ArrayMinSize, IsArray, IsBoolean, IsEnum, IsNumber, IsOptional, IsString, Max, Min, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+import { GeofenceRule, GeofenceType } from '@prisma/client';
+import { PolygonPointDto } from './create-geofence.dto';
 
 export class UpdateGeofenceDto {
   @IsOptional()
   @IsString()
   name?: string;
+
+  @IsOptional()
+  @IsEnum(GeofenceType)
+  type?: GeofenceType;
 
   @IsOptional()
   @IsNumber()
@@ -35,4 +41,11 @@ export class UpdateGeofenceDto {
   @IsOptional()
   @IsBoolean()
   active?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(3)
+  @ValidateNested({ each: true })
+  @Type(() => PolygonPointDto)
+  polygonPoints?: PolygonPointDto[];
 }
