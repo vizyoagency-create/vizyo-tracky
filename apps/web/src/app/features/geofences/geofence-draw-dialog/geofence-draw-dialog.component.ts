@@ -5,10 +5,12 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, MapPin, X, ChevronRight, Check, Save } from 'lucide-angular';
-import * as L from 'leaflet';
+import * as maplibregl from 'maplibre-gl';
+import type { Map as MlMap, Marker as MlMarker, GeoJSONSource } from 'maplibre-gl';
 import { firstValueFrom } from 'rxjs';
 import { GeofencesApiService } from '../../../core/services/geofences.service';
 import { PreferencesService } from '../../../core/services/preferences.service';
+import { MapService } from '../../../core/services/map.service';
 
 const RADIUS_STEPS = [50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000];
 
@@ -26,7 +28,6 @@ const RADIUS_STEPS = [50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000]
              [style.width]="currentStep() === 2 ? '600px' : '420px'"
              style="max-width:95vw; transition: width .3s ease">
 
-          <!-- Header -->
           <div class="flex items-center justify-between px-6 py-4 border-b border-border-subtle">
             <div class="flex items-center gap-3">
               <div class="w-8 h-8 rounded-lg bg-tracky/15 flex items-center justify-center">
@@ -45,7 +46,6 @@ const RADIUS_STEPS = [50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000]
             </button>
           </div>
 
-          <!-- Stepper -->
           <div class="flex items-center px-6 py-3 border-b border-border-subtle bg-bg-secondary">
             <div class="flex items-center gap-2">
               <span class="w-6 h-6 rounded-full text-[10px] font-bold flex items-center justify-center shrink-0"
@@ -68,7 +68,6 @@ const RADIUS_STEPS = [50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000]
             </div>
           }
 
-          <!-- Step 1 -->
           @if (currentStep() === 1) {
             <div class="flex-1 overflow-y-auto px-6 py-5 space-y-5">
               <section>
@@ -98,7 +97,6 @@ const RADIUS_STEPS = [50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000]
             </div>
           }
 
-          <!-- Step 2: Map -->
           @if (currentStep() === 2) {
             <div class="px-6 py-3 text-xs text-fg-tertiary border-b border-border-subtle">
               Cliquez sur la carte pour placer le centre, puis ajustez le rayon.
@@ -116,7 +114,6 @@ const RADIUS_STEPS = [50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000]
             </div>
           }
 
-          <!-- Footer -->
           <div class="px-6 py-4 border-t border-border-subtle flex items-center justify-end gap-3">
             @if (currentStep() === 2) {
               <button (click)="currentStep.set(1)"
@@ -178,7 +175,6 @@ const RADIUS_STEPS = [50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000]
     }
     .color-btn:hover { transform: scale(1.1) }
     .color-btn.active { border-color: white; box-shadow: 0 0 0 2px var(--tracky) }
-    @keyframes tracky-ping { 75%, 100% { transform: scale(2); opacity: 0; } }
   `],
 })
 export class GeofenceDrawDialogComponent implements AfterViewInit, OnDestroy {
@@ -188,6 +184,7 @@ export class GeofenceDrawDialogComponent implements AfterViewInit, OnDestroy {
 
   private readonly geofencesApi = inject(GeofencesApiService);
   private readonly preferences = inject(PreferencesService);
+  private readonly mapSvc = inject(MapService);
   private readonly mapRef = viewChild<ElementRef<HTMLDivElement>>('mapContainer');
 
   protected readonly currentStep = signal(1);
@@ -203,7 +200,7 @@ export class GeofenceDrawDialogComponent implements AfterViewInit, OnDestroy {
   protected name = '';
   protected rule: 'ENTER' | 'EXIT' | 'BOTH' = 'BOTH';
   protected color = '#10e0a0';
-  protected center: L.LatLng | null = null;
+  protected center: { lat: number; lng: number } | null = null;
 
   protected readonly rules = [
     { value: 'ENTER' as const, label: 'Entree' },
@@ -213,16 +210,16 @@ export class GeofenceDrawDialogComponent implements AfterViewInit, OnDestroy {
 
   protected readonly presetColors = ['#10e0a0', '#3b82f6', '#f59e0b', '#ef4444', '#a855f7', '#ec4899'];
 
-  private map: L.Map | null = null;
-  private circle: L.Circle | null = null;
-  private marker: L.Marker | null = null;
+  private map: MlMap | null = null;
+  private marker: MlMarker | null = null;
 
-  private radiusEffect = effect(() => { void this.radiusIndex; });
+  // Effect : si l'utilisateur change le rayon dans le slider, mettre a jour le cercle.
+  private radiusEffect = effect(() => { void this._radiusIndex; });
 
   @HostListener('document:keydown.escape')
-  onEscape() { if (this.open() && !this.isLoading()) this.onClose(); }
+  onEscape(): void { if (this.open() && !this.isLoading()) this.onClose(); }
 
-  ngAfterViewInit(): void {}
+  ngAfterViewInit(): void { /* noop */ }
   ngOnDestroy(): void { this.destroyMap(); }
 
   ngOnChanges(): void {
@@ -231,7 +228,7 @@ export class GeofenceDrawDialogComponent implements AfterViewInit, OnDestroy {
       this.name = d.name;
       this.rule = d.rule;
       this.color = d.color;
-      this.center = L.latLng(d.centerLat, d.centerLng);
+      this.center = { lat: d.centerLat, lng: d.centerLng };
       this._radiusMeters = d.radiusMeters;
       const closest = RADIUS_STEPS.reduce((prev, curr, i) =>
         Math.abs(curr - d.radiusMeters) < Math.abs(RADIUS_STEPS[prev]! - d.radiusMeters) ? i : prev, 0);
@@ -253,7 +250,7 @@ export class GeofenceDrawDialogComponent implements AfterViewInit, OnDestroy {
   protected get radiusIndex(): number { return this._radiusIndex; }
   protected set radiusIndex(v: number) {
     this._radiusIndex = v;
-    this.radiusMeters = RADIUS_STEPS[v] ?? 500;
+    this._radiusMeters = RADIUS_STEPS[v] ?? 500;
     this.updateCircle();
   }
   private _radiusIndex = 4;
@@ -298,43 +295,95 @@ export class GeofenceDrawDialogComponent implements AfterViewInit, OnDestroy {
     const el = this.mapRef()?.nativeElement;
     if (!el || this.map) return;
     const mapPrefs = this.preferences.prefs().map;
-    const initCenter = this.center ? [this.center.lat, this.center.lng] as [number, number] : [mapPrefs.centerLat, mapPrefs.centerLng] as [number, number];
+    const initCenter = this.center ?? { lat: mapPrefs.centerLat, lng: mapPrefs.centerLng };
     const initZoom = this.center ? 14 : mapPrefs.zoom;
-    this.map = L.map(el, { center: initCenter, zoom: initZoom, zoomControl: true });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(this.map);
-    const pinIcon = L.divIcon({
-      className: '',
-      html: `<div style="width:24px;height:24px;border-radius:50%;background:${this.color};border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3)"></div>`,
-      iconSize: [24, 24], iconAnchor: [12, 12],
+
+    this.map = this.mapSvc.createMap(el, {
+      center: initCenter,
+      zoom: initZoom,
+      style: mapPrefs.style,
+      withGeolocateControl: true,
     });
-    this.map.on('click', (e: L.LeafletMouseEvent) => {
-      this.center = e.latlng;
-      if (this.marker) { this.marker.setLatLng(e.latlng); } else { this.marker = L.marker(e.latlng, { icon: pinIcon }).addTo(this.map!); }
+
+    this.map.on('load', () => {
+      this.setupCircleLayer();
+      if (this.center) {
+        this.placeMarker(this.center.lat, this.center.lng);
+        this.updateCircle();
+      }
+    });
+
+    this.map.on('click', (e) => {
+      this.center = { lat: e.lngLat.lat, lng: e.lngLat.lng };
+      this.placeMarker(e.lngLat.lat, e.lngLat.lng);
       this.updateCircle();
     });
-    // If editing, show existing marker and circle
-    if (this.center) {
-      this.marker = L.marker(this.center, { icon: pinIcon }).addTo(this.map);
-      this.updateCircle();
+
+    setTimeout(() => this.map?.resize(), 100);
+  }
+
+  private setupCircleLayer(): void {
+    if (!this.map || this.map.getSource('draw-circle')) return;
+    this.map.addSource('draw-circle', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] },
+    });
+    this.map.addLayer({
+      id: 'draw-circle-fill',
+      type: 'fill',
+      source: 'draw-circle',
+      paint: { 'fill-color': ['coalesce', ['get', 'color'], '#10e0a0'], 'fill-opacity': 0.18 },
+    });
+    this.map.addLayer({
+      id: 'draw-circle-line',
+      type: 'line',
+      source: 'draw-circle',
+      paint: {
+        'line-color': ['coalesce', ['get', 'color'], '#10e0a0'],
+        'line-width': 2,
+      },
+    });
+  }
+
+  private placeMarker(lat: number, lng: number): void {
+    if (!this.map) return;
+    if (this.marker) {
+      this.marker.setLngLat([lng, lat]);
+      const inner = this.marker.getElement().querySelector<HTMLElement>('.geofence-pin__dot');
+      if (inner) inner.style.background = this.color;
+      return;
     }
-    setTimeout(() => this.map?.invalidateSize(), 100);
+    const el = document.createElement('div');
+    el.className = 'geofence-pin';
+    el.innerHTML = `<div class="geofence-pin__dot" style="
+      width:24px;height:24px;border-radius:50%;
+      background:${this.color};border:3px solid white;
+      box-shadow:0 2px 8px rgba(0,0,0,0.3)"></div>`;
+    this.marker = new maplibregl.Marker({ element: el, anchor: 'center', draggable: true })
+      .setLngLat([lng, lat])
+      .addTo(this.map);
+    this.marker.on('dragend', () => {
+      const pos = this.marker!.getLngLat();
+      this.center = { lat: pos.lat, lng: pos.lng };
+      this.updateCircle();
+    });
   }
 
   private updateCircle(): void {
     if (!this.map || !this.center) return;
-    if (this.circle) {
-      this.circle.setLatLng(this.center);
-      this.circle.setRadius(this._radiusMeters);
-      this.circle.setStyle({ color: this.color, fillColor: this.color });
-    } else {
-      this.circle = L.circle(this.center, { radius: this._radiusMeters, color: this.color, fillColor: this.color, fillOpacity: 0.2, weight: 2 }).addTo(this.map);
-    }
+    const src = this.map.getSource('draw-circle') as GeoJSONSource | undefined;
+    if (!src) return;
+    src.setData({
+      type: 'Feature',
+      geometry: circleGeometry(this.center.lat, this.center.lng, this._radiusMeters),
+      properties: { color: this.color },
+    });
   }
 
   private destroyMap(): void {
-    this.marker?.remove(); this.circle?.remove();
+    this.marker?.remove();
     if (this.map) { this.map.remove(); this.map = null; }
-    this.marker = null; this.circle = null;
+    this.marker = null;
   }
 
   private reset(): void {
@@ -343,4 +392,18 @@ export class GeofenceDrawDialogComponent implements AfterViewInit, OnDestroy {
     this.name = ''; this.rule = 'BOTH'; this.color = '#10e0a0';
     this._radiusMeters = 500; this._radiusIndex = 4; this.center = null;
   }
+}
+
+function circleGeometry(centerLat: number, centerLng: number, radiusM: number): GeoJSON.Polygon {
+  const points = 64;
+  const km = radiusM / 1000;
+  const distanceX = km / (111.320 * Math.cos((centerLat * Math.PI) / 180));
+  const distanceY = km / 110.574;
+  const ring: Array<[number, number]> = [];
+  for (let i = 0; i < points; i++) {
+    const theta = (i / points) * (2 * Math.PI);
+    ring.push([centerLng + distanceX * Math.cos(theta), centerLat + distanceY * Math.sin(theta)]);
+  }
+  ring.push(ring[0]!);
+  return { type: 'Polygon', coordinates: [ring] };
 }

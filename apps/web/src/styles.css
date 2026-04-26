@@ -89,42 +89,11 @@ body {
   }
 }
 
-.leaflet-pane,
-.leaflet-tile,
-.leaflet-marker-icon,
-.leaflet-marker-shadow,
-.leaflet-tile-container,
-.leaflet-pane > svg,
-.leaflet-pane > canvas,
-.leaflet-zoom-box,
-.leaflet-image-layer,
-.leaflet-layer {
-  position: absolute;
-  left: 0;
-  top: 0;
-}
-
-.leaflet-tile {
-  border: none;
-  padding: 0;
-  margin: 0;
-}
-
-.leaflet-container img {
-  max-width: none !important;
-  max-height: none !important;
-}
-
-.leaflet-container {
-  overflow: hidden;
-  font-family: var(--font-sans);
-}
-
 /* ============================================================
    MapLibre GL — V1.4 (chantier 2)
+   CSS de base charge via angular.json (node_modules/maplibre-gl/dist/maplibre-gl.css).
+   Les overrides ci-dessous sont des ajustements visuels Tracky.
    ============================================================ */
-
-@import url('maplibre-gl/dist/maplibre-gl.css');
 
 .maplibregl-map {
   font-family: var(--font-sans);

@@ -3,12 +3,22 @@ import {
   Component,
   effect,
   ElementRef,
+  inject,
   input,
   OnDestroy,
   viewChild,
 } from '@angular/core';
-import * as L from 'leaflet';
-import { createTrackyIcon, speedColor } from '../../utils/leaflet-markers';
+import * as maplibregl from 'maplibre-gl';
+import type { Map as MlMap, Marker as MlMarker, GeoJSONSource } from 'maplibre-gl';
+import { MapService } from '../../../core/services/map.service';
+import { PreferencesService } from '../../../core/services/preferences.service';
+import {
+  attachVehicleMarker,
+  buildVehicleMarkerEl,
+  speedColor,
+  updateVehicleMarkerEl,
+  type VehicleMarkerData,
+} from '../../utils/maplibre-markers';
 
 @Component({
   selector: 'app-mini-map',
@@ -25,57 +35,72 @@ import { createTrackyIcon, speedColor } from '../../utils/leaflet-markers';
       </div>
     }
   `,
-  styles: [`
-    :host { display: block; }
-    @keyframes tracky-ping {
-      75%, 100% { transform: scale(2); opacity: 0; }
-    }
-  `],
+  styles: [`:host { display: block; }`],
 })
 export class MiniMapComponent implements AfterViewInit, OnDestroy {
   readonly center = input<{ lat: number; lng: number } | null>(null);
   readonly trail = input<{ lat: number; lng: number }[]>([]);
   readonly speedKmh = input(0);
+  readonly heading = input(0);
+  readonly vehicleType = input<string>('OTHER');
+  readonly plate = input<string>('');
+  readonly ignition = input(true);
   readonly zoom = input(15);
   readonly height = input('300px');
 
   private readonly mapRef = viewChild<ElementRef<HTMLDivElement>>('mapContainer');
+  private readonly mapSvc = inject(MapService);
+  private readonly preferences = inject(PreferencesService);
 
-  private map: L.Map | null = null;
-  private marker: L.Marker | null = null;
-  private trailLine: L.Polyline | null = null;
+  private map: MlMap | null = null;
+  private marker: MlMarker | null = null;
+  private markerEl: HTMLElement | null = null;
   private resizeObserver: ResizeObserver | null = null;
 
   private updateEffect = effect(() => {
     const c = this.center();
     const t = this.trail();
     const speed = this.speedKmh();
+    const heading = this.heading();
+    const ign = this.ignition();
+    const type = this.vehicleType();
+    const plate = this.plate();
+
     if (!this.map || !c) return;
 
-    const latLng = L.latLng(c.lat, c.lng);
+    const data: VehicleMarkerData = {
+      trackerId: '',
+      vehicleId: '',
+      type,
+      plate,
+      speedKmh: speed,
+      heading,
+      ignition: ign,
+      active: false,
+    };
 
-    if (this.marker) {
-      this.marker.setLatLng(latLng);
-      this.marker.setIcon(createTrackyIcon(speed));
+    if (this.marker && this.markerEl) {
+      this.marker.setLngLat([c.lng, c.lat]);
+      updateVehicleMarkerEl(this.markerEl, data);
     } else {
-      this.marker = L.marker(latLng, { icon: createTrackyIcon(speed) }).addTo(this.map);
+      this.markerEl = buildVehicleMarkerEl(data);
+      this.markerEl.classList.add('tracky-marker--no-plate');
+      this.marker = attachVehicleMarker(this.map, this.markerEl, c.lat, c.lng);
     }
 
-    this.map.setView(latLng, this.map.getZoom());
+    // Recentrer la mini-carte sur le vehicule (zoom inchange).
+    this.map.easeTo({ center: [c.lng, c.lat], duration: 300 });
 
-    if (t.length > 0) {
-      const points = t.map((p) => L.latLng(p.lat, p.lng));
-      if (this.trailLine) {
-        this.trailLine.setLatLngs(points);
-        this.trailLine.setStyle({ color: speedColor(speed) });
-      } else {
-        this.trailLine = L.polyline(points, {
-          color: speedColor(speed),
-          weight: 3,
-          opacity: 0.5,
-          dashArray: '6,4',
-        }).addTo(this.map);
-      }
+    // Update trail layer.
+    const src = this.map.getSource('mini-trail') as GeoJSONSource | undefined;
+    if (src && t.length >= 2) {
+      src.setData({
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: t.map((p) => [p.lng, p.lat]) },
+        properties: { color: speedColor(speed) },
+      });
+    } else if (src) {
+      src.setData({ type: 'FeatureCollection', features: [] });
     }
   });
 
@@ -86,7 +111,6 @@ export class MiniMapComponent implements AfterViewInit, OnDestroy {
   ngOnDestroy(): void {
     this.resizeObserver?.disconnect();
     this.marker?.remove();
-    this.trailLine?.remove();
     if (this.map) {
       this.map.remove();
       this.map = null;
@@ -98,22 +122,39 @@ export class MiniMapComponent implements AfterViewInit, OnDestroy {
     if (!el) return;
 
     const c = this.center();
-    const initialCenter: L.LatLngExpression = c ? [c.lat, c.lng] : [33.57, -7.59];
+    const center = c ?? { lat: 33.57, lng: -7.59 };
+    const styleId = this.preferences.prefs().map.style;
 
-    this.map = L.map(el, {
-      center: initialCenter,
+    this.map = this.mapSvc.createMap(el, {
+      center,
       zoom: this.zoom(),
-      zoomControl: false,
-      attributionControl: false,
-      dragging: true,
-      scrollWheelZoom: true,
+      style: styleId,
+      withNavigationControl: false,
+      withGeolocateControl: false,
+      withScaleControl: false,
     });
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-    }).addTo(this.map);
+    this.map.on('load', () => {
+      // Mini trail layer.
+      this.map!.addSource('mini-trail', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+      this.map!.addLayer({
+        id: 'mini-trail-line',
+        type: 'line',
+        source: 'mini-trail',
+        paint: {
+          'line-color': ['coalesce', ['get', 'color'], '#10e0a0'],
+          'line-width': 3,
+          'line-opacity': 0.55,
+          'line-dasharray': [2, 1.5],
+        },
+      });
+    });
 
-    this.resizeObserver = new ResizeObserver(() => this.map?.invalidateSize());
+    this.resizeObserver = new ResizeObserver(() => this.map?.resize());
     this.resizeObserver.observe(el);
+    void maplibregl;
   }
 }

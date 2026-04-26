@@ -4,6 +4,7 @@ import {
   effect,
   ElementRef,
   HostListener,
+  inject,
   input,
   OnDestroy,
   output,
@@ -12,10 +13,17 @@ import {
 } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { LucideAngularModule, Play, Pause, X } from 'lucide-angular';
-import * as L from 'leaflet';
+import type { Map as MlMap, Marker as MlMarker } from 'maplibre-gl';
 import type { TripDto } from '@vizyo/tracky-shared';
 import { isValidLatLng, haversineMeters } from '@vizyo/tracky-shared';
-import { createTrackyIcon } from '../../shared/utils/leaflet-markers';
+import { MapService } from '../../core/services/map.service';
+import { PreferencesService } from '../../core/services/preferences.service';
+import {
+  attachVehicleMarker,
+  buildVehicleMarkerEl,
+  updateVehicleMarkerEl,
+  type VehicleMarkerData,
+} from '../../shared/utils/maplibre-markers';
 
 @Component({
   selector: 'app-trip-replay',
@@ -33,7 +41,7 @@ import { createTrackyIcon } from '../../shared/utils/leaflet-markers';
               <strong>Replay trajet</strong>
               @if (trip()) {
                 <span class="text-fg-tertiary ml-2">
-                  {{ (trip()!.distanceMeters / 1000) | number:'1.1-1' }} km ·
+                  {{ (max0(trip()!.distanceMeters) / 1000) | number:'1.1-1' }} km ·
                   {{ formatDur(trip()!.durationSeconds) }} ·
                   max {{ trip()!.maxSpeed | number:'1.0-0' }} km/h
                 </span>
@@ -70,10 +78,7 @@ import { createTrackyIcon } from '../../shared/utils/leaflet-markers';
       </div>
     }
   `,
-  styles: [`
-    :host { display: contents; }
-    @keyframes tracky-ping { 75%, 100% { transform: scale(2); opacity: 0; } }
-  `],
+  styles: [`:host { display: contents; }`],
 })
 export class TripReplayComponent implements AfterViewInit, OnDestroy {
   readonly open = input.required<boolean>();
@@ -82,6 +87,9 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
   readonly closed = output<void>();
 
   private readonly mapRef = viewChild<ElementRef<HTMLDivElement>>('mapContainer');
+  private readonly mapSvc = inject(MapService);
+  private readonly preferences = inject(PreferencesService);
+
   protected readonly playing = signal(false);
   protected readonly currentIndex = signal(0);
   protected readonly speed = signal(1);
@@ -90,12 +98,13 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
   protected readonly PlayIcon = Play;
   protected readonly PauseIcon = Pause;
   protected readonly XIcon = X;
+
   protected readonly speeds = [1, 2, 4, 8];
 
-  private map: L.Map | null = null;
-  private polyline: L.Polyline | null = null;
-  private marker: L.Marker | null = null;
-  private points: L.LatLng[] = [];
+  private map: MlMap | null = null;
+  private marker: MlMarker | null = null;
+  private markerEl: HTMLElement | null = null;
+  private points: Array<[number, number]> = []; // [lng, lat]
   private animId: number | null = null;
   private lastFrameTime = 0;
   private floatIndex = 0;
@@ -109,9 +118,9 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
   });
 
   @HostListener('document:keydown.escape')
-  onEscape() { if (this.open()) this.onClose(); }
+  onEscape(): void { if (this.open()) this.onClose(); }
 
-  ngAfterViewInit(): void {}
+  ngAfterViewInit(): void { /* noop */ }
 
   ngOnDestroy(): void {
     this.cleanup();
@@ -138,8 +147,9 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
     const idx = parseInt((event.target as HTMLInputElement).value, 10);
     this.floatIndex = idx;
     this.currentIndex.set(idx);
-    if (this.points[idx] && this.marker) {
-      this.marker.setLatLng(this.points[idx]!);
+    const pt = this.points[idx];
+    if (pt && this.marker) {
+      this.marker.setLngLat(pt);
     }
   }
 
@@ -147,6 +157,10 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
     const h = Math.floor(s / 3600);
     const m = Math.floor((s % 3600) / 60);
     return h > 0 ? `${h}h${String(m).padStart(2, '0')}` : `${m}min`;
+  }
+
+  protected max0(n: number): number {
+    return Math.max(0, n ?? 0);
   }
 
   private initReplay(trip: TripDto): void {
@@ -167,10 +181,7 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
       }
     }
 
-    // Garde-fou cote frontend (defense en profondeur) : meme si la backend a
-    // deja sanitize, on filtre les points invalides et les sauts trop longs
-    // entre points consecutifs (heuristique : > 5 km est presque toujours
-    // un saut GPS pour un point intermediaire d'une polyligne).
+    // Garde-fou cote frontend : filtre points invalides et sauts > 5 km.
     const cleaned: Array<{ lat: number; lng: number }> = [];
     for (const p of parsed) {
       if (!isValidLatLng(p.lat, p.lng)) continue;
@@ -179,28 +190,63 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
       cleaned.push(p);
     }
 
-    this.points = cleaned.map((p) => L.latLng(p.lat, p.lng));
+    this.points = cleaned.map((p) => [p.lng, p.lat] as [number, number]);
     this.pointCount.set(this.points.length);
     this.currentIndex.set(0);
 
-    this.map = L.map(el, { zoomControl: true });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(this.map);
+    if (this.points.length === 0) return;
 
-    this.polyline = L.polyline(this.points, {
-      color: '#10E0A0',
-      weight: 4,
-      opacity: 0.8,
-    }).addTo(this.map);
+    const first = this.points[0]!;
+    const styleId = this.preferences.prefs().map.style;
 
-    if (this.points.length > 0) {
-      this.marker = L.marker(this.points[0]!, {
-        icon: createTrackyIcon(0, 0, this.vehicleType()),
-      }).addTo(this.map);
+    this.map = this.mapSvc.createMap(el, {
+      center: { lat: first[1], lng: first[0] },
+      zoom: 15,
+      style: styleId,
+      withGeolocateControl: false,
+    });
 
-      this.map.fitBounds(this.polyline.getBounds(), { padding: [40, 40] });
-    }
+    this.map.on('load', () => {
+      // Polyligne replay (gradient couleur si donnees vitesse, sinon vert).
+      this.map!.addSource('replay-line', {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: this.points },
+          properties: {},
+        },
+      });
+      this.map!.addLayer({
+        id: 'replay-line',
+        type: 'line',
+        source: 'replay-line',
+        paint: {
+          'line-color': '#10E0A0',
+          'line-width': 4,
+          'line-opacity': 0.85,
+        },
+      });
 
-    setTimeout(() => this.map?.invalidateSize(), 200);
+      // Auto-fit sur l'ensemble du trajet.
+      const points = this.points.map(([lng, lat]) => ({ lat, lng }));
+      this.mapSvc.fitBounds(this.map!, points, { padding: 50, animate: false });
+
+      // Marker initial.
+      const data: VehicleMarkerData = {
+        trackerId: '',
+        vehicleId: '',
+        type: this.vehicleType(),
+        plate: '',
+        speedKmh: trip.avgSpeed ?? 0,
+        heading: 0,
+        ignition: true,
+      };
+      this.markerEl = buildVehicleMarkerEl(data);
+      this.markerEl.classList.add('tracky-marker--no-plate');
+      this.marker = attachVehicleMarker(this.map!, this.markerEl, first[1], first[0]);
+    });
+
+    setTimeout(() => this.map?.resize(), 200);
   }
 
   private animate(): void {
@@ -224,7 +270,26 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
     this.currentIndex.set(Math.round(idx));
     const pt = this.points[Math.round(idx)];
     if (pt && this.marker) {
-      this.marker.setLatLng(pt);
+      this.marker.setLngLat(pt);
+
+      // Update marker icon : vitesse via interpolation lineaire (rough), heading
+      // calcule sur la direction du segment courant.
+      const next = this.points[Math.min(this.points.length - 1, Math.round(idx) + 1)];
+      let heading = 0;
+      if (next && (next[0] !== pt[0] || next[1] !== pt[1])) {
+        heading = bearingFrom(pt[1], pt[0], next[1], next[0]);
+      }
+      if (this.markerEl) {
+        updateVehicleMarkerEl(this.markerEl, {
+          trackerId: '',
+          vehicleId: '',
+          type: this.vehicleType(),
+          plate: '',
+          speedKmh: this.trip()?.avgSpeed ?? 30,
+          heading,
+          ignition: true,
+        });
+      }
     }
 
     if (this.playing()) {
@@ -236,10 +301,19 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
     this.playing.set(false);
     if (this.animId) { cancelAnimationFrame(this.animId); this.animId = null; }
     this.marker?.remove();
-    this.polyline?.remove();
-    if (this.map) { this.map.remove(); this.map = null; }
     this.marker = null;
-    this.polyline = null;
+    this.markerEl = null;
+    if (this.map) { this.map.remove(); this.map = null; }
     this.points = [];
   }
+}
+
+function bearingFrom(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const phi1 = (lat1 * Math.PI) / 180;
+  const phi2 = (lat2 * Math.PI) / 180;
+  const dl = ((lng2 - lng1) * Math.PI) / 180;
+  const y = Math.sin(dl) * Math.cos(phi2);
+  const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dl);
+  const theta = Math.atan2(y, x);
+  return ((theta * 180) / Math.PI + 360) % 360;
 }
