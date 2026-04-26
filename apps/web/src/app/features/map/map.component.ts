@@ -23,6 +23,7 @@ import { RealtimeService } from '../../core/services/realtime.service';
 import { PreferencesService, type CameraMode } from '../../core/services/preferences.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { EngineControlService } from '../../core/services/engine-control.service';
+import { VisibilityService } from '../../core/services/visibility.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { MapService } from '../../core/services/map.service';
 import { MapStyleService, type MapStyleId } from '../../core/services/map-style.service';
@@ -395,6 +396,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private readonly preferences = inject(PreferencesService);
   private readonly mapSvc = inject(MapService);
   private readonly engineControl = inject(EngineControlService);
+  private readonly visibility = inject(VisibilityService);
   private readonly toast = inject(ToastService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
@@ -634,10 +636,15 @@ export class MapComponent implements AfterViewInit, OnDestroy {
    * Boucle d'interpolation : a chaque RAF, fait avancer chaque marker en cours
    * d'interpolation. Une trame WS Coban arrive toutes les ~30s ; on glisse le
    * marker sur cette duree pour eviter les teleports.
+   *
+   * V1.5 (Sprint H2) : skip total du travail si l'onglet est cache. Le RAF
+   * reste enchaine pour pouvoir reprendre instantanement au retour, mais la
+   * mutation des markers et le suivi camera sont court-circuites.
    */
   private startAnimLoop(): void {
     const tick = (now: number) => {
       this.animFrameId = requestAnimationFrame(tick);
+      if (!this.visibility.isVisible()) return;
       if (this.interp.size === 0) return;
 
       const followedVid = this.followedVehicleId();
