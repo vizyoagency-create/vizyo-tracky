@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { sanitizePositions } from '@vizyo/tracky-shared';
 import { distanceMeters } from '../common/utils/haversine';
 import {
   TRIP_MIN_DISTANCE_METERS,
@@ -36,7 +37,12 @@ export class TripSegmenterService {
   segmentPositions(positions: SegmenterPosition[]): TripDraft[] {
     if (positions.length < 2) return [];
 
+    // Tri chronologique puis filtre defensif (Null Island, sauts > 250 km/h,
+    // doublons de timestamp). Garantit une polyligne propre en sortie.
     const sorted = [...positions].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+    const sanitized = sanitizePositions(sorted) as SegmenterPosition[];
+    if (sanitized.length < 2) return [];
+
     const trips: TripDraft[] = [];
 
     let tripPositions: SegmenterPosition[] = [];
@@ -83,7 +89,7 @@ export class TripSegmenterService {
       tripPositions = [];
     };
 
-    for (const pos of sorted) {
+    for (const pos of sanitized) {
       if (pos.ignition === false && pos.speedKmh <= TRIP_SPEED_THRESHOLD_KMH) {
         if (tripPositions.length > 0) {
           tripPositions.push(pos);

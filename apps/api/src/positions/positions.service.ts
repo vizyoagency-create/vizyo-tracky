@@ -8,6 +8,7 @@ import {
 import { Prisma, UserRole } from '@prisma/client';
 import type { Position } from '@prisma/client';
 import type { CobanPositionFrame, PositionUpdateEvent } from '@vizyo/tracky-shared';
+import { isValidLatLng } from '@vizyo/tracky-shared';
 import { GeofencesService } from '../geofences/geofences.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -45,6 +46,14 @@ export class PositionsService {
       return;
     }
 
+    if (!isValidLatLng(frame.latitude, frame.longitude)) {
+      this.logger.warn(
+        `Position rejetee pour ${frame.imei} : lat/lng hors-bornes ou Null Island ` +
+          `(${frame.latitude}, ${frame.longitude})`,
+      );
+      return;
+    }
+
     await this.prisma.position.create({
       data: {
         trackerId: tracker.id,
@@ -61,7 +70,17 @@ export class PositionsService {
     const wasOffline = tracker.status !== 'ONLINE';
     await this.prisma.tracker.update({
       where: { id: tracker.id },
-      data: { lastSeenAt: new Date(), status: 'ONLINE' },
+      data: {
+        lastSeenAt: new Date(),
+        status: 'ONLINE',
+        lastLat: frame.latitude,
+        lastLng: frame.longitude,
+        lastSpeedKmh: frame.speedKph,
+        lastHeading: frame.course ?? 0,
+        lastIgnition: frame.ignition ?? null,
+        lastValid: frame.valid,
+        lastPositionAt: frame.deviceTime,
+      },
     });
 
     if (wasOffline && tracker.vehicle) {

@@ -107,7 +107,7 @@ import { TripReplayComponent } from './trip-replay.component';
                   <td class="p-3 text-fg-primary">{{ trip.startedAt | date:'dd/MM HH:mm' }}</td>
                   <td class="p-3 text-fg-primary">{{ trip.endedAt | date:'dd/MM HH:mm' }}</td>
                   <td class="p-3 text-right font-mono text-fg-secondary">{{ formatDuration(trip.durationSeconds) }}</td>
-                  <td class="p-3 text-right font-mono text-fg-secondary">{{ (trip.distanceMeters / 1000) | number:'1.1-1' }} km</td>
+                  <td class="p-3 text-right font-mono text-fg-secondary">{{ (max0(trip.distanceMeters) / 1000) | number:'1.1-1' }} km</td>
                   <td class="p-3 text-right text-fg-secondary">{{ trip.avgSpeed | number:'1.0-0' }}</td>
                   <td class="p-3 text-right text-fg-secondary">{{ trip.maxSpeed | number:'1.0-0' }}</td>
                   <td class="p-3 text-center">
@@ -165,11 +165,18 @@ export class ReportsComponent implements OnInit {
     const t = this.trips();
     return {
       tripCount: t.length,
-      totalDistance: t.reduce((s, tr) => s + tr.distanceMeters, 0),
+      // Defense en profondeur : si une ligne legacy a une distance negative,
+      // on la traite comme 0 plutot que de fausser le total.
+      totalDistance: t.reduce((s, tr) => s + Math.max(0, tr.distanceMeters), 0),
       totalDuration: t.reduce((s, tr) => s + tr.durationSeconds, 0),
       maxSpeed: t.reduce((s, tr) => Math.max(s, tr.maxSpeed), 0),
     };
   });
+
+  /** Helper template-friendly pour clamper une distance >= 0 a l'affichage. */
+  protected max0(n: number): number {
+    return Math.max(0, n ?? 0);
+  }
 
   protected readonly replayVehicleType = computed(() => {
     const trip = this.replayTrip();

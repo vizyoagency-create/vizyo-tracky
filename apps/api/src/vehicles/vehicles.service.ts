@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, UserRole } from '@prisma/client';
 import type { Vehicle } from '@prisma/client';
+import type { VehicleSnapshotDto } from '@vizyo/tracky-shared';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateVehicleDto } from './dto/create-vehicle.dto';
 import type { UpdateVehicleDto } from './dto/update-vehicle.dto';
@@ -227,5 +228,53 @@ export class VehiclesService {
       criticalAlerts,
       newThisMonth,
     };
+  }
+
+  /**
+   * Snapshot bulk de la flotte : tous les vehicules accessibles + leur derniere
+   * position connue (lue depuis les colonnes denormalisees `Tracker.last*`).
+   *
+   * Une seule requete Prisma : pas de N+1, pas de scan de la table positions.
+   * Utilise par le frontend pour hydrater immediatement la carte au login.
+   */
+  async snapshot(requestedBy: RequestedBy): Promise<VehicleSnapshotDto[]> {
+    const where: Prisma.VehicleWhereInput = {};
+
+    if (requestedBy.role !== UserRole.SUPER_ADMIN) {
+      where.fleetId = requestedBy.fleetId ?? undefined;
+    }
+
+    if (requestedBy.accessibleVehicleIds && requestedBy.accessibleVehicleIds !== 'ALL') {
+      where.id = { in: requestedBy.accessibleVehicleIds };
+    }
+
+    const vehicles = await this.prisma.vehicle.findMany({
+      where,
+      include: { tracker: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return vehicles.map((v) => {
+      const t = (v as Vehicle & { tracker: any }).tracker;
+      return {
+        vehicleId: v.id,
+        fleetId: v.fleetId,
+        plate: v.plate,
+        type: v.type,
+        brand: v.brand,
+        model: v.model,
+        trackerId: t?.id ?? null,
+        trackerImei: t?.imei ?? null,
+        trackerStatus: (t?.status as 'ONLINE' | 'OFFLINE' | 'IDLE' | undefined) ?? null,
+        lastSeenAt: t?.lastSeenAt ? t.lastSeenAt.toISOString() : null,
+        lastLat: t?.lastLat ?? null,
+        lastLng: t?.lastLng ?? null,
+        lastSpeedKmh: t?.lastSpeedKmh ?? null,
+        lastHeading: t?.lastHeading ?? null,
+        lastIgnition: t?.lastIgnition ?? null,
+        lastValid: t?.lastValid ?? null,
+        lastPositionAt: t?.lastPositionAt ? t.lastPositionAt.toISOString() : null,
+      };
+    });
   }
 }

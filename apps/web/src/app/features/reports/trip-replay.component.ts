@@ -14,6 +14,7 @@ import { DecimalPipe } from '@angular/common';
 import { LucideAngularModule, Play, Pause, X } from 'lucide-angular';
 import * as L from 'leaflet';
 import type { TripDto } from '@vizyo/tracky-shared';
+import { isValidLatLng, haversineMeters } from '@vizyo/tracky-shared';
 import { createTrackyIcon } from '../../shared/utils/leaflet-markers';
 
 @Component({
@@ -166,7 +167,19 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
       }
     }
 
-    this.points = parsed.map((p) => L.latLng(p.lat, p.lng));
+    // Garde-fou cote frontend (defense en profondeur) : meme si la backend a
+    // deja sanitize, on filtre les points invalides et les sauts trop longs
+    // entre points consecutifs (heuristique : > 5 km est presque toujours
+    // un saut GPS pour un point intermediaire d'une polyligne).
+    const cleaned: Array<{ lat: number; lng: number }> = [];
+    for (const p of parsed) {
+      if (!isValidLatLng(p.lat, p.lng)) continue;
+      const last = cleaned[cleaned.length - 1];
+      if (last && haversineMeters(last.lat, last.lng, p.lat, p.lng) > 5000) continue;
+      cleaned.push(p);
+    }
+
+    this.points = cleaned.map((p) => L.latLng(p.lat, p.lng));
     this.pointCount.set(this.points.length);
     this.currentIndex.set(0);
 

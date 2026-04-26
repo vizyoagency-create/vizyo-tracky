@@ -42,6 +42,13 @@ export class VehiclesController {
     return this.vehicles.stats(await this.buildRequestedBy(req));
   }
 
+  @Get('snapshot')
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  async snapshot(@Req() req: AuthenticatedRequest) {
+    const items = await this.vehicles.snapshot(await this.buildRequestedBy(req));
+    return { items };
+  }
+
   @Post()
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
   create(@Body() dto: CreateVehicleDto, @Req() req: AuthenticatedRequest) {

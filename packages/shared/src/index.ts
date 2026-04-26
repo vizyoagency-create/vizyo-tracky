@@ -4,5 +4,7 @@ export * from './dto/position.dto';
 export * from './dto/alert.dto';
 export * from './dto/geofence.dto';
 export * from './dto/trip.dto';
+export * from './dto/snapshot.dto';
 export * from './events/ws-events';
 export * from './protocol';
+export * from './utils/gps-sanity';

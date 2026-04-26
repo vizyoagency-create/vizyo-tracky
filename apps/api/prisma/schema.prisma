@@ -155,6 +155,15 @@ model Tracker {
   model      String                 @default("COBAN_GPS403D")
   status     TrackerStatus          @default(OFFLINE)
   lastSeenAt DateTime?
+  // Denormalisation : derniere position connue, mise a jour a chaque ingest.
+  // Permet l'hydratation immediate de la carte au login sans attendre la prochaine trame.
+  lastLat        Float?
+  lastLng        Float?
+  lastSpeedKmh   Float?
+  lastHeading    Float?
+  lastIgnition   Boolean?
+  lastValid      Boolean?
+  lastPositionAt DateTime?
   vehicleId  String?                @unique @db.Uuid
   vehicle    Vehicle?               @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   positions  Position[]

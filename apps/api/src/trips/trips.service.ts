@@ -10,6 +10,7 @@ import { Cron } from '@nestjs/schedule';
 import { Prisma, UserRole } from '@prisma/client';
 import type { Trip } from '@prisma/client';
 import type { TripCompletedEvent, TripStartedEvent } from '@vizyo/tracky-shared';
+import { douglasPeucker, isPlausibleJump, isValidLatLng } from '@vizyo/tracky-shared';
 import { distanceMeters } from '../common/utils/haversine';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -20,6 +21,14 @@ import {
   TRIP_STOP_TIMEOUT_MS,
   TRIP_MOVING_CONFIRM_MS,
 } from './trip-segmenter.constants';
+
+/**
+ * Cap brut sur l'accumulation in-memory pendant un trip live.
+ * 500 points >> 100 (V1.3) pour conserver la forme des longs trajets.
+ * La polyline finale est ensuite simplifiee via Douglas-Peucker a la cloture.
+ */
+const TRIP_POLYPOINTS_CAP = 500;
+const TRIP_POLYLINE_DP_TOLERANCE_M = 5;
 
 interface RequestedBy {
   userId: string;
@@ -116,6 +125,17 @@ export class TripsService implements OnModuleInit {
   }): Promise<void> {
     if (!this.ready) return;
 
+    // Garde-fou : positions hors-bornes / Null Island ne doivent jamais entrer
+    // dans le pipeline trips (deja filtrees au niveau ingestion mais defense en
+    // profondeur — d'autres callers peuvent appeler processPosition).
+    if (!isValidLatLng(data.lat, data.lng)) {
+      this.logger.warn(
+        `processPosition: lat/lng invalides ignores (tracker=${data.trackerId} ` +
+          `lat=${data.lat} lng=${data.lng})`,
+      );
+      return;
+    }
+
     const state = this.openTrips.get(data.trackerId);
 
     if (!state) {
@@ -146,16 +166,37 @@ export class TripsService implements OnModuleInit {
       return;
     }
 
-    const d = distanceMeters(state.lastLat, state.lastLng, data.lat, data.lng);
-    state.dist += d;
-    state.maxSpeed = Math.max(state.maxSpeed, data.speedKmh);
-    state.speedSum += data.speedKmh;
-    state.positionCount++;
-    state.lastLat = data.lat;
-    state.lastLng = data.lng;
-    state.lastTimestamp = data.timestamp;
-    if (state.polyPoints.length < 100) {
-      state.polyPoints.push({ lat: data.lat, lng: data.lng });
+    // Detection de saut aberrant (> 250 km/h implicite ou timestamp inverse).
+    // Si saut detecte, on n'integre ni la distance ni le polypoint, mais on ne
+    // ferme pas le trip pour autant (on attend la prochaine position propre).
+    const plausible = isPlausibleJump(
+      { lat: state.lastLat, lng: state.lastLng, timestamp: state.lastTimestamp },
+      { lat: data.lat, lng: data.lng, timestamp: data.timestamp },
+    );
+
+    if (!plausible) {
+      this.logger.warn(
+        `Saut aberrant ignore pour tracker=${data.trackerId} ` +
+          `(${state.lastLat},${state.lastLng}) -> (${data.lat},${data.lng})`,
+      );
+      // Conserver maxSpeed/speedSum/timestamp pour ne pas geler le trip.
+      state.maxSpeed = Math.max(state.maxSpeed, data.speedKmh);
+      state.speedSum += data.speedKmh;
+      state.positionCount++;
+      state.lastTimestamp = data.timestamp;
+    } else {
+      const d = distanceMeters(state.lastLat, state.lastLng, data.lat, data.lng);
+      // Math.max(0, ...) defense en profondeur : haversine retourne deja >= 0.
+      state.dist += Math.max(0, d);
+      state.maxSpeed = Math.max(state.maxSpeed, data.speedKmh);
+      state.speedSum += data.speedKmh;
+      state.positionCount++;
+      state.lastLat = data.lat;
+      state.lastLng = data.lng;
+      state.lastTimestamp = data.timestamp;
+      if (state.polyPoints.length < TRIP_POLYPOINTS_CAP) {
+        state.polyPoints.push({ lat: data.lat, lng: data.lng });
+      }
     }
 
     if (data.ignition === false && data.speedKmh <= TRIP_SPEED_THRESHOLD_KMH) {
@@ -241,7 +282,11 @@ export class TripsService implements OnModuleInit {
   }
 
   private async finalizeTrip(state: OpenTripState, endTime: Date, source: string): Promise<void> {
-    if (state.dist < TRIP_MIN_DISTANCE_METERS) {
+    // Clamp defensif sur la distance accumulee : haversine est toujours >= 0,
+    // mais une valeur negative ne doit jamais etre persistee.
+    const safeDist = Math.max(0, state.dist);
+
+    if (safeDist < TRIP_MIN_DISTANCE_METERS) {
       await this.prisma.trip.delete({ where: { id: state.tripId } }).catch(() => {});
       this.openTrips.delete(state.trackerId);
       return;
@@ -250,6 +295,10 @@ export class TripsService implements OnModuleInit {
     const dur = Math.round((endTime.getTime() - state.startedAt.getTime()) / 1000);
     const avg = state.positionCount > 0 ? Math.round((state.speedSum / state.positionCount) * 100) / 100 : 0;
 
+    // Simplification Douglas-Peucker : reduit le poids stocke en preservant la
+    // forme. Pour un trajet urbain typique, divise les points par 5 a 10.
+    const simplifiedPoly = douglasPeucker(state.polyPoints, TRIP_POLYLINE_DP_TOLERANCE_M);
+
     await this.prisma.trip.update({
       where: { id: state.tripId },
       data: {
@@ -257,13 +306,13 @@ export class TripsService implements OnModuleInit {
         endLat: state.lastLat,
         endLng: state.lastLng,
         durationSeconds: dur,
-        distanceMeters: Math.round(state.dist),
-        distanceKm: Math.round(state.dist / 10) / 100,
+        distanceMeters: Math.round(safeDist),
+        distanceKm: Math.round(safeDist / 10) / 100,
         maxSpeed: Math.round(state.maxSpeed * 100) / 100,
         avgSpeed: avg,
         positionCount: state.positionCount,
         segmentationSource: source,
-        polyline: JSON.stringify(state.polyPoints),
+        polyline: JSON.stringify(simplifiedPoly),
       },
     });
 
@@ -412,6 +461,8 @@ export class TripsService implements OnModuleInit {
 
     let created = 0;
     for (const draft of drafts) {
+      const safeDist = Math.max(0, draft.distanceMeters);
+      const simplifiedPoly = douglasPeucker(draft.positions, TRIP_POLYLINE_DP_TOLERANCE_M);
       await this.prisma.trip.create({
         data: {
           vehicleId: dto.vehicleId,
@@ -424,13 +475,13 @@ export class TripsService implements OnModuleInit {
           endLat: draft.endLat,
           endLng: draft.endLng,
           durationSeconds: draft.durationSeconds,
-          distanceMeters: draft.distanceMeters,
-          distanceKm: draft.distanceMeters / 1000,
+          distanceMeters: Math.round(safeDist),
+          distanceKm: Math.round(safeDist / 10) / 100,
           maxSpeed: draft.maxSpeed,
           avgSpeed: draft.avgSpeed,
           positionCount: draft.positionCount,
           segmentationSource: 'recompute',
-          polyline: JSON.stringify(draft.positions),
+          polyline: JSON.stringify(simplifiedPoly),
         },
       });
       created++;
