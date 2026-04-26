@@ -341,6 +341,7 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly Power = Power;
   protected readonly BellOff = BellOff;
   protected readonly HistoryIcon = History;
+  protected readonly Route = Route;
   protected readonly ZapIcon = Zap;
   protected readonly relativeTime = relativeTime;
 
