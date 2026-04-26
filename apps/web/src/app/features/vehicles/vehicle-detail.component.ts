@@ -150,6 +150,10 @@ import { relativeTime } from '../../shared/utils/relative-time';
               [center]="{ lat: pos.lat, lng: pos.lng }"
               [trail]="trail()"
               [speedKmh]="pos.speedKmh"
+              [heading]="pos.heading"
+              [vehicleType]="vehicle()?.type ?? 'OTHER'"
+              [plate]="vehicle()?.plate ?? ''"
+              [ignition]="pos.ignition"
               height="500px"
             />
           } @else {
@@ -335,11 +339,11 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly currentPosition = computed(() => {
     const live = this.livePosition();
     if (live) {
-      return { lat: live.lat, lng: live.lng, speedKmh: live.speedKmh, timestamp: live.timestamp, ignition: live.ignition, valid: live.valid };
+      return { lat: live.lat, lng: live.lng, speedKmh: live.speedKmh, heading: live.heading ?? 0, timestamp: live.timestamp, ignition: live.ignition, valid: live.valid };
     }
     const last = this.recentPositions()[0];
     if (last) {
-      return { lat: last.lat, lng: last.lng, speedKmh: last.speedKmh, timestamp: last.timestamp, ignition: true, valid: last.valid };
+      return { lat: last.lat, lng: last.lng, speedKmh: last.speedKmh, heading: (last as { heading?: number }).heading ?? 0, timestamp: last.timestamp, ignition: true, valid: last.valid };
     }
     return null;
   });

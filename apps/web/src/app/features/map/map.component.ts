@@ -10,10 +10,13 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { Router } from '@angular/router';
+import { DecimalPipe } from '@angular/common';
+import { HttpClient } from '@angular/common/http';
+import { ActivatedRoute, Router } from '@angular/router';
 import * as maplibregl from 'maplibre-gl';
-import type { Map as MlMap, Marker as MlMarker, Popup } from 'maplibre-gl';
+import type { Map as MlMap, Marker as MlMarker, Popup, GeoJSONSource } from 'maplibre-gl';
 import type { GeofenceDto, PositionUpdateEvent } from '@vizyo/tracky-shared';
+import { haversineMeters, sanitizePositions } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { GeofencesApiService } from '../../core/services/geofences.service';
 import { RealtimeService } from '../../core/services/realtime.service';
@@ -62,6 +65,7 @@ const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible a
 @Component({
   selector: 'app-map',
   standalone: true,
+  imports: [DecimalPipe],
   template: `
     <div #mapContainer style="position:absolute;top:0;left:0;width:100%;height:100%"></div>
 
@@ -83,7 +87,7 @@ const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible a
             · <span class="text-tracky-light">Suivi : {{ followedPlate() }}</span>
           }
         </p>
-        <div class="flex gap-1.5 mt-3">
+        <div class="flex gap-1.5 mt-3 flex-wrap">
           <button
             (click)="centerAll()"
             class="flex-1 text-xs font-medium py-1.5 rounded-lg
@@ -99,6 +103,47 @@ const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible a
             ⛶
           </button>
         </div>
+        <div class="flex gap-1.5 mt-1.5 flex-wrap">
+          <button
+            (click)="toggleMeasure()"
+            [class]="'flex-1 text-[10px] font-medium py-1.5 rounded-lg cursor-pointer transition-colors ' +
+                     (measureMode()
+                       ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                       : 'bg-bg-tertiary/60 text-fg-secondary border border-border-subtle hover:text-fg-primary')"
+            title="Mesurer une distance">
+            Mesurer
+          </button>
+          <button
+            (click)="shareUrl()"
+            class="flex-1 text-[10px] font-medium py-1.5 rounded-lg bg-bg-tertiary/60 border border-border-subtle
+                   text-fg-secondary hover:text-fg-primary cursor-pointer"
+            title="Copier URL de la vue">
+            Partager
+          </button>
+          <button
+            (click)="toggleCinema()"
+            [class]="'flex-1 text-[10px] font-medium py-1.5 rounded-lg cursor-pointer transition-colors ' +
+                     (cinemaMode()
+                       ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                       : 'bg-bg-tertiary/60 text-fg-secondary border border-border-subtle hover:text-fg-primary')"
+            title="Cycle automatique sur les vehicules (8s)">
+            Cinema
+          </button>
+        </div>
+        @if (measureMode()) {
+          <div class="mt-2 px-2 py-1 rounded bg-purple-500/10 border border-purple-500/30
+                      text-[10px] text-purple-300 flex items-center justify-between">
+            <span>{{ measurePoints().length }} pts · {{ measureTotalKm() | number:'1.2-2' }} km</span>
+            <button (click)="clearMeasure()" class="text-[10px] underline cursor-pointer">Reset</button>
+          </div>
+        }
+        @if (miniReplayVehicleId()) {
+          <div class="mt-2 px-2 py-1 rounded bg-blue-500/10 border border-blue-500/30
+                      text-[10px] text-blue-300 flex items-center justify-between">
+            <span>Replay 1h actif</span>
+            <button (click)="toggleMiniReplay(miniReplayVehicleId()!)" class="text-[10px] underline cursor-pointer">Fermer</button>
+          </div>
+        }
       </div>
 
       <!-- Search bar (Nominatim) -->
@@ -287,6 +332,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private readonly engineControl = inject(EngineControlService);
   private readonly toast = inject(ToastService);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
+  private readonly http = inject(HttpClient);
 
   private readonly mapContainerRef = viewChild.required<ElementRef<HTMLDivElement>>('mapContainer');
 
@@ -323,6 +370,24 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   });
 
   protected readonly contextMenu = signal<{ x: number; y: number; lat: number; lng: number } | null>(null);
+
+  /** Sprint D.2 — vehicleId actuellement affiche en mini-replay 1h (null = aucun). */
+  protected readonly miniReplayVehicleId = signal<string | null>(null);
+  /** Sprint D.4 — mode mesure de distance actif. */
+  protected readonly measureMode = signal(false);
+  protected readonly measurePoints = signal<Array<{ lat: number; lng: number }>>([]);
+  protected readonly measureTotalKm = computed(() => {
+    const pts = this.measurePoints();
+    let total = 0;
+    for (let i = 1; i < pts.length; i++) {
+      total += haversineMeters(pts[i - 1]!.lat, pts[i - 1]!.lng, pts[i]!.lat, pts[i]!.lng);
+    }
+    return total / 1000;
+  });
+  /** Sprint E.1 — mode Cinema : cycle sur les vehicules en mouvement, 8s chacun. */
+  protected readonly cinemaMode = signal(false);
+  private cinemaIntervalId: ReturnType<typeof setInterval> | null = null;
+  private cinemaIndex = 0;
 
   private readonly _accessibleIds = signal<Set<string> | 'ALL'>('ALL');
 
@@ -419,14 +484,25 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       void rect;
     });
 
-    this.map.on('click', () => this.closeContextMenu());
-
     // Setup sources/layers de base apres `load`.
     this.map.on('load', () => {
       this.setupGeofencesLayer();
       this.setupTrailsLayer();
+      this.setupMiniReplayLayer();
+      this.setupMeasureLayer();
       this.loadGeofences();
       this.applyPositions(this.applyFilters(this.realtime.positionsList()));
+      this.restoreFromUrl();
+    });
+
+    // Click pour la mesure de distance.
+    this.map.on('click', (e) => {
+      this.closeContextMenu();
+      if (this.measureMode()) {
+        const pts = [...this.measurePoints(), { lat: e.lngLat.lat, lng: e.lngLat.lng }];
+        this.measurePoints.set(pts);
+        this.refreshMeasureLayer();
+      }
     });
 
     this.resizeObserver = new ResizeObserver(() => this.map?.resize());
@@ -443,6 +519,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     if (this.animFrameId !== null) {
       cancelAnimationFrame(this.animFrameId);
       this.animFrameId = null;
+    }
+    if (this.cinemaIntervalId) {
+      clearInterval(this.cinemaIntervalId);
+      this.cinemaIntervalId = null;
     }
 
     this.markers.forEach((m) => m.marker.remove());
@@ -526,9 +606,158 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     this.map.once('styledata', () => {
       this.setupGeofencesLayer();
       this.setupTrailsLayer();
+      this.setupMiniReplayLayer();
+      this.setupMeasureLayer();
       this.loadGeofences();
       this.applyPositions(this.applyFilters(this.realtime.positionsList()));
+      // Mini-replay : si actif, recharger.
+      const vid = this.miniReplayVehicleId();
+      if (vid) this.loadMiniReplay(vid).catch(() => { /* silent */ });
+      this.refreshMeasureLayer();
     });
+  }
+
+  /** Sprint D.2 — toggle l'affichage de la derniere heure pour un vehicule. */
+  protected async toggleMiniReplay(vehicleId: string): Promise<void> {
+    if (this.miniReplayVehicleId() === vehicleId) {
+      this.miniReplayVehicleId.set(null);
+      const src = this.map?.getSource('mini-replay') as GeoJSONSource | undefined;
+      src?.setData({ type: 'FeatureCollection', features: [] });
+      return;
+    }
+    this.miniReplayVehicleId.set(vehicleId);
+    await this.loadMiniReplay(vehicleId);
+  }
+
+  private async loadMiniReplay(vehicleId: string): Promise<void> {
+    if (!this.map) return;
+    try {
+      const fromIso = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const res = await firstValueFrom(
+        this.http.get<{ items: Array<{ lat: number; lng: number; timestamp: string; speedKmh: number }> }>(
+          `/api/positions?vehicleId=${vehicleId}&from=${encodeURIComponent(fromIso)}&limit=500`,
+        ),
+      );
+      // L'API trie DESC ; on inverse pour avoir un trace chronologique.
+      const items = (res.items ?? []).slice().reverse();
+      const cleaned = sanitizePositions(items.map((p) => ({
+        lat: p.lat, lng: p.lng, timestamp: p.timestamp,
+      })));
+      if (cleaned.length < 2) {
+        this.toast.show({ kind: 'info', title: 'Pas assez de positions sur la derniere heure', duration: 3000 });
+        return;
+      }
+      const coords = cleaned.map((p) => [p.lng, p.lat] as [number, number]);
+      const src = this.map.getSource('mini-replay') as GeoJSONSource | undefined;
+      src?.setData({
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: coords },
+        properties: {},
+      });
+    } catch {
+      this.toast.show({ kind: 'error', title: 'Echec du chargement de la derniere heure', duration: 3000 });
+    }
+  }
+
+  /** Sprint D.4 — toggle l'outil de mesure de distance. */
+  protected toggleMeasure(): void {
+    const next = !this.measureMode();
+    this.measureMode.set(next);
+    if (!next) this.clearMeasure();
+  }
+
+  protected clearMeasure(): void {
+    this.measurePoints.set([]);
+    this.refreshMeasureLayer();
+  }
+
+  private refreshMeasureLayer(): void {
+    const src = this.map?.getSource('measure') as GeoJSONSource | undefined;
+    if (!src) return;
+    const pts = this.measurePoints();
+    const features: GeoJSON.Feature[] = pts.map((p) => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+      properties: {},
+    }));
+    if (pts.length >= 2) {
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: pts.map((p) => [p.lng, p.lat]) },
+        properties: {},
+      });
+    }
+    src.setData({ type: 'FeatureCollection', features });
+  }
+
+  /** Sprint D.5 — copie une URL avec la vue carte courante (lat/lng/zoom/bearing/pitch/style). */
+  protected async shareUrl(): Promise<void> {
+    if (!this.map) return;
+    const c = this.map.getCenter();
+    const params = new URLSearchParams({
+      lat: c.lat.toFixed(6), lng: c.lng.toFixed(6),
+      zoom: this.map.getZoom().toFixed(2),
+      bearing: this.map.getBearing().toFixed(1),
+      pitch: this.map.getPitch().toFixed(1),
+      style: this.currentStyle(),
+    });
+    const url = `${window.location.origin}/map?${params.toString()}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      this.toast.show({ kind: 'info', title: 'URL de la vue copiee', message: url, duration: 4000 });
+    } catch {
+      this.toast.show({ kind: 'warning', title: url, duration: 6000 });
+    }
+  }
+
+  private restoreFromUrl(): void {
+    if (!this.map) return;
+    const params = this.route.snapshot.queryParamMap;
+    const lat = parseFloat(params.get('lat') ?? '');
+    const lng = parseFloat(params.get('lng') ?? '');
+    const zoom = parseFloat(params.get('zoom') ?? '');
+    const bearing = parseFloat(params.get('bearing') ?? '');
+    const pitch = parseFloat(params.get('pitch') ?? '');
+    const style = params.get('style') as MapStyleId | null;
+
+    if (style && this.styles.byId(style).id === style) {
+      this.currentStyle.set(style);
+      // Note : pas de re-setStyle car le map est deja initialise avec un style.
+      // Le partage URL fonctionne mieux a partir du second load. V1.5 polish.
+    }
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      this.map.jumpTo({
+        center: [lng, lat],
+        zoom: Number.isFinite(zoom) ? zoom : this.map.getZoom(),
+        bearing: Number.isFinite(bearing) ? bearing : 0,
+        pitch: Number.isFinite(pitch) ? pitch : 0,
+      });
+      this.hasFittedBounds = true;
+    }
+  }
+
+  /** Sprint E.1 — mode Cinema : cycle 8s sur les vehicules. */
+  protected toggleCinema(): void {
+    if (this.cinemaMode()) {
+      this.cinemaMode.set(false);
+      if (this.cinemaIntervalId) clearInterval(this.cinemaIntervalId);
+      this.cinemaIntervalId = null;
+      return;
+    }
+    this.cinemaMode.set(true);
+    this.cinemaIndex = 0;
+    this.cinemaTick();
+    this.cinemaIntervalId = setInterval(() => this.cinemaTick(), 8000);
+  }
+
+  private cinemaTick(): void {
+    if (!this.map) return;
+    const list = this.realtime.positionsList();
+    if (list.length === 0) return;
+    const target = list[this.cinemaIndex % list.length]!;
+    this.cinemaIndex++;
+    this.followedVehicleId.set(target.vehicleId);
+    this.map.flyTo({ center: [target.lng, target.lat], zoom: 16, duration: 1500 });
   }
 
   protected setCameraMode(mode: CameraMode): void {
@@ -666,6 +895,42 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         'line-opacity': 0.6,
         'line-dasharray': [2, 1.5],
       },
+    });
+  }
+
+  /** Sprint D.2 — setup layer pour la polyligne historique 1h (couleur bleue distincte du trail live). */
+  private setupMiniReplayLayer(): void {
+    if (!this.map || this.map.getSource('mini-replay')) return;
+    this.map.addSource('mini-replay', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    this.map.addLayer({
+      id: 'mini-replay-line',
+      type: 'line',
+      source: 'mini-replay',
+      paint: {
+        'line-color': '#3b82f6',
+        'line-width': 5,
+        'line-opacity': 0.85,
+      },
+    });
+  }
+
+  /** Sprint D.4 — setup layer pour l'outil de mesure (ligne + points). */
+  private setupMeasureLayer(): void {
+    if (!this.map || this.map.getSource('measure')) return;
+    this.map.addSource('measure', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    this.map.addLayer({
+      id: 'measure-line',
+      type: 'line',
+      source: 'measure',
+      filter: ['==', ['geometry-type'], 'LineString'],
+      paint: { 'line-color': '#a855f7', 'line-width': 3, 'line-dasharray': [3, 2] },
+    });
+    this.map.addLayer({
+      id: 'measure-points',
+      type: 'circle',
+      source: 'measure',
+      filter: ['==', ['geometry-type'], 'Point'],
+      paint: { 'circle-radius': 5, 'circle-color': '#a855f7', 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' },
     });
   }
 
@@ -872,6 +1137,11 @@ export class MapComponent implements AfterViewInit, OnDestroy {
                          color:#fff;border:1px solid rgba(255,255,255,0.1);font-size:11px;cursor:pointer">
             Voir fiche detaillee
           </button>
+          <button data-action="replay1h"
+                  style="padding:6px 10px;border-radius:8px;background:rgba(59,130,246,0.15);
+                         color:#3b82f6;border:1px solid rgba(59,130,246,0.3);font-size:11px;cursor:pointer">
+            Voir derniere heure
+          </button>
           <div style="display:flex;gap:6px">
             <button data-action="cut"
                     style="flex:1;padding:6px 10px;border-radius:8px;background:rgba(239,68,68,0.15);
@@ -904,6 +1174,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
             break;
           case 'detail':
             this.router.navigate(['/vehicles', vehicleId]);
+            break;
+          case 'replay1h':
+            this.toggleMiniReplay(vehicleId);
+            this.closePopup();
             break;
           case 'cut':
             this.requestEngine(trackerId, 'CUT');
