@@ -26,6 +26,8 @@ import { VehicleAccessModule } from './vehicle-access/vehicle-access.module';
 import { VehicleGroupsModule } from './vehicle-groups/vehicle-groups.module';
 import { ObservabilityModule } from './observability/observability.module';
 import { BackupHealthModule } from './backup-health/backup-health.module';
+import { EmailModule } from './email/email.module';
+import { InvitationsModule } from './invitations/invitations.module';
 import { SmsModule } from './sms/sms.module';
 import { TrackerCommandsModule } from './tracker-commands/tracker-commands.module';
 import { TrackerFixModeModule } from './tracker-fix-mode/tracker-fix-mode.module';
@@ -83,6 +85,8 @@ import { VehiclesModule } from './vehicles/vehicles.module';
     TrackerTcpModule,
     SmsModule,
     BackupHealthModule,
+    EmailModule,
+    InvitationsModule,
     ObservabilityModule,
     RealtimeModule,
     VehicleAccessModule,

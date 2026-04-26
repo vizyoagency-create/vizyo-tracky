@@ -124,14 +124,48 @@ model User {
   isActive    Boolean  @default(true)
   fleetId    String?  @db.Uuid
   fleet      Fleet?   @relation(fields: [fleetId], references: [id], onDelete: SetNull)
+  // V1.5 (Sprint J) — onboarding + profil enrichi.
+  // phone : E.164 (+33612345678), utilise pour les notifications WhatsApp Sprint M.
+  // onboardingCompletedAt : null = wizard non termine, declenche au premier login.
+  // escalationContactUserId : si une alerte CRITICAL n'est pas ack en 10min,
+  //   on notifie ce user (Sprint M).
+  phone                   String?
+  onboardingCompletedAt   DateTime?
+  escalationContactUserId String?  @db.Uuid
+  escalationContact       User?    @relation("UserEscalation", fields: [escalationContactUserId], references: [id], onDelete: SetNull)
+  escalatedTo             User[]   @relation("UserEscalation")
   acknowledgedAlerts Alert[]           @relation("AlertAcknowledgedBy")
   trackerCommands    TrackerCommand[]
   vehicleAccess      UserVehicleAccess[]
+  invitationsSent    Invitation[]      @relation("InvitationCreatedBy")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
   @@index([fleetId])
   @@map("users")
+}
+
+/// V1.5 (Sprint J) — Invitations utilisateur.
+/// SUPER_ADMIN ou FLEET_ADMIN cree une invitation pour un email + role + fleet.
+/// Tracky envoie un email avec lien `/accept-invite?token=...` (JWT 24h).
+/// L'utilisateur clique, set son password, on call Vizyo Auth.register puis
+/// on cree le User Tracky local avec authUserId retourne.
+model Invitation {
+  id          String   @id @default(uuid()) @db.Uuid
+  email       String
+  role        UserRole
+  fleetId     String?  @db.Uuid
+  tokenHash   String   @unique
+  expiresAt   DateTime
+  status      String   @default("PENDING") // 'PENDING' | 'ACCEPTED' | 'EXPIRED' | 'REVOKED'
+  createdById String   @db.Uuid
+  createdBy   User     @relation("InvitationCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  acceptedAt  DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([email])
+  @@index([status])
+  @@map("invitations")
 }
 
 model Vehicle {

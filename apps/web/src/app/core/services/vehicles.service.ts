@@ -31,6 +31,7 @@ export class VehiclesApiService {
 
   create(data: {
     plate: string;
+    type?: 'CAR' | 'TRUCK' | 'VAN' | 'MOTORCYCLE' | 'BICYCLE' | 'BUS' | 'CONSTRUCTION' | 'OTHER';
     brand?: string;
     model?: string;
     year?: number;

@@ -31,6 +31,22 @@ const envSchema = z.object({
   TWILIO_AUTH_TOKEN: z.string().default(''),
   TWILIO_PHONE_NUMBER: z.string().default(''),
   TWILIO_WEBHOOK_URL: z.string().default(''),
+
+  // Email Gateway (Resend) — Sprint J. Si RESEND_API_KEY est vide, le module
+  // est en mode no-op (les invitations sont creees mais l'email n'est pas envoye,
+  // log de debug). Permet de developper sans compte Resend.
+  RESEND_API_KEY: z.string().default(''),
+  RESEND_FROM: z.string().default('contact@vizyoagency.com'),
+
+  // URL publique de l'app Angular — utilise pour les liens dans les emails
+  // d'invitation (`{APP_BASE_URL}/accept-invite?token=...`). En dev pointe sur
+  // localhost:4200, en prod sur https://app-tracky.vizyoagency.com.
+  APP_BASE_URL: z.string().default('http://localhost:4200'),
+
+  // Secret JWT pour signer les tokens d'invitation (24h). Si vide, fallback
+  // sur VIZYO_AUTH_JWT_ACCESS_SECRET. Differencier permet de revoquer les
+  // invitations sans casser les sessions actives.
+  INVITATION_JWT_SECRET: z.string().default(''),
 });
 
 export type Env = z.infer<typeof envSchema>;

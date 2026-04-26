@@ -18,14 +18,16 @@ import {
 import { ThemeToggleComponent } from '../shared/components/theme-toggle.component';
 import { AlertsBellComponent } from '../shared/ui/alerts-bell/alerts-bell.component';
 import { AuthService } from '../core/services/auth.service';
+import { OnboardingService } from '../core/services/onboarding.service';
 import { PermissionsService } from '../core/services/permissions.service';
 import { LogoComponent } from '../shared/ui/logo/logo.component';
 import { ToastContainerComponent } from '../shared/ui/toast/toast-container.component';
+import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wizard.component';
 
 @Component({
   selector: 'app-dashboard-layout',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, ThemeToggleComponent, AlertsBellComponent, LogoComponent, ToastContainerComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, ThemeToggleComponent, AlertsBellComponent, LogoComponent, ToastContainerComponent, OnboardingWizardComponent],
   template: `
     <a href="#main-content" class="skip-link">Aller au contenu principal</a>
     <div class="layout">
@@ -120,6 +122,7 @@ import { ToastContainerComponent } from '../shared/ui/toast/toast-container.comp
       </div>
 
       <app-toast-container />
+      <app-onboarding-wizard />
     </div>
   `,
   styles: [`
@@ -328,6 +331,7 @@ export class DashboardLayoutComponent {
 
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+  private readonly onboarding = inject(OnboardingService);
 
   constructor() {
     this.router.events.subscribe((event) => {
@@ -339,6 +343,9 @@ export class DashboardLayoutComponent {
         this.pageTitle.set(title);
       }
     });
+    // V1.5 (Sprint J) — au mount du layout (= apres login), charger le profil
+    // et ouvrir le wizard si onboardingCompletedAt est null.
+    void this.onboarding.loadProfileAndDecide();
   }
 
   private readonly auth = inject(AuthService);

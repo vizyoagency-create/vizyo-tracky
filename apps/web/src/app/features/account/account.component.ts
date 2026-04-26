@@ -1,0 +1,508 @@
+import { DatePipe } from '@angular/common';
+import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import {
+  Bell,
+  Compass,
+  CheckCircle,
+  ClipboardCopy,
+  KeyRound,
+  LucideAngularModule,
+  Mail,
+  PartyPopper,
+  Save,
+  ShieldAlert,
+  Trash2,
+  UserCircle2,
+  XCircle,
+} from 'lucide-angular';
+import { OnboardingService } from '../../core/services/onboarding.service';
+import {
+  InvitationDto,
+  MeProfile,
+  UsersApiService,
+} from '../../core/services/users.service';
+import { ToastService } from '../../shared/ui/toast/toast.service';
+
+type Tab = 'profile' | 'invitations' | 'security';
+
+/**
+ * V1.5 (Sprint J) — Page "Mon compte".
+ *
+ * Sections livrees Sprint J :
+ *   - Profil : firstName, lastName, phone (E.164)
+ *   - Invitations : envoyer + lister + revoquer (FLEET_ADMIN+ seulement)
+ *   - Securite : info Vizyo Auth (changement mot de passe via Vizyo Auth)
+ *
+ * Sections futures :
+ *   - Notifications (push / email / WhatsApp opt-in) → Sprint M
+ *   - Suppression / anonymisation RGPD → reporte (Vizyo Auth requis)
+ */
+@Component({
+  selector: 'app-account',
+  standalone: true,
+  imports: [LucideAngularModule, DatePipe, FormsModule],
+  template: `
+    <div class="page">
+      <header class="page-header">
+        <h1>Mon compte</h1>
+        <p class="muted">Gerez votre profil, vos invitations et vos preferences.</p>
+      </header>
+
+      <nav class="tabs" aria-label="Sections du compte">
+        @for (t of visibleTabs(); track t.key) {
+          <button (click)="activeTab.set(t.key)"
+                  class="tab"
+                  [class.active]="activeTab() === t.key">
+            <lucide-icon [img]="t.icon" [size]="14"></lucide-icon>
+            {{ t.label }}
+          </button>
+        }
+      </nav>
+
+      @if (activeTab() === 'profile') {
+        <section class="card">
+          <h2>Profil</h2>
+          <div class="form-grid">
+            <div class="field">
+              <label>Email</label>
+              <input [value]="profile()?.email ?? ''" disabled />
+              <small>Geree par Vizyo Auth — non modifiable ici.</small>
+            </div>
+            <div class="field">
+              <label>Role</label>
+              <input [value]="profile()?.role ?? ''" disabled />
+            </div>
+            <div class="field">
+              <label>Prenom</label>
+              <input [(ngModel)]="firstName" name="firstName" placeholder="Younes" />
+            </div>
+            <div class="field">
+              <label>Nom</label>
+              <input [(ngModel)]="lastName" name="lastName" placeholder="Haddou" />
+            </div>
+            <div class="field field--full">
+              <label>Telephone</label>
+              <input [(ngModel)]="phone" name="phone" placeholder="+33612345678" />
+              <small>Format E.164. Utilise pour les notifications WhatsApp (Sprint M).</small>
+            </div>
+          </div>
+          <div class="row-actions">
+            <button (click)="saveProfile()" class="btn-primary" [disabled]="saving()">
+              <lucide-icon [img]="Save" [size]="14"></lucide-icon>
+              {{ saving() ? 'Enregistrement...' : 'Enregistrer' }}
+            </button>
+            @if (profile() && !profile()!.onboardingCompletedAt) {
+              <button (click)="restartOnboarding()" class="btn-ghost">
+                <lucide-icon [img]="Compass" [size]="14"></lucide-icon>
+                Reprendre l'onboarding
+              </button>
+            } @else {
+              <button (click)="restartOnboarding()" class="btn-ghost">
+                <lucide-icon [img]="Compass" [size]="14"></lucide-icon>
+                Refaire l'onboarding
+              </button>
+            }
+          </div>
+        </section>
+      }
+
+      @if (activeTab() === 'invitations') {
+        <section class="card">
+          <h2>Inviter un utilisateur</h2>
+          <div class="form-grid">
+            <div class="field">
+              <label>Email</label>
+              <input [(ngModel)]="inviteEmail" type="email" placeholder="email@example.com" />
+            </div>
+            <div class="field">
+              <label>Role</label>
+              <select [(ngModel)]="inviteRole">
+                @if (canInviteFleetAdmin()) {
+                  <option value="FLEET_ADMIN">Administrateur de flotte</option>
+                }
+                <option value="FLEET_MANAGER">Gestionnaire de flotte</option>
+                <option value="VIEWER">Lecteur</option>
+              </select>
+            </div>
+          </div>
+          <div class="row-actions">
+            <button (click)="sendInvitation()" class="btn-primary" [disabled]="!inviteEmail.trim() || sendingInvite()">
+              <lucide-icon [img]="Mail" [size]="14"></lucide-icon>
+              {{ sendingInvite() ? 'Envoi...' : 'Envoyer l\\'invitation' }}
+            </button>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Invitations envoyees</h2>
+          @if (invitations().length === 0) {
+            <p class="muted">Aucune invitation pour le moment.</p>
+          } @else {
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Statut</th>
+                    <th>Cree le</th>
+                    <th>Expire</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (inv of invitations(); track inv.id) {
+                    <tr>
+                      <td>{{ inv.email }}</td>
+                      <td><span class="role-badge">{{ inv.role }}</span></td>
+                      <td>
+                        @switch (inv.status) {
+                          @case ('PENDING') {
+                            <span class="status status--pending">
+                              <lucide-icon [img]="Bell" [size]="12"></lucide-icon> En attente
+                            </span>
+                          }
+                          @case ('ACCEPTED') {
+                            <span class="status status--ok">
+                              <lucide-icon [img]="CheckCircle" [size]="12"></lucide-icon> Acceptee
+                            </span>
+                          }
+                          @case ('EXPIRED') {
+                            <span class="status status--expired">
+                              <lucide-icon [img]="XCircle" [size]="12"></lucide-icon> Expiree
+                            </span>
+                          }
+                          @default {
+                            <span class="status status--revoked">
+                              <lucide-icon [img]="XCircle" [size]="12"></lucide-icon> Revoquee
+                            </span>
+                          }
+                        }
+                      </td>
+                      <td class="muted">{{ inv.createdAt | date: 'dd/MM HH:mm' }}</td>
+                      <td class="muted">{{ inv.expiresAt | date: 'dd/MM HH:mm' }}</td>
+                      <td>
+                        @if (inv.status === 'PENDING') {
+                          <button (click)="revokeInvitation(inv.id)" class="btn-link">
+                            Revoquer
+                          </button>
+                        }
+                        @if (inv.acceptUrlForDevDebug) {
+                          <button (click)="copyDevLink(inv.acceptUrlForDevDebug)" class="btn-link" title="Mode dev — copier le lien d'invitation">
+                            <lucide-icon [img]="ClipboardCopy" [size]="12"></lucide-icon>
+                            Copier le lien
+                          </button>
+                        }
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </section>
+      }
+
+      @if (activeTab() === 'security') {
+        <section class="card">
+          <h2>Securite</h2>
+          <div class="info-box">
+            <lucide-icon [img]="ShieldAlert" [size]="20"></lucide-icon>
+            <div>
+              <strong>Mot de passe et sessions</strong>
+              <p>L'authentification est geree par Vizyo Auth. Pour changer votre mot de passe ou
+              vous deconnecter de toutes vos sessions, accedez au portail Vizyo Auth.</p>
+            </div>
+          </div>
+        </section>
+      }
+    </div>
+  `,
+  styles: [`
+    .page {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 24px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .page-header h1 { margin: 0 0 4px; font-size: 24px; color: var(--fg-primary); }
+    .muted { color: var(--fg-tertiary); }
+    .tabs {
+      display: flex;
+      gap: 6px;
+      border-bottom: 1px solid var(--border-subtle);
+      overflow-x: auto;
+      scrollbar-width: thin;
+    }
+    .tab {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 10px 14px;
+      border: none;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      color: var(--fg-tertiary);
+      font-size: 14px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .tab.active {
+      color: var(--tracky-light, #10E0A0);
+      border-bottom-color: var(--tracky-light, #10E0A0);
+    }
+    .tab:hover:not(.active) { color: var(--fg-secondary); }
+    .card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-card, 16px);
+      padding: 20px;
+    }
+    .card h2 { margin: 0 0 16px; font-size: 16px; color: var(--fg-primary); }
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 640px) { .form-grid { grid-template-columns: 1fr } }
+    .field { display: flex; flex-direction: column; gap: 4px; }
+    .field--full { grid-column: 1 / -1; }
+    .field label {
+      font-size: 11px;
+      color: var(--fg-tertiary);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .field input, .field select {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 14px;
+      color: var(--fg-primary);
+    }
+    .field input:focus, .field select:focus {
+      outline: 2px solid color-mix(in srgb, var(--tracky-light, #10E0A0) 60%, transparent);
+      outline-offset: 1px;
+      border-color: var(--tracky-light, #10E0A0);
+    }
+    .field input[disabled] { opacity: 0.7; cursor: not-allowed; }
+    .field small { font-size: 11px; color: var(--fg-tertiary); }
+    .row-actions {
+      display: flex; gap: 8px; flex-wrap: wrap;
+      margin-top: 16px;
+    }
+    .btn-primary, .btn-ghost {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 9px 14px;
+      border-radius: 9px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid transparent;
+    }
+    .btn-primary {
+      background: var(--tracky-light, #10E0A0);
+      color: var(--bg-primary);
+      font-weight: 600;
+    }
+    .btn-primary[disabled] { opacity: 0.55; cursor: not-allowed; }
+    .btn-primary:hover:not([disabled]) { filter: brightness(1.05); }
+    .btn-ghost {
+      background: transparent;
+      border-color: var(--border-subtle);
+      color: var(--fg-secondary);
+    }
+    .btn-ghost:hover { background: var(--bg-tertiary); color: var(--fg-primary); }
+    .btn-link {
+      background: transparent;
+      border: none;
+      color: var(--tracky-light, #10E0A0);
+      font-size: 12px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .btn-link:hover { text-decoration: underline; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; min-width: 600px; }
+    th, td {
+      padding: 10px 8px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-subtle);
+      font-size: 13px;
+    }
+    th { color: var(--fg-tertiary); font-weight: 500; text-transform: uppercase; font-size: 11px; }
+    .role-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 6px;
+      background: var(--bg-tertiary);
+      font-size: 11px;
+      font-family: monospace;
+    }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      padding: 2px 6px;
+      border-radius: 6px;
+    }
+    .status--pending { background: color-mix(in srgb, #f59e0b 18%, transparent); color: #f59e0b; }
+    .status--ok { background: color-mix(in srgb, var(--tracky-light, #10E0A0) 16%, transparent); color: var(--tracky-light, #10E0A0); }
+    .status--expired { background: color-mix(in srgb, #ef4444 14%, transparent); color: #ef4444; }
+    .status--revoked { background: var(--bg-tertiary); color: var(--fg-tertiary); }
+    .info-box {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 14px;
+      background: var(--bg-tertiary);
+      border-radius: 10px;
+    }
+    .info-box lucide-icon { color: var(--accent-warning, #f59e0b); flex-shrink: 0; }
+    .info-box strong { color: var(--fg-primary); display: block; margin-bottom: 4px; }
+    .info-box p { margin: 0; color: var(--fg-secondary); font-size: 13px; line-height: 1.5; }
+  `],
+})
+export class AccountComponent implements OnInit {
+  private readonly usersApi = inject(UsersApiService);
+  private readonly toast = inject(ToastService);
+  private readonly onboardingSvc = inject(OnboardingService);
+
+  protected readonly Bell = Bell;
+  protected readonly CheckCircle = CheckCircle;
+  protected readonly ClipboardCopy = ClipboardCopy;
+  protected readonly Compass = Compass;
+  protected readonly KeyRound = KeyRound;
+  protected readonly Mail = Mail;
+  protected readonly PartyPopper = PartyPopper;
+  protected readonly Save = Save;
+  protected readonly ShieldAlert = ShieldAlert;
+  protected readonly Trash2 = Trash2;
+  protected readonly UserCircle2 = UserCircle2;
+  protected readonly XCircle = XCircle;
+
+  readonly profile = signal<MeProfile | null>(null);
+  readonly invitations = signal<InvitationDto[]>([]);
+  readonly activeTab = signal<Tab>('profile');
+  readonly saving = signal(false);
+  readonly sendingInvite = signal(false);
+
+  firstName = '';
+  lastName = '';
+  phone = '';
+  inviteEmail = '';
+  inviteRole: 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' = 'FLEET_MANAGER';
+
+  readonly canInvite = computed(() => {
+    const role = this.profile()?.role;
+    return role === 'SUPER_ADMIN' || role === 'FLEET_ADMIN';
+  });
+
+  readonly canInviteFleetAdmin = computed(() => this.profile()?.role === 'SUPER_ADMIN');
+
+  readonly visibleTabs = computed(() => {
+    const tabs: { key: Tab; label: string; icon: typeof Bell }[] = [
+      { key: 'profile', label: 'Profil', icon: UserCircle2 },
+    ];
+    if (this.canInvite()) {
+      tabs.push({ key: 'invitations', label: 'Invitations', icon: Mail });
+    }
+    tabs.push({ key: 'security', label: 'Securite', icon: KeyRound });
+    return tabs;
+  });
+
+  async ngOnInit(): Promise<void> {
+    await this.loadProfile();
+    if (this.canInvite()) await this.loadInvitations();
+  }
+
+  async loadProfile(): Promise<void> {
+    try {
+      const me = await this.usersApi.me();
+      this.profile.set(me);
+      this.firstName = me.firstName ?? '';
+      this.lastName = me.lastName ?? '';
+      this.phone = me.phone ?? '';
+    } catch {
+      this.toast.error('Echec du chargement du profil');
+    }
+  }
+
+  async loadInvitations(): Promise<void> {
+    try {
+      const items = await this.usersApi.listInvitations();
+      this.invitations.set(items);
+    } catch {
+      // Silent — peut etre 403 si pas la perm.
+    }
+  }
+
+  async saveProfile(): Promise<void> {
+    if (this.phone && !/^\+\d{6,15}$/.test(this.phone)) {
+      this.toast.error('Le telephone doit etre au format international (ex: +33612345678)');
+      return;
+    }
+    this.saving.set(true);
+    try {
+      await this.usersApi.updateMe({
+        firstName: this.firstName.trim() || '',
+        lastName: this.lastName.trim() || '',
+        phone: this.phone.trim() || null,
+      });
+      this.toast.success('Profil mis a jour');
+      await this.loadProfile();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Echec';
+      this.toast.error(message);
+    } finally {
+      this.saving.set(false);
+    }
+  }
+
+  async sendInvitation(): Promise<void> {
+    if (!this.inviteEmail.trim()) return;
+    this.sendingInvite.set(true);
+    try {
+      await this.usersApi.invite({
+        email: this.inviteEmail.trim().toLowerCase(),
+        role: this.inviteRole,
+      });
+      this.toast.success(`Invitation envoyee a ${this.inviteEmail}`);
+      this.inviteEmail = '';
+      await this.loadInvitations();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Echec';
+      this.toast.error(message);
+    } finally {
+      this.sendingInvite.set(false);
+    }
+  }
+
+  async revokeInvitation(id: string): Promise<void> {
+    try {
+      await this.usersApi.revokeInvitation(id);
+      this.toast.success('Invitation revoquee');
+      await this.loadInvitations();
+    } catch {
+      this.toast.error('Echec de la revocation');
+    }
+  }
+
+  async copyDevLink(url: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(url);
+      this.toast.success('Lien copie (mode dev)');
+    } catch {
+      this.toast.error('Echec de la copie');
+    }
+  }
+
+  restartOnboarding(): void {
+    this.onboardingSvc.open();
+  }
+}

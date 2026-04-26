@@ -1,6 +1,6 @@
 import {
-  Body, Controller, Delete, ForbiddenException, Get, HttpCode, HttpStatus,
-  NotFoundException, Param, Patch, Post, Put, Req, UseGuards,
+  BadRequestException, Body, Controller, Delete, ForbiddenException, Get, HttpCode, HttpStatus,
+  NotFoundException, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, UseGuards,
 } from '@nestjs/common';
 import { AccessType, Prisma, UserRole } from '@prisma/client';
 import { AuthClientService } from '../auth-client/auth-client.service';
@@ -8,6 +8,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { InvitationsService } from '../invitations/invitations.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { getDefaultPermissions } from './default-permissions';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -22,7 +23,119 @@ export class UsersController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly authClient: AuthClientService,
+    private readonly invitations: InvitationsService,
   ) {}
+
+  // ─── /me — current user (Sprint J) ────────────────────────────
+
+  @Get('me')
+  async getMe(@Req() req: AuthenticatedRequest) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: {
+        id: true, email: true, firstName: true, lastName: true,
+        phone: true, role: true, permissions: true, fleetId: true,
+        isActive: true, onboardingCompletedAt: true,
+        escalationContactUserId: true,
+        createdAt: true,
+      },
+    });
+    if (!user) throw new NotFoundException('User not found');
+    return user;
+  }
+
+  @Patch('me')
+  async updateMe(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: { firstName?: string; lastName?: string; phone?: string | null; escalationContactUserId?: string | null },
+  ) {
+    if (dto.phone && !/^\+\d{6,15}$/.test(dto.phone)) {
+      throw new BadRequestException('Numero de telephone doit etre au format E.164 (ex: +33612345678)');
+    }
+    if (dto.escalationContactUserId) {
+      const target = await this.prisma.user.findUnique({
+        where: { id: dto.escalationContactUserId },
+        select: { id: true, fleetId: true },
+      });
+      if (!target) throw new NotFoundException('Contact d\'escalade introuvable');
+      if (req.user.role !== UserRole.SUPER_ADMIN && target.fleetId !== req.user.fleetId) {
+        throw new ForbiddenException('Le contact d\'escalade doit etre dans la meme flotte');
+      }
+      if (target.id === req.user.id) {
+        throw new BadRequestException('Le contact d\'escalade ne peut pas etre vous-meme');
+      }
+    }
+    return this.prisma.user.update({
+      where: { id: req.user.id },
+      data: {
+        ...(dto.firstName !== undefined ? { firstName: dto.firstName } : {}),
+        ...(dto.lastName !== undefined ? { lastName: dto.lastName } : {}),
+        ...(dto.phone !== undefined ? { phone: dto.phone } : {}),
+        ...(dto.escalationContactUserId !== undefined ? { escalationContactUserId: dto.escalationContactUserId } : {}),
+      },
+      select: {
+        id: true, email: true, firstName: true, lastName: true, phone: true,
+        role: true, fleetId: true, escalationContactUserId: true,
+      },
+    });
+  }
+
+  @Post('me/onboarding-complete')
+  @HttpCode(HttpStatus.OK)
+  async completeOnboarding(@Req() req: AuthenticatedRequest) {
+    const updated = await this.prisma.user.update({
+      where: { id: req.user.id },
+      data: { onboardingCompletedAt: new Date() },
+      select: { id: true, onboardingCompletedAt: true },
+    });
+    return updated;
+  }
+
+  // ─── /invitations — Sprint J ──────────────────────────────────
+
+  @Post('invitations')
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  async invite(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: { email: string; role: UserRole; fleetId?: string | null },
+  ) {
+    if (!dto.email || !dto.role) {
+      throw new BadRequestException('email et role sont requis');
+    }
+    const fleetId = req.user.role === UserRole.SUPER_ADMIN
+      ? (dto.fleetId ?? null)
+      : req.user.fleetId;
+    return this.invitations.create({
+      email: dto.email,
+      role: dto.role,
+      fleetId,
+      requestedByUserId: req.user.id,
+    });
+  }
+
+  @Get('invitations')
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  async listInvitations(@Req() req: AuthenticatedRequest) {
+    const items = await this.invitations.list({
+      id: req.user.id,
+      role: req.user.role,
+      fleetId: req.user.fleetId,
+    });
+    return { items };
+  }
+
+  @Post('invitations/:id/revoke')
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  async revokeInvitation(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.invitations.revoke(id, {
+      id: req.user.id,
+      role: req.user.role,
+      fleetId: req.user.fleetId,
+    });
+  }
 
   @Post()
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)

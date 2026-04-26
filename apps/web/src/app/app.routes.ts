@@ -21,6 +21,12 @@ export const routes: Routes = [
     ],
   },
   {
+    path: 'accept-invite',
+    loadComponent: () =>
+      import('./features/auth/accept-invite.component').then((m) => m.AcceptInviteComponent),
+    data: { title: 'Accepter l\'invitation' },
+  },
+  {
     path: '',
     loadComponent: () =>
       import('./layouts/dashboard-layout.component').then((m) => m.DashboardLayoutComponent),
@@ -79,6 +85,12 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/settings/settings.component').then((m) => m.SettingsComponent),
         data: { title: 'Paramètres' },
+      },
+      {
+        path: 'account',
+        loadComponent: () =>
+          import('./features/account/account.component').then((m) => m.AccountComponent),
+        data: { title: 'Mon compte' },
       },
       {
         path: 'admin/observability',
