@@ -30,6 +30,7 @@ import {
   updateVehicleMarkerEl,
   type VehicleMarkerData,
 } from '../../shared/utils/maplibre-markers';
+import { catmullRom, lerp, lerpHeading } from '../../shared/utils/spline';
 
 interface MarkerEntry {
   marker: MlMarker;
@@ -40,6 +41,23 @@ interface VehicleMeta {
   type: string;
   plate: string;
 }
+
+/**
+ * Etat d'interpolation d'un marker : entre deux trames Coban (~30s), on fait
+ * glisser le marker de `from` vers `to` plutot que de teleporter. Cf. Sprint C.
+ */
+interface InterpState {
+  fromLat: number;
+  fromLng: number;
+  fromHeading: number;
+  toLat: number;
+  toLng: number;
+  toHeading: number;
+  startedAt: number;
+  durationMs: number;
+}
+
+const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible avant la nouvelle trame
 
 @Component({
   selector: 'app-map',
@@ -281,6 +299,12 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private currentPopup: Popup | null = null;
   private activePopupTrackerId: string | null = null;
 
+  /** Etat d'interpolation par trackerId : permet animation fluide entre 2 events WS. */
+  private interp = new Map<string, InterpState>();
+  /** Derniere data de marker connue (pour update du DOM pendant interpolation). */
+  private lastMarkerData = new Map<string, VehicleMarkerData>();
+  private animFrameId: number | null = null;
+
   protected readonly currentStyle = signal<MapStyleId>('osm');
   protected readonly cameraMode = signal<CameraMode>('free');
   protected readonly followedVehicleId = signal<string | null>(null);
@@ -407,15 +431,25 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
     this.resizeObserver = new ResizeObserver(() => this.map?.resize());
     this.resizeObserver.observe(container);
+
+    // Boucle d'animation pour l'interpolation des markers (Sprint C).
+    this.startAnimLoop();
   }
 
   ngOnDestroy(): void {
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
 
+    if (this.animFrameId !== null) {
+      cancelAnimationFrame(this.animFrameId);
+      this.animFrameId = null;
+    }
+
     this.markers.forEach((m) => m.marker.remove());
     this.markers.clear();
     this.trailPoints.clear();
+    this.interp.clear();
+    this.lastMarkerData.clear();
 
     this.currentPopup?.remove();
     this.currentPopup = null;
@@ -424,6 +458,52 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       this.map.remove();
       this.map = null;
     }
+  }
+
+  /**
+   * Boucle d'interpolation : a chaque RAF, fait avancer chaque marker en cours
+   * d'interpolation. Une trame WS Coban arrive toutes les ~30s ; on glisse le
+   * marker sur cette duree pour eviter les teleports.
+   */
+  private startAnimLoop(): void {
+    const tick = (now: number) => {
+      this.animFrameId = requestAnimationFrame(tick);
+      if (this.interp.size === 0) return;
+
+      const followedVid = this.followedVehicleId();
+      const camMode = this.cameraMode();
+
+      for (const [trackerId, st] of this.interp) {
+        const t = Math.min(1, (now - st.startedAt) / st.durationMs);
+        const lat = lerp(st.fromLat, st.toLat, t);
+        const lng = lerp(st.fromLng, st.toLng, t);
+        const heading = lerpHeading(st.fromHeading, st.toHeading, t);
+
+        const entry = this.markers.get(trackerId);
+        if (entry) {
+          entry.marker.setLngLat([lng, lat]);
+          const data = this.lastMarkerData.get(trackerId);
+          if (data) {
+            updateVehicleMarkerEl(entry.el, { ...data, heading });
+          }
+        }
+
+        // Si on suit ce vehicule, faire suivre la camera en douceur (sans animation
+        // MapLibre supplementaire — on copie la position interpolee directement).
+        if (this.map && (camMode === 'follow' || camMode === 'heading-up' || camMode === 'chase')) {
+          const data = this.lastMarkerData.get(trackerId);
+          if (data && data.vehicleId === followedVid) {
+            this.map.jumpTo({
+              center: [lng, lat],
+              bearing: (camMode === 'heading-up' || camMode === 'chase') ? heading : this.map.getBearing(),
+            });
+          }
+        }
+
+        if (t >= 1) this.interp.delete(trackerId);
+      }
+    };
+    this.animFrameId = requestAnimationFrame(tick);
   }
 
   /* --- Camera & view --- */
@@ -649,9 +729,29 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         entry = { marker, el };
         this.markers.set(pos.trackerId, entry);
       } else {
-        entry.marker.setLngLat([pos.lng, pos.lat]);
-        updateVehicleMarkerEl(entry.el, data);
+        // Demarrer une interpolation depuis la position courante (lue sur le marker)
+        // vers la nouvelle position WS. Anime sur ~28s pour eviter les teleports
+        // entre deux trames Coban (cf. spec Sprint C — chantier 3 du roadmap).
+        const cur = entry.marker.getLngLat();
+        const lastData = this.lastMarkerData.get(pos.trackerId);
+        const fromHeading = lastData?.heading ?? pos.heading;
+        const isHydrated = data.hydrated === true;
+        if (isHydrated || !lastData) {
+          // Premier rendu (hydratation ou nouveau tracker) : positionner direct, pas d'anim.
+          entry.marker.setLngLat([pos.lng, pos.lat]);
+          updateVehicleMarkerEl(entry.el, data);
+        } else {
+          this.interp.set(pos.trackerId, {
+            fromLat: cur.lat, fromLng: cur.lng, fromHeading,
+            toLat: pos.lat, toLng: pos.lng, toHeading: pos.heading,
+            startedAt: performance.now(), durationMs: INTERP_DURATION_MS,
+          });
+          // Update les attributs non-positionnels (couleur, ACC, plaque, active)
+          // immediatement pour qu'ils refletent le nouvel etat sans attendre l'anim.
+          updateVehicleMarkerEl(entry.el, { ...data, heading: fromHeading });
+        }
       }
+      this.lastMarkerData.set(pos.trackerId, data);
 
       // Trail accumulation (en memoire, capee a trailLength).
       if (showTrails) {
@@ -664,9 +764,17 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         while (pts.length > trailLength) pts.shift();
 
         if (pts.length >= 2) {
+          // Lissage Catmull-Rom : insere des points intermediaires pour adoucir
+          // les coins de virage (la trame Coban tous les 30s coupe les courbes).
+          // 6 echantillons par segment garde un rendu fluide sans surcharger
+          // (un trail de 20 points devient 19*6+20 = ~134 points GeoJSON).
+          const smoothPts = catmullRom(
+            pts.map(([lng, lat]) => ({ lat, lng })),
+            6,
+          ).map((p) => [p.lng, p.lat] as [number, number]);
           trailFeatures.push({
             type: 'Feature',
-            geometry: { type: 'LineString', coordinates: pts.slice() },
+            geometry: { type: 'LineString', coordinates: smoothPts },
             properties: { color: speedColor(pos.speedKmh), trackerId: pos.trackerId },
           });
         }
