@@ -93,6 +93,12 @@ export const routes: Routes = [
         data: { title: 'Mon compte' },
       },
       {
+        path: 'settings/alert-rules',
+        loadComponent: () =>
+          import('./features/settings/alert-rules.component').then((m) => m.AlertRulesComponent),
+        data: { title: 'Regles de notification' },
+      },
+      {
         path: 'admin/observability',
         canActivate: [superAdminGuard],
         loadComponent: () =>

@@ -19,6 +19,22 @@ interface DayRow {
   end: string;
 }
 
+interface CustomDateRow {
+  date: string;       // ISO date YYYY-MM-DD
+  closed: boolean;    // true = ferme toute la journee
+  start?: string;     // sinon, plage HH:MM
+  end?: string;
+}
+
+const COUNTRY_CHOICES: { value: string; label: string }[] = [
+  { value: '', label: 'Aucun (ignorer)' },
+  { value: 'FR', label: '🇫🇷 France' },
+  { value: 'MA', label: '🇲🇦 Maroc' },
+  { value: 'BE', label: '🇧🇪 Belgique' },
+  { value: 'LU', label: '🇱🇺 Luxembourg' },
+  { value: 'CH', label: '🇨🇭 Suisse' },
+];
+
 const DAY_KEYS = [
   'monday',
   'tuesday',
@@ -222,6 +238,106 @@ const TIMEZONES = [
           </div>
         }
       </div>
+
+      <!-- V1.6 (P1) — Options avancees : multi-plages + jours feries + dates speciales -->
+      @if (globalEnabled()) {
+        <div class="vsched-advanced">
+          <button type="button" class="vsched-advanced-toggle" (click)="toggleAdvanced()">
+            <lucide-icon [img]="Settings2Icon" [size]="14"></lucide-icon>
+            Options avancees
+            <span class="vsched-advanced-arrow" [class.vsched-advanced-arrow--open]="advancedExpanded()">▶</span>
+          </button>
+
+          @if (advancedExpanded()) {
+            <div class="vsched-advanced-body">
+              <!-- Multi-plages par jour -->
+              <div class="vsched-adv-section">
+                <h4>Plages multiples par jour</h4>
+                <p class="vsched-adv-desc">
+                  Ajoute jusqu'a 2 plages supplementaires en plus de la plage principale (ex: 08-12h + 14-18h).
+                </p>
+                @for (d of days(); track d.key) {
+                  @if (d.enabled) {
+                    <div class="vsched-adv-day">
+                      <span class="vsched-adv-day-label">{{ d.label }}</span>
+                      <span class="vsched-adv-base">{{ d.start }}–{{ d.end }}</span>
+                      @for (slot of extraSlotsByDay()[d.key] ?? []; track $index; let i = $index) {
+                        <span class="vsched-adv-slot">
+                          <input type="time" [value]="slot.start" [disabled]="readonly()"
+                                 (input)="updateSlot(d.key, i, 'start', $any($event.target).value)" />
+                          <span>–</span>
+                          <input type="time" [value]="slot.end" [disabled]="readonly()"
+                                 (input)="updateSlot(d.key, i, 'end', $any($event.target).value)" />
+                          @if (!readonly()) {
+                            <button type="button" class="vsched-adv-slot-remove" (click)="removeSlot(d.key, i)">
+                              <lucide-icon [img]="XIcon" [size]="12"></lucide-icon>
+                            </button>
+                          }
+                        </span>
+                      }
+                      @if (!readonly() && (extraSlotsByDay()[d.key] ?? []).length < 2) {
+                        <button type="button" class="vsched-adv-slot-add" (click)="addSlot(d.key)">
+                          + plage
+                        </button>
+                      }
+                    </div>
+                  }
+                }
+              </div>
+
+              <!-- Jours feries -->
+              <div class="vsched-adv-section">
+                <h4>Jours feries</h4>
+                <p class="vsched-adv-desc">
+                  Le vehicule est automatiquement coupe les jours feries du pays selectionne.
+                </p>
+                <select [value]="countryCode()" (change)="onCountryChange($any($event.target).value)"
+                        [disabled]="readonly()" class="vsched-adv-select">
+                  @for (c of countryChoices; track c.value) {
+                    <option [value]="c.value">{{ c.label }}</option>
+                  }
+                </select>
+              </div>
+
+              <!-- Dates speciales -->
+              <div class="vsched-adv-section">
+                <h4>Dates speciales</h4>
+                <p class="vsched-adv-desc">
+                  Override ponctuel pour une date precise (ex: ferme le 24/12 a 16:00, ferme toute la journee, ...).
+                </p>
+                @for (cd of customDates(); track $index; let i = $index) {
+                  <div class="vsched-adv-cdate">
+                    <input type="date" [value]="cd.date" [disabled]="readonly()"
+                           (input)="updateCustomDate(i, { date: $any($event.target).value })" />
+                    <label class="vsched-adv-checkbox">
+                      <input type="checkbox" [checked]="cd.closed" [disabled]="readonly()"
+                             (change)="updateCustomDate(i, { closed: $any($event.target).checked })" />
+                      Ferme toute la journee
+                    </label>
+                    @if (!cd.closed) {
+                      <input type="time" [value]="cd.start ?? '08:00'" [disabled]="readonly()"
+                             (input)="updateCustomDate(i, { start: $any($event.target).value })" />
+                      <span>–</span>
+                      <input type="time" [value]="cd.end ?? '18:00'" [disabled]="readonly()"
+                             (input)="updateCustomDate(i, { end: $any($event.target).value })" />
+                    }
+                    @if (!readonly()) {
+                      <button type="button" class="vsched-adv-slot-remove" (click)="removeCustomDate(i)">
+                        <lucide-icon [img]="XIcon" [size]="12"></lucide-icon>
+                      </button>
+                    }
+                  </div>
+                }
+                @if (!readonly()) {
+                  <button type="button" class="vsched-adv-slot-add" (click)="addCustomDate()">
+                    + ajouter une date speciale
+                  </button>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      }
 
       <!-- Confirmation modal for disabling when vehicle is cut -->
       <app-confirm-modal
@@ -477,6 +593,80 @@ const TIMEZONES = [
       .vsched-day-name { font-size: 11px }
       .vsched-time-input { font-size: 11px; padding: 5px 6px }
     }
+
+    /* V1.6 (P1) — Section avancee */
+    .vsched-advanced { border-top: 1px solid var(--border-subtle) }
+    .vsched-advanced-toggle {
+      width: 100%; display: flex; align-items: center; gap: 8px;
+      padding: 12px 16px;
+      background: transparent; border: 0;
+      color: var(--fg-secondary); font-size: 12px; font-weight: 600;
+      cursor: pointer;
+    }
+    .vsched-advanced-toggle:hover { background: var(--bg-tertiary) }
+    .vsched-advanced-arrow { margin-left: auto; transition: transform .2s; font-size: 9px }
+    .vsched-advanced-arrow--open { transform: rotate(90deg) }
+    .vsched-advanced-body {
+      padding: 12px 16px 16px;
+      display: flex; flex-direction: column; gap: 18px;
+      background: rgba(255,255,255,.02);
+    }
+    .vsched-adv-section h4 {
+      font-size: 12px; font-weight: 700; color: var(--fg-primary);
+      text-transform: uppercase; letter-spacing: .04em;
+      margin: 0 0 4px;
+    }
+    .vsched-adv-desc { font-size: 11px; color: var(--fg-tertiary); margin: 0 0 10px; line-height: 1.4 }
+    .vsched-adv-day {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      padding: 8px 0;
+      border-bottom: 1px dashed var(--border-subtle);
+    }
+    .vsched-adv-day:last-child { border-bottom: 0 }
+    .vsched-adv-day-label { width: 80px; font-size: 12px; color: var(--fg-secondary); font-weight: 600 }
+    .vsched-adv-base { font-size: 11px; color: var(--fg-tertiary); font-family: monospace }
+    .vsched-adv-slot {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 4px 8px;
+      background: var(--bg-tertiary);
+      border-radius: 6px;
+      font-size: 11px;
+    }
+    .vsched-adv-slot input[type="time"] {
+      background: transparent; border: 0; color: var(--fg-primary);
+      font-size: 11px; font-family: monospace;
+      width: 60px;
+    }
+    .vsched-adv-slot-remove {
+      background: transparent; border: 0; color: var(--fg-tertiary);
+      cursor: pointer; padding: 2px;
+    }
+    .vsched-adv-slot-remove:hover { color: rgb(244, 63, 94) }
+    .vsched-adv-slot-add {
+      background: transparent; border: 1px dashed var(--border-subtle);
+      color: var(--tracky-light); padding: 4px 10px; border-radius: 6px;
+      font-size: 11px; cursor: pointer;
+    }
+    .vsched-adv-slot-add:hover { border-color: var(--tracky-light); background: rgba(16,224,160,.06) }
+    .vsched-adv-select {
+      background: var(--bg-tertiary); border: 1px solid var(--border-subtle);
+      color: var(--fg-primary); font-size: 12px;
+      padding: 6px 10px; border-radius: 6px;
+      max-width: 220px;
+    }
+    .vsched-adv-cdate {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      padding: 6px 0;
+    }
+    .vsched-adv-cdate input[type="date"], .vsched-adv-cdate input[type="time"] {
+      background: var(--bg-tertiary); border: 1px solid var(--border-subtle);
+      color: var(--fg-primary); padding: 4px 6px; border-radius: 4px;
+      font-size: 11px; font-family: monospace;
+    }
+    .vsched-adv-checkbox {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 11px; color: var(--fg-secondary); cursor: pointer;
+    }
   `],
 })
 export class VehicleScheduleComponent {
@@ -505,6 +695,15 @@ export class VehicleScheduleComponent {
   protected readonly timezone = signal('Europe/Paris');
   protected readonly days = signal<DayRow[]>(this.defaultDays());
   protected readonly showDisableConfirm = signal(false);
+
+  // V1.6 (P1) — multi-plages par jour + jours feries + dates speciales.
+  // mondaySlots = 2-3 plages cumulables sur un meme jour (ex: 08:00-12:00 + 14:00-18:00).
+  // Si un jour a des slots, ils prennent le pas sur start/end "simple".
+  protected readonly extraSlotsByDay = signal<Record<string, Array<{ start: string; end: string }>>>({});
+  protected readonly countryCode = signal<string>('FR');
+  protected readonly customDates = signal<CustomDateRow[]>([]);
+  protected readonly advancedExpanded = signal(false);
+  protected readonly countryChoices = COUNTRY_CHOICES;
 
   protected readonly readonly = computed(() => {
     const role = this.auth.user()?.role;
@@ -579,10 +778,34 @@ export class VehicleScheduleComponent {
         this.globalEnabled.set(schedule.enabled);
         this.timezone.set(schedule.timezone);
         this.days.set(this.scheduleToDays(schedule));
+        // V1.6 (P1) — charge les sections avancees si presentes en DB.
+        this.countryCode.set(schedule.countryCode ?? 'FR');
+        const extras: Record<string, Array<{ start: string; end: string }>> = {};
+        for (const k of DAY_KEYS) {
+          const slots = (schedule as unknown as Record<string, Array<{ start: string; end: string }> | null>)[`${k}Slots`];
+          if (slots && slots.length > 1) {
+            // Le 1er slot represente start/end "simple" — on le saute.
+            extras[k] = slots.slice(1);
+          }
+        }
+        this.extraSlotsByDay.set(extras);
+        const cd = (schedule.customDates ?? []).map((c) => ({
+          date: c.date,
+          closed: c.closed === true,
+          start: c.slots?.[0]?.start,
+          end: c.slots?.[0]?.end,
+        }));
+        this.customDates.set(cd);
+        if (Object.keys(extras).length > 0 || cd.length > 0 || (schedule.countryCode && schedule.countryCode !== 'FR')) {
+          this.advancedExpanded.set(true);
+        }
       } else {
         this.globalEnabled.set(false);
         this.timezone.set('Europe/Paris');
         this.days.set(this.defaultDays());
+        this.countryCode.set('FR');
+        this.extraSlotsByDay.set({});
+        this.customDates.set([]);
       }
       this.dirty.set(false);
     } catch {
@@ -679,15 +902,30 @@ export class VehicleScheduleComponent {
   private buildPayload(): UpsertSchedulePayload {
     const d = this.days();
     const get = (key: string) => d.find((r) => r.key === key)!;
+    const extras = this.extraSlotsByDay();
 
     const dayPayload = (key: string) => {
       const row = get(key);
+      const dayExtras = extras[key] ?? [];
+      // Reconstitue les slots a partir de start/end + extras.
+      const slots = row.enabled && row.start && row.end
+        ? [{ start: row.start, end: row.end }, ...dayExtras.filter((s) => s.start && s.end)]
+        : [];
       return {
         [`${key}Enabled`]: row.enabled,
         [`${key}Start`]: row.enabled && row.start ? row.start : null,
         [`${key}End`]: row.enabled && row.end ? row.end : null,
+        [`${key}Slots`]: slots.length > 1 ? slots : undefined,
       };
     };
+
+    const customDates = this.customDates()
+      .filter((cd) => cd.date)
+      .map((cd) => ({
+        date: cd.date,
+        closed: cd.closed,
+        slots: cd.closed || !cd.start || !cd.end ? undefined : [{ start: cd.start, end: cd.end }],
+      }));
 
     return {
       enabled: this.globalEnabled(),
@@ -699,7 +937,61 @@ export class VehicleScheduleComponent {
       ...dayPayload('friday'),
       ...dayPayload('saturday'),
       ...dayPayload('sunday'),
+      countryCode: this.countryCode() || undefined,
+      customDates: customDates.length > 0 ? customDates : undefined,
     } as UpsertSchedulePayload;
+  }
+
+  // V1.6 (P1) — gestion des plages additionnelles par jour.
+  protected addSlot(dayKey: string): void {
+    const current = this.extraSlotsByDay();
+    const list = [...(current[dayKey] ?? [])];
+    if (list.length >= 2) return; // 1 (start/end) + 2 extras = 3 max par jour
+    list.push({ start: '14:00', end: '18:00' });
+    this.extraSlotsByDay.set({ ...current, [dayKey]: list });
+    this.dirty.set(true);
+  }
+
+  protected removeSlot(dayKey: string, idx: number): void {
+    const current = this.extraSlotsByDay();
+    const list = [...(current[dayKey] ?? [])];
+    list.splice(idx, 1);
+    this.extraSlotsByDay.set({ ...current, [dayKey]: list });
+    this.dirty.set(true);
+  }
+
+  protected updateSlot(dayKey: string, idx: number, field: 'start' | 'end', value: string): void {
+    const current = this.extraSlotsByDay();
+    const list = [...(current[dayKey] ?? [])];
+    if (!list[idx]) return;
+    list[idx] = { ...list[idx], [field]: value };
+    this.extraSlotsByDay.set({ ...current, [dayKey]: list });
+    this.dirty.set(true);
+  }
+
+  protected onCountryChange(value: string): void {
+    this.countryCode.set(value);
+    this.dirty.set(true);
+  }
+
+  protected addCustomDate(): void {
+    const today = new Date().toISOString().slice(0, 10);
+    this.customDates.update((list) => [...list, { date: today, closed: true }]);
+    this.dirty.set(true);
+  }
+
+  protected removeCustomDate(idx: number): void {
+    this.customDates.update((list) => list.filter((_, i) => i !== idx));
+    this.dirty.set(true);
+  }
+
+  protected updateCustomDate(idx: number, patch: Partial<CustomDateRow>): void {
+    this.customDates.update((list) => list.map((cd, i) => (i === idx ? { ...cd, ...patch } : cd)));
+    this.dirty.set(true);
+  }
+
+  protected toggleAdvanced(): void {
+    this.advancedExpanded.update((v) => !v);
   }
 
   private defaultDays(): DayRow[] {

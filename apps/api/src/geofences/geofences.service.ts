@@ -79,6 +79,9 @@ export class GeofencesService {
     if (type === GeofenceType.POLYGON && (!dto.polygonPoints || dto.polygonPoints.length < 3)) {
       throw new ForbiddenException('Une geofence POLYGON doit avoir au moins 3 sommets');
     }
+    if (type === GeofenceType.CORRIDOR && (!dto.corridorPoints || dto.corridorPoints.length < 2)) {
+      throw new ForbiddenException('Une geofence CORRIDOR doit avoir au moins 2 points');
+    }
 
     const geofence = await this.prisma.geofence.create({
       data: {
@@ -91,6 +94,8 @@ export class GeofencesService {
         radiusMeters: dto.radiusMeters,
         color: dto.color ?? '#10e0a0',
         polygonPoints: type === GeofenceType.POLYGON ? (dto.polygonPoints as unknown as Prisma.InputJsonValue) : undefined,
+        corridorPoints: type === GeofenceType.CORRIDOR ? (dto.corridorPoints as unknown as Prisma.InputJsonValue) : undefined,
+        corridorWidthM: type === GeofenceType.CORRIDOR ? (dto.corridorWidthM ?? 100) : undefined,
       },
     });
 

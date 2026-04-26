@@ -33,7 +33,7 @@ export class CreateGeofenceDto {
   centerLng!: number;
 
   @IsNumber()
-  @Min(50)
+  @Min(0)
   @Max(50000)
   radiusMeters!: number;
 
@@ -51,4 +51,19 @@ export class CreateGeofenceDto {
   @ValidateNested({ each: true })
   @Type(() => PolygonPointDto)
   polygonPoints?: PolygonPointDto[];
+
+  /** V1.6 (P3) : polyligne corridor (>= 2 points) si type === CORRIDOR. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(2)
+  @ValidateNested({ each: true })
+  @Type(() => PolygonPointDto)
+  corridorPoints?: PolygonPointDto[];
+
+  /** V1.6 (P3) : largeur du buffer en metres si type === CORRIDOR. */
+  @IsOptional()
+  @IsNumber()
+  @Min(20)
+  @Max(2000)
+  corridorWidthM?: number;
 }

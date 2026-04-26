@@ -1,5 +1,6 @@
+import { HttpClient } from '@angular/common/http';
 import { Component, inject, OnInit, signal } from '@angular/core';
-import { LucideAngularModule, Plus, Shield, Trash2, Pencil, MapPin, Circle, ArrowDownLeft, ArrowUpRight, ArrowLeftRight } from 'lucide-angular';
+import { LucideAngularModule, Plus, Shield, Trash2, Pencil, MapPin, Circle, ArrowDownLeft, ArrowUpRight, ArrowLeftRight, Upload } from 'lucide-angular';
 import type { GeofenceDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { PermissionsService } from '../../core/services/permissions.service';
@@ -24,9 +25,15 @@ import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-dra
           <p class="gf-sub">{{ geofences().length }} zone(s) configurée(s)</p>
         </div>
         @if (perms.can('geofences_manage')) {
-          <button (click)="openCreate()" class="gf-add-btn">
-            <lucide-icon [img]="Plus" [size]="15"></lucide-icon> Nouvelle zone
-          </button>
+          <div class="gf-actions">
+            <button (click)="onImportClick()" class="gf-import-btn" [disabled]="importing()" title="Importer un fichier GeoJSON (FeatureCollection)">
+              <lucide-icon [img]="Upload" [size]="15"></lucide-icon> {{ importing() ? 'Import...' : 'Importer GeoJSON' }}
+            </button>
+            <button (click)="openCreate()" class="gf-add-btn">
+              <lucide-icon [img]="Plus" [size]="15"></lucide-icon> Nouvelle zone
+            </button>
+          </div>
+          <input #fileInput type="file" accept=".json,.geojson,application/geo+json" hidden (change)="onFileSelected($any($event.target).files)" />
         }
       </div>
 
@@ -128,6 +135,18 @@ import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-dra
     .gf-header { position: relative; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px }
     .gf-title { font-size: 24px; font-weight: 800; color: var(--fg-primary); letter-spacing: -.02em }
     .gf-sub { font-size: 13px; color: var(--fg-tertiary); margin-top: 2px }
+    .gf-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center }
+    .gf-import-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 14px; border-radius: 8px;
+      background: var(--bg-tertiary); color: var(--fg-secondary);
+      border: 1px solid var(--border-subtle);
+      font-size: 12px; font-weight: 600; cursor: pointer;
+      transition: background .15s, color .15s;
+    }
+    .gf-import-btn:hover:not(:disabled) { background: var(--bg-primary); color: var(--fg-primary) }
+    .gf-import-btn:disabled { opacity: .5; cursor: not-allowed }
+
     .gf-add-btn {
       display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 10px;
       font-size: 12px; font-weight: 700; background: #059669; color: white; border: none; cursor: pointer;
@@ -202,10 +221,12 @@ import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-dra
 export class GeofencesListComponent implements OnInit {
   private readonly geofencesApi = inject(GeofencesApiService);
   private readonly toast = inject(ToastService);
+  private readonly http = inject(HttpClient);
   protected readonly perms = inject(PermissionsService);
 
   protected readonly geofences = signal<GeofenceDto[]>([]);
   protected readonly loading = signal(true);
+  protected readonly importing = signal(false);
   protected readonly showDrawDialog = signal(false);
   protected readonly showDeleteConfirm = signal(false);
   protected readonly deleteTarget = signal<GeofenceDto | null>(null);
@@ -213,6 +234,7 @@ export class GeofencesListComponent implements OnInit {
   protected readonly editGeofence = signal<{ id: string; name: string; rule: 'ENTER' | 'EXIT' | 'BOTH'; color: string; centerLat: number; centerLng: number; radiusMeters: number } | null>(null);
 
   protected readonly Plus = Plus;
+  protected readonly Upload = Upload;
   protected readonly Shield = Shield;
   protected readonly Trash2 = Trash2;
   protected readonly Pencil = Pencil;
@@ -220,6 +242,42 @@ export class GeofencesListComponent implements OnInit {
   protected readonly ArrowDownLeft = ArrowDownLeft;
   protected readonly ArrowUpRight = ArrowUpRight;
   protected readonly ArrowLeftRight = ArrowLeftRight;
+
+  /**
+   * V1.6 (P3) — Import GeoJSON FeatureCollection.
+   * Polygon → POLYGON, LineString → CORRIDOR (largeur via properties.widthM,
+   * default 100m), Point → CIRCLE (rayon via properties.radius, default 200m).
+   */
+  protected onImportClick(): void {
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+    input?.click();
+  }
+
+  protected async onFileSelected(files: FileList | null): Promise<void> {
+    const file = files?.[0];
+    if (!file) return;
+    this.importing.set(true);
+    try {
+      const text = await file.text();
+      const json = JSON.parse(text);
+      const result = await firstValueFrom(
+        this.http.post<{ created: number; skipped: number }>(
+          '/api/geofences/import-geojson',
+          json,
+        ),
+      );
+      this.toast.success(
+        `${result.created} zone(s) importee(s)${result.skipped ? ` — ${result.skipped} ignoree(s)` : ''}`,
+      );
+      await this.loadGeofences();
+    } catch (err) {
+      this.toast.error('Echec de l\'import (fichier GeoJSON invalide ?)');
+    } finally {
+      this.importing.set(false);
+      const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+      if (input) input.value = '';
+    }
+  }
 
   ngOnInit(): void { this.loadGeofences(); }
 
