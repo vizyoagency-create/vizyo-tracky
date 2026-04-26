@@ -1,4 +1,4 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, BarChart3, Route, Clock, Gauge, Play, ChevronDown, Truck, Check } from 'lucide-angular';
@@ -13,6 +13,7 @@ import { TripReplayComponent } from './trip-replay.component';
 @Component({
   selector: 'app-reports',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [FormsModule, LucideAngularModule, DatePipe, DecimalPipe, TripReplayComponent],
   template: `
     <div class="flex flex-col gap-6">

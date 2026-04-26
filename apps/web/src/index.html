@@ -5,12 +5,31 @@
     <title>Vizyo Tracky — Gestion de flotte GPS</title>
     <meta name="description" content="Plateforme de gestion de flotte GPS Vizyo Tracky. Suivi temps reel, coupure moteur securisee, alertes." />
     <base href="/" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#059669" />
+
+    <!-- Viewport : viewport-fit=cover indispensable pour activer env(safe-area-inset-*) sur iOS -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+    <!-- Theme color : variants light / dark pour harmoniser la barre du navigateur -->
+    <meta name="theme-color" content="#059669" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0A0F0D" media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="dark light" />
+
+    <!-- iOS standalone (mode "Ajouter a l'ecran d'accueil") -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Tracky" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="format-detection" content="telephone=no" />
+
+    <!-- PWA manifest -->
+    <link rel="manifest" href="manifest.webmanifest" />
+
+    <!-- Favicons -->
     <link rel="icon" type="image/x-icon" href="favicon.ico" />
     <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon-180.png" />
+
   </head>
   <body>
     <app-root></app-root>

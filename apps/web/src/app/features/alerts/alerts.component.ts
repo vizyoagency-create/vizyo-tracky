@@ -1,4 +1,4 @@
-import { Component, effect, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { LucideAngularModule, AlertTriangle, AlertCircle, Info, Check, CheckCheck } from 'lucide-angular';
 import type { AlertEvent } from '@vizyo/tracky-shared';
@@ -12,6 +12,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
 @Component({
   selector: 'app-alerts',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [LucideAngularModule, RouterLink],
   template: `
     <div class="a-page">

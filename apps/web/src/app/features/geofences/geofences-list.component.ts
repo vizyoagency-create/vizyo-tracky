@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
 import { LucideAngularModule, Plus, Shield, Trash2, Pencil, MapPin, Circle, ArrowDownLeft, ArrowUpRight, ArrowLeftRight, Upload } from 'lucide-angular';
 import type { GeofenceDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
@@ -12,6 +12,7 @@ import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-dra
 @Component({
   selector: 'app-geofences-list',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [LucideAngularModule, ConfirmModalComponent, GeofenceDrawDialogComponent],
   template: `
     <div class="gf-page">

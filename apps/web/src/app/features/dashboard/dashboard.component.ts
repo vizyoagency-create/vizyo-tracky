@@ -1,4 +1,4 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
@@ -25,6 +25,7 @@ interface WidgetMeta {
 @Component({
   selector: 'app-dashboard',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [LucideAngularModule, DatePipe, RouterLink, MiniMapComponent],
   template: `
     <div class="dash-page">

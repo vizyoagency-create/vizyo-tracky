@@ -186,6 +186,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@angular/cdk':
+        specifier: ^20.2.14
+        version: 20.2.14(@angular/common@20.3.18(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2)
       '@angular/common':
         specifier: ^20.3.0
         version: 20.3.18(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2)
@@ -204,6 +207,18 @@ importers:
       '@angular/router':
         specifier: ^20.3.0
         version: 20.3.18(@angular/common@20.3.18(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1))(@angular/platform-browser@20.3.18(@angular/common@20.3.18(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1)))(rxjs@7.8.2)
+      '@angular/service-worker':
+        specifier: ^20.3.0
+        version: 20.3.19(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2)
+      '@fontsource/inter':
+        specifier: ^5
+        version: 5.2.8
+      '@fontsource/jetbrains-mono':
+        specifier: ^5
+        version: 5.2.8
+      '@fontsource/poppins':
+        specifier: ^5
+        version: 5.2.7
       '@vizyo/tracky-shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -228,7 +243,7 @@ importers:
     devDependencies:
       '@angular/build':
         specifier: ^20.3.22
-        version: 20.3.22(@angular/compiler-cli@20.3.18(@angular/compiler@20.3.18)(typescript@5.9.3))(@angular/compiler@20.3.18)(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1))(@angular/platform-browser@20.3.18(@angular/common@20.3.18(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1)))(@types/node@22.19.17)(chokidar@4.0.3)(jiti@2.6.1)(karma@6.4.4)(lightningcss@1.32.0)(postcss@8.5.9)(tailwindcss@4.2.2)(terser@5.46.1)(tslib@2.8.1)(typescript@5.9.3)
+        version: 20.3.22(@angular/compiler-cli@20.3.18(@angular/compiler@20.3.18)(typescript@5.9.3))(@angular/compiler@20.3.18)(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1))(@angular/platform-browser@20.3.18(@angular/common@20.3.18(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1)))(@angular/service-worker@20.3.19(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@types/node@22.19.17)(chokidar@4.0.3)(jiti@2.6.1)(karma@6.4.4)(lightningcss@1.32.0)(postcss@8.5.9)(tailwindcss@4.2.2)(terser@5.46.1)(tslib@2.8.1)(typescript@5.9.3)
       '@angular/cli':
         specifier: ^20.3.22
         version: 20.3.22(@types/node@22.19.17)(chokidar@4.0.3)
@@ -434,6 +449,13 @@ packages:
       vitest:
         optional: true
 
+  '@angular/cdk@20.2.14':
+    resolution: {integrity: sha512-7bZxc01URbiPiIBWThQ69XwOxVduqEKN4PhpbF2AAyfMc/W8Hcr4VoIJOwL0O1Nkq5beS8pCAqoOeIgFyXd/kg==}
+    peerDependencies:
+      '@angular/common': ^20.0.0 || ^21.0.0
+      '@angular/core': ^20.0.0 || ^21.0.0
+      rxjs: ^6.5.3 || ^7.4.0
+
   '@angular/cli@20.3.22':
     resolution: {integrity: sha512-0uyQPF0gGuzioWJKNyOzWSQrrC5GiidR+8gz1lODoJTnJZZdsP5n3nvccbcRmhy55B1WByHvQBE+6eDBbh06/g==}
     engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0, npm: ^6.11.0 || ^7.5.6 || >=8.0.0, yarn: '>= 1.13.0'}
@@ -501,6 +523,14 @@ packages:
       '@angular/common': 20.3.18
       '@angular/core': 20.3.18
       '@angular/platform-browser': 20.3.18
+      rxjs: ^6.5.3 || ^7.4.0
+
+  '@angular/service-worker@20.3.19':
+    resolution: {integrity: sha512-djGCXrKw3TavjwKydtR5DXOZaSq9CK6O29OCDC4pCjw4SJmT5bV/PnntOH7jlpxzvWD9/ofO/89M1e2lBzoAWA==}
+    engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
+    hasBin: true
+    peerDependencies:
+      '@angular/core': 20.3.19
       rxjs: ^6.5.3 || ^7.4.0
 
   '@babel/code-frame@7.29.0':
@@ -855,6 +885,15 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
+
+  '@fontsource/inter@5.2.8':
+    resolution: {integrity: sha512-P6r5WnJoKiNVV+zvW2xM13gNdFhAEpQ9dQJHt3naLvfg+LkF2ldgSLiF4T41lf1SQCM9QmkqPTn4TH568IRagg==}
+
+  '@fontsource/jetbrains-mono@5.2.8':
+    resolution: {integrity: sha512-6w8/SG4kqvIMu7xd7wt6x3idn1Qux3p9N62s6G3rfldOUYHpWcc2FKrqf+Vo44jRvqWj2oAtTHrZXEP23oSKwQ==}
+
+  '@fontsource/poppins@5.2.7':
+    resolution: {integrity: sha512-6uQyPmseo4FgI97WIhA4yWRlNaoLk4vSDK/PyRwdqqZb5zAEuc+Kunt8JTMcsHYUEGYBtN15SNkMajMdqUSUmg==}
 
   '@gar/promise-retry@1.0.3':
     resolution: {integrity: sha512-GmzA9ckNokPypTg10pgpeHNQe7ph+iIKKmhKu3Ob9ANkswreCx7R3cKmY781K8QK3AqVL3xVh9A42JvIAbkkSA==}
@@ -5712,7 +5751,7 @@ snapshots:
     transitivePeerDependencies:
       - chokidar
 
-  '@angular/build@20.3.22(@angular/compiler-cli@20.3.18(@angular/compiler@20.3.18)(typescript@5.9.3))(@angular/compiler@20.3.18)(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1))(@angular/platform-browser@20.3.18(@angular/common@20.3.18(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1)))(@types/node@22.19.17)(chokidar@4.0.3)(jiti@2.6.1)(karma@6.4.4)(lightningcss@1.32.0)(postcss@8.5.9)(tailwindcss@4.2.2)(terser@5.46.1)(tslib@2.8.1)(typescript@5.9.3)':
+  '@angular/build@20.3.22(@angular/compiler-cli@20.3.18(@angular/compiler@20.3.18)(typescript@5.9.3))(@angular/compiler@20.3.18)(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1))(@angular/platform-browser@20.3.18(@angular/common@20.3.18(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1)))(@angular/service-worker@20.3.19(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@types/node@22.19.17)(chokidar@4.0.3)(jiti@2.6.1)(karma@6.4.4)(lightningcss@1.32.0)(postcss@8.5.9)(tailwindcss@4.2.2)(terser@5.46.1)(tslib@2.8.1)(typescript@5.9.3)':
     dependencies:
       '@ampproject/remapping': 2.3.0
       '@angular-devkit/architect': 0.2003.22(chokidar@4.0.3)
@@ -5747,6 +5786,7 @@ snapshots:
     optionalDependencies:
       '@angular/core': 20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1)
       '@angular/platform-browser': 20.3.18(@angular/common@20.3.18(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1))
+      '@angular/service-worker': 20.3.19(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2)
       karma: 6.4.4
       lmdb: 3.4.2
       postcss: 8.5.9
@@ -5763,6 +5803,14 @@ snapshots:
       - terser
       - tsx
       - yaml
+
+  '@angular/cdk@20.2.14(@angular/common@20.3.18(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2)':
+    dependencies:
+      '@angular/common': 20.3.18(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2)
+      '@angular/core': 20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1)
+      parse5: 8.0.0
+      rxjs: 7.8.2
+      tslib: 2.8.1
 
   '@angular/cli@20.3.22(@types/node@22.19.17)(chokidar@4.0.3)':
     dependencies:
@@ -5843,6 +5891,12 @@ snapshots:
       '@angular/common': 20.3.18(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2)
       '@angular/core': 20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1)
       '@angular/platform-browser': 20.3.18(@angular/common@20.3.18(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1))
+      rxjs: 7.8.2
+      tslib: 2.8.1
+
+  '@angular/service-worker@20.3.19(@angular/core@20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2)':
+    dependencies:
+      '@angular/core': 20.3.18(@angular/compiler@20.3.18)(rxjs@7.8.2)(zone.js@0.15.1)
       rxjs: 7.8.2
       tslib: 2.8.1
 
@@ -6173,6 +6227,12 @@ snapshots:
 
   '@esbuild/win32-x64@0.25.9':
     optional: true
+
+  '@fontsource/inter@5.2.8': {}
+
+  '@fontsource/jetbrains-mono@5.2.8': {}
+
+  '@fontsource/poppins@5.2.7': {}
 
   '@gar/promise-retry@1.0.3': {}
 

@@ -1,0 +1,58 @@
+{
+  "$schema": "./node_modules/@angular/service-worker/config/schema.json",
+  "index": "/index.html",
+  "navigationUrls": [
+    "/**",
+    "!/**/*.*",
+    "!/**/*__*",
+    "!/**/*__*/**",
+    "!/api/**",
+    "!/realtime/**"
+  ],
+  "assetGroups": [
+    {
+      "name": "app-shell",
+      "installMode": "prefetch",
+      "updateMode": "prefetch",
+      "resources": {
+        "files": [
+          "/index.html",
+          "/manifest.webmanifest",
+          "/*.css",
+          "/*.js",
+          "/favicon.ico"
+        ]
+      }
+    },
+    {
+      "name": "assets",
+      "installMode": "lazy",
+      "updateMode": "prefetch",
+      "resources": {
+        "files": [
+          "/favicon-*.png",
+          "/apple-touch-icon-*.png",
+          "/logos/**",
+          "/media/**",
+          "/*.woff2",
+          "/*.woff"
+        ]
+      }
+    }
+  ],
+  "dataGroups": [
+    {
+      "name": "api-snapshot",
+      "urls": [
+        "/api/vehicles/snapshot",
+        "/api/alerts"
+      ],
+      "cacheConfig": {
+        "maxSize": 50,
+        "maxAge": "5m",
+        "timeout": "3s",
+        "strategy": "freshness"
+      }
+    }
+  ]
+}

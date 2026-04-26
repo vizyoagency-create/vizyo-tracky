@@ -1,6 +1,6 @@
 import { Component, inject } from '@angular/core';
 import { LucideAngularModule, CheckCircle2, XCircle, AlertTriangle, Info, X } from 'lucide-angular';
-import { ToastService, type ToastKind } from './toast.service';
+import { ToastService, type Toast, type ToastKind } from './toast.service';
 
 const ICON_MAP: Record<ToastKind, any> = {
   success: CheckCircle2,
@@ -43,6 +43,13 @@ const COLOR_MAP: Record<ToastKind, string> = {
             <p class="text-sm font-semibold text-fg-primary">{{ toast.title }}</p>
             @if (toast.message) {
               <p class="text-xs text-fg-tertiary mt-0.5">{{ toast.message }}</p>
+            }
+            @if (toast.action) {
+              <button
+                (click)="runAction(toast)"
+                class="mt-2 text-xs font-semibold text-tracky-light hover:underline cursor-pointer">
+                {{ toast.action.label }}
+              </button>
             }
           </div>
           <button
@@ -99,5 +106,10 @@ export class ToastContainerComponent {
 
   colorFor(kind: ToastKind): string {
     return COLOR_MAP[kind];
+  }
+
+  runAction(toast: Toast): void {
+    toast.action?.callback();
+    this.toastService.dismiss(toast.id);
   }
 }

@@ -49,10 +49,16 @@ export class RealtimeService {
    * V1.5 (Sprint H2) — re-hydratation au retour foreground apres > 60s d'absence.
    * On maintient la connexion WS dans tous les cas (decision UX), mais quand un
    * onglet a ete cache longtemps, on rafraichit l'etat carte via le snapshot
-   * REST plutot que d'attendre que les positions converge via WS.
+   * REST plutot que d'attendre que les positions convergent via WS.
+   *
+   * On en profite aussi pour piloter la classe CSS `app-paused` sur <body>
+   * (cf. styles.css) qui pause les animate-pulse / pulse markers en background.
    */
   private readonly visibilityEffect = effect(() => {
     const visible = this.visibility.isVisible();
+    if (typeof document !== 'undefined') {
+      document.body.classList.toggle('app-paused', !visible);
+    }
     if (!visible) return;
     if (!this.socket?.connected) return;
     const hiddenMs = this.visibility.lastHiddenDurationMs();
@@ -60,6 +66,12 @@ export class RealtimeService {
       this.hydrate().catch(() => { /* silent */ });
     }
   });
+
+  // Coalescing : on accumule les position updates et on flush via requestAnimationFrame.
+  // 100 vehicules x 1 trame/s = 1 setSignal/frame au lieu de 100, sans perte d'info.
+  // En arriere-plan, le browser throttle rAF a ~1Hz : amortissement naturel.
+  private readonly positionBuffer = new Map<string, PositionUpdateEvent>();
+  private flushScheduled = false;
 
   connect(token: string): void {
     if (this.socket?.connected) return;
@@ -84,28 +96,16 @@ export class RealtimeService {
     });
 
     this.socket.on(WS_EVENTS.POSITION_UPDATE, (event: PositionUpdateEvent) => {
-      this.applyPositionUpdate(event);
+      // Coalescing : buffer + flush au prochain frame paint.
+      // Evite N appels signal.set quand N trames arrivent dans la meme frame (commun avec 100+ vehicules).
+      this.bufferPosition(event);
     });
 
-    // V1.5 (Sprint H1) — batch coalescing 1s. On itere et on applique chaque
-    // entree comme un POSITION_UPDATE individuel. Une seule mutation de signal
-    // par batch pour limiter les recalculs Angular.
+    // V1.5 (Sprint H1) — batch coalescing serveur. Chaque position est routee dans
+    // le buffer rAF pour consolider toutes les ecritures en un seul setSignal au paint.
     this.socket.on(WS_EVENTS.POSITIONS_BATCH, (event: PositionsBatchEvent) => {
       if (!event.positions || event.positions.length === 0) return;
-
-      const next = new Map(this.positions());
-      const hydratedIds = new Set(this.hydratedTrackerIds());
-      let hydratedChanged = false;
-
-      for (const pos of event.positions) {
-        next.set(pos.trackerId, pos);
-        if (hydratedIds.has(pos.trackerId)) {
-          hydratedIds.delete(pos.trackerId);
-          hydratedChanged = true;
-        }
-      }
-      this.positions.set(next);
-      if (hydratedChanged) this.hydratedTrackerIds.set(hydratedIds);
+      for (const pos of event.positions) this.bufferPosition(pos);
     });
 
     this.socket.on(WS_EVENTS.ALERT_NEW, (alert: AlertEvent) => {
@@ -141,21 +141,6 @@ export class RealtimeService {
     });
   }
 
-  /** Apply a single position update to the local signal state. */
-  private applyPositionUpdate(event: PositionUpdateEvent): void {
-    const next = new Map(this.positions());
-    next.set(event.trackerId, event);
-    this.positions.set(next);
-
-    // Une fois qu'un vrai live event arrive, on retire le flag d'hydratation.
-    const hydratedIds = this.hydratedTrackerIds();
-    if (hydratedIds.has(event.trackerId)) {
-      const newSet = new Set(hydratedIds);
-      newSet.delete(event.trackerId);
-      this.hydratedTrackerIds.set(newSet);
-    }
-  }
-
   dismissAlert(id: string): void {
     this._alerts.update((list) => list.filter((a) => a.id !== id));
   }
@@ -171,6 +156,50 @@ export class RealtimeService {
     this._alerts.set([]);
     this._trackerStatuses.set(new Map());
     this._engineCommandUpdates.set(new Map());
+    this.positionBuffer.clear();
+    this.flushScheduled = false;
+  }
+
+  // ---------------------------------------------------------------------
+  // Coalescing positions via requestAnimationFrame
+  // ---------------------------------------------------------------------
+
+  private bufferPosition(event: PositionUpdateEvent): void {
+    this.positionBuffer.set(event.trackerId, event);
+    if (this.flushScheduled) return;
+    this.flushScheduled = true;
+
+    // requestAnimationFrame : flush a la prochaine frame de rendu (~16ms).
+    // En arriere-plan le browser throttle rAF a ~1Hz, ce qui amortit naturellement
+    // les setSignal pendant que l'utilisateur n'est pas sur l'onglet.
+    const raf = typeof requestAnimationFrame !== 'undefined'
+      ? requestAnimationFrame
+      : (cb: FrameRequestCallback) => setTimeout(() => cb(performance.now()), 16);
+    raf(() => this.flushPositions());
+  }
+
+  private flushPositions(): void {
+    this.flushScheduled = false;
+    if (this.positionBuffer.size === 0) return;
+
+    const next = new Map(this.positions());
+    const hydratedIds = this.hydratedTrackerIds();
+    let hydratedDirty = false;
+    let newHydrated: Set<string> | null = null;
+
+    for (const [trackerId, event] of this.positionBuffer) {
+      next.set(trackerId, event);
+      // Un live event efface le flag "hydrate via REST" -> le marker passe a opacite 1.
+      if (hydratedIds.has(trackerId)) {
+        if (!newHydrated) newHydrated = new Set(hydratedIds);
+        newHydrated.delete(trackerId);
+        hydratedDirty = true;
+      }
+    }
+
+    this.positionBuffer.clear();
+    this.positions.set(next);
+    if (hydratedDirty && newHydrated) this.hydratedTrackerIds.set(newHydrated);
   }
 
   /**

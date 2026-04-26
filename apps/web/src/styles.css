@@ -1,4 +1,16 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+/* Self-host des polices : pas de render-blocking sur fonts.googleapis.com,
+   cache via service worker, fonctionne offline une fois installe. */
+@import '@fontsource/inter/300.css';
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
+@import '@fontsource/poppins/500.css';
+@import '@fontsource/poppins/600.css';
+@import '@fontsource/poppins/700.css';
+@import '@fontsource/poppins/800.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
 @import 'tailwindcss';
 
 @theme {
@@ -69,30 +81,44 @@
   --tracky-dark: var(--color-tracky-dark);
 }
 
+html, body {
+  /* Comportements mobiles "app-like" : pas de pull-to-refresh, pas de bounce, pas de menu long-press */
+  overscroll-behavior-y: contain;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   font-family: var(--font-sans);
   background-color: var(--surface-primary);
   color: var(--text-primary);
   transition: background-color 300ms var(--ease-tracky), color 300ms var(--ease-tracky);
   margin: 0;
+  /* Hauteur dynamique : evite que la barre Chrome / Safari coupe le contenu */
+  min-height: 100vh;
+  min-height: 100dvh;
 }
 
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+/* Supprime le delai 300ms sur tap mobile, sans bloquer le pinch-zoom */
+button, a, [role="button"], input[type="button"], input[type="submit"], label {
+  touch-action: manipulation;
 }
 
-::-webkit-scrollbar-track {
-  background: var(--surface-secondary);
+/* Scrollbars : invisibles sur tactile, fines sur desktop avec souris */
+::-webkit-scrollbar { width: 0; height: 0; }
+@media (hover: hover) and (pointer: fine) {
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: var(--surface-secondary); }
+  ::-webkit-scrollbar-thumb { background: var(--border-strong-color); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--color-tracky); }
 }
 
-::-webkit-scrollbar-thumb {
-  background: var(--border-strong-color);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--color-tracky);
+/* Pause des animations CSS quand l'app est en background (pilote depuis RealtimeService) */
+.app-paused .animate-pulse,
+.app-paused .tracky-marker--active .tracky-marker__pulse {
+  animation-play-state: paused !important;
 }
 
 @utility bg-tracky-gradient {
@@ -104,6 +130,15 @@ body {
   -ms-overflow-style: none;
   &::-webkit-scrollbar {
     display: none;
+  }
+}
+
+/* Feedback tactile : appliquer aux boutons, FAB, cartes, items bottom-bar */
+@utility press-feedback {
+  transition: transform 80ms ease-out, opacity 80ms ease-out;
+  &:active {
+    transform: scale(0.97);
+    opacity: 0.85;
   }
 }
 
