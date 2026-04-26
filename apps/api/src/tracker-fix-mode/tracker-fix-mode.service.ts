@@ -69,6 +69,58 @@ export class TrackerFixModeService {
   }
 
   /**
+   * Generate an actionable diagnostic hint based on the current tracker state.
+   * Used to populate `TrackerCommand.diagnosticHint` so an admin sees a concrete
+   * suggestion in the UI without having to reason about the failure pattern.
+   *
+   * Rules are intentionally simple — they cover the 3-4 most common failure
+   * modes observed on Coban-403D field deployments. Refine with field data.
+   */
+  static buildDiagnosticHint(input: {
+    sentViaSocket: boolean;
+    failureCount: number;
+    lastSeenAt: Date | null | undefined;
+    lastValidFrameAt: Date | null | undefined;
+    desiredIntervalS: number;
+    now?: Date;
+  }): string | null {
+    const now = input.now ?? new Date();
+
+    // 1) Socket TCP indisponible — boitier offline ou GPRS coupe.
+    if (!input.sentViaSocket) {
+      const lastSeenMin = input.lastSeenAt
+        ? Math.round((now.getTime() - input.lastSeenAt.getTime()) / 60000)
+        : null;
+      if (lastSeenMin === null) {
+        return 'Tracker jamais vu. Verifier alimentation principale + carte SIM data + couverture GPRS.';
+      }
+      if (lastSeenMin > 60) {
+        return `Tracker offline depuis ${lastSeenMin}min. Probable coupure GPRS prolongee — verifier la couverture sur la zone de stationnement, ou la carte SIM.`;
+      }
+      return `Socket TCP indisponible (dernier contact il y a ${lastSeenMin}min). Retry automatique au prochain reconnect.`;
+    }
+
+    // 2) Echecs repetes — firmware probablement bloque.
+    if (input.failureCount >= 3) {
+      return `${input.failureCount} commandes consecutives ignorees par le boitier. Tester un reset SMS (commande "RESET123456" via 07-sms-gateway) ou planifier une intervention physique.`;
+    }
+    if (input.failureCount === 2) {
+      return 'Deuxieme tentative apres echec. Si cette commande echoue aussi, le boitier sera marque FAILING — preparer un diagnostic SMS.';
+    }
+
+    // 3) Derniere trame valide trop ancienne mais socket OK = probleme GPS.
+    if (input.lastValidFrameAt) {
+      const lastValidMin = Math.round((now.getTime() - input.lastValidFrameAt.getTime()) / 60000);
+      if (lastValidMin > 30) {
+        return `Pas de trame GPS valide depuis ${lastValidMin}min alors que la socket est ouverte. Verifier antenne GPS / occlusion (parking souterrain, garage).`;
+      }
+    }
+
+    // 4) Premiere tentative, conditions normales — pas de hint particulier.
+    return null;
+  }
+
+  /**
    * Decide the desired interval given the sampling state + ignition history.
    * Conservative: returns 30s in any ambiguous case (UX-first).
    */
@@ -222,6 +274,14 @@ export class TrackerFixModeService {
 
     // Send via TCP socket (canal descendant deja ouvert par le boitier).
     const sent = this.registry.send(tracker.imei, payload);
+    const diagnosticHint = TrackerFixModeService.buildDiagnosticHint({
+      sentViaSocket: sent,
+      failureCount: tracker.fixCommandFailureCount,
+      lastSeenAt: tracker.lastSeenAt,
+      lastValidFrameAt: tracker.lastValidFrameAt,
+      desiredIntervalS: target,
+    });
+
     if (!sent) {
       // Boitier offline — la prochaine reconnexion permettra un retry au prochain reconcile.
       await this.prisma.trackerCommand.update({
@@ -229,7 +289,7 @@ export class TrackerFixModeService {
         data: {
           status: TrackerCommandStatus.FAILED,
           lastError: 'Tracker offline — socket TCP indisponible',
-          diagnosticHint: 'Verifier la couverture GPRS / l\'alimentation. Retry automatique au prochain reconcile.',
+          diagnosticHint,
         },
       });
       return { commandId: command.id };
@@ -237,7 +297,11 @@ export class TrackerFixModeService {
 
     await this.prisma.trackerCommand.update({
       where: { id: command.id },
-      data: { status: TrackerCommandStatus.SENT, sentAt: new Date() },
+      data: {
+        status: TrackerCommandStatus.SENT,
+        sentAt: new Date(),
+        diagnosticHint,
+      },
     });
 
     this.wireLogger.out(tracker.imei, payload, {
