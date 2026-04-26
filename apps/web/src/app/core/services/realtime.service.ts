@@ -1,11 +1,12 @@
 import { HttpClient } from '@angular/common/http';
-import { computed, inject, Injectable, signal } from '@angular/core';
-import type { AlertAcknowledgedEvent, AlertEvent, EngineCommandUpdatedEvent, FleetSnapshotResponse, PositionUpdateEvent, TrackerStatusChangedDto, VehicleSnapshotDto } from '@vizyo/tracky-shared';
+import { computed, effect, inject, Injectable, signal } from '@angular/core';
+import type { AlertAcknowledgedEvent, AlertEvent, EngineCommandUpdatedEvent, FleetSnapshotResponse, PositionsBatchEvent, PositionUpdateEvent, TrackerStatusChangedDto, VehicleSnapshotDto } from '@vizyo/tracky-shared';
 import { WS_EVENTS } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { io, Socket } from 'socket.io-client';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { PreferencesService } from './preferences.service';
+import { VisibilityService } from './visibility.service';
 
 @Injectable({ providedIn: 'root' })
 export class RealtimeService {
@@ -42,6 +43,23 @@ export class RealtimeService {
   private readonly toast = inject(ToastService);
   private readonly preferences = inject(PreferencesService);
   private readonly http = inject(HttpClient);
+  private readonly visibility = inject(VisibilityService);
+
+  /**
+   * V1.5 (Sprint H2) — re-hydratation au retour foreground apres > 60s d'absence.
+   * On maintient la connexion WS dans tous les cas (decision UX), mais quand un
+   * onglet a ete cache longtemps, on rafraichit l'etat carte via le snapshot
+   * REST plutot que d'attendre que les positions converge via WS.
+   */
+  private readonly visibilityEffect = effect(() => {
+    const visible = this.visibility.isVisible();
+    if (!visible) return;
+    if (!this.socket?.connected) return;
+    const hiddenMs = this.visibility.lastHiddenDurationMs();
+    if (hiddenMs !== null && hiddenMs > 60 * 1000) {
+      this.hydrate().catch(() => { /* silent */ });
+    }
+  });
 
   connect(token: string): void {
     if (this.socket?.connected) return;
@@ -66,17 +84,28 @@ export class RealtimeService {
     });
 
     this.socket.on(WS_EVENTS.POSITION_UPDATE, (event: PositionUpdateEvent) => {
-      const next = new Map(this.positions());
-      next.set(event.trackerId, event);
-      this.positions.set(next);
+      this.applyPositionUpdate(event);
+    });
 
-      // Une fois qu'un vrai live event arrive, on retire le flag d'hydratation.
-      const hydratedIds = this.hydratedTrackerIds();
-      if (hydratedIds.has(event.trackerId)) {
-        const newSet = new Set(hydratedIds);
-        newSet.delete(event.trackerId);
-        this.hydratedTrackerIds.set(newSet);
+    // V1.5 (Sprint H1) — batch coalescing 1s. On itere et on applique chaque
+    // entree comme un POSITION_UPDATE individuel. Une seule mutation de signal
+    // par batch pour limiter les recalculs Angular.
+    this.socket.on(WS_EVENTS.POSITIONS_BATCH, (event: PositionsBatchEvent) => {
+      if (!event.positions || event.positions.length === 0) return;
+
+      const next = new Map(this.positions());
+      const hydratedIds = new Set(this.hydratedTrackerIds());
+      let hydratedChanged = false;
+
+      for (const pos of event.positions) {
+        next.set(pos.trackerId, pos);
+        if (hydratedIds.has(pos.trackerId)) {
+          hydratedIds.delete(pos.trackerId);
+          hydratedChanged = true;
+        }
       }
+      this.positions.set(next);
+      if (hydratedChanged) this.hydratedTrackerIds.set(hydratedIds);
     });
 
     this.socket.on(WS_EVENTS.ALERT_NEW, (alert: AlertEvent) => {
@@ -110,6 +139,21 @@ export class RealtimeService {
       next.set(event.trackerId, event);
       this._engineCommandUpdates.set(next);
     });
+  }
+
+  /** Apply a single position update to the local signal state. */
+  private applyPositionUpdate(event: PositionUpdateEvent): void {
+    const next = new Map(this.positions());
+    next.set(event.trackerId, event);
+    this.positions.set(next);
+
+    // Une fois qu'un vrai live event arrive, on retire le flag d'hydratation.
+    const hydratedIds = this.hydratedTrackerIds();
+    if (hydratedIds.has(event.trackerId)) {
+      const newSet = new Set(hydratedIds);
+      newSet.delete(event.trackerId);
+      this.hydratedTrackerIds.set(newSet);
+    }
   }
 
   dismissAlert(id: string): void {

@@ -6,7 +6,7 @@ import { ErrorLogger } from './error-logger.service';
 
 export interface WireLogContext {
   commandId?: string;
-  source?: 'engine' | 'tracker-cmd' | 'ack' | 'tcp-server';
+  source?: 'engine' | 'tracker-cmd' | 'ack' | 'tcp-server' | 'fix-mode-adaptive';
   trackerId?: string;
   vehicleId?: string;
   fleetId?: string;

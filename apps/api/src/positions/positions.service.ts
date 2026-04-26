@@ -12,8 +12,11 @@ import { isValidLatLng, WS_EVENTS } from '@vizyo/tracky-shared';
 import { GeofencesService } from '../geofences/geofences.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { PositionBroadcastBuffer } from '../realtime/position-broadcast-buffer.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { TrackerFixModeService } from '../tracker-fix-mode/tracker-fix-mode.service';
 import { TripsService } from '../trips/trips.service';
+import { PositionSamplingService } from './position-sampling.service';
 
 /** System user ID for device-observed commands. */
 const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000';
@@ -36,12 +39,15 @@ export class PositionsService {
     private readonly geofences: GeofencesService,
     private readonly trips: TripsService,
     private readonly errorLogger: ErrorLogger,
+    private readonly sampling: PositionSamplingService,
+    private readonly broadcastBuffer: PositionBroadcastBuffer,
+    private readonly fixMode: TrackerFixModeService,
   ) {}
 
   async ingest(frame: CobanPositionFrame): Promise<void> {
     const tracker = await this.prisma.tracker.findUnique({
       where: { imei: frame.imei },
-      include: { vehicle: true },
+      include: { vehicle: { include: { fleet: true } } },
     });
 
     if (!tracker) {
@@ -97,11 +103,61 @@ export class PositionsService {
       trackerUpdate.lastPositionAt = frame.deviceTime;
     }
 
+    // V1.5 (Sprint H1) — sampling adaptatif. Calcule sur les trames valides
+    // uniquement (les invalides ne sont jamais persistees, sampling sans objet).
+    // L'outcome alimente trackerUpdate (lastWriteAt + lastSampledState) et
+    // pilote le `prisma.position.create` plus bas. Le broadcast WS reste
+    // integral quel que soit l'outcome (UX-first).
+    let samplingOutcome: ReturnType<PositionSamplingService['decide']> | null = null;
+    let samplingState: ReturnType<PositionSamplingService['classify']>['state'] | null = null;
+    if (frame.valid) {
+      const adaptiveEnabled = tracker.vehicle?.fleet?.adaptiveSamplingEnabled ?? true;
+      const { state, distanceM } = this.sampling.classify({
+        speedKmh: frame.speedKph,
+        ignition: resolvedIgnition,
+        lat: frame.latitude,
+        lng: frame.longitude,
+        prevLat: tracker.lastLat,
+        prevLng: tracker.lastLng,
+      });
+      samplingState = state;
+      samplingOutcome = this.sampling.decide(tracker, state, distanceM, adaptiveEnabled);
+
+      if (samplingOutcome.shouldInsert) {
+        trackerUpdate.lastWriteAt = new Date();
+        trackerUpdate.lastSampledState = samplingOutcome.state;
+      }
+
+      // V1.5 (Sprint H3) — reconcile observed fix interval. Compare deltaT entre
+      // deviceTime de cette trame et lastValidFrameAt pour detecter si le boitier
+      // honore l'intervalle desire (ou si on doit incrementer le compteur d'echec).
+      const reconciled = this.fixMode.reconcile(tracker, {
+        deviceTime: frame.deviceTime,
+        speedKmh: frame.speedKph,
+        ignition: resolvedIgnition,
+        lat: frame.latitude,
+        lng: frame.longitude,
+      });
+      trackerUpdate.currentFixIntervalS = reconciled.nextCurrentFixIntervalS;
+      trackerUpdate.fixCommandFailureCount = reconciled.nextFailureCount;
+      trackerUpdate.fixCommandFailing = reconciled.nextFailing;
+      trackerUpdate.lastValidFrameAt = frame.deviceTime;
+    }
+
     const wasOffline = tracker.status !== 'ONLINE';
     await this.prisma.tracker.update({
       where: { id: tracker.id },
       data: trackerUpdate,
     });
+
+    // Persist sampling decision (fire-and-forget — audit non critique).
+    if (samplingOutcome) {
+      this.sampling
+        .recordDecision(tracker.id, samplingOutcome, frame.speedKph, resolvedIgnition)
+        .catch(() => {
+          /* swallowed in service */
+        });
+    }
 
     if (wasOffline && tracker.vehicle) {
       this.gateway.emitTrackerStatus(tracker.vehicle.fleetId, {
@@ -146,20 +202,58 @@ export class PositionsService {
       return;
     }
 
-    // Persist position with ignition
-    await this.prisma.position.create({
-      data: {
-        trackerId: tracker.id,
-        lat: frame.latitude,
-        lng: frame.longitude,
-        speedKmh: frame.speedKph,
-        heading: frame.course ?? 0,
-        altitude: frame.altitude,
-        valid: frame.valid,
-        ignition: resolvedIgnition ?? null,
-        timestamp: frame.deviceTime,
-      },
-    });
+    // V1.5 (Sprint H3) — pilotage fix mode boitier. Sur transition d'etat, on
+    // demande au boitier d'ajuster son intervalle d'envoi via la commande
+    // Coban `fix...***n`. Fire-and-forget : l'echec n'impacte pas l'ingestion.
+    if (samplingState && tracker.vehicle?.fleet) {
+      const stateChanged = tracker.lastSampledState !== samplingState;
+      const desiredS = this.fixMode.desiredIntervalFor(samplingState, tracker);
+      if (stateChanged || desiredS !== tracker.desiredFixIntervalS) {
+        this.fixMode
+          .requestChange(
+            tracker as Tracker & { vehicle: Vehicle & { fleet: NonNullable<typeof tracker.vehicle>['fleet'] } },
+            desiredS,
+            stateChanged ? `${tracker.lastSampledState ?? 'NEW'}_TO_${samplingState}` : 'STOPPED_GRACE_ELAPSED',
+            {
+              vehicleId: tracker.vehicle.id,
+              fleetId: tracker.vehicle.fleetId,
+              plate: tracker.vehicle.plate,
+              speedKmh: frame.speedKph,
+              ignition: resolvedIgnition ?? null,
+              latitude: frame.latitude,
+              longitude: frame.longitude,
+              previousState: tracker.lastSampledState,
+              newState: samplingState,
+              lastSeenAt: tracker.lastSeenAt?.toISOString() ?? null,
+              lastIgnitionChangeAt: tracker.lastIgnitionChangeAt?.toISOString() ?? null,
+            },
+          )
+          .catch((err) => {
+            this.logger.warn(
+              `Fix mode requestChange failed for ${tracker.imei}: ${err instanceof Error ? err.message : err}`,
+            );
+          });
+      }
+    }
+
+    // V1.5 (Sprint H1) — persistance Position conditionnee par le sampling.
+    // Quand `shouldInsert = false`, on conserve uniquement la denormalisation
+    // sur Tracker (deja faite plus haut) et l'audit dans `position_sampling_decisions`.
+    if (samplingOutcome?.shouldInsert) {
+      await this.prisma.position.create({
+        data: {
+          trackerId: tracker.id,
+          lat: frame.latitude,
+          lng: frame.longitude,
+          speedKmh: frame.speedKph,
+          heading: frame.course ?? 0,
+          altitude: frame.altitude,
+          valid: frame.valid,
+          ignition: resolvedIgnition ?? null,
+          timestamp: frame.deviceTime,
+        },
+      });
+    }
 
     if (tracker.vehicle) {
       const ignitionValue = resolvedIgnition ?? true;
@@ -175,7 +269,14 @@ export class PositionsService {
         ignition: ignitionValue,
         valid: frame.valid,
       };
-      this.gateway.broadcastPosition(tracker.vehicle.fleetId, event);
+      // Broadcast WS systematique (UX-first), independant du sampling DB.
+      // V1.5 (Sprint H1) — coalescing 1s : on enqueue dans le buffer plutot
+      // que d'emit immediatement. Si le buffer est desactive (env var), il
+      // retourne false et on fallback sur l'emit immediat legacy.
+      const buffered = this.broadcastBuffer.enqueue(tracker.vehicle.fleetId, event);
+      if (!buffered) {
+        this.gateway.broadcastPosition(tracker.vehicle.fleetId, event);
+      }
 
       this.geofences.checkViolations(
         tracker.id, frame.latitude, frame.longitude,
@@ -185,20 +286,24 @@ export class PositionsService {
         this.errorLogger.record(err instanceof Error ? err : new Error(String(err)), 'geofences', { imei: frame.imei, trackerId: tracker.id }).catch((e2) => this.logger.error('ErrorLogger persist failed', e2));
       });
 
-      this.trips.processPosition({
-        trackerId: tracker.id,
-        vehicleId: tracker.vehicle.id,
-        fleetId: tracker.vehicle.fleetId,
-        lat: frame.latitude,
-        lng: frame.longitude,
-        speedKmh: frame.speedKph,
-        timestamp: frame.deviceTime,
-        ignition: ignitionValue,
-        vehiclePlate: tracker.vehicle.plate,
-      }).catch((err) => {
-        this.logger.error('Trip processing failed', err);
-        this.errorLogger.record(err instanceof Error ? err : new Error(String(err)), 'trips', { imei: frame.imei, trackerId: tracker.id }).catch((e2) => this.logger.error('ErrorLogger persist failed', e2));
-      });
+      // Trip processing only on actually persisted positions — sinon on
+      // dupliquerait la segmentation sur des trames quasi identiques.
+      if (samplingOutcome?.shouldInsert) {
+        this.trips.processPosition({
+          trackerId: tracker.id,
+          vehicleId: tracker.vehicle.id,
+          fleetId: tracker.vehicle.fleetId,
+          lat: frame.latitude,
+          lng: frame.longitude,
+          speedKmh: frame.speedKph,
+          timestamp: frame.deviceTime,
+          ignition: ignitionValue,
+          vehiclePlate: tracker.vehicle.plate,
+        }).catch((err) => {
+          this.logger.error('Trip processing failed', err);
+          this.errorLogger.record(err instanceof Error ? err : new Error(String(err)), 'trips', { imei: frame.imei, trackerId: tracker.id }).catch((e2) => this.logger.error('ErrorLogger persist failed', e2));
+        });
+      }
     }
   }
 

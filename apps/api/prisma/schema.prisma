@@ -92,6 +92,15 @@ model Fleet {
   id        String   @id @default(uuid()) @db.Uuid
   name      String
   clientId  String?
+  // V1.5 (Sprint H1) — sampling adaptatif des positions cote serveur.
+  // true = positions redondantes (vehicule arrete) ne sont pas persistees pour
+  // economiser le stockage. UX-first : le broadcast WS reste integral.
+  // Opt-out par fleet pour les contrats imposant un tracage continu (legal).
+  adaptiveSamplingEnabled Boolean @default(true)
+  // V1.5 (Sprint H3) — pilotage adaptatif du fix interval boitier (fix030s en
+  // mouvement, fix120s/300s a l'arret). Reduit la conso batterie + data SIM.
+  // Opt-out pour les contrats imposant le mode 30s permanent.
+  adaptiveFixModeEnabled  Boolean @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -167,9 +176,38 @@ model Tracker {
   lastIgnition         Boolean?
   lastValid            Boolean?
   lastPositionAt       DateTime?
+  // V1.5 (Sprint H1) — etat du sampling adaptatif.
+  // lastWriteAt = derniere fois ou une trame a ete reellement persistee dans `positions`
+  //              (different de lastPositionAt qui suit `deviceTime` de la trame brute).
+  // lastSampledState = derniere classification appliquee (MOVING / IDLE_ENGINE_ON / STOPPED).
+  // verboseUntil = override admin temporaire qui force l'INSERT de chaque trame (debugging).
+  lastWriteAt          DateTime?
+  lastSampledState     String?
+  verboseUntil         DateTime?
+  // V1.5 (Sprint H3) — pilotage du fix interval boitier (commande Coban `fix...***n`).
+  // desired = ce que le serveur veut que le boitier emette ; current = ce qu'on observe
+  // reellement. Si desired != current pendant > 6 trames, on incrementre le compteur
+  // d'echec et on marque le tracker FAILING.
+  desiredFixIntervalS     Int       @default(30)
+  currentFixIntervalS     Int?
+  lastFixIntervalSyncAt   DateTime?
+  // Compteur d'echecs consecutifs (commande envoyee non prise en compte par le boitier).
+  fixCommandFailureCount  Int       @default(0)
+  fixCommandFailing       Boolean   @default(false)
+  // Override admin : si > now, le serveur ne tente pas de nouvelles transitions
+  // automatiques (utile pour figer le tracker en mode 30s pour 24h depuis l'admin).
+  fixModeOverrideUntil    DateTime?
+  // Timestamp deviceTime de la derniere trame valide observee — sert au reconciler
+  // pour calculer le delta entre 2 trames et inferer l'intervalle reel.
+  lastValidFrameAt        DateTime?
+  // V1.5 (Sprint I) — numero E.164 de la SIM data du boitier. Permet le fallback
+  // SMS quand la socket TCP est indisponible. Renseigne au moment du provisionnement
+  // SMS via /admin/sms/provision.
+  simPhoneNumber          String?
   vehicleId            String?                @unique @db.Uuid
   vehicle    Vehicle?               @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   positions  Position[]
+  samplingDecisions PositionSamplingDecision[]
   commands        EngineControlCommand[]
   trackerCommands TrackerCommand[]
   alerts          Alert[]
@@ -178,6 +216,29 @@ model Tracker {
 
   @@index([status])
   @@map("trackers")
+}
+
+/// V1.5 (Sprint H1) — audit trail du sampling adaptatif.
+/// Chaque trame entrante (valide) genere une ligne ici, qu'elle soit persistee
+/// dans `positions` ou skippee. Permet a l'admin d'auditer l'efficacite du
+/// sampling et de detecter un boitier qui spam des positions identiques ou
+/// un sampling trop agressif.
+/// Retention courte : purge auto au-dela de 7 jours (cron quotidien).
+model PositionSamplingDecision {
+  id          String   @id @default(uuid()) @db.Uuid
+  trackerId   String   @db.Uuid
+  tracker     Tracker  @relation(fields: [trackerId], references: [id], onDelete: Cascade)
+  decision    String   // 'INSERTED' | 'SKIPPED_DUP' | 'SKIPPED_THROTTLE' | 'INSERTED_VERBOSE'
+  state       String   // 'MOVING' | 'IDLE_ENGINE_ON' | 'STOPPED'
+  reason      String?  // ex: "haversine 3m < 15m radius, throttle 90s active"
+  speedKmh    Float?
+  ignition    Boolean?
+  distanceM   Float?   // distance haversine vs derniere position persistee
+  receivedAt  DateTime @default(now())
+
+  @@index([trackerId, receivedAt(sort: Desc)])
+  @@index([receivedAt])
+  @@map("position_sampling_decisions")
 }
 
 /// `location` (geography Point 4326) ajouté manuellement dans la migration.
@@ -327,6 +388,14 @@ enum TrackerCommandStatus {
   CANCELLED
 }
 
+enum TrackerProvisioningStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
 enum TrackerCommandChannel {
   TCP
   SMS
@@ -347,6 +416,19 @@ model TrackerCommand {
   ackedAt         DateTime?
   ackResponse     String?
   lastError       String?
+  // V1.5 (Sprint H3) — observabilite admin enrichie. `expectedResult`/`observedResult`
+  // sont des descriptions textuelles courtes, `contextSnapshot` est l'instantane JSON
+  // capture au moment de l'envoi (etat vehicule, signal, derniere position).
+  // `diagnosticHint` est une suggestion textuelle generee par le service quand la
+  // commande echoue (ex: "tester reset SMS"). `acknowledgedBy` permet a un admin de
+  // marquer une erreur comme traitee depuis le centre d'alertes.
+  expectedResult   String?
+  observedResult   String?
+  contextSnapshot  Json?
+  diagnosticHint   String?
+  outcomeReason    String?
+  acknowledgedBy   String?              @db.Uuid
+  acknowledgedAt   DateTime?
   requestedBy     String                @db.Uuid
   requestedByUser User                  @relation(fields: [requestedBy], references: [id], onDelete: Restrict)
   createdAt       DateTime              @default(now())
@@ -355,6 +437,7 @@ model TrackerCommand {
   @@index([trackerId, createdAt(sort: Desc)])
   @@index([status])
   @@index([scheduledAt])
+  @@index([category, status])
   @@map("tracker_commands")
 }
 
@@ -391,6 +474,76 @@ model ErrorLog {
   @@index([commandId])
   @@index([createdAt])
   @@map("error_logs")
+}
+
+/// V1.5 (Sprint I) — Etat de la sequence d'init SMS d'un tracker neuf.
+/// Le SUPER_ADMIN lance le workflow depuis /admin/sms/provision/:imei,
+/// le service envoie 9 SMS sequentiels avec ACK entre chaque etape.
+model TrackerProvisioning {
+  id              String                    @id @default(uuid()) @db.Uuid
+  imei            String
+  phoneNumber     String
+  status          TrackerProvisioningStatus @default(PENDING)
+  currentStep     Int                       @default(0)
+  apn             String?
+  apnUser         String?
+  apnPasswd       String?
+  serverIp        String?
+  serverPort      Int?
+  lowBatteryPhone String?
+  steps           Json                      @default("[]")
+  startedAt       DateTime?
+  completedAt     DateTime?
+  failedAt        DateTime?
+  failureReason   String?
+  startedBy       String                    @db.Uuid
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+
+  @@index([imei])
+  @@index([status])
+  @@map("tracker_provisionings")
+}
+
+/// V1.5 (Sprint I) — Trace complete des SMS sortants/entrants pour audit.
+/// Reuse du wire_logs n'est pas adapte (different vocabulaire). Retention 90j.
+/// V1.5 (Sprint I) — Trace de chaque backup Postgres pour monitoring.
+/// Le script `deploy/vps/backup-db.sh` ping l'endpoint /internal/backup-health
+/// apres chaque execution. Si le dernier ping est > 30h, l'admin voit une
+/// alerte rouge dans /admin/alerts.
+model BackupRun {
+  id           String   @id @default(uuid()) @db.Uuid
+  status       String   // 'OK' | 'FAILED'
+  sizeBytes    BigInt?
+  durationMs   Int?
+  destination  String?  // 'local' | 's3' | 'backblaze' | 'rclone:remote_name'
+  filename     String?
+  errorMessage String?
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt(sort: Desc)])
+  @@map("backup_runs")
+}
+
+model SmsLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  direction   String   // 'OUT' | 'IN'
+  fromNumber  String?
+  toNumber    String?
+  body        String   @db.Text
+  twilioSid   String?
+  status      String?  // queued / sent / delivered / failed / received / undelivered
+  errorCode   String?
+  errorMessage String?
+  imei        String?
+  provisioningId String?  @db.Uuid
+  context     Json?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt(sort: Desc)])
+  @@index([imei])
+  @@index([provisioningId])
+  @@map("sms_logs")
 }
 
 model EngineControlCommand {
