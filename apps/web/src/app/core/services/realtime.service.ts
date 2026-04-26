@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { computed, inject, Injectable, signal } from '@angular/core';
-import type { AlertAcknowledgedEvent, AlertEvent, EngineCommandUpdatedEvent, FleetSnapshotResponse, PositionUpdateEvent, TrackerStatusChangedDto, VehicleSnapshotDto } from '@vizyo/tracky-shared';
+import type { AlertAcknowledgedEvent, AlertEvent, EngineCommandUpdatedEvent, FleetSnapshotResponse, PositionsBatchEvent, PositionUpdateEvent, TrackerStatusChangedDto, VehicleSnapshotDto } from '@vizyo/tracky-shared';
 import { WS_EVENTS } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { io, Socket } from 'socket.io-client';
@@ -66,17 +66,28 @@ export class RealtimeService {
     });
 
     this.socket.on(WS_EVENTS.POSITION_UPDATE, (event: PositionUpdateEvent) => {
-      const next = new Map(this.positions());
-      next.set(event.trackerId, event);
-      this.positions.set(next);
+      this.applyPositionUpdate(event);
+    });
 
-      // Une fois qu'un vrai live event arrive, on retire le flag d'hydratation.
-      const hydratedIds = this.hydratedTrackerIds();
-      if (hydratedIds.has(event.trackerId)) {
-        const newSet = new Set(hydratedIds);
-        newSet.delete(event.trackerId);
-        this.hydratedTrackerIds.set(newSet);
+    // V1.5 (Sprint H1) — batch coalescing 1s. On itere et on applique chaque
+    // entree comme un POSITION_UPDATE individuel. Une seule mutation de signal
+    // par batch pour limiter les recalculs Angular.
+    this.socket.on(WS_EVENTS.POSITIONS_BATCH, (event: PositionsBatchEvent) => {
+      if (!event.positions || event.positions.length === 0) return;
+
+      const next = new Map(this.positions());
+      const hydratedIds = new Set(this.hydratedTrackerIds());
+      let hydratedChanged = false;
+
+      for (const pos of event.positions) {
+        next.set(pos.trackerId, pos);
+        if (hydratedIds.has(pos.trackerId)) {
+          hydratedIds.delete(pos.trackerId);
+          hydratedChanged = true;
+        }
       }
+      this.positions.set(next);
+      if (hydratedChanged) this.hydratedTrackerIds.set(hydratedIds);
     });
 
     this.socket.on(WS_EVENTS.ALERT_NEW, (alert: AlertEvent) => {
@@ -110,6 +121,21 @@ export class RealtimeService {
       next.set(event.trackerId, event);
       this._engineCommandUpdates.set(next);
     });
+  }
+
+  /** Apply a single position update to the local signal state. */
+  private applyPositionUpdate(event: PositionUpdateEvent): void {
+    const next = new Map(this.positions());
+    next.set(event.trackerId, event);
+    this.positions.set(next);
+
+    // Une fois qu'un vrai live event arrive, on retire le flag d'hydratation.
+    const hydratedIds = this.hydratedTrackerIds();
+    if (hydratedIds.has(event.trackerId)) {
+      const newSet = new Set(hydratedIds);
+      newSet.delete(event.trackerId);
+      this.hydratedTrackerIds.set(newSet);
+    }
   }
 
   dismissAlert(id: string): void {

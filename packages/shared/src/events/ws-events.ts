@@ -3,6 +3,9 @@ import type { TrackerStatusChangedDto } from '../dto/tracker.dto';
 
 export const WS_EVENTS = {
   POSITION_UPDATE: 'position:update',
+  // V1.5 (Sprint H1) — batch coalescing : flush 1s d'updates en un seul event.
+  // Le client doit traiter chaque entree comme un POSITION_UPDATE individuel.
+  POSITIONS_BATCH: 'positions:batch',
   TRACKER_STATUS: 'tracker:status',
   ALERT_NEW: 'alert:new',
   ALERT_ACK: 'alert:acknowledged',
@@ -11,6 +14,11 @@ export const WS_EVENTS = {
   TRIP_COMPLETED: 'trip:completed',
   ENGINE_COMMAND_UPDATED: 'engine-command:updated',
 } as const;
+
+export interface PositionsBatchEvent {
+  fleetId: string;
+  positions: PositionUpdateEvent[];
+}
 
 export interface PositionUpdateEvent {
   trackerId: string;

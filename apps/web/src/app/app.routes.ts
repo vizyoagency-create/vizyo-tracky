@@ -88,6 +88,13 @@ export const routes: Routes = [
         data: { title: 'Observabilité' },
       },
       {
+        path: 'admin/trackers/:id/sampling',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/observability/admin-sampling.component').then((m) => m.AdminSamplingComponent),
+        data: { title: 'Sampling adaptatif' },
+      },
+      {
         path: 'admin/commands',
         canActivate: [superAdminGuard],
         loadComponent: () =>

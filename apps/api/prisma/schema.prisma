@@ -92,6 +92,11 @@ model Fleet {
   id        String   @id @default(uuid()) @db.Uuid
   name      String
   clientId  String?
+  // V1.5 (Sprint H1) — sampling adaptatif des positions cote serveur.
+  // true = positions redondantes (vehicule arrete) ne sont pas persistees pour
+  // economiser le stockage. UX-first : le broadcast WS reste integral.
+  // Opt-out par fleet pour les contrats imposant un tracage continu (legal).
+  adaptiveSamplingEnabled Boolean @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -167,9 +172,18 @@ model Tracker {
   lastIgnition         Boolean?
   lastValid            Boolean?
   lastPositionAt       DateTime?
+  // V1.5 (Sprint H1) — etat du sampling adaptatif.
+  // lastWriteAt = derniere fois ou une trame a ete reellement persistee dans `positions`
+  //              (different de lastPositionAt qui suit `deviceTime` de la trame brute).
+  // lastSampledState = derniere classification appliquee (MOVING / IDLE_ENGINE_ON / STOPPED).
+  // verboseUntil = override admin temporaire qui force l'INSERT de chaque trame (debugging).
+  lastWriteAt          DateTime?
+  lastSampledState     String?
+  verboseUntil         DateTime?
   vehicleId            String?                @unique @db.Uuid
   vehicle    Vehicle?               @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   positions  Position[]
+  samplingDecisions PositionSamplingDecision[]
   commands        EngineControlCommand[]
   trackerCommands TrackerCommand[]
   alerts          Alert[]
@@ -178,6 +192,29 @@ model Tracker {
 
   @@index([status])
   @@map("trackers")
+}
+
+/// V1.5 (Sprint H1) — audit trail du sampling adaptatif.
+/// Chaque trame entrante (valide) genere une ligne ici, qu'elle soit persistee
+/// dans `positions` ou skippee. Permet a l'admin d'auditer l'efficacite du
+/// sampling et de detecter un boitier qui spam des positions identiques ou
+/// un sampling trop agressif.
+/// Retention courte : purge auto au-dela de 7 jours (cron quotidien).
+model PositionSamplingDecision {
+  id          String   @id @default(uuid()) @db.Uuid
+  trackerId   String   @db.Uuid
+  tracker     Tracker  @relation(fields: [trackerId], references: [id], onDelete: Cascade)
+  decision    String   // 'INSERTED' | 'SKIPPED_DUP' | 'SKIPPED_THROTTLE' | 'INSERTED_VERBOSE'
+  state       String   // 'MOVING' | 'IDLE_ENGINE_ON' | 'STOPPED'
+  reason      String?  // ex: "haversine 3m < 15m radius, throttle 90s active"
+  speedKmh    Float?
+  ignition    Boolean?
+  distanceM   Float?   // distance haversine vs derniere position persistee
+  receivedAt  DateTime @default(now())
+
+  @@index([trackerId, receivedAt(sort: Desc)])
+  @@index([receivedAt])
+  @@map("position_sampling_decisions")
 }
 
 /// `location` (geography Point 4326) ajouté manuellement dans la migration.

@@ -54,6 +54,13 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     this.logger.debug(`Client disconnected: ${client.id}`);
   }
 
+  /**
+   * Emit a single POSITION_UPDATE immediately (legacy path).
+   *
+   * Most callers should go through `PositionBroadcastBuffer.enqueue()` which
+   * coalesces 1s windows into POSITIONS_BATCH events. The immediate path is
+   * kept for explicit cases (alerts, geofence violations linked to a position).
+   */
   broadcastPosition(fleetId: string, payload: PositionUpdateEvent): void {
     this.server.to(`fleet:${fleetId}`).to('fleet:*').emit(WS_EVENTS.POSITION_UPDATE, payload);
   }

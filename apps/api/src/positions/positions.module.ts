@@ -3,6 +3,8 @@ import { AuthModule } from '../auth/auth.module';
 import { GeofencesModule } from '../geofences/geofences.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { TripsModule } from '../trips/trips.module';
+import { AdminSamplingController } from './admin-sampling.controller';
+import { PositionSamplingService } from './position-sampling.service';
 import { PositionsController } from './positions.controller';
 import { PositionsService } from './positions.service';
 
@@ -13,8 +15,8 @@ import { PositionsService } from './positions.service';
     forwardRef(() => TripsModule),
     AuthModule,
   ],
-  controllers: [PositionsController],
-  providers: [PositionsService],
-  exports: [PositionsService],
+  controllers: [PositionsController, AdminSamplingController],
+  providers: [PositionsService, PositionSamplingService],
+  exports: [PositionsService, PositionSamplingService],
 })
 export class PositionsModule {}
