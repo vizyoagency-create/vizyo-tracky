@@ -14,6 +14,7 @@ import { NotificationDispatchService } from '../notifications/notification-dispa
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { isInsideCorridor } from './corridor-geometry';
 import type { CreateGeofenceDto } from './dto/create-geofence.dto';
 import type { UpdateGeofenceDto } from './dto/update-geofence.dto';
 
@@ -34,6 +35,11 @@ interface CachedGeofence {
   radiusMeters: number;
   /** Sprint F.2 V1.4 : sommets pour les geofences POLYGON. */
   polygonPoints: Array<{ lat: number; lng: number }> | null;
+  /** V1.5 (Sprint N) : polyligne pour les geofences CORRIDOR + largeur en metres. */
+  corridorPoints: Array<{ lat: number; lng: number }> | null;
+  corridorWidthM: number | null;
+  /** V1.5 (Sprint N) : ciblage explicite par vehicule. Vide = applique a tous. */
+  vehicleTargets: Set<string>;
 }
 
 @Injectable()
@@ -179,9 +185,20 @@ export class GeofencesService {
 
     const insideNow = new Set<string>();
     for (const zone of zones) {
+      // V1.5 (Sprint N) — ciblage explicite : si la zone a des vehicules
+      // listes ET que le vehicule courant n'est pas dedans, on skippe.
+      if (zone.vehicleTargets.size > 0) {
+        if (!vehicleId || !zone.vehicleTargets.has(vehicleId)) continue;
+      }
+
       let inside = false;
       if (zone.type === GeofenceType.POLYGON && zone.polygonPoints && zone.polygonPoints.length >= 3) {
         inside = pointInPolygon(lat, lng, zone.polygonPoints);
+      } else if (zone.type === GeofenceType.CORRIDOR && zone.corridorPoints && zone.corridorWidthM) {
+        // V1.5 (Sprint N) — pour un corridor, "inside" signifie "dans le buffer
+        // perpendiculaire". L'alerte ENTER/EXIT s'interprete donc comme
+        // "rentre dans le corridor" / "sort du corridor".
+        inside = isInsideCorridor({ lat, lng }, zone.corridorPoints, zone.corridorWidthM);
       } else {
         const dist = distanceMeters(lat, lng, zone.centerLat, zone.centerLng);
         inside = dist <= zone.radiusMeters;
@@ -279,6 +296,8 @@ export class GeofencesService {
       select: {
         id: true, name: true, fleetId: true, rule: true, type: true,
         centerLat: true, centerLng: true, radiusMeters: true, polygonPoints: true,
+        corridorPoints: true, corridorWidthM: true,
+        vehicleTargets: { select: { vehicleId: true } },
       },
     });
 
@@ -294,6 +313,11 @@ export class GeofencesService {
       polygonPoints: Array.isArray(z.polygonPoints)
         ? (z.polygonPoints as Array<{ lat: number; lng: number }>)
         : null,
+      corridorPoints: Array.isArray(z.corridorPoints)
+        ? (z.corridorPoints as Array<{ lat: number; lng: number }>)
+        : null,
+      corridorWidthM: z.corridorWidthM,
+      vehicleTargets: new Set(z.vehicleTargets.map((vt) => vt.vehicleId)),
     }));
     this.geofenceCache.set(fleetId, mapped);
     return mapped;
@@ -301,6 +325,104 @@ export class GeofencesService {
 
   private invalidateCache(fleetId: string): void {
     this.geofenceCache.delete(fleetId);
+  }
+
+  /**
+   * V1.5 (Sprint N) — Import bulk depuis un GeoJSON FeatureCollection.
+   * Mapping : Polygon → POLYGON, LineString → CORRIDOR, Point + radius → CIRCLE.
+   * Properties supportes : name, color, rule, widthM (corridor), radius (point).
+   */
+  async importGeoJson(
+    json: unknown,
+    requestedBy: RequestedBy,
+  ): Promise<{ created: number; skipped: number }> {
+    const { parseGeoJsonToDrafts } = await import('./corridor-geometry');
+    const drafts = parseGeoJsonToDrafts(json);
+    if (drafts.length === 0) return { created: 0, skipped: 0 };
+
+    const fleetId = requestedBy.fleetId
+      ?? (requestedBy.role === UserRole.SUPER_ADMIN
+        ? (await this.prisma.fleet.findFirst({ orderBy: { createdAt: 'asc' } }))?.id
+        : null);
+    if (!fleetId) throw new ForbiddenException('Aucune flotte associee');
+
+    let created = 0;
+    let skipped = 0;
+    for (const d of drafts) {
+      try {
+        await this.prisma.geofence.create({
+          data: {
+            fleetId,
+            name: d.name,
+            type: d.type as GeofenceType,
+            rule: d.rule as GeofenceRule,
+            centerLat: d.centerLat,
+            centerLng: d.centerLng,
+            radiusMeters: d.radiusMeters,
+            color: d.color ?? '#10e0a0',
+            polygonPoints: d.polygonPoints as unknown as Prisma.InputJsonValue,
+            corridorPoints: d.corridorPoints as unknown as Prisma.InputJsonValue,
+            corridorWidthM: d.corridorWidthM ?? undefined,
+          },
+        });
+        created++;
+      } catch (err) {
+        this.logger.warn(`Skip GeoJSON feature "${d.name}": ${(err as Error).message}`);
+        skipped++;
+      }
+    }
+    this.invalidateCache(fleetId);
+    return { created, skipped };
+  }
+
+  /**
+   * V1.5 (Sprint N) — Cible une geofence sur une liste de vehicules.
+   * Replace le set de targets (passer [] pour repasser en mode global).
+   */
+  async setVehicleTargets(
+    geofenceId: string,
+    vehicleIds: string[],
+    requestedBy: RequestedBy,
+  ): Promise<{ vehicleIds: string[] }> {
+    const geofence = await this.prisma.geofence.findUnique({ where: { id: geofenceId } });
+    if (!geofence) throw new NotFoundException('Geofence introuvable');
+    if (requestedBy.role !== UserRole.SUPER_ADMIN && geofence.fleetId !== requestedBy.fleetId) {
+      throw new ForbiddenException('Acces refuse');
+    }
+
+    if (vehicleIds.length > 0) {
+      const valid = await this.prisma.vehicle.findMany({
+        where: { id: { in: vehicleIds }, fleetId: geofence.fleetId },
+        select: { id: true },
+      });
+      const validIds = new Set(valid.map((v) => v.id));
+      vehicleIds = vehicleIds.filter((id) => validIds.has(id));
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.geofenceVehicle.deleteMany({ where: { geofenceId } }),
+      ...(vehicleIds.length > 0
+        ? [this.prisma.geofenceVehicle.createMany({
+            data: vehicleIds.map((vehicleId) => ({ geofenceId, vehicleId })),
+          })]
+        : []),
+    ]);
+
+    this.invalidateCache(geofence.fleetId);
+    return { vehicleIds };
+  }
+
+  async getVehicleTargets(geofenceId: string, requestedBy: RequestedBy): Promise<{ vehicleIds: string[] }> {
+    const geofence = await this.prisma.geofence.findUnique({ where: { id: geofenceId } });
+    if (!geofence) throw new NotFoundException('Geofence introuvable');
+    if (requestedBy.role !== UserRole.SUPER_ADMIN && geofence.fleetId !== requestedBy.fleetId) {
+      throw new ForbiddenException('Acces refuse');
+    }
+    const targets = await this.prisma.geofenceVehicle.findMany({
+      where: { geofenceId },
+      select: { vehicleId: true },
+    });
+    return { vehicleIds: targets.map((t) => t.vehicleId) };
   }
 
 }

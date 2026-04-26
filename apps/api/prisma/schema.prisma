@@ -25,6 +25,9 @@ enum TrackerStatus {
 enum GeofenceType {
   CIRCLE
   POLYGON
+  // V1.5 (Sprint N) — corridor lineaire le long d'un trajet (polyligne avec
+  // largeur en metres). Alerte si le vehicule s'eloigne du corridor.
+  CORRIDOR
 }
 
 enum GeofenceRule {
@@ -392,13 +395,33 @@ model Geofence {
   /// Pour les geofences POLYGON : liste ordonnee de sommets [{lat, lng}, ...].
   /// Sprint F.2 V1.4. Ignore si type = CIRCLE.
   polygonPoints Json?
+  /// V1.5 (Sprint N) — pour les geofences CORRIDOR : polyligne ordonnee
+  /// + largeur en metres. Alerte si le vehicule sort du buffer.
+  corridorPoints  Json?
+  corridorWidthM  Int?         @default(100)
   color        String?      @default("#10e0a0")
   active       Boolean      @default(true)
+  vehicleTargets GeofenceVehicle[]
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
   @@index([fleetId])
   @@map("geofences")
+}
+
+/// V1.5 (Sprint N) — Ciblage explicite d'une geofence sur des vehicules.
+/// Si une geofence n'a aucune ligne dans cette table, elle s'applique a tous
+/// les vehicules de la fleet (mode global, compat V1). Si elle a au moins une
+/// ligne, elle ne s'applique qu'aux vehicules listes ici.
+model GeofenceVehicle {
+  geofenceId String   @db.Uuid
+  vehicleId  String   @db.Uuid
+  geofence   Geofence @relation(fields: [geofenceId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@id([geofenceId, vehicleId])
+  @@index([vehicleId])
+  @@map("geofence_vehicles")
 }
 
 model Alert {

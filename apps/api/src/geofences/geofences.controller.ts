@@ -74,4 +74,40 @@ export class GeofencesController {
       fleetId: req.user.fleetId,
     });
   }
+
+  // ─── V1.5 (Sprint N) ────────────────────────────────────────
+
+  @Post('import-geojson')
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  importGeoJson(@Body() body: unknown, @Req() req: AuthenticatedRequest) {
+    return this.geofences.importGeoJson(body, {
+      userId: req.user.id,
+      role: req.user.role,
+      fleetId: req.user.fleetId,
+    });
+  }
+
+  @Get(':id/vehicles')
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  getVehicleTargets(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.geofences.getVehicleTargets(id, {
+      userId: req.user.id,
+      role: req.user.role,
+      fleetId: req.user.fleetId,
+    });
+  }
+
+  @Post(':id/vehicles')
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
+  setVehicleTargets(
+    @Param('id') id: string,
+    @Body() body: { vehicleIds: string[] },
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.geofences.setVehicleTargets(id, body.vehicleIds ?? [], {
+      userId: req.user.id,
+      role: req.user.role,
+      fleetId: req.user.fleetId,
+    });
+  }
 }
