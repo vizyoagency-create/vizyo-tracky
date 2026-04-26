@@ -262,6 +262,49 @@ import { relativeTime } from '../../shared/utils/relative-time';
             [hasTracker]="!!v.tracker"
           />
         }
+
+        @if (activeTab() === 'trips') {
+          @if (vehicleTrips().length > 0) {
+            <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-x-auto">
+              <table class="w-full text-sm min-w-[640px]">
+                <thead class="border-b border-border-subtle text-fg-tertiary text-xs uppercase">
+                  <tr>
+                    <th class="p-3 text-left">Début</th>
+                    <th class="p-3 text-left">Fin</th>
+                    <th class="p-3 text-right">Durée</th>
+                    <th class="p-3 text-right">Distance</th>
+                    <th class="p-3 text-right">Vitesse max</th>
+                    <th class="p-3 text-right">Vitesse moy.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (trip of vehicleTrips(); track trip.id) {
+                    <tr class="border-b border-border-subtle/50 hover:bg-bg-tertiary/50">
+                      <td class="p-3 text-fg-primary">{{ trip.startedAt | date:'dd/MM HH:mm' }}</td>
+                      <td class="p-3 text-fg-primary">
+                        @if (trip.endedAt) {
+                          {{ trip.endedAt | date:'dd/MM HH:mm' }}
+                        } @else {
+                          <span class="text-tracky-light">En cours</span>
+                        }
+                      </td>
+                      <td class="p-3 text-right font-mono text-fg-primary">{{ formatDuration(trip.durationSeconds) }}</td>
+                      <td class="p-3 text-right font-mono text-fg-primary">{{ (trip.distanceMeters / 1000) | number:'1.1-1' }} km</td>
+                      <td class="p-3 text-right font-mono text-fg-primary">{{ trip.maxSpeed | number:'1.0-0' }} km/h</td>
+                      <td class="p-3 text-right font-mono text-fg-tertiary">{{ trip.avgSpeed | number:'1.0-0' }} km/h</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          } @else {
+            <div class="flex flex-col items-center justify-center h-40 rounded-[--radius-card]
+                        bg-bg-secondary border border-border-subtle text-fg-tertiary gap-2">
+              <lucide-icon [img]="Route" [size]="48" class="opacity-30"></lucide-icon>
+              <p>Aucun trajet enregistré</p>
+            </div>
+          }
+        }
       </div>
     }
   `,
@@ -416,5 +459,13 @@ export class VehicleDetailComponent implements OnInit {
     if (status === 'REJECTED_SPEED') return 'bg-red-600/10 text-red-400';
     if (status === 'FAILED') return 'bg-amber-500/10 text-amber-400';
     return 'bg-bg-tertiary text-fg-tertiary';
+  }
+
+  protected formatDuration(seconds: number): string {
+    if (!seconds || seconds < 0) return '0min';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (h > 0) return `${h}h ${m.toString().padStart(2, '0')}min`;
+    return `${m}min`;
   }
 }
