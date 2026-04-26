@@ -629,12 +629,52 @@ model VehicleSchedule {
   sundayStart      String?
   sundayEnd        String?
 
+  // V1.5 (Sprint K) — Multi-plages par jour. Si non null, override les paires
+  // start/end legacy ci-dessus. Format : [{ start: "08:00", end: "12:00" },
+  // { start: "14:00", end: "18:00" }]. Max 3 plages par jour cote app (validation).
+  mondaySlots    Json?
+  tuesdaySlots   Json?
+  wednesdaySlots Json?
+  thursdaySlots  Json?
+  fridaySlots    Json?
+  saturdaySlots  Json?
+  sundaySlots    Json?
+
+  // V1.5 (Sprint K) — Calendrier jours feries (lib `date-holidays`).
+  // 'FR' = France metropolitaine. Liste : FR / MA / BE / LU / CH (config UI).
+  countryCode    String @default("FR")
+
+  // V1.5 (Sprint K) — Override ponctuel pour une date specifique :
+  // [{ date: "2026-12-24", slots: [{ start: "08:00", end: "16:00" }] },
+  //  { date: "2026-12-25", closed: true }]
+  customDates    Json?
+
   lastEvaluatedAt    DateTime?
   lastEvaluatedState String?   // "IN_WINDOW" | "OUT_OF_WINDOW"
   overrideUntil      DateTime? // scheduler ignores until this time after manual action
+
+  history ScheduleHistory[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@map("vehicle_schedules")
+}
+
+/// V1.5 (Sprint K) — Trace des transitions automatiques du scheduler.
+/// Une ligne par CUT/RESTORE auto, avec la raison detaillee. Sert pour la
+/// timeline UI de la fiche vehicule + l'audit operateur.
+model ScheduleHistory {
+  id          String   @id @default(uuid()) @db.Uuid
+  scheduleId  String   @db.Uuid
+  schedule    VehicleSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  vehicleId   String   @db.Uuid
+  occurredAt  DateTime @default(now())
+  action      String   // 'CUT' | 'RESTORE'
+  reason      String   // 'OUT_OF_WINDOW' | 'IN_WINDOW_RESUME' | 'HOLIDAY' | 'CUSTOM_DATE_CLOSED' | 'CUSTOM_DATE_RANGE'
+  windowDesc  String?  // ex: "08:00-12:00 + 14:00-18:00" ou "Ferie : 1er mai"
+
+  @@index([scheduleId, occurredAt(sort: Desc)])
+  @@index([vehicleId, occurredAt(sort: Desc)])
+  @@map("schedule_history")
 }

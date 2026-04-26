@@ -5,7 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { EngineAction, UserRole } from '@prisma/client';
+import { EngineAction, Prisma, UserRole } from '@prisma/client';
 import type { VehicleSchedule } from '@prisma/client';
 import { EngineControlService } from '../engine-control/engine-control.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -59,15 +59,29 @@ export class VehicleSchedulesService {
     const willBeEnabled = dto.enabled;
     const wasCut = existing?.lastEvaluatedState === 'OUT_OF_WINDOW';
 
+    // V1.5 (Sprint K) — caster les champs JSON (slots / customDates) au type
+    // Prisma input pour passer le typecheck. Les class-validator DTO sont des
+    // arrays de classes plain, pas reconnus comme InputJsonValue.
+    const jsonifiedDto: Record<string, unknown> = { ...dto };
+    for (const key of [
+      'mondaySlots', 'tuesdaySlots', 'wednesdaySlots', 'thursdaySlots',
+      'fridaySlots', 'saturdaySlots', 'sundaySlots', 'customDates',
+    ] as const) {
+      if (key in dto) {
+        const v = dto[key];
+        jsonifiedDto[key] = v == null ? Prisma.JsonNull : (v as unknown as Prisma.InputJsonValue);
+      }
+    }
+
     // Reset lastEvaluatedState when disabling (clean slate for next activation)
     const updateData = wasEnabled && !willBeEnabled
-      ? { ...dto, lastEvaluatedState: null, lastEvaluatedAt: null }
-      : dto;
+      ? { ...jsonifiedDto, lastEvaluatedState: null, lastEvaluatedAt: null }
+      : jsonifiedDto;
 
     const updated = await this.prisma.vehicleSchedule.upsert({
       where: { vehicleId },
-      create: { vehicleId, ...dto },
-      update: updateData,
+      create: { vehicleId, ...jsonifiedDto } as Prisma.VehicleScheduleUncheckedCreateInput,
+      update: updateData as Prisma.VehicleScheduleUncheckedUpdateInput,
     });
 
     // If we just disabled AND the scheduler had CUT the vehicle → emit RESTORE

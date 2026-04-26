@@ -2,6 +2,17 @@ import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
+export interface ScheduleSlot {
+  start: string;
+  end: string;
+}
+
+export interface ScheduleCustomDate {
+  date: string;
+  closed?: boolean;
+  slots?: ScheduleSlot[];
+}
+
 export interface VehicleScheduleDto {
   id: string;
   vehicleId: string;
@@ -30,8 +41,29 @@ export interface VehicleScheduleDto {
   sundayStart: string | null;
   sundayEnd: string | null;
 
+  // V1.5 (Sprint K)
+  mondaySlots: ScheduleSlot[] | null;
+  tuesdaySlots: ScheduleSlot[] | null;
+  wednesdaySlots: ScheduleSlot[] | null;
+  thursdaySlots: ScheduleSlot[] | null;
+  fridaySlots: ScheduleSlot[] | null;
+  saturdaySlots: ScheduleSlot[] | null;
+  sundaySlots: ScheduleSlot[] | null;
+  countryCode: string;
+  customDates: ScheduleCustomDate[] | null;
+
   lastEvaluatedState: string | null;
   overrideUntil: string | null;
+}
+
+export interface ScheduleHistoryItem {
+  id: string;
+  scheduleId: string;
+  vehicleId: string;
+  occurredAt: string;
+  action: 'CUT' | 'RESTORE';
+  reason: string;
+  windowDesc: string | null;
 }
 
 export interface UpsertSchedulePayload {
@@ -58,6 +90,16 @@ export interface UpsertSchedulePayload {
   sundayEnabled: boolean;
   sundayStart: string | null;
   sundayEnd: string | null;
+  // V1.5 (Sprint K) — multi-plages + jours feries + custom dates (optionnels)
+  mondaySlots?: ScheduleSlot[];
+  tuesdaySlots?: ScheduleSlot[];
+  wednesdaySlots?: ScheduleSlot[];
+  thursdaySlots?: ScheduleSlot[];
+  fridaySlots?: ScheduleSlot[];
+  saturdaySlots?: ScheduleSlot[];
+  sundaySlots?: ScheduleSlot[];
+  countryCode?: string;
+  customDates?: ScheduleCustomDate[];
 }
 
 @Injectable({ providedIn: 'root' })
@@ -77,6 +119,14 @@ export class VehicleSchedulesApiService {
     return this.http.put<VehicleScheduleDto>(
       `/api/vehicles/${vehicleId}/schedule`,
       data,
+    );
+  }
+
+  /** V1.5 (Sprint K) — timeline des transitions auto sur 90j. */
+  history(vehicleId: string, limit = 100): Observable<{ items: ScheduleHistoryItem[] }> {
+    return this.http.get<{ items: ScheduleHistoryItem[] }>(
+      `/api/vehicles/${vehicleId}/schedule/history`,
+      { params: { limit: String(limit) } },
     );
   }
 }

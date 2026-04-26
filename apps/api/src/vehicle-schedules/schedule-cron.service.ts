@@ -1,9 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import { CommandStatus, EngineAction, type VehicleSchedule } from '@prisma/client';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EngineControlService } from '../engine-control/engine-control.service';
+import { evaluateSchedule, type EvaluationResult } from './schedule-evaluator';
 
 const DAYS = [
   'sunday',
@@ -17,6 +19,18 @@ const DAYS = [
 
 type DayName = (typeof DAYS)[number];
 
+/** Event emis a chaque transition auto — consomme par Sprint M (notifications). */
+export interface ScheduleTransitionEvent {
+  scheduleId: string;
+  vehicleId: string;
+  fleetId: string;
+  trackerId: string;
+  action: 'CUT' | 'RESTORE';
+  reason: string;
+  windowDesc: string | null;
+  occurredAt: string;
+}
+
 /** System user ID for scheduler-initiated commands. */
 const SCHEDULER_USER_ID = '00000000-0000-0000-0000-000000000000';
 
@@ -28,6 +42,7 @@ export class ScheduleCronService {
     private readonly prisma: PrismaService,
     private readonly engineControl: EngineControlService,
     private readonly errorLogger: ErrorLogger,
+    private readonly events: EventEmitter2,
   ) {}
 
   /** Runs every minute. */
@@ -76,7 +91,11 @@ export class ScheduleCronService {
       return;
     }
 
-    const state = this.computeState(schedule);
+    // V1.5 (Sprint K) — utilise l'evaluateur V2 (multi-plages + jours feries
+    // + dates speciales). Le helper retourne aussi la raison + la description
+    // de la fenetre, qu'on persiste dans schedule_history pour l'audit.
+    const evaluation = evaluateSchedule(schedule);
+    const state = evaluation.state;
 
     // No change → skip
     if (state === schedule.lastEvaluatedState) return;
@@ -136,6 +155,32 @@ export class ScheduleCronService {
         lastEvaluatedState: state,
       },
     });
+
+    // V1.5 (Sprint K) — persister la transition dans schedule_history (audit + UI timeline)
+    // + emettre un event interne consomme par Sprint M (notifications externes).
+    const occurredAt = new Date();
+    await this.prisma.scheduleHistory.create({
+      data: {
+        scheduleId: schedule.id,
+        vehicleId: schedule.vehicleId,
+        action,
+        reason: evaluation.reason,
+        windowDesc: evaluation.windowDesc,
+        occurredAt,
+      },
+    }).catch((e) => this.logger.warn(`schedule_history insert failed: ${(e as Error).message}`));
+
+    const transitionEvent: ScheduleTransitionEvent = {
+      scheduleId: schedule.id,
+      vehicleId: schedule.vehicleId,
+      fleetId: schedule.vehicle.fleetId,
+      trackerId: tracker.id,
+      action,
+      reason: evaluation.reason,
+      windowDesc: evaluation.windowDesc,
+      occurredAt: occurredAt.toISOString(),
+    };
+    this.events.emit('schedule.transition', transitionEvent);
   }
 
   /** Compute whether the current time is inside the allowed window. */
