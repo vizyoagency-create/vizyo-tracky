@@ -146,17 +146,33 @@ const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible a
         }
       </div>
 
-      <!-- Search bar (Nominatim) -->
+      <!-- Smart search : vehicule ou adresse (Sprint G.1) -->
       <div class="mt-2 bg-bg-secondary/85 backdrop-blur-md border border-border-subtle
-                  rounded-[--radius-card] p-2 min-w-[220px]">
+                  rounded-[--radius-card] p-2 min-w-[220px] relative">
         <input
           type="search"
-          placeholder="Rechercher une adresse..."
+          placeholder="Plaque ou adresse..."
           [value]="searchQuery()"
           (keydown.enter)="searchAddress($event)"
           (input)="onSearchInput($event)"
+          (focus)="searchFocused.set(true)"
+          (blur)="onSearchBlur()"
           class="w-full bg-transparent text-xs text-fg-primary placeholder:text-fg-tertiary
                  px-2 py-1.5 outline-none" />
+        @if (searchFocused() && vehicleMatches().length > 0) {
+          <div style="position:absolute;top:100%;left:0;right:0;z-index:1500"
+               class="mt-1 bg-bg-secondary/95 backdrop-blur-md border border-border-subtle
+                      rounded-lg overflow-hidden shadow-2xl">
+            @for (v of vehicleMatches(); track v.vehicleId) {
+              <button (mousedown)="jumpToVehicle(v.vehicleId)"
+                      class="w-full text-left px-3 py-2 text-xs text-fg-primary
+                             hover:bg-bg-tertiary cursor-pointer flex items-center justify-between gap-2">
+                <span class="font-mono">{{ v.plate }}</span>
+                <span class="text-[10px] text-fg-tertiary">{{ v.type }}</span>
+              </button>
+            }
+          </div>
+        }
       </div>
     </div>
 
@@ -252,6 +268,10 @@ const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible a
             <input type="checkbox" [checked]="showStops()" (change)="toggleStops()" />
             <span>Arrets > 5min (24h)</span>
           </label>
+          <label class="flex items-center gap-2 text-[11px] text-fg-secondary cursor-pointer">
+            <input type="checkbox" [checked]="showHeatmap()" (change)="toggleHeatmap()" />
+            <span>Heatmap densite (24h)</span>
+          </label>
         </div>
       </div>
     </div>
@@ -328,6 +348,10 @@ const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible a
                 class="w-full text-left px-4 py-2 text-xs text-fg-primary hover:bg-bg-tertiary cursor-pointer">
           Recentrer Nord
         </button>
+        <button (click)="toggleLock(); closeContextMenu()"
+                class="w-full text-left px-4 py-2 text-xs text-fg-primary hover:bg-bg-tertiary cursor-pointer">
+          {{ mapLocked() ? 'Deverrouiller la carte' : 'Verrouiller la carte' }}
+        </button>
       </div>
     }
   `,
@@ -401,12 +425,26 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   protected readonly bearingNonZero = computed(() => Math.abs(this.mapBearing()) > 0.5);
   protected readonly pitchNonZero = computed(() => Math.abs(this.mapPitch()) > 0.5);
   protected readonly searchQuery = signal('');
+  /** Sprint G.1 — focus + suggestions vehicules. */
+  protected readonly searchFocused = signal(false);
+  protected readonly vehicleMatches = computed(() => {
+    const q = this.searchQuery().trim().toLowerCase();
+    if (q.length < 1) return [];
+    const snap = this.realtime.snapshot();
+    return snap
+      .filter((v) => v.plate.toLowerCase().includes(q) || v.type.toLowerCase().includes(q))
+      .slice(0, 5);
+  });
 
   protected readonly showGeofences = signal(true);
   protected readonly showTrails = signal(true);
   protected readonly showPlates = signal(true);
   /** Sprint F.1 — affichage des arrets > 5min calcules sur les 24 dernieres heures. */
   protected readonly showStops = signal(false);
+  /** Sprint G.4 — heatmap densite des positions (24h). */
+  protected readonly showHeatmap = signal(false);
+  /** Sprint G.5 — verrouillage du pan (la carte ne peut plus etre deplacee). */
+  protected readonly mapLocked = signal(false);
   /** Sprint F.3 — sheet mobile pour les calques (FAB toggle). */
   protected readonly mobileSheetOpen = signal(false);
 
@@ -536,10 +574,16 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       this.setupMiniReplayLayer();
       this.setupMeasureLayer();
       this.setupStopsLayer();
+      this.setupHeatmapLayer();
+      this.setupClusterLayer();
       this.loadGeofences();
       this.applyPositions(this.applyFilters(this.realtime.positionsList()));
+      this.applyClusterVisibility();
       this.restoreFromUrl();
     });
+
+    // Sprint G.2 — refresh cluster visibility on zoom change.
+    this.map.on('zoom', () => this.applyClusterVisibility());
 
     // Click pour la mesure de distance.
     this.map.on('click', (e) => {
@@ -655,14 +699,35 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       this.setupMiniReplayLayer();
       this.setupMeasureLayer();
       this.setupStopsLayer();
+      this.setupHeatmapLayer();
+      this.setupClusterLayer();
       this.loadGeofences();
       this.applyPositions(this.applyFilters(this.realtime.positionsList()));
+      this.applyClusterVisibility();
       // Mini-replay : si actif, recharger.
       const vid = this.miniReplayVehicleId();
       if (vid) this.loadMiniReplay(vid).catch(() => { /* silent */ });
       this.refreshMeasureLayer();
       if (this.showStops()) this.loadStops().catch(() => { /* silent */ });
     });
+  }
+
+  /**
+   * Sprint G.2 — bascule entre markers DOM (zoom eleve) et cluster GeoJSON
+   * (zoom faible). Le seuil 12 garde le rendu riche pour la grande majorite
+   * des cas d'usage (ville/quartier) et la performance pour les vues "pays".
+   */
+  private applyClusterVisibility(): void {
+    if (!this.map) return;
+    const z = this.map.getZoom();
+    const showClusters = z < 12;
+    // Toggle DOM markers
+    document.querySelectorAll('.tracky-marker').forEach((el) => {
+      (el as HTMLElement).style.display = showClusters ? 'none' : '';
+    });
+    // Toggle cluster layers
+    this.setLayerVisibility('vehicles-cluster-bg', showClusters);
+    this.setLayerVisibility('vehicles-cluster-count', showClusters);
   }
 
   /** Sprint D.2 — toggle l'affichage de la derniere heure pour un vehicule. */
@@ -893,6 +958,57 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     this.setLayerVisibility('trails-line', v);
   }
 
+  /** Sprint G.4 — toggle de la heatmap. */
+  protected toggleHeatmap(): void {
+    const v = !this.showHeatmap();
+    this.showHeatmap.set(v);
+    this.setLayerVisibility('positions-heatmap', v);
+    if (v) this.loadHeatmap().catch(() => { /* silent */ });
+  }
+
+  /** Sprint G.4 — charge les positions des 24h pour densite. */
+  private async loadHeatmap(): Promise<void> {
+    if (!this.map) return;
+    const fromIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const ids = this._accessibleIds();
+    const vehiclesToScan = ids === 'ALL'
+      ? Array.from(this.vehicleMeta.keys())
+      : Array.from(ids as Set<string>);
+
+    const features: Array<GeoJSON.Feature<GeoJSON.Point>> = [];
+    for (const vehicleId of vehiclesToScan) {
+      try {
+        const res = await firstValueFrom(
+          this.http.get<{ items: Array<{ lat: number; lng: number }> }>(
+            `/api/positions?vehicleId=${vehicleId}&from=${encodeURIComponent(fromIso)}&limit=500`,
+          ),
+        );
+        for (const p of res.items ?? []) {
+          features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [p.lng, p.lat] }, properties: {} });
+        }
+      } catch { /* silent per vehicle */ }
+    }
+    const src = this.map.getSource('positions-heatmap') as GeoJSONSource | undefined;
+    src?.setData({ type: 'FeatureCollection', features });
+  }
+
+  /** Sprint G.5 — verrouille / deverrouille le pan de la carte. Zoom + rotation restent libres. */
+  protected toggleLock(): void {
+    if (!this.map) return;
+    const next = !this.mapLocked();
+    this.mapLocked.set(next);
+    if (next) {
+      this.map.dragPan.disable();
+    } else {
+      this.map.dragPan.enable();
+    }
+    this.toast.show({
+      kind: 'info',
+      title: next ? 'Carte verrouillee (pas de drag)' : 'Carte deverrouillee',
+      duration: 2500,
+    });
+  }
+
   /** Sprint F.1 — toggle l'affichage des arrets > 5min (24h). */
   protected toggleStops(): void {
     const v = !this.showStops();
@@ -1062,6 +1178,86 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         'line-color': '#3b82f6',
         'line-width': 5,
         'line-opacity': 0.85,
+      },
+    });
+  }
+
+  /**
+   * Sprint G.2 — cluster layer pour les markers vehicules.
+   * Quand le zoom est < CLUSTER_ZOOM_THRESHOLD, les markers DOM sont caches
+   * et un layer GeoJSON cluster prend le relais (badge avec compteur).
+   * Au-dela, les markers DOM riches (heading, plaque, ACC) reapparaissent.
+   */
+  private setupClusterLayer(): void {
+    if (!this.map || this.map.getSource('vehicles-cluster')) return;
+    this.map.addSource('vehicles-cluster', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] },
+      cluster: true,
+      clusterMaxZoom: 13,
+      clusterRadius: 40,
+    });
+    this.map.addLayer({
+      id: 'vehicles-cluster-bg',
+      type: 'circle',
+      source: 'vehicles-cluster',
+      filter: ['has', 'point_count'],
+      paint: {
+        'circle-color': '#10E0A0',
+        'circle-radius': ['step', ['get', 'point_count'], 18, 10, 22, 50, 28],
+        'circle-opacity': 0.9,
+        'circle-stroke-width': 3,
+        'circle-stroke-color': '#0a0a0a',
+      },
+    });
+    this.map.addLayer({
+      id: 'vehicles-cluster-count',
+      type: 'symbol',
+      source: 'vehicles-cluster',
+      filter: ['has', 'point_count'],
+      layout: {
+        'text-field': ['get', 'point_count_abbreviated'],
+        'text-size': 13,
+        'text-allow-overlap': true,
+      },
+      paint: { 'text-color': '#0a0a0a' },
+    });
+    // Click sur cluster = zoom in.
+    this.map.on('click', 'vehicles-cluster-bg', (e) => {
+      if (!this.map) return;
+      const feat = e.features?.[0];
+      const clusterId = feat?.properties?.['cluster_id'];
+      if (clusterId == null) return;
+      const src = this.map.getSource('vehicles-cluster') as maplibregl.GeoJSONSource;
+      Promise.resolve(src.getClusterExpansionZoom(clusterId)).then((zoom: number) => {
+        if (!this.map) return;
+        const geom = feat?.geometry as GeoJSON.Point | undefined;
+        if (!geom) return;
+        this.map.flyTo({ center: geom.coordinates as [number, number], zoom, speed: 1.4, curve: 1.4 });
+      });
+    });
+  }
+
+  /** Sprint G.4 — setup layer heatmap des densites de positions sur 24h. */
+  private setupHeatmapLayer(): void {
+    if (!this.map || this.map.getSource('positions-heatmap')) return;
+    this.map.addSource('positions-heatmap', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    this.map.addLayer({
+      id: 'positions-heatmap',
+      type: 'heatmap',
+      source: 'positions-heatmap',
+      paint: {
+        'heatmap-weight': 1,
+        'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 0, 0.6, 14, 1.6],
+        'heatmap-color': [
+          'interpolate', ['linear'], ['heatmap-density'],
+          0, 'rgba(0,0,0,0)',
+          0.2, '#10E0A0',
+          0.5, '#F59E0B',
+          0.8, '#EF4444',
+        ],
+        'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 0, 4, 14, 30],
+        'heatmap-opacity': 0.7,
       },
     });
   }
@@ -1250,6 +1446,17 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     const trailsSrc = this.map.getSource('trails') as maplibregl.GeoJSONSource | undefined;
     trailsSrc?.setData({ type: 'FeatureCollection', features: trailFeatures });
 
+    // Sprint G.2 — alimente la source cluster.
+    const clusterSrc = this.map.getSource('vehicles-cluster') as maplibregl.GeoJSONSource | undefined;
+    clusterSrc?.setData({
+      type: 'FeatureCollection',
+      features: positions.map((p) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+        properties: { vehicleId: p.vehicleId, trackerId: p.trackerId },
+      })),
+    });
+
     // Auto-fit la premiere fois qu'on a des markers.
     if (!this.hasFittedBounds && this.markers.size > 0) {
       this.hasFittedBounds = true;
@@ -1420,6 +1627,27 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
   protected onSearchInput(ev: Event): void {
     this.searchQuery.set((ev.target as HTMLInputElement).value);
+  }
+
+  /** Sprint G.1 — delai pour permettre au mousedown du dropdown de tirer avant le blur. */
+  protected onSearchBlur(): void {
+    setTimeout(() => this.searchFocused.set(false), 150);
+  }
+
+  /** Sprint G.1 — saut sur un vehicule depuis les suggestions. */
+  protected jumpToVehicle(vehicleId: string): void {
+    if (!this.map) return;
+    const pos = this.realtime.positionsList().find((p) => p.vehicleId === vehicleId);
+    const snap = this.realtime.snapshot().find((s) => s.vehicleId === vehicleId);
+    const lat = pos?.lat ?? snap?.lastLat;
+    const lng = pos?.lng ?? snap?.lastLng;
+    if (lat == null || lng == null) {
+      this.toast.show({ kind: 'warning', title: 'Position inconnue', duration: 3000 });
+      return;
+    }
+    this.mapSvc.flyTo(this.map, lat, lng, 16);
+    this.searchQuery.set('');
+    this.searchFocused.set(false);
   }
 
   protected async searchAddress(ev: Event): Promise<void> {

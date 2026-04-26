@@ -216,6 +216,9 @@ model Trip {
   positionCount      Int      @default(0)
   segmentationSource String   @default("live")
   polyline           String?
+  /// Sprint G.3 V1.4 : polyligne snappee aux routes via OSRM /match.
+  /// Si null, le frontend affiche `polyline` (raw GPS).
+  polylineMatched    String?
   createdAt          DateTime @default(now())
 
   @@index([vehicleId, startedAt(sort: Desc)])

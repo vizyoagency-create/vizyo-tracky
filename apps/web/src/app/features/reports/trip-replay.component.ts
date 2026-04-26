@@ -45,6 +45,12 @@ import {
                   {{ formatDur(trip()!.durationSeconds) }} ·
                   max {{ trip()!.maxSpeed | number:'1.0-0' }} km/h
                 </span>
+                @if (trip()!.polylineMatched) {
+                  <span class="ml-2 inline-block px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-300
+                               border border-blue-500/30 text-[9px] uppercase tracking-wider">
+                    Snap-to-road
+                  </span>
+                }
               }
             </div>
             <button (click)="onClose()" class="text-fg-tertiary hover:text-fg-primary cursor-pointer">
@@ -170,8 +176,16 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
     if (!el) return;
 
     let parsed: Array<{ lat: number; lng: number }> = [];
+    let usedMatched = false;
     try {
-      parsed = trip.polyline ? JSON.parse(trip.polyline) : [];
+      // Sprint G.3 — preferer la polyligne snappee aux routes si disponible.
+      if (trip.polylineMatched) {
+        parsed = JSON.parse(trip.polylineMatched);
+        usedMatched = parsed.length >= 2;
+      }
+      if (!usedMatched && trip.polyline) {
+        parsed = JSON.parse(trip.polyline);
+      }
     } catch { /* */ }
 
     if (parsed.length === 0) {

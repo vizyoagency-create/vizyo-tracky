@@ -14,6 +14,7 @@ import { douglasPeucker, isPlausibleJump, isValidLatLng } from '@vizyo/tracky-sh
 import { distanceMeters } from '../common/utils/haversine';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { MapMatchingService } from './map-matching.service';
 import { TripSegmenterService } from './trip-segmenter.service';
 import {
   TRIP_MIN_DISTANCE_METERS,
@@ -78,6 +79,7 @@ export class TripsService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly gateway: RealtimeGateway,
     private readonly segmenter: TripSegmenterService,
+    private readonly mapMatching: MapMatchingService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -316,6 +318,9 @@ export class TripsService implements OnModuleInit {
       },
     });
 
+    // Sprint G.3 — map-matching OSRM async (non-bloquant pour la cloture du trip).
+    this.runMapMatchingAsync(state.tripId, simplifiedPoly);
+
     const event: TripCompletedEvent = {
       tripId: state.tripId,
       vehicleId: state.vehicleId,
@@ -463,7 +468,7 @@ export class TripsService implements OnModuleInit {
     for (const draft of drafts) {
       const safeDist = Math.max(0, draft.distanceMeters);
       const simplifiedPoly = douglasPeucker(draft.positions, TRIP_POLYLINE_DP_TOLERANCE_M);
-      await this.prisma.trip.create({
+      const newTrip = await this.prisma.trip.create({
         data: {
           vehicleId: dto.vehicleId,
           trackerId: vehicle.tracker.id,
@@ -484,9 +489,32 @@ export class TripsService implements OnModuleInit {
           polyline: JSON.stringify(simplifiedPoly),
         },
       });
+      // Sprint G.3 — map-matching async pour les trips recomputes.
+      this.runMapMatchingAsync(newTrip.id, simplifiedPoly);
       created++;
     }
 
     return { deleted, created };
+  }
+
+  /**
+   * Sprint G.3 — lance le map-matching OSRM en arriere-plan et persiste
+   * `polylineMatched` une fois pret. Ne bloque jamais le caller.
+   */
+  private runMapMatchingAsync(tripId: string, points: Array<{ lat: number; lng: number }>): void {
+    if (points.length < 2) return;
+    void (async () => {
+      try {
+        const matched = await this.mapMatching.match(points);
+        if (!matched || matched.length < 2) return;
+        await this.prisma.trip.update({
+          where: { id: tripId },
+          data: { polylineMatched: JSON.stringify(matched) },
+        });
+        this.logger.log(`Map-matching OK pour trip ${tripId} (${points.length} -> ${matched.length} points)`);
+      } catch (err) {
+        this.logger.warn(`Map-matching async echec trip ${tripId} : ${err instanceof Error ? err.message : err}`);
+      }
+    })();
   }
 }

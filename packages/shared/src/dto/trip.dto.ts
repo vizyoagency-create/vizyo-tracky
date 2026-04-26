@@ -16,6 +16,8 @@ export interface TripDto {
   positionCount: number;
   segmentationSource: string;
   polyline: string | null;
+  /** Sprint G.3 V1.4 : polyligne snappee aux routes via OSRM. Optionnelle. */
+  polylineMatched?: string | null;
 }
 
 export interface TripDailySummaryDto {
