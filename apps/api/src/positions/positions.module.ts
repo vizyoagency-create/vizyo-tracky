@@ -5,6 +5,7 @@ import { RealtimeModule } from '../realtime/realtime.module';
 import { TrackerFixModeModule } from '../tracker-fix-mode/tracker-fix-mode.module';
 import { TripsModule } from '../trips/trips.module';
 import { AdminSamplingController } from './admin-sampling.controller';
+import { PositionHistoryService } from './position-history.service';
 import { PositionSamplingService } from './position-sampling.service';
 import { PositionsController } from './positions.controller';
 import { PositionsService } from './positions.service';
@@ -18,7 +19,7 @@ import { PositionsService } from './positions.service';
     AuthModule,
   ],
   controllers: [PositionsController, AdminSamplingController],
-  providers: [PositionsService, PositionSamplingService],
-  exports: [PositionsService, PositionSamplingService],
+  providers: [PositionsService, PositionSamplingService, PositionHistoryService],
+  exports: [PositionsService, PositionSamplingService, PositionHistoryService],
 })
 export class PositionsModule {}
