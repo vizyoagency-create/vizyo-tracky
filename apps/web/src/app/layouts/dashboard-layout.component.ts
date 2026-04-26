@@ -77,7 +77,7 @@ import { ToastContainerComponent } from '../shared/ui/toast/toast-container.comp
           <button (click)="mobileMenuOpen.set(true)" class="mobile-burger">
             <lucide-icon [img]="MenuIcon" [size]="20"></lucide-icon>
           </button>
-          <h2 class="top-title">Tableau de bord</h2>
+          <h2 class="top-title">{{ pageTitle() }}</h2>
           <div class="top-actions">
             <app-alerts-bell />
             <app-theme-toggle />
@@ -198,8 +198,14 @@ import { ToastContainerComponent } from '../shared/ui/toast/toast-container.comp
       .top-bar { padding: 0 12px; height: 52px }
       .top-title { font-size: 14px }
 
-      .content { padding: 16px; padding-bottom: 80px }
-      .content.fullscreen { padding-bottom: 64px }
+      .content {
+        padding: 16px;
+        /* 60px bottom bar + safe-area inset + 24px breathing room */
+        padding-bottom: calc(60px + env(safe-area-inset-bottom) + 24px);
+      }
+      .content.fullscreen {
+        padding-bottom: calc(60px + env(safe-area-inset-bottom));
+      }
 
       /* Bottom bar */
       .bottom-bar {
@@ -224,6 +230,7 @@ import { ToastContainerComponent } from '../shared/ui/toast/toast-container.comp
 export class DashboardLayoutComponent {
   protected readonly collapsed = signal(false);
   protected readonly fullscreen = signal(false);
+  protected readonly pageTitle = signal('Tableau de bord');
   protected readonly mobileMenuOpen = signal(false);
   protected readonly MenuIcon = Menu;
   protected readonly XIcon = X;
@@ -232,7 +239,7 @@ export class DashboardLayoutComponent {
   protected readonly bottomItems = [
     { label: 'Dashboard', route: '/dashboard', icon: LayoutDashboard },
     { label: 'Carte', route: '/map', icon: Map },
-    { label: 'Vehicules', route: '/vehicles', icon: Truck },
+    { label: 'Véhicules', route: '/vehicles', icon: Truck },
     { label: 'Alertes', route: '/alerts', icon: Bell },
     { label: 'Plus', route: 'more', icon: MoreHorizontal },
   ];
@@ -244,7 +251,10 @@ export class DashboardLayoutComponent {
     this.router.events.subscribe((event) => {
       if (event instanceof NavigationEnd) {
         const child = this.route.firstChild;
-        this.fullscreen.set(child?.snapshot.data?.['fullscreen'] === true);
+        const data = child?.snapshot.data ?? {};
+        this.fullscreen.set(data['fullscreen'] === true);
+        const title = typeof data['title'] === 'string' ? data['title'] : 'Tableau de bord';
+        this.pageTitle.set(title);
       }
     });
   }
@@ -256,12 +266,12 @@ export class DashboardLayoutComponent {
     return [
       { label: 'Tableau de bord', route: '/dashboard', icon: LayoutDashboard },
       { label: 'Carte', route: '/map', icon: Map },
-      { label: 'Vehicules', route: '/vehicles', icon: Truck },
+      { label: 'Véhicules', route: '/vehicles', icon: Truck },
       { label: 'Alertes', route: '/alerts', icon: Bell },
-      { label: 'Geofences', route: '/geofences', icon: Shield },
+      { label: 'Géofences', route: '/geofences', icon: Shield },
       { label: 'Rapports', route: '/reports', icon: FileBarChart },
       ...(this.perms.can('users_view') ? [{ label: 'Utilisateurs', route: '/users', icon: Users }] : []),
-      { label: 'Parametres', route: '/settings', icon: Settings },
+      { label: 'Paramètres', route: '/settings', icon: Settings },
       ...(this.auth.user()?.role === 'SUPER_ADMIN' ? [{ label: 'Observabilité', route: '/admin/observability', icon: Activity }] : []),
     ];
   });

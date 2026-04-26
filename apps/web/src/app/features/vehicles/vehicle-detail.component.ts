@@ -105,7 +105,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
           <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-3 sm:p-4">
             <div class="flex items-center gap-2 mb-2">
               <lucide-icon [img]="MapPin" [size]="16" class="text-tracky-light"></lucide-icon>
-              <span class="text-xs text-fg-tertiary">Derniere position</span>
+              <span class="text-xs text-fg-tertiary">Dernière position</span>
             </div>
             <p class="text-xl font-semibold text-fg-primary">
               @if (currentPosition(); as pos) { {{ relativeTime(pos.timestamp) }} } @else { Jamais }
@@ -118,7 +118,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
               <span class="text-xs text-fg-tertiary">Tracker</span>
             </div>
             <p class="text-lg font-mono font-semibold text-fg-primary">
-              @if (v.tracker) { {{ v.tracker.imei.slice(0,4) }}...{{ v.tracker.imei.slice(-4) }} } @else { Non assigne }
+              @if (v.tracker) { {{ v.tracker.imei.slice(0,4) }}...{{ v.tracker.imei.slice(-4) }} } @else { Non assigné }
             </p>
           </div>
         </div>
@@ -173,7 +173,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
                   <tr>
                     <th class="p-3 text-left">Horodatage</th>
                     <th class="p-3 text-right">Vitesse</th>
-                    <th class="p-3 text-left">Coordonnees</th>
+                    <th class="p-3 text-left">Coordonnées</th>
                     <th class="p-3 text-center">Moteur</th>
                     <th class="p-3 text-center">Fix</th>
                   </tr>
@@ -255,7 +255,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
             <div class="flex flex-col items-center justify-center h-40 rounded-[--radius-card]
                         bg-bg-secondary border border-border-subtle text-fg-tertiary gap-2">
               <lucide-icon [img]="Power" [size]="48" class="opacity-30"></lucide-icon>
-              <p>Aucun tracker associe</p>
+              <p>Aucun tracker associé</p>
             </div>
           }
         }
@@ -265,6 +265,49 @@ import { relativeTime } from '../../shared/utils/relative-time';
             [vehicleId]="v.id"
             [hasTracker]="!!v.tracker"
           />
+        }
+
+        @if (activeTab() === 'trips') {
+          @if (vehicleTrips().length > 0) {
+            <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-x-auto">
+              <table class="w-full text-sm min-w-[640px]">
+                <thead class="border-b border-border-subtle text-fg-tertiary text-xs uppercase">
+                  <tr>
+                    <th class="p-3 text-left">Début</th>
+                    <th class="p-3 text-left">Fin</th>
+                    <th class="p-3 text-right">Durée</th>
+                    <th class="p-3 text-right">Distance</th>
+                    <th class="p-3 text-right">Vitesse max</th>
+                    <th class="p-3 text-right">Vitesse moy.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (trip of vehicleTrips(); track trip.id) {
+                    <tr class="border-b border-border-subtle/50 hover:bg-bg-tertiary/50">
+                      <td class="p-3 text-fg-primary">{{ trip.startedAt | date:'dd/MM HH:mm' }}</td>
+                      <td class="p-3 text-fg-primary">
+                        @if (trip.endedAt) {
+                          {{ trip.endedAt | date:'dd/MM HH:mm' }}
+                        } @else {
+                          <span class="text-tracky-light">En cours</span>
+                        }
+                      </td>
+                      <td class="p-3 text-right font-mono text-fg-primary">{{ formatDuration(trip.durationSeconds) }}</td>
+                      <td class="p-3 text-right font-mono text-fg-primary">{{ (trip.distanceMeters / 1000) | number:'1.1-1' }} km</td>
+                      <td class="p-3 text-right font-mono text-fg-primary">{{ trip.maxSpeed | number:'1.0-0' }} km/h</td>
+                      <td class="p-3 text-right font-mono text-fg-tertiary">{{ trip.avgSpeed | number:'1.0-0' }} km/h</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          } @else {
+            <div class="flex flex-col items-center justify-center h-40 rounded-[--radius-card]
+                        bg-bg-secondary border border-border-subtle text-fg-tertiary gap-2">
+              <lucide-icon [img]="Route" [size]="48" class="opacity-30"></lucide-icon>
+              <p>Aucun trajet enregistré</p>
+            </div>
+          }
         }
       </div>
     }
@@ -302,6 +345,7 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly Power = Power;
   protected readonly BellOff = BellOff;
   protected readonly HistoryIcon = History;
+  protected readonly Route = Route;
   protected readonly ZapIcon = Zap;
   protected readonly relativeTime = relativeTime;
 
@@ -399,7 +443,7 @@ export class VehicleDetailComponent implements OnInit {
     try {
       await firstValueFrom(this.alertsApi.acknowledge(id));
       this.alerts.update((list) => list.filter((a) => a.id !== id));
-      this.toast.success('Alerte acquittee');
+      this.toast.success('Alerte acquittée');
     } catch { /* handled */ }
   }
 
@@ -409,8 +453,8 @@ export class VehicleDetailComponent implements OnInit {
 
   protected statusLabel(status: string): string {
     const labels: Record<string, string> = {
-      PENDING: 'En attente', SENT: 'Envoyee', ACKNOWLEDGED: 'Confirmee',
-      FAILED: 'Echouee', REJECTED_SPEED: 'Refusee',
+      PENDING: 'En attente', SENT: 'Envoyée', ACKNOWLEDGED: 'Confirmée',
+      FAILED: 'Échouée', REJECTED_SPEED: 'Refusée',
     };
     return labels[status] ?? status;
   }
@@ -420,5 +464,13 @@ export class VehicleDetailComponent implements OnInit {
     if (status === 'REJECTED_SPEED') return 'bg-red-600/10 text-red-400';
     if (status === 'FAILED') return 'bg-amber-500/10 text-amber-400';
     return 'bg-bg-tertiary text-fg-tertiary';
+  }
+
+  protected formatDuration(seconds: number): string {
+    if (!seconds || seconds < 0) return '0min';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (h > 0) return `${h}h ${m.toString().padStart(2, '0')}min`;
+    return `${m}min`;
   }
 }

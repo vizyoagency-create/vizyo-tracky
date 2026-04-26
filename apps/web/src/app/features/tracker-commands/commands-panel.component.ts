@@ -21,18 +21,18 @@ const CATEGORY_LABELS: Record<string, string> = {
   power: 'Alimentation',
   reporting: 'Reporting',
   alarm: 'Alarmes',
-  geofence: 'Geofence',
+  geofence: 'Géofence',
   config_initial: 'Configuration',
-  custom: 'Personnalise',
+  custom: 'Personnalisé',
 };
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING: 'En attente',
-  SCHEDULED: 'Planifiee',
-  SENT: 'Envoyee',
-  ACKNOWLEDGED: 'Confirmee',
-  FAILED: 'Echouee',
-  CANCELLED: 'Annulee',
+  SCHEDULED: 'Planifiée',
+  SENT: 'Envoyée',
+  ACKNOWLEDGED: 'Confirmée',
+  FAILED: 'Échouée',
+  CANCELLED: 'Annulée',
 };
 
 @Component({
@@ -53,7 +53,7 @@ const STATUS_LABELS: Record<string, string> = {
           <select [(ngModel)]="selectedCategory"
                   (ngModelChange)="onCategoryChange()"
                   class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary">
-            <option value="">Categorie...</option>
+            <option value="">Catégorie...</option>
             @for (cat of categories(); track cat) {
               <option [value]="cat">{{ categoryLabel(cat) }}</option>
             }
@@ -106,7 +106,7 @@ const STATUS_LABELS: Record<string, string> = {
           <!-- Raw mode for SUPER_ADMIN -->
           @if (tpl.id === 'raw') {
             <div class="mb-3 p-3 rounded-lg border border-red-600/30 bg-red-600/5">
-              <p class="text-xs text-red-400 font-semibold mb-2">Mode avance — Aucune validation</p>
+              <p class="text-xs text-red-400 font-semibold mb-2">Mode avancé — Aucune validation</p>
               <textarea [(ngModel)]="paramValues['raw_payload']" rows="2"
                         placeholder="Ex: **,imei:XXXXX,B;  ou  reset123456"
                         class="w-full bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm font-mono text-fg-primary">
@@ -145,7 +145,7 @@ const STATUS_LABELS: Record<string, string> = {
       <div class="flex items-center justify-between">
         <h3 class="text-sm font-semibold text-fg-primary">Historique des commandes</h3>
         <button (click)="loadHistory()" class="text-xs text-fg-tertiary hover:text-tracky-light cursor-pointer flex items-center gap-1">
-          <lucide-icon [img]="RefreshCw" [size]="12"></lucide-icon> Rafraichir
+          <lucide-icon [img]="RefreshCw" [size]="12"></lucide-icon> Rafraîchir
         </button>
       </div>
 
@@ -158,7 +158,7 @@ const STATUS_LABELS: Record<string, string> = {
                 <th class="p-3 text-left">Commande</th>
                 <th class="p-3 text-left">Statut</th>
                 <th class="p-3 text-left">Utilisateur</th>
-                <th class="p-3 text-left">Reponse</th>
+                <th class="p-3 text-left">Réponse</th>
               </tr>
             </thead>
             <tbody>
@@ -187,7 +187,7 @@ const STATUS_LABELS: Record<string, string> = {
                       <div class="grid grid-cols-2 gap-2 text-xs">
                         <div><span class="text-fg-tertiary">Payload:</span> <code class="text-fg-primary">{{ cmd.payload }}</code></div>
                         <div><span class="text-fg-tertiary">Canal:</span> {{ cmd.channel }}</div>
-                        <div><span class="text-fg-tertiary">Envoye:</span> {{ cmd.sentAt ? (cmd.sentAt | date:'HH:mm:ss') : '—' }}</div>
+                        <div><span class="text-fg-tertiary">Envoyé:</span> {{ cmd.sentAt ? (cmd.sentAt | date:'HH:mm:ss') : '—' }}</div>
                         <div><span class="text-fg-tertiary">ACK:</span> {{ cmd.ackedAt ? (cmd.ackedAt | date:'HH:mm:ss') : '—' }}</div>
                         @if (cmd.lastError) {
                           <div class="col-span-2 text-red-400">Erreur: {{ cmd.lastError }}</div>
@@ -212,7 +212,7 @@ const STATUS_LABELS: Record<string, string> = {
         <div class="flex flex-col items-center justify-center h-24 rounded-[--radius-card]
                     bg-bg-secondary border border-border-subtle text-fg-tertiary gap-1">
           <lucide-icon [img]="Terminal" [size]="32" class="opacity-30"></lucide-icon>
-          <p class="text-xs">Aucune commande envoyee</p>
+          <p class="text-xs">Aucune commande envoyée</p>
         </div>
       }
     </div>
@@ -316,7 +316,7 @@ export class CommandsPanelComponent implements OnInit {
         templateId: tpl.id,
         params: this.paramValues,
       }));
-      this.toast.success('Commande envoyee', `${tpl.label} — ${result.status}`);
+      this.toast.success('Commande envoyée', `${tpl.label} — ${result.status}`);
       this.selectedTemplateId.set('');
       this.paramValues = {};
       await this.loadHistory();
@@ -331,7 +331,7 @@ export class CommandsPanelComponent implements OnInit {
   protected async cancelCommand(id: string): Promise<void> {
     try {
       await firstValueFrom(this.api.cancel(id));
-      this.toast.success('Commande annulee');
+      this.toast.success('Commande annulée');
       await this.loadHistory();
     } catch {
       this.toast.error('Erreur d\'annulation');

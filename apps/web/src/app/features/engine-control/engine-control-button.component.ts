@@ -61,7 +61,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
         <textarea
           [ngModel]="reason()"
           (ngModelChange)="reason.set($event)"
-          placeholder="Raison (ex: vehicule vole, non-paiement...)"
+          placeholder="Raison (ex: véhicule volé, non-paiement...)"
           maxlength="500"
           rows="2"
           class="w-full mt-3 px-3 py-2 text-sm rounded-lg bg-bg-tertiary border border-border-subtle
@@ -73,7 +73,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
       <app-confirm-modal
         [open]="isOpen() === 'restore'"
         title="Rallumer le moteur ?"
-        [description]="'Le vehicule <strong>' + vehiclePlate() + '</strong> sera a nouveau utilisable.'"
+        [description]="'Le véhicule <strong>' + vehiclePlate() + '</strong> sera à nouveau utilisable.'"
         confirmLabel="Oui, rallumer"
         cancelLabel="Annuler"
         [danger]="false"
@@ -114,7 +114,7 @@ export class EngineControlButtonComponent implements OnInit {
   readonly canCut = computed(() => {
     const role = this.authService.user()?.role;
     if (role !== 'FLEET_ADMIN' && role !== 'SUPER_ADMIN') {
-      return { allowed: false as const, reason: 'Role insuffisant' };
+      return { allowed: false as const, reason: 'Rôle insuffisant' };
     }
     const age = this.positionAge();
     if (age === undefined) {
@@ -128,7 +128,7 @@ export class EngineControlButtonComponent implements OnInit {
     }
     const speed = this.currentSpeedKmh();
     if (speed !== undefined && speed > 20) {
-      return { allowed: false as const, reason: `Vitesse trop elevee (${speed.toFixed(1)} km/h)` };
+      return { allowed: false as const, reason: `Vitesse trop élevée (${speed.toFixed(1)} km/h)` };
     }
     return { allowed: true as const, reason: null };
   });
@@ -140,10 +140,10 @@ export class EngineControlButtonComponent implements OnInit {
 
   protected readonly cutDescription = computed(
     () =>
-      `Vous etes sur le point d'immobiliser le vehicule <strong>${this.vehiclePlate()}</strong>.<br><br>` +
-      `Le conducteur sera impacte immediatement et le vehicule deviendra inutilisable ` +
-      `jusqu'a reactivation manuelle.<br><br>` +
-      `<span class="text-fg-tertiary text-xs">Cette action sera enregistree dans l'audit trail.</span>`,
+      `Vous êtes sur le point d'immobiliser le véhicule <strong>${this.vehiclePlate()}</strong>.<br><br>` +
+      `Le conducteur sera impacté immédiatement et le véhicule deviendra inutilisable ` +
+      `jusqu'à réactivation manuelle.<br><br>` +
+      `<span class="text-fg-tertiary text-xs">Cette action sera enregistrée dans l'audit trail.</span>`,
   );
 
   ngOnInit(): void {
@@ -161,8 +161,8 @@ export class EngineControlButtonComponent implements OnInit {
         ),
       );
       this.toast.success(
-        action === 'CUT' ? 'Moteur coupe' : 'Moteur rallume',
-        `Commande ${cmd.id.slice(0, 8)} envoyee (statut : ${cmd.status})`,
+        action === 'CUT' ? 'Moteur coupé' : 'Moteur rallumé',
+        `Commande ${cmd.id.slice(0, 8)} envoyée (statut : ${cmd.status})`,
       );
       this.isOpen.set(null);
       this.reason.set('');
@@ -170,7 +170,7 @@ export class EngineControlButtonComponent implements OnInit {
     } catch (err) {
       const message = this.extractErrorMessage(err);
       this.toast.error(
-        action === 'CUT' ? 'Coupure refusee' : 'Rallumage refuse',
+        action === 'CUT' ? 'Coupure refusée' : 'Rallumage refusé',
         message,
       );
     } finally {

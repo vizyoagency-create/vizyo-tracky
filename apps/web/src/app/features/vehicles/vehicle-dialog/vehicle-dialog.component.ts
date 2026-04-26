@@ -30,16 +30,16 @@ import { VEHICLE_TYPES } from '../../../shared/utils/vehicle-icons';
                   <lucide-icon [img]="PencilIcon" [size]="16" class="text-blue-400"></lucide-icon>
                 </div>
                 <div>
-                  <h2 class="text-lg font-display font-bold text-fg-primary">Modifier le vehicule</h2>
-                  <p class="text-[10px] text-fg-tertiary">Modifier les informations du vehicule</p>
+                  <h2 class="text-lg font-display font-bold text-fg-primary">Modifier le véhicule</h2>
+                  <p class="text-[10px] text-fg-tertiary">Modifier les informations du véhicule</p>
                 </div>
               } @else if (currentStep() === 1) {
                 <div class="w-8 h-8 rounded-lg bg-tracky/15 flex items-center justify-center">
                   <lucide-icon [img]="TruckIcon" [size]="16" class="text-tracky-light"></lucide-icon>
                 </div>
                 <div>
-                  <h2 class="text-lg font-display font-bold text-fg-primary">Nouveau vehicule</h2>
-                  <p class="text-[10px] text-fg-tertiary">Etape 1 — Informations du vehicule</p>
+                  <h2 class="text-lg font-display font-bold text-fg-primary">Nouveau véhicule</h2>
+                  <p class="text-[10px] text-fg-tertiary">Étape 1 — Informations du véhicule</p>
                 </div>
               } @else {
                 <div class="w-8 h-8 rounded-lg bg-tracky/15 flex items-center justify-center">
@@ -47,7 +47,7 @@ import { VEHICLE_TYPES } from '../../../shared/utils/vehicle-icons';
                 </div>
                 <div>
                   <h2 class="text-lg font-display font-bold text-fg-primary">Assigner un tracker</h2>
-                  <p class="text-[10px] text-fg-tertiary">Etape 2 — Tracker GPS</p>
+                  <p class="text-[10px] text-fg-tertiary">Étape 2 — Tracker GPS</p>
                 </div>
               }
             </div>
@@ -67,7 +67,7 @@ import { VEHICLE_TYPES } from '../../../shared/utils/vehicle-icons';
                     <lucide-icon [img]="CheckIcon" [size]="12"></lucide-icon>
                   } @else { 1 }
                 </span>
-                <span class="text-xs font-medium" [class]="currentStep() >= 1 ? 'text-fg-primary' : 'text-fg-tertiary'">Vehicule</span>
+                <span class="text-xs font-medium" [class]="currentStep() >= 1 ? 'text-fg-primary' : 'text-fg-tertiary'">Véhicule</span>
               </div>
               <div class="flex-1 h-px bg-border-subtle mx-3"></div>
               <div class="flex items-center gap-2">
@@ -85,7 +85,7 @@ import { VEHICLE_TYPES } from '../../../shared/utils/vehicle-icons';
             @if (isEditMode() && vehicleLoading()) {
               <div class="flex items-center justify-center gap-2 text-sm text-fg-tertiary py-8">
                 <span class="w-5 h-5 border-2 border-fg-tertiary/30 border-t-fg-tertiary rounded-full animate-spin"></span>
-                Chargement du vehicule...
+                Chargement du véhicule...
               </div>
             }
 
@@ -112,13 +112,13 @@ import { VEHICLE_TYPES } from '../../../shared/utils/vehicle-icons';
                     </div>
                   } @else if (fleets().length === 0) {
                     <div class="p-3 rounded-xl bg-amber-600/10 border border-amber-600/20 text-amber-400 text-sm">
-                      Aucune flotte disponible, creez une flotte d'abord
+                      Aucune flotte disponible, créez une flotte d'abord
                     </div>
                   } @else {
                     <div>
                       <label class="field-label">Flotte *</label>
                       <select [(ngModel)]="selectedFleetId" class="field-input">
-                        <option value="" disabled>Selectionnez une flotte</option>
+                        <option value="" disabled>Sélectionnez une flotte</option>
                         @for (f of fleets(); track f.id) {
                           <option [value]="f.id">{{ f.name }}</option>
                         }
@@ -139,7 +139,7 @@ import { VEHICLE_TYPES } from '../../../shared/utils/vehicle-icons';
               </section>
 
               <section>
-                <p class="section-title">Type de vehicule</p>
+                <p class="section-title">Type de véhicule</p>
                 <div class="type-grid">
                   @for (t of vehicleTypes; track t.key) {
                     <button (click)="vehicleType = t.key" class="type-btn" [class.active]="vehicleType === t.key">
@@ -151,7 +151,7 @@ import { VEHICLE_TYPES } from '../../../shared/utils/vehicle-icons';
               </section>
 
               <section>
-                <p class="section-title">Details (optionnel)</p>
+                <p class="section-title">Détails (optionnel)</p>
                 <div class="space-y-3">
                   <div class="grid grid-cols-2 gap-3">
                     <div>
@@ -159,13 +159,13 @@ import { VEHICLE_TYPES } from '../../../shared/utils/vehicle-icons';
                       <input type="text" [(ngModel)]="brand" placeholder="Renault" class="field-input" />
                     </div>
                     <div>
-                      <label class="field-label">Modele</label>
+                      <label class="field-label">Modèle</label>
                       <input type="text" [(ngModel)]="model" placeholder="Master" class="field-input" />
                     </div>
                   </div>
                   <div class="grid grid-cols-2 gap-3">
                     <div>
-                      <label class="field-label">Annee</label>
+                      <label class="field-label">Année</label>
                       <input type="number" [(ngModel)]="year" placeholder="2024" min="1950" class="field-input" />
                     </div>
                     <div>
@@ -181,7 +181,7 @@ import { VEHICLE_TYPES } from '../../../shared/utils/vehicle-icons';
             @if (!isEditMode() && currentStep() === 2) {
               <div class="p-3 rounded-xl bg-tracky/8 border border-tracky/20 text-sm text-tracky-light flex items-center gap-2">
                 <lucide-icon [img]="CheckIcon" [size]="14"></lucide-icon>
-                Vehicule <strong class="text-fg-primary mx-1">{{ plate }}</strong> cree avec succes
+                Véhicule <strong class="text-fg-primary mx-1">{{ plate }}</strong> créé avec succès
               </div>
 
               <section>
@@ -191,10 +191,10 @@ import { VEHICLE_TYPES } from '../../../shared/utils/vehicle-icons';
                     <label class="field-label">IMEI du tracker *</label>
                     <input type="text" [(ngModel)]="imei" placeholder="123456789012345" pattern="\\d{15}" maxlength="15"
                       class="field-input font-mono tracking-wider" />
-                    <p class="text-[10px] text-fg-tertiary mt-1">15 chiffres, visible sur l'etiquette du boitier GPS</p>
+                    <p class="text-[10px] text-fg-tertiary mt-1">15 chiffres, visible sur l'étiquette du boîtier GPS</p>
                   </div>
                   <div>
-                    <label class="field-label">Modele du tracker</label>
+                    <label class="field-label">Modèle du tracker</label>
                     <input type="text" [(ngModel)]="trackerModel" placeholder="Coban GPS403D" class="field-input" />
                   </div>
                 </div>
@@ -393,7 +393,7 @@ export class VehicleDialogComponent {
       this.color = v.color ?? '';
       this.selectedFleetId = v.fleetId;
     } catch {
-      this.errorMessage.set('Impossible de charger le vehicule');
+      this.errorMessage.set('Impossible de charger le véhicule');
     } finally {
       this.vehicleLoading.set(false);
     }

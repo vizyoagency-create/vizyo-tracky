@@ -61,7 +61,7 @@ import { relativeTime } from '../../utils/relative-time';
                   <div class="flex-1 min-w-0">
                     <p class="text-xs font-semibold text-fg-primary">{{ alert.title }}</p>
                     <p class="text-[10px] text-fg-tertiary">
-                      {{ alert.vehiclePlate ?? '' }} · {{ relativeTime(alert.createdAt) }}
+                      {{ alertPlate(alert) }} · {{ relativeTime(alert.createdAt) }}
                     </p>
                   </div>
                   <button
@@ -117,5 +117,9 @@ export class AlertsBellComponent {
         this.realtime.dismissAlert(a.id);
       }
     } catch { /* toast handled by interceptor */ }
+  }
+
+  protected alertPlate(alert: any): string {
+    return alert?.vehicle?.plate ?? alert?.vehiclePlate ?? '';
   }
 }

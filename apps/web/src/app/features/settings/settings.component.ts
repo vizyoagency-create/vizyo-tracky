@@ -14,8 +14,8 @@ import { ThemeService } from '../../core/theme/theme.service';
   template: `
     <div class="settings-page">
       <div class="settings-header">
-        <h1 class="settings-title">Parametres</h1>
-        <p class="settings-sub">Personnalisez votre experience Vizyo Tracky</p>
+        <h1 class="settings-title">Paramètres</h1>
+        <p class="settings-sub">Personnalisez votre expérience Vizyo Tracky</p>
       </div>
 
       <div class="settings-grid">
@@ -40,7 +40,7 @@ import { ThemeService } from '../../core/theme/theme.service';
               </div>
               <button (click)="logout()" class="logout-btn">
                 <lucide-icon [img]="LogOutIcon" [size]="15"></lucide-icon>
-                Se deconnecter
+                Se déconnecter
               </button>
             </div>
           </div>
@@ -151,7 +151,7 @@ import { ThemeService } from '../../core/theme/theme.service';
               <div class="map-row">
                 <div class="map-row-left">
                   <lucide-icon [img]="RouteIcon" [size]="14" class="text-fg-tertiary"></lucide-icon>
-                  <span class="map-label">Trainees</span>
+                  <span class="map-label">Traînées</span>
                 </div>
                 <div class="map-row-right">
                   @if (prefs().map.showTrails) {
@@ -172,7 +172,7 @@ import { ThemeService } from '../../core/theme/theme.service';
       <!-- RESET -->
       <button (click)="resetAll()" class="reset-btn">
         <lucide-icon [img]="ResetIcon" [size]="14"></lucide-icon>
-        Reinitialiser tous les parametres
+        Réinitialiser tous les paramètres
       </button>
     </div>
   `,
@@ -318,7 +318,7 @@ export class SettingsComponent {
 
   protected readonly notifItems = [
     { key: 'critical' as const, label: 'Critiques', desc: 'Accidents, coupures, SOS', color: 'red' },
-    { key: 'warning' as const, label: 'Warning', desc: 'Vitesse, inactivite, geofence', color: 'amber' },
+    { key: 'warning' as const, label: 'Warning', desc: 'Vitesse, inactivité, géofence', color: 'amber' },
     { key: 'info' as const, label: 'Info', desc: 'Freinage, vibrations, portes', color: 'blue' },
   ];
 

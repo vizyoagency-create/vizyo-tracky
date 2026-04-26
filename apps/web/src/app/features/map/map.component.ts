@@ -74,7 +74,7 @@ const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible a
       <div class="bg-bg-secondary/85 backdrop-blur-md border border-border-subtle
                   rounded-[--radius-card] p-4 min-w-[220px]">
         <div class="flex items-center gap-2 mb-2">
-          <h3 class="text-sm font-display font-semibold text-fg-primary">Suivi temps reel</h3>
+          <h3 class="text-sm font-display font-semibold text-fg-primary">Suivi temps réel</h3>
           @if (realtime.connected()) {
             <span class="w-2 h-2 rounded-full bg-tracky-light animate-pulse"></span>
           } @else {
@@ -82,7 +82,7 @@ const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible a
           }
         </div>
         <p class="text-xs text-fg-secondary">
-          {{ filteredPositionCount() }} vehicule(s) actif(s)
+          {{ filteredPositionCount() }} véhicule(s) actif(s)
           @if (cameraMode() !== 'free' && followedVehicleId()) {
             · <span class="text-tracky-light">Suivi : {{ followedPlate() }}</span>
           }
@@ -325,7 +325,7 @@ const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible a
            class="bg-bg-secondary/90 backdrop-blur-md border border-border-subtle
                   rounded-xl px-4 py-2 flex items-center gap-2">
         <span class="w-3 h-3 border-2 border-fg-tertiary border-t-tracky-light rounded-full animate-spin"></span>
-        <span class="text-xs text-fg-secondary">Connexion temps reel interrompue...</span>
+        <span class="text-xs text-fg-secondary">Connexion temps réel interrompue...</span>
       </div>
     }
 
