@@ -1,0 +1,65 @@
+{
+  "name": "Vizyo Tracky - Gestion de flotte GPS",
+  "short_name": "Tracky",
+  "description": "Suivi temps reel de flotte, coupure moteur securisee, alertes multi-flottes.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "id": "vizyo-tracky",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#0A0F0D",
+  "theme_color": "#059669",
+  "categories": ["business", "productivity", "navigation"],
+  "lang": "fr",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "logos/svg/vizyo-tracky-icon-green.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "logos/png/vizyo-tracky-icon-green.png",
+      "sizes": "256x256",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "apple-touch-icon-180.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "logos/png/vizyo-tracky-icon-green.png",
+      "sizes": "256x256",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Carte temps reel",
+      "short_name": "Carte",
+      "description": "Voir la carte en direct",
+      "url": "/map",
+      "icons": [{ "src": "logos/svg/vizyo-tracky-icon-green.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Alertes",
+      "short_name": "Alertes",
+      "description": "Liste des alertes recentes",
+      "url": "/alerts",
+      "icons": [{ "src": "logos/svg/vizyo-tracky-icon-green.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Vehicules",
+      "short_name": "Vehicules",
+      "description": "Liste de la flotte",
+      "url": "/vehicles",
+      "icons": [{ "src": "logos/svg/vizyo-tracky-icon-green.svg", "sizes": "any", "type": "image/svg+xml" }]
+    }
+  ]
+}

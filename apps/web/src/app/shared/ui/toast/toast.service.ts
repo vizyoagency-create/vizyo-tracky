@@ -2,12 +2,19 @@ import { Injectable, signal } from '@angular/core';
 
 export type ToastKind = 'success' | 'error' | 'warning' | 'info';
 
+export interface ToastAction {
+  label: string;
+  callback: () => void;
+}
+
 export interface Toast {
   id: string;
   kind: ToastKind;
   title: string;
   message?: string;
   duration: number;
+  /** Optional CTA shown as a button inside the toast. duration=0 recommended. */
+  action?: ToastAction;
 }
 
 @Injectable({ providedIn: 'root' })

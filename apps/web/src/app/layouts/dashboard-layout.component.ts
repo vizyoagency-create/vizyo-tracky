@@ -18,16 +18,25 @@ import {
 import { ThemeToggleComponent } from '../shared/components/theme-toggle.component';
 import { AlertsBellComponent } from '../shared/ui/alerts-bell/alerts-bell.component';
 import { AuthService } from '../core/services/auth.service';
+import { NetworkStatusService } from '../core/services/network-status.service';
 import { PermissionsService } from '../core/services/permissions.service';
 import { LogoComponent } from '../shared/ui/logo/logo.component';
+import { InstallBannerComponent } from '../shared/ui/install-banner/install-banner.component';
 import { ToastContainerComponent } from '../shared/ui/toast/toast-container.component';
 
 @Component({
   selector: 'app-dashboard-layout',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, ThemeToggleComponent, AlertsBellComponent, LogoComponent, ToastContainerComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, ThemeToggleComponent, AlertsBellComponent, LogoComponent, InstallBannerComponent, ToastContainerComponent],
   template: `
     <div class="layout">
+      @if (!network.online()) {
+        <div class="offline-banner" role="status" aria-live="polite">
+          <span class="offline-dot"></span>
+          Hors-ligne — les donnees affichees datent de votre derniere session
+        </div>
+      }
+
       <!-- DESKTOP SIDEBAR -->
       <aside class="desktop-sidebar" [class.collapsed]="collapsed()">
         <div class="sidebar-top">
@@ -92,12 +101,12 @@ import { ToastContainerComponent } from '../shared/ui/toast/toast-container.comp
       <nav class="bottom-bar">
         @for (item of bottomItems; track item.label) {
           @if (item.route === 'more') {
-            <button (click)="mobileMenuOpen.set(true)" class="bottom-item">
+            <button (click)="mobileMenuOpen.set(true)" class="bottom-item press-feedback">
               <lucide-icon [img]="item.icon" [size]="20"></lucide-icon>
               <span>{{ item.label }}</span>
             </button>
           } @else {
-            <a [routerLink]="item.route" routerLinkActive="active" class="bottom-item">
+            <a [routerLink]="item.route" routerLinkActive="active" class="bottom-item press-feedback">
               <lucide-icon [img]="item.icon" [size]="20"></lucide-icon>
               <span>{{ item.label }}</span>
             </a>
@@ -105,11 +114,41 @@ import { ToastContainerComponent } from '../shared/ui/toast/toast-container.comp
         }
       </nav>
 
+      <app-install-banner />
       <app-toast-container />
     </div>
   `,
   styles: [`
-    .layout { height: 100vh; display: flex; background: var(--bg-primary); overflow: hidden }
+    .layout {
+      /* 100vh = fallback navigateurs anciens, 100dvh = dynamic viewport (corrige iOS Safari) */
+      height: 100vh;
+      height: 100dvh;
+      display: flex;
+      background: var(--bg-primary);
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* ─── OFFLINE BANNER ─── */
+    .offline-banner {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      z-index: 9500;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      height: 28px;
+      background: #f59e0b;
+      color: #1f1300;
+      font-size: 12px; font-weight: 600;
+      padding-top: env(safe-area-inset-top);
+      box-sizing: content-box;
+      animation: offline-slide 200ms ease-out;
+    }
+    .offline-dot {
+      width: 6px; height: 6px; border-radius: 9999px; background: currentColor;
+      animation: offline-pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes offline-slide { from { transform: translateY(-100%) } to { transform: translateY(0) } }
+    @keyframes offline-pulse { 0%, 100% { opacity: 1 } 50% { opacity: 0.45 } }
 
     /* ─── DESKTOP SIDEBAR ─── */
     .desktop-sidebar {
@@ -142,8 +181,13 @@ import { ToastContainerComponent } from '../shared/ui/toast/toast-container.comp
 
     /* ─── TOP BAR ─── */
     .top-bar {
-      display: flex; align-items: center; justify-content: space-between; padding: 0 24px; height: 56px;
+      display: flex; align-items: center; justify-content: space-between; height: 56px;
       border-bottom: 1px solid var(--border-subtle); background: var(--bg-secondary); shrink: 0;
+      /* Safe-area : top pour notch/Dynamic Island en standalone, lateral pour iPhone Pro paysage */
+      padding-top: env(safe-area-inset-top);
+      padding-left: max(24px, env(safe-area-inset-left));
+      padding-right: max(24px, env(safe-area-inset-right));
+      box-sizing: content-box;
     }
     .mobile-burger { display: none }
     .top-title { font-size: 16px; font-weight: 700; color: var(--fg-primary) }
@@ -177,6 +221,10 @@ import { ToastContainerComponent } from '../shared/ui/toast/toast-container.comp
         display: flex; flex-direction: column; position: fixed; top: 0; left: 0; bottom: 0; width: 280px; z-index: 8001;
         background: var(--bg-secondary); border-right: 1px solid var(--border-subtle); box-shadow: 8px 0 32px rgba(0,0,0,.3);
         animation: slideRight .25s ease-out;
+        /* Drawer : tient compte du notch en standalone */
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+        padding-left: env(safe-area-inset-left);
       }
       .drawer-top {
         display: flex; align-items: center; gap: 8px; padding: 0 16px; height: 56px;
@@ -213,6 +261,8 @@ import { ToastContainerComponent } from '../shared/ui/toast/toast-container.comp
         position: fixed; bottom: 0; left: 0; right: 0; z-index: 7000;
         height: 60px; background: var(--bg-secondary); border-top: 1px solid var(--border-subtle);
         padding-bottom: env(safe-area-inset-bottom);
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
       }
       .bottom-item {
         display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; min-width: 56px;
@@ -261,6 +311,7 @@ export class DashboardLayoutComponent {
 
   private readonly auth = inject(AuthService);
   private readonly perms = inject(PermissionsService);
+  protected readonly network = inject(NetworkStatusService);
 
   protected readonly navItems = computed(() => {
     return [

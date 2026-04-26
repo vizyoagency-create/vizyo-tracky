@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, Plus, Trash2, Users, Shield, Pencil } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
@@ -14,6 +14,7 @@ import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerR
 @Component({
   selector: 'app-users-list',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [FormsModule, LucideAngularModule, ConfirmModalComponent, UserDrawerComponent, VehicleAccessDrawerComponent],
   template: `
     <div class="upage">

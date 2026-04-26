@@ -7,6 +7,13 @@ import { io, Socket } from 'socket.io-client';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { PreferencesService } from './preferences.service';
 
+/**
+ * Apres BACKGROUND_SLEEP_MS en arriere-plan, on coupe le WS pour eviter
+ * que socket.io tente de reconnecter en boucle pendant que l'onglet est
+ * suspendu (iOS Safari coupe deja les WS en background apres ~30s).
+ */
+const BACKGROUND_SLEEP_MS = 30_000;
+
 @Injectable({ providedIn: 'root' })
 export class RealtimeService {
   readonly positions = signal<Map<string, PositionUpdateEvent>>(new Map());
@@ -39,16 +46,36 @@ export class RealtimeService {
   readonly engineCommandUpdates = this._engineCommandUpdates.asReadonly();
 
   private socket: Socket | null = null;
+  private currentToken: string | null = null;
   private readonly toast = inject(ToastService);
   private readonly preferences = inject(PreferencesService);
   private readonly http = inject(HttpClient);
 
+  // Coalescing : on accumule les position updates et on flush via requestAnimationFrame.
+  // 100 vehicules x 1 trame/s = 1 setSignal/frame au lieu de 100, sans perte d'info.
+  private readonly positionBuffer = new Map<string, PositionUpdateEvent>();
+  private flushScheduled = false;
+
+  // Listeners visibility / online (gardes en propriete pour pouvoir les retirer)
+  private readonly visibilityHandler = () => {
+    if (typeof document === 'undefined') return;
+    if (document.hidden) this.onBackground();
+    else this.onForeground();
+  };
+  private readonly onlineHandler = () => this.onForeground();
+  private readonly offlineHandler = () => { /* on laisse le WS tomber tout seul, la banniere reseau fait le reste */ };
+  private backgroundTimer: ReturnType<typeof setTimeout> | null = null;
+  private listenersAttached = false;
+
   connect(token: string): void {
     if (this.socket?.connected) return;
+    this.currentToken = token;
 
     // Hydratation immediate en parallele de la connexion WS — la carte ne reste plus
     // vide en attendant la prochaine trame Coban.
     this.hydrate().catch(() => { /* silent: live WS will populate eventually */ });
+
+    this.attachLifecycleListeners();
 
     this.socket = io('/realtime', {
       auth: { token },
@@ -66,17 +93,9 @@ export class RealtimeService {
     });
 
     this.socket.on(WS_EVENTS.POSITION_UPDATE, (event: PositionUpdateEvent) => {
-      const next = new Map(this.positions());
-      next.set(event.trackerId, event);
-      this.positions.set(next);
-
-      // Une fois qu'un vrai live event arrive, on retire le flag d'hydratation.
-      const hydratedIds = this.hydratedTrackerIds();
-      if (hydratedIds.has(event.trackerId)) {
-        const newSet = new Set(hydratedIds);
-        newSet.delete(event.trackerId);
-        this.hydratedTrackerIds.set(newSet);
-      }
+      // Coalescing : buffer + flush au prochain frame paint.
+      // Evite N appels signal.set quand N trames arrivent dans la meme frame (commun avec 100+ vehicules).
+      this.bufferPosition(event);
     });
 
     this.socket.on(WS_EVENTS.ALERT_NEW, (alert: AlertEvent) => {
@@ -117,8 +136,10 @@ export class RealtimeService {
   }
 
   disconnect(): void {
+    this.detachLifecycleListeners();
     this.socket?.disconnect();
     this.socket = null;
+    this.currentToken = null;
     this.connected.set(false);
     this.hydrated.set(false);
     this.positions.set(new Map());
@@ -127,6 +148,115 @@ export class RealtimeService {
     this._alerts.set([]);
     this._trackerStatuses.set(new Map());
     this._engineCommandUpdates.set(new Map());
+    this.positionBuffer.clear();
+    this.flushScheduled = false;
+    if (this.backgroundTimer) {
+      clearTimeout(this.backgroundTimer);
+      this.backgroundTimer = null;
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Coalescing positions via requestAnimationFrame
+  // ---------------------------------------------------------------------
+
+  private bufferPosition(event: PositionUpdateEvent): void {
+    this.positionBuffer.set(event.trackerId, event);
+    if (this.flushScheduled) return;
+    this.flushScheduled = true;
+
+    // requestAnimationFrame : flush a la prochaine frame de rendu (~16ms).
+    // En arriere-plan le browser throttle rAF a ~1Hz, ce qui amortit naturellement
+    // les setSignal pendant que l'utilisateur n'est pas sur l'onglet.
+    const raf = typeof requestAnimationFrame !== 'undefined'
+      ? requestAnimationFrame
+      : (cb: FrameRequestCallback) => setTimeout(() => cb(performance.now()), 16);
+    raf(() => this.flushPositions());
+  }
+
+  private flushPositions(): void {
+    this.flushScheduled = false;
+    if (this.positionBuffer.size === 0) return;
+
+    const next = new Map(this.positions());
+    const hydratedIds = this.hydratedTrackerIds();
+    let hydratedDirty = false;
+    let newHydrated: Set<string> | null = null;
+
+    for (const [trackerId, event] of this.positionBuffer) {
+      next.set(trackerId, event);
+      // Un live event efface le flag "hydrate via REST" -> le marker passe a opacite 1.
+      if (hydratedIds.has(trackerId)) {
+        if (!newHydrated) newHydrated = new Set(hydratedIds);
+        newHydrated.delete(trackerId);
+        hydratedDirty = true;
+      }
+    }
+
+    this.positionBuffer.clear();
+    this.positions.set(next);
+    if (hydratedDirty && newHydrated) this.hydratedTrackerIds.set(newHydrated);
+  }
+
+  // ---------------------------------------------------------------------
+  // Lifecycle : visibility + online/offline
+  // ---------------------------------------------------------------------
+
+  private attachLifecycleListeners(): void {
+    if (this.listenersAttached || typeof document === 'undefined') return;
+    document.addEventListener('visibilitychange', this.visibilityHandler);
+    window.addEventListener('online', this.onlineHandler);
+    window.addEventListener('offline', this.offlineHandler);
+    this.listenersAttached = true;
+  }
+
+  private detachLifecycleListeners(): void {
+    if (!this.listenersAttached || typeof document === 'undefined') return;
+    document.removeEventListener('visibilitychange', this.visibilityHandler);
+    window.removeEventListener('online', this.onlineHandler);
+    window.removeEventListener('offline', this.offlineHandler);
+    this.listenersAttached = false;
+  }
+
+  /**
+   * App passe en arriere-plan : on attend BACKGROUND_SLEEP_MS puis on coupe le WS.
+   * On marque aussi le body avec `app-paused` pour que les animations CSS
+   * (pulse markers, spinners) se mettent en pause.
+   */
+  private onBackground(): void {
+    if (typeof document !== 'undefined') document.body.classList.add('app-paused');
+    if (this.backgroundTimer) clearTimeout(this.backgroundTimer);
+    this.backgroundTimer = setTimeout(() => {
+      // Apres 30s sans focus : on ferme le WS proprement.
+      // Au retour de focus, onForeground() rouvre + re-hydrate via REST.
+      this.socket?.disconnect();
+    }, BACKGROUND_SLEEP_MS);
+  }
+
+  /**
+   * App revient au premier plan ou reseau revient :
+   * - reactive le WS si necessaire (avec le token courant),
+   * - re-hydrate via REST pour rafraichir les snapshots.
+   */
+  private onForeground(): void {
+    if (typeof document !== 'undefined') document.body.classList.remove('app-paused');
+    if (this.backgroundTimer) {
+      clearTimeout(this.backgroundTimer);
+      this.backgroundTimer = null;
+    }
+
+    // Re-hydrate (best-effort) : ramene un snapshot frais meme si le WS rate son reconnect.
+    this.hydrate().catch(() => { /* silent */ });
+
+    if (this.currentToken && (!this.socket?.connected)) {
+      // Si le socket existe encore mais est deconnecte -> connect()
+      // Sinon (timeout l'a kill) -> recreate avec le token courant
+      if (this.socket) {
+        this.socket.connect();
+      } else {
+        this.connect(this.currentToken);
+      }
+    }
   }
 
   /**
