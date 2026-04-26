@@ -4,19 +4,42 @@ import {
   computed,
   effect,
   ElementRef,
+  HostListener,
   inject,
   OnDestroy,
   signal,
   viewChild,
 } from '@angular/core';
-import * as L from 'leaflet';
+import { Router } from '@angular/router';
+import * as maplibregl from 'maplibre-gl';
+import type { Map as MlMap, Marker as MlMarker, Popup } from 'maplibre-gl';
 import type { GeofenceDto, PositionUpdateEvent } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { GeofencesApiService } from '../../core/services/geofences.service';
 import { RealtimeService } from '../../core/services/realtime.service';
-import { PreferencesService } from '../../core/services/preferences.service';
+import { PreferencesService, type CameraMode } from '../../core/services/preferences.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
-import { createTrackyIcon, speedColor } from '../../shared/utils/leaflet-markers';
+import { EngineControlService } from '../../core/services/engine-control.service';
+import { ToastService } from '../../shared/ui/toast/toast.service';
+import { MapService } from '../../core/services/map.service';
+import { MapStyleService, type MapStyleId } from '../../core/services/map-style.service';
+import {
+  attachVehicleMarker,
+  buildVehicleMarkerEl,
+  speedColor,
+  updateVehicleMarkerEl,
+  type VehicleMarkerData,
+} from '../../shared/utils/maplibre-markers';
+
+interface MarkerEntry {
+  marker: MlMarker;
+  el: HTMLElement;
+}
+
+interface VehicleMeta {
+  type: string;
+  plate: string;
+}
 
 @Component({
   selector: 'app-map',
@@ -24,9 +47,10 @@ import { createTrackyIcon, speedColor } from '../../shared/utils/leaflet-markers
   template: `
     <div #mapContainer style="position:absolute;top:0;left:0;width:100%;height:100%"></div>
 
+    <!-- HUD top-left : statut realtime -->
     <div style="position:absolute;top:16px;left:16px;z-index:1000">
-      <div class="bg-bg-secondary/80 backdrop-blur-md border border-border-subtle
-                  rounded-[--radius-card] p-4 min-w-[200px]">
+      <div class="bg-bg-secondary/85 backdrop-blur-md border border-border-subtle
+                  rounded-[--radius-card] p-4 min-w-[220px]">
         <div class="flex items-center gap-2 mb-2">
           <h3 class="text-sm font-display font-semibold text-fg-primary">Suivi temps reel</h3>
           @if (realtime.connected()) {
@@ -37,19 +61,140 @@ import { createTrackyIcon, speedColor } from '../../shared/utils/leaflet-markers
         </div>
         <p class="text-xs text-fg-secondary">
           {{ filteredPositionCount() }} vehicule(s) actif(s)
+          @if (cameraMode() !== 'free' && followedVehicleId()) {
+            · <span class="text-tracky-light">Suivi : {{ followedPlate() }}</span>
+          }
         </p>
-        <button
-          (click)="centerAll()"
-          class="mt-3 w-full text-xs font-medium py-1.5 rounded-lg
-                 bg-tracky/20 text-tracky-light border border-tracky/30
-                 hover:bg-tracky/30 transition-colors cursor-pointer">
-          Centrer
-        </button>
+        <div class="flex gap-1.5 mt-3">
+          <button
+            (click)="centerAll()"
+            class="flex-1 text-xs font-medium py-1.5 rounded-lg
+                   bg-tracky/20 text-tracky-light border border-tracky/30
+                   hover:bg-tracky/30 transition-colors cursor-pointer">
+            Vue d'ensemble
+          </button>
+          <button
+            (click)="toggleFullscreen()"
+            class="px-2 py-1.5 text-xs rounded-lg bg-bg-tertiary/60 border border-border-subtle
+                   text-fg-secondary hover:text-fg-primary cursor-pointer"
+            title="Plein ecran (F)">
+            ⛶
+          </button>
+        </div>
+      </div>
+
+      <!-- Search bar (Nominatim) -->
+      <div class="mt-2 bg-bg-secondary/85 backdrop-blur-md border border-border-subtle
+                  rounded-[--radius-card] p-2 min-w-[220px]">
+        <input
+          type="search"
+          placeholder="Rechercher une adresse..."
+          [value]="searchQuery()"
+          (keydown.enter)="searchAddress($event)"
+          (input)="onSearchInput($event)"
+          class="w-full bg-transparent text-xs text-fg-primary placeholder:text-fg-tertiary
+                 px-2 py-1.5 outline-none" />
       </div>
     </div>
 
+    <!-- Style picker top-right -->
+    <div style="position:absolute;top:16px;right:16px;z-index:1000">
+      <div class="bg-bg-secondary/85 backdrop-blur-md border border-border-subtle
+                  rounded-[--radius-card] p-2 flex gap-1">
+        @for (s of styles.catalog; track s.id) {
+          <button
+            (click)="setStyle(s.id)"
+            [class]="'px-2 py-1 text-[10px] rounded cursor-pointer transition-colors ' +
+                     (currentStyle() === s.id
+                       ? 'bg-tracky/20 text-tracky-light border border-tracky/30'
+                       : 'text-fg-tertiary hover:text-fg-primary')"
+            [title]="s.label">
+            {{ s.label }}
+          </button>
+        }
+      </div>
+
+      <!-- Camera mode pills -->
+      <div class="mt-2 bg-bg-secondary/85 backdrop-blur-md border border-border-subtle
+                  rounded-[--radius-card] p-2 flex gap-1">
+        @for (m of cameraModes; track m.id) {
+          <button
+            (click)="setCameraMode(m.id)"
+            [class]="'px-2 py-1 text-[10px] rounded cursor-pointer transition-colors ' +
+                     (cameraMode() === m.id
+                       ? 'bg-tracky/20 text-tracky-light border border-tracky/30'
+                       : 'text-fg-tertiary hover:text-fg-primary')"
+            [title]="m.tooltip">
+            {{ m.label }}
+          </button>
+        }
+      </div>
+    </div>
+
+    <!-- Calques (filtres statut) - bottom-left -->
+    <div style="position:absolute;bottom:90px;left:16px;z-index:1000">
+      <div class="bg-bg-secondary/85 backdrop-blur-md border border-border-subtle
+                  rounded-[--radius-card] p-3 min-w-[180px]">
+        <p class="text-[10px] font-semibold text-fg-secondary mb-2 uppercase tracking-wider">Calques</p>
+        <div class="flex flex-col gap-1.5">
+          <label class="flex items-center gap-2 text-[11px] text-fg-secondary cursor-pointer">
+            <input type="checkbox" [checked]="filters().moving" (change)="toggleFilter('moving')" />
+            <span class="w-2 h-2 rounded-full" style="background:#10E0A0"></span>
+            <span>En mouvement</span>
+          </label>
+          <label class="flex items-center gap-2 text-[11px] text-fg-secondary cursor-pointer">
+            <input type="checkbox" [checked]="filters().idle" (change)="toggleFilter('idle')" />
+            <span class="w-2 h-2 rounded-full" style="background:#5C746C"></span>
+            <span>Arret moteur ON</span>
+          </label>
+          <label class="flex items-center gap-2 text-[11px] text-fg-secondary cursor-pointer">
+            <input type="checkbox" [checked]="filters().off" (change)="toggleFilter('off')" />
+            <span class="w-2 h-2 rounded-full" style="background:#6b7280"></span>
+            <span>Eteint</span>
+          </label>
+          <label class="flex items-center gap-2 text-[11px] text-fg-secondary cursor-pointer">
+            <input type="checkbox" [checked]="filters().offline" (change)="toggleFilter('offline')" />
+            <span class="w-2 h-2 rounded-full" style="background:#9ca3af"></span>
+            <span>Hors-ligne (>10min)</span>
+          </label>
+          <hr class="my-1 border-border-subtle" />
+          <label class="flex items-center gap-2 text-[11px] text-fg-secondary cursor-pointer">
+            <input type="checkbox" [checked]="showGeofences()" (change)="toggleGeofences()" />
+            <span>Geofences</span>
+          </label>
+          <label class="flex items-center gap-2 text-[11px] text-fg-secondary cursor-pointer">
+            <input type="checkbox" [checked]="showTrails()" (change)="toggleTrails()" />
+            <span>Traces</span>
+          </label>
+          <label class="flex items-center gap-2 text-[11px] text-fg-secondary cursor-pointer">
+            <input type="checkbox" [checked]="showPlates()" (change)="togglePlates()" />
+            <span>Plaques</span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Compass reset -->
+    @if (bearingNonZero() || pitchNonZero()) {
+      <button
+        (click)="resetNorth()"
+        title="Recentrer Nord (C)"
+        style="position:absolute;bottom:200px;right:16px;z-index:1000;
+               width:42px;height:42px;border-radius:9999px;
+               background:var(--surface-secondary, rgba(20,24,32,0.85));
+               backdrop-filter:blur(8px);
+               border:1px solid var(--border-color, rgba(255,255,255,0.1));
+               display:flex;align-items:center;justify-content:center;cursor:pointer;
+               box-shadow:0 4px 16px rgba(0,0,0,0.3)">
+        <span [style.transform]="'rotate(' + (-mapBearing()) + 'deg)'"
+              style="display:inline-block;font-size:18px;color:#EF4444;font-weight:700;
+                     transition:transform 200ms ease">N</span>
+      </button>
+    }
+
+    <!-- Legende vitesse (toujours visible) -->
     <div style="position:absolute;bottom:24px;right:16px;z-index:1000">
-      <div class="bg-bg-secondary/80 backdrop-blur-md border border-border-subtle
+      <div class="bg-bg-secondary/85 backdrop-blur-md border border-border-subtle
                   rounded-[--radius-card] p-3">
         <p class="text-[10px] font-semibold text-fg-secondary mb-1.5 uppercase tracking-wider">Vitesse</p>
         <div class="flex flex-col gap-1">
@@ -81,6 +226,28 @@ import { createTrackyIcon, speedColor } from '../../shared/utils/leaflet-markers
         <span class="text-xs text-fg-secondary">Connexion temps reel interrompue...</span>
       </div>
     }
+
+    <!-- Menu contextuel (right-click) -->
+    @if (contextMenu()) {
+      <div [style.left.px]="contextMenu()!.x" [style.top.px]="contextMenu()!.y"
+           style="position:absolute;z-index:2000;min-width:200px"
+           class="bg-bg-secondary border border-border-subtle rounded-[--radius-card]
+                  shadow-2xl overflow-hidden"
+           (click)="$event.stopPropagation()">
+        <button (click)="copyCoords(); closeContextMenu()"
+                class="w-full text-left px-4 py-2 text-xs text-fg-primary hover:bg-bg-tertiary cursor-pointer">
+          Copier les coordonnees
+        </button>
+        <button (click)="centerHere(); closeContextMenu()"
+                class="w-full text-left px-4 py-2 text-xs text-fg-primary hover:bg-bg-tertiary cursor-pointer">
+          Centrer ici
+        </button>
+        <button (click)="resetNorth(); closeContextMenu()"
+                class="w-full text-left px-4 py-2 text-xs text-fg-primary hover:bg-bg-tertiary cursor-pointer">
+          Recentrer Nord
+        </button>
+      </div>
+    }
   `,
   styles: [`
     :host {
@@ -90,28 +257,57 @@ import { createTrackyIcon, speedColor } from '../../shared/utils/leaflet-markers
       height: 100%;
       min-height: 0;
     }
-    @keyframes tracky-ping {
-      75%, 100% { transform: scale(2); opacity: 0; }
-    }
   `],
 })
 export class MapComponent implements AfterViewInit, OnDestroy {
   protected readonly realtime = inject(RealtimeService);
+  protected readonly styles = inject(MapStyleService);
   private readonly geofencesApi = inject(GeofencesApiService);
   private readonly vehiclesApi = inject(VehiclesApiService);
   private readonly preferences = inject(PreferencesService);
+  private readonly mapSvc = inject(MapService);
+  private readonly engineControl = inject(EngineControlService);
+  private readonly toast = inject(ToastService);
+  private readonly router = inject(Router);
+
   private readonly mapContainerRef = viewChild.required<ElementRef<HTMLDivElement>>('mapContainer');
 
-  private map: L.Map | null = null;
+  private map: MlMap | null = null;
   private resizeObserver: ResizeObserver | null = null;
-  private markers = new Map<string, L.Marker>();
-  private trails = new Map<string, L.Polyline>();
-  private trailPoints = new Map<string, L.LatLng[]>();
-  private geofenceCircles = new Map<string, L.Circle>();
+  private markers = new Map<string, MarkerEntry>();
+  private vehicleMeta = new Map<string, VehicleMeta>();
+  private trailPoints = new Map<string, Array<[number, number]>>();
   private hasFittedBounds = false;
-  private vehicleTypeMap = new Map<string, string>();
+  private currentPopup: Popup | null = null;
+  private activePopupTrackerId: string | null = null;
+
+  protected readonly currentStyle = signal<MapStyleId>('osm');
+  protected readonly cameraMode = signal<CameraMode>('free');
+  protected readonly followedVehicleId = signal<string | null>(null);
+  protected readonly mapBearing = signal(0);
+  protected readonly mapPitch = signal(0);
+  protected readonly bearingNonZero = computed(() => Math.abs(this.mapBearing()) > 0.5);
+  protected readonly pitchNonZero = computed(() => Math.abs(this.mapPitch()) > 0.5);
+  protected readonly searchQuery = signal('');
+
+  protected readonly showGeofences = signal(true);
+  protected readonly showTrails = signal(true);
+  protected readonly showPlates = signal(true);
+
+  protected readonly filters = signal<{ moving: boolean; idle: boolean; off: boolean; offline: boolean }>({
+    moving: true, idle: true, off: true, offline: true,
+  });
+
+  protected readonly contextMenu = signal<{ x: number; y: number; lat: number; lng: number } | null>(null);
+
   private readonly _accessibleIds = signal<Set<string> | 'ALL'>('ALL');
-  private get accessibleVehicleIds(): Set<string> | 'ALL' { return this._accessibleIds(); }
+
+  protected readonly cameraModes: Array<{ id: CameraMode; label: string; tooltip: string }> = [
+    { id: 'free',        label: 'Libre',     tooltip: 'Navigation libre (drag, zoom, rotation)' },
+    { id: 'follow',      label: 'Suivre',    tooltip: 'Suivre le vehicule selectionne' },
+    { id: 'heading-up',  label: 'Sens',      tooltip: 'Suivre + carte alignee dans le sens de marche' },
+    { id: 'chase',       label: '3D',        tooltip: 'Suivi 3D type cockpit GPS' },
+  ];
 
   protected readonly filteredPositionCount = computed(() => {
     const ids = this._accessibleIds();
@@ -120,61 +316,109 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       : this.realtime.positionsList().filter((p) => (ids as Set<string>).has(p.vehicleId)).length;
   });
 
+  protected readonly followedPlate = computed(() => {
+    const vid = this.followedVehicleId();
+    if (!vid) return '';
+    const snap = this.realtime.snapshot().find((s) => s.vehicleId === vid);
+    return snap?.plate ?? '';
+  });
+
+  // Re-render markers chaque fois que les positions changent.
   private positionsEffect = effect(() => {
     const all = this.realtime.positionsList();
-    const positions = this.accessibleVehicleIds === 'ALL'
+    const ids = this._accessibleIds();
+    const filtered = ids === 'ALL'
       ? all
-      : all.filter((p) => (this.accessibleVehicleIds as Set<string>).has(p.vehicleId));
-    if (!this.map || positions.length === 0) return;
-    this.updateMarkers(positions);
+      : all.filter((p) => (ids as Set<string>).has(p.vehicleId));
+    if (!this.map) return;
+    this.applyPositions(this.applyFilters(filtered));
   });
 
   ngAfterViewInit(): void {
+    // Charger prefs map
+    const prefs = this.preferences.prefs().map;
+    this.currentStyle.set(prefs.style);
+    this.cameraMode.set(prefs.cameraMode);
+    this.showTrails.set(prefs.showTrails);
+    this.showPlates.set(prefs.showPlates);
+
     setTimeout(() => this.initMap(), 0);
+
+    // Hydratation : si snapshot deja la, pre-construire la metadata vehicule.
+    const snap = this.realtime.snapshot();
+    for (const v of snap) {
+      this.vehicleMeta.set(v.vehicleId, { type: v.type, plate: v.plate });
+    }
+
+    // Recupere aussi depuis /api/vehicles pour les types manquants (ex : si snapshot vide).
     firstValueFrom(this.vehiclesApi.list()).then((vehicles) => {
       this._accessibleIds.set(new Set(vehicles.map((v) => v.id)));
-      vehicles.forEach((v) => this.vehicleTypeMap.set(v.id, (v as VehicleDetailDto & { type?: string }).type ?? 'OTHER'));
+      vehicles.forEach((v) => {
+        const cast = v as VehicleDetailDto & { type?: string };
+        this.vehicleMeta.set(v.id, { type: cast.type ?? 'OTHER', plate: v.plate });
+      });
+      // Re-render apres MAJ meta
+      if (this.map) this.applyPositions(this.applyFilters(this.realtime.positionsList()));
     }).catch(() => { /* fallback to ALL */ });
   }
 
   private initMap(): void {
     const container = this.mapContainerRef().nativeElement;
+    const prefs = this.preferences.prefs().map;
 
-    const mapPrefs = this.preferences.prefs().map;
-    this.map = L.map(container, {
-      center: [mapPrefs.centerLat, mapPrefs.centerLng],
-      zoom: mapPrefs.zoom,
-      zoomControl: false,
+    this.map = this.mapSvc.createMap(container, {
+      center: { lat: prefs.centerLat, lng: prefs.centerLng },
+      zoom: prefs.zoom,
+      style: prefs.style,
     });
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      maxZoom: 19,
-    }).addTo(this.map);
+    this.map.on('rotate', () => this.mapBearing.set(this.map!.getBearing()));
+    this.map.on('pitch', () => this.mapPitch.set(this.map!.getPitch()));
 
-    L.control.zoom({ position: 'bottomright' }).addTo(this.map);
-
-    this.resizeObserver = new ResizeObserver(() => {
-      this.map?.invalidateSize();
+    // Quand l'utilisateur drag manuellement en mode follow, sortir du mode.
+    this.map.on('dragstart', () => {
+      if (this.cameraMode() !== 'free') {
+        this.setCameraMode('free');
+      }
     });
+
+    // Right-click context menu.
+    this.map.on('contextmenu', (e) => {
+      const rect = container.getBoundingClientRect();
+      this.contextMenu.set({
+        x: e.point.x,
+        y: e.point.y,
+        lat: e.lngLat.lat,
+        lng: e.lngLat.lng,
+      });
+      // Eviter que rect/scroll polluent — pas critique pour V1.
+      void rect;
+    });
+
+    this.map.on('click', () => this.closeContextMenu());
+
+    // Setup sources/layers de base apres `load`.
+    this.map.on('load', () => {
+      this.setupGeofencesLayer();
+      this.setupTrailsLayer();
+      this.loadGeofences();
+      this.applyPositions(this.applyFilters(this.realtime.positionsList()));
+    });
+
+    this.resizeObserver = new ResizeObserver(() => this.map?.resize());
     this.resizeObserver.observe(container);
-
-    this.loadGeofences();
-
-    this.map.invalidateSize();
   }
 
   ngOnDestroy(): void {
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
 
-    this.markers.forEach((m) => m.remove());
-    this.trails.forEach((t) => t.remove());
-    this.geofenceCircles.forEach((c) => c.remove());
+    this.markers.forEach((m) => m.marker.remove());
     this.markers.clear();
-    this.trails.clear();
     this.trailPoints.clear();
-    this.geofenceCircles.clear();
+
+    this.currentPopup?.remove();
+    this.currentPopup = null;
 
     if (this.map) {
       this.map.remove();
@@ -182,113 +426,541 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     }
   }
 
-  centerAll(): void {
+  /* --- Camera & view --- */
+
+  protected centerAll(): void {
     if (!this.map || this.markers.size === 0) return;
-    const bounds = L.latLngBounds(
-      Array.from(this.markers.values()).map((m) => m.getLatLng()),
-    );
-    this.map.fitBounds(bounds, { padding: [50, 50] });
+    const points = Array.from(this.markers.values()).map((m) => {
+      const ll = m.marker.getLngLat();
+      return { lat: ll.lat, lng: ll.lng };
+    });
+    this.mapSvc.fitBounds(this.map, points, { padding: 70, maxZoom: 15 });
   }
 
-  private updateMarkers(positions: PositionUpdateEvent[]): void {
-    const activeIds = new Set<string>();
+  protected setStyle(id: MapStyleId): void {
+    if (!this.map) return;
+    this.currentStyle.set(id);
+    this.preferences.update({ map: { ...this.preferences.prefs().map, style: id } });
+    this.mapSvc.setStyle(this.map, id);
+    // Apres setStyle, les sources custom (geofences/trails) sont perdues — on les recree.
+    this.map.once('styledata', () => {
+      this.setupGeofencesLayer();
+      this.setupTrailsLayer();
+      this.loadGeofences();
+      this.applyPositions(this.applyFilters(this.realtime.positionsList()));
+    });
+  }
 
-    for (const pos of positions) {
-      activeIds.add(pos.trackerId);
-      const latLng = L.latLng(pos.lat, pos.lng);
+  protected setCameraMode(mode: CameraMode): void {
+    this.cameraMode.set(mode);
+    this.preferences.update({ map: { ...this.preferences.prefs().map, cameraMode: mode } });
 
-      const existing = this.markers.get(pos.trackerId);
-      if (existing) {
-        existing.setLatLng(latLng);
-        existing.setIcon(createTrackyIcon(pos.speedKmh, pos.heading, this.vehicleTypeMap.get(pos.vehicleId) ?? 'OTHER'));
-        existing.setPopupContent(this.popupContent(pos));
-      } else {
-        const marker = L.marker(latLng, { icon: createTrackyIcon(pos.speedKmh, pos.heading, this.vehicleTypeMap.get(pos.vehicleId) ?? 'OTHER') })
-          .addTo(this.map!)
-          .bindPopup(this.popupContent(pos));
-        this.markers.set(pos.trackerId, marker);
-      }
-
-      let points = this.trailPoints.get(pos.trackerId);
-      if (!points) {
-        points = [];
-        this.trailPoints.set(pos.trackerId, points);
-      }
-      const mapPrefsNow = this.preferences.prefs().map;
-      if (mapPrefsNow.showTrails) {
-        points.push(latLng);
-        if (points.length > mapPrefsNow.trailLength) points.shift();
-      } else {
-        points.length = 0;
-      }
-
-      const color = speedColor(pos.speedKmh);
-      const trail = this.trails.get(pos.trackerId);
-      if (trail) {
-        trail.setLatLngs(points);
-        trail.setStyle({ color });
-      } else {
-        const polyline = L.polyline(points, {
-          color,
-          weight: 4,
-          opacity: 0.6,
-          dashArray: '8,6',
-        }).addTo(this.map!);
-        this.trails.set(pos.trackerId, polyline);
-      }
+    if (mode === 'free') {
+      this.followedVehicleId.set(null);
+      return;
     }
 
-    for (const [id, marker] of this.markers) {
-      if (!activeIds.has(id)) {
-        marker.remove();
-        this.markers.delete(id);
-        this.trails.get(id)?.remove();
-        this.trails.delete(id);
-        this.trailPoints.delete(id);
-      }
+    if (mode === 'chase' && this.map) {
+      this.map.easeTo({ pitch: 60, duration: 600 });
+    } else if (mode !== 'chase' && this.map) {
+      this.map.easeTo({ pitch: 0, duration: 400 });
     }
 
-    // Auto-center seulement si les prefs carte sont les valeurs par défaut
-    // (l'utilisateur n'a pas configuré de centre personnalisé)
-    if (!this.hasFittedBounds && this.markers.size > 0) {
-      this.hasFittedBounds = true;
-      const mapPrefs = this.preferences.prefs().map;
-      const defaults = this.preferences.getDefaults().map;
-      const isDefaultCenter = mapPrefs.centerLat === defaults.centerLat && mapPrefs.centerLng === defaults.centerLng;
-      if (isDefaultCenter) {
-        this.centerAll();
-      }
+    // Apply immediately to current focus.
+    this.applyCameraMode();
+  }
+
+  /** Applique le mode camera courant : si follow/heading-up/chase, focus sur le suivi. */
+  private applyCameraMode(): void {
+    const mode = this.cameraMode();
+    if (mode === 'free' || !this.map) return;
+
+    const targetId = this.followedVehicleId();
+    if (!targetId) {
+      // Auto-pick : premier vehicule en mouvement, ou premier de la liste.
+      const list = this.realtime.positionsList();
+      const moving = list.find((p) => p.speedKmh > 5);
+      const pick = moving ?? list[0];
+      if (pick) this.followedVehicleId.set(pick.vehicleId);
     }
+
+    const id = this.followedVehicleId();
+    if (!id) return;
+    const pos = this.realtime.positionsList().find((p) => p.vehicleId === id);
+    if (!pos) return;
+
+    this.map.easeTo({
+      center: [pos.lng, pos.lat],
+      zoom: mode === 'chase' ? 17 : Math.max(this.map.getZoom(), 14),
+      bearing: mode === 'heading-up' || mode === 'chase' ? pos.heading : this.map.getBearing(),
+      pitch: mode === 'chase' ? 60 : this.map.getPitch(),
+      duration: 600,
+    });
+  }
+
+  protected resetNorth(): void {
+    if (!this.map) return;
+    this.mapSvc.resetNorth(this.map);
+  }
+
+  /* --- Filtres --- */
+
+  protected toggleFilter(key: 'moving' | 'idle' | 'off' | 'offline'): void {
+    const cur = this.filters();
+    this.filters.set({ ...cur, [key]: !cur[key] });
+  }
+
+  private applyFilters(positions: PositionUpdateEvent[]): PositionUpdateEvent[] {
+    const f = this.filters();
+    const now = Date.now();
+    return positions.filter((p) => {
+      const ageMin = (now - new Date(p.timestamp).getTime()) / 60000;
+      if (ageMin > 10) return f.offline;
+      if (!p.ignition) return f.off;
+      if (p.speedKmh > 5) return f.moving;
+      return f.idle;
+    });
+  }
+
+  protected toggleGeofences(): void {
+    const v = !this.showGeofences();
+    this.showGeofences.set(v);
+    this.setLayerVisibility('geofences-fill', v);
+    this.setLayerVisibility('geofences-line', v);
+  }
+
+  protected toggleTrails(): void {
+    const v = !this.showTrails();
+    this.showTrails.set(v);
+    this.preferences.update({ map: { ...this.preferences.prefs().map, showTrails: v } });
+    this.setLayerVisibility('trails-line', v);
+  }
+
+  protected togglePlates(): void {
+    const v = !this.showPlates();
+    this.showPlates.set(v);
+    this.preferences.update({ map: { ...this.preferences.prefs().map, showPlates: v } });
+    document.querySelectorAll('.tracky-marker').forEach((el) => {
+      el.classList.toggle('tracky-marker--no-plate', !v);
+    });
+  }
+
+  private setLayerVisibility(layerId: string, visible: boolean): void {
+    if (!this.map?.getLayer(layerId)) return;
+    this.map.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none');
+  }
+
+  /* --- Sources/layers --- */
+
+  private setupGeofencesLayer(): void {
+    if (!this.map || this.map.getSource('geofences')) return;
+    this.map.addSource('geofences', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    this.map.addLayer({
+      id: 'geofences-fill',
+      type: 'fill',
+      source: 'geofences',
+      paint: { 'fill-color': ['coalesce', ['get', 'color'], '#10e0a0'], 'fill-opacity': 0.12 },
+    });
+    this.map.addLayer({
+      id: 'geofences-line',
+      type: 'line',
+      source: 'geofences',
+      paint: {
+        'line-color': ['coalesce', ['get', 'color'], '#10e0a0'],
+        'line-width': 2,
+        'line-opacity': 0.6,
+      },
+    });
+  }
+
+  private setupTrailsLayer(): void {
+    if (!this.map || this.map.getSource('trails')) return;
+    this.map.addSource('trails', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    this.map.addLayer({
+      id: 'trails-line',
+      type: 'line',
+      source: 'trails',
+      paint: {
+        'line-color': ['coalesce', ['get', 'color'], '#10e0a0'],
+        'line-width': 4,
+        'line-opacity': 0.6,
+        'line-dasharray': [2, 1.5],
+      },
+    });
   }
 
   private async loadGeofences(): Promise<void> {
     if (!this.map) return;
     try {
       const zones = await firstValueFrom(this.geofencesApi.list());
-      for (const z of zones) {
-        if (!z.active || !z.centerLat || !z.centerLng) continue;
-        const circle = L.circle([z.centerLat, z.centerLng], {
-          radius: z.radiusMeters,
-          color: z.color ?? '#10e0a0',
-          fillColor: z.color ?? '#10e0a0',
-          fillOpacity: 0.12,
-          weight: 2,
-          opacity: 0.6,
-        }).addTo(this.map);
-        circle.bindTooltip(`${z.name} (${z.rule})`, { sticky: true });
-        this.geofenceCircles.set(z.id, circle);
-      }
+      const features = (zones as GeofenceDto[])
+        .filter((z) => z.active && z.centerLat != null && z.centerLng != null && z.radiusMeters != null)
+        .map((z) => circleFeature(z.centerLat!, z.centerLng!, z.radiusMeters!, {
+          id: z.id, name: z.name, rule: z.rule, color: z.color ?? '#10e0a0',
+        }));
+      const src = this.map.getSource('geofences') as maplibregl.GeoJSONSource | undefined;
+      src?.setData({ type: 'FeatureCollection', features });
     } catch { /* silent */ }
   }
 
-  private popupContent(pos: PositionUpdateEvent): string {
-    const ago = Math.round((Date.now() - new Date(pos.timestamp).getTime()) / 1000);
-    return `<div style="font-family:Inter,sans-serif;font-size:12px;line-height:1.6">
-      <strong style="font-family:monospace">${pos.trackerId.slice(0, 8)}...</strong><br>
-      Vitesse : <strong>${pos.speedKmh.toFixed(0)} km/h</strong><br>
-      Position : ${pos.lat.toFixed(5)}, ${pos.lng.toFixed(5)}<br>
-      <span style="color:#888">il y a ${ago}s</span><br>
-      <a href="/vehicles/${pos.vehicleId}" style="color:#10E0A0;text-decoration:underline;font-size:11px">Voir fiche vehicule</a>
-    </div>`;
+  /* --- Markers update --- */
+
+  private applyPositions(positions: PositionUpdateEvent[]): void {
+    if (!this.map) return;
+
+    const activeIds = new Set<string>();
+    const trailFeatures: Array<GeoJSON.Feature<GeoJSON.LineString, { color: string; trackerId: string }>> = [];
+    const followedId = this.followedVehicleId();
+    const trailLength = this.preferences.prefs().map.trailLength;
+    const showTrails = this.showTrails();
+    const hydratedSet = this.realtime.hydratedTrackerIds();
+    const showPlatesNow = this.showPlates();
+
+    for (const pos of positions) {
+      activeIds.add(pos.trackerId);
+      const meta = this.vehicleMeta.get(pos.vehicleId) ?? { type: 'OTHER', plate: '' };
+      const data: VehicleMarkerData = {
+        trackerId: pos.trackerId,
+        vehicleId: pos.vehicleId,
+        type: meta.type,
+        plate: meta.plate,
+        speedKmh: pos.speedKmh,
+        heading: pos.heading,
+        ignition: pos.ignition,
+        active: pos.vehicleId === followedId,
+        hydrated: hydratedSet.has(pos.trackerId),
+      };
+
+      let entry = this.markers.get(pos.trackerId);
+      if (!entry) {
+        const el = buildVehicleMarkerEl(data);
+        if (!showPlatesNow) el.classList.add('tracky-marker--no-plate');
+        const marker = attachVehicleMarker(this.map, el, pos.lat, pos.lng);
+        el.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          this.openMarkerPopup(pos.trackerId);
+        });
+        el.addEventListener('dblclick', (ev) => {
+          ev.stopPropagation();
+          this.followedVehicleId.set(pos.vehicleId);
+          if (this.cameraMode() === 'free') this.setCameraMode('follow');
+          else this.applyCameraMode();
+        });
+        entry = { marker, el };
+        this.markers.set(pos.trackerId, entry);
+      } else {
+        entry.marker.setLngLat([pos.lng, pos.lat]);
+        updateVehicleMarkerEl(entry.el, data);
+      }
+
+      // Trail accumulation (en memoire, capee a trailLength).
+      if (showTrails) {
+        let pts = this.trailPoints.get(pos.trackerId);
+        if (!pts) {
+          pts = [];
+          this.trailPoints.set(pos.trackerId, pts);
+        }
+        pts.push([pos.lng, pos.lat]);
+        while (pts.length > trailLength) pts.shift();
+
+        if (pts.length >= 2) {
+          trailFeatures.push({
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: pts.slice() },
+            properties: { color: speedColor(pos.speedKmh), trackerId: pos.trackerId },
+          });
+        }
+      }
+    }
+
+    // Remove disappeared markers.
+    for (const [id, entry] of this.markers) {
+      if (!activeIds.has(id)) {
+        entry.marker.remove();
+        this.markers.delete(id);
+        this.trailPoints.delete(id);
+      }
+    }
+
+    // Update trails source.
+    const trailsSrc = this.map.getSource('trails') as maplibregl.GeoJSONSource | undefined;
+    trailsSrc?.setData({ type: 'FeatureCollection', features: trailFeatures });
+
+    // Auto-fit la premiere fois qu'on a des markers.
+    if (!this.hasFittedBounds && this.markers.size > 0) {
+      this.hasFittedBounds = true;
+      const mapPrefs = this.preferences.prefs().map;
+      const defaults = this.preferences.getDefaults().map;
+      const isDefaultCenter = mapPrefs.centerLat === defaults.centerLat && mapPrefs.centerLng === defaults.centerLng;
+      if (isDefaultCenter) this.centerAll();
+    }
+
+    // Camera follow sur le vehicule actif.
+    if (this.cameraMode() !== 'free') {
+      this.applyCameraMode();
+    }
+
+    // Update popover content si ouvert.
+    if (this.activePopupTrackerId && this.currentPopup) {
+      const pos = positions.find((p) => p.trackerId === this.activePopupTrackerId);
+      if (pos) this.currentPopup.setHTML(this.buildPopupHtml(pos));
+    }
   }
+
+  /* --- Popover info marker --- */
+
+  private openMarkerPopup(trackerId: string): void {
+    const pos = this.realtime.positionsList().find((p) => p.trackerId === trackerId);
+    if (!pos || !this.map) return;
+
+    this.closePopup();
+    const html = this.buildPopupHtml(pos);
+    this.currentPopup = new maplibregl.Popup({
+      anchor: 'bottom',
+      offset: 30,
+      maxWidth: '320px',
+      closeOnClick: false,
+    })
+      .setLngLat([pos.lng, pos.lat])
+      .setHTML(html)
+      .addTo(this.map);
+    this.activePopupTrackerId = trackerId;
+
+    // Wire les boutons du popover (delegation event).
+    setTimeout(() => this.wirePopupActions(trackerId, pos.vehicleId), 0);
+
+    this.currentPopup.on('close', () => {
+      this.activePopupTrackerId = null;
+      this.currentPopup = null;
+    });
+  }
+
+  private buildPopupHtml(pos: PositionUpdateEvent): string {
+    const meta = this.vehicleMeta.get(pos.vehicleId) ?? { type: 'OTHER', plate: '?' };
+    const ago = Math.round((Date.now() - new Date(pos.timestamp).getTime()) / 1000);
+    const agoStr = ago < 60 ? `${ago}s` : `${Math.round(ago / 60)}min`;
+    return `
+      <div style="padding:14px;font-family:Inter,sans-serif">
+        <div style="font-family:Poppins,sans-serif;font-weight:600;font-size:14px;color:#fff;margin-bottom:2px">
+          ${escapeHtml(meta.plate)}
+        </div>
+        <div style="font-size:11px;color:rgba(255,255,255,0.6);margin-bottom:10px">
+          ${escapeHtml(meta.type)} · il y a ${agoStr}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;font-size:11px;color:rgba(255,255,255,0.85)">
+          <div>Vitesse : <strong>${pos.speedKmh.toFixed(0)} km/h</strong></div>
+          <div>Cap : <strong>${Math.round(pos.heading)}°</strong></div>
+          <div>ACC : <strong style="color:${pos.ignition ? '#10E0A0' : '#9ca3af'}">${pos.ignition ? 'ON' : 'OFF'}</strong></div>
+          <div style="font-family:JetBrains Mono,monospace;font-size:10px">${pos.lat.toFixed(4)}, ${pos.lng.toFixed(4)}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <button data-action="follow"
+                  style="padding:6px 10px;border-radius:8px;background:rgba(16,224,160,0.15);
+                         color:#10E0A0;border:1px solid rgba(16,224,160,0.3);font-size:11px;cursor:pointer">
+            Suivre
+          </button>
+          <button data-action="detail"
+                  style="padding:6px 10px;border-radius:8px;background:rgba(255,255,255,0.06);
+                         color:#fff;border:1px solid rgba(255,255,255,0.1);font-size:11px;cursor:pointer">
+            Voir fiche detaillee
+          </button>
+          <div style="display:flex;gap:6px">
+            <button data-action="cut"
+                    style="flex:1;padding:6px 10px;border-radius:8px;background:rgba(239,68,68,0.15);
+                           color:#EF4444;border:1px solid rgba(239,68,68,0.3);font-size:11px;cursor:pointer">
+              Couper moteur
+            </button>
+            <button data-action="restore"
+                    style="flex:1;padding:6px 10px;border-radius:8px;background:rgba(16,224,160,0.1);
+                           color:#10E0A0;border:1px solid rgba(16,224,160,0.2);font-size:11px;cursor:pointer">
+              Restaurer
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private wirePopupActions(trackerId: string, vehicleId: string): void {
+    const root = this.currentPopup?.getElement();
+    if (!root) return;
+    root.querySelectorAll<HTMLButtonElement>('[data-action]').forEach((btn) => {
+      const action = btn.dataset['action'];
+      btn.addEventListener('click', () => {
+        switch (action) {
+          case 'follow':
+            this.followedVehicleId.set(vehicleId);
+            if (this.cameraMode() === 'free') this.setCameraMode('follow');
+            else this.applyCameraMode();
+            this.closePopup();
+            break;
+          case 'detail':
+            this.router.navigate(['/vehicles', vehicleId]);
+            break;
+          case 'cut':
+            this.requestEngine(trackerId, 'CUT');
+            break;
+          case 'restore':
+            this.requestEngine(trackerId, 'RESTORE');
+            break;
+        }
+      });
+    });
+  }
+
+  private requestEngine(trackerId: string, action: 'CUT' | 'RESTORE'): void {
+    const verb = action === 'CUT' ? 'couper' : 'restaurer';
+    const ok = window.confirm(
+      `Confirmer ${verb} le moteur du vehicule ?\n\n` +
+        'Cette action est tracee dans l\'audit trail. Annulez si pas certain.',
+    );
+    if (!ok) return;
+
+    this.engineControl.requestCommand(trackerId, action, 'depuis carte').subscribe({
+      next: () => {
+        this.toast.show({
+          kind: 'info',
+          title: action === 'CUT' ? 'Coupure demandee' : 'Restauration demandee',
+          message: `Commande ${action} envoyee.`,
+          duration: 4000,
+        });
+        this.closePopup();
+      },
+      error: (err) => {
+        this.toast.show({
+          kind: 'error',
+          title: 'Echec commande moteur',
+          message: err?.error?.message ?? 'Erreur inconnue',
+          duration: 6000,
+        });
+      },
+    });
+  }
+
+  private closePopup(): void {
+    this.currentPopup?.remove();
+    this.currentPopup = null;
+    this.activePopupTrackerId = null;
+  }
+
+  /* --- Search Nominatim --- */
+
+  protected onSearchInput(ev: Event): void {
+    this.searchQuery.set((ev.target as HTMLInputElement).value);
+  }
+
+  protected async searchAddress(ev: Event): Promise<void> {
+    ev.preventDefault();
+    const q = this.searchQuery().trim();
+    if (!q || !this.map) return;
+
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`;
+      const res = await fetch(url, { headers: { 'Accept-Language': 'fr' } });
+      const data = (await res.json()) as Array<{ lat: string; lon: string; display_name: string }>;
+      if (data.length === 0) {
+        this.toast.show({ kind: 'warning', title: 'Adresse introuvable', duration: 4000 });
+        return;
+      }
+      const hit = data[0]!;
+      this.mapSvc.flyTo(this.map, parseFloat(hit.lat), parseFloat(hit.lon), 15);
+    } catch (err) {
+      this.toast.show({ kind: 'error', title: 'Recherche impossible', duration: 4000 });
+      void err;
+    }
+  }
+
+  /* --- Context menu --- */
+
+  protected closeContextMenu(): void {
+    this.contextMenu.set(null);
+  }
+
+  protected copyCoords(): void {
+    const ctx = this.contextMenu();
+    if (!ctx) return;
+    const text = `${ctx.lat.toFixed(6)}, ${ctx.lng.toFixed(6)}`;
+    navigator.clipboard?.writeText(text).then(
+      () => this.toast.show({ kind: 'info', title: 'Coordonnees copiees', message: text, duration: 3000 }),
+      () => { /* noop */ },
+    );
+  }
+
+  protected centerHere(): void {
+    const ctx = this.contextMenu();
+    if (!ctx || !this.map) return;
+    this.mapSvc.flyTo(this.map, ctx.lat, ctx.lng);
+  }
+
+  /* --- Fullscreen & shortcuts --- */
+
+  protected toggleFullscreen(): void {
+    const el = this.mapContainerRef().nativeElement.parentElement ?? this.mapContainerRef().nativeElement;
+    if (document.fullscreenElement) {
+      document.exitFullscreen?.();
+    } else {
+      el.requestFullscreen?.();
+    }
+  }
+
+  @HostListener('document:keydown', ['$event'])
+  protected onKeydown(ev: KeyboardEvent): void {
+    // Eviter les raccourcis quand on est dans un input.
+    const tag = (ev.target as HTMLElement)?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+
+    switch (ev.key.toLowerCase()) {
+      case 'f': ev.preventDefault(); this.toggleFullscreen(); break;
+      case 'c': ev.preventDefault(); this.resetNorth(); break;
+      case 'o': ev.preventDefault(); this.centerAll(); break;
+      case 'm': {
+        ev.preventDefault();
+        const idx = this.cameraModes.findIndex((m) => m.id === this.cameraMode());
+        const next = this.cameraModes[(idx + 1) % this.cameraModes.length]!;
+        this.setCameraMode(next.id);
+        break;
+      }
+    }
+  }
+}
+
+/* --- Helpers --- */
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) =>
+    c === '&' ? '&amp;' :
+    c === '<' ? '&lt;' :
+    c === '>' ? '&gt;' :
+    c === '"' ? '&quot;' :
+    '&#39;',
+  );
+}
+
+/**
+ * Construit un Polygon GeoJSON approximant un cercle (64 segments) autour
+ * d'un centre lat/lng et rayon en metres. Utilise pour les geofences.
+ */
+function circleFeature(
+  centerLat: number,
+  centerLng: number,
+  radiusM: number,
+  props: Record<string, unknown>,
+): GeoJSON.Feature<GeoJSON.Polygon, Record<string, unknown>> {
+  const points = 64;
+  const km = radiusM / 1000;
+  const distanceX = km / (111.320 * Math.cos((centerLat * Math.PI) / 180));
+  const distanceY = km / 110.574;
+  const ring: Array<[number, number]> = [];
+  for (let i = 0; i < points; i++) {
+    const theta = (i / points) * (2 * Math.PI);
+    const x = distanceX * Math.cos(theta);
+    const y = distanceY * Math.sin(theta);
+    ring.push([centerLng + x, centerLat + y]);
+  }
+  ring.push(ring[0]!);
+  return {
+    type: 'Feature',
+    geometry: { type: 'Polygon', coordinates: [ring] },
+    properties: props,
+  };
 }

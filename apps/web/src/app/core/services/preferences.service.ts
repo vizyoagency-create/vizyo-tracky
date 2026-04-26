@@ -1,4 +1,7 @@
 import { Injectable, signal } from '@angular/core';
+import type { MapStyleId } from './map-style.service';
+
+export type CameraMode = 'free' | 'follow' | 'heading-up' | 'chase';
 
 export interface NotificationPrefs {
   enabled: boolean;
@@ -16,8 +19,12 @@ export interface UserPreferences {
     centerLat: number;
     centerLng: number;
     zoom: number;
+    style: MapStyleId;
     showTrails: boolean;
     trailLength: number;
+    showPlates: boolean;
+    /** Mode camera par defaut au chargement (`free` recommande). */
+    cameraMode: CameraMode;
   };
 }
 
@@ -32,8 +39,11 @@ const DEFAULTS: UserPreferences = {
     centerLat: 46.6034,
     centerLng: 1.8883,
     zoom: 12,
+    style: 'osm',
     showTrails: true,
     trailLength: 20,
+    showPlates: true,
+    cameraMode: 'free',
   },
 };
 

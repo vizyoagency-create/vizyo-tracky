@@ -20,8 +20,9 @@
     "@vizyo/tracky-shared": "workspace:*",
     "leaflet": "^1.9.4",
     "lucide-angular": "^0.460.0",
-    "socket.io-client": "^4.8.0",
+    "maplibre-gl": "5.24.0",
     "rxjs": "~7.8.0",
+    "socket.io-client": "^4.8.0",
     "tslib": "^2.3.0",
     "zone.js": "~0.15.0"
   },
