@@ -36,6 +36,7 @@ import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/v
 import { EngineControlService } from '../../core/services/engine-control.service';
 import { VisibilityService } from '../../core/services/visibility.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
+import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
 import { MapService } from '../../core/services/map.service';
 import { MapStyleService, type MapStyleId } from '../../core/services/map-style.service';
 import {
@@ -77,7 +78,7 @@ const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible a
 @Component({
   selector: 'app-map',
   standalone: true,
-  imports: [DecimalPipe],
+  imports: [DecimalPipe, ConfirmModalComponent],
   template: `
     <div #mapContainer style="position:absolute;top:0;left:0;width:100%;height:100%"></div>
 
@@ -596,6 +597,19 @@ const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible a
         </button>
       </div>
     }
+
+    <!-- Modal confirmation CUT/RESTORE (remplace window.confirm) -->
+    <app-confirm-modal
+      [open]="engineModalOpen() !== null"
+      [title]="engineModalOpen() === 'cut' ? 'Couper le moteur ?' : 'Rallumer le moteur ?'"
+      [description]="engineModalDescription()"
+      [confirmLabel]="engineModalConfirmLabel()"
+      cancelLabel="Annuler"
+      [danger]="engineModalOpen() === 'cut'"
+      [loading]="engineModalLoading()"
+      (confirmed)="onEngineModalConfirm()"
+      (cancelled)="engineModalOpen.set(null)"
+    />
   `,
   styles: [`
     :host {
@@ -1292,6 +1306,37 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private currentPopup: Popup | null = null;
   private activePopupTrackerId: string | null = null;
   private activePopupVehicleId: string | null = null;
+
+  // Modal engine CUT/RESTORE (remplace window.confirm)
+  protected readonly engineModalOpen = signal<'cut' | 'restore' | null>(null);
+  protected readonly engineModalLoading = signal(false);
+  private engineModalTrackerId: string | null = null;
+  private engineModalHasSchedule = false;
+
+  protected readonly engineModalDescription = computed(() => {
+    const action = this.engineModalOpen();
+    if (this.engineModalHasSchedule) {
+      const verb = action === 'cut' ? 'immobiliser' : 'rallumer';
+      return `Vous êtes sur le point de ${verb} ce véhicule.<br><br>` +
+        `<strong>Le mode horaire est actuellement actif.</strong> ` +
+        `Cette action le désactivera automatiquement. ` +
+        `Vous devrez le réactiver manuellement.<br><br>` +
+        `<span class="text-fg-tertiary text-xs">Cette action sera enregistrée dans l'audit trail.</span>`;
+    }
+    return action === 'cut'
+      ? `Le véhicule sera immobilisé immédiatement.<br><br>` +
+        `<span class="text-fg-tertiary text-xs">Cette action sera enregistrée dans l'audit trail.</span>`
+      : `Le véhicule sera à nouveau utilisable.<br><br>` +
+        `<span class="text-fg-tertiary text-xs">Cette action sera enregistrée dans l'audit trail.</span>`;
+  });
+
+  protected readonly engineModalConfirmLabel = computed(() => {
+    const action = this.engineModalOpen();
+    if (this.engineModalHasSchedule) {
+      return action === 'cut' ? 'Désactiver horaire et couper' : 'Désactiver horaire et rallumer';
+    }
+    return action === 'cut' ? 'Oui, couper le moteur' : 'Oui, rallumer';
+  });
 
   /** Etat d'interpolation par trackerId : permet animation fluide entre 2 events WS. */
   private interp = new Map<string, InterpState>();
@@ -2732,41 +2777,40 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   }
 
   private requestEngine(trackerId: string, action: 'CUT' | 'RESTORE'): void {
-    const verb = action === 'CUT' ? 'couper' : 'restaurer';
-
-    // Vérifier si un schedule horaire est actif pour ce véhicule
     const vehicleId = this.activePopupVehicleId;
     const snap = vehicleId ? this.realtime.snapshot().find((v) => v.vehicleId === vehicleId) : null;
-    const hasSchedule = snap && (snap as any).scheduleEnabled;
+    this.engineModalHasSchedule = !!(snap && (snap as any).scheduleEnabled);
+    this.engineModalTrackerId = trackerId;
+    this.engineModalOpen.set(action === 'CUT' ? 'cut' : 'restore');
+  }
 
-    const msg = hasSchedule
-      ? `Confirmer ${verb} le moteur du vehicule ?\n\n` +
-        'Le mode horaire est actif et sera desactive.\n' +
-        'Vous devrez le reactiver manuellement dans la fiche vehicule.\n\n' +
-        'Cette action est tracee dans l\'audit trail.'
-      : `Confirmer ${verb} le moteur du vehicule ?\n\n` +
-        'Cette action est tracee dans l\'audit trail. Annulez si pas certain.';
+  protected onEngineModalConfirm(): void {
+    const trackerId = this.engineModalTrackerId;
+    const action = this.engineModalOpen() === 'cut' ? 'CUT' as const : 'RESTORE' as const;
+    const hasSchedule = this.engineModalHasSchedule;
+    if (!trackerId) return;
 
-    const ok = window.confirm(msg);
-    if (!ok) return;
-
+    this.engineModalLoading.set(true);
     this.engineControl.requestCommand(trackerId, action, 'depuis carte', hasSchedule || undefined).subscribe({
       next: () => {
         this.toast.show({
           kind: 'info',
-          title: action === 'CUT' ? 'Coupure demandee' : 'Restauration demandee',
-          message: hasSchedule ? `Commande ${action} envoyee — mode horaire desactive.` : `Commande ${action} envoyee.`,
+          title: action === 'CUT' ? 'Moteur coupé' : 'Moteur rallumé',
+          message: hasSchedule ? `Commande envoyée — mode horaire désactivé.` : `Commande ${action} envoyée.`,
           duration: 4000,
         });
+        this.engineModalOpen.set(null);
+        this.engineModalLoading.set(false);
         this.closePopup();
       },
       error: (err) => {
         this.toast.show({
           kind: 'error',
-          title: 'Echec commande moteur',
+          title: 'Échec commande moteur',
           message: err?.error?.message ?? 'Erreur inconnue',
           duration: 6000,
         });
+        this.engineModalLoading.set(false);
       },
     });
   }
