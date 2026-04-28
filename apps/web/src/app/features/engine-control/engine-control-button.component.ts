@@ -282,7 +282,12 @@ export class EngineControlButtonComponent implements OnInit {
   }
 
   private async loadScheduleStatus(): Promise<void> {
-    const vid = this.vehicleId();
+    // Trouver le vehicleId depuis l'input ou le snapshot (fallback)
+    let vid = this.vehicleId();
+    if (!vid) {
+      const snap = this.realtime.snapshot().find((v) => v.trackerId === this.trackerId());
+      vid = snap?.vehicleId;
+    }
     if (!vid) return;
     try {
       const schedule = await firstValueFrom(this.schedulesApi.get(vid));
