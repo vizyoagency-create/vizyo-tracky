@@ -10,6 +10,14 @@ export interface TrackerDetail {
   lastSeenAt: string | null;
   vehicleId: string | null;
   vehicle: { id: string; plate: string; fleetId: string } | null;
+  /** V1.7 — fil ACC connecte (true) ou ignition inferee depuis vitesse (false). */
+  accConnected: boolean;
+}
+
+export interface UpdateTrackerPayload {
+  model?: string;
+  /** V1.7 — toggle SUPER_ADMIN. Backend rejette en 403 pour les autres roles. */
+  accConnected?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -26,5 +34,10 @@ export class TrackersApiService {
 
   list(params?: Record<string, string>): Observable<TrackerDetail[]> {
     return this.http.get<TrackerDetail[]>('/api/trackers', { params });
+  }
+
+  /** V1.7 — update partiel (model + accConnected). accConnected = SUPER_ADMIN only. */
+  update(id: string, payload: UpdateTrackerPayload): Observable<TrackerDetail> {
+    return this.http.patch<TrackerDetail>(`/api/trackers/${id}`, payload);
   }
 }

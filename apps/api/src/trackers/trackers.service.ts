@@ -95,9 +95,24 @@ export class TrackersService {
   async update(id: string, dto: UpdateTrackerDto, requestedBy: RequestedBy): Promise<Tracker> {
     await this.findOne(id, requestedBy);
 
+    // V1.7 — accConnected reglable UNIQUEMENT par SUPER_ADMIN. Decision a fort
+    // impact sur la fiabilite ignition (responsabilite installation hardware).
+    if (dto.accConnected !== undefined && requestedBy.role !== UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException(
+        'Le réglage matériel ACC est réservé au SUPER_ADMIN',
+      );
+    }
+
+    // Construction explicite du payload pour ne pas envoyer `undefined` a Prisma
+    // (qui le traite comme "ne rien changer", correct ici, mais on prefere
+    // n'inclure que les champs explicitement modifies).
+    const data: Prisma.TrackerUpdateInput = {};
+    if (dto.model !== undefined) data.model = dto.model;
+    if (dto.accConnected !== undefined) data.accConnected = dto.accConnected;
+
     return this.prisma.tracker.update({
       where: { id },
-      data: { model: dto.model },
+      data,
       include: { vehicle: true },
     });
   }

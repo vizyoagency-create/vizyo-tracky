@@ -17,6 +17,8 @@ export interface VehicleDetailDto {
     status: string;
     lastSeenAt: string | null;
     lastKnownIgnition: boolean | null;
+    /** V1.7 — fil ACC connecte (true) ou ignition inferee depuis vitesse (false). */
+    accConnected: boolean;
   } | null;
   createdAt: string;
 }

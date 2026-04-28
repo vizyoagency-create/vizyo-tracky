@@ -5,14 +5,16 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
   LucideAngularModule, ArrowLeft, Wifi, WifiOff, Gauge, MapPin, Radio,
   AlertTriangle, AlertCircle, Info, Check, Power, Route, BellOff, Map,
-  History, Bell, Zap, Clock,
+  History, Bell, Zap, Clock, ShieldAlert, ShieldCheck,
 } from 'lucide-angular';
 import type { AlertEvent } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { AlertsApiService } from '../../core/services/alerts.service';
+import { AuthService } from '../../core/services/auth.service';
 import { EngineControlService, type EngineControlCommandDto } from '../../core/services/engine-control.service';
 import { PositionsApiService, type PositionDto } from '../../core/services/positions.service';
 import { RealtimeService } from '../../core/services/realtime.service';
+import { TrackersApiService } from '../../core/services/trackers.service';
 import { TripsApiService } from '../../core/services/trips.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
@@ -66,6 +68,48 @@ import { relativeTime } from '../../shared/utils/relative-time';
             />
           }
         </div>
+
+        <!-- V1.7 — Reglage materiel ACC (SUPER_ADMIN only) -->
+        @if (isSuperAdmin() && v.tracker) {
+          <div class="vd-admin-card" [class.vd-admin-card--warning]="!v.tracker.accConnected">
+            <div class="vd-admin-card-header">
+              @if (v.tracker.accConnected) {
+                <lucide-icon [img]="ShieldCheck" [size]="14"></lucide-icon>
+              } @else {
+                <lucide-icon [img]="ShieldAlert" [size]="14"></lucide-icon>
+              }
+              <span>Réglage matériel · super-admin</span>
+            </div>
+            <label class="vd-admin-toggle">
+              <input
+                #accCheckbox
+                type="checkbox"
+                [checked]="v.tracker.accConnected"
+                [disabled]="accUpdating()"
+                (change)="toggleAccConnected(v.tracker.id, accCheckbox)"
+              />
+              <span class="vd-admin-toggle-text">
+                <strong>Fil ACC connecté</strong>
+                <small>
+                  Le fil jaune (ACC) du tracker est branché au +12V après contact.
+                  Décochez si l'installation n'a pas câblé l'ACC — l'ignition sera alors
+                  inférée depuis la vitesse GPS (seuil 3 km/h).
+                </small>
+              </span>
+              @if (accUpdating()) {
+                <span class="vd-admin-spinner"></span>
+              }
+            </label>
+            @if (!v.tracker.accConnected) {
+              <div class="vd-admin-warning">
+                <lucide-icon [img]="AlertTriangle" [size]="12"></lucide-icon>
+                <span>
+                  Mode dégradé actif : ignition basée sur la vitesse, fiabilité réduite à l'arrêt.
+                </span>
+              </div>
+            }
+          </div>
+        }
 
         <!-- Stats compactes (info-bar horizontale) -->
         <div class="vd-stats-bar">
@@ -309,6 +353,96 @@ import { relativeTime } from '../../shared/utils/relative-time';
     }
   `,
   styles: [`
+    /* ─── V1.7 — Carte super-admin "Reglage materiel ACC" ─── */
+    .vd-admin-card {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 12px 14px;
+      background: color-mix(in srgb, var(--tracky-light) 6%, var(--bg-secondary));
+      border: 1px solid color-mix(in srgb, var(--tracky-light) 25%, var(--border-subtle));
+      border-radius: 12px;
+    }
+    .vd-admin-card--warning {
+      background: color-mix(in srgb, #f59e0b 8%, var(--bg-secondary));
+      border-color: color-mix(in srgb, #f59e0b 35%, var(--border-subtle));
+    }
+    .vd-admin-card-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--tracky-light);
+    }
+    .vd-admin-card--warning .vd-admin-card-header {
+      color: #f59e0b;
+    }
+    .vd-admin-toggle {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      cursor: pointer;
+    }
+    .vd-admin-toggle input[type='checkbox'] {
+      margin-top: 3px;
+      width: 16px;
+      height: 16px;
+      accent-color: var(--tracky-light);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .vd-admin-toggle input[type='checkbox']:disabled {
+      cursor: wait;
+      opacity: 0.5;
+    }
+    .vd-admin-toggle-text {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      flex: 1;
+      min-width: 0;
+    }
+    .vd-admin-toggle-text strong {
+      color: var(--fg-primary);
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .vd-admin-toggle-text small {
+      color: var(--fg-tertiary);
+      font-size: 11px;
+      line-height: 1.4;
+    }
+    .vd-admin-spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid var(--fg-tertiary);
+      border-top-color: var(--tracky-light);
+      border-radius: 50%;
+      animation: vd-spin 0.7s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes vd-spin {
+      to { transform: rotate(360deg); }
+    }
+    .vd-admin-warning {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 8px;
+      color: #fca5a5;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .vd-admin-warning lucide-icon {
+      flex-shrink: 0;
+    }
+
     /* ─── Stats bar horizontale compacte ─── */
     .vd-stats-bar {
       display: grid;
@@ -584,6 +718,8 @@ export class VehicleDetailComponent implements OnInit {
   private readonly engineControlApi = inject(EngineControlService);
   private readonly realtime = inject(RealtimeService);
   private readonly tripsApi = inject(TripsApiService);
+  private readonly trackersApi = inject(TrackersApiService);
+  private readonly auth = inject(AuthService);
   private readonly toast = inject(ToastService);
 
   protected readonly vehicle = signal<VehicleDetailDto | null>(null);
@@ -593,6 +729,10 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly vehicleTrips = signal<any[]>([]);
   protected readonly loading = signal(true);
   protected readonly activeTab = signal<'map' | 'history' | 'alerts' | 'commands' | 'schedule' | 'trips'>('map');
+  /** V1.7 — flag de chargement pendant le PATCH /api/trackers/:id (toggle ACC). */
+  protected readonly accUpdating = signal(false);
+  /** V1.7 — vrai si l'utilisateur courant est SUPER_ADMIN (pour afficher la carte reglage materiel). */
+  protected readonly isSuperAdmin = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
 
   protected readonly ArrowLeft = ArrowLeft;
   protected readonly Wifi = Wifi;
@@ -609,6 +749,8 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly HistoryIcon = History;
   protected readonly Route = Route;
   protected readonly ZapIcon = Zap;
+  protected readonly ShieldAlert = ShieldAlert;
+  protected readonly ShieldCheck = ShieldCheck;
   protected readonly relativeTime = relativeTime;
 
   protected readonly tabs = [
@@ -748,6 +890,65 @@ export class VehicleDetailComponent implements OnInit {
       this.alerts.update((list) => list.filter((a) => a.id !== id));
       this.toast.success('Alerte acquittée');
     } catch { /* handled */ }
+  }
+
+  /**
+   * V1.7 — Toggle SUPER_ADMIN du flag `accConnected` sur le tracker du vehicule.
+   * Confirmation obligatoire (action a fort impact sur la fiabilite ignition).
+   * Si l'utilisateur annule la confirmation, on remet la checkbox dans son etat
+   * precedent. Si l'API echoue, idem + toast d'erreur explicite.
+   */
+  protected async toggleAccConnected(trackerId: string, checkbox: HTMLInputElement): Promise<void> {
+    const desired = checkbox.checked;
+    const message = desired
+      ? `Confirmer que le fil ACC du tracker est connecté ?\n\n` +
+        `L'ignition sera lue depuis le boîtier (mode normal, fiable).`
+      : `Confirmer que le fil ACC n'est PAS connecté ?\n\n` +
+        `L'ignition sera inférée depuis la vitesse GPS (mode dégradé, ` +
+        `fiabilité réduite à l'arrêt).`;
+
+    const ok = window.confirm(message);
+    if (!ok) {
+      // L'utilisateur annule : on remet la checkbox dans son etat precedent.
+      checkbox.checked = !desired;
+      return;
+    }
+
+    this.accUpdating.set(true);
+    try {
+      const updated = await firstValueFrom(
+        this.trackersApi.update(trackerId, { accConnected: desired }),
+      );
+
+      // Mettre a jour le signal vehicle pour refleter le nouvel etat sans re-fetch.
+      const v = this.vehicle();
+      if (v?.tracker && v.tracker.id === trackerId) {
+        this.vehicle.set({
+          ...v,
+          tracker: { ...v.tracker, accConnected: updated.accConnected },
+        });
+      }
+
+      this.toast.success(
+        desired ? 'Fil ACC marqué connecté' : 'Mode dégradé activé',
+        desired
+          ? 'L\'ignition sera lue depuis le boîtier.'
+          : 'L\'ignition sera inférée depuis la vitesse GPS.',
+      );
+    } catch (err) {
+      // Rollback visuel : remettre la checkbox dans son etat precedent.
+      checkbox.checked = !desired;
+
+      const message = err instanceof HttpErrorResponse
+        ? (err.status === 403
+            ? 'Action réservée au SUPER_ADMIN'
+            : err.error?.message ?? err.message ?? 'Erreur inconnue')
+        : (err instanceof Error ? err.message : 'Erreur inconnue');
+
+      this.toast.error('Échec mise à jour ACC', message);
+    } finally {
+      this.accUpdating.set(false);
+    }
   }
 
   protected isAcknowledged(alert: any): boolean {

@@ -62,6 +62,23 @@ export class PositionsService {
       else if (frame.alarm === 'acc_off') resolvedIgnition = false;
     }
 
+    // V1.7 — Heuristique vitesse pour les trackers dont le fil ACC n'est pas
+    // physiquement connecte (Tracker.accConnected = false). Sans signal ACC,
+    // on infere ignition depuis la vitesse GPS : >3 km/h => moteur forcement ON.
+    // Le seuil 3 km/h s'aligne sur PositionSamplingService.MOVING_SPEED_KMH
+    // pour rester coherent avec la classification d'etat.
+    //
+    // A vitesse <= 3 : on garde l'etat precedent (lastKnownIgnition). Le passage
+    // a OFF se fera via le cron IgnitionInferredCleanupService (P3) qui tournera
+    // chaque minute et eteindra l'ignition apres 5 min sans trame valide.
+    let ignitionInferredFromSpeed = false;
+    if (!tracker.accConnected && resolvedIgnition === undefined && frame.valid) {
+      if (frame.speedKph > 3) {
+        resolvedIgnition = true;
+        ignitionInferredFromSpeed = true;
+      }
+    }
+
     // V1.4 (Sprint 4 — gps-sanity) : rejet defensif des coordonnees hors-bornes
     // ou a Null Island, meme si le protocole les marque valid:true.
     if (!isValidLatLng(frame.latitude, frame.longitude)) {
@@ -261,6 +278,14 @@ export class PositionsService {
       // Fallback : utiliser le dernier etat connu du tracker plutot que d'assumer ON.
       // Securite : si aucune info, on ne presume pas que le moteur tourne.
       const ignitionValue = resolvedIgnition ?? tracker.lastKnownIgnition ?? false;
+
+      // V1.7 — log debug pour tracer les ignitions inferees (mode degrade ACC).
+      if (ignitionInferredFromSpeed) {
+        this.logger.debug(
+          `[ACC degraded] ${tracker.imei} : ignition inferee depuis vitesse ` +
+            `(${frame.speedKph.toFixed(1)} km/h > 3) -> ON`,
+        );
+      }
       const event: PositionUpdateEvent = {
         trackerId: tracker.id,
         vehicleId: tracker.vehicle.id,

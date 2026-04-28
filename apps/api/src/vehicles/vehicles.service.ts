@@ -274,6 +274,7 @@ export class VehiclesService {
         lastIgnition: t?.lastIgnition ?? null,
         lastValid: t?.lastValid ?? null,
         lastPositionAt: t?.lastPositionAt ? t.lastPositionAt.toISOString() : null,
+        accConnected: t?.accConnected ?? null,
       };
     });
   }

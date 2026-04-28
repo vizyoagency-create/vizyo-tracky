@@ -24,6 +24,13 @@ export interface VehicleSnapshotDto {
   lastIgnition: boolean | null;
   lastValid: boolean | null;
   lastPositionAt: string | null;
+
+  /**
+   * V1.7 — Indique si le fil ACC du tracker est connecte. Si false, l'app
+   * frontend sait que `lastIgnition` peut etre inferee depuis la vitesse
+   * (mode degrade, fiabilite reduite a l'arret). Default null si pas de tracker.
+   */
+  accConnected: boolean | null;
 }
 
 export interface FleetSnapshotResponse {

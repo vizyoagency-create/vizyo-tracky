@@ -493,6 +493,10 @@ const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible a
               <input type="checkbox" [checked]="showHeatmap()" (change)="toggleHeatmap()" />
               <span>Heatmap densité (24h)</span>
             </label>
+            <label class="tracky-sheet-checkbox">
+              <input type="checkbox" [checked]="compactMarkers()" (change)="toggleCompactMarkers()" />
+              <span>Mode compact (zoom faible)</span>
+            </label>
           </div>
         </div>
 
@@ -1321,6 +1325,15 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   protected readonly showStops = signal(false);
   /** Sprint G.4 — heatmap densite des positions (24h). */
   protected readonly showHeatmap = signal(false);
+  /** V1.7 — si false, jamais de mode compact a faible zoom (markers riches partout).
+   *  Toggle dans le panneau Calques pour les utilisateurs qui preferent voir les
+   *  markers detailles meme a zoom 5. Persisté dans les prefs. */
+  protected readonly compactMarkers = signal(true);
+  /** V1.7 — etat actuel du mode mini (avec hysteresis pour eviter le flicker
+   *  autour de zoom = 10). null = pas encore initialise. */
+  private lastMiniState: boolean | null = null;
+  private static readonly ZOOM_MINI_ENTER = 9.5;
+  private static readonly ZOOM_MINI_EXIT = 10.5;
   /** Sprint G.5 — verrouillage du pan (la carte ne peut plus etre deplacee). */
   protected readonly mapLocked = signal(false);
   /** Sprint F.3 — sheet mobile pour les calques (FAB toggle). */
@@ -1413,6 +1426,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     this.cameraMode.set(prefs.cameraMode);
     this.showTrails.set(prefs.showTrails);
     this.showPlates.set(prefs.showPlates);
+    this.compactMarkers.set(prefs.compactMarkers);
 
     setTimeout(() => this.initMap(), 0);
 
@@ -1483,7 +1497,11 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     });
 
     // Sprint G.2 — refresh cluster visibility on zoom change.
-    this.map.on('zoom', () => this.applyClusterVisibility());
+    // V1.7 : 'zoomend' au lieu de 'zoom' pour ne fire qu'une seule fois en
+    // fin de geste (au lieu de 60Hz pendant le zoom utilisateur). Combine
+    // a la transition CSS sur transform:scale (au lieu de width/height),
+    // les markers ne derivent plus visuellement pendant le zoom.
+    this.map.on('zoomend', () => this.applyClusterVisibility());
 
     // Click pour la mesure de distance.
     this.map.on('click', (e) => {
@@ -1638,20 +1656,62 @@ export class MapComponent implements AfterViewInit, OnDestroy {
    * compacts (zoom faible). Les markers restent TOUJOURS visibles : a zoom < 10
    * ils passent en mode mini (petit point colore) pour garder une vue d'ensemble.
    * Les clusters ne s'affichent que pour les groupes denses a faible zoom.
+   *
+   * V1.7 — hysteresis [9.5, 10.5] pour eviter le toggling autour de z=10
+   * (ce qui causait des flickers visuels avec la transition CSS). En plus,
+   * le toggle Calques `compactMarkers` permet de desactiver totalement le
+   * mode mini (markers riches meme a faible zoom).
    */
   private applyClusterVisibility(): void {
     if (!this.map) return;
     const z = this.map.getZoom();
-    const mini = z < 10;
-    // Toggle DOM markers entre mode riche et mode mini (jamais display:none)
+
+    // Hysteresis : pas de toggle si on est dans la zone tampon [9.5, 10.5].
+    let mini: boolean;
+    if (this.lastMiniState === null) {
+      mini = z < 10;
+    } else if (this.lastMiniState && z > MapComponent.ZOOM_MINI_EXIT) {
+      mini = false;
+    } else if (!this.lastMiniState && z < MapComponent.ZOOM_MINI_ENTER) {
+      mini = true;
+    } else {
+      mini = this.lastMiniState;
+    }
+
+    // Toggle calques : si l'utilisateur a desactive le mode compact, on ne
+    // passe jamais en mini meme a faible zoom (markers riches partout).
+    const useMini = mini && this.compactMarkers();
+
+    if (this.lastMiniState === mini) {
+      // Pas de transition d'etat hysteresis, mais le toggle compactMarkers
+      // peut avoir change : on s'assure que la classe DOM reflete useMini.
+      document.querySelectorAll('.tracky-marker').forEach((el) => {
+        (el as HTMLElement).classList.toggle('tracky-marker--mini', useMini);
+      });
+      this.setLayerVisibility('vehicles-cluster-bg', useMini);
+      this.setLayerVisibility('vehicles-cluster-count', useMini);
+      this.setLayerVisibility('vehicles-unclustered', useMini);
+      return;
+    }
+    this.lastMiniState = mini;
+
     document.querySelectorAll('.tracky-marker').forEach((el) => {
-      (el as HTMLElement).classList.toggle('tracky-marker--mini', mini);
+      (el as HTMLElement).classList.toggle('tracky-marker--mini', useMini);
     });
-    // Toggle cluster layers (seulement les badges de compteur sur groupes denses)
-    this.setLayerVisibility('vehicles-cluster-bg', mini);
-    this.setLayerVisibility('vehicles-cluster-count', mini);
-    // Points individuels non-clusters : visibles a faible zoom
-    this.setLayerVisibility('vehicles-unclustered', mini);
+    this.setLayerVisibility('vehicles-cluster-bg', useMini);
+    this.setLayerVisibility('vehicles-cluster-count', useMini);
+    this.setLayerVisibility('vehicles-unclustered', useMini);
+  }
+
+  /** V1.7 — toggle Calques : active/desactive le mode compact a faible zoom. */
+  protected toggleCompactMarkers(): void {
+    const v = !this.compactMarkers();
+    this.compactMarkers.set(v);
+    this.preferences.update({
+      map: { ...this.preferences.prefs().map, compactMarkers: v },
+    });
+    // Force le recalcul (le state hysteresis ne change pas, mais useMini si).
+    this.applyClusterVisibility();
   }
 
   /** Sprint D.2 — toggle l'affichage de la derniere heure pour un vehicule. */
@@ -2491,6 +2551,25 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   /* --- Popover info marker --- */
 
   /**
+   * V1.7 — Determine si une coupure moteur est en cours pour un tracker donne,
+   * en se basant sur les commandes WS recentes (`realtime.engineCommandUpdates`).
+   *
+   * Source de verite UNIQUE pour le bouton CUT/RESTORE : on ne se fie plus a
+   * `pos.ignition` qui peut etre faux quand le fil ACC n'est pas connecte
+   * (mode degrade, ignition inferee depuis vitesse).
+   *
+   * Conservatif : retourne `true` UNIQUEMENT si la derniere update est une
+   * CUT effective (SENT ou ACKNOWLEDGED). Sinon `false` (on propose Couper).
+   * Le serveur rejettera le 2eme CUT si deja coupe (idempotent).
+   */
+  private isCutActiveForTracker(trackerId: string): boolean {
+    const update = this.realtime.engineCommandUpdates().get(trackerId);
+    if (!update) return false;
+    if (update.action !== 'CUT') return false;
+    return update.status === 'SENT' || update.status === 'ACKNOWLEDGED';
+  }
+
+  /**
    * Corrige l'ignition affichee en tenant compte des commandes moteur recentes.
    * Quand un CUT est SENT/ACKNOWLEDGED mais que l'ACC_OFF du tracker n'est pas
    * encore arrive, la position WS montre encore ignition=true. Ce helper
@@ -2542,21 +2621,25 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     const meta = this.vehicleMeta.get(pos.vehicleId) ?? { type: 'OTHER', plate: '?' };
     const ago = Math.round((Date.now() - new Date(pos.timestamp).getTime()) / 1000);
     const agoStr = ago < 60 ? `${ago}s` : `${Math.round(ago / 60)}min`;
-    // Logique CUT/RESTORE : un seul bouton selon l'état moteur
-    // - ignition ON  → on propose de couper
-    // - ignition OFF → on propose de restaurer (au cas où il a été coupé par commande)
-    const engineBtn = pos.ignition
-      ? `<button data-action="cut" class="tk-popup-btn tk-popup-btn--danger">
-           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-             <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/>
-           </svg>
-           <span>Couper le moteur</span>
-         </button>`
-      : `<button data-action="restore" class="tk-popup-btn tk-popup-btn--success">
+    // V1.7 — Logique CUT/RESTORE basee sur l'etat des COMMANDES, plus sur
+    // l'ignition. Raison : avec accConnected=false, l'ignition est inferee et
+    // peut transitoirement etre fausse (vehicule a 0 km/h moteur encore tournant
+    // pendant 5 min, ou trame ACC perdue). On propose "Rallumer" UNIQUEMENT
+    // quand une CUT effective est en cours. Sinon on garde "Couper" (l'API
+    // refusera si vitesse trop elevee, position stale, etc.).
+    const cutActive = this.isCutActiveForTracker(pos.trackerId);
+    const engineBtn = cutActive
+      ? `<button data-action="restore" class="tk-popup-btn tk-popup-btn--success">
            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
              <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/>
            </svg>
            <span>Rallumer le moteur</span>
+         </button>`
+      : `<button data-action="cut" class="tk-popup-btn tk-popup-btn--danger">
+           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+             <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/>
+           </svg>
+           <span>Couper le moteur</span>
          </button>`;
 
     // Couleur de la pastille vitesse selon le seuil

@@ -40,6 +40,8 @@ export interface UserPreferences {
     showPlates: boolean;
     /** Mode camera par defaut au chargement (`free` recommande). */
     cameraMode: CameraMode;
+    /** V1.7 — si false, jamais de mode compact a faible zoom (markers riches partout). */
+    compactMarkers: boolean;
   };
   /** Widgets activés et ordre d'affichage sur le tableau de bord. */
   dashboardWidgets: DashboardWidgetConfig[];
@@ -61,6 +63,7 @@ const DEFAULTS: UserPreferences = {
     trailLength: 20,
     showPlates: true,
     cameraMode: 'free',
+    compactMarkers: true,
   },
   dashboardWidgets: [
     { key: 'kpis', enabled: true },

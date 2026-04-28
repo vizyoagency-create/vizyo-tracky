@@ -108,23 +108,26 @@ export class EngineControlButtonComponent implements OnInit {
 
   readonly isCutActive = computed(() => {
     const cmds = this.recentCommands();
-    const ign = this.ignition();
 
-    // Command-based detection: last CUT more recent than last RESTORE
+    // V1.7 — Source de verite UNIQUE : l'historique des commandes. On ne se fie
+    // plus a `ignition` qui peut etre faux quand le fil ACC n'est pas connecte
+    // (mode degrade, inferee depuis vitesse). La derniere CUT SENT/ACKNOWLEDGED
+    // sans RESTORE postérieure indique une coupure active.
+    //
+    // Les CUT externes (SMS / DEVICE_OBSERVED) sont aussi detectes, car le
+    // backend cree systematiquement une EngineControlCommand pour ces cas
+    // (cf. handleIgnitionTransition dans positions.service.ts) — l'historique
+    // les contient donc quand le tracker repond avec acc_off.
     const lastCut = cmds.find(
       (c) => c.action === 'CUT' && (c.status === 'SENT' || c.status === 'ACKNOWLEDGED'),
     );
     const lastRestore = cmds.find(
       (c) => c.action === 'RESTORE' && (c.status === 'SENT' || c.status === 'ACKNOWLEDGED'),
     );
-    const cutByCommand = lastCut && (!lastRestore || new Date(lastCut.createdAt) > new Date(lastRestore.createdAt));
 
-    // Si l'ignition est OFF et qu'il n'y a pas de RESTORE recente, considerer coupe
-    // (couvre les CUT par SMS / externe que le backend marque DEVICE_OBSERVED)
-    if (cutByCommand) return true;
-    if (!ign && lastCut && !lastRestore) return true;
-
-    return false;
+    if (!lastCut) return false;
+    if (!lastRestore) return true;
+    return new Date(lastCut.createdAt) > new Date(lastRestore.createdAt);
   });
 
   readonly canCut = computed(() => {

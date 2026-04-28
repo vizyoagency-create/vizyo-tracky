@@ -294,6 +294,11 @@ model Tracker {
   // SMS quand la socket TCP est indisponible. Renseigne au moment du provisionnement
   // SMS via /admin/sms/provision.
   simPhoneNumber          String?
+  /// V1.7 — Indique si le fil ACC du boitier (jaune) est physiquement connecte
+  /// au +12V apres contact. Si false, le serveur infere `ignition` depuis la
+  /// vitesse GPS (>3 km/h => ON). Reglable par SUPER_ADMIN uniquement depuis
+  /// la fiche vehicule. Default true (cas standard en flotte pro).
+  accConnected            Boolean   @default(true)
   vehicleId            String?                @unique @db.Uuid
   vehicle    Vehicle?               @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   positions  Position[]
