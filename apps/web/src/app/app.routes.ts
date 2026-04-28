@@ -21,6 +21,18 @@ export const routes: Routes = [
     ],
   },
   {
+    path: 'forgot-password',
+    loadComponent: () =>
+      import('./layouts/auth-layout.component').then((m) => m.AuthLayoutComponent),
+    children: [
+      {
+        path: '',
+        loadComponent: () =>
+          import('./features/auth/forgot-password.component').then((m) => m.ForgotPasswordComponent),
+      },
+    ],
+  },
+  {
     path: 'accept-invite',
     loadComponent: () =>
       import('./features/auth/accept-invite.component').then((m) => m.AcceptInviteComponent),

@@ -142,4 +142,12 @@ export class AuthClientService {
       {},
     );
   }
+
+  async requestPasswordReset(email: string): Promise<{ token: string | null }> {
+    return this.request<{ token: string | null }>(
+      'POST',
+      '/v1/auth/request-password-reset',
+      { email },
+    );
+  }
 }

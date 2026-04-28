@@ -147,6 +147,72 @@ Ce lien est valide jusqu'au ${expiresLabel}.
 
     return { subject, html, text };
   }
+
+  /**
+   * Template reset mot de passe — meme style que l'invitation.
+   */
+  buildPasswordResetEmail(opts: {
+    recipientName?: string | null;
+    resetUrl: string;
+    expiresInMinutes: number;
+  }): { subject: string; html: string; text: string } {
+    const greeting = opts.recipientName ? `Bonjour ${opts.recipientName},` : 'Bonjour,';
+    const subject = `[Vizyo Tracky] Réinitialisation de votre mot de passe`;
+
+    const html = `<!DOCTYPE html>
+<html lang="fr">
+<body style="margin:0;padding:0;background:#0b0f12;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#f4f4f5;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#0b0f12;padding:40px 20px;">
+    <tr><td align="center">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;background:#13181d;border:1px solid #2a3036;border-radius:16px;overflow:hidden;">
+        <tr><td style="padding:32px 32px 0 32px;">
+          <div style="font-size:24px;font-weight:700;color:#10e0a0;letter-spacing:-0.5px;">Vizyo Tracky</div>
+        </td></tr>
+        <tr><td style="padding:24px 32px;">
+          <h1 style="margin:0 0 16px;font-size:22px;font-weight:600;color:#f4f4f5;">${greeting}</h1>
+          <p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:#cbd2d9;">
+            Vous avez demande la reinitialisation de votre mot de passe sur Vizyo Tracky.
+          </p>
+          <p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:#cbd2d9;">
+            Cliquez le bouton ci-dessous pour choisir un nouveau mot de passe :
+          </p>
+          <div style="text-align:center;margin:32px 0;">
+            <a href="${opts.resetUrl}" style="display:inline-block;background:#10e0a0;color:#0b0f12;text-decoration:none;font-weight:600;font-size:15px;padding:14px 32px;border-radius:10px;">
+              Reinitialiser mon mot de passe
+            </a>
+          </div>
+          <p style="margin:0 0 8px;font-size:13px;color:#8b939c;">
+            Ce lien est valide pendant <strong>${opts.expiresInMinutes} minutes</strong>. Si vous n'avez pas demande cette reinitialisation, ignorez cet email.
+          </p>
+          <p style="margin:24px 0 0;font-size:12px;color:#6b727a;border-top:1px solid #2a3036;padding-top:16px;">
+            Si le bouton ne fonctionne pas, copier ce lien dans votre navigateur :<br/>
+            <span style="word-break:break-all;color:#8b939c;">${opts.resetUrl}</span>
+          </p>
+        </td></tr>
+        <tr><td style="padding:16px 32px 24px;text-align:center;">
+          <p style="margin:0;font-size:12px;color:#6b727a;">— L'equipe Vizyo</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+    const text = `${greeting}
+
+Vous avez demande la reinitialisation de votre mot de passe sur Vizyo Tracky.
+
+Cliquez ce lien pour choisir un nouveau mot de passe :
+${opts.resetUrl}
+
+Ce lien est valide pendant ${opts.expiresInMinutes} minutes.
+
+Si vous n'avez pas demande cette reinitialisation, ignorez cet email.
+
+— L'equipe Vizyo`;
+
+    return { subject, html, text };
+  }
 }
 
 function escapeHtml(s: string): string {

@@ -66,8 +66,9 @@ export class UsersApiService {
     };
   }
 
-  async findAll(): Promise<TrackyUser[]> {
-    const res = await fetch('/api/users', { headers: this.headers });
+  async findAll(includeArchived = false): Promise<TrackyUser[]> {
+    const url = includeArchived ? '/api/users?includeArchived=true' : '/api/users';
+    const res = await fetch(url, { headers: this.headers });
     if (!res.ok) throw new Error('Failed to load users');
     return res.json();
   }
@@ -103,7 +104,15 @@ export class UsersApiService {
       method: 'DELETE',
       headers: this.headers,
     });
-    if (!res.ok && res.status !== 204) throw new Error('Failed to delete user');
+    if (!res.ok && res.status !== 204) throw new Error('Failed to archive user');
+  }
+
+  async resetPassword(id: string): Promise<void> {
+    const res = await fetch(`/api/users/${id}/reset-password`, {
+      method: 'POST',
+      headers: this.headers,
+    });
+    if (!res.ok) throw new Error('Failed to send password reset');
   }
 
   // ─── /me — Sprint J ──────────────────────────────────────────

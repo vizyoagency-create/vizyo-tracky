@@ -1,13 +1,16 @@
 import {
   BadRequestException, Body, Controller, Delete, ForbiddenException, Get, HttpCode, HttpStatus,
-  NotFoundException, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, UseGuards,
+  Logger, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, UseGuards,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { AccessType, Prisma, UserRole } from '@prisma/client';
 import { AuthClientService } from '../auth-client/auth-client.service';
 import { Roles } from '../auth/decorators/roles.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import type { Env } from '../config/env.validation';
+import { EmailService } from '../email/email.service';
 import { InvitationsService } from '../invitations/invitations.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { getDefaultPermissions } from './default-permissions';
@@ -20,10 +23,14 @@ const PRIVILEGED_ROLES: UserRole[] = [UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class UsersController {
+  private readonly logger = new Logger(UsersController.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly authClient: AuthClientService,
     private readonly invitations: InvitationsService,
+    private readonly emailService: EmailService,
+    private readonly config: ConfigService<Env, true>,
   ) {}
 
   // ─── /me — current user (Sprint J) ────────────────────────────
@@ -191,10 +198,18 @@ export class UsersController {
 
   @Get()
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
-  async findAll(@Req() req: AuthenticatedRequest) {
-    const where = req.user.role === UserRole.SUPER_ADMIN
+  async findAll(
+    @Req() req: AuthenticatedRequest,
+    @Query('includeArchived') includeArchived?: string,
+  ) {
+    const where: Prisma.UserWhereInput = req.user.role === UserRole.SUPER_ADMIN
       ? {}
       : { fleetId: req.user.fleetId };
+
+    // Par defaut, on ne retourne que les utilisateurs actifs
+    if (includeArchived !== 'true') {
+      where.isActive = true;
+    }
 
     const users = await this.prisma.user.findMany({
       where,
@@ -278,28 +293,83 @@ export class UsersController {
   }
 
   @Delete(':id')
-  @HttpCode(HttpStatus.NO_CONTENT)
+  @HttpCode(HttpStatus.OK)
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
-  async remove(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+  async archive(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     const user = await this.prisma.user.findUnique({
       where: { id },
       select: { id: true, authUserId: true, fleetId: true, role: true },
     });
 
-    if (!user) return;
+    if (!user) throw new NotFoundException('Utilisateur introuvable');
 
-    // Non-SUPER_ADMIN can only delete users in their fleet
-    if (req.user.role !== UserRole.SUPER_ADMIN && user.fleetId !== req.user.fleetId) {
-      throw new ForbiddenException('Access denied');
+    // FLEET_ADMIN ne peut pas etre archive (compte principal de la flotte)
+    if (user.role === UserRole.FLEET_ADMIN) {
+      throw new ForbiddenException('Impossible d\'archiver l\'administrateur de la flotte');
     }
 
-    // Cannot delete yourself
+    // Impossible de s'archiver soi-meme
     if (user.id === req.user.id) {
-      throw new ForbiddenException('Cannot delete yourself');
+      throw new ForbiddenException('Impossible de s\'archiver soi-meme');
     }
 
-    await this.authClient.removeUserFromApp(user.authUserId);
-    await this.prisma.user.delete({ where: { id } });
+    // Acces flotte
+    if (req.user.role !== UserRole.SUPER_ADMIN && user.fleetId !== req.user.fleetId) {
+      throw new ForbiddenException('Acces refuse');
+    }
+
+    // 1. Suspendre dans Vizyo Auth (plus de login possible)
+    try {
+      await this.authClient.suspendUser(user.authUserId);
+    } catch {
+      // Non-bloquant si Vizyo Auth est down
+    }
+
+    // 2. Detacher les acces vehicules
+    await this.prisma.userVehicleAccess.deleteMany({ where: { userId: id } });
+
+    // 3. Marquer comme inactif
+    await this.prisma.user.update({
+      where: { id },
+      data: { isActive: false },
+    });
+
+    return { ok: true };
+  }
+
+  @Post(':id/reset-password')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  async resetPassword(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, email: true, firstName: true, lastName: true, fleetId: true },
+    });
+    if (!user) throw new NotFoundException('Utilisateur introuvable');
+    if (req.user.role !== UserRole.SUPER_ADMIN && user.fleetId !== req.user.fleetId) {
+      throw new ForbiddenException('Acces refuse');
+    }
+    // Meme flow que forgot-password
+    try {
+      const result = await this.authClient.requestPasswordReset(user.email);
+      if (result.token) {
+        const vizAuthWebUrl = this.config.get('VIZYO_AUTH_WEB_URL', { infer: true });
+        const appBaseUrl = this.config.get('APP_BASE_URL', { infer: true });
+        const redirectUrl = `${appBaseUrl}/login?email=${encodeURIComponent(user.email)}`;
+        const resetUrl = `${vizAuthWebUrl}/reset-password?token=${result.token}&redirect=${encodeURIComponent(redirectUrl)}`;
+
+        const emailContent = this.emailService.buildPasswordResetEmail({
+          recipientName: [user.firstName, user.lastName].filter(Boolean).join(' ') || null,
+          resetUrl,
+          expiresInMinutes: 60,
+        });
+
+        await this.emailService.send({ to: user.email, ...emailContent });
+      }
+    } catch (err) {
+      this.logger.warn({ userId: id, error: (err as Error).message }, 'Admin password reset email failed');
+    }
+    return { ok: true };
   }
 
   // ─── Vehicle Access ──────────────────────────────────────

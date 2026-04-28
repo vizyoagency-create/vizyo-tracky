@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, Plus, Trash2, Users, Shield, Pencil } from 'lucide-angular';
+import { LucideAngularModule, Plus, Archive, Users, Shield, Pencil, KeyRound } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
 import { PermissionsService } from '../../core/services/permissions.service';
@@ -25,13 +25,19 @@ import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerR
       <div class="u-header">
         <div>
           <h1 class="u-title">Utilisateurs</h1>
-          <p class="u-sub">{{ users().length }} membre(s) dans votre flotte</p>
+          <p class="u-sub">{{ users().length }} membre(s){{ includeArchived() ? ' (archives inclus)' : ' dans votre flotte' }}</p>
         </div>
-        @if (perms.can('users_manage')) {
-          <button (click)="openCreateDrawer()" class="u-add-btn">
-            <lucide-icon [img]="Plus" [size]="15"></lucide-icon> Ajouter
-          </button>
-        }
+        <div class="u-header-actions">
+          @if (perms.can('users_manage')) {
+            <label class="u-toggle-archived">
+              <input type="checkbox" [checked]="includeArchived()" (change)="toggleArchived()" />
+              <span>Archives</span>
+            </label>
+            <button (click)="openCreateDrawer()" class="u-add-btn">
+              <lucide-icon [img]="Plus" [size]="15"></lucide-icon> Ajouter
+            </button>
+          }
+        </div>
       </div>
 
       @if (loading()) {
@@ -47,7 +53,7 @@ import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerR
       } @else {
         <div class="u-grid">
           @for (u of users(); track u.id) {
-            <div class="u-card" [class.admin]="u.role === 'FLEET_ADMIN'">
+            <div class="u-card" [class.admin]="u.role === 'FLEET_ADMIN'" [class.archived]="!u.isActive">
               <div class="u-card-glow" [class]="u.role === 'FLEET_ADMIN' ? 'green' : u.role === 'FLEET_MANAGER' ? 'blue' : 'gray'"></div>
 
               <!-- Top: avatar + info -->
@@ -73,17 +79,25 @@ import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerR
               </div>
 
               <!-- Bottom: actions -->
-              @if (u.role !== 'FLEET_ADMIN' && perms.can('users_manage')) {
+              @if (u.role !== 'FLEET_ADMIN' && perms.can('users_manage') && u.isActive) {
                 <div class="u-card-actions">
                   <button (click)="openEditDrawer(u)" class="u-action-btn" title="Modifier">
                     <lucide-icon [img]="PencilIcon" [size]="14"></lucide-icon> Modifier
                   </button>
-                  <button (click)="openAccessModal(u)" class="u-action-btn" title="Accès véhicules">
-                    <lucide-icon [img]="ShieldIcon" [size]="14"></lucide-icon> Accès
+                  <button (click)="openAccessModal(u)" class="u-action-btn" title="Acces vehicules">
+                    <lucide-icon [img]="ShieldIcon" [size]="14"></lucide-icon> Acces
                   </button>
-                  <button (click)="confirmDelete(u)" class="u-action-btn danger" title="Supprimer">
-                    <lucide-icon [img]="Trash2" [size]="14"></lucide-icon>
+                  <button (click)="onResetPassword(u)" class="u-action-btn" title="Reinitialiser le mot de passe">
+                    <lucide-icon [img]="KeyIcon" [size]="14"></lucide-icon>
                   </button>
+                  <button (click)="confirmDelete(u)" class="u-action-btn danger" title="Archiver">
+                    <lucide-icon [img]="ArchiveIcon" [size]="14"></lucide-icon>
+                  </button>
+                </div>
+              }
+              @if (!u.isActive) {
+                <div class="u-card-actions">
+                  <span class="u-archived-badge">Archive</span>
                 </div>
               }
             </div>
@@ -101,12 +115,12 @@ import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerR
       (saved)="onDrawerSave($event)"
     />
 
-    <!-- Delete Modal -->
+    <!-- Archive Modal -->
     <app-confirm-modal
       [open]="showDeleteModal()"
-      title="Supprimer l'utilisateur"
-      [description]="'Voulez-vous supprimer <strong>' + (userToDelete()?.email ?? '') + '</strong> ? Cette action est irréversible.'"
-      confirmLabel="Supprimer"
+      title="Archiver l'utilisateur"
+      [description]="'Voulez-vous archiver <strong>' + (userToDelete()?.email ?? '') + '</strong> ? Cet utilisateur ne pourra plus se connecter. Ses actions passees seront conservees.'"
+      confirmLabel="Archiver"
       [danger]="true"
       [loading]="deleting()"
       (confirmed)="onDelete()"
@@ -222,6 +236,19 @@ import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerR
     }
     .u-action-btn:hover { color: var(--tracky-light); border-color: rgba(16,224,160,.2) }
     .u-action-btn.danger:hover { color: #f87171; border-color: rgba(239,68,68,.2) }
+    .u-card.archived { opacity: .45; filter: grayscale(.5) }
+    .u-archived-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 4px 10px; border-radius: 6px; font-size: 10px; font-weight: 700;
+      background: rgba(239,68,68,.1); color: #f87171; text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .u-header-actions { display: flex; align-items: center; gap: 10px }
+    .u-toggle-archived {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 11px; color: var(--fg-tertiary); cursor: pointer;
+    }
+    .u-toggle-archived input { accent-color: var(--tracky); cursor: pointer }
   `],
 })
 export class UsersListComponent implements OnInit {
@@ -229,6 +256,7 @@ export class UsersListComponent implements OnInit {
 
   readonly loading = signal(true);
   readonly users = signal<TrackyUser[]>([]);
+  readonly includeArchived = signal(false);
 
   // Drawer (create + edit)
   readonly showDrawer = signal(false);
@@ -263,7 +291,8 @@ export class UsersListComponent implements OnInit {
   }
 
   protected readonly Plus = Plus;
-  protected readonly Trash2 = Trash2;
+  protected readonly ArchiveIcon = Archive;
+  protected readonly KeyIcon = KeyRound;
   protected readonly UsersIcon = Users;
   protected readonly ShieldIcon = Shield;
   protected readonly PencilIcon = Pencil;
@@ -275,7 +304,7 @@ export class UsersListComponent implements OnInit {
   private async loadUsers(): Promise<void> {
     this.loading.set(true);
     try {
-      this.users.set(await this.usersService.findAll());
+      this.users.set(await this.usersService.findAll(this.includeArchived()));
     } catch { /* error */ }
     finally { this.loading.set(false); }
   }
@@ -353,6 +382,20 @@ export class UsersListComponent implements OnInit {
       await this.loadUsers();
     } catch { /* error */ }
     finally { this.deleting.set(false); }
+  }
+
+  async toggleArchived(): Promise<void> {
+    this.includeArchived.update((v) => !v);
+    await this.loadUsers();
+  }
+
+  async onResetPassword(user: TrackyUser): Promise<void> {
+    try {
+      await this.usersService.resetPassword(user.id);
+      alert(`Un email de reinitialisation a ete envoye a ${user.email}.`);
+    } catch {
+      alert('Erreur lors de l\'envoi du lien de reinitialisation.');
+    }
   }
 
   // ─── Vehicle Access Drawer ───────────────────────────────

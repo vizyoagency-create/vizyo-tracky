@@ -1,6 +1,6 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../core/services/auth.service';
 import { PreferencesService } from '../../core/services/preferences.service';
 import { RealtimeService } from '../../core/services/realtime.service';
@@ -9,7 +9,7 @@ import { ThemeService } from '../../core/theme/theme.service';
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, RouterLink],
   template: `
     <div
       class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-8"
@@ -73,6 +73,13 @@ import { ThemeService } from '../../core/theme/theme.service';
           </div>
         </div>
 
+        <div class="text-right">
+          <a routerLink="/forgot-password"
+             class="text-sm text-tracky-light hover:underline cursor-pointer">
+            Mot de passe oublie ?
+          </a>
+        </div>
+
         @if (error()) {
           <p class="text-sm text-red-400">{{ error() }}</p>
         }
@@ -95,7 +102,7 @@ import { ThemeService } from '../../core/theme/theme.service';
     </div>
   `,
 })
-export class LoginComponent {
+export class LoginComponent implements OnInit {
   protected email = '';
   protected password = '';
   protected readonly showPassword = signal(false);
@@ -106,8 +113,14 @@ export class LoginComponent {
   private readonly realtime = inject(RealtimeService);
   private readonly preferences = inject(PreferencesService);
   private readonly themeService = inject(ThemeService);
+  private readonly route = inject(ActivatedRoute);
 
   constructor(private readonly router: Router) {}
+
+  ngOnInit(): void {
+    const emailParam = this.route.snapshot.queryParamMap.get('email');
+    if (emailParam) this.email = emailParam;
+  }
 
   async onSubmit(): Promise<void> {
     this.error.set('');
