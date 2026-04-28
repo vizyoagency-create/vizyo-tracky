@@ -100,6 +100,20 @@ export class ScheduleCronService {
     // No change → skip
     if (state === schedule.lastEvaluatedState) return;
 
+    // Premier tick apres activation : si IN_WINDOW, le vehicule roule deja.
+    // On initialise le baseline sans envoyer de RESTORE inutile.
+    if (schedule.lastEvaluatedState === null && state === 'IN_WINDOW') {
+      await this.prisma.vehicleSchedule.update({
+        where: { id: schedule.id },
+        data: { lastEvaluatedState: state, lastEvaluatedAt: new Date() },
+      });
+      this.logger.log(
+        { vehicleId: schedule.vehicleId, state },
+        'Schedule baseline initialized (vehicle in window, no action)',
+      );
+      return;
+    }
+
     const action =
       state === 'IN_WINDOW' ? EngineAction.RESTORE : EngineAction.CUT;
 

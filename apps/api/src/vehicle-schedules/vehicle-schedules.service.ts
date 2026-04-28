@@ -9,7 +9,10 @@ import { EngineAction, Prisma, UserRole } from '@prisma/client';
 import type { VehicleSchedule } from '@prisma/client';
 import { EngineControlService } from '../engine-control/engine-control.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { evaluateSchedule } from './schedule-evaluator';
 import type { UpsertVehicleScheduleDto } from './dto/upsert-vehicle-schedule.dto';
+
+const SCHEDULER_USER_ID = '00000000-0000-0000-0000-000000000000';
 
 interface RequestedBy {
   userId: string;
@@ -107,6 +110,47 @@ export class VehicleSchedulesService {
             { vehicleId, error: (err as Error).message },
             'Failed to emit RESTORE on scheduler disable (tracker may be offline)',
           );
+        }
+      }
+    }
+
+    // Evaluation immediate : ne pas attendre le prochain tick cron.
+    // Si hors fenetre → CUT immédiat. Si en fenetre → juste initialiser le state.
+    if (willBeEnabled) {
+      const evaluation = evaluateSchedule(updated);
+      const state = evaluation.state;
+
+      if (state === 'IN_WINDOW') {
+        // Vehicule autorise a rouler — juste poser le baseline
+        await this.prisma.vehicleSchedule.update({
+          where: { id: updated.id },
+          data: { lastEvaluatedState: state, lastEvaluatedAt: new Date() },
+        });
+        this.logger.log({ vehicleId, state }, 'Schedule enabled — in window, no action');
+      } else {
+        // Hors fenetre → CUT immediat
+        const tracker = await this.prisma.tracker.findFirst({ where: { vehicleId } });
+        if (tracker) {
+          try {
+            await this.engineControl.requestCommand(
+              tracker.id,
+              EngineAction.CUT,
+              `Automatisation horaire activée hors plage autorisée`,
+              { userId: SCHEDULER_USER_ID, role: 'SUPER_ADMIN' as any, fleetId: null },
+              'SCHEDULER',
+            );
+            await this.prisma.vehicleSchedule.update({
+              where: { id: updated.id },
+              data: { lastEvaluatedState: state, lastEvaluatedAt: new Date() },
+            });
+            this.logger.log({ vehicleId, state }, 'Schedule enabled — out of window, CUT sent');
+          } catch (err) {
+            // CUT echoue (stale, offline...) → cron retentera au prochain tick
+            this.logger.warn(
+              { vehicleId, error: (err as Error).message },
+              'Immediate CUT on schedule enable failed (cron will retry)',
+            );
+          }
         }
       }
     }
