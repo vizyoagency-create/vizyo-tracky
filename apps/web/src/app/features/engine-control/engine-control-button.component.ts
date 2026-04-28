@@ -108,19 +108,21 @@ export class EngineControlButtonComponent implements OnInit {
 
   readonly isCutActive = computed(() => {
     const cmds = this.recentCommands();
-    if (cmds.length === 0) return false;
+    const ign = this.ignition();
 
+    // Command-based detection: last CUT more recent than last RESTORE
     const lastCut = cmds.find(
       (c) => c.action === 'CUT' && (c.status === 'SENT' || c.status === 'ACKNOWLEDGED'),
     );
     const lastRestore = cmds.find(
       (c) => c.action === 'RESTORE' && (c.status === 'SENT' || c.status === 'ACKNOWLEDGED'),
     );
+    const cutByCommand = lastCut && (!lastRestore || new Date(lastCut.createdAt) > new Date(lastRestore.createdAt));
 
-    // If there's an active CUT with no subsequent RESTORE → engine is cut
-    if (lastCut && (!lastRestore || new Date(lastCut.createdAt) > new Date(lastRestore.createdAt))) {
-      return true;
-    }
+    // Si l'ignition est OFF et qu'il n'y a pas de RESTORE recente, considerer coupe
+    // (couvre les CUT par SMS / externe que le backend marque DEVICE_OBSERVED)
+    if (cutByCommand) return true;
+    if (!ign && lastCut && !lastRestore) return true;
 
     return false;
   });

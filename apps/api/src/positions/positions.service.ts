@@ -85,6 +85,9 @@ export class PositionsService {
 
     if (resolvedIgnition !== undefined) {
       trackerUpdate.lastKnownIgnition = resolvedIgnition;
+      // Synchroniser lastIgnition (lu par le snapshot) meme si le GPS est invalide,
+      // sinon un acc_off avec GPS invalide laisse lastIgnition stale = true.
+      trackerUpdate.lastIgnition = resolvedIgnition;
       if (ignitionChanged || tracker.lastKnownIgnition === null) {
         trackerUpdate.lastIgnitionChangeAt = new Date();
       }
@@ -98,7 +101,6 @@ export class PositionsService {
       trackerUpdate.lastLng = frame.longitude;
       trackerUpdate.lastSpeedKmh = frame.speedKph;
       trackerUpdate.lastHeading = frame.course ?? 0;
-      trackerUpdate.lastIgnition = resolvedIgnition ?? null;
       trackerUpdate.lastValid = frame.valid;
       trackerUpdate.lastPositionAt = frame.deviceTime;
     }
@@ -256,7 +258,9 @@ export class PositionsService {
     }
 
     if (tracker.vehicle) {
-      const ignitionValue = resolvedIgnition ?? true;
+      // Fallback : utiliser le dernier etat connu du tracker plutot que d'assumer ON.
+      // Securite : si aucune info, on ne presume pas que le moteur tourne.
+      const ignitionValue = resolvedIgnition ?? tracker.lastKnownIgnition ?? false;
       const event: PositionUpdateEvent = {
         trackerId: tracker.id,
         vehicleId: tracker.vehicle.id,

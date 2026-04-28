@@ -1287,6 +1287,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private hasFittedBounds = false;
   private currentPopup: Popup | null = null;
   private activePopupTrackerId: string | null = null;
+  private activePopupVehicleId: string | null = null;
 
   /** Etat d'interpolation par trackerId : permet animation fluide entre 2 events WS. */
   private interp = new Map<string, InterpState>();
@@ -1390,6 +1391,19 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       : all.filter((p) => (ids as Set<string>).has(p.vehicleId));
     if (!this.map) return;
     this.applyPositions(this.applyFilters(filtered));
+  });
+
+  // Reagir aux events ENGINE_COMMAND_UPDATED (CUT/RESTORE via SMS, scheduler, etc.)
+  // pour rafraichir le popup ouvert et mettre a jour l'etat ignition affiche.
+  private engineCommandEffect = effect(() => {
+    const updates = this.realtime.engineCommandUpdates();
+    if (!this.activePopupTrackerId || !this.currentPopup) return;
+    const update = updates.get(this.activePopupTrackerId);
+    if (!update) return;
+    const pos = this.realtime.positionsList().find((p) => p.trackerId === this.activePopupTrackerId);
+    if (!pos) return;
+    this.currentPopup.setHTML(this.buildPopupHtml(this.patchIgnitionFromCommands(pos)));
+    setTimeout(() => this.wirePopupActions(this.activePopupTrackerId!, this.activePopupVehicleId!), 0);
   });
 
   ngAfterViewInit(): void {
@@ -1620,21 +1634,24 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   }
 
   /**
-   * Sprint G.2 — bascule entre markers DOM (zoom eleve) et cluster GeoJSON
-   * (zoom faible). Le seuil 12 garde le rendu riche pour la grande majorite
-   * des cas d'usage (ville/quartier) et la performance pour les vues "pays".
+   * Sprint G.2 — bascule entre markers DOM riches (zoom eleve) et markers
+   * compacts (zoom faible). Les markers restent TOUJOURS visibles : a zoom < 10
+   * ils passent en mode mini (petit point colore) pour garder une vue d'ensemble.
+   * Les clusters ne s'affichent que pour les groupes denses a faible zoom.
    */
   private applyClusterVisibility(): void {
     if (!this.map) return;
     const z = this.map.getZoom();
-    const showClusters = z < 12;
-    // Toggle DOM markers
+    const mini = z < 10;
+    // Toggle DOM markers entre mode riche et mode mini (jamais display:none)
     document.querySelectorAll('.tracky-marker').forEach((el) => {
-      (el as HTMLElement).style.display = showClusters ? 'none' : '';
+      (el as HTMLElement).classList.toggle('tracky-marker--mini', mini);
     });
-    // Toggle cluster layers
-    this.setLayerVisibility('vehicles-cluster-bg', showClusters);
-    this.setLayerVisibility('vehicles-cluster-count', showClusters);
+    // Toggle cluster layers (seulement les badges de compteur sur groupes denses)
+    this.setLayerVisibility('vehicles-cluster-bg', mini);
+    this.setLayerVisibility('vehicles-cluster-count', mini);
+    // Points individuels non-clusters : visibles a faible zoom
+    this.setLayerVisibility('vehicles-unclustered', mini);
   }
 
   /** Sprint D.2 — toggle l'affichage de la derniere heure pour un vehicule. */
@@ -2179,6 +2196,21 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       },
       paint: { 'text-color': '#0a0a0a' },
     });
+    // Layer pour les points individuels (non regroupes en cluster) — visible a faible zoom.
+    this.map.addLayer({
+      id: 'vehicles-unclustered',
+      type: 'circle',
+      source: 'vehicles-cluster',
+      filter: ['!', ['has', 'point_count']],
+      layout: { visibility: 'none' },
+      paint: {
+        'circle-color': '#10E0A0',
+        'circle-radius': 7,
+        'circle-opacity': 0.95,
+        'circle-stroke-width': 2,
+        'circle-stroke-color': '#0a0a0a',
+      },
+    });
     // Click sur cluster = zoom in.
     this.map.on('click', 'vehicles-cluster-bg', (e) => {
       if (!this.map) return;
@@ -2193,6 +2225,19 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         this.map.flyTo({ center: geom.coordinates as [number, number], zoom, speed: 1.4, curve: 1.4 });
       });
     });
+    // Click sur point individuel non-cluster = centrer et zoomer sur le vehicule.
+    this.map.on('click', 'vehicles-unclustered', (e) => {
+      if (!this.map) return;
+      const feat = e.features?.[0];
+      const geom = feat?.geometry as GeoJSON.Point | undefined;
+      if (!geom) return;
+      this.map.flyTo({ center: geom.coordinates as [number, number], zoom: 15, speed: 1.4, curve: 1.4 });
+    });
+    // Curseur pointer sur les points individuels et clusters.
+    for (const layer of ['vehicles-cluster-bg', 'vehicles-unclustered']) {
+      this.map.on('mouseenter', layer, () => { if (this.map) this.map.getCanvas().style.cursor = 'pointer'; });
+      this.map.on('mouseleave', layer, () => { if (this.map) this.map.getCanvas().style.cursor = ''; });
+    }
   }
 
   /** Sprint G.4 — setup layer heatmap des densites de positions sur 24h. */
@@ -2305,9 +2350,14 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     const hydratedSet = this.realtime.hydratedTrackerIds();
     const showPlatesNow = this.showPlates();
 
+    // Pre-calculer le map des engine command updates pour patcher les markers.
+    const engineUpdates = this.realtime.engineCommandUpdates();
+
     for (const pos of positions) {
       activeIds.add(pos.trackerId);
       const meta = this.vehicleMeta.get(pos.vehicleId) ?? { type: 'OTHER', plate: '' };
+      // Patcher l'ignition du marker avec l'etat commande moteur (meme logique que popup).
+      const patched = this.patchIgnitionFromCommands(pos);
       const data: VehicleMarkerData = {
         trackerId: pos.trackerId,
         vehicleId: pos.vehicleId,
@@ -2315,7 +2365,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         plate: meta.plate,
         speedKmh: pos.speedKmh,
         heading: pos.heading,
-        ignition: pos.ignition,
+        ignition: patched.ignition,
         active: pos.vehicleId === followedId,
         hydrated: hydratedSet.has(pos.trackerId),
       };
@@ -2428,21 +2478,44 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       this.applyCameraMode();
     }
 
-    // Update popover content si ouvert.
-    if (this.activePopupTrackerId && this.currentPopup) {
+    // Update popover content si ouvert — re-wire les boutons apres remplacement DOM.
+    if (this.activePopupTrackerId && this.activePopupVehicleId && this.currentPopup) {
       const pos = positions.find((p) => p.trackerId === this.activePopupTrackerId);
-      if (pos) this.currentPopup.setHTML(this.buildPopupHtml(pos));
+      if (pos) {
+        this.currentPopup.setHTML(this.buildPopupHtml(this.patchIgnitionFromCommands(pos)));
+        setTimeout(() => this.wirePopupActions(this.activePopupTrackerId!, this.activePopupVehicleId!), 0);
+      }
     }
   }
 
   /* --- Popover info marker --- */
+
+  /**
+   * Corrige l'ignition affichee en tenant compte des commandes moteur recentes.
+   * Quand un CUT est SENT/ACKNOWLEDGED mais que l'ACC_OFF du tracker n'est pas
+   * encore arrive, la position WS montre encore ignition=true. Ce helper
+   * patche l'etat pour que le popup affiche le bon bouton immediatement.
+   */
+  private patchIgnitionFromCommands(pos: PositionUpdateEvent): PositionUpdateEvent {
+    const update = this.realtime.engineCommandUpdates().get(pos.trackerId);
+    if (!update) return pos;
+    if (update.status === 'ACKNOWLEDGED' || update.status === 'SENT') {
+      if (update.action === 'CUT' && pos.ignition) {
+        return { ...pos, ignition: false };
+      }
+      if (update.action === 'RESTORE' && !pos.ignition) {
+        return { ...pos, ignition: true };
+      }
+    }
+    return pos;
+  }
 
   private openMarkerPopup(trackerId: string): void {
     const pos = this.realtime.positionsList().find((p) => p.trackerId === trackerId);
     if (!pos || !this.map) return;
 
     this.closePopup();
-    const html = this.buildPopupHtml(pos);
+    const html = this.buildPopupHtml(this.patchIgnitionFromCommands(pos));
     this.currentPopup = new maplibregl.Popup({
       anchor: 'bottom',
       offset: 30,
@@ -2453,12 +2526,14 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       .setHTML(html)
       .addTo(this.map);
     this.activePopupTrackerId = trackerId;
+    this.activePopupVehicleId = pos.vehicleId;
 
     // Wire les boutons du popover (delegation event).
     setTimeout(() => this.wirePopupActions(trackerId, pos.vehicleId), 0);
 
     this.currentPopup.on('close', () => {
       this.activePopupTrackerId = null;
+      this.activePopupVehicleId = null;
       this.currentPopup = null;
     });
   }
@@ -2609,6 +2684,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     this.currentPopup?.remove();
     this.currentPopup = null;
     this.activePopupTrackerId = null;
+    this.activePopupVehicleId = null;
   }
 
   /* --- Search Nominatim --- */

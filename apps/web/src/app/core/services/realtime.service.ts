@@ -187,6 +187,12 @@ export class RealtimeService {
     let hydratedDirty = false;
     let newHydrated: Set<string> | null = null;
 
+    // Auto-cleanup : si une position confirme l'etat d'une commande moteur,
+    // supprimer l'entree pour eviter un patch stale dans le futur.
+    const engineCmds = this._engineCommandUpdates();
+    let engineDirty = false;
+    let newEngineCmds: Map<string, EngineCommandUpdatedEvent> | null = null;
+
     for (const [trackerId, event] of this.positionBuffer) {
       next.set(trackerId, event);
       // Un live event efface le flag "hydrate via REST" -> le marker passe a opacite 1.
@@ -195,11 +201,24 @@ export class RealtimeService {
         newHydrated.delete(trackerId);
         hydratedDirty = true;
       }
+      // Cleanup engine command si la position confirme l'etat attendu.
+      const cmd = engineCmds.get(trackerId);
+      if (cmd) {
+        const confirmed =
+          (cmd.action === 'CUT' && !event.ignition) ||
+          (cmd.action === 'RESTORE' && event.ignition);
+        if (confirmed) {
+          if (!newEngineCmds) newEngineCmds = new Map(engineCmds);
+          newEngineCmds.delete(trackerId);
+          engineDirty = true;
+        }
+      }
     }
 
     this.positionBuffer.clear();
     this.positions.set(next);
     if (hydratedDirty && newHydrated) this.hydratedTrackerIds.set(newHydrated);
+    if (engineDirty && newEngineCmds) this._engineCommandUpdates.set(newEngineCmds);
   }
 
   /**

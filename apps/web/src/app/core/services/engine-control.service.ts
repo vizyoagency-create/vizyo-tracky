@@ -8,7 +8,7 @@ export interface EngineControlCommandDto {
   action: 'CUT' | 'RESTORE';
   status: 'PENDING' | 'SENT' | 'ACKNOWLEDGED' | 'FAILED' | 'REJECTED_SPEED';
   reason: string | null;
-  source: 'MANUAL' | 'SCHEDULER';
+  source: 'MANUAL' | 'SCHEDULER' | 'DEVICE_OBSERVED';
   lastError: string | null;
   requestedBy: string;
   createdAt: string;

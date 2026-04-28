@@ -373,6 +373,28 @@ textarea:focus-visible,
 }
 .tracky-marker--no-plate .tracky-marker__plate { display: none; }
 
+/* Mode mini (vue d'ensemble, zoom faible) — petit point colore, toujours visible */
+.tracky-marker--mini {
+  width: 18px;
+  height: 18px;
+  transition: width 200ms ease, height 200ms ease;
+}
+.tracky-marker--mini .tracky-marker__pulse,
+.tracky-marker--mini .tracky-marker__heading-ring,
+.tracky-marker--mini .tracky-marker__acc,
+.tracky-marker--mini .tracky-marker__plate {
+  display: none;
+}
+.tracky-marker--mini .tracky-marker__core {
+  inset: 0;
+  border-width: 2px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+.tracky-marker--mini .tracky-marker__core svg {
+  width: 10px;
+  height: 10px;
+}
+
 /* Hydrate (cache REST, pas live) — opacite reduite jusqu'au prochain WS */
 .tracky-marker--hydrated .tracky-marker__core {
   opacity: 0.85;

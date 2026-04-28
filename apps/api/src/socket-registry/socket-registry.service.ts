@@ -5,6 +5,7 @@ export interface TrackerSocket {
   destroy(): void;
   readonly remoteAddress?: string;
   readonly destroyed?: boolean;
+  readonly writable?: boolean;
 }
 
 interface RegisteredSocket {
@@ -63,11 +64,21 @@ export class SocketRegistryService {
   send(imei: string, payload: string | Buffer): boolean {
     const entry = this.sockets.get(imei);
     if (!entry || entry.socket.destroyed) return false;
+    // Guard: socket can be non-destroyed but no longer writable (half-dead TCP)
+    if (entry.socket.writable === false) {
+      this.logger.warn(`Socket for ${imei} is not writable, cleaning up`);
+      this.unregister(imei);
+      return false;
+    }
     try {
-      entry.socket.write(payload);
+      const flushed = entry.socket.write(payload);
+      if (!flushed) {
+        this.logger.warn(`Write buffer backpressure for ${imei} — payload queued`);
+      }
       return true;
     } catch (err) {
-      this.logger.error(`Failed to send to ${imei}`, err);
+      this.logger.error(`Failed to send to ${imei}, cleaning up`, err);
+      this.unregister(imei);
       return false;
     }
   }

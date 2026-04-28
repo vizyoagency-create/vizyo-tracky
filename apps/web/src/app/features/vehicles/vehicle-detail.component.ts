@@ -634,7 +634,21 @@ export class VehicleDetailComponent implements OnInit {
     }
   });
 
-  // TODO: add command:status WS event for live command updates
+  // Reagir aux ENGINE_COMMAND_UPDATED WS events pour rafraichir commandes + ignition en live.
+  private engineCommandRefreshEffect = effect(() => {
+    const tracker = this.vehicle()?.tracker;
+    if (!tracker) return;
+    const updates = this.realtime.engineCommandUpdates();
+    const update = updates.get(tracker.id);
+    if (!update) return;
+    // Recharger la liste des commandes depuis l'API
+    const v = this.vehicle();
+    if (v) {
+      firstValueFrom(this.engineControlApi.listCommands(tracker.id, 20))
+        .then((cmds) => this.commands.set(cmds))
+        .catch(() => {});
+    }
+  });
 
   protected readonly livePosition = computed(() => {
     const tracker = this.vehicle()?.tracker;
@@ -644,8 +658,24 @@ export class VehicleDetailComponent implements OnInit {
 
   protected readonly currentPosition = computed(() => {
     const live = this.livePosition();
+    // Corriger l'ignition avec l'etat des commandes moteur recentes :
+    // apres un CUT ACKNOWLEDGED, si l'ACC_OFF n'est pas encore arrive,
+    // la position WS montre encore ignition=true — on patche ici.
+    const tracker = this.vehicle()?.tracker;
+    const engineUpdate = tracker
+      ? this.realtime.engineCommandUpdates().get(tracker.id)
+      : undefined;
+    const patchIgnition = (raw: boolean): boolean => {
+      if (!engineUpdate) return raw;
+      if (engineUpdate.status === 'ACKNOWLEDGED' || engineUpdate.status === 'SENT') {
+        if (engineUpdate.action === 'CUT') return false;
+        if (engineUpdate.action === 'RESTORE') return true;
+      }
+      return raw;
+    };
+
     if (live) {
-      return { lat: live.lat, lng: live.lng, speedKmh: live.speedKmh, heading: live.heading ?? 0, timestamp: live.timestamp, ignition: live.ignition, valid: live.valid };
+      return { lat: live.lat, lng: live.lng, speedKmh: live.speedKmh, heading: live.heading ?? 0, timestamp: live.timestamp, ignition: patchIgnition(live.ignition), valid: live.valid };
     }
     const last = this.recentPositions()[0];
     if (last) {
@@ -657,7 +687,8 @@ export class VehicleDetailComponent implements OnInit {
         heading: (last as { heading?: number }).heading ?? 0,
         timestamp: last.timestamp,
         // Remote — ignition fiable via last.ignition puis lastKnownIgnition tracker.
-        ignition: last.ignition ?? this.vehicle()?.tracker?.lastKnownIgnition ?? true,
+        // Fallback false (securite : on ne suppose pas moteur ON si inconnu).
+        ignition: patchIgnition(last.ignition ?? this.vehicle()?.tracker?.lastKnownIgnition ?? false),
         valid: last.valid,
       };
     }

@@ -134,9 +134,12 @@ export class AuthClientService {
   }
 
   async removeUserFromApp(authUserId: string): Promise<void> {
+    // Body explicite {} pour que la signature HMAC (calculee sur JSON.stringify(body))
+    // corresponde au body reellement envoye dans la requete fetch.
     return this.request<void>(
       'DELETE',
       `/v1/apps/${this.appId}/users/${authUserId}`,
+      {},
     );
   }
 }
