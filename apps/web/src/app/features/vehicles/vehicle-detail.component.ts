@@ -60,12 +60,12 @@ import { relativeTime } from '../../shared/utils/relative-time';
           @if (v.tracker && currentPosition(); as pos) {
             <app-engine-control-button
               [trackerId]="v.tracker.id"
+              [vehicleId]="v.id"
               [vehiclePlate]="v.plate"
               [currentSpeedKmh]="pos.speedKmh"
               [validFix]="pos.valid"
               [positionAge]="positionAgeSeconds()"
               [ignition]="pos.ignition"
-              [scheduleEnabled]="!!v.schedule?.enabled"
             />
           }
         </div>

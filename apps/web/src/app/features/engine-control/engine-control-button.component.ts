@@ -9,6 +9,7 @@ import {
   type EngineControlCommandDto,
 } from '../../core/services/engine-control.service';
 import { RealtimeService } from '../../core/services/realtime.service';
+import { VehicleSchedulesApiService } from '../../core/services/vehicle-schedules.service';
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 
@@ -21,7 +22,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
       @if (canCut().allowed || canRestore()) {
         @if (isCutActive()) {
           <button
-            (click)="isOpen.set('restore')"
+            (click)="openAction('restore')"
             class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg
                    bg-tracky/20 text-tracky-light border border-tracky/30
                    hover:bg-tracky/30 transition-all cursor-pointer whitespace-nowrap"
@@ -32,7 +33,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
           </button>
         } @else {
           <button
-            (click)="canCut().allowed ? isOpen.set('cut') : null"
+            (click)="canCut().allowed ? openAction('cut') : null"
             [disabled]="!canCut().allowed"
             [title]="canCut().reason ?? ''"
             class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg
@@ -100,18 +101,21 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 })
 export class EngineControlButtonComponent implements OnInit {
   readonly trackerId = input.required<string>();
+  readonly vehicleId = input<string | undefined>(undefined);
   readonly vehiclePlate = input.required<string>();
   readonly currentSpeedKmh = input<number | undefined>(undefined);
   readonly validFix = input(false);
   readonly positionAge = input<number | undefined>(undefined);
   readonly ignition = input(true);
-  /** Si true, un schedule horaire est actif sur ce véhicule. */
-  readonly scheduleEnabled = input(false);
+  /** Si true, un schedule horaire est actif sur ce véhicule (input ou chargé dynamiquement). */
+  readonly scheduleEnabledInput = input(false, { alias: 'scheduleEnabled' });
 
   protected readonly isOpen = signal<'cut' | 'restore' | null>(null);
   protected readonly loading = signal(false);
   protected readonly reason = signal('');
   protected readonly recentCommands = signal<EngineControlCommandDto[]>([]);
+  private readonly _scheduleEnabled = signal(false);
+  protected readonly scheduleEnabled = computed(() => this.scheduleEnabledInput() || this._scheduleEnabled());
 
   protected readonly Power = Power;
   protected readonly PowerOff = PowerOff;
@@ -120,6 +124,7 @@ export class EngineControlButtonComponent implements OnInit {
   private readonly engineControl = inject(EngineControlService);
   private readonly toast = inject(ToastService);
   private readonly realtime = inject(RealtimeService);
+  private readonly schedulesApi = inject(VehicleSchedulesApiService);
 
   readonly isCutActive = computed(() => {
     const cmds = this.recentCommands();
@@ -207,6 +212,13 @@ export class EngineControlButtonComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadRecentCommands();
+    this.loadScheduleStatus();
+  }
+
+  protected async openAction(action: 'cut' | 'restore'): Promise<void> {
+    // Rafraîchir l'état schedule avant d'ouvrir le modal (état le plus frais)
+    await this.loadScheduleStatus();
+    this.isOpen.set(action);
   }
 
   protected async onConfirmWithScheduleDisable(): Promise<void> {
@@ -266,6 +278,17 @@ export class EngineControlButtonComponent implements OnInit {
       );
     } finally {
       this.loading.set(false);
+    }
+  }
+
+  private async loadScheduleStatus(): Promise<void> {
+    const vid = this.vehicleId();
+    if (!vid) return;
+    try {
+      const schedule = await firstValueFrom(this.schedulesApi.get(vid));
+      this._scheduleEnabled.set(!!schedule?.enabled);
+    } catch {
+      // Non critique
     }
   }
 
