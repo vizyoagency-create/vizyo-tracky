@@ -39,6 +39,10 @@ export class RealtimeService {
   private readonly _engineCommandUpdates = signal<Map<string, EngineCommandUpdatedEvent>>(new Map());
   readonly engineCommandUpdates = this._engineCommandUpdates.asReadonly();
 
+  /** Etat persistant : quels trackers ont un CUT actif. Hydrate au login, mis a jour par WS. */
+  private readonly _cutActiveTrackerIds = signal<Set<string>>(new Set());
+  readonly cutActiveTrackerIds = this._cutActiveTrackerIds.asReadonly();
+
   private socket: Socket | null = null;
   private readonly toast = inject(ToastService);
   private readonly preferences = inject(PreferencesService);
@@ -138,6 +142,16 @@ export class RealtimeService {
       const next = new Map(this._engineCommandUpdates());
       next.set(event.trackerId, event);
       this._engineCommandUpdates.set(next);
+
+      // Maintenir l'etat persistant CUT actif
+      const effective = event.status === 'SENT' || event.status === 'ACKNOWLEDGED';
+      const ids = new Set(this._cutActiveTrackerIds());
+      if (event.action === 'CUT' && effective) {
+        ids.add(event.trackerId);
+      } else if (event.action === 'RESTORE' && effective) {
+        ids.delete(event.trackerId);
+      }
+      this._cutActiveTrackerIds.set(ids);
     });
   }
 
@@ -156,6 +170,7 @@ export class RealtimeService {
     this._alerts.set([]);
     this._trackerStatuses.set(new Map());
     this._engineCommandUpdates.set(new Map());
+    this._cutActiveTrackerIds.set(new Set());
     this.positionBuffer.clear();
     this.flushScheduled = false;
   }
@@ -267,6 +282,13 @@ export class RealtimeService {
         });
         hydratedIds.add(v.trackerId);
       }
+
+      // Hydrater l'etat CUT actif depuis le snapshot
+      const cutIds = new Set<string>();
+      for (const v of items) {
+        if (v.trackerId && v.engineCutActive) cutIds.add(v.trackerId);
+      }
+      this._cutActiveTrackerIds.set(cutIds);
 
       this.positions.set(next);
       this.hydratedTrackerIds.set(hydratedIds);

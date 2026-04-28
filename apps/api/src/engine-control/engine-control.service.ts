@@ -17,7 +17,8 @@ import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SocketRegistryService } from '../socket-registry/socket-registry.service';
 import { AckWaiterService } from '../tracker-commands/ack-waiter.service';
 
-const STALE_THRESHOLD_MS = 60 * 1000;
+const STALE_THRESHOLD_MOVING_MS = 60 * 1000; // position fraîche exigée si véhicule roulait
+const REST_SPEED_KMH = 5; // en-dessous = véhicule à l'arrêt, pas de seuil stale
 const MAX_SPEED_FOR_CUT = 20;
 const ENGINE_ACK_TIMEOUT_MS = 15_000;
 const ENGINE_STOP_ACK_PATTERN = /imei:\d{15},J/i;
@@ -94,7 +95,11 @@ export class EngineControlService {
       }
 
       const ageMs = Date.now() - lastPosition.timestamp.getTime();
-      if (ageMs > STALE_THRESHOLD_MS) {
+      // À l'arrêt (≤5 km/h) → pas de seuil stale, le véhicule est garé sans risque.
+      // En mouvement → position fraîche exigée pour confirmer la vitesse actuelle.
+      const isAtRest = lastPosition.speedKmh <= REST_SPEED_KMH;
+
+      if (!isAtRest && ageMs > STALE_THRESHOLD_MOVING_MS) {
         const cmd = await this.prisma.engineControlCommand.create({
           data: {
             trackerId,
@@ -103,11 +108,11 @@ export class EngineControlService {
             requestedBy: requestedBy.userId,
             status: CommandStatus.REJECTED_SPEED,
             source,
-            lastError: 'Position trop ancienne (stale)',
+            lastError: `Position trop ancienne (${Math.round(ageMs / 1000)}s, seuil ${Math.round(STALE_THRESHOLD_MOVING_MS / 1000)}s)`,
           },
         });
         this.emitUpdate(cmd, fleetId);
-        this.logger.warn(`Command ${cmd.id} REJECTED: position stale (${ageMs}ms)`);
+        this.logger.warn(`Command ${cmd.id} REJECTED: position stale (${ageMs}ms, threshold ${STALE_THRESHOLD_MOVING_MS}ms)`);
         throw new ForbiddenException('Position trop ancienne (stale)');
       }
 

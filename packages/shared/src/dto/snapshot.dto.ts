@@ -31,6 +31,13 @@ export interface VehicleSnapshotDto {
    * (mode degrade, fiabilite reduite a l'arret). Default null si pas de tracker.
    */
   accConnected: boolean | null;
+
+  /**
+   * V1.7 — true si une commande CUT (SENT/ACKNOWLEDGED) est active sur ce tracker
+   * sans RESTORE posterieure. Permet au popup carte d'afficher le bon bouton
+   * des le chargement, sans attendre un event WS.
+   */
+  engineCutActive: boolean | null;
 }
 
 export interface FleetSnapshotResponse {

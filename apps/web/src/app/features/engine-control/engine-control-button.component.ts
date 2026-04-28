@@ -139,13 +139,16 @@ export class EngineControlButtonComponent implements OnInit {
     if (age === undefined) {
       return { allowed: false as const, reason: 'Aucune position connue' };
     }
-    if (age > 60) {
+    const speed = this.currentSpeedKmh();
+    // À l'arrêt (≤5 km/h) → pas de seuil stale, véhicule garé sans risque.
+    // En mouvement → position fraîche (<60s) exigée pour confirmer la vitesse.
+    const isAtRest = speed === undefined || speed <= 5;
+    if (!isAtRest && age > 60) {
       return { allowed: false as const, reason: `Position trop ancienne (${Math.round(age)}s)` };
     }
     if (!this.validFix()) {
       return { allowed: false as const, reason: 'Fix GPS invalide' };
     }
-    const speed = this.currentSpeedKmh();
     if (speed !== undefined && speed > 20) {
       return { allowed: false as const, reason: `Vitesse trop élevée (${speed.toFixed(1)} km/h)` };
     }

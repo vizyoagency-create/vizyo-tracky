@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, UserRole } from '@prisma/client';
+import { CommandStatus, EngineAction, Prisma, UserRole } from '@prisma/client';
 import type { Vehicle } from '@prisma/client';
 import type { VehicleSnapshotDto } from '@vizyo/tracky-shared';
 import { PrismaService } from '../prisma/prisma.service';
@@ -254,6 +254,25 @@ export class VehiclesService {
       orderBy: { createdAt: 'desc' },
     });
 
+    // Determine quels trackers ont un CUT actif (derniere commande SENT/ACK est CUT sans RESTORE apres)
+    const trackerIds = vehicles.map((v) => (v as any).tracker?.id).filter(Boolean) as string[];
+    const cutActiveIds = new Set<string>();
+
+    if (trackerIds.length > 0) {
+      const lastCmds = await this.prisma.engineControlCommand.findMany({
+        where: {
+          trackerId: { in: trackerIds },
+          status: { in: [CommandStatus.SENT, CommandStatus.ACKNOWLEDGED] },
+        },
+        orderBy: { createdAt: 'desc' },
+        distinct: ['trackerId'],
+        select: { trackerId: true, action: true },
+      });
+      for (const cmd of lastCmds) {
+        if (cmd.action === EngineAction.CUT) cutActiveIds.add(cmd.trackerId);
+      }
+    }
+
     return vehicles.map((v) => {
       const t = (v as Vehicle & { tracker: any }).tracker;
       return {
@@ -275,6 +294,7 @@ export class VehiclesService {
         lastValid: t?.lastValid ?? null,
         lastPositionAt: t?.lastPositionAt ? t.lastPositionAt.toISOString() : null,
         accConnected: t?.accConnected ?? null,
+        engineCutActive: t ? cutActiveIds.has(t.id) : null,
       };
     });
   }

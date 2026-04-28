@@ -172,19 +172,39 @@ describe('EngineControlService', () => {
     expect(gateway.emitEngineCommandUpdate).toHaveBeenCalled();
   });
 
-  // 5. CUT refusé si position > 60s (stale)
-  it('should reject CUT when position is stale (>60s)', async () => {
+  // 5a. CUT refusé si position stale en mouvement (>60s, speed > 5)
+  it('should reject CUT when position is stale while moving (>60s)', async () => {
     prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
-    prisma.position.findFirst.mockResolvedValue(recentPosition(5, 90 * 1000));
+    prisma.position.findFirst.mockResolvedValue(recentPosition(10, 90 * 1000));
     await expect(
       service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin),
     ).rejects.toThrow(ForbiddenException);
     expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         status: CommandStatus.REJECTED_SPEED,
-        lastError: 'Position trop ancienne (stale)',
+        lastError: expect.stringContaining('Position trop ancienne'),
       }),
     });
+  });
+
+  // 5b. CUT accepté si position 90s à l'arrêt (seuil adaptatif 10 min)
+  it('should allow CUT when position is 90s old but vehicle is at rest', async () => {
+    prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+    prisma.position.findFirst.mockResolvedValue(recentPosition(0, 90 * 1000));
+    registry.send.mockReturnValue(false);
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin),
+    ).rejects.toThrow(ServiceUnavailableException); // passe le guard, échoue au dispatch
+  });
+
+  // 5c. CUT accepté même si position très ancienne quand véhicule à l'arrêt
+  it('should allow CUT when position is very old but vehicle is at rest', async () => {
+    prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+    prisma.position.findFirst.mockResolvedValue(recentPosition(0, 30 * 60 * 1000)); // 30 min
+    registry.send.mockReturnValue(false);
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin),
+    ).rejects.toThrow(ServiceUnavailableException); // passe le guard, échoue au dispatch
   });
 
   // 6. CUT refusé si fix GPS invalide

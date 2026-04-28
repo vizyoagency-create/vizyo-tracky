@@ -2563,10 +2563,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
    * Le serveur rejettera le 2eme CUT si deja coupe (idempotent).
    */
   private isCutActiveForTracker(trackerId: string): boolean {
-    const update = this.realtime.engineCommandUpdates().get(trackerId);
-    if (!update) return false;
-    if (update.action !== 'CUT') return false;
-    return update.status === 'SENT' || update.status === 'ACKNOWLEDGED';
+    return this.realtime.cutActiveTrackerIds().has(trackerId);
   }
 
   /**
