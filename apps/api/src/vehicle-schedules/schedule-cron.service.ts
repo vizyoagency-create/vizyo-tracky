@@ -161,17 +161,26 @@ export class ScheduleCronService {
       throw err;
     }
 
-    // Update last evaluated state
-    await this.prisma.vehicleSchedule.update({
-      where: { id: schedule.id },
-      data: {
-        lastEvaluatedAt: new Date(),
-        lastEvaluatedState: state,
-      },
-    });
+    // Update last evaluated state — si ça échoue, le cron renverra la commande
+    // au prochain tick (doublon côté device, mais cohérence garantie).
+    try {
+      await this.prisma.vehicleSchedule.update({
+        where: { id: schedule.id },
+        data: { lastEvaluatedAt: new Date(), lastEvaluatedState: state },
+      });
+    } catch (dbErr) {
+      this.logger.error(
+        { vehicleId: schedule.vehicleId, error: (dbErr as Error).message },
+        'Failed to update lastEvaluatedState — next tick may resend command',
+      );
+      this.errorLogger.record(
+        dbErr instanceof Error ? dbErr : new Error(String(dbErr)),
+        'schedule-cron', { vehicleId: schedule.vehicleId, phase: 'state-update' },
+      ).catch(() => {});
+      return; // Ne pas persister l'history si le state n'a pas été mis à jour
+    }
 
-    // V1.5 (Sprint K) — persister la transition dans schedule_history (audit + UI timeline)
-    // + emettre un event interne consomme par Sprint M (notifications externes).
+    // Persister la transition dans schedule_history (audit + UI timeline)
     const occurredAt = new Date();
     await this.prisma.scheduleHistory.create({
       data: {
@@ -184,17 +193,21 @@ export class ScheduleCronService {
       },
     }).catch((e) => this.logger.warn(`schedule_history insert failed: ${(e as Error).message}`));
 
-    const transitionEvent: ScheduleTransitionEvent = {
-      scheduleId: schedule.id,
-      vehicleId: schedule.vehicleId,
-      fleetId: schedule.vehicle.fleetId,
-      trackerId: tracker.id,
-      action,
-      reason: evaluation.reason,
-      windowDesc: evaluation.windowDesc,
-      occurredAt: occurredAt.toISOString(),
-    };
-    this.events.emit('schedule.transition', transitionEvent);
+    try {
+      const transitionEvent: ScheduleTransitionEvent = {
+        scheduleId: schedule.id,
+        vehicleId: schedule.vehicleId,
+        fleetId: schedule.vehicle.fleetId,
+        trackerId: tracker.id,
+        action,
+        reason: evaluation.reason,
+        windowDesc: evaluation.windowDesc,
+        occurredAt: occurredAt.toISOString(),
+      };
+      this.events.emit('schedule.transition', transitionEvent);
+    } catch (evtErr) {
+      this.logger.warn({ error: (evtErr as Error).message }, 'schedule.transition event emit failed');
+    }
   }
 
   /** Compute whether the current time is inside the allowed window. */

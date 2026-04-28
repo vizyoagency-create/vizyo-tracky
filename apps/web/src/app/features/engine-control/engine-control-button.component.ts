@@ -182,6 +182,7 @@ export class EngineControlButtonComponent implements OnInit {
   }
 
   protected async onConfirm(action: 'CUT' | 'RESTORE'): Promise<void> {
+    if (this.loading()) return; // Protection double-clic
     this.loading.set(true);
     try {
       const cmd = await firstValueFrom(
@@ -209,14 +210,18 @@ export class EngineControlButtonComponent implements OnInit {
     }
   }
 
-  private async loadRecentCommands(): Promise<void> {
+  private async loadRecentCommands(retries = 2): Promise<void> {
     try {
       const cmds = await firstValueFrom(
         this.engineControl.listCommands(this.trackerId(), 5),
       );
       this.recentCommands.set(cmds);
     } catch {
-      // Silently fail — not critical
+      if (retries > 0) {
+        await new Promise((r) => setTimeout(r, 1000));
+        return this.loadRecentCommands(retries - 1);
+      }
+      // Après retries épuisés, le bouton garde le dernier état connu
     }
   }
 

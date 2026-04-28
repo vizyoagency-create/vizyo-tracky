@@ -155,10 +155,16 @@ export class EngineControlService {
     if (source === 'MANUAL') {
       const vehicle = tracker.vehicle;
       if (vehicle) {
-        await this.prisma.vehicleSchedule.updateMany({
-          where: { vehicleId: vehicle.id, enabled: true },
-          data: { overrideUntil: new Date(Date.now() + 60 * 60 * 1000) },
-        });
+        try {
+          await this.prisma.vehicleSchedule.updateMany({
+            where: { vehicleId: vehicle.id, enabled: true },
+            data: { overrideUntil: new Date(Date.now() + 60 * 60 * 1000) },
+          });
+        } catch (err) {
+          // Non-bloquant : la commande part quand même, mais le scheduler pourrait interférer
+          this.logger.error({ vehicleId: vehicle.id, error: (err as Error).message },
+            'Failed to set overrideUntil — scheduler may conflict with manual command');
+        }
       }
     }
 
@@ -234,43 +240,57 @@ export class EngineControlService {
           ? Date.now() - new Date(updated.sentAt).getTime()
           : 0;
         this.wireLogger.ackMatch(imei, rawAck, command.id, latencyMs);
-        const acked = await this.prisma.engineControlCommand.update({
-          where: { id: command.id },
-          data: {
-            status: CommandStatus.ACKNOWLEDGED,
-            ackedAt: new Date(),
-          },
-        });
-        this.emitUpdate(acked, fleetId);
+        try {
+          const acked = await this.prisma.engineControlCommand.update({
+            where: { id: command.id },
+            data: { status: CommandStatus.ACKNOWLEDGED, ackedAt: new Date() },
+          });
+          this.emitUpdate(acked, fleetId);
+        } catch (dbErr) {
+          this.logger.error({ commandId: command.id, error: (dbErr as Error).message },
+            'Failed to persist ACK status — command stuck as SENT');
+          this.errorLogger.record(dbErr instanceof Error ? dbErr : new Error(String(dbErr)),
+            'engine-control', { imei, commandId: command.id, phase: 'ack-persist' },
+          ).catch(() => {});
+        }
         this.logger.log({ commandId: command.id, latencyMs }, 'Engine command ACK received');
       })
       .catch(async (err) => {
         this.wireLogger.ackTimeout(imei, command.id, ackPattern.source, ENGINE_ACK_TIMEOUT_MS);
-        const failed = await this.prisma.engineControlCommand.update({
-          where: { id: command.id },
-          data: {
-            status: CommandStatus.FAILED,
-            lastError: `ACK timeout: ${(err as Error).message}`,
-          },
-        });
-        this.emitUpdate(failed, fleetId);
+        try {
+          const failed = await this.prisma.engineControlCommand.update({
+            where: { id: command.id },
+            data: { status: CommandStatus.FAILED, lastError: `ACK timeout: ${(err as Error).message}` },
+          });
+          this.emitUpdate(failed, fleetId);
+        } catch (dbErr) {
+          this.logger.error({ commandId: command.id, error: (dbErr as Error).message },
+            'Failed to persist FAILED status — command stuck as SENT');
+        }
         this.errorLogger.record(
           `Engine command ACK timeout: ${(err as Error).message}`,
-          'engine-control',
-          { imei, commandId: command.id },
-        ).catch((e) => this.logger.error('ErrorLogger persist failed', e));
+          'engine-control', { imei, commandId: command.id },
+        ).catch(() => {});
       });
   }
 
   private emitUpdate(command: EngineControlCommand, fleetId: string): void {
-    if (!fleetId) return;
-    this.gateway.emitEngineCommandUpdate(fleetId, {
-      commandId: command.id,
-      trackerId: command.trackerId,
-      action: command.action,
-      status: command.status,
-      lastError: command.lastError,
-    });
+    if (!fleetId) {
+      this.logger.warn({ commandId: command.id }, 'emitUpdate skipped: no fleetId');
+      return;
+    }
+    try {
+      this.gateway.emitEngineCommandUpdate(fleetId, {
+        commandId: command.id,
+        trackerId: command.trackerId,
+        action: command.action,
+        status: command.status,
+        lastError: command.lastError,
+      });
+    } catch (err) {
+      this.logger.error({ commandId: command.id, fleetId, error: (err as Error).message },
+        'WS emitUpdate failed — frontend may be out of sync');
+    }
   }
 
   async listCommands(

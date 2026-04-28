@@ -361,28 +361,35 @@ export class PositionsService {
 
       if (!recentCut) {
         // No app command → external cut (SMS or direct)
-        const cmd = await this.prisma.engineControlCommand.create({
-          data: {
+        try {
+          const cmd = await this.prisma.engineControlCommand.create({
+            data: {
+              trackerId: tracker.id,
+              action: EngineAction.CUT,
+              source: 'DEVICE_OBSERVED',
+              status: CommandStatus.ACKNOWLEDGED,
+              requestedBy: SYSTEM_USER_ID,
+              reason: 'Coupure détectée par le boîtier (commande SMS ou externe)',
+              ackedAt: new Date(),
+            },
+          });
+          this.gateway.emitEngineCommandUpdate(fleetId, {
+            commandId: cmd.id,
             trackerId: tracker.id,
-            action: EngineAction.CUT,
-            source: 'DEVICE_OBSERVED',
-            status: CommandStatus.ACKNOWLEDGED,
-            requestedBy: SYSTEM_USER_ID,
-            reason: 'Coupure détectée par le boîtier (commande SMS ou externe)',
-            ackedAt: new Date(),
-          },
-        });
-        this.gateway.emitEngineCommandUpdate(fleetId, {
-          commandId: cmd.id,
-          trackerId: tracker.id,
-          action: cmd.action,
-          status: cmd.status,
-          lastError: null,
-        });
-        this.logger.warn(
-          { trackerId: tracker.id, imei: tracker.imei, commandId: cmd.id },
-          'External engine CUT detected (SMS or direct)',
-        );
+            action: cmd.action,
+            status: cmd.status,
+            lastError: null,
+          });
+          this.logger.warn(
+            { trackerId: tracker.id, imei: tracker.imei, commandId: cmd.id },
+            'External engine CUT detected (SMS or direct)',
+          );
+        } catch (err) {
+          this.logger.error(
+            { trackerId: tracker.id, imei: tracker.imei, error: (err as Error).message },
+            'Failed to persist DEVICE_OBSERVED CUT — external cut not recorded',
+          );
+        }
       }
     } else if (previousIgnition === false && currentIgnition === true) {
       // Ignition went ON — is there an active CUT without a RESTORE?
@@ -408,28 +415,35 @@ export class PositionsService {
 
         if (!lastRestore) {
           // CUT was active but ignition came back → relay reset
-          const cmd = await this.prisma.engineControlCommand.create({
-            data: {
+          try {
+            const cmd = await this.prisma.engineControlCommand.create({
+              data: {
+                trackerId: tracker.id,
+                action: EngineAction.RESTORE,
+                source: 'DEVICE_OBSERVED',
+                status: CommandStatus.ACKNOWLEDGED,
+                requestedBy: SYSTEM_USER_ID,
+                reason: 'Moteur détecté comme actif (réinitialisation relais probable)',
+                ackedAt: new Date(),
+              },
+            });
+            this.gateway.emitEngineCommandUpdate(fleetId, {
+              commandId: cmd.id,
               trackerId: tracker.id,
-              action: EngineAction.RESTORE,
-              source: 'DEVICE_OBSERVED',
-              status: CommandStatus.ACKNOWLEDGED,
-              requestedBy: SYSTEM_USER_ID,
-              reason: 'Moteur détecté comme actif (réinitialisation relais probable)',
-              ackedAt: new Date(),
-            },
-          });
-          this.gateway.emitEngineCommandUpdate(fleetId, {
-            commandId: cmd.id,
-            trackerId: tracker.id,
-            action: cmd.action,
-            status: cmd.status,
-            lastError: null,
-          });
-          this.logger.warn(
-            { trackerId: tracker.id, imei: tracker.imei, commandId: cmd.id },
-            'Relay reset detected: engine is ON despite active CUT',
-          );
+              action: cmd.action,
+              status: cmd.status,
+              lastError: null,
+            });
+            this.logger.warn(
+              { trackerId: tracker.id, imei: tracker.imei, commandId: cmd.id },
+              'Relay reset detected: engine is ON despite active CUT',
+            );
+          } catch (err) {
+            this.logger.error(
+              { trackerId: tracker.id, imei: tracker.imei, error: (err as Error).message },
+              'Failed to persist DEVICE_OBSERVED RESTORE — relay reset not recorded',
+            );
+          }
         }
       }
     }
