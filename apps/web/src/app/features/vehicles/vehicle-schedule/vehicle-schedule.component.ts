@@ -817,19 +817,16 @@ export class VehicleScheduleComponent {
     }
   }
 
-  /** Toggle global: if disabling while vehicle is cut, show confirmation first. */
+  /** Toggle global: disabling always auto-saves to trigger RESTORE if needed. */
   protected onToggleGlobal(): void {
     const currentlyEnabled = this.globalEnabled();
     if (currentlyEnabled) {
-      // Disabling — check if vehicle is currently cut by scheduler
-      const isCutByScheduler = this.schedule()?.lastEvaluatedState === 'OUT_OF_WINDOW';
-      if (isCutByScheduler) {
-        this.showDisableConfirm.set(true);
-        return;
-      }
+      // Désactivation → toujours confirmer + auto-save (le backend envoie RESTORE si CUT actif)
+      this.showDisableConfirm.set(true);
+      return;
     }
-    // Enable, or disable without cut state → direct toggle
-    this.globalEnabled.update((v) => !v);
+    // Activation → toggle + dirty (l'utilisateur doit cliquer Enregistrer)
+    this.globalEnabled.set(true);
     this.dirty.set(true);
   }
 

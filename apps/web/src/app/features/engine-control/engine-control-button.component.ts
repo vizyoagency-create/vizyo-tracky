@@ -133,12 +133,11 @@ export class EngineControlButtonComponent implements OnInit {
     // backend cree systematiquement une EngineControlCommand pour ces cas
     // (cf. handleIgnitionTransition dans positions.service.ts) — l'historique
     // les contient donc quand le tracker repond avec acc_off.
-    const lastCut = cmds.find(
-      (c) => c.action === 'CUT' && (c.status === 'SENT' || c.status === 'ACKNOWLEDGED'),
-    );
-    const lastRestore = cmds.find(
-      (c) => c.action === 'RESTORE' && (c.status === 'SENT' || c.status === 'ACKNOWLEDGED'),
-    );
+    // Inclure FAILED : un CUT FAILED = envoyé au boîtier mais ACK timeout.
+    // Le véhicule est probablement coupé, on affiche "Rallumer" par sécurité.
+    const isEffective = (s: string) => s === 'SENT' || s === 'ACKNOWLEDGED' || s === 'FAILED';
+    const lastCut = cmds.find((c) => c.action === 'CUT' && isEffective(c.status));
+    const lastRestore = cmds.find((c) => c.action === 'RESTORE' && isEffective(c.status));
 
     if (!lastCut) return false;
     if (!lastRestore) return true;

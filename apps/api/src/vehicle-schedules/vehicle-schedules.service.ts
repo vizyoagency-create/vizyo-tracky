@@ -92,10 +92,12 @@ export class VehicleSchedulesService {
     if (wasEnabled && !willBeEnabled) {
       const tracker = await this.prisma.tracker.findFirst({ where: { vehicleId } });
       if (tracker) {
+        // Inclure FAILED : un CUT FAILED = envoyé au boîtier mais ACK timeout.
+        // Le véhicule est probablement coupé, on envoie RESTORE par sécurité.
         const lastCmd = await this.prisma.engineControlCommand.findFirst({
           where: {
             trackerId: tracker.id,
-            status: { in: [CommandStatus.SENT, CommandStatus.ACKNOWLEDGED] },
+            status: { in: [CommandStatus.SENT, CommandStatus.ACKNOWLEDGED, CommandStatus.FAILED] },
           },
           orderBy: { createdAt: 'desc' },
         });
@@ -165,7 +167,8 @@ export class VehicleSchedulesService {
       }
     }
 
-    return updated;
+    // Retourner l'état frais (lastEvaluatedState peut avoir changé par l'évaluation immédiate)
+    return this.prisma.vehicleSchedule.findUnique({ where: { id: updated.id } }) as Promise<VehicleSchedule>;
   }
 
   private async assertAccess(vehicleId: string, requestedBy: RequestedBy): Promise<void> {

@@ -262,7 +262,7 @@ export class VehiclesService {
       const lastCmds = await this.prisma.engineControlCommand.findMany({
         where: {
           trackerId: { in: trackerIds },
-          status: { in: [CommandStatus.SENT, CommandStatus.ACKNOWLEDGED] },
+          status: { in: [CommandStatus.SENT, CommandStatus.ACKNOWLEDGED, CommandStatus.FAILED] },
         },
         orderBy: { createdAt: 'desc' },
         distinct: ['trackerId'],
