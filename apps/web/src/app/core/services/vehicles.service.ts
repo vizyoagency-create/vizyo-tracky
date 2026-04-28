@@ -21,6 +21,7 @@ export interface VehicleDetailDto {
     accConnected: boolean;
   } | null;
   createdAt: string;
+  schedule?: { enabled: boolean } | null;
 }
 
 @Injectable({ providedIn: 'root' })

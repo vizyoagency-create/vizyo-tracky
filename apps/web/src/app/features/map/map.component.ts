@@ -2733,18 +2733,29 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
   private requestEngine(trackerId: string, action: 'CUT' | 'RESTORE'): void {
     const verb = action === 'CUT' ? 'couper' : 'restaurer';
-    const ok = window.confirm(
-      `Confirmer ${verb} le moteur du vehicule ?\n\n` +
-        'Cette action est tracee dans l\'audit trail. Annulez si pas certain.',
-    );
+
+    // Vérifier si un schedule horaire est actif pour ce véhicule
+    const vehicleId = this.activePopupVehicleId;
+    const snap = vehicleId ? this.realtime.snapshot().find((v) => v.vehicleId === vehicleId) : null;
+    const hasSchedule = snap && (snap as any).scheduleEnabled;
+
+    const msg = hasSchedule
+      ? `Confirmer ${verb} le moteur du vehicule ?\n\n` +
+        'Le mode horaire est actif et sera desactive.\n' +
+        'Vous devrez le reactiver manuellement dans la fiche vehicule.\n\n' +
+        'Cette action est tracee dans l\'audit trail.'
+      : `Confirmer ${verb} le moteur du vehicule ?\n\n` +
+        'Cette action est tracee dans l\'audit trail. Annulez si pas certain.';
+
+    const ok = window.confirm(msg);
     if (!ok) return;
 
-    this.engineControl.requestCommand(trackerId, action, 'depuis carte').subscribe({
+    this.engineControl.requestCommand(trackerId, action, 'depuis carte', hasSchedule || undefined).subscribe({
       next: () => {
         this.toast.show({
           kind: 'info',
           title: action === 'CUT' ? 'Coupure demandee' : 'Restauration demandee',
-          message: `Commande ${action} envoyee.`,
+          message: hasSchedule ? `Commande ${action} envoyee — mode horaire desactive.` : `Commande ${action} envoyee.`,
           duration: 4000,
         });
         this.closePopup();

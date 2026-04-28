@@ -31,7 +31,7 @@ export class EngineControlController {
       userId: req.user.id,
       role: req.user.role,
       fleetId: req.user.fleetId,
-    });
+    }, 'MANUAL', dto.disableSchedule);
   }
 
   @Get('commands')

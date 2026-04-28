@@ -23,10 +23,11 @@ export class EngineControlService {
     trackerId: string,
     action: 'CUT' | 'RESTORE',
     reason?: string,
+    disableSchedule?: boolean,
   ): Observable<EngineControlCommandDto> {
     return this.http.post<EngineControlCommandDto>(
       `/api/engine-control/trackers/${trackerId}/commands`,
-      { action, reason },
+      { action, reason, ...(disableSchedule ? { disableSchedule: true } : {}) },
     );
   }
 

@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 import { EngineAction } from '@prisma/client';
 
 export class RequestEngineCommandDto {
@@ -9,4 +9,9 @@ export class RequestEngineCommandDto {
   @IsString()
   @MaxLength(500)
   reason?: string;
+
+  /** Si true, désactive le schedule du véhicule avant d'envoyer la commande. */
+  @IsOptional()
+  @IsBoolean()
+  disableSchedule?: boolean;
 }

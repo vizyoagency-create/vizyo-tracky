@@ -5,7 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { EngineAction, Prisma, UserRole } from '@prisma/client';
+import { CommandStatus, EngineAction, Prisma, UserRole } from '@prisma/client';
 import type { VehicleSchedule } from '@prisma/client';
 import { EngineControlService } from '../engine-control/engine-control.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -87,29 +87,39 @@ export class VehicleSchedulesService {
       update: updateData as Prisma.VehicleScheduleUncheckedUpdateInput,
     });
 
-    // If we just disabled AND the scheduler had CUT the vehicle → emit RESTORE
-    if (wasEnabled && !willBeEnabled && wasCut) {
-      const tracker = await this.prisma.tracker.findFirst({
-        where: { vehicleId },
-      });
+    // If we just disabled → check if a CUT is active and send RESTORE.
+    // On ne se fie plus à lastEvaluatedState seul : on vérifie la dernière commande réelle.
+    if (wasEnabled && !willBeEnabled) {
+      const tracker = await this.prisma.tracker.findFirst({ where: { vehicleId } });
       if (tracker) {
-        this.logger.log(
-          { vehicleId, trackerId: tracker.id },
-          'Scheduler disabled while vehicle was cut → emitting RESTORE',
-        );
-        try {
-          await this.engineControl.requestCommand(
-            tracker.id,
-            EngineAction.RESTORE,
-            'Automatisation horaire désactivée',
-            requestedBy,
-            'MANUAL',
+        const lastCmd = await this.prisma.engineControlCommand.findFirst({
+          where: {
+            trackerId: tracker.id,
+            status: { in: [CommandStatus.SENT, CommandStatus.ACKNOWLEDGED] },
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+        const isCutActive = lastCmd?.action === EngineAction.CUT;
+
+        if (isCutActive) {
+          this.logger.log(
+            { vehicleId, trackerId: tracker.id, lastCmdId: lastCmd.id },
+            'Schedule disabled while CUT active → emitting RESTORE',
           );
-        } catch (err) {
-          this.logger.warn(
-            { vehicleId, error: (err as Error).message },
-            'Failed to emit RESTORE on scheduler disable (tracker may be offline)',
-          );
+          try {
+            await this.engineControl.requestCommand(
+              tracker.id,
+              EngineAction.RESTORE,
+              'Automatisation horaire désactivée',
+              requestedBy,
+              'MANUAL',
+            );
+          } catch (err) {
+            this.logger.warn(
+              { vehicleId, error: (err as Error).message },
+              'Failed to emit RESTORE on scheduler disable (tracker may be offline)',
+            );
+          }
         }
       }
     }

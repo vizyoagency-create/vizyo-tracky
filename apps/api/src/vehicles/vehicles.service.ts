@@ -107,7 +107,7 @@ export class VehiclesService {
   async findOne(id: string, requestedBy: RequestedBy): Promise<Vehicle> {
     const vehicle = await this.prisma.vehicle.findUnique({
       where: { id },
-      include: { tracker: true },
+      include: { tracker: true, schedule: { select: { enabled: true } } },
     });
 
     if (!vehicle) throw new NotFoundException('Véhicule introuvable');
@@ -250,7 +250,7 @@ export class VehiclesService {
 
     const vehicles = await this.prisma.vehicle.findMany({
       where,
-      include: { tracker: true },
+      include: { tracker: true, schedule: { select: { enabled: true } } },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -295,6 +295,7 @@ export class VehiclesService {
         lastPositionAt: t?.lastPositionAt ? t.lastPositionAt.toISOString() : null,
         accConnected: t?.accConnected ?? null,
         engineCutActive: t ? cutActiveIds.has(t.id) : null,
+        scheduleEnabled: !!(v as any).schedule?.enabled,
       };
     });
   }

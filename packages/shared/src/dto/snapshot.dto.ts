@@ -38,6 +38,9 @@ export interface VehicleSnapshotDto {
    * des le chargement, sans attendre un event WS.
    */
   engineCutActive: boolean | null;
+
+  /** V1.7 — true si un schedule horaire est actif sur ce véhicule. */
+  scheduleEnabled: boolean;
 }
 
 export interface FleetSnapshotResponse {

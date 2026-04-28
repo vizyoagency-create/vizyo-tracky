@@ -65,6 +65,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
               [validFix]="pos.valid"
               [positionAge]="positionAgeSeconds()"
               [ignition]="pos.ignition"
+              [scheduleEnabled]="!!v.schedule?.enabled"
             />
           }
         </div>

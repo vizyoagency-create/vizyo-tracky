@@ -49,7 +49,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
       }
 
       <app-confirm-modal
-        [open]="isOpen() === 'cut'"
+        [open]="isOpen() === 'cut' && !scheduleEnabled()"
         title="Couper le moteur ?"
         [description]="cutDescription()"
         confirmLabel="Oui, couper le moteur"
@@ -72,7 +72,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
       </app-confirm-modal>
 
       <app-confirm-modal
-        [open]="isOpen() === 'restore'"
+        [open]="isOpen() === 'restore' && !scheduleEnabled()"
         title="Rallumer le moteur ?"
         [description]="'Le véhicule <strong>' + vehiclePlate() + '</strong> sera à nouveau utilisable.'"
         confirmLabel="Oui, rallumer"
@@ -80,6 +80,19 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
         [danger]="false"
         [loading]="loading()"
         (confirmed)="onConfirm('RESTORE')"
+        (cancelled)="isOpen.set(null)"
+      />
+
+      <!-- Modal spécifique quand le mode horaire est actif -->
+      <app-confirm-modal
+        [open]="isOpen() !== null && scheduleEnabled()"
+        [title]="isOpen() === 'cut' ? 'Couper le moteur ?' : 'Rallumer le moteur ?'"
+        [description]="scheduleWarningDescription()"
+        [confirmLabel]="isOpen() === 'cut' ? 'Désactiver horaire et couper' : 'Désactiver horaire et rallumer'"
+        cancelLabel="Annuler"
+        [danger]="isOpen() === 'cut'"
+        [loading]="loading()"
+        (confirmed)="onConfirmWithScheduleDisable()"
         (cancelled)="isOpen.set(null)"
       />
     </div>
@@ -92,6 +105,8 @@ export class EngineControlButtonComponent implements OnInit {
   readonly validFix = input(false);
   readonly positionAge = input<number | undefined>(undefined);
   readonly ignition = input(true);
+  /** Si true, un schedule horaire est actif sur ce véhicule. */
+  readonly scheduleEnabled = input(false);
 
   protected readonly isOpen = signal<'cut' | 'restore' | null>(null);
   protected readonly loading = signal(false);
@@ -168,6 +183,20 @@ export class EngineControlButtonComponent implements OnInit {
       `<span class="text-fg-tertiary text-xs">Cette action sera enregistrée dans l'audit trail.</span>`,
   );
 
+  protected readonly scheduleWarningDescription = computed(() => {
+    const plate = this.vehiclePlate();
+    const action = this.isOpen() === 'cut'
+      ? `immobiliser le véhicule <strong>${plate}</strong>`
+      : `rallumer le véhicule <strong>${plate}</strong>`;
+    return (
+      `Vous êtes sur le point de ${action}.<br><br>` +
+      `<strong>Le mode horaire est actuellement actif.</strong> ` +
+      `Cette action le désactivera automatiquement. ` +
+      `Vous devrez le réactiver manuellement dans l'onglet Horaires.<br><br>` +
+      `<span class="text-fg-tertiary text-xs">Cette action sera enregistrée dans l'audit trail.</span>`
+    );
+  });
+
   // React to real-time engine command updates for this tracker (field initializer = injection context)
   private readonly engineUpdateEffect = effect(() => {
     const updates = this.realtime.engineCommandUpdates();
@@ -179,6 +208,37 @@ export class EngineControlButtonComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadRecentCommands();
+  }
+
+  protected async onConfirmWithScheduleDisable(): Promise<void> {
+    const action = this.isOpen() === 'cut' ? 'CUT' as const : 'RESTORE' as const;
+    if (this.loading()) return;
+    this.loading.set(true);
+    try {
+      const cmd = await firstValueFrom(
+        this.engineControl.requestCommand(
+          this.trackerId(),
+          action,
+          action === 'CUT' ? this.reason() || 'Action manuelle (horaire désactivé)' : undefined,
+          true, // disableSchedule
+        ),
+      );
+      this.toast.success(
+        action === 'CUT' ? 'Moteur coupé' : 'Moteur rallumé',
+        `Commande envoyée — mode horaire désactivé`,
+      );
+      this.isOpen.set(null);
+      this.reason.set('');
+      await this.loadRecentCommands();
+    } catch (err) {
+      const message = this.extractErrorMessage(err);
+      this.toast.error(
+        action === 'CUT' ? 'Coupure refusée' : 'Rallumage refusé',
+        message,
+      );
+    } finally {
+      this.loading.set(false);
+    }
   }
 
   protected async onConfirm(action: 'CUT' | 'RESTORE'): Promise<void> {

@@ -49,6 +49,7 @@ export class EngineControlService {
     reason: string | null,
     requestedBy: RequestedBy,
     source: 'MANUAL' | 'SCHEDULER' = 'MANUAL',
+    disableSchedule?: boolean,
   ): Promise<EngineControlCommand> {
     const tracker = await this.prisma.tracker.findUnique({
       where: { id: trackerId },
@@ -151,19 +152,28 @@ export class EngineControlService {
       }
     }
 
-    // If manual action → set override on schedule so scheduler doesn't fight
+    // If manual action → neutralize schedule to avoid conflict
     if (source === 'MANUAL') {
       const vehicle = tracker.vehicle;
       if (vehicle) {
         try {
-          await this.prisma.vehicleSchedule.updateMany({
-            where: { vehicleId: vehicle.id, enabled: true },
-            data: { overrideUntil: new Date(Date.now() + 60 * 60 * 1000) },
-          });
+          if (disableSchedule) {
+            // Désactiver complètement le schedule (l'utilisateur a confirmé)
+            await this.prisma.vehicleSchedule.updateMany({
+              where: { vehicleId: vehicle.id, enabled: true },
+              data: { enabled: false, lastEvaluatedState: null, lastEvaluatedAt: null },
+            });
+            this.logger.log({ vehicleId: vehicle.id }, 'Schedule disabled by manual engine command');
+          } else {
+            // Juste poser un override temporaire (1h)
+            await this.prisma.vehicleSchedule.updateMany({
+              where: { vehicleId: vehicle.id, enabled: true },
+              data: { overrideUntil: new Date(Date.now() + 60 * 60 * 1000) },
+            });
+          }
         } catch (err) {
-          // Non-bloquant : la commande part quand même, mais le scheduler pourrait interférer
           this.logger.error({ vehicleId: vehicle.id, error: (err as Error).message },
-            'Failed to set overrideUntil — scheduler may conflict with manual command');
+            'Failed to update schedule — scheduler may conflict with manual command');
         }
       }
     }
