@@ -672,6 +672,8 @@ const TIMEZONES = [
 export class VehicleScheduleComponent {
   readonly vehicleId = input.required<string>();
   readonly hasTracker = input(false);
+  /** Incrémenté depuis l'extérieur pour forcer un rechargement des données schedule. */
+  readonly reloadTrigger = input(0);
 
   private readonly schedulesApi = inject(VehicleSchedulesApiService);
   private readonly auth = inject(AuthService);
@@ -767,6 +769,7 @@ export class VehicleScheduleComponent {
   constructor() {
     effect(() => {
       const vid = this.vehicleId();
+      this.reloadTrigger(); // re-fetch quand le trigger change (ex: schedule désactivé par bouton CUT)
       if (vid) this.load(vid);
     });
   }

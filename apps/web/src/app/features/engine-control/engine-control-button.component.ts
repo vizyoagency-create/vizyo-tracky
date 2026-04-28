@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, DestroyRef, effect, inject, input, OnInit, signal } from '@angular/core';
+import { Component, computed, DestroyRef, effect, inject, input, OnInit, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, Power, PowerOff } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
@@ -109,6 +109,8 @@ export class EngineControlButtonComponent implements OnInit {
   readonly ignition = input(true);
   /** Si true, un schedule horaire est actif sur ce véhicule (input ou chargé dynamiquement). */
   readonly scheduleEnabledInput = input(false, { alias: 'scheduleEnabled' });
+  /** Emis quand une action manuelle désactive le schedule horaire. */
+  readonly scheduleDisabled = output<void>();
 
   protected readonly isOpen = signal<'cut' | 'restore' | null>(null);
   protected readonly loading = signal(false);
@@ -238,6 +240,8 @@ export class EngineControlButtonComponent implements OnInit {
         action === 'CUT' ? 'Moteur coupé' : 'Moteur rallumé',
         `Commande envoyée — mode horaire désactivé`,
       );
+      this._scheduleEnabled.set(false);
+      this.scheduleDisabled.emit();
       this.isOpen.set(null);
       this.reason.set('');
       await this.loadRecentCommands();

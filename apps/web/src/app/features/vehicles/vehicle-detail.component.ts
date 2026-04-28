@@ -66,6 +66,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
               [validFix]="pos.valid"
               [positionAge]="positionAgeSeconds()"
               [ignition]="pos.ignition"
+              (scheduleDisabled)="onScheduleDisabled()"
             />
           }
         </div>
@@ -300,6 +301,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
           <app-vehicle-schedule
             [vehicleId]="v.id"
             [hasTracker]="!!v.tracker"
+            [reloadTrigger]="scheduleRevision()"
           />
         }
 
@@ -730,6 +732,8 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly vehicleTrips = signal<any[]>([]);
   protected readonly loading = signal(true);
   protected readonly activeTab = signal<'map' | 'history' | 'alerts' | 'commands' | 'schedule' | 'trips'>('map');
+  /** Incrémenté quand le schedule est désactivé par une action manuelle — force le re-mount du composant schedule. */
+  protected readonly scheduleRevision = signal(0);
   /** V1.7 — flag de chargement pendant le PATCH /api/trackers/:id (toggle ACC). */
   protected readonly accUpdating = signal(false);
   /** V1.7 — vrai si l'utilisateur courant est SUPER_ADMIN (pour afficher la carte reglage materiel). */
@@ -852,6 +856,10 @@ export class VehicleDetailComponent implements OnInit {
     const age = this.positionAgeSeconds();
     return age !== undefined && age < 180;
   });
+
+  protected onScheduleDisabled(): void {
+    this.scheduleRevision.set(this.scheduleRevision() + 1);
+  }
 
   async ngOnInit(): Promise<void> {
     const id = this.route.snapshot.params['id'];
