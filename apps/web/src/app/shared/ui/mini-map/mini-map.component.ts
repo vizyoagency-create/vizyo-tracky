@@ -6,6 +6,7 @@ import {
   inject,
   input,
   OnDestroy,
+  signal,
   viewChild,
 } from '@angular/core';
 import * as maplibregl from 'maplibre-gl';
@@ -56,6 +57,8 @@ export class MiniMapComponent implements AfterViewInit, OnDestroy {
   private marker: MlMarker | null = null;
   private markerEl: HTMLElement | null = null;
   private resizeObserver: ResizeObserver | null = null;
+  /** Signal qui déclenche l'effect une fois la carte initialisée. */
+  private readonly mapReady = signal(false);
 
   private updateEffect = effect(() => {
     const c = this.center();
@@ -65,8 +68,9 @@ export class MiniMapComponent implements AfterViewInit, OnDestroy {
     const ign = this.ignition();
     const type = this.vehicleType();
     const plate = this.plate();
+    const ready = this.mapReady(); // tracké par l'effect
 
-    if (!this.map || !c) return;
+    if (!this.map || !c || !ready) return;
 
     const data: VehicleMarkerData = {
       trackerId: '',
@@ -155,6 +159,7 @@ export class MiniMapComponent implements AfterViewInit, OnDestroy {
 
     this.resizeObserver = new ResizeObserver(() => this.map?.resize());
     this.resizeObserver.observe(el);
+    this.mapReady.set(true);
     void maplibregl;
   }
 }
