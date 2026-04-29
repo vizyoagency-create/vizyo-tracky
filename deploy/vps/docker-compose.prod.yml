@@ -4,6 +4,9 @@ networks:
   foodsqan-public:
     external: true
     name: ${TRAEFIK_NETWORK}
+  vizyo-auth-network:
+    external: true
+    name: vizyo-auth-network
   vizyo-tracky:
     driver: bridge
     name: vizyo-tracky
@@ -78,6 +81,7 @@ services:
       - tracky-api-logs:/app/apps/api/logs
     networks:
       - vizyo-tracky
+      - vizyo-auth-network
       - foodsqan-public
     labels:
       - "traefik.enable=true"

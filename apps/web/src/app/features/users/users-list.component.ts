@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, Plus, Archive, Users, Shield, Pencil, KeyRound } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
@@ -79,7 +79,7 @@ import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerR
               </div>
 
               <!-- Bottom: actions -->
-              @if (u.role !== 'FLEET_ADMIN' && perms.can('users_manage') && u.isActive) {
+              @if ((isSuperAdmin() || u.role !== 'FLEET_ADMIN') && perms.can('users_manage') && u.isActive) {
                 <div class="u-card-actions">
                   <button (click)="openEditDrawer(u)" class="u-action-btn" title="Modifier">
                     <lucide-icon [img]="PencilIcon" [size]="14"></lucide-icon> Modifier
@@ -277,6 +277,7 @@ export class UsersListComponent implements OnInit {
 
   private readonly auth = inject(AuthService);
   protected readonly perms = inject(PermissionsService);
+  protected readonly isSuperAdmin = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
 
   protected userInitials(u: TrackyUser): string {
     if (u.firstName && u.lastName) return (u.firstName[0] + u.lastName[0]).toUpperCase();
