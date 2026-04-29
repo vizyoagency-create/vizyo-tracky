@@ -1,4 +1,4 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Check, KeyRound, LucideAngularModule, ShieldAlert, UserCircle2 } from 'lucide-angular';
@@ -46,7 +46,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
             <div class="field">
               <label>Nom complet</label>
               <input [(ngModel)]="displayName" name="displayName"
-                     placeholder="Younes Haddou" autocomplete="name" required />
+                     placeholder="Jean Dupont" autocomplete="name" required />
             </div>
             <div class="field">
               <label>Mot de passe</label>
@@ -168,12 +168,15 @@ export class AcceptInviteComponent implements OnInit {
   password = '';
   passwordConfirm = '';
 
-  readonly passwordsMatch = computed(() => this.password === this.passwordConfirm);
-  readonly canSubmit = computed(() =>
-    this.displayName.trim().length >= 2
-    && this.password.length >= 8
-    && this.passwordsMatch(),
-  );
+  passwordsMatch(): boolean {
+    return this.password === this.passwordConfirm;
+  }
+
+  canSubmit(): boolean {
+    return this.displayName.trim().length >= 2
+      && this.password.length >= 8
+      && this.passwordsMatch();
+  }
 
   ngOnInit(): void {
     const token = this.route.snapshot.queryParamMap.get('token');
