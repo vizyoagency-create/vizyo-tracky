@@ -39,6 +39,12 @@ export const routes: Routes = [
     data: { title: 'Accepter l\'invitation' },
   },
   {
+    path: 'install',
+    loadComponent: () =>
+      import('./features/install/install-page.component').then((m) => m.InstallPageComponent),
+    data: { title: 'Installer Vizyo Tracky' },
+  },
+  {
     path: '',
     loadComponent: () =>
       import('./layouts/dashboard-layout.component').then((m) => m.DashboardLayoutComponent),
