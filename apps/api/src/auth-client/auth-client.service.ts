@@ -40,7 +40,8 @@ export class AuthClientService {
 
   private signHeaders(body: unknown): Record<string, string> {
     const timestamp = Math.floor(Date.now() / 1000).toString();
-    const payload = `${timestamp}.${JSON.stringify(body ?? {})}`;
+    const bodyStr = typeof body === 'string' ? body : JSON.stringify(body ?? {});
+    const payload = `${timestamp}.${bodyStr}`;
     const signature = createHmac('sha256', this.appSecret)
       .update(payload)
       .digest('hex');
@@ -60,7 +61,9 @@ export class AuthClientService {
     bearerToken?: string,
   ): Promise<T> {
     const url = `${this.apiUrl}${path}`;
-    const headers: Record<string, string> = this.signHeaders(body);
+    // Pour GET, signer avec '' (pas de body) pour matcher le AppGuard de Vizyo Auth
+    const hmacBody = method === 'GET' ? '' : body;
+    const headers: Record<string, string> = this.signHeaders(hmacBody);
     if (bearerToken) {
       headers['Authorization'] = `Bearer ${bearerToken}`;
     }
