@@ -631,30 +631,8 @@ const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible a
       min-height: 0;
     }
 
-    /* ─── User position marker (blue dot + pulse) ─── */
-    .tracky-user-marker {
-      position: relative;
-      width: 20px; height: 20px;
-    }
-    .tracky-user-marker-dot {
-      position: absolute; inset: 4px;
-      border-radius: 50%;
-      background: #3b82f6;
-      border: 2.5px solid white;
-      box-shadow: 0 1px 4px rgba(0,0,0,.3);
-      z-index: 2;
-    }
-    .tracky-user-marker-pulse {
-      position: absolute; inset: -6px;
-      border-radius: 50%;
-      background: rgba(59,130,246,.25);
-      animation: user-pulse 2s ease-out infinite;
-      z-index: 1;
-    }
-    @keyframes user-pulse {
-      0% { transform: scale(0.5); opacity: 1; }
-      100% { transform: scale(2.2); opacity: 0; }
-    }
+    /* ─── User position marker — styles inline car MapLibre injecte
+         les markers hors du composant Angular (pas d'encapsulation) ─── */
 
     /* ─── Compass button (desktop = bottom-right, mobile = top-right) ─── */
     .tracky-compass-btn {
@@ -1739,8 +1717,32 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       return;
     }
     const el = document.createElement('div');
-    el.className = 'tracky-user-marker';
-    el.innerHTML = '<div class="tracky-user-marker-dot"></div><div class="tracky-user-marker-pulse"></div>';
+    Object.assign(el.style, { position: 'relative', width: '20px', height: '20px' });
+
+    const dot = document.createElement('div');
+    Object.assign(dot.style, {
+      position: 'absolute', inset: '4px', borderRadius: '50%',
+      background: '#3b82f6', border: '2.5px solid white',
+      boxShadow: '0 1px 4px rgba(0,0,0,.3)', zIndex: '2',
+    });
+
+    const pulse = document.createElement('div');
+    Object.assign(pulse.style, {
+      position: 'absolute', inset: '-6px', borderRadius: '50%',
+      background: 'rgba(59,130,246,.25)', zIndex: '1',
+      animation: 'tracky-user-pulse 2s ease-out infinite',
+    });
+
+    // Injecter le keyframe globalement (une seule fois)
+    if (!document.getElementById('tracky-user-pulse-style')) {
+      const style = document.createElement('style');
+      style.id = 'tracky-user-pulse-style';
+      style.textContent = '@keyframes tracky-user-pulse{0%{transform:scale(.5);opacity:1}100%{transform:scale(2.2);opacity:0}}';
+      document.head.appendChild(style);
+    }
+
+    el.appendChild(pulse);
+    el.appendChild(dot);
     this.userMarker = new maplibregl.Marker({ element: el })
       .setLngLat([coords.lng, coords.lat])
       .addTo(this.map);
@@ -2818,6 +2820,18 @@ export class MapComponent implements AfterViewInit, OnDestroy {
             </svg>
             <span>Voir la dernière heure</span>
           </button>
+          <button data-action="navigate" class="tk-popup-btn tk-popup-btn--ghost">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 11l19-9-9 19-2-8-8-2z"/>
+            </svg>
+            <span>Itinéraire</span>
+          </button>
+          <button data-action="gmaps" class="tk-popup-btn tk-popup-btn--ghost">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+            </svg>
+            <span>Google Maps</span>
+          </button>
           ${engineBtn}
         </div>
       </div>
@@ -2844,6 +2858,16 @@ export class MapComponent implements AfterViewInit, OnDestroy {
             this.toggleMiniReplay(vehicleId);
             this.closePopup();
             break;
+          case 'navigate': {
+            const p = this.realtime.positionsList().find((pp) => pp.trackerId === trackerId);
+            if (p) window.open(`https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}`, '_blank');
+            break;
+          }
+          case 'gmaps': {
+            const p = this.realtime.positionsList().find((pp) => pp.trackerId === trackerId);
+            if (p) window.open(`https://www.google.com/maps?q=${p.lat},${p.lng}`, '_blank');
+            break;
+          }
           case 'cut':
             this.requestEngine(trackerId, 'CUT');
             break;
