@@ -90,16 +90,11 @@ export class InvitationsService {
       throw new ConflictException('Un utilisateur avec cet email existe deja');
     }
 
-    // Reject if there is already a PENDING invitation to this email — admin must
-    // revoke first to avoid spamming.
-    const existingPending = await this.prisma.invitation.findFirst({
-      where: { email, status: 'PENDING', expiresAt: { gt: new Date() } },
+    // Auto-revoke any existing PENDING invitation for this email (allows resend).
+    await this.prisma.invitation.updateMany({
+      where: { email, status: 'PENDING' },
+      data: { status: 'REVOKED' },
     });
-    if (existingPending) {
-      throw new ConflictException(
-        'Une invitation est deja en attente pour cet email. Revoquez-la avant d\'en envoyer une nouvelle.',
-      );
-    }
 
     // RBAC: FLEET_ADMIN ne peut inviter que dans sa propre flotte.
     const inviter = await this.prisma.user.findUnique({

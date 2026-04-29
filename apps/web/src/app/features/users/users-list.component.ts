@@ -339,6 +339,7 @@ export class UsersListComponent implements OnInit {
           email: result.email!,
           role: result.role,
         });
+        alert(`Invitation envoyee a ${result.email}`);
       } else {
         const userId = this.drawerData()?.user?.id;
         if (userId) {
@@ -354,7 +355,9 @@ export class UsersListComponent implements OnInit {
       }
       this.showDrawer.set(false);
       await this.loadUsers();
-    } catch { /* error handled in drawer */ }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erreur');
+    }
     finally { this.drawerLoading.set(false); }
   }
 
