@@ -76,7 +76,7 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
             </div>
             <div class="field">
               <label>Prenom</label>
-              <input [(ngModel)]="firstName" name="firstName" placeholder="Younes" />
+              <input [(ngModel)]="firstName" name="firstName" placeholder="Jean" />
             </div>
             <div class="field">
               <label>Nom</label>

@@ -84,11 +84,11 @@ type Step = 1 | 2 | 3 | 4 | 5;
                 <div class="form-grid">
                   <div class="field">
                     <label>Prenom</label>
-                    <input [(ngModel)]="firstName" placeholder="Younes" autocomplete="given-name" />
+                    <input [(ngModel)]="firstName" placeholder="Jean" autocomplete="given-name" />
                   </div>
                   <div class="field">
                     <label>Nom</label>
-                    <input [(ngModel)]="lastName" placeholder="Haddou" autocomplete="family-name" />
+                    <input [(ngModel)]="lastName" placeholder="Dupont" autocomplete="family-name" />
                   </div>
                   <div class="field field--full">
                     <label>Telephone (optionnel)</label>
@@ -405,10 +405,10 @@ export class OnboardingWizardComponent {
   readonly step = signal<Step>(1);
   readonly loading = signal(false);
 
-  // Step 2 — profil
-  firstName = '';
-  lastName = '';
-  phone = '';
+  // Step 2 — profil (pré-rempli depuis le profil chargé par OnboardingService)
+  firstName = this.onboarding.profile()?.firstName ?? '';
+  lastName = this.onboarding.profile()?.lastName ?? '';
+  phone = this.onboarding.profile()?.phone ?? '';
 
   // Step 3 — vehicule
   plate = '';
