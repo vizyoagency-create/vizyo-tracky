@@ -172,7 +172,7 @@ const ROLE_DEFAULTS: Record<string, Record<string, boolean>> = {
               } @else {
                 <lucide-icon [img]="SaveIcon" [size]="14"></lucide-icon>
               }
-              {{ data()?.mode === 'create' ? 'Envoyer l\'invitation' : 'Enregistrer' }}
+              {{ data()?.mode === 'create' ? 'Envoyer' : 'Enregistrer' }}
             </button>
           </div>
         </div>
@@ -321,12 +321,12 @@ export class UserDrawerComponent {
   }
 
   onSave(): void {
-    if (this.data()?.mode === 'create' && (!this.email || !this.password)) {
-      this.error.set('Email et mot de passe requis');
+    if (this.data()?.mode === 'create' && !this.email) {
+      this.error.set('Email requis');
       return;
     }
     this.saved.emit({
-      ...(this.data()?.mode === 'create' ? { email: this.email, password: this.password } : {}),
+      ...(this.data()?.mode === 'create' ? { email: this.email } : {}),
       firstName: this.firstName || undefined,
       lastName: this.lastName || undefined,
       role: this.role,
