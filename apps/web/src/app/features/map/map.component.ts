@@ -200,6 +200,17 @@ const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible a
             Vue d'ensemble
           </button>
           <button
+            (click)="centerOnUser()"
+            class="px-2 py-1.5 text-xs rounded-lg bg-bg-tertiary/60 border border-border-subtle
+                   text-fg-secondary hover:text-fg-primary cursor-pointer"
+            [class.text-blue-400]="userPosition()"
+            [class.border-blue-500/30]="userPosition()"
+            title="Ma position">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="4"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M2 12h4"/><path d="M18 12h4"/>
+            </svg>
+          </button>
+          <button
             (click)="toggleFullscreen()"
             class="px-2 py-1.5 text-xs rounded-lg bg-bg-tertiary/60 border border-border-subtle
                    text-fg-secondary hover:text-fg-primary cursor-pointer"
@@ -618,6 +629,31 @@ const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible a
       width: 100%;
       height: 100%;
       min-height: 0;
+    }
+
+    /* ─── User position marker (blue dot + pulse) ─── */
+    .tracky-user-marker {
+      position: relative;
+      width: 20px; height: 20px;
+    }
+    .tracky-user-marker-dot {
+      position: absolute; inset: 4px;
+      border-radius: 50%;
+      background: #3b82f6;
+      border: 2.5px solid white;
+      box-shadow: 0 1px 4px rgba(0,0,0,.3);
+      z-index: 2;
+    }
+    .tracky-user-marker-pulse {
+      position: absolute; inset: -6px;
+      border-radius: 50%;
+      background: rgba(59,130,246,.25);
+      animation: user-pulse 2s ease-out infinite;
+      z-index: 1;
+    }
+    @keyframes user-pulse {
+      0% { transform: scale(0.5); opacity: 1; }
+      100% { transform: scale(2.2); opacity: 0; }
     }
 
     /* ─── Compass button (desktop = bottom-right, mobile = top-right) ─── */
@@ -1303,6 +1339,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private vehicleMeta = new Map<string, VehicleMeta>();
   private trailPoints = new Map<string, Array<[number, number]>>();
   private hasFittedBounds = false;
+  private userMarker: MlMarker | null = null;
+  protected readonly userPosition = signal<{ lat: number; lng: number } | null>(null);
   private currentPopup: Popup | null = null;
   private activePopupTrackerId: string | null = null;
   private activePopupVehicleId: string | null = null;
@@ -1563,6 +1601,9 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
     // Boucle d'animation pour l'interpolation des markers (Sprint C).
     this.startAnimLoop();
+
+    // Géolocalisation utilisateur : centrer sur sa position au chargement.
+    this.requestUserPosition(true);
   }
 
   ngOnDestroy(): void {
@@ -1583,6 +1624,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     this.trailPoints.clear();
     this.interp.clear();
     this.lastMarkerData.clear();
+    this.userMarker?.remove();
+    this.userMarker = null;
 
     this.currentPopup?.remove();
     this.currentPopup = null;
@@ -1665,6 +1708,42 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       return { lat: ll.lat, lng: ll.lng };
     });
     this.mapSvc.fitBounds(this.map, points, { padding: 70, maxZoom: 15 });
+  }
+
+  protected centerOnUser(): void {
+    this.requestUserPosition(true);
+  }
+
+  private requestUserPosition(centerMap: boolean): void {
+    if (!('geolocation' in navigator)) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        this.userPosition.set(coords);
+        this.updateUserMarker(coords);
+        if (centerMap && this.map && !this.hasFittedBounds) {
+          this.map.flyTo({ center: [coords.lng, coords.lat], zoom: 12, duration: 1000 });
+        } else if (centerMap && this.map) {
+          this.map.flyTo({ center: [coords.lng, coords.lat], zoom: 14, duration: 800 });
+        }
+      },
+      () => { /* Permission refusée ou erreur — fallback silencieux */ },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 },
+    );
+  }
+
+  private updateUserMarker(coords: { lat: number; lng: number }): void {
+    if (!this.map) return;
+    if (this.userMarker) {
+      this.userMarker.setLngLat([coords.lng, coords.lat]);
+      return;
+    }
+    const el = document.createElement('div');
+    el.className = 'tracky-user-marker';
+    el.innerHTML = '<div class="tracky-user-marker-dot"></div><div class="tracky-user-marker-pulse"></div>';
+    this.userMarker = new maplibregl.Marker({ element: el })
+      .setLngLat([coords.lng, coords.lat])
+      .addTo(this.map);
   }
 
   protected setStyle(id: MapStyleId): void {
