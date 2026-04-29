@@ -234,7 +234,15 @@ export class InvitationsService {
     }
 
     // 1) Register in Vizyo Auth (external).
-    await this.authClient.register(invitation.email, password, displayName);
+    // Si 409 (deja enregistre), on continue — l'user existe dans Auth mais pas dans Tracky
+    // (cas de retry apres echec partiel ou renvoi d'invitation).
+    try {
+      await this.authClient.register(invitation.email, password, displayName);
+    } catch (err) {
+      const msg = (err as Error).message ?? '';
+      if (!msg.includes('409') && !msg.includes('already registered')) throw err;
+      this.logger.warn({ email: invitation.email }, 'User already in Vizyo Auth — continuing accept flow');
+    }
 
     // 2) Login to get tokens + authUserId.
     const session = await this.authClient.login(invitation.email, password);
