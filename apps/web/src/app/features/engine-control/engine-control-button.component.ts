@@ -142,9 +142,13 @@ export class EngineControlButtonComponent implements OnInit {
     // les contient donc quand le tracker repond avec acc_off.
     // Inclure FAILED : un CUT FAILED = envoyé au boîtier mais ACK timeout.
     // Le véhicule est probablement coupé, on affiche "Rallumer" par sécurité.
+    // Exclure DEVICE_OBSERVED : ce sont des observations d'ignition (ACC),
+    // pas de vraies commandes envoyées au boîtier — elles ne doivent pas
+    // influencer l'état du bouton CUT/RESTORE.
     const isEffective = (s: string) => s === 'SENT' || s === 'ACKNOWLEDGED' || s === 'FAILED';
-    const lastCut = cmds.find((c) => c.action === 'CUT' && isEffective(c.status));
-    const lastRestore = cmds.find((c) => c.action === 'RESTORE' && isEffective(c.status));
+    const isUserCommand = (c: EngineControlCommandDto) => c.source !== 'DEVICE_OBSERVED';
+    const lastCut = cmds.find((c) => c.action === 'CUT' && isEffective(c.status) && isUserCommand(c));
+    const lastRestore = cmds.find((c) => c.action === 'RESTORE' && isEffective(c.status) && isUserCommand(c));
 
     if (!lastCut) return false;
     if (!lastRestore) return true;

@@ -263,6 +263,7 @@ export class VehiclesService {
         where: {
           trackerId: { in: trackerIds },
           status: { in: [CommandStatus.SENT, CommandStatus.ACKNOWLEDGED, CommandStatus.FAILED] },
+          source: { not: 'DEVICE_OBSERVED' }, // Exclure les observations ignition
         },
         orderBy: { createdAt: 'desc' },
         distinct: ['trackerId'],

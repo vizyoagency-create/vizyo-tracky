@@ -98,6 +98,7 @@ export class VehicleSchedulesService {
           where: {
             trackerId: tracker.id,
             status: { in: [CommandStatus.SENT, CommandStatus.ACKNOWLEDGED, CommandStatus.FAILED] },
+            source: { not: 'DEVICE_OBSERVED' },
           },
           orderBy: { createdAt: 'desc' },
         });
