@@ -34,7 +34,7 @@ import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerR
               <span>Archives</span>
             </label>
             <button (click)="openCreateDrawer()" class="u-add-btn">
-              <lucide-icon [img]="Plus" [size]="15"></lucide-icon> Ajouter
+              <lucide-icon [img]="Plus" [size]="15"></lucide-icon> Inviter
             </button>
           }
         </div>
@@ -47,7 +47,7 @@ import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerR
           <div class="u-empty-icon"><lucide-icon [img]="UsersIcon" [size]="32"></lucide-icon></div>
           <p>Aucun utilisateur dans votre flotte</p>
           @if (perms.can('users_manage')) {
-            <button (click)="openCreateDrawer()" class="u-empty-cta">Ajouter votre premier utilisateur</button>
+            <button (click)="openCreateDrawer()" class="u-empty-cta">Inviter votre premier utilisateur</button>
           }
         </div>
       } @else {
@@ -335,19 +335,10 @@ export class UsersListComponent implements OnInit {
     try {
       const mode = this.drawerData()?.mode;
       if (mode === 'create') {
-        await this.usersService.create({
+        await this.usersService.invite({
           email: result.email!,
-          password: result.password!,
-          firstName: result.firstName,
-          lastName: result.lastName,
           role: result.role,
         });
-        // Update permissions after creation
-        const users = await this.usersService.findAll();
-        const created = users.find((u) => u.email === result.email);
-        if (created) {
-          await this.usersService.update(created.id, { permissions: result.permissions });
-        }
       } else {
         const userId = this.drawerData()?.user?.id;
         if (userId) {

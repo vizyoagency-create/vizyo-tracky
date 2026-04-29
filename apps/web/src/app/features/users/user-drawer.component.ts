@@ -41,7 +41,7 @@ const ROLE_DEFAULTS: Record<string, Record<string, boolean>> = {
           <div class="flex items-center justify-between px-6 py-4 border-b border-border-subtle">
             <div>
               <h2 class="text-lg font-display font-bold text-fg-primary">
-                {{ data()?.mode === 'create' ? 'Nouvel utilisateur' : 'Modifier l\\'utilisateur' }}
+                {{ data()?.mode === 'create' ? 'Inviter un utilisateur' : 'Modifier l\\'utilisateur' }}
               </h2>
               @if (data()?.mode === 'edit') {
                 <p class="text-xs text-fg-tertiary mt-0.5">{{ data()?.user?.email }}</p>
@@ -58,54 +58,65 @@ const ROLE_DEFAULTS: Record<string, Record<string, boolean>> = {
 
             <!-- Section: Identité -->
             @if (data()?.mode === 'create') {
+              <!-- Mode invitation : email + rôle uniquement -->
               <section>
-                <h3 class="section-title">Identifiants</h3>
+                <h3 class="section-title">Inviter un utilisateur</h3>
+                <p class="text-xs text-fg-tertiary mb-3">
+                  Un email d'invitation sera envoye. L'utilisateur pourra creer son mot de passe et renseigner ses informations.
+                </p>
                 <div class="space-y-3">
                   <div>
                     <label class="field-label">Email</label>
                     <input type="email" [(ngModel)]="email" placeholder="utilisateur&#64;entreprise.com"
                       class="field-input" />
                   </div>
-                  <div>
-                    <label class="field-label">Mot de passe</label>
-                    <input type="password" [(ngModel)]="password" placeholder="Minimum 12 caractères"
-                      class="field-input" />
-                  </div>
+                </div>
+              </section>
+
+              <section>
+                <h3 class="section-title">Role</h3>
+                <div class="flex gap-2">
+                  <button (click)="setRole('VIEWER')"
+                    class="role-btn" [class.active]="role === 'VIEWER'" [class.viewer]="role === 'VIEWER'">
+                    Lecteur
+                  </button>
+                  <button (click)="setRole('FLEET_MANAGER')"
+                    class="role-btn" [class.active]="role === 'FLEET_MANAGER'" [class.manager]="role === 'FLEET_MANAGER'">
+                    Manager
+                  </button>
                 </div>
               </section>
             }
 
-            <section>
-              <h3 class="section-title">Informations</h3>
-              <div class="grid grid-cols-2 gap-3">
-                <div>
-                  <label class="field-label">Prénom</label>
-                  <input type="text" [(ngModel)]="firstName" placeholder="Prénom" class="field-input" />
-                </div>
-                <div>
-                  <label class="field-label">Nom</label>
-                  <input type="text" [(ngModel)]="lastName" placeholder="Nom" class="field-input" />
-                </div>
-              </div>
-            </section>
-
-            <!-- Section: Rôle -->
-            <section>
-              <h3 class="section-title">Rôle</h3>
-              <div class="flex gap-2">
-                <button (click)="setRole('VIEWER')"
-                  class="role-btn" [class.active]="role === 'VIEWER'" [class.viewer]="role === 'VIEWER'">
-                  Lecteur
-                </button>
-                <button (click)="setRole('FLEET_MANAGER')"
-                  class="role-btn" [class.active]="role === 'FLEET_MANAGER'" [class.manager]="role === 'FLEET_MANAGER'">
-                  Manager
-                </button>
-              </div>
-            </section>
-
-            <!-- Section: Statut (edit only) -->
             @if (data()?.mode === 'edit') {
+              <section>
+                <h3 class="section-title">Informations</h3>
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="field-label">Prenom</label>
+                    <input type="text" [(ngModel)]="firstName" placeholder="Prenom" class="field-input" />
+                  </div>
+                  <div>
+                    <label class="field-label">Nom</label>
+                    <input type="text" [(ngModel)]="lastName" placeholder="Nom" class="field-input" />
+                  </div>
+                </div>
+              </section>
+
+              <section>
+                <h3 class="section-title">Role</h3>
+                <div class="flex gap-2">
+                  <button (click)="setRole('VIEWER')"
+                    class="role-btn" [class.active]="role === 'VIEWER'" [class.viewer]="role === 'VIEWER'">
+                    Lecteur
+                  </button>
+                  <button (click)="setRole('FLEET_MANAGER')"
+                    class="role-btn" [class.active]="role === 'FLEET_MANAGER'" [class.manager]="role === 'FLEET_MANAGER'">
+                    Manager
+                  </button>
+                </div>
+              </section>
+
               <section>
                 <h3 class="section-title">Statut</h3>
                 <div class="flex items-center justify-between p-3 rounded-xl bg-bg-secondary border border-border-subtle">
@@ -116,11 +127,10 @@ const ROLE_DEFAULTS: Record<string, Record<string, boolean>> = {
                   </label>
                 </div>
               </section>
-            }
 
-            <!-- Section: Permissions -->
-            <section>
-              <h3 class="section-title">Permissions</h3>
+              <!-- Section: Permissions (edit only) -->
+              <section>
+                <h3 class="section-title">Permissions</h3>
               <div class="space-y-4">
                 @for (group of permGroups; track group.label) {
                   <div class="perm-group">
@@ -141,6 +151,7 @@ const ROLE_DEFAULTS: Record<string, Record<string, boolean>> = {
                 }
               </div>
             </section>
+            }
           </div>
 
           <!-- Footer -->
@@ -161,7 +172,7 @@ const ROLE_DEFAULTS: Record<string, Record<string, boolean>> = {
               } @else {
                 <lucide-icon [img]="SaveIcon" [size]="14"></lucide-icon>
               }
-              {{ data()?.mode === 'create' ? 'Créer' : 'Enregistrer' }}
+              {{ data()?.mode === 'create' ? 'Envoyer l\'invitation' : 'Enregistrer' }}
             </button>
           </div>
         </div>
