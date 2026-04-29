@@ -140,15 +140,17 @@ export class EngineControlButtonComponent implements OnInit {
     // backend cree systematiquement une EngineControlCommand pour ces cas
     // (cf. handleIgnitionTransition dans positions.service.ts) — l'historique
     // les contient donc quand le tracker repond avec acc_off.
-    // Inclure FAILED : un CUT FAILED = envoyé au boîtier mais ACK timeout.
-    // Le véhicule est probablement coupé, on affiche "Rallumer" par sécurité.
-    // Exclure DEVICE_OBSERVED : ce sont des observations d'ignition (ACC),
-    // pas de vraies commandes envoyées au boîtier — elles ne doivent pas
-    // influencer l'état du bouton CUT/RESTORE.
-    const isEffective = (s: string) => s === 'SENT' || s === 'ACKNOWLEDGED' || s === 'FAILED';
-    const isUserCommand = (c: EngineControlCommandDto) => c.source !== 'DEVICE_OBSERVED';
-    const lastCut = cmds.find((c) => c.action === 'CUT' && isEffective(c.status) && isUserCommand(c));
-    const lastRestore = cmds.find((c) => c.action === 'RESTORE' && isEffective(c.status) && isUserCommand(c));
+    // Exclure DEVICE_OBSERVED (observations ignition, pas de vraies commandes).
+    // FAILED n'est pertinent que s'il est récent (<30 min) — au-delà c'est de l'historique.
+    const thirtyMinAgo = Date.now() - 30 * 60 * 1000;
+    const isEffective = (c: EngineControlCommandDto) => {
+      if (c.source === 'DEVICE_OBSERVED') return false;
+      if (c.status === 'SENT' || c.status === 'ACKNOWLEDGED') return true;
+      if (c.status === 'FAILED') return new Date(c.createdAt).getTime() > thirtyMinAgo;
+      return false;
+    };
+    const lastCut = cmds.find((c) => c.action === 'CUT' && isEffective(c));
+    const lastRestore = cmds.find((c) => c.action === 'RESTORE' && isEffective(c));
 
     if (!lastCut) return false;
     if (!lastRestore) return true;

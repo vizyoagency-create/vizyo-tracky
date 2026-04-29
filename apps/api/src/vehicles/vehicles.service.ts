@@ -259,11 +259,15 @@ export class VehiclesService {
     const cutActiveIds = new Set<string>();
 
     if (trackerIds.length > 0) {
+      // Exclure DEVICE_OBSERVED + FAILED ancien (>30 min = historique, plus pertinent)
       const lastCmds = await this.prisma.engineControlCommand.findMany({
         where: {
           trackerId: { in: trackerIds },
-          status: { in: [CommandStatus.SENT, CommandStatus.ACKNOWLEDGED, CommandStatus.FAILED] },
-          source: { not: 'DEVICE_OBSERVED' }, // Exclure les observations ignition
+          source: { not: 'DEVICE_OBSERVED' },
+          OR: [
+            { status: { in: [CommandStatus.SENT, CommandStatus.ACKNOWLEDGED] } },
+            { status: CommandStatus.FAILED, createdAt: { gte: new Date(Date.now() - 30 * 60 * 1000) } },
+          ],
         },
         orderBy: { createdAt: 'desc' },
         distinct: ['trackerId'],

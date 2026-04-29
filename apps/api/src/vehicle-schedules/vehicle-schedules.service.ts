@@ -97,8 +97,11 @@ export class VehicleSchedulesService {
         const lastCmd = await this.prisma.engineControlCommand.findFirst({
           where: {
             trackerId: tracker.id,
-            status: { in: [CommandStatus.SENT, CommandStatus.ACKNOWLEDGED, CommandStatus.FAILED] },
             source: { not: 'DEVICE_OBSERVED' },
+            OR: [
+              { status: { in: [CommandStatus.SENT, CommandStatus.ACKNOWLEDGED] } },
+              { status: CommandStatus.FAILED, createdAt: { gte: new Date(Date.now() - 30 * 60 * 1000) } },
+            ],
           },
           orderBy: { createdAt: 'desc' },
         });
