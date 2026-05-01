@@ -29,12 +29,13 @@ import { PermissionsService } from '../core/services/permissions.service';
 import { LogoComponent } from '../shared/ui/logo/logo.component';
 import { InstallBannerComponent } from '../shared/ui/install-banner/install-banner.component';
 import { ToastContainerComponent } from '../shared/ui/toast/toast-container.component';
+import { BottomSheetComponent } from '../shared/ui/bottom-sheet/bottom-sheet.component';
 import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wizard.component';
 
 @Component({
   selector: 'app-dashboard-layout',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, ThemeToggleComponent, AlertsBellComponent, LogoComponent, InstallBannerComponent, ToastContainerComponent, OnboardingWizardComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, ThemeToggleComponent, AlertsBellComponent, LogoComponent, InstallBannerComponent, ToastContainerComponent, BottomSheetComponent, OnboardingWizardComponent],
   template: `
     <a href="#main-content" class="skip-link">Aller au contenu principal</a>
     <div class="layout" [class.layout--fullscreen]="fullscreen()">
@@ -73,34 +74,31 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
         </nav>
       </aside>
 
-      <!-- MOBILE DRAWER OVERLAY -->
-      @if (mobileMenuOpen()) {
-        <div class="mobile-overlay" (click)="mobileMenuOpen.set(false)" aria-hidden="true"></div>
-        <aside class="mobile-drawer"
-               role="dialog"
-               aria-modal="true"
-               aria-label="Menu de navigation">
-          <div class="drawer-top">
-            <app-logo variant="icon" [size]="28" />
-            <span class="sidebar-brand">Vizyo <span class="text-tracky-light">Tracky</span></span>
-            <button (click)="mobileMenuOpen.set(false)" class="drawer-close" aria-label="Fermer le menu">
-              <lucide-icon [img]="XIcon" [size]="18" aria-hidden="true"></lucide-icon>
-            </button>
-          </div>
-          <nav class="drawer-nav" aria-label="Sections">
-            @for (item of navItems(); track item.label) {
-              <a [routerLink]="item.route" routerLinkActive="active"
-                 #rla="routerLinkActive"
-                 class="drawer-link"
-                 [attr.aria-current]="rla.isActive ? 'page' : null"
-                 (click)="mobileMenuOpen.set(false)">
-                <lucide-icon [img]="item.icon" [size]="20" aria-hidden="true"></lucide-icon>
-                <span>{{ item.label }}</span>
-              </a>
-            }
-          </nav>
-        </aside>
-      }
+      <!-- MOBILE BOTTOM SHEET — remplace l'ancien drawer lateral.
+           Pattern UX iOS/Android natif : glisse depuis le bas, accessible
+           au pouce. Ouvert via le hamburger top-left ou le bouton "Plus" du
+           bottom-bar — tous deux pointent vers le meme signal mobileMenuOpen. -->
+      <app-bottom-sheet
+        [open]="mobileMenuOpen()"
+        ariaLabel="Menu de navigation"
+        (closed)="mobileMenuOpen.set(false)">
+        <div class="bs-header">
+          <app-logo variant="icon" [size]="22" />
+          <span class="bs-brand">Vizyo <span class="text-tracky-light">Tracky</span></span>
+        </div>
+        <nav class="bs-nav" aria-label="Sections">
+          @for (item of navItems(); track item.label) {
+            <a [routerLink]="item.route" routerLinkActive="active"
+               #rla="routerLinkActive"
+               class="bs-link"
+               [attr.aria-current]="rla.isActive ? 'page' : null"
+               (click)="mobileMenuOpen.set(false)">
+              <lucide-icon [img]="item.icon" [size]="20" aria-hidden="true"></lucide-icon>
+              <span>{{ item.label }}</span>
+            </a>
+          }
+        </nav>
+      </app-bottom-sheet>
 
       <!-- MAIN CONTENT -->
       <div class="main-area">
@@ -225,8 +223,7 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
     .sidebar-link.active { background: var(--bg-tertiary); color: var(--tracky-light); border-color: var(--border-strong) }
 
     /* ─── MOBILE DRAWER ─── */
-    .mobile-overlay { display: none }
-    .mobile-drawer { display: none }
+    /* Anciens drawers mobiles supprimes (remplaces par <app-bottom-sheet>). */
 
     /* ─── TOP BAR avec effet vague glassy ─── */
     .top-bar {
@@ -417,35 +414,41 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
       }
       .mobile-burger:hover { background: var(--bg-tertiary) }
 
-      .mobile-overlay {
-        display: block; position: fixed; inset: 0; z-index: 8000; background: rgba(0,0,0,.5); backdrop-filter: blur(4px);
-        animation: fadeIn .2s ease;
-      }
-      .mobile-drawer {
-        display: flex; flex-direction: column; position: fixed; top: 0; left: 0; bottom: 0; width: 280px; z-index: 8001;
-        background: var(--bg-secondary); border-right: 1px solid var(--border-subtle); box-shadow: 8px 0 32px rgba(0,0,0,.3);
-        animation: slideRight .25s ease-out;
-        /* Drawer : tient compte du notch en standalone */
-        padding-top: env(safe-area-inset-top);
-        padding-bottom: env(safe-area-inset-bottom);
-        padding-left: env(safe-area-inset-left);
-      }
-      .drawer-top {
-        display: flex; align-items: center; gap: 8px; padding: 0 16px; height: 56px;
+      /* Bottom-sheet content (remplace l'ancien drawer lateral) */
+      .bs-header {
+        display: flex; align-items: center; gap: 8px;
+        padding: 4px 4px 12px;
         border-bottom: 1px solid var(--border-subtle);
+        margin-bottom: 8px;
       }
-      .drawer-close {
-        margin-left: auto; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
-        background: transparent; border: none; color: var(--fg-tertiary); cursor: pointer;
+      .bs-brand {
+        font-size: 13px; font-weight: 800; text-transform: uppercase;
+        letter-spacing: .08em; color: var(--fg-primary);
       }
-      .drawer-close:hover { color: var(--fg-primary); background: var(--bg-tertiary) }
-      .drawer-nav { flex: 1; display: flex; flex-direction: column; gap: 2px; padding: 12px }
-      .drawer-link {
-        display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px;
-        color: var(--fg-secondary); text-decoration: none; font-size: 14px; font-weight: 500; transition: all .2s;
+      .bs-nav {
+        display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;
+        padding: 4px 0 8px;
       }
-      .drawer-link:hover { background: var(--bg-tertiary) }
-      .drawer-link.active { background: var(--bg-tertiary); color: var(--tracky-light) }
+      .bs-link {
+        display: flex; align-items: center; gap: 12px;
+        padding: 14px 14px; border-radius: 14px;
+        color: var(--fg-secondary); text-decoration: none;
+        font-size: 14px; font-weight: 600;
+        background: var(--bg-tertiary);
+        border: 1px solid transparent;
+        transition: all .15s;
+        min-height: 56px;
+      }
+      .bs-link:active { transform: scale(.97) }
+      .bs-link.active {
+        background: rgba(16,224,160,.1);
+        color: var(--tracky-light);
+        border-color: rgba(16,224,160,.25);
+      }
+      /* Mode sombre : un peu plus de contraste sur les cartes */
+      :host-context([data-theme="dark"]) .bs-link {
+        background: rgba(255,255,255,.04);
+      }
 
       .top-bar { padding: 0 14px; height: 56px }
       /* Sur mobile, on cache le titre de page (présent dans la page) et on affiche

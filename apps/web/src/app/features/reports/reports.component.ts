@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, BarChart3, Route, Clock, Gauge, Play, ChevronDown, Truck, Check, MessageSquare, Pencil, UserRound, Download } from 'lucide-angular';
+import { LucideAngularModule, BarChart3, Route, Clock, Gauge, Play, ChevronDown, Truck, Check, MessageSquare, Pencil, UserRound, Download, Calendar } from 'lucide-angular';
 import type { DriverDto, TripDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { DriversApiService } from '../../core/services/drivers.service';
@@ -83,14 +83,65 @@ import { TripReplayComponent } from './trip-replay.component';
         </div>
 
         @for (p of periods; track p.label) {
-          <button (click)="setPeriod(p.from, p.to)"
+          <button (click)="setPeriod(p.from, p.to); customRangeOpen.set(false)"
                   class="px-3 py-1.5 text-xs rounded-lg border transition-colors cursor-pointer"
-                  [class]="periodFrom === p.from && periodTo === p.to
+                  [class]="periodFrom === p.from && periodTo === p.to && !isCustomRange()
                     ? 'bg-tracky/20 text-tracky-light border-tracky/30'
                     : 'bg-bg-tertiary text-fg-tertiary border-border-subtle hover:text-fg-secondary'">
             {{ p.label }}
           </button>
         }
+
+        <!-- Pill personnalise — ouvre un panel avec presets + 2 inputs date -->
+        <div class="rep-custom-wrapper">
+          <button type="button"
+                  (click)="customRangeOpen.set(!customRangeOpen())"
+                  class="px-3 py-1.5 text-xs rounded-lg border transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                  [class]="isCustomRange()
+                    ? 'bg-tracky/20 text-tracky-light border-tracky/30'
+                    : 'bg-bg-tertiary text-fg-tertiary border-border-subtle hover:text-fg-secondary'">
+            <lucide-icon [img]="CalendarIcon" [size]="12"></lucide-icon>
+            @if (isCustomRange()) { {{ customRangeLabel() }} } @else { Personnalisé }
+          </button>
+          @if (customRangeOpen()) {
+            <div class="rep-custom-backdrop" (click)="customRangeOpen.set(false)"></div>
+            <div class="rep-custom-panel" role="dialog" aria-label="Période personnalisée">
+              <div class="rep-custom-presets">
+                <p class="rep-custom-section">Raccourcis</p>
+                @for (pr of customPresets(); track pr.label) {
+                  <button type="button" (click)="applyPreset(pr)"
+                          class="rep-custom-preset"
+                          [class.rep-custom-preset--active]="periodFrom === pr.from && periodTo === pr.to">
+                    {{ pr.label }}
+                  </button>
+                }
+              </div>
+              <div class="rep-custom-fields">
+                <p class="rep-custom-section">Plage personnalisée</p>
+                <div class="rep-custom-field">
+                  <label>Du</label>
+                  <input type="date" [(ngModel)]="customFrom" [max]="customTo()" />
+                </div>
+                <div class="rep-custom-field">
+                  <label>Au</label>
+                  <input type="date" [(ngModel)]="customTo" [min]="customFrom()" [max]="todayIso" />
+                </div>
+                @if (customRangeError(); as err) {
+                  <p class="rep-custom-error">{{ err }}</p>
+                }
+                <div class="rep-custom-actions">
+                  <button type="button" (click)="customRangeOpen.set(false)" class="rep-custom-cancel">Annuler</button>
+                  <button type="button"
+                          (click)="applyCustomRange()"
+                          [disabled]="!!customRangeError() || !customFrom() || !customTo()"
+                          class="rep-custom-apply">
+                    Appliquer
+                  </button>
+                </div>
+              </div>
+            </div>
+          }
+        </div>
 
         @if (isAdmin()) {
           <button (click)="onRecompute()" [disabled]="!selectedVehicleId() || recomputing()"
@@ -254,6 +305,104 @@ import { TripReplayComponent } from './trip-replay.component';
     />
   `,
   styles: [`
+    /* ─── Date range personnalisé ─── */
+    .rep-custom-wrapper { position: relative; display: inline-block }
+    .rep-custom-backdrop {
+      position: fixed; inset: 0; z-index: 50;
+      background: transparent;
+    }
+    .rep-custom-panel {
+      position: absolute; top: calc(100% + 8px); left: 0;
+      z-index: 51;
+      display: grid; grid-template-columns: 160px 220px;
+      width: 380px; max-width: calc(100vw - 24px);
+      background: var(--bg-secondary, #0F1714);
+      border: 1px solid var(--border-strong);
+      border-radius: 14px;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, .35);
+      overflow: hidden;
+      animation: rep-custom-pop .2s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+    @keyframes rep-custom-pop {
+      from { opacity: 0; transform: translateY(-6px) }
+      to   { opacity: 1; transform: translateY(0) }
+    }
+    /* Mobile : repli en colonne unique, ancre en fixed bottom pour eviter
+     * tout debordement (le wrapper .rep-custom-wrapper peut etre place
+     * n'importe ou dans la barre de filtres horizontale). */
+    @media (max-width: 480px) {
+      .rep-custom-panel {
+        position: fixed;
+        top: auto;
+        left: 12px; right: 12px; bottom: calc(env(safe-area-inset-bottom) + 80px);
+        grid-template-columns: 1fr;
+        width: auto;
+      }
+      .rep-custom-backdrop {
+        background: rgba(0, 0, 0, .35);
+      }
+    }
+    .rep-custom-presets {
+      display: flex; flex-direction: column; gap: 2px;
+      padding: 12px 8px;
+      background: var(--bg-tertiary);
+      border-right: 1px solid var(--border-subtle);
+    }
+    @media (max-width: 480px) {
+      .rep-custom-presets { border-right: none; border-bottom: 1px solid var(--border-subtle) }
+    }
+    .rep-custom-section {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .06em; color: var(--fg-tertiary);
+      padding: 4px 10px; margin: 0 0 4px;
+    }
+    .rep-custom-preset {
+      text-align: left; padding: 8px 10px;
+      font-size: 12px; font-weight: 500; color: var(--fg-secondary);
+      background: transparent; border: none; border-radius: 8px;
+      cursor: pointer; transition: all .15s;
+    }
+    .rep-custom-preset:hover { background: var(--bg-secondary); color: var(--fg-primary) }
+    .rep-custom-preset--active {
+      background: rgba(16,224,160,.12); color: var(--tracky-light);
+    }
+    .rep-custom-fields { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px }
+    .rep-custom-field { display: flex; flex-direction: column; gap: 4px }
+    .rep-custom-field label {
+      font-size: 11px; font-weight: 600; color: var(--fg-tertiary);
+    }
+    .rep-custom-field input[type="date"] {
+      padding: 8px 10px; border-radius: 8px;
+      background: var(--bg-tertiary); color: var(--fg-primary);
+      border: 1px solid var(--border-subtle);
+      font-size: 13px; font-family: inherit;
+    }
+    .rep-custom-field input[type="date"]:focus {
+      outline: 2px solid color-mix(in srgb, var(--tracky-light, #10E0A0) 60%, transparent);
+      outline-offset: 1px; border-color: var(--tracky-light, #10E0A0);
+    }
+    .rep-custom-error {
+      font-size: 11px; color: #f87171; margin: 0;
+    }
+    .rep-custom-actions {
+      display: flex; gap: 6px; justify-content: flex-end; margin-top: 4px;
+    }
+    .rep-custom-cancel {
+      padding: 7px 12px; border-radius: 8px;
+      background: transparent; color: var(--fg-tertiary);
+      border: 1px solid var(--border-subtle);
+      font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    .rep-custom-cancel:hover { color: var(--fg-secondary); border-color: var(--border-strong) }
+    .rep-custom-apply {
+      padding: 7px 14px; border-radius: 8px;
+      background: var(--tracky, #10E0A0); color: white;
+      border: none; font-size: 12px; font-weight: 700; cursor: pointer;
+      transition: opacity .15s;
+    }
+    .rep-custom-apply:disabled { opacity: .5; cursor: not-allowed }
+    .rep-custom-apply:not(:disabled):hover { opacity: .92 }
+
     /* ─── Boutons d'export PDF / CSV ─── */
     .rep-export-group {
       display: inline-flex;
@@ -516,6 +665,11 @@ export class ReportsComponent implements OnInit {
   protected readonly selectedVehicleId = signal('');
   protected periodFrom = '';
   protected periodTo = '';
+  /** Signal annexe synchronise avec periodFrom/periodTo (qui ne sont pas des
+   * signals pour eviter de casser tous les bindings du template). Sert
+   * uniquement aux `computed()` qui ont besoin de reagir aux changements de
+   * periode (ex: isCustomRange, customRangeLabel). */
+  private readonly periodKey = signal('');
 
   protected readonly Route = Route;
   protected readonly BarChart3 = BarChart3;
@@ -529,6 +683,93 @@ export class ReportsComponent implements OnInit {
   protected readonly PencilIcon = Pencil;
   protected readonly UserRoundIcon = UserRound;
   protected readonly DownloadIcon = Download;
+  protected readonly CalendarIcon = Calendar;
+
+  // ─── Date range custom ────────────────────────────────────────────────
+  protected readonly customRangeOpen = signal(false);
+  protected readonly customFrom = signal('');
+  protected readonly customTo = signal('');
+  /** Aujourd'hui au format YYYY-MM-DD (limite haute pour le date picker). */
+  protected readonly todayIso = new Date().toISOString().slice(0, 10);
+
+  /** True si periodFrom/periodTo correspondent a une plage custom (et non un preset). */
+  protected readonly isCustomRange = computed(() => {
+    this.periodKey(); // dependance explicite pour declencher le re-calcul
+    if (!this.periodFrom || !this.periodTo) return false;
+    return !this.periods.some((p) => p.from === this.periodFrom && p.to === this.periodTo);
+  });
+
+  /** Label compact de la plage active (ex: "12 mars → 18 mars"). */
+  protected readonly customRangeLabel = computed(() => {
+    this.periodKey(); // dependance explicite pour declencher le re-calcul
+    if (!this.isCustomRange()) return '';
+    try {
+      const f = new Date(this.periodFrom);
+      const t = new Date(this.periodTo);
+      const fmt = (d: Date) => d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+      // Le `to` est toujours +1 jour (exclusif) cote periods → on retire 1 jour pour l'affichage.
+      const tDisplay = new Date(t.getTime() - 86400000);
+      return `${fmt(f)} → ${fmt(tDisplay)}`;
+    } catch { return 'Personnalisée'; }
+  });
+
+  /** Validation : retourne un message d'erreur ou '' si OK. */
+  protected readonly customRangeError = computed(() => {
+    const f = this.customFrom();
+    const t = this.customTo();
+    if (!f || !t) return '';
+    if (f > t) return 'La date de début doit être antérieure à la date de fin.';
+    if (t > this.todayIso) return 'La date de fin ne peut pas être dans le futur.';
+    const fDate = new Date(f);
+    const tDate = new Date(t);
+    const days = Math.round((tDate.getTime() - fDate.getTime()) / 86400000);
+    if (days > 365) return 'La plage ne peut pas dépasser 365 jours.';
+    return '';
+  });
+
+  /** Presets dynamiques (calculés au render pour rester relatifs à aujourd'hui). */
+  protected readonly customPresets = computed(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    const tomorrow = new Date(today.getTime() + 86400000);
+    const yesterday = new Date(today.getTime() - 86400000);
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(today.getDate() - ((today.getDay() + 6) % 7)); // lundi
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const startOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const days7 = new Date(today.getTime() - 7 * 86400000);
+    const days30 = new Date(today.getTime() - 30 * 86400000);
+    return [
+      { label: "Hier", from: iso(yesterday), to: iso(today) },
+      { label: "Cette semaine", from: iso(startOfWeek), to: iso(tomorrow) },
+      { label: "7 derniers jours", from: iso(days7), to: iso(tomorrow) },
+      { label: "30 derniers jours", from: iso(days30), to: iso(tomorrow) },
+      { label: "Ce mois-ci", from: iso(startOfMonth), to: iso(tomorrow) },
+      { label: "Mois dernier", from: iso(startOfLastMonth), to: iso(endOfLastMonth) },
+    ];
+  });
+
+  protected applyPreset(preset: { from: string; to: string }): void {
+    this.setPeriod(preset.from, preset.to);
+    this.customRangeOpen.set(false);
+  }
+
+  /** Applique la plage saisie dans les 2 inputs date. Le `to` est exclusif
+   *  cote API (convention periods existante : +1 jour) — on ajoute donc 1 jour
+   *  au `customTo` saisi par l'utilisateur. */
+  protected applyCustomRange(): void {
+    if (this.customRangeError()) return;
+    const f = this.customFrom();
+    const t = this.customTo();
+    if (!f || !t) return;
+    const tDate = new Date(t);
+    tDate.setDate(tDate.getDate() + 1);
+    const tExclusive = tDate.toISOString().slice(0, 10);
+    this.setPeriod(f, tExclusive);
+    this.customRangeOpen.set(false);
+  }
 
   /** Roles autorises a editer/effacer la note d'un trajet. */
   protected readonly canEditNotes = computed(() => {
@@ -614,6 +855,7 @@ export class ReportsComponent implements OnInit {
   protected setPeriod(from: string, to: string): void {
     this.periodFrom = from;
     this.periodTo = to;
+    this.periodKey.set(`${from}|${to}`);
     this.loadData();
   }
 
