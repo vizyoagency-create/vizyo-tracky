@@ -1,11 +1,12 @@
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, BarChart3, Route, Clock, Gauge, Play, ChevronDown, Truck, Check, MessageSquare, Pencil, UserRound } from 'lucide-angular';
+import { LucideAngularModule, BarChart3, Route, Clock, Gauge, Play, ChevronDown, Truck, Check, MessageSquare, Pencil, UserRound, Download } from 'lucide-angular';
 import type { DriverDto, TripDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { DriversApiService } from '../../core/services/drivers.service';
 import { PermissionsService } from '../../core/services/permissions.service';
+import { ReportsApiService } from '../../core/services/reports.service';
 import { TripsApiService } from '../../core/services/trips.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
@@ -21,7 +22,23 @@ import { TripReplayComponent } from './trip-replay.component';
   imports: [FormsModule, LucideAngularModule, DatePipe, DecimalPipe, TripReplayComponent, TripNoteModalComponent, DriverPickerComponent],
   template: `
     <div class="flex flex-col gap-6">
-      <h1 class="text-2xl font-display font-bold text-fg-primary">Rapports</h1>
+      <div class="flex items-start justify-between gap-3 flex-wrap">
+        <h1 class="text-2xl font-display font-bold text-fg-primary">Rapports</h1>
+        <div class="rep-export-group" role="group" aria-label="Exporter le rapport">
+          <button type="button" (click)="onExportPdf()" [disabled]="!!exporting()" class="rep-export-btn rep-export-btn--pdf">
+            <lucide-icon [img]="DownloadIcon" [size]="13"></lucide-icon>
+            <span>{{ exporting() === 'pdf' ? 'Export…' : 'PDF' }}</span>
+          </button>
+          <button type="button" (click)="onExportCsv('trips')" [disabled]="!!exporting()" class="rep-export-btn">
+            <lucide-icon [img]="DownloadIcon" [size]="13"></lucide-icon>
+            <span>{{ exporting() === 'csv-trips' ? 'Export…' : 'CSV trajets' }}</span>
+          </button>
+          <button type="button" (click)="onExportCsv('alerts')" [disabled]="!!exporting()" class="rep-export-btn">
+            <lucide-icon [img]="DownloadIcon" [size]="13"></lucide-icon>
+            <span>{{ exporting() === 'csv-summary' ? 'Export…' : 'CSV alertes' }}</span>
+          </button>
+        </div>
+      </div>
 
       <div class="flex items-center gap-2 flex-wrap">
         <!-- Dropdown véhicule custom -->
@@ -237,6 +254,42 @@ import { TripReplayComponent } from './trip-replay.component';
     />
   `,
   styles: [`
+    /* ─── Boutons d'export PDF / CSV ─── */
+    .rep-export-group {
+      display: inline-flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .rep-export-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--fg-secondary);
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: color .15s, background .15s, border-color .15s;
+    }
+    .rep-export-btn:hover:not(:disabled) {
+      color: var(--fg-primary);
+      border-color: var(--border-strong);
+      background: var(--bg-tertiary);
+    }
+    .rep-export-btn:disabled { opacity: .5; cursor: not-allowed }
+    .rep-export-btn--pdf {
+      color: var(--tracky-light);
+      background: rgba(16,224,160,.08);
+      border-color: rgba(16,224,160,.22);
+    }
+    .rep-export-btn--pdf:hover:not(:disabled) {
+      background: rgba(16,224,160,.14);
+      border-color: rgba(16,224,160,.32);
+    }
+
     /* ─── Dropdown véhicule custom ─── */
     .rep-dropdown-wrapper {
       position: relative;
@@ -449,6 +502,8 @@ export class ReportsComponent implements OnInit {
   private readonly perms = inject(PermissionsService);
   private readonly authService = inject(AuthService);
   private readonly toast = inject(ToastService);
+  private readonly reportsApi = inject(ReportsApiService);
+  protected readonly exporting = signal<null | 'pdf' | 'csv-trips' | 'csv-summary'>(null);
 
   protected readonly vehicles = signal<VehicleDetailDto[]>([]);
   protected readonly trips = signal<TripDto[]>([]);
@@ -473,6 +528,7 @@ export class ReportsComponent implements OnInit {
   protected readonly MessageSquareIcon = MessageSquare;
   protected readonly PencilIcon = Pencil;
   protected readonly UserRoundIcon = UserRound;
+  protected readonly DownloadIcon = Download;
 
   /** Roles autorises a editer/effacer la note d'un trajet. */
   protected readonly canEditNotes = computed(() => {
@@ -559,6 +615,36 @@ export class ReportsComponent implements OnInit {
     this.periodFrom = from;
     this.periodTo = to;
     this.loadData();
+  }
+
+  /** Export PDF du rapport sur la période courante (avec optionnel filtre véhicule). */
+  protected async onExportPdf(): Promise<void> {
+    if (this.exporting()) return;
+    this.exporting.set('pdf');
+    try {
+      // L'API attend un fleetId et la période ; vehicleId est ignoré côté reports/pdf
+      // (le PDF est un rapport flotte). On envoie null pour la flotte de l'utilisateur.
+      await this.reportsApi.downloadPdf(null, this.periodFrom, this.periodTo);
+      this.toast.success('PDF généré');
+    } catch (err) {
+      this.toast.error('Échec export PDF', err instanceof Error ? err.message : '');
+    } finally {
+      this.exporting.set(null);
+    }
+  }
+
+  /** Export CSV — `kind` détermine le contenu (trips: liste de trajets, alerts: liste d'alertes). */
+  protected async onExportCsv(kind: 'trips' | 'alerts'): Promise<void> {
+    if (this.exporting()) return;
+    this.exporting.set(kind === 'trips' ? 'csv-trips' : 'csv-summary');
+    try {
+      await this.reportsApi.downloadCsv(kind, null, this.periodFrom, this.periodTo);
+      this.toast.success(kind === 'trips' ? 'CSV trajets téléchargé' : 'CSV alertes téléchargé');
+    } catch (err) {
+      this.toast.error('Échec export CSV', err instanceof Error ? err.message : '');
+    } finally {
+      this.exporting.set(null);
+    }
   }
 
   protected async loadData(): Promise<void> {

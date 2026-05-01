@@ -154,6 +154,9 @@ import { relativeTime } from '../../shared/utils/relative-time';
               <span class="vd-stat-value">
                 @if (currentPosition(); as pos) { {{ relativeTime(pos.timestamp) }} } @else { Jamais }
               </span>
+              @if (currentPosition(); as pos) {
+                <span class="vd-stat-coords">{{ pos.lat | number:'1.5-5' }}, {{ pos.lng | number:'1.5-5' }}</span>
+              }
             </div>
           </div>
 
@@ -690,6 +693,17 @@ import { relativeTime } from '../../shared/utils/relative-time';
     .vd-stat--mono .vd-stat-value {
       font-family: var(--font-mono, monospace);
       font-size: 12px;
+    }
+    .vd-stat-coords {
+      font-family: var(--font-mono, monospace);
+      font-size: 10px;
+      color: var(--fg-tertiary);
+      line-height: 1.3;
+      letter-spacing: .01em;
+      margin-top: 1px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     /* ─── Tabs avec icônes + fade scroll indicator ─── */

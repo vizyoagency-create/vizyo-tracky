@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, effect, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { LucideAngularModule, AlertTriangle, AlertCircle, Info, Check, CheckCheck } from 'lucide-angular';
 import type { AlertEvent } from '@vizyo/tracky-shared';
@@ -23,9 +23,16 @@ import { relativeTime } from '../../shared/utils/relative-time';
       <div class="a-header">
         <div>
           <h1 class="a-title">Alertes</h1>
-          <p class="a-sub">{{ alerts().length }} alerte(s) en cours</p>
+          <p class="a-sub">
+            {{ alerts().length }} affichée{{ alerts().length > 1 ? 's' : '' }}
+            @if (filterActive()) {
+              <span class="a-sub-filter">· filtre actif</span>
+            } @else if (totalUnack() > alerts().length) {
+              · {{ totalUnack() }} non acquittée{{ totalUnack() > 1 ? 's' : '' }} au total
+            }
+          </p>
         </div>
-        @if (perms.can('alerts_acknowledge')) {
+        @if (perms.can('alerts_acknowledge') && !showAcknowledged() && alerts().length > 0) {
           <button (click)="onAcknowledgeAll()" class="a-ack-all">
             <lucide-icon [img]="CheckCheck" [size]="14"></lucide-icon> Tout acquitter
           </button>
@@ -35,16 +42,28 @@ import { relativeTime } from '../../shared/utils/relative-time';
       <!-- Filters -->
       <div class="a-filters">
         @for (sev of severities; track sev.value) {
-          <button (click)="filterSeverity.set(filterSeverity() === sev.value ? null : sev.value)"
+          <button (click)="filterSeverity.set(filterSeverity() === sev.value ? null : sev.value); reload()"
             class="a-filter" [class.active]="filterSeverity() === sev.value" [class]="sev.css">
             <span class="a-filter-dot" [class]="sev.dot"></span>
             {{ sev.label }}
           </button>
         }
-        <button (click)="showAcknowledged.set(!showAcknowledged())"
+        <button (click)="showAcknowledged.set(!showAcknowledged()); reload()"
           class="a-filter" [class.active]="showAcknowledged()">
           <lucide-icon [img]="Check" [size]="11"></lucide-icon> Acquittées
         </button>
+        @if (vehicleOptions().length > 1) {
+          <select class="a-filter a-filter-select"
+                  [class.active]="!!filterVehicleId()"
+                  [value]="filterVehicleId() ?? ''"
+                  (change)="onVehicleChange($any($event.target).value)"
+                  aria-label="Filtrer par véhicule">
+            <option value="">Tous véhicules</option>
+            @for (v of vehicleOptions(); track v.id) {
+              <option [value]="v.id">{{ v.plate }}</option>
+            }
+          </select>
+        }
       </div>
 
       @if (alerts().length === 0 && !loading()) {
@@ -138,6 +157,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
     .a-header { position: relative; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px }
     .a-title { font-size: 24px; font-weight: 800; color: var(--fg-primary); letter-spacing: -.02em }
     .a-sub { font-size: 13px; color: var(--fg-tertiary); margin-top: 2px }
+    .a-sub-filter { color: var(--tracky-light); font-weight: 600; margin-left: 4px }
     .a-ack-all {
       display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 10px;
       font-size: 12px; font-weight: 700; background: rgba(16,224,160,.1); color: var(--tracky-light);
@@ -160,6 +180,14 @@ import { relativeTime } from '../../shared/utils/relative-time';
     }
     .a-filter:hover { color: var(--fg-secondary) }
     .a-filter.active { border-color: rgba(16,224,160,.3); color: var(--tracky-light); background: rgba(16,224,160,.08) }
+    .a-filter-select {
+      appearance: none; -webkit-appearance: none;
+      padding-right: 26px;
+      background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%2364748b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      max-width: 160px;
+    }
     .a-filter-dot { width: 6px; height: 6px; border-radius: 50% }
     .a-filter-dot.red { background: #ef4444 }
     .a-filter-dot.amber { background: #f59e0b }
@@ -254,6 +282,33 @@ export class AlertsComponent implements OnInit {
   protected readonly nextCursor = signal<string | null>(null);
   protected readonly filterSeverity = signal<string | null>(null);
   protected readonly showAcknowledged = signal(false);
+  protected readonly filterVehicleId = signal<string | null>(null);
+
+  /** Liste des véhicules disponibles pour le filtre, dérivée du snapshot realtime. */
+  protected readonly vehicleOptions = computed(() =>
+    this.realtime.snapshot()
+      .map((v) => ({ id: v.vehicleId, plate: v.plate }))
+      .sort((a, b) => a.plate.localeCompare(b.plate)),
+  );
+
+  protected onVehicleChange(id: string): void {
+    this.filterVehicleId.set(id || null);
+    this.reload();
+  }
+
+  /** Re-déclenche un loadAlerts() depuis un handler de filtre. */
+  protected reload(): void {
+    this.loadAlerts();
+  }
+
+  /** Total des alertes non acquittées (depuis le signal realtime, ne tient pas
+      compte des filtres locaux). Utile pour expliquer le delta avec la liste. */
+  protected readonly totalUnack = this.realtime.unacknowledgedCount;
+
+  /** True si l'utilisateur a appliqué un filtre (sévérité, véhicule, ack). */
+  protected readonly filterActive = computed(() =>
+    !!this.filterSeverity() || !!this.filterVehicleId() || this.showAcknowledged(),
+  );
 
   protected readonly AlertTriangle = AlertTriangle;
   protected readonly AlertCircle = AlertCircle;
@@ -340,6 +395,7 @@ export class AlertsComponent implements OnInit {
       if (this.filterSeverity()) params['severity'] = this.filterSeverity()!;
       if (this.showAcknowledged()) params['acknowledged'] = 'true';
       else params['acknowledged'] = 'false';
+      if (this.filterVehicleId()) params['vehicleId'] = this.filterVehicleId()!;
       if (cursor) params['cursor'] = cursor;
 
       const res = await firstValueFrom(this.alertsApi.list(params));

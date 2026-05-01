@@ -91,6 +91,18 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
                   } @else {
                     <span class="v-brand muted">Non renseigné</span>
                   }
+                  @if (liveStatus(v.id); as ls) {
+                    <span class="v-live-pill" [class]="ls.cssClass">
+                      <span class="v-live-dot"></span>
+                      @if (ls.kind === 'moving') {
+                        {{ ls.speedKmh }} km/h
+                      } @else if (ls.kind === 'idle') {
+                        À l'arrêt · moteur ON
+                      } @else {
+                        Stationné
+                      }
+                    </span>
+                  }
                 </div>
                 <div class="v-card-bottom">
                   <div class="v-tracker-info">
@@ -357,9 +369,28 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
     .v-plate { font-size: 16px; font-weight: 800; color: var(--fg-primary); font-family: var(--font-mono, monospace); letter-spacing: .03em }
     .v-year { font-size: 11px; font-weight: 600; color: var(--fg-tertiary); padding: 2px 8px; border-radius: 6px; background: var(--bg-tertiary) }
 
-    .v-card-mid { margin-bottom: 12px }
+    .v-card-mid { margin-bottom: 12px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px }
     .v-brand { font-size: 13px; font-weight: 500; color: var(--fg-secondary) }
     .v-brand.muted { color: var(--fg-tertiary); font-style: italic }
+    .v-live-pill {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 11px; font-weight: 600;
+      padding: 3px 9px 3px 7px; border-radius: 9999px;
+      border: 1px solid transparent; line-height: 1.4;
+    }
+    .v-live-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0 }
+    .v-live-pill--moving {
+      color: #10E0A0; background: rgba(16,224,160,.12); border-color: rgba(16,224,160,.25);
+    }
+    .v-live-pill--moving .v-live-dot { background: #10E0A0; box-shadow: 0 0 6px rgba(16,224,160,.6) }
+    .v-live-pill--idle {
+      color: #f59e0b; background: rgba(245,158,11,.1); border-color: rgba(245,158,11,.22);
+    }
+    .v-live-pill--idle .v-live-dot { background: #f59e0b }
+    .v-live-pill--stopped {
+      color: var(--fg-tertiary); background: var(--bg-tertiary); border-color: var(--border-subtle);
+    }
+    .v-live-pill--stopped .v-live-dot { background: var(--fg-tertiary) }
 
     .v-card-bottom { padding-top: 10px; border-top: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between }
     .v-tracker-info { flex: 1; min-width: 0 }
@@ -447,6 +478,26 @@ export class VehiclesListComponent implements OnInit {
     const live = this.realtime.trackerStatuses().get(trackerId);
     if (live) return live === 'online';
     return httpStatus === 'ONLINE';
+  }
+
+  /**
+   * Statut live dérivé du signal positions :
+   *  - moving : ignition ON et vitesse > 3 km/h (seuil cohérent avec le sampling backend)
+   *  - idle   : ignition ON mais véhicule arrêté
+   *  - stopped : ignition OFF (ou pas de position)
+   * Retourne null si le véhicule n'est pas dans le snapshot (pas de tracker ou pas hydraté).
+   */
+  protected liveStatus(vehicleId: string): { kind: 'moving' | 'idle' | 'stopped'; speedKmh: number; cssClass: string } | null {
+    const pos = this.realtime.positionsList().find((p) => p.vehicleId === vehicleId);
+    if (!pos) return null;
+    const speedKmh = Math.round(pos.speedKmh);
+    if (pos.ignition && speedKmh > 3) {
+      return { kind: 'moving', speedKmh, cssClass: 'v-live-pill--moving' };
+    }
+    if (pos.ignition) {
+      return { kind: 'idle', speedKmh, cssClass: 'v-live-pill--idle' };
+    }
+    return { kind: 'stopped', speedKmh, cssClass: 'v-live-pill--stopped' };
   }
 
   protected openEditVehicle(v: VehicleDetailDto): void {
