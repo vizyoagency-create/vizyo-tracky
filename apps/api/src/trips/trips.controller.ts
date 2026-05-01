@@ -1,11 +1,14 @@
-import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { AssignDriverDto } from '../drivers/dto/assign-driver.dto';
+import { DriversService } from '../drivers/drivers.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 import { ListTripsDto } from './dto/list-trips.dto';
 import { RecomputeTripsDto } from './dto/recompute-trips.dto';
+import { UpdateTripNoteDto } from './dto/update-trip-note.dto';
 import { TripsService } from './trips.service';
 
 @Controller('trips')
@@ -14,6 +17,7 @@ export class TripsController {
   constructor(
     private readonly trips: TripsService,
     private readonly vehicleAccess: VehicleAccessService,
+    private readonly drivers: DriversService,
   ) {}
 
   private async rb(req: AuthenticatedRequest) {
@@ -55,5 +59,31 @@ export class TripsController {
       { userId: req.user.id, role: req.user.role, fleetId: req.user.fleetId },
       dto,
     );
+  }
+
+  @Patch(':id/notes')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER)
+  async updateNote(
+    @Param('id') id: string,
+    @Body() dto: UpdateTripNoteDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.trips.updateNote(id, await this.rb(req), dto.notes);
+  }
+
+  /**
+   * Phase 2 — Assigne (ou retire) un conducteur sur un trajet a posteriori.
+   * driverId=null retire l'assignation. Set driverSource='MANUAL'.
+   */
+  @Patch(':id/driver')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER)
+  async updateDriver(
+    @Param('id') id: string,
+    @Body() dto: AssignDriverDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.drivers.assignToTrip(id, dto.driverId, {
+      userId: req.user.id, role: req.user.role, fleetId: req.user.fleetId,
+    });
   }
 }

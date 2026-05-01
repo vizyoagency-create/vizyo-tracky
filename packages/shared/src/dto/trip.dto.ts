@@ -1,3 +1,12 @@
+import type { DriverSummaryDto } from './driver.dto';
+
+export interface TripNoteAuthorDto {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  email: string;
+}
+
 export interface TripDto {
   id: string;
   vehicleId: string;
@@ -18,6 +27,21 @@ export interface TripDto {
   polyline: string | null;
   /** Sprint G.3 V1.4 : polyligne snappee aux routes via OSRM. Optionnelle. */
   polylineMatched?: string | null;
+  /** Note libre attachee au trajet (max 500 chars). null = pas de note. */
+  notes?: string | null;
+  /** ISO date de la derniere edition de la note. null si jamais posee. */
+  notesUpdatedAt?: string | null;
+  /** Dernier auteur de la note. null si jamais posee ou auteur supprime. */
+  notesUpdatedBy?: TripNoteAuthorDto | null;
+  /** Conducteur snape sur ce trajet. null si jamais assigne. */
+  driver?: DriverSummaryDto | null;
+  /** 'AUTO' = snape au finalize. 'MANUAL' = modifie manuellement. */
+  driverSource?: 'AUTO' | 'MANUAL' | null;
+}
+
+export interface UpdateTripNoteDto {
+  /** Texte de la note (max 500 chars). null ou chaine vide = effacer. */
+  notes: string | null;
 }
 
 export interface TripDailySummaryDto {

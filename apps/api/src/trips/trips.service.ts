@@ -303,6 +303,21 @@ export class TripsService implements OnModuleInit {
     // forme. Pour un trajet urbain typique, divise les points par 5 a 10.
     const simplifiedPoly = douglasPeucker(state.polyPoints, TRIP_POLYLINE_DP_TOLERANCE_M);
 
+    // Phase 2 — Snape le conducteur courant du vehicule (Vehicle.currentDriverId)
+    // sur le trip (Trip.driverId, driverSource='AUTO'). Si pas de driver assigne
+    // au vehicule, on laisse driverId=null. On ne touche PAS un driver deja
+    // assigne (cas: recompute via assignToTrip avant finalize hypothetique).
+    let autoDriverId: string | null = null;
+    try {
+      const vehicle = await this.prisma.vehicle.findUnique({
+        where: { id: state.vehicleId },
+        select: { currentDriverId: true },
+      });
+      if (vehicle?.currentDriverId) autoDriverId = vehicle.currentDriverId;
+    } catch (err) {
+      this.logger.warn(`Driver snap failed for trip ${state.tripId}: ${err}`);
+    }
+
     await this.prisma.trip.update({
       where: { id: state.tripId },
       data: {
@@ -317,6 +332,9 @@ export class TripsService implements OnModuleInit {
         positionCount: state.positionCount,
         segmentationSource: source,
         polyline: JSON.stringify(simplifiedPoly),
+        ...(autoDriverId
+          ? { driverId: autoDriverId, driverSource: 'AUTO' }
+          : {}),
       },
     });
 
@@ -339,6 +357,20 @@ export class TripsService implements OnModuleInit {
     this.openTrips.delete(state.trackerId);
     this.logger.log(`Trip completed: ${state.tripId} (${source}, ${Math.round(state.dist)}m, ${dur}s)`);
   }
+
+  /**
+   * Select Prisma minimal pour inclure les infos de l'auteur de la note dans
+   * les responses Trip. Reste aligne avec `TripNoteAuthorDto` cote shared.
+   */
+  private static readonly NOTES_AUTHOR_INCLUDE = {
+    notesUpdatedBy: {
+      select: { id: true, firstName: true, lastName: true, email: true },
+    },
+    /** Phase 2 — driver snape sur le trajet (cf. DriverSummaryDto). */
+    driver: {
+      select: { id: true, firstName: true, lastName: true, color: true, isActive: true },
+    },
+  } as const;
 
   async list(
     requestedBy: RequestedBy,
@@ -365,7 +397,7 @@ export class TripsService implements OnModuleInit {
     const limit = Math.min(filters.limit ? parseInt(filters.limit, 10) : 20, 100);
     const items = await this.prisma.trip.findMany({
       where,
-      include: { vehicle: true },
+      include: { vehicle: true, ...TripsService.NOTES_AUTHOR_INCLUDE },
       orderBy: { startedAt: 'desc' },
       take: limit + 1,
       ...(filters.cursor ? { cursor: { id: filters.cursor }, skip: 1 } : {}),
@@ -379,13 +411,61 @@ export class TripsService implements OnModuleInit {
   async findOne(id: string, requestedBy: RequestedBy): Promise<Trip> {
     const trip = await this.prisma.trip.findUnique({
       where: { id },
-      include: { vehicle: true },
+      include: { vehicle: true, ...TripsService.NOTES_AUTHOR_INCLUDE },
     });
     if (!trip) throw new NotFoundException('Trajet introuvable');
     if (requestedBy.role !== UserRole.SUPER_ADMIN && trip.fleetId !== requestedBy.fleetId) {
       throw new ForbiddenException('Acces refuse');
     }
     return trip;
+  }
+
+  /**
+   * Met a jour la note libre du trajet. Verifie acces fleet + acces vehicule.
+   *
+   * Comportement :
+   *   - notes null/empty/whitespace-only => efface la note (set null) et
+   *     reset auteur/date pour ne pas attribuer a tort une note vide.
+   *   - notes non vide => trim + persist, set auteur = requestedBy, set date = now.
+   */
+  async updateNote(
+    id: string,
+    requestedBy: RequestedBy,
+    notes: string | null,
+  ): Promise<Trip> {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id },
+      select: { id: true, fleetId: true, vehicleId: true },
+    });
+    if (!trip) throw new NotFoundException('Trajet introuvable');
+
+    if (requestedBy.role !== UserRole.SUPER_ADMIN && trip.fleetId !== requestedBy.fleetId) {
+      throw new ForbiddenException('Acces refuse');
+    }
+    // Acces granulaire : si l'utilisateur a un access scope (groupes/vehicules),
+    // il faut que le vehicule du trajet soit dans son scope.
+    if (
+      requestedBy.accessibleVehicleIds &&
+      requestedBy.accessibleVehicleIds !== 'ALL' &&
+      !requestedBy.accessibleVehicleIds.includes(trip.vehicleId)
+    ) {
+      throw new ForbiddenException('Acces refuse au vehicule de ce trajet');
+    }
+
+    const trimmed = notes?.trim() ?? '';
+    const isClear = trimmed.length === 0;
+
+    return this.prisma.trip.update({
+      where: { id },
+      data: isClear
+        ? { notes: null, notesUpdatedAt: null, notesUpdatedById: null }
+        : {
+            notes: trimmed,
+            notesUpdatedAt: new Date(),
+            notesUpdatedById: requestedBy.userId,
+          },
+      include: { vehicle: true, ...TripsService.NOTES_AUTHOR_INCLUDE },
+    });
   }
 
   async dailySummary(
