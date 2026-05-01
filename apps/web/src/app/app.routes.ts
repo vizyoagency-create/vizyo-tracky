@@ -99,6 +99,12 @@ export const routes: Routes = [
         data: { title: 'Utilisateurs' },
       },
       {
+        path: 'drivers',
+        loadComponent: () =>
+          import('./features/drivers/drivers-list.component').then((m) => m.DriversListComponent),
+        data: { title: 'Conducteurs' },
+      },
+      {
         path: 'settings',
         loadComponent: () =>
           import('./features/settings/settings.component').then((m) => m.SettingsComponent),

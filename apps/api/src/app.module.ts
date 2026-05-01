@@ -10,6 +10,7 @@ import { AlertsModule } from './alerts/alerts.module';
 import { AuthClientModule } from './auth-client/auth-client.module';
 import { AuthModule } from './auth/auth.module';
 import { validateEnv } from './config/env.validation';
+import { DriversModule } from './drivers/drivers.module';
 import { EngineControlModule } from './engine-control/engine-control.module';
 import { FleetsModule } from './fleets/fleets.module';
 import { GeofencesModule } from './geofences/geofences.module';
@@ -98,6 +99,7 @@ import { VehiclesModule } from './vehicles/vehicles.module';
     VehicleSchedulesModule,
     InternalModule,
     UsersModule,
+    DriversModule,
   ],
   controllers: [HealthController],
   providers: [

@@ -119,6 +119,7 @@ model Fleet {
   geofences     Geofence[]
   alerts        Alert[]
   vehicleGroups VehicleGroup[]
+  drivers       Driver[]
 
   @@map("fleets")
 }
@@ -148,6 +149,10 @@ model User {
   trackerCommands    TrackerCommand[]
   vehicleAccess      UserVehicleAccess[]
   invitationsSent    Invitation[]      @relation("InvitationCreatedBy")
+  tripNotesAuthored  Trip[]            @relation("TripNotesAuthor")
+  /// Phase 3 (futur) : si ce User est lie a un compte conducteur (driver login).
+  /// Aujourd'hui null pour tous les Users existants. Cf. Driver.userId.
+  driverProfile      Driver?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -234,6 +239,11 @@ model Vehicle {
   // au 100km par defaut selon le type vehicule. Si null, on utilise une valeur
   // par defaut cote service (CAR=7, TRUCK=22, VAN=10, MOTO=4, BUS=28).
   fuelConsumptionL100km Float?
+  /// Conducteur "courant" du vehicule. Sert de defaut snappe sur Trip.driverId
+  /// au moment de la cloture du trajet (driverSource='AUTO'). Modifiable a
+  /// posteriori par les admins/managers.
+  currentDriverId String?  @db.Uuid
+  currentDriver   Driver?  @relation("VehicleCurrentDriver", fields: [currentDriverId], references: [id], onDelete: SetNull)
   tracker    Tracker?
   schedule   VehicleSchedule?
   trips      Trip[]
@@ -245,6 +255,7 @@ model Vehicle {
 
   @@unique([fleetId, plate])
   @@index([fleetId])
+  @@index([currentDriverId])
   @@map("vehicles")
 }
 
@@ -379,11 +390,72 @@ model Trip {
   /// Sprint G.3 V1.4 : polyligne snappee aux routes via OSRM /match.
   /// Si null, le frontend affiche `polyline` (raw GPS).
   polylineMatched    String?
+  /// Note libre attachee au trajet, max ~500 chars cote app (libre cote DB).
+  /// Editable par FLEET_ADMIN, FLEET_MANAGER (avec perm `trips_edit_notes`)
+  /// et SUPER_ADMIN. On ne garde pas l'historique : seul le dernier auteur
+  /// est trace via `notesUpdatedBy*` pour traçabilite minimale.
+  notes              String?  @db.Text
+  notesUpdatedAt     DateTime?
+  notesUpdatedById   String?  @db.Uuid
+  notesUpdatedBy     User?    @relation("TripNotesAuthor", fields: [notesUpdatedById], references: [id], onDelete: SetNull)
+  /// Conducteur snape sur ce trajet. Renseigne automatiquement a la cloture
+  /// (`driverSource='AUTO'`) depuis Vehicle.currentDriverId si defini.
+  /// Editable a posteriori par les admins/managers (`driverSource='MANUAL'`).
+  driverId           String?  @db.Uuid
+  driver             Driver?  @relation("TripDriver", fields: [driverId], references: [id], onDelete: SetNull)
+  /// 'AUTO' = snape depuis Vehicle.currentDriver au finalize.
+  /// 'MANUAL' = modifie manuellement par un admin/manager.
+  /// null = pas de driver (jamais assigne).
+  driverSource       String?
   createdAt          DateTime @default(now())
 
   @@index([vehicleId, startedAt(sort: Desc)])
   @@index([fleetId, startedAt(sort: Desc)])
+  @@index([driverId, startedAt(sort: Desc)])
   @@map("trips")
+}
+
+/// Conducteur — variante "hybride" (Phase 2).
+///
+/// - Le driver est une entite metier de la fleet, pas necessairement une
+///   personne ayant un acces a l'app. `userId` est null par defaut : on
+///   peut creer un driver "tag" sans login pour juste tracer qui conduisait.
+/// - Phase 3 (futur) : on pourra "promouvoir" un driver en lui creant un
+///   compte User avec role DRIVER (table User + relation 1:1 ici).
+/// - Soft delete via `isActive=false` (idem User). On n'efface pas un driver
+///   pour preserver l'historique des Trip.driverId snappes.
+/// - Couleur servant de pastille UI pour repere visuel rapide (ex: planning).
+model Driver {
+  id             String   @id @default(uuid()) @db.Uuid
+  fleetId        String   @db.Uuid
+  fleet          Fleet    @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  firstName      String
+  lastName       String
+  /// E.164 (+33612345678) — utile pour SMS/whatsapp futur, validation cote app.
+  phone          String?
+  email          String?
+  /// Numero de permis (libre, usage interne — pas de validation officielle).
+  licenseNumber  String?
+  /// Couleur hex de pastille UI (default vert tracky).
+  color          String?  @default("#10E0A0")
+  /// Note libre sur le conducteur (a propos de lui, distinct de Trip.notes).
+  notes          String?  @db.Text
+  isActive       Boolean  @default(true)
+  /// Phase 3 — Si renseigne, ce driver a un compte User (login) avec role DRIVER.
+  /// 1:1 strict (un User = un Driver max).
+  userId         String?  @unique @db.Uuid
+  user           User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  /// Vehicules dont ce driver est le conducteur "courant" (defaut sur les
+  /// prochains trajets). Souvent 1, peut etre N si plusieurs vehicules.
+  currentVehicles Vehicle[] @relation("VehicleCurrentDriver")
+  /// Tous les trajets snappes sur ce driver (historique).
+  trips          Trip[]   @relation("TripDriver")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([fleetId])
+  @@index([fleetId, isActive])
+  @@map("drivers")
 }
 
 /// `geometry` (geography 4326) ajouté manuellement dans la migration.

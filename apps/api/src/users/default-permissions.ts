@@ -14,6 +14,10 @@ export interface UserPermissions {
   reports_view: boolean;
   users_view: boolean;
   users_manage: boolean;
+  /** Phase 2 — Voir la liste des conducteurs et leur affectation aux vehicules. */
+  drivers_view: boolean;
+  /** Phase 2 — Creer/modifier/archiver des conducteurs et les affecter aux vehicules. */
+  drivers_manage: boolean;
 }
 
 const VIEWER_DEFAULTS: UserPermissions = {
@@ -30,6 +34,8 @@ const VIEWER_DEFAULTS: UserPermissions = {
   reports_view: true,
   users_view: false,
   users_manage: false,
+  drivers_view: true,
+  drivers_manage: false,
 };
 
 const FLEET_MANAGER_DEFAULTS: UserPermissions = {
@@ -46,6 +52,8 @@ const FLEET_MANAGER_DEFAULTS: UserPermissions = {
   reports_view: true,
   users_view: false,
   users_manage: false,
+  drivers_view: true,
+  drivers_manage: true,
 };
 
 export function getDefaultPermissions(role: UserRole): UserPermissions {

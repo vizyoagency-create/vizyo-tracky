@@ -21,6 +21,16 @@ export interface RequestedBy {
 
 @Injectable()
 export class VehiclesService {
+  /**
+   * Phase 2 — Select Prisma minimal pour inclure le conducteur courant dans
+   * les responses Vehicle (cf. DriverSummaryDto cote shared).
+   */
+  static readonly CURRENT_DRIVER_INCLUDE = {
+    currentDriver: {
+      select: { id: true, firstName: true, lastName: true, color: true, isActive: true },
+    },
+  } as const;
+
   constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreateVehicleDto, requestedBy: RequestedBy): Promise<Vehicle> {
@@ -55,7 +65,7 @@ export class VehiclesService {
           year: dto.year,
           color: dto.color,
         },
-        include: { tracker: true },
+        include: { tracker: true, ...VehiclesService.CURRENT_DRIVER_INCLUDE },
       });
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
@@ -97,7 +107,7 @@ export class VehiclesService {
 
     return this.prisma.vehicle.findMany({
       where,
-      include: { tracker: true },
+      include: { tracker: true, ...VehiclesService.CURRENT_DRIVER_INCLUDE },
       orderBy: { createdAt: 'desc' },
       take: limit,
       ...(filters?.cursor ? { skip: 1, cursor: { id: filters.cursor } } : {}),
@@ -107,7 +117,11 @@ export class VehiclesService {
   async findOne(id: string, requestedBy: RequestedBy): Promise<Vehicle> {
     const vehicle = await this.prisma.vehicle.findUnique({
       where: { id },
-      include: { tracker: true, schedule: { select: { enabled: true } } },
+      include: {
+        tracker: true,
+        schedule: { select: { enabled: true } },
+        ...VehiclesService.CURRENT_DRIVER_INCLUDE,
+      },
     });
 
     if (!vehicle) throw new NotFoundException('Véhicule introuvable');
@@ -146,7 +160,7 @@ export class VehiclesService {
       return await this.prisma.vehicle.update({
         where: { id },
         data,
-        include: { tracker: true },
+        include: { tracker: true, ...VehiclesService.CURRENT_DRIVER_INCLUDE },
       });
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {

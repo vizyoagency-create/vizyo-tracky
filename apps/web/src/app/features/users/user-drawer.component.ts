@@ -1,6 +1,6 @@
 import { Component, HostListener, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, X, Truck, FolderOpen, Shield, Bell, FileBarChart, Users, Save } from 'lucide-angular';
+import { LucideAngularModule, X, Truck, FolderOpen, Shield, Bell, FileBarChart, Users, Save, UserRound } from 'lucide-angular';
 import type { TrackyUser } from '../../core/services/users.service';
 
 export interface UserDrawerData {
@@ -21,8 +21,8 @@ export interface UserDrawerResult {
 }
 
 const ROLE_DEFAULTS: Record<string, Record<string, boolean>> = {
-  VIEWER: { vehicles_view: true, vehicles_create: false, vehicles_edit: false, vehicles_delete: false, groups_view: false, groups_manage: false, geofences_view: true, geofences_manage: false, alerts_view: true, alerts_acknowledge: false, reports_view: true, users_view: false, users_manage: false },
-  FLEET_MANAGER: { vehicles_view: true, vehicles_create: true, vehicles_edit: true, vehicles_delete: true, groups_view: true, groups_manage: true, geofences_view: true, geofences_manage: true, alerts_view: true, alerts_acknowledge: true, reports_view: true, users_view: false, users_manage: false },
+  VIEWER: { vehicles_view: true, vehicles_create: false, vehicles_edit: false, vehicles_delete: false, groups_view: false, groups_manage: false, geofences_view: true, geofences_manage: false, alerts_view: true, alerts_acknowledge: false, reports_view: true, users_view: false, users_manage: false, drivers_view: true, drivers_manage: false },
+  FLEET_MANAGER: { vehicles_view: true, vehicles_create: true, vehicles_edit: true, vehicles_delete: true, groups_view: true, groups_manage: true, geofences_view: true, geofences_manage: true, alerts_view: true, alerts_acknowledge: true, reports_view: true, users_view: false, users_manage: false, drivers_view: true, drivers_manage: true },
 };
 
 @Component({
@@ -282,6 +282,10 @@ export class UserDrawerComponent {
     { label: 'Utilisateurs', icon: Users, items: [
       { key: 'users_view', label: 'Voir' },
       { key: 'users_manage', label: 'Gérer' },
+    ]},
+    { label: 'Conducteurs', icon: UserRound, items: [
+      { key: 'drivers_view', label: 'Voir' },
+      { key: 'drivers_manage', label: 'Gérer' },
     ]},
   ];
 

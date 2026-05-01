@@ -1,0 +1,300 @@
+import { Component, HostListener, input, output, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { LucideAngularModule, IdCard, Mail, Palette, Phone, Save, StickyNote, User, X } from 'lucide-angular';
+import type { DriverDto } from '@vizyo/tracky-shared';
+
+export interface DriverDrawerData {
+  mode: 'create' | 'edit';
+  driver?: DriverDto;
+}
+
+export interface DriverDrawerResult {
+  firstName: string;
+  lastName: string;
+  phone?: string | null;
+  email?: string | null;
+  licenseNumber?: string | null;
+  color?: string | null;
+  notes?: string | null;
+  isActive?: boolean;
+}
+
+/**
+ * Phase 2 — Drawer lateral d'edition d'un Conducteur.
+ * Clone le pattern user-drawer (animation slide-in + sections + footer fixe).
+ *
+ * Le compteur de note est volontairement discret (10px) en bas du textarea.
+ */
+@Component({
+  selector: 'app-driver-drawer',
+  standalone: true,
+  imports: [FormsModule, LucideAngularModule],
+  template: `
+    @if (open()) {
+      <div class="fixed inset-0 z-[9000] flex justify-end">
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" (click)="onClose()"></div>
+
+        <div class="relative w-full max-w-md bg-bg-primary border-l border-border-subtle shadow-2xl
+                    flex flex-col animate-slide-in overflow-hidden">
+
+          <!-- Header -->
+          <div class="flex items-center justify-between px-6 py-4 border-b border-border-subtle">
+            <div>
+              <h2 class="text-lg font-display font-bold text-fg-primary">
+                {{ data()?.mode === 'create' ? 'Nouveau conducteur' : 'Modifier le conducteur' }}
+              </h2>
+              @if (data()?.mode === 'edit' && data()?.driver) {
+                <p class="text-xs text-fg-tertiary mt-0.5">
+                  {{ data()!.driver!.firstName }} {{ data()!.driver!.lastName }}
+                </p>
+              }
+            </div>
+            <button (click)="onClose()"
+              class="p-1.5 rounded-lg text-fg-tertiary hover:text-fg-primary hover:bg-bg-tertiary
+                     transition-colors cursor-pointer">
+              <lucide-icon [img]="XIcon" [size]="18"></lucide-icon>
+            </button>
+          </div>
+
+          <!-- Content (scrollable) -->
+          <div class="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+
+            <!-- Identite -->
+            <section>
+              <h3 class="section-title">Identite</h3>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="field-label">Prenom *</label>
+                  <input type="text" [(ngModel)]="firstName" placeholder="Eric"
+                    class="field-input" maxlength="80" />
+                </div>
+                <div>
+                  <label class="field-label">Nom *</label>
+                  <input type="text" [(ngModel)]="lastName" placeholder="Dupont"
+                    class="field-input" maxlength="80" />
+                </div>
+              </div>
+            </section>
+
+            <!-- Contact -->
+            <section>
+              <h3 class="section-title">Contact</h3>
+              <div class="space-y-3">
+                <div>
+                  <label class="field-label">
+                    <lucide-icon [img]="PhoneIcon" [size]="11" class="inline mr-1"></lucide-icon>
+                    Telephone
+                  </label>
+                  <input type="tel" [(ngModel)]="phone" placeholder="+33612345678"
+                    class="field-input" maxlength="32" />
+                </div>
+                <div>
+                  <label class="field-label">
+                    <lucide-icon [img]="MailIcon" [size]="11" class="inline mr-1"></lucide-icon>
+                    Email
+                  </label>
+                  <input type="email" [(ngModel)]="email" placeholder="eric.dupont&#64;exemple.com"
+                    class="field-input" maxlength="255" />
+                </div>
+              </div>
+            </section>
+
+            <!-- Permis + couleur -->
+            <section>
+              <h3 class="section-title">Identification</h3>
+              <div class="space-y-3">
+                <div>
+                  <label class="field-label">
+                    <lucide-icon [img]="IdCardIcon" [size]="11" class="inline mr-1"></lucide-icon>
+                    N° de permis
+                  </label>
+                  <input type="text" [(ngModel)]="licenseNumber" placeholder="12AB34567"
+                    class="field-input" maxlength="64" />
+                </div>
+                <div>
+                  <label class="field-label">
+                    <lucide-icon [img]="PaletteIcon" [size]="11" class="inline mr-1"></lucide-icon>
+                    Couleur (pastille UI)
+                  </label>
+                  <div class="flex items-center gap-3">
+                    <input type="color" [(ngModel)]="color"
+                      class="w-12 h-9 rounded-lg border border-border-subtle bg-bg-secondary cursor-pointer" />
+                    <input type="text" [(ngModel)]="color"
+                      class="field-input flex-1" placeholder="#10E0A0" />
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Notes -->
+            <section>
+              <h3 class="section-title">
+                <lucide-icon [img]="StickyNoteIcon" [size]="11" class="inline mr-1"></lucide-icon>
+                Notes
+              </h3>
+              <textarea [(ngModel)]="notes" maxlength="500"
+                class="field-input min-h-[80px] resize-y"
+                placeholder="Infos internes : disponibilites, contrainte horaire, equipement..."
+                rows="3"></textarea>
+              <div class="text-right mt-1">
+                <span class="text-[10px] text-fg-tertiary"
+                      [class.text-amber-400]="(notes.length) > 450">
+                  {{ notes.length }} / 500
+                </span>
+              </div>
+            </section>
+
+            <!-- Statut (edit only) -->
+            @if (data()?.mode === 'edit') {
+              <section>
+                <h3 class="section-title">Statut</h3>
+                <div class="flex items-center justify-between p-3 rounded-xl bg-bg-secondary border border-border-subtle">
+                  <span class="text-sm text-fg-secondary">Conducteur actif</span>
+                  <label class="toggle">
+                    <input type="checkbox" [(ngModel)]="isActive" />
+                    <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                  </label>
+                </div>
+              </section>
+            }
+          </div>
+
+          <!-- Footer -->
+          <div class="px-6 py-4 border-t border-border-subtle flex items-center justify-end gap-3">
+            @if (error()) {
+              <p class="text-xs text-red-400 flex-1">{{ error() }}</p>
+            }
+            <button (click)="onClose()"
+              class="px-4 py-2.5 text-sm font-medium rounded-xl bg-bg-tertiary text-fg-secondary
+                     border border-border-subtle hover:text-fg-primary transition-colors cursor-pointer">
+              Annuler
+            </button>
+            <button (click)="onSave()" [disabled]="loading()"
+              class="px-5 py-2.5 text-sm font-medium rounded-xl bg-tracky hover:bg-tracky-dark text-white
+                     transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2">
+              @if (loading()) {
+                <span class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+              } @else {
+                <lucide-icon [img]="SaveIcon" [size]="14"></lucide-icon>
+              }
+              {{ data()?.mode === 'create' ? 'Creer' : 'Enregistrer' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    }
+  `,
+  styles: [`
+    .animate-slide-in { animation: slideIn .25s ease-out }
+    @keyframes slideIn { from { transform: translateX(100%) } to { transform: translateX(0) } }
+
+    .section-title { font-size: 10px; font-weight: 700; color: var(--fg-tertiary); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px }
+
+    .field-label { display: block; font-size: 11px; font-weight: 600; color: var(--fg-tertiary); margin-bottom: 4px }
+    .field-input {
+      width: 100%; padding: 10px 14px; background: var(--bg-secondary); border: 1.5px solid var(--border-subtle);
+      border-radius: 12px; color: var(--fg-primary); font-size: 13px;
+      outline: none; transition: border-color .2s; font-family: inherit;
+    }
+    .field-input:focus { border-color: var(--tracky) }
+    .field-input::placeholder { color: var(--fg-tertiary) }
+
+    .toggle { position: relative; display: inline-block; cursor: pointer }
+    .toggle input { opacity: 0; width: 0; height: 0; position: absolute }
+    .toggle-track {
+      display: flex; align-items: center; width: 44px; height: 24px; background: rgba(239,68,68,.15); border: 1.5px solid rgba(239,68,68,.25);
+      border-radius: 24px; transition: all .25s; position: relative; padding: 0 3px;
+    }
+    .toggle-thumb {
+      position: relative; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center;
+      background: #ef4444; border-radius: 50%; transition: transform .25s, background .25s; box-shadow: 0 1px 3px rgba(0,0,0,.3);
+    }
+    .toggle-thumb::after {
+      content: '✕'; font-size: 9px; font-weight: 700; color: white; line-height: 1;
+    }
+    .toggle input:checked + .toggle-track { background: rgba(16,224,160,.15); border-color: rgba(16,224,160,.3) }
+    .toggle input:checked + .toggle-track .toggle-thumb {
+      transform: translateX(20px); background: var(--tracky-light);
+    }
+    .toggle input:checked + .toggle-track .toggle-thumb::after { content: '✓' }
+  `],
+})
+export class DriverDrawerComponent {
+  readonly open = input.required<boolean>();
+  readonly data = input.required<DriverDrawerData | null>();
+  readonly loading = input(false);
+
+  readonly closed = output<void>();
+  readonly saved = output<DriverDrawerResult>();
+
+  readonly error = signal('');
+
+  // Form fields
+  firstName = '';
+  lastName = '';
+  phone = '';
+  email = '';
+  licenseNumber = '';
+  color = '#10E0A0';
+  notes = '';
+  isActive = true;
+
+  protected readonly XIcon = X;
+  protected readonly SaveIcon = Save;
+  protected readonly PhoneIcon = Phone;
+  protected readonly MailIcon = Mail;
+  protected readonly IdCardIcon = IdCard;
+  protected readonly PaletteIcon = Palette;
+  protected readonly StickyNoteIcon = StickyNote;
+  protected readonly UserIcon = User;
+
+  @HostListener('document:keydown.escape')
+  onEscape(): void { if (this.open() && !this.loading()) this.onClose(); }
+
+  ngOnChanges(): void {
+    const d = this.data();
+    if (!d) return;
+    if (d.mode === 'edit' && d.driver) {
+      this.firstName = d.driver.firstName;
+      this.lastName = d.driver.lastName;
+      this.phone = d.driver.phone ?? '';
+      this.email = d.driver.email ?? '';
+      this.licenseNumber = d.driver.licenseNumber ?? '';
+      this.color = d.driver.color ?? '#10E0A0';
+      this.notes = d.driver.notes ?? '';
+      this.isActive = d.driver.isActive;
+    } else {
+      this.firstName = '';
+      this.lastName = '';
+      this.phone = '';
+      this.email = '';
+      this.licenseNumber = '';
+      this.color = '#10E0A0';
+      this.notes = '';
+      this.isActive = true;
+    }
+    this.error.set('');
+  }
+
+  onClose(): void {
+    this.closed.emit();
+  }
+
+  onSave(): void {
+    if (!this.firstName.trim() || !this.lastName.trim()) {
+      this.error.set('Prenom et nom sont obligatoires.');
+      return;
+    }
+    this.error.set('');
+    this.saved.emit({
+      firstName: this.firstName.trim(),
+      lastName: this.lastName.trim(),
+      phone: this.phone.trim() || null,
+      email: this.email.trim() || null,
+      licenseNumber: this.licenseNumber.trim() || null,
+      color: this.color || '#10E0A0',
+      notes: this.notes.trim() || null,
+      ...(this.data()?.mode === 'edit' ? { isActive: this.isActive } : {}),
+    });
+  }
+}

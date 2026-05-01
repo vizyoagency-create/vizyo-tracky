@@ -17,6 +17,8 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { AssignDriverDto } from '../drivers/dto/assign-driver.dto';
+import { DriversService } from '../drivers/drivers.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 import { CreateVehicleDto } from './dto/create-vehicle.dto';
 import { UpdateVehicleDto } from './dto/update-vehicle.dto';
@@ -29,6 +31,7 @@ export class VehiclesController {
   constructor(
     private readonly vehicles: VehiclesService,
     private readonly vehicleAccess: VehicleAccessService,
+    private readonly drivers: DriversService,
   ) {}
 
   private async buildRequestedBy(req: AuthenticatedRequest): Promise<RequestedBy> {
@@ -96,6 +99,22 @@ export class VehiclesController {
       userId: req.user.id,
       role: req.user.role,
       fleetId: req.user.fleetId,
+    });
+  }
+
+  /**
+   * Phase 2 — Definit/retire le conducteur "courant" du vehicule.
+   * Snape sur Trip.driverId au prochain finalize (driverSource='AUTO').
+   */
+  @Patch(':id/driver')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER)
+  assignDriver(
+    @Param('id') id: string,
+    @Body() dto: AssignDriverDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.drivers.assignToVehicle(id, dto.driverId, {
+      userId: req.user.id, role: req.user.role, fleetId: req.user.fleetId,
     });
   }
 }

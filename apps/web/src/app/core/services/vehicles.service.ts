@@ -1,5 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
+import type { DriverSummaryDto } from '@vizyo/tracky-shared';
 import { Observable } from 'rxjs';
 
 export interface VehicleDetailDto {
@@ -20,6 +21,8 @@ export interface VehicleDetailDto {
     /** V1.7 — fil ACC connecte (true) ou ignition inferee depuis vitesse (false). */
     accConnected: boolean;
   } | null;
+  /** Phase 2 — Conducteur courant (defaut snape sur prochains trajets). null = aucun. */
+  currentDriver?: DriverSummaryDto | null;
   createdAt: string;
   schedule?: { enabled: boolean } | null;
 }
