@@ -73,11 +73,21 @@ const COLOR_MAP: Record<ToastKind, string> = {
     /* Position : bas-droite, plus de bottom-bar à éviter. Mobile : safe-area + 16px. */
     .toast-stack { bottom: 1rem; }
     @media (max-width: 768px) {
+      /* Mobile : la bottom-bar mesure ~60px (6 + 48 + 6) + safe-area, on
+         decale le toast au-dessus pour ne pas qu'une notification se retrouve
+         partiellement masquee par la barre de navigation. */
       .toast-stack {
-        bottom: calc(env(safe-area-inset-bottom) + 16px);
+        bottom: calc(env(safe-area-inset-bottom) + 76px);
         right: 12px;
         left: 12px;
         max-width: none;
+      }
+      /* En mode fullscreen (/map), la bottom-bar est cachee — on remet le
+         toast pres du bord pour ne pas laisser un trou inutile.
+         :host-context contourne l'encapsulation Emulated d'Angular qui
+         scoperait un selecteur "body:has(...)" et empecherait le match. */
+      :host-context(.layout--fullscreen) .toast-stack {
+        bottom: calc(env(safe-area-inset-bottom) + 16px);
       }
       /* Sur mobile, les toasts prennent toute la largeur disponible */
       .toast-stack > div {

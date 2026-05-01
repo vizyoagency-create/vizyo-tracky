@@ -34,7 +34,15 @@ import { relativeTime } from '../../utils/relative-time';
       </button>
 
       @if (open()) {
-        <div class="absolute right-0 top-12 z-[2000] w-[380px] max-w-[calc(100vw-24px)] max-h-[500px]
+        <!--
+          Mobile (<640px) : ancrage au viewport via position:fixed + right:8px
+          pour eviter le clipping/debordement (la popup mesure jusqu'a 380px
+          alors que le viewport mobile fait ~360px).
+          Desktop (>=640px) : position:absolute ancree sous le bouton.
+        -->
+        <div class="alerts-popup fixed right-2 top-[60px] w-[calc(100vw-16px)]
+                    sm:absolute sm:right-0 sm:top-12 sm:w-[380px]
+                    z-[2000] max-w-[calc(100vw-16px)] max-h-[500px]
                     bg-bg-secondary/95 backdrop-blur-md border border-border-subtle
                     rounded-[--radius-card] shadow-2xl overflow-hidden flex flex-col">
           <div class="flex items-center justify-between px-4 py-3 border-b border-border-subtle">

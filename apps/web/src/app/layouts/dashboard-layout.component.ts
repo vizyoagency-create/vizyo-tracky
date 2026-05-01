@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   MessageSquare,
   Terminal,
+  UserRound,
 } from 'lucide-angular';
 import { ThemeToggleComponent } from '../shared/components/theme-toggle.component';
 import { AlertsBellComponent } from '../shared/ui/alerts-bell/alerts-bell.component';
@@ -35,7 +36,7 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
   imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, ThemeToggleComponent, AlertsBellComponent, LogoComponent, InstallBannerComponent, ToastContainerComponent, OnboardingWizardComponent],
   template: `
     <a href="#main-content" class="skip-link">Aller au contenu principal</a>
-    <div class="layout">
+    <div class="layout" [class.layout--fullscreen]="fullscreen()">
       @if (!network.online()) {
         <div class="offline-banner" role="status" aria-live="polite">
           <span class="offline-dot"></span>
@@ -103,9 +104,12 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
       <!-- MAIN CONTENT -->
       <div class="main-area">
         <header class="top-bar" role="banner">
-          <!-- Wave layers (effet vague glassy tracky) -->
-          <span class="top-bar-wave top-bar-wave--1" aria-hidden="true"></span>
-          <span class="top-bar-wave top-bar-wave--2" aria-hidden="true"></span>
+          <!-- Wave layers (effet vague glassy tracky) — wrapper a overflow:hidden
+               pour ne pas couper les popups (alerts-bell) qui debordent du top-bar. -->
+          <div class="top-bar-waves" aria-hidden="true">
+            <span class="top-bar-wave top-bar-wave--1"></span>
+            <span class="top-bar-wave top-bar-wave--2"></span>
+          </div>
 
           <div class="top-bar-left">
             <button (click)="mobileMenuOpen.set(true)"
@@ -133,8 +137,9 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
         </main>
       </div>
 
-      <!-- MOBILE BOTTOM BAR -->
-      <nav class="bottom-bar">
+      <!-- MOBILE BOTTOM BAR — cachee en mode fullscreen (page /map) pour
+           liberer toute la hauteur ecran a la carte. -->
+      <nav class="bottom-bar" [class.bottom-bar--hidden]="fullscreen()">
         @for (item of bottomItems; track item.label) {
           @if (item.route === 'more') {
             <button (click)="mobileMenuOpen.set(true)" class="bottom-item press-feedback">
@@ -222,8 +227,12 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
       height: 56px;
       flex-shrink: 0;
       position: relative;
-      overflow: hidden;
-      z-index: 50;
+      /* Pas d'overflow:hidden ici : la popup alerts-bell deborde et serait clippee.
+         L'overflow est confine au .top-bar-waves wrapper ci-dessous. */
+      /* z-index: 1800 -- doit etre superieur aux FAB de la map (jusqu'a 1700)
+         pour que la popup alerts-bell (rendue dans le top-bar) s'affiche
+         au-dessus de ces boutons. Reste sous les modals (toast 6000, drawer 8000). */
+      z-index: 1800;
       border-bottom: 1px solid color-mix(in srgb, var(--tracky-light, #10E0A0) 14%, var(--border-subtle));
       background: color-mix(in srgb, var(--bg-secondary) 70%, transparent);
       backdrop-filter: blur(14px) saturate(1.5);
@@ -233,6 +242,15 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
       padding-left: max(20px, env(safe-area-inset-left));
       padding-right: max(20px, env(safe-area-inset-right));
       box-sizing: content-box;
+    }
+    .top-bar-waves {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+      z-index: 0;
+      border-bottom-left-radius: inherit;
+      border-bottom-right-radius: inherit;
     }
     .top-bar-wave {
       content: '';
@@ -342,6 +360,9 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
         padding-bottom: calc(env(safe-area-inset-bottom) + 6px);
         gap: 4px;
       }
+      /* Quand la page est en fullscreen (route data { fullscreen:true }, ex: /map),
+         on cache la barre du bas pour donner toute la place a la carte. */
+      .bottom-bar.bottom-bar--hidden { display: none !important; }
       .bottom-item {
         flex: 1;
         display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -364,8 +385,10 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
       .content {
         padding-bottom: calc(72px + env(safe-area-inset-bottom)) !important;
       }
+      /* En fullscreen la bottom-bar est cachee : pas besoin de reserver de place
+         pour elle, juste la safe-area pour les iPhones a notch. */
       .content.fullscreen {
-        padding-bottom: calc(56px + env(safe-area-inset-bottom)) !important;
+        padding-bottom: env(safe-area-inset-bottom) !important;
       }
 
       .mobile-burger {
@@ -475,6 +498,7 @@ export class DashboardLayoutComponent {
       { label: 'Alertes', route: '/alerts', icon: Bell },
       { label: 'Géofences', route: '/geofences', icon: Shield },
       { label: 'Rapports', route: '/reports', icon: FileBarChart },
+      ...(this.perms.can('drivers_view') ? [{ label: 'Conducteurs', route: '/drivers', icon: UserRound }] : []),
       ...(this.perms.can('users_view') ? [{ label: 'Utilisateurs', route: '/users', icon: Users }] : []),
       { label: 'Paramètres', route: '/settings', icon: Settings },
       // V1.6 — Section admin : visible uniquement pour SUPER_ADMIN.
