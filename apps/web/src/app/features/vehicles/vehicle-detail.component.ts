@@ -186,15 +186,15 @@ import { relativeTime } from '../../shared/utils/relative-time';
                 {{ v.currentDriver.firstName }} {{ v.currentDriver.lastName }}
               </span>
               <span class="vd-driver-card-hint">
-                Sera affecte par defaut aux prochains trajets.
+                Sera affecté par défaut aux prochains trajets.
               </span>
             } @else {
               <span class="vd-driver-card-name vd-driver-card-name--empty">
-                Aucun conducteur assigne
+                Aucun conducteur assigné
               </span>
               <span class="vd-driver-card-hint">
-                Les trajets ne seront pas associes a un conducteur tant que
-                vous n'en avez pas affecte.
+                Les trajets ne seront pas associés à un conducteur tant que
+                vous n'en avez pas affecté.
               </span>
             }
           </div>

@@ -73,13 +73,13 @@ const EMPTY_FORM: RuleForm = {
       <header class="page-header">
         <a routerLink="/settings" class="back-link">
           <lucide-icon [img]="ArrowLeft" [size]="14"></lucide-icon>
-          Reglages
+          Réglages
         </a>
-        <h1>Regles de notification</h1>
+        <h1>Règles de notification</h1>
         <p class="muted">
           Pour chaque type d'alerte, choisis sur quels canaux la flotte est
-          notifiee. Les regles s'appliquent par flotte ; tu peux affiner par
-          vehicule.
+          notifiée. Les règles s'appliquent par flotte ; tu peux affiner par
+          véhicule.
         </p>
       </header>
 
@@ -87,7 +87,7 @@ const EMPTY_FORM: RuleForm = {
         <div class="page-actions">
           <button class="btn-primary" (click)="openCreate()">
             <lucide-icon [img]="Plus" [size]="14"></lucide-icon>
-            Ajouter une regle
+            Ajouter une règle
           </button>
         </div>
       } @else {
@@ -95,7 +95,7 @@ const EMPTY_FORM: RuleForm = {
           <lucide-icon [img]="Bell" [size]="20"></lucide-icon>
           <div>
             <strong>Lecture seule</strong>
-            <p>Seul un FLEET_ADMIN ou SUPER_ADMIN peut creer ou modifier les regles.</p>
+            <p>Seul un FLEET_ADMIN ou SUPER_ADMIN peut créer ou modifier les règles.</p>
           </div>
         </div>
       }
@@ -103,8 +103,8 @@ const EMPTY_FORM: RuleForm = {
       <section class="card">
         @if (rules().length === 0) {
           <div class="empty">
-            <p class="muted">Aucune regle configuree. Par defaut, les alertes sont
-            notifiees in-app uniquement.</p>
+            <p class="muted">Aucune règle configurée. Par défaut, les alertes sont
+            notifiées in-app uniquement.</p>
           </div>
         } @else {
           <div class="table-wrap">
@@ -115,7 +115,7 @@ const EMPTY_FORM: RuleForm = {
                   <th>Type d'alerte</th>
                   <th>Canaux</th>
                   <th>Escalade</th>
-                  <th>Cree</th>
+                  <th>Créé</th>
                   <th></th>
                 </tr>
               </thead>
@@ -126,7 +126,7 @@ const EMPTY_FORM: RuleForm = {
                       @if (rule.enabled) {
                         <span class="pill pill-on">● Actif</span>
                       } @else {
-                        <span class="pill pill-off">○ Desactive</span>
+                        <span class="pill pill-off">○ Désactivé</span>
                       }
                     </td>
                     <td><code>{{ alertTypeLabel(rule.alertType) }}</code></td>
@@ -171,7 +171,7 @@ const EMPTY_FORM: RuleForm = {
         <div class="modal-overlay" (click)="closeForm()">
           <div class="modal" (click)="$event.stopPropagation()">
             <div class="modal-header">
-              <h2>{{ form().id ? 'Modifier' : 'Nouvelle' }} regle</h2>
+              <h2>{{ form().id ? 'Modifier' : 'Nouvelle' }} règle</h2>
               <button class="btn-icon" (click)="closeForm()">
                 <lucide-icon [img]="XCircle" [size]="18"></lucide-icon>
               </button>
@@ -212,7 +212,7 @@ const EMPTY_FORM: RuleForm = {
               <label class="checkbox-row">
                 <input type="checkbox" [ngModel]="form().enabled"
                        (ngModelChange)="updateForm({ enabled: $event })" />
-                Regle active
+                Règle active
               </label>
             </div>
             <div class="modal-footer">
@@ -413,30 +413,30 @@ export class AlertRulesComponent implements OnInit {
       };
       if (f.id) {
         await this.api.updateRule(f.id, payload);
-        this.toast.success('Regle mise a jour');
+        this.toast.success('Règle mise à jour');
       } else {
         await this.api.createRule(payload);
-        this.toast.success('Regle creee');
+        this.toast.success('Règle créée');
       }
       await this.api.listRules();
       this.rules.set(this.api.rules());
       this.formOpen.set(false);
     } catch {
-      this.toast.error('Echec de l\'enregistrement');
+      this.toast.error('Échec de l\'enregistrement');
     } finally {
       this.saving.set(false);
     }
   }
 
   async deleteRule(rule: AlertRuleDto): Promise<void> {
-    if (!confirm(`Supprimer la regle "${this.alertTypeLabel(rule.alertType)}" ?`)) return;
+    if (!confirm(`Supprimer la règle "${this.alertTypeLabel(rule.alertType)}" ?`)) return;
     try {
       await this.api.deleteRule(rule.id);
-      this.toast.success('Regle supprimee');
+      this.toast.success('Règle supprimée');
       await this.api.listRules();
       this.rules.set(this.api.rules());
     } catch {
-      this.toast.error('Echec de la suppression');
+      this.toast.error('Échec de la suppression');
     }
   }
 }

@@ -32,14 +32,14 @@ import { DriverDrawerComponent, type DriverDrawerData, type DriverDrawerResult }
         <div>
           <h1 class="d-title">Conducteurs</h1>
           <p class="d-sub">
-            {{ drivers().length }} conducteur(s){{ includeArchived() ? ' (archives inclus)' : ' actif(s)' }}
+            {{ drivers().length }} conducteur(s){{ includeArchived() ? ' (archivés inclus)' : ' actif(s)' }}
           </p>
         </div>
         <div class="d-header-actions">
           @if (canManage()) {
             <label class="d-toggle-archived">
               <input type="checkbox" [checked]="includeArchived()" (change)="toggleArchived()" />
-              <span>Archives</span>
+              <span>Archivés</span>
             </label>
             <button (click)="openCreateDrawer()" class="d-add-btn">
               <lucide-icon [img]="Plus" [size]="15"></lucide-icon> Nouveau
@@ -55,10 +55,10 @@ import { DriverDrawerComponent, type DriverDrawerData, type DriverDrawerResult }
       } @else if (drivers().length === 0) {
         <div class="d-empty">
           <div class="d-empty-icon"><lucide-icon [img]="UserRoundIcon" [size]="32"></lucide-icon></div>
-          <p>Aucun conducteur enregistre</p>
+          <p>Aucun conducteur enregistré</p>
           @if (canManage()) {
             <button (click)="openCreateDrawer()" class="d-empty-cta">
-              Creer votre premier conducteur
+              Créer votre premier conducteur
             </button>
           }
         </div>
@@ -86,7 +86,7 @@ import { DriverDrawerComponent, type DriverDrawerData, type DriverDrawerResult }
                   }
                 </div>
                 <div class="d-status" [class]="d.isActive ? 'active' : 'suspended'">
-                  {{ d.isActive ? 'Actif' : 'Archive' }}
+                  {{ d.isActive ? 'Actif' : 'Archivé' }}
                 </div>
               </div>
 
@@ -121,8 +121,8 @@ import { DriverDrawerComponent, type DriverDrawerData, type DriverDrawerResult }
               }
               @if (canManage() && !d.isActive) {
                 <div class="d-card-actions">
-                  <button (click)="reactivate(d)" class="d-action-btn" title="Reactiver">
-                    Reactiver
+                  <button (click)="reactivate(d)" class="d-action-btn" title="Réactiver">
+                    Réactiver
                   </button>
                 </div>
               }
@@ -312,7 +312,7 @@ export class DriversListComponent implements OnInit {
   protected readonly archiveDescription = computed(() => {
     const d = this.driverToArchive();
     const name = d ? `${d.firstName} ${d.lastName}` : '';
-    return `Voulez-vous archiver <strong>${name}</strong> ? L'historique des trajets est conserve. Le conducteur est retire des vehicules ou il etait actif.`;
+    return `Voulez-vous archiver <strong>${name}</strong> ? L'historique des trajets est conservé. Le conducteur est retiré des véhicules où il était actif.`;
   });
 
   async ngOnInit(): Promise<void> {
@@ -351,12 +351,12 @@ export class DriversListComponent implements OnInit {
     this.archiving.set(true);
     try {
       await firstValueFrom(this.driversApi.archive(d.id));
-      this.toast.success('Conducteur archive');
+      this.toast.success('Conducteur archivé');
       this.showArchiveModal.set(false);
       this.driverToArchive.set(null);
       await this.loadDrivers();
     } catch (err) {
-      this.toast.error('Echec archivage', err instanceof Error ? err.message : '');
+      this.toast.error('Échec archivage', err instanceof Error ? err.message : '');
     } finally {
       this.archiving.set(false);
     }
@@ -366,10 +366,10 @@ export class DriversListComponent implements OnInit {
   protected async reactivate(driver: DriverDto): Promise<void> {
     try {
       await firstValueFrom(this.driversApi.update(driver.id, { isActive: true }));
-      this.toast.success('Conducteur reactive');
+      this.toast.success('Conducteur réactivé');
       await this.loadDrivers();
     } catch (err) {
-      this.toast.error('Echec reactivation', err instanceof Error ? err.message : '');
+      this.toast.error('Échec réactivation', err instanceof Error ? err.message : '');
     }
   }
 
@@ -387,18 +387,18 @@ export class DriversListComponent implements OnInit {
           color: result.color,
           notes: result.notes,
         }));
-        this.toast.success('Conducteur cree');
+        this.toast.success('Conducteur créé');
       } else {
         const id = this.drawerData()?.driver?.id;
         if (id) {
           await firstValueFrom(this.driversApi.update(id, result));
-          this.toast.success('Conducteur mis a jour');
+          this.toast.success('Conducteur mis à jour');
         }
       }
       this.showDrawer.set(false);
       await this.loadDrivers();
     } catch (err) {
-      this.toast.error('Echec', err instanceof Error ? err.message : 'Erreur inconnue');
+      this.toast.error('Échec', err instanceof Error ? err.message : 'Erreur inconnue');
     } finally {
       this.drawerLoading.set(false);
     }
@@ -409,7 +409,7 @@ export class DriversListComponent implements OnInit {
     try {
       this.drivers.set(await this.driversApi.list(this.includeArchived()));
     } catch (err) {
-      this.toast.error('Echec de chargement', err instanceof Error ? err.message : '');
+      this.toast.error('Échec de chargement', err instanceof Error ? err.message : '');
     } finally {
       this.loading.set(false);
     }

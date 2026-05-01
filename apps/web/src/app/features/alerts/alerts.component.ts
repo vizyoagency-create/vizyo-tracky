@@ -174,7 +174,15 @@ import { relativeTime } from '../../shared/utils/relative-time';
     .a-empty-icon { width: 56px; height: 56px; border-radius: 14px; background: var(--bg-tertiary); display: flex; align-items: center; justify-content: center; color: var(--fg-tertiary) }
 
     /* Timeline */
-    .timeline { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 0; padding-left: 6px }
+    .timeline {
+      position: relative; z-index: 1; display: flex; flex-direction: column; gap: 0; padding-left: 6px;
+      /* Scroll buffer : laisser de la place au toast bottom + bottom-bar mobile pour
+         eviter qu'ils masquent la derniere alerte de la liste. */
+      padding-bottom: 140px;
+    }
+    @media (min-width: 768px) {
+      .timeline { padding-bottom: 24px }
+    }
 
     .tl-item { display: flex; gap: 16px; position: relative }
     .tl-item.acked { opacity: .5 }

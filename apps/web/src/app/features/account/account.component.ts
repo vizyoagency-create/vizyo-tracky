@@ -47,7 +47,7 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
     <div class="page">
       <header class="page-header">
         <h1>Mon compte</h1>
-        <p class="muted">Gerez votre profil, vos invitations et vos preferences.</p>
+        <p class="muted">Gérez votre profil, vos invitations et vos préférences.</p>
       </header>
 
       <nav class="tabs" aria-label="Sections du compte">
@@ -68,14 +68,14 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
             <div class="field">
               <label>Email</label>
               <input [value]="profile()?.email ?? ''" disabled />
-              <small>Geree par Vizyo Auth — non modifiable ici.</small>
+              <small>Gérée par Vizyo Auth — non modifiable ici.</small>
             </div>
             <div class="field">
-              <label>Role</label>
+              <label>Rôle</label>
               <input [value]="profile()?.role ?? ''" disabled />
             </div>
             <div class="field">
-              <label>Prenom</label>
+              <label>Prénom</label>
               <input [(ngModel)]="firstName" name="firstName" placeholder="Jean" />
             </div>
             <div class="field">
@@ -83,9 +83,9 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
               <input [(ngModel)]="lastName" name="lastName" placeholder="Haddou" />
             </div>
             <div class="field field--full">
-              <label>Telephone</label>
+              <label>Téléphone</label>
               <input [(ngModel)]="phone" name="phone" placeholder="+33612345678" />
-              <small>Format E.164. Utilise pour les notifications WhatsApp (Sprint M).</small>
+              <small>Format E.164. Utilisé pour les notifications WhatsApp (Sprint M).</small>
             </div>
           </div>
           <div class="row-actions">
@@ -117,7 +117,7 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
               <input [(ngModel)]="inviteEmail" type="email" placeholder="email@example.com" />
             </div>
             <div class="field">
-              <label>Role</label>
+              <label>Rôle</label>
               <select [(ngModel)]="inviteRole">
                 @if (canInviteFleetAdmin()) {
                   <option value="FLEET_ADMIN">Administrateur de flotte</option>
@@ -136,7 +136,7 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
         </section>
 
         <section class="card">
-          <h2>Invitations envoyees</h2>
+          <h2>Invitations envoyées</h2>
           @if (invitations().length === 0) {
             <p class="muted">Aucune invitation pour le moment.</p>
           } @else {
@@ -145,9 +145,9 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
                 <thead>
                   <tr>
                     <th>Email</th>
-                    <th>Role</th>
+                    <th>Rôle</th>
                     <th>Statut</th>
-                    <th>Cree le</th>
+                    <th>Créé le</th>
                     <th>Expire</th>
                     <th></th>
                   </tr>
@@ -166,17 +166,17 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
                           }
                           @case ('ACCEPTED') {
                             <span class="status status--ok">
-                              <lucide-icon [img]="CheckCircle" [size]="12"></lucide-icon> Acceptee
+                              <lucide-icon [img]="CheckCircle" [size]="12"></lucide-icon> Acceptée
                             </span>
                           }
                           @case ('EXPIRED') {
                             <span class="status status--expired">
-                              <lucide-icon [img]="XCircle" [size]="12"></lucide-icon> Expiree
+                              <lucide-icon [img]="XCircle" [size]="12"></lucide-icon> Expirée
                             </span>
                           }
                           @default {
                             <span class="status status--revoked">
-                              <lucide-icon [img]="XCircle" [size]="12"></lucide-icon> Revoquee
+                              <lucide-icon [img]="XCircle" [size]="12"></lucide-icon> Révoquée
                             </span>
                           }
                         }
@@ -186,7 +186,7 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
                       <td>
                         @if (inv.status === 'PENDING') {
                           <button (click)="revokeInvitation(inv.id)" class="btn-link">
-                            Revoquer
+                            Révoquer
                           </button>
                         }
                         @if (inv.acceptUrlForDevDebug) {
@@ -212,8 +212,8 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
             <div class="info-box">
               <lucide-icon [img]="ShieldAlert" [size]="20"></lucide-icon>
               <div>
-                <strong>Push desactive cote serveur</strong>
-                <p>Les VAPID keys ne sont pas configurees. Ajouter VAPID_PUBLIC_KEY et
+                <strong>Push désactivé côté serveur</strong>
+                <p>Les VAPID keys ne sont pas configurées. Ajouter VAPID_PUBLIC_KEY et
                 VAPID_PRIVATE_KEY a la config serveur pour activer.</p>
               </div>
             </div>
@@ -228,7 +228,7 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
           } @else {
             <p class="muted" style="margin: 0 0 12px;">
               Recevez les alertes critiques (SOS, accidents, geofence) directement
-              sur ce device, meme app fermee.
+              sur ce device, même app fermée.
             </p>
             <div class="row-actions">
               @if (!notif.isSubscribed()) {
@@ -239,7 +239,7 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
               } @else {
                 <button (click)="unsubscribePush()" class="btn-ghost">
                   <lucide-icon [img]="XCircle" [size]="14"></lucide-icon>
-                  Desactiver sur ce device
+                  Désactiver sur ce device
                 </button>
               }
             </div>
@@ -248,14 +248,14 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
 
         @if (notif.devices().length > 0) {
           <section class="card">
-            <h2>Devices abonnes</h2>
+            <h2>Devices abonnés</h2>
             <div class="table-wrap">
               <table>
                 <thead>
                   <tr>
                     <th>Device</th>
                     <th>Dernier vu</th>
-                    <th>Cree</th>
+                    <th>Créé</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -277,12 +277,12 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
           <div class="info-box">
             <lucide-icon [img]="Mail" [size]="20"></lucide-icon>
             <div>
-              <strong>Configuration via les regles d'alerte</strong>
-              <p>Les notifications email et WhatsApp sont configurees par flotte
+              <strong>Configuration via les règles d'alerte</strong>
+              <p>Les notifications email et WhatsApp sont configurées par flotte
               et par type d'alerte. Un FLEET_ADMIN peut les activer via
-              l'API <code>/notifications/rules</code> (UI dediee a venir).</p>
+              l'API <code>/notifications/rules</code> (UI dédiée à venir).</p>
               <p style="margin-top: 8px; font-size: 12px;">
-                WhatsApp utilise votre numero de telephone (configure dans l'onglet Profil).
+                WhatsApp utilise votre numéro de téléphone (configuré dans l'onglet Profil).
               </p>
             </div>
           </div>
@@ -291,13 +291,13 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
 
       @if (activeTab() === 'security') {
         <section class="card">
-          <h2>Securite</h2>
+          <h2>Sécurité</h2>
           <div class="info-box">
             <lucide-icon [img]="ShieldAlert" [size]="20"></lucide-icon>
             <div>
               <strong>Mot de passe et sessions</strong>
-              <p>L'authentification est geree par Vizyo Auth. Pour changer votre mot de passe ou
-              vous deconnecter de toutes vos sessions, accedez au portail Vizyo Auth.</p>
+              <p>L'authentification est gérée par Vizyo Auth. Pour changer votre mot de passe ou
+              vous déconnecter de toutes vos sessions, accédez au portail Vizyo Auth.</p>
             </div>
           </div>
         </section>
@@ -321,6 +321,9 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
       border-bottom: 1px solid var(--border-subtle);
       overflow-x: auto;
       scrollbar-width: thin;
+      /* Indicateur visuel de scroll horizontal sur mobile (gradient en bordure droite). */
+      -webkit-mask-image: linear-gradient(to right, black calc(100% - 24px), transparent 100%);
+      mask-image: linear-gradient(to right, black calc(100% - 24px), transparent 100%);
     }
     .tab {
       display: inline-flex; align-items: center; gap: 6px;
@@ -332,12 +335,20 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
       font-size: 14px;
       cursor: pointer;
       white-space: nowrap;
+      flex: 0 0 auto;
     }
     .tab.active {
       color: var(--tracky-light, #10E0A0);
       border-bottom-color: var(--tracky-light, #10E0A0);
     }
     .tab:hover:not(.active) { color: var(--fg-secondary); }
+    /* Mobile : tabs plus compactes pour limiter le risque de troncature. */
+    @media (max-width: 480px) {
+      .tabs { gap: 2px; }
+      .tab { padding: 10px 10px; font-size: 13px; gap: 4px; }
+      /* Pas de masque si le scroll n'est pas necessaire (conserver une bordure nette). */
+      .tabs:not(:hover) { -webkit-mask-image: none; mask-image: none; }
+    }
     .card {
       background: var(--bg-secondary);
       border: 1px solid var(--border-subtle);
@@ -500,7 +511,7 @@ export class AccountComponent implements OnInit {
       tabs.push({ key: 'invitations', label: 'Invitations', icon: Mail });
     }
     tabs.push({ key: 'notifications', label: 'Notifications', icon: Bell });
-    tabs.push({ key: 'security', label: 'Securite', icon: KeyRound });
+    tabs.push({ key: 'security', label: 'Sécurité', icon: KeyRound });
     return tabs;
   });
 
@@ -516,10 +527,10 @@ export class AccountComponent implements OnInit {
     try {
       const result = await this.notif.subscribePush();
       if (result.ok) {
-        this.toast.success('Notifications push activees sur ce device');
+        this.toast.success('Notifications push activées sur ce device');
         await this.notif.listDevices();
       } else {
-        this.toast.error(result.reason ?? 'Echec de l\'activation');
+        this.toast.error(result.reason ?? 'Échec de l\'activation');
       }
     } finally {
       this.subscribing.set(false);
@@ -528,7 +539,7 @@ export class AccountComponent implements OnInit {
 
   async unsubscribePush(): Promise<void> {
     await this.notif.unsubscribePush();
-    this.toast.success('Notifications desactivees sur ce device');
+    this.toast.success('Notifications désactivées sur ce device');
     await this.notif.listDevices();
   }
 
@@ -540,7 +551,7 @@ export class AccountComponent implements OnInit {
       this.lastName = me.lastName ?? '';
       this.phone = me.phone ?? '';
     } catch {
-      this.toast.error('Echec du chargement du profil');
+      this.toast.error('Échec du chargement du profil');
     }
   }
 
@@ -555,7 +566,7 @@ export class AccountComponent implements OnInit {
 
   async saveProfile(): Promise<void> {
     if (this.phone && !/^\+\d{6,15}$/.test(this.phone)) {
-      this.toast.error('Le telephone doit etre au format international (ex: +33612345678)');
+      this.toast.error('Le téléphone doit être au format international (ex: +33612345678)');
       return;
     }
     this.saving.set(true);
@@ -565,10 +576,10 @@ export class AccountComponent implements OnInit {
         lastName: this.lastName.trim() || '',
         phone: this.phone.trim() || null,
       });
-      this.toast.success('Profil mis a jour');
+      this.toast.success('Profil mis à jour');
       await this.loadProfile();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Echec';
+      const message = err instanceof Error ? err.message : 'Échec';
       this.toast.error(message);
     } finally {
       this.saving.set(false);
@@ -583,11 +594,11 @@ export class AccountComponent implements OnInit {
         email: this.inviteEmail.trim().toLowerCase(),
         role: this.inviteRole,
       });
-      this.toast.success(`Invitation envoyee a ${this.inviteEmail}`);
+      this.toast.success(`Invitation envoyée à ${this.inviteEmail}`);
       this.inviteEmail = '';
       await this.loadInvitations();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Echec';
+      const message = err instanceof Error ? err.message : 'Échec';
       this.toast.error(message);
     } finally {
       this.sendingInvite.set(false);
@@ -597,19 +608,19 @@ export class AccountComponent implements OnInit {
   async revokeInvitation(id: string): Promise<void> {
     try {
       await this.usersApi.revokeInvitation(id);
-      this.toast.success('Invitation revoquee');
+      this.toast.success('Invitation révoquée');
       await this.loadInvitations();
     } catch {
-      this.toast.error('Echec de la revocation');
+      this.toast.error('Échec de la révocation');
     }
   }
 
   async copyDevLink(url: string): Promise<void> {
     try {
       await navigator.clipboard.writeText(url);
-      this.toast.success('Lien copie (mode dev)');
+      this.toast.success('Lien copié (mode dev)');
     } catch {
-      this.toast.error('Echec de la copie');
+      this.toast.error('Échec de la copie');
     }
   }
 

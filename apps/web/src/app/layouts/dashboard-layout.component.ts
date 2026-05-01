@@ -18,6 +18,7 @@ import {
   MessageSquare,
   Terminal,
   UserRound,
+  UserCircle2,
 } from 'lucide-angular';
 import { ThemeToggleComponent } from '../shared/components/theme-toggle.component';
 import { AlertsBellComponent } from '../shared/ui/alerts-bell/alerts-bell.component';
@@ -129,6 +130,12 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
           </div>
           <div class="top-actions">
             <app-alerts-bell />
+            <a routerLink="/account"
+               routerLinkActive="active"
+               class="top-account-link"
+               aria-label="Mon compte">
+              <lucide-icon [img]="UserCircle2Icon" [size]="20" aria-hidden="true"></lucide-icon>
+            </a>
             <app-theme-toggle />
           </div>
         </header>
@@ -329,6 +336,19 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
     .mobile-burger { display: none }
     .top-title { font-size: 16px; font-weight: 700; color: var(--fg-primary); position: relative; z-index: 1 }
     .top-actions { display: flex; align-items: center; gap: 12px; position: relative; z-index: 1 }
+    .top-account-link {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 36px; height: 36px; border-radius: 9999px;
+      color: var(--fg-secondary); text-decoration: none;
+      border: 1px solid transparent; background: transparent;
+      transition: color .2s, background .2s, border-color .2s;
+    }
+    .top-account-link:hover { color: var(--fg-primary); background: var(--bg-tertiary) }
+    .top-account-link.active {
+      color: var(--tracky-light, #10E0A0);
+      background: rgba(16,224,160,.1);
+      border-color: rgba(16,224,160,.25);
+    }
 
     /* ─── MAIN ─── */
     .main-area { flex: 1; display: flex; flex-direction: column; min-width: 0 }
@@ -457,6 +477,7 @@ export class DashboardLayoutComponent {
   protected readonly MenuIcon = Menu;
   protected readonly XIcon = X;
   protected readonly MoreIcon = MoreHorizontal;
+  protected readonly UserCircle2Icon = UserCircle2;
 
   protected readonly bottomItems = [
     { label: 'Dashboard', route: '/dashboard', icon: LayoutDashboard },

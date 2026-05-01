@@ -1,7 +1,7 @@
 import { Component, inject } from '@angular/core';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, LogOut, User, Moon, Sun, Bell, Map, MapPin, RotateCcw, Palette, Navigation, Route } from 'lucide-angular';
+import { LucideAngularModule, LogOut, User, Moon, Sun, Bell, Map, MapPin, RotateCcw, Palette, Navigation, Route, ArrowRight } from 'lucide-angular';
 import { AuthService } from '../../core/services/auth.service';
 import { PreferencesService } from '../../core/services/preferences.service';
 import { RealtimeService } from '../../core/services/realtime.service';
@@ -10,7 +10,7 @@ import { ThemeService } from '../../core/theme/theme.service';
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [FormsModule, LucideAngularModule],
+  imports: [FormsModule, LucideAngularModule, RouterLink],
   template: `
     <div class="settings-page">
       <div class="settings-header">
@@ -32,12 +32,16 @@ import { ThemeService } from '../../core/theme/theme.service';
               <div class="account-block">
                 <div class="avatar">{{ initials() }}</div>
                 <div class="account-info">
-                  <p class="account-email">{{ user()?.email }}</p>
+                  <p class="account-email">{{ user()?.email || '—' }}</p>
                   <span class="role-badge" [class]="user()?.role === 'FLEET_ADMIN' || user()?.role === 'SUPER_ADMIN' ? 'admin' : 'viewer'">
-                    {{ roleLabel() }}
+                    {{ roleLabel() || 'Utilisateur' }}
                   </span>
                 </div>
               </div>
+              <a routerLink="/account" class="account-link">
+                <lucide-icon [img]="UserIcon" [size]="14"></lucide-icon>
+                Voir mon profil
+              </a>
               <button (click)="logout()" class="logout-btn">
                 <lucide-icon [img]="LogOutIcon" [size]="15"></lucide-icon>
                 Se déconnecter
@@ -112,6 +116,10 @@ import { ThemeService } from '../../core/theme/theme.service';
                   </div>
                 </div>
               }
+              <a routerLink="/settings/alert-rules" class="advanced-link">
+                Configurer les règles avancées
+                <lucide-icon [img]="ArrowRightIcon" [size]="13"></lucide-icon>
+              </a>
             </div>
           </div>
 
@@ -207,6 +215,19 @@ import { ThemeService } from '../../core/theme/theme.service';
       background: rgba(239,68,68,.08); color: #f87171; border: 1px solid rgba(239,68,68,.15); cursor: pointer; transition: all .2s;
     }
     .logout-btn:hover { background: rgba(239,68,68,.15) }
+    .account-link {
+      display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; border-radius: 10px; font-size: 13px; font-weight: 600;
+      background: var(--bg-tertiary); color: var(--fg-secondary); border: 1px solid var(--border-subtle);
+      text-decoration: none; transition: all .2s; margin-right: 8px;
+    }
+    .account-link:hover { background: var(--bg-secondary); color: var(--fg-primary); border-color: var(--border-strong) }
+    .advanced-link {
+      display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; padding: 10px 14px;
+      border-radius: 10px; font-size: 12px; font-weight: 600; color: var(--tracky-light);
+      text-decoration: none; background: rgba(16,224,160,.06); border: 1px solid rgba(16,224,160,.18);
+      transition: all .2s;
+    }
+    .advanced-link:hover { background: rgba(16,224,160,.12); border-color: rgba(16,224,160,.28) }
 
     /* Theme picker */
     .theme-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 12px }
@@ -322,6 +343,7 @@ export class SettingsComponent {
   protected readonly PaletteIcon = Palette;
   protected readonly NavigationIcon = Navigation;
   protected readonly RouteIcon = Route;
+  protected readonly ArrowRightIcon = ArrowRight;
 
   protected readonly notifItems = [
     { key: 'critical' as const, label: 'Critiques', desc: 'Accidents, coupures, SOS', color: 'red' },
