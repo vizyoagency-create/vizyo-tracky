@@ -52,11 +52,15 @@ export class PositionBroadcastBuffer {
 
     const server = this.gateway.server;
     if (!server) return;
-    // Le Socket.IO server peut etre defini mais sans `sockets.adapter` initialise
-    // pendant les premieres millisecondes du boot (avant qu'aucun client n'ait
-    // jamais ete connecte). On guard pour eviter le crash du cron @Interval(1s).
-    const adapter = server.sockets?.adapter;
-    if (!adapter) return;
+    // V1.8 — `@WebSocketServer()` avec un `namespace` dans `@WebSocketGateway`
+    // injecte un Namespace en runtime (mais type comme Server). Le Namespace
+    // expose `.adapter` a la racine (proprete instance avec `.rooms`), alors
+    // que la `Server` typee n'a qu'un setter `.adapter()`. L'ancien check
+    // `server.sockets?.adapter` retournait toujours undefined → flush
+    // court-circuite → aucun POSITIONS_BATCH emis vers les clients connectes,
+    // malgre les positions correctement mises a jour en DB.
+    const adapter = (server as unknown as { adapter?: { rooms: Map<string, Set<string>> } }).adapter;
+    if (!adapter || typeof adapter === 'function') return;
 
     for (const [fleetId, fleetBucket] of this.buffer) {
       if (fleetBucket.size === 0) continue;

@@ -108,8 +108,19 @@ export function updateVehicleMarkerEl(el: HTMLElement, data: VehicleMarkerData):
 
 /**
  * Cree un Marker MapLibre attache a la carte avec l'element vehicule.
- * `rotationAlignment: 'map'` permettrait de coller au plan, mais on prefere
- * 'viewport' pour que le marker reste lisible quand la carte pivote.
+ *
+ * V1.8 — l'element est wrappe dans un conteneur intermediaire. MapLibre ecrit
+ * son `transform: translate(...)` en style INLINE sur l'element qu'on lui passe ;
+ * appliquer une transition CSS ou un scale sur ce meme element entre en conflit
+ * (le inline transform ecrase le scale, et la transition CSS anime malencontreusement
+ * le translate de MapLibre, faisant deriver les markers pendant le zoom et donnant
+ * l'impression que les markers ne bougent pas en live).
+ *
+ * Architecture :
+ *   - wrapper (passe a MapLibre) : recoit le translate GPS, dimensions = celles du child
+ *   - child .tracky-marker (notre visuel) : libre d'avoir scale, transitions, rotations
+ *
+ * `rotationAlignment: 'viewport'` garde le marker lisible quand la carte pivote.
  * La rotation visuelle du heading est portee par la couche interne (CSS var).
  */
 export function attachVehicleMarker(
@@ -118,8 +129,13 @@ export function attachVehicleMarker(
   lat: number,
   lng: number,
 ): MlMarker {
+  const wrapper = document.createElement('div');
+  // Le wrapper hérite naturellement de la taille du child (.tracky-marker = 56x56),
+  // ce qui permet a anchor:'center' (translate -50%, -50%) de centrer correctement.
+  wrapper.style.cssText = 'will-change:transform';
+  wrapper.appendChild(el);
   return new maplibregl.Marker({
-    element: el,
+    element: wrapper,
     anchor: 'center',
     rotationAlignment: 'viewport',
     pitchAlignment: 'viewport',

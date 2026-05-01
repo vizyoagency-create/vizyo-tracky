@@ -2599,14 +2599,23 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       this.lastMarkerData.set(pos.trackerId, data);
 
       // Trail accumulation (en memoire, capee a trailLength).
+      // V1.8 : dedupliquer — applyPositions est appele a chaque flush du buffer rAF
+      // (donc tres souvent, meme quand un seul tracker a recu une trame). Sans
+      // ce check, chaque tracker qui n'a PAS bouge voit son ancienne position
+      // pushee a chaque appel, remplissant trailPoints de duplicats. Resultat :
+      // le LineString degenere en N points superposes (segments de longueur 0)
+      // → plus aucune trainee visible meme quand le vehicule bouge vraiment.
       if (showTrails) {
         let pts = this.trailPoints.get(pos.trackerId);
         if (!pts) {
           pts = [];
           this.trailPoints.set(pos.trackerId, pts);
         }
-        pts.push([pos.lng, pos.lat]);
-        while (pts.length > trailLength) pts.shift();
+        const last = pts[pts.length - 1];
+        if (!last || last[0] !== pos.lng || last[1] !== pos.lat) {
+          pts.push([pos.lng, pos.lat]);
+          while (pts.length > trailLength) pts.shift();
+        }
 
         if (pts.length >= 2) {
           // Lissage Catmull-Rom : insere des points intermediaires pour adoucir
