@@ -7,7 +7,7 @@ import {
   LucideAngularModule, ArrowLeft, Wifi, WifiOff, Gauge, MapPin, Radio,
   AlertTriangle, AlertCircle, Info, Check, Power, Route, BellOff, Map,
   History, Bell, Zap, Clock, ShieldAlert, ShieldCheck, MessageSquare, Pencil, X,
-  UserRound, UserPlus,
+  UserRound, UserPlus, Copy,
 } from 'lucide-angular';
 import type { AlertEvent, DriverDto, TripDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
@@ -164,9 +164,22 @@ import { relativeTime } from '../../shared/utils/relative-time';
             <lucide-icon [img]="Radio" [size]="14"></lucide-icon>
             <div class="vd-stat-content">
               <span class="vd-stat-label">Tracker</span>
-              <span class="vd-stat-value">
-                @if (v.tracker) { {{ v.tracker.imei.slice(0,4) }}…{{ v.tracker.imei.slice(-4) }} } @else { — }
-              </span>
+              @if (v.tracker; as tr) {
+                <button type="button"
+                        class="vd-stat-value vd-stat-value--copy"
+                        (click)="copyImei(tr.imei)"
+                        [attr.aria-label]="'Copier l\\'IMEI ' + tr.imei"
+                        title="Cliquer pour copier l'IMEI complet">
+                  {{ tr.imei.slice(0,4) }}…{{ tr.imei.slice(-4) }}
+                  @if (imeiCopied()) {
+                    <lucide-icon [img]="CheckIcon" [size]="11" class="vd-stat-copy-ok"></lucide-icon>
+                  } @else {
+                    <lucide-icon [img]="CopyIcon" [size]="11" class="vd-stat-copy-icon"></lucide-icon>
+                  }
+                </button>
+              } @else {
+                <span class="vd-stat-value">—</span>
+              }
             </div>
           </div>
         </div>
@@ -464,7 +477,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
                         class="vd-trip-note-input"
                         [(ngModel)]="editingNoteText"
                         [maxlength]="500"
-                        placeholder="Ex : Depose Eric au sport, livraison client X..."
+                        placeholder="Ex : Dépose Eric au sport, livraison client X..."
                         rows="2"
                         autofocus
                       ></textarea>
@@ -705,6 +718,22 @@ import { relativeTime } from '../../shared/utils/relative-time';
       overflow: hidden;
       text-overflow: ellipsis;
     }
+    .vd-stat-value--copy {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: transparent;
+      border: none;
+      padding: 0;
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
+      text-align: left;
+    }
+    .vd-stat-value--copy:hover .vd-stat-copy-icon { opacity: 1; color: var(--tracky-light, #10E0A0) }
+    .vd-stat-copy-icon { opacity: .5; color: var(--fg-tertiary); transition: opacity .15s, color .15s }
+    .vd-stat-copy-ok { color: var(--tracky-light, #10E0A0); animation: vd-copy-pop .25s ease-out }
+    @keyframes vd-copy-pop { 0% { transform: scale(.6); opacity: 0 } 100% { transform: scale(1); opacity: 1 } }
 
     /* ─── Tabs avec icônes + fade scroll indicator ─── */
     .vd-tabs-wrapper {
@@ -1306,7 +1335,49 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly XIcon = X;
   protected readonly UserRoundIcon = UserRound;
   protected readonly UserPlusIcon = UserPlus;
+  protected readonly CheckIcon = Check;
+  protected readonly CopyIcon = Copy;
   protected readonly relativeTime = relativeTime;
+
+  protected readonly imeiCopied = signal(false);
+  /**
+   * Copie l'IMEI complet dans le presse-papier et affiche un check pendant 1.5s.
+   * `navigator.clipboard.writeText` echoue parfois (NotAllowedError sans interaction
+   * utilisateur consideree "trustworthy", contextes HTTP non secure, focus perdu) :
+   * fallback sur la technique `document.execCommand('copy')` via textarea cache.
+   */
+  protected async copyImei(imei: string): Promise<void> {
+    const ok = await this.writeClipboardWithFallback(imei);
+    if (ok) {
+      this.imeiCopied.set(true);
+      this.toast.success('IMEI copié');
+      setTimeout(() => this.imeiCopied.set(false), 1500);
+    } else {
+      this.toast.error('Impossible de copier', 'Sélectionne et copie manuellement.');
+    }
+  }
+
+  private async writeClipboardWithFallback(text: string): Promise<boolean> {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch { /* fallback ci-dessous */ }
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch {
+      return false;
+    }
+  }
 
   /** Roles autorises a editer/effacer la note d'un trajet. */
   protected readonly canEditNotes = computed(() => {

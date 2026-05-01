@@ -77,6 +77,33 @@ export class RealtimeService {
   private readonly positionBuffer = new Map<string, PositionUpdateEvent>();
   private flushScheduled = false;
 
+  /**
+   * Toast throttling : memorise le timestamp du dernier toast affiche par couple
+   * (vehicleId, alertType). Un toast identique dans les 60s suivantes est skip
+   * (l'alerte est toujours pushee dans le signal `_alerts` et apparait dans la
+   * liste /alerts + cloche, juste pas de toast supplementaire). Evite le spam
+   * en mock dev (alarmes generees toutes les 2s) et en prod sur des situations
+   * persistantes (overspeed continu sur autoroute, mouvement detecte a l'arret
+   * apres incident...).
+   */
+  private readonly lastToastByKey = new Map<string, number>();
+  private static readonly TOAST_THROTTLE_MS = 60_000;
+  private shouldThrottleToast(alert: AlertEvent): boolean {
+    const key = `${alert.vehicleId ?? 'fleet'}:${alert.type}`;
+    const now = Date.now();
+    const last = this.lastToastByKey.get(key) ?? 0;
+    if (now - last < RealtimeService.TOAST_THROTTLE_MS) return true;
+    this.lastToastByKey.set(key, now);
+    // Garbage collect : si la map grossit > 100 entrees, droppe les plus vieilles.
+    if (this.lastToastByKey.size > 100) {
+      const cutoff = now - RealtimeService.TOAST_THROTTLE_MS;
+      for (const [k, t] of this.lastToastByKey) {
+        if (t < cutoff) this.lastToastByKey.delete(k);
+      }
+    }
+    return false;
+  }
+
   connect(token: string): void {
     if (this.socket?.connected) return;
 
@@ -118,7 +145,7 @@ export class RealtimeService {
       const notifPrefs = this.preferences.prefs().notifications;
       const sevKey = alert.severity === 'CRITICAL' ? 'critical' : alert.severity === 'WARNING' ? 'warning' : 'info';
       const pref = notifPrefs[sevKey];
-      if (pref.enabled) {
+      if (pref.enabled && !this.shouldThrottleToast(alert)) {
         this.toast.show({
           kind: alert.severity === 'CRITICAL' ? 'error' : alert.severity === 'WARNING' ? 'warning' : 'info',
           title: alert.title,
@@ -173,6 +200,7 @@ export class RealtimeService {
     this._cutActiveTrackerIds.set(new Set());
     this.positionBuffer.clear();
     this.flushScheduled = false;
+    this.lastToastByKey.clear();
   }
 
   // ---------------------------------------------------------------------

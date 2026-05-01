@@ -7,6 +7,7 @@ import {
   CheckCircle,
   ClipboardCopy,
   KeyRound,
+  Lock,
   LucideAngularModule,
   Mail,
   PartyPopper,
@@ -67,8 +68,15 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
           <div class="form-grid">
             <div class="field">
               <label>Email</label>
-              <input [value]="profile()?.email ?? ''" disabled />
-              <small>Gérée par Vizyo Auth — non modifiable ici.</small>
+              <div class="field-locked">
+                <input [value]="profile()?.email ?? ''" disabled />
+                <span class="field-lock"
+                      title="Géré par Vizyo Auth — modifiable depuis le portail Vizyo Auth uniquement"
+                      aria-label="Champ verrouillé : géré par Vizyo Auth">
+                  <lucide-icon [img]="LockIcon" [size]="13"></lucide-icon>
+                </span>
+              </div>
+              <small>Géré par Vizyo Auth — non modifiable ici.</small>
             </div>
             <div class="field">
               <label>Rôle</label>
@@ -385,6 +393,16 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
     }
     .field input[disabled] { opacity: 0.7; cursor: not-allowed; }
     .field small { font-size: 11px; color: var(--fg-tertiary); }
+    /* Champ verrouille (ex : Email gere par Vizyo Auth) — l'icone cadenas
+     * a droite signale visuellement le statut sans alourdir le label. */
+    .field-locked { position: relative; display: flex; }
+    .field-locked input { padding-right: 36px; flex: 1 }
+    .field-lock {
+      position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 24px; height: 24px; border-radius: 6px;
+      color: var(--fg-tertiary); pointer-events: auto; cursor: help;
+    }
     .row-actions {
       display: flex; gap: 8px; flex-wrap: wrap;
       margin-top: 16px;
@@ -472,6 +490,7 @@ export class AccountComponent implements OnInit {
   protected readonly subscribing = signal(false);
 
   protected readonly Bell = Bell;
+  protected readonly LockIcon = Lock;
   protected readonly CheckCircle = CheckCircle;
   protected readonly ClipboardCopy = ClipboardCopy;
   protected readonly Compass = Compass;

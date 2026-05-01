@@ -93,8 +93,8 @@ const ROLE_DEFAULTS: Record<string, Record<string, boolean>> = {
                 <h3 class="section-title">Informations</h3>
                 <div class="grid grid-cols-2 gap-3">
                   <div>
-                    <label class="field-label">Prenom</label>
-                    <input type="text" [(ngModel)]="firstName" placeholder="Prenom" class="field-input" />
+                    <label class="field-label">Prénom</label>
+                    <input type="text" [(ngModel)]="firstName" placeholder="Prénom" class="field-input" />
                   </div>
                   <div>
                     <label class="field-label">Nom</label>

@@ -51,12 +51,12 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
             <div class="field">
               <label>Mot de passe</label>
               <input [(ngModel)]="password" name="password" type="password"
-                     placeholder="8 caracteres minimum" autocomplete="new-password" required minlength="8" />
+                     placeholder="8 caractères minimum" autocomplete="new-password" required minlength="8" />
             </div>
             <div class="field">
               <label>Confirmer le mot de passe</label>
               <input [(ngModel)]="passwordConfirm" name="passwordConfirm" type="password"
-                     placeholder="Saisir a nouveau" autocomplete="new-password" required />
+                     placeholder="Saisir à nouveau" autocomplete="new-password" required />
               @if (passwordConfirm.length > 0 && !passwordsMatch()) {
                 <small class="warn">Les mots de passe ne correspondent pas.</small>
               }

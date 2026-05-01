@@ -98,7 +98,7 @@ interface WidgetMeta {
             </div>
             <div class="metric-content">
               <span class="metric-value">{{ stats()?.criticalAlerts ?? '—' }}</span>
-              <span class="metric-label">Alertes</span>
+              <span class="metric-label">Alertes critiques</span>
             </div>
             <lucide-icon [img]="ChevronRight" [size]="14" class="metric-arrow"></lucide-icon>
           </a>

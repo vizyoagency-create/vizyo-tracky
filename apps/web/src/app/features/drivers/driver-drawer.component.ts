@@ -134,7 +134,7 @@ export interface DriverDrawerResult {
               </h3>
               <textarea [(ngModel)]="notes" maxlength="500"
                 class="field-input min-h-[80px] resize-y"
-                placeholder="Infos internes : disponibilites, contrainte horaire, equipement..."
+                placeholder="Infos internes : disponibilités, contrainte horaire, équipement..."
                 rows="3"></textarea>
               <div class="text-right mt-1">
                 <span class="text-[10px] text-fg-tertiary"

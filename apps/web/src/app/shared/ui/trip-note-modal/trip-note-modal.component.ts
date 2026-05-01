@@ -58,7 +58,7 @@ import { ToastService } from '../toast/toast.service';
             [(ngModel)]="text"
             [maxlength]="500"
             [disabled]="saving()"
-            placeholder="Ex : Depose Eric au sport, livraison client X, RDV chantier..."
+            placeholder="Ex : Dépose Eric au sport, livraison client X, RDV chantier..."
             rows="4"
           ></textarea>
 

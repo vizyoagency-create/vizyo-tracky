@@ -1107,14 +1107,17 @@ const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible a
       /* Cacher les HUDs desktop */
       .tracky-desktop-hud { display: none !important; }
 
-      /* Top bar mobile visible */
+      /* Top bar mobile visible.
+       * top: 16px (au lieu de 12px) pour aerer la chip "X actif(s)" et le FAB
+       * recherche de la top-bar layout (cloche/user/theme) qui s'affiche juste
+       * au-dessus en mode fullscreen. */
       .tracky-mobile-topbar {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 8px;
         position: absolute;
-        top: 12px; left: 12px; right: 12px;
+        top: 16px; left: 12px; right: 12px;
         z-index: 1000;
         pointer-events: none;
       }

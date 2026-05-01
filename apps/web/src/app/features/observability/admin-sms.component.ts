@@ -128,7 +128,7 @@ type Tab = 'status' | 'provision' | 'logs' | 'backup';
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <input [(ngModel)]="provIMEI" placeholder="IMEI (14-16 chiffres)"
                    class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm font-mono" />
-            <input [(ngModel)]="provPhone" placeholder="Numero SIM (+33...)"
+            <input [(ngModel)]="provPhone" placeholder="Numéro SIM (+33...)"
                    class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm font-mono" />
             <input [(ngModel)]="provApn" placeholder="APN"
                    class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm" />
