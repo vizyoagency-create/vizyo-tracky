@@ -12,7 +12,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
-import { LucideAngularModule, Play, Pause, X } from 'lucide-angular';
+import { LucideAngularModule, Play, Pause, X, MessageSquare, Pencil } from 'lucide-angular';
 import type { Map as MlMap, Marker as MlMarker } from 'maplibre-gl';
 import type { TripDto } from '@vizyo/tracky-shared';
 import { isValidLatLng, haversineMeters } from '@vizyo/tracky-shared';
@@ -36,24 +36,60 @@ import {
         <div class="relative flex-1 flex flex-col m-4 bg-bg-secondary border border-border-subtle
                     rounded-[--radius-card] overflow-hidden">
 
-          <div class="flex items-center justify-between px-6 py-3 border-b border-border-subtle shrink-0">
-            <div class="text-sm text-fg-primary">
-              <strong>Replay trajet</strong>
-              @if (trip()) {
-                <span class="text-fg-tertiary ml-2">
-                  {{ (max0(trip()!.distanceMeters) / 1000) | number:'1.1-1' }} km ·
-                  {{ formatDur(trip()!.durationSeconds) }} ·
-                  max {{ trip()!.maxSpeed | number:'1.0-0' }} km/h
-                </span>
-                @if (trip()!.polylineMatched) {
-                  <span class="ml-2 inline-block px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-300
-                               border border-blue-500/30 text-[9px] uppercase tracking-wider">
-                    Snap-to-road
+          <div class="flex items-center justify-between px-6 py-3 border-b border-border-subtle shrink-0 gap-3">
+            <div class="text-sm text-fg-primary min-w-0 flex-1">
+              <div>
+                <strong>Replay trajet</strong>
+                @if (trip()) {
+                  <span class="text-fg-tertiary ml-2">
+                    {{ (max0(trip()!.distanceMeters) / 1000) | number:'1.1-1' }} km ·
+                    {{ formatDur(trip()!.durationSeconds) }} ·
+                    max {{ trip()!.maxSpeed | number:'1.0-0' }} km/h
+                  </span>
+                  @if (trip()!.polylineMatched) {
+                    <span class="ml-2 inline-block px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-300
+                                 border border-blue-500/30 text-[9px] uppercase tracking-wider">
+                      Snap-to-road
+                    </span>
+                  }
+                }
+              </div>
+              <!-- Bandeau driver + note : visibles si presents OU si role autorise. -->
+              <div class="flex items-center gap-2 mt-1.5 flex-wrap">
+                @if (trip()?.driver) {
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px]
+                               font-semibold border"
+                        [style.background]="'color-mix(in srgb, ' + (trip()!.driver!.color || '#10E0A0') + ' 12%, transparent)'"
+                        [style.border-color]="'color-mix(in srgb, ' + (trip()!.driver!.color || '#10E0A0') + ' 30%, transparent)'"
+                        [style.color]="'var(--fg-primary)'">
+                    <span class="inline-block w-2 h-2 rounded-full"
+                          [style.background]="trip()!.driver!.color || '#10E0A0'"></span>
+                    {{ trip()!.driver!.firstName }} {{ trip()!.driver!.lastName }}
                   </span>
                 }
-              }
+                @if (trip()?.notes) {
+                  <span class="flex items-center gap-1.5 text-xs min-w-0">
+                    <lucide-icon [img]="MessageSquareIcon" [size]="12" class="text-tracky-light shrink-0"></lucide-icon>
+                    <span class="text-fg-secondary truncate">{{ trip()!.notes }}</span>
+                    @if (canEditNote()) {
+                      <button type="button" (click)="onEditNoteClick()"
+                              class="text-fg-tertiary hover:text-tracky-light cursor-pointer shrink-0"
+                              title="Modifier la note">
+                        <lucide-icon [img]="PencilIcon" [size]="11"></lucide-icon>
+                      </button>
+                    }
+                  </span>
+                } @else if (canEditNote()) {
+                  <button type="button" (click)="onEditNoteClick()"
+                          class="inline-flex items-center gap-1 text-[11px] text-fg-tertiary
+                                 hover:text-tracky-light cursor-pointer">
+                    <lucide-icon [img]="MessageSquareIcon" [size]="11"></lucide-icon>
+                    Ajouter une note
+                  </button>
+                }
+              </div>
             </div>
-            <button (click)="onClose()" class="text-fg-tertiary hover:text-fg-primary cursor-pointer">
+            <button (click)="onClose()" class="text-fg-tertiary hover:text-fg-primary cursor-pointer shrink-0">
               <lucide-icon [img]="XIcon" [size]="18"></lucide-icon>
             </button>
           </div>
@@ -90,7 +126,11 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
   readonly open = input.required<boolean>();
   readonly trip = input<TripDto | null>(null);
   readonly vehicleType = input<string>('OTHER');
+  /** Si true, affiche le bouton crayon "Modifier la note". */
+  readonly canEditNote = input<boolean>(false);
   readonly closed = output<void>();
+  /** Demande au parent d'ouvrir le modal d'edition pour le trip courant. */
+  readonly editNote = output<TripDto>();
 
   private readonly mapRef = viewChild<ElementRef<HTMLDivElement>>('mapContainer');
   private readonly mapSvc = inject(MapService);
@@ -104,6 +144,13 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
   protected readonly PlayIcon = Play;
   protected readonly PauseIcon = Pause;
   protected readonly XIcon = X;
+  protected readonly MessageSquareIcon = MessageSquare;
+  protected readonly PencilIcon = Pencil;
+
+  protected onEditNoteClick(): void {
+    const t = this.trip();
+    if (t) this.editNote.emit(t);
+  }
 
   protected readonly speeds = [1, 2, 4, 8];
 

@@ -1,20 +1,24 @@
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, BarChart3, Route, Clock, Gauge, Play, ChevronDown, Truck, Check } from 'lucide-angular';
-import type { TripDailySummaryDto, TripDto } from '@vizyo/tracky-shared';
+import { LucideAngularModule, BarChart3, Route, Clock, Gauge, Play, ChevronDown, Truck, Check, MessageSquare, Pencil, UserRound } from 'lucide-angular';
+import type { DriverDto, TripDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
+import { DriversApiService } from '../../core/services/drivers.service';
+import { PermissionsService } from '../../core/services/permissions.service';
 import { TripsApiService } from '../../core/services/trips.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { AuthService } from '../../core/services/auth.service';
+import { DriverPickerComponent } from '../../shared/ui/driver-picker/driver-picker.component';
+import { TripNoteModalComponent } from '../../shared/ui/trip-note-modal/trip-note-modal.component';
 import { TripReplayComponent } from './trip-replay.component';
 
 @Component({
   selector: 'app-reports',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, LucideAngularModule, DatePipe, DecimalPipe, TripReplayComponent],
+  imports: [FormsModule, LucideAngularModule, DatePipe, DecimalPipe, TripReplayComponent, TripNoteModalComponent, DriverPickerComponent],
   template: `
     <div class="flex flex-col gap-6">
       <h1 class="text-2xl font-display font-bold text-fg-primary">Rapports</h1>
@@ -123,7 +127,7 @@ import { TripReplayComponent } from './trip-replay.component';
         </div>
       } @else {
         <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-x-auto">
-          <table class="w-full text-sm" style="min-width:600px">
+          <table class="w-full text-sm" style="min-width:880px">
             <thead class="border-b border-border-subtle text-fg-tertiary text-xs uppercase">
               <tr>
                 <th class="p-3 text-left">Départ</th>
@@ -132,6 +136,8 @@ import { TripReplayComponent } from './trip-replay.component';
                 <th class="p-3 text-right">Distance</th>
                 <th class="p-3 text-right">V. moy</th>
                 <th class="p-3 text-right">V. max</th>
+                <th class="p-3 text-left">Conducteur</th>
+                <th class="p-3 text-left">Note</th>
                 <th class="p-3 text-center">Replay</th>
               </tr>
             </thead>
@@ -144,6 +150,52 @@ import { TripReplayComponent } from './trip-replay.component';
                   <td class="p-3 text-right font-mono text-fg-secondary">{{ (max0(trip.distanceMeters) / 1000) | number:'1.1-1' }} km</td>
                   <td class="p-3 text-right text-fg-secondary">{{ trip.avgSpeed | number:'1.0-0' }}</td>
                   <td class="p-3 text-right text-fg-secondary">{{ trip.maxSpeed | number:'1.0-0' }}</td>
+                  <td class="p-3 max-w-[180px]">
+                    @if (trip.driver) {
+                      <button type="button"
+                              (click)="canManageDrivers() ? openDriverPickerForTrip(trip) : null"
+                              [disabled]="!canManageDrivers()"
+                              class="rep-driver"
+                              [class.cursor-default]="!canManageDrivers()"
+                              [style.--driver-color]="trip.driver.color || '#10E0A0'">
+                        <span class="rep-driver-dot"></span>
+                        <span class="rep-driver-name">
+                          {{ trip.driver.firstName }} {{ trip.driver.lastName }}
+                        </span>
+                      </button>
+                    } @else if (canManageDrivers()) {
+                      <button type="button" (click)="openDriverPickerForTrip(trip)"
+                              class="rep-driver rep-driver--add">
+                        <lucide-icon [img]="UserRoundIcon" [size]="11"></lucide-icon>
+                        Assigner
+                      </button>
+                    } @else {
+                      <span class="text-fg-tertiary text-xs">—</span>
+                    }
+                  </td>
+                  <td class="p-3 max-w-[260px]">
+                    @if (trip.notes) {
+                      <button type="button"
+                              (click)="canEditNotes() ? openNoteEdit(trip) : null"
+                              [disabled]="!canEditNotes()"
+                              [title]="trip.notes"
+                              class="rep-note rep-note--filled"
+                              [class.cursor-default]="!canEditNotes()">
+                        <lucide-icon [img]="MessageSquareIcon" [size]="12"></lucide-icon>
+                        <span class="rep-note-text">{{ trip.notes }}</span>
+                        @if (canEditNotes()) {
+                          <lucide-icon [img]="PencilIcon" [size]="11" class="rep-note-edit-icon"></lucide-icon>
+                        }
+                      </button>
+                    } @else if (canEditNotes()) {
+                      <button type="button" (click)="openNoteEdit(trip)" class="rep-note rep-note--add">
+                        <lucide-icon [img]="MessageSquareIcon" [size]="12"></lucide-icon>
+                        Ajouter
+                      </button>
+                    } @else {
+                      <span class="text-fg-tertiary text-xs">—</span>
+                    }
+                  </td>
                   <td class="p-3 text-center">
                     @if (trip.polyline) {
                       <button (click)="openReplay(trip)" class="text-tracky-light hover:underline cursor-pointer">
@@ -163,7 +215,25 @@ import { TripReplayComponent } from './trip-replay.component';
       [open]="!!replayTrip()"
       [trip]="replayTrip()"
       [vehicleType]="replayVehicleType()"
+      [canEditNote]="canEditNotes()"
       (closed)="replayTrip.set(null)"
+      (editNote)="onEditNoteFromReplay($event)"
+    />
+
+    <app-trip-note-modal
+      [open]="!!noteEditTrip()"
+      [trip]="noteEditTrip()"
+      (closed)="noteEditTrip.set(null)"
+      (saved)="onNoteSaved($event)"
+    />
+
+    <app-driver-picker
+      [open]="!!driverPickerTrip()"
+      [currentDriverId]="driverPickerTrip()?.driver?.id ?? null"
+      title="Reaffecter le conducteur"
+      [subtitle]="driverPickerSubtitle()"
+      (closed)="driverPickerTrip.set(null)"
+      (selected)="onDriverPickedForTrip($event)"
     />
   `,
   styles: [`
@@ -277,11 +347,106 @@ import { TripReplayComponent } from './trip-replay.component';
       .rep-dropdown-trigger { min-width: 0; max-width: none; flex: 1 }
       .rep-dropdown-menu { left: 0; right: 0; max-width: none }
     }
+
+    /* ─── Cellule note dans la table ─── */
+    .rep-note {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 8px;
+      max-width: 100%;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all .15s;
+      border: 1px solid transparent;
+      background: transparent;
+      text-align: left;
+    }
+    .rep-note--filled {
+      background: rgba(16,224,160,.08);
+      color: var(--fg-primary);
+      border-color: rgba(16,224,160,.18);
+    }
+    .rep-note--filled:hover:not(:disabled) {
+      background: rgba(16,224,160,.14);
+      border-color: rgba(16,224,160,.30);
+    }
+    .rep-note--filled:disabled { cursor: default }
+    .rep-note--filled lucide-icon { color: var(--tracky-light); flex-shrink: 0 }
+    .rep-note-text {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 180px;
+    }
+    .rep-note-edit-icon { color: var(--fg-tertiary) !important; opacity: .7 }
+
+    .rep-note--add {
+      color: var(--fg-tertiary);
+      border-color: var(--border-subtle);
+      border-style: dashed;
+    }
+    .rep-note--add:hover {
+      color: var(--tracky-light);
+      border-color: rgba(16,224,160,.30);
+      background: rgba(16,224,160,.05);
+    }
+
+    /* ─── Cellule conducteur dans la table ─── */
+    .rep-driver {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      max-width: 100%;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .15s;
+      background: color-mix(in srgb, var(--driver-color, #10E0A0) 10%, transparent);
+      border: 1px solid color-mix(in srgb, var(--driver-color, #10E0A0) 25%, transparent);
+      color: var(--fg-primary);
+      text-align: left;
+    }
+    .rep-driver:hover:not(:disabled) {
+      background: color-mix(in srgb, var(--driver-color, #10E0A0) 18%, transparent);
+      border-color: color-mix(in srgb, var(--driver-color, #10E0A0) 38%, transparent);
+    }
+    .rep-driver:disabled { cursor: default }
+    .rep-driver-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--driver-color, #10E0A0);
+      flex-shrink: 0;
+    }
+    .rep-driver-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 130px;
+    }
+    .rep-driver--add {
+      background: transparent;
+      border-color: var(--border-subtle);
+      border-style: dashed;
+      color: var(--fg-tertiary);
+    }
+    .rep-driver--add:hover {
+      color: var(--tracky-light);
+      border-color: rgba(16,224,160,.30);
+      background: rgba(16,224,160,.05);
+    }
+    .rep-driver--add lucide-icon { color: inherit; flex-shrink: 0 }
   `],
 })
 export class ReportsComponent implements OnInit {
   private readonly tripsApi = inject(TripsApiService);
   private readonly vehiclesApi = inject(VehiclesApiService);
+  private readonly driversApi = inject(DriversApiService);
+  private readonly perms = inject(PermissionsService);
   private readonly authService = inject(AuthService);
   private readonly toast = inject(ToastService);
 
@@ -290,6 +455,8 @@ export class ReportsComponent implements OnInit {
   protected readonly loading = signal(true);
   protected readonly recomputing = signal(false);
   protected readonly replayTrip = signal<TripDto | null>(null);
+  protected readonly noteEditTrip = signal<TripDto | null>(null);
+  protected readonly driverPickerTrip = signal<TripDto | null>(null);
 
   protected readonly selectedVehicleId = signal('');
   protected periodFrom = '';
@@ -303,6 +470,34 @@ export class ReportsComponent implements OnInit {
   protected readonly ChevronDown = ChevronDown;
   protected readonly TruckIcon = Truck;
   protected readonly Check = Check;
+  protected readonly MessageSquareIcon = MessageSquare;
+  protected readonly PencilIcon = Pencil;
+  protected readonly UserRoundIcon = UserRound;
+
+  /** Roles autorises a editer/effacer la note d'un trajet. */
+  protected readonly canEditNotes = computed(() => {
+    const r = this.authService.user()?.role;
+    return r === 'SUPER_ADMIN' || r === 'FLEET_ADMIN' || r === 'FLEET_MANAGER';
+  });
+
+  /** Roles autorises a (re)affecter un conducteur sur un trajet. */
+  protected readonly canManageDrivers = computed(() => {
+    const r = this.authService.user()?.role;
+    if (r === 'SUPER_ADMIN' || r === 'FLEET_ADMIN') return true;
+    if (r === 'FLEET_MANAGER') return this.perms.can('drivers_manage');
+    return false;
+  });
+
+  /** Sous-titre du picker driver (montre date du trajet pour clarte). */
+  protected readonly driverPickerSubtitle = computed(() => {
+    const t = this.driverPickerTrip();
+    if (!t) return undefined;
+    try {
+      return `Trajet du ${new Date(t.startedAt).toLocaleString('fr-FR', {
+        day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+      })}`;
+    } catch { return undefined; }
+  });
 
   protected readonly vehicleDropdownOpen = signal(false);
 
@@ -383,6 +578,62 @@ export class ReportsComponent implements OnInit {
 
   protected openReplay(trip: TripDto): void {
     this.replayTrip.set(trip);
+  }
+
+  protected openNoteEdit(trip: TripDto): void {
+    this.noteEditTrip.set(trip);
+  }
+
+  /**
+   * Met a jour la ligne dans la table apres save reussi (sans re-fetch).
+   * Le modal s'occupe de fermer lui-meme via `(closed)`.
+   * Si on edite la note du trip en train d'etre rejoue, on rafraichit aussi
+   * le trip courant du replay pour que le bandeau se mette a jour.
+   */
+  protected onNoteSaved(updated: TripDto): void {
+    this.trips.update((list) => list.map((t) => (t.id === updated.id ? updated : t)));
+    const replay = this.replayTrip();
+    if (replay && replay.id === updated.id) {
+      this.replayTrip.set(updated);
+    }
+  }
+
+  /**
+   * Quand le user clique sur "modifier la note" depuis le replay, on ouvre
+   * le modal de note. On laisse le replay ouvert en arriere-plan : c'est
+   * intentionnel — on a un overlay au-dessus de l'autre.
+   */
+  protected onEditNoteFromReplay(trip: TripDto): void {
+    this.noteEditTrip.set(trip);
+  }
+
+  protected openDriverPickerForTrip(trip: TripDto): void {
+    if (!this.canManageDrivers()) return;
+    this.driverPickerTrip.set(trip);
+  }
+
+  /**
+   * Reaffectation du conducteur sur un trip. driver=null => retire.
+   * Met a jour la ligne dans la table sans re-fetch + le replay si meme trip.
+   */
+  protected async onDriverPickedForTrip(driver: DriverDto | null): Promise<void> {
+    const trip = this.driverPickerTrip();
+    if (!trip) return;
+    this.driverPickerTrip.set(null);
+    try {
+      const updated = await firstValueFrom(
+        this.driversApi.assignToTrip(trip.id, driver?.id ?? null),
+      );
+      this.trips.update((list) => list.map((t) => (t.id === updated.id ? updated : t)));
+      const replay = this.replayTrip();
+      if (replay && replay.id === updated.id) this.replayTrip.set(updated);
+      this.toast.success(
+        driver ? 'Conducteur affecte' : 'Conducteur retire',
+        driver ? `${driver.firstName} ${driver.lastName}` : '',
+      );
+    } catch (err) {
+      this.toast.error('Echec affectation', err instanceof Error ? err.message : '');
+    }
   }
 
   protected async onRecompute(): Promise<void> {

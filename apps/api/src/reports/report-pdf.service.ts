@@ -38,6 +38,7 @@ export class ReportPdfService {
         this.renderKpis(doc, report);
         this.renderAlerts(doc, report);
         this.renderTopVehicles(doc, report);
+        this.renderRecentTrips(doc, report);
         this.renderFooter(doc);
 
         doc.end();
@@ -183,6 +184,109 @@ export class ReportPdfService {
       doc.moveDown(0.6);
     }
     doc.moveDown();
+  }
+
+  /**
+   * Section "Trajets recents" — liste les 30 derniers trajets avec leurs
+   * informations cles + la note libre. Une nouvelle page est ajoutee si on
+   * approche du bas, et le tableau est paginé tout seul (chaque rangee
+   * verifie l'espace restant).
+   *
+   * Phase 2 ajoutera la colonne "Conducteur" entre Plaque et Distance.
+   */
+  private renderRecentTrips(doc: PDFKit.PDFDocument, report: FleetStatsReport): void {
+    if (!report.recentTrips || report.recentTrips.length === 0) return;
+
+    if (doc.y > 680) doc.addPage();
+
+    doc.fillColor(COLOR_FG).fontSize(13).font('Helvetica-Bold')
+      .text('Trajets recents', 40, doc.y);
+    doc.moveDown(0.4);
+    doc.fillColor(COLOR_FG_MUTED).fontSize(9).font('Helvetica')
+      .text(
+        `${report.recentTrips.length} derniers trajets sur la periode` +
+        (report.trips.count > report.recentTrips.length
+          ? ` (sur ${report.trips.count} au total)`
+          : ''),
+        40, doc.y,
+      );
+    doc.moveDown(0.6);
+
+    // Colonnes : Date | Plaque | Duree | Distance | Conducteur | Note
+    const colX = { date: 40, plate: 120, duration: 175, distance: 220, driver: 275, notes: 365 };
+    const colW = { driver: 85, notes: 190 };
+
+    const renderHeader = () => {
+      const y = doc.y;
+      doc.fillColor(COLOR_FG_MUTED).fontSize(8).font('Helvetica-Bold')
+        .text('DATE', colX.date, y)
+        .text('PLAQUE', colX.plate, y)
+        .text('DUREE', colX.duration, y)
+        .text('DISTANCE', colX.distance, y)
+        .text('CONDUCTEUR', colX.driver, y)
+        .text('NOTE', colX.notes, y);
+      doc.moveDown(0.3);
+      doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor('#e5e7eb').stroke();
+      doc.moveDown(0.3);
+    };
+    renderHeader();
+
+    for (const t of report.recentTrips) {
+      // Estime la hauteur de la note (max 2 lignes affichees) pour gerer le
+      // saut de page proprement.
+      const noteHeight = t.notes ? doc.heightOfString(t.notes, { width: colW.notes }) : 0;
+      const rowHeight = Math.max(14, Math.min(28, noteHeight) + 4);
+
+      if (doc.y + rowHeight > 770) {
+        doc.addPage();
+        renderHeader();
+      }
+
+      const rowY = doc.y;
+      const date = new Date(t.startedAt).toLocaleDateString('fr-FR', {
+        day: '2-digit', month: '2-digit', year: '2-digit',
+      });
+      const time = new Date(t.startedAt).toLocaleTimeString('fr-FR', {
+        hour: '2-digit', minute: '2-digit',
+      });
+
+      doc.fillColor(COLOR_FG).fontSize(9).font('Helvetica')
+        .text(`${date} ${time}`, colX.date, rowY, { width: colX.plate - colX.date - 4 });
+      doc.text(t.plate, colX.plate, rowY, { width: colX.duration - colX.plate - 4 });
+      doc.text(this.formatDuration(t.durationSeconds), colX.duration, rowY,
+        { width: colX.distance - colX.duration - 4 });
+      doc.text(`${t.distanceKm.toFixed(1)} km`, colX.distance, rowY,
+        { width: colX.driver - colX.distance - 4 });
+
+      if (t.driverName) {
+        doc.fillColor(COLOR_FG).fontSize(9).font('Helvetica')
+          .text(t.driverName, colX.driver, rowY, { width: colW.driver, ellipsis: true });
+      } else {
+        doc.fillColor(COLOR_FG_MUTED).fontSize(9).font('Helvetica')
+          .text('—', colX.driver, rowY);
+      }
+
+      if (t.notes) {
+        // Tronque a ~110 chars pour eviter qu'une note tres longue ecrase la mise en page.
+        const truncated = t.notes.length > 110 ? `${t.notes.slice(0, 110)}…` : t.notes;
+        doc.fillColor(COLOR_FG).fontSize(9).font('Helvetica-Oblique')
+          .text(truncated, colX.notes, rowY, { width: colW.notes });
+      } else {
+        doc.fillColor(COLOR_FG_MUTED).fontSize(9).font('Helvetica')
+          .text('—', colX.notes, rowY);
+      }
+      doc.moveDown(0.5);
+    }
+    doc.moveDown();
+  }
+
+  /** "1h05" / "23min" — format compact pour les tableaux PDF. */
+  private formatDuration(seconds: number): string {
+    if (!seconds || seconds < 0) return '0min';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (h > 0) return `${h}h${String(m).padStart(2, '0')}`;
+    return `${m}min`;
   }
 
   private renderFooter(doc: PDFKit.PDFDocument): void {

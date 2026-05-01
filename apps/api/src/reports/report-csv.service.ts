@@ -55,7 +55,11 @@ export class ReportCsvService {
     const trips = await this.prisma.trip.findMany({
       where: { fleetId, startedAt: { gte: from, lte: to } },
       orderBy: { startedAt: 'desc' },
-      include: { vehicle: { select: { plate: true } } },
+      include: {
+        vehicle: { select: { plate: true } },
+        notesUpdatedBy: { select: { firstName: true, lastName: true, email: true } },
+        driver: { select: { id: true, firstName: true, lastName: true } },
+      },
       take: 50_000,
     });
     const rows = trips.map((t) => ({
@@ -72,8 +76,25 @@ export class ReportCsvService {
       start_lng: t.startLng,
       end_lat: t.endLat ?? '',
       end_lng: t.endLng ?? '',
+      driver_id: t.driverId ?? '',
+      driver_name: t.driver ? `${t.driver.firstName} ${t.driver.lastName}` : '',
+      driver_source: t.driverSource ?? '',
+      notes: t.notes ?? '',
+      notes_author: this.formatAuthor(t.notesUpdatedBy),
+      notes_updated_at: t.notesUpdatedAt?.toISOString() ?? '',
     }));
     return this.wrap(rows, `tracky-trips-${this.dateSuffix(from, to)}.csv`);
+  }
+
+  /** Formate l'auteur de note pour l'export : "Prenom Nom" sinon email sinon vide. */
+  private formatAuthor(
+    author: { firstName: string | null; lastName: string | null; email: string } | null,
+  ): string {
+    if (!author) return '';
+    const fn = author.firstName ?? '';
+    const ln = author.lastName ?? '';
+    const full = `${fn} ${ln}`.trim();
+    return full || author.email;
   }
 
   async alerts(fleetId: string, from: Date, to: Date) {

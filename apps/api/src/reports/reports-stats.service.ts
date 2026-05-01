@@ -57,6 +57,22 @@ export interface FleetStatsReport {
     tripCount: number;
     estimatedConsumptionL: number;
   }[];
+  /**
+   * Liste des derniers trajets sur la periode (cap a 30 pour ne pas exploser
+   * le PDF). Inclut la note libre + le conducteur — le rapport PDF les rend
+   * dans une section dediee "Trajets recents". Trie du plus recent au plus
+   * ancien.
+   */
+  recentTrips: {
+    id: string;
+    plate: string;
+    startedAt: string;
+    endedAt: string | null;
+    durationSeconds: number;
+    distanceKm: number;
+    notes: string | null;
+    driverName: string | null;
+  }[];
 }
 
 @Injectable()
@@ -98,7 +114,11 @@ export class ReportsStatsService {
       select: {
         id: true, vehicleId: true, distanceKm: true, durationSeconds: true,
         avgSpeed: true, maxSpeed: true, startedAt: true, endedAt: true,
+        notes: true,
+        vehicle: { select: { plate: true } },
+        driver: { select: { firstName: true, lastName: true } },
       },
+      orderBy: { startedAt: 'desc' },
     });
 
     const tripCount = trips.length;
@@ -178,6 +198,16 @@ export class ReportsStatsService {
         fuelPriceEurL: fuelPrice,
       },
       topVehicles: topVehicles.slice(0, 10),
+      recentTrips: trips.slice(0, 30).map((t) => ({
+        id: t.id,
+        plate: t.vehicle?.plate ?? '',
+        startedAt: t.startedAt.toISOString(),
+        endedAt: t.endedAt?.toISOString() ?? null,
+        durationSeconds: t.durationSeconds,
+        distanceKm: Math.round(Math.max(0, t.distanceKm) * 10) / 10,
+        notes: t.notes ?? null,
+        driverName: t.driver ? `${t.driver.firstName} ${t.driver.lastName}` : null,
+      })),
     };
   }
 }
