@@ -1,23 +1,28 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, OnInit, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
   LucideAngularModule, ArrowLeft, Wifi, WifiOff, Gauge, MapPin, Radio,
   AlertTriangle, AlertCircle, Info, Check, Power, Route, BellOff, Map,
-  History, Bell, Zap, Clock, ShieldAlert, ShieldCheck,
+  History, Bell, Zap, Clock, ShieldAlert, ShieldCheck, MessageSquare, Pencil, X,
+  UserRound, UserPlus,
 } from 'lucide-angular';
-import type { AlertEvent } from '@vizyo/tracky-shared';
+import type { AlertEvent, DriverDto, TripDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { AlertsApiService } from '../../core/services/alerts.service';
 import { AuthService } from '../../core/services/auth.service';
 import { EngineControlService, type EngineControlCommandDto } from '../../core/services/engine-control.service';
 import { PositionsApiService, type PositionDto } from '../../core/services/positions.service';
 import { RealtimeService } from '../../core/services/realtime.service';
+import { DriversApiService } from '../../core/services/drivers.service';
+import { PermissionsService } from '../../core/services/permissions.service';
 import { TrackersApiService } from '../../core/services/trackers.service';
 import { TripsApiService } from '../../core/services/trips.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
+import { DriverPickerComponent } from '../../shared/ui/driver-picker/driver-picker.component';
 import { MiniMapComponent } from '../../shared/ui/mini-map/mini-map.component';
 import { EngineControlButtonComponent } from '../engine-control/engine-control-button.component';
 import { CommandsPanelComponent } from '../tracker-commands/commands-panel.component';
@@ -28,9 +33,9 @@ import { relativeTime } from '../../shared/utils/relative-time';
   selector: 'app-vehicle-detail',
   standalone: true,
   imports: [
-    RouterLink, LucideAngularModule, DatePipe, DecimalPipe,
+    RouterLink, FormsModule, LucideAngularModule, DatePipe, DecimalPipe,
     MiniMapComponent, EngineControlButtonComponent, CommandsPanelComponent,
-    VehicleScheduleComponent,
+    VehicleScheduleComponent, DriverPickerComponent,
   ],
   template: `
     @if (loading()) {
@@ -163,6 +168,52 @@ import { relativeTime } from '../../shared/utils/relative-time';
           </div>
         </div>
 
+        <!-- Phase 2 — Conducteur courant : sert de defaut snape sur les
+             prochains trajets. Modifiable par admins/managers via le picker. -->
+        <div class="vd-driver-card">
+          <div class="vd-driver-card-icon"
+               [style.background]="v.currentDriver?.color ?? 'rgba(16,224,160,.15)'">
+            @if (v.currentDriver) {
+              {{ driverInitials(v.currentDriver) }}
+            } @else {
+              <lucide-icon [img]="UserRoundIcon" [size]="16"></lucide-icon>
+            }
+          </div>
+          <div class="vd-driver-card-body">
+            <span class="vd-driver-card-label">Conducteur courant</span>
+            @if (v.currentDriver) {
+              <span class="vd-driver-card-name">
+                {{ v.currentDriver.firstName }} {{ v.currentDriver.lastName }}
+              </span>
+              <span class="vd-driver-card-hint">
+                Sera affecte par defaut aux prochains trajets.
+              </span>
+            } @else {
+              <span class="vd-driver-card-name vd-driver-card-name--empty">
+                Aucun conducteur assigne
+              </span>
+              <span class="vd-driver-card-hint">
+                Les trajets ne seront pas associes a un conducteur tant que
+                vous n'en avez pas affecte.
+              </span>
+            }
+          </div>
+          @if (canManageDrivers()) {
+            <button type="button" class="vd-driver-card-btn"
+                    (click)="openDriverPicker()"
+                    [disabled]="assigningDriver()">
+              @if (assigningDriver()) {
+                <span class="vd-admin-spinner" style="width:12px;height:12px;border-width:1.5px"></span>
+              } @else if (v.currentDriver) {
+                <lucide-icon [img]="PencilIcon" [size]="12"></lucide-icon>
+              } @else {
+                <lucide-icon [img]="UserPlusIcon" [size]="12"></lucide-icon>
+              }
+              {{ v.currentDriver ? 'Changer' : 'Assigner' }}
+            </button>
+          }
+        </div>
+
         <!-- Tabs avec icônes + fade scroll indicator -->
         <div class="vd-tabs-wrapper">
           <div class="vd-tabs">
@@ -204,6 +255,44 @@ import { relativeTime } from '../../shared/utils/relative-time';
           }
         }
 
+        <!-- Selecteur de plage date : visible uniquement sur Historique et Trajets.
+             Default = Aujourd'hui ; permet d'elargir a Hier / 7j / 30j / Tout / Personnalise. -->
+        @if (activeTab() === 'history' || activeTab() === 'trips') {
+          <div class="vd-date-filter">
+            <label class="vd-date-filter-label" for="vd-date-range">Période</label>
+            <select
+              id="vd-date-range"
+              class="vd-date-select"
+              [value]="dateRange()"
+              (change)="onDateRangeChange($any($event.target).value)"
+            >
+              @for (opt of dateRangeOptions; track opt.key) {
+                <option [value]="opt.key">{{ opt.label }}</option>
+              }
+            </select>
+            @if (showCustomInputs()) {
+              <input
+                type="date"
+                class="vd-date-input"
+                [value]="customFrom()"
+                (change)="onCustomFromChange($any($event.target).value)"
+                aria-label="Date de début"
+              />
+              <span class="vd-date-sep">→</span>
+              <input
+                type="date"
+                class="vd-date-input"
+                [value]="customTo()"
+                (change)="onCustomToChange($any($event.target).value)"
+                aria-label="Date de fin"
+              />
+            }
+            @if (rangeLoading()) {
+              <span class="vd-date-spinner" aria-label="Chargement"></span>
+            }
+          </div>
+        }
+
         @if (activeTab() === 'history') {
           @if (recentPositions().length > 0) {
             <!-- Liste de cards (mobile-first) -->
@@ -236,9 +325,15 @@ import { relativeTime } from '../../shared/utils/relative-time';
             </div>
           } @else {
             <div class="flex flex-col items-center justify-center h-40 rounded-[--radius-card]
-                        bg-bg-secondary border border-border-subtle text-fg-tertiary gap-2">
+                        bg-bg-secondary border border-border-subtle text-fg-tertiary gap-2 text-center px-4">
               <lucide-icon [img]="HistoryIcon" [size]="48" class="opacity-30"></lucide-icon>
-              <p>Aucun historique</p>
+              <p>{{ dateRange() === 'all' ? 'Aucun historique' : 'Aucun historique sur cette période' }}</p>
+              @if (dateRange() !== 'all') {
+                <button (click)="dateRange.set('all')"
+                        class="text-xs text-tracky-light hover:underline cursor-pointer">
+                  Voir tout
+                </button>
+              }
             </div>
           }
         }
@@ -327,6 +422,22 @@ import { relativeTime } from '../../shared/utils/relative-time';
                       <span class="vd-trip-distance-unit">km</span>
                     </div>
                   </div>
+
+                  <!-- Pill conducteur (affichage discret entre header et stats). -->
+                  @if (trip.driver) {
+                    <div class="vd-trip-driver"
+                         [style.--driver-color]="trip.driver.color || '#10E0A0'"
+                         [title]="(trip.driverSource === 'AUTO' ? 'Conducteur snape automatiquement.' : 'Conducteur assigne manuellement.')">
+                      <span class="vd-trip-driver-dot"></span>
+                      <span class="vd-trip-driver-name">
+                        {{ trip.driver.firstName }} {{ trip.driver.lastName }}
+                      </span>
+                      @if (trip.driverSource === 'MANUAL') {
+                        <span class="vd-trip-driver-source">manuel</span>
+                      }
+                    </div>
+                  }
+
                   <div class="vd-trip-stats">
                     <div class="vd-trip-stat">
                       <span class="vd-trip-stat-label">Durée</span>
@@ -341,18 +452,104 @@ import { relativeTime } from '../../shared/utils/relative-time';
                       <span class="vd-trip-stat-value">{{ trip.avgSpeed | number:'1.0-0' }} km/h</span>
                     </div>
                   </div>
+
+                  <!-- Bloc note : edition inline pour les roles autorises,
+                       lecture seule pour les autres. -->
+                  @if (editingNoteTripId() === trip.id) {
+                    <div class="vd-trip-note vd-trip-note--editing">
+                      <textarea
+                        class="vd-trip-note-input"
+                        [(ngModel)]="editingNoteText"
+                        [maxlength]="500"
+                        placeholder="Ex : Depose Eric au sport, livraison client X..."
+                        rows="2"
+                        autofocus
+                      ></textarea>
+                      <div class="vd-trip-note-actions">
+                        <span class="vd-trip-note-counter"
+                              [class.vd-trip-note-counter--warn]="editingNoteText.length > 450">
+                          {{ editingNoteText.length }} / 500
+                        </span>
+                        <div class="vd-trip-note-buttons">
+                          <button type="button" class="vd-trip-note-btn"
+                                  (click)="cancelEditNote()"
+                                  [disabled]="savingNote()">
+                            Annuler
+                          </button>
+                          <button type="button" class="vd-trip-note-btn vd-trip-note-btn--primary"
+                                  (click)="saveTripNote(trip)"
+                                  [disabled]="savingNote()">
+                            @if (savingNote()) {
+                              <span class="vd-admin-spinner" style="width:10px;height:10px;border-width:1.5px"></span>
+                            }
+                            Enregistrer
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  } @else if (trip.notes) {
+                    <div class="vd-trip-note">
+                      <div class="vd-trip-note-icon">
+                        <lucide-icon [img]="MessageSquareIcon" [size]="14"></lucide-icon>
+                      </div>
+                      <div class="vd-trip-note-body">
+                        <p class="vd-trip-note-text">{{ trip.notes }}</p>
+                        @if (trip.notesUpdatedBy || trip.notesUpdatedAt) {
+                          <p class="vd-trip-note-meta">
+                            @if (trip.notesUpdatedBy) {
+                              {{ noteAuthorLabel(trip.notesUpdatedBy) }}
+                            }
+                            @if (trip.notesUpdatedAt) {
+                              · {{ relativeTime(trip.notesUpdatedAt) }}
+                            }
+                          </p>
+                        }
+                      </div>
+                      @if (canEditNotes()) {
+                        <button type="button" class="vd-trip-note-edit"
+                                (click)="startEditNote(trip)"
+                                title="Modifier la note">
+                          <lucide-icon [img]="PencilIcon" [size]="13"></lucide-icon>
+                        </button>
+                      }
+                    </div>
+                  } @else if (canEditNotes()) {
+                    <button type="button" class="vd-trip-note-add"
+                            (click)="startEditNote(trip)">
+                      <lucide-icon [img]="MessageSquareIcon" [size]="13"></lucide-icon>
+                      Ajouter une note
+                    </button>
+                  }
                 </div>
               }
             </div>
           } @else {
             <div class="flex flex-col items-center justify-center h-40 rounded-[--radius-card]
-                        bg-bg-secondary border border-border-subtle text-fg-tertiary gap-2">
+                        bg-bg-secondary border border-border-subtle text-fg-tertiary gap-2 text-center px-4">
               <lucide-icon [img]="Route" [size]="48" class="opacity-30"></lucide-icon>
-              <p>Aucun trajet enregistré</p>
+              <p>{{ dateRange() === 'all' ? 'Aucun trajet enregistré' : 'Aucun trajet sur cette période' }}</p>
+              @if (dateRange() !== 'all') {
+                <button (click)="dateRange.set('all')"
+                        class="text-xs text-tracky-light hover:underline cursor-pointer">
+                  Voir tout
+                </button>
+              }
             </div>
           }
         }
       </div>
+
+      <!-- Picker conducteur (modal centre, fetch les drivers a l'ouverture). -->
+      @if (vehicle(); as v) {
+        <app-driver-picker
+          [open]="driverPickerOpen()"
+          [currentDriverId]="v.currentDriver?.id ?? null"
+          [title]="'Conducteur du vehicule ' + v.plate"
+          subtitle="Le conducteur courant sera snape par defaut sur les prochains trajets."
+          (closed)="driverPickerOpen.set(false)"
+          (selected)="onDriverPicked($event)"
+        />
+      }
     }
   `,
   styles: [`
@@ -561,6 +758,60 @@ import { relativeTime } from '../../shared/utils/relative-time';
       .vd-tab-label { display: inline; }
     }
 
+    /* ─── Filtre date (Historique + Trajets) ─── */
+    .vd-date-filter {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding: 10px 12px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+    }
+    .vd-date-filter-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--fg-tertiary);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      flex-shrink: 0;
+    }
+    .vd-date-select,
+    .vd-date-input {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      color: var(--fg-primary);
+      font-size: 13px;
+      font-weight: 600;
+      padding: 6px 10px;
+      cursor: pointer;
+      transition: border-color .15s, color .15s;
+      font-family: inherit;
+      min-width: 0;
+    }
+    .vd-date-select:hover,
+    .vd-date-input:hover { border-color: var(--border-strong); }
+    .vd-date-select:focus,
+    .vd-date-input:focus {
+      outline: none;
+      border-color: var(--tracky-light);
+      color: var(--tracky-light);
+    }
+    .vd-date-input { font-family: var(--font-mono, monospace); font-size: 12px; }
+    .vd-date-sep { color: var(--fg-tertiary); font-size: 13px; font-weight: 600; flex-shrink: 0; }
+    .vd-date-spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid var(--fg-tertiary);
+      border-top-color: var(--tracky-light);
+      border-radius: 50%;
+      animation: vd-spin 0.7s linear infinite;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+
     /* ─── Historique : cards mobile-first ─── */
     .vd-history-list {
       display: flex;
@@ -700,6 +951,254 @@ import { relativeTime } from '../../shared/utils/relative-time';
     }
     .vd-trip-stat-value--max { color: #f59e0b; }
 
+    /* ─── Phase 2 : carte "Conducteur courant" du vehicule ─── */
+    .vd-driver-card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+    }
+    .vd-driver-card-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      color: white;
+      flex-shrink: 0;
+    }
+    .vd-driver-card-icon lucide-icon { color: var(--tracky-light); }
+    .vd-driver-card-body {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-width: 0;
+    }
+    .vd-driver-card-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--fg-tertiary);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .vd-driver-card-name {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--fg-primary);
+      margin-top: 1px;
+    }
+    .vd-driver-card-name--empty { color: var(--fg-tertiary); font-weight: 600; font-style: italic; }
+    .vd-driver-card-hint {
+      font-size: 10px;
+      color: var(--fg-tertiary);
+      margin-top: 3px;
+      line-height: 1.3;
+    }
+    .vd-driver-card-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-subtle);
+      color: var(--fg-secondary);
+      cursor: pointer;
+      transition: all .15s;
+      flex-shrink: 0;
+    }
+    .vd-driver-card-btn:hover:not(:disabled) {
+      color: var(--tracky-light);
+      border-color: rgba(16,224,160,.30);
+      background: rgba(16,224,160,.05);
+    }
+    .vd-driver-card-btn:disabled { opacity: 0.5; cursor: wait; }
+
+    /* ─── Pill conducteur dans une trip card ─── */
+    .vd-trip-driver {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 12px;
+      padding: 4px 9px;
+      background: color-mix(in srgb, var(--driver-color, #10E0A0) 12%, transparent);
+      border: 1px solid color-mix(in srgb, var(--driver-color, #10E0A0) 30%, transparent);
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--fg-primary);
+      width: fit-content;
+    }
+    .vd-trip-driver-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--driver-color, #10E0A0);
+      flex-shrink: 0;
+    }
+    .vd-trip-driver-source {
+      font-size: 9px;
+      font-weight: 600;
+      color: var(--fg-tertiary);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+
+    /* ─── Trajets : note libre (lecture / edition / ajout) ─── */
+    .vd-trip-note {
+      display: flex;
+      gap: 8px;
+      padding: 10px 12px;
+      margin-top: 10px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      align-items: flex-start;
+    }
+    .vd-trip-note-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      background: rgba(16,224,160,.10);
+      color: var(--tracky-light);
+      flex-shrink: 0;
+    }
+    .vd-trip-note-body {
+      flex: 1;
+      min-width: 0;
+    }
+    .vd-trip-note-text {
+      font-size: 13px;
+      color: var(--fg-primary);
+      line-height: 1.45;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .vd-trip-note-meta {
+      font-size: 10px;
+      color: var(--fg-tertiary);
+      margin-top: 4px;
+    }
+    .vd-trip-note-edit {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      border-radius: 8px;
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--fg-tertiary);
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: all .15s;
+    }
+    .vd-trip-note-edit:hover {
+      color: var(--tracky-light);
+      border-color: rgba(16,224,160,.2);
+      background: rgba(16,224,160,.05);
+    }
+
+    .vd-trip-note--editing {
+      flex-direction: column;
+      align-items: stretch;
+      background: color-mix(in srgb, var(--tracky-light) 4%, var(--bg-tertiary));
+      border-color: rgba(16,224,160,.20);
+    }
+    .vd-trip-note-input {
+      width: 100%;
+      padding: 8px 10px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      color: var(--fg-primary);
+      font-size: 13px;
+      font-family: inherit;
+      line-height: 1.45;
+      resize: vertical;
+      min-height: 56px;
+      outline: none;
+      transition: border-color .2s;
+    }
+    .vd-trip-note-input:focus { border-color: var(--tracky-light); }
+    .vd-trip-note-input::placeholder { color: var(--fg-tertiary); }
+    .vd-trip-note-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 8px;
+    }
+    .vd-trip-note-counter {
+      font-size: 10px;
+      color: var(--fg-tertiary);
+      font-variant-numeric: tabular-nums;
+    }
+    .vd-trip-note-counter--warn { color: #f59e0b; }
+    .vd-trip-note-buttons { display: flex; gap: 6px; }
+    .vd-trip-note-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
+      color: var(--fg-secondary);
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .vd-trip-note-btn:hover:not(:disabled) {
+      color: var(--fg-primary);
+      border-color: var(--border-strong);
+    }
+    .vd-trip-note-btn:disabled { opacity: 0.5; cursor: wait; }
+    .vd-trip-note-btn--primary {
+      background: var(--tracky);
+      border-color: var(--tracky);
+      color: white;
+    }
+    .vd-trip-note-btn--primary:hover:not(:disabled) {
+      background: var(--tracky-dark, #0bb586);
+      border-color: var(--tracky-dark, #0bb586);
+      color: white;
+    }
+
+    .vd-trip-note-add {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 10px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      background: transparent;
+      border: 1px dashed var(--border-subtle);
+      color: var(--fg-tertiary);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .15s;
+      align-self: flex-start;
+    }
+    .vd-trip-note-add:hover {
+      color: var(--tracky-light);
+      border-color: rgba(16,224,160,.30);
+      background: rgba(16,224,160,.05);
+    }
+
     /* Desktop : 4 stats en ligne, plus d'espace */
     @media (min-width: 1024px) {
       .vd-stats-bar { grid-template-columns: repeat(4, 1fr); gap: 12px; }
@@ -722,6 +1221,8 @@ export class VehicleDetailComponent implements OnInit {
   private readonly realtime = inject(RealtimeService);
   private readonly tripsApi = inject(TripsApiService);
   private readonly trackersApi = inject(TrackersApiService);
+  private readonly driversApi = inject(DriversApiService);
+  private readonly perms = inject(PermissionsService);
   private readonly auth = inject(AuthService);
   private readonly toast = inject(ToastService);
 
@@ -729,9 +1230,39 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly recentPositions = signal<PositionDto[]>([]);
   protected readonly alerts = signal<AlertEvent[]>([]);
   protected readonly commands = signal<EngineControlCommandDto[]>([]);
-  protected readonly vehicleTrips = signal<any[]>([]);
+  protected readonly vehicleTrips = signal<TripDto[]>([]);
   protected readonly loading = signal(true);
+  // Edition note (un seul trip en edition a la fois — switch reset auto).
+  protected readonly editingNoteTripId = signal<string | null>(null);
+  protected editingNoteText = '';
+  protected readonly savingNote = signal(false);
+  // Phase 2 — Picker conducteur (ouverture + spinner d'assignation).
+  protected readonly driverPickerOpen = signal(false);
+  protected readonly assigningDriver = signal(false);
+  /** True pendant un refetch declenche par un changement de plage date (history/trips). */
+  protected readonly rangeLoading = signal(false);
   protected readonly activeTab = signal<'map' | 'history' | 'alerts' | 'commands' | 'schedule' | 'trips'>('map');
+
+  /**
+   * Plage temporelle pour les onglets Historique et Trajets.
+   * Default = `today` (du 00:00 du jour jusqu'a maintenant). L'utilisateur peut
+   * elargir vers Hier, 7j, 30j, Tout, ou choisir une plage personnalisee.
+   */
+  protected readonly dateRange = signal<'today' | 'yesterday' | '7d' | '30d' | 'all' | 'custom'>('today');
+  /** Bornes (YYYY-MM-DD) utilisees uniquement quand dateRange = 'custom'. */
+  protected readonly customFrom = signal<string>('');
+  protected readonly customTo = signal<string>('');
+  /** True quand l'UI doit afficher les inputs date personnalises. */
+  protected readonly showCustomInputs = computed(() => this.dateRange() === 'custom');
+
+  protected readonly dateRangeOptions = [
+    { key: 'today' as const, label: 'Aujourd\'hui' },
+    { key: 'yesterday' as const, label: 'Hier' },
+    { key: '7d' as const, label: '7 derniers jours' },
+    { key: '30d' as const, label: '30 derniers jours' },
+    { key: 'all' as const, label: 'Tout' },
+    { key: 'custom' as const, label: 'Période personnalisée' },
+  ];
   /** Incrémenté quand le schedule est désactivé par une action manuelle — force le re-mount du composant schedule. */
   protected readonly scheduleRevision = signal(0);
   /** V1.7 — flag de chargement pendant le PATCH /api/trackers/:id (toggle ACC). */
@@ -756,15 +1287,40 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly ZapIcon = Zap;
   protected readonly ShieldAlert = ShieldAlert;
   protected readonly ShieldCheck = ShieldCheck;
+  protected readonly MessageSquareIcon = MessageSquare;
+  protected readonly PencilIcon = Pencil;
+  protected readonly XIcon = X;
+  protected readonly UserRoundIcon = UserRound;
+  protected readonly UserPlusIcon = UserPlus;
   protected readonly relativeTime = relativeTime;
+
+  /** Roles autorises a editer/effacer la note d'un trajet. */
+  protected readonly canEditNotes = computed(() => {
+    const r = this.auth.user()?.role;
+    return r === 'SUPER_ADMIN' || r === 'FLEET_ADMIN' || r === 'FLEET_MANAGER';
+  });
+
+  /**
+   * Roles autorises a gerer les conducteurs (assigner/retirer sur un vehicule
+   * ou un trajet, creer/modifier des drivers). FLEET_MANAGER passe par la
+   * permission `drivers_manage` (UI-only — backend laisse FLEET_MANAGER passer).
+   */
+  protected readonly canManageDrivers = computed(() => {
+    const r = this.auth.user()?.role;
+    if (r === 'SUPER_ADMIN' || r === 'FLEET_ADMIN') return true;
+    if (r === 'FLEET_MANAGER') return this.perms.can('drivers_manage');
+    return false;
+  });
 
   protected readonly tabs = [
     { key: 'map' as const, label: 'Carte', icon: Map },
-    { key: 'history' as const, label: 'Historique', icon: History },
-    { key: 'alerts' as const, label: 'Alertes', icon: Bell },
     { key: 'trips' as const, label: 'Trajets', icon: Route },
-    { key: 'commands' as const, label: 'Commandes', icon: Zap },
     { key: 'schedule' as const, label: 'Horaires', icon: Clock },
+    { key: 'alerts' as const, label: 'Alertes', icon: Bell },
+    { key: 'history' as const, label: 'Historique', icon: History },
+    // Commandes en dernier : reservee plutot aux developpeurs / curieux,
+    // l'usage courant passe par le bouton coupe-circuit dans le header.
+    { key: 'commands' as const, label: 'Commandes', icon: Zap },
   ];
 
   private lastAlertCount = -1;
@@ -852,6 +1408,116 @@ export class VehicleDetailComponent implements OnInit {
     this.recentPositions().slice(0, 20).reverse().map((p) => ({ lat: p.lat, lng: p.lng })),
   );
 
+  /**
+   * Calcule les bornes ISO {from, to} a envoyer aux APIs /positions et /trips
+   * en fonction du `dateRange` (et `customFrom`/`customTo` quand 'custom').
+   * `all` ne pose aucune borne. Plage personnalisee : la borne haute inclut
+   * la fin de journee (23:59:59) pour ne pas couper les courses tardives.
+   */
+  protected readonly dateRangeBounds = computed<{ from?: string; to?: string }>(() => {
+    const r = this.dateRange();
+    if (r === 'all') return {};
+
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    if (r === 'today') {
+      return { from: startOfToday.toISOString(), to: now.toISOString() };
+    }
+    if (r === 'yesterday') {
+      const startYest = new Date(startOfToday);
+      startYest.setDate(startYest.getDate() - 1);
+      return { from: startYest.toISOString(), to: startOfToday.toISOString() };
+    }
+    if (r === '7d') {
+      const start = new Date(startOfToday);
+      start.setDate(start.getDate() - 6);
+      return { from: start.toISOString(), to: now.toISOString() };
+    }
+    if (r === '30d') {
+      const start = new Date(startOfToday);
+      start.setDate(start.getDate() - 29);
+      return { from: start.toISOString(), to: now.toISOString() };
+    }
+    // custom : convertit YYYY-MM-DD en ISO. Borne haute = fin de journee.
+    const f = this.customFrom();
+    const t = this.customTo();
+    return {
+      from: f ? new Date(`${f}T00:00:00`).toISOString() : undefined,
+      to: t ? new Date(`${t}T23:59:59.999`).toISOString() : undefined,
+    };
+  });
+
+  /**
+   * Refetch des donnees Historique + Trajets quand la plage date change.
+   * Skip tant que le chargement initial n'est pas fini (loading()=true) — sinon
+   * on declenche un fetch concurrent inutile pendant ngOnInit/loadAll.
+   * Skip aussi pour `custom` quand les deux bornes sont vides (l'UI vient de
+   * basculer sur custom mais l'utilisateur n'a pas encore saisi de dates).
+   */
+  private dateRangeRefreshEffect = effect(() => {
+    const v = this.vehicle();
+    const bounds = this.dateRangeBounds();
+    if (!v || this.loading()) return;
+    // En mode custom sans bornes saisies, on ne fait rien (eviterait de tout
+    // refetch sans filtre = equivalent a "Tout", surprenant pour l'utilisateur).
+    if (this.dateRange() === 'custom' && !bounds.from && !bounds.to) return;
+    void this.refetchRange(v, bounds);
+  });
+
+  private async refetchRange(
+    v: VehicleDetailDto,
+    bounds: { from?: string; to?: string },
+  ): Promise<void> {
+    const trackerId = v.tracker?.id;
+    const dateParams: Record<string, string> = {};
+    if (bounds.from) dateParams['from'] = bounds.from;
+    if (bounds.to) dateParams['to'] = bounds.to;
+
+    this.rangeLoading.set(true);
+    try {
+      const [posRes, tripsRes] = await Promise.all([
+        trackerId
+          ? firstValueFrom(this.positionsApi.list({ trackerId, limit: '500', ...dateParams }))
+          : Promise.resolve({ items: [] as PositionDto[] }),
+        firstValueFrom(this.tripsApi.list({ vehicleId: v.id, limit: '100', ...dateParams })),
+      ]);
+      this.recentPositions.set(posRes.items);
+      this.vehicleTrips.set((tripsRes as any).items ?? []);
+    } catch (err) {
+      this.toast.error(
+        'Erreur de chargement',
+        err instanceof HttpErrorResponse ? err.error?.message : String(err),
+      );
+    } finally {
+      this.rangeLoading.set(false);
+    }
+  }
+
+  /**
+   * Handler du <select> de plage date. Quand l'utilisateur passe sur 'custom'
+   * sans dates pre-remplies, on remplit avec [aujourd'hui, aujourd'hui] pour
+   * lui donner un point de depart sensible.
+   */
+  protected onDateRangeChange(value: string): void {
+    const key = value as ReturnType<typeof this.dateRange>;
+    if (key === 'custom' && !this.customFrom() && !this.customTo()) {
+      const today = new Date();
+      const iso = today.toISOString().slice(0, 10);
+      this.customFrom.set(iso);
+      this.customTo.set(iso);
+    }
+    this.dateRange.set(key);
+  }
+
+  protected onCustomFromChange(value: string): void {
+    this.customFrom.set(value);
+  }
+
+  protected onCustomToChange(value: string): void {
+    this.customTo.set(value);
+  }
+
   protected readonly isOnline = computed(() => {
     const age = this.positionAgeSeconds();
     return age !== undefined && age < 180;
@@ -873,12 +1539,21 @@ export class VehicleDetailComponent implements OnInit {
       const v = await firstValueFrom(this.vehiclesApi.findOne(vehicleId));
       this.vehicle.set(v);
 
+      // Chargement initial : applique deja la plage date courante (default = today)
+      // pour eviter un double fetch (one without filter + one with filter via effect).
+      const bounds = this.dateRangeBounds();
+      const dateParams: Record<string, string> = {};
+      if (bounds.from) dateParams['from'] = bounds.from;
+      if (bounds.to) dateParams['to'] = bounds.to;
+
       const trackerId = v.tracker?.id;
       const [posRes, alertsRes, cmdsRes, tripsRes] = await Promise.all([
-        trackerId ? firstValueFrom(this.positionsApi.list({ trackerId, limit: '100' })) : { items: [] },
+        trackerId
+          ? firstValueFrom(this.positionsApi.list({ trackerId, limit: '500', ...dateParams }))
+          : { items: [] },
         firstValueFrom(this.alertsApi.list({ vehicleId: v.id, limit: '20' })),
         trackerId ? firstValueFrom(this.engineControlApi.listCommands(trackerId, 20)) : [],
-        firstValueFrom(this.tripsApi.list({ vehicleId: v.id, limit: '20' })),
+        firstValueFrom(this.tripsApi.list({ vehicleId: v.id, limit: '100', ...dateParams })),
       ]);
 
       this.recentPositions.set(posRes.items);
@@ -985,5 +1660,100 @@ export class VehicleDetailComponent implements OnInit {
     const m = Math.floor((seconds % 3600) / 60);
     if (h > 0) return `${h}h ${m.toString().padStart(2, '0')}min`;
     return `${m}min`;
+  }
+
+  /**
+   * Demarre l'edition de la note d'un trajet. Pre-remplit le textarea avec
+   * la note existante (vide si nouvelle note). Un seul trip editable a la
+   * fois — basculer ferme l'edition precedente sans sauvegarde.
+   */
+  protected startEditNote(trip: TripDto): void {
+    this.editingNoteText = trip.notes ?? '';
+    this.editingNoteTripId.set(trip.id);
+  }
+
+  protected cancelEditNote(): void {
+    this.editingNoteTripId.set(null);
+    this.editingNoteText = '';
+  }
+
+  /**
+   * Sauvegarde la note du trip courant. Si vide, le backend efface la note
+   * et reset l'auteur. On met a jour le signal local apres succes pour
+   * eviter un re-fetch complet de la liste.
+   */
+  protected async saveTripNote(trip: TripDto): Promise<void> {
+    if (!this.canEditNotes()) return;
+    this.savingNote.set(true);
+    try {
+      const updated = await firstValueFrom(
+        this.tripsApi.updateNote(trip.id, this.editingNoteText.trim() || null),
+      );
+      this.vehicleTrips.update((list) =>
+        list.map((t) => (t.id === updated.id ? updated : t)),
+      );
+      this.editingNoteTripId.set(null);
+      this.editingNoteText = '';
+      this.toast.success('Note enregistree');
+    } catch (err) {
+      const msg = err instanceof HttpErrorResponse
+        ? err.error?.message ?? 'Erreur inconnue'
+        : err instanceof Error ? err.message : 'Erreur inconnue';
+      this.toast.error('Echec enregistrement note', msg);
+    } finally {
+      this.savingNote.set(false);
+    }
+  }
+
+  /**
+   * Libelle court de l'auteur de la note : "Prenom N." si dispo, sinon email.
+   * Utilise au-dessous de la note pour montrer qui l'a modifiee.
+   */
+  protected noteAuthorLabel(author: { firstName: string | null; lastName: string | null; email: string }): string {
+    if (author.firstName && author.lastName) {
+      return `${author.firstName} ${author.lastName.slice(0, 1).toUpperCase()}.`;
+    }
+    if (author.firstName) return author.firstName;
+    return author.email;
+  }
+
+  // ─── Phase 2 — gestion conducteur courant du vehicule ──────────────
+
+  protected openDriverPicker(): void {
+    if (!this.canManageDrivers()) return;
+    this.driverPickerOpen.set(true);
+  }
+
+  /**
+   * Callback du picker. driver=null => retire l'assignation. Sinon affecte
+   * et met a jour le signal vehicle local pour refleter l'etat sans re-fetch.
+   */
+  protected async onDriverPicked(driver: DriverDto | null): Promise<void> {
+    const v = this.vehicle();
+    if (!v) return;
+    this.driverPickerOpen.set(false);
+    this.assigningDriver.set(true);
+    try {
+      const updated = await firstValueFrom(
+        this.driversApi.assignToVehicle(v.id, driver?.id ?? null),
+      );
+      this.vehicle.set({
+        ...v,
+        currentDriver: (updated as { currentDriver: VehicleDetailDto['currentDriver'] }).currentDriver ?? null,
+      });
+      this.toast.success(
+        driver ? 'Conducteur assigne' : 'Conducteur retire',
+        driver ? `${driver.firstName} ${driver.lastName}` : '',
+      );
+    } catch (err) {
+      this.toast.error('Echec assignation', err instanceof HttpErrorResponse ? err.error?.message : '');
+    } finally {
+      this.assigningDriver.set(false);
+    }
+  }
+
+  /** Initiales en majuscule pour la pastille avatar (ex: ED). */
+  protected driverInitials(d: { firstName: string; lastName: string }): string {
+    return ((d.firstName?.[0] ?? '') + (d.lastName?.[0] ?? '')).toUpperCase() || '?';
   }
 }
