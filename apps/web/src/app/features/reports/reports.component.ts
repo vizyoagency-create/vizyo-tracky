@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, HostListener, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, BarChart3, Route, Clock, Gauge, Play, ChevronDown, Truck, Check, MessageSquare, Pencil, UserRound, Download, Calendar } from 'lucide-angular';
@@ -13,13 +13,14 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 import { AuthService } from '../../core/services/auth.service';
 import { DriverPickerComponent } from '../../shared/ui/driver-picker/driver-picker.component';
 import { TripNoteModalComponent } from '../../shared/ui/trip-note-modal/trip-note-modal.component';
+import { DateRangePickerComponent } from '../../shared/ui/date-range-picker/date-range-picker.component';
 import { TripReplayComponent } from './trip-replay.component';
 
 @Component({
   selector: 'app-reports',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, LucideAngularModule, DatePipe, DecimalPipe, TripReplayComponent, TripNoteModalComponent, DriverPickerComponent],
+  imports: [FormsModule, LucideAngularModule, DatePipe, DecimalPipe, TripReplayComponent, TripNoteModalComponent, DriverPickerComponent, DateRangePickerComponent],
   template: `
     <div class="flex flex-col gap-6">
       <div class="flex items-start justify-between gap-3 flex-wrap">
@@ -118,14 +119,24 @@ import { TripReplayComponent } from './trip-replay.component';
               </div>
               <div class="rep-custom-fields">
                 <p class="rep-custom-section">Plage personnalisée</p>
-                <div class="rep-custom-field">
-                  <label>Du</label>
-                  <input type="date" [(ngModel)]="customFrom" [max]="customTo()" />
-                </div>
-                <div class="rep-custom-field">
-                  <label>Au</label>
-                  <input type="date" [(ngModel)]="customTo" [min]="customFrom()" [max]="todayIso" />
-                </div>
+                @if (isDesktop()) {
+                  <app-date-range-picker
+                    [from]="customFrom()"
+                    [to]="customTo()"
+                    [max]="todayIso"
+                    (fromChange)="customFrom.set($event)"
+                    (toChange)="customTo.set($event)"
+                  />
+                } @else {
+                  <div class="rep-custom-field">
+                    <label>Du</label>
+                    <input type="date" [(ngModel)]="customFrom" [max]="customTo()" />
+                  </div>
+                  <div class="rep-custom-field">
+                    <label>Au</label>
+                    <input type="date" [(ngModel)]="customTo" [min]="customFrom()" [max]="todayIso" />
+                  </div>
+                }
                 @if (customRangeError(); as err) {
                   <p class="rep-custom-error">{{ err }}</p>
                 }
@@ -318,8 +329,8 @@ import { TripReplayComponent } from './trip-replay.component';
        * sécurise le cas où le wrapper serait trop à gauche. */
       position: absolute; top: calc(100% + 8px); right: 0;
       z-index: 51;
-      display: grid; grid-template-columns: 160px 220px;
-      width: 380px; max-width: calc(100vw - 24px);
+      display: grid; grid-template-columns: 160px 1fr;
+      width: 600px; max-width: calc(100vw - 24px);
       background: var(--bg-secondary, #0F1714);
       border: 1px solid var(--border-strong);
       border-radius: 14px;
@@ -330,6 +341,14 @@ import { TripReplayComponent } from './trip-replay.component';
     @keyframes rep-custom-pop {
       from { opacity: 0; transform: translateY(-6px) }
       to   { opacity: 1; transform: translateY(0) }
+    }
+    /* Tablette (< 768px) : pas de calendrier inline, on garde les inputs
+     * natifs → on n'a plus besoin des 600px de large. */
+    @media (max-width: 767px) {
+      .rep-custom-panel {
+        grid-template-columns: 160px 220px;
+        width: 380px;
+      }
     }
     /* Mobile : repli en colonne unique, ancre en fixed bottom pour eviter
      * tout debordement (le wrapper .rep-custom-wrapper peut etre place
@@ -648,7 +667,7 @@ import { TripReplayComponent } from './trip-replay.component';
     .rep-driver--add lucide-icon { color: inherit; flex-shrink: 0 }
   `],
 })
-export class ReportsComponent implements OnInit {
+export class ReportsComponent implements OnInit, OnDestroy {
   private readonly tripsApi = inject(TripsApiService);
   private readonly vehiclesApi = inject(VehiclesApiService);
   private readonly driversApi = inject(DriversApiService);
@@ -695,6 +714,15 @@ export class ReportsComponent implements OnInit {
   protected readonly customTo = signal('');
   /** Aujourd'hui au format YYYY-MM-DD (limite haute pour le date picker). */
   protected readonly todayIso = new Date().toISOString().slice(0, 10);
+
+  /** True quand viewport >= 768px : calendrier inline. Sinon : inputs natifs.
+   *  Mis a jour live via matchMedia. */
+  protected readonly isDesktop = signal(
+    typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches,
+  );
+  private readonly desktopMql =
+    typeof window !== 'undefined' ? window.matchMedia('(min-width: 768px)') : null;
+  private readonly desktopMqlListener = (e: MediaQueryListEvent) => this.isDesktop.set(e.matches);
 
   /** True si periodFrom/periodTo correspondent a une plage custom (et non un preset). */
   protected readonly isCustomRange = computed(() => {
@@ -854,6 +882,17 @@ export class ReportsComponent implements OnInit {
   ngOnInit(): void {
     this.setPeriod(this.periods[0]!.from, this.periods[0]!.to);
     this.loadVehicles();
+    this.desktopMql?.addEventListener('change', this.desktopMqlListener);
+  }
+
+  ngOnDestroy(): void {
+    this.desktopMql?.removeEventListener('change', this.desktopMqlListener);
+  }
+
+  /** Ferme le panel custom à Escape (cf. a11y picker calendrier). */
+  @HostListener('document:keydown.escape')
+  protected onEscape(): void {
+    if (this.customRangeOpen()) this.customRangeOpen.set(false);
   }
 
   protected setPeriod(from: string, to: string): void {
