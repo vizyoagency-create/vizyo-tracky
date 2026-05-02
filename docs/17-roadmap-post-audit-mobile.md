@@ -13,7 +13,7 @@
 | `807ae4b` | P2 mobile | IMEI tap-to-copy, throttle toasts, cadenas email, sweep accents |
 | `7f1633a` | P2 ambitieux | bottom-sheet mobile + datepicker custom riche |
 | `9df75a8` | /map HUD | refonte HUD desktop + correctifs audit #5 #6 #7 |
-| 877d236 | /reports charts | Chart.js v4 + heatmap SVG, sparkline KPI, item #4 done |
+| ba10e53 | /reports charts | Chart.js v4 + heatmap SVG, sparkline KPI, item #4 done |
 
 ## 🎯 Pistes suivantes (par ordre suggéré)
 
@@ -38,7 +38,7 @@ Actuellement 2 `<input type="date">` qui ouvrent le datepicker natif iOS/Android
 Sur desktop, ajouter un mini-calendrier inline (2 mois côte-à-côte) pour
 l'aperçu visuel. Conserver les inputs natifs en mobile.
 
-### 4. Refonte de /reports (graphes) ✅ DONE (commit 877d236)
+### 4. Refonte de /reports (graphes) ✅ DONE (commit ba10e53)
 KPI cards plates → graphs lecture rapide. Livré : Chart.js v4 (tree-shaké),
 3 wrappers standalone OnPush, theme dark/light dynamique, FLEET_ADMIN testé
 en preview.
