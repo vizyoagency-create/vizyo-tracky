@@ -113,8 +113,8 @@ interface WidgetMeta {
             <span>Carte</span>
           </a>
           <a routerLink="/vehicles" class="quick-chip">
-            <lucide-icon [img]="Plus" [size]="14"></lucide-icon>
-            <span>Véhicule</span>
+            <lucide-icon [img]="Truck" [size]="14"></lucide-icon>
+            <span>Véhicules</span>
           </a>
           <a routerLink="/reports" class="quick-chip">
             <lucide-icon [img]="FileBarChart" [size]="14"></lucide-icon>
@@ -635,7 +635,7 @@ export class DashboardComponent implements OnInit {
 
   protected readonly widgetMeta: WidgetMeta[] = [
     { key: 'kpis', label: 'KPIs', description: 'Compteurs Véhicules / En mouvement / Arrêt / Alertes' },
-    { key: 'actions', label: 'Actions rapides', description: 'Boutons Carte / Véhicule / Rapports / Géofences' },
+    { key: 'actions', label: 'Actions rapides', description: 'Boutons Carte / Véhicules / Rapports / Géofences' },
     { key: 'map', label: 'Carte temps réel', description: 'Aperçu live des véhicules sur une mini-carte' },
     { key: 'activity', label: 'Activité en direct', description: 'Top des véhicules les plus actifs' },
     { key: 'alerts', label: 'Alertes récentes', description: '3 dernières alertes non acquittées' },

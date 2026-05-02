@@ -6,6 +6,7 @@ import {
   Compass,
   CheckCircle,
   ClipboardCopy,
+  ExternalLink,
   KeyRound,
   Lock,
   LucideAngularModule,
@@ -304,8 +305,24 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
             <lucide-icon [img]="ShieldAlert" [size]="20"></lucide-icon>
             <div>
               <strong>Mot de passe et sessions</strong>
-              <p>L'authentification est gérée par Vizyo Auth. Pour changer votre mot de passe ou
-              vous déconnecter de toutes vos sessions, accédez au portail Vizyo Auth.</p>
+              <p>L'authentification est gérée par <strong>Vizyo Auth</strong>. Pour changer votre
+              mot de passe ou révoquer toutes vos sessions actives, ouvrez le portail dédié.</p>
+              <div class="row-actions" style="margin-top: 12px;">
+                <a [href]="vizyoAuthPortalUrl"
+                   target="_blank"
+                   rel="noopener noreferrer"
+                   class="btn-primary btn-link-external">
+                  <lucide-icon [img]="ExternalLink" [size]="14"></lucide-icon>
+                  Ouvrir le portail Vizyo Auth
+                </a>
+                <a [href]="vizyoAuthPortalUrl + '/reset-password?email=' + (profile()?.email ?? '')"
+                   target="_blank"
+                   rel="noopener noreferrer"
+                   class="btn-ghost">
+                  <lucide-icon [img]="KeyRound" [size]="14"></lucide-icon>
+                  Changer le mot de passe
+                </a>
+              </div>
             </div>
           </div>
         </section>
@@ -429,6 +446,9 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
       color: var(--fg-secondary);
     }
     .btn-ghost:hover { background: var(--bg-tertiary); color: var(--fg-primary); }
+    /* `<a>` qui doit ressembler aux boutons primary/ghost. */
+    a.btn-primary, a.btn-ghost { text-decoration: none; }
+    .btn-link-external { /* hint visuel : action externe (nouvel onglet) */ }
     .btn-link {
       background: transparent;
       border: none;
@@ -491,6 +511,9 @@ export class AccountComponent implements OnInit {
 
   protected readonly Bell = Bell;
   protected readonly LockIcon = Lock;
+  protected readonly ExternalLink = ExternalLink;
+  /** URL publique du portail Vizyo Auth (gestion mot de passe, sessions, MFA). */
+  protected readonly vizyoAuthPortalUrl = 'https://auth.vizyoagency.com/account';
   protected readonly CheckCircle = CheckCircle;
   protected readonly ClipboardCopy = ClipboardCopy;
   protected readonly Compass = Compass;

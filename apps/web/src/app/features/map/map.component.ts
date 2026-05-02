@@ -174,7 +174,10 @@ const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible a
          DESKTOP HUD top-left : statut realtime + actions
          Caché en mobile (< 768px)
          ════════════════════════════════════════════════════════════ -->
-    <div class="tracky-desktop-hud" style="position:absolute;top:16px;left:16px;z-index:1000">
+    <!-- HUD top-left : z-index élevé (1800) pour que les suggestions auto-complete
+         restent visibles au-dessus du panel Calques (1600) malgré le stacking
+         context du wrapper. -->
+    <div class="tracky-desktop-hud" style="position:absolute;top:16px;left:16px;z-index:1800">
       <div class="bg-bg-secondary/85 backdrop-blur-md border border-border-subtle
                   rounded-[--radius-card] p-4 min-w-[220px]">
         <div class="flex items-center gap-2 mb-2">
@@ -261,6 +264,26 @@ const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible a
         }
       </div>
 
+      <!-- Calques toggle desktop : ouvre le panel collapsable -->
+      <button
+        (click)="calquesPanelOpen.set(!calquesPanelOpen())"
+        [class]="'tracky-desktop-only mt-2 w-full flex items-center justify-between gap-2 px-3 py-2 ' +
+                 'bg-bg-secondary/85 backdrop-blur-md border rounded-[--radius-card] ' +
+                 'text-xs font-medium cursor-pointer transition-colors ' +
+                 (calquesPanelOpen()
+                   ? 'border-tracky/40 text-tracky-light'
+                   : 'border-border-subtle text-fg-secondary hover:text-fg-primary')"
+        title="Afficher / masquer le panneau des calques">
+        <span class="flex items-center gap-2">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg>
+          Calques
+          @if (activeFiltersCount() > 0) {
+            <span class="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-tracky/20 text-tracky-light">{{ activeFiltersCount() }}</span>
+          }
+        </span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" [style.transform]="calquesPanelOpen() ? 'rotate(180deg)' : ''" style="transition: transform 200ms"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+
       <!-- Smart search desktop -->
       <div class="mt-2 bg-bg-secondary/85 backdrop-blur-md border border-border-subtle
                   rounded-[--radius-card] p-2 min-w-[220px] relative">
@@ -275,7 +298,7 @@ const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible a
           class="w-full bg-transparent text-xs text-fg-primary placeholder:text-fg-tertiary
                  px-2 py-1.5 outline-none" />
         @if (searchFocused() && vehicleMatches().length > 0) {
-          <div style="position:absolute;top:100%;left:0;right:0;z-index:1500"
+          <div style="position:absolute;top:100%;left:0;right:0;z-index:1700"
                class="mt-1 bg-bg-secondary/95 backdrop-blur-md border border-border-subtle
                       rounded-lg overflow-hidden shadow-2xl">
             @for (v of vehicleMatches(); track v.vehicleId) {
@@ -291,37 +314,65 @@ const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible a
       </div>
     </div>
 
-    <!-- Style picker top-right - DESKTOP ONLY (caché en mobile) -->
+    <!-- Style + Camera pickers top-right - DESKTOP ONLY (caché en mobile)
+         V1.9 — refonte en dropdowns compacts au lieu de pills horizontales :
+         gain de place ~70% top-right, plus d'espace pour la map. -->
     <div class="tracky-style-picker tracky-desktop-hud"
-         style="position:absolute;top:16px;right:16px;z-index:1000;max-width:calc(100% - 32px)">
-      <div class="bg-bg-secondary/85 backdrop-blur-md border border-border-subtle
-                  rounded-[--radius-card] p-2 flex gap-1 flex-wrap">
-        @for (s of styles.catalog; track s.id) {
-          <button
-            (click)="setStyle(s.id)"
-            [class]="'px-2 py-1 text-[10px] rounded cursor-pointer transition-colors ' +
-                     (currentStyle() === s.id
-                       ? 'bg-tracky/20 text-tracky-light border border-tracky/30'
-                       : 'text-fg-tertiary hover:text-fg-primary')"
-            [title]="s.label">
-            {{ s.label }}
-          </button>
+         style="position:absolute;top:16px;right:16px;z-index:1500;max-width:calc(100% - 32px)">
+      <!-- Dropdown style de carte -->
+      <div class="relative">
+        <button (click)="stylePickerOpen.set(!stylePickerOpen()); cameraPickerOpen.set(false)"
+                [class]="'flex items-center gap-2 px-3 py-2 text-xs font-medium rounded-[--radius-card] cursor-pointer transition-colors ' +
+                         'bg-bg-secondary/85 backdrop-blur-md border ' +
+                         (stylePickerOpen() ? 'border-tracky/40 text-tracky-light' : 'border-border-subtle text-fg-secondary hover:text-fg-primary')"
+                title="Style de carte">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6.5V21"/><path d="M9 6.5 2.4 4.6a1 1 0 0 0-1.3 1V19a1 1 0 0 0 .7 1l6.9 1.6"/><path d="m15 6.5-6 1.5"/><path d="M15 6.5v14.5"/><path d="m15 6.5 6.6-1.9a1 1 0 0 1 1.3 1V19a1 1 0 0 1-.7 1L15 21"/></svg>
+          {{ currentStyleLabel() }}
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" [style.transform]="stylePickerOpen() ? 'rotate(180deg)' : ''" style="transition: transform 200ms"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        @if (stylePickerOpen()) {
+          <div class="map-dropdown-backdrop" (click)="stylePickerOpen.set(false)"></div>
+          <div class="map-dropdown-menu">
+            @for (s of styles.catalog; track s.id) {
+              <button
+                (click)="setStyle(s.id); stylePickerOpen.set(false)"
+                [class]="'map-dropdown-item ' + (currentStyle() === s.id ? 'map-dropdown-item--active' : '')">
+                <span>{{ s.label }}</span>
+                @if (currentStyle() === s.id) {
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                }
+              </button>
+            }
+          </div>
         }
       </div>
 
-      <!-- Camera mode pills -->
-      <div class="mt-2 bg-bg-secondary/85 backdrop-blur-md border border-border-subtle
-                  rounded-[--radius-card] p-2 flex gap-1 flex-wrap">
-        @for (m of cameraModes; track m.id) {
-          <button
-            (click)="setCameraMode(m.id)"
-            [class]="'px-2 py-1 text-[10px] rounded cursor-pointer transition-colors ' +
-                     (cameraMode() === m.id
-                       ? 'bg-tracky/20 text-tracky-light border border-tracky/30'
-                       : 'text-fg-tertiary hover:text-fg-primary')"
-            [title]="m.tooltip">
-            {{ m.label }}
-          </button>
+      <!-- Dropdown caméra -->
+      <div class="relative mt-2">
+        <button (click)="cameraPickerOpen.set(!cameraPickerOpen()); stylePickerOpen.set(false)"
+                [class]="'flex items-center gap-2 px-3 py-2 text-xs font-medium rounded-[--radius-card] cursor-pointer transition-colors w-full ' +
+                         'bg-bg-secondary/85 backdrop-blur-md border ' +
+                         (cameraPickerOpen() ? 'border-tracky/40 text-tracky-light' : 'border-border-subtle text-fg-secondary hover:text-fg-primary')"
+                title="Mode caméra">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+          Vue : {{ currentCameraLabel() }}
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ml-auto" [style.transform]="cameraPickerOpen() ? 'rotate(180deg)' : ''" style="transition: transform 200ms"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        @if (cameraPickerOpen()) {
+          <div class="map-dropdown-backdrop" (click)="cameraPickerOpen.set(false)"></div>
+          <div class="map-dropdown-menu">
+            @for (m of cameraModes; track m.id) {
+              <button
+                (click)="setCameraMode(m.id); cameraPickerOpen.set(false)"
+                [class]="'map-dropdown-item ' + (cameraMode() === m.id ? 'map-dropdown-item--active' : '')"
+                [title]="m.tooltip">
+                <span>{{ m.label }}</span>
+                @if (cameraMode() === m.id) {
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                }
+              </button>
+            }
+          </div>
         }
       </div>
     </div>
@@ -349,6 +400,7 @@ const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible a
       <div class="tracky-mobile-sheet-overlay" (click)="mobileSheetOpen.set(false)"></div>
     }
     <div [class.tracky-mobile-sheet--open]="mobileSheetOpen()"
+         [class.tracky-calques-panel--desktop-open]="calquesPanelOpen()"
          class="tracky-calques-panel"
          [style.--sheet-drag-y]="sheetDragY() + 'px'"
          style="position:absolute;bottom:90px;left:16px;z-index:1600">
@@ -1100,6 +1152,56 @@ const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible a
     /* Sheet overlay backdrop */
     .tracky-mobile-sheet-overlay { display: none; }
 
+    /* ─── DESKTOP : panel Calques collapsable ───────────────────────────
+     * Par défaut FERMÉ pour libérer la map. Le bouton "Calques" du HUD
+     * top-left toggle l'état via le signal calquesPanelOpen. */
+    @media (min-width: 768px) {
+      .tracky-calques-panel { display: none; }
+      .tracky-calques-panel.tracky-calques-panel--desktop-open { display: block; }
+      .tracky-desktop-only { display: flex; }
+    }
+    @media (max-width: 767px) {
+      .tracky-desktop-only { display: none !important; }
+    }
+
+    /* ─── Dropdown style/caméra (top-right) ─────────────────────────────
+     * Remplace les anciennes pills horizontales par un dropdown compact.
+     * Anchored à droite du wrapper, s'étire vers la gauche.  */
+    .map-dropdown-backdrop {
+      position: fixed; inset: 0; z-index: 1; background: transparent;
+    }
+    .map-dropdown-menu {
+      position: absolute; top: calc(100% + 6px); right: 0; z-index: 2;
+      min-width: 180px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-strong);
+      border-radius: 12px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+      padding: 4px;
+      display: flex; flex-direction: column;
+      animation: map-dd-pop .18s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+    @keyframes map-dd-pop {
+      from { opacity: 0; transform: translateY(-4px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .map-dropdown-item {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px;
+      padding: 8px 12px;
+      font-size: 12px; font-weight: 500;
+      color: var(--fg-secondary);
+      background: transparent; border: none; border-radius: 8px;
+      cursor: pointer;
+      text-align: left;
+      transition: background .12s, color .12s;
+    }
+    .map-dropdown-item:hover { background: var(--bg-tertiary); color: var(--fg-primary); }
+    .map-dropdown-item--active {
+      background: rgba(16,224,160,.1); color: var(--tracky-light, #10E0A0);
+    }
+    .map-dropdown-item--active:hover { background: rgba(16,224,160,.16); }
+
     /* ════════════════════════════════════════════════════════════
        MOBILE (< 768px) — toutes les overrides responsive
        ════════════════════════════════════════════════════════════ */
@@ -1402,6 +1504,40 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   protected readonly mapLocked = signal(false);
   /** Sprint F.3 — sheet mobile pour les calques (FAB toggle). */
   protected readonly mobileSheetOpen = signal(false);
+  /** Desktop — panel Calques collapsable (fermé par défaut pour libérer la map). */
+  protected readonly calquesPanelOpen = signal(false);
+  /** Label du style de carte courant (ex: "Plan", "Satellite") pour le bouton dropdown. */
+  protected readonly currentStyleLabel = computed(() => {
+    const id = this.currentStyle();
+    return this.styles.catalog.find((s) => s.id === id)?.label ?? 'Plan';
+  });
+  /** Label du mode caméra courant pour le bouton dropdown. */
+  protected readonly currentCameraLabel = computed(() => {
+    const id = this.cameraMode();
+    return this.cameraModes.find((m) => m.id === id)?.label ?? 'Libre';
+  });
+
+  /** Compte le nombre de filtres "non par défaut" actifs (badge sur le bouton Calques). */
+  protected readonly activeFiltersCount = computed(() => {
+    let n = 0;
+    const f = this.filters();
+    // Par défaut tous les 4 filtres statut sont true → on compte ceux qui sont OFF
+    if (!f.moving) n++;
+    if (!f.idle) n++;
+    if (!f.off) n++;
+    if (!f.offline) n++;
+    // Calques optionnels comptés s'ils sont activés
+    if (this.showStops()) n++;
+    if (this.showHeatmap()) n++;
+    if (!this.showGeofences()) n++; // par défaut true
+    if (!this.showTrails()) n++;    // par défaut true
+    if (!this.showPlates()) n++;    // par défaut true
+    return n;
+  });
+  /** Desktop — dropdown style de carte (Plan / Sombre / Clair / etc.). */
+  protected readonly stylePickerOpen = signal(false);
+  /** Desktop — dropdown mode caméra (Libre / 3D / Suivre / Sens). */
+  protected readonly cameraPickerOpen = signal(false);
   /** Mobile : overlay de recherche déployable depuis la top bar. */
   protected readonly mobileSearchOpen = signal(false);
   /** Picker véhicule pour les modes Suivre/Sens. */
