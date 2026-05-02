@@ -25,6 +25,7 @@
     "@fontsource/jetbrains-mono": "^5",
     "@fontsource/poppins": "^5",
     "@vizyo/tracky-shared": "workspace:*",
+    "chart.js": "^4.5.1",
     "lucide-angular": "^0.460.0",
     "maplibre-gl": "5.24.0",
     "rxjs": "~7.8.0",

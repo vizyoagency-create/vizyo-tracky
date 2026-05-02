@@ -446,7 +446,7 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
       color: var(--fg-secondary);
     }
     .btn-ghost:hover { background: var(--bg-tertiary); color: var(--fg-primary); }
-    /* `<a>` qui doit ressembler aux boutons primary/ghost. */
+    /* Liens (a) qui doivent ressembler aux boutons primary/ghost. */
     a.btn-primary, a.btn-ghost { text-decoration: none; }
     .btn-link-external { /* hint visuel : action externe (nouvel onglet) */ }
     .btn-link {

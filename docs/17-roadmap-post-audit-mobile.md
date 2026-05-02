@@ -12,6 +12,8 @@
 | `58fd945` | P1 mobile | pastille live vitesse cards, coords GPS, exports PDF/CSV, filtre alertes |
 | `807ae4b` | P2 mobile | IMEI tap-to-copy, throttle toasts, cadenas email, sweep accents |
 | `7f1633a` | P2 ambitieux | bottom-sheet mobile + datepicker custom riche |
+| `9df75a8` | /map HUD | refonte HUD desktop + correctifs audit #5 #6 #7 |
+| __PLACEHOLDER__ | /reports charts | Chart.js v4 + heatmap SVG, sparkline KPI, item #4 done |
 
 ## 🎯 Pistes suivantes (par ordre suggéré)
 
@@ -36,12 +38,16 @@ Actuellement 2 `<input type="date">` qui ouvrent le datepicker natif iOS/Android
 Sur desktop, ajouter un mini-calendrier inline (2 mois côte-à-côte) pour
 l'aperçu visuel. Conserver les inputs natifs en mobile.
 
-### 4. Refonte de /reports (graphes)
-KPI cards plates → graphs lecture rapide :
-- Chart.js ou ngx-charts
-- Évolution distance/jour, trajets/jour
-- Heatmap 24h × 7j de fréquentation
-- Distribution vitesses
+### 4. Refonte de /reports (graphes) ✅ DONE (commit __PLACEHOLDER__)
+KPI cards plates → graphs lecture rapide. Livré : Chart.js v4 (tree-shaké),
+3 wrappers standalone OnPush, theme dark/light dynamique, FLEET_ADMIN testé
+en preview.
+- Sparkline KPI cards (bars Trajets, line cumulée Distance, dot couleur Vitesse)
+- Chart Activité full-width : combo bar (trajets/j) + line (km/j), tooltip
+  riche {date · X trajets · Y km · Z h}
+- Histogramme vitesses 6 bins (0-30…110+) avec gradient vert→rouge
+- Heatmap 24h × 7j en SVG natif (~3 KB), tooltip hover + a11y screen reader
+- Bundle reports-component : 564 kB raw (Chart.js ~+180 kB, gzip ~+70 kB)
 
 ### 5. Web Push notifications
 L'API WS pousse déjà les events `ALERT_NEW`. Câbler :

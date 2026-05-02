@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, HostListener, inject, OnD
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, BarChart3, Route, Clock, Gauge, Play, ChevronDown, Truck, Check, MessageSquare, Pencil, UserRound, Download, Calendar } from 'lucide-angular';
-import type { DriverDto, TripDto } from '@vizyo/tracky-shared';
+import type { DriverDto, TripDailySummaryDto, TripDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { DriversApiService } from '../../core/services/drivers.service';
 import { PermissionsService } from '../../core/services/permissions.service';
@@ -14,13 +14,28 @@ import { AuthService } from '../../core/services/auth.service';
 import { DriverPickerComponent } from '../../shared/ui/driver-picker/driver-picker.component';
 import { TripNoteModalComponent } from '../../shared/ui/trip-note-modal/trip-note-modal.component';
 import { DateRangePickerComponent } from '../../shared/ui/date-range-picker/date-range-picker.component';
+import { LineBarChartComponent, type LineBarChartData } from '../../shared/ui/charts/line-bar-chart.component';
+import { HistogramChartComponent } from '../../shared/ui/charts/histogram-chart.component';
+import { HeatmapChartComponent } from '../../shared/ui/charts/heatmap-chart.component';
 import { TripReplayComponent } from './trip-replay.component';
 
 @Component({
   selector: 'app-reports',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, LucideAngularModule, DatePipe, DecimalPipe, TripReplayComponent, TripNoteModalComponent, DriverPickerComponent, DateRangePickerComponent],
+  imports: [
+    FormsModule,
+    LucideAngularModule,
+    DatePipe,
+    DecimalPipe,
+    TripReplayComponent,
+    TripNoteModalComponent,
+    DriverPickerComponent,
+    DateRangePickerComponent,
+    LineBarChartComponent,
+    HistogramChartComponent,
+    HeatmapChartComponent,
+  ],
   template: `
     <div class="flex flex-col gap-6">
       <div class="flex items-start justify-between gap-3 flex-wrap">
@@ -164,36 +179,101 @@ import { TripReplayComponent } from './trip-replay.component';
         }
       </div>
 
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4">
-          <div class="flex items-center gap-2 mb-2">
-            <lucide-icon [img]="Route" [size]="16" class="text-tracky-light"></lucide-icon>
-            <span class="text-xs text-fg-tertiary">Trajets</span>
+      <!-- Sparkline KPI cards : compactes, lecture rapide -->
+      <div class="rep-kpi-grid">
+        <div class="rep-kpi-card">
+          <div class="rep-kpi-head">
+            <lucide-icon [img]="Route" [size]="14"></lucide-icon>
+            <span>Trajets</span>
           </div>
-          <p class="text-xl font-semibold text-fg-primary">{{ kpis().tripCount }}</p>
+          <div class="rep-kpi-body">
+            <p class="rep-kpi-value">{{ kpis().tripCount }}</p>
+            @if (sparkTripBars().length > 0) {
+              <svg class="rep-spark" viewBox="0 0 84 28" preserveAspectRatio="none" aria-hidden="true">
+                @for (b of sparkTripBars(); track $index) {
+                  <rect [attr.x]="b.x" [attr.y]="b.y" [attr.width]="b.w" [attr.height]="b.h"
+                        fill="var(--tracky-light)" rx="1.5" />
+                }
+              </svg>
+            }
+          </div>
         </div>
-        <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4">
-          <div class="flex items-center gap-2 mb-2">
-            <lucide-icon [img]="BarChart3" [size]="16" class="text-tracky-light"></lucide-icon>
-            <span class="text-xs text-fg-tertiary">Distance</span>
+
+        <div class="rep-kpi-card">
+          <div class="rep-kpi-head">
+            <lucide-icon [img]="BarChart3" [size]="14"></lucide-icon>
+            <span>Distance</span>
           </div>
-          <p class="text-xl font-semibold text-fg-primary">{{ (kpis().totalDistance / 1000) | number:'1.1-1' }} km</p>
+          <div class="rep-kpi-body">
+            <p class="rep-kpi-value">
+              {{ (kpis().totalDistance / 1000) | number:'1.1-1' }}
+              <span class="rep-kpi-unit">km</span>
+            </p>
+            @if (sparkDistancePath()) {
+              <svg class="rep-spark" viewBox="0 0 84 28" preserveAspectRatio="none" aria-hidden="true">
+                <path [attr.d]="sparkDistanceFillPath()" fill="rgba(16,224,160,0.14)" stroke="none" />
+                <path [attr.d]="sparkDistancePath()" fill="none" stroke="var(--tracky-light)"
+                      stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            }
+          </div>
         </div>
-        <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4">
-          <div class="flex items-center gap-2 mb-2">
-            <lucide-icon [img]="Clock" [size]="16" class="text-tracky-light"></lucide-icon>
-            <span class="text-xs text-fg-tertiary">Durée totale</span>
+
+        <div class="rep-kpi-card">
+          <div class="rep-kpi-head">
+            <lucide-icon [img]="Clock" [size]="14"></lucide-icon>
+            <span>Durée totale</span>
           </div>
-          <p class="text-xl font-semibold text-fg-primary">{{ formatDuration(kpis().totalDuration) }}</p>
+          <div class="rep-kpi-body">
+            <p class="rep-kpi-value">{{ formatDuration(kpis().totalDuration) }}</p>
+            <span class="rep-kpi-meta">~{{ avgDurationPerActiveDay() }} / jour actif</span>
+          </div>
         </div>
-        <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4">
-          <div class="flex items-center gap-2 mb-2">
-            <lucide-icon [img]="Gauge" [size]="16" class="text-tracky-light"></lucide-icon>
-            <span class="text-xs text-fg-tertiary">Vitesse max</span>
+
+        <div class="rep-kpi-card">
+          <div class="rep-kpi-head">
+            <lucide-icon [img]="Gauge" [size]="14"></lucide-icon>
+            <span>Vitesse max</span>
           </div>
-          <p class="text-xl font-semibold text-fg-primary">{{ kpis().maxSpeed | number:'1.0-0' }} km/h</p>
+          <div class="rep-kpi-body">
+            <p class="rep-kpi-value">
+              {{ kpis().maxSpeed | number:'1.0-0' }}
+              <span class="rep-kpi-unit">km/h</span>
+            </p>
+            <span class="rep-kpi-dot" [style.background]="speedDotColor()"
+                  [attr.title]="speedDotLabel()" [attr.aria-label]="speedDotLabel()"></span>
+          </div>
         </div>
       </div>
+
+      <!-- Charts : full-width line+bar puis 2 demi-largeur en grid -->
+      @if (!loading() && trips().length > 0) {
+        <div class="rep-charts-grid">
+          <section class="rep-chart-card rep-chart-card--full">
+            <header class="rep-chart-head">
+              <h2>Activité</h2>
+              <p>Distance &amp; trajets par jour</p>
+            </header>
+            <app-line-bar-chart [data]="lineBarData()" [height]="260" />
+          </section>
+
+          <section class="rep-chart-card">
+            <header class="rep-chart-head">
+              <h2>Vitesses max</h2>
+              <p>Distribution sur la période</p>
+            </header>
+            <app-histogram-chart [values]="histoValues()" [height]="220" />
+          </section>
+
+          <section class="rep-chart-card">
+            <header class="rep-chart-head">
+              <h2>Fréquentation</h2>
+              <p>24h × 7j</p>
+            </header>
+            <app-heatmap-chart [data]="heatmapData()" />
+          </section>
+        </div>
+      }
 
       @if (loading()) {
         <div class="flex items-center justify-center h-32">
@@ -316,6 +396,122 @@ import { TripReplayComponent } from './trip-replay.component';
     />
   `,
   styles: [`
+    /* ─── Sparkline KPI cards ─── */
+    .rep-kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    @media (min-width: 1024px) {
+      .rep-kpi-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    }
+    .rep-kpi-card {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 12px 14px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-card);
+      min-width: 0;
+    }
+    .rep-kpi-head {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--fg-tertiary);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .rep-kpi-head lucide-icon { color: var(--tracky-light); }
+    .rep-kpi-body {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+    }
+    .rep-kpi-value {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--fg-primary);
+      line-height: 1;
+      letter-spacing: -.02em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 0 1 auto;
+    }
+    .rep-kpi-unit {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--fg-tertiary);
+      margin-left: 2px;
+    }
+    .rep-kpi-meta {
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--fg-tertiary);
+      white-space: nowrap;
+    }
+    .rep-kpi-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 25%, transparent);
+      flex-shrink: 0;
+      align-self: center;
+    }
+    .rep-spark {
+      width: 84px;
+      height: 28px;
+      flex-shrink: 0;
+      overflow: visible;
+    }
+    @media (max-width: 380px) {
+      .rep-kpi-value { font-size: 18px; }
+      .rep-spark { width: 60px; height: 22px; }
+    }
+
+    /* ─── Charts grid ─── */
+    .rep-charts-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+    @media (min-width: 1024px) {
+      .rep-charts-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .rep-chart-card--full { grid-column: 1 / -1; }
+    }
+    .rep-chart-card {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 16px 18px 18px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-card);
+      min-width: 0;
+    }
+    .rep-chart-head { display: flex; flex-direction: column; gap: 2px; }
+    .rep-chart-head h2 {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--fg-primary);
+      letter-spacing: -.01em;
+    }
+    .rep-chart-head p {
+      margin: 0;
+      font-size: 11px;
+      color: var(--fg-tertiary);
+    }
+
     /* ─── Date range personnalisé ─── */
     .rep-custom-wrapper { position: relative; display: inline-block }
     .rep-custom-backdrop {
@@ -679,6 +875,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   protected readonly vehicles = signal<VehicleDetailDto[]>([]);
   protected readonly trips = signal<TripDto[]>([]);
+  protected readonly dailySummary = signal<TripDailySummaryDto[]>([]);
   protected readonly loading = signal(true);
   protected readonly recomputing = signal(false);
   protected readonly replayTrip = signal<TripDto | null>(null);
@@ -862,6 +1059,149 @@ export class ReportsComponent implements OnInit, OnDestroy {
     };
   });
 
+  // ─── Charts datasets ────────────────────────────────────────────────────
+  /** Series journaliere remplie (jours sans trajet a 0) entre periodFrom et
+   *  periodTo. Format compact "12 mai" pour l'axe X. */
+  protected readonly lineBarData = computed<LineBarChartData>(() => {
+    this.periodKey(); // déclenche reactif sur changement de période
+    const summary = this.dailySummary();
+    const map = new Map(summary.map((s) => [s.date, s]));
+    const dates = this.dateRange(this.periodFrom, this.periodTo);
+    const fmt = new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: 'short' });
+    const labels: string[] = [];
+    const tripCounts: number[] = [];
+    const distancesKm: number[] = [];
+    const durationsHours: number[] = [];
+    for (const d of dates) {
+      const entry = map.get(d);
+      labels.push(fmt.format(new Date(d)));
+      tripCounts.push(entry?.tripCount ?? 0);
+      distancesKm.push(entry ? Math.round(entry.totalDistanceMeters / 100) / 10 : 0);
+      durationsHours.push(entry ? Math.round((entry.totalDurationSeconds / 3600) * 100) / 100 : 0);
+    }
+    return { labels, tripCounts, distancesKm, durationsHours };
+  });
+
+  /** Maxspeeds bruts pour l'histogramme. Recalcule a chaque changement de
+   *  trips() (filtre vehicule, periode). */
+  protected readonly histoValues = computed<number[]>(() =>
+    this.trips().map((t) => t.maxSpeed),
+  );
+
+  /** Matrice 7×24 (lun→dim, 0h→23h) du nombre de trajets demarres a cette
+   *  case horaire. */
+  protected readonly heatmapData = computed<number[][]>(() => {
+    const matrix: number[][] = Array.from({ length: 7 }, () => new Array(24).fill(0));
+    for (const t of this.trips()) {
+      if (!t.startedAt) continue;
+      const d = new Date(t.startedAt);
+      // Convention FR/ISO : lundi = 0, dimanche = 6
+      const day = (d.getDay() + 6) % 7;
+      const hour = d.getHours();
+      if (day >= 0 && day < 7 && hour >= 0 && hour < 24) {
+        matrix[day]![hour]! += 1;
+      }
+    }
+    return matrix;
+  });
+
+  // ─── Sparkline KPI cards ────────────────────────────────────────────────
+  /** Bars sparkline pour le KPI Trajets. Prend les 7 derniers jours du
+   *  dailySummary (pas les 7 derniers de la periode, juste les 7 dernieres
+   *  entrees ayant des donnees). */
+  protected readonly sparkTripBars = computed(() => {
+    const ds = this.dailySummary().slice(-7);
+    if (ds.length === 0) return [];
+    const max = Math.max(1, ...ds.map((s) => s.tripCount));
+    const w = 84;
+    const h = 28;
+    const gap = 2;
+    const barW = (w - gap * (ds.length - 1)) / ds.length;
+    return ds.map((s, i) => {
+      const ratio = s.tripCount / max;
+      const barH = ratio * (h - 2);
+      return {
+        x: i * (barW + gap),
+        y: h - Math.max(2, barH),
+        w: barW,
+        h: Math.max(2, barH),
+      };
+    });
+  });
+
+  /** Path SVG de la sparkline distance cumulee (toute la periode). */
+  protected readonly sparkDistancePath = computed(() => {
+    const ds = this.dailySummary();
+    if (ds.length === 0) return '';
+    const w = 84;
+    const h = 28;
+    let cumul = 0;
+    const points = ds.map((s) => {
+      cumul += s.totalDistanceMeters / 1000;
+      return cumul;
+    });
+    const min = points[0]!;
+    const max = points[points.length - 1]!;
+    const range = max - min || 1;
+    const stepX = ds.length > 1 ? w / (ds.length - 1) : w;
+    let path = '';
+    for (let i = 0; i < points.length; i++) {
+      const x = i * stepX;
+      const y = h - ((points[i]! - min) / range) * (h - 2) - 1;
+      path += i === 0 ? `M${x.toFixed(1)},${y.toFixed(1)}` : ` L${x.toFixed(1)},${y.toFixed(1)}`;
+    }
+    return path;
+  });
+
+  /** Path SVG du fill sous la ligne (zone). */
+  protected readonly sparkDistanceFillPath = computed(() => {
+    const linePath = this.sparkDistancePath();
+    if (!linePath) return '';
+    return `${linePath} L84,28 L0,28 Z`;
+  });
+
+  /** Duree moyenne par jour AYANT eu au moins un trajet. Plus parlant que
+   *  une moyenne sur toute la periode (qui serait diluee par les jours off). */
+  protected readonly avgDurationPerActiveDay = computed(() => {
+    const ds = this.dailySummary();
+    if (ds.length === 0) return '0min';
+    const total = ds.reduce((a, b) => a + b.totalDurationSeconds, 0);
+    return this.formatDuration(Math.round(total / ds.length));
+  });
+
+  /** Couleur du dot vitesse selon les seuils du marker live (cf
+   *  shared/utils/maplibre-markers.ts speedColor). */
+  protected readonly speedDotColor = computed(() => {
+    const max = this.kpis().maxSpeed;
+    if (max < 90) return '#10E0A0';
+    if (max < 110) return '#F59E0B';
+    return '#EF4444';
+  });
+
+  protected readonly speedDotLabel = computed(() => {
+    const max = this.kpis().maxSpeed;
+    if (max < 90) return 'Allure modérée';
+    if (max < 110) return 'Vitesse soutenue';
+    return 'Survitesse détectée';
+  });
+
+  /** Genere la liste des dates [from, to) au format YYYY-MM-DD. Cap a 90
+   *  jours pour que le chart reste lisible. */
+  private dateRange(from: string, to: string): string[] {
+    if (!from || !to) return [];
+    const out: string[] = [];
+    const start = new Date(`${from}T00:00:00Z`);
+    const end = new Date(`${to}T00:00:00Z`);
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) return [];
+    const cur = new Date(start);
+    while (cur < end) {
+      out.push(cur.toISOString().slice(0, 10));
+      cur.setUTCDate(cur.getUTCDate() + 1);
+    }
+    if (out.length > 90) return out.slice(-90);
+    return out;
+  }
+
   /** Helper template-friendly pour clamper une distance >= 0 a l'affichage. */
   protected max0(n: number): number {
     return Math.max(0, n ?? 0);
@@ -935,16 +1275,40 @@ export class ReportsComponent implements OnInit, OnDestroy {
   protected async loadData(): Promise<void> {
     this.loading.set(true);
     try {
-      const params: Record<string, string> = { limit: '100' };
       const id = this.selectedVehicleId();
-      if (id) params['vehicleId'] = id;
-      if (this.periodFrom) params['from'] = this.periodFrom;
-      if (this.periodTo) params['to'] = this.periodTo;
+      const tripParams: Record<string, string> = { limit: '100' };
+      const summaryParams: Record<string, string> = {};
+      if (id) {
+        tripParams['vehicleId'] = id;
+        summaryParams['vehicleId'] = id;
+      }
+      if (this.periodFrom) {
+        tripParams['from'] = this.periodFrom;
+        summaryParams['from'] = this.periodFrom;
+      }
+      if (this.periodTo) {
+        tripParams['to'] = this.periodTo;
+        summaryParams['to'] = this.periodTo;
+      }
 
-      const res = await firstValueFrom(this.tripsApi.list(params));
-      this.trips.set(res.items);
-    } catch { this.trips.set([]); }
-    finally { this.loading.set(false); }
+      // Fetch trips + daily summary en parallele : meme periode, meme vehicule.
+      // Si l'un fail, l'autre peut quand meme alimenter ses charts.
+      const [tripsRes, summary] = await Promise.all([
+        firstValueFrom(this.tripsApi.list(tripParams)).catch(
+          () => ({ items: [] as TripDto[], nextCursor: null }),
+        ),
+        firstValueFrom(this.tripsApi.dailySummary(summaryParams)).catch(
+          () => [] as TripDailySummaryDto[],
+        ),
+      ]);
+      this.trips.set(tripsRes.items);
+      this.dailySummary.set(summary);
+    } catch {
+      this.trips.set([]);
+      this.dailySummary.set([]);
+    } finally {
+      this.loading.set(false);
+    }
   }
 
   protected openReplay(trip: TripDto): void {
