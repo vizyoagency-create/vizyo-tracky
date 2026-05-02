@@ -27,12 +27,12 @@ import { InstallPromptService } from '../../../core/services/install-prompt.serv
         <div class="banner-content">
           <p class="banner-title">Installer Tracky sur votre appareil</p>
           @if (mode() === 'android') {
-            <p class="banner-subtitle">Acces rapide depuis l'ecran d'accueil, plein ecran, fonctionne hors-ligne.</p>
+            <p class="banner-subtitle">Accès rapide depuis l'écran d'accueil, plein écran, fonctionne hors-ligne.</p>
           } @else {
             <p class="banner-subtitle">
               Touchez
               <lucide-icon [img]="ShareIcon" [size]="14" class="inline-icon"></lucide-icon>
-              puis "Sur l'ecran d'accueil"
+              puis "Sur l'écran d'accueil"
               <lucide-icon [img]="PlusIcon" [size]="14" class="inline-icon"></lucide-icon>
             </p>
           }

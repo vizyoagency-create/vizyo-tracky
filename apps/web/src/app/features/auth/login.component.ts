@@ -76,7 +76,7 @@ import { ThemeService } from '../../core/theme/theme.service';
         <div class="text-right">
           <a routerLink="/forgot-password"
              class="text-sm text-tracky-light hover:underline cursor-pointer">
-            Mot de passe oublie ?
+            Mot de passe oublié ?
           </a>
         </div>
 

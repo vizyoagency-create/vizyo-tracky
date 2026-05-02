@@ -9,10 +9,10 @@ import { RouterLink } from '@angular/router';
   template: `
     <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-8">
       <h2 class="text-xl font-display font-semibold text-fg-primary mb-2">
-        Mot de passe oublie ?
+        Mot de passe oublié ?
       </h2>
       <p class="text-sm text-fg-tertiary mb-6">
-        Entrez votre adresse email et nous vous enverrons un lien pour reinitialiser votre mot de passe.
+        Entrez votre adresse email et nous vous enverrons un lien pour réinitialiser votre mot de passe.
       </p>
 
       @if (sent()) {

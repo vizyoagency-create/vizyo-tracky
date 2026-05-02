@@ -312,7 +312,11 @@ import { TripReplayComponent } from './trip-replay.component';
       background: transparent;
     }
     .rep-custom-panel {
-      position: absolute; top: calc(100% + 8px); left: 0;
+      /* right:0 ancre le panel au bord droit du wrapper "Personnalisé"
+       * (qui est en bout de barre filtres) et le fait s'étirer vers la gauche.
+       * Évite le débord à droite de la viewport en desktop. Le max-width
+       * sécurise le cas où le wrapper serait trop à gauche. */
+      position: absolute; top: calc(100% + 8px); right: 0;
       z-index: 51;
       display: grid; grid-template-columns: 160px 220px;
       width: 380px; max-width: calc(100vw - 24px);

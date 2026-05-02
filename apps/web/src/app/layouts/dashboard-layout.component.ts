@@ -199,10 +199,18 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
 
     /* ─── DESKTOP SIDEBAR ─── */
     .desktop-sidebar {
-      display: flex; flex-direction: column; width: 240px; border-right: 1px solid var(--border-subtle);
-      background: var(--bg-secondary); transition: width .3s; shrink: 0;
+      display: flex; flex-direction: column;
+      /* flex: 0 0 240px au lieu de width: 240px : en flex-row, le shorthand
+       * fixe flex-basis (taille de reference) ce qui evite le delta entre la
+       * width fixe et le calcul flex-basis: auto. Sans ca, lors du toggle de
+       * la classe .collapsed, la transition CSS sur width ne se reflete pas
+       * dans le flex-basis et la .main-area ne reprend pas l'espace libere. */
+      flex: 0 0 240px;
+      width: 240px;
+      border-right: 1px solid var(--border-subtle);
+      background: var(--bg-secondary); transition: flex-basis .3s, width .3s;
     }
-    .desktop-sidebar.collapsed { width: 64px }
+    .desktop-sidebar.collapsed { flex-basis: 64px; width: 64px }
     .sidebar-top {
       display: flex; align-items: center; gap: 8px; padding: 0 12px; height: 56px;
       border-bottom: 1px solid var(--border-subtle);
