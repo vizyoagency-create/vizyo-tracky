@@ -49,7 +49,7 @@ en preview.
 - Heatmap 24h × 7j en SVG natif (~3 KB), tooltip hover + a11y screen reader
 - Bundle reports-component : 564 kB raw (Chart.js ~+180 kB, gzip ~+70 kB)
 
-### 5. Web Push notifications ✅ LIVRÉ (commit `__COMMIT_HASH__`)
+### 5. Web Push notifications ✅ LIVRÉ (commit `58c4c5f`)
 Finalisation Sprint M : VAPID configurées, SW enrichi, onboarding contextuel,
 toast critical avec son. Cf. [docs/18-web-push-deployment.md](18-web-push-deployment.md)
 pour la procédure prod.
