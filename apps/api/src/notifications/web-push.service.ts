@@ -22,6 +22,18 @@ export interface PushPayload {
   icon?: string;
   data?: Record<string, unknown>;
   url?: string; // URL a ouvrir au clic
+  /**
+   * Severite — utilisee cote SW pour decider du pattern de vibration
+   * et du flag `requireInteraction` (CRITICAL = notif persistante).
+   */
+  severity?: 'INFO' | 'WARNING' | 'CRITICAL';
+  /**
+   * Tag de regroupement — un seul push par tag est affiche a la fois,
+   * un nouveau push avec le meme tag remplace le precedent (utile pour
+   * eviter d'empiler 5 notifs pour la meme alerte re-poussee/escaladee).
+   * Convention : utiliser l'`alertId`.
+   */
+  tag?: string;
 }
 
 @Injectable()

@@ -49,13 +49,45 @@ en preview.
 - Heatmap 24h × 7j en SVG natif (~3 KB), tooltip hover + a11y screen reader
 - Bundle reports-component : 564 kB raw (Chart.js ~+180 kB, gzip ~+70 kB)
 
-### 5. Web Push notifications
-L'API WS pousse déjà les events `ALERT_NEW`. Câbler :
-- VAPID keys (déjà prévues côté code, mais pas configurées)
-- Service worker handler `push` event
-- Notification critical → vibrate + son
-- App fermée = toujours fonctionnel
-- Préférences /account → tester en réel
+### 5. Web Push notifications ✅ LIVRÉ (commit `__COMMIT_HASH__`)
+Finalisation Sprint M : VAPID configurées, SW enrichi, onboarding contextuel,
+toast critical avec son. Cf. [docs/18-web-push-deployment.md](18-web-push-deployment.md)
+pour la procédure prod.
+
+Ce qui a été livré :
+- VAPID keys générables via `npx web-push generate-vapid-keys` (placeholders dans
+  `.env.example` racine + `apps/api/.env.example` + `deploy/vps/.env.prod.example`)
+- SW enrichi : `vibrate` (pattern long-court-long-court-long pour CRITICAL),
+  `actions: [Acquitter, Voir]`, `tag: alertId` (anti-doublon), `renotify` pour
+  re-pushs CRITICAL
+- Backend `PushPayload` étendu (`severity`, `tag`) + dispatch transmet l'`alertId`
+  côté SW
+- Pont SW ↔ client : action "Acquitter" sur la notif système déclenche
+  `POST /api/alerts/:id/acknowledge` côté client (le SW n'a pas le JWT)
+- Onboarding contextuel `app-push-prompt` : banner discret affiché sous la
+  topbar **seulement** quand au moins 1 CRITICAL non acquittée existe + browser
+  supporté + pas déjà subscribed + pas dismiss < 7 jours
+- Toast in-app CRITICAL (`ToastService.critical`) : style halo rouge pulsant,
+  son WAV (`/assets/sounds/alert-critical.wav`, 14 KB), vibration mobile,
+  debounce 2 s pour éviter le spam audio si plusieurs CRITICAL en rafale
+- Audio pré-chargé au moment où l'utilisateur active le push (geste
+  utilisateur récent → bypass autoplay policy)
+
+Tests E2E validés en local (preview MCP, port 4201) :
+- `/api/notifications/push/public-key` retourne `enabled: true` + clé
+- SW chargé contient bien vibrate, actions, ACK_ALERT, renotify
+- Asset audio servi (200 OK, 14 156 bytes, durée 0.32 s)
+- `PushPromptComponent` apparaît automatiquement dès qu'une CRITICAL existe
+- Toggle "Activer les notifications push" présent dans `/account → Notifications`
+- Toast critical s'affiche avec actions Acquitter / Voir + halo rouge
+- Pont SW message → ack confirmé via logs API (POST acknowledge déclenché 186 ms
+  avant le fetch direct du test)
+
+Tests requérant un vrai browser avec permission accordée (hors scope CI headless) :
+- Notif système OS-level visible app au foreground / background / fermée
+- Vibration physique sur device mobile
+- Clic "Acquitter" / "Voir" depuis la barre de notifications OS
+- Re-subscription : nouvel endpoint généré, ancien purgé par auto-pruning 410
 
 ### 6. Performance bundle
 - `vehicle-detail-component` : 313 kB
@@ -110,4 +142,4 @@ Permet de tester en preview sur port séparé (4201) sans risque sur main.
 
 ---
 
-*Dernière mise à jour : 2026-05-01*
+*Dernière mise à jour : 2026-05-02 (item #5 livré dans `feat/web-push-finalize`).*

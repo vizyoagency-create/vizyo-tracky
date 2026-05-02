@@ -31,6 +31,7 @@ const COLOR_MAP: Record<ToastKind, string> = {
                     bg-bg-secondary/95 backdrop-blur-md border border-border-subtle
                     rounded-xl p-4 min-w-[260px] max-w-[400px]
                     flex items-start gap-3 shadow-lg"
+             [class.toast-critical]="toast.severity === 'critical'"
              [attr.role]="toast.kind === 'error' ? 'alert' : 'status'"
              [attr.aria-live]="toast.kind === 'error' ? 'assertive' : 'polite'">
           <lucide-icon
@@ -44,12 +45,23 @@ const COLOR_MAP: Record<ToastKind, string> = {
             @if (toast.message) {
               <p class="text-xs text-fg-tertiary mt-0.5">{{ toast.message }}</p>
             }
-            @if (toast.action) {
-              <button
-                (click)="runAction(toast)"
-                class="mt-2 text-xs font-semibold text-tracky-light hover:underline cursor-pointer">
-                {{ toast.action.label }}
-              </button>
+            @if (toast.action || toast.extraAction) {
+              <div class="mt-2 flex items-center gap-3">
+                @if (toast.action) {
+                  <button
+                    (click)="runAction(toast, 'primary')"
+                    class="text-xs font-semibold text-tracky-light hover:underline cursor-pointer">
+                    {{ toast.action.label }}
+                  </button>
+                }
+                @if (toast.extraAction) {
+                  <button
+                    (click)="runAction(toast, 'extra')"
+                    class="text-xs font-semibold text-fg-secondary hover:text-fg-primary hover:underline cursor-pointer">
+                    {{ toast.extraAction.label }}
+                  </button>
+                }
+              </div>
             }
           </div>
           <button
@@ -69,6 +81,31 @@ const COLOR_MAP: Record<ToastKind, string> = {
       to { transform: translateX(0); opacity: 1; }
     }
     .animate-slide-in { animation: slideIn 0.3s ease-out; }
+
+    /* Style CRITICAL : bordure rouge + halo subtil pour attirer le regard. */
+    .toast-critical {
+      border-color: rgba(220, 38, 38, 0.55) !important;
+      box-shadow:
+        0 12px 40px rgba(220, 38, 38, 0.15),
+        0 0 0 1px rgba(220, 38, 38, 0.25),
+        0 0 24px rgba(220, 38, 38, 0.18);
+      animation:
+        slideIn 0.3s ease-out,
+        toast-critical-pulse 1.6s ease-in-out infinite;
+    }
+    @keyframes toast-critical-pulse {
+      0%, 100% { box-shadow:
+        0 12px 40px rgba(220, 38, 38, 0.15),
+        0 0 0 1px rgba(220, 38, 38, 0.25),
+        0 0 24px rgba(220, 38, 38, 0.18); }
+      50% { box-shadow:
+        0 12px 40px rgba(220, 38, 38, 0.22),
+        0 0 0 1px rgba(220, 38, 38, 0.45),
+        0 0 32px rgba(220, 38, 38, 0.32); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .toast-critical { animation: slideIn 0.3s ease-out; }
+    }
 
     /* Position : bas-droite, plus de bottom-bar à éviter. Mobile : safe-area + 16px. */
     .toast-stack { bottom: 1rem; }
@@ -118,8 +155,9 @@ export class ToastContainerComponent {
     return COLOR_MAP[kind];
   }
 
-  runAction(toast: Toast): void {
-    toast.action?.callback();
+  runAction(toast: Toast, slot: 'primary' | 'extra' = 'primary'): void {
+    const action = slot === 'extra' ? toast.extraAction : toast.action;
+    action?.callback();
     this.toastService.dismiss(toast.id);
   }
 }

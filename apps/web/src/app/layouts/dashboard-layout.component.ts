@@ -24,10 +24,12 @@ import { ThemeToggleComponent } from '../shared/components/theme-toggle.componen
 import { AlertsBellComponent } from '../shared/ui/alerts-bell/alerts-bell.component';
 import { AuthService } from '../core/services/auth.service';
 import { NetworkStatusService } from '../core/services/network-status.service';
+import { NotificationsApiService } from '../core/services/notifications.service';
 import { OnboardingService } from '../core/services/onboarding.service';
 import { PermissionsService } from '../core/services/permissions.service';
 import { LogoComponent } from '../shared/ui/logo/logo.component';
 import { InstallBannerComponent } from '../shared/ui/install-banner/install-banner.component';
+import { PushPromptComponent } from '../shared/ui/push-prompt/push-prompt.component';
 import { ToastContainerComponent } from '../shared/ui/toast/toast-container.component';
 import { BottomSheetComponent } from '../shared/ui/bottom-sheet/bottom-sheet.component';
 import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wizard.component';
@@ -35,7 +37,7 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
 @Component({
   selector: 'app-dashboard-layout',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, ThemeToggleComponent, AlertsBellComponent, LogoComponent, InstallBannerComponent, ToastContainerComponent, BottomSheetComponent, OnboardingWizardComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, ThemeToggleComponent, AlertsBellComponent, LogoComponent, InstallBannerComponent, PushPromptComponent, ToastContainerComponent, BottomSheetComponent, OnboardingWizardComponent],
   template: `
     <a href="#main-content" class="skip-link">Aller au contenu principal</a>
     <div class="layout" [class.layout--fullscreen]="fullscreen()">
@@ -161,6 +163,7 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
       </nav>
 
       <app-install-banner />
+      <app-push-prompt />
       <app-toast-container />
       <app-onboarding-wizard />
     </div>
@@ -501,6 +504,7 @@ export class DashboardLayoutComponent {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly onboarding = inject(OnboardingService);
+  private readonly notif = inject(NotificationsApiService);
 
   constructor() {
     this.router.events.subscribe((event) => {
@@ -515,6 +519,11 @@ export class DashboardLayoutComponent {
     // V1.5 (Sprint J) — au mount du layout (= apres login), charger le profil
     // et ouvrir le wizard si onboardingCompletedAt est null.
     void this.onboarding.loadProfileAndDecide();
+    // V1.8 (web-push-finalize) — bridge SW <-> client pose des le boot session,
+    // pour que les actions "Acquitter" / "Voir" depuis une notif systeme soient
+    // capturees meme si l'utilisateur n'a pas visite /account dans cette session.
+    this.notif.installSwMessageBridge();
+    void this.notif.loadStatus();
   }
 
   private readonly auth = inject(AuthService);

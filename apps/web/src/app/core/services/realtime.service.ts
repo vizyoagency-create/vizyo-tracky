@@ -1,5 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { computed, effect, inject, Injectable, signal } from '@angular/core';
+import { Router } from '@angular/router';
 import type { AlertAcknowledgedEvent, AlertEvent, EngineCommandUpdatedEvent, FleetSnapshotResponse, PositionsBatchEvent, PositionUpdateEvent, TrackerStatusChangedDto, VehicleSnapshotDto } from '@vizyo/tracky-shared';
 import { WS_EVENTS } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
@@ -48,6 +49,7 @@ export class RealtimeService {
   private readonly preferences = inject(PreferencesService);
   private readonly http = inject(HttpClient);
   private readonly visibility = inject(VisibilityService);
+  private readonly router = inject(Router);
 
   /**
    * V1.5 (Sprint H2) — re-hydratation au retour foreground apres > 60s d'absence.
@@ -145,14 +147,29 @@ export class RealtimeService {
       const notifPrefs = this.preferences.prefs().notifications;
       const sevKey = alert.severity === 'CRITICAL' ? 'critical' : alert.severity === 'WARNING' ? 'warning' : 'info';
       const pref = notifPrefs[sevKey];
-      if (pref.enabled && !this.shouldThrottleToast(alert)) {
-        this.toast.show({
-          kind: alert.severity === 'CRITICAL' ? 'error' : alert.severity === 'WARNING' ? 'warning' : 'info',
+      if (!pref.enabled || this.shouldThrottleToast(alert)) return;
+
+      // V1.8 (web-push-finalize) — pour les CRITICAL, on declenche le toast
+      // riche (son + vibration + actions Acquitter/Voir + style pulsant). Le SW
+      // affiche en parallele une notif systeme si l'app est background ; en
+      // foreground certains browsers la suppriment, donc le toast in-app est
+      // notre garantie d'un signal visible+audible cote utilisateur.
+      if (alert.severity === 'CRITICAL') {
+        this.toast.critical({
           title: alert.title,
-          message: alert.vehiclePlate ? `Véhicule ${alert.vehiclePlate}` : undefined,
-          duration: pref.duration,
+          message: alert.vehiclePlate ? `Vehicule ${alert.vehiclePlate}` : undefined,
+          onAcknowledge: () => this.acknowledgeAlertInline(alert.id),
+          onView: () => { void this.router.navigateByUrl('/alerts'); },
         });
+        return;
       }
+
+      this.toast.show({
+        kind: alert.severity === 'WARNING' ? 'warning' : 'info',
+        title: alert.title,
+        message: alert.vehiclePlate ? `Véhicule ${alert.vehiclePlate}` : undefined,
+        duration: pref.duration,
+      });
     });
 
     this.socket.on(WS_EVENTS.ALERT_ACK, (event: AlertAcknowledgedEvent) => {
@@ -184,6 +201,18 @@ export class RealtimeService {
 
   dismissAlert(id: string): void {
     this._alerts.update((list) => list.filter((a) => a.id !== id));
+  }
+
+  /**
+   * Acquittement depuis un toast critical (in-app). Le serveur emettra
+   * ALERT_ACK qui retire l'alerte de la liste — pas besoin d'updater le
+   * signal ici. Erreurs silencieuses (toast d'erreur deja affiche par
+   * l'appelant si besoin).
+   */
+  private acknowledgeAlertInline(alertId: string): void {
+    void firstValueFrom(this.http.post(`/api/alerts/${alertId}/acknowledge`, {})).catch(() => {
+      this.toast.error('Echec de l\'acquittement', 'Reessayer depuis la liste des alertes');
+    });
   }
 
   disconnect(): void {

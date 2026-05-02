@@ -4,11 +4,19 @@
  * Role minimal : recevoir les push notifications et les afficher.
  * Pas de mise en cache offline (out of scope V1.5).
  *
- * Activé manuellement via /account → toggle "Activer les notifications push"
+ * Active manuellement via /account → toggle "Activer les notifications push"
  * (le browser register le SW + on subscribe via PushManager).
+ *
+ * V1.8 (web-push-finalize) — payload enrichi :
+ *   - severity: 'INFO' | 'WARNING' | 'CRITICAL' -> pattern vibration + requireInteraction
+ *   - tag: alertId -> regroupement (un push par alerte, un re-push remplace)
+ *   - actions: [Acquitter, Voir]
+ *     - "ack"  : POST /api/alerts/:id/acknowledge en passant par un client focus
+ *                qui a le JWT (le SW n'a pas le token, on lui delegue l'appel HTTP)
+ *     - "view" : ouvre/focus un onglet sur data.url
  */
 
-self.addEventListener('install', (event) => {
+self.addEventListener('install', () => {
   // Pas de cache pre-fetch — on prend effet immediatement.
   self.skipWaiting();
 });
@@ -18,49 +26,114 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('push', (event) => {
-  let data = { title: 'Vizyo Tracky', body: '', url: '/' };
+  let data = { title: 'Vizyo Tracky', body: '', url: '/', severity: 'INFO' };
   try {
     if (event.data) {
       data = Object.assign(data, event.data.json());
     }
-  } catch (err) {
+  } catch {
     // payload non-JSON — utilise les defauts.
   }
+
+  const isCritical = data.severity === 'CRITICAL';
+
+  // Pattern vibration : long-court-long-court-long pour CRITICAL (motif urgence
+  // simplifie), pulse court pour WARNING/INFO. Cote SW : navigator.vibrate n'est
+  // pas universel (ignore sur desktop, OK Android Chrome). On laisse le browser
+  // decider via le champ vibrate des NotificationOptions.
+  const vibrate = isCritical ? [200, 100, 200, 100, 200] : [100];
 
   const options = {
     body: data.body,
     icon: data.icon || '/favicon.ico',
     badge: '/favicon.ico',
-    data: { url: data.url || '/', ...data.data },
-    requireInteraction: data.severity === 'CRITICAL',
+    data: {
+      url: data.url || '/',
+      alertId: data.data && data.data.alertId,
+      severity: data.severity,
+      ...(data.data || {}),
+    },
+    requireInteraction: isCritical,
+    vibrate,
     tag: data.tag,
+    // renotify: re-jouer le son meme si une notif avec le meme tag existe deja.
+    // Pertinent pour les CRITICAL re-poussees (escalade) — sinon le browser
+    // remplace silencieusement et l'utilisateur peut rater l'escalade.
+    renotify: isCritical && !!data.tag,
+    actions: [
+      { action: 'ack', title: 'Acquitter' },
+      { action: 'view', title: 'Voir' },
+    ],
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title, options),
+    Promise.all([
+      self.registration.showNotification(data.title, options),
+      // Notifie tous les clients ouverts pour qu'ils mettent a jour le toast in-app
+      // / la cloche d'alertes meme si la WS etait deconnectee. Best-effort.
+      notifyClients({ type: 'PUSH_RECEIVED', payload: data }),
+    ]),
   );
 });
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const targetUrl = event.notification.data && event.notification.data.url
-    ? event.notification.data.url
-    : '/';
-  event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
-      // Si un onglet Tracky est deja ouvert, on l'utilise au lieu d'en ouvrir un nouveau.
-      for (const w of windows) {
-        if (w.url.includes(self.location.origin) && 'focus' in w) {
-          w.focus();
-          if ('navigate' in w) {
-            w.navigate(targetUrl);
-          }
-          return;
-        }
+
+  const action = event.action;
+  const data = event.notification.data || {};
+  const targetUrl = data.url || '/';
+  const alertId = data.alertId;
+
+  event.waitUntil((async () => {
+    if (action === 'ack' && alertId) {
+      // Le SW n'a pas le JWT en memoire — on demande au premier client
+      // disponible de faire l'appel HTTP authentifie. Si aucun client n'est
+      // ouvert, on ouvre l'app sur /alerts?ack=<id> qui prendra le relais.
+      const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      const target = pickClient(clients);
+      if (target) {
+        target.postMessage({ type: 'ACK_ALERT', alertId });
+        if ('focus' in target) await target.focus();
+        return;
       }
       if (self.clients.openWindow) {
-        return self.clients.openWindow(targetUrl);
+        await self.clients.openWindow(`/alerts?ack=${encodeURIComponent(alertId)}`);
       }
-    }),
-  );
+      return;
+    }
+
+    // action === 'view' OU clic sur le corps de la notif (action vide).
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of clients) {
+      if (client.url.includes(self.location.origin) && 'focus' in client) {
+        await client.focus();
+        if ('navigate' in client) {
+          try { await client.navigate(targetUrl); } catch { /* ignore */ }
+        } else {
+          client.postMessage({ type: 'NAVIGATE', url: targetUrl });
+        }
+        return;
+      }
+    }
+    if (self.clients.openWindow) {
+      await self.clients.openWindow(targetUrl);
+    }
+  })());
 });
+
+function pickClient(clients) {
+  const focused = clients.find((c) => c.focused && c.visibilityState === 'visible');
+  if (focused) return focused;
+  const visible = clients.find((c) => c.visibilityState === 'visible');
+  if (visible) return visible;
+  return clients[0] || null;
+}
+
+async function notifyClients(message) {
+  try {
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of clients) {
+      try { client.postMessage(message); } catch { /* ignore */ }
+    }
+  } catch { /* ignore */ }
+}

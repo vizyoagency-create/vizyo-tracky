@@ -1,6 +1,8 @@
 import { HttpClient } from '@angular/common/http';
 import { computed, inject, Injectable, signal } from '@angular/core';
+import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
+import { ToastService } from '../../shared/ui/toast/toast.service';
 
 export interface PushSubscriptionDto {
   id: string;
@@ -37,6 +39,8 @@ export interface AlertRuleDto {
 @Injectable({ providedIn: 'root' })
 export class NotificationsApiService {
   private readonly http = inject(HttpClient);
+  private readonly router = inject(Router);
+  private readonly toast = inject(ToastService);
 
   readonly pushEnabled = signal<boolean | null>(null);
   readonly publicKey = signal<string | null>(null);
@@ -45,6 +49,8 @@ export class NotificationsApiService {
   readonly rules = signal<AlertRuleDto[]>([]);
 
   readonly isSubscribed = computed(() => this.currentSubscription() !== null);
+
+  private swMessageBound = false;
 
   // ─── Service Worker + Push ──────────────────────────────────
 
@@ -73,7 +79,9 @@ export class NotificationsApiService {
   async registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
     if (!this.isPushSupported()) return null;
     try {
-      return await navigator.serviceWorker.register('/sw.js');
+      const reg = await navigator.serviceWorker.register('/sw.js');
+      this.installSwMessageBridge();
+      return reg;
     } catch {
       return null;
     }
@@ -83,8 +91,50 @@ export class NotificationsApiService {
     if (!this.isPushSupported()) return;
     const reg = await navigator.serviceWorker.getRegistration() ?? await this.registerServiceWorker();
     if (!reg) return;
+    this.installSwMessageBridge();
     const sub = await reg.pushManager.getSubscription();
     this.currentSubscription.set(sub);
+  }
+
+  /**
+   * Pont SW -> client. Le SW poste 3 types de messages :
+   *   - ACK_ALERT { alertId }   : acquittement declenche depuis l'action
+   *                                "Acquitter" d'une notification systeme.
+   *   - NAVIGATE  { url }       : fallback navigation si client.navigate() KO.
+   *   - PUSH_RECEIVED { payload }: notif systeme affichee — utile pour rafraichir
+   *                                la cloche meme si la WS est deconnectee.
+   *
+   * Idempotent : on s'attache une seule fois.
+   */
+  installSwMessageBridge(): void {
+    if (this.swMessageBound || typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+      return;
+    }
+    this.swMessageBound = true;
+    navigator.serviceWorker.addEventListener('message', (event: MessageEvent) => {
+      const data = event.data as { type?: string; alertId?: string; url?: string } | null;
+      if (!data || typeof data !== 'object' || !data.type) return;
+
+      if (data.type === 'ACK_ALERT' && data.alertId) {
+        this.acknowledgeAlertFromSw(data.alertId);
+        return;
+      }
+      if (data.type === 'NAVIGATE' && data.url) {
+        this.router.navigateByUrl(data.url).catch(() => {/* ignore */});
+        return;
+      }
+      // PUSH_RECEIVED : on laisse les autres services (RealtimeService) reagir
+      // s'ils ont leur propre listener — pas d'action centrale ici.
+    });
+  }
+
+  private async acknowledgeAlertFromSw(alertId: string): Promise<void> {
+    try {
+      await firstValueFrom(this.http.post(`/api/alerts/${alertId}/acknowledge`, {}));
+      this.toast.success('Alerte acquittee');
+    } catch {
+      this.toast.error('Echec de l\'acquittement', 'Reessayer depuis la liste des alertes');
+    }
   }
 
   async subscribePush(): Promise<{ ok: boolean; reason?: string }> {
@@ -114,6 +164,10 @@ export class NotificationsApiService {
       }),
     );
     this.currentSubscription.set(sub);
+    // Pre-charge l'audio CRITICAL : on est dans un handler d'interaction
+    // utilisateur (clic Activer), c'est le moment optimal pour bypass
+    // l'autoplay policy. Sans ca, le 1er son CRITICAL pourrait etre bloque.
+    this.toast.primeCriticalAudio();
     return { ok: true };
   }
 

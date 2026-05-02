@@ -180,7 +180,17 @@ export class NotificationDispatchService {
         title: subject,
         body: alert.message ?? alert.title,
         url: '/alerts',
-        data: { alertId: alert.id, escalation: isEscalation },
+        data: {
+          alertId: alert.id,
+          escalation: isEscalation,
+          severity: alert.severity,
+          vehiclePlate: plate,
+        },
+        // Severite -> SW : pattern vibration + requireInteraction si CRITICAL.
+        severity: alert.severity as 'INFO' | 'WARNING' | 'CRITICAL',
+        // Tag = alertId : si l'alerte est re-pushee (escalade), la nouvelle notif
+        // remplace l'ancienne dans le centre de notifications du browser/OS.
+        tag: alert.id,
       });
       return;
     }
