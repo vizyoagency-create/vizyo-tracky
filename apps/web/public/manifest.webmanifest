@@ -1,6 +1,6 @@
 {
   "name": "Vizyo Tracky - Gestion de flotte GPS",
-  "short_name": "Tracky",
+  "short_name": "Vizyo Tracky",
   "description": "Suivi temps reel de flotte, coupure moteur securisee, alertes multi-flottes.",
   "start_url": "/dashboard",
   "scope": "/",
@@ -15,13 +15,13 @@
   "dir": "ltr",
   "icons": [
     {
-      "src": "logos/svg/vizyo-tracky-icon-green.svg",
+      "src": "logos/svg/vizyo-tracky-icon-black.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
     },
     {
-      "src": "logos/png/vizyo-tracky-icon-green.png",
+      "src": "logos/png/vizyo-tracky-icon-black.png",
       "sizes": "256x256",
       "type": "image/png",
       "purpose": "any"
@@ -33,7 +33,7 @@
       "purpose": "any"
     },
     {
-      "src": "logos/png/vizyo-tracky-icon-green.png",
+      "src": "logos/png/vizyo-tracky-icon-black.png",
       "sizes": "256x256",
       "type": "image/png",
       "purpose": "maskable"
@@ -45,21 +45,21 @@
       "short_name": "Carte",
       "description": "Voir la carte en direct",
       "url": "/map",
-      "icons": [{ "src": "logos/svg/vizyo-tracky-icon-green.svg", "sizes": "any", "type": "image/svg+xml" }]
+      "icons": [{ "src": "logos/svg/vizyo-tracky-icon-black.svg", "sizes": "any", "type": "image/svg+xml" }]
     },
     {
       "name": "Alertes",
       "short_name": "Alertes",
       "description": "Liste des alertes recentes",
       "url": "/alerts",
-      "icons": [{ "src": "logos/svg/vizyo-tracky-icon-green.svg", "sizes": "any", "type": "image/svg+xml" }]
+      "icons": [{ "src": "logos/svg/vizyo-tracky-icon-black.svg", "sizes": "any", "type": "image/svg+xml" }]
     },
     {
       "name": "Vehicules",
       "short_name": "Vehicules",
       "description": "Liste de la flotte",
       "url": "/vehicles",
-      "icons": [{ "src": "logos/svg/vizyo-tracky-icon-green.svg", "sizes": "any", "type": "image/svg+xml" }]
+      "icons": [{ "src": "logos/svg/vizyo-tracky-icon-black.svg", "sizes": "any", "type": "image/svg+xml" }]
     }
   ]
 }
