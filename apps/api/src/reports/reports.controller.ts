@@ -12,6 +12,7 @@ import type { Response } from 'express';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { PrismaService } from '../prisma/prisma.service';
 import { ReportCsvService } from './report-csv.service';
 import { ReportPdfService } from './report-pdf.service';
 import { ReportsStatsService } from './reports-stats.service';
@@ -33,6 +34,7 @@ export class ReportsController {
     private readonly stats: ReportsStatsService,
     private readonly pdf: ReportPdfService,
     private readonly csv: ReportCsvService,
+    private readonly prisma: PrismaService,
   ) {}
 
   @Get('stats')
@@ -43,7 +45,7 @@ export class ReportsController {
     @Query('from') fromRaw: string,
     @Query('to') toRaw: string,
   ) {
-    const { from, to, fleetId } = this.parseRange(req, fleetIdQ, fromRaw, toRaw);
+    const { from, to, fleetId } = await this.parseRange(req, fleetIdQ, fromRaw, toRaw);
     return this.stats.compute(fleetId, from, to, { role: req.user.role, fleetId: req.user.fleetId });
   }
 
@@ -56,7 +58,7 @@ export class ReportsController {
     @Query('from') fromRaw: string,
     @Query('to') toRaw: string,
   ): Promise<void> {
-    const { from, to, fleetId } = this.parseRange(req, fleetIdQ, fromRaw, toRaw);
+    const { from, to, fleetId } = await this.parseRange(req, fleetIdQ, fromRaw, toRaw);
     const report = await this.stats.compute(fleetId, from, to, { role: req.user.role, fleetId: req.user.fleetId });
     const buffer = await this.pdf.generate(report);
     const filename = `tracky-rapport-${from.toISOString().slice(0, 10)}_${to.toISOString().slice(0, 10)}.pdf`;
@@ -75,7 +77,7 @@ export class ReportsController {
     @Query('from') fromRaw: string,
     @Query('to') toRaw: string,
   ): Promise<void> {
-    const { from, to, fleetId } = this.parseRange(req, fleetIdQ, fromRaw, toRaw);
+    const { from, to, fleetId } = await this.parseRange(req, fleetIdQ, fromRaw, toRaw);
     let result;
     switch (type) {
       case 'positions': result = await this.csv.positions(fleetId, from, to); break;
@@ -90,12 +92,12 @@ export class ReportsController {
     res.send(result.body);
   }
 
-  private parseRange(
+  private async parseRange(
     req: AuthenticatedRequest,
     fleetIdQ: string | undefined,
     fromRaw: string,
     toRaw: string,
-  ): { from: Date; to: Date; fleetId: string } {
+  ): Promise<{ from: Date; to: Date; fleetId: string }> {
     if (!fromRaw || !toRaw) {
       throw new BadRequestException('from et to (ISO date) requis');
     }
@@ -107,9 +109,13 @@ export class ReportsController {
     if (from.getTime() >= to.getTime()) {
       throw new BadRequestException('from doit etre strictement avant to');
     }
-    const fleetId = req.user.role === UserRole.SUPER_ADMIN
+    let fleetId = req.user.role === UserRole.SUPER_ADMIN
       ? (fleetIdQ ?? req.user.fleetId ?? '')
       : (req.user.fleetId ?? '');
+    if (!fleetId && req.user.role === UserRole.SUPER_ADMIN) {
+      const firstFleet = await this.prisma.fleet.findFirst({ orderBy: { createdAt: 'asc' }, select: { id: true } });
+      if (firstFleet) fleetId = firstFleet.id;
+    }
     if (!fleetId) {
       throw new BadRequestException('fleetId requis');
     }
