@@ -264,7 +264,45 @@ const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible a
         }
       </div>
 
-      <!-- Calques toggle desktop : ouvre le panel collapsable -->
+      <!-- Smart search desktop (placée AVANT le toggle Calques pour qu'elle reste
+           accessible quand le panel Calques est ouvert et grandit vers le bas).
+           Le z-index explicite assure que les suggestions (qui sortent vers la
+           droite via .tracky-search-suggestions--flyout) restent au-dessus du
+           panel Calques, qui crée son propre stacking context (backdrop-filter). -->
+      <div class="mt-2 bg-bg-secondary/85 backdrop-blur-md border border-border-subtle
+                  rounded-[--radius-card] p-2 min-w-[220px] relative"
+           style="z-index: 50">
+        <input
+          type="search"
+          placeholder="Plaque ou adresse..."
+          [value]="searchQuery()"
+          (keydown.enter)="searchAddress($event)"
+          (input)="onSearchInput($event)"
+          (focus)="searchFocused.set(true)"
+          (blur)="onSearchBlur()"
+          class="w-full bg-transparent text-xs text-fg-primary placeholder:text-fg-tertiary
+                 px-2 py-1.5 outline-none" />
+        @if (searchFocused() && vehicleMatches().length > 0) {
+          <!-- Flyout : sort à DROITE de la card du HUD au lieu de descendre,
+               afin de ne pas se faire couvrir par le panel Calques inline ouvert
+               en dessous. Sur viewport étroit (HUD trop large) on retombe sous
+               le champ via media query plus bas. -->
+          <div class="tracky-search-suggestions tracky-search-suggestions--flyout
+                      bg-bg-secondary/95 backdrop-blur-md border border-border-subtle
+                      rounded-lg overflow-hidden shadow-2xl">
+            @for (v of vehicleMatches(); track v.vehicleId) {
+              <button (mousedown)="jumpToVehicle(v.vehicleId)"
+                      class="w-full text-left px-3 py-2 text-xs text-fg-primary
+                             hover:bg-bg-tertiary cursor-pointer flex items-center justify-between gap-2">
+                <span class="font-mono">{{ v.plate }}</span>
+                <span class="text-[10px] text-fg-tertiary">{{ v.type }}</span>
+              </button>
+            }
+          </div>
+        }
+      </div>
+
+      <!-- Calques toggle desktop : ouvre le panel collapsable inline (en dessous) -->
       <button
         (click)="calquesPanelOpen.set(!calquesPanelOpen())"
         [class]="'tracky-desktop-only mt-2 w-full flex items-center justify-between gap-2 px-3 py-2 ' +
@@ -284,34 +322,63 @@ const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible a
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" [style.transform]="calquesPanelOpen() ? 'rotate(180deg)' : ''" style="transition: transform 200ms"><polyline points="6 9 12 15 18 9"/></svg>
       </button>
 
-      <!-- Smart search desktop -->
-      <div class="mt-2 bg-bg-secondary/85 backdrop-blur-md border border-border-subtle
-                  rounded-[--radius-card] p-2 min-w-[220px] relative">
-        <input
-          type="search"
-          placeholder="Plaque ou adresse..."
-          [value]="searchQuery()"
-          (keydown.enter)="searchAddress($event)"
-          (input)="onSearchInput($event)"
-          (focus)="searchFocused.set(true)"
-          (blur)="onSearchBlur()"
-          class="w-full bg-transparent text-xs text-fg-primary placeholder:text-fg-tertiary
-                 px-2 py-1.5 outline-none" />
-        @if (searchFocused() && vehicleMatches().length > 0) {
-          <div style="position:absolute;top:100%;left:0;right:0;z-index:1700"
-               class="mt-1 bg-bg-secondary/95 backdrop-blur-md border border-border-subtle
-                      rounded-lg overflow-hidden shadow-2xl">
-            @for (v of vehicleMatches(); track v.vehicleId) {
-              <button (mousedown)="jumpToVehicle(v.vehicleId)"
-                      class="w-full text-left px-3 py-2 text-xs text-fg-primary
-                             hover:bg-bg-tertiary cursor-pointer flex items-center justify-between gap-2">
-                <span class="font-mono">{{ v.plate }}</span>
-                <span class="text-[10px] text-fg-tertiary">{{ v.type }}</span>
-              </button>
-            }
+      <!-- Calques inline desktop panel (visible quand calquesPanelOpen() && >=768px).
+           Remplace l'ancien panel absolu fixé en bas qui chevauchait la barre de
+           recherche quand il grandissait. Maintenant le panel pousse simplement
+           le contenu du HUD vers le bas, sans aucun overlap possible. -->
+      @if (calquesPanelOpen()) {
+        <div class="tracky-calques-inline tracky-desktop-only mt-2
+                    bg-bg-secondary/95 backdrop-blur-md border border-border-subtle
+                    rounded-[--radius-card] p-3 min-w-[220px]">
+          <div class="flex flex-col gap-1.5">
+            <label class="tracky-sheet-checkbox">
+              <input type="checkbox" [checked]="filters().moving" (change)="toggleFilter('moving')" />
+              <span class="w-2.5 h-2.5 rounded-full" style="background:#10E0A0"></span>
+              <span>En mouvement</span>
+            </label>
+            <label class="tracky-sheet-checkbox">
+              <input type="checkbox" [checked]="filters().idle" (change)="toggleFilter('idle')" />
+              <span class="w-2.5 h-2.5 rounded-full" style="background:#5C746C"></span>
+              <span>Arrêt moteur ON</span>
+            </label>
+            <label class="tracky-sheet-checkbox">
+              <input type="checkbox" [checked]="filters().off" (change)="toggleFilter('off')" />
+              <span class="w-2.5 h-2.5 rounded-full" style="background:#6b7280"></span>
+              <span>Éteint</span>
+            </label>
+            <label class="tracky-sheet-checkbox">
+              <input type="checkbox" [checked]="filters().offline" (change)="toggleFilter('offline')" />
+              <span class="w-2.5 h-2.5 rounded-full" style="background:#9ca3af"></span>
+              <span>Hors-ligne (>10min)</span>
+            </label>
+            <hr class="my-1 border-border-subtle" />
+            <label class="tracky-sheet-checkbox">
+              <input type="checkbox" [checked]="showGeofences()" (change)="toggleGeofences()" />
+              <span>Géofences</span>
+            </label>
+            <label class="tracky-sheet-checkbox">
+              <input type="checkbox" [checked]="showTrails()" (change)="toggleTrails()" />
+              <span>Traces</span>
+            </label>
+            <label class="tracky-sheet-checkbox">
+              <input type="checkbox" [checked]="showPlates()" (change)="togglePlates()" />
+              <span>Plaques</span>
+            </label>
+            <label class="tracky-sheet-checkbox">
+              <input type="checkbox" [checked]="showStops()" (change)="toggleStops()" />
+              <span>Arrêts > 5min (24h)</span>
+            </label>
+            <label class="tracky-sheet-checkbox">
+              <input type="checkbox" [checked]="showHeatmap()" (change)="toggleHeatmap()" />
+              <span>Heatmap densité (24h)</span>
+            </label>
+            <label class="tracky-sheet-checkbox">
+              <input type="checkbox" [checked]="compactMarkers()" (change)="toggleCompactMarkers()" />
+              <span>Mode compact (zoom faible)</span>
+            </label>
           </div>
-        }
-      </div>
+        </div>
+      }
     </div>
 
     <!-- Style + Camera pickers top-right - DESKTOP ONLY (caché en mobile)
@@ -1153,12 +1220,63 @@ const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible a
     .tracky-mobile-sheet-overlay { display: none; }
 
     /* ─── DESKTOP : panel Calques collapsable ───────────────────────────
-     * Par défaut FERMÉ pour libérer la map. Le bouton "Calques" du HUD
-     * top-left toggle l'état via le signal calquesPanelOpen. */
+     * Sur desktop on utilise désormais .tracky-calques-inline rendu
+     * directement dans le HUD top-left (sous le toggle Calques). L'ancien
+     * panel absolu .tracky-calques-panel est utilisé UNIQUEMENT pour la
+     * bottom-sheet mobile et reste donc caché sur desktop quoiqu'il arrive.
+     * Cela résout le bug d'overlap entre la barre de recherche et le panel
+     * Calques quand celui-ci grandissait. */
     @media (min-width: 768px) {
-      .tracky-calques-panel { display: none; }
-      .tracky-calques-panel.tracky-calques-panel--desktop-open { display: block; }
+      .tracky-calques-panel { display: none !important; }
       .tracky-desktop-only { display: flex; }
+
+      /* Calques inline desktop — version compacte alignée avec le reste du HUD */
+      .tracky-calques-inline {
+        animation: calques-inline-pop .18s cubic-bezier(0.16, 1, 0.3, 1) both;
+        position: relative;
+        z-index: 1; /* explicite < z-index search wrapper (50) */
+      }
+      .tracky-calques-inline .tracky-sheet-checkbox {
+        font-size: 12px;
+        padding: 4px 4px;
+        gap: 8px;
+      }
+      .tracky-calques-inline .tracky-sheet-checkbox input {
+        width: 14px; height: 14px;
+      }
+      @keyframes calques-inline-pop {
+        from { opacity: 0; transform: translateY(-4px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+
+      /* ─── Suggestions de recherche (desktop) ──────────────────────────
+       * Par défaut on les sort à DROITE de la card du HUD pour ne pas
+       * se faire couvrir par le panel Calques inline quand il est ouvert.
+       * Largeur fixe ~280px, projection à 8px du bord droit du wrapper. */
+      .tracky-search-suggestions--flyout {
+        position: absolute;
+        top: 0;
+        left: calc(100% + 8px);
+        width: 280px;
+        z-index: 1700;
+        animation: search-flyout-pop .18s cubic-bezier(0.16, 1, 0.3, 1) both;
+      }
+      @keyframes search-flyout-pop {
+        from { opacity: 0; transform: translateX(-6px); }
+        to   { opacity: 1; transform: translateX(0); }
+      }
+    }
+    /* Sur viewports étroits (tablette portrait) : fallback sous le champ
+     * pour éviter un overflow horizontal hors de l'écran. */
+    @media (min-width: 768px) and (max-width: 1023px) {
+      .tracky-search-suggestions--flyout {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        width: auto;
+        margin-top: 4px;
+      }
     }
     @media (max-width: 767px) {
       .tracky-desktop-only { display: none !important; }
