@@ -1,10 +1,28 @@
 <!doctype html>
-<html lang="fr" data-theme="light">
+<html lang="fr" data-theme="dark">
   <head>
     <meta charset="utf-8" />
     <title>Vizyo Tracky — Gestion de flotte GPS</title>
     <meta name="description" content="Plateforme de gestion de flotte GPS Vizyo Tracky. Suivi temps reel, coupure moteur securisee, alertes." />
     <base href="/" />
+
+    <!--
+      Theme initial : lu depuis localStorage si l'user a deja choisi, sinon
+      derive de prefers-color-scheme. Defini AVANT le rendu du splash et de
+      l'app pour eviter tout flash de theme. Le ThemeService persiste sa
+      valeur dans la meme cle apres bootstrap pour rester en sync.
+    -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('vizyo-theme');
+          var theme = stored === 'light' || stored === 'dark'
+            ? stored
+            : (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+          document.documentElement.setAttribute('data-theme', theme);
+        } catch (e) { /* keep default 'dark' */ }
+      })();
+    </script>
 
     <!-- Viewport : viewport-fit=cover indispensable pour activer env(safe-area-inset-*) sur iOS -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -123,62 +141,164 @@
 
     <!--
       Splash "in-DOM" : couvre tous les OS (Android, iOS, desktop standalone) en
-      affichant le logo + spinner avant que le bundle Angular ne s'hydrate.
-      Style inline pour zero FOUC. Le fade-out est declenche par main.ts apres
-      bootstrap, sinon timeout fallback de 8s pour eviter de bloquer l'utilisateur.
+      affichant le logo + nom + halo tracky avant que le bundle Angular n'hydrate.
+      Style inline pour zero FOUC. Fade-out declenche par main.ts apres bootstrap.
+
+      Design : fond #0A0F0D (cohrerent manifest), halo radial tracky qui pulse
+      doucement derriere le logo, titre en uppercase letterspaced, loader minimal
+      qui n'apparait qu'apres 700ms (donc invisible si bootstrap rapide).
     -->
     <style>
+      /* Splash : variantes dark (par defaut) / light pilotees par html[data-theme] */
       #app-splash {
         position: fixed;
         inset: 0;
         z-index: 2147483647;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 28px;
-        background: #0A0F0D;
+        display: grid;
+        place-items: center;
+        /* Dark par defaut (cohrent manifest + startup images iOS) */
+        background:
+          radial-gradient(ellipse 70% 55% at 50% 42%, rgba(16, 185, 129, 0.10), transparent 65%),
+          #0A0F0D;
         color: #fff;
         opacity: 1;
-        transition: opacity 280ms ease-out;
-        /* Respecte les safe-areas iOS pour ne pas que le logo soit colle a la notch */
+        overflow: hidden;
+        transition: opacity 480ms cubic-bezier(0.4, 0, 0.2, 1);
+        /* Safe-area iOS pour ne pas coller a la notch */
         padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        /* Optimisation rendering */
+        will-change: opacity;
+      }
+      html[data-theme="light"] #app-splash {
+        background:
+          radial-gradient(ellipse 70% 55% at 50% 42%, rgba(5, 150, 105, 0.07), transparent 65%),
+          #fafafa;
+        color: #0A0F0D;
       }
       #app-splash.is-hidden {
         opacity: 0;
         pointer-events: none;
       }
-      #app-splash .splash-logo {
-        width: 96px;
-        height: auto;
-        animation: splash-pop 520ms cubic-bezier(0.16, 1, 0.3, 1);
+      #app-splash .splash-stack {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 24px;
+        animation: splash-rise 720ms cubic-bezier(0.16, 1, 0.3, 1) both;
       }
-      #app-splash .splash-spinner {
-        width: 28px;
-        height: 28px;
-        border: 2.5px solid rgba(255, 255, 255, 0.12);
-        border-top-color: #10B981;
+      #app-splash .splash-glow {
+        position: absolute;
+        top: 18px;
+        left: 50%;
+        width: 220px;
+        height: 220px;
+        margin-left: -110px;
         border-radius: 50%;
-        animation: splash-spin 720ms linear infinite;
+        background: radial-gradient(circle, rgba(16, 185, 129, 0.55), transparent 65%);
+        filter: blur(48px);
+        z-index: -1;
+        pointer-events: none;
+        animation: splash-pulse 2600ms ease-in-out infinite;
       }
-      @keyframes splash-pop {
-        from { opacity: 0; transform: translateY(8px) scale(0.92); }
-        to   { opacity: 1; transform: translateY(0) scale(1); }
+      html[data-theme="light"] #app-splash .splash-glow {
+        background: radial-gradient(circle, rgba(5, 150, 105, 0.32), transparent 65%);
       }
-      @keyframes splash-spin {
-        to { transform: rotate(360deg); }
+      #app-splash .splash-logo {
+        width: 88px;
+        height: auto;
+        display: block;
+        filter: drop-shadow(0 2px 16px rgba(0, 0, 0, 0.35));
       }
-      /* Pendant que le splash est visible, on fige le scroll pour eviter qu'un scroll horizontal
-         soit declenche par le contenu derriere */
-      html.app-splash-active, html.app-splash-active body {
+      #app-splash .splash-logo--dark { display: block; }
+      #app-splash .splash-logo--light { display: none; }
+      html[data-theme="light"] #app-splash .splash-logo--dark { display: none; }
+      html[data-theme="light"] #app-splash .splash-logo--light { display: block; }
+      html[data-theme="light"] #app-splash .splash-logo {
+        filter: drop-shadow(0 2px 12px rgba(0, 0, 0, 0.10));
+      }
+      #app-splash .splash-title {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.26em;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.82);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      }
+      html[data-theme="light"] #app-splash .splash-title {
+        color: rgba(10, 15, 13, 0.72);
+      }
+      #app-splash .splash-loader {
+        margin-top: 8px;
+        width: 38px;
+        height: 2px;
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 1px;
         overflow: hidden;
+        position: relative;
+        opacity: 0;
+        /* Apparait seulement apres 700ms : si le bootstrap est rapide, pas de flash de loader */
+        animation: splash-loader-in 480ms 700ms ease-out forwards;
+      }
+      html[data-theme="light"] #app-splash .splash-loader {
+        background: rgba(10, 15, 13, 0.08);
+      }
+      #app-splash .splash-loader::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 60%;
+        height: 100%;
+        background: linear-gradient(to right, transparent, #10B981, transparent);
+        animation: splash-loader-slide 1500ms ease-in-out infinite;
+      }
+      html[data-theme="light"] #app-splash .splash-loader::before {
+        background: linear-gradient(to right, transparent, #059669, transparent);
+      }
+      @keyframes splash-rise {
+        from { opacity: 0; transform: scale(0.97); }
+        to   { opacity: 1; transform: scale(1); }
+      }
+      @keyframes splash-pulse {
+        0%, 100% { opacity: 0.55; transform: scale(0.94); }
+        50%      { opacity: 0.95; transform: scale(1.06); }
+      }
+      @keyframes splash-loader-in {
+        to { opacity: 1; }
+      }
+      @keyframes splash-loader-slide {
+        0%   { transform: translateX(-100%); }
+        100% { transform: translateX(200%); }
+      }
+      /* Lock scroll pendant que le splash est visible */
+      html.app-splash-active,
+      html.app-splash-active body {
+        overflow: hidden;
+      }
+      /* Respect prefers-reduced-motion : pas de pulse / slide */
+      @media (prefers-reduced-motion: reduce) {
+        #app-splash .splash-stack,
+        #app-splash .splash-glow,
+        #app-splash .splash-loader,
+        #app-splash .splash-loader::before {
+          animation: none;
+        }
+        #app-splash .splash-stack { opacity: 1; transform: none; }
+        #app-splash .splash-loader { opacity: 1; }
       }
     </style>
   </head>
   <body>
     <div id="app-splash" role="status" aria-label="Chargement de Vizyo Tracky">
-      <img class="splash-logo" src="logos/svg/vizyo-tracky-icon-white.svg" alt="" aria-hidden="true" />
-      <div class="splash-spinner" aria-hidden="true"></div>
+      <div class="splash-stack">
+        <div class="splash-glow" aria-hidden="true"></div>
+        <img class="splash-logo splash-logo--dark" src="logos/svg/vizyo-tracky-icon-white.svg" alt="" aria-hidden="true" />
+        <img class="splash-logo splash-logo--light" src="logos/svg/vizyo-tracky-icon-black.svg" alt="" aria-hidden="true" />
+        <h1 class="splash-title">Vizyo Tracky</h1>
+        <div class="splash-loader" aria-hidden="true"></div>
+      </div>
     </div>
     <script>
       // Active le lock de scroll des le parsing HTML (avant meme l'execution du bundle).

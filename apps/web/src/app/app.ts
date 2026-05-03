@@ -34,6 +34,11 @@ export class App implements OnInit {
       this.preferences.load(user.sub);
     }
     this.theme.init();
+    if (user?.sub) {
+      // Le theme courant a ete pose par le script inline d'index.html. Si l'user
+      // auth a sauvegarde un choix different, on l'applique maintenant.
+      this.theme.applyFromPrefs();
+    }
 
     // Services transverses PWA/network : init avant la connexion realtime
     // pour qu'on dispose de l'etat de connectivite des le depart.

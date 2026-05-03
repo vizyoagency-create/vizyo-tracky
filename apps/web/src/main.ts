@@ -2,9 +2,12 @@ import { bootstrapApplication } from '@angular/platform-browser';
 import { appConfig } from './app/app.config';
 import { App } from './app/app';
 
-const SPLASH_MIN_DURATION_MS = 380; // evite un flash brutal sur connexion rapide
-const SPLASH_FADE_MS = 280; // doit matcher la transition CSS dans index.html
-const SPLASH_FALLBACK_MS = 8000; // au pire on retire le splash quoi qu'il arrive
+// Doit etre >= duree de l'animation `splash-rise` (720ms) pour eviter de couper
+// le logo en plein "rise". 800ms laisse aussi respirer visuellement.
+const SPLASH_MIN_DURATION_MS = 800;
+// Doit matcher la transition CSS `opacity 480ms` dans index.html.
+const SPLASH_FADE_MS = 480;
+const SPLASH_FALLBACK_MS = 8000;
 
 const splashStartedAt = performance.now();
 
