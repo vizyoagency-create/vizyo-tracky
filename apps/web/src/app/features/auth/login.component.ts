@@ -11,53 +11,101 @@ import { ThemeService } from '../../core/theme/theme.service';
   standalone: true,
   imports: [FormsModule, RouterLink],
   template: `
+    <!-- Card glassmorphism : tres transparente pour laisser voir le globe
+         en arriere-plan, blur eleve pour conserver la lisibilite des
+         inputs, bord lumineux haut tracky pour la signature visuelle. -->
     <div
-      class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-8"
+      class="relative rounded-[--radius-card] p-7 sm:p-8
+             bg-bg-secondary/30 backdrop-blur-2xl backdrop-saturate-150
+             border border-white/10
+             shadow-[0_12px_48px_-16px_rgba(0,0,0,0.55)]
+             before:absolute before:-top-px before:left-1/2 before:-translate-x-1/2
+             before:h-px before:w-2/3 before:bg-gradient-to-r
+             before:from-transparent before:via-tracky-light/70 before:to-transparent
+             before:pointer-events-none"
     >
-      <h2 class="text-xl font-display font-semibold text-fg-primary mb-6">
-        Connexion
-      </h2>
+      <div class="mb-6">
+        <h2 class="text-2xl font-display font-semibold text-fg-primary tracking-tight">
+          Connexion
+        </h2>
+        <p class="text-sm text-fg-tertiary mt-1">
+          Acces a votre tableau de bord
+        </p>
+      </div>
 
       <form (ngSubmit)="onSubmit()" class="flex flex-col gap-4">
         <div class="flex flex-col gap-1.5">
-          <label for="email" class="text-sm font-medium text-fg-secondary"
+          <label for="email" class="text-[13px] font-medium text-fg-secondary"
             >Email</label
           >
-          <input
-            id="email"
-            type="email"
-            [(ngModel)]="email"
-            name="email"
-            placeholder="vous@example.com"
-            autocomplete="email"
-            class="w-full px-4 py-2.5 rounded-xl bg-bg-tertiary border border-border-subtle
-                   text-fg-primary placeholder:text-fg-tertiary
-                   focus:outline-none focus:border-tracky focus:ring-1 focus:ring-tracky
-                   transition-all duration-200"
-            required
-          />
+          <div class="relative">
+            <span
+              class="absolute left-3.5 top-1/2 -translate-y-1/2 text-fg-tertiary
+                     pointer-events-none"
+              aria-hidden="true"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="5" width="18" height="14" rx="2" />
+                <path d="m3 7 9 6 9-6" />
+              </svg>
+            </span>
+            <input
+              id="email"
+              type="email"
+              [(ngModel)]="email"
+              name="email"
+              placeholder="vous@example.com"
+              autocomplete="email"
+              class="w-full pl-10 pr-4 py-2.5 rounded-xl
+                     bg-bg-tertiary/40 border border-white/10
+                     text-fg-primary placeholder:text-fg-tertiary
+                     focus:outline-none focus:border-tracky focus:ring-2 focus:ring-tracky/30
+                     focus:bg-bg-tertiary/70
+                     transition-all duration-200"
+              required
+            />
+          </div>
         </div>
 
         <div class="flex flex-col gap-1.5">
-          <label for="password" class="text-sm font-medium text-fg-secondary"
+          <label for="password" class="text-[13px] font-medium text-fg-secondary"
             >Mot de passe</label
           >
           <div class="relative">
+            <span
+              class="absolute left-3.5 top-1/2 -translate-y-1/2 text-fg-tertiary
+                     pointer-events-none"
+              aria-hidden="true"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" />
+                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+            </span>
             <input
               id="password"
               [type]="showPassword() ? 'text' : 'password'"
               [(ngModel)]="password"
               name="password"
-              placeholder="••••••••"
+              placeholder="........"
               autocomplete="current-password"
-              class="w-full px-4 py-2.5 pr-11 rounded-xl bg-bg-tertiary border border-border-subtle
+              class="w-full pl-10 pr-11 py-2.5 rounded-xl
+                     bg-bg-tertiary/40 border border-white/10
                      text-fg-primary placeholder:text-fg-tertiary
-                     focus:outline-none focus:border-tracky focus:ring-1 focus:ring-tracky
+                     focus:outline-none focus:border-tracky focus:ring-2 focus:ring-tracky/30
+                     focus:bg-bg-tertiary/70
                      transition-all duration-200"
               required
             />
             <button type="button" (click)="showPassword.set(!showPassword())"
-              class="absolute right-3 top-1/2 -translate-y-1/2 text-fg-tertiary hover:text-fg-secondary transition-colors cursor-pointer">
+              class="absolute right-3 top-1/2 -translate-y-1/2 text-fg-tertiary
+                     hover:text-fg-secondary transition-colors cursor-pointer
+                     p-1 rounded-md"
+              [attr.aria-label]="showPassword() ? 'Masquer le mot de passe' : 'Afficher le mot de passe'">
               @if (!showPassword()) {
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
@@ -73,29 +121,57 @@ import { ThemeService } from '../../core/theme/theme.service';
           </div>
         </div>
 
-        <div class="text-right">
+        <div class="flex justify-end">
           <a routerLink="/forgot-password"
-             class="text-sm text-tracky-light hover:underline cursor-pointer">
-            Mot de passe oublié ?
+             class="text-[13px] text-tracky-light hover:text-tracky transition-colors cursor-pointer">
+            Mot de passe oublie ?
           </a>
         </div>
 
         @if (error()) {
-          <p class="text-sm text-red-400">{{ error() }}</p>
+          <div
+            class="flex items-start gap-2 p-3 rounded-lg
+                   bg-red-500/10 border border-red-500/30 text-red-400 text-sm"
+            role="alert"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                 class="shrink-0 mt-0.5">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            <span>{{ error() }}</span>
+          </div>
         }
 
         <button
           type="submit"
           [disabled]="loading()"
-          class="mt-2 w-full py-2.5 rounded-xl font-medium text-white
-                 bg-tracky-gradient hover:opacity-90
-                 disabled:opacity-50 disabled:cursor-not-allowed
-                 transition-opacity duration-200 cursor-pointer"
+          class="mt-1 group relative w-full py-3 rounded-xl
+                 font-semibold text-white text-sm
+                 bg-tracky-gradient
+                 shadow-[0_4px_20px_-4px_rgba(5,150,105,0.5)]
+                 hover:shadow-[0_6px_28px_-4px_rgba(5,150,105,0.65)]
+                 hover:-translate-y-px
+                 active:translate-y-0
+                 disabled:opacity-60 disabled:cursor-not-allowed
+                 disabled:hover:translate-y-0 disabled:hover:shadow-[0_4px_20px_-4px_rgba(5,150,105,0.5)]
+                 transition-all duration-200 cursor-pointer
+                 flex items-center justify-center gap-2"
         >
           @if (loading()) {
-            Connexion en cours...
+            <span class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"
+                  aria-hidden="true"></span>
+            <span>Connexion en cours...</span>
           } @else {
-            Se connecter
+            <span>Se connecter</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                 class="transition-transform group-hover:translate-x-0.5">
+              <line x1="5" y1="12" x2="19" y2="12" />
+              <polyline points="12 5 19 12 12 19" />
+            </svg>
           }
         </button>
       </form>
