@@ -2,9 +2,11 @@ import {
   AfterViewInit,
   Component,
   ElementRef,
+  HostBinding,
   NgZone,
   OnDestroy,
   inject,
+  input,
   viewChild,
 } from '@angular/core';
 import * as maplibregl from 'maplibre-gl';
@@ -54,7 +56,7 @@ const LOOP_MS = 40_000;
     <div class="map-wrap" aria-hidden="true">
       <div #mapContainer class="map-canvas"></div>
       <!-- Vignettage + fade haut/bas pour fondre la carte dans la card -->
-      <div class="map-mask"></div>
+      <div class="map-mask" [class.map-mask--fullbleed]="fullBleed()"></div>
     </div>
   `,
   styles: [
@@ -65,6 +67,15 @@ const LOOP_MS = 40_000;
         max-width: 28rem;
         margin: 0 auto;
         pointer-events: none;
+      }
+      /* Mode plein-cadre desktop : la carte occupe tout son conteneur,
+         pas de max-width, pas de border-radius (le panneau parent gere
+         les arrondis si besoin). */
+      :host(.is-fullbleed) {
+        width: 100%;
+        height: 100%;
+        max-width: none;
+        margin: 0;
       }
 
       .map-wrap {
@@ -77,6 +88,12 @@ const LOOP_MS = 40_000;
           0 14px 40px -16px rgba(0, 0, 0, 0.55),
           0 0 0 1px rgba(255, 255, 255, 0.06) inset;
         background: #0a0f0d;
+      }
+      :host(.is-fullbleed) .map-wrap {
+        height: 100%;
+        aspect-ratio: auto;
+        border-radius: 0;
+        box-shadow: none;
       }
       :host-context([data-theme='light']) .map-wrap {
         box-shadow:
@@ -109,7 +126,46 @@ const LOOP_MS = 40_000;
             rgba(10, 15, 13, 0.4) 100%
           );
       }
-      :host-context([data-theme='light']) .map-mask {
+      /* En plein-cadre, le mask sert plutot a fondre la carte vers le
+         panneau formulaire a gauche (transition propre entre les deux
+         moities de l'ecran) + un voile bas/haut subtil pour l'ambiance. */
+      .map-mask--fullbleed {
+        background:
+          linear-gradient(
+            to right,
+            rgba(10, 15, 13, 0.85) 0%,
+            rgba(10, 15, 13, 0.25) 12%,
+            transparent 28%
+          ),
+          linear-gradient(
+            to bottom,
+            rgba(10, 15, 13, 0.45) 0%,
+            transparent 22%,
+            transparent 78%,
+            rgba(10, 15, 13, 0.45) 100%
+          );
+      }
+      /* Light theme : la carte reste sombre (dark style CARTO + relief),
+         mais on remplace le fade gauche par un voile blanc qui se fond
+         dans le panneau formulaire blanc, sans le ternir lui. */
+      :host-context([data-theme='light']) .map-mask--fullbleed {
+        background:
+          linear-gradient(
+            to right,
+            rgba(255, 255, 255, 0.92) 0%,
+            rgba(255, 255, 255, 0.35) 10%,
+            transparent 26%
+          ),
+          linear-gradient(
+            to bottom,
+            rgba(255, 255, 255, 0.35) 0%,
+            transparent 22%,
+            transparent 78%,
+            rgba(255, 255, 255, 0.35) 100%
+          );
+      }
+      /* Mini-map (mobile) light theme : voile blanc subtil */
+      :host-context([data-theme='light']) .map-mask:not(.map-mask--fullbleed) {
         background:
           radial-gradient(
             ellipse at center,
@@ -125,11 +181,18 @@ const LOOP_MS = 40_000;
           );
       }
 
-      /* === Markers (les elements sont crees en JS, donc ::ng-deep) === */
+
+      /* === Markers (les elements sont crees en JS, donc ::ng-deep) ===
+         Important : position absolute (et non relative) pour que la
+         position du marker soit pilotee uniquement par le transform que
+         MapLibre injecte (translate vers lat/lng). En position relative,
+         les markers s'empilent dans le flux DOM et accumulent un
+         decalage Y (chaque marker pousse le suivant), ce qui les
+         desaligne du basemap. */
       :host ::ng-deep .auth-city {
         width: 10px;
         height: 10px;
-        position: relative;
+        position: absolute;
         pointer-events: none;
       }
       /* Halo statique tres discret -- on retire la pulsation pour calmer
@@ -162,33 +225,44 @@ const LOOP_MS = 40_000;
       :host ::ng-deep .auth-city__label[data-pos='right']  { left: 18px; top: 6px;   transform: translate(0, -50%);    }
       :host ::ng-deep .auth-city__label[data-pos='left']   { left: -6px; top: 6px;   transform: translate(-100%, -50%); }
 
-      /* Vehicule = pin localisation classique (forme universelle, plus
-         lisible qu'un truck minuscule a cette echelle). On le rend
-         orientable via .auth-vehicle__inner (rotation appliquee en JS). */
+      /* Vehicule = camionnette stylisee de profil. Aspect ratio 260:130
+         (~2:1). On la rend orientable via .auth-vehicle__inner : un flip
+         horizontal (scaleX -1) est applique en JS quand le segment va
+         vers l'ouest (sinon elle roule en marche arriere). */
       :host ::ng-deep .auth-vehicle {
-        width: 22px;
+        width: 44px;
         height: 22px;
         pointer-events: none;
         will-change: transform;
-        filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.55));
+        filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.45));
+      }
+      :host(.is-fullbleed) ::ng-deep .auth-vehicle {
+        width: 64px;
+        height: 32px;
       }
       :host ::ng-deep .auth-vehicle__inner {
         width: 100%;
         height: 100%;
         display: block;
         transform-origin: center;
+        transition: transform 0.4s cubic-bezier(0.5, 0, 0.5, 1);
       }
       :host ::ng-deep .auth-vehicle__pulse {
         position: absolute;
         left: 50%;
-        top: 50%;
-        width: 28px;
-        height: 28px;
-        margin: -14px 0 0 -14px;
+        bottom: -2px;
+        width: 32px;
+        height: 32px;
+        margin-left: -16px;
         border-radius: 50%;
-        background: rgba(16, 224, 160, 0.35);
-        animation: auth-vehicle-pulse 2.2s ease-out infinite;
+        background: rgba(16, 224, 160, 0.32);
+        animation: auth-vehicle-pulse 2.4s ease-out infinite;
         pointer-events: none;
+      }
+      :host(.is-fullbleed) ::ng-deep .auth-vehicle__pulse {
+        width: 44px;
+        height: 44px;
+        margin-left: -22px;
       }
 
       @keyframes auth-vehicle-pulse {
@@ -202,6 +276,16 @@ const LOOP_MS = 40_000;
   ],
 })
 export class AuthMapAnimationComponent implements AfterViewInit, OnDestroy {
+  /** En mode plein-cadre desktop : pas de max-width, pas de border-radius,
+   *  fade gauche pour transition vers le panneau formulaire, badge "Temps
+   *  reel" en overlay et parametres camera plus dramatiques (pitch eleve,
+   *  zoom resserre). */
+  readonly fullBleed = input(false);
+
+  @HostBinding('class.is-fullbleed') get fullBleedClass(): boolean {
+    return this.fullBleed();
+  }
+
   private readonly mapRef = viewChild<ElementRef<HTMLDivElement>>('mapContainer');
   private readonly zone = inject(NgZone);
   private readonly mapSvc = inject(MapService);
@@ -251,16 +335,17 @@ export class AuthMapAnimationComponent implements AfterViewInit, OnDestroy {
 
     // On utilise MapService pour beneficier du pipeline de styles raster
     // valide partout dans l'app (URL tiles, headers, NgZone, etc.).
-    // Centre legerement sud pour englober Marseille (43.3°N) avec un
-    // pitch eleve. Zoom 4.4 pour tenir Lyon/Bordeaux/Nantes/Marseille dans
-    // la mini-fenetre 392x216 sur desktop et garder un cadrage propre
-    // sur mobile.
+    // Cadrage : en plein-cadre desktop on a un container portrait (~50vw
+    // x 100svh), donc on resserre le zoom et accentue le pitch pour que
+    // le relief soit hero. En mode mini (mobile) on est en paysage 400x220
+    // et il faut tenir les 5 villes dans une lucarne plus contrainte.
+    const isFull = this.fullBleed();
     const map = this.mapSvc.createMap(el, {
-      center: { lat: 45.4, lng: 2.6 },
-      zoom: 4.25,
+      center: { lat: isFull ? 46.2 : 45.4, lng: isFull ? 2.5 : 2.6 },
+      zoom: isFull ? 4.85 : 4.25,
       style: 'dark',
-      pitch: 48,
-      bearing: -6,
+      pitch: isFull ? 56 : 48,
+      bearing: isFull ? -10 : -6,
       withNavigationControl: false,
       withGeolocateControl: false,
       withScaleControl: false,
@@ -309,7 +394,7 @@ export class AuthMapAnimationComponent implements AfterViewInit, OnDestroy {
         type: 'hillshade',
         source: 'auth-dem',
         paint: {
-          'hillshade-exaggeration': 0.85,
+          'hillshade-exaggeration': 1,
           'hillshade-shadow-color': '#020404',
           'hillshade-highlight-color': '#1ef0a8',
           'hillshade-accent-color': '#0d8a5e',
@@ -317,14 +402,14 @@ export class AuthMapAnimationComponent implements AfterViewInit, OnDestroy {
       });
     }
     try {
-      map.setTerrain({ source: 'auth-dem', exaggeration: 2.4 });
+      map.setTerrain({ source: 'auth-dem', exaggeration: 1.4 });
     } catch {
       // setTerrain peut echouer si la source DEM n'est pas encore prete ;
       // on retente une fois apres un sourcedata.
       const onSrc = (e: maplibregl.MapSourceDataEvent) => {
         if (e.sourceId === 'auth-dem' && e.isSourceLoaded) {
           map.off('sourcedata', onSrc);
-          map.setTerrain({ source: 'auth-dem', exaggeration: 2.4 });
+          map.setTerrain({ source: 'auth-dem', exaggeration: 1.4 });
         }
       };
       map.on('sourcedata', onSrc);
@@ -357,12 +442,35 @@ export class AuthMapAnimationComponent implements AfterViewInit, OnDestroy {
     if (!this.map) return;
     const el = document.createElement('div');
     el.className = 'auth-vehicle';
+    // Camionnette Vizyo Tracky stylisee, vue de profil (orientee a droite
+    // par defaut). Le flip horizontal pour les segments qui vont vers
+    // l'ouest est applique sur .auth-vehicle__inner dans la boucle rAF.
     el.innerHTML = `
       <span class="auth-vehicle__pulse"></span>
-      <svg class="auth-vehicle__inner" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M12 22s7-7.58 7-13a7 7 0 1 0-14 0c0 5.42 7 13 7 13z"
-              fill="#10e0a0" stroke="#053826" stroke-width="1.2" stroke-linejoin="round"/>
-        <circle cx="12" cy="9" r="2.4" fill="#053826"/>
+      <svg class="auth-vehicle__inner" viewBox="0 0 260 130" xmlns="http://www.w3.org/2000/svg">
+        <ellipse cx="130" cy="122" rx="100" ry="4" fill="#0A2F24" opacity="0.12"/>
+        <path d="M 18 100 L 18 52 Q 18 46 24 44 L 58 32 Q 63 30 70 30 L 232 30 Q 242 30 242 40 L 242 100 Z" fill="#10B981"/>
+        <path d="M 24 44 L 58 32 Q 63 30 70 30 L 232 30 Q 242 30 242 40 L 242 44 L 18 52 Z" fill="#34d399" opacity="0.55"/>
+        <path d="M 18 90 L 242 90 L 242 100 L 18 100 Z" fill="#059669"/>
+        <path d="M 220 42 L 232 34 Q 237 32 238 38 L 238 54 L 220 54 Z" fill="#0F172A"/>
+        <path d="M 224 42 L 232 38 L 232 44 L 226 48 Z" fill="#60A5FA" opacity="0.25"/>
+        <rect x="180" y="40" width="34" height="14" rx="1.5" fill="#0F172A"/>
+        <rect x="184" y="42" width="12" height="4" rx="0.5" fill="#60A5FA" opacity="0.2"/>
+        <line x1="172" y1="32" x2="172" y2="90" stroke="#0A2F24" stroke-width="1.5" opacity="0.5"/>
+        <line x1="110" y1="32" x2="110" y2="90" stroke="#0A2F24" stroke-width="1.5" opacity="0.5"/>
+        <rect x="118" y="62" width="9" height="3" rx="1" fill="#0A2F24"/>
+        <circle cx="60" cy="100" r="22" fill="#0A2F24"/>
+        <circle cx="200" cy="100" r="22" fill="#0A2F24"/>
+        <circle cx="60" cy="100" r="18" fill="#111827"/>
+        <circle cx="60" cy="100" r="9" fill="#374151"/>
+        <circle cx="60" cy="100" r="3" fill="#6B7280"/>
+        <circle cx="200" cy="100" r="18" fill="#111827"/>
+        <circle cx="200" cy="100" r="9" fill="#374151"/>
+        <circle cx="200" cy="100" r="3" fill="#6B7280"/>
+        <ellipse cx="240" cy="70" rx="4" ry="6" fill="#FEF3C7"/>
+        <path d="M 234 52 L 244 50 L 244 58 L 236 58 Z" fill="#0A2F24"/>
+        <rect x="225" y="86" width="17" height="6" rx="1" fill="#1F2937"/>
+        <rect x="20" y="56" width="5" height="20" rx="1" fill="#DC2626"/>
       </svg>`;
     this.vehicleEl = el.querySelector<HTMLElement>('.auth-vehicle__inner');
 
@@ -401,6 +509,14 @@ export class AuthMapAnimationComponent implements AfterViewInit, OnDestroy {
       const lng = a.lng + (b.lng - a.lng) * eased;
       const lat = a.lat + (b.lat - a.lat) * eased;
       this.vehicleMarker.setLngLat([lng, lat]);
+
+      // Flip horizontal selon la direction du segment : le SVG par defaut
+      // pointe vers l'est (droite), donc on inverse pour les segments qui
+      // vont vers l'ouest (Marseille -> Bordeaux et Bordeaux -> Nantes).
+      // Une transition CSS sur .auth-vehicle__inner anime le retournement
+      // proprement.
+      const facingRight = b.lng >= a.lng;
+      this.vehicleEl.style.transform = facingRight ? 'scaleX(1)' : 'scaleX(-1)';
 
       const elapsed = (now - start) / 1000;
       const bearing = -6 + Math.sin(elapsed / 18) * 4;

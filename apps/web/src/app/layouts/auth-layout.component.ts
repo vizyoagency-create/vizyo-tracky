@@ -1,15 +1,30 @@
-import { Component } from '@angular/core';
+import { Component, OnDestroy, signal } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { LogoComponent } from '../shared/ui/logo/logo.component';
 import { AuthBackgroundComponent } from '../shared/ui/auth-background/auth-background.component';
 import { AuthMapAnimationComponent } from '../shared/ui/auth-map-animation/auth-map-animation.component';
 
+/**
+ * Layout des pages auth (login, forgot password, accept invite).
+ *
+ * Mobile (< lg) : empilage vertical compact dans 100svh, avec globe
+ * wireframe en hero et mini-carte 3D en footer.
+ *
+ * Desktop (>= lg) : refonte en split 50/50 -- formulaire a gauche
+ * (panneau sobre, dot-grid subtil), carte 3D plein-cadre a droite avec
+ * badge "Temps reel". Le globe wireframe est masque (la carte plein-cadre
+ * fait deja le travail visuel).
+ */
 @Component({
   selector: 'app-auth-layout',
   standalone: true,
   imports: [RouterOutlet, LogoComponent, AuthBackgroundComponent, AuthMapAnimationComponent],
   styles: [
     `
+      :host {
+        display: block;
+      }
+
       /* Tagline : blanc en dark pour contraster avec le fond sombre +
          globe vert, gris discret en light pour ne pas ecraser. */
       .auth-tagline {
@@ -18,38 +33,132 @@ import { AuthMapAnimationComponent } from '../shared/ui/auth-map-animation/auth-
       :host-context([data-theme='dark']) .auth-tagline {
         color: rgba(255, 255, 255, 0.92);
       }
+
+      /* Dot-grid subtil sur le panneau formulaire desktop : evoque les
+         coordonnees GPS sans bruiter le fond. */
+      .form-pane__grid {
+        position: absolute;
+        inset: 0;
+        opacity: 0.05;
+        pointer-events: none;
+        background-image: radial-gradient(currentColor 1px, transparent 1px);
+        background-size: 22px 22px;
+        color: #10e0a0;
+      }
+
+      /* Voile diagonal vers le bas-droite : ajoute une legere profondeur
+         lumineuse a partir de la carte. */
+      .form-pane__glow {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: radial-gradient(
+          ellipse 70% 50% at 100% 100%,
+          rgba(16, 224, 160, 0.06) 0%,
+          transparent 60%
+        );
+      }
+
+      /* Footer du panneau form : version + tagline. Couleur tertiaire. */
+      .form-pane__footer {
+        color: var(--color-fg-tertiary);
+        font-size: 12px;
+        letter-spacing: 0.04em;
+      }
+      :host-context([data-theme='dark']) .form-pane__footer {
+        color: rgba(255, 255, 255, 0.45);
+      }
     `,
   ],
   template: `
-    <!-- 100svh = small viewport height, prend en compte la barre d'URL
-         repliee sur mobile et evite le saut au scroll. overflow-hidden
-         pour qu'aucun ecran ne defile : tout doit tenir dans la fenetre. -->
-    <div
-      class="h-[100svh] flex flex-col items-center justify-center bg-bg-primary
-             relative overflow-hidden py-4 sm:py-10"
-    >
-      <!-- Fond anime : globe wireframe + stations + arcs + dots -->
-      <app-auth-background />
+    @if (isDesktop()) {
+      <!-- ================== DESKTOP (>= lg) ================== -->
+      <!-- Split layout : formulaire a gauche (largeur fixe), carte 3D
+           plein-cadre a droite (le reste). Hauteur figee a 100svh,
+           jamais de scroll. -->
+      <div
+        class="grid grid-cols-[minmax(440px,520px)_1fr]
+               h-[100svh] bg-bg-primary overflow-hidden"
+      >
+        <!-- ===== Panneau formulaire (gauche) ===== -->
+        <section class="relative flex flex-col px-12 xl:px-16 py-10 bg-bg-primary">
+          <div class="form-pane__grid"></div>
+          <div class="form-pane__glow"></div>
 
-      <!-- Contenu : logo + form + mini-map, centres verticalement.
-           Spacing compact sur mobile pour tenir dans 100svh. -->
-      <div class="relative z-10 w-full max-w-md px-5 flex flex-col items-stretch">
-        <div class="flex flex-col items-center mb-5 sm:mb-12">
-          <app-logo class="sm:hidden" variant="lockup" [size]="80" />
-          <app-logo class="hidden sm:block" variant="lockup" [size]="104" />
-          <p class="auth-tagline text-[13px] sm:text-sm mt-2.5 sm:mt-3.5 tracking-wide">
-            Suivi de flotte GPS · Temps reel
-          </p>
-        </div>
-        <router-outlet />
+          <header class="relative z-10 flex items-center justify-between">
+            <app-logo variant="lockup" [size]="120" />
+          </header>
 
-        <!-- Animation 3D : un vehicule sillonne la France pour evoquer
-             concretement le metier de Vizyo Tracky (suivi de flotte GPS) -->
-        <div class="mt-5 sm:mt-10 px-2">
-          <app-auth-map-animation />
+          <main class="relative z-10 flex-1 flex flex-col justify-center max-w-[440px] w-full">
+            <div class="mb-8">
+              <h1 class="text-[32px] xl:text-4xl font-display font-semibold
+                         text-fg-primary tracking-tight leading-[1.05]">
+                Bon retour.
+              </h1>
+              <p class="text-fg-tertiary mt-3 text-[15px]">
+                Connectez-vous a votre tableau de bord Vizyo Tracky.
+              </p>
+            </div>
+            <router-outlet />
+          </main>
+
+          <footer class="relative z-10 form-pane__footer flex items-center justify-between">
+            <span>Suivi de flotte GPS · Temps reel</span>
+            <span>&copy; {{ year }} Vizyo</span>
+          </footer>
+        </section>
+
+        <!-- ===== Panneau carte plein-cadre (droite) ===== -->
+        <section class="relative">
+          <app-auth-map-animation [fullBleed]="true" />
+        </section>
+      </div>
+    } @else {
+      <!-- ================== MOBILE / TABLET PORTRAIT (< lg) ================== -->
+      <!-- 100svh = small viewport height, prend en compte la barre d'URL
+           repliee sur mobile et evite le saut au scroll. overflow-hidden
+           pour qu'aucun ecran ne defile : tout doit tenir dans la fenetre. -->
+      <div
+        class="h-[100svh] flex flex-col items-center justify-center
+               bg-bg-primary relative overflow-hidden py-4"
+      >
+        <app-auth-background />
+
+        <div class="relative z-10 w-full max-w-md px-5 flex flex-col items-stretch">
+          <div class="flex flex-col items-center mb-5">
+            <app-logo variant="lockup" [size]="96" />
+            <p class="auth-tagline text-[13px] mt-2.5 tracking-wide">
+              Suivi de flotte GPS · Temps reel
+            </p>
+          </div>
+          <router-outlet />
+
+          <div class="mt-5 px-2">
+            <app-auth-map-animation />
+          </div>
         </div>
       </div>
-    </div>
+    }
   `,
 })
-export class AuthLayoutComponent {}
+export class AuthLayoutComponent implements OnDestroy {
+  protected readonly year = new Date().getFullYear();
+
+  /** Track desktop breakpoint via matchMedia : on conditionne le rendu
+   *  via @if pour qu'un seul des deux layouts soit instancie a la fois
+   *  (evite de creer deux maps MapLibre, dont une cachee). */
+  private readonly mql =
+    typeof window !== 'undefined' ? window.matchMedia('(min-width: 1024px)') : null;
+  protected readonly isDesktop = signal(this.mql?.matches ?? false);
+  private readonly onMqlChange = (e: MediaQueryListEvent): void => {
+    this.isDesktop.set(e.matches);
+  };
+
+  constructor() {
+    this.mql?.addEventListener('change', this.onMqlChange);
+  }
+
+  ngOnDestroy(): void {
+    this.mql?.removeEventListener('change', this.onMqlChange);
+  }
+}

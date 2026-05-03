@@ -11,20 +11,28 @@ import { ThemeService } from '../../core/theme/theme.service';
   standalone: true,
   imports: [FormsModule, RouterLink],
   template: `
-    <!-- Card glassmorphism : tres transparente pour laisser voir le globe
-         en arriere-plan, blur eleve pour conserver la lisibilite des
-         inputs, bord lumineux haut tracky pour la signature visuelle. -->
+    <!-- Card glassmorphism (mobile/tablet) : tres transparente pour laisser
+         voir le globe en arriere-plan, blur eleve pour conserver la
+         lisibilite des inputs, bord lumineux haut tracky.
+         Desktop (lg+) : on retire la card -- le panneau formulaire de
+         auth-layout fournit deja le contenant et le titre. -->
     <div
-      class="relative rounded-[--radius-card] p-7 sm:p-8
-             bg-bg-secondary/30 backdrop-blur-2xl backdrop-saturate-150
-             border border-white/10
-             shadow-[0_12px_48px_-16px_rgba(0,0,0,0.55)]
+      class="relative
+             rounded-[--radius-card] lg:rounded-none
+             p-7 sm:p-8 lg:p-0
+             bg-bg-secondary/30 lg:bg-transparent
+             backdrop-blur-2xl lg:backdrop-blur-none
+             backdrop-saturate-150 lg:backdrop-saturate-100
+             border border-border-strong lg:border-0
+             shadow-[0_12px_48px_-16px_rgba(0,0,0,0.55)] lg:shadow-none
              before:absolute before:-top-px before:left-1/2 before:-translate-x-1/2
              before:h-px before:w-2/3 before:bg-gradient-to-r
              before:from-transparent before:via-tracky-light/70 before:to-transparent
-             before:pointer-events-none"
+             before:pointer-events-none lg:before:hidden"
     >
-      <div class="mb-6">
+      <!-- Heading interne : visible mobile/tablet uniquement. Sur desktop,
+           le titre "Bon retour." vient du auth-layout. -->
+      <div class="mb-6 lg:hidden">
         <h2 class="text-2xl font-display font-semibold text-fg-primary tracking-tight">
           Connexion
         </h2>
@@ -59,7 +67,7 @@ import { ThemeService } from '../../core/theme/theme.service';
               placeholder="vous@example.com"
               autocomplete="email"
               class="w-full pl-10 pr-4 py-2.5 rounded-xl
-                     bg-bg-tertiary/40 border border-white/10
+                     bg-bg-tertiary/40 border border-border-strong
                      text-fg-primary placeholder:text-fg-tertiary
                      focus:outline-none focus:border-tracky focus:ring-2 focus:ring-tracky/30
                      focus:bg-bg-tertiary/70
@@ -94,7 +102,7 @@ import { ThemeService } from '../../core/theme/theme.service';
               placeholder="........"
               autocomplete="current-password"
               class="w-full pl-10 pr-11 py-2.5 rounded-xl
-                     bg-bg-tertiary/40 border border-white/10
+                     bg-bg-tertiary/40 border border-border-strong
                      text-fg-primary placeholder:text-fg-tertiary
                      focus:outline-none focus:border-tracky focus:ring-2 focus:ring-tracky/30
                      focus:bg-bg-tertiary/70

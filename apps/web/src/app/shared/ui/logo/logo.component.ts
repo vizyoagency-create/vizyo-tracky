@@ -31,6 +31,6 @@ export class LogoComponent {
 
     return resolvedTheme === 'dark'
       ? 'logos/png/vizyo-tracky-icon-white-lockup-gradient-green.png'
-      : 'logos/png/vizyo-tracky-icon-green-lockup-gradient-green.png';
+      : 'logos/png/vizyo-tracky-icon-black-lockup-gradient-green.png';
   });
 }
