@@ -1,5 +1,6 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
 
 export interface FleetStatsReportDto {
   fleet: { id: string; name: string };
@@ -51,25 +52,52 @@ export class ReportsApiService {
   }
 
   async downloadPdf(fleetId: string | null, from: string, to: string): Promise<void> {
-    const params = new URLSearchParams({ from, to });
-    if (fleetId) params.set('fleetId', fleetId);
-    const res = await fetch(`/api/reports/pdf?${params.toString()}`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('vizyo-tracky-token') ?? ''}` },
-    });
-    if (!res.ok) throw new Error(`PDF download failed (${res.status})`);
-    const blob = await res.blob();
-    this.triggerDownload(blob, `tracky-rapport-${from.slice(0, 10)}_${to.slice(0, 10)}.pdf`);
+    let params = new HttpParams().set('from', from).set('to', to);
+    if (fleetId) params = params.set('fleetId', fleetId);
+    try {
+      const blob = await firstValueFrom(
+        this.http.get('/api/reports/pdf', { params, responseType: 'blob' }),
+      );
+      this.triggerDownload(blob, `tracky-rapport-${from.slice(0, 10)}_${to.slice(0, 10)}.pdf`);
+    } catch (err) {
+      throw new Error(await this.formatHttpError(err, 'PDF'));
+    }
   }
 
   async downloadCsv(type: CsvType, fleetId: string | null, from: string, to: string): Promise<void> {
-    const params = new URLSearchParams({ type, from, to });
-    if (fleetId) params.set('fleetId', fleetId);
-    const res = await fetch(`/api/reports/csv?${params.toString()}`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('vizyo-tracky-token') ?? ''}` },
-    });
-    if (!res.ok) throw new Error(`CSV download failed (${res.status})`);
-    const blob = await res.blob();
-    this.triggerDownload(blob, `tracky-${type}-${from.slice(0, 10)}_${to.slice(0, 10)}.csv`);
+    let params = new HttpParams().set('type', type).set('from', from).set('to', to);
+    if (fleetId) params = params.set('fleetId', fleetId);
+    try {
+      const blob = await firstValueFrom(
+        this.http.get('/api/reports/csv', { params, responseType: 'blob' }),
+      );
+      this.triggerDownload(blob, `tracky-${type}-${from.slice(0, 10)}_${to.slice(0, 10)}.csv`);
+    } catch (err) {
+      throw new Error(await this.formatHttpError(err, 'CSV'));
+    }
+  }
+
+  /** Extrait le message d'erreur reel renvoye par l'API.
+   *  Avec responseType:'blob', l'error.error d'Angular est un Blob → on le parse. */
+  private async formatHttpError(err: unknown, kind: 'PDF' | 'CSV'): Promise<string> {
+    if (err instanceof HttpErrorResponse) {
+      let detail = '';
+      if (err.error instanceof Blob) {
+        try {
+          const text = await err.error.text();
+          const parsed = JSON.parse(text);
+          detail = parsed?.message ?? parsed?.error ?? text;
+        } catch {
+          detail = '';
+        }
+      } else if (typeof err.error === 'string') {
+        detail = err.error;
+      } else if (err.error?.message) {
+        detail = err.error.message;
+      }
+      return `Echec export ${kind} (${err.status})${detail ? ' : ' + detail : ''}`;
+    }
+    return `Echec export ${kind}`;
   }
 
   private triggerDownload(blob: Blob, filename: string): void {

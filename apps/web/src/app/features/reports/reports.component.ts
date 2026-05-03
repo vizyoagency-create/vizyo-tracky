@@ -1041,11 +1041,33 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.loadData();
   }
 
-  protected readonly periods = [
-    { label: 'Aujourd\'hui', from: new Date().toISOString().slice(0, 10), to: new Date(Date.now() + 86400000).toISOString().slice(0, 10) },
-    { label: '7 jours', from: new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10), to: new Date(Date.now() + 86400000).toISOString().slice(0, 10) },
-    { label: '30 jours', from: new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10), to: new Date(Date.now() + 86400000).toISOString().slice(0, 10) },
-  ];
+  /** Format une Date en YYYY-MM-DD en HEURE LOCALE (pas UTC).
+   *  Important : `toISOString()` decale d'1 jour si le user est a UTC+X et qu'on est
+   *  proche de minuit. Cela peut envoyer un from/to errone au backend. */
+  private localIso(d: Date): string {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  /** Recalcule les presets a chaque appel — evite les dates stales en PWA mobile
+   *  (le composant peut survivre des heures en arriere-plan ; un periods statique
+   *  pointerait alors sur hier apres minuit). */
+  private buildPeriods(): { label: string; from: string; to: string }[] {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const tomorrow = new Date(today.getTime() + 86400000);
+    const minus7 = new Date(today.getTime() - 7 * 86400000);
+    const minus30 = new Date(today.getTime() - 30 * 86400000);
+    return [
+      { label: 'Aujourd\'hui', from: this.localIso(today), to: this.localIso(tomorrow) },
+      { label: '7 jours', from: this.localIso(minus7), to: this.localIso(tomorrow) },
+      { label: '30 jours', from: this.localIso(minus30), to: this.localIso(tomorrow) },
+    ];
+  }
+
+  protected periods = this.buildPeriods();
 
   protected readonly kpis = computed(() => {
     const t = this.trips();
@@ -1242,9 +1264,30 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.loadData();
   }
 
+  /** Si la periode active est un preset stale (ex: PWA restee ouverte apres minuit),
+   *  on la realigne sur le preset frais correspondant avant export. */
+  private refreshPeriodIfStalePreset(): void {
+    const fresh = this.buildPeriods();
+    const matchedStale = this.periods.findIndex(
+      (p) => p.from === this.periodFrom && p.to === this.periodTo,
+    );
+    this.periods = fresh;
+    if (matchedStale >= 0) {
+      const refreshed = fresh[matchedStale]!;
+      this.periodFrom = refreshed.from;
+      this.periodTo = refreshed.to;
+      this.periodKey.set(`${refreshed.from}|${refreshed.to}`);
+    }
+  }
+
   /** Export PDF du rapport sur la période courante (avec optionnel filtre véhicule). */
   protected async onExportPdf(): Promise<void> {
     if (this.exporting()) return;
+    this.refreshPeriodIfStalePreset();
+    if (!this.periodFrom || !this.periodTo) {
+      this.toast.error('Échec export PDF', 'Période invalide — recharge la page.');
+      return;
+    }
     this.exporting.set('pdf');
     try {
       // L'API attend un fleetId et la période ; vehicleId est ignoré côté reports/pdf
@@ -1261,6 +1304,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
   /** Export CSV — `kind` détermine le contenu (trips: liste de trajets, alerts: liste d'alertes). */
   protected async onExportCsv(kind: 'trips' | 'alerts'): Promise<void> {
     if (this.exporting()) return;
+    this.refreshPeriodIfStalePreset();
+    if (!this.periodFrom || !this.periodTo) {
+      this.toast.error('Échec export CSV', 'Période invalide — recharge la page.');
+      return;
+    }
     this.exporting.set(kind === 'trips' ? 'csv-trips' : 'csv-summary');
     try {
       await this.reportsApi.downloadCsv(kind, null, this.periodFrom, this.periodTo);
