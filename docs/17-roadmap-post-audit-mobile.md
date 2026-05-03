@@ -13,7 +13,9 @@
 | `807ae4b` | P2 mobile | IMEI tap-to-copy, throttle toasts, cadenas email, sweep accents |
 | `7f1633a` | P2 ambitieux | bottom-sheet mobile + datepicker custom riche |
 | `9df75a8` | /map HUD | refonte HUD desktop + correctifs audit #5 #6 #7 |
-| ba10e53 | /reports charts | Chart.js v4 + heatmap SVG, sparkline KPI, item #4 done |
+| `836cfd0` | /reports date range | DateRangePickerComponent inline 2 mois desktop, item #3 done |
+| `ba10e53` | /reports charts | Chart.js v4 + heatmap SVG, sparkline KPI, item #4 done |
+| `8084cd7` | /map HUD desktop | Calques inline + flyout search (resout overlap), item #1 partiel |
 
 ## 🎯 Pistes suivantes (par ordre suggéré)
 
@@ -27,16 +29,37 @@
 
 → Lister les erreurs trouvées, valider avec utilisateur, corriger.
 
+**Avancement** : commit `8084cd7` corrige le HUD `/map` desktop — Calques
+en panel inline (au lieu d'absolu chevauchant), suggestions search en
+flyout à droite, plus aucun overlap entre les deux. Reste à passer au
+crible le reste des pages.
+
 ### 2. Tests E2E sur les bugs corrigés
 Playwright pour figer la régression sur les 3 bugs critiques de live tracking :
 - POSITIONS_BATCH bien émis (mock + assert WS frame)
 - Trainée non vide après N updates
 - Pas de drift au zoom (mesure pixel + reverse-projection GPS)
 
-### 3. Date range mobile-first → calendrier inline desktop
-Actuellement 2 `<input type="date">` qui ouvrent le datepicker natif iOS/Android.
-Sur desktop, ajouter un mini-calendrier inline (2 mois côte-à-côte) pour
-l'aperçu visuel. Conserver les inputs natifs en mobile.
+### 3. Date range mobile-first → calendrier inline desktop ✅ DONE (commit `836cfd0`)
+Livré : `DateRangePickerComponent` standalone (signals + OnPush, sans
+dépendance externe). Affiché en desktop ≥768px ; reste sur les inputs
+`type=date` natifs en mobile (datepicker iOS/Android optimal sur tactile).
+
+- 2 mois côte-à-côte (Avril 2026 + Mai 2026 par exemple), navigation flèches,
+  FR via `Intl.DateTimeFormat`
+- Clic-clic sélection avec auto-réordre, preview à l'hover
+- Sidebar raccourcis : Hier · Cette semaine · 7 derniers jours · 30 derniers
+  jours · Ce mois-ci · Mois dernier
+- A11y : `role=grid` + `gridcell`, aria-label FR complet, navigation flèches
+  clavier, Home/End/PageUp/PageDown, Enter/Espace pour valider
+- Tabindex roving (anchor = focused / from / today / monthFirst)
+- HostListener Escape ferme le panel
+- Boutons Annuler / Appliquer
+- Signal `isDesktop()` basé sur `matchMedia('(min-width: 768px)')`
+
+Vérifié en preview FLEET_ADMIN 1280×800 : picker 410px (2 grids 195+195),
+84 gridcells, grid0 et grid1 même top:293, sélection raccourci → refresh
+charts /reports OK.
 
 ### 4. Refonte de /reports (graphes) ✅ DONE (commit ba10e53)
 KPI cards plates → graphs lecture rapide. Livré : Chart.js v4 (tree-shaké),
@@ -142,4 +165,5 @@ Permet de tester en preview sur port séparé (4201) sans risque sur main.
 
 ---
 
-*Dernière mise à jour : 2026-05-02 (item #5 livré dans `feat/web-push-finalize`).*
+*Dernière mise à jour : 2026-05-03 (item #3 livré dans `836cfd0`, item #1
+partiel — HUD `/map` desktop dans `8084cd7`).*
