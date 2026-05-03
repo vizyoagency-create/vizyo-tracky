@@ -1,28 +1,41 @@
-import { inject, Injectable } from '@angular/core';
+import { DestroyRef, inject, Injectable, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { SwUpdate, VersionReadyEvent } from '@angular/service-worker';
 import { filter } from 'rxjs';
-import { ToastService } from '../../shared/ui/toast/toast.service';
 
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6h
 
 /**
- * Surveille les nouvelles versions du service worker et propose un toast
- * "Mettre a jour" quand une version est prete a etre installee.
+ * Surveille les nouvelles versions du service worker.
+ *
+ * Quand une nouvelle version est prete, expose un signal `updateAvailable`
+ * que la modale `UpdateRequiredModalComponent` (montee au root de l'app)
+ * lit pour s'afficher de maniere bloquante. L'utilisateur doit appeler
+ * `applyUpdate()` pour recharger l'app.
  *
  * En mode dev, `SwUpdate.isEnabled` est false : init() est un no-op silencieux.
  */
 @Injectable({ providedIn: 'root' })
 export class PwaUpdateService {
   private readonly sw = inject(SwUpdate);
-  private readonly toast = inject(ToastService);
+  private readonly destroyRef = inject(DestroyRef);
   private interval: ReturnType<typeof setInterval> | null = null;
+  private visibilityListener: (() => void) | null = null;
+
+  /** Signal lu par la modale bloquante au root. */
+  readonly updateAvailable = signal(false);
+  /** Vrai pendant l'activation/reload, pour afficher l'etat "Mise a jour en cours". */
+  readonly applying = signal(false);
 
   init(): void {
     if (!this.sw.isEnabled) return;
 
     this.sw.versionUpdates
-      .pipe(filter((e): e is VersionReadyEvent => e.type === 'VERSION_READY'))
-      .subscribe(() => this.notifyUpdate());
+      .pipe(
+        filter((e): e is VersionReadyEvent => e.type === 'VERSION_READY'),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe(() => this.updateAvailable.set(true));
 
     // Verification periodique pour les sessions tres longues
     this.interval = setInterval(() => {
@@ -31,6 +44,15 @@ export class PwaUpdateService {
 
     // Verifier au premier focus apres lancement
     this.sw.checkForUpdate().catch(() => { /* silent */ });
+
+    // Re-verifier des que l'utilisateur revient sur l'app (PWA mobile :
+    // c'est le moment ideal pour proposer la maj quand il rouvre l'app).
+    this.visibilityListener = () => {
+      if (document.visibilityState === 'visible') {
+        this.sw.checkForUpdate().catch(() => { /* silent */ });
+      }
+    };
+    document.addEventListener('visibilitychange', this.visibilityListener);
   }
 
   destroy(): void {
@@ -38,20 +60,24 @@ export class PwaUpdateService {
       clearInterval(this.interval);
       this.interval = null;
     }
+    if (this.visibilityListener) {
+      document.removeEventListener('visibilitychange', this.visibilityListener);
+      this.visibilityListener = null;
+    }
   }
 
-  private notifyUpdate(): void {
-    this.toast.show({
-      kind: 'info',
-      title: 'Nouvelle version disponible',
-      message: 'Cliquer pour rafraichir et appliquer la mise a jour',
-      duration: 0,
-      action: {
-        label: 'Mettre a jour',
-        callback: () => {
-          this.sw.activateUpdate().then(() => location.reload());
-        },
-      },
-    });
+  /**
+   * Active la nouvelle version puis recharge la page. Appele par la modale.
+   * Pas de catch silencieux : si l'activation echoue on force le reload, ce
+   * qui declenchera un fetch frais du nouveau SW.
+   */
+  async applyUpdate(): Promise<void> {
+    if (this.applying()) return;
+    this.applying.set(true);
+    try {
+      await this.sw.activateUpdate();
+    } finally {
+      location.reload();
+    }
   }
 }

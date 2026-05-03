@@ -30,8 +30,160 @@
     <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon-180.png" />
 
+    <!--
+      Apple touch startup images (splash screens iOS standalone).
+      iOS choisit le PNG correspondant au device + orientation via les media queries.
+      Generes via scripts/generate-splash (sharp) sur fond #0A0F0D + logo blanc.
+    -->
+    <!-- iPhone SE / 8 / 7 / 6 (375x667 @2x) -->
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-750x1334.png"
+          media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-1334x750.png"
+          media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" />
+    <!-- iPhone XR / 11 (414x896 @2x) -->
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-828x1792.png"
+          media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-1792x828.png"
+          media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" />
+    <!-- iPhone 8+ / 7+ / 6+ (414x736 @3x) -->
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-1242x2208.png"
+          media="(device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-2208x1242.png"
+          media="(device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" />
+    <!-- iPhone X / XS / 11 Pro / 13 mini / 12 mini (375x812 @3x) -->
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-1125x2436.png"
+          media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-2436x1125.png"
+          media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" />
+    <!-- iPhone 11 Pro Max / XS Max (414x896 @3x) -->
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-1242x2688.png"
+          media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-2688x1242.png"
+          media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" />
+    <!-- iPhone 14 / 13 / 13 Pro / 12 / 12 Pro (390x844 @3x) -->
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-1170x2532.png"
+          media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-2532x1170.png"
+          media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" />
+    <!-- iPhone 14 Plus / 13 Pro Max / 12 Pro Max (428x926 @3x) -->
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-1284x2778.png"
+          media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-2778x1284.png"
+          media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" />
+    <!-- iPhone 16 / 15 / 14 Pro (393x852 @3x) -->
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-1179x2556.png"
+          media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-2556x1179.png"
+          media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" />
+    <!-- iPhone 16 Pro / 15 Pro (402x874 @3x) -->
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-1206x2622.png"
+          media="(device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-2622x1206.png"
+          media="(device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" />
+    <!-- iPhone 16 Plus / 15 Plus / 14 Pro Max / 15 Pro Max (430x932 @3x) -->
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-1290x2796.png"
+          media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-2796x1290.png"
+          media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" />
+    <!-- iPhone 16 Pro Max (440x956 @3x) -->
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-1320x2868.png"
+          media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-2868x1320.png"
+          media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: landscape)" />
+    <!-- iPad mini 7.9 / iPad 9.7 (768x1024 @2x) -->
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-1536x2048.png"
+          media="(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-2048x1536.png"
+          media="(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" />
+    <!-- iPad 10.2 (810x1080 @2x) -->
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-1620x2160.png"
+          media="(device-width: 810px) and (device-height: 1080px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-2160x1620.png"
+          media="(device-width: 810px) and (device-height: 1080px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" />
+    <!-- iPad Air 10.9 (820x1180 @2x) -->
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-1640x2360.png"
+          media="(device-width: 820px) and (device-height: 1180px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-2360x1640.png"
+          media="(device-width: 820px) and (device-height: 1180px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" />
+    <!-- iPad Pro 11 (834x1194 @2x) -->
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-1668x2388.png"
+          media="(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-2388x1668.png"
+          media="(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" />
+    <!-- iPad Pro 12.9 (1024x1366 @2x) -->
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-2048x2732.png"
+          media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-2732x2048.png"
+          media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" />
+    <!-- iPad Pro 13 M4 (1032x1376 @2x) -->
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-2064x2752.png"
+          media="(device-width: 1032px) and (device-height: 1376px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+    <link rel="apple-touch-startup-image" href="splash/apple-splash-2752x2064.png"
+          media="(device-width: 1032px) and (device-height: 1376px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" />
+
+    <!--
+      Splash "in-DOM" : couvre tous les OS (Android, iOS, desktop standalone) en
+      affichant le logo + spinner avant que le bundle Angular ne s'hydrate.
+      Style inline pour zero FOUC. Le fade-out est declenche par main.ts apres
+      bootstrap, sinon timeout fallback de 8s pour eviter de bloquer l'utilisateur.
+    -->
+    <style>
+      #app-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483647;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 28px;
+        background: #0A0F0D;
+        color: #fff;
+        opacity: 1;
+        transition: opacity 280ms ease-out;
+        /* Respecte les safe-areas iOS pour ne pas que le logo soit colle a la notch */
+        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+      }
+      #app-splash.is-hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #app-splash .splash-logo {
+        width: 96px;
+        height: auto;
+        animation: splash-pop 520ms cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      #app-splash .splash-spinner {
+        width: 28px;
+        height: 28px;
+        border: 2.5px solid rgba(255, 255, 255, 0.12);
+        border-top-color: #10B981;
+        border-radius: 50%;
+        animation: splash-spin 720ms linear infinite;
+      }
+      @keyframes splash-pop {
+        from { opacity: 0; transform: translateY(8px) scale(0.92); }
+        to   { opacity: 1; transform: translateY(0) scale(1); }
+      }
+      @keyframes splash-spin {
+        to { transform: rotate(360deg); }
+      }
+      /* Pendant que le splash est visible, on fige le scroll pour eviter qu'un scroll horizontal
+         soit declenche par le contenu derriere */
+      html.app-splash-active, html.app-splash-active body {
+        overflow: hidden;
+      }
+    </style>
   </head>
   <body>
+    <div id="app-splash" role="status" aria-label="Chargement de Vizyo Tracky">
+      <img class="splash-logo" src="logos/svg/vizyo-tracky-icon-white.svg" alt="" aria-hidden="true" />
+      <div class="splash-spinner" aria-hidden="true"></div>
+    </div>
+    <script>
+      // Active le lock de scroll des le parsing HTML (avant meme l'execution du bundle).
+      document.documentElement.classList.add('app-splash-active');
+    </script>
     <app-root></app-root>
   </body>
 </html>

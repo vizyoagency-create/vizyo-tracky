@@ -33,6 +33,7 @@
           "/favicon-*.png",
           "/apple-touch-icon-*.png",
           "/logos/**",
+          "/splash/**",
           "/media/**",
           "/*.woff2",
           "/*.woff"

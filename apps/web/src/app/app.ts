@@ -7,12 +7,16 @@ import { PreferencesService } from './core/services/preferences.service';
 import { PwaUpdateService } from './core/services/pwa-update.service';
 import { RealtimeService } from './core/services/realtime.service';
 import { ThemeService } from './core/theme/theme.service';
+import { UpdateRequiredModalComponent } from './shared/ui/update-required-modal/update-required-modal.component';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet],
-  template: `<router-outlet />`,
+  imports: [RouterOutlet, UpdateRequiredModalComponent],
+  template: `
+    <router-outlet />
+    <app-update-required-modal />
+  `,
 })
 export class App implements OnInit {
   private readonly theme = inject(ThemeService);
