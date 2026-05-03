@@ -68,6 +68,16 @@ import { AuthMapAnimationComponent } from '../shared/ui/auth-map-animation/auth-
       :host-context([data-theme='dark']) .form-pane__footer {
         color: rgba(255, 255, 255, 0.45);
       }
+
+      /* Shell mobile : safe-area top/bottom pour PWA iOS standalone (status bar
+         black-translucent qui se superpose). py-4 garde le padding vertical
+         minimal precedent, additionne aux insets via max(). */
+      .auth-mobile-shell {
+        padding-top: max(1rem, env(safe-area-inset-top));
+        padding-bottom: max(1rem, env(safe-area-inset-bottom));
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+      }
     `,
   ],
   template: `
@@ -115,12 +125,15 @@ import { AuthMapAnimationComponent } from '../shared/ui/auth-map-animation/auth-
       </div>
     } @else {
       <!-- ================== MOBILE / TABLET PORTRAIT (< lg) ================== -->
-      <!-- 100svh = small viewport height, prend en compte la barre d'URL
-           repliee sur mobile et evite le saut au scroll. overflow-hidden
-           pour qu'aucun ecran ne defile : tout doit tenir dans la fenetre. -->
+      <!-- min-h-[100svh] (au lieu de h-[100svh]) : permet au contenu de s'etendre
+           si la hauteur dispo est inferieure (iOS Safari/Chrome avec URL bar visible
+           qui reduit le viewport effectif). overflow-y-auto au lieu de overflow-hidden :
+           autorise un scroll fallback plutot que de clipper le logo en haut.
+           padding-top: env(safe-area-inset-top) : respecte le notch / status bar
+           en mode PWA iOS standalone (apple-mobile-web-app-status-bar-style: black-translucent). -->
       <div
-        class="h-[100svh] flex flex-col items-center justify-center
-               bg-bg-primary relative overflow-hidden py-4"
+        class="min-h-[100svh] flex flex-col items-center justify-center
+               bg-bg-primary relative overflow-y-auto auth-mobile-shell"
       >
         <app-auth-background />
 

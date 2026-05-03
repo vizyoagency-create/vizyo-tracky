@@ -461,7 +461,10 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
         background: rgba(255,255,255,.04);
       }
 
-      .top-bar { padding: 0 14px; height: 56px }
+      /* Mobile : on conserve le padding-top: env(safe-area-inset-top) de la regle de base
+         (notch / Dynamic Island en PWA iOS standalone). Utiliser les longhand
+         left/right au lieu du shorthand qui ecraserait le padding-top. */
+      .top-bar { padding-left: 14px; padding-right: 14px; height: 56px }
       /* Sur mobile, on cache le titre de page (présent dans la page) et on affiche
          le logo + brand pour rappeler l'identité Vizyo Tracky. */
       .top-title { display: none }
