@@ -15,14 +15,14 @@
   "dir": "ltr",
   "icons": [
     {
-      "src": "logos/svg/vizyo-tracky-icon-black.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "pwa-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "logos/png/vizyo-tracky-icon-black.png",
-      "sizes": "256x256",
+      "src": "pwa-icon-512.png",
+      "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
@@ -33,8 +33,8 @@
       "purpose": "any"
     },
     {
-      "src": "logos/png/vizyo-tracky-icon-black.png",
-      "sizes": "256x256",
+      "src": "pwa-icon-maskable-512.png",
+      "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
     }
@@ -45,21 +45,21 @@
       "short_name": "Carte",
       "description": "Voir la carte en direct",
       "url": "/map",
-      "icons": [{ "src": "logos/svg/vizyo-tracky-icon-black.svg", "sizes": "any", "type": "image/svg+xml" }]
+      "icons": [{ "src": "pwa-icon-192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
       "name": "Alertes",
       "short_name": "Alertes",
       "description": "Liste des alertes recentes",
       "url": "/alerts",
-      "icons": [{ "src": "logos/svg/vizyo-tracky-icon-black.svg", "sizes": "any", "type": "image/svg+xml" }]
+      "icons": [{ "src": "pwa-icon-192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
       "name": "Vehicules",
       "short_name": "Vehicules",
       "description": "Liste de la flotte",
       "url": "/vehicles",
-      "icons": [{ "src": "logos/svg/vizyo-tracky-icon-black.svg", "sizes": "any", "type": "image/svg+xml" }]
+      "icons": [{ "src": "pwa-icon-192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]
 }
