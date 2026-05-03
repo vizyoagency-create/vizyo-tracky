@@ -78,26 +78,54 @@ export class ReportsApiService {
   }
 
   /** Extrait le message d'erreur reel renvoye par l'API.
-   *  Avec responseType:'blob', l'error.error d'Angular est un Blob → on le parse. */
+   *  Avec responseType:'blob', l'error.error d'Angular est un Blob → on le parse.
+   *  Robuste face aux 3 formes que NestJS peut renvoyer :
+   *   - { message: "string" }                          (BadRequestException simple)
+   *   - { message: ["err1", "err2"] }                  (class-validator)
+   *   - { message: [{ constraints: {...}, property }] } (class-validator detaille) */
   private async formatHttpError(err: unknown, kind: 'PDF' | 'CSV'): Promise<string> {
     if (err instanceof HttpErrorResponse) {
-      let detail = '';
-      if (err.error instanceof Blob) {
-        try {
-          const text = await err.error.text();
-          const parsed = JSON.parse(text);
-          detail = parsed?.message ?? parsed?.error ?? text;
-        } catch {
-          detail = '';
-        }
-      } else if (typeof err.error === 'string') {
-        detail = err.error;
-      } else if (err.error?.message) {
-        detail = err.error.message;
-      }
+      const detail = await this.extractErrorDetail(err);
       return `Echec export ${kind} (${err.status})${detail ? ' : ' + detail : ''}`;
     }
     return `Echec export ${kind}`;
+  }
+
+  private async extractErrorDetail(err: HttpErrorResponse): Promise<string> {
+    let raw: unknown = err.error;
+    if (raw instanceof Blob) {
+      try {
+        const text = await raw.text();
+        try { raw = JSON.parse(text); } catch { return text; }
+      } catch { return ''; }
+    }
+    if (raw == null) return '';
+    if (typeof raw === 'string') return raw;
+    if (typeof raw === 'object') {
+      const obj = raw as Record<string, unknown>;
+      const msg = obj['message'];
+      if (typeof msg === 'string') return msg;
+      if (Array.isArray(msg)) {
+        return msg
+          .map((m) => {
+            if (typeof m === 'string') return m;
+            if (m && typeof m === 'object') {
+              const mObj = m as Record<string, unknown>;
+              const constraints = mObj['constraints'];
+              if (constraints && typeof constraints === 'object') {
+                return Object.values(constraints).join(', ');
+              }
+              return JSON.stringify(m);
+            }
+            return String(m);
+          })
+          .filter(Boolean)
+          .join(' ; ');
+      }
+      if (typeof obj['error'] === 'string') return obj['error'] as string;
+      try { return JSON.stringify(obj); } catch { return ''; }
+    }
+    return String(raw);
   }
 
   private triggerDownload(blob: Blob, filename: string): void {
