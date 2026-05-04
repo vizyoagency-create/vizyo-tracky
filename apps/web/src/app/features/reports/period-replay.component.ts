@@ -144,14 +144,24 @@ interface TimelineState {
             </button>
           </div>
 
-          <!-- Zone carte + HUD overlay -->
-          <div class="relative flex-1 min-h-[280px]">
-            <div #mapContainer class="absolute inset-0"></div>
+          <!-- Zone carte + overlays.
+               Wrapper relative + flex-1 + flex flex-col + min-h-280 :
+                 - relative = positioning context pour les overlays HUD/erreur
+                 - flex-1 = prend toute la hauteur dispo dans la card
+                 - flex flex-col = fait du map container un flex item enfant
+               Map container = flex-1 (pas absolute inset-0) : MapLibre prefere
+               un container en flow normal plutot qu'un absolute dans un
+               parent flex (cause de bugs silencieux d'init constates en prod). -->
+          <div class="relative flex-1 flex flex-col min-h-[280px]">
+            <div #mapContainer
+                 id="period-replay-map-container"
+                 class="flex-1"></div>
 
+            <!-- Overlays positionnes par-dessus le map container -->
             @if (mapError(); as err) {
-              <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2
+              <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10
                           max-w-md px-4 py-3 rounded-lg bg-red-500/15 border border-red-500/40
-                          text-red-200 text-xs text-center backdrop-blur">
+                          text-red-200 text-xs text-center backdrop-blur pointer-events-none">
                 <div class="font-bold mb-1">Carte indisponible</div>
                 <div class="font-mono break-all">{{ err }}</div>
               </div>
@@ -159,7 +169,7 @@ interface TimelineState {
 
             <!-- HUD overlay : date/heure + vitesse + etat -->
             @if (timeline()) {
-              <div class="pr-hud absolute top-3 left-3 right-3 sm:right-auto sm:max-w-[320px]
+              <div class="pr-hud absolute top-3 left-3 right-3 sm:right-auto sm:max-w-[320px] z-10
                           bg-bg-secondary/85 backdrop-blur-md border border-border-subtle
                           rounded-xl p-3 shadow-xl pointer-events-none">
                 <div class="flex items-center justify-between gap-2">
