@@ -31,6 +31,22 @@ import {
 const TRIP_POLYPOINTS_CAP = 500;
 const TRIP_POLYLINE_DP_TOLERANCE_M = 5;
 
+/**
+ * Plafond defensif sur la vitesse instantanee. Au-dela, la valeur est clampee.
+ * Cale sur le seuil `maxKmh` de `sanitizePositions` (250 km/h) — voir
+ * `packages/shared/src/utils/gps-sanity.ts`. Une vitesse > 250 km/h sur un
+ * vehicule de flotte est forcement un glitch GPS / firmware tracker.
+ */
+const TRIP_MAX_PLAUSIBLE_SPEED_KMH = 250;
+
+/** Clamp d'une vitesse en km/h dans [0, TRIP_MAX_PLAUSIBLE_SPEED_KMH]. */
+function sanitizeSpeed(kmh: number): number {
+  if (!Number.isFinite(kmh)) return 0;
+  if (kmh < 0) return 0;
+  if (kmh > TRIP_MAX_PLAUSIBLE_SPEED_KMH) return TRIP_MAX_PLAUSIBLE_SPEED_KMH;
+  return kmh;
+}
+
 interface RequestedBy {
   userId: string;
   role: UserRole;
@@ -138,15 +154,30 @@ export class TripsService implements OnModuleInit {
       return;
     }
 
+    // Defense majeure (Sprint corruption-durations) : on ignore toute position
+    // dont le timestamp n'est pas STRICTEMENT posterieur a la derniere position
+    // consommee pour ce tracker. Sans ce garde-fou, les retransmissions tardives
+    // (trackers en mode store-and-forward, batch ~25 min entrelace avec le live)
+    // ecrasent `state.lastTimestamp`, ce qui produit `endedAt < startedAt` et des
+    // `durationSeconds` negatifs persistes en DB. Distance live faussee aussi
+    // (haversine entre points non adjacents temporellement).
+    //
+    // La position reste en table `Position` => recompute differe la consommera
+    // proprement via le segmenter (qui pre-trie). On perd uniquement le live
+    // pour cette position-la, ce qui est acceptable.
+    const sanitizedSpeed = sanitizeSpeed(data.speedKmh);
     const state = this.openTrips.get(data.trackerId);
+    if (state && data.timestamp.getTime() <= state.lastTimestamp.getTime()) {
+      return;
+    }
 
     if (!state) {
-      if (data.ignition === false && data.speedKmh <= TRIP_SPEED_THRESHOLD_KMH) {
+      if (data.ignition === false && sanitizedSpeed <= TRIP_SPEED_THRESHOLD_KMH) {
         this.movingCandidates.delete(data.trackerId);
         return;
       }
 
-      if (data.speedKmh > TRIP_SPEED_THRESHOLD_KMH) {
+      if (sanitizedSpeed > TRIP_SPEED_THRESHOLD_KMH) {
         const candidate = this.movingCandidates.get(data.trackerId);
         if (!candidate) {
           this.movingCandidates.set(data.trackerId, {
@@ -159,7 +190,7 @@ export class TripsService implements OnModuleInit {
             vehiclePlate: data.vehiclePlate,
           });
         } else if (data.timestamp.getTime() - candidate.firstMovingAt.getTime() >= TRIP_MOVING_CONFIRM_MS) {
-          await this.startTrip(data);
+          await this.startTrip({ ...data, speedKmh: sanitizedSpeed });
           this.movingCandidates.delete(data.trackerId);
         }
       } else {
@@ -168,7 +199,8 @@ export class TripsService implements OnModuleInit {
       return;
     }
 
-    // Detection de saut aberrant (> 250 km/h implicite ou timestamp inverse).
+    // Detection de saut aberrant (> 250 km/h implicite). Le test "timestamp
+    // inverse" est deja absorbe par le garde-fou en tete de fonction.
     // Si saut detecte, on n'integre ni la distance ni le polypoint, mais on ne
     // ferme pas le trip pour autant (on attend la prochaine position propre).
     const plausible = isPlausibleJump(
@@ -182,16 +214,16 @@ export class TripsService implements OnModuleInit {
           `(${state.lastLat},${state.lastLng}) -> (${data.lat},${data.lng})`,
       );
       // Conserver maxSpeed/speedSum/timestamp pour ne pas geler le trip.
-      state.maxSpeed = Math.max(state.maxSpeed, data.speedKmh);
-      state.speedSum += data.speedKmh;
+      state.maxSpeed = Math.max(state.maxSpeed, sanitizedSpeed);
+      state.speedSum += sanitizedSpeed;
       state.positionCount++;
       state.lastTimestamp = data.timestamp;
     } else {
       const d = distanceMeters(state.lastLat, state.lastLng, data.lat, data.lng);
       // Math.max(0, ...) defense en profondeur : haversine retourne deja >= 0.
       state.dist += Math.max(0, d);
-      state.maxSpeed = Math.max(state.maxSpeed, data.speedKmh);
-      state.speedSum += data.speedKmh;
+      state.maxSpeed = Math.max(state.maxSpeed, sanitizedSpeed);
+      state.speedSum += sanitizedSpeed;
       state.positionCount++;
       state.lastLat = data.lat;
       state.lastLng = data.lng;
@@ -201,12 +233,12 @@ export class TripsService implements OnModuleInit {
       }
     }
 
-    if (data.ignition === false && data.speedKmh <= TRIP_SPEED_THRESHOLD_KMH) {
+    if (data.ignition === false && sanitizedSpeed <= TRIP_SPEED_THRESHOLD_KMH) {
       await this.finalizeTrip(state, data.timestamp, 'ignition');
       return;
     }
 
-    if (data.speedKmh === 0) {
+    if (sanitizedSpeed === 0) {
       if (!state.zeroSpeedSince) {
         state.zeroSpeedSince = data.timestamp;
       } else if (data.timestamp.getTime() - state.zeroSpeedSince.getTime() >= TRIP_STOP_TIMEOUT_MS) {
@@ -250,6 +282,7 @@ export class TripsService implements OnModuleInit {
       },
     });
 
+    const initSpeed = sanitizeSpeed(data.speedKmh);
     this.openTrips.set(data.trackerId, {
       tripId: trip.id,
       trackerId: data.trackerId,
@@ -262,8 +295,8 @@ export class TripsService implements OnModuleInit {
       lastLng: data.lng,
       lastTimestamp: data.timestamp,
       dist: 0,
-      maxSpeed: data.speedKmh,
-      speedSum: data.speedKmh,
+      maxSpeed: initSpeed,
+      speedSum: initSpeed,
       positionCount: 1,
       polyPoints: [{ lat: data.lat, lng: data.lng }],
       zeroSpeedSince: null,
@@ -296,7 +329,27 @@ export class TripsService implements OnModuleInit {
       return;
     }
 
-    const dur = Math.round((endTime.getTime() - state.startedAt.getTime()) / 1000);
+    // Garde-fou anti `durationSeconds` negatif : si le caller passe un endTime
+    // anterieur au start (ne devrait plus arriver depuis Fix A, mais belt-and-
+    // suspenders), on retombe sur le dernier timestamp sain ou le start.
+    // Garantie : `safeEnd >= state.startedAt` toujours.
+    const startMs = state.startedAt.getTime();
+    const lastMs = state.lastTimestamp.getTime();
+    const endMs = endTime.getTime();
+    const safeEndMs = endMs >= startMs
+      ? endMs
+      : (lastMs >= startMs ? lastMs : startMs);
+    const safeEnd = safeEndMs === endMs ? endTime : new Date(safeEndMs);
+
+    if (safeEndMs !== endMs) {
+      this.logger.warn(
+        `finalizeTrip: endTime anterieur au start clampe ` +
+          `(trip=${state.tripId} start=${state.startedAt.toISOString()} ` +
+          `endRequest=${endTime.toISOString()} -> ${safeEnd.toISOString()})`,
+      );
+    }
+
+    const dur = Math.max(0, Math.round((safeEndMs - startMs) / 1000));
     const avg = state.positionCount > 0 ? Math.round((state.speedSum / state.positionCount) * 100) / 100 : 0;
 
     // Simplification Douglas-Peucker : reduit le poids stocke en preservant la
@@ -318,17 +371,28 @@ export class TripsService implements OnModuleInit {
       this.logger.warn(`Driver snap failed for trip ${state.tripId}: ${err}`);
     }
 
+    // Plafond defensif sur la vitesse max (cap firmware glitch). Borne haute
+     // = TRIP_MAX_PLAUSIBLE_SPEED_KMH, alignee sur sanitizePositions.
+     const safeMaxSpeed = Math.min(
+       TRIP_MAX_PLAUSIBLE_SPEED_KMH,
+       Math.max(0, state.maxSpeed),
+     );
+     const safeAvgSpeed = Math.min(
+       TRIP_MAX_PLAUSIBLE_SPEED_KMH,
+       Math.max(0, avg),
+     );
+
     await this.prisma.trip.update({
       where: { id: state.tripId },
       data: {
-        endedAt: endTime,
+        endedAt: safeEnd,
         endLat: state.lastLat,
         endLng: state.lastLng,
         durationSeconds: dur,
         distanceMeters: Math.round(safeDist),
         distanceKm: Math.round(safeDist / 10) / 100,
-        maxSpeed: Math.round(state.maxSpeed * 100) / 100,
-        avgSpeed: avg,
+        maxSpeed: Math.round(safeMaxSpeed * 100) / 100,
+        avgSpeed: safeAvgSpeed,
         positionCount: state.positionCount,
         segmentationSource: source,
         polyline: JSON.stringify(simplifiedPoly),
@@ -347,15 +411,15 @@ export class TripsService implements OnModuleInit {
       trackerId: state.trackerId,
       fleetId: state.fleetId,
       startedAt: state.startedAt.toISOString(),
-      endedAt: endTime.toISOString(),
+      endedAt: safeEnd.toISOString(),
       durationSeconds: dur,
-      distanceMeters: Math.round(state.dist),
-      maxSpeed: Math.round(state.maxSpeed * 100) / 100,
-      avgSpeed: avg,
+      distanceMeters: Math.round(safeDist),
+      maxSpeed: Math.round(safeMaxSpeed * 100) / 100,
+      avgSpeed: safeAvgSpeed,
     };
     this.gateway.emitTripCompleted(state.fleetId, event);
     this.openTrips.delete(state.trackerId);
-    this.logger.log(`Trip completed: ${state.tripId} (${source}, ${Math.round(state.dist)}m, ${dur}s)`);
+    this.logger.log(`Trip completed: ${state.tripId} (${source}, ${Math.round(safeDist)}m, ${dur}s)`);
   }
 
   /**
@@ -485,9 +549,15 @@ export class TripsService implements OnModuleInit {
       const date = t.startedAt.toISOString().slice(0, 10);
       const entry = byDate.get(date) ?? { count: 0, dist: 0, dur: 0, maxSpd: 0 };
       entry.count++;
-      entry.dist += t.distanceMeters;
-      entry.dur += t.durationSeconds;
-      entry.maxSpd = Math.max(entry.maxSpd, t.maxSpeed);
+      // Defense en profondeur : ignore les valeurs negatives heritees (legacy
+      // pre-fix). La CHECK constraint et le clamp dans finalizeTrip garantissent
+      // qu'aucune nouvelle valeur ne sera negative, mais on protege l'agregation
+      // pour les bases qui n'ont pas encore migre / nettoye.
+      entry.dist += Math.max(0, t.distanceMeters);
+      entry.dur += Math.max(0, t.durationSeconds);
+      // maxSpd : ignorer les valeurs aberrantes (> seuil plafond + clamp neg).
+      const spd = Math.max(0, Math.min(TRIP_MAX_PLAUSIBLE_SPEED_KMH, t.maxSpeed));
+      entry.maxSpd = Math.max(entry.maxSpd, spd);
       byDate.set(date, entry);
     }
 
@@ -549,6 +619,24 @@ export class TripsService implements OnModuleInit {
     let created = 0;
     for (const draft of drafts) {
       const safeDist = Math.max(0, draft.distanceMeters);
+      // Defense en profondeur : le segmenter pre-trie donc draft.durationSeconds
+      // est >= 0 par construction, mais on clamp pour rester aligne avec la
+      // CHECK constraint DB et le contrat finalizeTrip.
+      const safeDur = Math.max(0, draft.durationSeconds);
+      const safeMaxSpeed = Math.min(
+        TRIP_MAX_PLAUSIBLE_SPEED_KMH,
+        Math.max(0, draft.maxSpeed),
+      );
+      const safeAvgSpeed = Math.min(
+        TRIP_MAX_PLAUSIBLE_SPEED_KMH,
+        Math.max(0, draft.avgSpeed),
+      );
+      // Garantie chronologique : si le segmenter a produit endedAt < startedAt
+      // (ne devrait jamais arriver vu le pre-tri, mais defense en profondeur),
+      // on force endedAt = startedAt + safeDur.
+      const safeEndedAt = draft.endedAt.getTime() >= draft.startedAt.getTime()
+        ? draft.endedAt
+        : new Date(draft.startedAt.getTime() + safeDur * 1000);
       const simplifiedPoly = douglasPeucker(draft.positions, TRIP_POLYLINE_DP_TOLERANCE_M);
       const newTrip = await this.prisma.trip.create({
         data: {
@@ -556,16 +644,16 @@ export class TripsService implements OnModuleInit {
           trackerId: vehicle.tracker.id,
           fleetId: vehicle.fleetId,
           startedAt: draft.startedAt,
-          endedAt: draft.endedAt,
+          endedAt: safeEndedAt,
           startLat: draft.startLat,
           startLng: draft.startLng,
           endLat: draft.endLat,
           endLng: draft.endLng,
-          durationSeconds: draft.durationSeconds,
+          durationSeconds: safeDur,
           distanceMeters: Math.round(safeDist),
           distanceKm: Math.round(safeDist / 10) / 100,
-          maxSpeed: draft.maxSpeed,
-          avgSpeed: draft.avgSpeed,
+          maxSpeed: safeMaxSpeed,
+          avgSpeed: safeAvgSpeed,
           positionCount: draft.positionCount,
           segmentationSource: 'recompute',
           polyline: JSON.stringify(simplifiedPoly),

@@ -18,6 +18,12 @@ import { LineBarChartComponent, type LineBarChartData } from '../../shared/ui/ch
 import { HistogramChartComponent } from '../../shared/ui/charts/histogram-chart.component';
 import { HeatmapChartComponent } from '../../shared/ui/charts/heatmap-chart.component';
 import { TripReplayComponent } from './trip-replay.component';
+import {
+  aggregateKpis,
+  clampSpeed as clampSpeedFn,
+  formatDuration as formatDurationFn,
+  max0 as max0Fn,
+} from './reports.utils';
 
 @Component({
   selector: 'app-reports',
@@ -307,8 +313,8 @@ import { TripReplayComponent } from './trip-replay.component';
                   <td class="p-3 text-fg-primary">{{ trip.endedAt | date:'dd/MM HH:mm' }}</td>
                   <td class="p-3 text-right font-mono text-fg-secondary">{{ formatDuration(trip.durationSeconds) }}</td>
                   <td class="p-3 text-right font-mono text-fg-secondary">{{ (max0(trip.distanceMeters) / 1000) | number:'1.1-1' }} km</td>
-                  <td class="p-3 text-right text-fg-secondary">{{ trip.avgSpeed | number:'1.0-0' }}</td>
-                  <td class="p-3 text-right text-fg-secondary">{{ trip.maxSpeed | number:'1.0-0' }}</td>
+                  <td class="p-3 text-right text-fg-secondary">{{ clampSpeed(trip.avgSpeed) | number:'1.0-0' }}</td>
+                  <td class="p-3 text-right text-fg-secondary">{{ clampSpeed(trip.maxSpeed) | number:'1.0-0' }}</td>
                   <td class="p-3 max-w-[180px]">
                     @if (trip.driver) {
                       <button type="button"
@@ -1069,17 +1075,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   protected periods = this.buildPeriods();
 
-  protected readonly kpis = computed(() => {
-    const t = this.trips();
-    return {
-      tripCount: t.length,
-      // Defense en profondeur : si une ligne legacy a une distance negative,
-      // on la traite comme 0 plutot que de fausser le total.
-      totalDistance: t.reduce((s, tr) => s + Math.max(0, tr.distanceMeters), 0),
-      totalDuration: t.reduce((s, tr) => s + tr.durationSeconds, 0),
-      maxSpeed: t.reduce((s, tr) => Math.max(s, tr.maxSpeed), 0),
-    };
-  });
+  protected readonly kpis = computed(() => aggregateKpis(this.trips()));
 
   // ─── Charts datasets ────────────────────────────────────────────────────
   /** Series journaliere remplie (jours sans trajet a 0) entre periodFrom et
@@ -1104,10 +1100,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return { labels, tripCounts, distancesKm, durationsHours };
   });
 
-  /** Maxspeeds bruts pour l'histogramme. Recalcule a chaque changement de
-   *  trips() (filtre vehicule, periode). */
+  /** Maxspeeds clampes pour l'histogramme (0..250 km/h). Recalcule a chaque
+   *  changement de trips() (filtre vehicule, periode). */
   protected readonly histoValues = computed<number[]>(() =>
-    this.trips().map((t) => t.maxSpeed),
+    this.trips().map((t) => this.clampSpeed(t.maxSpeed)),
   );
 
   /** Matrice 7×24 (lun→dim, 0h→23h) du nombre de trajets demarres a cette
@@ -1224,9 +1220,14 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return out;
   }
 
-  /** Helper template-friendly pour clamper une distance >= 0 a l'affichage. */
+  /** Delegue a `reports.utils#max0` (verrouille par tests). */
   protected max0(n: number): number {
-    return Math.max(0, n ?? 0);
+    return max0Fn(n);
+  }
+
+  /** Delegue a `reports.utils#clampSpeed` (verrouille par tests). */
+  protected clampSpeed(n: number): number {
+    return clampSpeedFn(n);
   }
 
   protected readonly replayVehicleType = computed(() => {
@@ -1435,11 +1436,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
     finally { this.recomputing.set(false); }
   }
 
+  /** Delegue a `reports.utils#formatDuration` (verrouille par tests). */
   protected formatDuration(seconds: number): string {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    if (h > 0) return `${h}h${String(m).padStart(2, '0')}`;
-    return `${m}min`;
+    return formatDurationFn(seconds);
   }
 
   private async loadVehicles(): Promise<void> {

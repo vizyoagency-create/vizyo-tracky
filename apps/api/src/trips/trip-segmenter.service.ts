@@ -68,7 +68,14 @@ export class TripSegmenterService {
 
       const start = tripPositions[0]!;
       const end = tripPositions[tripPositions.length - 1]!;
-      const dur = Math.round((end.timestamp.getTime() - start.timestamp.getTime()) / 1000);
+      // Garantie : tripPositions est issu de `sanitized` (ligne 43) qui est tri-
+      // ordonne et dedoublonne, donc end.timestamp >= start.timestamp toujours.
+      // `Math.max(0, ...)` est belt-and-suspenders au cas ou un futur changement
+      // de sanitizePositions casserait l'invariant.
+      const dur = Math.max(
+        0,
+        Math.round((end.timestamp.getTime() - start.timestamp.getTime()) / 1000),
+      );
 
       trips.push({
         startedAt: start.timestamp,
@@ -77,9 +84,9 @@ export class TripSegmenterService {
         startLng: start.lng,
         endLat: end.lat,
         endLng: end.lng,
-        distanceMeters: Math.round(dist),
-        maxSpeed: Math.round(maxSpd * 100) / 100,
-        avgSpeed: Math.round((spdSum / tripPositions.length) * 100) / 100,
+        distanceMeters: Math.max(0, Math.round(dist)),
+        maxSpeed: Math.max(0, Math.round(maxSpd * 100) / 100),
+        avgSpeed: Math.max(0, Math.round((spdSum / tripPositions.length) * 100) / 100),
         durationSeconds: dur,
         positionCount: tripPositions.length,
         segmentationSource: source,

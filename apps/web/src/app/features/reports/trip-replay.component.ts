@@ -44,7 +44,7 @@ import {
                   <span class="text-fg-tertiary ml-2">
                     {{ (max0(trip()!.distanceMeters) / 1000) | number:'1.1-1' }} km ·
                     {{ formatDur(trip()!.durationSeconds) }} ·
-                    max {{ trip()!.maxSpeed | number:'1.0-0' }} km/h
+                    max {{ clampSpeed(trip()!.maxSpeed) | number:'1.0-0' }} km/h
                   </span>
                   @if (trip()!.polylineMatched) {
                     <span class="ml-2 inline-block px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-300
@@ -207,13 +207,24 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
   }
 
   protected formatDur(s: number): string {
-    const h = Math.floor(s / 3600);
-    const m = Math.floor((s % 3600) / 60);
+    // Clamp defensif : aligne sur reports.component formatDuration. Une legacy
+    // negative ne doit jamais s'afficher en "-11min".
+    const safe = Number.isFinite(s) && s > 0 ? s : 0;
+    const h = Math.floor(safe / 3600);
+    const m = Math.floor((safe % 3600) / 60);
     return h > 0 ? `${h}h${String(m).padStart(2, '0')}` : `${m}min`;
   }
 
   protected max0(n: number): number {
-    return Math.max(0, n ?? 0);
+    return Math.max(0, Number.isFinite(n) ? n : 0);
+  }
+
+  /** Clamp d'une vitesse km/h dans [0, 250]. Voir reports.component#clampSpeed. */
+  protected clampSpeed(n: number): number {
+    if (!Number.isFinite(n)) return 0;
+    if (n < 0) return 0;
+    if (n > 250) return 250;
+    return n;
   }
 
   private initReplay(trip: TripDto): void {
