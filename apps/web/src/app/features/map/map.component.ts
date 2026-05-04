@@ -46,7 +46,7 @@ import {
   updateVehicleMarkerEl,
   type VehicleMarkerData,
 } from '../../shared/utils/maplibre-markers';
-import { catmullRom, lerp, lerpHeading } from '../../shared/utils/spline';
+import { catmullRom, lerpHeading } from '../../shared/utils/spline';
 
 interface MarkerEntry {
   marker: MlMarker;
@@ -59,21 +59,52 @@ interface VehicleMeta {
 }
 
 /**
- * Etat d'interpolation d'un marker : entre deux trames Coban (~30s), on fait
- * glisser le marker de `from` vers `to` plutot que de teleporter. Cf. Sprint C.
+ * Etat de mouvement d'un marker.
+ *
+ * Entre deux trames Coban (~30s en MOVING), on n'interpole plus from→to (ce qui
+ * affichait toujours la position d'il y a ~30s). On extrapole depuis la derniere
+ * verite serveur en utilisant `speedKmh + heading` :
+ *   target(now) = truth + (now - truthAt) * speedVector
+ * puis on lisse `display → target` via un filtre passe-bas exponentiel pour
+ * absorber les corrections sans saccade quand la trame suivante arrive.
+ *
+ * Resultat : l'icone colle au temps reel quand le vehicule roule droit, et
+ * corrige doucement sur les virages / freinages.
  */
-interface InterpState {
-  fromLat: number;
-  fromLng: number;
-  fromHeading: number;
-  toLat: number;
-  toLng: number;
-  toHeading: number;
-  startedAt: number;
-  durationMs: number;
+interface MotionState {
+  // Derniere verite serveur (depuis le dernier event WS)
+  truthLat: number;
+  truthLng: number;
+  truthHeading: number;
+  truthSpeedMs: number;     // m/s, derive de speedKmh / 3.6
+  truthAt: number;          // performance.now() a la reception de la trame
+
+  // Intervalle inter-trame typique pour ce tracker, lisse en EMA.
+  // Sert a borner l'extrapolation : on ne projette jamais plus loin que
+  // 1.3 * intervalMs (sinon une coupure GPRS ferait partir l'icone a l'infini).
+  intervalMs: number;
+
+  // Position actuellement affichee (drive marker.setLngLat)
+  displayLat: number;
+  displayLng: number;
+  displayHeading: number;
 }
 
-const INTERP_DURATION_MS = 28_000; // legerement < 30s pour atteindre la cible avant la nouvelle trame
+// Intervalle inter-trame initial avant qu'on en observe un reel (Coban MOVING ~= 30s).
+const TYPICAL_INTERVAL_MS = 30_000;
+// Borne haute de l'extrapolation = INTERVAL * facteur. Au-dela on fige le marker
+// sur la derniere verite (cas trame perdue / GPRS coupe).
+const EXTRAPOLATION_CAP_FACTOR = 1.3;
+// Constantes de temps (ms) du filtre passe-bas display → target.
+// Plus c'est petit, plus c'est reactif. ~250-350ms = correction nette mais sans jitter.
+const SMOOTHING_TAU_MS = 350;
+const HEADING_TAU_MS = 250;
+// Vitesse en dessous de laquelle on considere le vehicule arrete : plus d'extrapolation.
+const MIN_EXTRAPOLATE_SPEED_MS = 0.3;
+// Apprentissage EMA pour intervalMs (0.3 = reagit en ~3 trames).
+const INTERVAL_EMA_ALPHA = 0.3;
+// dt max entre 2 frames RAF : evite un saut enorme apres un retour de tab cache.
+const MAX_FRAME_DT_MS = 100;
 
 @Component({
   selector: 'app-map',
@@ -1577,11 +1608,13 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     return action === 'cut' ? 'Oui, couper le moteur' : 'Oui, rallumer';
   });
 
-  /** Etat d'interpolation par trackerId : permet animation fluide entre 2 events WS. */
-  private interp = new Map<string, InterpState>();
-  /** Derniere data de marker connue (pour update du DOM pendant interpolation). */
+  /** Etat de mouvement par trackerId : extrapolation speed/heading + lissage display. */
+  private motion = new Map<string, MotionState>();
+  /** Derniere data de marker connue (pour update du DOM a chaque tick). */
   private lastMarkerData = new Map<string, VehicleMarkerData>();
   private animFrameId: number | null = null;
+  /** performance.now() de la frame precedente, pour calculer dt dans le low-pass. */
+  private lastTickAt: number | null = null;
 
   protected readonly currentStyle = signal<MapStyleId>('osm');
   protected readonly cameraMode = signal<CameraMode>('free');
@@ -1857,7 +1890,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     this.markers.forEach((m) => m.marker.remove());
     this.markers.clear();
     this.trailPoints.clear();
-    this.interp.clear();
+    this.motion.clear();
+    this.lastTickAt = null;
     this.lastMarkerData.clear();
     this.userMarker?.remove();
     this.userMarker = null;
@@ -1872,9 +1906,13 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   }
 
   /**
-   * Boucle d'interpolation : a chaque RAF, fait avancer chaque marker en cours
-   * d'interpolation. Une trame WS Coban arrive toutes les ~30s ; on glisse le
-   * marker sur cette duree pour eviter les teleports.
+   * Boucle d'animation : a chaque RAF, calcule la position cible de chaque
+   * marker via extrapolation (truth + speed*dt selon heading), puis fait
+   * converger `display` vers `target` via un filtre passe-bas exponentiel.
+   *
+   * Ainsi l'icone affiche le temps reel (et non la position d'il y a 30s) tant
+   * que le vehicule roule en ligne droite, et corrige doucement quand la
+   * trame suivante arrive avec un cap/vitesse different.
    *
    * V1.5 (Sprint H2) : skip total du travail si l'onglet est cache. Le RAF
    * reste enchaine pour pouvoir reprendre instantanement au retour, mais la
@@ -1883,40 +1921,74 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private startAnimLoop(): void {
     const tick = (now: number) => {
       this.animFrameId = requestAnimationFrame(tick);
-      if (!this.visibility.isVisible()) return;
-      if (this.interp.size === 0) return;
+      if (!this.visibility.isVisible()) {
+        this.lastTickAt = null; // reset dt: le prochain tick ne doit pas faire un saut enorme
+        return;
+      }
+      if (this.motion.size === 0) {
+        this.lastTickAt = null;
+        return;
+      }
+
+      const dtMs = this.lastTickAt === null
+        ? 16
+        : Math.min(MAX_FRAME_DT_MS, now - this.lastTickAt);
+      this.lastTickAt = now;
+
+      // Coefficients du filtre passe-bas exponentiel display → target.
+      // alpha = 1 - exp(-dt/tau)  →  invariant au framerate.
+      const alphaPos = 1 - Math.exp(-dtMs / SMOOTHING_TAU_MS);
+      const alphaHead = 1 - Math.exp(-dtMs / HEADING_TAU_MS);
 
       const followedVid = this.followedVehicleId();
       const camMode = this.cameraMode();
 
-      for (const [trackerId, st] of this.interp) {
-        const t = Math.min(1, (now - st.startedAt) / st.durationMs);
-        const lat = lerp(st.fromLat, st.toLat, t);
-        const lng = lerp(st.fromLng, st.toLng, t);
-        const heading = lerpHeading(st.fromHeading, st.toHeading, t);
+      for (const [trackerId, st] of this.motion) {
+        // 1. Calcul de la cible = derniere verite + extrapolation par speed*heading.
+        let targetLat = st.truthLat;
+        let targetLng = st.truthLng;
+        const targetHeading = st.truthHeading;
 
+        if (st.truthSpeedMs >= MIN_EXTRAPOLATE_SPEED_MS) {
+          const ageMs = now - st.truthAt;
+          const capMs = st.intervalMs * EXTRAPOLATION_CAP_FACTOR;
+          const tEffSec = Math.min(ageMs, capMs) / 1000;
+          const dist = st.truthSpeedMs * tEffSec;
+          const headRad = (st.truthHeading * Math.PI) / 180;
+          // Approximation plate (OK sur < 1km, largement le cas pour 30s a 130km/h = ~1.1km).
+          // 1 deg lat = 111_111m, 1 deg lng = 111_111m * cos(lat).
+          const cosLat = Math.cos((st.truthLat * Math.PI) / 180) || 1;
+          targetLat = st.truthLat + (dist * Math.cos(headRad)) / 111_111;
+          targetLng = st.truthLng + (dist * Math.sin(headRad)) / (111_111 * cosLat);
+        }
+
+        // 2. Lissage display → target.
+        st.displayLat = st.displayLat + (targetLat - st.displayLat) * alphaPos;
+        st.displayLng = st.displayLng + (targetLng - st.displayLng) * alphaPos;
+        st.displayHeading = lerpHeading(st.displayHeading, targetHeading, alphaHead);
+
+        // 3. Push au marker.
         const entry = this.markers.get(trackerId);
         if (entry) {
-          entry.marker.setLngLat([lng, lat]);
+          entry.marker.setLngLat([st.displayLng, st.displayLat]);
           const data = this.lastMarkerData.get(trackerId);
           if (data) {
-            updateVehicleMarkerEl(entry.el, { ...data, heading });
+            updateVehicleMarkerEl(entry.el, { ...data, heading: st.displayHeading });
           }
         }
 
-        // Si on suit ce vehicule, faire suivre la camera en douceur (sans animation
-        // MapLibre supplementaire — on copie la position interpolee directement).
+        // 4. Camera follow : copie la position lissee directement.
         if (this.map && (camMode === 'follow' || camMode === 'heading-up' || camMode === 'chase')) {
           const data = this.lastMarkerData.get(trackerId);
           if (data && data.vehicleId === followedVid) {
             this.map.jumpTo({
-              center: [lng, lat],
-              bearing: (camMode === 'heading-up' || camMode === 'chase') ? heading : this.map.getBearing(),
+              center: [st.displayLng, st.displayLat],
+              bearing: (camMode === 'heading-up' || camMode === 'chase')
+                ? st.displayHeading
+                : this.map.getBearing(),
             });
           }
         }
-
-        if (t >= 1) this.interp.delete(trackerId);
       }
     };
     this.animFrameId = requestAnimationFrame(tick);
@@ -2831,26 +2903,54 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         entry = { marker, el };
         this.markers.set(pos.trackerId, entry);
       } else {
-        // Demarrer une interpolation depuis la position courante (lue sur le marker)
-        // vers la nouvelle position WS. Anime sur ~28s pour eviter les teleports
-        // entre deux trames Coban (cf. spec Sprint C — chantier 3 du roadmap).
+        // Mise a jour de la verite. Le tick() loop fera converger display vers
+        // (truth + extrapolation par speed/heading) via filtre passe-bas.
+        // Resultat : icone collee au temps reel quand le vehicule roule droit,
+        // correction douce sur virages/freinages quand la trame suivante arrive.
         const cur = entry.marker.getLngLat();
         const lastData = this.lastMarkerData.get(pos.trackerId);
-        const fromHeading = lastData?.heading ?? pos.heading;
         const isHydrated = data.hydrated === true;
+        const truthSpeedMs = pos.speedKmh / 3.6;
+        const nowPerf = performance.now();
+
         if (isHydrated || !lastData) {
-          // Premier rendu (hydratation ou nouveau tracker) : positionner direct, pas d'anim.
+          // Premier rendu (hydratation ou nouveau tracker) : snap sans anim.
           entry.marker.setLngLat([pos.lng, pos.lat]);
           updateVehicleMarkerEl(entry.el, data);
+          this.motion.set(pos.trackerId, {
+            truthLat: pos.lat, truthLng: pos.lng,
+            truthHeading: pos.heading, truthSpeedMs,
+            truthAt: nowPerf,
+            intervalMs: TYPICAL_INTERVAL_MS,
+            displayLat: pos.lat, displayLng: pos.lng, displayHeading: pos.heading,
+          });
         } else {
-          this.interp.set(pos.trackerId, {
-            fromLat: cur.lat, fromLng: cur.lng, fromHeading,
-            toLat: pos.lat, toLng: pos.lng, toHeading: pos.heading,
-            startedAt: performance.now(), durationMs: INTERP_DURATION_MS,
+          const prev = this.motion.get(pos.trackerId);
+          // EMA sur l'intervalle inter-trame observe (sert a borner l'extrapolation
+          // pour ce tracker — un boitier qui emet souvent autorise plus de projection,
+          // un boitier en STOPPED a 5min en autorise tres peu).
+          let intervalMs = TYPICAL_INTERVAL_MS;
+          if (prev) {
+            const dtSinceLast = nowPerf - prev.truthAt;
+            intervalMs = prev.intervalMs * (1 - INTERVAL_EMA_ALPHA) + dtSinceLast * INTERVAL_EMA_ALPHA;
+            // Bornes [5s..120s] pour absorber les outliers (trame perdue, GPRS coupe).
+            intervalMs = Math.max(5_000, Math.min(120_000, intervalMs));
+          }
+          // On ne touche PAS a display* : le tick() lissera depuis la position
+          // courante du marker. Si pas d'etat precedent (re-entree), on part
+          // de la position visible du marker.
+          this.motion.set(pos.trackerId, {
+            truthLat: pos.lat, truthLng: pos.lng,
+            truthHeading: pos.heading, truthSpeedMs,
+            truthAt: nowPerf,
+            intervalMs,
+            displayLat: prev?.displayLat ?? cur.lat,
+            displayLng: prev?.displayLng ?? cur.lng,
+            displayHeading: prev?.displayHeading ?? lastData.heading,
           });
           // Update les attributs non-positionnels (couleur, ACC, plaque, active)
-          // immediatement pour qu'ils refletent le nouvel etat sans attendre l'anim.
-          updateVehicleMarkerEl(entry.el, { ...data, heading: fromHeading });
+          // immediatement pour qu'ils refletent le nouvel etat sans attendre le tick.
+          updateVehicleMarkerEl(entry.el, { ...data, heading: prev?.displayHeading ?? lastData.heading });
         }
       }
       this.lastMarkerData.set(pos.trackerId, data);
@@ -2898,6 +2998,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         entry.marker.remove();
         this.markers.delete(id);
         this.trailPoints.delete(id);
+        this.motion.delete(id);
       }
     }
 
