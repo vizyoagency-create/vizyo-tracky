@@ -139,8 +139,17 @@ interface TimelineState {
           </div>
 
           <!-- Zone carte + HUD overlay -->
-          <div class="relative flex-1 min-h-0">
+          <div class="relative flex-1 min-h-[280px]">
             <div #mapContainer class="absolute inset-0"></div>
+
+            @if (mapError(); as err) {
+              <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2
+                          max-w-md px-4 py-3 rounded-lg bg-red-500/15 border border-red-500/40
+                          text-red-200 text-xs text-center backdrop-blur">
+                <div class="font-bold mb-1">Carte indisponible</div>
+                <div class="font-mono break-all">{{ err }}</div>
+              </div>
+            }
 
             <!-- HUD overlay : date/heure + vitesse + etat -->
             @if (timeline()) {
@@ -331,6 +340,10 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
   protected readonly virtualMs = signal(0);
   protected readonly speedFactor = signal(600); // 10 min/sec par defaut
   protected readonly autoSpeed = signal(true);
+  /** Diagnostic : message d'erreur visible si la carte ne se charge pas en 3s. */
+  protected readonly mapError = signal<string | null>(null);
+  /** Indique si MapLibre a emis 'load' au moins une fois. */
+  protected readonly mapReady = signal(false);
 
   /** Timeline construite a partir des trips. null tant que pas calcule. */
   protected readonly timeline = signal<TimelineState | null>(null);
@@ -621,18 +634,61 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
   private initMap(): void {
     const tl = this.timeline();
     const el = this.mapRef()?.nativeElement;
-    if (!tl || !el || !tl.firstLngLat) return;
+    this.mapError.set(null);
+    this.mapReady.set(false);
+    if (!tl || !el) {
+      this.mapError.set(`Init aborted: tl=${!!tl} el=${!!el}`);
+      return;
+    }
+    if (!tl.firstLngLat) {
+      this.mapError.set(`Aucun point GPS exploitable dans la periode (${tl.segments.length} segments)`);
+      return;
+    }
+    if (el.clientWidth === 0 || el.clientHeight === 0) {
+      // Init quand meme, ResizeObserver fixera. Mais on log pour le diag.
+      console.warn('[period-replay] map container size 0', {
+        w: el.clientWidth, h: el.clientHeight,
+      });
+    }
     this.disposeMap();
 
     const styleId = this.preferences.prefs().map.style;
     const [lng0, lat0] = tl.firstLngLat;
-    this.map = this.mapSvc.createMap(el, {
-      center: { lat: lat0, lng: lng0 },
-      zoom: 14,
-      style: styleId,
-      withGeolocateControl: false,
-      withNavigationControl: true,
-      withScaleControl: true,
+    try {
+      this.map = this.mapSvc.createMap(el, {
+        center: { lat: lat0, lng: lng0 },
+        zoom: 14,
+        style: styleId,
+        withGeolocateControl: false,
+        withNavigationControl: true,
+        withScaleControl: true,
+      });
+    } catch (err) {
+      console.error('[period-replay] createMap throw', err);
+      this.mapError.set(`createMap: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
+
+    // Diag : si 'load' n'a pas firé en 3s, affiche un encart d'erreur visible.
+    const loadGuardId = window.setTimeout(() => {
+      if (!this.mapReady()) {
+        const w = el.clientWidth, h = el.clientHeight;
+        this.mapError.set(
+          `Map.load timeout (3s) — container ${w}x${h}px, style="${styleId}". ` +
+          `Verifie console + Network (tuiles).`,
+        );
+        console.error('[period-replay] map.load timeout', { w, h, styleId });
+      }
+    }, 3000);
+
+    this.map.on('error', (ev: any) => {
+      const msg = ev?.error?.message ?? ev?.message ?? 'unknown error';
+      console.error('[period-replay] maplibre error', ev);
+      // N'efface pas un mapReady=true existant (les erreurs tuiles partielles
+      // sont normales, on veut juste signaler les bloquants).
+      if (!this.mapReady()) {
+        this.mapError.set(`MapLibre: ${msg}`);
+      }
     });
 
     // Observer la taille du container : tout changement (modal qui finit de
@@ -648,6 +704,8 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
 
      this.map.on('load', () => {
       if (!this.map) return;
+      this.mapReady.set(true);
+      window.clearTimeout(loadGuardId);
       // Polylignes en fond : toutes les lignes des trips.
       for (const line of tl.tripLines) {
         const srcId = `pr-line-${line.tripId}`;
@@ -717,6 +775,8 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
     this.cumulDistanceM.set(0);
     this.currentState.set('idle');
     this.currentTripIndex.set(-1);
+    this.mapError.set(null);
+    this.mapReady.set(false);
   }
 }
 
