@@ -2,7 +2,13 @@
 <html lang="fr" data-theme="dark">
   <head>
     <meta charset="utf-8" />
-    <title>Vizyo Tracky — Gestion de flotte GPS</title>
+    <!--
+      Le <title> contient uniquement le nom de la page (pas la marque) pour eviter
+      la duplication dans le header de fenetre de la PWA installee : Chromium y
+      affiche "[manifest.name] - [document.title]". La marque vient deja du
+      manifest, le AppTitleStrategy met a jour ce title a chaque navigation.
+    -->
+    <title>Tableau de bord</title>
     <meta name="description" content="Plateforme de gestion de flotte GPS Vizyo Tracky. Suivi temps reel, coupure moteur securisee, alertes." />
     <base href="/" />
 
