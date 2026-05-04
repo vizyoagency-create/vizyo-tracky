@@ -707,10 +707,18 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
      } catch { /* ResizeObserver indispo : tant pis, fallback timers ci-dessous */ }
 
      this.map.on('load', () => {
+      console.log('[period-replay] map.LOAD fired', {
+        center: this.map?.getCenter(),
+        zoom: this.map?.getZoom(),
+        styleLoaded: this.map?.isStyleLoaded(),
+        canvasW: el.clientWidth,
+        canvasH: el.clientHeight,
+      });
       if (!this.map) return;
       this.mapReady.set(true);
       window.clearTimeout(loadGuardId);
       // Polylignes en fond : toutes les lignes des trips.
+      console.log('[period-replay] adding tripLines', tl.tripLines.length);
       for (const line of tl.tripLines) {
         const srcId = `pr-line-${line.tripId}`;
         const layerId = `pr-layer-${line.tripId}`;
