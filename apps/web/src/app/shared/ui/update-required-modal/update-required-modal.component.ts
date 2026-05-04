@@ -1,6 +1,10 @@
-import { Component, computed, inject } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { LucideAngularModule, Download, Sparkles } from 'lucide-angular';
 import { PwaUpdateService } from '../../../core/services/pwa-update.service';
+
+/** Delai avant auto-apply (5s = laisse l'utilisateur lire le message
+ *  ou cliquer pour skipper, sans friction si il est ailleurs). */
+const AUTO_APPLY_DELAY_MS = 5000;
 
 /**
  * Modale bloquante affichee au root des qu'une nouvelle version du SW est prete.
@@ -89,9 +93,23 @@ import { PwaUpdateService } from '../../../core/services/pwa-update.service';
             }
           </button>
 
-          <p class="text-xs text-fg-tertiary text-center mt-3">
-            L'application va se recharger automatiquement
-          </p>
+          <!-- Countdown auto-apply : barre de progression + texte explicite.
+               L'utilisateur peut cliquer le bouton pour zapper l'attente. -->
+          @if (!loading() && countdownSec() > 0) {
+            <p class="text-xs text-fg-tertiary text-center mt-3">
+              Mise a jour automatique dans {{ countdownSec() }}s
+            </p>
+            <div class="mt-2 h-1 rounded-full bg-bg-tertiary overflow-hidden">
+              <div
+                class="h-full bg-tracky transition-all duration-100 ease-linear"
+                [style.width.%]="countdownProgress()"
+              ></div>
+            </div>
+          } @else if (!loading()) {
+            <p class="text-xs text-fg-tertiary text-center mt-3">
+              L'application va se recharger automatiquement
+            </p>
+          }
         </div>
       </div>
     }
@@ -128,7 +146,57 @@ export class UpdateRequiredModalComponent {
   protected readonly Download = Download;
   protected readonly Sparkles = Sparkles;
 
+  /** ms restant avant auto-apply. Decremente toutes les 100ms quand visible. */
+  private readonly remainingMs = signal(AUTO_APPLY_DELAY_MS);
+  /** Secondes restantes (arrondies au superieur, lisibles dans le template). */
+  protected readonly countdownSec = computed(() =>
+    Math.max(0, Math.ceil(this.remainingMs() / 1000)),
+  );
+  /** Progression 0..100 de la barre (0 = vient de demarrer, 100 = a expire). */
+  protected readonly countdownProgress = computed(() => {
+    const r = this.remainingMs();
+    if (r <= 0) return 100;
+    return ((AUTO_APPLY_DELAY_MS - r) / AUTO_APPLY_DELAY_MS) * 100;
+  });
+
+  private tickerId: ReturnType<typeof setInterval> | null = null;
+
+  /** Demarre/arrete le ticker selon la visibilite de la modale. */
+  private visibilityEffect = effect(() => {
+    const isVisible = this.visible();
+    if (isVisible && !this.loading()) {
+      this.startCountdown();
+    } else {
+      this.stopCountdown();
+    }
+  });
+
+  private startCountdown(): void {
+    if (this.tickerId !== null) return;
+    this.remainingMs.set(AUTO_APPLY_DELAY_MS);
+    const tickMs = 100;
+    this.tickerId = setInterval(() => {
+      const next = this.remainingMs() - tickMs;
+      if (next <= 0) {
+        this.remainingMs.set(0);
+        this.stopCountdown();
+        // Auto-apply : meme appel que le clic utilisateur.
+        this.apply();
+      } else {
+        this.remainingMs.set(next);
+      }
+    }, tickMs);
+  }
+
+  private stopCountdown(): void {
+    if (this.tickerId !== null) {
+      clearInterval(this.tickerId);
+      this.tickerId = null;
+    }
+  }
+
   protected apply(): void {
+    this.stopCountdown();
     void this.pwa.applyUpdate();
   }
 }

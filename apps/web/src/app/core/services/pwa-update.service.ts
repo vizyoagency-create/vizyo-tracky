@@ -3,7 +3,12 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { SwUpdate, VersionReadyEvent } from '@angular/service-worker';
 import { filter } from 'rxjs';
 
-const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6h
+// Intervalle court (1 min) : on veut que les clients basculent sur la nouvelle
+// version dans la minute apres un deploy, pas a la prochaine session du
+// lendemain. Le call est tres leger (HEAD/GET ngsw.json), aucune charge serveur
+// significative. Combine avec le check on `visibilitychange`, ca couvre 99%
+// des scenarios de PWA en arriere-plan.
+const CHECK_INTERVAL_MS = 60 * 1000; // 1 min
 
 /**
  * Surveille les nouvelles versions du service worker.
