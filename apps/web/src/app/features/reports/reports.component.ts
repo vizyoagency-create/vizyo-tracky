@@ -18,6 +18,7 @@ import { LineBarChartComponent, type LineBarChartData } from '../../shared/ui/ch
 import { HistogramChartComponent } from '../../shared/ui/charts/histogram-chart.component';
 import { HeatmapChartComponent } from '../../shared/ui/charts/heatmap-chart.component';
 import { TripReplayComponent } from './trip-replay.component';
+import { PeriodReplayComponent } from './period-replay.component';
 import {
   aggregateKpis,
   clampSpeed as clampSpeedFn,
@@ -41,6 +42,7 @@ import {
     LineBarChartComponent,
     HistogramChartComponent,
     HeatmapChartComponent,
+    PeriodReplayComponent,
   ],
   template: `
     <div class="flex flex-col gap-6">
@@ -174,6 +176,20 @@ import {
             </div>
           }
         </div>
+
+        <!-- Replay periode : actif uniquement si un vehicule est selectionne
+             ET qu'au moins 1 trip existe sur la periode. Sinon tooltip explicatif. -->
+        <button (click)="onOpenPeriodReplay()"
+                [disabled]="!canPeriodReplay()"
+                [title]="canPeriodReplay() ? 'Replay de tous les trajets de la période'
+                                            : 'Sélectionne un véhicule avec des trajets sur la période'"
+                class="px-3 py-1.5 text-xs rounded-lg border border-tracky/30
+                       bg-tracky/10 text-tracky-light hover:bg-tracky/20
+                       transition-colors cursor-pointer disabled:opacity-40
+                       inline-flex items-center gap-1.5">
+          <lucide-icon [img]="Play" [size]="12"></lucide-icon>
+          Replay période
+        </button>
 
         @if (isAdmin()) {
           <button (click)="onRecompute()" [disabled]="!selectedVehicleId() || recomputing()"
@@ -390,6 +406,14 @@ import {
       [canEditNote]="canEditNotes()"
       (closed)="replayTrip.set(null)"
       (editNote)="onEditNoteFromReplay($event)"
+    />
+
+    <app-period-replay
+      [open]="periodReplayOpen()"
+      [trips]="trips()"
+      [vehicleType]="periodReplayVehicleType()"
+      [vehiclePlate]="periodReplayPlate()"
+      (closed)="periodReplayOpen.set(false)"
     />
 
     <app-trip-note-modal
@@ -1246,6 +1270,38 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (!vehicleId) return null;
     const v = this.vehicles().find((x) => x.id === vehicleId);
     return v?.plate ?? null;
+  }
+
+  // ─── Period replay ────────────────────────────────────────────────────
+  /** Modal replay-periode ouverte ? Toggled par `onOpenPeriodReplay`. */
+  protected readonly periodReplayOpen = signal(false);
+
+  /** Vrai si on peut lancer un replay periode (vehicule selectionne + au
+   *  moins 1 trip dans la periode). */
+  protected readonly canPeriodReplay = computed(() => {
+    if (!this.selectedVehicleId()) return false;
+    return this.trips().length > 0;
+  });
+
+  /** Type vehicule pour le marker du period-replay. */
+  protected readonly periodReplayVehicleType = computed(() => {
+    const id = this.selectedVehicleId();
+    if (!id) return 'OTHER';
+    const v = this.vehicles().find((x) => x.id === id);
+    return v?.type ?? 'OTHER';
+  });
+
+  /** Plaque du vehicule selectionne, pour le badge dans le HUD du replay. */
+  protected readonly periodReplayPlate = computed<string | null>(() => {
+    const id = this.selectedVehicleId();
+    if (!id) return null;
+    const v = this.vehicles().find((x) => x.id === id);
+    return v?.plate ?? null;
+  });
+
+  protected onOpenPeriodReplay(): void {
+    if (!this.canPeriodReplay()) return;
+    this.periodReplayOpen.set(true);
   }
 
   protected readonly replayVehicleType = computed(() => {

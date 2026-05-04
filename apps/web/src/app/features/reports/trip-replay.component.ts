@@ -31,12 +31,12 @@ import {
   imports: [LucideAngularModule, DecimalPipe],
   template: `
     @if (open()) {
-      <div class="fixed inset-0 z-[9000] flex flex-col">
+      <div class="fixed inset-0 z-[9000] flex flex-col tr-replay-shell">
         <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" (click)="onClose()"></div>
-        <div class="relative flex-1 flex flex-col m-4 bg-bg-secondary border border-border-subtle
-                    rounded-[--radius-card] overflow-hidden">
+        <div class="relative flex-1 flex flex-col bg-bg-secondary border border-border-subtle
+                    rounded-[--radius-card] overflow-hidden tr-replay-card">
 
-          <div class="flex items-center justify-between px-6 py-3 border-b border-border-subtle shrink-0 gap-3">
+          <div class="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-border-subtle shrink-0 gap-3">
             <div class="text-sm text-fg-primary min-w-0 flex-1">
               <div>
                 <strong>Replay trajet</strong>
@@ -89,7 +89,12 @@ import {
                 }
               </div>
             </div>
-            <button (click)="onClose()" class="text-fg-tertiary hover:text-fg-primary cursor-pointer shrink-0">
+            <button (click)="onClose()"
+                    aria-label="Fermer le replay"
+                    class="tr-replay-close shrink-0 inline-flex items-center justify-center
+                           w-9 h-9 rounded-full bg-bg-tertiary/80 backdrop-blur-sm
+                           text-fg-secondary hover:text-fg-primary hover:bg-bg-tertiary
+                           border border-border-subtle cursor-pointer transition-colors">
               <lucide-icon [img]="XIcon" [size]="18"></lucide-icon>
             </button>
           </div>
@@ -120,7 +125,19 @@ import {
       </div>
     }
   `,
-  styles: [`:host { display: contents; }`],
+  styles: [`
+    :host { display: contents; }
+    /* Safe-area iOS PWA standalone : evite que le bouton X / le header soient
+       caches sous l'island/notch ou sous la home indicator. Le shell reserve
+       l'espace via padding ; la carte reste plein-shell visuellement. */
+    .tr-replay-shell {
+      padding-top: max(1rem, env(safe-area-inset-top));
+      padding-bottom: max(1rem, env(safe-area-inset-bottom));
+      padding-left: max(1rem, env(safe-area-inset-left));
+      padding-right: max(1rem, env(safe-area-inset-right));
+    }
+    .tr-replay-card { min-height: 0; }
+  `],
 })
 export class TripReplayComponent implements AfterViewInit, OnDestroy {
   readonly open = input.required<boolean>();
