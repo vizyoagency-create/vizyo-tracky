@@ -58,6 +58,12 @@ import {
 } from '../../shared/utils/maplibre-markers';
 import { clampSpeed, formatDuration, max0 } from './reports.utils';
 
+// Marker de version au load du module : si on ne voit pas ce log dans la
+// console du browser, c'est que le bundle n'a PAS ete charge (cache, deploy
+// stale, etc.). Permet de discriminer "code pas servi" vs "code execute mais
+// bug d'init".
+console.log('[period-replay] MODULE LOADED v3', new Date().toISOString());
+
 interface TripSegment {
   kind: 'trip';
   trip: TripDto;
@@ -383,6 +389,7 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
   private initEffect = effect(() => {
     const isOpen = this.open();
     const trips = this.trips();
+    console.log('[period-replay] effect fired', { isOpen, tripsLength: trips?.length });
     if (!isOpen) return;
     const tl = buildTimeline(trips);
     this.timeline.set(tl);
@@ -394,28 +401,15 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
       this.currentTimestamp.set(new Date(tl.segments[0]!.startMs));
       if (this.autoSpeed()) this.applyAutoSpeed(tl);
     }
-    // Init map quand le container a une taille reelle (pas avant). Polling rAF
-    // jusqu'a 30 frames (~500ms) — robuste contre les delais de layout flex.
-    this.scheduleMapInit();
+    console.log('[period-replay] timeline built', {
+      segments: tl?.segments?.length, totalMs: tl?.totalMs,
+      hasFirstLngLat: !!tl?.firstLngLat,
+    });
+    // Approche simple, calquee sur trip-replay (qui marche) : setTimeout 200ms
+    // pour laisser Angular finir le rendu du modal, puis init. ResizeObserver
+    // posterieur gere les changements de taille (rotation, animation modal).
+    setTimeout(() => this.initMap(), 200);
   });
-
-  private scheduleMapInit(): void {
-    let attempts = 0;
-    const tryInit = () => {
-      const el = this.mapRef()?.nativeElement;
-      if (el && el.clientWidth > 0 && el.clientHeight > 0) {
-        this.initMap();
-        return;
-      }
-      if (++attempts < 30) {
-        requestAnimationFrame(tryInit);
-      } else {
-        // Ultime fallback : init meme avec taille 0, MapLibre se resize ensuite.
-        this.initMap();
-      }
-    };
-    requestAnimationFrame(tryInit);
-  }
 
   @HostListener('document:keydown.escape')
   onEscape(): void { if (this.open()) this.onClose(); }
@@ -632,20 +626,30 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
   // --- Map init ---
 
   private initMap(): void {
+    console.log('[period-replay] initMap called');
     const tl = this.timeline();
     const el = this.mapRef()?.nativeElement;
     this.mapError.set(null);
     this.mapReady.set(false);
+    console.log('[period-replay] initMap state', {
+      hasTl: !!tl,
+      hasEl: !!el,
+      w: el?.clientWidth,
+      h: el?.clientHeight,
+      hasFirstLngLat: !!tl?.firstLngLat,
+      segments: tl?.segments?.length,
+    });
     if (!tl || !el) {
       this.mapError.set(`Init aborted: tl=${!!tl} el=${!!el}`);
+      console.error('[period-replay] init aborted: missing tl or el');
       return;
     }
     if (!tl.firstLngLat) {
       this.mapError.set(`Aucun point GPS exploitable dans la periode (${tl.segments.length} segments)`);
+      console.error('[period-replay] no firstLngLat', { segments: tl.segments.length });
       return;
     }
     if (el.clientWidth === 0 || el.clientHeight === 0) {
-      // Init quand meme, ResizeObserver fixera. Mais on log pour le diag.
       console.warn('[period-replay] map container size 0', {
         w: el.clientWidth, h: el.clientHeight,
       });
