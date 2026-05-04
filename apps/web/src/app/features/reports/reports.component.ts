@@ -309,7 +309,14 @@ import {
             <tbody>
               @for (trip of trips(); track trip.id) {
                 <tr class="border-b border-border-subtle/50 hover:bg-bg-tertiary/50 transition-colors">
-                  <td class="p-3 text-fg-primary">{{ trip.startedAt | date:'dd/MM HH:mm' }}</td>
+                  <td class="p-3 text-fg-primary">
+                    <div>{{ trip.startedAt | date:'dd/MM HH:mm' }}</div>
+                    @if (vehiclePlate(trip.vehicleId); as plate) {
+                      <div class="text-[10px] font-bold uppercase tracking-wider text-fg-tertiary mt-0.5">
+                        {{ plate }}
+                      </div>
+                    }
+                  </td>
                   <td class="p-3 text-fg-primary">{{ trip.endedAt | date:'dd/MM HH:mm' }}</td>
                   <td class="p-3 text-right font-mono text-fg-secondary">{{ formatDuration(trip.durationSeconds) }}</td>
                   <td class="p-3 text-right font-mono text-fg-secondary">{{ (max0(trip.distanceMeters) / 1000) | number:'1.1-1' }} km</td>
@@ -1228,6 +1235,17 @@ export class ReportsComponent implements OnInit, OnDestroy {
   /** Delegue a `reports.utils#clampSpeed` (verrouille par tests). */
   protected clampSpeed(n: number): number {
     return clampSpeedFn(n);
+  }
+
+  /**
+   * Resout la plaque d'un vehicule a partir de son id, via la liste deja
+   * chargee `vehicles()`. Retourne `null` si non trouve (vehicule pas encore
+   * charge ou supprime). Affiche dans le tableau sous la date de depart.
+   */
+  protected vehiclePlate(vehicleId: string | null | undefined): string | null {
+    if (!vehicleId) return null;
+    const v = this.vehicles().find((x) => x.id === vehicleId);
+    return v?.plate ?? null;
   }
 
   protected readonly replayVehicleType = computed(() => {
