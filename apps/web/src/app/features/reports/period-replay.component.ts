@@ -362,6 +362,7 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
   private animId: number | null = null;
   private lastFrameTime = 0;
   private scrubberDragging = false;
+  private resizeObserver: ResizeObserver | null = null;
 
   // --- Lifecycle ---
 
@@ -370,7 +371,6 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
     const isOpen = this.open();
     const trips = this.trips();
     if (!isOpen) return;
-    // Build timeline puis init carte (timer pour laisser le DOM rendre).
     const tl = buildTimeline(trips);
     this.timeline.set(tl);
     this.virtualMs.set(0);
@@ -379,11 +379,30 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
     this.currentTripIndex.set(-1);
     if (tl && tl.segments.length > 0) {
       this.currentTimestamp.set(new Date(tl.segments[0]!.startMs));
-      // Auto speed : ajuste pour ~30s de lecture totale.
       if (this.autoSpeed()) this.applyAutoSpeed(tl);
     }
-    setTimeout(() => this.initMap(), 80);
+    // Init map quand le container a une taille reelle (pas avant). Polling rAF
+    // jusqu'a 30 frames (~500ms) — robuste contre les delais de layout flex.
+    this.scheduleMapInit();
   });
+
+  private scheduleMapInit(): void {
+    let attempts = 0;
+    const tryInit = () => {
+      const el = this.mapRef()?.nativeElement;
+      if (el && el.clientWidth > 0 && el.clientHeight > 0) {
+        this.initMap();
+        return;
+      }
+      if (++attempts < 30) {
+        requestAnimationFrame(tryInit);
+      } else {
+        // Ultime fallback : init meme avec taille 0, MapLibre se resize ensuite.
+        this.initMap();
+      }
+    };
+    requestAnimationFrame(tryInit);
+  }
 
   @HostListener('document:keydown.escape')
   onEscape(): void { if (this.open()) this.onClose(); }
@@ -616,7 +635,18 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
       withScaleControl: true,
     });
 
-    this.map.on('load', () => {
+    // Observer la taille du container : tout changement (modal qui finit de
+     // s'animer, rotation device, viewport resize) declenche un map.resize()
+     // pour eviter une carte rendue dans le vide.
+     try {
+       this.resizeObserver?.disconnect();
+       this.resizeObserver = new ResizeObserver(() => {
+         this.map?.resize();
+       });
+       this.resizeObserver.observe(el);
+     } catch { /* ResizeObserver indispo : tant pis, fallback timers ci-dessous */ }
+
+     this.map.on('load', () => {
       if (!this.map) return;
       // Polylignes en fond : toutes les lignes des trips.
       for (const line of tl.tripLines) {
@@ -660,11 +690,19 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
       this.marker = attachVehicleMarker(this.map, this.markerEl, lat0, lng0);
     });
 
-    setTimeout(() => this.map?.resize(), 200);
+    // Triple resize defensif : couvre les cas de transition CSS qui finissent
+    // apres l'init, et l'animation d'apparition du modal.
+    setTimeout(() => this.map?.resize(), 50);
+    setTimeout(() => this.map?.resize(), 250);
+    setTimeout(() => this.map?.resize(), 600);
   }
 
   private disposeMap(): void {
     if (this.animId) { cancelAnimationFrame(this.animId); this.animId = null; }
+    if (this.resizeObserver) {
+      try { this.resizeObserver.disconnect(); } catch { /* */ }
+      this.resizeObserver = null;
+    }
     this.marker?.remove();
     this.marker = null;
     this.markerEl = null;
