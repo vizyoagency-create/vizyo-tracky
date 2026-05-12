@@ -190,6 +190,25 @@ export class NotificationsApiService {
     this.devices.set(res.items);
   }
 
+  /**
+   * SUPER_ADMIN — envoie une notif push de test a l'utilisateur courant via
+   * l'endpoint backend (qui gere le delai server-side). Permet de QA depuis
+   * la page Observabilite.
+   */
+  sendTestPush(payload: {
+    title?: string;
+    body?: string;
+    severity?: 'INFO' | 'WARNING' | 'CRITICAL';
+    delayMs?: number;
+  }): Promise<{ scheduled: boolean; delayMs: number; targetDevices: number; sent?: number; failed?: number }> {
+    return firstValueFrom(
+      this.http.post<{ scheduled: boolean; delayMs: number; targetDevices: number; sent?: number; failed?: number }>(
+        '/api/notifications/test',
+        payload,
+      ),
+    );
+  }
+
   // ─── AlertRules CRUD ────────────────────────────────────────
 
   async listRules(): Promise<void> {

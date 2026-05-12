@@ -1,24 +1,28 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { Bell, BellRing, LucideAngularModule, X } from 'lucide-angular';
 import { NotificationsApiService } from '../../../core/services/notifications.service';
-import { RealtimeService } from '../../../core/services/realtime.service';
 import { ToastService } from '../toast/toast.service';
 
 const DISMISS_KEY = 'tracky.push-prompt.dismissed-at';
 const DISMISS_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000; // 7 jours
+const SHOW_DELAY_MS = 2500; // delai avant affichage au boot — evite de surprendre
 
 /**
- * Onboarding contextuel : prompt discret invitant l'utilisateur a activer les
- * notifications push, declenche au moment ou ca compte vraiment (au moins une
- * alerte CRITICAL non acquittee). Tant qu'aucune CRITICAL n'arrive, le toggle
- * reste cache dans /account et le user n'est pas spamme.
+ * Onboarding : prompt discret invitant l'utilisateur a activer les notifications
+ * push. Affiche peu apres l'arrivee sur le dashboard pour que l'utilisateur
+ * acquiesce avant qu'une alerte critique n'arrive.
+ *
+ * Le delai de 2.5s evite de spammer la perm dialog des le premier paint, et la
+ * permission Notification API doit etre demandee depuis un handler d'interaction
+ * (clic "Activer") — d'ou le 2-step prompt (notre toast → clic → perm system).
  *
  * Conditions d'affichage (TOUTES requises) :
  *   - serveur push actif (VAPID keys configurees)
  *   - browser push supporte (Chrome/Firefox/Edge, Safari iOS PWA only)
+ *   - permission systeme pas deja explicitement refusee
  *   - pas deja abonne sur ce device
  *   - pas dismiss dans les 7 derniers jours
- *   - au moins 1 alerte CRITICAL non acquittee dans la session courante
+ *   - delai d'affichage ecoule (eviter clignotement au boot)
  */
 @Component({
   selector: 'app-push-prompt',
@@ -120,9 +124,8 @@ const DISMISS_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000; // 7 jours
     }
   `],
 })
-export class PushPromptComponent {
+export class PushPromptComponent implements OnInit {
   protected readonly notif = inject(NotificationsApiService);
-  private readonly realtime = inject(RealtimeService);
   private readonly toast = inject(ToastService);
 
   protected readonly BellIcon = Bell;
@@ -135,16 +138,40 @@ export class PushPromptComponent {
    * du localStorage, l'effet est immediat). Reset au prochain reload.
    */
   private readonly dismissedThisSession = signal(false);
+  /**
+   * Vrai apres SHOW_DELAY_MS — evite que le prompt apparaisse pendant le splash
+   * et bloque le premier paint utile (KPI dashboard).
+   */
+  private readonly delayElapsed = signal(false);
 
   protected readonly visible = computed(() => {
+    if (!this.delayElapsed()) return false;
     if (this.dismissedThisSession()) return false;
     if (this.notif.pushEnabled() !== true) return false;
     if (!this.notif.isPushSupported()) return false;
     if (this.notif.isSubscribed()) return false;
-    if (!this.realtime.hasCritical()) return false;
+    // Si l'utilisateur a explicitement refuse au niveau navigateur, on ne peut
+    // plus rien lui proposer — le bouton "Activer" ouvrirait juste une perm
+    // dialog auto-rejetee. Garder le toast cache, il devra passer par les
+    // settings du browser.
+    if (this.isPermissionDenied()) return false;
     if (this.isCooldownActive()) return false;
     return true;
   });
+
+  ngOnInit(): void {
+    // Affiche le prompt apres un court delai si toutes les conditions sont reunies.
+    // Le computed `visible` reevalue automatiquement quand `delayElapsed` passe a true.
+    setTimeout(() => this.delayElapsed.set(true), SHOW_DELAY_MS);
+  }
+
+  private isPermissionDenied(): boolean {
+    try {
+      return typeof Notification !== 'undefined' && Notification.permission === 'denied';
+    } catch {
+      return false;
+    }
+  }
 
   protected async onActivate(): Promise<void> {
     this.loading.set(true);

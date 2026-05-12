@@ -90,6 +90,65 @@ export class NotificationsController {
     };
   }
 
+  // ─── Push test (SUPER_ADMIN — page Observabilite) ───────────
+
+  /**
+   * Envoie une notification push de test a l'utilisateur courant (toutes ses
+   * subscriptions), avec un delai optionnel cote serveur. Reserve aux
+   * SUPER_ADMIN — sert d'outil de QA sur l'onglet Observabilite.
+   *
+   * Le delai est un setTimeout en-process : suffisant pour tester (5/30s),
+   * pas pour scheduler durable. Pas de Promise rejetee meme si l'envoi
+   * differe echoue : on log, on n'expose pas au client (la reponse a deja
+   * ete renvoyee).
+   */
+  @Post('test')
+  @Roles(UserRole.SUPER_ADMIN)
+  async sendTest(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: {
+      title?: string;
+      body?: string;
+      severity?: 'INFO' | 'WARNING' | 'CRITICAL';
+      delayMs?: number;
+    },
+  ) {
+    if (!this.webPush.isEnabled()) {
+      throw new BadRequestException('Push desactive cote serveur (VAPID manquant)');
+    }
+    const subs = await this.webPush.listForUser(req.user.id);
+    if (subs.length === 0) {
+      throw new BadRequestException(
+        'Aucune subscription pour cet utilisateur — active d\'abord les notifications sur ce device.',
+      );
+    }
+
+    const severity = body?.severity ?? 'INFO';
+    const payload = {
+      title: body?.title?.trim() || `Test Tracky (${severity})`,
+      body: body?.body?.trim() || 'Ceci est une notification de test envoyee depuis Observabilite.',
+      severity,
+      data: { kind: 'test', triggeredBy: req.user.id, at: new Date().toISOString() },
+      url: '/admin/observability',
+      tag: `test-${Date.now()}`,
+    };
+
+    // Bornes : 0..60s. Au-dela, le client est cense recevoir une vraie alerte
+    // schedulee, pas un test.
+    const delayMs = Math.max(0, Math.min(60_000, Math.floor(body?.delayMs ?? 0)));
+    const targetDevices = subs.length;
+
+    if (delayMs === 0) {
+      const res = await this.webPush.sendToUser(req.user.id, payload);
+      return { scheduled: false, delayMs: 0, targetDevices, ...res };
+    }
+
+    setTimeout(() => {
+      this.webPush.sendToUser(req.user.id, payload).catch(() => {/* logged inside service */});
+    }, delayMs);
+    return { scheduled: true, delayMs, targetDevices };
+  }
+
   // ─── AlertRules CRUD ────────────────────────────────────────
 
   @Get('rules')

@@ -3,7 +3,7 @@ import { DatePipe, JsonPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import {
   LucideAngularModule, Activity, AlertTriangle, Search, RefreshCw,
-  ArrowUpRight, ArrowDownLeft, Clock, Terminal,
+  ArrowUpRight, ArrowDownLeft, Clock, Terminal, Bell, BellRing, Send, Smartphone,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import {
@@ -12,6 +12,7 @@ import {
   type ErrorLogDto,
   type TimelineEntry,
 } from '../../core/services/admin-logs.service';
+import { NotificationsApiService } from '../../core/services/notifications.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 
 @Component({
@@ -28,7 +29,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
       <div class="flex gap-1 border-b border-border-subtle overflow-x-auto scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">
         @for (tab of tabs; track tab.key) {
           <button
-            (click)="activeTab.set(tab.key)"
+            (click)="onSelectTab(tab.key)"
             class="px-3 sm:px-4 py-2.5 text-sm font-medium transition-colors cursor-pointer border-b-2 -mb-px shrink-0 whitespace-nowrap"
             [class]="activeTab() === tab.key
               ? 'text-tracky-light border-tracky-light'
@@ -241,11 +242,169 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
           </div>
         }
       }
+
+      <!-- Test Notification Tab (SUPER_ADMIN) -->
+      @if (activeTab() === 'test-push') {
+        <!-- Statut push global serveur -->
+        @if (notif.pushEnabled() === false) {
+          <div class="bg-amber-500/10 border border-amber-500/30 text-amber-200 rounded-[--radius-card] p-4 text-sm flex items-start gap-3">
+            <lucide-icon [img]="AlertTriangle" [size]="20" class="shrink-0 mt-0.5"></lucide-icon>
+            <div>
+              <p class="font-medium">Push désactivé côté serveur</p>
+              <p class="text-xs mt-1 opacity-80">
+                Les clés VAPID ne sont pas configurées (env <code class="font-mono">VAPID_PUBLIC_KEY</code> / <code class="font-mono">VAPID_PRIVATE_KEY</code>).
+                Génère-les avec <code class="font-mono">npx web-push generate-vapid-keys</code>.
+              </p>
+            </div>
+          </div>
+        }
+
+        <!-- Statut subscription locale + activation -->
+        <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4 flex flex-col gap-3">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                 [class]="notif.isSubscribed() ? 'bg-emerald-500/20 text-emerald-400' : 'bg-bg-tertiary text-fg-tertiary'">
+              <lucide-icon [img]="notif.isSubscribed() ? BellRing : Bell" [size]="20"></lucide-icon>
+            </div>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-medium text-fg-primary">
+                {{ notif.isSubscribed() ? 'Notifications activées sur ce navigateur' : 'Notifications non activées' }}
+              </p>
+              <p class="text-xs text-fg-tertiary mt-0.5">
+                {{ notif.isSubscribed()
+                    ? 'Tu peux recevoir des notifications push même app fermée.'
+                    : 'Active les notifications sur ce device pour pouvoir tester.' }}
+              </p>
+            </div>
+            @if (!notif.isSubscribed()) {
+              <button
+                (click)="onActivatePush()"
+                [disabled]="testActivating() || notif.pushEnabled() === false || !notif.isPushSupported()"
+                class="px-4 py-2 bg-tracky text-white rounded-lg text-sm font-medium hover:bg-tracky-dark cursor-pointer
+                       disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shrink-0"
+              >
+                <lucide-icon [img]="BellRing" [size]="14"></lucide-icon>
+                {{ testActivating() ? '...' : 'Activer' }}
+              </button>
+            }
+          </div>
+
+          @if (!notif.isPushSupported()) {
+            <p class="text-xs text-amber-300/80">
+              Ce navigateur ne supporte pas le Web Push (Safari iOS hors PWA, anciens navigateurs).
+            </p>
+          }
+
+          <!-- Liste des devices abonnes -->
+          @if (notif.devices().length > 0) {
+            <div class="border-t border-border-subtle pt-3 flex flex-col gap-2">
+              <p class="text-xs uppercase text-fg-tertiary tracking-wide">
+                Devices abonnés ({{ notif.devices().length }})
+              </p>
+              @for (d of notif.devices(); track d.id) {
+                <div class="flex items-center gap-2 text-xs text-fg-secondary">
+                  <lucide-icon [img]="Smartphone" [size]="14" class="shrink-0 opacity-60"></lucide-icon>
+                  <span class="truncate flex-1" [title]="d.userAgent ?? ''">{{ d.userAgent ?? 'User-Agent inconnu' }}</span>
+                  <span class="font-mono text-[10px] text-fg-tertiary shrink-0">{{ d.lastSeenAt | date:'dd/MM HH:mm' }}</span>
+                </div>
+              }
+            </div>
+          }
+        </div>
+
+        <!-- Formulaire de test -->
+        <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4 flex flex-col gap-4">
+          <div>
+            <p class="text-sm font-medium text-fg-primary">Envoyer une notification de test</p>
+            <p class="text-xs text-fg-tertiary mt-0.5">
+              La notification sera envoyée à tous tes devices abonnés. Idéal pour vérifier le rendu Android Chrome PWA, iOS PWA, desktop.
+            </p>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div class="flex flex-col gap-1">
+              <label class="text-xs text-fg-tertiary">Titre</label>
+              <input
+                [ngModel]="testTitle()"
+                (ngModelChange)="testTitle.set($event)"
+                placeholder="Test Tracky"
+                maxlength="80"
+                class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary"
+              />
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="text-xs text-fg-tertiary">Sévérité</label>
+              <select
+                [ngModel]="testSeverity()"
+                (ngModelChange)="testSeverity.set($event)"
+                class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary"
+              >
+                <option value="INFO">INFO</option>
+                <option value="WARNING">WARNING</option>
+                <option value="CRITICAL">CRITICAL (requireInteraction + vibration)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-1">
+            <label class="text-xs text-fg-tertiary">Corps</label>
+            <textarea
+              [ngModel]="testBody()"
+              (ngModelChange)="testBody.set($event)"
+              placeholder="Ceci est une notification de test."
+              rows="2"
+              maxlength="200"
+              class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary resize-none"
+            ></textarea>
+          </div>
+
+          <div class="flex flex-col gap-1">
+            <label class="text-xs text-fg-tertiary">Délai d'envoi</label>
+            <div class="flex flex-wrap gap-2">
+              @for (opt of delayOptions; track opt.v) {
+                <button
+                  type="button"
+                  (click)="testDelayMs.set(opt.v)"
+                  class="px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer"
+                  [class]="testDelayMs() === opt.v
+                    ? 'bg-tracky text-white border-tracky'
+                    : 'bg-bg-tertiary border-border-subtle text-fg-secondary hover:text-fg-primary'"
+                >
+                  {{ opt.l }}
+                </button>
+              }
+            </div>
+            <p class="text-[11px] text-fg-tertiary mt-1">
+              Le délai 5/30s te laisse le temps de fermer l'app (ou verrouiller le téléphone) pour vérifier le rendu en background.
+            </p>
+          </div>
+
+          <div class="flex items-center gap-3 pt-1">
+            <button
+              (click)="onSendTest()"
+              [disabled]="testSending() || !notif.isSubscribed() || notif.pushEnabled() === false"
+              class="px-4 py-2 bg-tracky text-white rounded-lg text-sm font-medium hover:bg-tracky-dark cursor-pointer
+                     disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              <lucide-icon [img]="Send" [size]="14"></lucide-icon>
+              {{ testSending() ? 'Envoi...' : 'Envoyer le test' }}
+            </button>
+            @if (testLastResult(); as r) {
+              <div class="text-xs flex items-center gap-1.5 flex-1 min-w-0"
+                   [class]="r.ok ? 'text-emerald-400' : 'text-red-400'">
+                <span class="font-mono text-fg-tertiary">{{ r.at }}</span>
+                <span class="truncate">{{ r.message }}</span>
+              </div>
+            }
+          </div>
+        </div>
+      }
     </div>
   `,
 })
 export class ObservabilityComponent implements OnInit {
   private readonly logsApi = inject(AdminLogsService);
+  protected readonly notif = inject(NotificationsApiService);
   private readonly toast = inject(ToastService);
 
   protected readonly Activity = Activity;
@@ -256,14 +415,25 @@ export class ObservabilityComponent implements OnInit {
   protected readonly ArrowDownLeft = ArrowDownLeft;
   protected readonly Clock = Clock;
   protected readonly Terminal = Terminal;
+  protected readonly Bell = Bell;
+  protected readonly BellRing = BellRing;
+  protected readonly Send = Send;
+  protected readonly Smartphone = Smartphone;
 
   protected readonly tabs = [
     { key: 'wire' as const, label: 'Wire Logs' },
     { key: 'errors' as const, label: 'Erreurs' },
     { key: 'timeline' as const, label: 'Timeline' },
+    { key: 'test-push' as const, label: 'Test Notification' },
   ];
 
-  protected readonly activeTab = signal<'wire' | 'errors' | 'timeline'>('wire');
+  protected readonly delayOptions: { v: number; l: string }[] = [
+    { v: 0, l: 'Immédiat' },
+    { v: 5000, l: 'Dans 5s' },
+    { v: 30000, l: 'Dans 30s' },
+  ];
+
+  protected readonly activeTab = signal<'wire' | 'errors' | 'timeline' | 'test-push'>('wire');
   protected readonly wireLogs = signal<WireLogDto[]>([]);
   protected readonly wireTotal = signal(0);
   protected readonly errorLogs = signal<ErrorLogDto[]>([]);
@@ -276,6 +446,15 @@ export class ObservabilityComponent implements OnInit {
   protected readonly errorLevelFilter = signal('');
   protected readonly errorImeiFilter = signal('');
   protected readonly timelineImei = signal('');
+
+  // Test Notification — formulaire SUPER_ADMIN.
+  protected readonly testTitle = signal('Test Tracky');
+  protected readonly testBody = signal('Ceci est une notification de test.');
+  protected readonly testSeverity = signal<'INFO' | 'WARNING' | 'CRITICAL'>('INFO');
+  protected readonly testDelayMs = signal<number>(5000);
+  protected readonly testSending = signal(false);
+  protected readonly testActivating = signal(false);
+  protected readonly testLastResult = signal<{ ok: boolean; message: string; at: string } | null>(null);
 
   async ngOnInit(): Promise<void> {
     await this.loadWireLogs();
@@ -326,5 +505,83 @@ export class ObservabilityComponent implements OnInit {
 
   protected toggleErrorDetail(id: string): void {
     this.expandedError.set(this.expandedError() === id ? null : id);
+  }
+
+  /**
+   * Routeur d'onglet — change l'onglet actif et hydrate ses donnees a la demande
+   * pour les onglets qui le requierent (Test Notification charge le statut push
+   * + la liste des devices abonnes).
+   */
+  protected onSelectTab(key: 'wire' | 'errors' | 'timeline' | 'test-push'): void {
+    this.activeTab.set(key);
+    if (key === 'test-push') {
+      void this.loadTestPushData();
+    }
+  }
+
+  // ─── Test Notification ──────────────────────────────────────
+
+  private async loadTestPushData(): Promise<void> {
+    await this.notif.loadStatus().catch(() => {/* silencieux */});
+    if (this.notif.isSubscribed()) {
+      await this.notif.listDevices().catch(() => {/* silencieux */});
+    }
+  }
+
+  protected async onActivatePush(): Promise<void> {
+    this.testActivating.set(true);
+    try {
+      const res = await this.notif.subscribePush();
+      if (res.ok) {
+        this.toast.success('Notifications activees sur ce device');
+        await this.notif.listDevices().catch(() => {/* silencieux */});
+      } else {
+        this.toast.error(res.reason ?? 'Echec de l\'activation');
+      }
+    } finally {
+      this.testActivating.set(false);
+    }
+  }
+
+  protected async onSendTest(): Promise<void> {
+    if (this.testSending()) return;
+    this.testSending.set(true);
+    try {
+      const res = await this.notif.sendTestPush({
+        title: this.testTitle().trim() || undefined,
+        body: this.testBody().trim() || undefined,
+        severity: this.testSeverity(),
+        delayMs: this.testDelayMs(),
+      });
+      const at = new Date().toLocaleTimeString('fr-FR');
+      if (res.scheduled) {
+        const sec = Math.round(res.delayMs / 1000);
+        this.testLastResult.set({
+          ok: true,
+          message: `Notification programmee dans ${sec}s vers ${res.targetDevices} device(s).`,
+          at,
+        });
+        this.toast.success('Notification programmee', `Verifie ton device dans ~${sec}s`);
+      } else {
+        this.testLastResult.set({
+          ok: true,
+          message: `Envoye immediatement : ${res.sent ?? 0}/${res.targetDevices} livre(s)${res.failed ? `, ${res.failed} echec(s)` : ''}.`,
+          at,
+        });
+        this.toast.success('Notification envoyee');
+      }
+    } catch (err: unknown) {
+      const status = (err as { status?: number }).status;
+      const apiMsg = (err as { error?: { message?: string } }).error?.message;
+      const message = apiMsg ?? (status === 400 ? 'Aucun device abonne — clique sur Activer d\'abord.' : 'Echec de l\'envoi.');
+      this.testLastResult.set({
+        ok: false,
+        message,
+        at: new Date().toLocaleTimeString('fr-FR'),
+      });
+      this.toast.error(message);
+    } finally {
+      this.testSending.set(false);
+    }
   }
 }
