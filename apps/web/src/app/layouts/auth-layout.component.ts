@@ -71,12 +71,16 @@ import { AuthMapAnimationComponent } from '../shared/ui/auth-map-animation/auth-
 
       /* Shell mobile : safe-area top/bottom pour PWA iOS standalone (status bar
          black-translucent qui se superpose). py-4 garde le padding vertical
-         minimal precedent, additionne aux insets via max(). */
+         minimal precedent, additionne aux insets via max(). overscroll-behavior:
+         contain empeche le scroll de bubbler vers body (necessaire en standalone
+         PWA ou body est position:fixed). */
       .auth-mobile-shell {
         padding-top: max(1rem, env(safe-area-inset-top));
         padding-bottom: max(1rem, env(safe-area-inset-bottom));
         padding-left: env(safe-area-inset-left);
         padding-right: env(safe-area-inset-right);
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
       }
     `,
   ],

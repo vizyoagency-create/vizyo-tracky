@@ -170,9 +170,18 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
   `,
   styles: [`
     .layout {
-      /* 100vh = fallback navigateurs anciens, 100dvh = dynamic viewport (corrige iOS Safari) */
+      /* Hauteur viewport :
+       *   - 100vh : fallback navigateurs anciens (≈ lvh sur iOS).
+       *   - 100svh : "small viewport height", STABLE — ne change pas quand Safari
+       *     replie/deploie sa barre navigateur. Sans ca, en mode browser iOS,
+       *     le layout entier se redimensionne pendant le scroll = jitter et top-bar
+       *     qui "saute". En PWA standalone le viewport est de toute facon stable
+       *     donc svh = lvh = dvh.
+       *   - On evite 100dvh qui s'anime en continu et provoque le bug "tout
+       *     decale au scroll" rapporte par les utilisateurs iPhone.
+       */
       height: 100vh;
-      height: 100dvh;
+      height: 100svh;
       display: flex;
       background: var(--bg-primary);
       overflow: hidden;
@@ -359,8 +368,26 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
     }
 
     /* ─── MAIN ─── */
-    .main-area { flex: 1; display: flex; flex-direction: column; min-width: 0 }
-    .content { flex: 1; padding: 24px; overflow: auto; position: relative }
+    .main-area { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0 }
+    /* .content est LE seul scroller du shell PWA.
+     *   - overscroll-behavior: contain : sur un scroller interne, ca MARCHE sur iOS
+     *     (contrairement au document body). Bloque le rubber band et empeche le
+     *     scroll de "fuir" vers le parent fixed.
+     *   - -webkit-overflow-scrolling: touch : active le momentum scrolling iOS
+     *     (smooth, inertie). Toujours utile en 2026 meme si officiellement deprecate
+     *     (iOS continue de l'honorer pour ne pas casser des millions de sites).
+     *   - min-height: 0 sur le flex parent : sans ca, le flex item peut depasser
+     *     son parent et casser overflow:auto (bug flexbox classique). */
+    .content {
+      flex: 1;
+      min-height: 0;
+      padding: 24px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+      position: relative;
+    }
     .content.fullscreen { padding: 0; overflow: hidden }
 
 

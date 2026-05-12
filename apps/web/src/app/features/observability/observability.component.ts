@@ -12,7 +12,7 @@ import {
   type ErrorLogDto,
   type TimelineEntry,
 } from '../../core/services/admin-logs.service';
-import { NotificationsApiService } from '../../core/services/notifications.service';
+import { NotificationsApiService, type TestPushResultEntry } from '../../core/services/notifications.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 
 @Component({
@@ -447,6 +447,34 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
               </div>
             }
           </div>
+
+          <!-- Detail des reponses Apple/Mozilla/Google par device -->
+          @if (testLastResult()?.results?.length) {
+            <div class="border-t border-border-subtle pt-3 flex flex-col gap-1.5">
+              <p class="text-xs uppercase text-fg-tertiary tracking-wide">Detail par device</p>
+              @for (r of testLastResult()!.results!; track r.id) {
+                <div class="flex items-center gap-2 text-xs bg-bg-tertiary rounded-lg px-2.5 py-1.5">
+                  <!-- Status code colore : 201 = OK Apple/Google, 410/404 = sub expiree (purgee), 403 = VAPID, 413 = payload trop gros -->
+                  <span class="font-mono font-bold shrink-0 w-12 text-center"
+                        [class]="r.statusCode === 201 ? 'text-emerald-400'
+                          : r.statusCode === 410 || r.statusCode === 404 ? 'text-amber-400'
+                          : r.statusCode ? 'text-red-400'
+                          : 'text-fg-tertiary'">
+                    {{ r.statusCode ?? '—' }}
+                  </span>
+                  <span class="font-mono text-fg-secondary truncate flex-1" [title]="r.endpointHost">
+                    {{ r.endpointHost }}
+                  </span>
+                  @if (r.error) {
+                    <span class="text-red-300/80 text-[10px] truncate" [title]="r.error">{{ r.error }}</span>
+                  }
+                </div>
+              }
+              <p class="text-[10px] text-fg-tertiary mt-1">
+                201 = livré au gateway · 410/404 = subscription expirée (purgée) · 403 = problème VAPID · 413 = payload trop gros
+              </p>
+            </div>
+          }
         </div>
       }
     </div>
@@ -504,7 +532,12 @@ export class ObservabilityComponent implements OnInit {
   protected readonly testDelayMs = signal<number>(5000);
   protected readonly testSending = signal(false);
   protected readonly testActivating = signal(false);
-  protected readonly testLastResult = signal<{ ok: boolean; message: string; at: string } | null>(null);
+  protected readonly testLastResult = signal<{
+    ok: boolean;
+    message: string;
+    at: string;
+    results?: TestPushResultEntry[];
+  } | null>(null);
   // Diagnostic env (iOS/standalone/permission/UA) — calcule a chaque entree
   // dans l'onglet pour refleter un eventuel changement de mode (ex: app
   // ajoutee a l'ecran d'accueil entre-temps).
@@ -613,17 +646,24 @@ export class ObservabilityComponent implements OnInit {
         const sec = Math.round(res.delayMs / 1000);
         this.testLastResult.set({
           ok: true,
-          message: `Notification programmee dans ${sec}s vers ${res.targetDevices} device(s).`,
+          message: `Notification programmee dans ${sec}s vers ${res.targetDevices} device(s). Les statuts par push apparaitront ici lors de l'envoi immediat.`,
           at,
         });
         this.toast.success('Notification programmee', `Verifie ton device dans ~${sec}s`);
       } else {
+        const sentCount = res.sent ?? 0;
+        const failedCount = res.failed ?? 0;
+        // ok = vrai uniquement si AU MOINS 1 envoi reussi. failed > 0 sur 1 seul
+        // device = echec total.
+        const ok = sentCount > 0 && failedCount === 0;
         this.testLastResult.set({
-          ok: true,
-          message: `Envoye immediatement : ${res.sent ?? 0}/${res.targetDevices} livre(s)${res.failed ? `, ${res.failed} echec(s)` : ''}.`,
+          ok,
+          message: `Envoye immediatement : ${sentCount}/${res.targetDevices} livre(s)${failedCount ? `, ${failedCount} echec(s)` : ''}.`,
           at,
+          results: res.results,
         });
-        this.toast.success('Notification envoyee');
+        if (ok) this.toast.success('Notification envoyee');
+        else this.toast.error('Echec d\'envoi', 'Voir le detail par device ci-dessous.');
       }
     } catch (err: unknown) {
       const status = (err as { status?: number }).status;

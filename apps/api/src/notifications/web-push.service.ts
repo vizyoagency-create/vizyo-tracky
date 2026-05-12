@@ -111,33 +111,64 @@ export class WebPushService {
   /**
    * Send a push to all subscriptions of a user. Returns the number of
    * successful deliveries. Subscriptions returning 410 Gone are pruned.
+   *
+   * V1.9 — options critiques pour Apple APNs (sans elles, iOS drop silencieusement) :
+   *   - `TTL: 86400` : Apple expire les push avec TTL: 0 si device offline. 1 jour
+   *     est le minimum raisonnable pour qu'une notif arrive apres ecran verrouille.
+   *   - `urgency: 'high'` : sans ce header, Apple drop les push utilisateur en
+   *     background (FCM est tolerant, APNs strict).
+   *     Refs: web-push-libs/web-push#235, magicbell ios-pwa-push best practices.
+   *   - `topic` : optionnel mais utile pour collapsing (ex: 5 events alerte X
+   *     -> une seule notif visible). Max 32 chars URL-safe base64.
    */
-  async sendToUser(userId: string, payload: PushPayload): Promise<{ sent: number; failed: number }> {
-    if (!this.enabled) return { sent: 0, failed: 0 };
+  async sendToUser(userId: string, payload: PushPayload): Promise<{ sent: number; failed: number; results: Array<{ id: string; endpointHost: string; statusCode: number | null; error?: string }> }> {
+    if (!this.enabled) return { sent: 0, failed: 0, results: [] };
     const subs = await this.listForUser(userId);
-    if (subs.length === 0) return { sent: 0, failed: 0 };
+    if (subs.length === 0) return { sent: 0, failed: 0, results: [] };
 
     const body = JSON.stringify(payload);
+    const options: webpush.RequestOptions = {
+      TTL: 86400, // 24h — laisse le temps a une notif d'arriver apres verrouillage
+      urgency: 'high', // requis APNs (Apple) pour delivery user-visible en background
+    };
+    // Apple : `topic` doit etre URL-safe base64, max 32 chars. On hashe court.
+    if (payload.tag) {
+      const safe = payload.tag.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 32);
+      if (safe.length > 0) options.topic = safe;
+    }
+
     let sent = 0;
     let failed = 0;
+    const results: Array<{ id: string; endpointHost: string; statusCode: number | null; error?: string }> = [];
+
     for (const sub of subs) {
+      const endpointHost = (() => {
+        try { return new URL(sub.endpoint).hostname; } catch { return 'unknown'; }
+      })();
+
       try {
-        await webpush.sendNotification(
+        const res = await webpush.sendNotification(
           { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
           body,
+          options,
         );
         sent++;
+        results.push({ id: sub.id, endpointHost, statusCode: res.statusCode ?? 201 });
       } catch (err: unknown) {
-        const status = (err as { statusCode?: number }).statusCode;
+        const status = (err as { statusCode?: number }).statusCode ?? null;
+        const message = (err as { body?: string; message?: string }).body
+          || (err as { message?: string }).message
+          || String(err);
         if (status === 404 || status === 410) {
           // Subscription expired or unregistered — prune.
           await this.prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => {/* ignore */});
         } else {
-          this.logger.warn(`Push delivery failed (${status ?? '?'}) for sub ${sub.id}`);
+          this.logger.warn(`Push delivery failed (${status ?? '?'}) for ${endpointHost} sub ${sub.id}: ${message}`);
         }
         failed++;
+        results.push({ id: sub.id, endpointHost, statusCode: status, error: message.slice(0, 200) });
       }
     }
-    return { sent, failed };
+    return { sent, failed, results };
   }
 }

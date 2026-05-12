@@ -101,6 +101,40 @@ body {
   min-height: 100dvh;
 }
 
+/* ─── PWA standalone (iOS Home Screen, Android installed) : app-shell pattern ───
+ * Pourquoi : sur iOS Safari, `overscroll-behavior: contain` sur html/body n'a
+ * AUCUN effet (WebKit l'ignore au niveau document, cf. caniuse + Bram.us). Le
+ * "rubber band" et le scroll fuyant hors des conteneurs internes ne peuvent etre
+ * tues qu'en figeant body avec position:fixed, et en laissant le scroll vivre
+ * uniquement dans les containers internes (.content) qui ont `overscroll-behavior:
+ * contain` (ca, ca marche sur les scrollers INTERIEURS).
+ *
+ * Pattern source : "I fixed a decade-long iOS Safari problem" (stripearmy /
+ * Medium 2023, repris par toutes les PWA polies en 2025-2026).
+ *
+ * On scope au mode standalone (PWA installee) pour ne pas modifier le comportement
+ * en navigation classique desktop ou Safari "regular".
+ */
+@media (display-mode: standalone) {
+  html, body {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
+    /* `touch-action: pan-y` autorise le scroll vertical dans les scrollers
+       internes sans laisser iOS interpreter le swipe comme un geste systeme
+       (back-swipe horizontal indesirable sur les listes). */
+  }
+  body {
+    /* Annule le min-height: 100dvh ci-dessus qui interfere avec position:fixed. */
+    min-height: 0;
+    /* En standalone iOS, le viewport est stable (pas de barre navigateur), donc
+       on peut utiliser 100% du parent fixed. */
+    width: 100%;
+    height: 100%;
+  }
+}
+
 /* Supprime le delai 300ms sur tap mobile, sans bloquer le pinch-zoom */
 button, a, [role="button"], input[type="button"], input[type="submit"], label {
   touch-action: manipulation;

@@ -12,6 +12,22 @@ export interface PushSubscriptionDto {
   createdAt: string;
 }
 
+export interface TestPushResultEntry {
+  id: string;
+  endpointHost: string;
+  statusCode: number | null;
+  error?: string;
+}
+
+export interface TestPushResponse {
+  scheduled: boolean;
+  delayMs: number;
+  targetDevices: number;
+  sent?: number;
+  failed?: number;
+  results?: TestPushResultEntry[];
+}
+
 export interface AlertRuleDto {
   id: string;
   fleetId: string;
@@ -63,10 +79,42 @@ export class NotificationsApiService {
       this.publicKey.set(status.publicKey);
       if (status.enabled && this.isPushSupported()) {
         await this.refreshSubscription();
+        // iOS revoque silencieusement les subscriptions (apres 2 semaines d'inactivite
+        // ou si le SW push handler n'a pas appele showNotification dans les temps).
+        // Si l'utilisateur a deja accorde la permission mais qu'il n'y a plus de
+        // subscription locale, on en cree une nouvelle silencieusement (pas besoin
+        // de geste utilisateur tant que la permission est `granted`).
+        if (!this.isSubscribed() && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          await this.silentResubscribe().catch(() => {/* silencieux : sera retente au prochain load */});
+        }
       }
     } catch {
       this.pushEnabled.set(false);
     }
+  }
+
+  /**
+   * Re-subscribe sans dialogue utilisateur. Exige `Notification.permission === 'granted'`
+   * (sinon pushManager.subscribe leve). Utilise quand iOS a silencieusement revoque
+   * la subscription mais que l'autorisation systeme est toujours active.
+   */
+  private async silentResubscribe(): Promise<void> {
+    const key = this.publicKey();
+    if (!key) return;
+    const reg = await navigator.serviceWorker.getRegistration() ?? await this.registerServiceWorker();
+    if (!reg) return;
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: this.urlBase64ToUint8Array(key) as BufferSource,
+    });
+    const json = sub.toJSON() as { endpoint?: string; keys?: { p256dh: string; auth: string } };
+    if (!json.endpoint || !json.keys) return;
+    await firstValueFrom(
+      this.http.post('/api/notifications/push/subscribe', {
+        subscription: { endpoint: json.endpoint, keys: json.keys },
+      }),
+    );
+    this.currentSubscription.set(sub);
   }
 
   isPushSupported(): boolean {
@@ -272,19 +320,18 @@ export class NotificationsApiService {
   /**
    * SUPER_ADMIN — envoie une notif push de test a l'utilisateur courant via
    * l'endpoint backend (qui gere le delai server-side). Permet de QA depuis
-   * la page Observabilite.
+   * la page Observabilite. Le champ `results` n'est retourne que pour les
+   * envois immediats (delayMs === 0) ; pour les envois differes, le backend
+   * a deja repondu avant que le push parte.
    */
   sendTestPush(payload: {
     title?: string;
     body?: string;
     severity?: 'INFO' | 'WARNING' | 'CRITICAL';
     delayMs?: number;
-  }): Promise<{ scheduled: boolean; delayMs: number; targetDevices: number; sent?: number; failed?: number }> {
+  }): Promise<TestPushResponse> {
     return firstValueFrom(
-      this.http.post<{ scheduled: boolean; delayMs: number; targetDevices: number; sent?: number; failed?: number }>(
-        '/api/notifications/test',
-        payload,
-      ),
+      this.http.post<TestPushResponse>('/api/notifications/test', payload),
     );
   }
 
