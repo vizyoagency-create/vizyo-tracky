@@ -15,6 +15,7 @@ import { VehiclesApiService } from '../../core/services/vehicles.service';
 import { AlertsApiService } from '../../core/services/alerts.service';
 import { PreferencesService, type DashboardWidgetKey } from '../../core/services/preferences.service';
 import { MiniMapComponent } from '../../shared/ui/mini-map/mini-map.component';
+import { isAcceptableLiveFix } from '@vizyo/tracky-shared';
 
 interface WidgetMeta {
   key: DashboardWidgetKey;
@@ -672,6 +673,12 @@ export class DashboardComponent implements OnInit {
     const meta = this.vehicleMetaMap();
     return this.realtime.positionsList()
       .filter((pos) => ids === 'ALL' || ids.has(pos.vehicleId))
+      // GPS sanity : ecarte les fixes `valid:false` (broadcastes par le backend
+      // pour propager l'ignition mais lat/lng degradees) et Null Island. Sans
+      // ce filtre, le mini-map du dashboard peut afficher un vehicule en plein
+      // ocean ou avec une icone qui saute. Les KPI persistants viennent de
+      // `stats` (endpoint dedie), donc filtrer ici n'affecte pas les compteurs.
+      .filter((pos) => isAcceptableLiveFix(pos))
       .map((pos) => ({
         ...pos,
         plate: meta.get(pos.vehicleId)?.plate ?? '',

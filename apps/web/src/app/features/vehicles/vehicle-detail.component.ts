@@ -10,6 +10,7 @@ import {
   UserRound, UserPlus, Copy,
 } from 'lucide-angular';
 import type { AlertEvent, DriverDto, TripDto } from '@vizyo/tracky-shared';
+import { isAcceptableLiveFix } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { AlertsApiService } from '../../core/services/alerts.service';
 import { AuthService } from '../../core/services/auth.service';
@@ -1462,10 +1463,27 @@ export class VehicleDetailComponent implements OnInit {
       return raw;
     };
 
-    if (live) {
+    // GPS sanity (live) : si la trame WS est `valid:false` (backend la broadcast
+    // pour propager l'ignition mais lat/lng sont degradees), on utilise les
+    // coords de la derniere position historique sanitizee. Conserve l'ignition
+    // fraiche du live event — c'est tout l'interet de ce broadcast.
+    const last = this.recentPositions()[0];
+    if (live && isAcceptableLiveFix(live)) {
       return { lat: live.lat, lng: live.lng, speedKmh: live.speedKmh, heading: live.heading ?? 0, timestamp: live.timestamp, ignition: patchIgnition(live.ignition), valid: live.valid };
     }
-    const last = this.recentPositions()[0];
+    if (live && last) {
+      // Hybride : coords/vitesse/heading depuis l'historique fiable,
+      // ignition/timestamp depuis le live (frais).
+      return {
+        lat: last.lat,
+        lng: last.lng,
+        speedKmh: last.speedKmh,
+        heading: (last as { heading?: number }).heading ?? 0,
+        timestamp: live.timestamp,
+        ignition: patchIgnition(live.ignition),
+        valid: false,
+      };
+    }
     if (last) {
       return {
         lat: last.lat,

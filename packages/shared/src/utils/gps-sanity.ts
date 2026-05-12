@@ -73,6 +73,39 @@ export function isPlausibleJump(
 }
 
 /**
+ * Decide si une trame WS temps reel est exploitable pour le rendu carte (icone
+ * vehicule + trail dashed). Equivalent ponctuel de `sanitizePositions` :
+ *
+ * - rejette les fixes `valid: false` (le backend les broadcast pour propager
+ *   l'ignition, mais leurs lat/lng sont souvent degradees — tunnel, indoor,
+ *   demarrage a froid). Sans ce filtre, l'icone saute et la trail diverge.
+ * - rejette les coordonnees hors-bornes / Null Island.
+ * - si `prev` fourni, rejette les sauts > `maxKmh` (par defaut 250 km/h).
+ *
+ * `prev` peut etre omis (premier rendu) ou null/undefined.
+ */
+export function isAcceptableLiveFix(
+  next: { lat: number; lng: number; valid?: boolean; timestamp?: Date | string | number },
+  prev?: { lat: number; lng: number; timestamp: Date | string | number } | null,
+  opts: { maxKmh?: number } = {},
+): boolean {
+  if (next.valid === false) return false;
+  if (!isValidLatLng(next.lat, next.lng)) return false;
+  if (prev && next.timestamp !== undefined) {
+    if (
+      !isPlausibleJump(
+        { lat: prev.lat, lng: prev.lng, timestamp: prev.timestamp },
+        { lat: next.lat, lng: next.lng, timestamp: next.timestamp },
+        opts.maxKmh,
+      )
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
  * Filtre defensif applique a une suite de positions ordonnees.
  * Garantit :
  * - pas de doublon de timestamp consecutif

@@ -1,6 +1,7 @@
 import {
   douglasPeucker,
   haversineMeters,
+  isAcceptableLiveFix,
   isPlausibleJump,
   isValidLatLng,
   sanitizePositions,
@@ -86,6 +87,68 @@ describe('gps-sanity', () => {
         { lat: 48.866, lng: 2.3522, timestamp: t0 },
       );
       expect(ok).toBe(false);
+    });
+  });
+
+  describe('isAcceptableLiveFix', () => {
+    const t0 = new Date('2026-04-26T10:00:00Z');
+    const t30s = new Date('2026-04-26T10:00:30Z');
+
+    it('accepts a fresh valid fix without prev', () => {
+      expect(
+        isAcceptableLiveFix({ lat: 48.8566, lng: 2.3522, valid: true, timestamp: t0 }),
+      ).toBe(true);
+    });
+
+    it('accepts a fix where `valid` is omitted (legacy / non-WS callers)', () => {
+      expect(isAcceptableLiveFix({ lat: 48.8566, lng: 2.3522, timestamp: t0 })).toBe(true);
+    });
+
+    it('rejects a fix with valid:false (backend signals degraded GPS)', () => {
+      expect(
+        isAcceptableLiveFix({ lat: 48.8566, lng: 2.3522, valid: false, timestamp: t0 }),
+      ).toBe(false);
+    });
+
+    it('rejects Null Island even when valid:true', () => {
+      expect(
+        isAcceptableLiveFix({ lat: 0, lng: 0, valid: true, timestamp: t0 }),
+      ).toBe(false);
+    });
+
+    it('rejects out-of-bounds coordinates', () => {
+      expect(
+        isAcceptableLiveFix({ lat: 91, lng: 2.3522, valid: true, timestamp: t0 }),
+      ).toBe(false);
+    });
+
+    it('accepts realistic movement from a previous truth', () => {
+      const prev = { lat: 48.8566, lng: 2.3522, timestamp: t0 };
+      const next = { lat: 48.866, lng: 2.3522, valid: true, timestamp: t30s };
+      expect(isAcceptableLiveFix(next, prev)).toBe(true);
+    });
+
+    it('rejects a teleportation jump from previous truth (>250 km/h)', () => {
+      const prev = { lat: 48.8566, lng: 2.3522, timestamp: t0 };
+      const next = { lat: 43.2965, lng: 5.3698, valid: true, timestamp: t30s };
+      expect(isAcceptableLiveFix(next, prev)).toBe(false);
+    });
+
+    it('skips jump check when prev is null', () => {
+      expect(
+        isAcceptableLiveFix(
+          { lat: 43.2965, lng: 5.3698, valid: true, timestamp: t30s },
+          null,
+        ),
+      ).toBe(true);
+    });
+
+    it('skips jump check when next has no timestamp', () => {
+      // Cas du dashboard : on filtre juste valid:false + bornes, sans prev/timestamp.
+      const prev = { lat: 48.8566, lng: 2.3522, timestamp: t0 };
+      expect(
+        isAcceptableLiveFix({ lat: 43.2965, lng: 5.3698, valid: true }, prev),
+      ).toBe(true);
     });
   });
 

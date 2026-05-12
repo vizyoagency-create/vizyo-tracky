@@ -16,7 +16,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import * as maplibregl from 'maplibre-gl';
 import type { Map as MlMap, Marker as MlMarker, Popup, GeoJSONSource } from 'maplibre-gl';
 import type { GeofenceDto, PositionUpdateEvent } from '@vizyo/tracky-shared';
-import { sanitizePositions } from '@vizyo/tracky-shared';
+import { isAcceptableLiveFix, sanitizePositions } from '@vizyo/tracky-shared';
 
 /** Distance Haversine en mètres entre deux points GPS. Inline pour éviter
  *  les problèmes de bundle workspace en dev (Vite). */
@@ -1570,6 +1570,11 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private markers = new Map<string, MarkerEntry>();
   private vehicleMeta = new Map<string, VehicleMeta>();
   private trailPoints = new Map<string, Array<[number, number]>>();
+  // Derniere position consideree comme "verite" par tracker (fix GPS valid).
+  // Sert d'ancrage pour `isAcceptableLiveFix` : on rejette les sauts > 250 km/h
+  // depuis cette ancre, ce qui filtre les teleportations meme sur trames marquees
+  // `valid: true` par le boitier mais aberrantes (multipath urbain, etc.).
+  private lastTruthPosition = new Map<string, { lat: number; lng: number; timestamp: string }>();
   private hasFittedBounds = false;
   private userMarker: MlMarker | null = null;
   protected readonly userPosition = signal<{ lat: number; lng: number } | null>(null);
@@ -1890,6 +1895,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     this.markers.forEach((m) => m.marker.remove());
     this.markers.clear();
     this.trailPoints.clear();
+    this.lastTruthPosition.clear();
     this.motion.clear();
     this.lastTickAt = null;
     this.lastMarkerData.clear();
@@ -2869,7 +2875,6 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     const engineUpdates = this.realtime.engineCommandUpdates();
 
     for (const pos of positions) {
-      activeIds.add(pos.trackerId);
       const meta = this.vehicleMeta.get(pos.vehicleId) ?? { type: 'OTHER', plate: '' };
       // Patcher l'ignition du marker avec l'etat commande moteur (meme logique que popup).
       const patched = this.patchIgnitionFromCommands(pos);
@@ -2885,7 +2890,39 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         hydrated: hydratedSet.has(pos.trackerId),
       };
 
-      let entry = this.markers.get(pos.trackerId);
+      // GPS sanity (live) : rejette les fixes `valid: false` (broadcastes par le
+      // backend uniquement pour propager l'ignition — lat/lng degradees) et les
+      // sauts > 250 km/h depuis la derniere position fiable. Sans ce filtre,
+      // l'icone saute et la trail dashed diverge en zigzag (regression visible
+      // lors d'un demarrage a froid / tunnel / multipath urbain).
+      const prevTruth = this.lastTruthPosition.get(pos.trackerId);
+      const accepted = isAcceptableLiveFix(pos, prevTruth);
+      const existingEntry = this.markers.get(pos.trackerId);
+
+      if (!accepted) {
+        // On garde le marker actif (sinon il serait supprime ci-dessous) mais on
+        // ne bouge ni l'icone ni la trail. On rafraichit cependant les attributs
+        // non-positionnels (ignition / ACC / plaque / followed) : c'est tout
+        // l'interet du broadcast `valid:false` cote backend.
+        if (existingEntry) {
+          activeIds.add(pos.trackerId);
+          const prevDisplay = this.motion.get(pos.trackerId);
+          const lastData = this.lastMarkerData.get(pos.trackerId);
+          updateVehicleMarkerEl(existingEntry.el, {
+            ...data,
+            heading: prevDisplay?.displayHeading ?? lastData?.heading ?? data.heading,
+          });
+          this.lastMarkerData.set(pos.trackerId, {
+            ...data,
+            heading: prevDisplay?.displayHeading ?? lastData?.heading ?? data.heading,
+          });
+        }
+        // Pas de premier rendu sur fix invalide : on attend une trame fiable.
+        continue;
+      }
+
+      activeIds.add(pos.trackerId);
+      let entry = existingEntry;
       if (!entry) {
         const el = buildVehicleMarkerEl(data);
         if (!showPlatesNow) el.classList.add('tracky-marker--no-plate');
@@ -2954,6 +2991,13 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         }
       }
       this.lastMarkerData.set(pos.trackerId, data);
+      // Memorise la verite courante : sert d'ancrage pour `isAcceptableLiveFix`
+      // sur la prochaine trame (rejet des sauts > 250 km/h).
+      this.lastTruthPosition.set(pos.trackerId, {
+        lat: pos.lat,
+        lng: pos.lng,
+        timestamp: pos.timestamp,
+      });
 
       // Trail accumulation (en memoire, capee a trailLength).
       // V1.8 : dedupliquer — applyPositions est appele a chaque flush du buffer rAF
@@ -2998,6 +3042,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         entry.marker.remove();
         this.markers.delete(id);
         this.trailPoints.delete(id);
+        this.lastTruthPosition.delete(id);
         this.motion.delete(id);
       }
     }
