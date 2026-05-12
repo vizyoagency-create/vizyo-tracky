@@ -19,7 +19,16 @@ import { PrismaService } from '../prisma/prisma.service';
 export interface PushPayload {
   title: string;
   body: string;
+  /**
+   * Grande icone affichee dans la notif. Optionnel — le SW utilise
+   * `/pwa-icon-192.png` par defaut.
+   */
   icon?: string;
+  /**
+   * Petite icone monochrome (Android : tintee blanc dans la status bar).
+   * Optionnel — le SW utilise `/pwa-icon-192.png` par defaut.
+   */
+  badge?: string;
   data?: Record<string, unknown>;
   url?: string; // URL a ouvrir au clic
   /**

@@ -76,6 +76,85 @@ export class NotificationsApiService {
       && 'Notification' in window;
   }
 
+  /**
+   * Detection iOS — couvre iPhone/iPad/iPod ainsi que les iPad recents qui
+   * rapportent un UA macOS desktop ("Macintosh" + ecran tactile).
+   */
+  isIOS(): boolean {
+    if (typeof navigator === 'undefined') return false;
+    const ua = navigator.userAgent || '';
+    if (/iPad|iPhone|iPod/.test(ua)) return true;
+    // iPadOS 13+ se fait passer pour macOS Safari ; on detecte via le touch support.
+    return ua.includes('Macintosh') && typeof document !== 'undefined' && 'ontouchend' in document;
+  }
+
+  /**
+   * Vrai si la PWA tourne en mode standalone (ajoutee a l'ecran d'accueil iOS
+   * ou installee comme app Android). Sur iOS, web push **n'est disponible
+   * qu'en standalone** (Safari 16.4+) — c'est la cause #1 de "ca ne marche pas".
+   */
+  isStandalone(): boolean {
+    if (typeof window === 'undefined') return false;
+    try {
+      if (window.matchMedia?.('(display-mode: standalone)').matches) return true;
+    } catch {/* ignore */}
+    return (navigator as { standalone?: boolean }).standalone === true;
+  }
+
+  /**
+   * Version iOS majeure detectee depuis le UA, ou null si non-iOS ou inconnue.
+   * Sert a diagnostiquer : web push exige iOS 16.4+.
+   */
+  iosVersion(): number | null {
+    if (!this.isIOS()) return null;
+    const ua = navigator.userAgent || '';
+    // Format typique : "iPhone OS 17_5_1 like Mac OS X"
+    const m = ua.match(/OS (\d+)[_.](\d+)/);
+    if (!m) return null;
+    const major = parseInt(m[1]!, 10);
+    const minor = parseInt(m[2]!, 10);
+    // Encode "16.4" -> 16.4 pour comparaison simple.
+    return major + minor / 10;
+  }
+
+  /**
+   * Resume diagnostic du support push sur le device courant.
+   * Sert a alimenter l'UI Observabilite (et a expliquer a l'utilisateur
+   * pourquoi rien n'arrive sur iOS sans PWA installee).
+   */
+  pushSupportDiagnostic(): {
+    supported: boolean;
+    reason?: string;
+    permission: NotificationPermission | 'unsupported';
+    isIOS: boolean;
+    isStandalone: boolean;
+    iosVersion: number | null;
+    userAgent: string;
+  } {
+    const isIOSDevice = this.isIOS();
+    const standalone = this.isStandalone();
+    const ver = this.iosVersion();
+    const permission: NotificationPermission | 'unsupported' =
+      typeof Notification !== 'undefined' ? Notification.permission : 'unsupported';
+    const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+
+    if (!this.isPushSupported()) {
+      let reason: string;
+      if (isIOSDevice && !standalone) {
+        reason = 'iOS Safari : ajoute Tracky a l\'ecran d\'accueil (Partager → Ajouter), puis ouvre depuis la l\'icone.';
+      } else if (isIOSDevice && ver !== null && ver < 16.4) {
+        reason = `iOS ${ver} detecte — web push requiert iOS 16.4 ou superieur.`;
+      } else if (isIOSDevice) {
+        reason = 'iOS detecte mais PushManager indisponible — verifie que c\'est bien Safari (Chrome iOS ne supporte pas le push).';
+      } else {
+        reason = 'Ce navigateur ne supporte pas le Web Push.';
+      }
+      return { supported: false, reason, permission, isIOS: isIOSDevice, isStandalone: standalone, iosVersion: ver, userAgent: ua };
+    }
+
+    return { supported: true, permission, isIOS: isIOSDevice, isStandalone: standalone, iosVersion: ver, userAgent: ua };
+  }
+
   async registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
     if (!this.isPushSupported()) return null;
     try {

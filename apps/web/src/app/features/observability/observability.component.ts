@@ -259,6 +259,56 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
           </div>
         }
 
+        <!-- Diagnostic device : iOS, standalone, permission, UA -->
+        @if (diagnostic(); as d) {
+          <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4 flex flex-col gap-3">
+            <p class="text-xs uppercase text-fg-tertiary tracking-wide">Diagnostic device</p>
+
+            @if (!d.supported && d.reason) {
+              <div class="bg-amber-500/10 border border-amber-500/30 text-amber-200 rounded-lg p-3 text-xs flex items-start gap-2">
+                <lucide-icon [img]="AlertTriangle" [size]="14" class="shrink-0 mt-0.5"></lucide-icon>
+                <p>{{ d.reason }}</p>
+              </div>
+            }
+
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              <div class="bg-bg-tertiary rounded-lg px-3 py-2 flex flex-col gap-0.5">
+                <span class="text-fg-tertiary text-[10px] uppercase">Push API</span>
+                <span [class]="d.supported ? 'text-emerald-400' : 'text-red-400'" class="font-medium">
+                  {{ d.supported ? 'Supporté' : 'Non' }}
+                </span>
+              </div>
+              <div class="bg-bg-tertiary rounded-lg px-3 py-2 flex flex-col gap-0.5">
+                <span class="text-fg-tertiary text-[10px] uppercase">Permission</span>
+                <span class="font-medium"
+                      [class]="d.permission === 'granted' ? 'text-emerald-400'
+                        : d.permission === 'denied' ? 'text-red-400'
+                        : 'text-amber-400'">
+                  {{ d.permission }}
+                </span>
+              </div>
+              <div class="bg-bg-tertiary rounded-lg px-3 py-2 flex flex-col gap-0.5">
+                <span class="text-fg-tertiary text-[10px] uppercase">iOS</span>
+                <span class="font-medium text-fg-primary">
+                  {{ d.isIOS ? (d.iosVersion !== null ? d.iosVersion : 'oui') : 'non' }}
+                </span>
+              </div>
+              <div class="bg-bg-tertiary rounded-lg px-3 py-2 flex flex-col gap-0.5">
+                <span class="text-fg-tertiary text-[10px] uppercase">Standalone</span>
+                <span class="font-medium"
+                      [class]="d.isStandalone ? 'text-emerald-400' : (d.isIOS ? 'text-amber-400' : 'text-fg-secondary')">
+                  {{ d.isStandalone ? 'oui (PWA)' : 'non' }}
+                </span>
+              </div>
+            </div>
+
+            <details class="text-xs text-fg-tertiary">
+              <summary class="cursor-pointer hover:text-fg-secondary">User-Agent complet</summary>
+              <pre class="mt-2 font-mono text-[11px] bg-bg-tertiary rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-all">{{ d.userAgent }}</pre>
+            </details>
+          </div>
+        }
+
         <!-- Statut subscription locale + activation -->
         <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4 flex flex-col gap-3">
           <div class="flex items-center gap-3">
@@ -455,6 +505,10 @@ export class ObservabilityComponent implements OnInit {
   protected readonly testSending = signal(false);
   protected readonly testActivating = signal(false);
   protected readonly testLastResult = signal<{ ok: boolean; message: string; at: string } | null>(null);
+  // Diagnostic env (iOS/standalone/permission/UA) — calcule a chaque entree
+  // dans l'onglet pour refleter un eventuel changement de mode (ex: app
+  // ajoutee a l'ecran d'accueil entre-temps).
+  protected readonly diagnostic = signal<ReturnType<NotificationsApiService['pushSupportDiagnostic']> | null>(null);
 
   async ngOnInit(): Promise<void> {
     await this.loadWireLogs();
@@ -522,6 +576,7 @@ export class ObservabilityComponent implements OnInit {
   // ─── Test Notification ──────────────────────────────────────
 
   private async loadTestPushData(): Promise<void> {
+    this.diagnostic.set(this.notif.pushSupportDiagnostic());
     await this.notif.loadStatus().catch(() => {/* silencieux */});
     if (this.notif.isSubscribed()) {
       await this.notif.listDevices().catch(() => {/* silencieux */});

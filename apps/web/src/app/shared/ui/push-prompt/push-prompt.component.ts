@@ -4,6 +4,7 @@ import { NotificationsApiService } from '../../../core/services/notifications.se
 import { ToastService } from '../toast/toast.service';
 
 const DISMISS_KEY = 'tracky.push-prompt.dismissed-at';
+const IOS_HINT_DISMISS_KEY = 'tracky.push-prompt-ios-hint.dismissed-at';
 const DISMISS_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000; // 7 jours
 const SHOW_DELAY_MS = 2500; // delai avant affichage au boot — evite de surprendre
 
@@ -56,6 +57,26 @@ const SHOW_DELAY_MS = 2500; // delai avant affichage au boot — evite de surpre
           </button>
         </div>
       </div>
+    } @else if (visibleIosPwaHint()) {
+      <div class="push-prompt" role="dialog" aria-live="polite" aria-labelledby="ios-pwa-prompt-title">
+        <div class="prompt-icon prompt-icon--ios">
+          <lucide-icon [img]="BellRingIcon" [size]="20"></lucide-icon>
+        </div>
+        <div class="prompt-content">
+          <p id="ios-pwa-prompt-title" class="prompt-title">Notifications sur iPhone</p>
+          <p class="prompt-subtitle">
+            Pour les recevoir : Partager → "Sur l'écran d'accueil", puis ouvre Tracky depuis l'icône.
+          </p>
+        </div>
+        <div class="prompt-actions">
+          <button (click)="onDismiss()"
+                  class="prompt-close"
+                  aria-label="Plus tard"
+                  type="button">
+            <lucide-icon [img]="XIcon" [size]="16"></lucide-icon>
+          </button>
+        </div>
+      </div>
     }
   `,
   styles: [`
@@ -89,6 +110,12 @@ const SHOW_DELAY_MS = 2500; // delai avant affichage au boot — evite de surpre
       display: flex; align-items: center; justify-content: center;
       background: linear-gradient(135deg, #f59e0b 0%, #dc2626 100%);
       color: #fff;
+    }
+    .prompt-icon--ios {
+      /* Vert Tracky pour le hint iOS — different visuellement du prompt
+         "activer" (gradient ambre/rouge urgent). C'est un onboarding pas
+         une alerte. */
+      background: linear-gradient(135deg, #10E0A0 0%, #059669 100%);
     }
     .prompt-content { flex: 1; min-width: 0; }
     .prompt-title {
@@ -155,7 +182,25 @@ export class PushPromptComponent implements OnInit {
     // dialog auto-rejetee. Garder le toast cache, il devra passer par les
     // settings du browser.
     if (this.isPermissionDenied()) return false;
-    if (this.isCooldownActive()) return false;
+    if (this.isCooldownActive(DISMISS_KEY)) return false;
+    return true;
+  });
+
+  /**
+   * Variante pour iOS Safari NON-PWA : `isPushSupported` retourne false (pas
+   * de PushManager hors standalone), donc le prompt classique ne s'affiche
+   * pas. Ce hint guide l'utilisateur a ajouter Tracky a l'ecran d'accueil
+   * (etape obligatoire pour debloquer le push iOS).
+   */
+  protected readonly visibleIosPwaHint = computed(() => {
+    if (!this.delayElapsed()) return false;
+    if (this.dismissedThisSession()) return false;
+    if (this.notif.pushEnabled() !== true) return false;
+    // Seulement sur iOS sans PWA installee. Si la PWA est lancee depuis
+    // l'ecran d'accueil et que iOS supporte push, c'est `visible` qui prend.
+    if (!this.notif.isIOS()) return false;
+    if (this.notif.isStandalone()) return false;
+    if (this.isCooldownActive(IOS_HINT_DISMISS_KEY)) return false;
     return true;
   });
 
@@ -189,15 +234,19 @@ export class PushPromptComponent implements OnInit {
   }
 
   protected onDismiss(): void {
+    // Determine quelle cle dismiss enregistrer : si on est sur le hint iOS,
+    // on stocke separement pour que le prompt "Activer" classique reapparaisse
+    // une fois la PWA installee (sinon dismiss = 7j sans aucun prompt).
+    const key = this.visibleIosPwaHint() && !this.visible() ? IOS_HINT_DISMISS_KEY : DISMISS_KEY;
     try {
-      localStorage.setItem(DISMISS_KEY, String(Date.now()));
+      localStorage.setItem(key, String(Date.now()));
     } catch {/* localStorage indisponible */}
     this.dismissedThisSession.set(true);
   }
 
-  private isCooldownActive(): boolean {
+  private isCooldownActive(key: string): boolean {
     try {
-      const at = Number(localStorage.getItem(DISMISS_KEY) ?? '0') || 0;
+      const at = Number(localStorage.getItem(key) ?? '0') || 0;
       if (at <= 0) return false;
       return Date.now() - at < DISMISS_COOLDOWN_MS;
     } catch {

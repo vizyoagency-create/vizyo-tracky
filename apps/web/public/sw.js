@@ -43,10 +43,18 @@ self.addEventListener('push', (event) => {
   // decider via le champ vibrate des NotificationOptions.
   const vibrate = isCritical ? [200, 100, 200, 100, 200] : [100];
 
+  // Icones :
+  //   - `icon` = grande icone affichee dans la notif (Android Chrome upscale a 192px+).
+  //     /favicon.ico (32px ICO) etait flou + mal tinte. /pwa-icon-192.png = silhouette
+  //     V verte propre, rendu net.
+  //   - `badge` = petite icone monochrome dans la barre de statut Android (tinted
+  //     blanc force par le systeme). pwa-icon-192.png a une silhouette dominante
+  //     qui tinte proprement. Pour un badge encore meilleur, fournir a terme un
+  //     PNG dedie monochrome (V noir sur fond transparent, 96x96).
   const options = {
     body: data.body,
-    icon: data.icon || '/favicon.ico',
-    badge: '/favicon.ico',
+    icon: data.icon || '/pwa-icon-192.png',
+    badge: data.badge || '/pwa-icon-192.png',
     data: {
       url: data.url || '/',
       alertId: data.data && data.data.alertId,
