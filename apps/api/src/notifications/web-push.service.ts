@@ -168,7 +168,48 @@ export class WebPushService {
       return { sent: 0, failed: 0, results: [] };
     }
 
-    const body = JSON.stringify(payload);
+    // V1.10 — Wrapping pour compatibilite ngsw-worker (Angular Service Worker).
+    //
+    // Probleme observe en prod : en standalone PWA Android, deux SW se battent
+    // pour le scope `/` :
+    //   - ngsw-worker.js (Angular, registre apres 30s d'idle pour cache+update)
+    //   - /sw.js custom (registre au click "Activer push")
+    // Spec W3C : un seul SW actif par scope, le dernier registre gagne. ngsw
+    // arrive en general apres /sw.js et devient le SW actif.
+    //
+    // ngsw NE LIT QUE le champ `notification` au root du payload (cf. Angular
+    // service-worker source : packages/service-worker/worker/src/driver.ts).
+    // Notre /sw.js lit les champs A PLAT (title, body, severity, ...).
+    //
+    // Solution : envoyer LES DEUX formats dans le meme payload.
+    //   - ngsw consomme `notification` et auto-affiche
+    //   - /sw.js (si actif) reste compatible via Object.assign(data, json)
+    // -> Notif s'affiche peu importe lequel des deux SW est actif. Bug Android
+    //    "FCM repond 201 mais aucune notif" resolu.
+    const isCritical = payload.severity === 'CRITICAL';
+    const ngswNotification = {
+      title: payload.title,
+      body: payload.body,
+      icon: payload.icon ?? '/pwa-icon-192.png',
+      badge: payload.badge ?? '/pwa-icon-192.png',
+      data: { ...(payload.data ?? {}), url: payload.url, severity: payload.severity },
+      tag: payload.tag,
+      requireInteraction: isCritical,
+      renotify: isCritical && !!payload.tag,
+      vibrate: isCritical ? [200, 100, 200, 100, 200] : [100],
+      // `actions` n'est rendu que sur Chrome desktop. Sur Android, les boutons
+      // apparaissent uniquement si declares dans manifest.webmanifest -> on
+      // les inclut quand meme pour Chrome desktop + iPhone Safari les ignore.
+      actions: [
+        { action: 'ack', title: 'Acquitter' },
+        { action: 'view', title: 'Voir' },
+      ],
+    };
+    const body = JSON.stringify({
+      notification: ngswNotification, // <-- consume par ngsw-worker
+      ...payload,                      // <-- consume par notre /sw.js (flat fields)
+    });
+
     const options: webpush.RequestOptions = {
       TTL: 86400, // 24h — laisse le temps a une notif d'arriver apres verrouillage
       urgency: 'high', // requis APNs (Apple) pour delivery user-visible en background

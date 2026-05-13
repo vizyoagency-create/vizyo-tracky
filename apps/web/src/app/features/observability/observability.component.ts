@@ -303,6 +303,34 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
               </div>
             </div>
 
+            <!-- Service Workers enregistres (utile pour diagnostiquer conflit ngsw vs /sw.js) -->
+            @if (swRegs().length > 0) {
+              <div class="border-t border-border-subtle pt-3 flex flex-col gap-1.5">
+                <p class="text-xs uppercase text-fg-tertiary tracking-wide">Service Workers ({{ swRegs().length }})</p>
+                @for (sw of swRegs(); track sw.scriptURL) {
+                  <div class="flex items-center gap-2 text-[11px] bg-bg-tertiary rounded-lg px-2.5 py-1.5">
+                    <span class="font-mono font-medium truncate flex-1"
+                          [class]="sw.isController ? 'text-emerald-300' : 'text-fg-secondary'">
+                      {{ sw.scriptURL.split('/').pop() }}
+                    </span>
+                    <span class="text-fg-tertiary font-mono shrink-0 hidden sm:inline">scope: {{ shortenScope(sw.scope) }}</span>
+                    <span class="px-1.5 py-0.5 rounded text-[9px] font-bold shrink-0"
+                          [class]="sw.state === 'active' ? 'bg-emerald-500/20 text-emerald-300'
+                            : sw.state === 'waiting' ? 'bg-amber-500/20 text-amber-300'
+                            : 'bg-sky-500/20 text-sky-300'">
+                      {{ sw.state }}
+                    </span>
+                    @if (sw.isController) {
+                      <span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/30 text-emerald-200 shrink-0">controller</span>
+                    }
+                  </div>
+                }
+                <p class="text-[10px] text-fg-tertiary mt-1">
+                  Le SW <strong>controller</strong> reçoit les events push. Si c'est <code class="font-mono">ngsw-worker.js</code>, le payload est wrappé pour qu'il puisse l'afficher.
+                </p>
+              </div>
+            }
+
             <details class="text-xs text-fg-tertiary">
               <summary class="cursor-pointer hover:text-fg-secondary">User-Agent complet</summary>
               <pre class="mt-2 font-mono text-[11px] bg-bg-tertiary rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-all">{{ d.userAgent }}</pre>
@@ -638,6 +666,8 @@ export class ObservabilityComponent implements OnInit {
   // dans l'onglet pour refleter un eventuel changement de mode (ex: app
   // ajoutee a l'ecran d'accueil entre-temps).
   protected readonly diagnostic = signal<ReturnType<NotificationsApiService['pushSupportDiagnostic']> | null>(null);
+  // Liste des SW enregistres : utile pour diagnostiquer conflit ngsw vs /sw.js
+  protected readonly swRegs = signal<Awaited<ReturnType<NotificationsApiService['swRegistrations']>>>([]);
   // Scope de la liste devices : 'mine' = mes subscriptions seulement,
   // 'all' = toutes les subs (SUPER_ADMIN uniquement, pour voir qui est abonne
   // et purger les comptes clients abonnes par erreur).
@@ -714,6 +744,8 @@ export class ObservabilityComponent implements OnInit {
 
   private async loadTestPushData(): Promise<void> {
     this.diagnostic.set(this.notif.pushSupportDiagnostic());
+    // Snapshot SW (en parallele du loadStatus, c'est independant).
+    void this.notif.swRegistrations().then((regs) => this.swRegs.set(regs)).catch(() => {/* silencieux */});
     await this.notif.loadStatus().catch(() => {/* silencieux */});
     // Charge directement les devices selon le scope choisi (SUPER_ADMIN voit
     // 'all' par defaut une fois bascule). Ne pas conditionner sur isSubscribed :
@@ -733,6 +765,16 @@ export class ObservabilityComponent implements OnInit {
     const next = new Set(this.selectedSubIds());
     if (next.has(id)) next.delete(id); else next.add(id);
     this.selectedSubIds.set(next);
+  }
+
+  /** Affiche le scope SW sans l'origine pour gagner de la place dans l'UI. */
+  protected shortenScope(scope: string): string {
+    try {
+      const u = new URL(scope);
+      return u.pathname || '/';
+    } catch {
+      return scope || '/';
+    }
   }
 
   protected async onDeleteDevice(id: string, label: string): Promise<void> {

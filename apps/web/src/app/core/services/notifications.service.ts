@@ -172,6 +172,41 @@ export class NotificationsApiService {
   }
 
   /**
+   * Inventaire des SW enregistres pour cette origine — sert a diagnostiquer
+   * les conflits ngsw-worker vs /sw.js en prod (cause #1 du "FCM 201 mais
+   * pas de notif sur Android"). Async car getRegistrations est une Promise.
+   */
+  async swRegistrations(): Promise<Array<{
+    scriptURL: string;
+    scope: string;
+    state: 'installing' | 'waiting' | 'active' | 'unknown';
+    isController: boolean;
+  }>> {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return [];
+    try {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      const controllerUrl = navigator.serviceWorker.controller?.scriptURL ?? null;
+      const out: Array<{ scriptURL: string; scope: string; state: 'installing'|'waiting'|'active'|'unknown'; isController: boolean }> = [];
+      for (const reg of regs) {
+        const sw = reg.active ?? reg.waiting ?? reg.installing;
+        if (!sw) continue;
+        const state: 'installing'|'waiting'|'active' = reg.active === sw ? 'active'
+          : reg.waiting === sw ? 'waiting'
+          : 'installing';
+        out.push({
+          scriptURL: sw.scriptURL,
+          scope: reg.scope,
+          state,
+          isController: sw.scriptURL === controllerUrl,
+        });
+      }
+      return out;
+    } catch {
+      return [];
+    }
+  }
+
+  /**
    * Resume diagnostic du support push sur le device courant.
    * Sert a alimenter l'UI Observabilite (et a expliquer a l'utilisateur
    * pourquoi rien n'arrive sur iOS sans PWA installee).
