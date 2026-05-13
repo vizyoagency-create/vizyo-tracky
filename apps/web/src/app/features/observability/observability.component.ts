@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import {
   LucideAngularModule, Activity, AlertTriangle, Search, RefreshCw,
   ArrowUpRight, ArrowDownLeft, Clock, Terminal, Bell, BellRing, Send, Smartphone,
+  Trash2, User as UserIcon, Globe,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import {
@@ -345,18 +346,110 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
             </p>
           }
 
-          <!-- Liste des devices abonnes -->
+          <!-- Liste des devices abonnes : email + UA + delete + checkbox de ciblage -->
           @if (notif.devices().length > 0) {
             <div class="border-t border-border-subtle pt-3 flex flex-col gap-2">
-              <p class="text-xs uppercase text-fg-tertiary tracking-wide">
-                Devices abonnés ({{ notif.devices().length }})
-              </p>
-              @for (d of notif.devices(); track d.id) {
-                <div class="flex items-center gap-2 text-xs text-fg-secondary">
-                  <lucide-icon [img]="Smartphone" [size]="14" class="shrink-0 opacity-60"></lucide-icon>
-                  <span class="truncate flex-1" [title]="d.userAgent ?? ''">{{ d.userAgent ?? 'User-Agent inconnu' }}</span>
-                  <span class="font-mono text-[10px] text-fg-tertiary shrink-0">{{ d.lastSeenAt | date:'dd/MM HH:mm' }}</span>
+              <div class="flex items-center justify-between gap-3 flex-wrap">
+                <p class="text-xs uppercase text-fg-tertiary tracking-wide">
+                  Devices abonnés ({{ notif.devices().length }})
+                </p>
+                <!-- Toggle scope : mes subs vs toutes (SUPER_ADMIN) -->
+                <div class="flex bg-bg-tertiary rounded-lg overflow-hidden text-[11px] font-medium">
+                  <button
+                    type="button"
+                    (click)="onChangeDevicesScope('mine')"
+                    [class]="devicesScope() === 'mine' ? 'bg-tracky text-white' : 'text-fg-secondary'"
+                    class="px-3 py-1.5 cursor-pointer hover:text-fg-primary"
+                  >Mes devices</button>
+                  <button
+                    type="button"
+                    (click)="onChangeDevicesScope('all')"
+                    [class]="devicesScope() === 'all' ? 'bg-tracky text-white' : 'text-fg-secondary'"
+                    class="px-3 py-1.5 cursor-pointer hover:text-fg-primary"
+                  >Tous les comptes</button>
                 </div>
+              </div>
+
+              @if (devicesScope() === 'all') {
+                <p class="text-[11px] text-amber-300/80 flex items-center gap-1.5">
+                  <lucide-icon [img]="AlertTriangle" [size]="12"></lucide-icon>
+                  Tu vois toutes les subscriptions de la base. Tu peux supprimer celles de comptes clients abonnés par erreur. Le test ne peut cibler que TES devices à toi.
+                </p>
+              }
+
+              <div class="flex flex-col gap-1.5">
+                @for (d of notif.devices(); track d.id) {
+                  <div class="flex items-center gap-2 text-xs bg-bg-tertiary rounded-lg px-2.5 py-2"
+                       [class.opacity-60]="!d.isMine">
+                    <!-- Checkbox ciblage (uniquement pour MES subs — sinon le backend bloque) -->
+                    @if (d.isMine) {
+                      <input
+                        type="checkbox"
+                        [checked]="selectedSubIds().has(d.id)"
+                        (change)="toggleSubSelection(d.id)"
+                        class="shrink-0 w-4 h-4 accent-tracky cursor-pointer"
+                        [title]="'Cibler ce device dans le prochain test'"
+                      />
+                    } @else {
+                      <span class="shrink-0 w-4 h-4" title="Pas a toi — non ciblable"></span>
+                    }
+
+                    <lucide-icon [img]="Smartphone" [size]="14" class="shrink-0 opacity-60"></lucide-icon>
+
+                    <div class="flex-1 min-w-0 flex flex-col gap-0.5">
+                      <!-- Ligne 1 : email + role badge -->
+                      <div class="flex items-center gap-2 min-w-0">
+                        <span class="font-medium text-fg-primary truncate" [title]="d.userEmail ?? d.userId">
+                          {{ d.userEmail ?? d.userId.slice(0, 8) + '…' }}
+                        </span>
+                        @if (d.userName) {
+                          <span class="text-fg-tertiary truncate hidden sm:inline">{{ d.userName }}</span>
+                        }
+                        @if (d.userRole) {
+                          <span class="text-[9px] px-1.5 py-0.5 rounded font-mono uppercase shrink-0"
+                                [class]="d.userRole === 'SUPER_ADMIN' ? 'bg-purple-500/20 text-purple-300'
+                                  : d.userRole === 'FLEET_ADMIN' ? 'bg-sky-500/20 text-sky-300'
+                                  : 'bg-bg-secondary text-fg-tertiary'">
+                            {{ d.userRole }}
+                          </span>
+                        }
+                        @if (d.isMine) {
+                          <span class="text-[9px] px-1.5 py-0.5 rounded font-mono uppercase shrink-0 bg-emerald-500/20 text-emerald-300">
+                            moi
+                          </span>
+                        }
+                      </div>
+                      <!-- Ligne 2 : UA tronque + host + last seen -->
+                      <div class="flex items-center gap-2 text-[10px] text-fg-tertiary min-w-0">
+                        <span class="truncate" [title]="d.userAgent ?? ''">
+                          {{ d.userAgent ?? '—' }}
+                        </span>
+                      </div>
+                      <div class="flex items-center gap-2 text-[10px] text-fg-tertiary">
+                        <span class="font-mono">{{ d.endpointHost }}</span>
+                        <span>·</span>
+                        <span class="font-mono">{{ d.lastSeenAt | date:'dd/MM HH:mm' }}</span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      (click)="onDeleteDevice(d.id, d.userEmail ?? d.id)"
+                      [disabled]="deletingDeviceId() === d.id"
+                      class="shrink-0 p-1.5 rounded-md text-fg-tertiary hover:text-red-400 hover:bg-red-500/10 cursor-pointer disabled:opacity-50"
+                      [title]="'Supprimer cette subscription'"
+                    >
+                      <lucide-icon [img]="Trash2" [size]="14"></lucide-icon>
+                    </button>
+                  </div>
+                }
+              </div>
+
+              @if (selectedSubIds().size > 0) {
+                <p class="text-[11px] text-emerald-300 flex items-center gap-1.5">
+                  <lucide-icon [img]="Send" [size]="12"></lucide-icon>
+                  {{ selectedSubIds().size }} device(s) sélectionné(s) pour le prochain test (au lieu de tous mes devices).
+                </p>
               }
             </div>
           }
@@ -497,6 +590,9 @@ export class ObservabilityComponent implements OnInit {
   protected readonly BellRing = BellRing;
   protected readonly Send = Send;
   protected readonly Smartphone = Smartphone;
+  protected readonly Trash2 = Trash2;
+  protected readonly UserIcon = UserIcon;
+  protected readonly Globe = Globe;
 
   protected readonly tabs = [
     { key: 'wire' as const, label: 'Wire Logs' },
@@ -542,6 +638,14 @@ export class ObservabilityComponent implements OnInit {
   // dans l'onglet pour refleter un eventuel changement de mode (ex: app
   // ajoutee a l'ecran d'accueil entre-temps).
   protected readonly diagnostic = signal<ReturnType<NotificationsApiService['pushSupportDiagnostic']> | null>(null);
+  // Scope de la liste devices : 'mine' = mes subscriptions seulement,
+  // 'all' = toutes les subs (SUPER_ADMIN uniquement, pour voir qui est abonne
+  // et purger les comptes clients abonnes par erreur).
+  protected readonly devicesScope = signal<'mine' | 'all'>('mine');
+  // IDs des subscriptions selectionnees pour cibler le test. Vide = envoyer
+  // a toutes mes subs (defaut).
+  protected readonly selectedSubIds = signal<Set<string>>(new Set());
+  protected readonly deletingDeviceId = signal<string | null>(null);
 
   async ngOnInit(): Promise<void> {
     await this.loadWireLogs();
@@ -611,8 +715,42 @@ export class ObservabilityComponent implements OnInit {
   private async loadTestPushData(): Promise<void> {
     this.diagnostic.set(this.notif.pushSupportDiagnostic());
     await this.notif.loadStatus().catch(() => {/* silencieux */});
-    if (this.notif.isSubscribed()) {
-      await this.notif.listDevices().catch(() => {/* silencieux */});
+    // Charge directement les devices selon le scope choisi (SUPER_ADMIN voit
+    // 'all' par defaut une fois bascule). Ne pas conditionner sur isSubscribed :
+    // un SUPER_ADMIN peut vouloir voir/purger les subs des clients meme s'il
+    // n'a pas active push sur ce device-ci.
+    await this.notif.listDevices(this.devicesScope()).catch(() => {/* silencieux */});
+  }
+
+  protected async onChangeDevicesScope(scope: 'mine' | 'all'): Promise<void> {
+    this.devicesScope.set(scope);
+    // Reset la selection : les ids changent quand on switch de scope.
+    this.selectedSubIds.set(new Set());
+    await this.notif.listDevices(scope).catch(() => {/* silencieux */});
+  }
+
+  protected toggleSubSelection(id: string): void {
+    const next = new Set(this.selectedSubIds());
+    if (next.has(id)) next.delete(id); else next.add(id);
+    this.selectedSubIds.set(next);
+  }
+
+  protected async onDeleteDevice(id: string, label: string): Promise<void> {
+    if (this.deletingDeviceId()) return;
+    const ok = window.confirm(`Supprimer cette subscription ?\n\n${label}\n\nLe device cessera de recevoir les notifications jusqu'a une nouvelle activation.`);
+    if (!ok) return;
+    this.deletingDeviceId.set(id);
+    try {
+      await this.notif.deleteDevice(id);
+      // Retire l'id de la selection s'il etait coche.
+      const sel = new Set(this.selectedSubIds());
+      sel.delete(id);
+      this.selectedSubIds.set(sel);
+      this.toast.success('Subscription supprimee');
+    } catch {
+      this.toast.error('Suppression echouee');
+    } finally {
+      this.deletingDeviceId.set(null);
     }
   }
 
@@ -635,11 +773,16 @@ export class ObservabilityComponent implements OnInit {
     if (this.testSending()) return;
     this.testSending.set(true);
     try {
+      // Si selection non-vide : envoyer uniquement aux subs cochees. Sinon
+      // (defaut) : envoyer a toutes mes subs. Securite : backend filtrera
+      // pour ne garder que les subs du user courant.
+      const selected = Array.from(this.selectedSubIds());
       const res = await this.notif.sendTestPush({
         title: this.testTitle().trim() || undefined,
         body: this.testBody().trim() || undefined,
         severity: this.testSeverity(),
         delayMs: this.testDelayMs(),
+        subscriptionIds: selected.length > 0 ? selected : undefined,
       });
       const at = new Date().toLocaleTimeString('fr-FR');
       if (res.scheduled) {

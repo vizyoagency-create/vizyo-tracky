@@ -7,9 +7,15 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 export interface PushSubscriptionDto {
   id: string;
   endpoint: string;
+  endpointHost: string;
+  userId: string;
+  userEmail: string | null;
+  userName: string | null;
+  userRole: string | null;
   userAgent: string | null;
   lastSeenAt: string;
   createdAt: string;
+  isMine: boolean;
 }
 
 export interface TestPushResultEntry {
@@ -310,11 +316,29 @@ export class NotificationsApiService {
     this.currentSubscription.set(null);
   }
 
-  async listDevices(): Promise<void> {
+  /**
+   * Recupere les subscriptions push.
+   *   - `scope: 'mine'` (defaut) : uniquement celles du user courant
+   *   - `scope: 'all'` : toutes (SUPER_ADMIN seulement, fail-soft si non autorise)
+   */
+  async listDevices(scope: 'mine' | 'all' = 'mine'): Promise<void> {
+    const url = scope === 'all'
+      ? '/api/notifications/push/subscriptions?scope=all'
+      : '/api/notifications/push/subscriptions';
     const res = await firstValueFrom(
-      this.http.get<{ items: PushSubscriptionDto[] }>('/api/notifications/push/subscriptions'),
+      this.http.get<{ items: PushSubscriptionDto[] }>(url),
     );
     this.devices.set(res.items);
+  }
+
+  /**
+   * Supprime une subscription par id. Owner ou SUPER_ADMIN cote backend.
+   */
+  async deleteDevice(id: string): Promise<void> {
+    await firstValueFrom(
+      this.http.delete(`/api/notifications/push/subscriptions/${id}`),
+    );
+    this.devices.set(this.devices().filter((d) => d.id !== id));
   }
 
   /**
@@ -329,6 +353,8 @@ export class NotificationsApiService {
     body?: string;
     severity?: 'INFO' | 'WARNING' | 'CRITICAL';
     delayMs?: number;
+    /** Liste optionnelle des subscription ids a cibler. Vide = toutes les subs du user. */
+    subscriptionIds?: string[];
   }): Promise<TestPushResponse> {
     return firstValueFrom(
       this.http.post<TestPushResponse>('/api/notifications/test', payload),

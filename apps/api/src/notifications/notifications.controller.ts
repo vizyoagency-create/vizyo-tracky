@@ -3,13 +3,16 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
+  NotFoundException,
   Param,
   ParseUUIDPipe,
   Post,
   Put,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -19,6 +22,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { PrismaService } from '../prisma/prisma.service';
 import { AlertRulesService } from './alert-rules.service';
 import { WebPushService } from './web-push.service';
 
@@ -40,6 +44,7 @@ export class NotificationsController {
   constructor(
     private readonly webPush: WebPushService,
     private readonly alertRules: AlertRulesService,
+    private readonly prisma: PrismaService,
   ) {}
 
   // ─── Push subscriptions ─────────────────────────────────────
@@ -76,18 +81,75 @@ export class NotificationsController {
     await this.webPush.unsubscribe(body.endpoint, req.user.id);
   }
 
+  /**
+   * Liste les subscriptions push.
+   *   - Par defaut : celles du user courant uniquement.
+   *   - `?scope=all` : toutes les subscriptions de la base (SUPER_ADMIN seulement).
+   *     Utile pour la page Observabilite : voir qui est abonne, identifier des
+   *     subs zombies, supprimer celles de comptes clients par erreur.
+   */
   @Get('push/subscriptions')
-  async listSubs(@Req() req: AuthenticatedRequest) {
-    const subs = await this.webPush.listForUser(req.user.id);
+  async listSubs(
+    @Req() req: AuthenticatedRequest,
+    @Query('scope') scope?: 'all' | 'mine',
+  ) {
+    const wantAll = scope === 'all' && req.user.role === UserRole.SUPER_ADMIN;
+    const subs = wantAll
+      ? await this.prisma.pushSubscription.findMany({ orderBy: { lastSeenAt: 'desc' } })
+      : await this.webPush.listForUser(req.user.id);
+
+    // Jointure manuelle user (pas de relation Prisma declaree pour eviter une
+    // migration). On collecte les userIds uniques et on fetch les users.
+    const userIds = [...new Set(subs.map((s) => s.userId))];
+    const users = userIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, email: true, firstName: true, lastName: true, role: true },
+        })
+      : [];
+    const userById = new Map(users.map((u) => [u.id, u]));
+
     return {
-      items: subs.map((s) => ({
-        id: s.id,
-        endpoint: s.endpoint.slice(0, 60) + '...', // truncate pour ne pas exposer le secret
-        userAgent: s.userAgent,
-        lastSeenAt: s.lastSeenAt.toISOString(),
-        createdAt: s.createdAt.toISOString(),
-      })),
+      items: subs.map((s) => {
+        const u = userById.get(s.userId);
+        const fullName = u ? [u.firstName, u.lastName].filter(Boolean).join(' ').trim() : '';
+        return {
+          id: s.id,
+          endpoint: s.endpoint.slice(0, 60) + '...', // truncate pour ne pas exposer le secret
+          endpointHost: (() => { try { return new URL(s.endpoint).hostname; } catch { return 'unknown'; } })(),
+          userId: s.userId,
+          userEmail: u?.email ?? null,
+          userName: fullName || null,
+          userRole: u?.role ?? null,
+          userAgent: s.userAgent,
+          lastSeenAt: s.lastSeenAt.toISOString(),
+          createdAt: s.createdAt.toISOString(),
+          isMine: s.userId === req.user.id,
+        };
+      }),
     };
+  }
+
+  /**
+   * Supprime une subscription par id.
+   *   - Le proprietaire peut supprimer les siennes.
+   *   - SUPER_ADMIN peut supprimer celles de n'importe quel user (pour purger
+   *     les zombies depuis Observabilite).
+   */
+  @Delete('push/subscriptions/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteSub(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    const sub = await this.prisma.pushSubscription.findUnique({ where: { id } });
+    if (!sub) throw new NotFoundException('subscription introuvable');
+    const isOwner = sub.userId === req.user.id;
+    const isSuperAdmin = req.user.role === UserRole.SUPER_ADMIN;
+    if (!isOwner && !isSuperAdmin) {
+      throw new ForbiddenException('Acces refuse');
+    }
+    await this.webPush.deleteSubscriptionById(id);
   }
 
   // ─── Push test (SUPER_ADMIN — page Observabilite) ───────────
@@ -111,15 +173,36 @@ export class NotificationsController {
       body?: string;
       severity?: 'INFO' | 'WARNING' | 'CRITICAL';
       delayMs?: number;
+      /**
+       * Optionnel — sous-ensemble de subscriptions a cibler. Si absent ou vide,
+       * envoie a TOUTES les subs du SUPER_ADMIN connecte. Securite : on filtre
+       * pour ne garder que les subs qui appartiennent au user courant (un
+       * SUPER_ADMIN ne peut pas pusher sur les devices d'un client).
+       */
+      subscriptionIds?: string[];
     },
   ) {
     if (!this.webPush.isEnabled()) {
       throw new BadRequestException('Push desactive cote serveur (VAPID manquant)');
     }
-    const subs = await this.webPush.listForUser(req.user.id);
-    if (subs.length === 0) {
+    const allMySubs = await this.webPush.listForUser(req.user.id);
+    if (allMySubs.length === 0) {
       throw new BadRequestException(
         'Aucune subscription pour cet utilisateur — active d\'abord les notifications sur ce device.',
+      );
+    }
+
+    // Filtrage ciblage : si subscriptionIds est fourni, on ne garde que ceux
+    // qui appartiennent au user courant (security : pas de push sur les devices
+    // d'autres comptes, y compris les clients en prod).
+    const requestedIds = Array.isArray(body?.subscriptionIds) ? body.subscriptionIds : [];
+    const targetIds = requestedIds.length > 0
+      ? allMySubs.filter((s) => requestedIds.includes(s.id)).map((s) => s.id)
+      : allMySubs.map((s) => s.id);
+
+    if (targetIds.length === 0) {
+      throw new BadRequestException(
+        'Aucune subscription valide pour ce SUPER_ADMIN parmi celles selectionnees.',
       );
     }
 
@@ -136,15 +219,15 @@ export class NotificationsController {
     // Bornes : 0..60s. Au-dela, le client est cense recevoir une vraie alerte
     // schedulee, pas un test.
     const delayMs = Math.max(0, Math.min(60_000, Math.floor(body?.delayMs ?? 0)));
-    const targetDevices = subs.length;
+    const targetDevices = targetIds.length;
 
     if (delayMs === 0) {
-      const res = await this.webPush.sendToUser(req.user.id, payload);
+      const res = await this.webPush.sendToSubscriptionIds(targetIds, req.user.id, payload);
       return { scheduled: false, delayMs: 0, targetDevices, ...res };
     }
 
     setTimeout(() => {
-      this.webPush.sendToUser(req.user.id, payload).catch(() => {/* logged inside service */});
+      this.webPush.sendToSubscriptionIds(targetIds, req.user.id, payload).catch(() => {/* logged inside service */});
     }, delayMs);
     return { scheduled: true, delayMs, targetDevices };
   }

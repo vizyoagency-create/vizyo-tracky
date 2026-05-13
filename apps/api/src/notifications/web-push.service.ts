@@ -121,30 +121,74 @@ export class WebPushService {
    *   - `topic` : optionnel mais utile pour collapsing (ex: 5 events alerte X
    *     -> une seule notif visible). Max 32 chars URL-safe base64.
    */
-  async sendToUser(userId: string, payload: PushPayload): Promise<{ sent: number; failed: number; results: Array<{ id: string; endpointHost: string; statusCode: number | null; error?: string }> }> {
-    if (!this.enabled) return { sent: 0, failed: 0, results: [] };
+  async sendToUser(userId: string, payload: PushPayload): Promise<SendResult> {
     const subs = await this.listForUser(userId);
-    if (subs.length === 0) return { sent: 0, failed: 0, results: [] };
+    return this.sendToSubscriptions(subs, payload, 'user:' + userId.slice(0, 8));
+  }
+
+  /**
+   * Send a push to a specific list of subscription IDs. Verifies that all
+   * IDs belong to `ownerUserId` (security : un user ne peut pas pusher sur
+   * les devices d'un autre, sauf si `bypassOwnerCheck` est vrai pour les
+   * cas SUPER_ADMIN). Used by the test endpoint when the admin picks specific
+   * devices to target.
+   */
+  async sendToSubscriptionIds(
+    subscriptionIds: string[],
+    ownerUserId: string,
+    payload: PushPayload,
+    opts: { bypassOwnerCheck?: boolean } = {},
+  ): Promise<SendResult> {
+    if (subscriptionIds.length === 0) return { sent: 0, failed: 0, results: [] };
+    const subs = await this.prisma.pushSubscription.findMany({
+      where: opts.bypassOwnerCheck
+        ? { id: { in: subscriptionIds } }
+        : { id: { in: subscriptionIds }, userId: ownerUserId },
+    });
+    return this.sendToSubscriptions(subs, payload, 'targeted:' + subs.length);
+  }
+
+  /**
+   * Coeur d'envoi — accepte une liste de subscriptions deja resolues.
+   * Logue chaque tentative (succes ET echec) avec endpoint host, status code
+   * et duree, pour faciliter le debug via `docker logs tracky-api`.
+   * Purge automatique des subs renvoyant 404/410 (Gone / Not Found).
+   */
+  private async sendToSubscriptions(
+    subs: Array<{ id: string; endpoint: string; p256dh: string; auth: string }>,
+    payload: PushPayload,
+    contextLabel: string,
+  ): Promise<SendResult> {
+    if (!this.enabled) {
+      this.logger.warn(`[push] skipped (${contextLabel}) — VAPID disabled`);
+      return { sent: 0, failed: 0, results: [] };
+    }
+    if (subs.length === 0) {
+      this.logger.debug(`[push] no targets (${contextLabel})`);
+      return { sent: 0, failed: 0, results: [] };
+    }
 
     const body = JSON.stringify(payload);
     const options: webpush.RequestOptions = {
       TTL: 86400, // 24h — laisse le temps a une notif d'arriver apres verrouillage
       urgency: 'high', // requis APNs (Apple) pour delivery user-visible en background
     };
-    // Apple : `topic` doit etre URL-safe base64, max 32 chars. On hashe court.
     if (payload.tag) {
       const safe = payload.tag.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 32);
       if (safe.length > 0) options.topic = safe;
     }
 
+    this.logger.log(`[push] sending (${contextLabel}) -> ${subs.length} subs, severity=${payload.severity ?? 'INFO'}, tag=${payload.tag ?? '-'}`);
+
     let sent = 0;
     let failed = 0;
-    const results: Array<{ id: string; endpointHost: string; statusCode: number | null; error?: string }> = [];
+    const results: SendResultEntry[] = [];
 
     for (const sub of subs) {
       const endpointHost = (() => {
         try { return new URL(sub.endpoint).hostname; } catch { return 'unknown'; }
       })();
+      const t0 = Date.now();
 
       try {
         const res = await webpush.sendNotification(
@@ -152,9 +196,13 @@ export class WebPushService {
           body,
           options,
         );
+        const dt = Date.now() - t0;
+        const code = res.statusCode ?? 201;
         sent++;
-        results.push({ id: sub.id, endpointHost, statusCode: res.statusCode ?? 201 });
+        this.logger.log(`[push] OK ${code} ${endpointHost} sub=${sub.id.slice(0, 8)} (${dt}ms)`);
+        results.push({ id: sub.id, endpointHost, statusCode: code });
       } catch (err: unknown) {
+        const dt = Date.now() - t0;
         const status = (err as { statusCode?: number }).statusCode ?? null;
         const message = (err as { body?: string; message?: string }).body
           || (err as { message?: string }).message
@@ -162,13 +210,38 @@ export class WebPushService {
         if (status === 404 || status === 410) {
           // Subscription expired or unregistered — prune.
           await this.prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => {/* ignore */});
+          this.logger.warn(`[push] GONE ${status} ${endpointHost} sub=${sub.id.slice(0, 8)} -> purged (${dt}ms)`);
         } else {
-          this.logger.warn(`Push delivery failed (${status ?? '?'}) for ${endpointHost} sub ${sub.id}: ${message}`);
+          this.logger.warn(`[push] FAIL ${status ?? '?'} ${endpointHost} sub=${sub.id.slice(0, 8)} (${dt}ms): ${message.slice(0, 160)}`);
         }
         failed++;
         results.push({ id: sub.id, endpointHost, statusCode: status, error: message.slice(0, 200) });
       }
     }
+
+    this.logger.log(`[push] done (${contextLabel}) sent=${sent} failed=${failed}`);
     return { sent, failed, results };
   }
+
+  /**
+   * SUPER_ADMIN — supprime une subscription (par n'importe quel user).
+   * Pour les autres roles, le service `notifications.controller` filtre
+   * par userId avant d'appeler ici.
+   */
+  async deleteSubscriptionById(id: string): Promise<void> {
+    await this.prisma.pushSubscription.delete({ where: { id } }).catch(() => {/* peut deja avoir ete purge */});
+  }
+}
+
+export interface SendResultEntry {
+  id: string;
+  endpointHost: string;
+  statusCode: number | null;
+  error?: string;
+}
+
+export interface SendResult {
+  sent: number;
+  failed: number;
+  results: SendResultEntry[];
 }
