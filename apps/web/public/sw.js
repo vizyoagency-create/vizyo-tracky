@@ -77,12 +77,37 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     Promise.all([
       self.registration.showNotification(data.title, options),
+      // App badge count (numero sur l'icone de l'app).
+      //   - iOS 18.4+ standalone PWA : supporte
+      //   - Android Chrome PWA : supporte (Chrome 81+)
+      //   - Desktop Chrome / Edge : supporte
+      // Si data.appBadge === null, on clear le badge. Si >= 1, on l'affiche.
+      // Si undefined / 0, on ne touche pas.
+      updateAppBadge(data.appBadge),
       // Notifie tous les clients ouverts pour qu'ils mettent a jour le toast in-app
       // / la cloche d'alertes meme si la WS etait deconnectee. Best-effort.
       notifyClients({ type: 'PUSH_RECEIVED', payload: data }),
     ]),
   );
 });
+
+/**
+ * Met a jour l'app badge si la Badge API est disponible.
+ * Tres important : il faut try/catch — appel sur un browser non-supporte (ex:
+ * Firefox 2026) leve TypeError et tuerait le waitUntil entier, ce qui
+ * declencherait l'auto-unsubscribe d'iOS (3-strikes rule).
+ */
+async function updateAppBadge(count) {
+  try {
+    if (typeof self.navigator === 'undefined' || !('setAppBadge' in self.navigator)) return;
+    if (count === null) {
+      await self.navigator.clearAppBadge();
+    } else if (typeof count === 'number' && count > 0) {
+      await self.navigator.setAppBadge(count);
+    }
+    // count === undefined / 0 -> no-op (laisse l'etat actuel)
+  } catch {/* ignore — feature absente ou contexte sans permission */}
+}
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();

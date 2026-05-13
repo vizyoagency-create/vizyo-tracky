@@ -6,6 +6,7 @@ import { WS_EVENTS } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { io, Socket } from 'socket.io-client';
 import { ToastService } from '../../shared/ui/toast/toast.service';
+import { NotificationsApiService } from './notifications.service';
 import { PreferencesService } from './preferences.service';
 import { VisibilityService } from './visibility.service';
 
@@ -50,6 +51,7 @@ export class RealtimeService {
   private readonly http = inject(HttpClient);
   private readonly visibility = inject(VisibilityService);
   private readonly router = inject(Router);
+  private readonly notifications = inject(NotificationsApiService);
 
   /**
    * V1.5 (Sprint H2) — re-hydratation au retour foreground apres > 60s d'absence.
@@ -66,6 +68,10 @@ export class RealtimeService {
       document.body.classList.toggle('app-paused', !visible);
     }
     if (!visible) return;
+    // L'utilisateur revient sur l'app -> on clear le badge sur l'icone (le "1" que
+    // les notifs avaient affiche). Pattern Slack/Linear : badge = notifs en attente,
+    // tu reviens, c'est lu, badge a 0.
+    this.notifications.clearAppBadge();
     if (!this.socket?.connected) return;
     const hiddenMs = this.visibility.lastHiddenDurationMs();
     if (hiddenMs !== null && hiddenMs > 60 * 1000) {

@@ -118,6 +118,7 @@ export class NotificationsApiService {
     await firstValueFrom(
       this.http.post('/api/notifications/push/subscribe', {
         subscription: { endpoint: json.endpoint, keys: json.keys },
+        deviceId: this.getOrCreateDeviceId(),
       }),
     );
     this.currentSubscription.set(sub);
@@ -329,6 +330,7 @@ export class NotificationsApiService {
     await firstValueFrom(
       this.http.post('/api/notifications/push/subscribe', {
         subscription: { endpoint: json.endpoint, keys: json.keys },
+        deviceId: this.getOrCreateDeviceId(),
       }),
     );
     this.currentSubscription.set(sub);
@@ -337,6 +339,37 @@ export class NotificationsApiService {
     // l'autoplay policy. Sans ca, le 1er son CRITICAL pourrait etre bloque.
     this.toast.primeCriticalAudio();
     return { ok: true };
+  }
+
+  /**
+   * Recupere (ou genere puis stocke) l'UUID stable de ce device. Stocke en
+   * localStorage qui survit aux sessions navigateur. Sert au backend a
+   * dedupliquer les subscriptions par device physique : si l'utilisateur
+   * reinstalle la PWA ou si l'endpoint rotate, la nouvelle sub remplace
+   * proprement l'ancienne au lieu de creer un doublon zombie.
+   *
+   * Note : localStorage peut etre clear par l'utilisateur (parametres
+   * navigateur) ou par iOS apres 7 jours sans visite (Intelligent Tracking
+   * Prevention). Dans ces cas, on regenere un nouvel UUID, on aura
+   * temporairement une nouvelle sub mais l'ancienne sera purgee par
+   * 410 Gone au prochain envoi.
+   */
+  private getOrCreateDeviceId(): string {
+    const KEY = 'tracky.device.id';
+    try {
+      const existing = localStorage.getItem(KEY);
+      if (existing && /^[0-9a-f-]{8,64}$/i.test(existing)) return existing;
+      // Genere via crypto.randomUUID() (RFC 4122 v4, support tous browsers 2026).
+      const fresh = (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      localStorage.setItem(KEY, fresh);
+      return fresh;
+    } catch {
+      // localStorage indisponible (private mode strict, etc.) — generer ad-hoc.
+      // La dedup retombera sur userAgent server-side, moins precis mais OK.
+      return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    }
   }
 
   async unsubscribePush(): Promise<void> {
@@ -374,6 +407,26 @@ export class NotificationsApiService {
       this.http.delete(`/api/notifications/push/subscriptions/${id}`),
     );
     this.devices.set(this.devices().filter((d) => d.id !== id));
+  }
+
+  /**
+   * Efface le badge sur l'icone de l'app (PWA installee).
+   * A appeler quand l'utilisateur revient sur l'app — il a "vu" les notifs
+   * en attente, donc on remet le compteur a 0.
+   *
+   * Support 2026 :
+   *   - iOS 16.4+ standalone PWA : oui
+   *   - Android Chrome PWA : oui
+   *   - Chrome / Edge desktop : oui
+   *   - Firefox / Safari non-PWA : silencieusement ignore
+   */
+  clearAppBadge(): void {
+    try {
+      if (typeof navigator !== 'undefined' && 'clearAppBadge' in navigator) {
+        (navigator as { clearAppBadge?: () => Promise<void> }).clearAppBadge?.()
+          .catch(() => {/* ignore */});
+      }
+    } catch {/* feature absente */}
   }
 
   /**

@@ -169,10 +169,17 @@ model PushSubscription {
   p256dh      String
   auth        String
   userAgent   String?
+  /// Identifiant stable du device cote client (UUID genere une fois, stocke en
+  /// localStorage). Permet de dedupliquer parfaitement une re-inscription apres
+  /// reinstallation PWA ou rotation d'endpoint : on upsert sur (userId, deviceId)
+  /// au lieu de creer une nouvelle ligne a chaque endpoint regenere. Optionnel
+  /// pour la backward-compat (les subs existantes restent valides).
+  deviceId    String?
   lastSeenAt  DateTime @default(now())
   createdAt   DateTime @default(now())
 
   @@index([userId])
+  @@index([userId, deviceId])
   @@map("push_subscriptions")
 }
 

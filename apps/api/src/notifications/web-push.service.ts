@@ -43,6 +43,17 @@ export interface PushPayload {
    * Convention : utiliser l'`alertId`.
    */
   tag?: string;
+  /**
+   * Compteur a afficher sur l'icone de l'app (badge "1", "2", ...).
+   * Cote SW : appel a navigator.setAppBadge(N) si supporte.
+   *   - iOS 18.4+ standalone PWA : oui
+   *   - Android Chrome PWA : oui (Chrome 81+)
+   *   - Desktop Chrome : oui
+   *   - Firefox / Safari hors PWA : ignore silencieusement
+   * Si undefined ou 0, on n'envoie pas setAppBadge (laisse l'etat actuel).
+   * Si null, on clear le badge (setAppBadge() sans arg).
+   */
+  appBadge?: number | null;
 }
 
 @Injectable()
@@ -75,7 +86,61 @@ export class WebPushService {
     return this.publicKey;
   }
 
-  async subscribe(userId: string, sub: WebPushSubscription, userAgent?: string): Promise<void> {
+  async subscribe(
+    userId: string,
+    sub: WebPushSubscription,
+    userAgent?: string,
+    deviceId?: string,
+  ): Promise<void> {
+    // V1.10 — dedup actif au moment de l'inscription :
+    //
+    // Quand un device se re-abonne (PWA reinstallee, browser mis a jour, ou simple
+    // "Activer" apres unsubscribe), il recoit un NOUVEAU endpoint de la part du
+    // push service. Sans dedup, les anciennes subs zombies s'accumulent en DB :
+    // 5 iPhones "lastSeenAt il y a 1 mois", 3 Android, etc. Tous repondent 201
+    // lors des envois (le push service accepte tout) mais aucun n'arrive sur le
+    // device reel = "marche 2-3 fois puis stop, doublons partout".
+    //
+    // Strategie a 2 niveaux :
+    //
+    //   1. Si `deviceId` fourni (UUID stable localStorage genere cote client) :
+    //      delete toutes les subs du meme (userId, deviceId) avant insert.
+    //      Identification PARFAITE du device physique, survit aux updates browser.
+    //
+    //   2. Fallback `userAgent` (legacy clients sans deviceId encore stocke) :
+    //      delete par (userId, userAgent). Marche dans 90% des cas mais l'UA
+    //      change quand le browser se met a jour, laissant occasionnellement
+    //      un doublon. Sera nettoye par la prochaine re-inscription avec
+    //      deviceId une fois que tous les clients ont recu le bundle qui le
+    //      genere.
+    //
+    // RFC 8030 : sur 410 Gone d'un push service, on purge dans le send loop.
+    // C'est la source de verite ultime — la dedup ici evite l'accumulation,
+    // 410 supprime ce qui passe au travers.
+    if (deviceId) {
+      const deleted = await this.prisma.pushSubscription.deleteMany({
+        where: {
+          userId,
+          deviceId,
+          endpoint: { not: sub.endpoint },
+        },
+      });
+      if (deleted.count > 0) {
+        this.logger.log(`[push] dedup-by-device: removed ${deleted.count} stale sub(s) for user=${userId.slice(0, 8)} device=${deviceId.slice(0, 8)}`);
+      }
+    } else if (userAgent) {
+      const deleted = await this.prisma.pushSubscription.deleteMany({
+        where: {
+          userId,
+          userAgent,
+          endpoint: { not: sub.endpoint },
+        },
+      });
+      if (deleted.count > 0) {
+        this.logger.log(`[push] dedup-by-ua: removed ${deleted.count} stale sub(s) for user=${userId.slice(0, 8)} ua="${userAgent.slice(0, 50)}..."`);
+      }
+    }
+
     await this.prisma.pushSubscription.upsert({
       where: { endpoint: sub.endpoint },
       create: {
@@ -84,12 +149,14 @@ export class WebPushService {
         p256dh: sub.keys.p256dh,
         auth: sub.keys.auth,
         userAgent,
+        deviceId,
       },
       update: {
         userId,
         p256dh: sub.keys.p256dh,
         auth: sub.keys.auth,
         userAgent,
+        deviceId,
         lastSeenAt: new Date(),
       },
     });
@@ -192,7 +259,12 @@ export class WebPushService {
       body: payload.body,
       icon: payload.icon ?? '/pwa-icon-192.png',
       badge: payload.badge ?? '/pwa-icon-192.png',
-      data: { ...(payload.data ?? {}), url: payload.url, severity: payload.severity },
+      data: {
+        ...(payload.data ?? {}),
+        url: payload.url,
+        severity: payload.severity,
+        appBadge: payload.appBadge,
+      },
       tag: payload.tag,
       requireInteraction: isCritical,
       renotify: isCritical && !!payload.tag,

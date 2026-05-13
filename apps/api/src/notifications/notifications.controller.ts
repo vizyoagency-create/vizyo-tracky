@@ -61,13 +61,22 @@ export class NotificationsController {
   @HttpCode(HttpStatus.CREATED)
   async subscribe(
     @Req() req: AuthenticatedRequest & Request,
-    @Body() body: { subscription: { endpoint: string; keys: { p256dh: string; auth: string } } },
+    @Body() body: {
+      subscription: { endpoint: string; keys: { p256dh: string; auth: string } };
+      /** UUID stable du device cote client (localStorage). Permet dedup parfaite. */
+      deviceId?: string;
+    },
   ) {
     if (!body?.subscription?.endpoint || !body?.subscription?.keys?.p256dh || !body?.subscription?.keys?.auth) {
       throw new BadRequestException('subscription invalide');
     }
     const ua = req.headers['user-agent']?.toString();
-    await this.webPush.subscribe(req.user.id, body.subscription, ua);
+    // deviceId optionnel — validate format UUID si fourni (best-effort, le client
+    // genere via crypto.randomUUID() donc devrait toujours etre valide).
+    const deviceId = typeof body.deviceId === 'string' && /^[0-9a-f-]{8,64}$/i.test(body.deviceId)
+      ? body.deviceId
+      : undefined;
+    await this.webPush.subscribe(req.user.id, body.subscription, ua, deviceId);
     return { ok: true };
   }
 
@@ -214,6 +223,9 @@ export class NotificationsController {
       data: { kind: 'test', triggeredBy: req.user.id, at: new Date().toISOString() },
       url: '/admin/observability',
       tag: `test-${Date.now()}`,
+      // appBadge: 1 -> Android Chrome / Chrome desktop / iOS 18.4+ PWA afficheront
+      // le "1" sur l'icone de l'app. Le SW lit ce champ et appelle setAppBadge(1).
+      appBadge: 1,
     };
 
     // Bornes : 0..60s. Au-dela, le client est cense recevoir une vraie alerte
