@@ -32,6 +32,8 @@
         "files": [
           "/favicon-*.png",
           "/apple-touch-icon-*.png",
+          "/pwa-icon-*.png",
+          "/notification-badge-*.png",
           "/logos/**",
           "/splash/**",
           "/media/**",

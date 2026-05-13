@@ -258,7 +258,9 @@ export class WebPushService {
       title: payload.title,
       body: payload.body,
       icon: payload.icon ?? '/pwa-icon-192.png',
-      badge: payload.badge ?? '/pwa-icon-192.png',
+      // notification-badge-96.png = silhouette V sur fond transparent, optimisee
+      // pour le tint monochrome blanc force par Android dans la status bar.
+      badge: payload.badge ?? '/notification-badge-96.png',
       data: {
         ...(payload.data ?? {}),
         url: payload.url,

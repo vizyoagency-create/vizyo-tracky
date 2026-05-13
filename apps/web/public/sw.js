@@ -45,16 +45,16 @@ self.addEventListener('push', (event) => {
 
   // Icones :
   //   - `icon` = grande icone affichee dans la notif (Android Chrome upscale a 192px+).
-  //     /favicon.ico (32px ICO) etait flou + mal tinte. /pwa-icon-192.png = silhouette
-  //     V verte propre, rendu net.
+  //     /pwa-icon-192.png = logo V Vizyo couleur, rendu net dans le corps de la notif.
   //   - `badge` = petite icone monochrome dans la barre de statut Android (tinted
-  //     blanc force par le systeme). pwa-icon-192.png a une silhouette dominante
-  //     qui tinte proprement. Pour un badge encore meilleur, fournir a terme un
-  //     PNG dedie monochrome (V noir sur fond transparent, 96x96).
+  //     blanc force par le systeme). /notification-badge-96.png est le V Vizyo en
+  //     silhouette sur fond TRANSPARENT — Android tinte tout en blanc, ne reste que
+  //     la silhouette du V. Resultat propre vs le "blob blanc" de l'ancien
+  //     pwa-icon-192.png qui avait un fond plein.
   const options = {
     body: data.body,
     icon: data.icon || '/pwa-icon-192.png',
-    badge: data.badge || '/pwa-icon-192.png',
+    badge: data.badge || '/notification-badge-96.png',
     data: {
       url: data.url || '/',
       alertId: data.data && data.data.alertId,
