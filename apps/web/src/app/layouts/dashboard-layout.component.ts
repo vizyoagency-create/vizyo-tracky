@@ -332,7 +332,7 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
       .top-bar-wave--1, .top-bar-wave--2 { animation: none }
     }
 
-    .top-bar-left { display: flex; align-items: center; gap: 12px; min-width: 0; position: relative; z-index: 1 }
+    .top-bar-left { display: flex; align-items: center; gap: 10px; min-width: 0; position: relative; z-index: 1 }
     .top-bar-brand {
       display: none;
       align-items: center;
@@ -352,10 +352,10 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
 
     .mobile-burger { display: none }
     .top-title { font-size: 16px; font-weight: 700; color: var(--fg-primary); position: relative; z-index: 1 }
-    .top-actions { display: flex; align-items: center; gap: 12px; position: relative; z-index: 1 }
+    .top-actions { display: flex; align-items: center; gap: 8px; position: relative; z-index: 1 }
     .top-account-link {
       display: inline-flex; align-items: center; justify-content: center;
-      width: 36px; height: 36px; border-radius: 9999px;
+      width: 40px; height: 40px; border-radius: 9999px;
       color: var(--fg-secondary); text-decoration: none;
       border: 1px solid transparent; background: transparent;
       transition: color .2s, background .2s, border-color .2s;
@@ -435,11 +435,15 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
       .bottom-item.active { color: var(--tracky-light); background: var(--bg-tertiary) }
       .bottom-item lucide-icon { display: block }
 
+      /* Mobile : touch targets 44x44 minimum (Apple HIG iOS, materiel design Android).
+         Sur l'ancien 36x36 le user reportait "trop petit pour mon doigt" + clics
+         rates 2-3 fois (cible too small, finger covers the icon entirely). */
       .mobile-burger {
-        display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px;
+        display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 10px;
         background: transparent; border: none; color: var(--fg-secondary); cursor: pointer;
       }
       .mobile-burger:hover { background: var(--bg-tertiary) }
+      .top-account-link { width: 44px; height: 44px; }
 
       /* Bottom-sheet content (remplace l'ancien drawer lateral) */
       .bs-header {
@@ -479,8 +483,10 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
 
       /* Mobile : on conserve le padding-top: env(safe-area-inset-top) de la regle de base
          (notch / Dynamic Island en PWA iOS standalone). Utiliser les longhand
-         left/right au lieu du shorthand qui ecraserait le padding-top. */
-      .top-bar { padding-left: 14px; padding-right: 14px; height: 56px }
+         left/right au lieu du shorthand qui ecraserait le padding-top.
+         Height: 64px sur mobile (vs 56 desktop) pour respirer les nouveaux
+         tap-targets 44x44 et ne pas que les icones touchent les bords du top-bar. */
+      .top-bar { padding-left: 14px; padding-right: 14px; height: 64px }
       /* Sur mobile, on cache le titre de page (présent dans la page) et on affiche
          le logo + brand pour rappeler l'identité Vizyo Tracky. */
       .top-title { display: none }
@@ -488,15 +494,19 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
       .top-bar-brand-text { font-size: 13px }
 
       /* Padding-bottom du content : reserve la place pour la bottom-bar fixe.
-         Bottom-bar = 6px padding-top + 48px item + (6px + safe-area-inset-bottom) padding-bottom
-                    ≈ 60px + safe-area. On reserve 120px + safe-area pour avoir
-         60px de respiration au-dessus de la barre meme sur iPhone PWA avec
-         body.ios-pwa qui bumpe les tap-targets a 52px (min-height) — sinon le
-         dernier element (ex: "Envoyer le test" en observabilité, "Pilotez les
-         plages horaires" en dashboard) reste cache derriere la barre. */
+         Bottom-bar = padding-top 6px + bottom-item (min 52px en ios-pwa) +
+                      padding-bottom (6px + safe-area-inset-bottom)
+                    ≈ 76px + safe-area sur iPhone PWA. On reserve 160px +
+         safe-area pour donner 80px de respiration au-dessus — sinon le dernier
+         element (ex: "Envoyer le test" en observabilite, "Pilotez les plages
+         horaires" en dashboard, dernier toggle du planning hebdomadaire en
+         vehicle-schedule) reste cache derriere la barre.
+         160px est le compromis : pas trop d'espace blanc en bas (qui semblerait
+         bizarre) mais assez pour que le dernier element soit confortablement
+         visible sans avoir a scroller jusqu'au bord. */
       .content {
         padding: 16px;
-        padding-bottom: calc(120px + env(safe-area-inset-bottom));
+        padding-bottom: calc(160px + env(safe-area-inset-bottom));
       }
       /* En fullscreen la bottom-bar est cachee : pas besoin de reserver de place
          pour elle, juste la safe-area pour les iPhones a notch. */

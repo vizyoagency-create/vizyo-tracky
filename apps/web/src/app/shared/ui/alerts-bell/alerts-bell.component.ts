@@ -14,7 +14,7 @@ import { relativeTime } from '../../utils/relative-time';
     <div class="relative">
       <button
         (click)="open.set(!open())"
-        class="relative flex items-center justify-center w-10 h-10 rounded-full
+        class="relative flex items-center justify-center w-11 h-11 rounded-full
                bg-bg-secondary border border-border-subtle text-fg-secondary
                hover:text-fg-primary transition-colors cursor-pointer"
         [attr.aria-label]="'Notifications, ' + (realtime.unacknowledgedCount() > 0 ? realtime.unacknowledgedCount() + ' alerte(s) non acquittée(s)' : 'aucune nouvelle alerte')"
@@ -40,7 +40,7 @@ import { relativeTime } from '../../utils/relative-time';
           alors que le viewport mobile fait ~360px).
           Desktop (>=640px) : position:absolute ancree sous le bouton.
         -->
-        <div class="alerts-popup fixed right-2 top-[60px] w-[calc(100vw-16px)]
+        <div class="alerts-popup fixed right-2 top-[calc(env(safe-area-inset-top,0px)+68px)] w-[calc(100vw-16px)]
                     sm:absolute sm:right-0 sm:top-12 sm:w-[380px]
                     z-[2000] max-w-[calc(100vw-16px)] max-h-[500px]
                     bg-bg-secondary/95 backdrop-blur-md border border-border-subtle

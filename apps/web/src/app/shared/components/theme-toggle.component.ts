@@ -9,7 +9,7 @@ import { ThemeService } from '../../core/theme/theme.service';
   template: `
     <button
       (click)="theme.toggle()"
-      class="flex items-center justify-center w-10 h-10 rounded-full
+      class="flex items-center justify-center w-11 h-11 rounded-full
              bg-bg-secondary border border-border-subtle
              text-fg-secondary hover:text-tracky-light
              transition-all duration-300 ease-tracky
