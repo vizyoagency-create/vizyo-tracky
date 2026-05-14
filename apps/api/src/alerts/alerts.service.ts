@@ -6,9 +6,15 @@ import {
   NotFoundException,
   forwardRef,
 } from '@nestjs/common';
-import type { Alert, Fleet, Tracker, Vehicle } from '@prisma/client';
-import { AlertSeverity, AlertType, Prisma, UserRole } from '@prisma/client';
-import type { CobanPositionFrame } from '@vizyo/tracky-shared';
+import type { Alert, Fleet, SurveillanceProfile, Tracker, Vehicle } from '@prisma/client';
+import {
+  AlertSeverity,
+  AlertType,
+  Prisma,
+  SurveillanceEventTrigger,
+  UserRole,
+} from '@prisma/client';
+import type { CobanAlarmType, CobanPositionFrame } from '@vizyo/tracky-shared';
 import { NotificationDispatchService } from '../notifications/notification-dispatch.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -41,8 +47,25 @@ export class AlertsService {
       return null;
     }
 
-    const mapping = mapCobanAlarm(frame.alarm);
-    if (!mapping) return null;
+    // V1.6 — Surveillance Max : si le véhicule a un profile armé et que l'alarme
+    // matche un trigger actif, on remplace le mapping standard par un mapping
+    // CRITICAL `SURVEILLANCE_TRIGGERED`. Sinon, mapping classique inchangé.
+    const profile = await this.prisma.surveillanceProfile.findUnique({
+      where: { vehicleId: tracker.vehicle.id },
+    });
+    const surveillanceTrigger = matchSurveillanceTrigger(frame.alarm, profile);
+
+    let mapping: { type: AlertType; severity: AlertSeverity; title: string } | null;
+    if (surveillanceTrigger) {
+      mapping = {
+        type: AlertType.SURVEILLANCE_TRIGGERED,
+        severity: AlertSeverity.CRITICAL,
+        title: `🚨 Surveillance déclenchée — ${tracker.vehicle.plate}`,
+      };
+    } else {
+      mapping = mapCobanAlarm(frame.alarm);
+      if (!mapping) return null;
+    }
 
     const alert = await this.prisma.alert.create({
       data: {
@@ -61,6 +84,24 @@ export class AlertsService {
       },
       include: { vehicle: true, tracker: true },
     });
+
+    // V1.6 — création de l'événement de surveillance lié à l'alerte. Insert
+    // direct via Prisma pour éviter la dépendance circulaire AlertsModule ⇄
+    // SurveillanceModule (SurveillanceService.recordTrigger fait exactement ça).
+    if (surveillanceTrigger && profile) {
+      await this.prisma.surveillanceEvent.create({
+        data: {
+          profileId: profile.id,
+          vehicleId: profile.vehicleId,
+          fleetId: profile.fleetId,
+          alertId: alert.id,
+          trigger: surveillanceTrigger,
+          latitude: frame.latitude ?? null,
+          longitude: frame.longitude ?? null,
+          speedKmh: frame.speedKph ?? null,
+        },
+      });
+    }
 
     this.gateway.broadcastAlert(alert);
     this.logger.warn(`[ALERT] ${mapping.severity} ${mapping.type} for ${tracker.vehicle.plate}`);
@@ -181,4 +222,26 @@ export class AlertsService {
     });
     return { count: result.count };
   }
+}
+
+/**
+ * V1.6 — Match d'une trame Coban contre un profil de surveillance armé.
+ * Retourne le type de trigger correspondant (VIBRATION/MOVEMENT/DOOR) si on
+ * doit élever l'alerte à CRITICAL, sinon null.
+ */
+function matchSurveillanceTrigger(
+  alarm: CobanAlarmType,
+  profile: SurveillanceProfile | null,
+): SurveillanceEventTrigger | null {
+  if (!profile || !profile.currentlyArmed) return null;
+  if (alarm === 'vibration' && profile.triggerVibration) {
+    return SurveillanceEventTrigger.VIBRATION;
+  }
+  if (alarm === 'movement' && profile.triggerMovement) {
+    return SurveillanceEventTrigger.MOVEMENT;
+  }
+  if (alarm === 'door' && profile.triggerDoor) {
+    return SurveillanceEventTrigger.DOOR;
+  }
+  return null;
 }

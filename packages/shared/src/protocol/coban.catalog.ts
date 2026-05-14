@@ -254,6 +254,65 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
     availableVia: ['sms'],
   },
 
+  // ─── SURVEILLANCE MAX (V1.6) ───
+  // Templates dédiés au module SurveillanceMax. Envoyés via SMS car les
+  // commandes shock/sensitivity/noshock ne sont pas supportées sur le canal
+  // TCP descendant de la famille GPS103/403 — les ACK reviennent par SMS.
+  {
+    id: 'shock_on',
+    category: 'alarm',
+    label: 'Activer détection vibration',
+    description: 'Arme le capteur de choc. Le tracker émettra une alarme `vibration` lors d\'un secouage.',
+    requiresSuperAdmin: false,
+    requiresConfirmation: false,
+    dangerous: false,
+    params: [],
+    buildPayload: () => 'shock123456',
+    expectedAckPattern: /shock\s*ok/i,
+    ackTimeoutMs: 15000,
+    availableVia: ['sms'],
+  },
+  {
+    id: 'shock_off',
+    category: 'alarm',
+    label: 'Désactiver détection vibration',
+    description: 'Désarme le capteur de choc.',
+    requiresSuperAdmin: false,
+    requiresConfirmation: false,
+    dangerous: false,
+    params: [],
+    buildPayload: () => 'noshock123456',
+    expectedAckPattern: /noshock\s*ok/i,
+    ackTimeoutMs: 15000,
+    availableVia: ['sms'],
+  },
+  {
+    id: 'sensitivity',
+    category: 'alarm',
+    label: 'Sensibilité capteur de choc',
+    description: 'Niveau 1 = vibration légère, 2 = ~8 vibrations/2s, 3 = ~25 vibrations/5s.',
+    requiresSuperAdmin: false,
+    requiresConfirmation: false,
+    dangerous: false,
+    params: [
+      {
+        name: 'level',
+        label: 'Niveau',
+        type: 'select',
+        required: true,
+        options: [
+          { value: '1', label: '1 — Faible (haute sensibilité)' },
+          { value: '2', label: '2 — Moyen (recommandé)' },
+          { value: '3', label: '3 — Élevé (basse sensibilité)' },
+        ],
+      },
+    ],
+    buildPayload: (_imei, params) => `sensitivity123456 ${params['level']}`,
+    expectedAckPattern: /sensitivity\s*ok/i,
+    ackTimeoutMs: 15000,
+    availableVia: ['sms'],
+  },
+
   // ─── GEOFENCE ───
   {
     id: 'stockade_set',

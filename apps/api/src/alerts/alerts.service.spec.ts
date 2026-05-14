@@ -59,6 +59,8 @@ describe('AlertsService', () => {
   let service: AlertsService;
   let prisma: {
     alert: { create: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock; update: jest.Mock; updateMany: jest.Mock; count: jest.Mock };
+    surveillanceProfile: { findUnique: jest.Mock };
+    surveillanceEvent: { create: jest.Mock };
   };
   let gateway: { broadcastAlert: jest.Mock; broadcastAlertAcknowledged: jest.Mock };
 
@@ -71,6 +73,15 @@ describe('AlertsService', () => {
         update: jest.fn().mockImplementation(({ data }) => Promise.resolve(alertRecord(data))),
         updateMany: jest.fn().mockResolvedValue({ count: 3 }),
         count: jest.fn().mockResolvedValue(5),
+      },
+      // V1.6 — Surveillance Max : AlertsService consulte le profile pour
+      // éventuellement élever la severity. Par défaut, pas de profil = pas
+      // d'élévation (comportement legacy).
+      surveillanceProfile: {
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
+      surveillanceEvent: {
+        create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'evt-1', ...data })),
       },
     };
     gateway = { broadcastAlert: jest.fn(), broadcastAlertAcknowledged: jest.fn() };

@@ -26,6 +26,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 import { DriverPickerComponent } from '../../shared/ui/driver-picker/driver-picker.component';
 import { MiniMapComponent } from '../../shared/ui/mini-map/mini-map.component';
 import { EngineControlButtonComponent } from '../engine-control/engine-control-button.component';
+import { SurveillancePanelComponent } from '../surveillance/surveillance-panel.component';
 import { CommandsPanelComponent } from '../tracker-commands/commands-panel.component';
 import { VehicleScheduleComponent } from './vehicle-schedule/vehicle-schedule.component';
 import { relativeTime } from '../../shared/utils/relative-time';
@@ -36,7 +37,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
   imports: [
     RouterLink, FormsModule, LucideAngularModule, DatePipe, DecimalPipe,
     MiniMapComponent, EngineControlButtonComponent, CommandsPanelComponent,
-    VehicleScheduleComponent, DriverPickerComponent,
+    VehicleScheduleComponent, DriverPickerComponent, SurveillancePanelComponent,
   ],
   template: `
     @if (loading()) {
@@ -405,6 +406,18 @@ import { relativeTime } from '../../shared/utils/relative-time';
                         bg-bg-secondary border border-border-subtle text-fg-tertiary gap-2">
               <lucide-icon [img]="Power" [size]="48" class="opacity-30"></lucide-icon>
               <p>Aucun tracker associé</p>
+            </div>
+          }
+        }
+
+        @if (activeTab() === 'surveillance') {
+          @if (v.tracker) {
+            <app-surveillance-panel [vehicleId]="v.id" />
+          } @else {
+            <div class="flex flex-col items-center justify-center h-40 rounded-[--radius-card]
+                        bg-bg-secondary border border-border-subtle text-fg-tertiary gap-2">
+              <lucide-icon [img]="ShieldAlert" [size]="48" class="opacity-30"></lucide-icon>
+              <p>Aucun tracker associé — la surveillance nécessite un Coban actif.</p>
             </div>
           }
         }
@@ -1285,7 +1298,7 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly assigningDriver = signal(false);
   /** True pendant un refetch declenche par un changement de plage date (history/trips). */
   protected readonly rangeLoading = signal(false);
-  protected readonly activeTab = signal<'map' | 'history' | 'alerts' | 'commands' | 'schedule' | 'trips'>('map');
+  protected readonly activeTab = signal<'map' | 'history' | 'alerts' | 'commands' | 'schedule' | 'trips' | 'surveillance'>('map');
 
   /**
    * Plage temporelle pour les onglets Historique et Trajets.
@@ -1403,6 +1416,7 @@ export class VehicleDetailComponent implements OnInit {
     { key: 'trips' as const, label: 'Trajets', icon: Route },
     { key: 'schedule' as const, label: 'Horaires', icon: Clock },
     { key: 'alerts' as const, label: 'Alertes', icon: Bell },
+    { key: 'surveillance' as const, label: 'Surveillance', icon: ShieldCheck },
     { key: 'history' as const, label: 'Historique', icon: History },
     // Commandes en dernier : reservee plutot aux developpeurs / curieux,
     // l'usage courant passe par le bouton coupe-circuit dans le header.

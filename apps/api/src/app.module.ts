@@ -32,6 +32,7 @@ import { InvitationsModule } from './invitations/invitations.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ReportsModule } from './reports/reports.module';
 import { SmsModule } from './sms/sms.module';
+import { SurveillanceModule } from './surveillance/surveillance.module';
 import { TrackerCommandsModule } from './tracker-commands/tracker-commands.module';
 import { TrackerFixModeModule } from './tracker-fix-mode/tracker-fix-mode.module';
 import { VehicleSchedulesModule } from './vehicle-schedules/vehicle-schedules.module';
@@ -100,6 +101,7 @@ import { VehiclesModule } from './vehicles/vehicles.module';
     InternalModule,
     UsersModule,
     DriversModule,
+    SurveillanceModule,
   ],
   controllers: [HealthController],
   providers: [

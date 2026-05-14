@@ -1,0 +1,747 @@
+import { Component, computed, inject, input, OnInit, signal } from '@angular/core';
+import { DatePipe, DecimalPipe } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import {
+  LucideAngularModule,
+  ShieldCheck,
+  ShieldAlert,
+  Shield,
+  ShieldOff,
+  Activity,
+  Clock,
+  Power,
+  AlertTriangle,
+  Check,
+  X,
+  MapPin,
+  Bell,
+  Loader,
+} from 'lucide-angular';
+import { firstValueFrom } from 'rxjs';
+import {
+  SurveillanceApiService,
+  type SurveillanceEventDto,
+  type SurveillanceProfileDto,
+} from '../../core/services/surveillance.service';
+import { ToastService } from '../../shared/ui/toast/toast.service';
+import { relativeTime } from '../../shared/utils/relative-time';
+
+const DAY_LABELS: Record<string, string> = {
+  mon: 'Lun', tue: 'Mar', wed: 'Mer', thu: 'Jeu',
+  fri: 'Ven', sat: 'Sam', sun: 'Dim',
+};
+const DAY_ORDER = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
+
+const TRIGGER_LABELS: Record<string, string> = {
+  VIBRATION: 'Vibration',
+  MOVEMENT: 'Mouvement',
+  DOOR: 'Porte',
+};
+
+@Component({
+  selector: 'app-surveillance-panel',
+  standalone: true,
+  imports: [LucideAngularModule, FormsModule, DatePipe, DecimalPipe],
+  template: `
+    <div class="flex flex-col gap-4">
+      <!-- ─── Statut courant + Arm/Disarm ─────────────────────────── -->
+      @if (loading()) {
+        <div class="sm-card flex items-center justify-center py-8 text-fg-tertiary">
+          <span class="w-5 h-5 border-2 border-fg-tertiary border-t-tracky-light rounded-full animate-spin"></span>
+        </div>
+      } @else if (profile(); as p) {
+        <div class="sm-card" [class.sm-card--armed]="p.currentlyArmed">
+          <div class="flex items-start justify-between gap-3 flex-wrap">
+            <div class="flex items-start gap-3">
+              <div class="sm-status-icon" [class.sm-status-icon--armed]="p.currentlyArmed">
+                @if (p.currentlyArmed) {
+                  <lucide-icon [img]="ShieldCheck" [size]="20"></lucide-icon>
+                } @else {
+                  <lucide-icon [img]="ShieldOff" [size]="20"></lucide-icon>
+                }
+              </div>
+              <div class="min-w-0">
+                <h3 class="text-base font-semibold text-fg-primary">
+                  @if (p.currentlyArmed) { Véhicule sous surveillance }
+                  @else { Surveillance désactivée }
+                </h3>
+                <p class="text-xs text-fg-tertiary mt-0.5">
+                  @if (p.currentlyArmed && p.lastArmedAt) {
+                    Armé {{ relativeTime(p.lastArmedAt) }}
+                  } @else if (!p.currentlyArmed && p.lastDisarmedAt) {
+                    Désarmé {{ relativeTime(p.lastDisarmedAt) }}
+                  } @else {
+                    Aucun armement récent
+                  }
+                </p>
+                @if (p.mode === 'SCHEDULED' && p.scheduleStartTime && p.scheduleEndTime) {
+                  <p class="text-xs text-fg-secondary mt-1">
+                    <lucide-icon [img]="Clock" [size]="12" class="inline align-middle"></lucide-icon>
+                    Plage automatique : <span class="font-mono">{{ p.scheduleStartTime }}</span>
+                    → <span class="font-mono">{{ p.scheduleEndTime }}</span> UTC
+                    @if (p.scheduleDays && p.scheduleDays.length > 0 && p.scheduleDays.length < 7) {
+                      ({{ formatDays(p.scheduleDays) }})
+                    }
+                  </p>
+                }
+              </div>
+            </div>
+
+            <div class="flex gap-2">
+              @if (p.currentlyArmed) {
+                <button
+                  type="button"
+                  class="sm-btn sm-btn--danger"
+                  [disabled]="acting()"
+                  (click)="disarm()">
+                  @if (acting()) {
+                    <lucide-icon [img]="Loader" [size]="14" class="animate-spin"></lucide-icon>
+                  } @else {
+                    <lucide-icon [img]="ShieldOff" [size]="14"></lucide-icon>
+                  }
+                  Désarmer
+                </button>
+              } @else {
+                <button
+                  type="button"
+                  class="sm-btn sm-btn--primary"
+                  [disabled]="acting()"
+                  (click)="arm()">
+                  @if (acting()) {
+                    <lucide-icon [img]="Loader" [size]="14" class="animate-spin"></lucide-icon>
+                  } @else {
+                    <lucide-icon [img]="ShieldCheck" [size]="14"></lucide-icon>
+                  }
+                  Armer maintenant
+                </button>
+              }
+            </div>
+          </div>
+        </div>
+
+        <!-- ─── Configuration ────────────────────────────────────── -->
+        <div class="sm-card">
+          <div class="flex items-center gap-2 mb-3">
+            <lucide-icon [img]="Activity" [size]="16" class="text-tracky-light"></lucide-icon>
+            <h3 class="text-sm font-semibold text-fg-primary">Configuration</h3>
+            @if (saving()) {
+              <span class="text-xs text-fg-tertiary">Enregistrement…</span>
+            } @else if (savedAt()) {
+              <span class="text-xs text-tracky-light">✓ Enregistré</span>
+            }
+          </div>
+
+          <div class="sm-grid">
+            <!-- Mode -->
+            <div class="sm-field">
+              <label class="sm-label">Automatisation</label>
+              <select
+                class="sm-select"
+                [value]="form().mode"
+                (change)="updateField('mode', $any($event.target).value)">
+                <option value="OFF">Manuel uniquement</option>
+                <option value="FULL_TIME">Permanente (24/7)</option>
+                <option value="SCHEDULED">Plage horaire</option>
+              </select>
+              @if (form().mode === 'OFF') {
+                <p class="text-xs text-fg-tertiary mt-0.5">
+                  Utilisez le bouton "Armer maintenant" pour activer ponctuellement.
+                </p>
+              }
+            </div>
+
+            <!-- Sensibilité -->
+            <div class="sm-field">
+              <label class="sm-label">Sensibilité au choc</label>
+              <select
+                class="sm-select"
+                [value]="form().sensitivity"
+                (change)="updateField('sensitivity', $any($event.target).value)">
+                <option value="LOW">Faible — vibrations fortes uniquement</option>
+                <option value="MEDIUM">Moyenne — recommandé</option>
+                <option value="HIGH">Élevée — réagit à tout</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Plage horaire (uniquement si SCHEDULED) -->
+          @if (form().mode === 'SCHEDULED') {
+            <div class="sm-grid mt-3">
+              <div class="sm-field">
+                <label class="sm-label">Début (HH:mm UTC)</label>
+                <input
+                  type="time"
+                  class="sm-input"
+                  [value]="form().scheduleStartTime ?? ''"
+                  (change)="updateField('scheduleStartTime', $any($event.target).value || null)" />
+              </div>
+              <div class="sm-field">
+                <label class="sm-label">Fin (HH:mm UTC)</label>
+                <input
+                  type="time"
+                  class="sm-input"
+                  [value]="form().scheduleEndTime ?? ''"
+                  (change)="updateField('scheduleEndTime', $any($event.target).value || null)" />
+              </div>
+            </div>
+
+            <div class="mt-3">
+              <label class="sm-label">Jours actifs</label>
+              <div class="flex gap-1.5 flex-wrap mt-1.5">
+                @for (day of DAY_ORDER; track day) {
+                  <button
+                    type="button"
+                    class="sm-day-btn"
+                    [class.sm-day-btn--active]="isDayActive(day)"
+                    (click)="toggleDay(day)">
+                    {{ DAY_LABELS[day] }}
+                  </button>
+                }
+              </div>
+              <p class="text-xs text-fg-tertiary mt-1">
+                Aucun jour sélectionné = tous les jours.
+              </p>
+            </div>
+          }
+
+          <!-- Triggers -->
+          <div class="mt-4 pt-3 border-t border-border-subtle">
+            <label class="sm-label mb-2">Déclencheurs actifs lors de l'armement</label>
+            <div class="flex flex-col gap-1.5">
+              <label class="sm-check">
+                <input
+                  type="checkbox"
+                  [checked]="form().triggerVibration"
+                  (change)="updateField('triggerVibration', $any($event.target).checked)" />
+                <span>Vibration / choc</span>
+                <span class="text-xs text-fg-tertiary">(capteur accélération)</span>
+              </label>
+              <label class="sm-check">
+                <input
+                  type="checkbox"
+                  [checked]="form().triggerMovement"
+                  (change)="updateField('triggerMovement', $any($event.target).checked)" />
+                <span>Mouvement du véhicule</span>
+                <span class="text-xs text-fg-tertiary">(déplacement &gt; 200 m)</span>
+              </label>
+              <label class="sm-check">
+                <input
+                  type="checkbox"
+                  [checked]="form().triggerDoor"
+                  (change)="updateField('triggerDoor', $any($event.target).checked)" />
+                <span>Ouverture portière</span>
+                <span class="text-xs text-fg-tertiary">(fil porte connecté)</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Destinataires des notifications de déclenchement -->
+          <div class="mt-4 pt-3 border-t border-border-subtle">
+            <label class="sm-label mb-1">Destinataires des alertes</label>
+            <p class="text-xs text-fg-tertiary">
+              Tous les FLEET_ADMIN de la flotte sont notifiés par défaut (push + email).
+              @if (form().mode !== 'OFF' && profile()?.additionalNotifyUserIds?.length) {
+                <strong class="text-fg-secondary">
+                  +{{ profile()?.additionalNotifyUserIds?.length }} contact(s) additionnel(s)
+                </strong>
+                configuré(s).
+              } @else {
+                <span class="italic">Aucun contact additionnel configuré.</span>
+              }
+              <span class="block mt-1 opacity-70">
+                ℹ️ La gestion des contacts additionnels (FLEET_MANAGER opt-in) sera disponible dans une prochaine version.
+              </span>
+            </p>
+          </div>
+        </div>
+
+        <!-- ─── Timeline événements ──────────────────────────────── -->
+        <div class="sm-card">
+          <div class="flex items-center gap-2 mb-3">
+            <lucide-icon [img]="Bell" [size]="16" class="text-tracky-light"></lucide-icon>
+            <h3 class="text-sm font-semibold text-fg-primary">Historique des déclenchements</h3>
+            @if (events().length > 0) {
+              <span class="text-xs text-fg-tertiary">({{ events().length }})</span>
+            }
+          </div>
+
+          @if (eventsLoading()) {
+            <div class="flex items-center justify-center py-6 text-fg-tertiary">
+              <span class="w-4 h-4 border-2 border-fg-tertiary border-t-tracky-light rounded-full animate-spin"></span>
+            </div>
+          } @else if (events().length === 0) {
+            <div class="text-center py-8 text-fg-tertiary text-sm">
+              Aucun déclenchement enregistré pour ce véhicule.
+            </div>
+          } @else {
+            <div class="flex flex-col gap-2">
+              @for (ev of events(); track ev.id) {
+                <div class="sm-event" [class]="'sm-event--' + ev.status.toLowerCase()">
+                  <div class="flex items-start justify-between gap-2 flex-wrap">
+                    <div class="flex-1 min-w-0">
+                      <div class="flex items-center gap-1.5 text-sm font-medium text-fg-primary">
+                        <lucide-icon [img]="AlertTriangle" [size]="14" class="text-amber-400"></lucide-icon>
+                        Déclenchement {{ triggerLabel(ev.trigger) }}
+                      </div>
+                      <p class="text-xs text-fg-tertiary mt-0.5">
+                        {{ ev.triggeredAt | date:'dd/MM/yyyy HH:mm:ss' }}
+                        · {{ relativeTime(ev.triggeredAt) }}
+                      </p>
+                      @if (ev.latitude !== null && ev.longitude !== null) {
+                        <p class="text-xs text-fg-secondary mt-1 font-mono">
+                          <lucide-icon [img]="MapPin" [size]="11" class="inline align-middle"></lucide-icon>
+                          {{ ev.latitude | number:'1.5-5' }}, {{ ev.longitude | number:'1.5-5' }}
+                          @if (ev.speedKmh !== null) {
+                            · {{ ev.speedKmh | number:'1.0-1' }} km/h
+                          }
+                        </p>
+                      }
+                      @if (ev.notes) {
+                        <p class="text-xs text-fg-secondary mt-1 italic">{{ ev.notes }}</p>
+                      }
+                    </div>
+
+                    <div class="flex items-center gap-1.5">
+                      <span class="sm-badge sm-badge--{{ ev.status.toLowerCase() }}">
+                        {{ statusLabel(ev.status) }}
+                      </span>
+                    </div>
+                  </div>
+
+                  @if (ev.status === 'PENDING') {
+                    <div class="flex gap-1.5 mt-2 pt-2 border-t border-border-subtle">
+                      <button
+                        type="button"
+                        class="sm-event-btn sm-event-btn--danger"
+                        [disabled]="actingEventId() === ev.id"
+                        (click)="acknowledgeEvent(ev.id, 'CONFIRMED_THEFT')">
+                        <lucide-icon [img]="AlertTriangle" [size]="12"></lucide-icon>
+                        Confirmer vol
+                      </button>
+                      <button
+                        type="button"
+                        class="sm-event-btn sm-event-btn--neutral"
+                        [disabled]="actingEventId() === ev.id"
+                        (click)="acknowledgeEvent(ev.id, 'FALSE_ALARM')">
+                        <lucide-icon [img]="X" [size]="12"></lucide-icon>
+                        Fausse alarme
+                      </button>
+                      <button
+                        type="button"
+                        class="sm-event-btn sm-event-btn--neutral"
+                        [disabled]="actingEventId() === ev.id"
+                        (click)="acknowledgeEvent(ev.id, 'ACKNOWLEDGED')">
+                        <lucide-icon [img]="Check" [size]="12"></lucide-icon>
+                        Marquer vu
+                      </button>
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+          }
+        </div>
+      } @else if (loadError()) {
+        <div class="sm-card text-center py-6">
+          <p class="text-sm text-red-400">{{ loadError() }}</p>
+          <button type="button" class="sm-btn sm-btn--ghost mt-2" (click)="load()">Réessayer</button>
+        </div>
+      }
+    </div>
+  `,
+  styles: [`
+    .sm-card {
+      background: var(--color-bg-secondary, #0e1417);
+      border: 1px solid var(--color-border-subtle, #1f2a30);
+      border-radius: var(--radius-card, 14px);
+      padding: 1rem;
+    }
+    .sm-card--armed {
+      border-color: rgba(16, 224, 160, 0.4);
+      background: linear-gradient(180deg, rgba(16, 224, 160, 0.06), transparent 60%), var(--color-bg-secondary, #0e1417);
+    }
+    .sm-status-icon {
+      width: 36px; height: 36px;
+      border-radius: 10px;
+      background: rgba(148, 163, 184, 0.12);
+      color: rgb(148, 163, 184);
+      display: inline-flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .sm-status-icon--armed {
+      background: rgba(16, 224, 160, 0.15);
+      color: rgb(16, 224, 160);
+    }
+    .sm-btn {
+      display: inline-flex; align-items: center; gap: 0.375rem;
+      padding: 0.5rem 0.875rem;
+      border-radius: 10px;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: filter 0.15s, opacity 0.15s;
+      border: 1px solid transparent;
+    }
+    .sm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .sm-btn:hover:not(:disabled) { filter: brightness(1.1); }
+    .sm-btn--primary { background: rgb(16, 224, 160); color: #0b0f12; }
+    .sm-btn--danger {
+      background: rgba(239, 68, 68, 0.15);
+      color: rgb(248, 113, 113);
+      border-color: rgba(239, 68, 68, 0.4);
+    }
+    .sm-btn--ghost {
+      background: transparent;
+      color: var(--color-fg-secondary);
+      border-color: var(--color-border-subtle);
+    }
+    .sm-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 0.75rem;
+    }
+    .sm-field { display: flex; flex-direction: column; gap: 0.25rem; }
+    .sm-label {
+      font-size: 0.75rem;
+      color: var(--color-fg-tertiary, #94a3b8);
+      font-weight: 500;
+    }
+    .sm-select, .sm-input {
+      background: var(--color-bg-tertiary, #0a0f12);
+      border: 1px solid var(--color-border-subtle, #1f2a30);
+      border-radius: 8px;
+      padding: 0.5rem 0.75rem;
+      color: var(--color-fg-primary, #e5e7eb);
+      font-size: 0.875rem;
+    }
+    .sm-day-btn {
+      padding: 0.375rem 0.625rem;
+      border-radius: 8px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      background: var(--color-bg-tertiary, #0a0f12);
+      border: 1px solid var(--color-border-subtle, #1f2a30);
+      color: var(--color-fg-tertiary, #94a3b8);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .sm-day-btn--active {
+      background: rgba(16, 224, 160, 0.15);
+      border-color: rgba(16, 224, 160, 0.4);
+      color: rgb(16, 224, 160);
+    }
+    .sm-check {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      font-size: 0.875rem;
+      color: var(--color-fg-primary, #e5e7eb);
+      cursor: pointer;
+    }
+    .sm-check input { width: 16px; height: 16px; accent-color: rgb(16, 224, 160); }
+    .sm-event {
+      padding: 0.75rem;
+      background: var(--color-bg-tertiary, #0a0f12);
+      border: 1px solid var(--color-border-subtle, #1f2a30);
+      border-radius: 10px;
+    }
+    .sm-event--pending { border-left: 3px solid rgb(251, 191, 36); }
+    .sm-event--confirmed_theft { border-left: 3px solid rgb(239, 68, 68); }
+    .sm-event--false_alarm { border-left: 3px solid rgb(148, 163, 184); opacity: 0.7; }
+    .sm-event--acknowledged { border-left: 3px solid rgb(96, 165, 250); }
+    .sm-badge {
+      padding: 0.125rem 0.5rem;
+      border-radius: 999px;
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.025em;
+    }
+    .sm-badge--pending { background: rgba(251, 191, 36, 0.15); color: rgb(251, 191, 36); }
+    .sm-badge--confirmed_theft { background: rgba(239, 68, 68, 0.15); color: rgb(248, 113, 113); }
+    .sm-badge--false_alarm { background: rgba(148, 163, 184, 0.15); color: rgb(148, 163, 184); }
+    .sm-badge--acknowledged { background: rgba(96, 165, 250, 0.15); color: rgb(96, 165, 250); }
+    .sm-event-btn {
+      display: inline-flex; align-items: center; gap: 0.25rem;
+      padding: 0.3125rem 0.625rem;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: filter 0.15s;
+    }
+    .sm-event-btn:hover:not(:disabled) { filter: brightness(1.1); }
+    .sm-event-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .sm-event-btn--danger {
+      background: rgba(239, 68, 68, 0.15);
+      color: rgb(248, 113, 113);
+      border-color: rgba(239, 68, 68, 0.3);
+    }
+    .sm-event-btn--neutral {
+      background: var(--color-bg-secondary, #0e1417);
+      color: var(--color-fg-secondary, #cbd5e1);
+      border-color: var(--color-border-subtle, #1f2a30);
+    }
+  `],
+})
+export class SurveillancePanelComponent implements OnInit {
+  readonly vehicleId = input.required<string>();
+
+  private readonly api = inject(SurveillanceApiService);
+  private readonly toast = inject(ToastService);
+
+  protected readonly loading = signal(true);
+  protected readonly loadError = signal<string | null>(null);
+  protected readonly profile = signal<SurveillanceProfileDto | null>(null);
+  protected readonly events = signal<SurveillanceEventDto[]>([]);
+  protected readonly eventsLoading = signal(false);
+  protected readonly acting = signal(false);
+  protected readonly actingEventId = signal<string | null>(null);
+  protected readonly saving = signal(false);
+  protected readonly savedAt = signal<number | null>(null);
+
+  // Form mirror du profile (édition locale). Patched chaque fois qu'on update,
+  // pour permettre l'optimistic UI sans attendre le PUT.
+  protected readonly form = computed(() => {
+    const p = this.profile();
+    if (!p) {
+      return {
+        mode: 'OFF' as const,
+        sensitivity: 'MEDIUM' as const,
+        scheduleStartTime: null as string | null,
+        scheduleEndTime: null as string | null,
+        scheduleDays: null as string[] | null,
+        triggerVibration: true,
+        triggerMovement: true,
+        triggerDoor: false,
+      };
+    }
+    return {
+      mode: p.mode,
+      sensitivity: p.sensitivity,
+      scheduleStartTime: p.scheduleStartTime,
+      scheduleEndTime: p.scheduleEndTime,
+      scheduleDays: p.scheduleDays,
+      triggerVibration: p.triggerVibration,
+      triggerMovement: p.triggerMovement,
+      triggerDoor: p.triggerDoor,
+    };
+  });
+
+  protected readonly ShieldCheck = ShieldCheck;
+  protected readonly ShieldAlert = ShieldAlert;
+  protected readonly Shield = Shield;
+  protected readonly ShieldOff = ShieldOff;
+  protected readonly Activity = Activity;
+  protected readonly Clock = Clock;
+  protected readonly Power = Power;
+  protected readonly AlertTriangle = AlertTriangle;
+  protected readonly Check = Check;
+  protected readonly X = X;
+  protected readonly MapPin = MapPin;
+  protected readonly Bell = Bell;
+  protected readonly Loader = Loader;
+
+  protected readonly DAY_LABELS = DAY_LABELS;
+  protected readonly DAY_ORDER = DAY_ORDER;
+  protected readonly relativeTime = relativeTime;
+
+  // Debounce pour le save : on accumule les changements rapides pendant 400ms.
+  private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  // Buffer des champs en attente d'être PUT-és. Permet la fusion sans reset à l'arrivée d'une nouvelle modification.
+  private pendingPatch: Record<string, unknown> = {};
+
+  async ngOnInit(): Promise<void> {
+    await this.load();
+    await this.loadEvents();
+  }
+
+  async load(): Promise<void> {
+    this.loading.set(true);
+    this.loadError.set(null);
+    try {
+      const p = await firstValueFrom(this.api.getProfile(this.vehicleId()));
+      this.profile.set(p);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erreur de chargement';
+      this.loadError.set(msg);
+    } finally {
+      this.loading.set(false);
+    }
+  }
+
+  async loadEvents(): Promise<void> {
+    this.eventsLoading.set(true);
+    try {
+      const res = await firstValueFrom(
+        this.api.listEvents({ vehicleId: this.vehicleId(), limit: '50' }),
+      );
+      this.events.set(res.items);
+    } catch {
+      // Silencieux — l'absence d'événements n'est pas une erreur visible.
+    } finally {
+      this.eventsLoading.set(false);
+    }
+  }
+
+  async arm(): Promise<void> {
+    this.acting.set(true);
+    try {
+      const updated = await firstValueFrom(this.api.arm(this.vehicleId()));
+      this.profile.set(updated);
+      this.toast.success('Surveillance activée', 'Le véhicule est désormais sous surveillance.');
+    } catch (err: unknown) {
+      const msg = this.extractErrorMessage(err);
+      this.toast.error('Armement impossible', msg);
+    } finally {
+      this.acting.set(false);
+    }
+  }
+
+  async disarm(): Promise<void> {
+    this.acting.set(true);
+    try {
+      const updated = await firstValueFrom(this.api.disarm(this.vehicleId()));
+      this.profile.set(updated);
+      this.toast.success('Surveillance désactivée');
+    } catch (err: unknown) {
+      const msg = this.extractErrorMessage(err);
+      this.toast.error('Désarmement impossible', msg);
+    } finally {
+      this.acting.set(false);
+    }
+  }
+
+  /**
+   * Update d'un champ unique avec optimistic UI + debounce 400ms.
+   * Les modifications sont fusionnées dans `pendingPatch` puis envoyées.
+   */
+  updateField<K extends string>(field: K, value: unknown): void {
+    // Optimistic UI : on patche le signal local immédiatement.
+    const current = this.profile();
+    if (current) {
+      this.profile.set({ ...current, [field]: value } as SurveillanceProfileDto);
+    }
+    this.pendingPatch[field] = value;
+
+    // Si on passe à SCHEDULED sans avoir d'horaires définis, on auto-fill
+    // des défauts raisonnables (20:00 → 06:00) — sinon le backend refuse en 400.
+    // C'est aussi cohérent avec l'usage anti-vol nocturne typique du module.
+    if (field === 'mode' && value === 'SCHEDULED') {
+      const c = this.profile();
+      if (c) {
+        const patch: Record<string, unknown> = {};
+        if (!c.scheduleStartTime) {
+          patch['scheduleStartTime'] = '20:00';
+          this.pendingPatch['scheduleStartTime'] = '20:00';
+        }
+        if (!c.scheduleEndTime) {
+          patch['scheduleEndTime'] = '06:00';
+          this.pendingPatch['scheduleEndTime'] = '06:00';
+        }
+        if (Object.keys(patch).length > 0) {
+          this.profile.set({ ...c, ...patch } as SurveillanceProfileDto);
+        }
+      }
+    }
+
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(() => {
+      void this.flushSave();
+    }, 400);
+  }
+
+  private async flushSave(): Promise<void> {
+    if (Object.keys(this.pendingPatch).length === 0) return;
+    const patch = this.pendingPatch;
+    this.pendingPatch = {};
+    this.saving.set(true);
+    try {
+      const updated = await firstValueFrom(
+        this.api.updateProfile(this.vehicleId(), patch),
+      );
+      this.profile.set(updated);
+      this.savedAt.set(Date.now());
+      setTimeout(() => {
+        // Efface l'indicateur "✓ Enregistré" après 2s
+        if (this.savedAt() !== null && Date.now() - this.savedAt()! >= 1900) {
+          this.savedAt.set(null);
+        }
+      }, 2000);
+    } catch (err) {
+      const msg = this.extractErrorMessage(err);
+      this.toast.error('Enregistrement échoué', msg);
+      // Recharge depuis le serveur pour resynchroniser l'UI avec l'état réel
+      await this.load();
+    } finally {
+      this.saving.set(false);
+    }
+  }
+
+  isDayActive(day: string): boolean {
+    const days = this.form().scheduleDays;
+    if (!days || days.length === 0) return false;
+    return days.includes(day);
+  }
+
+  toggleDay(day: string): void {
+    const current = this.form().scheduleDays ?? [];
+    const next = current.includes(day)
+      ? current.filter((d) => d !== day)
+      : [...current, day];
+    // Conserve l'ordre logique mon→sun pour stabilité visuelle.
+    const ordered = DAY_ORDER.filter((d) => next.includes(d));
+    this.updateField('scheduleDays', ordered.length === 0 ? null : ordered);
+  }
+
+  formatDays(days: string[]): string {
+    return days.map((d) => DAY_LABELS[d] ?? d).join(', ');
+  }
+
+  triggerLabel(t: string): string {
+    return TRIGGER_LABELS[t] ?? t;
+  }
+
+  statusLabel(s: string): string {
+    switch (s) {
+      case 'PENDING': return 'En attente';
+      case 'CONFIRMED_THEFT': return 'Vol confirmé';
+      case 'FALSE_ALARM': return 'Fausse alarme';
+      case 'ACKNOWLEDGED': return 'Vu';
+      default: return s;
+    }
+  }
+
+  async acknowledgeEvent(
+    eventId: string,
+    status: 'CONFIRMED_THEFT' | 'FALSE_ALARM' | 'ACKNOWLEDGED',
+  ): Promise<void> {
+    this.actingEventId.set(eventId);
+    try {
+      const updated = await firstValueFrom(
+        this.api.acknowledgeEvent(eventId, { status }),
+      );
+      this.events.update((list) =>
+        list.map((e) => (e.id === eventId ? { ...e, ...updated } : e)),
+      );
+      const messages: Record<string, string> = {
+        CONFIRMED_THEFT: 'Vol confirmé enregistré',
+        FALSE_ALARM: 'Marqué comme fausse alarme',
+        ACKNOWLEDGED: 'Événement acquitté',
+      };
+      this.toast.success(messages[status] ?? 'Événement mis à jour');
+    } catch (err) {
+      const msg = this.extractErrorMessage(err);
+      this.toast.error('Acquittement impossible', msg);
+    } finally {
+      this.actingEventId.set(null);
+    }
+  }
+
+  private extractErrorMessage(err: unknown): string {
+    if (typeof err === 'object' && err !== null) {
+      const e = err as { error?: { message?: string }; message?: string };
+      return e.error?.message ?? e.message ?? 'Erreur inconnue';
+    }
+    return String(err);
+  }
+}

@@ -52,7 +52,33 @@ enum AlertType {
   BONNET
   DOOR
   VIBRATION
+  SURVEILLANCE_TRIGGERED
   UNKNOWN
+}
+
+enum SurveillanceMode {
+  OFF
+  FULL_TIME
+  SCHEDULED
+}
+
+enum SurveillanceSensitivity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum SurveillanceEventTrigger {
+  VIBRATION
+  MOVEMENT
+  DOOR
+}
+
+enum SurveillanceEventStatus {
+  PENDING
+  ACKNOWLEDGED
+  CONFIRMED_THEFT
+  FALSE_ALARM
 }
 
 enum AlertSeverity {
@@ -120,6 +146,8 @@ model Fleet {
   alerts        Alert[]
   vehicleGroups VehicleGroup[]
   drivers       Driver[]
+  surveillanceProfiles SurveillanceProfile[]
+  surveillanceEvents   SurveillanceEvent[]
 
   @@map("fleets")
 }
@@ -257,6 +285,8 @@ model Vehicle {
   alerts     Alert[]
   groups     VehicleGroupAssignment[]
   userAccess UserVehicleAccess[]
+  surveillanceProfile SurveillanceProfile?
+  surveillanceEvents  SurveillanceEvent[]
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -529,6 +559,7 @@ model Alert {
   // V1.5 (Sprint M) — escalade automatique si CRITICAL non-ack > N min.
   // Une alerte ne peut etre escaladee qu'une seule fois (escalatedAt non null).
   escalatedAt      DateTime?
+  surveillanceEvent SurveillanceEvent?
   createdAt        DateTime      @default(now())
 
   @@index([fleetId, createdAt(sort: Desc)])
@@ -536,6 +567,82 @@ model Alert {
   @@index([vehicleId])
   @@index([trackerId])
   @@map("alerts")
+}
+
+/// V1.6 — Surveillance Max : profil de surveillance renforcee par vehicule.
+/// Un seul profil par vehicule. Quand `currentlyArmed = true`, toute trame
+/// d'alarme `vibration` / `movement` / `door` recue cree un SurveillanceEvent
+/// et eleve la severite de l'alerte associee a CRITICAL.
+/// L'armement peut etre manuel (POST /surveillance/.../arm) ou automatique
+/// via SurveillanceSchedulerService (cron toutes les minutes) selon les
+/// plages horaires definies.
+model SurveillanceProfile {
+  id           String                  @id @default(uuid()) @db.Uuid
+  vehicleId    String                  @unique @db.Uuid
+  vehicle      Vehicle                 @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  fleetId      String                  @db.Uuid
+  fleet        Fleet                   @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  mode         SurveillanceMode        @default(OFF)
+  sensitivity  SurveillanceSensitivity @default(MEDIUM)
+  // Plage horaire (HH:mm, UTC). Si `scheduleStartTime > scheduleEndTime`,
+  // la plage passe minuit (ex 20:00 -> 06:00).
+  scheduleStartTime String?
+  scheduleEndTime   String?
+  // Jours actifs : array de strings ["mon","tue","wed","thu","fri","sat","sun"].
+  // Null = tous les jours.
+  scheduleDays      Json?
+  // Triggers actifs lors d'un armement.
+  triggerVibration  Boolean @default(true)
+  triggerMovement   Boolean @default(true)
+  triggerDoor       Boolean @default(false)
+  // Destinataires supplementaires (FLEET_MANAGER opt-in). Les FLEET_ADMIN
+  // de la fleet sont notifies par defaut via NotificationDispatchService.
+  additionalNotifyUserIds String[]
+  // Etat courant — maintenu par armNow/disarmNow ou par le scheduler.
+  currentlyArmed Boolean   @default(false)
+  lastArmedAt    DateTime?
+  lastDisarmedAt DateTime?
+  // Audit : qui a cree le profil.
+  createdBy      String    @db.Uuid
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  events SurveillanceEvent[]
+
+  @@index([fleetId])
+  @@index([mode, currentlyArmed])
+  @@map("surveillance_profiles")
+}
+
+/// V1.6 — Surveillance Max : evenement de declenchement.
+/// Cree par AlertsService.createFromCobanFrame() quand un vehicule arme
+/// recoit une trame d'alarme correspondant a ses triggers actifs.
+/// Lie a l'Alert correspondante (1:1, optionnel — l'Alert peut etre purgee).
+model SurveillanceEvent {
+  id             String                   @id @default(uuid()) @db.Uuid
+  profileId      String                   @db.Uuid
+  profile        SurveillanceProfile      @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  vehicleId      String                   @db.Uuid
+  vehicle        Vehicle                  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  fleetId        String                   @db.Uuid
+  fleet          Fleet                    @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  alertId        String?                  @unique @db.Uuid
+  alert          Alert?                   @relation(fields: [alertId], references: [id], onDelete: SetNull)
+  trigger        SurveillanceEventTrigger
+  triggeredAt    DateTime                 @default(now())
+  latitude       Float?
+  longitude      Float?
+  speedKmh       Float?
+  status         SurveillanceEventStatus  @default(PENDING)
+  acknowledgedAt DateTime?
+  acknowledgedBy String?                  @db.Uuid
+  notes          String?
+  createdAt      DateTime                 @default(now())
+
+  @@index([fleetId, triggeredAt(sort: Desc)])
+  @@index([vehicleId, triggeredAt(sort: Desc)])
+  @@index([status])
+  @@map("surveillance_events")
 }
 
 model VehicleGroup {

@@ -157,6 +157,20 @@ export class NotificationDispatchService {
     });
     for (const admin of fleetAdmins) userIds.add(admin.id);
 
+    // V1.6 — Surveillance Max : pour les alertes SURVEILLANCE_TRIGGERED, on
+    // ajoute les destinataires supplementaires definis sur le profil
+    // (typiquement des FLEET_MANAGER opt-in autorises a recevoir les alertes
+    // de vol pour ce vehicule precis).
+    if (alert.type === 'SURVEILLANCE_TRIGGERED' && alert.vehicleId) {
+      const profile = await this.prisma.surveillanceProfile.findUnique({
+        where: { vehicleId: alert.vehicleId },
+        select: { additionalNotifyUserIds: true },
+      });
+      if (profile) {
+        for (const id of profile.additionalNotifyUserIds) userIds.add(id);
+      }
+    }
+
     if (userIds.size === 0) return [];
 
     return this.prisma.user.findMany({
