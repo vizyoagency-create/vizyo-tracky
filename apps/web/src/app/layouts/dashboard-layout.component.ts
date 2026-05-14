@@ -261,8 +261,14 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
       background: color-mix(in srgb, var(--bg-secondary) 70%, transparent);
       backdrop-filter: blur(14px) saturate(1.5);
       -webkit-backdrop-filter: blur(14px) saturate(1.5);
-      /* Safe-area : top pour notch/Dynamic Island en standalone, lateral pour iPhone Pro paysage */
-      padding-top: env(safe-area-inset-top);
+      /* Safe-area :
+       *   - top : env(safe-area-inset-top) clear le notch/Dynamic Island en PWA iOS
+       *     standalone, MAIS sans buffer additionnel les icones se retrouvent a
+       *     ~10px de la status bar iOS, visuellement colles. On ajoute +10px de
+       *     respiration entre le bord bas de la status bar et le contenu du top-bar.
+       *   - lateral : iPhone Pro Max paysage.
+       */
+      padding-top: calc(env(safe-area-inset-top) + 10px);
       padding-left: max(20px, env(safe-area-inset-left));
       padding-right: max(20px, env(safe-area-inset-right));
       box-sizing: content-box;
@@ -494,19 +500,18 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
       .top-bar-brand-text { font-size: 13px }
 
       /* Padding-bottom du content : reserve la place pour la bottom-bar fixe.
-         Bottom-bar = padding-top 6px + bottom-item (min 52px en ios-pwa) +
+         Bottom-bar = padding-top 6px + bottom-item (52px ios-pwa) +
                       padding-bottom (6px + safe-area-inset-bottom)
-                    ≈ 76px + safe-area sur iPhone PWA. On reserve 160px +
-         safe-area pour donner 80px de respiration au-dessus — sinon le dernier
-         element (ex: "Envoyer le test" en observabilite, "Pilotez les plages
-         horaires" en dashboard, dernier toggle du planning hebdomadaire en
-         vehicle-schedule) reste cache derriere la barre.
-         160px est le compromis : pas trop d'espace blanc en bas (qui semblerait
-         bizarre) mais assez pour que le dernier element soit confortablement
-         visible sans avoir a scroller jusqu'au bord. */
+                    ≈ 64px (base) + safe-area-inset-bottom.
+         On reserve 80px + safe-area-inset-bottom :
+           - sur iPhone Pro (env=34) -> total 114px, bar=98px, gap=16px ✓
+           - sur iPhone sans notch (env=0) -> total 80px, bar=64px, gap=16px ✓
+         Gap visuel constant de ~16px au-dessus de la bar, peu importe le device.
+         Avant : 160+env donnait jusqu'a 194px de padding = vaste zone vide
+         visible sur les pages courtes (ex: "Mon compte"). */
       .content {
         padding: 16px;
-        padding-bottom: calc(160px + env(safe-area-inset-bottom));
+        padding-bottom: calc(80px + env(safe-area-inset-bottom));
       }
       /* En fullscreen la bottom-bar est cachee : pas besoin de reserver de place
          pour elle, juste la safe-area pour les iPhones a notch. */
