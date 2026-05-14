@@ -489,13 +489,14 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
 
       /* Padding-bottom du content : reserve la place pour la bottom-bar fixe.
          Bottom-bar = 6px padding-top + 48px item + (6px + safe-area-inset-bottom) padding-bottom
-                    ≈ 60px + safe-area. On reserve 96px + safe-area pour avoir
-         ~36px de respiration au-dessus de la barre sur iPhone PWA standalone,
-         sinon le dernier element (ex: "Envoyer le test" en observabilité,
-         "Pilotez les plages horaires" en dashboard) touche la barre. */
+                    ≈ 60px + safe-area. On reserve 120px + safe-area pour avoir
+         60px de respiration au-dessus de la barre meme sur iPhone PWA avec
+         body.ios-pwa qui bumpe les tap-targets a 52px (min-height) — sinon le
+         dernier element (ex: "Envoyer le test" en observabilité, "Pilotez les
+         plages horaires" en dashboard) reste cache derriere la barre. */
       .content {
         padding: 16px;
-        padding-bottom: calc(96px + env(safe-area-inset-bottom));
+        padding-bottom: calc(120px + env(safe-area-inset-bottom));
       }
       /* En fullscreen la bottom-bar est cachee : pas besoin de reserver de place
          pour elle, juste la safe-area pour les iPhones a notch. */

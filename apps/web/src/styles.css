@@ -135,44 +135,47 @@ body {
   }
 }
 
-/* ─── iOS PWA — bump global scale (zoom UI density) ───
+/* ─── iOS PWA — bump UI density (texte + tap targets + spacing) ───
  * iOS Safari rend la PWA installee a une densite perceptuelle plus
  * "browser-like" (texte/cards plus petits) que Chrome Android, donnant
  * l'impression d'une "vue web dezoomee" sur iPhone alors qu'Android se
- * sent natif. On compense en zoomant l'app de 8% UNIQUEMENT sur iOS PWA
- * standalone — Android et Safari classique (non installe) ne sont pas
- * touches.
+ * sent natif. On compense en augmentant les tailles cles UNIQUEMENT sur
+ * iOS PWA standalone (detection JS dans index.html qui pose body.ios-pwa).
  *
- * Detection :
- *   - @media (display-mode: standalone)  : PWA installee (iOS Home Screen)
- *   - @supports (-webkit-touch-callout: none) : feature iOS-only depuis 2020.
- *     N'existe nulle part ailleurs (Chrome Android, Firefox, desktop).
+ * Pourquoi PAS `html { zoom: 1.08 }` : sur iOS Safari, le zoom CSS sur html
+ * casse l'ancrage de `position: fixed` — la bottom-bar finit ancree sur le
+ * .layout zoome au lieu du viewport, creant une bande blanche entre la
+ * barre et le bord d'ecran. Testé/regressé en prod.
  *
- * Pourquoi `zoom` et pas `transform: scale` :
- *   - zoom impacte le LAYOUT (les enfants prennent en compte la nouvelle
- *     taille), scale est purement visuel et casse position:fixed + safe-area.
- *   - zoom est supporte nativement par WebKit/Safari (origine MS Edge) — c'est
- *     standardise dans CSS Properties & Values Module Level 5.
- *
- * Pourquoi compenser .layout height : sans ca, `html { zoom: 1.08 }` ne change
- * pas la valeur reelle de 100vh/100svh (ces unites sont viewport-relative et
- * ignorent le zoom CSS). Le .layout en `height: 100svh` est alors rendu a
- * 100svh*1.08 px visuels = depasse le bas du viewport. La bottom-bar (position:
- * fixed bottom:0) reste au bas du viewport, donc tout ce qui depasse passe
- * derriere elle (le bouton "Envoyer le test" devient inatteignable). En
- * divisant la hauteur par 1.08, l'app rend toujours dans la zone visible.
- *
- * 1.08 = "+8%", reglage choisi pour matcher visuellement le rendu Android
- * sur iPhone 12/13/14 base. Si Pro Max, peut passer a 1.06. Si SE, 1.10.
+ * Strategie : bumps cibles sur les tailles "core" (font-size, padding,
+ * tap targets) — ca scale l'UI sans toucher au flow ni a position:fixed.
  */
-@media (display-mode: standalone) {
-  @supports (-webkit-touch-callout: none) {
-    html { zoom: 1.08; }
-    .layout {
-      height: calc(100vh / 1.08);
-      height: calc(100svh / 1.08);
-    }
-  }
+body.ios-pwa {
+  /* Texte legerement plus gros pour respirer comme une app native */
+  font-size: 15px; /* base 14px → 15px */
+}
+body.ios-pwa .top-title,
+body.ios-pwa .top-bar-brand-text { font-size: 15px; }
+body.ios-pwa .bottom-item {
+  font-size: 11px;       /* etait 10px */
+  min-height: 52px;      /* etait 48px — meilleur tap target Apple HIG */
+  padding: 10px 4px;     /* etait 8px 4px */
+}
+body.ios-pwa .bottom-item lucide-icon svg {
+  width: 22px;
+  height: 22px;
+}
+/* Widgets et cards : padding interne plus genereux */
+body.ios-pwa .widget,
+body.ios-pwa .metric-card { padding: 16px !important; }
+body.ios-pwa .widget-title { font-size: 15px; }
+body.ios-pwa .widget-action { font-size: 13px; }
+/* Form inputs : font-size minimum 16px sur iOS pour empecher Safari de zoomer
+   automatiquement le viewport lors du focus (bug iOS connu). */
+body.ios-pwa input:not([type="checkbox"]):not([type="radio"]),
+body.ios-pwa textarea,
+body.ios-pwa select {
+  font-size: 16px;
 }
 
 /* Supprime le delai 300ms sur tap mobile, sans bloquer le pinch-zoom */
