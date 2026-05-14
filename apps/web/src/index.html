@@ -28,6 +28,30 @@
           document.documentElement.setAttribute('data-theme', theme);
         } catch (e) { /* keep default 'dark' */ }
       })();
+
+      // Detection iOS PWA standalone : pose body.ios-pwa pour les CSS overrides
+      // qui bumpent texte + tap targets afin que iPhone PWA ait la meme densite
+      // visuelle que Chrome Android PWA (iOS Safari rend plus "browser-like"
+      // par defaut).
+      // Le check matchMedia se fait DOM-ready car body n'existe pas encore ici.
+      (function () {
+        function applyIosPwaClass() {
+          try {
+            var isIos = /iPad|iPhone|iPod/.test(navigator.userAgent)
+                     || (navigator.userAgent.indexOf('Mac') >= 0 && 'ontouchend' in document);
+            var isStandalone = window.matchMedia('(display-mode: standalone)').matches
+                            || window.navigator.standalone === true;
+            if (isIos && isStandalone) {
+              document.body.classList.add('ios-pwa');
+            }
+          } catch (e) { /* noop */ }
+        }
+        if (document.body) {
+          applyIosPwaClass();
+        } else {
+          document.addEventListener('DOMContentLoaded', applyIosPwaClass);
+        }
+      })();
     </script>
 
     <!-- Viewport : viewport-fit=cover indispensable pour activer env(safe-area-inset-*) sur iOS -->
