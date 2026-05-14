@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { Router } from '@angular/router';
+import { SwPush } from '@angular/service-worker';
 import { firstValueFrom } from 'rxjs';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 
@@ -63,6 +64,7 @@ export class NotificationsApiService {
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
   private readonly toast = inject(ToastService);
+  private readonly swPush = inject(SwPush);
 
   readonly pushEnabled = signal<boolean | null>(null);
   readonly publicKey = signal<string | null>(null);
@@ -281,7 +283,7 @@ export class NotificationsApiService {
     }
     this.swMessageBound = true;
     navigator.serviceWorker.addEventListener('message', (event: MessageEvent) => {
-      const data = event.data as { type?: string; alertId?: string; url?: string } | null;
+      const data = event.data as { type?: string; alertId?: string; url?: string; payload?: unknown } | null;
       if (!data || typeof data !== 'object' || !data.type) return;
 
       if (data.type === 'ACK_ALERT' && data.alertId) {
@@ -292,9 +294,54 @@ export class NotificationsApiService {
         this.router.navigateByUrl(data.url).catch(() => {/* ignore */});
         return;
       }
-      // PUSH_RECEIVED : on laisse les autres services (RealtimeService) reagir
-      // s'ils ont leur propre listener — pas d'action centrale ici.
+      if (data.type === 'PUSH_RECEIVED' && data.payload) {
+        // Notre /sw.js dispatche ce message pour synchroniser l'UI quand WS
+        // deconnectee. On en profite pour set le badge depuis le main thread :
+        // sur iOS PWA standalone, setAppBadge depuis le SW context echoue
+        // parfois silencieusement, l'appel main-thread est plus fiable.
+        this.setAppBadgeFromPayload(data.payload);
+        return;
+      }
     });
+
+    // ngsw-worker.js (Angular SW) dispatche les push events via SwPush.messages$
+    // au lieu du message channel. Quand ngsw est le SW actif (ex: en PWA iOS
+    // standalone si registre apres /sw.js), c'est lui qui recoit la push et
+    // notifie le main thread via cette Observable. On set le badge ici.
+    //
+    // Note critique iOS : ces messages ne fire QUE quand un client est ouvert.
+    // Pour set le badge en background, il faut que le SW (notre /sw.js OU
+    // declarative web push iOS 18.4+) le fasse. Mais sur foreground (user vient
+    // d'ouvrir l'app), ce listener garantit le badge.
+    if (this.swPush.isEnabled) {
+      this.swPush.messages.subscribe((payload) => {
+        this.setAppBadgeFromPayload(payload);
+      });
+    }
+  }
+
+  /**
+   * Lit `appBadge` dans un payload push (peut etre a la racine pour notre
+   * format custom OU dans `notification.data.appBadge` pour le format ngsw)
+   * et appelle setAppBadge / clearAppBadge en consequence.
+   */
+  private setAppBadgeFromPayload(payload: unknown): void {
+    if (!payload || typeof payload !== 'object') return;
+    const p = payload as { appBadge?: number | null; notification?: { data?: { appBadge?: number | null } } };
+    // Priorite : champ flat (notre format) -> notification.data.appBadge (format ngsw)
+    const count = p.appBadge !== undefined ? p.appBadge : p.notification?.data?.appBadge;
+    if (count === undefined) return; // pas de directive badge dans ce push
+    try {
+      const nav = navigator as Navigator & {
+        setAppBadge?: (c: number) => Promise<void>;
+        clearAppBadge?: () => Promise<void>;
+      };
+      if (count === null) {
+        nav.clearAppBadge?.().catch(() => {/* silencieux */});
+      } else if (typeof count === 'number' && count > 0) {
+        nav.setAppBadge?.(count).catch(() => {/* silencieux */});
+      }
+    } catch {/* feature absente */}
   }
 
   private async acknowledgeAlertFromSw(alertId: string): Promise<void> {
