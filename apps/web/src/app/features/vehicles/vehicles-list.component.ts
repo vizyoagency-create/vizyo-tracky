@@ -280,11 +280,14 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
     }
     .add-btn:hover { background: #047857 }
 
-    /* FAB mobile : visible uniquement < 768px (cohérent avec Map FAB) */
+    /* FAB mobile : visible uniquement < 768px (cohérent avec Map FAB).
+       Doit se poser AU-DESSUS de la bottom-bar (60px + safe-area + 6) sinon
+       le FAB chevauche les icones nav sur iPhone PWA. On garde 16px de marge
+       au-dessus de la barre. */
     .vlist-fab {
       display: none;
       position: fixed;
-      bottom: calc(env(safe-area-inset-bottom) + 18px);
+      bottom: calc(env(safe-area-inset-bottom) + 76px);
       right: 16px;
       z-index: 1500;
       width: 52px; height: 52px;

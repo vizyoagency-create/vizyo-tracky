@@ -435,17 +435,6 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
       .bottom-item.active { color: var(--tracky-light); background: var(--bg-tertiary) }
       .bottom-item lucide-icon { display: block }
 
-      /* Padding-bottom du content pour ne pas masquer le dernier element
-         derriere la bottom-bar (56px barre + safe-area + petit espace). */
-      .content {
-        padding-bottom: calc(72px + env(safe-area-inset-bottom)) !important;
-      }
-      /* En fullscreen la bottom-bar est cachee : pas besoin de reserver de place
-         pour elle, juste la safe-area pour les iPhones a notch. */
-      .content.fullscreen {
-        padding-bottom: env(safe-area-inset-bottom) !important;
-      }
-
       .mobile-burger {
         display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 10px;
         background: transparent; border: none; color: var(--fg-secondary); cursor: pointer;
@@ -498,10 +487,18 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
       .top-bar-brand { display: flex }
       .top-bar-brand-text { font-size: 13px }
 
+      /* Padding-bottom du content : reserve la place pour la bottom-bar fixe.
+         Bottom-bar = 6px padding-top + 48px item + (6px + safe-area-inset-bottom) padding-bottom
+                    ≈ 60px + safe-area. On reserve 96px + safe-area pour avoir
+         ~36px de respiration au-dessus de la barre sur iPhone PWA standalone,
+         sinon le dernier element (ex: "Envoyer le test" en observabilité,
+         "Pilotez les plages horaires" en dashboard) touche la barre. */
       .content {
         padding: 16px;
-        padding-bottom: calc(env(safe-area-inset-bottom) + 24px);
+        padding-bottom: calc(96px + env(safe-area-inset-bottom));
       }
+      /* En fullscreen la bottom-bar est cachee : pas besoin de reserver de place
+         pour elle, juste la safe-area pour les iPhones a notch. */
       .content.fullscreen {
         padding-bottom: env(safe-area-inset-bottom);
         padding-left: env(safe-area-inset-left);
