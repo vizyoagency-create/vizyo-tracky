@@ -20,10 +20,18 @@ export const appConfig: ApplicationConfig = {
     ),
     { provide: TitleStrategy, useClass: AppTitleStrategy },
     provideHttpClient(withInterceptors([authInterceptor])),
-    // Service worker : actif en prod uniquement, attente 30s d'idle pour ne pas concurrencer le boot
-    provideServiceWorker('ngsw-worker.js', {
+    // Service Worker : on registre `/sw.js` (notre SW custom) qui charge
+    // ngsw-worker.js via importScripts en interne. Ca evite le bug "double SW
+    // race" en standalone PWA iOS qui empechait le badge "1" de fonctionner
+    // en background. Voir public/sw.js pour le detail.
+    //
+    // registrationStrategy: 'registerImmediately' au lieu de 'registerWhenStable:30000'
+    // pour que le SW soit dispo des l'arrivee sur le dashboard — important pour
+    // que les push subscriptions s'ancrent sur notre SW combine plutot que sur
+    // un ancien ngsw separe encore en cache.
+    provideServiceWorker('sw.js', {
       enabled: !isDevMode(),
-      registrationStrategy: 'registerWhenStable:30000',
+      registrationStrategy: 'registerImmediately',
     }),
   ]
 };

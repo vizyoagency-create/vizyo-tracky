@@ -1,101 +1,136 @@
 /**
- * V1.5 (Sprint M) — Service Worker Vizyo Tracky.
+ * V1.11 — Service Worker COMBINE Vizyo Tracky.
  *
- * Role minimal : recevoir les push notifications et les afficher.
- * Pas de mise en cache offline (out of scope V1.5).
+ * Strategie : un SEUL SW au scope `/`, qui combine
+ *   1. Le SW Angular (ngsw-worker.js, charge via importScripts en prod) pour :
+ *      - cache offline du shell (assetGroups dans ngsw-config.json)
+ *      - dataGroups (cache /api/vehicles/snapshot, /api/alerts)
+ *      - SwUpdate (detection nouvelle version + modal forcer reload)
+ *      - display auto des notifs avec le payload `notification: {...}`
+ *      - dispatch SwPush.messages$ / notificationClicks$ aux clients
+ *   2. Notre logique custom additionnelle, qui ne casse pas ngsw :
+ *      - setAppBadge(N) sur chaque push (Badge API : iOS 16.4+ standalone PWA,
+ *        Chrome desktop, Chrome Android partial). MARCHE EN BACKGROUND meme
+ *        app fermee, contrairement a un appel main-thread.
+ *      - notificationclick : delegation Acquitter/Voir au client open (qui a
+ *        le JWT), avec fallback openWindow si aucun client n'est focused.
+ *      - PUSH_RECEIVED postMessage aux clients pour rafraichir la cloche
+ *        d'alertes meme quand WS est deconnectee.
  *
- * Active manuellement via /account → toggle "Activer les notifications push"
- * (le browser register le SW + on subscribe via PushManager).
+ * Pourquoi un seul SW : le W3C autorise un seul SW actif par (origin, scope).
+ * Avec 2 SWs (ngsw + /sw.js separes) il y avait une race d'inscription : sur
+ * iPhone PWA, ngsw gagnait souvent et notre handler push (avec setAppBadge)
+ * ne tournait jamais -> badge "1" invisible.
  *
- * V1.8 (web-push-finalize) — payload enrichi :
- *   - severity: 'INFO' | 'WARNING' | 'CRITICAL' -> pattern vibration + requireInteraction
- *   - tag: alertId -> regroupement (un push par alerte, un re-push remplace)
- *   - actions: [Acquitter, Voir]
- *     - "ack"  : POST /api/alerts/:id/acknowledge en passant par un client focus
- *                qui a le JWT (le SW n'a pas le token, on lui delegue l'appel HTTP)
- *     - "view" : ouvre/focus un onglet sur data.url
+ * Avec importScripts, ngsw devient une LIBRARY interne de notre SW. Tous les
+ * event listeners (push, notificationclick, fetch, message) s'additionnent :
+ * quand un push arrive, ngsw affiche la notif (depuis `notification:{...}`)
+ * ET notre handler additionnel set le badge.
+ *
+ * Dev mode : ngsw-worker.js n'est genere qu'en build de prod (cf. angular.json
+ * + provideServiceWorker `enabled: !isDevMode()`). En dev, importScripts echoue
+ * silencieusement et on bascule sur un push handler standalone qui appelle
+ * showNotification manuellement.
  */
 
+// ─── 1. Chargement conditionnel de ngsw-worker (prod uniquement) ───
+let ngswLoaded = false;
+try {
+  // En prod, ngsw-worker.js est genere par Angular CLI a la racine de /dist/browser/.
+  // En dev, le fichier n'existe pas et importScripts leve SyntaxError -> on continue
+  // sans ngsw (notre push handler ci-dessous prendra le relais avec showNotification).
+  importScripts('/ngsw-worker.js');
+  ngswLoaded = true;
+} catch (err) {
+  // Pas de console.error : SW dev mode normal, ne pas polluer.
+}
+
+// ─── 2. Lifecycle minimal (no-op si ngsw a deja claim) ───
+// Si ngsw est charge, il gere deja install/activate avec skipWaiting + clients.claim.
+// On ajoute notre propre listener pour le mode standalone (dev sans ngsw).
 self.addEventListener('install', () => {
-  // Pas de cache pre-fetch — on prend effet immediatement.
-  self.skipWaiting();
+  if (!ngswLoaded) self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  if (!ngswLoaded) event.waitUntil(self.clients.claim());
 });
 
+// ─── 3. Push handler ───
+//
+// IMPORTANT : si ngsw est charge, il a deja un push listener qui :
+//   - parse event.data.json()
+//   - lit le champ `notification` du payload
+//   - appelle self.registration.showNotification(notification.title, notification)
+//   - dispatche {type:'PUSH'} aux clients via postMessage
+//
+// Notre listener additionnel s'execute EN PLUS (les listeners SW sont additifs,
+// pas exclusifs). On NE refait PAS showNotification si ngsw l'a deja fait :
+// cela creerait un double-affichage. On se contente de :
+//   - setAppBadge (que ngsw ne fait pas)
+//   - notifyClients PUSH_RECEIVED (notre custom message pour la cloche
+//     d'alertes — distinct du {type:'PUSH'} de ngsw qui sert SwPush.messages$)
+//
+// En dev (ngsw absent), notre handler doit aussi showNotification manuellement
+// car personne d'autre ne le fera.
 self.addEventListener('push', (event) => {
-  let data = { title: 'Vizyo Tracky', body: '', url: '/', severity: 'INFO' };
+  let payload = { title: 'Vizyo Tracky', body: '', url: '/', severity: 'INFO' };
   try {
     if (event.data) {
-      data = Object.assign(data, event.data.json());
+      payload = Object.assign(payload, event.data.json());
     }
   } catch {
-    // payload non-JSON — utilise les defauts.
+    // Payload non-JSON, on garde les defauts pour ne pas crasher.
   }
 
-  const isCritical = data.severity === 'CRITICAL';
+  const isCritical = payload.severity === 'CRITICAL';
+  const appBadge = payload.appBadge;
 
-  // Pattern vibration : long-court-long-court-long pour CRITICAL (motif urgence
-  // simplifie), pulse court pour WARNING/INFO. Cote SW : navigator.vibrate n'est
-  // pas universel (ignore sur desktop, OK Android Chrome). On laisse le browser
-  // decider via le champ vibrate des NotificationOptions.
-  const vibrate = isCritical ? [200, 100, 200, 100, 200] : [100];
+  const tasks = [
+    updateAppBadge(appBadge),
+    notifyClients({ type: 'PUSH_RECEIVED', payload }),
+  ];
 
-  // Icones :
-  //   - `icon` = grande icone affichee dans la notif (Android Chrome upscale a 192px+).
-  //     /pwa-icon-192.png = logo V Vizyo couleur, rendu net dans le corps de la notif.
-  //   - `badge` = petite icone monochrome dans la barre de statut Android (tinted
-  //     blanc force par le systeme). /notification-badge-96.png est le V Vizyo en
-  //     silhouette sur fond TRANSPARENT — Android tinte tout en blanc, ne reste que
-  //     la silhouette du V. Resultat propre vs le "blob blanc" de l'ancien
-  //     pwa-icon-192.png qui avait un fond plein.
-  const options = {
-    body: data.body,
-    icon: data.icon || '/pwa-icon-192.png',
-    badge: data.badge || '/notification-badge-96.png',
-    data: {
-      url: data.url || '/',
-      alertId: data.data && data.data.alertId,
-      severity: data.severity,
-      ...(data.data || {}),
-    },
-    requireInteraction: isCritical,
-    vibrate,
-    tag: data.tag,
-    // renotify: re-jouer le son meme si une notif avec le meme tag existe deja.
-    // Pertinent pour les CRITICAL re-poussees (escalade) — sinon le browser
-    // remplace silencieusement et l'utilisateur peut rater l'escalade.
-    renotify: isCritical && !!data.tag,
-    actions: [
-      { action: 'ack', title: 'Acquitter' },
-      { action: 'view', title: 'Voir' },
-    ],
-  };
+  // En dev (sans ngsw), on doit afficher la notif manuellement.
+  // En prod, ngsw l'a deja fait -> on skip pour eviter le double rendu.
+  if (!ngswLoaded) {
+    const options = {
+      body: payload.body,
+      icon: payload.icon || '/pwa-icon-192.png',
+      badge: payload.badge || '/notification-badge-96.png',
+      data: {
+        url: payload.url || '/',
+        alertId: payload.data && payload.data.alertId,
+        severity: payload.severity,
+        ...(payload.data || {}),
+      },
+      requireInteraction: isCritical,
+      vibrate: isCritical ? [200, 100, 200, 100, 200] : [100],
+      tag: payload.tag,
+      renotify: isCritical && !!payload.tag,
+      actions: [
+        { action: 'ack', title: 'Acquitter' },
+        { action: 'view', title: 'Voir' },
+      ],
+    };
+    tasks.push(self.registration.showNotification(payload.title, options));
+  }
 
-  event.waitUntil(
-    Promise.all([
-      self.registration.showNotification(data.title, options),
-      // App badge count (numero sur l'icone de l'app).
-      //   - iOS 18.4+ standalone PWA : supporte
-      //   - Android Chrome PWA : supporte (Chrome 81+)
-      //   - Desktop Chrome / Edge : supporte
-      // Si data.appBadge === null, on clear le badge. Si >= 1, on l'affiche.
-      // Si undefined / 0, on ne touche pas.
-      updateAppBadge(data.appBadge),
-      // Notifie tous les clients ouverts pour qu'ils mettent a jour le toast in-app
-      // / la cloche d'alertes meme si la WS etait deconnectee. Best-effort.
-      notifyClients({ type: 'PUSH_RECEIVED', payload: data }),
-    ]),
-  );
+  event.waitUntil(Promise.all(tasks));
 });
 
 /**
  * Met a jour l'app badge si la Badge API est disponible.
- * Tres important : il faut try/catch — appel sur un browser non-supporte (ex:
- * Firefox 2026) leve TypeError et tuerait le waitUntil entier, ce qui
- * declencherait l'auto-unsubscribe d'iOS (3-strikes rule).
+ * Try/catch obligatoire : un throw ici tuerait event.waitUntil entier et
+ * iOS pourrait auto-unsubscribe (3-strikes rule sur les push events qui
+ * echouent).
+ *
+ * Support 2026 :
+ *   - iOS 16.4+ standalone PWA : oui, depuis le SW context
+ *   - Chrome desktop / Edge : oui
+ *   - Chrome Android : oui mais badge invisible sur home screen (le compteur
+ *     fonctionne, juste pas affiche par Android jusqu'a 2027 probable)
+ *   - Firefox / Safari non-PWA : silencieusement ignore
  */
 async function updateAppBadge(count) {
   try {
@@ -106,42 +141,60 @@ async function updateAppBadge(count) {
       await self.navigator.setAppBadge(count);
     }
     // count === undefined / 0 -> no-op (laisse l'etat actuel)
-  } catch {/* ignore — feature absente ou contexte sans permission */}
+  } catch {/* feature absente ou contexte sans permission */}
 }
 
+// ─── 4. NotificationClick : Acquitter / Voir ───
+//
+// ngsw a son propre notificationclick qui dispatche aux clients via
+// SwPush.notificationClicks$ et openWindow si aucun client. On ajoute notre
+// logique custom EN PLUS pour gerer l'action 'ack' qui necessite un POST
+// authentifie /api/alerts/:id/acknowledge.
+//
+// Pour 'view' et clic body : on laisse ngsw faire (ouverture/focus de la
+// fenetre cible). Notre handler `ack` ne court-circuite pas, juste ajoute
+// le postMessage ACK_ALERT.
 self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
-
   const action = event.action;
   const data = event.notification.data || {};
-  const targetUrl = data.url || '/';
   const alertId = data.alertId;
 
-  event.waitUntil((async () => {
-    if (action === 'ack' && alertId) {
-      // Le SW n'a pas le JWT en memoire — on demande au premier client
-      // disponible de faire l'appel HTTP authentifie. Si aucun client n'est
-      // ouvert, on ouvre l'app sur /alerts?ack=<id> qui prendra le relais.
+  // Ne pas closer la notif ici si action !== 'ack' : on laisse ngsw le faire
+  // pour eviter une race avec son handler. Pour 'ack', on close explicitement
+  // car ngsw ne sait pas que c'est traite.
+  if (action === 'ack' && alertId) {
+    event.notification.close();
+    event.waitUntil((async () => {
       const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
       const target = pickClient(clients);
       if (target) {
+        // Client ouvert -> il fera le POST avec son JWT.
         target.postMessage({ type: 'ACK_ALERT', alertId });
         if ('focus' in target) await target.focus();
         return;
       }
+      // Aucun client -> on ouvre l'app sur la page alertes avec un query param
+      // que NotificationsApiService.installSwMessageBridge lira au boot.
       if (self.clients.openWindow) {
         await self.clients.openWindow(`/alerts?ack=${encodeURIComponent(alertId)}`);
       }
-      return;
-    }
+    })());
+    return;
+  }
 
-    // action === 'view' OU clic sur le corps de la notif (action vide).
+  // Pour action='view' ou clic body : si ngsw est charge, il s'en charge.
+  // Sinon (dev), on fait nous-meme : focus client ou openWindow.
+  if (ngswLoaded) return;
+
+  event.notification.close();
+  const targetUrl = data.url || '/';
+  event.waitUntil((async () => {
     const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const client of clients) {
       if (client.url.includes(self.location.origin) && 'focus' in client) {
         await client.focus();
         if ('navigate' in client) {
-          try { await client.navigate(targetUrl); } catch { /* ignore */ }
+          try { await client.navigate(targetUrl); } catch {/* ignore */}
         } else {
           client.postMessage({ type: 'NAVIGATE', url: targetUrl });
         }
@@ -153,6 +206,8 @@ self.addEventListener('notificationclick', (event) => {
     }
   })());
 });
+
+// ─── Helpers ───
 
 function pickClient(clients) {
   const focused = clients.find((c) => c.focused && c.visibilityState === 'visible');
@@ -166,7 +221,7 @@ async function notifyClients(message) {
   try {
     const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const client of clients) {
-      try { client.postMessage(message); } catch { /* ignore */ }
+      try { client.postMessage(message); } catch {/* ignore */}
     }
-  } catch { /* ignore */ }
+  } catch {/* ignore */}
 }
