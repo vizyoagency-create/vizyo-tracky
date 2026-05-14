@@ -154,6 +154,45 @@ body.ios-pwa {
   /* Texte legerement plus gros pour respirer comme une app native */
   font-size: 15px; /* base 14px → 15px */
 }
+
+/* ─── iOS PWA : alignement visuel "Android-like" ───
+ *
+ * Probleme : sur iOS PWA standalone, le viewport (100svh) INCLUT la zone du
+ * home indicator (overlay-only ~34px), contrairement a Android ou le system
+ * navigation bar reduit physiquement le viewport. Resultat : sur une page
+ * courte (ex: /account "Mon compte"), il y a un gros espace vide visible
+ * entre la fin du formulaire et le top de la bottom-bar, alors qu'Android
+ * affiche la meme page avec la bar quasi-collee au formulaire.
+ *
+ * Fix : on shrink la .layout de env(safe-area-inset-bottom) sur iOS PWA, ce
+ * qui remonte virtuellement le bord bas du viewport "utile" au-dessus de la
+ * zone home indicator. La bottom-bar (position:fixed bottom:0) reste ancree
+ * au viewport reel (852 sur iPhone 14 Pro), MAIS comme on shrink son
+ * padding-bottom interne (le safe-area est gere par la fenetre body qui
+ * etend bg jusqu'au bord), elle devient plus compacte et plus proche du
+ * formulaire visuellement.
+ *
+ * Le bg de body s'etend toujours sous le home indicator (color continuity),
+ * et l'overlay home indicator iOS reste lisible par-dessus.
+ */
+body.ios-pwa .layout {
+  height: calc(100svh - env(safe-area-inset-bottom));
+}
+body.ios-pwa .bottom-bar {
+  /* Le safe-area-inset-bottom n'est plus necessaire dans la bar car .layout
+     a deja ete shrinke. La bar prend juste sa hauteur naturelle (6+52+6=64),
+     posee au bord bas du .layout shrinke (donc au-dessus du home indicator). */
+  padding-bottom: 6px;
+  /* Mais on bouge la bar au-dessus de la zone safe-area pour que le bg de
+     body soit visible sous (continuite couleur). bottom: env() au lieu de 0. */
+  bottom: env(safe-area-inset-bottom);
+}
+body.ios-pwa .content {
+  /* Compense aussi le padding-bottom interne : la bar est maintenant plus
+     compacte (64px au lieu de 98px), donc on a moins besoin de padding pour
+     ne pas etre cache derriere elle au scroll. */
+  padding-bottom: 80px !important;
+}
 body.ios-pwa .top-title,
 body.ios-pwa .top-bar-brand-text { font-size: 15px; }
 body.ios-pwa .bottom-item {
