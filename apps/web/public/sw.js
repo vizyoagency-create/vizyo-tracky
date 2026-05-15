@@ -1,3 +1,4 @@
+// SW build marker — V1.12 fix bg fusion (force re-install pour clear cache cote iPhone)
 /**
  * V1.11 — Service Worker COMBINE Vizyo Tracky.
  *
