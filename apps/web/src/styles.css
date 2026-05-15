@@ -155,35 +155,41 @@ body.ios-pwa {
   font-size: 15px; /* base 14px → 15px */
 }
 
-/* ─── iOS PWA : pages courtes remplissent le viewport ───
+/* ─── iOS PWA : fusion visuelle bar/page-bg (fix "espace vide percu") ───
  *
- * Probleme : sur iOS PWA standalone, le viewport (100svh) inclut la zone
- * home indicator (~34px overlay-only) — viewport visuellement plus haut
- * qu'Android. Sur pages courtes (ex: /account "Mon compte"), le formulaire
- * occupe 50% du viewport, laissant un gros espace vide entre lui et la
- * bottom-bar fixe.
+ * Diagnostic visuel apres analyse user :
  *
- * Diagnostic : aucune permutation de layout (`.layout` shrink, bar `bottom:
- * env()`, flex-flow non-fixed) ne resout structurellement le probleme tant
- * que `.content` a `flex: 1` et fill une zone plus haute que son contenu.
- * L'espace vide est INTRINSEQUE a la difference (form-height < viewport).
+ *   Sur iOS PWA standalone, le viewport (100svh) est ~34px plus haut qu'Android
+ *   (la zone home indicator est overlay-only, pas physiquement reduite). Sur
+ *   pages courtes (ex: /account), le formulaire occupe 50% du viewport ; entre
+ *   sa fin et la bottom-bar fixe, il y a une zone de bg-PRIMARY visible.
  *
- * Vraie solution : forcer le contenu de chaque page a remplir `.content`
- * via `min-height: 100%` + `display: flex; flex-direction: column`.
+ *   La bar a un bg-SECONDARY (legerement plus clair), ce qui cree un "channel"
+ *   visible de bg-primary entre le contenu et la bar. Le user le percoit comme
+ *   un gros espace vide alors que c'est juste un contraste de teinte.
  *
- *   - Le bg de la page (uniforme avec le page bg) couvre toute la zone.
- *   - Si la page utilise `gap` ou `margin-top: auto` sur ses derniers
- *     elements, ces derniers se poussent en bas naturellement.
- *   - Sinon, l'espace vide reste mais le contenu visuel "touche" le bord
- *     bas effectif de `.content`, pas un trou entre form et bar.
+ * Aucune permutation de layout (flex-flow, shrink layout, bar repositionnee)
+ * n'elimine cet espace tant que viewport > contenu page + bar. C'est INTRINSEQUE
+ * a la geometrie iOS PWA.
  *
- * Effet sur Android : aucun (body.ios-pwa ne s'applique pas).
+ * Solution non-invasive : on aligne le bg de la bar sur le bg de la page sur
+ * iOS uniquement. Le "channel" de couleur differente disparait : visuellement,
+ * la zone vide devient indistinguable de la bar, l'oeil voit un bloc uniforme
+ * du contenu jusqu'au home indicator.
+ *
+ * Le border-top reste comme separateur visuel. Aucun impact Android ni desktop.
+ *
+ * Si insuffisant, on passera a une refonte structurelle iOS-only (sauvegarde
+ * git + nouveau component dashboard-layout-ios). Mais probablement OK.
  */
 @media (max-width: 768px) {
-  body.ios-pwa .content:not(.fullscreen) > * {
-    min-height: 100%;
-    display: flex;
-    flex-direction: column;
+  body.ios-pwa .bottom-bar {
+    background: var(--bg-primary) !important;
+  }
+  /* Ainsi la "main-area" et le scroller .content gardent leur bg page,
+     et la bar fusionne avec dessous. */
+  body.ios-pwa .content:not(.fullscreen) {
+    background: var(--bg-primary);
   }
 }
 body.ios-pwa .top-title,
