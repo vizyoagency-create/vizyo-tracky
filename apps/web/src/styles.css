@@ -183,13 +183,28 @@ body.ios-pwa {
  * git + nouveau component dashboard-layout-ios). Mais probablement OK.
  */
 @media (max-width: 768px) {
-  body.ios-pwa .bottom-bar {
+  /* Specificite maximale + !important pour battre toute autre regle. */
+  html body.ios-pwa nav.bottom-bar,
+  html body.ios-pwa .bottom-bar {
     background: var(--bg-primary) !important;
+    background-color: var(--bg-primary) !important;
+    /* Retire aussi le backdrop-filter qui pouvait creer un effet visuel
+       mintish via blur de ce qu'il y a derriere */
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
   }
-  /* Ainsi la "main-area" et le scroller .content gardent leur bg page,
-     et la bar fusionne avec dessous. */
-  body.ios-pwa .content:not(.fullscreen) {
-    background: var(--bg-primary);
+  html body.ios-pwa main.content:not(.fullscreen),
+  html body.ios-pwa .content:not(.fullscreen) {
+    background: var(--bg-primary) !important;
+    background-color: var(--bg-primary) !important;
+  }
+  /* La .layout (root) doit aussi avoir le meme bg pour pas qu'on voie
+     une teinte differente du body en dessous quand l'app shell est
+     position fixed. */
+  html body.ios-pwa .layout,
+  html body.ios-pwa .main-area {
+    background: var(--bg-primary) !important;
+    background-color: var(--bg-primary) !important;
   }
 }
 body.ios-pwa .top-title,
