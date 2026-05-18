@@ -1,4 +1,4 @@
-// SW build marker — V1.13 bg fusion aggressive (force re-install)
+// SW build marker — V1.15 height-chain + ::after safe-area iOS PWA (force re-install)
 /**
  * V1.11 — Service Worker COMBINE Vizyo Tracky.
  *

@@ -155,56 +155,87 @@ body.ios-pwa {
   font-size: 15px; /* base 14px → 15px */
 }
 
-/* ─── iOS PWA : fusion visuelle bar/page-bg (fix "espace vide percu") ───
+/* ─── iOS PWA : bottom-bar dans le flow flex (fix "zone blanche sous la bar") ───
  *
- * Diagnostic visuel apres analyse user :
+ * Probleme : sur iOS PWA standalone, la bottom-bar en position:fixed laisse
+ * une zone vide (blanche) sous elle dans la zone du home indicator. Le
+ * 100svh du .layout ne couvre pas cette zone car svh exclut le safe-area.
  *
- *   Sur iOS PWA standalone, le viewport (100svh) est ~34px plus haut qu'Android
- *   (la zone home indicator est overlay-only, pas physiquement reduite). Sur
- *   pages courtes (ex: /account), le formulaire occupe 50% du viewport ; entre
- *   sa fin et la bottom-bar fixe, il y a une zone de bg-PRIMARY visible.
+ * Solution structurelle (V1.14) :
+ *   1. Propager height:100% de body → app-root → app-dashboard-layout → .layout
+ *      (les elements custom Angular n'ont pas display:block/height:100% par defaut,
+ *      ce qui casse la chaine de hauteur quand on passe de viewport units a %)
+ *   2. Passer .layout en flex-column + height:100%
+ *   3. Remettre la bottom-bar dans le flow flex (position:relative)
+ *   4. Peindre la zone sous la bar (safe-area) via un ::after qui descend
+ *      jusqu'au bord physique de l'ecran
  *
- *   La bar a un bg-SECONDARY (legerement plus clair), ce qui cree un "channel"
- *   visible de bg-primary entre le contenu et la bar. Le user le percoit comme
- *   un gros espace vide alors que c'est juste un contraste de teinte.
- *
- * Aucune permutation de layout (flex-flow, shrink layout, bar repositionnee)
- * n'elimine cet espace tant que viewport > contenu page + bar. C'est INTRINSEQUE
- * a la geometrie iOS PWA.
- *
- * Solution non-invasive : on aligne le bg de la bar sur le bg de la page sur
- * iOS uniquement. Le "channel" de couleur differente disparait : visuellement,
- * la zone vide devient indistinguable de la bar, l'oeil voit un bloc uniforme
- * du contenu jusqu'au home indicator.
- *
- * Le border-top reste comme separateur visuel. Aucun impact Android ni desktop.
- *
- * Si insuffisant, on passera a une refonte structurelle iOS-only (sauvegarde
- * git + nouveau component dashboard-layout-ios). Mais probablement OK.
+ * Scope : body.ios-pwa uniquement — aucun impact desktop, web mobile, ni Android.
  */
+
+/* Chaine de hauteur : body(100%) → app-root → host component → .layout */
+body.ios-pwa,
+body.ios-pwa app-root {
+  display: block;
+  height: 100% !important;
+  overflow: hidden;
+}
+body.ios-pwa app-dashboard-layout {
+  display: block;
+  height: 100%;
+}
+
+/* html doit aussi avoir le bon bg pour que meme si un pixel fuit, il soit
+   de la bonne couleur (zone home indicator sur vieux iOS). */
+@media (display-mode: standalone) {
+  html {
+    background: var(--bg-primary);
+  }
+}
+
 @media (max-width: 768px) {
-  /* Specificite maximale + !important pour battre toute autre regle. */
-  html body.ios-pwa nav.bottom-bar,
-  html body.ios-pwa .bottom-bar {
-    background: var(--bg-primary) !important;
-    background-color: var(--bg-primary) !important;
-    /* Retire aussi le backdrop-filter qui pouvait creer un effet visuel
-       mintish via blur de ce qu'il y a derriere */
+  /* Layout : flex-column, hauteur 100% de la chaine ci-dessus */
+  body.ios-pwa .layout {
+    flex-direction: column !important;
+    height: 100% !important;
+    /* Fallback iOS fiable pour la hauteur totale du viewport */
+    height: -webkit-fill-available !important;
+  }
+
+  /* Bottom-bar : dans le flow flex (plus de position:fixed) */
+  body.ios-pwa .bottom-bar {
+    position: relative !important;
+    bottom: auto !important;
+    left: auto !important;
+    right: auto !important;
+    flex-shrink: 0;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
   }
-  html body.ios-pwa main.content:not(.fullscreen),
-  html body.ios-pwa .content:not(.fullscreen) {
-    background: var(--bg-primary) !important;
-    background-color: var(--bg-primary) !important;
+
+  /* Pseudo-element qui peint la zone sous la bar (home indicator)
+     avec la meme couleur — meme si le layout ne descend pas assez,
+     ce block fixe couvre le dernier centimetre de l'ecran. */
+  body.ios-pwa .bottom-bar::after {
+    content: '';
+    display: block;
+    height: env(safe-area-inset-bottom, 34px);
+    background: inherit;
+    /* Sur les devices sans home indicator, env() = 0 et le block
+       est invisible (height:0). */
   }
-  /* La .layout (root) doit aussi avoir le meme bg pour pas qu'on voie
-     une teinte differente du body en dessous quand l'app shell est
-     position fixed. */
-  html body.ios-pwa .layout,
-  html body.ios-pwa .main-area {
+
+  /* Content : plus besoin de reserver 80px + safe-area pour la bar fixe */
+  body.ios-pwa .content:not(.fullscreen) {
+    padding-bottom: 16px !important;
+  }
+
+  /* Unifier les backgrounds */
+  body.ios-pwa .layout,
+  body.ios-pwa .main-area,
+  body.ios-pwa .content:not(.fullscreen),
+  body.ios-pwa .bottom-bar {
     background: var(--bg-primary) !important;
-    background-color: var(--bg-primary) !important;
   }
 }
 body.ios-pwa .top-title,
