@@ -173,7 +173,7 @@ export class LineBarChartComponent implements AfterViewInit, OnDestroy {
             beginAtZero: true,
             grid: { color: colors.borderSubtle },
             border: { display: false },
-            ticks: { color: colors.fgTertiary, font: { size: 11 }, callback: (v) => `${v} km` },
+            ticks: { color: colors.fgTertiary, font: { size: 11 }, callback: (v: string | number) => `${v} km` },
           },
           y1: {
             position: 'right',
@@ -184,7 +184,7 @@ export class LineBarChartComponent implements AfterViewInit, OnDestroy {
               color: colors.fgTertiary,
               font: { size: 11 },
               precision: 0,
-              callback: (v) => `${v}`,
+              callback: (v: string | number) => `${v}`,
             },
           },
         },
