@@ -50,6 +50,16 @@ export class GeofencesService {
   private readonly trackerFirstSeen = new Set<string>();
   private geofenceCache = new Map<string, CachedGeofence[]>();
 
+  /**
+   * V1.10 (Sprint 4) — debounce des violations ENTER/EXIT pour eviter le spam
+   * quand un vehicule oscille a la frontiere d'une geofence (GPS jitter ~5-20m).
+   * Cle = `${trackerId}:${zoneId}:${kind}`, valeur = timestamp ms de la derniere
+   * emission. Sans ce debounce, un vehicule arrete pile sur la limite pouvait
+   * generer 10+ alertes/min, saturant les notifications push/email.
+   */
+  private readonly violationDebounce = new Map<string, number>();
+  private static readonly VIOLATION_DEBOUNCE_MS = 60_000;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly gateway: RealtimeGateway,
@@ -251,6 +261,21 @@ export class GeofencesService {
     lng: number,
     trackerImei: string,
   ): Promise<void> {
+    // V1.10 (Sprint 4) — debounce : ignore si la meme paire
+    // (tracker, zone, kind) a deja emis < VIOLATION_DEBOUNCE_MS. Cas typique :
+    // vehicule arrete pile sur la limite, le GPS jitter genere ENTER/EXIT/ENTER
+    // toutes les 30s. On garde le 1er, on jette les suivants.
+    const debounceKey = `${trackerId}:${zone.id}:${violation}`;
+    const now = Date.now();
+    const lastEmit = this.violationDebounce.get(debounceKey);
+    if (lastEmit && now - lastEmit < GeofencesService.VIOLATION_DEBOUNCE_MS) {
+      this.logger.debug(
+        `[GEOFENCE] debounced ${violation} zone "${zone.name}" tracker ${trackerImei} (last ${Math.round((now - lastEmit) / 1000)}s ago)`,
+      );
+      return;
+    }
+    this.violationDebounce.set(debounceKey, now);
+
     this.logger.warn(`[GEOFENCE] ${violation} zone "${zone.name}" by tracker ${trackerImei}`);
 
     const alertType = violation === 'ENTER' ? AlertType.GEOFENCE_ENTER : AlertType.GEOFENCE_EXIT;

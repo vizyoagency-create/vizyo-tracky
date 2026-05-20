@@ -355,8 +355,18 @@ export class NotificationsApiService {
 
   async subscribePush(): Promise<{ ok: boolean; reason?: string }> {
     if (!this.isPushSupported()) return { ok: false, reason: 'Push non supporte par ce navigateur' };
+
+    // V1.10 (Sprint 4) — garantit que loadStatus a tourne avant requestPermission.
+    // Sinon (si le caller invoque subscribePush sans avoir attendu loadStatus),
+    // on risquait d'afficher la modale de permission browser puis de constater
+    // que le serveur a push desactive => UX casse (permission demandee pour rien).
+    if (this.pushEnabled() === null) {
+      await this.loadStatus().catch(() => undefined);
+    }
+
     const key = this.publicKey();
     if (!key) return { ok: false, reason: 'Push desactive cote serveur' };
+    if (this.pushEnabled() !== true) return { ok: false, reason: 'Push desactive cote serveur' };
 
     const permission = await Notification.requestPermission();
     if (permission !== 'granted') {
