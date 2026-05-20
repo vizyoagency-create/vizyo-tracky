@@ -27,6 +27,14 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const realtime = inject(RealtimeService);
   const toast = inject(ToastService);
 
+  // V1.10 (Sprint 6) — withCredentials: true active l'envoi des cookies
+  // httpOnly tracky_at / tracky_rt poses au login. Le backend les lit en
+  // priorite (cf. JwtAuthGuard). Le header Authorization reste injecte en
+  // fallback pour la migration progressive : tant que le localStorage token
+  // n'est pas retire (necessaire pour le WS handshake qui ne supporte pas
+  // les cookies cross-origin de maniere fiable), les 2 modes cohabitent.
+  req = req.clone({ withCredentials: true });
+
   // Ne pas intercepter les requêtes auth (login, refresh)
   if (req.url.includes('/auth/login') || req.url.includes('/auth/refresh')) {
     const token = auth.token;

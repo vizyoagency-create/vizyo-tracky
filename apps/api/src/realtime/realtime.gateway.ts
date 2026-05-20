@@ -1,7 +1,8 @@
-import { Logger } from '@nestjs/common';
+import { Logger, OnModuleDestroy } from '@nestjs/common';
 import {
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
@@ -15,13 +16,65 @@ import { AuthService } from '../auth/auth.service';
   cors: { origin: process.env.CORS_ORIGIN ?? 'http://localhost:4200', credentials: true },
   namespace: '/realtime',
 })
-export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit, OnModuleDestroy {
   private readonly logger = new Logger(RealtimeGateway.name);
+
+  // V1.10 (Sprint 6) — clients Redis pour le pub/sub adapter Socket.io.
+  // Stockes en propriete pour pouvoir les quit() au shutdown propre.
+  private redisPub: { quit: () => Promise<unknown> } | null = null;
+  private redisSub: { quit: () => Promise<unknown> } | null = null;
 
   @WebSocketServer()
   server!: Server;
 
   constructor(private readonly auth: AuthService) {}
+
+  /**
+   * V1.10 (Sprint 6) — branche l'adapter Redis sur le Socket.io server si
+   * REDIS_URL est defini. Sans Redis (mode dev / single-instance prod), le
+   * memory adapter par defaut reste actif — comportement inchange.
+   *
+   * Avec Redis, plusieurs instances API partagent leurs broadcasts WS via
+   * pub/sub. Permet de scale horizontalement derriere un load balancer sans
+   * que les events restent confines a l'instance qui les a recus.
+   *
+   * Best effort : si le require @socket.io/redis-adapter ou la connexion
+   * Redis echoue, on log et on continue en memoire (degradation gracieuse,
+   * pas de crash boot).
+   */
+  async afterInit(server: Server): Promise<void> {
+    const redisUrl = process.env.REDIS_URL;
+    if (!redisUrl) {
+      this.logger.log('[ws-adapter] REDIS_URL absent — memory adapter (single instance)');
+      return;
+    }
+    try {
+      // Dynamic require pour ne pas crash si la dep n'est pas installee (CI minimal,
+      // dev sans Redis). En prod, package.json l'a en dependances directes.
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { createAdapter } = require('@socket.io/redis-adapter') as typeof import('@socket.io/redis-adapter');
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const Redis = require('ioredis').default ?? require('ioredis');
+
+      this.redisPub = new Redis(redisUrl);
+      this.redisSub = ((this.redisPub as unknown) as { duplicate: () => unknown }).duplicate() as { quit: () => Promise<unknown> };
+      server.adapter(createAdapter(this.redisPub as any, this.redisSub as any));
+      this.logger.log(`[ws-adapter] Redis adapter active (multi-instance ready)`);
+    } catch (err) {
+      this.logger.warn(
+        `[ws-adapter] Redis adapter init failed, falling back to memory: ${err instanceof Error ? err.message : err}`,
+      );
+      this.redisPub = null;
+      this.redisSub = null;
+    }
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await Promise.all([
+      this.redisPub?.quit().catch(() => undefined),
+      this.redisSub?.quit().catch(() => undefined),
+    ]);
+  }
 
   async handleConnection(client: Socket): Promise<void> {
     try {

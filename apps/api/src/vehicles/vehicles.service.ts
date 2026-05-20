@@ -41,6 +41,28 @@ export class VehiclesService {
     },
   } as const;
 
+  /**
+   * V1.10 (Sprint 6 perf) — select Tracker reduit aux champs reellement
+   * consommes par le frontend dans une liste (carte, fiche, dashboard). Evite
+   * de transferer ~25 champs internes Tracker (sampling state, fix intervals,
+   * verboseUntil, etc.) qui n'interessent que /admin/observability.
+   * Reduction payload list ~75% a 50 vehicules.
+   */
+  private static readonly TRACKER_LIST_SELECT = {
+    id: true,
+    imei: true,
+    status: true,
+    lastSeenAt: true,
+    lastLat: true,
+    lastLng: true,
+    lastSpeedKmh: true,
+    lastHeading: true,
+    lastIgnition: true,
+    lastValid: true,
+    lastPositionAt: true,
+    accConnected: true,
+  } as const;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly cache: InMemoryCacheService,
@@ -145,18 +167,37 @@ export class VehiclesService {
       where.tracker = { is: null };
     }
 
+    // V1.10 (Sprint 6 perf) — tracker select reduit (au lieu d'include: true)
+    // pour ne pas transferer les champs internes inutiles a la liste.
     return this.prisma.vehicle.findMany({
       where,
-      include: { tracker: true, ...VehiclesService.CURRENT_DRIVER_INCLUDE },
+      include: {
+        tracker: { select: VehiclesService.TRACKER_LIST_SELECT },
+        ...VehiclesService.CURRENT_DRIVER_INCLUDE,
+      },
       orderBy: { createdAt: 'desc' },
       take: limit,
       ...(filters?.cursor ? { skip: 1, cursor: { id: filters.cursor } } : {}),
-    });
+    }) as Promise<Vehicle[]>;
   }
 
   async findOne(id: string, requestedBy: RequestedBy): Promise<Vehicle> {
-    const vehicle = await this.prisma.vehicle.findUnique({
-      where: { id },
+    // V1.10 (Sprint 6) — IDOR fix : filtre tenant integre au where (404 plutot
+    // que 403 pour ne pas leak l'existence cross-fleet via timing).
+    const where: Prisma.VehicleWhereInput = { id };
+    if (requestedBy.role !== UserRole.SUPER_ADMIN) {
+      if (!requestedBy.fleetId) throw new NotFoundException('Véhicule introuvable');
+      where.fleetId = requestedBy.fleetId;
+    }
+    if (requestedBy.accessibleVehicleIds && requestedBy.accessibleVehicleIds !== 'ALL') {
+      // Acces granulaire : un VIEWER restreint a un groupe doit aussi voir ses
+      // vehicules autorises (sinon il a un 404 sur ses propres ressources).
+      if (!requestedBy.accessibleVehicleIds.includes(id)) {
+        throw new NotFoundException('Véhicule introuvable');
+      }
+    }
+    const vehicle = await this.prisma.vehicle.findFirst({
+      where,
       include: {
         tracker: true,
         schedule: { select: { enabled: true } },
@@ -165,10 +206,6 @@ export class VehiclesService {
     });
 
     if (!vehicle) throw new NotFoundException('Véhicule introuvable');
-
-    if (requestedBy.role !== UserRole.SUPER_ADMIN && vehicle.fleetId !== requestedBy.fleetId) {
-      throw new ForbiddenException('Accès refusé à ce véhicule');
-    }
 
     // Vérifier accès véhicule pour les sous-utilisateurs
     if (requestedBy.accessibleVehicleIds && requestedBy.accessibleVehicleIds !== 'ALL' && !requestedBy.accessibleVehicleIds.includes(vehicle.id)) {

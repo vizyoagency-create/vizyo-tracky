@@ -13,9 +13,11 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
+import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { AssignDriverDto } from '../drivers/dto/assign-driver.dto';
 import { DriversService } from '../drivers/drivers.service';
@@ -26,7 +28,7 @@ import type { RequestedBy } from './vehicles.service';
 import { VehiclesService } from './vehicles.service';
 
 @Controller('vehicles')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class VehiclesController {
   constructor(
     private readonly vehicles: VehiclesService,
@@ -54,6 +56,7 @@ export class VehiclesController {
 
   @Post()
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
+  @RequirePermissions('vehicles_create')
   create(@Body() dto: CreateVehicleDto, @Req() req: AuthenticatedRequest) {
     return this.vehicles.create(dto, {
       userId: req.user.id,
@@ -82,7 +85,8 @@ export class VehiclesController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
+  @RequirePermissions('vehicles_edit')
   update(@Param('id') id: string, @Body() dto: UpdateVehicleDto, @Req() req: AuthenticatedRequest) {
     return this.vehicles.update(id, dto, {
       userId: req.user.id,
@@ -93,7 +97,8 @@ export class VehiclesController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
+  @RequirePermissions('vehicles_delete')
   remove(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.vehicles.remove(id, {
       userId: req.user.id,
@@ -108,6 +113,7 @@ export class VehiclesController {
    */
   @Patch(':id/driver')
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER)
+  @RequirePermissions('drivers_manage')
   assignDriver(
     @Param('id') id: string,
     @Body() dto: AssignDriverDto,
