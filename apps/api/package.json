@@ -96,6 +96,10 @@
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
+    "moduleNameMapper": {
+      "^@vizyo/tracky-shared$": "<rootDir>/../../../packages/shared/src/index.ts",
+      "^@vizyo/tracky-shared/(.*)$": "<rootDir>/../../../packages/shared/src/$1"
+    },
     "collectCoverageFrom": [
       "**/*.(t|j)s",
       "!**/*.spec.ts",

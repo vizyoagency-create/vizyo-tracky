@@ -58,7 +58,8 @@ const otherAdmin = { userId: USER_ID, role: UserRole.FLEET_ADMIN, fleetId: OTHER
 describe('AlertsService', () => {
   let service: AlertsService;
   let prisma: {
-    alert: { create: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock; update: jest.Mock; updateMany: jest.Mock; count: jest.Mock };
+    // V1.10 (Sprint 6) — findFirst pour le filtre tenant integre au where.
+    alert: { create: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock; findFirst: jest.Mock; update: jest.Mock; updateMany: jest.Mock; count: jest.Mock };
     surveillanceProfile: { findUnique: jest.Mock };
     surveillanceEvent: { create: jest.Mock };
   };
@@ -70,6 +71,7 @@ describe('AlertsService', () => {
         create: jest.fn().mockImplementation(({ data }) => Promise.resolve(alertRecord(data))),
         findMany: jest.fn().mockResolvedValue([alertRecord()]),
         findUnique: jest.fn().mockResolvedValue(alertRecord()),
+        findFirst: jest.fn().mockResolvedValue(alertRecord()),
         update: jest.fn().mockImplementation(({ data }) => Promise.resolve(alertRecord(data))),
         updateMany: jest.fn().mockResolvedValue({ count: 3 }),
         count: jest.fn().mockResolvedValue(5),
@@ -150,7 +152,7 @@ describe('AlertsService', () => {
 
   // 7. acknowledge: marks + broadcast
   it('should acknowledge and broadcast', async () => {
-    prisma.alert.findUnique.mockResolvedValue(alertRecord());
+    prisma.alert.findFirst.mockResolvedValue(alertRecord());
     const result = await service.acknowledge(ALERT_ID, admin);
     expect(prisma.alert.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ acknowledgedBy: USER_ID }) }),
@@ -160,15 +162,18 @@ describe('AlertsService', () => {
 
   // 8. acknowledge: idempotent
   it('should be idempotent on already acknowledged alert', async () => {
-    prisma.alert.findUnique.mockResolvedValue(alertRecord({ acknowledgedAt: new Date() }));
+    prisma.alert.findFirst.mockResolvedValue(alertRecord({ acknowledgedAt: new Date() }));
     const result = await service.acknowledge(ALERT_ID, admin);
     expect(prisma.alert.update).not.toHaveBeenCalled();
   });
 
-  // 9. acknowledge: cross-fleet refused
+  // 9. acknowledge: cross-fleet refused → NotFoundException
+  // V1.10 (Sprint 6) — le filtre fleetId integre au where via findFirst renvoie
+  // null pour les non-SUPER d'une autre flotte. Changement volontaire de 403
+  // vers 404 pour ne pas leak l'existence des ressources cross-fleet.
   it('should refuse cross-fleet acknowledge', async () => {
-    prisma.alert.findUnique.mockResolvedValue(alertRecord());
-    await expect(service.acknowledge(ALERT_ID, otherAdmin)).rejects.toThrow(ForbiddenException);
+    prisma.alert.findFirst.mockResolvedValue(null);
+    await expect(service.acknowledge(ALERT_ID, otherAdmin)).rejects.toThrow(NotFoundException);
   });
 
   // 10. countUnacknowledged

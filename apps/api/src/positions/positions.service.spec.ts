@@ -36,15 +36,19 @@ const posRecord = (i: number) => ({
 
 describe('PositionsService.list', () => {
   let service: PositionsService;
+  // V1.10 (Sprint 6) — vehicle.findFirst ajoute au mock car le service applique
+  // le filtre tenant via where au lieu d'un check after-find. Le tracker continue
+  // d'utiliser findUnique car la securite passe par la verification de
+  // tracker.vehicle.fleetId apres lookup.
   let prisma: {
-    vehicle: { findUnique: jest.Mock };
+    vehicle: { findUnique: jest.Mock; findFirst: jest.Mock };
     tracker: { findUnique: jest.Mock; update: jest.Mock };
-    position: { findMany: jest.Mock; create: jest.Mock };
+    position: { findMany: jest.Mock; create: jest.Mock; createMany: jest.Mock };
   };
 
   beforeEach(async () => {
     prisma = {
-      vehicle: { findUnique: jest.fn() },
+      vehicle: { findUnique: jest.fn(), findFirst: jest.fn() },
       tracker: {
         findUnique: jest.fn().mockResolvedValue({
           id: TRACKER_ID,
@@ -55,6 +59,7 @@ describe('PositionsService.list', () => {
       position: {
         findMany: jest.fn().mockResolvedValue([posRecord(1), posRecord(2), posRecord(3)]),
         create: jest.fn(),
+        createMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
     };
 
@@ -72,6 +77,12 @@ describe('PositionsService.list', () => {
           recordDecision: jest.fn().mockResolvedValue(undefined),
         } },
         { provide: PositionBroadcastBuffer, useValue: { enqueue: jest.fn().mockReturnValue(true) } },
+        // V1.10 (Sprint 6) — PositionBatchBufferService injecte par PositionsService
+        // pour batcher les INSERT. Mock minimal qui no-op enqueue.
+        {
+          provide: (await import('./position-batch-buffer.service')).PositionBatchBufferService,
+          useValue: { enqueue: jest.fn(), flush: jest.fn().mockResolvedValue(undefined) },
+        },
         { provide: TrackerFixModeService, useValue: {
           desiredIntervalFor: jest.fn().mockReturnValue(30),
           reconcile: jest.fn().mockReturnValue({ nextCurrentFixIntervalS: 30, nextFailureCount: 0, nextFailing: false }),
@@ -92,7 +103,8 @@ describe('PositionsService.list', () => {
   });
 
   it('should resolve trackerId from vehicleId', async () => {
-    prisma.vehicle.findUnique.mockResolvedValue({
+    // V1.10 (Sprint 6) — vehicle.findFirst (filtre tenant integre au where).
+    prisma.vehicle.findFirst.mockResolvedValue({
       id: VEHICLE_ID,
       fleetId: FLEET_ID,
       tracker: { id: TRACKER_ID },
@@ -102,8 +114,10 @@ describe('PositionsService.list', () => {
   });
 
   it('should reject cross-fleet access', async () => {
+    // V1.10 (Sprint 6) — le service rejette le tracker d'une autre flotte
+    // avec NotFoundException (cf. tracker.vehicle.fleetId check apres findUnique).
     await expect(service.list(otherAdmin, { trackerId: TRACKER_ID }))
-      .rejects.toThrow(ForbiddenException);
+      .rejects.toThrow(NotFoundException);
   });
 
   it('should throw BadRequest when no trackerId or vehicleId', async () => {

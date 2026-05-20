@@ -46,8 +46,11 @@ const vehicleRecord = (overrides: Record<string, unknown> = {}) => ({
 describe('TrackersService', () => {
   let service: TrackersService;
   let prisma: {
-    tracker: { create: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock; update: jest.Mock; delete: jest.Mock };
-    vehicle: { findUnique: jest.Mock };
+    // V1.10 (Sprint 6) — findFirst ajoute aux mocks car le service utilise
+    // maintenant findFirst pour appliquer le filtre tenant via la relation
+    // tracker.vehicle.fleetId. Idem pour vehicle (filtre tenant direct).
+    tracker: { create: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock; findFirst: jest.Mock; update: jest.Mock; delete: jest.Mock };
+    vehicle: { findUnique: jest.Mock; findFirst: jest.Mock };
   };
 
   beforeEach(async () => {
@@ -56,6 +59,7 @@ describe('TrackersService', () => {
         create: jest.fn().mockImplementation(({ data }) => Promise.resolve(trackerRecord(data))),
         findMany: jest.fn().mockResolvedValue([trackerRecord()]),
         findUnique: jest.fn().mockResolvedValue(trackerRecord()),
+        findFirst: jest.fn().mockResolvedValue(trackerRecord()),
         update: jest.fn().mockImplementation(({ data }) =>
           Promise.resolve(trackerRecord({ ...data, vehicle: data.vehicleId ? vehicleRecord() : null })),
         ),
@@ -63,6 +67,7 @@ describe('TrackersService', () => {
       },
       vehicle: {
         findUnique: jest.fn().mockResolvedValue(vehicleRecord()),
+        findFirst: jest.fn().mockResolvedValue(vehicleRecord()),
       },
     };
 
@@ -107,7 +112,8 @@ describe('TrackersService', () => {
 
   // 4. remove refusé si tracker assigné
   it('should reject delete when tracker is assigned', async () => {
-    prisma.tracker.findUnique.mockResolvedValue(
+    // V1.10 (Sprint 6) — findOne utilise maintenant findFirst pour le filtre tenant.
+    prisma.tracker.findFirst.mockResolvedValue(
       trackerRecord({ vehicleId: VEHICLE_ID, vehicle: vehicleRecord() }),
     );
 
@@ -119,8 +125,8 @@ describe('TrackersService', () => {
 
   // 5. assign tracker libre à véhicule libre → OK
   it('should assign free tracker to free vehicle', async () => {
-    prisma.tracker.findUnique.mockResolvedValue(trackerRecord());
-    prisma.vehicle.findUnique.mockResolvedValue(vehicleRecord());
+    prisma.tracker.findFirst.mockResolvedValue(trackerRecord());
+    prisma.vehicle.findFirst.mockResolvedValue(vehicleRecord());
 
     const result = await service.assign(TRACKER_ID, VEHICLE_ID, fleetAdmin);
     expect(prisma.tracker.update).toHaveBeenCalledWith(
@@ -131,13 +137,13 @@ describe('TrackersService', () => {
 
   // 6. assign tracker déjà assigné → BadRequestException avec plaque
   it('should reject assign when tracker already assigned to another vehicle', async () => {
-    prisma.tracker.findUnique.mockResolvedValue(
+    prisma.tracker.findFirst.mockResolvedValue(
       trackerRecord({
         vehicleId: 'other-vehicle-id',
         vehicle: { id: 'other-vehicle-id', plate: 'ZZ-999-ZZ', fleetId: FLEET_ID },
       }),
     );
-    prisma.vehicle.findUnique.mockResolvedValue(vehicleRecord());
+    prisma.vehicle.findFirst.mockResolvedValue(vehicleRecord());
 
     await expect(
       service.assign(TRACKER_ID, VEHICLE_ID, fleetAdmin),
@@ -149,8 +155,8 @@ describe('TrackersService', () => {
 
   // 7. assign véhicule qui a déjà un tracker
   it('should reject assign when vehicle already has another tracker', async () => {
-    prisma.tracker.findUnique.mockResolvedValue(trackerRecord());
-    prisma.vehicle.findUnique.mockResolvedValue(
+    prisma.tracker.findFirst.mockResolvedValue(trackerRecord());
+    prisma.vehicle.findFirst.mockResolvedValue(
       vehicleRecord({
         tracker: { id: OTHER_TRACKER, imei: '999888777666555' },
       }),
@@ -164,20 +170,23 @@ describe('TrackersService', () => {
     ).rejects.toThrow(/999888777666555/);
   });
 
-  // 8. assign cross-fleet refusé (non-SUPER_ADMIN)
+  // 8. assign cross-fleet refusé (non-SUPER_ADMIN) → NotFoundException
+  // V1.10 (Sprint 6) — le filtre fleetId integre au where rejette via findFirst
+  // qui renvoie null. C'est NotFoundException (au lieu de 403 avant).
   it('should reject cross-fleet assign for non-SUPER_ADMIN', async () => {
-    prisma.tracker.findUnique.mockResolvedValue(trackerRecord());
-    prisma.vehicle.findUnique.mockResolvedValue(vehicleRecord({ fleetId: FLEET_ID }));
+    // Le vehicleWhere du service filtre par fleetId du caller (OTHER_FLEET pour
+    // otherFleetAdmin). Le vehicle dans FLEET_ID ne match pas -> findFirst null.
+    prisma.vehicle.findFirst.mockResolvedValue(null);
 
     await expect(
       service.assign(TRACKER_ID, VEHICLE_ID, otherFleetAdmin),
-    ).rejects.toThrow(ForbiddenException);
+    ).rejects.toThrow(NotFoundException);
   });
 
   // 9. assign cross-fleet accepté (SUPER_ADMIN)
   it('should allow cross-fleet assign for SUPER_ADMIN', async () => {
-    prisma.tracker.findUnique.mockResolvedValue(trackerRecord());
-    prisma.vehicle.findUnique.mockResolvedValue(vehicleRecord({ fleetId: OTHER_FLEET }));
+    prisma.tracker.findFirst.mockResolvedValue(trackerRecord());
+    prisma.vehicle.findFirst.mockResolvedValue(vehicleRecord({ fleetId: OTHER_FLEET }));
 
     const crossFleetSuperAdmin = { ...superAdmin, fleetId: OTHER_FLEET };
     const result = await service.assign(TRACKER_ID, VEHICLE_ID, crossFleetSuperAdmin);
@@ -186,7 +195,7 @@ describe('TrackersService', () => {
 
   // 10. unassign d'un tracker non assigné → idempotent
   it('should be idempotent when unassigning an unassigned tracker', async () => {
-    prisma.tracker.findUnique.mockResolvedValue(trackerRecord({ vehicleId: null }));
+    prisma.tracker.findFirst.mockResolvedValue(trackerRecord({ vehicleId: null }));
 
     const result = await service.unassign(TRACKER_ID, fleetAdmin);
     expect(result.vehicleId).toBeNull();
