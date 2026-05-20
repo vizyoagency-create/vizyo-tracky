@@ -56,6 +56,26 @@
         "timeout": "3s",
         "strategy": "freshness"
       }
+    },
+    {
+      "name": "api-list-readonly",
+      "urls": [
+        "/api/vehicles",
+        "/api/vehicles/stats",
+        "/api/geofences",
+        "/api/drivers",
+        "/api/vehicle-groups",
+        "/api/users",
+        "/api/notifications/rules",
+        "/api/notifications/push/subscriptions",
+        "/api/trips/daily-summary"
+      ],
+      "cacheConfig": {
+        "maxSize": 30,
+        "maxAge": "2m",
+        "timeout": "5s",
+        "strategy": "freshness"
+      }
     }
   ]
 }

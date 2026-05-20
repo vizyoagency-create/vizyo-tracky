@@ -2,6 +2,7 @@ import {
   AfterViewInit,
   Component,
   computed,
+  DestroyRef,
   effect,
   ElementRef,
   HostListener,
@@ -10,6 +11,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DecimalPipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -1581,6 +1583,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private readonly engineControl = inject(EngineControlService);
   private readonly visibility = inject(VisibilityService);
   private readonly toast = inject(ToastService);
+  // V1.10 (Sprint 5 stabilite) — DestroyRef pour brancher takeUntilDestroyed
+  // sur les subscribe() qui sortent du cycle de vie automatique (ex: callbacks
+  // imperatifs comme onEngineModalConfirm).
+  private readonly destroyRef = inject(DestroyRef);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly http = inject(HttpClient);
@@ -3394,7 +3400,13 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     if (!trackerId) return;
 
     this.engineModalLoading.set(true);
-    this.engineControl.requestCommand(trackerId, action, 'depuis carte', hasSchedule || undefined).subscribe({
+    // V1.10 (Sprint 5 stabilite) — takeUntilDestroyed annule la souscription
+    // si le composant est detruit avant la reponse (cas user qui change de
+    // page entre le click et l'ack reseau). Evite le warning "callback on
+    // destroyed component".
+    this.engineControl.requestCommand(trackerId, action, 'depuis carte', hasSchedule || undefined).pipe(
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe({
       next: () => {
         this.toast.show({
           kind: 'info',
