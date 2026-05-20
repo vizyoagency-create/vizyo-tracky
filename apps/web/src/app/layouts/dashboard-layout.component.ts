@@ -1,4 +1,5 @@
 import { Component, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterOutlet, RouterLink, RouterLinkActive, NavigationEnd, Router } from '@angular/router';
 import {
   LucideAngularModule,
@@ -550,7 +551,10 @@ export class DashboardLayoutComponent {
   private readonly notif = inject(NotificationsApiService);
 
   constructor() {
-    this.router.events.subscribe((event) => {
+    // V1.10 (Sprint 5 stabilite) — takeUntilDestroyed evite l'accumulation de
+    // subscriptions sur router.events si le layout est detruit/recree (cas
+    // logout puis re-login dans la meme session navigateur).
+    this.router.events.pipe(takeUntilDestroyed()).subscribe((event) => {
       if (event instanceof NavigationEnd) {
         const child = this.route.firstChild;
         const data = child?.snapshot.data ?? {};

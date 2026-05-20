@@ -16,7 +16,10 @@ describe('InvitationsService.create — validation', () => {
   let service: InvitationsService;
   let prisma: {
     user: { findUnique: jest.Mock; create: jest.Mock };
-    invitation: { findFirst: jest.Mock; create: jest.Mock };
+    // V1.10 (Sprint 6) — updateMany ajoute au mock car InvitationsService.create
+    // auto-revoke les anciennes invitations PENDING pour le meme email (cf.
+    // invitations.service.ts:94). Sans ce mock, "updateMany is not a function".
+    invitation: { findFirst: jest.Mock; create: jest.Mock; updateMany: jest.Mock };
     fleet: { findUnique: jest.Mock };
   };
   let email: { isEnabled: jest.Mock; send: jest.Mock; buildInvitationEmail: jest.Mock };
@@ -31,6 +34,7 @@ describe('InvitationsService.create — validation', () => {
           tokenHash: 'hash', expiresAt: data.expiresAt, status: 'PENDING',
           createdById: data.createdById, acceptedAt: null, createdAt: new Date(),
         })),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       fleet: { findUnique: jest.fn().mockResolvedValue({ id: FLEET_ID, name: 'Demo' }) },
     };
@@ -83,15 +87,30 @@ describe('InvitationsService.create — validation', () => {
     })).rejects.toThrow(ConflictException);
   });
 
-  it('rejects when a pending invitation exists', async () => {
-    prisma.user.findUnique.mockResolvedValue(null);
-    prisma.invitation.findFirst.mockResolvedValue({ id: 'pending', email: 'a@b.com' });
-    await expect(service.create({
+  it('auto-revokes pending invitations for the same email on re-invite', async () => {
+    // V1.10 (Sprint 6) — le code ne throw plus si une invitation PENDING
+    // existe ; il l'auto-revoke via updateMany pour permettre un resend
+    // (cf. invitations.service.ts:94 — "Auto-revoke any existing PENDING ...").
+    prisma.user.findUnique.mockImplementation(({ where }) => {
+      if (where.id === ADMIN_USER_ID) {
+        return Promise.resolve({
+          id: ADMIN_USER_ID, email: 'admin@b.com',
+          role: UserRole.SUPER_ADMIN, fleetId: FLEET_ID,
+        });
+      }
+      return Promise.resolve(null);
+    });
+    prisma.invitation.updateMany.mockResolvedValue({ count: 1 });
+    await service.create({
       email: 'a@b.com',
       role: UserRole.VIEWER,
       fleetId: FLEET_ID,
       requestedByUserId: ADMIN_USER_ID,
-    })).rejects.toThrow(ConflictException);
+    });
+    expect(prisma.invitation.updateMany).toHaveBeenCalledWith({
+      where: { email: 'a@b.com', status: 'PENDING' },
+      data: { status: 'REVOKED' },
+    });
   });
 
   it('FLEET_ADMIN cannot invite to a different fleet', async () => {

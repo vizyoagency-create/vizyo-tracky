@@ -6,7 +6,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { CommandStatus, EngineAction, UserRole } from '@prisma/client';
+import { CommandStatus, EngineAction, Prisma, UserRole } from '@prisma/client';
 import type { EngineControlCommand } from '@prisma/client';
 import type { CobanCommand } from '@vizyo/tracky-shared';
 import { encodeCommand } from '@vizyo/tracky-shared';
@@ -51,8 +51,16 @@ export class EngineControlService {
     source: 'MANUAL' | 'SCHEDULER' = 'MANUAL',
     disableSchedule?: boolean,
   ): Promise<EngineControlCommand> {
-    const tracker = await this.prisma.tracker.findUnique({
-      where: { id: trackerId },
+    // V1.10 (Sprint 6) — IDOR fix : filtre tenant integre au where pour
+    // empecher un user d'envoyer un CUT/RESTORE sur un tracker d'une autre
+    // flotte en enumerant les trackerId.
+    const trackerWhere: Prisma.TrackerWhereInput = { id: trackerId };
+    if (requestedBy.role !== UserRole.SUPER_ADMIN) {
+      if (!requestedBy.fleetId) throw new NotFoundException('Tracker introuvable');
+      trackerWhere.vehicle = { fleetId: requestedBy.fleetId };
+    }
+    const tracker = await this.prisma.tracker.findFirst({
+      where: trackerWhere,
       include: { vehicle: { include: { fleet: true } } },
     });
 
@@ -65,12 +73,6 @@ export class EngineControlService {
     }
 
     const fleetId = tracker.vehicle.fleetId;
-
-    if (requestedBy.role !== UserRole.SUPER_ADMIN) {
-      if (fleetId !== requestedBy.fleetId) {
-        throw new ForbiddenException('Accès refusé à cette flotte');
-      }
-    }
 
     if (action === EngineAction.CUT) {
       const lastPosition = await this.prisma.position.findFirst({
@@ -326,22 +328,19 @@ export class EngineControlService {
   }
 
   async getCommand(id: string, requestedBy: RequestedBy): Promise<EngineControlCommand> {
-    const command = await this.prisma.engineControlCommand.findUnique({
-      where: { id },
+    // V1.10 (Sprint 6) — IDOR fix : filtre tenant via la relation tracker.vehicle.
+    const where: Prisma.EngineControlCommandWhereInput = { id };
+    if (requestedBy.role !== UserRole.SUPER_ADMIN) {
+      if (!requestedBy.fleetId) throw new NotFoundException('Commande introuvable');
+      where.tracker = { vehicle: { fleetId: requestedBy.fleetId } };
+    }
+    const command = await this.prisma.engineControlCommand.findFirst({
+      where,
       include: { tracker: { include: { vehicle: true } } },
     });
-
     if (!command) {
       throw new NotFoundException('Commande introuvable');
     }
-
-    if (requestedBy.role !== UserRole.SUPER_ADMIN) {
-      const fleetId = (command as any).tracker?.vehicle?.fleetId;
-      if (fleetId !== requestedBy.fleetId) {
-        throw new ForbiddenException('Accès refusé à cette commande');
-      }
-    }
-
     return command;
   }
 }

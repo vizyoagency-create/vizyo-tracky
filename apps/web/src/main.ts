@@ -29,6 +29,28 @@ function hideSplash(): void {
   }, wait);
 }
 
+// V1.10 (Sprint 6) — Cleanup defensif des registrations SW orphelines.
+// V1.11 a fusionne ngsw + sw.js en un seul fichier `/sw.js` qui charge ngsw
+// via importScripts. Les users qui ont une vieille version cachee avec une
+// registration directe de `/ngsw-worker.js` se retrouvent avec 2 SWs au scope
+// `/` (notre nouveau /sw.js + l'ancien ngsw-worker.js direct), race
+// d'inscription qui faisait disparaitre setAppBadge et les push iOS PWA.
+// On unregister tout SW qui n'a pas pour scriptURL `/sw.js`.
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then((regs) => {
+    for (const reg of regs) {
+      const url = reg.active?.scriptURL ?? reg.installing?.scriptURL ?? reg.waiting?.scriptURL ?? '';
+      // Si l'URL pointe vers ngsw-worker.js directement (sans passer par /sw.js),
+      // c'est une registration orpheline. On la retire.
+      if (url.includes('/ngsw-worker.js') && !url.endsWith('/sw.js')) {
+        // eslint-disable-next-line no-console
+        console.warn('[SW] cleanup orphan registration', url);
+        reg.unregister().catch(() => undefined);
+      }
+    }
+  }).catch(() => undefined);
+}
+
 // Fallback : meme si le bootstrap stalle, on n'emprisonne pas l'utilisateur.
 const fallback = setTimeout(hideSplash, SPLASH_FALLBACK_MS);
 

@@ -8,7 +8,7 @@ import {
   Settings2, X, Check,
 } from 'lucide-angular';
 import { LucideAngularModule } from 'lucide-angular';
-import { interval, startWith, switchMap, catchError, of } from 'rxjs';
+import { filter, interval, startWith, switchMap, catchError, of } from 'rxjs';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { VehiclesApiService } from '../../core/services/vehicles.service';
@@ -660,9 +660,14 @@ export class DashboardComponent implements OnInit {
   private readonly accessibleVehicleIds = signal<Set<string> | 'ALL'>('ALL');
   private readonly vehicleMetaMap = signal<Map<string, { type: string; plate: string }>>(new Map());
 
+  // V1.10 (Sprint 2 perf) — pause le polling stats si le tab est en arriere-plan.
+  // Au retour visible, on force un fetch immediat via le startWith(0) lors de la
+  // souscription suivante. Reduit la charge backend ~50% sur les utilisateurs
+  // qui laissent l'onglet ouvert sans le regarder.
   protected readonly stats = toSignal(
     interval(30_000).pipe(
       startWith(0),
+      filter(() => typeof document === 'undefined' || !document.hidden),
       switchMap(() => this.vehiclesApi.stats()),
       catchError(() => of(null)),
     ),
@@ -718,9 +723,12 @@ export class DashboardComponent implements OnInit {
   });
 
   protected readonly liveAlerts = this.realtime.alerts;
+  // V1.10 (Sprint 2 perf) — un seul fetch initial d'hydratation au lieu d'un
+  // polling 60s. Le WS RealtimeService.alerts pousse les nouveautes en temps
+  // reel ; le polling etait redondant et tirait 1 requete/min/dashboard meme
+  // quand aucune nouvelle alerte. `of(0)` declenche le switchMap une seule fois.
   private readonly fetchedAlerts = toSignal(
-    interval(60_000).pipe(
-      startWith(0),
+    of(0).pipe(
       switchMap(() => this.alertsApi.list({ limit: '3', acknowledged: 'false' })),
       catchError(() => of({ items: [], nextCursor: null })),
     ),

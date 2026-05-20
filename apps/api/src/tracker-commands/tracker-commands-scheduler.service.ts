@@ -35,7 +35,7 @@ export class TrackerCommandsSchedulerService {
         await this.commandsService.dispatch(
           command,
           command.tracker.imei,
-          command.tracker.vehicle?.fleetId,
+          command.tracker.vehicle?.fleetId ?? null,
         );
       } catch (err) {
         this.logger.warn(

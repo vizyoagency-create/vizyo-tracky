@@ -74,21 +74,20 @@ export class TrackersService {
   }
 
   async findOne(id: string, requestedBy: RequestedBy): Promise<Tracker> {
-    const tracker = await this.prisma.tracker.findUnique({
-      where: { id },
+    // V1.10 (Sprint 6) — IDOR fix : filtre tenant integre au where (404 si
+    // tracker d'une autre flotte). SUPER_ADMIN voit tout (incl. trackers
+    // orphelins en stock). Non-SUPER ne voit que les trackers attaches a
+    // un vehicule de sa flotte ; les trackers libres restent invisibles.
+    const where: Prisma.TrackerWhereInput = { id };
+    if (requestedBy.role !== UserRole.SUPER_ADMIN) {
+      if (!requestedBy.fleetId) throw new NotFoundException('Tracker introuvable');
+      where.vehicle = { fleetId: requestedBy.fleetId };
+    }
+    const tracker = await this.prisma.tracker.findFirst({
+      where,
       include: { vehicle: true },
     });
-
     if (!tracker) throw new NotFoundException('Tracker introuvable');
-
-    if (
-      requestedBy.role !== UserRole.SUPER_ADMIN &&
-      tracker.vehicleId &&
-      (tracker as any).vehicle?.fleetId !== requestedBy.fleetId
-    ) {
-      throw new ForbiddenException('Accès refusé à ce tracker');
-    }
-
     return tracker;
   }
 
@@ -132,25 +131,37 @@ export class TrackersService {
     vehicleId: string,
     requestedBy: RequestedBy,
   ): Promise<Tracker> {
-    const tracker = await this.prisma.tracker.findUnique({
-      where: { id: trackerId },
-      include: { vehicle: true },
-    });
-
-    if (!tracker) throw new NotFoundException('Tracker introuvable');
-
-    const vehicle = await this.prisma.vehicle.findUnique({
-      where: { id: vehicleId },
+    // V1.10 (Sprint 6) — IDOR fix : filtre tenant integre au where pour le
+    // vehicule (404 si autre flotte) et pour le tracker (libre OU dans la
+    // flotte du caller).
+    const vehicleWhere: Prisma.VehicleWhereInput = { id: vehicleId };
+    if (requestedBy.role !== UserRole.SUPER_ADMIN) {
+      if (!requestedBy.fleetId) throw new NotFoundException('Véhicule introuvable');
+      vehicleWhere.fleetId = requestedBy.fleetId;
+    }
+    const vehicle = await this.prisma.vehicle.findFirst({
+      where: vehicleWhere,
       include: { tracker: true },
     });
-
     if (!vehicle) throw new NotFoundException('Véhicule introuvable');
 
+    const trackerWhere: Prisma.TrackerWhereInput = { id: trackerId };
     if (requestedBy.role !== UserRole.SUPER_ADMIN) {
-      if (vehicle.fleetId !== requestedBy.fleetId) {
-        throw new ForbiddenException('Le véhicule appartient à une autre flotte');
-      }
+      // requestedBy.fleetId est garanti non-null ici car le check sur vehicleWhere
+      // au-dessus a deja throw NotFoundException si null. Re-asserter pour TS.
+      const fleetId = requestedBy.fleetId;
+      if (!fleetId) throw new NotFoundException('Tracker introuvable');
+      // Tracker libre (vehicleId null) OU rattache a un vehicule de la flotte.
+      trackerWhere.OR = [
+        { vehicleId: null },
+        { vehicle: { fleetId } },
+      ];
     }
+    const tracker = await this.prisma.tracker.findFirst({
+      where: trackerWhere,
+      include: { vehicle: true },
+    });
+    if (!tracker) throw new NotFoundException('Tracker introuvable');
 
     if (tracker.vehicleId && tracker.vehicleId !== vehicleId) {
       const currentVehicle = (tracker as any).vehicle;

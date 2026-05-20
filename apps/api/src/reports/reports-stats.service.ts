@@ -126,43 +126,89 @@ export class ReportsStatsService {
     const totalVehicles = vehicles.length;
     const fuelPrice = fleet.fuelPriceEurL;
 
+    // V1.10 (Sprint 2 perf) — toutes les agregations sont poussees en SQL au
+    // lieu de charger tous les trips en memoire + reduce JS. A 30j × 100 vehicules
+    // = ~15k trips, on passe d'un payload Prisma ~30 MB en RAM a 4 requetes
+    // d'agregation + 1 findMany capee pour le detail "recents".
+    //
+    // Le filtre vehicleIds (feature d3dca0c) est conserve via tripVehicleFilter
+    // injecte dans le where commun.
     const tripVehicleFilter = isVehicleScopeRestricted
       ? { vehicleId: { in: uniqueRequestedIds } }
       : {};
+    const tripWhere = {
+      fleetId,
+      ...tripVehicleFilter,
+      startedAt: { lte: to },
+      endedAt: { gte: from, not: null },
+    } as const;
+    const alertWhere = {
+      fleetId,
+      createdAt: { gte: from, lte: to },
+      // Quand un filtre vehicleIds est actif, les alertes sans vehicleId
+      // (ex. tracker isole) sont exclues par definition du sous-ensemble.
+      ...(isVehicleScopeRestricted ? { vehicleId: { in: uniqueRequestedIds } } : {}),
+    } as const;
+    const recentTripsCap = this.clampRecentTripsCap(filters?.maxRecentTrips);
 
-    const trips = await this.prisma.trip.findMany({
-      where: {
-        fleetId,
-        ...tripVehicleFilter,
-        startedAt: { lte: to },
-        endedAt: { gte: from, not: null },
-      },
-      select: {
-        id: true, vehicleId: true, distanceKm: true, durationSeconds: true,
-        avgSpeed: true, maxSpeed: true, startedAt: true, endedAt: true,
-        notes: true,
-        vehicle: { select: { plate: true } },
-        driver: { select: { firstName: true, lastName: true } },
-      },
-      orderBy: { startedAt: 'desc' },
-    });
+    // 1) Aggregations globales : sum / avg / max / count en une requete SQL.
+    // 2) Group by vehicleId : pour topVehicles + activeVehicleIds.
+    // 3) Group by type/severity sur alerts.
+    // 4) Detail des 30 trajets recents (avec includes pour le PDF).
+    // 5) Group by alerts type + severity.
+    const [tripAgg, tripsByVehicle, alertsByType, alertsBySeverity, recentTripsRaw] =
+      await Promise.all([
+        this.prisma.trip.aggregate({
+          where: tripWhere,
+          _count: { _all: true },
+          _sum: { distanceKm: true, durationSeconds: true },
+          _avg: { avgSpeed: true },
+          _max: { maxSpeed: true },
+        }),
+        this.prisma.trip.groupBy({
+          by: ['vehicleId'],
+          where: tripWhere,
+          _sum: { distanceKm: true },
+          _count: { _all: true },
+        }),
+        this.prisma.alert.groupBy({
+          by: ['type'],
+          where: alertWhere,
+          _count: { _all: true },
+        }),
+        this.prisma.alert.groupBy({
+          by: ['severity'],
+          where: alertWhere,
+          _count: { _all: true },
+        }),
+        this.prisma.trip.findMany({
+          where: tripWhere,
+          select: {
+            id: true, vehicleId: true, distanceKm: true, durationSeconds: true,
+            startedAt: true, endedAt: true,
+            notes: true,
+            vehicle: { select: { plate: true } },
+            driver: { select: { firstName: true, lastName: true } },
+          },
+          orderBy: { startedAt: 'desc' },
+          take: recentTripsCap,
+        }),
+      ]);
 
-    const tripCount = trips.length;
-    const totalKm = trips.reduce((sum, t) => sum + Math.max(0, t.distanceKm), 0);
-    const totalSeconds = trips.reduce((sum, t) => sum + Math.max(0, t.durationSeconds), 0);
-    const avgSpeedKmh = trips.length > 0
-      ? trips.reduce((sum, t) => sum + (t.avgSpeed || 0), 0) / trips.length
-      : 0;
-    const maxSpeedKmh = trips.reduce((max, t) => Math.max(max, t.maxSpeed || 0), 0);
-    const activeVehicleIds = new Set(trips.map((t) => t.vehicleId));
+    const tripCount = tripAgg._count._all;
+    const totalKm = tripAgg._sum.distanceKm ?? 0;
+    const totalSeconds = tripAgg._sum.durationSeconds ?? 0;
+    const avgSpeedKmh = tripAgg._avg.avgSpeed ?? 0;
+    const maxSpeedKmh = tripAgg._max.maxSpeed ?? 0;
+    const activeVehicleIds = new Set(tripsByVehicle.map((g) => g.vehicleId));
 
-    // Per-vehicle aggregation for "topVehicles" + global consumption.
+    // Map perVehicle pour calcul carburant + top.
     const perVehicle = new Map<string, { distanceKm: number; tripCount: number }>();
-    for (const t of trips) {
-      const cur = perVehicle.get(t.vehicleId) ?? { distanceKm: 0, tripCount: 0 };
-      cur.distanceKm += Math.max(0, t.distanceKm);
-      cur.tripCount += 1;
-      perVehicle.set(t.vehicleId, cur);
+    for (const g of tripsByVehicle) {
+      perVehicle.set(g.vehicleId, {
+        distanceKm: g._sum.distanceKm ?? 0,
+        tripCount: g._count._all,
+      });
     }
 
     let totalLiters = 0;
@@ -186,23 +232,10 @@ export class ReportsStatsService {
     }
     topVehicles.sort((a, b) => b.distanceKm - a.distanceKm);
 
-    // Alerts. Quand un filtre vehicleIds est actif, on ne remonte que les
-    // alertes rattachees a ces vehicules (les alertes sans vehicleId — ex.
-    // tracker isole — sont exclues du sous-ensemble par definition).
-    const alerts = await this.prisma.alert.findMany({
-      where: {
-        fleetId,
-        createdAt: { gte: from, lte: to },
-        ...(isVehicleScopeRestricted ? { vehicleId: { in: uniqueRequestedIds } } : {}),
-      },
-      select: { type: true, severity: true },
-    });
-    const alertTypeMap = new Map<string, number>();
-    const alertSevMap = new Map<string, number>();
-    for (const a of alerts) {
-      alertTypeMap.set(a.type, (alertTypeMap.get(a.type) ?? 0) + 1);
-      alertSevMap.set(a.severity, (alertSevMap.get(a.severity) ?? 0) + 1);
-    }
+    // V1.10 (Sprint 2 perf) — totalAlerts agrege depuis le groupBy au lieu
+    // d'un findMany separe. Le where du groupBy applique deja le filtre
+    // vehicleIds (cf. alertWhere ci-dessus).
+    const totalAlerts = alertsByType.reduce((sum, g) => sum + g._count._all, 0);
 
     return {
       fleet: { id: fleet.id, name: fleet.name },
@@ -220,9 +253,9 @@ export class ReportsStatsService {
         maxSpeedKmh: Math.round(maxSpeedKmh * 10) / 10,
       },
       alerts: {
-        total: alerts.length,
-        byType: Array.from(alertTypeMap, ([type, count]) => ({ type, count })),
-        bySeverity: Array.from(alertSevMap, ([severity, count]) => ({ severity, count })),
+        total: totalAlerts,
+        byType: alertsByType.map((g) => ({ type: g.type as string, count: g._count._all })),
+        bySeverity: alertsBySeverity.map((g) => ({ severity: g.severity as string, count: g._count._all })),
       },
       consumption: {
         estimatedLiters: Math.round(totalLiters * 10) / 10,
@@ -230,7 +263,9 @@ export class ReportsStatsService {
         fuelPriceEurL: fuelPrice,
       },
       topVehicles: topVehicles.slice(0, 10),
-      recentTrips: trips.slice(0, this.clampRecentTripsCap(filters?.maxRecentTrips)).map((t) => ({
+      // V1.10 (Sprint 2 perf) — pas de slice ici, le take=recentTripsCap dans
+      // le findMany ci-dessus a deja limite cote DB.
+      recentTrips: recentTripsRaw.map((t) => ({
         id: t.id,
         plate: t.vehicle?.plate ?? '',
         startedAt: t.startedAt.toISOString(),

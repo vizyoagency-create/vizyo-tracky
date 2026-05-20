@@ -1,5 +1,6 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, HttpStatus, Logger, Post, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpCode, HttpStatus, Logger, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { Request, Response } from 'express';
 import { AuthClientService } from '../auth-client/auth-client.service';
 import { EmailService } from '../email/email.service';
 import { InvitationsService } from '../invitations/invitations.service';
@@ -8,8 +9,34 @@ import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import type { AuthenticatedRequest } from './guards/jwt-auth.guard';
-import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { ACCESS_COOKIE_NAME, JwtAuthGuard } from './guards/jwt-auth.guard';
 import type { Env } from '../config/env.validation';
+
+// V1.10 (Sprint 6) — cookies httpOnly pour les JWT.
+//   - tracky_at : access token, courte duree (~15 min selon Vizyo Auth).
+//   - tracky_rt : refresh token, longue duree (~30 jours).
+// Both : httpOnly (pas lisible par JS, defense XSS), secure en prod (HTTPS only),
+// sameSite=lax (compatible OAuth-like + protege contre CSRF basique).
+const REFRESH_COOKIE_NAME = 'tracky_rt';
+const ACCESS_TTL_S = 15 * 60;
+const REFRESH_TTL_S = 30 * 24 * 60 * 60;
+
+function setAuthCookies(res: Response, accessToken: string, refreshToken: string): void {
+  const isProd = process.env.NODE_ENV === 'production';
+  const common = {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: 'lax' as const,
+    path: '/',
+  };
+  res.cookie(ACCESS_COOKIE_NAME, accessToken, { ...common, maxAge: ACCESS_TTL_S * 1000 });
+  res.cookie(REFRESH_COOKIE_NAME, refreshToken, { ...common, maxAge: REFRESH_TTL_S * 1000 });
+}
+
+function clearAuthCookies(res: Response): void {
+  res.clearCookie(ACCESS_COOKIE_NAME, { path: '/' });
+  res.clearCookie(REFRESH_COOKIE_NAME, { path: '/' });
+}
 
 @Controller('auth')
 export class AuthController {
@@ -41,20 +68,48 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  login(@Body() dto: LoginDto) {
-    return this.auth.login(dto.email, dto.password);
+  async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.auth.login(dto.email, dto.password);
+    // V1.10 (Sprint 6) — pose les cookies httpOnly. Le body continue de
+    // contenir les tokens pour la backward compat des clients legacy /
+    // SDK externes (header Authorization). Le frontend Tracky n'utilise
+    // que les cookies via withCredentials.
+    setAuthCookies(res, result.accessToken, result.refreshToken);
+    return result;
   }
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  refresh(@Body() dto: RefreshDto) {
-    return this.authClient.refresh(dto.refreshToken);
+  async refresh(
+    @Body() dto: Partial<RefreshDto>,
+    @Req() req: Request & { cookies?: Record<string, string> },
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    // V1.10 (Sprint 6) — lit le refresh token depuis le cookie en priorite,
+    // fallback body pour backward compat. Pose les nouveaux cookies dans tous
+    // les cas (rotation refresh token cote Vizyo Auth).
+    const refreshToken = req.cookies?.['tracky_rt'] ?? dto.refreshToken;
+    if (!refreshToken) {
+      throw new BadRequestException('Refresh token absent (ni cookie ni body)');
+    }
+    const result = await this.authClient.refresh(refreshToken);
+    setAuthCookies(res, result.accessToken, result.refreshToken);
+    return result;
   }
 
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
-  logout(@Body() dto: RefreshDto) {
-    return this.authClient.logout(dto.refreshToken);
+  async logout(
+    @Body() dto: Partial<RefreshDto>,
+    @Req() req: Request & { cookies?: Record<string, string> },
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const refreshToken = req.cookies?.['tracky_rt'] ?? dto.refreshToken;
+    clearAuthCookies(res);
+    if (refreshToken) {
+      // Best effort logout cote Vizyo Auth (revoque le refresh token).
+      await this.authClient.logout(refreshToken).catch(() => undefined);
+    }
   }
 
   @Get('me')

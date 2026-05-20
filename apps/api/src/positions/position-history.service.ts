@@ -28,6 +28,16 @@ import { PrismaService } from '../prisma/prisma.service';
 
 const FINE_RANGE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 const FINE_RETENTION_DAYS = 90;
+// V1.10 (Sprint 6) — caps pour le mode fine.
+//   MAX_FINE_POINTS_OUT : nombre max de points renvoyes au frontend. Au-dela,
+//   le client commence a freezer (parse JSON + render layer polyline). 5000
+//   est un compromis : visuellement riche, payload ~400 KB, parse < 50ms.
+//   FORCE_COMPACT_ABOVE_MS : si le user demande detail=fine sur une fenetre
+//   plus large que 14j, on force compact. Au-dela, meme downsample reste
+//   pesant (transfert + parse), et les polylines Trip donnent un meilleur
+//   visuel (Douglas-Peucker deja applique a la cloture du trip).
+const MAX_FINE_POINTS_OUT = 5000;
+const FORCE_COMPACT_ABOVE_MS = 14 * 24 * 60 * 60 * 1000;
 
 interface RequestedBy {
   role: UserRole | string;
@@ -112,7 +122,15 @@ export class PositionHistoryService {
     }
 
     const rangeMs = to.getTime() - from.getTime();
-    const detail = this.resolveDetail(params.detail, rangeMs);
+    let detail = this.resolveDetail(params.detail, rangeMs);
+
+    // V1.10 (Sprint 6) — garde-fou : un user qui force detail=fine sur > 14j
+    // recoit le mode compact malgre lui. Sinon on chargeait potentiellement
+    // 100k+ positions, browser freeze garanti.
+    if (detail === 'fine' && rangeMs > FORCE_COMPACT_ABOVE_MS) {
+      this.logger.log(`Range > 14j with detail=fine, forcing compact (rangeMs=${rangeMs})`);
+      detail = 'compact';
+    }
 
     if (detail === 'fine') {
       const positions = await this.prisma.position.findMany({
@@ -120,9 +138,22 @@ export class PositionHistoryService {
         orderBy: { timestamp: 'asc' },
         take: 50_000,
       });
+      // V1.10 (Sprint 6) — downsampling stride si on depasse le cap browser-safe.
+      // Stride uniforme (1 point sur N) : preserve la repartition temporelle, pas
+      // de logique geometrique (qui necessiterait Douglas-Peucker). Pour 50k -> 5k,
+      // stride = 10 : 1 point toutes les 5 min en moyenne (vs 30s brut). Visuel
+      // quasi-identique a l'oeil sur des ranges > 24h.
+      const sampled = positions.length > MAX_FINE_POINTS_OUT
+        ? this.strideSample(positions, MAX_FINE_POINTS_OUT)
+        : positions;
+      if (positions.length > MAX_FINE_POINTS_OUT) {
+        this.logger.debug(
+          `Downsampled ${positions.length} -> ${sampled.length} points (stride=${Math.ceil(positions.length / MAX_FINE_POINTS_OUT)})`,
+        );
+      }
       return {
         detail: 'fine',
-        points: positions.map((p) => ({
+        points: sampled.map((p) => ({
           lat: p.lat,
           lng: p.lng,
           timestamp: p.timestamp.toISOString(),
@@ -172,6 +203,25 @@ export class PositionHistoryService {
   private resolveDetail(req: 'auto' | 'fine' | 'compact' | undefined, rangeMs: number): 'fine' | 'compact' {
     if (req === 'fine' || req === 'compact') return req;
     return rangeMs <= FINE_RANGE_THRESHOLD_MS ? 'fine' : 'compact';
+  }
+
+  /**
+   * Stride sampling uniforme : garde le 1er, le dernier, et 1 sur stride entre.
+   * Ne reordonne pas (le tableau d'entree est suppose deja trie par timestamp).
+   * Pas de logique geometrique (Douglas-Peucker serait mieux pour preserver les
+   * virages mais plus cher CPU ; le stride convient pour 5x-10x reduction).
+   */
+  private strideSample<T>(items: T[], targetCount: number): T[] {
+    if (items.length <= targetCount) return items;
+    const stride = Math.ceil(items.length / targetCount);
+    const out: T[] = [];
+    for (let i = 0; i < items.length; i += stride) {
+      out.push(items[i]!);
+    }
+    // Garantir d'inclure le dernier point pour ne pas tronquer la fin du trajet.
+    const last = items[items.length - 1]!;
+    if (out[out.length - 1] !== last) out.push(last);
+    return out;
   }
 
   /**

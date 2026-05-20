@@ -78,10 +78,13 @@ const otherFleetAdmin = { userId: USER_ID, role: UserRole.FLEET_ADMIN, fleetId: 
 
 describe('EngineControlService', () => {
   let service: EngineControlService;
+  // V1.10 (Sprint 6) — findFirst ajoute au mock car requestCommand/getCommand
+  // appliquent maintenant le filtre tenant via la relation tracker.vehicle.fleetId
+  // au lieu d'un check after-find.
   let prisma: {
-    tracker: { findUnique: jest.Mock };
+    tracker: { findUnique: jest.Mock; findFirst: jest.Mock };
     position: { findFirst: jest.Mock };
-    engineControlCommand: { create: jest.Mock; update: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock };
+    engineControlCommand: { create: jest.Mock; update: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock; findFirst: jest.Mock };
     vehicleSchedule: { updateMany: jest.Mock };
   };
   let registry: { get: jest.Mock; send: jest.Mock };
@@ -90,13 +93,14 @@ describe('EngineControlService', () => {
 
   beforeEach(async () => {
     prisma = {
-      tracker: { findUnique: jest.fn() },
+      tracker: { findUnique: jest.fn(), findFirst: jest.fn() },
       position: { findFirst: jest.fn() },
       engineControlCommand: {
         create: jest.fn().mockImplementation(({ data }) => Promise.resolve(createdCommand(data))),
         update: jest.fn().mockImplementation(({ data }) => Promise.resolve(createdCommand(data))),
         findMany: jest.fn().mockResolvedValue([]),
         findUnique: jest.fn(),
+        findFirst: jest.fn(),
       },
       vehicleSchedule: {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -134,31 +138,36 @@ describe('EngineControlService', () => {
 
   // 1. CUT refusé si tracker introuvable
   it('should throw NotFoundException when tracker does not exist', async () => {
-    prisma.tracker.findUnique.mockResolvedValue(null);
+    prisma.tracker.findFirst.mockResolvedValue(null);
     await expect(
       service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin),
     ).rejects.toThrow(NotFoundException);
   });
 
-  // 2. CUT refusé si tracker sans vehicle
+  // 2. CUT refusé si tracker sans vehicle (cas SUPER_ADMIN — pour un fleetAdmin,
+  // le filtre tenant integre au where rejette deja avec un 404).
   it('should throw BadRequestException when tracker has no vehicle', async () => {
-    prisma.tracker.findUnique.mockResolvedValue(trackerWithoutVehicle);
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithoutVehicle);
     await expect(
-      service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin),
+      service.requestCommand(TRACKER_ID, EngineAction.CUT, null, superAdmin),
     ).rejects.toThrow(BadRequestException);
   });
 
-  // 3. CUT refusé si fleetId différent et pas SUPER_ADMIN
-  it('should throw ForbiddenException when fleet mismatch for non-SUPER_ADMIN', async () => {
-    prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+  // 3. CUT refusé si fleetId différent et pas SUPER_ADMIN → maintenant NotFoundException
+  // V1.10 (Sprint 6) — le filtre tenant integre au where via findFirst renvoie null
+  // pour les non-SUPER d'une autre flotte. Changement volontaire de 403 vers 404.
+  it('should throw NotFoundException when fleet mismatch for non-SUPER_ADMIN', async () => {
+    // findFirst renvoie null car le where exige vehicle.fleetId = otherFleetAdmin.fleetId
+    // alors que le tracker est dans FLEET_ID.
+    prisma.tracker.findFirst.mockResolvedValue(null);
     await expect(
       service.requestCommand(TRACKER_ID, EngineAction.CUT, null, otherFleetAdmin),
-    ).rejects.toThrow(ForbiddenException);
+    ).rejects.toThrow(NotFoundException);
   });
 
   // 4. CUT refusé si aucune position → REJECTED_SPEED persistée
   it('should reject CUT and persist REJECTED_SPEED when no position exists', async () => {
-    prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
     prisma.position.findFirst.mockResolvedValue(null);
     await expect(
       service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin),
@@ -174,7 +183,7 @@ describe('EngineControlService', () => {
 
   // 5a. CUT refusé si position stale en mouvement (>60s, speed > 5)
   it('should reject CUT when position is stale while moving (>60s)', async () => {
-    prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
     prisma.position.findFirst.mockResolvedValue(recentPosition(10, 90 * 1000));
     await expect(
       service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin),
@@ -189,7 +198,7 @@ describe('EngineControlService', () => {
 
   // 5b. CUT accepté si position 90s à l'arrêt (seuil adaptatif 10 min)
   it('should allow CUT when position is 90s old but vehicle is at rest', async () => {
-    prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
     prisma.position.findFirst.mockResolvedValue(recentPosition(0, 90 * 1000));
     registry.send.mockReturnValue(false);
     await expect(
@@ -199,7 +208,7 @@ describe('EngineControlService', () => {
 
   // 5c. CUT accepté même si position très ancienne quand véhicule à l'arrêt
   it('should allow CUT when position is very old but vehicle is at rest', async () => {
-    prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
     prisma.position.findFirst.mockResolvedValue(recentPosition(0, 30 * 60 * 1000)); // 30 min
     registry.send.mockReturnValue(false);
     await expect(
@@ -209,7 +218,7 @@ describe('EngineControlService', () => {
 
   // 6. CUT refusé si fix GPS invalide
   it('should reject CUT when GPS fix is invalid', async () => {
-    prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
     prisma.position.findFirst.mockResolvedValue(recentPosition(5, 0, false));
     await expect(
       service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin),
@@ -224,7 +233,7 @@ describe('EngineControlService', () => {
 
   // 7. CUT refusé si speedKmh === 21
   it('should reject CUT when speed is 21 km/h', async () => {
-    prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
     prisma.position.findFirst.mockResolvedValue(recentPosition(21));
     await expect(
       service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin),
@@ -239,7 +248,7 @@ describe('EngineControlService', () => {
 
   // 8. CUT refusé si speedKmh === 20.01
   it('should reject CUT when speed is 20.01 km/h', async () => {
-    prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
     prisma.position.findFirst.mockResolvedValue(recentPosition(20.01));
     await expect(
       service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin),
@@ -248,7 +257,7 @@ describe('EngineControlService', () => {
 
   // 9. CUT ACCEPTÉ si speedKmh === 20.0 → PENDING puis FAILED (tracker offline)
   it('should accept CUT at 20.0 km/h then fail dispatch (offline)', async () => {
-    prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
     prisma.position.findFirst.mockResolvedValue(recentPosition(20.0));
     registry.send.mockReturnValue(false);
 
@@ -268,7 +277,7 @@ describe('EngineControlService', () => {
 
   // 10. CUT ACCEPTÉ + dispatch réussi si tracker connecté
   it('should dispatch CUT to connected tracker and start ACK wait', async () => {
-    prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
     prisma.position.findFirst.mockResolvedValue(recentPosition(0));
     registry.send.mockReturnValue(true);
 
@@ -294,7 +303,7 @@ describe('EngineControlService', () => {
 
   // 11. SUPER_ADMIN peut CUT sur une autre flotte
   it('should allow SUPER_ADMIN to CUT on any fleet', async () => {
-    prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
     prisma.position.findFirst.mockResolvedValue(recentPosition(5));
     registry.send.mockReturnValue(false);
 
@@ -306,7 +315,7 @@ describe('EngineControlService', () => {
 
   // 12. RESTORE accepté même avec speed = 100
   it('should allow RESTORE even when speed is 100 km/h', async () => {
-    prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
     registry.send.mockReturnValue(false);
 
     await expect(
@@ -320,7 +329,7 @@ describe('EngineControlService', () => {
 
   // 13. RESTORE accepté même sans aucune position
   it('should allow RESTORE even when no position exists', async () => {
-    prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
     prisma.position.findFirst.mockResolvedValue(null);
     registry.send.mockReturnValue(false);
 
@@ -333,7 +342,7 @@ describe('EngineControlService', () => {
 
   // 14. ACK timeout → command set to FAILED
   it('should set command to FAILED when ACK times out', async () => {
-    prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
     prisma.position.findFirst.mockResolvedValue(recentPosition(0));
     registry.send.mockReturnValue(true);
     ackWaiter.waitForAck.mockRejectedValue(new Error('ACK timeout after 15000ms'));
@@ -354,7 +363,7 @@ describe('EngineControlService', () => {
 
   // 15. WS event emitted on REJECTED_SPEED
   it('should emit WS event when CUT is rejected for speed', async () => {
-    prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
     prisma.position.findFirst.mockResolvedValue(recentPosition(25));
 
     await expect(

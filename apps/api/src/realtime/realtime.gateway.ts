@@ -11,6 +11,12 @@ import type { Alert, Vehicle, Tracker } from '@prisma/client';
 import { Server, Socket } from 'socket.io';
 import { AuthService } from '../auth/auth.service';
 
+// V1.10 (Sprint 6) — Le Redis adapter est branche au niveau IoAdapter custom
+// dans main.ts (RedisIoAdapter). Plus de hook afterInit ici : la signature
+// `server.adapter()` n'est pas disponible sur le namespace server quand on
+// utilise un @WebSocketGateway avec namespace, il faut le faire sur le main
+// Socket.io Server via IoAdapter.createIOServer.
+
 @WebSocketGateway({
   cors: { origin: process.env.CORS_ORIGIN ?? 'http://localhost:4200', credentials: true },
   namespace: '/realtime',

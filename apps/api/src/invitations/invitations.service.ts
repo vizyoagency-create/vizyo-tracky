@@ -8,7 +8,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { UserRole } from '@prisma/client';
+import { Prisma, UserRole } from '@prisma/client';
 import { createHash, randomBytes } from 'crypto';
 import * as jwt from 'jsonwebtoken';
 import { AuthClientService } from '../auth-client/auth-client.service';
@@ -293,11 +293,14 @@ export class InvitationsService {
   }
 
   async revoke(invitationId: string, requestedBy: { id: string; role: UserRole; fleetId: string | null }) {
-    const inv = await this.prisma.invitation.findUnique({ where: { id: invitationId } });
-    if (!inv) throw new NotFoundException('Invitation introuvable');
-    if (requestedBy.role !== UserRole.SUPER_ADMIN && inv.fleetId !== requestedBy.fleetId) {
-      throw new ForbiddenException('Acces refuse');
+    // Filtre tenant integre au where (404 plutot que 403 cross-fleet).
+    const where: Prisma.InvitationWhereInput = { id: invitationId };
+    if (requestedBy.role !== UserRole.SUPER_ADMIN) {
+      if (!requestedBy.fleetId) throw new NotFoundException('Invitation introuvable');
+      where.fleetId = requestedBy.fleetId;
     }
+    const inv = await this.prisma.invitation.findFirst({ where });
+    if (!inv) throw new NotFoundException('Invitation introuvable');
     if (inv.status !== 'PENDING') return inv;
     return this.prisma.invitation.update({
       where: { id: invitationId },

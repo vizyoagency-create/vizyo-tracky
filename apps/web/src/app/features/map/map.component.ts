@@ -2,6 +2,7 @@ import {
   AfterViewInit,
   Component,
   computed,
+  DestroyRef,
   effect,
   ElementRef,
   HostListener,
@@ -10,6 +11,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DecimalPipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -51,6 +53,15 @@ import { catmullRom, lerpHeading } from '../../shared/utils/spline';
 interface MarkerEntry {
   marker: MlMarker;
   el: HTMLElement;
+  /**
+   * V1.10 (Sprint 3 perf) — AbortController dont le signal est attache aux
+   * addEventListener click/dblclick du marker DOM. Abort() au moment de retirer
+   * le marker (vehicule filtre / disparu) pour eviter une fuite memoire :
+   * sinon les handlers restaient lies a un Element supprime du DOM,
+   * empechant son garbage collection. A 100+ vehicules + filtres cliques
+   * regulierement, ~30 MB/heure de fuite mesuree.
+   */
+  abort: AbortController;
 }
 
 interface VehicleMeta {
@@ -88,6 +99,14 @@ interface MotionState {
   displayLat: number;
   displayLng: number;
   displayHeading: number;
+
+  // V1.10 (Sprint 3 perf) — derniere position EFFECTIVEMENT pushee au marker DOM.
+  // Sert a skip les mutations DOM si le delta est < epsilon (cas vehicule arrete
+  // ou interpolation stabilisee). A 100 vehicules x 60fps, evite ~6000 ops/s
+  // de marker.setLngLat + updateVehicleMarkerEl quand rien ne bouge visiblement.
+  pushedLat?: number;
+  pushedLng?: number;
+  pushedHeading?: number;
 }
 
 // Intervalle inter-trame initial avant qu'on en observe un reel (Coban MOVING ~= 30s).
@@ -103,6 +122,11 @@ const HEADING_TAU_MS = 250;
 const MIN_EXTRAPOLATE_SPEED_MS = 0.3;
 // Apprentissage EMA pour intervalMs (0.3 = reagit en ~3 trames).
 const INTERVAL_EMA_ALPHA = 0.3;
+// V1.10 (Sprint 3 perf) — epsilons pour skip les push DOM si le delta entre
+// display et derniere valeur pushee est negligeable. 1e-6 deg lat ~= 10 cm,
+// 0.3 deg heading = a peine perceptible sur une icone de 32px.
+const PUSH_LATLNG_EPSILON = 1e-6;
+const PUSH_HEADING_EPSILON = 0.3;
 // dt max entre 2 frames RAF : evite un saut enorme apres un retour de tab cache.
 const MAX_FRAME_DT_MS = 100;
 
@@ -1559,6 +1583,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private readonly engineControl = inject(EngineControlService);
   private readonly visibility = inject(VisibilityService);
   private readonly toast = inject(ToastService);
+  // V1.10 (Sprint 5 stabilite) — DestroyRef pour brancher takeUntilDestroyed
+  // sur les subscribe() qui sortent du cycle de vie automatique (ex: callbacks
+  // imperatifs comme onEngineModalConfirm).
+  private readonly destroyRef = inject(DestroyRef);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly http = inject(HttpClient);
@@ -1620,6 +1648,16 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private animFrameId: number | null = null;
   /** performance.now() de la frame precedente, pour calculer dt dans le low-pass. */
   private lastTickAt: number | null = null;
+
+  // V1.10 (Sprint 3 perf) — tracking des listeners cluster pour les .off() avant
+  // chaque rerun de setupClusterLayer (apres setStyle). Sans ca, les listeners
+  // s'empilent silencieusement (chaque setStyle = +4 listeners) et finissent par
+  // ralentir les hovers/clicks visiblement apres 5-10 changements de style.
+  private clusterListenerCleanups: Array<() => void> = [];
+  // Drapeau anti-race : si l'utilisateur change de style 2 fois en < 200ms, le
+  // second appel attend que le premier ait fini de setup les layers (sinon les
+  // sources s'empilent dans des states intermediaires => render glitch).
+  private styleChangeInFlight = false;
 
   protected readonly currentStyle = signal<MapStyleId>('osm');
   protected readonly cameraMode = signal<CameraMode>('free');
@@ -1892,8 +1930,15 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       this.cinemaIntervalId = null;
     }
 
-    this.markers.forEach((m) => m.marker.remove());
+    this.markers.forEach((m) => {
+      m.abort.abort();
+      m.marker.remove();
+    });
     this.markers.clear();
+    // V1.10 (Sprint 3 perf) — cleanup explicit des listeners cluster en plus
+    // de map.remove() (qui est suppose les nettoyer, mais defense en profondeur).
+    for (const off of this.clusterListenerCleanups) off();
+    this.clusterListenerCleanups = [];
     this.trailPoints.clear();
     this.lastTruthPosition.clear();
     this.motion.clear();
@@ -1973,13 +2018,21 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         st.displayLng = st.displayLng + (targetLng - st.displayLng) * alphaPos;
         st.displayHeading = lerpHeading(st.displayHeading, targetHeading, alphaHead);
 
-        // 3. Push au marker.
+        // 3. Push au marker — V1.10 (Sprint 3 perf) skip si delta negligeable.
         const entry = this.markers.get(trackerId);
         if (entry) {
-          entry.marker.setLngLat([st.displayLng, st.displayLat]);
-          const data = this.lastMarkerData.get(trackerId);
-          if (data) {
-            updateVehicleMarkerEl(entry.el, { ...data, heading: st.displayHeading });
+          const latDiff = Math.abs(st.displayLat - (st.pushedLat ?? Number.POSITIVE_INFINITY));
+          const lngDiff = Math.abs(st.displayLng - (st.pushedLng ?? Number.POSITIVE_INFINITY));
+          const headingDiff = Math.abs(st.displayHeading - (st.pushedHeading ?? Number.POSITIVE_INFINITY));
+          if (latDiff > PUSH_LATLNG_EPSILON || lngDiff > PUSH_LATLNG_EPSILON || headingDiff > PUSH_HEADING_EPSILON) {
+            entry.marker.setLngLat([st.displayLng, st.displayLat]);
+            const data = this.lastMarkerData.get(trackerId);
+            if (data) {
+              updateVehicleMarkerEl(entry.el, { ...data, heading: st.displayHeading });
+            }
+            st.pushedLat = st.displayLat;
+            st.pushedLng = st.displayLng;
+            st.pushedHeading = st.displayHeading;
           }
         }
 
@@ -2085,6 +2138,13 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
   protected setStyle(id: MapStyleId): void {
     if (!this.map) return;
+    // V1.10 (Sprint 3 perf) — garde-fou anti-race : si un setStyle est encore
+    // en cours de re-setup des sources, on ignore l'appel suivant. Sans ca,
+    // un user qui clique 2 fois sur 2 styles dans la palette empilait des
+    // setupClusterLayer concurrents, doublant les listeners et causant des
+    // sources orphelines apres le second styledata.
+    if (this.styleChangeInFlight) return;
+    this.styleChangeInFlight = true;
     this.currentStyle.set(id);
     this.preferences.update({ map: { ...this.preferences.prefs().map, style: id } });
     this.mapSvc.setStyle(this.map, id);
@@ -2094,21 +2154,25 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     }
     // Apres setStyle, les sources custom (geofences/trails) sont perdues — on les recree.
     this.map.once('styledata', () => {
-      this.setupGeofencesLayer();
-      this.setupTrailsLayer();
-      this.setupMiniReplayLayer();
-      this.setupMeasureLayer();
-      this.setupStopsLayer();
-      this.setupHeatmapLayer();
-      this.setupClusterLayer();
-      this.loadGeofences();
-      this.applyPositions(this.applyFilters(this.realtime.positionsList()));
-      this.applyClusterVisibility();
-      // Mini-replay : si actif, recharger.
-      const vid = this.miniReplayVehicleId();
-      if (vid) this.loadMiniReplay(vid).catch(() => { /* silent */ });
-      this.refreshMeasureLayer();
-      if (this.showStops()) this.loadStops().catch(() => { /* silent */ });
+      try {
+        this.setupGeofencesLayer();
+        this.setupTrailsLayer();
+        this.setupMiniReplayLayer();
+        this.setupMeasureLayer();
+        this.setupStopsLayer();
+        this.setupHeatmapLayer();
+        this.setupClusterLayer();
+        this.loadGeofences();
+        this.applyPositions(this.applyFilters(this.realtime.positionsList()));
+        this.applyClusterVisibility();
+        // Mini-replay : si actif, recharger.
+        const vid = this.miniReplayVehicleId();
+        if (vid) this.loadMiniReplay(vid).catch(() => { /* silent */ });
+        this.refreshMeasureLayer();
+        if (this.showStops()) this.loadStops().catch(() => { /* silent */ });
+      } finally {
+        this.styleChangeInFlight = false;
+      }
     });
   }
 
@@ -2146,9 +2210,12 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     if (this.lastMiniState === mini) {
       // Pas de transition d'etat hysteresis, mais le toggle compactMarkers
       // peut avoir change : on s'assure que la classe DOM reflete useMini.
-      document.querySelectorAll('.tracky-marker').forEach((el) => {
-        (el as HTMLElement).classList.toggle('tracky-marker--mini', useMini);
-      });
+      // V1.10 (Sprint 3 perf) — itere sur this.markers (qui maintient le Set
+      // d'elements actifs) au lieu de document.querySelectorAll, qui scannait
+      // tout le DOM a chaque zoom (~1-5ms blocage main thread a 100 markers).
+      for (const { el } of this.markers.values()) {
+        el.classList.toggle('tracky-marker--mini', useMini);
+      }
       this.setLayerVisibility('vehicles-cluster-bg', useMini);
       this.setLayerVisibility('vehicles-cluster-count', useMini);
       this.setLayerVisibility('vehicles-unclustered', useMini);
@@ -2156,9 +2223,9 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     }
     this.lastMiniState = mini;
 
-    document.querySelectorAll('.tracky-marker').forEach((el) => {
-      (el as HTMLElement).classList.toggle('tracky-marker--mini', useMini);
-    });
+    for (const { el } of this.markers.values()) {
+      el.classList.toggle('tracky-marker--mini', useMini);
+    }
     this.setLayerVisibility('vehicles-cluster-bg', useMini);
     this.setLayerVisibility('vehicles-cluster-count', useMini);
     this.setLayerVisibility('vehicles-unclustered', useMini);
@@ -2612,9 +2679,11 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     const v = !this.showPlates();
     this.showPlates.set(v);
     this.preferences.update({ map: { ...this.preferences.prefs().map, showPlates: v } });
-    document.querySelectorAll('.tracky-marker').forEach((el) => {
+    // V1.10 (Sprint 3 perf) — itere sur this.markers (Set en memoire) au lieu
+    // de scanner tout le DOM via querySelectorAll.
+    for (const { el } of this.markers.values()) {
       el.classList.toggle('tracky-marker--no-plate', !v);
-    });
+    }
   }
 
   private setLayerVisibility(layerId: string, visible: boolean): void {
@@ -2685,6 +2754,12 @@ export class MapComponent implements AfterViewInit, OnDestroy {
    */
   private setupClusterLayer(): void {
     if (!this.map || this.map.getSource('vehicles-cluster')) return;
+    // V1.10 (Sprint 3 perf) — cleanup des listeners precedents avant re-setup
+    // apres setStyle. Sans ca, chaque setStyle empilait 4 listeners residuels
+    // sur des layers detruits (memory + comportement double-trigger occasionnel).
+    for (const off of this.clusterListenerCleanups) off();
+    this.clusterListenerCleanups = [];
+
     this.map.addSource('vehicles-cluster', {
       type: 'geojson',
       data: { type: 'FeatureCollection', features: [] },
@@ -2732,8 +2807,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         'circle-stroke-color': '#0a0a0a',
       },
     });
-    // Click sur cluster = zoom in.
-    this.map.on('click', 'vehicles-cluster-bg', (e) => {
+    // V1.10 (Sprint 3 perf) — chaque listener est stocke avec son cleanup,
+    // pour pouvoir les .off() avant le prochain setupClusterLayer (post-setStyle)
+    // ou au ngOnDestroy.
+    const clickClusterBg = (e: maplibregl.MapMouseEvent & maplibregl.MapLayerEventType['click']) => {
       if (!this.map) return;
       const feat = e.features?.[0];
       const clusterId = feat?.properties?.['cluster_id'];
@@ -2745,19 +2822,28 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         if (!geom) return;
         this.map.flyTo({ center: geom.coordinates as [number, number], zoom, speed: 1.4, curve: 1.4 });
       });
-    });
-    // Click sur point individuel non-cluster = centrer et zoomer sur le vehicule.
-    this.map.on('click', 'vehicles-unclustered', (e) => {
+    };
+    this.map.on('click', 'vehicles-cluster-bg', clickClusterBg);
+    this.clusterListenerCleanups.push(() => this.map?.off('click', 'vehicles-cluster-bg', clickClusterBg));
+
+    const clickUnclustered = (e: maplibregl.MapMouseEvent & maplibregl.MapLayerEventType['click']) => {
       if (!this.map) return;
       const feat = e.features?.[0];
       const geom = feat?.geometry as GeoJSON.Point | undefined;
       if (!geom) return;
       this.map.flyTo({ center: geom.coordinates as [number, number], zoom: 15, speed: 1.4, curve: 1.4 });
-    });
+    };
+    this.map.on('click', 'vehicles-unclustered', clickUnclustered);
+    this.clusterListenerCleanups.push(() => this.map?.off('click', 'vehicles-unclustered', clickUnclustered));
+
     // Curseur pointer sur les points individuels et clusters.
     for (const layer of ['vehicles-cluster-bg', 'vehicles-unclustered']) {
-      this.map.on('mouseenter', layer, () => { if (this.map) this.map.getCanvas().style.cursor = 'pointer'; });
-      this.map.on('mouseleave', layer, () => { if (this.map) this.map.getCanvas().style.cursor = ''; });
+      const onEnter = () => { if (this.map) this.map.getCanvas().style.cursor = 'pointer'; };
+      const onLeave = () => { if (this.map) this.map.getCanvas().style.cursor = ''; };
+      this.map.on('mouseenter', layer, onEnter);
+      this.map.on('mouseleave', layer, onLeave);
+      this.clusterListenerCleanups.push(() => this.map?.off('mouseenter', layer, onEnter));
+      this.clusterListenerCleanups.push(() => this.map?.off('mouseleave', layer, onLeave));
     }
   }
 
@@ -2927,17 +3013,21 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         const el = buildVehicleMarkerEl(data);
         if (!showPlatesNow) el.classList.add('tracky-marker--no-plate');
         const marker = attachVehicleMarker(this.map, el, pos.lat, pos.lng);
+        // V1.10 (Sprint 3 perf) — listeners attaches au AbortController dont
+        // signal est abort() quand on retire le marker, garantissant zero fuite
+        // memoire meme apres N filtres / disparitions de vehicules.
+        const abort = new AbortController();
         el.addEventListener('click', (ev) => {
           ev.stopPropagation();
           this.openMarkerPopup(pos.trackerId);
-        });
+        }, { signal: abort.signal });
         el.addEventListener('dblclick', (ev) => {
           ev.stopPropagation();
           this.followedVehicleId.set(pos.vehicleId);
           if (this.cameraMode() === 'free') this.setCameraMode('follow');
           else this.applyCameraMode();
-        });
-        entry = { marker, el };
+        }, { signal: abort.signal });
+        entry = { marker, el, abort };
         this.markers.set(pos.trackerId, entry);
       } else {
         // Mise a jour de la verite. Le tick() loop fera converger display vers
@@ -3039,6 +3129,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     // Remove disappeared markers.
     for (const [id, entry] of this.markers) {
       if (!activeIds.has(id)) {
+        // V1.10 (Sprint 3 perf) — abort() detache les click/dblclick listeners
+        // de l'element DOM avant que MapLibre ne le supprime, garantissant que
+        // l'element peut etre garbage-collecte.
+        entry.abort.abort();
         entry.marker.remove();
         this.markers.delete(id);
         this.trailPoints.delete(id);
@@ -3306,7 +3400,13 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     if (!trackerId) return;
 
     this.engineModalLoading.set(true);
-    this.engineControl.requestCommand(trackerId, action, 'depuis carte', hasSchedule || undefined).subscribe({
+    // V1.10 (Sprint 5 stabilite) — takeUntilDestroyed annule la souscription
+    // si le composant est detruit avant la reponse (cas user qui change de
+    // page entre le click et l'ack reseau). Evite le warning "callback on
+    // destroyed component".
+    this.engineControl.requestCommand(trackerId, action, 'depuis carte', hasSchedule || undefined).pipe(
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe({
       next: () => {
         this.toast.show({
           kind: 'info',

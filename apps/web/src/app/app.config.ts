@@ -1,9 +1,10 @@
-import { ApplicationConfig, isDevMode, provideBrowserGlobalErrorListeners, provideZoneChangeDetection } from '@angular/core';
+import { ApplicationConfig, ErrorHandler, isDevMode, provideBrowserGlobalErrorListeners, provideZoneChangeDetection } from '@angular/core';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideRouter, withPreloading, PreloadAllModules, withViewTransitions, TitleStrategy } from '@angular/router';
 import { provideServiceWorker } from '@angular/service-worker';
 
 import { routes } from './app.routes';
+import { GlobalErrorHandler } from './core/error/global-error-handler';
 import { authInterceptor } from './core/interceptors/auth.interceptor';
 import { AppTitleStrategy } from './core/title.strategy';
 
@@ -11,6 +12,10 @@ export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
     provideZoneChangeDetection({ eventCoalescing: true }),
+    // V1.10 (Sprint 5 stabilite) — ErrorHandler global qui toast les erreurs
+    // uncaught (sync, async, promises) avec dedup. Empeche le silence "ca bug
+    // mais on voit rien" remonte par les clients.
+    { provide: ErrorHandler, useClass: GlobalErrorHandler },
     provideRouter(
       routes,
       // Precharge tous les bundles lazy en idle apres le boot initial -> 1er clic instantane

@@ -261,12 +261,14 @@ export class UsersController {
   @Patch(':id')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
   async update(@Param('id') id: string, @Body() dto: UpdateUserDto, @Req() req: AuthenticatedRequest) {
-    const user = await this.prisma.user.findUnique({ where: { id } });
-    if (!user) throw new NotFoundException('User not found');
-
-    if (req.user.role !== UserRole.SUPER_ADMIN && user.fleetId !== req.user.fleetId) {
-      throw new ForbiddenException('Access denied');
+    // Filtre tenant integre au where : 404 si user d'une autre flotte.
+    const where: Prisma.UserWhereInput = { id };
+    if (req.user.role !== UserRole.SUPER_ADMIN) {
+      if (!req.user.fleetId) throw new NotFoundException('User not found');
+      where.fleetId = req.user.fleetId;
     }
+    const user = await this.prisma.user.findFirst({ where });
+    if (!user) throw new NotFoundException('User not found');
 
     // FLEET_ADMIN ne peut pas assigner FLEET_ADMIN ou SUPER_ADMIN
     if (dto.role && req.user.role === UserRole.FLEET_ADMIN && PRIVILEGED_ROLES.includes(dto.role)) {
@@ -296,8 +298,14 @@ export class UsersController {
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
   async archive(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    const user = await this.prisma.user.findUnique({
-      where: { id },
+    // Filtre tenant integre au where : 404 si user d'une autre flotte.
+    const where: Prisma.UserWhereInput = { id };
+    if (req.user.role !== UserRole.SUPER_ADMIN) {
+      if (!req.user.fleetId) throw new NotFoundException('Utilisateur introuvable');
+      where.fleetId = req.user.fleetId;
+    }
+    const user = await this.prisma.user.findFirst({
+      where,
       select: { id: true, authUserId: true, fleetId: true, role: true },
     });
 
@@ -311,11 +319,6 @@ export class UsersController {
     // Impossible de s'archiver soi-meme
     if (user.id === req.user.id) {
       throw new ForbiddenException('Impossible de s\'archiver soi-meme');
-    }
-
-    // Acces flotte
-    if (req.user.role !== UserRole.SUPER_ADMIN && user.fleetId !== req.user.fleetId) {
-      throw new ForbiddenException('Acces refuse');
     }
 
     // 1. Suspendre dans Vizyo Auth (plus de login possible)
@@ -341,14 +344,17 @@ export class UsersController {
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
   async resetPassword(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    const user = await this.prisma.user.findUnique({
-      where: { id },
+    // Filtre tenant integre au where : 404 si user d'une autre flotte.
+    const where: Prisma.UserWhereInput = { id };
+    if (req.user.role !== UserRole.SUPER_ADMIN) {
+      if (!req.user.fleetId) throw new NotFoundException('Utilisateur introuvable');
+      where.fleetId = req.user.fleetId;
+    }
+    const user = await this.prisma.user.findFirst({
+      where,
       select: { id: true, email: true, firstName: true, lastName: true, fleetId: true },
     });
     if (!user) throw new NotFoundException('Utilisateur introuvable');
-    if (req.user.role !== UserRole.SUPER_ADMIN && user.fleetId !== req.user.fleetId) {
-      throw new ForbiddenException('Acces refuse');
-    }
     // Meme flow que forgot-password
     try {
       const result = await this.authClient.requestPasswordReset(user.email);
@@ -377,11 +383,14 @@ export class UsersController {
   @Get(':id/access')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
   async getAccess(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    const user = await this.prisma.user.findUnique({ where: { id } });
-    if (!user) throw new NotFoundException('User not found');
-    if (req.user.role !== UserRole.SUPER_ADMIN && user.fleetId !== req.user.fleetId) {
-      throw new ForbiddenException('Access denied');
+    // Filtre tenant integre au where : 404 si user d'une autre flotte.
+    const where: Prisma.UserWhereInput = { id };
+    if (req.user.role !== UserRole.SUPER_ADMIN) {
+      if (!req.user.fleetId) throw new NotFoundException('User not found');
+      where.fleetId = req.user.fleetId;
     }
+    const user = await this.prisma.user.findFirst({ where });
+    if (!user) throw new NotFoundException('User not found');
 
     const rules = await this.prisma.userVehicleAccess.findMany({
       where: { userId: id },
@@ -401,11 +410,14 @@ export class UsersController {
   @Put(':id/access')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
   async setAccess(@Param('id') id: string, @Body() dto: SetUserAccessDto, @Req() req: AuthenticatedRequest) {
-    const user = await this.prisma.user.findUnique({ where: { id } });
-    if (!user) throw new NotFoundException('User not found');
-    if (req.user.role !== UserRole.SUPER_ADMIN && user.fleetId !== req.user.fleetId) {
-      throw new ForbiddenException('Access denied');
+    // Filtre tenant integre au where : 404 si user d'une autre flotte.
+    const where: Prisma.UserWhereInput = { id };
+    if (req.user.role !== UserRole.SUPER_ADMIN) {
+      if (!req.user.fleetId) throw new NotFoundException('User not found');
+      where.fleetId = req.user.fleetId;
     }
+    const user = await this.prisma.user.findFirst({ where });
+    if (!user) throw new NotFoundException('User not found');
 
     // Supprimer les règles existantes
     await this.prisma.userVehicleAccess.deleteMany({ where: { userId: id } });

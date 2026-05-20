@@ -1,6 +1,7 @@
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { Prisma, UserRole } from '@prisma/client';
+import { InMemoryCacheService } from '../common/cache/in-memory-cache.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { VehiclesService } from './vehicles.service';
 
@@ -29,7 +30,10 @@ const vehicleRecord = (overrides: Record<string, unknown> = {}) => ({
 describe('VehiclesService', () => {
   let service: VehiclesService;
   let prisma: {
-    vehicle: { create: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock; update: jest.Mock; delete: jest.Mock };
+    // V1.10 (Sprint 6) — findFirst ajoute au mock car le service utilise
+    // maintenant findFirst({where:{id, fleetId}}) au lieu de findUnique({id})
+    // suivi de check fleetId, pour eviter l'IDOR cross-fleet.
+    vehicle: { create: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock; findFirst: jest.Mock; update: jest.Mock; delete: jest.Mock };
     tracker: { update: jest.Mock };
   };
 
@@ -39,6 +43,7 @@ describe('VehiclesService', () => {
         create: jest.fn().mockImplementation(({ data }) => Promise.resolve(vehicleRecord(data))),
         findMany: jest.fn().mockResolvedValue([vehicleRecord()]),
         findUnique: jest.fn().mockResolvedValue(vehicleRecord()),
+        findFirst: jest.fn().mockResolvedValue(vehicleRecord()),
         update: jest.fn().mockImplementation(({ data }) => Promise.resolve(vehicleRecord(data))),
         delete: jest.fn().mockResolvedValue(undefined),
       },
@@ -48,7 +53,16 @@ describe('VehiclesService', () => {
     };
 
     const module = await Test.createTestingModule({
-      providers: [VehiclesService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        VehiclesService,
+        { provide: PrismaService, useValue: prisma },
+        // V1.10 (Sprint 6) — VehiclesService depend du cache pour les KPIs.
+        // Mock minimal : passthrough (get retourne undefined -> miss -> compute).
+        {
+          provide: InMemoryCacheService,
+          useValue: { get: jest.fn(), set: jest.fn(), invalidate: jest.fn(), wrap: jest.fn() },
+        },
+      ],
     }).compile();
 
     service = module.get(VehiclesService);
@@ -103,17 +117,21 @@ describe('VehiclesService', () => {
     );
   });
 
-  // 6. findOne cross-fleet → ForbiddenException
-  it('should throw ForbiddenException on cross-fleet findOne', async () => {
-    prisma.vehicle.findUnique.mockResolvedValue(vehicleRecord({ fleetId: OTHER_FLEET }));
+  // 6. findOne cross-fleet → NotFoundException
+  // V1.10 (Sprint 6) — le service integre fleetId dans le where via findFirst.
+  // Si le vehicule n'appartient pas a la flotte du caller, findFirst renvoie null
+  // → NotFoundException (au lieu de 403 avant). C'est volontaire : ne pas leak
+  // l'existence d'un vehicule cross-fleet via timing.
+  it('should throw NotFoundException on cross-fleet findOne', async () => {
+    prisma.vehicle.findFirst.mockResolvedValue(null);
 
-    await expect(service.findOne(VEHICLE_ID, fleetAdmin)).rejects.toThrow(ForbiddenException);
+    await expect(service.findOne(VEHICLE_ID, fleetAdmin)).rejects.toThrow(NotFoundException);
   });
 
   // 7. update ne peut pas changer fleetId (non-SUPER_ADMIN)
   it('should reject fleetId change for non-SUPER_ADMIN', async () => {
-    prisma.vehicle.findUnique.mockResolvedValue(vehicleRecord());
-
+    // update() utilise findOne() → findFirst() qui renvoie le default mock
+    // (vehicleRecord avec FLEET_ID), donc le check fleetId-change kick in.
     await expect(
       service.update(VEHICLE_ID, { fleetId: OTHER_FLEET }, fleetAdmin),
     ).rejects.toThrow(ForbiddenException);
@@ -121,7 +139,8 @@ describe('VehiclesService', () => {
 
   // 8. remove détache le tracker si présent
   it('should detach tracker before deleting vehicle', async () => {
-    prisma.vehicle.findUnique.mockResolvedValue(
+    // remove() utilise findOne() qui passe par findFirst depuis Sprint 6.
+    prisma.vehicle.findFirst.mockResolvedValue(
       vehicleRecord({ tracker: { id: 'tracker-1', imei: '111222333444555' } }),
     );
 
