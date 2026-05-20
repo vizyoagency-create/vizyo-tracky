@@ -1,5 +1,4 @@
 import {
-  ForbiddenException,
   Inject,
   Injectable,
   Logger,
@@ -183,12 +182,17 @@ export class AlertsService {
     id: string,
     requestedBy: RequestedBy,
   ): Promise<Alert> {
-    const alert = await this.prisma.alert.findUnique({ where: { id } });
-    if (!alert) throw new NotFoundException('Alerte introuvable');
-
-    if (requestedBy.role !== UserRole.SUPER_ADMIN && alert.fleetId !== requestedBy.fleetId) {
-      throw new ForbiddenException('Acces refuse a cette alerte');
+    // Filtre tenant dans le where pour eviter l'enumeration cross-fleet.
+    // On renvoie 404 (pas 403) pour ne pas leak l'existence d'une alerte
+    // appartenant a une autre flotte.
+    const where: Prisma.AlertWhereInput = { id };
+    if (requestedBy.role !== UserRole.SUPER_ADMIN) {
+      if (!requestedBy.fleetId) throw new NotFoundException('Alerte introuvable');
+      where.fleetId = requestedBy.fleetId;
     }
+
+    const alert = await this.prisma.alert.findFirst({ where });
+    if (!alert) throw new NotFoundException('Alerte introuvable');
 
     if (alert.acknowledgedAt) return alert;
 

@@ -27,6 +27,8 @@ const CUT_DETECTION_WINDOW_MS = 5 * 60 * 1000;
 interface RequestedBy {
   role: UserRole | string;
   fleetId: string | null;
+  /** Liste des vehicleIds accessibles, ou 'ALL' = aucun filtre granulaire. */
+  accessibleVehicleIds?: string[] | 'ALL';
 }
 
 @Injectable()
@@ -461,16 +463,25 @@ export class PositionsService {
     },
   ): Promise<{ items: Position[]; nextCursor: string | null }> {
     let trackerId = filters.trackerId;
+    const scopedIds =
+      requestedBy.accessibleVehicleIds && requestedBy.accessibleVehicleIds !== 'ALL'
+        ? requestedBy.accessibleVehicleIds
+        : null;
 
     if (!trackerId && filters.vehicleId) {
-      const vehicle = await this.prisma.vehicle.findUnique({
-        where: { id: filters.vehicleId },
+      // Filtre tenant + acces granulaire integres au where : 404 plutot que 403
+      // pour ne pas leak l'existence du vehicule.
+      const vehicleWhere: Prisma.VehicleWhereInput = { id: filters.vehicleId };
+      if (requestedBy.role !== UserRole.SUPER_ADMIN) {
+        if (!requestedBy.fleetId) throw new NotFoundException('Vehicule introuvable');
+        vehicleWhere.fleetId = requestedBy.fleetId;
+      }
+      if (scopedIds) vehicleWhere.id = { in: scopedIds.includes(filters.vehicleId) ? [filters.vehicleId] : [] };
+      const vehicle = await this.prisma.vehicle.findFirst({
+        where: vehicleWhere,
         include: { tracker: true },
       });
       if (!vehicle) throw new NotFoundException('Vehicule introuvable');
-      if (requestedBy.role !== UserRole.SUPER_ADMIN && vehicle.fleetId !== requestedBy.fleetId) {
-        throw new ForbiddenException('Acces refuse');
-      }
       if (!vehicle.tracker) return { items: [], nextCursor: null };
       trackerId = vehicle.tracker.id;
     }
@@ -487,8 +498,12 @@ export class PositionsService {
 
     if (requestedBy.role !== UserRole.SUPER_ADMIN) {
       if (!tracker.vehicle || tracker.vehicle.fleetId !== requestedBy.fleetId) {
-        throw new ForbiddenException('Acces refuse');
+        throw new NotFoundException('Tracker introuvable');
       }
+    }
+    // Acces granulaire : le vehicule porte par le tracker doit etre autorise.
+    if (scopedIds && tracker.vehicle && !scopedIds.includes(tracker.vehicle.id)) {
+      throw new NotFoundException('Tracker introuvable');
     }
 
     const where: Prisma.PositionWhereInput = { trackerId };

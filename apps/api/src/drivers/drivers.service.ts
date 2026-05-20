@@ -1,12 +1,11 @@
 import {
   BadRequestException,
-  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import type { Driver } from '@prisma/client';
-import { UserRole } from '@prisma/client';
+import { Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateDriverDto } from './dto/create-driver.dto';
 import { UpdateDriverDto } from './dto/update-driver.dto';
@@ -45,9 +44,15 @@ export class DriversService {
   }
 
   async findOne(id: string, requestedBy: RequestedBy): Promise<Driver> {
-    const driver = await this.prisma.driver.findUnique({ where: { id } });
+    // Filtre tenant integre au where : un user d'une autre flotte recoit 404
+    // (pas 403) -> pas de leak d'existence via timing NotFoundException.
+    const where: Prisma.DriverWhereInput = { id };
+    if (requestedBy.role !== UserRole.SUPER_ADMIN) {
+      if (!requestedBy.fleetId) throw new NotFoundException('Conducteur introuvable');
+      where.fleetId = requestedBy.fleetId;
+    }
+    const driver = await this.prisma.driver.findFirst({ where });
     if (!driver) throw new NotFoundException('Conducteur introuvable');
-    this.assertSameFleet(driver, requestedBy);
     return driver;
   }
 
@@ -122,18 +127,22 @@ export class DriversService {
     driverId: string | null,
     requestedBy: RequestedBy,
   ) {
-    const vehicle = await this.prisma.vehicle.findUnique({ where: { id: vehicleId } });
-    if (!vehicle) throw new NotFoundException('Vehicule introuvable');
-    if (requestedBy.role !== UserRole.SUPER_ADMIN && vehicle.fleetId !== requestedBy.fleetId) {
-      throw new ForbiddenException('Acces refuse');
+    // Filtre tenant integre au where : 404 si le vehicule appartient a une autre flotte.
+    const vehicleWhere: Prisma.VehicleWhereInput = { id: vehicleId };
+    if (requestedBy.role !== UserRole.SUPER_ADMIN) {
+      if (!requestedBy.fleetId) throw new NotFoundException('Vehicule introuvable');
+      vehicleWhere.fleetId = requestedBy.fleetId;
     }
+    const vehicle = await this.prisma.vehicle.findFirst({ where: vehicleWhere });
+    if (!vehicle) throw new NotFoundException('Vehicule introuvable');
 
     if (driverId) {
-      const driver = await this.prisma.driver.findUnique({ where: { id: driverId } });
+      // Le driver doit imperativement appartenir a la meme flotte que le vehicule
+      // (deja validee comme accessible). On filtre dans le where -> pas d'enumeration.
+      const driver = await this.prisma.driver.findFirst({
+        where: { id: driverId, fleetId: vehicle.fleetId },
+      });
       if (!driver) throw new NotFoundException('Conducteur introuvable');
-      if (driver.fleetId !== vehicle.fleetId) {
-        throw new BadRequestException('Le conducteur appartient a une autre fleet.');
-      }
       if (!driver.isActive) {
         throw new BadRequestException('Conducteur archive — reactiver avant assignation.');
       }
@@ -158,18 +167,23 @@ export class DriversService {
     driverId: string | null,
     requestedBy: RequestedBy,
   ) {
-    const trip = await this.prisma.trip.findUnique({ where: { id: tripId } });
-    if (!trip) throw new NotFoundException('Trajet introuvable');
-    if (requestedBy.role !== UserRole.SUPER_ADMIN && trip.fleetId !== requestedBy.fleetId) {
-      throw new ForbiddenException('Acces refuse');
+    // Filtre tenant integre au where : 404 si le trajet appartient a une autre flotte.
+    const tripWhere: Prisma.TripWhereInput = { id: tripId };
+    if (requestedBy.role !== UserRole.SUPER_ADMIN) {
+      if (!requestedBy.fleetId) throw new NotFoundException('Trajet introuvable');
+      tripWhere.fleetId = requestedBy.fleetId;
     }
+    const trip = await this.prisma.trip.findFirst({ where: tripWhere });
+    if (!trip) throw new NotFoundException('Trajet introuvable');
 
     if (driverId) {
-      const driver = await this.prisma.driver.findUnique({ where: { id: driverId } });
+      // trip.fleetId est nullable au type Prisma mais ne devrait jamais l'etre
+      // en prod (cree avec fleetId obligatoire). Defensive : refus si null.
+      if (!trip.fleetId) throw new NotFoundException('Trajet introuvable');
+      const driver = await this.prisma.driver.findFirst({
+        where: { id: driverId, fleetId: trip.fleetId },
+      });
       if (!driver) throw new NotFoundException('Conducteur introuvable');
-      if (driver.fleetId !== trip.fleetId) {
-        throw new BadRequestException('Le conducteur appartient a une autre fleet.');
-      }
     }
 
     return this.prisma.trip.update({
@@ -188,11 +202,4 @@ export class DriversService {
     });
   }
 
-  /** Garde-fou : un driver doit appartenir a la fleet du caller (sauf SUPER_ADMIN). */
-  private assertSameFleet(driver: Driver, requestedBy: RequestedBy): void {
-    if (requestedBy.role === UserRole.SUPER_ADMIN) return;
-    if (driver.fleetId !== requestedBy.fleetId) {
-      throw new ForbiddenException('Acces refuse');
-    }
-  }
 }

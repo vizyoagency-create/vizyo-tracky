@@ -179,6 +179,11 @@ export class WebPushService {
    * Send a push to all subscriptions of a user. Returns the number of
    * successful deliveries. Subscriptions returning 410 Gone are pruned.
    *
+   * `expectedFleetId` (optionnel) : si fourni, on verifie en DB que l'user
+   * appartient bien a cette flotte avant d'envoyer. Defense en profondeur
+   * contre les bugs de routing cross-tenant : meme si le caller donne par
+   * erreur un userId d'une autre flotte, l'envoi est refuse.
+   *
    * V1.9 — options critiques pour Apple APNs (sans elles, iOS drop silencieusement) :
    *   - `TTL: 86400` : Apple expire les push avec TTL: 0 si device offline. 1 jour
    *     est le minimum raisonnable pour qu'une notif arrive apres ecran verrouille.
@@ -188,7 +193,23 @@ export class WebPushService {
    *   - `topic` : optionnel mais utile pour collapsing (ex: 5 events alerte X
    *     -> une seule notif visible). Max 32 chars URL-safe base64.
    */
-  async sendToUser(userId: string, payload: PushPayload): Promise<SendResult> {
+  async sendToUser(
+    userId: string,
+    payload: PushPayload,
+    expectedFleetId?: string | null,
+  ): Promise<SendResult> {
+    if (expectedFleetId) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { fleetId: true },
+      });
+      if (!user || user.fleetId !== expectedFleetId) {
+        this.logger.warn(
+          `[push] cross-tenant block — sendToUser user=${userId.slice(0, 8)} expected fleet=${expectedFleetId.slice(0, 8)} actual=${user?.fleetId?.slice(0, 8) ?? 'none'}`,
+        );
+        return { sent: 0, failed: 0, results: [] };
+      }
+    }
     const subs = await this.listForUser(userId);
     return this.sendToSubscriptions(subs, payload, 'user:' + userId.slice(0, 8));
   }

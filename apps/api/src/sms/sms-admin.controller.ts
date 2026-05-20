@@ -74,19 +74,22 @@ export class SmsAdminController {
   }
 
   @Get('provision')
-  async listProvisioning(@Query('limit') limitRaw?: string) {
+  async listProvisioning(@Req() req: AuthenticatedRequest, @Query('limit') limitRaw?: string) {
     const limit = Math.max(1, Math.min(parseInt(limitRaw ?? '50', 10) || 50, 200));
-    return { items: await this.provisioning.list(limit) };
+    // Passe le requestedBy en defense en profondeur — actuellement le @Roles
+    // au niveau classe restreint deja a SUPER_ADMIN, mais on ne veut pas que
+    // le service repose uniquement sur le guard.
+    return { items: await this.provisioning.list(limit, { role: req.user.role, fleetId: req.user.fleetId }) };
   }
 
   @Get('provision/:id')
-  async getProvisioning(@Param('id', ParseUUIDPipe) id: string) {
-    return this.provisioning.findOne(id);
+  async getProvisioning(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
+    return this.provisioning.findOne(id, { role: req.user.role, fleetId: req.user.fleetId });
   }
 
   @Post('provision/:id/cancel')
-  async cancelProvisioning(@Param('id', ParseUUIDPipe) id: string) {
-    await this.provisioning.cancel(id);
+  async cancelProvisioning(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
+    await this.provisioning.cancel(id, { role: req.user.role, fleetId: req.user.fleetId });
     return { ok: true };
   }
 }

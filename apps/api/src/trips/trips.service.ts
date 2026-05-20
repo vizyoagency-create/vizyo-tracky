@@ -473,13 +473,26 @@ export class TripsService implements OnModuleInit {
   }
 
   async findOne(id: string, requestedBy: RequestedBy): Promise<Trip> {
-    const trip = await this.prisma.trip.findUnique({
-      where: { id },
+    // Filtre tenant integre au where (404 si autre flotte, pas 403 -> pas d'enum).
+    const where: Prisma.TripWhereInput = { id };
+    if (requestedBy.role !== UserRole.SUPER_ADMIN) {
+      if (!requestedBy.fleetId) throw new NotFoundException('Trajet introuvable');
+      where.fleetId = requestedBy.fleetId;
+    }
+    const trip = await this.prisma.trip.findFirst({
+      where,
       include: { vehicle: true, ...TripsService.NOTES_AUTHOR_INCLUDE },
     });
     if (!trip) throw new NotFoundException('Trajet introuvable');
-    if (requestedBy.role !== UserRole.SUPER_ADMIN && trip.fleetId !== requestedBy.fleetId) {
-      throw new ForbiddenException('Acces refuse');
+
+    // Acces granulaire : si l'utilisateur a un access scope (groupes/vehicules),
+    // verifier que le vehicule du trajet est bien dans son scope.
+    if (
+      requestedBy.accessibleVehicleIds &&
+      requestedBy.accessibleVehicleIds !== 'ALL' &&
+      !requestedBy.accessibleVehicleIds.includes(trip.vehicleId)
+    ) {
+      throw new NotFoundException('Trajet introuvable');
     }
     return trip;
   }
@@ -539,6 +552,13 @@ export class TripsService implements OnModuleInit {
     const where: Prisma.TripWhereInput = { endedAt: { not: null } };
     if (requestedBy.role !== UserRole.SUPER_ADMIN) where.fleetId = requestedBy.fleetId;
     if (filters.vehicleId) where.vehicleId = filters.vehicleId;
+    // Acces granulaire : un VIEWER restreint a un groupe ne doit voir les
+    // statistiques que de ses vehicules autorises.
+    if (requestedBy.accessibleVehicleIds && requestedBy.accessibleVehicleIds !== 'ALL') {
+      where.vehicleId = filters.vehicleId
+        ? (requestedBy.accessibleVehicleIds.includes(filters.vehicleId) ? filters.vehicleId : '__none__')
+        : { in: requestedBy.accessibleVehicleIds };
+    }
     if (filters.from) where.startedAt = { ...(where.startedAt as any ?? {}), gte: new Date(filters.from) };
     if (filters.to) where.startedAt = { ...(where.startedAt as any ?? {}), lte: new Date(filters.to) };
 

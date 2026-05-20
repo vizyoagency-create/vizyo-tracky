@@ -1,7 +1,25 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { TrackerProvisioningStatus } from '@prisma/client';
+import { TrackerProvisioningStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SmsGatewayService } from './sms-gateway.service';
+
+/**
+ * Contexte tenant requis pour les operations sensibles sur un provisioning.
+ *
+ * La table TrackerProvisioning n'a pas de fleetId direct (un imei peut etre
+ * provisione AVANT d'etre rattache a un vehicule). On derive donc via :
+ *
+ *   provisioning.imei -> tracker.imei -> tracker.vehicle.fleetId
+ *
+ * Regles :
+ *   - SUPER_ADMIN : acces total.
+ *   - Autre role + tracker rattache : doit matcher requestedBy.fleetId.
+ *   - Autre role + tracker non rattache (imei orphelin) : refuse (404).
+ */
+interface RequestedBy {
+  role: UserRole | string;
+  fleetId: string | null;
+}
 
 /**
  * V1.5 (Sprint I) — Sequence d'init Coban GPS403D via SMS.
@@ -131,10 +149,18 @@ export class TrackerProvisioningService {
     return { id: provisioning.id };
   }
 
-  /** Cancel an in-progress provisioning. */
-  async cancel(id: string): Promise<void> {
+  /**
+   * Cancel an in-progress provisioning.
+   *
+   * `requestedBy` est optionnel pour ne pas casser les anciens appels internes,
+   * mais le controller HTTP doit toujours le fournir pour appliquer le tenant
+   * check (defense en profondeur — actuellement le controller est SUPER_ADMIN
+   * only via @Roles, mais on ne veut pas dependre uniquement du guard).
+   */
+  async cancel(id: string, requestedBy?: RequestedBy): Promise<void> {
     const provisioning = await this.prisma.trackerProvisioning.findUnique({ where: { id } });
     if (!provisioning) throw new NotFoundException('Provisionnement introuvable');
+    await this.assertTenantAccess(provisioning.imei, requestedBy);
     if (provisioning.status !== TrackerProvisioningStatus.IN_PROGRESS) return;
     await this.prisma.trackerProvisioning.update({
       where: { id },
@@ -142,17 +168,49 @@ export class TrackerProvisioningService {
     });
   }
 
-  async list(limit = 50) {
+  async list(limit = 50, requestedBy?: RequestedBy) {
+    const isSuper = !requestedBy || requestedBy.role === UserRole.SUPER_ADMIN;
+    if (isSuper) {
+      return this.prisma.trackerProvisioning.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: Math.min(limit, 200),
+      });
+    }
+    if (!requestedBy.fleetId) return [];
+    // Tenant-scoped : ne retourne que les provisionings dont l'imei est attache
+    // a un tracker de la flotte courante.
+    const trackers = await this.prisma.tracker.findMany({
+      where: { vehicle: { fleetId: requestedBy.fleetId } },
+      select: { imei: true },
+    });
+    if (trackers.length === 0) return [];
     return this.prisma.trackerProvisioning.findMany({
+      where: { imei: { in: trackers.map((t) => t.imei) } },
       orderBy: { createdAt: 'desc' },
       take: Math.min(limit, 200),
     });
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, requestedBy?: RequestedBy) {
     const row = await this.prisma.trackerProvisioning.findUnique({ where: { id } });
     if (!row) throw new NotFoundException('Provisionnement introuvable');
+    await this.assertTenantAccess(row.imei, requestedBy);
     return row;
+  }
+
+  /**
+   * Resout la flotte via imei -> tracker.vehicle.fleetId et la compare au caller.
+   * Echoue par 404 si le caller est non-SUPER et que le tracker n'appartient
+   * pas a sa flotte (ou n'a pas de vehicule rattache).
+   */
+  private async assertTenantAccess(imei: string, requestedBy?: RequestedBy): Promise<void> {
+    if (!requestedBy || requestedBy.role === UserRole.SUPER_ADMIN) return;
+    if (!requestedBy.fleetId) throw new NotFoundException('Provisionnement introuvable');
+    const tracker = await this.prisma.tracker.findFirst({
+      where: { imei, vehicle: { fleetId: requestedBy.fleetId } },
+      select: { id: true },
+    });
+    if (!tracker) throw new NotFoundException('Provisionnement introuvable');
   }
 
   /**

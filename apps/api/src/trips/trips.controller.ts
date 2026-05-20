@@ -44,12 +44,9 @@ export class TripsController {
 
   @Get(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
-  findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    return this.trips.findOne(id, {
-      userId: req.user.id,
-      role: req.user.role,
-      fleetId: req.user.fleetId,
-    });
+  async findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    // rb() inclut accessibleVehicleIds pour appliquer l'acces granulaire (groupes).
+    return this.trips.findOne(id, await this.rb(req));
   }
 
   @Post('recompute')

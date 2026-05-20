@@ -125,11 +125,15 @@ export class GeofencesService {
   }
 
   async findOne(id: string, requestedBy: RequestedBy): Promise<Geofence> {
-    const geofence = await this.prisma.geofence.findUnique({ where: { id } });
-    if (!geofence) throw new NotFoundException('Geofence introuvable');
-    if (requestedBy.role !== UserRole.SUPER_ADMIN && geofence.fleetId !== requestedBy.fleetId) {
-      throw new ForbiddenException('Acces refuse');
+    // Filtre tenant integre au where : un user d'une autre flotte recoit 404
+    // (pas 403), ce qui empeche l'enumeration des IDs cross-fleet.
+    const where: Prisma.GeofenceWhereInput = { id };
+    if (requestedBy.role !== UserRole.SUPER_ADMIN) {
+      if (!requestedBy.fleetId) throw new NotFoundException('Geofence introuvable');
+      where.fleetId = requestedBy.fleetId;
     }
+    const geofence = await this.prisma.geofence.findFirst({ where });
+    if (!geofence) throw new NotFoundException('Geofence introuvable');
     return geofence;
   }
 
@@ -389,11 +393,8 @@ export class GeofencesService {
     vehicleIds: string[],
     requestedBy: RequestedBy,
   ): Promise<{ vehicleIds: string[] }> {
-    const geofence = await this.prisma.geofence.findUnique({ where: { id: geofenceId } });
-    if (!geofence) throw new NotFoundException('Geofence introuvable');
-    if (requestedBy.role !== UserRole.SUPER_ADMIN && geofence.fleetId !== requestedBy.fleetId) {
-      throw new ForbiddenException('Acces refuse');
-    }
+    // Reutilise findOne qui applique deja le filtre tenant via le where.
+    const geofence = await this.findOne(geofenceId, requestedBy);
 
     if (vehicleIds.length > 0) {
       const valid = await this.prisma.vehicle.findMany({
@@ -418,11 +419,8 @@ export class GeofencesService {
   }
 
   async getVehicleTargets(geofenceId: string, requestedBy: RequestedBy): Promise<{ vehicleIds: string[] }> {
-    const geofence = await this.prisma.geofence.findUnique({ where: { id: geofenceId } });
-    if (!geofence) throw new NotFoundException('Geofence introuvable');
-    if (requestedBy.role !== UserRole.SUPER_ADMIN && geofence.fleetId !== requestedBy.fleetId) {
-      throw new ForbiddenException('Acces refuse');
-    }
+    // Reutilise findOne qui applique deja le filtre tenant via le where.
+    await this.findOne(geofenceId, requestedBy);
     const targets = await this.prisma.geofenceVehicle.findMany({
       where: { geofenceId },
       select: { vehicleId: true },

@@ -173,8 +173,15 @@ export class NotificationDispatchService {
 
     if (userIds.size === 0) return [];
 
+    // Filtre tenant strict : on ne retient que les users de la flotte de l'alerte.
+    // Empeche un escalateToUserId ou additionalNotifyUserIds mal configure de
+    // router une notif vers un user d'une autre flotte (cross-tenant leak).
     return this.prisma.user.findMany({
-      where: { id: { in: Array.from(userIds) }, isActive: true },
+      where: {
+        id: { in: Array.from(userIds) },
+        isActive: true,
+        fleetId: alert.fleetId,
+      },
     });
   }
 
@@ -190,6 +197,8 @@ export class NotificationDispatchService {
     const bodyText = `${prefix}${alert.title}\n${alert.message ?? ''}\n\nVehicule : ${plate || 'N/A'}\nSeverite : ${alert.severity}\n\nVoir l'alerte : (acceder a Tracky pour acquitter)`;
 
     if (channel === 'WEB_PUSH') {
+      // expectedFleetId = alert.fleetId : defense en profondeur, refuse l'envoi
+      // si l'user n'appartient pas a la flotte de l'alerte.
       await this.webPush.sendToUser(user.id, {
         title: subject,
         body: alert.message ?? alert.title,
@@ -205,7 +214,7 @@ export class NotificationDispatchService {
         // Tag = alertId : si l'alerte est re-pushee (escalade), la nouvelle notif
         // remplace l'ancienne dans le centre de notifications du browser/OS.
         tag: alert.id,
-      });
+      }, alert.fleetId);
       return;
     }
     if (channel === 'EMAIL') {

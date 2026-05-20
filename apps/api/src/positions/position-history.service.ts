@@ -32,6 +32,8 @@ const FINE_RETENTION_DAYS = 90;
 interface RequestedBy {
   role: UserRole | string;
   fleetId: string | null;
+  /** Liste des vehicleIds accessibles, ou 'ALL' = aucun filtre granulaire. */
+  accessibleVehicleIds?: string[] | 'ALL';
 }
 
 @Injectable()
@@ -65,20 +67,29 @@ export class PositionHistoryService {
 
     let trackerId = params.trackerId;
     let vehicleId = params.vehicleId;
+    const scopedIds =
+      requestedBy.accessibleVehicleIds && requestedBy.accessibleVehicleIds !== 'ALL'
+        ? requestedBy.accessibleVehicleIds
+        : null;
 
-    // Resolve tracker/vehicle + tenant check
+    // Resolve tracker/vehicle + tenant check (filtre fleetId integre au where).
     if (!trackerId && !vehicleId) {
       throw new BadRequestException('trackerId ou vehicleId requis');
     }
     if (!trackerId && vehicleId) {
-      const v = await this.prisma.vehicle.findUnique({
-        where: { id: vehicleId },
+      const vehicleWhere: Prisma.VehicleWhereInput = { id: vehicleId };
+      if (requestedBy.role !== UserRole.SUPER_ADMIN) {
+        if (!requestedBy.fleetId) throw new NotFoundException('Vehicule introuvable');
+        vehicleWhere.fleetId = requestedBy.fleetId;
+      }
+      if (scopedIds && !scopedIds.includes(vehicleId)) {
+        throw new NotFoundException('Vehicule introuvable');
+      }
+      const v = await this.prisma.vehicle.findFirst({
+        where: vehicleWhere,
         include: { tracker: true },
       });
       if (!v) throw new NotFoundException('Vehicule introuvable');
-      if (requestedBy.role !== UserRole.SUPER_ADMIN && v.fleetId !== requestedBy.fleetId) {
-        throw new ForbiddenException('Acces refuse');
-      }
       trackerId = v.tracker?.id;
       if (!trackerId) {
         return { detail: 'fine', points: [] };
@@ -91,8 +102,11 @@ export class PositionHistoryService {
       if (!t) throw new NotFoundException('Tracker introuvable');
       if (requestedBy.role !== UserRole.SUPER_ADMIN) {
         if (!t.vehicle || t.vehicle.fleetId !== requestedBy.fleetId) {
-          throw new ForbiddenException('Acces refuse');
+          throw new NotFoundException('Tracker introuvable');
         }
+      }
+      if (scopedIds && t.vehicle && !scopedIds.includes(t.vehicle.id)) {
+        throw new NotFoundException('Tracker introuvable');
       }
       vehicleId = t.vehicle?.id;
     }

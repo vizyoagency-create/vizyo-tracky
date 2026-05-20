@@ -82,22 +82,27 @@ export class AlertRulesService {
     };
 
     if (params.id) {
-      const existing = await this.prisma.alertRule.findUnique({ where: { id: params.id } });
-      if (!existing) throw new NotFoundException('Regle introuvable');
-      if (requestedBy.role !== UserRole.SUPER_ADMIN && existing.fleetId !== requestedBy.fleetId) {
-        throw new ForbiddenException('Acces refuse');
+      // Filtre tenant integre au where pour empecher l'enumeration cross-fleet.
+      const where: Prisma.AlertRuleWhereInput = { id: params.id };
+      if (requestedBy.role !== UserRole.SUPER_ADMIN) {
+        if (!requestedBy.fleetId) throw new NotFoundException('Regle introuvable');
+        where.fleetId = requestedBy.fleetId;
       }
+      const existing = await this.prisma.alertRule.findFirst({ where });
+      if (!existing) throw new NotFoundException('Regle introuvable');
       return this.prisma.alertRule.update({ where: { id: params.id }, data });
     }
     return this.prisma.alertRule.create({ data });
   }
 
   async delete(id: string, requestedBy: { role: UserRole | string; fleetId: string | null }): Promise<void> {
-    const existing = await this.prisma.alertRule.findUnique({ where: { id } });
-    if (!existing) throw new NotFoundException('Regle introuvable');
-    if (requestedBy.role !== UserRole.SUPER_ADMIN && existing.fleetId !== requestedBy.fleetId) {
-      throw new ForbiddenException('Acces refuse');
+    const where: Prisma.AlertRuleWhereInput = { id };
+    if (requestedBy.role !== UserRole.SUPER_ADMIN) {
+      if (!requestedBy.fleetId) throw new NotFoundException('Regle introuvable');
+      where.fleetId = requestedBy.fleetId;
     }
+    const existing = await this.prisma.alertRule.findFirst({ where });
+    if (!existing) throw new NotFoundException('Regle introuvable');
     await this.prisma.alertRule.delete({ where: { id } });
   }
 }
