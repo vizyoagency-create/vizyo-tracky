@@ -106,9 +106,21 @@ export class TrackerCommandsService {
     return command;
   }
 
-  async dispatch(command: TrackerCommand, imei?: string, fleetId?: string): Promise<void> {
-    const resolvedImei = imei ?? (await this.resolveImei(command.trackerId));
-    const resolvedFleetId = fleetId ?? (await this.resolveFleetId(command.trackerId));
+  /**
+   * Envoie une commande au tracker via TCP.
+   *
+   * Securite : `imei` et `fleetId` sont fournis par le caller, qui est
+   * responsable d'avoir valide le tenant en amont (recuperer le tracker via
+   * une route qui applique le filtre tenant, puis passer ses champs). On
+   * evite ainsi un lookup tracker.id non scope qui pourrait reveler des
+   * donnees cross-fleet via un commandId enumere.
+   *
+   * `fleetId` accepte `null` pour les trackers orphelins (sans vehicle attache,
+   * ex: provisioning) — dans ce cas le broadcast WS est skip.
+   */
+  async dispatch(command: TrackerCommand, imei: string, fleetId: string | null): Promise<void> {
+    const resolvedImei = imei;
+    const resolvedFleetId = fleetId ?? '';
 
     const entry = this.registry.get(resolvedImei);
     if (!entry) {
@@ -273,20 +285,6 @@ export class TrackerCommandsService {
       availableVia: t.availableVia,
       ackTimeoutMs: t.ackTimeoutMs,
     }));
-  }
-
-  private async resolveImei(trackerId: string): Promise<string> {
-    const tracker = await this.prisma.tracker.findUnique({ where: { id: trackerId } });
-    if (!tracker) throw new NotFoundException('Tracker introuvable');
-    return tracker.imei;
-  }
-
-  private async resolveFleetId(trackerId: string): Promise<string> {
-    const tracker = await this.prisma.tracker.findUnique({
-      where: { id: trackerId },
-      include: { vehicle: true },
-    });
-    return tracker?.vehicle?.fleetId ?? '';
   }
 
   private emitUpdate(commandId: string, fleetId: string): void {

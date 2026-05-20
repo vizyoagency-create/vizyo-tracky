@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -176,19 +175,19 @@ export class VehicleSchedulesService {
   }
 
   private async assertAccess(vehicleId: string, requestedBy: RequestedBy): Promise<void> {
-    const vehicle = await this.prisma.vehicle.findUnique({
-      where: { id: vehicleId },
+    // Filtre tenant integre au where : 404 plutot que 403 pour ne pas leak
+    // l'existence d'un vehicule d'une autre flotte via timing NotFoundException.
+    const where: Prisma.VehicleWhereInput = { id: vehicleId };
+    if (requestedBy.role !== UserRole.SUPER_ADMIN) {
+      if (!requestedBy.fleetId) throw new NotFoundException('Véhicule introuvable');
+      where.fleetId = requestedBy.fleetId;
+    }
+    const vehicle = await this.prisma.vehicle.findFirst({
+      where,
       select: { fleetId: true },
     });
-
     if (!vehicle) {
       throw new NotFoundException('Véhicule introuvable');
-    }
-
-    if (requestedBy.role !== UserRole.SUPER_ADMIN) {
-      if (vehicle.fleetId !== requestedBy.fleetId) {
-        throw new ForbiddenException('Accès refusé à cette flotte');
-      }
     }
   }
 }
