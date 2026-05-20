@@ -35,6 +35,24 @@ export interface FleetStatsReportDto {
 
 export type CsvType = 'positions' | 'trips' | 'alerts' | 'commands';
 
+export type PdfReportSection = 'kpi' | 'alerts' | 'topVehicles' | 'trips';
+
+/**
+ * Options de personnalisation pour POST /api/reports/pdf — alignees sur le DTO
+ * backend `GeneratePdfDto`. Tous les champs sont optionnels ; en l'absence de
+ * filtre la modal genere un rapport flotte complet (comportement legacy).
+ */
+export interface PdfExportConfig {
+  /** Restreint a ces vehicules. Vide / absent => toute la flotte. */
+  vehicleIds?: string[];
+  /** Sections a inclure. Vide / absent => toutes les sections. */
+  sections?: PdfReportSection[];
+  /** Cap trajets detailles (default 30, max 500). */
+  maxTrips?: number;
+  /** Cap top vehicules (default 10, max 50). */
+  topN?: number;
+}
+
 /**
  * V1.5 (Sprint L) — Rapports & export.
  *
@@ -57,6 +75,34 @@ export class ReportsApiService {
     try {
       const blob = await firstValueFrom(
         this.http.get('/api/reports/pdf', { params, responseType: 'blob' }),
+      );
+      this.triggerDownload(blob, `tracky-rapport-${from.slice(0, 10)}_${to.slice(0, 10)}.pdf`);
+    } catch (err) {
+      throw new Error(await this.formatHttpError(err, 'PDF'));
+    }
+  }
+
+  /**
+   * Variante configurable du PDF — POST avec body JSON (vehicleIds + sections
+   * + caps). Utilise par la modal d'export. L'ancienne `downloadPdf()` reste
+   * dispo pour les appels rapides sans configuration.
+   */
+  async downloadConfiguredPdf(
+    fleetId: string | null,
+    from: string,
+    to: string,
+    config: PdfExportConfig,
+  ): Promise<void> {
+    const body: Record<string, unknown> = { from, to };
+    if (fleetId) body['fleetId'] = fleetId;
+    if (config.vehicleIds && config.vehicleIds.length > 0) body['vehicleIds'] = config.vehicleIds;
+    if (config.sections && config.sections.length > 0) body['sections'] = config.sections;
+    if (config.maxTrips != null) body['maxTrips'] = config.maxTrips;
+    if (config.topN != null) body['topN'] = config.topN;
+
+    try {
+      const blob = await firstValueFrom(
+        this.http.post('/api/reports/pdf', body, { responseType: 'blob' }),
       );
       this.triggerDownload(blob, `tracky-rapport-${from.slice(0, 10)}_${to.slice(0, 10)}.pdf`);
     } catch (err) {

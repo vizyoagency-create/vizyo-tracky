@@ -15,11 +15,33 @@ const COLOR_FG = '#1f2937';
 const COLOR_FG_MUTED = '#6b7280';
 const COLOR_BG_ACCENT = '#ecfdf5';
 
+export type PdfReportSection = 'kpi' | 'alerts' | 'topVehicles' | 'trips';
+
+export const ALL_PDF_SECTIONS: PdfReportSection[] = ['kpi', 'alerts', 'topVehicles', 'trips'];
+
+export interface PdfReportOptions {
+  /** Sections a inclure. Si absent ou vide => toutes les sections. */
+  sections?: PdfReportSection[];
+  /** Cap sur le nombre de trajets detailles. Default 30, max 500. */
+  maxTrips?: number;
+  /** Cap sur le top vehicules. Default 10, max 50. */
+  topN?: number;
+  /** Sous-titre informatif (ex: "3 vehicules selectionnes") affiche sous le nom de flotte. */
+  scopeLabel?: string;
+}
+
+const DEFAULT_MAX_TRIPS = 30;
+const DEFAULT_TOP_N = 10;
+
 @Injectable()
 export class ReportPdfService {
-  generate(report: FleetStatsReport): Promise<Buffer> {
+  generate(report: FleetStatsReport, options?: PdfReportOptions): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       try {
+        const sections = this.resolveSections(options?.sections);
+        const maxTrips = this.clampInt(options?.maxTrips, DEFAULT_MAX_TRIPS, 1, 500);
+        const topN = this.clampInt(options?.topN, DEFAULT_TOP_N, 1, 50);
+
         const doc = new PDFDocument({
           size: 'A4',
           margin: 40,
@@ -34,11 +56,11 @@ export class ReportPdfService {
         doc.on('end', () => resolve(Buffer.concat(chunks)));
         doc.on('error', reject);
 
-        this.renderHeader(doc, report);
-        this.renderKpis(doc, report);
-        this.renderAlerts(doc, report);
-        this.renderTopVehicles(doc, report);
-        this.renderRecentTrips(doc, report);
+        this.renderHeader(doc, report, options?.scopeLabel);
+        if (sections.has('kpi')) this.renderKpis(doc, report);
+        if (sections.has('alerts')) this.renderAlerts(doc, report);
+        if (sections.has('topVehicles')) this.renderTopVehicles(doc, report, topN);
+        if (sections.has('trips')) this.renderRecentTrips(doc, report, maxTrips);
         this.renderFooter(doc);
 
         doc.end();
@@ -48,7 +70,18 @@ export class ReportPdfService {
     });
   }
 
-  private renderHeader(doc: PDFKit.PDFDocument, report: FleetStatsReport): void {
+  private resolveSections(requested: PdfReportSection[] | undefined): Set<PdfReportSection> {
+    if (!requested || requested.length === 0) return new Set(ALL_PDF_SECTIONS);
+    const valid = requested.filter((s): s is PdfReportSection => ALL_PDF_SECTIONS.includes(s));
+    return valid.length > 0 ? new Set(valid) : new Set(ALL_PDF_SECTIONS);
+  }
+
+  private clampInt(value: number | undefined, fallback: number, min: number, max: number): number {
+    if (value == null || Number.isNaN(value)) return fallback;
+    return Math.min(max, Math.max(min, Math.trunc(value)));
+  }
+
+  private renderHeader(doc: PDFKit.PDFDocument, report: FleetStatsReport, scopeLabel?: string): void {
     // Logo / nom Tracky en haut-gauche
     doc.fillColor(COLOR_TRACKY).fontSize(20).font('Helvetica-Bold')
       .text('Vizyo Tracky', 40, 40);
@@ -63,13 +96,16 @@ export class ReportPdfService {
     doc.fillColor(COLOR_FG_MUTED).fontSize(9)
       .text(`${report.period.days} jours`, 400, 60, { width: 155, align: 'right' });
 
-    // Fleet name
-    doc.moveDown(2);
+    // Fleet name + sous-titre scope (ex: "3 vehicules selectionnes")
     doc.fillColor(COLOR_FG).fontSize(16).font('Helvetica-Bold')
       .text(report.fleet.name, 40, 95);
+    if (scopeLabel) {
+      doc.fillColor(COLOR_FG_MUTED).fontSize(9).font('Helvetica')
+        .text(scopeLabel, 40, 116);
+    }
 
-    doc.moveTo(40, 125).lineTo(555, 125).strokeColor(COLOR_TRACKY).lineWidth(1.5).stroke();
-    doc.y = 140;
+    doc.moveTo(40, 130).lineTo(555, 130).strokeColor(COLOR_TRACKY).lineWidth(1.5).stroke();
+    doc.y = 145;
   }
 
   private renderKpis(doc: PDFKit.PDFDocument, report: FleetStatsReport): void {
@@ -155,7 +191,7 @@ export class ReportPdfService {
     doc.y = Math.max(leftY, rightY) + 14;
   }
 
-  private renderTopVehicles(doc: PDFKit.PDFDocument, report: FleetStatsReport): void {
+  private renderTopVehicles(doc: PDFKit.PDFDocument, report: FleetStatsReport, topN: number): void {
     if (report.topVehicles.length === 0) return;
     if (doc.y > 700) doc.addPage();
 
@@ -174,7 +210,7 @@ export class ReportPdfService {
     doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor('#e5e7eb').stroke();
     doc.moveDown(0.3);
 
-    for (const v of report.topVehicles) {
+    for (const v of report.topVehicles.slice(0, topN)) {
       const y = doc.y;
       doc.fillColor(COLOR_FG).fontSize(10).font('Helvetica')
         .text(v.plate, colX[0]!, y);
@@ -194,18 +230,20 @@ export class ReportPdfService {
    *
    * Phase 2 ajoutera la colonne "Conducteur" entre Plaque et Distance.
    */
-  private renderRecentTrips(doc: PDFKit.PDFDocument, report: FleetStatsReport): void {
+  private renderRecentTrips(doc: PDFKit.PDFDocument, report: FleetStatsReport, maxTrips: number): void {
     if (!report.recentTrips || report.recentTrips.length === 0) return;
 
     if (doc.y > 680) doc.addPage();
+
+    const trips = report.recentTrips.slice(0, maxTrips);
 
     doc.fillColor(COLOR_FG).fontSize(13).font('Helvetica-Bold')
       .text('Trajets recents', 40, doc.y);
     doc.moveDown(0.4);
     doc.fillColor(COLOR_FG_MUTED).fontSize(9).font('Helvetica')
       .text(
-        `${report.recentTrips.length} derniers trajets sur la periode` +
-        (report.trips.count > report.recentTrips.length
+        `${trips.length} derniers trajets sur la periode` +
+        (report.trips.count > trips.length
           ? ` (sur ${report.trips.count} au total)`
           : ''),
         40, doc.y,
@@ -231,7 +269,7 @@ export class ReportPdfService {
     };
     renderHeader();
 
-    for (const t of report.recentTrips) {
+    for (const t of trips) {
       // Estime la hauteur de la note (max 2 lignes affichees) pour gerer le
       // saut de page proprement.
       const noteHeight = t.notes ? doc.heightOfString(t.notes, { width: colW.notes }) : 0;

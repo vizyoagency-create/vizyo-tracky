@@ -14,6 +14,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { DriverPickerComponent } from '../../shared/ui/driver-picker/driver-picker.component';
 import { TripNoteModalComponent } from '../../shared/ui/trip-note-modal/trip-note-modal.component';
 import { DateRangePickerComponent } from '../../shared/ui/date-range-picker/date-range-picker.component';
+import { PdfExportModalComponent, type PdfExportRequest } from '../../shared/ui/pdf-export-modal/pdf-export-modal.component';
 import { LineBarChartComponent, type LineBarChartData } from '../../shared/ui/charts/line-bar-chart.component';
 import { HistogramChartComponent } from '../../shared/ui/charts/histogram-chart.component';
 import { HeatmapChartComponent } from '../../shared/ui/charts/heatmap-chart.component';
@@ -43,6 +44,7 @@ import {
     HistogramChartComponent,
     HeatmapChartComponent,
     PeriodReplayComponent,
+    PdfExportModalComponent,
   ],
   template: `
     <div class="flex flex-col gap-6">
@@ -430,6 +432,15 @@ import {
       [subtitle]="driverPickerSubtitle()"
       (closed)="driverPickerTrip.set(null)"
       (selected)="onDriverPickedForTrip($event)"
+    />
+
+    <app-pdf-export-modal
+      [open]="pdfModalOpen()"
+      [vehicles]="vehicles()"
+      [periodLabel]="pdfPeriodLabel()"
+      [loading]="exporting() === 'pdf'"
+      (closed)="pdfModalOpen.set(false)"
+      (exportRequested)="onPdfExportRequested($event)"
     />
   `,
   styles: [`
@@ -918,6 +929,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
   protected readonly replayTrip = signal<TripDto | null>(null);
   protected readonly noteEditTrip = signal<TripDto | null>(null);
   protected readonly driverPickerTrip = signal<TripDto | null>(null);
+  /** Phase 3 — Modal d'export PDF configurable (perimetre + sections + caps). */
+  protected readonly pdfModalOpen = signal(false);
 
   protected readonly selectedVehicleId = signal('');
   protected periodFrom = '';
@@ -1355,20 +1368,56 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
   }
 
-  /** Export PDF du rapport sur la période courante (avec optionnel filtre véhicule). */
-  protected async onExportPdf(): Promise<void> {
+  /** Label "01 mai → 20 mai · 20 jours" affiche en sous-titre de la modal PDF. */
+  protected readonly pdfPeriodLabel = computed(() => {
+    this.periodKey();
+    if (!this.periodFrom || !this.periodTo) return '';
+    try {
+      const fDate = new Date(this.periodFrom);
+      // 'to' est exclusif (+1 jour cote periods) — on retire 1 jour pour l'affichage.
+      const tDate = new Date(new Date(this.periodTo).getTime() - 86400000);
+      const fmt = (d: Date) => d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+      const days = Math.max(1, Math.round((tDate.getTime() - fDate.getTime()) / 86400000) + 1);
+      return `${fmt(fDate)} → ${fmt(tDate)} · ${days} jour${days > 1 ? 's' : ''}`;
+    } catch {
+      return '';
+    }
+  });
+
+  /** Ouvre la modal de configuration PDF. Le download lui-meme est declenche
+   *  par `onPdfExportRequested` quand l'utilisateur valide ses choix. */
+  protected onExportPdf(): void {
     if (this.exporting()) return;
     this.refreshPeriodIfStalePreset();
     if (!this.periodFrom || !this.periodTo) {
       this.toast.error('Échec export PDF', 'Période invalide — recharge la page.');
       return;
     }
+    this.pdfModalOpen.set(true);
+  }
+
+  /** Recoit la config emise par la modal et declenche le download POST. */
+  protected async onPdfExportRequested(req: PdfExportRequest): Promise<void> {
+    if (this.exporting()) return;
+    if (!this.periodFrom || !this.periodTo) {
+      this.toast.error('Échec export PDF', 'Période invalide — recharge la page.');
+      return;
+    }
     this.exporting.set('pdf');
     try {
-      // L'API attend un fleetId et la période ; vehicleId est ignoré côté reports/pdf
-      // (le PDF est un rapport flotte). On envoie null pour la flotte de l'utilisateur.
-      await this.reportsApi.downloadPdf(null, this.periodFrom, this.periodTo);
+      await this.reportsApi.downloadConfiguredPdf(
+        null,
+        this.periodFrom,
+        this.periodTo,
+        {
+          vehicleIds: req.vehicleIds,
+          sections: req.sections,
+          maxTrips: req.maxTrips,
+          topN: req.topN,
+        },
+      );
       this.toast.success('PDF généré');
+      this.pdfModalOpen.set(false);
     } catch (err) {
       this.toast.error('Échec export PDF', err instanceof Error ? err.message : '');
     } finally {

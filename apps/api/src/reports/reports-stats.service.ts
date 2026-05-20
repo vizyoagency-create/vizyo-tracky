@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -86,6 +86,7 @@ export class ReportsStatsService {
     from: Date,
     to: Date,
     requestedBy?: { role: UserRole | string; fleetId: string | null },
+    filters?: { vehicleIds?: string[]; maxRecentTrips?: number },
   ): Promise<FleetStatsReport> {
     if (requestedBy && requestedBy.role !== UserRole.SUPER_ADMIN) {
       if (requestedBy.fleetId !== fleetId) {
@@ -98,16 +99,41 @@ export class ReportsStatsService {
 
     const days = Math.max(1, Math.round((to.getTime() - from.getTime()) / (24 * 3600 * 1000)));
 
+    // Normalise le filtre vehicleIds : trim, dedup, ignore les chaines vides.
+    // Une liste vide ou absente => pas de filtre (rapport flotte complet).
+    const requestedIds = (filters?.vehicleIds ?? [])
+      .map((id) => id?.trim())
+      .filter((id): id is string => !!id);
+    const uniqueRequestedIds = Array.from(new Set(requestedIds));
+    const isVehicleScopeRestricted = uniqueRequestedIds.length > 0;
+
     const vehicles = await this.prisma.vehicle.findMany({
-      where: { fleetId },
+      where: isVehicleScopeRestricted
+        ? { fleetId, id: { in: uniqueRequestedIds } }
+        : { fleetId },
       select: { id: true, plate: true, type: true, fuelConsumptionL100km: true },
     });
+
+    // Security check : si l'utilisateur a demande des vehicleIds inconnus dans
+    // sa flotte, on rejette (pour eviter qu'un FLEET_ADMIN devine des IDs
+    // appartenant a une autre flotte).
+    if (isVehicleScopeRestricted && vehicles.length !== uniqueRequestedIds.length) {
+      throw new BadRequestException(
+        'Un ou plusieurs vehicleIds n\'appartiennent pas a la flotte demandee',
+      );
+    }
+
     const totalVehicles = vehicles.length;
     const fuelPrice = fleet.fuelPriceEurL;
+
+    const tripVehicleFilter = isVehicleScopeRestricted
+      ? { vehicleId: { in: uniqueRequestedIds } }
+      : {};
 
     const trips = await this.prisma.trip.findMany({
       where: {
         fleetId,
+        ...tripVehicleFilter,
         startedAt: { lte: to },
         endedAt: { gte: from, not: null },
       },
@@ -160,9 +186,15 @@ export class ReportsStatsService {
     }
     topVehicles.sort((a, b) => b.distanceKm - a.distanceKm);
 
-    // Alerts.
+    // Alerts. Quand un filtre vehicleIds est actif, on ne remonte que les
+    // alertes rattachees a ces vehicules (les alertes sans vehicleId — ex.
+    // tracker isole — sont exclues du sous-ensemble par definition).
     const alerts = await this.prisma.alert.findMany({
-      where: { fleetId, createdAt: { gte: from, lte: to } },
+      where: {
+        fleetId,
+        createdAt: { gte: from, lte: to },
+        ...(isVehicleScopeRestricted ? { vehicleId: { in: uniqueRequestedIds } } : {}),
+      },
       select: { type: true, severity: true },
     });
     const alertTypeMap = new Map<string, number>();
@@ -198,7 +230,7 @@ export class ReportsStatsService {
         fuelPriceEurL: fuelPrice,
       },
       topVehicles: topVehicles.slice(0, 10),
-      recentTrips: trips.slice(0, 30).map((t) => ({
+      recentTrips: trips.slice(0, this.clampRecentTripsCap(filters?.maxRecentTrips)).map((t) => ({
         id: t.id,
         plate: t.vehicle?.plate ?? '',
         startedAt: t.startedAt.toISOString(),
@@ -209,5 +241,12 @@ export class ReportsStatsService {
         driverName: t.driver ? `${t.driver.firstName} ${t.driver.lastName}` : null,
       })),
     };
+  }
+
+  /** Cap defensif sur le nombre de trajets recents embarques dans le rapport.
+   *  Default 30 (compat historique) ; jusqu'a 500 quand le caller le demande. */
+  private clampRecentTripsCap(requested: number | undefined): number {
+    if (requested == null || Number.isNaN(requested)) return 30;
+    return Math.min(500, Math.max(1, Math.trunc(requested)));
   }
 }

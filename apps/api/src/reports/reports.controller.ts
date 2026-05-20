@@ -1,7 +1,9 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   Get,
+  Post,
   Query,
   Req,
   Res,
@@ -13,6 +15,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { PrismaService } from '../prisma/prisma.service';
+import { GeneratePdfDto } from './dto/generate-pdf.dto';
 import { ReportCsvService } from './report-csv.service';
 import { ReportPdfService } from './report-pdf.service';
 import { ReportsStatsService } from './reports-stats.service';
@@ -61,6 +64,47 @@ export class ReportsController {
     const { from, to, fleetId } = await this.parseRange(req, fleetIdQ, fromRaw, toRaw);
     const report = await this.stats.compute(fleetId, from, to, { role: req.user.role, fleetId: req.user.fleetId });
     const buffer = await this.pdf.generate(report);
+    const filename = `tracky-rapport-${from.toISOString().slice(0, 10)}_${to.toISOString().slice(0, 10)}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  }
+
+  /**
+   * Variante configurable du PDF — permet de filtrer par vehicleIds et de
+   * choisir les sections embarquees. Le GET historique reste expose pour
+   * compat. Les rapports sont generes a la volee (pas de cache) — l'utilisateur
+   * sent immediatement le scope qu'il a configure.
+   */
+  @Post('pdf')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER)
+  async pdfDownloadConfigured(
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+    @Body() body: GeneratePdfDto,
+  ): Promise<void> {
+    const { from, to, fleetId } = await this.parseRange(req, body.fleetId, body.from, body.to);
+
+    const vehicleIds = (body.vehicleIds ?? []).filter((id) => !!id);
+    const scopeLabel = vehicleIds.length > 0
+      ? `${vehicleIds.length} vehicule${vehicleIds.length > 1 ? 's' : ''} selectionne${vehicleIds.length > 1 ? 's' : ''}`
+      : undefined;
+
+    const report = await this.stats.compute(
+      fleetId,
+      from,
+      to,
+      { role: req.user.role, fleetId: req.user.fleetId },
+      { vehicleIds, maxRecentTrips: body.maxTrips },
+    );
+
+    const buffer = await this.pdf.generate(report, {
+      sections: body.sections,
+      maxTrips: body.maxTrips,
+      topN: body.topN,
+      scopeLabel,
+    });
+
     const filename = `tracky-rapport-${from.toISOString().slice(0, 10)}_${to.toISOString().slice(0, 10)}.pdf`;
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
