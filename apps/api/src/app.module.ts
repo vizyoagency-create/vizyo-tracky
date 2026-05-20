@@ -27,6 +27,7 @@ import { VehicleAccessModule } from './vehicle-access/vehicle-access.module';
 import { VehicleGroupsModule } from './vehicle-groups/vehicle-groups.module';
 import { ObservabilityModule } from './observability/observability.module';
 import { BackupHealthModule } from './backup-health/backup-health.module';
+import { CacheModule } from './common/cache/cache.module';
 import { EmailModule } from './email/email.module';
 import { InvitationsModule } from './invitations/invitations.module';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -73,6 +74,7 @@ import { VehiclesModule } from './vehicles/vehicles.module';
       }),
     }),
     PrismaModule,
+    CacheModule,
     SocketRegistryModule,
     AuthClientModule,
     AuthModule,

@@ -11,6 +11,18 @@ export class VehicleAccessService {
   /**
    * Retourne les IDs des véhicules accessibles pour un user,
    * ou 'ALL' si l'user a accès à tout (FLEET_ADMIN, SUPER_ADMIN, ou AccessType.ALL).
+   *
+   * V1.10 (Sprint 2 perf) — 2 optimisations :
+   *
+   *  1. Memoization request-scoped : la methode est appelee plusieurs fois par
+   *     requete HTTP (a chaque controller.rb() / service qui filtre). On stocke
+   *     le resultat sur l'objet AuthUser, qui vit le temps de la requete.
+   *     Gain : passe de N queries (typiquement 3-5) a 1 query par requete.
+   *
+   *  2. Aplatissement de l'`include` profond `group.vehicles` en 2 queries
+   *     plates avec select minimal. L'include nested chargeait tous les
+   *     vehicleGroupAssignment de chaque groupe meme si on ne voulait que
+   *     le vehicleId. A 10+ groupes × 100+ vehicules, gain payload net.
    */
   async getAccessibleVehicleIds(user: AuthUser): Promise<string[] | 'ALL'> {
     // FLEET_ADMIN et SUPER_ADMIN voient tout
@@ -18,37 +30,45 @@ export class VehicleAccessService {
       return 'ALL';
     }
 
-    const accessRules = await this.prisma.userVehicleAccess.findMany({
+    // Cache memoization (request-scoped via l'objet user).
+    const cached = (user as AuthUser & { __accessibleVehicleIds?: string[] | 'ALL' }).__accessibleVehicleIds;
+    if (cached !== undefined) return cached;
+
+    const rules = await this.prisma.userVehicleAccess.findMany({
       where: { userId: user.id },
-      include: {
-        group: {
-          include: {
-            vehicles: { select: { vehicleId: true } },
-          },
-        },
-      },
+      select: { accessType: true, groupId: true, vehicleId: true },
     });
 
-    // Si aucun accès configuré → rien
-    if (accessRules.length === 0) return [];
+    let result: string[] | 'ALL';
+    if (rules.length === 0) {
+      result = [];
+    } else if (rules.some((r) => r.accessType === AccessType.ALL)) {
+      result = 'ALL';
+    } else {
+      const vehicleIds = new Set<string>();
+      const groupIds: string[] = [];
 
-    // Si au moins un accès ALL → tout
-    if (accessRules.some((r) => r.accessType === AccessType.ALL)) return 'ALL';
-
-    const vehicleIds = new Set<string>();
-
-    for (const rule of accessRules) {
-      if (rule.accessType === AccessType.VEHICLE && rule.vehicleId) {
-        vehicleIds.add(rule.vehicleId);
-      }
-      if (rule.accessType === AccessType.GROUP && rule.group) {
-        for (const va of rule.group.vehicles) {
-          vehicleIds.add(va.vehicleId);
+      for (const rule of rules) {
+        if (rule.accessType === AccessType.VEHICLE && rule.vehicleId) {
+          vehicleIds.add(rule.vehicleId);
+        } else if (rule.accessType === AccessType.GROUP && rule.groupId) {
+          groupIds.push(rule.groupId);
         }
       }
+
+      if (groupIds.length > 0) {
+        const assignments = await this.prisma.vehicleGroupAssignment.findMany({
+          where: { groupId: { in: groupIds } },
+          select: { vehicleId: true },
+        });
+        for (const a of assignments) vehicleIds.add(a.vehicleId);
+      }
+
+      result = [...vehicleIds];
     }
 
-    return [...vehicleIds];
+    (user as AuthUser & { __accessibleVehicleIds?: string[] | 'ALL' }).__accessibleVehicleIds = result;
+    return result;
   }
 
   /**

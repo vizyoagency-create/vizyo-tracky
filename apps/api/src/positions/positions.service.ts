@@ -13,6 +13,7 @@ import { GeofencesService } from '../geofences/geofences.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PositionBroadcastBuffer } from '../realtime/position-broadcast-buffer.service';
+import { PositionBatchBufferService } from './position-batch-buffer.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { TrackerFixModeService } from '../tracker-fix-mode/tracker-fix-mode.service';
 import { TripsService } from '../trips/trips.service';
@@ -44,6 +45,7 @@ export class PositionsService {
     private readonly sampling: PositionSamplingService,
     private readonly broadcastBuffer: PositionBroadcastBuffer,
     private readonly fixMode: TrackerFixModeService,
+    private readonly batchBuffer: PositionBatchBufferService,
   ) {}
 
   async ingest(frame: CobanPositionFrame): Promise<void> {
@@ -260,19 +262,22 @@ export class PositionsService {
     // V1.5 (Sprint H1) — persistance Position conditionnee par le sampling.
     // Quand `shouldInsert = false`, on conserve uniquement la denormalisation
     // sur Tracker (deja faite plus haut) et l'audit dans `position_sampling_decisions`.
+    //
+    // V1.10 (Sprint 2 perf) — enqueue dans le batch buffer au lieu d'un
+    // `position.create` synchrone. Flush periodique (100ms) en `createMany`.
+    // La derniere position connue reste a jour en temps reel via Tracker.last*
+    // mis a jour plus haut — pas de regression UX.
     if (samplingOutcome?.shouldInsert) {
-      await this.prisma.position.create({
-        data: {
-          trackerId: tracker.id,
-          lat: frame.latitude,
-          lng: frame.longitude,
-          speedKmh: frame.speedKph,
-          heading: frame.course ?? 0,
-          altitude: frame.altitude,
-          valid: frame.valid,
-          ignition: resolvedIgnition ?? null,
-          timestamp: frame.deviceTime,
-        },
+      this.batchBuffer.enqueue({
+        trackerId: tracker.id,
+        lat: frame.latitude,
+        lng: frame.longitude,
+        speedKmh: frame.speedKph,
+        heading: frame.course ?? 0,
+        altitude: frame.altitude,
+        valid: frame.valid,
+        ignition: resolvedIgnition ?? null,
+        timestamp: frame.deviceTime,
       });
     }
 

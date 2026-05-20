@@ -257,6 +257,9 @@ model Invitation {
 
   @@index([email])
   @@index([status])
+  // V1.10 (Sprint 2 perf) — list par fleet est la query par defaut de la page
+  // /admin/invitations. Sans index dedie, on scanne toutes les invitations.
+  @@index([fleetId])
   @@map("invitations")
 }
 
@@ -564,6 +567,11 @@ model Alert {
 
   @@index([fleetId, createdAt(sort: Desc)])
   @@index([fleetId, acknowledgedAt])
+  // V1.10 (Sprint 2 perf) — KPI dashboard "alertes critiques recentes" — sans cet
+  // index la query alert.count({where:{fleetId, severity, acknowledgedAt:null}})
+  // doit full-scan le fleet bucket. A 100 vehicules + 10k alertes/mois c'est 20-50ms
+  // a chaque rafraichissement KPI (toutes les 30s par user dashboard).
+  @@index([fleetId, severity, createdAt(sort: Desc)])
   @@index([vehicleId])
   @@index([trackerId])
   @@map("alerts")
@@ -867,6 +875,11 @@ model EngineControlCommand {
   updatedAt   DateTime      @updatedAt
 
   @@index([trackerId, status])
+  // V1.10 (Sprint 2 perf) — vehicles.snapshot et positions.service appellent
+  // findFirst({trackerId, ...}, orderBy:{createdAt:'desc'}) tres souvent pour
+  // verifier le dernier CUT/RESTORE. L'index [trackerId, status] ne couvre pas
+  // l'orderBy createdAt → table sort. Cet index couvre directement.
+  @@index([trackerId, createdAt(sort: Desc)])
   @@map("engine_control_commands")
 }
 
