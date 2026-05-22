@@ -89,13 +89,33 @@ describe('TrackersService', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
-  // 2. create IMEI dupliqué
-  it('should throw ConflictException on duplicate IMEI', async () => {
+  // 2. create IMEI dupliqué — tracker libre existant → réutilisé
+  it('should return existing unassigned tracker on duplicate IMEI', async () => {
     const p2002 = new Prisma.PrismaClientKnownRequestError('Unique constraint', {
       code: 'P2002',
       clientVersion: '6.0.0',
     });
     prisma.tracker.create.mockRejectedValue(p2002);
+    prisma.tracker.findUnique.mockResolvedValue(trackerRecord({ vehicleId: null }));
+
+    const result = await service.create({ imei: '123456789012345' }, fleetAdmin);
+    expect(result.imei).toBe('123456789012345');
+    expect(prisma.tracker.findUnique).toHaveBeenCalledWith({
+      where: { imei: '123456789012345' },
+      include: { vehicle: true },
+    });
+  });
+
+  // 2b. create IMEI dupliqué — tracker déjà assigné → ConflictException
+  it('should throw ConflictException on duplicate IMEI when tracker is assigned', async () => {
+    const p2002 = new Prisma.PrismaClientKnownRequestError('Unique constraint', {
+      code: 'P2002',
+      clientVersion: '6.0.0',
+    });
+    prisma.tracker.create.mockRejectedValue(p2002);
+    prisma.tracker.findUnique.mockResolvedValue(
+      trackerRecord({ vehicleId: VEHICLE_ID, vehicle: vehicleRecord() }),
+    );
 
     await expect(
       service.create({ imei: '123456789012345' }, fleetAdmin),

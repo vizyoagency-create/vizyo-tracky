@@ -40,6 +40,15 @@ export class TrackersService {
       });
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        // Si le tracker existe deja et est non-assigne, on le reutilise
+        // (cas typique : create+assign a echoue a l'etape assign, retry avec le meme IMEI).
+        const existing = await this.prisma.tracker.findUnique({
+          where: { imei: dto.imei },
+          include: { vehicle: true },
+        });
+        if (existing && !existing.vehicleId) {
+          return existing;
+        }
         throw new ConflictException(`IMEI "${dto.imei}" déjà enregistré`);
       }
       throw err;
