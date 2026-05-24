@@ -101,13 +101,18 @@ export class UsersController {
   // ─── /invitations — Sprint J ──────────────────────────────────
 
   @Post('invitations')
-  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
   async invite(
     @Req() req: AuthenticatedRequest,
-    @Body() dto: { email: string; role: UserRole; fleetId?: string | null },
+    @Body() dto: { email: string; role: UserRole; fleetId?: string | null; permissions?: Record<string, boolean> },
   ) {
     if (!dto.email || !dto.role) {
       throw new BadRequestException('email et role sont requis');
+    }
+    // FLEET_MANAGER: check users_manage permission (RBAC verifie aussi dans le service)
+    if (req.user.role === UserRole.FLEET_MANAGER) {
+      const perms = req.user.permissions as Record<string, boolean> | null;
+      if (!perms?.users_manage) throw new ForbiddenException('Permission insuffisante');
     }
     const fleetId = req.user.role === UserRole.SUPER_ADMIN
       ? (dto.fleetId ?? null)
@@ -117,12 +122,17 @@ export class UsersController {
       role: dto.role,
       fleetId,
       requestedByUserId: req.user.id,
+      permissions: dto.permissions ?? null,
     });
   }
 
   @Get('invitations')
-  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
   async listInvitations(@Req() req: AuthenticatedRequest) {
+    if (req.user.role === UserRole.FLEET_MANAGER) {
+      const perms = req.user.permissions as Record<string, boolean> | null;
+      if (!perms?.users_manage) throw new ForbiddenException('Permission insuffisante');
+    }
     const items = await this.invitations.list({
       id: req.user.id,
       role: req.user.role,
@@ -131,12 +141,33 @@ export class UsersController {
     return { items };
   }
 
+  @Post('invitations/:id/resend')
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
+  async resendInvitation(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    if (req.user.role === UserRole.FLEET_MANAGER) {
+      const perms = req.user.permissions as Record<string, boolean> | null;
+      if (!perms?.users_manage) throw new ForbiddenException('Permission insuffisante');
+    }
+    return this.invitations.resend(id, {
+      id: req.user.id,
+      role: req.user.role,
+      fleetId: req.user.fleetId,
+    });
+  }
+
   @Post('invitations/:id/revoke')
-  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
   async revokeInvitation(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
+    if (req.user.role === UserRole.FLEET_MANAGER) {
+      const perms = req.user.permissions as Record<string, boolean> | null;
+      if (!perms?.users_manage) throw new ForbiddenException('Permission insuffisante');
+    }
     return this.invitations.revoke(id, {
       id: req.user.id,
       role: req.user.role,
@@ -201,6 +232,7 @@ export class UsersController {
   async findAll(
     @Req() req: AuthenticatedRequest,
     @Query('includeArchived') includeArchived?: string,
+    @Query('includePending') includePending?: string,
   ) {
     const where: Prisma.UserWhereInput = req.user.role === UserRole.SUPER_ADMIN
       ? {}
@@ -226,6 +258,32 @@ export class UsersController {
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    if (includePending === 'true') {
+      const invWhere: Prisma.InvitationWhereInput = {
+        status: { in: ['PENDING', 'EXPIRED'] },
+      };
+      if (req.user.role !== UserRole.SUPER_ADMIN) {
+        invWhere.fleetId = req.user.fleetId;
+      }
+      const invitations = await this.prisma.invitation.findMany({
+        where: invWhere,
+        orderBy: { createdAt: 'desc' },
+      });
+      return {
+        users,
+        pendingInvitations: invitations.map((inv) => ({
+          id: inv.id,
+          email: inv.email,
+          role: inv.role,
+          fleetId: inv.fleetId,
+          status: inv.status,
+          permissions: inv.permissions,
+          expiresAt: inv.expiresAt.toISOString(),
+          createdAt: inv.createdAt.toISOString(),
+        })),
+      };
+    }
 
     return users;
   }

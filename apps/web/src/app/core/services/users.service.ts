@@ -39,11 +39,23 @@ export interface InvitationDto {
   email: string;
   role: 'SUPER_ADMIN' | 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER';
   fleetId: string | null;
+  permissions?: Record<string, boolean> | null;
   expiresAt: string;
   status?: 'PENDING' | 'ACCEPTED' | 'EXPIRED' | 'REVOKED';
   createdAt: string;
   acceptedAt?: string | null;
   acceptUrlForDevDebug?: string | null;
+}
+
+export interface PendingInvitation {
+  id: string;
+  email: string;
+  role: string;
+  fleetId: string | null;
+  status: 'PENDING' | 'EXPIRED';
+  permissions: Record<string, boolean> | null;
+  expiresAt: string;
+  createdAt: string;
 }
 
 export interface AcceptInvitationResult {
@@ -66,11 +78,21 @@ export class UsersApiService {
     };
   }
 
-  async findAll(includeArchived = false): Promise<TrackyUser[]> {
-    const url = includeArchived ? '/api/users?includeArchived=true' : '/api/users';
+  async findAll(
+    includeArchived = false,
+    includePending = false,
+  ): Promise<{ users: TrackyUser[]; pendingInvitations: PendingInvitation[] }> {
+    const params = new URLSearchParams();
+    if (includeArchived) params.set('includeArchived', 'true');
+    if (includePending) params.set('includePending', 'true');
+    const qs = params.toString();
+    const url = `/api/users${qs ? '?' + qs : ''}`;
     const res = await fetch(url, { headers: this.headers });
     if (!res.ok) throw new Error('Failed to load users');
-    return res.json();
+    const body = await res.json();
+    // Backward compat: without includePending the API returns a plain array
+    if (Array.isArray(body)) return { users: body, pendingInvitations: [] };
+    return body;
   }
 
   async create(payload: CreateUserPayload): Promise<TrackyUser> {
@@ -152,15 +174,34 @@ export class UsersApiService {
 
   // ─── /invitations — Sprint J ─────────────────────────────────
 
-  async invite(payload: { email: string; role: string; fleetId?: string | null }): Promise<InvitationDto> {
+  async invite(payload: {
+    email: string;
+    role: string;
+    fleetId?: string | null;
+    permissions?: Record<string, boolean>;
+  }): Promise<InvitationDto> {
     const res = await fetch('/api/users/invitations', {
       method: 'POST',
       headers: this.headers,
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
-      const body = (await res.json().catch(() => ({}))) as Record<string, string>;
-      throw new Error(body['message'] ?? 'Failed to send invitation');
+      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      const errObj = body['error'] as Record<string, string> | undefined;
+      throw new Error(errObj?.['message'] ?? (body['message'] as string) ?? 'Failed to send invitation');
+    }
+    return res.json();
+  }
+
+  async resendInvitation(id: string): Promise<InvitationDto> {
+    const res = await fetch(`/api/users/invitations/${id}/resend`, {
+      method: 'POST',
+      headers: this.headers,
+    });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      const errObj = body['error'] as Record<string, string> | undefined;
+      throw new Error(errObj?.['message'] ?? (body['message'] as string) ?? 'Failed to resend invitation');
     }
     return res.json();
   }

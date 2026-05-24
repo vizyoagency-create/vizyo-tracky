@@ -1,12 +1,13 @@
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, Plus, Archive, Users, Shield, Pencil, KeyRound } from 'lucide-angular';
+import { LucideAngularModule, Plus, Archive, Users, Shield, Pencil, KeyRound, Send, XCircle } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { VehicleGroupsService } from '../../core/services/vehicle-groups.service';
-import { UsersApiService, type TrackyUser } from '../../core/services/users.service';
+import { UsersApiService, type TrackyUser, type PendingInvitation } from '../../core/services/users.service';
+import { ToastService } from '../../shared/ui/toast/toast.service';
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
 import { UserDrawerComponent, type UserDrawerData, type UserDrawerResult } from './user-drawer.component';
 import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerResult } from './vehicle-access-drawer.component';
@@ -25,7 +26,7 @@ import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerR
       <div class="u-header">
         <div>
           <h1 class="u-title">Utilisateurs</h1>
-          <p class="u-sub">{{ users().length }} membre(s){{ includeArchived() ? ' (archives inclus)' : ' dans votre flotte' }}</p>
+          <p class="u-sub">{{ totalCount() }} membre(s){{ includeArchived() ? ' (archives inclus)' : ' dans votre flotte' }}</p>
         </div>
         <div class="u-header-actions">
           @if (perms.can('users_manage')) {
@@ -42,7 +43,7 @@ import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerR
 
       @if (loading()) {
         <div class="u-loading"><span class="w-6 h-6 border-2 border-fg-tertiary border-t-tracky-light rounded-full animate-spin"></span></div>
-      } @else if (users().length === 0) {
+      } @else if (users().length === 0 && pendingInvitations().length === 0) {
         <div class="u-empty">
           <div class="u-empty-icon"><lucide-icon [img]="UsersIcon" [size]="32"></lucide-icon></div>
           <p>Aucun utilisateur dans votre flotte</p>
@@ -52,6 +53,7 @@ import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerR
         </div>
       } @else {
         <div class="u-grid">
+          <!-- Active users -->
           @for (u of users(); track u.id) {
             <div class="u-card" [class.admin]="u.role === 'FLEET_ADMIN'" [class.archived]="!u.isActive">
               <div class="u-card-glow" [class]="u.role === 'FLEET_ADMIN' ? 'green' : u.role === 'FLEET_MANAGER' ? 'blue' : 'gray'"></div>
@@ -84,10 +86,10 @@ import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerR
                   <button (click)="openEditDrawer(u)" class="u-action-btn" title="Modifier">
                     <lucide-icon [img]="PencilIcon" [size]="14"></lucide-icon> Modifier
                   </button>
-                  <button (click)="openAccessModal(u)" class="u-action-btn" title="Accès véhicules">
-                    <lucide-icon [img]="ShieldIcon" [size]="14"></lucide-icon> Accès
+                  <button (click)="openAccessModal(u)" class="u-action-btn" title="Acces vehicules">
+                    <lucide-icon [img]="ShieldIcon" [size]="14"></lucide-icon> Acces
                   </button>
-                  <button (click)="onResetPassword(u)" class="u-action-btn" title="Réinitialiser le mot de passe">
+                  <button (click)="onResetPassword(u)" class="u-action-btn" title="Reinitialiser le mot de passe">
                     <lucide-icon [img]="KeyIcon" [size]="14"></lucide-icon>
                   </button>
                   <button (click)="confirmDelete(u)" class="u-action-btn danger" title="Archiver">
@@ -98,6 +100,44 @@ import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerR
               @if (!u.isActive) {
                 <div class="u-card-actions">
                   <span class="u-archived-badge">Archive</span>
+                </div>
+              }
+            </div>
+          }
+
+          <!-- Pending invitations -->
+          @for (inv of pendingInvitations(); track inv.id) {
+            <div class="u-card invited" [class.expired]="inv.status === 'EXPIRED'">
+              <div class="u-card-glow gray"></div>
+
+              <div class="u-card-top">
+                <div class="u-avatar pending">
+                  {{ inv.email.slice(0, 2).toUpperCase() }}
+                </div>
+                <div class="u-info">
+                  <p class="u-name">{{ inv.email.split('&#64;')[0] }}</p>
+                  <p class="u-email">{{ inv.email }}</p>
+                </div>
+                <div class="u-status" [class]="inv.status === 'PENDING' ? 'pending' : 'expired'">
+                  {{ inv.status === 'PENDING' ? 'Invite' : 'Expire' }}
+                </div>
+              </div>
+
+              <div class="u-card-mid">
+                <span class="u-role-badge" [class]="inv.role === 'FLEET_MANAGER' ? 'manager' : 'viewer'">
+                  {{ roleLabel(inv.role) }}
+                </span>
+                <span class="u-date">Invite {{ formatDate(inv.createdAt) }}</span>
+              </div>
+
+              @if (perms.can('users_manage')) {
+                <div class="u-card-actions">
+                  <button (click)="onResendInvitation(inv)" class="u-action-btn" title="Renvoyer l'invitation">
+                    <lucide-icon [img]="SendIcon" [size]="14"></lucide-icon> Renvoyer
+                  </button>
+                  <button (click)="onRevokeInvitation(inv)" class="u-action-btn danger" title="Revoquer l'invitation">
+                    <lucide-icon [img]="XCircleIcon" [size]="14"></lucide-icon> Revoquer
+                  </button>
                 </div>
               }
             </div>
@@ -194,9 +234,14 @@ import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerR
     }
     .u-card:hover { border-color: rgba(16,224,160,.2); box-shadow: 0 0 30px rgba(16,224,160,.06), 0 8px 24px rgba(0,0,0,.15) }
     .u-card.admin { border-color: rgba(16,224,160,.15) }
+    .u-card.invited { border-style: dashed; border-color: rgba(245,158,11,.2) }
+    .u-card.invited:hover { border-color: rgba(245,158,11,.35); box-shadow: 0 0 30px rgba(245,158,11,.06), 0 8px 24px rgba(0,0,0,.15) }
+    .u-card.invited.expired { border-color: rgba(239,68,68,.2) }
+    .u-card.invited.expired:hover { border-color: rgba(239,68,68,.3) }
 
     :host-context([data-theme="light"]) .u-card { background: rgba(255,255,255,.6); border-color: rgba(16,224,160,.1) }
     :host-context([data-theme="light"]) .u-card:hover { border-color: rgba(16,224,160,.25); box-shadow: 0 0 30px rgba(16,224,160,.05), 0 8px 24px rgba(0,0,0,.05) }
+    :host-context([data-theme="light"]) .u-card.invited { border-color: rgba(245,158,11,.25) }
 
     .u-card-glow { position: absolute; top: 0; right: 0; width: 60px; height: 60px; border-radius: 0 0 0 60px; opacity: .08; pointer-events: none }
     .u-card-glow.green { background: var(--tracky-light) }
@@ -212,12 +257,15 @@ import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerR
     .u-avatar.admin { background: var(--tracky) }
     .u-avatar.manager { background: #3b82f6 }
     .u-avatar.viewer { background: var(--fg-tertiary) }
+    .u-avatar.pending { background: transparent; border: 2px dashed rgba(245,158,11,.4); color: #f59e0b }
     .u-info { flex: 1; min-width: 0 }
     .u-name { font-size: 14px; font-weight: 700; color: var(--fg-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
     .u-email { font-size: 11px; color: var(--fg-tertiary); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
     .u-status { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 6px; flex-shrink: 0 }
     .u-status.active { background: rgba(16,224,160,.1); color: var(--tracky-light) }
     .u-status.suspended { background: rgba(239,68,68,.1); color: #f87171 }
+    .u-status.pending { background: rgba(245,158,11,.1); color: #f59e0b }
+    .u-status.expired { background: rgba(239,68,68,.1); color: #f87171 }
 
     /* Mid */
     .u-card-mid { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding-top: 10px; border-top: 1px solid var(--border-subtle) }
@@ -253,10 +301,13 @@ import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerR
 })
 export class UsersListComponent implements OnInit {
   private readonly usersService = inject(UsersApiService);
+  private readonly toast = inject(ToastService);
 
   readonly loading = signal(true);
   readonly users = signal<TrackyUser[]>([]);
+  readonly pendingInvitations = signal<PendingInvitation[]>([]);
   readonly includeArchived = signal(false);
+  readonly totalCount = computed(() => this.users().length + this.pendingInvitations().length);
 
   // Drawer (create + edit)
   readonly showDrawer = signal(false);
@@ -297,6 +348,8 @@ export class UsersListComponent implements OnInit {
   protected readonly UsersIcon = Users;
   protected readonly ShieldIcon = Shield;
   protected readonly PencilIcon = Pencil;
+  protected readonly SendIcon = Send;
+  protected readonly XCircleIcon = XCircle;
 
   async ngOnInit(): Promise<void> {
     await this.loadUsers();
@@ -305,7 +358,9 @@ export class UsersListComponent implements OnInit {
   private async loadUsers(): Promise<void> {
     this.loading.set(true);
     try {
-      this.users.set(await this.usersService.findAll(this.includeArchived()));
+      const result = await this.usersService.findAll(this.includeArchived(), true);
+      this.users.set(result.users);
+      this.pendingInvitations.set(result.pendingInvitations);
     } catch { /* error */ }
     finally { this.loading.set(false); }
   }
@@ -338,8 +393,9 @@ export class UsersListComponent implements OnInit {
         await this.usersService.invite({
           email: result.email!,
           role: result.role,
+          permissions: result.permissions,
         });
-        alert(`Invitation envoyee a ${result.email}`);
+        this.toast.success(`Invitation envoyee a ${result.email}`);
       } else {
         const userId = this.drawerData()?.user?.id;
         if (userId) {
@@ -356,7 +412,7 @@ export class UsersListComponent implements OnInit {
       this.showDrawer.set(false);
       await this.loadUsers();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Erreur');
+      this.toast.error(err instanceof Error ? err.message : 'Erreur');
     }
     finally { this.drawerLoading.set(false); }
   }
@@ -387,9 +443,31 @@ export class UsersListComponent implements OnInit {
   async onResetPassword(user: TrackyUser): Promise<void> {
     try {
       await this.usersService.resetPassword(user.id);
-      alert(`Un email de reinitialisation a ete envoye a ${user.email}.`);
+      this.toast.success(`Un email de reinitialisation a ete envoye a ${user.email}.`);
     } catch {
-      alert('Erreur lors de l\'envoi du lien de reinitialisation.');
+      this.toast.error('Erreur lors de l\'envoi du lien de reinitialisation.');
+    }
+  }
+
+  // ─── Invitation actions ────────────────────────────────
+
+  async onResendInvitation(inv: PendingInvitation): Promise<void> {
+    try {
+      await this.usersService.resendInvitation(inv.id);
+      this.toast.success(`Invitation renvoyee a ${inv.email}`);
+      await this.loadUsers();
+    } catch (err) {
+      this.toast.error(err instanceof Error ? err.message : 'Erreur');
+    }
+  }
+
+  async onRevokeInvitation(inv: PendingInvitation): Promise<void> {
+    try {
+      await this.usersService.revokeInvitation(inv.id);
+      this.toast.success(`Invitation revoquee pour ${inv.email}`);
+      await this.loadUsers();
+    } catch (err) {
+      this.toast.error(err instanceof Error ? err.message : 'Erreur');
     }
   }
 

@@ -241,6 +241,12 @@ export class AcceptInviteComponent implements OnInit {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Echec de l\'activation';
       console.error('[accept-invite] submit failed:', err);
+      // Compte deja active : redirection vers login
+      if (message.includes('deja active')) {
+        this.toast.info('Votre compte est deja active. Connectez-vous.');
+        this.router.navigate(['/login']);
+        return;
+      }
       // Si le lien a expire ou est invalide, afficher l'etat d'erreur plein ecran
       // au lieu du formulaire (l'utilisateur ne peut rien faire de plus).
       if (message.includes('expire') || message.includes('invalide')) {

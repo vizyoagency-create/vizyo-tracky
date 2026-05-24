@@ -15,6 +15,7 @@ import { AuthClientService } from '../auth-client/auth-client.service';
 import type { Env } from '../config/env.validation';
 import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { getDefaultPermissions } from '../users/default-permissions';
 
 /**
  * V1.5 (Sprint J) — Workflow d'invitation utilisateur.
@@ -42,6 +43,7 @@ interface CreateInvitationParams {
   role: UserRole;
   fleetId: string | null;
   requestedByUserId: string;
+  permissions?: Record<string, boolean> | null;
 }
 
 export interface AcceptInvitationResult {
@@ -102,14 +104,26 @@ export class InvitationsService {
     });
     if (!inviter) throw new UnauthorizedException('Inviteur introuvable');
     if (inviter.role !== UserRole.SUPER_ADMIN) {
-      if (inviter.role !== UserRole.FLEET_ADMIN) {
-        throw new ForbiddenException('Seuls SUPER_ADMIN et FLEET_ADMIN peuvent inviter');
-      }
-      if (params.fleetId !== inviter.fleetId) {
-        throw new ForbiddenException('Vous ne pouvez inviter que dans votre flotte');
-      }
-      if (params.role === UserRole.SUPER_ADMIN) {
-        throw new ForbiddenException('Un FLEET_ADMIN ne peut pas creer un SUPER_ADMIN');
+      if (inviter.role === UserRole.FLEET_MANAGER) {
+        const inviterPerms = inviter.permissions as Record<string, boolean> | null;
+        if (!inviterPerms?.users_manage) {
+          throw new ForbiddenException('Permission insuffisante pour inviter');
+        }
+        if (params.fleetId !== inviter.fleetId) {
+          throw new ForbiddenException('Vous ne pouvez inviter que dans votre flotte');
+        }
+        if (params.role !== UserRole.VIEWER) {
+          throw new ForbiddenException('Un Manager ne peut inviter que des Lecteurs');
+        }
+      } else if (inviter.role === UserRole.FLEET_ADMIN) {
+        if (params.fleetId !== inviter.fleetId) {
+          throw new ForbiddenException('Vous ne pouvez inviter que dans votre flotte');
+        }
+        if (params.role === UserRole.SUPER_ADMIN) {
+          throw new ForbiddenException('Un FLEET_ADMIN ne peut pas creer un SUPER_ADMIN');
+        }
+      } else {
+        throw new ForbiddenException('Vous n\'avez pas le droit d\'inviter');
       }
     }
 
@@ -122,11 +136,14 @@ export class InvitationsService {
     const tokenHash = this.hashToken(rawToken);
     const expiresAt = new Date(Date.now() + TOKEN_TTL_SECONDS * 1000);
 
+    const invPermissions = params.permissions ?? getDefaultPermissions(params.role);
+
     const invitation = await this.prisma.invitation.create({
       data: {
         email,
         role: params.role,
         fleetId: params.fleetId,
+        permissions: invPermissions as unknown as Prisma.JsonObject,
         tokenHash,
         expiresAt,
         createdById: params.requestedByUserId,
@@ -173,6 +190,7 @@ export class InvitationsService {
       email: invitation.email,
       role: invitation.role,
       fleetId: invitation.fleetId,
+      permissions: invitation.permissions,
       expiresAt: invitation.expiresAt.toISOString(),
       createdAt: invitation.createdAt.toISOString(),
       acceptUrlForDevDebug: this.email.isEnabled() ? null : acceptUrl,
@@ -233,7 +251,7 @@ export class InvitationsService {
     });
     if (existingUser) {
       throw new ConflictException(
-        'Un utilisateur avec cet email existe deja. Connectez-vous au lieu d\'utiliser ce lien.',
+        'Votre compte est deja active. Connectez-vous avec vos identifiants.',
       );
     }
 
@@ -257,7 +275,8 @@ export class InvitationsService {
     const firstName = parts[0] ?? null;
     const lastName = parts.length > 1 ? parts.slice(1).join(' ') : null;
 
-    // 4) Create local Tracky User with the invited role + fleet.
+    // 4) Create local Tracky User with the invited role + fleet + pre-configured permissions.
+    const userPermissions = (invitation.permissions ?? getDefaultPermissions(invitation.role)) as unknown as Prisma.JsonObject;
     await this.prisma.user.create({
       data: {
         authUserId: me.id,
@@ -266,6 +285,7 @@ export class InvitationsService {
         lastName,
         role: invitation.role,
         fleetId: invitation.fleetId,
+        permissions: userPermissions,
       },
     });
 
@@ -293,6 +313,30 @@ export class InvitationsService {
       where,
       orderBy: { createdAt: 'desc' },
       take: 200,
+    });
+  }
+
+  /**
+   * Resend an invitation: find original, re-invoke create() with same params.
+   * create() auto-revokes old PENDING invitations, so no duplicates.
+   */
+  async resend(invitationId: string, requestedBy: { id: string; role: UserRole; fleetId: string | null }) {
+    const where: Prisma.InvitationWhereInput = { id: invitationId };
+    if (requestedBy.role !== UserRole.SUPER_ADMIN) {
+      if (!requestedBy.fleetId) throw new NotFoundException('Invitation introuvable');
+      where.fleetId = requestedBy.fleetId;
+    }
+    const original = await this.prisma.invitation.findFirst({ where });
+    if (!original) throw new NotFoundException('Invitation introuvable');
+    if (original.status === 'ACCEPTED') {
+      throw new BadRequestException('Cette invitation a deja ete acceptee');
+    }
+    return this.create({
+      email: original.email,
+      role: original.role,
+      fleetId: original.fleetId,
+      requestedByUserId: requestedBy.id,
+      permissions: original.permissions as Record<string, boolean> | null,
     });
   }
 

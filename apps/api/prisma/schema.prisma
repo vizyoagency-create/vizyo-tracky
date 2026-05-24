@@ -249,6 +249,7 @@ model Invitation {
   fleetId     String?  @db.Uuid
   tokenHash   String   @unique
   expiresAt   DateTime
+  permissions Json?
   status      String   @default("PENDING") // 'PENDING' | 'ACCEPTED' | 'EXPIRED' | 'REVOKED'
   createdById String   @db.Uuid
   createdBy   User     @relation("InvitationCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)

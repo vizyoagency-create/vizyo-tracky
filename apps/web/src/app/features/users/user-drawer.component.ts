@@ -58,7 +58,7 @@ const ROLE_DEFAULTS: Record<string, Record<string, boolean>> = {
 
             <!-- Section: Identité -->
             @if (data()?.mode === 'create') {
-              <!-- Mode invitation : email + rôle uniquement -->
+              <!-- Mode invitation : email uniquement -->
               <section>
                 <h3 class="section-title">Inviter un utilisateur</h3>
                 <p class="text-xs text-fg-tertiary mb-3">
@@ -70,20 +70,6 @@ const ROLE_DEFAULTS: Record<string, Record<string, boolean>> = {
                     <input type="email" [(ngModel)]="email" placeholder="utilisateur&#64;entreprise.com"
                       class="field-input" />
                   </div>
-                </div>
-              </section>
-
-              <section>
-                <h3 class="section-title">Role</h3>
-                <div class="flex gap-2">
-                  <button (click)="setRole('VIEWER')"
-                    class="role-btn" [class.active]="role === 'VIEWER'" [class.viewer]="role === 'VIEWER'">
-                    Lecteur
-                  </button>
-                  <button (click)="setRole('FLEET_MANAGER')"
-                    class="role-btn" [class.active]="role === 'FLEET_MANAGER'" [class.manager]="role === 'FLEET_MANAGER'">
-                    Manager
-                  </button>
                 </div>
               </section>
             }
@@ -102,21 +88,24 @@ const ROLE_DEFAULTS: Record<string, Record<string, boolean>> = {
                   </div>
                 </div>
               </section>
+            }
 
-              <section>
-                <h3 class="section-title">Role</h3>
-                <div class="flex gap-2">
-                  <button (click)="setRole('VIEWER')"
-                    class="role-btn" [class.active]="role === 'VIEWER'" [class.viewer]="role === 'VIEWER'">
-                    Lecteur
-                  </button>
-                  <button (click)="setRole('FLEET_MANAGER')"
-                    class="role-btn" [class.active]="role === 'FLEET_MANAGER'" [class.manager]="role === 'FLEET_MANAGER'">
-                    Manager
-                  </button>
-                </div>
-              </section>
+            <!-- Role (both modes) -->
+            <section>
+              <h3 class="section-title">Role</h3>
+              <div class="flex gap-2">
+                <button (click)="setRole('VIEWER')"
+                  class="role-btn" [class.active]="role === 'VIEWER'" [class.viewer]="role === 'VIEWER'">
+                  Lecteur
+                </button>
+                <button (click)="setRole('FLEET_MANAGER')"
+                  class="role-btn" [class.active]="role === 'FLEET_MANAGER'" [class.manager]="role === 'FLEET_MANAGER'">
+                  Manager
+                </button>
+              </div>
+            </section>
 
+            @if (data()?.mode === 'edit') {
               <section>
                 <h3 class="section-title">Statut</h3>
                 <div class="flex items-center justify-between p-3 rounded-xl bg-bg-secondary border border-border-subtle">
@@ -127,10 +116,11 @@ const ROLE_DEFAULTS: Record<string, Record<string, boolean>> = {
                   </label>
                 </div>
               </section>
+            }
 
-              <!-- Section: Permissions (edit only) -->
-              <section>
-                <h3 class="section-title">Permissions</h3>
+            <!-- Permissions (both modes) -->
+            <section>
+              <h3 class="section-title">Permissions</h3>
               <div class="space-y-4">
                 @for (group of permGroups; track group.label) {
                   <div class="perm-group">
@@ -151,7 +141,6 @@ const ROLE_DEFAULTS: Record<string, Record<string, boolean>> = {
                 }
               </div>
             </section>
-            }
           </div>
 
           <!-- Footer -->
