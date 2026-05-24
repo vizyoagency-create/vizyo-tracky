@@ -121,9 +121,10 @@ const COLOR_MAP: Record<ToastKind, string> = {
       }
       /* En mode fullscreen (/map), la bottom-bar est cachee — on remet le
          toast pres du bord pour ne pas laisser un trou inutile.
-         :host-context contourne l'encapsulation Emulated d'Angular qui
-         scoperait un selecteur "body:has(...)" et empecherait le match. */
-      :host-context(.layout--fullscreen) .toast-stack {
+         Le toast-container est rendu au niveau global (app.ts) donc on cible
+         via body:has(...) plutot que :host-context(...) qui ne matche que
+         dans la chaine d'ancetres du host. */
+      body:has(.layout--fullscreen) .toast-stack {
         bottom: calc(env(safe-area-inset-bottom) + 16px);
       }
       /* Sur mobile, les toasts prennent toute la largeur disponible */

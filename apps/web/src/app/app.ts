@@ -7,14 +7,16 @@ import { PreferencesService } from './core/services/preferences.service';
 import { PwaUpdateService } from './core/services/pwa-update.service';
 import { RealtimeService } from './core/services/realtime.service';
 import { ThemeService } from './core/theme/theme.service';
+import { ToastContainerComponent } from './shared/ui/toast/toast-container.component';
 import { UpdateRequiredModalComponent } from './shared/ui/update-required-modal/update-required-modal.component';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet, UpdateRequiredModalComponent],
+  imports: [RouterOutlet, ToastContainerComponent, UpdateRequiredModalComponent],
   template: `
     <router-outlet />
+    <app-toast-container />
     <app-update-required-modal />
   `,
 })

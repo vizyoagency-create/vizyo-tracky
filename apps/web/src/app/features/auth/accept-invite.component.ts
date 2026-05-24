@@ -61,6 +61,12 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
                 <small class="warn">Les mots de passe ne correspondent pas.</small>
               }
             </div>
+            @if (submitError()) {
+              <div class="alert" role="alert">
+                <lucide-icon [img]="ShieldAlert" [size]="16"></lucide-icon>
+                <span>{{ submitError() }}</span>
+              </div>
+            }
             <button type="submit" class="btn-primary"
                     [disabled]="loading() || !canSubmit()">
               <lucide-icon [img]="KeyRound" [size]="14"></lucide-icon>
@@ -119,6 +125,17 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
       border-color: var(--tracky-light, #10E0A0);
     }
     .warn { font-size: 11px; color: var(--accent-warning, #f59e0b); }
+    .alert {
+      display: flex; align-items: flex-start; gap: 8px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: color-mix(in srgb, var(--accent-danger, #ef4444) 12%, transparent);
+      border: 1px solid color-mix(in srgb, var(--accent-danger, #ef4444) 35%, transparent);
+      color: var(--accent-danger, #ef4444);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .alert lucide-icon { flex-shrink: 0; margin-top: 1px; }
     .btn-primary {
       margin-top: 8px;
       background: var(--tracky-light, #10E0A0);
@@ -161,6 +178,7 @@ export class AcceptInviteComponent implements OnInit {
 
   readonly token = signal<string>('');
   readonly errorMessage = signal<string>('');
+  readonly submitError = signal<string>('');
   readonly success = signal(false);
   readonly loading = signal(false);
 
@@ -190,6 +208,7 @@ export class AcceptInviteComponent implements OnInit {
   async submit(): Promise<void> {
     if (!this.canSubmit()) return;
     this.loading.set(true);
+    this.submitError.set('');
     try {
       const result = await this.usersApi.acceptInvitation({
         token: this.token(),
@@ -201,7 +220,10 @@ export class AcceptInviteComponent implements OnInit {
       const meRes = await fetch('/api/auth/me', {
         headers: { Authorization: `Bearer ${result.accessToken}` },
       });
-      if (!meRes.ok) throw new Error('Echec de la creation de session');
+      if (!meRes.ok) {
+        const body = await meRes.text().catch(() => '');
+        throw new Error(`Echec de la creation de session (HTTP ${meRes.status}${body ? ': ' + body.slice(0, 200) : ''})`);
+      }
       const me = await meRes.json() as { id: string; email: string; role: string; fleetId: string | null };
       this.auth.setSession(
         result.accessToken,
@@ -219,6 +241,10 @@ export class AcceptInviteComponent implements OnInit {
       setTimeout(() => this.router.navigate(['/dashboard']), 800);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Echec de l\'activation';
+      // Log brut pour debug DevTools — le toast peut etre rate par l'utilisateur,
+      // un message in-page est affiche sous le formulaire en plus.
+      console.error('[accept-invite] submit failed:', err);
+      this.submitError.set(message);
       this.toast.error(message);
     } finally {
       this.loading.set(false);

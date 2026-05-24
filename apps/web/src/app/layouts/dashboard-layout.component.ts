@@ -31,14 +31,13 @@ import { PermissionsService } from '../core/services/permissions.service';
 import { LogoComponent } from '../shared/ui/logo/logo.component';
 import { InstallBannerComponent } from '../shared/ui/install-banner/install-banner.component';
 import { PushPromptComponent } from '../shared/ui/push-prompt/push-prompt.component';
-import { ToastContainerComponent } from '../shared/ui/toast/toast-container.component';
 import { BottomSheetComponent } from '../shared/ui/bottom-sheet/bottom-sheet.component';
 import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wizard.component';
 
 @Component({
   selector: 'app-dashboard-layout',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, ThemeToggleComponent, AlertsBellComponent, LogoComponent, InstallBannerComponent, PushPromptComponent, ToastContainerComponent, BottomSheetComponent, OnboardingWizardComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, ThemeToggleComponent, AlertsBellComponent, LogoComponent, InstallBannerComponent, PushPromptComponent, BottomSheetComponent, OnboardingWizardComponent],
   template: `
     <a href="#main-content" class="skip-link">Aller au contenu principal</a>
     <div class="layout" [class.layout--fullscreen]="fullscreen()">
@@ -165,7 +164,6 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
 
       <app-install-banner />
       <app-push-prompt />
-      <app-toast-container />
       <app-onboarding-wizard />
     </div>
   `,
