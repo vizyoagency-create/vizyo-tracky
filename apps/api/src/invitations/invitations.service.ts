@@ -200,8 +200,12 @@ export class InvitationsService {
         issuer: 'vizyo-tracky',
       }) as { invitationId: string; token: string };
     } catch (err) {
-      const reason = err instanceof Error ? err.message : 'invalide';
-      throw new BadRequestException(`Lien d'invitation invalide ou expire (${reason})`);
+      if (err instanceof jwt.TokenExpiredError) {
+        throw new BadRequestException(
+          'Ce lien d\'invitation a expire. Veuillez demander a votre administrateur de renvoyer une invitation.',
+        );
+      }
+      throw new BadRequestException('Lien d\'invitation invalide. Verifiez que vous avez copie le lien complet.');
     }
 
     const invitation = await this.prisma.invitation.findUnique({

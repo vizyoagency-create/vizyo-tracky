@@ -191,8 +191,9 @@ export class UsersApiService {
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
-      const body = (await res.json().catch(() => ({}))) as Record<string, string>;
-      throw new Error(body['message'] ?? 'Failed to accept invitation');
+      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      const errObj = body['error'] as Record<string, string> | undefined;
+      throw new Error(errObj?.['message'] ?? (body['message'] as string) ?? 'Failed to accept invitation');
     }
     return res.json();
   }

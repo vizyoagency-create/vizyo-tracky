@@ -26,7 +26,6 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
             <lucide-icon [img]="ShieldAlert" [size]="40"></lucide-icon>
             <h1>Lien invalide</h1>
             <p>{{ errorMessage() }}</p>
-            <a routerLink="/login" class="link">Retour a la connexion</a>
           </div>
         } @else if (success()) {
           <div class="state state--success">
@@ -241,10 +240,14 @@ export class AcceptInviteComponent implements OnInit {
       setTimeout(() => this.router.navigate(['/dashboard']), 800);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Echec de l\'activation';
-      // Log brut pour debug DevTools — le toast peut etre rate par l'utilisateur,
-      // un message in-page est affiche sous le formulaire en plus.
       console.error('[accept-invite] submit failed:', err);
-      this.submitError.set(message);
+      // Si le lien a expire ou est invalide, afficher l'etat d'erreur plein ecran
+      // au lieu du formulaire (l'utilisateur ne peut rien faire de plus).
+      if (message.includes('expire') || message.includes('invalide')) {
+        this.errorMessage.set(message);
+      } else {
+        this.submitError.set(message);
+      }
       this.toast.error(message);
     } finally {
       this.loading.set(false);
