@@ -5,11 +5,11 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
   LucideAngularModule, ArrowLeft, Wifi, WifiOff, Gauge, MapPin, Radio,
-  AlertTriangle, AlertCircle, Info, Check, Power, Route, BellOff, Map,
-  History, Bell, Zap, Clock, ShieldAlert, ShieldCheck, MessageSquare, Pencil, X,
+  AlertTriangle, AlertCircle, Info, Check, Power, BarChart3, BellOff, Map,
+  History, Bell, Zap, Clock, ShieldAlert, ShieldCheck, X, Pencil,
   UserRound, UserPlus, Copy,
 } from 'lucide-angular';
-import type { AlertEvent, DriverDto, TripDto } from '@vizyo/tracky-shared';
+import type { AlertEvent, DriverDto } from '@vizyo/tracky-shared';
 import { isAcceptableLiveFix } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { AlertsApiService } from '../../core/services/alerts.service';
@@ -20,7 +20,6 @@ import { RealtimeService } from '../../core/services/realtime.service';
 import { DriversApiService } from '../../core/services/drivers.service';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { TrackersApiService } from '../../core/services/trackers.service';
-import { TripsApiService } from '../../core/services/trips.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { DriverPickerComponent } from '../../shared/ui/driver-picker/driver-picker.component';
@@ -29,6 +28,7 @@ import { EngineControlButtonComponent } from '../engine-control/engine-control-b
 import { SurveillancePanelComponent } from '../surveillance/surveillance-panel.component';
 import { CommandsPanelComponent } from '../tracker-commands/commands-panel.component';
 import { VehicleScheduleComponent } from './vehicle-schedule/vehicle-schedule.component';
+import { VehicleReportsTabComponent } from './vehicle-reports-tab.component';
 import { relativeTime } from '../../shared/utils/relative-time';
 
 @Component({
@@ -37,7 +37,8 @@ import { relativeTime } from '../../shared/utils/relative-time';
   imports: [
     RouterLink, FormsModule, LucideAngularModule, DatePipe, DecimalPipe,
     MiniMapComponent, EngineControlButtonComponent, CommandsPanelComponent,
-    VehicleScheduleComponent, DriverPickerComponent, SurveillancePanelComponent,
+    VehicleScheduleComponent, VehicleReportsTabComponent,
+    DriverPickerComponent, SurveillancePanelComponent,
   ],
   template: `
     @if (loading()) {
@@ -273,9 +274,10 @@ import { relativeTime } from '../../shared/utils/relative-time';
           }
         }
 
-        <!-- Selecteur de plage date : visible uniquement sur Historique et Trajets.
+        <!-- Selecteur de plage date : visible uniquement sur Historique.
+             L'onglet Rapports gere sa propre periode dans son sous-composant.
              Default = Aujourd'hui ; permet d'elargir a Hier / 7j / 30j / Tout / Personnalise. -->
-        @if (activeTab() === 'history' || activeTab() === 'trips') {
+        @if (activeTab() === 'history') {
           <div class="vd-date-filter">
             <label class="vd-date-filter-label" for="vd-date-range">Période</label>
             <select
@@ -430,142 +432,12 @@ import { relativeTime } from '../../shared/utils/relative-time';
           />
         }
 
-        @if (activeTab() === 'trips') {
-          @if (vehicleTrips().length > 0) {
-            <div class="vd-trips-list">
-              @for (trip of vehicleTrips(); track trip.id) {
-                <div class="vd-trip-card">
-                  <div class="vd-trip-header">
-                    <div class="vd-trip-period">
-                      <span class="vd-trip-date">{{ trip.startedAt | date:'dd MMM' }}</span>
-                      <span class="vd-trip-times">
-                        {{ trip.startedAt | date:'HH:mm' }}
-                        @if (trip.endedAt) {
-                          → {{ trip.endedAt | date:'HH:mm' }}
-                        } @else {
-                          <span class="vd-trip-live">· en cours</span>
-                        }
-                      </span>
-                    </div>
-                    <div class="vd-trip-distance">
-                      <strong>{{ (trip.distanceMeters / 1000) | number:'1.1-1' }}</strong>
-                      <span class="vd-trip-distance-unit">km</span>
-                    </div>
-                  </div>
-
-                  <!-- Pill conducteur (affichage discret entre header et stats). -->
-                  @if (trip.driver) {
-                    <div class="vd-trip-driver"
-                         [style.--driver-color]="trip.driver.color || '#10E0A0'"
-                         [title]="(trip.driverSource === 'AUTO' ? 'Conducteur snape automatiquement.' : 'Conducteur assigne manuellement.')">
-                      <span class="vd-trip-driver-dot"></span>
-                      <span class="vd-trip-driver-name">
-                        {{ trip.driver.firstName }} {{ trip.driver.lastName }}
-                      </span>
-                      @if (trip.driverSource === 'MANUAL') {
-                        <span class="vd-trip-driver-source">manuel</span>
-                      }
-                    </div>
-                  }
-
-                  <div class="vd-trip-stats">
-                    <div class="vd-trip-stat">
-                      <span class="vd-trip-stat-label">Durée</span>
-                      <span class="vd-trip-stat-value">{{ formatDuration(trip.durationSeconds) }}</span>
-                    </div>
-                    <div class="vd-trip-stat">
-                      <span class="vd-trip-stat-label">V. max</span>
-                      <span class="vd-trip-stat-value vd-trip-stat-value--max">{{ trip.maxSpeed | number:'1.0-0' }} km/h</span>
-                    </div>
-                    <div class="vd-trip-stat">
-                      <span class="vd-trip-stat-label">V. moy.</span>
-                      <span class="vd-trip-stat-value">{{ trip.avgSpeed | number:'1.0-0' }} km/h</span>
-                    </div>
-                  </div>
-
-                  <!-- Bloc note : edition inline pour les roles autorises,
-                       lecture seule pour les autres. -->
-                  @if (editingNoteTripId() === trip.id) {
-                    <div class="vd-trip-note vd-trip-note--editing">
-                      <textarea
-                        class="vd-trip-note-input"
-                        [(ngModel)]="editingNoteText"
-                        [maxlength]="500"
-                        placeholder="Ex : Dépose Eric au sport, livraison client X..."
-                        rows="2"
-                        autofocus
-                      ></textarea>
-                      <div class="vd-trip-note-actions">
-                        <span class="vd-trip-note-counter"
-                              [class.vd-trip-note-counter--warn]="editingNoteText.length > 450">
-                          {{ editingNoteText.length }} / 500
-                        </span>
-                        <div class="vd-trip-note-buttons">
-                          <button type="button" class="vd-trip-note-btn"
-                                  (click)="cancelEditNote()"
-                                  [disabled]="savingNote()">
-                            Annuler
-                          </button>
-                          <button type="button" class="vd-trip-note-btn vd-trip-note-btn--primary"
-                                  (click)="saveTripNote(trip)"
-                                  [disabled]="savingNote()">
-                            @if (savingNote()) {
-                              <span class="vd-admin-spinner" style="width:10px;height:10px;border-width:1.5px"></span>
-                            }
-                            Enregistrer
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  } @else if (trip.notes) {
-                    <div class="vd-trip-note">
-                      <div class="vd-trip-note-icon">
-                        <lucide-icon [img]="MessageSquareIcon" [size]="14"></lucide-icon>
-                      </div>
-                      <div class="vd-trip-note-body">
-                        <p class="vd-trip-note-text">{{ trip.notes }}</p>
-                        @if (trip.notesUpdatedBy || trip.notesUpdatedAt) {
-                          <p class="vd-trip-note-meta">
-                            @if (trip.notesUpdatedBy) {
-                              {{ noteAuthorLabel(trip.notesUpdatedBy) }}
-                            }
-                            @if (trip.notesUpdatedAt) {
-                              · {{ relativeTime(trip.notesUpdatedAt) }}
-                            }
-                          </p>
-                        }
-                      </div>
-                      @if (canEditNotes()) {
-                        <button type="button" class="vd-trip-note-edit"
-                                (click)="startEditNote(trip)"
-                                title="Modifier la note">
-                          <lucide-icon [img]="PencilIcon" [size]="13"></lucide-icon>
-                        </button>
-                      }
-                    </div>
-                  } @else if (canEditNotes()) {
-                    <button type="button" class="vd-trip-note-add"
-                            (click)="startEditNote(trip)">
-                      <lucide-icon [img]="MessageSquareIcon" [size]="13"></lucide-icon>
-                      Ajouter une note
-                    </button>
-                  }
-                </div>
-              }
-            </div>
-          } @else {
-            <div class="flex flex-col items-center justify-center h-40 rounded-[--radius-card]
-                        bg-bg-secondary border border-border-subtle text-fg-tertiary gap-2 text-center px-4">
-              <lucide-icon [img]="Route" [size]="48" class="opacity-30"></lucide-icon>
-              <p>{{ dateRange() === 'all' ? 'Aucun trajet enregistré' : 'Aucun trajet sur cette période' }}</p>
-              @if (dateRange() !== 'all') {
-                <button (click)="dateRange.set('all')"
-                        class="text-xs text-tracky-light hover:underline cursor-pointer">
-                  Voir tout
-                </button>
-              }
-            </div>
-          }
+        @if (activeTab() === 'reports') {
+          <app-vehicle-reports-tab
+            [vehicleId]="v.id"
+            [vehiclePlate]="v.plate"
+            [vehicleType]="v.type"
+          />
         }
       </div>
 
@@ -934,80 +806,6 @@ import { relativeTime } from '../../shared/utils/relative-time';
     .vd-history-flag--ok { background: var(--bg-tertiary); color: var(--fg-tertiary); }
     .vd-history-flag--ko { background: rgba(239,68,68,.08); color: #ef4444; }
 
-    /* ─── Trajets : cards mobile-first ─── */
-    .vd-trips-list {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-    .vd-trip-card {
-      background: var(--bg-secondary);
-      border: 1px solid var(--border-subtle);
-      border-radius: 14px;
-      padding: 14px;
-      transition: border-color .15s;
-    }
-    .vd-trip-card:hover { border-color: var(--border-strong); }
-    .vd-trip-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      margin-bottom: 12px;
-    }
-    .vd-trip-period { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-    .vd-trip-date {
-      font-size: 11px;
-      font-weight: 700;
-      color: var(--fg-tertiary);
-      text-transform: uppercase;
-      letter-spacing: .04em;
-    }
-    .vd-trip-times {
-      font-size: 14px;
-      font-weight: 700;
-      color: var(--fg-primary);
-      font-family: var(--font-mono, monospace);
-      margin-top: 2px;
-    }
-    .vd-trip-live { color: var(--tracky-light); font-weight: 600; }
-    .vd-trip-distance {
-      display: flex;
-      align-items: baseline;
-      gap: 3px;
-      flex-shrink: 0;
-    }
-    .vd-trip-distance strong {
-      font-size: 22px;
-      font-weight: 800;
-      color: var(--tracky-light);
-      font-family: var(--font-display, Poppins, sans-serif);
-      letter-spacing: -.02em;
-    }
-    .vd-trip-distance-unit { font-size: 11px; color: var(--fg-tertiary); font-weight: 600; }
-
-    .vd-trip-stats {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 6px;
-      padding-top: 12px;
-      border-top: 1px solid var(--border-subtle);
-    }
-    .vd-trip-stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-    .vd-trip-stat-label {
-      font-size: 9px;
-      font-weight: 700;
-      color: var(--fg-tertiary);
-      text-transform: uppercase;
-      letter-spacing: .04em;
-    }
-    .vd-trip-stat-value {
-      font-size: 13px;
-      font-weight: 700;
-      color: var(--fg-primary);
-    }
-    .vd-trip-stat-value--max { color: #f59e0b; }
-
     /* ─── Phase 2 : carte "Conducteur courant" du vehicule ─── */
     .vd-driver-card {
       display: flex;
@@ -1079,183 +877,6 @@ import { relativeTime } from '../../shared/utils/relative-time';
     }
     .vd-driver-card-btn:disabled { opacity: 0.5; cursor: wait; }
 
-    /* ─── Pill conducteur dans une trip card ─── */
-    .vd-trip-driver {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      margin-bottom: 12px;
-      padding: 4px 9px;
-      background: color-mix(in srgb, var(--driver-color, #10E0A0) 12%, transparent);
-      border: 1px solid color-mix(in srgb, var(--driver-color, #10E0A0) 30%, transparent);
-      border-radius: 999px;
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--fg-primary);
-      width: fit-content;
-    }
-    .vd-trip-driver-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--driver-color, #10E0A0);
-      flex-shrink: 0;
-    }
-    .vd-trip-driver-source {
-      font-size: 9px;
-      font-weight: 600;
-      color: var(--fg-tertiary);
-      text-transform: uppercase;
-      letter-spacing: .04em;
-    }
-
-    /* ─── Trajets : note libre (lecture / edition / ajout) ─── */
-    .vd-trip-note {
-      display: flex;
-      gap: 8px;
-      padding: 10px 12px;
-      margin-top: 10px;
-      background: var(--bg-tertiary);
-      border: 1px solid var(--border-subtle);
-      border-radius: 10px;
-      align-items: flex-start;
-    }
-    .vd-trip-note-icon {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 22px;
-      height: 22px;
-      border-radius: 6px;
-      background: rgba(16,224,160,.10);
-      color: var(--tracky-light);
-      flex-shrink: 0;
-    }
-    .vd-trip-note-body {
-      flex: 1;
-      min-width: 0;
-    }
-    .vd-trip-note-text {
-      font-size: 13px;
-      color: var(--fg-primary);
-      line-height: 1.45;
-      white-space: pre-wrap;
-      word-wrap: break-word;
-    }
-    .vd-trip-note-meta {
-      font-size: 10px;
-      color: var(--fg-tertiary);
-      margin-top: 4px;
-    }
-    .vd-trip-note-edit {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 26px;
-      height: 26px;
-      border-radius: 8px;
-      background: transparent;
-      border: 1px solid transparent;
-      color: var(--fg-tertiary);
-      cursor: pointer;
-      flex-shrink: 0;
-      transition: all .15s;
-    }
-    .vd-trip-note-edit:hover {
-      color: var(--tracky-light);
-      border-color: rgba(16,224,160,.2);
-      background: rgba(16,224,160,.05);
-    }
-
-    .vd-trip-note--editing {
-      flex-direction: column;
-      align-items: stretch;
-      background: color-mix(in srgb, var(--tracky-light) 4%, var(--bg-tertiary));
-      border-color: rgba(16,224,160,.20);
-    }
-    .vd-trip-note-input {
-      width: 100%;
-      padding: 8px 10px;
-      background: var(--bg-secondary);
-      border: 1px solid var(--border-subtle);
-      border-radius: 8px;
-      color: var(--fg-primary);
-      font-size: 13px;
-      font-family: inherit;
-      line-height: 1.45;
-      resize: vertical;
-      min-height: 56px;
-      outline: none;
-      transition: border-color .2s;
-    }
-    .vd-trip-note-input:focus { border-color: var(--tracky-light); }
-    .vd-trip-note-input::placeholder { color: var(--fg-tertiary); }
-    .vd-trip-note-actions {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      margin-top: 8px;
-    }
-    .vd-trip-note-counter {
-      font-size: 10px;
-      color: var(--fg-tertiary);
-      font-variant-numeric: tabular-nums;
-    }
-    .vd-trip-note-counter--warn { color: #f59e0b; }
-    .vd-trip-note-buttons { display: flex; gap: 6px; }
-    .vd-trip-note-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      padding: 6px 12px;
-      border-radius: 8px;
-      font-size: 11px;
-      font-weight: 600;
-      background: var(--bg-secondary);
-      border: 1px solid var(--border-subtle);
-      color: var(--fg-secondary);
-      cursor: pointer;
-      transition: all .15s;
-    }
-    .vd-trip-note-btn:hover:not(:disabled) {
-      color: var(--fg-primary);
-      border-color: var(--border-strong);
-    }
-    .vd-trip-note-btn:disabled { opacity: 0.5; cursor: wait; }
-    .vd-trip-note-btn--primary {
-      background: var(--tracky);
-      border-color: var(--tracky);
-      color: white;
-    }
-    .vd-trip-note-btn--primary:hover:not(:disabled) {
-      background: var(--tracky-dark, #0bb586);
-      border-color: var(--tracky-dark, #0bb586);
-      color: white;
-    }
-
-    .vd-trip-note-add {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      margin-top: 10px;
-      padding: 6px 10px;
-      border-radius: 8px;
-      background: transparent;
-      border: 1px dashed var(--border-subtle);
-      color: var(--fg-tertiary);
-      font-size: 11px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all .15s;
-      align-self: flex-start;
-    }
-    .vd-trip-note-add:hover {
-      color: var(--tracky-light);
-      border-color: rgba(16,224,160,.30);
-      background: rgba(16,224,160,.05);
-    }
-
     /* Desktop : 4 stats en ligne, plus d'espace */
     @media (min-width: 1024px) {
       .vd-stats-bar { grid-template-columns: repeat(4, 1fr); gap: 12px; }
@@ -1276,7 +897,6 @@ export class VehicleDetailComponent implements OnInit {
   private readonly alertsApi = inject(AlertsApiService);
   private readonly engineControlApi = inject(EngineControlService);
   private readonly realtime = inject(RealtimeService);
-  private readonly tripsApi = inject(TripsApiService);
   private readonly trackersApi = inject(TrackersApiService);
   private readonly driversApi = inject(DriversApiService);
   private readonly perms = inject(PermissionsService);
@@ -1287,18 +907,13 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly recentPositions = signal<PositionDto[]>([]);
   protected readonly alerts = signal<AlertEvent[]>([]);
   protected readonly commands = signal<EngineControlCommandDto[]>([]);
-  protected readonly vehicleTrips = signal<TripDto[]>([]);
   protected readonly loading = signal(true);
-  // Edition note (un seul trip en edition a la fois — switch reset auto).
-  protected readonly editingNoteTripId = signal<string | null>(null);
-  protected editingNoteText = '';
-  protected readonly savingNote = signal(false);
   // Phase 2 — Picker conducteur (ouverture + spinner d'assignation).
   protected readonly driverPickerOpen = signal(false);
   protected readonly assigningDriver = signal(false);
-  /** True pendant un refetch declenche par un changement de plage date (history/trips). */
+  /** True pendant un refetch declenche par un changement de plage date (history). */
   protected readonly rangeLoading = signal(false);
-  protected readonly activeTab = signal<'map' | 'history' | 'alerts' | 'commands' | 'schedule' | 'trips' | 'surveillance'>('map');
+  protected readonly activeTab = signal<'map' | 'history' | 'alerts' | 'commands' | 'schedule' | 'reports' | 'surveillance'>('map');
 
   /**
    * Plage temporelle pour les onglets Historique et Trajets.
@@ -1340,13 +955,11 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly Power = Power;
   protected readonly BellOff = BellOff;
   protected readonly HistoryIcon = History;
-  protected readonly Route = Route;
   protected readonly ZapIcon = Zap;
   protected readonly ShieldAlert = ShieldAlert;
   protected readonly ShieldCheck = ShieldCheck;
-  protected readonly MessageSquareIcon = MessageSquare;
-  protected readonly PencilIcon = Pencil;
   protected readonly XIcon = X;
+  protected readonly PencilIcon = Pencil;
   protected readonly UserRoundIcon = UserRound;
   protected readonly UserPlusIcon = UserPlus;
   protected readonly CheckIcon = Check;
@@ -1393,12 +1006,6 @@ export class VehicleDetailComponent implements OnInit {
     }
   }
 
-  /** Roles autorises a editer/effacer la note d'un trajet. */
-  protected readonly canEditNotes = computed(() => {
-    const r = this.auth.user()?.role;
-    return r === 'SUPER_ADMIN' || r === 'FLEET_ADMIN' || r === 'FLEET_MANAGER';
-  });
-
   /**
    * Roles autorises a gerer les conducteurs (assigner/retirer sur un vehicule
    * ou un trajet, creer/modifier des drivers). FLEET_MANAGER passe par la
@@ -1413,7 +1020,7 @@ export class VehicleDetailComponent implements OnInit {
 
   protected readonly tabs = [
     { key: 'map' as const, label: 'Carte', icon: Map },
-    { key: 'trips' as const, label: 'Trajets', icon: Route },
+    { key: 'reports' as const, label: 'Rapports', icon: BarChart3 },
     { key: 'schedule' as const, label: 'Horaires', icon: Clock },
     { key: 'alerts' as const, label: 'Alertes', icon: Bell },
     { key: 'surveillance' as const, label: 'Surveillance', icon: ShieldCheck },
@@ -1566,18 +1173,17 @@ export class VehicleDetailComponent implements OnInit {
   });
 
   /**
-   * Refetch des donnees Historique + Trajets quand la plage date change.
+   * Refetch des positions de l'onglet Historique quand la plage date change.
    * Skip tant que le chargement initial n'est pas fini (loading()=true) — sinon
    * on declenche un fetch concurrent inutile pendant ngOnInit/loadAll.
    * Skip aussi pour `custom` quand les deux bornes sont vides (l'UI vient de
    * basculer sur custom mais l'utilisateur n'a pas encore saisi de dates).
+   * L'onglet Rapports gere sa propre periode + son propre fetch.
    */
   private dateRangeRefreshEffect = effect(() => {
     const v = this.vehicle();
     const bounds = this.dateRangeBounds();
     if (!v || this.loading()) return;
-    // En mode custom sans bornes saisies, on ne fait rien (eviterait de tout
-    // refetch sans filtre = equivalent a "Tout", surprenant pour l'utilisateur).
     if (this.dateRange() === 'custom' && !bounds.from && !bounds.to) return;
     void this.refetchRange(v, bounds);
   });
@@ -1587,20 +1193,20 @@ export class VehicleDetailComponent implements OnInit {
     bounds: { from?: string; to?: string },
   ): Promise<void> {
     const trackerId = v.tracker?.id;
+    if (!trackerId) {
+      this.recentPositions.set([]);
+      return;
+    }
     const dateParams: Record<string, string> = {};
     if (bounds.from) dateParams['from'] = bounds.from;
     if (bounds.to) dateParams['to'] = bounds.to;
 
     this.rangeLoading.set(true);
     try {
-      const [posRes, tripsRes] = await Promise.all([
-        trackerId
-          ? firstValueFrom(this.positionsApi.list({ trackerId, limit: '500', ...dateParams }))
-          : Promise.resolve({ items: [] as PositionDto[] }),
-        firstValueFrom(this.tripsApi.list({ vehicleId: v.id, limit: '100', ...dateParams })),
-      ]);
+      const posRes = await firstValueFrom(
+        this.positionsApi.list({ trackerId, limit: '500', ...dateParams }),
+      );
       this.recentPositions.set(posRes.items);
-      this.vehicleTrips.set((tripsRes as any).items ?? []);
     } catch (err) {
       this.toast.error(
         'Erreur de chargement',
@@ -1664,19 +1270,17 @@ export class VehicleDetailComponent implements OnInit {
       if (bounds.to) dateParams['to'] = bounds.to;
 
       const trackerId = v.tracker?.id;
-      const [posRes, alertsRes, cmdsRes, tripsRes] = await Promise.all([
+      const [posRes, alertsRes, cmdsRes] = await Promise.all([
         trackerId
           ? firstValueFrom(this.positionsApi.list({ trackerId, limit: '500', ...dateParams }))
           : { items: [] },
         firstValueFrom(this.alertsApi.list({ vehicleId: v.id, limit: '20' })),
         trackerId ? firstValueFrom(this.engineControlApi.listCommands(trackerId, 20)) : [],
-        firstValueFrom(this.tripsApi.list({ vehicleId: v.id, limit: '100', ...dateParams })),
       ]);
 
       this.recentPositions.set(posRes.items);
       this.alerts.set((alertsRes as any).items ?? alertsRes);
       this.commands.set(Array.isArray(cmdsRes) ? cmdsRes : []);
-      this.vehicleTrips.set((tripsRes as any).items ?? []);
     } catch (err) {
       this.toast.error('Erreur de chargement', err instanceof HttpErrorResponse ? err.error?.message : String(err));
       this.router.navigate(['/dashboard']);
@@ -1769,69 +1373,6 @@ export class VehicleDetailComponent implements OnInit {
     if (status === 'REJECTED_SPEED') return 'bg-red-600/10 text-red-400';
     if (status === 'FAILED') return 'bg-amber-500/10 text-amber-400';
     return 'bg-bg-tertiary text-fg-tertiary';
-  }
-
-  protected formatDuration(seconds: number): string {
-    if (!seconds || seconds < 0) return '0min';
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    if (h > 0) return `${h}h ${m.toString().padStart(2, '0')}min`;
-    return `${m}min`;
-  }
-
-  /**
-   * Demarre l'edition de la note d'un trajet. Pre-remplit le textarea avec
-   * la note existante (vide si nouvelle note). Un seul trip editable a la
-   * fois — basculer ferme l'edition precedente sans sauvegarde.
-   */
-  protected startEditNote(trip: TripDto): void {
-    this.editingNoteText = trip.notes ?? '';
-    this.editingNoteTripId.set(trip.id);
-  }
-
-  protected cancelEditNote(): void {
-    this.editingNoteTripId.set(null);
-    this.editingNoteText = '';
-  }
-
-  /**
-   * Sauvegarde la note du trip courant. Si vide, le backend efface la note
-   * et reset l'auteur. On met a jour le signal local apres succes pour
-   * eviter un re-fetch complet de la liste.
-   */
-  protected async saveTripNote(trip: TripDto): Promise<void> {
-    if (!this.canEditNotes()) return;
-    this.savingNote.set(true);
-    try {
-      const updated = await firstValueFrom(
-        this.tripsApi.updateNote(trip.id, this.editingNoteText.trim() || null),
-      );
-      this.vehicleTrips.update((list) =>
-        list.map((t) => (t.id === updated.id ? updated : t)),
-      );
-      this.editingNoteTripId.set(null);
-      this.editingNoteText = '';
-      this.toast.success('Note enregistree');
-    } catch (err) {
-      const msg = err instanceof HttpErrorResponse
-        ? err.error?.message ?? 'Erreur inconnue'
-        : err instanceof Error ? err.message : 'Erreur inconnue';
-      this.toast.error('Echec enregistrement note', msg);
-    } finally {
-      this.savingNote.set(false);
-    }
-  }
-
-  /**
-   * Libelle court de l'auteur de la note : "Prenom N." si dispo, sinon email.
-   * Utilise au-dessous de la note pour montrer qui l'a modifiee.
-   */
-  protected noteAuthorLabel(author: { firstName: string | null; lastName: string | null; email: string }): string {
-    if (author.firstName && author.lastName) {
-      return `${author.firstName} ${author.lastName.slice(0, 1).toUpperCase()}.`;
-    }
-    if (author.firstName) return author.firstName;
-    return author.email;
   }
 
   // ─── Phase 2 — gestion conducteur courant du vehicule ──────────────
