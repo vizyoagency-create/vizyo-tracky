@@ -148,7 +148,7 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
       <!-- MOBILE BOTTOM BAR — cachee en mode fullscreen (page /map) pour
            liberer toute la hauteur ecran a la carte. -->
       <nav class="bottom-bar" [class.bottom-bar--hidden]="fullscreen()">
-        @for (item of bottomItems; track item.label) {
+        @for (item of bottomItems(); track item.label) {
           @if (item.route === 'more') {
             <button (click)="mobileMenuOpen.set(true)" class="bottom-item press-feedback">
               <lucide-icon [img]="item.icon" [size]="20"></lucide-icon>
@@ -536,13 +536,15 @@ export class DashboardLayoutComponent {
   protected readonly MoreIcon = MoreHorizontal;
   protected readonly UserCircle2Icon = UserCircle2;
 
-  protected readonly bottomItems = [
+  protected readonly bottomItems = computed(() => [
     { label: 'Dashboard', route: '/dashboard', icon: LayoutDashboard },
-    { label: 'Carte', route: '/map', icon: Map },
-    { label: 'Véhicules', route: '/vehicles', icon: Truck },
-    { label: 'Alertes', route: '/alerts', icon: Bell },
+    ...(this.perms.can('vehicles_view') ? [
+      { label: 'Carte', route: '/map', icon: Map },
+      { label: 'Véhicules', route: '/vehicles', icon: Truck },
+    ] : []),
+    ...(this.perms.can('alerts_view') ? [{ label: 'Alertes', route: '/alerts', icon: Bell }] : []),
     { label: 'Plus', route: 'more', icon: MoreHorizontal },
-  ];
+  ]);
 
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
@@ -580,12 +582,14 @@ export class DashboardLayoutComponent {
     const isSuperAdmin = this.auth.user()?.role === 'SUPER_ADMIN';
     return [
       { label: 'Tableau de bord', route: '/dashboard', icon: LayoutDashboard },
-      { label: 'Carte', route: '/map', icon: Map },
-      { label: 'Véhicules', route: '/vehicles', icon: Truck },
+      ...(this.perms.can('vehicles_view') ? [
+        { label: 'Carte', route: '/map', icon: Map },
+        { label: 'Véhicules', route: '/vehicles', icon: Truck },
+      ] : []),
       ...(this.perms.can('groups_view') ? [{ label: 'Groupes', route: '/groups', icon: Layers }] : []),
-      { label: 'Alertes', route: '/alerts', icon: Bell },
-      { label: 'Géofences', route: '/geofences', icon: Shield },
-      { label: 'Rapports', route: '/reports', icon: FileBarChart },
+      ...(this.perms.can('alerts_view') ? [{ label: 'Alertes', route: '/alerts', icon: Bell }] : []),
+      ...(this.perms.can('geofences_view') ? [{ label: 'Géofences', route: '/geofences', icon: Shield }] : []),
+      ...(this.perms.can('reports_view') ? [{ label: 'Rapports', route: '/reports', icon: FileBarChart }] : []),
       ...(this.perms.can('drivers_view') ? [{ label: 'Conducteurs', route: '/drivers', icon: UserRound }] : []),
       ...(this.perms.can('users_view') ? [{ label: 'Utilisateurs', route: '/users', icon: Users }] : []),
       { label: 'Paramètres', route: '/settings', icon: Settings },
@@ -594,10 +598,7 @@ export class DashboardLayoutComponent {
       // /admin/alerts (bouton "Inspecter") et la fiche vehicule, pas dans
       // le menu (necessitent un trackerId).
       ...(isSuperAdmin ? [
-        { label: 'Centre d\'alertes', route: '/admin/alerts', icon: AlertTriangle },
-        { label: 'Observabilité', route: '/admin/observability', icon: Activity },
-        { label: 'Commandes tracker', route: '/admin/commands', icon: Terminal },
-        { label: 'SMS & Backup', route: '/admin/sms', icon: MessageSquare },
+        { label: 'Administration', route: '/admin', icon: Terminal },
       ] : []),
     ];
   });

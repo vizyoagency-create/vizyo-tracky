@@ -118,28 +118,39 @@ const ROLE_DEFAULTS: Record<string, Record<string, boolean>> = {
               </section>
             }
 
-            <!-- Permissions (both modes) -->
+            <!-- Permissions -->
             <section>
               <h3 class="section-title">Permissions</h3>
-              <div class="space-y-4">
-                @for (group of permGroups; track group.label) {
-                  <div class="perm-group">
-                    <div class="perm-group-header">
-                      <lucide-icon [img]="group.icon" [size]="14" class="text-tracky-light"></lucide-icon>
-                      <span>{{ group.label }}</span>
-                    </div>
-                    @for (p of group.items; track p.key) {
-                      <div class="perm-row">
-                        <span class="text-sm text-fg-secondary">{{ p.label }}</span>
-                        <label class="toggle">
-                          <input type="checkbox" [checked]="perms[p.key]" (change)="perms[p.key] = !perms[p.key]" />
-                          <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                        </label>
+              @if (data()?.mode === 'edit') {
+                <div class="p-3 rounded-xl bg-bg-secondary border border-border-subtle">
+                  <p class="text-xs text-fg-tertiary">
+                    Configurez les permissions via le bouton <strong>Acces & Perms</strong> sur la carte utilisateur.
+                  </p>
+                </div>
+              } @else {
+                <p class="text-xs text-fg-tertiary mb-3">
+                  Permissions preconfigurées pour l'utilisateur invité.
+                </p>
+                <div class="space-y-4">
+                  @for (group of permGroups; track group.label) {
+                    <div class="perm-group">
+                      <div class="perm-group-header">
+                        <lucide-icon [img]="group.icon" [size]="14" class="text-tracky-light"></lucide-icon>
+                        <span>{{ group.label }}</span>
                       </div>
-                    }
-                  </div>
-                }
-              </div>
+                      @for (p of group.items; track p.key) {
+                        <div class="perm-row">
+                          <span class="text-sm text-fg-secondary">{{ p.label }}</span>
+                          <label class="toggle">
+                            <input type="checkbox" [checked]="perms[p.key]" (change)="perms[p.key] = !perms[p.key]" />
+                            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                          </label>
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
+              }
             </section>
           </div>
 

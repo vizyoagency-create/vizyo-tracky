@@ -30,9 +30,11 @@ export class VehicleGroupsService {
     return res.json();
   }
 
-  async create(name: string): Promise<VehicleGroup> {
+  async create(name: string, fleetId?: string): Promise<VehicleGroup> {
+    const body: Record<string, string> = { name };
+    if (fleetId) body['fleetId'] = fleetId;
     const res = await fetch('/api/vehicle-groups', {
-      method: 'POST', headers: this.headers, body: JSON.stringify({ name }),
+      method: 'POST', headers: this.headers, body: JSON.stringify(body),
     });
     if (!res.ok) {
       const b = (await res.json().catch(() => ({}))) as Record<string, string>;

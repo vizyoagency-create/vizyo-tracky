@@ -146,6 +146,18 @@ export class AuthClientService {
     );
   }
 
+  async listAppUsers(): Promise<Array<{ id: string; email: string; displayName: string | null; status: string; createdAt: string }>> {
+    try {
+      const result = await this.request<{ users: Array<{ id: string; email: string; displayName: string | null; status: string; createdAt: string }> }>(
+        'GET',
+        `/v1/apps/${this.appId}/users`,
+      );
+      return result.users ?? [];
+    } catch {
+      return [];
+    }
+  }
+
   async requestPasswordReset(email: string): Promise<{ token: string | null }> {
     return this.request<{ token: string | null }>(
       'POST',

@@ -59,18 +59,21 @@ export const routes: Routes = [
       },
       {
         path: 'map',
+        canActivate: [permissionGuard('vehicles_view')],
         loadComponent: () =>
           import('./features/map/map.component').then((m) => m.MapComponent),
         data: { fullscreen: true, title: 'Carte' },
       },
       {
         path: 'vehicles',
+        canActivate: [permissionGuard('vehicles_view')],
         loadComponent: () =>
           import('./features/vehicles/vehicles-list.component').then((m) => m.VehiclesListComponent),
         data: { title: 'Véhicules' },
       },
       {
         path: 'vehicles/:id',
+        canActivate: [permissionGuard('vehicles_view')],
         loadComponent: () =>
           import('./features/vehicles/vehicle-detail.component').then((m) => m.VehicleDetailComponent),
         data: { title: 'Détail véhicule' },
@@ -84,18 +87,21 @@ export const routes: Routes = [
       },
       {
         path: 'alerts',
+        canActivate: [permissionGuard('alerts_view')],
         loadComponent: () =>
           import('./features/alerts/alerts.component').then((m) => m.AlertsComponent),
         data: { title: 'Alertes' },
       },
       {
         path: 'geofences',
+        canActivate: [permissionGuard('geofences_view')],
         loadComponent: () =>
           import('./features/geofences/geofences-list.component').then((m) => m.GeofencesListComponent),
         data: { title: 'Géofences' },
       },
       {
         path: 'reports',
+        canActivate: [permissionGuard('reports_view')],
         loadComponent: () =>
           import('./features/reports/reports.component').then((m) => m.ReportsComponent),
         data: { title: 'Rapports' },
@@ -126,9 +132,18 @@ export const routes: Routes = [
       },
       {
         path: 'settings/alert-rules',
+        canActivate: [permissionGuard('alerts_view')],
         loadComponent: () =>
           import('./features/settings/alert-rules.component').then((m) => m.AlertRulesComponent),
         data: { title: 'Regles de notification' },
+      },
+      {
+        path: 'admin',
+        pathMatch: 'full',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/observability/admin-hub.component').then((m) => m.AdminHubComponent),
+        data: { title: 'Administration' },
       },
       {
         path: 'admin/observability',
@@ -150,6 +165,13 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/observability/admin-sms.component').then((m) => m.AdminSmsComponent),
         data: { title: 'SMS & Backup' },
+      },
+      {
+        path: 'admin/auth-sync',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/observability/admin-auth-sync.component').then((m) => m.AdminAuthSyncComponent),
+        data: { title: 'Sync Auth / Tracky' },
       },
       {
         path: 'admin/trackers/:id/sampling',

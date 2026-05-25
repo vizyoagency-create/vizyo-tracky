@@ -32,12 +32,14 @@ export class AlertsController {
 
   @Get()
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  @RequirePermissions('alerts_view')
   async list(@Req() req: AuthenticatedRequest, @Query() query: ListAlertsDto) {
     return this.alerts.list(await this.rb(req), query);
   }
 
   @Get('unacknowledged/count')
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  @RequirePermissions('alerts_view')
   async count(@Req() req: AuthenticatedRequest) {
     return this.alerts.countUnacknowledged(await this.rb(req));
   }

@@ -67,6 +67,7 @@ export class VehiclesController {
 
   @Get()
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  @RequirePermissions('vehicles_view')
   async findAll(
     @Req() req: AuthenticatedRequest,
     @Query('search') search?: string,
@@ -80,6 +81,7 @@ export class VehiclesController {
 
   @Get(':id')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  @RequirePermissions('vehicles_view')
   async findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.vehicles.findOne(id, await this.buildRequestedBy(req));
   }

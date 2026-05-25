@@ -1,7 +1,9 @@
 import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
+import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 import { ListPositionsDto } from './dto/list-positions.dto';
@@ -9,7 +11,7 @@ import { PositionHistoryService } from './position-history.service';
 import { PositionsService } from './positions.service';
 
 @Controller('positions')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class PositionsController {
   constructor(
     private readonly positions: PositionsService,
@@ -26,6 +28,7 @@ export class PositionsController {
 
   @Get()
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  @RequirePermissions('vehicles_view')
   async list(@Req() req: AuthenticatedRequest, @Query() query: ListPositionsDto) {
     return this.positions.list(await this.rb(req), query);
   }
@@ -36,6 +39,7 @@ export class PositionsController {
    */
   @Get('history')
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  @RequirePermissions('vehicles_view')
   async historyEndpoint(
     @Req() req: AuthenticatedRequest,
     @Query() query: {

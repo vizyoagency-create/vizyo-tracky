@@ -32,6 +32,10 @@ export class TrackersApiService {
     return this.http.post<TrackerDetail>(`/api/trackers/${trackerId}/assign`, { vehicleId });
   }
 
+  unassign(trackerId: string): Observable<TrackerDetail> {
+    return this.http.post<TrackerDetail>(`/api/trackers/${trackerId}/unassign`, {});
+  }
+
   list(params?: Record<string, string>): Observable<TrackerDetail[]> {
     return this.http.get<TrackerDetail[]>('/api/trackers', { params });
   }

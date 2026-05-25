@@ -39,6 +39,7 @@ export class GeofencesController {
 
   @Get()
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  @RequirePermissions('geofences_view')
   findAll(@Req() req: AuthenticatedRequest) {
     return this.geofences.findAll({
       userId: req.user.id,
@@ -49,6 +50,7 @@ export class GeofencesController {
 
   @Get(':id')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  @RequirePermissions('geofences_view')
   findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.geofences.findOne(id, {
       userId: req.user.id,
@@ -95,6 +97,7 @@ export class GeofencesController {
 
   @Get(':id/vehicles')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  @RequirePermissions('geofences_view')
   getVehicleTargets(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.geofences.getVehicleTargets(id, {
       userId: req.user.id,

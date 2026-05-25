@@ -14,6 +14,7 @@ import {
   X,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
+import { AuthService } from '../../core/services/auth.service';
 import { OnboardingService } from '../../core/services/onboarding.service';
 import { UsersApiService } from '../../core/services/users.service';
 import { VehiclesApiService } from '../../core/services/vehicles.service';
@@ -50,14 +51,14 @@ type Step = 1 | 2 | 3 | 4 | 5;
             <div class="header-content">
               <div class="header-title-block">
                 <h1 id="onboarding-title" class="header-title">Bienvenue sur Vizyo Tracky</h1>
-                <p class="header-step">Etape {{ step() }} sur 5</p>
+                <p class="header-step">Etape {{ stepIndex() }} sur {{ totalSteps() }}</p>
               </div>
               <button (click)="dismiss()" class="header-close" aria-label="Fermer le wizard">
                 <lucide-icon [img]="X" [size]="18"></lucide-icon>
               </button>
             </div>
             <div class="progress-bar">
-              <div class="progress-fill" [style.width.%]="progressPct()"></div>
+              <div class="progress-fill" [style.width.%]="(stepIndex() / totalSteps()) * 100"></div>
             </div>
           </header>
 
@@ -387,6 +388,7 @@ type Step = 1 | 2 | 3 | 4 | 5;
 })
 export class OnboardingWizardComponent {
   protected readonly onboarding = inject(OnboardingService);
+  private readonly auth = inject(AuthService);
   private readonly usersApi = inject(UsersApiService);
   private readonly vehiclesApi = inject(VehiclesApiService);
   private readonly toast = inject(ToastService);
@@ -420,7 +422,23 @@ export class OnboardingWizardComponent {
   inviteEmail = '';
   inviteRole: 'FLEET_MANAGER' | 'VIEWER' = 'FLEET_MANAGER';
 
-  readonly progressPct = computed(() => (this.step() / 5) * 100);
+  /** Steps 3 et 4 uniquement pour FLEET_ADMIN (le reste voit 1→2→5). */
+  protected isAdmin(): boolean {
+    const role = this.auth.user()?.role;
+    return role === 'FLEET_ADMIN' || role === 'SUPER_ADMIN';
+  }
+
+  /** Total de steps visibles pour cet user. */
+  readonly totalSteps = computed(() => this.isAdmin() ? 5 : 3);
+
+  /** Index courant par rapport aux steps visibles. */
+  readonly stepIndex = computed(() => {
+    const s = this.step();
+    if (this.isAdmin()) return s;
+    // Non-admin : steps visibles sont 1, 2, 5
+    if (s <= 2) return s;
+    return 3; // step 5 = index 3
+  });
 
   readonly continueLabel = computed(() => {
     switch (this.step()) {
@@ -433,11 +451,22 @@ export class OnboardingWizardComponent {
   });
 
   back(): void {
-    if (this.step() > 1) this.step.update((s) => (s - 1) as Step);
+    const s = this.step();
+    if (s === 5 && !this.isAdmin()) {
+      this.step.set(2);
+    } else if (s > 1) {
+      this.step.update((v) => (v - 1) as Step);
+    }
   }
 
   next(): void {
-    if (this.step() < 5) this.step.update((s) => (s + 1) as Step);
+    const s = this.step();
+    if (!this.isAdmin() && s === 2) {
+      // Non-admin : skip steps 3 et 4, aller direct à 5
+      this.step.set(5);
+    } else if (s < 5) {
+      this.step.update((v) => (v + 1) as Step);
+    }
   }
 
   async continueStep(): Promise<void> {

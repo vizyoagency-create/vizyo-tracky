@@ -87,12 +87,9 @@ import { AccessPermissionsMatrixComponent, type MatrixDrawerData } from './acces
                   <button (click)="openEditDrawer(u)" class="u-action-btn" title="Modifier">
                     <lucide-icon [img]="PencilIcon" [size]="14"></lucide-icon> Modifier
                   </button>
-                  <button (click)="openAccessModal(u)" class="u-action-btn" title="Acces vehicules (scope)">
-                    <lucide-icon [img]="ShieldIcon" [size]="14"></lucide-icon> Acces
-                  </button>
                   @if (u.role !== 'FLEET_ADMIN' && u.role !== 'SUPER_ADMIN') {
-                    <button (click)="openMatrixModal(u)" class="u-action-btn" title="Matrice acces x permissions">
-                      <lucide-icon [img]="ShieldIcon" [size]="14"></lucide-icon> Perms
+                    <button (click)="openMatrixModal(u)" class="u-action-btn" title="Acces & Permissions">
+                      <lucide-icon [img]="ShieldIcon" [size]="14"></lucide-icon> Acces & Perms
                     </button>
                   }
                   <button (click)="onResetPassword(u)" class="u-action-btn" title="Reinitialiser le mot de passe">
@@ -103,9 +100,16 @@ import { AccessPermissionsMatrixComponent, type MatrixDrawerData } from './acces
                   </button>
                 </div>
               }
-              @if (!u.isActive) {
+              @if (!u.isActive && perms.can('users_manage')) {
                 <div class="u-card-actions">
-                  <span class="u-archived-badge">Archive</span>
+                  <span class="u-archived-badge">Archivé</span>
+                  <button (click)="onUnarchive(u)" class="u-action-btn">
+                    <lucide-icon [img]="ArchiveIcon" [size]="14"></lucide-icon> Désarchiver
+                  </button>
+                </div>
+              } @else if (!u.isActive) {
+                <div class="u-card-actions">
+                  <span class="u-archived-badge">Archivé</span>
                 </div>
               }
             </div>
@@ -455,6 +459,16 @@ export class UsersListComponent implements OnInit {
   async toggleArchived(): Promise<void> {
     this.includeArchived.update((v) => !v);
     await this.loadUsers();
+  }
+
+  async onUnarchive(user: TrackyUser): Promise<void> {
+    try {
+      await this.usersService.update(user.id, { isActive: true });
+      this.toast.success(`${user.email} a été désarchivé.`);
+      await this.loadUsers();
+    } catch (err) {
+      this.toast.error(err instanceof Error ? err.message : 'Erreur');
+    }
   }
 
   async onResetPassword(user: TrackyUser): Promise<void> {

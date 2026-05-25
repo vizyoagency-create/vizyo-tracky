@@ -34,7 +34,18 @@ export class VehicleGroupsController {
   @Post()
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
   async create(@Body() dto: CreateVehicleGroupDto, @Req() req: AuthenticatedRequest) {
-    const fleetId = req.user.fleetId;
+    let fleetId = req.user.fleetId;
+
+    // SUPER_ADMIN sans fleetId : accepter via body ou fallback sur la première fleet
+    if (!fleetId && req.user.role === UserRole.SUPER_ADMIN) {
+      if (dto.fleetId) {
+        fleetId = dto.fleetId;
+      } else {
+        const firstFleet = await this.prisma.fleet.findFirst({ select: { id: true } });
+        if (firstFleet) fleetId = firstFleet.id;
+      }
+    }
+
     if (!fleetId) throw new ForbiddenException('No fleet assigned');
 
     return this.prisma.vehicleGroup.create({

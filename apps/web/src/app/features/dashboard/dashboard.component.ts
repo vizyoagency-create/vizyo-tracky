@@ -10,6 +10,7 @@ import {
 import { LucideAngularModule } from 'lucide-angular';
 import { filter, interval, startWith, switchMap, catchError, of } from 'rxjs';
 import { toSignal } from '@angular/core/rxjs-interop';
+import { PermissionsService } from '../../core/services/permissions.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { VehiclesApiService } from '../../core/services/vehicles.service';
 import { AlertsApiService } from '../../core/services/alerts.service';
@@ -109,22 +110,28 @@ interface WidgetMeta {
       <!-- Quick actions chips -->
       @if (isWidgetEnabled('actions')) {
         <div class="quick-actions">
-          <a routerLink="/map" class="quick-chip">
-            <lucide-icon [img]="MapIcon" [size]="14"></lucide-icon>
-            <span>Carte</span>
-          </a>
-          <a routerLink="/vehicles" class="quick-chip">
-            <lucide-icon [img]="Truck" [size]="14"></lucide-icon>
-            <span>Véhicules</span>
-          </a>
-          <a routerLink="/reports" class="quick-chip">
-            <lucide-icon [img]="FileBarChart" [size]="14"></lucide-icon>
-            <span>Rapports</span>
-          </a>
-          <a routerLink="/geofences" class="quick-chip">
-            <lucide-icon [img]="Shield" [size]="14"></lucide-icon>
-            <span>Géofences</span>
-          </a>
+          @if (perms.can('vehicles_view')) {
+            <a routerLink="/map" class="quick-chip">
+              <lucide-icon [img]="MapIcon" [size]="14"></lucide-icon>
+              <span>Carte</span>
+            </a>
+            <a routerLink="/vehicles" class="quick-chip">
+              <lucide-icon [img]="Truck" [size]="14"></lucide-icon>
+              <span>Véhicules</span>
+            </a>
+          }
+          @if (perms.can('reports_view')) {
+            <a routerLink="/reports" class="quick-chip">
+              <lucide-icon [img]="FileBarChart" [size]="14"></lucide-icon>
+              <span>Rapports</span>
+            </a>
+          }
+          @if (perms.can('geofences_view')) {
+            <a routerLink="/geofences" class="quick-chip">
+              <lucide-icon [img]="Shield" [size]="14"></lucide-icon>
+              <span>Géofences</span>
+            </a>
+          }
         </div>
       }
 
@@ -612,6 +619,7 @@ interface WidgetMeta {
 export class DashboardComponent implements OnInit {
   protected readonly realtime = inject(RealtimeService);
   protected readonly preferences = inject(PreferencesService);
+  protected readonly perms = inject(PermissionsService);
   private readonly vehiclesApi = inject(VehiclesApiService);
   private readonly alertsApi = inject(AlertsApiService);
 
@@ -644,6 +652,18 @@ export class DashboardComponent implements OnInit {
   ];
 
   protected isWidgetEnabled(key: DashboardWidgetKey): boolean {
+    // Permission check — hide widgets the user has no access to
+    const permMap: Partial<Record<DashboardWidgetKey, string>> = {
+      kpis: 'vehicles_view',
+      actions: 'vehicles_view',
+      map: 'vehicles_view',
+      activity: 'vehicles_view',
+      alerts: 'alerts_view',
+      schedule: 'vehicles_view',
+    };
+    const requiredPerm = permMap[key];
+    if (requiredPerm && !this.perms.can(requiredPerm as any)) return false;
+
     const widgets = this.preferences.prefs().dashboardWidgets;
     return widgets.find((w) => w.key === key)?.enabled ?? true;
   }

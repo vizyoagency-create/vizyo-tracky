@@ -705,4 +705,105 @@ export class UsersController {
       }
     }
   }
+
+  // ─── SUPER_ADMIN : Sync Auth/Tracky ─────────────────────────────
+
+  @Get('admin/auth-sync')
+  @Roles(UserRole.SUPER_ADMIN)
+  async authSync() {
+    // Query Vizyo Auth DB directly (same Docker network)
+    const { Pool } = require('pg') as typeof import('pg');
+    const authDbUrl = this.config.get('VIZYO_AUTH_DB_URL', { infer: true }) as string | undefined;
+    let authUsers: Array<{ id: string; email: string; status: string; createdAt: string }> = [];
+
+    if (authDbUrl) {
+      const pool = new Pool({ connectionString: authDbUrl, max: 2 });
+      try {
+        const appInternalId = this.config.get('VIZYO_AUTH_APP_INTERNAL_ID', { infer: true });
+        const result = await pool.query(
+          `SELECT u.id, u.email, ua.status, u."createdAt"
+           FROM "User" u
+           JOIN "UserApp" ua ON ua."userId" = u.id
+           WHERE ua."appId" = $1
+           ORDER BY u.email`,
+          [appInternalId],
+        );
+        authUsers = result.rows.map((r: any) => ({
+          id: r.id,
+          email: r.email,
+          status: r.status ?? 'active',
+          createdAt: r.createdAt?.toISOString() ?? '',
+        }));
+      } catch (err) {
+        this.logger.warn(`Auth DB query failed: ${(err as Error).message}`);
+      } finally {
+        await pool.end();
+      }
+    }
+
+    const trackyUsers = await this.prisma.user.findMany({
+      select: { id: true, authUserId: true, email: true, role: true, fleetId: true, isActive: true, createdAt: true },
+      orderBy: { email: 'asc' },
+    });
+
+    const trackyByAuthId = new Map(trackyUsers.filter((u) => u.authUserId).map((u) => [u.authUserId, u]));
+    const trackyByEmail = new Map(trackyUsers.map((u) => [u.email.toLowerCase(), u]));
+    const authByEmail = new Map(authUsers.map((u) => [u.email.toLowerCase(), u]));
+
+    const synced: any[] = [];
+    const onlyAuth: any[] = [];
+    const onlyTracky: any[] = [];
+
+    for (const au of authUsers) {
+      const tu = trackyByAuthId.get(au.id) ?? trackyByEmail.get(au.email.toLowerCase());
+      if (tu) {
+        synced.push({ authId: au.id, email: au.email, authStatus: au.status, trackyId: tu.id, role: tu.role, fleetId: tu.fleetId, isActive: tu.isActive });
+      } else {
+        onlyAuth.push({ authId: au.id, email: au.email, status: au.status, createdAt: au.createdAt });
+      }
+    }
+
+    for (const tu of trackyUsers) {
+      if (!authByEmail.has(tu.email.toLowerCase())) {
+        onlyTracky.push({ trackyId: tu.id, email: tu.email, role: tu.role, fleetId: tu.fleetId, isActive: tu.isActive });
+      }
+    }
+
+    return { synced, onlyAuth, onlyTracky, totalAuth: authUsers.length, totalTracky: trackyUsers.length };
+  }
+
+  @Delete('admin/auth-sync/:authUserId')
+  @Roles(UserRole.SUPER_ADMIN)
+  async removeFromAuth(@Param('authUserId') authUserId: string) {
+    const authDbUrl = this.config.get('VIZYO_AUTH_DB_URL', { infer: true }) as string | undefined;
+    if (!authDbUrl) throw new BadRequestException('VIZYO_AUTH_DB_URL not configured');
+
+    const { Pool } = require('pg') as typeof import('pg');
+    const pool = new Pool({ connectionString: authDbUrl, max: 2 });
+    try {
+      const appInternalId = this.config.get('VIZYO_AUTH_APP_INTERNAL_ID', { infer: true });
+      // Remove UserApp entry (detach from this app)
+      await pool.query(
+        `DELETE FROM "UserApp" WHERE "userId" = $1 AND "appId" = $2`,
+        [authUserId, appInternalId],
+      );
+      // Remove sessions for this app
+      await pool.query(
+        `DELETE FROM "Session" WHERE "userId" = $1 AND "appId" = $2`,
+        [authUserId, appInternalId],
+      );
+      // If user has no other apps, delete entirely
+      const remaining = await pool.query(
+        `SELECT COUNT(*) as c FROM "UserApp" WHERE "userId" = $1`,
+        [authUserId],
+      );
+      if (parseInt(remaining.rows[0].c) === 0) {
+        await pool.query(`DELETE FROM "Credential" WHERE "userId" = $1`, [authUserId]);
+        await pool.query(`DELETE FROM "User" WHERE id = $1`, [authUserId]);
+      }
+    } finally {
+      await pool.end();
+    }
+    return { ok: true };
+  }
 }

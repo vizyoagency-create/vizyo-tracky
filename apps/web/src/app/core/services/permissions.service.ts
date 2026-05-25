@@ -75,7 +75,22 @@ export class PermissionsService {
     if (user.role === 'FLEET_ADMIN' || user.role === 'SUPER_ADMIN') return true;
 
     if (vehicleId === undefined) {
-      return user.permissions?.[permission] === true;
+      // Resolution globale : union des scopes (true si au moins un scope l'autorise).
+      // Miroir de PermissionsResolverService.resolveGlobal() backend.
+      const entries = this._accessEntries();
+      if (entries.length === 0) {
+        // Pas de scopes → fallback user.permissions
+        return user.permissions?.[permission] === true;
+      }
+      for (const entry of entries) {
+        if (entry.permissions && permission in entry.permissions) {
+          if (entry.permissions[permission] === true) return true;
+        } else {
+          // Permission non definie dans ce scope → fallback user.permissions
+          if (user.permissions?.[permission] === true) return true;
+        }
+      }
+      return false;
     }
 
     // Resolution per-vehicle

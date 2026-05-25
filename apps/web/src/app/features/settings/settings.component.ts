@@ -5,6 +5,7 @@ import { LucideAngularModule, LogOut, User, Moon, Sun, Bell, BellOff, Map, MapPi
 import { AuthService } from '../../core/services/auth.service';
 import { PreferencesService } from '../../core/services/preferences.service';
 import { NotificationsApiService } from '../../core/services/notifications.service';
+import { PermissionsService } from '../../core/services/permissions.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { ThemeService } from '../../core/theme/theme.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
@@ -84,6 +85,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
         <div class="settings-col">
 
           <!-- NOTIFICATIONS IN-APP -->
+          @if (perms.can('alerts_view')) {
           <div class="s-card">
             <div class="s-card-head">
               <div class="s-icon amber"><lucide-icon [img]="BellIcon" [size]="16"></lucide-icon></div>
@@ -126,7 +128,10 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
             </div>
           </div>
 
+          }
+
           <!-- PUSH NOTIFICATIONS -->
+          @if (perms.can('alerts_view')) {
           <div class="s-card">
             <div class="s-card-head">
               <div class="s-icon cyan"><lucide-icon [img]="SmartphoneIcon" [size]="16"></lucide-icon></div>
@@ -190,7 +195,10 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
             </div>
           </div>
 
+          }
+
           <!-- CARTE -->
+          @if (perms.can('vehicles_view')) {
           <div class="s-card">
             <div class="s-card-head">
               <div class="s-icon blue"><lucide-icon [img]="MapIcon" [size]="16"></lucide-icon></div>
@@ -241,6 +249,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
               </div>
             </div>
           </div>
+          }
         </div>
       </div>
 
@@ -419,6 +428,7 @@ export class SettingsComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly toast = inject(ToastService);
   protected readonly theme = inject(ThemeService);
+  protected readonly perms = inject(PermissionsService);
 
   protected readonly user = this.auth.user;
   protected readonly prefs = this.preferencesService.prefs;

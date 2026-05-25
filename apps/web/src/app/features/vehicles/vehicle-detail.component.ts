@@ -7,7 +7,7 @@ import {
   LucideAngularModule, ArrowLeft, Wifi, WifiOff, Gauge, MapPin, Radio,
   AlertTriangle, AlertCircle, Info, Check, Power, Route, BellOff, Map,
   History, Bell, Zap, Clock, ShieldAlert, ShieldCheck, MessageSquare, Pencil, X,
-  UserRound, UserPlus, Copy,
+  UserRound, UserPlus, Copy, Play,
 } from 'lucide-angular';
 import type { AlertEvent, DriverDto, TripDto } from '@vizyo/tracky-shared';
 import { isAcceptableLiveFix } from '@vizyo/tracky-shared';
@@ -28,6 +28,7 @@ import { MiniMapComponent } from '../../shared/ui/mini-map/mini-map.component';
 import { EngineControlButtonComponent } from '../engine-control/engine-control-button.component';
 import { SurveillancePanelComponent } from '../surveillance/surveillance-panel.component';
 import { CommandsPanelComponent } from '../tracker-commands/commands-panel.component';
+import { TripReplayComponent } from '../reports/trip-replay.component';
 import { VehicleScheduleComponent } from './vehicle-schedule/vehicle-schedule.component';
 import { relativeTime } from '../../shared/utils/relative-time';
 
@@ -37,7 +38,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
   imports: [
     RouterLink, FormsModule, LucideAngularModule, DatePipe, DecimalPipe,
     MiniMapComponent, EngineControlButtonComponent, CommandsPanelComponent,
-    VehicleScheduleComponent, DriverPickerComponent, SurveillancePanelComponent,
+    VehicleScheduleComponent, DriverPickerComponent, SurveillancePanelComponent, TripReplayComponent,
   ],
   template: `
     @if (loading()) {
@@ -167,20 +168,33 @@ import { relativeTime } from '../../shared/utils/relative-time';
             <div class="vd-stat-content">
               <span class="vd-stat-label">Tracker</span>
               @if (v.tracker; as tr) {
-                <button type="button"
-                        class="vd-stat-value vd-stat-value--copy"
-                        (click)="copyImei(tr.imei)"
-                        [attr.aria-label]="'Copier l\\'IMEI ' + tr.imei"
-                        title="Cliquer pour copier l'IMEI complet">
-                  {{ tr.imei.slice(0,4) }}…{{ tr.imei.slice(-4) }}
-                  @if (imeiCopied()) {
-                    <lucide-icon [img]="CheckIcon" [size]="11" class="vd-stat-copy-ok"></lucide-icon>
-                  } @else {
-                    <lucide-icon [img]="CopyIcon" [size]="11" class="vd-stat-copy-icon"></lucide-icon>
+                <div class="vd-tracker-row">
+                  <button type="button"
+                          class="vd-stat-value vd-stat-value--copy"
+                          (click)="copyImei(tr.imei)"
+                          [attr.aria-label]="'Copier l\\'IMEI ' + tr.imei"
+                          title="Cliquer pour copier l'IMEI complet">
+                    {{ tr.imei.slice(0,4) }}…{{ tr.imei.slice(-4) }}
+                    @if (imeiCopied()) {
+                      <lucide-icon [img]="CheckIcon" [size]="11" class="vd-stat-copy-ok"></lucide-icon>
+                    } @else {
+                      <lucide-icon [img]="CopyIcon" [size]="11" class="vd-stat-copy-icon"></lucide-icon>
+                    }
+                  </button>
+                  @if (canEditVehicle()) {
+                    <button type="button" class="vd-tracker-detach" (click)="detachTracker(tr.id)" title="Detacher le tracker">
+                      <lucide-icon [img]="XIcon" [size]="12"></lucide-icon>
+                    </button>
                   }
-                </button>
+                </div>
               } @else {
-                <span class="vd-stat-value">—</span>
+                @if (canEditVehicle()) {
+                  <button type="button" class="vd-tracker-assign-btn" (click)="showTrackerPicker.set(true)">
+                    Assigner un tracker
+                  </button>
+                } @else {
+                  <span class="vd-stat-value">—</span>
+                }
               }
             </div>
           </div>
@@ -235,7 +249,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
         <!-- Tabs avec icônes + fade scroll indicator -->
         <div class="vd-tabs-wrapper">
           <div class="vd-tabs">
-            @for (tab of tabs; track tab.key) {
+            @for (tab of tabs(); track tab.key) {
               <button
                 (click)="activeTab.set(tab.key)"
                 class="vd-tab"
@@ -483,6 +497,22 @@ import { relativeTime } from '../../shared/utils/relative-time';
                     </div>
                   </div>
 
+                  <!-- Actions : replay + assigner conducteur -->
+                  <div class="vd-trip-actions">
+                    @if (trip.polyline || trip.polylineMatched) {
+                      <button type="button" class="vd-trip-action-btn" (click)="openTripReplay(trip)">
+                        <lucide-icon [img]="PlayIcon" [size]="13"></lucide-icon>
+                        Replay
+                      </button>
+                    }
+                    @if (canManageDrivers()) {
+                      <button type="button" class="vd-trip-action-btn" (click)="openTripDriverPicker(trip)">
+                        <lucide-icon [img]="UserPlusIcon" [size]="13"></lucide-icon>
+                        {{ trip.driver ? 'Changer conducteur' : 'Assigner conducteur' }}
+                      </button>
+                    }
+                  </div>
+
                   <!-- Bloc note : edition inline pour les roles autorises,
                        lecture seule pour les autres. -->
                   @if (editingNoteTripId() === trip.id) {
@@ -569,7 +599,71 @@ import { relativeTime } from '../../shared/utils/relative-time';
         }
       </div>
 
-      <!-- Picker conducteur (modal centre, fetch les drivers a l'ouverture). -->
+      <!-- Tracker picker modal -->
+      @if (showTrackerPicker()) {
+        <div class="fixed inset-0 z-[8000] flex items-center justify-center">
+          <div class="absolute inset-0 bg-black/50" (click)="showTrackerPicker.set(false)"></div>
+          <div class="relative bg-bg-secondary border border-border-subtle rounded-2xl w-full max-w-md p-5 shadow-xl">
+            <h3 class="text-base font-bold text-fg-primary mb-1">Assigner un tracker</h3>
+            <p class="text-xs text-fg-tertiary mb-4">Trackers orphelins disponibles :</p>
+            <!-- Ajouter un nouveau tracker manuellement -->
+            <div class="flex gap-2 mb-3">
+              <input type="text" [(ngModel)]="newTrackerImei" placeholder="IMEI (15 chiffres)"
+                class="flex-1 px-3 py-2 rounded-xl bg-bg-tertiary border border-border-subtle text-fg-primary text-sm font-mono
+                       placeholder:text-fg-tertiary focus:outline-none focus:border-tracky" />
+              <button (click)="createAndAssignTracker()" [disabled]="!newTrackerImei || newTrackerImei.length < 15"
+                class="px-4 py-2 rounded-xl bg-tracky text-bg-primary text-sm font-semibold
+                       hover:bg-tracky-dark disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors">
+                Ajouter
+              </button>
+            </div>
+
+            @if (orphanTrackers().length === 0) {
+              <p class="text-xs text-fg-tertiary text-center py-3">Aucun tracker orphelin — saisissez l'IMEI ci-dessus pour en creer un.</p>
+            } @else {
+              <p class="text-xs text-fg-tertiary mb-2">Ou assigner un tracker existant :</p>
+              <div class="flex flex-col gap-2 max-h-60 overflow-y-auto">
+                @for (t of orphanTrackers(); track t.id) {
+                  <button (click)="assignTracker(t.id)"
+                    class="flex items-center justify-between px-3 py-2.5 rounded-xl bg-bg-tertiary border border-border-subtle
+                           text-sm hover:border-tracky hover:bg-tracky/5 cursor-pointer transition-all">
+                    <div>
+                      <span class="font-mono text-fg-primary">{{ t.imei }}</span>
+                      <span class="text-xs text-fg-tertiary ml-2">{{ t.model || 'GPS403D' }}</span>
+                    </div>
+                    <span class="text-xs text-fg-tertiary">{{ t.status }}</span>
+                  </button>
+                }
+              </div>
+            }
+            <button (click)="showTrackerPicker.set(false)"
+              class="mt-4 w-full py-2 text-sm text-fg-secondary bg-bg-tertiary border border-border-subtle rounded-xl hover:text-fg-primary cursor-pointer">
+              Fermer
+            </button>
+          </div>
+        </div>
+      }
+
+      <!-- Trip Replay modal -->
+      <app-trip-replay
+        [open]="tripReplayOpen()"
+        [trip]="tripReplayTrip()"
+        [canEditNote]="canEditNotes()"
+        (closed)="tripReplayOpen.set(false)"
+        (editNote)="startEditNote($event)"
+      />
+
+      <!-- Picker conducteur pour un trajet -->
+      <app-driver-picker
+        [open]="tripDriverPickerOpen()"
+        [currentDriverId]="tripDriverPickerTrip()?.driver?.id ?? null"
+        [title]="'Conducteur du trajet'"
+        subtitle="Assigner manuellement un conducteur a ce trajet."
+        (closed)="tripDriverPickerOpen.set(false)"
+        (selected)="onTripDriverPicked($event)"
+      />
+
+      <!-- Picker conducteur du vehicule (modal centre, fetch les drivers a l'ouverture). -->
       @if (vehicle(); as v) {
         <app-driver-picker
           [open]="driverPickerOpen()"
@@ -1256,6 +1350,34 @@ import { relativeTime } from '../../shared/utils/relative-time';
       background: rgba(16,224,160,.05);
     }
 
+    .vd-tracker-row { display: flex; align-items: center; gap: 4px }
+    .vd-tracker-detach {
+      background: transparent; border: 0; padding: 3px; border-radius: 4px;
+      color: var(--fg-tertiary); cursor: pointer; transition: all .15s;
+    }
+    .vd-tracker-detach:hover { color: #ef4444; background: rgba(239,68,68,.1) }
+    .vd-tracker-assign-btn {
+      background: rgba(16,224,160,.08); border: 1px dashed rgba(16,224,160,.3);
+      color: var(--tracky-light); padding: 4px 10px; border-radius: 6px;
+      font-size: 11px; font-weight: 600; cursor: pointer; transition: all .15s;
+    }
+    .vd-tracker-assign-btn:hover { background: rgba(16,224,160,.15); border-style: solid }
+
+    .vd-trip-actions {
+      display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap;
+    }
+    .vd-trip-action-btn {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 5px 10px; border-radius: 8px;
+      background: var(--bg-tertiary); border: 1px solid var(--border-subtle);
+      color: var(--fg-secondary); font-size: 11px; font-weight: 600;
+      cursor: pointer; transition: all .15s;
+    }
+    .vd-trip-action-btn:hover {
+      color: var(--tracky-light); border-color: rgba(16,224,160,.30);
+      background: rgba(16,224,160,.06);
+    }
+
     /* Desktop : 4 stats en ligne, plus d'espace */
     @media (min-width: 1024px) {
       .vd-stats-bar { grid-template-columns: repeat(4, 1fr); gap: 12px; }
@@ -1298,7 +1420,7 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly assigningDriver = signal(false);
   /** True pendant un refetch declenche par un changement de plage date (history/trips). */
   protected readonly rangeLoading = signal(false);
-  protected readonly activeTab = signal<'map' | 'history' | 'alerts' | 'commands' | 'schedule' | 'trips' | 'surveillance'>('map');
+  protected readonly activeTab = signal<string>('map');
 
   /**
    * Plage temporelle pour les onglets Historique et Trajets.
@@ -1349,6 +1471,7 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly XIcon = X;
   protected readonly UserRoundIcon = UserRound;
   protected readonly UserPlusIcon = UserPlus;
+  protected readonly PlayIcon = Play;
   protected readonly CheckIcon = Check;
   protected readonly CopyIcon = Copy;
   protected readonly relativeTime = relativeTime;
@@ -1411,17 +1534,18 @@ export class VehicleDetailComponent implements OnInit {
     return false;
   });
 
-  protected readonly tabs = [
-    { key: 'map' as const, label: 'Carte', icon: Map },
-    { key: 'trips' as const, label: 'Trajets', icon: Route },
-    { key: 'schedule' as const, label: 'Horaires', icon: Clock },
-    { key: 'alerts' as const, label: 'Alertes', icon: Bell },
-    { key: 'surveillance' as const, label: 'Surveillance', icon: ShieldCheck },
-    { key: 'history' as const, label: 'Historique', icon: History },
-    // Commandes en dernier : reservee plutot aux developpeurs / curieux,
-    // l'usage courant passe par le bouton coupe-circuit dans le header.
-    { key: 'commands' as const, label: 'Commandes', icon: Zap },
-  ];
+  protected readonly tabs = computed(() => {
+    const all: { key: string; label: string; icon: any; perm?: string }[] = [
+      { key: 'map', label: 'Carte', icon: Map },
+      { key: 'trips', label: 'Trajets', icon: Route },
+      { key: 'schedule', label: 'Horaires', icon: Clock, perm: 'engine_control' },
+      { key: 'alerts', label: 'Alertes', icon: Bell, perm: 'alerts_view' },
+      { key: 'surveillance', label: 'Surveillance', icon: ShieldCheck, perm: 'alerts_view' },
+      { key: 'history', label: 'Historique', icon: History },
+      { key: 'commands', label: 'Commandes', icon: Zap, perm: 'engine_control' },
+    ];
+    return all.filter((t) => !t.perm || this.perms.can(t.perm as any));
+  });
 
   private lastAlertCount = -1;
   private alertRefreshEffect = effect(() => {
@@ -1668,9 +1792,9 @@ export class VehicleDetailComponent implements OnInit {
         trackerId
           ? firstValueFrom(this.positionsApi.list({ trackerId, limit: '500', ...dateParams }))
           : { items: [] },
-        firstValueFrom(this.alertsApi.list({ vehicleId: v.id, limit: '20' })),
-        trackerId ? firstValueFrom(this.engineControlApi.listCommands(trackerId, 20)) : [],
-        firstValueFrom(this.tripsApi.list({ vehicleId: v.id, limit: '100', ...dateParams })),
+        firstValueFrom(this.alertsApi.list({ vehicleId: v.id, limit: '20' })).catch(() => ({ items: [] })),
+        trackerId ? firstValueFrom(this.engineControlApi.listCommands(trackerId, 20)).catch(() => []) : [],
+        firstValueFrom(this.tripsApi.list({ vehicleId: v.id, limit: '100', ...dateParams })).catch(() => ({ items: [] })),
       ]);
 
       this.recentPositions.set(posRes.items);
@@ -1832,6 +1956,108 @@ export class VehicleDetailComponent implements OnInit {
     }
     if (author.firstName) return author.firstName;
     return author.email;
+  }
+
+  // ─── Tracker management ──────────────────────────────────────────
+
+  protected readonly showTrackerPicker = signal(false);
+  protected readonly orphanTrackers = signal<Array<{ id: string; imei: string; model: string; status: string }>>([]);
+  protected newTrackerImei = '';
+
+  protected canEditVehicle(): boolean {
+    return this.perms.can('vehicles_edit');
+  }
+
+  protected async detachTracker(trackerId: string): Promise<void> {
+    if (!confirm('Détacher ce tracker du véhicule ?')) return;
+    try {
+      await firstValueFrom(this.trackersApi.unassign(trackerId));
+      this.vehicle.update((v) => v ? { ...v, tracker: null } : v);
+      this.toast.success('Tracker détaché');
+    } catch (err) {
+      this.toast.error('Échec', err instanceof HttpErrorResponse ? err.error?.message : '');
+    }
+  }
+
+  protected async createAndAssignTracker(): Promise<void> {
+    const v = this.vehicle();
+    if (!v || !this.newTrackerImei.trim()) return;
+    try {
+      const tracker = await firstValueFrom(this.trackersApi.create({ imei: this.newTrackerImei.trim() }));
+      await firstValueFrom(this.trackersApi.assign(tracker.id, v.id));
+      this.showTrackerPicker.set(false);
+      this.newTrackerImei = '';
+      this.toast.success('Tracker cree et assigne');
+      const updated = await firstValueFrom(this.vehiclesApi.findOne(v.id));
+      this.vehicle.set(updated);
+    } catch (err) {
+      this.toast.error('Echec', err instanceof HttpErrorResponse ? err.error?.message : '');
+    }
+  }
+
+  protected async assignTracker(trackerId: string): Promise<void> {
+    const v = this.vehicle();
+    if (!v) return;
+    try {
+      await firstValueFrom(this.trackersApi.assign(trackerId, v.id));
+      this.showTrackerPicker.set(false);
+      this.toast.success('Tracker assigné');
+      // Reload vehicle to get updated tracker
+      const updated = await firstValueFrom(this.vehiclesApi.findOne(v.id));
+      this.vehicle.set(updated);
+    } catch (err) {
+      this.toast.error('Échec', err instanceof HttpErrorResponse ? err.error?.message : '');
+    }
+  }
+
+  // Load orphan trackers when picker opens
+  private trackerPickerEffect = effect(() => {
+    if (this.showTrackerPicker()) {
+      firstValueFrom(this.trackersApi.list({ unassigned: 'true' }))
+        .then((list) => this.orphanTrackers.set(list))
+        .catch(() => this.orphanTrackers.set([]));
+    }
+  });
+
+  // ─── Trip replay ──────────────────────────────────────────────────
+
+  protected readonly tripReplayOpen = signal(false);
+  protected readonly tripReplayTrip = signal<TripDto | null>(null);
+
+  protected openTripReplay(trip: TripDto): void {
+    this.tripReplayTrip.set(trip);
+    this.tripReplayOpen.set(true);
+  }
+
+  // ─── Trip driver assignment ──────────────────────────────────────
+
+  protected readonly tripDriverPickerOpen = signal(false);
+  protected readonly tripDriverPickerTrip = signal<TripDto | null>(null);
+
+  protected openTripDriverPicker(trip: TripDto): void {
+    this.tripDriverPickerTrip.set(trip);
+    this.tripDriverPickerOpen.set(true);
+  }
+
+  protected async onTripDriverPicked(driver: DriverDto | null): Promise<void> {
+    const trip = this.tripDriverPickerTrip();
+    if (!trip) return;
+    this.tripDriverPickerOpen.set(false);
+    try {
+      const updated = await firstValueFrom(
+        this.driversApi.assignToTrip(trip.id, driver?.id ?? null),
+      );
+      // Met à jour le trip dans la liste locale
+      this.vehicleTrips.update((trips) =>
+        trips.map((t) => t.id === trip.id ? updated : t),
+      );
+      this.toast.success(
+        driver ? 'Conducteur assigné au trajet' : 'Conducteur retiré du trajet',
+        driver ? `${driver.firstName} ${driver.lastName}` : '',
+      );
+    } catch (err) {
+      this.toast.error('Échec', err instanceof HttpErrorResponse ? err.error?.message : '');
+    }
   }
 
   // ─── Phase 2 — gestion conducteur courant du vehicule ──────────────

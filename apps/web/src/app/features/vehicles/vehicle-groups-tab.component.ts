@@ -3,6 +3,9 @@ import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, Plus, Trash2, FolderOpen, Truck } from 'lucide-angular';
 import { VehicleGroupsService, type VehicleGroup } from '../../core/services/vehicle-groups.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
+import { FleetsApiService, type FleetSummary } from '../../core/services/fleets.service';
+import { AuthService } from '../../core/services/auth.service';
+import { PermissionsService } from '../../core/services/permissions.service';
 import { firstValueFrom } from 'rxjs';
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
 
@@ -15,13 +18,15 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
       <!-- Header : description + bouton (stack en mobile, row en desktop) -->
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p class="text-sm text-fg-secondary flex-1">Organisez vos véhicules en groupes pour gérer les accès.</p>
-        <button (click)="showCreateModal.set(true)"
-          class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl
-                 bg-tracky hover:bg-tracky-dark text-white transition-colors cursor-pointer
-                 whitespace-nowrap shrink-0 self-start sm:self-auto">
-          <lucide-icon [img]="Plus" [size]="14"></lucide-icon>
-          Nouveau groupe
-        </button>
+        @if (perms.can('groups_manage')) {
+          <button (click)="showCreateModal.set(true)"
+            class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl
+                   bg-tracky hover:bg-tracky-dark text-white transition-colors cursor-pointer
+                   whitespace-nowrap shrink-0 self-start sm:self-auto">
+            <lucide-icon [img]="Plus" [size]="14"></lucide-icon>
+            Nouveau groupe
+          </button>
+        }
       </div>
 
       @if (loading()) {
@@ -44,10 +49,12 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
                   <span class="font-semibold text-fg-primary text-sm">{{ g.name }}</span>
                   <span class="text-xs text-fg-tertiary">({{ g._count.vehicles }} véhicule{{ g._count.vehicles > 1 ? 's' : '' }})</span>
                 </div>
-                <button (click)="confirmDeleteGroup(g)"
-                  class="p-1 rounded-lg text-fg-tertiary hover:text-red-400 hover:bg-red-400/10 transition-colors cursor-pointer">
-                  <lucide-icon [img]="Trash2" [size]="14"></lucide-icon>
-                </button>
+                @if (perms.can('groups_manage')) {
+                  <button (click)="confirmDeleteGroup(g)"
+                    class="p-1 rounded-lg text-fg-tertiary hover:text-red-400 hover:bg-red-400/10 transition-colors cursor-pointer">
+                    <lucide-icon [img]="Trash2" [size]="14"></lucide-icon>
+                  </button>
+                }
               </div>
 
               <!-- Véhicules du groupe -->
@@ -56,8 +63,10 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
                   <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-bg-tertiary text-xs text-fg-secondary">
                     <lucide-icon [img]="TruckIcon" [size]="12"></lucide-icon>
                     {{ vehiclePlate(va.vehicleId) }}
-                    <button (click)="removeFromGroup(g.id, va.vehicleId)"
-                      class="ml-1 text-fg-tertiary hover:text-red-400 cursor-pointer">&times;</button>
+                    @if (perms.can('groups_manage')) {
+                      <button (click)="removeFromGroup(g.id, va.vehicleId)"
+                        class="ml-1 text-fg-tertiary hover:text-red-400 cursor-pointer">&times;</button>
+                    }
                   </span>
                 }
                 @if (g.vehicles.length === 0) {
@@ -66,6 +75,7 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
               </div>
 
               <!-- Ajouter un véhicule -->
+              @if (perms.can('groups_manage')) {
               <div class="flex items-center gap-2">
                 <select [(ngModel)]="selectedVehicleForGroup[g.id]"
                   class="flex-1 px-2.5 py-1.5 rounded-lg bg-bg-tertiary border border-border-subtle text-fg-primary text-xs
@@ -82,6 +92,7 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
                   Ajouter
                 </button>
               </div>
+              }
             </div>
           }
         </div>
@@ -97,9 +108,21 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
       (confirmed)="onCreate()"
       (cancelled)="showCreateModal.set(false)"
     >
-      <div class="mt-4">
+      <div class="mt-4 flex flex-col gap-3">
         @if (createError()) {
           <p class="text-sm text-red-400 mb-2">{{ createError() }}</p>
+        }
+        @if (isSuperAdmin()) {
+          <div>
+            <label class="text-xs font-medium text-fg-tertiary uppercase mb-1 block">Fleet</label>
+            <select [(ngModel)]="selectedFleetId"
+              class="w-full px-3 py-2 rounded-xl bg-bg-tertiary border border-border-subtle text-fg-primary text-sm
+                     focus:outline-none focus:border-tracky">
+              @for (f of fleets(); track f.id) {
+                <option [value]="f.id">{{ f.name }}</option>
+              }
+            </select>
+          </div>
         }
         <input type="text" [(ngModel)]="newGroupName" placeholder="Nom du groupe (ex: Camions Nord)"
           class="w-full px-3 py-2 rounded-xl bg-bg-tertiary border border-border-subtle text-fg-primary text-sm
@@ -123,15 +146,20 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
 export class VehicleGroupsTabComponent implements OnInit {
   private readonly groupsService = inject(VehicleGroupsService);
   private readonly vehiclesApi = inject(VehiclesApiService);
+  private readonly fleetsApi = inject(FleetsApiService);
+  private readonly auth = inject(AuthService);
+  protected readonly perms = inject(PermissionsService);
 
   readonly loading = signal(true);
   readonly groups = signal<VehicleGroup[]>([]);
   readonly allVehicles = signal<VehicleDetailDto[]>([]);
+  readonly fleets = signal<FleetSummary[]>([]);
 
   readonly showCreateModal = signal(false);
   readonly creating = signal(false);
   readonly createError = signal('');
   newGroupName = '';
+  selectedFleetId = '';
 
   readonly showDeleteModal = signal(false);
   readonly deleting = signal(false);
@@ -144,7 +172,16 @@ export class VehicleGroupsTabComponent implements OnInit {
   protected readonly FolderOpen = FolderOpen;
   protected readonly TruckIcon = Truck;
 
+  protected isSuperAdmin(): boolean {
+    return this.auth.user()?.role === 'SUPER_ADMIN';
+  }
+
   async ngOnInit(): Promise<void> {
+    if (this.isSuperAdmin()) {
+      const fleets = await firstValueFrom(this.fleetsApi.list());
+      this.fleets.set(fleets);
+      if (fleets.length > 0) this.selectedFleetId = fleets[0].id;
+    }
     await this.load();
   }
 
@@ -188,7 +225,10 @@ export class VehicleGroupsTabComponent implements OnInit {
     this.creating.set(true);
     this.createError.set('');
     try {
-      await this.groupsService.create(this.newGroupName.trim());
+      const fleetId = this.isSuperAdmin()
+        ? this.selectedFleetId || undefined
+        : undefined; // FLEET_ADMIN utilise sa propre fleet automatiquement côté backend
+      await this.groupsService.create(this.newGroupName.trim(), fleetId);
       this.showCreateModal.set(false);
       this.newGroupName = '';
       await this.load();

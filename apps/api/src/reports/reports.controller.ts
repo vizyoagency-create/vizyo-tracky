@@ -11,8 +11,10 @@ import {
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import type { Response } from 'express';
+import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import { GeneratePdfDto } from './dto/generate-pdf.dto';
@@ -31,7 +33,7 @@ import { ReportsStatsService } from './reports-stats.service';
  * Un SUPER_ADMIN peut specifier n'importe quel fleetId.
  */
 @Controller('reports')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class ReportsController {
   constructor(
     private readonly stats: ReportsStatsService,
@@ -41,7 +43,8 @@ export class ReportsController {
   ) {}
 
   @Get('stats')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  @RequirePermissions('reports_view')
   async statsJson(
     @Req() req: AuthenticatedRequest,
     @Query('fleetId') fleetIdQ: string | undefined,
@@ -53,7 +56,8 @@ export class ReportsController {
   }
 
   @Get('pdf')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  @RequirePermissions('reports_view')
   async pdfDownload(
     @Req() req: AuthenticatedRequest,
     @Res() res: Response,
@@ -77,7 +81,8 @@ export class ReportsController {
    * sent immediatement le scope qu'il a configure.
    */
   @Post('pdf')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  @RequirePermissions('reports_view')
   async pdfDownloadConfigured(
     @Req() req: AuthenticatedRequest,
     @Res() res: Response,
@@ -112,7 +117,8 @@ export class ReportsController {
   }
 
   @Get('csv')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  @RequirePermissions('reports_view')
   async csvDownload(
     @Req() req: AuthenticatedRequest,
     @Res() res: Response,

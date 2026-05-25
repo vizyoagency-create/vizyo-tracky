@@ -18,6 +18,7 @@ const envSchema = z.object({
   VIZYO_AUTH_JWT_ISSUER: z.string().min(1),
   VIZYO_AUTH_APP_INTERNAL_ID: z.string().min(1),
   VIZYO_AUTH_WEB_URL: z.string().default('https://auth.vizyoagency.com'),
+  VIZYO_AUTH_DB_URL: z.string().optional(),
 
   // Internal API (Manager → Tracky)
   INTERNAL_API_SECRET: z.string().min(16),

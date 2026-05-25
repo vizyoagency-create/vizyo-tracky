@@ -89,7 +89,12 @@ export class InvitationsService {
     // Reject if a user with this email already exists in Tracky.
     const existingUser = await this.prisma.user.findUnique({ where: { email } });
     if (existingUser) {
-      throw new ConflictException('Un utilisateur avec cet email existe deja');
+      if (!existingUser.isActive) {
+        throw new ConflictException(
+          'Cet utilisateur est archivé. Désarchivez-le depuis la liste des utilisateurs au lieu de le ré-inviter.',
+        );
+      }
+      throw new ConflictException('Un utilisateur avec cet email existe déjà et est actif.');
     }
 
     // Auto-revoke any existing PENDING invitation for this email (allows resend).
@@ -267,7 +272,22 @@ export class InvitationsService {
     }
 
     // 2) Login to get tokens + authUserId.
-    const session = await this.authClient.login(invitation.email, password);
+    let session: { accessToken: string; refreshToken: string };
+    try {
+      session = await this.authClient.login(invitation.email, password);
+    } catch (loginErr: any) {
+      // UnauthorizedException du authClient ou toute erreur auth
+      if (
+        loginErr?.status === 401 ||
+        loginErr?.response?.statusCode === 401 ||
+        (loginErr?.message ?? '').includes('Authentication failed')
+      ) {
+        throw new UnauthorizedException(
+          'Ce compte existe déjà avec un autre mot de passe. Connectez-vous avec votre mot de passe habituel ou réinitialisez-le.',
+        );
+      }
+      throw loginErr;
+    }
     const me = await this.authClient.me(session.accessToken);
 
     // 3) Parse displayName into firstName / lastName (best-effort).
