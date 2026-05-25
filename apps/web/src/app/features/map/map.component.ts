@@ -135,7 +135,14 @@ const MAX_FRAME_DT_MS = 100;
   standalone: true,
   imports: [DecimalPipe, ConfirmModalComponent],
   template: `
-    <div #mapContainer style="position:absolute;top:0;left:0;width:100%;height:100%"></div>
+    <!-- mapContainer occupe TOUT le host via flex (et plus position:absolute).
+         Raison : sur iOS Safari standalone PWA, position:absolute;height:100%
+         dans un custom element host lui-meme flex item ne resout pas la hauteur
+         (le child absolu reste a 0px). Avec flex:1+min-height:0 le DIV devient
+         un vrai flex child qui herite. Necessite :host display:flex. Les overlays
+         (compass, banners, panels) restent positionnes par rapport au host
+         (position:relative) — pas d'impact. -->
+    <div #mapContainer style="flex:1;min-height:0;width:100%;position:relative"></div>
 
     <!-- ════════════════════════════════════════════════════════════
          MOBILE TOP BAR (chip statut + boutons recherche/actions)
@@ -798,7 +805,8 @@ const MAX_FRAME_DT_MS = 100;
   `,
   styles: [`
     :host {
-      display: block;
+      display: flex;
+      flex-direction: column;
       position: relative;
       width: 100%;
       height: 100%;
