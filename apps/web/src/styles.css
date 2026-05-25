@@ -185,6 +185,22 @@ body.ios-pwa app-dashboard-layout {
   height: 100%;
 }
 
+/* iOS PWA : cacher sidebar desktop + bottom-bar.
+   Navigation uniquement via le burger (top-bar) qui ouvre la bottom-sheet. */
+body.ios-pwa .desktop-sidebar { display: none !important }
+body.ios-pwa .bottom-bar { display: none !important }
+body.ios-pwa .layout { flex-direction: column !important }
+body.ios-pwa .main-area { width: 100% !important; flex: 1 !important; min-height: 0 }
+body.ios-pwa .mobile-burger { display: flex !important }
+body.ios-pwa .content {
+  padding-bottom: env(safe-area-inset-bottom) !important;
+}
+body.ios-pwa .content.fullscreen {
+  height: calc(100dvh - env(safe-area-inset-top) - 64px) !important;
+  min-height: calc(100dvh - env(safe-area-inset-top) - 64px) !important;
+  padding: 0 !important;
+}
+
 /* html doit aussi avoir le bon bg pour que meme si un pixel fuit, il soit
    de la bonne couleur (zone home indicator sur vieux iOS). */
 @media (display-mode: standalone) {

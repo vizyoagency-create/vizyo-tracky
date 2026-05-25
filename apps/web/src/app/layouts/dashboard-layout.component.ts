@@ -41,7 +41,7 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
   imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, ThemeToggleComponent, AlertsBellComponent, LogoComponent, InstallBannerComponent, PushPromptComponent, BottomSheetComponent, OnboardingWizardComponent],
   template: `
     <a href="#main-content" class="skip-link">Aller au contenu principal</a>
-    <div class="layout" [class.layout--fullscreen]="fullscreen()">
+    <div class="layout" [class.layout--fullscreen]="fullscreen()" [class.layout--ios-pwa]="isIosPwa">
       @if (!network.online()) {
         <div class="offline-banner" role="status" aria-live="polite">
           <span class="offline-dot"></span>
@@ -527,6 +527,14 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
   `],
 })
 export class DashboardLayoutComponent {
+  protected readonly isIosPwa = (() => {
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+    const ua = navigator.userAgent || '';
+    const isIos = /iPad|iPhone|iPod/.test(ua) || (ua.includes('Mac') && 'ontouchend' in document);
+    const isStandalone = window.matchMedia?.('(display-mode: standalone)').matches
+      || (navigator as any).standalone === true;
+    return isIos && isStandalone;
+  })();
   protected readonly collapsed = signal(false);
   protected readonly fullscreen = signal(false);
   protected readonly pageTitle = signal('Tableau de bord');
