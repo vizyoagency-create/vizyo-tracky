@@ -34,6 +34,13 @@ const MAPPING: Record<CobanAlarmType, AlertMapping | null> = {
   harsh_acceleration: { type: 'HARSH_ACCELERATION', severity: 'INFO', title: 'Accélération brusque' },
   harsh_turn: { type: 'HARSH_TURN', severity: 'INFO', title: 'Virage brusque' },
 
+  tow: { type: 'TOW', severity: 'CRITICAL', title: 'Remorquage détecté' },
+  tamper: { type: 'TAMPER', severity: 'CRITICAL', title: 'Tentative de retrait du tracker' },
+  fatigue: { type: 'FATIGUE', severity: 'WARNING', title: 'Fatigue conducteur détectée' },
+  illegal_ignition: { type: 'ILLEGAL_IGNITION', severity: 'CRITICAL', title: 'Démarrage non autorisé' },
+  gps_lost: { type: 'GPS_LOST', severity: 'INFO', title: 'Signal GPS perdu' },
+  idle_alert: { type: 'IDLE_TIME', severity: 'INFO', title: 'Temps d\'arrêt excessif' },
+
   unknown: { type: 'UNKNOWN', severity: 'INFO', title: 'Alarme inconnue' },
 };
 

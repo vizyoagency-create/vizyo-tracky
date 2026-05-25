@@ -31,12 +31,20 @@ export function decodeAlarm(value: string): CobanAlarmType {
   if (v === 'brake' || v === 'brake alarm') return 'harsh_braking';
   if (v === 'accelerate') return 'harsh_acceleration';
   if (v === 'sharp turn') return 'harsh_turn';
+  if (v === 'tow alarm' || v === 'tow') return 'tow';
+  if (v === 'remove alarm' || v === 'pull alarm' || v === 'tamper' || v === 'dt') return 'tamper';
+  if (v === 'fatigue alarm' || v === 'fatigue') return 'fatigue';
+  if (v === 'illegal ignition alarm' || v === 'illegal ignition') return 'illegal_ignition';
+  if (v === 'no data alarm' || v === 'gps dead' || v === 'gps lost') return 'gps_lost';
+  if (v === 'idle alarm' || v === 'it' || v === 'idle') return 'idle_alert';
   if (v === 'acc on') return 'acc_on';
   if (v === 'acc off') return 'acc_off';
   if (v === 'rfid') return 'rfid';
   if (v === 'dtc') return 'dtc';
   if (v.startsWith('t:')) return 'temperature';
   if (v.startsWith('oil')) return 'fuel';
+  // Fallback: numbered alarms (1 alarm, 2 alarm, 3 alarm) → vibration sensor variants
+  if (/^\d+ alarm$/.test(v)) return 'vibration';
   return 'unknown';
 }
 
