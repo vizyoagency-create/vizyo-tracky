@@ -10,18 +10,29 @@ import {
 } from '@nestjs/common';
 import { CommandStatus, UserRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { RequireVehiclePermission } from '../auth/decorators/vehicle-permissions.decorator';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { RequestEngineCommandDto } from './dto/request-engine-command.dto';
 import { EngineControlService } from './engine-control.service';
 
 @Controller('engine-control')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class EngineControlController {
   constructor(private readonly engineControl: EngineControlService) {}
 
+  /**
+   * V1.11 Phase 1 — Coupure/redemarrage moteur protege par la permission
+   * `engine_control` resolue per-vehicle (regle "specifique gagne"). Ouvert aux
+   * 4 roles mais @RequireVehiclePermission filtre selon les overrides.
+   *
+   * Les contraintes metier (vitesse < 20 km/h, position fraiche, fix GPS valide)
+   * sont appliquees dans le service apres le passage du guard.
+   */
   @Post('trackers/:trackerId/commands')
-  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  @RequireVehiclePermission('engine_control', { paramName: 'trackerId' })
   requestCommand(
     @Param('trackerId') trackerId: string,
     @Body() dto: RequestEngineCommandDto,

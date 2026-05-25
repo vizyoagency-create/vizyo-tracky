@@ -23,6 +23,11 @@ export interface DashboardWidgetConfig {
   enabled: boolean;
 }
 
+/** Per-category push alert preferences (false = muted, true/undefined = active). */
+export interface PushAlertPrefs {
+  [category: string]: boolean;
+}
+
 export interface UserPreferences {
   theme: 'dark' | 'light';
   notifications: {
@@ -30,6 +35,8 @@ export interface UserPreferences {
     warning: NotificationPrefs;
     info: NotificationPrefs;
   };
+  /** Per-category push notification preferences. Keys match pushAlertTypes in settings. */
+  pushAlerts: PushAlertPrefs;
   map: {
     centerLat: number;
     centerLng: number;
@@ -53,6 +60,16 @@ const DEFAULTS: UserPreferences = {
     critical: { enabled: true, duration: 0 },
     warning: { enabled: true, duration: 6000 },
     info: { enabled: false, duration: 4000 },
+  },
+  pushAlerts: {
+    critical: true,
+    overspeed: true,
+    geofence: true,
+    movement: true,
+    battery: true,
+    fatigue: true,
+    driving: false,
+    device: false,
   },
   map: {
     centerLat: 46.6034,
@@ -109,6 +126,9 @@ export class PreferencesService {
     if (partial.notifications) {
       merged.notifications = { ...current.notifications, ...partial.notifications };
     }
+    if (partial.pushAlerts) {
+      merged.pushAlerts = { ...current.pushAlerts, ...partial.pushAlerts };
+    }
     if (partial.map) {
       merged.map = { ...current.map, ...partial.map };
     }
@@ -155,6 +175,7 @@ export class PreferencesService {
         warning: { ...defaults.notifications.warning, ...saved.notifications?.warning },
         info: { ...defaults.notifications.info, ...saved.notifications?.info },
       },
+      pushAlerts: { ...defaults.pushAlerts, ...saved.pushAlerts },
       map: { ...defaults.map, ...saved.map },
       // Si la liste sauvegardée existe, on s'assure que les widgets manquants
       // sont ajoutés (par défaut activés) — utile pour évoluer le set sans casser.

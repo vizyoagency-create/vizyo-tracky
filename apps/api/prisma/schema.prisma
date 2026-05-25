@@ -52,6 +52,12 @@ enum AlertType {
   BONNET
   DOOR
   VIBRATION
+  TOW
+  TAMPER
+  FATIGUE
+  ILLEGAL_IGNITION
+  GPS_LOST
+  IDLE_TIME
   SURVEILLANCE_TRIGGERED
   UNKNOWN
 }
@@ -678,17 +684,26 @@ model VehicleGroupAssignment {
   @@map("vehicle_group_assignments")
 }
 
+/// V1.11 (Phase 1 refonte permissions) — `permissions` JSONB porte les
+/// permissions resolues par scope. Resolution per-vehicle : on trie les lignes
+/// qui couvrent ce vehicleId selon VEHICLE > GROUP > ALL et on prend la premiere.
+/// Si `permissions` est null, on fallback sur `User.permissions`, puis sur
+/// `getDefaultPermissions(role)`. Cf. PermissionsResolverService.
 model UserVehicleAccess {
-  id         String        @id @default(uuid()) @db.Uuid
-  userId     String        @db.Uuid
-  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  accessType AccessType
-  groupId    String?       @db.Uuid
-  group      VehicleGroup? @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  vehicleId  String?       @db.Uuid
-  vehicle    Vehicle?      @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  id          String        @id @default(uuid()) @db.Uuid
+  userId      String        @db.Uuid
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessType  AccessType
+  groupId     String?       @db.Uuid
+  group       VehicleGroup? @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  vehicleId   String?       @db.Uuid
+  vehicle     Vehicle?      @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  permissions Json?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
   @@index([userId])
+  @@index([userId, accessType])
   @@map("user_vehicle_access")
 }
 

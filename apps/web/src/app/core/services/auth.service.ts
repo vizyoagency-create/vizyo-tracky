@@ -1,11 +1,12 @@
 import { computed, Injectable, signal } from '@angular/core';
+import type { UserPermissions, UserRoleSlug } from '@vizyo/tracky-shared';
 
 export interface AuthUser {
   sub: string;
   email: string;
-  role: string;
+  role: UserRoleSlug;
   fleetId: string | null;
-  permissions: Record<string, boolean> | null;
+  permissions: UserPermissions | null;
 }
 
 const TOKEN_KEY = 'vizyo-tracky-token';

@@ -97,7 +97,7 @@ export class AuthService {
       role: user.role,
       fleetId: user.fleetId,
       isActive: user.isActive,
-      permissions: (user.permissions as Record<string, boolean>) ?? null,
+      permissions: (user.permissions as AuthUser['permissions']) ?? null,
     };
   }
 }

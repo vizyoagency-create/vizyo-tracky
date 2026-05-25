@@ -1,4 +1,5 @@
 import type { UserRole } from '@prisma/client';
+import type { UserPermissions } from '@vizyo/tracky-shared';
 
 export interface AuthUser {
   id: string;
@@ -9,5 +10,5 @@ export interface AuthUser {
   role: UserRole;
   fleetId: string | null;
   isActive: boolean;
-  permissions: Record<string, boolean> | null;
+  permissions: UserPermissions | null;
 }

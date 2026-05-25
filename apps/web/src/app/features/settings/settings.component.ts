@@ -1,11 +1,13 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, OnInit, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, LogOut, User, Moon, Sun, Bell, Map, MapPin, RotateCcw, Palette, Navigation, Route, ArrowRight } from 'lucide-angular';
+import { LucideAngularModule, LogOut, User, Moon, Sun, Bell, BellOff, Map, MapPin, RotateCcw, Palette, Navigation, Route, ArrowRight, Smartphone } from 'lucide-angular';
 import { AuthService } from '../../core/services/auth.service';
 import { PreferencesService } from '../../core/services/preferences.service';
+import { NotificationsApiService } from '../../core/services/notifications.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { ThemeService } from '../../core/theme/theme.service';
+import { ToastService } from '../../shared/ui/toast/toast.service';
 
 @Component({
   selector: 'app-settings',
@@ -81,13 +83,14 @@ import { ThemeService } from '../../core/theme/theme.service';
         <!-- RIGHT COLUMN -->
         <div class="settings-col">
 
-          <!-- NOTIFICATIONS -->
+          <!-- NOTIFICATIONS IN-APP -->
           <div class="s-card">
             <div class="s-card-head">
               <div class="s-icon amber"><lucide-icon [img]="BellIcon" [size]="16"></lucide-icon></div>
-              <div class="s-card-title">Notifications</div>
+              <div class="s-card-title">Notifications in-app</div>
             </div>
             <div class="s-card-body">
+              <p class="section-desc">Toasts affichés dans l'application selon la sévérité.</p>
               @for (n of notifItems; track n.key) {
                 <div class="notif-row">
                   <div class="notif-left">
@@ -120,6 +123,70 @@ import { ThemeService } from '../../core/theme/theme.service';
                 Configurer les règles avancées
                 <lucide-icon [img]="ArrowRightIcon" [size]="13"></lucide-icon>
               </a>
+            </div>
+          </div>
+
+          <!-- PUSH NOTIFICATIONS -->
+          <div class="s-card">
+            <div class="s-card-head">
+              <div class="s-icon cyan"><lucide-icon [img]="SmartphoneIcon" [size]="16"></lucide-icon></div>
+              <div class="s-card-title">Notifications push</div>
+            </div>
+            <div class="s-card-body">
+              <p class="section-desc">Recevez des alertes même quand l'application est fermée.</p>
+
+              @if (!pushSupported()) {
+                <div class="push-status push-unsupported">
+                  <lucide-icon [img]="BellOffIcon" [size]="16"></lucide-icon>
+                  <div>
+                    <p class="notif-name">Non disponible</p>
+                    <p class="notif-desc">{{ pushDiagReason() }}</p>
+                  </div>
+                </div>
+              } @else if (!pushSubscribed()) {
+                <div class="push-status push-inactive">
+                  <lucide-icon [img]="BellOffIcon" [size]="16"></lucide-icon>
+                  <div>
+                    <p class="notif-name">Push désactivé</p>
+                    <p class="notif-desc">Activez pour recevoir des alertes sur cet appareil.</p>
+                  </div>
+                  <button (click)="enablePush()" class="btn-push" [disabled]="pushLoading()">
+                    {{ pushLoading() ? 'Activation...' : 'Activer' }}
+                  </button>
+                </div>
+              } @else {
+                <div class="push-status push-active">
+                  <lucide-icon [img]="BellIcon" [size]="16"></lucide-icon>
+                  <div>
+                    <p class="notif-name">Push actif</p>
+                    <p class="notif-desc">Les alertes arrivent sur cet appareil.</p>
+                  </div>
+                  <button (click)="disablePush()" class="btn-push btn-push-off" [disabled]="pushLoading()">
+                    Désactiver
+                  </button>
+                </div>
+
+                <div class="push-types-section">
+                  <p class="push-types-title">Types d'alertes push</p>
+                  @for (pt of pushAlertTypes; track pt.type) {
+                    <div class="notif-row">
+                      <div class="notif-left">
+                        <div class="notif-dot" [class]="pt.color"></div>
+                        <div>
+                          <p class="notif-name">{{ pt.label }}</p>
+                          <p class="notif-desc">{{ pt.desc }}</p>
+                        </div>
+                      </div>
+                      <div class="notif-right">
+                        <label class="toggle">
+                          <input type="checkbox" [checked]="prefs().pushAlerts[pt.type] !== false" (change)="togglePushType(pt.type)" />
+                          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                        </label>
+                      </div>
+                    </div>
+                  }
+                </div>
+              }
             </div>
           </div>
 
@@ -202,6 +269,7 @@ import { ThemeService } from '../../core/theme/theme.service';
     .s-icon.purple { background: rgba(168,85,247,.12); color: #a855f7 }
     .s-icon.amber { background: rgba(245,158,11,.12); color: #f59e0b }
     .s-icon.blue { background: rgba(59,130,246,.12); color: #3b82f6 }
+    .s-icon.cyan { background: rgba(6,182,212,.12); color: #06b6d4 }
 
     /* Account */
     .account-block { display: flex; align-items: center; gap: 14px; padding: 14px; border-radius: 12px; background: var(--bg-tertiary); margin-bottom: 14px }
@@ -228,6 +296,27 @@ import { ThemeService } from '../../core/theme/theme.service';
       transition: all .2s;
     }
     .advanced-link:hover { background: rgba(16,224,160,.12); border-color: rgba(16,224,160,.28) }
+
+    /* Push notifications */
+    .section-desc { font-size: 11px; color: var(--fg-tertiary); margin: 0 0 12px }
+    .push-status {
+      display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+      border-radius: 10px; margin-bottom: 12px;
+    }
+    .push-unsupported { background: rgba(239,68,68,.06); color: var(--fg-tertiary) }
+    .push-inactive { background: rgba(245,158,11,.06) }
+    .push-active { background: rgba(16,224,160,.06) }
+    .btn-push {
+      margin-left: auto; padding: 7px 14px; border-radius: 8px; font-size: 12px;
+      font-weight: 600; border: 0; cursor: pointer; white-space: nowrap;
+      background: var(--tracky); color: var(--bg-primary);
+    }
+    .btn-push:hover { background: var(--tracky-light) }
+    .btn-push:disabled { opacity: .5; cursor: not-allowed }
+    .btn-push-off { background: rgba(239,68,68,.1); color: #f87171; border: 1px solid rgba(239,68,68,.2) }
+    .btn-push-off:hover { background: rgba(239,68,68,.2) }
+    .push-types-section { margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--border-subtle) }
+    .push-types-title { font-size: 11px; font-weight: 600; color: var(--fg-tertiary); text-transform: uppercase; margin: 0 0 8px }
 
     /* Theme picker */
     .theme-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 12px }
@@ -322,11 +411,13 @@ import { ThemeService } from '../../core/theme/theme.service';
     }
   `],
 })
-export class SettingsComponent {
+export class SettingsComponent implements OnInit {
   private readonly auth = inject(AuthService);
   private readonly preferencesService = inject(PreferencesService);
+  private readonly notifApi = inject(NotificationsApiService);
   private readonly realtime = inject(RealtimeService);
   private readonly router = inject(Router);
+  private readonly toast = inject(ToastService);
   protected readonly theme = inject(ThemeService);
 
   protected readonly user = this.auth.user;
@@ -337,6 +428,8 @@ export class SettingsComponent {
   protected readonly MoonIcon = Moon;
   protected readonly SunIcon = Sun;
   protected readonly BellIcon = Bell;
+  protected readonly BellOffIcon = BellOff;
+  protected readonly SmartphoneIcon = Smartphone;
   protected readonly MapIcon = Map;
   protected readonly MapPinIcon = MapPin;
   protected readonly ResetIcon = RotateCcw;
@@ -345,11 +438,75 @@ export class SettingsComponent {
   protected readonly RouteIcon = Route;
   protected readonly ArrowRightIcon = ArrowRight;
 
+  protected readonly pushSupported = signal(false);
+  protected readonly pushSubscribed = signal(false);
+  protected readonly pushLoading = signal(false);
+  protected readonly pushDiagReason = signal('');
+
   protected readonly notifItems = [
-    { key: 'critical' as const, label: 'Critiques', desc: 'Accidents, coupures, SOS', color: 'red' },
-    { key: 'warning' as const, label: 'Avertissements', desc: 'Vitesse, inactivité, géofence', color: 'amber' },
-    { key: 'info' as const, label: 'Informations', desc: 'Freinage, vibrations, portes', color: 'blue' },
+    { key: 'critical' as const, label: 'Critiques', desc: 'Accidents, coupures, SOS, remorquage', color: 'red' },
+    { key: 'warning' as const, label: 'Avertissements', desc: 'Vitesse, inactivité, géofence, fatigue', color: 'amber' },
+    { key: 'info' as const, label: 'Informations', desc: 'Freinage, vibrations, GPS, arrêt prolongé', color: 'blue' },
   ];
+
+  protected readonly pushAlertTypes = [
+    { type: 'critical', label: 'Critiques', desc: 'SOS, accident, collision, remorquage, sabotage', color: 'red' },
+    { type: 'overspeed', label: 'Excès de vitesse', desc: 'Dépassement de la limite configurée', color: 'amber' },
+    { type: 'geofence', label: 'Géofence', desc: 'Entrée/sortie de zone', color: 'amber' },
+    { type: 'movement', label: 'Mouvement à l\'arrêt', desc: 'Véhicule bouge en mode parking', color: 'amber' },
+    { type: 'battery', label: 'Batterie faible', desc: 'Niveau batterie bas', color: 'amber' },
+    { type: 'fatigue', label: 'Fatigue conducteur', desc: 'Conduite prolongée détectée', color: 'amber' },
+    { type: 'driving', label: 'Conduite', desc: 'Freinage, accélération, virage brusque', color: 'blue' },
+    { type: 'device', label: 'Appareil', desc: 'Vibration, perte GPS, arrêt prolongé', color: 'blue' },
+  ];
+
+  async ngOnInit(): Promise<void> {
+    const diag = this.notifApi.pushSupportDiagnostic();
+    this.pushSupported.set(diag.supported);
+    if (!diag.supported) {
+      this.pushDiagReason.set(diag.reason ?? 'Non supporté');
+    }
+    await this.notifApi.loadStatus();
+    this.pushSubscribed.set(this.notifApi.isSubscribed());
+  }
+
+  protected async enablePush(): Promise<void> {
+    this.pushLoading.set(true);
+    try {
+      const result = await this.notifApi.subscribePush();
+      if (result.ok) {
+        this.pushSubscribed.set(true);
+        this.toast.success('Notifications push activées');
+      } else {
+        this.toast.error(result.reason ?? 'Échec de l\'activation');
+      }
+    } catch {
+      this.toast.error('Erreur lors de l\'activation');
+    } finally {
+      this.pushLoading.set(false);
+    }
+  }
+
+  protected async disablePush(): Promise<void> {
+    this.pushLoading.set(true);
+    try {
+      await this.notifApi.unsubscribePush();
+      this.pushSubscribed.set(false);
+      this.toast.success('Notifications push désactivées');
+    } catch {
+      this.toast.error('Erreur lors de la désactivation');
+    } finally {
+      this.pushLoading.set(false);
+    }
+  }
+
+  protected togglePushType(type: string): void {
+    const current = this.prefs().pushAlerts ?? {};
+    const newValue = current[type] === false;
+    this.preferencesService.update({
+      pushAlerts: { ...current, [type]: newValue },
+    } as any);
+  }
 
   protected initials(): string {
     const email = this.user()?.email ?? '';

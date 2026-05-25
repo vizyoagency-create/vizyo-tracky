@@ -8,6 +8,7 @@ import {
   EngineControlService,
   type EngineControlCommandDto,
 } from '../../core/services/engine-control.service';
+import { PermissionsService } from '../../core/services/permissions.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { VehicleSchedulesApiService } from '../../core/services/vehicle-schedules.service';
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
@@ -124,9 +125,21 @@ export class EngineControlButtonComponent implements OnInit {
 
   private readonly authService = inject(AuthService);
   private readonly engineControl = inject(EngineControlService);
+  private readonly perms = inject(PermissionsService);
   private readonly toast = inject(ToastService);
   private readonly realtime = inject(RealtimeService);
   private readonly schedulesApi = inject(VehicleSchedulesApiService);
+
+  /**
+   * V1.11 Phase 1 — VehicleId effectif : prend l'input si fourni, sinon resout
+   * via le snapshot realtime (compat avec usages historiques). Necessaire pour
+   * la verification de permission per-vehicle (engine_control).
+   */
+  protected readonly effectiveVehicleId = computed<string | undefined>(() => {
+    const direct = this.vehicleId();
+    if (direct) return direct;
+    return this.realtime.snapshot().find((v) => v.trackerId === this.trackerId())?.vehicleId;
+  });
 
   readonly isCutActive = computed(() => {
     const cmds = this.recentCommands();
@@ -158,10 +171,15 @@ export class EngineControlButtonComponent implements OnInit {
   });
 
   readonly canCut = computed(() => {
-    const role = this.authService.user()?.role;
-    if (role !== 'FLEET_ADMIN' && role !== 'SUPER_ADMIN') {
-      return { allowed: false as const, reason: 'Rôle insuffisant' };
+    // V1.11 Phase 1 — Permission per-vehicle. Admin bypass deja gere par perms.can.
+    const vid = this.effectiveVehicleId();
+    if (!vid) {
+      return { allowed: false as const, reason: 'Vehicule non identifie' };
     }
+    if (!this.perms.can('engine_control', vid)) {
+      return { allowed: false as const, reason: 'Permission insuffisante' };
+    }
+
     const age = this.positionAge();
     if (age === undefined) {
       return { allowed: false as const, reason: 'Aucune position connue' };
@@ -183,8 +201,9 @@ export class EngineControlButtonComponent implements OnInit {
   });
 
   readonly canRestore = computed(() => {
-    const role = this.authService.user()?.role;
-    return role === 'FLEET_ADMIN' || role === 'SUPER_ADMIN';
+    const vid = this.effectiveVehicleId();
+    if (!vid) return false;
+    return this.perms.can('engine_control', vid);
   });
 
   protected readonly cutDescription = computed(

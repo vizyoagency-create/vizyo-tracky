@@ -19,23 +19,32 @@ import {
 } from '../../core/services/notifications.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 
-const ALERT_TYPES: { value: string; label: string }[] = [
-  { value: '*', label: 'Tous les types' },
-  { value: 'SOS', label: 'SOS' },
-  { value: 'POWER_CUT', label: 'Coupure alimentation' },
-  { value: 'ACCIDENT', label: 'Accident' },
-  { value: 'COLLISION', label: 'Collision' },
-  { value: 'LOW_BATTERY', label: 'Batterie faible' },
-  { value: 'OVERSPEED', label: 'Exces de vitesse' },
-  { value: 'GEOFENCE_ENTER', label: 'Entree geofence' },
-  { value: 'GEOFENCE_EXIT', label: 'Sortie geofence' },
-  { value: 'HARSH_BRAKING', label: 'Freinage brutal' },
-  { value: 'HARSH_ACCELERATION', label: 'Acceleration brutale' },
-  { value: 'HARSH_TURN', label: 'Virage brutal' },
-  { value: 'MOVEMENT_IDLE', label: 'Mouvement a l\'arret' },
-  { value: 'BONNET', label: 'Capot ouvert' },
-  { value: 'DOOR', label: 'Porte ouverte' },
-  { value: 'VIBRATION', label: 'Vibration' },
+const ALERT_TYPES: { value: string; label: string; severity: string }[] = [
+  { value: '*', label: 'Tous les types', severity: '' },
+  // CRITICAL
+  { value: 'SOS', label: 'SOS', severity: 'critical' },
+  { value: 'POWER_CUT', label: 'Coupure alimentation', severity: 'critical' },
+  { value: 'ACCIDENT', label: 'Accident', severity: 'critical' },
+  { value: 'COLLISION', label: 'Collision', severity: 'critical' },
+  { value: 'TOW', label: 'Remorquage', severity: 'critical' },
+  { value: 'TAMPER', label: 'Retrait tracker', severity: 'critical' },
+  { value: 'ILLEGAL_IGNITION', label: 'Demarrage non autorise', severity: 'critical' },
+  // WARNING
+  { value: 'LOW_BATTERY', label: 'Batterie faible', severity: 'warning' },
+  { value: 'OVERSPEED', label: 'Exces de vitesse', severity: 'warning' },
+  { value: 'GEOFENCE_ENTER', label: 'Entree geofence', severity: 'warning' },
+  { value: 'GEOFENCE_EXIT', label: 'Sortie geofence', severity: 'warning' },
+  { value: 'MOVEMENT_IDLE', label: 'Mouvement a l\'arret', severity: 'warning' },
+  { value: 'BONNET', label: 'Capot ouvert', severity: 'warning' },
+  { value: 'DOOR', label: 'Porte ouverte', severity: 'warning' },
+  { value: 'FATIGUE', label: 'Fatigue conducteur', severity: 'warning' },
+  // INFO
+  { value: 'HARSH_BRAKING', label: 'Freinage brutal', severity: 'info' },
+  { value: 'HARSH_ACCELERATION', label: 'Acceleration brutale', severity: 'info' },
+  { value: 'HARSH_TURN', label: 'Virage brutal', severity: 'info' },
+  { value: 'VIBRATION', label: 'Vibration', severity: 'info' },
+  { value: 'GPS_LOST', label: 'Perte signal GPS', severity: 'info' },
+  { value: 'IDLE_TIME', label: 'Arret prolonge', severity: 'info' },
 ];
 
 const ALL_CHANNELS: { value: 'WEB_PUSH' | 'EMAIL' | 'WHATSAPP'; label: string; icon: string }[] = [
@@ -181,7 +190,7 @@ const EMPTY_FORM: RuleForm = {
                 <label>Type d'alerte</label>
                 <select [(ngModel)]="formAlertType">
                   @for (t of alertTypes; track t.value) {
-                    <option [value]="t.value">{{ t.label }}</option>
+                    <option [value]="t.value">{{ t.severity === 'critical' ? '🔴' : t.severity === 'warning' ? '🟠' : t.severity === 'info' ? '🔵' : '⚪' }} {{ t.label }}</option>
                   }
                 </select>
               </div>
