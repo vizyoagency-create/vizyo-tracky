@@ -248,3 +248,82 @@ Script `prisma/test-specificity.sh` automatise — toutes les combinaisons VEHIC
 - 3 bugs decouverts et corriges en live (migration, IIFE, cache Vite)
 
 **Production-ready** pour Phase 1. Follow-ups documentes pour V1.12.
+
+---
+
+## DEUXIEME CAMPAGNE — Apres merge feat/alert-types-push-settings
+
+Branch `feat/permissions-v1.11-phase1` (commit a4ee2db) + merge `origin/feat/alert-types-push-settings` (commit b455702).
+
+### Bloc L : Observabilite UI (apres merge) — ✅
+- /settings affiche les sections Notification/Push/Email/WhatsApp/Alert
+- /settings/alert-rules charge avec heading "Regles de notification" + bouton "Ajouter une regle"
+- Pas de regression sur l'UI parametres apres merge
+
+### Bloc M : Flow invitation end-to-end (REEL Vizyo Auth) — ✅
+- POST /api/auth/accept-invitation avec JWT valide → 200 OK + tokens retournes
+- Vizyo Auth a accepte de creer le compte test-viewer@tracky.local
+- DB : user cree avec role VIEWER, engine_control=false, vehicles_view=true (permissions preconfigurees appliquees)
+- Invitation marked ACCEPTED avec acceptedAt timestamp
+
+**Note** : un compte test-viewer@tracky.local existe maintenant en prod Vizyo Auth. A supprimer manuellement si non desire.
+
+### Bloc N : Smoke 13 endpoints API + 12 pages UI — ✅
+- API : /vehicles, /vehicle-groups, /alerts, /geofences, /drivers, /users, /trips, /engine-control/commands, /reports, /users/me, /me/access, /fleets, /commands-history → tous 200 OK
+- UI : /dashboard, /map, /vehicles, /alerts, /geofences, /reports, /drivers, /users, /groups, /settings, /account, /vehicles/:id → tous chargent avec heading correct, body > 500 chars
+
+### Bloc O : UI clics matrice (7 tests) — ✅
+- Drawer matrice s'ouvre via bouton "Perms"
+- Add scope GROUP Nuit via picker → POST PUT + nouvelle entry GROUP en DB
+- Add scope VEHICLE TE002 via picker → nouvelle entry VEHICLE en DB
+- Delete entry VEHICLE via bouton trash (mock confirm) → DELETE OK
+- Delete entry GROUP → ne reste que ALL
+- Bouton trash CACHE quand 1 seule entry (template `@if (entries().length > 1)`)
+
+### Bloc P : VIEWER pur end-to-end (7 cas) — ✅
+- VIEWER (test-viewer@tracky.local) cree via Bloc M
+- GET /vehicles → 200 []
+- POST engine-control → 403 "Permission requise : engine_control"
+- POST /vehicles → 403 "Role insuffisant"
+- DELETE /vehicles → 403 role
+- GET /users → 403 role
+- GET /me/access → 200 [] (pas d'entry, normal sans config)
+- PUT son propre access → 403 role (faut FLEET_ADMIN)
+
+### Bloc Q : Edge cases (7 cas) — ✅
+- **Q1** Token expire → 401 "Invalid or expired token"
+- **Q2** 2 PATCH concurrents → last write wins (true gagne dans ce test)
+- **Q3** Erreurs Angular auth-layout "segments[segIdx]" → confirme pre-existantes (chunk QZF3VOFW = timer logo)
+- **Q4** Multi-onglet : admin PATCH puis user1 /me/access immediat reflete true
+- **Q5** Mobile viewport (375x812) : sidebar cachee + bottom nav visible, page charge
+- **Q6** Dark mode color scheme emule OK
+- **Q7** Visibility change → refetch /me/access automatique (delta+1 confirm via PerformanceObserver)
+
+---
+
+## VALIDATION FINALE — 17 blocs + bonus = TOUT VALIDE
+
+**~120 tests executes en 2 campagnes :**
+- 280 Jest unitaires (0 regression)
+- 30+ API curl directs
+- 12 pages UI navigables
+- 10 cas matrice specificite automatises
+- 7 IDOR multi-flotte
+- 7 UI clics matrice
+- 7 VIEWER pur
+- 7 edge cases
+
+**3 bugs corriges en live :**
+1. Migration `Invitation.permissions` manquante
+2. AccessPermissionsMatrixComponent IIFE crash → ngOnInit
+3. Vite cache obsolete apres rebuild shared
+
+**Findings V1.12 documentes (non bloquants) :**
+- 8 permissions UI-only non enforced backend
+- DTO `UpdateAccessEntryPermissionsDto` trop permissif (accepte strings, cles inconnues)
+- Erreurs Angular auth-layout pre-existantes
+
+**Etat infra final :**
+- Branche `feat/permissions-v1.11-phase1` = refonte permissions + merge feat/alert-types-push-settings
+- Servers preview API (port 3000) + Web (port 4200) up
+- DB : user1 restored ALL/null, test-viewer@tracky.local existe (cree via Bloc M)

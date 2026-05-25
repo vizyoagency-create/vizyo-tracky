@@ -60,7 +60,7 @@ describe('reports.utils — max0', () => {
 
   it('treats NaN / Infinity / null / undefined as 0', () => {
     expect(max0(NaN)).toBe(0);
-    expect(max0(Infinity)).toBe(Infinity);
+    expect(max0(Infinity)).toBe(0);
     expect(max0(-Infinity)).toBe(0);
     expect(max0(null)).toBe(0);
     expect(max0(undefined)).toBe(0);
