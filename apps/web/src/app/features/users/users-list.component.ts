@@ -11,12 +11,13 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
 import { UserDrawerComponent, type UserDrawerData, type UserDrawerResult } from './user-drawer.component';
 import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerResult } from './vehicle-access-drawer.component';
+import { AccessPermissionsMatrixComponent, type MatrixDrawerData } from './access-permissions-matrix.component';
 
 @Component({
   selector: 'app-users-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, LucideAngularModule, ConfirmModalComponent, UserDrawerComponent, VehicleAccessDrawerComponent],
+  imports: [FormsModule, LucideAngularModule, ConfirmModalComponent, UserDrawerComponent, VehicleAccessDrawerComponent, AccessPermissionsMatrixComponent],
   template: `
     <div class="upage">
       <div class="u-blobs"></div>
@@ -86,9 +87,14 @@ import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerR
                   <button (click)="openEditDrawer(u)" class="u-action-btn" title="Modifier">
                     <lucide-icon [img]="PencilIcon" [size]="14"></lucide-icon> Modifier
                   </button>
-                  <button (click)="openAccessModal(u)" class="u-action-btn" title="Acces vehicules">
+                  <button (click)="openAccessModal(u)" class="u-action-btn" title="Acces vehicules (scope)">
                     <lucide-icon [img]="ShieldIcon" [size]="14"></lucide-icon> Acces
                   </button>
+                  @if (u.role !== 'FLEET_ADMIN' && u.role !== 'SUPER_ADMIN') {
+                    <button (click)="openMatrixModal(u)" class="u-action-btn" title="Matrice acces x permissions">
+                      <lucide-icon [img]="ShieldIcon" [size]="14"></lucide-icon> Perms
+                    </button>
+                  }
                   <button (click)="onResetPassword(u)" class="u-action-btn" title="Reinitialiser le mot de passe">
                     <lucide-icon [img]="KeyIcon" [size]="14"></lucide-icon>
                   </button>
@@ -174,6 +180,13 @@ import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerR
       [loading]="savingAccess()"
       (closed)="showAccessDrawer.set(false)"
       (saved)="onAccessDrawerSave($event)"
+    />
+
+    <!-- V1.11 Phase 1 — Matrice scope x permissions -->
+    <app-access-permissions-matrix
+      [open]="showMatrixDrawer()"
+      [data]="matrixDrawerData()"
+      (closed)="showMatrixDrawer.set(false)"
     />
 
   `,
@@ -325,6 +338,10 @@ export class UsersListComponent implements OnInit {
   readonly showAccessDrawer = signal(false);
   readonly accessDrawerData = signal<AccessDrawerData | null>(null);
   readonly savingAccess = signal(false);
+
+  // V1.11 Phase 1 — Matrice scope x permissions
+  readonly showMatrixDrawer = signal(false);
+  readonly matrixDrawerData = signal<MatrixDrawerData | null>(null);
 
   private readonly auth = inject(AuthService);
   protected readonly perms = inject(PermissionsService);
@@ -506,5 +523,24 @@ export class UsersListComponent implements OnInit {
       this.showAccessDrawer.set(false);
     } catch { /* error */ }
     finally { this.savingAccess.set(false); }
+  }
+
+  /**
+   * V1.11 Phase 1 — Ouvre la matrice scope x permissions pour ce user.
+   * Affiche les permissions per-scope (vs perm global du drawer "Acces").
+   */
+  async openMatrixModal(user: TrackyUser): Promise<void> {
+    const [groups, vehicles] = await Promise.all([
+      this.groupsService.list(),
+      firstValueFrom(this.vehiclesApi.list()),
+    ]);
+    this.matrixDrawerData.set({
+      userId: user.id,
+      userEmail: user.email,
+      userRole: user.role as 'SUPER_ADMIN' | 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER',
+      groups,
+      vehicles,
+    });
+    this.showMatrixDrawer.set(true);
   }
 }

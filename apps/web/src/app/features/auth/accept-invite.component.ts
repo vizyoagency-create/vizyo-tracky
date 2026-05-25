@@ -229,7 +229,7 @@ export class AcceptInviteComponent implements OnInit {
         {
           sub: me.id,
           email: me.email,
-          role: me.role,
+          role: me.role as 'SUPER_ADMIN' | 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER',
           fleetId: me.fleetId ?? null,
           permissions: null,
         },

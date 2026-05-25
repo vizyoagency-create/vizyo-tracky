@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/auth/auth.guard';
+import { permissionGuard } from './core/guards/permission.guard';
 import { superAdminGuard } from './core/guards/super-admin.guard';
 
 export const routes: Routes = [
@@ -73,6 +74,13 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/vehicles/vehicle-detail.component').then((m) => m.VehicleDetailComponent),
         data: { title: 'Détail véhicule' },
+      },
+      {
+        path: 'groups',
+        canActivate: [permissionGuard('groups_view')],
+        loadComponent: () =>
+          import('./features/vehicle-groups/vehicle-groups.page').then((m) => m.VehicleGroupsPageComponent),
+        data: { title: 'Groupes de vehicules' },
       },
       {
         path: 'alerts',

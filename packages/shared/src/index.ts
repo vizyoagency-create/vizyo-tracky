@@ -7,5 +7,6 @@ export * from './dto/trip.dto';
 export * from './dto/driver.dto';
 export * from './dto/snapshot.dto';
 export * from './events/ws-events';
+export * from './permissions';
 export * from './protocol';
 export * from './utils/gps-sanity';

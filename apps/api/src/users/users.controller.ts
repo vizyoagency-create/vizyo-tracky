@@ -15,7 +15,11 @@ import { InvitationsService } from '../invitations/invitations.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { getDefaultPermissions } from './default-permissions';
 import { CreateUserDto } from './dto/create-user.dto';
-import { SetUserAccessDto } from './dto/set-access.dto';
+import {
+  AccessEntryDto,
+  SetUserAccessDto,
+  UpdateAccessEntryPermissionsDto,
+} from './dto/set-access.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
 const PRIVILEGED_ROLES: UserRole[] = [UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN];
@@ -438,6 +442,30 @@ export class UsersController {
 
   // ─── Vehicle Access ──────────────────────────────────────
 
+  /**
+   * V1.11 Phase 1 — Le current user lit ses propres lignes d'acces resolues.
+   * Utilise par le frontend pour caster `can(perm, vehicleId)` cote client
+   * (resolution per-vehicle miroir du backend).
+   */
+  @Get('me/access')
+  async getMyAccess(@Req() req: AuthenticatedRequest) {
+    const rules = await this.prisma.userVehicleAccess.findMany({
+      where: { userId: req.user.id },
+      select: {
+        id: true, accessType: true, groupId: true, vehicleId: true,
+        permissions: true, createdAt: true, updatedAt: true,
+        group: {
+          select: {
+            id: true, name: true,
+            vehicles: { select: { vehicleId: true } },
+          },
+        },
+        vehicle: { select: { id: true, plate: true } },
+      },
+    });
+    return { entries: rules };
+  }
+
   @Get(':id/access')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
   async getAccess(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
@@ -452,16 +480,26 @@ export class UsersController {
 
     const rules = await this.prisma.userVehicleAccess.findMany({
       where: { userId: id },
-      select: { id: true, accessType: true, groupId: true, vehicleId: true },
+      select: {
+        id: true, accessType: true, groupId: true, vehicleId: true,
+        permissions: true, createdAt: true, updatedAt: true,
+      },
+      orderBy: { createdAt: 'asc' },
     });
 
     const hasAll = rules.some((r) => r.accessType === AccessType.ALL);
-    if (hasAll) return { type: 'ALL' as const, groupIds: [], vehicleIds: [] };
 
+    // Nouveau format avec entries[] + format legacy en parallele (UI en transition).
     return {
-      type: 'CUSTOM' as const,
-      groupIds: rules.filter((r) => r.accessType === AccessType.GROUP && r.groupId).map((r) => r.groupId!),
-      vehicleIds: rules.filter((r) => r.accessType === AccessType.VEHICLE && r.vehicleId).map((r) => r.vehicleId!),
+      entries: rules,
+      // Format legacy (pour compat front non migre)
+      type: hasAll ? 'ALL' : 'CUSTOM',
+      groupIds: rules
+        .filter((r) => r.accessType === AccessType.GROUP && r.groupId)
+        .map((r) => r.groupId!),
+      vehicleIds: rules
+        .filter((r) => r.accessType === AccessType.VEHICLE && r.vehicleId)
+        .map((r) => r.vehicleId!),
     };
   }
 
@@ -477,30 +515,194 @@ export class UsersController {
     const user = await this.prisma.user.findFirst({ where });
     if (!user) throw new NotFoundException('User not found');
 
-    // Supprimer les règles existantes
-    await this.prisma.userVehicleAccess.deleteMany({ where: { userId: id } });
+    // Normalise les 2 formats (nouveau entries[] OU legacy type+groupIds+vehicleIds)
+    // en une liste unique d'entries a creer.
+    const entries: AccessEntryDto[] = dto.entries
+      ? dto.entries
+      : this.legacyToEntries(dto);
 
-    if (dto.type === 'ALL') {
-      await this.prisma.userVehicleAccess.create({
-        data: { userId: id, accessType: AccessType.ALL },
-      });
-      return { type: 'ALL', groupIds: [], vehicleIds: [] };
+    if (entries.length === 0) {
+      throw new BadRequestException(
+        'Au moins une entree d\'acces requise (ALL, GROUP, ou VEHICLE)',
+      );
     }
 
-    // Créer les règles CUSTOM
-    const creates: { userId: string; accessType: AccessType; groupId?: string; vehicleId?: string }[] = [];
+    // Validation multi-flotte : chaque group/vehicle doit appartenir a la fleet
+    // de l'utilisateur edite. Pattern Sprint 6 — defense en profondeur.
+    await this.validateAccessEntriesScope(entries, user.fleetId);
 
+    // Replace atomique : on supprime tout puis on recree.
+    await this.prisma.$transaction([
+      this.prisma.userVehicleAccess.deleteMany({ where: { userId: id } }),
+      this.prisma.userVehicleAccess.createMany({
+        data: entries.map((e) => ({
+          userId: id,
+          accessType: e.type as AccessType,
+          groupId: e.type === 'GROUP' ? e.groupId : null,
+          vehicleId: e.type === 'VEHICLE' ? e.vehicleId : null,
+          permissions: (e.permissions ?? null) as unknown as Prisma.InputJsonValue,
+        })),
+      }),
+    ]);
+
+    // Retour : nouveau format + legacy pour compat
+    const refreshed = await this.prisma.userVehicleAccess.findMany({
+      where: { userId: id },
+      select: {
+        id: true, accessType: true, groupId: true, vehicleId: true,
+        permissions: true, createdAt: true, updatedAt: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    const hasAll = refreshed.some((r) => r.accessType === AccessType.ALL);
+    return {
+      entries: refreshed,
+      type: hasAll ? 'ALL' : 'CUSTOM',
+      groupIds: refreshed
+        .filter((r) => r.accessType === AccessType.GROUP && r.groupId)
+        .map((r) => r.groupId!),
+      vehicleIds: refreshed
+        .filter((r) => r.accessType === AccessType.VEHICLE && r.vehicleId)
+        .map((r) => r.vehicleId!),
+    };
+  }
+
+  /**
+   * V1.11 Phase 1 — Toggle d'une case dans la matrice 2D. Modifie les
+   * permissions d'UNE seule ligne d'acces, sans toucher aux autres lignes.
+   */
+  @Patch(':userId/access/:accessId')
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  async updateAccessPermissions(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Param('accessId', ParseUUIDPipe) accessId: string,
+    @Body() dto: UpdateAccessEntryPermissionsDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    // 1. Verifier que l'user cible est dans la fleet du caller (defense en profondeur)
+    const userWhere: Prisma.UserWhereInput = { id: userId };
+    if (req.user.role !== UserRole.SUPER_ADMIN) {
+      if (!req.user.fleetId) throw new NotFoundException('User not found');
+      userWhere.fleetId = req.user.fleetId;
+    }
+    const targetUser = await this.prisma.user.findFirst({ where: userWhere });
+    if (!targetUser) throw new NotFoundException('User not found');
+
+    // 2. Verifier que la ligne d'acces appartient bien a ce user
+    const entry = await this.prisma.userVehicleAccess.findFirst({
+      where: { id: accessId, userId },
+    });
+    if (!entry) throw new NotFoundException('Access entry not found');
+
+    // 3. Update permissions JSON
+    const updated = await this.prisma.userVehicleAccess.update({
+      where: { id: accessId },
+      data: { permissions: dto.permissions as unknown as Prisma.InputJsonValue },
+      select: {
+        id: true, accessType: true, groupId: true, vehicleId: true,
+        permissions: true, createdAt: true, updatedAt: true,
+      },
+    });
+    return updated;
+  }
+
+  /**
+   * V1.11 Phase 1 — Supprimer une ligne d'acces (retirer un scope a un user).
+   * Refus si c'est la derniere ligne, sinon le user n'aurait plus aucun acces.
+   */
+  @Delete(':userId/access/:accessId')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  async deleteAccessEntry(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Param('accessId', ParseUUIDPipe) accessId: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const userWhere: Prisma.UserWhereInput = { id: userId };
+    if (req.user.role !== UserRole.SUPER_ADMIN) {
+      if (!req.user.fleetId) throw new NotFoundException('User not found');
+      userWhere.fleetId = req.user.fleetId;
+    }
+    const targetUser = await this.prisma.user.findFirst({ where: userWhere });
+    if (!targetUser) throw new NotFoundException('User not found');
+
+    const entry = await this.prisma.userVehicleAccess.findFirst({
+      where: { id: accessId, userId },
+    });
+    if (!entry) throw new NotFoundException('Access entry not found');
+
+    const totalEntries = await this.prisma.userVehicleAccess.count({ where: { userId } });
+    if (totalEntries <= 1) {
+      throw new BadRequestException(
+        'Impossible de supprimer la derniere entree d\'acces. Utilisez d\'abord PUT /users/:id/access pour reconfigurer.',
+      );
+    }
+
+    await this.prisma.userVehicleAccess.delete({ where: { id: accessId } });
+    return { ok: true };
+  }
+
+  // ─── Internals (vehicle access) ──────────────────────────
+
+  private legacyToEntries(dto: SetUserAccessDto): AccessEntryDto[] {
+    if (dto.type === 'ALL') {
+      return [Object.assign(new AccessEntryDto(), { type: 'ALL' as const })];
+    }
+    const entries: AccessEntryDto[] = [];
     for (const groupId of dto.groupIds ?? []) {
-      creates.push({ userId: id, accessType: AccessType.GROUP, groupId });
+      entries.push(Object.assign(new AccessEntryDto(), { type: 'GROUP' as const, groupId }));
     }
     for (const vehicleId of dto.vehicleIds ?? []) {
-      creates.push({ userId: id, accessType: AccessType.VEHICLE, vehicleId });
+      entries.push(Object.assign(new AccessEntryDto(), { type: 'VEHICLE' as const, vehicleId }));
+    }
+    return entries;
+  }
+
+  /**
+   * Verifie que chaque entry GROUP/VEHICLE pointe vers une ressource de la
+   * meme flotte que l'utilisateur edite. Empeche un FLEET_ADMIN flotte A
+   * d'attribuer un groupe de la flotte B (et idem pour SUPER_ADMIN qui doit
+   * utiliser le fleetId du user edite, pas le sien).
+   */
+  private async validateAccessEntriesScope(
+    entries: AccessEntryDto[],
+    targetUserFleetId: string | null,
+  ): Promise<void> {
+    // Validation structurelle : GROUP requiert groupId, VEHICLE requiert vehicleId
+    for (const entry of entries) {
+      if (entry.type === 'GROUP' && !entry.groupId) {
+        throw new BadRequestException('groupId requis pour une entree type GROUP');
+      }
+      if (entry.type === 'VEHICLE' && !entry.vehicleId) {
+        throw new BadRequestException('vehicleId requis pour une entree type VEHICLE');
+      }
     }
 
-    if (creates.length > 0) {
-      await this.prisma.userVehicleAccess.createMany({ data: creates });
+    const groupIds = entries.filter((e) => e.type === 'GROUP' && e.groupId).map((e) => e.groupId!);
+    const vehicleIds = entries.filter((e) => e.type === 'VEHICLE' && e.vehicleId).map((e) => e.vehicleId!);
+
+    if (groupIds.length > 0) {
+      const found = await this.prisma.vehicleGroup.findMany({
+        where: { id: { in: groupIds }, fleetId: targetUserFleetId ?? undefined },
+        select: { id: true },
+      });
+      if (found.length !== groupIds.length) {
+        throw new BadRequestException(
+          'Un ou plusieurs groupes n\'appartiennent pas a la flotte de cet utilisateur',
+        );
+      }
     }
 
-    return { type: 'CUSTOM', groupIds: dto.groupIds ?? [], vehicleIds: dto.vehicleIds ?? [] };
+    if (vehicleIds.length > 0) {
+      const found = await this.prisma.vehicle.findMany({
+        where: { id: { in: vehicleIds }, fleetId: targetUserFleetId ?? undefined },
+        select: { id: true },
+      });
+      if (found.length !== vehicleIds.length) {
+        throw new BadRequestException(
+          'Un ou plusieurs vehicules n\'appartiennent pas a la flotte de cet utilisateur',
+        );
+      }
+    }
   }
 }
