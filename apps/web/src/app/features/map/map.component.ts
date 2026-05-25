@@ -1915,6 +1915,20 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
     // Géolocalisation utilisateur : centrer sur sa position au chargement.
     this.requestUserPosition(true);
+
+    // Fix defensif iOS PWA standalone (icone ecran d'accueil) : Maplibre peut
+    // initialiser son canvas a 0px si la chaine flexbox du shell ne s'est pas
+    // resolue au moment du createMap() (bug specifique Safari standalone, OK en
+    // browser/Android). Le ResizeObserver devrait detecter mais le timing est
+    // instable sur cette plateforme. On force plusieurs map.resize() echelonnes
+    // pour couvrir : 1er layout, animations CSS, resolution safe-area, etc.
+    // map.resize() est idempotent — no-op si la taille est deja correcte.
+    // Scope strict body.ios-pwa : zero impact desktop, browser, Android.
+    if (typeof document !== 'undefined' && document.body.classList.contains('ios-pwa')) {
+      [100, 500, 1500, 3000].forEach((ms) => {
+        setTimeout(() => this.map?.resize(), ms);
+      });
+    }
   }
 
   ngOnDestroy(): void {
