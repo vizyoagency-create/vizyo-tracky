@@ -394,14 +394,7 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
       -webkit-overflow-scrolling: touch;
       position: relative;
     }
-    /* Mode fullscreen (route /map) : le contenu doit prendre 100% de la hauteur.
-     * Sans display:flex, iOS Safari PWA standalone ne propage pas la hauteur
-     * au custom element enfant via flexbox + min-height:0 (:host height:100%
-     * reste a 0). Bug specifique iOS PWA standalone — web/Android OK car le
-     * layout-engine calcule differemment. Le fix : devenir flex container ET
-     * forcer l'enfant a flex:1 min-height:0. Aucun impact desktop/Android. */
-    .content.fullscreen { padding: 0; overflow: hidden; display: flex; flex-direction: column }
-    .content.fullscreen > * { flex: 1; min-height: 0 }
+    .content.fullscreen { padding: 0; overflow: hidden }
 
 
     /* ════════════════════════════════════════════════════════
