@@ -31,8 +31,9 @@ import { AccessPermissionsMatrixComponent, type MatrixDrawerData } from './acces
           <p class="u-sub">{{ totalCount() }} membre(s){{ includeArchived() ? ' (archives inclus)' : ' dans votre flotte' }}</p>
         </div>
         <div class="u-header-actions">
-          <a routerLink="/users/overview" class="u-overview-btn">
-            <lucide-icon [img]="ShieldIcon" [size]="15"></lucide-icon> Vue d'ensemble
+          <a routerLink="/users/overview" class="u-overview-btn" title="Vue d'ensemble permissions">
+            <lucide-icon [img]="ShieldIcon" [size]="15"></lucide-icon>
+            <span class="u-overview-label">Vue d'ensemble</span>
           </a>
           @if (perms.can('users_manage')) {
             <label class="u-toggle-archived">
@@ -239,6 +240,10 @@ import { AccessPermissionsMatrixComponent, type MatrixDrawerData } from './acces
       transition: all .15s;
     }
     .u-overview-btn:hover { color: var(--tracky-light); border-color: rgba(16,224,160,.3); background: rgba(16,224,160,.06) }
+    @media (max-width: 640px) {
+      .u-overview-label { display: none }
+      .u-overview-btn { width: 36px; height: 36px; padding: 0; justify-content: center }
+    }
 
     .u-loading { position: relative; z-index: 1; display: flex; justify-content: center; padding: 60px 0 }
     .u-empty {
