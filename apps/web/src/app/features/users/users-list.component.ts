@@ -30,6 +30,9 @@ import { AccessPermissionsMatrixComponent, type MatrixDrawerData } from './acces
           <p class="u-sub">{{ totalCount() }} membre(s){{ includeArchived() ? ' (archives inclus)' : ' dans votre flotte' }}</p>
         </div>
         <div class="u-header-actions">
+          <a routerLink="/users/overview" class="u-overview-btn">
+            <lucide-icon [img]="ShieldIcon" [size]="15"></lucide-icon> Vue d'ensemble
+          </a>
           @if (perms.can('users_manage')) {
             <label class="u-toggle-archived">
               <input type="checkbox" [checked]="includeArchived()" (change)="toggleArchived()" />
@@ -228,6 +231,13 @@ import { AccessPermissionsMatrixComponent, type MatrixDrawerData } from './acces
       box-shadow: 0 2px 8px rgba(5,150,105,.3);
     }
     .u-add-btn:hover { background: #047857 }
+    .u-overview-btn {
+      display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 10px;
+      font-size: 12px; font-weight: 600; background: var(--bg-secondary); color: var(--fg-secondary);
+      border: 1px solid var(--border-subtle); text-decoration: none; cursor: pointer;
+      transition: all .15s;
+    }
+    .u-overview-btn:hover { color: var(--tracky-light); border-color: rgba(16,224,160,.3); background: rgba(16,224,160,.06) }
 
     .u-loading { position: relative; z-index: 1; display: flex; justify-content: center; padding: 60px 0 }
     .u-empty {

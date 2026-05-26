@@ -113,6 +113,13 @@ export const routes: Routes = [
         data: { title: 'Utilisateurs' },
       },
       {
+        path: 'users/overview',
+        canActivate: [permissionGuard('users_view')],
+        loadComponent: () =>
+          import('./features/users/permissions-overview.component').then((m) => m.PermissionsOverviewComponent),
+        data: { title: 'Vue d\'ensemble' },
+      },
+      {
         path: 'drivers',
         loadComponent: () =>
           import('./features/drivers/drivers-list.component').then((m) => m.DriversListComponent),

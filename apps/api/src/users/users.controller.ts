@@ -801,6 +801,49 @@ export class UsersController {
     return { synced, onlyAuth, onlyTracky, totalAuth: authUsers.length, totalTracky: trackyUsers.length };
   }
 
+  // ─── Vue panorama permissions/groupes/users ─────────────────────
+
+  @Get('panorama')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN)
+  async panorama(@Req() req: AuthenticatedRequest) {
+    const fleetFilter: Prisma.UserWhereInput = {};
+    const groupFilter: Prisma.VehicleGroupWhereInput = {};
+    if (req.user.role !== UserRole.SUPER_ADMIN && req.user.fleetId) {
+      fleetFilter.fleetId = req.user.fleetId;
+      groupFilter.fleetId = req.user.fleetId;
+    }
+
+    const [users, groups] = await Promise.all([
+      this.prisma.user.findMany({
+        where: { ...fleetFilter, isActive: true },
+        select: {
+          id: true, email: true, firstName: true, lastName: true, role: true,
+          fleetId: true, permissions: true,
+          vehicleAccess: {
+            select: {
+              id: true, accessType: true, permissions: true,
+              group: { select: { id: true, name: true } },
+              vehicle: { select: { id: true, plate: true } },
+            },
+            orderBy: { createdAt: 'asc' },
+          },
+        },
+        orderBy: { email: 'asc' },
+      }),
+      this.prisma.vehicleGroup.findMany({
+        where: groupFilter,
+        select: {
+          id: true, name: true, fleetId: true,
+          vehicles: { select: { vehicle: { select: { id: true, plate: true } } } },
+          users: { select: { userId: true } },
+        },
+        orderBy: { name: 'asc' },
+      }),
+    ]);
+
+    return { users, groups };
+  }
+
   @Delete('admin/auth-sync/tracky/:trackyUserId')
   @Roles(UserRole.SUPER_ADMIN)
   async removeFromTracky(@Param('trackyUserId') trackyUserId: string) {
