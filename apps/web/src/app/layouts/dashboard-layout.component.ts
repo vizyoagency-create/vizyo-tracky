@@ -39,11 +39,12 @@ import { InstallBannerComponent } from '../shared/ui/install-banner/install-bann
 import { PushPromptComponent } from '../shared/ui/push-prompt/push-prompt.component';
 import { BottomSheetComponent } from '../shared/ui/bottom-sheet/bottom-sheet.component';
 import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wizard.component';
+import { BaanoolMapOverlayComponent } from '../features/baanool/baanool-map-overlay.component';
 
 @Component({
   selector: 'app-dashboard-layout',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, ThemeToggleComponent, AlertsBellComponent, LogoComponent, InstallBannerComponent, PushPromptComponent, BottomSheetComponent, OnboardingWizardComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, ThemeToggleComponent, AlertsBellComponent, LogoComponent, InstallBannerComponent, PushPromptComponent, BottomSheetComponent, OnboardingWizardComponent, BaanoolMapOverlayComponent],
   template: `
     <a href="#main-content" class="skip-link">Aller au contenu principal</a>
     <div class="layout" [class.layout--fullscreen]="fullscreen()" [class.layout--ios-pwa]="isIosPwa" [class.layout--baanool]="isBaanoolMode()">
@@ -206,6 +207,16 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
       <app-install-banner />
       <app-push-prompt />
       <app-onboarding-wizard />
+
+      <!-- V1.12 — Mode Baanool : overlay UI style Baanool affiche UNIQUEMENT
+           sur la page /map. Boutons cercles flottants (burger, recentrer,
+           alertes, profile) + boutons droite verticaux (vehicules, coupe-
+           circuit, GPS, satellite) + panel central toggleable. -->
+      @if (isBaanoolMapPage()) {
+        <app-baanool-map-overlay
+          (menuClick)="mobileMenuOpen.set(true)"
+        />
+      }
     </div>
   `,
   styles: [`
@@ -477,6 +488,11 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
     .layout--baanool .bottom-bar { display: none !important; }
     .layout--baanool .main-area { width: 100%; }
     .layout--baanool .content { padding: 0; overflow: hidden; }
+    /* En mode baanool sur la page /map, on cache aussi le top-bar standard
+     * car l'overlay Baanool fournit ses propres boutons (burger, alertes,
+     * profile) en cercles flottants. Sur les autres pages, le top-bar reste
+     * visible pour avoir le titre + retour. */
+    .layout--baanool.layout--fullscreen .top-bar { display: none; }
 
 
     /* ════════════════════════════════════════════════════════
@@ -625,6 +641,12 @@ export class DashboardLayoutComponent {
   protected readonly isBaanoolMode = computed(() =>
     this.auth.user()?.preferences?.uiMode === 'baanool',
   );
+  /** URL courante (mise a jour via NavigationEnd) — utilisee pour ne montrer
+   *  l'overlay Baanool QUE sur la page /map. */
+  protected readonly currentUrl = signal('');
+  protected readonly isBaanoolMapPage = computed(() =>
+    this.isBaanoolMode() && this.currentUrl().startsWith('/map'),
+  );
   protected readonly MenuIcon = Menu;
   protected readonly XIcon = X;
   protected readonly MoreIcon = MoreHorizontal;
@@ -695,6 +717,7 @@ export class DashboardLayoutComponent {
         this.fullscreen.set(data['fullscreen'] === true);
         const title = typeof data['title'] === 'string' ? data['title'] : 'Tableau de bord';
         this.pageTitle.set(title);
+        this.currentUrl.set(event.urlAfterRedirects);
       }
     });
     // V1.5 (Sprint J) — au mount du layout (= apres login), charger le profil
