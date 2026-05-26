@@ -159,6 +159,12 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
                     <lucide-icon [img]="SettingsIcon" [size]="16"></lucide-icon>
                     Parametres
                   </a>
+                  @if (isSuperAdmin()) {
+                    <a routerLink="/admin" class="user-menu-item" (click)="userMenuOpen.set(false)">
+                      <lucide-icon [img]="TerminalIcon" [size]="16"></lucide-icon>
+                      Administration
+                    </a>
+                  }
                   <div class="user-menu-divider"></div>
                   <button class="user-menu-item" (click)="toggleTheme(); userMenuOpen.set(false)">
                     <lucide-icon [img]="themeService.theme() === 'dark' ? SunIcon : MoonIcon" [size]="16"></lucide-icon>
@@ -627,6 +633,11 @@ export class DashboardLayoutComponent {
   protected readonly SunIcon = Sun;
   protected readonly MoonIcon = Moon;
   protected readonly SettingsIcon = Settings;
+  protected readonly TerminalIcon = Terminal;
+
+  protected isSuperAdmin(): boolean {
+    return this.auth.user()?.role === 'SUPER_ADMIN';
+  }
   private readonly realtime = inject(RealtimeService);
   protected readonly themeService = inject(ThemeService);
   protected readonly userMenuOpen = signal(false);
@@ -714,13 +725,6 @@ export class DashboardLayoutComponent {
       ...(this.perms.can('reports_view') ? [{ label: 'Rapports', route: '/reports', icon: FileBarChart }] : []),
       ...(this.perms.can('drivers_view') ? [{ label: 'Conducteurs', route: '/drivers', icon: UserRound }] : []),
       ...(this.perms.can('users_view') ? [{ label: 'Utilisateurs', route: '/users', icon: Users }] : []),
-      // V1.6 — Section admin : visible uniquement pour SUPER_ADMIN.
-      // /admin/trackers/:id/sampling et /fix-mode sont accessibles depuis
-      // /admin/alerts (bouton "Inspecter") et la fiche vehicule, pas dans
-      // le menu (necessitent un trackerId).
-      ...(isSuperAdmin ? [
-        { label: 'Administration', route: '/admin', icon: Terminal },
-      ] : []),
     ];
   });
 }
