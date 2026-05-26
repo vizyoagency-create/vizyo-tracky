@@ -132,13 +132,18 @@ interface SyncData {
             <p class="card-desc">Ces users sont dans Tracky mais pas dans Vizyo Auth. Ils ne peuvent pas se connecter.</p>
             <div class="table-wrap">
               <table>
-                <thead><tr><th>Email</th><th>Role</th><th>Actif</th></tr></thead>
+                <thead><tr><th>Email</th><th>Role</th><th>Actif</th><th></th></tr></thead>
                 <tbody>
                   @for (u of data()!.onlyTracky; track u.trackyId) {
                     <tr>
                       <td class="email-cell">{{ u.email }}</td>
                       <td><span class="pill">{{ u.role }}</span></td>
                       <td><span class="pill" [class]="u.isActive ? 'pill-on' : 'pill-off'">{{ u.isActive ? 'Oui' : 'Non' }}</span></td>
+                      <td>
+                        <button (click)="removeFromTracky(u)" class="btn-icon danger" title="Supprimer de Tracky">
+                          <lucide-icon [img]="Trash2" [size]="14"></lucide-icon>
+                        </button>
+                      </td>
                     </tr>
                   }
                 </tbody>
@@ -250,6 +255,17 @@ export class AdminAuthSyncComponent implements OnInit {
       this.toast.error('Echec du chargement');
     } finally {
       this.loading.set(false);
+    }
+  }
+
+  async removeFromTracky(user: OnlyTrackyUser): Promise<void> {
+    if (!confirm(`Supprimer ${user.email} de Tracky ?`)) return;
+    try {
+      await firstValueFrom(this.http.delete(`/api/users/admin/auth-sync/tracky/${user.trackyId}`));
+      this.toast.success(`${user.email} supprime de Tracky`);
+      await this.load();
+    } catch {
+      this.toast.error('Echec de la suppression');
     }
   }
 

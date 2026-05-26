@@ -801,6 +801,19 @@ export class UsersController {
     return { synced, onlyAuth, onlyTracky, totalAuth: authUsers.length, totalTracky: trackyUsers.length };
   }
 
+  @Delete('admin/auth-sync/tracky/:trackyUserId')
+  @Roles(UserRole.SUPER_ADMIN)
+  async removeFromTracky(@Param('trackyUserId') trackyUserId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: trackyUserId }, select: { role: true, email: true } });
+    if (!user) return { ok: true };
+    if (user.role === UserRole.SUPER_ADMIN) {
+      throw new ForbiddenException('Impossible de supprimer un compte SUPER_ADMIN');
+    }
+    await this.prisma.userVehicleAccess.deleteMany({ where: { userId: trackyUserId } });
+    await this.prisma.user.delete({ where: { id: trackyUserId } });
+    return { ok: true };
+  }
+
   @Delete('admin/auth-sync/:authUserId')
   @Roles(UserRole.SUPER_ADMIN)
   async removeFromAuth(@Param('authUserId') authUserId: string) {
