@@ -21,11 +21,13 @@ import {
   Terminal,
   UserRound,
   UserCircle2,
+  LogOut,
 } from 'lucide-angular';
 import { ThemeToggleComponent } from '../shared/components/theme-toggle.component';
 import { AlertsBellComponent } from '../shared/ui/alerts-bell/alerts-bell.component';
 import { AuthService } from '../core/services/auth.service';
 import { NetworkStatusService } from '../core/services/network-status.service';
+import { RealtimeService } from '../core/services/realtime.service';
 import { NotificationsApiService } from '../core/services/notifications.service';
 import { OnboardingService } from '../core/services/onboarding.service';
 import { PermissionsService } from '../core/services/permissions.service';
@@ -138,6 +140,9 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
               <lucide-icon [img]="UserCircle2Icon" [size]="20" aria-hidden="true"></lucide-icon>
             </a>
             <app-theme-toggle />
+            <button (click)="logout()" class="top-logout-btn" aria-label="Se deconnecter" title="Se deconnecter">
+              <lucide-icon [img]="LogOutIcon" [size]="18" aria-hidden="true"></lucide-icon>
+            </button>
           </div>
         </header>
         <main id="main-content" class="content" [class.fullscreen]="fullscreen()" tabindex="-1">
@@ -372,6 +377,13 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
       background: rgba(16,224,160,.1);
       border-color: rgba(16,224,160,.25);
     }
+    .top-logout-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 40px; height: 40px; border-radius: 9999px;
+      color: var(--fg-tertiary); background: transparent; border: 1px solid transparent;
+      cursor: pointer; transition: all .2s;
+    }
+    .top-logout-btn:hover { color: #f87171; background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.15) }
 
     /* ─── MAIN ─── */
     .main-area { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0 }
@@ -561,6 +573,14 @@ export class DashboardLayoutComponent {
   protected readonly XIcon = X;
   protected readonly MoreIcon = MoreHorizontal;
   protected readonly UserCircle2Icon = UserCircle2;
+  protected readonly LogOutIcon = LogOut;
+  private readonly realtime = inject(RealtimeService);
+
+  protected logout(): void {
+    this.realtime.disconnect();
+    this.auth.logout();
+    this.router.navigate(['/login']);
+  }
 
   protected readonly bottomItems = computed(() => [
     { label: 'Dashboard', route: '/dashboard', icon: LayoutDashboard },
