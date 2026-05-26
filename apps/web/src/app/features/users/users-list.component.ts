@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { LucideAngularModule, Plus, Archive, Users, Shield, Pencil, KeyRound, Send, XCircle } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
@@ -17,7 +18,7 @@ import { AccessPermissionsMatrixComponent, type MatrixDrawerData } from './acces
   selector: 'app-users-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, LucideAngularModule, ConfirmModalComponent, UserDrawerComponent, VehicleAccessDrawerComponent, AccessPermissionsMatrixComponent],
+  imports: [FormsModule, RouterLink, LucideAngularModule, ConfirmModalComponent, UserDrawerComponent, VehicleAccessDrawerComponent, AccessPermissionsMatrixComponent],
   template: `
     <div class="upage">
       <div class="u-blobs"></div>
