@@ -22,7 +22,10 @@ import {
   UserRound,
   UserCircle2,
   LogOut,
+  Sun,
+  Moon,
 } from 'lucide-angular';
+import { ThemeService } from '../core/theme/theme.service';
 import { ThemeToggleComponent } from '../shared/components/theme-toggle.component';
 import { AlertsBellComponent } from '../shared/ui/alerts-bell/alerts-bell.component';
 import { AuthService } from '../core/services/auth.service';
@@ -133,16 +136,42 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
           </div>
           <div class="top-actions">
             <app-alerts-bell />
-            <a routerLink="/account"
-               routerLinkActive="active"
-               class="top-account-link"
-               aria-label="Mon compte">
-              <lucide-icon [img]="UserCircle2Icon" [size]="20" aria-hidden="true"></lucide-icon>
-            </a>
-            <app-theme-toggle />
-            <button (click)="logout()" class="top-logout-btn" aria-label="Se deconnecter" title="Se deconnecter">
-              <lucide-icon [img]="LogOutIcon" [size]="18" aria-hidden="true"></lucide-icon>
-            </button>
+            <div class="user-menu-wrapper">
+              <button (click)="userMenuOpen.set(!userMenuOpen())" class="user-menu-trigger">
+                <span class="user-avatar">{{ userInitials() }}</span>
+              </button>
+              @if (userMenuOpen()) {
+                <div class="user-menu-backdrop" (click)="userMenuOpen.set(false)"></div>
+                <div class="user-menu">
+                  <div class="user-menu-header">
+                    <span class="user-avatar user-avatar--lg">{{ userInitials() }}</span>
+                    <div>
+                      <p class="user-menu-name">{{ userEmail().split('&#64;')[0] }}</p>
+                      <p class="user-menu-email">{{ userEmail() }}</p>
+                    </div>
+                  </div>
+                  <div class="user-menu-divider"></div>
+                  <a routerLink="/account" class="user-menu-item" (click)="userMenuOpen.set(false)">
+                    <lucide-icon [img]="UserCircle2Icon" [size]="16"></lucide-icon>
+                    Mon profil
+                  </a>
+                  <a routerLink="/settings" class="user-menu-item" (click)="userMenuOpen.set(false)">
+                    <lucide-icon [img]="SettingsIcon" [size]="16"></lucide-icon>
+                    Parametres
+                  </a>
+                  <div class="user-menu-divider"></div>
+                  <button class="user-menu-item" (click)="toggleTheme(); userMenuOpen.set(false)">
+                    <lucide-icon [img]="themeService.theme() === 'dark' ? SunIcon : MoonIcon" [size]="16"></lucide-icon>
+                    {{ themeService.theme() === 'dark' ? 'Mode clair' : 'Mode sombre' }}
+                  </button>
+                  <div class="user-menu-divider"></div>
+                  <button class="user-menu-item user-menu-item--danger" (click)="confirmLogout()">
+                    <lucide-icon [img]="LogOutIcon" [size]="16"></lucide-icon>
+                    Se deconnecter
+                  </button>
+                </div>
+              }
+            </div>
           </div>
         </header>
         <main id="main-content" class="content" [class.fullscreen]="fullscreen()" tabindex="-1">
@@ -364,26 +393,48 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
     .mobile-burger { display: none }
     .top-title { font-size: 16px; font-weight: 700; color: var(--fg-primary); position: relative; z-index: 1 }
     .top-actions { display: flex; align-items: center; gap: 8px; position: relative; z-index: 1 }
-    .top-account-link {
-      display: inline-flex; align-items: center; justify-content: center;
-      width: 40px; height: 40px; border-radius: 9999px;
-      color: var(--fg-secondary); text-decoration: none;
-      border: 1px solid transparent; background: transparent;
-      transition: color .2s, background .2s, border-color .2s;
+    /* User menu dropdown */
+    .user-menu-wrapper { position: relative }
+    .user-menu-trigger {
+      display: flex; align-items: center; justify-content: center;
+      background: transparent; border: 2px solid var(--border-subtle);
+      border-radius: 9999px; cursor: pointer; padding: 0;
+      transition: border-color .2s;
     }
-    .top-account-link:hover { color: var(--fg-primary); background: var(--bg-tertiary) }
-    .top-account-link.active {
-      color: var(--tracky-light, #10E0A0);
-      background: rgba(16,224,160,.1);
-      border-color: rgba(16,224,160,.25);
+    .user-menu-trigger:hover { border-color: var(--tracky-light) }
+    .user-avatar {
+      width: 36px; height: 36px; border-radius: 9999px;
+      background: var(--tracky); color: white;
+      font-size: 12px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
     }
-    .top-logout-btn {
-      display: inline-flex; align-items: center; justify-content: center;
-      width: 40px; height: 40px; border-radius: 9999px;
-      color: var(--fg-tertiary); background: transparent; border: 1px solid transparent;
-      cursor: pointer; transition: all .2s;
+    .user-avatar--lg { width: 40px; height: 40px; font-size: 14px }
+    .user-menu-backdrop { position: fixed; inset: 0; z-index: 8999 }
+    .user-menu {
+      position: absolute; top: calc(100% + 8px); right: 0; z-index: 9000;
+      width: 240px; background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle); border-radius: 14px;
+      box-shadow: 0 8px 30px rgba(0,0,0,.25); overflow: hidden;
+      animation: menuFadeIn .15s ease-out;
     }
-    .top-logout-btn:hover { color: #f87171; background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.15) }
+    @keyframes menuFadeIn { from { opacity: 0; transform: translateY(-6px) } to { opacity: 1; transform: translateY(0) } }
+    .user-menu-header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 14px 16px;
+    }
+    .user-menu-name { font-size: 13px; font-weight: 700; color: var(--fg-primary); margin: 0 }
+    .user-menu-email { font-size: 11px; color: var(--fg-tertiary); margin: 2px 0 0 }
+    .user-menu-divider { height: 1px; background: var(--border-subtle) }
+    .user-menu-item {
+      display: flex; align-items: center; gap: 10px;
+      width: 100%; padding: 10px 16px;
+      background: transparent; border: 0;
+      color: var(--fg-secondary); font-size: 13px; font-weight: 500;
+      text-decoration: none; cursor: pointer; transition: all .12s;
+    }
+    .user-menu-item:hover { background: var(--bg-tertiary); color: var(--fg-primary) }
+    .user-menu-item--danger { color: var(--fg-tertiary) }
+    .user-menu-item--danger:hover { color: #f87171; background: rgba(239,68,68,.06) }
 
     /* ─── MAIN ─── */
     .main-area { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0 }
@@ -474,7 +525,6 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
         background: transparent; border: none; color: var(--fg-secondary); cursor: pointer;
       }
       .mobile-burger:hover { background: var(--bg-tertiary) }
-      .top-account-link { width: 44px; height: 44px; }
 
       /* Bottom-sheet content (remplace l'ancien drawer lateral) */
       .bs-header {
@@ -574,7 +624,33 @@ export class DashboardLayoutComponent {
   protected readonly MoreIcon = MoreHorizontal;
   protected readonly UserCircle2Icon = UserCircle2;
   protected readonly LogOutIcon = LogOut;
+  protected readonly SunIcon = Sun;
+  protected readonly MoonIcon = Moon;
+  protected readonly SettingsIcon = Settings;
   private readonly realtime = inject(RealtimeService);
+  protected readonly themeService = inject(ThemeService);
+  protected readonly userMenuOpen = signal(false);
+
+  protected userInitials(): string {
+    return (this.auth.user()?.email ?? '??').slice(0, 2).toUpperCase();
+  }
+
+  protected userEmail(): string {
+    return this.auth.user()?.email ?? '';
+  }
+
+  protected toggleTheme(): void {
+    this.themeService.setTheme(this.themeService.theme() === 'dark' ? 'light' : 'dark');
+  }
+
+  protected confirmLogout(): void {
+    this.userMenuOpen.set(false);
+    if (confirm('Se deconnecter de Vizyo Tracky ?')) {
+      this.realtime.disconnect();
+      this.auth.logout();
+      this.router.navigate(['/login']);
+    }
+  }
 
   protected logout(): void {
     this.realtime.disconnect();
