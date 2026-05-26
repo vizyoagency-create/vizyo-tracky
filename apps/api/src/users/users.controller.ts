@@ -48,11 +48,40 @@ export class UsersController {
         phone: true, role: true, permissions: true, fleetId: true,
         isActive: true, onboardingCompletedAt: true,
         escalationContactUserId: true,
+        preferences: true,
         createdAt: true,
       },
     });
     if (!user) throw new NotFoundException('User not found');
     return user;
+  }
+
+  /**
+   * V1.12 — Preferences UI per-user (notamment uiMode: tracky | baanool).
+   * Merge partiel : seules les cles fournies dans le body sont mises a jour,
+   * le reste des preferences est preserve.
+   */
+  @Patch('me/preferences')
+  async updateMyPreferences(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: { uiMode?: 'tracky' | 'baanool' },
+  ) {
+    if (dto.uiMode !== undefined && dto.uiMode !== 'tracky' && dto.uiMode !== 'baanool') {
+      throw new BadRequestException('uiMode doit etre "tracky" ou "baanool"');
+    }
+    const current = await this.prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { preferences: true },
+    });
+    const merged = {
+      ...((current?.preferences as Record<string, unknown>) ?? {}),
+      ...dto,
+    };
+    return this.prisma.user.update({
+      where: { id: req.user.id },
+      data: { preferences: merged },
+      select: { id: true, preferences: true },
+    });
   }
 
   @Patch('me')

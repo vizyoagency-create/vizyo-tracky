@@ -229,11 +229,14 @@ export class LoginComponent implements OnInit {
         role: data.user.role,
         fleetId: data.user.fleetId ?? null,
         permissions: data.user.permissions ?? null,
+        preferences: data.user.preferences ?? null,
       }, data.refreshToken);
       this.preferences.load(data.user.id);
       this.themeService.init();
       this.realtime.connect(data.accessToken);
-      this.router.navigate(['/dashboard']);
+      // V1.12 — Mode Baanool : connexion directe sur la carte au lieu du dashboard.
+      const baanool = data.user.preferences?.uiMode === 'baanool';
+      this.router.navigate([baanool ? '/map' : '/dashboard']);
     } catch {
       this.error.set('Erreur de connexion au serveur');
     } finally {

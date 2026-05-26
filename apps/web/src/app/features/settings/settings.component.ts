@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, LogOut, User, Moon, Sun, Bell, BellOff, Map, MapPin, RotateCcw, Palette, Navigation, Route, ArrowRight, Smartphone } from 'lucide-angular';
@@ -76,6 +76,32 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
                     <lucide-icon [img]="SunIcon" [size]="12"></lucide-icon> Clair
                   </div>
                 </button>
+              </div>
+
+              <!-- V1.12 — Mode interface : Tracky (riche) vs Baanool (simplifie) -->
+              <div class="ui-mode-section" style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border-subtle)">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:13px;font-weight:600;color:var(--fg-primary);margin-bottom:4px">
+                      Mode interface simplifiee
+                    </div>
+                    <p style="font-size:11px;color:var(--fg-tertiary);margin:0;line-height:1.4">
+                      Connexion directe a la carte, sidebar et bottom-bar masquees,
+                      navigation via le menu burger uniquement. Toutes les pages
+                      restent accessibles.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    (click)="toggleBaanoolMode()"
+                    [attr.aria-pressed]="isBaanoolMode()"
+                    [disabled]="savingUiMode()"
+                    style="flex-shrink:0;width:44px;height:24px;border-radius:9999px;border:none;cursor:pointer;position:relative;transition:background 200ms"
+                    [style.background]="isBaanoolMode() ? 'var(--tracky)' : 'var(--bg-tertiary)'">
+                    <span style="position:absolute;top:2px;width:20px;height:20px;border-radius:50%;background:white;transition:left 200ms"
+                          [style.left]="isBaanoolMode() ? '22px' : '2px'"></span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -452,6 +478,28 @@ export class SettingsComponent implements OnInit {
   protected readonly pushSubscribed = signal(false);
   protected readonly pushLoading = signal(false);
   protected readonly pushDiagReason = signal('');
+
+  // V1.12 — Mode UI (Tracky riche vs Baanool simplifie)
+  protected readonly isBaanoolMode = computed(() => this.user()?.preferences?.uiMode === 'baanool');
+  protected readonly savingUiMode = signal(false);
+
+  async toggleBaanoolMode(): Promise<void> {
+    if (this.savingUiMode()) return;
+    this.savingUiMode.set(true);
+    const next: 'tracky' | 'baanool' = this.isBaanoolMode() ? 'tracky' : 'baanool';
+    try {
+      await this.auth.updatePreferences({ uiMode: next });
+      this.toast.success(
+        next === 'baanool'
+          ? 'Mode interface simplifiee active. Le changement est immediat.'
+          : 'Interface complete restauree.',
+      );
+    } catch {
+      this.toast.error('Echec mise a jour de la preference');
+    } finally {
+      this.savingUiMode.set(false);
+    }
+  }
 
   protected readonly notifItems = [
     { key: 'critical' as const, label: 'Critiques', desc: 'Accidents, coupures, SOS, remorquage', color: 'red' },

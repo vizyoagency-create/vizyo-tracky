@@ -176,6 +176,12 @@ model User {
   //   on notifie ce user (Sprint M).
   phone                   String?
   onboardingCompletedAt   DateTime?
+  /// V1.12 — preferences UI per-user (JSON extensible).
+  /// Aujourd'hui : `{ uiMode: 'tracky' | 'baanool' }`. Default null = mode Tracky
+  /// (UI riche dashboard + sidebar). Mode 'baanool' = layout simplifie inspire
+  /// de l'app Baanool : sidebar cachee, post-login direct sur /map, navigation
+  /// via burger uniquement. Toutes les pages restent accessibles.
+  preferences             Json?
   escalationContactUserId String?  @db.Uuid
   escalationContact       User?    @relation("UserEscalation", fields: [escalationContactUserId], references: [id], onDelete: SetNull)
   escalatedTo             User[]   @relation("UserEscalation")

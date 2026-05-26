@@ -41,7 +41,7 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
   imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, ThemeToggleComponent, AlertsBellComponent, LogoComponent, InstallBannerComponent, PushPromptComponent, BottomSheetComponent, OnboardingWizardComponent],
   template: `
     <a href="#main-content" class="skip-link">Aller au contenu principal</a>
-    <div class="layout" [class.layout--fullscreen]="fullscreen()" [class.layout--ios-pwa]="isIosPwa">
+    <div class="layout" [class.layout--fullscreen]="fullscreen()" [class.layout--ios-pwa]="isIosPwa" [class.layout--baanool]="isBaanoolMode()">
       @if (!network.online()) {
         <div class="offline-banner" role="status" aria-live="polite">
           <span class="offline-dot"></span>
@@ -396,6 +396,19 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
     }
     .content.fullscreen { padding: 0; overflow: hidden }
 
+    /* ════════════════════════════════════════════════════════
+       MODE BAANOOL (V1.12) — UI simplifiee per-user
+       Cache sidebar desktop + bottom-bar mobile, la navigation se fait
+       UNIQUEMENT via le burger top-left qui ouvre le bottom-sheet existant.
+       Le content prend toute la largeur, comportement equivalent au mode
+       fullscreen mais applique sur TOUTES les pages.
+       Toggle dans /settings > Apparence > "Mode interface simplifiee".
+       ════════════════════════════════════════════════════════ */
+    .layout--baanool .desktop-sidebar { display: none !important; }
+    .layout--baanool .bottom-bar { display: none !important; }
+    .layout--baanool .main-area { width: 100%; }
+    .layout--baanool .content { padding: 0; overflow: hidden; }
+
 
     /* ════════════════════════════════════════════════════════
        MOBILE BOTTOM BAR (visible < 768px uniquement)
@@ -539,6 +552,11 @@ export class DashboardLayoutComponent {
   protected readonly fullscreen = signal(false);
   protected readonly pageTitle = signal('Tableau de bord');
   protected readonly mobileMenuOpen = signal(false);
+  /** V1.12 — Mode UI Baanool : layout simplifie, sidebar+bottom-bar cachees,
+   *  navigation via burger uniquement, contenu en pleine largeur. */
+  protected readonly isBaanoolMode = computed(() =>
+    this.auth.user()?.preferences?.uiMode === 'baanool',
+  );
   protected readonly MenuIcon = Menu;
   protected readonly XIcon = X;
   protected readonly MoreIcon = MoreHorizontal;
