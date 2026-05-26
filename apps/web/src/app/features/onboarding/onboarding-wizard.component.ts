@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import {
@@ -408,9 +408,19 @@ export class OnboardingWizardComponent {
   readonly loading = signal(false);
 
   // Step 2 — profil (pré-rempli depuis le profil chargé par OnboardingService)
-  firstName = this.onboarding.profile()?.firstName ?? '';
-  lastName = this.onboarding.profile()?.lastName ?? '';
-  phone = this.onboarding.profile()?.phone ?? '';
+  firstName = '';
+  lastName = '';
+  phone = '';
+
+  // Pré-remplir les champs quand le profil est chargé (async)
+  private prefillEffect = effect(() => {
+    const p = this.onboarding.profile();
+    if (p) {
+      if (p.firstName && !this.firstName) this.firstName = p.firstName;
+      if (p.lastName && !this.lastName) this.lastName = p.lastName;
+      if (p.phone && !this.phone) this.phone = p.phone;
+    }
+  });
 
   // Step 3 — vehicule
   plate = '';
@@ -428,16 +438,31 @@ export class OnboardingWizardComponent {
     return role === 'FLEET_ADMIN' || role === 'SUPER_ADMIN';
   }
 
+  /** True si le profil est déjà rempli (nom saisi à l'invitation). */
+  private profileAlreadyFilled(): boolean {
+    const p = this.onboarding.profile();
+    return !!(p?.firstName && p?.lastName);
+  }
+
   /** Total de steps visibles pour cet user. */
-  readonly totalSteps = computed(() => this.isAdmin() ? 5 : 3);
+  readonly totalSteps = computed(() => {
+    const base = this.isAdmin() ? 5 : 3;
+    return this.profileAlreadyFilled() ? base - 1 : base;
+  });
 
   /** Index courant par rapport aux steps visibles. */
   readonly stepIndex = computed(() => {
     const s = this.step();
-    if (this.isAdmin()) return s;
-    // Non-admin : steps visibles sont 1, 2, 5
+    const skipProfile = this.profileAlreadyFilled();
+    if (this.isAdmin()) {
+      // Admin : 1, (2), 3, 4, 5
+      if (skipProfile) return s <= 1 ? 1 : s - 1;
+      return s;
+    }
+    // Non-admin : 1, (2), 5
+    if (skipProfile) return s <= 1 ? 1 : 2;
     if (s <= 2) return s;
-    return 3; // step 5 = index 3
+    return 3;
   });
 
   readonly continueLabel = computed(() => {
@@ -453,7 +478,9 @@ export class OnboardingWizardComponent {
   back(): void {
     const s = this.step();
     if (s === 5 && !this.isAdmin()) {
-      this.step.set(2);
+      this.step.set(this.profileAlreadyFilled() ? 1 : 2);
+    } else if (s === 3 && this.profileAlreadyFilled()) {
+      this.step.set(1);
     } else if (s > 1) {
       this.step.update((v) => (v - 1) as Step);
     }
@@ -461,8 +488,11 @@ export class OnboardingWizardComponent {
 
   next(): void {
     const s = this.step();
-    if (!this.isAdmin() && s === 2) {
-      // Non-admin : skip steps 3 et 4, aller direct à 5
+    const skipProfile = this.profileAlreadyFilled();
+    if (s === 1 && skipProfile) {
+      // Skip step 2 — aller à 3 (admin) ou 5 (non-admin)
+      this.step.set(this.isAdmin() ? 3 : 5);
+    } else if (!this.isAdmin() && s === 2) {
       this.step.set(5);
     } else if (s < 5) {
       this.step.update((v) => (v + 1) as Step);
