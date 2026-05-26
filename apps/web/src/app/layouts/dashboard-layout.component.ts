@@ -714,7 +714,6 @@ export class DashboardLayoutComponent {
       ...(this.perms.can('reports_view') ? [{ label: 'Rapports', route: '/reports', icon: FileBarChart }] : []),
       ...(this.perms.can('drivers_view') ? [{ label: 'Conducteurs', route: '/drivers', icon: UserRound }] : []),
       ...(this.perms.can('users_view') ? [{ label: 'Utilisateurs', route: '/users', icon: Users }] : []),
-      { label: 'Paramètres', route: '/settings', icon: Settings },
       // V1.6 — Section admin : visible uniquement pour SUPER_ADMIN.
       // /admin/trackers/:id/sampling et /fix-mode sont accessibles depuis
       // /admin/alerts (bouton "Inspecter") et la fiche vehicule, pas dans
