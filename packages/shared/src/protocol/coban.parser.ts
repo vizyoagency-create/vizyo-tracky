@@ -37,8 +37,9 @@ export function decodeAlarm(value: string): CobanAlarmType {
   if (v === 'illegal ignition alarm' || v === 'illegal ignition') return 'illegal_ignition';
   if (v === 'no data alarm' || v === 'gps dead' || v === 'gps lost') return 'gps_lost';
   if (v === 'idle alarm' || v === 'it' || v === 'idle') return 'idle_alert';
-  if (v === 'acc on') return 'acc_on';
-  if (v === 'acc off') return 'acc_off';
+  if (v === 'acc on' || v === 'kt') return 'acc_on';
+  if (v === 'acc off' || v === 'jt') return 'acc_off';
+  if (v === 'et') return 'low_battery';
   if (v === 'rfid') return 'rfid';
   if (v === 'dtc') return 'dtc';
   if (v.startsWith('t:')) return 'temperature';
