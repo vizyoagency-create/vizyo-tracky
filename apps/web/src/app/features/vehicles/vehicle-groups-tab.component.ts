@@ -1,6 +1,7 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, Plus, Trash2, FolderOpen, Truck } from 'lucide-angular';
+import { RouterLink } from '@angular/router';
+import { LucideAngularModule, Plus, Trash2, FolderOpen, Truck, Eye } from 'lucide-angular';
 import { VehicleGroupsService, type VehicleGroup } from '../../core/services/vehicle-groups.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { FleetsApiService, type FleetSummary } from '../../core/services/fleets.service';
@@ -12,21 +13,31 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
 @Component({
   selector: 'app-vehicle-groups-tab',
   standalone: true,
-  imports: [FormsModule, LucideAngularModule, ConfirmModalComponent],
+  imports: [FormsModule, RouterLink, LucideAngularModule, ConfirmModalComponent],
   template: `
     <div class="flex flex-col gap-4">
       <!-- Header : description + bouton (stack en mobile, row en desktop) -->
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p class="text-sm text-fg-secondary flex-1">Organisez vos véhicules en groupes pour gérer les accès.</p>
-        @if (perms.can('groups_manage')) {
-          <button (click)="showCreateModal.set(true)"
-            class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl
-                   bg-tracky hover:bg-tracky-dark text-white transition-colors cursor-pointer
-                   whitespace-nowrap shrink-0 self-start sm:self-auto">
-            <lucide-icon [img]="Plus" [size]="14"></lucide-icon>
-            Nouveau groupe
-          </button>
-        }
+        <div class="flex gap-2 items-center">
+          @if (perms.can('users_view')) {
+            <a routerLink="/users/overview"
+              class="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-bg-secondary border border-border-subtle
+                     text-fg-tertiary hover:text-tracky-light hover:border-tracky/30 transition-colors"
+              title="Vue d'ensemble permissions">
+              <lucide-icon [img]="EyeIcon" [size]="15"></lucide-icon>
+            </a>
+          }
+          @if (perms.can('groups_manage')) {
+            <button (click)="showCreateModal.set(true)"
+              class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl
+                     bg-tracky hover:bg-tracky-dark text-white transition-colors cursor-pointer
+                     whitespace-nowrap shrink-0 self-start sm:self-auto">
+              <lucide-icon [img]="Plus" [size]="14"></lucide-icon>
+              Nouveau groupe
+            </button>
+          }
+        </div>
       </div>
 
       @if (loading()) {
@@ -171,6 +182,7 @@ export class VehicleGroupsTabComponent implements OnInit {
   protected readonly Trash2 = Trash2;
   protected readonly FolderOpen = FolderOpen;
   protected readonly TruckIcon = Truck;
+  protected readonly EyeIcon = Eye;
 
   protected isSuperAdmin(): boolean {
     return this.auth.user()?.role === 'SUPER_ADMIN';

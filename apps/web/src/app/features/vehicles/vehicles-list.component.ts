@@ -45,6 +45,11 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
               <lucide-icon [img]="Plus" [size]="15"></lucide-icon> Ajouter
             </button>
           }
+          @if (perms.can('users_view')) {
+            <a routerLink="/users/overview" class="overview-link" title="Vue d'ensemble permissions">
+              <lucide-icon [img]="EyeIcon" [size]="15"></lucide-icon>
+            </a>
+          }
         </div>
       </div>
 
@@ -324,6 +329,14 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
       .vlist-fab { display: flex; }
       .add-btn--inline { display: none; }
     }
+
+    .overview-link {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 36px; height: 36px; border-radius: 10px;
+      background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+      color: var(--fg-tertiary); text-decoration: none; transition: all .15s;
+    }
+    .overview-link:hover { color: var(--tracky-light); border-color: rgba(16,224,160,.3) }
 
     .vlist-loading { position: relative; z-index: 1; display: flex; justify-content: center; padding: 60px 0 }
 
