@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Fiabilit&#233; &amp; Pr&#233;cision de la Mesure GPS &#8212; Vizyo Tracky</title>
+<meta name="description" content="Document technique : fiabilit&#233; et pr&#233;cision de la mesure GPS dans Vizyo Tracky. Effet Doppler, int&#233;grit&#233; des donn&#233;es, conformit&#233; CNIL/RGPD.">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://vizyo-tracky.vizyoagency.com/fiabilite-gps.html">
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&display=swap" rel="stylesheet">
+<style>
+/* ===== RESET ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ===== PAGE / PRINT ===== */
+@page {
+  size: A4;
+  margin: 25mm 20mm 30mm 20mm;
+  @bottom-center {
+    content: "Vizyo Tracky \2014  Document technique \2014  Fiabilit\00e9  & Pr\00e9 cision GPS";
+    font-family: 'DM Sans', sans-serif;
+    font-size: 8pt;
+    color: #9ca3af;
+  }
+  @bottom-right {
+    content: counter(page);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 8pt;
+    color: #9ca3af;
+  }
+}
+
+@media print {
+  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .no-print { display: none !important; }
+  .page-break { page-break-before: always; }
+}
+
+/* ===== BASE ===== */
+html { font-size: 11pt; }
+body {
+  font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+  background: #ffffff;
+  color: #1f2937;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+  max-width: 210mm;
+  margin: 0 auto;
+  padding: 20mm;
+}
+
+/* ===== TYPOGRAPHY ===== */
+h1, h2, h3, h4 { color: #111827; line-height: 1.3; }
+h1 { font-size: 2rem; font-weight: 800; }
+h2 { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.75rem; padding-bottom: 0.5rem; border-bottom: 2px solid #059669; }
+h3 { font-size: 1.15rem; font-weight: 600; margin-bottom: 0.5rem; color: #059669; }
+h4 { font-size: 1rem; font-weight: 600; margin-bottom: 0.4rem; }
+
+p { margin-bottom: 0.75rem; text-align: justify; }
+strong { font-weight: 600; }
+
+a { color: #059669; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ===== COVER PAGE ===== */
+.cover {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 85vh;
+  text-align: center;
+  padding: 4rem 2rem;
+}
+.cover-logo {
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  margin-bottom: 4rem;
+}
+.cover-logo .vizyo { color: #111827; }
+.cover-logo .tracky { color: #059669; }
+.cover-bar {
+  width: 80px;
+  height: 4px;
+  background: linear-gradient(90deg, #059669, #10E0A0);
+  border-radius: 2px;
+  margin: 2rem auto;
+}
+.cover h1 {
+  font-size: 2.25rem;
+  font-weight: 800;
+  color: #111827;
+  margin-bottom: 0.75rem;
+}
+.cover .subtitle {
+  font-size: 1.1rem;
+  color: #4b5563;
+  font-weight: 400;
+  max-width: 480px;
+  line-height: 1.6;
+  margin-bottom: 3rem;
+}
+.cover-meta {
+  font-size: 0.875rem;
+  color: #6b7280;
+  line-height: 2;
+}
+.cover-meta strong { color: #374151; font-weight: 600; }
+
+/* ===== TABLE OF CONTENTS ===== */
+.toc { padding: 1rem 0; }
+.toc h2 { border-bottom-color: #059669; }
+.toc-list { list-style: none; padding: 0; margin-top: 1rem; }
+.toc-list li {
+  display: flex;
+  align-items: baseline;
+  padding: 0.5rem 0;
+  border-bottom: 1px dotted #d1d5db;
+  font-size: 0.95rem;
+}
+.toc-list li:last-child { border-bottom: none; }
+.toc-num {
+  display: inline-block;
+  width: 2rem;
+  font-weight: 700;
+  color: #059669;
+  flex-shrink: 0;
+}
+.toc-title { flex: 1; color: #1f2937; }
+
+/* ===== SECTIONS ===== */
+.section { margin-bottom: 2.5rem; }
+.section-num {
+  display: inline-block;
+  font-weight: 800;
+  color: #059669;
+  margin-right: 0.5rem;
+}
+.page-break { page-break-before: always; }
+
+/* ===== TABLES ===== */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0 1.5rem 0;
+  font-size: 0.9rem;
+}
+thead th {
+  background: #059669;
+  color: #ffffff;
+  font-weight: 600;
+  padding: 0.65rem 0.85rem;
+  text-align: left;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+thead th:first-child { border-radius: 6px 0 0 0; }
+thead th:last-child { border-radius: 0 6px 0 0; }
+tbody td {
+  padding: 0.6rem 0.85rem;
+  border-bottom: 1px solid #e5e7eb;
+  vertical-align: top;
+}
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:nth-child(even) { background: #f9fafb; }
+.table-note {
+  font-size: 0.8rem;
+  color: #6b7280;
+  font-style: italic;
+  margin-top: 0.25rem;
+}
+
+/* ===== FLOW DIAGRAM ===== */
+.flow {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 1.5rem 0;
+  padding: 1.5rem;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+.flow-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+.flow-num {
+  width: 2rem;
+  height: 2rem;
+  background: #059669;
+  color: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+.flow-content { flex: 1; padding-bottom: 0.25rem; }
+.flow-content strong { color: #111827; }
+.flow-content p { margin-bottom: 0; font-size: 0.9rem; }
+.flow-arrow {
+  display: flex;
+  justify-content: center;
+  padding: 0.25rem 0 0.25rem 0.5rem;
+  color: #059669;
+  font-size: 1.2rem;
+}
+
+/* ===== BULLET LISTS ===== */
+.doc-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.75rem 0 1.25rem 0;
+}
+.doc-list li {
+  position: relative;
+  padding: 0.3rem 0 0.3rem 1.5rem;
+  font-size: 0.95rem;
+}
+.doc-list li::before {
+  content: "\2022";
+  color: #059669;
+  font-weight: 700;
+  position: absolute;
+  left: 0.35rem;
+}
+
+/* ===== CALLOUT BOX ===== */
+.callout {
+  background: #f0fdf4;
+  border-left: 4px solid #059669;
+  padding: 1rem 1.25rem;
+  margin: 1rem 0 1.5rem 0;
+  border-radius: 0 6px 6px 0;
+  font-size: 0.9rem;
+}
+.callout strong { color: #059669; }
+
+.callout-warn {
+  background: #fffbeb;
+  border-left-color: #f59e0b;
+}
+.callout-warn strong { color: #d97706; }
+
+.callout-info {
+  background: #eff6ff;
+  border-left-color: #3b82f6;
+}
+.callout-info strong { color: #2563eb; }
+
+/* ===== FOOTER ===== */
+.doc-footer {
+  margin-top: 3rem;
+  padding-top: 2rem;
+  border-top: 2px solid #059669;
+  text-align: center;
+  font-size: 0.85rem;
+  color: #6b7280;
+  line-height: 2;
+}
+.doc-footer strong { color: #374151; }
+
+.print-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 7pt;
+  color: #9ca3af;
+  padding: 5mm 20mm;
+}
+
+/* ===== RESPONSIVE for screen ===== */
+@media screen and (max-width: 800px) {
+  body { padding: 1.5rem 1rem; max-width: 100%; }
+  .cover { min-height: 70vh; padding: 2rem 1rem; }
+  .cover h1 { font-size: 1.75rem; }
+  table { font-size: 0.8rem; display: block; overflow-x: auto; }
+  .flow { padding: 1rem; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============================================================ -->
+<!--                      PAGE DE GARDE                           -->
+<!-- ============================================================ -->
+<div class="cover">
+  <div class="cover-logo">
+    <span class="vizyo">VIZYO</span> <span class="tracky">TRACKY</span>
+  </div>
+
+  <h1>Fiabilit&#233; &amp; Pr&#233;cision<br>de la Mesure GPS</h1>
+  <div class="cover-bar"></div>
+  <p class="subtitle">Document technique &#224; destination des gestionnaires de flottes</p>
+
+  <div class="cover-meta">
+    <strong>Date :</strong> Mai 2026<br>
+    <strong>Version :</strong> 1.0<br>
+    <strong>Classification :</strong> Document public
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!--                   TABLE DES MATI&#200;RES                        -->
+<!-- ============================================================ -->
+<div class="page-break"></div>
+<div class="toc section">
+  <h2>Table des mati&#232;res</h2>
+  <ol class="toc-list">
+    <li><span class="toc-num">1.</span><span class="toc-title">Introduction</span></li>
+    <li><span class="toc-num">2.</span><span class="toc-title">Principe de la mesure de vitesse GPS</span></li>
+    <li><span class="toc-num">3.</span><span class="toc-title">Pr&#233;cision de la mesure</span></li>
+    <li style="padding-left:2rem;"><span class="toc-num">3.1</span><span class="toc-title">Vitesse</span></li>
+    <li style="padding-left:2rem;"><span class="toc-num">3.2</span><span class="toc-title">Position</span></li>
+    <li style="padding-left:2rem;"><span class="toc-num">3.3</span><span class="toc-title">Comparaison avec le compteur du v&#233;hicule</span></li>
+    <li><span class="toc-num">4.</span><span class="toc-title">Architecture du syst&#232;me Vizyo Tracky</span></li>
+    <li style="padding-left:2rem;"><span class="toc-num">4.1</span><span class="toc-title">Cha&#238;ne de mesure</span></li>
+    <li style="padding-left:2rem;"><span class="toc-num">4.2</span><span class="toc-title">Garanties d&#8217;int&#233;grit&#233;</span></li>
+    <li><span class="toc-num">5.</span><span class="toc-title">Mat&#233;riel &#8212; Coban GPS403D/C</span></li>
+    <li><span class="toc-num">6.</span><span class="toc-title">Fiabilit&#233; statistique</span></li>
+    <li><span class="toc-num">7.</span><span class="toc-title">Conformit&#233; r&#233;glementaire</span></li>
+    <li style="padding-left:2rem;"><span class="toc-num">7.1</span><span class="toc-title">CNIL &#8212; G&#233;olocalisation des salari&#233;s</span></li>
+    <li style="padding-left:2rem;"><span class="toc-num">7.2</span><span class="toc-title">Recevabilit&#233; comme preuve</span></li>
+    <li style="padding-left:2rem;"><span class="toc-num">7.3</span><span class="toc-title">RGPD / H&#233;bergement</span></li>
+    <li><span class="toc-num">8.</span><span class="toc-title">Synth&#232;se &#8212; Marges d&#8217;erreur</span></li>
+  </ol>
+</div>
+
+<!-- ============================================================ -->
+<!--                    SECTION 1 : INTRODUCTION                  -->
+<!-- ============================================================ -->
+<div class="page-break"></div>
+<div class="section">
+  <h2><span class="section-num">1.</span> Introduction</h2>
+
+  <p>La gestion de flotte repose fondamentalement sur la fiabilit&#233; des donn&#233;es de vitesse et de position fournies par les bo&#238;tiers GPS embarqu&#233;s. Que l&#8217;objectif soit la s&#233;curit&#233; routi&#232;re, l&#8217;optimisation des co&#251;ts de carburant, le respect des engagements de service ou la conformit&#233; r&#233;glementaire, la qualit&#233; de la mesure GPS conditionne la pertinence de l&#8217;ensemble des analyses produites par la plateforme.</p>
+
+  <p>Le pr&#233;sent document a pour objet d&#8217;expliquer de mani&#232;re d&#233;taill&#233;e comment les donn&#233;es GPS sont captur&#233;es, transmises, trait&#233;es et stock&#233;es au sein de la plateforme <strong>Vizyo Tracky</strong>. Il pr&#233;sente les principes physiques sous-jacents &#224; la mesure de vitesse, les marges d&#8217;erreur associ&#233;es, les garanties d&#8217;int&#233;grit&#233; mises en &#339;uvre, ainsi que le cadre r&#233;glementaire applicable.</p>
+
+  <p>Ce document s&#8217;adresse &#224; l&#8217;ensemble des organisations exploitant une flotte de v&#233;hicules, quel que soit leur secteur d&#8217;activit&#233; :</p>
+
+  <ul class="doc-list">
+    <li>Entreprises de transport et de logistique</li>
+    <li>Services de soins &#224; domicile et flottes m&#233;dico-sociales</li>
+    <li>Services municipaux et collectivit&#233;s territoriales</li>
+    <li>Soci&#233;t&#233;s de maintenance, BTP et services techniques</li>
+    <li>Toute organisation disposant de v&#233;hicules de service</li>
+  </ul>
+</div>
+
+<!-- ============================================================ -->
+<!--         SECTION 2 : PRINCIPE DE LA MESURE GPS                -->
+<!-- ============================================================ -->
+<div class="page-break"></div>
+<div class="section">
+  <h2><span class="section-num">2.</span> Principe de la mesure de vitesse GPS</h2>
+
+  <p>Contrairement &#224; une id&#233;e r&#233;pandue, la vitesse GPS n&#8217;est <strong>pas</strong> calcul&#233;e en divisant la distance entre deux positions successives par le temps &#233;coul&#233;. Cette m&#233;thode, dite &#171;&nbsp;positionnelle&nbsp;&#187;, serait en effet peu pr&#233;cise et tr&#232;s sensible aux erreurs de localisation.</p>
+
+  <p>La vitesse GPS est mesur&#233;e par <strong>effet Doppler</strong> : le d&#233;calage de fr&#233;quence du signal radio &#233;mis par chaque satellite GPS lorsqu&#8217;il est re&#231;u par un r&#233;cepteur en mouvement. Ce principe physique est fondamentalement le m&#234;me que celui utilis&#233; par les radars routiers homologu&#233;s par les forces de l&#8217;ordre.</p>
+
+  <div class="callout">
+    <strong>Analogie :</strong> Lorsqu&#8217;une ambulance approche, le son de sa sir&#232;ne semble plus aigu (fr&#233;quence plus &#233;lev&#233;e). Lorsqu&#8217;elle s&#8217;&#233;loigne, le son est plus grave. Ce d&#233;calage de fr&#233;quence est directement proportionnel &#224; la vitesse relative. Le GPS exploite exactement ce ph&#233;nom&#232;ne, mais avec des ondes radio &#224; 1&#8239;575,42&nbsp;MHz.
+  </div>
+
+  <p>La mesure Doppler pr&#233;sente plusieurs avantages d&#233;terminants par rapport &#224; une d&#233;rivation positionnelle :</p>
+
+  <ul class="doc-list">
+    <li><strong>Pr&#233;cision intrins&#232;quement sup&#233;rieure :</strong> le d&#233;calage de fr&#233;quence est mesurable avec une tr&#232;s grande finesse, ind&#233;pendamment des erreurs de position.</li>
+    <li><strong>Redondance par satellites multiples :</strong> chaque satellite visible agit comme une r&#233;f&#233;rence de vitesse ind&#233;pendante. Avec 7&nbsp;satellites ou plus en vue (situation courante en ext&#233;rieur), la mesure b&#233;n&#233;ficie d&#8217;une redondance qui renforce sa fiabilit&#233;.</li>
+    <li><strong>Mesure embarqu&#233;e :</strong> la valeur de vitesse brute est calcul&#233;e directement par le chipset GPS du bo&#238;tier, et non par un serveur distant. Aucune estimation, aucune interpolation.</li>
+  </ul>
+</div>
+
+<!-- ============================================================ -->
+<!--           SECTION 3 : PR&#201;CISION DE LA MESURE               -->
+<!-- ============================================================ -->
+<div class="page-break"></div>
+<div class="section">
+  <h2><span class="section-num">3.</span> Pr&#233;cision de la mesure</h2>
+
+  <!-- 3.1 Vitesse -->
+  <h3>3.1 Vitesse</h3>
+
+  <p>La pr&#233;cision de la mesure de vitesse par effet Doppler varie selon les conditions environnementales. Le tableau ci-dessous synth&#233;tise les performances attendues :</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Conditions</th>
+        <th>Pr&#233;cision vitesse</th>
+        <th>Source</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Route ouverte, ciel d&#233;gag&#233;</td>
+        <td>&#177;0,1 &#224; 0,2&nbsp;km/h</td>
+        <td>&#201;tudes acad&#233;miques (ResearchGate, VBOX Automotive)</td>
+      </tr>
+      <tr>
+        <td>Zone urbaine standard</td>
+        <td>&#177;0,3 &#224; 0,5&nbsp;km/h</td>
+        <td>Constructeurs GPS</td>
+      </tr>
+      <tr>
+        <td>Zone urbaine dense (canyon)</td>
+        <td>&#177;1 &#224; 2&nbsp;km/h</td>
+        <td>Worst case mesur&#233;</td>
+      </tr>
+      <tr>
+        <td>Tunnel / parking couvert</td>
+        <td>Pas de mesure (fix invalide)</td>
+        <td>&#8212;</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <ul class="doc-list">
+    <li>Le standard GPS officiel am&#233;ricain sp&#233;cifie une erreur inf&#233;rieure &#224; 0,02&nbsp;km/h &#224; 95&nbsp;% de confiance sur 3&nbsp;secondes.</li>
+    <li>En pratique, pour un traceur v&#233;hicule en conditions r&#233;elles, la <strong>marge d&#8217;erreur maximale est de &#177;3&nbsp;km/h</strong> dans les pires conditions.</li>
+    <li>La pr&#233;cision est <strong>meilleure &#224; haute vitesse</strong> qu&#8217;&#224; basse vitesse : le d&#233;calage Doppler est plus marqu&#233; lorsque la vitesse augmente.</li>
+  </ul>
+
+  <!-- 3.2 Position -->
+  <h3>3.2 Position</h3>
+
+  <ul class="doc-list">
+    <li>Pr&#233;cision positionnelle du Coban GPS403D/C : <strong>&#177;5&nbsp;m&#232;tres</strong> (sp&#233;cification constructeur).</li>
+    <li>En conditions optimales (ciel ouvert, nombre &#233;lev&#233; de satellites) : &#177;2-3&nbsp;m&#232;tres.</li>
+    <li>Point essentiel : la pr&#233;cision de position <strong>n&#8217;affecte pas</strong> la pr&#233;cision de vitesse. Il s&#8217;agit de deux mesures physiquement ind&#233;pendantes (Doppler vs. triangulation).</li>
+  </ul>
+
+  <!-- 3.3 Comparaison compteur -->
+  <h3>3.3 Comparaison avec le compteur du v&#233;hicule</h3>
+
+  <p>Les compteurs de vitesse des v&#233;hicules sont soumis &#224; la r&#233;glementation europ&#233;enne <strong>UN ECE R39</strong>, qui impose que la vitesse affich&#233;e ne soit jamais inf&#233;rieure &#224; la vitesse r&#233;elle. En cons&#233;quence, les constructeurs calibrent syst&#233;matiquement leurs compteurs pour <strong>surestimer la vitesse de 3 &#224; 10&nbsp;%</strong>.</p>
+
+  <div class="callout-info callout">
+    <strong>Exemple concret :</strong> Un compteur affichant 100&nbsp;km/h correspond &#224; une vitesse r&#233;elle typique de 93 &#224; 97&nbsp;km/h. Le GPS, mesurant la vitesse r&#233;elle par effet Doppler, n&#8217;est pas soumis &#224; ce biais r&#233;glementaire et affiche la vitesse effective du v&#233;hicule.
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!--       SECTION 4 : ARCHITECTURE DU SYST&#200;ME                   -->
+<!-- ============================================================ -->
+<div class="page-break"></div>
+<div class="section">
+  <h2><span class="section-num">4.</span> Architecture du syst&#232;me Vizyo Tracky</h2>
+
+  <!-- 4.1 Cha&#238;ne de mesure -->
+  <h3>4.1 Cha&#238;ne de mesure</h3>
+
+  <p>Le sch&#233;ma ci-dessous illustre le parcours complet de la donn&#233;e de vitesse, du satellite GPS jusqu&#8217;au stockage en base de donn&#233;es :</p>
+
+  <div class="flow">
+    <div class="flow-step">
+      <div class="flow-num">1</div>
+      <div class="flow-content">
+        <p><strong>Satellite GPS &#8594; Signal Doppler</strong><br>Les satellites GPS &#233;mettent un signal radio &#224; fr&#233;quence connue (1&#8239;575,42&nbsp;MHz). Le mouvement du v&#233;hicule provoque un d&#233;calage de fr&#233;quence mesurable.</p>
+      </div>
+    </div>
+    <div class="flow-arrow">&#8595;</div>
+    <div class="flow-step">
+      <div class="flow-num">2</div>
+      <div class="flow-content">
+        <p><strong>Chipset GPS du bo&#238;tier &#8594; Calcul de la vitesse en n&#339;uds</strong><br>Le processeur GPS embarqu&#233; dans le Coban GPS403D/C analyse le d&#233;calage Doppler et produit une valeur de vitesse brute exprim&#233;e en n&#339;uds (knots).</p>
+      </div>
+    </div>
+    <div class="flow-arrow">&#8595;</div>
+    <div class="flow-step">
+      <div class="flow-num">3</div>
+      <div class="flow-content">
+        <p><strong>Trame TCP envoy&#233;e au serveur</strong><br>Le bo&#238;tier transmet via le r&#233;seau cellulaire (4G/2G) une trame contenant : coordonn&#233;es GPS, vitesse brute en n&#339;uds, cap, horodatage satellite, flag de validit&#233;.</p>
+      </div>
+    </div>
+    <div class="flow-arrow">&#8595;</div>
+    <div class="flow-step">
+      <div class="flow-num">4</div>
+      <div class="flow-content">
+        <p><strong>Serveur Vizyo Tracky &#8594; Conversion n&#339;uds &#215; 1,852 = km/h</strong><br>Le serveur applique le facteur de conversion international exact : 1&nbsp;n&#339;ud = 1,852&nbsp;km/h. Aucun lissage, aucun arrondi abusif.</p>
+      </div>
+    </div>
+    <div class="flow-arrow">&#8595;</div>
+    <div class="flow-step">
+      <div class="flow-num">5</div>
+      <div class="flow-content">
+        <p><strong>Stockage en base de donn&#233;es PostgreSQL</strong><br>La donn&#233;e brute est enregistr&#233;e telle quelle. Aucun lissage, aucune moyenne, aucune interpolation n&#8217;est appliqu&#233;e.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4.2 Garanties d'int&#233;grit&#233; -->
+  <h3>4.2 Garanties d&#8217;int&#233;grit&#233;</h3>
+
+  <ul class="doc-list">
+    <li><strong>Donn&#233;e brute :</strong> la vitesse est transmise par le bo&#238;tier GPS. Aucun calcul ni lissage n&#8217;est effectu&#233; c&#244;t&#233; serveur.</li>
+    <li><strong>Horodatage double :</strong> chaque position est enregistr&#233;e avec l&#8217;heure GPS satellite (device) et l&#8217;heure serveur (r&#233;ception). Cette double r&#233;f&#233;rence temporelle rend toute falsification d&#233;tectable.</li>
+    <li><strong>Flag de validit&#233; :</strong> chaque position est marqu&#233;e comme valide (fix GPS confirm&#233;) ou invalide (signal d&#233;grad&#233;). Seules les positions valides sont exploit&#233;es dans les rapports.</li>
+    <li><strong>Filtre anti-aberration :</strong> les vitesses physiquement impossibles (sup&#233;rieures &#224; 250&nbsp;km/h) sont automatiquement rejet&#233;es.</li>
+    <li><strong>Conversion exacte :</strong> le facteur 1,852 est le standard international (1&nbsp;n&#339;ud = 1,852&nbsp;km/h exactement), arrondi &#224; 3&nbsp;d&#233;cimales. L&#8217;erreur induite est inf&#233;rieure &#224; 0,001&nbsp;km/h.</li>
+    <li><strong>Aucune interpolation :</strong> entre deux points de mesure (toutes les 30&nbsp;secondes), aucune vitesse n&#8217;est estim&#233;e ou invent&#233;e.</li>
+  </ul>
+</div>
+
+<!-- ============================================================ -->
+<!--            SECTION 5 : MAT&#201;RIEL                             -->
+<!-- ============================================================ -->
+<div class="page-break"></div>
+<div class="section">
+  <h2><span class="section-num">5.</span> Mat&#233;riel &#8212; Coban GPS403D/C</h2>
+
+  <p>Le bo&#238;tier GPS utilis&#233; par Vizyo Tracky est le <strong>Coban GPS403D/C</strong>, un traceur v&#233;hicule professionnel con&#231;u pour les applications de gestion de flotte. Ses caract&#233;ristiques techniques sont les suivantes :</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Caract&#233;ristique</th>
+        <th>Sp&#233;cification</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Type</td>
+        <td>Traceur v&#233;hicule professionnel 12-24V</td>
+      </tr>
+      <tr>
+        <td>Sensibilit&#233; GPS</td>
+        <td>-165&nbsp;dBm (haute sensibilit&#233;)</td>
+      </tr>
+      <tr>
+        <td>Pr&#233;cision positionnelle constructeur</td>
+        <td>&#177;5&nbsp;m</td>
+      </tr>
+      <tr>
+        <td>Acquisition satellite &#8212; Cold start</td>
+        <td>45&nbsp;secondes</td>
+      </tr>
+      <tr>
+        <td>Acquisition satellite &#8212; Warm start</td>
+        <td>35&nbsp;secondes</td>
+      </tr>
+      <tr>
+        <td>Acquisition satellite &#8212; Hot start</td>
+        <td>1&nbsp;seconde</td>
+      </tr>
+      <tr>
+        <td>R&#233;seau</td>
+        <td>4G LTE + 2G fallback</td>
+      </tr>
+      <tr>
+        <td>&#201;tanch&#233;it&#233;</td>
+        <td>IP65</td>
+      </tr>
+      <tr>
+        <td>Certification</td>
+        <td>CE</td>
+      </tr>
+      <tr>
+        <td>Intervalle de reporting</td>
+        <td>Configurable (d&#233;faut : 30&nbsp;secondes en mouvement)</td>
+      </tr>
+      <tr>
+        <td>Batterie de secours</td>
+        <td>~2&nbsp;heures en cas de coupure d&#8217;alimentation</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>Le r&#233;seau 4G LTE, compl&#233;t&#233; par un fallback 2G, garantit la transmission des donn&#233;es m&#234;me dans les zones &#224; faible couverture. En cas de perte temporaire du r&#233;seau, les trames sont mises en m&#233;moire tampon et transmises d&#232;s le r&#233;tablissement de la connexion.</p>
+</div>
+
+<!-- ============================================================ -->
+<!--         SECTION 6 : FIABILIT&#201; STATISTIQUE                   -->
+<!-- ============================================================ -->
+<div class="page-break"></div>
+<div class="section">
+  <h2><span class="section-num">6.</span> Fiabilit&#233; statistique</h2>
+
+  <p>La fiabilit&#233; des donn&#233;es GPS ne repose pas sur une mesure isol&#233;e, mais sur la <strong>coh&#233;rence statistique</strong> d&#8217;une s&#233;rie de mesures cons&#233;cutives.</p>
+
+  <ul class="doc-list">
+    <li>&#192; un intervalle de 30&nbsp;secondes, un trajet d&#8217;une heure g&#233;n&#232;re environ <strong>120&nbsp;mesures de vitesse</strong>.</li>
+    <li>Un exc&#232;s de vitesse maintenu sur plusieurs minutes produit <strong>10 &#224; 20&nbsp;mesures cons&#233;cutives</strong> au-dessus du seuil.</li>
+    <li>La probabilit&#233; qu&#8217;un glitch GPS produise 10 mesures cons&#233;cutives ou plus, erron&#233;es dans le m&#234;me sens, est <strong>statistiquement nulle</strong>.</li>
+  </ul>
+
+  <div class="callout">
+    <strong>R&#232;gle pratique :</strong> si une seule mesure isol&#233;e d&#233;passe un seuil, elle pourrait th&#233;oriquement &#234;tre un artefact. Mais une s&#233;rie de mesures coh&#233;rentes (m&#234;me zone g&#233;ographique, m&#234;me sens de d&#233;placement, vitesses progressivement croissantes ou stables) constitue une preuve robuste dont la fiabilit&#233; est math&#233;matiquement d&#233;montrable.
+  </div>
+
+  <p>Cette approche statistique est analogue &#224; celle utilis&#233;e dans d&#8217;autres domaines de mesure : un &#233;cart ponctuel peut &#234;tre un bruit ; un &#233;cart syst&#233;matique r&#233;p&#233;t&#233; est un signal.</p>
+</div>
+
+<!-- ============================================================ -->
+<!--        SECTION 7 : CONFORMIT&#201; R&#201;GLEMENTAIRE               -->
+<!-- ============================================================ -->
+<div class="page-break"></div>
+<div class="section">
+  <h2><span class="section-num">7.</span> Conformit&#233; r&#233;glementaire</h2>
+
+  <!-- 7.1 CNIL -->
+  <h3>7.1 CNIL &#8212; G&#233;olocalisation des salari&#233;s</h3>
+
+  <p>La g&#233;olocalisation des v&#233;hicules de flotte est encadr&#233;e par la <strong>d&#233;lib&#233;ration CNIL n&#176;2015-165 du 4&nbsp;juin 2015</strong> (norme simplifi&#233;e NS&nbsp;51). Les obligations suivantes s&#8217;appliquent :</p>
+
+  <ul class="doc-list">
+    <li><strong>Information pr&#233;alable et individuelle obligatoire</strong> de chaque salari&#233; concern&#233; (article L.1222-3 du Code du travail).</li>
+    <li><strong>Consultation du CSE</strong> pour les entreprises de plus de 11 salari&#233;s.</li>
+    <li><strong>Conformit&#233; RGPD :</strong> inscription au registre des traitements, analyse d&#8217;impact le cas &#233;ch&#233;ant.</li>
+  </ul>
+
+  <p>Concernant l&#8217;utilisation des donn&#233;es de vitesse :</p>
+
+  <ul class="doc-list">
+    <li><strong>Vitesse moyenne :</strong> autoris&#233;e pour le suivi de flotte et l&#8217;optimisation des co&#251;ts.</li>
+    <li><strong>Vitesse maximale / instantan&#233;e :</strong> le traitement &#224; des fins de sanction disciplinaire est consid&#233;r&#233; comme <strong>disproportionn&#233;</strong> par la CNIL (article 9 de la loi Informatique et Libert&#233;s &#8212; interdiction du traitement de donn&#233;es relatives aux infractions par des personnes priv&#233;es).</li>
+  </ul>
+
+  <div class="callout-warn callout">
+    <strong>Recommandation :</strong> utiliser la vitesse moyenne par trajet dans les rapports de gestion. La vitesse instantan&#233;e peut &#234;tre exploit&#233;e &#224; des fins de pr&#233;vention (alertes en temps r&#233;el au conducteur) mais ne doit pas constituer la base unique d&#8217;une proc&#233;dure disciplinaire.
+  </div>
+
+  <p>Le mode &#171;&nbsp;vie priv&#233;e&nbsp;&#187; de Vizyo Tracky permet de d&#233;sactiver le suivi en dehors des horaires de travail, conform&#233;ment aux exigences de la CNIL.</p>
+
+  <!-- 7.2 Recevabilit&#233; comme preuve -->
+  <h3>7.2 Recevabilit&#233; comme preuve</h3>
+
+  <p>La Cour de cassation, dans un arr&#234;t du <strong>22&nbsp;mars 2023</strong>, a rappel&#233; que le juge doit mettre en balance le droit &#224; la preuve de l&#8217;employeur et le droit au respect de la vie priv&#233;e du salari&#233; (articles 6 et 8 de la Convention europ&#233;enne des droits de l&#8217;homme).</p>
+
+  <p>Les donn&#233;es GPS sont recevables comme &#233;l&#233;ment de preuve <strong>si et seulement si</strong> les conditions suivantes sont r&#233;unies :</p>
+
+  <ul class="doc-list">
+    <li>Le salari&#233; a &#233;t&#233; inform&#233; au pr&#233;alable de l&#8217;existence du dispositif.</li>
+    <li>Le CSE a &#233;t&#233; consult&#233;.</li>
+    <li>Le dispositif est conforme au RGPD.</li>
+    <li>Les donn&#233;es ont &#233;t&#233; collect&#233;es pendant les heures de travail.</li>
+    <li>Le traitement est proportionn&#233; au but poursuivi.</li>
+  </ul>
+
+  <div class="callout-warn callout">
+    <strong>Attention :</strong> en cas de non-conformit&#233;, la preuve peut &#234;tre &#233;cart&#233;e par le juge et un licenciement fond&#233; sur ces donn&#233;es peut &#234;tre requalifi&#233; en licenciement sans cause r&#233;elle et s&#233;rieuse.
+  </div>
+
+  <div class="callout">
+    <strong>Recommandation forte :</strong> consulter un avocat sp&#233;cialis&#233; en droit du travail avant toute utilisation des donn&#233;es GPS dans le cadre d&#8217;une proc&#233;dure disciplinaire.
+  </div>
+
+  <!-- 7.3 RGPD / H&#233;bergement -->
+  <h3>7.3 RGPD / H&#233;bergement</h3>
+
+  <ul class="doc-list">
+    <li><strong>H&#233;bergement :</strong> l&#8217;ensemble des donn&#233;es est h&#233;berg&#233; dans l&#8217;Union europ&#233;enne.</li>
+    <li><strong>Sous-traitance :</strong> encadr&#233;e par un DPA (Data Processing Agreement) conforme &#224; l&#8217;article 28 du RGPD.</li>
+    <li><strong>Dur&#233;e de conservation :</strong> la dur&#233;e de conservation des donn&#233;es de position est configurable par le client, conform&#233;ment aux recommandations de la CNIL.</li>
+  </ul>
+</div>
+
+<!-- ============================================================ -->
+<!--          SECTION 8 : SYNTH&#200;SE &#8212; MARGES D&#8217;ERREUR         -->
+<!-- ============================================================ -->
+<div class="page-break"></div>
+<div class="section">
+  <h2><span class="section-num">8.</span> Synth&#232;se &#8212; Marges d&#8217;erreur</h2>
+
+  <p>Le tableau ci-dessous r&#233;capitule l&#8217;ensemble des sources d&#8217;erreur du syst&#232;me et leur impact cumul&#233; sur une mesure de vitesse :</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Source d&#8217;erreur</th>
+        <th>Marge</th>
+        <th>Impact sur une mesure de 160&nbsp;km/h</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Mesure Doppler GPS</td>
+        <td>&#177;0,1 &#224; 0,5&nbsp;km/h</td>
+        <td>159,5 &#224; 160,5&nbsp;km/h</td>
+      </tr>
+      <tr>
+        <td>Conditions d&#233;grad&#233;es (pire cas)</td>
+        <td>&#177;1 &#224; 3&nbsp;km/h</td>
+        <td>157 &#224; 163&nbsp;km/h</td>
+      </tr>
+      <tr>
+        <td>Conversion n&#339;uds &#8594; km/h</td>
+        <td>&#177;0,001&nbsp;km/h</td>
+        <td>N&#233;gligeable</td>
+      </tr>
+      <tr>
+        <td>Latence r&#233;seau</td>
+        <td>1-5 secondes</td>
+        <td>Aucun impact (vitesse mesur&#233;e au device)</td>
+      </tr>
+      <tr>
+        <td style="font-weight:700; background:#f0fdf4;">Total pire cas</td>
+        <td style="font-weight:700; background:#f0fdf4;">&#177;3&nbsp;km/h</td>
+        <td style="font-weight:700; background:#f0fdf4;">157 &#224; 163&nbsp;km/h</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    <strong>Conclusion :</strong> pour un v&#233;hicule roulant &#224; 160&nbsp;km/h sur une route limit&#233;e &#224; 90&nbsp;km/h, m&#234;me en appliquant la marge d&#8217;erreur maximale du syst&#232;me (&#177;3&nbsp;km/h), l&#8217;exc&#232;s de vitesse reste de <strong>67&nbsp;km/h au minimum</strong>. Cette marge d&#8217;erreur est comparable, voire inf&#233;rieure, &#224; celle des radars routiers homologu&#233;s par l&#8217;&#201;tat (qui appliquent une tol&#233;rance de 5&nbsp;% ou 5&nbsp;km/h).
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!--                     PAGE FINALE                              -->
+<!-- ============================================================ -->
+<div class="page-break"></div>
+<div class="doc-footer">
+  <p style="font-size:1.1rem; margin-bottom:2rem;"><strong style="color:#059669;">VIZYO TRACKY</strong></p>
+
+  <p><strong>Document &#233;dit&#233; par Vizyo Tracky</strong><br>
+  Plateforme de g&#233;olocalisation de flottes</p>
+
+  <p style="margin-top:1.5rem;">Pour toute question technique :<br>
+  <a href="mailto:contact@vizyoagency.com" style="color:#059669; font-weight:600;">contact@vizyoagency.com</a></p>
+
+  <div style="width:60px; height:3px; background:linear-gradient(90deg,#059669,#10E0A0); border-radius:2px; margin:2rem auto;"></div>
+
+  <p style="font-size:0.8rem; color:#9ca3af; font-style:italic; max-width:480px; margin:0 auto;">
+    Ce document est fourni &#224; titre informatif et ne constitue pas un avis juridique. Pour toute question relative &#224; l&#8217;utilisation des donn&#233;es GPS dans un cadre disciplinaire ou contentieux, il est recommand&#233; de consulter un avocat sp&#233;cialis&#233;.
+  </p>
+
+  <p style="margin-top:2rem; font-size:0.8rem; color:#9ca3af;">
+    Version 1.0 &#8212; Mai 2026
+  </p>
+</div>
+
+</body>
+</html>
