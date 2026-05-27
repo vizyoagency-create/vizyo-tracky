@@ -409,8 +409,37 @@ export class AlertsComponent implements OnInit {
     return Info;
   }
 
+  /** Labels FR pour chaque type d'alerte du schema Prisma AlertType. */
+  private static readonly ALERT_LABELS_FR: Record<string, string> = {
+    SOS: 'SOS',
+    POWER_CUT: 'Coupure d\'alimentation',
+    ACCIDENT: 'Accident',
+    COLLISION: 'Collision',
+    LOW_BATTERY: 'Batterie faible',
+    OVERSPEED: 'Excès de vitesse',
+    GEOFENCE_ENTER: 'Entrée géofence',
+    GEOFENCE_EXIT: 'Sortie géofence',
+    MOVEMENT_IDLE: 'Mouvement à l\'arrêt',
+    HARSH_BRAKING: 'Freinage brusque',
+    HARSH_ACCELERATION: 'Accélération brusque',
+    HARSH_TURN: 'Virage brusque',
+    BONNET: 'Capot ouvert',
+    DOOR: 'Porte ouverte',
+    VIBRATION: 'Vibration détectée',
+    TOW: 'Remorquage détecté',
+    TAMPER: 'Tentative de sabotage',
+    FATIGUE: 'Fatigue conducteur',
+    ILLEGAL_IGNITION: 'Démarrage non autorisé',
+    GPS_LOST: 'Perte du signal GPS',
+    IDLE_TIME: 'Temps d\'arrêt prolongé',
+    SURVEILLANCE_TRIGGERED: 'Surveillance déclenchée',
+    UNKNOWN: 'Alerte inconnue',
+  };
+
   alertLabel(alert: AlertEvent): string {
-    return alert.type ? alert.type.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (c) => c.toUpperCase()) : 'Alerte';
+    if (!alert.type) return 'Alerte';
+    return AlertsComponent.ALERT_LABELS_FR[alert.type]
+      ?? alert.type.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (c) => c.toUpperCase());
   }
 
   protected readonly alerts = signal<AlertEvent[]>([]);

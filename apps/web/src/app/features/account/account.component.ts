@@ -1,6 +1,8 @@
 import { DatePipe } from '@angular/common';
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
+import { AuthService } from '../../core/services/auth.service';
 import {
   Bell,
   Compass,
@@ -47,6 +49,15 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
   imports: [LucideAngularModule, DatePipe, FormsModule],
   template: `
     <div class="page">
+      @if (isBaanoolMode()) {
+        <!-- V1.12 — Mode Baanool : bouton retour vers /map en haut a gauche.
+             Pas de top-bar standard sur cette page en baanool, donc on en
+             cree un mini ici pour permettre la navigation retour. -->
+        <button class="baanool-back" (click)="goBackToMap()" aria-label="Retour a la carte">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          <span>Carte</span>
+        </button>
+      }
       <header class="page-header">
         <h1>Mon compte</h1>
         <p class="muted">Gérez votre profil, vos invitations et vos préférences.</p>
@@ -500,12 +511,34 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
     .info-box lucide-icon { color: var(--accent-warning, #f59e0b); flex-shrink: 0; }
     .info-box strong { color: var(--fg-primary); display: block; margin-bottom: 4px; }
     .info-box p { margin: 0; color: var(--fg-secondary); font-size: 13px; line-height: 1.5; }
+
+    /* V1.12 — Bouton retour mode baanool (pas de top-bar standard sur cette page). */
+    .baanool-back {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 14px 8px 8px;
+      background: var(--bg-tertiary, #f5f5f5);
+      border: 1px solid var(--border-subtle, #eee);
+      border-radius: 9999px;
+      color: var(--fg-primary, #333);
+      font-size: 14px; font-weight: 500;
+      cursor: pointer;
+      margin-bottom: 16px;
+      transition: background 120ms;
+    }
+    .baanool-back:hover { background: var(--bg-secondary, #eee); }
+    .baanool-back:active { transform: scale(0.97); }
   `],
 })
 export class AccountComponent implements OnInit {
   private readonly usersApi = inject(UsersApiService);
   private readonly toast = inject(ToastService);
   private readonly onboardingSvc = inject(OnboardingService);
+  private readonly authService = inject(AuthService);
+  private readonly router = inject(Router);
+
+  // V1.12 — Mode Baanool : bouton retour vers la carte.
+  protected readonly isBaanoolMode = computed(() => this.authService.user()?.preferences?.uiMode === 'baanool');
+  goBackToMap(): void { void this.router.navigate(['/map']); }
   protected readonly notif = inject(NotificationsApiService);
   protected readonly subscribing = signal(false);
 
