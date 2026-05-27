@@ -1,9 +1,10 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, OnInit, signal } from '@angular/core';
-import { RouterLink } from '@angular/router';
-import { LucideAngularModule, AlertTriangle, AlertCircle, Info, Check, CheckCheck } from 'lucide-angular';
+import { Router, RouterLink } from '@angular/router';
+import { LucideAngularModule, AlertTriangle, AlertCircle, Info, Check, CheckCheck, ChevronLeft, MoreVertical } from 'lucide-angular';
 import type { AlertEvent } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { AlertsApiService } from '../../core/services/alerts.service';
+import { AuthService } from '../../core/services/auth.service';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
@@ -15,6 +16,61 @@ import { relativeTime } from '../../shared/utils/relative-time';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [LucideAngularModule, RouterLink],
   template: `
+    @if (isBaanoolMode()) {
+      <!-- V1.12 — Mode Baanool : "Centre de messages" style ultra-simple,
+           tabs Alarme / Notification, empty state "Aucune donnee" centered. -->
+      <div class="bn-alerts">
+        <div class="bn-alerts-header">
+          <button class="bn-back" (click)="goBack()" aria-label="Retour">
+            <lucide-icon [img]="ChevronLeftIcon" [size]="22"></lucide-icon>
+          </button>
+          <h1 class="bn-title">Centre de messages</h1>
+          <button class="bn-more" aria-label="Plus d'options">
+            <lucide-icon [img]="MoreVerticalIcon" [size]="20"></lucide-icon>
+          </button>
+        </div>
+
+        <div class="bn-tabs">
+          <button class="bn-tab" [class.active]="bnTab() === 'alarms'" (click)="bnTab.set('alarms')">
+            Message d'alarme
+          </button>
+          <button class="bn-tab" [class.active]="bnTab() === 'notifs'" (click)="bnTab.set('notifs')">
+            Notification
+          </button>
+        </div>
+
+        @if (alerts().length === 0 || bnTab() === 'notifs') {
+          <div class="bn-empty">
+            <div class="bn-empty-icon">
+              <lucide-icon [img]="AlertTriangle" [size]="56"></lucide-icon>
+            </div>
+            <p class="bn-empty-text">Aucune donnee</p>
+          </div>
+        } @else {
+          <div class="bn-list">
+            @for (alert of alerts(); track alert.id) {
+              <div class="bn-row" [class.bn-row--acked]="isAcknowledged(alert)">
+                <div class="bn-row-icon" [class]="'sev-' + alert.severity">
+                  <lucide-icon [img]="severityIcon(alert.severity)" [size]="20"></lucide-icon>
+                </div>
+                <div class="bn-row-main">
+                  <div class="bn-row-title">{{ alertLabel(alert) }}</div>
+                  <div class="bn-row-meta">
+                    @if (alert.vehiclePlate) { <span>{{ alert.vehiclePlate }}</span> · }
+                    <span>{{ formatRelative(alert.createdAt) }}</span>
+                  </div>
+                </div>
+                @if (!isAcknowledged(alert) && perms.can('alerts_acknowledge')) {
+                  <button class="bn-row-ack" (click)="onAcknowledge(alert.id)" aria-label="Acquitter">
+                    <lucide-icon [img]="Check" [size]="16"></lucide-icon>
+                  </button>
+                }
+              </div>
+            }
+          </div>
+        }
+      </div>
+    } @else {
     <div class="a-page">
       <div class="a-blobs"></div>
       <div class="a-blob-c"></div>
@@ -130,8 +186,65 @@ import { relativeTime } from '../../shared/utils/relative-time';
         </button>
       }
     </div>
+    }
   `,
   styles: [`
+    /* ═══════════════════════════════════════════════════════
+       V1.12 — Baanool view : "Centre de messages" minimaliste
+       ═══════════════════════════════════════════════════════ */
+    .bn-alerts { background: white; min-height: 100%; display: flex; flex-direction: column; }
+    .bn-alerts-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 12px 16px; border-bottom: 1px solid #eee;
+      background: white;
+    }
+    .bn-back, .bn-more {
+      width: 36px; height: 36px; border-radius: 50%; border: none;
+      background: transparent; display: flex; align-items: center; justify-content: center;
+      cursor: pointer; color: #333;
+    }
+    .bn-title { flex: 1; text-align: center; font-size: 17px; font-weight: 600; margin: 0; color: #333; }
+    .bn-tabs {
+      display: flex; gap: 0; border-bottom: 1px solid #eee; background: white;
+    }
+    .bn-tab {
+      flex: 1; padding: 14px 8px; background: none; border: none;
+      border-bottom: 2px solid transparent;
+      font-size: 15px; color: #999; cursor: pointer;
+      transition: color 120ms, border-color 120ms;
+    }
+    .bn-tab.active { color: #00c896; border-bottom-color: #00c896; font-weight: 600; }
+    .bn-empty {
+      flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 12px; padding: 40px 16px; color: #ccc;
+    }
+    .bn-empty-icon { opacity: 0.5; }
+    .bn-empty-text { color: #999; font-size: 14px; margin: 0; }
+    .bn-list { flex: 1; overflow-y: auto; }
+    .bn-row {
+      display: flex; align-items: center; gap: 12px;
+      padding: 14px 16px; border-bottom: 1px solid #f5f5f5;
+      background: white;
+    }
+    .bn-row--acked { opacity: 0.5; }
+    .bn-row-icon {
+      width: 36px; height: 36px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .bn-row-icon.sev-CRITICAL { background: #fee; color: #d32f2f; }
+    .bn-row-icon.sev-WARNING { background: #fff3e0; color: #f57c00; }
+    .bn-row-icon.sev-INFO { background: #e3f2fd; color: #1976d2; }
+    .bn-row-main { flex: 1; min-width: 0; }
+    .bn-row-title { font-size: 14px; color: #333; font-weight: 500; }
+    .bn-row-meta { font-size: 12px; color: #999; margin-top: 2px; }
+    .bn-row-ack {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: #00c896; color: white; border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+
     .a-page { position: relative; min-height: 100% }
     .a-blobs { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden }
     .a-blobs::before {
@@ -275,7 +388,30 @@ export class AlertsComponent implements OnInit {
   private readonly alertsApi = inject(AlertsApiService);
   private readonly realtime = inject(RealtimeService);
   private readonly toast = inject(ToastService);
+  private readonly auth = inject(AuthService);
+  private readonly router = inject(Router);
   protected readonly perms = inject(PermissionsService);
+
+  // V1.12 — Mode Baanool : layout "Centre de messages" simplifie.
+  protected readonly isBaanoolMode = computed(() => this.auth.user()?.preferences?.uiMode === 'baanool');
+  protected readonly bnTab = signal<'alarms' | 'notifs'>('alarms');
+  protected readonly ChevronLeftIcon = ChevronLeft;
+  protected readonly MoreVerticalIcon = MoreVertical;
+
+  goBack(): void { void this.router.navigate(['/map']); }
+
+  /** Helper pour appeler relativeTime() depuis le template. */
+  formatRelative(ts: string | Date): string { return relativeTime(ts); }
+
+  severityIcon(sev: string): typeof AlertTriangle {
+    if (sev === 'CRITICAL') return AlertCircle;
+    if (sev === 'WARNING') return AlertTriangle;
+    return Info;
+  }
+
+  alertLabel(alert: AlertEvent): string {
+    return alert.type ? alert.type.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (c) => c.toUpperCase()) : 'Alerte';
+  }
 
   protected readonly alerts = signal<AlertEvent[]>([]);
   protected readonly loading = signal(false);

@@ -6,6 +6,7 @@ import {
   Car, Power, Crosshair, Satellite, Search, ChevronRight,
 } from 'lucide-angular';
 import { AuthService } from '../../core/services/auth.service';
+import { MapBridgeService } from '../../core/services/map-bridge.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { VehicleGroupsService, type VehicleGroup } from '../../core/services/vehicle-groups.service';
 
@@ -34,7 +35,7 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
         <button class="bn-circle" (click)="menuClick.emit()" aria-label="Menu">
           <lucide-icon [img]="MenuIcon" [size]="22"></lucide-icon>
         </button>
-        <button class="bn-circle" (click)="recenterClick.emit()" aria-label="Recentrer">
+        <button class="bn-circle" (click)="mapBridge.requestRecenter()" aria-label="Recentrer">
           <lucide-icon [img]="MaximizeIcon" [size]="22"></lucide-icon>
         </button>
         <button class="bn-circle" (click)="goAlerts()" aria-label="Alertes">
@@ -57,13 +58,13 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
         <button class="bn-circle bn-color-blue" (click)="togglePanel()" aria-label="Vehicules" [class.active]="panelOpen()">
           <lucide-icon [img]="CarIcon" [size]="20"></lucide-icon>
         </button>
-        <button class="bn-circle bn-color-red" (click)="engineClick.emit()" aria-label="Coupe-circuit moteur">
+        <button class="bn-circle bn-color-red" (click)="mapBridge.requestEngineAction()" aria-label="Coupe-circuit moteur">
           <lucide-icon [img]="PowerIcon" [size]="20"></lucide-icon>
         </button>
-        <button class="bn-circle" (click)="locateClick.emit()" aria-label="Ma position">
+        <button class="bn-circle" (click)="mapBridge.requestLocate()" aria-label="Ma position">
           <lucide-icon [img]="CrosshairIcon" [size]="20"></lucide-icon>
         </button>
-        <button class="bn-circle" (click)="satelliteClick.emit()" aria-label="Vue satellite">
+        <button class="bn-circle" (click)="mapBridge.requestToggleSatellite()" aria-label="Vue satellite">
           <lucide-icon [img]="SatelliteIcon" [size]="20"></lucide-icon>
         </button>
       </div>
@@ -270,12 +271,9 @@ export class BaanoolMapOverlayComponent implements OnInit {
   private readonly auth = inject(AuthService);
   private readonly realtime = inject(RealtimeService);
   private readonly vehicleGroupsService = inject(VehicleGroupsService);
+  protected readonly mapBridge = inject(MapBridgeService);
 
   @Output() menuClick = new EventEmitter<void>();
-  @Output() recenterClick = new EventEmitter<void>();
-  @Output() locateClick = new EventEmitter<void>();
-  @Output() satelliteClick = new EventEmitter<void>();
-  @Output() engineClick = new EventEmitter<void>();
   @Output() groupClick = new EventEmitter<string>();
 
   // Icons

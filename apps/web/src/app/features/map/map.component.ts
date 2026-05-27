@@ -40,6 +40,7 @@ import { VisibilityService } from '../../core/services/visibility.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
 import { MapService } from '../../core/services/map.service';
+import { MapBridgeService } from '../../core/services/map-bridge.service';
 import { MapStyleService, type MapStyleId } from '../../core/services/map-style.service';
 import {
   attachVehicleMarker,
@@ -1580,6 +1581,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private readonly vehiclesApi = inject(VehiclesApiService);
   private readonly preferences = inject(PreferencesService);
   private readonly mapSvc = inject(MapService);
+  private readonly mapBridge = inject(MapBridgeService);
   private readonly engineControl = inject(EngineControlService);
   private readonly visibility = inject(VisibilityService);
   private readonly toast = inject(ToastService);
@@ -1811,6 +1813,25 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     if (!pos) return;
     this.currentPopup.setHTML(this.buildPopupHtml(this.patchIgnitionFromCommands(pos)));
     setTimeout(() => this.wirePopupActions(this.activePopupTrackerId!, this.activePopupVehicleId!), 0);
+  });
+
+  // V1.12 — Bridge avec BaanoolMapOverlay : effects en field initializers (= injection
+  // context valide). Triggers numeriques incrementes par l'overlay → on fire l'action
+  // map correspondante. La 1ere lecture du signal sert juste de baseline (pas d'action).
+  private bridgeRecenterEffect = effect(() => {
+    const n = this.mapBridge.recenterTrigger();
+    if (n > 0) this.centerAll();
+  });
+  private bridgeLocateEffect = effect(() => {
+    const n = this.mapBridge.locateTrigger();
+    if (n > 0) this.centerOnUser();
+  });
+  private bridgeSatelliteEffect = effect(() => {
+    const n = this.mapBridge.toggleSatelliteTrigger();
+    if (n > 0 && this.map) {
+      const next: MapStyleId = this.currentStyle() === 'satellite' ? 'osm' : 'satellite';
+      this.setStyle(next);
+    }
   });
 
   ngAfterViewInit(): void {
