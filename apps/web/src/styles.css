@@ -283,6 +283,25 @@ button, a, [role="button"], input[type="button"], input[type="submit"], label {
   touch-action: manipulation;
 }
 
+/* ════════════════════════════════════════════════════════════
+   MODE BAANOOL (V1.12) — overrides globaux
+   Cache les overlays natifs du map.component qui font doublon avec
+   le BaanoolMapOverlayComponent (cercles flottants + panel central).
+   Doit etre GLOBAL pour percer l'encapsulation Angular du map.component.
+   ════════════════════════════════════════════════════════════ */
+.layout--baanool .tracky-mobile-topbar,
+.layout--baanool .tracky-mobile-fab-main,
+.layout--baanool .tracky-mobile-fab-sm,
+.layout--baanool .tracky-mobile-search,
+.layout--baanool .tracky-desktop-hud,
+.layout--baanool .tracky-style-picker,
+.layout--baanool .tracky-calques-panel,
+.layout--baanool .tracky-mobile-sheet,
+.layout--baanool app-bottom-sheet,
+.layout--baanool .skip-link {
+  display: none !important;
+}
+
 /* Scrollbars : invisibles sur tactile, fines sur desktop avec souris */
 ::-webkit-scrollbar { width: 0; height: 0; }
 @media (hover: hover) and (pointer: fine) {

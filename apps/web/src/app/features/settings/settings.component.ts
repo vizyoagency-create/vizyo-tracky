@@ -491,9 +491,13 @@ export class SettingsComponent implements OnInit {
       await this.auth.updatePreferences({ uiMode: next });
       this.toast.success(
         next === 'baanool'
-          ? 'Mode interface simplifiee active. Le changement est immediat.'
+          ? 'Mode interface simplifiee active.'
           : 'Interface complete restauree.',
       );
+      // V1.12 — Auto-redirect : en activant baanool, on va direct sur /map
+      // (UX coherente avec le redirect post-login). En desactivant, retour
+      // au dashboard pour montrer le mode complet retrouve.
+      void this.router.navigate([next === 'baanool' ? '/map' : '/dashboard']);
     } catch {
       this.toast.error('Echec mise a jour de la preference');
     } finally {

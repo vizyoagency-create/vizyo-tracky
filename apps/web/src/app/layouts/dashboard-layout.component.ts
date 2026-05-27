@@ -493,6 +493,10 @@ import { BaanoolMapOverlayComponent } from '../features/baanool/baanool-map-over
      * profile) en cercles flottants. Sur les autres pages, le top-bar reste
      * visible pour avoir le titre + retour. */
     .layout--baanool.layout--fullscreen .top-bar { display: none; }
+    /* Note : les overrides pour cacher les overlays UI natifs du map.component
+       en mode baanool (.tracky-mobile-topbar, .tracky-mobile-fab-main, etc.)
+       sont dans styles.css global car ils traversent l'encapsulation Angular
+       de map.component. */
 
 
     /* ════════════════════════════════════════════════════════
@@ -736,6 +740,20 @@ export class DashboardLayoutComponent {
 
   protected readonly navItems = computed(() => {
     const isSuperAdmin = this.auth.user()?.role === 'SUPER_ADMIN';
+    // V1.12 — Mode Baanool : menu reduit aux essentiels. Pas de dashboard,
+    // groupes, geofences, rapports, conducteurs, utilisateurs. Garde Carte,
+    // Vehicules (pour accéder au detail), Alertes, et les pages personnelles
+    // (Compte/Parametres sont accessibles via top-right ou directement).
+    if (this.isBaanoolMode()) {
+      return [
+        ...(this.perms.can('vehicles_view') ? [
+          { label: 'Carte', route: '/map', icon: Map },
+          { label: 'Véhicules', route: '/vehicles', icon: Truck },
+        ] : []),
+        ...(this.perms.can('alerts_view') ? [{ label: 'Alertes', route: '/alerts', icon: Bell }] : []),
+        { label: 'Paramètres', route: '/settings', icon: Settings },
+      ];
+    }
     return [
       { label: 'Tableau de bord', route: '/dashboard', icon: LayoutDashboard },
       ...(this.perms.can('vehicles_view') ? [
