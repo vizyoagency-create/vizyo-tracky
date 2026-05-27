@@ -493,6 +493,30 @@ import { BaanoolMapOverlayComponent } from '../features/baanool/baanool-map-over
      * profile) en cercles flottants. Sur les autres pages, le top-bar reste
      * visible pour avoir le titre + retour. */
     .layout--baanool.layout--fullscreen .top-bar { display: none; }
+
+    /* iOS PWA standalone en mode baanool : la .bottom-bar cachee laissait la
+     * safe-area-inset-bottom (home indicator) en noir. On force un fond clair
+     * et on etend le .content pour couvrir cette zone, en ajoutant un pseudo
+     * en bas qui peint la safe-area-bottom de la meme couleur que la map. */
+    body.ios-pwa .layout--baanool,
+    body.ios-pwa .layout--baanool .main-area,
+    body.ios-pwa .layout--baanool .content {
+      background: var(--bg-primary, white);
+    }
+    body.ios-pwa .layout--baanool .content {
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    /* Pseudo apres .layout qui colore la safe-area bottom (au cas ou un pixel
+     * fuit, eviter le noir natif du body). */
+    body.ios-pwa .layout--baanool::after {
+      content: '';
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      height: env(safe-area-inset-bottom, 0px);
+      background: var(--bg-primary, white);
+      z-index: 0;
+      pointer-events: none;
+    }
     /* Note : les overrides pour cacher les overlays UI natifs du map.component
        en mode baanool (.tracky-mobile-topbar, .tracky-mobile-fab-main, etc.)
        sont dans styles.css global car ils traversent l'encapsulation Angular

@@ -110,14 +110,21 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
   `,
   styles: [`
     /* Overlay couvre toute la fenetre mais ne bloque pas la map (pointer-events: none).
-       Les enfants interactifs reactivent pointer-events: auto. */
+       TOUS les descendants interactifs reactivent pointer-events: auto (pas
+       seulement les direct children — bug iOS Safari standalone qui ne propage
+       pas pointer-events: auto au-dela d'un niveau via selectors descendants). */
     .bn-overlay {
       position: fixed;
       inset: 0;
       pointer-events: none;
       z-index: 7500;
     }
-    .bn-overlay > * { pointer-events: auto; }
+    .bn-overlay > *,
+    .bn-overlay button,
+    .bn-overlay input,
+    .bn-overlay select,
+    .bn-overlay .bn-panel,
+    .bn-overlay .bn-panel * { pointer-events: auto; }
 
     /* Cercle de base : fond blanc, ombre douce, taille tap target Apple HIG. */
     .bn-circle {
