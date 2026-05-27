@@ -3,6 +3,8 @@ import {
   Body,
   Controller,
   Get,
+  Param,
+  ParseUUIDPipe,
   Post,
   Query,
   Req,
@@ -21,6 +23,7 @@ import { GeneratePdfDto } from './dto/generate-pdf.dto';
 import { ReportCsvService } from './report-csv.service';
 import { ReportPdfService } from './report-pdf.service';
 import { ReportsStatsService } from './reports-stats.service';
+import { SpeedReportService } from './speed-report.service';
 
 /**
  * V1.5 (Sprint L) — Endpoints de rapports.
@@ -39,6 +42,7 @@ export class ReportsController {
     private readonly stats: ReportsStatsService,
     private readonly pdf: ReportPdfService,
     private readonly csv: ReportCsvService,
+    private readonly speedReport: SpeedReportService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -140,6 +144,31 @@ export class ReportsController {
     res.setHeader('Content-Type', result.contentType);
     res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
     res.send(result.body);
+  }
+
+  /**
+   * Rapport d'analyse de vitesse pour un trajet — HTML telechargeable.
+   * Reserve aux FLEET_ADMIN et SUPER_ADMIN. Le tenant check est dans le
+   * service (fleetId compare au trajet). Genere dynamiquement le rapport
+   * a partir des positions GPS du trajet — generique, pas specifique a
+   * une flotte.
+   */
+  @Get('speed-analysis/:tripId')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN)
+  @RequirePermissions('reports_view')
+  async speedAnalysis(
+    @Param('tripId', ParseUUIDPipe) tripId: string,
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ): Promise<void> {
+    const { html, filename } = await this.speedReport.generate(tripId, {
+      userId: req.user.id,
+      role: req.user.role,
+      fleetId: req.user.fleetId,
+    });
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(html);
   }
 
   private async parseRange(

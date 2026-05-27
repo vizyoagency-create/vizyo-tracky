@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, HostListener, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, BarChart3, Route, Clock, Gauge, Play, ChevronDown, Truck, Check, MessageSquare, Pencil, UserRound, Download, Calendar } from 'lucide-angular';
+import { LucideAngularModule, BarChart3, Route, Clock, Gauge, Play, ChevronDown, Truck, Check, MessageSquare, Pencil, UserRound, Download, Calendar, FileText } from 'lucide-angular';
 import type { DriverDto, TripDailySummaryDto, TripDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { DriversApiService } from '../../core/services/drivers.service';
@@ -387,11 +387,20 @@ import {
                     }
                   </td>
                   <td class="p-3 text-center">
-                    @if (trip.polyline) {
-                      <button (click)="openReplay(trip)" class="text-tracky-light hover:underline cursor-pointer">
-                        <lucide-icon [img]="Play" [size]="16"></lucide-icon>
-                      </button>
-                    }
+                    <div class="flex items-center justify-center gap-1.5">
+                      @if (trip.polyline) {
+                        <button (click)="openReplay(trip)" class="text-tracky-light hover:underline cursor-pointer" title="Replay">
+                          <lucide-icon [img]="Play" [size]="16"></lucide-icon>
+                        </button>
+                      }
+                      @if (isAdmin() && trip.maxSpeed > 90) {
+                        <button (click)="downloadSpeedReport(trip)"
+                                class="text-fg-tertiary hover:text-tracky-light cursor-pointer transition-colors"
+                                title="Rapport vitesse">
+                          <lucide-icon [img]="FileTextIcon" [size]="14"></lucide-icon>
+                        </button>
+                      }
+                    </div>
                   </td>
                 </tr>
               }
@@ -954,6 +963,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   protected readonly UserRoundIcon = UserRound;
   protected readonly DownloadIcon = Download;
   protected readonly CalendarIcon = Calendar;
+  protected readonly FileTextIcon = FileText;
 
   // ─── Date range custom ────────────────────────────────────────────────
   protected readonly customRangeOpen = signal(false);
@@ -1485,6 +1495,14 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   protected openReplay(trip: TripDto): void {
     this.replayTrip.set(trip);
+  }
+
+  protected async downloadSpeedReport(trip: TripDto): Promise<void> {
+    try {
+      await this.reportsApi.downloadSpeedAnalysis(trip.id);
+    } catch {
+      // Silently fail — the user will see no file downloaded.
+    }
   }
 
   protected openNoteEdit(trip: TripDto): void {

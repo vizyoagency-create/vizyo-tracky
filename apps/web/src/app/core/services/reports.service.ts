@@ -123,6 +123,17 @@ export class ReportsApiService {
     }
   }
 
+  async downloadSpeedAnalysis(tripId: string): Promise<void> {
+    try {
+      const blob = await firstValueFrom(
+        this.http.get(`/api/reports/speed-analysis/${tripId}`, { responseType: 'blob' }),
+      );
+      this.triggerDownload(blob, `rapport-vitesse-${tripId.slice(0, 8)}.html`);
+    } catch (err) {
+      throw new Error(await this.formatHttpError(err, 'PDF'));
+    }
+  }
+
   /** Extrait le message d'erreur reel renvoye par l'API.
    *  Avec responseType:'blob', l'error.error d'Angular est un Blob → on le parse.
    *  Robuste face aux 3 formes que NestJS peut renvoyer :
