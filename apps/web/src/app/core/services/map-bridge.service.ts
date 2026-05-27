@@ -16,11 +16,12 @@ export class MapBridgeService {
   readonly locateTrigger = signal(0);
   /** Incremente quand l'utilisateur demande a switcher le style de carte (satellite <-> standard). */
   readonly toggleSatelliteTrigger = signal(0);
-  /** Incremente quand l'utilisateur demande l'action coupe-circuit moteur. */
-  readonly engineActionTrigger = signal(0);
+  /** vehicleId quand l'utilisateur veut centrer la map sur un vehicule precis
+   *  (depuis le panel Baanool). Reset a null apres consommation. */
+  readonly flyToVehicleId = signal<string | null>(null);
 
   requestRecenter(): void { this.recenterTrigger.update((n) => n + 1); }
   requestLocate(): void { this.locateTrigger.update((n) => n + 1); }
   requestToggleSatellite(): void { this.toggleSatelliteTrigger.update((n) => n + 1); }
-  requestEngineAction(): void { this.engineActionTrigger.update((n) => n + 1); }
+  requestFlyToVehicle(vehicleId: string): void { this.flyToVehicleId.set(vehicleId); }
 }

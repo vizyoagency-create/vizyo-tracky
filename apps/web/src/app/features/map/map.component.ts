@@ -1833,6 +1833,18 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       this.setStyle(next);
     }
   });
+  /** Click sur un vehicule depuis le panel Baanool : centre la map sur sa
+   *  position connue (snapshot realtime). Reset le signal apres consommation
+   *  pour permettre un nouveau click sur le meme vehicule. */
+  private bridgeFlyToEffect = effect(() => {
+    const vid = this.mapBridge.flyToVehicleId();
+    if (!vid || !this.map) return;
+    const pos = this.realtime.positionsList().find((p) => p.vehicleId === vid);
+    if (pos) {
+      this.map.flyTo({ center: [pos.lng, pos.lat], zoom: 16, duration: 800 });
+    }
+    this.mapBridge.flyToVehicleId.set(null);
+  });
 
   ngAfterViewInit(): void {
     // Charger prefs map

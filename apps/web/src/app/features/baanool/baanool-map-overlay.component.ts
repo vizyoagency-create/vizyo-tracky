@@ -1,9 +1,10 @@
 import { Component, EventEmitter, Output, OnInit, inject, computed, signal } from '@angular/core';
+import { DecimalPipe } from '@angular/common';
 import { Router } from '@angular/router';
 import {
   LucideAngularModule,
   Menu, Maximize2, Bell, UserCircle2,
-  Car, Power, Crosshair, Satellite, Search, ChevronRight,
+  Car, Crosshair, Satellite, Search, ChevronRight,
 } from 'lucide-angular';
 import { AuthService } from '../../core/services/auth.service';
 import { MapBridgeService } from '../../core/services/map-bridge.service';
@@ -26,7 +27,7 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
 @Component({
   selector: 'app-baanool-map-overlay',
   standalone: true,
-  imports: [LucideAngularModule],
+  imports: [LucideAngularModule, DecimalPipe],
   template: `
     <div class="bn-overlay">
 
@@ -53,13 +54,11 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
         </button>
       </div>
 
-      <!-- RIGHT VERTICAL : vehicules, coupe-circuit, GPS, satellite -->
+      <!-- RIGHT VERTICAL : vehicules, GPS, satellite (coupe-circuit retire :
+           l'action est deja accessible via popup au click vehicule sur la map). -->
       <div class="bn-right">
         <button class="bn-circle bn-color-blue" (click)="togglePanel()" aria-label="Vehicules" [class.active]="panelOpen()">
           <lucide-icon [img]="CarIcon" [size]="20"></lucide-icon>
-        </button>
-        <button class="bn-circle bn-color-red" (click)="mapBridge.requestEngineAction()" aria-label="Coupe-circuit moteur">
-          <lucide-icon [img]="PowerIcon" [size]="20"></lucide-icon>
         </button>
         <button class="bn-circle" (click)="mapBridge.requestLocate()" aria-label="Ma position">
           <lucide-icon [img]="CrosshairIcon" [size]="20"></lucide-icon>
@@ -88,16 +87,25 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
               </button>
             }
           </div>
-          <div class="bn-panel-groups">
-            @if (groups().length === 0) {
-              <div class="bn-group-row bn-group-row--default">
-                <span>Groupes par defaut({{ filteredCount() }})</span>
-                <lucide-icon [img]="ChevronRightIcon" [size]="16"></lucide-icon>
+          <div class="bn-panel-vehicles">
+            @if (filteredVehicles().length === 0) {
+              <div class="bn-vehicle-empty">
+                Aucun vehicule
               </div>
             } @else {
-              @for (g of groups(); track g.id) {
-                <button class="bn-group-row" (click)="groupClick.emit(g.id)">
-                  <span>{{ g.name }}({{ g.vehicles.length }})</span>
+              @for (v of filteredVehicles(); track v.vehicleId) {
+                <button class="bn-vehicle-row" (click)="onVehicleClick(v.vehicleId)">
+                  <span class="bn-vehicle-dot" [class.online]="isOnline(v)"></span>
+                  <div class="bn-vehicle-main">
+                    <div class="bn-vehicle-plate">{{ v.plate || '—' }}</div>
+                    <div class="bn-vehicle-meta">
+                      @if (isOnline(v)) {
+                        {{ v.speedKmh | number: '1.0-0' }} km/h
+                      } @else {
+                        Hors ligne
+                      }
+                    </div>
+                  </div>
                   <lucide-icon [img]="ChevronRightIcon" [size]="16"></lucide-icon>
                 </button>
               }
@@ -241,28 +249,37 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
       border-bottom-color: #00c896;
       font-weight: 600;
     }
-    .bn-panel-groups {
+    .bn-panel-vehicles {
       overflow-y: auto;
       padding: 4px 0;
+      max-height: 50vh;
     }
-    .bn-group-row {
+    .bn-vehicle-row {
       width: 100%;
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      padding: 14px 18px;
+      gap: 10px;
+      padding: 12px 16px;
       background: white;
       border: none;
-      border-radius: 8px;
-      margin: 4px 8px;
       cursor: pointer;
       color: #333;
       font-size: 14px;
+      border-bottom: 1px solid #f5f5f5;
+      text-align: left;
     }
-    .bn-group-row:hover { background: #f8f8f8; }
-    .bn-group-row--default {
-      cursor: default;
-      color: #333;
+    .bn-vehicle-row:hover { background: #f8f8f8; }
+    .bn-vehicle-row:last-child { border-bottom: none; }
+    .bn-vehicle-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: #ccc; flex-shrink: 0;
+    }
+    .bn-vehicle-dot.online { background: #00c896; box-shadow: 0 0 0 3px rgba(0, 200, 150, 0.2); }
+    .bn-vehicle-main { flex: 1; min-width: 0; }
+    .bn-vehicle-plate { font-weight: 600; font-size: 14px; color: #333; }
+    .bn-vehicle-meta { font-size: 12px; color: #999; margin-top: 2px; }
+    .bn-vehicle-empty {
+      padding: 32px 16px; text-align: center; color: #999; font-size: 13px;
     }
 
     /* Mobile : compress les espacements et reduce panel padding. */
@@ -289,7 +306,6 @@ export class BaanoolMapOverlayComponent implements OnInit {
   protected readonly BellIcon = Bell;
   protected readonly UserIcon = UserCircle2;
   protected readonly CarIcon = Car;
-  protected readonly PowerIcon = Power;
   protected readonly CrosshairIcon = Crosshair;
   protected readonly SatelliteIcon = Satellite;
   protected readonly SearchIcon = Search;
@@ -333,6 +349,48 @@ export class BaanoolMapOverlayComponent implements OnInit {
     const tab = this.activeTab();
     return tab === 'online' ? cnt.online : tab === 'offline' ? cnt.offline : cnt.total;
   });
+
+  /** Liste filtree des vehicules : merge positions (live speed/timestamp) avec
+   *  snapshot (plate persistante). Filtres : search query + tab Total/En ligne/Hors ligne. */
+  protected readonly filteredVehicles = computed(() => {
+    const positions = this.realtime.positionsList();
+    const snapshots = this.realtime.snapshot();
+    const tab = this.activeTab();
+    const q = this.searchQuery().trim().toLowerCase();
+    const now = Date.now();
+    const ONLINE_MS = 5 * 60 * 1000;
+
+    // Map vehicleId → plate depuis le snapshot
+    const plateById = new Map<string, string>();
+    for (const s of snapshots) plateById.set(s.vehicleId, s.plate);
+
+    // Enrichir les positions avec plate
+    const enriched = positions.map((p) => ({
+      vehicleId: p.vehicleId,
+      plate: plateById.get(p.vehicleId) ?? '',
+      speedKmh: p.speedKmh,
+      timestamp: p.timestamp,
+    }));
+
+    return enriched.filter((v) => {
+      if (q && !v.plate.toLowerCase().includes(q)) return false;
+      if (tab === 'total') return true;
+      const ts = v.timestamp ? new Date(v.timestamp).getTime() : 0;
+      const online = now - ts < ONLINE_MS;
+      return tab === 'online' ? online : !online;
+    });
+  });
+
+  isOnline(v: { timestamp?: string | Date }): boolean {
+    const ts = v.timestamp ? new Date(v.timestamp).getTime() : 0;
+    return Date.now() - ts < 5 * 60 * 1000;
+  }
+
+  onVehicleClick(vehicleId: string): void {
+    this.mapBridge.requestFlyToVehicle(vehicleId);
+    // Optionnel : fermer le panel apres avoir centre pour montrer la map
+    // this.panelOpen.set(false);
+  }
 
   togglePanel(): void {
     this.panelOpen.update(v => !v);
