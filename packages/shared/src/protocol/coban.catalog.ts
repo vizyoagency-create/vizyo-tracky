@@ -154,6 +154,11 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
         type: 'select',
         required: true,
         options: [
+          // V1.13 — 10s ajoute comme intervalle haute precision (MOVING par defaut).
+          // Le minimum Coban officiel varie par modele : 10s pour GPS302/303/408/BN-311,
+          // 20s pour TK104/GPS305/GPS403D. Le boitier rejettera la commande si trop bas
+          // pour son modele — reconcile detectera et passera FAILING.
+          { value: '010s', label: '10 secondes' },
           { value: '030s', label: '30 secondes' },
           { value: '060s', label: '1 minute' },
           { value: '002m', label: '2 minutes' },

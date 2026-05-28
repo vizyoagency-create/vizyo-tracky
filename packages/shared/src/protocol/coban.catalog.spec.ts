@@ -3,8 +3,8 @@ import { COBAN_COMMAND_CATALOG, findTemplate, getCatalogByCategory, CATEGORY_LAB
 const IMEI = '865328021056352';
 
 describe('CobanCommandCatalog', () => {
-  it('should have 20 templates', () => {
-    expect(COBAN_COMMAND_CATALOG).toHaveLength(20);
+  it('should have at least 20 templates (was 20 at V1.5, additions over time OK)', () => {
+    expect(COBAN_COMMAND_CATALOG.length).toBeGreaterThanOrEqual(20);
   });
 
   it('should NOT include engine_stop or engine_resume', () => {

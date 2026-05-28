@@ -125,8 +125,10 @@ export class AdminFixModeController {
       throw new BadRequestException('durationMinutes doit etre entre 0 et 1440 (24h)');
     }
     const intervalS = body?.intervalS ?? null;
-    if (intervalS !== null && (!Number.isFinite(intervalS) || intervalS < 30 || intervalS > 300)) {
-      throw new BadRequestException('intervalS doit etre entre 30 et 300 si fourni');
+    // V1.13 — Borne inferieure abaissee de 30 a 10 pour le mode haute precision.
+    // Le service applique le meme clamp via Math.max(10, ...) en defense en profondeur.
+    if (intervalS !== null && (!Number.isFinite(intervalS) || intervalS < 10 || intervalS > 300)) {
+      throw new BadRequestException('intervalS doit etre entre 10 et 300 si fourni');
     }
 
     return this.fixMode.setManualOverride(trackerId, minutes, intervalS, req.user.id);

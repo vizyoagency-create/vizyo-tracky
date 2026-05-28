@@ -16,19 +16,27 @@ import { SocketRegistryService } from '../socket-registry/socket-registry.servic
  * sampling adaptatif et envoie une commande Coban via la socket TCP deja
  * ouverte pour ajuster l'intervalle.
  *
- * Politique :
- *   - MOVING / IDLE_ENGINE_ON         → 30s ('030s')   — fluidite live + reactivite
+ * Politique (V1.13 — haute precision en mouvement) :
+ *   - MOVING                          → 10s ('010s')   — haute precision live
+ *   - IDLE_ENGINE_ON                  → 30s ('030s')   — fluidite live moderee
  *   - STOPPED, ignition OFF > 10min   → 300s ('005m')  — economie batterie + data
+ *
+ * IDLE_ENGINE_ON garde 30s : un vehicule contact ON immobile n'a pas besoin de
+ * precision (feu rouge, livraison, file d'attente) et 10s gaspillerait batterie+data.
  *
  * Garde-fous :
  *   - Quota anti-flapping : max 2 changements par tracker / jour
- *   - Hard-cap superieur : jamais > 300s automatiquement
+ *   - Hard-cap : intervalle clampe entre 10s et 300s
  *   - Override admin : `Tracker.fixModeOverrideUntil` bloque les transitions auto
  *   - Feature flag fleet : `Fleet.adaptiveFixModeEnabled = false` desactive le pilotage
  *
  * Reconciliation : a chaque trame valide, on observe le delta deviceTime et
  * on confirme `currentFixIntervalS` quand il converge vers la cible. Si la
  * commande est ignoree par le boitier sur 3 tentatives → flag FAILING.
+ *
+ * Note Coban GPS403D : min officiel documente = 20s. Si on demande 10s et que
+ * le boitier ne respecte pas, reconcile detectera l'ecart et passera FAILING
+ * apres 3 trames hors tolerance (les `diagnosticHint` aident l'admin a debug).
  */
 
 const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000';
@@ -156,7 +164,11 @@ export class TrackerFixModeService {
     tracker: Pick<Tracker, 'lastIgnitionChangeAt' | 'lastKnownIgnition'>,
     now: Date = new Date(),
   ): number {
-    if (state === 'MOVING' || state === 'IDLE_ENGINE_ON') return 30;
+    // V1.13 — Haute precision en MOVING (10s). IDLE_ENGINE_ON garde 30s :
+    // un vehicule contact ON immobile (feu rouge, livraison) n'a pas besoin
+    // de precision et 10s gaspillerait batterie + data inutilement.
+    if (state === 'MOVING') return 10;
+    if (state === 'IDLE_ENGINE_ON') return 30;
 
     // STOPPED — only switch to 300s if ignition has been OFF for > 10 min.
     // This avoids flipping during a short stop (e.g., red light, brief delivery).
@@ -240,8 +252,10 @@ export class TrackerFixModeService {
     reason: string,
     contextSnapshot: Record<string, unknown>,
   ): Promise<{ commandId: string } | null> {
-    // Hard cap.
-    const target = Math.min(Math.max(30, desiredS), HARD_CAP_S);
+    // V1.13 — Hard cap : intervalle clampe entre 10s (haute precision MOVING)
+    // et 300s (HARD_CAP_S, anti-spam economie batterie). Le clamp inferieur
+    // passe de 30 a 10 pour autoriser le mode haute precision.
+    const target = Math.min(Math.max(10, desiredS), HARD_CAP_S);
 
     // No-op if already aligned.
     if (tracker.desiredFixIntervalS === target && tracker.currentFixIntervalS === target) {
