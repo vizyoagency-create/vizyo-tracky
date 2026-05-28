@@ -292,7 +292,7 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
 <div class="rv hbdg"><div class="hbd"></div><span style="color:var(--v4);font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Traçage GPS Professionnel</span></div>
 <h1 class="rv hh">Votre flotte sous<br><span class="gt">contrôle total.</span></h1>
 <p class="rv tl" style="color:var(--g4);line-height:1.75;margin-bottom:2rem;max-width:36rem">Localisez vos véhicules en temps réel, programmez la coupure moteur, recevez des alertes intelligentes. <strong style="color:var(--g2)">Vizyo Tracky</strong> vous donne le pouvoir sur votre flotte — depuis votre téléphone.</p>
-<div class="rv f g3 fw mb10"><a href="https://wa.me/33652077038?text=Bonjour%2C%20je%20souhaite%20une%20démo%20de%20Vizyo%20Tracky." class="btn bp bl"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479c0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>Demander une démo</a><a href="#feat" class="btn bo">Découvrir <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></a></div>
+<div class="rv f g3 fw mb10"><a href="javascript:void(0)" onclick="openLeadForm()" class="btn bp bl"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Demander une démo</a><a href="#feat" class="btn bo">Découvrir <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></a></div>
 <div class="rv f fi g6 fw" style="font-size:.875rem;color:var(--g5)"><div class="f fi g2"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--grn)" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><span>Installation incluse</span></div><div class="f fi g2"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--grn)" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><span>Sans engagement</span></div><div class="f fi g2 smh"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--grn)" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><span>Support local</span></div></div>
 </div>
 <div class="rv" style="display:flex;justify-content:center"><div class="rel">
@@ -727,15 +727,29 @@ Télécharger le DPA et la fiche sécurité (.pdf)</a>
 <!-- Exit-intent modal -->
 <div class="eim-overlay" id="eim-overlay">
 <div class="eim-bg" onclick="closeEim()"></div>
-<div class="eim-card">
+<div class="eim-card" style="max-width:480px;text-align:left">
 <button class="eim-close" onclick="closeEim()" aria-label="Fermer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+<div style="text-align:center;margin-bottom:1.25rem">
 <div class="eim-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--v5)" stroke-width="1.5"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg></div>
 <p class="lbl" style="margin-bottom:.5rem">Offre exclusive</p>
-<h3 class="tw fb7" style="font-size:1.5rem;margin-bottom:.5rem">Démo gratuite + audit flotte offert</h3>
-<p class="ts tg" style="line-height:1.6;margin-bottom:.5rem">Nos experts analysent votre flotte et vous proposent un plan d'optimisation personnalisé. Sans engagement.</p>
-<p class="reas" style="margin-bottom:1.25rem">Réponse en moins de 2h &bull; Pas de spam &bull; Sans engagement</p>
-<a href="https://wa.me/33652077038?text=Bonjour%2C%20je%20souhaite%20profiter%20de%20la%20démo%20gratuite%20et%20de%20l'audit%20flotte." class="btn bp wf" style="margin-bottom:.75rem"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479c0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>Réserver ma démo gratuite</a>
-<button onclick="closeEim()" style="font-size:.8125rem;color:var(--g5);background:none;border:none;cursor:pointer">Non merci</button>
+<h3 class="tw fb7" style="font-size:1.5rem;margin-bottom:.5rem">Demandez votre démo gratuite</h3>
+<p class="ts tg" style="line-height:1.6;margin-bottom:0">Nos experts analysent votre flotte et vous proposent un plan personnalisé. Réponse en moins de 2h.</p>
+</div>
+<form id="lead-form" onsubmit="return submitLeadForm(event)" style="display:flex;flex-direction:column;gap:.75rem">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
+<div><label style="display:block;font-size:.7rem;font-weight:600;color:var(--g4);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem">Nom *</label><input type="text" name="name" required style="width:100%;padding:.6rem .75rem;background:var(--d5);border:1px solid var(--brds);border-radius:.5rem;color:var(--g1);font-size:.875rem;font-family:inherit;outline:none;transition:border-color .2s" onfocus="this.style.borderColor='var(--v5)'" onblur="this.style.borderColor='var(--brds)'"></div>
+<div><label style="display:block;font-size:.7rem;font-weight:600;color:var(--g4);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem">Email *</label><input type="email" name="email" required style="width:100%;padding:.6rem .75rem;background:var(--d5);border:1px solid var(--brds);border-radius:.5rem;color:var(--g1);font-size:.875rem;font-family:inherit;outline:none;transition:border-color .2s" onfocus="this.style.borderColor='var(--v5)'" onblur="this.style.borderColor='var(--brds)'"></div>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
+<div><label style="display:block;font-size:.7rem;font-weight:600;color:var(--g4);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem">Téléphone</label><input type="tel" name="phone" style="width:100%;padding:.6rem .75rem;background:var(--d5);border:1px solid var(--brds);border-radius:.5rem;color:var(--g1);font-size:.875rem;font-family:inherit;outline:none;transition:border-color .2s" onfocus="this.style.borderColor='var(--v5)'" onblur="this.style.borderColor='var(--brds)'"></div>
+<div><label style="display:block;font-size:.7rem;font-weight:600;color:var(--g4);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem">Société</label><input type="text" name="company" style="width:100%;padding:.6rem .75rem;background:var(--d5);border:1px solid var(--brds);border-radius:.5rem;color:var(--g1);font-size:.875rem;font-family:inherit;outline:none;transition:border-color .2s" onfocus="this.style.borderColor='var(--v5)'" onblur="this.style.borderColor='var(--brds)'"></div>
+</div>
+<div><label style="display:block;font-size:.7rem;font-weight:600;color:var(--g4);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem">Taille de flotte</label><select name="fleetSize" style="width:100%;padding:.6rem .75rem;background:var(--d5);border:1px solid var(--brds);border-radius:.5rem;color:var(--g1);font-size:.875rem;font-family:inherit;outline:none;cursor:pointer"><option value="">Sélectionnez...</option><option value="1-10">1 — 10 véhicules</option><option value="11-50">11 — 50 véhicules</option><option value="51-150">51 — 150 véhicules</option><option value="150+">150+ véhicules</option></select></div>
+<div><label style="display:block;font-size:.7rem;font-weight:600;color:var(--g4);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem">Message</label><textarea name="message" rows="3" style="width:100%;padding:.6rem .75rem;background:var(--d5);border:1px solid var(--brds);border-radius:.5rem;color:var(--g1);font-size:.875rem;font-family:inherit;outline:none;resize:vertical;transition:border-color .2s" onfocus="this.style.borderColor='var(--v5)'" onblur="this.style.borderColor='var(--brds)'" placeholder="Décrivez votre besoin..."></textarea></div>
+<button type="submit" id="lead-submit" class="btn bp wf" style="margin-top:.25rem;padding:.75rem;font-size:.9375rem">Envoyer ma demande</button>
+<p id="lead-msg" style="display:none;text-align:center;font-size:.8125rem;margin:0"></p>
+<p style="text-align:center;font-size:.7rem;color:var(--g5);margin:0">Sans engagement — Pas de spam</p>
+</form>
 </div>
 </div>
 
@@ -900,6 +914,55 @@ var fabStack=document.getElementById('fab-stack');
 sbb.classList.remove('show');
 sbb.style.display='none';
 if(fabStack)fabStack.classList.remove('shifted');
+}
+
+// --- Lead form submission ---
+function submitLeadForm(e){
+e.preventDefault();
+var form=document.getElementById('lead-form');
+var btn=document.getElementById('lead-submit');
+var msg=document.getElementById('lead-msg');
+var data={
+name:form.name.value.trim(),
+email:form.email.value.trim(),
+phone:form.phone.value.trim()||undefined,
+company:form.company.value.trim()||undefined,
+fleetSize:form.fleetSize.value||undefined,
+message:form.message.value.trim()||undefined
+};
+if(!data.name||!data.email)return;
+btn.disabled=true;
+btn.textContent='Envoi en cours...';
+msg.style.display='none';
+fetch('https://app-tracky.vizyoagency.com/api/leads/contact',{
+method:'POST',
+headers:{'Content-Type':'application/json'},
+body:JSON.stringify(data)
+}).then(function(r){return r.json()}).then(function(res){
+if(res.ok){
+msg.style.display='block';
+msg.style.color='var(--v5)';
+msg.textContent=res.isResubmission?'Demande mise \u00e0 jour ! Nous revenons vers vous rapidement.':'Demande envoy\u00e9e ! Nous revenons vers vous en moins de 2h.';
+form.reset();
+setTimeout(function(){closeEim()},3000);
+}else{
+msg.style.display='block';
+msg.style.color='#ef4444';
+msg.textContent='Erreur lors de l\'envoi. R\u00e9essayez ou contactez-nous via WhatsApp.';
+}
+}).catch(function(){
+msg.style.display='block';
+msg.style.color='#ef4444';
+msg.textContent='Erreur r\u00e9seau. V\u00e9rifiez votre connexion.';
+}).finally(function(){
+btn.disabled=false;
+btn.textContent='Envoyer ma demande';
+});
+return false;
+}
+function openLeadForm(){
+document.getElementById('eim-overlay').classList.add('show');
+document.body.style.overflow='hidden';
 }
 
 </script>

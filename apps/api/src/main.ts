@@ -21,9 +21,12 @@ async function bootstrap() {
   await redisIoAdapter.connectToRedis();
   app.useWebSocketAdapter(redisIoAdapter);
 
+  const corsOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:4200')
+    .split(',')
+    .map((o) => o.trim());
   app.enableCors({
-    origin: process.env.CORS_ORIGIN ?? 'http://localhost:4200',
-    credentials: true, // necessaire pour que le browser envoie les cookies cross-origin
+    origin: corsOrigins,
+    credentials: true,
   });
   app.setGlobalPrefix('api');
   app.useGlobalPipes(

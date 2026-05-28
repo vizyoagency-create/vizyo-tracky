@@ -39,6 +39,7 @@ import { TrackerCommandsModule } from './tracker-commands/tracker-commands.modul
 import { TrackerFixModeModule } from './tracker-fix-mode/tracker-fix-mode.module';
 import { VehicleSchedulesModule } from './vehicle-schedules/vehicle-schedules.module';
 import { HealthController } from './health/health.controller';
+import { LeadsModule } from './leads/leads.module';
 import { VehiclesModule } from './vehicles/vehicles.module';
 
 @Module({
@@ -103,6 +104,7 @@ import { VehiclesModule } from './vehicles/vehicles.module';
     PermissionsModule,
     VehicleSchedulesModule,
     InternalModule,
+    LeadsModule,
     UsersModule,
     DriversModule,
     SurveillanceModule,

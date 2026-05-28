@@ -859,6 +859,29 @@ model BackupRun {
   @@map("backup_runs")
 }
 
+/// Lead capturé via le formulaire de la landing page.
+/// Stocké en DB + notification email à l'admin.
+model Lead {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  email       String
+  phone       String?
+  company     String?
+  fleetSize   String?  // ex: "1-10", "11-50", "50+"
+  message     String?  @db.Text
+  source      String   @default("lp") // "lp" | "whatsapp" | "manual"
+  status      String   @default("NEW") // "NEW" | "CONTACTED" | "CONVERTED" | "REJECTED"
+  ipAddress   String?
+  submissionCount Int  @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([email])
+  @@index([status])
+  @@index([createdAt(sort: Desc)])
+  @@map("leads")
+}
+
 model SmsLog {
   id          String   @id @default(uuid()) @db.Uuid
   direction   String   // 'OUT' | 'IN'
