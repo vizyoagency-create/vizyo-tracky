@@ -7,6 +7,7 @@ import {
   ElementRef,
   HostListener,
   inject,
+  NgZone,
   OnDestroy,
   signal,
   viewChild,
@@ -1737,6 +1738,7 @@ const MAX_FRAME_DT_MS = 100;
       cursor: pointer;
       flex-shrink: 0;
       transition: background 120ms, color 120ms;
+      touch-action: manipulation;
     }
     .bn-vcard-close:active { background: #eee; color: #333; }
     .bn-vcard-actions {
@@ -1765,6 +1767,7 @@ const MAX_FRAME_DT_MS = 100;
       flex: 1;
       transition: background 120ms, color 120ms;
       white-space: nowrap;
+      touch-action: manipulation;
     }
     .bn-vcard-act:active { background: #ebebeb; transform: scale(0.96); }
     .bn-vcard-act--danger {
@@ -1782,6 +1785,7 @@ const MAX_FRAME_DT_MS = 100;
 export class MapComponent implements AfterViewInit, OnDestroy {
   protected readonly realtime = inject(RealtimeService);
   protected readonly styles = inject(MapStyleService);
+  private readonly zone = inject(NgZone);
   private readonly auth = inject(AuthService);
   private readonly geofencesApi = inject(GeofencesApiService);
   private readonly vehiclesApi = inject(VehiclesApiService);
@@ -3292,7 +3296,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         const abort = new AbortController();
         el.addEventListener('click', (ev) => {
           ev.stopPropagation();
-          this.openMarkerPopup(pos.trackerId);
+          // zone.run : le listener DOM natif tourne hors zone Angular, mais
+          // openMarkerPopup peut setter des signals (baanoolCard) qui doivent
+          // declencher un cycle CD pour rendre la bottom card immediatement.
+          this.zone.run(() => this.openMarkerPopup(pos.trackerId));
         }, { signal: abort.signal });
         el.addEventListener('dblclick', (ev) => {
           ev.stopPropagation();
@@ -3448,20 +3455,30 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       const pos = positions.find((p) => p.trackerId === this.activePopupTrackerId);
       if (pos) {
         // Baanool bottom card : mise a jour reactive via signal.
-        if (this.baanoolCard()) {
+        // On ne set() que si les valeurs affichees ont change, pour eviter
+        // des re-renders constants qui avalent les taps sur les boutons.
+        const currentCard = this.baanoolCard();
+        if (currentCard) {
           const patched = this.patchIgnitionFromCommands(pos);
-          const meta = this.vehicleMeta.get(pos.vehicleId) ?? { type: 'OTHER', plate: '?' };
-          this.baanoolCard.set({
-            trackerId: pos.trackerId,
-            vehicleId: pos.vehicleId,
-            plate: meta.plate,
-            type: meta.type,
-            ignition: patched.ignition,
-            speedKmh: patched.speedKmh,
-            lat: pos.lat,
-            lng: pos.lng,
-            cutActive: this.isCutActiveForTracker(pos.trackerId),
-          });
+          const cutActive = this.isCutActiveForTracker(pos.trackerId);
+          if (currentCard.speedKmh !== patched.speedKmh ||
+              currentCard.ignition !== patched.ignition ||
+              currentCard.cutActive !== cutActive ||
+              currentCard.lat !== pos.lat ||
+              currentCard.lng !== pos.lng) {
+            const meta = this.vehicleMeta.get(pos.vehicleId) ?? { type: 'OTHER', plate: '?' };
+            this.baanoolCard.set({
+              trackerId: pos.trackerId,
+              vehicleId: pos.vehicleId,
+              plate: meta.plate,
+              type: meta.type,
+              ignition: patched.ignition,
+              speedKmh: patched.speedKmh,
+              lat: pos.lat,
+              lng: pos.lng,
+              cutActive,
+            });
+          }
         } else if (this.currentPopup) {
           this.currentPopup.setHTML(this.buildPopupHtml(this.patchIgnitionFromCommands(pos)));
           setTimeout(() => this.wirePopupActions(this.activePopupTrackerId!, this.activePopupVehicleId!), 0);
