@@ -807,49 +807,50 @@ const MAX_FRAME_DT_MS = 100;
     @if (baanoolCard()) {
       <div class="bn-vcard-backdrop" (click)="closeBaanoolCard()"></div>
       <div class="bn-vcard">
+        <div class="bn-vcard-handle" (click)="closeBaanoolCard()"></div>
         <div class="bn-vcard-header">
-          <div class="bn-vcard-info">
-            <span class="bn-vcard-plate">{{ baanoolCard()!.plate }}</span>
-            <span class="bn-vcard-sep">·</span>
-            <span class="bn-vcard-status" [class.on]="baanoolCard()!.ignition">
-              {{ baanoolCard()!.ignition ? 'ON' : 'OFF' }}
-            </span>
-            <span class="bn-vcard-sep">·</span>
-            <span class="bn-vcard-speed">{{ baanoolCard()!.speedKmh | number:'1.0-0' }} km/h</span>
+          <div class="bn-vcard-left">
+            <div class="bn-vcard-plate">{{ baanoolCard()!.plate }}</div>
+            <div class="bn-vcard-badges">
+              <span class="bn-vcard-badge" [class.on]="baanoolCard()!.ignition">
+                <span class="bn-vcard-badge-dot"></span>
+                {{ baanoolCard()!.ignition ? 'Contact ON' : 'Contact OFF' }}
+              </span>
+              <span class="bn-vcard-speed-badge"
+                    [style.color]="baanoolCard()!.speedKmh > 90 ? '#ef4444' : baanoolCard()!.speedKmh > 50 ? '#f59e0b' : baanoolCard()!.speedKmh > 0 ? '#10E0A0' : '#999'">
+                {{ baanoolCard()!.speedKmh | number:'1.0-0' }} km/h
+              </span>
+            </div>
           </div>
           <button class="bn-vcard-close" (click)="closeBaanoolCard()" aria-label="Fermer">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
         <div class="bn-vcard-actions">
-          <button class="bn-vcard-act" (click)="baanoolCardAction('follow')">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+          <button class="bn-vcard-act bn-vcard-act--primary" (click)="baanoolCardAction('follow')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
             <span>Suivre</span>
           </button>
           <button class="bn-vcard-act" (click)="baanoolCardAction('detail')">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-            <span>Détails</span>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <span>Fiche</span>
           </button>
           <button class="bn-vcard-act" (click)="baanoolCardAction('replay1h')">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
             <span>Replay</span>
           </button>
           <button class="bn-vcard-act" (click)="baanoolCardAction('navigate')">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg>
-            <span>Itinéraire</span>
-          </button>
-          <button class="bn-vcard-act" (click)="baanoolCardAction('gmaps')">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            <span>Maps</span>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+            <span>Y aller</span>
           </button>
           @if (baanoolCard()!.cutActive) {
             <button class="bn-vcard-act bn-vcard-act--restore" (click)="baanoolCardAction('restore')">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
               <span>Rallumer</span>
             </button>
           } @else {
             <button class="bn-vcard-act bn-vcard-act--danger" (click)="baanoolCardAction('cut')">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
               <span>Couper</span>
             </button>
           }
@@ -1648,16 +1649,17 @@ const MAX_FRAME_DT_MS = 100;
 
     /* ════════════════════════════════════════════════════════════
        BAANOOL BOTTOM CARD — card fixe en bas au clic marker.
-       Design discret : une ligne d'info + row d'icones actions.
+       Glassmorphism + handle + badges + actions colorees.
        ════════════════════════════════════════════════════════════ */
     .bn-vcard-backdrop {
       position: fixed;
       inset: 0;
       z-index: 1800;
+      background: rgba(0, 0, 0, 0.15);
     }
     @keyframes bn-vcard-slide-up {
-      from { transform: translateY(100%); opacity: 0; }
-      to { transform: translateY(0); opacity: 1; }
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
     }
     .bn-vcard {
       position: fixed;
@@ -1665,73 +1667,92 @@ const MAX_FRAME_DT_MS = 100;
       left: 0;
       right: 0;
       z-index: 1801;
-      animation: bn-vcard-slide-up 250ms cubic-bezier(0.16, 1, 0.3, 1);
-      background: white;
-      border-radius: 16px 16px 0 0;
-      box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.12);
-      padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+      animation: bn-vcard-slide-up 280ms cubic-bezier(0.16, 1, 0.3, 1);
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(20px) saturate(1.4);
+      -webkit-backdrop-filter: blur(20px) saturate(1.4);
+      border-radius: 20px 20px 0 0;
+      box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.10), 0 -2px 8px rgba(0, 0, 0, 0.04);
+      padding: 0 20px calc(16px + env(safe-area-inset-bottom));
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 16px;
+    }
+    /* Handle drag visuel — tap pour fermer */
+    .bn-vcard-handle {
+      align-self: center;
+      width: 36px;
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(0, 0, 0, 0.12);
+      margin: 10px 0 2px;
+      cursor: pointer;
+      touch-action: manipulation;
     }
     .bn-vcard-header {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: space-between;
-      gap: 8px;
+      gap: 12px;
     }
-    .bn-vcard-info {
+    .bn-vcard-left {
       display: flex;
-      align-items: center;
+      flex-direction: column;
       gap: 6px;
-      flex-wrap: wrap;
       min-width: 0;
     }
     .bn-vcard-plate {
       font-family: 'Poppins', sans-serif;
       font-weight: 700;
-      font-size: 15px;
-      color: #1a1a1a;
-      letter-spacing: -0.01em;
+      font-size: 17px;
+      color: #111;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
     }
-    .bn-vcard-sep {
-      color: #ccc;
-      font-size: 12px;
+    .bn-vcard-badges {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
     }
-    .bn-vcard-status {
+    .bn-vcard-badge {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
-      font-size: 12px;
+      gap: 5px;
+      padding: 3px 9px;
+      border-radius: 9999px;
+      font-size: 11px;
       font-weight: 600;
-      color: #999;
+      background: rgba(156, 163, 175, 0.12);
+      color: #888;
     }
-    .bn-vcard-status::before {
-      content: '';
+    .bn-vcard-badge.on {
+      background: rgba(16, 224, 160, 0.12);
+      color: #059669;
+    }
+    .bn-vcard-badge-dot {
       width: 6px;
       height: 6px;
       border-radius: 50%;
       background: #ccc;
     }
-    .bn-vcard-status.on {
-      color: #059669;
-    }
-    .bn-vcard-status.on::before {
+    .bn-vcard-badge.on .bn-vcard-badge-dot {
       background: #10E0A0;
-      box-shadow: 0 0 0 2px rgba(16, 224, 160, 0.25);
+      box-shadow: 0 0 0 2px rgba(16, 224, 160, 0.3);
     }
-    .bn-vcard-speed {
-      font-size: 12px;
-      font-weight: 600;
-      color: #666;
+    .bn-vcard-speed-badge {
+      font-family: 'Poppins', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
     }
     .bn-vcard-close {
-      width: 32px;
-      height: 32px;
+      width: 30px;
+      height: 30px;
       border-radius: 50%;
       border: none;
-      background: #f5f5f5;
-      color: #999;
+      background: rgba(0, 0, 0, 0.06);
+      color: #888;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -1739,47 +1760,49 @@ const MAX_FRAME_DT_MS = 100;
       flex-shrink: 0;
       transition: background 120ms, color 120ms;
       touch-action: manipulation;
+      margin-top: 2px;
     }
-    .bn-vcard-close:active { background: #eee; color: #333; }
+    .bn-vcard-close:active { background: rgba(0, 0, 0, 0.12); color: #333; }
     .bn-vcard-actions {
       display: flex;
-      gap: 4px;
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-      scrollbar-width: none;
-      padding-bottom: 2px;
+      gap: 8px;
     }
-    .bn-vcard-actions::-webkit-scrollbar { display: none; }
     .bn-vcard-act {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 4px;
-      min-width: 56px;
-      padding: 10px 8px;
-      border-radius: 12px;
+      justify-content: center;
+      gap: 6px;
+      flex: 1;
+      padding: 12px 4px 10px;
+      border-radius: 14px;
       border: none;
-      background: #f7f7f7;
+      background: rgba(0, 0, 0, 0.04);
       color: #555;
       font-size: 10px;
       font-weight: 600;
+      letter-spacing: 0.01em;
       cursor: pointer;
-      flex: 1;
-      transition: background 120ms, color 120ms;
+      transition: background 120ms, transform 80ms;
       white-space: nowrap;
       touch-action: manipulation;
     }
-    .bn-vcard-act:active { background: #ebebeb; transform: scale(0.96); }
+    .bn-vcard-act:active { transform: scale(0.94); background: rgba(0, 0, 0, 0.08); }
+    .bn-vcard-act--primary {
+      background: rgba(16, 224, 160, 0.12);
+      color: #047857;
+    }
+    .bn-vcard-act--primary:active { background: rgba(16, 224, 160, 0.22); }
     .bn-vcard-act--danger {
       color: #dc2626;
       background: rgba(239, 68, 68, 0.08);
     }
-    .bn-vcard-act--danger:active { background: rgba(239, 68, 68, 0.14); }
+    .bn-vcard-act--danger:active { background: rgba(239, 68, 68, 0.16); }
     .bn-vcard-act--restore {
       color: #059669;
-      background: rgba(16, 224, 160, 0.08);
+      background: rgba(16, 224, 160, 0.10);
     }
-    .bn-vcard-act--restore:active { background: rgba(16, 224, 160, 0.14); }
+    .bn-vcard-act--restore:active { background: rgba(16, 224, 160, 0.18); }
   `],
 })
 export class MapComponent implements AfterViewInit, OnDestroy {
