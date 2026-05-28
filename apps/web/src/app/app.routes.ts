@@ -83,7 +83,7 @@ export const routes: Routes = [
         canActivate: [permissionGuard('groups_view')],
         loadComponent: () =>
           import('./features/vehicle-groups/vehicle-groups.page').then((m) => m.VehicleGroupsPageComponent),
-        data: { title: 'Groupes de vehicules' },
+        data: { title: 'Groupes de véhicules' },
       },
       {
         path: 'alerts',
