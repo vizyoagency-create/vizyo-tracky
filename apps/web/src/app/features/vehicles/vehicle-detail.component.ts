@@ -850,20 +850,36 @@ import { relativeTime } from '../../shared/utils/relative-time';
       margin-left: -16px;
       margin-right: -16px;
     }
-    /* Fade gradient à droite indiquant qu'il y a plus de tabs */
+    /* V1.12 — Fade gradient des DEUX cotes pour indiquer le scroll horizontal.
+       Avant : un seul fade a droite, peu visible. Maintenant : gauche+droite,
+       et plus larges (40px vs 32px). Aide les users a comprendre qu'il y a
+       d'autres onglets a faire defiler. */
+    .vd-tabs-wrapper::before,
     .vd-tabs-wrapper::after {
       content: '';
       position: absolute;
-      right: 0; top: 0; bottom: 1px;
-      width: 32px;
+      top: 0; bottom: 1px;
+      width: 40px;
       pointer-events: none;
-      background: linear-gradient(to right, transparent, var(--bg-primary) 70%);
       z-index: 1;
+      opacity: 0.9;
+    }
+    .vd-tabs-wrapper::before {
+      left: 0;
+      background: linear-gradient(to left, transparent, var(--bg-primary) 70%);
+    }
+    .vd-tabs-wrapper::after {
+      right: 0;
+      background: linear-gradient(to right, transparent, var(--bg-primary) 70%);
     }
     .vd-tabs {
       display: flex;
       gap: 2px;
       overflow-x: auto;
+      /* overflow-y explicite : 'overflow-x: auto' force 'overflow-y: auto'
+         par defaut (spec CSS), ce qui peut creer une scrollbar verticale
+         parasite si la hauteur du contenu deborde d'un pixel. */
+      overflow-y: hidden;
       scrollbar-width: none;
       padding: 0 16px;
       scroll-snap-type: x proximity;
@@ -1424,10 +1440,13 @@ export class VehicleDetailComponent implements OnInit {
 
   /**
    * Plage temporelle pour les onglets Historique et Trajets.
-   * Default = `today` (du 00:00 du jour jusqu'a maintenant). L'utilisateur peut
-   * elargir vers Hier, 7j, 30j, Tout, ou choisir une plage personnalisee.
+   * Default = `7d` (les 7 derniers jours). Le defaut `today` etait trop
+   * restrictif : sur la plupart des vehicules, l'onglet Trajets s'ouvrait
+   * vide ("Aucun trajet") ce qui donnait l'impression d'une UI cassee
+   * alors qu'il y avait des trajets recents. L'user peut toujours filtrer
+   * sur Aujourd'hui, Hier, 30j, Tout, ou plage personnalisee.
    */
-  protected readonly dateRange = signal<'today' | 'yesterday' | '7d' | '30d' | 'all' | 'custom'>('today');
+  protected readonly dateRange = signal<'today' | 'yesterday' | '7d' | '30d' | 'all' | 'custom'>('7d');
   /** Bornes (YYYY-MM-DD) utilisees uniquement quand dateRange = 'custom'. */
   protected readonly customFrom = signal<string>('');
   protected readonly customTo = signal<string>('');
@@ -1535,16 +1554,31 @@ export class VehicleDetailComponent implements OnInit {
   });
 
   protected readonly tabs = computed(() => {
-    const all: { key: string; label: string; icon: any; perm?: string }[] = [
+    // V1.12 — Ordre revu pour grouper logiquement :
+    //   Vue temps reel : Carte
+    //   Donnees passe   : Trajets + Historique (cote a cote)
+    //   Securite        : Alertes + Surveillance (cote a cote)
+    //   Configuration   : Horaires + Commandes (a la fin)
+    //
+    // Perm surveillance passee de `alerts_view` (lecture) a `alerts_acknowledge`
+    // (action) car armer/desarmer la surveillance est une action sensible
+    // (equivalent alarme anti-vol) — un viewer pur ne doit pas pouvoir le faire.
+    //
+    // Onglet Commandes filtre si pas de tracker : sinon l'onglet apparait
+    // pour ne montrer que "Aucun tracker associé", ce qui est de la noise.
+    const hasTracker = !!this.vehicle()?.tracker;
+    const all: { key: string; label: string; icon: any; perm?: string; show?: boolean }[] = [
       { key: 'map', label: 'Carte', icon: Map },
       { key: 'trips', label: 'Trajets', icon: Route },
-      { key: 'schedule', label: 'Horaires', icon: Clock, perm: 'engine_control' },
-      { key: 'alerts', label: 'Alertes', icon: Bell, perm: 'alerts_view' },
-      { key: 'surveillance', label: 'Surveillance', icon: ShieldCheck, perm: 'alerts_view' },
       { key: 'history', label: 'Historique', icon: History },
-      { key: 'commands', label: 'Commandes', icon: Zap, perm: 'engine_control' },
+      { key: 'alerts', label: 'Alertes', icon: Bell, perm: 'alerts_view' },
+      { key: 'surveillance', label: 'Surveillance', icon: ShieldCheck, perm: 'alerts_acknowledge', show: hasTracker },
+      { key: 'schedule', label: 'Horaires', icon: Clock, perm: 'engine_control' },
+      { key: 'commands', label: 'Commandes', icon: Zap, perm: 'engine_control', show: hasTracker },
     ];
-    return all.filter((t) => !t.perm || this.perms.can(t.perm as any));
+    return all
+      .filter((t) => t.show !== false)
+      .filter((t) => !t.perm || this.perms.can(t.perm as any));
   });
 
   private lastAlertCount = -1;
