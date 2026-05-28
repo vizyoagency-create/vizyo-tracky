@@ -1889,10 +1889,20 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     this.map.on('pitch', () => this.mapPitch.set(this.map!.getPitch()));
 
     // Quand l'utilisateur drag manuellement en mode follow, sortir du mode.
+    // V1.12 — On en profite pour notifier les overlays (panel Baanool) qu'il
+    // y a interaction map : 'dragstart' fire UNIQUEMENT sur drag user
+    // (pas sur flyTo/easeTo programmatiques), donc safe sans filtre.
     this.map.on('dragstart', () => {
       if (this.cameraMode() !== 'free') {
         this.setCameraMode('free');
       }
+      this.mapBridge.notifyMapInteraction();
+    });
+
+    // V1.12 — Zoom user : zoomstart avec originalEvent defined = vrai geste
+    // (molette/pinch/double-click). Programmatique = pas d'originalEvent.
+    this.map.on('zoomstart', (e) => {
+      if (e.originalEvent) this.mapBridge.notifyMapInteraction();
     });
 
     // Right-click context menu.
@@ -1933,6 +1943,9 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     // Click pour la mesure de distance.
     this.map.on('click', (e) => {
       this.closeContextMenu();
+      // V1.12 — Click sur le fond de map = aussi un signal d'interaction
+      // pour fermer les overlays. movestart ne fire pas sur un simple tap.
+      this.mapBridge.notifyMapInteraction();
       if (this.measureMode()) {
         const pts = [...this.measurePoints(), { lat: e.lngLat.lat, lng: e.lngLat.lng }];
         this.measurePoints.set(pts);
