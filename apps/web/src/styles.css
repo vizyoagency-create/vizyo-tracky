@@ -308,10 +308,12 @@ button, a, [role="button"], input[type="button"], input[type="submit"], label {
 .layout--baanool .tracky-style-picker,
 .layout--baanool .tracky-calques-panel,
 .layout--baanool .tracky-mobile-sheet,
-.layout--baanool app-bottom-sheet,
 .layout--baanool .skip-link {
   display: none !important;
 }
+/* IMPORTANT : ne PAS cacher app-bottom-sheet en mode baanool — c'est le menu
+   burger ouvert depuis l'overlay Baanool (seul moyen de navigation entre
+   /map /alerts /vehicules /parametres). */
 
 /* Scrollbars : invisibles sur tactile, fines sur desktop avec souris */
 ::-webkit-scrollbar { width: 0; height: 0; }

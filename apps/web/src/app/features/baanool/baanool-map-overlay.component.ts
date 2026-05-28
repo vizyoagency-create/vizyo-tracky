@@ -8,6 +8,7 @@ import {
 } from 'lucide-angular';
 import { AuthService } from '../../core/services/auth.service';
 import { MapBridgeService } from '../../core/services/map-bridge.service';
+import { MenuStateService } from '../../core/services/menu-state.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { VehicleGroupsService, type VehicleGroup } from '../../core/services/vehicle-groups.service';
 
@@ -31,7 +32,7 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
   template: `
       <!-- TOP-LEFT : burger + recentrer + alertes -->
       <div class="bn-top-left">
-        <button class="bn-circle" (click)="menuClick.emit()" aria-label="Menu">
+        <button class="bn-circle" (click)="openMenu()" aria-label="Menu">
           <lucide-icon [img]="MenuIcon" [size]="22"></lucide-icon>
         </button>
         <button class="bn-circle" (click)="mapBridge.requestRecenter()" aria-label="Recentrer">
@@ -299,10 +300,15 @@ export class BaanoolMapOverlayComponent implements OnInit {
   private readonly auth = inject(AuthService);
   private readonly realtime = inject(RealtimeService);
   private readonly vehicleGroupsService = inject(VehicleGroupsService);
+  private readonly menuState = inject(MenuStateService);
   protected readonly mapBridge = inject(MapBridgeService);
 
-  @Output() menuClick = new EventEmitter<void>();
   @Output() groupClick = new EventEmitter<string>();
+
+  /** Bug fix : ouvrir le menu via service partage au lieu d'EventEmitter,
+   *  qui ne propage pas son listener (menuClick) au parent dashboard-layout
+   *  dans certains contextes Angular HMR + iOS PWA standalone. */
+  openMenu(): void { this.menuState.open(); }
 
   // Icons
   protected readonly MenuIcon = Menu;

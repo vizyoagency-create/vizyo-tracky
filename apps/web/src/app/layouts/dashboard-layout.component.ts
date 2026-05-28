@@ -40,6 +40,7 @@ import { PushPromptComponent } from '../shared/ui/push-prompt/push-prompt.compon
 import { BottomSheetComponent } from '../shared/ui/bottom-sheet/bottom-sheet.component';
 import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wizard.component';
 import { BaanoolMapOverlayComponent } from '../features/baanool/baanool-map-overlay.component';
+import { MenuStateService } from '../core/services/menu-state.service';
 
 @Component({
   selector: 'app-dashboard-layout',
@@ -216,11 +217,11 @@ import { BaanoolMapOverlayComponent } from '../features/baanool/baanool-map-over
 
     <!-- V1.12 — Mode Baanool : overlay HORS du .layout pour eviter que
          overflow:hidden de .layout ne piege le position:fixed sur iOS
-         Safari standalone (cree un containing block parasite). -->
+         Safari standalone (cree un containing block parasite).
+         L'overlay ouvre le menu via MenuStateService directement
+         (l'EventEmitter ne propageait pas son listener). -->
     @if (isBaanoolMapPage()) {
-      <app-baanool-map-overlay
-        (menuClick)="mobileMenuOpen.set(true)"
-      />
+      <app-baanool-map-overlay />
     }
   `,
   styles: [`
@@ -672,10 +673,15 @@ export class DashboardLayoutComponent {
       || (navigator as any).standalone === true;
     return isIos && isStandalone;
   })();
+  protected readonly menuState = inject(MenuStateService);
   protected readonly collapsed = signal(false);
   protected readonly fullscreen = signal(false);
   protected readonly pageTitle = signal('Tableau de bord');
-  protected readonly mobileMenuOpen = signal(false);
+  /** Alias vers le service partage (lecture seule depuis le template).
+   *  V1.12 — Le state du menu mobile vit dans MenuStateService pour permettre
+   *  au BaanoolMapOverlay de l'ouvrir sans passer par EventEmitter
+   *  (bug iOS PWA + HMR : (menuClick) listener pas attache). */
+  protected readonly mobileMenuOpen = this.menuState.mobileMenuOpen;
   /** V1.12 — Mode UI Baanool : layout simplifie, sidebar+bottom-bar cachees,
    *  navigation via burger uniquement, contenu en pleine largeur. */
   protected readonly isBaanoolMode = computed(() =>
