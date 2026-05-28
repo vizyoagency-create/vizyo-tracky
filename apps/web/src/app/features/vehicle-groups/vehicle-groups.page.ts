@@ -13,11 +13,10 @@ import { VehicleGroupsTabComponent } from '../vehicles/vehicle-groups-tab.compon
   standalone: true,
   imports: [VehicleGroupsTabComponent],
   template: `
+    <!-- V1.12 — Le titre est deja affiche dans le top-bar (data.title de la
+         route) et la description provient du composant tab. Pas de duplication. -->
     <div class="px-6 py-6">
-      <h1 class="text-2xl font-bold text-fg-primary mb-1">Groupes de vehicules</h1>
-      <p class="text-sm text-fg-secondary mb-6">
-        Organisez vos vehicules en groupes pour gerer les acces par equipe ou par usage.
-      </p>
+      <h1 class="text-2xl font-bold text-fg-primary mb-4">Groupes de véhicules</h1>
       <app-vehicle-groups-tab />
     </div>
   `,

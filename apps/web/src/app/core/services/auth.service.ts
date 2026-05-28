@@ -111,6 +111,30 @@ export class AuthService {
     this._user.set(null);
   }
 
+  /** V1.12 — Refetch le profil utilisateur depuis l'API et synchronise le
+   *  signal local + localStorage. Utile pour rafraichir les preferences (ex:
+   *  uiMode change depuis une autre tab/session, ou admin a modifie le role
+   *  via UI). Appele au mount du shell + au regain de focus de l'onglet. */
+  async refreshMe(): Promise<void> {
+    if (!this.token) return;
+    try {
+      const res = await fetch('/api/users/me', {
+        credentials: 'include',
+        headers: { Authorization: `Bearer ${this.token}` },
+      });
+      if (!res.ok) return;
+      const fresh = await res.json() as Partial<AuthUser>;
+      const current = this._user();
+      if (current) {
+        const updated: AuthUser = { ...current, ...fresh };
+        localStorage.setItem(USER_KEY, JSON.stringify(updated));
+        this._user.set(updated);
+      }
+    } catch {
+      /* silence : non bloquant, on garde l'etat local en cas d'echec reseau */
+    }
+  }
+
   private loadUser(): AuthUser | null {
     const stored = localStorage.getItem(USER_KEY);
     if (stored) {

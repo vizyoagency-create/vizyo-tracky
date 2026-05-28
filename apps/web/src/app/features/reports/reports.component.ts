@@ -1340,7 +1340,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
   });
 
   ngOnInit(): void {
-    this.setPeriod(this.periods[0]!.from, this.periods[0]!.to);
+    // V1.12 — Default = "7 jours" (periods[1]) au lieu de "Aujourd'hui"
+    // (periods[0]) : la majorite des flottes n'ont pas encore de trajets en
+    // debut de journee, ce qui rendait la page Reports vide a l'ouverture
+    // (impression d'UI cassee). 7j montre du contenu immediatement.
+    this.setPeriod(this.periods[1]!.from, this.periods[1]!.to);
     this.loadVehicles();
     this.desktopMql?.addEventListener('change', this.desktopMqlListener);
   }

@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, HostListener, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterOutlet, RouterLink, RouterLinkActive, NavigationEnd, Router } from '@angular/router';
 import {
@@ -159,7 +159,7 @@ import { MenuStateService } from '../core/services/menu-state.service';
                   </a>
                   <a routerLink="/settings" class="user-menu-item" (click)="userMenuOpen.set(false)">
                     <lucide-icon [img]="SettingsIcon" [size]="16"></lucide-icon>
-                    Parametres
+                    Paramètres
                   </a>
                   @if (isSuperAdmin()) {
                     <a routerLink="/admin" class="user-menu-item" (click)="userMenuOpen.set(false)">
@@ -175,7 +175,7 @@ import { MenuStateService } from '../core/services/menu-state.service';
                   <div class="user-menu-divider"></div>
                   <button class="user-menu-item user-menu-item--danger" (click)="confirmLogout()">
                     <lucide-icon [img]="LogOutIcon" [size]="16"></lucide-icon>
-                    Se deconnecter
+                    Se déconnecter
                   </button>
                 </div>
               }
@@ -710,6 +710,21 @@ export class DashboardLayoutComponent {
   protected readonly themeService = inject(ThemeService);
   protected readonly userMenuOpen = signal(false);
 
+  /** V1.12 — Ferme le user-menu quand on click ailleurs que dans son wrapper.
+   *  Avant : la cloche notif (sibling du wrapper) ouvrait son popup mais le
+   *  user-menu restait en transparency en arriere-plan (z-index conflict, le
+   *  bouton bell ne traversait pas le backdrop du menu). Le HostListener au
+   *  document level capture tous les clicks et ferme le menu si la cible
+   *  n'est pas dans `.user-menu-wrapper` — couvre bell, sidebar, n'importe ou. */
+  @HostListener('document:click', ['$event'])
+  protected onDocumentClick(event: MouseEvent): void {
+    if (!this.userMenuOpen()) return;
+    const target = event.target as HTMLElement | null;
+    if (!target?.closest('.user-menu-wrapper')) {
+      this.userMenuOpen.set(false);
+    }
+  }
+
   protected userInitials(): string {
     return (this.auth.user()?.email ?? '??').slice(0, 2).toUpperCase();
   }
@@ -724,7 +739,7 @@ export class DashboardLayoutComponent {
 
   protected confirmLogout(): void {
     this.userMenuOpen.set(false);
-    if (confirm('Se deconnecter de Vizyo Tracky ?')) {
+    if (confirm('Se déconnecter de Vizyo Tracky ?')) {
       this.realtime.disconnect();
       this.auth.logout();
       this.router.navigate(['/login']);
@@ -781,7 +796,20 @@ export class DashboardLayoutComponent {
     // capturees meme si l'utilisateur n'a pas visite /account dans cette session.
     this.notif.installSwMessageBridge();
     void this.notif.loadStatus();
+    // V1.12 — Refresh user au mount + au regain de focus pour synchroniser
+    // les preferences (uiMode, role, permissions) modifiees ailleurs : autre
+    // tab, admin update, ou session laissee ouverte plusieurs heures. Avant :
+    // le cache localStorage restait stale jusqu'au prochain logout/login.
+    void this.auth.refreshMe();
+    document.addEventListener('visibilitychange', this.onVisibilityChange);
   }
+
+  /** Refresh au regain de focus de l'onglet (visible apres background). */
+  private readonly onVisibilityChange = (): void => {
+    if (document.visibilityState === 'visible') {
+      void this.auth.refreshMe();
+    }
+  };
 
   private readonly auth = inject(AuthService);
   private readonly perms = inject(PermissionsService);
