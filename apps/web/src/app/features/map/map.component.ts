@@ -35,6 +35,7 @@ import { GeofencesApiService } from '../../core/services/geofences.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { PreferencesService, type CameraMode } from '../../core/services/preferences.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
+import { AuthService } from '../../core/services/auth.service';
 import { EngineControlService } from '../../core/services/engine-control.service';
 import { VisibilityService } from '../../core/services/visibility.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
@@ -68,6 +69,19 @@ interface MarkerEntry {
 interface VehicleMeta {
   type: string;
   plate: string;
+}
+
+/** Donnees affichees dans la bottom card Baanool au clic sur un marker. */
+interface BaanoolCardData {
+  trackerId: string;
+  vehicleId: string;
+  plate: string;
+  type: string;
+  ignition: boolean;
+  speedKmh: number;
+  lat: number;
+  lng: number;
+  cutActive: boolean;
 }
 
 /**
@@ -781,6 +795,64 @@ const MAX_FRAME_DT_MS = 100;
                 class="w-full text-left px-4 py-2 text-xs text-fg-primary hover:bg-bg-tertiary cursor-pointer">
           {{ mapLocked() ? 'Deverrouiller la carte' : 'Verrouiller la carte' }}
         </button>
+      </div>
+    }
+
+    <!-- ════════════════════════════════════════════════════════════
+         BAANOOL BOTTOM CARD — remplace le popup MapLibre classique
+         par une card fixe en bas, discrete, avec actions en icones.
+         Visible uniquement en mode Baanool au clic sur un marker.
+         ════════════════════════════════════════════════════════════ -->
+    @if (baanoolCard()) {
+      <div class="bn-vcard-backdrop" (click)="closeBaanoolCard()"></div>
+      <div class="bn-vcard">
+        <div class="bn-vcard-header">
+          <div class="bn-vcard-info">
+            <span class="bn-vcard-plate">{{ baanoolCard()!.plate }}</span>
+            <span class="bn-vcard-sep">·</span>
+            <span class="bn-vcard-status" [class.on]="baanoolCard()!.ignition">
+              {{ baanoolCard()!.ignition ? 'ON' : 'OFF' }}
+            </span>
+            <span class="bn-vcard-sep">·</span>
+            <span class="bn-vcard-speed">{{ baanoolCard()!.speedKmh | number:'1.0-0' }} km/h</span>
+          </div>
+          <button class="bn-vcard-close" (click)="closeBaanoolCard()" aria-label="Fermer">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="bn-vcard-actions">
+          <button class="bn-vcard-act" (click)="baanoolCardAction('follow')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+            <span>Suivre</span>
+          </button>
+          <button class="bn-vcard-act" (click)="baanoolCardAction('detail')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <span>Détails</span>
+          </button>
+          <button class="bn-vcard-act" (click)="baanoolCardAction('replay1h')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span>Replay</span>
+          </button>
+          <button class="bn-vcard-act" (click)="baanoolCardAction('navigate')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg>
+            <span>Itinéraire</span>
+          </button>
+          <button class="bn-vcard-act" (click)="baanoolCardAction('gmaps')">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            <span>Maps</span>
+          </button>
+          @if (baanoolCard()!.cutActive) {
+            <button class="bn-vcard-act bn-vcard-act--restore" (click)="baanoolCardAction('restore')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+              <span>Rallumer</span>
+            </button>
+          } @else {
+            <button class="bn-vcard-act bn-vcard-act--danger" (click)="baanoolCardAction('cut')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+              <span>Couper</span>
+            </button>
+          }
+        </div>
       </div>
     }
 
@@ -1572,11 +1644,145 @@ const MAX_FRAME_DT_MS = 100;
         top: 60px;
       }
     }
+
+    /* ════════════════════════════════════════════════════════════
+       BAANOOL BOTTOM CARD — card fixe en bas au clic marker.
+       Design discret : une ligne d'info + row d'icones actions.
+       ════════════════════════════════════════════════════════════ */
+    .bn-vcard-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 1800;
+    }
+    @keyframes bn-vcard-slide-up {
+      from { transform: translateY(100%); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .bn-vcard {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 1801;
+      animation: bn-vcard-slide-up 250ms cubic-bezier(0.16, 1, 0.3, 1);
+      background: white;
+      border-radius: 16px 16px 0 0;
+      box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.12);
+      padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .bn-vcard-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .bn-vcard-info {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      min-width: 0;
+    }
+    .bn-vcard-plate {
+      font-family: 'Poppins', sans-serif;
+      font-weight: 700;
+      font-size: 15px;
+      color: #1a1a1a;
+      letter-spacing: -0.01em;
+    }
+    .bn-vcard-sep {
+      color: #ccc;
+      font-size: 12px;
+    }
+    .bn-vcard-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #999;
+    }
+    .bn-vcard-status::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #ccc;
+    }
+    .bn-vcard-status.on {
+      color: #059669;
+    }
+    .bn-vcard-status.on::before {
+      background: #10E0A0;
+      box-shadow: 0 0 0 2px rgba(16, 224, 160, 0.25);
+    }
+    .bn-vcard-speed {
+      font-size: 12px;
+      font-weight: 600;
+      color: #666;
+    }
+    .bn-vcard-close {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: none;
+      background: #f5f5f5;
+      color: #999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background 120ms, color 120ms;
+    }
+    .bn-vcard-close:active { background: #eee; color: #333; }
+    .bn-vcard-actions {
+      display: flex;
+      gap: 4px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      padding-bottom: 2px;
+    }
+    .bn-vcard-actions::-webkit-scrollbar { display: none; }
+    .bn-vcard-act {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      min-width: 56px;
+      padding: 10px 8px;
+      border-radius: 12px;
+      border: none;
+      background: #f7f7f7;
+      color: #555;
+      font-size: 10px;
+      font-weight: 600;
+      cursor: pointer;
+      flex: 1;
+      transition: background 120ms, color 120ms;
+      white-space: nowrap;
+    }
+    .bn-vcard-act:active { background: #ebebeb; transform: scale(0.96); }
+    .bn-vcard-act--danger {
+      color: #dc2626;
+      background: rgba(239, 68, 68, 0.08);
+    }
+    .bn-vcard-act--danger:active { background: rgba(239, 68, 68, 0.14); }
+    .bn-vcard-act--restore {
+      color: #059669;
+      background: rgba(16, 224, 160, 0.08);
+    }
+    .bn-vcard-act--restore:active { background: rgba(16, 224, 160, 0.14); }
   `],
 })
 export class MapComponent implements AfterViewInit, OnDestroy {
   protected readonly realtime = inject(RealtimeService);
   protected readonly styles = inject(MapStyleService);
+  private readonly auth = inject(AuthService);
   private readonly geofencesApi = inject(GeofencesApiService);
   private readonly vehiclesApi = inject(VehiclesApiService);
   private readonly preferences = inject(PreferencesService);
@@ -1592,6 +1798,13 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly http = inject(HttpClient);
+
+  /** Mode Baanool : UI simplifiee, bottom card au lieu du popup MapLibre. */
+  private readonly isBaanoolMode = computed(() =>
+    this.auth.user()?.preferences?.uiMode === 'baanool',
+  );
+  /** Donnees de la bottom card Baanool (null = fermee). */
+  protected readonly baanoolCard = signal<BaanoolCardData | null>(null);
 
   private readonly mapContainerRef = viewChild.required<ElementRef<HTMLDivElement>>('mapContainer');
 
@@ -3230,12 +3443,29 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       this.applyCameraMode();
     }
 
-    // Update popover content si ouvert — re-wire les boutons apres remplacement DOM.
-    if (this.activePopupTrackerId && this.activePopupVehicleId && this.currentPopup) {
+    // Update popover/card content si ouvert.
+    if (this.activePopupTrackerId && this.activePopupVehicleId) {
       const pos = positions.find((p) => p.trackerId === this.activePopupTrackerId);
       if (pos) {
-        this.currentPopup.setHTML(this.buildPopupHtml(this.patchIgnitionFromCommands(pos)));
-        setTimeout(() => this.wirePopupActions(this.activePopupTrackerId!, this.activePopupVehicleId!), 0);
+        // Baanool bottom card : mise a jour reactive via signal.
+        if (this.baanoolCard()) {
+          const patched = this.patchIgnitionFromCommands(pos);
+          const meta = this.vehicleMeta.get(pos.vehicleId) ?? { type: 'OTHER', plate: '?' };
+          this.baanoolCard.set({
+            trackerId: pos.trackerId,
+            vehicleId: pos.vehicleId,
+            plate: meta.plate,
+            type: meta.type,
+            ignition: patched.ignition,
+            speedKmh: patched.speedKmh,
+            lat: pos.lat,
+            lng: pos.lng,
+            cutActive: this.isCutActiveForTracker(pos.trackerId),
+          });
+        } else if (this.currentPopup) {
+          this.currentPopup.setHTML(this.buildPopupHtml(this.patchIgnitionFromCommands(pos)));
+          setTimeout(() => this.wirePopupActions(this.activePopupTrackerId!, this.activePopupVehicleId!), 0);
+        }
       }
     }
   }
@@ -3281,6 +3511,27 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private openMarkerPopup(trackerId: string): void {
     const pos = this.realtime.positionsList().find((p) => p.trackerId === trackerId);
     if (!pos || !this.map) return;
+
+    // Mode Baanool : bottom card au lieu du popup MapLibre.
+    if (this.isBaanoolMode()) {
+      this.closePopup();
+      const patched = this.patchIgnitionFromCommands(pos);
+      const meta = this.vehicleMeta.get(pos.vehicleId) ?? { type: 'OTHER', plate: '?' };
+      this.baanoolCard.set({
+        trackerId,
+        vehicleId: pos.vehicleId,
+        plate: meta.plate,
+        type: meta.type,
+        ignition: patched.ignition,
+        speedKmh: patched.speedKmh,
+        lat: pos.lat,
+        lng: pos.lng,
+        cutActive: this.isCutActiveForTracker(trackerId),
+      });
+      this.activePopupTrackerId = trackerId;
+      this.activePopupVehicleId = pos.vehicleId;
+      return;
+    }
 
     this.closePopup();
     const html = this.buildPopupHtml(this.patchIgnitionFromCommands(pos));
@@ -3495,6 +3746,47 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     this.currentPopup = null;
     this.activePopupTrackerId = null;
     this.activePopupVehicleId = null;
+    this.baanoolCard.set(null);
+  }
+
+  /* --- Baanool bottom card actions --- */
+
+  protected closeBaanoolCard(): void {
+    this.baanoolCard.set(null);
+    this.activePopupTrackerId = null;
+    this.activePopupVehicleId = null;
+  }
+
+  protected baanoolCardAction(action: string): void {
+    const card = this.baanoolCard();
+    if (!card) return;
+    switch (action) {
+      case 'follow':
+        this.followedVehicleId.set(card.vehicleId);
+        if (this.cameraMode() === 'free') this.setCameraMode('follow');
+        else this.applyCameraMode();
+        this.closeBaanoolCard();
+        break;
+      case 'detail':
+        this.router.navigate(['/vehicles', card.vehicleId]);
+        break;
+      case 'replay1h':
+        this.toggleMiniReplay(card.vehicleId);
+        this.closeBaanoolCard();
+        break;
+      case 'navigate':
+        window.open(`https://www.google.com/maps/dir/?api=1&destination=${card.lat},${card.lng}`, '_blank');
+        break;
+      case 'gmaps':
+        window.open(`https://www.google.com/maps?q=${card.lat},${card.lng}`, '_blank');
+        break;
+      case 'cut':
+        this.requestEngine(card.trackerId, 'CUT');
+        break;
+      case 'restore':
+        this.requestEngine(card.trackerId, 'RESTORE');
+        break;
+    }
   }
 
   /* --- Search Nominatim --- */

@@ -499,8 +499,9 @@ import { MenuStateService } from '../core/services/menu-state.service';
     .layout--baanool .main-area { width: 100%; }
     /* Bug fix V1.12 : overflow:hidden ne doit s'appliquer qu'au /map fullscreen,
        sinon les pages avec contenu defilant (vehicle-detail, alerts, account)
-       sont tronquees. Le padding:0 reste OK pour eviter les marges du layout. */
-    .layout--baanool .content { padding: 0; }
+       sont tronquees. On garde un padding horizontal pour que le contenu
+       (onglets vehicle-detail, listes) ne colle pas aux bords de l'ecran. */
+    .layout--baanool .content { padding: 0 16px; }
     .layout--baanool .content.fullscreen { overflow: hidden; }
     /* En mode baanool sur la page /map, on cache aussi le top-bar standard
      * car l'overlay Baanool fournit ses propres boutons (burger, alertes,
