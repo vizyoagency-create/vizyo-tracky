@@ -200,14 +200,31 @@ body.ios-pwa .content.fullscreen {
   min-height: calc(100dvh - env(safe-area-inset-top) - 64px) !important;
   padding: 0 !important;
 }
+/* iOS PWA standalone : deux problemes empechent <app-map> de remplir le .content :
+   1) height:100% sur un custom element Angular ne resout pas via la chaine flex
+      sur WebKit standalone (bug specifique — height reste 0px, cf. 52ffb57, aa5f4fa,
+      06f4394 qui etaient insuffisants).
+   2) <router-outlet> (element inline) cree une line-box dans le flow (~18px selon
+      font-size). app-map (display:block) demarre APRES cette line-box, et le bas
+      de la carte est coupe par overflow:hidden du parent — la bande blanche du body
+      transparait.
+   Fix : position:absolute + inset:0 sur app-map — le sort du flow, le plaque bord
+   a bord sur le parent .content.fullscreen (qui a position:relative + hauteur
+   explicite en viewport units). Plus de dependance ni au flow, ni a height:100%,
+   ni a la chaine flex. Fonctionne en baanool et non-baanool. */
+body.ios-pwa .content.fullscreen > app-map {
+  position: absolute !important;
+  inset: 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
+}
 /* Baanool + iOS PWA + fullscreen : le top-bar est cache, donc on retire
    les 64px et on fait descendre le content jusqu'au bas de l'ecran.
    Le safe-area-inset-bottom est couvert par le ::after du layout. */
 body.ios-pwa .layout--baanool .content.fullscreen {
-  /* Le top-bar est cache en baanool fullscreen — on utilise 100% du parent
-     (.main-area) qui est lui-meme flex:1 dans .layout. MapLibre a besoin
-     d'un parent a hauteur definie, donc height:100% (pas auto/flex). */
-  height: 100% !important;
+  /* Baanool fullscreen : top-bar cachee. On passe de height:100% (qui repose
+     sur la chaine flex brisee) a 100dvh (viewport units directes). */
+  height: 100dvh !important;
   min-height: 0 !important;
   padding: 0 !important;
 }
@@ -359,6 +376,16 @@ button, a, [role="button"], input[type="button"], input[type="submit"], label {
 
 .maplibregl-map {
   font-family: var(--font-sans);
+  /* iOS PWA standalone + dark mode : WebKit herite `color-scheme: dark` (via
+     la meta tag du document) jusque sur le <canvas> WebGL de MapLibre.
+     Resultat : le navigateur plaque un fond opaque noir (dark) ou blanc (light)
+     PAR-DESSUS le rendu des tuiles, rendant la carte invisible.
+     En Safari browser classique ce compositing ne se declenche pas, d'ou le bug
+     uniquement en PWA installee sur iPhone.
+     Fix : on force `only light` sur le conteneur carte — les tuiles sont rendues
+     normalement, et le dark mode Tracky continue de fonctionner via les CSS
+     custom properties (data-theme) sans dependre de color-scheme. */
+  color-scheme: only light;
 }
 
 /* Frosted-glass controls (inspiration mahlem-now) */
