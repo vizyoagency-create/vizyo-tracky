@@ -200,6 +200,17 @@ body.ios-pwa .content.fullscreen {
   min-height: calc(100dvh - env(safe-area-inset-top) - 64px) !important;
   padding: 0 !important;
 }
+/* Baanool + iOS PWA + fullscreen : le top-bar est cache, donc on retire
+   les 64px et on fait descendre le content jusqu'au bas de l'ecran.
+   Le safe-area-inset-bottom est couvert par le ::after du layout. */
+body.ios-pwa .layout--baanool .content.fullscreen {
+  /* Le top-bar est cache en baanool fullscreen — on utilise 100% du parent
+     (.main-area) qui est lui-meme flex:1 dans .layout. MapLibre a besoin
+     d'un parent a hauteur definie, donc height:100% (pas auto/flex). */
+  height: 100% !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+}
 
 /* html doit aussi avoir le bon bg pour que meme si un pixel fuit, il soit
    de la bonne couleur (zone home indicator sur vieux iOS). */

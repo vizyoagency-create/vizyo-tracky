@@ -29,8 +29,6 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
   standalone: true,
   imports: [LucideAngularModule, DecimalPipe],
   template: `
-    <div class="bn-overlay">
-
       <!-- TOP-LEFT : burger + recentrer + alertes -->
       <div class="bn-top-left">
         <button class="bn-circle" (click)="menuClick.emit()" aria-label="Menu">
@@ -113,26 +111,24 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
           </div>
         </div>
       }
-
-    </div>
   `,
   styles: [`
-    /* Overlay couvre toute la fenetre mais ne bloque pas la map (pointer-events: none).
-       TOUS les descendants interactifs reactivent pointer-events: auto (pas
-       seulement les direct children — bug iOS Safari standalone qui ne propage
-       pas pointer-events: auto au-dela d'un niveau via selectors descendants). */
-    .bn-overlay {
+    /* V1.12 — Overlay Baanool.
+       Pas de conteneur intermediaire, pas de display:contents (buggé iOS Safari),
+       pas de pointer-events:none. Chaque cluster est position:fixed directement.
+       Le :host Angular est un simple block sans dimensions qui ne bloque rien. */
+    :host {
+      display: block;
       position: fixed;
-      inset: 0;
-      pointer-events: none;
+      top: 0; left: 0;
+      width: 0; height: 0;
+      overflow: visible;
       z-index: 7500;
     }
-    .bn-overlay > *,
-    .bn-overlay button,
-    .bn-overlay input,
-    .bn-overlay select,
-    .bn-overlay .bn-panel,
-    .bn-overlay .bn-panel * { pointer-events: auto; }
+    button {
+      -webkit-touch-callout: none;
+      touch-action: manipulation;
+    }
 
     /* Cercle de base : fond blanc, ombre douce, taille tap target Apple HIG. */
     .bn-circle {
@@ -172,33 +168,41 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
       justify-content: center;
     }
 
-    /* Cluster top-left horizontal : 3 cercles cote-a-cote. */
+    /* Chaque cluster est position:fixed independamment — pas de conteneur
+       intermediaire qui pourrait bloquer les events sur iOS Safari. */
     .bn-top-left {
-      position: absolute;
+      position: fixed;
       top: calc(12px + env(safe-area-inset-top));
       left: 12px;
       display: flex;
       gap: 8px;
+      z-index: 7500;
+      pointer-events: auto;
     }
     .bn-top-right {
-      position: absolute;
+      position: fixed;
       top: calc(12px + env(safe-area-inset-top));
       right: 12px;
+      z-index: 7500;
+      pointer-events: auto;
     }
     .bn-right {
-      position: absolute;
+      position: fixed;
       right: 12px;
       top: 50%;
       transform: translateY(-50%);
       display: flex;
       flex-direction: column;
       gap: 12px;
+      z-index: 7500;
+      pointer-events: auto;
     }
 
     /* Panel central blanc : flotte sous la top-bar, max-width pour pas etaler sur desktop. */
     .bn-panel {
-      position: absolute;
+      position: fixed;
       top: calc(72px + env(safe-area-inset-top));
+      z-index: 7500;
       left: 12px;
       right: 70px; /* laisse la place pour la bn-top-right */
       max-width: 480px;

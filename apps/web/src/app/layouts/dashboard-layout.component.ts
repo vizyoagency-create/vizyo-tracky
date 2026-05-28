@@ -212,12 +212,16 @@ import { BaanoolMapOverlayComponent } from '../features/baanool/baanool-map-over
            sur la page /map. Boutons cercles flottants (burger, recentrer,
            alertes, profile) + boutons droite verticaux (vehicules, coupe-
            circuit, GPS, satellite) + panel central toggleable. -->
-      @if (isBaanoolMapPage()) {
-        <app-baanool-map-overlay
-          (menuClick)="mobileMenuOpen.set(true)"
-        />
-      }
     </div>
+
+    <!-- V1.12 — Mode Baanool : overlay HORS du .layout pour eviter que
+         overflow:hidden de .layout ne piege le position:fixed sur iOS
+         Safari standalone (cree un containing block parasite). -->
+    @if (isBaanoolMapPage()) {
+      <app-baanool-map-overlay
+        (menuClick)="mobileMenuOpen.set(true)"
+      />
+    }
   `,
   styles: [`
     .layout {
@@ -492,7 +496,7 @@ import { BaanoolMapOverlayComponent } from '../features/baanool/baanool-map-over
      * car l'overlay Baanool fournit ses propres boutons (burger, alertes,
      * profile) en cercles flottants. Sur les autres pages, le top-bar reste
      * visible pour avoir le titre + retour. */
-    .layout--baanool.layout--fullscreen .top-bar { display: none; }
+    .layout--baanool.layout--fullscreen .top-bar { display: none !important; height: 0 !important; min-height: 0 !important; overflow: hidden !important; }
 
     /* iOS PWA standalone en mode baanool : la .bottom-bar cachee laissait la
      * safe-area-inset-bottom (home indicator) en noir. On force un fond clair
@@ -506,6 +510,12 @@ import { BaanoolMapOverlayComponent } from '../features/baanool/baanool-map-over
     body.ios-pwa .layout--baanool .content {
       padding-bottom: env(safe-area-inset-bottom);
     }
+    /* Fullscreen (page /map) en baanool : la map doit occuper 100% — pas de
+       padding-bottom qui reduit l'espace. Le ::after ci-dessous couvre deja
+       la safe-area bottom. */
+    body.ios-pwa .layout--baanool .content.fullscreen {
+      padding-bottom: 0 !important;
+    }
     /* Pseudo apres .layout qui colore la safe-area bottom (au cas ou un pixel
      * fuit, eviter le noir natif du body). */
     body.ios-pwa .layout--baanool::after {
@@ -513,7 +523,9 @@ import { BaanoolMapOverlayComponent } from '../features/baanool/baanool-map-over
       position: fixed;
       bottom: 0; left: 0; right: 0;
       height: env(safe-area-inset-bottom, 0px);
-      background: var(--bg-primary, white);
+      /* Transparent pour laisser la map visible sous le home indicator.
+         Le bg-primary creait une bande de couleur theme visible. */
+      background: transparent;
       z-index: 0;
       pointer-events: none;
     }
@@ -748,6 +760,13 @@ export class DashboardLayoutComponent {
         this.currentUrl.set(event.urlAfterRedirects);
       }
     });
+    // V1.12 — Mode Baanool : auto-redirect vers /map au boot du layout
+    // (couvre le cas PWA iOS qui reprend sur /dashboard apres un kill/resume).
+    // On ne redirige que si on est sur /dashboard (pas si l'user a bookmark
+    // une autre page).
+    if (this.isBaanoolMode() && this.router.url === '/dashboard') {
+      void this.router.navigate(['/map'], { replaceUrl: true });
+    }
     // V1.5 (Sprint J) — au mount du layout (= apres login), charger le profil
     // et ouvrir le wizard si onboardingCompletedAt est null.
     void this.onboarding.loadProfileAndDecide();
