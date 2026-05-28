@@ -127,7 +127,12 @@ import { MenuStateService } from '../core/services/menu-state.service';
                     [attr.aria-expanded]="mobileMenuOpen()">
               <lucide-icon [img]="MenuIcon" [size]="18" aria-hidden="true"></lucide-icon>
             </button>
-            <a routerLink="/dashboard" class="top-bar-brand" aria-label="Vizyo Tracky — Tableau de bord">
+            <!-- V1.12 — En mode Baanool le /dashboard n'est pas accessible
+                 (filtre dans navItems), donc le logo redirige vers /map pour
+                 eviter d'atterrir sur une page vide/redirigee. -->
+            <a [routerLink]="isBaanoolMode() ? '/map' : '/dashboard'"
+               class="top-bar-brand"
+               [attr.aria-label]="isBaanoolMode() ? 'Vizyo Tracky — Carte' : 'Vizyo Tracky — Tableau de bord'">
               <app-logo variant="icon" [size]="26" />
               <span class="top-bar-brand-text" aria-hidden="true">
                 <span class="top-bar-brand-name">Vizyo</span>
@@ -492,7 +497,11 @@ import { MenuStateService } from '../core/services/menu-state.service';
     .layout--baanool .desktop-sidebar { display: none !important; }
     .layout--baanool .bottom-bar { display: none !important; }
     .layout--baanool .main-area { width: 100%; }
-    .layout--baanool .content { padding: 0; overflow: hidden; }
+    /* Bug fix V1.12 : overflow:hidden ne doit s'appliquer qu'au /map fullscreen,
+       sinon les pages avec contenu defilant (vehicle-detail, alerts, account)
+       sont tronquees. Le padding:0 reste OK pour eviter les marges du layout. */
+    .layout--baanool .content { padding: 0; }
+    .layout--baanool .content.fullscreen { overflow: hidden; }
     /* En mode baanool sur la page /map, on cache aussi le top-bar standard
      * car l'overlay Baanool fournit ses propres boutons (burger, alertes,
      * profile) en cercles flottants. Sur les autres pages, le top-bar reste
@@ -764,15 +773,16 @@ export class DashboardLayoutComponent {
         const title = typeof data['title'] === 'string' ? data['title'] : 'Tableau de bord';
         this.pageTitle.set(title);
         this.currentUrl.set(event.urlAfterRedirects);
+        // V1.12 — Mode Baanool : /dashboard n'est pas accessible (filtre dans
+        // navItems). Si on y atterrit (deep link, back depuis une page qui
+        // route en dur vers /dashboard, redirect post-login residuel), on
+        // renvoie vers /map en remplacant l'entree d'historique pour eviter
+        // un piege "back -> dashboard -> back -> dashboard" en boucle.
+        if (this.isBaanoolMode() && event.urlAfterRedirects === '/dashboard') {
+          void this.router.navigate(['/map'], { replaceUrl: true });
+        }
       }
     });
-    // V1.12 — Mode Baanool : auto-redirect vers /map au boot du layout
-    // (couvre le cas PWA iOS qui reprend sur /dashboard apres un kill/resume).
-    // On ne redirige que si on est sur /dashboard (pas si l'user a bookmark
-    // une autre page).
-    if (this.isBaanoolMode() && this.router.url === '/dashboard') {
-      void this.router.navigate(['/map'], { replaceUrl: true });
-    }
     // V1.5 (Sprint J) — au mount du layout (= apres login), charger le profil
     // et ouvrir le wizard si onboardingCompletedAt est null.
     void this.onboarding.loadProfileAndDecide();
