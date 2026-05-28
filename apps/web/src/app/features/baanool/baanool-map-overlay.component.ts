@@ -1,10 +1,10 @@
-import { Component, EventEmitter, Output, OnInit, inject, computed, signal } from '@angular/core';
+import { Component, EventEmitter, Output, OnInit, inject, computed, signal, effect } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { Router } from '@angular/router';
 import {
   LucideAngularModule,
   Menu, Maximize2, Bell, UserCircle2,
-  Car, Crosshair, Satellite, Search, ChevronRight,
+  Car, Crosshair, Satellite, Search, ChevronRight, X,
 } from 'lucide-angular';
 import { AuthService } from '../../core/services/auth.service';
 import { MapBridgeService } from '../../core/services/map-bridge.service';
@@ -70,6 +70,9 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
       <!-- CENTRAL PANEL (toggleable) -->
       @if (panelOpen()) {
         <div class="bn-panel" role="dialog" aria-label="Liste des vehicules">
+          <button class="bn-panel-close" (click)="closePanel()" aria-label="Fermer la liste">
+            <lucide-icon [img]="XIcon" [size]="18"></lucide-icon>
+          </button>
           <div class="bn-panel-search">
             <lucide-icon [img]="SearchIcon" [size]="16"></lucide-icon>
             <input
@@ -215,11 +218,32 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
       display: flex;
       flex-direction: column;
     }
+    /* Bouton fermeture en absolute dans le coin du panel — petite icone X qui
+       n'empiete pas sur le contenu mais reste cliquable au pouce. */
+    .bn-panel-close {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: transparent;
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: #999;
+      z-index: 1;
+      transition: background-color 120ms, color 120ms;
+    }
+    .bn-panel-close:hover { background: #f5f5f5; color: #333; }
+    .bn-panel-close:active { transform: scale(0.9); }
     .bn-panel-search {
       display: flex;
       align-items: center;
       gap: 10px;
-      padding: 12px 14px;
+      padding: 12px 44px 12px 14px; /* +30px right pour ne pas chevaucher le X */
       border-bottom: 1px solid #eee;
       color: #999;
     }
@@ -320,6 +344,24 @@ export class BaanoolMapOverlayComponent implements OnInit {
   protected readonly SatelliteIcon = Satellite;
   protected readonly SearchIcon = Search;
   protected readonly ChevronRightIcon = ChevronRight;
+  protected readonly XIcon = X;
+
+  /** V1.12 — Auto-dismiss du panel quand l'utilisateur interagit avec la map
+   *  (drag/zoom/click sur le fond). Le pattern UX : ouvrir le panel = explorer
+   *  la liste ; toucher la map = explorer la carte → fermer le panel revele
+   *  ce que l'user veut voir. Combine avec le X explicite (top-right du panel)
+   *  et le close-on-vehicle-click (centrage + fermeture en un geste), on a
+   *  3 facons naturelles de fermer + le toggle voiture bleu.
+   *
+   *  Important : on NE lit PAS panelOpen() dans l'effect (sinon il devient
+   *  reactif a panelOpen et se re-trigger en boucle a chaque ouverture).
+   *  Set(false) est idempotent — safe a appeler meme si deja false. */
+  private bridgeMapInteractionEffect = effect(() => {
+    const n = this.mapBridge.mapInteractionTrigger();
+    if (n > 0) {
+      this.panelOpen.set(false);
+    }
+  });
 
   // Panel state
   protected readonly panelOpen = signal(false);
@@ -398,12 +440,19 @@ export class BaanoolMapOverlayComponent implements OnInit {
 
   onVehicleClick(vehicleId: string): void {
     this.mapBridge.requestFlyToVehicle(vehicleId);
-    // Optionnel : fermer le panel apres avoir centre pour montrer la map
-    // this.panelOpen.set(false);
+    // Fermer le panel apres avoir centre — pattern UX coherent : l'utilisateur
+    // a fait sa selection, on revele la map qui montre le vehicule choisi.
+    this.panelOpen.set(false);
   }
 
   togglePanel(): void {
     this.panelOpen.update(v => !v);
+  }
+
+  /** Ferme le panel (utilise par le bouton X). togglePanel() sert au bouton
+   *  voiture bleu qui doit garder son comportement on/off. */
+  closePanel(): void {
+    this.panelOpen.set(false);
   }
 
   onSearch(e: Event): void {

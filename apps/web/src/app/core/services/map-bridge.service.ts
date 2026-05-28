@@ -19,9 +19,16 @@ export class MapBridgeService {
   /** vehicleId quand l'utilisateur veut centrer la map sur un vehicule precis
    *  (depuis le panel Baanool). Reset a null apres consommation. */
   readonly flyToVehicleId = signal<string | null>(null);
+  /** Incremente quand l'utilisateur interagit directement avec la map (drag,
+   *  zoom, click sur le fond). Utilise par les overlays (ex: panel Baanool)
+   *  pour s'auto-fermer : l'intention "je veux voir la carte" prime sur
+   *  l'overlay qui la couvre. Emis par map.component depuis les listeners
+   *  movestart/click natifs maplibre. */
+  readonly mapInteractionTrigger = signal(0);
 
   requestRecenter(): void { this.recenterTrigger.update((n) => n + 1); }
   requestLocate(): void { this.locateTrigger.update((n) => n + 1); }
   requestToggleSatellite(): void { this.toggleSatelliteTrigger.update((n) => n + 1); }
   requestFlyToVehicle(vehicleId: string): void { this.flyToVehicleId.set(vehicleId); }
+  notifyMapInteraction(): void { this.mapInteractionTrigger.update((n) => n + 1); }
 }
