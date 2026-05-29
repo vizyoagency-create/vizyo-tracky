@@ -6,6 +6,7 @@ import { WS_EVENTS } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { io, Socket } from 'socket.io-client';
 import { ToastService } from '../../shared/ui/toast/toast.service';
+import { AuthService } from './auth.service';
 import { NotificationsApiService } from './notifications.service';
 import { PreferencesService } from './preferences.service';
 import { VisibilityService } from './visibility.service';
@@ -46,7 +47,9 @@ export class RealtimeService {
   readonly cutActiveTrackerIds = this._cutActiveTrackerIds.asReadonly();
 
   private socket: Socket | null = null;
+  private refreshingToken = false;
   private readonly toast = inject(ToastService);
+  private readonly auth = inject(AuthService);
   private readonly preferences = inject(PreferencesService);
   private readonly http = inject(HttpClient);
   private readonly visibility = inject(VisibilityService);
@@ -72,9 +75,15 @@ export class RealtimeService {
     // les notifs avaient affiche). Pattern Slack/Linear : badge = notifs en attente,
     // tu reviens, c'est lu, badge a 0.
     this.notifications.clearAppBadge();
-    if (!this.socket?.connected) return;
     const hiddenMs = this.visibility.lastHiddenDurationMs();
+    // Au retour apres > 60s, rafraichir le token du socket et re-hydrater.
     if (hiddenMs !== null && hiddenMs > 60 * 1000) {
+      this.auth.tryRefresh().then((newToken) => {
+        if (newToken && this.socket) {
+          (this.socket.auth as Record<string, string>)['token'] = newToken;
+          if (!this.socket.connected) this.socket.connect();
+        }
+      }).catch(() => { /* silent */ });
       this.hydrate().catch(() => { /* silent */ });
     }
   });
@@ -132,6 +141,21 @@ export class RealtimeService {
 
     this.socket.on('disconnect', () => {
       this.connected.set(false);
+    });
+
+    // Token expire → socket.io reconnecte avec l'ancien token → rejet backend.
+    // On refresh le JWT et on met a jour le handshake auth pour la prochaine tentative.
+    this.socket.on('connect_error', async () => {
+      if (this.refreshingToken || !this.socket) return;
+      this.refreshingToken = true;
+      try {
+        const newToken = await this.auth.tryRefresh();
+        if (newToken && this.socket) {
+          (this.socket.auth as Record<string, string>)['token'] = newToken;
+        }
+      } finally {
+        this.refreshingToken = false;
+      }
     });
 
     this.socket.on(WS_EVENTS.POSITION_UPDATE, (event: PositionUpdateEvent) => {

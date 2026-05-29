@@ -24,6 +24,7 @@ import { TripsApiService } from '../../core/services/trips.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { DriverPickerComponent } from '../../shared/ui/driver-picker/driver-picker.component';
+import { DriverDrawerComponent, type DriverDrawerData, type DriverDrawerResult } from '../drivers/driver-drawer.component';
 import { MiniMapComponent } from '../../shared/ui/mini-map/mini-map.component';
 import { EngineControlButtonComponent } from '../engine-control/engine-control-button.component';
 import { SurveillancePanelComponent } from '../surveillance/surveillance-panel.component';
@@ -38,7 +39,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
   imports: [
     RouterLink, FormsModule, LucideAngularModule, DatePipe, DecimalPipe,
     MiniMapComponent, EngineControlButtonComponent, CommandsPanelComponent,
-    VehicleScheduleComponent, DriverPickerComponent, SurveillancePanelComponent, TripReplayComponent,
+    VehicleScheduleComponent, DriverPickerComponent, DriverDrawerComponent, SurveillancePanelComponent, TripReplayComponent,
   ],
   template: `
     @if (loading()) {
@@ -670,10 +671,21 @@ import { relativeTime } from '../../shared/utils/relative-time';
           [currentDriverId]="v.currentDriver?.id ?? null"
           [title]="'Conducteur du vehicule ' + v.plate"
           subtitle="Le conducteur courant sera snape par defaut sur les prochains trajets."
+          [showCreate]="canManageDrivers()"
           (closed)="driverPickerOpen.set(false)"
           (selected)="onDriverPicked($event)"
+          (createRequested)="openDriverDrawerFromPicker()"
         />
       }
+
+      <!-- Drawer creation conducteur (depuis le picker) -->
+      <app-driver-drawer
+        [open]="driverDrawerOpen()"
+        [data]="driverDrawerData()"
+        [loading]="driverDrawerLoading()"
+        (closed)="driverDrawerOpen.set(false)"
+        (saved)="onDriverDrawerSave($event)"
+      />
     }
   `,
   styles: [`
@@ -1434,6 +1446,10 @@ export class VehicleDetailComponent implements OnInit {
   // Phase 2 — Picker conducteur (ouverture + spinner d'assignation).
   protected readonly driverPickerOpen = signal(false);
   protected readonly assigningDriver = signal(false);
+  // Drawer creation conducteur depuis le picker.
+  protected readonly driverDrawerOpen = signal(false);
+  protected readonly driverDrawerData = signal<DriverDrawerData | null>(null);
+  protected readonly driverDrawerLoading = signal(false);
   /** True pendant un refetch declenche par un changement de plage date (history/trips). */
   protected readonly rangeLoading = signal(false);
   protected readonly activeTab = signal<string>('map');
@@ -2132,5 +2148,46 @@ export class VehicleDetailComponent implements OnInit {
   /** Initiales en majuscule pour la pastille avatar (ex: ED). */
   protected driverInitials(d: { firstName: string; lastName: string }): string {
     return ((d.firstName?.[0] ?? '') + (d.lastName?.[0] ?? '')).toUpperCase() || '?';
+  }
+
+  // ─── Drawer creation conducteur depuis le picker ──────────────────
+
+  protected openDriverDrawerFromPicker(): void {
+    this.driverPickerOpen.set(false);
+    this.driverDrawerData.set({ mode: 'create' });
+    this.driverDrawerOpen.set(true);
+  }
+
+  protected async onDriverDrawerSave(result: DriverDrawerResult): Promise<void> {
+    const v = this.vehicle();
+    if (!v) return;
+    this.driverDrawerLoading.set(true);
+    try {
+      const created = await firstValueFrom(this.driversApi.create({
+        firstName: result.firstName,
+        lastName: result.lastName,
+        phone: result.phone,
+        email: result.email,
+        licenseNumber: result.licenseNumber,
+        color: result.color,
+        notes: result.notes,
+      }));
+      this.driverDrawerOpen.set(false);
+      // Auto-assigner le conducteur cree au vehicule.
+      this.assigningDriver.set(true);
+      const updated = await firstValueFrom(
+        this.driversApi.assignToVehicle(v.id, created.id),
+      );
+      this.vehicle.set({
+        ...v,
+        currentDriver: (updated as { currentDriver: VehicleDetailDto['currentDriver'] }).currentDriver ?? null,
+      });
+      this.toast.success('Conducteur cree et assigne', `${created.firstName} ${created.lastName}`);
+    } catch (err) {
+      this.toast.error('Echec', err instanceof HttpErrorResponse ? err.error?.message : 'Erreur inconnue');
+    } finally {
+      this.driverDrawerLoading.set(false);
+      this.assigningDriver.set(false);
+    }
   }
 }

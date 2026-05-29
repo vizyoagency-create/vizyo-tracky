@@ -839,6 +839,9 @@ export class DashboardLayoutComponent {
           { label: 'Véhicules', route: '/vehicles', icon: Truck },
         ] : []),
         ...(this.perms.can('alerts_view') ? [{ label: 'Alertes', route: '/alerts', icon: Bell }] : []),
+        ...(this.perms.can('groups_view') ? [{ label: 'Groupes', route: '/groups', icon: Layers }] : []),
+        ...(this.perms.can('drivers_view') ? [{ label: 'Conducteurs', route: '/drivers', icon: UserRound }] : []),
+        ...(this.perms.can('users_view') ? [{ label: 'Utilisateurs', route: '/users', icon: Users }] : []),
         { label: 'Paramètres', route: '/settings', icon: Settings },
       ];
     }

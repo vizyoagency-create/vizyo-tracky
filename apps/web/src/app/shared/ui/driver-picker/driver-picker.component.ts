@@ -1,6 +1,6 @@
 import { Component, HostListener, computed, effect, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, Search, UserRound, X, XCircle } from 'lucide-angular';
+import { LucideAngularModule, Plus, Search, UserRound, X, XCircle } from 'lucide-angular';
 import type { DriverDto } from '@vizyo/tracky-shared';
 import { DriversApiService } from '../../../core/services/drivers.service';
 
@@ -67,10 +67,21 @@ import { DriversApiService } from '../../../core/services/drivers.service';
                 <span class="w-5 h-5 border-2 border-fg-tertiary border-t-tracky-light rounded-full animate-spin"></span>
               </div>
             } @else if (filtered().length === 0) {
-              <p class="text-center text-fg-tertiary text-sm py-6">
-                @if (search) { Aucun conducteur trouve. }
-                @else { Aucun conducteur enregistre. }
-              </p>
+              <div class="text-center py-6">
+                <p class="text-fg-tertiary text-sm">
+                  @if (search) { Aucun conducteur trouve. }
+                  @else { Aucun conducteur enregistre. }
+                </p>
+                @if (!search && showCreate()) {
+                  <button type="button" (click)="onCreateRequested()"
+                    class="mt-3 inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-xl
+                           bg-tracky/15 text-tracky-light border border-tracky/25
+                           hover:bg-tracky/25 transition-colors cursor-pointer">
+                    <lucide-icon [img]="PlusIcon" [size]="14"></lucide-icon>
+                    Nouveau conducteur
+                  </button>
+                }
+              </div>
             } @else {
               @for (d of filtered(); track d.id) {
                 <button type="button" (click)="onPick(d)"
@@ -99,6 +110,17 @@ import { DriversApiService } from '../../../core/services/drivers.service';
               }
             }
           </div>
+
+          <!-- Bouton creer en bas de liste -->
+          @if (showCreate() && !loading() && drivers().length > 0) {
+            <button type="button" (click)="onCreateRequested()"
+              class="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium
+                     text-tracky-light hover:bg-tracky/10 transition-colors cursor-pointer
+                     border border-dashed border-tracky/25 hover:border-tracky/40">
+              <lucide-icon [img]="PlusIcon" [size]="14"></lucide-icon>
+              Nouveau conducteur
+            </button>
+          }
 
           <!-- Footer -->
           <div class="flex items-center justify-between pt-2 border-t border-border-subtle">
@@ -148,6 +170,10 @@ export class DriverPickerComponent {
   readonly closed = output<void>();
   /** Selection : null = retirer, sinon le driver complet. */
   readonly selected = output<DriverDto | null>();
+  /** Affiche le bouton "Nouveau conducteur" (desactive pour les VIEWER). */
+  readonly showCreate = input(false);
+  /** Emis quand l'utilisateur clique "Nouveau conducteur". */
+  readonly createRequested = output<void>();
 
   protected readonly drivers = signal<DriverDto[]>([]);
   protected readonly loading = signal(false);
@@ -167,6 +193,7 @@ export class DriverPickerComponent {
   protected readonly SearchIcon = Search;
   protected readonly XIcon = X;
   protected readonly XCircleIcon = XCircle;
+  protected readonly PlusIcon = Plus;
 
   /** Charge la liste a chaque ouverture (en cas de creation entre-temps). */
   private fetchEffect = effect(() => {
@@ -189,5 +216,9 @@ export class DriverPickerComponent {
 
   protected onPick(d: DriverDto | null): void {
     this.selected.emit(d);
+  }
+
+  protected onCreateRequested(): void {
+    this.createRequested.emit();
   }
 }
