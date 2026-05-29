@@ -14,6 +14,7 @@ import { CobanWireLogger } from '../observability/coban-wire-logger.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { SmsGatewayService } from '../sms/sms-gateway.service';
 import { SocketRegistryService } from '../socket-registry/socket-registry.service';
 import { AckWaiterService } from '../tracker-commands/ack-waiter.service';
 
@@ -41,6 +42,7 @@ export class EngineControlService {
     private readonly ackWaiter: AckWaiterService,
     private readonly gateway: RealtimeGateway,
     private readonly errorLogger: ErrorLogger,
+    private readonly sms: SmsGatewayService,
   ) {}
 
   async requestCommand(
@@ -215,16 +217,28 @@ export class EngineControlService {
     const sent = this.sessionRegistry.send(imei, payload);
 
     if (!sent) {
+      // Fallback SMS : envoyer stop123456 / resume123456 au boitier via Twilio.
+      const smsSent = await this.trySmsFallback(imei, action, command.id);
+      if (smsSent) {
+        const updated = await this.prisma.engineControlCommand.update({
+          where: { id: command.id },
+          data: { status: CommandStatus.SENT, sentAt: new Date(), lastError: 'Envoyé via SMS (TCP indisponible)' },
+        });
+        this.emitUpdate(updated, fleetId);
+        this.logger.log({ commandId: command.id, imei, channel: 'SMS' }, 'Command dispatched via SMS fallback');
+        return;
+      }
+
       const updated = await this.prisma.engineControlCommand.update({
         where: { id: command.id },
         data: {
           status: CommandStatus.FAILED,
-          lastError: 'Tracker offline ou socket détruit — commande non envoyée',
+          lastError: 'Tracker offline — socket TCP indisponible et fallback SMS impossible (pas de simPhoneNumber)',
         },
       });
       this.emitUpdate(updated, fleetId);
       this.errorLogger.record(
-        'Engine command dispatch failed: socket unavailable',
+        'Engine command dispatch failed: socket unavailable + no SMS fallback',
         'engine-control',
         { imei, commandId: command.id },
       ).catch((e) => this.logger.error('ErrorLogger persist failed', e));
@@ -325,6 +339,27 @@ export class EngineControlService {
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
+  }
+
+  /**
+   * Fallback SMS quand la socket TCP est indisponible.
+   * Envoie `stop123456` (CUT) ou `resume123456` (RESTORE) au numero SIM du boitier.
+   * Retourne true si le SMS a ete accepte par Twilio.
+   */
+  private async trySmsFallback(imei: string, action: EngineAction, commandId: string): Promise<boolean> {
+    if (!this.sms.isEnabled()) return false;
+    const tracker = await this.prisma.tracker.findFirst({
+      where: { imei },
+      select: { simPhoneNumber: true },
+    });
+    if (!tracker?.simPhoneNumber) return false;
+    const smsPayload = action === EngineAction.CUT ? 'stop123456' : 'resume123456';
+    const result = await this.sms.send(tracker.simPhoneNumber, smsPayload, {
+      imei,
+      commandId,
+      source: 'engine-control-fallback',
+    });
+    return result.ok;
   }
 
   async getCommand(id: string, requestedBy: RequestedBy): Promise<EngineControlCommand> {
