@@ -25,29 +25,46 @@ export interface SendSmsResult {
 @Injectable()
 export class SmsGatewayService {
   private readonly logger = new Logger(SmsGatewayService.name);
+
+  // Provider actif : vizyo-texto (passerelle SMS maison) > twilio (legacy/fallback) > noop.
+  private readonly provider: 'vizyo-texto' | 'twilio' | 'noop';
+
+  // vizyo-texto (V1.14 — remplace Twilio). Cf. VIZYO_TEXTO_* dans env.validation.
+  private readonly textoUrl: string;
+  private readonly textoApiKey: string;
+
+  // Twilio (legacy, conserve en fallback le temps de la transition).
   private readonly client: Twilio | null;
   private readonly fromNumber: string;
-  private readonly enabled: boolean;
 
   constructor(
     private readonly prisma: PrismaService,
     @Optional() @Inject(ConfigService) private readonly config?: ConfigService<Env, true>,
   ) {
+    this.textoUrl = (this.config?.get('VIZYO_TEXTO_URL', { infer: true }) ?? '').replace(/\/+$/, '');
+    this.textoApiKey = this.config?.get('VIZYO_TEXTO_API_KEY', { infer: true }) ?? '';
+
     const sid = this.config?.get('TWILIO_ACCOUNT_SID', { infer: true }) ?? '';
     const token = this.config?.get('TWILIO_AUTH_TOKEN', { infer: true }) ?? '';
     this.fromNumber = this.config?.get('TWILIO_PHONE_NUMBER', { infer: true }) ?? '';
-    this.enabled = !!(sid && token && this.fromNumber);
-    if (this.enabled) {
-      this.client = twilio(sid, token);
-      this.logger.log(`SMS Gateway active (from ${this.fromNumber})`);
-    } else {
+
+    if (this.textoUrl && this.textoApiKey) {
+      this.provider = 'vizyo-texto';
       this.client = null;
-      this.logger.warn('SMS Gateway disabled (TWILIO_* env vars missing) — running in no-op mode');
+      this.logger.log(`SMS Gateway active via vizyo-texto (${this.textoUrl})`);
+    } else if (sid && token && this.fromNumber) {
+      this.provider = 'twilio';
+      this.client = twilio(sid, token);
+      this.logger.log(`SMS Gateway active via Twilio (from ${this.fromNumber})`);
+    } else {
+      this.provider = 'noop';
+      this.client = null;
+      this.logger.warn('SMS Gateway disabled (ni VIZYO_TEXTO_* ni TWILIO_* configures) — mode no-op');
     }
   }
 
   isEnabled(): boolean {
-    return this.enabled;
+    return this.provider !== 'noop';
   }
 
   /**
@@ -98,7 +115,31 @@ export class SmsGatewayService {
         }
       : null;
 
-    if (!this.enabled || !this.client) {
+    // vizyo-texto : ping le /health du relay (cout = 1 GET, pas de SMS).
+    if (this.provider === 'vizyo-texto') {
+      try {
+        const res = await fetch(`${this.textoUrl}/health`);
+        return {
+          enabled: true,
+          reachable: res.ok,
+          error: res.ok ? undefined : `HTTP ${res.status}`,
+          fromNumber: this.textoUrl,
+          recentFailures24h,
+          lastFailure,
+        };
+      } catch (err) {
+        return {
+          enabled: true,
+          reachable: false,
+          error: err instanceof Error ? err.message : String(err),
+          fromNumber: this.textoUrl,
+          recentFailures24h,
+          lastFailure,
+        };
+      }
+    }
+
+    if (this.provider === 'noop' || !this.client) {
       return {
         enabled: false,
         reachable: false,
@@ -146,8 +187,13 @@ export class SmsGatewayService {
     const safeTo = to.trim();
     if (!safeTo) return { ok: false, error: 'Numero destinataire vide' };
 
+    // vizyo-texto en priorite (V1.14 — remplace l'appel Twilio).
+    if (this.provider === 'vizyo-texto') {
+      return this.sendViaVizyoTexto(safeTo, body, context);
+    }
+
     // No-op mode: write the audit row, return success without network call.
-    if (!this.enabled || !this.client) {
+    if (this.provider === 'noop' || !this.client) {
       await this.prisma.smsLog.create({
         data: {
           direction: 'OUT',
@@ -202,6 +248,90 @@ export class SmsGatewayService {
         },
       });
       this.logger.error(`SMS send failed to ${safeTo}: ${errorMessage}`);
+      return { ok: false, error: errorMessage };
+    }
+  }
+
+  /**
+   * V1.14 — Envoi via la passerelle vizyo-texto (POST /v1/texto/send).
+   *
+   * Garde l'interface SendSmsResult identique (twilioSid = providerId capcom6)
+   * et ecrit la MEME ligne d'audit smsLog que le chemin Twilio, pour que le reste
+   * du code (UI admin, state machine provisioning) ne voie aucune difference.
+   */
+  private async sendViaVizyoTexto(
+    to: string,
+    body: string,
+    context?: { imei?: string; provisioningId?: string; [k: string]: unknown },
+  ): Promise<SendSmsResult> {
+    try {
+      const res = await fetch(`${this.textoUrl}/v1/texto/send`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.textoApiKey}`,
+        },
+        body: JSON.stringify({ to, body, context }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        id?: string;
+        status?: string;
+        providerId?: string;
+        error?: string;
+        message?: string;
+      };
+
+      if (!res.ok) {
+        const errorMessage = data.message ?? data.error ?? `HTTP ${res.status}`;
+        await this.prisma.smsLog.create({
+          data: {
+            direction: 'OUT',
+            fromNumber: 'vizyo-texto',
+            toNumber: to,
+            body,
+            status: 'failed',
+            errorMessage,
+            imei: context?.imei,
+            provisioningId: context?.provisioningId,
+            context: context as object,
+          },
+        });
+        this.logger.error(`SMS (vizyo-texto) echec vers ${to}: ${errorMessage}`);
+        return { ok: false, error: errorMessage };
+      }
+
+      const providerId = data.providerId ?? data.id;
+      const status = data.status ?? 'queued';
+      await this.prisma.smsLog.create({
+        data: {
+          direction: 'OUT',
+          fromNumber: 'vizyo-texto',
+          toNumber: to,
+          body,
+          twilioSid: providerId,
+          status,
+          imei: context?.imei,
+          provisioningId: context?.provisioningId,
+          context: context as object,
+        },
+      });
+      return { ok: status !== 'failed', twilioSid: providerId };
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      await this.prisma.smsLog.create({
+        data: {
+          direction: 'OUT',
+          fromNumber: 'vizyo-texto',
+          toNumber: to,
+          body,
+          status: 'failed',
+          errorMessage,
+          imei: context?.imei,
+          provisioningId: context?.provisioningId,
+          context: context as object,
+        },
+      });
+      this.logger.error(`SMS (vizyo-texto) erreur vers ${to}: ${errorMessage}`);
       return { ok: false, error: errorMessage };
     }
   }
