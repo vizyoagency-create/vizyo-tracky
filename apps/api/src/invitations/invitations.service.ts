@@ -270,9 +270,7 @@ export class InvitationsService {
       if (msg.includes('409') || msg.includes('already registered')) {
         this.logger.warn({ email: invitation.email }, 'User already in Vizyo Auth — continuing accept flow');
       } else if (msg.includes('400') || msg.includes('Password must be')) {
-        // Extract user-friendly message from Vizyo Auth error
-        const match = msg.match(/"message":"([^"]+)"/);
-        throw new BadRequestException(match?.[1] ?? 'Mot de passe invalide (12 caracteres minimum)');
+        throw new BadRequestException('Le mot de passe doit faire au moins 12 caracteres.');
       } else {
         throw err;
       }
