@@ -34,6 +34,13 @@ const envSchema = z.object({
   TWILIO_PHONE_NUMBER: z.string().default(''),
   TWILIO_WEBHOOK_URL: z.string().default(''),
 
+  // vizyo-texto — passerelle SMS maison (remplace Twilio). Si VIZYO_TEXTO_URL +
+  // VIZYO_TEXTO_API_KEY sont definis, SmsGatewayService les utilise EN PRIORITE.
+  // VIZYO_TEXTO_WEBHOOK_SECRET sert a valider les webhooks entrants (X-Vizyo-Signature).
+  VIZYO_TEXTO_URL: z.string().default(''),
+  VIZYO_TEXTO_API_KEY: z.string().default(''),
+  VIZYO_TEXTO_WEBHOOK_SECRET: z.string().default(''),
+
   // Email Gateway (Resend) — Sprint J. Si RESEND_API_KEY est vide, le module
   // est en mode no-op (les invitations sont creees mais l'email n'est pas envoye,
   // log de debug). Permet de developper sans compte Resend.
