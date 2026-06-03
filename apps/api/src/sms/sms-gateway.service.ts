@@ -51,6 +51,90 @@ export class SmsGatewayService {
   }
 
   /**
+   * V1.13 — Health check Twilio reel (auth ping + audit recents echecs).
+   *
+   * Cas couverts :
+   *   - enabled = false : env vars manquants → mode noop (dev)
+   *   - enabled = true + reachable = true : auth OK, gateway fonctionnelle
+   *   - enabled = true + reachable = false : env vars set mais credentials
+   *     invalides/expires/revoques (cas typique apres rotation Twilio)
+   *
+   * Avant : status() retournait juste enabled=bool (presence env vars) → UI
+   * affichait "Twilio actif" alors qu'en realite les envois faisaient HTTP 401
+   * silencieusement. L'admin devait fouiller les SMS logs pour decouvrir
+   * `errorCode: 20003 "Authenticate"`. Maintenant on ping reellement.
+   *
+   * Le ping est non-bloquant : si Twilio est down/timeout, on retourne
+   * unreachable avec l'erreur — pas d'exception propagee.
+   */
+  async healthCheck(): Promise<{
+    enabled: boolean;
+    reachable: boolean;
+    error?: string;
+    errorCode?: string;
+    fromNumber?: string;
+    recentFailures24h?: number;
+    lastFailure?: { at: string; toNumber: string | null; errorCode?: string; errorMessage?: string } | null;
+  }> {
+    // Compte les SMS OUT en echec dans les 24h (utile meme en mode noop).
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const [recentFailures24h, lastFailureRow] = await Promise.all([
+      this.prisma.smsLog.count({
+        where: { direction: 'OUT', status: 'failed', createdAt: { gte: since } },
+      }),
+      this.prisma.smsLog.findFirst({
+        where: { direction: 'OUT', status: 'failed' },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true, toNumber: true, errorCode: true, errorMessage: true },
+      }),
+    ]);
+
+    const lastFailure = lastFailureRow
+      ? {
+          at: lastFailureRow.createdAt.toISOString(),
+          toNumber: lastFailureRow.toNumber,
+          errorCode: lastFailureRow.errorCode ?? undefined,
+          errorMessage: lastFailureRow.errorMessage ?? undefined,
+        }
+      : null;
+
+    if (!this.enabled || !this.client) {
+      return {
+        enabled: false,
+        reachable: false,
+        fromNumber: this.fromNumber || undefined,
+        recentFailures24h,
+        lastFailure,
+      };
+    }
+
+    const sid = this.config?.get('TWILIO_ACCOUNT_SID', { infer: true });
+    try {
+      // Ping Twilio en fetchant le compte. Cout = 1 req API simple, pas de SMS envoye.
+      await this.client.api.accounts(sid as string).fetch();
+      return {
+        enabled: true,
+        reachable: true,
+        fromNumber: this.fromNumber,
+        recentFailures24h,
+        lastFailure,
+      };
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      const errorCode = (err as { code?: string | number }).code?.toString();
+      return {
+        enabled: true,
+        reachable: false,
+        error: errorMessage,
+        errorCode,
+        fromNumber: this.fromNumber,
+        recentFailures24h,
+        lastFailure,
+      };
+    }
+  }
+
+  /**
    * Send an SMS and persist the audit row in `sms_logs`.
    * In no-op mode, the audit row is still written with `status = 'noop'`.
    */
@@ -155,5 +239,59 @@ export class SmsGatewayService {
       orderBy: { createdAt: 'desc' },
       take: Math.min(limit, 500),
     });
+  }
+
+  /**
+   * V1.13 — Test du flow fallback SMS depuis l'UI admin (SUPER_ADMIN).
+   *
+   * Bypass les 3 conditions de `TrackerFixModeService.tryFallbackSms`
+   * (simPhoneNumber, offline > 5min, SMS enabled) pour permettre a un admin de
+   * valider la gateway SMS sans avoir a simuler un tracker offline. Envoie un
+   * payload `fix030s***n123456` de test (commande Coban benigne).
+   *
+   * Le SMS est envoye au `recipientPhone` fourni par l'admin, PAS au
+   * `simPhoneNumber` du tracker — c'est un test, on ne veut pas polluer une
+   * vraie SIM en prod.
+   *
+   * Le SmsLog est cree avec un context explicite `source: 'admin-test-fallback'`
+   * pour distinguer des vrais fallbacks dans l'audit Logs.
+   *
+   * Retourne le resultat brut de send() + le payload pour traceabilite UI.
+   */
+  async testFallbackForTracker(input: {
+    trackerId: string;
+    recipientPhone: string;
+    requestedByUserId: string;
+  }): Promise<{
+    ok: boolean;
+    smsResult: SendSmsResult;
+    payload: string;
+    trackerImei: string;
+  }> {
+    const tracker = await this.prisma.tracker.findUnique({
+      where: { id: input.trackerId },
+      select: { id: true, imei: true },
+    });
+    if (!tracker) {
+      throw new Error(`Tracker ${input.trackerId} introuvable`);
+    }
+    const safePhone = input.recipientPhone.trim();
+    if (!safePhone.startsWith('+') || safePhone.length < 8) {
+      throw new Error(
+        'Numero destinataire invalide (format E.164 attendu, ex: +33612345678)',
+      );
+    }
+    const payload = `fix030s***n123456`; // benigne 30s
+    const smsResult = await this.send(safePhone, payload, {
+      imei: tracker.imei,
+      source: 'admin-test-fallback',
+      requestedByUserId: input.requestedByUserId,
+    });
+    return {
+      ok: smsResult.ok,
+      smsResult,
+      payload,
+      trackerImei: tracker.imei,
+    };
   }
 }

@@ -15,12 +15,14 @@ import {
   XCircle,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
+import { HttpClient } from '@angular/common/http';
 import {
   AdminSmsService,
   BackupHealthResponse,
   ProvisioningDto,
   SmsLogDto,
   SmsStatus,
+  SmsTestFallbackResult,
 } from '../../core/services/admin-sms.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 
@@ -61,21 +63,38 @@ type Tab = 'status' | 'provision' | 'logs' | 'backup';
       <!-- Tab : Status -->
       @if (activeTab() === 'status') {
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4 flex items-center gap-3">
-            <lucide-icon [img]="Power" [size]="32" [class]="status()?.enabled ? 'text-emerald-400' : 'text-amber-400'"></lucide-icon>
-            <div>
+          <!-- V1.13 — Card SMS Gateway avec vrai verdict :
+               vert = twilio (auth OK) / rouge = twilio-broken (auth KO) /
+               orange = noop (dev). Auparavant le card disait "Twilio actif"
+               meme quand l'auth echouait silencieusement (errorCode 20003). -->
+          <div class="bg-bg-secondary border rounded-[--radius-card] p-4 flex items-start gap-3"
+               [class]="cardBorderClass()">
+            <lucide-icon [img]="Power" [size]="32" [class]="cardIconClass()"></lucide-icon>
+            <div class="flex-1 min-w-0">
               <div class="text-xs uppercase text-fg-tertiary">SMS Gateway</div>
-              <div class="text-lg font-display font-bold"
-                   [class]="status()?.enabled ? 'text-emerald-400' : 'text-amber-400'">
-                {{ status()?.enabled ? 'Twilio actif' : 'No-op (dev)' }}
+              <div class="text-lg font-display font-bold" [class]="cardTitleClass()">
+                {{ cardTitleText() }}
               </div>
               <div class="text-xs text-fg-tertiary mt-1">
-                @if (status()?.enabled) {
-                  Les SMS sont reellement envoyes.
-                } @else {
-                  Les SMS sont simules — config TWILIO_* manquante.
-                }
+                {{ cardSubText() }}
               </div>
+              @if (status()?.errorCode || status()?.error) {
+                <div class="mt-2 text-xs font-mono bg-rose-500/10 text-rose-300 border border-rose-500/30 rounded px-2 py-1 truncate"
+                     [title]="(status()?.errorCode ?? '') + ' ' + (status()?.error ?? '')">
+                  {{ status()?.errorCode }} — {{ status()?.error }}
+                </div>
+              }
+              @if ((status()?.recentFailures24h ?? 0) > 0) {
+                <div class="mt-2 text-xs text-amber-300">
+                  ⚠ {{ status()?.recentFailures24h }} SMS en echec sur les 24h
+                  @if (status()?.lastFailure; as lf) {
+                    · dernier : {{ lf.errorCode ?? '—' }} vers {{ lf.toNumber }}
+                  }
+                </div>
+              }
+              @if (status()?.fromNumber) {
+                <div class="mt-1 text-xs font-mono text-fg-tertiary">From : {{ status()?.fromNumber }}</div>
+              }
             </div>
           </div>
 
@@ -115,6 +134,46 @@ type Tab = 'status' | 'provision' | 'logs' | 'backup';
             <lucide-icon [img]="Send" [size]="14"></lucide-icon>
             Envoyer
           </button>
+        </div>
+
+        <!-- V1.13 — Section dediee Test du flow fallback SMS.
+             Permet de valider sans simuler tracker offline + simPhoneNumber. -->
+        <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4 flex flex-col gap-3">
+          <div class="flex items-center gap-2 text-sm font-semibold">
+            <lucide-icon [img]="MessageSquare" [size]="16" class="text-tracky-light"></lucide-icon>
+            Tester le fallback SMS (bypass conditions tracker)
+          </div>
+          <p class="text-xs text-fg-tertiary">
+            Envoie une commande Coban benigne <code class="font-mono">fix030s***n123456</code> au numero
+            destinataire en utilisant la gateway SMS — sans verifier que le tracker est offline ou que
+            sa SIM est configuree. Sert a valider la chaine Twilio + audit avant de propager le
+            mecanisme en prod.
+          </p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <select [(ngModel)]="fbTrackerId"
+                    class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm">
+              <option value="">Selectionner un tracker...</option>
+              @for (t of trackers(); track t.id) {
+                <option [value]="t.id">{{ t.imei }} — {{ t.plate ?? 'sans plaque' }}</option>
+              }
+            </select>
+            <input [(ngModel)]="fbPhone" placeholder="+33612345678 (ton numero)"
+                   class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm font-mono" />
+          </div>
+          <button (click)="testFallback()" [disabled]="!fbTrackerId || !fbPhone || fbSending()"
+                  class="px-3 py-2 bg-tracky text-white rounded-lg text-sm font-medium hover:bg-tracky-dark cursor-pointer disabled:opacity-50 self-start flex items-center gap-2">
+            <lucide-icon [img]="Send" [size]="14"></lucide-icon>
+            {{ fbSending() ? 'Envoi en cours...' : 'Envoyer test fallback' }}
+          </button>
+          @if (fbResult(); as r) {
+            <div class="text-xs font-mono rounded p-2 border"
+                 [class]="r.ok ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-rose-500/10 border-rose-500/30 text-rose-300'">
+              {{ r.ok ? 'OK' : 'KO' }} — payload <code>{{ r.payload }}</code> envoye au tracker
+              IMEI <code>{{ r.trackerImei }}</code>
+              @if (r.smsResult.twilioSid) { · sid <code>{{ r.smsResult.twilioSid }}</code> }
+              @if (r.smsResult.error) { · erreur : {{ r.smsResult.error }} }
+            </div>
+          }
         </div>
       }
 
@@ -297,6 +356,7 @@ type Tab = 'status' | 'provision' | 'logs' | 'backup';
 export class AdminSmsComponent implements OnInit {
   private readonly api = inject(AdminSmsService);
   private readonly toast = inject(ToastService);
+  private readonly http = inject(HttpClient);
 
   protected readonly AlertTriangle = AlertTriangle;
   protected readonly CheckCircle = CheckCircle;
@@ -337,8 +397,49 @@ export class AdminSmsComponent implements OnInit {
   // Logs filter
   logsImei = '';
 
+  // V1.13 — Test fallback SMS state
+  readonly trackers = signal<{ id: string; imei: string; plate: string | null }[]>([]);
+  fbTrackerId = '';
+  fbPhone = '';
+  readonly fbSending = signal(false);
+  readonly fbResult = signal<SmsTestFallbackResult | null>(null);
+
+  // V1.13 — Verdict reel SMS Gateway (utilise dans card status).
+  protected cardBorderClass(): string {
+    const m = this.status()?.mode;
+    if (m === 'twilio') return 'border-emerald-500/30';
+    if (m === 'twilio-broken') return 'border-rose-500/40';
+    return 'border-amber-500/30';
+  }
+  protected cardIconClass(): string {
+    const m = this.status()?.mode;
+    if (m === 'twilio') return 'text-emerald-400';
+    if (m === 'twilio-broken') return 'text-rose-400';
+    return 'text-amber-400';
+  }
+  protected cardTitleClass(): string {
+    const m = this.status()?.mode;
+    if (m === 'twilio') return 'text-emerald-400';
+    if (m === 'twilio-broken') return 'text-rose-400';
+    return 'text-amber-400';
+  }
+  protected cardTitleText(): string {
+    const m = this.status()?.mode;
+    if (m === 'twilio') return 'Twilio actif';
+    if (m === 'twilio-broken') return 'Twilio configure mais auth KO';
+    return 'No-op (dev)';
+  }
+  protected cardSubText(): string {
+    const m = this.status()?.mode;
+    if (m === 'twilio') return 'Les SMS sont reellement envoyes.';
+    if (m === 'twilio-broken')
+      return 'Les credentials TWILIO_* sont presents mais Twilio refuse l\'authentification — verifier sid/token.';
+    return 'Les SMS sont simules — config TWILIO_* manquante.';
+  }
+
   ngOnInit(): void {
     this.reload();
+    this.loadTrackers();
   }
 
   async reload(): Promise<void> {
@@ -355,6 +456,47 @@ export class AdminSmsComponent implements OnInit {
       this.backupHealth.set(bh);
     } catch {
       this.toast.error('Echec du chargement (acces SUPER_ADMIN requis)');
+    }
+  }
+
+  /** V1.13 — Charge la liste des trackers pour le dropdown de test fallback.
+   *  Lecture allegee : id + imei + plate seulement (suffisant pour selecteur). */
+  private async loadTrackers(): Promise<void> {
+    try {
+      const list = await firstValueFrom(
+        this.http.get<Array<{ id: string; imei: string; vehicle?: { plate?: string | null } | null }>>(
+          '/api/trackers',
+        ),
+      );
+      this.trackers.set(
+        list.map((t) => ({ id: t.id, imei: t.imei, plate: t.vehicle?.plate ?? null })),
+      );
+    } catch {
+      /* silencieux : l'UI affichera juste "Selectionner un tracker" vide */
+    }
+  }
+
+  async testFallback(): Promise<void> {
+    if (!this.fbTrackerId || !this.fbPhone) return;
+    this.fbSending.set(true);
+    this.fbResult.set(null);
+    try {
+      const r = await firstValueFrom(this.api.testFallback(this.fbTrackerId, this.fbPhone));
+      this.fbResult.set(r);
+      if (r.ok) {
+        this.toast.success(`Test fallback OK — payload envoye au ${this.fbPhone}`);
+      } else {
+        this.toast.error(`Test fallback KO : ${r.smsResult.error ?? 'erreur inconnue'}`);
+      }
+      // Refresh status pour mettre a jour recentFailures24h si KO.
+      await this.reload();
+    } catch (e) {
+      const msg = (e as { error?: { error?: { message?: string } } })?.error?.error?.message
+        ?? (e as Error).message
+        ?? 'Echec inconnu';
+      this.toast.error(`Test fallback : ${msg}`);
+    } finally {
+      this.fbSending.set(false);
     }
   }
 

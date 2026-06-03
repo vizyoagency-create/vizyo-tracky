@@ -33,10 +33,28 @@ export class SmsAdminController {
   ) {}
 
   @Get('status')
-  status() {
+  async status() {
+    // V1.13 — Reel health check (auth Twilio + audit 24h) au lieu du simple
+    // check env vars. Backward compat : on garde `enabled` et on ajoute :
+    //   - reachable : auth Twilio reussit (true) ou echoue (false)
+    //   - mode : 'twilio' (enabled+reachable) | 'twilio-broken' (enabled+!reachable) | 'noop' (!enabled)
+    //   - error/errorCode : raison echec auth (ex: '20003' = "Authenticate")
+    //   - recentFailures24h + lastFailure : visibilite sur les SMS qui ont rate
+    // L'UI doit privilegier `reachable` sur `enabled` pour le verdict visuel.
+    const hc = await this.sms.healthCheck();
+    let mode: 'twilio' | 'twilio-broken' | 'noop';
+    if (!hc.enabled) mode = 'noop';
+    else if (hc.reachable) mode = 'twilio';
+    else mode = 'twilio-broken';
     return {
-      enabled: this.sms.isEnabled(),
-      mode: this.sms.isEnabled() ? 'twilio' : 'noop',
+      enabled: hc.enabled,
+      reachable: hc.reachable,
+      mode,
+      error: hc.error,
+      errorCode: hc.errorCode,
+      fromNumber: hc.fromNumber,
+      recentFailures24h: hc.recentFailures24h,
+      lastFailure: hc.lastFailure,
     };
   }
 
@@ -46,6 +64,39 @@ export class SmsAdminController {
       throw new BadRequestException('to et message sont requis');
     }
     return this.sms.send(body.to, body.message);
+  }
+
+  /**
+   * V1.13 — POST /api/admin/sms/test-fallback
+   *
+   * Permet a un SUPER_ADMIN de tester le flow fallback SMS sans simuler
+   * un tracker offline. Bypass les 3 conditions de TrackerFixModeService.
+   *
+   * Body : { trackerId: uuid, recipientPhone: '+E.164' }
+   *
+   * Returns : { ok, payload, trackerImei, smsResult: { ok, twilioSid?, error? } }
+   *
+   * Le SMS envoye contient `fix030s***n123456` (commande benigne 30s).
+   * Cree un SmsLog avec context `source: 'admin-test-fallback'`.
+   */
+  @Post('test-fallback')
+  async testFallback(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: { trackerId?: string; recipientPhone?: string },
+  ) {
+    if (!body?.trackerId || !body?.recipientPhone) {
+      throw new BadRequestException('trackerId et recipientPhone sont requis');
+    }
+    try {
+      return await this.sms.testFallbackForTracker({
+        trackerId: body.trackerId,
+        recipientPhone: body.recipientPhone,
+        requestedByUserId: req.user.id,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new BadRequestException(msg);
+    }
   }
 
   @Get('logs')

@@ -1,9 +1,35 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 
+/**
+ * V1.13 — Verdict reel SMS Gateway. Etend l'ancien `{ enabled, mode }`.
+ *   - 'twilio'         : env vars set + auth Twilio OK (reachable)
+ *   - 'twilio-broken'  : env vars set MAIS auth Twilio echoue (credentials KO)
+ *   - 'noop'           : env vars manquants (dev mode)
+ * Backward compat : l'UI doit privilegier `reachable` au lieu de `enabled`
+ * pour le badge visuel ; sinon "Twilio actif" peut mentir.
+ */
 export interface SmsStatus {
   enabled: boolean;
-  mode: 'twilio' | 'noop';
+  reachable?: boolean;
+  mode: 'twilio' | 'twilio-broken' | 'noop';
+  error?: string;
+  errorCode?: string;
+  fromNumber?: string;
+  recentFailures24h?: number;
+  lastFailure?: {
+    at: string;
+    toNumber: string | null;
+    errorCode?: string;
+    errorMessage?: string;
+  } | null;
+}
+
+export interface SmsTestFallbackResult {
+  ok: boolean;
+  payload: string;
+  trackerImei: string;
+  smsResult: { ok: boolean; twilioSid?: string; error?: string };
 }
 
 export interface SmsLogDto {
@@ -85,6 +111,14 @@ export class AdminSmsService {
     return this.http.post<{ ok: boolean; twilioSid?: string; error?: string }>(
       '/api/admin/sms/send',
       { to, message },
+    );
+  }
+
+  /** V1.13 — Test du flow fallback SMS bypass conditions (cf backend). */
+  testFallback(trackerId: string, recipientPhone: string) {
+    return this.http.post<SmsTestFallbackResult>(
+      '/api/admin/sms/test-fallback',
+      { trackerId, recipientPhone },
     );
   }
 
