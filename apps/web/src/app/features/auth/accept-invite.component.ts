@@ -51,6 +51,10 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
               <label>Mot de passe</label>
               <input [(ngModel)]="password" name="password" type="password"
                      placeholder="12 caractères minimum" autocomplete="new-password" required minlength="12" />
+              <small class="hint" [class.ok]="password.length >= 12" [class.error]="password.length > 0 && password.length < 12">
+                {{ password.length > 0 ? password.length + '/12 caractères' : 'Minimum 12 caractères requis' }}
+                @if (password.length >= 12) { — OK }
+              </small>
             </div>
             <div class="field">
               <label>Confirmer le mot de passe</label>
@@ -124,6 +128,9 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
       border-color: var(--tracky-light, #10E0A0);
     }
     .warn { font-size: 11px; color: var(--accent-warning, #f59e0b); }
+    .hint { font-size: 11px; color: var(--fg-tertiary); transition: color .2s; }
+    .hint.ok { color: var(--tracky-light, #10E0A0); }
+    .hint.error { color: var(--accent-danger, #ef4444); }
     .alert {
       display: flex; align-items: flex-start; gap: 8px;
       padding: 10px 12px;
