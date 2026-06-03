@@ -617,7 +617,9 @@ textarea:focus-visible,
 .tracky-marker--mini {
   transform: scale(0.32);
   transform-origin: center center;
-  transition: transform 200ms ease;
+  transition: transform 200ms ease, opacity 200ms ease;
+  pointer-events: none;
+  opacity: 0.5;
 }
 .tracky-marker--mini .tracky-marker__pulse,
 .tracky-marker--mini .tracky-marker__heading-ring,

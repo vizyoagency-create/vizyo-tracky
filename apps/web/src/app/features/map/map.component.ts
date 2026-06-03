@@ -2043,16 +2043,20 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   });
 
   // Reagir aux events ENGINE_COMMAND_UPDATED (CUT/RESTORE via SMS, scheduler, etc.)
-  // pour rafraichir le popup ouvert et mettre a jour l'etat ignition affiche.
+  // pour rafraichir la bottom card ouverte et mettre a jour l'etat ignition affiche.
   private engineCommandEffect = effect(() => {
     const updates = this.realtime.engineCommandUpdates();
-    if (!this.activePopupTrackerId || !this.currentPopup) return;
+    if (!this.activePopupTrackerId) return;
     const update = updates.get(this.activePopupTrackerId);
     if (!update) return;
     const pos = this.realtime.positionsList().find((p) => p.trackerId === this.activePopupTrackerId);
     if (!pos) return;
-    this.currentPopup.setHTML(this.buildPopupHtml(this.patchIgnitionFromCommands(pos)));
-    setTimeout(() => this.wirePopupActions(this.activePopupTrackerId!, this.activePopupVehicleId!), 0);
+    const currentCard = this.baanoolCard();
+    if (currentCard) {
+      const patched = this.patchIgnitionFromCommands(pos);
+      const cutActive = this.isCutActiveForTracker(pos.trackerId);
+      this.baanoolCard.set({ ...currentCard, ignition: patched.ignition, cutActive });
+    }
   });
 
   // V1.12 — Bridge avec BaanoolMapOverlay : effects en field initializers (= injection
@@ -2174,11 +2178,12 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     });
 
     // Sprint G.2 — refresh cluster visibility on zoom change.
-    // V1.7 : 'zoomend' au lieu de 'zoom' pour ne fire qu'une seule fois en
-    // fin de geste (au lieu de 60Hz pendant le zoom utilisateur). Combine
-    // a la transition CSS sur transform:scale (au lieu de width/height),
-    // les markers ne derivent plus visuellement pendant le zoom.
-    this.map.on('zoomend', () => this.applyClusterVisibility());
+    // 'zoom' au lieu de 'zoomend' pour que le toggle mini/full soit reactif
+    // pendant le geste (pas d'attente de fin de zoom). Pas de drift car les
+    // markers utilisent transform:scale (pas de reflow layout).
+    // Les cluster GL layers n'ont plus besoin de cet event : leur opacite est
+    // geree par des expressions zoom-dependent MapLibre (fade progressif).
+    this.map.on('zoom', () => this.applyClusterVisibility());
 
     // Click pour la mesure de distance.
     this.map.on('click', (e) => {
@@ -2507,18 +2512,19 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     // passe jamais en mini meme a faible zoom (markers riches partout).
     const useMini = mini && this.compactMarkers();
 
+    // Les layers cluster GL utilisent des expressions zoom-dependent pour
+    // l'opacite (fade progressif entre ZOOM_MINI_ENTER et ZOOM_MINI_EXIT).
+    // On ne toggle la visibility que pour le switch compactMarkers (desactive
+    // totalement les clusters quand l'user prefere les markers riches partout).
+    const showClusters = this.compactMarkers();
+    this.setLayerVisibility('vehicles-cluster-bg', showClusters);
+    this.setLayerVisibility('vehicles-cluster-count', showClusters);
+    this.setLayerVisibility('vehicles-unclustered', showClusters);
+
     if (this.lastMiniState === mini) {
-      // Pas de transition d'etat hysteresis, mais le toggle compactMarkers
-      // peut avoir change : on s'assure que la classe DOM reflete useMini.
-      // V1.10 (Sprint 3 perf) — itere sur this.markers (qui maintient le Set
-      // d'elements actifs) au lieu de document.querySelectorAll, qui scannait
-      // tout le DOM a chaque zoom (~1-5ms blocage main thread a 100 markers).
       for (const { el } of this.markers.values()) {
         el.classList.toggle('tracky-marker--mini', useMini);
       }
-      this.setLayerVisibility('vehicles-cluster-bg', useMini);
-      this.setLayerVisibility('vehicles-cluster-count', useMini);
-      this.setLayerVisibility('vehicles-unclustered', useMini);
       return;
     }
     this.lastMiniState = mini;
@@ -2526,9 +2532,6 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     for (const { el } of this.markers.values()) {
       el.classList.toggle('tracky-marker--mini', useMini);
     }
-    this.setLayerVisibility('vehicles-cluster-bg', useMini);
-    this.setLayerVisibility('vehicles-cluster-count', useMini);
-    this.setLayerVisibility('vehicles-unclustered', useMini);
   }
 
   /** V1.7 — toggle Calques : active/desactive le mode compact a faible zoom. */
@@ -3060,11 +3063,18 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     for (const off of this.clusterListenerCleanups) off();
     this.clusterListenerCleanups = [];
 
+    // Zoom thresholds pour le fade progressif des clusters — alignes avec
+    // ZOOM_MINI_ENTER / ZOOM_MINI_EXIT. L'interpolation MapLibre gere le fade
+    // en continu pendant le zoom (aucun event JS necessaire), ce qui supprime
+    // l'effet "bloque" des clusters a faible zoom.
+    const zFadeStart = MapComponent.ZOOM_MINI_ENTER;  // 9.5
+    const zFadeEnd   = MapComponent.ZOOM_MINI_EXIT;   // 10.5
+
     this.map.addSource('vehicles-cluster', {
       type: 'geojson',
       data: { type: 'FeatureCollection', features: [] },
       cluster: true,
-      clusterMaxZoom: 13,
+      clusterMaxZoom: 11,
       clusterRadius: 40,
     });
     this.map.addLayer({
@@ -3075,9 +3085,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       paint: {
         'circle-color': '#10E0A0',
         'circle-radius': ['step', ['get', 'point_count'], 18, 10, 22, 50, 28],
-        'circle-opacity': 0.9,
+        'circle-opacity': ['interpolate', ['linear'], ['zoom'], zFadeStart, 0.9, zFadeEnd, 0],
         'circle-stroke-width': 3,
         'circle-stroke-color': '#0a0a0a',
+        'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'], zFadeStart, 1, zFadeEnd, 0],
       },
     });
     this.map.addLayer({
@@ -3090,7 +3101,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         'text-size': 13,
         'text-allow-overlap': true,
       },
-      paint: { 'text-color': '#0a0a0a' },
+      paint: {
+        'text-color': '#0a0a0a',
+        'text-opacity': ['interpolate', ['linear'], ['zoom'], zFadeStart, 1, zFadeEnd, 0],
+      },
     });
     // Layer pour les points individuels (non regroupes en cluster) — visible a faible zoom.
     this.map.addLayer({
@@ -3098,13 +3112,13 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       type: 'circle',
       source: 'vehicles-cluster',
       filter: ['!', ['has', 'point_count']],
-      layout: { visibility: 'none' },
       paint: {
         'circle-color': '#10E0A0',
         'circle-radius': 7,
-        'circle-opacity': 0.95,
+        'circle-opacity': ['interpolate', ['linear'], ['zoom'], zFadeStart, 0.95, zFadeEnd, 0],
         'circle-stroke-width': 2,
         'circle-stroke-color': '#0a0a0a',
+        'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'], zFadeStart, 1, zFadeEnd, 0],
       },
     });
     // V1.10 (Sprint 3 perf) — chaque listener est stocke avec son cleanup,
@@ -3302,6 +3316,24 @@ export class MapComponent implements AfterViewInit, OnDestroy {
             ...data,
             heading: prevDisplay?.displayHeading ?? lastData?.heading ?? data.heading,
           });
+          // Reconstruire le trail feature depuis les points existants pour que
+          // setData() ne fasse pas disparaitre la trainee (regression : le
+          // continue sautait la construction du feature → trail supprime a
+          // chaque trame invalide car setData remplace tout le FeatureCollection).
+          if (showTrails) {
+            const pts = this.trailPoints.get(pos.trackerId);
+            if (pts && pts.length >= 2) {
+              const smoothPts = catmullRom(
+                pts.map(([lng, lat]) => ({ lat, lng })),
+                6,
+              ).map((p) => [p.lng, p.lat] as [number, number]);
+              trailFeatures.push({
+                type: 'Feature',
+                geometry: { type: 'LineString', coordinates: smoothPts },
+                properties: { color: speedColor(lastData?.speedKmh ?? 0), trackerId: pos.trackerId },
+              });
+            }
+          }
         }
         // Pas de premier rendu sur fix invalide : on attend une trame fiable.
         continue;
@@ -3502,9 +3534,6 @@ export class MapComponent implements AfterViewInit, OnDestroy {
               cutActive,
             });
           }
-        } else if (this.currentPopup) {
-          this.currentPopup.setHTML(this.buildPopupHtml(this.patchIgnitionFromCommands(pos)));
-          setTimeout(() => this.wirePopupActions(this.activePopupTrackerId!, this.activePopupVehicleId!), 0);
         }
       }
     }
@@ -3552,188 +3581,24 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     const pos = this.realtime.positionsList().find((p) => p.trackerId === trackerId);
     if (!pos || !this.map) return;
 
-    // Mode Baanool : bottom card au lieu du popup MapLibre.
-    if (this.isBaanoolMode()) {
-      this.closePopup();
-      const patched = this.patchIgnitionFromCommands(pos);
-      const meta = this.vehicleMeta.get(pos.vehicleId) ?? { type: 'OTHER', plate: '?' };
-      this.baanoolCard.set({
-        trackerId,
-        vehicleId: pos.vehicleId,
-        plate: meta.plate,
-        type: meta.type,
-        ignition: patched.ignition,
-        speedKmh: patched.speedKmh,
-        lat: pos.lat,
-        lng: pos.lng,
-        cutActive: this.isCutActiveForTracker(trackerId),
-      });
-      this.activePopupTrackerId = trackerId;
-      this.activePopupVehicleId = pos.vehicleId;
-      return;
-    }
-
+    // Bottom card pour tous les modes — remplace le popup MapLibre qui causait
+    // des bugs de zoom/pan et des interactions cassees sur mobile.
     this.closePopup();
-    const html = this.buildPopupHtml(this.patchIgnitionFromCommands(pos));
-    this.currentPopup = new maplibregl.Popup({
-      anchor: 'bottom',
-      offset: 30,
-      maxWidth: '320px',
-      closeOnClick: false,
-    })
-      .setLngLat([pos.lng, pos.lat])
-      .setHTML(html)
-      .addTo(this.map);
+    const patched = this.patchIgnitionFromCommands(pos);
+    const meta = this.vehicleMeta.get(pos.vehicleId) ?? { type: 'OTHER', plate: '?' };
+    this.baanoolCard.set({
+      trackerId,
+      vehicleId: pos.vehicleId,
+      plate: meta.plate,
+      type: meta.type,
+      ignition: patched.ignition,
+      speedKmh: patched.speedKmh,
+      lat: pos.lat,
+      lng: pos.lng,
+      cutActive: this.isCutActiveForTracker(trackerId),
+    });
     this.activePopupTrackerId = trackerId;
     this.activePopupVehicleId = pos.vehicleId;
-
-    // Wire les boutons du popover (delegation event).
-    setTimeout(() => this.wirePopupActions(trackerId, pos.vehicleId), 0);
-
-    this.currentPopup.on('close', () => {
-      this.activePopupTrackerId = null;
-      this.activePopupVehicleId = null;
-      this.currentPopup = null;
-    });
-  }
-
-  private buildPopupHtml(pos: PositionUpdateEvent): string {
-    const meta = this.vehicleMeta.get(pos.vehicleId) ?? { type: 'OTHER', plate: '?' };
-    const ago = Math.round((Date.now() - new Date(pos.timestamp).getTime()) / 1000);
-    const agoStr = ago < 60 ? `${ago}s` : `${Math.round(ago / 60)}min`;
-    // V1.7 — Logique CUT/RESTORE basee sur l'etat des COMMANDES, plus sur
-    // l'ignition. Raison : avec accConnected=false, l'ignition est inferee et
-    // peut transitoirement etre fausse (vehicule a 0 km/h moteur encore tournant
-    // pendant 5 min, ou trame ACC perdue). On propose "Rallumer" UNIQUEMENT
-    // quand une CUT effective est en cours. Sinon on garde "Couper" (l'API
-    // refusera si vitesse trop elevee, position stale, etc.).
-    const cutActive = this.isCutActiveForTracker(pos.trackerId);
-    const engineBtn = cutActive
-      ? `<button data-action="restore" class="tk-popup-btn tk-popup-btn--success">
-           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-             <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/>
-           </svg>
-           <span>Rallumer le moteur</span>
-         </button>`
-      : `<button data-action="cut" class="tk-popup-btn tk-popup-btn--danger">
-           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-             <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/>
-           </svg>
-           <span>Couper le moteur</span>
-         </button>`;
-
-    // Couleur de la pastille vitesse selon le seuil
-    const speedColor = pos.speedKmh > 90 ? '#ef4444' :
-                       pos.speedKmh > 50 ? '#f59e0b' :
-                       pos.speedKmh > 0  ? '#10E0A0' : 'var(--text-tertiary)';
-
-    return `
-      <div class="tk-popup">
-        <div class="tk-popup-header">
-          <div class="tk-popup-header-text">
-            <div class="tk-popup-plate">${escapeHtml(meta.plate)}</div>
-            <div class="tk-popup-meta">${escapeHtml(meta.type)} · il y a ${agoStr}</div>
-          </div>
-          <div class="tk-popup-status ${pos.ignition ? 'is-on' : 'is-off'}">
-            <span class="tk-popup-status-dot"></span>
-            ${pos.ignition ? 'Contact ON' : 'Contact OFF'}
-          </div>
-        </div>
-
-        <div class="tk-popup-stats">
-          <div class="tk-popup-stat">
-            <span class="tk-popup-stat-label">Vitesse</span>
-            <span class="tk-popup-stat-value" style="color:${speedColor}">${pos.speedKmh.toFixed(0)} <small>km/h</small></span>
-          </div>
-          <div class="tk-popup-stat">
-            <span class="tk-popup-stat-label">Cap</span>
-            <span class="tk-popup-stat-value">${Math.round(pos.heading)}°</span>
-          </div>
-        </div>
-
-        <div class="tk-popup-coords">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
-          </svg>
-          ${pos.lat.toFixed(4)}, ${pos.lng.toFixed(4)}
-        </div>
-
-        <div class="tk-popup-actions">
-          <button data-action="follow" class="tk-popup-btn tk-popup-btn--primary">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <polygon points="3 11 22 2 13 21 11 13 3 11"/>
-            </svg>
-            <span>Suivre ce véhicule</span>
-          </button>
-          <button data-action="detail" class="tk-popup-btn tk-popup-btn--ghost">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
-            </svg>
-            <span>Fiche détaillée</span>
-          </button>
-          <button data-action="replay1h" class="tk-popup-btn tk-popup-btn--info">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-            </svg>
-            <span>Voir la dernière heure</span>
-          </button>
-          <button data-action="navigate" class="tk-popup-btn tk-popup-btn--ghost">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M3 11l19-9-9 19-2-8-8-2z"/>
-            </svg>
-            <span>Itinéraire</span>
-          </button>
-          <button data-action="gmaps" class="tk-popup-btn tk-popup-btn--ghost">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
-            </svg>
-            <span>Google Maps</span>
-          </button>
-          ${engineBtn}
-        </div>
-      </div>
-    `;
-  }
-
-  private wirePopupActions(trackerId: string, vehicleId: string): void {
-    const root = this.currentPopup?.getElement();
-    if (!root) return;
-    root.querySelectorAll<HTMLButtonElement>('[data-action]').forEach((btn) => {
-      const action = btn.dataset['action'];
-      btn.addEventListener('click', () => {
-        switch (action) {
-          case 'follow':
-            this.followedVehicleId.set(vehicleId);
-            if (this.cameraMode() === 'free') this.setCameraMode('follow');
-            else this.applyCameraMode();
-            this.closePopup();
-            break;
-          case 'detail':
-            this.router.navigate(['/vehicles', vehicleId]);
-            break;
-          case 'replay1h':
-            this.toggleMiniReplay(vehicleId);
-            this.closePopup();
-            break;
-          case 'navigate': {
-            const p = this.realtime.positionsList().find((pp) => pp.trackerId === trackerId);
-            if (p) window.open(`https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}`, '_blank');
-            break;
-          }
-          case 'gmaps': {
-            const p = this.realtime.positionsList().find((pp) => pp.trackerId === trackerId);
-            if (p) window.open(`https://www.google.com/maps?q=${p.lat},${p.lng}`, '_blank');
-            break;
-          }
-          case 'cut':
-            this.requestEngine(trackerId, 'CUT');
-            break;
-          case 'restore':
-            this.requestEngine(trackerId, 'RESTORE');
-            break;
-        }
-      });
-    });
   }
 
   private requestEngine(trackerId: string, action: 'CUT' | 'RESTORE'): void {
@@ -3932,16 +3797,6 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 }
 
 /* --- Helpers --- */
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) =>
-    c === '&' ? '&amp;' :
-    c === '<' ? '&lt;' :
-    c === '>' ? '&gt;' :
-    c === '"' ? '&quot;' :
-    '&#39;',
-  );
-}
 
 /**
  * Construit un Polygon GeoJSON approximant un cercle (64 segments) autour
