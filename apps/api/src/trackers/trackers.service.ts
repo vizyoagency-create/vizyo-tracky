@@ -117,12 +117,23 @@ export class TrackersService {
     const data: Prisma.TrackerUpdateInput = {};
     if (dto.model !== undefined) data.model = dto.model;
     if (dto.accConnected !== undefined) data.accConnected = dto.accConnected;
+    // V1.14 — SIM data du tracker (chaine vide => effacer). Sert au fallback SMS
+    // + a l'allowlist vizyo-texto (auto-sync via l'event tracker.sim-changed).
+    const simChanged = dto.simPhoneNumber !== undefined;
+    if (simChanged) {
+      data.simPhoneNumber = dto.simPhoneNumber?.trim() ? dto.simPhoneNumber.trim() : null;
+    }
 
-    return this.prisma.tracker.update({
+    const updated = await this.prisma.tracker.update({
       where: { id },
       data,
       include: { vehicle: true },
     });
+
+    if (simChanged) {
+      this.eventEmitter.emit('tracker.sim-changed', { trackerId: id, imei: updated.imei });
+    }
+    return updated;
   }
 
   async remove(id: string, requestedBy: RequestedBy): Promise<void> {
@@ -133,6 +144,11 @@ export class TrackersService {
     }
 
     await this.prisma.tracker.delete({ where: { id } });
+
+    // V1.14 — si le tracker avait une SIM, reconcilier l'allowlist (drop orphelin).
+    if (tracker.simPhoneNumber) {
+      this.eventEmitter.emit('tracker.sim-changed', { trackerId: id, imei: tracker.imei });
+    }
   }
 
   async assign(

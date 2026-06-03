@@ -1,5 +1,6 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { OnEvent } from '@nestjs/event-emitter';
 import type { Env } from '../config/env.validation';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -45,6 +46,35 @@ export class AllowlistService {
   ) {
     this.baseUrl = (this.config.get('VIZYO_TEXTO_URL', { infer: true }) ?? '').replace(/\/+$/, '');
     this.apiKey = this.config.get('VIZYO_TEXTO_API_KEY', { infer: true }) ?? '';
+  }
+
+  // ─── Auto-sync sur changement de SIM tracker ──────────────────────────────
+  private syncing = false;
+  private syncPending = false;
+
+  /**
+   * Reconcilie l'allowlist quand un tracker.simPhoneNumber change (event).
+   * Coalesce les rafales (si un sync tourne deja, re-run a la fin) ; best-effort
+   * (si vizyo-texto est down, on log et on abandonne — un sync manuel ou un
+   * prochain event reconciliera).
+   */
+  @OnEvent('tracker.sim-changed')
+  async onTrackerSimChanged(): Promise<void> {
+    if (!this.baseUrl || !this.apiKey || this.syncing) {
+      if (this.syncing) this.syncPending = true;
+      return;
+    }
+    this.syncing = true;
+    try {
+      do {
+        this.syncPending = false;
+        await this.syncFromTrackers();
+      } while (this.syncPending);
+    } catch (err) {
+      this.logger.warn(`auto-sync allowlist echoue: ${err instanceof Error ? err.message : err}`);
+    } finally {
+      this.syncing = false;
+    }
   }
 
   private async call<T>(path: string, init?: RequestInit): Promise<T> {

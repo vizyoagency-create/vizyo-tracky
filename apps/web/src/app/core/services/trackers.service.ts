@@ -12,12 +12,16 @@ export interface TrackerDetail {
   vehicle: { id: string; plate: string; fleetId: string } | null;
   /** V1.7 — fil ACC connecte (true) ou ignition inferee depuis vitesse (false). */
   accConnected: boolean;
+  /** V1.14 — numero SIM data (E.164) pour fallback SMS + allowlist vizyo-texto. */
+  simPhoneNumber: string | null;
 }
 
 export interface UpdateTrackerPayload {
   model?: string;
   /** V1.7 — toggle SUPER_ADMIN. Backend rejette en 403 pour les autres roles. */
   accConnected?: boolean;
+  /** V1.14 — numero SIM (E.164) ou '' pour effacer. */
+  simPhoneNumber?: string;
 }
 
 @Injectable({ providedIn: 'root' })

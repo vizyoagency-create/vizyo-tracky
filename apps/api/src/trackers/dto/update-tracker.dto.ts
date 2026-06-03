@@ -1,4 +1,4 @@
-import { IsBoolean, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, Matches } from 'class-validator';
 
 export class UpdateTrackerDto {
   @IsOptional()
@@ -13,4 +13,16 @@ export class UpdateTrackerDto {
   @IsOptional()
   @IsBoolean()
   accConnected?: boolean;
+
+  /**
+   * V1.14 — Numero de la SIM data du tracker (E.164, ex +33612345678).
+   * Chaine vide = effacer. Utilise pour le fallback SMS + l'allowlist vizyo-texto
+   * (auto-sync via l'event tracker.sim-changed).
+   */
+  @IsOptional()
+  @IsString()
+  @Matches(/^(\+[1-9]\d{6,14})?$/, {
+    message: 'simPhoneNumber: format E.164 attendu (ex +33612345678) ou vide',
+  })
+  simPhoneNumber?: string;
 }

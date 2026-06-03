@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { TrackerProvisioningStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SmsGatewayService } from './sms-gateway.service';
@@ -76,6 +77,7 @@ export class TrackerProvisioningService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly sms: SmsGatewayService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   /** Build the 9 Coban SMS payloads from the provisioning params. */
@@ -138,6 +140,17 @@ export class TrackerProvisioningService {
         steps: [] as object,
       },
     });
+
+    // V1.14 — Renseigne le simPhoneNumber du tracker (par imei) des le lancement :
+    // le numero SIM est connu ici. Sert au fallback SMS + a l'allowlist vizyo-texto
+    // (auto-sync via l'event). updateMany = no-op si le tracker n'existe pas encore.
+    const simUpdate = await this.prisma.tracker.updateMany({
+      where: { imei: params.imei },
+      data: { simPhoneNumber: params.phoneNumber },
+    });
+    if (simUpdate.count > 0) {
+      this.eventEmitter.emit('tracker.sim-changed', { imei: params.imei });
+    }
 
     // Fire the dispatch loop in the background — it returns immediately.
     void this.dispatchAll(provisioning.id, params).catch((err) => {

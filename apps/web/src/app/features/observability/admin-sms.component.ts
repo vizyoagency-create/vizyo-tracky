@@ -416,6 +416,50 @@ type Tab = 'status' | 'provision' | 'logs' | 'allowlist' | 'backup';
             Aucun numero dans l'allowlist. Ajoute-en un, ou clique "Sync trackers".
           </div>
         }
+
+        <!-- SIM des trackers (renseigner ici => fallback SMS + auto-sync allowlist) -->
+        <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-x-auto">
+          <div class="p-3 text-sm font-semibold flex items-center gap-2 border-b border-border-subtle">
+            <lucide-icon [img]="Phone" [size]="16" class="text-tracky-light"></lucide-icon>
+            SIM des trackers ({{ trackers().length }})
+          </div>
+          <p class="px-3 pt-3 text-xs text-fg-tertiary">
+            Renseigner le numero SIM d'un tracker l'ajoute automatiquement a l'allowlist
+            (source <code>synced</code>) et active le fallback SMS pour ce tracker.
+          </p>
+          @if (trackers().length > 0) {
+            <table class="w-full text-sm min-w-[640px] mt-2">
+              <thead class="border-b border-border-subtle text-fg-tertiary text-xs uppercase">
+                <tr>
+                  <th class="p-3 text-left">IMEI</th>
+                  <th class="p-3 text-left">Vehicule</th>
+                  <th class="p-3 text-left">Numero SIM (E.164)</th>
+                  <th class="p-3 text-right"></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (t of trackers(); track t.id) {
+                  <tr class="border-b border-border-subtle/50 hover:bg-bg-tertiary/50">
+                    <td class="p-3 font-mono text-xs">{{ t.imei }}</td>
+                    <td class="p-3 text-xs">{{ t.plate ?? '—' }}</td>
+                    <td class="p-3">
+                      <input [(ngModel)]="simEdits[t.id]" placeholder="+33612345678 (vide = effacer)"
+                             class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-1.5 text-sm font-mono w-full max-w-[230px]" />
+                    </td>
+                    <td class="p-3 text-right">
+                      <button (click)="saveTrackerSim(t.id)" [disabled]="savingSim() === t.id"
+                              class="px-2.5 py-1.5 bg-tracky text-white rounded-lg text-xs font-medium hover:bg-tracky-dark cursor-pointer disabled:opacity-50">
+                        {{ savingSim() === t.id ? '...' : 'Enregistrer' }}
+                      </button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          } @else {
+            <div class="p-6 text-center text-fg-tertiary text-sm">Aucun tracker.</div>
+          }
+        </div>
       }
 
       <!-- Tab : Backup -->
@@ -521,7 +565,9 @@ export class AdminSmsComponent implements OnInit {
   logsImei = '';
 
   // V1.13 — Test fallback SMS state
-  readonly trackers = signal<{ id: string; imei: string; plate: string | null }[]>([]);
+  readonly trackers = signal<
+    { id: string; imei: string; plate: string | null; simPhoneNumber: string | null }[]
+  >([]);
   fbTrackerId = '';
   fbPhone = '';
   readonly fbSending = signal(false);
@@ -533,6 +579,9 @@ export class AdminSmsComponent implements OnInit {
   newPhone = '';
   newLabel = '';
   readonly syncing = signal(false);
+  // Edition inline du numero SIM par tracker (id -> valeur en cours).
+  simEdits: Record<string, string> = {};
+  readonly savingSim = signal<string | null>(null);
 
   // V1.13 — Verdict reel SMS Gateway (utilise dans card status).
   private modeOk(): boolean {
@@ -605,13 +654,23 @@ export class AdminSmsComponent implements OnInit {
   private async loadTrackers(): Promise<void> {
     try {
       const list = await firstValueFrom(
-        this.http.get<Array<{ id: string; imei: string; vehicle?: { plate?: string | null } | null }>>(
-          '/api/trackers',
-        ),
+        this.http.get<
+          Array<{
+            id: string;
+            imei: string;
+            simPhoneNumber?: string | null;
+            vehicle?: { plate?: string | null } | null;
+          }>
+        >('/api/trackers'),
       );
-      this.trackers.set(
-        list.map((t) => ({ id: t.id, imei: t.imei, plate: t.vehicle?.plate ?? null })),
-      );
+      const mapped = list.map((t) => ({
+        id: t.id,
+        imei: t.imei,
+        plate: t.vehicle?.plate ?? null,
+        simPhoneNumber: t.simPhoneNumber ?? null,
+      }));
+      this.trackers.set(mapped);
+      for (const t of mapped) this.simEdits[t.id] = t.simPhoneNumber ?? '';
     } catch {
       /* silencieux : l'UI affichera juste "Selectionner un tracker" vide */
     }
@@ -748,6 +807,22 @@ export class AdminSmsComponent implements OnInit {
       return (e as { error?: { message?: string } }).error?.message ?? null;
     }
     return null;
+  }
+
+  /** V1.14 — Enregistre la SIM d'un tracker -> backend ecrit + auto-sync allowlist. */
+  async saveTrackerSim(trackerId: string): Promise<void> {
+    this.savingSim.set(trackerId);
+    try {
+      await firstValueFrom(
+        this.api.setTrackerSim(trackerId, (this.simEdits[trackerId] ?? '').trim()),
+      );
+      this.toast.success('SIM tracker enregistree');
+      await Promise.all([this.loadTrackers(), this.loadAllowlist()]);
+    } catch (e) {
+      this.toast.error(this.errMsg(e) ?? 'Echec enregistrement SIM');
+    } finally {
+      this.savingSim.set(null);
+    }
   }
 
   provBadgeClass(status: ProvisioningDto['status']): string {

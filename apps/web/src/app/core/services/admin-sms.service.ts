@@ -202,4 +202,9 @@ export class AdminSmsService {
   syncAllowlist() {
     return this.http.post<AllowlistSyncResult>('/api/admin/sms/allowlist/sync', {});
   }
+
+  /** V1.14 — Renseigne la SIM d'un tracker (PATCH /api/trackers/:id). */
+  setTrackerSim(trackerId: string, simPhoneNumber: string) {
+    return this.http.patch(`/api/trackers/${trackerId}`, { simPhoneNumber });
+  }
 }
