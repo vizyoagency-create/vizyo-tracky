@@ -7,6 +7,7 @@ export interface TrackyUser {
   firstName: string | null;
   lastName: string | null;
   role: string;
+  fleetId: string | null;
   isActive: boolean;
   createdAt: string;
 }
@@ -108,7 +109,7 @@ export class UsersApiService {
     return res.json();
   }
 
-  async update(id: string, data: { firstName?: string; lastName?: string; role?: string; isActive?: boolean; permissions?: Record<string, boolean> }): Promise<TrackyUser> {
+  async update(id: string, data: { firstName?: string; lastName?: string; role?: string; isActive?: boolean; permissions?: Record<string, boolean>; fleetId?: string | null }): Promise<TrackyUser> {
     const res = await fetch(`/api/users/${id}`, {
       method: 'PATCH',
       headers: this.headers,
@@ -211,6 +212,19 @@ export class UsersApiService {
     if (!res.ok) throw new Error('Failed to load invitations');
     const body = await res.json() as { items: InvitationDto[] };
     return body.items;
+  }
+
+  async updateInvitation(id: string, data: { fleetId?: string | null; role?: string; permissions?: Record<string, boolean> }): Promise<void> {
+    const res = await fetch(`/api/users/invitations/${id}`, {
+      method: 'PATCH',
+      headers: this.headers,
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      const errObj = body['error'] as Record<string, string> | undefined;
+      throw new Error(errObj?.['message'] ?? (body['message'] as string) ?? 'Failed to update invitation');
+    }
   }
 
   async revokeInvitation(id: string): Promise<void> {

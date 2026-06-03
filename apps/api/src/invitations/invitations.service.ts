@@ -360,6 +360,47 @@ export class InvitationsService {
     });
   }
 
+  /**
+   * Update a PENDING invitation (fleetId, role, permissions).
+   */
+  async update(
+    invitationId: string,
+    data: { fleetId?: string | null; role?: UserRole; permissions?: Record<string, boolean> | null },
+    requestedBy: { id: string; role: UserRole; fleetId: string | null },
+  ) {
+    const where: Prisma.InvitationWhereInput = { id: invitationId };
+    if (requestedBy.role !== UserRole.SUPER_ADMIN) {
+      if (!requestedBy.fleetId) throw new NotFoundException('Invitation introuvable');
+      where.fleetId = requestedBy.fleetId;
+    }
+    const inv = await this.prisma.invitation.findFirst({ where });
+    if (!inv) throw new NotFoundException('Invitation introuvable');
+    if (inv.status !== 'PENDING') {
+      throw new BadRequestException(`Impossible de modifier une invitation ${inv.status.toLowerCase()}`);
+    }
+
+    // Validate fleet if changing
+    if (data.fleetId !== undefined && data.fleetId !== null) {
+      const fleet = await this.prisma.fleet.findUnique({ where: { id: data.fleetId } });
+      if (!fleet) throw new NotFoundException('Flotte introuvable');
+    }
+
+    // Non-SUPER_ADMIN cannot reassign to different fleet
+    if (requestedBy.role !== UserRole.SUPER_ADMIN && data.fleetId !== undefined && data.fleetId !== requestedBy.fleetId) {
+      throw new ForbiddenException('Vous ne pouvez modifier que dans votre flotte');
+    }
+
+    const updateData: Prisma.InvitationUpdateInput = {};
+    if (data.fleetId !== undefined) updateData.fleetId = data.fleetId;
+    if (data.role !== undefined) updateData.role = data.role;
+    if (data.permissions !== undefined) updateData.permissions = data.permissions as unknown as Prisma.JsonObject;
+
+    return this.prisma.invitation.update({
+      where: { id: invitationId },
+      data: updateData,
+    });
+  }
+
   async revoke(invitationId: string, requestedBy: { id: string; role: UserRole; fleetId: string | null }) {
     // Filtre tenant integre au where (404 plutot que 403 cross-fleet).
     const where: Prisma.InvitationWhereInput = { id: invitationId };

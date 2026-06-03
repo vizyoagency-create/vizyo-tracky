@@ -1,17 +1,23 @@
 import { Component, HostListener, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, X, Truck, FolderOpen, Shield, Bell, FileBarChart, Users, Save, UserRound } from 'lucide-angular';
+import { LucideAngularModule, X, Truck, FolderOpen, Shield, Bell, FileBarChart, Users, Save, UserRound, Map } from 'lucide-angular';
 import type { TrackyUser } from '../../core/services/users.service';
+import type { FleetSummary } from '../../core/services/fleets.service';
 
 export interface UserDrawerData {
-  mode: 'create' | 'edit';
+  mode: 'create' | 'edit' | 'edit-invitation';
   user?: TrackyUser;
+  invitation?: { id: string; email: string; role: string; fleetId: string | null; permissions: Record<string, boolean> | null };
+  isSuperAdmin?: boolean;
+  fleets?: FleetSummary[];
 }
 
 export interface UserDrawerResult {
   // Create fields
   email?: string;
   password?: string;
+  fleetId?: string | null;
+  invitationId?: string;
   // Shared fields
   firstName?: string;
   lastName?: string;
@@ -23,6 +29,7 @@ export interface UserDrawerResult {
 const ROLE_DEFAULTS: Record<string, Record<string, boolean>> = {
   VIEWER: { vehicles_view: true, vehicles_create: false, vehicles_edit: false, vehicles_delete: false, groups_view: false, groups_manage: false, geofences_view: true, geofences_manage: false, alerts_view: true, alerts_acknowledge: false, reports_view: true, users_view: false, users_manage: false, drivers_view: true, drivers_manage: false },
   FLEET_MANAGER: { vehicles_view: true, vehicles_create: true, vehicles_edit: true, vehicles_delete: true, groups_view: true, groups_manage: true, geofences_view: true, geofences_manage: true, alerts_view: true, alerts_acknowledge: true, reports_view: true, users_view: false, users_manage: false, drivers_view: true, drivers_manage: true },
+  FLEET_ADMIN: { vehicles_view: true, vehicles_create: true, vehicles_edit: true, vehicles_delete: true, groups_view: true, groups_manage: true, geofences_view: true, geofences_manage: true, alerts_view: true, alerts_acknowledge: true, reports_view: true, users_view: true, users_manage: true, drivers_view: true, drivers_manage: true },
 };
 
 @Component({
@@ -41,10 +48,13 @@ const ROLE_DEFAULTS: Record<string, Record<string, boolean>> = {
           <div class="flex items-center justify-between px-6 py-4 border-b border-border-subtle">
             <div>
               <h2 class="text-lg font-display font-bold text-fg-primary">
-                {{ data()?.mode === 'create' ? 'Inviter un utilisateur' : 'Modifier l\\'utilisateur' }}
+                {{ data()?.mode === 'create' ? 'Inviter un utilisateur' : data()?.mode === 'edit-invitation' ? 'Modifier l\\'invitation' : 'Modifier l\\'utilisateur' }}
               </h2>
               @if (data()?.mode === 'edit') {
                 <p class="text-xs text-fg-tertiary mt-0.5">{{ data()?.user?.email }}</p>
+              }
+              @if (data()?.mode === 'edit-invitation') {
+                <p class="text-xs text-fg-tertiary mt-0.5">{{ data()?.invitation?.email }}</p>
               }
             </div>
             <button (click)="onClose()"
@@ -72,6 +82,38 @@ const ROLE_DEFAULTS: Record<string, Record<string, boolean>> = {
                   </div>
                 </div>
               </section>
+
+              <!-- Fleet selector (SUPER_ADMIN only) -->
+              @if (data()?.isSuperAdmin && data()?.fleets?.length) {
+                <section>
+                  <h3 class="section-title">
+                    <lucide-icon [img]="MapIcon" [size]="12" class="inline-block mr-1 text-tracky-light"></lucide-icon>
+                    Flotte
+                  </h3>
+                  <select [(ngModel)]="selectedFleetId" class="field-input field-select">
+                    <option value="">-- Aucune flotte --</option>
+                    @for (f of data()!.fleets!; track f.id) {
+                      <option [value]="f.id">{{ f.name }}</option>
+                    }
+                  </select>
+                </section>
+              }
+            }
+
+            <!-- Edit invitation: fleet selector -->
+            @if (data()?.mode === 'edit-invitation' && data()?.isSuperAdmin && data()?.fleets?.length) {
+              <section>
+                <h3 class="section-title">
+                  <lucide-icon [img]="MapIcon" [size]="12" class="inline-block mr-1 text-tracky-light"></lucide-icon>
+                  Flotte
+                </h3>
+                <select [(ngModel)]="selectedFleetId" class="field-input field-select">
+                  <option value="">-- Aucune flotte --</option>
+                  @for (f of data()!.fleets!; track f.id) {
+                    <option [value]="f.id">{{ f.name }}</option>
+                  }
+                </select>
+              </section>
             }
 
             @if (data()?.mode === 'edit') {
@@ -93,7 +135,7 @@ const ROLE_DEFAULTS: Record<string, Record<string, boolean>> = {
             <!-- Role (both modes) -->
             <section>
               <h3 class="section-title">Role</h3>
-              <div class="flex gap-2">
+              <div class="flex gap-2 flex-wrap">
                 <button (click)="setRole('VIEWER')"
                   class="role-btn" [class.active]="role === 'VIEWER'" [class.viewer]="role === 'VIEWER'">
                   Lecteur
@@ -102,8 +144,30 @@ const ROLE_DEFAULTS: Record<string, Record<string, boolean>> = {
                   class="role-btn" [class.active]="role === 'FLEET_MANAGER'" [class.manager]="role === 'FLEET_MANAGER'">
                   Manager
                 </button>
+                @if (data()?.isSuperAdmin) {
+                  <button (click)="setRole('FLEET_ADMIN')"
+                    class="role-btn" [class.active]="role === 'FLEET_ADMIN'" [class.admin-role]="role === 'FLEET_ADMIN'">
+                    Admin flotte
+                  </button>
+                }
               </div>
             </section>
+
+            <!-- Fleet reassignment in edit mode (SUPER_ADMIN only, not for FLEET_ADMIN users) -->
+            @if (data()?.mode === 'edit' && data()?.isSuperAdmin && data()?.fleets?.length && data()?.user?.role !== 'FLEET_ADMIN') {
+              <section>
+                <h3 class="section-title">
+                  <lucide-icon [img]="MapIcon" [size]="12" class="inline-block mr-1 text-tracky-light"></lucide-icon>
+                  Flotte
+                </h3>
+                <select [(ngModel)]="selectedFleetId" class="field-input field-select">
+                  <option value="">-- Aucune flotte --</option>
+                  @for (f of data()!.fleets!; track f.id) {
+                    <option [value]="f.id">{{ f.name }}</option>
+                  }
+                </select>
+              </section>
+            }
 
             @if (data()?.mode === 'edit') {
               <section>
@@ -172,7 +236,7 @@ const ROLE_DEFAULTS: Record<string, Record<string, boolean>> = {
               } @else {
                 <lucide-icon [img]="SaveIcon" [size]="14"></lucide-icon>
               }
-              {{ data()?.mode === 'create' ? 'Envoyer' : 'Enregistrer' }}
+              {{ data()?.mode === 'create' ? 'Envoyer' : 'Sauvegarder' }}
             </button>
           </div>
         </div>
@@ -202,6 +266,13 @@ const ROLE_DEFAULTS: Record<string, Record<string, boolean>> = {
     .role-btn:hover { border-color: var(--border-strong) }
     .role-btn.active.viewer { border-color: var(--tracky); color: var(--tracky-light); background: rgba(16,224,160,.06) }
     .role-btn.active.manager { border-color: #3b82f6; color: #60a5fa; background: rgba(59,130,246,.06) }
+    .role-btn.active.admin-role { border-color: var(--tracky); color: var(--tracky-light); background: rgba(16,224,160,.06) }
+
+    .field-select {
+      appearance: none; -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; cursor: pointer;
+    }
 
     .toggle { position: relative; display: inline-block; cursor: pointer }
     .toggle input { opacity: 0; width: 0; height: 0; position: absolute }
@@ -252,10 +323,12 @@ export class UserDrawerComponent {
   lastName = '';
   role = 'VIEWER';
   isActive = true;
+  selectedFleetId = '';
   perms: Record<string, boolean> = { ...ROLE_DEFAULTS['VIEWER'] };
 
   protected readonly XIcon = X;
   protected readonly SaveIcon = Save;
+  protected readonly MapIcon = Map;
 
   readonly permGroups = [
     { label: 'Véhicules', icon: Truck, items: [
@@ -301,8 +374,15 @@ export class UserDrawerComponent {
       this.lastName = d.user.lastName ?? '';
       this.role = d.user.role;
       this.isActive = d.user.isActive;
+      this.selectedFleetId = d.user.fleetId ?? '';
       const existing = (d.user as unknown as { permissions?: Record<string, boolean> }).permissions;
       this.perms = existing ? { ...existing } : { ...(ROLE_DEFAULTS[d.user.role] ?? ROLE_DEFAULTS['VIEWER']) };
+    } else if (d.mode === 'edit-invitation' && d.invitation) {
+      this.email = d.invitation.email;
+      this.role = d.invitation.role;
+      this.selectedFleetId = d.invitation.fleetId ?? '';
+      this.isActive = true;
+      this.perms = d.invitation.permissions ? { ...d.invitation.permissions } : { ...(ROLE_DEFAULTS[d.invitation.role] ?? ROLE_DEFAULTS['VIEWER']) };
     } else {
       this.email = '';
       this.password = '';
@@ -310,6 +390,7 @@ export class UserDrawerComponent {
       this.lastName = '';
       this.role = 'VIEWER';
       this.isActive = true;
+      this.selectedFleetId = d.fleets?.length === 1 ? d.fleets[0].id : '';
       this.perms = { ...ROLE_DEFAULTS['VIEWER'] };
     }
     this.error.set('');
@@ -336,6 +417,7 @@ export class UserDrawerComponent {
       role: this.role,
       isActive: this.isActive,
       permissions: this.perms,
+      fleetId: this.selectedFleetId || null,
     });
   }
 }

@@ -4,6 +4,7 @@ import { RouterLink } from '@angular/router';
 import { LucideAngularModule, Plus, Archive, Users, Shield, Pencil, KeyRound, Send, XCircle } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
+import { FleetsApiService, type FleetSummary } from '../../core/services/fleets.service';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { VehicleGroupsService } from '../../core/services/vehicle-groups.service';
@@ -147,6 +148,11 @@ import { AccessPermissionsMatrixComponent, type MatrixDrawerData } from './acces
 
               @if (perms.can('users_manage')) {
                 <div class="u-card-actions">
+                  @if (isSuperAdmin() && inv.status === 'PENDING') {
+                    <button (click)="openEditInvitationDrawer(inv)" class="u-action-btn" title="Modifier l'invitation">
+                      <lucide-icon [img]="PencilIcon" [size]="14"></lucide-icon> Modifier
+                    </button>
+                  }
                   <button (click)="onResendInvitation(inv)" class="u-action-btn" title="Renvoyer l'invitation">
                     <lucide-icon [img]="SendIcon" [size]="14"></lucide-icon> Renvoyer
                   </button>
@@ -364,8 +370,10 @@ export class UsersListComponent implements OnInit {
   readonly matrixDrawerData = signal<MatrixDrawerData | null>(null);
 
   private readonly auth = inject(AuthService);
+  private readonly fleetsApi = inject(FleetsApiService);
   protected readonly perms = inject(PermissionsService);
   protected readonly isSuperAdmin = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
+  private fleets: FleetSummary[] = [];
 
   protected userInitials(u: TrackyUser): string {
     if (u.firstName && u.lastName) return (u.firstName[0] + u.lastName[0]).toUpperCase();
@@ -390,6 +398,9 @@ export class UsersListComponent implements OnInit {
 
   async ngOnInit(): Promise<void> {
     await this.loadUsers();
+    if (this.isSuperAdmin()) {
+      this.fleets = await firstValueFrom(this.fleetsApi.list()).catch(() => []);
+    }
   }
 
   private async loadUsers(): Promise<void> {
@@ -413,12 +424,37 @@ export class UsersListComponent implements OnInit {
   }
 
   openCreateDrawer(): void {
-    this.drawerData.set({ mode: 'create' });
+    this.drawerData.set({
+      mode: 'create',
+      isSuperAdmin: this.isSuperAdmin(),
+      fleets: this.fleets,
+    });
     this.showDrawer.set(true);
   }
 
   openEditDrawer(user: TrackyUser): void {
-    this.drawerData.set({ mode: 'edit', user });
+    this.drawerData.set({
+      mode: 'edit',
+      user,
+      isSuperAdmin: this.isSuperAdmin(),
+      fleets: this.fleets,
+    });
+    this.showDrawer.set(true);
+  }
+
+  openEditInvitationDrawer(inv: PendingInvitation): void {
+    this.drawerData.set({
+      mode: 'edit-invitation',
+      invitation: {
+        id: inv.id,
+        email: inv.email,
+        role: inv.role,
+        fleetId: inv.fleetId,
+        permissions: inv.permissions,
+      },
+      isSuperAdmin: this.isSuperAdmin(),
+      fleets: this.fleets,
+    });
     this.showDrawer.set(true);
   }
 
@@ -430,19 +466,32 @@ export class UsersListComponent implements OnInit {
         await this.usersService.invite({
           email: result.email!,
           role: result.role,
+          fleetId: result.fleetId,
           permissions: result.permissions,
         });
         this.toast.success(`Invitation envoyee a ${result.email}`);
+      } else if (mode === 'edit-invitation') {
+        const invId = this.drawerData()?.invitation?.id;
+        if (invId) {
+          await this.usersService.updateInvitation(invId, {
+            fleetId: result.fleetId,
+            role: result.role,
+            permissions: result.permissions,
+          });
+          this.toast.success('Invitation mise a jour');
+        }
       } else {
         const userId = this.drawerData()?.user?.id;
         if (userId) {
           const roleChanged = result.role !== this.drawerData()?.user?.role;
+          const fleetChanged = this.isSuperAdmin() && result.fleetId !== undefined;
           await this.usersService.update(userId, {
             firstName: result.firstName,
             lastName: result.lastName,
             role: result.role,
             isActive: result.isActive,
             ...(!roleChanged ? { permissions: result.permissions } : {}),
+            ...(fleetChanged ? { fleetId: result.fleetId } : {}),
           });
         }
       }

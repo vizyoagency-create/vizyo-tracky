@@ -191,6 +191,20 @@ export class UsersController {
     });
   }
 
+  @Patch('invitations/:id')
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  async updateInvitation(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: { fleetId?: string | null; role?: UserRole; permissions?: Record<string, boolean> },
+  ) {
+    return this.invitations.update(id, dto, {
+      id: req.user.id,
+      role: req.user.role,
+      fleetId: req.user.fleetId,
+    });
+  }
+
   @Post('invitations/:id/revoke')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
   async revokeInvitation(
@@ -412,6 +426,11 @@ export class UsersController {
     // Si le rôle change, réinitialiser les permissions par défaut du nouveau rôle
     const roleChanged = dto.role !== undefined && dto.role !== user.role;
 
+    // Only SUPER_ADMIN can reassign fleet
+    const fleetIdUpdate = dto.fleetId !== undefined && req.user.role === UserRole.SUPER_ADMIN
+      ? { fleetId: dto.fleetId }
+      : {};
+
     const updated = await this.prisma.user.update({
       where: { id },
       data: {
@@ -421,6 +440,7 @@ export class UsersController {
         ...(roleChanged ? { permissions: getDefaultPermissions(dto.role!) as unknown as Prisma.JsonObject } : {}),
         ...(dto.permissions !== undefined && !roleChanged ? { permissions: dto.permissions as unknown as Prisma.JsonObject } : {}),
         ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
+        ...fleetIdUpdate,
       },
       select: { id: true, email: true, firstName: true, lastName: true, role: true, permissions: true, fleetId: true, isActive: true, createdAt: true },
     });

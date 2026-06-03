@@ -1,4 +1,4 @@
-import { IsBoolean, IsEnum, IsObject, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsEnum, IsObject, IsOptional, IsString, IsUUID } from 'class-validator';
 import { UserRole } from '@prisma/client';
 import type { UserPermissions } from '../default-permissions';
 
@@ -22,4 +22,8 @@ export class UpdateUserDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  @IsUUID()
+  @IsOptional()
+  fleetId?: string | null;
 }
