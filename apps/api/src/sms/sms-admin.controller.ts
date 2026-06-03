@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -14,6 +15,7 @@ import { UserRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { AllowlistService } from './allowlist.service';
 import { SmsGatewayService } from './sms-gateway.service';
 import { TrackerProvisioningService } from './tracker-provisioning.service';
 
@@ -30,6 +32,7 @@ export class SmsAdminController {
   constructor(
     private readonly sms: SmsGatewayService,
     private readonly provisioning: TrackerProvisioningService,
+    private readonly allowlist: AllowlistService,
   ) {}
 
   @Get('status')
@@ -42,10 +45,13 @@ export class SmsAdminController {
     //   - recentFailures24h + lastFailure : visibilite sur les SMS qui ont rate
     // L'UI doit privilegier `reachable` sur `enabled` pour le verdict visuel.
     const hc = await this.sms.healthCheck();
-    let mode: 'twilio' | 'twilio-broken' | 'noop';
-    if (!hc.enabled) mode = 'noop';
-    else if (hc.reachable) mode = 'twilio';
-    else mode = 'twilio-broken';
+    const provider = this.sms.currentProvider();
+    // mode reflete le provider reel : 'vizyo-texto' | 'twilio' | 'noop'
+    // (+ suffixe '-broken' si configure mais injoignable).
+    let mode: string;
+    if (provider === 'noop' || !hc.enabled) mode = 'noop';
+    else if (hc.reachable) mode = provider;
+    else mode = `${provider}-broken`;
     return {
       enabled: hc.enabled,
       reachable: hc.reachable,
@@ -142,5 +148,36 @@ export class SmsAdminController {
   async cancelProvisioning(@Req() req: AuthenticatedRequest, @Param('id', ParseUUIDPipe) id: string) {
     await this.provisioning.cancel(id, { role: req.user.role, fleetId: req.user.fleetId });
     return { ok: true };
+  }
+
+  // ─── Allowlist vizyo-texto (V1.14) ────────────────────────────────────────
+  // Proxy vers l'API /v1/allowlist du relay + reconciliation avec les trackers.
+
+  @Get('allowlist')
+  listAllowlist() {
+    return this.allowlist.list();
+  }
+
+  @Post('allowlist')
+  addAllowlist(@Body() body: { phone?: string; label?: string }) {
+    if (!body?.phone) throw new BadRequestException('phone requis');
+    return this.allowlist.add(body.phone, body.label);
+  }
+
+  @Delete('allowlist/:phone')
+  removeAllowlist(@Param('phone') phone: string) {
+    return this.allowlist.remove(phone);
+  }
+
+  /** Pousse les simPhoneNumber des trackers vers l'allowlist. */
+  @Post('allowlist/sync')
+  syncAllowlist() {
+    return this.allowlist.syncFromTrackers();
+  }
+
+  /** Reconciliation : trackers non synces + numeros orphelins. */
+  @Get('allowlist/status')
+  allowlistStatus() {
+    return this.allowlist.status();
   }
 }

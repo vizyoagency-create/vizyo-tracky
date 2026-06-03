@@ -67,6 +67,11 @@ export class SmsGatewayService {
     return this.provider !== 'noop';
   }
 
+  /** Provider SMS actif (pour l'affichage du statut admin). */
+  currentProvider(): 'vizyo-texto' | 'twilio' | 'noop' {
+    return this.provider;
+  }
+
   /**
    * V1.13 — Health check Twilio reel (auth ping + audit recents echecs).
    *

@@ -6,18 +6,23 @@ import {
   CheckCircle,
   Database,
   HardDrive,
+  ListChecks,
   LucideAngularModule,
   MessageSquare,
   Phone,
+  Plus,
   Power,
   RefreshCw,
   Send,
+  Trash2,
   XCircle,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { HttpClient } from '@angular/common/http';
 import {
   AdminSmsService,
+  AllowlistEntryDto,
+  AllowlistStatus,
   BackupHealthResponse,
   ProvisioningDto,
   SmsLogDto,
@@ -26,7 +31,7 @@ import {
 } from '../../core/services/admin-sms.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 
-type Tab = 'status' | 'provision' | 'logs' | 'backup';
+type Tab = 'status' | 'provision' | 'logs' | 'allowlist' | 'backup';
 
 @Component({
   selector: 'app-admin-sms',
@@ -299,6 +304,120 @@ type Tab = 'status' | 'provision' | 'logs' | 'backup';
         }
       }
 
+      <!-- Tab : Allowlist -->
+      @if (activeTab() === 'allowlist') {
+        <!-- Actions : sync trackers + ajout manuel -->
+        <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4 flex flex-col gap-3">
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <div class="flex items-center gap-2 text-sm font-semibold">
+              <lucide-icon [img]="ListChecks" [size]="16" class="text-tracky-light"></lucide-icon>
+              Numeros autorises ({{ allowlistEntries().length }})
+            </div>
+            <button (click)="syncTrackers()" [disabled]="syncing()"
+                    class="px-3 py-2 bg-tracky text-white rounded-lg text-sm font-medium hover:bg-tracky-dark cursor-pointer disabled:opacity-50 flex items-center gap-2">
+              <lucide-icon [img]="RefreshCw" [size]="14"></lucide-icon>
+              {{ syncing() ? 'Sync...' : 'Sync trackers' }}
+            </button>
+          </div>
+          <p class="text-xs text-fg-tertiary">
+            Seuls les numeros de cette liste peuvent recevoir un SMS. "Sync trackers" pousse les SIM
+            des trackers (source <code>synced</code>) ; les numeros ajoutes a la main (<code>manual</code>)
+            sont preserves au resync.
+          </p>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <input [(ngModel)]="newPhone" placeholder="+33612345678"
+                   class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm font-mono" />
+            <input [(ngModel)]="newLabel" placeholder="Label (optionnel)"
+                   class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm" />
+            <button (click)="addNumber()" [disabled]="!newPhone"
+                    class="px-3 py-2 bg-tracky text-white rounded-lg text-sm font-medium hover:bg-tracky-dark cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2">
+              <lucide-icon [img]="Plus" [size]="14"></lucide-icon>
+              Ajouter
+            </button>
+          </div>
+        </div>
+
+        <!-- Diff / reconciliation -->
+        @if (allowlistStatus(); as st) {
+          @if (st.missing.length > 0 || st.orphans.length > 0) {
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              @if (st.missing.length > 0) {
+                <div class="bg-amber-500/10 border border-amber-500/30 rounded-[--radius-card] p-4">
+                  <div class="text-sm font-semibold text-amber-300 mb-2">
+                    {{ st.missing.length }} tracker(s) a synchroniser
+                  </div>
+                  <ul class="text-xs font-mono text-fg-tertiary flex flex-col gap-1">
+                    @for (m of st.missing; track m.phone) {
+                      <li>{{ m.phone }} — {{ m.imei }}</li>
+                    }
+                  </ul>
+                </div>
+              }
+              @if (st.orphans.length > 0) {
+                <div class="bg-rose-500/10 border border-rose-500/30 rounded-[--radius-card] p-4">
+                  <div class="text-sm font-semibold text-rose-300 mb-2">
+                    {{ st.orphans.length }} numero(s) orphelin(s) / mort(s)
+                  </div>
+                  <ul class="text-xs font-mono text-fg-tertiary flex flex-col gap-1">
+                    @for (o of st.orphans; track o.phone) {
+                      <li>{{ o.phone }} — {{ o.label ?? '—' }}</li>
+                    }
+                  </ul>
+                </div>
+              }
+            </div>
+          } @else {
+            <div class="bg-emerald-500/10 border border-emerald-500/30 rounded-[--radius-card] p-3 text-sm text-emerald-300">
+              ✓ Tous les SIM trackers sont synchronises ({{ st.trackersWithSim }} tracker(s) avec SIM).
+            </div>
+          }
+        }
+
+        <!-- Table des numeros -->
+        @if (allowlistEntries().length > 0) {
+          <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-x-auto">
+            <table class="w-full text-sm min-w-[600px]">
+              <thead class="border-b border-border-subtle text-fg-tertiary text-xs uppercase">
+                <tr>
+                  <th class="p-3 text-left">Telephone</th>
+                  <th class="p-3 text-left">Label</th>
+                  <th class="p-3 text-center">Source</th>
+                  <th class="p-3 text-right"></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (e of allowlistEntries(); track e.id) {
+                  <tr class="border-b border-border-subtle/50 hover:bg-bg-tertiary/50">
+                    <td class="p-3 font-mono text-xs">{{ e.phone }}</td>
+                    <td class="p-3 text-xs">{{ e.label ?? '—' }}</td>
+                    <td class="p-3 text-center">
+                      <span class="inline-flex items-center px-2 py-0.5 text-[10px] rounded-md font-mono"
+                            [class]="e.source === 'synced' ? 'bg-sky-500/10 text-sky-400' : 'bg-fg-tertiary/10 text-fg-tertiary'">
+                        {{ e.source }}
+                      </span>
+                    </td>
+                    <td class="p-3 text-right">
+                      @if (e.source === 'manual') {
+                        <button (click)="removeNumber(e.phone)" title="Supprimer"
+                                class="text-rose-400 hover:text-rose-300 cursor-pointer">
+                          <lucide-icon [img]="Trash2" [size]="14"></lucide-icon>
+                        </button>
+                      } @else {
+                        <span class="text-[10px] text-fg-tertiary">via tracker</span>
+                      }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        } @else {
+          <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-8 text-center text-fg-tertiary text-sm">
+            Aucun numero dans l'allowlist. Ajoute-en un, ou clique "Sync trackers".
+          </div>
+        }
+      }
+
       <!-- Tab : Backup -->
       @if (activeTab() === 'backup') {
         @if (backupHealth(); as bh) {
@@ -362,11 +481,14 @@ export class AdminSmsComponent implements OnInit {
   protected readonly CheckCircle = CheckCircle;
   protected readonly Database = Database;
   protected readonly HardDrive = HardDrive;
+  protected readonly ListChecks = ListChecks;
   protected readonly MessageSquare = MessageSquare;
   protected readonly Phone = Phone;
+  protected readonly Plus = Plus;
   protected readonly Power = Power;
   protected readonly RefreshCw = RefreshCw;
   protected readonly Send = Send;
+  protected readonly Trash2 = Trash2;
   protected readonly XCircle = XCircle;
 
   readonly status = signal<SmsStatus | null>(null);
@@ -379,6 +501,7 @@ export class AdminSmsComponent implements OnInit {
     { key: 'status', label: 'Statut' },
     { key: 'provision', label: 'Provisionnement' },
     { key: 'logs', label: 'Logs SMS' },
+    { key: 'allowlist', label: 'Allowlist' },
     { key: 'backup', label: 'Backups' },
   ];
 
@@ -404,37 +527,54 @@ export class AdminSmsComponent implements OnInit {
   readonly fbSending = signal(false);
   readonly fbResult = signal<SmsTestFallbackResult | null>(null);
 
+  // V1.14 — Allowlist vizyo-texto state
+  readonly allowlistEntries = signal<AllowlistEntryDto[]>([]);
+  readonly allowlistStatus = signal<AllowlistStatus | null>(null);
+  newPhone = '';
+  newLabel = '';
+  readonly syncing = signal(false);
+
   // V1.13 — Verdict reel SMS Gateway (utilise dans card status).
-  protected cardBorderClass(): string {
+  private modeOk(): boolean {
     const m = this.status()?.mode;
-    if (m === 'twilio') return 'border-emerald-500/30';
-    if (m === 'twilio-broken') return 'border-rose-500/40';
+    return m === 'twilio' || m === 'vizyo-texto';
+  }
+  private modeBroken(): boolean {
+    const m = this.status()?.mode;
+    return m === 'twilio-broken' || m === 'vizyo-texto-broken';
+  }
+  protected cardBorderClass(): string {
+    if (this.modeOk()) return 'border-emerald-500/30';
+    if (this.modeBroken()) return 'border-rose-500/40';
     return 'border-amber-500/30';
   }
   protected cardIconClass(): string {
-    const m = this.status()?.mode;
-    if (m === 'twilio') return 'text-emerald-400';
-    if (m === 'twilio-broken') return 'text-rose-400';
+    if (this.modeOk()) return 'text-emerald-400';
+    if (this.modeBroken()) return 'text-rose-400';
     return 'text-amber-400';
   }
   protected cardTitleClass(): string {
-    const m = this.status()?.mode;
-    if (m === 'twilio') return 'text-emerald-400';
-    if (m === 'twilio-broken') return 'text-rose-400';
+    if (this.modeOk()) return 'text-emerald-400';
+    if (this.modeBroken()) return 'text-rose-400';
     return 'text-amber-400';
   }
   protected cardTitleText(): string {
     const m = this.status()?.mode;
+    if (m === 'vizyo-texto') return 'vizyo-texto actif';
+    if (m === 'vizyo-texto-broken') return 'vizyo-texto injoignable';
     if (m === 'twilio') return 'Twilio actif';
     if (m === 'twilio-broken') return 'Twilio configure mais auth KO';
     return 'No-op (dev)';
   }
   protected cardSubText(): string {
     const m = this.status()?.mode;
-    if (m === 'twilio') return 'Les SMS sont reellement envoyes.';
+    if (m === 'vizyo-texto') return 'Les SMS partent via la passerelle maison vizyo-texto.';
+    if (m === 'vizyo-texto-broken')
+      return 'vizyo-texto est configure mais injoignable — verifier le relay (texto.vizyoagency.com).';
+    if (m === 'twilio') return 'Les SMS sont reellement envoyes (Twilio).';
     if (m === 'twilio-broken')
       return 'Les credentials TWILIO_* sont presents mais Twilio refuse l\'authentification — verifier sid/token.';
-    return 'Les SMS sont simules — config TWILIO_* manquante.';
+    return 'Les SMS sont simules — aucune gateway configuree.';
   }
 
   ngOnInit(): void {
@@ -457,6 +597,7 @@ export class AdminSmsComponent implements OnInit {
     } catch {
       this.toast.error('Echec du chargement (acces SUPER_ADMIN requis)');
     }
+    await this.loadAllowlist();
   }
 
   /** V1.13 — Charge la liste des trackers pour le dropdown de test fallback.
@@ -546,6 +687,67 @@ export class AdminSmsComponent implements OnInit {
     } catch {
       this.toast.error('Echec annulation');
     }
+  }
+
+  // ─── Allowlist vizyo-texto (V1.14) ─────────────────────────────────────────
+
+  private async loadAllowlist(): Promise<void> {
+    try {
+      const [entries, st] = await Promise.all([
+        firstValueFrom(this.api.allowlist()),
+        firstValueFrom(this.api.allowlistStatus()),
+      ]);
+      this.allowlistEntries.set(entries);
+      this.allowlistStatus.set(st);
+    } catch {
+      /* silencieux : vizyo-texto peut etre injoignable / non configure */
+    }
+  }
+
+  async addNumber(): Promise<void> {
+    if (!this.newPhone.trim()) return;
+    try {
+      await firstValueFrom(
+        this.api.addAllowlist(this.newPhone.trim(), this.newLabel.trim() || undefined),
+      );
+      this.toast.success('Numero ajoute a l\'allowlist');
+      this.newPhone = '';
+      this.newLabel = '';
+      await this.loadAllowlist();
+    } catch (e) {
+      this.toast.error(this.errMsg(e) ?? 'Echec ajout');
+    }
+  }
+
+  async removeNumber(phone: string): Promise<void> {
+    try {
+      await firstValueFrom(this.api.removeAllowlist(phone));
+      this.toast.success('Numero retire');
+      await this.loadAllowlist();
+    } catch {
+      this.toast.error('Echec suppression');
+    }
+  }
+
+  async syncTrackers(): Promise<void> {
+    this.syncing.set(true);
+    try {
+      const r = await firstValueFrom(this.api.syncAllowlist());
+      const extra = r.skipped ? `, ${r.skipped} ignores` : '';
+      this.toast.success(`Sync OK — +${r.added} / -${r.removed} (${r.unchanged} inchanges${extra})`);
+      await this.loadAllowlist();
+    } catch (e) {
+      this.toast.error(this.errMsg(e) ?? 'Echec sync');
+    } finally {
+      this.syncing.set(false);
+    }
+  }
+
+  private errMsg(e: unknown): string | null {
+    if (e && typeof e === 'object' && 'error' in e) {
+      return (e as { error?: { message?: string } }).error?.message ?? null;
+    }
+    return null;
   }
 
   provBadgeClass(status: ProvisioningDto['status']): string {

@@ -12,7 +12,7 @@ import { inject, Injectable } from '@angular/core';
 export interface SmsStatus {
   enabled: boolean;
   reachable?: boolean;
-  mode: 'twilio' | 'twilio-broken' | 'noop';
+  mode: 'vizyo-texto' | 'vizyo-texto-broken' | 'twilio' | 'twilio-broken' | 'noop';
   error?: string;
   errorCode?: string;
   fromNumber?: string;
@@ -93,6 +93,30 @@ export interface BackupHealthResponse {
   stale: boolean;
 }
 
+// V1.14 — Allowlist vizyo-texto
+export interface AllowlistEntryDto {
+  id: string;
+  phone: string;
+  label: string | null;
+  source: string; // 'manual' | 'synced'
+  createdAt: string;
+}
+
+export interface AllowlistSyncResult {
+  added: number;
+  removed: number;
+  unchanged: number;
+  skipped: number;
+}
+
+export interface AllowlistStatus {
+  entries: AllowlistEntryDto[];
+  total: number;
+  trackersWithSim: number;
+  missing: { imei: string; phone: string }[];
+  orphans: { phone: string; label: string | null }[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class AdminSmsService {
   private readonly http = inject(HttpClient);
@@ -153,5 +177,29 @@ export class AdminSmsService {
     return this.http.get<BackupHealthResponse>('/api/admin/backup-health', {
       params: { limit: String(limit) },
     });
+  }
+
+  // ─── Allowlist vizyo-texto (V1.14) ────────────────────────────────────────
+
+  allowlist() {
+    return this.http.get<AllowlistEntryDto[]>('/api/admin/sms/allowlist');
+  }
+
+  allowlistStatus() {
+    return this.http.get<AllowlistStatus>('/api/admin/sms/allowlist/status');
+  }
+
+  addAllowlist(phone: string, label?: string) {
+    return this.http.post<AllowlistEntryDto>('/api/admin/sms/allowlist', { phone, label });
+  }
+
+  removeAllowlist(phone: string) {
+    return this.http.delete<{ removed: boolean }>(
+      `/api/admin/sms/allowlist/${encodeURIComponent(phone)}`,
+    );
+  }
+
+  syncAllowlist() {
+    return this.http.post<AllowlistSyncResult>('/api/admin/sms/allowlist/sync', {});
   }
 }
