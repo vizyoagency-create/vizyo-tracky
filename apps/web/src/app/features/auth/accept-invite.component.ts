@@ -50,7 +50,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
             <div class="field">
               <label>Mot de passe</label>
               <input [(ngModel)]="password" name="password" type="password"
-                     placeholder="8 caractères minimum" autocomplete="new-password" required minlength="8" />
+                     placeholder="12 caractères minimum" autocomplete="new-password" required minlength="12" />
             </div>
             <div class="field">
               <label>Confirmer le mot de passe</label>
@@ -191,7 +191,7 @@ export class AcceptInviteComponent implements OnInit {
 
   canSubmit(): boolean {
     return this.displayName.trim().length >= 2
-      && this.password.length >= 8
+      && this.password.length >= 12
       && this.passwordsMatch();
   }
 

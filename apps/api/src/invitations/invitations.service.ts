@@ -210,8 +210,8 @@ export class InvitationsService {
    * auto-login the new user.
    */
   async accept(jwtToken: string, password: string, displayName: string): Promise<AcceptInvitationResult> {
-    if (!password || password.length < 8) {
-      throw new BadRequestException('Le mot de passe doit faire au moins 8 caracteres');
+    if (!password || password.length < 12) {
+      throw new BadRequestException('Le mot de passe doit faire au moins 12 caracteres');
     }
     if (!displayName || displayName.trim().length < 2) {
       throw new BadRequestException('Nom complet requis (2 caracteres minimum)');
@@ -267,8 +267,15 @@ export class InvitationsService {
       await this.authClient.register(invitation.email, password, displayName);
     } catch (err) {
       const msg = (err as Error).message ?? '';
-      if (!msg.includes('409') && !msg.includes('already registered')) throw err;
-      this.logger.warn({ email: invitation.email }, 'User already in Vizyo Auth — continuing accept flow');
+      if (msg.includes('409') || msg.includes('already registered')) {
+        this.logger.warn({ email: invitation.email }, 'User already in Vizyo Auth — continuing accept flow');
+      } else if (msg.includes('400') || msg.includes('Password must be')) {
+        // Extract user-friendly message from Vizyo Auth error
+        const match = msg.match(/"message":"([^"]+)"/);
+        throw new BadRequestException(match?.[1] ?? 'Mot de passe invalide (12 caracteres minimum)');
+      } else {
+        throw err;
+      }
     }
 
     // 2) Login to get tokens + authUserId.
