@@ -3,7 +3,6 @@ import { Component, inject, OnInit, signal, computed } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import {
-  Activity,
   ArrowLeft,
   CheckCircle,
   Edit3,
@@ -22,10 +21,7 @@ import {
   TrackerDetail,
   TrackersApiService,
 } from '../../core/services/trackers.service';
-import {
-  VehicleDetailDto,
-  VehiclesApiService,
-} from '../../core/services/vehicles.service';
+import { VehiclesApiService } from '../../core/services/vehicles.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 
 @Component({
@@ -244,12 +240,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
               @for (v of filteredVehicles(); track v.id) {
                 <button (click)="confirmAssign(v.id)"
                         class="w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-bg-tertiary/80 transition-colors flex items-center justify-between group">
-                  <div>
-                    <span class="font-medium text-fg-primary">{{ v.plate }}</span>
-                    @if (v.fleetName) {
-                      <span class="text-fg-tertiary text-xs ml-2">{{ v.fleetName }}</span>
-                    }
-                  </div>
+                  <span class="font-medium text-fg-primary">{{ v.plate }}</span>
                   @if (v.hasTracker) {
                     <span class="text-[10px] text-amber-400">deja equipe</span>
                   }
@@ -270,7 +261,6 @@ export class AdminTrackersComponent implements OnInit {
   private readonly toast = inject(ToastService);
 
   // Icons
-  protected readonly Activity = Activity;
   protected readonly ArrowLeft = ArrowLeft;
   protected readonly CheckCircle = CheckCircle;
   protected readonly Edit3 = Edit3;
@@ -338,11 +328,7 @@ export class AdminTrackersComponent implements OnInit {
     const q = this.vehicleSearch.toLowerCase().trim();
     let list = this.allVehicles.filter((v) => !v.hasTracker);
     if (q) {
-      list = list.filter(
-        (v) =>
-          v.plate.toLowerCase().includes(q) ||
-          (v.fleetName ?? '').toLowerCase().includes(q),
-      );
+      list = list.filter((v) => v.plate.toLowerCase().includes(q));
     }
     return list.slice(0, 50);
   });
@@ -385,8 +371,8 @@ export class AdminTrackersComponent implements OnInit {
       this.toast.success('SIM mise a jour');
       this.editingSimId.set(null);
       this.reload();
-    } catch {
-      this.toast.error('Format invalide (E.164 attendu)');
+    } catch (e: any) {
+      this.toast.error(e?.error?.message ?? 'Echec de la mise a jour SIM');
     }
   }
 
@@ -413,7 +399,6 @@ export class AdminTrackersComponent implements OnInit {
       this.allVehicles = vehicles.map((v) => ({
         id: v.id,
         plate: v.plate,
-        fleetName: (v as any).fleet?.name ?? null,
         hasTracker: !!v.tracker,
       }));
     } catch {
@@ -443,6 +428,5 @@ export class AdminTrackersComponent implements OnInit {
 interface VehicleForAssign {
   id: string;
   plate: string;
-  fleetName: string | null;
   hasTracker: boolean;
 }
