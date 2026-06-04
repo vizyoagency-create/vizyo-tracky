@@ -19,6 +19,8 @@ import { PrismaService } from '../prisma/prisma.service';
 
 const OFFLINE_THRESHOLD_MS = 60 * 60 * 1000; // 1h
 const PENDING_THRESHOLD_MS = 10 * 60 * 1000; // 10 min
+const ERROR_WINDOW_MS = 24 * 60 * 60 * 1000; // 24h
+const CRITICAL_WINDOW_MS = 60 * 60 * 1000;   // 1h
 
 /**
  * V1.5 (Sprint H3) — Admin alerts center (`/api/admin/alerts`).
@@ -43,10 +45,13 @@ export class AdminAlertsController {
     const fleetIdScope = isSuperAdmin ? fleetIdFilter ?? undefined : req.user.fleetId ?? undefined;
     const fleetClause = fleetIdScope ? { vehicle: { fleetId: fleetIdScope } } : {};
 
-    const offlineCutoff = new Date(Date.now() - OFFLINE_THRESHOLD_MS);
-    const pendingCutoff = new Date(Date.now() - PENDING_THRESHOLD_MS);
+    const now = Date.now();
+    const offlineCutoff = new Date(now - OFFLINE_THRESHOLD_MS);
+    const pendingCutoff = new Date(now - PENDING_THRESHOLD_MS);
+    const errorCutoff = new Date(now - ERROR_WINDOW_MS);
+    const criticalCutoff = new Date(now - CRITICAL_WINDOW_MS);
 
-    const [failingTrackers, offlineTrackers, pendingCommands] = await Promise.all([
+    const [failingTrackers, offlineTrackers, pendingCommands, errorLogs24h, criticalCount] = await Promise.all([
       this.prisma.tracker.findMany({
         where: { fixCommandFailing: true, ...fleetClause },
         include: { vehicle: { include: { fleet: true } } },
@@ -72,13 +77,89 @@ export class AdminAlertsController {
         orderBy: { createdAt: 'desc' },
         take: 200,
       }),
+      // V1.14 — Erreurs applicatives (24h) pour le centre d'alertes.
+      this.prisma.errorLog.findMany({
+        where: { createdAt: { gte: errorCutoff } },
+        orderBy: { createdAt: 'desc' },
+        take: 500,
+      }),
+      this.prisma.errorLog.count({
+        where: { level: 'CRITICAL', createdAt: { gte: criticalCutoff } },
+      }),
     ]);
+
+    // Agréger les erreurs par source.
+    const bySourceMap = new Map<string, { count: number; lastAt: Date }>();
+    for (const e of errorLogs24h) {
+      const existing = bySourceMap.get(e.source);
+      if (!existing) {
+        bySourceMap.set(e.source, { count: 1, lastAt: e.createdAt });
+      } else {
+        existing.count++;
+        if (e.createdAt > existing.lastAt) existing.lastAt = e.createdAt;
+      }
+    }
+    const bySource = Array.from(bySourceMap.entries())
+      .map(([source, { count, lastAt }]) => ({ source, count, lastAt: lastAt.toISOString() }))
+      .sort((a, b) => b.count - a.count);
+
+    // Top messages dédupliqués (première ligne du message comme clé).
+    const byMessageMap = new Map<string, { message: string; source: string; count: number; level: string; lastAt: Date; lastId: string }>();
+    for (const e of errorLogs24h) {
+      const key = `${e.source}::${e.message.split('\n')[0].slice(0, 200)}`;
+      const existing = byMessageMap.get(key);
+      if (!existing) {
+        byMessageMap.set(key, {
+          message: e.message.split('\n')[0].slice(0, 200),
+          source: e.source,
+          count: 1,
+          level: e.level,
+          lastAt: e.createdAt,
+          lastId: e.id,
+        });
+      } else {
+        existing.count++;
+        if (e.level === 'CRITICAL') existing.level = 'CRITICAL';
+        if (e.createdAt > existing.lastAt) {
+          existing.lastAt = e.createdAt;
+          existing.lastId = e.id;
+        }
+      }
+    }
+    const topMessages = Array.from(byMessageMap.values())
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 20)
+      .map((m) => ({
+        message: m.message,
+        source: m.source,
+        count: m.count,
+        level: m.level,
+        lastAt: m.lastAt.toISOString(),
+        lastId: m.lastId,
+      }));
+
+    // Dernières erreurs CRITICAL (10 max).
+    const recentCritical = errorLogs24h
+      .filter((e) => e.level === 'CRITICAL')
+      .slice(0, 10)
+      .map((e) => ({
+        id: e.id,
+        level: e.level,
+        source: e.source,
+        message: e.message.split('\n')[0].slice(0, 300),
+        stack: e.stack?.slice(0, 500) ?? null,
+        imei: e.imei,
+        context: e.context,
+        createdAt: e.createdAt.toISOString(),
+      }));
 
     return {
       summary: {
         failing: failingTrackers.length,
         offline: offlineTrackers.length,
         pending: pendingCommands.length,
+        errorsLast24h: errorLogs24h.length,
+        criticalLastHour: criticalCount,
       },
       failing: failingTrackers.map((t) => ({
         kind: 'TRACKER_FAILING' as const,
@@ -122,6 +203,13 @@ export class AdminAlertsController {
         diagnosticHint: c.diagnosticHint,
         outcomeReason: c.outcomeReason,
       })),
+      errors: {
+        last24h: errorLogs24h.length,
+        criticalLastHour: criticalCount,
+        bySource,
+        topMessages,
+        recentCritical,
+      },
     };
   }
 

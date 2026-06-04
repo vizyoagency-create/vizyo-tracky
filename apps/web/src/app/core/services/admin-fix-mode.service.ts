@@ -5,6 +5,42 @@ export interface AdminAlertSummary {
   failing: number;
   offline: number;
   pending: number;
+  errorsLast24h: number;
+  criticalLastHour: number;
+}
+
+export interface ErrorSourceGroup {
+  source: string;
+  count: number;
+  lastAt: string;
+}
+
+export interface ErrorTopMessage {
+  message: string;
+  source: string;
+  count: number;
+  level: string;
+  lastAt: string;
+  lastId: string;
+}
+
+export interface ErrorCriticalEntry {
+  id: string;
+  level: string;
+  source: string;
+  message: string;
+  stack: string | null;
+  imei: string | null;
+  context: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface ErrorAlertsSummary {
+  last24h: number;
+  criticalLastHour: number;
+  bySource: ErrorSourceGroup[];
+  topMessages: ErrorTopMessage[];
+  recentCritical: ErrorCriticalEntry[];
 }
 
 export interface FailingTrackerAlert {
@@ -57,6 +93,7 @@ export interface AdminAlertsDto {
   failing: FailingTrackerAlert[];
   offline: OfflineTrackerAlert[];
   pendingCommands: PendingCommandAlert[];
+  errors: ErrorAlertsSummary;
 }
 
 export interface FixModeStateDto {

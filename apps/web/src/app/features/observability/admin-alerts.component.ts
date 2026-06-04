@@ -1,14 +1,18 @@
-import { DatePipe } from '@angular/common';
+import { DatePipe, JsonPipe } from '@angular/common';
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
   AlertTriangle,
+  Bug,
   CheckCircle,
+  ChevronDown,
+  ChevronRight,
   Clock,
   LucideAngularModule,
   RefreshCw,
   Wifi,
   WifiOff,
+  Zap,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import {
@@ -20,14 +24,14 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 @Component({
   selector: 'app-admin-alerts',
   standalone: true,
-  imports: [LucideAngularModule, DatePipe, RouterLink],
+  imports: [LucideAngularModule, DatePipe, JsonPipe, RouterLink],
   template: `
     <div class="flex flex-col gap-6">
       <div class="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 class="text-2xl font-display font-bold text-fg-primary">Centre d'alertes</h1>
           <p class="text-sm text-fg-tertiary">
-            Trackers en echec, hors ligne prolonge, ou commandes en attente.
+            Trackers en echec, hors ligne prolonge, commandes en attente et erreurs applicatives.
           </p>
         </div>
         <button (click)="reload()"
@@ -38,31 +42,55 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
       </div>
 
       <!-- Summary -->
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <div class="bg-bg-secondary border border-rose-500/20 rounded-[--radius-card] p-4 flex items-center gap-3">
-          <lucide-icon [img]="AlertTriangle" [size]="32" class="text-rose-400"></lucide-icon>
+          <lucide-icon [img]="AlertTriangle" [size]="28" class="text-rose-400 shrink-0"></lucide-icon>
           <div>
-            <div class="text-xs uppercase text-fg-tertiary">Trackers FAILING</div>
+            <div class="text-[10px] uppercase text-fg-tertiary">Trackers FAILING</div>
             <div class="text-2xl font-display font-bold text-rose-400">
               {{ data()?.summary?.failing ?? 0 }}
             </div>
           </div>
         </div>
         <div class="bg-bg-secondary border border-amber-500/20 rounded-[--radius-card] p-4 flex items-center gap-3">
-          <lucide-icon [img]="WifiOff" [size]="32" class="text-amber-400"></lucide-icon>
+          <lucide-icon [img]="WifiOff" [size]="28" class="text-amber-400 shrink-0"></lucide-icon>
           <div>
-            <div class="text-xs uppercase text-fg-tertiary">Offline > 1h</div>
+            <div class="text-[10px] uppercase text-fg-tertiary">Offline > 1h</div>
             <div class="text-2xl font-display font-bold text-amber-400">
               {{ data()?.summary?.offline ?? 0 }}
             </div>
           </div>
         </div>
         <div class="bg-bg-secondary border border-sky-500/20 rounded-[--radius-card] p-4 flex items-center gap-3">
-          <lucide-icon [img]="Clock" [size]="32" class="text-sky-400"></lucide-icon>
+          <lucide-icon [img]="Clock" [size]="28" class="text-sky-400 shrink-0"></lucide-icon>
           <div>
-            <div class="text-xs uppercase text-fg-tertiary">Commandes en attente</div>
+            <div class="text-[10px] uppercase text-fg-tertiary">Commandes en attente</div>
             <div class="text-2xl font-display font-bold text-sky-400">
               {{ data()?.summary?.pending ?? 0 }}
+            </div>
+          </div>
+        </div>
+        <div class="bg-bg-secondary border rounded-[--radius-card] p-4 flex items-center gap-3"
+             [class]="(data()?.summary?.errorsLast24h ?? 0) > 0 ? 'border-orange-500/20' : 'border-border-subtle'">
+          <lucide-icon [img]="Bug" [size]="28" class="shrink-0"
+                       [class]="(data()?.summary?.errorsLast24h ?? 0) > 0 ? 'text-orange-400' : 'text-fg-tertiary'"></lucide-icon>
+          <div>
+            <div class="text-[10px] uppercase text-fg-tertiary">Erreurs 24h</div>
+            <div class="text-2xl font-display font-bold"
+                 [class]="(data()?.summary?.errorsLast24h ?? 0) > 0 ? 'text-orange-400' : 'text-fg-tertiary'">
+              {{ data()?.summary?.errorsLast24h ?? 0 }}
+            </div>
+          </div>
+        </div>
+        <div class="bg-bg-secondary border rounded-[--radius-card] p-4 flex items-center gap-3"
+             [class]="(data()?.summary?.criticalLastHour ?? 0) > 0 ? 'border-rose-500/30' : 'border-border-subtle'">
+          <lucide-icon [img]="Zap" [size]="28" class="shrink-0"
+                       [class]="(data()?.summary?.criticalLastHour ?? 0) > 0 ? 'text-rose-400' : 'text-fg-tertiary'"></lucide-icon>
+          <div>
+            <div class="text-[10px] uppercase text-fg-tertiary">Critical 1h</div>
+            <div class="text-2xl font-display font-bold"
+                 [class]="(data()?.summary?.criticalLastHour ?? 0) > 0 ? 'text-rose-400' : 'text-fg-tertiary'">
+              {{ data()?.summary?.criticalLastHour ?? 0 }}
             </div>
           </div>
         </div>
@@ -210,7 +238,125 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
         </section>
       }
 
-      @if (data() && data()!.failing.length === 0 && data()!.offline.length === 0 && data()!.pendingCommands.length === 0) {
+      <!-- ERRORS -->
+      @if (data()?.errors?.last24h) {
+        <section class="flex flex-col gap-3">
+          <div class="flex items-center justify-between">
+            <h2 class="text-lg font-display font-semibold text-fg-primary flex items-center gap-2">
+              <lucide-icon [img]="Bug" [size]="18" class="text-orange-400"></lucide-icon>
+              Erreurs applicatives ({{ data()!.errors.last24h }} / 24h)
+            </h2>
+            <a routerLink="/admin/observability"
+               class="text-xs text-tracky-light hover:underline">Voir tous les logs</a>
+          </div>
+
+          <!-- CRITICAL récentes -->
+          @if (data()!.errors.recentCritical.length > 0) {
+            <div class="flex flex-col gap-2">
+              <div class="text-xs font-semibold text-rose-400 uppercase">Erreurs critiques recentes</div>
+              @for (e of data()!.errors.recentCritical; track e.id) {
+                <div class="bg-bg-secondary border border-rose-500/30 rounded-[--radius-card]">
+                  <button (click)="toggleErrorExpand(e.id)"
+                          class="w-full px-4 py-3 flex items-center gap-3 hover:bg-bg-tertiary/30 cursor-pointer text-left">
+                    <lucide-icon [img]="expandedErrors()[e.id] ? ChevronDown : ChevronRight"
+                                 [size]="14" class="text-fg-tertiary shrink-0"></lucide-icon>
+                    <div class="flex flex-col flex-1 min-w-0">
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <span class="inline-flex items-center px-2 py-0.5 text-[10px] rounded-md bg-rose-500/10 text-rose-400 font-mono">
+                          CRITICAL
+                        </span>
+                        <span class="text-[10px] font-mono text-fg-tertiary">{{ e.source }}</span>
+                        <span class="text-[10px] font-mono text-fg-tertiary">{{ e.createdAt | date: 'dd/MM HH:mm:ss' }}</span>
+                        @if (e.imei) {
+                          <span class="text-[10px] font-mono text-fg-tertiary">{{ e.imei }}</span>
+                        }
+                      </div>
+                      <div class="text-xs text-fg-secondary mt-1 truncate">{{ e.message }}</div>
+                    </div>
+                  </button>
+                  @if (expandedErrors()[e.id]) {
+                    <div class="border-t border-border-subtle/50 px-4 py-3 flex flex-col gap-2 text-xs">
+                      @if (e.stack) {
+                        <pre class="text-[10px] text-fg-tertiary bg-bg-tertiary p-2 rounded overflow-x-auto whitespace-pre-wrap">{{ e.stack }}</pre>
+                      }
+                      @if (e.context) {
+                        <details class="text-fg-tertiary">
+                          <summary class="cursor-pointer hover:text-fg-secondary text-xs">Contexte</summary>
+                          <pre class="mt-2 text-[10px] bg-bg-tertiary p-2 rounded overflow-x-auto">{{ e.context | json }}</pre>
+                        </details>
+                      }
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+          }
+
+          <!-- Erreurs groupées par source -->
+          @if (data()!.errors.bySource.length > 0) {
+            <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead class="border-b border-border-subtle text-fg-tertiary text-xs uppercase">
+                  <tr>
+                    <th class="p-3 text-left">Source</th>
+                    <th class="p-3 text-right">Occurrences</th>
+                    <th class="p-3 text-left">Derniere</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (s of data()!.errors.bySource; track s.source) {
+                    <tr class="border-b border-border-subtle/50 hover:bg-bg-tertiary/50">
+                      <td class="p-3 font-mono text-xs text-fg-secondary">{{ s.source }}</td>
+                      <td class="p-3 text-right font-mono"
+                          [class]="s.count >= 10 ? 'text-orange-400' : 'text-fg-secondary'">{{ s.count }}</td>
+                      <td class="p-3 text-fg-tertiary text-xs">{{ s.lastAt | date: 'dd/MM HH:mm' }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+
+          <!-- Top messages recurrents -->
+          @if (data()!.errors.topMessages.length > 0) {
+            <div class="flex flex-col gap-2">
+              <div class="text-xs font-semibold text-fg-tertiary uppercase">Erreurs recurrentes (top 20)</div>
+              <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-x-auto">
+                <table class="w-full text-sm">
+                  <thead class="border-b border-border-subtle text-fg-tertiary text-xs uppercase">
+                    <tr>
+                      <th class="p-3 text-left">Message</th>
+                      <th class="p-3 text-left">Source</th>
+                      <th class="p-3 text-left">Niveau</th>
+                      <th class="p-3 text-right">x</th>
+                      <th class="p-3 text-left">Derniere</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (m of data()!.errors.topMessages; track m.lastId) {
+                      <tr class="border-b border-border-subtle/50 hover:bg-bg-tertiary/50">
+                        <td class="p-3 text-xs text-fg-secondary max-w-[400px] truncate">{{ m.message }}</td>
+                        <td class="p-3 font-mono text-[10px] text-fg-tertiary">{{ m.source }}</td>
+                        <td class="p-3">
+                          <span class="inline-flex items-center px-2 py-0.5 text-[10px] rounded-md font-mono"
+                                [class]="m.level === 'CRITICAL' ? 'bg-rose-500/10 text-rose-400' : 'bg-orange-500/10 text-orange-400'">
+                            {{ m.level }}
+                          </span>
+                        </td>
+                        <td class="p-3 text-right font-mono font-bold"
+                            [class]="m.count >= 5 ? 'text-orange-400' : 'text-fg-secondary'">{{ m.count }}</td>
+                        <td class="p-3 text-fg-tertiary text-xs">{{ m.lastAt | date: 'dd/MM HH:mm' }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          }
+        </section>
+      }
+
+      @if (data() && data()!.failing.length === 0 && data()!.offline.length === 0 && data()!.pendingCommands.length === 0 && !data()!.errors?.last24h) {
         <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-12 text-center">
           <lucide-icon [img]="CheckCircle" [size]="48" class="mx-auto mb-3 text-emerald-400"></lucide-icon>
           <h2 class="text-lg font-display font-semibold text-fg-primary">Tout va bien</h2>
@@ -225,14 +371,19 @@ export class AdminAlertsComponent implements OnInit {
   private readonly toast = inject(ToastService);
 
   protected readonly AlertTriangle = AlertTriangle;
+  protected readonly Bug = Bug;
   protected readonly CheckCircle = CheckCircle;
+  protected readonly ChevronDown = ChevronDown;
+  protected readonly ChevronRight = ChevronRight;
   protected readonly Clock = Clock;
   protected readonly RefreshCw = RefreshCw;
   protected readonly Wifi = Wifi;
   protected readonly WifiOff = WifiOff;
+  protected readonly Zap = Zap;
 
   readonly data = signal<AdminAlertsDto | null>(null);
   readonly loading = signal(false);
+  readonly expandedErrors = signal<Record<string, boolean>>({});
 
   ngOnInit(): void {
     this.reload();
@@ -267,6 +418,10 @@ export class AdminAlertsComponent implements OnInit {
     } catch {
       this.toast.error('Echec de la reinitialisation');
     }
+  }
+
+  toggleErrorExpand(id: string): void {
+    this.expandedErrors.update((m) => ({ ...m, [id]: !m[id] }));
   }
 
   formatDuration(ms: number | null): string {
