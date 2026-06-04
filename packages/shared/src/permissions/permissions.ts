@@ -30,6 +30,8 @@ export interface UserPermissions {
   geofences_manage: boolean;
   alerts_view: boolean;
   alerts_acknowledge: boolean;
+  /** Configurer les regles d'alertes (seuils, canaux, escalade) pour la flotte ou par vehicule. */
+  alerts_configure: boolean;
   reports_view: boolean;
   users_view: boolean;
   users_manage: boolean;
@@ -51,6 +53,7 @@ const VIEWER_DEFAULTS: UserPermissions = {
   geofences_manage: false,
   alerts_view: true,
   alerts_acknowledge: false,
+  alerts_configure: false,
   reports_view: true,
   users_view: false,
   users_manage: false,
@@ -70,6 +73,7 @@ const FLEET_MANAGER_DEFAULTS: UserPermissions = {
   geofences_manage: true,
   alerts_view: true,
   alerts_acknowledge: true,
+  alerts_configure: false,
   reports_view: true,
   users_view: false,
   users_manage: false,
@@ -89,6 +93,7 @@ const ADMIN_DEFAULTS: UserPermissions = {
   geofences_manage: true,
   alerts_view: true,
   alerts_acknowledge: true,
+  alerts_configure: true,
   reports_view: true,
   users_view: true,
   users_manage: true,
@@ -137,6 +142,7 @@ export const PERMISSION_LABELS: Record<keyof UserPermissions, PermissionLabel> =
   geofences_manage: { group: 'Geofences', label: 'Gerer les geofences' },
   alerts_view: { group: 'Alertes', label: 'Voir les alertes' },
   alerts_acknowledge: { group: 'Alertes', label: 'Acquitter les alertes' },
+  alerts_configure: { group: 'Alertes', label: 'Configurer les regles d\'alertes', description: 'Creer, modifier et supprimer les regles de notification et seuils par vehicule.' },
   reports_view: { group: 'Rapports', label: 'Voir les rapports' },
   users_view: { group: 'Utilisateurs', label: 'Voir les utilisateurs' },
   users_manage: { group: 'Utilisateurs', label: 'Gerer les utilisateurs (inviter, editer)' },

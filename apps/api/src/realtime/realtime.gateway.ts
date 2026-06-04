@@ -76,6 +76,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   broadcastAlert(alert: Alert & { vehicle?: Vehicle | null; tracker?: Tracker | null }): void {
+    const payload = (alert.payload ?? {}) as Record<string, unknown>;
     const event: AlertEvent = {
       id: alert.id,
       fleetId: alert.fleetId,
@@ -89,6 +90,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       longitude: alert.longitude,
       createdAt: alert.createdAt.toISOString(),
       vehiclePlate: (alert as any).vehicle?.plate,
+      speedKmh: typeof payload['speedKmh'] === 'number' ? payload['speedKmh'] : undefined,
     };
     this.server.to(`fleet:${alert.fleetId}`).to('fleet:*').emit(WS_EVENTS.ALERT_NEW, event);
   }

@@ -46,6 +46,8 @@ export interface AlertEvent {
   longitude: number | null;
   createdAt: string;
   vehiclePlate?: string;
+  /** Speed at the time of the alert (km/h), when available (e.g. OVERSPEED). */
+  speedKmh?: number;
 }
 
 export interface AlertAcknowledgedEvent {

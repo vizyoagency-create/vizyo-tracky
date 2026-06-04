@@ -18,9 +18,11 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { UserRole } from '@prisma/client';
+import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import { AlertRulesService } from './alert-rules.service';
@@ -39,7 +41,7 @@ import { WebPushService } from './web-push.service';
  *  - DELETE /api/notifications/rules/:id
  */
 @Controller('notifications')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class NotificationsController {
   constructor(
     private readonly webPush: WebPushService,
@@ -247,14 +249,16 @@ export class NotificationsController {
   // ─── AlertRules CRUD ────────────────────────────────────────
 
   @Get('rules')
-  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  @RequirePermissions('alerts_view')
   async listRules(@Req() req: AuthenticatedRequest) {
     const items = await this.alertRules.list({ role: req.user.role, fleetId: req.user.fleetId });
     return { items };
   }
 
   @Post('rules')
-  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
+  @RequirePermissions('alerts_configure')
   async createRule(
     @Req() req: AuthenticatedRequest,
     @Body() body: {
@@ -273,7 +277,8 @@ export class NotificationsController {
   }
 
   @Put('rules/:id')
-  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
+  @RequirePermissions('alerts_configure')
   async updateRule(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
@@ -292,7 +297,8 @@ export class NotificationsController {
   }
 
   @Delete('rules/:id')
-  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
+  @RequirePermissions('alerts_configure')
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteRule(
     @Req() req: AuthenticatedRequest,
