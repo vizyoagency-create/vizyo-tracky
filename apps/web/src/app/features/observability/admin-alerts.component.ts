@@ -247,7 +247,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
               Erreurs applicatives ({{ data()!.errors.last24h }} / 24h)
             </h2>
             <a routerLink="/admin/observability"
-               class="text-xs text-tracky-light hover:underline">Voir tous les logs</a>
+               class="text-xs text-tracky-light hover:underline">Voir les wire logs</a>
           </div>
 
           <!-- CRITICAL récentes -->

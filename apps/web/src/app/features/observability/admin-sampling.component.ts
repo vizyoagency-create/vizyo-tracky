@@ -33,7 +33,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
           <a routerLink="/admin/observability"
              class="text-xs text-fg-tertiary hover:text-fg-secondary inline-flex items-center gap-1">
             <lucide-icon [img]="ArrowLeft" [size]="12"></lucide-icon>
-            Observabilite
+            Diagnostic & Tests
           </a>
           <h1 class="text-2xl font-display font-bold text-fg-primary">
             Sampling adaptatif

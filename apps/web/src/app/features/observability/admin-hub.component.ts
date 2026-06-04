@@ -2,7 +2,7 @@ import { Component } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
   LucideAngularModule, AlertTriangle, Activity, Terminal, MessageSquare,
-  Users, Gauge, Shield,
+  Users, Gauge, Shield, Radio,
 } from 'lucide-angular';
 
 @Component({
@@ -65,9 +65,10 @@ import {
 })
 export class AdminHubComponent {
   protected readonly sections = [
-    { label: 'Centre d\'alertes', desc: 'Trackers failing, devices offline, commandes pending', route: '/admin/alerts', icon: AlertTriangle, color: 'red' },
-    { label: 'Observabilite', desc: 'Wire logs, error logs, timeline, test push', route: '/admin/observability', icon: Activity, color: 'green' },
+    { label: 'Centre d\'alertes', desc: 'Trackers failing, offline, commandes pending, erreurs applicatives', route: '/admin/alerts', icon: AlertTriangle, color: 'red' },
+    { label: 'Diagnostic & Tests', desc: 'Wire logs, timeline, test push, test SMS fallback', route: '/admin/observability', icon: Activity, color: 'green' },
     { label: 'Commandes tracker', desc: 'Envoyer et monitorer les commandes TCP/SMS', route: '/admin/commands', icon: Terminal, color: 'blue' },
+    { label: 'Trackers', desc: 'Inventaire global, assignation, SIM, statut', route: '/admin/trackers', icon: Radio, color: 'blue' },
     { label: 'SMS & Backup', desc: 'Historique SMS, provisioning, backup DB', route: '/admin/sms', icon: MessageSquare, color: 'purple' },
     { label: 'Sync Auth / Tracky', desc: 'Comparer les comptes Vizyo Auth vs Tracky', route: '/admin/auth-sync', icon: Users, color: 'cyan' },
   ];

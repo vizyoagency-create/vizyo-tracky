@@ -46,9 +46,9 @@ interface SyncData {
   template: `
     <div class="page">
       <header class="page-header">
-        <a routerLink="/admin/observability" class="back-link">
+        <a routerLink="/admin" class="back-link">
           <lucide-icon [img]="ArrowLeft" [size]="14"></lucide-icon>
-          Observabilite
+          Administration
         </a>
         <div class="header-row">
           <div>

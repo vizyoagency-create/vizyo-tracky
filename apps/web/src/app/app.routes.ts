@@ -157,7 +157,7 @@ export const routes: Routes = [
         canActivate: [superAdminGuard],
         loadComponent: () =>
           import('./features/observability/observability.component').then((m) => m.ObservabilityComponent),
-        data: { title: 'Observabilité' },
+        data: { title: 'Diagnostic & Tests' },
       },
       {
         path: 'admin/alerts',
@@ -179,6 +179,14 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/observability/admin-auth-sync.component').then((m) => m.AdminAuthSyncComponent),
         data: { title: 'Sync Auth / Tracky' },
+      },
+      {
+        path: 'admin/trackers',
+        pathMatch: 'full',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/observability/admin-trackers.component').then((m) => m.AdminTrackersComponent),
+        data: { title: 'Trackers (admin)' },
       },
       {
         path: 'admin/trackers/:id/sampling',

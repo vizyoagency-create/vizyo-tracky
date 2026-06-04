@@ -8,7 +8,6 @@ import {
   HardDrive,
   ListChecks,
   LucideAngularModule,
-  MessageSquare,
   Phone,
   Plus,
   Power,
@@ -18,7 +17,6 @@ import {
   XCircle,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
-import { HttpClient } from '@angular/common/http';
 import {
   AdminSmsService,
   AllowlistEntryDto,
@@ -27,7 +25,6 @@ import {
   ProvisioningDto,
   SmsLogDto,
   SmsStatus,
-  SmsTestFallbackResult,
 } from '../../core/services/admin-sms.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 
@@ -141,45 +138,6 @@ type Tab = 'status' | 'provision' | 'logs' | 'allowlist' | 'backup';
           </button>
         </div>
 
-        <!-- V1.13 — Section dediee Test du flow fallback SMS.
-             Permet de valider sans simuler tracker offline + simPhoneNumber. -->
-        <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4 flex flex-col gap-3">
-          <div class="flex items-center gap-2 text-sm font-semibold">
-            <lucide-icon [img]="MessageSquare" [size]="16" class="text-tracky-light"></lucide-icon>
-            Tester le fallback SMS (bypass conditions tracker)
-          </div>
-          <p class="text-xs text-fg-tertiary">
-            Envoie une commande Coban benigne <code class="font-mono">fix030s***n123456</code> au numero
-            destinataire en utilisant la gateway SMS — sans verifier que le tracker est offline ou que
-            sa SIM est configuree. Sert a valider la chaine Twilio + audit avant de propager le
-            mecanisme en prod.
-          </p>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <select [(ngModel)]="fbTrackerId"
-                    class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm">
-              <option value="">Selectionner un tracker...</option>
-              @for (t of trackers(); track t.id) {
-                <option [value]="t.id">{{ t.imei }} — {{ t.plate ?? 'sans plaque' }}</option>
-              }
-            </select>
-            <input [(ngModel)]="fbPhone" placeholder="+33612345678 (ton numero)"
-                   class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm font-mono" />
-          </div>
-          <button (click)="testFallback()" [disabled]="!fbTrackerId || !fbPhone || fbSending()"
-                  class="px-3 py-2 bg-tracky text-white rounded-lg text-sm font-medium hover:bg-tracky-dark cursor-pointer disabled:opacity-50 self-start flex items-center gap-2">
-            <lucide-icon [img]="Send" [size]="14"></lucide-icon>
-            {{ fbSending() ? 'Envoi en cours...' : 'Envoyer test fallback' }}
-          </button>
-          @if (fbResult(); as r) {
-            <div class="text-xs font-mono rounded p-2 border"
-                 [class]="r.ok ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-rose-500/10 border-rose-500/30 text-rose-300'">
-              {{ r.ok ? 'OK' : 'KO' }} — payload <code>{{ r.payload }}</code> envoye au tracker
-              IMEI <code>{{ r.trackerImei }}</code>
-              @if (r.smsResult.twilioSid) { · sid <code>{{ r.smsResult.twilioSid }}</code> }
-              @if (r.smsResult.error) { · erreur : {{ r.smsResult.error }} }
-            </div>
-          }
-        </div>
       }
 
       <!-- Tab : Provisioning -->
@@ -417,49 +375,6 @@ type Tab = 'status' | 'provision' | 'logs' | 'allowlist' | 'backup';
           </div>
         }
 
-        <!-- SIM des trackers (renseigner ici => fallback SMS + auto-sync allowlist) -->
-        <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-x-auto">
-          <div class="p-3 text-sm font-semibold flex items-center gap-2 border-b border-border-subtle">
-            <lucide-icon [img]="Phone" [size]="16" class="text-tracky-light"></lucide-icon>
-            SIM des trackers ({{ trackers().length }})
-          </div>
-          <p class="px-3 pt-3 text-xs text-fg-tertiary">
-            Renseigner le numero SIM d'un tracker l'ajoute automatiquement a l'allowlist
-            (source <code>synced</code>) et active le fallback SMS pour ce tracker.
-          </p>
-          @if (trackers().length > 0) {
-            <table class="w-full text-sm min-w-[640px] mt-2">
-              <thead class="border-b border-border-subtle text-fg-tertiary text-xs uppercase">
-                <tr>
-                  <th class="p-3 text-left">IMEI</th>
-                  <th class="p-3 text-left">Vehicule</th>
-                  <th class="p-3 text-left">Numero SIM (E.164)</th>
-                  <th class="p-3 text-right"></th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (t of trackers(); track t.id) {
-                  <tr class="border-b border-border-subtle/50 hover:bg-bg-tertiary/50">
-                    <td class="p-3 font-mono text-xs">{{ t.imei }}</td>
-                    <td class="p-3 text-xs">{{ t.plate ?? '—' }}</td>
-                    <td class="p-3">
-                      <input [(ngModel)]="simEdits[t.id]" placeholder="+33612345678 (vide = effacer)"
-                             class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-1.5 text-sm font-mono w-full max-w-[230px]" />
-                    </td>
-                    <td class="p-3 text-right">
-                      <button (click)="saveTrackerSim(t.id)" [disabled]="savingSim() === t.id"
-                              class="px-2.5 py-1.5 bg-tracky text-white rounded-lg text-xs font-medium hover:bg-tracky-dark cursor-pointer disabled:opacity-50">
-                        {{ savingSim() === t.id ? '...' : 'Enregistrer' }}
-                      </button>
-                    </td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          } @else {
-            <div class="p-6 text-center text-fg-tertiary text-sm">Aucun tracker.</div>
-          }
-        </div>
       }
 
       <!-- Tab : Backup -->
@@ -519,14 +434,12 @@ type Tab = 'status' | 'provision' | 'logs' | 'allowlist' | 'backup';
 export class AdminSmsComponent implements OnInit {
   private readonly api = inject(AdminSmsService);
   private readonly toast = inject(ToastService);
-  private readonly http = inject(HttpClient);
 
   protected readonly AlertTriangle = AlertTriangle;
   protected readonly CheckCircle = CheckCircle;
   protected readonly Database = Database;
   protected readonly HardDrive = HardDrive;
   protected readonly ListChecks = ListChecks;
-  protected readonly MessageSquare = MessageSquare;
   protected readonly Phone = Phone;
   protected readonly Plus = Plus;
   protected readonly Power = Power;
@@ -564,24 +477,12 @@ export class AdminSmsComponent implements OnInit {
   // Logs filter
   logsImei = '';
 
-  // V1.13 — Test fallback SMS state
-  readonly trackers = signal<
-    { id: string; imei: string; plate: string | null; simPhoneNumber: string | null }[]
-  >([]);
-  fbTrackerId = '';
-  fbPhone = '';
-  readonly fbSending = signal(false);
-  readonly fbResult = signal<SmsTestFallbackResult | null>(null);
-
   // V1.14 — Allowlist vizyo-texto state
   readonly allowlistEntries = signal<AllowlistEntryDto[]>([]);
   readonly allowlistStatus = signal<AllowlistStatus | null>(null);
   newPhone = '';
   newLabel = '';
   readonly syncing = signal(false);
-  // Edition inline du numero SIM par tracker (id -> valeur en cours).
-  simEdits: Record<string, string> = {};
-  readonly savingSim = signal<string | null>(null);
 
   // V1.13 — Verdict reel SMS Gateway (utilise dans card status).
   private modeOk(): boolean {
@@ -628,7 +529,6 @@ export class AdminSmsComponent implements OnInit {
 
   ngOnInit(): void {
     this.reload();
-    this.loadTrackers();
   }
 
   async reload(): Promise<void> {
@@ -647,57 +547,6 @@ export class AdminSmsComponent implements OnInit {
       this.toast.error('Echec du chargement (acces SUPER_ADMIN requis)');
     }
     await this.loadAllowlist();
-  }
-
-  /** V1.13 — Charge la liste des trackers pour le dropdown de test fallback.
-   *  Lecture allegee : id + imei + plate seulement (suffisant pour selecteur). */
-  private async loadTrackers(): Promise<void> {
-    try {
-      const list = await firstValueFrom(
-        this.http.get<
-          Array<{
-            id: string;
-            imei: string;
-            simPhoneNumber?: string | null;
-            vehicle?: { plate?: string | null } | null;
-          }>
-        >('/api/trackers'),
-      );
-      const mapped = list.map((t) => ({
-        id: t.id,
-        imei: t.imei,
-        plate: t.vehicle?.plate ?? null,
-        simPhoneNumber: t.simPhoneNumber ?? null,
-      }));
-      this.trackers.set(mapped);
-      for (const t of mapped) this.simEdits[t.id] = t.simPhoneNumber ?? '';
-    } catch {
-      /* silencieux : l'UI affichera juste "Selectionner un tracker" vide */
-    }
-  }
-
-  async testFallback(): Promise<void> {
-    if (!this.fbTrackerId || !this.fbPhone) return;
-    this.fbSending.set(true);
-    this.fbResult.set(null);
-    try {
-      const r = await firstValueFrom(this.api.testFallback(this.fbTrackerId, this.fbPhone));
-      this.fbResult.set(r);
-      if (r.ok) {
-        this.toast.success(`Test fallback OK — payload envoye au ${this.fbPhone}`);
-      } else {
-        this.toast.error(`Test fallback KO : ${r.smsResult.error ?? 'erreur inconnue'}`);
-      }
-      // Refresh status pour mettre a jour recentFailures24h si KO.
-      await this.reload();
-    } catch (e) {
-      const msg = (e as { error?: { error?: { message?: string } } })?.error?.error?.message
-        ?? (e as Error).message
-        ?? 'Echec inconnu';
-      this.toast.error(`Test fallback : ${msg}`);
-    } finally {
-      this.fbSending.set(false);
-    }
   }
 
   async sendAdhoc(): Promise<void> {
@@ -807,22 +656,6 @@ export class AdminSmsComponent implements OnInit {
       return (e as { error?: { message?: string } }).error?.message ?? null;
     }
     return null;
-  }
-
-  /** V1.14 — Enregistre la SIM d'un tracker -> backend ecrit + auto-sync allowlist. */
-  async saveTrackerSim(trackerId: string): Promise<void> {
-    this.savingSim.set(trackerId);
-    try {
-      await firstValueFrom(
-        this.api.setTrackerSim(trackerId, (this.simEdits[trackerId] ?? '').trim()),
-      );
-      this.toast.success('SIM tracker enregistree');
-      await Promise.all([this.loadTrackers(), this.loadAllowlist()]);
-    } catch (e) {
-      this.toast.error(this.errMsg(e) ?? 'Echec enregistrement SIM');
-    } finally {
-      this.savingSim.set(null);
-    }
   }
 
   provBadgeClass(status: ProvisioningDto['status']): string {

@@ -2,17 +2,18 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { DatePipe, JsonPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import {
-  LucideAngularModule, Activity, AlertTriangle, Search, RefreshCw,
+  LucideAngularModule, Activity, AlertTriangle, MessageSquare, Search, RefreshCw,
   ArrowUpRight, ArrowDownLeft, Clock, Terminal, Bell, BellRing, Send, Smartphone,
   Trash2, User as UserIcon, Globe,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
+import { HttpClient } from '@angular/common/http';
 import {
   AdminLogsService,
   type WireLogDto,
-  type ErrorLogDto,
   type TimelineEntry,
 } from '../../core/services/admin-logs.service';
+import { AdminSmsService, type SmsTestFallbackResult } from '../../core/services/admin-sms.service';
 import { NotificationsApiService, type TestPushResultEntry } from '../../core/services/notifications.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 
@@ -23,7 +24,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
   template: `
     <div class="flex flex-col gap-6">
       <div class="flex items-center justify-between">
-        <h1 class="text-2xl font-display font-bold text-fg-primary">Observabilité</h1>
+        <h1 class="text-2xl font-display font-bold text-fg-primary">Diagnostic & Tests</h1>
       </div>
 
       <!-- Tabs -->
@@ -106,83 +107,6 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
                       bg-bg-secondary border border-border-subtle text-fg-tertiary gap-2">
             <lucide-icon [img]="Activity" [size]="48" class="opacity-30"></lucide-icon>
             <p>Aucun log wire</p>
-          </div>
-        }
-      }
-
-      <!-- Errors Tab -->
-      @if (activeTab() === 'errors') {
-        <div class="flex flex-wrap gap-3 items-end">
-          <div class="flex flex-col gap-1 flex-1 min-w-[140px]">
-            <label class="text-xs text-fg-tertiary">Source</label>
-            <select [(ngModel)]="errorSourceFilter"
-                    class="bg-bg-secondary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary w-full">
-              <option value="">Toutes</option>
-              <option value="tcp-server">tcp-server</option>
-              <option value="http">http</option>
-              <option value="engine-control">engine-control</option>
-              <option value="tracker-commands">tracker-commands</option>
-              <option value="positions">positions</option>
-              <option value="geofences">geofences</option>
-              <option value="trips">trips</option>
-              <option value="schedule-cron">schedule-cron</option>
-              <option value="wire-logger">wire-logger</option>
-            </select>
-          </div>
-          <div class="flex flex-col gap-1">
-            <label class="text-xs text-fg-tertiary">Niveau</label>
-            <select [(ngModel)]="errorLevelFilter"
-                    class="bg-bg-secondary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary">
-              <option value="">Tous</option>
-              <option value="CRITICAL">CRITICAL</option>
-              <option value="ERROR">ERROR</option>
-            </select>
-          </div>
-          <div class="flex flex-col gap-1 flex-1 min-w-[140px]">
-            <label class="text-xs text-fg-tertiary">IMEI</label>
-            <input [(ngModel)]="errorImeiFilter" placeholder="865328021056352"
-                   class="bg-bg-secondary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary w-full" />
-          </div>
-          <button (click)="loadErrorLogs()" class="px-4 py-2 bg-tracky text-white rounded-lg text-sm font-medium
-                  hover:bg-tracky-dark cursor-pointer flex items-center gap-2 shrink-0">
-            <lucide-icon [img]="RefreshCw" [size]="14"></lucide-icon>
-            Rafraîchir
-          </button>
-        </div>
-
-        @if (errorLogs().length > 0) {
-          <div class="flex flex-col gap-2">
-            @for (log of errorLogs(); track log.id) {
-              <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4 cursor-pointer hover:bg-bg-tertiary/50"
-                   (click)="toggleErrorDetail(log.id)">
-                <div class="flex items-start gap-3">
-                  <div class="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
-                       [class]="log.level === 'CRITICAL' ? 'bg-red-500/20' : 'bg-amber-500/20'">
-                    <lucide-icon [img]="AlertTriangle" [size]="16"
-                                 [class]="log.level === 'CRITICAL' ? 'text-red-400' : 'text-amber-400'"></lucide-icon>
-                  </div>
-                  <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-2 mb-1">
-                      <span class="text-xs px-2 py-0.5 rounded-md bg-bg-tertiary text-fg-tertiary">{{ log.source }}</span>
-                      <span class="text-xs text-fg-tertiary">{{ log.createdAt | date:'dd/MM HH:mm:ss' }}</span>
-                    </div>
-                    <p class="text-sm text-fg-primary truncate">{{ log.message }}</p>
-                    @if (expandedError() === log.id && log.stack) {
-                      <pre class="mt-3 text-xs text-fg-tertiary bg-bg-tertiary rounded-lg p-3 overflow-x-auto whitespace-pre-wrap">{{ log.stack }}</pre>
-                    }
-                    @if (expandedError() === log.id && log.context) {
-                      <pre class="mt-2 text-xs text-fg-tertiary bg-bg-tertiary rounded-lg p-3 overflow-x-auto">{{ log.context | json }}</pre>
-                    }
-                  </div>
-                </div>
-              </div>
-            }
-          </div>
-        } @else {
-          <div class="flex flex-col items-center justify-center h-40 rounded-[--radius-card]
-                      bg-bg-secondary border border-border-subtle text-fg-tertiary gap-2">
-            <lucide-icon [img]="AlertTriangle" [size]="48" class="opacity-30"></lucide-icon>
-            <p>Aucune erreur</p>
           </div>
         }
       }
@@ -598,16 +522,59 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
           }
         </div>
       }
+
+      <!-- Test SMS Fallback Tab -->
+      @if (activeTab() === 'test-sms') {
+        <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4 flex flex-col gap-3">
+          <div class="flex items-center gap-2 text-sm font-semibold">
+            <lucide-icon [img]="MessageSquare" [size]="16" class="text-tracky-light"></lucide-icon>
+            Tester le fallback SMS (bypass conditions tracker)
+          </div>
+          <p class="text-xs text-fg-tertiary">
+            Envoie une commande Coban benigne <code class="font-mono">fix030s***n123456</code> au numero
+            destinataire en utilisant la gateway SMS — sans verifier que le tracker est offline ou que
+            sa SIM est configuree. Sert a valider la chaine SMS + audit.
+          </p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <select [(ngModel)]="fbTrackerId"
+                    class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm">
+              <option value="">Selectionner un tracker...</option>
+              @for (t of smsTrackers(); track t.id) {
+                <option [value]="t.id">{{ t.imei }} — {{ t.plate ?? 'sans plaque' }}</option>
+              }
+            </select>
+            <input [(ngModel)]="fbPhone" placeholder="+33612345678 (ton numero)"
+                   class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm font-mono" />
+          </div>
+          <button (click)="testFallback()" [disabled]="!fbTrackerId || !fbPhone || fbSending()"
+                  class="px-3 py-2 bg-tracky text-white rounded-lg text-sm font-medium hover:bg-tracky-dark cursor-pointer disabled:opacity-50 self-start flex items-center gap-2">
+            <lucide-icon [img]="Send" [size]="14"></lucide-icon>
+            {{ fbSending() ? 'Envoi en cours...' : 'Envoyer test fallback' }}
+          </button>
+          @if (fbResult(); as r) {
+            <div class="text-xs font-mono rounded p-2 border"
+                 [class]="r.ok ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-rose-500/10 border-rose-500/30 text-rose-300'">
+              {{ r.ok ? 'OK' : 'KO' }} — payload <code>{{ r.payload }}</code> envoye au tracker
+              IMEI <code>{{ r.trackerImei }}</code>
+              @if (r.smsResult.twilioSid) { · sid <code>{{ r.smsResult.twilioSid }}</code> }
+              @if (r.smsResult.error) { · erreur : {{ r.smsResult.error }} }
+            </div>
+          }
+        </div>
+      }
     </div>
   `,
 })
 export class ObservabilityComponent implements OnInit {
   private readonly logsApi = inject(AdminLogsService);
+  private readonly smsApi = inject(AdminSmsService);
+  private readonly http = inject(HttpClient);
   protected readonly notif = inject(NotificationsApiService);
   private readonly toast = inject(ToastService);
 
   protected readonly Activity = Activity;
   protected readonly AlertTriangle = AlertTriangle;
+  protected readonly MessageSquare = MessageSquare;
   protected readonly Search = Search;
   protected readonly RefreshCw = RefreshCw;
   protected readonly ArrowUpRight = ArrowUpRight;
@@ -624,9 +591,9 @@ export class ObservabilityComponent implements OnInit {
 
   protected readonly tabs = [
     { key: 'wire' as const, label: 'Wire Logs' },
-    { key: 'errors' as const, label: 'Erreurs' },
     { key: 'timeline' as const, label: 'Timeline' },
     { key: 'test-push' as const, label: 'Test Notification' },
+    { key: 'test-sms' as const, label: 'Test SMS Fallback' },
   ];
 
   protected readonly delayOptions: { v: number; l: string }[] = [
@@ -635,18 +602,13 @@ export class ObservabilityComponent implements OnInit {
     { v: 30000, l: 'Dans 30s' },
   ];
 
-  protected readonly activeTab = signal<'wire' | 'errors' | 'timeline' | 'test-push'>('wire');
+  protected readonly activeTab = signal<'wire' | 'timeline' | 'test-push' | 'test-sms'>('wire');
   protected readonly wireLogs = signal<WireLogDto[]>([]);
   protected readonly wireTotal = signal(0);
-  protected readonly errorLogs = signal<ErrorLogDto[]>([]);
   protected readonly timelineEntries = signal<TimelineEntry[]>([]);
-  protected readonly expandedError = signal<string | null>(null);
 
   protected readonly wireImeiFilter = signal('');
   protected readonly wireDirectionFilter = signal('');
-  protected readonly errorSourceFilter = signal('');
-  protected readonly errorLevelFilter = signal('');
-  protected readonly errorImeiFilter = signal('');
   protected readonly timelineImei = signal('');
 
   // Test Notification — formulaire SUPER_ADMIN.
@@ -677,9 +639,17 @@ export class ObservabilityComponent implements OnInit {
   protected readonly selectedSubIds = signal<Set<string>>(new Set());
   protected readonly deletingDeviceId = signal<string | null>(null);
 
+  // ─── Test SMS Fallback ────────────────────────────────────
+  protected readonly smsTrackers = signal<
+    { id: string; imei: string; plate: string | null }[]
+  >([]);
+  protected fbTrackerId = '';
+  protected fbPhone = '';
+  protected readonly fbSending = signal(false);
+  protected readonly fbResult = signal<SmsTestFallbackResult | null>(null);
+
   async ngOnInit(): Promise<void> {
     await this.loadWireLogs();
-    await this.loadErrorLogs();
   }
 
   protected async loadWireLogs(): Promise<void> {
@@ -697,22 +667,6 @@ export class ObservabilityComponent implements OnInit {
     }
   }
 
-  protected async loadErrorLogs(): Promise<void> {
-    try {
-      const params: Record<string, string> = { limit: '100' };
-      const source = this.errorSourceFilter();
-      const level = this.errorLevelFilter();
-      const imei = this.errorImeiFilter();
-      if (source) params['source'] = source;
-      if (level) params['level'] = level;
-      if (imei) params['imei'] = imei;
-      const res = await firstValueFrom(this.logsApi.listErrorLogs(params));
-      this.errorLogs.set(res.items);
-    } catch {
-      this.toast.error('Erreur de chargement des error logs');
-    }
-  }
-
   protected async loadTimeline(): Promise<void> {
     const imei = this.timelineImei();
     if (!imei) return;
@@ -724,19 +678,18 @@ export class ObservabilityComponent implements OnInit {
     }
   }
 
-  protected toggleErrorDetail(id: string): void {
-    this.expandedError.set(this.expandedError() === id ? null : id);
-  }
-
   /**
    * Routeur d'onglet — change l'onglet actif et hydrate ses donnees a la demande
    * pour les onglets qui le requierent (Test Notification charge le statut push
    * + la liste des devices abonnes).
    */
-  protected onSelectTab(key: 'wire' | 'errors' | 'timeline' | 'test-push'): void {
+  protected onSelectTab(key: 'wire' | 'timeline' | 'test-push' | 'test-sms'): void {
     this.activeTab.set(key);
     if (key === 'test-push') {
       void this.loadTestPushData();
+    }
+    if (key === 'test-sms') {
+      void this.loadTrackers();
     }
   }
 
@@ -862,6 +815,49 @@ export class ObservabilityComponent implements OnInit {
       this.toast.error(message);
     } finally {
       this.testSending.set(false);
+    }
+  }
+
+  // ─── Test SMS Fallback ──────────────────────────────────────
+
+  private async loadTrackers(): Promise<void> {
+    try {
+      const list = await firstValueFrom(
+        this.http.get<
+          Array<{
+            id: string;
+            imei: string;
+            vehicle?: { plate?: string | null } | null;
+          }>
+        >('/api/trackers'),
+      );
+      this.smsTrackers.set(
+        list.map((t) => ({ id: t.id, imei: t.imei, plate: t.vehicle?.plate ?? null })),
+      );
+    } catch {
+      /* silencieux */
+    }
+  }
+
+  protected async testFallback(): Promise<void> {
+    if (!this.fbTrackerId || !this.fbPhone) return;
+    this.fbSending.set(true);
+    this.fbResult.set(null);
+    try {
+      const r = await firstValueFrom(this.smsApi.testFallback(this.fbTrackerId, this.fbPhone));
+      this.fbResult.set(r);
+      if (r.ok) {
+        this.toast.success(`Test fallback OK — payload envoye au ${this.fbPhone}`);
+      } else {
+        this.toast.error(`Test fallback KO : ${r.smsResult.error ?? 'erreur inconnue'}`);
+      }
+    } catch (e) {
+      const msg = (e as { error?: { error?: { message?: string } } })?.error?.error?.message
+        ?? (e as Error).message
+        ?? 'Echec inconnu';
+      this.toast.error(`Test fallback : ${msg}`);
+    } finally {
+      this.fbSending.set(false);
     }
   }
 }
