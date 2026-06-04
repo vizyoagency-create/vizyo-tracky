@@ -274,62 +274,115 @@ export class AdminAlertsController {
   }
 
   /**
-   * V1.14 — Export markdown structure pour debug IA (Claude).
-   * Retourne un rapport formaté contenant les erreurs des dernières 24h
-   * avec stack traces, contexte, et résumé par source.
+   * V1.14 — Export markdown complet pour debug IA (Claude).
+   * Inclut : erreurs applicatives (24h) + alertes trackers (failing, offline, pending).
    */
   @Get('errors/export')
   @Roles(UserRole.SUPER_ADMIN)
   async errorsExport() {
     const since = new Date(Date.now() - ERROR_WINDOW_MS);
-    const errors = await this.prisma.errorLog.findMany({
-      where: { createdAt: { gte: since } },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-    });
+    const offlineCut = new Date(Date.now() - OFFLINE_THRESHOLD_MS);
+    const pendingCut = new Date(Date.now() - PENDING_THRESHOLD_MS);
+
+    const [errors, failingTrackers, offlineTrackers, pendingCommands] = await Promise.all([
+      this.prisma.errorLog.findMany({
+        where: { createdAt: { gte: since } },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      }),
+      this.prisma.tracker.findMany({
+        where: { fixCommandFailing: true },
+        include: { vehicle: { include: { fleet: true } } },
+      }),
+      this.prisma.tracker.findMany({
+        where: { status: 'OFFLINE', OR: [{ lastSeenAt: { lt: offlineCut } }, { lastSeenAt: null }] },
+        include: { vehicle: true },
+        take: 50,
+      }),
+      this.prisma.trackerCommand.findMany({
+        where: {
+          status: { in: [TrackerCommandStatus.PENDING, TrackerCommandStatus.SENT] },
+          createdAt: { lt: pendingCut },
+          acknowledgedAt: null,
+        },
+        include: { tracker: { select: { imei: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      }),
+    ]);
 
     const criticalCount = errors.filter((e) => e.level === 'CRITICAL').length;
     const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    const totalAlerts = failingTrackers.length + offlineTrackers.length + pendingCommands.length;
 
-    // Résumé par source.
-    const sourceMap = new Map<string, { count: number; lastAt: string }>();
-    for (const e of errors) {
-      const existing = sourceMap.get(e.source);
-      if (!existing) {
-        sourceMap.set(e.source, { count: 1, lastAt: e.createdAt.toISOString() });
-      } else {
-        existing.count++;
+    let md = `# Rapport Vizyo Tracky — Debug IA\n`;
+    md += `Genere le : ${now} UTC\n\n`;
+    md += `## Vue d'ensemble\n`;
+    md += `- Erreurs applicatives (24h) : ${errors.length} (dont ${criticalCount} CRITICAL)\n`;
+    md += `- Trackers FAILING : ${failingTrackers.length}\n`;
+    md += `- Trackers OFFLINE > 1h : ${offlineTrackers.length}\n`;
+    md += `- Commandes en attente > 10min : ${pendingCommands.length}\n\n`;
+
+    // Section Trackers FAILING
+    if (failingTrackers.length > 0) {
+      md += `## Trackers FAILING\n`;
+      md += `| Plaque | IMEI | Echecs | Desired (s) | Reel (s) | Status | Dernier vu |\n`;
+      md += `|--------|------|--------|-------------|----------|--------|------------|\n`;
+      for (const t of failingTrackers) {
+        md += `| ${t.vehicle?.plate ?? '—'} | ${t.imei} | ${t.fixCommandFailureCount} | ${t.desiredFixIntervalS} | ${t.currentFixIntervalS ?? '?'} | ${t.status} | ${t.lastSeenAt?.toISOString().slice(0, 19).replace('T', ' ') ?? 'jamais'} |\n`;
       }
+      md += `\n`;
     }
 
-    let md = `# Rapport d'erreurs — Vizyo Tracky\n`;
-    md += `Periode : dernieres 24h | Genere le : ${now} UTC\n`;
-    md += `Erreurs : ${errors.length} (dont ${criticalCount} CRITICAL)\n\n`;
-
-    md += `## Resume par source\n`;
-    md += `| Source | Count | Derniere |\n|--------|-------|----------|\n`;
-    for (const [source, data] of sourceMap.entries()) {
-      md += `| ${source} | ${data.count} | ${data.lastAt.slice(0, 19).replace('T', ' ')} |\n`;
+    // Section Commandes pending
+    if (pendingCommands.length > 0) {
+      md += `## Commandes en attente (> 10 min)\n`;
+      md += `| IMEI | Template | Status | Cree le | Raison |\n`;
+      md += `|------|----------|--------|---------|--------|\n`;
+      for (const c of pendingCommands) {
+        md += `| ${c.tracker.imei} | ${c.templateId} | ${c.status} | ${c.createdAt.toISOString().slice(0, 19).replace('T', ' ')} | ${c.outcomeReason ?? '—'} |\n`;
+      }
+      md += `\n`;
     }
-    md += `\n`;
 
-    for (let i = 0; i < errors.length; i++) {
-      const e = errors[i];
-      md += `## Erreur #${i + 1} — ${e.level}\n`;
-      md += `- **Source :** ${e.source}\n`;
-      md += `- **Date :** ${e.createdAt.toISOString().slice(0, 19).replace('T', ' ')} UTC\n`;
-      md += `- **Message :** ${e.message}\n`;
-      if (e.imei) md += `- **IMEI :** ${e.imei}\n`;
-      if (e.commandId) md += `- **CommandId :** ${e.commandId}\n`;
-      if (e.userId) md += `- **UserId :** ${e.userId}\n`;
-      if (e.stack) md += `\n\`\`\`\n${e.stack}\n\`\`\`\n`;
-      if (e.context) md += `\n**Contexte :**\n\`\`\`json\n${JSON.stringify(e.context, null, 2)}\n\`\`\`\n`;
-      md += `\n---\n\n`;
+    // Section Erreurs applicatives
+    if (errors.length > 0) {
+      // Résumé par source.
+      const sourceMap = new Map<string, { count: number; lastAt: string }>();
+      for (const e of errors) {
+        const existing = sourceMap.get(e.source);
+        if (!existing) {
+          sourceMap.set(e.source, { count: 1, lastAt: e.createdAt.toISOString() });
+        } else {
+          existing.count++;
+        }
+      }
+
+      md += `## Erreurs applicatives par source (24h)\n`;
+      md += `| Source | Count | Derniere |\n|--------|-------|----------|\n`;
+      for (const [source, data] of sourceMap.entries()) {
+        md += `| ${source} | ${data.count} | ${data.lastAt.slice(0, 19).replace('T', ' ')} |\n`;
+      }
+      md += `\n`;
+
+      for (let i = 0; i < errors.length; i++) {
+        const e = errors[i];
+        md += `## Erreur #${i + 1} — ${e.level}\n`;
+        md += `- **Source :** ${e.source}\n`;
+        md += `- **Date :** ${e.createdAt.toISOString().slice(0, 19).replace('T', ' ')} UTC\n`;
+        md += `- **Message :** ${e.message}\n`;
+        if (e.imei) md += `- **IMEI :** ${e.imei}\n`;
+        if (e.commandId) md += `- **CommandId :** ${e.commandId}\n`;
+        if (e.userId) md += `- **UserId :** ${e.userId}\n`;
+        if (e.stack) md += `\n\`\`\`\n${e.stack}\n\`\`\`\n`;
+        if (e.context) md += `\n**Contexte :**\n\`\`\`json\n${JSON.stringify(e.context, null, 2)}\n\`\`\`\n`;
+        md += `\n---\n\n`;
+      }
     }
 
     return {
       markdown: md,
-      errorCount: errors.length,
+      errorCount: errors.length + totalAlerts,
       criticalCount,
       window: '24h',
     };
