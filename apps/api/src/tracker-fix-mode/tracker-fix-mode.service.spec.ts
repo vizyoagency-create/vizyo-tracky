@@ -101,9 +101,9 @@ describe('TrackerFixModeService.desiredIntervalFor', () => {
     service = module.get(TrackerFixModeService);
   });
 
-  it('returns 10s for MOVING regardless of ignition history (V1.13 haute precision)', () => {
+  it('returns 20s for MOVING regardless of ignition history (V1.14 minimum hardware Coban)', () => {
     expect(service.desiredIntervalFor('MOVING', { lastIgnitionChangeAt: null, lastKnownIgnition: false }, NOW))
-      .toBe(10);
+      .toBe(20);
   });
 
   it('returns 30s for IDLE_ENGINE_ON (contact ON immobile : pas de gain a 10s)', () => {

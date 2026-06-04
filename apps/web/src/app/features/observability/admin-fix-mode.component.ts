@@ -62,7 +62,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
             <div class="flex items-center gap-2">
               @if (s.fixCommandFailing) {
                 <lucide-icon [img]="ShieldAlert" [size]="20" class="text-rose-400"></lucide-icon>
-                <span class="text-rose-400 font-semibold">FAILING — {{ s.fixCommandFailureCount }} commandes sans effet</span>
+                <span class="text-rose-400 font-semibold">FAILING — {{ s.fixCommandFailureCount }} trames non conformes</span>
               } @else if (pendingDelta()) {
                 <lucide-icon [img]="Clock" [size]="20" class="text-amber-400"></lucide-icon>
                 <span class="text-amber-400 font-semibold">PENDING — boitier n'a pas encore confirme</span>
@@ -98,6 +98,13 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
               <div class="text-xs font-mono">{{ s.lastSampledState ?? '—' }}</div>
             </div>
           </div>
+          @if (s.fixCommandFailing && s.fixCommandFailureCount > 10) {
+            <div class="text-xs text-rose-400 bg-rose-500/10 rounded px-2 py-1.5">
+              Echec persistant ({{ s.fixCommandFailureCount }} trames).
+              Actions recommandees : reset SMS du boitier (commande RESET), verification physique
+              de l'alimentation et de la carte SIM, ou remplacement du tracker.
+            </div>
+          }
           @if (s.fixModeOverrideUntil) {
             <div class="text-xs text-amber-400 bg-amber-500/10 rounded px-2 py-1">
               Override admin actif jusqu'a {{ s.fixModeOverrideUntil | date: 'dd/MM HH:mm' }}.

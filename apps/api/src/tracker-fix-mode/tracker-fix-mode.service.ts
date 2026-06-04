@@ -16,13 +16,13 @@ import { SocketRegistryService } from '../socket-registry/socket-registry.servic
  * sampling adaptatif et envoie une commande Coban via la socket TCP deja
  * ouverte pour ajuster l'intervalle.
  *
- * Politique (V1.13 — haute precision en mouvement) :
- *   - MOVING                          → 10s ('010s')   — haute precision live
+ * Politique (V1.14 — respect minimum hardware Coban GPS403D = 20s) :
+ *   - MOVING                          → 20s ('020s')   — haute precision live
  *   - IDLE_ENGINE_ON                  → 30s ('030s')   — fluidite live moderee
  *   - STOPPED, ignition OFF > 10min   → 300s ('005m')  — economie batterie + data
  *
  * IDLE_ENGINE_ON garde 30s : un vehicule contact ON immobile n'a pas besoin de
- * precision (feu rouge, livraison, file d'attente) et 10s gaspillerait batterie+data.
+ * precision (feu rouge, livraison, file d'attente) et 20s gaspillerait batterie+data.
  *
  * Garde-fous :
  *   - Quota anti-flapping : max 2 changements par tracker / jour
@@ -34,9 +34,9 @@ import { SocketRegistryService } from '../socket-registry/socket-registry.servic
  * on confirme `currentFixIntervalS` quand il converge vers la cible. Si la
  * commande est ignoree par le boitier sur 3 tentatives → flag FAILING.
  *
- * Note Coban GPS403D : min officiel documente = 20s. Si on demande 10s et que
- * le boitier ne respecte pas, reconcile detectera l'ecart et passera FAILING
- * apres 3 trames hors tolerance (les `diagnosticHint` aident l'admin a debug).
+ * Note Coban GPS403D : min officiel documente = 20s. Le HARD_CAP_MIN_S est
+ * aligne sur cette valeur pour eviter de demander un intervalle que le firmware
+ * ne peut pas honorer (cause principale de FAILING persistant).
  */
 
 const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000';
@@ -45,6 +45,8 @@ const RECONCILE_TOLERANCE = 0.2;
 const FAILING_THRESHOLD = 3;
 const FLAPPING_WINDOW_MS = 24 * 60 * 60 * 1000;
 const FLAPPING_MAX_CHANGES = 2;
+const COOLDOWN_MS = 5 * 60 * 1000; // 5 min minimum entre deux commandes
+const HARD_CAP_MIN_S = 20;
 const HARD_CAP_S = 300;
 
 export type AdaptiveTrackerState = 'MOVING' | 'IDLE_ENGINE_ON' | 'STOPPED';
@@ -164,10 +166,10 @@ export class TrackerFixModeService {
     tracker: Pick<Tracker, 'lastIgnitionChangeAt' | 'lastKnownIgnition'>,
     now: Date = new Date(),
   ): number {
-    // V1.13 — Haute precision en MOVING (10s). IDLE_ENGINE_ON garde 30s :
-    // un vehicule contact ON immobile (feu rouge, livraison) n'a pas besoin
-    // de precision et 10s gaspillerait batterie + data inutilement.
-    if (state === 'MOVING') return 10;
+    // V1.14 — Haute precision en MOVING (20s = minimum hardware Coban GPS403D).
+    // IDLE_ENGINE_ON garde 30s : un vehicule contact ON immobile (feu rouge,
+    // livraison) n'a pas besoin de precision maximale.
+    if (state === 'MOVING') return HARD_CAP_MIN_S;
     if (state === 'IDLE_ENGINE_ON') return 30;
 
     // STOPPED — only switch to 300s if ignition has been OFF for > 10 min.
@@ -251,11 +253,12 @@ export class TrackerFixModeService {
     desiredS: number,
     reason: string,
     contextSnapshot: Record<string, unknown>,
+    options?: { force?: boolean },
   ): Promise<{ commandId: string } | null> {
-    // V1.13 — Hard cap : intervalle clampe entre 10s (haute precision MOVING)
-    // et 300s (HARD_CAP_S, anti-spam economie batterie). Le clamp inferieur
-    // passe de 30 a 10 pour autoriser le mode haute precision.
-    const target = Math.min(Math.max(10, desiredS), HARD_CAP_S);
+    // V1.14 — Hard cap : intervalle clampe entre 20s (minimum hardware Coban
+    // GPS403D) et 300s (HARD_CAP_S, anti-spam economie batterie).
+    const target = Math.min(Math.max(HARD_CAP_MIN_S, desiredS), HARD_CAP_S);
+    const force = options?.force === true;
 
     // No-op if already aligned.
     if (tracker.desiredFixIntervalS === target && tracker.currentFixIntervalS === target) {
@@ -266,8 +269,8 @@ export class TrackerFixModeService {
     // arrete de tenter de nouvelles commandes jusqu'a ce qu'un admin l'acquitte
     // via /admin/alerts/trackers/:id/clear-failing OU jusqu'a ce qu'on observe
     // a nouveau l'intervalle attendu (reconcile remet failureCount a 0).
-    // Sinon le service spam Twilio/TCP en boucle quand un boitier est cape.
-    if (tracker.fixCommandFailing) {
+    // V1.14 — Le parametre `force` permet a un override admin de passer outre.
+    if (tracker.fixCommandFailing && !force) {
       return null;
     }
 
@@ -276,24 +279,38 @@ export class TrackerFixModeService {
       return null;
     }
 
-    // Override admin actif → ne pas changer.
-    if (tracker.fixModeOverrideUntil && tracker.fixModeOverrideUntil.getTime() > Date.now()) {
+    // Override admin actif → ne pas changer (sauf force).
+    if (!force && tracker.fixModeOverrideUntil && tracker.fixModeOverrideUntil.getTime() > Date.now()) {
       return null;
     }
 
-    // Anti-flapping : max 2 commandes/jour.
-    const recentCount = await this.prisma.trackerCommand.count({
-      where: {
-        trackerId: tracker.id,
-        templateId: 'fix_continuous',
-        createdAt: { gte: new Date(Date.now() - FLAPPING_WINDOW_MS) },
-      },
-    });
-    if (recentCount >= FLAPPING_MAX_CHANGES) {
-      this.logger.debug(
-        `Anti-flapping: tracker ${tracker.imei} a deja ${recentCount} commandes fix mode dans les 24h, skip`,
-      );
-      return null;
+    // Anti-flapping : cooldown 5 min + max 2 commandes/jour (bypasse en mode force).
+    if (!force) {
+      const lastFixCommand = await this.prisma.trackerCommand.findFirst({
+        where: { trackerId: tracker.id, templateId: 'fix_continuous' },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      });
+      if (lastFixCommand && Date.now() - lastFixCommand.createdAt.getTime() < COOLDOWN_MS) {
+        this.logger.debug(
+          `Cooldown: tracker ${tracker.imei} — derniere commande il y a ${Math.round((Date.now() - lastFixCommand.createdAt.getTime()) / 1000)}s, skip`,
+        );
+        return null;
+      }
+
+      const recentCount = await this.prisma.trackerCommand.count({
+        where: {
+          trackerId: tracker.id,
+          templateId: 'fix_continuous',
+          createdAt: { gte: new Date(Date.now() - FLAPPING_WINDOW_MS) },
+        },
+      });
+      if (recentCount >= FLAPPING_MAX_CHANGES) {
+        this.logger.debug(
+          `Anti-flapping: tracker ${tracker.imei} a deja ${recentCount} commandes fix mode dans les 24h, skip`,
+        );
+        return null;
+      }
     }
 
     // Build payload.
@@ -414,9 +431,17 @@ export class TrackerFixModeService {
     requestedByUserId: string,
   ): Promise<{ overrideUntil: string | null; commandId: string | null }> {
     const overrideUntil = untilMinutes > 0 ? new Date(Date.now() + untilMinutes * 60 * 1000) : null;
+
+    // V1.14 — Reset FAILING + override en une seule ecriture. L'admin qui pose
+    // un override veut reprendre le controle → on remet le compteur a zero pour
+    // que requestChange puisse passer (et on utilise force:true en securite).
     await this.prisma.tracker.update({
       where: { id: trackerId },
-      data: { fixModeOverrideUntil: overrideUntil },
+      data: {
+        fixModeOverrideUntil: overrideUntil,
+        fixCommandFailing: false,
+        fixCommandFailureCount: 0,
+      },
     });
 
     let commandId: string | null = null;
@@ -426,21 +451,13 @@ export class TrackerFixModeService {
         include: { vehicle: { include: { fleet: true } } },
       });
       if (tracker) {
-        // Bypass the override check by resetting it momentarily to send the command.
-        await this.prisma.tracker.update({
-          where: { id: trackerId },
-          data: { fixModeOverrideUntil: null },
-        });
         const out = await this.requestChange(
           tracker as Tracker & { vehicle: (Vehicle & { fleet: Fleet }) | null },
           desiredS,
           'MANUAL_OPERATOR',
           { manualOverrideBy: requestedByUserId, untilMinutes },
+          { force: true },
         );
-        await this.prisma.tracker.update({
-          where: { id: trackerId },
-          data: { fixModeOverrideUntil: overrideUntil },
-        });
         commandId = out?.commandId ?? null;
       }
     }

@@ -165,6 +165,27 @@ export class PositionsService {
       trackerUpdate.fixCommandFailureCount = reconciled.nextFailureCount;
       trackerUpdate.fixCommandFailing = reconciled.nextFailing;
       trackerUpdate.lastValidFrameAt = frame.deviceTime;
+
+      // V1.14 — Resolution des commandes stale : quand le tracker vient de passer
+      // FAILING (transition false→true), on ferme toutes les commandes SENT/PENDING
+      // pour eviter qu'elles restent indefiniment sans statut final.
+      if (reconciled.nextFailing && !tracker.fixCommandFailing) {
+        this.prisma.trackerCommand
+          .updateMany({
+            where: {
+              trackerId: tracker.id,
+              templateId: 'fix_continuous',
+              status: { in: ['SENT', 'PENDING'] },
+            },
+            data: {
+              status: 'FAILED',
+              observedResult: `Tracker FAILING — ${reconciled.nextFailureCount} trames non conformes (intervalle observe: ${reconciled.nextCurrentFixIntervalS ?? '?'}s)`,
+            },
+          })
+          .catch((err) => {
+            this.logger.warn(`Failed to close stale fix commands for ${tracker.imei}: ${err}`);
+          });
+      }
     }
 
     const wasOffline = tracker.status !== 'ONLINE';
@@ -228,7 +249,9 @@ export class PositionsService {
     // V1.5 (Sprint H3) — pilotage fix mode boitier. Sur transition d'etat, on
     // demande au boitier d'ajuster son intervalle d'envoi via la commande
     // Coban `fix...***n`. Fire-and-forget : l'echec n'impacte pas l'ingestion.
-    if (samplingState && tracker.vehicle?.fleet) {
+    // V1.14 — On verifie trackerUpdate.fixCommandFailing (valeur post-reconcile)
+    // au lieu de tracker.fixCommandFailing (valeur pre-reconcile, race condition).
+    if (samplingState && tracker.vehicle?.fleet && !trackerUpdate.fixCommandFailing) {
       const stateChanged = tracker.lastSampledState !== samplingState;
       const desiredS = this.fixMode.desiredIntervalFor(samplingState, tracker);
       if (stateChanged || desiredS !== tracker.desiredFixIntervalS) {
@@ -236,7 +259,7 @@ export class PositionsService {
           .requestChange(
             tracker as Tracker & { vehicle: Vehicle & { fleet: NonNullable<typeof tracker.vehicle>['fleet'] } },
             desiredS,
-            stateChanged ? `${tracker.lastSampledState ?? 'NEW'}_TO_${samplingState}` : 'STOPPED_GRACE_ELAPSED',
+            stateChanged ? `${tracker.lastSampledState ?? 'NEW'}_TO_${samplingState}` : `${samplingState}_INTERVAL_ADJUSTED`,
             {
               vehicleId: tracker.vehicle.id,
               fleetId: tracker.vehicle.fleetId,
