@@ -197,6 +197,8 @@ export class TrackerFixModeService {
     nextCurrentFixIntervalS: number | null;
     nextFailureCount: number;
     nextFailing: boolean;
+    /** V1.14 — Si le boitier ignore les commandes, on aligne desired sur l'observe. */
+    autoAlignDesiredS: number | null;
   } {
     const prev = tracker.lastValidFrameAt;
     if (!prev) {
@@ -204,6 +206,7 @@ export class TrackerFixModeService {
         nextCurrentFixIntervalS: tracker.currentFixIntervalS,
         nextFailureCount: tracker.fixCommandFailureCount,
         nextFailing: tracker.fixCommandFailureCount >= FAILING_THRESHOLD,
+        autoAlignDesiredS: null,
       };
     }
 
@@ -218,6 +221,7 @@ export class TrackerFixModeService {
         nextCurrentFixIntervalS: observedS,
         nextFailureCount: 0,
         nextFailing: false,
+        autoAlignDesiredS: null,
       };
     }
 
@@ -230,14 +234,29 @@ export class TrackerFixModeService {
         nextCurrentFixIntervalS: tracker.currentFixIntervalS,
         nextFailureCount: tracker.fixCommandFailureCount,
         nextFailing: tracker.fixCommandFailureCount >= FAILING_THRESHOLD,
+        autoAlignDesiredS: null,
       };
     }
 
     const nextFailureCount = tracker.fixCommandFailureCount + 1;
+    const nextFailing = nextFailureCount >= FAILING_THRESHOLD;
+
+    // V1.14 — Auto-alignement : si le boitier vient de passer FAILING (seuil atteint),
+    // on aligne desired sur l'intervalle observe pour accepter le comportement reel
+    // du firmware. Cela evite la boucle infinie clear→re-fail quand le boitier
+    // ignore systematiquement les commandes fix interval.
+    const autoAlignDesiredS =
+      nextFailing && !tracker.fixCommandFailureCount // transition 0→FAILING (premiere fois)
+        ? null // premiere fois, on laisse le systeme tenter
+        : nextFailing && observedS >= HARD_CAP_MIN_S && observedS <= HARD_CAP_S
+          ? observedS // boitier recidiviste → on accepte son intervalle
+          : null;
+
     return {
       nextCurrentFixIntervalS: observedS,
       nextFailureCount,
-      nextFailing: nextFailureCount >= FAILING_THRESHOLD,
+      nextFailing,
+      autoAlignDesiredS,
     };
   }
 

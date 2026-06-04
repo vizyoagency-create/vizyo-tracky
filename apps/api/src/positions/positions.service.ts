@@ -166,6 +166,18 @@ export class PositionsService {
       trackerUpdate.fixCommandFailing = reconciled.nextFailing;
       trackerUpdate.lastValidFrameAt = frame.deviceTime;
 
+      // V1.14 — Auto-alignement : si le boitier ignore les commandes de maniere
+      // recurrente, on aligne desired sur son intervalle reel pour sortir de la
+      // boucle FAILING. Le tracker est "accepte" tel quel.
+      if (reconciled.autoAlignDesiredS != null) {
+        trackerUpdate.desiredFixIntervalS = reconciled.autoAlignDesiredS;
+        trackerUpdate.fixCommandFailing = false;
+        trackerUpdate.fixCommandFailureCount = 0;
+        this.logger.log(
+          `Auto-align: tracker ${tracker.imei} desired ajuste a ${reconciled.autoAlignDesiredS}s (accepte le comportement firmware)`,
+        );
+      }
+
       // V1.14 — Resolution des commandes stale : quand le tracker vient de passer
       // FAILING (transition false→true), on ferme toutes les commandes SENT/PENDING
       // pour eviter qu'elles restent indefiniment sans statut final.
