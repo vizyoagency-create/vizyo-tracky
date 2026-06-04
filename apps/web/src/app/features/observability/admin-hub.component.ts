@@ -2,7 +2,7 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
   LucideAngularModule, AlertTriangle, Activity, Terminal, MessageSquare,
-  Users, Radio, Shield, Zap,
+  Users, Radio, Shield, Zap, ChevronRight, Database,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { AdminFixModeService, type AdminAlertSummary } from '../../core/services/admin-fix-mode.service';
@@ -12,113 +12,116 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
   standalone: true,
   imports: [RouterLink, LucideAngularModule],
   template: `
-    <div class="bento-hub">
-      <div class="bento-header">
-        <div class="bento-title-row">
-          <div>
-            <h1>Administration</h1>
-            <p>Supervision, diagnostic et configuration.</p>
-          </div>
-          @if (stats(); as s) {
-            <div class="live-pulse" [class.warn]="s.failing > 0 || s.criticalLastHour > 0">
-              <span class="pulse-dot"></span>
-              {{ s.failing > 0 || s.criticalLastHour > 0 ? 'Alertes actives' : 'Systeme nominal' }}
-            </div>
-          }
+    <div class="hub">
+      <div class="hub-head">
+        <div>
+          <h1>Administration</h1>
+          <p>Supervision, diagnostic et configuration avancee.</p>
         </div>
+        @if (stats(); as s) {
+          <div class="pulse" [class.pulse-warn]="s.failing > 0 || s.criticalLastHour > 0">
+            <span class="pulse-dot"></span>
+            {{ s.failing > 0 || s.criticalLastHour > 0 ? 'Alertes actives' : 'Nominal' }}
+          </div>
+        }
       </div>
 
-      <div class="bento-grid">
-        <!-- HERO : Centre d'alertes — 2 cols, 2 rows -->
-        <a routerLink="/admin/alerts" class="bento-card hero" style="--i:0">
-          <div class="glow glow-red"></div>
-          <div class="hero-bg"></div>
-          <div class="inner hero-inner">
-            <div class="icon icon-red icon-lg">
-              <lucide-icon [img]="AlertTriangle" [size]="28"></lucide-icon>
+      <div class="grid">
+        <!-- ── HERO : Centre d'alertes ── -->
+        <a routerLink="/admin/alerts" class="card card-hero" style="--i:0">
+          <span class="accent accent-red"></span>
+          <div class="card-bg-hero"></div>
+          <div class="body body-hero">
+            <div class="row-top">
+              <div class="ico ico-red ico-lg"><lucide-icon [img]="AlertTriangle" [size]="26"></lucide-icon></div>
+              <lucide-icon [img]="ChevronRight" [size]="18" class="chevron"></lucide-icon>
             </div>
             <h3>Centre d'alertes</h3>
-            <p>Trackers, commandes, erreurs applicatives — vue unifiee.</p>
-            <div class="hero-stats">
-              @if (stats(); as s) {
-                <div class="stat" [class.active]="s.failing > 0">
-                  <span class="stat-val">{{ s.failing }}</span>
-                  <span class="stat-lbl">Failing</span>
+            <p class="desc">Trackers en echec, hors ligne, commandes en attente, erreurs applicatives — tout centralise.</p>
+            @if (stats(); as s) {
+              <div class="stats-row">
+                <div class="kpi" [class.kpi-hot]="s.failing > 0">
+                  <span class="kpi-n">{{ s.failing }}</span><span class="kpi-l">Failing</span>
                 </div>
-                <div class="stat" [class.active]="s.offline > 0">
-                  <span class="stat-val">{{ s.offline }}</span>
-                  <span class="stat-lbl">Offline</span>
+                <div class="kpi" [class.kpi-hot]="s.offline > 0">
+                  <span class="kpi-n">{{ s.offline }}</span><span class="kpi-l">Offline</span>
                 </div>
-                <div class="stat" [class.active]="s.pending > 0">
-                  <span class="stat-val">{{ s.pending }}</span>
-                  <span class="stat-lbl">Pending</span>
+                <div class="kpi" [class.kpi-hot]="s.pending > 0">
+                  <span class="kpi-n">{{ s.pending }}</span><span class="kpi-l">Pending</span>
                 </div>
-                <div class="stat" [class.active]="s.errorsLast24h > 0">
-                  <span class="stat-val">{{ s.errorsLast24h }}</span>
-                  <span class="stat-lbl">Erreurs 24h</span>
+                <div class="kpi" [class.kpi-hot]="s.errorsLast24h > 0">
+                  <span class="kpi-n">{{ s.errorsLast24h }}</span><span class="kpi-l">Err. 24h</span>
                 </div>
-              }
-            </div>
+              </div>
+            }
           </div>
         </a>
 
-        <!-- Diagnostic — 1 col, 2 rows (tall) -->
-        <a routerLink="/admin/observability" class="bento-card tall" style="--i:1">
-          <div class="glow glow-green"></div>
-          <div class="inner">
-            <div class="icon icon-green">
-              <lucide-icon [img]="Activity" [size]="22"></lucide-icon>
+        <!-- ── DIAGNOSTIC (tall) ── -->
+        <a routerLink="/admin/observability" class="card card-tall" style="--i:1">
+          <span class="accent accent-green"></span>
+          <div class="body">
+            <div class="row-top">
+              <div class="ico ico-green"><lucide-icon [img]="Activity" [size]="22"></lucide-icon></div>
+              <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
             </div>
             <h3>Diagnostic & Tests</h3>
-            <p>Wire logs, timeline tracker, test push notification, test SMS fallback.</p>
+            <p class="desc">Wire logs, timeline par tracker, test push notification, test SMS fallback.</p>
+            <div class="visual-wave">
+              <svg viewBox="0 0 120 24" preserveAspectRatio="none"><path d="M0 18 Q15 4 30 14 T60 10 T90 16 T120 8" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.25"/><path d="M0 20 Q15 10 30 16 T60 14 T90 18 T120 12" fill="none" stroke="currentColor" stroke-width="1" opacity="0.12"/></svg>
+            </div>
           </div>
         </a>
 
-        <!-- Trackers -->
-        <a routerLink="/admin/trackers" class="bento-card" style="--i:2">
-          <div class="glow glow-blue"></div>
-          <div class="inner">
-            <div class="icon icon-blue">
-              <lucide-icon [img]="Radio" [size]="22"></lucide-icon>
+        <!-- ── TRACKERS ── -->
+        <a routerLink="/admin/trackers" class="card" style="--i:2">
+          <span class="accent accent-blue"></span>
+          <div class="body">
+            <div class="row-top">
+              <div class="ico ico-blue"><lucide-icon [img]="Radio" [size]="20"></lucide-icon></div>
+              <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
             </div>
             <h3>Trackers</h3>
-            <p>Inventaire, SIM, assignation.</p>
+            <p class="desc">Inventaire global, assignation vehicules, gestion SIM, statut en ligne.</p>
           </div>
         </a>
 
-        <!-- Commandes -->
-        <a routerLink="/admin/commands" class="bento-card" style="--i:3">
-          <div class="glow glow-indigo"></div>
-          <div class="inner">
-            <div class="icon icon-indigo">
-              <lucide-icon [img]="Terminal" [size]="22"></lucide-icon>
+        <!-- ── COMMANDES ── -->
+        <a routerLink="/admin/commands" class="card" style="--i:3">
+          <span class="accent accent-indigo"></span>
+          <div class="body">
+            <div class="row-top">
+              <div class="ico ico-indigo"><lucide-icon [img]="Terminal" [size]="20"></lucide-icon></div>
+              <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
             </div>
-            <h3>Commandes</h3>
-            <p>Commandes TCP/SMS envoyees.</p>
+            <h3>Commandes tracker</h3>
+            <p class="desc">Historique et monitoring des commandes TCP/SMS envoyees aux boitiers.</p>
           </div>
         </a>
 
-        <!-- SMS & Backup -->
-        <a routerLink="/admin/sms" class="bento-card" style="--i:4">
-          <div class="glow glow-purple"></div>
-          <div class="inner">
-            <div class="icon icon-purple">
-              <lucide-icon [img]="MessageSquare" [size]="22"></lucide-icon>
+        <!-- ── SMS & BACKUP ── -->
+        <a routerLink="/admin/sms" class="card" style="--i:4">
+          <span class="accent accent-purple"></span>
+          <div class="body">
+            <div class="row-top">
+              <div class="ico ico-purple"><lucide-icon [img]="MessageSquare" [size]="20"></lucide-icon></div>
+              <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
             </div>
             <h3>SMS & Backup</h3>
-            <p>Provisioning, logs, allowlist, backups.</p>
+            <p class="desc">Provisioning SMS, logs Twilio, allowlist vizyo-texto, backups Postgres.</p>
           </div>
         </a>
 
-        <!-- Sync Auth -->
-        <a routerLink="/admin/auth-sync" class="bento-card" style="--i:5">
-          <div class="glow glow-cyan"></div>
-          <div class="inner">
-            <div class="icon icon-cyan">
-              <lucide-icon [img]="Users" [size]="22"></lucide-icon>
+        <!-- ── SYNC AUTH (wide) ── -->
+        <a routerLink="/admin/auth-sync" class="card card-wide" style="--i:5">
+          <span class="accent accent-cyan"></span>
+          <div class="body body-row">
+            <div class="ico ico-cyan"><lucide-icon [img]="Users" [size]="20"></lucide-icon></div>
+            <div class="body-text">
+              <h3>Sync Auth / Tracky</h3>
+              <p class="desc">Comparer et reconcilier les comptes entre Vizyo Auth et la base Tracky.</p>
             </div>
-            <h3>Sync Auth</h3>
-            <p>Comptes Vizyo Auth vs Tracky.</p>
+            <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
           </div>
         </a>
       </div>
@@ -126,173 +129,190 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
   `,
   styles: [`
     :host { display: block; }
-    .bento-hub { max-width: 880px; }
+    .hub { max-width: 1060px; }
 
-    .bento-header { margin-bottom: 32px; }
-    .bento-title-row {
+    /* ── HEADER ── */
+    .hub-head {
       display: flex; align-items: center; justify-content: space-between;
-      gap: 16px; flex-wrap: wrap;
+      gap: 16px; flex-wrap: wrap; margin-bottom: 36px;
     }
-    .bento-header h1 {
+    .hub-head h1 {
       font-family: var(--font-display, Poppins, sans-serif);
-      font-size: 26px; font-weight: 800;
-      color: var(--fg-primary); margin: 0; letter-spacing: -0.5px;
+      font-size: 28px; font-weight: 800; letter-spacing: -.5px;
+      color: var(--fg-primary); margin: 0;
     }
-    .bento-header p { color: var(--fg-tertiary); font-size: 13px; margin: 4px 0 0; }
+    .hub-head p { color: var(--fg-tertiary); font-size: 13px; margin: 5px 0 0; }
 
-    /* Pulse */
-    .live-pulse {
+    .pulse {
       display: flex; align-items: center; gap: 8px;
       padding: 5px 14px 5px 10px; border-radius: 20px;
       font-size: 11px; font-weight: 600;
       background: rgba(16,224,160,.06); border: 1px solid rgba(16,224,160,.12);
       color: var(--tracky-light);
     }
-    .live-pulse.warn {
-      background: rgba(239,68,68,.06); border-color: rgba(239,68,68,.15); color: #f87171;
-    }
+    .pulse-warn { background: rgba(239,68,68,.06); border-color: rgba(239,68,68,.15); color: #f87171; }
     .pulse-dot {
       width: 7px; height: 7px; border-radius: 50%; background: currentColor;
-      animation: pdot 2s ease-in-out infinite;
+      animation: pd 2s ease-in-out infinite;
     }
-    .live-pulse.warn .pulse-dot { animation: pdot-w 1.4s ease-in-out infinite; }
-    @keyframes pdot {
-      0%,100% { box-shadow: 0 0 0 0 rgba(16,224,160,.4); }
-      50% { box-shadow: 0 0 0 5px rgba(16,224,160,0); opacity: .5; }
-    }
-    @keyframes pdot-w {
-      0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,.4); }
-      50% { box-shadow: 0 0 0 5px rgba(239,68,68,0); opacity: .5; }
-    }
+    .pulse-warn .pulse-dot { animation: pdw 1.4s ease-in-out infinite; }
+    @keyframes pd  { 50% { box-shadow: 0 0 0 5px rgba(16,224,160,0); opacity:.5 } }
+    @keyframes pdw { 50% { box-shadow: 0 0 0 5px rgba(239,68,68,0); opacity:.5 } }
 
     /* ── GRID ── */
-    .bento-grid {
-      display: grid;
+    .grid {
+      display: grid; gap: 14px;
       grid-template-columns: repeat(3, 1fr);
-      grid-template-rows: repeat(2, 1fr) auto;
-      gap: 10px;
+      grid-template-rows: auto auto auto;
     }
-    /* Hero : col 1-2, row 1-2 */
-    .bento-card.hero { grid-column: 1 / 3; grid-row: 1 / 3; }
-    /* Diagnostic tall : col 3, row 1-2 */
-    .bento-card.tall { grid-column: 3; grid-row: 1 / 3; }
+    .card-hero { grid-column: 1 / 3; grid-row: 1 / 3; min-height: 280px; }
+    .card-tall { grid-column: 3;     grid-row: 1 / 3; }
+    .card-wide { grid-column: 1 / -1; }
 
-    @media (max-width: 700px) {
-      .bento-grid {
-        grid-template-columns: 1fr 1fr;
-        grid-template-rows: auto;
-      }
-      .bento-card.hero { grid-column: 1 / -1; grid-row: auto; }
-      .bento-card.tall { grid-column: 1 / -1; grid-row: auto; }
+    @media (max-width: 860px) {
+      .grid { grid-template-columns: 1fr 1fr; }
+      .card-hero { grid-column: 1 / -1; grid-row: auto; min-height: 220px; }
+      .card-tall { grid-column: 1 / -1; grid-row: auto; }
+      .card-wide { grid-column: 1 / -1; }
     }
-    @media (max-width: 440px) {
-      .bento-grid { grid-template-columns: 1fr; }
+    @media (max-width: 480px) {
+      .grid { grid-template-columns: 1fr; }
     }
 
     /* ── CARD ── */
-    .bento-card {
+    .card {
       position: relative; overflow: hidden;
       background: var(--bg-secondary);
       border: 1px solid var(--border-subtle);
       border-radius: 16px; text-decoration: none;
       transition: transform .3s cubic-bezier(.16,1,.3,1),
-                  border-color .25s, box-shadow .35s;
-      animation: enter .45s cubic-bezier(.16,1,.3,1) both;
-      animation-delay: calc(var(--i,0) * 70ms);
+                  border-color .3s, box-shadow .4s;
+      animation: pop .5s cubic-bezier(.16,1,.3,1) both;
+      animation-delay: calc(var(--i,0) * 75ms);
     }
-    .bento-card:hover { transform: translateY(-2px); }
-    .bento-card:active { transform: translateY(0) scale(.99); }
-    @keyframes enter {
-      from { opacity: 0; transform: translateY(14px) scale(.98); }
+    .card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 12px 40px rgba(0,0,0,.18), 0 2px 8px rgba(0,0,0,.08);
     }
+    .card:active { transform: translateY(0) scale(.99); }
+    @keyframes pop { from { opacity:0; transform: translateY(18px) scale(.97); } }
 
-    /* Glow */
-    .glow {
-      position: absolute; inset: 0; opacity: 0; transition: opacity .35s;
-      pointer-events: none; border-radius: 16px;
+    /* Color accent bar (top 3px) */
+    .accent {
+      position: absolute; top: 0; left: 0; right: 0; height: 3px;
+      border-radius: 16px 16px 0 0;
     }
-    .bento-card:hover .glow { opacity: 1; }
-    .glow-red    { background: radial-gradient(ellipse at 20% 30%, rgba(239,68,68,.1), transparent 65%); }
-    .glow-green  { background: radial-gradient(ellipse at 30% 30%, rgba(16,224,160,.1), transparent 65%); }
-    .glow-blue   { background: radial-gradient(ellipse at 30% 30%, rgba(59,130,246,.1), transparent 65%); }
-    .glow-indigo { background: radial-gradient(ellipse at 30% 30%, rgba(99,102,241,.1), transparent 65%); }
-    .glow-purple { background: radial-gradient(ellipse at 30% 30%, rgba(168,85,247,.1), transparent 65%); }
-    .glow-cyan   { background: radial-gradient(ellipse at 30% 30%, rgba(6,182,212,.1), transparent 65%); }
+    .accent-red    { background: linear-gradient(90deg, #ef4444, #f97316); }
+    .accent-green  { background: linear-gradient(90deg, #10e0a0, #34d399); }
+    .accent-blue   { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+    .accent-indigo { background: linear-gradient(90deg, #6366f1, #818cf8); }
+    .accent-purple { background: linear-gradient(90deg, #a855f7, #c084fc); }
+    .accent-cyan   { background: linear-gradient(90deg, #06b6d4, #22d3ee); }
 
-    .bento-card:hover { box-shadow: 0 8px 32px rgba(0,0,0,.15); }
-    .bento-card.hero:hover  { border-color: rgba(239,68,68,.25); }
-    .bento-card.tall:hover  { border-color: rgba(16,224,160,.25); }
-    .bento-card:nth-child(3):hover { border-color: rgba(59,130,246,.25); }
-    .bento-card:nth-child(4):hover { border-color: rgba(99,102,241,.25); }
-    .bento-card:nth-child(5):hover { border-color: rgba(168,85,247,.25); }
-    .bento-card:nth-child(6):hover { border-color: rgba(6,182,212,.25); }
+    /* Hover border color */
+    .card-hero:hover  { border-color: rgba(239,68,68,.25); }
+    .card-tall:hover  { border-color: rgba(16,224,160,.25); }
+    .card:nth-child(3):hover { border-color: rgba(59,130,246,.25); }
+    .card:nth-child(4):hover { border-color: rgba(99,102,241,.25); }
+    .card:nth-child(5):hover { border-color: rgba(168,85,247,.25); }
+    .card-wide:hover  { border-color: rgba(6,182,212,.25); }
 
-    /* Inner */
-    .inner {
+    /* ── BODY ── */
+    .body {
       position: relative; z-index: 1;
-      padding: 20px; display: flex; flex-direction: column; gap: 8px;
-      height: 100%;
+      padding: 24px 26px; height: 100%;
+      display: flex; flex-direction: column; gap: 10px;
     }
-    .inner h3 {
+    .body-hero { justify-content: space-between; padding: 28px 30px; }
+    .body-row {
+      flex-direction: row; align-items: center; gap: 18px;
+      padding: 18px 26px;
+    }
+    .body-text { flex: 1; min-width: 0; }
+    .body-text h3, .body-text .desc { margin: 0; }
+    .body-text .desc { margin-top: 2px; }
+
+    .row-top {
+      display: flex; align-items: flex-start; justify-content: space-between;
+    }
+
+    .body h3 {
       font-family: var(--font-display, Poppins, sans-serif);
-      font-size: 15px; font-weight: 700;
+      font-size: 16px; font-weight: 700;
       color: var(--fg-primary); margin: 0;
     }
-    .inner p {
-      font-size: 11.5px; line-height: 1.45;
+    .body-hero h3 { font-size: 22px; letter-spacing: -.3px; }
+
+    .desc {
+      font-size: 12px; line-height: 1.5;
       color: var(--fg-tertiary); margin: 0;
     }
+    .body-hero .desc { font-size: 13px; max-width: 380px; }
 
-    /* Icon */
-    .icon {
-      width: 42px; height: 42px; border-radius: 12px;
+    /* Chevron → */
+    .chevron {
+      color: var(--fg-tertiary); opacity: 0;
+      transition: opacity .2s, transform .2s;
+    }
+    .card:hover .chevron { opacity: .6; transform: translateX(2px); }
+
+    /* ── ICONS ── */
+    .ico {
+      width: 44px; height: 44px; border-radius: 12px;
       display: flex; align-items: center; justify-content: center;
-      flex-shrink: 0; margin-bottom: 2px;
+      flex-shrink: 0;
       transition: transform .3s cubic-bezier(.16,1,.3,1);
     }
-    .icon-lg { width: 50px; height: 50px; border-radius: 14px; }
-    .bento-card:hover .icon { transform: scale(1.08) rotate(-4deg); }
+    .ico-lg { width: 52px; height: 52px; border-radius: 14px; }
+    .card:hover .ico { transform: scale(1.08) rotate(-4deg); }
 
-    .icon-red    { background: rgba(239,68,68,.1);  color: #f87171; }
-    .icon-green  { background: rgba(16,224,160,.1); color: var(--tracky-light); }
-    .icon-blue   { background: rgba(59,130,246,.1); color: #60a5fa; }
-    .icon-indigo { background: rgba(99,102,241,.1); color: #818cf8; }
-    .icon-purple { background: rgba(168,85,247,.1); color: #c084fc; }
-    .icon-cyan   { background: rgba(6,182,212,.1);  color: #22d3ee; }
+    .ico-red    { background: rgba(239,68,68,.1);  color: #f87171; }
+    .ico-green  { background: rgba(16,224,160,.1); color: var(--tracky-light); }
+    .ico-blue   { background: rgba(59,130,246,.1); color: #60a5fa; }
+    .ico-indigo { background: rgba(99,102,241,.1); color: #818cf8; }
+    .ico-purple { background: rgba(168,85,247,.1); color: #c084fc; }
+    .ico-cyan   { background: rgba(6,182,212,.1);  color: #22d3ee; }
 
-    /* ── HERO specifics ── */
-    .hero-bg {
+    /* ── HERO BG ── */
+    .card-bg-hero {
       position: absolute; inset: 0; pointer-events: none;
       background:
-        radial-gradient(circle at 85% 80%, rgba(239,68,68,.06) 0%, transparent 50%),
-        radial-gradient(circle at 10% 90%, rgba(251,146,60,.04) 0%, transparent 40%);
+        radial-gradient(circle at 90% 85%, rgba(239,68,68,.07) 0%, transparent 45%),
+        radial-gradient(circle at 5% 95%, rgba(251,146,60,.04) 0%, transparent 35%);
     }
-    .hero-inner { justify-content: space-between; }
-    .hero-inner h3 { font-size: 20px; letter-spacing: -0.3px; }
-    .hero-inner p { max-width: 320px; }
 
-    .hero-stats {
-      display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto;
+    /* ── HERO STATS ── */
+    .stats-row {
+      display: flex; gap: 10px; flex-wrap: wrap; margin-top: auto;
     }
-    .stat {
+    .kpi {
       display: flex; flex-direction: column; align-items: center;
-      padding: 8px 14px; border-radius: 10px;
-      background: rgba(255,255,255,.03);
+      padding: 10px 18px; border-radius: 12px;
+      background: rgba(255,255,255,.025);
       border: 1px solid rgba(255,255,255,.04);
-      min-width: 64px;
-      transition: border-color .2s, background .2s;
+      min-width: 72px;
+      transition: all .25s;
     }
-    .stat.active { border-color: rgba(239,68,68,.2); background: rgba(239,68,68,.06); }
-    .stat-val {
+    .kpi-hot {
+      border-color: rgba(239,68,68,.2);
+      background: rgba(239,68,68,.06);
+    }
+    .kpi-n {
       font-family: var(--font-display, Poppins, sans-serif);
-      font-size: 20px; font-weight: 800; color: var(--fg-primary);
-      line-height: 1;
+      font-size: 24px; font-weight: 800; line-height: 1;
+      color: var(--fg-primary);
     }
-    .stat.active .stat-val { color: #f87171; }
-    .stat-lbl {
-      font-size: 9px; text-transform: uppercase; letter-spacing: .5px;
-      color: var(--fg-tertiary); margin-top: 3px; font-weight: 600;
+    .kpi-hot .kpi-n { color: #f87171; }
+    .kpi-l {
+      font-size: 9px; text-transform: uppercase; letter-spacing: .6px;
+      color: var(--fg-tertiary); margin-top: 4px; font-weight: 600;
     }
+
+    /* ── DIAGNOSTIC WAVE (decorative) ── */
+    .visual-wave {
+      margin-top: auto; color: var(--tracky-light);
+    }
+    .visual-wave svg { width: 100%; height: 28px; }
   `],
 })
 export class AdminHubComponent implements OnInit {
@@ -306,6 +326,8 @@ export class AdminHubComponent implements OnInit {
   protected readonly Radio = Radio;
   protected readonly Shield = Shield;
   protected readonly Zap = Zap;
+  protected readonly ChevronRight = ChevronRight;
+  protected readonly Database = Database;
 
   readonly stats = signal<AdminAlertSummary | null>(null);
 
