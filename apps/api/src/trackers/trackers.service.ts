@@ -59,10 +59,12 @@ export class TrackersService {
     requestedBy: RequestedBy,
     filters?: { status?: string; unassigned?: string; limit?: number },
   ): Promise<Tracker[]> {
-    const limit = Math.min(filters?.limit ?? 50, 50);
+    const isSuperAdmin = requestedBy.role === UserRole.SUPER_ADMIN;
+    const maxLimit = isSuperAdmin ? 500 : 50;
+    const limit = Math.min(filters?.limit ?? maxLimit, maxLimit);
     const where: Prisma.TrackerWhereInput = {};
 
-    if (requestedBy.role !== UserRole.SUPER_ADMIN && requestedBy.fleetId) {
+    if (!isSuperAdmin && requestedBy.fleetId) {
       where.vehicle = { fleetId: requestedBy.fleetId };
     }
 
@@ -76,7 +78,7 @@ export class TrackersService {
 
     return this.prisma.tracker.findMany({
       where,
-      include: { vehicle: true },
+      include: { vehicle: isSuperAdmin ? { include: { fleet: true } } : true },
       orderBy: { createdAt: 'desc' },
       take: limit,
     });

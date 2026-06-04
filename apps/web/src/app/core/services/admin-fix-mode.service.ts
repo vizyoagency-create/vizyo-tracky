@@ -96,6 +96,19 @@ export interface AdminAlertsDto {
   errors: ErrorAlertsSummary;
 }
 
+export interface ErrorTimelineBucket {
+  hour: string;
+  error: number;
+  critical: number;
+}
+
+export interface ErrorExport {
+  markdown: string;
+  errorCount: number;
+  criticalCount: number;
+  window: string;
+}
+
 export interface FixModeStateDto {
   trackerId: string;
   imei: string;
@@ -173,5 +186,13 @@ export class AdminFixModeService {
       `/api/admin/trackers/${trackerId}/fix-mode/override`,
       { durationMinutes, intervalS },
     );
+  }
+
+  errorsTimeline() {
+    return this.http.get<{ buckets: ErrorTimelineBucket[] }>('/api/admin/alerts/errors/timeline');
+  }
+
+  errorsExport() {
+    return this.http.get<ErrorExport>('/api/admin/alerts/errors/export');
   }
 }

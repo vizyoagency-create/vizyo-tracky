@@ -1,8 +1,9 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { DatePipe, JsonPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import {
-  LucideAngularModule, Activity, AlertTriangle, MessageSquare, Search, RefreshCw,
+  LucideAngularModule, Activity, AlertTriangle, ArrowLeft, MessageSquare, Search, RefreshCw,
   ArrowUpRight, ArrowDownLeft, Clock, Terminal, Bell, BellRing, Send, Smartphone,
   Trash2, User as UserIcon, Globe,
 } from 'lucide-angular';
@@ -20,11 +21,18 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 @Component({
   selector: 'app-observability',
   standalone: true,
-  imports: [LucideAngularModule, DatePipe, JsonPipe, FormsModule],
+  imports: [LucideAngularModule, DatePipe, JsonPipe, FormsModule, RouterLink],
   template: `
     <div class="flex flex-col gap-6">
       <div class="flex items-center justify-between">
-        <h1 class="text-2xl font-display font-bold text-fg-primary">Diagnostic & Tests</h1>
+        <div>
+          <a routerLink="/admin"
+             class="text-xs text-fg-tertiary hover:text-fg-secondary inline-flex items-center gap-1 mb-1">
+            <lucide-icon [img]="ArrowLeft" [size]="12"></lucide-icon>
+            Administration
+          </a>
+          <h1 class="text-2xl font-display font-bold text-fg-primary">Diagnostic & Tests</h1>
+        </div>
       </div>
 
       <!-- Tabs -->
@@ -574,6 +582,7 @@ export class ObservabilityComponent implements OnInit {
 
   protected readonly Activity = Activity;
   protected readonly AlertTriangle = AlertTriangle;
+  protected readonly ArrowLeft = ArrowLeft;
   protected readonly MessageSquare = MessageSquare;
   protected readonly Search = Search;
   protected readonly RefreshCw = RefreshCw;

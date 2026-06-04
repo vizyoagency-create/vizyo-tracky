@@ -213,6 +213,112 @@ export class AdminAlertsController {
     };
   }
 
+  /**
+   * V1.14 — Timeline d'erreurs agregees par heure (24h) pour le graphique
+   * du centre d'alertes. Retourne 24 buckets avec le count ERROR + CRITICAL.
+   */
+  @Get('errors/timeline')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN)
+  async errorsTimeline() {
+    const since = new Date(Date.now() - ERROR_WINDOW_MS);
+    const rows = await this.prisma.$queryRaw<
+      Array<{ hour: Date; level: string; count: bigint }>
+    >`
+      SELECT date_trunc('hour', "createdAt") AS hour, level, COUNT(*) AS count
+      FROM error_logs
+      WHERE "createdAt" >= ${since}
+      GROUP BY hour, level
+      ORDER BY hour ASC
+    `;
+
+    // Construire 24 buckets vides puis remplir avec les données.
+    const buckets: Array<{ hour: string; error: number; critical: number }> = [];
+    const now = new Date();
+    for (let i = 23; i >= 0; i--) {
+      const h = new Date(now);
+      h.setMinutes(0, 0, 0);
+      h.setHours(h.getHours() - i);
+      buckets.push({ hour: h.toISOString(), error: 0, critical: 0 });
+    }
+
+    for (const row of rows) {
+      const hourKey = new Date(row.hour);
+      hourKey.setMinutes(0, 0, 0);
+      const bucket = buckets.find(
+        (b) => new Date(b.hour).getTime() === hourKey.getTime(),
+      );
+      if (bucket) {
+        const count = Number(row.count);
+        if (row.level === 'CRITICAL') bucket.critical += count;
+        else bucket.error += count;
+      }
+    }
+
+    return { buckets };
+  }
+
+  /**
+   * V1.14 — Export markdown structure pour debug IA (Claude).
+   * Retourne un rapport formaté contenant les erreurs des dernières 24h
+   * avec stack traces, contexte, et résumé par source.
+   */
+  @Get('errors/export')
+  @Roles(UserRole.SUPER_ADMIN)
+  async errorsExport() {
+    const since = new Date(Date.now() - ERROR_WINDOW_MS);
+    const errors = await this.prisma.errorLog.findMany({
+      where: { createdAt: { gte: since } },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+
+    const criticalCount = errors.filter((e) => e.level === 'CRITICAL').length;
+    const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+
+    // Résumé par source.
+    const sourceMap = new Map<string, { count: number; lastAt: string }>();
+    for (const e of errors) {
+      const existing = sourceMap.get(e.source);
+      if (!existing) {
+        sourceMap.set(e.source, { count: 1, lastAt: e.createdAt.toISOString() });
+      } else {
+        existing.count++;
+      }
+    }
+
+    let md = `# Rapport d'erreurs — Vizyo Tracky\n`;
+    md += `Periode : dernieres 24h | Genere le : ${now} UTC\n`;
+    md += `Erreurs : ${errors.length} (dont ${criticalCount} CRITICAL)\n\n`;
+
+    md += `## Resume par source\n`;
+    md += `| Source | Count | Derniere |\n|--------|-------|----------|\n`;
+    for (const [source, data] of sourceMap.entries()) {
+      md += `| ${source} | ${data.count} | ${data.lastAt.slice(0, 19).replace('T', ' ')} |\n`;
+    }
+    md += `\n`;
+
+    for (let i = 0; i < errors.length; i++) {
+      const e = errors[i];
+      md += `## Erreur #${i + 1} — ${e.level}\n`;
+      md += `- **Source :** ${e.source}\n`;
+      md += `- **Date :** ${e.createdAt.toISOString().slice(0, 19).replace('T', ' ')} UTC\n`;
+      md += `- **Message :** ${e.message}\n`;
+      if (e.imei) md += `- **IMEI :** ${e.imei}\n`;
+      if (e.commandId) md += `- **CommandId :** ${e.commandId}\n`;
+      if (e.userId) md += `- **UserId :** ${e.userId}\n`;
+      if (e.stack) md += `\n\`\`\`\n${e.stack}\n\`\`\`\n`;
+      if (e.context) md += `\n**Contexte :**\n\`\`\`json\n${JSON.stringify(e.context, null, 2)}\n\`\`\`\n`;
+      md += `\n---\n\n`;
+    }
+
+    return {
+      markdown: md,
+      errorCount: errors.length,
+      criticalCount,
+      window: '24h',
+    };
+  }
+
   @Post('commands/:id/acknowledge')
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN)
   async acknowledgeCommand(

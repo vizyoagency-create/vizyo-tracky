@@ -3,11 +3,13 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
   AlertTriangle,
+  ArrowLeft,
   Bug,
   CheckCircle,
   ChevronDown,
   ChevronRight,
   Clock,
+  Copy,
   LucideAngularModule,
   RefreshCw,
   Wifi,
@@ -18,27 +20,41 @@ import { firstValueFrom } from 'rxjs';
 import {
   AdminAlertsDto,
   AdminFixModeService,
+  type ErrorTimelineBucket,
 } from '../../core/services/admin-fix-mode.service';
+import { ErrorTimelineChartComponent } from '../../shared/ui/charts/error-timeline-chart.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 
 @Component({
   selector: 'app-admin-alerts',
   standalone: true,
-  imports: [LucideAngularModule, DatePipe, JsonPipe, RouterLink],
+  imports: [LucideAngularModule, DatePipe, JsonPipe, RouterLink, ErrorTimelineChartComponent],
   template: `
     <div class="flex flex-col gap-6">
       <div class="flex items-start justify-between gap-3 flex-wrap">
         <div>
+          <a routerLink="/admin"
+             class="text-xs text-fg-tertiary hover:text-fg-secondary inline-flex items-center gap-1 mb-1">
+            <lucide-icon [img]="ArrowLeft" [size]="12"></lucide-icon>
+            Administration
+          </a>
           <h1 class="text-2xl font-display font-bold text-fg-primary">Centre d'alertes</h1>
           <p class="text-sm text-fg-tertiary">
             Trackers en echec, hors ligne prolonge, commandes en attente et erreurs applicatives.
           </p>
         </div>
-        <button (click)="reload()"
-                class="px-3 py-2 bg-tracky text-white rounded-lg text-sm font-medium hover:bg-tracky-dark cursor-pointer flex items-center gap-2">
-          <lucide-icon [img]="RefreshCw" [size]="14"></lucide-icon>
-          Rafraichir
-        </button>
+        <div class="flex gap-2">
+          <button (click)="exportForAI()" [disabled]="exporting()"
+                  class="px-3 py-2 bg-bg-secondary border border-border-subtle text-fg-secondary rounded-lg text-sm font-medium hover:text-fg-primary cursor-pointer flex items-center gap-2 disabled:opacity-50">
+            <lucide-icon [img]="Copy" [size]="14"></lucide-icon>
+            <span class="hidden sm:inline">{{ exporting() ? 'Export...' : 'Export IA' }}</span>
+          </button>
+          <button (click)="reload()"
+                  class="px-3 py-2 bg-tracky text-white rounded-lg text-sm font-medium hover:bg-tracky-dark cursor-pointer flex items-center gap-2">
+            <lucide-icon [img]="RefreshCw" [size]="14"></lucide-icon>
+            <span class="hidden sm:inline">Rafraichir</span>
+          </button>
+        </div>
       </div>
 
       <!-- Summary -->
@@ -96,6 +112,20 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
         </div>
       </div>
 
+      <!-- Error Timeline Chart -->
+      @if (timelineBuckets().length > 0) {
+        <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4">
+          <div class="flex items-center justify-between mb-3">
+            <div class="text-xs font-semibold text-fg-tertiary uppercase">Erreurs par heure (24h)</div>
+            <div class="flex items-center gap-3 text-[10px]">
+              <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-orange-400/70"></span> ERROR</span>
+              <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-rose-500/80"></span> CRITICAL</span>
+            </div>
+          </div>
+          <app-error-timeline-chart [buckets]="timelineBuckets()" [height]="180"></app-error-timeline-chart>
+        </div>
+      }
+
       <!-- FAILING -->
       @if (data() && data()!.failing.length > 0) {
         <section class="flex flex-col gap-3">
@@ -103,7 +133,32 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
             <lucide-icon [img]="AlertTriangle" [size]="18" class="text-rose-400"></lucide-icon>
             Trackers en echec ({{ data()!.failing.length }})
           </h2>
-          <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-x-auto">
+          <!-- Mobile cards -->
+          <div class="flex flex-col gap-2 sm:hidden">
+            @for (a of data()!.failing; track a.trackerId) {
+              <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-3">
+                <div class="flex justify-between items-start">
+                  <div>
+                    <div class="font-medium text-fg-primary text-sm">{{ a.plate ?? '—' }}</div>
+                    <div class="text-[10px] font-mono text-fg-tertiary mt-0.5">{{ a.imei.slice(0,4) }}...{{ a.imei.slice(-4) }}</div>
+                  </div>
+                  <span class="text-rose-400 font-mono text-sm font-bold">{{ a.fixCommandFailureCount }}</span>
+                </div>
+                <div class="flex items-center gap-3 mt-2 text-xs text-fg-tertiary">
+                  <span>{{ a.desiredFixIntervalS }}s / {{ a.currentFixIntervalS ?? '?' }}s</span>
+                  <span>{{ a.lastSeenAt ? (a.lastSeenAt | date: 'dd/MM HH:mm') : 'jamais' }}</span>
+                </div>
+                <div class="flex gap-3 mt-2">
+                  <a [routerLink]="['/admin/trackers', a.trackerId, 'fix-mode']"
+                     class="text-xs text-tracky-light hover:underline">Inspecter</a>
+                  <button (click)="clearFailing(a.trackerId)"
+                          class="text-xs text-fg-tertiary hover:text-emerald-400">Acquitter</button>
+                </div>
+              </div>
+            }
+          </div>
+          <!-- Desktop table -->
+          <div class="hidden sm:block bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-x-auto">
             <table class="w-full text-sm min-w-[700px]">
               <thead class="border-b border-border-subtle text-fg-tertiary text-xs uppercase">
                 <tr>
@@ -127,19 +182,13 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
                       {{ a.desiredFixIntervalS }}s / {{ a.currentFixIntervalS ?? '?' }}s
                     </td>
                     <td class="p-3 text-fg-tertiary text-xs">
-                      @if (a.lastSeenAt) {
-                        {{ a.lastSeenAt | date: 'dd/MM HH:mm' }}
-                      } @else {
-                        jamais
-                      }
+                      {{ a.lastSeenAt ? (a.lastSeenAt | date: 'dd/MM HH:mm') : 'jamais' }}
                     </td>
                     <td class="p-3 flex gap-2">
                       <a [routerLink]="['/admin/trackers', a.trackerId, 'fix-mode']"
                          class="text-xs text-tracky-light hover:underline">Inspecter</a>
                       <button (click)="clearFailing(a.trackerId)"
-                              class="text-xs text-fg-tertiary hover:text-emerald-400">
-                        Acquitter
-                      </button>
+                              class="text-xs text-fg-tertiary hover:text-emerald-400">Acquitter</button>
                     </td>
                   </tr>
                 }
@@ -156,7 +205,25 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
             <lucide-icon [img]="WifiOff" [size]="18" class="text-amber-400"></lucide-icon>
             Trackers hors ligne > 1h ({{ data()!.offline.length }})
           </h2>
-          <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-x-auto">
+          <!-- Mobile cards -->
+          <div class="flex flex-col gap-2 sm:hidden">
+            @for (a of data()!.offline; track a.trackerId) {
+              <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-3">
+                <div class="flex justify-between items-start">
+                  <div>
+                    <div class="font-medium text-fg-primary text-sm">{{ a.plate ?? '—' }}</div>
+                    <div class="text-[10px] font-mono text-fg-tertiary mt-0.5">{{ a.imei.slice(0,4) }}...{{ a.imei.slice(-4) }}</div>
+                  </div>
+                  <span class="text-amber-400 font-mono text-xs">{{ formatDuration(a.offlineSinceMs) }}</span>
+                </div>
+                <div class="text-xs text-fg-tertiary mt-1">
+                  {{ a.lastSeenAt ? (a.lastSeenAt | date: 'dd/MM HH:mm') : 'jamais vu' }}
+                </div>
+              </div>
+            }
+          </div>
+          <!-- Desktop table -->
+          <div class="hidden sm:block bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-x-auto">
             <table class="w-full text-sm min-w-[700px]">
               <thead class="border-b border-border-subtle text-fg-tertiary text-xs uppercase">
                 <tr>
@@ -174,11 +241,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
                     <td class="p-3 font-mono text-xs text-fg-secondary">{{ a.imei.slice(0,4) }}...{{ a.imei.slice(-4) }}</td>
                     <td class="p-3 text-fg-tertiary text-xs">{{ a.fleetName ?? '—' }}</td>
                     <td class="p-3 text-fg-tertiary text-xs">
-                      @if (a.lastSeenAt) {
-                        {{ a.lastSeenAt | date: 'dd/MM HH:mm' }}
-                      } @else {
-                        jamais
-                      }
+                      {{ a.lastSeenAt ? (a.lastSeenAt | date: 'dd/MM HH:mm') : 'jamais' }}
                     </td>
                     <td class="p-3 text-right text-amber-400 text-xs font-mono">
                       {{ formatDuration(a.offlineSinceMs) }}
@@ -198,7 +261,30 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
             <lucide-icon [img]="Clock" [size]="18" class="text-sky-400"></lucide-icon>
             Commandes en attente > 10 min ({{ data()!.pendingCommands.length }})
           </h2>
-          <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-x-auto">
+          <!-- Mobile cards -->
+          <div class="flex flex-col gap-2 sm:hidden">
+            @for (c of data()!.pendingCommands; track c.commandId) {
+              <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-3">
+                <div class="flex justify-between items-start">
+                  <div class="font-medium text-fg-primary text-sm">{{ c.plate ?? '—' }}</div>
+                  <span class="inline-flex items-center px-2 py-0.5 text-[10px] rounded-md bg-sky-500/10 text-sky-400 font-mono">
+                    {{ c.status }}
+                  </span>
+                </div>
+                <div class="text-[10px] font-mono text-fg-tertiary mt-1">{{ c.templateId }}</div>
+                <div class="text-xs text-fg-tertiary mt-1 truncate">
+                  {{ c.diagnosticHint ?? c.outcomeReason ?? '—' }}
+                </div>
+                <div class="flex justify-between items-center mt-2">
+                  <span class="text-[10px] text-fg-tertiary">{{ c.createdAt | date: 'dd/MM HH:mm' }}</span>
+                  <button (click)="ackCommand(c.commandId)"
+                          class="text-xs text-tracky-light hover:underline">Acquitter</button>
+                </div>
+              </div>
+            }
+          </div>
+          <!-- Desktop table -->
+          <div class="hidden sm:block bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-x-auto">
             <table class="w-full text-sm min-w-[700px]">
               <thead class="border-b border-border-subtle text-fg-tertiary text-xs uppercase">
                 <tr>
@@ -226,9 +312,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
                     </td>
                     <td class="p-3">
                       <button (click)="ackCommand(c.commandId)"
-                              class="text-xs text-tracky-light hover:underline">
-                        Acquitter
-                      </button>
+                              class="text-xs text-tracky-light hover:underline">Acquitter</button>
                     </td>
                   </tr>
                 }
@@ -371,8 +455,10 @@ export class AdminAlertsComponent implements OnInit {
   private readonly toast = inject(ToastService);
 
   protected readonly AlertTriangle = AlertTriangle;
+  protected readonly ArrowLeft = ArrowLeft;
   protected readonly Bug = Bug;
   protected readonly CheckCircle = CheckCircle;
+  protected readonly Copy = Copy;
   protected readonly ChevronDown = ChevronDown;
   protected readonly ChevronRight = ChevronRight;
   protected readonly Clock = Clock;
@@ -384,6 +470,8 @@ export class AdminAlertsComponent implements OnInit {
   readonly data = signal<AdminAlertsDto | null>(null);
   readonly loading = signal(false);
   readonly expandedErrors = signal<Record<string, boolean>>({});
+  readonly timelineBuckets = signal<ErrorTimelineBucket[]>([]);
+  readonly exporting = signal(false);
 
   ngOnInit(): void {
     this.reload();
@@ -392,7 +480,12 @@ export class AdminAlertsComponent implements OnInit {
   async reload(): Promise<void> {
     this.loading.set(true);
     try {
-      this.data.set(await firstValueFrom(this.api.alerts()));
+      const [alertsData, timeline] = await Promise.all([
+        firstValueFrom(this.api.alerts()),
+        firstValueFrom(this.api.errorsTimeline()).catch(() => ({ buckets: [] })),
+      ]);
+      this.data.set(alertsData);
+      this.timelineBuckets.set(timeline.buckets);
     } catch {
       this.toast.error('Echec du chargement des alertes');
     } finally {
@@ -417,6 +510,22 @@ export class AdminAlertsComponent implements OnInit {
       this.reload();
     } catch {
       this.toast.error('Echec de la reinitialisation');
+    }
+  }
+
+  async exportForAI(): Promise<void> {
+    this.exporting.set(true);
+    try {
+      const result = await firstValueFrom(this.api.errorsExport());
+      await navigator.clipboard.writeText(result.markdown);
+      this.toast.success(
+        `${result.errorCount} erreurs copiees`,
+        'Colle le rapport dans un chat Claude pour debug.',
+      );
+    } catch {
+      this.toast.error('Echec de l\'export');
+    } finally {
+      this.exporting.set(false);
     }
   }
 

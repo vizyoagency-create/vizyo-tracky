@@ -1,6 +1,7 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, Terminal, RefreshCw } from 'lucide-angular';
+import { RouterLink } from '@angular/router';
+import { LucideAngularModule, ArrowLeft, Terminal, RefreshCw } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import {
   TrackerCommandsApiService,
@@ -20,11 +21,18 @@ const STATUS_LABELS: Record<string, string> = {
 @Component({
   selector: 'app-admin-commands',
   standalone: true,
-  imports: [LucideAngularModule, FormsModule],
+  imports: [LucideAngularModule, FormsModule, RouterLink],
   template: `
     <div class="flex flex-col gap-6">
       <div class="flex items-center justify-between">
-        <h1 class="text-2xl font-display font-bold text-fg-primary">Commandes tracker</h1>
+        <div>
+          <a routerLink="/admin"
+             class="text-xs text-fg-tertiary hover:text-fg-secondary inline-flex items-center gap-1 mb-1">
+            <lucide-icon [img]="ArrowLeft" [size]="12"></lucide-icon>
+            Administration
+          </a>
+          <h1 class="text-2xl font-display font-bold text-fg-primary">Commandes tracker</h1>
+        </div>
         <button (click)="load()" class="px-4 py-2 bg-tracky text-white rounded-lg text-sm font-medium
                 hover:bg-tracky-dark cursor-pointer flex items-center gap-2">
           <lucide-icon [img]="RefreshCw" [size]="14"></lucide-icon>
@@ -114,6 +122,7 @@ const STATUS_LABELS: Record<string, string> = {
 export class AdminCommandsComponent implements OnInit {
   private readonly api = inject(TrackerCommandsApiService);
 
+  protected readonly ArrowLeft = ArrowLeft;
   protected readonly Terminal = Terminal;
   protected readonly RefreshCw = RefreshCw;
   protected readonly relativeTime = relativeTime;

@@ -1,8 +1,10 @@
 import { DatePipe } from '@angular/common';
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import {
   AlertTriangle,
+  ArrowLeft,
   CheckCircle,
   Database,
   HardDrive,
@@ -33,11 +35,16 @@ type Tab = 'status' | 'provision' | 'logs' | 'allowlist' | 'backup';
 @Component({
   selector: 'app-admin-sms',
   standalone: true,
-  imports: [LucideAngularModule, DatePipe, FormsModule],
+  imports: [LucideAngularModule, DatePipe, FormsModule, RouterLink],
   template: `
     <div class="flex flex-col gap-6">
       <div class="flex items-start justify-between gap-3 flex-wrap">
         <div>
+          <a routerLink="/admin"
+             class="text-xs text-fg-tertiary hover:text-fg-secondary inline-flex items-center gap-1 mb-1">
+            <lucide-icon [img]="ArrowLeft" [size]="12"></lucide-icon>
+            Administration
+          </a>
           <h1 class="text-2xl font-display font-bold text-fg-primary">SMS &amp; Backup admin</h1>
           <p class="text-sm text-fg-tertiary">
             Outils SUPER_ADMIN : provisionnement de trackers neufs via SMS, audit
@@ -436,6 +443,7 @@ export class AdminSmsComponent implements OnInit {
   private readonly toast = inject(ToastService);
 
   protected readonly AlertTriangle = AlertTriangle;
+  protected readonly ArrowLeft = ArrowLeft;
   protected readonly CheckCircle = CheckCircle;
   protected readonly Database = Database;
   protected readonly HardDrive = HardDrive;
