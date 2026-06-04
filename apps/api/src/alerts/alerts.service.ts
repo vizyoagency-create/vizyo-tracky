@@ -66,6 +66,9 @@ export class AlertsService {
       if (!mapping) return null;
     }
 
+    // Build contextual message based on alert type + frame data.
+    const contextMessage = buildAlertMessage(mapping.type, frame);
+
     const alert = await this.prisma.alert.create({
       data: {
         fleetId: tracker.vehicle.fleetId,
@@ -74,10 +77,14 @@ export class AlertsService {
         type: mapping.type,
         severity: mapping.severity,
         title: mapping.title,
-        // The vehicle plate is already shown by the UI alongside this alert,
-        // so the message stays null unless we ever attach extra context.
-        message: null,
-        payload: { raw: frame.raw, alarm: frame.alarm } as any,
+        message: contextMessage,
+        payload: {
+          raw: frame.raw,
+          alarm: frame.alarm,
+          speedKmh: frame.speedKph ?? null,
+          course: frame.course ?? null,
+          ignition: frame.ignition ?? null,
+        } as any,
         latitude: frame.latitude,
         longitude: frame.longitude,
       },
@@ -225,6 +232,30 @@ export class AlertsService {
       },
     });
     return { count: result.count };
+  }
+}
+
+/**
+ * Build a contextual message for an alert based on its type and frame data.
+ * Returns null if no meaningful context is available.
+ */
+function buildAlertMessage(type: AlertType, frame: CobanPositionFrame): string | null {
+  const speed = frame.speedKph;
+  switch (type) {
+    case 'OVERSPEED':
+      return speed != null ? `Vitesse détectée : ${Math.round(speed)} km/h` : null;
+    case 'HARSH_BRAKING':
+    case 'HARSH_ACCELERATION':
+    case 'HARSH_TURN':
+      return speed != null ? `Vitesse au moment de l'événement : ${Math.round(speed)} km/h` : null;
+    case 'LOW_BATTERY':
+      return 'Niveau de batterie faible détecté par le tracker';
+    case 'GPS_LOST':
+      return speed != null ? `Dernière vitesse connue : ${Math.round(speed)} km/h` : null;
+    case 'MOVEMENT_IDLE':
+      return speed != null && speed > 0 ? `Mouvement détecté à ${Math.round(speed)} km/h` : null;
+    default:
+      return null;
   }
 }
 
