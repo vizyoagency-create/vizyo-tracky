@@ -40,7 +40,11 @@ export class AdminAlertsController {
 
   @Get()
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN)
-  async list(@Req() req: AuthenticatedRequest, @Query('fleetId') fleetIdFilter?: string) {
+  async list(
+    @Req() req: AuthenticatedRequest,
+    @Query('fleetId') fleetIdFilter?: string,
+    @Query('since') sinceRaw?: string,
+  ) {
     const isSuperAdmin = req.user.role === UserRole.SUPER_ADMIN;
     const fleetIdScope = isSuperAdmin ? fleetIdFilter ?? undefined : req.user.fleetId ?? undefined;
     const fleetClause = fleetIdScope ? { vehicle: { fleetId: fleetIdScope } } : {};
@@ -49,9 +53,11 @@ export class AdminAlertsController {
     const offlineCutoff = new Date(now - OFFLINE_THRESHOLD_MS);
     const pendingCutoff = new Date(now - PENDING_THRESHOLD_MS);
     const errorCutoff = new Date(now - ERROR_WINDOW_MS);
+    const errorPrevCutoff = new Date(now - 2 * ERROR_WINDOW_MS);
     const criticalCutoff = new Date(now - CRITICAL_WINDOW_MS);
+    const sinceCutoff = sinceRaw ? new Date(sinceRaw) : null;
 
-    const [failingTrackers, offlineTrackers, pendingCommands, errorLogs24h, criticalCount] = await Promise.all([
+    const [failingTrackers, offlineTrackers, pendingCommands, errorLogs24h, criticalCount, errorsPrev24h, errorsSince] = await Promise.all([
       this.prisma.tracker.findMany({
         where: { fixCommandFailing: true, ...fleetClause },
         include: { vehicle: { include: { fleet: true } } },
@@ -86,6 +92,14 @@ export class AdminAlertsController {
       this.prisma.errorLog.count({
         where: { level: 'CRITICAL', createdAt: { gte: criticalCutoff } },
       }),
+      // Tendance : count erreurs 24h precedentes (pour comparaison).
+      this.prisma.errorLog.count({
+        where: { createdAt: { gte: errorPrevCutoff, lt: errorCutoff } },
+      }),
+      // Count depuis derniere visite (si fourni).
+      sinceCutoff
+        ? this.prisma.errorLog.count({ where: { createdAt: { gte: sinceCutoff } } })
+        : Promise.resolve(null as number | null),
     ]);
 
     // Agréger les erreurs par source.
@@ -159,7 +173,9 @@ export class AdminAlertsController {
         offline: offlineTrackers.length,
         pending: pendingCommands.length,
         errorsLast24h: errorLogs24h.length,
+        errorsPrev24h,
         criticalLastHour: criticalCount,
+        errorsSinceLastVisit: errorsSince,
       },
       failing: failingTrackers.map((t) => ({
         kind: 'TRACKER_FAILING' as const,

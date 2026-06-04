@@ -1,5 +1,5 @@
 import { DatePipe, JsonPipe } from '@angular/common';
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
   AlertTriangle,
@@ -10,7 +10,10 @@ import {
   ChevronRight,
   Clock,
   Copy,
+  Download,
   LucideAngularModule,
+  TrendingDown,
+  TrendingUp,
   RefreshCw,
   Wifi,
   WifiOff,
@@ -44,18 +47,41 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
           </p>
         </div>
         <div class="flex gap-2">
+          <button (click)="downloadExport()" [disabled]="exporting()"
+                  class="px-3 py-2 bg-bg-secondary border border-border-subtle text-fg-secondary rounded-lg text-sm font-medium hover:text-fg-primary cursor-pointer flex items-center gap-2 disabled:opacity-50"
+                  title="Telecharger le rapport d'erreurs (.md) pour debug IA">
+            <lucide-icon [img]="Download" [size]="14"></lucide-icon>
+            <span class="hidden sm:inline">{{ exporting() ? '...' : 'Rapport IA' }}</span>
+          </button>
           <button (click)="exportForAI()" [disabled]="exporting()"
-                  class="px-3 py-2 bg-bg-secondary border border-border-subtle text-fg-secondary rounded-lg text-sm font-medium hover:text-fg-primary cursor-pointer flex items-center gap-2 disabled:opacity-50">
+                  class="px-3 py-2 bg-bg-secondary border border-border-subtle text-fg-secondary rounded-lg text-sm font-medium hover:text-fg-primary cursor-pointer flex items-center gap-2 disabled:opacity-50"
+                  title="Copier le rapport dans le clipboard">
             <lucide-icon [img]="Copy" [size]="14"></lucide-icon>
-            <span class="hidden sm:inline">{{ exporting() ? 'Export...' : 'Export IA' }}</span>
           </button>
           <button (click)="reload()"
                   class="px-3 py-2 bg-tracky text-white rounded-lg text-sm font-medium hover:bg-tracky-dark cursor-pointer flex items-center gap-2">
             <lucide-icon [img]="RefreshCw" [size]="14"></lucide-icon>
-            <span class="hidden sm:inline">Rafraichir</span>
           </button>
         </div>
       </div>
+
+      <!-- Etat de sante -->
+      @if (data()) {
+        <div class="rounded-[--radius-card] px-4 py-3 text-sm flex items-center gap-3"
+             [class]="healthStatus().level === 'critical' ? 'bg-rose-500/10 border border-rose-500/30 text-rose-300'
+               : healthStatus().level === 'warn' ? 'bg-amber-500/10 border border-amber-500/30 text-amber-300'
+               : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-300'">
+          <lucide-icon
+            [img]="healthStatus().level === 'critical' ? Zap : healthStatus().level === 'warn' ? AlertTriangle : CheckCircle"
+            [size]="18" class="shrink-0"></lucide-icon>
+          <span>{{ healthStatus().text }}</span>
+          @if (data()!.summary.errorsSinceLastVisit !== null && data()!.summary.errorsSinceLastVisit! > 0) {
+            <span class="ml-auto text-xs font-mono opacity-80 shrink-0">
+              +{{ data()!.summary.errorsSinceLastVisit }} depuis derniere visite
+            </span>
+          }
+        </div>
+      }
 
       <!-- Summary -->
       <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -92,9 +118,18 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
                        [class]="(data()?.summary?.errorsLast24h ?? 0) > 0 ? 'text-orange-400' : 'text-fg-tertiary'"></lucide-icon>
           <div>
             <div class="text-[10px] uppercase text-fg-tertiary">Erreurs 24h</div>
-            <div class="text-2xl font-display font-bold"
-                 [class]="(data()?.summary?.errorsLast24h ?? 0) > 0 ? 'text-orange-400' : 'text-fg-tertiary'">
-              {{ data()?.summary?.errorsLast24h ?? 0 }}
+            <div class="flex items-center gap-1.5">
+              <span class="text-2xl font-display font-bold"
+                   [class]="(data()?.summary?.errorsLast24h ?? 0) > 0 ? 'text-orange-400' : 'text-fg-tertiary'">
+                {{ data()?.summary?.errorsLast24h ?? 0 }}
+              </span>
+              @if (errorTrend() !== 0) {
+                <span class="flex items-center text-[10px] font-mono"
+                      [class]="errorTrend() > 0 ? 'text-rose-400' : 'text-emerald-400'">
+                  <lucide-icon [img]="errorTrend() > 0 ? TrendingUp : TrendingDown" [size]="12"></lucide-icon>
+                  {{ errorTrend() > 0 ? '+' : '' }}{{ errorTrend() }}
+                </span>
+              }
             </div>
           </div>
         </div>
@@ -459,6 +494,9 @@ export class AdminAlertsComponent implements OnInit {
   protected readonly Bug = Bug;
   protected readonly CheckCircle = CheckCircle;
   protected readonly Copy = Copy;
+  protected readonly Download = Download;
+  protected readonly TrendingDown = TrendingDown;
+  protected readonly TrendingUp = TrendingUp;
   protected readonly ChevronDown = ChevronDown;
   protected readonly ChevronRight = ChevronRight;
   protected readonly Clock = Clock;
@@ -467,25 +505,69 @@ export class AdminAlertsComponent implements OnInit {
   protected readonly WifiOff = WifiOff;
   protected readonly Zap = Zap;
 
+  private static readonly LAST_VISIT_KEY = 'tracky_alerts_last_visit';
+
   readonly data = signal<AdminAlertsDto | null>(null);
   readonly loading = signal(false);
   readonly expandedErrors = signal<Record<string, boolean>>({});
   readonly timelineBuckets = signal<ErrorTimelineBucket[]>([]);
   readonly exporting = signal(false);
+  readonly lastVisitAt = signal<string | null>(null);
+
+  /** Tendance erreurs : delta entre 24h actuelles et 24h precedentes. */
+  readonly errorTrend = computed(() => {
+    const s = this.data()?.summary;
+    if (!s) return 0;
+    return s.errorsLast24h - s.errorsPrev24h;
+  });
+
+  /** Bandeau etat de sante : texte + niveau (ok / warn / critical). */
+  readonly healthStatus = computed<{ level: 'ok' | 'warn' | 'critical'; text: string }>(() => {
+    const s = this.data()?.summary;
+    if (!s) return { level: 'ok', text: 'Chargement...' };
+
+    if (s.criticalLastHour > 0) {
+      return {
+        level: 'critical',
+        text: `${s.criticalLastHour} erreur(s) CRITICAL dans la derniere heure — action requise.`,
+      };
+    }
+    if (s.failing > 0 || s.errorsLast24h >= 10) {
+      const parts: string[] = [];
+      if (s.failing > 0) parts.push(`${s.failing} tracker(s) FAILING`);
+      if (s.errorsLast24h >= 10) parts.push(`${s.errorsLast24h} erreurs en 24h`);
+      return { level: 'warn', text: `${parts.join(', ')} — a investiguer.` };
+    }
+    if (s.errorsLast24h > 0) {
+      return {
+        level: 'ok',
+        text: `${s.errorsLast24h} erreur(s) mineures en 24h — aucune action requise.`,
+      };
+    }
+    return { level: 'ok', text: 'Aucune erreur detectee. Systeme nominal.' };
+  });
 
   ngOnInit(): void {
+    // Lire la derniere visite depuis localStorage.
+    const stored = localStorage.getItem(AdminAlertsComponent.LAST_VISIT_KEY);
+    if (stored) this.lastVisitAt.set(stored);
     this.reload();
   }
 
   async reload(): Promise<void> {
     this.loading.set(true);
     try {
+      const since = this.lastVisitAt() ?? undefined;
       const [alertsData, timeline] = await Promise.all([
-        firstValueFrom(this.api.alerts()),
+        firstValueFrom(this.api.alerts(undefined, since)),
         firstValueFrom(this.api.errorsTimeline()).catch(() => ({ buckets: [] })),
       ]);
       this.data.set(alertsData);
       this.timelineBuckets.set(timeline.buckets);
+      // Sauvegarder la visite actuelle.
+      const now = new Date().toISOString();
+      localStorage.setItem(AdminAlertsComponent.LAST_VISIT_KEY, now);
+      this.lastVisitAt.set(now);
     } catch {
       this.toast.error('Echec du chargement des alertes');
     } finally {
@@ -524,6 +606,26 @@ export class AdminAlertsComponent implements OnInit {
       );
     } catch {
       this.toast.error('Echec de l\'export');
+    } finally {
+      this.exporting.set(false);
+    }
+  }
+
+  async downloadExport(): Promise<void> {
+    this.exporting.set(true);
+    try {
+      const result = await firstValueFrom(this.api.errorsExport());
+      const date = new Date().toISOString().slice(0, 10);
+      const blob = new Blob([result.markdown], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `tracky-errors-${date}.md`;
+      a.click();
+      URL.revokeObjectURL(url);
+      this.toast.success(`${result.errorCount} erreurs exportees en fichier .md`);
+    } catch {
+      this.toast.error('Echec du telechargement');
     } finally {
       this.exporting.set(false);
     }

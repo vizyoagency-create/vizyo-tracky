@@ -6,7 +6,9 @@ export interface AdminAlertSummary {
   offline: number;
   pending: number;
   errorsLast24h: number;
+  errorsPrev24h: number;
   criticalLastHour: number;
+  errorsSinceLastVisit: number | null;
 }
 
 export interface ErrorSourceGroup {
@@ -151,9 +153,10 @@ export interface FixModeTimelineEntry {
 export class AdminFixModeService {
   private readonly http = inject(HttpClient);
 
-  alerts(fleetId?: string) {
+  alerts(fleetId?: string, since?: string) {
     const params: Record<string, string> = {};
     if (fleetId) params['fleetId'] = fleetId;
+    if (since) params['since'] = since;
     return this.http.get<AdminAlertsDto>('/api/admin/alerts', { params });
   }
 
