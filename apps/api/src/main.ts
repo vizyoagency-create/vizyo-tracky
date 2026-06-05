@@ -6,7 +6,9 @@ import { AppModule } from './app.module';
 import { RedisIoAdapter } from './realtime/redis-io.adapter';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  // rawBody: true => req.rawBody dispo pour verifier la signature HMAC du webhook
+  // entrant vizyo-texto (X-Vizyo-Signature) sans dependre du re-serialize du JSON.
+  const app = await NestFactory.create(AppModule, { bufferLogs: true, rawBody: true });
   app.useLogger(app.get(Logger));
 
   // V1.10 (Sprint 6) — cookie-parser pour lire les cookies httpOnly tracky_at

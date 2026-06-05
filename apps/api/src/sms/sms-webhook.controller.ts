@@ -1,19 +1,33 @@
-import { Body, Controller, Headers, HttpCode, HttpStatus, Logger, Post, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Headers,
+  HttpCode,
+  HttpStatus,
+  Logger,
+  Post,
+  RawBodyRequest,
+  Req,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Request } from 'express';
-import * as twilio from 'twilio';
 import type { Env } from '../config/env.validation';
 import { SmsGatewayService } from './sms-gateway.service';
 
 /**
- * V1.5 (Sprint I) — Webhook Twilio pour les SMS entrants.
+ * V1.14 — Webhook ENTRANT depuis vizyo-texto (remplace l'ancien webhook Twilio).
  *
- * Exposee publiquement (Twilio l'appelle), donc on valide la signature X-Twilio-Signature
- * pour rejeter les appels non legitimes.
+ * Le relay vizyo-texto recoit les SMS captes par le S21 (capcom6 -> relay), les
+ * route vers le tenant via l'expediteur, puis les POST ici. Signe en
+ * HMAC-SHA256(secret, `${timestamp}.${rawBody}`) avec les headers X-Vizyo-Signature
+ * + X-Vizyo-Timestamp. secret = VIZYO_TEXTO_WEBHOOK_SECRET (= webhookSecret du
+ * tenant tracky cote relay).
  *
- * Configurer dans la console Twilio :
- *   Phone Numbers > Manage > Active Numbers > <number> > Configure
- *   "A MESSAGE COMES IN" → Webhook → POST → https://<domain>/api/sms/webhook
+ * Cote relay, definir le callbackUrl du tenant tracky :
+ *   PATCH /admin/tenants/<id>  { "callbackUrl": "https://<domaine>/api/sms/webhook" }
+ * Et cote app S21 (capcom6) : webhook sms:received -> https://texto.../internal/capcom6/webhook
+ * avec Signing Key = CAPCOM6_WEBHOOK_SECRET.
  */
 @Controller('sms')
 export class SmsWebhookController {
@@ -27,40 +41,59 @@ export class SmsWebhookController {
   @Post('webhook')
   @HttpCode(HttpStatus.OK)
   async handleInbound(
-    @Req() req: Request,
-    @Headers('x-twilio-signature') signature: string | undefined,
+    @Req() req: RawBodyRequest<Request>,
+    @Headers('x-vizyo-signature') signature: string | undefined,
+    @Headers('x-vizyo-timestamp') timestamp: string | undefined,
     @Body()
     body: {
-      From?: string;
-      To?: string;
-      Body?: string;
-      MessageSid?: string;
-      [k: string]: unknown;
+      from?: string;
+      to?: string;
+      body?: string;
+      receivedAt?: string;
+      providerId?: string;
     },
   ): Promise<{ ok: boolean }> {
-    const authToken = this.config.get('TWILIO_AUTH_TOKEN', { infer: true });
-    const webhookUrl = this.config.get('TWILIO_WEBHOOK_URL', { infer: true });
+    const secret = this.config.get('VIZYO_TEXTO_WEBHOOK_SECRET', { infer: true });
 
-    // Validate signature in production. In dev, allow without signature.
-    if (authToken && webhookUrl && signature) {
-      const valid = twilio.validateRequest(authToken, signature, webhookUrl, body as Record<string, string>);
-      if (!valid) {
-        this.logger.warn('Invalid Twilio webhook signature, rejecting');
+    // Valide la signature si un secret est configure (sinon dev / no-op).
+    if (secret) {
+      if (!this.verifySignature(req.rawBody, signature, timestamp, secret)) {
+        this.logger.warn('Webhook vizyo-texto : signature invalide, rejet');
         return { ok: false };
       }
     }
 
-    if (!body?.From || !body?.Body) {
+    if (!body?.from || !body?.body) {
       return { ok: false };
     }
 
     await this.sms.recordInbound({
-      fromNumber: body.From,
-      toNumber: body.To ?? '',
-      body: body.Body,
-      twilioSid: body.MessageSid,
+      fromNumber: body.from,
+      toNumber: body.to ?? '',
+      body: body.body,
+      twilioSid: body.providerId,
     });
-    this.logger.debug(`Inbound SMS from ${body.From}: ${body.Body}`);
+    this.logger.debug(`Inbound SMS (vizyo-texto) de ${body.from}: ${body.body}`);
     return { ok: true };
+  }
+
+  /** HMAC-SHA256(secret, `${ts}.${rawBody}`) hex + anti-replay 5 min, timing-safe. */
+  private verifySignature(
+    raw: Buffer | undefined,
+    signature: string | undefined,
+    timestamp: string | undefined,
+    secret: string,
+  ): boolean {
+    if (!raw || !signature || !timestamp) return false;
+    const ts = Number.parseInt(timestamp, 10);
+    if (!Number.isFinite(ts) || Math.abs(Math.floor(Date.now() / 1000) - ts) > 300) {
+      return false;
+    }
+    const expected = createHmac('sha256', secret)
+      .update(`${timestamp}.${raw.toString('utf8')}`)
+      .digest('hex');
+    const a = Buffer.from(expected, 'hex');
+    const b = Buffer.from(signature, 'hex');
+    return a.length === b.length && a.length > 0 && timingSafeEqual(a, b);
   }
 }
