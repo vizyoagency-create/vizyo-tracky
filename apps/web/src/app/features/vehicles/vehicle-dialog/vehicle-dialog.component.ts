@@ -197,6 +197,12 @@ import { VEHICLE_TYPES } from '../../../shared/utils/vehicle-icons';
                     <label class="field-label">Modèle du tracker</label>
                     <input type="text" [(ngModel)]="trackerModel" placeholder="Coban GPS403D" class="field-input" />
                   </div>
+                  <div>
+                    <label class="field-label">N° SIM du boîtier</label>
+                    <input type="tel" [(ngModel)]="simPhoneNumber" placeholder="+33612345678" maxlength="16"
+                      class="field-input font-mono" />
+                    <p class="text-[10px] text-fg-tertiary mt-1">Format international (E.164). Optionnel — requis pour le statut « Installé ».</p>
+                  </div>
                 </div>
               </section>
             }
@@ -327,6 +333,7 @@ export class VehicleDialogComponent {
   protected color = '';
   protected imei = '';
   protected trackerModel = '';
+  protected simPhoneNumber = '';
 
   protected readonly TruckIcon = Truck;
   protected readonly RadioIcon = Radio;
@@ -445,7 +452,11 @@ export class VehicleDialogComponent {
     this.errorMessage.set('');
     try {
       const tracker = await firstValueFrom(
-        this.trackersApi.create({ imei: this.imei.trim(), model: this.trackerModel.trim() || undefined }),
+        this.trackersApi.create({
+          imei: this.imei.trim(),
+          model: this.trackerModel.trim() || undefined,
+          simPhoneNumber: this.simPhoneNumber.trim() || undefined,
+        }),
       );
       await firstValueFrom(this.trackersApi.assign(tracker.id, this.createdVehicleId()));
       this.reset();
@@ -468,6 +479,7 @@ export class VehicleDialogComponent {
     this.color = '';
     this.imei = '';
     this.trackerModel = '';
+    this.simPhoneNumber = '';
   }
 
   private extractError(err: unknown): string {

@@ -61,6 +61,8 @@ export class VehiclesService {
     lastValid: true,
     lastPositionAt: true,
     accConnected: true,
+    // V1.15 — expose la SIM pour le badge "Installe" (IMEI + SIM presents) cote liste.
+    simPhoneNumber: true,
   } as const;
 
   constructor(

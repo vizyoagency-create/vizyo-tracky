@@ -2,7 +2,7 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
   LucideAngularModule, AlertTriangle, Activity, Terminal, MessageSquare,
-  Users, Radio, Shield, Zap, ChevronRight, Database,
+  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { AdminFixModeService, type AdminAlertSummary } from '../../core/services/admin-fix-mode.service';
@@ -124,6 +124,19 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
             <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
           </div>
         </a>
+
+        <!-- ── PLANNINGS D'INSTALLATION (wide) ── -->
+        <a routerLink="/admin/installations" class="card card-wide" style="--i:6">
+          <span class="accent accent-amber"></span>
+          <div class="body body-row">
+            <div class="ico ico-amber"><lucide-icon [img]="ClipboardList" [size]="20"></lucide-icon></div>
+            <div class="body-text">
+              <h3>Plannings d'installation</h3>
+              <p class="desc">Planifier les poses de boîtiers par client, saisir IMEI + SIM à la pose, suivre l'avancement. Le client consulte son planning.</p>
+            </div>
+            <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
+          </div>
+        </a>
       </div>
     </div>
   `,
@@ -208,6 +221,7 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
     .accent-indigo { background: linear-gradient(90deg, #6366f1, #818cf8); }
     .accent-purple { background: linear-gradient(90deg, #a855f7, #c084fc); }
     .accent-cyan   { background: linear-gradient(90deg, #06b6d4, #22d3ee); }
+    .accent-amber  { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
 
     /* Hover border color */
     .card-hero:hover  { border-color: rgba(239,68,68,.25); }
@@ -272,6 +286,7 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
     .ico-indigo { background: rgba(99,102,241,.1); color: #818cf8; }
     .ico-purple { background: rgba(168,85,247,.1); color: #c084fc; }
     .ico-cyan   { background: rgba(6,182,212,.1);  color: #22d3ee; }
+    .ico-amber  { background: rgba(245,158,11,.1); color: #fbbf24; }
 
     /* ── HERO BG ── */
     .card-bg-hero {
@@ -328,6 +343,7 @@ export class AdminHubComponent implements OnInit {
   protected readonly Zap = Zap;
   protected readonly ChevronRight = ChevronRight;
   protected readonly Database = Database;
+  protected readonly ClipboardList = ClipboardList;
 
   readonly stats = signal<AdminAlertSummary | null>(null);
 

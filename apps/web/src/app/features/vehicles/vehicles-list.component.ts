@@ -108,6 +108,9 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
                       }
                     </span>
                   }
+                  @if (instBadge(v); as b) {
+                    <span class="v-inst" [class]="'v-inst--' + b.cls">{{ b.label }}</span>
+                  }
                 </div>
                 <div class="v-card-bottom">
                   <div class="v-tracker-info">
@@ -408,6 +411,11 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
     }
     .v-live-pill--stopped .v-live-dot { background: var(--fg-tertiary) }
 
+    /* V1.15 — badge installation (derive IMEI + SIM) */
+    .v-inst { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 9999px; line-height: 1.4 }
+    .v-inst--installed { color: var(--tracky-light); background: rgba(16,224,160,.12); border: 1px solid rgba(16,224,160,.22) }
+    .v-inst--no-sim { color: #f59e0b; background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.22) }
+
     .v-card-bottom { padding-top: 10px; border-top: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between }
     .v-tracker-info { flex: 1; min-width: 0 }
     .v-actions { display: flex; gap: 6px; flex-shrink: 0 }
@@ -514,6 +522,13 @@ export class VehiclesListComponent implements OnInit {
       return { kind: 'idle', speedKmh, cssClass: 'v-live-pill--idle' };
     }
     return { kind: 'stopped', speedKmh, cssClass: 'v-live-pill--stopped' };
+  }
+
+  /** V1.15 — badge installation derive : tracker + IMEI + SIM => Installé. */
+  protected instBadge(v: VehicleDetailDto): { cls: string; label: string } | null {
+    if (!v.tracker?.imei) return null;
+    if (v.tracker.simPhoneNumber) return { cls: 'installed', label: 'Installé' };
+    return { cls: 'no-sim', label: 'SIM manquante' };
   }
 
   protected openEditVehicle(v: VehicleDetailDto): void {

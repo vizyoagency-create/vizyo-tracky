@@ -30,14 +30,22 @@ export class TrackersService {
       throw new BadRequestException('IMEI doit contenir exactement 15 chiffres');
     }
 
+    // V1.15 — SIM data optionnelle saisie a la pose (E.164 ou vide => null).
+    const sim = dto.simPhoneNumber?.trim() ? dto.simPhoneNumber.trim() : null;
+
     try {
-      return await this.prisma.tracker.create({
+      const created = await this.prisma.tracker.create({
         data: {
           imei: dto.imei,
           model: dto.model ?? 'COBAN_GPS403D',
+          simPhoneNumber: sim,
         },
         include: { vehicle: true },
       });
+      if (sim) {
+        this.eventEmitter.emit('tracker.sim-changed', { trackerId: created.id, imei: created.imei });
+      }
+      return created;
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         // Si le tracker existe deja et est non-assigne, on le reutilise
@@ -47,6 +55,16 @@ export class TrackersService {
           include: { vehicle: true },
         });
         if (existing && !existing.vehicleId) {
+          // Reuse : si une SIM est fournie et differe, on la met a jour.
+          if (sim && existing.simPhoneNumber !== sim) {
+            const updated = await this.prisma.tracker.update({
+              where: { id: existing.id },
+              data: { simPhoneNumber: sim },
+              include: { vehicle: true },
+            });
+            this.eventEmitter.emit('tracker.sim-changed', { trackerId: updated.id, imei: updated.imei });
+            return updated;
+          }
           return existing;
         }
         throw new ConflictException(`IMEI "${dto.imei}" déjà enregistré`);

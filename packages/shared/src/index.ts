@@ -6,6 +6,7 @@ export * from './dto/geofence.dto';
 export * from './dto/trip.dto';
 export * from './dto/driver.dto';
 export * from './dto/snapshot.dto';
+export * from './dto/installation.dto';
 export * from './events/ws-events';
 export * from './permissions';
 export * from './protocol';

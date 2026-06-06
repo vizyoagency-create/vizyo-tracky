@@ -188,6 +188,14 @@ import { relativeTime } from '../../shared/utils/relative-time';
                     </button>
                   }
                 </div>
+                <div class="vd-tracker-extra">
+                  @if (instBadge(); as b) {
+                    <span class="vd-inst" [class]="'vd-inst--' + b.cls">{{ b.label }}</span>
+                  }
+                  @if (tr.simPhoneNumber) {
+                    <span class="vd-sim">SIM {{ tr.simPhoneNumber }}</span>
+                  }
+                </div>
               } @else {
                 @if (canEditVehicle()) {
                   <button type="button" class="vd-tracker-assign-btn" (click)="showTrackerPicker.set(true)">
@@ -1379,6 +1387,11 @@ import { relativeTime } from '../../shared/utils/relative-time';
     }
 
     .vd-tracker-row { display: flex; align-items: center; gap: 4px }
+    .vd-tracker-extra { display: flex; align-items: center; gap: 8px; margin-top: 4px; flex-wrap: wrap }
+    .vd-inst { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 9999px }
+    .vd-inst--installed { color: var(--tracky-light); background: rgba(16,224,160,.12); border: 1px solid rgba(16,224,160,.22) }
+    .vd-inst--no-sim { color: #f59e0b; background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.22) }
+    .vd-sim { font-size: 10px; color: var(--fg-tertiary); font-family: var(--font-mono, monospace) }
     .vd-tracker-detach {
       background: transparent; border: 0; padding: 3px; border-radius: 4px;
       color: var(--fg-tertiary); cursor: pointer; transition: all .15s;
@@ -2016,6 +2029,14 @@ export class VehicleDetailComponent implements OnInit {
 
   protected canEditVehicle(): boolean {
     return this.perms.can('vehicles_edit');
+  }
+
+  /** V1.15 — badge installation derive : tracker + IMEI + SIM => Installé. */
+  protected instBadge(): { cls: string; label: string } | null {
+    const tr = this.vehicle()?.tracker;
+    if (!tr?.imei) return null;
+    if (tr.simPhoneNumber) return { cls: 'installed', label: 'Installé' };
+    return { cls: 'no-sim', label: 'SIM manquante' };
   }
 
   protected async detachTracker(trackerId: string): Promise<void> {

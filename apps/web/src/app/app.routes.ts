@@ -1,6 +1,7 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/auth/auth.guard';
 import { permissionGuard } from './core/guards/permission.guard';
+import { roleGuard } from './core/guards/role.guard';
 import { superAdminGuard } from './core/guards/super-admin.guard';
 
 export const routes: Routes = [
@@ -126,6 +127,15 @@ export const routes: Routes = [
         data: { title: 'Conducteurs' },
       },
       {
+        // Vue client (FLEET_ADMIN) — consultation + reordonnancement du sens d'installation.
+        path: 'installations',
+        pathMatch: 'full',
+        canActivate: [roleGuard('FLEET_ADMIN', 'SUPER_ADMIN')],
+        loadComponent: () =>
+          import('./features/installations/installations-client.component').then((m) => m.InstallationsClientComponent),
+        data: { title: 'Suivi installation' },
+      },
+      {
         path: 'settings',
         loadComponent: () =>
           import('./features/settings/settings.component').then((m) => m.SettingsComponent),
@@ -208,6 +218,21 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/tracker-commands/admin-commands.component').then((m) => m.AdminCommandsComponent),
         data: { title: 'Commandes tracker' },
+      },
+      {
+        path: 'admin/installations',
+        pathMatch: 'full',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/installations/installations-list.component').then((m) => m.InstallationsListComponent),
+        data: { title: 'Plannings d\'installation' },
+      },
+      {
+        path: 'admin/installations/:id',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/installations/installation-editor.component').then((m) => m.InstallationEditorComponent),
+        data: { title: 'Planning d\'installation' },
       },
     ],
   },

@@ -28,7 +28,7 @@ export interface UpdateTrackerPayload {
 export class TrackersApiService {
   private readonly http = inject(HttpClient);
 
-  create(data: { imei: string; model?: string }): Observable<TrackerDetail> {
+  create(data: { imei: string; model?: string; simPhoneNumber?: string }): Observable<TrackerDetail> {
     return this.http.post<TrackerDetail>('/api/trackers', data);
   }
 

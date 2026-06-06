@@ -20,6 +20,8 @@ export interface VehicleDetailDto {
     lastKnownIgnition: boolean | null;
     /** V1.7 — fil ACC connecte (true) ou ignition inferee depuis vitesse (false). */
     accConnected: boolean;
+    /** V1.15 — n° SIM data (E.164). Avec l'IMEI, determine le statut « Installé ». */
+    simPhoneNumber?: string | null;
   } | null;
   /** Phase 2 — Conducteur courant (defaut snape sur prochains trajets). null = aucun. */
   currentDriver?: DriverSummaryDto | null;

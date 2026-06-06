@@ -12,6 +12,7 @@ import {
 import * as maplibregl from 'maplibre-gl';
 import type { Map as MlMap, Marker as MlMarker } from 'maplibre-gl';
 import { MapService } from '../../../core/services/map.service';
+import { routeAnimationState, type RouteSegment } from '../../utils/route-animation';
 
 /**
  * Mini-carte 3D de la France placee sous la card de login : carte raster
@@ -487,7 +488,7 @@ export class AuthMapAnimationComponent implements AfterViewInit, OnDestroy {
   private startAnimationLoop(): void {
     const start = performance.now();
 
-    const segments = ROUTE_ORDER.slice(0, -1).map((from, i) => {
+    const segments: RouteSegment[] = ROUTE_ORDER.slice(0, -1).map((from, i) => {
       const a = CITIES.find((c) => c.key === from)!;
       const b = CITIES.find((c) => c.key === ROUTE_ORDER[i + 1]!)!;
       return { a, b };
@@ -496,27 +497,17 @@ export class AuthMapAnimationComponent implements AfterViewInit, OnDestroy {
     const tick = (now: number) => {
       if (this.destroyed || !this.map || !this.vehicleMarker || !this.vehicleEl) return;
 
-      const t = ((now - start) % LOOP_MS) / LOOP_MS;
-      const segLen = 1 / segments.length;
-      const segIdx = Math.min(segments.length - 1, Math.floor(t / segLen));
-      const localT = (t - segIdx * segLen) / segLen;
-      // Easing : in-out cubic pour decoller doucement et freiner pres
-      // de chaque ville (au lieu d'une vitesse constante saccadee).
-      const eased = localT < 0.5
-        ? 4 * localT * localT * localT
-        : 1 - Math.pow(-2 * localT + 2, 3) / 2;
-      const { a, b } = segments[segIdx]!;
-      const lng = a.lng + (b.lng - a.lng) * eased;
-      const lat = a.lat + (b.lat - a.lat) * eased;
-      this.vehicleMarker.setLngLat([lng, lat]);
-
-      // Flip horizontal selon la direction du segment : le SVG par defaut
-      // pointe vers l'est (droite), donc on inverse pour les segments qui
-      // vont vers l'ouest (Marseille -> Bordeaux et Bordeaux -> Nantes).
-      // Une transition CSS sur .auth-vehicle__inner anime le retournement
-      // proprement.
-      const facingRight = b.lng >= a.lng;
-      this.vehicleEl.style.transform = facingRight ? 'scaleX(1)' : 'scaleX(-1)';
+      // `phase` peut etre negative si le timestamp rAF `now` precede le `start`
+      // capture synchrones (clock skew / precision rAF clampee, surtout 1ere
+      // frame ou retour de background). routeAnimationState wrappe dans [0,1) et
+      // clampe l'index sur les deux bornes -> plus aucune frame ne peut crasher.
+      const state = routeAnimationState(segments, (now - start) / LOOP_MS);
+      if (state) {
+        this.vehicleMarker.setLngLat([state.lng, state.lat]);
+        // Flip horizontal selon la direction du segment : le SVG par defaut
+        // pointe vers l'est (droite). Transition CSS sur .auth-vehicle__inner.
+        this.vehicleEl.style.transform = state.facingRight ? 'scaleX(1)' : 'scaleX(-1)';
+      }
 
       const elapsed = (now - start) / 1000;
       const bearing = -6 + Math.sin(elapsed / 18) * 4;

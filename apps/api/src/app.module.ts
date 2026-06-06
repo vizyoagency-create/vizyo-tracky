@@ -14,6 +14,7 @@ import { DriversModule } from './drivers/drivers.module';
 import { EngineControlModule } from './engine-control/engine-control.module';
 import { FleetsModule } from './fleets/fleets.module';
 import { GeofencesModule } from './geofences/geofences.module';
+import { InstallationsModule } from './installations/installations.module';
 import { InternalModule } from './internal/internal.module';
 import { TripsModule } from './trips/trips.module';
 import { PositionsModule } from './positions/positions.module';
@@ -103,6 +104,7 @@ import { VehiclesModule } from './vehicles/vehicles.module';
     VehicleGroupsModule,
     PermissionsModule,
     VehicleSchedulesModule,
+    InstallationsModule,
     InternalModule,
     LeadsModule,
     UsersModule,

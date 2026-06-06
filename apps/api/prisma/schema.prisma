@@ -123,6 +123,33 @@ enum CommandStatus {
   REJECTED_SPEED
 }
 
+// V1.15 — Plannings d'installation de boitiers GPS.
+// Statut du plan : DRAFT (operateur seul) -> PUBLISHED (visible client) ->
+// IN_PROGRESS (au moins une pose) -> COMPLETED (tout pose). CANCELLED = annule
+// (re-masque cote client). Cf. InstallationsService.recomputePlanStatus.
+enum InstallationPlanStatus {
+  DRAFT
+  PUBLISHED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum InstallationTaskStatus {
+  PENDING
+  DONE
+  SKIPPED
+}
+
+// Energie du vehicule a equiper. AUTRE = fallback (valeur source non mappee).
+enum InstallationEnergy {
+  DIESEL
+  ESSENCE
+  ELECTRIQUE
+  HYBRIDE
+  AUTRE
+}
+
 model Fleet {
   id        String   @id @default(uuid()) @db.Uuid
   name      String
@@ -154,6 +181,7 @@ model Fleet {
   drivers       Driver[]
   surveillanceProfiles SurveillanceProfile[]
   surveillanceEvents   SurveillanceEvent[]
+  installationPlans    InstallationPlan[]
 
   @@map("fleets")
 }
@@ -303,6 +331,7 @@ model Vehicle {
   userAccess UserVehicleAccess[]
   surveillanceProfile SurveillanceProfile?
   surveillanceEvents  SurveillanceEvent[]
+  installationTasks   InstallationTask[] @relation("InstallationTaskVehicle")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -370,6 +399,7 @@ model Tracker {
   commands        EngineControlCommand[]
   trackerCommands TrackerCommand[]
   alerts          Alert[]
+  installationTasks InstallationTask[] @relation("InstallationTaskTracker")
   createdAt  DateTime               @default(now())
   updatedAt  DateTime               @updatedAt
 
@@ -1005,4 +1035,67 @@ model ScheduleHistory {
   @@index([scheduleId, occurredAt(sort: Desc)])
   @@index([vehicleId, occurredAt(sort: Desc)])
   @@map("schedule_history")
+}
+
+/// V1.15 — Planning d'installation de boitiers GPS pour une flotte cliente.
+/// Cree/edite par le SUPER_ADMIN (operateur). Consultable par le FLEET_ADMIN
+/// de la flotte une fois PUBLISHED (cf. InstallationsService.planWhereForRead).
+/// Les themes de journee sont stockes en JSON `dayThemes` (cle = date ISO
+/// "YYYY-MM-DD", valeur = libelle) pour eviter une 3eme table.
+model InstallationPlan {
+  id            String                 @id @default(uuid()) @db.Uuid
+  fleetId       String                 @db.Uuid
+  fleet         Fleet                  @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  clientName    String
+  clientAddress String?
+  description   String?
+  startDate     DateTime?              @db.Date
+  endDate       DateTime?              @db.Date
+  status        InstallationPlanStatus @default(DRAFT)
+  // { "2026-06-08": "Vieux diesels (coupure simple)", ... }
+  dayThemes     Json?
+  tasks         InstallationTask[]
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  @@index([fleetId])
+  @@index([fleetId, status])
+  @@map("installation_plans")
+}
+
+/// V1.15 — Une ligne = un vehicule a equiper. `orderIndex` (modifiable par le
+/// client) + `scheduledDate` portent le "sens d'installation". A la pose
+/// (completeTask), on capture imei/simNumber/notes puis on provisionne en
+/// transaction le Vehicle + Tracker reels dans la flotte (vehicleId/trackerId).
+/// La FK etant portee par la tache, le `onDelete: SetNull` garantit que
+/// supprimer le plan/la tache n'efface jamais le vehicule/tracker operationnel.
+model InstallationTask {
+  id                    String                 @id @default(uuid()) @db.Uuid
+  planId                String                 @db.Uuid
+  plan                  InstallationPlan       @relation(fields: [planId], references: [id], onDelete: Cascade)
+  orderIndex            Int
+  scheduledDate         DateTime?              @db.Date
+  plate                 String
+  brand                 String?
+  model                 String?
+  energy                InstallationEnergy?
+  firstRegistrationDate DateTime?              @db.Date
+  cutoffProcedure       String?                @db.Text
+  status                InstallationTaskStatus @default(PENDING)
+  installedAt           DateTime?
+  imei                  String?
+  simNumber             String?
+  fieldNotes            String?                @db.Text
+  vehicleId             String?                @db.Uuid
+  vehicle               Vehicle?               @relation("InstallationTaskVehicle", fields: [vehicleId], references: [id], onDelete: SetNull)
+  trackerId             String?                @db.Uuid
+  tracker               Tracker?               @relation("InstallationTaskTracker", fields: [trackerId], references: [id], onDelete: SetNull)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  @@index([planId, orderIndex])
+  @@index([planId, scheduledDate])
+  @@index([vehicleId])
+  @@index([trackerId])
+  @@map("installation_tasks")
 }
