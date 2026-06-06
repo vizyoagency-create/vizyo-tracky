@@ -1,8 +1,9 @@
-import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import twilio from 'twilio';
 import type { Twilio } from 'twilio';
 import type { Env } from '../config/env.validation';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -23,7 +24,7 @@ export interface SendSmsResult {
 }
 
 @Injectable()
-export class SmsGatewayService {
+export class SmsGatewayService implements OnModuleInit {
   private readonly logger = new Logger(SmsGatewayService.name);
 
   // Provider actif : vizyo-texto (passerelle SMS maison) > twilio (legacy/fallback) > noop.
@@ -39,6 +40,7 @@ export class SmsGatewayService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly errorLogger: ErrorLogger,
     @Optional() @Inject(ConfigService) private readonly config?: ConfigService<Env, true>,
   ) {
     this.textoUrl = (this.config?.get('VIZYO_TEXTO_URL', { infer: true }) ?? '').replace(/\/+$/, '');
@@ -60,6 +62,18 @@ export class SmsGatewayService {
       this.provider = 'noop';
       this.client = null;
       this.logger.warn('SMS Gateway disabled (ni VIZYO_TEXTO_* ni TWILIO_* configures) — mode no-op');
+    }
+  }
+
+  // A8 — Alerte persistante si SMS en mode noop en production.
+  async onModuleInit(): Promise<void> {
+    if (this.provider === 'noop' && process.env['NODE_ENV'] === 'production') {
+      this.errorLogger.record(
+        'SMS Gateway en mode noop — ni VIZYO_TEXTO ni TWILIO configures',
+        'sms-gateway',
+        { NODE_ENV: process.env['NODE_ENV'] },
+        'CRITICAL',
+      ).catch((e) => this.logger.error('ErrorLog persist failed', e));
     }
   }
 
@@ -123,7 +137,7 @@ export class SmsGatewayService {
     // vizyo-texto : ping le /health du relay (cout = 1 GET, pas de SMS).
     if (this.provider === 'vizyo-texto') {
       try {
-        const res = await fetch(`${this.textoUrl}/health`);
+        const res = await fetch(`${this.textoUrl}/health`, { signal: AbortSignal.timeout(5_000) });
         return {
           enabled: true,
           reachable: res.ok,
@@ -270,6 +284,7 @@ export class SmsGatewayService {
     context?: { imei?: string; provisioningId?: string; [k: string]: unknown },
   ): Promise<SendSmsResult> {
     try {
+      // B1 — timeout 10s pour ne pas rester pendu si le relay hang.
       const res = await fetch(`${this.textoUrl}/v1/texto/send`, {
         method: 'POST',
         headers: {
@@ -277,8 +292,20 @@ export class SmsGatewayService {
           Authorization: `Bearer ${this.textoApiKey}`,
         },
         body: JSON.stringify({ to, body, context }),
+        signal: AbortSignal.timeout(10_000),
       });
-      const data = (await res.json().catch(() => ({}))) as {
+
+      // A3 — si le JSON est malformé, on log dans ErrorLog (le body vide est traité par B4).
+      let jsonParseOk = true;
+      const data = (await res.json().catch((jsonErr: unknown) => {
+        jsonParseOk = false;
+        this.errorLogger.record(
+          `vizyo-texto response JSON malformé: ${jsonErr instanceof Error ? jsonErr.message : String(jsonErr)}`,
+          'sms-gateway',
+          { url: `${this.textoUrl}/v1/texto/send`, httpStatus: res.status, toNumber: to, imei: context?.imei },
+        ).catch((e) => this.logger.error('ErrorLog persist failed', e));
+        return {};
+      })) as {
         id?: string;
         status?: string;
         providerId?: string;
@@ -286,6 +313,7 @@ export class SmsGatewayService {
         message?: string;
       };
 
+      // A2 — HTTP non-2xx : log dans ErrorLog.
       if (!res.ok) {
         const errorMessage = data.message ?? data.error ?? `HTTP ${res.status}`;
         await this.prisma.smsLog.create({
@@ -302,6 +330,36 @@ export class SmsGatewayService {
           },
         });
         this.logger.error(`SMS (vizyo-texto) echec vers ${to}: ${errorMessage}`);
+        this.errorLogger.record(
+          errorMessage,
+          'sms-gateway',
+          { imei: context?.imei, toNumber: to, httpStatus: res.status, provider: 'vizyo-texto' },
+        ).catch((e) => this.logger.error('ErrorLog persist failed', e));
+        return { ok: false, error: errorMessage };
+      }
+
+      // B4 — 200 mais body vide/malformé → traiter comme échec.
+      if (!jsonParseOk || Object.keys(data).length === 0) {
+        const errorMessage = 'Response body vide ou malformé';
+        await this.prisma.smsLog.create({
+          data: {
+            direction: 'OUT',
+            fromNumber: 'vizyo-texto',
+            toNumber: to,
+            body,
+            status: 'failed',
+            errorMessage,
+            imei: context?.imei,
+            provisioningId: context?.provisioningId,
+            context: context as object,
+          },
+        });
+        this.logger.error(`SMS (vizyo-texto) echec vers ${to}: ${errorMessage}`);
+        this.errorLogger.record(
+          errorMessage,
+          'sms-gateway',
+          { imei: context?.imei, toNumber: to, httpStatus: res.status, provider: 'vizyo-texto' },
+        ).catch((e) => this.logger.error('ErrorLog persist failed', e));
         return { ok: false, error: errorMessage };
       }
 
@@ -322,6 +380,7 @@ export class SmsGatewayService {
       });
       return { ok: status !== 'failed', twilioSid: providerId };
     } catch (err) {
+      // A1 — erreur réseau / timeout → log dans ErrorLog.
       const errorMessage = err instanceof Error ? err.message : String(err);
       await this.prisma.smsLog.create({
         data: {
@@ -337,6 +396,11 @@ export class SmsGatewayService {
         },
       });
       this.logger.error(`SMS (vizyo-texto) erreur vers ${to}: ${errorMessage}`);
+      this.errorLogger.record(
+        err instanceof Error ? err : new Error(errorMessage),
+        'sms-gateway',
+        { imei: context?.imei, toNumber: to, provider: 'vizyo-texto' },
+      ).catch((e) => this.logger.error('ErrorLog persist failed', e));
       return { ok: false, error: errorMessage };
     }
   }
