@@ -2,6 +2,7 @@ import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
 import type { Env } from '../config/env.validation';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface AllowlistEntryDto {
@@ -43,6 +44,7 @@ export class AllowlistService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService<Env, true>,
+    private readonly errorLogger: ErrorLogger,
   ) {
     this.baseUrl = (this.config.get('VIZYO_TEXTO_URL', { infer: true }) ?? '').replace(/\/+$/, '');
     this.apiKey = this.config.get('VIZYO_TEXTO_API_KEY', { infer: true }) ?? '';
@@ -72,6 +74,12 @@ export class AllowlistService {
       } while (this.syncPending);
     } catch (err) {
       this.logger.warn(`auto-sync allowlist echoue: ${err instanceof Error ? err.message : err}`);
+      // A6 — persiste l'echec dans ErrorLog pour visibilite.
+      this.errorLogger.record(
+        err instanceof Error ? err : new Error(String(err)),
+        'sms-allowlist',
+        { trigger: 'auto-sync' },
+      ).catch((e) => this.logger.error('ErrorLog persist failed', e));
     } finally {
       this.syncing = false;
     }
@@ -85,6 +93,7 @@ export class AllowlistService {
     }
     let res: Response;
     try {
+      // B3 — timeout 10s pour ne pas rester pendu si le relay hang.
       res = await fetch(`${this.baseUrl}${path}`, {
         ...init,
         headers: {
@@ -92,15 +101,21 @@ export class AllowlistService {
           Authorization: `Bearer ${this.apiKey}`,
           ...(init?.headers ?? {}),
         },
+        signal: AbortSignal.timeout(10_000),
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.error(`vizyo-texto injoignable (${path}): ${msg}`);
       throw new ServiceUnavailableException(`vizyo-texto injoignable : ${msg}`);
     }
-    const data = (await res.json().catch(() => ({}))) as T & { message?: string };
+    // B5 — si le JSON est malformé, throw au lieu de retourner un objet vide corrompu.
+    let jsonParseOk = true;
+    const data = (await res.json().catch(() => { jsonParseOk = false; return {}; })) as T & { message?: string };
     if (!res.ok) {
       throw new ServiceUnavailableException(data.message ?? `vizyo-texto HTTP ${res.status}`);
+    }
+    if (!jsonParseOk || Object.keys(data).length === 0) {
+      throw new ServiceUnavailableException('vizyo-texto: response body vide ou malformé');
     }
     return data;
   }

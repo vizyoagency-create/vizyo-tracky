@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { TrackerProvisioningStatus, UserRole } from '@prisma/client';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SmsGatewayService } from './sms-gateway.service';
 
@@ -78,6 +79,7 @@ export class TrackerProvisioningService {
     private readonly prisma: PrismaService,
     private readonly sms: SmsGatewayService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly errorLogger: ErrorLogger,
   ) {}
 
   /** Build the 9 Coban SMS payloads from the provisioning params. */
@@ -157,6 +159,13 @@ export class TrackerProvisioningService {
       this.logger.error(
         `Provisioning ${provisioning.id} crashed during dispatch: ${err instanceof Error ? err.message : err}`,
       );
+      // A7 — persiste le crash dans ErrorLog (CRITICAL) pour visibilite.
+      this.errorLogger.record(
+        err instanceof Error ? err : new Error(String(err)),
+        'sms-provisioning',
+        { provisioningId: provisioning.id, imei: params.imei },
+        'CRITICAL',
+      ).catch((e) => this.logger.error('ErrorLog persist failed', e));
     });
 
     return { id: provisioning.id };
