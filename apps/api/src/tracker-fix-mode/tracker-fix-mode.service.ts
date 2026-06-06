@@ -48,6 +48,10 @@ const FLAPPING_MAX_CHANGES = 2;
 const COOLDOWN_MS = 5 * 60 * 1000; // 5 min minimum entre deux commandes
 const HARD_CAP_MIN_S = 20;
 const HARD_CAP_S = 300;
+// V1.15 — Plancher d'auto-alignement. Quand un boitier emet plus vite que le
+// minimum hardware (observe en prod : 2s, 10s), on accepte quand meme son
+// intervalle reel pour le sortir de la boucle FAILING (cf reconcile()).
+const AUTO_ALIGN_FLOOR_S = 1;
 
 export type AdaptiveTrackerState = 'MOVING' | 'IDLE_ENGINE_ON' | 'STOPPED';
 
@@ -238,19 +242,23 @@ export class TrackerFixModeService {
       };
     }
 
-    const nextFailureCount = tracker.fixCommandFailureCount + 1;
+    // V1.15 — Compteur d'echecs borne au seuil FAILING. Une fois le boitier marque
+    // FAILING, requestChange n'envoie plus de commandes : continuer d'incrementer a
+    // chaque trame ne ferait que gonfler un compteur sans signification (observe en
+    // prod : 316). On plafonne donc a FAILING_THRESHOLD.
+    const nextFailureCount = Math.min(tracker.fixCommandFailureCount + 1, FAILING_THRESHOLD);
     const nextFailing = nextFailureCount >= FAILING_THRESHOLD;
 
-    // V1.14 — Auto-alignement : si le boitier vient de passer FAILING (seuil atteint),
-    // on aligne desired sur l'intervalle observe pour accepter le comportement reel
-    // du firmware. Cela evite la boucle infinie clear→re-fail quand le boitier
-    // ignore systematiquement les commandes fix interval.
+    // V1.15 — Auto-alignement : quand le boitier ignore durablement les commandes
+    // (FAILING), on aligne `desired` sur l'intervalle reellement observe pour sortir
+    // de la boucle clear→re-fail. On accepte desormais aussi les intervalles SOUS le
+    // minimum hardware (boitiers qui emettent plus vite que demande, ex. 2s/10s) :
+    // sans ca ils restaient FAILING a vie, incapables de converger (reel != desired)
+    // comme de s'aligner (l'ancien plancher etait HARD_CAP_MIN_S = 20s).
     const autoAlignDesiredS =
-      nextFailing && !tracker.fixCommandFailureCount // transition 0→FAILING (premiere fois)
-        ? null // premiere fois, on laisse le systeme tenter
-        : nextFailing && observedS >= HARD_CAP_MIN_S && observedS <= HARD_CAP_S
-          ? observedS // boitier recidiviste → on accepte son intervalle
-          : null;
+      nextFailing && observedS >= AUTO_ALIGN_FLOOR_S && observedS <= HARD_CAP_S
+        ? observedS
+        : null;
 
     return {
       nextCurrentFixIntervalS: observedS,

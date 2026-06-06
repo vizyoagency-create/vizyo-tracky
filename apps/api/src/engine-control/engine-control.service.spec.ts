@@ -12,6 +12,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SocketRegistryService } from '../socket-registry/socket-registry.service';
 import { AckWaiterService } from '../tracker-commands/ack-waiter.service';
+import { SmsGatewayService } from '../sms/sms-gateway.service';
 import { EngineControlService } from './engine-control.service';
 
 const TRACKER_ID = '00000000-0000-0000-0000-000000000010';
@@ -90,6 +91,7 @@ describe('EngineControlService', () => {
   let registry: { get: jest.Mock; send: jest.Mock };
   let ackWaiter: { waitForAck: jest.Mock; cancelAll: jest.Mock };
   let gateway: { emitEngineCommandUpdate: jest.Mock };
+  let errorLogger: { record: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -121,6 +123,8 @@ describe('EngineControlService', () => {
       emitEngineCommandUpdate: jest.fn(),
     };
 
+    errorLogger = { record: jest.fn().mockResolvedValue('error-id') };
+
     const module = await Test.createTestingModule({
       providers: [
         EngineControlService,
@@ -129,7 +133,11 @@ describe('EngineControlService', () => {
         { provide: CobanWireLogger, useValue: { out: jest.fn(), in: jest.fn(), ackMatch: jest.fn(), ackTimeout: jest.fn() } },
         { provide: AckWaiterService, useValue: ackWaiter },
         { provide: RealtimeGateway, useValue: gateway },
-        { provide: ErrorLogger, useValue: { record: jest.fn().mockResolvedValue('error-id') } },
+        { provide: ErrorLogger, useValue: errorLogger },
+        // Pré-existant : EngineControlService injecte SmsGatewayService (fallback SMS
+        // V1.5 sprint-i) mais le provider manquait → toute la suite ne compilait pas.
+        // isEnabled=false : trySmsFallback reste un no-op, on garde le chemin offline→FAILED.
+        { provide: SmsGatewayService, useValue: { isEnabled: jest.fn().mockReturnValue(false), send: jest.fn() } },
       ],
     }).compile();
 
@@ -340,8 +348,11 @@ describe('EngineControlService', () => {
     expect(prisma.position.findFirst).not.toHaveBeenCalled();
   });
 
-  // 14. ACK timeout → command set to FAILED
-  it('should set command to FAILED when ACK times out', async () => {
+  // 14. Pas d'écho ACK sur le fil → la commande RESTE SENT (le Coban exécute les
+  // commandes moteur silencieusement, cf docs/03 §3.7.2). Un timeout d'attente
+  // d'écho ne doit ni passer la commande FAILED ni générer une fausse erreur dans
+  // le centre d'alertes (cause des Erreurs #2/#3 du rapport).
+  it('should keep command SENT (not FAILED) and log no error when no wire ACK arrives', async () => {
     prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
     prisma.position.findFirst.mockResolvedValue(recentPosition(0));
     registry.send.mockReturnValue(true);
@@ -349,16 +360,17 @@ describe('EngineControlService', () => {
 
     await service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin);
 
-    // Wait for the background ACK promise to settle
+    // Laisser le .catch background (fire-and-forget) se résoudre.
     await new Promise((r) => setTimeout(r, 10));
 
-    expect(prisma.engineControlCommand.update).toHaveBeenCalledWith({
-      where: { id: expect.any(String) },
-      data: expect.objectContaining({
-        status: CommandStatus.FAILED,
-        lastError: expect.stringContaining('ACK timeout'),
+    // La commande ne doit jamais passer FAILED sur un simple timeout d'écho.
+    expect(prisma.engineControlCommand.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: CommandStatus.FAILED }),
       }),
-    });
+    );
+    // Aucune fausse erreur ne doit alimenter le centre d'alertes.
+    expect(errorLogger.record).not.toHaveBeenCalled();
   });
 
   // 15. WS event emitted on REJECTED_SPEED

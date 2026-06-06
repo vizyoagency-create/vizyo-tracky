@@ -13,6 +13,7 @@ import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Request } from 'express';
 import type { Env } from '../config/env.validation';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { SmsGatewayService } from './sms-gateway.service';
 
 /**
@@ -36,6 +37,7 @@ export class SmsWebhookController {
   constructor(
     private readonly sms: SmsGatewayService,
     private readonly config: ConfigService<Env, true>,
+    private readonly errorLogger: ErrorLogger,
   ) {}
 
   @Post('webhook')
@@ -59,11 +61,23 @@ export class SmsWebhookController {
     if (secret) {
       if (!this.verifySignature(req.rawBody, signature, timestamp, secret)) {
         this.logger.warn('Webhook vizyo-texto : signature invalide, rejet');
+        // A4 — persiste le rejet dans ErrorLog pour visibilite.
+        this.errorLogger.record(
+          'Webhook vizyo-texto: signature HMAC invalide',
+          'sms-webhook',
+          { from: body?.from, timestamp, bodyPreview: body?.body?.slice(0, 80) },
+        ).catch((e) => this.logger.error('ErrorLog persist failed', e));
         return { ok: false };
       }
     }
 
     if (!body?.from || !body?.body) {
+      // A5 — body incomplet : persiste le rejet dans ErrorLog.
+      this.errorLogger.record(
+        'Webhook vizyo-texto: body incomplet (from ou body manquant)',
+        'sms-webhook',
+        { bodyKeys: Object.keys(body ?? {}) },
+      ).catch((e) => this.logger.error('ErrorLog persist failed', e));
       return { ok: false };
     }
 
