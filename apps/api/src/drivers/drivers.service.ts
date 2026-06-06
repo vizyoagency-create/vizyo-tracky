@@ -31,7 +31,12 @@ export class DriversService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async list(requestedBy: RequestedBy, includeArchived = false): Promise<Driver[]> {
+  async list(requestedBy: RequestedBy, includeArchived = false) {
+    // V1.15 — Inclus les compteurs (currentVehicles + trips) pour la liste
+    // /drivers : utile pour les badges contextuels (X vehicules · Y trajets)
+    // sans round-trip supplementaire. Prisma `_count` est une COUNT subquery
+    // peu couteuse avec les index existants sur Vehicle.currentDriverId et
+    // Trip.driverId.
     return this.prisma.driver.findMany({
       where: {
         ...(requestedBy.role !== UserRole.SUPER_ADMIN
@@ -39,6 +44,7 @@ export class DriversService {
           : {}),
         ...(includeArchived ? {} : { isActive: true }),
       },
+      include: { _count: { select: { currentVehicles: true, trips: true } } },
       orderBy: [{ isActive: 'desc' }, { lastName: 'asc' }, { firstName: 'asc' }],
     });
   }

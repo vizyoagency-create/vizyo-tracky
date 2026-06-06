@@ -27,6 +27,7 @@ import { PermissionsService } from '../../core/services/permissions.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { relativeTime } from '../../shared/utils/relative-time';
+import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fleet-badge.component';
 const ALERT_TYPES: { value: string; label: string; severity: string }[] = [
   { value: '*', label: 'Tous les types', severity: '' },
   { value: 'SOS', label: 'SOS', severity: 'critical' },
@@ -82,7 +83,7 @@ const EMPTY_FORM: RuleForm = {
   selector: 'app-alerts',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [LucideAngularModule, RouterLink, FormsModule],
+  imports: [LucideAngularModule, RouterLink, FormsModule, SaFleetBadgeComponent],
   template: `
     @if (isBaanoolMode()) {
       <!-- V1.12 — Mode Baanool : "Centre de messages" style ultra-simple -->
@@ -127,6 +128,8 @@ const EMPTY_FORM: RuleForm = {
                     @if (alertSpeed(alert)) { <span class="bn-speed">{{ alertSpeed(alert) }} km/h</span> · }
                     <span>{{ formatRelative(alert.createdAt) }}</span>
                   </div>
+                  <!-- V1.15 — Badge fleet (visible SA only). -->
+                  <app-sa-fleet-badge [fleetId]="alert.fleetId" />
                 </div>
                 @if (!isAcknowledged(alert) && perms.can('alerts_acknowledge')) {
                   <button class="bn-row-ack" (click)="onAcknowledge(alert.id)" aria-label="Acquitter">
@@ -246,6 +249,8 @@ const EMPTY_FORM: RuleForm = {
                         {{ alertSpeed(alert) }} km/h
                       </span>
                     }
+                    <!-- V1.15 — Badge fleet (visible SA only). -->
+                    <app-sa-fleet-badge [fleetId]="alert.fleetId" />
                   </div>
                   <span class="tl-time">{{ relativeTime(alert.createdAt) }}</span>
                 </div>

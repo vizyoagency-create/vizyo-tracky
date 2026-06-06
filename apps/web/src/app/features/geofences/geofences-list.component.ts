@@ -8,12 +8,13 @@ import { GeofencesApiService } from '../../core/services/geofences.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
 import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-draw-dialog.component';
+import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fleet-badge.component';
 
 @Component({
   selector: 'app-geofences-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [LucideAngularModule, ConfirmModalComponent, GeofenceDrawDialogComponent],
+  imports: [LucideAngularModule, ConfirmModalComponent, GeofenceDrawDialogComponent, SaFleetBadgeComponent],
   template: `
     <div class="gf-page">
       <div class="gf-blobs"></div>
@@ -76,6 +77,13 @@ import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-dra
                   <span class="gf-status" [class]="g.active ? 'active' : 'inactive'">
                     {{ g.active ? 'Activée' : 'Inactive' }}
                   </span>
+                  <!-- V1.15 — Badge fleet + compteur ciblages (visibles SA). -->
+                  <app-sa-fleet-badge [fleetId]="g.fleetId" />
+                  @if ((g._count?.vehicleTargets ?? 0) > 0) {
+                    <span class="gf-target-chip" title="Véhicules ciblés par cette zone">
+                      {{ g._count?.vehicleTargets }} véhicule{{ (g._count?.vehicleTargets ?? 0) > 1 ? 's' : '' }}
+                    </span>
+                  }
                 </div>
                 <div class="gf-coords">
                   {{ g.centerLat.toFixed(4) }}, {{ g.centerLng.toFixed(4) }}
@@ -208,6 +216,9 @@ import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-dra
     .gf-status { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 6px }
     .gf-status.active { background: rgba(16,224,160,.1); color: var(--tracky-light) }
     .gf-status.inactive { background: rgba(239,68,68,.1); color: #f87171 }
+    /* V1.15 — Chip "X véhicules ciblés" sur card geofence. */
+    .gf-target-chip { font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 9999px;
+      background: var(--bg-tertiary); color: var(--fg-secondary); white-space: nowrap }
     .gf-coords { font-size: 10px; font-family: var(--font-mono, monospace); color: var(--fg-tertiary) }
 
     .gf-actions { position: absolute; top: 10px; right: 10px; display: flex; gap: 4px }
