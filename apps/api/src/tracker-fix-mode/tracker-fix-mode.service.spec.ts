@@ -245,4 +245,40 @@ describe('TrackerFixModeService.reconcile', () => {
     expect(out.nextFailureCount).toBe(0);
     expect(out.nextFailing).toBe(false);
   });
+
+  it('caps the failure counter at FAILING_THRESHOLD — no unbounded growth (V1.15)', () => {
+    const prev = new Date('2026-04-26T12:00:00Z');
+    const next = new Date('2026-04-26T12:06:40Z'); // 400s observé vs desired 30s
+    const out = service.reconcile(
+      {
+        ...baseTracker,
+        desiredFixIntervalS: 30,
+        lastValidFrameAt: prev,
+        lastFixIntervalSyncAt: new Date(prev.getTime() - 10 * 60 * 1000),
+        fixCommandFailureCount: 316, // valeur "legacy" non bornée
+      },
+      { deviceTime: next, speedKmh: 0, ignition: false, lat: 48, lng: 2 },
+    );
+    expect(out.nextFailureCount).toBe(3); // plafonné, pas 317
+    expect(out.nextFailing).toBe(true);
+    expect(out.autoAlignDesiredS).toBeNull(); // 400s hors plage [1, 300]
+  });
+
+  it('auto-aligns desired to a sub-20s observed interval to break permanent FAILING (V1.15)', () => {
+    const prev = new Date('2026-04-26T12:00:00Z');
+    const next = new Date('2026-04-26T12:00:10Z'); // 10s observé, desired 97s (boîtier rapide)
+    const out = service.reconcile(
+      {
+        ...baseTracker,
+        desiredFixIntervalS: 97,
+        currentFixIntervalS: 10,
+        lastValidFrameAt: prev,
+        lastFixIntervalSyncAt: new Date(prev.getTime() - 10 * 60 * 1000),
+        fixCommandFailureCount: 3, // déjà FAILING
+      },
+      { deviceTime: next, speedKmh: 40, ignition: true, lat: 48, lng: 2 },
+    );
+    expect(out.autoAlignDesiredS).toBe(10); // accepte l'intervalle réel < 20s
+    expect(out.nextFailureCount).toBe(3); // plafonné
+  });
 });

@@ -281,22 +281,21 @@ export class EngineControlService {
         }
         this.logger.log({ commandId: command.id, latencyMs }, 'Engine command ACK received');
       })
-      .catch(async (err) => {
-        this.wireLogger.ackTimeout(imei, command.id, ackPattern.source, ENGINE_ACK_TIMEOUT_MS);
-        try {
-          const failed = await this.prisma.engineControlCommand.update({
-            where: { id: command.id },
-            data: { status: CommandStatus.FAILED, lastError: `ACK timeout: ${(err as Error).message}` },
-          });
-          this.emitUpdate(failed, fleetId);
-        } catch (dbErr) {
-          this.logger.error({ commandId: command.id, error: (dbErr as Error).message },
-            'Failed to persist FAILED status — command stuck as SENT');
-        }
-        this.errorLogger.record(
-          `Engine command ACK timeout: ${(err as Error).message}`,
-          'engine-control', { imei, commandId: command.id },
-        ).catch(() => {});
+      .catch(() => {
+        // V1.15 — Le Coban GPS403D EXECUTE les commandes moteur (J/K) silencieusement :
+        // pas d'ACK applicatif fiable sur le fil (cf docs/03 §3.7.2). La seule preuve
+        // d'execution est l'etat ignition de la trame de position suivante. Un timeout
+        // d'attente d'echo n'est donc PAS un echec : la commande a bien ete livree au
+        // boitier (ecriture socket OK). L'ancien code la passait FAILED + enregistrait
+        // une fausse erreur "ACK timeout" dans le centre d'alertes a CHAQUE commande,
+        // meme quand la coupure reussissait (cause des Erreurs #2/#3 du rapport). On la
+        // laisse desormais en SENT (livree) ; le .then ci-dessus capte un eventuel echo
+        // si un firmware en emet un. Amelioration future : confirmation via etat
+        // ignition de la trame suivante (a valider terrain, cf docs/03 §11).
+        this.logger.debug(
+          { commandId: command.id, imei },
+          'Engine command livree — pas d\'ACK applicatif attendu (execution silencieuse Coban)',
+        );
       });
   }
 
