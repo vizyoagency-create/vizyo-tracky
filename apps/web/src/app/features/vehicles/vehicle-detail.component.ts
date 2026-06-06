@@ -5,7 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
   LucideAngularModule, ArrowLeft, Wifi, WifiOff, Gauge, MapPin, Radio,
-  AlertTriangle, AlertCircle, Info, Check, Power, Route, BellOff, Map,
+  AlertTriangle, AlertCircle, Info, Check, Power, Route, BarChart3, BellOff, Map,
   History, Bell, Zap, Clock, ShieldAlert, ShieldCheck, MessageSquare, Pencil, X,
   UserRound, UserPlus, Copy, Play,
 } from 'lucide-angular';
@@ -31,6 +31,7 @@ import { SurveillancePanelComponent } from '../surveillance/surveillance-panel.c
 import { CommandsPanelComponent } from '../tracker-commands/commands-panel.component';
 import { TripReplayComponent } from '../reports/trip-replay.component';
 import { VehicleScheduleComponent } from './vehicle-schedule/vehicle-schedule.component';
+import { VehicleReportsTabComponent } from './vehicle-reports-tab.component';
 import { relativeTime } from '../../shared/utils/relative-time';
 
 @Component({
@@ -39,7 +40,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
   imports: [
     RouterLink, FormsModule, LucideAngularModule, DatePipe, DecimalPipe,
     MiniMapComponent, EngineControlButtonComponent, CommandsPanelComponent,
-    VehicleScheduleComponent, DriverPickerComponent, DriverDrawerComponent, SurveillancePanelComponent, TripReplayComponent,
+    VehicleScheduleComponent, VehicleReportsTabComponent, DriverPickerComponent, DriverDrawerComponent, SurveillancePanelComponent, TripReplayComponent,
   ],
   template: `
     @if (loading()) {
@@ -298,7 +299,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
 
         <!-- Selecteur de plage date : visible uniquement sur Historique et Trajets.
              Default = Aujourd'hui ; permet d'elargir a Hier / 7j / 30j / Tout / Personnalise. -->
-        @if (activeTab() === 'history' || activeTab() === 'trips') {
+        @if (activeTab() === 'history') {
           <div class="vd-date-filter">
             <label class="vd-date-filter-label" for="vd-date-range">Période</label>
             <select
@@ -453,158 +454,12 @@ import { relativeTime } from '../../shared/utils/relative-time';
           />
         }
 
-        @if (activeTab() === 'trips') {
-          @if (vehicleTrips().length > 0) {
-            <div class="vd-trips-list">
-              @for (trip of vehicleTrips(); track trip.id) {
-                <div class="vd-trip-card">
-                  <div class="vd-trip-header">
-                    <div class="vd-trip-period">
-                      <span class="vd-trip-date">{{ trip.startedAt | date:'dd MMM' }}</span>
-                      <span class="vd-trip-times">
-                        {{ trip.startedAt | date:'HH:mm' }}
-                        @if (trip.endedAt) {
-                          → {{ trip.endedAt | date:'HH:mm' }}
-                        } @else {
-                          <span class="vd-trip-live">· en cours</span>
-                        }
-                      </span>
-                    </div>
-                    <div class="vd-trip-distance">
-                      <strong>{{ (trip.distanceMeters / 1000) | number:'1.1-1' }}</strong>
-                      <span class="vd-trip-distance-unit">km</span>
-                    </div>
-                  </div>
-
-                  <!-- Pill conducteur (affichage discret entre header et stats). -->
-                  @if (trip.driver) {
-                    <div class="vd-trip-driver"
-                         [style.--driver-color]="trip.driver.color || '#10E0A0'"
-                         [title]="(trip.driverSource === 'AUTO' ? 'Conducteur snape automatiquement.' : 'Conducteur assigne manuellement.')">
-                      <span class="vd-trip-driver-dot"></span>
-                      <span class="vd-trip-driver-name">
-                        {{ trip.driver.firstName }} {{ trip.driver.lastName }}
-                      </span>
-                      @if (trip.driverSource === 'MANUAL') {
-                        <span class="vd-trip-driver-source">manuel</span>
-                      }
-                    </div>
-                  }
-
-                  <div class="vd-trip-stats">
-                    <div class="vd-trip-stat">
-                      <span class="vd-trip-stat-label">Durée</span>
-                      <span class="vd-trip-stat-value">{{ formatDuration(trip.durationSeconds) }}</span>
-                    </div>
-                    <div class="vd-trip-stat">
-                      <span class="vd-trip-stat-label">V. max</span>
-                      <span class="vd-trip-stat-value vd-trip-stat-value--max">{{ trip.maxSpeed | number:'1.0-0' }} km/h</span>
-                    </div>
-                    <div class="vd-trip-stat">
-                      <span class="vd-trip-stat-label">V. moy.</span>
-                      <span class="vd-trip-stat-value">{{ trip.avgSpeed | number:'1.0-0' }} km/h</span>
-                    </div>
-                  </div>
-
-                  <!-- Actions : replay + assigner conducteur -->
-                  <div class="vd-trip-actions">
-                    @if (trip.polyline || trip.polylineMatched) {
-                      <button type="button" class="vd-trip-action-btn" (click)="openTripReplay(trip)">
-                        <lucide-icon [img]="PlayIcon" [size]="13"></lucide-icon>
-                        Replay
-                      </button>
-                    }
-                    @if (canManageDrivers()) {
-                      <button type="button" class="vd-trip-action-btn" (click)="openTripDriverPicker(trip)">
-                        <lucide-icon [img]="UserPlusIcon" [size]="13"></lucide-icon>
-                        {{ trip.driver ? 'Changer conducteur' : 'Assigner conducteur' }}
-                      </button>
-                    }
-                  </div>
-
-                  <!-- Bloc note : edition inline pour les roles autorises,
-                       lecture seule pour les autres. -->
-                  @if (editingNoteTripId() === trip.id) {
-                    <div class="vd-trip-note vd-trip-note--editing">
-                      <textarea
-                        class="vd-trip-note-input"
-                        [(ngModel)]="editingNoteText"
-                        [maxlength]="500"
-                        placeholder="Ex : Dépose Eric au sport, livraison client X..."
-                        rows="2"
-                        autofocus
-                      ></textarea>
-                      <div class="vd-trip-note-actions">
-                        <span class="vd-trip-note-counter"
-                              [class.vd-trip-note-counter--warn]="editingNoteText.length > 450">
-                          {{ editingNoteText.length }} / 500
-                        </span>
-                        <div class="vd-trip-note-buttons">
-                          <button type="button" class="vd-trip-note-btn"
-                                  (click)="cancelEditNote()"
-                                  [disabled]="savingNote()">
-                            Annuler
-                          </button>
-                          <button type="button" class="vd-trip-note-btn vd-trip-note-btn--primary"
-                                  (click)="saveTripNote(trip)"
-                                  [disabled]="savingNote()">
-                            @if (savingNote()) {
-                              <span class="vd-admin-spinner" style="width:10px;height:10px;border-width:1.5px"></span>
-                            }
-                            Enregistrer
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  } @else if (trip.notes) {
-                    <div class="vd-trip-note">
-                      <div class="vd-trip-note-icon">
-                        <lucide-icon [img]="MessageSquareIcon" [size]="14"></lucide-icon>
-                      </div>
-                      <div class="vd-trip-note-body">
-                        <p class="vd-trip-note-text">{{ trip.notes }}</p>
-                        @if (trip.notesUpdatedBy || trip.notesUpdatedAt) {
-                          <p class="vd-trip-note-meta">
-                            @if (trip.notesUpdatedBy) {
-                              {{ noteAuthorLabel(trip.notesUpdatedBy) }}
-                            }
-                            @if (trip.notesUpdatedAt) {
-                              · {{ relativeTime(trip.notesUpdatedAt) }}
-                            }
-                          </p>
-                        }
-                      </div>
-                      @if (canEditNotes()) {
-                        <button type="button" class="vd-trip-note-edit"
-                                (click)="startEditNote(trip)"
-                                title="Modifier la note">
-                          <lucide-icon [img]="PencilIcon" [size]="13"></lucide-icon>
-                        </button>
-                      }
-                    </div>
-                  } @else if (canEditNotes()) {
-                    <button type="button" class="vd-trip-note-add"
-                            (click)="startEditNote(trip)">
-                      <lucide-icon [img]="MessageSquareIcon" [size]="13"></lucide-icon>
-                      Ajouter une note
-                    </button>
-                  }
-                </div>
-              }
-            </div>
-          } @else {
-            <div class="flex flex-col items-center justify-center h-40 rounded-[--radius-card]
-                        bg-bg-secondary border border-border-subtle text-fg-tertiary gap-2 text-center px-4">
-              <lucide-icon [img]="Route" [size]="48" class="opacity-30"></lucide-icon>
-              <p>{{ dateRange() === 'all' ? 'Aucun trajet enregistré' : 'Aucun trajet sur cette période' }}</p>
-              @if (dateRange() !== 'all') {
-                <button (click)="dateRange.set('all')"
-                        class="text-xs text-tracky-light hover:underline cursor-pointer">
-                  Voir tout
-                </button>
-              }
-            </div>
-          }
+        @if (activeTab() === 'reports') {
+          <app-vehicle-reports-tab
+            [vehicleId]="v.id"
+            [vehiclePlate]="v.plate"
+            [vehicleType]="v.type"
+          />
         }
       </div>
 
@@ -1598,7 +1453,7 @@ export class VehicleDetailComponent implements OnInit {
     const hasTracker = !!this.vehicle()?.tracker;
     const all: { key: string; label: string; icon: any; perm?: string; show?: boolean }[] = [
       { key: 'map', label: 'Carte', icon: Map },
-      { key: 'trips', label: 'Trajets', icon: Route },
+      { key: 'reports', label: 'Rapports', icon: BarChart3 },
       { key: 'history', label: 'Historique', icon: History },
       { key: 'alerts', label: 'Alertes', icon: Bell, perm: 'alerts_view' },
       { key: 'surveillance', label: 'Surveillance', icon: ShieldCheck, perm: 'alerts_acknowledge', show: hasTracker },
