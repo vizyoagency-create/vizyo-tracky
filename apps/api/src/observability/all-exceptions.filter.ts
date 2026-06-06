@@ -49,6 +49,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const user = (req as any).user;
 
     if (status >= 500 || !(exception instanceof HttpException)) {
+      // CRITICAL est reserve aux fautes serveur non maitrisees (exception non geree
+      // -> 500). Un 5xx leve VOLONTAIREMENT (HttpException) est une condition
+      // operationnelle attendue, pas un crash : ex. 503 "tracker hors ligne" sur
+      // arm surveillance / engine-control, ou 503 "vizyo-texto injoignable". On le
+      // logge en ERROR (toujours visible dans le centre d'alertes) sans gonfler le
+      // compteur CRITICAL — sinon le centre d'alertes "crie au loup".
+      const level: 'ERROR' | 'CRITICAL' =
+        exception instanceof HttpException ? 'ERROR' : 'CRITICAL';
       await this.errorLogger.record(
         exception instanceof Error ? exception : new Error(String(exception)),
         'http',
@@ -58,7 +66,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
           userId: user?.id,
           statusCode: status,
         },
-        'CRITICAL',
+        level,
       );
     }
 

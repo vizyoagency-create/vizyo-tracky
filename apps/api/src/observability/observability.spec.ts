@@ -1,4 +1,4 @@
-import { HttpException, HttpStatus, NotFoundException } from '@nestjs/common';
+import { HttpException, HttpStatus, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { AllExceptionsFilter } from './all-exceptions.filter';
@@ -215,6 +215,20 @@ describe('AllExceptionsFilter', () => {
       'CRITICAL',
     );
     expect(mockResponse.status).toHaveBeenCalledWith(500);
+  });
+
+  it('should persist deliberately-thrown 5xx (HttpException) at ERROR, not CRITICAL', async () => {
+    await filter.catch(
+      new ServiceUnavailableException('Tracker hors ligne, commande non envoyée'),
+      createHost(),
+    );
+    expect(errorLoggerMock.record).toHaveBeenCalledWith(
+      expect.any(Error),
+      'http',
+      expect.objectContaining({ statusCode: 503 }),
+      'ERROR',
+    );
+    expect(mockResponse.status).toHaveBeenCalledWith(503);
   });
 
   it('should NOT persist 4xx errors to ErrorLog', async () => {
