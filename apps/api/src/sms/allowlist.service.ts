@@ -114,8 +114,8 @@ export class AllowlistService {
     if (!res.ok) {
       throw new ServiceUnavailableException(data.message ?? `vizyo-texto HTTP ${res.status}`);
     }
-    if (!jsonParseOk || Object.keys(data).length === 0) {
-      throw new ServiceUnavailableException('vizyo-texto: response body vide ou malformé');
+    if (!jsonParseOk) {
+      throw new ServiceUnavailableException('vizyo-texto: response body malformé (JSON invalide)');
     }
     return data;
   }
