@@ -8,6 +8,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { resolveTenantScope } from '../common/tenant-scope';
 import { PrismaService } from '../prisma/prisma.service';
 import { AddVehicleToGroupDto, CreateVehicleGroupDto, RenameVehicleGroupDto } from './dto/vehicle-group.dto';
 
@@ -56,9 +57,10 @@ export class VehicleGroupsController {
   @Get()
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
   async findAll(@Req() req: AuthenticatedRequest) {
-    const where = req.user.role === UserRole.SUPER_ADMIN
-      ? {}
-      : { fleetId: req.user.fleetId ?? undefined };
+    // V1.16 (audit B2) — fail-closed : un non-super sans fleetId ne voit RIEN.
+    const scope = resolveTenantScope(req.user);
+    if (scope.mode === 'DENY') return [];
+    const where = scope.mode === 'FLEET' ? { fleetId: scope.fleetId } : {};
 
     return this.prisma.vehicleGroup.findMany({
       where,

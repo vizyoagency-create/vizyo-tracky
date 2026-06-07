@@ -8,6 +8,7 @@ import {
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Prisma, UserRole } from '@prisma/client';
 import type { Tracker } from '@prisma/client';
+import { resolveTenantScope } from '../common/tenant-scope';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateTrackerDto } from './dto/create-tracker.dto';
 import type { UpdateTrackerDto } from './dto/update-tracker.dto';
@@ -82,8 +83,11 @@ export class TrackersService {
     const limit = Math.min(filters?.limit ?? maxLimit, maxLimit);
     const where: Prisma.TrackerWhereInput = {};
 
-    if (!isSuperAdmin && requestedBy.fleetId) {
-      where.vehicle = { fleetId: requestedBy.fleetId };
+    // V1.16 (audit D9) — fail-closed : non-super sans fleetId => aucun resultat.
+    const scope = resolveTenantScope(requestedBy);
+    if (scope.mode === 'DENY') return [];
+    if (scope.mode === 'FLEET') {
+      where.vehicle = { fleetId: scope.fleetId };
     }
 
     if (filters?.status) {

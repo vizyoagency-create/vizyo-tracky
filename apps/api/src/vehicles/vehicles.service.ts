@@ -9,6 +9,7 @@ import { CommandStatus, EngineAction, Prisma, UserRole } from '@prisma/client';
 import type { Vehicle } from '@prisma/client';
 import type { VehicleSnapshotDto } from '@vizyo/tracky-shared';
 import { InMemoryCacheService } from '../common/cache/in-memory-cache.service';
+import { resolveTenantScope } from '../common/tenant-scope';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateVehicleDto } from './dto/create-vehicle.dto';
 import type { UpdateVehicleDto } from './dto/update-vehicle.dto';
@@ -146,9 +147,10 @@ export class VehiclesService {
     const limit = Math.min(filters?.limit ?? 50, 50);
     const where: Prisma.VehicleWhereInput = {};
 
-    if (requestedBy.role !== UserRole.SUPER_ADMIN) {
-      where.fleetId = requestedBy.fleetId ?? undefined;
-    }
+    // V1.16 (audit A3) — fail-closed : un non-super sans fleetId ne voit RIEN.
+    const scope = resolveTenantScope(requestedBy);
+    if (scope.mode === 'DENY') return [];
+    if (scope.mode === 'FLEET') where.fleetId = scope.fleetId;
 
     // Filtrage par accès véhicules (sous-utilisateurs)
     if (requestedBy.accessibleVehicleIds && requestedBy.accessibleVehicleIds !== 'ALL') {
@@ -271,6 +273,14 @@ export class VehiclesService {
   }> {
     // V1.10 (Sprint 2 perf) — cache 60s pour le scope 'ALL'. A 10+ utilisateurs
     // sur le dashboard, divise le nombre de stats() par DB par ~30 (60 / 2s polls).
+    // V1.16 (audit A3/B1) — fail-closed AVANT le cache : un non-super sans
+    // fleetId ne voit RIEN (jamais "toutes flottes"). Resolu avant kpiCacheKey
+    // pour ne pas lire/ecrire une entree poisonnee sous la cle 'none'.
+    const scope = resolveTenantScope(requestedBy);
+    if (scope.mode === 'DENY') {
+      return { total: 0, moving: 0, idle: 0, criticalAlerts: 0, newThisMonth: 0 };
+    }
+
     const cacheKey = this.kpiCacheKey('stats', requestedBy);
     if (cacheKey) {
       const hit = this.cache.get<{
@@ -280,7 +290,7 @@ export class VehiclesService {
     }
 
     let fleetFilter: Prisma.VehicleWhereInput =
-      requestedBy.role === UserRole.SUPER_ADMIN ? {} : { fleetId: requestedBy.fleetId ?? undefined };
+      scope.mode === 'FLEET' ? { fleetId: scope.fleetId } : {};
 
     if (requestedBy.accessibleVehicleIds && requestedBy.accessibleVehicleIds !== 'ALL') {
       fleetFilter = { ...fleetFilter, id: { in: requestedBy.accessibleVehicleIds } };
@@ -301,8 +311,8 @@ export class VehiclesService {
         JOIN positions p ON p."trackerId" = t."id"
         WHERE p."timestamp" > ${fiveMinAgo}
           AND p."speedKmh" > 5
-          ${requestedBy.role !== UserRole.SUPER_ADMIN && requestedBy.fleetId
-            ? Prisma.sql`AND v."fleetId" = ${requestedBy.fleetId}::uuid`
+          ${scope.mode === 'FLEET'
+            ? Prisma.sql`AND v."fleetId" = ${scope.fleetId}::uuid`
             : Prisma.empty}
           ${requestedBy.accessibleVehicleIds && requestedBy.accessibleVehicleIds !== 'ALL'
             ? Prisma.sql`AND v."id" = ANY(${requestedBy.accessibleVehicleIds}::uuid[])`
@@ -312,8 +322,8 @@ export class VehiclesService {
         where: {
           severity: 'CRITICAL',
           acknowledgedAt: null,
-          ...(requestedBy.role !== UserRole.SUPER_ADMIN && requestedBy.fleetId
-            ? { fleetId: requestedBy.fleetId }
+          ...(scope.mode === 'FLEET'
+            ? { fleetId: scope.fleetId }
             : {}),
           ...(requestedBy.accessibleVehicleIds && requestedBy.accessibleVehicleIds !== 'ALL'
             ? { vehicleId: { in: requestedBy.accessibleVehicleIds } }
@@ -354,6 +364,10 @@ export class VehiclesService {
     // V1.10 (Sprint 2 perf) — cache 15s pour le scope 'ALL'. Le WS broadcast
     // les positions temps reel en parallele, donc 15s de staleness HTTP est
     // imperceptible pour l'utilisateur.
+    // V1.16 (audit A3) — fail-closed avant le cache (cf. stats()).
+    const scope = resolveTenantScope(requestedBy);
+    if (scope.mode === 'DENY') return [];
+
     const cacheKey = this.kpiCacheKey('snapshot', requestedBy);
     if (cacheKey) {
       const hit = this.cache.get<VehicleSnapshotDto[]>(cacheKey);
@@ -362,9 +376,7 @@ export class VehiclesService {
 
     const where: Prisma.VehicleWhereInput = {};
 
-    if (requestedBy.role !== UserRole.SUPER_ADMIN) {
-      where.fleetId = requestedBy.fleetId ?? undefined;
-    }
+    if (scope.mode === 'FLEET') where.fleetId = scope.fleetId;
 
     if (requestedBy.accessibleVehicleIds && requestedBy.accessibleVehicleIds !== 'ALL') {
       where.id = { in: requestedBy.accessibleVehicleIds };
