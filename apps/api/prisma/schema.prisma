@@ -182,6 +182,8 @@ model Fleet {
   surveillanceProfiles SurveillanceProfile[]
   surveillanceEvents   SurveillanceEvent[]
   installationPlans    InstallationPlan[]
+  // V1.16 — SIM allouees a cette flotte (parc WhereverSIM).
+  sims                 Sim[]
 
   @@map("fleets")
 }
@@ -400,6 +402,8 @@ model Tracker {
   trackerCommands TrackerCommand[]
   alerts          Alert[]
   installationTasks InstallationTask[] @relation("InstallationTaskTracker")
+  // V1.16 — SIM data physiquement posee dans ce boitier (1:1).
+  sim             Sim?
   createdAt  DateTime               @default(now())
   updatedAt  DateTime               @updatedAt
 
@@ -1098,4 +1102,61 @@ model InstallationTask {
   @@index([vehicleId])
   @@index([trackerId])
   @@map("installation_tasks")
+}
+
+/// V1.16 — Carte SIM M2M du parc WhereverSIM.
+///
+/// Le `Sim` local est un MIROIR du SIM cote WhereverSIM (source de verite pour
+/// l'inventaire, le statut operateur, la conso data) + une couche Tracky :
+///  - `fleetId`  : allocation a une societe/flotte (pose par le SUPER_ADMIN).
+///  - `trackerId`: assignation physique a un boitier (1:1), posee par le
+///                 FLEET_ADMIN/SUPER_ADMIN. A la pose, `msisdn` est recopie dans
+///                 `Tracker.simPhoneNumber` (fallback SMS + allowlist vizyo-texto)
+///                 et l'IMEI du tracker est ecrit dans `customField1` cote
+///                 WhereverSIM (lien bidirectionnel visible dans leur portail).
+///
+/// Le sync (cron + manuel, cf. SimsSyncService) upsert par `iccid` et n'ecrase
+/// QUE les champs miroir : `fleetId`/`trackerId`/`label`/`notes` sont preserves.
+/// `statusId` = statusid brut WhereverSIM (2=Activated, 12=Suspended, ...).
+/// Timestamps WhereverSIM recus en millisecondes -> DateTime.
+model Sim {
+  id                       String    @id @default(uuid()) @db.Uuid
+  /// ICCID — numero de serie imprime sur les supports plastique (= valeur du code-barres).
+  iccid                    String    @unique
+  msisdn                   String?
+  imsi                     String?
+  /// IMEI du device vu par l'operateur (peut differer du tracker tant que non pose).
+  imei                     String?
+  // ---- Miroir WhereverSIM ----
+  provider                 String    @default("wherever-sim")
+  providerId               Int?
+  statusId                 Int?
+  statusLabel              String?
+  apn                      String?
+  ipAddress                String?
+  networkOperator          String?
+  monthlyDataVolumeBytes   BigInt?
+  monthlyDataLimitBytes    BigInt?
+  prevMonthDataVolumeBytes BigInt?
+  inSessionSince           DateTime?
+  activationAt             DateTime?
+  /// `custom_field_1` cote WhereverSIM ("Device name") — on y inscrit l'IMEI du tracker.
+  customField1             String?
+  // ---- Couche Tracky (preservee au sync) ----
+  label                    String?
+  fleetId                  String?   @db.Uuid
+  fleet                    Fleet?    @relation(fields: [fleetId], references: [id], onDelete: SetNull)
+  trackerId                String?   @unique @db.Uuid
+  tracker                  Tracker?  @relation(fields: [trackerId], references: [id], onDelete: SetNull)
+  notes                    String?   @db.Text
+  // ---- Bookkeeping sync ----
+  externalSyncedAt         DateTime?
+  /// Dernier payload brut WhereverSIM (debug + champs non modelises).
+  rawProvider              Json?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  @@index([fleetId])
+  @@index([statusId])
+  @@map("sims")
 }

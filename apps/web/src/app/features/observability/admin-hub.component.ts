@@ -2,7 +2,7 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
   LucideAngularModule, AlertTriangle, Activity, Terminal, MessageSquare,
-  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList,
+  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { AdminFixModeService, type AdminAlertSummary } from '../../core/services/admin-fix-mode.service';
@@ -137,6 +137,19 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
             <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
           </div>
         </a>
+
+        <!-- ── PARC SIM (wide) ── -->
+        <a routerLink="/admin/sims" class="card card-wide" style="--i:7">
+          <span class="accent accent-teal"></span>
+          <div class="body body-row">
+            <div class="ico ico-teal"><lucide-icon [img]="CreditCard" [size]="20"></lucide-icon></div>
+            <div class="body-text">
+              <h3>Cartes SIM</h3>
+              <p class="desc">Parc SIM M2M WhereverSIM : synchro inventaire, conso data, allocation aux flottes, assignation aux trackers, cycle de vie (activer / suspendre / résilier).</p>
+            </div>
+            <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
+          </div>
+        </a>
       </div>
     </div>
   `,
@@ -222,6 +235,7 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
     .accent-purple { background: linear-gradient(90deg, #a855f7, #c084fc); }
     .accent-cyan   { background: linear-gradient(90deg, #06b6d4, #22d3ee); }
     .accent-amber  { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+    .accent-teal   { background: linear-gradient(90deg, #14b8a6, #2dd4bf); }
 
     /* Hover border color */
     .card-hero:hover  { border-color: rgba(239,68,68,.25); }
@@ -287,6 +301,7 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
     .ico-purple { background: rgba(168,85,247,.1); color: #c084fc; }
     .ico-cyan   { background: rgba(6,182,212,.1);  color: #22d3ee; }
     .ico-amber  { background: rgba(245,158,11,.1); color: #fbbf24; }
+    .ico-teal   { background: rgba(20,184,166,.1); color: #2dd4bf; }
 
     /* ── HERO BG ── */
     .card-bg-hero {
@@ -344,6 +359,7 @@ export class AdminHubComponent implements OnInit {
   protected readonly ChevronRight = ChevronRight;
   protected readonly Database = Database;
   protected readonly ClipboardList = ClipboardList;
+  protected readonly CreditCard = CreditCard;
 
   readonly stats = signal<AdminAlertSummary | null>(null);
 
