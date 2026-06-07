@@ -34,3 +34,7 @@ package-lock.json
 
 # prisma generated
 apps/api/prisma/generated
+
+# Audit sécurité : carte des failles NON corrigées — ne JAMAIS versionner
+# (reconstructible depuis la session d'audit ; backup hors repo).
+docs/review_loop/

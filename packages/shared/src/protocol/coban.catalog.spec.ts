@@ -121,16 +121,29 @@ describe('CobanCommandCatalog', () => {
     expect(tpl.buildPayload(IMEI, {})).toBe('protocol123456 18');
   });
 
-  it('raw: should wrap with TCP prefix if no imei in payload', () => {
+  it('raw: should always wrap on the resolved IMEI (no verbatim)', () => {
     const tpl = findTemplate('raw')!;
     expect(tpl.buildPayload(IMEI, { raw_payload: 'custom_cmd' }))
       .toBe(`**,imei:${IMEI},custom_cmd;`);
   });
 
-  it('raw: should pass through if payload contains imei', () => {
+  // ─── Audit D2/E1 — sanitisation du template `raw` (anti-injection de trame) ───
+  it('raw: buildPayload strips ; / CRLF then re-wraps (defense-in-depth)', () => {
     const tpl = findTemplate('raw')!;
-    const payload = `**,imei:${IMEI},X;`;
-    expect(tpl.buildPayload(IMEI, { raw_payload: payload })).toBe(payload);
+    // Même si un ";" / saut de ligne passe, buildPayload nettoie puis ré-encapsule
+    // sur l'IMEI résolu — pas d'injection de trame, pas d'override imei:.
+    expect(tpl.buildPayload(IMEI, { raw_payload: 'D1;\r\n' })).toBe(`**,imei:${IMEI},D1;`);
+  });
+
+  it('raw: validate rejects imei: override, ; / CRLF, bad chars, empty, too long', () => {
+    const validate = findTemplate('raw')!.params[0]!.validate!;
+    expect(validate('D1')).toBeNull(); // code propre OK
+    expect(validate(`**,imei:${IMEI},J`)).not.toBeNull(); // override imei: (et ":")
+    expect(validate('reset123456;factory123456')).not.toBeNull(); // ";"
+    expect(validate('A\nB')).not.toBeNull(); // saut de ligne
+    expect(validate('X:Y')).not.toBeNull(); // ":" hors charset
+    expect(validate('')).not.toBeNull(); // vide
+    expect(validate('a'.repeat(200))).not.toBeNull(); // trop long
   });
 
   // ─── ACK pattern matching tests ───
