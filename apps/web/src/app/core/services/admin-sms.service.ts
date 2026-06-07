@@ -32,6 +32,16 @@ export interface SmsTestFallbackResult {
   smsResult: { ok: boolean; twilioSid?: string; error?: string };
 }
 
+// V1.15 — Resultat d'un heartbeat "preuve de vie" SMS (cron hebdo + run-now).
+export interface SmsHeartbeatResult {
+  provider: 'vizyo-texto' | 'twilio' | 'noop';
+  recipients: number;
+  sent: number;
+  failed: number;
+  skipped: boolean;
+  results: { to: string; ok: boolean; error?: string }[];
+}
+
 export interface SmsLogDto {
   id: string;
   direction: 'OUT' | 'IN';
@@ -157,6 +167,11 @@ export class AdminSmsService {
       '/api/admin/sms/test-fallback',
       { trackerId, recipientPhone },
     );
+  }
+
+  /** V1.15 — Force un heartbeat "preuve de vie" SMS maintenant (sinon cron hebdo). */
+  runHeartbeat() {
+    return this.http.post<SmsHeartbeatResult>('/api/admin/sms/heartbeat/run-now', {});
   }
 
   startProvisioning(body: {

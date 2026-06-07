@@ -18,7 +18,8 @@
     "test:integration": "jest --config test/jest-integration.json",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "seed:sms-test": "ts-node prisma/seed-sms-test.ts"
   },
   "dependencies": {
     "@nestjs/bullmq": "^11.0.4",
