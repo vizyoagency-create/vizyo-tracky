@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Logger,
+  OnModuleInit,
   Post,
   RawBodyRequest,
   Req,
@@ -31,7 +32,7 @@ import { SmsGatewayService } from './sms-gateway.service';
  * avec Signing Key = CAPCOM6_WEBHOOK_SECRET.
  */
 @Controller('sms')
-export class SmsWebhookController {
+export class SmsWebhookController implements OnModuleInit {
   private readonly logger = new Logger(SmsWebhookController.name);
 
   constructor(
@@ -39,6 +40,31 @@ export class SmsWebhookController {
     private readonly config: ConfigService<Env, true>,
     private readonly errorLogger: ErrorLogger,
   ) {}
+
+  private get isProd(): boolean {
+    return this.config.get('NODE_ENV', { infer: true }) === 'production';
+  }
+
+  /**
+   * V1.16 (audit D4) — au démarrage, si on est en production SANS secret webhook,
+   * loggue un CRITICAL : le webhook /sms/webhook rejettera tous les appels
+   * (fail-closed), pour révéler une mauvaise configuration tôt plutôt que
+   * d'accepter des SMS/ACK entrants non authentifiés.
+   */
+  onModuleInit(): void {
+    if (this.isProd && !this.config.get('VIZYO_TEXTO_WEBHOOK_SECRET', { infer: true })) {
+      this.logger.error(
+        'CRITICAL: VIZYO_TEXTO_WEBHOOK_SECRET non configuré en production — /sms/webhook rejette tous les appels (fail-closed).',
+      );
+      this.errorLogger
+        .record(
+          'VIZYO_TEXTO_WEBHOOK_SECRET manquant en production (webhook SMS fail-closed)',
+          'sms-webhook',
+          { phase: 'boot' },
+        )
+        .catch(() => undefined);
+    }
+  }
 
   @Post('webhook')
   @HttpCode(HttpStatus.OK)
@@ -57,18 +83,29 @@ export class SmsWebhookController {
   ): Promise<{ ok: boolean }> {
     const secret = this.config.get('VIZYO_TEXTO_WEBHOOK_SECRET', { infer: true });
 
-    // Valide la signature si un secret est configure (sinon dev / no-op).
-    if (secret) {
-      if (!this.verifySignature(req.rawBody, signature, timestamp, secret)) {
-        this.logger.warn('Webhook vizyo-texto : signature invalide, rejet');
-        // A4 — persiste le rejet dans ErrorLog pour visibilite.
+    if (!secret) {
+      // V1.16 (audit D4) — fail-closed : sans secret on ne peut PAS authentifier
+      // l'appel. En production on rejette (anti-forge de SMS/ACK entrants). Hors
+      // prod (dev/test) on tolère pour ne pas bloquer le local.
+      if (this.isProd) {
+        this.logger.error('Webhook vizyo-texto : secret absent en production — rejet (fail-closed)');
         this.errorLogger.record(
-          'Webhook vizyo-texto: signature HMAC invalide',
+          'Webhook vizyo-texto: secret absent en production — appel rejeté (fail-closed)',
           'sms-webhook',
-          { from: body?.from, timestamp, bodyPreview: body?.body?.slice(0, 80) },
+          { from: body?.from },
         ).catch((e) => this.logger.error('ErrorLog persist failed', e));
         return { ok: false };
       }
+      this.logger.warn('Webhook vizyo-texto : pas de secret configuré (dev) — signature non vérifiée');
+    } else if (!this.verifySignature(req.rawBody, signature, timestamp, secret)) {
+      this.logger.warn('Webhook vizyo-texto : signature invalide, rejet');
+      // A4 — persiste le rejet dans ErrorLog pour visibilite.
+      this.errorLogger.record(
+        'Webhook vizyo-texto: signature HMAC invalide',
+        'sms-webhook',
+        { from: body?.from, timestamp, bodyPreview: body?.body?.slice(0, 80) },
+      ).catch((e) => this.logger.error('ErrorLog persist failed', e));
+      return { ok: false };
     }
 
     if (!body?.from || !body?.body) {

@@ -49,6 +49,12 @@ function tcpWrap(imei: string, code: string): string {
   return `**,imei:${imei},${code};`;
 }
 
+// V1.16 (audit D2/E1) — bornes de sanitisation du template `raw`.
+const RAW_PAYLOAD_MAX_LEN = 120;
+// Charset autorisé : alphanum + espace + , . * + - . Exclut ":" (donc pas
+// d'override "imei:") et ";" / CR / LF (donc pas d'injection de trame).
+const RAW_PAYLOAD_ALLOWED = /^[A-Za-z0-9 ,.*+\-]+$/;
+
 export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
   // ─── INFO ───
   {
@@ -458,12 +464,31 @@ export const COBAN_COMMAND_CATALOG: CobanCommandTemplate[] = [
     requiresConfirmation: true,
     dangerous: true,
     params: [
-      { name: 'raw_payload', label: 'Payload brut', type: 'string', required: true },
+      {
+        name: 'raw_payload',
+        label: 'Payload brut',
+        type: 'string',
+        required: true,
+        // V1.16 (audit D2/E1) — sanitisation : pas d'override "imei:", pas de
+        // ";"/saut de ligne (injection de trame), charset restreint, longueur cap.
+        validate: (value: unknown) => {
+          if (typeof value !== 'string') return 'raw_payload doit être une chaîne';
+          const v = value.trim();
+          if (v.length === 0) return 'raw_payload vide';
+          if (v.length > RAW_PAYLOAD_MAX_LEN) return `raw_payload trop long (max ${RAW_PAYLOAD_MAX_LEN})`;
+          if (/[;\r\n]/.test(v)) return 'raw_payload ne doit pas contenir ";" ni saut de ligne';
+          if (/imei:/i.test(v)) return 'raw_payload ne peut pas surcharger "imei:" (toujours envoyé au tracker ciblé)';
+          if (!RAW_PAYLOAD_ALLOWED.test(v)) return 'raw_payload contient des caractères non autorisés';
+          return null;
+        },
+      },
       { name: 'ack_pattern', label: 'Pattern ACK (regex)', type: 'string', required: false },
     ],
     buildPayload: (imei, params) => {
-      const raw = params['raw_payload'] as string;
-      if (raw.includes('imei:')) return raw;
+      // V1.16 (audit D2/E1) — TOUJOURS ré-encapsuler sur l'IMEI résolu (jamais de
+      // frame verbatim ni override "imei:"). Defense-in-depth : on re-nettoie même
+      // si `validate` a déjà filtré le param en amont (cf. tracker-commands.service).
+      const raw = String(params['raw_payload'] ?? '').replace(/[;\r\n]/g, '').trim();
       return tcpWrap(imei, raw);
     },
     expectedAckPattern: /.+/,
