@@ -5,7 +5,7 @@
 # Source : public/logos/png/vizyo-tracky-icon-green.png (gradient deja appliqué).
 #
 # Sorties (apps/web/public/) :
-#   apple-touch-icon-180-v2.png    — iOS Add-to-home (180x180, padding 18%)
+#   apple-touch-icon-180-v3.png    — iOS Add-to-home (180x180, padding 18%)
 #                                    suffix -v2 = cache-bust iOS (cf. index.html)
 #   pwa-icon-192.png               — Android manifest "any" (192x192, padding 18%)
 #   pwa-icon-512.png               — Android manifest "any" (512x512, padding 18%)
@@ -61,7 +61,7 @@ function New-AppIcon {
 }
 
 # iOS apple-touch-icon (180x180) — utilisé quand l'utilisateur fait "Ajouter a l'ecran d'accueil"
-New-AppIcon -Size 180 -OutputName "apple-touch-icon-180-v2.png" -PaddingRatio 0.18
+New-AppIcon -Size 180 -OutputName "apple-touch-icon-180-v3.png" -PaddingRatio 0.18
 
 # Android PWA manifest — purpose "any"
 New-AppIcon -Size 192 -OutputName "pwa-icon-192.png" -PaddingRatio 0.18
