@@ -172,3 +172,158 @@ describe('InvitationsService.create — validation', () => {
     expect(email.send).toHaveBeenCalledTimes(1);
   });
 });
+
+// ─── Audit A1 — escalade de privilèges via PATCH d'une invitation ──────────
+// Avant le fix, update() appliquait role/permissions sans la garde de create().
+// Ces tests prouvent qu'un FLEET_ADMIN ne peut pas promouvoir une invitation en
+// SUPER_ADMIN ni la sortir de sa flotte, tandis qu'un SUPER_ADMIN garde la main.
+describe('InvitationsService.update — privilege escalation guard (A1)', () => {
+  const PENDING = {
+    id: 'inv-1',
+    status: 'PENDING',
+    role: UserRole.VIEWER,
+    fleetId: FLEET_ID,
+    permissions: null,
+  };
+
+  async function makeService(prisma: unknown): Promise<InvitationsService> {
+    const module = await Test.createTestingModule({
+      providers: [
+        InvitationsService,
+        { provide: PrismaService, useValue: prisma },
+        {
+          provide: EmailService,
+          useValue: {
+            isEnabled: jest.fn().mockReturnValue(false),
+            send: jest.fn().mockResolvedValue({ ok: true }),
+            buildInvitationEmail: jest
+              .fn()
+              .mockReturnValue({ subject: 's', html: 'h', text: 't' }),
+          },
+        },
+        {
+          provide: AuthClientService,
+          useValue: { register: jest.fn(), login: jest.fn(), me: jest.fn() },
+        },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: (key: string) => {
+              if (key === 'INVITATION_JWT_SECRET') return 'test-secret';
+              if (key === 'VIZYO_AUTH_JWT_ACCESS_SECRET') return 'fallback-secret';
+              if (key === 'APP_BASE_URL') return 'http://localhost:4200';
+              return '';
+            },
+          },
+        },
+      ],
+    }).compile();
+    return module.get(InvitationsService);
+  }
+
+  it('rejects a FLEET_ADMIN promoting an invitation to SUPER_ADMIN', async () => {
+    const prisma = {
+      invitation: { findFirst: jest.fn().mockResolvedValue(PENDING), update: jest.fn() },
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: FLEET_ADMIN_USER_ID,
+          role: UserRole.FLEET_ADMIN,
+          fleetId: FLEET_ID,
+          permissions: null,
+        }),
+      },
+      fleet: { findUnique: jest.fn().mockResolvedValue({ id: FLEET_ID }) },
+    };
+    const service = await makeService(prisma);
+
+    await expect(
+      service.update(
+        'inv-1',
+        { role: UserRole.SUPER_ADMIN },
+        { id: FLEET_ADMIN_USER_ID, role: UserRole.FLEET_ADMIN, fleetId: FLEET_ID },
+      ),
+    ).rejects.toThrow(ForbiddenException);
+    expect(prisma.invitation.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects a FLEET_ADMIN reassigning an invitation to another fleet', async () => {
+    const prisma = {
+      invitation: { findFirst: jest.fn().mockResolvedValue(PENDING), update: jest.fn() },
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: FLEET_ADMIN_USER_ID,
+          role: UserRole.FLEET_ADMIN,
+          fleetId: FLEET_ID,
+          permissions: null,
+        }),
+      },
+      fleet: { findUnique: jest.fn().mockResolvedValue({ id: OTHER_FLEET }) },
+    };
+    const service = await makeService(prisma);
+
+    await expect(
+      service.update(
+        'inv-1',
+        { fleetId: OTHER_FLEET },
+        { id: FLEET_ADMIN_USER_ID, role: UserRole.FLEET_ADMIN, fleetId: FLEET_ID },
+      ),
+    ).rejects.toThrow(ForbiddenException);
+    expect(prisma.invitation.update).not.toHaveBeenCalled();
+  });
+
+  it('allows a FLEET_ADMIN to edit an invitation within its fleet (role VIEWER)', async () => {
+    const prisma = {
+      invitation: {
+        findFirst: jest.fn().mockResolvedValue(PENDING),
+        update: jest
+          .fn()
+          .mockImplementation(({ data }) => Promise.resolve({ id: 'inv-1', ...data })),
+      },
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: FLEET_ADMIN_USER_ID,
+          role: UserRole.FLEET_ADMIN,
+          fleetId: FLEET_ID,
+          permissions: null,
+        }),
+      },
+      fleet: { findUnique: jest.fn() },
+    };
+    const service = await makeService(prisma);
+
+    await service.update(
+      'inv-1',
+      { role: UserRole.VIEWER },
+      { id: FLEET_ADMIN_USER_ID, role: UserRole.FLEET_ADMIN, fleetId: FLEET_ID },
+    );
+    expect(prisma.invitation.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows a SUPER_ADMIN to promote an invitation to SUPER_ADMIN', async () => {
+    const prisma = {
+      invitation: {
+        findFirst: jest.fn().mockResolvedValue(PENDING),
+        update: jest
+          .fn()
+          .mockImplementation(({ data }) => Promise.resolve({ id: 'inv-1', ...data })),
+      },
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: ADMIN_USER_ID,
+          role: UserRole.SUPER_ADMIN,
+          fleetId: null,
+          permissions: null,
+        }),
+      },
+      fleet: { findUnique: jest.fn() },
+    };
+    const service = await makeService(prisma);
+
+    await service.update(
+      'inv-1',
+      { role: UserRole.SUPER_ADMIN },
+      { id: ADMIN_USER_ID, role: UserRole.SUPER_ADMIN, fleetId: null },
+    );
+    expect(prisma.invitation.update).toHaveBeenCalledTimes(1);
+  });
+});

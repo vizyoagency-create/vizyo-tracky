@@ -108,29 +108,8 @@ export class InvitationsService {
       where: { id: params.requestedByUserId },
     });
     if (!inviter) throw new UnauthorizedException('Inviteur introuvable');
-    if (inviter.role !== UserRole.SUPER_ADMIN) {
-      if (inviter.role === UserRole.FLEET_MANAGER) {
-        const inviterPerms = inviter.permissions as Record<string, boolean> | null;
-        if (!inviterPerms?.users_manage) {
-          throw new ForbiddenException('Permission insuffisante pour inviter');
-        }
-        if (params.fleetId !== inviter.fleetId) {
-          throw new ForbiddenException('Vous ne pouvez inviter que dans votre flotte');
-        }
-        if (params.role !== UserRole.VIEWER) {
-          throw new ForbiddenException('Un Manager ne peut inviter que des Lecteurs');
-        }
-      } else if (inviter.role === UserRole.FLEET_ADMIN) {
-        if (params.fleetId !== inviter.fleetId) {
-          throw new ForbiddenException('Vous ne pouvez inviter que dans votre flotte');
-        }
-        if (params.role === UserRole.SUPER_ADMIN) {
-          throw new ForbiddenException('Un FLEET_ADMIN ne peut pas creer un SUPER_ADMIN');
-        }
-      } else {
-        throw new ForbiddenException('Vous n\'avez pas le droit d\'inviter');
-      }
-    }
+    // V1.16 (audit A1) — garde d'autorite partagee avec update() (cf. assertInviterCanGrant).
+    this.assertInviterCanGrant(inviter, params.role, params.fleetId);
 
     const fleet = params.fleetId
       ? await this.prisma.fleet.findUnique({ where: { id: params.fleetId } })
@@ -390,10 +369,17 @@ export class InvitationsService {
       if (!fleet) throw new NotFoundException('Flotte introuvable');
     }
 
-    // Non-SUPER_ADMIN cannot reassign to different fleet
-    if (requestedBy.role !== UserRole.SUPER_ADMIN && data.fleetId !== undefined && data.fleetId !== requestedBy.fleetId) {
-      throw new ForbiddenException('Vous ne pouvez modifier que dans votre flotte');
-    }
+    // V1.16 (audit A1) — Garde d'escalade : un inviteur ne peut pas promouvoir
+    // l'invitation vers un role/flotte au-dela de son autorite (ex FLEET_ADMIN
+    // -> SUPER_ADMIN, ou reassignation hors de sa flotte). On evalue le role et la
+    // flotte *resultants* du patch, et on se base sur la ligne user en base
+    // (source de verite) plutot que sur le JWT. Couvre aussi l'ancien controle de
+    // reassignation de flotte (desormais inclus dans assertInviterCanGrant).
+    const inviter = await this.prisma.user.findUnique({ where: { id: requestedBy.id } });
+    if (!inviter) throw new UnauthorizedException('Inviteur introuvable');
+    const targetRole = data.role ?? inv.role;
+    const targetFleetId = data.fleetId !== undefined ? data.fleetId : inv.fleetId;
+    this.assertInviterCanGrant(inviter, targetRole, targetFleetId);
 
     const updateData: Prisma.InvitationUpdateInput = {};
     if (data.fleetId !== undefined) updateData.fleetId = data.fleetId;
@@ -420,6 +406,47 @@ export class InvitationsService {
       where: { id: invitationId },
       data: { status: 'REVOKED' },
     });
+  }
+
+  /**
+   * V1.16 (audit A1) — Garde d'autorite partagee par `create()` et `update()`.
+   * Verifie qu'un inviteur a le droit d'attribuer `targetRole` dans `targetFleetId`.
+   * Empeche l'escalade de privileges (un FLEET_ADMIN ne peut pas creer/promouvoir
+   * une invitation en SUPER_ADMIN) et la sortie de flotte. SUPER_ADMIN : tout permis.
+   * Le clamp fin des permissions (intersection) est traite separement (lot 5).
+   */
+  private assertInviterCanGrant(
+    inviter: { role: UserRole; fleetId: string | null; permissions: Prisma.JsonValue | null },
+    targetRole: UserRole,
+    targetFleetId: string | null,
+  ): void {
+    if (inviter.role === UserRole.SUPER_ADMIN) return;
+
+    if (inviter.role === UserRole.FLEET_MANAGER) {
+      const inviterPerms = inviter.permissions as Record<string, boolean> | null;
+      if (!inviterPerms?.users_manage) {
+        throw new ForbiddenException('Permission insuffisante pour inviter');
+      }
+      if (targetFleetId !== inviter.fleetId) {
+        throw new ForbiddenException('Vous ne pouvez inviter que dans votre flotte');
+      }
+      if (targetRole !== UserRole.VIEWER) {
+        throw new ForbiddenException('Un Manager ne peut inviter que des Lecteurs');
+      }
+      return;
+    }
+
+    if (inviter.role === UserRole.FLEET_ADMIN) {
+      if (targetFleetId !== inviter.fleetId) {
+        throw new ForbiddenException('Vous ne pouvez inviter que dans votre flotte');
+      }
+      if (targetRole === UserRole.SUPER_ADMIN) {
+        throw new ForbiddenException('Un FLEET_ADMIN ne peut pas creer un SUPER_ADMIN');
+      }
+      return;
+    }
+
+    throw new ForbiddenException('Vous n\'avez pas le droit d\'inviter');
   }
 
   private formatRole(role: UserRole): string {
