@@ -14,12 +14,14 @@ import { EmailService } from '../email/email.service';
 import { InvitationsService } from '../invitations/invitations.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { getDefaultPermissions } from './default-permissions';
+import { CreateInvitationDto } from './dto/create-invitation.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import {
   AccessEntryDto,
   SetUserAccessDto,
   UpdateAccessEntryPermissionsDto,
 } from './dto/set-access.dto';
+import { UpdateInvitationDto } from './dto/update-invitation.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
 const PRIVILEGED_ROLES: UserRole[] = [UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN];
@@ -137,7 +139,7 @@ export class UsersController {
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
   async invite(
     @Req() req: AuthenticatedRequest,
-    @Body() dto: { email: string; role: UserRole; fleetId?: string | null; permissions?: Record<string, boolean> },
+    @Body() dto: CreateInvitationDto,
   ) {
     if (!dto.email || !dto.role) {
       throw new BadRequestException('email et role sont requis');
@@ -196,7 +198,7 @@ export class UsersController {
   async updateInvitation(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: { fleetId?: string | null; role?: UserRole; permissions?: Record<string, boolean> },
+    @Body() dto: UpdateInvitationDto,
   ) {
     return this.invitations.update(id, dto, {
       id: req.user.id,
