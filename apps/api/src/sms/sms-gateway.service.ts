@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import twilio from 'twilio';
 import type { Twilio } from 'twilio';
 import type { Env } from '../config/env.validation';
@@ -23,6 +24,20 @@ export interface SendSmsResult {
   error?: string;
 }
 
+/**
+ * Event emis a chaque SMS ENTRANT persiste (webhook vizyo-texto -> recordInbound).
+ * La state machine de provisioning (TrackerProvisioningService) s'y abonne pour
+ * faire avancer la sequence des qu'un boitier repond (ACK).
+ */
+export const SMS_INBOUND_EVENT = 'sms.inbound';
+export interface SmsInboundEvent {
+  smsLogId: string;
+  fromNumber: string;
+  toNumber: string;
+  body: string;
+  receivedAt: string;
+}
+
 @Injectable()
 export class SmsGatewayService implements OnModuleInit {
   private readonly logger = new Logger(SmsGatewayService.name);
@@ -41,6 +56,7 @@ export class SmsGatewayService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly errorLogger: ErrorLogger,
+    private readonly eventEmitter: EventEmitter2,
     @Optional() @Inject(ConfigService) private readonly config?: ConfigService<Env, true>,
   ) {
     this.textoUrl = (this.config?.get('VIZYO_TEXTO_URL', { infer: true }) ?? '').replace(/\/+$/, '');
@@ -428,6 +444,14 @@ export class SmsGatewayService implements OnModuleInit {
         imei: payload.imei,
       },
     });
+    // Notifie la state machine de provisioning (attente d'ACK) + tout autre listener.
+    this.eventEmitter.emit(SMS_INBOUND_EVENT, {
+      smsLogId: log.id,
+      fromNumber: payload.fromNumber,
+      toNumber: payload.toNumber,
+      body: payload.body,
+      receivedAt: new Date().toISOString(),
+    } satisfies SmsInboundEvent);
     return { id: log.id };
   }
 
