@@ -9,6 +9,7 @@ import { PermissionsService } from '../../core/services/permissions.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { ThemeService } from '../../core/theme/theme.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
+import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
 
 @Component({
   selector: 'app-settings',
@@ -357,7 +358,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
     .theme-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 12px }
     .theme-option { padding: 0; border: 2px solid var(--border-subtle); border-radius: 12px; overflow: hidden; cursor: pointer; transition: all .2s; background: transparent }
     .theme-option:hover { border-color: var(--border-strong) }
-    .theme-option.active { border-color: var(--tracky); box-shadow: 0 0 0 2px rgba(16,224,160,.15) }
+    .theme-option.active { border-color: var(--tracky); box-shadow: 0 0 0 2px rgba(16,224,160,.30); background: rgba(16,224,160,.10) }
     .theme-preview { height: 56px; position: relative; overflow: hidden }
     .dark-preview { background: #0b1120 }
     .light-preview { background: #f1f5f9 }
@@ -576,8 +577,7 @@ export class SettingsComponent implements OnInit {
   }
 
   protected roleLabel(): string {
-    const m: Record<string, string> = { SUPER_ADMIN: 'Super Admin', FLEET_ADMIN: 'Administrateur', FLEET_MANAGER: 'Manager', VIEWER: 'Lecteur' };
-    return m[this.user()?.role ?? ''] ?? '';
+    return roleLabelFr(this.user()?.role);
   }
 
   protected toggleNotif(severity: 'critical' | 'warning' | 'info'): void {

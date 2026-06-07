@@ -52,6 +52,8 @@ export interface UserPreferences {
   };
   /** Widgets activés et ordre d'affichage sur le tableau de bord. */
   dashboardWidgets: DashboardWidgetConfig[];
+  /** #3 — vue de la liste véhicules : cartes (défaut) ou tableau. */
+  vehiclesView: 'cards' | 'table';
 }
 
 const DEFAULTS: UserPreferences = {
@@ -90,6 +92,7 @@ const DEFAULTS: UserPreferences = {
     { key: 'alerts', enabled: true },
     { key: 'schedule', enabled: true },
   ],
+  vehiclesView: 'cards',
 };
 
 const KEY_PREFIX = 'vizyo-tracky-prefs-';
@@ -180,6 +183,7 @@ export class PreferencesService {
       // Si la liste sauvegardée existe, on s'assure que les widgets manquants
       // sont ajoutés (par défaut activés) — utile pour évoluer le set sans casser.
       dashboardWidgets: this.mergeDashboardWidgets(saved.dashboardWidgets, defaults.dashboardWidgets),
+      vehiclesView: saved.vehiclesView ?? defaults.vehiclesView,
     };
   }
 

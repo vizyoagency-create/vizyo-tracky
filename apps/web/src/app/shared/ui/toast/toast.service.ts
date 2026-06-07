@@ -41,11 +41,13 @@ export class ToastService {
   /** Timestamp du dernier critical pour debouncer son+vibration <2s. */
   private lastCriticalSignalAt = 0;
   private static readonly CRITICAL_DEBOUNCE_MS = 2000;
+  /** Max de toasts visibles simultanement (les plus anciens non-critical sont retires au-dela). */
+  private static readonly MAX_VISIBLE = 3;
 
   show(toast: Omit<Toast, 'id' | 'duration'> & { id?: string; duration?: number }): string {
     const id = toast.id ?? crypto.randomUUID();
     const full: Toast = { duration: 4000, ...toast, id };
-    this._toasts.update((list) => [...list, full]);
+    this._toasts.update((list) => ToastService.capStack([...list, full]));
     if (full.duration > 0) {
       setTimeout(() => this.dismiss(id), full.duration);
     }
@@ -93,6 +95,28 @@ export class ToastService {
 
   dismiss(id: string) {
     this._toasts.update((list) => list.filter((t) => t.id !== id));
+  }
+
+  /** Ferme tous les toasts d'un coup (bouton "Tout fermer" du container). */
+  dismissAll(): void {
+    this._toasts.set([]);
+  }
+
+  /**
+   * Plafonne la pile a MAX_VISIBLE en retirant les plus anciens toasts
+   * NON-critical. Un toast critical (duration=0, alerte vitale) n'est jamais
+   * retire automatiquement — l'utilisateur doit l'acquitter/fermer.
+   */
+  private static capStack(list: Toast[]): Toast[] {
+    let excess = list.length - ToastService.MAX_VISIBLE;
+    if (excess <= 0) return list;
+    return list.filter((t) => {
+      if (excess > 0 && t.severity !== 'critical') {
+        excess--;
+        return false;
+      }
+      return true;
+    });
   }
 
   /**

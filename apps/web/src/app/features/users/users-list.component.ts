@@ -10,6 +10,7 @@ import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/v
 import { VehicleGroupsService } from '../../core/services/vehicle-groups.service';
 import { UsersApiService, type TrackyUser, type PendingInvitation } from '../../core/services/users.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
+import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
 import { UserDrawerComponent, type UserDrawerData, type UserDrawerResult } from './user-drawer.component';
 import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerResult } from './vehicle-access-drawer.component';
@@ -265,7 +266,9 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
     .u-empty-cta { font-size: 13px; color: var(--tracky-light); background: none; border: none; cursor: pointer; text-decoration: underline }
 
     /* Grid */
-    .u-grid { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px }
+    .u-grid { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px }
+    @media (max-width: 1100px) { .u-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) } }
+    @media (max-width: 680px) { .u-grid { grid-template-columns: 1fr } }
 
     /* Card */
     .u-card {
@@ -417,13 +420,7 @@ export class UsersListComponent implements OnInit {
   }
 
   roleLabel(role: string): string {
-    const map: Record<string, string> = {
-      SUPER_ADMIN: 'Super Admin',
-      FLEET_ADMIN: 'Administrateur',
-      FLEET_MANAGER: 'Manager',
-      VIEWER: 'Lecteur',
-    };
-    return map[role] ?? role;
+    return roleLabelFr(role);
   }
 
   openCreateDrawer(): void {

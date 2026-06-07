@@ -24,7 +24,7 @@ const MAPPING: Record<CobanAlarmType, AlertMapping | null> = {
   low_battery: { type: 'LOW_BATTERY', severity: 'WARNING', title: 'Batterie faible' },
   overspeed: { type: 'OVERSPEED', severity: 'WARNING', title: 'Excès de vitesse' },
   geofence: { type: 'GEOFENCE_EXIT', severity: 'WARNING', title: 'Sortie de zone autorisée' },
-  movement: { type: 'MOVEMENT_IDLE', severity: 'WARNING', title: 'Mouvement détecté à l\'arrêt' },
+  movement: { type: 'MOVEMENT_IDLE', severity: 'WARNING', title: 'Mouvement véhicule éteint' },
   bonnet: { type: 'BONNET', severity: 'WARNING', title: 'Capot ouvert' },
   door: { type: 'DOOR', severity: 'WARNING', title: 'Porte ouverte' },
 

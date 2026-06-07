@@ -8,6 +8,7 @@ import {
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import type { UserPermissions } from '@vizyo/tracky-shared';
+import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
 
 interface AccessEntry {
   id: string;
@@ -377,8 +378,7 @@ export class PermissionsOverviewComponent implements OnInit {
   }
 
   protected roleLabel(role: string): string {
-    const m: Record<string, string> = { SUPER_ADMIN: 'Super Admin', FLEET_ADMIN: 'Admin', FLEET_MANAGER: 'Manager', VIEWER: 'Lecteur' };
-    return m[role] ?? role;
+    return roleLabelFr(role);
   }
 
   protected roleColor(role: string): string {
