@@ -41,6 +41,13 @@ const envSchema = z.object({
   VIZYO_TEXTO_API_KEY: z.string().default(''),
   VIZYO_TEXTO_WEBHOOK_SECRET: z.string().default(''),
 
+  // SMS heartbeat (V1.15) — "preuve de vie" hebdo de la chaine SMS. CSV de
+  // numeros E.164 (ex: +33656691615,+33687654321) qui recoivent chaque lundi
+  // 09h00 (Europe/Paris) un SMS de test. Si la chaine casse, un ErrorLog
+  // CRITICAL est cree. Vide => le cron skip (no-op safe en dev). Cf.
+  // SmsHeartbeatService.
+  SMS_HEARTBEAT_RECIPIENTS: z.string().default(''),
+
   // Email Gateway (Resend) — Sprint J. Si RESEND_API_KEY est vide, le module
   // est en mode no-op (les invitations sont creees mais l'email n'est pas envoye,
   // log de debug). Permet de developper sans compte Resend.

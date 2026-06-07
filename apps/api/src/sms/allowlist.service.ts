@@ -137,16 +137,32 @@ export class AllowlistService {
     });
   }
 
-  /** Pousse tous les simPhoneNumber des trackers vers l'allowlist (source='synced'). */
+  /**
+   * Pousse vers l'allowlist vizyo-texto (source='synced') :
+   *   - les `simPhoneNumber` des trackers (label `Tracker <imei>`)
+   *   - les `User.phone` des utilisateurs actifs (label `User <email>`) — requis
+   *     pour que les notifications SMS d'alerte (V1.15) soient livrees : sans ca
+   *     vizyo-texto renvoie 403 sur un numero non-allowliste.
+   * Dedup par numero ; un tracker prime sur un user en cas de meme numero.
+   */
   async syncFromTrackers(): Promise<AllowlistSyncResult> {
-    const trackers = await this.prisma.tracker.findMany({
-      where: { simPhoneNumber: { not: null } },
-      select: { imei: true, simPhoneNumber: true },
-    });
-    const entries = trackers.map((t) => ({
-      phone: t.simPhoneNumber as string,
-      label: `Tracker ${t.imei}`,
-    }));
+    const [trackers, users] = await Promise.all([
+      this.prisma.tracker.findMany({
+        where: { simPhoneNumber: { not: null } },
+        select: { imei: true, simPhoneNumber: true },
+      }),
+      this.prisma.user.findMany({
+        where: { phone: { not: null }, isActive: true },
+        select: { email: true, phone: true },
+      }),
+    ]);
+    const byPhone = new Map<string, string>();
+    for (const t of trackers) byPhone.set(t.simPhoneNumber as string, `Tracker ${t.imei}`);
+    for (const u of users) {
+      const phone = u.phone as string;
+      if (!byPhone.has(phone)) byPhone.set(phone, `User ${u.email}`);
+    }
+    const entries = Array.from(byPhone, ([phone, label]) => ({ phone, label }));
     return this.call<AllowlistSyncResult>('/v1/allowlist/sync', {
       method: 'PUT',
       body: JSON.stringify({ entries }),
@@ -155,22 +171,33 @@ export class AllowlistService {
 
   /** Reconciliation : trackers non synces + entrees orphelines. */
   async status(): Promise<AllowlistStatus> {
-    const [entries, trackers] = await Promise.all([
+    const [entries, trackers, users] = await Promise.all([
       this.list(),
       this.prisma.tracker.findMany({
         where: { simPhoneNumber: { not: null } },
         select: { imei: true, simPhoneNumber: true },
       }),
+      this.prisma.user.findMany({
+        where: { phone: { not: null }, isActive: true },
+        select: { phone: true },
+      }),
     ]);
     const allowed = new Set(entries.map((e) => e.phone));
     const trackerPhones = new Set(trackers.map((t) => t.simPhoneNumber as string));
+    // V1.15 — les User.phone actifs sont aussi des numeros legitimes (notifs SMS
+    // d'alerte) synces par syncFromTrackers() : on les considere "connus" pour ne
+    // pas les remonter comme orphelins (sinon un admin les supprimerait a tort).
+    const knownPhones = new Set<string>([
+      ...trackerPhones,
+      ...users.map((u) => u.phone as string),
+    ]);
 
     const missing = trackers
       .filter((t) => !allowed.has(t.simPhoneNumber as string))
       .map((t) => ({ imei: t.imei, phone: t.simPhoneNumber as string }));
 
     const orphans = entries
-      .filter((e) => e.source === 'synced' && !trackerPhones.has(e.phone))
+      .filter((e) => e.source === 'synced' && !knownPhones.has(e.phone))
       .map((e) => ({ phone: e.phone, label: e.label }));
 
     return { entries, total: entries.length, trackersWithSim: trackers.length, missing, orphans };

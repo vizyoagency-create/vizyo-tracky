@@ -16,7 +16,7 @@ import { PrismaService } from '../prisma/prisma.service';
  * Le service de dispatch fusionne les channels (union).
  */
 
-const VALID_CHANNELS = ['IN_APP', 'WEB_PUSH', 'EMAIL', 'WHATSAPP'] as const;
+const VALID_CHANNELS = ['IN_APP', 'WEB_PUSH', 'EMAIL', 'WHATSAPP', 'SMS'] as const;
 
 interface UpsertParams {
   id?: string;

@@ -20,7 +20,15 @@ import { WebPushService } from './web-push.service';
  *      original.
  */
 
-export type AlertChannel = 'IN_APP' | 'WEB_PUSH' | 'EMAIL' | 'WHATSAPP';
+export type AlertChannel = 'IN_APP' | 'WEB_PUSH' | 'EMAIL' | 'WHATSAPP' | 'SMS';
+
+/**
+ * V1.15 — Anti-flood SMS : au plus 1 SMS d'alerte par (destinataire, type
+ * d'alerte) sur cette fenetre. Evite qu'une rafale d'alertes du meme type
+ * (ex: 20 OVERSPEED en 2min) ne declenche 20 SMS (spam + cout SIM). Les autres
+ * canaux (push/email/whatsapp) ne sont pas throttles.
+ */
+const SMS_THROTTLE_MS = 5 * 60_000;
 
 interface AlertWithVehicle extends Alert {
   vehicle?: Vehicle | null;
@@ -240,6 +248,63 @@ export class NotificationDispatchService {
       await this.sms.send(target, bodyText, { alertId: alert.id, channel: 'whatsapp', escalation: isEscalation });
       return;
     }
+    if (channel === 'SMS' && user.phone) {
+      // V1.15 — SMS via vizyo-texto. Contrairement a WhatsApp, pas de prefixe :
+      // on envoie au numero E.164 brut. Throttle anti-flood par (user, type).
+      // SmsGatewayService gere deja l'audit sms_logs + l'ErrorLog CRITICAL si KO.
+      if (await this.isSmsThrottled(user.id, alert.type as string)) {
+        this.logger.debug(`SMS throttled for ${user.id} / ${alert.type} (alert ${alert.id})`);
+        return;
+      }
+      await this.sms.send(user.phone, this.formatAlertSms(alert, isEscalation), {
+        source: 'alert-notification',
+        alertId: alert.id,
+        vehicleId: alert.vehicleId ?? undefined,
+        userId: user.id,
+        alertType: alert.type as string,
+        escalation: isEscalation,
+      });
+      return;
+    }
+  }
+
+  /**
+   * Format court pour SMS (1 segment ~160 char max — au-dela ca fragmente cote
+   * gateway = surcout). Ex: "[Vizyo Tracky] CRITICAL — Exces de vitesse · TE002ST · 14h23".
+   */
+  private formatAlertSms(alert: AlertWithVehicle, isEscalation: boolean): string {
+    const plate = alert.vehicle?.plate ?? alert.vehicleId ?? '?';
+    const time = alert.createdAt.toLocaleTimeString('fr-FR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Europe/Paris',
+    });
+    const esc = isEscalation ? 'ESCALADE ' : '';
+    const body = `[Vizyo Tracky] ${esc}${alert.severity} — ${alert.title} · ${plate} · ${time}`;
+    return body.length > 160 ? `${body.slice(0, 157)}...` : body;
+  }
+
+  /**
+   * True si un SMS d'alerte a deja ete tente pour ce (user, alertType) dans la
+   * fenetre SMS_THROTTLE_MS. On compte toute tentative (meme failed/noop) :
+   * l'objectif est de plafonner le volume SMS, pas de garantir la livraison
+   * (les autres canaux restent envoyes a chaque alerte).
+   */
+  private async isSmsThrottled(userId: string, alertType: string): Promise<boolean> {
+    const since = new Date(Date.now() - SMS_THROTTLE_MS);
+    const recent = await this.prisma.smsLog.findFirst({
+      where: {
+        direction: 'OUT',
+        createdAt: { gte: since },
+        AND: [
+          { context: { path: ['source'], equals: 'alert-notification' } },
+          { context: { path: ['userId'], equals: userId } },
+          { context: { path: ['alertType'], equals: alertType } },
+        ],
+      },
+      select: { id: true },
+    });
+    return recent !== null;
   }
 }
 
