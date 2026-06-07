@@ -3,6 +3,7 @@ import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../../core/services/auth.service';
+import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
 import {
   Bell,
   Compass,
@@ -92,7 +93,7 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
             </div>
             <div class="field">
               <label>Rôle</label>
-              <input [value]="profile()?.role ?? ''" disabled />
+              <input [value]="roleLabel(profile()?.role)" disabled />
             </div>
             <div class="field">
               <label>Prénom</label>
@@ -176,7 +177,7 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
                   @for (inv of invitations(); track inv.id) {
                     <tr>
                       <td>{{ inv.email }}</td>
-                      <td><span class="role-badge">{{ inv.role }}</span></td>
+                      <td><span class="role-badge">{{ roleLabel(inv.role) }}</span></td>
                       <td>
                         @switch (inv.status) {
                           @case ('PENDING') {
@@ -569,6 +570,7 @@ export class AccountComponent implements OnInit {
   lastName = '';
   phone = '';
   inviteEmail = '';
+  protected readonly roleLabel = roleLabelFr;
   inviteRole: 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' = 'FLEET_MANAGER';
 
   readonly canInvite = computed(() => {

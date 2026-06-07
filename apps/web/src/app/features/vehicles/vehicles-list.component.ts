@@ -1,10 +1,11 @@
-import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { LucideAngularModule, Plus, Truck, ExternalLink, FolderOpen, Radio, X, Save, Wifi, Pencil, Trash2, Eye } from 'lucide-angular';
+import { LucideAngularModule, Plus, Truck, ExternalLink, FolderOpen, Radio, X, Save, Wifi, Pencil, Trash2, Eye, Search, LayoutGrid, Table } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { PermissionsService } from '../../core/services/permissions.service';
+import { PreferencesService } from '../../core/services/preferences.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { TrackersApiService } from '../../core/services/trackers.service';
 import { getVehicleSvg, getVehicleTypeLabel } from '../../shared/utils/vehicle-icons';
@@ -64,6 +65,32 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
       @if (activeTab() === 'groups') {
         <app-vehicle-groups-tab />
       } @else {
+        @if (!loading() && vehicles().length > 0) {
+          <div class="vlist-toolbar">
+            <div class="vlist-search">
+              <lucide-icon [img]="SearchIcon" [size]="15" class="vlist-search-icon"></lucide-icon>
+              <input type="text" [ngModel]="search()" (ngModelChange)="search.set($event)"
+                     placeholder="Rechercher : plaque, marque, modèle, IMEI..."
+                     aria-label="Rechercher un véhicule" />
+              @if (search()) {
+                <button (click)="search.set('')" class="vlist-search-clear" aria-label="Effacer la recherche">
+                  <lucide-icon [img]="XIcon" [size]="14"></lucide-icon>
+                </button>
+              }
+            </div>
+            <span class="vlist-count">{{ filteredVehicles().length }} / {{ vehicles().length }}</span>
+            <div class="view-switch">
+              <button (click)="setViewMode('cards')" class="view-btn" [class.active]="viewMode() === 'cards'"
+                      title="Vue cartes" aria-label="Vue cartes">
+                <lucide-icon [img]="LayoutGridIcon" [size]="15"></lucide-icon>
+              </button>
+              <button (click)="setViewMode('table')" class="view-btn" [class.active]="viewMode() === 'table'"
+                      title="Vue tableau" aria-label="Vue tableau">
+                <lucide-icon [img]="TableIcon" [size]="15"></lucide-icon>
+              </button>
+            </div>
+          </div>
+        }
         @if (loading()) {
           <div class="vlist-loading">
             <span class="w-6 h-6 border-2 border-fg-tertiary border-t-tracky-light rounded-full animate-spin"></span>
@@ -76,9 +103,81 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
               <button (click)="showAddDialog.set(true)" class="empty-cta">Ajouter votre premier véhicule</button>
             }
           </div>
+        } @else if (filteredVehicles().length === 0) {
+          <div class="vlist-empty">
+            <div class="empty-icon"><lucide-icon [img]="Truck" [size]="36"></lucide-icon></div>
+            <p class="empty-text">Aucun véhicule ne correspond à votre recherche</p>
+            <button (click)="search.set('')" class="empty-cta">Réinitialiser la recherche</button>
+          </div>
+        } @else if (viewMode() === 'table') {
+          <div class="v-table-wrap">
+            <table class="v-table">
+              <thead>
+                <tr>
+                  <th>Plaque</th>
+                  <th>Véhicule</th>
+                  <th>Statut</th>
+                  <th>Tracker</th>
+                  <th class="v-th-actions"></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (v of filteredVehicles(); track v.id) {
+                  <tr class="v-row">
+                    <td class="v-td-plate"><a [routerLink]="['/vehicles', v.id]">{{ v.plate }}</a></td>
+                    <td>
+                      @if (v.brand) {
+                        {{ v.brand }} {{ v.model ?? '' }}
+                      } @else {
+                        <span class="muted">Non renseigné</span>
+                      }
+                      @if (v.year) { <span class="v-td-year">· {{ v.year }}</span> }
+                    </td>
+                    <td>
+                      @if (liveStatus(v.id); as ls) {
+                        <span class="v-live-pill" [class]="ls.cssClass">
+                          <span class="v-live-dot"></span>
+                          @if (ls.kind === 'moving') { {{ ls.speedKmh }} km/h }
+                          @else if (ls.kind === 'idle') { À l'arrêt }
+                          @else { Stationné }
+                        </span>
+                      } @else {
+                        <span class="muted">—</span>
+                      }
+                    </td>
+                    <td>
+                      @if (v.tracker) {
+                        <span class="v-td-imei">{{ v.tracker.imei }}</span>
+                      } @else {
+                        <span class="muted">Pas de tracker</span>
+                      }
+                    </td>
+                    <td class="v-td-actions">
+                      <a [routerLink]="['/vehicles', v.id]" class="v-action-btn view" title="Voir"
+                         [attr.aria-label]="'Voir ' + v.plate">
+                        <lucide-icon [img]="EyeIcon" [size]="15"></lucide-icon>
+                      </a>
+                      @if (perms.can('vehicles_edit')) {
+                        <button class="v-action-btn edit" (click)="openEditVehicle(v)" title="Modifier"
+                                [attr.aria-label]="'Modifier ' + v.plate">
+                          <lucide-icon [img]="PencilIcon" [size]="15"></lucide-icon>
+                        </button>
+                      }
+                      @if (perms.can('vehicles_delete')) {
+                        <button class="v-action-btn delete" (click)="confirmDeleteVehicle(v)" title="Supprimer"
+                                [attr.aria-label]="'Supprimer ' + v.plate">
+                          <lucide-icon [img]="Trash2Icon" [size]="15"></lucide-icon>
+                        </button>
+                      }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
         } @else {
           <div class="v-grid">
-            @for (v of vehicles(); track v.id) {
+            @for (v of filteredVehicles(); track v.id) {
               <a [routerLink]="['/vehicles', v.id]" class="v-card">
                 <div class="v-card-glow" [class]="v.tracker ? 'online' : 'offline'"></div>
                 <div class="v-card-top">
@@ -354,6 +453,40 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
 
     .vlist-loading { position: relative; z-index: 1; display: flex; justify-content: center; padding: 60px 0 }
 
+    /* #2 — barre de recherche véhicules */
+    .vlist-toolbar { position: relative; z-index: 1; display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap }
+    .vlist-search { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 220px; max-width: 440px;
+      background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 8px 12px }
+    .vlist-search:focus-within { border-color: rgba(16,224,160,.4) }
+    .vlist-search-icon { color: var(--fg-tertiary); flex-shrink: 0 }
+    .vlist-search input { flex: 1; min-width: 0; background: none; border: none; outline: none; color: var(--fg-primary); font-size: 13px }
+    .vlist-search input::placeholder { color: var(--fg-tertiary) }
+    .vlist-search-clear { display: flex; align-items: center; background: none; border: none; color: var(--fg-tertiary); cursor: pointer; padding: 0 }
+    .vlist-search-clear:hover { color: var(--fg-primary) }
+    .vlist-count { font-size: 12px; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; white-space: nowrap }
+
+    /* #3 — toggle cartes / tableau */
+    .view-switch { display: flex; margin-left: auto; border-radius: 9px; border: 1px solid var(--border-subtle); overflow: hidden }
+    .view-btn { display: flex; align-items: center; padding: 7px 11px; background: var(--bg-secondary); color: var(--fg-tertiary); border: none; cursor: pointer; transition: all .2s }
+    .view-btn:hover { color: var(--fg-secondary) }
+    .view-btn.active { background: #059669; color: #fff }
+
+    /* #3 — vue tableau véhicules */
+    .v-table-wrap { position: relative; z-index: 1; overflow-x: auto; border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--bg-secondary) }
+    .v-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 640px }
+    .v-table thead th { text-align: left; padding: 11px 14px; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; color: var(--fg-tertiary); border-bottom: 1px solid var(--border-subtle); font-weight: 700 }
+    .v-table tbody tr { border-bottom: 1px solid var(--border-subtle); transition: background .15s }
+    .v-table tbody tr:last-child { border-bottom: none }
+    .v-table tbody tr:hover { background: var(--bg-tertiary) }
+    .v-table td { padding: 10px 14px; color: var(--fg-secondary); vertical-align: middle }
+    .v-td-plate a { font-family: var(--font-mono, monospace); font-weight: 800; color: var(--fg-primary); text-decoration: none; letter-spacing: .03em }
+    .v-td-plate a:hover { color: var(--tracky-light) }
+    .v-td-year { color: var(--fg-tertiary); font-size: 12px }
+    .v-td-imei { font-family: var(--font-mono, monospace); font-size: 12px; color: var(--fg-tertiary) }
+    .v-table .muted { color: var(--fg-tertiary); font-style: italic }
+    .v-td-actions { text-align: right; white-space: nowrap }
+    .v-td-actions .v-action-btn { display: inline-flex; width: 32px; height: 32px; margin-left: 5px }
+
     .vlist-empty {
       position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 10px;
       padding: 50px 20px; border-radius: 16px;
@@ -472,8 +605,24 @@ export class VehiclesListComponent implements OnInit {
   private readonly trackersApi = inject(TrackersApiService);
   private readonly realtime = inject(RealtimeService);
   protected readonly perms = inject(PermissionsService);
+  private readonly preferences = inject(PreferencesService);
+
+  // #3 — vue liste : cartes (défaut) ou tableau, persistée dans PreferencesService.
+  protected readonly viewMode = signal<'cards' | 'table'>(this.preferences.prefs().vehiclesView);
 
   protected readonly vehicles = signal<VehicleDetailDto[]>([]);
+  // #2 — recherche client-side (plaque / marque / modèle / IMEI).
+  protected readonly search = signal('');
+  protected readonly filteredVehicles = computed(() => {
+    const q = this.search().trim().toLowerCase();
+    if (!q) return this.vehicles();
+    return this.vehicles().filter((v) =>
+      v.plate.toLowerCase().includes(q) ||
+      (v.brand ?? '').toLowerCase().includes(q) ||
+      (v.model ?? '').toLowerCase().includes(q) ||
+      (v.tracker?.imei ?? '').toLowerCase().includes(q),
+    );
+  });
   protected readonly loading = signal(true);
   protected readonly showAddDialog = signal(false);
   protected readonly showEditDialog = signal(false);
@@ -498,6 +647,9 @@ export class VehiclesListComponent implements OnInit {
   protected readonly PencilIcon = Pencil;
   protected readonly Trash2Icon = Trash2;
   protected readonly EyeIcon = Eye;
+  protected readonly SearchIcon = Search;
+  protected readonly LayoutGridIcon = LayoutGrid;
+  protected readonly TableIcon = Table;
 
   // Delete vehicle
   readonly showDeleteVehicle = signal(false);
@@ -517,6 +669,11 @@ export class VehiclesListComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadVehicles();
+  }
+
+  protected setViewMode(mode: 'cards' | 'table'): void {
+    this.viewMode.set(mode);
+    this.preferences.update({ vehiclesView: mode });
   }
 
   protected onDialogClosed(): void {

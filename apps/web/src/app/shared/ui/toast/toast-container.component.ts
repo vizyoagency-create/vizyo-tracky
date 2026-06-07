@@ -26,6 +26,17 @@ const COLOR_MAP: Record<ToastKind, string> = {
          aria-label="Notifications"
          aria-live="polite"
          aria-atomic="false">
+      @if (toastService.toasts().length >= 2) {
+        <button
+          (click)="toastService.dismissAll()"
+          class="pointer-events-auto self-end text-xs font-medium text-fg-tertiary hover:text-fg-primary
+                 bg-bg-secondary/95 backdrop-blur-md border border-border-subtle rounded-lg px-2.5 py-1
+                 flex items-center gap-1 cursor-pointer shadow-lg"
+          aria-label="Fermer toutes les notifications">
+          <lucide-icon [img]="X" [size]="12" aria-hidden="true"></lucide-icon>
+          Tout fermer
+        </button>
+      }
       @for (toast of toastService.toasts(); track toast.id) {
         <div class="pointer-events-auto animate-slide-in
                     bg-bg-secondary/95 backdrop-blur-md border border-border-subtle
