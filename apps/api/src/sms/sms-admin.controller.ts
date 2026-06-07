@@ -124,7 +124,11 @@ export class SmsAdminController {
       apnPasswd?: string;
       serverIp: string;
       serverPort: number;
+      adminNumber?: string;
       lowBatteryPhone?: string;
+      accOn?: boolean;
+      fixIntervalS?: number;
+      ackTimeoutS?: number;
     },
   ) {
     return this.provisioning.start(body, req.user.id);

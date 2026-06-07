@@ -1,15 +1,20 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle,
+  ChevronDown,
+  Circle,
+  Clock,
   Database,
   HardDrive,
   ListChecks,
+  Loader,
   LucideAngularModule,
+  MessageSquare,
   Phone,
   Plus,
   Power,
@@ -25,6 +30,7 @@ import {
   AllowlistStatus,
   BackupHealthResponse,
   ProvisioningDto,
+  ProvisioningStep,
   SmsLogDto,
   SmsStatus,
 } from '../../core/services/admin-sms.service';
@@ -47,8 +53,9 @@ type Tab = 'status' | 'provision' | 'logs' | 'allowlist' | 'backup';
           </a>
           <h1 class="text-2xl font-display font-bold text-fg-primary">SMS &amp; Backup admin</h1>
           <p class="text-sm text-fg-tertiary">
-            Outils SUPER_ADMIN : provisionnement de trackers neufs via SMS, audit
-            des envois Twilio, et monitoring des backups Postgres.
+            Outils SUPER_ADMIN : configuration des boitiers GPS via SMS (avec
+            confirmation par la reponse du boitier), audit des envois, et
+            monitoring des backups Postgres.
           </p>
         </div>
         <button (click)="reload()"
@@ -147,37 +154,157 @@ type Tab = 'status' | 'provision' | 'logs' | 'allowlist' | 'backup';
 
       }
 
-      <!-- Tab : Provisioning -->
+      <!-- Tab : Configuration boitier (assistant pas-a-pas) -->
       @if (activeTab() === 'provision') {
+        <!-- Formulaire -->
         <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4 flex flex-col gap-3">
           <div class="flex items-center gap-2 text-sm font-semibold">
             <lucide-icon [img]="Phone" [size]="16" class="text-tracky-light"></lucide-icon>
-            Provisionner un nouveau tracker
+            Configurer un boitier GPS par SMS
           </div>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <input [(ngModel)]="provIMEI" placeholder="IMEI (14-16 chiffres)"
-                   class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm font-mono" />
-            <input [(ngModel)]="provPhone" placeholder="Numéro SIM (+33...)"
-                   class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm font-mono" />
-            <input [(ngModel)]="provApn" placeholder="APN"
-                   class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm" />
-            <input [(ngModel)]="provServerIp" placeholder="Server IP"
-                   class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm font-mono" />
-            <input [(ngModel)]="provServerPort" type="number" placeholder="Server port (5001)"
-                   class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm font-mono" />
-            <input [(ngModel)]="provLowBatPhone" placeholder="Tel batterie faible (optionnel)"
-                   class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm font-mono" />
+          <p class="text-xs text-fg-tertiary -mt-1">
+            Chaque commande part via vizyo-texto ; on attend la reponse du boitier
+            (jusqu'a {{ provAckTimeout || 15 }}s) avant d'envoyer la suivante. Reponds
+            depuis la SIM pour confirmer chaque etape.
+          </p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <label class="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-fg-tertiary">
+              IMEI
+              <input [(ngModel)]="provIMEI" placeholder="14-16 chiffres"
+                     class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm font-mono normal-case text-fg-primary" />
+            </label>
+            <label class="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-fg-tertiary">
+              Numero SIM (E.164)
+              <input [(ngModel)]="provPhone" placeholder="+33612345678"
+                     class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm font-mono normal-case text-fg-primary" />
+            </label>
+            <label class="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-fg-tertiary">
+              APN
+              <input [(ngModel)]="provApn" placeholder="wsim"
+                     class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm normal-case text-fg-primary" />
+            </label>
+            <label class="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-fg-tertiary">
+              Numero admin / SOS
+              <input [(ngModel)]="provAdminNumber" placeholder="defaut : numero SIM"
+                     class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm font-mono normal-case text-fg-primary" />
+            </label>
+            <label class="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-fg-tertiary">
+              IP serveur
+              <input [(ngModel)]="provServerIp" placeholder="72.62.26.240"
+                     class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm font-mono normal-case text-fg-primary" />
+            </label>
+            <label class="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-fg-tertiary">
+              Port serveur
+              <input [(ngModel)]="provServerPort" type="number" placeholder="5023"
+                     class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm font-mono normal-case text-fg-primary" />
+            </label>
+            <label class="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-fg-tertiary">
+              Intervalle position (s)
+              <input [(ngModel)]="provFixInterval" type="number" min="20" placeholder="20"
+                     class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm font-mono normal-case text-fg-primary" />
+            </label>
+            <label class="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-fg-tertiary">
+              Timeout reponse (s)
+              <input [(ngModel)]="provAckTimeout" type="number" min="3" placeholder="15"
+                     class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm font-mono normal-case text-fg-primary" />
+            </label>
           </div>
+
+          <!-- Options avancees -->
+          <button type="button" (click)="showAdvanced.set(!showAdvanced())"
+                  class="text-xs text-fg-tertiary hover:text-fg-secondary inline-flex items-center gap-1 self-start cursor-pointer">
+            <lucide-icon [img]="ChevronDown" [size]="12"
+                         [class]="showAdvanced() ? 'rotate-180 transition-transform' : 'transition-transform'"></lucide-icon>
+            Options avancees
+          </button>
+          @if (showAdvanced()) {
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <label class="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-fg-tertiary">
+                Utilisateur APN
+                <input [(ngModel)]="provApnUser" placeholder="(vide pour wsim)"
+                       class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm font-mono normal-case text-fg-primary" />
+              </label>
+              <label class="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-fg-tertiary">
+                Mot de passe APN
+                <input [(ngModel)]="provApnPasswd" placeholder="(vide pour wsim)"
+                       class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm font-mono normal-case text-fg-primary" />
+              </label>
+              <label class="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-fg-tertiary">
+                Tel batterie faible
+                <input [(ngModel)]="provLowBatPhone" placeholder="+33... (optionnel)"
+                       class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm font-mono normal-case text-fg-primary" />
+              </label>
+              <label class="flex items-center gap-2 text-sm text-fg-secondary normal-case self-end py-2">
+                <input type="checkbox" [(ngModel)]="provAccOn"
+                       class="rounded border-border-subtle bg-bg-tertiary" />
+                Activer l'alarme ACC
+              </label>
+            </div>
+          }
+
           <div class="text-xs text-fg-tertiary">
-            La sequence enverra 9 SMS espaces de 30s. Duree totale ~5 min.
+            Sequence : <span class="font-mono">begin → apn → admin → adminip → gprs → fix</span>
+            (+ options). Le « + » du numero admin est retire automatiquement.
           </div>
           <button (click)="startProvisioning()"
                   [disabled]="!provIMEI || !provPhone || !provApn || !provServerIp || !provServerPort"
-                  class="px-3 py-2 bg-tracky text-white rounded-lg text-sm font-medium hover:bg-tracky-dark cursor-pointer disabled:opacity-50 self-start">
-            Demarrer la sequence
+                  class="px-3 py-2 bg-tracky text-white rounded-lg text-sm font-medium hover:bg-tracky-dark cursor-pointer disabled:opacity-50 self-start flex items-center gap-2">
+            <lucide-icon [img]="Send" [size]="14"></lucide-icon>
+            Lancer la configuration
           </button>
         </div>
 
+        <!-- Stepper live de la sequence selectionnee -->
+        @if (selectedProv(); as p) {
+          <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4 flex flex-col gap-3">
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+              <div class="flex items-center gap-2 text-sm font-semibold">
+                <lucide-icon [img]="ListChecks" [size]="16" class="text-tracky-light"></lucide-icon>
+                Sequence
+                <span class="font-mono text-xs text-fg-tertiary">{{ p.phoneNumber }}</span>
+                <span class="inline-flex items-center px-2 py-0.5 text-[10px] rounded-md font-mono"
+                      [class]="provBadgeClass(p.status)">{{ p.status }}</span>
+              </div>
+              <div class="flex items-center gap-3">
+                @if (p.status === 'IN_PROGRESS') {
+                  <span class="text-xs text-sky-400 inline-flex items-center gap-1">
+                    <lucide-icon [img]="Loader" [size]="12" class="animate-spin"></lucide-icon>
+                    {{ p.currentStep }} / {{ p.steps.length }}
+                  </span>
+                  <button (click)="cancelProv(p.id)" class="text-xs text-rose-400 hover:underline cursor-pointer">Annuler</button>
+                }
+              </div>
+            </div>
+            <ol class="flex flex-col gap-2">
+              @for (s of p.steps; track s.step) {
+                <li class="flex items-start gap-3 rounded-lg border border-border-subtle/60 bg-bg-tertiary/40 p-2.5">
+                  <lucide-icon [img]="stepIcon(s.status)" [size]="18"
+                               [class]="stepIconClass(s.status) + (s.status === 'sent' ? ' animate-spin' : '')"></lucide-icon>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <span class="text-sm font-medium text-fg-primary">{{ s.label || s.key }}</span>
+                      <span class="text-[10px] px-1.5 py-0.5 rounded font-mono" [class]="stepBadgeClass(s.status)">
+                        {{ stepStatusLabel(s.status) }}
+                      </span>
+                    </div>
+                    <div class="text-xs font-mono text-fg-tertiary truncate" [title]="s.payload">→ {{ s.payload }}</div>
+                    @if (s.reply) {
+                      <div class="mt-1 inline-flex items-start gap-1 bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 rounded px-2 py-1 text-xs">
+                        <lucide-icon [img]="MessageSquare" [size]="12" class="mt-0.5 shrink-0"></lucide-icon>
+                        <span class="font-mono break-all">{{ s.reply }}</span>
+                      </div>
+                    }
+                    @if (s.error) {
+                      <div class="mt-1 text-xs text-rose-300 font-mono break-all">{{ s.error }}</div>
+                    }
+                  </div>
+                </li>
+              }
+            </ol>
+          </div>
+        }
+
+        <!-- Historique des sequences (cliquer pour afficher le detail) -->
         @if (provisionings().length > 0) {
           <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-x-auto">
             <table class="w-full text-sm min-w-[700px]">
@@ -193,11 +320,13 @@ type Tab = 'status' | 'provision' | 'logs' | 'allowlist' | 'backup';
               </thead>
               <tbody>
                 @for (p of provisionings(); track p.id) {
-                  <tr class="border-b border-border-subtle/50 hover:bg-bg-tertiary/50">
+                  <tr (click)="selectedProvId.set(p.id)"
+                      class="border-b border-border-subtle/50 cursor-pointer"
+                      [class]="selectedProvId() === p.id ? 'bg-bg-tertiary/60' : 'hover:bg-bg-tertiary/50'">
                     <td class="p-3 text-xs text-fg-tertiary">{{ p.createdAt | date: 'dd/MM HH:mm' }}</td>
                     <td class="p-3 font-mono text-xs">{{ p.imei }}</td>
                     <td class="p-3 font-mono text-xs">{{ p.phoneNumber }}</td>
-                    <td class="p-3 text-center font-mono">{{ p.currentStep }} / 9</td>
+                    <td class="p-3 text-center font-mono">{{ p.currentStep }} / {{ p.steps.length || '—' }}</td>
                     <td class="p-3">
                       <span class="inline-flex items-center px-2 py-0.5 text-[10px] rounded-md font-mono"
                             [class]="provBadgeClass(p.status)">
@@ -206,8 +335,8 @@ type Tab = 'status' | 'provision' | 'logs' | 'allowlist' | 'backup';
                     </td>
                     <td class="p-3">
                       @if (p.status === 'IN_PROGRESS') {
-                        <button (click)="cancelProv(p.id)"
-                                class="text-xs text-rose-400 hover:underline">Annuler</button>
+                        <button (click)="$event.stopPropagation(); cancelProv(p.id)"
+                                class="text-xs text-rose-400 hover:underline cursor-pointer">Annuler</button>
                       }
                     </td>
                   </tr>
@@ -438,7 +567,7 @@ type Tab = 'status' | 'provision' | 'logs' | 'allowlist' | 'backup';
     </div>
   `,
 })
-export class AdminSmsComponent implements OnInit {
+export class AdminSmsComponent implements OnInit, OnDestroy {
   private readonly api = inject(AdminSmsService);
   private readonly toast = inject(ToastService);
 
@@ -455,6 +584,11 @@ export class AdminSmsComponent implements OnInit {
   protected readonly Send = Send;
   protected readonly Trash2 = Trash2;
   protected readonly XCircle = XCircle;
+  protected readonly Clock = Clock;
+  protected readonly MessageSquare = MessageSquare;
+  protected readonly ChevronDown = ChevronDown;
+  protected readonly Circle = Circle;
+  protected readonly Loader = Loader;
 
   readonly status = signal<SmsStatus | null>(null);
   readonly logs = signal<SmsLogDto[]>([]);
@@ -464,7 +598,7 @@ export class AdminSmsComponent implements OnInit {
 
   readonly tabs: { key: Tab; label: string }[] = [
     { key: 'status', label: 'Statut' },
-    { key: 'provision', label: 'Provisionnement' },
+    { key: 'provision', label: 'Configuration boîtier' },
     { key: 'logs', label: 'Logs SMS' },
     { key: 'allowlist', label: 'Allowlist' },
     { key: 'backup', label: 'Backups' },
@@ -474,13 +608,28 @@ export class AdminSmsComponent implements OnInit {
   adhocTo = '';
   adhocBody = '';
 
-  // Provisioning form
+  // Provisioning / config boitier form
   provIMEI = '';
   provPhone = '';
-  provApn = '';
+  provApn = 'wsim';
+  provAdminNumber = '';
   provServerIp = '';
-  provServerPort: number | null = 5001;
+  provServerPort: number | null = 5023;
+  provFixInterval: number | null = 20;
+  provAckTimeout: number | null = 15;
+  provApnUser = '';
+  provApnPasswd = '';
+  provAccOn = false;
   provLowBatPhone = '';
+  readonly showAdvanced = signal(false);
+  readonly selectedProvId = signal<string | null>(null);
+  readonly selectedProv = computed(
+    () =>
+      this.provisionings().find((p) => p.id === this.selectedProvId()) ??
+      this.provisionings().find((p) => p.status === 'IN_PROGRESS') ??
+      this.provisionings()[0] ??
+      null,
+  );
 
   // Logs filter
   logsImei = '';
@@ -551,6 +700,7 @@ export class AdminSmsComponent implements OnInit {
       this.logs.set(logs.items);
       this.provisionings.set(provs.items);
       this.backupHealth.set(bh);
+      if (provs.items.some((p) => p.status === 'IN_PROGRESS')) this.startPolling();
     } catch {
       this.toast.error('Echec du chargement (acces SUPER_ADMIN requis)');
     }
@@ -575,18 +725,26 @@ export class AdminSmsComponent implements OnInit {
   async startProvisioning(): Promise<void> {
     if (!this.provServerPort) return;
     try {
-      await firstValueFrom(
+      const res = await firstValueFrom(
         this.api.startProvisioning({
           imei: this.provIMEI.trim(),
           phoneNumber: this.provPhone.trim(),
           apn: this.provApn.trim(),
+          adminNumber: this.provAdminNumber.trim() || undefined,
           serverIp: this.provServerIp.trim(),
           serverPort: this.provServerPort,
+          fixIntervalS: this.provFixInterval ?? undefined,
+          ackTimeoutS: this.provAckTimeout ?? undefined,
+          apnUser: this.provApnUser.trim() || undefined,
+          apnPasswd: this.provApnPasswd.trim() || undefined,
+          accOn: this.provAccOn || undefined,
           lowBatteryPhone: this.provLowBatPhone.trim() || undefined,
         }),
       );
-      this.toast.success('Sequence demarree (9 SMS sur ~5 min)');
-      this.reload();
+      this.selectedProvId.set(res.id);
+      this.toast.success('Configuration lancee — repondez aux SMS depuis la SIM');
+      await this.refreshProvisionings();
+      this.startPolling();
     } catch (err: unknown) {
       const message = err && typeof err === 'object' && 'error' in err
         ? (err as { error?: { message?: string } }).error?.message
@@ -672,6 +830,102 @@ export class AdminSmsComponent implements OnInit {
     if (status === 'FAILED') return 'bg-rose-500/10 text-rose-400';
     if (status === 'CANCELLED') return 'bg-fg-tertiary/10 text-fg-tertiary';
     return 'bg-amber-500/10 text-amber-400';
+  }
+
+  // ─── Suivi live de la sequence (polling tant qu'un provisioning tourne) ─────
+
+  private pollTimer: ReturnType<typeof setInterval> | null = null;
+
+  private startPolling(): void {
+    if (this.pollTimer) return;
+    this.pollTimer = setInterval(() => void this.refreshProvisionings(), 2500);
+  }
+
+  private stopPolling(): void {
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
+  }
+
+  private async refreshProvisionings(): Promise<void> {
+    try {
+      const provs = await firstValueFrom(this.api.listProvisionings(50));
+      this.provisionings.set(provs.items);
+      if (!provs.items.some((p) => p.status === 'IN_PROGRESS')) this.stopPolling();
+    } catch {
+      /* transitoire : on retentera au prochain tick */
+    }
+  }
+
+  ngOnDestroy(): void {
+    this.stopPolling();
+  }
+
+  // ─── Rendu d'une etape du stepper ─────────────────────────────────────────
+
+  stepIcon(status: ProvisioningStep['status']) {
+    switch (status) {
+      case 'acked':
+        return CheckCircle;
+      case 'failed':
+        return XCircle;
+      case 'no-ack':
+        return Clock;
+      case 'sent':
+        return Loader;
+      default:
+        return Circle; // pending / noop
+    }
+  }
+
+  stepIconClass(status: ProvisioningStep['status']): string {
+    switch (status) {
+      case 'acked':
+        return 'text-emerald-400';
+      case 'failed':
+        return 'text-rose-400';
+      case 'no-ack':
+        return 'text-amber-400';
+      case 'sent':
+        return 'text-sky-400';
+      default:
+        return 'text-fg-tertiary';
+    }
+  }
+
+  stepBadgeClass(status: ProvisioningStep['status']): string {
+    switch (status) {
+      case 'acked':
+        return 'bg-emerald-500/10 text-emerald-400';
+      case 'failed':
+        return 'bg-rose-500/10 text-rose-400';
+      case 'no-ack':
+        return 'bg-amber-500/10 text-amber-400';
+      case 'sent':
+        return 'bg-sky-500/10 text-sky-400';
+      default:
+        return 'bg-fg-tertiary/10 text-fg-tertiary';
+    }
+  }
+
+  stepStatusLabel(status: ProvisioningStep['status']): string {
+    switch (status) {
+      case 'pending':
+        return 'en attente';
+      case 'sent':
+        return 'envoyé…';
+      case 'acked':
+        return 'confirmé';
+      case 'no-ack':
+        return 'sans réponse';
+      case 'failed':
+        return 'échec';
+      case 'noop':
+        return 'simulé';
+      default:
+        return status;
+    }
   }
 
   formatBytes(s: string | null): string {
