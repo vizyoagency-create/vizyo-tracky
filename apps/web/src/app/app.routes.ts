@@ -136,6 +136,14 @@ export const routes: Routes = [
         data: { title: 'Suivi installation' },
       },
       {
+        // Vue client (FLEET_ADMIN + delegues sims_view) du parc SIM de la flotte.
+        path: 'sims',
+        canActivate: [permissionGuard('sims_view')],
+        loadComponent: () =>
+          import('./features/sims/sims-client.component').then((m) => m.SimsClientComponent),
+        data: { title: 'Cartes SIM' },
+      },
+      {
         path: 'settings',
         loadComponent: () =>
           import('./features/settings/settings.component').then((m) => m.SettingsComponent),
@@ -226,6 +234,14 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/installations/installations-list.component').then((m) => m.InstallationsListComponent),
         data: { title: 'Plannings d\'installation' },
+      },
+      {
+        path: 'admin/sims',
+        pathMatch: 'full',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/sims/admin-sims.component').then((m) => m.AdminSimsComponent),
+        data: { title: 'Cartes SIM (admin)' },
       },
       {
         path: 'admin/installations/:id',

@@ -39,6 +39,10 @@ export interface UserPermissions {
   drivers_view: boolean;
   /** Creer/modifier/archiver des conducteurs et les affecter aux vehicules. */
   drivers_manage: boolean;
+  /** Voir le parc de cartes SIM (de sa flotte) et leur conso data. */
+  sims_view: boolean;
+  /** Assigner / detacher une carte SIM a un tracker. */
+  sims_assign: boolean;
 }
 
 const VIEWER_DEFAULTS: UserPermissions = {
@@ -59,6 +63,8 @@ const VIEWER_DEFAULTS: UserPermissions = {
   users_manage: false,
   drivers_view: true,
   drivers_manage: false,
+  sims_view: false,
+  sims_assign: false,
 };
 
 const FLEET_MANAGER_DEFAULTS: UserPermissions = {
@@ -79,6 +85,8 @@ const FLEET_MANAGER_DEFAULTS: UserPermissions = {
   users_manage: false,
   drivers_view: true,
   drivers_manage: true,
+  sims_view: true,
+  sims_assign: false,
 };
 
 const ADMIN_DEFAULTS: UserPermissions = {
@@ -99,6 +107,8 @@ const ADMIN_DEFAULTS: UserPermissions = {
   users_manage: true,
   drivers_view: true,
   drivers_manage: true,
+  sims_view: true,
+  sims_assign: true,
 };
 
 export function getDefaultPermissions(role: UserRoleSlug): UserPermissions {
@@ -148,6 +158,16 @@ export const PERMISSION_LABELS: Record<keyof UserPermissions, PermissionLabel> =
   users_manage: { group: 'Utilisateurs', label: 'Gerer les utilisateurs (inviter, editer)' },
   drivers_view: { group: 'Conducteurs', label: 'Voir les conducteurs' },
   drivers_manage: { group: 'Conducteurs', label: 'Gerer les conducteurs' },
+  sims_view: {
+    group: 'Cartes SIM',
+    label: 'Voir les cartes SIM',
+    description: 'Voir le parc SIM de la flotte et la conso data.',
+  },
+  sims_assign: {
+    group: 'Cartes SIM',
+    label: 'Assigner une carte SIM a un tracker',
+    description: 'Poser / detacher une SIM sur un boitier de la flotte.',
+  },
 };
 
 /** Ordre d'affichage canonique des groupes dans l'UI. */
@@ -159,4 +179,5 @@ export const PERMISSION_GROUP_ORDER: readonly string[] = [
   'Rapports',
   'Utilisateurs',
   'Conducteurs',
+  'Cartes SIM',
 ] as const;
