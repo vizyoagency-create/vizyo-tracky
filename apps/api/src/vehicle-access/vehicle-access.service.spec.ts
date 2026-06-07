@@ -216,5 +216,15 @@ describe('VehicleAccessService', () => {
 
       expect(filter).toEqual({ id: { in: [VEHICLE_A] } });
     });
+
+    it('FLEET_ADMIN sans fleetId → match-nothing (audit residual, fail-closed)', async () => {
+      const svc = new VehicleAccessService(makePrismaMock());
+      const user = { ...makeUser(UserRole.FLEET_ADMIN), fleetId: null };
+
+      const filter = await svc.buildVehicleFilter(user);
+
+      // Avant le fix : { fleetId: undefined } → Prisma droppe le filtre → toutes flottes.
+      expect(filter).toEqual({ id: { in: [] } });
+    });
   });
 });

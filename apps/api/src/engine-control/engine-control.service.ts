@@ -12,6 +12,7 @@ import type { CobanCommand } from '@vizyo/tracky-shared';
 import { encodeCommand } from '@vizyo/tracky-shared';
 import { CobanWireLogger } from '../observability/coban-wire-logger.service';
 import { ErrorLogger } from '../observability/error-logger.service';
+import { resolveTenantScope } from '../common/tenant-scope';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SmsGatewayService } from '../sms/sms-gateway.service';
@@ -326,8 +327,11 @@ export class EngineControlService {
 
     const where: Record<string, unknown> = {};
 
-    if (requestedBy.role !== UserRole.SUPER_ADMIN && requestedBy.fleetId) {
-      where.tracker = { vehicle: { fleetId: requestedBy.fleetId } };
+    // V1.16 (audit residual) — fail-closed : non-super sans fleetId => aucun resultat.
+    const scope = resolveTenantScope(requestedBy);
+    if (scope.mode === 'DENY') return [];
+    if (scope.mode === 'FLEET') {
+      where.tracker = { vehicle: { fleetId: scope.fleetId } };
     }
 
     if (filters?.trackerId) where.trackerId = filters.trackerId;

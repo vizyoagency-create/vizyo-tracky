@@ -12,6 +12,7 @@ import { AlertsService } from '../alerts/alerts.service';
 import { distanceMeters } from '../common/utils/haversine';
 import { NotificationDispatchService } from '../notifications/notification-dispatch.service';
 import { ErrorLogger } from '../observability/error-logger.service';
+import { resolveTenantScope } from '../common/tenant-scope';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { isInsideCorridor } from './corridor-geometry';
@@ -125,9 +126,10 @@ export class GeofencesService {
 
   async findAll(requestedBy: RequestedBy) {
     const where: Prisma.GeofenceWhereInput = {};
-    if (requestedBy.role !== UserRole.SUPER_ADMIN) {
-      where.fleetId = requestedBy.fleetId ?? undefined;
-    }
+    // V1.16 (audit residual) — fail-closed : non-super sans fleetId => aucun resultat.
+    const scope = resolveTenantScope(requestedBy);
+    if (scope.mode === 'DENY') return [];
+    if (scope.mode === 'FLEET') where.fleetId = scope.fleetId;
     // V1.15 — `_count.vehicleTargets` : nombre de vehicules cibles par la
     // geofence. Utile pour le badge contextuel "X véhicules ciblés" dans la
     // card sans round-trip. Cout : 1 COUNT subquery par row.
