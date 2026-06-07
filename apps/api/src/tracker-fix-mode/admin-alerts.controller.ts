@@ -15,6 +15,7 @@ import { TrackerCommandStatus, UserRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { resolveTenantScope } from '../common/tenant-scope';
 import { PrismaService } from '../prisma/prisma.service';
 
 const OFFLINE_THRESHOLD_MS = 60 * 60 * 1000; // 1h
@@ -45,8 +46,27 @@ export class AdminAlertsController {
     @Query('fleetId') fleetIdFilter?: string,
     @Query('since') sinceRaw?: string,
   ) {
-    const isSuperAdmin = req.user.role === UserRole.SUPER_ADMIN;
-    const fleetIdScope = isSuperAdmin ? fleetIdFilter ?? undefined : req.user.fleetId ?? undefined;
+    // V1.16 (audit residual) — fail-closed : un non-super sans fleetId ne voit RIEN.
+    const scope = resolveTenantScope(req.user);
+    if (scope.mode === 'DENY') {
+      return {
+        summary: {
+          failing: 0,
+          offline: 0,
+          pending: 0,
+          errorsLast24h: 0,
+          errorsPrev24h: 0,
+          criticalLastHour: 0,
+          errorsSinceLastVisit: null,
+        },
+        failing: [],
+        offline: [],
+        pendingCommands: [],
+        errors: { last24h: 0, criticalLastHour: 0, bySource: [], topMessages: [], recentCritical: [] },
+      };
+    }
+    // SUPER_ADMIN : filtre optionnel via ?fleetId= ; non-super : force sur sa flotte.
+    const fleetIdScope = scope.mode === 'ALL' ? (fleetIdFilter ?? undefined) : scope.fleetId;
     const fleetClause = fleetIdScope ? { vehicle: { fleetId: fleetIdScope } } : {};
 
     const now = Date.now();

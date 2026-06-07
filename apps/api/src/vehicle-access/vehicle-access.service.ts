@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { UserRole, AccessType } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
+import { resolveTenantScope } from '../common/tenant-scope';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthUser } from '../auth/types/auth-user';
 
@@ -79,9 +80,13 @@ export class VehicleAccessService {
     const ids = await this.getAccessibleVehicleIds(user);
 
     if (ids === 'ALL') {
-      // Filtre par fleet uniquement (existant)
-      if (user.role === UserRole.SUPER_ADMIN) return {};
-      return { fleetId: user.fleetId ?? undefined };
+      // V1.16 (audit residual) — fail-closed : un FLEET_ADMIN sans fleetId ne
+      // doit matcher AUCUN vehicule (jamais "toutes flottes"). Cette methode n'a
+      // aujourd'hui aucun appelant en prod, mais on corrige le pattern a la racine.
+      const scope = resolveTenantScope(user);
+      if (scope.mode === 'ALL') return {};
+      if (scope.mode === 'FLEET') return { fleetId: scope.fleetId };
+      return { id: { in: [] } };
     }
 
     return { id: { in: ids } };
