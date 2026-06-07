@@ -47,13 +47,26 @@ export interface SmsLogDto {
   createdAt: string;
 }
 
+export type ProvisioningStepStatus =
+  | 'pending'
+  | 'sent'
+  | 'acked'
+  | 'no-ack'
+  | 'failed'
+  | 'noop';
+
 export interface ProvisioningStep {
   step: number;
+  key: string;
+  label: string;
   payload: string;
-  sentAt: string;
-  status: 'sent' | 'failed' | 'noop';
+  status: ProvisioningStepStatus;
+  sentAt?: string;
   twilioSid?: string;
   error?: string;
+  reply?: string; // texte de la reponse du boitier
+  repliedAt?: string;
+  ackMatched?: boolean; // true si la reponse contient le mot-cle attendu
 }
 
 export interface ProvisioningDto {
@@ -154,7 +167,11 @@ export class AdminSmsService {
     apnPasswd?: string;
     serverIp: string;
     serverPort: number;
+    adminNumber?: string;
     lowBatteryPhone?: string;
+    accOn?: boolean;
+    fixIntervalS?: number;
+    ackTimeoutS?: number;
   }) {
     return this.http.post<{ id: string }>('/api/admin/sms/provision', body);
   }

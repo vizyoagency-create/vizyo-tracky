@@ -1,9 +1,10 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { EventEmitter2 } from '@nestjs/event-emitter';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { TrackerProvisioningStatus, UserRole } from '@prisma/client';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { SmsGatewayService } from './sms-gateway.service';
+import { AllowlistService } from './allowlist.service';
+import { SMS_INBOUND_EVENT, SmsGatewayService, type SmsInboundEvent } from './sms-gateway.service';
 
 /**
  * Contexte tenant requis pour les operations sensibles sur un provisioning.
@@ -24,36 +25,49 @@ interface RequestedBy {
 }
 
 /**
- * V1.5 (Sprint I) — Sequence d'init Coban GPS403D via SMS.
+ * V1.5 (Sprint I) → V1.17 — Configuration d'un boitier Coban GPS403D par SMS,
+ * avec ATTENTE de la reponse (ACK) du boitier entre chaque commande.
  *
- * Reference protocole : docs/03-protocol-coban-gps403d.md §5.7.
+ * Reference protocole : docs/03-protocol-coban-gps403d.md §5.
  *
- * Sequence de 9 SMS (entre chaque envoi, on attend l'ACK "ok 123456" du boitier
- * via le webhook inbound, max 60s avant timeout).
+ * Sequence par defaut (6 commandes ; extras optionnels si les champs sont fournis) :
  *
- *   1. begin123456                   → reset config
- *   2. apn123456 <APN>               → APN GPRS
- *   3. apnuser123456 <USER>          → user APN (souvent vide)
- *   4. apnpasswd123456 <PASSWD>      → password APN (souvent vide)
- *   5. adminip123456 <IP> <PORT>     → IP serveur Tracky + port TCP
- *   6. gprs123456                    → activer GPRS
- *   7. fix030s***n123456             → reporting 30s en mouvement
- *   8. acc123456 on                  → activation alarme ACC
- *   9. lowbattery123456 <PHONE> on   → alarme batterie faible
+ *   1. begin123456                   → reset config            (ACK "begin ok")
+ *   2. apn123456 <APN>               → APN GPRS (defaut wsim)   (ACK "apn ...")
+ *   3. admin123456 <NUM sans +>      → numero master/SOS        (ACK "admin OK")
+ *   4. adminip123456 <IP> <PORT>     → IP serveur Tracky + port (ACK "adminip ...")
+ *   5. gprs123456                    → activer GPRS             (souvent SANS ACK)
+ *   6. fix0NNs***n123456             → reporting toutes NN s    (ACK "fix ok")
  *
- * Pour rester pragmatique, on n'attend PAS l'ACK entre chaque SMS dans cette V1 :
- * on envoie tous les 9 a 30s d'intervalle (cron), et on regarde les replies dans
- * un second temps via le webhook inbound. C'est suffisant pour 99% des cas
- * (le boitier est verbeux).
+ * Transport : vizyo-texto (SmsGatewayService). On ENVOIE la commande puis on
+ * ATTEND la reponse du boitier captee par le webhook entrant (event sms.inbound),
+ * jusqu'a `ackTimeoutS` (defaut 15s). Si aucune reponse n'arrive a temps, l'etape
+ * est marquee `no-ack` et la sequence CONTINUE (timeout genereux, non bloquant) —
+ * un `no-ack` n'est pas un echec (l'objectif est surtout de confirmer que la SIM
+ * recoit/repond aux SMS). Seul un echec d'ENVOI marque l'etape `failed`.
  */
 
+type StepStatus = 'pending' | 'sent' | 'acked' | 'no-ack' | 'failed' | 'noop';
+
 interface StepRecord {
-  step: number;
+  step: number; // 1-based
+  key: string; // 'begin' | 'apn' | 'admin' | 'adminip' | 'gprs' | 'fix' | ...
+  label: string; // libelle FR pour l'UI
   payload: string;
-  sentAt: string;
-  status: 'sent' | 'failed' | 'noop';
+  status: StepStatus;
+  sentAt?: string;
   twilioSid?: string;
   error?: string;
+  reply?: string; // texte de la reponse du boitier
+  repliedAt?: string;
+  ackMatched?: boolean; // true si la reponse contient le mot-cle attendu
+}
+
+interface StepDef {
+  key: string;
+  label: string;
+  payload: string;
+  expect: string; // mot-cle attendu dans l'ACK (insensible a la casse)
 }
 
 interface ProvisioningParams {
@@ -64,48 +78,110 @@ interface ProvisioningParams {
   apnPasswd?: string;
   serverIp: string;
   serverPort: number;
+  adminNumber?: string; // n° master/SOS ; defaut = phoneNumber (le `+` est retire)
   lowBatteryPhone?: string;
+  accOn?: boolean; // ajoute l'etape acc<pwd> on
+  fixIntervalS?: number; // defaut 20 (plancher firmware Coban)
+  ackTimeoutS?: number; // defaut 15
 }
 
 const COBAN_PASSWORD = '123456'; // password par defaut Coban (override via env si prod)
-const STEP_DELAY_MS = 30 * 1000;
-const MAX_STEPS = 9;
+const DEFAULT_FIX_INTERVAL_S = 20;
+const MIN_FIX_INTERVAL_S = 20; // plancher firmware Coban (cf docs/03 §5.4)
+const MAX_FIX_INTERVAL_S = 999; // format fixNNN (3 chiffres)
+const DEFAULT_ACK_TIMEOUT_S = 15;
+const MIN_ACK_TIMEOUT_S = 3;
+const MAX_ACK_TIMEOUT_S = 120;
+const SETTLE_DELAY_MS = 1500; // petite pause apres un ACK avant la commande suivante
 
 @Injectable()
 export class TrackerProvisioningService {
   private readonly logger = new Logger(TrackerProvisioningService.name);
+
+  /**
+   * Waiters d'ACK en attente, indexes par numero normalise (9 derniers chiffres).
+   * Chaque entree est resolue par onSmsInbound() quand le boitier repond, ou par
+   * le timeout de armReplyWaiter(). La valeur stockee EST la fonction de resolution
+   * — l'identite sert a eviter qu'un timeout efface le waiter d'une autre etape.
+   */
+  private readonly waiters = new Map<string, (sms: SmsInboundEvent) => void>();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly sms: SmsGatewayService,
     private readonly eventEmitter: EventEmitter2,
     private readonly errorLogger: ErrorLogger,
+    private readonly allowlist: AllowlistService,
   ) {}
 
-  /** Build the 9 Coban SMS payloads from the provisioning params. */
-  buildPayloads(params: ProvisioningParams): string[] {
-    const pwd = COBAN_PASSWORD;
-    return [
-      `begin${pwd}`,
-      `apn${pwd} ${params.apn}`,
-      `apnuser${pwd} ${params.apnUser ?? ''}`.trim(),
-      `apnpasswd${pwd} ${params.apnPasswd ?? ''}`.trim(),
-      `adminip${pwd} ${params.serverIp} ${params.serverPort}`,
-      `gprs${pwd}`,
-      `fix030s***n${pwd}`,
-      `acc${pwd} on`,
-      `lowbattery${pwd} ${params.lowBatteryPhone ?? ''} on`.replace(/\s+on$/, ' on'),
-    ];
-  }
+  // ─── Construction de la sequence ──────────────────────────────────────────
 
   /**
-   * Start a new provisioning sequence. Returns the created row immediately ;
-   * the actual SMS dispatch runs asynchronously (chained 30s setTimeout).
+   * Construit la sequence de commandes SMS depuis les params. Les 6 commandes
+   * de base sont toujours presentes ; apnuser/apnpasswd/acc/lowbattery ne sont
+   * ajoutees que si le champ correspondant est fourni.
    */
-  async start(
-    params: ProvisioningParams,
-    requestedByUserId: string,
-  ): Promise<{ id: string }> {
+  buildSteps(params: ProvisioningParams): StepDef[] {
+    const pwd = COBAN_PASSWORD;
+    const fixS = Math.min(
+      MAX_FIX_INTERVAL_S,
+      Math.max(MIN_FIX_INTERVAL_S, Math.floor(params.fixIntervalS ?? DEFAULT_FIX_INTERVAL_S)),
+    );
+    const fixToken = String(fixS).padStart(3, '0'); // 20 -> "020"
+    const adminNum = this.stripNonDigits(params.adminNumber?.trim() || params.phoneNumber);
+
+    const steps: StepDef[] = [
+      { key: 'begin', label: 'Reset configuration', payload: `begin${pwd}`, expect: 'begin' },
+      { key: 'apn', label: `APN « ${params.apn} »`, payload: `apn${pwd} ${params.apn}`, expect: 'apn' },
+    ];
+    if (params.apnUser) {
+      steps.push({ key: 'apnuser', label: 'Utilisateur APN', payload: `apnuser${pwd} ${params.apnUser}`, expect: 'apn' });
+    }
+    if (params.apnPasswd) {
+      steps.push({ key: 'apnpasswd', label: 'Mot de passe APN', payload: `apnpasswd${pwd} ${params.apnPasswd}`, expect: 'apn' });
+    }
+    if (adminNum) {
+      steps.push({ key: 'admin', label: `Numero admin ${adminNum}`, payload: `admin${pwd} ${adminNum}`, expect: 'admin' });
+    }
+    steps.push({
+      key: 'adminip',
+      label: `Serveur ${params.serverIp}:${params.serverPort}`,
+      payload: `adminip${pwd} ${params.serverIp} ${params.serverPort}`,
+      expect: 'adminip',
+    });
+    steps.push({ key: 'gprs', label: 'Activation GPRS', payload: `gprs${pwd}`, expect: 'gprs' });
+    steps.push({ key: 'fix', label: `Reporting ${fixS}s`, payload: `fix${fixToken}s***n${pwd}`, expect: 'fix' });
+    if (params.accOn) {
+      steps.push({ key: 'acc', label: 'Alarme ACC', payload: `acc${pwd} on`, expect: 'acc' });
+    }
+    if (params.lowBatteryPhone) {
+      steps.push({
+        key: 'lowbattery',
+        label: 'Alarme batterie faible',
+        payload: `lowbattery${pwd} ${params.lowBatteryPhone} on`,
+        expect: 'battery',
+      });
+    }
+    return steps;
+  }
+
+  /** Compat : ancienne API renvoyant uniquement les payloads bruts. */
+  buildPayloads(params: ProvisioningParams): string[] {
+    return this.buildSteps(params).map((s) => s.payload);
+  }
+
+  /** Garde uniquement les chiffres (retire `+`, espaces) — format admin Coban. */
+  private stripNonDigits(num: string): string {
+    return (num ?? '').replace(/\D/g, '');
+  }
+
+  // ─── Lancement ────────────────────────────────────────────────────────────
+
+  /**
+   * Demarre une sequence de configuration. Renvoie la ligne creee immediatement ;
+   * l'envoi reel + l'attente des ACK tournent en tache de fond (dispatchAll).
+   */
+  async start(params: ProvisioningParams, requestedByUserId: string): Promise<{ id: string }> {
     if (!/^\d{14,16}$/.test(params.imei)) {
       throw new BadRequestException('IMEI invalide (14-16 chiffres attendus)');
     }
@@ -116,7 +192,7 @@ export class TrackerProvisioningService {
       throw new BadRequestException('apn, serverIp et serverPort sont requis');
     }
 
-    // Reject if a provisioning is already in progress for this IMEI.
+    // Refuse si une sequence est deja en cours pour cet IMEI.
     const existing = await this.prisma.trackerProvisioning.findFirst({
       where: { imei: params.imei, status: { in: ['PENDING', 'IN_PROGRESS'] } },
     });
@@ -125,6 +201,16 @@ export class TrackerProvisioningService {
         `Un provisionnement est deja en cours pour ${params.imei} (id ${existing.id}). Annuler avant d'en relancer un.`,
       );
     }
+
+    const stepDefs = this.buildSteps(params);
+    // Pre-remplit les etapes en 'pending' pour que le stepper s'affiche d'emblee.
+    const initialSteps: StepRecord[] = stepDefs.map((d, i) => ({
+      step: i + 1,
+      key: d.key,
+      label: d.label,
+      payload: d.payload,
+      status: 'pending',
+    }));
 
     const provisioning = await this.prisma.trackerProvisioning.create({
       data: {
@@ -139,45 +225,235 @@ export class TrackerProvisioningService {
         status: TrackerProvisioningStatus.IN_PROGRESS,
         startedAt: new Date(),
         startedBy: requestedByUserId,
-        steps: [] as object,
+        currentStep: 0,
+        steps: initialSteps as object,
       },
     });
 
     // V1.14 — Renseigne le simPhoneNumber du tracker (par imei) des le lancement :
-    // le numero SIM est connu ici. Sert au fallback SMS + a l'allowlist vizyo-texto
-    // (auto-sync via l'event). updateMany = no-op si le tracker n'existe pas encore.
+    // sert au fallback SMS + a l'allowlist vizyo-texto (auto-sync via l'event).
+    // updateMany = no-op si le tracker n'existe pas encore.
     const simUpdate = await this.prisma.tracker.updateMany({
       where: { imei: params.imei },
       data: { simPhoneNumber: params.phoneNumber },
     });
     if (simUpdate.count > 0) {
       this.eventEmitter.emit('tracker.sim-changed', { imei: params.imei });
+    } else {
+      // Pas de tracker pour cet IMEI (cas test) : l'auto-sync allowlist ne se
+      // declenchera pas. On ajoute donc le numero directement (best-effort) pour
+      // que le relay accepte les SMS entrants (= les reponses du boitier).
+      this.allowlist
+        .add(params.phoneNumber, `provision ${params.imei}`)
+        .catch((e) =>
+          this.logger.warn(
+            `Allowlist add (provision) ignoree pour ${params.phoneNumber}: ${e instanceof Error ? e.message : e}`,
+          ),
+        );
     }
 
-    // Fire the dispatch loop in the background — it returns immediately.
-    void this.dispatchAll(provisioning.id, params).catch((err) => {
+    // Lance la boucle d'envoi en tache de fond — retourne immediatement.
+    void this.dispatchAll(provisioning.id, params, stepDefs).catch((err) => {
       this.logger.error(
         `Provisioning ${provisioning.id} crashed during dispatch: ${err instanceof Error ? err.message : err}`,
       );
-      // A7 — persiste le crash dans ErrorLog (CRITICAL) pour visibilite.
-      this.errorLogger.record(
-        err instanceof Error ? err : new Error(String(err)),
-        'sms-provisioning',
-        { provisioningId: provisioning.id, imei: params.imei },
-        'CRITICAL',
-      ).catch((e) => this.logger.error('ErrorLog persist failed', e));
+      this.errorLogger
+        .record(
+          err instanceof Error ? err : new Error(String(err)),
+          'sms-provisioning',
+          { provisioningId: provisioning.id, imei: params.imei },
+          'CRITICAL',
+        )
+        .catch((e) => this.logger.error('ErrorLog persist failed', e));
     });
 
     return { id: provisioning.id };
   }
 
+  // ─── Attente des reponses (ACK) ───────────────────────────────────────────
+
   /**
-   * Cancel an in-progress provisioning.
+   * Recoit chaque SMS entrant (emis par SmsGatewayService.recordInbound depuis le
+   * webhook vizyo-texto) et resout le waiter de l'etape en cours, si le numero
+   * expediteur correspond a une sequence en attente.
+   */
+  @OnEvent(SMS_INBOUND_EVENT)
+  onSmsInbound(evt: SmsInboundEvent): void {
+    const key = this.normalizePhone(evt.fromNumber);
+    const waiter = this.waiters.get(key);
+    if (waiter) {
+      this.waiters.delete(key);
+      waiter(evt);
+    }
+  }
+
+  /** Normalise un numero pour le matching : 9 derniers chiffres (robuste +33/0033/0…). */
+  private normalizePhone(phone: string): string {
+    return (phone ?? '').replace(/\D/g, '').slice(-9);
+  }
+
+  /**
+   * Arme un waiter pour la prochaine reponse du numero donne. Renvoie une promise
+   * (resolue par l'event entrant, ou `null` au timeout) + une fonction `cancel`
+   * pour liberer le waiter si l'envoi a echoue.
+   */
+  private armReplyWaiter(
+    phone: string,
+    timeoutMs: number,
+  ): { promise: Promise<SmsInboundEvent | null>; cancel: () => void } {
+    const key = this.normalizePhone(phone);
+    let settle!: (v: SmsInboundEvent | null) => void;
+    let timer: ReturnType<typeof setTimeout>;
+    const entry = (sms: SmsInboundEvent): void => {
+      cleanup();
+      settle(sms);
+    };
+    const cleanup = (): void => {
+      clearTimeout(timer);
+      if (this.waiters.get(key) === entry) this.waiters.delete(key);
+    };
+    const promise = new Promise<SmsInboundEvent | null>((resolve) => {
+      settle = resolve;
+      timer = setTimeout(() => {
+        cleanup();
+        resolve(null);
+      }, timeoutMs);
+    });
+    this.waiters.set(key, entry);
+    return {
+      promise,
+      cancel: () => {
+        cleanup();
+        settle(null);
+      },
+    };
+  }
+
+  /** Reponse consideree comme l'ACK attendu si elle contient le mot-cle (ou "ok"). */
+  private ackMatches(body: string, expect: string): boolean {
+    const b = (body ?? '').toLowerCase();
+    return b.includes(expect.toLowerCase()) || b.includes('ok');
+  }
+
+  // ─── Boucle d'envoi ───────────────────────────────────────────────────────
+
+  /**
+   * Envoie chaque commande puis attend la reponse du boitier avant de passer a la
+   * suivante. Relit l'etat a chaque tour pour qu'une annulation arrete la boucle.
+   * Met a jour chaque etape EN PLACE (par index) dans le JSON `steps`.
+   */
+  private async dispatchAll(
+    provisioningId: string,
+    params: ProvisioningParams,
+    stepDefs: StepDef[],
+  ): Promise<void> {
+    const ackTimeoutMs =
+      Math.min(MAX_ACK_TIMEOUT_S, Math.max(MIN_ACK_TIMEOUT_S, params.ackTimeoutS ?? DEFAULT_ACK_TIMEOUT_S)) * 1000;
+    // En mode noop (dev, aucune gateway) on ne peut pas recevoir de reponse.
+    const canReadReplies = this.sms.isEnabled();
+
+    for (let i = 0; i < stepDefs.length; i++) {
+      const current = await this.prisma.trackerProvisioning.findUnique({ where: { id: provisioningId } });
+      if (!current || current.status !== TrackerProvisioningStatus.IN_PROGRESS) {
+        this.logger.log(`Provisioning ${provisioningId} stopped (status=${current?.status ?? 'missing'})`);
+        return;
+      }
+
+      const def = stepDefs[i]!;
+      // Arme le waiter AVANT l'envoi pour ne pas rater une reponse rapide.
+      const waiter = canReadReplies ? this.armReplyWaiter(params.phoneNumber, ackTimeoutMs) : null;
+
+      const result = await this.sms.send(params.phoneNumber, def.payload, {
+        imei: params.imei,
+        provisioningId,
+        provisioningStep: i + 1,
+        source: 'provision',
+      });
+
+      if (!result.ok) {
+        waiter?.cancel();
+        await this.patchStep(provisioningId, i, {
+          status: 'failed',
+          sentAt: new Date().toISOString(),
+          twilioSid: result.twilioSid,
+          error: result.error,
+        });
+        continue;
+      }
+
+      // Envoi OK : marque 'sent' immediatement (feedback UI pendant l'attente d'ACK).
+      const sentStatus: StepStatus = this.sms.isEnabled() ? 'sent' : 'noop';
+      await this.patchStep(provisioningId, i, {
+        status: sentStatus,
+        sentAt: new Date().toISOString(),
+        twilioSid: result.twilioSid,
+      });
+
+      const reply = waiter ? await waiter.promise : null;
+      let acked = false;
+      if (reply) {
+        acked = true;
+        const matched = this.ackMatches(reply.body, def.expect);
+        await this.patchStep(provisioningId, i, {
+          status: 'acked',
+          reply: reply.body,
+          repliedAt: reply.receivedAt,
+          ackMatched: matched,
+        });
+        // Rattache la ligne SmsLog entrante a ce provisioning (audit Logs).
+        this.prisma.smsLog
+          .update({ where: { id: reply.smsLogId }, data: { imei: params.imei, provisioningId } })
+          .catch((e) => this.logger.warn(`SmsLog enrich (inbound) echouee: ${e instanceof Error ? e.message : e}`));
+      } else if (canReadReplies) {
+        await this.patchStep(provisioningId, i, { status: 'no-ack' });
+      }
+
+      // Petite pause apres un ACK avant la commande suivante (le boitier traite
+      // les SMS sequentiellement). Inutile apres un no-ack (timeout deja ecoule).
+      if (acked && i < stepDefs.length - 1) {
+        await this.sleep(SETTLE_DELAY_MS);
+      }
+    }
+
+    // Finalisation : COMPLETED si aucun envoi n'a echoue (un `no-ack` n'est PAS un
+    // echec — le SMS est parti, le boitier n'a juste pas (encore) repondu).
+    const final = await this.prisma.trackerProvisioning.findUnique({ where: { id: provisioningId } });
+    if (final && final.status === TrackerProvisioningStatus.IN_PROGRESS) {
+      const stepsArr = (final.steps as unknown as StepRecord[]) ?? [];
+      const failed = stepsArr.filter((s) => s.status === 'failed').length;
+      await this.prisma.trackerProvisioning.update({
+        where: { id: provisioningId },
+        data: {
+          status: failed > 0 ? TrackerProvisioningStatus.FAILED : TrackerProvisioningStatus.COMPLETED,
+          completedAt: failed > 0 ? null : new Date(),
+          failedAt: failed > 0 ? new Date() : null,
+          failureReason: failed > 0 ? `${failed} SMS echoues sur ${stepsArr.length}` : null,
+        },
+      });
+    }
+  }
+
+  /** Met a jour une etape (par index) dans le JSON `steps` + bump currentStep. */
+  private async patchStep(provisioningId: string, index: number, patch: Partial<StepRecord>): Promise<void> {
+    const row = await this.prisma.trackerProvisioning.findUnique({ where: { id: provisioningId } });
+    if (!row) return;
+    const steps = (row.steps as unknown as StepRecord[]) ?? [];
+    if (!steps[index]) return;
+    steps[index] = { ...steps[index], ...patch };
+    await this.prisma.trackerProvisioning.update({
+      where: { id: provisioningId },
+      data: { steps: steps as object, currentStep: Math.max(row.currentStep ?? 0, index + 1) },
+    });
+  }
+
+  // ─── Annulation / lecture (inchange) ──────────────────────────────────────
+
+  /**
+   * Annule une sequence en cours.
    *
    * `requestedBy` est optionnel pour ne pas casser les anciens appels internes,
    * mais le controller HTTP doit toujours le fournir pour appliquer le tenant
-   * check (defense en profondeur — actuellement le controller est SUPER_ADMIN
-   * only via @Roles, mais on ne veut pas dependre uniquement du guard).
+   * check (defense en profondeur).
    */
   async cancel(id: string, requestedBy?: RequestedBy): Promise<void> {
     const provisioning = await this.prisma.trackerProvisioning.findUnique({ where: { id } });
@@ -233,76 +509,6 @@ export class TrackerProvisioningService {
       select: { id: true },
     });
     if (!tracker) throw new NotFoundException('Provisionnement introuvable');
-  }
-
-  /**
-   * Dispatch loop — sends each of the 9 SMS with STEP_DELAY_MS between attempts.
-   * Reads the live state from DB at every step so a CANCELLED row stops the loop.
-   * Errors during a single SMS don't abort the run — they just mark the step as
-   * 'failed' and continue.
-   */
-  private async dispatchAll(provisioningId: string, params: ProvisioningParams): Promise<void> {
-    const payloads = this.buildPayloads(params);
-
-    for (let i = 0; i < MAX_STEPS; i++) {
-      // Re-read state — admin may have cancelled.
-      const current = await this.prisma.trackerProvisioning.findUnique({
-        where: { id: provisioningId },
-      });
-      if (!current || current.status !== TrackerProvisioningStatus.IN_PROGRESS) {
-        this.logger.log(`Provisioning ${provisioningId} stopped (status=${current?.status ?? 'missing'})`);
-        return;
-      }
-
-      const payload = payloads[i]!;
-      const result = await this.sms.send(params.phoneNumber, payload, {
-        imei: params.imei,
-        provisioningId,
-        provisioningStep: i + 1,
-      });
-
-      const stepRecord: StepRecord = {
-        step: i + 1,
-        payload,
-        sentAt: new Date().toISOString(),
-        status: result.ok ? (this.sms.isEnabled() ? 'sent' : 'noop') : 'failed',
-        twilioSid: result.twilioSid,
-        error: result.error,
-      };
-
-      const existingSteps = (current.steps as unknown as StepRecord[]) ?? [];
-      await this.prisma.trackerProvisioning.update({
-        where: { id: provisioningId },
-        data: {
-          currentStep: i + 1,
-          steps: [...existingSteps, stepRecord] as object,
-        },
-      });
-
-      if (i < MAX_STEPS - 1) {
-        await this.sleep(STEP_DELAY_MS);
-      }
-    }
-
-    // Mark complete (even if some steps failed — admin can retry individual SMS).
-    const final = await this.prisma.trackerProvisioning.findUnique({
-      where: { id: provisioningId },
-    });
-    if (final && final.status === TrackerProvisioningStatus.IN_PROGRESS) {
-      const stepsArr = (final.steps as unknown as StepRecord[]) ?? [];
-      const anyFailed = stepsArr.some((s) => s.status === 'failed');
-      await this.prisma.trackerProvisioning.update({
-        where: { id: provisioningId },
-        data: {
-          status: anyFailed ? TrackerProvisioningStatus.FAILED : TrackerProvisioningStatus.COMPLETED,
-          completedAt: anyFailed ? null : new Date(),
-          failedAt: anyFailed ? new Date() : null,
-          failureReason: anyFailed
-            ? `${stepsArr.filter((s) => s.status === 'failed').length} SMS echoues sur ${MAX_STEPS}`
-            : null,
-        },
-      });
-    }
   }
 
   private sleep(ms: number): Promise<void> {
