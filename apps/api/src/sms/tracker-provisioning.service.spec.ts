@@ -1,4 +1,6 @@
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test } from '@nestjs/testing';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SmsGatewayService } from './sms-gateway.service';
 import { TrackerProvisioningService } from './tracker-provisioning.service';
@@ -12,6 +14,11 @@ describe('TrackerProvisioningService.buildPayloads', () => {
         TrackerProvisioningService,
         { provide: PrismaService, useValue: {} },
         { provide: SmsGatewayService, useValue: { send: jest.fn(), isEnabled: jest.fn() } },
+        // Dependances DI requises par le constructeur mais absentes du module de
+        // test (le spec ne teste que buildPayloads, une methode pure). Mocks
+        // minimaux pour que Test.createTestingModule().compile() resolve.
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
+        { provide: ErrorLogger, useValue: { record: jest.fn() } },
       ],
     }).compile();
     service = module.get(TrackerProvisioningService);
