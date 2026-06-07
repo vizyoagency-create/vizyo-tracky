@@ -17,6 +17,7 @@ import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guar
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { AllowlistService } from './allowlist.service';
 import { SmsGatewayService } from './sms-gateway.service';
+import { SmsHeartbeatService } from './sms-heartbeat.service';
 import { TrackerProvisioningService } from './tracker-provisioning.service';
 
 /**
@@ -33,6 +34,7 @@ export class SmsAdminController {
     private readonly sms: SmsGatewayService,
     private readonly provisioning: TrackerProvisioningService,
     private readonly allowlist: AllowlistService,
+    private readonly heartbeat: SmsHeartbeatService,
   ) {}
 
   @Get('status')
@@ -103,6 +105,21 @@ export class SmsAdminController {
       const msg = err instanceof Error ? err.message : String(err);
       throw new BadRequestException(msg);
     }
+  }
+
+  /**
+   * V1.15 — POST /api/admin/sms/heartbeat/run-now
+   *
+   * Declenche manuellement la "preuve de vie" SMS (sinon cron hebdo lundi 09h00).
+   * Utile pour valider la chaine SMS post-deploiement sans attendre. Envoie un
+   * SMS de test a chaque numero de SMS_HEARTBEAT_RECIPIENTS via la gateway active.
+   *
+   * Returns : { provider, recipients, sent, failed, skipped, results[] }
+   * `skipped=true` => aucun destinataire configure (no-op safe).
+   */
+  @Post('heartbeat/run-now')
+  async runHeartbeat() {
+    return this.heartbeat.runHeartbeat();
   }
 
   @Get('logs')

@@ -3,6 +3,7 @@ import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import {
+  Activity,
   AlertTriangle,
   ArrowLeft,
   CheckCircle,
@@ -145,6 +146,25 @@ type Tab = 'status' | 'provision' | 'logs' | 'allowlist' | 'backup';
           </button>
         </div>
 
+        <!-- V1.15 — Heartbeat "preuve de vie" SMS : declenche le meme traitement
+             que le cron hebdo (lundi 09h00 Europe/Paris) a la demande. -->
+        <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4 flex flex-col gap-3">
+          <div class="flex items-center gap-2 text-sm font-semibold">
+            <lucide-icon [img]="Activity" [size]="16" class="text-tracky-light"></lucide-icon>
+            Preuve de vie SMS (heartbeat)
+          </div>
+          <p class="text-xs text-fg-tertiary">
+            Envoie un SMS de test aux numeros <code>SMS_HEARTBEAT_RECIPIENTS</code> via la gateway
+            active. Le cron automatique tourne chaque lundi 09h00 (Europe/Paris) ; si la chaine SMS
+            est cassee (SIM down), un ErrorLog CRITICAL est cree.
+          </p>
+          <button (click)="runHeartbeat()" [disabled]="heartbeatRunning()"
+                  class="px-3 py-2 bg-tracky text-white rounded-lg text-sm font-medium hover:bg-tracky-dark cursor-pointer disabled:opacity-50 self-start flex items-center gap-2">
+            <lucide-icon [img]="Activity" [size]="14"></lucide-icon>
+            {{ heartbeatRunning() ? 'Envoi...' : 'Tester le heartbeat maintenant' }}
+          </button>
+        </div>
+
       }
 
       <!-- Tab : Provisioning -->
@@ -281,12 +301,13 @@ type Tab = 'status' | 'provision' | 'logs' | 'allowlist' | 'backup';
             <button (click)="syncTrackers()" [disabled]="syncing()"
                     class="px-3 py-2 bg-tracky text-white rounded-lg text-sm font-medium hover:bg-tracky-dark cursor-pointer disabled:opacity-50 flex items-center gap-2">
               <lucide-icon [img]="RefreshCw" [size]="14"></lucide-icon>
-              {{ syncing() ? 'Sync...' : 'Sync trackers' }}
+              {{ syncing() ? 'Sync...' : 'Synchroniser' }}
             </button>
           </div>
           <p class="text-xs text-fg-tertiary">
-            Seuls les numeros de cette liste peuvent recevoir un SMS. "Sync trackers" pousse les SIM
-            des trackers (source <code>synced</code>) ; les numeros ajoutes a la main (<code>manual</code>)
+            Seuls les numeros de cette liste peuvent recevoir un SMS. "Synchroniser" pousse les SIM
+            des trackers ET les numeros (phone) des utilisateurs actifs — requis pour les notifications
+            SMS d'alerte (source <code>synced</code>) ; les numeros ajoutes a la main (<code>manual</code>)
             sont preserves au resync.
           </p>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -442,6 +463,7 @@ export class AdminSmsComponent implements OnInit {
   private readonly api = inject(AdminSmsService);
   private readonly toast = inject(ToastService);
 
+  protected readonly Activity = Activity;
   protected readonly AlertTriangle = AlertTriangle;
   protected readonly ArrowLeft = ArrowLeft;
   protected readonly CheckCircle = CheckCircle;
@@ -460,6 +482,8 @@ export class AdminSmsComponent implements OnInit {
   readonly logs = signal<SmsLogDto[]>([]);
   readonly provisionings = signal<ProvisioningDto[]>([]);
   readonly backupHealth = signal<BackupHealthResponse | null>(null);
+  // V1.15 — heartbeat "preuve de vie" SMS en cours (bouton run-now).
+  readonly heartbeatRunning = signal(false);
   readonly activeTab = signal<Tab>('status');
 
   readonly tabs: { key: Tab; label: string }[] = [
@@ -569,6 +593,26 @@ export class AdminSmsComponent implements OnInit {
       }
     } catch {
       this.toast.error('Echec d\'envoi SMS');
+    }
+  }
+
+  // V1.15 — Force un heartbeat "preuve de vie" SMS (POST /heartbeat/run-now).
+  async runHeartbeat(): Promise<void> {
+    this.heartbeatRunning.set(true);
+    try {
+      const r = await firstValueFrom(this.api.runHeartbeat());
+      if (r.skipped) {
+        this.toast.error('Heartbeat ignore — aucun numero (SMS_HEARTBEAT_RECIPIENTS vide)');
+      } else if (r.failed === 0) {
+        this.toast.success(`Heartbeat OK — ${r.sent}/${r.recipients} SMS via ${r.provider}`);
+      } else {
+        this.toast.error(`Heartbeat : ${r.failed}/${r.recipients} echec(s) via ${r.provider} — voir ErrorLogs`);
+      }
+      this.reload();
+    } catch {
+      this.toast.error('Echec du heartbeat (acces SUPER_ADMIN requis)');
+    } finally {
+      this.heartbeatRunning.set(false);
     }
   }
 

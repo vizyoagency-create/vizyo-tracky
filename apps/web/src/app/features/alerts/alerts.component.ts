@@ -41,7 +41,7 @@ const ALERT_TYPES: { value: string; label: string; severity: string }[] = [
   { value: 'OVERSPEED', label: 'Exces de vitesse', severity: 'warning' },
   { value: 'GEOFENCE_ENTER', label: 'Entree geofence', severity: 'warning' },
   { value: 'GEOFENCE_EXIT', label: 'Sortie geofence', severity: 'warning' },
-  { value: 'MOVEMENT_IDLE', label: 'Mouvement a l\'arret', severity: 'warning' },
+  { value: 'MOVEMENT_IDLE', label: 'Mouvement vehicule eteint', severity: 'warning' },
   { value: 'BONNET', label: 'Capot ouvert', severity: 'warning' },
   { value: 'DOOR', label: 'Porte ouverte', severity: 'warning' },
   { value: 'FATIGUE', label: 'Fatigue conducteur', severity: 'warning' },
@@ -53,10 +53,11 @@ const ALERT_TYPES: { value: string; label: string; severity: string }[] = [
   { value: 'IDLE_TIME', label: 'Arret prolonge', severity: 'info' },
 ];
 
-const ALL_CHANNELS: { value: 'WEB_PUSH' | 'EMAIL' | 'WHATSAPP'; label: string; icon: string }[] = [
+const ALL_CHANNELS: { value: 'WEB_PUSH' | 'EMAIL' | 'WHATSAPP' | 'SMS'; label: string; icon: string }[] = [
   { value: 'WEB_PUSH', label: 'Push', icon: '🔔' },
   { value: 'EMAIL', label: 'Email', icon: '✉️' },
   { value: 'WHATSAPP', label: 'WhatsApp', icon: '💬' },
+  { value: 'SMS', label: 'SMS', icon: '📱' },
 ];
 
 interface RuleForm {
@@ -64,7 +65,7 @@ interface RuleForm {
   vehicleId: string | null;
   alertType: string;
   enabled: boolean;
-  channels: ('WEB_PUSH' | 'EMAIL' | 'WHATSAPP')[];
+  channels: ('WEB_PUSH' | 'EMAIL' | 'WHATSAPP' | 'SMS')[];
   escalateAfterMin: number | null;
   escalateToUserId: string | null;
 }
@@ -1095,7 +1096,7 @@ export class AlertsComponent implements OnInit {
 
   protected closeRuleForm(): void { this.ruleFormOpen.set(false); }
 
-  protected toggleRuleChannel(channel: 'WEB_PUSH' | 'EMAIL' | 'WHATSAPP', checked: boolean): void {
+  protected toggleRuleChannel(channel: 'WEB_PUSH' | 'EMAIL' | 'WHATSAPP' | 'SMS', checked: boolean): void {
     const current = this.ruleForm().channels;
     const next = checked ? [...current, channel] : current.filter((c) => c !== channel);
     this.updateRuleForm({ channels: next as RuleForm['channels'] });
