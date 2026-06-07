@@ -52,6 +52,7 @@ import {
   type VehicleMarkerData,
 } from '../../shared/utils/maplibre-markers';
 import { catmullRom, lerpHeading } from '../../shared/utils/spline';
+import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fleet-badge.component';
 
 interface MarkerEntry {
   marker: MlMarker;
@@ -70,6 +71,10 @@ interface MarkerEntry {
 interface VehicleMeta {
   type: string;
   plate: string;
+  /** V1.15 — Source SA pour la card popup (badge fleet + meta tracker). */
+  fleetId?: string | null;
+  imei?: string | null;
+  lastSeenAt?: string | null;
 }
 
 /** Donnees affichees dans la bottom card Baanool au clic sur un marker. */
@@ -83,6 +88,10 @@ interface BaanoolCardData {
   lat: number;
   lng: number;
   cutActive: boolean;
+  /** V1.15 — Contexte SUPER_ADMIN. */
+  fleetId?: string | null;
+  imei?: string | null;
+  lastSeenAt?: string | null;
 }
 
 /**
@@ -149,7 +158,7 @@ const MAX_FRAME_DT_MS = 100;
 @Component({
   selector: 'app-map',
   standalone: true,
-  imports: [DecimalPipe, ConfirmModalComponent],
+  imports: [DecimalPipe, ConfirmModalComponent, SaFleetBadgeComponent],
   template: `
     <div #mapContainer style="position:absolute;top:0;left:0;width:100%;height:100%"></div>
 
@@ -820,7 +829,19 @@ const MAX_FRAME_DT_MS = 100;
                     [style.color]="baanoolCard()!.speedKmh > 90 ? '#ef4444' : baanoolCard()!.speedKmh > 50 ? '#f59e0b' : baanoolCard()!.speedKmh > 0 ? '#10E0A0' : '#999'">
                 {{ baanoolCard()!.speedKmh | number:'1.0-0' }} km/h
               </span>
+              <!-- V1.15 — Badge Fleet (visible SA only). -->
+              <app-sa-fleet-badge [fleetId]="baanoolCard()!.fleetId" />
             </div>
+            <!-- V1.15 — Meta tracker visible SA only via le badge component
+                 qui s'auto-cache si role != SUPER_ADMIN. La ligne est rendue
+                 systematiquement mais le contenu se masque lui-meme. -->
+            @if (baanoolCard()!.imei) {
+              <div class="bn-vcard-sa-meta" [attr.aria-hidden]="!isSuperAdmin()">
+                @if (isSuperAdmin()) {
+                  <span class="bn-vcard-sa-imei">IMEI {{ baanoolCard()!.imei }}</span>
+                }
+              </div>
+            }
           </div>
           <button class="bn-vcard-close" (click)="closeBaanoolCard()" aria-label="Fermer">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -1810,6 +1831,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   protected readonly styles = inject(MapStyleService);
   private readonly zone = inject(NgZone);
   private readonly auth = inject(AuthService);
+  /** V1.15 — Helper utilise dans la card popup (SA voit IMEI). */
+  protected readonly isSuperAdmin = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
   private readonly geofencesApi = inject(GeofencesApiService);
   private readonly vehiclesApi = inject(VehiclesApiService);
   private readonly preferences = inject(PreferencesService);
@@ -2104,7 +2127,20 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     // Hydratation : si snapshot deja la, pre-construire la metadata vehicule.
     const snap = this.realtime.snapshot();
     for (const v of snap) {
-      this.vehicleMeta.set(v.vehicleId, { type: v.type, plate: v.plate });
+      // V1.15 — fleetId/imei/lastSeenAt deja dans VehicleSnapshotDto, on les
+      // injecte dans la meta pour les exposer dans la card popup (badge SA).
+      const snapMeta = v as unknown as {
+        fleetId?: string | null;
+        trackerImei?: string | null;
+        lastSeenAt?: string | null;
+      };
+      this.vehicleMeta.set(v.vehicleId, {
+        type: v.type,
+        plate: v.plate,
+        fleetId: snapMeta.fleetId ?? null,
+        imei: snapMeta.trackerImei ?? null,
+        lastSeenAt: snapMeta.lastSeenAt ?? null,
+      });
     }
 
     // Recupere aussi depuis /api/vehicles pour les types manquants (ex : si snapshot vide).
@@ -2112,7 +2148,13 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       this._accessibleIds.set(new Set(vehicles.map((v) => v.id)));
       vehicles.forEach((v) => {
         const cast = v as VehicleDetailDto & { type?: string };
-        this.vehicleMeta.set(v.id, { type: cast.type ?? 'OTHER', plate: v.plate });
+        this.vehicleMeta.set(v.id, {
+          type: cast.type ?? 'OTHER',
+          plate: v.plate,
+          fleetId: v.fleetId ?? null,
+          imei: v.tracker?.imei ?? null,
+          lastSeenAt: v.tracker?.lastSeenAt ?? null,
+        });
       });
       // Re-render apres MAJ meta
       if (this.map) this.applyPositions(this.applyFilters(this.realtime.positionsList()));
@@ -3596,6 +3638,9 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       lat: pos.lat,
       lng: pos.lng,
       cutActive: this.isCutActiveForTracker(trackerId),
+      fleetId: meta.fleetId,
+      imei: meta.imei,
+      lastSeenAt: meta.lastSeenAt,
     });
     this.activePopupTrackerId = trackerId;
     this.activePopupVehicleId = pos.vehicleId;

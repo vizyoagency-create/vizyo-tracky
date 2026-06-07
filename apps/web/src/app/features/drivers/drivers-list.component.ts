@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, Plus, Archive, Pencil, Mail, Phone, IdCard, UserRound } from 'lucide-angular';
+import { LucideAngularModule, Plus, Archive, Pencil, Mail, Phone, IdCard, UserRound, Truck, Route } from 'lucide-angular';
 import type { DriverDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
@@ -9,6 +9,7 @@ import { PermissionsService } from '../../core/services/permissions.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
 import { DriverDrawerComponent, type DriverDrawerData, type DriverDrawerResult } from './driver-drawer.component';
+import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fleet-badge.component';
 
 /**
  * Phase 2 — Page liste des Conducteurs.
@@ -23,7 +24,7 @@ import { DriverDrawerComponent, type DriverDrawerData, type DriverDrawerResult }
   selector: 'app-drivers-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, LucideAngularModule, ConfirmModalComponent, DriverDrawerComponent],
+  imports: [FormsModule, LucideAngularModule, ConfirmModalComponent, DriverDrawerComponent, SaFleetBadgeComponent],
   template: `
     <div class="dpage">
       <div class="d-blobs"></div>
@@ -88,6 +89,23 @@ import { DriverDrawerComponent, type DriverDrawerData, type DriverDrawerResult }
                 <div class="d-status" [class]="d.isActive ? 'active' : 'suspended'">
                   {{ d.isActive ? 'Actif' : 'Archivé' }}
                 </div>
+              </div>
+
+              <!-- V1.15 — Badge contextuel SUPER_ADMIN + compteurs vehicules/trajets -->
+              <div class="d-meta-row">
+                <app-sa-fleet-badge [fleetId]="d.fleetId" />
+                @if ((d._count?.currentVehicles ?? 0) > 0) {
+                  <span class="d-count-chip" title="Véhicules attribués actuellement">
+                    <lucide-icon [img]="TruckIcon" [size]="10"></lucide-icon>
+                    {{ d._count?.currentVehicles }} véhicule{{ (d._count?.currentVehicles ?? 0) > 1 ? 's' : '' }}
+                  </span>
+                }
+                @if ((d._count?.trips ?? 0) > 0) {
+                  <span class="d-count-chip" title="Trajets historiques">
+                    <lucide-icon [img]="RouteIcon" [size]="10"></lucide-icon>
+                    {{ d._count?.trips }} trajet{{ (d._count?.trips ?? 0) > 1 ? 's' : '' }}
+                  </span>
+                }
               </div>
 
               <!-- Mid: contact -->
@@ -243,6 +261,21 @@ import { DriverDrawerComponent, type DriverDrawerData, type DriverDrawerResult }
     .d-status.active { background: rgba(16,224,160,.1); color: var(--tracky-light) }
     .d-status.suspended { background: rgba(239,68,68,.1); color: #f87171 }
 
+    /* V1.15 — Ligne meta : fleet badge + compteurs vehicules/trajets. */
+    .d-meta-row {
+      display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+      margin-top: 8px;
+    }
+    .d-count-chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 10px; font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 9999px;
+      background: var(--bg-tertiary);
+      color: var(--fg-secondary);
+      white-space: nowrap;
+    }
+
     .d-card-mid {
       display: flex; flex-direction: column; gap: 4px;
       padding: 10px 0; margin: 8px 0;
@@ -296,6 +329,8 @@ export class DriversListComponent implements OnInit {
   protected readonly PhoneIcon = Phone;
   protected readonly IdCardIcon = IdCard;
   protected readonly UserRoundIcon = UserRound;
+  protected readonly TruckIcon = Truck;
+  protected readonly RouteIcon = Route;
 
   /** Roles autorises a creer/modifier/archiver un driver. */
   protected readonly canManage = computed(() => {

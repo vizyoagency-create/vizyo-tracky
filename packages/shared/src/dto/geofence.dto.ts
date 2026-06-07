@@ -12,6 +12,14 @@ export interface GeofenceDto {
   color: string | null;
   active: boolean;
   createdAt: string;
+  /**
+   * V1.15 — Compteur contextuel pour les cards :
+   * nombre de véhicules ciblés (relation GeofenceVehicle).
+   * Renvoyé par GET /geofences (liste). Absent sur GET /geofences/:id.
+   */
+  _count?: {
+    vehicleTargets?: number;
+  };
 }
 
 export interface GeofenceViolationEvent {

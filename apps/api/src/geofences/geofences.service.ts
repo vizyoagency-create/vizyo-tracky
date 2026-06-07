@@ -123,13 +123,17 @@ export class GeofencesService {
     return geofence;
   }
 
-  async findAll(requestedBy: RequestedBy): Promise<Geofence[]> {
+  async findAll(requestedBy: RequestedBy) {
     const where: Prisma.GeofenceWhereInput = {};
     if (requestedBy.role !== UserRole.SUPER_ADMIN) {
       where.fleetId = requestedBy.fleetId ?? undefined;
     }
+    // V1.15 — `_count.vehicleTargets` : nombre de vehicules cibles par la
+    // geofence. Utile pour le badge contextuel "X véhicules ciblés" dans la
+    // card sans round-trip. Cout : 1 COUNT subquery par row.
     return this.prisma.geofence.findMany({
       where,
+      include: { _count: { select: { vehicleTargets: true } } },
       orderBy: { createdAt: 'desc' },
     });
   }

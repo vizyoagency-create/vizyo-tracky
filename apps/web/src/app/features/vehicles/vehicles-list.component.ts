@@ -12,12 +12,13 @@ import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/v
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
 import { VehicleDialogComponent } from './vehicle-dialog/vehicle-dialog.component';
 import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
+import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fleet-badge.component';
 
 @Component({
   selector: 'app-vehicles-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, ConfirmModalComponent],
+  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, ConfirmModalComponent, SaFleetBadgeComponent],
   template: `
     <div class="vlist-page">
       <div class="vlist-grid-bg"></div>
@@ -90,6 +91,16 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
                     <span class="v-year">{{ v.year }}</span>
                   }
                 </div>
+                <!-- V1.15 — Badge contextuel SUPER_ADMIN : nom de flotte. -->
+                <app-sa-fleet-badge [fleetId]="v.fleetId" />
+                @if (v.currentDriver; as d) {
+                  <!-- V1.15 — Driver actuel : visible pour tous (info utile, pas
+                       reservee SA). Petit chip discret avec pastille couleur. -->
+                  <span class="v-driver-chip" [title]="'Conducteur : ' + d.firstName + ' ' + d.lastName">
+                    <span class="v-driver-dot" [style.background]="d.color ?? '#10b981'"></span>
+                    {{ d.firstName }} {{ d.lastName?.charAt(0) ?? '' }}.
+                  </span>
+                }
                 <div class="v-card-mid">
                   @if (v.brand) {
                     <span class="v-brand">{{ v.brand }} {{ v.model ?? '' }}</span>
@@ -387,6 +398,23 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
     .v-type-icon :deep(svg) { width: 16px; height: 16px }
     .v-plate { font-size: 16px; font-weight: 800; color: var(--fg-primary); font-family: var(--font-mono, monospace); letter-spacing: .03em }
     .v-year { font-size: 11px; font-weight: 600; color: var(--fg-tertiary); padding: 2px 8px; border-radius: 6px; background: var(--bg-tertiary) }
+
+    /* V1.15 — Driver chip discret sous le header (visible pour tous roles). */
+    .v-driver-chip {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 11px; font-weight: 500;
+      color: var(--fg-secondary);
+      padding: 2px 6px;
+      border-radius: 9999px;
+      background: var(--bg-tertiary);
+      margin-top: 6px;
+    }
+    .v-driver-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: #10b981;
+      flex-shrink: 0;
+    }
+
 
     .v-card-mid { margin-bottom: 12px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px }
     .v-brand { font-size: 13px; font-weight: 500; color: var(--fg-secondary) }

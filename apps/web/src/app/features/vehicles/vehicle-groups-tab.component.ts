@@ -9,11 +9,12 @@ import { AuthService } from '../../core/services/auth.service';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { firstValueFrom } from 'rxjs';
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
+import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fleet-badge.component';
 
 @Component({
   selector: 'app-vehicle-groups-tab',
   standalone: true,
-  imports: [FormsModule, RouterLink, LucideAngularModule, ConfirmModalComponent],
+  imports: [FormsModule, RouterLink, LucideAngularModule, ConfirmModalComponent, SaFleetBadgeComponent],
   template: `
     <div class="flex flex-col gap-4">
       <!-- Header : description + bouton (stack en mobile, row en desktop) -->
@@ -55,10 +56,12 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
           @for (g of groups(); track g.id) {
             <div class="bg-bg-secondary border border-border-subtle rounded-xl p-4">
               <div class="flex items-center justify-between mb-3">
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 flex-wrap">
                   <lucide-icon [img]="FolderOpen" [size]="16" class="text-tracky-light"></lucide-icon>
                   <span class="font-semibold text-fg-primary text-sm">{{ g.name }}</span>
                   <span class="text-xs text-fg-tertiary">({{ g._count.vehicles }} véhicule{{ g._count.vehicles > 1 ? 's' : '' }})</span>
+                  <!-- V1.15 — Badge fleet (visible SA only). -->
+                  <app-sa-fleet-badge [fleetId]="g.fleetId" />
                 </div>
                 @if (perms.can('groups_manage')) {
                   <button (click)="confirmDeleteGroup(g)"

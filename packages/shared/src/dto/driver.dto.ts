@@ -25,6 +25,18 @@ export interface DriverDto extends DriverSummaryDto {
   userId: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * V1.15 — Compteurs contextuels (badges UI). Optionnels pour backward compat :
+   *   - _count.currentVehicles : nombre de vehicules dont ce driver est le
+   *     conducteur actuel (Vehicle.currentDriverId).
+   *   - _count.trips : nombre total de trajets historiques de ce driver.
+   * Renvoyes par GET /drivers ; absents sur les endpoints qui retournent un
+   * driver sans agregation (ex: GET /drivers/:id n'inclut pas _count).
+   */
+  _count?: {
+    currentVehicles?: number;
+    trips?: number;
+  };
 }
 
 export interface CreateDriverDto {

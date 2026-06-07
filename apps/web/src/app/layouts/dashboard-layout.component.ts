@@ -33,6 +33,7 @@ import { AuthService } from '../core/services/auth.service';
 import { NetworkStatusService } from '../core/services/network-status.service';
 import { RealtimeService } from '../core/services/realtime.service';
 import { NotificationsApiService } from '../core/services/notifications.service';
+import { FleetCacheService } from '../core/services/fleet-cache.service';
 import { OnboardingService } from '../core/services/onboarding.service';
 import { PermissionsService } from '../core/services/permissions.service';
 import { LogoComponent } from '../shared/ui/logo/logo.component';
@@ -777,6 +778,8 @@ export class DashboardLayoutComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly onboarding = inject(OnboardingService);
   private readonly notif = inject(NotificationsApiService);
+  /** V1.15 — Cache fleet pour les badges contextuels SUPER_ADMIN. */
+  private readonly fleetCache = inject(FleetCacheService);
 
   constructor() {
     // V1.10 (Sprint 5 stabilite) — takeUntilDestroyed evite l'accumulation de
@@ -814,6 +817,10 @@ export class DashboardLayoutComponent {
     // le cache localStorage restait stale jusqu'au prochain logout/login.
     void this.auth.refreshMe();
     document.addEventListener('visibilitychange', this.onVisibilityChange);
+    // V1.15 — Pre-charge la liste des flottes pour SUPER_ADMIN, afin que les
+    // badges contextuels (Société) apparaissent partout dans les listes sans
+    // un round-trip API par card. No-op si pas SA (cf. FleetCacheService).
+    void this.fleetCache.loadIfNeeded();
   }
 
   /** Refresh au regain de focus de l'onglet (visible apres background). */

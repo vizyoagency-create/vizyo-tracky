@@ -14,12 +14,13 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
 import { UserDrawerComponent, type UserDrawerData, type UserDrawerResult } from './user-drawer.component';
 import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerResult } from './vehicle-access-drawer.component';
 import { AccessPermissionsMatrixComponent, type MatrixDrawerData } from './access-permissions-matrix.component';
+import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fleet-badge.component';
 
 @Component({
   selector: 'app-users-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, RouterLink, LucideAngularModule, ConfirmModalComponent, UserDrawerComponent, VehicleAccessDrawerComponent, AccessPermissionsMatrixComponent],
+  imports: [FormsModule, RouterLink, LucideAngularModule, ConfirmModalComponent, UserDrawerComponent, VehicleAccessDrawerComponent, AccessPermissionsMatrixComponent, SaFleetBadgeComponent],
   template: `
     <div class="upage">
       <div class="u-blobs"></div>
@@ -84,6 +85,8 @@ import { AccessPermissionsMatrixComponent, type MatrixDrawerData } from './acces
                 <span class="u-role-badge" [class]="u.role === 'FLEET_ADMIN' ? 'admin' : u.role === 'FLEET_MANAGER' ? 'manager' : 'viewer'">
                   {{ roleLabel(u.role) }}
                 </span>
+                <!-- V1.15 — Badge contextuel SUPER_ADMIN : la flotte de l'user. -->
+                <app-sa-fleet-badge [fleetId]="u.fleetId" />
                 <span class="u-date">Depuis {{ formatDate(u.createdAt) }}</span>
               </div>
 
