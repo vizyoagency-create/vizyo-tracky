@@ -64,6 +64,14 @@ const envSchema = z.object({
   VAPID_PUBLIC_KEY: z.string().default(''),
   VAPID_PRIVATE_KEY: z.string().default(''),
   VAPID_SUBJECT: z.string().default('mailto:contact@vizyoagency.com'),
+
+  // WhereverSIM — parc de cartes SIM M2M (V1.16). API GraphQL.
+  // Si WHEREVER_SIM_TOKEN est vide, le module SIM est en mode no-op : l'UI
+  // fonctionne sur le cache local mais aucun appel fournisseur n'est tente
+  // (sync/lifecycle renvoient "non configure"). Le token se passe brut dans
+  // le header Authorization (PAS de prefixe Bearer — verifie en live).
+  WHEREVER_SIM_API_URL: z.string().default('https://graphql.api.whereversim.com/graphql'),
+  WHEREVER_SIM_TOKEN: z.string().default(''),
 });
 
 export type Env = z.infer<typeof envSchema>;

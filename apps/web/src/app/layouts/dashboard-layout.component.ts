@@ -20,6 +20,7 @@ import {
   MessageSquare,
   Terminal,
   ClipboardList,
+  CreditCard,
   UserRound,
   UserCircle2,
   LogOut,
@@ -865,6 +866,8 @@ export class DashboardLayoutComponent {
       ...(this.perms.can('reports_view') ? [{ label: 'Rapports', route: '/reports', icon: FileBarChart }] : []),
       ...(this.perms.can('drivers_view') ? [{ label: 'Conducteurs', route: '/drivers', icon: UserRound }] : []),
       ...(this.perms.can('users_view') ? [{ label: 'Utilisateurs', route: '/users', icon: Users }] : []),
+      // V1.16 — Parc SIM : visible des qu'on a sims_view (FLEET_ADMIN/SUPER_ADMIN bypass).
+      ...(this.perms.can('sims_view') ? [{ label: 'Cartes SIM', route: '/sims', icon: CreditCard }] : []),
       // V1.15 — Suivi installation : reserve au FLEET_ADMIN (consultation + reordonnancement).
       ...(this.auth.user()?.role === 'FLEET_ADMIN' ? [{ label: 'Installation', route: '/installations', icon: ClipboardList }] : []),
     ];
