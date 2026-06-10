@@ -89,10 +89,11 @@ const COBAN_PASSWORD = '123456'; // password par defaut Coban (override via env 
 const DEFAULT_FIX_INTERVAL_S = 20;
 const MIN_FIX_INTERVAL_S = 20; // plancher firmware Coban (cf docs/03 §5.4)
 const MAX_FIX_INTERVAL_S = 999; // format fixNNN (3 chiffres)
-const DEFAULT_ACK_TIMEOUT_S = 15;
+const DEFAULT_ACK_TIMEOUT_S = 12;
 const MIN_ACK_TIMEOUT_S = 3;
 const MAX_ACK_TIMEOUT_S = 120;
 const SETTLE_DELAY_MS = 1500; // petite pause apres un ACK avant la commande suivante
+const INTER_STEP_DELAY_MS = 7000; // delai fixe entre commandes quand pas d'ACK
 
 @Injectable()
 export class TrackerProvisioningService {

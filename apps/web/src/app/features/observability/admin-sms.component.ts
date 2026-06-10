@@ -20,6 +20,7 @@ import {
   Plus,
   Power,
   RefreshCw,
+  Search,
   Send,
   Trash2,
   XCircle,
@@ -35,9 +36,24 @@ import {
   SmsLogDto,
   SmsStatus,
 } from '../../core/services/admin-sms.service';
+import { SimsApiService } from '../../core/services/sims.service';
+import { TrackerDetail, TrackersApiService } from '../../core/services/trackers.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
+import type { SimDto } from '@vizyo/tracky-shared';
 
 type Tab = 'status' | 'provision' | 'logs' | 'allowlist' | 'backup';
+
+interface PrefillItem {
+  key: string;
+  type: 'sim' | 'vehicle';
+  imei: string;
+  phone: string;
+  apn: string;
+  plate: string;
+  fleet: string;
+  iccid: string;
+  configured: boolean;
+}
 
 @Component({
   selector: 'app-admin-sms',
@@ -187,6 +203,57 @@ type Tab = 'status' | 'provision' | 'logs' | 'allowlist' | 'backup';
             (jusqu'a {{ provAckTimeout || 15 }}s) avant d'envoyer la suivante. Reponds
             depuis la SIM pour confirmer chaque etape.
           </p>
+
+          <!-- Pre-remplissage depuis SIM ou vehicule -->
+          <div class="flex flex-col gap-2">
+            <label class="text-[11px] uppercase tracking-wide text-fg-tertiary">Pre-remplir depuis</label>
+            <div class="relative">
+              <lucide-icon [img]="Search" [size]="14" class="absolute left-3 top-1/2 -translate-y-1/2 text-fg-tertiary pointer-events-none"></lucide-icon>
+              <input [(ngModel)]="prefillSearch"
+                     (focus)="onPrefillFocus()"
+                     (input)="onPrefillInput()"
+                     placeholder="Rechercher par IMEI, plaque, numero SIM, flotte..."
+                     class="w-full bg-bg-tertiary border border-border-subtle rounded-lg pl-9 pr-3 py-2 text-sm text-fg-primary" />
+            </div>
+            @if (prefillOpen()) {
+              <div class="bg-bg-tertiary border border-border-subtle rounded-lg max-h-60 overflow-y-auto -mt-1 shadow-lg">
+                @if (filteredPrefillItems().length === 0) {
+                  <div class="px-3 py-4 text-xs text-fg-tertiary text-center">
+                    {{ prefillLoading() ? 'Chargement...' : 'Aucun resultat' }}
+                  </div>
+                }
+                @for (item of filteredPrefillItems(); track item.key) {
+                  <button (click)="applyPrefill(item)" type="button"
+                          class="w-full text-left px-3 py-2.5 hover:bg-bg-secondary cursor-pointer border-b border-border-subtle/40 last:border-0 flex flex-col gap-0.5">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <span class="text-[10px] px-1.5 py-0.5 rounded font-mono"
+                            [class]="item.type === 'sim' ? 'bg-sky-500/10 text-sky-400' : 'bg-emerald-500/10 text-emerald-400'">
+                        {{ item.type === 'sim' ? 'SIM' : 'Vehicule' }}
+                      </span>
+                      @if (item.configured) {
+                        <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-medium">Deja configure</span>
+                      } @else {
+                        <span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 font-medium">Non configure</span>
+                      }
+                      @if (item.fleet) {
+                        <span class="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 font-medium">{{ item.fleet }}</span>
+                      }
+                      @if (item.plate) {
+                        <span class="text-sm font-semibold text-fg-primary">{{ item.plate }}</span>
+                      }
+                    </div>
+                    <div class="text-xs text-fg-tertiary font-mono flex flex-wrap gap-x-3">
+                      @if (item.imei) { <span>IMEI {{ item.imei }}</span> }
+                      @if (item.phone) { <span>Tel {{ item.phone }}</span> }
+                      @if (item.apn) { <span>APN {{ item.apn }}</span> }
+                      @if (item.iccid) { <span>ICCID {{ item.iccid }}</span> }
+                    </div>
+                  </button>
+                }
+              </div>
+            }
+          </div>
+
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <label class="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-fg-tertiary">
               IMEI
@@ -225,7 +292,7 @@ type Tab = 'status' | 'provision' | 'logs' | 'allowlist' | 'backup';
             </label>
             <label class="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-fg-tertiary">
               Timeout reponse (s)
-              <input [(ngModel)]="provAckTimeout" type="number" min="3" placeholder="15"
+              <input [(ngModel)]="provAckTimeout" type="number" min="3" placeholder="12"
                      class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm font-mono normal-case text-fg-primary" />
             </label>
           </div>
@@ -295,6 +362,12 @@ type Tab = 'status' | 'provision' | 'logs' | 'allowlist' | 'backup';
                 }
               </div>
             </div>
+            @if (p.status === 'FAILED' && p.failureReason) {
+              <div class="flex items-start gap-2 bg-rose-500/10 border border-rose-500/30 rounded-lg px-3 py-2.5">
+                <lucide-icon [img]="AlertTriangle" [size]="16" class="text-rose-400 mt-0.5 shrink-0"></lucide-icon>
+                <div class="text-sm text-rose-300 font-mono break-all">{{ p.failureReason }}</div>
+              </div>
+            }
             <ol class="flex flex-col gap-2">
               @for (s of p.steps; track s.step) {
                 <li class="flex items-start gap-3 rounded-lg border border-border-subtle/60 bg-bg-tertiary/40 p-2.5">
@@ -590,6 +663,8 @@ type Tab = 'status' | 'provision' | 'logs' | 'allowlist' | 'backup';
 })
 export class AdminSmsComponent implements OnInit, OnDestroy {
   private readonly api = inject(AdminSmsService);
+  private readonly simsApi = inject(SimsApiService);
+  private readonly trackersApi = inject(TrackersApiService);
   private readonly toast = inject(ToastService);
 
   protected readonly Activity = Activity;
@@ -611,6 +686,7 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
   protected readonly ChevronDown = ChevronDown;
   protected readonly Circle = Circle;
   protected readonly Loader = Loader;
+  protected readonly Search = Search;
 
   readonly status = signal<SmsStatus | null>(null);
   readonly logs = signal<SmsLogDto[]>([]);
@@ -637,15 +713,116 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
   provPhone = '';
   provApn = 'wsim';
   provAdminNumber = '';
-  provServerIp = '';
+  provServerIp = '72.62.26.240';
   provServerPort: number | null = 5023;
   provFixInterval: number | null = 20;
-  provAckTimeout: number | null = 15;
+  provAckTimeout: number | null = 12;
   provApnUser = '';
   provApnPasswd = '';
   provAccOn = false;
   provLowBatPhone = '';
   readonly showAdvanced = signal(false);
+
+  // ─── Pre-remplissage depuis SIM / vehicule ─────────────────────────────────
+  prefillSearch = '';
+  readonly prefillOpen = signal(false);
+  readonly prefillLoading = signal(false);
+  readonly prefillItems = signal<PrefillItem[]>([]);
+  readonly filteredPrefillItems = computed(() => {
+    const q = this.prefillSearch.toLowerCase().trim();
+    const items = this.prefillItems();
+    if (!q) return items;
+    return items.filter(
+      (i) =>
+        (i.imei?.toLowerCase().includes(q)) ||
+        (i.phone?.toLowerCase().includes(q)) ||
+        (i.plate?.toLowerCase().includes(q)) ||
+        (i.fleet?.toLowerCase().includes(q)) ||
+        (i.iccid?.toLowerCase().includes(q)),
+    );
+  });
+
+  async onPrefillFocus(): Promise<void> {
+    this.prefillOpen.set(true);
+    if (this.prefillItems().length === 0) await this.loadPrefillItems();
+  }
+
+  onPrefillInput(): void {
+    this.prefillOpen.set(true);
+  }
+
+  private async loadPrefillItems(): Promise<void> {
+    this.prefillLoading.set(true);
+    try {
+      const [sims, trackers] = await Promise.all([
+        this.simsApi.list(),
+        firstValueFrom(this.trackersApi.list()),
+      ]);
+
+      // Un tracker qui a deja envoye des positions (lastSeenAt) = configure
+      const activeImeis = new Set(
+        trackers
+          .filter((t) => t.lastSeenAt)
+          .map((t) => t.imei),
+      );
+
+      const items: PrefillItem[] = [];
+
+      // SIMs avec un msisdn
+      for (const s of sims) {
+        if (!s.msisdn) continue;
+        const imei = s.tracker?.imei ?? s.imei ?? '';
+        items.push({
+          key: `sim-${s.id}`,
+          type: 'sim',
+          imei,
+          phone: s.msisdn,
+          apn: s.apn ?? '',
+          plate: s.tracker?.vehiclePlate ?? '',
+          fleet: s.fleet?.name ?? '',
+          iccid: s.iccid,
+          configured: !!imei && activeImeis.has(imei),
+        });
+      }
+
+      // Trackers avec SIM qui n'ont pas ete couverts par les SIMs
+      const coveredImeis = new Set(items.map((i) => i.imei).filter(Boolean));
+      for (const t of trackers) {
+        if (coveredImeis.has(t.imei)) continue;
+        if (!t.simPhoneNumber && !t.vehicle) continue;
+        items.push({
+          key: `tracker-${t.id}`,
+          type: 'vehicle',
+          imei: t.imei,
+          phone: t.simPhoneNumber ?? '',
+          apn: '',
+          plate: t.vehicle?.plate ?? '',
+          fleet: t.vehicle?.fleet?.name ?? '',
+          iccid: '',
+          configured: activeImeis.has(t.imei),
+        });
+      }
+
+      this.prefillItems.set(items);
+    } catch {
+      /* silencieux */
+    } finally {
+      this.prefillLoading.set(false);
+    }
+  }
+
+  applyPrefill(item: PrefillItem): void {
+    if (item.imei) this.provIMEI = item.imei;
+    if (item.phone) {
+      // Normalise E.164 : ajoute le + si absent
+      this.provPhone = item.phone.startsWith('+') ? item.phone : `+${item.phone}`;
+    }
+    if (item.apn) this.provApn = item.apn;
+    this.prefillOpen.set(false);
+    this.prefillSearch = '';
+    this.toast.success(`Pre-rempli depuis ${item.type === 'sim' ? 'SIM' : 'vehicule'} ${item.plate || item.imei}`);
+  }
+
   readonly selectedProvId = signal<string | null>(null);
   readonly selectedProv = computed(
     () =>
@@ -786,7 +963,7 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
         }),
       );
       this.selectedProvId.set(res.id);
-      this.toast.success('Configuration lancee — repondez aux SMS depuis la SIM');
+      this.toast.success('Configuration lancee — le boitier repond automatiquement');
       await this.refreshProvisionings();
       this.startPolling();
     } catch (err: unknown) {
