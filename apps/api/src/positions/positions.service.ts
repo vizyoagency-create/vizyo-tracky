@@ -8,7 +8,7 @@ import {
 import { CommandStatus, EngineAction, Prisma, UserRole } from '@prisma/client';
 import type { Position, Tracker, Vehicle } from '@prisma/client';
 import type { CobanPositionFrame, PositionUpdateEvent } from '@vizyo/tracky-shared';
-import { isValidLatLng, WS_EVENTS } from '@vizyo/tracky-shared';
+import { evaluateIngestionFix, isValidLatLng, WS_EVENTS } from '@vizyo/tracky-shared';
 import { GeofencesService } from '../geofences/geofences.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -91,6 +91,83 @@ export class PositionsService {
           `(${frame.latitude}, ${frame.longitude})`,
       );
       return;
+    }
+
+    // V1.17 (gps-sanity ingestion) — garde-fou anti-replay / anti-teleportation.
+    // Certains boitiers Coban rejouent leur buffer interne : entrelacees au flux
+    // temps reel, des trames au `deviceTime` ANTERIEUR (ou a un saut infaisable)
+    // arrivent pour le meme IMEI a une position distante de plusieurs km (analyse
+    // prod HD-779-MA, nuit 2026-06-10/11). Persistees, elles polluent `positions`,
+    // les trips et les rapports de distance.
+    //
+    // On les detecte ICI (avant toute denormalisation) et on les traite comme NON
+    // AUTORITAIRES : seule la liveness (lastSeenAt/status) est mise a jour. Pas de
+    // denorm position (sinon le fantome empoisonne la baseline du prochain calcul
+    // de distance), pas de sampling, pas de trip, pas de broadcast — et surtout
+    // pas de maj ignition (un fantome ignition=false declencherait un faux
+    // "CUT externe" via handleIgnitionTransition).
+    //
+    // Le meme invariant (deviceTime strictement croissant + saut < 250 km/h) est
+    // deja applique en aval par TripsService.processPosition ; on le remonte a
+    // l'ingestion pour empecher l'ecriture de la ligne `positions` elle-meme.
+    if (frame.valid) {
+      const lastDeviceTime = tracker.lastValidFrameAt ?? tracker.lastPositionAt;
+      const prevFix =
+        tracker.lastLat != null && tracker.lastLng != null && lastDeviceTime != null
+          ? { lat: tracker.lastLat, lng: tracker.lastLng, deviceTime: lastDeviceTime }
+          : null;
+      const verdict = evaluateIngestionFix(
+        { lat: frame.latitude, lng: frame.longitude, deviceTime: frame.deviceTime },
+        prevFix,
+      );
+      if (!verdict.authoritative) {
+        const wasOffline = tracker.status !== 'ONLINE';
+        // Liveness uniquement — le boitier communique bien, c'est la trame qui ment.
+        await this.prisma.tracker.update({
+          where: { id: tracker.id },
+          data: { lastSeenAt: new Date(), status: 'ONLINE' },
+        });
+        if (wasOffline && tracker.vehicle) {
+          this.gateway.emitTrackerStatus(tracker.vehicle.fleetId, {
+            trackerId: tracker.id,
+            imei: tracker.imei,
+            status: 'online',
+            at: new Date().toISOString(),
+          });
+        }
+        // Audit : la trame fantome apparait dans `position_sampling_decisions`
+        // (decision SKIPPED_REPLAY) — la table ou le bug a ete diagnostique.
+        const { state, distanceM } = this.sampling.classify({
+          speedKmh: frame.speedKph,
+          ignition: resolvedIgnition,
+          lat: frame.latitude,
+          lng: frame.longitude,
+          prevLat: tracker.lastLat,
+          prevLng: tracker.lastLng,
+        });
+        this.sampling
+          .recordDecision(
+            tracker.id,
+            {
+              shouldInsert: false,
+              decision: 'SKIPPED_REPLAY',
+              state,
+              reason: `garde-fou ingestion (${verdict.reason}) : deviceTime ${frame.deviceTime.toISOString()} vs dernier ${lastDeviceTime?.toISOString() ?? '?'}`,
+              distanceM,
+            },
+            frame.speedKph,
+            resolvedIgnition,
+          )
+          .catch(() => {
+            /* swallowed in service */
+          });
+        this.logger.warn(
+          `Trame non autoritaire ignoree pour ${frame.imei} (${verdict.reason}) — ` +
+            `deviceTime ${frame.deviceTime.toISOString()}` +
+            (distanceM != null ? `, saut ${(distanceM / 1000).toFixed(2)} km vs derniere position` : ''),
+        );
+        return;
+      }
     }
 
     // Always update tracker state (ignition + lastSeenAt), even for invalid GPS.

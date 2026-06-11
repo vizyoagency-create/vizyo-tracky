@@ -6,7 +6,9 @@ export type SamplingDecision =
   | 'INSERTED'
   | 'INSERTED_VERBOSE'
   | 'SKIPPED_DUP'
-  | 'SKIPPED_THROTTLE';
+  | 'SKIPPED_THROTTLE'
+  // Trame rejouee/aberrante rejetee par le garde-fou d'ingestion (anti-replay).
+  | 'SKIPPED_REPLAY';
 
 export interface SamplingStatsDto {
   rangeHours: number;

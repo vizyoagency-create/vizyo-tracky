@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { UserRole } from '@prisma/client';
+import type { CobanPositionFrame } from '@vizyo/tracky-shared';
 import { GeofencesService } from '../geofences/geofences.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -136,5 +137,253 @@ describe('PositionsService.list', () => {
         }),
       }),
     );
+  });
+});
+
+// V1.17 (gps-sanity ingestion) — garde-fou anti-replay / anti-teleportation.
+// Reproduit le flux fantome observe en prod (HD-779-MA) : une trame rejouee
+// depuis le buffer du boitier (deviceTime anterieur + grand saut) ne doit JAMAIS
+// etre persistee ni alimenter les trips, et ne doit pas empoisonner la baseline
+// ni l'ignition du tracker.
+describe('PositionsService.ingest — garde-fou replay/teleportation', () => {
+  let service: PositionsService;
+  let prisma: any;
+  let batchBuffer: { enqueue: jest.Mock };
+  let broadcastBuffer: { enqueue: jest.Mock };
+  let trips: { processPosition: jest.Mock };
+  let sampling: { classify: jest.Mock; decide: jest.Mock; recordDecision: jest.Mock };
+  let gateway: {
+    broadcastPosition: jest.Mock;
+    emitTrackerStatus: jest.Mock;
+    emitEngineCommandUpdate: jest.Mock;
+  };
+  let trackerRow: Record<string, unknown>;
+
+  const IMEI = '359339074500001';
+  // Derniere verite connue du tracker : 01:00:00 a (33.5, -7.5), moteur ON.
+  const LAST_SEEN = new Date('2026-06-11T01:00:00Z');
+
+  const makeTracker = (overrides: Record<string, unknown> = {}) => ({
+    id: TRACKER_ID,
+    imei: IMEI,
+    accConnected: true,
+    status: 'ONLINE',
+    lastKnownIgnition: true,
+    lastIgnition: true,
+    lastIgnitionChangeAt: LAST_SEEN,
+    lastLat: 33.5,
+    lastLng: -7.5,
+    lastSpeedKmh: 40,
+    lastHeading: 90,
+    lastValid: true,
+    lastSeenAt: LAST_SEEN,
+    lastPositionAt: LAST_SEEN,
+    lastValidFrameAt: LAST_SEEN,
+    lastWriteAt: LAST_SEEN,
+    lastSampledState: 'MOVING',
+    verboseUntil: null,
+    desiredFixIntervalS: 30,
+    currentFixIntervalS: 30,
+    fixCommandFailing: false,
+    fixCommandFailureCount: 0,
+    vehicle: {
+      id: VEHICLE_ID,
+      fleetId: FLEET_ID,
+      plate: 'HD-779-MA',
+      fleet: { adaptiveSamplingEnabled: true },
+    },
+    ...overrides,
+  });
+
+  const makeFrame = (overrides: Partial<CobanPositionFrame> = {}): CobanPositionFrame => ({
+    type: 'position',
+    imei: IMEI,
+    alarm: 'none',
+    // Par defaut : trame REELLE, 30s apres la derniere verite, ~555m plus loin.
+    deviceTime: new Date('2026-06-11T01:00:30Z'),
+    valid: true,
+    latitude: 33.505,
+    longitude: -7.5,
+    speedKph: 50,
+    course: 90,
+    altitude: 100,
+    ignition: true,
+    raw: 'imei:359339074500001,...',
+    ...overrides,
+  });
+
+  beforeEach(async () => {
+    trackerRow = makeTracker();
+    prisma = {
+      tracker: {
+        findUnique: jest.fn().mockImplementation(() => Promise.resolve(trackerRow)),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      trackerCommand: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      engineControlCommand: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'cmd', action: 'CUT', status: 'ACKNOWLEDGED' }),
+      },
+      positionSamplingDecision: { create: jest.fn().mockResolvedValue({}) },
+    };
+    batchBuffer = { enqueue: jest.fn() };
+    broadcastBuffer = { enqueue: jest.fn().mockReturnValue(true) };
+    trips = { processPosition: jest.fn().mockResolvedValue(undefined) };
+    sampling = {
+      classify: jest.fn().mockReturnValue({ state: 'MOVING', distanceM: 555 }),
+      decide: jest.fn().mockReturnValue({
+        shouldInsert: true,
+        decision: 'INSERTED',
+        state: 'MOVING',
+        reason: 'mouvement actif',
+        distanceM: 555,
+      }),
+      recordDecision: jest.fn().mockResolvedValue(undefined),
+    };
+    gateway = {
+      broadcastPosition: jest.fn(),
+      emitTrackerStatus: jest.fn(),
+      emitEngineCommandUpdate: jest.fn(),
+    };
+
+    const module = await Test.createTestingModule({
+      providers: [
+        PositionsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: RealtimeGateway, useValue: gateway },
+        { provide: GeofencesService, useValue: { checkViolations: jest.fn().mockResolvedValue(undefined) } },
+        { provide: TripsService, useValue: trips },
+        { provide: ErrorLogger, useValue: { record: jest.fn().mockResolvedValue('id') } },
+        { provide: PositionSamplingService, useValue: sampling },
+        { provide: PositionBroadcastBuffer, useValue: broadcastBuffer },
+        {
+          provide: (await import('./position-batch-buffer.service')).PositionBatchBufferService,
+          useValue: batchBuffer,
+        },
+        {
+          provide: TrackerFixModeService,
+          useValue: {
+            desiredIntervalFor: jest.fn().mockReturnValue(30),
+            reconcile: jest.fn().mockReturnValue({
+              nextCurrentFixIntervalS: 30,
+              nextFailureCount: 0,
+              nextFailing: false,
+              autoAlignDesiredS: null,
+            }),
+            requestChange: jest.fn().mockResolvedValue(null),
+          },
+        },
+      ],
+    }).compile();
+
+    service = module.get(PositionsService);
+  });
+
+  it('persists an authoritative forward frame (enqueue + trip)', async () => {
+    await service.ingest(makeFrame());
+    expect(sampling.decide).toHaveBeenCalledTimes(1);
+    expect(batchBuffer.enqueue).toHaveBeenCalledTimes(1);
+    expect(trips.processPosition).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT persist a replayed frame (deviceTime anterieur + grand saut)', async () => {
+    const replay = makeFrame({
+      deviceTime: new Date('2026-06-11T00:59:30Z'), // 30s AVANT la derniere verite
+      latitude: 33.45,
+      longitude: -7.4, // ~10 km
+      speedKph: 0,
+      ignition: false,
+    });
+
+    await service.ingest(replay);
+
+    // Rien n'est persiste, et le sampler n'est meme pas consulte (rejet en amont).
+    expect(batchBuffer.enqueue).not.toHaveBeenCalled();
+    expect(trips.processPosition).not.toHaveBeenCalled();
+    expect(sampling.decide).not.toHaveBeenCalled();
+    // Pas de broadcast de la position fantome.
+    expect(gateway.broadcastPosition).not.toHaveBeenCalled();
+    // Liveness UNIQUEMENT : pas de denorm position (lastLat/lastLng/lastPositionAt...).
+    expect(prisma.tracker.update).toHaveBeenCalledTimes(1);
+    expect(prisma.tracker.update).toHaveBeenCalledWith({
+      where: { id: TRACKER_ID },
+      data: { lastSeenAt: expect.any(Date), status: 'ONLINE' },
+    });
+    // Audit visible dans position_sampling_decisions.
+    expect(sampling.recordDecision).toHaveBeenCalledWith(
+      TRACKER_ID,
+      expect.objectContaining({ decision: 'SKIPPED_REPLAY', shouldInsert: false }),
+      0,
+      false,
+    );
+  });
+
+  it('does NOT persist a forward-time teleport (saut infaisable au dt reel)', async () => {
+    const teleport = makeFrame({
+      deviceTime: new Date('2026-06-11T01:00:30Z'), // 30s APRES (deviceTime en avant)
+      latitude: 33.59,
+      longitude: -7.5, // ~10 km en 30s = ~1200 km/h
+      speedKph: 0,
+    });
+
+    await service.ingest(teleport);
+
+    expect(batchBuffer.enqueue).not.toHaveBeenCalled();
+    expect(sampling.decide).not.toHaveBeenCalled();
+    expect(sampling.recordDecision).toHaveBeenCalledWith(
+      TRACKER_ID,
+      expect.objectContaining({ decision: 'SKIPPED_REPLAY' }),
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
+  it('does NOT touch ignition from a replayed frame (no false external CUT)', async () => {
+    // Moteur reellement ON ; le fantome annonce ignition=false. Sans le garde-fou
+    // ca declencherait handleIgnitionTransition -> faux CUT DEVICE_OBSERVED.
+    const replay = makeFrame({
+      deviceTime: new Date('2026-06-11T00:59:30Z'),
+      latitude: 33.45,
+      longitude: -7.4,
+      speedKph: 0,
+      ignition: false,
+    });
+
+    await service.ingest(replay);
+
+    expect(prisma.engineControlCommand.create).not.toHaveBeenCalled();
+    const updateArg = prisma.tracker.update.mock.calls[0][0];
+    expect(updateArg.data).not.toHaveProperty('lastKnownIgnition');
+    expect(updateArg.data).not.toHaveProperty('lastLat');
+  });
+
+  it('accepts the first ever valid frame when the tracker has no baseline', async () => {
+    trackerRow = makeTracker({
+      lastLat: null,
+      lastLng: null,
+      lastValidFrameAt: null,
+      lastPositionAt: null,
+      lastWriteAt: null,
+      lastSampledState: null,
+    });
+
+    await service.ingest(makeFrame());
+
+    expect(batchBuffer.enqueue).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts a large-gap catch-up frame (post-GPRS, plausible average speed)', async () => {
+    // Derniere verite il y a 1h, ~60 km plus loin = 60 km/h moyen : LEGITIME.
+    // Le dt PLEIN tolere la distance — aucune position reelle perdue.
+    const catchUp = makeFrame({
+      deviceTime: new Date('2026-06-11T02:00:00Z'),
+      latitude: 34.04,
+      longitude: -7.5,
+      speedKph: 60,
+    });
+
+    await service.ingest(catchUp);
+
+    expect(batchBuffer.enqueue).toHaveBeenCalledTimes(1);
   });
 });

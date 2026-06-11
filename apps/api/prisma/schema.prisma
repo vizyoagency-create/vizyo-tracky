@@ -421,7 +421,7 @@ model PositionSamplingDecision {
   id          String   @id @default(uuid()) @db.Uuid
   trackerId   String   @db.Uuid
   tracker     Tracker  @relation(fields: [trackerId], references: [id], onDelete: Cascade)
-  decision    String   // 'INSERTED' | 'SKIPPED_DUP' | 'SKIPPED_THROTTLE' | 'INSERTED_VERBOSE'
+  decision    String   // 'INSERTED' | 'SKIPPED_DUP' | 'SKIPPED_THROTTLE' | 'INSERTED_VERBOSE' | 'SKIPPED_REPLAY'
   state       String   // 'MOVING' | 'IDLE_ENGINE_ON' | 'STOPPED'
   reason      String?  // ex: "haversine 3m < 15m radius, throttle 90s active"
   speedKmh    Float?

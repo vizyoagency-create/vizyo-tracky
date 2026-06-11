@@ -72,6 +72,70 @@ export function isPlausibleJump(
   return kmh < maxKmh;
 }
 
+/** Motif de rejet d'une trame a l'ingestion (audit / log). */
+export type IngestionRejectReason = 'stale_devicetime' | 'implausible_jump';
+
+export interface IngestionFixVerdict {
+  /** true = la trame fait autorite : persistance + denormalisation last-position. */
+  authoritative: boolean;
+  /** Motif quand `authoritative=false`, sinon null. */
+  reason: IngestionRejectReason | null;
+}
+
+/**
+ * Garde-fou d'INGESTION cote serveur (etage 1) : decide si une trame VALIDE fait
+ * autorite pour la persistance (`positions`, trips) et la denormalisation de la
+ * derniere position connue du tracker.
+ *
+ * Probleme cible : certains boitiers Coban rejouent leur buffer interne. Pour le
+ * meme IMEI arrivent, entrelacees au flux temps reel, des trames au `deviceTime`
+ * ANTERIEUR a la derniere verite et a une position distante de plusieurs km
+ * (analyse prod HD-779-MA, nuit 2026-06-10/11). Persistees, elles polluent
+ * `positions`, les trips et les rapports de distance.
+ *
+ * Deux signaux de rejet, du moins cher au plus cher :
+ *  1. `deviceTime` non strictement croissant (<= dernier deviceTime valide) →
+ *     trame REJOUEE. Meme invariant que `TripsService.processPosition` en aval.
+ *  2. saut physiquement impossible : vitesse moyenne implicite > `maxKmh`
+ *     (via {@link isPlausibleJump}). On utilise le `dt` PLEIN (non borne) : un
+ *     grand `dt` legitime (rattrapage post-coupure GPRS, vehicule deplace
+ *     hors-ligne) tolere une grande distance — on ne rejette que l'infaisable,
+ *     pour ne jamais PERDRE une position reelle. C'est la difference avec
+ *     {@link maxPlausibleJumpMeters} (dt borne a 60s), reserve au rendu LIVE ou
+ *     droper une trame est cosmetique alors qu'a l'ingestion c'est une perte.
+ *
+ * `prev` = derniere position AUTORITAIRE connue (denormalisee sur Tracker).
+ * Quand `prev` est absent (tracker neuf, jamais de fix), la trame est acceptee
+ * faute de reference — elle etablit la baseline.
+ */
+export function evaluateIngestionFix(
+  next: { lat: number; lng: number; deviceTime: Date | string | number },
+  prev?:
+    | { lat: number; lng: number; deviceTime: Date | string | number | null | undefined }
+    | null,
+  opts: { maxKmh?: number } = {},
+): IngestionFixVerdict {
+  if (!prev || prev.deviceTime == null) {
+    return { authoritative: true, reason: null };
+  }
+  const dtSec = (toMs(next.deviceTime) - toMs(prev.deviceTime)) / 1000;
+  // 1. deviceTime non strictement croissant → trame rejouee depuis le buffer.
+  if (dtSec <= 0) {
+    return { authoritative: false, reason: 'stale_devicetime' };
+  }
+  // 2. saut infaisable au dt reel (vitesse moyenne implicite > maxKmh).
+  if (
+    !isPlausibleJump(
+      { lat: prev.lat, lng: prev.lng, timestamp: prev.deviceTime },
+      { lat: next.lat, lng: next.lng, timestamp: next.deviceTime },
+      opts.maxKmh ?? 250,
+    )
+  ) {
+    return { authoritative: false, reason: 'implausible_jump' };
+  }
+  return { authoritative: true, reason: null };
+}
+
 // --- Garde-fous live (sauts) ---
 // Plafond de securite absolu : deux fois la vitesse legale autoroute.
 const LIVE_MAX_KMH = 250;
