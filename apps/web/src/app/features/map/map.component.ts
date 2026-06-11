@@ -19,7 +19,12 @@ import { ActivatedRoute, Router } from '@angular/router';
 import * as maplibregl from 'maplibre-gl';
 import type { Map as MlMap, Marker as MlMarker, Popup, GeoJSONSource } from 'maplibre-gl';
 import type { GeofenceDto, PositionUpdateEvent } from '@vizyo/tracky-shared';
-import { isAcceptableLiveFix, sanitizePositions } from '@vizyo/tracky-shared';
+import {
+  deriveMotion,
+  extrapolate,
+  isAcceptableLiveFix,
+  sanitizePositions,
+} from '@vizyo/tracky-shared';
 
 /** Distance Haversine en mètres entre deux points GPS. Inline pour éviter
  *  les problèmes de bundle workspace en dev (Vite). */
@@ -111,9 +116,10 @@ interface MotionState {
   // Derniere verite serveur (depuis le dernier event WS)
   truthLat: number;
   truthLng: number;
-  truthHeading: number;
-  truthSpeedMs: number;     // m/s, derive de speedKmh / 3.6
+  truthHeading: number;     // cap robuste (deg) — derive du vecteur reel si possible
+  truthSpeedMs: number;     // m/s, vitesse robuste = max(rapportee, derivee du deplacement)
   truthAt: number;          // performance.now() a la reception de la trame
+  turnRateDegPerS: number;  // yaw rate (deg/s) pour courber l'extrapolation en virage
 
   // Intervalle inter-trame typique pour ce tracker, lisse en EMA.
   // Sert a borner l'extrapolation : on ne projette jamais plus loin que
@@ -143,8 +149,6 @@ const EXTRAPOLATION_CAP_FACTOR = 1.3;
 // Plus c'est petit, plus c'est reactif. ~250-350ms = correction nette mais sans jitter.
 const SMOOTHING_TAU_MS = 350;
 const HEADING_TAU_MS = 250;
-// Vitesse en dessous de laquelle on considere le vehicule arrete : plus d'extrapolation.
-const MIN_EXTRAPOLATE_SPEED_MS = 0.3;
 // Apprentissage EMA pour intervalMs (0.3 = reagit en ~3 trames).
 const INTERVAL_EMA_ALPHA = 0.3;
 // V1.10 (Sprint 3 perf) — epsilons pour skip les push DOM si le delta entre
@@ -154,6 +158,12 @@ const PUSH_LATLNG_EPSILON = 1e-6;
 const PUSH_HEADING_EPSILON = 0.3;
 // dt max entre 2 frames RAF : evite un saut enorme apres un retour de tab cache.
 const MAX_FRAME_DT_MS = 100;
+// Resynchronisation anti-blocage : si N trames consecutives sont rejetees par le
+// filtre anti-teleportation MAIS convergent vers la meme nouvelle zone (rayon
+// ci-dessous), c'est un vrai deplacement (vehicule deplace pendant une coupure
+// GPRS, remorquage) et non un outlier transitoire → on snap au lieu de figer.
+const RESYNC_MIN_FRAMES = 3;
+const RESYNC_RADIUS_M = 150;
 
 @Component({
   selector: 'app-map',
@@ -1867,7 +1877,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   // Sert d'ancrage pour `isAcceptableLiveFix` : on rejette les sauts > 250 km/h
   // depuis cette ancre, ce qui filtre les teleportations meme sur trames marquees
   // `valid: true` par le boitier mais aberrantes (multipath urbain, etc.).
-  private lastTruthPosition = new Map<string, { lat: number; lng: number; timestamp: string }>();
+  private lastTruthPosition = new Map<string, { lat: number; lng: number; timestamp: string; speedKmh: number }>();
+  // Suivi des trames rejetees par le filtre anti-teleportation, pour la
+  // resynchronisation (voir RESYNC_MIN_FRAMES). { derniere pos rejetee + compteur }.
+  private rejectStreak = new Map<string, { lat: number; lng: number; n: number }>();
   private hasFittedBounds = false;
   private userMarker: MlMarker | null = null;
   protected readonly userPosition = signal<{ lat: number; lng: number } | null>(null);
@@ -2288,6 +2301,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     this.clusterListenerCleanups = [];
     this.trailPoints.clear();
     this.lastTruthPosition.clear();
+    this.rejectStreak.clear();
     this.motion.clear();
     this.lastTickAt = null;
     this.lastMarkerData.clear();
@@ -2342,23 +2356,20 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       const camMode = this.cameraMode();
 
       for (const [trackerId, st] of this.motion) {
-        // 1. Calcul de la cible = derniere verite + extrapolation par speed*heading.
-        let targetLat = st.truthLat;
-        let targetLng = st.truthLng;
-        const targetHeading = st.truthHeading;
-
-        if (st.truthSpeedMs >= MIN_EXTRAPOLATE_SPEED_MS) {
-          const ageMs = now - st.truthAt;
-          const capMs = st.intervalMs * EXTRAPOLATION_CAP_FACTOR;
-          const tEffSec = Math.min(ageMs, capMs) / 1000;
-          const dist = st.truthSpeedMs * tEffSec;
-          const headRad = (st.truthHeading * Math.PI) / 180;
-          // Approximation plate (OK sur < 1km, largement le cas pour 30s a 130km/h = ~1.1km).
-          // 1 deg lat = 111_111m, 1 deg lng = 111_111m * cos(lat).
-          const cosLat = Math.cos((st.truthLat * Math.PI) / 180) || 1;
-          targetLat = st.truthLat + (dist * Math.cos(headRad)) / 111_111;
-          targetLng = st.truthLng + (dist * Math.sin(headRad)) / (111_111 * cosLat);
-        }
+        // 1. Cible = derniere verite + extrapolation. `extrapolate` projette en
+        // ligne droite quand le cap est stable, mais sur un ARC borne quand le
+        // vehicule tourne (yaw rate) → l'icone epouse le virage au lieu de partir
+        // tangente puis de re-snapper. Au-dela de capSec (trame perdue) elle se fige.
+        const ext = extrapolate(
+          { lat: st.truthLat, lng: st.truthLng, headingDeg: st.truthHeading },
+          st.truthSpeedMs,
+          st.turnRateDegPerS,
+          (now - st.truthAt) / 1000,
+          (st.intervalMs * EXTRAPOLATION_CAP_FACTOR) / 1000,
+        );
+        const targetLat = ext.lat;
+        const targetLng = ext.lng;
+        const targetHeading = ext.headingDeg;
 
         // 2. Lissage display → target.
         st.displayLat = st.displayLat + (targetLat - st.displayLat) * alphaPos;
@@ -3338,8 +3349,31 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       // l'icone saute et la trail dashed diverge en zigzag (regression visible
       // lors d'un demarrage a froid / tunnel / multipath urbain).
       const prevTruth = this.lastTruthPosition.get(pos.trackerId);
-      const accepted = isAcceptableLiveFix(pos, prevTruth);
+      let accepted = isAcceptableLiveFix(pos, prevTruth);
       const existingEntry = this.markers.get(pos.trackerId);
+
+      // Resynchronisation anti-blocage : un fix rejete n'est pas forcement un
+      // outlier. Si plusieurs trames rejetees de suite convergent vers la MEME
+      // nouvelle zone, c'est un vrai deplacement (coupure GPRS, remorquage) → on
+      // accepte et on snap. Un outlier transitoire, lui, revient vers l'ancre,
+      // donc le compteur ne monte jamais.
+      let forceSnap = false;
+      if (!accepted) {
+        const rs = this.rejectStreak.get(pos.trackerId);
+        const consistent = rs
+          ? haversineMeters(rs.lat, rs.lng, pos.lat, pos.lng) <= RESYNC_RADIUS_M
+          : false;
+        const n = consistent ? rs!.n + 1 : 1;
+        if (n >= RESYNC_MIN_FRAMES) {
+          accepted = true;
+          forceSnap = true;
+          this.rejectStreak.delete(pos.trackerId);
+        } else {
+          this.rejectStreak.set(pos.trackerId, { lat: pos.lat, lng: pos.lng, n });
+        }
+      } else {
+        this.rejectStreak.delete(pos.trackerId);
+      }
 
       if (!accepted) {
         // On garde le marker actif (sinon il serait supprime ci-dessous) mais on
@@ -3372,7 +3406,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
               trailFeatures.push({
                 type: 'Feature',
                 geometry: { type: 'LineString', coordinates: smoothPts },
-                properties: { color: speedColor(lastData?.speedKmh ?? 0), trackerId: pos.trackerId },
+                properties: { color: speedColor(lastData?.colorSpeedKmh ?? lastData?.speedKmh ?? 0), trackerId: pos.trackerId },
               });
             }
           }
@@ -3382,6 +3416,26 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       }
 
       activeIds.add(pos.trackerId);
+      // Vitesse + cap + yaw rate ROBUSTES, derives du deplacement reel entre la
+      // derniere verite et celle-ci. Le boitier Coban renvoie souvent speedKmh=0
+      // et un heading fige MEME en roulant : sans ca l'icone passe en gris
+      // (couleur vitesse 0) et l'extrapolation se coupe puis re-saute. Repli sur
+      // les champs rapportes quand il n'y a pas de segment exploitable.
+      const prevMotionState = this.motion.get(pos.trackerId);
+      const derived = deriveMotion(
+        prevTruth
+          ? { lat: prevTruth.lat, lng: prevTruth.lng, timestamp: new Date(prevTruth.timestamp).getTime() }
+          : null,
+        {
+          lat: pos.lat, lng: pos.lng,
+          timestamp: new Date(pos.timestamp).getTime(),
+          speedKmh: pos.speedKmh ?? 0,
+          heading: pos.heading ?? 0,
+        },
+        prevMotionState?.truthHeading ?? null,
+      );
+      // Couleur du trail pour ce segment (defaut = rapporte ; robuste en MAJ normale).
+      let trailColorKmh = Math.max(pos.speedKmh ?? 0, 0);
       let entry = existingEntry;
       if (!entry) {
         const el = buildVehicleMarkerEl(data);
@@ -3417,14 +3471,20 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         const truthSpeedMs = pos.speedKmh / 3.6;
         const nowPerf = performance.now();
 
-        if (isHydrated || !lastData) {
-          // Premier rendu (hydratation ou nouveau tracker) : snap sans anim.
+        if (isHydrated || !lastData || forceSnap) {
+          // Premier rendu (hydratation / nouveau tracker) ou resynchronisation
+          // (vrai deplacement apres coupure) : snap sans anim, sur la vitesse
+          // RAPPORTEE (la vitesse derivee sur le grand saut serait absurde).
+          // Sur resync, on repart le trail a neuf : tirer un segment droit a
+          // travers le trou (coupure GPRS) serait trompeur (chemin reel inconnu).
+          if (forceSnap) this.trailPoints.delete(pos.trackerId);
           entry.marker.setLngLat([pos.lng, pos.lat]);
           updateVehicleMarkerEl(entry.el, data);
           this.motion.set(pos.trackerId, {
             truthLat: pos.lat, truthLng: pos.lng,
             truthHeading: pos.heading, truthSpeedMs,
             truthAt: nowPerf,
+            turnRateDegPerS: 0,
             intervalMs: TYPICAL_INTERVAL_MS,
             displayLat: pos.lat, displayLng: pos.lng, displayHeading: pos.heading,
           });
@@ -3443,10 +3503,15 @@ export class MapComponent implements AfterViewInit, OnDestroy {
           // On ne touche PAS a display* : le tick() lissera depuis la position
           // courante du marker. Si pas d'etat precedent (re-entree), on part
           // de la position visible du marker.
+          // Cap/vitesse/yaw ROBUSTES (derives du deplacement reel) → l'icone reste
+          // coloree en roulant meme si Coban dit 0, et l'extrapolation epouse le virage.
+          trailColorKmh = derived.effectiveSpeedKmh;
+          data.colorSpeedKmh = Math.round(derived.effectiveSpeedKmh);
           this.motion.set(pos.trackerId, {
             truthLat: pos.lat, truthLng: pos.lng,
-            truthHeading: pos.heading, truthSpeedMs,
+            truthHeading: derived.headingDeg, truthSpeedMs: derived.speedMs,
             truthAt: nowPerf,
+            turnRateDegPerS: derived.turnRateDegPerS,
             intervalMs,
             displayLat: prev?.displayLat ?? cur.lat,
             displayLng: prev?.displayLng ?? cur.lng,
@@ -3464,6 +3529,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         lat: pos.lat,
         lng: pos.lng,
         timestamp: pos.timestamp,
+        speedKmh: pos.speedKmh,
       });
 
       // Trail accumulation (en memoire, capee a trailLength).
@@ -3497,7 +3563,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
           trailFeatures.push({
             type: 'Feature',
             geometry: { type: 'LineString', coordinates: smoothPts },
-            properties: { color: speedColor(pos.speedKmh), trackerId: pos.trackerId },
+            properties: { color: speedColor(trailColorKmh), trackerId: pos.trackerId },
           });
         }
       }
@@ -3514,6 +3580,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         this.markers.delete(id);
         this.trailPoints.delete(id);
         this.lastTruthPosition.delete(id);
+        this.rejectStreak.delete(id);
         this.motion.delete(id);
       }
     }

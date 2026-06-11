@@ -72,6 +72,67 @@ export function isPlausibleJump(
   return kmh < maxKmh;
 }
 
+// --- Garde-fous live (sauts) ---
+// Plafond de securite absolu : deux fois la vitesse legale autoroute.
+const LIVE_MAX_KMH = 250;
+// Moteur coupe (ignition === false) : le vehicule ne peut PAS se deplacer ;
+// tout ecart au-dela de ce rayon est du bruit GPS (multipath, demarrage a froid).
+const ENGINE_OFF_JUMP_M = 150;
+// Plancher de tolerance quand on dispose de la vitesse rapportee : absorbe le
+// bruit GPS + une acceleration sur l'intervalle, meme a vitesse rapportee ~0.
+const JUMP_FLOOR_M = 150;
+// Marge appliquee a la vitesse rapportee (absorbe sous-estimation Coban +
+// acceleration). Au-dela, le saut contredit la vitesse rapportee → outlier.
+const JUMP_SPEED_SLACK = 2;
+// Borne du dt utilise pour la tolerance. SANS ce cap, un vehicule a l'arret la
+// nuit (boitier en STOPPED → trame toutes les 300s) donnerait une fenetre de
+// 250 km/h x 300s ≈ 21 km : n'importe quel outlier GPS passerait → teleportation.
+// Avec le cap a 60s, la tolerance vitesse ne depasse jamais ≈ 4,2 km.
+const JUMP_DT_CAP_S = 60;
+
+/**
+ * Distance maximale plausible (m) entre deux trames live consecutives.
+ *
+ * Le seuil de securite est une VITESSE (km/h), donc la distance toleree croit
+ * avec `dt`. A l'arret nocturne le boitier emet toutes les 300s → la fenetre
+ * explosait (~21 km) et laissait passer les outliers GPS. On borne donc le `dt`
+ * et on resserre selon deux signaux physiques :
+ *  - `ignition === false` : moteur coupe → aucun deplacement reel possible.
+ *  - `speedKmh` rapporte : un saut qui implique une vitesse >> la vitesse
+ *    rapportee est un outlier (la vitesse Doppler GPS est fiable a la hausse).
+ *
+ * On retourne le MIN des bornes applicables (la plus restrictive).
+ */
+export function maxPlausibleJumpMeters(opts: {
+  dtSec: number;
+  ignition?: boolean | null;
+  speedKmh?: number | null;
+  prevSpeedKmh?: number | null;
+  maxKmh?: number;
+}): number {
+  const maxKmh = opts.maxKmh ?? LIVE_MAX_KMH;
+  const dtEff = Math.min(Math.max(opts.dtSec, 0), JUMP_DT_CAP_S);
+  // Plafond absolu (250 km/h, dt borne).
+  let cap = (maxKmh / 3.6) * dtEff;
+  // Moteur coupe : seul le bruit GPS est tolere.
+  if (opts.ignition === false) {
+    cap = Math.min(cap, ENGINE_OFF_JUMP_M);
+  }
+  // Coherence avec la vitesse : on prend la PLUS HAUTE des vitesses connues
+  // (trame courante ET precedente). Apres une coupure GPRS, la trame qui
+  // "rattrape" peut afficher une vitesse basse (le vehicule a ralenti en
+  // arrivant) alors qu'il roulait vite juste avant — sans la vitesse precedente
+  // on rejetterait a tort ce rattrapage legitime (cas observe en prod).
+  const speeds = [opts.speedKmh, opts.prevSpeedKmh].filter(
+    (s): s is number => s != null && Number.isFinite(s),
+  );
+  if (speeds.length > 0) {
+    const refMs = Math.max(0, ...speeds) / 3.6;
+    cap = Math.min(cap, JUMP_FLOOR_M + refMs * dtEff * JUMP_SPEED_SLACK);
+  }
+  return cap;
+}
+
 /**
  * Decide si une trame WS temps reel est exploitable pour le rendu carte (icone
  * vehicule + trail dashed). Equivalent ponctuel de `sanitizePositions` :
@@ -80,27 +141,47 @@ export function isPlausibleJump(
  *   l'ignition, mais leurs lat/lng sont souvent degradees — tunnel, indoor,
  *   demarrage a froid). Sans ce filtre, l'icone saute et la trail diverge.
  * - rejette les coordonnees hors-bornes / Null Island.
- * - si `prev` fourni, rejette les sauts > `maxKmh` (par defaut 250 km/h).
+ * - rejette les horodatages identiques ou inverses (`dt <= 0`).
+ * - si `prev` fourni, rejette les sauts au-dela de `maxPlausibleJumpMeters`
+ *   (vitesse-aware + ignition-aware + dt borne — voir cette fonction).
  *
  * `prev` peut etre omis (premier rendu) ou null/undefined.
  */
 export function isAcceptableLiveFix(
-  next: { lat: number; lng: number; valid?: boolean; timestamp?: Date | string | number },
-  prev?: { lat: number; lng: number; timestamp: Date | string | number } | null,
+  next: {
+    lat: number;
+    lng: number;
+    valid?: boolean;
+    timestamp?: Date | string | number;
+    speedKmh?: number | null;
+    ignition?: boolean | null;
+  },
+  prev?: {
+    lat: number;
+    lng: number;
+    timestamp: Date | string | number;
+    speedKmh?: number | null;
+  } | null,
   opts: { maxKmh?: number } = {},
 ): boolean {
   if (next.valid === false) return false;
   if (!isValidLatLng(next.lat, next.lng)) return false;
   if (prev && next.timestamp !== undefined) {
-    if (
-      !isPlausibleJump(
-        { lat: prev.lat, lng: prev.lng, timestamp: prev.timestamp },
-        { lat: next.lat, lng: next.lng, timestamp: next.timestamp },
-        opts.maxKmh,
-      )
-    ) {
-      return false;
-    }
+    const dtSec = (toMs(next.timestamp) - toMs(prev.timestamp)) / 1000;
+    // Horodatage identique ou remontee dans le temps : trame non exploitable.
+    // C'est aussi ce qui rejette les trames REJOUEES depuis le buffer d'un
+    // boitier (deviceTime anterieur a la derniere verite) — cause racine du
+    // bug "double trace" observe en prod (flux live + replay entrelaces).
+    if (dtSec <= 0) return false;
+    const jumpM = haversineMeters(prev.lat, prev.lng, next.lat, next.lng);
+    const maxM = maxPlausibleJumpMeters({
+      dtSec,
+      ignition: next.ignition,
+      speedKmh: next.speedKmh,
+      prevSpeedKmh: prev.speedKmh,
+      maxKmh: opts.maxKmh,
+    });
+    if (jumpM > maxM) return false;
   }
   return true;
 }
