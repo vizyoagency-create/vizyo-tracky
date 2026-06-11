@@ -1,5 +1,6 @@
 import {
   douglasPeucker,
+  evaluateIngestionFix,
   haversineMeters,
   isAcceptableLiveFix,
   isPlausibleJump,
@@ -88,6 +89,76 @@ describe('gps-sanity', () => {
         { lat: 48.866, lng: 2.3522, timestamp: t0 },
       );
       expect(ok).toBe(false);
+    });
+  });
+
+  describe('evaluateIngestionFix', () => {
+    const t0 = new Date('2026-06-11T01:00:00Z');
+    const tPast = new Date('2026-06-11T00:59:30Z'); // 30s AVANT t0
+    const tFwd30 = new Date('2026-06-11T01:00:30Z'); // 30s APRES t0
+
+    it('accepts the first ever fix (no prev reference) — establishes baseline', () => {
+      const v = evaluateIngestionFix({ lat: 33.5, lng: -7.5, deviceTime: t0 });
+      expect(v.authoritative).toBe(true);
+      expect(v.reason).toBeNull();
+    });
+
+    it('accepts when prev has no deviceTime (tracker jamais vu valide)', () => {
+      const v = evaluateIngestionFix(
+        { lat: 33.5, lng: -7.5, deviceTime: t0 },
+        { lat: 33.4, lng: -7.4, deviceTime: null },
+      );
+      expect(v.authoritative).toBe(true);
+    });
+
+    it('REJECTS a replayed frame (deviceTime anterieur — flux fantome buffer boitier)', () => {
+      // Cause racine prod (HD-779-MA) : meme IMEI, deviceTime dans le passe,
+      // position a ~10 km. C'est la trame qui polluait `positions`.
+      const v = evaluateIngestionFix(
+        { lat: 33.45, lng: -7.4, deviceTime: tPast },
+        { lat: 33.5, lng: -7.5, deviceTime: t0 },
+      );
+      expect(v.authoritative).toBe(false);
+      expect(v.reason).toBe('stale_devicetime');
+    });
+
+    it('REJECTS an exactly-equal deviceTime (retransmission / doublon)', () => {
+      const v = evaluateIngestionFix(
+        { lat: 33.5001, lng: -7.5001, deviceTime: t0 },
+        { lat: 33.5, lng: -7.5, deviceTime: t0 },
+      );
+      expect(v.authoritative).toBe(false);
+      expect(v.reason).toBe('stale_devicetime');
+    });
+
+    it('REJECTS a forward-time teleport (saut infaisable au dt reel, ~1200 km/h)', () => {
+      // deviceTime en avant mais ~10 km en 30s : ni replay ni mouvement reel.
+      const v = evaluateIngestionFix(
+        { lat: 33.59, lng: -7.5, deviceTime: tFwd30 },
+        { lat: 33.5, lng: -7.5, deviceTime: t0 },
+      );
+      expect(v.authoritative).toBe(false);
+      expect(v.reason).toBe('implausible_jump');
+    });
+
+    it('accepts a normal forward move (~555m en 30s = 66 km/h)', () => {
+      const v = evaluateIngestionFix(
+        { lat: 33.505, lng: -7.5, deviceTime: tFwd30 },
+        { lat: 33.5, lng: -7.5, deviceTime: t0 },
+      );
+      expect(v.authoritative).toBe(true);
+      expect(v.reason).toBeNull();
+    });
+
+    it('accepts a large gap at a plausible average speed (post-GPRS / deplace hors-ligne)', () => {
+      // ~60 km en 1h = 60 km/h : LEGITIME. La version dt-bornee
+      // (maxPlausibleJumpMeters, cap 60s) rejetterait a tort ce rattrapage ;
+      // isPlausibleJump avec le dt PLEIN l'accepte → aucune position reelle perdue.
+      const v = evaluateIngestionFix(
+        { lat: 34.04, lng: -7.5, deviceTime: new Date('2026-06-11T02:00:00Z') },
+        { lat: 33.5, lng: -7.5, deviceTime: t0 },
+      );
+      expect(v.authoritative).toBe(true);
     });
   });
 

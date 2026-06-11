@@ -26,7 +26,10 @@ export type SamplingDecision =
   | 'INSERTED'
   | 'INSERTED_VERBOSE'
   | 'SKIPPED_DUP'
-  | 'SKIPPED_THROTTLE';
+  | 'SKIPPED_THROTTLE'
+  // Trame non autoritaire rejetee par le garde-fou d'ingestion (replay buffer
+  // boitier : deviceTime anterieur, ou saut infaisable). Cf. PositionsService.ingest.
+  | 'SKIPPED_REPLAY';
 
 export interface SamplingOutcome {
   shouldInsert: boolean;
@@ -279,7 +282,7 @@ export class PositionSamplingService {
       SELECT
         date_trunc('hour', "receivedAt") AS hour,
         SUM(CASE WHEN "decision" IN ('INSERTED', 'INSERTED_VERBOSE') THEN 1 ELSE 0 END) AS inserted,
-        SUM(CASE WHEN "decision" IN ('SKIPPED_DUP', 'SKIPPED_THROTTLE') THEN 1 ELSE 0 END) AS skipped
+        SUM(CASE WHEN "decision" IN ('SKIPPED_DUP', 'SKIPPED_THROTTLE', 'SKIPPED_REPLAY') THEN 1 ELSE 0 END) AS skipped
       FROM "position_sampling_decisions"
       WHERE "trackerId" = ${trackerId}::uuid AND "receivedAt" >= ${since}
       GROUP BY 1

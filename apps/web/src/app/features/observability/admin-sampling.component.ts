@@ -336,6 +336,9 @@ export class AdminSamplingComponent implements OnInit {
   badgeClass(decision: SamplingDecisionDto['decision']): string {
     if (decision === 'INSERTED') return 'bg-emerald-500/10 text-emerald-400';
     if (decision === 'INSERTED_VERBOSE') return 'bg-sky-500/10 text-sky-400';
+    // Trame fantome rejetee (replay buffer / teleportation) — distincte d'un
+    // simple skip de throttle pour reperage rapide en diagnostic.
+    if (decision === 'SKIPPED_REPLAY') return 'bg-rose-500/10 text-rose-400';
     return 'bg-amber-500/10 text-amber-400';
   }
 }
