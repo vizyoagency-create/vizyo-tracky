@@ -20,6 +20,13 @@ export interface VehicleMarkerData {
   active?: boolean;
   /** Vrai si la position vient d'une hydratation REST (pas d'un live WS). */
   hydrated?: boolean;
+  /**
+   * Vitesse (km/h) a utiliser pour la COULEUR uniquement. Permet d'afficher une
+   * couleur de mouvement (vert/orange) basee sur la vitesse robuste derivee du
+   * deplacement, meme quand le boitier rapporte `speedKmh = 0` en roulant
+   * (sinon le marker flashe en gris). Defaut : `speedKmh`.
+   */
+  colorSpeedKmh?: number;
 }
 
 /**
@@ -35,7 +42,7 @@ export interface VehicleMarkerData {
  * Plaque flottante en dessous (masquable par CSS .tracky-marker--no-plate).
  */
 export function buildVehicleMarkerEl(data: VehicleMarkerData): HTMLElement {
-  const color = speedColor(data.speedKmh);
+  const color = speedColor(data.colorSpeedKmh ?? data.speedKmh);
   const ignClass = data.ignition ? 'tracky-acc--on' : 'tracky-acc--off';
   const activeClass = data.active ? 'tracky-marker--active' : '';
   const hydClass = data.hydrated ? 'tracky-marker--hydrated' : '';
@@ -83,7 +90,7 @@ export function buildVehicleMarkerEl(data: VehicleMarkerData): HTMLElement {
  * Si la plaque ou le type changent, on recree (rare).
  */
 export function updateVehicleMarkerEl(el: HTMLElement, data: VehicleMarkerData): void {
-  const color = speedColor(data.speedKmh);
+  const color = speedColor(data.colorSpeedKmh ?? data.speedKmh);
   const headingDeg = Math.round(data.heading || 0);
   el.style.setProperty('--tracky-color', color);
   el.style.setProperty('--tracky-heading', `${headingDeg}deg`);

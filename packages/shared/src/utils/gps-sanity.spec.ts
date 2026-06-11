@@ -4,6 +4,7 @@ import {
   isAcceptableLiveFix,
   isPlausibleJump,
   isValidLatLng,
+  maxPlausibleJumpMeters,
   sanitizePositions,
 } from './gps-sanity';
 
@@ -149,6 +150,85 @@ describe('gps-sanity', () => {
       expect(
         isAcceptableLiveFix({ lat: 43.2965, lng: 5.3698, valid: true }, prev),
       ).toBe(true);
+    });
+  });
+
+  describe('maxPlausibleJumpMeters', () => {
+    it('engine off → only GPS jitter tolerated (~150m), independent of dt', () => {
+      // Vehicule gare la nuit : trame STOPPED toutes les 300s. Le moteur coupe
+      // garantit qu'aucun deplacement reel n'est possible.
+      expect(maxPlausibleJumpMeters({ dtSec: 300, ignition: false })).toBeCloseTo(150, 0);
+      expect(maxPlausibleJumpMeters({ dtSec: 20, ignition: false })).toBeCloseTo(150, 0);
+    });
+
+    it('caps dt so a long silence does not blow up the tolerance', () => {
+      // Sans cap : 250 km/h x 300s ~= 20833m (le bug). Avec cap 60s ~= 4167m.
+      const m = maxPlausibleJumpMeters({ dtSec: 300 });
+      expect(m).toBeGreaterThan(4000);
+      expect(m).toBeLessThan(4200);
+    });
+
+    it('moving at 20s allows a normal frame but not a kilometric jump', () => {
+      // 50 km/h rapporte, 20s : plancher 150 + 13.9*20*2 ~= 706m.
+      const m = maxPlausibleJumpMeters({ dtSec: 20, speedKmh: 50, ignition: true });
+      expect(m).toBeGreaterThan(600);
+      expect(m).toBeLessThan(800);
+    });
+
+    it('reported speed ~0 contradicts a large jump (urban multipath outlier)', () => {
+      // Vitesse 0 rapportee → cap ~= plancher 150m meme moteur tournant.
+      expect(maxPlausibleJumpMeters({ dtSec: 20, speedKmh: 0, ignition: true })).toBeCloseTo(150, 0);
+    });
+
+    it('returns the most restrictive of all applicable bounds', () => {
+      // ignition off (150) gagne sur la borne vitesse 90 km/h (1150m).
+      expect(maxPlausibleJumpMeters({ dtSec: 20, speedKmh: 90, ignition: false })).toBeCloseTo(150, 0);
+    });
+  });
+
+  // Scenarios reproduisant les DONNEES DE PROD (boitier Coban / VPS), pas le
+  // seed local : c'est ici qu'on verrouille le comportement reel.
+  describe('isAcceptableLiveFix — scenarios prod (Coban / VPS)', () => {
+    const base = new Date('2026-06-11T00:30:00Z').getTime(); // ~00:34, vehicule gare
+    const at = (sec: number) => new Date(base + sec * 1000);
+
+    it('REJECTS the night-parked teleport from the screenshots (engine off, dt 300s, ~3.8km outlier)', () => {
+      const prev = { lat: 48.8566, lng: 2.3522, timestamp: at(0) };
+      const next = {
+        lat: 48.8835, lng: 2.385, // ~3.8 km plus loin
+        valid: true, ignition: false, speedKmh: 0,
+        timestamp: at(300),
+      };
+      expect(isAcceptableLiveFix(next, prev)).toBe(false);
+    });
+
+    it('dt-cap alone is NOT enough — the ignition/speed signal is what kills the outlier', () => {
+      // Sans ignition ni speed (signaux absents), dt borne a 60s tolere ~4.2km :
+      // un saut de 3.8km passerait encore. Documente pourquoi on a besoin des
+      // signaux physiques de la trame.
+      const prev = { lat: 48.8566, lng: 2.3522, timestamp: at(0) };
+      const next = { lat: 48.8835, lng: 2.385, valid: true, timestamp: at(300) };
+      expect(isAcceptableLiveFix(next, prev)).toBe(true);
+    });
+
+    it('accepts a real moving frame (50 km/h, 20s, ~278m, engine on)', () => {
+      const prev = { lat: 48.8566, lng: 2.3522, timestamp: at(0) };
+      const next = {
+        lat: 48.8591, lng: 2.3522, // ~278m
+        valid: true, ignition: true, speedKmh: 50,
+        timestamp: at(20),
+      };
+      expect(isAcceptableLiveFix(next, prev)).toBe(true);
+    });
+
+    it('rejects a parked GPS spike even engine ON when reported speed is ~0', () => {
+      const prev = { lat: 48.8566, lng: 2.3522, timestamp: at(0) };
+      const next = {
+        lat: 48.87, lng: 2.3522, // ~1.5 km
+        valid: true, ignition: true, speedKmh: 0,
+        timestamp: at(20),
+      };
+      expect(isAcceptableLiveFix(next, prev)).toBe(false);
     });
   });
 
