@@ -475,7 +475,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
         </section>
       }
 
-      @if (data() && data()!.failing.length === 0 && data()!.offline.length === 0 && data()!.pendingCommands.length === 0 && !data()!.errors?.last24h) {
+      @if (data() && data()!.failing.length === 0 && data()!.offline.length === 0 && data()!.pendingCommands.length === 0 && !data()!.errors.last24h) {
         <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-12 text-center">
           <lucide-icon [img]="CheckCircle" [size]="48" class="mx-auto mb-3 text-emerald-400"></lucide-icon>
           <h2 class="text-lg font-display font-semibold text-fg-primary">Tout va bien</h2>
