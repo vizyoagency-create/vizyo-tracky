@@ -13,3 +13,4 @@ export * from './permissions';
 export * from './protocol';
 export * from './utils/gps-sanity';
 export * from './utils/live-motion';
+export * from './utils/tracker-liveness';
