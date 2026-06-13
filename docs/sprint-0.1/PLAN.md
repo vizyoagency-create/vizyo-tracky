@@ -115,6 +115,46 @@ au déploiement. Renvoyé/coordonné avec 0.2.
 
 ---
 
+## Lot E — Anti-flapping OFFLINE côté TCP (applicatif, ajouté après inspection prod)
+
+**Constat prod** : le statut est piloté par le cycle de vie du socket TCP. Sur
+`socket 'close'`, OFFLINE est écrit **immédiatement** + event WS émis. Les boîtiers
+Coban rouvrent leur TCP en permanence (6 close / 20 min observés) → **flapping**.
+En prime, un **bug de race** préexistant : à la reconnexion, le `close` du vieux
+socket désenregistrait le **nouveau** socket et marquait OFFLINE à tort.
+
+**Fichier** : `apps/api/src/tracker-tcp/tcp-server.service.ts`.
+**Changements** :
+- `handleSocketClose(imei, socket)` : ignore un `close` si un socket **plus récent**
+  est déjà enregistré (fix de la race). Sinon désenregistre + programme un OFFLINE
+  **différé**.
+- `scheduleOffline` / `cancelPendingOffline` / `markOffline` : délai de grâce
+  `OFFLINE_GRACE_MS = 90 s`, annulé au login (reconnexion). Timers `unref()` +
+  nettoyés à `onModuleDestroy`. Erreurs DB catchées + `ErrorLogger`.
+
+**Risque** : modéré (chemin TCP critique) → couvert par 7 tests
+(`tcp-server.service.spec.ts`, fake timers). Le statut DB ne pilote pas l'envoi de
+commandes (basé sur le registry de sockets), donc le différé est sûr.
+
+## Lot F — Interruption live remontée au centre d'alerte (applicatif, demandé)
+
+**Besoin** : « si la connexion temps réel est interrompue, je veux le voir dans mon
+centre d'alerte — sans live, les users sont aveugles ».
+
+**Serveur** : `apps/api/src/realtime/realtime-incident.controller.ts`
+(`POST /api/realtime/incident`, `JwtAuthGuard`). Enregistre un incident **CRITICAL**
+via `ErrorLogger` → visible dans le hub `/api/admin/alerts` (section critical).
+**Anti-flood** : dédup en mémoire **par flotte** (5 min) + `@Throttle` par IP. DTO
+validé (`downMs` borné). 5 tests.
+
+**Client** : `apps/web/src/app/core/services/realtime.service.ts`. Watchdog : si le
+socket reste coupé > **45 s** (couvre aussi « jamais connecté » au login), POST
+`/api/realtime/incident` puis re-report toutes les **5 min** tant que coupé. Annulé à
+la reconnexion / logout. Best-effort (catché silencieusement si le HTTP est down).
+
+**Risque** : faible. Le report passe par HTTP (qui répond même quand le WS est KO,
+cf. preuves prod). Dédup serveur + throttle évitent le flood lors d'une panne globale.
+
 ## Renvoyé explicitement au Sprint 0.2 (infra) — NON corrigé ici
 - **Cause racine du bandeau** : CPU VPS à 100 %, redémarrages conteneurs → handshake WS
   et auth-DB à la connexion qui échouent. Le live doit revenir seul une fois le CPU sain

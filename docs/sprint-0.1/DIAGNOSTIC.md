@@ -16,17 +16,41 @@ proxy prod = **Traefik** (pas le nginx web, qui ne sert que le statique).
 
 ---
 
-## TL;DR (3 symptômes, 3 causes distinctes)
+## ⚠️ MISE À JOUR — Validation sur la PROD (2026-06-13)
 
-| # | Symptôme | Cause racine | Côté | Certitude |
+> Inspection read-only du VPS (SSH + DB + logs + tests WS en direct). **Une
+> conclusion de l'analyse statique initiale était FAUSSE** et a été corrigée ici.
+
+**Correction majeure (symptôme 3).** L'analyse locale disait « `Tracker.status`
+n'est jamais remis OFFLINE, statut collant ». **FAUX** — c'était un **faux négatif**
+de grep (motif `!(*.spec)` non supporté par ripgrep → 0 fichier scanné). Le vrai
+modèle (prod ET local, code identique) : le statut est **basé sur la connexion
+TCP** — [`tracker-tcp/tcp-server.service.ts`](../../apps/api/src/tracker-tcp/tcp-server.service.ts)
+écrit `OFFLINE` sur `socket 'close'` et `ONLINE` au login/trame. Le vrai bug
+offline = **flapping** : les boîtiers Coban rouvrent leur TCP en permanence et
+chaque fermeture flippe OFFLINE **sans délai de grâce**, amplifié par la
+saturation CPU.
+
+**Preuves prod :**
+- VPS **2 vCPU**, **load ~13**, **~15 stacks** partagés. `tracky-api` **0 redémarrage**,
+  up 2 j (→ l'hypothèse « restart conteneur » du brief est **infirmée**).
+- DB : `total=14`, `status_online=8`, `has_last_position=11` (= « 11 actif »), `never_seen=3`. ✔ matche les captures.
+- Par tracker : `EP 047 TY` **OFFLINE mais lastSeenAt 0 min** (faux-offline, socket fermé mid-reconnexion) ; `FL 787 KV` (8 j), `FV 941 LZ` (45 j), `KSR 370`/`GR 898`/`GS 187` (jamais vus) = **offline réels** (= pb d'installation, attendu).
+- Logs : **6 close / 5 reconnect / 0 timeout en 20 min** → churn TCP réel.
+- WS via Traefik : polling **HTTP 200**, upgrade WS **HTTP 101** (donc **le proxy/WS marche**) mais **~15 s** ; `/api/health` **200 en 3,1 s** → **latence pure de CPU saturé**, pas un bug proxy.
+
+## TL;DR (3 symptômes, 3 causes — version validée prod)
+
+| # | Symptôme | Cause racine (validée) | Côté | Certitude |
 |---|----------|--------------|------|-----------|
-| 1 | Bandeau « Connexion temps réel interrompue… » persistant | Socket WS réellement déconnecté ; ne se rétablit pas sous VPS saturé/redémarrages. **Amplifié** par un choix de transport WS sans repli polling. | **Infra (0.2)** + durcissement applicatif | Élevée |
-| 2 | Comptage incohérent 14 / 8 / 11 | **3 métriques différentes** mesurant 3 choses différentes (total trackers / `status` collant / véhicules avec dernière position). Aucune n'est un vrai « live ». | **Applicatif** (sémantique) | Élevée |
-| 3 | Trackers « offline » à tort | `Tracker.status` n'est **jamais** remis à `OFFLINE` par le code : collant à `ONLINE` dès la 1ʳᵉ trame, défaut `OFFLINE` sinon. → « offline » = « n'a jamais été vu », pas « hors-ligne maintenant ». | **Applicatif** (modèle cassé), faux-offline réels = **infra (0.2)** | Élevée |
+| 1 | Bandeau « temps réel interrompu » | API CPU-affamée → handshake WS ~15 s / ping-timeouts → socket tombe ; client **websocket-first sans repli polling** → coupure totale (le polling, lui, répond en 200). | **Infra (0.2)** + durcissement applicatif | Élevée (preuve directe) |
+| 2 | Comptage 14 / 8 / 11 | **3 métriques différentes** : total / `status` (connexion TCP, flappe) / véhicules avec dernière position. Aucune n'est un vrai « live » cohérent. | **Applicatif** | Élevée |
+| 3 | Trackers « offline » à tort | Statut lié au **cycle de vie du socket TCP** : `close` → OFFLINE **immédiat** (aucune grâce). Reconnexions GPRS Coban + CPU saturé → **flapping**. `EP 047 TY` = live mais affiché offline. | **Applicatif (flapping)** + **infra (0.2)** | Élevée (preuve directe) |
 
-Le bandeau (live) et les lags VPS (0.2) partagent **probablement** la même cause racine
-infra. Le comptage et le modèle offline sont des **bugs applicatifs indépendants de 0.2**
-qui rendent l'UI trompeuse même quand l'infra est saine.
+Live ET offline sont **deux conséquences de la saturation CPU** du VPS partagé. Les
+correctifs applicatifs **durcissent** (live → repli polling ; offline → affichage par
+fraîcheur + délai de grâce TCP) **sans masquer l'infra**. Levier durable = soulager le
+CPU (0.2).
 
 ---
 
