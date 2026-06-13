@@ -5,6 +5,7 @@ import { RealtimeModule } from '../realtime/realtime.module';
 import { TrackerFixModeModule } from '../tracker-fix-mode/tracker-fix-mode.module';
 import { TripsModule } from '../trips/trips.module';
 import { AdminSamplingController } from './admin-sampling.controller';
+import { DataRetentionService } from './data-retention.service';
 import { IgnitionInferredCleanupService } from './ignition-inferred-cleanup.service';
 import { PositionBatchBufferService } from './position-batch-buffer.service';
 import { PositionHistoryService } from './position-history.service';
@@ -27,6 +28,7 @@ import { PositionsService } from './positions.service';
     PositionHistoryService,
     PositionBatchBufferService,
     IgnitionInferredCleanupService,
+    DataRetentionService,
   ],
   exports: [PositionsService, PositionSamplingService, PositionHistoryService],
 })

@@ -79,6 +79,17 @@ const envSchema = z.object({
   // le header Authorization (PAS de prefixe Bearer — verifie en live).
   WHEREVER_SIM_API_URL: z.string().default('https://graphql.api.whereversim.com/graphql'),
   WHEREVER_SIM_TOKEN: z.string().default(''),
+
+  // Retention donnees (V1.18) — purge auto nocturne (3h30), cf. DataRetentionService.
+  // SAMPLING_DECISIONS_RETENTION_DAYS : audit-trail du sampling. Defaut 7j (deja
+  //   documente dans le schema Prisma). 0 => desactive.
+  // POSITIONS_RETENTION_DAYS : positions GPS. DESACTIVE par defaut (0 = retention
+  //   infinie, comportement historique). Purger supprime le replay des vieux
+  //   trajets => duree de conservation = decision metier/legale, a activer en
+  //   connaissance de cause. Suppression par lots (10k) pour ne pas verrouiller
+  //   l'ingestion temps reel.
+  SAMPLING_DECISIONS_RETENTION_DAYS: z.coerce.number().int().nonnegative().default(7),
+  POSITIONS_RETENTION_DAYS: z.coerce.number().int().nonnegative().default(0),
 });
 
 export type Env = z.infer<typeof envSchema>;
