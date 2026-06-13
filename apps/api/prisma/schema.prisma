@@ -1160,3 +1160,23 @@ model Sim {
   @@index([statusId])
   @@map("sims")
 }
+
+/// Snapshot périodique des perfs système (monitoring VPS — espace admin).
+/// Collecté toutes les 60s par MetricsCollectorService, purgé après 30j.
+/// CPU/RAM/load lus via `os` côté API = niveau HÔTE (pas de mount, pas de
+/// docker.sock). Lu par /admin/system (KPI + historique).
+model SystemMetric {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  timestamp  DateTime @default(now())
+  loadAvg1   Float
+  loadAvg5   Float
+  loadAvg15  Float
+  cpuCount   Int
+  cpuPercent Float
+  memUsedMb  Float
+  memTotalMb Float
+  dbSizeMb   Float
+
+  @@index([timestamp])
+  @@map("system_metrics")
+}

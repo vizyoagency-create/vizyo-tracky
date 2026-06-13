@@ -207,6 +207,14 @@ export const routes: Routes = [
         data: { title: 'Trackers (admin)' },
       },
       {
+        path: 'admin/system',
+        pathMatch: 'full',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/system-metrics/admin-system.component').then((m) => m.AdminSystemComponent),
+        data: { title: 'Système VPS' },
+      },
+      {
         path: 'admin/trackers/:id/sampling',
         canActivate: [superAdminGuard],
         loadComponent: () =>

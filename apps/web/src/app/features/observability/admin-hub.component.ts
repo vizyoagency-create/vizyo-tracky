@@ -2,7 +2,7 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
   LucideAngularModule, AlertTriangle, Activity, Terminal, MessageSquare,
-  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard,
+  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { AdminFixModeService, type AdminAlertSummary } from '../../core/services/admin-fix-mode.service';
@@ -150,6 +150,19 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
             <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
           </div>
         </a>
+
+        <!-- ── SYSTÈME VPS (wide) ── -->
+        <a routerLink="/admin/system" class="card card-wide" style="--i:8">
+          <span class="accent accent-rose"></span>
+          <div class="body body-row">
+            <div class="ico ico-rose"><lucide-icon [img]="Cpu" [size]="20"></lucide-icon></div>
+            <div class="body-text">
+              <h3>Système VPS</h3>
+              <p class="desc">CPU, RAM, charge serveur et taille de la base — en direct + historique (hier / aujourd'hui / 7j / 30j) pour surveiller la charge et anticiper les purges.</p>
+            </div>
+            <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
+          </div>
+        </a>
       </div>
     </div>
   `,
@@ -236,6 +249,7 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
     .accent-cyan   { background: linear-gradient(90deg, #06b6d4, #22d3ee); }
     .accent-amber  { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
     .accent-teal   { background: linear-gradient(90deg, #14b8a6, #2dd4bf); }
+    .accent-rose   { background: linear-gradient(90deg, #f43f5e, #fb7185); }
 
     /* Hover border color */
     .card-hero:hover  { border-color: rgba(239,68,68,.25); }
@@ -302,6 +316,7 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
     .ico-cyan   { background: rgba(6,182,212,.1);  color: #22d3ee; }
     .ico-amber  { background: rgba(245,158,11,.1); color: #fbbf24; }
     .ico-teal   { background: rgba(20,184,166,.1); color: #2dd4bf; }
+    .ico-rose   { background: rgba(244,63,94,.1);  color: #fb7185; }
 
     /* ── HERO BG ── */
     .card-bg-hero {
@@ -360,6 +375,7 @@ export class AdminHubComponent implements OnInit {
   protected readonly Database = Database;
   protected readonly ClipboardList = ClipboardList;
   protected readonly CreditCard = CreditCard;
+  protected readonly Cpu = Cpu;
 
   readonly stats = signal<AdminAlertSummary | null>(null);
 
