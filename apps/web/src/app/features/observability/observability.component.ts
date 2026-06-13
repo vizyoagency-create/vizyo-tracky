@@ -1,5 +1,5 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
-import { DatePipe, JsonPipe } from '@angular/common';
+import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import {
@@ -21,7 +21,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 @Component({
   selector: 'app-observability',
   standalone: true,
-  imports: [LucideAngularModule, DatePipe, JsonPipe, FormsModule, RouterLink],
+  imports: [LucideAngularModule, DatePipe, FormsModule, RouterLink],
   template: `
     <div class="flex flex-col gap-6">
       <div class="flex items-center justify-between">

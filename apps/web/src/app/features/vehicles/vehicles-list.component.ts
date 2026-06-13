@@ -197,7 +197,7 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
                        reservee SA). Petit chip discret avec pastille couleur. -->
                   <span class="v-driver-chip" [title]="'Conducteur : ' + d.firstName + ' ' + d.lastName">
                     <span class="v-driver-dot" [style.background]="d.color ?? '#10b981'"></span>
-                    {{ d.firstName }} {{ d.lastName?.charAt(0) ?? '' }}.
+                    {{ d.firstName }} {{ d.lastName.charAt(0) }}.
                   </span>
                 }
                 <div class="v-card-mid">
