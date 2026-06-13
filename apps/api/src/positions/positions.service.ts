@@ -90,6 +90,25 @@ export class PositionsService {
         `Position rejetee pour ${frame.imei} : lat/lng hors-bornes ou Null Island ` +
           `(${frame.latitude}, ${frame.longitude})`,
       );
+      // V1.17 (Sprint 0.1) — le boitier COMMUNIQUE (trame recue), seul le fix
+      // GPS est hors-bornes. On met a jour la liveness (lastSeenAt + ONLINE)
+      // AVANT de sortir — comme la garde anti-replay plus bas — sinon un boitier
+      // qui n'emet QUE des fixes invalides (demarrage a froid, indoor, Null
+      // Island) n'apparait jamais "vu" et reste OFFLINE a tort. Pas de denorm
+      // position (le fix est invalide), pas de broadcast. Cf. docs/sprint-0.1.
+      const wasOffline = tracker.status !== 'ONLINE';
+      await this.prisma.tracker.update({
+        where: { id: tracker.id },
+        data: { lastSeenAt: new Date(), status: 'ONLINE' },
+      });
+      if (wasOffline && tracker.vehicle) {
+        this.gateway.emitTrackerStatus(tracker.vehicle.fleetId, {
+          trackerId: tracker.id,
+          imei: tracker.imei,
+          status: 'online',
+          at: new Date().toISOString(),
+        });
+      }
       return;
     }
 

@@ -386,4 +386,30 @@ describe('PositionsService.ingest — garde-fou replay/teleportation', () => {
 
     expect(batchBuffer.enqueue).toHaveBeenCalledTimes(1);
   });
+
+  it('updates liveness on an out-of-bounds / Null Island fix without persisting it', async () => {
+    // Sprint 0.1 — boitier qui COMMUNIQUE mais sans fix valide (Null Island 0,0,
+    // demarrage a froid). Avant : aucune liveness -> tracker "jamais vu" a tort
+    // et compte OFFLINE. Desormais lastSeenAt + ONLINE, sans denorm ni broadcast.
+    trackerRow = makeTracker({ status: 'OFFLINE' });
+    const invalid = makeFrame({ latitude: 0, longitude: 0, valid: true });
+
+    await service.ingest(invalid);
+
+    expect(prisma.tracker.update).toHaveBeenCalledTimes(1);
+    expect(prisma.tracker.update).toHaveBeenCalledWith({
+      where: { id: TRACKER_ID },
+      data: { lastSeenAt: expect.any(Date), status: 'ONLINE' },
+    });
+    // Aucune persistance ni broadcast d'une position invalide.
+    expect(batchBuffer.enqueue).not.toHaveBeenCalled();
+    expect(trips.processPosition).not.toHaveBeenCalled();
+    expect(sampling.decide).not.toHaveBeenCalled();
+    expect(gateway.broadcastPosition).not.toHaveBeenCalled();
+    // Le tracker etait OFFLINE -> on annonce le passage online.
+    expect(gateway.emitTrackerStatus).toHaveBeenCalledWith(
+      FLEET_ID,
+      expect.objectContaining({ trackerId: TRACKER_ID, status: 'online' }),
+    );
+  });
 });
