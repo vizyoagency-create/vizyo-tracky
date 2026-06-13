@@ -48,6 +48,14 @@ export class RealtimeService {
 
   private socket: Socket | null = null;
   private refreshingToken = false;
+
+  // Sprint 0.1 — surveillance d'interruption du canal temps réel. Si le socket
+  // reste coupé au-delà du seuil, on remonte un incident au centre d'alerte
+  // (panne grave : plus de vue live). Re-report périodique tant que coupé.
+  private disconnectedSince: number | null = null;
+  private incidentTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly INCIDENT_DELAY_MS = 45_000;
+  private static readonly INCIDENT_REPEAT_MS = 5 * 60_000;
   private readonly toast = inject(ToastService);
   private readonly auth = inject(AuthService);
   private readonly preferences = inject(PreferencesService);
@@ -139,14 +147,19 @@ export class RealtimeService {
       tryAllTransports: true,
       reconnection: true,
     });
+    // Armer la surveillance dès l'ouverture : couvre aussi le cas « jamais
+    // connecté » (API injoignable au login) en plus des coupures ultérieures.
+    this.startIncidentWatch();
 
     this.socket.on('connect', () => {
       this.connected.set(true);
+      this.clearIncidentWatch();
       this.loadInitialAlerts();
     });
 
     this.socket.on('disconnect', () => {
       this.connected.set(false);
+      this.startIncidentWatch();
     });
 
     // Token expire → socket.io reconnecte avec l'ancien token → rejet backend.
@@ -266,6 +279,48 @@ export class RealtimeService {
     this.positionBuffer.clear();
     this.flushScheduled = false;
     this.lastToastByKey.clear();
+    this.clearIncidentWatch();
+  }
+
+  // ---------------------------------------------------------------------
+  // Surveillance d'interruption du canal temps réel → centre d'alerte
+  // ---------------------------------------------------------------------
+
+  /** Démarre la surveillance (idempotent) : on note le début de la coupure. */
+  private startIncidentWatch(): void {
+    if (this.disconnectedSince !== null) return;
+    this.disconnectedSince = Date.now();
+    this.incidentTimer = setTimeout(
+      () => this.reportRealtimeIncident(),
+      RealtimeService.INCIDENT_DELAY_MS,
+    );
+  }
+
+  /** Arrête la surveillance (reconnexion ou logout). */
+  private clearIncidentWatch(): void {
+    if (this.incidentTimer) {
+      clearTimeout(this.incidentTimer);
+      this.incidentTimer = null;
+    }
+    this.disconnectedSince = null;
+  }
+
+  /**
+   * Remonte un incident "live interrompu" au backend (centre d'alerte) puis
+   * re-programme un report périodique tant que la coupure persiste. Best-effort :
+   * si le HTTP est lui aussi indisponible, on échoue silencieusement (rien à
+   * remonter d'utile, l'app entière est down).
+   */
+  private reportRealtimeIncident(): void {
+    if (this.disconnectedSince === null) return; // reconnecté entre-temps
+    const downMs = Date.now() - this.disconnectedSince;
+    firstValueFrom(this.http.post('/api/realtime/incident', { downMs })).catch(() => {
+      /* silent */
+    });
+    this.incidentTimer = setTimeout(
+      () => this.reportRealtimeIncident(),
+      RealtimeService.INCIDENT_REPEAT_MS,
+    );
   }
 
   // ---------------------------------------------------------------------
