@@ -23,6 +23,7 @@ import {
   deriveMotion,
   extrapolate,
   isAcceptableLiveFix,
+  isTrackerOnline,
   sanitizePositions,
 } from '@vizyo/tracky-shared';
 
@@ -2053,11 +2054,18 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     { id: 'heading-up',  label: 'Sens',      tooltip: 'Suivre + carte orientée dans le sens de marche' },
   ];
 
+  // Sprint 0.1 — « actif(s) » = positions FRAÎCHES (live), pas « a une dernière
+  // position connue ». Avant, le compteur restait figé pendant une coupure
+  // realtime (positions hydratées via REST, jamais périmées) et affichait un
+  // nombre trompeur À CÔTÉ du bandeau « interrompue ». Désormais cohérent avec
+  // l'admin Trackers (même seuil de fraîcheur). Cf. docs/sprint-0.1.
   protected readonly filteredPositionCount = computed(() => {
     const ids = this._accessibleIds();
-    return ids === 'ALL'
-      ? this.realtime.positionsList().length
-      : this.realtime.positionsList().filter((p) => (ids as Set<string>).has(p.vehicleId)).length;
+    const accessible =
+      ids === 'ALL'
+        ? this.realtime.positionsList()
+        : this.realtime.positionsList().filter((p) => (ids as Set<string>).has(p.vehicleId));
+    return accessible.filter((p) => isTrackerOnline(p.timestamp)).length;
   });
 
   protected readonly followedPlate = computed(() => {

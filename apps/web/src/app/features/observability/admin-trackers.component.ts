@@ -17,6 +17,7 @@ import {
   Link,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
+import { isTrackerOnline } from '@vizyo/tracky-shared';
 import {
   TrackerDetail,
   TrackersApiService,
@@ -126,7 +127,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
                 <tr class="border-b border-border-subtle/50 hover:bg-bg-tertiary/50">
                   <!-- Status -->
                   <td class="p-3">
-                    @if (t.status === 'ONLINE') {
+                    @if (isLive(t)) {
                       <span class="inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] rounded-md bg-emerald-500/10 text-emerald-400 font-medium">
                         <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                         ON
@@ -291,15 +292,24 @@ export class AdminTrackersComponent implements OnInit {
   vehicleSearch = '';
   private allVehicles: VehicleForAssign[] = [];
 
+  // Sprint 0.1 — « online » = fraîcheur du dernier signal (isTrackerOnline), PAS
+  // la colonne `status` collante (jamais remise OFFLINE côté serveur). Voir
+  // docs/sprint-0.1/DIAGNOSTIC.md §3.
   readonly summary = computed(() => {
     const all = this.trackers();
+    const online = all.filter((t) => isTrackerOnline(t.lastSeenAt)).length;
     return {
       total: all.length,
-      online: all.filter((t) => t.status === 'ONLINE').length,
-      offline: all.filter((t) => t.status !== 'ONLINE').length,
+      online,
+      offline: all.length - online,
       unassigned: all.filter((t) => !t.vehicleId).length,
     };
   });
+
+  /** Liveness d'affichage : dernier signal récent ? (cf. summary). */
+  protected isLive(t: TrackerDetail): boolean {
+    return isTrackerOnline(t.lastSeenAt);
+  }
 
   readonly filtered = computed(() => {
     let list = this.trackers();
@@ -313,8 +323,10 @@ export class AdminTrackersComponent implements OnInit {
           (t.simPhoneNumber ?? '').includes(q),
       );
     }
-    if (this.filterStatus) {
-      list = list.filter((t) => t.status === this.filterStatus);
+    if (this.filterStatus === 'ONLINE') {
+      list = list.filter((t) => isTrackerOnline(t.lastSeenAt));
+    } else if (this.filterStatus === 'OFFLINE') {
+      list = list.filter((t) => !isTrackerOnline(t.lastSeenAt));
     }
     if (this.filterAssigned === 'assigned') {
       list = list.filter((t) => !!t.vehicleId);
