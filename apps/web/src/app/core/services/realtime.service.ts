@@ -128,9 +128,15 @@ export class RealtimeService {
     // vide en attendant la prochaine trame Coban.
     this.hydrate().catch(() => { /* silent: live WS will populate eventually */ });
 
+    // Transport : on tente WebSocket d'abord (connexion rapide), MAIS avec repli
+    // polling si l'upgrade WS echoue. Sans `tryAllTransports`, socket.io-client
+    // >=4.8 (defaut false) ne tente JAMAIS le transport suivant : un upgrade WS
+    // qui echoue (proxy capricieux, redemarrage API sous CPU sature) coupe le
+    // live en TOTALITE au lieu de degrader en polling. Cf. Sprint 0.1 DIAGNOSTIC.
     this.socket = io('/realtime', {
       auth: { token },
       transports: ['websocket', 'polling'],
+      tryAllTransports: true,
       reconnection: true,
     });
 
