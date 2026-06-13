@@ -95,6 +95,10 @@ services:
       - "traefik.http.services.tracky-api.loadbalancer.server.port=3000"
       # Headers pour WebSocket
       - "traefik.http.middlewares.tracky-api-ws.headers.customrequestheaders.X-Forwarded-Proto=https"
+      # Sprint 0.1 — le middleware ci-dessus etait DEFINI mais jamais ATTACHE au
+      # routeur (X-Forwarded-Proto=https non applique -> backend voyait http).
+      # On l'attache ici. A verifier au deploiement (pas de Traefik en local).
+      - "traefik.http.routers.tracky-api.middlewares=tracky-api-ws"
 
   web:
     build:
