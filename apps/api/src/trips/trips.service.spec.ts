@@ -14,6 +14,7 @@
  *   7. `dailySummary` ignore les valeurs negatives heritees (defense en
  *      profondeur pour les bases pas encore migrees).
  */
+import { Prisma } from '@prisma/client';
 import { TripsService } from './trips.service';
 import { TripSegmenterService } from './trip-segmenter.service';
 
@@ -267,6 +268,51 @@ describe('TripsService — invariants rapports', () => {
 
       // Trip cree puis supprime → 0 trip persiste.
       expect(prisma.trips.size).toBe(0);
+    });
+
+    it('finalizeTrip est idempotent : un 2e appel sur un state deja cloture ne re-update pas (anti-race)', async () => {
+      // Reproduit la course prod : un burst store-and-forward (ou checkTimeouts)
+      // ré-entrait finalizeTrip sur le MÊME state -> double clôture / P2025.
+      const { svc, prisma, gateway } = buildService();
+      await svc.processPosition(pos({ minute: 0, speedKmh: 30 }));
+      await svc.processPosition(pos({ minute: 0, second: 30, speedKmh: 30 }));
+      await svc.processPosition(pos({ minute: 1, speedKmh: 50 }));
+      await svc.processPosition(pos({ minute: 2, speedKmh: 50 }));
+
+      const state = (svc as any).openTrips.get(TRACKER_ID);
+      expect(state).toBeDefined();
+
+      // 1er finalize → clôture + retire de openTrips + 1 event.
+      await (svc as any).finalizeTrip(state, new Date(Date.UTC(2026, 0, 1, 10, 3)), 'speed');
+      expect((svc as any).openTrips.get(TRACKER_ID)).toBeUndefined();
+      expect(gateway.completedEvents.length).toBe(1);
+      expect(prisma.trips.size).toBe(1);
+
+      // 2e finalize sur le MÊME state (stale) → no-op grâce au claim.
+      await (svc as any).finalizeTrip(state, new Date(Date.UTC(2026, 0, 1, 10, 3)), 'timeout');
+      expect(gateway.completedEvents.length).toBe(1); // pas de double event
+      expect(prisma.trips.size).toBe(1);
+    });
+
+    it('finalizeTrip avale un P2025 (trip supprime entre-temps) sans throw', async () => {
+      const { svc, prisma } = buildService();
+      await svc.processPosition(pos({ minute: 0, speedKmh: 30 }));
+      await svc.processPosition(pos({ minute: 0, second: 30, speedKmh: 30 }));
+      await svc.processPosition(pos({ minute: 1, speedKmh: 50 }));
+      await svc.processPosition(pos({ minute: 2, speedKmh: 50 }));
+
+      const state = (svc as any).openTrips.get(TRACKER_ID);
+      // Simule une suppression concurrente : l'update jette P2025.
+      (prisma as any).trip.update = async () => {
+        throw new Prisma.PrismaClientKnownRequestError('No record found for update', {
+          code: 'P2025',
+          clientVersion: 'test',
+        });
+      };
+
+      await expect(
+        (svc as any).finalizeTrip(state, new Date(Date.UTC(2026, 0, 1, 10, 3)), 'speed'),
+      ).resolves.toBeUndefined();
     });
   });
 

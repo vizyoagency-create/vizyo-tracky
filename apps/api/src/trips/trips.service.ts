@@ -317,6 +317,16 @@ export class TripsService implements OnModuleInit {
   }
 
   private async finalizeTrip(state: OpenTripState, endTime: Date, source: string): Promise<void> {
+    // Anti-race / idempotence (Sprint 0.1) : on "claim" le trip en retirant l'état
+    // AVANT tout await. Un burst de positions (store-and-forward rejoué à la
+    // reconnexion d'un boîtier qui flappe) ou le cron checkTimeouts pouvait
+    // ré-entrer finalizeTrip sur le MÊME state -> double update, ou update après
+    // qu'un autre appel a supprimé le trip court -> P2025 "record not found"
+    // (vu en prod sur EP 047 TY). Si l'état n'est plus le nôtre, un autre appel
+    // l'a déjà clôturé : on sort.
+    if (this.openTrips.get(state.trackerId) !== state) return;
+    this.openTrips.delete(state.trackerId);
+
     // Clamp defensif (V1.4 Sprint 4) : haversine est toujours >= 0, mais une
     // valeur negative ne doit jamais etre persistee. Defense en profondeur.
     const safeDist = Math.max(0, state.dist);
@@ -382,25 +392,38 @@ export class TripsService implements OnModuleInit {
        Math.max(0, avg),
      );
 
-    await this.prisma.trip.update({
-      where: { id: state.tripId },
-      data: {
-        endedAt: safeEnd,
-        endLat: state.lastLat,
-        endLng: state.lastLng,
-        durationSeconds: dur,
-        distanceMeters: Math.round(safeDist),
-        distanceKm: Math.round(safeDist / 10) / 100,
-        maxSpeed: Math.round(safeMaxSpeed * 100) / 100,
-        avgSpeed: safeAvgSpeed,
-        positionCount: state.positionCount,
-        segmentationSource: source,
-        polyline: JSON.stringify(simplifiedPoly),
-        ...(autoDriverId
-          ? { driverId: autoDriverId, driverSource: 'AUTO' }
-          : {}),
-      },
-    });
+    try {
+      await this.prisma.trip.update({
+        where: { id: state.tripId },
+        data: {
+          endedAt: safeEnd,
+          endLat: state.lastLat,
+          endLng: state.lastLng,
+          durationSeconds: dur,
+          distanceMeters: Math.round(safeDist),
+          distanceKm: Math.round(safeDist / 10) / 100,
+          maxSpeed: Math.round(safeMaxSpeed * 100) / 100,
+          avgSpeed: safeAvgSpeed,
+          positionCount: state.positionCount,
+          segmentationSource: source,
+          polyline: JSON.stringify(simplifiedPoly),
+          ...(autoDriverId
+            ? { driverId: autoDriverId, driverSource: 'AUTO' }
+            : {}),
+        },
+      });
+    } catch (e) {
+      // Belt-and-suspenders : le trip a pu être supprimé entre-temps par une
+      // autre voie (recompute deleteMany, suppression manuelle). On ne remonte
+      // pas une erreur applicative pour une course bénigne.
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
+        this.logger.warn(
+          `finalizeTrip: trip ${state.tripId} introuvable (déjà supprimé/clôturé), skip`,
+        );
+        return;
+      }
+      throw e;
+    }
 
     // Sprint G.3 — map-matching OSRM async (non-bloquant pour la cloture du trip).
     this.runMapMatchingAsync(state.tripId, simplifiedPoly);
