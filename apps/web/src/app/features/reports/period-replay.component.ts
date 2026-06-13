@@ -58,12 +58,6 @@ import {
 } from '../../shared/utils/maplibre-markers';
 import { clampSpeed, formatDuration, max0 } from './reports.utils';
 
-// Marker de version au load du module : si on ne voit pas ce log dans la
-// console du browser, c'est que le bundle n'a PAS ete charge (cache, deploy
-// stale, etc.). Permet de discriminer "code pas servi" vs "code execute mais
-// bug d'init".
-console.log('[period-replay] MODULE LOADED v3', new Date().toISOString());
-
 interface TripSegment {
   kind: 'trip';
   trip: TripDto;
@@ -399,7 +393,6 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
   private initEffect = effect(() => {
     const isOpen = this.open();
     const trips = this.trips();
-    console.log('[period-replay] effect fired', { isOpen, tripsLength: trips?.length });
     if (!isOpen) return;
     const tl = buildTimeline(trips);
     this.timeline.set(tl);
@@ -411,10 +404,6 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
       this.currentTimestamp.set(new Date(tl.segments[0]!.startMs));
       if (this.autoSpeed()) this.applyAutoSpeed(tl);
     }
-    console.log('[period-replay] timeline built', {
-      segments: tl?.segments?.length, totalMs: tl?.totalMs,
-      hasFirstLngLat: !!tl?.firstLngLat,
-    });
     // Approche simple, calquee sur trip-replay (qui marche) : setTimeout 200ms
     // pour laisser Angular finir le rendu du modal, puis init. ResizeObserver
     // posterieur gere les changements de taille (rotation, animation modal).
@@ -636,33 +625,17 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
   // --- Map init ---
 
   private initMap(): void {
-    console.log('[period-replay] initMap called');
     const tl = this.timeline();
     const el = this.mapRef()?.nativeElement;
     this.mapError.set(null);
     this.mapReady.set(false);
-    console.log('[period-replay] initMap state', {
-      hasTl: !!tl,
-      hasEl: !!el,
-      w: el?.clientWidth,
-      h: el?.clientHeight,
-      hasFirstLngLat: !!tl?.firstLngLat,
-      segments: tl?.segments?.length,
-    });
     if (!tl || !el) {
       this.mapError.set(`Init aborted: tl=${!!tl} el=${!!el}`);
-      console.error('[period-replay] init aborted: missing tl or el');
       return;
     }
     if (!tl.firstLngLat) {
       this.mapError.set(`Aucun point GPS exploitable dans la periode (${tl.segments.length} segments)`);
-      console.error('[period-replay] no firstLngLat', { segments: tl.segments.length });
       return;
-    }
-    if (el.clientWidth === 0 || el.clientHeight === 0) {
-      console.warn('[period-replay] map container size 0', {
-        w: el.clientWidth, h: el.clientHeight,
-      });
     }
     this.disposeMap();
 
@@ -678,26 +651,23 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
         withScaleControl: true,
       });
     } catch (err) {
-      console.error('[period-replay] createMap throw', err);
       this.mapError.set(`createMap: ${err instanceof Error ? err.message : String(err)}`);
       return;
     }
 
-    // Diag : si 'load' n'a pas firé en 3s, affiche un encart d'erreur visible.
+    // Garde-fou : si 'load' n'a pas fire en 3s, affiche un encart d'erreur.
     const loadGuardId = window.setTimeout(() => {
       if (!this.mapReady()) {
         const w = el.clientWidth, h = el.clientHeight;
         this.mapError.set(
-          `Map.load timeout (3s) — container ${w}x${h}px, style="${styleId}". ` +
-          `Verifie console + Network (tuiles).`,
+          `La carte n'a pas pu se charger (delai 3s depasse) — ` +
+          `conteneur ${w}x${h}px, style "${styleId}". Verifiez le reseau (tuiles).`,
         );
-        console.error('[period-replay] map.load timeout', { w, h, styleId });
       }
     }, 3000);
 
     this.map.on('error', (ev: any) => {
       const msg = ev?.error?.message ?? ev?.message ?? 'unknown error';
-      console.error('[period-replay] maplibre error', ev);
       // N'efface pas un mapReady=true existant (les erreurs tuiles partielles
       // sont normales, on veut juste signaler les bloquants).
       if (!this.mapReady()) {
@@ -717,18 +687,10 @@ export class PeriodReplayComponent implements AfterViewInit, OnDestroy {
      } catch { /* ResizeObserver indispo : tant pis, fallback timers ci-dessous */ }
 
      this.map.on('load', () => {
-      console.log('[period-replay] map.LOAD fired', {
-        center: this.map?.getCenter(),
-        zoom: this.map?.getZoom(),
-        styleLoaded: this.map?.isStyleLoaded(),
-        canvasW: el.clientWidth,
-        canvasH: el.clientHeight,
-      });
       if (!this.map) return;
       this.mapReady.set(true);
       window.clearTimeout(loadGuardId);
       // Polylignes en fond : toutes les lignes des trips.
-      console.log('[period-replay] adding tripLines', tl.tripLines.length);
       for (const line of tl.tripLines) {
         const srcId = `pr-line-${line.tripId}`;
         const layerId = `pr-layer-${line.tripId}`;
