@@ -130,6 +130,20 @@ au déploiement. Renvoyé/coordonné avec 0.2.
 
 ---
 
+## Notes de cohérence (découvertes pendant l'implémentation — pour la revue)
+- **Seuils de fraîcheur déjà divergents** dans le code (aucune constante canonique
+  « tracker online » n'existait) : Baanool overlay **5 min**
+  (`baanool-map-overlay.component.ts:390`), fix-mode **5 min**
+  (`tracker-fix-mode.service.ts:92`), alertes offline du hub **1 h**
+  (`admin-alerts.controller.ts:21`). `TRACKER_ONLINE_THRESHOLD_MS = 15 min` est un
+  compromis (tolère un véhicule arrêté qui émet jusqu'à ~300 s sans flicker, tout en
+  restant réactif). **Un seul endroit à régler** — à aligner/valider en revue.
+- **Autres surfaces au statut collant** (hors 3 chiffres du brief, NON modifiées pour
+  contenir le périmètre 0.1, à basculer ensuite sur le helper) :
+  - `vehicles-list.component.ts:686-690` `isTrackerOnline()` : live WS d'abord, sinon
+    fallback `httpStatus === 'ONLINE'` (collant).
+  - `admin-fix-mode.component.ts:75` : badge `s.status === 'ONLINE'`.
+
 ## Ordre des commits (atomiques)
 1. `docs(sprint-0.1)` : DIAGNOSTIC.md + PLAN.md.
 2. `fix(web)` Lot A : repli transport WS + test.
