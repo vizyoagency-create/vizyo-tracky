@@ -12,12 +12,23 @@ import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { CobanWireLogger } from '../observability/coban-wire-logger.service';
 import { AckWaiterService } from '../tracker-commands/ack-waiter.service';
 import { ErrorLogger } from '../observability/error-logger.service';
-import { SocketRegistryService } from '../socket-registry/socket-registry.service';
+import { SocketRegistryService, type TrackerSocket } from '../socket-registry/socket-registry.service';
 
 @Injectable()
 export class TcpServerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TcpServerService.name);
   private server: Server | null = null;
+
+  /**
+   * Sprint 0.1 — délai de grâce avant de marquer un tracker OFFLINE sur fermeture
+   * de socket. Les boîtiers Coban rouvrent leur connexion GPRS très souvent
+   * (churn observé en prod : plusieurs close/reconnect par appareil et par heure).
+   * Sans grâce, CHAQUE reconnexion produisait un faux OFFLINE → flapping (écriture
+   * DB + event WS « offline » immédiat puis « online » à la reconnexion). Si le
+   * boîtier se reconnecte avant la fin du délai, le passage OFFLINE est annulé.
+   */
+  private static readonly OFFLINE_GRACE_MS = 90_000;
+  private readonly pendingOffline = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(
     private readonly config: ConfigService<Env, true>,
@@ -45,6 +56,9 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleDestroy(): Promise<void> {
+    // Annule les passages OFFLINE en attente pour ne pas fuiter de timers.
+    for (const timer of this.pendingOffline.values()) clearTimeout(timer);
+    this.pendingOffline.clear();
     return new Promise((resolve) => {
       if (!this.server) return resolve();
       this.server.close(() => {
@@ -114,37 +128,81 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
 
     socket.on('close', () => {
       this.logger.warn({ imei: boundImei, remoteAddr: remote }, `Socket closed (imei=${boundImei ?? 'unbound'})`);
-      if (boundImei) {
-        this.registry.unregister(boundImei);
-        this.ackWaiter.cancelAll(boundImei);
-        this.prisma.tracker.findUnique({
-          where: { imei: boundImei },
-          include: { vehicle: true },
-        }).then((tracker) => {
-          if (!tracker) return;
-          return this.prisma.tracker.update({
-            where: { id: tracker.id },
-            data: { status: TrackerStatus.OFFLINE },
-          }).then(() => {
-            if (tracker.vehicle) {
-              this.gateway.emitTrackerStatus(tracker.vehicle.fleetId, {
-                trackerId: tracker.id,
-                imei: tracker.imei,
-                status: 'offline',
-                at: new Date().toISOString(),
-              });
-            }
-          });
-        }).catch((e) => {
-          this.logger.error(`Failed to set offline: ${boundImei}`, e);
-          this.errorLogger.record(
-            e instanceof Error ? e : new Error(String(e)),
-            'tcp-server',
-            { imei: boundImei ?? undefined },
-          ).catch((e2) => this.logger.error('ErrorLogger persist failed', e2));
+      if (boundImei) this.handleSocketClose(boundImei, socket);
+    });
+  }
+
+  /**
+   * Gère la fermeture d'un socket lié à un IMEI.
+   *
+   * 1. Race de reconnexion : si un socket PLUS RÉCENT est déjà enregistré pour
+   *    cet IMEI (le boîtier a rouvert sa connexion AVANT que ce 'close' ne se
+   *    déclenche), on ne touche à rien — sinon on désenregistrerait le nouveau
+   *    socket et on marquerait OFFLINE à tort. (Bug préexistant.)
+   * 2. Sinon on désenregistre et on programme un passage OFFLINE *différé*
+   *    (anti-flapping) — annulé si le boîtier se reconnecte avant la fin du délai.
+   */
+  private handleSocketClose(imei: string, socket: TrackerSocket): void {
+    const current = this.registry.get(imei);
+    if (current && current.socket !== socket) {
+      this.logger.debug(`Stale socket close ignoré pour ${imei} (déjà reconnecté)`);
+      return;
+    }
+    this.registry.unregister(imei);
+    this.ackWaiter.cancelAll(imei);
+    this.scheduleOffline(imei);
+  }
+
+  /** Programme un passage OFFLINE différé (annulable). Réarme si déjà programmé. */
+  private scheduleOffline(imei: string): void {
+    const existing = this.pendingOffline.get(imei);
+    if (existing) clearTimeout(existing);
+    const timer = setTimeout(() => {
+      this.pendingOffline.delete(imei);
+      // Reconnecté entre-temps (réenregistré) → ne pas marquer OFFLINE.
+      if (this.registry.has(imei)) return;
+      void this.markOffline(imei);
+    }, TcpServerService.OFFLINE_GRACE_MS);
+    // Ne pas maintenir le process en vie juste pour ce timer.
+    (timer as { unref?: () => void }).unref?.();
+    this.pendingOffline.set(imei, timer);
+  }
+
+  /** Annule un passage OFFLINE en attente (appelé à la reconnexion / login). */
+  private cancelPendingOffline(imei: string): void {
+    const existing = this.pendingOffline.get(imei);
+    if (existing) {
+      clearTimeout(existing);
+      this.pendingOffline.delete(imei);
+    }
+  }
+
+  /** Écrit le statut OFFLINE + diffuse l'event WS. Erreurs catchées + loguées. */
+  private async markOffline(imei: string): Promise<void> {
+    try {
+      const tracker = await this.prisma.tracker.findUnique({
+        where: { imei },
+        include: { vehicle: true },
+      });
+      if (!tracker) return;
+      await this.prisma.tracker.update({
+        where: { id: tracker.id },
+        data: { status: TrackerStatus.OFFLINE },
+      });
+      if (tracker.vehicle) {
+        this.gateway.emitTrackerStatus(tracker.vehicle.fleetId, {
+          trackerId: tracker.id,
+          imei: tracker.imei,
+          status: 'offline',
+          at: new Date().toISOString(),
         });
       }
-    });
+    } catch (e) {
+      this.logger.error(`Failed to set offline: ${imei}`, e as Error);
+      await this.errorLogger
+        .record(e instanceof Error ? e : new Error(String(e)), 'tcp-server', { imei })
+        .catch((e2) => this.logger.error('ErrorLogger persist failed', e2));
+    }
   }
 
   private async dispatchFrame(
@@ -165,6 +223,8 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
         }
         setImei(frame.imei);
         this.registry.register(frame.imei, socket);
+        // Reconnexion : annule un éventuel passage OFFLINE différé (anti-flapping).
+        this.cancelPendingOffline(frame.imei);
         socket.write('LOAD');
         await this.prisma.tracker.update({
           where: { id: tracker.id },
