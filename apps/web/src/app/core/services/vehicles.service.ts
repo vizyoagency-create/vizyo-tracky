@@ -27,6 +27,8 @@ export interface VehicleDetailDto {
   currentDriver?: DriverSummaryDto | null;
   createdAt: string;
   schedule?: { enabled: boolean } | null;
+  /** Sprint 1 (Fondation Groupes) — groupe (unique) du véhicule. null = sans groupe. */
+  group?: { id: string; name: string } | null;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -59,6 +61,14 @@ export class VehiclesApiService {
 
   delete(id: string): Observable<void> {
     return this.http.delete<void>(`/api/vehicles/${id}`);
+  }
+
+  /**
+   * Sprint 1 (Fondation Groupes) — définit/retire le groupe (single) du véhicule.
+   * `groupId: null` retire le véhicule de son groupe (« sans groupe »).
+   */
+  setGroup(id: string, groupId: string | null): Observable<VehicleDetailDto> {
+    return this.http.patch<VehicleDetailDto>(`/api/vehicles/${id}/group`, { groupId });
   }
 
   stats(): Observable<VehicleStatsDto> {

@@ -52,8 +52,8 @@ export interface UserPreferences {
   };
   /** Widgets activés et ordre d'affichage sur le tableau de bord. */
   dashboardWidgets: DashboardWidgetConfig[];
-  /** #3 — vue de la liste véhicules : cartes (défaut) ou tableau. */
-  vehiclesView: 'cards' | 'table';
+  /** #3 — vue de la liste véhicules : cartes (défaut), tableau, ou groupée (Sprint 1). */
+  vehiclesView: 'cards' | 'table' | 'grouped';
 }
 
 const DEFAULTS: UserPreferences = {
