@@ -235,6 +235,13 @@ export class VehiclesService {
     if (dto.color !== undefined) data.color = dto.color;
     if (dto.fleetId !== undefined && requestedBy.role === UserRole.SUPER_ADMIN) {
       data.fleet = { connect: { id: dto.fleetId } };
+      // #28 — changement de flotte : detacher le conducteur courant (il appartient
+      // a l'ANCIENNE flotte) pour ne pas conserver une reference cross-tenant. Les
+      // affectations groupe/planning (autres tables fleet-bound) restent a
+      // reconfigurer par l'admin sur la nouvelle flotte.
+      if (dto.fleetId !== vehicle.fleetId) {
+        data.currentDriver = { disconnect: true };
+      }
     }
 
     try {

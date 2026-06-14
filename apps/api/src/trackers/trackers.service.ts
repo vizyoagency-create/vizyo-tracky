@@ -56,8 +56,11 @@ export class TrackersService {
           include: { vehicle: true },
         });
         if (existing && !existing.vehicleId) {
-          // Reuse : si une SIM est fournie et differe, on la met a jour.
-          if (sim && existing.simPhoneNumber !== sim) {
+          // #21 — reuse d'un boitier non-assigne : on ne COMPLETE la SIM que si elle
+          // est absente. On n'ECRASE PAS en silence une SIM existante differente (un
+          // FLEET_ADMIN pourrait sinon detourner/alterer la SIM d'un boitier non
+          // assigne). Le changement de SIM passe par l'endpoint d'update dedie.
+          if (sim && !existing.simPhoneNumber) {
             const updated = await this.prisma.tracker.update({
               where: { id: existing.id },
               data: { simPhoneNumber: sim },
@@ -65,6 +68,11 @@ export class TrackersService {
             });
             this.eventEmitter.emit('tracker.sim-changed', { trackerId: updated.id, imei: updated.imei });
             return updated;
+          }
+          if (sim && existing.simPhoneNumber && existing.simPhoneNumber !== sim) {
+            throw new ConflictException(
+              `IMEI "${dto.imei}" déjà enregistré avec une autre SIM. Modifiez la SIM via la fiche du boîtier.`,
+            );
           }
           return existing;
         }

@@ -383,8 +383,16 @@ export class UsersController {
   @Get(':id')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
   async findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    const user = await this.prisma.user.findUnique({
-      where: { id },
+    // #33 — filtre tenant integre au where : un user d'une AUTRE flotte renvoie le
+    // MEME 404 qu'un user inexistant. Avant : 200/null si inexistant mais 403 si
+    // autre flotte -> oracle d'enumeration cross-fleet (existence distinguable).
+    const where: Prisma.UserWhereInput = { id };
+    if (req.user.role !== UserRole.SUPER_ADMIN) {
+      if (!req.user.fleetId) throw new NotFoundException('User not found');
+      where.fleetId = req.user.fleetId;
+    }
+    const user = await this.prisma.user.findFirst({
+      where,
       select: {
         id: true,
         email: true,
@@ -397,14 +405,7 @@ export class UsersController {
         createdAt: true,
       },
     });
-
-    if (!user) return null;
-
-    // Non-SUPER_ADMIN can only see users in their fleet
-    if (req.user.role !== UserRole.SUPER_ADMIN && user.fleetId !== req.user.fleetId) {
-      throw new ForbiddenException('Access denied');
-    }
-
+    if (!user) throw new NotFoundException('User not found');
     return user;
   }
 

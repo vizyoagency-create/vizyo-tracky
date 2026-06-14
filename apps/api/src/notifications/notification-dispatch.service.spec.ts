@@ -96,4 +96,23 @@ describe('NotificationDispatchService — canal SMS (V1.15)', () => {
     await dispatch.dispatchAlert(alert as never);
     expect(send).not.toHaveBeenCalled();
   });
+
+  it('escalation: ne notifie PAS une cible d escalade hors flotte (#14/#17)', async () => {
+    // L'admin a un contact d'escalade, mais ce contact a ete reassigne a une AUTRE
+    // flotte : le findFirst scope par fleetId ne le trouve donc pas -> 0 cible.
+    userFindMany.mockResolvedValue([
+      { id: 'admin1', fleetId: 'f1', role: 'FLEET_ADMIN', isActive: true, escalationContactUserId: 'contact-x' },
+    ]);
+    const userFindFirst = jest.fn().mockResolvedValue(null);
+    (dispatch as unknown as { prisma: { user: { findFirst: jest.Mock } } }).prisma.user.findFirst = userFindFirst;
+
+    await dispatch.dispatchEscalation(alert as never);
+
+    // La cible d'escalade doit etre cherchee SCOPEE a la flotte de l'alerte.
+    expect(userFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ fleetId: 'f1', id: 'contact-x', isActive: true }) }),
+    );
+    // Cible hors flotte => aucune notification envoyee.
+    expect(send).not.toHaveBeenCalled();
+  });
 });

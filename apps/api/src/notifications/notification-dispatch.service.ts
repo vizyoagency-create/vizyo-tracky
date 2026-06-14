@@ -90,10 +90,14 @@ export class NotificationDispatchService {
     const escalationTargets = new Map<string, User>();
     for (const admin of fleetAdmins) {
       if (!admin.escalationContactUserId) continue;
-      const target = await this.prisma.user.findUnique({
-        where: { id: admin.escalationContactUserId },
+      // #14/#17 — la cible d'escalade DOIT appartenir a la flotte de l'alerte.
+      // Sans ce filtre fleetId, un escalationContactUserId devenu obsolete (contact
+      // reassigne a une AUTRE flotte) recevait le contenu de l'alerte (plaque,
+      // position...) par email/SMS/WhatsApp -> fuite cross-tenant.
+      const target = await this.prisma.user.findFirst({
+        where: { id: admin.escalationContactUserId, fleetId: alert.fleetId, isActive: true },
       });
-      if (target && target.isActive) {
+      if (target) {
         escalationTargets.set(target.id, target);
       }
     }
