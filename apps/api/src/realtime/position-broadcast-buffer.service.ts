@@ -52,37 +52,22 @@ export class PositionBroadcastBuffer {
 
     const server = this.gateway.server;
     if (!server) return;
-    // V1.8 — `@WebSocketServer()` avec un `namespace` dans `@WebSocketGateway`
-    // injecte un Namespace en runtime (mais type comme Server). Le Namespace
-    // expose `.adapter` a la racine (proprete instance avec `.rooms`), alors
-    // que la `Server` typee n'a qu'un setter `.adapter()`. L'ancien check
-    // `server.sockets?.adapter` retournait toujours undefined → flush
-    // court-circuite → aucun POSITIONS_BATCH emis vers les clients connectes,
-    // malgre les positions correctement mises a jour en DB.
-    const adapter = (server as unknown as { adapter?: { rooms: Map<string, Set<string>> } }).adapter;
-    if (!adapter || typeof adapter === 'function') return;
 
     for (const [fleetId, fleetBucket] of this.buffer) {
       if (fleetBucket.size === 0) continue;
-
-      // Filtrage room vide : si aucun client connecte sur cette fleet ET que la
-      // room super-admin est vide aussi, on droppe le batch silencieusement.
-      const fleetRoom = adapter.rooms.get(`fleet:${fleetId}`);
-      const wildcardRoom = adapter.rooms.get('fleet:*');
-      const hasListeners = (fleetRoom && fleetRoom.size > 0) || (wildcardRoom && wildcardRoom.size > 0);
-      if (!hasListeners) {
-        fleetBucket.clear();
-        continue;
-      }
-
       const positions = Array.from(fleetBucket.values());
+      // On emet TOUJOURS le batch. L'ancien filtre "room vide" lisait l'adapter
+      // LOCAL (`adapter.rooms`) qui ne voit PAS les clients connectes sur d'AUTRES
+      // instances (adapter Redis multi-instance) -> batches silencieusement droppes
+      // pour eux. socket.io route deja l'emit vers tous les clients de la room sur
+      // toutes les instances ; emettre vers une room vide est un no-op bon marche.
       server
         .to(`fleet:${fleetId}`)
         .to('fleet:*')
         .emit(WS_EVENTS.POSITIONS_BATCH, { fleetId, positions });
       fleetBucket.clear();
     }
-    // Garbage collect empty buckets (optional, prevents memory creep on long runs).
+    // Garbage collect empty buckets (evite la croissance memoire sur le long terme).
     for (const [fleetId, fleetBucket] of this.buffer) {
       if (fleetBucket.size === 0) this.buffer.delete(fleetId);
     }
