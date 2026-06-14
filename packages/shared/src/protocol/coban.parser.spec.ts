@@ -67,6 +67,16 @@ describe('decodeFrame', () => {
     expect(f.deviceTime.getUTCFullYear()).toBe(2020);
   });
 
+  // 8b. Local date + UTC time straddling midnight -> UTC date corrected (#12)
+  it('should reconcile the UTC date when local date and UTC time straddle midnight', () => {
+    // Boitier UTC+2 : heure locale 01:00 le 14/06, mais heure UTC = 23:00 le 13/06.
+    // Date locale=140614, heure UTC=230000 -> l'instant UTC reel est le 13/06 23:00.
+    const raw = 'imei:864035050002451,tracker,260614010000,,F,230000,A,1935.70640,N,09859.94436,W,0.025,;';
+    const f = decodeFrame(raw) as CobanPositionFrame;
+    expect(f.type).toBe('position');
+    expect(f.deviceTime.toISOString()).toBe('2026-06-13T23:00:00.000Z');
+  });
+
   // 9. Empty utc_time → no crash
   it('should handle empty utc_time without crashing', () => {
     const raw = 'imei:864035050002451,tracker,201223064947,,F,,A,1935.70640,N,09859.94436,W,0.025,;';

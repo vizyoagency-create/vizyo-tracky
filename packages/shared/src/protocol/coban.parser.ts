@@ -68,6 +68,29 @@ function parseLocalDate(raw: string): Date | null {
   return null;
 }
 
+const DAY_MS = 86_400_000;
+
+/**
+ * Corrige la date d'un timestamp construit en melangeant une DATE locale (champ
+ * date du boitier) et une HEURE UTC (champ temps GPS). Autour de minuit, la date
+ * UTC peut etre decalee de +/-1 jour par rapport a la date locale. On retient le
+ * decalage de jour (-1/0/+1) qui minimise l'ecart a l'heure locale complete —
+ * l'offset timezone reel etant forcement le plus petit (< 12h en pratique). #12.
+ */
+function reconcileUtcDateAroundMidnight(candidate: Date, localFull: Date): Date {
+  let best = candidate;
+  let bestDelta = Math.abs(candidate.getTime() - localFull.getTime());
+  for (const shiftMs of [-DAY_MS, DAY_MS]) {
+    const alt = new Date(candidate.getTime() + shiftMs);
+    const delta = Math.abs(alt.getTime() - localFull.getTime());
+    if (delta < bestDelta) {
+      best = alt;
+      bestDelta = delta;
+    }
+  }
+  return best;
+}
+
 function decodeRegularPosition(raw: string): CobanFrame {
   const parts = raw.split(',');
 
@@ -117,10 +140,14 @@ function decodeRegularPosition(raw: string): CobanFrame {
     const ss = utcTimeRaw.slice(4, 6);
     const dateBase = parseLocalDate(localDateRaw);
     if (dateBase) {
-      deviceTime = new Date(Date.UTC(
+      // parts[2] = date+heure LOCALES du boitier ; parts[5] = heure UTC (GPS). On
+      // combine la date locale avec l'heure UTC puis on corrige le jour autour de
+      // minuit (la date UTC peut differer de la date locale de +/-1 jour). cf #12.
+      const candidate = new Date(Date.UTC(
         dateBase.getUTCFullYear(), dateBase.getUTCMonth(), dateBase.getUTCDate(),
         Number(hh), Number(mi), Number(ss),
       ));
+      deviceTime = reconcileUtcDateAroundMidnight(candidate, dateBase);
     } else {
       deviceTime = new Date();
     }

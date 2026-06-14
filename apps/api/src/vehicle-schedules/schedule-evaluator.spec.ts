@@ -120,4 +120,14 @@ describe('evaluateSchedule', () => {
     expect(r.state).toBe('IN_WINDOW');
     expect(r.reason).toBe('IN_WINDOW');
   });
+
+  it('plage de nuit (fin < debut) matche bien autour de minuit (#8)', () => {
+    const s = baseSchedule({ mondaySlots: [{ start: '22:00', end: '06:00' }] });
+    // 22:00 -> dans la plage de nuit (apres le debut)
+    expect(evaluateSchedule(s, MONDAY_22H).state).toBe('IN_WINDOW');
+    // 03:00 -> encore dans la plage (avant la fin 06:00)
+    expect(evaluateSchedule(s, new Date('2026-04-27T03:00:00Z')).state).toBe('IN_WINDOW');
+    // 10:00 -> hors plage de nuit
+    expect(evaluateSchedule(s, MONDAY_10H).state).toBe('OUT_OF_WINDOW');
+  });
 });
