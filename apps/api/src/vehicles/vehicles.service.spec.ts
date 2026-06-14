@@ -152,4 +152,18 @@ describe('VehiclesService', () => {
     });
     expect(prisma.vehicle.delete).toHaveBeenCalledWith({ where: { id: VEHICLE_ID } });
   });
+
+  // 9. #28 — SUPER_ADMIN deplace un vehicule vers une autre flotte → detache le driver courant
+  it('disconnects currentDriver when SUPER_ADMIN moves a vehicle to another fleet (#28)', async () => {
+    // findOne -> findFirst renvoie le vehicule par defaut (fleetId=FLEET_ID).
+    await service.update(VEHICLE_ID, { fleetId: OTHER_FLEET }, superAdmin);
+    expect(prisma.vehicle.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          fleet: { connect: { id: OTHER_FLEET } },
+          currentDriver: { disconnect: true },
+        }),
+      }),
+    );
+  });
 });

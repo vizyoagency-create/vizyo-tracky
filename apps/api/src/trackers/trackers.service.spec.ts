@@ -122,6 +122,41 @@ describe('TrackersService', () => {
     ).rejects.toThrow(ConflictException);
   });
 
+  // 2c. #21 — reuse d'un tracker non-assigne ayant DEJA une SIM differente → Conflict
+  // (pas d'ecrasement silencieux de la SIM).
+  it('rejects (no silent SIM overwrite) when reusing a tracker with a different SIM (#21)', async () => {
+    const p2002 = new Prisma.PrismaClientKnownRequestError('Unique constraint', {
+      code: 'P2002',
+      clientVersion: '6.0.0',
+    });
+    prisma.tracker.create.mockRejectedValue(p2002);
+    prisma.tracker.findUnique.mockResolvedValue(
+      trackerRecord({ vehicleId: null, simPhoneNumber: '+33600000001' }),
+    );
+
+    await expect(
+      service.create({ imei: '123456789012345', simPhoneNumber: '+33699999999' }, fleetAdmin),
+    ).rejects.toThrow(ConflictException);
+    expect(prisma.tracker.update).not.toHaveBeenCalled();
+  });
+
+  // 2d. #21 — reuse avec SIM ABSENTE sur l'existant → on complete (pas de conflit).
+  it('completes the SIM on reuse only when the existing tracker has none (#21)', async () => {
+    const p2002 = new Prisma.PrismaClientKnownRequestError('Unique constraint', {
+      code: 'P2002',
+      clientVersion: '6.0.0',
+    });
+    prisma.tracker.create.mockRejectedValue(p2002);
+    prisma.tracker.findUnique.mockResolvedValue(
+      trackerRecord({ vehicleId: null, simPhoneNumber: null }),
+    );
+
+    await service.create({ imei: '123456789012345', simPhoneNumber: '+33699999999' }, fleetAdmin);
+    expect(prisma.tracker.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { simPhoneNumber: '+33699999999' } }),
+    );
+  });
+
   // 3. findAll filtre unassigned=true
   it('should filter unassigned trackers', async () => {
     await service.findAll(fleetAdmin, { unassigned: 'true' });

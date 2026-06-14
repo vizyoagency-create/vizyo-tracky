@@ -358,4 +358,23 @@ describe('UsersController — endpoints d\'acces matrice (PR 2)', () => {
       expect(result.entries).toEqual(entries);
     });
   });
+
+  describe('GET /users/:id — anti oracle cross-fleet (#33)', () => {
+    it('renvoie 404 (pas 403 ni 200/null) pour un user inexistant OU d une autre flotte', async () => {
+      // Le filtre tenant est integre au where (findFirst) -> un user d'une autre
+      // flotte ressort `null`, indistinguable d'un user inexistant -> meme 404.
+      const prisma = makePrisma({ userFindFirst: jest.fn().mockResolvedValue(null) });
+      await expect(
+        makeController(prisma).findOne(USER_ID, makeReq(UserRole.FLEET_ADMIN, FLEET_ID)),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('SUPER_ADMIN peut lire un user de n importe quelle flotte (pas de filtre)', async () => {
+      const userFindFirst = jest.fn().mockResolvedValue({ id: USER_ID, fleetId: OTHER_FLEET_ID });
+      const prisma = makePrisma({ userFindFirst });
+      const res = await makeController(prisma).findOne(USER_ID, makeReq(UserRole.SUPER_ADMIN, null));
+      expect(res).toMatchObject({ id: USER_ID });
+      expect(userFindFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: USER_ID } }));
+    });
+  });
 });
