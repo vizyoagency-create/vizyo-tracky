@@ -22,6 +22,25 @@ function notifySessionExpired(toast: ToastService): void {
   setTimeout(() => { sessionExpiredToastShown = false; }, 5_000);
 }
 
+// #39 — N requetes 401 concurrentes ne doivent PAS executer N fois les effets de
+// bord de deconnexion (disconnect/logout/navigate). Idempotent via un flag, reset
+// apres 5s pour qu'une re-connexion + re-expiration ulterieure fonctionne.
+let loggingOut = false;
+function forceLogout(
+  toast: ToastService,
+  realtime: RealtimeService,
+  auth: AuthService,
+  router: Router,
+): void {
+  notifySessionExpired(toast);
+  if (loggingOut) return;
+  loggingOut = true;
+  realtime.disconnect();
+  auth.logout();
+  void router.navigate(['/login']);
+  setTimeout(() => { loggingOut = false; }, 5_000);
+}
+
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const auth = inject(AuthService);
   const router = inject(Router);
@@ -70,22 +89,16 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
               const retryReq = req.clone({ setHeaders: { Authorization: `Bearer ${newToken}` } });
               return next(retryReq);
             }
-            // Refresh échoué → logout (avec toast informatif).
-            notifySessionExpired(toast);
-            realtime.disconnect();
-            auth.logout();
-            router.navigate(['/login']);
+            // Refresh échoué → logout idempotent (avec toast informatif).
+            forceLogout(toast, realtime, auth, router);
             return throwError(() => error);
           }),
         );
       }
 
       if (error.status === 401) {
-        // Pas de refresh token → logout (avec toast informatif).
-        notifySessionExpired(toast);
-        realtime.disconnect();
-        auth.logout();
-        router.navigate(['/login']);
+        // Pas de refresh token → logout idempotent (avec toast informatif).
+        forceLogout(toast, realtime, auth, router);
       }
 
       return throwError(() => error);

@@ -79,8 +79,12 @@ export class GlobalErrorHandler implements ErrorHandler {
 
     const message = this.describe(error).slice(0, 2000);
     const now = Date.now();
-    if (lastReportMessage === message && now - lastReportAt < REPORT_DEDUP_MS) return;
-    lastReportMessage = message;
+    // #38 — cle de dedup incluant le sessionId : sinon la meme erreur recurrente
+    // d'une NOUVELLE session (re-login / autre user) etait suppressee a tort par cet
+    // etat module-global. Une nouvelle session re-rapporte donc l'erreur.
+    const dedupKey = `${activityContext.sessionId ?? ''}:${message}`;
+    if (lastReportMessage === dedupKey && now - lastReportAt < REPORT_DEDUP_MS) return;
+    lastReportMessage = dedupKey;
     lastReportAt = now;
 
     const payload = {

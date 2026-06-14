@@ -1460,7 +1460,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
   }
 
+  /** #40 — sequence anti-race : une reponse perimee ne doit pas ecraser une fraiche. */
+  private loadSeq = 0;
+
   protected async loadData(): Promise<void> {
+    const seq = ++this.loadSeq;
     this.loading.set(true);
     try {
       const id = this.selectedVehicleId();
@@ -1489,13 +1493,18 @@ export class ReportsComponent implements OnInit, OnDestroy {
           () => [] as TripDailySummaryDto[],
         ),
       ]);
+      // #40 — une requete plus recente a ete lancee entre-temps : on ignore ce
+      // resultat perime (sinon une reponse lente ecrase des donnees plus fraiches).
+      if (seq !== this.loadSeq) return;
       this.trips.set(tripsRes.items);
       this.dailySummary.set(summary);
     } catch {
-      this.trips.set([]);
-      this.dailySummary.set([]);
+      if (seq === this.loadSeq) {
+        this.trips.set([]);
+        this.dailySummary.set([]);
+      }
     } finally {
-      this.loading.set(false);
+      if (seq === this.loadSeq) this.loading.set(false);
     }
   }
 
