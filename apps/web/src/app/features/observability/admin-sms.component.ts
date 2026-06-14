@@ -362,6 +362,32 @@ interface PrefillItem {
                 }
               </div>
             </div>
+            <!-- V1.18 — Signal FIABLE : le boîtier s'est-il (re)connecté au serveur ? (indépendant des ACK SMS) -->
+            @if (p.tracker) {
+              @if (isTrackerConnected(p)) {
+                <div class="flex items-start gap-2.5 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-2.5">
+                  <lucide-icon [img]="CheckCircle" [size]="18" class="text-emerald-400 mt-0.5 shrink-0"></lucide-icon>
+                  <div class="text-sm">
+                    <div class="font-semibold text-emerald-300">Tracker connecté</div>
+                    <div class="text-xs text-fg-tertiary mt-0.5">
+                      Boîtier vu en ligne{{ p.tracker.lastSeenAt ? ' à ' + (p.tracker.lastSeenAt | date: 'HH:mm:ss') : '' }}
+                      — la voiture est bien reliée au serveur. La configuration a pris effet (indépendamment des réponses SMS).
+                    </div>
+                  </div>
+                </div>
+              } @else {
+                <div class="flex items-start gap-2.5 bg-sky-500/10 border border-sky-500/30 rounded-lg px-3 py-2.5">
+                  <lucide-icon [img]="Loader" [size]="16" class="text-sky-400 mt-0.5 shrink-0 animate-spin"></lucide-icon>
+                  <div class="text-sm">
+                    <div class="font-semibold text-sky-300">En attente de connexion du boîtier…</div>
+                    <div class="text-xs text-fg-tertiary mt-0.5">
+                      Après la config, le boîtier redémarre et se connecte généralement sous 1–2 min.
+                      C'est cette connexion qui confirme que la voiture est prête — pas besoin d'attendre les réponses SMS.
+                    </div>
+                  </div>
+                </div>
+              }
+            }
             @if (p.status === 'FAILED' && p.failureReason) {
               <div class="flex items-start gap-2 bg-rose-500/10 border border-rose-500/30 rounded-lg px-3 py-2.5">
                 <lucide-icon [img]="AlertTriangle" [size]="16" class="text-rose-400 mt-0.5 shrink-0"></lucide-icon>
@@ -425,6 +451,12 @@ interface PrefillItem {
                             [class]="provBadgeClass(p.status)">
                         {{ p.status }}
                       </span>
+                      @if (isTrackerConnected(p)) {
+                        <span class="ml-1.5 inline-flex items-center gap-1 text-[10px] text-emerald-400 align-middle"
+                              title="Boîtier vu en ligne sur le serveur">
+                          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>en ligne
+                        </span>
+                      }
                     </td>
                     <td class="p-3">
                       @if (p.status === 'IN_PROGRESS') {
@@ -832,6 +864,16 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
       null,
   );
 
+  /**
+   * V1.18 — Le boîtier s'est-il (re)connecté au serveur depuis le lancement ?
+   * Signal FIABLE de succès du provisioning, indépendant des ACK SMS (chaîne
+   * entrante fragile). `seenSinceStart` = vu en ligne après le lancement ; on
+   * accepte aussi `status==='ONLINE'` (connexion live actuelle).
+   */
+  isTrackerConnected(p: ProvisioningDto): boolean {
+    return !!p.tracker && (p.tracker.seenSinceStart || p.tracker.status === 'ONLINE');
+  }
+
   // Logs filter
   logsImei = '';
 
@@ -901,7 +943,7 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
       this.logs.set(logs.items);
       this.provisionings.set(provs.items);
       this.backupHealth.set(bh);
-      if (provs.items.some((p) => p.status === 'IN_PROGRESS')) this.startPolling();
+      if (this.shouldKeepPolling(provs.items)) this.startPolling();
     } catch {
       this.toast.error('Echec du chargement (acces SUPER_ADMIN requis)');
     }
@@ -963,7 +1005,7 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
         }),
       );
       this.selectedProvId.set(res.id);
-      this.toast.success('Configuration lancee — le boitier repond automatiquement');
+      this.toast.success('Configuration lancée — suivez la connexion du boîtier ci-dessous');
       await this.refreshProvisionings();
       this.startPolling();
     } catch (err: unknown) {
@@ -1073,10 +1115,28 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
     try {
       const provs = await firstValueFrom(this.api.listProvisionings(50));
       this.provisionings.set(provs.items);
-      if (!provs.items.some((p) => p.status === 'IN_PROGRESS')) this.stopPolling();
+      if (!this.shouldKeepPolling(provs.items)) this.stopPolling();
     } catch {
       /* transitoire : on retentera au prochain tick */
     }
+  }
+
+  /**
+   * V1.18 — On garde le polling tant qu'une séquence tourne, OU tant qu'une
+   * séquence récente (< WATCH_MS) attend encore la connexion de son boîtier : le
+   * boîtier se connecte ~1-2 min APRÈS la fin des SMS, donc on ne peut pas
+   * s'arrêter dès que le statut devient terminal (sinon la bannière « Tracker
+   * connecté » ne s'allumerait jamais).
+   */
+  private shouldKeepPolling(items: ProvisioningDto[]): boolean {
+    if (items.some((p) => p.status === 'IN_PROGRESS')) return true;
+    const WATCH_MS = 10 * 60 * 1000; // 10 min après le lancement
+    const now = Date.now();
+    return items.some((p) => {
+      if (this.isTrackerConnected(p)) return false;
+      const started = p.startedAt ?? p.createdAt;
+      return !!started && now - new Date(started).getTime() < WATCH_MS;
+    });
   }
 
   ngOnDestroy(): void {

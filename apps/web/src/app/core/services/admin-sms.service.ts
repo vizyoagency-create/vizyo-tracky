@@ -97,6 +97,15 @@ export interface ProvisioningDto {
   failedAt: string | null;
   failureReason: string | null;
   createdAt: string;
+  // V1.18 — Etat LIVE du tracker (par imei). Permet d'afficher « Tracker connecté »
+  // dès que le boîtier se reconnecte au serveur TCP, indépendamment des ACK SMS
+  // (chaîne entrante fragile). `seenSinceStart` = vu en ligne après le lancement.
+  tracker?: {
+    status: 'ONLINE' | 'OFFLINE' | 'IDLE';
+    lastSeenAt: string | null;
+    lastPositionAt: string | null;
+    seenSinceStart: boolean;
+  } | null;
 }
 
 export interface BackupHealthItem {

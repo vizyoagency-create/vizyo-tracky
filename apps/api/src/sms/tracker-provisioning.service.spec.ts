@@ -1,5 +1,6 @@
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test } from '@nestjs/testing';
+import { TrackerStatus } from '@prisma/client';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AllowlistService } from './allowlist.service';
@@ -137,5 +138,122 @@ describe('TrackerProvisioningService.buildSteps', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+});
+
+// ─── V1.18 — enrichissement « état live du tracker » (découplage de l'ACK SMS) ──
+// Le retour SMS est fragile (le téléphone passerelle doit forwarder les SMS reçus).
+// On expose donc l'état de reconnexion TCP du boîtier (tracker.lastSeenAt) pour que
+// l'UI confirme « Tracker connecté » sans dépendre des ACK.
+describe('TrackerProvisioningService — état live du tracker (V1.18)', () => {
+  const IMEI = '865328021056352';
+  const START = new Date('2026-06-14T08:00:00.000Z');
+  const provRow = (overrides: Record<string, unknown> = {}) => ({
+    id: 'prov-1',
+    imei: IMEI,
+    phoneNumber: '+33612345678',
+    status: 'COMPLETED',
+    currentStep: 6,
+    startedAt: START,
+    completedAt: new Date(START.getTime() + 200_000),
+    failedAt: null,
+    failureReason: null,
+    createdAt: START,
+    steps: [],
+    ...overrides,
+  });
+
+  let service: TrackerProvisioningService;
+  let prisma: {
+    trackerProvisioning: { findMany: jest.Mock; findUnique: jest.Mock };
+    tracker: { findMany: jest.Mock; findFirst: jest.Mock };
+  };
+
+  beforeEach(async () => {
+    prisma = {
+      trackerProvisioning: {
+        findMany: jest.fn().mockResolvedValue([provRow()]),
+        findUnique: jest.fn().mockResolvedValue(provRow()),
+      },
+      tracker: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue({ id: 'tracker-1' }),
+      },
+    };
+
+    const module = await Test.createTestingModule({
+      providers: [
+        TrackerProvisioningService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: SmsGatewayService, useValue: { isEnabled: jest.fn(() => true), send: jest.fn() } },
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
+        { provide: ErrorLogger, useValue: { record: jest.fn() } },
+        { provide: AllowlistService, useValue: { add: jest.fn() } },
+      ],
+    }).compile();
+
+    service = module.get(TrackerProvisioningService);
+  });
+
+  it('list attache l\'état live du tracker (seenSinceStart=true si vu en ligne après le lancement)', async () => {
+    const seenAfter = new Date(START.getTime() + 90_000); // +90s après le start
+    prisma.tracker.findMany.mockResolvedValue([
+      { imei: IMEI, status: TrackerStatus.ONLINE, lastSeenAt: seenAfter, lastPositionAt: seenAfter },
+    ]);
+
+    const rows = await service.list(50); // SUPER_ADMIN (pas de requestedBy)
+
+    expect(rows[0]!.tracker).toEqual({
+      status: TrackerStatus.ONLINE,
+      lastSeenAt: seenAfter,
+      lastPositionAt: seenAfter,
+      seenSinceStart: true,
+    });
+    // Une seule requête tracker pour l'enrichissement, indexée par imei.
+    expect(prisma.tracker.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { imei: { in: [IMEI] } } }),
+    );
+  });
+
+  it('seenSinceStart=false si le boîtier a été vu en ligne AVANT le lancement', async () => {
+    const seenBefore = new Date(START.getTime() - 60_000);
+    prisma.tracker.findMany.mockResolvedValue([
+      { imei: IMEI, status: TrackerStatus.OFFLINE, lastSeenAt: seenBefore, lastPositionAt: null },
+    ]);
+
+    const rows = await service.list(50);
+
+    expect(rows[0]!.tracker?.seenSinceStart).toBe(false);
+  });
+
+  it('seenSinceStart=false quand startedAt est null (impossible de prouver « depuis le lancement »)', async () => {
+    prisma.trackerProvisioning.findMany.mockResolvedValue([provRow({ startedAt: null })]);
+    prisma.tracker.findMany.mockResolvedValue([
+      { imei: IMEI, status: TrackerStatus.ONLINE, lastSeenAt: new Date(START.getTime() + 1000), lastPositionAt: null },
+    ]);
+
+    const rows = await service.list(50);
+
+    expect(rows[0]!.tracker?.seenSinceStart).toBe(false);
+  });
+
+  it('tracker=null si aucun tracker n\'existe pour cet imei', async () => {
+    prisma.tracker.findMany.mockResolvedValue([]); // aucun tracker en base
+
+    const rows = await service.list(50);
+
+    expect(rows[0]!.tracker).toBeNull();
+  });
+
+  it('findOne enrichit la ligne unique avec l\'état du tracker', async () => {
+    const seenAfter = new Date(START.getTime() + 30_000);
+    prisma.tracker.findMany.mockResolvedValue([
+      { imei: IMEI, status: TrackerStatus.ONLINE, lastSeenAt: seenAfter, lastPositionAt: seenAfter },
+    ]);
+
+    const row = await service.findOne('prov-1'); // SUPER_ADMIN
+
+    expect(row?.tracker?.status).toBe(TrackerStatus.ONLINE);
+    expect(row?.tracker?.seenSinceStart).toBe(true);
   });
 });

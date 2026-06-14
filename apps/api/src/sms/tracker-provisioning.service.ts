@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
-import { TrackerProvisioningStatus, UserRole } from '@prisma/client';
+import { TrackerProvisioningStatus, TrackerStatus, UserRole } from '@prisma/client';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AllowlistService } from './allowlist.service';
@@ -68,6 +68,25 @@ interface StepDef {
   label: string;
   payload: string;
   expect: string; // mot-cle attendu dans l'ACK (insensible a la casse)
+}
+
+/**
+ * V1.18 — Etat LIVE du tracker rattache a un provisioning (derive par imei).
+ *
+ * Le retour SMS (ACK) est fragile : il depend du telephone passerelle qui doit
+ * forwarder au serveur les SMS RECUS du boitier — maillon souvent KO. Le signal
+ * FIABLE qu'une sequence a reussi, c'est que le boitier se (re)connecte au serveur
+ * TCP, observable via `tracker.lastSeenAt`. On expose donc cet etat pour que l'UI
+ * affiche « Tracker connecte » INDEPENDAMMENT des ACK SMS.
+ *
+ * `seenSinceStart` = boitier vu en ligne APRES le lancement de la sequence (preuve
+ * que CETTE config a pris effet ; insensible a un tracker deja online avant).
+ */
+interface TrackerLiveStatus {
+  status: TrackerStatus;
+  lastSeenAt: Date | null;
+  lastPositionAt: Date | null;
+  seenSinceStart: boolean;
 }
 
 interface ProvisioningParams {
@@ -485,12 +504,12 @@ export class TrackerProvisioningService {
   }
 
   async list(limit = 50, requestedBy?: RequestedBy) {
+    const take = Math.min(limit, 200);
     const isSuper = !requestedBy || requestedBy.role === UserRole.SUPER_ADMIN;
     if (isSuper) {
-      return this.prisma.trackerProvisioning.findMany({
-        orderBy: { createdAt: 'desc' },
-        take: Math.min(limit, 200),
-      });
+      return this.withTrackerStatus(
+        await this.prisma.trackerProvisioning.findMany({ orderBy: { createdAt: 'desc' }, take }),
+      );
     }
     if (!requestedBy.fleetId) return [];
     // Tenant-scoped : ne retourne que les provisionings dont l'imei est attache
@@ -500,18 +519,52 @@ export class TrackerProvisioningService {
       select: { imei: true },
     });
     if (trackers.length === 0) return [];
-    return this.prisma.trackerProvisioning.findMany({
-      where: { imei: { in: trackers.map((t) => t.imei) } },
-      orderBy: { createdAt: 'desc' },
-      take: Math.min(limit, 200),
-    });
+    return this.withTrackerStatus(
+      await this.prisma.trackerProvisioning.findMany({
+        where: { imei: { in: trackers.map((t) => t.imei) } },
+        orderBy: { createdAt: 'desc' },
+        take,
+      }),
+    );
   }
 
   async findOne(id: string, requestedBy?: RequestedBy) {
     const row = await this.prisma.trackerProvisioning.findUnique({ where: { id } });
     if (!row) throw new NotFoundException('Provisionnement introuvable');
     await this.assertTenantAccess(row.imei, requestedBy);
-    return row;
+    const [enriched] = await this.withTrackerStatus([row]);
+    return enriched;
+  }
+
+  /**
+   * V1.18 — Attache l'etat LIVE du tracker (par imei) a chaque provisioning, pour
+   * que l'UI confirme « Tracker connecte » via la reconnexion TCP du boitier plutot
+   * que via les ACK SMS (chaine entrante fragile). Une seule requete tracker quel
+   * que soit le nombre de lignes (lookup par imei in [...]). Voir {@link TrackerLiveStatus}.
+   */
+  private async withTrackerStatus<T extends { imei: string; startedAt: Date | null }>(
+    rows: T[],
+  ): Promise<(T & { tracker: TrackerLiveStatus | null })[]> {
+    if (rows.length === 0) return [];
+    const imeis = [...new Set(rows.map((r) => r.imei))];
+    const trackers = await this.prisma.tracker.findMany({
+      where: { imei: { in: imeis } },
+      select: { imei: true, status: true, lastSeenAt: true, lastPositionAt: true },
+    });
+    const byImei = new Map(trackers.map((t) => [t.imei, t]));
+    return rows.map((r) => {
+      const t = byImei.get(r.imei);
+      const tracker: TrackerLiveStatus | null = t
+        ? {
+            status: t.status,
+            lastSeenAt: t.lastSeenAt,
+            lastPositionAt: t.lastPositionAt,
+            seenSinceStart:
+              t.lastSeenAt != null && r.startedAt != null && t.lastSeenAt.getTime() >= r.startedAt.getTime(),
+          }
+        : null;
+      return { ...r, tracker };
+    });
   }
 
   /**
