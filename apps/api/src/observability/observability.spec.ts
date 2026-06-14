@@ -253,6 +253,15 @@ describe('LogCleanupService', () => {
       providers: [
         LogCleanupService,
         { provide: PrismaService, useValue: prisma },
+        {
+          // Retention desormais env-configurable : on rend les defauts attendus (7j wire, 30j error).
+          provide: ConfigService,
+          useValue: {
+            get: jest.fn((key: string) =>
+              key === 'WIRE_LOGS_RETENTION_DAYS' ? 7 : key === 'ERROR_LOGS_RETENTION_DAYS' ? 30 : undefined,
+            ),
+          },
+        },
       ],
     }).compile();
     cleanupService = module.get(LogCleanupService);
