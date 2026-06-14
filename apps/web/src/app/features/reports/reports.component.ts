@@ -17,6 +17,7 @@ import { DateRangePickerComponent } from '../../shared/ui/date-range-picker/date
 import { PdfExportModalComponent, type PdfExportRequest } from '../../shared/ui/pdf-export-modal/pdf-export-modal.component';
 import { LineBarChartComponent, type LineBarChartData } from '../../shared/ui/charts/line-bar-chart.component';
 import { TrackClickDirective } from '../../shared/directives/track-click.directive';
+import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.component';
 import { HistogramChartComponent } from '../../shared/ui/charts/histogram-chart.component';
 import { HeatmapChartComponent } from '../../shared/ui/charts/heatmap-chart.component';
 import { TripReplayComponent } from './trip-replay.component';
@@ -36,6 +37,7 @@ import {
     FormsModule,
     LucideAngularModule,
     TrackClickDirective,
+    GroupBadgeComponent,
     DatePipe,
     DecimalPipe,
     TripReplayComponent,
@@ -102,6 +104,7 @@ import {
                     @if (v.brand || v.model) {
                       <span class="rep-dropdown-item-meta">{{ v.brand }} {{ v.model }}</span>
                     }
+                    @if (v.group) { <app-group-badge [group]="v.group" /> }
                   </span>
                   @if (selectedVehicleId() === v.id) { <lucide-icon [img]="Check" [size]="14"></lucide-icon> }
                 </button>

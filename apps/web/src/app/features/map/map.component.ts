@@ -60,6 +60,7 @@ import {
 } from '../../shared/utils/maplibre-markers';
 import { catmullRom, lerpHeading } from '../../shared/utils/spline';
 import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fleet-badge.component';
+import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.component';
 import { TrackClickDirective } from '../../shared/directives/track-click.directive';
 
 interface MarkerEntry {
@@ -83,6 +84,8 @@ interface VehicleMeta {
   fleetId?: string | null;
   imei?: string | null;
   lastSeenAt?: string | null;
+  /** Sprint 1 (Fondation Groupes) — groupe (single) du véhicule pour le popup carte. */
+  group?: { id: string; name: string } | null;
 }
 
 /** Donnees affichees dans la bottom card Baanool au clic sur un marker. */
@@ -100,6 +103,8 @@ interface BaanoolCardData {
   fleetId?: string | null;
   imei?: string | null;
   lastSeenAt?: string | null;
+  /** Sprint 1 (Fondation Groupes) — groupe (single) du véhicule. */
+  group?: { id: string; name: string } | null;
 }
 
 /**
@@ -171,7 +176,7 @@ const RESYNC_RADIUS_M = 150;
 @Component({
   selector: 'app-map',
   standalone: true,
-  imports: [DecimalPipe, ConfirmModalComponent, SaFleetBadgeComponent, TrackClickDirective],
+  imports: [DecimalPipe, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, TrackClickDirective],
   template: `
     <div #mapContainer style="position:absolute;top:0;left:0;width:100%;height:100%"></div>
 
@@ -846,6 +851,8 @@ const RESYNC_RADIUS_M = 150;
               </span>
               <!-- V1.15 — Badge Fleet (visible SA only). -->
               <app-sa-fleet-badge [fleetId]="baanoolCard()!.fleetId" />
+              <!-- Sprint 1 — Groupe du véhicule. -->
+              @if (baanoolCard()!.group; as g) { <app-group-badge [group]="g" /> }
             </div>
             <!-- V1.15 — Meta tracker visible SA only via le badge component
                  qui s'auto-cache si role != SUPER_ADMIN. La ligne est rendue
@@ -2164,6 +2171,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         fleetId?: string | null;
         trackerImei?: string | null;
         lastSeenAt?: string | null;
+        group?: { id: string; name: string } | null;
       };
       this.vehicleMeta.set(v.vehicleId, {
         type: v.type,
@@ -2171,6 +2179,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         fleetId: snapMeta.fleetId ?? null,
         imei: snapMeta.trackerImei ?? null,
         lastSeenAt: snapMeta.lastSeenAt ?? null,
+        group: snapMeta.group ?? null,
       });
     }
 
@@ -2185,6 +2194,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
           fleetId: v.fleetId ?? null,
           imei: v.tracker?.imei ?? null,
           lastSeenAt: v.tracker?.lastSeenAt ?? null,
+          group: v.group ?? null,
         });
       });
       // Re-render apres MAJ meta
@@ -3726,6 +3736,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       fleetId: meta.fleetId,
       imei: meta.imei,
       lastSeenAt: meta.lastSeenAt,
+      group: meta.group ?? null,
     });
     this.activePopupTrackerId = trackerId;
     this.activePopupVehicleId = pos.vehicleId;
