@@ -13,6 +13,9 @@ export interface EngineControlCommandDto {
   requestedBy: string;
   createdAt: string;
   sentAt: string | null;
+  /** Sprint 2 — true si une chute d'ignition est attendable comme preuve (CUT en marche). */
+  confirmationExpected?: boolean;
+  ackedAt?: string | null;
 }
 
 @Injectable({ providedIn: 'root' })

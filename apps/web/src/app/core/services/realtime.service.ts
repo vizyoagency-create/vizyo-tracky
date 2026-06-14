@@ -285,8 +285,11 @@ export class RealtimeService {
       next.set(event.trackerId, event);
       this._engineCommandUpdates.set(next);
 
-      // Maintenir l'etat persistant CUT actif
-      const effective = event.status === 'SENT' || event.status === 'ACKNOWLEDGED';
+      // Maintenir l'etat persistant CUT actif.
+      // Sprint 2 (Obj 3) — l'etat "coupe" ne suit que les commandes CONFIRMEES
+      // (ACKNOWLEDGED), toutes sources. Un simple SENT (non confirme par l'ignition)
+      // ne bascule pas l'etat : jamais de faux succes.
+      const effective = event.status === 'ACKNOWLEDGED';
       const ids = new Set(this._cutActiveTrackerIds());
       if (event.action === 'CUT' && effective) {
         ids.add(event.trackerId);

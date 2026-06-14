@@ -3713,7 +3713,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private patchIgnitionFromCommands(pos: PositionUpdateEvent): PositionUpdateEvent {
     const update = this.realtime.engineCommandUpdates().get(pos.trackerId);
     if (!update) return pos;
-    if (update.status === 'ACKNOWLEDGED' || update.status === 'SENT') {
+    // Sprint 2 — plus de patch optimiste sur un simple SENT (c'etait un faux succes) :
+    // on ne reflete l'etat que sur confirmation reelle (a ce stade la trame de
+    // position porte deja le bon ignition). Source de verite = device.
+    if (update.status === 'ACKNOWLEDGED') {
       if (update.action === 'CUT' && pos.ignition) {
         return { ...pos, ignition: false };
       }
