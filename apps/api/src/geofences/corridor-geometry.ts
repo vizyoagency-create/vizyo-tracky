@@ -128,42 +128,74 @@ export function parseGeoJsonToDrafts(json: unknown): GeofenceDraft[] {
     const rule = (pickEnum(props['rule'], ['ENTER', 'EXIT', 'BOTH']) ?? 'BOTH') as 'ENTER' | 'EXIT' | 'BOTH';
     const widthM = typeof props['widthM'] === 'number' ? props['widthM'] as number : 100;
 
-    if (f.geometry.type === 'Polygon') {
-      const ring = (f.geometry.coordinates as number[][][])[0];
-      if (!ring || ring.length < 3) continue;
-      const points = ring.map(([lng, lat]) => ({ lat, lng }));
-      // Centroid pour centerLat/Lng (approx).
-      const cLat = points.reduce((s, p) => s + p.lat, 0) / points.length;
-      const cLng = points.reduce((s, p) => s + p.lng, 0) / points.length;
-      drafts.push({
-        name, type: 'POLYGON', rule, color,
-        centerLat: cLat, centerLng: cLng, radiusMeters: 0,
-        polygonPoints: points,
-        corridorPoints: null, corridorWidthM: null,
-      });
-    } else if (f.geometry.type === 'LineString') {
-      const coords = f.geometry.coordinates as number[][];
-      if (!coords || coords.length < 2) continue;
-      const points = coords.map(([lng, lat]) => ({ lat, lng }));
-      drafts.push({
-        name, type: 'CORRIDOR', rule, color,
-        centerLat: points[0]!.lat, centerLng: points[0]!.lng, radiusMeters: 0,
-        polygonPoints: null,
-        corridorPoints: points, corridorWidthM: widthM,
-      });
-    } else if (f.geometry.type === 'Point') {
-      const [lng, lat] = f.geometry.coordinates as number[];
-      const radius = typeof props['radius'] === 'number' ? props['radius'] as number : 200;
-      drafts.push({
-        name, type: 'CIRCLE', rule, color,
-        centerLat: lat ?? 0, centerLng: lng ?? 0, radiusMeters: Math.round(radius),
-        polygonPoints: null,
-        corridorPoints: null, corridorWidthM: null,
-      });
+    // #25 — coordonnees GeoJSON potentiellement malformees (geometry absente,
+    // ring/point non-array, paires non-numeriques) : on isole le parsing de CHAQUE
+    // feature pour qu'un feature invalide soit IGNORE au lieu de faire planter tout
+    // l'import (500). `toLatLng` filtre les paires invalides.
+    try {
+      if (f.geometry?.type === 'Polygon') {
+        const ring = (f.geometry.coordinates as unknown[])?.[0];
+        const points = toLatLng(ring);
+        if (points.length < 3) continue;
+        // Centroid pour centerLat/Lng (approx).
+        const cLat = points.reduce((s, p) => s + p.lat, 0) / points.length;
+        const cLng = points.reduce((s, p) => s + p.lng, 0) / points.length;
+        drafts.push({
+          name, type: 'POLYGON', rule, color,
+          centerLat: cLat, centerLng: cLng, radiusMeters: 0,
+          polygonPoints: points,
+          corridorPoints: null, corridorWidthM: null,
+        });
+      } else if (f.geometry?.type === 'LineString') {
+        const points = toLatLng(f.geometry.coordinates);
+        if (points.length < 2) continue;
+        drafts.push({
+          name, type: 'CORRIDOR', rule, color,
+          centerLat: points[0]!.lat, centerLng: points[0]!.lng, radiusMeters: 0,
+          polygonPoints: null,
+          corridorPoints: points, corridorWidthM: widthM,
+        });
+      } else if (f.geometry?.type === 'Point') {
+        const coord = f.geometry.coordinates;
+        if (!isLngLat(coord)) continue;
+        const radius = typeof props['radius'] === 'number' ? props['radius'] as number : 200;
+        drafts.push({
+          name, type: 'CIRCLE', rule, color,
+          centerLat: coord[1], centerLng: coord[0], radiusMeters: Math.round(radius),
+          polygonPoints: null,
+          corridorPoints: null, corridorWidthM: null,
+        });
+      }
+    } catch {
+      // Feature a la geometrie illisible -> ignore (defense en profondeur).
+      continue;
     }
     counter++;
   }
   return drafts;
+}
+
+/** Vrai si `c` est une paire [lng, lat] numerique finie valide (#25). */
+function isLngLat(c: unknown): c is [number, number] {
+  return (
+    Array.isArray(c) &&
+    c.length >= 2 &&
+    typeof c[0] === 'number' &&
+    typeof c[1] === 'number' &&
+    Number.isFinite(c[0]) &&
+    Number.isFinite(c[1])
+  );
+}
+
+/** Convertit une liste de coordonnees GeoJSON [lng,lat][] en points {lat,lng},
+ *  en ignorant silencieusement les paires malformees (#25). */
+function toLatLng(coords: unknown): Array<{ lat: number; lng: number }> {
+  if (!Array.isArray(coords)) return [];
+  const out: Array<{ lat: number; lng: number }> = [];
+  for (const c of coords) {
+    if (isLngLat(c)) out.push({ lat: c[1], lng: c[0] });
+  }
+  return out;
 }
 
 function pickString(obj: Record<string, unknown>, keys: string[]): string | null {

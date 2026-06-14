@@ -18,6 +18,7 @@ import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guar
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { CreateGeofenceDto } from './dto/create-geofence.dto';
+import { SetVehicleTargetsDto } from './dto/set-vehicle-targets.dto';
 import { UpdateGeofenceDto } from './dto/update-geofence.dto';
 import { GeofencesService } from './geofences.service';
 
@@ -111,7 +112,7 @@ export class GeofencesController {
   @RequirePermissions('geofences_manage')
   setVehicleTargets(
     @Param('id') id: string,
-    @Body() body: { vehicleIds: string[] },
+    @Body() body: SetVehicleTargetsDto,
     @Req() req: AuthenticatedRequest,
   ) {
     return this.geofences.setVehicleTargets(id, body.vehicleIds ?? [], {

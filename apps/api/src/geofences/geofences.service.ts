@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -158,7 +159,24 @@ export class GeofencesService {
 
     const data: Prisma.GeofenceUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name;
-    if (dto.type !== undefined) data.type = dto.type;
+    if (dto.type !== undefined) {
+      // #26 — un changement de type vers POLYGON/CORRIDOR exige la geometrie
+      // correspondante (sinon la zone degrade SILENCIEUSEMENT en cercle : la
+      // geometry PostGIS est recalculee comme buffer du centre). On valide comme
+      // a la creation au lieu d'appliquer le type aveuglement.
+      if (dto.type === 'POLYGON') {
+        const poly = (dto.polygonPoints ?? existing.polygonPoints) as unknown;
+        if (!Array.isArray(poly) || poly.length < 3) {
+          throw new BadRequestException('Un geofence POLYGON requiert polygonPoints (>= 3 sommets)');
+        }
+      } else if (dto.type === 'CORRIDOR') {
+        const corr = existing.corridorPoints as unknown;
+        if (!Array.isArray(corr) || corr.length < 2) {
+          throw new BadRequestException('Un geofence CORRIDOR requiert corridorPoints (>= 2 points) deja definis');
+        }
+      }
+      data.type = dto.type;
+    }
     if (dto.rule !== undefined) data.rule = dto.rule;
     if (dto.centerLat !== undefined) data.centerLat = dto.centerLat;
     if (dto.centerLng !== undefined) data.centerLng = dto.centerLng;

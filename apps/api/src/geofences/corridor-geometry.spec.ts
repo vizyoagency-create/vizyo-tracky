@@ -112,4 +112,22 @@ describe('parseGeoJsonToDrafts', () => {
     expect(parseGeoJsonToDrafts(null)).toEqual([]);
     expect(parseGeoJsonToDrafts({ foo: 'bar' })).toEqual([]);
   });
+
+  it('skips features with malformed coordinates instead of crashing (#25)', () => {
+    const json = {
+      type: 'FeatureCollection',
+      features: [
+        { type: 'Feature', geometry: { type: 'Point', coordinates: null }, properties: { name: 'bad-point' } },
+        { type: 'Feature', geometry: { type: 'Polygon', coordinates: 'oops' }, properties: { name: 'bad-poly' } },
+        { type: 'Feature', geometry: { type: 'LineString', coordinates: [['a', 'b'], [2.36, 48.86]] }, properties: { name: 'bad-line' } },
+        { type: 'Feature', properties: { name: 'no-geom' } },
+        { type: 'Feature', geometry: { type: 'Point', coordinates: [2.35, 48.85] }, properties: { name: 'ok' } },
+      ],
+    };
+    // Ne doit PAS throw, et continue le parsing : seul le feature valide est retenu.
+    const drafts = parseGeoJsonToDrafts(json);
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0]?.name).toBe('ok');
+    expect(drafts[0]?.type).toBe('CIRCLE');
+  });
 });
