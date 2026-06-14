@@ -23,6 +23,7 @@ import { AssignDriverDto } from '../drivers/dto/assign-driver.dto';
 import { DriversService } from '../drivers/drivers.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 import { CreateVehicleDto } from './dto/create-vehicle.dto';
+import { SetVehicleGroupDto } from './dto/set-vehicle-group.dto';
 import { UpdateVehicleDto } from './dto/update-vehicle.dto';
 import type { RequestedBy } from './vehicles.service';
 import { VehiclesService } from './vehicles.service';
@@ -124,5 +125,21 @@ export class VehiclesController {
     return this.drivers.assignToVehicle(id, dto.driverId, {
       userId: req.user.id, role: req.user.role, fleetId: req.user.fleetId,
     });
+  }
+
+  /**
+   * Sprint 1 (Fondation Groupes) — définit/retire le groupe (single) du véhicule.
+   * body `{ groupId: <uuid> }` pour assigner, `{ groupId: null }` pour retirer.
+   * Même autorité que l'admin groupes (FLEET_ADMIN/SUPER_ADMIN) ; le scoping
+   * tenant + la vérif même-flotte sont dans VehiclesService.setGroup.
+   */
+  @Patch(':id/group')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN)
+  async setGroup(
+    @Param('id') id: string,
+    @Body() dto: SetVehicleGroupDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.vehicles.setGroup(id, dto.groupId, await this.buildRequestedBy(req));
   }
 }

@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { Prisma, UserRole } from '@prisma/client';
 import { InMemoryCacheService } from '../common/cache/in-memory-cache.service';
@@ -9,6 +9,7 @@ const FLEET_ID = '00000000-0000-0000-0000-000000000001';
 const OTHER_FLEET = '00000000-0000-0000-0000-000000000099';
 const VEHICLE_ID = '00000000-0000-0000-0000-000000000020';
 const USER_ID = '00000000-0000-0000-0000-000000000030';
+const GROUP_ID = '00000000-0000-0000-0000-000000000040';
 
 const fleetAdmin = { userId: USER_ID, role: UserRole.FLEET_ADMIN, fleetId: FLEET_ID };
 const superAdmin = { userId: USER_ID, role: UserRole.SUPER_ADMIN, fleetId: FLEET_ID };
@@ -35,6 +36,9 @@ describe('VehiclesService', () => {
     // suivi de check fleetId, pour eviter l'IDOR cross-fleet.
     vehicle: { create: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock; findFirst: jest.Mock; update: jest.Mock; delete: jest.Mock };
     tracker: { update: jest.Mock };
+    vehicleGroup: { findFirst: jest.Mock };
+    vehicleGroupAssignment: { deleteMany: jest.Mock; create: jest.Mock };
+    $transaction: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -50,6 +54,12 @@ describe('VehiclesService', () => {
       tracker: {
         update: jest.fn().mockResolvedValue(undefined),
       },
+      vehicleGroup: { findFirst: jest.fn().mockResolvedValue({ id: GROUP_ID }) },
+      vehicleGroupAssignment: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        create: jest.fn().mockResolvedValue({ vehicleId: VEHICLE_ID, groupId: GROUP_ID }),
+      },
+      $transaction: jest.fn().mockResolvedValue([]),
     };
 
     const module = await Test.createTestingModule({
@@ -164,6 +174,80 @@ describe('VehiclesService', () => {
           currentDriver: { disconnect: true },
         }),
       }),
+    );
+  });
+
+  // --- Sprint 1 (Fondation Groupes) ---
+
+  // 10. findOne aplatit le groupe (groups[0].group -> group) et retire `groups`.
+  it('findOne exposes the vehicle group (flattened)', async () => {
+    prisma.vehicle.findFirst.mockResolvedValue(
+      vehicleRecord({ groups: [{ group: { id: GROUP_ID, name: 'BOREAL' } }] }),
+    );
+
+    const result = await service.findOne(VEHICLE_ID, fleetAdmin);
+
+    expect(result.group).toEqual({ id: GROUP_ID, name: 'BOREAL' });
+    expect((result as Record<string, unknown>).groups).toBeUndefined();
+  });
+
+  // 11. findOne -> group null si aucune assignation.
+  it('findOne returns group: null when the vehicle has no group', async () => {
+    prisma.vehicle.findFirst.mockResolvedValue(vehicleRecord({ groups: [] }));
+
+    const result = await service.findOne(VEHICLE_ID, fleetAdmin);
+
+    expect(result.group).toBeNull();
+  });
+
+  // 12. setGroup assigne (replace) un véhicule à un groupe de la même flotte.
+  it('setGroup assigns the vehicle to a same-fleet group (replace)', async () => {
+    prisma.vehicle.findFirst.mockResolvedValue(vehicleRecord());
+    prisma.vehicleGroup.findFirst.mockResolvedValue({ id: GROUP_ID });
+
+    await service.setGroup(VEHICLE_ID, GROUP_ID, fleetAdmin);
+
+    expect(prisma.vehicleGroup.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: GROUP_ID, fleetId: FLEET_ID } }),
+    );
+    expect(prisma.vehicleGroupAssignment.deleteMany).toHaveBeenCalledWith({
+      where: { vehicleId: VEHICLE_ID },
+    });
+    expect(prisma.vehicleGroupAssignment.create).toHaveBeenCalledWith({
+      data: { vehicleId: VEHICLE_ID, groupId: GROUP_ID },
+    });
+  });
+
+  // 13. setGroup(null) retire le véhicule de son groupe, sans recréer.
+  it('setGroup removes the vehicle from its group when groupId is null', async () => {
+    prisma.vehicle.findFirst.mockResolvedValue(vehicleRecord());
+
+    await service.setGroup(VEHICLE_ID, null, fleetAdmin);
+
+    expect(prisma.vehicleGroup.findFirst).not.toHaveBeenCalled();
+    expect(prisma.vehicleGroupAssignment.deleteMany).toHaveBeenCalledWith({
+      where: { vehicleId: VEHICLE_ID },
+    });
+    expect(prisma.vehicleGroupAssignment.create).not.toHaveBeenCalled();
+  });
+
+  // 14. setGroup refuse un groupe d'une autre flotte (anti cross-fleet).
+  it('setGroup rejects a group from another fleet', async () => {
+    prisma.vehicle.findFirst.mockResolvedValue(vehicleRecord());
+    prisma.vehicleGroup.findFirst.mockResolvedValue(null);
+
+    await expect(service.setGroup(VEHICLE_ID, GROUP_ID, fleetAdmin)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(prisma.vehicleGroupAssignment.deleteMany).not.toHaveBeenCalled();
+  });
+
+  // 15. setGroup sur un véhicule cross-fleet -> NotFound (IDOR, via findOne).
+  it('setGroup throws NotFound on a cross-fleet vehicle (IDOR)', async () => {
+    prisma.vehicle.findFirst.mockResolvedValue(null);
+
+    await expect(service.setGroup(VEHICLE_ID, GROUP_ID, fleetAdmin)).rejects.toThrow(
+      NotFoundException,
     );
   });
 });

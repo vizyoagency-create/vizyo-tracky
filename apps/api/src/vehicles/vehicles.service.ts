@@ -30,6 +30,10 @@ export interface RequestedBy {
   accessibleVehicleIds?: string[] | 'ALL';
 }
 
+/** Sprint 1 (Fondation Groupes) — référence groupe (single) attachée aux réponses véhicule. */
+export type VehicleGroupRef = { id: string; name: string } | null;
+export type VehicleWithGroup = Vehicle & { group: VehicleGroupRef };
+
 @Injectable()
 export class VehiclesService {
   /**
@@ -65,6 +69,28 @@ export class VehiclesService {
     // V1.15 — expose la SIM pour le badge "Installe" (IMEI + SIM presents) cote liste.
     simPhoneNumber: true,
   } as const;
+
+  /**
+   * Sprint 1 (Fondation Groupes) — sélection du groupe (single) d'un véhicule.
+   * Décision produit : 1 groupe/véhicule, mais le schéma reste M2M
+   * (VehicleGroupAssignment) ; `take: 1` + tri par nom garantissent un résultat
+   * déterministe si une donnée legacy porte >1 assignation.
+   */
+  private static readonly GROUP_INCLUDE = {
+    groups: {
+      select: { group: { select: { id: true, name: true } } },
+      orderBy: { group: { name: 'asc' } },
+      take: 1,
+    },
+  } as const;
+
+  /** Aplatit la jointure `groups[0].group` en `group: {id,name} | null`. */
+  private static withGroup<T extends { groups?: { group: { id: string; name: string } }[] }>(
+    v: T,
+  ): Omit<T, 'groups'> & { group: VehicleGroupRef } {
+    const { groups, ...rest } = v;
+    return { ...rest, group: groups?.[0]?.group ?? null };
+  }
 
   constructor(
     private readonly prisma: PrismaService,
@@ -147,7 +173,7 @@ export class VehiclesService {
   async findAll(
     requestedBy: RequestedBy,
     filters?: { search?: string; hasTracker?: string; limit?: number; cursor?: string },
-  ): Promise<Vehicle[]> {
+  ): Promise<VehicleWithGroup[]> {
     const limit = Math.min(filters?.limit ?? 50, 50);
     const where: Prisma.VehicleWhereInput = {};
 
@@ -177,19 +203,22 @@ export class VehiclesService {
 
     // V1.10 (Sprint 6 perf) — tracker select reduit (au lieu d'include: true)
     // pour ne pas transferer les champs internes inutiles a la liste.
-    return this.prisma.vehicle.findMany({
+    const rows = await this.prisma.vehicle.findMany({
       where,
       include: {
         tracker: { select: VehiclesService.TRACKER_LIST_SELECT },
         ...VehiclesService.CURRENT_DRIVER_INCLUDE,
+        // Sprint 1 (Fondation Groupes) — groupe (single) pour le badge + la vue groupée.
+        ...VehiclesService.GROUP_INCLUDE,
       },
       orderBy: { createdAt: 'desc' },
       take: limit,
       ...(filters?.cursor ? { skip: 1, cursor: { id: filters.cursor } } : {}),
-    }) as Promise<Vehicle[]>;
+    });
+    return rows.map((v) => VehiclesService.withGroup(v)) as VehicleWithGroup[];
   }
 
-  async findOne(id: string, requestedBy: RequestedBy): Promise<Vehicle> {
+  async findOne(id: string, requestedBy: RequestedBy): Promise<VehicleWithGroup> {
     // V1.10 (Sprint 6) — IDOR fix : filtre tenant integre au where (404 plutot
     // que 403 pour ne pas leak l'existence cross-fleet via timing).
     const where: Prisma.VehicleWhereInput = { id };
@@ -210,6 +239,8 @@ export class VehiclesService {
         tracker: true,
         schedule: { select: { enabled: true } },
         ...VehiclesService.CURRENT_DRIVER_INCLUDE,
+        // Sprint 1 (Fondation Groupes) — groupe (single) pour la fiche détail.
+        ...VehiclesService.GROUP_INCLUDE,
       },
     });
 
@@ -220,7 +251,7 @@ export class VehiclesService {
       throw new ForbiddenException('Accès refusé à ce véhicule');
     }
 
-    return vehicle;
+    return VehiclesService.withGroup(vehicle);
   }
 
   async update(id: string, dto: UpdateVehicleDto, requestedBy: RequestedBy): Promise<Vehicle> {
@@ -275,6 +306,39 @@ export class VehiclesService {
     await this.prisma.vehicle.delete({ where: { id } });
     // #37 — invalider le cache KPI : la suppression change les compteurs de la flotte.
     this.invalidateKpiCache(vehicle.fleetId);
+  }
+
+  /**
+   * Sprint 1 (Fondation Groupes) — définit/retire le groupe (single) d'un véhicule.
+   * Sémantique « remplacer » : on supprime les assignations existantes puis on
+   * recrée la nouvelle (ou aucune si `groupId` est null → « sans groupe »).
+   * Le scoping tenant + IDOR sont délégués à `findOne` (404 cross-fleet), et le
+   * groupe cible doit appartenir à la même flotte que le véhicule.
+   */
+  async setGroup(
+    id: string,
+    groupId: string | null,
+    requestedBy: RequestedBy,
+  ): Promise<VehicleWithGroup> {
+    // Vérifie l'accès au véhicule (tenant scope + accès granulaire). Throw sinon.
+    const vehicle = await this.findOne(id, requestedBy);
+
+    if (groupId) {
+      const group = await this.prisma.vehicleGroup.findFirst({
+        where: { id: groupId, fleetId: vehicle.fleetId },
+        select: { id: true },
+      });
+      if (!group) throw new BadRequestException('Groupe introuvable dans cette flotte');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.vehicleGroupAssignment.deleteMany({ where: { vehicleId: id } }),
+      ...(groupId
+        ? [this.prisma.vehicleGroupAssignment.create({ data: { vehicleId: id, groupId } })]
+        : []),
+    ]);
+
+    return this.findOne(id, requestedBy);
   }
 
   async stats(requestedBy: RequestedBy): Promise<{
@@ -421,6 +485,8 @@ export class VehiclesService {
           },
         },
         schedule: { select: { enabled: true } },
+        // Sprint 1 (Fondation Groupes) — groupe (single) pour le popup carte.
+        ...VehiclesService.GROUP_INCLUDE,
       },
       orderBy: { createdAt: 'desc' },
       take: 2000,
@@ -473,6 +539,7 @@ export class VehiclesService {
         accConnected: t?.accConnected ?? null,
         engineCutActive: t ? cutActiveIds.has(t.id) : null,
         scheduleEnabled: !!v.schedule?.enabled,
+        group: v.groups?.[0]?.group ?? null,
       };
     });
 
