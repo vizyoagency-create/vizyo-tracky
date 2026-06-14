@@ -200,7 +200,7 @@ interface PrefillItem {
           </div>
           <p class="text-xs text-fg-tertiary -mt-1">
             Chaque commande part via vizyo-texto ; on attend la reponse du boitier
-            (jusqu'a {{ provAckTimeout || 15 }}s) avant d'envoyer la suivante. Reponds
+            (jusqu'a {{ provAckTimeout || 45 }}s) avant d'envoyer la suivante. Reponds
             depuis la SIM pour confirmer chaque etape.
           </p>
 
@@ -292,7 +292,7 @@ interface PrefillItem {
             </label>
             <label class="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-fg-tertiary">
               Timeout reponse (s)
-              <input [(ngModel)]="provAckTimeout" type="number" min="3" placeholder="12"
+              <input [(ngModel)]="provAckTimeout" type="number" min="3" placeholder="45"
                      class="bg-bg-tertiary border border-border-subtle rounded-lg px-3 py-2 text-sm font-mono normal-case text-fg-primary" />
             </label>
           </div>
@@ -716,7 +716,7 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
   provServerIp = '72.62.26.240';
   provServerPort: number | null = 5023;
   provFixInterval: number | null = 20;
-  provAckTimeout: number | null = 12;
+  provAckTimeout: number | null = null; // vide => defaut backend (DEFAULT_ACK_TIMEOUT_S=45s)
   provApnUser = '';
   provApnPasswd = '';
   provAccOn = false;

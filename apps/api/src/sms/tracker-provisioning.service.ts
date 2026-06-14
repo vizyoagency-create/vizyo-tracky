@@ -89,9 +89,15 @@ const COBAN_PASSWORD = '123456'; // password par defaut Coban (override via env 
 const DEFAULT_FIX_INTERVAL_S = 20;
 const MIN_FIX_INTERVAL_S = 20; // plancher firmware Coban (cf docs/03 §5.4)
 const MAX_FIX_INTERVAL_S = 999; // format fixNNN (3 chiffres)
-const DEFAULT_ACK_TIMEOUT_S = 12;
+// Defaut d'attente d'ACK par etape. Le round-trip SMS reel mesure en prod (boitier
+// -> gateway -> relay -> webhook) est de ~15-60s : 12s etait BEAUCOUP trop court,
+// chaque etape timeout-ait avant l'arrivee de la reponse (commandes envoyees en
+// rafale toutes les 12s). 45s laisse la reponse arriver ET espace les envois (ce qui
+// soulage le push FCM de capcom6, sujet aux 429). Ajustable par provisioning via le
+// champ `ackTimeoutS` (admin SMS), borne [MIN, MAX].
+const DEFAULT_ACK_TIMEOUT_S = 45;
 const MIN_ACK_TIMEOUT_S = 3;
-const MAX_ACK_TIMEOUT_S = 120;
+const MAX_ACK_TIMEOUT_S = 180;
 const SETTLE_DELAY_MS = 1500; // petite pause apres un ACK avant la commande suivante
 // #19 — fenetre de garde : une reponse arrivant moins de REPLY_GUARD_MS apres
 // l'armement d'un waiter ne peut PAS etre la reponse a la commande qu'on vient
