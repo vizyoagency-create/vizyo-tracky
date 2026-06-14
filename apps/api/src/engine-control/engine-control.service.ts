@@ -93,23 +93,23 @@ export class EngineControlService {
 
     const fleetId = tracker.vehicle.fleetId;
 
-    // Sprint 2 (Obj 1) — verrou « une coupure en vol » : rejet d'une NOUVELLE
-    // coupure tant qu'une coupure confirmable précédente attend sa confirmation
-    // (ignition). N'affecte PAS le RESTORE (toujours autorisé = échappatoire sûr)
-    // ni une coupure « non vérifiable » (à l'arrêt, confirmationExpected=false).
-    if (action === EngineAction.CUT) {
+    // Sprint 2 (Obj 1 + revue) — verrou « une coupure en vol » : rejet d'une NOUVELLE
+    // coupure MANUELLE tant qu'une coupure confirmable précédente attend sa
+    // confirmation (ignition). N'affecte PAS le RESTORE (échappatoire sûr), ni les
+    // commandes SCHEDULER (qui re-évaluent à chaque tick), ni une coupure « non
+    // vérifiable » (à l'arrêt, confirmationExpected=false). La fenêtre borne aussi
+    // les PENDING orphelins (anti-blocage permanent si un dispatch a échoué/crashé).
+    if (action === EngineAction.CUT && source === 'MANUAL') {
+      const windowStart = new Date(Date.now() - ENGINE_CONFIRM_WINDOW_MS);
       const inflight = await this.prisma.engineControlCommand.findFirst({
         where: {
           trackerId,
           action: EngineAction.CUT,
           ackedAt: null,
+          createdAt: { gte: windowStart },
           OR: [
             { status: CommandStatus.PENDING },
-            {
-              status: CommandStatus.SENT,
-              confirmationExpected: true,
-              createdAt: { gte: new Date(Date.now() - ENGINE_CONFIRM_WINDOW_MS) },
-            },
+            { status: CommandStatus.SENT, confirmationExpected: true },
           ],
         },
         orderBy: { createdAt: 'desc' },

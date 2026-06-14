@@ -532,10 +532,13 @@ export class PositionsService {
             'Failed to persist DEVICE_OBSERVED CUT — external cut not recorded',
           );
         }
-      } else if (recentCut.status === CommandStatus.SENT) {
-        // Sprint 2 (Obj 2) — CONFIRMATION PAR IGNITION : la coupure app vient
-        // d'etre prouvee physiquement (le moteur s'est eteint). On la passe
-        // « confirmee » (ACKNOWLEDGED), etat distinct du simple « envoyee », + WS.
+      } else if (recentCut.status === CommandStatus.SENT && recentCut.confirmationExpected) {
+        // Sprint 2 (Obj 2 + revue #5) — CONFIRMATION PAR IGNITION : la coupure app
+        // vient d'etre prouvee physiquement (le moteur s'est eteint). On ne confirme
+        // QUE si la coupure etait confirmable (confirmationExpected = vehicule en
+        // marche a l'envoi). Une coupure « a l'arret » (ignition deja OFF) ne doit pas
+        // etre faussement confirmee par une transition ON->OFF ulterieure sans rapport.
+        // On la passe « confirmee » (ACKNOWLEDGED), etat distinct du « envoyee », + WS.
         try {
           const confirmed = await this.prisma.engineControlCommand.update({
             where: { id: recentCut.id },
