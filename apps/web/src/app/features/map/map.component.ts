@@ -59,6 +59,7 @@ import {
 } from '../../shared/utils/maplibre-markers';
 import { catmullRom, lerpHeading } from '../../shared/utils/spline';
 import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fleet-badge.component';
+import { TrackClickDirective } from '../../shared/directives/track-click.directive';
 
 interface MarkerEntry {
   marker: MlMarker;
@@ -169,7 +170,7 @@ const RESYNC_RADIUS_M = 150;
 @Component({
   selector: 'app-map',
   standalone: true,
-  imports: [DecimalPipe, ConfirmModalComponent, SaFleetBadgeComponent],
+  imports: [DecimalPipe, ConfirmModalComponent, SaFleetBadgeComponent, TrackClickDirective],
   template: `
     <div #mapContainer style="position:absolute;top:0;left:0;width:100%;height:100%"></div>
 
@@ -315,6 +316,7 @@ const RESYNC_RADIUS_M = 150;
         <div class="flex gap-1.5 mt-1.5 flex-wrap">
           <button
             (click)="toggleMeasure()"
+            trackClick="carte-mesure"
             [class]="'flex-1 text-[10px] font-medium py-1.5 rounded-lg cursor-pointer transition-colors ' +
                      (measureMode()
                        ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
@@ -396,6 +398,7 @@ const RESYNC_RADIUS_M = 150;
       <!-- Calques toggle desktop : ouvre le panel collapsable inline (en dessous) -->
       <button
         (click)="calquesPanelOpen.set(!calquesPanelOpen())"
+        trackClick="carte-calques"
         [class]="'tracky-desktop-only mt-2 w-full flex items-center justify-between gap-2 px-3 py-2 ' +
                  'bg-bg-secondary/85 backdrop-blur-md border rounded-[--radius-card] ' +
                  'text-xs font-medium cursor-pointer transition-colors ' +

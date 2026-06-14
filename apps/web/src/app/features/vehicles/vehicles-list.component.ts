@@ -14,12 +14,13 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
 import { VehicleDialogComponent } from './vehicle-dialog/vehicle-dialog.component';
 import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
 import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fleet-badge.component';
+import { TrackClickDirective } from '../../shared/directives/track-click.directive';
 
 @Component({
   selector: 'app-vehicles-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, ConfirmModalComponent, SaFleetBadgeComponent],
+  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, ConfirmModalComponent, SaFleetBadgeComponent, TrackClickDirective],
   template: `
     <div class="vlist-page">
       <div class="vlist-grid-bg"></div>
@@ -43,7 +44,7 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
             </div>
           }
           @if (perms.can('vehicles_create') && activeTab() === 'vehicles') {
-            <button (click)="showAddDialog.set(true)" class="add-btn add-btn--inline">
+            <button (click)="showAddDialog.set(true)" trackClick="vehicule-ajouter" class="add-btn add-btn--inline">
               <lucide-icon [img]="Plus" [size]="15"></lucide-icon> Ajouter
             </button>
           }
@@ -57,7 +58,7 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
 
       <!-- FAB mobile : bouton flottant Ajouter (cohérent avec la page Map) -->
       @if (perms.can('vehicles_create') && activeTab() === 'vehicles') {
-        <button (click)="showAddDialog.set(true)" class="vlist-fab" aria-label="Ajouter un véhicule">
+        <button (click)="showAddDialog.set(true)" trackClick="vehicule-ajouter" class="vlist-fab" aria-label="Ajouter un véhicule">
           <lucide-icon [img]="Plus" [size]="22"></lucide-icon>
         </button>
       }
@@ -100,7 +101,7 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
             <div class="empty-icon"><lucide-icon [img]="Truck" [size]="36"></lucide-icon></div>
             <p class="empty-text">Aucun véhicule {{ perms.can('vehicles_create') ? 'dans votre flotte' : 'accessible' }}</p>
             @if (perms.can('vehicles_create')) {
-              <button (click)="showAddDialog.set(true)" class="empty-cta">Ajouter votre premier véhicule</button>
+              <button (click)="showAddDialog.set(true)" trackClick="vehicule-ajouter" class="empty-cta">Ajouter votre premier véhicule</button>
             }
           </div>
         } @else if (filteredVehicles().length === 0) {

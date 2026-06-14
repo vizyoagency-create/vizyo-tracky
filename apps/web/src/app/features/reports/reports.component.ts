@@ -16,6 +16,7 @@ import { TripNoteModalComponent } from '../../shared/ui/trip-note-modal/trip-not
 import { DateRangePickerComponent } from '../../shared/ui/date-range-picker/date-range-picker.component';
 import { PdfExportModalComponent, type PdfExportRequest } from '../../shared/ui/pdf-export-modal/pdf-export-modal.component';
 import { LineBarChartComponent, type LineBarChartData } from '../../shared/ui/charts/line-bar-chart.component';
+import { TrackClickDirective } from '../../shared/directives/track-click.directive';
 import { HistogramChartComponent } from '../../shared/ui/charts/histogram-chart.component';
 import { HeatmapChartComponent } from '../../shared/ui/charts/heatmap-chart.component';
 import { TripReplayComponent } from './trip-replay.component';
@@ -34,6 +35,7 @@ import {
   imports: [
     FormsModule,
     LucideAngularModule,
+    TrackClickDirective,
     DatePipe,
     DecimalPipe,
     TripReplayComponent,
@@ -51,15 +53,15 @@ import {
       <div class="flex items-start justify-between gap-3 flex-wrap">
         <h1 class="text-2xl font-display font-bold text-fg-primary">Rapports</h1>
         <div class="rep-export-group" role="group" aria-label="Exporter le rapport">
-          <button type="button" (click)="onExportPdf()" [disabled]="!!exporting()" class="rep-export-btn rep-export-btn--pdf">
+          <button type="button" (click)="onExportPdf()" trackClick="rapport-export-pdf" [disabled]="!!exporting()" class="rep-export-btn rep-export-btn--pdf">
             <lucide-icon [img]="DownloadIcon" [size]="13"></lucide-icon>
             <span>{{ exporting() === 'pdf' ? 'Export…' : 'PDF' }}</span>
           </button>
-          <button type="button" (click)="onExportCsv('trips')" [disabled]="!!exporting()" class="rep-export-btn">
+          <button type="button" (click)="onExportCsv('trips')" trackClick="rapport-export-trips" [disabled]="!!exporting()" class="rep-export-btn">
             <lucide-icon [img]="DownloadIcon" [size]="13"></lucide-icon>
             <span>{{ exporting() === 'csv-trips' ? 'Export…' : 'CSV trajets' }}</span>
           </button>
-          <button type="button" (click)="onExportCsv('alerts')" [disabled]="!!exporting()" class="rep-export-btn">
+          <button type="button" (click)="onExportCsv('alerts')" trackClick="rapport-export-alerts" [disabled]="!!exporting()" class="rep-export-btn">
             <lucide-icon [img]="DownloadIcon" [size]="13"></lucide-icon>
             <span>{{ exporting() === 'csv-summary' ? 'Export…' : 'CSV alertes' }}</span>
           </button>
