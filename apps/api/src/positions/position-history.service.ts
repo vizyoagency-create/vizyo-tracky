@@ -5,7 +5,6 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
 import type { Prisma } from '@prisma/client';
 import { UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -14,20 +13,21 @@ import { PrismaService } from '../prisma/prisma.service';
  * V1.5 (Sprint H4) — Historique des positions avec compaction adaptative.
  *
  * Strategie a 3 niveaux :
- *   - `detail = fine`           → table `positions` brute (max 90j de retention).
+ *   - `detail = fine`           → table `positions` brute (retention env via DataRetentionService).
  *   - `detail = compact`        → polylignes Douglas-Peucker (epsilon 5m) deja
  *                                 calculees sur les trips clos (`Trip.polyline`).
  *                                 Garde la trace visuellement fidele en zone
  *                                 urbaine, mais 5-10x moins de points.
  *   - `detail = auto` (defaut)  → fine si range < 24h, compact au-dela.
  *
- * Job de purge nocturne : supprime `positions` > 90 jours pour eviter la
- * croissance lineaire. Les trips clos conservent leur polyline compactee
- * indefiniment (cout marginal vs le volume positions).
+ * Retention de `positions` : geree UNIQUEMENT par `DataRetentionService`
+ * (env-pilotee `POSITIONS_RETENTION_DAYS`, suppression PAR LOTS). L'ancien cron
+ * 90j hardcode ici faisait double emploi (il supprimait en silence malgre le
+ * contrat "retention infinie par defaut") et prenait un lock long (deleteMany
+ * non borne) — il a ete retire (audit #4 / #15).
  */
 
 const FINE_RANGE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
-const FINE_RETENTION_DAYS = 90;
 // V1.10 (Sprint 6) — caps pour le mode fine.
 //   MAX_FINE_POINTS_OUT : nombre max de points renvoyes au frontend. Au-dela,
 //   le client commence a freezer (parse JSON + render layer polyline). 5000
@@ -200,6 +200,11 @@ export class PositionHistoryService {
     return { detail: 'compact', points, trips: tripsMeta };
   }
 
+  // NOTE (audit #4/#15) : le cron `purgeOldFinePositions` (90j hardcode, deleteMany
+  // non borne) a ete RETIRE d'ici. La retention de `positions` appartient desormais
+  // a la seule autorite `DataRetentionService` (env `POSITIONS_RETENTION_DAYS`,
+  // suppression par lots). Pour activer 90/365j en prod, fixer cette var dans .env.prod.
+
   private resolveDetail(req: 'auto' | 'fine' | 'compact' | undefined, rangeMs: number): 'fine' | 'compact' {
     if (req === 'fine' || req === 'compact') return req;
     return rangeMs <= FINE_RANGE_THRESHOLD_MS ? 'fine' : 'compact';
@@ -222,20 +227,5 @@ export class PositionHistoryService {
     const last = items[items.length - 1]!;
     if (out[out.length - 1] !== last) out.push(last);
     return out;
-  }
-
-  /**
-   * Job de purge nocturne : supprime les positions brutes au-dela de 90 jours.
-   * Les Trip.polyline conservent la trace compactee indefiniment.
-   */
-  @Cron(CronExpression.EVERY_DAY_AT_3AM)
-  async purgeOldFinePositions(): Promise<void> {
-    const cutoff = new Date(Date.now() - FINE_RETENTION_DAYS * 24 * 3600 * 1000);
-    const result = await this.prisma.position.deleteMany({
-      where: { timestamp: { lt: cutoff } },
-    });
-    this.logger.log(
-      `Purge positions: ${result.count} lignes supprimees (anterieures a ${cutoff.toISOString()})`,
-    );
   }
 }
