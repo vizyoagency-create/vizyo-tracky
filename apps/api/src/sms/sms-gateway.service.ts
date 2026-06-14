@@ -394,7 +394,10 @@ export class SmsGatewayService implements OnModuleInit {
           context: context as object,
         },
       });
-      return { ok: status !== 'failed', twilioSid: providerId };
+      // #34 — `ok` ne doit PAS rester true pour les statuts d'echec autres que
+      // 'failed' (rejected/undelivered/error...). Liste des statuts d'echec connus.
+      const failedStatuses = ['failed', 'rejected', 'undelivered', 'error', 'cancelled', 'canceled'];
+      return { ok: !failedStatuses.includes(String(status).toLowerCase()), twilioSid: providerId };
     } catch (err) {
       // A1 — erreur réseau / timeout → log dans ErrorLog.
       const errorMessage = err instanceof Error ? err.message : String(err);

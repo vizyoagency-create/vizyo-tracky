@@ -375,11 +375,15 @@ export class AdminAlertsController {
       // Résumé par source.
       const sourceMap = new Map<string, { count: number; lastAt: string }>();
       for (const e of errors) {
+        const iso = e.createdAt.toISOString();
         const existing = sourceMap.get(e.source);
         if (!existing) {
-          sourceMap.set(e.source, { count: 1, lastAt: e.createdAt.toISOString() });
+          sourceMap.set(e.source, { count: 1, lastAt: iso });
         } else {
           existing.count++;
+          // #32 — colonne "Derniere" = la PLUS RECENTE : lastAt n'etait jamais mis a
+          // jour (restait le first-seen). Les ISO meme format se comparent chrono.
+          if (iso > existing.lastAt) existing.lastAt = iso;
         }
       }
 
