@@ -84,7 +84,11 @@ export class SimsSyncService {
   }
 
   /** Upsert d'une SIM brute : n'ecrit que les champs miroir. */
-  async upsertRaw(raw: RawSim): Promise<void> {
+  async upsertRaw(raw: RawSim | null | undefined): Promise<void> {
+    // #18 — un updateSim WhereverSIM peut renvoyer null (echec silencieux cote
+    // fournisseur) : sans garde, buildMirror(null) dereferencait null (crash 500).
+    // On ignore proprement une SIM brute absente / sans iccid.
+    if (!raw || !raw.iccid) return;
     const mirror = this.buildMirror(raw);
     await this.prisma.sim.upsert({
       where: { iccid: raw.iccid },

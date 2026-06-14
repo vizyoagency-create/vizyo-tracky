@@ -120,7 +120,7 @@ export class VehiclesService {
     }
 
     try {
-      return await this.prisma.vehicle.create({
+      const created = await this.prisma.vehicle.create({
         data: {
           fleetId,
           plate: dto.plate,
@@ -132,6 +132,10 @@ export class VehiclesService {
         },
         include: { tracker: true, ...VehiclesService.CURRENT_DRIVER_INCLUDE },
       });
+      // #37 — invalider le cache KPI (stats/snapshot) : un vehicule ajoute change les
+      // compteurs de la flotte (le doc de invalidateKpiCache annonce "appele depuis create").
+      this.invalidateKpiCache(fleetId);
+      return created;
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         throw new ConflictException(`Plaque "${dto.plate}" déjà utilisée dans cette flotte`);
@@ -269,6 +273,8 @@ export class VehiclesService {
     }
 
     await this.prisma.vehicle.delete({ where: { id } });
+    // #37 — invalider le cache KPI : la suppression change les compteurs de la flotte.
+    this.invalidateKpiCache(vehicle.fleetId);
   }
 
   async stats(requestedBy: RequestedBy): Promise<{

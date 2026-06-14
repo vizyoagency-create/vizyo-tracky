@@ -162,12 +162,14 @@ export class WhereverSimClient {
         }
       }
     `;
-    const data = await this.request<{ listSims: RawSimList }>(query, {
+    const data = await this.request<{ listSims: RawSimList | null }>(query, {
       limit: params.limit,
       nextToken: params.nextToken ?? null,
       quickSearch: params.quickSearch ?? null,
     });
-    return data.listSims;
+    // #35 — payload `listSims` null (reponse fournisseur degradee) : on renvoie une
+    // page vide au lieu de laisser le caller dereferencer null (sync/getStatistics 500).
+    return data.listSims ?? { items: [], nextToken: null, totalSims: 0 };
   }
 
   /** Modifie une SIM (statut, plafond data, custom_field_1). Renvoie la SIM a jour. */
@@ -195,8 +197,16 @@ export class WhereverSimClient {
     const query = `
       query { getStatistics { totalSimCards activeSimCards currentMonthlyDataUsage previousMonthDataUsage } }
     `;
-    const data = await this.request<{ getStatistics: RawStatistics }>(query);
-    return data.getStatistics;
+    const data = await this.request<{ getStatistics: RawStatistics | null }>(query);
+    // #35 — payload null : valeurs a zero plutot qu'un deref null cote caller.
+    return (
+      data.getStatistics ?? {
+        totalSimCards: 0,
+        activeSimCards: 0,
+        currentMonthlyDataUsage: 0,
+        previousMonthDataUsage: 0,
+      }
+    );
   }
 
   /** Conso journaliere d'une SIM (max 3 mois en arriere cote API). Dates "YYYY-MM-DD". */
