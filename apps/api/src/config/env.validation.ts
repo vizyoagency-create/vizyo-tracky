@@ -90,6 +90,11 @@ const envSchema = z.object({
   //   l'ingestion temps reel.
   SAMPLING_DECISIONS_RETENTION_DAYS: z.coerce.number().int().nonnegative().default(7),
   POSITIONS_RETENTION_DAYS: z.coerce.number().int().nonnegative().default(0),
+  // Retention des logs (LogCleanupService, cron 3h00) — env-configurables pour
+  // ajuster sans redeploy. WIRE_LOGS = trames brutes (volumineux : 1 ligne/trame),
+  // ERROR_LOGS = erreurs applicatives.
+  WIRE_LOGS_RETENTION_DAYS: z.coerce.number().int().positive().default(7),
+  ERROR_LOGS_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
 });
 
 export type Env = z.infer<typeof envSchema>;
