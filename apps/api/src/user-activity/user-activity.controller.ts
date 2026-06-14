@@ -4,7 +4,8 @@ import { UserRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import { ActivityBatchDto } from './dto/track-event.dto';
+import { ErrorLogger } from '../observability/error-logger.service';
+import { ActivityBatchDto, ClientErrorDto } from './dto/track-event.dto';
 import { UserActivityService } from './user-activity.service';
 
 /**
@@ -15,7 +16,10 @@ import { UserActivityService } from './user-activity.service';
 @Controller()
 @UseGuards(JwtAuthGuard)
 export class UserActivityController {
-  constructor(private readonly svc: UserActivityService) {}
+  constructor(
+    private readonly svc: UserActivityService,
+    private readonly errorLogger: ErrorLogger,
+  ) {}
 
   @Post('activity/batch')
   @Throttle({ default: { ttl: 60_000, limit: 30 } })
@@ -26,6 +30,35 @@ export class UserActivityController {
     await this.svc.ingestBatch(req.user, dto, {
       userAgent: req.headers['user-agent'] as string | undefined,
     });
+    return { ok: true };
+  }
+
+  /** Remontée d'une erreur frontend → ErrorLog enrichi (visible centre d'alerte). */
+  @Post('activity/error')
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  async reportError(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: ClientErrorDto,
+  ): Promise<{ ok: true }> {
+    const user = req.user;
+    const err = new Error(dto.message || 'Frontend error');
+    if (dto.stack) err.stack = dto.stack;
+    await this.errorLogger.record(
+      err,
+      'frontend',
+      {
+        userId: user.id,
+        userEmail: user.email,
+        fleetId: user.fleetId ?? undefined,
+        route: dto.route,
+        page: dto.route,
+        sessionId: dto.sessionId,
+        userAgent: req.headers['user-agent'] as string | undefined,
+        httpUrl: dto.httpUrl,
+        httpStatus: dto.httpStatus,
+      },
+      'ERROR',
+    );
     return { ok: true };
   }
 

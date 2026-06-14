@@ -33,6 +33,7 @@ export interface ErrorCriticalEntry {
   message: string;
   stack: string | null;
   imei: string | null;
+  userId: string | null;
   context: Record<string, unknown> | null;
   createdAt: string;
 }
@@ -43,6 +44,8 @@ export interface ErrorAlertsSummary {
   bySource: ErrorSourceGroup[];
   topMessages: ErrorTopMessage[];
   recentCritical: ErrorCriticalEntry[];
+  /** Dernières erreurs toutes catégories (avec contexte user/page/device). */
+  recent: ErrorCriticalEntry[];
 }
 
 export interface FailingTrackerAlert {

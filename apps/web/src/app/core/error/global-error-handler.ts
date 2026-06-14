@@ -1,6 +1,7 @@
 import { ErrorHandler, Injectable, inject, isDevMode } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ToastService } from '../../shared/ui/toast/toast.service';
+import { activityContext } from '../services/activity-context';
 
 /**
  * V1.10 (Sprint 5 stabilite) — ErrorHandler global pour Tracky.
@@ -29,6 +30,11 @@ let lastErrorMessage: string | null = null;
 let lastErrorAt = 0;
 const DEDUP_WINDOW_MS = 3_000;
 
+// Dedup séparé pour la remontée serveur (évite d'inonder le centre d'alerte).
+let lastReportMessage: string | null = null;
+let lastReportAt = 0;
+const REPORT_DEDUP_MS = 15_000;
+
 @Injectable()
 export class GlobalErrorHandler implements ErrorHandler {
   private readonly toast = inject(ToastService);
@@ -41,6 +47,11 @@ export class GlobalErrorHandler implements ErrorHandler {
       const msg = this.describe(error);
       console.error(`[GlobalErrorHandler] ${msg}`);
     }
+
+    // 1bis. Remonter au backend avec le contexte user/page/session (centre
+    // d'alerte). On ne remonte que les erreurs JS côté client : les
+    // HttpErrorResponse 5xx sont déjà journalisées côté serveur.
+    this.reportToServer(error);
 
     // 2. Filtres : ne pas toaster les erreurs deja gerees ou non actionnables.
     if (this.shouldSkipToast(error)) return;
@@ -58,6 +69,37 @@ export class GlobalErrorHandler implements ErrorHandler {
       'Une erreur est survenue',
       'Recharge la page si le probleme persiste.',
     );
+  }
+
+  /** Remonte une erreur JS client au backend avec le contexte page/session. */
+  private reportToServer(error: unknown): void {
+    // On saute les HttpError (déjà journalisées serveur) et les Abort, et on ne
+    // remonte que si une session est active (authentifié) pour éviter le bruit.
+    if (this.shouldSkipToast(error) || !activityContext.sessionId) return;
+
+    const message = this.describe(error).slice(0, 2000);
+    const now = Date.now();
+    if (lastReportMessage === message && now - lastReportAt < REPORT_DEDUP_MS) return;
+    lastReportMessage = message;
+    lastReportAt = now;
+
+    const payload = {
+      message,
+      stack: error instanceof Error ? error.stack?.slice(0, 6000) : undefined,
+      route: activityContext.route ?? undefined,
+      sessionId: activityContext.sessionId ?? undefined,
+    };
+    try {
+      void fetch('/api/activity/error', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        keepalive: true,
+        body: JSON.stringify(payload),
+      }).catch(() => undefined);
+    } catch {
+      /* best-effort */
+    }
   }
 
   private shouldSkipToast(error: unknown): boolean {

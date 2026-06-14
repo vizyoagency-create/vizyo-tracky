@@ -4,6 +4,7 @@ import { NavigationEnd, Router } from '@angular/router';
 import type { ActivityEventInput } from '@vizyo/tracky-shared';
 import { labelForRoute } from '@vizyo/tracky-shared';
 import { filter, type Subscription } from 'rxjs';
+import { activityContext } from './activity-context';
 import { AuthService } from './auth.service';
 import { VisibilityService } from './visibility.service';
 
@@ -81,6 +82,10 @@ export class ActivityTrackerService {
     this.lastActivityAt = Date.now();
     this.currentRoute = this.router.url;
     this.pageEnterAt = Date.now();
+    // Identifiant de corrélation session (côté client) : attaché aux requêtes
+    // + aux erreurs pour relier une erreur à ce que faisait l'utilisateur.
+    activityContext.sessionId = randomId();
+    activityContext.route = this.currentRoute;
 
     this.push({ type: 'SESSION_START' });
     this.pushHeartbeat(); // pose la route courante côté serveur immédiatement
@@ -120,12 +125,15 @@ export class ActivityTrackerService {
     window.removeEventListener('beforeunload', this.onUnload);
     this.started = false;
     this.currentRoute = null;
+    activityContext.sessionId = null;
+    activityContext.route = null;
   }
 
   private handleNavigation(url: string): void {
     if (url === this.currentRoute) return;
     this.handleNavigationDuration();
     this.currentRoute = url;
+    activityContext.route = url;
     this.pageEnterAt = Date.now();
     this.pushHeartbeat(); // met à jour la route courante côté serveur sans attendre 30s
     this.handleUserActivity();
@@ -209,6 +217,15 @@ export class ActivityTrackerService {
       /* best-effort */
     }
   }
+}
+
+function randomId(): string {
+  try {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  } catch {
+    /* fallback below */
+  }
+  return `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function detectDeviceType(): string {

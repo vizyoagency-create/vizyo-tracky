@@ -62,7 +62,7 @@ export class AdminAlertsController {
         failing: [],
         offline: [],
         pendingCommands: [],
-        errors: { last24h: 0, criticalLastHour: 0, bySource: [], topMessages: [], recentCritical: [] },
+        errors: { last24h: 0, criticalLastHour: 0, bySource: [], topMessages: [], recentCritical: [], recent: [] },
       };
     }
     // SUPER_ADMIN : filtre optionnel via ?fleetId= ; non-super : force sur sa flotte.
@@ -172,20 +172,24 @@ export class AdminAlertsController {
         lastId: m.lastId,
       }));
 
+    const mapError = (e: (typeof errorLogs24h)[number]) => ({
+      id: e.id,
+      level: e.level,
+      source: e.source,
+      message: e.message.split('\n')[0].slice(0, 300),
+      stack: e.stack?.slice(0, 500) ?? null,
+      imei: e.imei,
+      userId: e.userId,
+      context: e.context,
+      createdAt: e.createdAt.toISOString(),
+    });
+
     // Dernières erreurs CRITICAL (10 max).
-    const recentCritical = errorLogs24h
-      .filter((e) => e.level === 'CRITICAL')
-      .slice(0, 10)
-      .map((e) => ({
-        id: e.id,
-        level: e.level,
-        source: e.source,
-        message: e.message.split('\n')[0].slice(0, 300),
-        stack: e.stack?.slice(0, 500) ?? null,
-        imei: e.imei,
-        context: e.context,
-        createdAt: e.createdAt.toISOString(),
-      }));
+    const recentCritical = errorLogs24h.filter((e) => e.level === 'CRITICAL').slice(0, 10).map(mapError);
+
+    // Dernières erreurs toutes catégories (15 max) — pour voir "chez qui" (user,
+    // page, device dans `context`) y compris les erreurs frontend (level ERROR).
+    const recent = errorLogs24h.slice(0, 15).map(mapError);
 
     return {
       summary: {
@@ -245,6 +249,7 @@ export class AdminAlertsController {
         bySource,
         topMessages,
         recentCritical,
+        recent,
       },
     };
   }

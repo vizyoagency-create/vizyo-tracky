@@ -2,6 +2,7 @@ import { HttpErrorResponse, type HttpInterceptorFn } from '@angular/common/http'
 import { inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { catchError, from, switchMap, throwError } from 'rxjs';
+import { activityContext } from '../services/activity-context';
 import { AuthService } from '../services/auth.service';
 import { RealtimeService } from '../services/realtime.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
@@ -34,6 +35,14 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   // n'est pas retire (necessaire pour le WS handshake qui ne supporte pas
   // les cookies cross-origin de maniere fiable), les 2 modes cohabitent.
   req = req.clone({ withCredentials: true });
+
+  // Contexte d'activité (page + session client) : attaché en headers pour que le
+  // backend puisse relier une erreur serveur à « où » et « chez qui ». Même
+  // origine -> pas de preflight CORS, coût nul.
+  const ctxHeaders: Record<string, string> = {};
+  if (activityContext.route) ctxHeaders['X-Current-Route'] = activityContext.route;
+  if (activityContext.sessionId) ctxHeaders['X-Session-Id'] = activityContext.sessionId;
+  if (Object.keys(ctxHeaders).length > 0) req = req.clone({ setHeaders: ctxHeaders });
 
   // Ne pas intercepter les requêtes auth (login, refresh)
   if (req.url.includes('/auth/login') || req.url.includes('/auth/refresh')) {

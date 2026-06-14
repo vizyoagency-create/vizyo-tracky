@@ -391,6 +391,9 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
                         }
                       </div>
                       <div class="text-xs text-fg-secondary mt-1 truncate">{{ e.message }}</div>
+                      @if (who(e); as w) {
+                        <div class="text-[11px] text-amber-300/90 mt-0.5 truncate">👤 {{ w }}</div>
+                      }
                     </div>
                   </button>
                   @if (expandedErrors()[e.id]) {
@@ -405,6 +408,29 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
                         </details>
                       }
                     </div>
+                  }
+                </div>
+              }
+            </div>
+          }
+
+          <!-- Dernières erreurs (toutes catégories) avec "chez qui" -->
+          @if (data()!.errors.recent.length > 0) {
+            <div class="flex flex-col gap-2 mt-2">
+              <div class="text-xs font-semibold text-fg-tertiary uppercase">Dernières erreurs · chez qui</div>
+              @for (e of data()!.errors.recent; track e.id) {
+                <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] px-4 py-2.5">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span class="inline-flex items-center px-1.5 py-0.5 text-[9px] rounded font-mono"
+                          [class]="e.level === 'CRITICAL' ? 'bg-rose-500/10 text-rose-400' : 'bg-amber-500/10 text-amber-400'">{{ e.level }}</span>
+                    <span class="text-[10px] font-mono text-fg-tertiary">{{ e.source }}</span>
+                    <span class="text-[10px] font-mono text-fg-tertiary">{{ e.createdAt | date: 'dd/MM HH:mm:ss' }}</span>
+                  </div>
+                  <div class="text-xs text-fg-secondary mt-1 truncate">{{ e.message }}</div>
+                  @if (who(e); as w) {
+                    <div class="text-[11px] text-amber-300/90 mt-0.5 truncate">👤 {{ w }}</div>
+                  } @else if (e.imei) {
+                    <div class="text-[11px] text-fg-tertiary mt-0.5">📡 {{ e.imei }} · erreur tracker (sans user)</div>
                   }
                 </div>
               }
@@ -633,6 +659,25 @@ export class AdminAlertsComponent implements OnInit {
 
   toggleErrorExpand(id: string): void {
     this.expandedErrors.update((m) => ({ ...m, [id]: !m[id] }));
+  }
+
+  /** Construit la ligne "chez qui · où · device" depuis le contexte d'une erreur. */
+  protected who(e: { context: Record<string, unknown> | null }): string | null {
+    const c = e.context;
+    if (!c) return null;
+    const str = (k: string): string | null => (typeof c[k] === 'string' ? (c[k] as string) : null);
+    const email = str('userEmail');
+    const page = str('page') ?? str('route');
+    const ua = str('userAgent');
+    const device = ua
+      ? /Mobi|Android|iPhone/i.test(ua)
+        ? 'Mobile'
+        : /iPad|Tablet/i.test(ua)
+          ? 'Tablet'
+          : 'Desktop'
+      : null;
+    const parts = [email, page, device].filter((x): x is string => !!x);
+    return parts.length ? parts.join(' · ') : null;
   }
 
   formatDuration(ms: number | null): string {

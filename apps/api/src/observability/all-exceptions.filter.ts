@@ -46,7 +46,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
       message = message.join(', ');
     }
 
-    const user = (req as any).user;
+    const user = (req as any).user as
+      | { id?: string; email?: string; fleetId?: string | null }
+      | undefined;
+    const headers: Record<string, unknown> = req.headers ?? {};
+    const str = (v: unknown, max: number): string | undefined =>
+      typeof v === 'string' ? v.slice(0, max) : undefined;
 
     if (status >= 500 || !(exception instanceof HttpException)) {
       // CRITICAL est reserve aux fautes serveur non maitrisees (exception non geree
@@ -64,6 +69,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
           requestId,
           route: `${req.method} ${req.url}`,
           userId: user?.id,
+          userEmail: user?.email,
+          fleetId: user?.fleetId ?? undefined,
+          // Page frontend + session côté client (headers posés par l'intercepteur).
+          page: str(headers['x-current-route'], 200),
+          sessionId: str(headers['x-session-id'], 60),
+          userAgent: str(headers['user-agent'], 300),
+          ip: req.ip,
           statusCode: status,
         },
         level,

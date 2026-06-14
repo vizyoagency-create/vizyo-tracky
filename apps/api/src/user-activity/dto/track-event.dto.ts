@@ -59,3 +59,36 @@ export class ActivityBatchDto {
   @MaxLength(20)
   deviceType?: string;
 }
+
+/** Erreur frontend remontée par le GlobalErrorHandler. */
+export class ClientErrorDto {
+  @IsString()
+  @MaxLength(2000)
+  message!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(6000)
+  stack?: string;
+
+  /** Page frontend où l'erreur s'est produite. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  route?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  sessionId?: string;
+
+  /** URL de la requête HTTP en cause (si HttpErrorResponse). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  httpUrl?: string;
+
+  @IsOptional()
+  @IsInt()
+  httpStatus?: number;
+}
