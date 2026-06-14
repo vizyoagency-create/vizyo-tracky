@@ -2,12 +2,12 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, OnInit, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
   LucideAngularModule, ArrowLeft, Wifi, WifiOff, Gauge, MapPin, Radio,
   AlertTriangle, AlertCircle, Info, Check, Power, Route, BarChart3, BellOff, Map,
   History, Bell, Zap, Clock, ShieldAlert, ShieldCheck, MessageSquare, Pencil, X,
-  UserRound, UserPlus, Copy, Play,
+  UserRound, UserPlus, Copy, Play, Layers,
 } from 'lucide-angular';
 import type { AlertEvent, DriverDto, TripDto } from '@vizyo/tracky-shared';
 import { isAcceptableLiveFix } from '@vizyo/tracky-shared';
@@ -22,7 +22,9 @@ import { PermissionsService } from '../../core/services/permissions.service';
 import { TrackersApiService } from '../../core/services/trackers.service';
 import { TripsApiService } from '../../core/services/trips.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
+import { VehicleGroupsService, type VehicleGroup } from '../../core/services/vehicle-groups.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
+import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.component';
 import { DriverPickerComponent } from '../../shared/ui/driver-picker/driver-picker.component';
 import { DriverDrawerComponent, type DriverDrawerData, type DriverDrawerResult } from '../drivers/driver-drawer.component';
 import { MiniMapComponent } from '../../shared/ui/mini-map/mini-map.component';
@@ -38,7 +40,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
   selector: 'app-vehicle-detail',
   standalone: true,
   imports: [
-    RouterLink, FormsModule, LucideAngularModule, DatePipe, DecimalPipe,
+    FormsModule, LucideAngularModule, DatePipe, DecimalPipe, GroupBadgeComponent,
     MiniMapComponent, EngineControlButtonComponent, CommandsPanelComponent,
     VehicleScheduleComponent, VehicleReportsTabComponent, DriverPickerComponent, DriverDrawerComponent, SurveillancePanelComponent, TripReplayComponent,
   ],
@@ -52,11 +54,12 @@ import { relativeTime } from '../../shared/utils/relative-time';
         <!-- Header -->
         <div class="flex items-start justify-between gap-3 flex-wrap">
           <div class="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
-            <a routerLink="/dashboard" class="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-xl
+            <button type="button" (click)="goBack()" aria-label="Retour"
+                class="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-xl
                 bg-bg-secondary border border-border-subtle text-fg-tertiary
                 hover:text-fg-primary transition-colors cursor-pointer shrink-0">
               <lucide-icon [img]="ArrowLeft" [size]="20"></lucide-icon>
-            </a>
+            </button>
             <div class="min-w-0">
               <h1 class="text-2xl sm:text-3xl font-display font-bold text-fg-primary truncate">{{ v.plate }}</h1>
               <p class="text-xs sm:text-sm text-fg-tertiary truncate">
@@ -64,6 +67,16 @@ import { relativeTime } from '../../shared/utils/relative-time';
                 @if (v.year) { · {{ v.year }} }
                 @if (v.color) { · {{ v.color }} }
               </p>
+              <!-- Sprint 1 — Groupe du véhicule + assignation -->
+              <div class="flex items-center gap-2 mt-1.5 flex-wrap">
+                <app-group-badge [group]="v.group" [showEmpty]="true" />
+                @if (canManageGroups()) {
+                  <button type="button" (click)="openGroupPicker()"
+                          class="text-[11px] font-semibold text-tracky-light hover:underline cursor-pointer">
+                    {{ v.group ? 'Changer' : 'Assigner' }}
+                  </button>
+                }
+              </div>
             </div>
           </div>
 
@@ -80,6 +93,57 @@ import { relativeTime } from '../../shared/utils/relative-time';
             />
           }
         </div>
+
+        <!-- Sprint 1 — Sélecteur de groupe (assignation depuis le détail) -->
+        @if (groupPickerOpen()) {
+          <div class="fixed inset-0 z-[9000] flex items-center justify-center p-4">
+            <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" (click)="groupPickerOpen.set(false)"></div>
+            <div class="relative w-full max-w-sm bg-bg-primary border border-border-subtle rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+              <div class="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
+                <div class="flex items-center gap-2">
+                  <lucide-icon [img]="LayersIcon" [size]="16" class="text-fg-tertiary"></lucide-icon>
+                  <h3 class="text-sm font-bold text-fg-primary">Groupe du véhicule</h3>
+                </div>
+                <button (click)="groupPickerOpen.set(false)" aria-label="Fermer"
+                        class="p-1 rounded-lg text-fg-tertiary hover:text-fg-primary hover:bg-bg-tertiary cursor-pointer">
+                  <lucide-icon [img]="XIcon" [size]="16"></lucide-icon>
+                </button>
+              </div>
+              @if (groups().length > 6) {
+                <div class="px-3 pt-3">
+                  <input type="text" [ngModel]="groupSearch()" (ngModelChange)="groupSearch.set($event)"
+                         placeholder="Rechercher un groupe..."
+                         class="w-full px-3 py-2 rounded-xl bg-bg-secondary border border-border-subtle text-fg-primary text-sm placeholder:text-fg-tertiary focus:outline-none focus:border-[var(--tracky)]" />
+                </div>
+              }
+              <div class="flex-1 overflow-y-auto p-2">
+                <button type="button" (click)="setGroup(null)" [disabled]="groupSaving()"
+                        class="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-left text-sm hover:bg-bg-tertiary cursor-pointer disabled:opacity-50"
+                        [class.bg-bg-tertiary]="!vehicle()?.group">
+                  <span class="flex-1 text-fg-tertiary italic">Aucun (retirer du groupe)</span>
+                  @if (!vehicle()?.group) { <lucide-icon [img]="Check" [size]="15" class="text-tracky-light"></lucide-icon> }
+                </button>
+                @for (g of filteredGroups(); track g.id) {
+                  <button type="button" (click)="setGroup(g.id)" [disabled]="groupSaving()"
+                          class="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-left text-sm hover:bg-bg-tertiary cursor-pointer disabled:opacity-50"
+                          [class.bg-bg-tertiary]="vehicle()?.group?.id === g.id">
+                    <lucide-icon [img]="LayersIcon" [size]="14" class="text-fg-tertiary shrink-0"></lucide-icon>
+                    <span class="flex-1 text-fg-primary truncate">{{ g.name }}</span>
+                    <span class="text-[10px] text-fg-tertiary tabular-nums">{{ g._count.vehicles }}</span>
+                    @if (vehicle()?.group?.id === g.id) { <lucide-icon [img]="Check" [size]="15" class="text-tracky-light"></lucide-icon> }
+                  </button>
+                }
+                @if (groupsLoading()) {
+                  <div class="flex justify-center py-6"><span class="w-5 h-5 border-2 border-fg-tertiary border-t-tracky-light rounded-full animate-spin"></span></div>
+                } @else if (groups().length === 0) {
+                  <p class="px-3 py-6 text-center text-xs text-fg-tertiary">Aucun groupe dans cette flotte.<br/>Crée-en depuis Véhicules › Groupes.</p>
+                } @else if (filteredGroups().length === 0) {
+                  <p class="px-3 py-6 text-center text-xs text-fg-tertiary">Aucun groupe ne correspond.</p>
+                }
+              </div>
+            </div>
+          </div>
+        }
 
         <!-- V1.7 — Reglage materiel ACC (SUPER_ADMIN only) -->
         @if (isSuperAdmin() && v.tracker) {
@@ -1300,8 +1364,23 @@ export class VehicleDetailComponent implements OnInit {
   private readonly perms = inject(PermissionsService);
   private readonly auth = inject(AuthService);
   private readonly toast = inject(ToastService);
+  private readonly vehicleGroups = inject(VehicleGroupsService);
 
   protected readonly vehicle = signal<VehicleDetailDto | null>(null);
+  // Sprint 1 (Fondation Groupes) — assignation de groupe depuis le détail.
+  protected readonly groups = signal<VehicleGroup[]>([]);
+  protected readonly groupsLoading = signal(false);
+  protected readonly groupPickerOpen = signal(false);
+  protected readonly groupSaving = signal(false);
+  protected readonly groupSearch = signal('');
+  protected readonly filteredGroups = computed(() => {
+    const q = this.groupSearch().trim().toLowerCase();
+    const list = this.groups();
+    return q ? list.filter((g) => g.name.toLowerCase().includes(q)) : list;
+  });
+  // Sprint 1 — contexte de retour rapide (d'où vient l'utilisateur).
+  private readonly backFrom = signal<string | null>(null);
+  private readonly backGroup = signal<string | null>(null);
   protected readonly recentPositions = signal<PositionDto[]>([]);
   protected readonly alerts = signal<AlertEvent[]>([]);
   protected readonly commands = signal<EngineControlCommandDto[]>([]);
@@ -1353,6 +1432,7 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly isSuperAdmin = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
 
   protected readonly ArrowLeft = ArrowLeft;
+  protected readonly LayersIcon = Layers;
   protected readonly Wifi = Wifi;
   protected readonly WifiOff = WifiOff;
   protected readonly Gauge = Gauge;
@@ -1687,8 +1767,13 @@ export class VehicleDetailComponent implements OnInit {
   }
 
   async ngOnInit(): Promise<void> {
+    // Sprint 1 — contexte de retour rapide (depuis la vue groupée notamment).
+    const qp = this.route.snapshot.queryParams;
+    this.backFrom.set(qp['from'] ?? null);
+    this.backGroup.set(qp['group'] ?? null);
+
     const id = this.route.snapshot.params['id'];
-    if (!id) { this.router.navigate(['/dashboard']); return; }
+    if (!id) { this.router.navigate(['/vehicles']); return; }
     await this.loadAll(id);
   }
 
@@ -1721,9 +1806,63 @@ export class VehicleDetailComponent implements OnInit {
       this.vehicleTrips.set((tripsRes as any).items ?? []);
     } catch (err) {
       this.toast.error('Erreur de chargement', err instanceof HttpErrorResponse ? err.error?.message : String(err));
-      this.router.navigate(['/dashboard']);
+      this.router.navigate(['/vehicles']);
     } finally {
       this.loading.set(false);
+    }
+  }
+
+  // --- Sprint 1 (Fondation Groupes) — groupe & retour rapide ---
+
+  protected canManageGroups(): boolean {
+    return this.perms.can('groups_manage');
+  }
+
+  protected async openGroupPicker(): Promise<void> {
+    this.groupSearch.set('');
+    this.groupPickerOpen.set(true);
+    if (this.groups().length === 0) {
+      this.groupsLoading.set(true);
+      try {
+        this.groups.set(await this.vehicleGroups.list());
+      } catch {
+        this.toast.error('Erreur', 'Impossible de charger les groupes.');
+      } finally {
+        this.groupsLoading.set(false);
+      }
+    }
+  }
+
+  /** Assigne (ou retire si null) le groupe du véhicule. Optimiste + rollback. */
+  protected async setGroup(groupId: string | null): Promise<void> {
+    const v = this.vehicle();
+    if (!v) return;
+    const previous = v.group ?? null;
+    const target = groupId ? this.groups().find((g) => g.id === groupId) ?? null : null;
+    if ((previous?.id ?? null) === (target?.id ?? null)) { this.groupPickerOpen.set(false); return; }
+
+    // Maj optimiste immédiate de l'affichage.
+    this.vehicle.set({ ...v, group: target ? { id: target.id, name: target.name } : null });
+    this.groupSaving.set(true);
+    try {
+      const updated = await firstValueFrom(this.vehiclesApi.setGroup(v.id, groupId));
+      this.vehicle.set(updated);
+      this.groupPickerOpen.set(false);
+      this.toast.success(groupId ? 'Groupe mis à jour' : 'Retiré du groupe', target?.name);
+    } catch (err) {
+      this.vehicle.set({ ...v, group: previous }); // rollback
+      this.toast.error('Échec', err instanceof HttpErrorResponse ? err.error?.message : 'Impossible de changer le groupe.');
+    } finally {
+      this.groupSaving.set(false);
+    }
+  }
+
+  /** Retour rapide contextuel : vers la liste (mode groupé conservé via préférences). */
+  protected goBack(): void {
+    if (this.backFrom() === 'grouped') {
+      this.router.navigate(['/vehicles'], { queryParams: { group: this.backGroup() || null } });
+    } else {
+      this.router.navigate(['/vehicles']);
     }
   }
 
