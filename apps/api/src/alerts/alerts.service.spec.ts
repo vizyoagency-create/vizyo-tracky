@@ -182,4 +182,30 @@ describe('AlertsService', () => {
     const result = await service.countUnacknowledged(admin);
     expect(result).toEqual({ total: 10, critical: 2 });
   });
+
+  // 11. #6 — surveillanceEvent.create échoue → l'alerte CRITICAL est quand même diffusée
+  it('should still broadcast a CRITICAL surveillance alert when the audit event write fails', async () => {
+    prisma.surveillanceProfile.findUnique.mockResolvedValue({
+      id: 'profile-1',
+      vehicleId: VEHICLE_ID,
+      fleetId: FLEET_ID,
+      currentlyArmed: true,
+      triggerVibration: true,
+      triggerMovement: false,
+      triggerDoor: false,
+    });
+    // L'event d'audit échoue (timeout DB, FK...) : ne doit PAS bloquer le broadcast.
+    prisma.surveillanceEvent.create.mockRejectedValue(new Error('DB timeout'));
+
+    const result = await service.createFromCobanFrame(makeFrame('vibration'), tracker as any);
+
+    expect(result).not.toBeNull();
+    expect(prisma.alert.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ severity: 'CRITICAL', type: 'SURVEILLANCE_TRIGGERED' }),
+      }),
+    );
+    // Point clé : malgré l'échec de l'audit, l'alerte de vol a bien été diffusée.
+    expect(gateway.broadcastAlert).toHaveBeenCalled();
+  });
 });

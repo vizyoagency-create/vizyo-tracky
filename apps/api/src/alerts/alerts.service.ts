@@ -95,18 +95,27 @@ export class AlertsService {
     // direct via Prisma pour éviter la dépendance circulaire AlertsModule ⇄
     // SurveillanceModule (SurveillanceService.recordTrigger fait exactement ça).
     if (surveillanceTrigger && profile) {
-      await this.prisma.surveillanceEvent.create({
-        data: {
-          profileId: profile.id,
-          vehicleId: profile.vehicleId,
-          fleetId: profile.fleetId,
-          alertId: alert.id,
-          trigger: surveillanceTrigger,
-          latitude: frame.latitude ?? null,
-          longitude: frame.longitude ?? null,
-          speedKmh: frame.speedKph ?? null,
-        },
-      });
+      // Best-effort (audit #6) : l'event de surveillance est un AUDIT. Son echec
+      // (timeout DB, FK, contrainte...) ne doit JAMAIS empecher le broadcast WS +
+      // le dispatch externe d'une alerte CRITICAL (vol). On loggue et on continue.
+      await this.prisma.surveillanceEvent
+        .create({
+          data: {
+            profileId: profile.id,
+            vehicleId: profile.vehicleId,
+            fleetId: profile.fleetId,
+            alertId: alert.id,
+            trigger: surveillanceTrigger,
+            latitude: frame.latitude ?? null,
+            longitude: frame.longitude ?? null,
+            speedKmh: frame.speedKph ?? null,
+          },
+        })
+        .catch((err) => {
+          this.logger.error(
+            `surveillanceEvent.create a echoue pour l'alerte ${alert.id} (broadcast/dispatch maintenus): ${err instanceof Error ? err.message : err}`,
+          );
+        });
     }
 
     this.gateway.broadcastAlert(alert);
