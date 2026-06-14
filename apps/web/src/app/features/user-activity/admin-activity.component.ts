@@ -1,4 +1,4 @@
-import { DatePipe, DecimalPipe } from '@angular/common';
+import { DatePipe } from '@angular/common';
 import { Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import type {
@@ -16,7 +16,7 @@ type Period = '24h' | '7d' | '30d';
 @Component({
   selector: 'app-admin-activity',
   standalone: true,
-  imports: [DatePipe, DecimalPipe, RouterLink, LucideAngularModule],
+  imports: [DatePipe, RouterLink, LucideAngularModule],
   template: `
     <div class="flex flex-col gap-5">
       <!-- Header -->
