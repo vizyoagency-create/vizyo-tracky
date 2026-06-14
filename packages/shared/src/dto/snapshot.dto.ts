@@ -41,6 +41,12 @@ export interface VehicleSnapshotDto {
 
   /** V1.7 — true si un schedule horaire est actif sur ce véhicule. */
   scheduleEnabled: boolean;
+
+  /**
+   * Sprint 1 (Fondation Groupes) — groupe (unique) du véhicule, ou null si sans
+   * groupe. Optionnel pour la backward-compat des consommateurs existants.
+   */
+  group?: { id: string; name: string } | null;
 }
 
 export interface FleetSnapshotResponse {
