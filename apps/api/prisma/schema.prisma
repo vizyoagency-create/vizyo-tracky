@@ -948,7 +948,11 @@ model EngineControlCommand {
   status      CommandStatus @default(PENDING)
   reason      String?
   requestedBy String        @db.Uuid
-  source      String        @default("MANUAL") // "MANUAL" | "SCHEDULER"
+  source      String        @default("MANUAL") // "MANUAL" | "SCHEDULER" | "DEVICE_OBSERVED"
+  // Sprint 2 (Fiabilisation) — true si une chute d'ignition est attendable comme
+  // preuve reelle de coupure (CUT d'un vehicule en marche). false pour RESTORE ou
+  // CUT a l'arret => etat affiche "non verifiable" (pas de transition observable).
+  confirmationExpected Boolean @default(false)
   lastError   String?
   sentAt      DateTime?
   ackedAt     DateTime?
