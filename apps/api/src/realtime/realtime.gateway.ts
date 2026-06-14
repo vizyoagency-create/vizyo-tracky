@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common';
+import { Interval } from '@nestjs/schedule';
 import {
   OnGatewayConnection,
   OnGatewayDisconnect,
@@ -10,6 +11,7 @@ import { WS_EVENTS } from '@vizyo/tracky-shared';
 import type { Alert, Vehicle, Tracker } from '@prisma/client';
 import { Server, Socket } from 'socket.io';
 import { AuthService } from '../auth/auth.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 // V1.10 (Sprint 6) — Le Redis adapter est branche au niveau IoAdapter custom
 // dans main.ts (RedisIoAdapter). Plus de hook afterInit ici : la signature
@@ -27,7 +29,10 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   @WebSocketServer()
   server!: Server;
 
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   async handleConnection(client: Socket): Promise<void> {
     try {
@@ -40,6 +45,10 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
       const payload = this.auth.verifyAccessToken(token);
       const localUser = await this.auth.resolveLocalUser(payload.sub);
+
+      // #13 — memorise l'userId sur la socket pour la revalidation periodique
+      // (un user suspendu/supprime ne doit pas continuer a recevoir le live).
+      (client.data as { userId?: string }).userId = localUser.id;
 
       if (localUser.role === 'SUPER_ADMIN') {
         client.join('fleet:*');
@@ -58,6 +67,49 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   handleDisconnect(client: Socket): void {
     this.logger.debug(`Client disconnected: ${client.id}`);
+  }
+
+  /**
+   * #13 — Revalidation periodique des connexions WS. L'auth n'etait verifiee QU'au
+   * handshake : un user SUSPENDU (isActive=false) ou SUPPRIME continuait de recevoir
+   * le live de sa flotte tant que sa socket tenait. Toutes les 60s on coupe les
+   * sockets dont l'user n'est plus actif (1 requete DB sur les userIds connectes,
+   * en local a cette instance).
+   *
+   * Choix delibere : on NE deconnecte PAS sur simple expiration du token. L'user
+   * reste legitime ; le forcer a se reconnecter a chaque TTL creerait du churn et
+   * de faux incidents "connexion temps reel interrompue". La revocation d'acces se
+   * traduit par isActive=false (gere ici) ou la suppression du compte.
+   */
+  @Interval(60_000)
+  async revalidateConnections(): Promise<void> {
+    const ns = this.server as unknown as { sockets?: Map<string, Socket> };
+    const sockets = ns.sockets;
+    if (!sockets || sockets.size === 0) return;
+
+    const byUser = new Map<string, Socket[]>();
+    for (const [, socket] of sockets) {
+      const userId = (socket.data as { userId?: string } | undefined)?.userId;
+      if (!userId) continue;
+      const list = byUser.get(userId) ?? [];
+      list.push(socket);
+      byUser.set(userId, list);
+    }
+    if (byUser.size === 0) return;
+
+    const activeUsers = await this.prisma.user.findMany({
+      where: { id: { in: [...byUser.keys()] }, isActive: true },
+      select: { id: true },
+    });
+    const stillActive = new Set(activeUsers.map((u) => u.id));
+
+    for (const [userId, userSockets] of byUser) {
+      if (stillActive.has(userId)) continue;
+      for (const socket of userSockets) {
+        this.logger.warn(`Revalidation WS: deconnexion ${socket.id} (user ${userId} inactif/supprime)`);
+        socket.disconnect();
+      }
+    }
   }
 
   /**
