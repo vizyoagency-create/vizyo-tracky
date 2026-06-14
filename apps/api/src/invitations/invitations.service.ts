@@ -15,7 +15,7 @@ import { AuthClientService } from '../auth-client/auth-client.service';
 import type { Env } from '../config/env.validation';
 import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { getDefaultPermissions } from '../users/default-permissions';
+import { clampPermissions, getDefaultPermissions } from '../users/default-permissions';
 
 /**
  * V1.5 (Sprint J) — Workflow d'invitation utilisateur.
@@ -120,7 +120,15 @@ export class InvitationsService {
     const tokenHash = this.hashToken(rawToken);
     const expiresAt = new Date(Date.now() + TOKEN_TTL_SECONDS * 1000);
 
-    const invPermissions = params.permissions ?? getDefaultPermissions(params.role);
+    // Securite (audit critique) — clamp des permissions a l'intersection avec
+    // celles de l'inviteur : un inviteur ne peut JAMAIS accorder une capacite
+    // qu'il n'a pas (anti-escalade via compte-pantin). SUPER_ADMIN/FLEET_ADMIN
+    // = bypass (toutes permissions). Cf. clampPermissions (lot 5, desormais fait).
+    const invPermissions = clampPermissions(
+      params.permissions,
+      inviter,
+      getDefaultPermissions(params.role),
+    );
 
     const invitation = await this.prisma.invitation.create({
       data: {
@@ -384,7 +392,13 @@ export class InvitationsService {
     const updateData: Prisma.InvitationUpdateInput = {};
     if (data.fleetId !== undefined) updateData.fleetId = data.fleetId;
     if (data.role !== undefined) updateData.role = data.role;
-    if (data.permissions !== undefined) updateData.permissions = data.permissions as unknown as Prisma.JsonObject;
+    if (data.permissions !== undefined) {
+      // Clamp anti-escalade (idem create) : borne aux permissions de l'inviteur.
+      // `null` (= reset vers les defauts du role a l'accept) est preserve tel quel.
+      updateData.permissions = (data.permissions
+        ? clampPermissions(data.permissions, inviter, getDefaultPermissions(targetRole))
+        : data.permissions) as unknown as Prisma.JsonObject;
+    }
 
     return this.prisma.invitation.update({
       where: { id: invitationId },

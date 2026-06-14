@@ -13,7 +13,7 @@ import type { Env } from '../config/env.validation';
 import { EmailService } from '../email/email.service';
 import { InvitationsService } from '../invitations/invitations.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { getDefaultPermissions } from './default-permissions';
+import { clampPartialPermissions, clampPermissions, getDefaultPermissions } from './default-permissions';
 import { CreateInvitationDto } from './dto/create-invitation.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import {
@@ -440,7 +440,9 @@ export class UsersController {
         ...(dto.lastName !== undefined ? { lastName: dto.lastName } : {}),
         ...(dto.role !== undefined ? { role: dto.role } : {}),
         ...(roleChanged ? { permissions: getDefaultPermissions(dto.role!) as unknown as Prisma.JsonObject } : {}),
-        ...(dto.permissions !== undefined && !roleChanged ? { permissions: dto.permissions as unknown as Prisma.JsonObject } : {}),
+        ...(dto.permissions !== undefined && !roleChanged
+          ? { permissions: clampPermissions(dto.permissions, req.user, getDefaultPermissions(user.role)) as unknown as Prisma.JsonObject }
+          : {}),
         ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
         ...fleetIdUpdate,
       },
@@ -634,7 +636,9 @@ export class UsersController {
           accessType: e.type as AccessType,
           groupId: e.type === 'GROUP' ? e.groupId : null,
           vehicleId: e.type === 'VEHICLE' ? e.vehicleId : null,
-          permissions: (e.permissions ?? null) as unknown as Prisma.InputJsonValue,
+          permissions: (e.permissions
+            ? clampPartialPermissions(e.permissions, req.user)
+            : null) as unknown as Prisma.InputJsonValue,
         })),
       }),
     ]);
@@ -691,7 +695,7 @@ export class UsersController {
     // 3. Update permissions JSON
     const updated = await this.prisma.userVehicleAccess.update({
       where: { id: accessId },
-      data: { permissions: dto.permissions as unknown as Prisma.InputJsonValue },
+      data: { permissions: clampPartialPermissions(dto.permissions, req.user) as unknown as Prisma.InputJsonValue },
       select: {
         id: true, accessType: true, groupId: true, vehicleId: true,
         permissions: true, createdAt: true, updatedAt: true,

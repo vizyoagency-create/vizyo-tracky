@@ -120,10 +120,87 @@ export function getDefaultPermissions(role: UserRoleSlug): UserPermissions {
     case 'FLEET_ADMIN':
     case 'SUPER_ADMIN':
       return { ...ADMIN_DEFAULTS };
+    default:
+      // Role inconnu/absent : on retombe sur le set le plus restrictif.
+      return { ...VIEWER_DEFAULTS };
   }
 }
 
 export const PERMISSION_KEYS = Object.keys(VIEWER_DEFAULTS) as (keyof UserPermissions)[];
+
+/**
+ * Permissions effectives d'un "granter" (inviteur / editeur) pour borner ce
+ * qu'il peut accorder a autrui. SUPER_ADMIN et FLEET_ADMIN sont privilegies
+ * (bypass = toutes permissions true). Les autres roles partent de leurs defauts
+ * de role, surcharges par leur set explicite (User.permissions).
+ */
+export function effectiveGranterPermissions(granter: {
+  role: UserRoleSlug;
+  permissions?: Partial<UserPermissions> | null;
+}): UserPermissions {
+  if (granter.role === 'SUPER_ADMIN' || granter.role === 'FLEET_ADMIN') {
+    return { ...ADMIN_DEFAULTS };
+  }
+  const out = getDefaultPermissions(granter.role);
+  const explicit = granter.permissions;
+  if (explicit) {
+    for (const key of PERMISSION_KEYS) {
+      if (typeof explicit[key] === 'boolean') {
+        out[key] = explicit[key] as boolean;
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Borne (clamp) un set de permissions demande pour qu'AUCUNE permission ne
+ * depasse ce que le granter detient lui-meme. Invariant de securite : un
+ * inviteur/editeur ne peut jamais accorder une capacite qu'il n'a pas — ce qui
+ * empeche l'escalade de privileges via un compte-pantin (ex: un FLEET_MANAGER
+ * sans engine_control qui inviterait un VIEWER avec engine_control=true).
+ *
+ * `requested` peut etre partiel ou non-fiable (corps de requete) : les cles
+ * absentes retombent sur `fallback` (typiquement les defauts du role cible),
+ * puis l'ensemble est borne au granter. Renvoie un UserPermissions exhaustif.
+ */
+export function clampPermissions(
+  requested: Partial<UserPermissions> | null | undefined,
+  granter: { role: UserRoleSlug; permissions?: Partial<UserPermissions> | null },
+  fallback: UserPermissions,
+): UserPermissions {
+  const granterPerms = effectiveGranterPermissions(granter);
+  const out = {} as UserPermissions;
+  for (const key of PERMISSION_KEYS) {
+    const wanted =
+      requested && typeof requested[key] === 'boolean'
+        ? (requested[key] as boolean)
+        : fallback[key];
+    out[key] = wanted && granterPerms[key];
+  }
+  return out;
+}
+
+/**
+ * Variante "partielle" du clamp, pour les overrides par scope
+ * (UserVehicleAccess.permissions). Ne touche QUE les cles presentes dans
+ * `requested` — preserve la semantique d'heritage (cle absente = herite, on ne
+ * la materialise pas) — et borne chaque cle presente aux permissions du granter
+ * (anti-escalade). Pas de `fallback` : ne depend donc pas du role cible.
+ */
+export function clampPartialPermissions(
+  requested: Partial<UserPermissions>,
+  granter: { role: UserRoleSlug; permissions?: Partial<UserPermissions> | null },
+): Partial<UserPermissions> {
+  const granterPerms = effectiveGranterPermissions(granter);
+  const out: Partial<UserPermissions> = {};
+  for (const key of PERMISSION_KEYS) {
+    if (typeof requested[key] === 'boolean') {
+      out[key] = (requested[key] as boolean) && granterPerms[key];
+    }
+  }
+  return out;
+}
 
 export interface PermissionLabel {
   group: string;
