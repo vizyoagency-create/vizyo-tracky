@@ -352,4 +352,80 @@ describe('TripsService — invariants rapports', () => {
       expect(day0.maxSpeed).toBe(250);
     });
   });
+
+  describe('audit fixes', () => {
+    it('does not open two trips for concurrent confirming positions (#5)', async () => {
+      const { svc, prisma } = buildService();
+      let createCalls = 0;
+      let resolveCreate!: () => void;
+      (prisma.trip as any).create = (args: { data: AnyObj }) => {
+        createCalls++;
+        return new Promise((res) => {
+          resolveCreate = () => res({ id: 'trip-concurrent', ...args.data });
+        });
+      };
+
+      // 1) Pose le candidat (1re position en mouvement).
+      await svc.processPosition(pos({ minute: 0, speedKmh: 30 }));
+      // 2) Deux positions confirmantes lancees SANS await entre les deux -> le
+      //    second appel s'execute pendant que le premier est suspendu sur `create`.
+      const p1 = svc.processPosition(pos({ minute: 0, second: 30, speedKmh: 30 }));
+      const p2 = svc.processPosition(pos({ minute: 0, second: 31, speedKmh: 30 }));
+      resolveCreate();
+      await Promise.all([p1, p2]);
+
+      // Le claim synchrone garantit UN SEUL trip cree malgre la concurrence.
+      expect(createCalls).toBe(1);
+      expect((svc as any).openTrips.size).toBe(1);
+    });
+
+    it('recompute does not drop a live trip that started after the window (#16)', async () => {
+      const { svc, prisma } = buildService();
+      prisma.vehicles.set(VEHICLE_ID, {
+        id: VEHICLE_ID, fleetId: FLEET_ID, currentDriverId: null, tracker: { id: TRACKER_ID },
+      });
+      // Trip live demarre MAINTENANT (donc hors fenetre de recompute, dans le passe).
+      (svc as any).openTrips.set(TRACKER_ID, {
+        tripId: 'live-1', trackerId: TRACKER_ID, startedAt: new Date(),
+      });
+
+      await svc.recompute(
+        { userId: 'u', role: 'SUPER_ADMIN' as any, fleetId: FLEET_ID },
+        { vehicleId: VEHICLE_ID, from: '2026-01-01T08:00:00Z', to: '2026-01-01T09:00:00Z' },
+      );
+
+      // L'etat live hors fenetre ne doit PAS avoir ete supprime (sinon orphelin).
+      expect((svc as any).openTrips.get(TRACKER_ID)).toBeDefined();
+    });
+
+    it('recovery skips open trips without trackerId instead of colliding on key "" (#30)', async () => {
+      const prisma = new FakePrisma();
+      const openTrip = (id: string, trackerId: string | null, vehicleId: string) => ({
+        id, trackerId, vehicleId, fleetId: FLEET_ID, startedAt: new Date(),
+        startLat: 0, startLng: 0, endLat: null, endLng: null,
+        distanceMeters: 0, maxSpeed: 0, avgSpeed: 0, positionCount: 0, vehicle: null,
+      });
+      (prisma.trip as any).findMany = async () => [
+        openTrip('t1', null, VEHICLE_ID),
+        openTrip('t2', null, 'veh-2'),
+        openTrip('t3', TRACKER_ID, VEHICLE_ID),
+      ];
+      const svc = new TripsService(
+        prisma as any, new FakeGateway() as any, new TripSegmenterService(), new FakeMapMatching() as any,
+      );
+      await svc.onModuleInit();
+
+      // Les 2 trips sans trackerId sont ignores (pas de collision sur ''), seul t3 charge.
+      expect((svc as any).openTrips.has('')).toBe(false);
+      expect((svc as any).openTrips.get(TRACKER_ID)?.tripId).toBe('t3');
+      expect((svc as any).openTrips.size).toBe(1);
+    });
+
+    it('list and dailySummary fail closed for a non-super user without fleetId (#31)', async () => {
+      const { svc } = buildService();
+      const noFleet = { userId: 'u', role: 'VIEWER' as any, fleetId: null };
+      expect(await svc.list(noFleet, {})).toEqual({ items: [], nextCursor: null });
+      expect(await svc.dailySummary(noFleet, {})).toEqual([]);
+    });
+  });
 });

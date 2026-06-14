@@ -105,9 +105,17 @@ export class TripsService implements OnModuleInit {
     });
 
     for (const trip of openDbTrips) {
-      this.openTrips.set(trip.trackerId ?? '', {
+      // #30 — un trip ouvert sans trackerId ne peut pas etre suivi en live (les
+      // trames arrivent par IMEI -> trackerId). On l'ignore au lieu de le keyer
+      // sur '' : sinon plusieurs trips sans tracker collisionnent sur la cle '' et
+      // tous sauf un perdent leur etat live (orphelins jamais clotures).
+      if (!trip.trackerId) {
+        this.logger.warn(`Trip recovery: trip ${trip.id} sans trackerId ignore (non suivi en live)`);
+        continue;
+      }
+      this.openTrips.set(trip.trackerId, {
         tripId: trip.id,
-        trackerId: trip.trackerId ?? '',
+        trackerId: trip.trackerId,
         vehicleId: trip.vehicleId,
         fleetId: trip.fleetId ?? '',
         startedAt: trip.startedAt,
@@ -127,7 +135,7 @@ export class TripsService implements OnModuleInit {
     }
 
     this.ready = true;
-    this.logger.log(`Trip recovery: ${openDbTrips.length} open trips loaded`);
+    this.logger.log(`Trip recovery: ${this.openTrips.size}/${openDbTrips.length} open trips loaded`);
   }
 
   async processPosition(data: {
@@ -271,20 +279,17 @@ export class TripsService implements OnModuleInit {
     speedKmh: number;
     vehiclePlate?: string;
   }): Promise<void> {
-    const trip = await this.prisma.trip.create({
-      data: {
-        vehicleId: data.vehicleId,
-        trackerId: data.trackerId,
-        fleetId: data.fleetId,
-        startedAt: data.timestamp,
-        startLat: data.lat,
-        startLng: data.lng,
-      },
-    });
+    // #5 — claim SYNCHRONE du slot AVANT tout await, pour empecher l'ouverture de
+    // deux trips concurrents pour le meme tracker (burst de positions store-and-
+    // forward). processPosition n'a aucun await entre la lecture de l'etat et
+    // l'appel a startTrip ; en posant l'etat ici avant `await create`, une autre
+    // position du meme burst verra ce placeholder et ira dans la branche "trip en
+    // cours" au lieu de redemarrer un second trip.
+    if (this.openTrips.has(data.trackerId)) return;
 
     const initSpeed = sanitizeSpeed(data.speedKmh);
-    this.openTrips.set(data.trackerId, {
-      tripId: trip.id,
+    const state: OpenTripState = {
+      tripId: '', // patche apres la creation DB
       trackerId: data.trackerId,
       vehicleId: data.vehicleId,
       fleetId: data.fleetId,
@@ -301,7 +306,34 @@ export class TripsService implements OnModuleInit {
       polyPoints: [{ lat: data.lat, lng: data.lng }],
       zeroSpeedSince: null,
       vehiclePlate: data.vehiclePlate,
-    });
+    };
+    this.openTrips.set(data.trackerId, state);
+
+    let trip;
+    try {
+      trip = await this.prisma.trip.create({
+        data: {
+          vehicleId: data.vehicleId,
+          trackerId: data.trackerId,
+          fleetId: data.fleetId,
+          startedAt: data.timestamp,
+          startLat: data.lat,
+          startLng: data.lng,
+        },
+      });
+    } catch (err) {
+      // Echec creation -> libere le slot reserve (s'il est toujours le notre).
+      if (this.openTrips.get(data.trackerId) === state) {
+        this.openTrips.delete(data.trackerId);
+      }
+      throw err;
+    }
+
+    // Patche le tripId reel sur l'etat reserve (s'il est toujours le notre : une
+    // cloture pendant la creation a pu le retirer entre-temps).
+    if (this.openTrips.get(data.trackerId) === state) {
+      state.tripId = trip.id;
+    }
 
     const event: TripStartedEvent = {
       tripId: trip.id,
@@ -317,6 +349,11 @@ export class TripsService implements OnModuleInit {
   }
 
   private async finalizeTrip(state: OpenTripState, endTime: Date, source: string): Promise<void> {
+    // #5 — trip encore en cours de creation (placeholder, tripId pas encore patche)
+    // : ne pas le clore maintenant (l'update viserait id='' -> P2025). On le laisse
+    // dans openTrips ; il sera clos par une position suivante / le cron une fois le
+    // tripId pose.
+    if (!state.tripId) return;
     // Anti-race / idempotence (Sprint 0.1) : on "claim" le trip en retirant l'état
     // AVANT tout await. Un burst de positions (store-and-forward rejoué à la
     // reconnexion d'un boîtier qui flappe) ou le cron checkTimeouts pouvait
@@ -465,6 +502,9 @@ export class TripsService implements OnModuleInit {
   ): Promise<{ items: Trip[]; nextCursor: string | null }> {
     const where: Prisma.TripWhereInput = { endedAt: { not: null } };
     if (requestedBy.role !== UserRole.SUPER_ADMIN) {
+      // #31 — fail-closed : un non-super sans fleetId ne voit AUCUN trajet (sinon
+      // where.fleetId=null exposerait les trajets a fleetId null). Idem findOne().
+      if (!requestedBy.fleetId) return { items: [], nextCursor: null };
       where.fleetId = requestedBy.fleetId;
     }
     // Filtrage par accès véhicules
@@ -573,7 +613,10 @@ export class TripsService implements OnModuleInit {
     filters: { vehicleId?: string; from?: string; to?: string },
   ): Promise<Array<{ date: string; tripCount: number; totalDistanceMeters: number; totalDurationSeconds: number; maxSpeed: number }>> {
     const where: Prisma.TripWhereInput = { endedAt: { not: null } };
-    if (requestedBy.role !== UserRole.SUPER_ADMIN) where.fleetId = requestedBy.fleetId;
+    if (requestedBy.role !== UserRole.SUPER_ADMIN) {
+      if (!requestedBy.fleetId) return []; // #31 — fail-closed (cf. list / findOne)
+      where.fleetId = requestedBy.fleetId;
+    }
     if (filters.vehicleId) where.vehicleId = filters.vehicleId;
     // Acces granulaire : un VIEWER restreint a un groupe ne doit voir les
     // statistiques que de ses vehicules autorises.
@@ -629,10 +672,21 @@ export class TripsService implements OnModuleInit {
     }
     if (!vehicle.tracker) throw new BadRequestException('Vehicule sans tracker');
 
-    this.openTrips.delete(vehicle.tracker.id);
-
     const fromDate = new Date(dto.from);
     const toDate = new Date(dto.to) > tenMinAgo ? tenMinAgo : new Date(dto.to);
+
+    // #16 — ne lacher l'etat live QUE si le trip ouvert correspondant tombe dans
+    // la fenetre recalculee (il sera alors supprime par le deleteMany ci-dessous
+    // puis recree). S'il a demarre HORS fenetre, le supprimer orphelinerait un trip
+    // ouvert (etat live perdu ET non supprime en DB => jamais cloture).
+    const liveState = this.openTrips.get(vehicle.tracker.id);
+    if (
+      liveState &&
+      liveState.startedAt.getTime() >= fromDate.getTime() &&
+      liveState.startedAt.getTime() <= toDate.getTime()
+    ) {
+      this.openTrips.delete(vehicle.tracker.id);
+    }
 
     const { count: deleted } = await this.prisma.trip.deleteMany({
       where: {
