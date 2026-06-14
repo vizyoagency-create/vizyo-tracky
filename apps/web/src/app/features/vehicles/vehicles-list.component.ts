@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } 
 import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { LucideAngularModule, Plus, Truck, ExternalLink, FolderOpen, Radio, X, Save, Wifi, Pencil, Trash2, Eye, Search, LayoutGrid, Table } from 'lucide-angular';
+import { LucideAngularModule, Plus, Truck, ExternalLink, FolderOpen, Radio, X, Save, Wifi, Pencil, Trash2, Eye, Search, LayoutGrid, Table, Layers, ChevronRight, ChevronDown } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { PreferencesService } from '../../core/services/preferences.service';
@@ -14,13 +14,14 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
 import { VehicleDialogComponent } from './vehicle-dialog/vehicle-dialog.component';
 import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
 import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fleet-badge.component';
+import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.component';
 import { TrackClickDirective } from '../../shared/directives/track-click.directive';
 
 @Component({
   selector: 'app-vehicles-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, ConfirmModalComponent, SaFleetBadgeComponent, TrackClickDirective],
+  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, TrackClickDirective],
   template: `
     <div class="vlist-page">
       <div class="vlist-grid-bg"></div>
@@ -89,6 +90,10 @@ import { TrackClickDirective } from '../../shared/directives/track-click.directi
                       title="Vue tableau" aria-label="Vue tableau">
                 <lucide-icon [img]="TableIcon" [size]="15"></lucide-icon>
               </button>
+              <button (click)="setViewMode('grouped')" class="view-btn" [class.active]="viewMode() === 'grouped'"
+                      title="Vue groupée" aria-label="Vue groupée par groupe">
+                <lucide-icon [img]="LayersIcon" [size]="15"></lucide-icon>
+              </button>
             </div>
           </div>
         }
@@ -133,6 +138,7 @@ import { TrackClickDirective } from '../../shared/directives/track-click.directi
                         <span class="muted">Non renseigné</span>
                       }
                       @if (v.year) { <span class="v-td-year">· {{ v.year }}</span> }
+                      @if (v.group) { <app-group-badge [group]="v.group" /> }
                     </td>
                     <td>
                       @if (liveStatus(v.id); as ls) {
@@ -175,6 +181,46 @@ import { TrackClickDirective } from '../../shared/directives/track-click.directi
                 }
               </tbody>
             </table>
+          </div>
+        } @else if (viewMode() === 'grouped') {
+          <div class="v-groups">
+            @for (section of groupedVehicles(); track section.id ?? '__none__') {
+              <div class="v-group-section">
+                <button class="v-group-head" (click)="toggleGroup(section.id ?? '__none__')"
+                        [attr.aria-expanded]="!isCollapsed(section.id ?? '__none__')">
+                  <lucide-icon [img]="isCollapsed(section.id ?? '__none__') ? ChevronRightIcon : ChevronDownIcon" [size]="16"></lucide-icon>
+                  @if (section.id) {
+                    <lucide-icon [img]="LayersIcon" [size]="14" class="v-group-head-ico"></lucide-icon>
+                    <span class="v-group-name">{{ section.name }}</span>
+                  } @else {
+                    <span class="v-group-name v-group-name--none">Sans groupe</span>
+                  }
+                  <span class="v-group-count">{{ section.vehicles.length }}</span>
+                </button>
+                @if (!isCollapsed(section.id ?? '__none__')) {
+                  <div class="v-group-items">
+                    @for (v of section.vehicles; track v.id) {
+                      <a [routerLink]="['/vehicles', v.id]" [queryParams]="groupedLinkParams(section.id)" class="v-group-row">
+                        <div class="v-type-icon" [class]="v.tracker && isTrackerOnline(v.tracker.id, v.tracker.status) ? 'online' : 'offline'"
+                             [innerHTML]="getTypeIconHtml(v.type)"></div>
+                        <span class="v-group-row-plate">{{ v.plate }}</span>
+                        @if (v.brand) { <span class="v-group-row-brand">{{ v.brand }} {{ v.model ?? '' }}</span> }
+                        <span class="v-group-row-spacer"></span>
+                        @if (liveStatus(v.id); as ls) {
+                          <span class="v-live-pill" [class]="ls.cssClass">
+                            <span class="v-live-dot"></span>
+                            @if (ls.kind === 'moving') { {{ ls.speedKmh }} km/h }
+                            @else if (ls.kind === 'idle') { À l'arrêt }
+                            @else { Stationné }
+                          </span>
+                        }
+                        <lucide-icon [img]="ChevronRightIcon" [size]="15" class="v-group-row-chev"></lucide-icon>
+                      </a>
+                    }
+                  </div>
+                }
+              </div>
+            }
           </div>
         } @else {
           <div class="v-grid">
@@ -222,6 +268,7 @@ import { TrackClickDirective } from '../../shared/directives/track-click.directi
                   @if (instBadge(v); as b) {
                     <span class="v-inst" [class]="'v-inst--' + b.cls">{{ b.label }}</span>
                   }
+                  @if (v.group) { <app-group-badge [group]="v.group" /> }
                 </div>
                 <div class="v-card-bottom">
                   <div class="v-tracker-info">
@@ -597,6 +644,34 @@ import { TrackClickDirective } from '../../shared/directives/track-click.directi
     .v-assign-btn:hover { text-decoration: underline }
     .v-no-tracker { font-size: 11px; color: var(--fg-tertiary); font-style: italic }
 
+    /* Sprint 1 — vue groupée */
+    .v-groups { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 10px }
+    .v-group-section { border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--bg-secondary); overflow: hidden }
+    .v-group-head {
+      width: 100%; display: flex; align-items: center; gap: 8px; padding: 11px 14px;
+      background: transparent; border: none; cursor: pointer; color: var(--fg-primary); text-align: left; transition: background .15s;
+    }
+    .v-group-head:hover { background: var(--bg-tertiary) }
+    .v-group-head-ico { color: var(--fg-tertiary); flex-shrink: 0 }
+    .v-group-name { font-size: 13px; font-weight: 700; letter-spacing: -.01em }
+    .v-group-name--none { color: var(--fg-tertiary); font-style: italic; font-weight: 600 }
+    .v-group-count {
+      margin-left: auto; font-size: 11px; font-weight: 700; color: var(--fg-tertiary);
+      background: var(--bg-tertiary); border-radius: 9999px; padding: 2px 9px; font-variant-numeric: tabular-nums;
+    }
+    .v-group-items { display: flex; flex-direction: column; border-top: 1px solid var(--border-subtle) }
+    .v-group-row {
+      display: flex; align-items: center; gap: 10px; padding: 10px 14px; text-decoration: none; color: inherit;
+      border-bottom: 1px solid var(--border-subtle); transition: background .15s;
+    }
+    .v-group-row:last-child { border-bottom: none }
+    .v-group-row:hover { background: var(--bg-tertiary) }
+    .v-group-row .v-type-icon { width: 26px; height: 26px; border-radius: 7px }
+    .v-group-row-plate { font-family: var(--font-mono, monospace); font-weight: 800; font-size: 14px; color: var(--fg-primary); letter-spacing: .03em }
+    .v-group-row-brand { font-size: 12px; color: var(--fg-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40% }
+    .v-group-row-spacer { flex: 1 }
+    .v-group-row-chev { color: var(--fg-tertiary); flex-shrink: 0 }
+
     .animate-slide-in { animation: slideIn .25s ease-out }
     @keyframes slideIn { from { transform: translateX(100%) } to { transform: translateX(0) } }
   `],
@@ -608,8 +683,11 @@ export class VehiclesListComponent implements OnInit {
   protected readonly perms = inject(PermissionsService);
   private readonly preferences = inject(PreferencesService);
 
-  // #3 — vue liste : cartes (défaut) ou tableau, persistée dans PreferencesService.
-  protected readonly viewMode = signal<'cards' | 'table'>(this.preferences.prefs().vehiclesView);
+  // #3 — vue liste : cartes (défaut), tableau, ou groupée, persistée dans PreferencesService.
+  protected readonly viewMode = signal<'cards' | 'table' | 'grouped'>(this.preferences.prefs().vehiclesView);
+
+  // Sprint 1 (Fondation Groupes) — sections de groupes repliées (clé = groupId ou '__none__').
+  protected readonly collapsedGroups = signal<Set<string>>(new Set());
 
   protected readonly vehicles = signal<VehicleDetailDto[]>([]);
   // #2 — recherche client-side (plaque / marque / modèle / IMEI).
@@ -624,6 +702,31 @@ export class VehiclesListComponent implements OnInit {
       (v.tracker?.imei ?? '').toLowerCase().includes(q),
     );
   });
+
+  /**
+   * Sprint 1 (Fondation Groupes) — véhicules (filtrés) regroupés par groupe pour
+   * la vue groupée. « Sans groupe » en premier (cas majoritaire en prod), puis
+   * tri alpha. Regroupement 100% client-side : aucun endpoint dédié, le scoping
+   * tenant est hérité de la liste déjà filtrée par accès.
+   */
+  protected readonly groupedVehicles = computed(() => {
+    const sections = new Map<string, { id: string | null; name: string; vehicles: VehicleDetailDto[] }>();
+    for (const v of this.filteredVehicles()) {
+      const key = v.group?.id ?? '__none__';
+      let section = sections.get(key);
+      if (!section) {
+        section = { id: v.group?.id ?? null, name: v.group?.name ?? 'Sans groupe', vehicles: [] };
+        sections.set(key, section);
+      }
+      section.vehicles.push(v);
+    }
+    return [...sections.values()].sort((a, b) => {
+      if (a.id === null) return -1;
+      if (b.id === null) return 1;
+      return a.name.localeCompare(b.name);
+    });
+  });
+
   protected readonly loading = signal(true);
   protected readonly showAddDialog = signal(false);
   protected readonly showEditDialog = signal(false);
@@ -651,6 +754,9 @@ export class VehiclesListComponent implements OnInit {
   protected readonly SearchIcon = Search;
   protected readonly LayoutGridIcon = LayoutGrid;
   protected readonly TableIcon = Table;
+  protected readonly LayersIcon = Layers;
+  protected readonly ChevronRightIcon = ChevronRight;
+  protected readonly ChevronDownIcon = ChevronDown;
 
   // Delete vehicle
   readonly showDeleteVehicle = signal(false);
@@ -672,9 +778,25 @@ export class VehiclesListComponent implements OnInit {
     this.loadVehicles();
   }
 
-  protected setViewMode(mode: 'cards' | 'table'): void {
+  protected setViewMode(mode: 'cards' | 'table' | 'grouped'): void {
     this.viewMode.set(mode);
     this.preferences.update({ vehiclesView: mode });
+  }
+
+  /** Sprint 1 — replie/déplie une section de groupe (clé = groupId ou '__none__'). */
+  protected toggleGroup(key: string): void {
+    const next = new Set(this.collapsedGroups());
+    if (next.has(key)) next.delete(key); else next.add(key);
+    this.collapsedGroups.set(next);
+  }
+
+  protected isCollapsed(key: string): boolean {
+    return this.collapsedGroups().has(key);
+  }
+
+  /** Sprint 1 — contexte de retour rapide transmis à la fiche détail (retour groupé). */
+  protected groupedLinkParams(groupId: string | null): Record<string, string> {
+    return { from: 'grouped', group: groupId ?? '' };
   }
 
   protected onDialogClosed(): void {
