@@ -40,6 +40,16 @@
    - ✅ Toast **« Rallumage envoyé »**.
    - ✅ Le badge **« coupé » disparaît immédiatement** (carte + liste + bouton repasse « Couper »), **sans** attendre une confirmation (le rallumage est toujours sûr).
 
+## 4b. Rallumage dont l'envoi ÉCHOUE (cas d'erreur — symétrique du « jamais de faux succès »)
+> Provoquer l'échec : tracker de test **hors-ligne** (`registry.send=false`, aucune socket) **et** provider SMS `noop` (aucun fallback) → le dispatch du RESTORE part en `FAILED` (`ServiceUnavailableException`).
+1. Partir d'une **coupure confirmée** (§2, badge « coupé » visible).
+2. **Rallumer** → confirmer, alors que l'envoi va échouer.
+   - ✅ Toast d'erreur **explicite** : détail **« Rallumage refusé »** (+ cause), carte **« Échec commande moteur »**. **Jamais** « Moteur rallumé ».
+   - ✅ Détail : pastille rouge **« Échec d'envoi »** sous le bouton.
+   - ✅ Le badge **« coupé » RESTE** (carte + liste + bouton) — le moteur est toujours coupé, on ne ment pas. *(Un `RESTORE/FAILED` ne nettoie pas l'état : seul un `SENT‖ACKNOWLEDGED` nettoie.)*
+   - ✅ Le bouton reste **« Rallumer le moteur »** → l'opérateur peut **réessayer**.
+3. *(Optionnel)* Remettre le tracker **en ligne** puis **Rallumer** à nouveau → ✅ le badge se nettoie dès l'envoi (`SENT`), le bouton repasse « Couper ».
+
 ## 5. Coupure EXTERNE détectée (synchro device → app, SMS manuel)
 1. Sans aucune commande dans l'app, simuler une coupure externe : injecter une transition **ignition ON puis OFF** sans commande app préalable.
    - ✅ Une ligne **DEVICE_OBSERVED CUT** est créée (historique commandes).
@@ -54,6 +64,7 @@
 - [ ] Badge « coupé » n'apparaît qu'**après** confirmation ignition.
 - [ ] Pastille : en attente → confirmée / non confirmée / non vérifiable.
 - [ ] Rallumage nettoie le badge **immédiatement**.
+- [ ] Rallumage en **échec d'envoi** : badge « coupé » **reste**, toast d'erreur, pastille « Échec d'envoi », bouton reste « Rallumer ».
 - [ ] Coupure externe (DEVICE_OBSERVED) bascule le badge.
 - [ ] Aucune fausse alerte au centre d'alerte sur une coupure réussie.
 - [ ] **Aucune** trame envoyée à un IMEI de prod pendant tout le test.
