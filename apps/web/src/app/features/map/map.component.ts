@@ -10,6 +10,7 @@ import {
   NgZone,
   OnDestroy,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -2098,11 +2099,17 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     if (!update) return;
     const pos = this.realtime.positionsList().find((p) => p.trackerId === this.activePopupTrackerId);
     if (!pos) return;
-    const currentCard = this.baanoolCard();
+    // #high — lire la carte en `untracked` : sinon l'effet DEPEND de baanoolCard ET
+    // y ecrit un nouvel objet a chaque run => boucle infinie (re-declenche par sa
+    // propre ecriture, 1 coeur CPU a fond tant que le popup reste ouvert). En plus,
+    // on ne re-set QUE si l'ignition ou le cutActive a reellement change.
+    const currentCard = untracked(() => this.baanoolCard());
     if (currentCard) {
       const patched = this.patchIgnitionFromCommands(pos);
       const cutActive = this.isCutActiveForTracker(pos.trackerId);
-      this.baanoolCard.set({ ...currentCard, ignition: patched.ignition, cutActive });
+      if (currentCard.ignition !== patched.ignition || currentCard.cutActive !== cutActive) {
+        this.baanoolCard.set({ ...currentCard, ignition: patched.ignition, cutActive });
+      }
     }
   });
 

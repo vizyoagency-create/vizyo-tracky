@@ -48,6 +48,11 @@ export class RealtimeService {
 
   private socket: Socket | null = null;
   private refreshingToken = false;
+  // #9 — echecs consecutifs de refresh sur connect_error. Au-dela du seuil, la
+  // session est consideree expiree (refresh token mort) et on STOPPE la reconnexion
+  // au lieu de boucler a l'infini sur connect_error -> POST /auth/refresh.
+  private connectErrorRefreshFailures = 0;
+  private static readonly MAX_CONNECT_REFRESH_FAILURES = 3;
 
   // Sprint 0.1 — surveillance d'interruption du canal temps réel. Si le socket
   // reste coupé au-delà du seuil, on remonte un incident au centre d'alerte
@@ -169,13 +174,29 @@ export class RealtimeService {
     this.socket.on('connect_error', async () => {
       if (this.refreshingToken || !this.socket) return;
       this.refreshingToken = true;
+      let refreshed = false;
       try {
         const newToken = await this.auth.tryRefresh();
         if (newToken && this.socket) {
           (this.socket.auth as Record<string, string>)['token'] = newToken;
+          refreshed = true;
         }
+      } catch {
+        refreshed = false;
       } finally {
         this.refreshingToken = false;
+      }
+      if (refreshed) {
+        this.connectErrorRefreshFailures = 0;
+        return;
+      }
+      // #9 — echec du refresh (token de refresh expire/revoque). socket.io garde
+      // reconnection:true : sans garde on boucle (connect_error -> tryRefresh ->
+      // echec -> connect_error...) a l'infini, sans jamais deconnecter l'user (cas
+      // d'un onglet carte live laisse ouvert). Apres MAX echecs, session expiree.
+      this.connectErrorRefreshFailures++;
+      if (this.connectErrorRefreshFailures >= RealtimeService.MAX_CONNECT_REFRESH_FAILURES) {
+        this.handleSessionExpired();
       }
     });
 
@@ -264,6 +285,19 @@ export class RealtimeService {
     void firstValueFrom(this.http.post(`/api/alerts/${alertId}/acknowledge`, {})).catch(() => {
       this.toast.error('Echec de l\'acquittement', 'Reessayer depuis la liste des alertes');
     });
+  }
+
+  /**
+   * #9 — Session expiree cote WS (refresh token mort) : on stoppe la reconnexion
+   * et on deconnecte l'utilisateur, exactement comme l'intercepteur HTTP — sinon un
+   * utilisateur qui n'a que la carte live ouverte reste sur une session zombie a
+   * marteler /auth/refresh en boucle.
+   */
+  private handleSessionExpired(): void {
+    this.connectErrorRefreshFailures = 0;
+    this.disconnect();
+    this.auth.logout();
+    void this.router.navigate(['/login']);
   }
 
   disconnect(): void {
