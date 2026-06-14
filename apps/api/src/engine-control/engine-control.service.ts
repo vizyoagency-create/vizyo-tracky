@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -31,6 +32,15 @@ const ENGINE_RESUME_ACK_PATTERN = /imei:\d{15},K/i;
  * doit pas "voler" l'echo moteur. Priorite > 0 => resolu en premier dans tryMatch.
  */
 const ENGINE_ACK_PRIORITY = 10;
+
+/**
+ * Sprint 2 — Fenêtre de confirmation par ignition (env `ENGINE_CONFIRM_WINDOW_S`,
+ * défaut 90 s ≈ 2-3 trames Coban). Sert au verrou « une coupure en vol » (Obj 1)
+ * et à la sentinelle d'observabilité « coupure non confirmée » (Obj 5). La doc
+ * protocole (03 §11) cite 120 s — ajustable via l'env sans redéploiement de code.
+ */
+const ENGINE_CONFIRM_WINDOW_MS =
+  Math.max(10, Number(process.env.ENGINE_CONFIRM_WINDOW_S) || 90) * 1000;
 
 interface RequestedBy {
   userId: string;
@@ -82,6 +92,39 @@ export class EngineControlService {
     }
 
     const fleetId = tracker.vehicle.fleetId;
+
+    // Sprint 2 (Obj 1) — verrou « une coupure en vol » : rejet d'une NOUVELLE
+    // coupure tant qu'une coupure confirmable précédente attend sa confirmation
+    // (ignition). N'affecte PAS le RESTORE (toujours autorisé = échappatoire sûr)
+    // ni une coupure « non vérifiable » (à l'arrêt, confirmationExpected=false).
+    if (action === EngineAction.CUT) {
+      const inflight = await this.prisma.engineControlCommand.findFirst({
+        where: {
+          trackerId,
+          action: EngineAction.CUT,
+          ackedAt: null,
+          OR: [
+            { status: CommandStatus.PENDING },
+            {
+              status: CommandStatus.SENT,
+              confirmationExpected: true,
+              createdAt: { gte: new Date(Date.now() - ENGINE_CONFIRM_WINDOW_MS) },
+            },
+          ],
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true },
+      });
+      if (inflight) {
+        this.logger.warn({ trackerId, blockedBy: inflight.id }, 'Engine CUT rejected: command already in flight');
+        throw new ConflictException(
+          'Une coupure est déjà en cours sur ce véhicule (en attente de confirmation).',
+        );
+      }
+    }
+
+    // Sprint 2 (Obj 2) — une chute d'ignition est-elle attendable comme preuve ?
+    let confirmationExpected = false;
 
     if (action === EngineAction.CUT) {
       const lastPosition = await this.prisma.position.findFirst({
@@ -161,6 +204,11 @@ export class EngineControlService {
         this.logger.warn(`Command ${cmd.id} REJECTED: vitesse ${lastPosition.speedKmh} km/h`);
         throw new ForbiddenException(`Vitesse trop élevée : ${lastPosition.speedKmh} km/h`);
       }
+
+      // Sprint 2 (Obj 2) — garde-fous passés : si l'ignition est ON, une chute
+      // d'ignition confirmera la coupure. Si déjà à l'arrêt → pas de transition
+      // observable → la commande sera affichée « non vérifiable ».
+      confirmationExpected = lastPosition.ignition === true;
     }
 
     // If manual action → neutralize schedule to avoid conflict
@@ -197,6 +245,7 @@ export class EngineControlService {
         requestedBy: requestedBy.userId,
         source,
         status: CommandStatus.PENDING,
+        confirmationExpected,
       },
     });
 
@@ -304,6 +353,34 @@ export class EngineControlService {
           'Engine command livree — pas d\'ACK applicatif attendu (execution silencieuse Coban)',
         );
       });
+
+    // Sprint 2 (Obj 5) — sentinelle d'observabilité : une coupure CONFIRMABLE qui
+    // n'est pas confirmée (chute d'ignition) dans la fenêtre est tracée au centre
+    // d'alerte. PAS un FAILED (la commande a bien été livrée au boîtier) — juste de
+    // la visibilité pour le suivi opérationnel / le debug.
+    if (action === EngineAction.CUT && command.confirmationExpected) {
+      const timer = setTimeout(() => {
+        void this.reportIfUnconfirmed(command.id, imei);
+      }, ENGINE_CONFIRM_WINDOW_MS);
+      if (typeof timer.unref === 'function') timer.unref();
+    }
+  }
+
+  /** Sprint 2 (Obj 5) — trace une coupure confirmable restée non confirmée. */
+  private async reportIfUnconfirmed(commandId: string, imei: string): Promise<void> {
+    const cmd = await this.prisma.engineControlCommand
+      .findUnique({ where: { id: commandId }, select: { status: true, ackedAt: true, trackerId: true } })
+      .catch(() => null);
+    if (!cmd || cmd.status !== CommandStatus.SENT || cmd.ackedAt) return;
+    this.logger.warn({ commandId, imei, trackerId: cmd.trackerId }, 'Engine CUT non confirmée dans la fenêtre');
+    this.errorLogger
+      .record('Coupure moteur non confirmée (pas de chute ignition dans la fenêtre)', 'engine-control', {
+        commandId,
+        imei,
+        trackerId: cmd.trackerId,
+        windowMs: ENGINE_CONFIRM_WINDOW_MS,
+      })
+      .catch((e) => this.logger.error('ErrorLogger persist failed', e));
   }
 
   private emitUpdate(command: EngineControlCommand, fleetId: string): void {
@@ -318,6 +395,10 @@ export class EngineControlService {
         action: command.action,
         status: command.status,
         lastError: command.lastError,
+        confirmationExpected: command.confirmationExpected,
+        sentAt: command.sentAt ? command.sentAt.toISOString() : null,
+        ackedAt: command.ackedAt ? command.ackedAt.toISOString() : null,
+        source: command.source as 'MANUAL' | 'SCHEDULER' | 'DEVICE_OBSERVED',
       });
     } catch (err) {
       this.logger.error({ commandId: command.id, fleetId, error: (err as Error).message },
