@@ -331,12 +331,21 @@ export class VehiclesService {
       if (!group) throw new BadRequestException('Groupe introuvable dans cette flotte');
     }
 
-    await this.prisma.$transaction([
-      this.prisma.vehicleGroupAssignment.deleteMany({ where: { vehicleId: id } }),
-      ...(groupId
-        ? [this.prisma.vehicleGroupAssignment.create({ data: { vehicleId: id, groupId } })]
-        : []),
-    ]);
+    try {
+      await this.prisma.$transaction([
+        this.prisma.vehicleGroupAssignment.deleteMany({ where: { vehicleId: id } }),
+        ...(groupId
+          ? [this.prisma.vehicleGroupAssignment.create({ data: { vehicleId: id, groupId } })]
+          : []),
+      ]);
+    } catch (err) {
+      // TOCTOU : le groupe a pu etre supprime entre le check et l'insert -> FK P2003.
+      // On renvoie un 400 propre plutot qu'un 500.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+        throw new BadRequestException('Groupe introuvable dans cette flotte');
+      }
+      throw err;
+    }
 
     return this.findOne(id, requestedBy);
   }

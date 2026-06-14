@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { LucideAngularModule, Plus, Truck, ExternalLink, FolderOpen, Radio, X, Save, Wifi, Pencil, Trash2, Eye, Search, LayoutGrid, Table, Layers, ChevronRight, ChevronDown } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { PermissionsService } from '../../core/services/permissions.service';
@@ -185,7 +185,7 @@ import { TrackClickDirective } from '../../shared/directives/track-click.directi
         } @else if (viewMode() === 'grouped') {
           <div class="v-groups">
             @for (section of groupedVehicles(); track section.id ?? '__none__') {
-              <div class="v-group-section">
+              <div class="v-group-section" [id]="'vg-' + (section.id ?? 'none')">
                 <button class="v-group-head" (click)="toggleGroup(section.id ?? '__none__')"
                         [attr.aria-expanded]="!isCollapsed(section.id ?? '__none__')">
                   <lucide-icon [img]="isCollapsed(section.id ?? '__none__') ? ChevronRightIcon : ChevronDownIcon" [size]="16"></lucide-icon>
@@ -682,6 +682,9 @@ export class VehiclesListComponent implements OnInit {
   private readonly realtime = inject(RealtimeService);
   protected readonly perms = inject(PermissionsService);
   private readonly preferences = inject(PreferencesService);
+  private readonly route = inject(ActivatedRoute);
+  // Sprint 1 — section de groupe vers laquelle scroller au retour depuis le détail.
+  private readonly pendingScrollGroup = signal<string | null>(null);
 
   // #3 — vue liste : cartes (défaut), tableau, ou groupée, persistée dans PreferencesService.
   protected readonly viewMode = signal<'cards' | 'table' | 'grouped'>(this.preferences.prefs().vehiclesView);
@@ -775,6 +778,11 @@ export class VehiclesListComponent implements OnInit {
   protected readonly SaveIcon = Save;
 
   ngOnInit(): void {
+    // Sprint 1 — retour depuis le détail : si on revient d'un groupe précis, on
+    // scrolle vers sa section après le rendu (la vue groupée est restaurée via
+    // les préférences, et les sections sont dépliées par défaut).
+    const g = this.route.snapshot.queryParams['group'];
+    if (g) this.pendingScrollGroup.set(g);
     this.loadVehicles();
   }
 
@@ -893,10 +901,21 @@ export class VehiclesListComponent implements OnInit {
     try {
       const list = await firstValueFrom(this.vehiclesApi.list());
       this.vehicles.set(list);
+      this.scrollToPendingGroup();
     } catch {
       this.vehicles.set([]);
     } finally {
       this.loading.set(false);
     }
+  }
+
+  /** Sprint 1 — scrolle vers la section de groupe demandée au retour (si vue groupée). */
+  private scrollToPendingGroup(): void {
+    const g = this.pendingScrollGroup();
+    if (!g || this.viewMode() !== 'grouped') return;
+    this.pendingScrollGroup.set(null);
+    setTimeout(() => {
+      document.getElementById('vg-' + g)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }, 60);
   }
 }
