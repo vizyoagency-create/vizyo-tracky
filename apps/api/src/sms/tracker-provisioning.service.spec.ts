@@ -166,8 +166,9 @@ describe('TrackerProvisioningService — état live du tracker (V1.18)', () => {
   let service: TrackerProvisioningService;
   let prisma: {
     trackerProvisioning: { findMany: jest.Mock; findUnique: jest.Mock };
-    tracker: { findMany: jest.Mock; findFirst: jest.Mock };
+    tracker: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock };
   };
+  let errorLog: { record: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -178,8 +179,10 @@ describe('TrackerProvisioningService — état live du tracker (V1.18)', () => {
       tracker: {
         findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn().mockResolvedValue({ id: 'tracker-1' }),
+        findUnique: jest.fn().mockResolvedValue(null),
       },
     };
+    errorLog = { record: jest.fn().mockResolvedValue('err-id') };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -187,7 +190,7 @@ describe('TrackerProvisioningService — état live du tracker (V1.18)', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: SmsGatewayService, useValue: { isEnabled: jest.fn(() => true), send: jest.fn() } },
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
-        { provide: ErrorLogger, useValue: { record: jest.fn() } },
+        { provide: ErrorLogger, useValue: errorLog },
         { provide: AllowlistService, useValue: { add: jest.fn() } },
       ],
     }).compile();
@@ -255,5 +258,50 @@ describe('TrackerProvisioningService — état live du tracker (V1.18)', () => {
 
     expect(row?.tracker?.status).toBe(TrackerStatus.ONLINE);
     expect(row?.tracker?.seenSinceStart).toBe(true);
+  });
+
+  // ─── Remontee au centre d'alerte : boitier injoignable (sans faux positif) ───
+
+  const callAlert = (svc: TrackerProvisioningService, id: string, imei: string) =>
+    (svc as unknown as { alertIfBoitierSilent: (i: string, m: string) => Promise<void> }).alertIfBoitierSilent(id, imei);
+
+  it('alertIfBoitierSilent remonte une ERROR si 0 ACK ET boitier non connecté', async () => {
+    prisma.trackerProvisioning.findUnique.mockResolvedValue(
+      provRow({ steps: [{ status: 'no-ack' }, { status: 'sent' }] }),
+    );
+    prisma.tracker.findUnique.mockResolvedValue({ status: TrackerStatus.OFFLINE, lastSeenAt: null });
+
+    await callAlert(service, 'prov-1', IMEI);
+
+    expect(errorLog.record).toHaveBeenCalledTimes(1);
+    expect(errorLog.record).toHaveBeenCalledWith(
+      expect.stringContaining('injoignable'),
+      'sms-provisioning',
+      expect.objectContaining({ imei: IMEI, provisioningId: 'prov-1' }),
+      'ERROR',
+    );
+  });
+
+  it('alertIfBoitierSilent n\'alerte PAS si le boîtier s\'est connecté au serveur (en ligne)', async () => {
+    prisma.trackerProvisioning.findUnique.mockResolvedValue(provRow({ steps: [{ status: 'no-ack' }] }));
+    prisma.tracker.findUnique.mockResolvedValue({
+      status: TrackerStatus.ONLINE,
+      lastSeenAt: new Date(START.getTime() + 60_000),
+    });
+
+    await callAlert(service, 'prov-1', IMEI);
+
+    expect(errorLog.record).not.toHaveBeenCalled();
+  });
+
+  it('alertIfBoitierSilent n\'alerte PAS si le boîtier a fini par répondre (un ACK) — court-circuit', async () => {
+    prisma.trackerProvisioning.findUnique.mockResolvedValue(
+      provRow({ steps: [{ status: 'acked' }, { status: 'no-ack' }] }),
+    );
+
+    await callAlert(service, 'prov-1', IMEI);
+
+    expect(errorLog.record).not.toHaveBeenCalled();
+    expect(prisma.tracker.findUnique).not.toHaveBeenCalled(); // sort avant de chercher le tracker
   });
 });

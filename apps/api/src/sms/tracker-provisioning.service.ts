@@ -124,6 +124,11 @@ const SETTLE_DELAY_MS = 1500; // petite pause apres un ACK avant la commande sui
 // precedente (waiter partage par numero). On l'ignore et on reste arme.
 const REPLY_GUARD_MS = 3000;
 const INTER_STEP_DELAY_MS = 7000; // delai fixe entre commandes quand pas d'ACK
+// V1.18 — Apres un provisioning ou le boitier n'a repondu a AUCUN SMS, on attend ce
+// delai avant d'alerter le centre d'alerte : le boitier peut se connecter au serveur
+// (TCP) sans repondre aux SMS. On n'alerte QUE s'il reste injoignable apres ce delai
+// (ni ACK SMS, ni connexion) -> vraie panne, pas de faux positif. Cf. alertIfBoitierSilent.
+const NO_RESPONSE_GRACE_MS = 5 * 60 * 1000;
 
 @Injectable()
 export class TrackerProvisioningService {
@@ -458,6 +463,7 @@ export class TrackerProvisioningService {
     if (final && final.status === TrackerProvisioningStatus.IN_PROGRESS) {
       const stepsArr = (final.steps as unknown as StepRecord[]) ?? [];
       const failed = stepsArr.filter((s) => s.status === 'failed').length;
+      const acked = stepsArr.filter((s) => s.status === 'acked').length;
       await this.prisma.trackerProvisioning.update({
         where: { id: provisioningId },
         data: {
@@ -467,6 +473,68 @@ export class TrackerProvisioningService {
           failureReason: failed > 0 ? `${failed} SMS echoues sur ${stepsArr.length}` : null,
         },
       });
+
+      // V1.18 — Remontee au centre d'alerte (error_logs).
+      if (failed > 0) {
+        // Echec d'ENVOI reel (passerelle) -> erreur immediate et visible.
+        void this.errorLogger
+          .record(
+            `Provisioning ${params.imei} : ${failed}/${stepsArr.length} SMS non envoyes (echec passerelle)`,
+            'sms-provisioning',
+            { imei: params.imei, provisioningId, failedSteps: failed },
+            'ERROR',
+          )
+          .catch(() => undefined);
+      } else if (canReadReplies && acked === 0 && stepsArr.length > 0) {
+        // Tous les SMS sont partis mais le boitier n'a repondu a AUCUN. On laisse
+        // NO_RESPONSE_GRACE_MS au boitier pour se connecter au serveur, puis on
+        // alerte UNIQUEMENT s'il reste injoignable (evite les faux positifs).
+        const timer = setTimeout(
+          () => void this.alertIfBoitierSilent(provisioningId, params.imei),
+          NO_RESPONSE_GRACE_MS,
+        );
+        if (typeof timer.unref === 'function') timer.unref();
+      }
+    }
+  }
+
+  /**
+   * V1.18 — Filet de securite pour le centre d'alerte. Appelee NO_RESPONSE_GRACE_MS
+   * apres un provisioning ou le boitier n'a repondu a aucun SMS. On verifie s'il
+   * s'est quand meme connecte au serveur (TCP) entre-temps :
+   *   - tracker en ligne / vu depuis le lancement -> tout va bien, AUCUNE alerte
+   *     (le provisioning a fonctionne, l'absence d'ACK SMS n'est pas un echec) ;
+   *   - sinon (ni ACK, ni connexion) -> vraie panne, on remonte une ERROR.
+   * Ce delai + ce double critere evitent les faux positifs dans le centre d'alerte.
+   */
+  private async alertIfBoitierSilent(provisioningId: string, imei: string): Promise<void> {
+    try {
+      const prov = await this.prisma.trackerProvisioning.findUnique({ where: { id: provisioningId } });
+      if (!prov) return;
+      const steps = (prov.steps as unknown as StepRecord[]) ?? [];
+      if (steps.some((s) => s.status === 'acked')) return; // le boitier a fini par repondre
+
+      const tracker = await this.prisma.tracker.findUnique({
+        where: { imei },
+        select: { status: true, lastSeenAt: true },
+      });
+      const online =
+        tracker?.status === TrackerStatus.ONLINE ||
+        (tracker?.lastSeenAt != null &&
+          prov.startedAt != null &&
+          tracker.lastSeenAt.getTime() >= prov.startedAt.getTime());
+      if (online) return; // s'est connecte au serveur -> OK, pas de bruit
+
+      await this.errorLogger.record(
+        `Provisioning ${imei} : boitier injoignable — aucune reponse SMS et aucune connexion serveur apres ${Math.round(
+          NO_RESPONSE_GRACE_MS / 60000,
+        )} min (verifier SIM / couverture / IP+port serveur)`,
+        'sms-provisioning',
+        { imei, provisioningId },
+        'ERROR',
+      );
+    } catch (e) {
+      this.logger.warn(`alertIfBoitierSilent(${provisioningId}) echouee: ${e instanceof Error ? e.message : e}`);
     }
   }
 
