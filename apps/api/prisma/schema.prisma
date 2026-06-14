@@ -223,6 +223,8 @@ model User {
   /// Phase 3 (futur) : si ce User est lie a un compte conducteur (driver login).
   /// Aujourd'hui null pour tous les Users existants. Cf. Driver.userId.
   driverProfile      Driver?
+  /// Sprint user-activity — sessions + actions de l'utilisateur dans l'app.
+  sessions           UserSession[]
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -1179,4 +1181,53 @@ model SystemMetric {
 
   @@index([timestamp])
   @@map("system_metrics")
+}
+
+/// Sprint user-activity — une session = une présence continue d'un user dans
+/// l'app (du login/connexion jusqu'au départ/timeout). `status` reflète la
+/// présence rapportée par le client (ACTIVE/IDLE/AWAY) ; OFFLINE est dérivé au
+/// read-time (lastSeenAt périmé ou endedAt non nul). `fleetId` nullable car les
+/// SUPER_ADMIN n'ont pas de flotte.
+model UserSession {
+  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String         @db.Uuid
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fleetId      String?        @db.Uuid
+  startedAt    DateTime       @default(now())
+  endedAt      DateTime?
+  lastSeenAt   DateTime       @default(now())
+  status       String         @default("ACTIVE")
+  currentRoute String?
+  userAgent    String?
+  deviceType   String?
+  activities   UserActivity[]
+
+  @@index([userId])
+  @@index([fleetId])
+  @@index([endedAt])
+  @@index([lastSeenAt])
+  @@map("user_sessions")
+}
+
+/// Sprint user-activity — une action atomique : vue de page, clic, transition de
+/// présence. Volumétrie faible (petite base d'utilisateurs), purgée après 90j.
+model UserActivity {
+  id         String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId  String      @db.Uuid
+  session    UserSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  userId     String      @db.Uuid
+  fleetId    String?     @db.Uuid
+  /// PAGE_VIEW | CLICK | SESSION_START | SESSION_END | SESSION_RESUME | IDLE | AWAY | HEARTBEAT
+  type       String
+  route      String?
+  routeLabel String?
+  target     String?
+  durationMs Int?
+  createdAt  DateTime    @default(now())
+
+  @@index([userId])
+  @@index([fleetId])
+  @@index([createdAt])
+  @@index([type])
+  @@map("user_activities")
 }

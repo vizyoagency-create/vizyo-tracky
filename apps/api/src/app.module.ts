@@ -39,6 +39,7 @@ import { SmsModule } from './sms/sms.module';
 import { SurveillanceModule } from './surveillance/surveillance.module';
 import { SystemMetricsModule } from './system-metrics/system-metrics.module';
 import { TrackerCommandsModule } from './tracker-commands/tracker-commands.module';
+import { UserActivityModule } from './user-activity/user-activity.module';
 import { TrackerFixModeModule } from './tracker-fix-mode/tracker-fix-mode.module';
 import { VehicleSchedulesModule } from './vehicle-schedules/vehicle-schedules.module';
 import { HealthController } from './health/health.controller';
@@ -114,6 +115,7 @@ import { VehiclesModule } from './vehicles/vehicles.module';
     DriversModule,
     SurveillanceModule,
     SystemMetricsModule,
+    UserActivityModule,
   ],
   controllers: [HealthController],
   providers: [

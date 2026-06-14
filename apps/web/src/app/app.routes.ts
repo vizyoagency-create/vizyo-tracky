@@ -215,6 +215,14 @@ export const routes: Routes = [
         data: { title: 'Système VPS' },
       },
       {
+        path: 'admin/activity',
+        pathMatch: 'full',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/user-activity/admin-activity.component').then((m) => m.AdminActivityComponent),
+        data: { title: 'Activité utilisateurs' },
+      },
+      {
         path: 'admin/trackers/:id/sampling',
         canActivate: [superAdminGuard],
         loadComponent: () =>

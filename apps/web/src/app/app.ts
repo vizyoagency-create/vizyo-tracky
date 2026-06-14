@@ -1,5 +1,6 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
+import { ActivityTrackerService } from './core/services/activity-tracker.service';
 import { AuthService } from './core/services/auth.service';
 import { InstallPromptService } from './core/services/install-prompt.service';
 import { NetworkStatusService } from './core/services/network-status.service';
@@ -28,6 +29,9 @@ export class App implements OnInit {
   private readonly pwaUpdate = inject(PwaUpdateService);
   private readonly installPrompt = inject(InstallPromptService);
   private readonly network = inject(NetworkStatusService);
+  // Tracking d'activité utilisateur : instancié ici pour démarrer son effet
+  // (start/stop automatique selon l'authentification).
+  private readonly activityTracker = inject(ActivityTrackerService);
 
   ngOnInit(): void {
     // Charger les préférences si déjà authentifié (refresh page)
