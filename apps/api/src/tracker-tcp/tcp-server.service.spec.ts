@@ -132,4 +132,18 @@ describe('TcpServerService — débounce OFFLINE', () => {
       { imei: IMEI },
     );
   });
+
+  it('ne marque pas OFFLINE si le boîtier se reconnecte pendant le findUnique (#11)', async () => {
+    // La reconnexion arrive PENDANT la lecture du tracker : has() passe à true
+    // juste avant l'écriture → on ne doit pas écraser le ONLINE par un OFFLINE.
+    prisma.tracker.findUnique.mockImplementationOnce(async () => {
+      registry.has.mockReturnValue(true);
+      return trackerRow;
+    });
+
+    await (service as any).markOffline(IMEI);
+
+    expect(prisma.tracker.update).not.toHaveBeenCalled();
+    expect(gateway.emitTrackerStatus).not.toHaveBeenCalled();
+  });
 });

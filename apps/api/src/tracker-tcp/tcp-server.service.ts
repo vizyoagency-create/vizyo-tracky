@@ -77,6 +77,39 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
 
     let boundImei: string | null = null;
     let buffer = '';
+    // Sérialisation PAR SOCKET (audit #2/#3/#5) : les trames d'un même boîtier
+    // sont traitées STRICTEMENT l'une après l'autre via une chaîne de promesses.
+    // Un Coban envoie souvent plusieurs trames d'un coup (burst de reconnexion /
+    // coalescing TCP) ; sans sérialisation elles étaient dispatchées en parallèle
+    // (fire-and-forget), ce qui cassait l'ordre, défaisait l'anti-replay (deux
+    // ingests lisaient le même snapshot tracker), perdait la position reçue avant
+    // que le login n'ait lié l'IMEI, et pouvait ouvrir deux trajets concurrents.
+    let chain: Promise<void> = Promise.resolve();
+
+    const processRaw = async (raw: string): Promise<void> => {
+      this.logger.debug(`← [${remote}] ${raw}`);
+      let frame: CobanFrame;
+      try {
+        frame = decodeFrame(raw);
+      } catch (err) {
+        await this.recordTcpError(err, boundImei, raw);
+        return;
+      }
+      try {
+        if (boundImei || frame.type === 'login') {
+          this.wireLogger.in(
+            frame.type === 'login' ? (frame as { imei: string }).imei : (boundImei ?? 'unknown'),
+            raw,
+            frame.type,
+          );
+        }
+        await this.dispatchFrame(frame, socket, boundImei, (newImei) => {
+          boundImei = newImei;
+        });
+      } catch (err) {
+        await this.recordTcpError(err, boundImei, raw);
+      }
+    };
 
     socket.on('data', (chunk) => {
       buffer += chunk.toString('ascii');
@@ -86,34 +119,10 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
         const raw = buffer.slice(0, idx).trim();
         buffer = buffer.slice(idx + 1);
         if (!raw) continue;
-
-        this.logger.debug(`← [${remote}] ${raw}`);
-
-        try {
-          const frame = decodeFrame(raw);
-          if (boundImei || frame.type === 'login') {
-            this.wireLogger.in(
-              frame.type === 'login' ? (frame as any).imei : (boundImei ?? 'unknown'),
-              raw,
-              frame.type,
-            );
-          }
-          this.dispatchFrame(frame, socket, boundImei, (newImei) => {
-            boundImei = newImei;
-          }).catch((err) => {
-            this.errorLogger.record(
-              err instanceof Error ? err : new Error(String(err)),
-              'tcp-server',
-              { imei: boundImei ?? undefined, frameRaw: raw },
-            ).catch((e) => this.logger.error('ErrorLogger persist failed', e));
-          });
-        } catch (err) {
-          this.errorLogger.record(
-            err instanceof Error ? err : new Error(String(err)),
-            'tcp-server',
-            { imei: boundImei ?? undefined, frameRaw: raw },
-          ).catch((e) => this.logger.error('ErrorLogger persist failed', e));
-        }
+        // Enchaîne : chaque trame attend la fin de traitement de la précédente.
+        chain = chain
+          .then(() => processRaw(raw))
+          .catch((e) => this.logger.error('TCP chain error', e as Error));
       }
     });
 
@@ -185,6 +194,10 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
         include: { vehicle: true },
       });
       if (!tracker) return;
+      // Garde anti-TOCTOU (#11) : si le boîtier s'est reconnecté pendant la
+      // lecture ci-dessus (login → ONLINE + lastSeenAt), ne pas écraser ce
+      // statut ONLINE tout neuf par un OFFLINE périmé.
+      if (this.registry.has(imei)) return;
       await this.prisma.tracker.update({
         where: { id: tracker.id },
         data: { status: TrackerStatus.OFFLINE },
@@ -203,6 +216,16 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
         .record(e instanceof Error ? e : new Error(String(e)), 'tcp-server', { imei })
         .catch((e2) => this.logger.error('ErrorLogger persist failed', e2));
     }
+  }
+
+  /** Enregistre une erreur de traitement de trame TCP (catch partagé décode + dispatch). */
+  private async recordTcpError(err: unknown, imei: string | null, raw: string): Promise<void> {
+    await this.errorLogger
+      .record(err instanceof Error ? err : new Error(String(err)), 'tcp-server', {
+        imei: imei ?? undefined,
+        frameRaw: raw,
+      })
+      .catch((e) => this.logger.error('ErrorLogger persist failed', e));
   }
 
   private async dispatchFrame(
