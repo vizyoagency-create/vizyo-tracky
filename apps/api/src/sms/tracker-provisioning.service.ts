@@ -93,6 +93,11 @@ const DEFAULT_ACK_TIMEOUT_S = 12;
 const MIN_ACK_TIMEOUT_S = 3;
 const MAX_ACK_TIMEOUT_S = 120;
 const SETTLE_DELAY_MS = 1500; // petite pause apres un ACK avant la commande suivante
+// #19 — fenetre de garde : une reponse arrivant moins de REPLY_GUARD_MS apres
+// l'armement d'un waiter ne peut PAS etre la reponse a la commande qu'on vient
+// d'envoyer (round-trip SMS reel > 3s) -> c'est une reponse TARDIVE de l'etape
+// precedente (waiter partage par numero). On l'ignore et on reste arme.
+const REPLY_GUARD_MS = 3000;
 const INTER_STEP_DELAY_MS = 7000; // delai fixe entre commandes quand pas d'ACK
 
 @Injectable()
@@ -282,10 +287,10 @@ export class TrackerProvisioningService {
   onSmsInbound(evt: SmsInboundEvent): void {
     const key = this.normalizePhone(evt.fromNumber);
     const waiter = this.waiters.get(key);
-    if (waiter) {
-      this.waiters.delete(key);
-      waiter(evt);
-    }
+    // #19 — on ne pre-supprime PLUS le waiter : l'entry decide s'il CONSOMME la
+    // reponse (et se retire) ou s'il l'IGNORE (reponse tardive arrivee dans la
+    // fenetre de garde) en restant arme pour la vraie reponse a venir.
+    if (waiter) waiter(evt);
   }
 
   /** Normalise un numero pour le matching : 9 derniers chiffres (robuste +33/0033/0…). */
@@ -301,11 +306,17 @@ export class TrackerProvisioningService {
   private armReplyWaiter(
     phone: string,
     timeoutMs: number,
+    guardMs = 0,
   ): { promise: Promise<SmsInboundEvent | null>; cancel: () => void } {
     const key = this.normalizePhone(phone);
+    const armedAt = Date.now();
     let settle!: (v: SmsInboundEvent | null) => void;
     let timer: ReturnType<typeof setTimeout>;
     const entry = (sms: SmsInboundEvent): void => {
+      // #19 — reponse arrivant < guardMs apres l'armement : trop tot pour etre la
+      // reponse a la commande qu'on vient d'envoyer -> reponse TARDIVE de l'etape
+      // precedente. On l'ignore et on RESTE arme pour la vraie reponse.
+      if (guardMs > 0 && Date.now() - armedAt < guardMs) return;
       cleanup();
       settle(sms);
     };
@@ -362,7 +373,7 @@ export class TrackerProvisioningService {
 
       const def = stepDefs[i]!;
       // Arme le waiter AVANT l'envoi pour ne pas rater une reponse rapide.
-      const waiter = canReadReplies ? this.armReplyWaiter(params.phoneNumber, ackTimeoutMs) : null;
+      const waiter = canReadReplies ? this.armReplyWaiter(params.phoneNumber, ackTimeoutMs, REPLY_GUARD_MS) : null;
 
       const result = await this.sms.send(params.phoneNumber, def.payload, {
         imei: params.imei,

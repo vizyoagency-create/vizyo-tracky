@@ -107,4 +107,35 @@ describe('TrackerProvisioningService.buildSteps', () => {
     });
     for (const sms of out) expect(sms).toContain('123456');
   });
+
+  it('reply guard #19: ignore une reponse trop precoce (etape precedente), consomme la vraie', async () => {
+    jest.useFakeTimers();
+    try {
+      const phone = '+33612345678';
+      const svc = service as unknown as {
+        armReplyWaiter: (p: string, t: number, g: number) => { promise: Promise<unknown> };
+        onSmsInbound: (e: unknown) => void;
+      };
+      // guardMs=3000, timeout long (ne doit pas expirer pendant le test).
+      const waiter = svc.armReplyWaiter(phone, 60_000, 3000);
+      let settled: unknown = 'PENDING';
+      void waiter.promise.then((v) => { settled = v; });
+      const inbound = (body: string) =>
+        svc.onSmsInbound({ fromNumber: phone, body, receivedAt: '', smsLogId: 's' });
+
+      // Reponse arrivant immediatement (< 3s) -> ignoree, le waiter RESTE arme.
+      inbound('reponse tardive de l etape precedente');
+      await Promise.resolve();
+      expect(settled).toBe('PENDING');
+
+      // 3,5s plus tard -> la vraie reponse de l'etape courante est consommee.
+      jest.advanceTimersByTime(3500);
+      inbound('gprs ok');
+      await Promise.resolve();
+      await Promise.resolve();
+      expect((settled as { body?: string })?.body).toBe('gprs ok');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });
