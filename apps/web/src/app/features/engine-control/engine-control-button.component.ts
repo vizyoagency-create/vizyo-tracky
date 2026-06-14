@@ -159,9 +159,14 @@ export class EngineControlButtonComponent implements OnInit {
     // TOUTES sources incluses (DEVICE_OBSERVED = coupure SMS/externe detectee par la
     // chute d'ignition). Une coupure seulement SENT (pas encore confirmee) NE compte
     // PAS : l'etat ne bascule qu'a la preuve reelle — jamais de faux succes.
-    const isConfirmed = (c: EngineControlCommandDto) => c.status === 'ACKNOWLEDGED';
-    const lastCut = cmds.find((c) => c.action === 'CUT' && isConfirmed(c));
-    const lastRestore = cmds.find((c) => c.action === 'RESTORE' && isConfirmed(c));
+    const lastCut = cmds.find((c) => c.action === 'CUT' && c.status === 'ACKNOWLEDGED');
+    // Revue #1 — un RESTORE nettoie l'etat des l'ENVOI (SENT||ACK) : rallumer est
+    // toujours sur, on ne requiert PAS de preuve device pour CESSER d'afficher
+    // "coupe". Sinon le bouton resterait colle sur « Rallumer » (un RESTORE app
+    // n'atteint jamais ACKNOWLEDGED : seul un CUT est confirme par la chute d'ignition).
+    const lastRestore = cmds.find(
+      (c) => c.action === 'RESTORE' && (c.status === 'SENT' || c.status === 'ACKNOWLEDGED'),
+    );
     if (!lastCut) return false;
     if (!lastRestore) return true;
     return new Date(lastCut.createdAt) > new Date(lastRestore.createdAt);
