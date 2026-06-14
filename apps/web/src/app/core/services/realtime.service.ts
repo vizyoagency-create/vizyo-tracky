@@ -55,7 +55,9 @@ export class RealtimeService {
   private disconnectedSince: number | null = null;
   private incidentTimer: ReturnType<typeof setTimeout> | null = null;
   private static readonly INCIDENT_DELAY_MS = 45_000;
-  private static readonly INCIDENT_REPEAT_MS = 5 * 60_000;
+  // Re-report espacé (1 incident/30min max pour une coupure qui dure) pour ne
+  // PAS inonder le centre d'alerte — une coupure de 16 min ne produit qu'1 alerte.
+  private static readonly INCIDENT_REPEAT_MS = 30 * 60_000;
   private readonly toast = inject(ToastService);
   private readonly auth = inject(AuthService);
   private readonly preferences = inject(PreferencesService);

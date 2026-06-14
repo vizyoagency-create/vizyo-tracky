@@ -360,15 +360,25 @@ export class SimsService {
     nextToken?: string,
   ): Promise<{ items: SimEventDto[]; nextToken: string | null }> {
     const sim = await this.loadSim(id, rb);
-    const res = await this.client.listSimEvents(sim.iccid, { limit: 50, nextToken });
-    return {
-      items: res.items.map((e) => ({
-        timestamp: new Date(e.timestamp).toISOString(),
-        type: e.type,
-        details: e.details,
-      })),
-      nextToken: res.nextToken,
-    };
+    try {
+      const res = await this.client.listSimEvents(sim.iccid, { limit: 50, nextToken });
+      return {
+        items: res.items.map((e) => ({
+          timestamp: new Date(e.timestampMilliseconds || 0).toISOString(),
+          type: e.type,
+          details: e.details,
+        })),
+        nextToken: res.nextToken,
+      };
+    } catch (err) {
+      // WhereverSIM est un service EXTERNE (parfois indisponible, schéma qui
+      // évolue). On dégrade en liste vide plutôt que de propager un 503 qui
+      // inonderait le centre d'alerte (cf. erreurs SimEvent). Logué en warn.
+      this.logger.warn(
+        `SIM events indisponibles (${sim.iccid}) : ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return { items: [], nextToken: null };
+    }
   }
 
   // ─── Helpers ───────────────────────────────────────────────────────────────

@@ -52,7 +52,9 @@ export interface RawConsumptionPoint {
 }
 
 export interface RawSimEvent {
-  timestamp: number;
+  // V1.x — l'API WhereverSIM a renommé `timestamp` -> `timestampMilliseconds`
+  // (époch ms). L'ancien nom déclenchait une erreur de validation GraphQL (503).
+  timestampMilliseconds: number;
   type: string;
   details: unknown;
 }
@@ -222,7 +224,7 @@ export class WhereverSimClient {
       query Events($iccid: ID!, $limit: Int!, $nextToken: String) {
         listSimEvents(iccid: $iccid, limit: $limit, nextToken: $nextToken) {
           nextToken
-          items { timestamp type details }
+          items { timestampMilliseconds type details }
         }
       }
     `;

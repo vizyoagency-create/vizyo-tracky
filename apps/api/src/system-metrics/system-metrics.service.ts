@@ -106,7 +106,7 @@ export class SystemMetricsService {
       this.prisma.$queryRaw<
         Array<{ table: string; rows: number; totalMb: number; indexMb: number }>
       >`
-        SELECT relname AS "table",
+        SELECT relname::text AS "table",
                n_live_tup::int AS rows,
                (pg_total_relation_size(relid)::float8 / ${MB}) AS "totalMb",
                (pg_indexes_size(relid)::float8 / ${MB})       AS "indexMb"
