@@ -3,6 +3,17 @@
 > Branche `feat/sprint-2-fiabilisation-commande` (worktree isolé) · base `main` @ `a316347`.
 > ⚠️ **Feature de SÉCURITÉ** (coupe-circuit moteur physique). **Ne pas merger sans validation.**
 
+## Corrections post-revue (code-review du 2026-06-14)
+La relecture (high-effort, 4 angles + vérif) a confirmé l'architecture et relevé 6 points, **tous corrigés** (commits `fix(engine|web): revue Sprint 2 …`) :
+1. **#1 (critique) — rallumage « collé »** : dériver l'état coupé uniquement sur `ACKNOWLEDGED` cassait le RESTORE (un RESTORE app n'atteint jamais `ACKNOWLEDGED`) → le badge « coupé » restait affiché à vie après un rallumage. **Corrigé partout** (snapshot back, realtime, bouton, carte) : un RESTORE plus récent (SENT||ACK) nettoie l'état.
+2. **#2 — tri-état** (décision validée) : `normal` / `pending` (envoyée non confirmée, ex. véhicule à l'arrêt) / `cut` (confirmée). Nouveau champ `engineCutState` au snapshot ; badge ambre « Coupure en attente » sur la carte.
+3. **#3 — verrou 409 MANUEL only** : le SCHEDULER n'est plus bloqué par une coupure manuelle en attente (il ré-évalue à chaque tick).
+4. **#4 — faux succès carte** : le popup carte affichait « Moteur coupé » au simple envoi → remplacé par « Coupure envoyée » + attente de confirmation ; gestion dédiée du 409.
+5. **#5 — confirmation gardée** : la chute d'ignition ne confirme que les coupures `confirmationExpected` (une coupure à l'arrêt n'est plus faussement confirmée par une transition ON/OFF ultérieure).
+6. **#6 — verrou borné** : la fenêtre borne aussi les `PENDING` orphelins (anti-blocage permanent si un dispatch crashe).
+
+Procédure de validation staging « à l'œil » : [`STAGING-VALIDATION.md`](./STAGING-VALIDATION.md).
+
 ## Investigation préalable (demandée : le statut Coban expose-t-il l'état du relais ?)
 **Non — confirmé par la doc ET par les données prod.**
 - **Doc protocole** (`docs/03`) : aucun champ « relais/sortie » ; la confirmation documentée = l'`ignition` de la trame de position suivante (timeout 120 s). C'est exactement le design retenu.
@@ -28,7 +39,7 @@
 
 ## Tests & vérification — SANS PROD
 - **100 % mocks** (registry / prisma / sms / ackWaiter). **Aucune commande réelle envoyée. Flotte CDEF jamais touchée.** VPS = **lecture seule** (analyse + `wire_logs`).
-- **Backend** : +6 tests engine-control (verrou 409, RESTORE non bloqué, `confirmationExpected` marche/arrêt/RESTORE) ; +1 test positions (confirmation par chute d'ignition). **Suite API : 38 suites / 413 tests OK.** `typecheck` shared+api **OK**.
+- **Backend** : tests engine-control (verrou 409, RESTORE non bloqué, **SCHEDULER non bloqué**, **fenêtre du verrou**, `confirmationExpected` marche/arrêt/RESTORE) ; +1 positions (confirmation par chute d'ignition) ; +1 vehicles (**snapshot tri-état** cut/pending/normal-après-RESTORE). **Suite API : 38 suites / 416 tests OK.** `typecheck` shared+api **OK**.
 - **Front** : **`ng build` OK**. La machine à états est dérivée de données backend (testées) ; le front les affiche (en attente / confirmée / non confirmée / non vérifiable / échec).
 - Couverture DoD : idempotence (verrou 409), timeout/échec (SENT≠FAILED + non confirmée dérivée), synchro bidirectionnelle (confirmation ignition + DEVICE_OBSERVED), scoping tenant (tests IDOR existants préservés).
 
@@ -48,4 +59,7 @@ feat(engine): verrou une-coupure-en-vol (409) + confirmationExpected + WS enrich
 feat(engine): confirmation par chute d'ignition (positions)
 fix(engine): engineCutActive = etat device confirme (inclut DEVICE_OBSERVED)
 feat(web): UX confirmation start/stop (etats reels, anti faux-succes) + 409
+docs(sprint-2): recap de relecture
+fix(engine): revue Sprint 2 backend - coupe tri-etat, verrou MANUAL, confirmation gardee
+fix(web): revue Sprint 2 front - coupe tri-etat (carte/badge), rallumage nettoie, 409 carte
 ```
