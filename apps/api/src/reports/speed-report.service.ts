@@ -52,22 +52,32 @@ export class SpeedReportService {
       if (tracker) imei = tracker.imei;
     }
 
-    const positions: PositionRow[] = await this.prisma.position.findMany({
-      where: {
-        trackerId: trip.trackerId ?? undefined,
-        timestamp: { gte: trip.startedAt, lte: trip.endedAt ?? new Date() },
-      },
-      orderBy: { timestamp: 'asc' },
-      select: {
-        timestamp: true,
-        speedKmh: true,
-        lat: true,
-        lng: true,
-        valid: true,
-        heading: true,
-        ignition: true,
-      },
-    });
+    // #22 — borne anti-OOM : sans `take`, un trip tres long chargeait potentiellement
+    // 100k+ positions (puis 1 <tr> HTML par point). 5000 couvre ~40h a 30s = la
+    // quasi-totalite des trajets reels.
+    // #24 — si le trip n'a pas de trackerId, NE PAS requeter avec trackerId=undefined :
+    // Prisma ignorerait le filtre -> dump cross-tracker de toutes les positions de la
+    // fenetre temporelle. On renvoie alors un rapport sans positions.
+    const SPEED_REPORT_MAX_POSITIONS = 5000;
+    const positions: PositionRow[] = trip.trackerId
+      ? await this.prisma.position.findMany({
+          where: {
+            trackerId: trip.trackerId,
+            timestamp: { gte: trip.startedAt, lte: trip.endedAt ?? new Date() },
+          },
+          orderBy: { timestamp: 'asc' },
+          take: SPEED_REPORT_MAX_POSITIONS,
+          select: {
+            timestamp: true,
+            speedKmh: true,
+            lat: true,
+            lng: true,
+            valid: true,
+            heading: true,
+            ignition: true,
+          },
+        })
+      : [];
 
     const plate = trip.vehicle?.plate ?? 'N/A';
     const brand = trip.vehicle?.brand ?? '';

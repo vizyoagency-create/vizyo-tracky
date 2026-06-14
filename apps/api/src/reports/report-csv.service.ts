@@ -15,14 +15,18 @@ const BOM = '﻿';
 export class ReportCsvService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private wrap(rows: Record<string, string | number | null | undefined>[], filename: string): {
+  private wrap(rows: Record<string, string | number | null | undefined>[], filename: string, truncated = false): {
     filename: string;
     contentType: string;
     body: string;
   } {
     const csv = Papa.unparse(rows, { delimiter: ';', header: true });
+    // #23 — troncature VISIBLE : si l'export a atteint son cap memoire (tout est
+    // bufferise en RAM), on suffixe le nom `-PARTIEL` pour que l'utilisateur sache
+    // qu'il manque des lignes (avant : troncature silencieuse) et resserre la periode.
+    const finalName = truncated ? filename.replace(/\.csv$/, '-PARTIEL.csv') : filename;
     return {
-      filename,
+      filename: finalName,
       contentType: 'text/csv; charset=utf-8',
       body: BOM + csv,
     };
@@ -48,7 +52,7 @@ export class ReportCsvService {
       ignition: p.ignition === null ? '' : p.ignition ? 'on' : 'off',
       valid: p.valid ? 'yes' : 'no',
     }));
-    return this.wrap(rows, `tracky-positions-${this.dateSuffix(from, to)}.csv`);
+    return this.wrap(rows, `tracky-positions-${this.dateSuffix(from, to)}.csv`, rows.length >= 100_000);
   }
 
   async trips(fleetId: string, from: Date, to: Date) {
@@ -83,7 +87,7 @@ export class ReportCsvService {
       notes_author: this.formatAuthor(t.notesUpdatedBy),
       notes_updated_at: t.notesUpdatedAt?.toISOString() ?? '',
     }));
-    return this.wrap(rows, `tracky-trips-${this.dateSuffix(from, to)}.csv`);
+    return this.wrap(rows, `tracky-trips-${this.dateSuffix(from, to)}.csv`, rows.length >= 50_000);
   }
 
   /** Formate l'auteur de note pour l'export : "Prenom Nom" sinon email sinon vide. */
@@ -115,7 +119,7 @@ export class ReportCsvService {
       latitude: a.latitude ?? '',
       longitude: a.longitude ?? '',
     }));
-    return this.wrap(rows, `tracky-alerts-${this.dateSuffix(from, to)}.csv`);
+    return this.wrap(rows, `tracky-alerts-${this.dateSuffix(from, to)}.csv`, rows.length >= 50_000);
   }
 
   async commands(fleetId: string, from: Date, to: Date) {
@@ -139,7 +143,7 @@ export class ReportCsvService {
       reason: c.reason ?? '',
       last_error: c.lastError ?? '',
     }));
-    return this.wrap(rows, `tracky-commands-${this.dateSuffix(from, to)}.csv`);
+    return this.wrap(rows, `tracky-commands-${this.dateSuffix(from, to)}.csv`, rows.length >= 20_000);
   }
 
   private dateSuffix(from: Date, to: Date): string {
