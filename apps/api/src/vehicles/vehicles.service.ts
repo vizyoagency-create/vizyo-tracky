@@ -509,15 +509,15 @@ export class VehiclesService {
     const cutActiveIds = new Set<string>();
 
     if (trackerIds.length > 0) {
-      // Exclure DEVICE_OBSERVED + FAILED ancien (>30 min = historique, plus pertinent)
+      // Sprint 2 (Obj 3) — source de verite = etat DEVICE confirme. On prend la
+      // derniere commande CUT/RESTORE *confirmee* (ACKNOWLEDGED) par tracker, TOUTES
+      // sources incluses (DEVICE_OBSERVED = coupure SMS/externe detectee par ignition).
+      // Une coupure seulement SENT (pas encore confirmee par la chute d'ignition) NE
+      // bascule PAS l'etat "coupe" : l'etat ne change qu'a la preuve reelle.
       const lastCmds = await this.prisma.engineControlCommand.findMany({
         where: {
           trackerId: { in: trackerIds },
-          source: { not: 'DEVICE_OBSERVED' },
-          OR: [
-            { status: { in: [CommandStatus.SENT, CommandStatus.ACKNOWLEDGED] } },
-            { status: CommandStatus.FAILED, createdAt: { gte: new Date(Date.now() - 30 * 60 * 1000) } },
-          ],
+          status: CommandStatus.ACKNOWLEDGED,
         },
         orderBy: { createdAt: 'desc' },
         distinct: ['trackerId'],
