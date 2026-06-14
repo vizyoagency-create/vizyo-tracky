@@ -123,8 +123,11 @@ export class TrackerCommandsService {
     const resolvedImei = imei;
     const resolvedFleetId = fleetId ?? '';
 
-    const entry = this.registry.get(resolvedImei);
-    if (!entry) {
+    // #20 — passe par registry.send() (verifie destroyed + writable + try/catch +
+    // nettoie l'entree morte) au lieu d'ecrire directement sur la socket : une
+    // socket demi-morte ne doit pas etre marquee SENT en laissant fuiter l'entree.
+    const sentOk = this.registry.send(resolvedImei, command.payload);
+    if (!sentOk) {
       await this.prisma.trackerCommand.update({
         where: { id: command.id },
         data: { status: TrackerCommandStatus.FAILED, lastError: 'Tracker offline' },
@@ -133,10 +136,12 @@ export class TrackerCommandsService {
       throw new ServiceUnavailableException('Tracker hors ligne, commande non envoyée');
     }
 
-    entry.socket.write(command.payload);
+    // #36 — capture sentAt localement (l'objet `command` en memoire n'est PAS mis
+    // a jour par le prisma.update) pour calculer une vraie latence d'ACK plus bas.
+    const sentAt = new Date();
     await this.prisma.trackerCommand.update({
       where: { id: command.id },
-      data: { status: TrackerCommandStatus.SENT, sentAt: new Date() },
+      data: { status: TrackerCommandStatus.SENT, sentAt },
     });
 
     this.wireLogger.out(resolvedImei, command.payload, {
@@ -152,9 +157,7 @@ export class TrackerCommandsService {
       this.ackWaiter
         .waitForAck(resolvedImei, template.expectedAckPattern, template.ackTimeoutMs, command.id)
         .then(async (rawAck) => {
-          const latencyMs = command.sentAt
-            ? Date.now() - new Date(command.sentAt).getTime()
-            : 0;
+          const latencyMs = Date.now() - sentAt.getTime();
           this.wireLogger.ackMatch(resolvedImei, rawAck, command.id, latencyMs);
           await this.prisma.trackerCommand.update({
             where: { id: command.id },

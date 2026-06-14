@@ -7,6 +7,13 @@ interface PendingAck {
   reject: (reason: Error) => void;
   timeout: ReturnType<typeof setTimeout>;
   sentAt: number;
+  /**
+   * Priorite de resolution (#7). Quand plusieurs waiters d'un meme IMEI matchent
+   * la trame entrante, on resout celui de PLUS HAUTE priorite. Les ACK moteur
+   * (J/K, pattern specifique) passent en priorite haute pour ne pas etre "voles"
+   * par le pattern large d'une commande generique (status/position_single/raw).
+   */
+  priority: number;
 }
 
 @Injectable()
@@ -14,7 +21,13 @@ export class AckWaiterService {
   private readonly logger = new Logger(AckWaiterService.name);
   private readonly waiters = new Map<string, PendingAck[]>();
 
-  waitForAck(imei: string, pattern: RegExp, timeoutMs: number, commandId: string): Promise<string> {
+  waitForAck(
+    imei: string,
+    pattern: RegExp,
+    timeoutMs: number,
+    commandId: string,
+    priority = 0,
+  ): Promise<string> {
     return new Promise<string>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.removeWaiter(imei, commandId);
@@ -28,6 +41,7 @@ export class AckWaiterService {
         reject,
         timeout,
         sentAt: Date.now(),
+        priority,
       };
 
       const existing = this.waiters.get(imei) ?? [];
@@ -45,25 +59,32 @@ export class AckWaiterService {
     const pending = this.waiters.get(imei);
     if (!pending || pending.length === 0) return false;
 
+    // #7 — parmi les waiters dont le pattern matche, on resout celui de PLUS HAUTE
+    // priorite (ACK moteur specifiques avant patterns larges de commande), puis le
+    // plus ancien a priorite egale (`>` strict => le premier trouve gagne le tie).
+    let bestIdx = -1;
+    let bestPriority = -Infinity;
     for (let i = 0; i < pending.length; i++) {
-      if (pending[i].pattern.test(rawFrame)) {
-        const matched = pending[i];
-        clearTimeout(matched.timeout);
-        pending.splice(i, 1);
-        if (pending.length === 0) this.waiters.delete(imei);
-
-        const latencyMs = Date.now() - matched.sentAt;
-        this.logger.log(
-          { imei, commandId: matched.commandId, latencyMs, rawAck: rawFrame },
-          `ACK matched for ${matched.commandId.slice(0, 8)}`,
-        );
-
-        matched.resolve(rawFrame);
-        return true;
+      if (pending[i].pattern.test(rawFrame) && pending[i].priority > bestPriority) {
+        bestPriority = pending[i].priority;
+        bestIdx = i;
       }
     }
+    if (bestIdx === -1) return false;
 
-    return false;
+    const matched = pending[bestIdx];
+    clearTimeout(matched.timeout);
+    pending.splice(bestIdx, 1);
+    if (pending.length === 0) this.waiters.delete(imei);
+
+    const latencyMs = Date.now() - matched.sentAt;
+    this.logger.log(
+      { imei, commandId: matched.commandId, latencyMs, rawAck: rawFrame },
+      `ACK matched for ${matched.commandId.slice(0, 8)}`,
+    );
+
+    matched.resolve(rawFrame);
+    return true;
   }
 
   hasPending(imei: string): boolean {

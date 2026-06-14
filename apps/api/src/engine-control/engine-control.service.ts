@@ -25,6 +25,12 @@ const MAX_SPEED_FOR_CUT = 20;
 const ENGINE_ACK_TIMEOUT_MS = 15_000;
 const ENGINE_STOP_ACK_PATTERN = /imei:\d{15},J/i;
 const ENGINE_RESUME_ACK_PATTERN = /imei:\d{15},K/i;
+/**
+ * Priorite haute des ACK moteur (#7) : leurs patterns J/K sont specifiques, mais
+ * une commande generique concurrente (status/position_single, pattern large) ne
+ * doit pas "voler" l'echo moteur. Priorite > 0 => resolu en premier dans tryMatch.
+ */
+const ENGINE_ACK_PRIORITY = 10;
 
 interface RequestedBy {
   userId: string;
@@ -261,7 +267,7 @@ export class EngineControlService {
       : ENGINE_RESUME_ACK_PATTERN;
 
     this.ackWaiter
-      .waitForAck(imei, ackPattern, ENGINE_ACK_TIMEOUT_MS, command.id)
+      .waitForAck(imei, ackPattern, ENGINE_ACK_TIMEOUT_MS, command.id, ENGINE_ACK_PRIORITY)
       .then(async (rawAck) => {
         const latencyMs = updated.sentAt
           ? Date.now() - new Date(updated.sentAt).getTime()

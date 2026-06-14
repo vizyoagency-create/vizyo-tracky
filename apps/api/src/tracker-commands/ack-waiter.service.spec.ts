@@ -82,4 +82,20 @@ describe('AckWaiterService', () => {
   it('should return false when no waiters exist', () => {
     expect(service.tryMatch('123456789012345', 'anything')).toBe(false);
   });
+
+  it('should resolve the higher-priority waiter when several patterns match (#7)', async () => {
+    // Commande generique (pattern LARGE, priorite 0) enregistree EN PREMIER, puis
+    // commande moteur (pattern specifique J, priorite haute). L'echo moteur matche
+    // LES DEUX patterns -> il ne doit PAS etre vole par le pattern generique.
+    const generic = service.waitForAck('123456789012345', /imei:\d{15},/i, 5000, 'cmd-generic', 0);
+    const engine = service.waitForAck('123456789012345', /imei:\d{15},J/i, 5000, 'cmd-engine', 10);
+    generic.catch(() => {});
+
+    const matched = service.tryMatch('123456789012345', 'imei:123456789012345,J');
+    expect(matched).toBe(true);
+    await expect(engine).resolves.toBe('imei:123456789012345,J');
+    // Le waiter generique reste en attente (non resolu a tort).
+    expect(service.hasPending('123456789012345')).toBe(true);
+    service.cancelAll('123456789012345');
+  });
 });

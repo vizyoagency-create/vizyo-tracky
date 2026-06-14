@@ -282,6 +282,12 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
         );
         await this.positions.ingest(frame);
 
+        // #10 — un ACK de commande (ex position_single) peut decoder comme une
+        // trame 'position' : on tente de resoudre un waiter en attente pour cet
+        // IMEI (no-op s'il n'y en a pas). Le pattern moteur J/K ne matche pas une
+        // position, donc seule une commande "position" est resolue ici.
+        this.ackWaiter.tryMatch(currentImei, frame.raw);
+
         if (frame.alarm && frame.alarm !== 'none') {
           const tracker = await this.prisma.tracker.findUnique({
             where: { imei: frame.imei },

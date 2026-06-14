@@ -62,8 +62,9 @@ describe('TrackerCommandsService', () => {
     tracker: { findUnique: jest.Mock };
     trackerCommand: { create: jest.Mock; update: jest.Mock; findUnique: jest.Mock; findMany: jest.Mock };
   };
-  let registry: { get: jest.Mock };
+  let registry: { send: jest.Mock };
   let ackWaiter: { waitForAck: jest.Mock };
+  let wireLog: { out: jest.Mock; ackMatch: jest.Mock; ackTimeout: jest.Mock };
 
   beforeEach(async () => {
     commandCounter = 0;
@@ -76,8 +77,9 @@ describe('TrackerCommandsService', () => {
         findMany: jest.fn().mockResolvedValue([]),
       },
     };
-    registry = { get: jest.fn().mockReturnValue(undefined) };
+    registry = { send: jest.fn().mockReturnValue(false) };
     ackWaiter = { waitForAck: jest.fn().mockReturnValue(new Promise(() => {})) };
+    wireLog = { out: jest.fn(), ackMatch: jest.fn(), ackTimeout: jest.fn() };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -85,7 +87,7 @@ describe('TrackerCommandsService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: SocketRegistryService, useValue: registry },
         { provide: AckWaiterService, useValue: ackWaiter },
-        { provide: CobanWireLogger, useValue: { out: jest.fn(), ackMatch: jest.fn(), ackTimeout: jest.fn() } },
+        { provide: CobanWireLogger, useValue: wireLog },
         { provide: RealtimeGateway, useValue: { server: { to: jest.fn().mockReturnThis(), emit: jest.fn() } } },
       ],
     }).compile();
@@ -140,13 +142,12 @@ describe('TrackerCommandsService', () => {
 
   it('should create PENDING command and dispatch', async () => {
     prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
-    const mockSocket = { write: jest.fn() };
-    registry.get.mockReturnValue({ socket: mockSocket });
+    registry.send.mockReturnValue(true);
 
     const result = await service.request(TRACKER_ID, 'status', {}, null, fleetAdmin);
     expect(result.status).toBe(TrackerCommandStatus.PENDING);
     expect(result.payload).toContain('**,imei:123456789012345,B;');
-    expect(mockSocket.write).toHaveBeenCalled();
+    expect(registry.send).toHaveBeenCalledWith('123456789012345', expect.stringContaining('imei:123456789012345'));
   });
 
   it('should create SCHEDULED command without dispatch', async () => {
@@ -155,12 +156,12 @@ describe('TrackerCommandsService', () => {
 
     const result = await service.request(TRACKER_ID, 'status', {}, future, fleetAdmin);
     expect(result.status).toBe(TrackerCommandStatus.SCHEDULED);
-    expect(registry.get).not.toHaveBeenCalled();
+    expect(registry.send).not.toHaveBeenCalled();
   });
 
   it('should fail dispatch when tracker offline', async () => {
     prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
-    registry.get.mockReturnValue(undefined);
+    registry.send.mockReturnValue(false);
 
     await expect(
       service.request(TRACKER_ID, 'status', {}, null, fleetAdmin),
@@ -169,7 +170,7 @@ describe('TrackerCommandsService', () => {
 
   it('should allow SUPER_ADMIN to use factory template', async () => {
     prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
-    registry.get.mockReturnValue(undefined);
+    registry.send.mockReturnValue(false);
 
     await expect(
       service.request(TRACKER_ID, 'factory', {}, null, superAdmin),
@@ -185,8 +186,7 @@ describe('TrackerCommandsService', () => {
 
   it('should build payload with params', async () => {
     prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
-    const mockSocket = { write: jest.fn() };
-    registry.get.mockReturnValue({ socket: mockSocket });
+    registry.send.mockReturnValue(true);
 
     const result = await service.request(
       TRACKER_ID, 'speed_alarm', { speed_kmh: 80 }, null, fleetAdmin,
@@ -224,8 +224,7 @@ describe('TrackerCommandsService', () => {
 
   it('should start ACK waiter after dispatch', async () => {
     prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
-    const mockSocket = { write: jest.fn() };
-    registry.get.mockReturnValue({ socket: mockSocket });
+    registry.send.mockReturnValue(true);
 
     await service.request(TRACKER_ID, 'status', {}, null, fleetAdmin);
     expect(ackWaiter.waitForAck).toHaveBeenCalledWith(
@@ -234,5 +233,33 @@ describe('TrackerCommandsService', () => {
       expect.any(Number),
       expect.any(String),
     );
+  });
+
+  it('should compute a real ACK latency from the captured sentAt, not 0 (#36)', async () => {
+    jest.useFakeTimers();
+    prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);
+    registry.send.mockReturnValue(true);
+    let resolveAck!: (s: string) => void;
+    ackWaiter.waitForAck.mockReturnValue(
+      new Promise<string>((res) => {
+        resolveAck = res;
+      }),
+    );
+
+    await service.request(TRACKER_ID, 'status', {}, null, fleetAdmin);
+
+    // 1,5 s s'ecoulent avant l'arrivee de l'ACK.
+    jest.setSystemTime(Date.now() + 1500);
+    resolveAck('imei:123456789012345,B ok');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(wireLog.ackMatch).toHaveBeenCalledWith(
+      '123456789012345',
+      'imei:123456789012345,B ok',
+      expect.any(String),
+      1500,
+    );
+    jest.useRealTimers();
   });
 });

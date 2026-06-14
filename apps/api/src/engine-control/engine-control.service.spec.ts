@@ -305,6 +305,7 @@ describe('EngineControlService', () => {
       expect.any(RegExp),
       15000,
       expect.any(String),
+      10, // ENGINE_ACK_PRIORITY (#7) — priorite haute pour l'echo moteur J/K
     );
     expect(gateway.emitEngineCommandUpdate).toHaveBeenCalled();
   });
