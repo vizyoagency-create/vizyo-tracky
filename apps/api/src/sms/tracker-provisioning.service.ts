@@ -82,7 +82,7 @@ interface StepDef {
  * `seenSinceStart` = boitier vu en ligne APRES le lancement de la sequence (preuve
  * que CETTE config a pris effet ; insensible a un tracker deja online avant).
  */
-interface TrackerLiveStatus {
+export interface TrackerLiveStatus {
   status: TrackerStatus;
   lastSeenAt: Date | null;
   lastPositionAt: Date | null;
