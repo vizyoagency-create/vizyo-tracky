@@ -85,7 +85,20 @@ export class RealtimeService {
     if (typeof document !== 'undefined') {
       document.body.classList.toggle('app-paused', !visible);
     }
-    if (!visible) return;
+    if (!visible) {
+      // V1.18 — Passage en arrière-plan : désarmer le timer d'incident temps réel.
+      // Un socket WS coupé en background est NORMAL (le navigateur throttle/gèle les
+      // timers et laisse tomber le ping/pong) ; un timer gelé qui se déclenche au
+      // réveil remonterait un downMs gonflé = faux CRITICAL « live interrompu » alors
+      // que l'utilisateur ne regardait même pas la carte. On conserve
+      // `disconnectedSince` (on sait qu'on est coupé) mais AUCUN timer ne court tant
+      // qu'on est caché. La reprise se fait au retour au premier plan (plus bas).
+      if (this.incidentTimer) {
+        clearTimeout(this.incidentTimer);
+        this.incidentTimer = null;
+      }
+      return;
+    }
     // L'utilisateur revient sur l'app -> on clear le badge sur l'icone (le "1" que
     // les notifs avaient affiche). Pattern Slack/Linear : badge = notifs en attente,
     // tu reviens, c'est lu, badge a 0.
@@ -100,6 +113,16 @@ export class RealtimeService {
         }
       }).catch(() => { /* silent */ });
       this.hydrate().catch(() => { /* silent */ });
+    }
+
+    // V1.18 — Retour au premier plan toujours déconnecté : on redémarre la fenêtre
+    // de surveillance à MAINTENANT (le temps passé en arrière-plan ne doit pas
+    // compter) puis on ré-arme le timer. Un incident « live interrompu » n'est donc
+    // remonté que si la reconnexion échoue réellement au-delà du seuil, sous les yeux
+    // de l'utilisateur. La reconnexion elle-même (socket.connect ci-dessus) est inchangée.
+    if (this.socket && !this.socket.connected && this.disconnectedSince !== null) {
+      this.disconnectedSince = Date.now();
+      this.armIncidentTimer();
     }
   });
 
@@ -326,6 +349,21 @@ export class RealtimeService {
   private startIncidentWatch(): void {
     if (this.disconnectedSince !== null) return;
     this.disconnectedSince = Date.now();
+    this.armIncidentTimer();
+  }
+
+  /**
+   * (Ré)arme le timer de premier report — UNIQUEMENT si l'onglet est au premier
+   * plan. En arrière-plan on n'arme pas : un socket coupé y est normal et le timer
+   * serait de toute façon gelé/throttlé par le navigateur (=> downMs gonflé au
+   * réveil). La reprise au retour visible est pilotée par `visibilityEffect`.
+   */
+  private armIncidentTimer(): void {
+    if (this.incidentTimer) {
+      clearTimeout(this.incidentTimer);
+      this.incidentTimer = null;
+    }
+    if (typeof document !== 'undefined' && !this.visibility.isVisible()) return;
     this.incidentTimer = setTimeout(
       () => this.reportRealtimeIncident(),
       RealtimeService.INCIDENT_DELAY_MS,
@@ -346,9 +384,18 @@ export class RealtimeService {
    * re-programme un report périodique tant que la coupure persiste. Best-effort :
    * si le HTTP est lui aussi indisponible, on échoue silencieusement (rien à
    * remonter d'utile, l'app entière est down).
+   *
+   * V1.18 — Garde de visibilité : on ne remonte JAMAIS en arrière-plan (le timer ne
+   * devrait pas y courir, mais on se protège d'un déclenchement au réveil avec un
+   * downMs gonflé). Un report ne reflète donc qu'une coupure réellement vécue au
+   * premier plan par l'utilisateur.
    */
   private reportRealtimeIncident(): void {
     if (this.disconnectedSince === null) return; // reconnecté entre-temps
+    if (typeof document !== 'undefined' && !this.visibility.isVisible()) {
+      this.incidentTimer = null;
+      return;
+    }
     const downMs = Date.now() - this.disconnectedSince;
     firstValueFrom(this.http.post('/api/realtime/incident', { downMs })).catch(() => {
       /* silent */
