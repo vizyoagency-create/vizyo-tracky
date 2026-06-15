@@ -6,11 +6,11 @@
 ## 0. Décisions actées (validées client)
 1. **Scope veilleur** : **multi-groupes flexible** — 1..N groupes **ou** flotte entière, choisi par l'admin à la création, via `UserVehicleAccess` (`GROUP`/`ALL`). Aucune nouvelle table.
 2. **Délai 0 km** : **défaut 2 min**, configurable via **env plateforme** `ENGINE_CUT_MIN_STOPPED_S` (défaut `120`). Config par-flotte = itération ultérieure (hors scope).
-3. **Portée règle 0 km** : **GLOBALE — tous les rôles** (admins inclus). Régression assumée du comportement S2.
+3. **Portée règle 0 km** : **rôle veilleur UNIQUEMENT** (revue client). Les admins/FLEET_MANAGER conservent la coupure S2 (≤ 20 km/h) → **antivol préservé** (couper un véhicule volé en mouvement lent reste possible pour un admin). La règle 0 km/2 min est une précondition **conditionnée à `requestedBy.role === UserRole.NIGHT_WATCHMAN`**.
 4. **Toggle « gérer horaires »** : **OFF par défaut** (moindre privilège).
 
-> ### ⚠️ Implication de la décision #3 à CONFIRMER à la relecture (CB majeur)
-> « Coupure autorisée seulement si 0 km depuis X min », appliquée **globalement**, **supersede** l'autorisation S2 de couper jusqu'à 20 km/h. **Conséquence : plus personne (admin compris) ne peut couper un véhicule qui roule, même lentement (5–20 km/h) — il faut qu'il soit à l'arrêt depuis ≥ X min.** Cas impacté : couper un véhicule **volé en mouvement lent** devient impossible jusqu'à son arrêt. C'est cohérent avec la sécurité S2 (interdit déjà > 20 km/h), mais c'est un **durcissement**. → **À confirmer.** (Repli possible si tu changes d'avis : porter la règle au **rôle veilleur uniquement** et garder ≤ 20 km/h pour les admins — 1 ligne de condition.)
+> ### ✅ Décision #3 — résolue (revue client) : règle scopée veilleur
+> La règle « 0 km depuis X min » ne s'applique **qu'au rôle veilleur**. **Aucune régression** du chemin de coupe S2 pour les admins/managers (≤ 20 km/h, antivol intact). Implémentation : la nouvelle précondition est gardée par `if (requestedBy.role === UserRole.NIGHT_WATCHMAN) { … }` dans le bloc CUT → **les tests S2 existants (acteur `fleetAdmin`) ne sont pas impactés** ; on ajoute des tests dédiés au veilleur.
 
 ## 1. Rôle & permissions (modèle)
 
@@ -39,13 +39,13 @@
 - Le veilleur lit `/vehicles/snapshot` (déjà scoping `accessibleVehicleIds`) → ne voit que ses groupes. Aucun nouvel endpoint.
 
 ### Obj 4 — Règle « 0 km depuis X min » (GLOBALE) — extension du garde-fou S2
-- `engine-control.service.ts > requestCommand`, **bloc `action===CUT`**, après les checks S2 existants :
+- `engine-control.service.ts > requestCommand`, **bloc `action===CUT`**, après les checks S2 existants, **gardé par `if (requestedBy.role === UserRole.NIGHT_WATCHMAN)`** :
   - Constante `ENGINE_CUT_MIN_STOPPED_MS = max(0, Number(process.env.ENGINE_CUT_MIN_STOPPED_S) || 120) * 1000`.
-  - **Exiger l'arrêt** : si `lastPosition.speedKmh > REST_SPEED_KMH` → `REJECTED_SPEED` (« véhicule en mouvement »). *(Durcit l'ancien ≤ 20 km/h — cf CB.)*
+  - **Exiger l'arrêt** : si `lastPosition.speedKmh > REST_SPEED_KMH` (5) → `REJECTED_SPEED` (« véhicule en mouvement »). *(Veilleur uniquement ; les admins gardent ≤ 20 km/h.)*
   - **Exiger la durée** : 2ᵉ requête `position.findFirst({ where:{ trackerId, speedKmh:{ gt: REST_SPEED_KMH }, timestamp:{ gte: now-fenêtreRecherche } }, orderBy:{timestamp:desc}, select:{timestamp:true} })`. `stoppedSince = lastMovement ? now-lastMovement.timestamp : now-lastPosition.timestamp`. Si `stoppedSince < ENGINE_CUT_MIN_STOPPED_MS` → `REJECTED_SPEED` + `lastError` clair (« arrêté depuis Ns, minimum X min »).
   - **Réutilise l'état `REJECTED_SPEED`** (pas de nouvel état) + `emitUpdate` (le front affiche un refus explicite, pas un échec générique).
 - **Garde-fou borné** : `timestamp gte now - (ENGINE_CUT_MIN_STOPPED_MS + marge)` pour ne pas scanner tout l'historique (perf ; index `[trackerId, timestamp desc]`).
-- **Portée** : globale (toutes sources/rôles), donc placée dans la précondition commune. *(Repli rôle-veilleur = condition `requestedBy.role === NIGHT_WATCHMAN` autour du bloc.)*
+- **Portée** : **rôle veilleur uniquement** → aucune régression des tests/chemins S2 (acteur admin inchangé). Tests dédiés veilleur (refus si arrêté < 2 min / si en mouvement, OK si ≥ 2 min ; un admin n'est PAS soumis à la règle).
 
 ### Obj 5 — Désactivation auto horaire : PRÉSERVER
 - Ne pas toucher le bloc `source==='MANUAL'` → `vehicleSchedule.updateMany` (disable / override 1 h). Les coupures veilleur sont `MANUAL` → s'applique déjà. **Tests de non-régression** dédiés.
@@ -58,7 +58,8 @@
 
 | Élément | Fichier | Changement |
 |---|---|---|
-| Onglets masqués | `layouts/dashboard-layout.component.ts` (`navItems`) | Si `role===NIGHT_WATCHMAN` → n'exposer que **Véhicules** (détail atteint via la liste). |
+| Onglets masqués | `layouts/dashboard-layout.component.ts` (`navItems`) | Si `role===NIGHT_WATCHMAN` → exposer **Véhicules** + **Carte (lecture seule)** ; masquer le reste (Trajets/Rapports, Alertes, Groupes, Users, Installation…). |
+| Carte lecture seule | `features/map/map.component.ts` | Veilleur : carte **scopée** à ses véhicules (le snapshot serveur le fait déjà via `accessibleVehicleIds`) ; **actions moteur (Couper/Rallumer) masquées sur la carte** → l'action passe par la vue groupée / le détail (S2). Awareness only. |
 | Anti-URL directe | `app.routes.ts` + `core/guards/` | `roleGuard`/`permissionGuard` sur les routes interdites ; un veilleur sur une route hors périmètre → redirigé vers `/vehicles`. |
 | Redirection login | `features/auth/login.component.ts` | Branche `role===NIGHT_WATCHMAN` → vue groupée. |
 | Vue groupée par défaut | `features/vehicles/vehicles-list.component.ts` | Lire `?viewMode=grouped` à l'init **ou** forcer `grouped` pour le veilleur. (S1 réutilisée.) |
@@ -78,7 +79,7 @@ Stratégie sans-prod de S2 (mocks registry/prisma/sms ; flotte CDEF interdite ; 
 1. **Permissions/rôle** : un `NIGHT_WATCHMAN` peut `engine_control` (dans son scope) ; **403** sur `alerts/reports/users/drivers/geofences/sims` et `vehicle-schedules` (toggle OFF). Tests guard + e2e léger.
 2. **Anti-URL directe** : route guard front (unit) **+** assert serveur 403 (le vrai gate).
 3. **Scoping tenant + scope groupe** : un veilleur ne voit/commande que `accessibleVehicleIds` ; **404/403** cross-flotte (IDOR) et hors-groupe.
-4. **Règle 0 km/X min (globale)** : refus `REJECTED_SPEED` si arrêté < X min ; OK si ≥ X min ; refus si en mouvement (> REST_SPEED_KMH) ; **vérifier l'application aux admins** (décision #3). + **MAJ des tests S2** impactés (cuts à l'arrêt doivent mocker « dernier mouvement > X min »).
+4. **Règle 0 km/X min (veilleur uniquement)** : pour un **veilleur** → refus `REJECTED_SPEED` si arrêté < 2 min **ou** si en mouvement (> `REST_SPEED_KMH`), OK si ≥ 2 min. Pour un **admin/manager → règle NON appliquée** (chemin ≤ 20 km/h S2 inchangé). **Tests S2 existants intacts** (acteur `fleetAdmin`).
 5. **Toggle horaires** : `schedules_manage` OFF → 403 ; ON → autorisé (dans le scope) ; **clamp** anti-escalade (un granter sans la perm ne peut l'accorder).
 6. **Mode horaire préservé** : un CUT/RESTORE `MANUAL` neutralise le schedule (disable/override) — non-régression.
 7. **Anti-escalade** : `clampPermissions` sur `engine_control`/`schedules_manage`.
@@ -91,7 +92,8 @@ Stratégie sans-prod de S2 (mocks registry/prisma/sms ; flotte CDEF interdite ; 
 ## 7. Ordre d'implémentation (après go + S2 mergé)
 1. Rebase sur `main`. 2. Enum rôle + migration + défauts perms (+`schedules_manage`). 3. Enforcement back engine-control/vehicles + **audit endpoints** (sécurité). 4. Règle 0 km globale + tests (+ MAJ tests S2). 5. Toggle horaires (perm+enforce) + tests. 6. Front : nav + guards + login + vue groupée. 7. Suite complète + typecheck + ng build. 8. RÉCAP (focalisé sécurité). 
 
-## 8. Questions ouvertes / à confirmer
-- **CB décision #3** (cf encadré §0) : confirmer le durcissement global (5–20 km/h non coupable) ou replier sur veilleur-only.
-- **Carte pour le veilleur ?** Le brief dit « Véhicules + Détail » uniquement → **je masque la Carte** au veilleur (à confirmer ; certains veilleurs aiment la carte, mais le brief est explicite).
-- **Seuil « mouvement »** pour la durée d'arrêt : on réutilise `REST_SPEED_KMH=5` (cohérent S2) plutôt qu'un `> 0` strict (bruit GPS). OK ?
+## 8. Décisions tranchées (revue client — figées)
+- **Règle 0 km/2 min = rôle veilleur uniquement** ; admins/managers gardent ≤ 20 km/h (**antivol préservé**). Zéro régression S2.
+- **Carte** : **conservée pour le veilleur, en lecture seule** + scopée à ses véhicules ; actions moteur depuis la vue groupée / le détail (pas depuis la carte).
+- **Seuil « mouvement »** = `REST_SPEED_KMH = 5` (cohérent S2).
+- **Sécurité #1 (priorité)** : enforcement serveur **exhaustif** + tests **403** sur **chaque** endpoint hors-périmètre (`alerts`, `reports`, `users`, `drivers`, `geofences`, `sims`, `installations`, `trips`, + `vehicle-schedules` si toggle OFF). **Aucun endpoint sous `JwtAuthGuard` seul.**

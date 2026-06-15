@@ -69,7 +69,7 @@ requestCommand(...)
 
 `engine-control.service.ts > requestCommand`, bloc `action === CUT` : récupère `lastPosition` (`prisma.position.findFirst orderBy timestamp desc`) puis enchaîne les refus en **`REJECTED_SPEED`** : pas de position / position stale en mouvement (`STALE_THRESHOLD_MOVING_MS=60s`, sauf `isAtRest = speedKmh <= REST_SPEED_KMH(5)`) / fix invalide / `speedKmh > MAX_SPEED_FOR_CUT(20)`.
 - **Extension** : après les checks existants, quand `isAtRest`, ajouter **« arrêté depuis ≥ X min »** : 2ᵉ requête `position.findFirst({ where:{ trackerId, speedKmh:{ gt: seuilMouvement } }, orderBy:{timestamp:desc} })` → `stoppedSince = now - lastMovement.timestamp`. Si `< X min` → **refus `REJECTED_SPEED`** avec message dédié (« pas encore arrêté assez longtemps »). **On réutilise l'état existant `REJECTED_SPEED`** (le brief : « raffiner l'existant », pas un 2ᵉ garde-fou). Table `positions` indexée `[trackerId, timestamp desc]` → 2 requêtes O(log n).
-- **À trancher (décision #2)** : valeur **X** (défaut 2 min ?) + **configurable** (env type `ENGINE_CONFIRM_WINDOW_S` → `ENGINE_CUT_MIN_STOPPED_S`), et **périmètre de la règle** : *veilleur uniquement* (ne pas régresser le pouvoir admin de couper un véhicule juste arrêté) **ou** *global au chemin CUT*. Reco : **appliquer au rôle veilleur** (et/ou réglage flotte), admins non régressés. (Pas de table config par-flotte aujourd'hui → env plateforme d'abord.)
+- **Tranché (voir PLAN §0)** : **rôle veilleur uniquement** (admins gardent ≤ 20 km/h, antivol préservé), défaut **2 min**, configurable via env `ENGINE_CUT_MIN_STOPPED_S` (config par-flotte = itération ultérieure).
 
 ## 5. Mode horaire + désactivation auto (à préserver)
 
