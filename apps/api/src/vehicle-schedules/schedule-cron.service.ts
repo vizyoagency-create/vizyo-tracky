@@ -45,9 +45,34 @@ export class ScheduleCronService {
     private readonly events: EventEmitter2,
   ) {}
 
+  private running = false;
+
   /** Runs every minute. */
   @Cron('0 * * * * *')
   async evaluate(): Promise<void> {
+    // Garde anti-chevauchement : un tick qui déborde (beaucoup de plannings ×
+    // commandes moteur) ne doit pas empiler des runs concurrents (risque de
+    // saturation CPU). On saute et on reprend au tick suivant — l'état est
+    // ré-évalué depuis la DB, rien n'est perdu. Le try/catch protège aussi d'un
+    // rejet de la requête globale (unhandled rejection).
+    if (this.running) {
+      this.logger.warn('Schedule cron: tick précédent encore en cours — skip');
+      return;
+    }
+    this.running = true;
+    try {
+      await this.evaluateAll();
+    } catch (err) {
+      this.logger.error({ error: (err as Error).message }, 'Schedule cron tick failed');
+      this.errorLogger
+        .record(err instanceof Error ? err : new Error(String(err)), 'schedule-cron', { phase: 'tick' })
+        .catch(() => { /* best-effort */ });
+    } finally {
+      this.running = false;
+    }
+  }
+
+  private async evaluateAll(): Promise<void> {
     const schedules = await this.prisma.vehicleSchedule.findMany({
       where: { enabled: true },
       include: {

@@ -83,32 +83,38 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
    */
   @Interval(60_000)
   async revalidateConnections(): Promise<void> {
-    const ns = this.server as unknown as { sockets?: Map<string, Socket> };
-    const sockets = ns.sockets;
-    if (!sockets || sockets.size === 0) return;
+    // Garde anti unhandled-rejection : un blip DB (findMany) ne doit pas faire
+    // rejeter ce cron qui tourne toutes les 60s. On log et on retente au tick suivant.
+    try {
+      const ns = this.server as unknown as { sockets?: Map<string, Socket> };
+      const sockets = ns.sockets;
+      if (!sockets || sockets.size === 0) return;
 
-    const byUser = new Map<string, Socket[]>();
-    for (const [, socket] of sockets) {
-      const userId = (socket.data as { userId?: string } | undefined)?.userId;
-      if (!userId) continue;
-      const list = byUser.get(userId) ?? [];
-      list.push(socket);
-      byUser.set(userId, list);
-    }
-    if (byUser.size === 0) return;
-
-    const activeUsers = await this.prisma.user.findMany({
-      where: { id: { in: [...byUser.keys()] }, isActive: true },
-      select: { id: true },
-    });
-    const stillActive = new Set(activeUsers.map((u) => u.id));
-
-    for (const [userId, userSockets] of byUser) {
-      if (stillActive.has(userId)) continue;
-      for (const socket of userSockets) {
-        this.logger.warn(`Revalidation WS: deconnexion ${socket.id} (user ${userId} inactif/supprime)`);
-        socket.disconnect();
+      const byUser = new Map<string, Socket[]>();
+      for (const [, socket] of sockets) {
+        const userId = (socket.data as { userId?: string } | undefined)?.userId;
+        if (!userId) continue;
+        const list = byUser.get(userId) ?? [];
+        list.push(socket);
+        byUser.set(userId, list);
       }
+      if (byUser.size === 0) return;
+
+      const activeUsers = await this.prisma.user.findMany({
+        where: { id: { in: [...byUser.keys()] }, isActive: true },
+        select: { id: true },
+      });
+      const stillActive = new Set(activeUsers.map((u) => u.id));
+
+      for (const [userId, userSockets] of byUser) {
+        if (stillActive.has(userId)) continue;
+        for (const socket of userSockets) {
+          this.logger.warn(`Revalidation WS: deconnexion ${socket.id} (user ${userId} inactif/supprime)`);
+          socket.disconnect();
+        }
+      }
+    } catch (err) {
+      this.logger.warn(`revalidateConnections: tick ignore (${err instanceof Error ? err.message : err})`);
     }
   }
 

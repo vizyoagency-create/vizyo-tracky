@@ -264,7 +264,17 @@ export class TripsService implements OnModuleInit {
     for (const [trackerId, state] of this.openTrips) {
       if (now - state.lastTimestamp.getTime() > TRIP_STOP_TIMEOUT_MS) {
         this.logger.warn(`Trip timeout for tracker ${trackerId}, closing`);
-        await this.finalizeTrip(state, state.lastTimestamp, 'timeout');
+        // Garde par trip : une finalisation qui echoue (DB / map-matching / WS) ne
+        // doit NI rejeter le cron (unhandled promise rejection) NI empecher la
+        // fermeture des autres trips expires de ce tick. Le trip reste ouvert et
+        // sera retente au prochain tick.
+        try {
+          await this.finalizeTrip(state, state.lastTimestamp, 'timeout');
+        } catch (err) {
+          this.logger.error(
+            `finalizeTrip (timeout) a echoue pour tracker ${trackerId}: ${err instanceof Error ? err.message : err}`,
+          );
+        }
       }
     }
   }

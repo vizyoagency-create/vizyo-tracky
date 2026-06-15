@@ -31,8 +31,30 @@ export class SurveillanceSchedulerService {
     private readonly surveillance: SurveillanceService,
   ) {}
 
+  private running = false;
+
   @Cron(CronExpression.EVERY_MINUTE)
   async run(): Promise<void> {
+    // Garde anti-chevauchement : si le tick précédent tourne encore (beaucoup de
+    // profils × envoi SMS Coban), on saute ce tick plutôt que d'empiler des runs
+    // concurrents (risque de saturation CPU/SMS). Le travail est repris au tick
+    // suivant — l'état est ré-évalué depuis la DB, rien n'est perdu. Le try/catch
+    // évite aussi qu'un échec de la requête globale ne rejette le cron.
+    if (this.running) {
+      this.logger.warn('[scheduler] tick précédent encore en cours — skip');
+      return;
+    }
+    this.running = true;
+    try {
+      await this.runOnce();
+    } catch (err) {
+      this.logger.error(`[scheduler] run a échoué: ${err instanceof Error ? err.message : err}`);
+    } finally {
+      this.running = false;
+    }
+  }
+
+  private async runOnce(): Promise<void> {
     // Sélectionne FULL_TIME et SCHEDULED — OFF est intentionnellement exclu :
     // pas d'auto-action mais le user peut toujours armer manuellement.
     const profiles = await this.prisma.surveillanceProfile.findMany({
