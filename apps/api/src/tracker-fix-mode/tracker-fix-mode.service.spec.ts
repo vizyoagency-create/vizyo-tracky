@@ -257,7 +257,9 @@ describe('TrackerFixModeService.reconcile', () => {
         lastFixIntervalSyncAt: new Date(prev.getTime() - 10 * 60 * 1000),
         fixCommandFailureCount: 316, // valeur "legacy" non bornée
       },
-      { deviceTime: next, speedKmh: 0, ignition: false, lat: 48, lng: 2 },
+      // EN MOUVEMENT (contact ON) : l'exemption "véhicule garé" (V1.18) ne
+      // s'applique pas, on atteint donc bien la logique de plafonnement.
+      { deviceTime: next, speedKmh: 40, ignition: true, lat: 48, lng: 2 },
     );
     expect(out.nextFailureCount).toBe(3); // plafonné, pas 317
     expect(out.nextFailing).toBe(true);
@@ -280,5 +282,77 @@ describe('TrackerFixModeService.reconcile', () => {
     );
     expect(out.autoAlignDesiredS).toBe(10); // accepte l'intervalle réel < 20s
     expect(out.nextFailureCount).toBe(3); // plafonné
+  });
+
+  // V1.18 — Exemption "véhicule garé" : un boîtier qui émet plus lentement que la
+  // cible alors qu'il est à l'arrêt (contact coupé) est en veille ACC OFF, pas en
+  // échec. Corrige le faux positif observé en prod (3 trackers garés, réel ~3600s).
+  it('does not flag FAILING when a parked vehicle reports slower than target (ACC-OFF heartbeat)', () => {
+    const prev = new Date('2026-04-26T12:00:00Z');
+    const next = new Date('2026-04-26T13:00:01Z'); // ~3600s observé vs cible 300s
+    const out = service.reconcile(
+      {
+        ...baseTracker,
+        desiredFixIntervalS: 300,
+        lastValidFrameAt: prev,
+        lastFixIntervalSyncAt: new Date(prev.getTime() - 60 * 60 * 1000),
+        fixCommandFailureCount: 2,
+      },
+      { deviceTime: next, speedKmh: 0, ignition: false, lat: 48, lng: 2 },
+    );
+    expect(out.nextCurrentFixIntervalS).toBe(3601); // on enregistre quand même le réel
+    expect(out.nextFailureCount).toBe(0);
+    expect(out.nextFailing).toBe(false);
+    expect(out.autoAlignDesiredS).toBeNull();
+  });
+
+  it('auto-heals an already-FAILING parked tracker on the next frame (resets count + flag)', () => {
+    const prev = new Date('2026-04-26T12:00:00Z');
+    const next = new Date('2026-04-26T13:00:00Z'); // 3600s, cible périmée 10s
+    const out = service.reconcile(
+      {
+        ...baseTracker,
+        desiredFixIntervalS: 10, // valeur périmée (ancien auto-align en mouvement)
+        lastValidFrameAt: prev,
+        lastFixIntervalSyncAt: new Date(prev.getTime() - 60 * 60 * 1000),
+        fixCommandFailureCount: 3, // déjà FAILING
+      },
+      { deviceTime: next, speedKmh: 0, ignition: false, lat: 48, lng: 2 },
+    );
+    expect(out.nextFailing).toBe(false);
+    expect(out.nextFailureCount).toBe(0);
+  });
+
+  it('treats unknown-ignition + near-zero speed as parked (install sans fil ACC)', () => {
+    const prev = new Date('2026-04-26T12:00:00Z');
+    const next = new Date('2026-04-26T13:00:00Z');
+    const out = service.reconcile(
+      {
+        ...baseTracker,
+        desiredFixIntervalS: 300,
+        lastValidFrameAt: prev,
+        lastFixIntervalSyncAt: new Date(prev.getTime() - 60 * 60 * 1000),
+        fixCommandFailureCount: 3,
+      },
+      { deviceTime: next, speedKmh: 0, ignition: undefined, lat: 48, lng: 2 },
+    );
+    expect(out.nextFailing).toBe(false);
+  });
+
+  it('still flags a MOVING vehicle reporting slower than target (exemption ne s\'applique pas)', () => {
+    const prev = new Date('2026-04-26T12:00:00Z');
+    const next = new Date('2026-04-26T12:06:40Z'); // 400s observé vs cible 30s, en mouvement
+    const out = service.reconcile(
+      {
+        ...baseTracker,
+        desiredFixIntervalS: 30,
+        lastValidFrameAt: prev,
+        lastFixIntervalSyncAt: new Date(prev.getTime() - 10 * 60 * 1000),
+        fixCommandFailureCount: 2,
+      },
+      { deviceTime: next, speedKmh: 50, ignition: true, lat: 48, lng: 2 },
+    );
+    expect(out.nextFailureCount).toBe(3);
+    expect(out.nextFailing).toBe(true);
   });
 });

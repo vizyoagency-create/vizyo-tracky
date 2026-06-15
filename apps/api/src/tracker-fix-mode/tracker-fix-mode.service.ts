@@ -52,6 +52,11 @@ const HARD_CAP_S = 300;
 // minimum hardware (observe en prod : 2s, 10s), on accepte quand meme son
 // intervalle reel pour le sortir de la boucle FAILING (cf reconcile()).
 const AUTO_ALIGN_FLOOR_S = 1;
+// V1.18 — Au-dela de cette vitesse (km/h) on considere le vehicule en mouvement :
+// un intervalle plus lent que la cible devient alors un vrai echec (le boitier
+// devrait emettre vite). En dessous, contact coupe = veille attendue, pas un echec.
+// Aligne sur PositionSamplingService.MOVING_SPEED_KMH.
+const PARKED_SPEED_KMH = 3;
 
 export type AdaptiveTrackerState = 'MOVING' | 'IDLE_ENGINE_ON' | 'STOPPED';
 
@@ -238,6 +243,24 @@ export class TrackerFixModeService {
         nextCurrentFixIntervalS: tracker.currentFixIntervalS,
         nextFailureCount: tracker.fixCommandFailureCount,
         nextFailing: tracker.fixCommandFailureCount >= FAILING_THRESHOLD,
+        autoAlignDesiredS: null,
+      };
+    }
+
+    // V1.18 — Faux positif "vehicule gare". Quand le boitier emet PLUS LENTEMENT
+    // que la cible alors qu'il n'est pas en mouvement (contact coupe / en veille),
+    // c'est le comportement attendu du Coban GPS403D : ACC OFF, il repasse en
+    // heartbeat ~horaire et ignore l'intervalle d'upload. Ce n'est donc pas un
+    // echec. Sans cette garde, tout vehicule stationne finissait FAILING a tort
+    // (observe en prod 2026-06-15 : 3 trackers gares, reel ~3600s vs cible 300s/10s).
+    // On enregistre l'intervalle reel mais on remet le compteur a zero — ce qui
+    // purge aussi un FAILING deja pose des la trame suivante (auto-guerison).
+    const movingNow = frame.ignition === true || frame.speedKmh > PARKED_SPEED_KMH;
+    if (observedS > upper && !movingNow) {
+      return {
+        nextCurrentFixIntervalS: observedS,
+        nextFailureCount: 0,
+        nextFailing: false,
         autoAlignDesiredS: null,
       };
     }
