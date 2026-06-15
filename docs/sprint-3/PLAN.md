@@ -35,6 +35,9 @@
 ### Obj 2 — Masquage onglets + anti-URL (volet serveur)
 - **Audit d'exhaustivité (tâche sécurité #1)** : lister tous les contrôleurs et garantir que chaque endpoint **non-Véhicules/non-engine** est soit `@Roles`-gated **sans** `NIGHT_WATCHMAN`, soit `@RequirePermissions(key)` avec `key` que le veilleur n'a pas. **Aucun endpoint sous `JwtAuthGuard` seul.** Cibles de test 403 : `alerts`, `reports`, `users`, `drivers`, `geofences`, `sims`, `vehicle-schedules` (si toggle OFF), `installations`, `trips`.
 
+### Obj 2 bis — Live WS coupé SERVEUR pour le veilleur
+- Room split positions : le veilleur ne rejoint pas `pos:fleet:X` → **aucune position live sur son socket** (il garde `fleet:X` pour la confirmation moteur S2 + alertes). Détail dans l'encadré « sans live » du §3. Fichiers : `realtime/realtime.gateway.ts` + `realtime/position-broadcast-buffer.service.ts` (+ tests).
+
 ### Obj 3 — Entrée vue groupée (réutilise S1) : pas de back spécifique
 - Le veilleur lit `/vehicles/snapshot` (déjà scoping `accessibleVehicleIds`) → ne voit que ses groupes. Aucun nouvel endpoint.
 
@@ -58,9 +61,9 @@
 
 | Élément | Fichier | Changement |
 |---|---|---|
-| Onglets masqués | `layouts/dashboard-layout.component.ts` (`navItems`) | Si `role===NIGHT_WATCHMAN` → exposer **Véhicules** + **Carte (lecture seule)** ; masquer le reste (Trajets/Rapports, Alertes, Groupes, Users, Installation…). |
-| Carte lecture seule | `features/map/map.component.ts` | Veilleur : carte **scopée** à ses véhicules (le snapshot serveur le fait déjà via `accessibleVehicleIds`) ; **actions moteur (Couper/Rallumer) masquées sur la carte** → l'action passe par la vue groupée / le détail (S2). Awareness only. |
-| Anti-URL directe | `app.routes.ts` + `core/guards/` | `roleGuard`/`permissionGuard` sur les routes interdites ; un veilleur sur une route hors périmètre → redirigé vers `/vehicles`. |
+| Onglets masqués | `layouts/dashboard-layout.component.ts` (`navItems`) | Si `role===NIGHT_WATCHMAN` → exposer **Véhicules uniquement** (liste groupée + détail) ; **masquer la Carte** et tout le reste (Trajets/Rapports, Alertes, Groupes, Users, Installation…). |
+| Mini-carte du Détail (statique) | `features/vehicles/vehicle-detail.component.ts` (`<app-mini-map>`, `livePosition`) | Veilleur : afficher la **dernière position connue** (HTTP détail, scopée) — **non-interactive** + **sans live** : ne PAS alimenter la mini-carte avec `realtime.positions()` (WS). **Conserver `engineCommandUpdates()`** (WS) pour la confirmation/tri-état S2 (le veilleur en a besoin). |
+| Anti-URL directe | `app.routes.ts` + `core/guards/` | `roleGuard`/`permissionGuard` sur **toutes** les routes interdites (dont `/map`) ; un veilleur hors périmètre → redirigé vers `/vehicles`. |
 | Redirection login | `features/auth/login.component.ts` | Branche `role===NIGHT_WATCHMAN` → vue groupée. |
 | Vue groupée par défaut | `features/vehicles/vehicles-list.component.ts` | Lire `?viewMode=grouped` à l'init **ou** forcer `grouped` pour le veilleur. (S1 réutilisée.) |
 | Start/stop rapide | `features/engine-control/engine-control-button.component.ts` + carte | **Réutilise S2** (confirmation, tri-état, verrou 409, toasts). Rien de neuf. |
@@ -70,7 +73,7 @@
 > Rappel : le front est **cosmétique**. Le périmètre du veilleur est garanti **serveur** (§2). Les changements front = ergonomie + défense en profondeur.
 
 ## 4. Fichiers touchés (prévisionnel)
-**Back** : `prisma/schema.prisma` (+migration enum) ; `permissions.ts` (shared) ; `users`/`invitations` (défauts + clamp de `schedules_manage`) ; `engine-control.controller.ts` (@Roles) ; `engine-control.service.ts` (règle 0 km) ; `vehicle-schedules.controller.ts` (perm+role) ; `vehicles.controller.ts` (role veilleur en lecture) ; `config/env.validation.ts` (ENGINE_CUT_MIN_STOPPED_S, optionnel).
+**Back** : `prisma/schema.prisma` (+migration enum) ; `permissions.ts` (shared) ; `users`/`invitations` (défauts + clamp de `schedules_manage`) ; `engine-control.controller.ts` (@Roles) ; `engine-control.service.ts` (règle 0 km) ; `vehicle-schedules.controller.ts` (perm+role) ; `vehicles.controller.ts` (role veilleur en lecture) ; `realtime/realtime.gateway.ts` + `realtime/position-broadcast-buffer.service.ts` (room `pos:fleet:X` = live coupé veilleur) ; `config/env.validation.ts` (ENGINE_CUT_MIN_STOPPED_S, optionnel).
 **Front** : `dashboard-layout.component.ts` ; `app.routes.ts` (+ guard) ; `login.component.ts` ; `vehicles-list.component.ts`.
 **Shared** : `permissions.ts`.
 
@@ -83,6 +86,7 @@ Stratégie sans-prod de S2 (mocks registry/prisma/sms ; flotte CDEF interdite ; 
 5. **Toggle horaires** : `schedules_manage` OFF → 403 ; ON → autorisé (dans le scope) ; **clamp** anti-escalade (un granter sans la perm ne peut l'accorder).
 6. **Mode horaire préservé** : un CUT/RESTORE `MANUAL` neutralise le schedule (disable/override) — non-régression.
 7. **Anti-escalade** : `clampPermissions` sur `engine_control`/`schedules_manage`.
+8. **Live coupé veilleur (serveur)** : un socket veilleur ne reçoit **pas** `POSITIONS_BATCH`/`POSITION_UPDATE` (room `pos:fleet:X` non rejointe) mais reçoit toujours `ENGINE_COMMAND_UPDATED` ; un non-veilleur reçoit le live normalement (non-régression). MAJ `position-broadcast-buffer.service.spec.ts`.
 
 ## 6. Workflow Git & DoD
 - Branche `feat/sprint-3-veilleur-nuit` (worktree). **Rebase sur `main` une fois S2 mergé**, avant toute implémentation/merge. Commits atomiques `feat/fix/refactor/test/docs`.
@@ -94,6 +98,14 @@ Stratégie sans-prod de S2 (mocks registry/prisma/sms ; flotte CDEF interdite ; 
 
 ## 8. Décisions tranchées (revue client — figées)
 - **Règle 0 km/2 min = rôle veilleur uniquement** ; admins/managers gardent ≤ 20 km/h (**antivol préservé**). Zéro régression S2.
-- **Carte** : **conservée pour le veilleur, en lecture seule** + scopée à ses véhicules ; actions moteur depuis la vue groupée / le détail (pas depuis la carte).
+- **Pas de page Carte** pour le veilleur : seules pages = **liste groupée + Détail véhicule**. Sur le Détail, la mini-carte affiche la **dernière position connue, non-interactive, sans live** (« voir où est le véhicule sans voir le live »).
 - **Seuil « mouvement »** = `REST_SPEED_KMH = 5` (cohérent S2).
+
+### Décidé (client) — « sans live » SERVER-ENFORCED (room split)
+**Constat** : le live WS est **scopé par flotte** (`realtime.gateway`: `client.join('fleet:${fleetId}')` ; positions émises vers `fleet:${fleetId}`), **pas par véhicule ni par permission** → un veilleur recevrait sinon le live de **toute la flotte** sur le fil.
+**Implémentation** :
+1. `realtime.gateway.ts > handleConnection` : tout le monde rejoint `fleet:${fleetId}` (commandes moteur, alertes, status) ; **les non-veilleurs rejoignent EN PLUS `pos:fleet:${fleetId}`** ; **le veilleur ne rejoint PAS `pos:fleet:*`**.
+2. Émission des positions (`position-broadcast-buffer.service.ts` `POSITIONS_BATCH` + `realtime.gateway.broadcastPosition` `POSITION_UPDATE`) : cibler **`pos:fleet:${fleetId}`** au lieu de `fleet:${fleetId}`. Tout le reste (`ENGINE_COMMAND_UPDATED`, `TRACKER_STATUS`, `ALERT`) reste sur `fleet:${fleetId}`.
+3. **Résultat** : le veilleur reçoit la confirmation moteur (S2) + alertes/status, mais **zéro position live** → vrai « sans live », et la fuite de scope live (flotte entière) est fermée pour lui.
+> ⚠️ Touche le **gateway realtime** (sous-système partagé) : changement **contenu** (room cible des positions) + **MAJ tests** `position-broadcast-buffer.service.spec.ts` (room `pos:fleet:1`). À faire **après** rebase sur `main` (post-S2), suite realtime rejouée.
 - **Sécurité #1 (priorité)** : enforcement serveur **exhaustif** + tests **403** sur **chaque** endpoint hors-périmètre (`alerts`, `reports`, `users`, `drivers`, `geofences`, `sims`, `installations`, `trips`, + `vehicle-schedules` si toggle OFF). **Aucun endpoint sous `JwtAuthGuard` seul.**
