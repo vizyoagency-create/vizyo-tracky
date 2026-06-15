@@ -67,7 +67,14 @@ export class AdminAlertsController {
     }
     // SUPER_ADMIN : filtre optionnel via ?fleetId= ; non-super : force sur sa flotte.
     const fleetIdScope = scope.mode === 'ALL' ? (fleetIdFilter ?? undefined) : scope.fleetId;
-    const fleetClause = fleetIdScope ? { vehicle: { fleetId: fleetIdScope } } : {};
+    // V1.18 — En vue globale (aucune flotte ciblée), on EXCLUT les trackers non
+    // affectés à un véhicule (boîtiers en stock / pas encore posés) : un boîtier non
+    // déployé n'est pas une alerte opérationnelle et polluait les sections « hors
+    // ligne »/« FAILING ». Avec un fleetId ciblé, `vehicle.fleetId` exclut déjà les
+    // non affectés (un tracker sans véhicule ne matche aucune flotte).
+    const fleetClause = fleetIdScope
+      ? { vehicle: { fleetId: fleetIdScope } }
+      : { vehicleId: { not: null } };
 
     const now = Date.now();
     const offlineCutoff = new Date(now - OFFLINE_THRESHOLD_MS);
@@ -97,7 +104,9 @@ export class AdminAlertsController {
           status: { in: [TrackerCommandStatus.PENDING, TrackerCommandStatus.SENT] },
           createdAt: { lt: pendingCutoff },
           acknowledgedAt: null,
-          ...(fleetIdScope ? { tracker: { vehicle: { fleetId: fleetIdScope } } } : {}),
+          ...(fleetIdScope
+            ? { tracker: { vehicle: { fleetId: fleetIdScope } } }
+            : { tracker: { vehicleId: { not: null } } }),
         },
         include: { tracker: { include: { vehicle: { include: { fleet: true } } } } },
         orderBy: { createdAt: 'desc' },
