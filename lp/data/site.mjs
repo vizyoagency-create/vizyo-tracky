@@ -2,7 +2,7 @@
 export const site = {
   name: 'Vizyo Tracky',
   tagline: 'Traçage GPS & gestion de flotte',
-  baseUrl: 'https://vizyo-tracky.vizyoagency.com',
+  baseUrl: 'https://tracky.vizyoagency.com',
   appUrl: 'https://app-tracky.vizyoagency.com',
   leadApi: 'https://app-tracky.vizyoagency.com/api/leads/contact',
   email: 'contact@vizyoagency.com',
