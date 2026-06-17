@@ -31,6 +31,7 @@ import {
 import { FleetsApiService, type FleetSummary } from '../../core/services/fleets.service';
 import { SimsApiService } from '../../core/services/sims.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
+import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.component';
 import {
   dataPercent,
   formatBytes,
@@ -45,7 +46,7 @@ import {
   selector: 'app-admin-sims',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, RouterLink, LucideAngularModule],
+  imports: [FormsModule, RouterLink, LucideAngularModule, GroupBadgeComponent],
   template: `
     <div class="sp">
       <!-- Header -->
@@ -131,7 +132,7 @@ import {
                   </td>
                   <td class="dim">{{ s.fleet?.name || '—' }}</td>
                   <td class="dim">
-                    @if (s.tracker) { <span class="mono">{{ s.tracker.imei }}</span>@if (s.tracker.vehiclePlate) { <span class="plate"> · {{ s.tracker.vehiclePlate }}</span> } }
+                    @if (s.tracker) { <span class="mono">{{ s.tracker.imei }}</span>@if (s.tracker.vehiclePlate) { <span class="plate"> · {{ s.tracker.vehiclePlate }}</span> } @if (s.tracker.vehicleGroup) { <app-group-badge [group]="s.tracker.vehicleGroup" /> } }
                     @else { — }
                   </td>
                   <td class="ta-r" (click)="$event.stopPropagation()">

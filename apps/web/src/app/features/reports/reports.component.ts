@@ -376,6 +376,9 @@ import {
                         {{ plate }}
                       </div>
                     }
+                    @if (vehicleGroup(trip.vehicleId); as g) {
+                      <div class="mt-0.5"><app-group-badge [group]="g" /></div>
+                    }
                   </td>
                   <td class="p-3 text-fg-primary">{{ trip.endedAt | date:'dd/MM HH:mm' }}</td>
                   <td class="p-3 text-right font-mono text-fg-secondary">{{ formatDuration(trip.durationSeconds) }}</td>
@@ -1373,6 +1376,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (!vehicleId) return null;
     const v = this.vehicles().find((x) => x.id === vehicleId);
     return v?.plate ?? null;
+  }
+
+  /** Groupe du véhicule d'un trajet, résolu depuis la liste déjà chargée. */
+  protected vehicleGroup(vehicleId: string | null | undefined): { id: string; name: string } | null {
+    if (!vehicleId) return null;
+    return this.vehicles().find((x) => x.id === vehicleId)?.group ?? null;
   }
 
   // ─── Period replay ────────────────────────────────────────────────────

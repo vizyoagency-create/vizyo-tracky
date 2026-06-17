@@ -9,7 +9,7 @@ export interface TrackerDetail {
   status: string;
   lastSeenAt: string | null;
   vehicleId: string | null;
-  vehicle: { id: string; plate: string; fleetId: string; fleet?: { id: string; name: string } } | null;
+  vehicle: { id: string; plate: string; fleetId: string; fleet?: { id: string; name: string }; group?: { id: string; name: string } | null } | null;
   /** V1.7 — fil ACC connecte (true) ou ignition inferee depuis vitesse (false). */
   accConnected: boolean;
   /** V1.14 — numero SIM data (E.164) pour fallback SMS + allowlist vizyo-texto. */

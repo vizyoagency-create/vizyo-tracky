@@ -81,6 +81,8 @@ export interface SimTrackerRefDto {
   id: string;
   imei: string;
   vehiclePlate: string | null;
+  /** Groupe (unique) du véhicule porteur, pour relier SIM → véhicule → groupe. */
+  vehicleGroup: { id: string; name: string } | null;
 }
 
 export interface SimDto {

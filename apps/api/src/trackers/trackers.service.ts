@@ -9,6 +9,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Prisma, UserRole } from '@prisma/client';
 import type { Tracker } from '@prisma/client';
 import { resolveTenantScope } from '../common/tenant-scope';
+import { VEHICLE_GROUP_INCLUDE, flattenVehicleGroup } from '../common/vehicle-group';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateTrackerDto } from './dto/create-tracker.dto';
 import type { UpdateTrackerDto } from './dto/update-tracker.dto';
@@ -106,12 +107,18 @@ export class TrackersService {
       where.vehicleId = null;
     }
 
-    return this.prisma.tracker.findMany({
+    const rows = await this.prisma.tracker.findMany({
       where,
-      include: { vehicle: isSuperAdmin ? { include: { fleet: true } } : true },
+      include: {
+        vehicle: isSuperAdmin
+          ? { include: { fleet: true, ...VEHICLE_GROUP_INCLUDE } }
+          : { include: { ...VEHICLE_GROUP_INCLUDE } },
+      },
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
+    // Aplatit le groupe du véhicule (groups[0].group → vehicle.group) pour l'admin trackers.
+    return rows.map((t) => (t.vehicle ? { ...t, vehicle: flattenVehicleGroup(t.vehicle) } : t));
   }
 
   async findOne(id: string, requestedBy: RequestedBy): Promise<Tracker> {

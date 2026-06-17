@@ -16,6 +16,7 @@ import {
 import type { CobanAlarmType, CobanPositionFrame } from '@vizyo/tracky-shared';
 import { NotificationDispatchService } from '../notifications/notification-dispatch.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { VEHICLE_GROUP_INCLUDE, flattenVehicleGroup } from '../common/vehicle-group';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { mapCobanAlarm } from './alert-mapping';
 
@@ -165,14 +166,17 @@ export class AlertsService {
     const limit = Math.min(filters.limit ? parseInt(filters.limit, 10) : 20, 100);
     const items = await this.prisma.alert.findMany({
       where,
-      include: { vehicle: true, tracker: true },
+      include: { vehicle: { include: { ...VEHICLE_GROUP_INCLUDE } }, tracker: true },
       orderBy: { createdAt: 'desc' },
       take: limit + 1,
       ...(filters.cursor ? { cursor: { id: filters.cursor }, skip: 1 } : {}),
     });
 
     const hasMore = items.length > limit;
-    const page = hasMore ? items.slice(0, limit) : items;
+    // Aplatit le groupe du véhicule (vehicle.group) pour la liste d'alertes.
+    const page = (hasMore ? items.slice(0, limit) : items).map((a) =>
+      a.vehicle ? { ...a, vehicle: flattenVehicleGroup(a.vehicle) } : a,
+    );
     return {
       items: page,
       nextCursor: hasMore ? page[page.length - 1]!.id : null,

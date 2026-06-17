@@ -24,11 +24,12 @@ import {
 } from '../../core/services/trackers.service';
 import { VehiclesApiService } from '../../core/services/vehicles.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
+import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.component';
 
 @Component({
   selector: 'app-admin-trackers',
   standalone: true,
-  imports: [LucideAngularModule, DatePipe, FormsModule, RouterLink],
+  imports: [LucideAngularModule, DatePipe, FormsModule, RouterLink, GroupBadgeComponent],
   template: `
     <div class="flex flex-col gap-6">
       <!-- Header -->
@@ -170,7 +171,12 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
                   </td>
                   <!-- Vehicle -->
                   <td class="p-3 text-fg-primary text-xs font-medium">
-                    {{ t.vehicle?.plate ?? '—' }}
+                    @if (t.vehicle) {
+                      <div class="flex items-center gap-1.5">
+                        <a [routerLink]="['/vehicles', t.vehicle.id]" class="text-tracky-light hover:underline">{{ t.vehicle.plate }}</a>
+                        <app-group-badge [group]="t.vehicle.group" />
+                      </div>
+                    } @else { — }
                   </td>
                   <!-- Fleet -->
                   <td class="p-3 text-fg-tertiary text-xs">

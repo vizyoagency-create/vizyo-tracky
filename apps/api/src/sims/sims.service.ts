@@ -18,6 +18,7 @@ import {
   type SimStatsDto,
 } from '@vizyo/tracky-shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { VEHICLE_GROUP_SELECT, vehicleGroupOf } from '../common/vehicle-group';
 import type { CreateSimDto } from './dto/create-sim.dto';
 import type { UpdateSimDto } from './dto/update-sim.dto';
 import { SimsSyncService } from './sims-sync.service';
@@ -37,7 +38,7 @@ interface SimFilters {
 
 const SIM_INCLUDE = {
   fleet: { select: { id: true, name: true } },
-  tracker: { select: { id: true, imei: true, vehicle: { select: { plate: true } } } },
+  tracker: { select: { id: true, imei: true, vehicle: { select: { plate: true, ...VEHICLE_GROUP_SELECT } } } },
 } satisfies Prisma.SimInclude;
 
 type SimWithRefs = Prisma.SimGetPayload<{ include: typeof SIM_INCLUDE }>;
@@ -449,7 +450,12 @@ export class SimsService {
       notes: s.notes,
       fleet: s.fleet ? { id: s.fleet.id, name: s.fleet.name } : null,
       tracker: s.tracker
-        ? { id: s.tracker.id, imei: s.tracker.imei, vehiclePlate: s.tracker.vehicle?.plate ?? null }
+        ? {
+            id: s.tracker.id,
+            imei: s.tracker.imei,
+            vehiclePlate: s.tracker.vehicle?.plate ?? null,
+            vehicleGroup: vehicleGroupOf(s.tracker.vehicle),
+          }
         : null,
       externalSyncedAt: s.externalSyncedAt ? s.externalSyncedAt.toISOString() : null,
       createdAt: s.createdAt.toISOString(),
