@@ -16,7 +16,7 @@ import { VehiclesApiService } from '../../core/services/vehicles.service';
 import { AlertsApiService } from '../../core/services/alerts.service';
 import { PreferencesService, type DashboardWidgetKey } from '../../core/services/preferences.service';
 import { MiniMapComponent } from '../../shared/ui/mini-map/mini-map.component';
-import { isAcceptableLiveFix } from '@vizyo/tracky-shared';
+import { isAcceptableLiveFix, isTrackerOnline } from '@vizyo/tracky-shared';
 
 interface WidgetMeta {
   key: DashboardWidgetKey;
@@ -704,6 +704,12 @@ export class DashboardComponent implements OnInit {
       // ocean ou avec une icone qui saute. Les KPI persistants viennent de
       // `stats` (endpoint dedie), donc filtrer ici n'affecte pas les compteurs.
       .filter((pos) => isAcceptableLiveFix(pos))
+      // Garde de FRAÎCHEUR : la position hydratée au login est la *dernière connue*,
+      // qui peut dater (boîtier débranché). Sans ce filtre, un véhicule muet depuis
+      // des jours apparaît « actif » dans « Activité en direct » (point vert + vitesse)
+      // car on affiche son dernier fix comme s'il était live. On ne garde donc que
+      // les positions réellement fraîches (< seuil online partagé, 15 min).
+      .filter((pos) => isTrackerOnline(pos.timestamp))
       .map((pos) => ({
         ...pos,
         plate: meta.get(pos.vehicleId)?.plate ?? '',

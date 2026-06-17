@@ -35,6 +35,8 @@ import { TripReplayComponent } from '../reports/trip-replay.component';
 import { VehicleScheduleComponent } from './vehicle-schedule/vehicle-schedule.component';
 import { VehicleReportsTabComponent } from './vehicle-reports-tab.component';
 import { relativeTime } from '../../shared/utils/relative-time';
+import { getVehicleConnectivityState, type VehicleConnectivityState } from '@vizyo/tracky-shared';
+import { connectivityMeta } from '../../shared/ui/connectivity-badge/connectivity-badge.component';
 
 @Component({
   selector: 'app-vehicle-detail',
@@ -189,16 +191,17 @@ import { relativeTime } from '../../shared/utils/relative-time';
 
         <!-- Stats compactes (info-bar horizontale) -->
         <div class="vd-stats-bar">
-          <div class="vd-stat" [class.vd-stat--online]="isOnline()">
-            @if (isOnline()) {
+          <div class="vd-stat" [class.vd-stat--online]="connectivity() === 'ONLINE'"
+               [style.--vd-conn]="connMeta().color">
+            @if (connectivity() === 'ONLINE') {
               <lucide-icon [img]="Wifi" [size]="14"></lucide-icon>
             } @else {
               <lucide-icon [img]="WifiOff" [size]="14"></lucide-icon>
             }
             <div class="vd-stat-content">
               <span class="vd-stat-label">Statut</span>
-              <span class="vd-stat-value">
-                {{ isOnline() ? 'En ligne' : 'Hors ligne' }}
+              <span class="vd-stat-value" [style.color]="connectivity() === 'ONLINE' ? null : connMeta().color">
+                {{ connMeta().label }}
                 @if (currentPosition(); as pos) {
                   · <span [class]="pos.ignition ? 'text-tracky-light' : 'text-fg-tertiary'">{{ pos.ignition ? 'ON' : 'OFF' }}</span>
                 }
@@ -1757,10 +1760,27 @@ export class VehicleDetailComponent implements OnInit {
     this.customTo.set(value);
   }
 
-  protected readonly isOnline = computed(() => {
-    const age = this.positionAgeSeconds();
-    return age !== undefined && age < 180;
+  /**
+   * Connectivité tri-état (partagée) du véhicule : ONLINE / OFFLINE /
+   * NOT_CONFIGURED. On prend le signal le plus frais entre la position live (WS)
+   * et le `lastSeenAt` du tracker (REST), puis on délègue au helper partagé —
+   * même définition d'« online » (15 min) que la carte, le dashboard et la liste.
+   */
+  protected readonly connectivity = computed<VehicleConnectivityState>(() => {
+    const v = this.vehicle();
+    const pos = this.currentPosition();
+    const lastSeen = v?.tracker?.lastSeenAt ?? null;
+    const freshest =
+      pos?.timestamp && (!lastSeen || new Date(pos.timestamp).getTime() > new Date(lastSeen).getTime())
+        ? pos.timestamp
+        : lastSeen;
+    return getVehicleConnectivityState({
+      trackerId: v?.tracker?.id ?? null,
+      lastSeenAt: freshest,
+    });
   });
+
+  protected readonly connMeta = computed(() => connectivityMeta(this.connectivity()));
 
   protected onScheduleDisabled(): void {
     this.scheduleRevision.set(this.scheduleRevision() + 1);

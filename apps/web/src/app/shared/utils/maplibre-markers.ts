@@ -9,6 +9,14 @@ export function speedColor(speed: number): string {
   return '#EF4444';
 }
 
+/** Couleur d'un marqueur hors-ligne (cf. légende carte « Hors-ligne »). */
+export const OFFLINE_MARKER_COLOR = '#9ca3af';
+
+/** Couleur de fond du cœur du marqueur : grise si hors-ligne, sinon couleur-vitesse. */
+function markerColor(data: VehicleMarkerData): string {
+  return data.offline ? OFFLINE_MARKER_COLOR : speedColor(data.colorSpeedKmh ?? data.speedKmh);
+}
+
 export interface VehicleMarkerData {
   trackerId: string;
   vehicleId: string;
@@ -20,6 +28,13 @@ export interface VehicleMarkerData {
   active?: boolean;
   /** Vrai si la position vient d'une hydratation REST (pas d'un live WS). */
   hydrated?: boolean;
+  /**
+   * Vrai si le boîtier est hors-ligne (dernier signal trop ancien). Le marqueur
+   * est alors rendu en GRIS (couleur « hors-ligne » de la légende) et estompé,
+   * au lieu de la couleur-vitesse — sinon un véhicule débranché reste affiché en
+   * vert « actif » à sa dernière position connue.
+   */
+  offline?: boolean;
   /**
    * Vitesse (km/h) a utiliser pour la COULEUR uniquement. Permet d'afficher une
    * couleur de mouvement (vert/orange) basee sur la vitesse robuste derivee du
@@ -42,10 +57,11 @@ export interface VehicleMarkerData {
  * Plaque flottante en dessous (masquable par CSS .tracky-marker--no-plate).
  */
 export function buildVehicleMarkerEl(data: VehicleMarkerData): HTMLElement {
-  const color = speedColor(data.colorSpeedKmh ?? data.speedKmh);
+  const color = markerColor(data);
   const ignClass = data.ignition ? 'tracky-acc--on' : 'tracky-acc--off';
   const activeClass = data.active ? 'tracky-marker--active' : '';
   const hydClass = data.hydrated ? 'tracky-marker--hydrated' : '';
+  const offlineClass = data.offline ? 'tracky-marker--offline' : '';
   const isArrow = data.type === 'OTHER';
   const headingDeg = Math.round(data.heading || 0);
   const svgContent = getVehicleSvg(data.type);
@@ -56,7 +72,7 @@ export function buildVehicleMarkerEl(data: VehicleMarkerData): HTMLElement {
   const iconRotate = isArrow ? `rotate(${headingDeg}deg)` : 'none';
 
   const el = document.createElement('div');
-  el.className = `tracky-marker ${activeClass} ${hydClass}`.trim();
+  el.className = `tracky-marker ${activeClass} ${hydClass} ${offlineClass}`.replace(/\s+/g, ' ').trim();
   el.setAttribute('role', 'button');
   el.setAttribute('aria-label', data.plate ? `Vehicule ${data.plate}` : 'Vehicule');
   el.setAttribute('data-tracker-id', data.trackerId);
@@ -90,7 +106,7 @@ export function buildVehicleMarkerEl(data: VehicleMarkerData): HTMLElement {
  * Si la plaque ou le type changent, on recree (rare).
  */
 export function updateVehicleMarkerEl(el: HTMLElement, data: VehicleMarkerData): void {
-  const color = speedColor(data.colorSpeedKmh ?? data.speedKmh);
+  const color = markerColor(data);
   const headingDeg = Math.round(data.heading || 0);
   el.style.setProperty('--tracky-color', color);
   el.style.setProperty('--tracky-heading', `${headingDeg}deg`);
@@ -111,6 +127,7 @@ export function updateVehicleMarkerEl(el: HTMLElement, data: VehicleMarkerData):
 
   el.classList.toggle('tracky-marker--active', !!data.active);
   el.classList.toggle('tracky-marker--hydrated', !!data.hydrated);
+  el.classList.toggle('tracky-marker--offline', !!data.offline);
 }
 
 /**
