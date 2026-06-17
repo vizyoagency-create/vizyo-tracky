@@ -237,6 +237,14 @@ export const routes: Routes = [
         data: { title: 'Fix mode tracker' },
       },
       {
+        path: 'admin/trackers/:id',
+        pathMatch: 'full',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/observability/admin-tracker-detail.component').then((m) => m.AdminTrackerDetailComponent),
+        data: { title: 'Détail tracker' },
+      },
+      {
         path: 'admin/commands',
         canActivate: [superAdminGuard],
         loadComponent: () =>

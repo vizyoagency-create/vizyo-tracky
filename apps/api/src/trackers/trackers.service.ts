@@ -133,10 +133,13 @@ export class TrackersService {
     }
     const tracker = await this.prisma.tracker.findFirst({
       where,
-      include: { vehicle: true },
+      include: { vehicle: { include: { ...VEHICLE_GROUP_INCLUDE } } },
     });
     if (!tracker) throw new NotFoundException('Tracker introuvable');
-    return tracker;
+    const out = tracker.vehicle
+      ? { ...tracker, vehicle: flattenVehicleGroup(tracker.vehicle) }
+      : tracker;
+    return out;
   }
 
   async update(id: string, dto: UpdateTrackerDto, requestedBy: RequestedBy): Promise<Tracker> {

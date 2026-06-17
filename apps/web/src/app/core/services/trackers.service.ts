@@ -14,6 +14,13 @@ export interface TrackerDetail {
   accConnected: boolean;
   /** V1.14 — numero SIM data (E.164) pour fallback SMS + allowlist vizyo-texto. */
   simPhoneNumber: string | null;
+  // V2 — champs détaillés (page détail tracker), renvoyés par GET /trackers/:id.
+  lastLat?: number | null;
+  lastLng?: number | null;
+  lastSpeedKmh?: number | null;
+  lastIgnition?: boolean | null;
+  lastPositionAt?: string | null;
+  createdAt?: string | null;
 }
 
 export interface UpdateTrackerPayload {
@@ -42,6 +49,10 @@ export class TrackersApiService {
 
   list(params?: Record<string, string>): Observable<TrackerDetail[]> {
     return this.http.get<TrackerDetail[]>('/api/trackers', { params });
+  }
+
+  findOne(id: string): Observable<TrackerDetail> {
+    return this.http.get<TrackerDetail>(`/api/trackers/${id}`);
   }
 
   /** V1.7 — update partiel (model + accConnected). accConnected = SUPER_ADMIN only. */

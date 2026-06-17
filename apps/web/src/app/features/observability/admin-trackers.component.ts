@@ -141,7 +141,9 @@ import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.com
                     }
                   </td>
                   <!-- IMEI -->
-                  <td class="p-3 font-mono text-xs text-fg-primary">{{ t.imei }}</td>
+                  <td class="p-3 font-mono text-xs">
+                    <a [routerLink]="['/admin/trackers', t.id]" class="text-tracky-light hover:underline">{{ t.imei }}</a>
+                  </td>
                   <!-- Model -->
                   <td class="p-3 text-fg-secondary text-xs">{{ t.model }}</td>
                   <!-- SIM -->
