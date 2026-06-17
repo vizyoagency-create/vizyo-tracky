@@ -33,6 +33,13 @@ export interface VehicleSnapshotDto {
   accConnected: boolean | null;
 
   /**
+   * Date d'ajout du tracker (ISO), proxy de la date d'installation. Permet de
+   * détecter une « installation à revoir » : boîtier posé depuis < 1 mois qui
+   * se déconnecte (cf. isInstallationToReview). Null si pas de tracker.
+   */
+  trackerCreatedAt: string | null;
+
+  /**
    * V1.7 — true si une commande CUT (SENT/ACKNOWLEDGED) est active sur ce tracker
    * sans RESTORE posterieure. Permet au popup carte d'afficher le bon bouton
    * des le chargement, sans attendre un event WS.

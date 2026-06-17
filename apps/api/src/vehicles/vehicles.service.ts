@@ -68,6 +68,8 @@ export class VehiclesService {
     accConnected: true,
     // V1.15 — expose la SIM pour le badge "Installe" (IMEI + SIM presents) cote liste.
     simPhoneNumber: true,
+    // Date d'ajout du tracker (proxy d'installation) — pour le flag "installation à revoir".
+    createdAt: true,
   } as const;
 
   /**
@@ -491,6 +493,7 @@ export class VehiclesService {
             lastValid: true,
             lastPositionAt: true,
             accConnected: true,
+            createdAt: true,
           },
         },
         schedule: { select: { enabled: true } },
@@ -546,6 +549,7 @@ export class VehiclesService {
         lastValid: t?.lastValid ?? null,
         lastPositionAt: t?.lastPositionAt ? t.lastPositionAt.toISOString() : null,
         accConnected: t?.accConnected ?? null,
+        trackerCreatedAt: t?.createdAt ? t.createdAt.toISOString() : null,
         engineCutActive: t ? cutActiveIds.has(t.id) : null,
         scheduleEnabled: !!v.schedule?.enabled,
         group: v.groups?.[0]?.group ?? null,

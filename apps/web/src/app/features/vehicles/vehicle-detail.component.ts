@@ -35,8 +35,9 @@ import { TripReplayComponent } from '../reports/trip-replay.component';
 import { VehicleScheduleComponent } from './vehicle-schedule/vehicle-schedule.component';
 import { VehicleReportsTabComponent } from './vehicle-reports-tab.component';
 import { relativeTime } from '../../shared/utils/relative-time';
-import { getVehicleConnectivityState, type VehicleConnectivityState } from '@vizyo/tracky-shared';
+import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnectivityState } from '@vizyo/tracky-shared';
 import { connectivityMeta } from '../../shared/ui/connectivity-badge/connectivity-badge.component';
+import { InstallReviewBadgeComponent } from '../../shared/ui/install-review-badge/install-review-badge.component';
 
 @Component({
   selector: 'app-vehicle-detail',
@@ -45,6 +46,7 @@ import { connectivityMeta } from '../../shared/ui/connectivity-badge/connectivit
     FormsModule, LucideAngularModule, DatePipe, DecimalPipe, GroupBadgeComponent,
     MiniMapComponent, EngineControlButtonComponent, CommandsPanelComponent,
     VehicleScheduleComponent, VehicleReportsTabComponent, DriverPickerComponent, DriverDrawerComponent, SurveillancePanelComponent, TripReplayComponent,
+    InstallReviewBadgeComponent,
   ],
   template: `
     @if (loading()) {
@@ -78,6 +80,7 @@ import { connectivityMeta } from '../../shared/ui/connectivity-badge/connectivit
                     {{ v.group ? 'Changer' : 'Assigner' }}
                   </button>
                 }
+                @if (installToReview()) { <app-install-review-badge /> }
               </div>
             </div>
           </div>
@@ -1781,6 +1784,11 @@ export class VehicleDetailComponent implements OnInit {
   });
 
   protected readonly connMeta = computed(() => connectivityMeta(this.connectivity()));
+
+  /** « Installation à revoir » : pose < 1 mois + hors-ligne (a déjà communiqué). */
+  protected readonly installToReview = computed(() =>
+    isInstallationToReview(this.connectivity(), this.vehicle()?.tracker?.createdAt ?? null),
+  );
 
   protected onScheduleDisabled(): void {
     this.scheduleRevision.set(this.scheduleRevision() + 1);

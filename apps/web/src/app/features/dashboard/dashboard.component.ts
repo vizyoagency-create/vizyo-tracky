@@ -16,7 +16,7 @@ import { VehiclesApiService } from '../../core/services/vehicles.service';
 import { AlertsApiService } from '../../core/services/alerts.service';
 import { PreferencesService, type DashboardWidgetKey } from '../../core/services/preferences.service';
 import { MiniMapComponent } from '../../shared/ui/mini-map/mini-map.component';
-import { isAcceptableLiveFix, isTrackerOnline } from '@vizyo/tracky-shared';
+import { getVehicleConnectivityState, isAcceptableLiveFix, isInstallationToReview, isTrackerOnline } from '@vizyo/tracky-shared';
 
 interface WidgetMeta {
   key: DashboardWidgetKey;
@@ -57,6 +57,18 @@ interface WidgetMeta {
           </div>
         </div>
       </div>
+
+      <!-- Installations à revoir : boîtier posé < 1 mois qui se déconnecte. -->
+      @if (vehiclesToReview().length > 0) {
+        <a routerLink="/alerts" class="dash-review-banner">
+          <lucide-icon [img]="AlertTriangle" [size]="16"></lucide-icon>
+          <span class="dash-review-text">
+            <strong>{{ vehiclesToReview().length }} installation(s) à revoir</strong>
+            <span>boîtier posé récemment qui se déconnecte — à vérifier au plus vite</span>
+          </span>
+          <lucide-icon [img]="ChevronRight" [size]="14" class="dash-review-arrow"></lucide-icon>
+        </a>
+      }
 
       <!-- KPIs compactes (2x2 mobile, 4x1 desktop) -->
       @if (isWidgetEnabled('kpis')) {
@@ -380,6 +392,17 @@ interface WidgetMeta {
 
     /* Metrics grid : 2x2 mobile, 4x1 desktop */
     .metrics-grid { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px }
+    .dash-review-banner {
+      position: relative; z-index: 1; display: flex; align-items: center; gap: 10px;
+      margin-bottom: 16px; padding: 11px 14px; border-radius: 12px; text-decoration: none;
+      background: rgba(239,68,68,.09); border: 1px solid rgba(239,68,68,.32); color: #ef4444;
+      transition: border-color .15s;
+    }
+    .dash-review-banner:hover { border-color: rgba(239,68,68,.55) }
+    .dash-review-text { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0 }
+    .dash-review-text strong { font-size: 13px; font-weight: 800 }
+    .dash-review-text span { font-size: 11px; color: var(--fg-tertiary); font-weight: 500 }
+    .dash-review-arrow { color: var(--fg-tertiary); flex-shrink: 0 }
     .metric-card {
       position: relative; display: flex; align-items: center; gap: 10px;
       padding: 12px; border-radius: 14px;
@@ -618,6 +641,16 @@ interface WidgetMeta {
 })
 export class DashboardComponent implements OnInit {
   protected readonly realtime = inject(RealtimeService);
+
+  /** Véhicules dont l'installation est à revoir (boîtier posé < 1 mois + hors-ligne). */
+  protected readonly vehiclesToReview = computed(() =>
+    this.realtime.snapshot().filter((v) =>
+      isInstallationToReview(
+        getVehicleConnectivityState({ trackerId: v.trackerId, lastSeenAt: v.lastSeenAt }),
+        v.trackerCreatedAt,
+      ),
+    ),
+  );
   protected readonly preferences = inject(PreferencesService);
   protected readonly perms = inject(PermissionsService);
   private readonly vehiclesApi = inject(VehiclesApiService);

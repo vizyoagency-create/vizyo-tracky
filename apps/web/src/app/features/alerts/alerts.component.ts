@@ -21,7 +21,9 @@ import {
   XCircle,
 } from 'lucide-angular';
 import type { AlertEvent } from '@vizyo/tracky-shared';
+import { getVehicleConnectivityState, isInstallationToReview } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
+import { InstallReviewBadgeComponent } from '../../shared/ui/install-review-badge/install-review-badge.component';
 import { AlertsApiService } from '../../core/services/alerts.service';
 import { AuthService } from '../../core/services/auth.service';
 import { AlertRuleDto, NotificationsApiService } from '../../core/services/notifications.service';
@@ -111,7 +113,7 @@ const EMPTY_FORM: RuleForm = {
   selector: 'app-alerts',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [LucideAngularModule, RouterLink, FormsModule, SaFleetBadgeComponent],
+  imports: [LucideAngularModule, RouterLink, FormsModule, SaFleetBadgeComponent, InstallReviewBadgeComponent],
   template: `
     @if (isBaanoolMode()) {
       <!-- V1.12 — Mode Baanool : "Centre de messages" style ultra-simple -->
@@ -243,6 +245,25 @@ const EMPTY_FORM: RuleForm = {
             </select>
           }
         </div>
+
+        <!-- Installations à revoir : dérivé du parc (boîtier posé < 1 mois + hors-ligne). -->
+        @if (vehiclesToReview().length > 0) {
+          <div class="a-review-banner">
+            <div class="a-review-head">
+              <lucide-icon [img]="AlertTriangle" [size]="15"></lucide-icon>
+              <span class="a-review-title">{{ vehiclesToReview().length }} installation(s) à revoir</span>
+              <span class="a-review-sub">boîtier posé récemment qui se déconnecte — à vérifier au plus vite</span>
+            </div>
+            <div class="a-review-list">
+              @for (v of vehiclesToReview(); track v.vehicleId) {
+                <a [routerLink]="['/vehicles', v.vehicleId]" class="a-review-item">
+                  <span class="a-review-plate">{{ v.plate }}</span>
+                  <app-install-review-badge [compact]="true" />
+                </a>
+              }
+            </div>
+          </div>
+        }
 
         @if (alerts().length === 0 && !loading()) {
           <div class="a-empty">
@@ -647,6 +668,21 @@ const EMPTY_FORM: RuleForm = {
     .a-filter-dot.amber { background: #f59e0b }
     .a-filter-dot.blue { background: #3b82f6 }
 
+    .a-review-banner {
+      margin-bottom: 14px; padding: 12px 14px; border-radius: 12px;
+      background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.3);
+    }
+    .a-review-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: #ef4444 }
+    .a-review-title { font-weight: 800; font-size: 13px }
+    .a-review-sub { font-size: 11px; color: var(--fg-tertiary); font-weight: 500 }
+    .a-review-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px }
+    .a-review-item {
+      display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 9999px;
+      background: var(--bg-secondary); border: 1px solid var(--border-subtle); text-decoration: none;
+      font-size: 12px; font-weight: 700; color: var(--fg-primary); transition: border-color .15s;
+    }
+    .a-review-item:hover { border-color: rgba(239,68,68,.4) }
+    .a-review-plate { letter-spacing: .02em }
     .a-empty {
       position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 10px;
       padding: 50px 20px; border-radius: 16px;
@@ -1042,6 +1078,20 @@ export class AlertsComponent implements OnInit {
     this.realtime.snapshot()
       .map((v) => ({ id: v.vehicleId, plate: v.plate }))
       .sort((a, b) => a.plate.localeCompare(b.plate)),
+  );
+
+  /**
+   * Véhicules dont l'installation est à revoir : boîtier posé depuis < 1 mois
+   * mais hors-ligne (a déjà communiqué). Dérivé du snapshot flotte → visible par
+   * tous les rôles ayant accès, y compris FLEET_ADMIN.
+   */
+  protected readonly vehiclesToReview = computed(() =>
+    this.realtime.snapshot().filter((v) =>
+      isInstallationToReview(
+        getVehicleConnectivityState({ trackerId: v.trackerId, lastSeenAt: v.lastSeenAt }),
+        v.trackerCreatedAt,
+      ),
+    ),
   );
 
   protected onVehicleChange(id: string): void {

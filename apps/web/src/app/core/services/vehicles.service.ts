@@ -22,6 +22,8 @@ export interface VehicleDetailDto {
     accConnected: boolean;
     /** V1.15 — n° SIM data (E.164). Avec l'IMEI, determine le statut « Installé ». */
     simPhoneNumber?: string | null;
+    /** Date d'ajout (ISO), proxy d'installation — pour le flag « installation à revoir ». */
+    createdAt?: string | null;
   } | null;
   /** Phase 2 — Conducteur courant (defaut snape sur prochains trajets). null = aucun. */
   currentDriver?: DriverSummaryDto | null;

@@ -99,3 +99,41 @@ export function getVehicleConnectivityState(
   // A déjà émis par le passé mais silencieux depuis > seuil → débranché / hors-ligne.
   return 'OFFLINE';
 }
+
+/**
+ * Fenêtre « installation récente » : un boîtier ajouté il y a moins d'1 mois est
+ * encore en période de rodage. Au-delà, une déconnexion n'est plus imputée à la pose.
+ */
+export const INSTALLATION_REVIEW_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * « Installation à revoir » : un boîtier installé depuis MOINS d'un mois, qui a
+ * déjà communiqué (état OFFLINE = a émis puis devenu silencieux), mais qui est
+ * actuellement hors-ligne → pose probablement bâclée, à revoir au plus vite.
+ *
+ * On ne flague PAS :
+ *  - les `NOT_CONFIGURED` (jamais connectés — autre problème, pas une déconnexion) ;
+ *  - les `ONLINE` ;
+ *  - les installations de plus d'un mois (déconnexion = usure/externe, pas la pose).
+ *
+ * @param state             tri-état déjà calculé via {@link getVehicleConnectivityState}.
+ * @param trackerCreatedAt  date d'ajout du tracker (proxy de date d'installation).
+ */
+export function isInstallationToReview(
+  state: VehicleConnectivityState,
+  trackerCreatedAt: Date | string | number | null | undefined,
+  now: number = Date.now(),
+  windowMs: number = INSTALLATION_REVIEW_WINDOW_MS,
+): boolean {
+  if (state !== 'OFFLINE') return false;
+  if (trackerCreatedAt == null) return false;
+  const ms =
+    trackerCreatedAt instanceof Date
+      ? trackerCreatedAt.getTime()
+      : typeof trackerCreatedAt === 'number'
+        ? trackerCreatedAt
+        : new Date(trackerCreatedAt).getTime();
+  if (!Number.isFinite(ms)) return false;
+  // Installé il y a moins de `windowMs` → période où une déconnexion = pose suspecte.
+  return now - ms <= windowMs;
+}

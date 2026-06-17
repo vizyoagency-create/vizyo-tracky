@@ -16,14 +16,15 @@ import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
 import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fleet-badge.component';
 import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.component';
 import { ConnectivityBadgeComponent } from '../../shared/ui/connectivity-badge/connectivity-badge.component';
+import { InstallReviewBadgeComponent } from '../../shared/ui/install-review-badge/install-review-badge.component';
 import { TrackClickDirective } from '../../shared/directives/track-click.directive';
-import { getVehicleConnectivityState, type VehicleConnectivityState } from '@vizyo/tracky-shared';
+import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnectivityState } from '@vizyo/tracky-shared';
 
 @Component({
   selector: 'app-vehicles-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, TrackClickDirective],
+  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, InstallReviewBadgeComponent, TrackClickDirective],
   template: `
     <div class="vlist-page">
       <div class="vlist-grid-bg"></div>
@@ -165,6 +166,7 @@ import { getVehicleConnectivityState, type VehicleConnectivityState } from '@viz
                       } @else {
                         <app-connectivity-badge [state]="connectivity(v)" />
                       }
+                      @if (installToReview(v)) { <app-install-review-badge /> }
                     </td>
                     <td>
                       @if (v.tracker) {
@@ -229,6 +231,7 @@ import { getVehicleConnectivityState, type VehicleConnectivityState } from '@viz
                           </span>
                         }
                         <app-connectivity-badge [state]="connectivity(v)" [hideWhenOnline]="true" [compact]="true" />
+                        @if (installToReview(v)) { <app-install-review-badge [compact]="true" /> }
                         <lucide-icon [img]="ChevronRightIcon" [size]="15" class="v-group-row-chev"></lucide-icon>
                       </a>
                     }
@@ -281,6 +284,7 @@ import { getVehicleConnectivityState, type VehicleConnectivityState } from '@viz
                     </span>
                   }
                   <app-connectivity-badge [state]="connectivity(v)" [hideWhenOnline]="true" />
+                  @if (installToReview(v)) { <app-install-review-badge /> }
                   @if (instBadge(v); as b) {
                     <span class="v-inst" [class]="'v-inst--' + b.cls">{{ b.label }}</span>
                   }
@@ -864,6 +868,14 @@ export class VehiclesListComponent implements OnInit {
       trackerId: v.tracker?.id ?? null,
       lastSeenAt: v.tracker?.lastSeenAt ?? null,
     });
+  }
+
+  /**
+   * « Installation à revoir » : boîtier posé depuis < 1 mois mais hors-ligne
+   * (a déjà communiqué puis s'est déconnecté) → pose probablement bâclée.
+   */
+  protected installToReview(v: VehicleDetailDto): boolean {
+    return isInstallationToReview(this.connectivity(v), v.tracker?.createdAt ?? null);
   }
 
   /**
