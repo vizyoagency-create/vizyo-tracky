@@ -29,6 +29,13 @@ export interface Toast {
    * saillant. Reserve aux alertes vitales (SOS, accident).
    */
   severity?: 'critical';
+  /**
+   * Clé de dédup anti-spam : si un toast ACTIF porte la même `dedupeKey`, un
+   * nouveau `show()` avec cette clé ne l'empile pas (il renvoie le toast existant).
+   * Utilisé pour les alertes récurrentes (ex. « Alimentation coupée » qui se répète
+   * sur un même véhicule) afin de ne pas accumuler des toasts critiques persistants.
+   */
+  dedupeKey?: string;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -45,6 +52,12 @@ export class ToastService {
   private static readonly MAX_VISIBLE = 3;
 
   show(toast: Omit<Toast, 'id' | 'duration'> & { id?: string; duration?: number }): string {
+    // Coalescing anti-spam : un toast actif avec la même dedupeKey empêche
+    // d'en empiler un nouveau (alerte critique récurrente → un seul toast).
+    if (toast.dedupeKey) {
+      const existing = this._toasts().find((t) => t.dedupeKey === toast.dedupeKey);
+      if (existing) return existing.id;
+    }
     const id = toast.id ?? crypto.randomUUID();
     const full: Toast = { duration: 4000, ...toast, id };
     this._toasts.update((list) => ToastService.capStack([...list, full]));
@@ -81,6 +94,7 @@ export class ToastService {
     message?: string;
     onAcknowledge?: () => void;
     onView?: () => void;
+    dedupeKey?: string;
   }): string {
     return this.show({
       kind: 'error',
@@ -90,6 +104,7 @@ export class ToastService {
       severity: 'critical',
       action: input.onAcknowledge ? { label: 'Acquitter', callback: input.onAcknowledge } : undefined,
       extraAction: input.onView ? { label: 'Voir', callback: input.onView } : undefined,
+      dedupeKey: input.dedupeKey,
     });
   }
 

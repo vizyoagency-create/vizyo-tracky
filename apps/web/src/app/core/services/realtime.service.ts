@@ -255,6 +255,8 @@ export class RealtimeService {
           message: alert.vehiclePlate ? `Vehicule ${alert.vehiclePlate}` : undefined,
           onAcknowledge: () => this.acknowledgeAlertInline(alert.id),
           onView: () => { void this.router.navigateByUrl('/alerts'); },
+          // Anti-spam : un seul toast critique actif par véhicule+type (ex. power-cut répété).
+          dedupeKey: `${alert.vehicleId ?? 'fleet'}:${alert.type}`,
         });
         return;
       }
@@ -264,6 +266,7 @@ export class RealtimeService {
         title: alert.title,
         message: alert.vehiclePlate ? `Véhicule ${alert.vehiclePlate}` : undefined,
         duration: pref.duration,
+        dedupeKey: `${alert.vehicleId ?? 'fleet'}:${alert.type}`,
       });
     });
 
