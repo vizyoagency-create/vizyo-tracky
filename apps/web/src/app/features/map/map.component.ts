@@ -3733,6 +3733,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     return getVehicleConnectivityState({
       trackerId: c?.trackerId ?? null,
       lastSeenAt: c?.lastSeenAt ?? null,
+      lastIgnition: c?.ignition ?? null,
     });
   }
 

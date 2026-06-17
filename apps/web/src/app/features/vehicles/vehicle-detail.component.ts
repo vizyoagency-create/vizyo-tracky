@@ -1806,6 +1806,7 @@ export class VehicleDetailComponent implements OnInit {
     return getVehicleConnectivityState({
       trackerId: v?.tracker?.id ?? null,
       lastSeenAt: freshest,
+      lastIgnition: pos?.ignition ?? v?.tracker?.lastKnownIgnition ?? null,
     });
   });
 

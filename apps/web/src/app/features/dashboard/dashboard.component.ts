@@ -646,7 +646,7 @@ export class DashboardComponent implements OnInit {
   protected readonly vehiclesToReview = computed(() =>
     this.realtime.snapshot().filter((v) =>
       isInstallationToReview(
-        getVehicleConnectivityState({ trackerId: v.trackerId, lastSeenAt: v.lastSeenAt }),
+        getVehicleConnectivityState({ trackerId: v.trackerId, lastSeenAt: v.lastSeenAt, lastIgnition: v.lastIgnition }),
         v.trackerCreatedAt,
       ),
     ),

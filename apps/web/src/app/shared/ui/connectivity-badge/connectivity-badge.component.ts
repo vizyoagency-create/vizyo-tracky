@@ -1,5 +1,5 @@
 import { Component, computed, input } from '@angular/core';
-import { AlertTriangle, LucideAngularModule, Wifi, WifiOff } from 'lucide-angular';
+import { AlertTriangle, LucideAngularModule, Moon, Wifi, WifiOff } from 'lucide-angular';
 import type { VehicleConnectivityState } from '@vizyo/tracky-shared';
 
 /**
@@ -22,6 +22,9 @@ export function connectivityMeta(state: VehicleConnectivityState): ConnectivityM
   switch (state) {
     case 'ONLINE':
       return { label: 'En ligne', color: '#10b981', bg: 'rgba(16,185,129,.12)', icon: Wifi };
+    case 'PARKED':
+      // Garé en veille : neutre/calme (slate), pas alarmant — comportement normal.
+      return { label: 'Stationné', color: '#64748b', bg: 'rgba(100,116,139,.14)', icon: Moon };
     case 'OFFLINE':
       return { label: 'Hors ligne', color: '#f59e0b', bg: 'rgba(245,158,11,.13)', icon: WifiOff };
     case 'NOT_CONFIGURED':
@@ -94,7 +97,8 @@ export class ConnectivityBadgeComponent {
   protected readonly title = computed(() => {
     switch (this.state()) {
       case 'ONLINE': return 'Boîtier en ligne — suivi en direct';
-      case 'OFFLINE': return 'Hors ligne — boîtier débranché ou sans réseau depuis > 15 min';
+      case 'PARKED': return 'Stationné — contact coupé, boîtier en veille (dernier signal > 15 min). Normal.';
+      case 'OFFLINE': return 'Hors ligne — coupé en roulant / débranché ou sans réseau depuis > 15 min';
       case 'NOT_CONFIGURED': return 'Non configuré — aucun boîtier connecté à Tracky';
       default: return '';
     }

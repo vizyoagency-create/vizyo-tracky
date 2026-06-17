@@ -56,12 +56,14 @@ export function isTrackerOnline(
  * réellement suivi en ce moment ? ». Il distingue les deux causes de
  * non-suivi que l'exploitant doit traiter différemment :
  *  - `ONLINE`         : boîtier vivant, signal frais (< seuil) → suivi en direct.
- *  - `OFFLINE`        : boîtier déjà vu mais silencieux depuis > seuil → DÉBRANCHÉ
- *                       / hors-ligne (alim coupée, remorquage, zone sans réseau).
+ *  - `PARKED`         : silencieux > seuil MAIS contact coupé à la dernière trame →
+ *                       garé, boîtier en veille (silence NORMAL, pas une panne).
+ *  - `OFFLINE`        : silencieux > seuil alors que le contact était ON (coupé en
+ *                       roulant) ou ignition inconnue → débranché / vraie perte de signal.
  *  - `NOT_CONFIGURED` : aucun boîtier affecté, OU boîtier affecté qui n'a JAMAIS
  *                       émis → pas (encore) installé / mal configuré pour Tracky.
  */
-export type VehicleConnectivityState = 'ONLINE' | 'OFFLINE' | 'NOT_CONFIGURED';
+export type VehicleConnectivityState = 'ONLINE' | 'PARKED' | 'OFFLINE' | 'NOT_CONFIGURED';
 
 export interface VehicleConnectivityInput {
   /** Présence d'un tracker affecté au véhicule. null/undefined = aucun tracker. */
@@ -70,6 +72,11 @@ export interface VehicleConnectivityInput {
   lastSeenAt?: Date | string | number | null;
   /** Dernière position valide connue. Repli si `lastSeenAt` absent. */
   lastPositionAt?: Date | string | number | null;
+  /**
+   * Dernier état ignition connu. `false` (contact coupé) → un silence prolongé est
+   * une mise en veille NORMALE du boîtier garé (→ PARKED), pas un débranchement.
+   */
+  lastIgnition?: boolean | null;
 }
 
 /**
@@ -87,7 +94,7 @@ export function getVehicleConnectivityState(
   now: number = Date.now(),
   thresholdMs: number = TRACKER_ONLINE_THRESHOLD_MS,
 ): VehicleConnectivityState {
-  const { trackerId, lastSeenAt, lastPositionAt } = input;
+  const { trackerId, lastSeenAt, lastPositionAt, lastIgnition } = input;
   // Aucun boîtier affecté → véhicule pas équipé pour Tracky.
   if (!trackerId) return 'NOT_CONFIGURED';
   // Le boîtier a parlé récemment → suivi en direct.
@@ -96,7 +103,10 @@ export function getVehicleConnectivityState(
   // connecté (SIM/APN/provisioning KO). On le traite comme « non configuré »
   // plutôt que « hors-ligne » : il n'a jamais fonctionné, ce n'est pas un débranchement.
   if (lastSeenAt == null && lastPositionAt == null) return 'NOT_CONFIGURED';
-  // A déjà émis par le passé mais silencieux depuis > seuil → débranché / hors-ligne.
+  // Silencieux mais contact coupé à la dernière trame → garé, boîtier en veille
+  // (le Coban dort quand l'ignition est OFF) : silence normal, pas une panne.
+  if (lastIgnition === false) return 'PARKED';
+  // Silencieux alors que le contact était ON (ou inconnu) → vraie perte de signal.
   return 'OFFLINE';
 }
 
