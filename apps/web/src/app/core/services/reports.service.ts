@@ -30,6 +30,7 @@ export interface FleetStatsReportDto {
     distanceKm: number;
     tripCount: number;
     estimatedConsumptionL: number;
+    group?: { id: string; name: string } | null;
   }[];
 }
 

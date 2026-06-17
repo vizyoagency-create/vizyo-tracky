@@ -48,3 +48,54 @@ export function isTrackerOnline(
   // le boîtier vient de parler, on ne le pénalise pas pour un décalage d'horloge.
   return now - ms <= thresholdMs;
 }
+
+/**
+ * État de connectivité d'un véhicule vis-à-vis de l'application, vu côté UI.
+ *
+ * Tri-état dérivé (read-time, aucune écriture) qui répond à : « ce véhicule est-il
+ * réellement suivi en ce moment ? ». Il distingue les deux causes de
+ * non-suivi que l'exploitant doit traiter différemment :
+ *  - `ONLINE`         : boîtier vivant, signal frais (< seuil) → suivi en direct.
+ *  - `OFFLINE`        : boîtier déjà vu mais silencieux depuis > seuil → DÉBRANCHÉ
+ *                       / hors-ligne (alim coupée, remorquage, zone sans réseau).
+ *  - `NOT_CONFIGURED` : aucun boîtier affecté, OU boîtier affecté qui n'a JAMAIS
+ *                       émis → pas (encore) installé / mal configuré pour Tracky.
+ */
+export type VehicleConnectivityState = 'ONLINE' | 'OFFLINE' | 'NOT_CONFIGURED';
+
+export interface VehicleConnectivityInput {
+  /** Présence d'un tracker affecté au véhicule. null/undefined = aucun tracker. */
+  trackerId?: string | null;
+  /** Dernier signal reçu du boîtier (trame TCP). Source de fraîcheur primaire. */
+  lastSeenAt?: Date | string | number | null;
+  /** Dernière position valide connue. Repli si `lastSeenAt` absent. */
+  lastPositionAt?: Date | string | number | null;
+}
+
+/**
+ * Calcule le tri-état de connectivité. Réutilise {@link isTrackerOnline} (donc le
+ * même seuil de 15 min) pour la définition d'« online maintenant ». Pur, non
+ * destructif : c'est la source de vérité partagée par toutes les surfaces UI
+ * (liste véhicules, carte, détail, rapports) pour marquer les véhicules « pas
+ * dans l'app ».
+ *
+ * @param now         instant de référence ms epoch. Défaut : `Date.now()`.
+ * @param thresholdMs fenêtre de fraîcheur. Défaut : {@link TRACKER_ONLINE_THRESHOLD_MS}.
+ */
+export function getVehicleConnectivityState(
+  input: VehicleConnectivityInput,
+  now: number = Date.now(),
+  thresholdMs: number = TRACKER_ONLINE_THRESHOLD_MS,
+): VehicleConnectivityState {
+  const { trackerId, lastSeenAt, lastPositionAt } = input;
+  // Aucun boîtier affecté → véhicule pas équipé pour Tracky.
+  if (!trackerId) return 'NOT_CONFIGURED';
+  // Le boîtier a parlé récemment → suivi en direct.
+  if (isTrackerOnline(lastSeenAt, now, thresholdMs)) return 'ONLINE';
+  // Boîtier affecté mais JAMAIS aucun signal ni position → affecté mais jamais
+  // connecté (SIM/APN/provisioning KO). On le traite comme « non configuré »
+  // plutôt que « hors-ligne » : il n'a jamais fonctionné, ce n'est pas un débranchement.
+  if (lastSeenAt == null && lastPositionAt == null) return 'NOT_CONFIGURED';
+  // A déjà émis par le passé mais silencieux depuis > seuil → débranché / hors-ligne.
+  return 'OFFLINE';
+}

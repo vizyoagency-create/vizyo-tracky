@@ -213,7 +213,15 @@ export class ReportPdfService {
     for (const v of report.topVehicles.slice(0, topN)) {
       const y = doc.y;
       doc.fillColor(COLOR_FG).fontSize(10).font('Helvetica')
-        .text(v.plate, colX[0]!, y);
+        .text(v.plate, colX[0]!, y, { continued: !!v.group });
+      // Groupe accolé à la plaque, en gris (la colonne Plaque a la place ; pas de
+      // re-layout des autres colonnes qui sont ancrées sur le même `y`).
+      if (v.group) {
+        doc.fillColor(COLOR_FG_MUTED).fontSize(8).font('Helvetica')
+          .text(`   ${v.group.name}`, { continued: false });
+      }
+      // Réinitialise le style (le bloc groupe l'a passé en gris/8) avant les colonnes suivantes.
+      doc.fillColor(COLOR_FG).fontSize(10).font('Helvetica');
       doc.text(`${v.distanceKm.toFixed(1)} km`, colX[1]!, y);
       doc.text(`${v.tripCount}`, colX[2]!, y);
       doc.text(`${v.estimatedConsumptionL.toFixed(1)} L`, colX[3]!, y);

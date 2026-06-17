@@ -633,6 +633,18 @@ textarea:focus-visible,
   opacity: 0.85;
 }
 
+/* Boîtier hors-ligne : marqueur grisé + estompé à sa dernière position connue.
+   On coupe aussi le pulse pour qu'il ne « respire » plus comme un véhicule actif. */
+.tracky-marker--offline .tracky-marker__core {
+  opacity: 0.5;
+}
+.tracky-marker--offline .tracky-marker__pulse {
+  display: none;
+}
+.tracky-marker--offline .tracky-marker__plate {
+  opacity: 0.6;
+}
+
 /* ════════════════════════════════════════════════════════════
    Popover marker (info card véhicule) — design tracky cohérent
    theme-aware (light/dark) avec fond glassy + boutons stylés.

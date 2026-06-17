@@ -56,6 +56,7 @@ export interface FleetStatsReport {
     distanceKm: number;
     tripCount: number;
     estimatedConsumptionL: number;
+    group: { id: string; name: string } | null;
   }[];
   /**
    * Liste des derniers trajets sur la periode (cap a 30 pour ne pas exploser
@@ -72,6 +73,7 @@ export interface FleetStatsReport {
     distanceKm: number;
     notes: string | null;
     driverName: string | null;
+    group: { id: string; name: string } | null;
   }[];
 }
 
@@ -111,7 +113,15 @@ export class ReportsStatsService {
       where: isVehicleScopeRestricted
         ? { fleetId, id: { in: uniqueRequestedIds } }
         : { fleetId },
-      select: { id: true, plate: true, type: true, fuelConsumptionL100km: true },
+      select: {
+        id: true, plate: true, type: true, fuelConsumptionL100km: true,
+        // Groupe (unique de-facto) pour l'afficher dans le rapport / PDF.
+        groups: {
+          select: { group: { select: { id: true, name: true } } },
+          orderBy: { group: { name: 'asc' } },
+          take: 1,
+        },
+      },
     });
 
     // Security check : si l'utilisateur a demande des vehicleIds inconnus dans
@@ -187,7 +197,16 @@ export class ReportsStatsService {
             id: true, vehicleId: true, distanceKm: true, durationSeconds: true,
             startedAt: true, endedAt: true,
             notes: true,
-            vehicle: { select: { plate: true } },
+            vehicle: {
+              select: {
+                plate: true,
+                groups: {
+                  select: { group: { select: { id: true, name: true } } },
+                  orderBy: { group: { name: 'asc' } },
+                  take: 1,
+                },
+              },
+            },
             driver: { select: { firstName: true, lastName: true } },
           },
           orderBy: { startedAt: 'desc' },
@@ -227,6 +246,7 @@ export class ReportsStatsService {
           distanceKm: Math.round(stat.distanceKm * 10) / 10,
           tripCount: stat.tripCount,
           estimatedConsumptionL: Math.round(liters * 10) / 10,
+          group: v.groups?.[0]?.group ?? null,
         });
       }
     }
@@ -274,6 +294,7 @@ export class ReportsStatsService {
         distanceKm: Math.round(Math.max(0, t.distanceKm) * 10) / 10,
         notes: t.notes ?? null,
         driverName: t.driver ? `${t.driver.firstName} ${t.driver.lastName}` : null,
+        group: t.vehicle?.groups?.[0]?.group ?? null,
       })),
     };
   }

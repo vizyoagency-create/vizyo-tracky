@@ -23,9 +23,11 @@ import type { GeofenceDto, PositionUpdateEvent } from '@vizyo/tracky-shared';
 import {
   deriveMotion,
   extrapolate,
+  getVehicleConnectivityState,
   isAcceptableLiveFix,
   isTrackerOnline,
   sanitizePositions,
+  type VehicleConnectivityState,
 } from '@vizyo/tracky-shared';
 
 /** Distance Haversine en mètres entre deux points GPS. Inline pour éviter
@@ -61,6 +63,7 @@ import {
 import { catmullRom, lerpHeading } from '../../shared/utils/spline';
 import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fleet-badge.component';
 import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.component';
+import { ConnectivityBadgeComponent } from '../../shared/ui/connectivity-badge/connectivity-badge.component';
 import { TrackClickDirective } from '../../shared/directives/track-click.directive';
 
 interface MarkerEntry {
@@ -176,7 +179,7 @@ const RESYNC_RADIUS_M = 150;
 @Component({
   selector: 'app-map',
   standalone: true,
-  imports: [DecimalPipe, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, TrackClickDirective],
+  imports: [DecimalPipe, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, TrackClickDirective],
   template: `
     <div #mapContainer style="position:absolute;top:0;left:0;width:100%;height:100%"></div>
 
@@ -449,7 +452,7 @@ const RESYNC_RADIUS_M = 150;
             <label class="tracky-sheet-checkbox">
               <input type="checkbox" [checked]="filters().offline" (change)="toggleFilter('offline')" />
               <span class="w-2.5 h-2.5 rounded-full" style="background:#9ca3af"></span>
-              <span>Hors-ligne (>10min)</span>
+              <span>Hors-ligne (>15min)</span>
             </label>
             <hr class="my-1 border-border-subtle" />
             <label class="tracky-sheet-checkbox">
@@ -701,7 +704,7 @@ const RESYNC_RADIUS_M = 150;
             <label class="tracky-sheet-checkbox">
               <input type="checkbox" [checked]="filters().offline" (change)="toggleFilter('offline')" />
               <span class="w-2.5 h-2.5 rounded-full" style="background:#9ca3af"></span>
-              <span>Hors-ligne (>10min)</span>
+              <span>Hors-ligne (>15min)</span>
             </label>
             <hr class="my-1 border-border-subtle" />
             <label class="tracky-sheet-checkbox">
@@ -853,6 +856,8 @@ const RESYNC_RADIUS_M = 150;
               <app-sa-fleet-badge [fleetId]="baanoolCard()!.fleetId" />
               <!-- Sprint 1 — Groupe du véhicule. -->
               @if (baanoolCard()!.group; as g) { <app-group-badge [group]="g" /> }
+              <!-- Connectivité : flague un boîtier hors-ligne / non configuré. -->
+              <app-connectivity-badge [state]="cardConnectivity()" [hideWhenOnline]="true" />
             </div>
             <!-- V1.15 — Meta tracker visible SA only via le badge component
                  qui s'auto-cache si role != SUPER_ADMIN. La ligne est rendue
@@ -2882,8 +2887,9 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     const f = this.filters();
     const now = Date.now();
     return positions.filter((p) => {
-      const ageMin = (now - new Date(p.timestamp).getTime()) / 60000;
-      if (ageMin > 10) return f.offline;
+      // Hors-ligne = pas de signal frais (seuil online partagé, 15 min) — même
+      // définition que la couleur grise du marqueur, pour rester cohérent.
+      if (!isTrackerOnline(p.timestamp, now)) return f.offline;
       if (!p.ignition) return f.off;
       if (p.speedKmh > 5) return f.moving;
       return f.idle;
@@ -3369,6 +3375,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         ignition: patched.ignition,
         active: pos.vehicleId === followedId,
         hydrated: hydratedSet.has(pos.trackerId),
+        // Hors-ligne = dernier signal trop ancien (> seuil online partagé). Le
+        // marqueur passe en gris/estompé au lieu de rester vert « actif » à sa
+        // dernière position connue (cas boîtier débranché).
+        offline: !isTrackerOnline(pos.timestamp),
       };
 
       // GPS sanity (live) : rejette les fixes `valid: false` (broadcastes par le
@@ -3712,6 +3722,18 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       }
     }
     return pos;
+  }
+
+  /**
+   * Connectivité (tri-état partagé) du véhicule affiché dans la bottom card.
+   * Sert à flaguer « Hors ligne / Non configuré » comme partout ailleurs.
+   */
+  protected cardConnectivity(): VehicleConnectivityState {
+    const c = this.baanoolCard();
+    return getVehicleConnectivityState({
+      trackerId: c?.trackerId ?? null,
+      lastSeenAt: c?.lastSeenAt ?? null,
+    });
   }
 
   private openMarkerPopup(trackerId: string): void {

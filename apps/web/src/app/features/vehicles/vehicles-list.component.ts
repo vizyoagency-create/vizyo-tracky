@@ -15,13 +15,15 @@ import { VehicleDialogComponent } from './vehicle-dialog/vehicle-dialog.componen
 import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
 import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fleet-badge.component';
 import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.component';
+import { ConnectivityBadgeComponent } from '../../shared/ui/connectivity-badge/connectivity-badge.component';
 import { TrackClickDirective } from '../../shared/directives/track-click.directive';
+import { getVehicleConnectivityState, type VehicleConnectivityState } from '@vizyo/tracky-shared';
 
 @Component({
   selector: 'app-vehicles-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, TrackClickDirective],
+  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, TrackClickDirective],
   template: `
     <div class="vlist-page">
       <div class="vlist-grid-bg"></div>
@@ -80,6 +82,18 @@ import { TrackClickDirective } from '../../shared/directives/track-click.directi
                 </button>
               }
             </div>
+            @if (groupOptions().length > 0) {
+              <div class="vlist-group-filter">
+                <lucide-icon [img]="LayersIcon" [size]="14" class="vlist-group-filter-ico"></lucide-icon>
+                <select [ngModel]="groupFilter()" (ngModelChange)="groupFilter.set($event)"
+                        aria-label="Filtrer par groupe">
+                  <option value="">Tous les groupes</option>
+                  @for (g of groupOptions(); track g.id) {
+                    <option [value]="g.id">{{ g.name }}</option>
+                  }
+                </select>
+              </div>
+            }
             <span class="vlist-count">{{ filteredVehicles().length }} / {{ vehicles().length }}</span>
             <div class="view-switch">
               <button (click)="setViewMode('cards')" class="view-btn" [class.active]="viewMode() === 'cards'"
@@ -149,7 +163,7 @@ import { TrackClickDirective } from '../../shared/directives/track-click.directi
                           @else { Stationné }
                         </span>
                       } @else {
-                        <span class="muted">—</span>
+                        <app-connectivity-badge [state]="connectivity(v)" />
                       }
                     </td>
                     <td>
@@ -201,7 +215,7 @@ import { TrackClickDirective } from '../../shared/directives/track-click.directi
                   <div class="v-group-items">
                     @for (v of section.vehicles; track v.id) {
                       <a [routerLink]="['/vehicles', v.id]" [queryParams]="groupedLinkParams(section.id)" class="v-group-row">
-                        <div class="v-type-icon" [class]="v.tracker && isTrackerOnline(v.tracker.id, v.tracker.status) ? 'online' : 'offline'"
+                        <div class="v-type-icon" [class]="connectivity(v) === 'ONLINE' ? 'online' : 'offline'"
                              [innerHTML]="getTypeIconHtml(v.type)"></div>
                         <span class="v-group-row-plate">{{ v.plate }}</span>
                         @if (v.brand) { <span class="v-group-row-brand">{{ v.brand }} {{ v.model ?? '' }}</span> }
@@ -214,6 +228,7 @@ import { TrackClickDirective } from '../../shared/directives/track-click.directi
                             @else { Stationné }
                           </span>
                         }
+                        <app-connectivity-badge [state]="connectivity(v)" [hideWhenOnline]="true" [compact]="true" />
                         <lucide-icon [img]="ChevronRightIcon" [size]="15" class="v-group-row-chev"></lucide-icon>
                       </a>
                     }
@@ -226,10 +241,10 @@ import { TrackClickDirective } from '../../shared/directives/track-click.directi
           <div class="v-grid">
             @for (v of filteredVehicles(); track v.id) {
               <a [routerLink]="['/vehicles', v.id]" class="v-card">
-                <div class="v-card-glow" [class]="v.tracker ? 'online' : 'offline'"></div>
+                <div class="v-card-glow" [class]="connectivity(v) === 'ONLINE' ? 'online' : 'offline'"></div>
                 <div class="v-card-top">
                   <div class="v-plate-wrap">
-                    <div class="v-type-icon" [class]="v.tracker && isTrackerOnline(v.tracker.id, v.tracker.status) ? 'online' : 'offline'"
+                    <div class="v-type-icon" [class]="connectivity(v) === 'ONLINE' ? 'online' : 'offline'"
                       [innerHTML]="getTypeIconHtml(v.type)"></div>
                     <span class="v-plate">{{ v.plate }}</span>
                   </div>
@@ -265,6 +280,7 @@ import { TrackClickDirective } from '../../shared/directives/track-click.directi
                       }
                     </span>
                   }
+                  <app-connectivity-badge [state]="connectivity(v)" [hideWhenOnline]="true" />
                   @if (instBadge(v); as b) {
                     <span class="v-inst" [class]="'v-inst--' + b.cls">{{ b.label }}</span>
                   }
@@ -511,6 +527,13 @@ import { TrackClickDirective } from '../../shared/directives/track-click.directi
     .vlist-search input::placeholder { color: var(--fg-tertiary) }
     .vlist-search-clear { display: flex; align-items: center; background: none; border: none; color: var(--fg-tertiary); cursor: pointer; padding: 0 }
     .vlist-search-clear:hover { color: var(--fg-primary) }
+    .vlist-group-filter { display: flex; align-items: center; gap: 6px; padding: 0 10px; height: 38px;
+      background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: 10px }
+    .vlist-group-filter:focus-within { border-color: rgba(16,224,160,.4) }
+    .vlist-group-filter-ico { color: var(--fg-tertiary); flex-shrink: 0 }
+    .vlist-group-filter select { background: none; border: none; outline: none; color: var(--fg-primary);
+      font-size: 13px; cursor: pointer; max-width: 180px }
+    .vlist-group-filter select option { background: var(--bg-secondary); color: var(--fg-primary) }
     .vlist-count { font-size: 12px; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; white-space: nowrap }
 
     /* #3 — toggle cartes / tableau */
@@ -695,15 +718,30 @@ export class VehiclesListComponent implements OnInit {
   protected readonly vehicles = signal<VehicleDetailDto[]>([]);
   // #2 — recherche client-side (plaque / marque / modèle / IMEI).
   protected readonly search = signal('');
+  /** Filtre groupe (vide = tous). Appliqué avant la recherche texte. */
+  protected readonly groupFilter = signal('');
+  /** Groupes distincts présents dans la flotte, pour le menu de filtre. */
+  protected readonly groupOptions = computed(() => {
+    const map = new Map<string, string>();
+    for (const v of this.vehicles()) {
+      if (v.group) map.set(v.group.id, v.group.name);
+    }
+    return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  });
   protected readonly filteredVehicles = computed(() => {
+    const gid = this.groupFilter();
     const q = this.search().trim().toLowerCase();
-    if (!q) return this.vehicles();
-    return this.vehicles().filter((v) =>
-      v.plate.toLowerCase().includes(q) ||
-      (v.brand ?? '').toLowerCase().includes(q) ||
-      (v.model ?? '').toLowerCase().includes(q) ||
-      (v.tracker?.imei ?? '').toLowerCase().includes(q),
-    );
+    let list = this.vehicles();
+    if (gid) list = list.filter((v) => v.group?.id === gid);
+    if (q) {
+      list = list.filter((v) =>
+        v.plate.toLowerCase().includes(q) ||
+        (v.brand ?? '').toLowerCase().includes(q) ||
+        (v.model ?? '').toLowerCase().includes(q) ||
+        (v.tracker?.imei ?? '').toLowerCase().includes(q),
+      );
+    }
+    return list;
   });
 
   /**
@@ -814,10 +852,18 @@ export class VehiclesListComponent implements OnInit {
     this.loadVehicles();
   }
 
-  protected isTrackerOnline(trackerId: string, httpStatus: string): boolean {
-    const live = this.realtime.trackerStatuses().get(trackerId);
-    if (live) return live === 'online';
-    return httpStatus === 'ONLINE';
+  /**
+   * État de connectivité (tri-état partagé) du véhicule : ONLINE / OFFLINE /
+   * NOT_CONFIGURED. Basé sur la FRAÎCHEUR du dernier signal (`lastSeenAt`), pas
+   * sur le statut TCP qui flappe ni sur `status` (collant) — cohérent avec la
+   * carte et le reste de l'app. Sert à griser l'icône et à flaguer les véhicules
+   * « pas dans l'app » (débranchés ou non configurés).
+   */
+  protected connectivity(v: VehicleDetailDto): VehicleConnectivityState {
+    return getVehicleConnectivityState({
+      trackerId: v.tracker?.id ?? null,
+      lastSeenAt: v.tracker?.lastSeenAt ?? null,
+    });
   }
 
   /**

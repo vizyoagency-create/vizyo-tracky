@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, HostListener, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, BarChart3, Route, Clock, Gauge, Play, ChevronDown, Truck, Check, MessageSquare, Pencil, UserRound, Download, Calendar, FileText } from 'lucide-angular';
+import { LucideAngularModule, BarChart3, Route, Clock, Gauge, Play, ChevronDown, Truck, Check, MessageSquare, Pencil, UserRound, Download, Calendar, FileText, Layers } from 'lucide-angular';
 import type { DriverDto, TripDailySummaryDto, TripDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { DriversApiService } from '../../core/services/drivers.service';
@@ -71,6 +71,43 @@ import {
       </div>
 
       <div class="flex items-center gap-2 flex-wrap">
+        <!-- Filtre groupe : restreint la liste de véhicules du sélecteur à un groupe. -->
+        @if (groupOptions().length > 0) {
+          <div class="rep-dropdown-wrapper">
+            <button type="button"
+                    (click)="groupDropdownOpen.set(!groupDropdownOpen())"
+                    class="rep-dropdown-trigger"
+                    [class.rep-dropdown-trigger--open]="groupDropdownOpen()">
+              <lucide-icon [img]="LayersIcon" [size]="14"></lucide-icon>
+              <span class="rep-dropdown-label">{{ selectedGroupLabel() }}</span>
+              <lucide-icon [img]="ChevronDown" [size]="14" class="rep-dropdown-chevron"></lucide-icon>
+            </button>
+            @if (groupDropdownOpen()) {
+              <div class="rep-dropdown-backdrop" (click)="groupDropdownOpen.set(false)"></div>
+              <div class="rep-dropdown-menu">
+                <button type="button"
+                        (click)="onSelectGroup('')"
+                        class="rep-dropdown-item"
+                        [class.rep-dropdown-item--active]="!selectedGroupId()">
+                  <span>Tous les groupes</span>
+                  @if (!selectedGroupId()) { <lucide-icon [img]="Check" [size]="14"></lucide-icon> }
+                </button>
+                <div class="rep-dropdown-divider"></div>
+                @for (g of groupOptions(); track g.id) {
+                  <button type="button"
+                          (click)="onSelectGroup(g.id)"
+                          class="rep-dropdown-item"
+                          [class.rep-dropdown-item--active]="selectedGroupId() === g.id">
+                    <span class="rep-dropdown-item-content">
+                      <app-group-badge [group]="g" />
+                    </span>
+                    @if (selectedGroupId() === g.id) { <lucide-icon [img]="Check" [size]="14"></lucide-icon> }
+                  </button>
+                }
+              </div>
+            }
+          </div>
+        }
         <!-- Dropdown véhicule custom -->
         <div class="rep-dropdown-wrapper">
           <button type="button"
@@ -91,10 +128,10 @@ import {
                 <span>Tous les véhicules</span>
                 @if (!selectedVehicleId()) { <lucide-icon [img]="Check" [size]="14"></lucide-icon> }
               </button>
-              @if (vehicles().length > 0) {
+              @if (visibleVehicles().length > 0) {
                 <div class="rep-dropdown-divider"></div>
               }
-              @for (v of vehicles(); track v.id) {
+              @for (v of visibleVehicles(); track v.id) {
                 <button type="button"
                         (click)="onSelectVehicle(v.id)"
                         class="rep-dropdown-item"
@@ -963,6 +1000,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   protected readonly ChevronDown = ChevronDown;
   protected readonly TruckIcon = Truck;
   protected readonly Check = Check;
+  protected readonly LayersIcon = Layers;
   protected readonly MessageSquareIcon = MessageSquare;
   protected readonly PencilIcon = Pencil;
   protected readonly UserRoundIcon = UserRound;
@@ -1104,6 +1142,43 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.selectedVehicleId.set(id);
     this.vehicleDropdownOpen.set(false);
     this.loadData();
+  }
+
+  /* ─── Filtre groupe (Sprint Groupes) ─── */
+  protected readonly selectedGroupId = signal('');
+  protected readonly groupDropdownOpen = signal(false);
+
+  /** Groupes distincts présents dans la flotte, dérivés des véhicules chargés. */
+  protected readonly groupOptions = computed(() => {
+    const map = new Map<string, string>();
+    for (const v of this.vehicles()) {
+      if (v.group) map.set(v.group.id, v.group.name);
+    }
+    return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  });
+
+  /** Véhicules visibles dans le sélecteur, restreints au groupe filtré. */
+  protected readonly visibleVehicles = computed(() => {
+    const gid = this.selectedGroupId();
+    const all = this.vehicles();
+    return gid ? all.filter((v) => v.group?.id === gid) : all;
+  });
+
+  protected readonly selectedGroupLabel = computed(() => {
+    const gid = this.selectedGroupId();
+    if (!gid) return 'Tous les groupes';
+    return this.groupOptions().find((g) => g.id === gid)?.name ?? 'Tous les groupes';
+  });
+
+  protected onSelectGroup(id: string): void {
+    this.selectedGroupId.set(id);
+    this.groupDropdownOpen.set(false);
+    // Si le véhicule sélectionné ne fait pas partie du groupe filtré, on revient
+    // à « tous les véhicules » (sinon le rapport montrerait un véhicule hors filtre).
+    const selV = this.selectedVehicleId();
+    if (selV && id && !this.vehicles().some((v) => v.id === selV && v.group?.id === id)) {
+      this.onSelectVehicle('');
+    }
   }
 
   /** Format une Date en YYYY-MM-DD en HEURE LOCALE (pas UTC).
