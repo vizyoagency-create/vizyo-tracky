@@ -54,33 +54,36 @@
     upd();
   })();
 
-  /* ── Easter-egg : panneau STOP au scroll trop rapide ── */
+  /* ── Compteurs animés (data-count) à l'entrée dans l'écran ── */
   (function () {
-    var gag = $('stopgag'); if (!gag) return;
-    var kmh = $('speed-kmh'), msg = $('stopgag-msg');
-    var jokes = [
-      "On n'est pas sur l'A61 ici !",
-      "Contrôle radar : ralentissez !",
-      "Doucement, c'est pas Mario Kart 🏎️",
-      "Excès de scroll caractérisé 😎",
-      "Vos pneus de souris chauffent 🔥"
-    ];
-    function now() { return (window.performance && performance.now) ? performance.now() : new Date().getTime(); }
-    var lastY = window.scrollY, lastT = now(), cool = 0, hideT;
-    window.addEventListener('scroll', function () {
-      var y = window.scrollY, t = now(), dt = t - lastT, dy = Math.abs(y - lastY);
-      var v = dt > 0 ? dy / dt : 0; // px par ms
-      lastY = y; lastT = t;
-      if (t < cool) return;
-      if (dy > 120) {
-        cool = t + 4500;
-        if (kmh) kmh.textContent = Math.min(220, Math.round(v * 42 + 70));
-        if (msg) msg.textContent = jokes[Math.floor(Math.random() * jokes.length)];
-        gag.classList.remove('show'); void gag.offsetWidth; gag.classList.add('show');
-        clearTimeout(hideT);
-        hideT = setTimeout(function () { gag.classList.remove('show'); }, 3000);
+    var els = document.querySelectorAll('[data-count]');
+    if (!els.length) return;
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    function run(el) {
+      var target = parseFloat(el.getAttribute('data-count')) || 0;
+      if (reduce || !('requestAnimationFrame' in window)) { el.textContent = String(target); return; }
+      var dur = 1200, t0 = 0;
+      function step(ts) {
+        if (!t0) t0 = ts;
+        var p = Math.min(1, (ts - t0) / dur), e = 1 - Math.pow(1 - p, 3);
+        el.textContent = String(Math.round(e * target));
+        if (p < 1) requestAnimationFrame(step);
       }
-    }, { passive: true });
+      requestAnimationFrame(step);
+    }
+    if ('IntersectionObserver' in window) {
+      var io = new IntersectionObserver(function (xs) { xs.forEach(function (x) { if (x.isIntersecting) { run(x.target); io.unobserve(x.target); } }); }, { threshold: 0.5 });
+      els.forEach(function (el) { io.observe(el); });
+    } else { els.forEach(run); }
+  })();
+
+  /* ── Parallaxe douce de la vidéo hero (profondeur) ── */
+  (function () {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    var v = document.querySelector('.hero-bg-video video'); if (!v || !('requestAnimationFrame' in window)) return;
+    var ticking = false;
+    function upd() { v.style.transform = 'translateY(' + Math.min(window.scrollY * 0.06, 48) + 'px)'; ticking = false; }
+    window.addEventListener('scroll', function () { if (!ticking) { requestAnimationFrame(upd); ticking = true; } }, { passive: true });
   })();
 
   /* ── FAQ accordéon ── */

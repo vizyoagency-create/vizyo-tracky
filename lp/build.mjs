@@ -215,9 +215,16 @@ const PAGES = [
 
 let built = 0;
 const sitemapUrls = [];
+function seoWeight(out) {
+  if (out === 'index.html') return { priority: '1.0', changefreq: 'weekly' };
+  if (out === 'gps-flotte-toulouse.html' || out === 'gps-flotte-occitanie.html') return { priority: '0.9', changefreq: 'monthly' };
+  if (out.startsWith('gps-flotte-')) return { priority: '0.7', changefreq: 'monthly' };
+  return { priority: '0.8', changefreq: 'monthly' };
+}
 function emit(meta, content) {
   writeFileSync(root(meta.out), renderPage(meta, content), 'utf8');
-  sitemapUrls.push(meta.out === 'index.html' ? site.baseUrl + '/' : abs(meta.out));
+  const loc = meta.out === 'index.html' ? site.baseUrl + '/' : abs(meta.out);
+  sitemapUrls.push({ loc, ...seoWeight(meta.out) });
   built++;
   console.log('✓', meta.out);
 }
@@ -265,7 +272,7 @@ if (cityTpl) {
 const today = new Date().toISOString().slice(0, 10);
 const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${sitemapUrls.map((u) => `  <url><loc>${u}</loc><lastmod>${today}</lastmod></url>`).join('\n')}
+${sitemapUrls.map((u) => `  <url><loc>${u.loc}</loc><lastmod>${today}</lastmod><changefreq>${u.changefreq}</changefreq><priority>${u.priority}</priority></url>`).join('\n')}
 </urlset>`;
 writeFileSync(root('sitemap.xml'), sitemap, 'utf8');
 writeFileSync(root('robots.txt'), `User-agent: *\nAllow: /\n\nSitemap: ${site.baseUrl}/sitemap.xml\n`, 'utf8');
