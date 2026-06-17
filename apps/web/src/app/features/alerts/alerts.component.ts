@@ -24,6 +24,7 @@ import type { AlertEvent } from '@vizyo/tracky-shared';
 import { getVehicleConnectivityState, isInstallationToReview } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { InstallReviewBadgeComponent } from '../../shared/ui/install-review-badge/install-review-badge.component';
+import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.component';
 import { AlertsApiService } from '../../core/services/alerts.service';
 import { AuthService } from '../../core/services/auth.service';
 import { AlertRuleDto, NotificationsApiService } from '../../core/services/notifications.service';
@@ -113,7 +114,7 @@ const EMPTY_FORM: RuleForm = {
   selector: 'app-alerts',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [LucideAngularModule, RouterLink, FormsModule, SaFleetBadgeComponent, InstallReviewBadgeComponent],
+  imports: [LucideAngularModule, RouterLink, FormsModule, SaFleetBadgeComponent, InstallReviewBadgeComponent, GroupBadgeComponent],
   template: `
     @if (isBaanoolMode()) {
       <!-- V1.12 — Mode Baanool : "Centre de messages" style ultra-simple -->
@@ -312,6 +313,7 @@ const EMPTY_FORM: RuleForm = {
                       {{ alertVehiclePlate(cluster.lead) }}
                     </a>
                   }
+                  @if (cluster.lead.vehicle?.group; as g) { <app-group-badge [group]="g" /> }
                   @if (cluster.lead.message) {
                     <span class="tl-msg">{{ cluster.lead.message }}</span>
                   }

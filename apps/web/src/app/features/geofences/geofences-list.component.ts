@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
-import { LucideAngularModule, Plus, Shield, Trash2, Pencil, MapPin, Circle, ArrowDownLeft, ArrowUpRight, ArrowLeftRight, Upload } from 'lucide-angular';
+import { RouterLink } from '@angular/router';
+import { LucideAngularModule, Plus, Shield, Trash2, Pencil, MapPin, Circle, ArrowDownLeft, ArrowUpRight, ArrowLeftRight, Upload, ChevronDown, ChevronRight } from 'lucide-angular';
 import type { GeofenceDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { PermissionsService } from '../../core/services/permissions.service';
@@ -9,12 +10,13 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
 import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-draw-dialog.component';
 import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fleet-badge.component';
+import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.component';
 
 @Component({
   selector: 'app-geofences-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [LucideAngularModule, ConfirmModalComponent, GeofenceDrawDialogComponent, SaFleetBadgeComponent],
+  imports: [LucideAngularModule, RouterLink, ConfirmModalComponent, GeofenceDrawDialogComponent, SaFleetBadgeComponent, GroupBadgeComponent],
   template: `
     <div class="gf-page">
       <div class="gf-blobs"></div>
@@ -80,14 +82,26 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
                   <!-- V1.15 — Badge fleet + compteur ciblages (visibles SA). -->
                   <app-sa-fleet-badge [fleetId]="g.fleetId" />
                   @if ((g._count?.vehicleTargets ?? 0) > 0) {
-                    <span class="gf-target-chip" title="Véhicules ciblés par cette zone">
+                    <button type="button" class="gf-target-chip gf-target-chip--btn"
+                            (click)="toggleTargets(g.id)" title="Voir les véhicules ciblés">
                       {{ g._count?.vehicleTargets }} véhicule{{ (g._count?.vehicleTargets ?? 0) > 1 ? 's' : '' }}
-                    </span>
+                      <lucide-icon [img]="isTargetsExpanded(g.id) ? ChevronDownIcon : ChevronRightIcon" [size]="11"></lucide-icon>
+                    </button>
                   }
                 </div>
                 <div class="gf-coords">
                   {{ g.centerLat.toFixed(4) }}, {{ g.centerLng.toFixed(4) }}
                 </div>
+                @if (isTargetsExpanded(g.id) && g.targetVehicles?.length) {
+                  <div class="gf-targets">
+                    @for (tv of g.targetVehicles; track tv.id) {
+                      <a [routerLink]="['/vehicles', tv.id]" class="gf-target-item">
+                        <span class="gf-target-plate">{{ tv.plate }}</span>
+                        @if (tv.group) { <app-group-badge [group]="tv.group" /> }
+                      </a>
+                    }
+                  </div>
+                }
               </div>
 
               <!-- Actions -->
@@ -219,6 +233,14 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
     /* V1.15 — Chip "X véhicules ciblés" sur card geofence. */
     .gf-target-chip { font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 9999px;
       background: var(--bg-tertiary); color: var(--fg-secondary); white-space: nowrap }
+    .gf-target-chip--btn { display: inline-flex; align-items: center; gap: 3px; border: 1px solid var(--border-subtle);
+      cursor: pointer; transition: border-color .15s }
+    .gf-target-chip--btn:hover { border-color: var(--tracky-light); color: var(--fg-primary) }
+    .gf-targets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px }
+    .gf-target-item { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 9999px;
+      background: var(--bg-secondary); border: 1px solid var(--border-subtle); text-decoration: none;
+      font-size: 11px; font-weight: 700; color: var(--fg-primary); transition: border-color .15s }
+    .gf-target-item:hover { border-color: var(--tracky-light) }
     .gf-coords { font-size: 10px; font-family: var(--font-mono, monospace); color: var(--fg-tertiary) }
 
     .gf-actions { position: absolute; top: 10px; right: 10px; display: flex; gap: 4px }
@@ -237,6 +259,15 @@ export class GeofencesListComponent implements OnInit {
   protected readonly perms = inject(PermissionsService);
 
   protected readonly geofences = signal<GeofenceDto[]>([]);
+
+  /** Géofences dont la liste des véhicules ciblés est dépliée (drill-down). */
+  protected readonly expandedTargets = signal<Set<string>>(new Set());
+  protected toggleTargets(id: string): void {
+    const next = new Set(this.expandedTargets());
+    if (next.has(id)) next.delete(id); else next.add(id);
+    this.expandedTargets.set(next);
+  }
+  protected isTargetsExpanded(id: string): boolean { return this.expandedTargets().has(id); }
   protected readonly loading = signal(true);
   protected readonly importing = signal(false);
   protected readonly showDrawDialog = signal(false);
@@ -248,6 +279,8 @@ export class GeofencesListComponent implements OnInit {
   protected readonly Plus = Plus;
   protected readonly Upload = Upload;
   protected readonly Shield = Shield;
+  protected readonly ChevronDownIcon = ChevronDown;
+  protected readonly ChevronRightIcon = ChevronRight;
   protected readonly Trash2 = Trash2;
   protected readonly Pencil = Pencil;
   protected readonly MapPin = MapPin;

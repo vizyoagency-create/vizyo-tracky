@@ -20,6 +20,11 @@ export interface GeofenceDto {
   _count?: {
     vehicleTargets?: number;
   };
+  /**
+   * V2 — véhicules ciblés (drill-down depuis la card). Renvoyé par GET /geofences.
+   * Vide = zone globale (s'applique à toute la flotte).
+   */
+  targetVehicles?: { id: string; plate: string; group?: { id: string; name: string } | null }[];
 }
 
 export interface GeofenceViolationEvent {

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import Papa from 'papaparse';
 import { PrismaService } from '../prisma/prisma.service';
+import { VEHICLE_GROUP_SELECT, vehicleGroupOf } from '../common/vehicle-group';
 
 /**
  * V1.5 (Sprint L) — Export CSV brut.
@@ -60,7 +61,7 @@ export class ReportCsvService {
       where: { fleetId, startedAt: { gte: from, lte: to } },
       orderBy: { startedAt: 'desc' },
       include: {
-        vehicle: { select: { plate: true } },
+        vehicle: { select: { plate: true, ...VEHICLE_GROUP_SELECT } },
         notesUpdatedBy: { select: { firstName: true, lastName: true, email: true } },
         driver: { select: { id: true, firstName: true, lastName: true } },
       },
@@ -69,6 +70,7 @@ export class ReportCsvService {
     const rows = trips.map((t) => ({
       trip_id: t.id,
       plate: t.vehicle?.plate ?? '',
+      group: vehicleGroupOf(t.vehicle)?.name ?? '',
       started_at: t.startedAt.toISOString(),
       ended_at: t.endedAt?.toISOString() ?? '',
       duration_seconds: t.durationSeconds,
@@ -105,12 +107,13 @@ export class ReportCsvService {
     const alerts = await this.prisma.alert.findMany({
       where: { fleetId, createdAt: { gte: from, lte: to } },
       orderBy: { createdAt: 'desc' },
-      include: { vehicle: { select: { plate: true } } },
+      include: { vehicle: { select: { plate: true, ...VEHICLE_GROUP_SELECT } } },
       take: 50_000,
     });
     const rows = alerts.map((a) => ({
       created_at: a.createdAt.toISOString(),
       plate: a.vehicle?.plate ?? '',
+      group: vehicleGroupOf(a.vehicle)?.name ?? '',
       type: a.type,
       severity: a.severity,
       title: a.title,

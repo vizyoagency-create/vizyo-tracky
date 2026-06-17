@@ -48,6 +48,11 @@ export interface AlertEvent {
   vehiclePlate?: string;
   /** Speed at the time of the alert (km/h), when available (e.g. OVERSPEED). */
   speedKmh?: number;
+  /**
+   * Présent sur les réponses REST (liste d'alertes) : véhicule lié + son groupe,
+   * pour afficher le badge groupe sans requête supplémentaire. Absent de l'event WS.
+   */
+  vehicle?: { id: string; plate: string; group?: { id: string; name: string } | null } | null;
 }
 
 export interface AlertAcknowledgedEvent {

@@ -10,6 +10,7 @@ import type { Geofence } from '@prisma/client';
 import type { GeofenceViolationEvent } from '@vizyo/tracky-shared';
 import { WS_EVENTS } from '@vizyo/tracky-shared';
 import { AlertsService } from '../alerts/alerts.service';
+import { VEHICLE_GROUP_SELECT, vehicleGroupOf } from '../common/vehicle-group';
 import { distanceMeters } from '../common/utils/haversine';
 import { NotificationDispatchService } from '../notifications/notification-dispatch.service';
 import { ErrorLogger } from '../observability/error-logger.service';
@@ -134,10 +135,36 @@ export class GeofencesService {
     // V1.15 — `_count.vehicleTargets` : nombre de vehicules cibles par la
     // geofence. Utile pour le badge contextuel "X véhicules ciblés" dans la
     // card sans round-trip. Cout : 1 COUNT subquery par row.
-    return this.prisma.geofence.findMany({
+    const rows = await this.prisma.geofence.findMany({
       where,
-      include: { _count: { select: { vehicleTargets: true } } },
+      include: {
+        _count: { select: { vehicleTargets: true } },
+        // V2 — ids des véhicules ciblés (GeofenceVehicle n'a pas de relation `vehicle`).
+        vehicleTargets: { select: { vehicleId: true } },
+      },
       orderBy: { createdAt: 'desc' },
+    });
+    // Charge plaque + groupe des véhicules ciblés en UNE requête (drill-down card).
+    const targetIds = Array.from(
+      new Set(rows.flatMap((g) => g.vehicleTargets.map((vt) => vt.vehicleId))),
+    );
+    const targets = targetIds.length
+      ? await this.prisma.vehicle.findMany({
+          where: { id: { in: targetIds } },
+          select: { id: true, plate: true, ...VEHICLE_GROUP_SELECT },
+        })
+      : [];
+    const byId = new Map(
+      targets.map((v) => [v.id, { id: v.id, plate: v.plate, group: vehicleGroupOf(v) }]),
+    );
+    return rows.map((g) => {
+      const { vehicleTargets, ...rest } = g;
+      return {
+        ...rest,
+        targetVehicles: vehicleTargets
+          .map((vt) => byId.get(vt.vehicleId))
+          .filter((v): v is NonNullable<typeof v> => v != null),
+      };
     });
   }
 
