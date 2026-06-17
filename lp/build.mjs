@@ -8,15 +8,16 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { site, nav } from './data/site.mjs';
-import { pricing } from './data/pricing.mjs';
-import { cities, region } from './data/cities.mjs';
+import { site, nav } from './src/data/site.mjs';
+import { pricing } from './src/data/pricing.mjs';
+import { cities, region } from './src/data/cities.mjs';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const root = (p) => join(__dir, p);
-const read = (p) => readFileSync(root(p), 'utf8');
+const read = (p) => readFileSync(root('src/' + p), 'utf8');          // sources : src/
+const pub = (p) => root('public/' + p);                              // sortie servie : public/
 // Cache-busting : hash de contenu sur les assets (nouvelle URL à chaque changement réel)
-const assetV = (p) => createHash('md5').update(readFileSync(root(p))).digest('hex').slice(0, 8);
+const assetV = (p) => createHash('md5').update(readFileSync(pub(p))).digest('hex').slice(0, 8);
 const ASSET_V = { css: assetV('assets/tracky.css'), js: assetV('assets/tracky.js') };
 
 const headerTpl = read('partials/header.html');
@@ -226,7 +227,7 @@ function seoWeight(out) {
   return { priority: '0.8', changefreq: 'monthly' };
 }
 function emit(meta, content) {
-  writeFileSync(root(meta.out), renderPage(meta, content), 'utf8');
+  writeFileSync(pub(meta.out), renderPage(meta, content), 'utf8');
   const loc = meta.out === 'index.html' ? site.baseUrl + '/' : abs(meta.out);
   sitemapUrls.push({ loc, ...seoWeight(meta.out) });
   built++;
@@ -278,7 +279,7 @@ const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${sitemapUrls.map((u) => `  <url><loc>${u.loc}</loc><lastmod>${today}</lastmod><changefreq>${u.changefreq}</changefreq><priority>${u.priority}</priority></url>`).join('\n')}
 </urlset>`;
-writeFileSync(root('sitemap.xml'), sitemap, 'utf8');
-writeFileSync(root('robots.txt'), `User-agent: *\nAllow: /\n\nSitemap: ${site.baseUrl}/sitemap.xml\n`, 'utf8');
+writeFileSync(pub('sitemap.xml'), sitemap, 'utf8');
+writeFileSync(pub('robots.txt'), `User-agent: *\nAllow: /\n\nSitemap: ${site.baseUrl}/sitemap.xml\n`, 'utf8');
 
 console.log(`\n${built} page(s) générée(s) · sitemap.xml (${sitemapUrls.length} URL) · robots.txt`);
