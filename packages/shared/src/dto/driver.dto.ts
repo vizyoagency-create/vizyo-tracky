@@ -37,6 +37,8 @@ export interface DriverDto extends DriverSummaryDto {
     currentVehicles?: number;
     trips?: number;
   };
+  /** V2 — véhicules actuellement attribués (drill-down). Renvoyé par GET /drivers. */
+  currentVehicles?: { id: string; plate: string }[];
 }
 
 export interface CreateDriverDto {

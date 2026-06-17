@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, Plus, Archive, Pencil, Mail, Phone, IdCard, UserRound, Truck, Route } from 'lucide-angular';
+import { RouterLink } from '@angular/router';
+import { LucideAngularModule, Plus, Archive, Pencil, Mail, Phone, IdCard, UserRound, Truck, Route, ChevronDown, ChevronRight } from 'lucide-angular';
 import type { DriverDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
@@ -24,7 +25,7 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
   selector: 'app-drivers-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, LucideAngularModule, ConfirmModalComponent, DriverDrawerComponent, SaFleetBadgeComponent],
+  imports: [FormsModule, RouterLink, LucideAngularModule, ConfirmModalComponent, DriverDrawerComponent, SaFleetBadgeComponent],
   template: `
     <div class="dpage">
       <div class="d-blobs"></div>
@@ -95,10 +96,12 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
               <div class="d-meta-row">
                 <app-sa-fleet-badge [fleetId]="d.fleetId" />
                 @if ((d._count?.currentVehicles ?? 0) > 0) {
-                  <span class="d-count-chip" title="Véhicules attribués actuellement">
+                  <button type="button" class="d-count-chip d-count-chip--btn" (click)="toggleDriver(d.id)"
+                          title="Voir les véhicules attribués">
                     <lucide-icon [img]="TruckIcon" [size]="10"></lucide-icon>
                     {{ d._count?.currentVehicles }} véhicule{{ (d._count?.currentVehicles ?? 0) > 1 ? 's' : '' }}
-                  </span>
+                    <lucide-icon [img]="isDriverExpanded(d.id) ? ChevronDownIcon : ChevronRightIcon" [size]="10"></lucide-icon>
+                  </button>
                 }
                 @if ((d._count?.trips ?? 0) > 0) {
                   <span class="d-count-chip" title="Trajets historiques">
@@ -107,6 +110,14 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
                   </span>
                 }
               </div>
+
+              @if (isDriverExpanded(d.id) && d.currentVehicles?.length) {
+                <div class="d-vehicles">
+                  @for (v of d.currentVehicles; track v.id) {
+                    <a [routerLink]="['/vehicles', v.id]" class="d-vehicle-item">{{ v.plate }}</a>
+                  }
+                </div>
+              }
 
               <!-- Mid: contact -->
               @if (d.phone || d.email) {
@@ -275,6 +286,13 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
       color: var(--fg-secondary);
       white-space: nowrap;
     }
+    .d-count-chip--btn { border: 1px solid var(--border-subtle); cursor: pointer; transition: border-color .15s; }
+    .d-count-chip--btn:hover { border-color: var(--tracky-light); color: var(--fg-primary); }
+    .d-vehicles { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .d-vehicle-item { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 9999px;
+      background: var(--bg-secondary); border: 1px solid var(--border-subtle); text-decoration: none;
+      font-size: 11px; font-weight: 700; color: var(--fg-primary); transition: border-color .15s; }
+    .d-vehicle-item:hover { border-color: var(--tracky-light); }
 
     .d-card-mid {
       display: flex; flex-direction: column; gap: 4px;
@@ -312,6 +330,14 @@ export class DriversListComponent implements OnInit {
 
   readonly loading = signal(true);
   readonly drivers = signal<DriverDto[]>([]);
+  /** Conducteurs dont la liste de véhicules attribués est dépliée (drill-down). */
+  protected readonly expandedDrivers = signal<Set<string>>(new Set());
+  protected toggleDriver(id: string): void {
+    const next = new Set(this.expandedDrivers());
+    if (next.has(id)) next.delete(id); else next.add(id);
+    this.expandedDrivers.set(next);
+  }
+  protected isDriverExpanded(id: string): boolean { return this.expandedDrivers().has(id); }
   readonly includeArchived = signal(false);
 
   readonly showDrawer = signal(false);
@@ -331,6 +357,8 @@ export class DriversListComponent implements OnInit {
   protected readonly UserRoundIcon = UserRound;
   protected readonly TruckIcon = Truck;
   protected readonly RouteIcon = Route;
+  protected readonly ChevronDownIcon = ChevronDown;
+  protected readonly ChevronRightIcon = ChevronRight;
 
   /** Roles autorises a creer/modifier/archiver un driver. */
   protected readonly canManage = computed(() => {

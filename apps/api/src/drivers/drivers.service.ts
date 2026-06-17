@@ -44,7 +44,11 @@ export class DriversService {
           : {}),
         ...(includeArchived ? {} : { isActive: true }),
       },
-      include: { _count: { select: { currentVehicles: true, trips: true } } },
+      include: {
+        // V2 — véhicules actuellement attribués (drill-down depuis la card conducteur).
+        currentVehicles: { select: { id: true, plate: true }, orderBy: { plate: 'asc' } },
+        _count: { select: { currentVehicles: true, trips: true } },
+      },
       orderBy: [{ isActive: 'desc' }, { lastName: 'asc' }, { firstName: 'asc' }],
     });
   }
