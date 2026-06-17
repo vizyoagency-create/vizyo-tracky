@@ -7,6 +7,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { site, nav } from './data/site.mjs';
 import { pricing } from './data/pricing.mjs';
 import { cities, region } from './data/cities.mjs';
@@ -14,6 +15,9 @@ import { cities, region } from './data/cities.mjs';
 const __dir = dirname(fileURLToPath(import.meta.url));
 const root = (p) => join(__dir, p);
 const read = (p) => readFileSync(root(p), 'utf8');
+// Cache-busting : hash de contenu sur les assets (nouvelle URL à chaque changement réel)
+const assetV = (p) => createHash('md5').update(readFileSync(root(p))).digest('hex').slice(0, 8);
+const ASSET_V = { css: assetV('assets/tracky.css'), js: assetV('assets/tracky.js') };
 
 const headerTpl = read('partials/header.html');
 const footerTpl = read('partials/footer.html');
@@ -103,7 +107,7 @@ ${geoTags}
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&display=swap" media="print" onload="this.media='all'">
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&display=swap"></noscript>
-<link rel="stylesheet" href="assets/tracky.css">
+<link rel="stylesheet" href="assets/tracky.css?v=${ASSET_V.css}">
 ${ld}`;
 }
 
@@ -132,7 +136,7 @@ ${content}
 </main>
 ${footer}
 ${clientScript}
-<script src="assets/tracky.js"></script>
+<script src="assets/tracky.js?v=${ASSET_V.js}"></script>
 </body>
 </html>`;
 }
