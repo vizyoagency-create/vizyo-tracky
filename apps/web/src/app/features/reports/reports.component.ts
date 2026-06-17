@@ -1180,8 +1180,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // à « tous les véhicules » (sinon le rapport montrerait un véhicule hors filtre).
     const selV = this.selectedVehicleId();
     if (selV && id && !this.vehicles().some((v) => v.id === selV && v.group?.id === id)) {
-      this.onSelectVehicle('');
+      this.selectedVehicleId.set('');
     }
+    // Recharge KPI + trajets scopés sur le groupe (ou toute la flotte si « tous »).
+    this.loadData();
   }
 
   /** Format une Date en YYYY-MM-DD en HEURE LOCALE (pas UTC).
@@ -1555,11 +1557,19 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.loading.set(true);
     try {
       const id = this.selectedVehicleId();
+      const gid = this.selectedGroupId();
       const tripParams: Record<string, string> = { limit: '100' };
       const summaryParams: Record<string, string> = {};
       if (id) {
         tripParams['vehicleId'] = id;
         summaryParams['vehicleId'] = id;
+      } else if (gid) {
+        // Filtre groupe sans véhicule unique → scope les KPI/trajets sur les véhicules du groupe.
+        const ids = this.visibleVehicles().map((v) => v.id).join(',');
+        if (ids) {
+          tripParams['vehicleIds'] = ids;
+          summaryParams['vehicleIds'] = ids;
+        }
       }
       if (this.periodFrom) {
         tripParams['from'] = this.periodFrom;

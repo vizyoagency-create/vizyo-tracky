@@ -36,10 +36,11 @@ export class TripsController {
   async dailySummary(
     @Req() req: AuthenticatedRequest,
     @Query('vehicleId') vehicleId?: string,
+    @Query('vehicleIds') vehicleIds?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
-    return this.trips.dailySummary(await this.rb(req), { vehicleId, from, to });
+    return this.trips.dailySummary(await this.rb(req), { vehicleId, vehicleIds, from, to });
   }
 
   @Get(':id')

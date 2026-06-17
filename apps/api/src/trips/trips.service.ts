@@ -506,9 +506,31 @@ export class TripsService implements OnModuleInit {
     },
   } as const;
 
+  /**
+   * Résout le filtre `where.vehicleId` depuis un véhicule unique OU une liste
+   * (filtre groupe), intersecté avec les véhicules autorisés de l'appelant.
+   * `['__none__']` = aucun résultat (demande hors périmètre / groupe vide).
+   */
+  private resolveVehicleScope(
+    rb: RequestedBy,
+    vehicleId?: string,
+    vehicleIds?: string,
+  ): Prisma.TripWhereInput['vehicleId'] {
+    const requested = (vehicleIds ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    const wanted = requested.length ? requested : vehicleId ? [vehicleId] : null;
+    if (rb.accessibleVehicleIds && rb.accessibleVehicleIds !== 'ALL') {
+      const allowed = wanted
+        ? wanted.filter((id) => (rb.accessibleVehicleIds as string[]).includes(id))
+        : rb.accessibleVehicleIds;
+      return { in: allowed.length ? allowed : ['__none__'] };
+    }
+    if (wanted) return wanted.length === 1 ? wanted[0] : { in: wanted };
+    return undefined;
+  }
+
   async list(
     requestedBy: RequestedBy,
-    filters: { vehicleId?: string; from?: string; to?: string; limit?: string; cursor?: string },
+    filters: { vehicleId?: string; vehicleIds?: string; from?: string; to?: string; limit?: string; cursor?: string },
   ): Promise<{ items: Trip[]; nextCursor: string | null }> {
     const where: Prisma.TripWhereInput = { endedAt: { not: null } };
     if (requestedBy.role !== UserRole.SUPER_ADMIN) {
@@ -517,14 +539,9 @@ export class TripsService implements OnModuleInit {
       if (!requestedBy.fleetId) return { items: [], nextCursor: null };
       where.fleetId = requestedBy.fleetId;
     }
-    // Filtrage par accès véhicules
-    if (requestedBy.accessibleVehicleIds && requestedBy.accessibleVehicleIds !== 'ALL') {
-      where.vehicleId = filters.vehicleId
-        ? (requestedBy.accessibleVehicleIds.includes(filters.vehicleId) ? filters.vehicleId : 'DENIED')
-        : { in: requestedBy.accessibleVehicleIds };
-    } else if (filters.vehicleId) {
-      where.vehicleId = filters.vehicleId;
-    }
+    // Périmètre véhicule : vehicleId unique OU vehicleIds (filtre groupe), borné aux accès.
+    const vScope = this.resolveVehicleScope(requestedBy, filters.vehicleId, filters.vehicleIds);
+    if (vScope !== undefined) where.vehicleId = vScope;
     if (filters.from || filters.to) {
       where.startedAt = {};
       if (filters.from) (where.startedAt as any).gte = new Date(filters.from);
@@ -620,21 +637,16 @@ export class TripsService implements OnModuleInit {
 
   async dailySummary(
     requestedBy: RequestedBy,
-    filters: { vehicleId?: string; from?: string; to?: string },
+    filters: { vehicleId?: string; vehicleIds?: string; from?: string; to?: string },
   ): Promise<Array<{ date: string; tripCount: number; totalDistanceMeters: number; totalDurationSeconds: number; maxSpeed: number }>> {
     const where: Prisma.TripWhereInput = { endedAt: { not: null } };
     if (requestedBy.role !== UserRole.SUPER_ADMIN) {
       if (!requestedBy.fleetId) return []; // #31 — fail-closed (cf. list / findOne)
       where.fleetId = requestedBy.fleetId;
     }
-    if (filters.vehicleId) where.vehicleId = filters.vehicleId;
-    // Acces granulaire : un VIEWER restreint a un groupe ne doit voir les
-    // statistiques que de ses vehicules autorises.
-    if (requestedBy.accessibleVehicleIds && requestedBy.accessibleVehicleIds !== 'ALL') {
-      where.vehicleId = filters.vehicleId
-        ? (requestedBy.accessibleVehicleIds.includes(filters.vehicleId) ? filters.vehicleId : '__none__')
-        : { in: requestedBy.accessibleVehicleIds };
-    }
+    // Périmètre véhicule (unique ou groupe), borné aux accès — cf. list().
+    const vScope = this.resolveVehicleScope(requestedBy, filters.vehicleId, filters.vehicleIds);
+    if (vScope !== undefined) where.vehicleId = vScope;
     if (filters.from) where.startedAt = { ...(where.startedAt as any ?? {}), gte: new Date(filters.from) };
     if (filters.to) where.startedAt = { ...(where.startedAt as any ?? {}), lte: new Date(filters.to) };
 

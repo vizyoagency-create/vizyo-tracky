@@ -35,7 +35,8 @@ import { TripReplayComponent } from '../reports/trip-replay.component';
 import { VehicleScheduleComponent } from './vehicle-schedule/vehicle-schedule.component';
 import { VehicleReportsTabComponent } from './vehicle-reports-tab.component';
 import { relativeTime } from '../../shared/utils/relative-time';
-import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnectivityState } from '@vizyo/tracky-shared';
+import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnectivityState, type GeofenceDto } from '@vizyo/tracky-shared';
+import { GeofencesApiService } from '../../core/services/geofences.service';
 import { connectivityMeta } from '../../shared/ui/connectivity-badge/connectivity-badge.component';
 import { InstallReviewBadgeComponent } from '../../shared/ui/install-review-badge/install-review-badge.component';
 
@@ -530,6 +531,30 @@ import { InstallReviewBadgeComponent } from '../../shared/ui/install-review-badg
             [vehiclePlate]="v.plate"
             [vehicleType]="v.type"
           />
+        }
+
+        @if (activeTab() === 'geofences') {
+          @if (vehicleGeofences().length === 0) {
+            <div class="flex flex-col items-center justify-center h-40 rounded-[--radius-card]
+                        bg-bg-secondary border border-border-subtle text-fg-tertiary gap-2">
+              <lucide-icon [img]="MapPin" [size]="48" class="opacity-30"></lucide-icon>
+              <p>Ce véhicule n'est ciblé par aucune géofence.</p>
+            </div>
+          } @else {
+            <div class="flex flex-col gap-2">
+              @for (gf of vehicleGeofences(); track gf.id) {
+                <div class="flex items-center gap-3 px-4 py-3 rounded-[--radius-card]
+                            bg-bg-secondary border border-border-subtle">
+                  <span class="w-3 h-3 rounded-full shrink-0" [style.background]="gf.color || '#10E0A0'"></span>
+                  <span class="text-sm font-semibold text-fg-primary flex-1 min-w-0 truncate">{{ gf.name }}</span>
+                  <span class="text-[11px] text-fg-tertiary">{{ gf.rule === 'ENTER' ? 'Entrée' : gf.rule === 'EXIT' ? 'Sortie' : 'Entrée/Sortie' }}</span>
+                  @if (!gf.targetVehicles?.length) {
+                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-bg-tertiary text-fg-secondary">Globale</span>
+                  }
+                </div>
+              }
+            </div>
+          }
         }
       </div>
 
@@ -1543,6 +1568,7 @@ export class VehicleDetailComponent implements OnInit {
       { key: 'history', label: 'Historique', icon: History },
       { key: 'alerts', label: 'Alertes', icon: Bell, perm: 'alerts_view' },
       { key: 'surveillance', label: 'Surveillance', icon: ShieldCheck, perm: 'alerts_acknowledge', show: hasTracker },
+      { key: 'geofences', label: 'Géofences', icon: MapPin },
       { key: 'schedule', label: 'Horaires', icon: Clock, perm: 'engine_control' },
       { key: 'commands', label: 'Commandes', icon: Zap, perm: 'engine_control', show: hasTracker },
     ];
@@ -1790,6 +1816,17 @@ export class VehicleDetailComponent implements OnInit {
     isInstallationToReview(this.connectivity(), this.vehicle()?.tracker?.createdAt ?? null),
   );
 
+  private readonly geofencesApi = inject(GeofencesApiService);
+  protected readonly allGeofences = signal<GeofenceDto[]>([]);
+  /** Zones qui surveillent CE véhicule : ciblage explicite OU zone globale (sans cible). */
+  protected readonly vehicleGeofences = computed<GeofenceDto[]>(() => {
+    const vid = this.vehicle()?.id;
+    if (!vid) return [];
+    return this.allGeofences().filter(
+      (g) => !g.targetVehicles?.length || g.targetVehicles.some((t) => t.id === vid),
+    );
+  });
+
   protected onScheduleDisabled(): void {
     this.scheduleRevision.set(this.scheduleRevision() + 1);
   }
@@ -1810,6 +1847,11 @@ export class VehicleDetailComponent implements OnInit {
     try {
       const v = await firstValueFrom(this.vehiclesApi.findOne(vehicleId));
       this.vehicle.set(v);
+
+      // Géofences qui surveillent ce véhicule (onglet Géofences) — non bloquant.
+      void firstValueFrom(this.geofencesApi.list())
+        .then((gs) => this.allGeofences.set(gs))
+        .catch(() => { /* silencieux */ });
 
       // Chargement initial : applique deja la plage date courante (default = today)
       // pour eviter un double fetch (one without filter + one with filter via effect).
