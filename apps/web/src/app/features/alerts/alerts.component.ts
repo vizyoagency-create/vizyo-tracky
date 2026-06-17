@@ -8,6 +8,8 @@ import {
   Check,
   CheckCheck,
   ChevronLeft,
+  ChevronDown,
+  ChevronRight,
   Edit2,
   Gauge,
   Info,
@@ -59,6 +61,31 @@ const ALL_CHANNELS: { value: 'WEB_PUSH' | 'EMAIL' | 'WHATSAPP' | 'SMS'; label: s
   { value: 'WHATSAPP', label: 'WhatsApp', icon: '💬' },
   { value: 'SMS', label: 'SMS', icon: '📱' },
 ];
+
+/**
+ * Regroupement anti-spam : une rafale d'alertes du même véhicule + même type
+ * (ex. excès de vitesse qui s'enchaînent) est fusionnée en une seule card avec
+ * un compteur ×N et une liste déroulante détaillant les occurrences (vitesses,
+ * moyenne, max). Évite de noyer l'opérateur sous des dizaines de cards.
+ */
+interface AlertCluster {
+  key: string;
+  /** Alerte la plus récente — représentante de la card. */
+  lead: AlertEvent;
+  /** Toutes les occurrences (ordre décroissant). */
+  items: AlertEvent[];
+  count: number;
+  vehicleId: string | null;
+  type: string;
+  /** Sévérité MAX de la rafale. */
+  severity: 'INFO' | 'WARNING' | 'CRITICAL';
+  newestAt: string;
+  oldestAt: string;
+  speeds: number[];
+  avgSpeed: number | null;
+  maxSpeed: number | null;
+  unackCount: number;
+}
 
 interface RuleForm {
   id: string | null;
@@ -117,23 +144,23 @@ const EMPTY_FORM: RuleForm = {
           </div>
         } @else {
           <div class="bn-list">
-            @for (alert of alerts(); track alert.id) {
-              <div class="bn-row" [class.bn-row--acked]="isAcknowledged(alert)">
-                <div class="bn-row-icon" [class]="'sev-' + alert.severity">
-                  <lucide-icon [img]="severityIcon(alert.severity)" [size]="20"></lucide-icon>
+            @for (cluster of groupedAlerts(); track cluster.key) {
+              <div class="bn-row" [class.bn-row--acked]="cluster.unackCount === 0">
+                <div class="bn-row-icon" [class]="'sev-' + cluster.severity">
+                  <lucide-icon [img]="severityIcon(cluster.severity)" [size]="20"></lucide-icon>
                 </div>
                 <div class="bn-row-main">
-                  <div class="bn-row-title">{{ alertLabel(alert) }}</div>
+                  <div class="bn-row-title">{{ alertLabel(cluster.lead) }}@if (cluster.count > 1) { <span class="bn-count">×{{ cluster.count }}</span> }</div>
                   <div class="bn-row-meta">
-                    @if (alert.vehiclePlate) { <span>{{ alert.vehiclePlate }}</span> · }
-                    @if (alertSpeed(alert)) { <span class="bn-speed">{{ alertSpeed(alert) }} km/h</span> · }
-                    <span>{{ formatRelative(alert.createdAt) }}</span>
+                    @if (cluster.lead.vehiclePlate) { <span>{{ cluster.lead.vehiclePlate }}</span> · }
+                    @if (cluster.maxSpeed) { <span class="bn-speed">{{ cluster.count > 1 ? 'max ' : '' }}{{ cluster.maxSpeed }} km/h</span> · }
+                    <span>{{ formatRelative(cluster.newestAt) }}</span>
                   </div>
                   <!-- V1.15 — Badge fleet (visible SA only). -->
-                  <app-sa-fleet-badge [fleetId]="alert.fleetId" />
+                  <app-sa-fleet-badge [fleetId]="cluster.lead.fleetId" />
                 </div>
-                @if (!isAcknowledged(alert) && perms.can('alerts_acknowledge')) {
-                  <button class="bn-row-ack" (click)="onAcknowledge(alert.id)" aria-label="Acquitter">
+                @if (cluster.unackCount > 0 && perms.can('alerts_acknowledge')) {
+                  <button class="bn-row-ack" (click)="acknowledgeCluster(cluster)" aria-label="Acquitter">
                     <lucide-icon [img]="Check" [size]="16"></lucide-icon>
                   </button>
                 }
@@ -226,54 +253,80 @@ const EMPTY_FORM: RuleForm = {
 
         <!-- Timeline -->
         <div class="timeline">
-          @for (alert of alerts(); track alert.id; let i = $index) {
-            <div class="tl-item" [class.acked]="isAcknowledged(alert)">
+          @for (cluster of groupedAlerts(); track cluster.key; let i = $index) {
+            <div class="tl-item" [class.acked]="cluster.unackCount === 0">
               <div class="tl-line-wrap">
-                <div class="tl-node" [class]="alert.severity === 'CRITICAL' ? 'critical' : alert.severity === 'WARNING' ? 'warning' : 'info'">
-                  @if (alert.severity === 'CRITICAL' && !isAcknowledged(alert)) {
+                <div class="tl-node" [class]="cluster.severity === 'CRITICAL' ? 'critical' : cluster.severity === 'WARNING' ? 'warning' : 'info'">
+                  @if (cluster.severity === 'CRITICAL' && cluster.unackCount > 0) {
                     <span class="tl-pulse" [class]="'critical'"></span>
                   }
                 </div>
-                @if (i < alerts().length - 1) {
+                @if (i < groupedAlerts().length - 1) {
                   <div class="tl-line"></div>
                 }
               </div>
 
-              <div class="tl-card" [class]="alert.severity === 'CRITICAL' ? 'sev-critical' : alert.severity === 'WARNING' ? 'sev-warning' : 'sev-info'">
+              <div class="tl-card" [class]="cluster.severity === 'CRITICAL' ? 'sev-critical' : cluster.severity === 'WARNING' ? 'sev-warning' : 'sev-info'">
                 <div class="tl-card-top">
                   <div class="tl-card-info">
-                    <span class="tl-alert-title">{{ alert.title }}</span>
-                    <span class="tl-severity" [class]="severityBadge(alert.severity)">{{ severityLabel(alert.severity) }}</span>
-                    @if (alertSpeed(alert)) {
+                    <span class="tl-alert-title">{{ cluster.lead.title }}</span>
+                    <span class="tl-severity" [class]="severityBadge(cluster.severity)">{{ severityLabel(cluster.severity) }}</span>
+                    @if (cluster.count > 1) {
+                      <span class="tl-count" [attr.title]="cluster.count + ' alertes regroupées'">×{{ cluster.count }}</span>
+                    }
+                    @if (cluster.maxSpeed) {
                       <span class="tl-speed-badge">
                         <lucide-icon [img]="GaugeIcon" [size]="10"></lucide-icon>
-                        {{ alertSpeed(alert) }} km/h
+                        {{ cluster.count > 1 ? 'max ' : '' }}{{ cluster.maxSpeed }} km/h
                       </span>
                     }
                     <!-- V1.15 — Badge fleet (visible SA only). -->
-                    <app-sa-fleet-badge [fleetId]="alert.fleetId" />
+                    <app-sa-fleet-badge [fleetId]="cluster.lead.fleetId" />
                   </div>
-                  <span class="tl-time">{{ relativeTime(alert.createdAt) }}</span>
+                  <span class="tl-time">{{ relativeTime(cluster.newestAt) }}</span>
                 </div>
                 <div class="tl-card-mid">
-                  @if (alert.vehicleId) {
-                    <a [routerLink]="['/vehicles', alert.vehicleId]" class="tl-vehicle">
-                      {{ alertVehiclePlate(alert) }}
+                  @if (cluster.vehicleId) {
+                    <a [routerLink]="['/vehicles', cluster.vehicleId]" class="tl-vehicle">
+                      {{ alertVehiclePlate(cluster.lead) }}
                     </a>
                   }
-                  @if (alert.message) {
-                    <span class="tl-msg">{{ alert.message }}</span>
+                  @if (cluster.lead.message) {
+                    <span class="tl-msg">{{ cluster.lead.message }}</span>
                   }
                 </div>
-                @if (!isAcknowledged(alert) && perms.can('alerts_acknowledge')) {
+
+                @if (cluster.count > 1) {
+                  <button class="tl-expand" (click)="toggleCluster(cluster.key)" [attr.aria-expanded]="isClusterExpanded(cluster.key)">
+                    <lucide-icon [img]="isClusterExpanded(cluster.key) ? ChevronDownIcon : ChevronRightIcon" [size]="13"></lucide-icon>
+                    <span>{{ cluster.count }} occurrences</span>
+                    @if (cluster.avgSpeed) {
+                      <span class="tl-expand-stats">· moy {{ cluster.avgSpeed }} · max {{ cluster.maxSpeed }} km/h</span>
+                    }
+                  </button>
+                  @if (isClusterExpanded(cluster.key)) {
+                    <div class="tl-occurrences">
+                      @for (it of cluster.items; track it.id) {
+                        <div class="tl-occ" [class.acked]="isAcknowledged(it)">
+                          <span class="tl-occ-time">{{ occTime(it.createdAt) }}</span>
+                          @if (alertSpeed(it); as sp) { <span class="tl-occ-speed">{{ sp }} km/h</span> }
+                          @if (isAcknowledged(it)) { <lucide-icon [img]="Check" [size]="10" class="tl-occ-ack"></lucide-icon> }
+                        </div>
+                      }
+                    </div>
+                  }
+                }
+
+                @if (cluster.unackCount > 0 && perms.can('alerts_acknowledge')) {
                   <div class="tl-card-bottom">
-                    <button (click)="onAcknowledge(alert.id)" class="tl-ack-btn">
-                      <lucide-icon [img]="Check" [size]="12"></lucide-icon> Acquitter
+                    <button (click)="acknowledgeCluster(cluster)" class="tl-ack-btn">
+                      <lucide-icon [img]="Check" [size]="12"></lucide-icon>
+                      {{ cluster.unackCount > 1 ? 'Acquitter (' + cluster.unackCount + ')' : 'Acquitter' }}
                     </button>
                   </div>
-                } @else if (isAcknowledged(alert)) {
+                } @else {
                   <div class="tl-card-bottom">
-                    <span class="tl-acked"><lucide-icon [img]="Check" [size]="10"></lucide-icon> Acquittée</span>
+                    <span class="tl-acked"><lucide-icon [img]="Check" [size]="10"></lucide-icon> Acquittée{{ cluster.count > 1 ? 's' : '' }}</span>
                   </div>
                 }
               </div>
@@ -501,6 +554,7 @@ const EMPTY_FORM: RuleForm = {
     .bn-row-title { font-size: 14px; color: #333; font-weight: 500; }
     .bn-row-meta { font-size: 12px; color: #999; margin-top: 2px; }
     .bn-speed { color: #f57c00; font-weight: 600; }
+    .bn-count { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 9999px; font-size: 11px; font-weight: 800; background: rgba(16,224,160,.18); color: var(--tracky-light); }
     .bn-row-ack {
       width: 32px; height: 32px; border-radius: 50%;
       background: #00c896; color: white; border: none; cursor: pointer;
@@ -642,6 +696,33 @@ const EMPTY_FORM: RuleForm = {
       padding: 2px 7px; border-radius: 6px; font-size: 10px; font-weight: 700;
       background: rgba(245,158,11,.12); color: #f59e0b;
     }
+    .tl-count {
+      display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 9999px;
+      font-size: 10px; font-weight: 800; letter-spacing: .02em;
+      background: var(--tracky-light, #10E0A0); color: #04140d;
+    }
+    .tl-expand {
+      display: inline-flex; align-items: center; gap: 5px; margin-top: 8px;
+      padding: 3px 9px; border-radius: 7px; font-size: 10px; font-weight: 600;
+      background: var(--bg-tertiary); border: 1px solid var(--border-subtle);
+      color: var(--fg-secondary); cursor: pointer; transition: all .15s;
+    }
+    .tl-expand:hover { color: var(--fg-primary); border-color: var(--border-strong) }
+    .tl-expand-stats { color: var(--fg-tertiary); font-weight: 500 }
+    .tl-occurrences {
+      margin-top: 6px; display: flex; flex-direction: column; gap: 2px;
+      max-height: 220px; overflow-y: auto; padding: 6px 9px; border-radius: 8px;
+      background: var(--bg-tertiary); border: 1px solid var(--border-subtle);
+    }
+    .tl-occ {
+      display: flex; align-items: center; gap: 10px; font-size: 10px; color: var(--fg-secondary);
+      padding: 3px 0; border-bottom: 1px solid var(--border-subtle);
+    }
+    .tl-occ:last-child { border-bottom: none }
+    .tl-occ.acked { opacity: .5 }
+    .tl-occ-time { font-family: var(--font-mono, monospace); color: var(--fg-tertiary); min-width: 64px }
+    .tl-occ-speed { font-weight: 700; color: #f59e0b }
+    .tl-occ-ack { color: var(--tracky-light); margin-left: auto }
     .tl-time { font-size: 10px; color: var(--fg-tertiary); white-space: nowrap; flex-shrink: 0 }
 
     .tl-card-mid { display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap }
@@ -878,6 +959,85 @@ export class AlertsComponent implements OnInit {
   protected readonly showAcknowledged = signal(false);
   protected readonly filterVehicleId = signal<string | null>(null);
 
+  // ─── Regroupement anti-spam des alertes ───────────────────────────────────
+  /**
+   * Fusionne les alertes de `alerts()` (triées desc) en clusters : occurrences
+   * consécutives d'un même véhicule + type espacées de < 30 min. Robuste à
+   * l'entrelacement (cluster ouvert mémorisé par clé véhicule|type).
+   */
+  protected readonly groupedAlerts = computed<AlertCluster[]>(() => {
+    const WINDOW_MS = 30 * 60 * 1000;
+    const clusters: AlertCluster[] = [];
+    const openByKey = new Map<string, AlertCluster>();
+    for (const a of this.alerts()) {
+      const key = `${a.vehicleId ?? 'none'}|${a.type}`;
+      const open = openByKey.get(key);
+      const aMs = new Date(a.createdAt).getTime();
+      if (open && new Date(open.oldestAt).getTime() - aMs <= WINDOW_MS) {
+        open.items.push(a);
+        open.oldestAt = a.createdAt;
+      } else {
+        const c: AlertCluster = {
+          key: `${key}|${a.id}`, lead: a, items: [a], count: 1,
+          vehicleId: a.vehicleId, type: a.type, severity: a.severity,
+          newestAt: a.createdAt, oldestAt: a.createdAt,
+          speeds: [], avgSpeed: null, maxSpeed: null, unackCount: 0,
+        };
+        clusters.push(c);
+        openByKey.set(key, c);
+      }
+    }
+    for (const c of clusters) {
+      const speeds: number[] = [];
+      let unack = 0;
+      let rank = 0;
+      for (const it of c.items) {
+        const sp = this.alertSpeed(it);
+        if (sp != null) speeds.push(sp);
+        if (!this.isAcknowledged(it)) unack++;
+        const r = it.severity === 'CRITICAL' ? 3 : it.severity === 'WARNING' ? 2 : 1;
+        if (r > rank) { rank = r; c.severity = it.severity; }
+      }
+      c.count = c.items.length;
+      c.speeds = speeds;
+      c.maxSpeed = speeds.length ? Math.max(...speeds) : null;
+      c.avgSpeed = speeds.length ? Math.round(speeds.reduce((s, x) => s + x, 0) / speeds.length) : null;
+      c.unackCount = unack;
+    }
+    return clusters;
+  });
+
+  /** Clés de clusters dépliés (liste déroulante des occurrences ouverte). */
+  protected readonly expandedClusters = signal<Set<string>>(new Set());
+  protected toggleCluster(key: string): void {
+    const next = new Set(this.expandedClusters());
+    if (next.has(key)) next.delete(key); else next.add(key);
+    this.expandedClusters.set(next);
+  }
+  protected isClusterExpanded(key: string): boolean { return this.expandedClusters().has(key); }
+
+  /** Heure locale HH:mm:ss d'une occurrence (sans DatePipe). */
+  protected occTime(iso: string): string {
+    try {
+      return new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    } catch { return ''; }
+  }
+
+  /** Acquitte toutes les occurrences non acquittées d'un cluster en une fois. */
+  protected async acknowledgeCluster(cluster: AlertCluster): Promise<void> {
+    const ids = cluster.items.filter((a) => !this.isAcknowledged(a)).map((a) => a.id);
+    if (ids.length === 0) return;
+    try {
+      await Promise.all(ids.map((id) => firstValueFrom(this.alertsApi.acknowledge(id))));
+      const idSet = new Set(ids);
+      this.alerts.update((l) =>
+        l.map((a) => (idSet.has(a.id) ? ({ ...a, acknowledgedAt: new Date().toISOString() } as any) : a)),
+      );
+      ids.forEach((id) => this.realtime.dismissAlert(id));
+      this.toast.success(ids.length > 1 ? `${ids.length} alertes acquittées` : 'Alerte acquittée');
+    } catch { /* handled */ }
+  }
+
   protected readonly vehicleOptions = computed(() =>
     this.realtime.snapshot()
       .map((v) => ({ id: v.vehicleId, plate: v.plate }))
@@ -904,6 +1064,8 @@ export class AlertsComponent implements OnInit {
   protected readonly Check = Check;
   protected readonly CheckCheck = CheckCheck;
   protected readonly GaugeIcon = Gauge;
+  protected readonly ChevronDownIcon = ChevronDown;
+  protected readonly ChevronRightIcon = ChevronRight;
   protected readonly SettingsIcon = Settings;
   protected readonly BellIcon = Bell;
   protected readonly PlusIcon = Plus;
