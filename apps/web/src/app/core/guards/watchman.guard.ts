@@ -21,7 +21,7 @@ export const watchmanChildGuard: CanActivateChildFn = (_childRoute, state: Route
   const auth = inject(AuthService);
   const router = inject(Router);
 
-  if (auth.user()?.role !== 'NIGHT_WATCHMAN') return true;
+  if (!auth.isWatchman()) return true;
 
   const path = state.url.split('?')[0].split('#')[0];
   const allowed = path === '/vehicles' || path.startsWith('/vehicles/');

@@ -76,4 +76,30 @@ Ces routes n'ont pas de `@Roles` (donc `RolesGuard` les laisse passer) mais ne r
 - ✅ **Tenant strict** : `resolveTenantScope` fail-closed + IDOR `findOne` 404.
 - ✅ Surface minimale : 4 handlers, scopés ; le reste nié par défaut.
 
-Suite : 436 tests API + 16 sécu + typecheck + ng build, tous verts.
+Suite : **449 tests API** + spec sécu veilleur (16) + live-split (6) + typecheck + ng build, tous verts.
+
+## 7. Durcissements post-code-review (revue finale, multi-agents)
+
+La `/code-review` du diff S3 complet a **confirmé 2 vrais points** (corrigés) + **réfuté 1** :
+
+1. **Fuite de positions via les events `fleet:*`** (CONFIRMÉ → corrigé). `ALERT_NEW` /
+   `GEOFENCE_VIOLATION` / `TRIP_*` portent `lat/lng/vitesse` et étaient diffusés sur
+   `fleet:<flotte>`, que le veilleur rejoignait → il recevait des positions ponctuelles de
+   véhicules **hors de son groupe**. **Fix** : room dédiée **`ops:fleet:*`** qui ne porte QUE
+   la confirmation moteur S2 + le statut tracker ; le veilleur rejoint `ops:*` et **plus du tout
+   `fleet:*` ni `pos:*`** → **aucune position** (ni live, ni évènementielle). `emitEngineCommandUpdate`
+   / `emitTrackerStatus` émettent aussi vers `ops`.
+2. **Onglets du détail sur-exposés** (CONFIRMÉ → corrigé). L'onglet *Horaires* était gardé sur
+   `engine_control` (que le veilleur a) → affiché mais **403** backend. **Fix** : *Horaires* suit
+   `schedules_manage` (front=back) ; le veilleur est restreint aux onglets **Carte + Horaires(si
+   toggle)**. Le bloquer/débloquer reste en en-tête.
+3. **« Régression FLEET_MANAGER horaires »** (RÉFUTÉ). Un FM n'atteint un véhicule que s'il a une
+   règle d'accès le couvrant → `resolveForVehicle` ≠ null → `schedules_manage` (défaut FM true)
+   passe. Le changement **resserre** même FM (flotte → scope d'accès). Pas un bug.
+
+Nettoyages : `AuthService.isWatchman()` partagé (remplace ~5 littéraux front) ; helper
+`rejectSpeed()` (factorise les 5 chemins `REJECTED_SPEED`).
+
+Self-scoped re-vérifiées (`activity/batch`, `activity/error`, `realtime/incident`) : écrivent
+uniquement `userId: req.user.id` (JWT), DTO body sans userId → pas de spoofing ; lectures
+cross-user `@Roles(SUPER_ADMIN)`. **Own-data-only confirmé.**

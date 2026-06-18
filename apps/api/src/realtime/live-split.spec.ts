@@ -48,13 +48,25 @@ function makeServerMock() {
 }
 
 describe('Sprint 3 — live-split WS (veilleur sans live, server-enforced)', () => {
-  it('NIGHT_WATCHMAN rejoint fleet:<id> mais PAS pos:fleet:<id>', async () => {
+  it('NIGHT_WATCHMAN rejoint ops:fleet:<id> SEULEMENT (ni fleet:* ni pos:fleet:*)', async () => {
     const gw = makeGateway({ id: 'u1', role: 'NIGHT_WATCHMAN', fleetId: 'f1' });
     const client = makeClient();
     await gw.handleConnection(client as never);
-    expect(client.rooms).toContain('fleet:f1'); // commandes moteur S2 + alertes + status
-    expect(client.rooms).not.toContain('pos:fleet:f1'); // aucune position live
+    expect(client.rooms).toContain('ops:fleet:f1'); // confirmation moteur S2 + statut tracker (émis aussi vers ops)
+    expect(client.rooms).not.toContain('fleet:f1'); // PAS fleet:* : alertes/géofences/trajets y portent des positions
+    expect(client.rooms).not.toContain('pos:fleet:f1'); // pas de live
     expect(client.rooms).not.toContain('pos:fleet:*');
+  });
+
+  it('emitEngineCommandUpdate / emitTrackerStatus atteignent aussi ops:fleet:* (canal du veilleur)', () => {
+    const gw = makeGateway({ id: 'u1', role: 'VIEWER', fleetId: 'f1' });
+    const { server, chain } = makeServerMock();
+    (gw as unknown as { server: unknown }).server = server;
+    gw.emitEngineCommandUpdate('f1', { commandId: 'c1', trackerId: 't1', action: 'CUT', status: 'SENT' } as never);
+    expect(chain.to).toHaveBeenCalledWith('ops:fleet:f1');
+    chain.to.mockClear();
+    gw.emitTrackerStatus('f1', { trackerId: 't1', status: 'ONLINE' } as never);
+    expect(chain.to).toHaveBeenCalledWith('ops:fleet:f1');
   });
 
   it('un user régulier (VIEWER) rejoint fleet:<id> ET pos:fleet:<id>', async () => {

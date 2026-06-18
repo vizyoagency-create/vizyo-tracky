@@ -50,11 +50,12 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       // (un user suspendu/supprime ne doit pas continuer a recevoir le live).
       (client.data as { userId?: string }).userId = localUser.id;
 
-      // Sprint 3 — split des rooms : les positions LIVE transitent par `pos:fleet:*`,
-      // tout le reste (commandes moteur, alertes, status tracker, trips) par `fleet:*`.
-      // Le veilleur de nuit rejoint `fleet:*` (confirmation moteur S2 + alertes/status
-      // pour le badge connectivité) mais PAS `pos:fleet:*` → ZÉRO position live sur son
-      // socket. « Sans live » enforced serveur (et ferme la fuite de scope live flotte).
+      // Sprint 3 — split des rooms (enforced serveur) :
+      //  - positions LIVE → `pos:fleet:*` ;
+      //  - confirmation moteur S2 + statut tracker → AUSSI `ops:fleet:*` ;
+      //  - alertes / géofences / trajets (qui PORTENT lat/lng/vitesse) → `fleet:*`.
+      // Le veilleur de nuit ne rejoint QUE `ops:fleet:*` : il reçoit la confirmation moteur
+      // + le statut tracker, mais AUCUNE position (ni live `pos:*`, ni via les events `fleet:*`).
       const isWatchman = localUser.role === 'NIGHT_WATCHMAN';
 
       if (localUser.role === 'SUPER_ADMIN') {
@@ -63,8 +64,10 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       }
 
       if (localUser.fleetId) {
-        client.join(`fleet:${localUser.fleetId}`);
-        if (!isWatchman) {
+        if (isWatchman) {
+          client.join(`ops:fleet:${localUser.fleetId}`);
+        } else {
+          client.join(`fleet:${localUser.fleetId}`);
           client.join(`pos:fleet:${localUser.fleetId}`);
         }
       }
@@ -142,7 +145,8 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   emitTrackerStatus(fleetId: string, payload: TrackerStatusChangedDto): void {
-    this.server.to(`fleet:${fleetId}`).to('fleet:*').emit(WS_EVENTS.TRACKER_STATUS, payload);
+    // Sprint 3 — aussi vers `ops:fleet:*` : le veilleur (hors `fleet:*`) a besoin du statut tracker (badge connectivité).
+    this.server.to(`fleet:${fleetId}`).to('fleet:*').to(`ops:fleet:${fleetId}`).emit(WS_EVENTS.TRACKER_STATUS, payload);
   }
 
   broadcastAlert(alert: Alert & { vehicle?: Vehicle | null; tracker?: Tracker | null }): void {
@@ -189,6 +193,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   emitEngineCommandUpdate(fleetId: string, payload: EngineCommandUpdatedEvent): void {
-    this.server.to(`fleet:${fleetId}`).to('fleet:*').emit(WS_EVENTS.ENGINE_COMMAND_UPDATED, payload);
+    // Sprint 3 — aussi vers `ops:fleet:*` : le veilleur (hors `fleet:*`) doit recevoir la confirmation moteur S2.
+    this.server.to(`fleet:${fleetId}`).to('fleet:*').to(`ops:fleet:${fleetId}`).emit(WS_EVENTS.ENGINE_COMMAND_UPDATED, payload);
   }
 }

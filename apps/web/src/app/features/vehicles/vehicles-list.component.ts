@@ -718,7 +718,7 @@ export class VehiclesListComponent implements OnInit {
   // #3 — vue liste : cartes (défaut), tableau, ou groupée, persistée dans PreferencesService.
   // Sprint 3 — le veilleur de nuit démarre toujours en vue groupée (son périmètre = ses groupes).
   protected readonly viewMode = signal<'cards' | 'table' | 'grouped'>(
-    this.auth.user()?.role === 'NIGHT_WATCHMAN' ? 'grouped' : this.preferences.prefs().vehiclesView,
+    this.auth.isWatchman() ? 'grouped' : this.preferences.prefs().vehiclesView,
   );
 
   // Sprint 1 (Fondation Groupes) — sections de groupes repliées (clé = groupId ou '__none__').

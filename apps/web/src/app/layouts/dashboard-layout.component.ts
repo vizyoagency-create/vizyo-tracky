@@ -766,7 +766,7 @@ export class DashboardLayoutComponent {
 
   protected readonly bottomItems = computed(() => {
     // Sprint 3 — veilleur de nuit : barre mobile réduite à « Véhicules ».
-    if (this.auth.user()?.role === 'NIGHT_WATCHMAN') {
+    if (this.auth.isWatchman()) {
       return [{ label: 'Véhicules', route: '/vehicles', icon: Truck }];
     }
     return [
@@ -843,7 +843,7 @@ export class DashboardLayoutComponent {
   protected readonly navItems = computed(() => {
     // Sprint 3 — veilleur de nuit : navigation réduite à « Véhicules » (liste groupée + détail).
     // Cosmétique : le périmètre réel est garanti serveur (403) + watchmanChildGuard.
-    if (this.auth.user()?.role === 'NIGHT_WATCHMAN') {
+    if (this.auth.isWatchman()) {
       return [{ label: 'Véhicules', route: '/vehicles', icon: Truck }];
     }
     const isSuperAdmin = this.auth.user()?.role === 'SUPER_ADMIN';

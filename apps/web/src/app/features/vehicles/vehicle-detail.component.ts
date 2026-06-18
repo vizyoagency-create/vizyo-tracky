@@ -1570,11 +1570,17 @@ export class VehicleDetailComponent implements OnInit {
       { key: 'alerts', label: 'Alertes', icon: Bell, perm: 'alerts_view' },
       { key: 'surveillance', label: 'Surveillance', icon: ShieldCheck, perm: 'alerts_acknowledge', show: hasTracker },
       { key: 'geofences', label: 'Géofences', icon: MapPin },
-      { key: 'schedule', label: 'Horaires', icon: Clock, perm: 'engine_control' },
+      // Sprint 3 — l'onglet Horaires suit la permission backend `schedules_manage`
+      // (et non plus `engine_control`) : sinon le veilleur (engine_control=true,
+      // schedules_manage=false) voyait l'onglet mais le GET /schedule renvoyait 403.
+      { key: 'schedule', label: 'Horaires', icon: Clock, perm: 'schedules_manage' },
       { key: 'commands', label: 'Commandes', icon: Zap, perm: 'engine_control', show: hasTracker },
     ];
     return all
       .filter((t) => t.show !== false)
+      // Sprint 3 — veilleur de nuit : page détail réduite à la Carte (position) + Horaires
+      // (si toggle). Le bloquer/débloquer reste dans l'en-tête. Tout le reste est hors périmètre.
+      .filter((t) => !this.isWatchman() || t.key === 'map' || t.key === 'schedule')
       .filter((t) => !t.perm || this.perms.can(t.perm as any));
   });
 
@@ -1609,7 +1615,7 @@ export class VehicleDetailComponent implements OnInit {
   });
 
   /** Sprint 3 — veilleur de nuit : ni live, ni interaction carte (page détail uniquement). */
-  protected readonly isWatchman = computed(() => this.auth.user()?.role === 'NIGHT_WATCHMAN');
+  protected readonly isWatchman = this.auth.isWatchman;
 
   protected readonly livePosition = computed(() => {
     // Sprint 3 — le veilleur n'a pas de flux live (room WS `pos:fleet` non rejointe côté serveur).
