@@ -3844,6 +3844,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
             : (err?.error?.message ?? 'Erreur inconnue'),
           duration: 6000,
         });
+        // Fermer la modal aussi sur erreur/409 (sinon elle reste ouverte et masque le toast). Cf smoke prod 2026-06-18.
+        this.engineModalOpen.set(null);
         this.engineModalLoading.set(false);
       },
     });

@@ -318,14 +318,14 @@ export class EngineControlButtonComponent implements OnInit {
     const action = this.isOpen() === 'cut' ? 'CUT' as const : 'RESTORE' as const;
     if (this.loading()) return;
     this.loading.set(true);
+    const reasonText = action === 'CUT' ? this.reason() || 'Action manuelle (horaire désactivé)' : undefined;
+    // Fermer la modal DÈS la soumission (avant l'attente réseau), succès comme erreur/409 :
+    // sinon elle reste ouverte par-dessus et masque le toast + la pastille. Cf smoke prod 2026-06-18.
+    this.isOpen.set(null);
+    this.reason.set('');
     try {
-      const cmd = await firstValueFrom(
-        this.engineControl.requestCommand(
-          this.trackerId(),
-          action,
-          action === 'CUT' ? this.reason() || 'Action manuelle (horaire désactivé)' : undefined,
-          true, // disableSchedule
-        ),
+      await firstValueFrom(
+        this.engineControl.requestCommand(this.trackerId(), action, reasonText, true /* disableSchedule */),
       );
       this.toast.success(
         action === 'CUT' ? 'Coupure envoyée' : 'Rallumage envoyé',
@@ -333,8 +333,6 @@ export class EngineControlButtonComponent implements OnInit {
       );
       this._scheduleEnabled.set(false);
       this.scheduleDisabled.emit();
-      this.isOpen.set(null);
-      this.reason.set('');
       await this.loadRecentCommands();
     } catch (err) {
       if (err instanceof HttpErrorResponse && err.status === 409) {
@@ -356,13 +354,14 @@ export class EngineControlButtonComponent implements OnInit {
   protected async onConfirm(action: 'CUT' | 'RESTORE'): Promise<void> {
     if (this.loading()) return; // Protection double-clic
     this.loading.set(true);
+    const reasonText = action === 'CUT' ? this.reason() || undefined : undefined;
+    // Fermer la modal DÈS la soumission (avant l'attente réseau), succès comme erreur/409 :
+    // sinon elle reste ouverte par-dessus et masque le toast + la pastille. Cf smoke prod 2026-06-18.
+    this.isOpen.set(null);
+    this.reason.set('');
     try {
       const cmd = await firstValueFrom(
-        this.engineControl.requestCommand(
-          this.trackerId(),
-          action,
-          action === 'CUT' ? this.reason() || undefined : undefined,
-        ),
+        this.engineControl.requestCommand(this.trackerId(), action, reasonText),
       );
       // Sprint 2 — PAS de faux succes : on annonce "envoyee" ; la confirmation
       // (chute d'ignition) fera basculer l'etat coupe via le WS + commandState.
@@ -372,8 +371,6 @@ export class EngineControlButtonComponent implements OnInit {
           ? `Commande ${cmd.id.slice(0, 8)} — en attente de confirmation du boîtier…`
           : `Commande ${cmd.id.slice(0, 8)} transmise au véhicule.`,
       );
-      this.isOpen.set(null);
-      this.reason.set('');
       await this.loadRecentCommands();
     } catch (err) {
       if (err instanceof HttpErrorResponse && err.status === 409) {
