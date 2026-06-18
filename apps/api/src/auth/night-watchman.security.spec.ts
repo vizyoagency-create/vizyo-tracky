@@ -10,6 +10,7 @@ import {
 } from '@vizyo/tracky-shared';
 import type { AuthUser } from './types/auth-user';
 import { ROLES_KEY } from './decorators/roles.decorator';
+import { VEHICLE_PERMISSIONS_KEY } from './decorators/vehicle-permissions.decorator';
 import { RolesGuard } from './guards/roles.guard';
 import { PermissionsResolverService } from '../permissions/permissions-resolver.service';
 import type { PrismaService } from '../prisma/prisma.service';
@@ -72,6 +73,13 @@ function allRoleSets(ctrl: { prototype: object }): Array<{ method: string; roles
   return Object.getOwnPropertyNames(proto)
     .filter((m) => m !== 'constructor' && typeof proto[m] === 'function')
     .map((m) => ({ method: m, roles: rolesOf(ctrl, m) }));
+}
+
+/** Lit les clés @RequireVehiclePermission posées sur une méthode (ou [] si absent). */
+function vehPermKeysOf(ctrl: { prototype: object }, method: string): string[] {
+  const target = (ctrl.prototype as Record<string, unknown>)[method] as object;
+  const spec = Reflect.getMetadata(VEHICLE_PERMISSIONS_KEY, target) as { keys?: string[] } | undefined;
+  return spec?.keys ?? [];
 }
 
 describe('Sprint 3 — Sécurité veilleur de nuit (NIGHT_WATCHMAN)', () => {
@@ -222,7 +230,6 @@ describe('Sprint 3 — Sécurité veilleur de nuit (NIGHT_WATCHMAN)', () => {
         ['ReportsController', ReportsController],
         ['DriversController', DriversController],
         ['GeofencesController', GeofencesController],
-        ['VehicleSchedulesController', VehicleSchedulesController],
         ['TripsController', TripsController],
       ] as const;
       for (const [name, ctrl] of sensitive) {
@@ -230,6 +237,36 @@ describe('Sprint 3 — Sécurité veilleur de nuit (NIGHT_WATCHMAN)', () => {
           expect({ name, method, hasNW: roles.includes(NW) }).toEqual({ name, method, hasNW: false });
         }
       }
+    });
+  });
+
+  describe('F. Toggle horaires (schedules_manage) — veilleur conditionnel + scopé per-véhicule', () => {
+    it('schedules : @Roles inclut NIGHT_WATCHMAN ET gate @RequireVehiclePermission(schedules_manage)', () => {
+      for (const m of ['get', 'upsert', 'history']) {
+        expect(rolesOf(VehicleSchedulesController, m)).toContain(NW);
+        expect(vehPermKeysOf(VehicleSchedulesController, m)).toContain('schedules_manage');
+      }
+    });
+
+    it('résolution per-véhicule schedules_manage : ON in-scope → OK ; OFF → 403 ; hors-scope → 403', async () => {
+      const makeResolver = (findManyImpl: jest.Mock) =>
+        new PermissionsResolverService({
+          userVehicleAccess: { findMany: findManyImpl },
+        } as unknown as PrismaService);
+
+      // Toggle ON : override de scope schedules_manage=true sur un véhicule du groupe.
+      const on = makeResolver(
+        jest.fn().mockResolvedValue([{ accessType: 'GROUP', permissions: { schedules_manage: true } }]),
+      );
+      expect(await on.canOnVehicle(makeUser(), 'veh-in', 'schedules_manage')).toBe(true);
+
+      // Toggle OFF : règle présente mais sans override → défauts veilleur (schedules_manage=false).
+      const off = makeResolver(jest.fn().mockResolvedValue([{ accessType: 'GROUP', permissions: null }]));
+      expect(await off.canOnVehicle(makeUser(), 'veh-in', 'schedules_manage')).toBe(false);
+
+      // Hors-scope : aucune règle ne couvre le véhicule → null → refus.
+      const out = makeResolver(jest.fn().mockResolvedValue([]));
+      expect(await out.canOnVehicle(makeUser(), 'veh-out', 'schedules_manage')).toBe(false);
     });
   });
 });

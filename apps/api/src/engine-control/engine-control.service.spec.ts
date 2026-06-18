@@ -77,6 +77,7 @@ const createdCommand = (overrides: Record<string, unknown> = {}) => ({
 const fleetAdmin = { userId: USER_ID, role: UserRole.FLEET_ADMIN, fleetId: FLEET_ID };
 const superAdmin = { userId: USER_ID, role: UserRole.SUPER_ADMIN, fleetId: FLEET_ID };
 const otherFleetAdmin = { userId: USER_ID, role: UserRole.FLEET_ADMIN, fleetId: OTHER_FLEET_ID };
+const nightWatchman = { userId: USER_ID, role: UserRole.NIGHT_WATCHMAN, fleetId: FLEET_ID };
 
 describe('EngineControlService', () => {
   let service: EngineControlService;
@@ -503,5 +504,82 @@ describe('EngineControlService', () => {
         }),
       }),
     );
+  });
+
+  // --- Sprint 3 (Veilleur de nuit) — règle « immobile depuis X min », RÔLE VEILLEUR UNIQUEMENT ---
+
+  // 23. Veilleur — refus si véhicule EN MOUVEMENT (>5 km/h), même ≤ 20 (qui passerait pour un admin).
+  it('should reject a NIGHT_WATCHMAN CUT when the vehicle is moving (>5 km/h)', async () => {
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+    prisma.position.findFirst.mockResolvedValue(recentPosition(10));
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.CUT, null, nightWatchman),
+    ).rejects.toThrow(ForbiddenException);
+    expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        status: CommandStatus.REJECTED_SPEED,
+        lastError: expect.stringContaining('en mouvement'),
+      }),
+    });
+  });
+
+  // 24. Veilleur — refus si à l'arrêt mais immobile depuis trop peu (mouvement récent dans la fenêtre).
+  it('should reject a NIGHT_WATCHMAN CUT when stopped for less than the minimum', async () => {
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+    prisma.position.findFirst
+      .mockResolvedValueOnce(recentPosition(0)) // lastPosition : à l'arrêt
+      .mockResolvedValueOnce({ timestamp: new Date(Date.now() - 30 * 1000) }); // a bougé il y a 30s
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.CUT, null, nightWatchman),
+    ).rejects.toThrow(ForbiddenException);
+    expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        status: CommandStatus.REJECTED_SPEED,
+        lastError: expect.stringContaining('arrêté depuis seulement'),
+      }),
+    });
+  });
+
+  // 25. Veilleur — ACCEPTÉ si à l'arrêt ET aucun mouvement dans la fenêtre (immobile ≥ X min).
+  it('should allow a NIGHT_WATCHMAN CUT when stopped long enough (no recent movement)', async () => {
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+    prisma.position.findFirst
+      .mockResolvedValueOnce(recentPosition(0)) // lastPosition : à l'arrêt
+      .mockResolvedValueOnce(null); // aucune trame en mouvement dans la fenêtre
+    registry.send.mockReturnValue(false);
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.CUT, null, nightWatchman),
+    ).rejects.toThrow(ServiceUnavailableException); // passe le garde-fou veilleur, échoue au dispatch offline
+    expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ status: CommandStatus.PENDING }),
+    });
+  });
+
+  // 26. Non-régression admin — la règle veilleur NE s'applique PAS : un FLEET_ADMIN peut couper
+  // un véhicule en mouvement lent (≤ 20 km/h) → antivol préservé, et aucune 2e requête position.
+  it('should NOT apply the watchman rule to a FLEET_ADMIN (antivol ≤ 20 km/h preserved)', async () => {
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+    prisma.position.findFirst.mockResolvedValue(recentPosition(10)); // en mouvement lent
+    registry.send.mockReturnValue(false);
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin),
+    ).rejects.toThrow(ServiceUnavailableException); // passe S2 (≤20), échoue au dispatch
+    expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ status: CommandStatus.PENDING }),
+    });
+    expect(prisma.position.findFirst).toHaveBeenCalledTimes(1); // pas de 2e requête (règle veilleur non déclenchée)
+  });
+
+  // 27. Veilleur — un RESTORE n'est jamais soumis à la règle d'immobilité (débloquer doit toujours marcher).
+  it('should NOT apply the watchman stop-rule to a RESTORE (unblock always allowed)', async () => {
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+    registry.send.mockReturnValue(false);
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.RESTORE, null, nightWatchman),
+    ).rejects.toThrow(ServiceUnavailableException); // RESTORE saute tout le bloc CUT, échoue au dispatch
+    expect(prisma.position.findFirst).not.toHaveBeenCalled();
+    expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ action: EngineAction.RESTORE }),
+    });
   });
 });

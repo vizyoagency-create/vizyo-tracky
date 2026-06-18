@@ -23,6 +23,13 @@ import { AckWaiterService } from '../tracker-commands/ack-waiter.service';
 const STALE_THRESHOLD_MOVING_MS = 60 * 1000; // position fraîche exigée si véhicule roulait
 const REST_SPEED_KMH = 5; // en-dessous = véhicule à l'arrêt, pas de seuil stale
 const MAX_SPEED_FOR_CUT = 20;
+/**
+ * Sprint 3 — durée minimale d'immobilité avant qu'un VEILLEUR puisse couper
+ * (anti-coupure d'un véhicule en mouvement). Env plateforme `ENGINE_CUT_MIN_STOPPED_S`
+ * (défaut 120 s). RÉSERVÉ au rôle NIGHT_WATCHMAN ; les admins/managers gardent la
+ * coupe S2 (≤ 20 km/h, antivol préservé).
+ */
+const ENGINE_CUT_MIN_STOPPED_MS = Math.max(0, Number(process.env.ENGINE_CUT_MIN_STOPPED_S) || 120) * 1000;
 const ENGINE_ACK_TIMEOUT_MS = 15_000;
 const ENGINE_STOP_ACK_PATTERN = /imei:\d{15},J/i;
 const ENGINE_RESUME_ACK_PATTERN = /imei:\d{15},K/i;
@@ -203,6 +210,55 @@ export class EngineControlService {
         this.emitUpdate(cmd, fleetId);
         this.logger.warn(`Command ${cmd.id} REJECTED: vitesse ${lastPosition.speedKmh} km/h`);
         throw new ForbiddenException(`Vitesse trop élevée : ${lastPosition.speedKmh} km/h`);
+      }
+
+      // Sprint 3 — règle « immobile depuis X min », RÉSERVÉE AU VEILLEUR (NIGHT_WATCHMAN).
+      // Les admins/managers gardent la coupe S2 (≤ 20 km/h) → antivol préservé. Le veilleur
+      // ne peut couper qu'un véhicule à l'arrêt (≤ REST_SPEED_KMH) ET immobile depuis au moins
+      // ENGINE_CUT_MIN_STOPPED_MS — c.-à-d. AUCUNE trame > REST_SPEED_KMH dans la fenêtre.
+      if (requestedBy.role === UserRole.NIGHT_WATCHMAN) {
+        const rejectWatchman = async (lastError: string): Promise<never> => {
+          const cmd = await this.prisma.engineControlCommand.create({
+            data: {
+              trackerId,
+              action,
+              reason,
+              requestedBy: requestedBy.userId,
+              status: CommandStatus.REJECTED_SPEED,
+              source,
+              lastError,
+            },
+          });
+          this.emitUpdate(cmd, fleetId);
+          this.logger.warn(`Command ${cmd.id} REJECTED (veilleur): ${lastError}`);
+          throw new ForbiddenException(lastError);
+        };
+
+        // 1) Actuellement en mouvement (> 5 km/h) — refusé même si ≤ 20 (qui passerait pour un admin).
+        if (lastPosition.speedKmh > REST_SPEED_KMH) {
+          await rejectWatchman(
+            `Véhicule en mouvement (${lastPosition.speedKmh} km/h) — coupure réservée à l'arrêt`,
+          );
+        }
+
+        // 2) Immobile depuis assez longtemps ? On cherche une trame EN MOUVEMENT (> 5 km/h)
+        // dans la fenêtre [now - ENGINE_CUT_MIN_STOPPED_MS ; now] (bornée → 1 index-scan
+        // [trackerId, timestamp desc]). Si on en trouve une, le véhicule a bougé trop
+        // récemment → refus. Sinon (garé depuis ≥ la fenêtre, même heartbeat récent) → OK.
+        const windowStart = new Date(Date.now() - ENGINE_CUT_MIN_STOPPED_MS);
+        const recentMovement = await this.prisma.position.findFirst({
+          where: { trackerId, speedKmh: { gt: REST_SPEED_KMH }, timestamp: { gte: windowStart } },
+          orderBy: { timestamp: 'desc' },
+          select: { timestamp: true },
+        });
+        if (recentMovement) {
+          const stoppedForMs = Date.now() - recentMovement.timestamp.getTime();
+          await rejectWatchman(
+            `Véhicule arrêté depuis seulement ${Math.round(stoppedForMs / 1000)}s — minimum requis ${Math.round(
+              ENGINE_CUT_MIN_STOPPED_MS / 1000,
+            )}s`,
+          );
+        }
       }
 
       // Sprint 2 (Obj 2) — garde-fous passés : si l'ignition est ON, une chute
