@@ -48,6 +48,8 @@ export class MiniMapComponent implements AfterViewInit, OnDestroy {
   readonly ignition = input(true);
   readonly zoom = input(15);
   readonly height = input('300px');
+  /** Sprint 3 — false = carte figée (pan/zoom/rotation désactivés), pour le veilleur de nuit. */
+  readonly interactive = input(true);
 
   private readonly mapRef = viewChild<ElementRef<HTMLDivElement>>('mapContainer');
   private readonly mapSvc = inject(MapService);
@@ -137,6 +139,18 @@ export class MiniMapComponent implements AfterViewInit, OnDestroy {
       withGeolocateControl: false,
       withScaleControl: false,
     });
+
+    if (!this.interactive()) {
+      // Sprint 3 — mini-carte non-interactive : figée sur la dernière position connue,
+      // sans pan/zoom/rotation (le veilleur « voit où est le véhicule » sans manipuler la carte).
+      this.map.dragPan.disable();
+      this.map.scrollZoom.disable();
+      this.map.boxZoom.disable();
+      this.map.doubleClickZoom.disable();
+      this.map.touchZoomRotate.disable();
+      this.map.dragRotate.disable();
+      this.map.keyboard.disable();
+    }
 
     this.map.on('load', () => {
       // Mini trail layer.

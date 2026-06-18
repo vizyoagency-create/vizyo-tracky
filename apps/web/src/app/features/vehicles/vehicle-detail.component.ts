@@ -357,6 +357,7 @@ import { InstallReviewBadgeComponent } from '../../shared/ui/install-review-badg
               [vehicleType]="vehicle()?.type ?? 'OTHER'"
               [plate]="vehicle()?.plate ?? ''"
               [ignition]="pos.ignition"
+              [interactive]="!isWatchman()"
               height="500px"
             />
           } @else {
@@ -1607,7 +1608,14 @@ export class VehicleDetailComponent implements OnInit {
     }
   });
 
+  /** Sprint 3 — veilleur de nuit : ni live, ni interaction carte (page détail uniquement). */
+  protected readonly isWatchman = computed(() => this.auth.user()?.role === 'NIGHT_WATCHMAN');
+
   protected readonly livePosition = computed(() => {
+    // Sprint 3 — le veilleur n'a pas de flux live (room WS `pos:fleet` non rejointe côté serveur).
+    // Défense en profondeur côté front : la mini-carte reste sur la dernière position connue
+    // (historique HTTP), jamais le live. La confirmation moteur S2 reste active (currentPosition).
+    if (this.isWatchman()) return null;
     const tracker = this.vehicle()?.tracker;
     if (!tracker) return null;
     return this.realtime.positions().get(tracker.id) ?? null;
