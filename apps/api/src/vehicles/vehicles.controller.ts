@@ -49,7 +49,8 @@ export class VehiclesController {
   }
 
   @Get('snapshot')
-  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  // Sprint 3 — veilleur inclus : résultats scopés par accessibleVehicleIds dans le service.
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER, UserRole.NIGHT_WATCHMAN)
   async snapshot(@Req() req: AuthenticatedRequest) {
     const items = await this.vehicles.snapshot(await this.buildRequestedBy(req));
     return { items };
@@ -67,7 +68,7 @@ export class VehiclesController {
   }
 
   @Get()
-  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER, UserRole.NIGHT_WATCHMAN)
   @RequirePermissions('vehicles_view')
   async findAll(
     @Req() req: AuthenticatedRequest,
@@ -81,7 +82,7 @@ export class VehiclesController {
   }
 
   @Get(':id')
-  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER, UserRole.NIGHT_WATCHMAN)
   @RequirePermissions('vehicles_view')
   async findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.vehicles.findOne(id, await this.buildRequestedBy(req));
