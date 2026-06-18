@@ -50,12 +50,23 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       // (un user suspendu/supprime ne doit pas continuer a recevoir le live).
       (client.data as { userId?: string }).userId = localUser.id;
 
+      // Sprint 3 — split des rooms : les positions LIVE transitent par `pos:fleet:*`,
+      // tout le reste (commandes moteur, alertes, status tracker, trips) par `fleet:*`.
+      // Le veilleur de nuit rejoint `fleet:*` (confirmation moteur S2 + alertes/status
+      // pour le badge connectivité) mais PAS `pos:fleet:*` → ZÉRO position live sur son
+      // socket. « Sans live » enforced serveur (et ferme la fuite de scope live flotte).
+      const isWatchman = localUser.role === 'NIGHT_WATCHMAN';
+
       if (localUser.role === 'SUPER_ADMIN') {
         client.join('fleet:*');
+        client.join('pos:fleet:*');
       }
 
       if (localUser.fleetId) {
         client.join(`fleet:${localUser.fleetId}`);
+        if (!isWatchman) {
+          client.join(`pos:fleet:${localUser.fleetId}`);
+        }
       }
 
       this.logger.debug(`Client ${client.id} authenticated (${localUser.email}, fleet=${localUser.fleetId})`);
@@ -126,7 +137,8 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
    * kept for explicit cases (alerts, geofence violations linked to a position).
    */
   broadcastPosition(fleetId: string, payload: PositionUpdateEvent): void {
-    this.server.to(`fleet:${fleetId}`).to('fleet:*').emit(WS_EVENTS.POSITION_UPDATE, payload);
+    // Sprint 3 — positions live sur la room dédiée `pos:fleet:*` (le veilleur n'y est pas).
+    this.server.to(`pos:fleet:${fleetId}`).to('pos:fleet:*').emit(WS_EVENTS.POSITION_UPDATE, payload);
   }
 
   emitTrackerStatus(fleetId: string, payload: TrackerStatusChangedDto): void {

@@ -25,8 +25,10 @@ describe('PositionBroadcastBuffer', () => {
 
     buffer.flush();
 
-    expect(to).toHaveBeenCalledWith('fleet:fleet-1');
-    expect(to).toHaveBeenCalledWith('fleet:*');
+    // Sprint 3 — les positions transitent désormais par la room dédiée `pos:fleet:*`
+    // (le veilleur de nuit ne la rejoint pas → sans live).
+    expect(to).toHaveBeenCalledWith('pos:fleet:fleet-1');
+    expect(to).toHaveBeenCalledWith('pos:fleet:*');
     expect(emit).toHaveBeenCalledTimes(1);
     const [evt, payload] = emit.mock.calls[0];
     expect(evt).toBe(WS_EVENTS.POSITIONS_BATCH);
