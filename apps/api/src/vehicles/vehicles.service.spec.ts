@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { Prisma, UserRole } from '@prisma/client';
+import { CommandStatus, EngineAction, Prisma, UserRole } from '@prisma/client';
 import { InMemoryCacheService } from '../common/cache/in-memory-cache.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { VehiclesService } from './vehicles.service';
@@ -38,6 +38,7 @@ describe('VehiclesService', () => {
     tracker: { update: jest.Mock };
     vehicleGroup: { findFirst: jest.Mock };
     vehicleGroupAssignment: { deleteMany: jest.Mock; create: jest.Mock };
+    engineControlCommand: { findMany: jest.Mock };
     $transaction: jest.Mock;
   };
 
@@ -59,6 +60,8 @@ describe('VehiclesService', () => {
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         create: jest.fn().mockResolvedValue({ vehicleId: VEHICLE_ID, groupId: GROUP_ID }),
       },
+      // Sprint 2 — snapshot() derive l'etat coupe TRI-ETAT depuis les commandes moteur.
+      engineControlCommand: { findMany: jest.fn().mockResolvedValue([]) },
       $transaction: jest.fn().mockResolvedValue([]),
     };
 
@@ -249,5 +252,61 @@ describe('VehiclesService', () => {
     await expect(service.setGroup(VEHICLE_ID, GROUP_ID, fleetAdmin)).rejects.toThrow(
       NotFoundException,
     );
+  });
+
+  // Sprint 2 (revue #1/#2) — snapshot() expose un etat coupe TRI-ETAT par tracker.
+  it('snapshot derives tri-state engineCutState (cut / pending / normal-after-RESTORE)', async () => {
+    const A = 'tracker-a';
+    const B = 'tracker-b';
+    const C = 'tracker-c';
+    const veh = (vid: string, tid: string) => ({
+      id: vid,
+      fleetId: FLEET_ID,
+      plate: `AB-${vid}`,
+      type: 'CAR',
+      brand: 'Renault',
+      model: 'Master',
+      tracker: {
+        id: tid,
+        imei: `imei-${tid}`,
+        status: 'OFFLINE',
+        lastSeenAt: null,
+        lastLat: null,
+        lastLng: null,
+        lastSpeedKmh: null,
+        lastHeading: null,
+        lastIgnition: null,
+        lastValid: null,
+        lastPositionAt: null,
+        accConnected: null,
+      },
+      schedule: null,
+      groups: [],
+    });
+    prisma.vehicle.findMany.mockResolvedValue([veh('a', A), veh('b', B), veh('c', C)]);
+
+    const older = new Date(Date.now() - 60_000);
+    const newer = new Date(Date.now() - 10_000);
+    // findMany applique distinct ['trackerId','action'] : on fournit la derniere
+    // commande par (tracker, action).
+    prisma.engineControlCommand.findMany.mockResolvedValue([
+      { trackerId: A, action: EngineAction.CUT, status: CommandStatus.ACKNOWLEDGED, createdAt: older },
+      { trackerId: B, action: EngineAction.CUT, status: CommandStatus.SENT, createdAt: older },
+      { trackerId: C, action: EngineAction.CUT, status: CommandStatus.ACKNOWLEDGED, createdAt: older },
+      { trackerId: C, action: EngineAction.RESTORE, status: CommandStatus.SENT, createdAt: newer },
+    ]);
+
+    const snap = await service.snapshot(fleetAdmin);
+    const byTracker = new Map(snap.map((s) => [s.trackerId, s]));
+
+    // A : coupure confirmee -> 'cut'
+    expect(byTracker.get(A)?.engineCutState).toBe('cut');
+    expect(byTracker.get(A)?.engineCutActive).toBe(true);
+    // B : coupure seulement envoyee (non confirmee par ignition) -> 'pending', PAS coupe
+    expect(byTracker.get(B)?.engineCutState).toBe('pending');
+    expect(byTracker.get(B)?.engineCutActive).toBe(false);
+    // C : RESTORE plus recent qu'un CUT confirme -> 'normal' (revue #1 : sinon "coupe" colle a jamais)
+    expect(byTracker.get(C)?.engineCutState).toBe('normal');
+    expect(byTracker.get(C)?.engineCutActive).toBe(false);
   });
 });

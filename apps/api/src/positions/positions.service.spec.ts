@@ -223,6 +223,10 @@ describe('PositionsService.ingest — garde-fou replay/teleportation', () => {
       engineControlCommand: {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 'cmd', action: 'CUT', status: 'ACKNOWLEDGED' }),
+        update: jest.fn().mockResolvedValue({
+          id: 'cut-1', action: 'CUT', status: 'ACKNOWLEDGED',
+          confirmationExpected: true, sentAt: new Date(), ackedAt: new Date(), source: 'MANUAL',
+        }),
       },
       positionSamplingDecision: { create: jest.fn().mockResolvedValue({}) },
     };
@@ -355,6 +359,35 @@ describe('PositionsService.ingest — garde-fou replay/teleportation', () => {
     const updateArg = prisma.tracker.update.mock.calls[0][0];
     expect(updateArg.data).not.toHaveProperty('lastKnownIgnition');
     expect(updateArg.data).not.toHaveProperty('lastLat');
+  });
+
+  // Sprint 2 (Obj 2) — CONFIRMATION PAR IGNITION : une coupure app SENT passe
+  // ACKNOWLEDGED quand l'ignition tombe apres elle (preuve physique reelle).
+  it('confirms an app CUT (SENT -> ACKNOWLEDGED) when ignition drops after it', async () => {
+    prisma.engineControlCommand.findFirst.mockResolvedValue({
+      id: 'cut-1',
+      action: 'CUT',
+      status: 'SENT',
+      confirmationExpected: true,
+      sentAt: new Date(),
+      ackedAt: null,
+      source: 'MANUAL',
+    });
+
+    // Trame REELLE (forward) avec ignition OFF => transition ON->OFF.
+    await service.ingest(makeFrame({ ignition: false }));
+    // handleIgnitionTransition est fire-and-forget : on laisse la chaine se resoudre.
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(prisma.engineControlCommand.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'cut-1' },
+        data: expect.objectContaining({ status: 'ACKNOWLEDGED' }),
+      }),
+    );
+    // Pas de DEVICE_OBSERVED cree (la coupure app explique deja la chute d'ignition).
+    expect(prisma.engineControlCommand.create).not.toHaveBeenCalled();
+    expect(gateway.emitEngineCommandUpdate).toHaveBeenCalled();
   });
 
   it('accepts the first ever valid frame when the tracker has no baseline', async () => {

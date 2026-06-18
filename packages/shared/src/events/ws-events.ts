@@ -67,6 +67,13 @@ export interface EngineCommandUpdatedEvent {
   action: 'CUT' | 'RESTORE';
   status: 'PENDING' | 'SENT' | 'ACKNOWLEDGED' | 'FAILED' | 'REJECTED_SPEED';
   lastError: string | null;
+  /** Sprint 2 — true si une chute d'ignition est attendable comme preuve (CUT en marche). */
+  confirmationExpected?: boolean;
+  /** Sprint 2 — horodatages pour dériver l'état d'attente/confirmation côté UI. */
+  sentAt?: string | null;
+  ackedAt?: string | null;
+  /** Sprint 2 — origine, pour distinguer une détection device d'une commande app. */
+  source?: 'MANUAL' | 'SCHEDULER' | 'DEVICE_OBSERVED';
 }
 
 export interface ServerToClientEvents {

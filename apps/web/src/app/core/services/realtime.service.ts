@@ -42,9 +42,17 @@ export class RealtimeService {
   private readonly _engineCommandUpdates = signal<Map<string, EngineCommandUpdatedEvent>>(new Map());
   readonly engineCommandUpdates = this._engineCommandUpdates.asReadonly();
 
-  /** Etat persistant : quels trackers ont un CUT actif. Hydrate au login, mis a jour par WS. */
+  /** Etat persistant : quels trackers ont un CUT CONFIRME (ACKNOWLEDGED). Hydrate au login, MAJ par WS. */
   private readonly _cutActiveTrackerIds = signal<Set<string>>(new Set());
   readonly cutActiveTrackerIds = this._cutActiveTrackerIds.asReadonly();
+
+  /**
+   * Sprint 2 (revue #2) — trackers avec une coupure COMMANDEE mais NON encore
+   * confirmee (SENT). Distinct de `cutActiveTrackerIds` (coupure confirmee) : permet
+   * un affichage tri-etat (normal / en attente / coupe) sans jamais de faux succes.
+   */
+  private readonly _cutPendingTrackerIds = signal<Set<string>>(new Set());
+  readonly cutPendingTrackerIds = this._cutPendingTrackerIds.asReadonly();
 
   private socket: Socket | null = null;
   private refreshingToken = false;
@@ -285,15 +293,36 @@ export class RealtimeService {
       next.set(event.trackerId, event);
       this._engineCommandUpdates.set(next);
 
-      // Maintenir l'etat persistant CUT actif
-      const effective = event.status === 'SENT' || event.status === 'ACKNOWLEDGED';
-      const ids = new Set(this._cutActiveTrackerIds());
-      if (event.action === 'CUT' && effective) {
-        ids.add(event.trackerId);
-      } else if (event.action === 'RESTORE' && effective) {
-        ids.delete(event.trackerId);
+      // Maintenir l'etat coupe TRI-ETAT (revue #1/#2), jamais de faux succes :
+      //  - CUT ACKNOWLEDGED    -> 'coupe' confirme (ignition tombee / DEVICE_OBSERVED)
+      //  - CUT SENT            -> 'en attente' (commande, pas encore confirmee)
+      //  - CUT FAILED/REJECTED -> efface (echec d'envoi)
+      //  - RESTORE SENT||ACK   -> efface des l'envoi : rallumer est toujours sur, on
+      //    ne requiert pas de preuve device pour CESSER d'afficher "coupe" (sinon
+      //    l'etat resterait colle, un RESTORE app n'etant jamais ACKNOWLEDGED).
+      const active = new Set(this._cutActiveTrackerIds());
+      const pending = new Set(this._cutPendingTrackerIds());
+      const tid = event.trackerId;
+      if (event.action === 'CUT') {
+        if (event.status === 'ACKNOWLEDGED') {
+          active.add(tid);
+          pending.delete(tid);
+        } else if (event.status === 'SENT') {
+          // NB : on ne retire PAS de `active` (un CUT confirme ne doit pas etre
+          // degrade par un SENT tardif/redondant ; priorite coupe > en attente).
+          pending.add(tid);
+        } else {
+          active.delete(tid);
+          pending.delete(tid);
+        }
+      } else if (event.action === 'RESTORE') {
+        if (event.status === 'SENT' || event.status === 'ACKNOWLEDGED') {
+          active.delete(tid);
+          pending.delete(tid);
+        }
       }
-      this._cutActiveTrackerIds.set(ids);
+      this._cutActiveTrackerIds.set(active);
+      this._cutPendingTrackerIds.set(pending);
     });
   }
 
@@ -338,6 +367,7 @@ export class RealtimeService {
     this._trackerStatuses.set(new Map());
     this._engineCommandUpdates.set(new Map());
     this._cutActiveTrackerIds.set(new Set());
+    this._cutPendingTrackerIds.set(new Set());
     this.positionBuffer.clear();
     this.flushScheduled = false;
     this.lastToastByKey.clear();
@@ -517,12 +547,19 @@ export class RealtimeService {
         hydratedIds.add(v.trackerId);
       }
 
-      // Hydrater l'etat CUT actif depuis le snapshot
+      // Hydrater l'etat coupe TRI-ETAT depuis le snapshot (revue #2). engineCutState
+      // ('normal'|'pending'|'cut') est la source ; fallback sur le booleen
+      // engineCutActive pour la compat si le champ n'est pas encore servi.
       const cutIds = new Set<string>();
+      const pendingIds = new Set<string>();
       for (const v of items) {
-        if (v.trackerId && v.engineCutActive) cutIds.add(v.trackerId);
+        if (!v.trackerId) continue;
+        const st = v.engineCutState;
+        if (st === 'cut' || (st == null && v.engineCutActive)) cutIds.add(v.trackerId);
+        else if (st === 'pending') pendingIds.add(v.trackerId);
       }
       this._cutActiveTrackerIds.set(cutIds);
+      this._cutPendingTrackerIds.set(pendingIds);
 
       this.positions.set(next);
       this.hydratedTrackerIds.set(hydratedIds);

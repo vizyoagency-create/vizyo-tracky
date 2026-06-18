@@ -517,6 +517,10 @@ export class PositionsService {
             action: cmd.action,
             status: cmd.status,
             lastError: null,
+            confirmationExpected: cmd.confirmationExpected,
+            sentAt: null,
+            ackedAt: cmd.ackedAt ? cmd.ackedAt.toISOString() : null,
+            source: cmd.source as 'MANUAL' | 'SCHEDULER' | 'DEVICE_OBSERVED',
           });
           this.logger.warn(
             { trackerId: tracker.id, imei: tracker.imei, commandId: cmd.id },
@@ -526,6 +530,39 @@ export class PositionsService {
           this.logger.error(
             { trackerId: tracker.id, imei: tracker.imei, error: (err as Error).message },
             'Failed to persist DEVICE_OBSERVED CUT — external cut not recorded',
+          );
+        }
+      } else if (recentCut.status === CommandStatus.SENT && recentCut.confirmationExpected) {
+        // Sprint 2 (Obj 2 + revue #5) — CONFIRMATION PAR IGNITION : la coupure app
+        // vient d'etre prouvee physiquement (le moteur s'est eteint). On ne confirme
+        // QUE si la coupure etait confirmable (confirmationExpected = vehicule en
+        // marche a l'envoi). Une coupure « a l'arret » (ignition deja OFF) ne doit pas
+        // etre faussement confirmee par une transition ON->OFF ulterieure sans rapport.
+        // On la passe « confirmee » (ACKNOWLEDGED), etat distinct du « envoyee », + WS.
+        try {
+          const confirmed = await this.prisma.engineControlCommand.update({
+            where: { id: recentCut.id },
+            data: { status: CommandStatus.ACKNOWLEDGED, ackedAt: new Date() },
+          });
+          this.gateway.emitEngineCommandUpdate(fleetId, {
+            commandId: confirmed.id,
+            trackerId: tracker.id,
+            action: confirmed.action,
+            status: confirmed.status,
+            lastError: null,
+            confirmationExpected: confirmed.confirmationExpected,
+            sentAt: confirmed.sentAt ? confirmed.sentAt.toISOString() : null,
+            ackedAt: confirmed.ackedAt ? confirmed.ackedAt.toISOString() : null,
+            source: confirmed.source as 'MANUAL' | 'SCHEDULER' | 'DEVICE_OBSERVED',
+          });
+          this.logger.log(
+            { trackerId: tracker.id, commandId: confirmed.id },
+            'Engine CUT confirmee par chute d\'ignition',
+          );
+        } catch (err) {
+          this.logger.error(
+            { trackerId: tracker.id, error: (err as Error).message },
+            'Failed to persist ignition confirmation',
           );
         }
       }
@@ -571,6 +608,10 @@ export class PositionsService {
               action: cmd.action,
               status: cmd.status,
               lastError: null,
+              confirmationExpected: cmd.confirmationExpected,
+              sentAt: null,
+              ackedAt: cmd.ackedAt ? cmd.ackedAt.toISOString() : null,
+              source: cmd.source as 'MANUAL' | 'SCHEDULER' | 'DEVICE_OBSERVED',
             });
             this.logger.warn(
               { trackerId: tracker.id, imei: tracker.imei, commandId: cmd.id },

@@ -14,6 +14,9 @@ import { VehicleSchedulesApiService } from '../../core/services/vehicle-schedule
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 
+/** Sprint 2 — fenêtre d'attente de confirmation côté UI (aligne le défaut backend 90s). */
+const CONFIRM_WINDOW_MS = 90_000;
+
 @Component({
   selector: 'app-engine-control-button',
   standalone: true,
@@ -48,6 +51,15 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
             <span class="sm:hidden">Couper</span>
           </button>
         }
+      }
+
+      <!-- Sprint 2 — etat honnete de la derniere commande (jamais de faux succes). -->
+      @if (commandState(); as st) {
+        <span class="ml-2 inline-flex items-center gap-1 text-[11px] font-medium {{ st.textClass }} whitespace-nowrap"
+              [title]="st.label">
+          <span class="w-1.5 h-1.5 rounded-full shrink-0 {{ st.dotClass }}"></span>
+          {{ st.short }}
+        </span>
       }
 
       <app-confirm-modal
@@ -143,31 +155,85 @@ export class EngineControlButtonComponent implements OnInit {
 
   readonly isCutActive = computed(() => {
     const cmds = this.recentCommands();
-
-    // V1.7 — Source de verite UNIQUE : l'historique des commandes. On ne se fie
-    // plus a `ignition` qui peut etre faux quand le fil ACC n'est pas connecte
-    // (mode degrade, inferee depuis vitesse). La derniere CUT SENT/ACKNOWLEDGED
-    // sans RESTORE postérieure indique une coupure active.
-    //
-    // Les CUT externes (SMS / DEVICE_OBSERVED) sont aussi detectes, car le
-    // backend cree systematiquement une EngineControlCommand pour ces cas
-    // (cf. handleIgnitionTransition dans positions.service.ts) — l'historique
-    // les contient donc quand le tracker repond avec acc_off.
-    // Exclure DEVICE_OBSERVED (observations ignition, pas de vraies commandes).
-    // FAILED n'est pertinent que s'il est récent (<30 min) — au-delà c'est de l'historique.
-    const thirtyMinAgo = Date.now() - 30 * 60 * 1000;
-    const isEffective = (c: EngineControlCommandDto) => {
-      if (c.source === 'DEVICE_OBSERVED') return false;
-      if (c.status === 'SENT' || c.status === 'ACKNOWLEDGED') return true;
-      if (c.status === 'FAILED') return new Date(c.createdAt).getTime() > thirtyMinAgo;
-      return false;
-    };
-    const lastCut = cmds.find((c) => c.action === 'CUT' && isEffective(c));
-    const lastRestore = cmds.find((c) => c.action === 'RESTORE' && isEffective(c));
-
+    // Sprint 2 (Obj 3) — etat "coupe" = derniere commande CONFIRMEE (ACKNOWLEDGED),
+    // TOUTES sources incluses (DEVICE_OBSERVED = coupure SMS/externe detectee par la
+    // chute d'ignition). Une coupure seulement SENT (pas encore confirmee) NE compte
+    // PAS : l'etat ne bascule qu'a la preuve reelle — jamais de faux succes.
+    const lastCut = cmds.find((c) => c.action === 'CUT' && c.status === 'ACKNOWLEDGED');
+    // Revue #1 — un RESTORE nettoie l'etat des l'ENVOI (SENT||ACK) : rallumer est
+    // toujours sur, on ne requiert PAS de preuve device pour CESSER d'afficher
+    // "coupe". Sinon le bouton resterait colle sur « Rallumer » (un RESTORE app
+    // n'atteint jamais ACKNOWLEDGED : seul un CUT est confirme par la chute d'ignition).
+    const lastRestore = cmds.find(
+      (c) => c.action === 'RESTORE' && (c.status === 'SENT' || c.status === 'ACKNOWLEDGED'),
+    );
     if (!lastCut) return false;
     if (!lastRestore) return true;
     return new Date(lastCut.createdAt) > new Date(lastRestore.createdAt);
+  });
+
+  // Sprint 2 — tick 5s : fait basculer l'affichage "en attente" -> "non confirmee"
+  // au depassement de la fenetre, sans refetch.
+  private readonly _now = signal(Date.now());
+  constructor() {
+    const id = setInterval(() => this._now.set(Date.now()), 5000);
+    inject(DestroyRef).onDestroy(() => clearInterval(id));
+  }
+
+  /** Sprint 2 — derniere commande APP (hors DEVICE_OBSERVED) = l'action en cours. */
+  private readonly lastAppCommand = computed(
+    () => this.recentCommands().find((c) => c.source !== 'DEVICE_OBSERVED') ?? null,
+  );
+
+  /**
+   * Sprint 2 — etat honnete de la derniere commande app : en attente / confirmee /
+   * non confirmee / non verifiable / echec. Garantit qu'on n'affiche JAMAIS un faux
+   * succes (l'etat "coupe" du bouton ne passe qu'a la confirmation reelle).
+   */
+  readonly commandState = computed<{ short: string; label: string; textClass: string; dotClass: string } | null>(() => {
+    const c = this.lastAppCommand();
+    if (!c || c.status === 'PENDING' || c.status === 'REJECTED_SPEED') return null;
+    const verb = c.action === 'CUT' ? 'Coupure' : 'Rallumage';
+    if (c.status === 'ACKNOWLEDGED') {
+      return {
+        short: c.action === 'CUT' ? 'Coupure confirmée' : 'Rallumage confirmé',
+        label: `${verb} confirmé(e) par le boîtier (chute d'ignition).`,
+        textClass: 'text-tracky-light',
+        dotClass: 'bg-tracky-light',
+      };
+    }
+    if (c.status === 'FAILED') {
+      return {
+        short: 'Échec d\'envoi',
+        label: c.lastError ?? 'La commande n\'a pas pu être envoyée au boîtier.',
+        textClass: 'text-red-400',
+        dotClass: 'bg-red-500',
+      };
+    }
+    // status === 'SENT'
+    if (c.confirmationExpected === false) {
+      return {
+        short: 'Envoyée',
+        label: `${verb} envoyée — confirmation par ignition indisponible (véhicule à l'arrêt). À vérifier physiquement.`,
+        textClass: 'text-fg-tertiary',
+        dotClass: 'bg-fg-tertiary',
+      };
+    }
+    const ageMs = this._now() - new Date(c.sentAt ?? c.createdAt).getTime();
+    if (ageMs < CONFIRM_WINDOW_MS) {
+      return {
+        short: 'En attente…',
+        label: `${verb} envoyée — en attente de confirmation du boîtier…`,
+        textClass: 'text-amber-400',
+        dotClass: 'bg-amber-400 animate-pulse',
+      };
+    }
+    return {
+      short: 'Non confirmée',
+      label: `${verb} envoyée mais NON confirmée par le boîtier — à vérifier.`,
+      textClass: 'text-red-400',
+      dotClass: 'bg-red-500',
+    };
   });
 
   readonly canCut = computed(() => {
@@ -262,8 +328,8 @@ export class EngineControlButtonComponent implements OnInit {
         ),
       );
       this.toast.success(
-        action === 'CUT' ? 'Moteur coupé' : 'Moteur rallumé',
-        `Commande envoyée — mode horaire désactivé`,
+        action === 'CUT' ? 'Coupure envoyée' : 'Rallumage envoyé',
+        'Mode horaire désactivé — en attente de confirmation du boîtier…',
       );
       this._scheduleEnabled.set(false);
       this.scheduleDisabled.emit();
@@ -271,11 +337,17 @@ export class EngineControlButtonComponent implements OnInit {
       this.reason.set('');
       await this.loadRecentCommands();
     } catch (err) {
-      const message = this.extractErrorMessage(err);
-      this.toast.error(
-        action === 'CUT' ? 'Coupure refusée' : 'Rallumage refusé',
-        message,
-      );
+      if (err instanceof HttpErrorResponse && err.status === 409) {
+        this.toast.error(
+          'Commande déjà en cours',
+          'Une coupure est déjà en attente de confirmation sur ce véhicule.',
+        );
+      } else {
+        this.toast.error(
+          action === 'CUT' ? 'Coupure refusée' : 'Rallumage refusé',
+          this.extractErrorMessage(err),
+        );
+      }
     } finally {
       this.loading.set(false);
     }
@@ -292,19 +364,29 @@ export class EngineControlButtonComponent implements OnInit {
           action === 'CUT' ? this.reason() || undefined : undefined,
         ),
       );
+      // Sprint 2 — PAS de faux succes : on annonce "envoyee" ; la confirmation
+      // (chute d'ignition) fera basculer l'etat coupe via le WS + commandState.
       this.toast.success(
-        action === 'CUT' ? 'Moteur coupé' : 'Moteur rallumé',
-        `Commande ${cmd.id.slice(0, 8)} envoyée (statut : ${cmd.status})`,
+        action === 'CUT' ? 'Coupure envoyée' : 'Rallumage envoyé',
+        action === 'CUT'
+          ? `Commande ${cmd.id.slice(0, 8)} — en attente de confirmation du boîtier…`
+          : `Commande ${cmd.id.slice(0, 8)} transmise au véhicule.`,
       );
       this.isOpen.set(null);
       this.reason.set('');
       await this.loadRecentCommands();
     } catch (err) {
-      const message = this.extractErrorMessage(err);
-      this.toast.error(
-        action === 'CUT' ? 'Coupure refusée' : 'Rallumage refusé',
-        message,
-      );
+      if (err instanceof HttpErrorResponse && err.status === 409) {
+        this.toast.error(
+          'Commande déjà en cours',
+          'Une coupure est déjà en attente de confirmation sur ce véhicule.',
+        );
+      } else {
+        this.toast.error(
+          action === 'CUT' ? 'Coupure refusée' : 'Rallumage refusé',
+          this.extractErrorMessage(err),
+        );
+      }
     } finally {
       this.loading.set(false);
     }

@@ -504,27 +504,38 @@ export class VehiclesService {
       take: 2000,
     });
 
-    // Determine quels trackers ont un CUT actif (derniere commande SENT/ACK est CUT sans RESTORE apres)
+    // Sprint 2 (Obj 3 + revue #2) — etat coupe TRI-ETAT par tracker :
+    //   'cut'     = coupure CONFIRMEE (ACKNOWLEDGED, toutes sources dont DEVICE_OBSERVED
+    //               = coupure SMS/externe detectee par chute d'ignition)
+    //   'pending' = coupure COMMANDEE non encore confirmee (SENT) — ex. vehicule a
+    //               l'arret (non verifiable par ignition) : a verifier, PAS "normal"
+    //   sinon      = normal. Un RESTORE (SENT||ACK) plus recent nettoie l'etat : le
+    //   rallumage est toujours sur et ne requiert pas de confirmation (sinon l'etat
+    //   "coupe" resterait colle, le RESTORE app n'etant jamais ACKNOWLEDGED).
     const trackerIds = vehicles.map((v) => v.tracker?.id).filter(Boolean) as string[];
-    const cutActiveIds = new Set<string>();
+    const cutStateByTracker = new Map<string, 'cut' | 'pending'>();
 
     if (trackerIds.length > 0) {
-      // Exclure DEVICE_OBSERVED + FAILED ancien (>30 min = historique, plus pertinent)
       const lastCmds = await this.prisma.engineControlCommand.findMany({
         where: {
           trackerId: { in: trackerIds },
-          source: { not: 'DEVICE_OBSERVED' },
-          OR: [
-            { status: { in: [CommandStatus.SENT, CommandStatus.ACKNOWLEDGED] } },
-            { status: CommandStatus.FAILED, createdAt: { gte: new Date(Date.now() - 30 * 60 * 1000) } },
-          ],
+          status: { in: [CommandStatus.SENT, CommandStatus.ACKNOWLEDGED] },
         },
         orderBy: { createdAt: 'desc' },
-        distinct: ['trackerId'],
-        select: { trackerId: true, action: true },
+        distinct: ['trackerId', 'action'],
+        select: { trackerId: true, action: true, status: true, createdAt: true },
       });
+      const perTracker = new Map<string, { cut?: { status: CommandStatus; createdAt: Date }; restoreAt?: Date }>();
       for (const cmd of lastCmds) {
-        if (cmd.action === EngineAction.CUT) cutActiveIds.add(cmd.trackerId);
+        const e = perTracker.get(cmd.trackerId) ?? {};
+        if (cmd.action === EngineAction.CUT) e.cut = { status: cmd.status, createdAt: cmd.createdAt };
+        else e.restoreAt = cmd.createdAt;
+        perTracker.set(cmd.trackerId, e);
+      }
+      for (const [tid, e] of perTracker) {
+        if (!e.cut) continue;
+        if (e.restoreAt && e.restoreAt > e.cut.createdAt) continue; // rallumage plus recent -> normal
+        cutStateByTracker.set(tid, e.cut.status === CommandStatus.ACKNOWLEDGED ? 'cut' : 'pending');
       }
     }
 
@@ -550,7 +561,8 @@ export class VehiclesService {
         lastPositionAt: t?.lastPositionAt ? t.lastPositionAt.toISOString() : null,
         accConnected: t?.accConnected ?? null,
         trackerCreatedAt: t?.createdAt ? t.createdAt.toISOString() : null,
-        engineCutActive: t ? cutActiveIds.has(t.id) : null,
+        engineCutActive: t ? cutStateByTracker.get(t.id) === 'cut' : null,
+        engineCutState: t ? (cutStateByTracker.get(t.id) ?? 'normal') : null,
         scheduleEnabled: !!v.schedule?.enabled,
         group: v.groups?.[0]?.group ?? null,
       };

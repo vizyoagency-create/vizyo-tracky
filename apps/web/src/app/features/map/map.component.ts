@@ -102,6 +102,8 @@ interface BaanoolCardData {
   lat: number;
   lng: number;
   cutActive: boolean;
+  /** Sprint 2 (revue #2) — coupure commandée non confirmée (en attente). Affichage tri-état. */
+  cutPending: boolean;
   /** V1.15 — Contexte SUPER_ADMIN. */
   fleetId?: string | null;
   imei?: string | null;
@@ -858,6 +860,18 @@ const RESYNC_RADIUS_M = 150;
               @if (baanoolCard()!.group; as g) { <app-group-badge [group]="g" /> }
               <!-- Connectivité : flague un boîtier hors-ligne / non configuré. -->
               <app-connectivity-badge [state]="cardConnectivity()" [hideWhenOnline]="true" />
+              <!-- Sprint 2 (revue #2) — état coupe TRI-ÉTAT (badge statut, distinct du bouton d'action). -->
+              @if (baanoolCard()!.cutActive) {
+                <span class="bn-vcard-badge" style="color:#ef4444">
+                  <span class="bn-vcard-badge-dot" style="background:#ef4444"></span>
+                  Moteur coupé
+                </span>
+              } @else if (baanoolCard()!.cutPending) {
+                <span class="bn-vcard-badge" style="color:#f59e0b">
+                  <span class="bn-vcard-badge-dot" style="background:#f59e0b"></span>
+                  Coupure en attente
+                </span>
+              }
             </div>
             <!-- V1.15 — Meta tracker visible SA only via le badge component
                  qui s'auto-cache si role != SUPER_ADMIN. La ligne est rendue
@@ -2119,8 +2133,9 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     if (currentCard) {
       const patched = this.patchIgnitionFromCommands(pos);
       const cutActive = this.isCutActiveForTracker(pos.trackerId);
-      if (currentCard.ignition !== patched.ignition || currentCard.cutActive !== cutActive) {
-        this.baanoolCard.set({ ...currentCard, ignition: patched.ignition, cutActive });
+      const cutPending = this.isCutPendingForTracker(pos.trackerId);
+      if (currentCard.ignition !== patched.ignition || currentCard.cutActive !== cutActive || currentCard.cutPending !== cutPending) {
+        this.baanoolCard.set({ ...currentCard, ignition: patched.ignition, cutActive, cutPending });
       }
     }
   });
@@ -3663,9 +3678,11 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         if (currentCard) {
           const patched = this.patchIgnitionFromCommands(pos);
           const cutActive = this.isCutActiveForTracker(pos.trackerId);
+          const cutPending = this.isCutPendingForTracker(pos.trackerId);
           if (currentCard.speedKmh !== patched.speedKmh ||
               currentCard.ignition !== patched.ignition ||
               currentCard.cutActive !== cutActive ||
+              currentCard.cutPending !== cutPending ||
               currentCard.lat !== pos.lat ||
               currentCard.lng !== pos.lng) {
             const meta = this.vehicleMeta.get(pos.vehicleId) ?? { type: 'OTHER', plate: '?' };
@@ -3679,6 +3696,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
               lat: pos.lat,
               lng: pos.lng,
               cutActive,
+              cutPending,
             });
           }
         }
@@ -3704,6 +3722,11 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     return this.realtime.cutActiveTrackerIds().has(trackerId);
   }
 
+  /** Sprint 2 (revue #2) — coupure commandée mais non encore confirmée (tri-état). */
+  private isCutPendingForTracker(trackerId: string): boolean {
+    return this.realtime.cutPendingTrackerIds().has(trackerId);
+  }
+
   /**
    * Corrige l'ignition affichee en tenant compte des commandes moteur recentes.
    * Quand un CUT est SENT/ACKNOWLEDGED mais que l'ACC_OFF du tracker n'est pas
@@ -3713,7 +3736,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private patchIgnitionFromCommands(pos: PositionUpdateEvent): PositionUpdateEvent {
     const update = this.realtime.engineCommandUpdates().get(pos.trackerId);
     if (!update) return pos;
-    if (update.status === 'ACKNOWLEDGED' || update.status === 'SENT') {
+    // Sprint 2 — plus de patch optimiste sur un simple SENT (c'etait un faux succes) :
+    // on ne reflete l'etat que sur confirmation reelle (a ce stade la trame de
+    // position porte deja le bon ignition). Source de verite = device.
+    if (update.status === 'ACKNOWLEDGED') {
       if (update.action === 'CUT' && pos.ignition) {
         return { ...pos, ignition: false };
       }
@@ -3756,6 +3782,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       lat: pos.lat,
       lng: pos.lng,
       cutActive: this.isCutActiveForTracker(trackerId),
+      cutPending: this.isCutPendingForTracker(trackerId),
       fleetId: meta.fleetId,
       imei: meta.imei,
       lastSeenAt: meta.lastSeenAt,
@@ -3788,10 +3815,17 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       takeUntilDestroyed(this.destroyRef),
     ).subscribe({
       next: () => {
+        // Sprint 2 (revue #4) — PAS de faux succès : la commande est ENVOYÉE, pas
+        // confirmée. L'état « coupé » ne basculera qu'à la chute d'ignition (le badge
+        // carte est piloté par le WS). Toast neutre « envoyée » + attente de confirmation.
         this.toast.show({
           kind: 'info',
-          title: action === 'CUT' ? 'Moteur coupé' : 'Moteur rallumé',
-          message: hasSchedule ? `Commande envoyée — mode horaire désactivé.` : `Commande ${action} envoyée.`,
+          title: action === 'CUT' ? 'Coupure envoyée' : 'Rallumage envoyé',
+          message: action === 'CUT'
+            ? (hasSchedule
+                ? 'Mode horaire désactivé — en attente de confirmation du boîtier…'
+                : 'En attente de confirmation du boîtier (chute d\'ignition)…')
+            : (hasSchedule ? 'Mode horaire désactivé — commande transmise.' : 'Commande transmise au véhicule.'),
           duration: 4000,
         });
         this.engineModalOpen.set(null);
@@ -3799,10 +3833,15 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         this.closePopup();
       },
       error: (err) => {
+        // Sprint 2 (revue #4) — 409 = une coupure est déjà en attente (verrou anti
+        // multi-clic). Message dédié, pas un « échec » générique trompeur.
+        const is409 = err?.status === 409;
         this.toast.show({
           kind: 'error',
-          title: 'Échec commande moteur',
-          message: err?.error?.message ?? 'Erreur inconnue',
+          title: is409 ? 'Commande déjà en cours' : 'Échec commande moteur',
+          message: is409
+            ? 'Une coupure est déjà en attente de confirmation sur ce véhicule.'
+            : (err?.error?.message ?? 'Erreur inconnue'),
           duration: 6000,
         });
         this.engineModalLoading.set(false);

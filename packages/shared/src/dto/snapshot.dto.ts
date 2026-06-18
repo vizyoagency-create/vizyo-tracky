@@ -46,6 +46,16 @@ export interface VehicleSnapshotDto {
    */
   engineCutActive: boolean | null;
 
+  /**
+   * Sprint 2 (revue #2) — état coupe TRI-ÉTAT (null si le véhicule n'a pas de tracker) :
+   *   'normal'  = pas de coupure active
+   *   'pending' = coupure commandée mais non encore confirmée (ex. véhicule à l'arrêt,
+   *               non vérifiable par ignition) — à distinguer visuellement de "normal"
+   *   'cut'     = coupure confirmée (ignition tombée, ou coupure externe DEVICE_OBSERVED)
+   * `engineCutActive` reste le booléen « coupé confirmé » (= engineCutState === 'cut').
+   */
+  engineCutState?: 'normal' | 'pending' | 'cut' | null;
+
   /** V1.7 — true si un schedule horaire est actif sur ce véhicule. */
   scheduleEnabled: boolean;
 

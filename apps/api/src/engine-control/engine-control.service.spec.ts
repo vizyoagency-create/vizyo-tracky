@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   NotFoundException,
   ServiceUnavailableException,
@@ -389,6 +390,117 @@ describe('EngineControlService', () => {
         trackerId: TRACKER_ID,
         action: EngineAction.CUT,
         status: CommandStatus.REJECTED_SPEED,
+      }),
+    );
+  });
+
+  // --- Sprint 2 (Fiabilisation) ---
+
+  // 16. Obj1 — verrou : une 2e coupure est rejetee (409) tant qu'une coupure
+  // confirmable est en vol (SENT, confirmationExpected, dans la fenetre).
+  it('should reject a new CUT (409) while a confirmable CUT is in flight', async () => {
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+    prisma.engineControlCommand.findFirst.mockResolvedValue(
+      createdCommand({ status: CommandStatus.SENT, confirmationExpected: true }),
+    );
+
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin),
+    ).rejects.toThrow(ConflictException);
+    // aucune nouvelle commande ne doit etre creee
+    expect(prisma.engineControlCommand.create).not.toHaveBeenCalled();
+  });
+
+  // 17. Obj1 (ajustement) — le verrou NE bloque PAS un RESTORE, meme avec une
+  // coupure en vol (le rallumage est l'echappatoire sur, toujours autorise).
+  it('should NOT block RESTORE even when a CUT is in flight', async () => {
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+    prisma.engineControlCommand.findFirst.mockResolvedValue(
+      createdCommand({ status: CommandStatus.SENT, confirmationExpected: true }),
+    );
+    registry.send.mockReturnValue(false);
+
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.RESTORE, null, fleetAdmin),
+    ).rejects.toThrow(ServiceUnavailableException); // passe le lock, echoue au dispatch offline
+    expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ action: EngineAction.RESTORE }),
+    });
+  });
+
+  // 18. Obj2 — CUT d'un vehicule en marche (ignition ON) => confirmationExpected=true.
+  it('should set confirmationExpected=true for a CUT of a running vehicle', async () => {
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+    prisma.position.findFirst.mockResolvedValue({ ...recentPosition(3), ignition: true });
+    registry.send.mockReturnValue(true);
+
+    await service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin);
+    expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ confirmationExpected: true }),
+    });
+  });
+
+  // 19. Obj2 — CUT d'un vehicule a l'arret (ignition OFF) => confirmationExpected=false
+  // (etat "non verifiable" : pas de chute d'ignition observable).
+  it('should set confirmationExpected=false for a CUT at rest (ignition OFF)', async () => {
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+    prisma.position.findFirst.mockResolvedValue({ ...recentPosition(0), ignition: false });
+    registry.send.mockReturnValue(true);
+
+    await service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin);
+    expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ confirmationExpected: false }),
+    });
+  });
+
+  // 20. Obj2 — RESTORE => confirmationExpected=false (jamais confirmable par ignition).
+  it('should set confirmationExpected=false for RESTORE', async () => {
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+    registry.send.mockReturnValue(true);
+
+    await service.requestCommand(TRACKER_ID, EngineAction.RESTORE, null, fleetAdmin);
+    expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ action: EngineAction.RESTORE, confirmationExpected: false }),
+    });
+  });
+
+  // 21. Obj1 (revue #3) — le verrou ne s'applique qu'aux commandes MANUELLES : une
+  // coupure SCHEDULER n'est JAMAIS 409 (le scheduler re-evalue a chaque tick et ne
+  // doit pas etre bloque par une coupure manuelle en attente de confirmation).
+  it('should NOT block a SCHEDULER CUT even when a confirmable CUT is in flight', async () => {
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+    prisma.position.findFirst.mockResolvedValue({ ...recentPosition(0), ignition: true });
+    prisma.engineControlCommand.findFirst.mockResolvedValue(
+      createdCommand({ status: CommandStatus.SENT, confirmationExpected: true }),
+    );
+    registry.send.mockReturnValue(false);
+
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin, 'SCHEDULER'),
+    ).rejects.toThrow(ServiceUnavailableException); // passe le verrou, echoue au dispatch offline
+    expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ action: EngineAction.CUT, source: 'SCHEDULER' }),
+    });
+  });
+
+  // 22. Obj1 (revue #6) — la requete du verrou borne les commandes par la fenetre de
+  // confirmation (createdAt >= now - window) : un PENDING orphelin plus ancien que la
+  // fenetre (dispatch crashe) ne bloque plus indefiniment les coupures suivantes.
+  it('should bound the in-flight lock query by the confirmation window', async () => {
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+    prisma.position.findFirst.mockResolvedValue({ ...recentPosition(0), ignition: true });
+    prisma.engineControlCommand.findFirst.mockResolvedValue(null); // rien en vol DANS la fenetre
+    registry.send.mockReturnValue(false);
+
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin),
+    ).rejects.toThrow(ServiceUnavailableException);
+
+    expect(prisma.engineControlCommand.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          createdAt: expect.objectContaining({ gte: expect.any(Date) }),
+        }),
       }),
     );
   });
