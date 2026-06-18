@@ -6,6 +6,7 @@ import { LucideAngularModule, Plus, Truck, ExternalLink, FolderOpen, Radio, X, S
 import { firstValueFrom } from 'rxjs';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { PreferencesService } from '../../core/services/preferences.service';
+import { AuthService } from '../../core/services/auth.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { TrackersApiService } from '../../core/services/trackers.service';
 import { getVehicleSvg, getVehicleTypeLabel } from '../../shared/utils/vehicle-icons';
@@ -709,12 +710,16 @@ export class VehiclesListComponent implements OnInit {
   private readonly realtime = inject(RealtimeService);
   protected readonly perms = inject(PermissionsService);
   private readonly preferences = inject(PreferencesService);
+  private readonly auth = inject(AuthService);
   private readonly route = inject(ActivatedRoute);
   // Sprint 1 — section de groupe vers laquelle scroller au retour depuis le détail.
   private readonly pendingScrollGroup = signal<string | null>(null);
 
   // #3 — vue liste : cartes (défaut), tableau, ou groupée, persistée dans PreferencesService.
-  protected readonly viewMode = signal<'cards' | 'table' | 'grouped'>(this.preferences.prefs().vehiclesView);
+  // Sprint 3 — le veilleur de nuit démarre toujours en vue groupée (son périmètre = ses groupes).
+  protected readonly viewMode = signal<'cards' | 'table' | 'grouped'>(
+    this.auth.isWatchman() ? 'grouped' : this.preferences.prefs().vehiclesView,
+  );
 
   // Sprint 1 (Fondation Groupes) — sections de groupes repliées (clé = groupId ou '__none__').
   protected readonly collapsedGroups = signal<Set<string>>(new Set());

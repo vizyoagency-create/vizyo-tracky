@@ -61,9 +61,11 @@ export class PositionBroadcastBuffer {
       // instances (adapter Redis multi-instance) -> batches silencieusement droppes
       // pour eux. socket.io route deja l'emit vers tous les clients de la room sur
       // toutes les instances ; emettre vers une room vide est un no-op bon marche.
+      // Sprint 3 — batch des positions sur la room dédiée `pos:fleet:*` : le veilleur de
+      // nuit ne la rejoint pas → il ne reçoit aucun POSITIONS_BATCH (« sans live » serveur).
       server
-        .to(`fleet:${fleetId}`)
-        .to('fleet:*')
+        .to(`pos:fleet:${fleetId}`)
+        .to('pos:fleet:*')
         .emit(WS_EVENTS.POSITIONS_BATCH, { fleetId, positions });
       fleetBucket.clear();
     }

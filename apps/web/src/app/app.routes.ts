@@ -3,6 +3,7 @@ import { authGuard } from './core/auth/auth.guard';
 import { permissionGuard } from './core/guards/permission.guard';
 import { roleGuard } from './core/guards/role.guard';
 import { superAdminGuard } from './core/guards/super-admin.guard';
+import { watchmanChildGuard } from './core/guards/watchman.guard';
 
 export const routes: Routes = [
   {
@@ -51,6 +52,8 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./layouts/dashboard-layout.component').then((m) => m.DashboardLayoutComponent),
     canActivate: [authGuard],
+    // Sprint 3 — confine le veilleur de nuit à /vehicles* (allowlist default-deny).
+    canActivateChild: [watchmanChildGuard],
     children: [
       {
         path: 'dashboard',

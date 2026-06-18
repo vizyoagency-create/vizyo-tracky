@@ -15,7 +15,7 @@
  * SUPER_ADMIN et FLEET_ADMIN bypass (tous booleens true).
  */
 
-export type UserRoleSlug = 'SUPER_ADMIN' | 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER';
+export type UserRoleSlug = 'SUPER_ADMIN' | 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN';
 
 export interface UserPermissions {
   vehicles_view: boolean;
@@ -24,6 +24,8 @@ export interface UserPermissions {
   vehicles_delete: boolean;
   /** Couper / redemarrer le moteur du vehicule. Validation metier en plus : vitesse < 20 km/h, position fraiche, fix GPS valide. */
   engine_control: boolean;
+  /** Sprint 3 — gerer les horaires (schedules) marche/coupure d'un vehicule. Toggle per-user (veilleur de nuit, OFF par defaut). */
+  schedules_manage: boolean;
   groups_view: boolean;
   groups_manage: boolean;
   geofences_view: boolean;
@@ -51,6 +53,7 @@ const VIEWER_DEFAULTS: UserPermissions = {
   vehicles_edit: false,
   vehicles_delete: false,
   engine_control: false,
+  schedules_manage: false,
   groups_view: false,
   groups_manage: false,
   geofences_view: true,
@@ -73,6 +76,7 @@ const FLEET_MANAGER_DEFAULTS: UserPermissions = {
   vehicles_edit: true,
   vehicles_delete: true,
   engine_control: false,
+  schedules_manage: true,
   groups_view: true,
   groups_manage: true,
   geofences_view: true,
@@ -95,6 +99,7 @@ const ADMIN_DEFAULTS: UserPermissions = {
   vehicles_edit: true,
   vehicles_delete: true,
   engine_control: true,
+  schedules_manage: true,
   groups_view: true,
   groups_manage: true,
   geofences_view: true,
@@ -111,12 +116,42 @@ const ADMIN_DEFAULTS: UserPermissions = {
   sims_assign: true,
 };
 
+/**
+ * Sprint 3 — « veilleur de nuit » : voit les vehicules et peut couper/redemarrer
+ * le moteur (bloquer/debloquer), rien d'autre. `schedules_manage` est OFF par
+ * defaut (toggle per-user accorde par un admin). Aucune autre capacite.
+ */
+const NIGHT_WATCHMAN_DEFAULTS: UserPermissions = {
+  vehicles_view: true,
+  vehicles_create: false,
+  vehicles_edit: false,
+  vehicles_delete: false,
+  engine_control: true,
+  schedules_manage: false,
+  groups_view: false,
+  groups_manage: false,
+  geofences_view: false,
+  geofences_manage: false,
+  alerts_view: false,
+  alerts_acknowledge: false,
+  alerts_configure: false,
+  reports_view: false,
+  users_view: false,
+  users_manage: false,
+  drivers_view: false,
+  drivers_manage: false,
+  sims_view: false,
+  sims_assign: false,
+};
+
 export function getDefaultPermissions(role: UserRoleSlug): UserPermissions {
   switch (role) {
     case 'VIEWER':
       return { ...VIEWER_DEFAULTS };
     case 'FLEET_MANAGER':
       return { ...FLEET_MANAGER_DEFAULTS };
+    case 'NIGHT_WATCHMAN':
+      return { ...NIGHT_WATCHMAN_DEFAULTS };
     case 'FLEET_ADMIN':
     case 'SUPER_ADMIN':
       return { ...ADMIN_DEFAULTS };
@@ -223,6 +258,11 @@ export const PERMISSION_LABELS: Record<keyof UserPermissions, PermissionLabel> =
     label: 'Couper / redemarrer le moteur',
     description: 'Action sensible. Soumise aux contraintes metier (vitesse, fix GPS).',
   },
+  schedules_manage: {
+    group: 'Horaires',
+    label: 'Gerer les horaires marche/coupure',
+    description: 'Definir les plages horaires d\'allumage/coupure automatique d\'un vehicule.',
+  },
   groups_view: { group: 'Groupes', label: 'Voir les groupes de vehicules' },
   groups_manage: { group: 'Groupes', label: 'Gerer les groupes (creer, renommer, supprimer)' },
   geofences_view: { group: 'Geofences', label: 'Voir les geofences' },
@@ -250,6 +290,7 @@ export const PERMISSION_LABELS: Record<keyof UserPermissions, PermissionLabel> =
 /** Ordre d'affichage canonique des groupes dans l'UI. */
 export const PERMISSION_GROUP_ORDER: readonly string[] = [
   'Vehicules',
+  'Horaires',
   'Groupes',
   'Geofences',
   'Alertes',

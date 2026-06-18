@@ -23,6 +23,13 @@ import { AckWaiterService } from '../tracker-commands/ack-waiter.service';
 const STALE_THRESHOLD_MOVING_MS = 60 * 1000; // position fraîche exigée si véhicule roulait
 const REST_SPEED_KMH = 5; // en-dessous = véhicule à l'arrêt, pas de seuil stale
 const MAX_SPEED_FOR_CUT = 20;
+/**
+ * Sprint 3 — durée minimale d'immobilité avant qu'un VEILLEUR puisse couper
+ * (anti-coupure d'un véhicule en mouvement). Env plateforme `ENGINE_CUT_MIN_STOPPED_S`
+ * (défaut 120 s). RÉSERVÉ au rôle NIGHT_WATCHMAN ; les admins/managers gardent la
+ * coupe S2 (≤ 20 km/h, antivol préservé).
+ */
+const ENGINE_CUT_MIN_STOPPED_MS = Math.max(0, Number(process.env.ENGINE_CUT_MIN_STOPPED_S) || 120) * 1000;
 const ENGINE_ACK_TIMEOUT_MS = 15_000;
 const ENGINE_STOP_ACK_PATTERN = /imei:\d{15},J/i;
 const ENGINE_RESUME_ACK_PATTERN = /imei:\d{15},K/i;
@@ -133,20 +140,11 @@ export class EngineControlService {
       });
 
       if (!lastPosition) {
-        const cmd = await this.prisma.engineControlCommand.create({
-          data: {
-            trackerId,
-            action,
-            reason,
-            requestedBy: requestedBy.userId,
-            source,
-            status: CommandStatus.REJECTED_SPEED,
-            lastError: 'Aucune position connue pour ce tracker',
-          },
-        });
-        this.emitUpdate(cmd, fleetId);
-        this.logger.warn(`Command ${cmd.id} REJECTED: aucune position connue`);
-        throw new ForbiddenException('Aucune position connue pour ce tracker');
+        return this.rejectSpeed(
+          { trackerId, action, reason, userId: requestedBy.userId, source },
+          fleetId,
+          'Aucune position connue pour ce tracker',
+        );
       }
 
       const ageMs = Date.now() - lastPosition.timestamp.getTime();
@@ -155,54 +153,61 @@ export class EngineControlService {
       const isAtRest = lastPosition.speedKmh <= REST_SPEED_KMH;
 
       if (!isAtRest && ageMs > STALE_THRESHOLD_MOVING_MS) {
-        const cmd = await this.prisma.engineControlCommand.create({
-          data: {
-            trackerId,
-            action,
-            reason,
-            requestedBy: requestedBy.userId,
-            status: CommandStatus.REJECTED_SPEED,
-            source,
-            lastError: `Position trop ancienne (${Math.round(ageMs / 1000)}s, seuil ${Math.round(STALE_THRESHOLD_MOVING_MS / 1000)}s)`,
-          },
-        });
-        this.emitUpdate(cmd, fleetId);
-        this.logger.warn(`Command ${cmd.id} REJECTED: position stale (${ageMs}ms, threshold ${STALE_THRESHOLD_MOVING_MS}ms)`);
-        throw new ForbiddenException('Position trop ancienne (stale)');
+        return this.rejectSpeed(
+          { trackerId, action, reason, userId: requestedBy.userId, source },
+          fleetId,
+          `Position trop ancienne (${Math.round(ageMs / 1000)}s, seuil ${Math.round(STALE_THRESHOLD_MOVING_MS / 1000)}s)`,
+          'Position trop ancienne (stale)',
+        );
       }
 
       if (!lastPosition.valid) {
-        const cmd = await this.prisma.engineControlCommand.create({
-          data: {
-            trackerId,
-            action,
-            reason,
-            requestedBy: requestedBy.userId,
-            status: CommandStatus.REJECTED_SPEED,
-            source,
-            lastError: 'Fix GPS invalide',
-          },
-        });
-        this.emitUpdate(cmd, fleetId);
-        this.logger.warn(`Command ${cmd.id} REJECTED: fix GPS invalide`);
-        throw new ForbiddenException('Fix GPS invalide');
+        return this.rejectSpeed(
+          { trackerId, action, reason, userId: requestedBy.userId, source },
+          fleetId,
+          'Fix GPS invalide',
+        );
       }
 
       if (lastPosition.speedKmh > MAX_SPEED_FOR_CUT) {
-        const cmd = await this.prisma.engineControlCommand.create({
-          data: {
-            trackerId,
-            action,
-            reason,
-            requestedBy: requestedBy.userId,
-            status: CommandStatus.REJECTED_SPEED,
-            source,
-            lastError: `Vitesse trop élevée : ${lastPosition.speedKmh} km/h`,
-          },
+        return this.rejectSpeed(
+          { trackerId, action, reason, userId: requestedBy.userId, source },
+          fleetId,
+          `Vitesse trop élevée : ${lastPosition.speedKmh} km/h`,
+        );
+      }
+
+      // Sprint 3 — règle « immobile depuis X min », RÉSERVÉE AU VEILLEUR (NIGHT_WATCHMAN).
+      // Les admins/managers gardent la coupe S2 (≤ 20 km/h) → antivol préservé. Le veilleur
+      // ne peut couper qu'un véhicule à l'arrêt (≤ REST_SPEED_KMH) ET immobile depuis au moins
+      // ENGINE_CUT_MIN_STOPPED_MS — c.-à-d. AUCUNE trame > REST_SPEED_KMH dans la fenêtre.
+      if (requestedBy.role === UserRole.NIGHT_WATCHMAN) {
+        const reject = (lastError: string): Promise<never> =>
+          this.rejectSpeed({ trackerId, action, reason, userId: requestedBy.userId, source }, fleetId, lastError);
+
+        // 1) Actuellement en mouvement (> 5 km/h) — refusé même si ≤ 20 (qui passerait pour un admin).
+        if (lastPosition.speedKmh > REST_SPEED_KMH) {
+          await reject(`Véhicule en mouvement (${lastPosition.speedKmh} km/h) — coupure réservée à l'arrêt`);
+        }
+
+        // 2) Immobile depuis assez longtemps ? On cherche une trame EN MOUVEMENT (> 5 km/h)
+        // dans la fenêtre [now - ENGINE_CUT_MIN_STOPPED_MS ; now] (bornée → 1 index-scan
+        // [trackerId, timestamp desc]). Si on en trouve une, le véhicule a bougé trop
+        // récemment → refus. Sinon (garé depuis ≥ la fenêtre, même heartbeat récent) → OK.
+        const windowStart = new Date(Date.now() - ENGINE_CUT_MIN_STOPPED_MS);
+        const recentMovement = await this.prisma.position.findFirst({
+          where: { trackerId, speedKmh: { gt: REST_SPEED_KMH }, timestamp: { gte: windowStart } },
+          orderBy: { timestamp: 'desc' },
+          select: { timestamp: true },
         });
-        this.emitUpdate(cmd, fleetId);
-        this.logger.warn(`Command ${cmd.id} REJECTED: vitesse ${lastPosition.speedKmh} km/h`);
-        throw new ForbiddenException(`Vitesse trop élevée : ${lastPosition.speedKmh} km/h`);
+        if (recentMovement) {
+          const stoppedForMs = Date.now() - recentMovement.timestamp.getTime();
+          await reject(
+            `Véhicule arrêté depuis seulement ${Math.round(stoppedForMs / 1000)}s — minimum requis ${Math.round(
+              ENGINE_CUT_MIN_STOPPED_MS / 1000,
+            )}s`,
+          );
+        }
       }
 
       // Sprint 2 (Obj 2) — garde-fous passés : si l'ignition est ON, une chute
@@ -254,6 +259,40 @@ export class EngineControlService {
     }
 
     return command;
+  }
+
+  /**
+   * Sprint 3 (revue) — fabrique d'un refus `REJECTED_SPEED` : crée la commande, émet la
+   * MAJ WS, loggue, puis lève. Factorise les 5 chemins de refus du bloc CUT (no-position,
+   * stale, fix invalide, vitesse, règle veilleur). `throwMessage` peut différer du
+   * `lastError` persisté (ex. message « stale » court côté HTTP vs détail en base).
+   */
+  private async rejectSpeed(
+    params: {
+      trackerId: string;
+      action: EngineAction;
+      reason: string | null;
+      userId: string;
+      source: 'MANUAL' | 'SCHEDULER';
+    },
+    fleetId: string,
+    lastError: string,
+    throwMessage: string = lastError,
+  ): Promise<never> {
+    const cmd = await this.prisma.engineControlCommand.create({
+      data: {
+        trackerId: params.trackerId,
+        action: params.action,
+        reason: params.reason,
+        requestedBy: params.userId,
+        source: params.source,
+        status: CommandStatus.REJECTED_SPEED,
+        lastError,
+      },
+    });
+    this.emitUpdate(cmd, fleetId);
+    this.logger.warn(`Command ${cmd.id} REJECTED: ${lastError}`);
+    throw new ForbiddenException(throwMessage);
   }
 
   private async dispatchCommand(

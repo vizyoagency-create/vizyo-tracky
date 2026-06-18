@@ -27,6 +27,8 @@ export class AuthService {
   private readonly _user = signal<AuthUser | null>(this.loadUser());
   readonly user = this._user.asReadonly();
   readonly isAuthenticated = computed(() => !!this._user());
+  /** Sprint 3 — true si l'utilisateur courant est un veilleur de nuit (rôle restreint NIGHT_WATCHMAN). */
+  readonly isWatchman = computed(() => this._user()?.role === 'NIGHT_WATCHMAN');
   private refreshPromise: Promise<string | null> | null = null;
 
   get token(): string | null {

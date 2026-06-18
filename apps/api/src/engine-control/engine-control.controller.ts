@@ -31,7 +31,13 @@ export class EngineControlController {
    * sont appliquees dans le service apres le passage du guard.
    */
   @Post('trackers/:trackerId/commands')
-  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  @Roles(
+    UserRole.FLEET_ADMIN,
+    UserRole.SUPER_ADMIN,
+    UserRole.FLEET_MANAGER,
+    UserRole.VIEWER,
+    UserRole.NIGHT_WATCHMAN,
+  )
   @RequireVehiclePermission('engine_control', { paramName: 'trackerId' })
   requestCommand(
     @Param('trackerId') trackerId: string,

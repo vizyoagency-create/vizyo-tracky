@@ -235,8 +235,10 @@ export class LoginComponent implements OnInit {
       this.themeService.init();
       this.realtime.connect(data.accessToken);
       // V1.12 — Mode Baanool : connexion directe sur la carte au lieu du dashboard.
+      // Sprint 3 — veilleur de nuit : connexion directe sur sa liste véhicules (seul périmètre).
       const baanool = data.user.preferences?.uiMode === 'baanool';
-      this.router.navigate([baanool ? '/map' : '/dashboard']);
+      const home = this.auth.isWatchman() ? '/vehicles' : baanool ? '/map' : '/dashboard';
+      this.router.navigate([home]);
     } catch {
       this.error.set('Erreur de connexion au serveur');
     } finally {

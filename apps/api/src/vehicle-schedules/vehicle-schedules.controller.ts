@@ -12,22 +12,27 @@ import {
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { RequireVehiclePermission } from '../auth/decorators/vehicle-permissions.decorator';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpsertVehicleScheduleDto } from './dto/upsert-vehicle-schedule.dto';
 import { VehicleSchedulesService } from './vehicle-schedules.service';
 
 @Controller('vehicles/:vehicleId/schedule')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class VehicleSchedulesController {
   constructor(
     private readonly schedules: VehicleSchedulesService,
     private readonly prisma: PrismaService,
   ) {}
 
+  // Sprint 3 — ouvert au veilleur SI le toggle `schedules_manage` est ON (sinon 403),
+  // et scopé per-véhicule (resolveForVehicle → null hors-scope → 403). FM/admin inchangés.
   @Get()
-  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.NIGHT_WATCHMAN)
+  @RequireVehiclePermission('schedules_manage', { paramName: 'vehicleId' })
   get(
     @Param('vehicleId') vehicleId: string,
     @Req() req: AuthenticatedRequest,
@@ -40,7 +45,8 @@ export class VehicleSchedulesController {
   }
 
   @Put()
-  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.NIGHT_WATCHMAN)
+  @RequireVehiclePermission('schedules_manage', { paramName: 'vehicleId' })
   upsert(
     @Param('vehicleId') vehicleId: string,
     @Body() dto: UpsertVehicleScheduleDto,
@@ -59,7 +65,8 @@ export class VehicleSchedulesController {
    * vehicule (lecture seule).
    */
   @Get('history')
-  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.NIGHT_WATCHMAN)
+  @RequireVehiclePermission('schedules_manage', { paramName: 'vehicleId' })
   async history(
     @Param('vehicleId') vehicleId: string,
     @Req() req: AuthenticatedRequest,

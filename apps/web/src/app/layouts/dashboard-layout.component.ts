@@ -764,15 +764,21 @@ export class DashboardLayoutComponent {
     this.router.navigate(['/login']);
   }
 
-  protected readonly bottomItems = computed(() => [
-    { label: 'Dashboard', route: '/dashboard', icon: LayoutDashboard },
-    ...(this.perms.can('vehicles_view') ? [
-      { label: 'Carte', route: '/map', icon: Map },
-      { label: 'Véhicules', route: '/vehicles', icon: Truck },
-    ] : []),
-    ...(this.perms.can('alerts_view') ? [{ label: 'Alertes', route: '/alerts', icon: Bell }] : []),
-    { label: 'Plus', route: 'more', icon: MoreHorizontal },
-  ]);
+  protected readonly bottomItems = computed(() => {
+    // Sprint 3 — veilleur de nuit : barre mobile réduite à « Véhicules ».
+    if (this.auth.isWatchman()) {
+      return [{ label: 'Véhicules', route: '/vehicles', icon: Truck }];
+    }
+    return [
+      { label: 'Dashboard', route: '/dashboard', icon: LayoutDashboard },
+      ...(this.perms.can('vehicles_view') ? [
+        { label: 'Carte', route: '/map', icon: Map },
+        { label: 'Véhicules', route: '/vehicles', icon: Truck },
+      ] : []),
+      ...(this.perms.can('alerts_view') ? [{ label: 'Alertes', route: '/alerts', icon: Bell }] : []),
+      { label: 'Plus', route: 'more', icon: MoreHorizontal },
+    ];
+  });
 
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
@@ -835,6 +841,11 @@ export class DashboardLayoutComponent {
   protected readonly network = inject(NetworkStatusService);
 
   protected readonly navItems = computed(() => {
+    // Sprint 3 — veilleur de nuit : navigation réduite à « Véhicules » (liste groupée + détail).
+    // Cosmétique : le périmètre réel est garanti serveur (403) + watchmanChildGuard.
+    if (this.auth.isWatchman()) {
+      return [{ label: 'Véhicules', route: '/vehicles', icon: Truck }];
+    }
     const isSuperAdmin = this.auth.user()?.role === 'SUPER_ADMIN';
     // V1.12 — Mode Baanool : menu reduit aux essentiels. Pas de dashboard,
     // groupes, geofences, rapports, conducteurs, utilisateurs. Garde Carte,

@@ -14,6 +14,8 @@ enum UserRole {
   FLEET_ADMIN
   FLEET_MANAGER
   VIEWER
+  // Sprint 3 — rôle restreint « veilleur de nuit » : bloque/débloque les véhicules uniquement.
+  NIGHT_WATCHMAN
 }
 
 enum TrackerStatus {
