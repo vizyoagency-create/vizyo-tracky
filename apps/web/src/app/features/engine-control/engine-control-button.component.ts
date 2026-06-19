@@ -197,9 +197,30 @@ export class EngineControlButtonComponent implements OnInit {
   }
 
   /** Sprint 2 — derniere commande APP (hors DEVICE_OBSERVED) = l'action en cours. */
-  private readonly lastAppCommand = computed(
-    () => this.recentCommands().find((c) => c.source !== 'DEVICE_OBSERVED') ?? null,
-  );
+  private readonly lastAppCommand = computed<EngineControlCommandDto | null>(() => {
+    const fromList = this.recentCommands().find((c) => c.source !== 'DEVICE_OBSERVED');
+    if (fromList) return fromList;
+    // Sprint 3 — veilleur : recentCommands est vide (GET /commands = 403). On reconstruit la
+    // dernière commande app depuis l'event WS ENGINE_COMMAND_UPDATED (reçu via ops:fleet) pour
+    // que commandState (pastille « confirmée / non vérifiable / échec ») s'affiche aussi pour
+    // lui — sinon le veilleur n'a AUCUN retour d'état après la coupe (cf. revue B5).
+    const ev = this.realtime.engineCommandUpdates().get(this.trackerId());
+    if (!ev || ev.source === 'DEVICE_OBSERVED') return null;
+    return {
+      id: ev.commandId,
+      trackerId: ev.trackerId,
+      action: ev.action,
+      status: ev.status,
+      reason: null,
+      source: ev.source ?? 'MANUAL',
+      lastError: ev.lastError,
+      requestedBy: '',
+      createdAt: ev.sentAt ?? ev.ackedAt ?? '',
+      sentAt: ev.sentAt ?? null,
+      confirmationExpected: ev.confirmationExpected ?? false,
+      ackedAt: ev.ackedAt ?? null,
+    };
+  });
 
   /**
    * Sprint 2 — etat honnete de la derniere commande app : en attente / confirmee /
