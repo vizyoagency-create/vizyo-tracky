@@ -510,6 +510,12 @@ export class RealtimeService {
    */
   private async hydrate(): Promise<void> {
     try {
+      // Sprint 3 (revue C1) — capture de l'état coupe AVANT le fetch snapshot. Le snapshot
+      // peut être antérieur à un event WS arrivé pendant le round-trip ; on ré-appliquera
+      // les deltas live après (cf. plus bas) pour ne PAS écraser une coupe/un rallumage
+      // reçus entre-temps (sinon le bouton du veilleur repasse à tort sur « Couper »).
+      const cutBefore = new Set(this._cutActiveTrackerIds());
+      const pendingBefore = new Set(this._cutPendingTrackerIds());
       const res = await firstValueFrom(
         this.http.get<FleetSnapshotResponse>('/api/vehicles/snapshot'),
       );
@@ -558,6 +564,15 @@ export class RealtimeService {
         if (st === 'cut' || (st == null && v.engineCutActive)) cutIds.add(v.trackerId);
         else if (st === 'pending') pendingIds.add(v.trackerId);
       }
+      // Ré-applique les deltas WS survenus PENDANT le fetch (cf. capture cutBefore/pendingBefore) :
+      // un tracker ajouté/retiré en live l'emporte sur le snapshot (potentiellement périmé) →
+      // pas de boucle de re-coupe au retour d'onglet.
+      const cutNow = this._cutActiveTrackerIds();
+      const pendingNow = this._cutPendingTrackerIds();
+      for (const id of cutNow) if (!cutBefore.has(id)) cutIds.add(id);
+      for (const id of cutBefore) if (!cutNow.has(id)) cutIds.delete(id);
+      for (const id of pendingNow) if (!pendingBefore.has(id)) pendingIds.add(id);
+      for (const id of pendingBefore) if (!pendingNow.has(id)) pendingIds.delete(id);
       this._cutActiveTrackerIds.set(cutIds);
       this._cutPendingTrackerIds.set(pendingIds);
 

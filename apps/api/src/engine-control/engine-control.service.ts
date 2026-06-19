@@ -220,8 +220,13 @@ export class EngineControlService {
     if (source === 'MANUAL') {
       const vehicle = tracker.vehicle;
       if (vehicle) {
+        // Sprint 3 (revue) — le veilleur (NIGHT_WATCHMAN) ne gère PAS les plannings (gate
+        // `schedules_manage`). On NE désactive donc JAMAIS le planning sur sa demande, même
+        // si `disableSchedule:true` est forcé dans le body (sinon le gate horaires est
+        // contourné via la commande moteur) : il retombe sur l'override temporaire 1h.
+        const mayDisableSchedule = disableSchedule && requestedBy.role !== UserRole.NIGHT_WATCHMAN;
         try {
-          if (disableSchedule) {
+          if (mayDisableSchedule) {
             // Désactiver complètement le schedule (l'utilisateur a confirmé)
             await this.prisma.vehicleSchedule.updateMany({
               where: { vehicleId: vehicle.id, enabled: true },

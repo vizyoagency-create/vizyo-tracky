@@ -582,4 +582,31 @@ describe('EngineControlService', () => {
       data: expect.objectContaining({ action: EngineAction.RESTORE }),
     });
   });
+
+  // Sprint 3 (revue A1) — `disableSchedule` ne doit PAS contourner le gate `schedules_manage`.
+  it('NIGHT_WATCHMAN avec disableSchedule:true → override 1h, NE désactive PAS le planning', async () => {
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+    prisma.position.findFirst
+      .mockResolvedValueOnce(recentPosition(0)) // lastPosition : à l'arrêt
+      .mockResolvedValueOnce(null); // immobile depuis > 2 min (aucune trame en mouvement)
+    registry.send.mockReturnValue(true);
+    await service.requestCommand(TRACKER_ID, EngineAction.CUT, null, nightWatchman, 'MANUAL', true);
+    // Le veilleur n'a pas schedules_manage → disableSchedule ignoré → override 1h, PAS de désactivation.
+    expect(prisma.vehicleSchedule.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ overrideUntil: expect.any(Date) }) }),
+    );
+    expect(prisma.vehicleSchedule.updateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ enabled: false }) }),
+    );
+  });
+
+  it('FLEET_ADMIN avec disableSchedule:true → désactive bien le planning (a schedules_manage)', async () => {
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+    prisma.position.findFirst.mockResolvedValue(recentPosition(0));
+    registry.send.mockReturnValue(true);
+    await service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin, 'MANUAL', true);
+    expect(prisma.vehicleSchedule.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ enabled: false }) }),
+    );
+  });
 });
