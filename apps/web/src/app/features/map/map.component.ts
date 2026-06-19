@@ -3841,7 +3841,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
           title: is409 ? 'Commande déjà en cours' : 'Échec commande moteur',
           message: is409
             ? 'Une coupure est déjà en attente de confirmation sur ce véhicule.'
-            : (err?.error?.message ?? 'Erreur inconnue'),
+            : (err?.error?.error?.message ?? err?.error?.message ?? 'Erreur inconnue'),
           duration: 6000,
         });
         // Fermer la modal aussi sur erreur/409 (sinon elle reste ouverte et masque le toast). Cf smoke prod 2026-06-18.

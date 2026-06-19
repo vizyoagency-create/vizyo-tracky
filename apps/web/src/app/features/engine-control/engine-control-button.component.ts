@@ -422,7 +422,12 @@ export class EngineControlButtonComponent implements OnInit {
 
   private extractErrorMessage(err: unknown): string {
     if (err instanceof HttpErrorResponse) {
-      return err.error?.message ?? err.message ?? 'Erreur inconnue';
+      // L'API enveloppe ses erreurs : `{ error: { code, message, requestId } }`.
+      // On lit d'abord le message de l'enveloppe, puis les formes plates en repli —
+      // sinon l'opérateur verrait « Http failure response … 403 » au lieu de la vraie
+      // raison (ex. « Véhicule en mouvement (10 km/h) — coupure réservée à l'arrêt »).
+      const body = err.error as { error?: { message?: string }; message?: string } | null;
+      return body?.error?.message ?? body?.message ?? err.message ?? 'Erreur inconnue';
     }
     return String(err);
   }
