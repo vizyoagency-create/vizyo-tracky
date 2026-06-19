@@ -162,7 +162,14 @@ export class EngineControlButtonComponent implements OnInit {
     // coupé, RESTORE = rallumé). Sans ce repli le bouton restait bloqué sur « Couper » → le
     // veilleur ne pouvait JAMAIS rallumer (il recoupait à chaque clic).
     if (cmds.length === 0) {
-      return this.realtime.cutActiveTrackerIds().has(this.trackerId());
+      // Coupé CONFIRMÉ (cutActiveTrackerIds) OU coupé EN ATTENTE de confirmation
+      // (cutPendingTrackerIds) → on propose « Rétablir » dans les deux cas. Sinon le
+      // veilleur — privé du détail des commandes (commandState) — reste sur « Couper »
+      // tant que la coupe n'est pas confirmée et reclique en boucle (observé en prod :
+      // 3 CUT d'affilée, véhicule bloqué « en attente »). Un RESTORE ou un FAILED nettoie
+      // les DEUX ensembles côté RealtimeService → le bouton revient à « Couper ».
+      const tid = this.trackerId();
+      return this.realtime.cutActiveTrackerIds().has(tid) || this.realtime.cutPendingTrackerIds().has(tid);
     }
     // Sprint 2 (Obj 3) — etat "coupe" = derniere commande CONFIRMEE (ACKNOWLEDGED),
     // TOUTES sources incluses (DEVICE_OBSERVED = coupure SMS/externe detectee par la
