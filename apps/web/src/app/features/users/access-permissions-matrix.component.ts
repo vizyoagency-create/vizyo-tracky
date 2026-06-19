@@ -16,7 +16,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 export interface MatrixDrawerData {
   userId: string;
   userEmail: string;
-  userRole: 'SUPER_ADMIN' | 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER';
+  userRole: 'SUPER_ADMIN' | 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN';
   groups: VehicleGroup[];
   vehicles: VehicleDetailDto[];
 }

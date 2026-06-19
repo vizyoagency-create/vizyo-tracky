@@ -30,6 +30,8 @@ const ROLE_DEFAULTS: Record<string, Record<string, boolean>> = {
   VIEWER: { vehicles_view: true, vehicles_create: false, vehicles_edit: false, vehicles_delete: false, groups_view: false, groups_manage: false, geofences_view: true, geofences_manage: false, alerts_view: true, alerts_acknowledge: false, reports_view: true, users_view: false, users_manage: false, drivers_view: true, drivers_manage: false },
   FLEET_MANAGER: { vehicles_view: true, vehicles_create: true, vehicles_edit: true, vehicles_delete: true, groups_view: true, groups_manage: true, geofences_view: true, geofences_manage: true, alerts_view: true, alerts_acknowledge: true, reports_view: true, users_view: false, users_manage: false, drivers_view: true, drivers_manage: true },
   FLEET_ADMIN: { vehicles_view: true, vehicles_create: true, vehicles_edit: true, vehicles_delete: true, groups_view: true, groups_manage: true, geofences_view: true, geofences_manage: true, alerts_view: true, alerts_acknowledge: true, reports_view: true, users_view: true, users_manage: true, drivers_view: true, drivers_manage: true },
+  // Sprint 3 — veilleur de nuit : voit ses véhicules + coupe/redémarre le moteur (engine_control), rien d'autre.
+  NIGHT_WATCHMAN: { vehicles_view: true, vehicles_create: false, vehicles_edit: false, vehicles_delete: false, engine_control: true, schedules_manage: false, groups_view: false, groups_manage: false, geofences_view: false, geofences_manage: false, alerts_view: false, alerts_acknowledge: false, reports_view: false, users_view: false, users_manage: false, drivers_view: false, drivers_manage: false },
 };
 
 @Component({
@@ -143,6 +145,10 @@ const ROLE_DEFAULTS: Record<string, Record<string, boolean>> = {
                 <button (click)="setRole('FLEET_MANAGER')"
                   class="role-btn" [class.active]="role === 'FLEET_MANAGER'" [class.manager]="role === 'FLEET_MANAGER'">
                   Manager
+                </button>
+                <button (click)="setRole('NIGHT_WATCHMAN')"
+                  class="role-btn" [class.active]="role === 'NIGHT_WATCHMAN'" [class.viewer]="role === 'NIGHT_WATCHMAN'">
+                  Veilleur
                 </button>
                 @if (data()?.isSuperAdmin) {
                   <button (click)="setRole('FLEET_ADMIN')"
