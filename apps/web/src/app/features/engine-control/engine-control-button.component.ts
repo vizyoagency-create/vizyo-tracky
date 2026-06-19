@@ -155,6 +155,15 @@ export class EngineControlButtonComponent implements OnInit {
 
   readonly isCutActive = computed(() => {
     const cmds = this.recentCommands();
+    // Sprint 3 — VEILLEUR (NIGHT_WATCHMAN) : `GET /engine-control/commands` = 403 → la liste
+    // `recentCommands` reste TOUJOURS vide pour lui. L'état coupé vient alors du suivi temps
+    // réel de RealtimeService (`cutActiveTrackerIds`, hydraté au login + MAJ par les events
+    // `ENGINE_COMMAND_UPDATED` reçus via `ops:fleet`), même sémantique (CUT ACKNOWLEDGED =
+    // coupé, RESTORE = rallumé). Sans ce repli le bouton restait bloqué sur « Couper » → le
+    // veilleur ne pouvait JAMAIS rallumer (il recoupait à chaque clic).
+    if (cmds.length === 0) {
+      return this.realtime.cutActiveTrackerIds().has(this.trackerId());
+    }
     // Sprint 2 (Obj 3) — etat "coupe" = derniere commande CONFIRMEE (ACKNOWLEDGED),
     // TOUTES sources incluses (DEVICE_OBSERVED = coupure SMS/externe detectee par la
     // chute d'ignition). Une coupure seulement SENT (pas encore confirmee) NE compte
