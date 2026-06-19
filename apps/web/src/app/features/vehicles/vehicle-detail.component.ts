@@ -1586,6 +1586,7 @@ export class VehicleDetailComponent implements OnInit {
 
   private lastAlertCount = -1;
   private alertRefreshEffect = effect(() => {
+    if (this.isWatchman()) return; // Sprint 3 — veilleur : pas d'accès aux alertes (403)
     const wsAlerts = this.realtime.alerts();
     if (wsAlerts.length !== this.lastAlertCount) {
       this.lastAlertCount = wsAlerts.length;
@@ -1600,6 +1601,7 @@ export class VehicleDetailComponent implements OnInit {
 
   // Reagir aux ENGINE_COMMAND_UPDATED WS events pour rafraichir commandes + ignition en live.
   private engineCommandRefreshEffect = effect(() => {
+    if (this.isWatchman()) return; // Sprint 3 — veilleur : pas d'historique commandes (403) ; l'état coupe vient du WS
     const tracker = this.vehicle()?.tracker;
     if (!tracker) return;
     const updates = this.realtime.engineCommandUpdates();
@@ -1680,6 +1682,20 @@ export class VehicleDetailComponent implements OnInit {
         valid: last.valid,
       };
     }
+    // Sprint 3 — veilleur (ou avant chargement de l'historique) : dernière position connue
+    // via le snapshot (endpoint autorisé) → la mini-carte + le bouton moteur s'affichent.
+    const snap = tracker ? this.realtime.snapshot().find((s) => s.trackerId === tracker.id) : undefined;
+    if (snap && typeof snap.lastLat === 'number' && typeof snap.lastLng === 'number') {
+      return {
+        lat: snap.lastLat,
+        lng: snap.lastLng,
+        speedKmh: snap.lastSpeedKmh ?? 0,
+        heading: snap.lastHeading ?? 0,
+        timestamp: snap.lastPositionAt ?? new Date().toISOString(),
+        ignition: patchIgnition(snap.lastIgnition ?? false),
+        valid: snap.lastValid ?? false,
+      };
+    }
     return null;
   });
 
@@ -1741,6 +1757,7 @@ export class VehicleDetailComponent implements OnInit {
    * basculer sur custom mais l'utilisateur n'a pas encore saisi de dates).
    */
   private dateRangeRefreshEffect = effect(() => {
+    if (this.isWatchman()) return; // Sprint 3 — veilleur : pas d'accès positions/trajets (403)
     const v = this.vehicle();
     const bounds = this.dateRangeBounds();
     if (!v || this.loading()) return;
@@ -1862,6 +1879,13 @@ export class VehicleDetailComponent implements OnInit {
     try {
       const v = await firstValueFrom(this.vehiclesApi.findOne(vehicleId));
       this.vehicle.set(v);
+
+      // Sprint 3 — le veilleur de nuit n'a accès qu'au véhicule + sa position (snapshot).
+      // Positions/alertes/trajets/commandes/géofences lui sont INTERDITES (403) : on NE les
+      // charge pas — sinon l'appel positions (sans catch) fait rejeter Promise.all → faux
+      // « Erreur de chargement » + redirection vers /vehicles. La mini-carte + le bouton
+      // moteur s'appuient sur la dernière position connue du snapshot (cf. currentPosition).
+      if (this.isWatchman()) return;
 
       // Géofences qui surveillent ce véhicule (onglet Géofences) — non bloquant.
       void firstValueFrom(this.geofencesApi.list())
