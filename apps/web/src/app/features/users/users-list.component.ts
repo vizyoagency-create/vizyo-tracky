@@ -616,7 +616,7 @@ export class UsersListComponent implements OnInit {
     this.matrixDrawerData.set({
       userId: user.id,
       userEmail: user.email,
-      userRole: user.role as 'SUPER_ADMIN' | 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER',
+      userRole: user.role as 'SUPER_ADMIN' | 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN',
       groups,
       vehicles,
     });
