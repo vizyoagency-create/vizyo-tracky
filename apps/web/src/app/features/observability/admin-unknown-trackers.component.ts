@@ -128,22 +128,36 @@ interface VehicleForAssign {
             <p class="text-xs text-fg-tertiary mb-1">N° SIM (optionnel)</p>
             <input type="text" placeholder="+33..." [(ngModel)]="simValue"
                    class="w-full mb-4 px-3 py-2 text-sm bg-bg-tertiary border border-border-subtle rounded-lg text-fg-primary font-mono placeholder:text-fg-tertiary focus:outline-none focus:border-tracky" />
-            <p class="text-xs text-fg-tertiary mb-1">Assigner au véhicule</p>
+            <p class="text-xs text-fg-tertiary mb-1">Assigner au véhicule <span class="text-fg-tertiary/60">(optionnel)</span></p>
             <div class="relative mb-2">
               <lucide-icon [img]="Search" [size]="14"
                            class="absolute left-3 top-1/2 -translate-y-1/2 text-fg-tertiary pointer-events-none"></lucide-icon>
-              <input type="text" placeholder="Rechercher une plaque..." [(ngModel)]="vehicleSearch"
+              <input type="text" placeholder="Rechercher une plaque..."
+                     [ngModel]="vehicleSearch()" (ngModelChange)="vehicleSearch.set($event)"
                      class="w-full pl-9 pr-3 py-2 text-sm bg-bg-tertiary border border-border-subtle rounded-lg text-fg-primary placeholder:text-fg-tertiary focus:outline-none focus:border-tracky" />
             </div>
-            <div class="max-h-[240px] overflow-y-auto flex flex-col gap-1">
+            <div class="max-h-[190px] overflow-y-auto flex flex-col gap-1 mb-4">
               @for (v of filteredVehicles(); track v.id) {
-                <button (click)="confirmCreate(v.id)" [disabled]="creating()"
-                        class="w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-bg-tertiary/80 transition-colors flex items-center justify-between disabled:opacity-50">
+                <button (click)="selectedVehicleId.set(v.id)"
+                        class="w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center justify-between border"
+                        [class]="selectedVehicleId() === v.id ? 'bg-tracky/15 border-tracky' : 'border-transparent hover:bg-bg-tertiary/80'">
                   <span class="font-medium text-fg-primary">{{ v.plate }}</span>
+                  @if (selectedVehicleId() === v.id) {
+                    <lucide-icon [img]="CheckCircle" [size]="14" class="text-tracky-light"></lucide-icon>
+                  }
                 </button>
               } @empty {
-                <p class="text-sm text-fg-tertiary text-center py-4">Aucun véhicule sans tracker.</p>
+                <p class="text-sm text-fg-tertiary text-center py-4">Aucun véhicule sans tracker disponible.</p>
               }
+            </div>
+            <div class="flex items-center justify-end gap-2 pt-3 border-t border-border-subtle">
+              <button (click)="cancelCreate()"
+                      class="px-3 py-2 text-sm text-fg-secondary hover:text-fg-primary cursor-pointer">Annuler</button>
+              <button (click)="confirmCreate()" [disabled]="creating()"
+                      class="px-4 py-2 bg-tracky text-white rounded-lg text-sm font-medium hover:bg-tracky-dark cursor-pointer flex items-center gap-2 disabled:opacity-50">
+                <lucide-icon [img]="Plus" [size]="14"></lucide-icon>
+                {{ creating() ? 'Création…' : (selectedVehicleId() ? 'Créer + assigner' : 'Créer le tracker') }}
+              </button>
             </div>
           </div>
         </div>
@@ -172,14 +186,14 @@ export class AdminUnknownTrackersComponent implements OnInit {
   readonly creatingFor = signal<UnknownTrackerDto | null>(null);
   readonly creating = signal(false);
   simValue = '';
-  vehicleSearch = '';
-  private allVehicles: VehicleForAssign[] = [];
+  readonly vehicleSearch = signal('');
+  readonly selectedVehicleId = signal<string | null>(null);
+  private readonly allVehicles = signal<VehicleForAssign[]>([]);
 
   readonly filteredVehicles = computed(() => {
-    const q = this.vehicleSearch.toLowerCase().trim();
-    let list = this.allVehicles.filter((v) => !v.hasTracker);
-    if (q) list = list.filter((v) => v.plate.toLowerCase().includes(q));
-    return list.slice(0, 50);
+    const q = this.vehicleSearch().toLowerCase().trim();
+    const list = this.allVehicles();
+    return (q ? list.filter((v) => v.plate.toLowerCase().includes(q)) : list).slice(0, 50);
   });
 
   ngOnInit(): void {
@@ -220,13 +234,16 @@ export class AdminUnknownTrackersComponent implements OnInit {
   async startCreate(e: UnknownTrackerDto): Promise<void> {
     this.creatingFor.set(e);
     this.simValue = '';
-    this.vehicleSearch = '';
+    this.vehicleSearch.set('');
+    this.selectedVehicleId.set(null);
+    this.allVehicles.set([]);
     try {
-      const vehicles = await firstValueFrom(this.vehiclesApi.list());
-      this.allVehicles = vehicles.map((v) => ({ id: v.id, plate: v.plate, hasTracker: !!v.tracker }));
+      // hasTracker=false → le backend ne renvoie QUE les véhicules sans tracker (toutes
+      // flottes pour un SUPER_ADMIN). Modale gardée ouverte si ça échoue (création sans assign possible).
+      const vehicles = await firstValueFrom(this.vehiclesApi.list({ hasTracker: 'false' }));
+      this.allVehicles.set(vehicles.map((v) => ({ id: v.id, plate: v.plate, hasTracker: false })));
     } catch {
       this.toast.error('Échec du chargement des véhicules');
-      this.creatingFor.set(null);
     }
   }
 
@@ -234,7 +251,7 @@ export class AdminUnknownTrackersComponent implements OnInit {
     this.creatingFor.set(null);
   }
 
-  async confirmCreate(vehicleId: string): Promise<void> {
+  async confirmCreate(): Promise<void> {
     const entry = this.creatingFor();
     if (!entry || this.creating()) return;
     this.creating.set(true);
@@ -243,10 +260,11 @@ export class AdminUnknownTrackersComponent implements OnInit {
       const tracker = await firstValueFrom(
         this.trackersApi.create(sim ? { imei: entry.imei, simPhoneNumber: sim } : { imei: entry.imei }),
       );
-      await firstValueFrom(this.trackersApi.assign(tracker.id, vehicleId));
+      const vid = this.selectedVehicleId();
+      if (vid) await firstValueFrom(this.trackersApi.assign(tracker.id, vid));
       // Retire de la liste des inconnus (il se reconnectera et sera accepté).
       await firstValueFrom(this.unknownApi.forget(entry.imei)).catch(() => undefined);
-      this.toast.success(`Tracker ${entry.imei} créé et assigné`);
+      this.toast.success(`Tracker ${entry.imei} créé${vid ? ' et assigné' : ''}`);
       this.creatingFor.set(null);
       this.entries.update((list) => list.filter((x) => x.imei !== entry.imei));
     } catch (e: unknown) {
