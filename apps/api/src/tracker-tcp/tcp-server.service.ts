@@ -319,6 +319,21 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
         break;
       }
 
+      case 'no_fix': {
+        // Boîtier VIVANT mais sans lock GPS (rapport LBS / démarrage à froid) : on
+        // rafraîchit lastSeenAt SANS écrire de position (aucune coordonnée) → l'UI
+        // l'affiche « en attente GPS » au lieu de « non configuré ». Avant, ces trames
+        // étaient jetées en `unknown` → le boîtier restait invisible bien que vivant.
+        if (!currentImei || frame.imei !== currentImei) break;
+        this.registry.touch(frame.imei);
+        await this.prisma.tracker.update({
+          where: { imei: frame.imei },
+          data: { lastSeenAt: new Date() },
+        });
+        this.logger.debug({ imei: frame.imei, frameRaw: frame.raw }, `No-fix frame (vivant, sans GPS): ${frame.imei}`);
+        break;
+      }
+
       case 'unknown': {
         if (currentImei && this.ackWaiter.tryMatch(currentImei, frame.raw)) {
           break;

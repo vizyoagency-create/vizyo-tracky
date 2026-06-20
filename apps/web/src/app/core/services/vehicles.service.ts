@@ -17,6 +17,8 @@ export interface VehicleDetailDto {
     imei: string;
     status: string;
     lastSeenAt: string | null;
+    /** Dernière position GPS valide (null = jamais de fix → état « Recherche GPS »). */
+    lastPositionAt: string | null;
     lastKnownIgnition: boolean | null;
     /** V1.7 — fil ACC connecte (true) ou ignition inferee depuis vitesse (false). */
     accConnected: boolean;

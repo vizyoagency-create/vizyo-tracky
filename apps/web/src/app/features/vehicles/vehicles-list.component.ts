@@ -872,6 +872,8 @@ export class VehiclesListComponent implements OnInit {
     return getVehicleConnectivityState({
       trackerId: v.tracker?.id ?? null,
       lastSeenAt: v.tracker?.lastSeenAt ?? null,
+      // null = boîtier jamais localisé → « Recherche GPS » s'il émet (vivant sans fix).
+      lastPositionAt: v.tracker?.lastPositionAt ?? null,
       lastIgnition: v.tracker?.lastKnownIgnition ?? null,
     });
   }

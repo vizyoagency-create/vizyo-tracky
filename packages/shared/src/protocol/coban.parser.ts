@@ -1,6 +1,7 @@
 import type {
   CobanAlarmType,
   CobanFrame,
+  CobanNoFixFrame,
   CobanPositionFrame,
   CobanUnknownFrame,
 } from './coban.types';
@@ -11,6 +12,16 @@ const HEARTBEAT_RE = /^\d{15}$/;
 
 function unknown(raw: string, reason: string): CobanUnknownFrame {
   return { type: 'unknown', raw, reason };
+}
+
+/**
+ * Trame d'un boîtier VIVANT mais SANS fix GPS valide (flag non-A/V ou coordonnées
+ * absentes : rapport LBS sans lock satellite, émis en intérieur / démarrage à froid).
+ * Distincte d'`unknown` pour que le dispatcher rafraîchisse lastSeenAt (→ « en attente
+ * GPS ») au lieu de la jeter en silence — c'est ce qui rendait ces boîtiers invisibles.
+ */
+function noFix(imei: string, alarm: CobanAlarmType, deviceTime: Date | null, raw: string): CobanNoFixFrame {
+  return { type: 'no_fix', imei, alarm, deviceTime, raw };
 }
 
 export function decodeAlarm(value: string): CobanAlarmType {
@@ -107,14 +118,16 @@ function decodeRegularPosition(raw: string): CobanFrame {
   const utcTimeRaw = parts[5] ?? '';
   const validFlag = parts[6] ?? '';
 
-  if (validFlag !== 'A' && validFlag !== 'V') return unknown(raw, 'invalid_valid_flag');
+  // Pas de flag GPS A/V (souvent 'L' ou vide sur un rapport LBS sans lock satellite) →
+  // boîtier vivant mais sans fix : on le signale comme tel plutôt que de le jeter.
+  if (validFlag !== 'A' && validFlag !== 'V') return noFix(imei, alarm, parseLocalDate(localDateRaw), raw);
 
   const latRaw = parts[7] ?? '';
   const latHemi = parts[8] ?? '';
   const lonRaw = parts[9] ?? '';
   const lonHemi = parts[10] ?? '';
 
-  if (!latRaw || !lonRaw) return unknown(raw, 'missing_coordinates');
+  if (!latRaw || !lonRaw) return noFix(imei, alarm, parseLocalDate(localDateRaw), raw);
   if (latHemi !== 'N' && latHemi !== 'S') return unknown(raw, 'invalid_hemisphere');
   if (lonHemi !== 'E' && lonHemi !== 'W') return unknown(raw, 'invalid_hemisphere');
 

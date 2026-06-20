@@ -1,11 +1,12 @@
 import { Component, computed, input } from '@angular/core';
-import { AlertTriangle, LucideAngularModule, Moon, Wifi, WifiOff } from 'lucide-angular';
+import { AlertTriangle, LucideAngularModule, Moon, Satellite, Wifi, WifiOff } from 'lucide-angular';
 import type { VehicleConnectivityState } from '@vizyo/tracky-shared';
 
 /**
  * Métadonnées d'affichage d'un état de connectivité véhicule. Source unique de
  * vérité visuelle (label + couleurs + icône) réutilisée partout : badge de liste,
  * détail, popup carte. Les couleurs distinguent les deux causes de non-suivi :
+ *  - AWAITING_GPS (sky)     : connecté mais sans fix GPS — vivant, cherche les satellites.
  *  - OFFLINE (ambre)        : débranché / hors-ligne — il fonctionnait, à traiter.
  *  - NOT_CONFIGURED (gris)  : pas (ou mal) installé — neutre, à équiper.
  */
@@ -22,6 +23,10 @@ export function connectivityMeta(state: VehicleConnectivityState): ConnectivityM
   switch (state) {
     case 'ONLINE':
       return { label: 'En ligne', color: '#10b981', bg: 'rgba(16,185,129,.12)', icon: Wifi };
+    case 'AWAITING_GPS':
+      // Connecté sans fix GPS : sky-blue « acquisition » — distinct du vert (suivi) et de
+      // l'ambre (hors-ligne). Le boîtier est vivant, il cherche les satellites.
+      return { label: 'Recherche GPS', color: '#0ea5e9', bg: 'rgba(14,165,233,.13)', icon: Satellite };
     case 'PARKED':
       // Garé en veille : neutre/calme (slate), pas alarmant — comportement normal.
       return { label: 'Stationné', color: '#64748b', bg: 'rgba(100,116,139,.14)', icon: Moon };
@@ -97,6 +102,7 @@ export class ConnectivityBadgeComponent {
   protected readonly title = computed(() => {
     switch (this.state()) {
       case 'ONLINE': return 'Boîtier en ligne — suivi en direct';
+      case 'AWAITING_GPS': return 'Connecté — en attente du fix GPS : le boîtier émet mais n\'a pas encore de lock satellite (intérieur / démarrage à froid / antenne). Mets-le à ciel ouvert.';
       case 'PARKED': return 'Stationné — contact coupé, boîtier en veille (dernier signal > 15 min). Normal.';
       case 'OFFLINE': return 'Hors ligne — coupé en roulant / débranché ou sans réseau depuis > 15 min';
       case 'NOT_CONFIGURED': return 'Non configuré — aucun boîtier connecté à Tracky';

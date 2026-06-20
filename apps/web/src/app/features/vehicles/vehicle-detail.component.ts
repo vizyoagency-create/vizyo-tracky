@@ -1837,6 +1837,8 @@ export class VehicleDetailComponent implements OnInit {
     return getVehicleConnectivityState({
       trackerId: v?.tracker?.id ?? null,
       lastSeenAt: freshest,
+      // Position live (WS) ou dernier fix stocké ; null = jamais localisé → « Recherche GPS ».
+      lastPositionAt: pos?.timestamp ?? v?.tracker?.lastPositionAt ?? null,
       lastIgnition: pos?.ignition ?? v?.tracker?.lastKnownIgnition ?? null,
     });
   });

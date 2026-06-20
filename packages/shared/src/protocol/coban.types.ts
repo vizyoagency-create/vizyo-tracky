@@ -67,10 +67,25 @@ export interface CobanUnknownFrame {
   reason: string;
 }
 
+/**
+ * Boîtier vivant mais SANS fix GPS (flag non-A/V ou coordonnées absentes : rapport
+ * LBS sans lock satellite, ex. "imei:...,tracker,<date>,<batt>%,L,,,<cell>,..."). Porte
+ * l'IMEI pour rafraîchir lastSeenAt (→ état « en attente GPS ») sans écrire de position.
+ */
+export interface CobanNoFixFrame {
+  type: 'no_fix';
+  imei: string;
+  alarm: CobanAlarmType;
+  /** Date locale du boîtier si parsable, sinon null. Aucune coordonnée (pas de fix). */
+  deviceTime: Date | null;
+  raw: string;
+}
+
 export type CobanFrame =
   | CobanLoginFrame
   | CobanHeartbeatFrame
   | CobanPositionFrame
+  | CobanNoFixFrame
   | CobanUnknownFrame;
 
 export type CobanCommand =

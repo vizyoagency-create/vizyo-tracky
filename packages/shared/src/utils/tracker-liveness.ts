@@ -55,7 +55,9 @@ export function isTrackerOnline(
  * Tri-état dérivé (read-time, aucune écriture) qui répond à : « ce véhicule est-il
  * réellement suivi en ce moment ? ». Il distingue les deux causes de
  * non-suivi que l'exploitant doit traiter différemment :
- *  - `ONLINE`         : boîtier vivant, signal frais (< seuil) → suivi en direct.
+ *  - `ONLINE`         : boîtier vivant, signal frais (< seuil) ET position GPS connue → suivi direct.
+ *  - `AWAITING_GPS`   : boîtier vivant (signal frais) mais SANS aucune position GPS valide →
+ *                       connecté, pas encore de lock satellite (rapport LBS / démarrage à froid / antenne).
  *  - `PARKED`         : silencieux > seuil MAIS contact coupé à la dernière trame →
  *                       garé, boîtier en veille (silence NORMAL, pas une panne).
  *  - `OFFLINE`        : silencieux > seuil alors que le contact était ON (coupé en
@@ -63,7 +65,12 @@ export function isTrackerOnline(
  *  - `NOT_CONFIGURED` : aucun boîtier affecté, OU boîtier affecté qui n'a JAMAIS
  *                       émis → pas (encore) installé / mal configuré pour Tracky.
  */
-export type VehicleConnectivityState = 'ONLINE' | 'PARKED' | 'OFFLINE' | 'NOT_CONFIGURED';
+export type VehicleConnectivityState =
+  | 'ONLINE'
+  | 'AWAITING_GPS'
+  | 'PARKED'
+  | 'OFFLINE'
+  | 'NOT_CONFIGURED';
 
 export interface VehicleConnectivityInput {
   /** Présence d'un tracker affecté au véhicule. null/undefined = aucun tracker. */
@@ -97,8 +104,19 @@ export function getVehicleConnectivityState(
   const { trackerId, lastSeenAt, lastPositionAt, lastIgnition } = input;
   // Aucun boîtier affecté → véhicule pas équipé pour Tracky.
   if (!trackerId) return 'NOT_CONFIGURED';
-  // Le boîtier a parlé récemment → suivi en direct.
-  if (isTrackerOnline(lastSeenAt, now, thresholdMs)) return 'ONLINE';
+  // Le boîtier a parlé récemment → vivant.
+  if (isTrackerOnline(lastSeenAt, now, thresholdMs)) {
+    // …mais s'il n'a JAMAIS eu de position GPS valide, il est connecté sans lock
+    // satellite (rapport LBS sans fix : intérieur / démarrage à froid / antenne). On le
+    // distingue d'ONLINE pour montrer qu'il est vivant mais pas encore localisable —
+    // sinon ces boîtiers restaient « non configurés », donc invisibles.
+    //
+    // `=== null` (et non `== null`) est VOLONTAIRE : l'état est opt-in. Un appelant qui
+    // ne fournit pas `lastPositionAt` (undefined) reste ONLINE — seuls ceux qui passent
+    // explicitement `lastPositionAt: … ?? null` (liste/détail) obtiennent AWAITING_GPS.
+    if (lastPositionAt === null) return 'AWAITING_GPS';
+    return 'ONLINE';
+  }
   // Boîtier affecté mais JAMAIS aucun signal ni position → affecté mais jamais
   // connecté (SIM/APN/provisioning KO). On le traite comme « non configuré »
   // plutôt que « hors-ligne » : il n'a jamais fonctionné, ce n'est pas un débranchement.

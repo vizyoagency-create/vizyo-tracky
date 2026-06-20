@@ -1,6 +1,6 @@
 import { decodeFrame, decodeAlarm } from './coban.parser';
 import { nmeaToDecimal, knotsToKph } from './coban.utils';
-import type { CobanPositionFrame, CobanUnknownFrame } from './coban.types';
+import type { CobanNoFixFrame, CobanPositionFrame, CobanUnknownFrame } from './coban.types';
 
 describe('decodeFrame', () => {
   // 1. Login packet
@@ -136,12 +136,20 @@ describe('decodeFrame', () => {
     expect((f as CobanUnknownFrame).reason).toBe('obd_not_implemented');
   });
 
-  // 16. Invalid valid flag (not A or V) → Unknown (no throw)
-  it('should return Unknown for invalid valid flag', () => {
+  // 16. Invalid valid flag (not A or V) → no_fix : boîtier vivant SANS lock GPS.
+  it('should return no_fix for invalid valid flag (boîtier vivant sans lock GPS)', () => {
     const raw = 'imei:864035050002451,tracker,201223064947,,F,064947,X,1935.70640,N,09859.94436,W,0.025,;';
     const f = decodeFrame(raw);
-    expect(f.type).toBe('unknown');
-    expect((f as CobanUnknownFrame).reason).toBe('invalid_valid_flag');
+    expect(f.type).toBe('no_fix');
+    expect((f as CobanNoFixFrame).imei).toBe('864035050002451');
+  });
+
+  // 16b. Vraie trame LBS sans fix (rapport antenne-relais "...,L,,,<cell>,...") → no_fix.
+  it('should return no_fix for a real LBS no-lock frame', () => {
+    const raw = 'imei:864035054757027,tracker,260620044013,100%,L,,,c22,,6764c47,,,,,0,0,0.00%,,;';
+    const f = decodeFrame(raw);
+    expect(f.type).toBe('no_fix');
+    expect((f as CobanNoFixFrame).imei).toBe('864035054757027');
   });
 
   // 17. Non-numeric latitude → Unknown (no throw)
