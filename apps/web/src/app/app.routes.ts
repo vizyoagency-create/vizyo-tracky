@@ -210,6 +210,16 @@ export const routes: Routes = [
         data: { title: 'Trackers (admin)' },
       },
       {
+        path: 'admin/unknown-trackers',
+        pathMatch: 'full',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/observability/admin-unknown-trackers.component').then(
+            (m) => m.AdminUnknownTrackersComponent,
+          ),
+        data: { title: 'Boîtiers non reconnus' },
+      },
+      {
         path: 'admin/system',
         pathMatch: 'full',
         canActivate: [superAdminGuard],
