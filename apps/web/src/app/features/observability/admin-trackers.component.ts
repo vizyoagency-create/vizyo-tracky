@@ -3,6 +3,7 @@ import { Component, inject, OnInit, signal, computed } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import {
+  AlertTriangle,
   ArrowLeft,
   CheckCircle,
   Edit3,
@@ -45,11 +46,18 @@ import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.com
             Vue d'ensemble de tous les trackers, toutes flottes confondues.
           </p>
         </div>
-        <button (click)="reload()"
-                class="px-3 py-2 bg-tracky text-white rounded-lg text-sm font-medium hover:bg-tracky-dark cursor-pointer flex items-center gap-2">
-          <lucide-icon [img]="RefreshCw" [size]="14"></lucide-icon>
-          Rafraichir
-        </button>
+        <div class="flex items-center gap-2">
+          <a routerLink="/admin/unknown-trackers"
+             class="px-3 py-2 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-lg text-sm font-medium hover:bg-amber-500/20 cursor-pointer flex items-center gap-2">
+            <lucide-icon [img]="AlertTriangle" [size]="14"></lucide-icon>
+            Boîtiers non reconnus
+          </a>
+          <button (click)="reload()"
+                  class="px-3 py-2 bg-tracky text-white rounded-lg text-sm font-medium hover:bg-tracky-dark cursor-pointer flex items-center gap-2">
+            <lucide-icon [img]="RefreshCw" [size]="14"></lucide-icon>
+            Rafraichir
+          </button>
+        </div>
       </div>
 
       <!-- Summary -->
@@ -270,6 +278,7 @@ export class AdminTrackersComponent implements OnInit {
   private readonly toast = inject(ToastService);
 
   // Icons
+  protected readonly AlertTriangle = AlertTriangle;
   protected readonly ArrowLeft = ArrowLeft;
   protected readonly CheckCircle = CheckCircle;
   protected readonly Edit3 = Edit3;
