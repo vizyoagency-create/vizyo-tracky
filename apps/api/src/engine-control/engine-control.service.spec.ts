@@ -583,18 +583,21 @@ describe('EngineControlService', () => {
     });
   });
 
-  // Sprint 3 (revue A1) — `disableSchedule` ne doit PAS contourner le gate `schedules_manage`.
-  it('NIGHT_WATCHMAN avec disableSchedule:true → override 1h, NE désactive PAS le planning', async () => {
+  // Sprint 3 (revue A1 + Option A) — la coupe veilleur (a) ne contourne PAS le gate
+  // `schedules_manage` (jamais `enabled:false`) ET (b) tient jusqu'à réactivation manuelle
+  // (override « indéfini », pas 1h) — même si `disableSchedule:true` est forcé dans le body.
+  it('NIGHT_WATCHMAN CUT → suspend le planning jusqu\'à réactivation manuelle (override indéfini), sans le désactiver', async () => {
     prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
     prisma.position.findFirst
       .mockResolvedValueOnce(recentPosition(0)) // lastPosition : à l'arrêt
       .mockResolvedValueOnce(null); // immobile depuis > 2 min (aucune trame en mouvement)
     registry.send.mockReturnValue(true);
     await service.requestCommand(TRACKER_ID, EngineAction.CUT, null, nightWatchman, 'MANUAL', true);
-    // Le veilleur n'a pas schedules_manage → disableSchedule ignoré → override 1h, PAS de désactivation.
-    expect(prisma.vehicleSchedule.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ overrideUntil: expect.any(Date) }) }),
-    );
+    const call = prisma.vehicleSchedule.updateMany.mock.calls.find((c) => c[0]?.data?.overrideUntil);
+    expect(call).toBeDefined();
+    // Override « indéfini » (sentinelle lointaine) → le scheduler ne rallumera pas au bout d'1h.
+    expect((call![0].data.overrideUntil as Date).getFullYear()).toBeGreaterThan(2900);
+    // Et le planning n'est PAS désactivé (gate schedules_manage préservé).
     expect(prisma.vehicleSchedule.updateMany).not.toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ enabled: false }) }),
     );
@@ -608,5 +611,18 @@ describe('EngineControlService', () => {
     expect(prisma.vehicleSchedule.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ enabled: false }) }),
     );
+  });
+
+  // Sprint 3 (Option A) — un RESTORE (réactivation manuelle) lève le hold indéfini et repose
+  // une grâce 1h : le scheduler reprend la main au bout d'1h, pas avant.
+  it('NIGHT_WATCHMAN RESTORE → repose une grâce 1h (le planning reprend ensuite)', async () => {
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+    registry.send.mockReturnValue(true);
+    await service.requestCommand(TRACKER_ID, EngineAction.RESTORE, null, nightWatchman, 'MANUAL', false);
+    const call = prisma.vehicleSchedule.updateMany.mock.calls.find((c) => c[0]?.data?.overrideUntil);
+    expect(call).toBeDefined();
+    const deltaMs = (call![0].data.overrideUntil as Date).getTime() - Date.now();
+    expect(deltaMs).toBeGreaterThan(50 * 60 * 1000); // ~1h, surtout PAS indéfini
+    expect(deltaMs).toBeLessThan(70 * 60 * 1000);
   });
 });

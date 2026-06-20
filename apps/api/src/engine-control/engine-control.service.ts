@@ -30,6 +30,14 @@ const MAX_SPEED_FOR_CUT = 20;
  * coupe S2 (≤ 20 km/h, antivol préservé).
  */
 const ENGINE_CUT_MIN_STOPPED_MS = Math.max(0, Number(process.env.ENGINE_CUT_MIN_STOPPED_S) || 120) * 1000;
+/**
+ * Sprint 3 (Option A) — une COUPE VEILLEUR est une intervention de sécurité de nuit : elle
+ * doit TENIR jusqu'à réactivation manuelle (RESTORE), pas être défaite par le planning au bout
+ * de l'override habituel (1h). On suspend donc le planning « sans échéance » via cette sentinelle
+ * lointaine (le scheduler skip tant que `overrideUntil > now`, cf schedule-cron.service:111). Le
+ * planning reste `enabled` ; un RESTORE (n'importe quel acteur) repose ensuite une grâce 1h normale.
+ */
+const WATCHMAN_HOLD_UNTIL = new Date('9999-12-31T23:59:59.000Z');
 const ENGINE_ACK_TIMEOUT_MS = 15_000;
 const ENGINE_STOP_ACK_PATTERN = /imei:\d{15},J/i;
 const ENGINE_RESUME_ACK_PATTERN = /imei:\d{15},K/i;
@@ -220,21 +228,33 @@ export class EngineControlService {
     if (source === 'MANUAL') {
       const vehicle = tracker.vehicle;
       if (vehicle) {
-        // Sprint 3 (revue) — le veilleur (NIGHT_WATCHMAN) ne gère PAS les plannings (gate
-        // `schedules_manage`). On NE désactive donc JAMAIS le planning sur sa demande, même
-        // si `disableSchedule:true` est forcé dans le body (sinon le gate horaires est
-        // contourné via la commande moteur) : il retombe sur l'override temporaire 1h.
-        const mayDisableSchedule = disableSchedule && requestedBy.role !== UserRole.NIGHT_WATCHMAN;
+        const isWatchman = requestedBy.role === UserRole.NIGHT_WATCHMAN;
+        // Sprint 3 (revue A1) — le veilleur (NIGHT_WATCHMAN) ne gère PAS les plannings (gate
+        // `schedules_manage`) : on NE désactive JAMAIS le planning sur sa demande, même si
+        // `disableSchedule:true` est forcé dans le body (sinon le gate horaires serait contourné
+        // via la commande moteur).
+        const mayDisableSchedule = disableSchedule && !isWatchman;
         try {
           if (mayDisableSchedule) {
-            // Désactiver complètement le schedule (l'utilisateur a confirmé)
+            // Désactiver complètement le schedule (admin avec schedules_manage, confirmé)
             await this.prisma.vehicleSchedule.updateMany({
               where: { vehicleId: vehicle.id, enabled: true },
               data: { enabled: false, lastEvaluatedState: null, lastEvaluatedAt: null },
             });
             this.logger.log({ vehicleId: vehicle.id }, 'Schedule disabled by manual engine command');
+          } else if (isWatchman && action === EngineAction.CUT) {
+            // Sprint 3 (Option A) — coupe veilleur = intervention sécu de nuit : elle tient
+            // JUSQU'À RÉACTIVATION MANUELLE. On suspend le planning sans échéance (override
+            // « indéfini ») : le scheduler ne peut pas rallumer le véhicule au bout d'1h. Le
+            // planning reste `enabled` ; un RESTORE reposera la grâce 1h normale (branche else).
+            await this.prisma.vehicleSchedule.updateMany({
+              where: { vehicleId: vehicle.id, enabled: true },
+              data: { overrideUntil: WATCHMAN_HOLD_UNTIL },
+            });
+            this.logger.log({ vehicleId: vehicle.id }, 'Watchman cut — schedule held until manual restore');
           } else {
-            // Juste poser un override temporaire (1h)
+            // Override temporaire 1h : coupe admin sans disable, OU tout RESTORE (grâce après
+            // réactivation manuelle → le scheduler reprend la main au bout d'1h).
             await this.prisma.vehicleSchedule.updateMany({
               where: { vehicleId: vehicle.id, enabled: true },
               data: { overrideUntil: new Date(Date.now() + 60 * 60 * 1000) },
