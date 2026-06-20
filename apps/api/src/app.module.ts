@@ -45,6 +45,7 @@ import { VehicleSchedulesModule } from './vehicle-schedules/vehicle-schedules.mo
 import { HealthController } from './health/health.controller';
 import { LeadsModule } from './leads/leads.module';
 import { VehiclesModule } from './vehicles/vehicles.module';
+import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.module';
 
 @Module({
   imports: [
@@ -116,6 +117,7 @@ import { VehiclesModule } from './vehicles/vehicles.module';
     SurveillanceModule,
     SystemMetricsModule,
     UserActivityModule,
+    UnknownTrackersModule,
   ],
   controllers: [HealthController],
   providers: [

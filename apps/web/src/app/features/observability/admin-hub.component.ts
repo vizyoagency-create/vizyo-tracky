@@ -164,8 +164,21 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
           </div>
         </a>
 
+        <!-- ── BOÎTIERS NON RECONNUS (wide) ── -->
+        <a routerLink="/admin/unknown-trackers" class="card card-wide" style="--i:9">
+          <span class="accent accent-amber"></span>
+          <div class="body body-row">
+            <div class="ico ico-amber"><lucide-icon [img]="AlertTriangle" [size]="20"></lucide-icon></div>
+            <div class="body-text">
+              <h3>Boîtiers non reconnus</h3>
+              <p class="desc">IMEI qui tapent le serveur en GPRS sans être enregistrés (→ le boîtier retombe en SMS). Vois-les en direct et crée le tracker sur son véhicule en 1 clic.</p>
+            </div>
+            <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
+          </div>
+        </a>
+
         <!-- ── ACTIVITÉ UTILISATEURS (wide) ── -->
-        <a routerLink="/admin/activity" class="card card-wide" style="--i:9">
+        <a routerLink="/admin/activity" class="card card-wide" style="--i:10">
           <span class="accent accent-violet"></span>
           <div class="body body-row">
             <div class="ico ico-violet"><lucide-icon [img]="Footprints" [size]="20"></lucide-icon></div>

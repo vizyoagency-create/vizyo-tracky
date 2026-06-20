@@ -46,6 +46,7 @@ describe('TcpServerService — débounce OFFLINE', () => {
       {} as any, // wireLogger
       errorLogger as any,
       ackWaiter as any,
+      { record: jest.fn(), forget: jest.fn() } as any, // unknownTrackers
     );
   });
 

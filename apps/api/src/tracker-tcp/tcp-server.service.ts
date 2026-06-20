@@ -13,6 +13,7 @@ import { CobanWireLogger } from '../observability/coban-wire-logger.service';
 import { AckWaiterService } from '../tracker-commands/ack-waiter.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { SocketRegistryService, type TrackerSocket } from '../socket-registry/socket-registry.service';
+import { UnknownTrackerRegistry } from '../unknown-trackers/unknown-trackers.registry';
 
 @Injectable()
 export class TcpServerService implements OnModuleInit, OnModuleDestroy {
@@ -40,6 +41,7 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
     private readonly wireLogger: CobanWireLogger,
     private readonly errorLogger: ErrorLogger,
     private readonly ackWaiter: AckWaiterService,
+    private readonly unknownTrackers: UnknownTrackerRegistry,
   ) {}
 
   onModuleInit(): void {
@@ -240,10 +242,15 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
           where: { imei: frame.imei },
         });
         if (!tracker) {
+          // Provisioning — IMEI pas (ou mal) enregistré : on le mémorise pour la vue admin
+          // « Boîtiers non reconnus » (sinon le boîtier retombe en SMS, invisible côté app).
+          this.unknownTrackers.record(frame.imei, socket.remoteAddress ?? null);
           this.logger.warn(`Unknown IMEI attempting login: ${frame.imei}`);
           socket.end();
           return;
         }
+        // Connexion réussie → cet IMEI n'est plus « inconnu » (nettoie un éventuel résidu).
+        this.unknownTrackers.forget(frame.imei);
         setImei(frame.imei);
         this.registry.register(frame.imei, socket);
         // Reconnexion : annule un éventuel passage OFFLINE différé (anti-flapping).
