@@ -293,6 +293,13 @@ export class RealtimeService {
       next.set(event.trackerId, event);
       this._engineCommandUpdates.set(next);
 
+      // Bug « garé = coupé » : on n'ajuste l'état coupé du bouton QUE pour les
+      // commandes APP (MANUAL/SCHEDULER). Les events DEVICE_OBSERVED sont émis à
+      // chaque coupure de contact (simple stationnement) et faisaient basculer le
+      // bouton sur « Rallumer » à tort en live. Ils restent stockés ci-dessus
+      // (engineCommandUpdates, pour l'audit) mais ne pilotent plus l'état coupé.
+      if (event.source === 'DEVICE_OBSERVED') return;
+
       // Maintenir l'etat coupe TRI-ETAT (revue #1/#2), jamais de faux succes :
       //  - CUT ACKNOWLEDGED    -> 'coupe' confirme (ignition tombee / DEVICE_OBSERVED)
       //  - CUT SENT            -> 'en attente' (commande, pas encore confirmee)

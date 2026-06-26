@@ -520,6 +520,15 @@ export class VehiclesService {
         where: {
           trackerId: { in: trackerIds },
           status: { in: [CommandStatus.SENT, CommandStatus.ACKNOWLEDGED] },
+          // Bug « véhicule garé = coupé » : on EXCLUT les commandes DEVICE_OBSERVED.
+          // Elles sont synthétisées à CHAQUE coupure de contact (ignition OFF) pour
+          // tenter de détecter une coupure SMS/externe — mais elles se déclenchent
+          // tout autant sur un simple stationnement (indistinguable d'une coupure).
+          // Résultat : tout véhicule garé apparaissait « coupé » → bouton « Rallumer »
+          // à tort (cf. veilleur). L'état coupé du bouton ne doit refléter QUE les
+          // immobilisations réellement commandées par l'app : MANUAL/SCHEDULER
+          // (dont la coupe veilleur). Les DEVICE_OBSERVED restent en base (audit).
+          source: { not: 'DEVICE_OBSERVED' },
         },
         orderBy: { createdAt: 'desc' },
         distinct: ['trackerId', 'action'],
