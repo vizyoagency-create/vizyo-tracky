@@ -283,6 +283,17 @@ export class EngineControlButtonComponent implements OnInit {
       return { allowed: false as const, reason: 'Permission insuffisante' };
     }
 
+    // Sprint 3 — VEILLEUR (NIGHT_WATCHMAN) : aucune donnée de position ne lui est servie
+    // (le client ne reçoit ni vitesse, ni fix, ni âge — cf. liste épurée « zéro donnée »).
+    // On NE peut donc PAS pré-valider l'immobilité côté client : on autorise l'envoi et on
+    // laisse le SERVEUR seul juge (engine-control.service, bloc NIGHT_WATCHMAN, refuse une
+    // coupe en mouvement avec un message clair affiché en toast). Sans ce court-circuit le
+    // bouton resterait désactivé (« Aucune position connue ») et le veilleur ne pourrait
+    // jamais couper depuis la liste.
+    if (this.authService.isWatchman()) {
+      return { allowed: true as const, reason: null };
+    }
+
     const age = this.positionAge();
     if (age === undefined) {
       return { allowed: false as const, reason: 'Aucune position connue' };

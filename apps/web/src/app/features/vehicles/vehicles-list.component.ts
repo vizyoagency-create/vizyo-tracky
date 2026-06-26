@@ -14,6 +14,7 @@ import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/v
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
 import { VehicleDialogComponent } from './vehicle-dialog/vehicle-dialog.component';
 import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
+import { EngineControlButtonComponent } from '../engine-control/engine-control-button.component';
 import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fleet-badge.component';
 import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.component';
 import { ConnectivityBadgeComponent } from '../../shared/ui/connectivity-badge/connectivity-badge.component';
@@ -25,8 +26,59 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
   selector: 'app-vehicles-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, InstallReviewBadgeComponent, TrackClickDirective],
+  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, InstallReviewBadgeComponent, TrackClickDirective, EngineControlButtonComponent],
   template: `
+    @if (auth.isWatchman()) {
+      <!-- ───────────────────────────────────────────────────────────────────
+           Sprint 3 — VUE VEILLEUR « zéro donnée ». Le client ne veut donner
+           AUCUNE donnée à ce rôle : pas de statut, vitesse, position, IMEI,
+           connectivité, carte, badges, recherche, ni navigation vers le détail.
+           Uniquement : plaque + nom du véhicule + bouton Couper/Rallumer (le
+           « start/stop » demandé). La règle d'immobilité reste enforce serveur.
+           ──────────────────────────────────────────────────────────────────── -->
+      <div class="wn-page">
+        <div class="wn-header">
+          <h1 class="wn-title">Véhicules</h1>
+          <p class="wn-sub">{{ vehicles().length }} véhicule(s)</p>
+        </div>
+
+        @if (loading()) {
+          <div class="wn-loading">
+            <span class="w-6 h-6 border-2 border-fg-tertiary border-t-tracky-light rounded-full animate-spin"></span>
+          </div>
+        } @else if (vehicles().length === 0) {
+          <div class="wn-empty">
+            <div class="wn-empty-icon"><lucide-icon [img]="Truck" [size]="36"></lucide-icon></div>
+            <p class="wn-empty-text">Aucun véhicule accessible</p>
+          </div>
+        } @else {
+          <div class="wn-list">
+            @for (v of vehicles(); track v.id) {
+              <div class="wn-row">
+                <div class="wn-veh">
+                  <div class="wn-icon" [innerHTML]="getTypeIconHtml(v.type)"></div>
+                  <div class="wn-veh-text">
+                    <span class="wn-plate">{{ v.plate }}</span>
+                    @if (v.brand) {
+                      <span class="wn-brand">{{ v.brand }} {{ v.model ?? '' }}</span>
+                    }
+                  </div>
+                </div>
+                @if (v.tracker) {
+                  <app-engine-control-button
+                    [trackerId]="v.tracker.id"
+                    [vehicleId]="v.id"
+                    [vehiclePlate]="v.plate"
+                  />
+                } @else {
+                  <span class="wn-no-tracker">Pas de boîtier</span>
+                }
+              </div>
+            }
+          </div>
+        }
+      </div>
+    } @else {
     <div class="vlist-page">
       <div class="vlist-grid-bg"></div>
       <div class="vlist-glow"></div>
@@ -415,8 +467,42 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
         (cancelled)="showDeleteVehicle.set(false)"
       />
     </div>
+    }
   `,
   styles: [`
+    /* ─── Sprint 3 — Vue veilleur « zéro donnée » : liste épurée plaque + bouton ─── */
+    .wn-page { position: relative; max-width: 720px; margin: 0 auto }
+    .wn-header { margin-bottom: 18px }
+    .wn-title { font-size: 24px; font-weight: 800; color: var(--fg-primary); letter-spacing: -.02em }
+    .wn-sub { font-size: 13px; color: var(--fg-tertiary); margin-top: 2px }
+    .wn-loading { display: flex; justify-content: center; padding: 60px 0 }
+    .wn-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 50px 20px }
+    .wn-empty-icon { width: 60px; height: 60px; border-radius: 16px; background: var(--bg-tertiary);
+      display: flex; align-items: center; justify-content: center; color: var(--fg-tertiary) }
+    .wn-empty-text { font-size: 14px; color: var(--fg-tertiary) }
+    .wn-list { display: flex; flex-direction: column; gap: 10px }
+    .wn-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 14px 16px; border-radius: 14px;
+      background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+    }
+    .wn-veh { display: flex; align-items: center; gap: 12px; min-width: 0 }
+    .wn-icon {
+      width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--bg-tertiary); color: var(--fg-secondary);
+    }
+    .wn-icon :deep(svg) { width: 20px; height: 20px }
+    .wn-veh-text { display: flex; flex-direction: column; min-width: 0 }
+    .wn-plate { font-size: 16px; font-weight: 800; color: var(--fg-primary);
+      font-family: var(--font-mono, monospace); letter-spacing: .03em }
+    .wn-brand { font-size: 12px; color: var(--fg-tertiary); white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis }
+    .wn-no-tracker { font-size: 12px; color: var(--fg-tertiary); font-style: italic; flex-shrink: 0 }
+    @media (max-width: 480px) {
+      .wn-row { flex-wrap: wrap }
+    }
+
     .vlist-page { position: relative; min-height: 100% }
     .vlist-grid-bg {
       position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden;
@@ -710,7 +796,7 @@ export class VehiclesListComponent implements OnInit {
   private readonly realtime = inject(RealtimeService);
   protected readonly perms = inject(PermissionsService);
   private readonly preferences = inject(PreferencesService);
-  private readonly auth = inject(AuthService);
+  protected readonly auth = inject(AuthService);
   private readonly route = inject(ActivatedRoute);
   // Sprint 1 — section de groupe vers laquelle scroller au retour depuis le détail.
   private readonly pendingScrollGroup = signal<string | null>(null);

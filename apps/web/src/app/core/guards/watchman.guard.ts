@@ -6,9 +6,11 @@ import { AuthService } from '../services/auth.service';
  * Sprint 3 — Confinement du rôle « veilleur de nuit » (NIGHT_WATCHMAN).
  *
  * Allowlist **default-deny** : le veilleur ne peut atteindre QUE la liste des
- * véhicules (`/vehicles`) et le détail véhicule (`/vehicles/:id`). Toute autre
- * route — dashboard, carte, alertes, rapports, admin, et toute route AJOUTÉE
- * plus tard — le renvoie vers `/vehicles`.
+ * véhicules (`/vehicles`). Le détail véhicule (`/vehicles/:id`) est volontairement
+ * BLOQUÉ — il expose vitesse, position, coordonnées, IMEI, historique : le client
+ * ne veut AUCUNE donnée pour ce rôle. Le veilleur agit (couper/rallumer) directement
+ * depuis la liste. Toute autre route — détail, dashboard, carte, alertes, rapports,
+ * admin, et toute route AJOUTÉE plus tard — le renvoie vers `/vehicles`.
  *
  * Posé en `canActivateChild` du layout dashboard → couvre tous les enfants,
  * présents et futurs, sans devoir gérer chaque route individuellement.
@@ -24,6 +26,7 @@ export const watchmanChildGuard: CanActivateChildFn = (_childRoute, state: Route
   if (!auth.isWatchman()) return true;
 
   const path = state.url.split('?')[0].split('#')[0];
-  const allowed = path === '/vehicles' || path.startsWith('/vehicles/');
+  // Seule la LISTE est autorisée : pas de détail (`/vehicles/:id`) → zéro donnée.
+  const allowed = path === '/vehicles';
   return allowed ? true : router.createUrlTree(['/vehicles']);
 };
