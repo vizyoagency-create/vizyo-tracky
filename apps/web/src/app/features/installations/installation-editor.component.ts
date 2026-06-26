@@ -2,12 +2,13 @@ import { ChangeDetectionStrategy, Component, computed, inject, linkedSignal, OnI
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
-  CdkDrag, CdkDragDrop, CdkDragHandle, CdkDropList, CdkDropListGroup,
+  CdkDrag, CdkDragDrop, CdkDragHandle, CdkDragPlaceholder, CdkDropList, CdkDropListGroup,
   moveItemInArray, transferArrayItem,
 } from '@angular/cdk/drag-drop';
 import {
   LucideAngularModule, ArrowLeft, Plus, Pencil, Trash2, ChevronUp, ChevronDown,
   Wrench, X, Save, ExternalLink, RefreshCw, Check, CalendarDays, GripVertical,
+  Spline, List, ArrowRight, CornerDownLeft,
 } from 'lucide-angular';
 import type {
   InstallationEnergy, InstallationPlanDto, InstallationTaskDto, InstallationTaskStatus,
@@ -31,7 +32,7 @@ interface TaskForm {
   selector: 'app-installation-editor',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, RouterLink, LucideAngularModule, ConfirmModalComponent, CdkDropListGroup, CdkDropList, CdkDrag, CdkDragHandle],
+  imports: [FormsModule, RouterLink, LucideAngularModule, ConfirmModalComponent, CdkDropListGroup, CdkDropList, CdkDrag, CdkDragHandle, CdkDragPlaceholder],
   template: `
     <div class="ed">
       <a routerLink="/admin/installations" class="ed-back">
@@ -77,6 +78,21 @@ interface TaskForm {
           </div>
         </div>
 
+        <!-- ── BASCULE DE VUE : Serpent / Liste (meme plumbing CDK) ── -->
+        <div class="vmode">
+          <div class="vmode-seg" role="tablist" aria-label="Mode d'affichage du planning">
+            <button class="vmode-btn" type="button" role="tab" [class.active]="viewMode() === 'snake'"
+              [attr.aria-selected]="viewMode() === 'snake'" (click)="viewMode.set('snake')">
+              <lucide-icon [img]="SplineIcon" [size]="14"></lucide-icon> Serpent
+            </button>
+            <button class="vmode-btn" type="button" role="tab" [class.active]="viewMode() === 'list'"
+              [attr.aria-selected]="viewMode() === 'list'" (click)="viewMode.set('list')">
+              <lucide-icon [img]="ListIcon" [size]="14"></lucide-icon> Liste
+            </button>
+          </div>
+        </div>
+
+        @if (viewMode() === 'list') {
         <!-- ── DAY GROUPS (glisser-déposer CDK pour réordonner) ── -->
         <div cdkDropListGroup>
         @for (g of daysView(); track g.date) {
@@ -174,6 +190,97 @@ interface TaskForm {
         <button class="add-day" (click)="openAddTask(null)">
           <lucide-icon [img]="PlusIcon" [size]="14"></lucide-icon> Ajouter un véhicule
         </button>
+        } @else {
+        <!-- ══════════════════════════════════════════════════════════════
+             VUE SERPENT (boustrophedon) — meme plumbing CDK que la liste.
+             Chaque station = un DayGroup ; chips = tasks (cdkDrag) ; toutes
+             les stations dans un seul cdkDropListGroup → drag inter-jours.
+             L'effet serpent est PUREMENT CSS : l'ordre DOM = ordre logique,
+             les rangees impaires sont inversees via flex-direction: row-reverse.
+             ══════════════════════════════════════════════════════════════ -->
+        <div class="snake" cdkDropListGroup>
+          @for (row of snakeRows(); track $index; let ri = $index) {
+            <div class="snake-row" [class.rev]="ri % 2 === 1">
+              @for (g of row; track g.date; let ci = $index) {
+                <div class="station"
+                  [class.unsched]="!g.date"
+                  [class.overloaded]="!!g.date && g.tasks.length >= 6"
+                  [style.animationDelay]="((ri * 4 + ci) * 60) + 'ms'">
+
+                  <div class="station-head">
+                    @if (g.date) {
+                      <div class="station-date">
+                        <span class="station-d">{{ fmt(g.date) }}</span>
+                        <span class="station-wd">{{ weekday(g.date) }}</span>
+                      </div>
+                      <span class="station-n">{{ g.tasks.length }} véh.</span>
+                    } @else {
+                      <div class="station-date">
+                        <span class="station-d unsched-d">Non programmés</span>
+                        <span class="station-wd">à planifier</span>
+                      </div>
+                      <span class="station-n">{{ g.tasks.length }} véh.</span>
+                    }
+                  </div>
+
+                  @if (g.date) {
+                    @if (g.theme) { <p class="station-theme" [title]="g.theme">{{ g.theme }}</p> }
+                    @if (g.tasks.length >= 6) {
+                      <p class="station-warn">
+                        <lucide-icon [img]="CalendarDaysIcon" [size]="11"></lucide-icon> ⚠ à étaler
+                      </p>
+                    }
+                  } @else {
+                    <p class="station-theme muted">À planifier — glissez une plaque vers un jour</p>
+                  }
+
+                  <!-- chips : cdkDropList (chaque chip = cdkDrag) → meme onDrop() que la liste -->
+                  <div class="chips" cdkDropList [cdkDropListData]="g.tasks"
+                    [cdkDropListDisabled]="reordering()" (cdkDropListDropped)="onDrop($event)">
+                    @for (t of g.tasks; track t.id; let i = $index) {
+                      <div class="chip" cdkDrag [cdkDragData]="t" [style.animationDelay]="(i * 35) + 'ms'"
+                        [title]="chipTitle(t)">
+                        <span class="chip-dot"
+                          [class.pulse]="t.status === 'PENDING'"
+                          [style.background]="chipDot(t)"></span>
+                        <span class="chip-plate">{{ t.plate }}</span>
+                        <div class="chip-ph" *cdkDragPlaceholder></div>
+                      </div>
+                    }
+                    @if (g.tasks.length === 0) {
+                      <span class="chips-empty">Vide</span>
+                    }
+                  </div>
+
+                  @if (g.date) {
+                    <button class="station-add" (click)="openAddTask(g.date)" title="Ajouter un véhicule à ce jour">
+                      <lucide-icon [img]="PlusIcon" [size]="12"></lucide-icon>
+                    </button>
+                  }
+
+                  <!-- connecteur horizontal vers la station suivante de la rangee -->
+                  @if (ci < row.length - 1) {
+                    <span class="conn-h" aria-hidden="true">
+                      <lucide-icon [img]="ArrowRightIcon" [size]="16"></lucide-icon>
+                    </span>
+                  }
+                </div>
+              }
+
+              <!-- connecteur en U : descend vers la rangee suivante -->
+              @if (ri < snakeRows().length - 1) {
+                <span class="conn-u" aria-hidden="true">
+                  <lucide-icon [img]="CornerDownLeftIcon" [size]="16"></lucide-icon>
+                </span>
+              }
+            </div>
+          }
+
+          <button class="add-day snake-add" (click)="openAddTask(null)">
+            <lucide-icon [img]="PlusIcon" [size]="14"></lucide-icon> Ajouter un véhicule
+          </button>
+        </div>
+        }
       } @else {
         <div class="ed-empty">Planning introuvable.</div>
       }
@@ -414,6 +521,128 @@ interface TaskForm {
     .btn-ghost.sm.danger:hover { color: #f87171; border-color: rgba(239,68,68,.2) }
     .btn-primary { display: inline-flex; align-items: center; gap: 6px; padding: 9px 18px; border-radius: 10px; font-size: 12px; font-weight: 700; background: #059669; color: #fff; border: none; cursor: pointer }
     .btn-primary:disabled { opacity: .5; cursor: default }
+
+    /* ════════════════════════════════════════════════════════════
+       BASCULE DE VUE (segmented control Serpent / Liste)
+       ════════════════════════════════════════════════════════════ */
+    .vmode { display: flex; justify-content: flex-end; margin-bottom: 18px }
+    .vmode-seg { display: inline-flex; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--bg-secondary); overflow: hidden }
+    .vmode-btn {
+      display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; font-size: 12px; font-weight: 600;
+      background: transparent; color: var(--fg-tertiary); cursor: pointer; border: none; transition: color .18s, background .18s;
+    }
+    .vmode-btn:hover { color: var(--fg-secondary) }
+    .vmode-btn.active { background: var(--tracky); color: #fff }
+
+    /* ════════════════════════════════════════════════════════════
+       VUE SERPENT (boustrophedon) — stations + connecteurs + chips
+       Surfaces/textes 100% via variables CSS (dark + light OK).
+       ════════════════════════════════════════════════════════════ */
+    .snake { display: flex; flex-direction: column; gap: 4px }
+    .snake-row { display: flex; flex-wrap: nowrap; align-items: stretch; gap: 4px; position: relative }
+    /* rangees impaires : on inverse VISUELLEMENT (le DOM reste en ordre logique) */
+    .snake-row.rev { flex-direction: row-reverse }
+
+    .station {
+      position: relative; flex: 1 1 0; min-width: 0; display: flex; flex-direction: column;
+      padding: 13px 14px 12px; border-radius: 14px;
+      background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+      transition: transform .18s var(--ease-tracky, ease), box-shadow .18s ease, border-color .18s ease;
+      animation: stationIn .42s var(--ease-tracky, cubic-bezier(.16,1,.3,1)) both;
+    }
+    @keyframes stationIn { from { opacity: 0; transform: translateY(14px) } to { opacity: 1; transform: none } }
+    .station:hover {
+      transform: translateY(-3px);
+      border-color: var(--tracky); box-shadow: 0 10px 28px rgba(0,0,0,.18), 0 0 0 1px rgba(16,224,160,.12);
+    }
+    .station.overloaded { border-color: rgba(251,191,36,.5) }
+    .station.unsched { background: transparent; border-style: dashed; border-color: var(--border-subtle); opacity: .92 }
+    .station.unsched:hover { opacity: 1 }
+
+    .station-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px }
+    .station-date { display: flex; flex-direction: column; gap: 1px; min-width: 0 }
+    .station-d { font-family: var(--font-display, Poppins, sans-serif); font-size: 17px; font-weight: 800; color: var(--fg-primary); line-height: 1.05; letter-spacing: -.01em }
+    .station-d.unsched-d { font-size: 13px; font-weight: 700; color: var(--fg-secondary) }
+    .station-wd { font-size: 10px; color: var(--fg-tertiary); text-transform: capitalize }
+    .station-n { flex-shrink: 0; font-size: 10px; font-weight: 700; color: var(--fg-tertiary); background: var(--bg-tertiary); padding: 2px 7px; border-radius: 6px; white-space: nowrap }
+    .station-theme { margin-top: 7px; font-size: 11px; color: var(--fg-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.3 }
+    .station-theme.muted { white-space: normal; opacity: .8 }
+    .station-warn { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; font-size: 10px; font-weight: 700; color: #fbbf24 }
+
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; min-height: 30px; align-content: flex-start; border-radius: 10px; transition: outline-color .18s }
+    .chips-empty { font-size: 11px; color: var(--fg-tertiary); font-style: italic; padding: 4px 2px }
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 8px;
+      background: var(--bg-tertiary); border: 1px solid var(--border-subtle); cursor: grab; touch-action: none;
+      transition: transform .14s var(--ease-tracky, ease), border-color .14s, box-shadow .14s;
+      animation: chipIn .34s var(--ease-tracky, ease) both;
+    }
+    @keyframes chipIn { from { opacity: 0; transform: scale(.82) } to { opacity: 1; transform: none } }
+    .chip:hover { transform: scale(1.06); border-color: rgba(16,224,160,.35); box-shadow: 0 2px 8px rgba(0,0,0,.16) }
+    .chip:active { cursor: grabbing }
+    .chip-plate { font-family: var(--font-mono, monospace); font-size: 10px; font-weight: 600; color: var(--fg-primary); white-space: nowrap }
+    .chip-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 0 2px rgba(0,0,0,.04) }
+    .chip-dot.pulse { animation: dotPulse 1.8s ease-in-out infinite }
+    @keyframes dotPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(251,191,36,.5) }
+      50% { box-shadow: 0 0 0 4px rgba(251,191,36,0) }
+    }
+
+    .station-add {
+      align-self: flex-start; margin-top: 9px; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;
+      border-radius: 8px; background: transparent; border: 1px dashed var(--border-subtle); color: var(--fg-tertiary); cursor: pointer; transition: color .15s, border-color .15s;
+    }
+    .station-add:hover { color: var(--tracky-light); border-color: rgba(16,224,160,.4) }
+
+    /* Connecteur horizontal entre stations (la fleche suit le sens de lecture
+       de la rangee : les rangees inversees la retournent automatiquement). */
+    .conn-h {
+      position: absolute; top: 50%; right: -4px; transform: translate(50%, -50%); z-index: 2;
+      display: inline-flex; align-items: center; justify-content: center;
+      color: var(--tracky-light); pointer-events: none;
+      filter: drop-shadow(0 0 6px rgba(16,224,160,.35));
+      animation: connGlow 2.6s ease-in-out infinite;
+    }
+    .snake-row.rev .conn-h { transform: translate(50%, -50%) scaleX(-1) }
+    @keyframes connGlow { 0%, 100% { opacity: .55 } 50% { opacity: 1 } }
+
+    /* Connecteur en U (demi-tour) : descend vers la rangee suivante, ancre au
+       bord ou la rangee se termine (droite sur rangees paires, gauche sur rev). */
+    .conn-u {
+      position: absolute; bottom: -4px; right: 8px; transform: translateY(50%); z-index: 2;
+      display: inline-flex; align-items: center; justify-content: center;
+      color: var(--tracky-light); pointer-events: none;
+      filter: drop-shadow(0 0 6px rgba(16,224,160,.35));
+      animation: connGlow 2.6s ease-in-out infinite;
+    }
+    .snake-row.rev .conn-u { right: auto; left: 8px }
+
+    .snake-add { margin-top: 10px; align-self: flex-start }
+
+    /* CDK drag&drop (vue serpent) — preview/placeholder on-theme */
+    .chip.cdk-drag-preview {
+      box-shadow: 0 10px 26px rgba(0,0,0,.34); border-color: var(--tracky); background: var(--bg-secondary);
+      opacity: .95;
+    }
+    .chip.cdk-drag-placeholder, .chip-ph { opacity: .4 }
+    .chip.cdk-drag-animating { transition: transform .2s cubic-bezier(0,0,.2,1) }
+    .chips.cdk-drop-list-dragging .chip:not(.cdk-drag-placeholder) { transition: transform .2s cubic-bezier(0,0,.2,1) }
+    .chips.cdk-drop-list-receiving { outline: 2px dashed rgba(16,224,160,.45); outline-offset: 3px }
+
+    /* Responsive : sous 720px, on empile (le serpent perd son sens visuel) */
+    @media (max-width: 720px) {
+      .snake-row, .snake-row.rev { flex-direction: column }
+      .conn-h, .conn-u { display: none }
+    }
+
+    /* Respect des preferences moteur reduit : on coupe le gros du mouvement. */
+    @media (prefers-reduced-motion: reduce) {
+      .station, .chip { animation: none }
+      .station:hover { transform: none }
+      .chip:hover { transform: none }
+      .chip-dot.pulse { animation: none }
+      .conn-h, .conn-u { animation: none; opacity: .8 }
+    }
   `],
 })
 export class InstallationEditorComponent implements OnInit {
@@ -436,6 +665,10 @@ export class InstallationEditorComponent implements OnInit {
   protected readonly CheckIcon = Check;
   protected readonly CalendarDaysIcon = CalendarDays;
   protected readonly GripVerticalIcon = GripVertical;
+  protected readonly SplineIcon = Spline;
+  protected readonly ListIcon = List;
+  protected readonly ArrowRightIcon = ArrowRight;
+  protected readonly CornerDownLeftIcon = CornerDownLeft;
 
   protected readonly energyOptions = ENERGY_OPTIONS;
   protected readonly statusOptions = PLAN_STATUS_OPTIONS;
@@ -452,6 +685,18 @@ export class InstallationEditorComponent implements OnInit {
   readonly days = computed<string[]>(() => {
     const p = this.plan();
     return p ? distinctDays(p.tasks, p.dayThemes) : [];
+  });
+
+  // Mode d'affichage : « serpent » (boustrophedon visuel) ou « liste » (classique).
+  // Les deux partagent EXACTEMENT le meme plumbing CDK (daysView / onDrop / persistReorder).
+  readonly viewMode = signal<'snake' | 'list'>('snake');
+  /** Decoupe daysView() en rangees de 4 stations — l'ordre DOM reste l'ordre logique
+   *  (jamais inverse) ; l'effet serpent est purement CSS (flex-direction sur les rangees impaires). */
+  readonly snakeRows = computed<DayGroup[][]>(() => {
+    const groups = this.daysView();
+    const rows: DayGroup[][] = [];
+    for (let i = 0; i < groups.length; i += 4) rows.push(groups.slice(i, i + 4));
+    return rows;
   });
 
   // Pose
@@ -508,6 +753,23 @@ export class InstallationEditorComponent implements OnInit {
     if (s === 'installed') return { cls: 'installed', label: 'Installé' };
     if (s === 'no-sim') return { cls: 'no-sim', label: 'SIM manquante' };
     return null;
+  }
+
+  /** Infobulle d'une chip serpent : « PLAQUE — Marque Modèle (Statut) ». */
+  protected chipTitle(t: InstallationTaskDto): string {
+    const model = [t.brand, t.model].filter(Boolean).join(' ').trim();
+    const head = model ? `${t.plate} — ${model}` : t.plate;
+    return `${head} · ${this.taskStatusLabel(t.status)}`;
+  }
+
+  /** Couleur semantique de la pastille d'une chip serpent (statut + SIM manquante). */
+  protected chipDot(t: InstallationTaskDto): string {
+    if (t.status === 'DONE') {
+      // Posé mais sans SIM = installation incomplete → orange (signal terrain).
+      return installState(t.imei, t.simNumber) === 'no-sim' ? '#fb923c' : '#10e0a0';
+    }
+    if (t.status === 'SKIPPED') return '#6b7280';
+    return '#fbbf24'; // PENDING
   }
   protected deleteTaskDesc = computed(() => {
     const t = this.taskToDelete();
