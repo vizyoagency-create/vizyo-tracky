@@ -967,6 +967,11 @@ model EngineControlCommand {
   // verifier le dernier CUT/RESTORE. L'index [trackerId, status] ne couvre pas
   // l'orderBy createdAt → table sort. Cet index couvre directement.
   @@index([trackerId, createdAt(sort: Desc)])
+  // Review 2026-06-26 — l'audit admin GET /admin/activity/engine-commands trie
+  // ORDER BY createdAt DESC SANS filtre trackerId ; l'index composite ci-dessus
+  // (colonne de tête trackerId) ne couvre pas ce tri global → table sort qui se
+  // dégrade avec le volume. Index global dédié.
+  @@index([createdAt(sort: Desc)])
   @@map("engine_control_commands")
 }
 
