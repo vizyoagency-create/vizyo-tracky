@@ -123,12 +123,15 @@ import { MenuStateService } from '../core/services/menu-state.service';
           </div>
 
           <div class="top-bar-left">
-            <button (click)="mobileMenuOpen.set(true)"
-                    class="mobile-burger"
-                    aria-label="Ouvrir le menu de navigation"
-                    [attr.aria-expanded]="mobileMenuOpen()">
-              <lucide-icon [img]="MenuIcon" [size]="18" aria-hidden="true"></lucide-icon>
-            </button>
+            <!-- Sprint 3 — veilleur : pas de menu burger (sa nav = « Véhicules » seul). -->
+            @if (!auth.isWatchman()) {
+              <button (click)="mobileMenuOpen.set(true)"
+                      class="mobile-burger"
+                      aria-label="Ouvrir le menu de navigation"
+                      [attr.aria-expanded]="mobileMenuOpen()">
+                <lucide-icon [img]="MenuIcon" [size]="18" aria-hidden="true"></lucide-icon>
+              </button>
+            }
             <!-- V1.12 — En mode Baanool le /dashboard n'est pas accessible
                  (filtre dans navItems), donc le logo redirige vers /map pour
                  eviter d'atterrir sur une page vide/redirigee. -->
@@ -144,6 +147,20 @@ import { MenuStateService } from '../core/services/menu-state.service';
             <h2 class="top-title">{{ pageTitle() }}</h2>
           </div>
           <div class="top-actions">
+            @if (auth.isWatchman()) {
+              <!-- Sprint 3 — veilleur « zéro donnée » : pas de cloche d'alertes, pas de
+                   menu profil (Mon profil / Paramètres retirés). On garde UNIQUEMENT
+                   l'icône de bascule de thème (à la place du profil) + la déconnexion
+                   (seul point de sortie : /account et /settings sont bloqués pour ce rôle). -->
+              <button (click)="toggleTheme()" class="top-icon-btn"
+                      [attr.aria-label]="themeService.theme() === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'">
+                <lucide-icon [img]="themeService.theme() === 'dark' ? SunIcon : MoonIcon" [size]="18"></lucide-icon>
+              </button>
+              <button (click)="confirmLogout()" class="top-icon-btn top-icon-btn--danger"
+                      aria-label="Se déconnecter">
+                <lucide-icon [img]="LogOutIcon" [size]="18"></lucide-icon>
+              </button>
+            } @else {
             <app-alerts-bell />
             <div class="user-menu-wrapper">
               <button (click)="userMenuOpen.set(!userMenuOpen())" class="user-menu-trigger">
@@ -187,6 +204,7 @@ import { MenuStateService } from '../core/services/menu-state.service';
                 </div>
               }
             </div>
+            }
           </div>
         </header>
         <main id="main-content" class="content" [class.fullscreen]="fullscreen()" tabindex="-1">
@@ -422,6 +440,16 @@ import { MenuStateService } from '../core/services/menu-state.service';
     .mobile-burger { display: none }
     .top-title { font-size: 16px; font-weight: 700; color: var(--fg-primary); position: relative; z-index: 1 }
     .top-actions { display: flex; align-items: center; gap: 8px; position: relative; z-index: 1 }
+    /* Sprint 3 — veilleur : boutons icône top-bar (thème + déconnexion) qui
+       remplacent l'avatar profil. Même gabarit cercle 40px bordé pour la cohérence. */
+    .top-icon-btn {
+      display: flex; align-items: center; justify-content: center;
+      width: 40px; height: 40px; border-radius: 9999px;
+      background: transparent; border: 2px solid var(--border-subtle);
+      color: var(--fg-secondary); cursor: pointer; padding: 0; transition: all .2s;
+    }
+    .top-icon-btn:hover { border-color: var(--tracky-light); color: var(--fg-primary) }
+    .top-icon-btn--danger:hover { border-color: #f87171; color: #f87171 }
     /* User menu dropdown */
     .user-menu-wrapper { position: relative }
     .user-menu-trigger {
@@ -836,7 +864,7 @@ export class DashboardLayoutComponent {
     }
   };
 
-  private readonly auth = inject(AuthService);
+  protected readonly auth = inject(AuthService);
   private readonly perms = inject(PermissionsService);
   protected readonly network = inject(NetworkStatusService);
 
