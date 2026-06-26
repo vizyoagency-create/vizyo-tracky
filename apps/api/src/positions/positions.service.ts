@@ -19,10 +19,7 @@ import { TrackerFixModeService } from '../tracker-fix-mode/tracker-fix-mode.serv
 import { TripsService } from '../trips/trips.service';
 import { PositionSamplingService } from './position-sampling.service';
 
-/** System user ID for device-observed commands. */
-const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000';
-
-/** Only consider app CUT commands within this window for transition detection. */
+/** Only consider app CUT commands within this window for ignition confirmation. */
 const CUT_DETECTION_WINDOW_MS = 5 * 60 * 1000;
 
 interface RequestedBy {
@@ -475,156 +472,68 @@ export class PositionsService {
   }
 
   /**
-   * Detect external engine cuts (SMS) and relay resets by observing ignition transitions.
-   * Creates synthetic EngineControlCommand records so the UI stays in sync.
+   * Confirmation par ignition d'une coupure moteur APP en attente.
+   *
+   * On NE synthétise PLUS de commande « coupure/rallumage externe » (DEVICE_OBSERVED)
+   * sur les cycles de contact. Un contact qui passe OFF = stationnement dans
+   * l'immense majorité des cas, INDISTINGUABLE d'une vraie coupure externe : l'ancienne
+   * heuristique faisait apparaître TOUT véhicule garé comme « coupé » (bouton
+   * « Rallumer » à tort, pour les veilleurs comme pour tous les rôles), et polluait la
+   * base à chaque cycle de contact. L'état coupé est désormais 100 % piloté par les
+   * commandes app réelles (MANUAL/SCHEDULER), source de vérité unique et prévisible.
+   *
+   * SEUL cas traité ici : quand l'ignition tombe juste après une coupure app ENVOYÉE
+   * et CONFIRMABLE (`confirmationExpected` = véhicule en marche à l'envoi), c'est la
+   * preuve physique que la coupure a fonctionné → on passe la commande ACKNOWLEDGED
+   * (état « confirmée », distinct de « envoyée ») + WS. Jamais de faux succès.
    */
   private async handleIgnitionTransition(
     tracker: Tracker & { vehicle: Vehicle },
     previousIgnition: boolean,
     currentIgnition: boolean,
   ): Promise<void> {
-    const fleetId = tracker.vehicle.fleetId;
+    // On ne réagit qu'à une transition contact ON -> OFF (chute d'ignition).
+    if (previousIgnition !== true || currentIgnition !== false) return;
 
-    if (previousIgnition === true && currentIgnition === false) {
-      // Ignition went OFF — is there a recent app CUT command?
-      const recentCut = await this.prisma.engineControlCommand.findFirst({
-        where: {
-          trackerId: tracker.id,
-          action: EngineAction.CUT,
-          status: { in: [CommandStatus.SENT, CommandStatus.ACKNOWLEDGED] },
-          createdAt: { gte: new Date(Date.now() - CUT_DETECTION_WINDOW_MS) },
-        },
-        orderBy: { createdAt: 'desc' },
+    const recentCut = await this.prisma.engineControlCommand.findFirst({
+      where: {
+        trackerId: tracker.id,
+        action: EngineAction.CUT,
+        // Coupure APP uniquement (jamais une observation device) + encore non confirmée.
+        source: { not: 'DEVICE_OBSERVED' },
+        status: CommandStatus.SENT,
+        confirmationExpected: true,
+        createdAt: { gte: new Date(Date.now() - CUT_DETECTION_WINDOW_MS) },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!recentCut) return;
+
+    try {
+      const confirmed = await this.prisma.engineControlCommand.update({
+        where: { id: recentCut.id },
+        data: { status: CommandStatus.ACKNOWLEDGED, ackedAt: new Date() },
       });
-
-      if (!recentCut) {
-        // No app command → external cut (SMS or direct)
-        try {
-          const cmd = await this.prisma.engineControlCommand.create({
-            data: {
-              trackerId: tracker.id,
-              action: EngineAction.CUT,
-              source: 'DEVICE_OBSERVED',
-              status: CommandStatus.ACKNOWLEDGED,
-              requestedBy: SYSTEM_USER_ID,
-              reason: 'Coupure détectée par le boîtier (commande SMS ou externe)',
-              ackedAt: new Date(),
-            },
-          });
-          this.gateway.emitEngineCommandUpdate(fleetId, {
-            commandId: cmd.id,
-            trackerId: tracker.id,
-            action: cmd.action,
-            status: cmd.status,
-            lastError: null,
-            confirmationExpected: cmd.confirmationExpected,
-            sentAt: null,
-            ackedAt: cmd.ackedAt ? cmd.ackedAt.toISOString() : null,
-            source: cmd.source as 'MANUAL' | 'SCHEDULER' | 'DEVICE_OBSERVED',
-          });
-          this.logger.warn(
-            { trackerId: tracker.id, imei: tracker.imei, commandId: cmd.id },
-            'External engine CUT detected (SMS or direct)',
-          );
-        } catch (err) {
-          this.logger.error(
-            { trackerId: tracker.id, imei: tracker.imei, error: (err as Error).message },
-            'Failed to persist DEVICE_OBSERVED CUT — external cut not recorded',
-          );
-        }
-      } else if (recentCut.status === CommandStatus.SENT && recentCut.confirmationExpected) {
-        // Sprint 2 (Obj 2 + revue #5) — CONFIRMATION PAR IGNITION : la coupure app
-        // vient d'etre prouvee physiquement (le moteur s'est eteint). On ne confirme
-        // QUE si la coupure etait confirmable (confirmationExpected = vehicule en
-        // marche a l'envoi). Une coupure « a l'arret » (ignition deja OFF) ne doit pas
-        // etre faussement confirmee par une transition ON->OFF ulterieure sans rapport.
-        // On la passe « confirmee » (ACKNOWLEDGED), etat distinct du « envoyee », + WS.
-        try {
-          const confirmed = await this.prisma.engineControlCommand.update({
-            where: { id: recentCut.id },
-            data: { status: CommandStatus.ACKNOWLEDGED, ackedAt: new Date() },
-          });
-          this.gateway.emitEngineCommandUpdate(fleetId, {
-            commandId: confirmed.id,
-            trackerId: tracker.id,
-            action: confirmed.action,
-            status: confirmed.status,
-            lastError: null,
-            confirmationExpected: confirmed.confirmationExpected,
-            sentAt: confirmed.sentAt ? confirmed.sentAt.toISOString() : null,
-            ackedAt: confirmed.ackedAt ? confirmed.ackedAt.toISOString() : null,
-            source: confirmed.source as 'MANUAL' | 'SCHEDULER' | 'DEVICE_OBSERVED',
-          });
-          this.logger.log(
-            { trackerId: tracker.id, commandId: confirmed.id },
-            'Engine CUT confirmee par chute d\'ignition',
-          );
-        } catch (err) {
-          this.logger.error(
-            { trackerId: tracker.id, error: (err as Error).message },
-            'Failed to persist ignition confirmation',
-          );
-        }
-      }
-    } else if (previousIgnition === false && currentIgnition === true) {
-      // Ignition went ON — is there an active CUT without a RESTORE?
-      const lastCut = await this.prisma.engineControlCommand.findFirst({
-        where: {
-          trackerId: tracker.id,
-          action: EngineAction.CUT,
-          status: { in: [CommandStatus.SENT, CommandStatus.ACKNOWLEDGED] },
-        },
-        orderBy: { createdAt: 'desc' },
+      this.gateway.emitEngineCommandUpdate(tracker.vehicle.fleetId, {
+        commandId: confirmed.id,
+        trackerId: tracker.id,
+        action: confirmed.action,
+        status: confirmed.status,
+        lastError: null,
+        confirmationExpected: confirmed.confirmationExpected,
+        sentAt: confirmed.sentAt ? confirmed.sentAt.toISOString() : null,
+        ackedAt: confirmed.ackedAt ? confirmed.ackedAt.toISOString() : null,
+        source: confirmed.source as 'MANUAL' | 'SCHEDULER' | 'DEVICE_OBSERVED',
       });
-
-      if (lastCut) {
-        // Check for a more recent RESTORE
-        const lastRestore = await this.prisma.engineControlCommand.findFirst({
-          where: {
-            trackerId: tracker.id,
-            action: EngineAction.RESTORE,
-            status: { in: [CommandStatus.SENT, CommandStatus.ACKNOWLEDGED] },
-            createdAt: { gt: lastCut.createdAt },
-          },
-        });
-
-        if (!lastRestore) {
-          // CUT was active but ignition came back → relay reset
-          try {
-            const cmd = await this.prisma.engineControlCommand.create({
-              data: {
-                trackerId: tracker.id,
-                action: EngineAction.RESTORE,
-                source: 'DEVICE_OBSERVED',
-                status: CommandStatus.ACKNOWLEDGED,
-                requestedBy: SYSTEM_USER_ID,
-                reason: 'Moteur détecté comme actif (réinitialisation relais probable)',
-                ackedAt: new Date(),
-              },
-            });
-            this.gateway.emitEngineCommandUpdate(fleetId, {
-              commandId: cmd.id,
-              trackerId: tracker.id,
-              action: cmd.action,
-              status: cmd.status,
-              lastError: null,
-              confirmationExpected: cmd.confirmationExpected,
-              sentAt: null,
-              ackedAt: cmd.ackedAt ? cmd.ackedAt.toISOString() : null,
-              source: cmd.source as 'MANUAL' | 'SCHEDULER' | 'DEVICE_OBSERVED',
-            });
-            this.logger.warn(
-              { trackerId: tracker.id, imei: tracker.imei, commandId: cmd.id },
-              'Relay reset detected: engine is ON despite active CUT',
-            );
-          } catch (err) {
-            this.logger.error(
-              { trackerId: tracker.id, imei: tracker.imei, error: (err as Error).message },
-              'Failed to persist DEVICE_OBSERVED RESTORE — relay reset not recorded',
-            );
-          }
-        }
-      }
+      this.logger.log(
+        { trackerId: tracker.id, commandId: confirmed.id },
+        'Engine CUT confirmee par chute d\'ignition',
+      );
+    } catch (err) {
+      this.logger.error(
+        { trackerId: tracker.id, error: (err as Error).message },
+        'Failed to persist ignition confirmation',
+      );
     }
   }
 

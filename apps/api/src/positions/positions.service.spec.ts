@@ -390,6 +390,28 @@ describe('PositionsService.ingest — garde-fou replay/teleportation', () => {
     expect(gateway.emitEngineCommandUpdate).toHaveBeenCalled();
   });
 
+  // « super carré » — un simple stationnement (contact ON->OFF) SANS coupure app
+  // ne doit RIEN créer ni modifier : on a supprimé la fausse commande « coupure
+  // externe » DEVICE_OBSERVED qui faisait apparaître tout véhicule garé « coupé »
+  // (bouton « Rallumer » à tort, veilleurs comme tous les autres roles).
+  it('does NOT synthesize a CUT when ignition drops without an app cut (normal park)', async () => {
+    prisma.engineControlCommand.findFirst.mockResolvedValue(null); // aucune coupure app recente
+    await service.ingest(makeFrame({ ignition: false }));           // transition ON -> OFF
+    await new Promise((r) => setTimeout(r, 20));
+    expect(prisma.engineControlCommand.create).not.toHaveBeenCalled();
+    expect(prisma.engineControlCommand.update).not.toHaveBeenCalled();
+  });
+
+  // Redémarrage (contact OFF->ON) : aucune commande synthétique « rallumage / reset
+  // relais ». L'état coupé est piloté UNIQUEMENT par les commandes app.
+  it('does NOT synthesize a RESTORE when ignition comes back on (restart)', async () => {
+    trackerRow = makeTracker({ lastKnownIgnition: false, lastIgnition: false });
+    await service.ingest(makeFrame({ ignition: true }));            // transition OFF -> ON
+    await new Promise((r) => setTimeout(r, 20));
+    expect(prisma.engineControlCommand.create).not.toHaveBeenCalled();
+    expect(prisma.engineControlCommand.update).not.toHaveBeenCalled();
+  });
+
   it('accepts the first ever valid frame when the tracker has no baseline', async () => {
     trackerRow = makeTracker({
       lastLat: null,
