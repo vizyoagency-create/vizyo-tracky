@@ -1,22 +1,41 @@
 import { DatePipe } from '@angular/common';
 import { Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import type {
   ActivityFeedItemDto,
   ActivityStatsDto,
+  EngineCommandAuditDto,
   OnlineUserDto,
   PresenceStatus,
 } from '@vizyo/tracky-shared';
-import { ArrowLeft, LucideAngularModule, RefreshCw, Users } from 'lucide-angular';
+import {
+  Activity,
+  ArrowLeft,
+  ArrowRight,
+  CircleAlert,
+  LogIn,
+  LogOut,
+  LucideAngularModule,
+  MapPin,
+  Moon,
+  MousePointer2,
+  Power,
+  PowerOff,
+  RefreshCw,
+  RotateCcw,
+  Users,
+} from 'lucide-angular';
+import { relativeTime } from '../../shared/utils/relative-time';
 import { UserActivityApiService } from './user-activity-api.service';
 
-type Tab = 'live' | 'history' | 'analytics';
+type Tab = 'live' | 'history' | 'analytics' | 'engine-commands';
 type Period = '24h' | '7d' | '30d';
 
 @Component({
   selector: 'app-admin-activity',
   standalone: true,
-  imports: [DatePipe, RouterLink, LucideAngularModule],
+  imports: [DatePipe, FormsModule, RouterLink, LucideAngularModule],
   template: `
     <div class="flex flex-col gap-5">
       <!-- Header -->
@@ -67,11 +86,13 @@ type Period = '24h' | '7d' | '30d';
                   <span class="w-2.5 h-2.5 rounded-full shrink-0" [style.background]="statusColor(u.status)"
                         [title]="statusLabel(u.status)"></span>
                   <div class="min-w-0 flex-1">
-                    <div class="text-sm font-medium text-fg-primary truncate">{{ u.name }}
-                      <span class="text-[10px] text-fg-tertiary">· {{ u.role }}</span>
+                    <div class="text-sm font-medium text-fg-primary truncate flex items-center gap-1.5">
+                      {{ u.name }}
+                      <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-bg-tertiary text-fg-tertiary uppercase tracking-wide">{{ u.role }}</span>
                     </div>
-                    <div class="text-xs text-fg-tertiary truncate">
-                      📍 {{ u.currentRouteLabel ?? u.currentRoute ?? '—' }}
+                    <div class="text-xs text-fg-tertiary truncate flex items-center gap-1">
+                      <lucide-icon [img]="MapPin" [size]="11" class="shrink-0"></lucide-icon>
+                      {{ u.currentRouteLabel ?? u.currentRoute ?? '—' }}
                       · {{ statusLabel(u.status) }}
                     </div>
                   </div>
@@ -89,11 +110,11 @@ type Period = '24h' | '7d' | '30d';
           <!-- Live feed -->
           <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4">
             <div class="text-sm font-medium text-fg-secondary mb-3">Flux en direct</div>
-            <div class="flex flex-col gap-1.5 max-h-[420px] overflow-y-auto">
+            <div class="flex flex-col gap-1 max-h-[420px] overflow-y-auto">
               @for (a of feed(); track a.id) {
-                <div class="flex items-baseline gap-2 text-xs">
-                  <span class="text-fg-tertiary tabular-nums shrink-0">{{ a.at | date: 'HH:mm:ss' }}</span>
-                  <span class="shrink-0">{{ typeIcon(a.type) }}</span>
+                <div class="flex items-center gap-2 text-xs py-1 px-1.5 rounded-md hover:bg-bg-tertiary/40">
+                  <span class="text-fg-tertiary tabular-nums shrink-0 font-mono">{{ a.at | date: 'HH:mm:ss' }}</span>
+                  <lucide-icon [img]="typeIcon(a.type)" [size]="13" class="text-fg-tertiary shrink-0"></lucide-icon>
                   <span class="font-medium text-fg-secondary shrink-0">{{ a.userName }}</span>
                   <span class="text-fg-tertiary truncate">{{ describe(a) }}</span>
                 </div>
@@ -108,11 +129,11 @@ type Period = '24h' | '7d' | '30d';
       <!-- ─────────── HISTORIQUE ─────────── -->
       @if (tab() === 'history') {
         <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4">
-          <div class="flex flex-col gap-1.5">
+          <div class="flex flex-col">
             @for (a of history(); track a.id) {
-              <div class="flex items-baseline gap-2 text-xs py-0.5 border-b border-border-subtle/30">
-                <span class="text-fg-tertiary tabular-nums shrink-0 w-[112px]">{{ a.at | date: 'dd/MM HH:mm:ss' }}</span>
-                <span class="shrink-0">{{ typeIcon(a.type) }}</span>
+              <div class="flex items-center gap-2 text-xs py-1.5 px-1.5 rounded-md border-b border-border-subtle/30 hover:bg-bg-tertiary/40">
+                <span class="text-fg-tertiary tabular-nums shrink-0 w-[112px] font-mono">{{ a.at | date: 'dd/MM HH:mm:ss' }}</span>
+                <lucide-icon [img]="typeIcon(a.type)" [size]="13" class="text-fg-tertiary shrink-0"></lucide-icon>
                 <span class="font-medium text-fg-secondary shrink-0">{{ a.userName }}</span>
                 <span class="text-fg-tertiary truncate">{{ describe(a) }}</span>
               </div>
@@ -221,6 +242,113 @@ type Period = '24h' | '7d' | '30d';
           <p class="text-sm text-fg-tertiary text-center py-6">Chargement…</p>
         }
       }
+
+      <!-- ─────────── COMMANDES MOTEUR ─────────── -->
+      @if (tab() === 'engine-commands') {
+        <!-- Filters -->
+        <div class="flex flex-wrap items-end gap-3">
+          <div class="flex flex-col gap-1">
+            <label class="text-xs text-fg-tertiary">Action</label>
+            <select [ngModel]="actionFilter()" (ngModelChange)="setActionFilter($event)"
+                    class="bg-bg-secondary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary">
+              <option value="">Toutes</option>
+              <option value="CUT">Coupure</option>
+              <option value="RESTORE">Redémarrage</option>
+            </select>
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-xs text-fg-tertiary">Statut</label>
+            <select [ngModel]="statusFilter()" (ngModelChange)="setStatusFilter($event)"
+                    class="bg-bg-secondary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary">
+              <option value="">Tous</option>
+              <option value="ACKNOWLEDGED">Confirmé</option>
+              <option value="SENT">Envoyé</option>
+              <option value="PENDING">En attente</option>
+              <option value="FAILED">Échec</option>
+              <option value="REJECTED_SPEED">Refusé (vitesse)</option>
+            </select>
+          </div>
+        </div>
+
+        @if (enginecmds().length > 0) {
+          <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-hidden">
+            <table class="w-full text-sm">
+              <thead class="border-b border-border-subtle text-fg-tertiary text-xs uppercase tracking-wide">
+                <tr>
+                  <th class="px-4 py-3 text-left font-medium">Quand</th>
+                  <th class="px-4 py-3 text-left font-medium">Véhicule</th>
+                  <th class="px-4 py-3 text-left font-medium">Action</th>
+                  <th class="px-4 py-3 text-left font-medium">Par</th>
+                  <th class="px-4 py-3 text-left font-medium">Statut</th>
+                  <th class="px-4 py-3 text-left font-medium">Source</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (c of enginecmds(); track c.id) {
+                  <tr class="border-b border-border-subtle/50 hover:bg-bg-tertiary/40 align-top">
+                    <!-- Quand -->
+                    <td class="px-4 py-3 text-fg-tertiary whitespace-nowrap" [title]="(c.createdAt | date: 'dd/MM/yyyy HH:mm:ss') ?? ''">
+                      {{ relativeTime(c.createdAt) }}
+                    </td>
+                    <!-- Véhicule -->
+                    <td class="px-4 py-3">
+                      <span class="font-mono text-fg-primary">{{ c.vehiclePlate ?? c.trackerImei }}</span>
+                      @if (!c.vehiclePlate) {
+                        <span class="block text-[10px] text-fg-tertiary">IMEI</span>
+                      }
+                    </td>
+                    <!-- Action -->
+                    <td class="px-4 py-3">
+                      <span class="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium rounded-full"
+                            [class]="c.action === 'CUT' ? 'bg-rose-500/15 text-rose-400' : 'bg-emerald-500/15 text-emerald-400'">
+                        <lucide-icon [img]="c.action === 'CUT' ? PowerOff : Power" [size]="12"></lucide-icon>
+                        {{ c.action === 'CUT' ? 'Coupé' : 'Redémarré' }}
+                      </span>
+                    </td>
+                    <!-- Par -->
+                    <td class="px-4 py-3">
+                      <div class="flex items-center gap-1.5 flex-wrap">
+                        <span class="text-fg-secondary">{{ c.requestedByName }}</span>
+                        @if (c.requestedByRole) {
+                          <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-bg-tertiary text-fg-tertiary uppercase tracking-wide">{{ c.requestedByRole }}</span>
+                        }
+                      </div>
+                    </td>
+                    <!-- Statut -->
+                    <td class="px-4 py-3">
+                      <span class="inline-block px-2 py-0.5 text-xs font-medium rounded-full" [class]="statusClass(c.status)">
+                        {{ cmdStatusLabel(c.status) }}
+                      </span>
+                      @if (c.reason || c.lastError) {
+                        <span class="block text-[11px] text-fg-tertiary mt-1 max-w-[260px] truncate"
+                              [title]="c.lastError ?? c.reason ?? ''">
+                          {{ c.lastError ?? c.reason }}
+                        </span>
+                      }
+                    </td>
+                    <!-- Source -->
+                    <td class="px-4 py-3">
+                      <span class="inline-block px-2 py-0.5 text-xs rounded-md bg-bg-tertiary text-fg-tertiary">
+                        {{ sourceLabel(c.source) }}
+                      </span>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          <button (click)="loadMoreEngine()" [disabled]="loadingMore()"
+                  class="w-full py-2 text-sm text-fg-secondary border border-border-subtle rounded-lg hover:border-tracky disabled:opacity-50">
+            {{ loadingMore() ? 'Chargement…' : 'Charger plus' }}
+          </button>
+        } @else {
+          <div class="flex flex-col items-center justify-center h-40 rounded-[--radius-card]
+                      bg-bg-secondary border border-border-subtle text-fg-tertiary gap-2">
+            <lucide-icon [img]="PowerOff" [size]="40" class="opacity-30"></lucide-icon>
+            <p class="text-sm">Aucune commande moteur.</p>
+          </div>
+        }
+      }
     </div>
   `,
 })
@@ -230,11 +358,16 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
   protected readonly ArrowLeft = ArrowLeft;
   protected readonly RefreshCw = RefreshCw;
   protected readonly Users = Users;
+  protected readonly MapPin = MapPin;
+  protected readonly Power = Power;
+  protected readonly PowerOff = PowerOff;
+  protected readonly relativeTime = relativeTime;
 
   readonly tabs: { id: Tab; label: string }[] = [
     { id: 'live', label: 'Live' },
     { id: 'history', label: 'Historique' },
     { id: 'analytics', label: 'Analytics' },
+    { id: 'engine-commands', label: 'Commandes moteur' },
   ];
   readonly periods: { id: Period; label: string }[] = [
     { id: '24h', label: '24h' },
@@ -249,6 +382,11 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
   readonly loadingMore = signal(false);
   readonly stats = signal<ActivityStatsDto | null>(null);
   readonly period = signal<Period>('7d');
+
+  // Commandes moteur (audit coupe-circuit).
+  readonly enginecmds = signal<EngineCommandAuditDto[]>([]);
+  readonly actionFilter = signal('');
+  readonly statusFilter = signal('');
 
   readonly maxSessions = computed(() =>
     Math.max(1, ...(this.stats()?.sessionsPerDay ?? []).map((d) => d.count)),
@@ -271,12 +409,14 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
     this.tab.set(t);
     if (t === 'live') this.loadLive();
     else if (t === 'history') this.loadHistory();
+    else if (t === 'engine-commands') this.loadEngine();
     else this.loadStats();
   }
 
   reload(): void {
     if (this.tab() === 'live') this.loadLive();
     else if (this.tab() === 'history') this.loadHistory();
+    else if (this.tab() === 'engine-commands') this.loadEngine();
     else this.loadStats();
   }
 
@@ -296,6 +436,36 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
       },
       error: () => this.loadingMore.set(false),
     });
+  }
+
+  setActionFilter(v: string): void {
+    this.actionFilter.set(v);
+    this.loadEngine();
+  }
+  setStatusFilter(v: string): void {
+    this.statusFilter.set(v);
+    this.loadEngine();
+  }
+
+  loadMoreEngine(): void {
+    const last = this.enginecmds()[this.enginecmds().length - 1];
+    if (!last) return;
+    this.loadingMore.set(true);
+    this.api
+      .engineCommands(50, last.createdAt, this.actionFilter() || undefined, this.statusFilter() || undefined)
+      .subscribe({
+        next: (items) => {
+          this.enginecmds.update((l) => [...l, ...items]);
+          this.loadingMore.set(false);
+        },
+        error: () => this.loadingMore.set(false),
+      });
+  }
+
+  private loadEngine(): void {
+    this.api
+      .engineCommands(50, undefined, this.actionFilter() || undefined, this.statusFilter() || undefined)
+      .subscribe({ next: (l) => this.enginecmds.set(l), error: () => undefined });
   }
 
   private loadLive(): void {
@@ -324,16 +494,46 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
   protected statusLabel(s: PresenceStatus): string {
     return s === 'ACTIVE' ? 'actif' : s === 'IDLE' ? 'inactif' : s === 'AWAY' ? 'absent' : 'hors ligne';
   }
-  protected typeIcon(t: ActivityFeedItemDto['type']): string {
+  protected typeIcon(t: ActivityFeedItemDto['type']) {
     switch (t) {
-      case 'PAGE_VIEW': return '→';
-      case 'CLICK': return '⊕';
-      case 'SESSION_START': return '●';
-      case 'SESSION_END': return '○';
-      case 'SESSION_RESUME': return '↩';
-      case 'IDLE': return '💤';
-      case 'AWAY': return '🟠';
-      default: return '·';
+      case 'PAGE_VIEW': return ArrowRight;
+      case 'CLICK': return MousePointer2;
+      case 'SESSION_START': return LogIn;
+      case 'SESSION_END': return LogOut;
+      case 'SESSION_RESUME': return RotateCcw;
+      case 'IDLE': return Moon;
+      case 'AWAY': return CircleAlert;
+      default: return Activity;
+    }
+  }
+
+  // ── helpers commandes moteur ──
+  protected cmdStatusLabel(s: EngineCommandAuditDto['status']): string {
+    switch (s) {
+      case 'ACKNOWLEDGED': return 'Confirmé';
+      case 'SENT': return 'Envoyé';
+      case 'PENDING': return 'En attente';
+      case 'FAILED': return 'Échec';
+      case 'REJECTED_SPEED': return 'Refusé (vitesse)';
+      default: return s;
+    }
+  }
+  protected statusClass(s: EngineCommandAuditDto['status']): string {
+    switch (s) {
+      case 'ACKNOWLEDGED': return 'bg-emerald-500/15 text-emerald-400';
+      case 'SENT': return 'bg-sky-500/15 text-sky-400';
+      case 'PENDING': return 'bg-amber-500/15 text-amber-400';
+      case 'FAILED': return 'bg-rose-500/15 text-rose-400';
+      case 'REJECTED_SPEED': return 'bg-orange-500/15 text-orange-400';
+      default: return 'bg-bg-tertiary text-fg-tertiary';
+    }
+  }
+  protected sourceLabel(src: string): string {
+    switch (src) {
+      case 'MANUAL': return 'Manuel';
+      case 'SCHEDULER': return 'Planning';
+      case 'DEVICE_OBSERVED': return 'Boîtier';
+      default: return src;
     }
   }
   protected describe(a: ActivityFeedItemDto): string {

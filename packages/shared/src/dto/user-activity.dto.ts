@@ -89,6 +89,28 @@ export interface ActivityStatsDto {
   sessionsPerDay: { date: string; count: number }[];
 }
 
+/**
+ * Audit d'une commande moteur (coupe-circuit) — vue admin.
+ * Source : EngineControlCommand (CUT/RESTORE) jointe au tracker/véhicule, avec
+ * le demandeur résolu (requestedBy stocké en String UUID, pas une FK formelle).
+ */
+export interface EngineCommandAuditDto {
+  id: string;
+  action: 'CUT' | 'RESTORE';
+  status: 'PENDING' | 'SENT' | 'ACKNOWLEDGED' | 'FAILED' | 'REJECTED_SPEED';
+  vehiclePlate: string | null;
+  trackerImei: string;
+  requestedByName: string;
+  requestedByRole: string | null;
+  source: string;
+  reason: string | null;
+  confirmationExpected: boolean;
+  lastError: string | null;
+  createdAt: string;
+  sentAt: string | null;
+  ackedAt: string | null;
+}
+
 /** Libellés lisibles des routes (partagé : le client envoie, l'admin affiche). */
 export const ROUTE_LABELS: Record<string, string> = {
   '/map': 'Carte live',

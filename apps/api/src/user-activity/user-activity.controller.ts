@@ -82,4 +82,22 @@ export class UserActivityController {
   stats(@Query('from') from?: string, @Query('to') to?: string) {
     return this.svc.getStats(from, to);
   }
+
+  /** Audit des commandes moteur (coupe-circuit) — historique paginé pour l'admin. */
+  @Get('admin/activity/engine-commands')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN)
+  engineCommands(
+    @Query('limit') limit?: string,
+    @Query('before') before?: string,
+    @Query('action') action?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.svc.getEngineCommands({
+      limit: limit ? parseInt(limit, 10) || 50 : 50,
+      before,
+      action,
+      status,
+    });
+  }
 }

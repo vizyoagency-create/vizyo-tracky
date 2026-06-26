@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import type {
   ActivityFeedItemDto,
   ActivityStatsDto,
+  EngineCommandAuditDto,
   OnlineUserDto,
   PresenceStatus,
 } from '@vizyo/tracky-shared';
@@ -233,6 +234,90 @@ export class UserActivityService {
       topClicks: topClicks.map((r) => ({ target: r.target, count: r.count })),
       sessionsPerDay: perDay.map((r) => ({ date: r.date, count: r.count })),
     };
+  }
+
+  /**
+   * Audit des commandes moteur (coupe-circuit) — vue admin paginée.
+   * `requestedBy` est une colonne String (UUID), pas une FK : on résout les
+   * demandeurs en un seul findMany, en filtrant d'abord les valeurs réellement
+   * UUID (les sentinelles 'SCHEDULER'/'DEVICE_OBSERVED' éventuelles casseraient
+   * le cast uuid de Prisma).
+   */
+  async getEngineCommands(filters: {
+    limit?: number;
+    before?: string;
+    action?: string;
+    status?: string;
+  }): Promise<EngineCommandAuditDto[]> {
+    const take = Math.min(Math.max(filters.limit ?? 50, 1), 100);
+    const where: {
+      action?: 'CUT' | 'RESTORE';
+      status?: 'PENDING' | 'SENT' | 'ACKNOWLEDGED' | 'FAILED' | 'REJECTED_SPEED';
+      createdAt?: { lt: Date };
+    } = {};
+    if (filters.action === 'CUT' || filters.action === 'RESTORE') where.action = filters.action;
+    if (
+      filters.status === 'PENDING' ||
+      filters.status === 'SENT' ||
+      filters.status === 'ACKNOWLEDGED' ||
+      filters.status === 'FAILED' ||
+      filters.status === 'REJECTED_SPEED'
+    ) {
+      where.status = filters.status;
+    }
+    if (filters.before) {
+      const d = new Date(filters.before);
+      if (!Number.isNaN(d.getTime())) where.createdAt = { lt: d };
+    }
+
+    const commands = await this.prisma.engineControlCommand.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take,
+      include: {
+        tracker: { select: { imei: true, vehicle: { select: { plate: true } } } },
+      },
+    });
+
+    // Résolution du demandeur : seules les valeurs UUID-like sont requêtables.
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const validIds = [
+      ...new Set(commands.map((c) => c.requestedBy).filter((id) => UUID_RE.test(id))),
+    ];
+    const users = validIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: validIds } },
+          select: { id: true, firstName: true, lastName: true, role: true },
+        })
+      : [];
+    const userById = new Map(users.map((u) => [u.id, u]));
+
+    return commands.map((c) => {
+      const u = userById.get(c.requestedBy);
+      const requestedByName =
+        (u ? fullName(u) : null) ??
+        (c.source === 'SCHEDULER'
+          ? 'Planning'
+          : c.source === 'DEVICE_OBSERVED'
+            ? 'Boîtier'
+            : 'Système');
+      return {
+        id: c.id,
+        action: c.action as EngineCommandAuditDto['action'],
+        status: c.status as EngineCommandAuditDto['status'],
+        vehiclePlate: c.tracker.vehicle?.plate ?? null,
+        trackerImei: c.tracker.imei,
+        requestedByName,
+        requestedByRole: u?.role ?? null,
+        source: c.source,
+        reason: c.reason,
+        confirmationExpected: c.confirmationExpected,
+        lastError: c.lastError,
+        createdAt: c.createdAt.toISOString(),
+        sentAt: c.sentAt ? c.sentAt.toISOString() : null,
+        ackedAt: c.ackedAt ? c.ackedAt.toISOString() : null,
+      };
+    });
   }
 
   /** Clôt les sessions ouvertes sans signal récent (filet : onglet fermé sans beacon). */

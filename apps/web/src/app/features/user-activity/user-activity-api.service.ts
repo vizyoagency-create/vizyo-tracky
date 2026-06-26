@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 import type {
   ActivityFeedItemDto,
   ActivityStatsDto,
+  EngineCommandAuditDto,
   OnlineUserDto,
 } from '@vizyo/tracky-shared';
 
@@ -27,5 +28,21 @@ export class UserActivityApiService {
     if (from) params = params.set('from', from);
     if (to) params = params.set('to', to);
     return this.http.get<ActivityStatsDto>('/api/admin/activity/stats', { params });
+  }
+
+  /** Audit des commandes moteur (coupe-circuit) — historique paginé (cursor `before`). */
+  engineCommands(
+    limit = 50,
+    before?: string,
+    action?: string,
+    status?: string,
+  ): Observable<EngineCommandAuditDto[]> {
+    let params = new HttpParams().set('limit', String(limit));
+    if (before) params = params.set('before', before);
+    if (action) params = params.set('action', action);
+    if (status) params = params.set('status', status);
+    return this.http.get<EngineCommandAuditDto[]>('/api/admin/activity/engine-commands', {
+      params,
+    });
   }
 }
