@@ -143,6 +143,38 @@ export class AudioMonitoringService {
   }
 
   /**
+   * État d'activation de l'écoute audio POUR UNE FLOTTE — lecture (écran d'activation).
+   * Tenant-checké comme `setFleetAudioConfig` : un FLEET_ADMIN ne lit QUE sa propre
+   * flotte (sauf SUPER_ADMIN). fail-closed : config absente ⇒ enabled:false + nulls.
+   */
+  async getFleetAudioConfig(fleetId: string, actor: RequestedBy): Promise<FleetAudioConfigDto> {
+    // Tenant — un FLEET_ADMIN ne peut consulter que SA flotte.
+    if (actor.role !== UserRole.SUPER_ADMIN && actor.fleetId !== fleetId) {
+      throw new ForbiddenException('Vous ne pouvez consulter que votre propre flotte.');
+    }
+
+    const config = await this.prisma.fleetAudioConfig.findUnique({ where: { fleetId } });
+    if (!config) {
+      // fail-closed : aucune config ⇒ écoute désactivée, aucune attestation/mail.
+      return {
+        enabled: false,
+        attestedAt: null,
+        attestationVersion: null,
+        activationEmailSentAt: null,
+      };
+    }
+
+    return {
+      enabled: config.enabled,
+      attestedAt: config.attestedAt ? config.attestedAt.toISOString() : null,
+      attestationVersion: config.attestationVersion,
+      activationEmailSentAt: config.activationEmailSentAt
+        ? config.activationEmailSentAt.toISOString()
+        : null,
+    };
+  }
+
+  /**
    * Active / désactive l'écoute audio POUR UNE FLOTTE (garde-fous #1 + #5 + #6).
    * - Activer EXIGE l'attestation (#5) → sinon BadRequestException.
    * - À l'activation : mail OBLIGATIONS à tous les users actifs de la flotte (#6).

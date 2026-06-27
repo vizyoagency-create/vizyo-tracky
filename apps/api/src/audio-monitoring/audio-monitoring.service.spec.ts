@@ -263,6 +263,49 @@ describe('AudioMonitoringService', () => {
     });
   });
 
+  describe('getFleetAudioConfig', () => {
+    // tenant : un FLEET_ADMIN lisant une AUTRE flotte → Forbidden
+    it('rejects a FLEET_ADMIN reading another fleet (tenant)', async () => {
+      await expect(
+        service.getFleetAudioConfig(OTHER_FLEET_ID, fleetAdmin),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.fleetAudioConfig.findUnique).not.toHaveBeenCalled();
+    });
+
+    // own fleet → ok (renvoie l'état de la config)
+    it('returns the config for the own fleet', async () => {
+      const attestedAt = new Date();
+      prisma.fleetAudioConfig.findUnique.mockResolvedValue({
+        enabled: true,
+        attestedAt,
+        attestationVersion: 'v1',
+        activationEmailSentAt: attestedAt,
+      });
+      const result = await service.getFleetAudioConfig(FLEET_ID, fleetAdmin);
+      expect(prisma.fleetAudioConfig.findUnique).toHaveBeenCalledWith({
+        where: { fleetId: FLEET_ID },
+      });
+      expect(result).toEqual({
+        enabled: true,
+        attestedAt: attestedAt.toISOString(),
+        attestationVersion: 'v1',
+        activationEmailSentAt: attestedAt.toISOString(),
+      });
+    });
+
+    // own fleet sans config → fail-closed (enabled:false + nulls)
+    it('returns a fail-closed default when no config exists', async () => {
+      prisma.fleetAudioConfig.findUnique.mockResolvedValue(null);
+      const result = await service.getFleetAudioConfig(FLEET_ID, fleetAdmin);
+      expect(result).toEqual({
+        enabled: false,
+        attestedAt: null,
+        attestationVersion: null,
+        activationEmailSentAt: null,
+      });
+    });
+  });
+
   describe('getAudit', () => {
     const auditRow = {
       id: 'c1',

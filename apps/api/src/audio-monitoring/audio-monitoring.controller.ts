@@ -89,6 +89,22 @@ export class AudioMonitoringController {
   }
 
   /**
+   * GET /audio-monitoring/fleets/:fleetId/config — état d'activation de l'écoute pour
+   * une flotte (écran d'activation). Lecture seule → PAS d'AudioMonitoringGuard (comme
+   * l'audit GET) ; un FLEET_ADMIN ne consulte que SA flotte (tenant-checké en service).
+   */
+  @Get('fleets/:fleetId/config')
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  @UseGuards(RolesGuard)
+  getFleetConfig(@Param('fleetId') fleetId: string, @Req() req: AuthenticatedRequest) {
+    return this.audio.getFleetAudioConfig(fleetId, {
+      userId: req.user.id,
+      role: req.user.role,
+      fleetId: req.user.fleetId,
+    });
+  }
+
+  /**
    * GET /audio-monitoring/audit — historique des écoutes (qui/quand/véhicule/motif).
    * Tenant-scopé : SUPER_ADMIN voit tout ; FLEET_ADMIN sa flotte.
    */
