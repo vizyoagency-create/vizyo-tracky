@@ -471,6 +471,68 @@ export class AudioMonitoringService {
   }
 
   /**
+   * Sprint 4 — Envoi À LA DEMANDE du mail d'INFORMATION « Mode assistance » à un
+   * utilisateur (typiquement un fleet-admin, ex: onboarding client). Présente la fonction
+   * AVANT activation. SUPER_ADMIN only (le controller restreint déjà via @Roles).
+   *
+   * Charge l'utilisateur (+ nom de sa flotte), construit le template buildAudioInfoEmail
+   * et l'envoie. EmailService est no-op sans clé RESEND → l'envoi « réussit » silencieusement
+   * en local/test (aucun vrai mail). Un ÉCHEC d'envoi (clé présente mais provider KO) est
+   * VISIBLE au centre d'alertes (source 'audio-monitoring', niveau ERROR).
+   */
+  async sendAudioInfoMail(
+    userId: string,
+    actor: RequestedBy,
+  ): Promise<{ ok: boolean; sentTo: string }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        fleet: { select: { name: true } },
+      },
+    });
+    if (!user) {
+      throw new NotFoundException('Utilisateur introuvable');
+    }
+
+    const template = this.email.buildAudioInfoEmail({
+      recipientName: fullName(user),
+      fleetName: user.fleet?.name ?? 'votre flotte',
+    });
+
+    const result = await this.email.send({
+      to: user.email,
+      subject: template.subject,
+      html: template.html,
+      text: template.text,
+      context: { feature: 'audio-info', userId: user.id },
+    });
+
+    // Échec d'envoi (provider KO) → trace au centre d'alertes (ERROR). On NE casse PAS la
+    // requête : best-effort comme le mail OBLIGATIONS (#6) — l'opérateur voit l'échec.
+    if (!result.ok) {
+      await this.errorLogger
+        .record(
+          `Échec envoi mail info « Mode assistance » : ${result.error ?? 'erreur inconnue'}`,
+          'audio-monitoring',
+          { userId: user.id, actorUserId: actor.userId, reason: 'audio-info-mail-failed' },
+          'ERROR',
+        )
+        .catch(() => {});
+    }
+
+    this.logger.log(
+      { userId: user.id, sentTo: user.email, by: actor.userId, ok: result.ok },
+      'Audio info mail dispatched (Mode assistance — info à la demande)',
+    );
+
+    return { ok: true, sentTo: user.email };
+  }
+
+  /**
    * Vue super-admin « éligibilité audio » : TOUTES les flottes avec leur état sur les
    * deux étages (left-join fleets ⟕ FleetAudioConfig ; config absente ⇒ both false).
    * Triée par nom de flotte. Réservée au SUPER_ADMIN (controller @Roles).

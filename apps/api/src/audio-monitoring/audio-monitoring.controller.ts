@@ -164,6 +164,23 @@ export class AudioMonitoringController {
   }
 
   /**
+   * POST /audio-monitoring/users/:userId/info-mail — envoie À LA DEMANDE le mail
+   * d'INFORMATION « Mode assistance » à un utilisateur (typiquement un fleet-admin, ex:
+   * onboarding client). SUPER_ADMIN only (le prestataire présente la fonction avant
+   * activation). Lecture/écriture de notif uniquement → pas d'AudioMonitoringGuard.
+   */
+  @Post('users/:userId/info-mail')
+  @Roles(UserRole.SUPER_ADMIN)
+  @UseGuards(RolesGuard)
+  sendAudioInfoMail(@Param('userId') userId: string, @Req() req: AuthenticatedRequest) {
+    return this.audio.sendAudioInfoMail(userId, {
+      userId: req.user.id,
+      role: req.user.role,
+      fleetId: req.user.fleetId,
+    });
+  }
+
+  /**
    * GET /audio-monitoring/audit — historique des écoutes (qui/quand/véhicule/motif).
    * Tenant-scopé : SUPER_ADMIN voit tout ; FLEET_ADMIN sa flotte.
    */

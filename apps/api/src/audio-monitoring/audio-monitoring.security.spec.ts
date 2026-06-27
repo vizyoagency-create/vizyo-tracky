@@ -162,6 +162,17 @@ describe('Sprint 4 — Sécurité écoute audio (audio-monitoring)', () => {
     it('getFleetConfig = [FLEET_ADMIN, SUPER_ADMIN] exactement', () => {
       expect(rolesOf(AudioMonitoringController, 'getFleetConfig')).toEqual([FA, SA]);
     });
+
+    // Mail d'info « Mode assistance » (à la demande) : décision PRESTATAIRE, SUPER_ADMIN strict.
+    it('sendAudioInfoMail = [SUPER_ADMIN] exactement', () => {
+      expect(rolesOf(AudioMonitoringController, 'sendAudioInfoMail')).toEqual([SA]);
+    });
+
+    it('sendAudioInfoMail : @UseGuards contient RolesGuard (notif, pas d’AudioMonitoringGuard)', () => {
+      const guards = methodGuards(AudioMonitoringController, 'sendAudioInfoMail');
+      expect(guards).toContain(RolesGuard);
+      expect(guards).not.toContain(AudioMonitoringGuard);
+    });
   });
 
   describe('C. AudioMonitoringGuard — pivot dev/prod (#2/#3)', () => {

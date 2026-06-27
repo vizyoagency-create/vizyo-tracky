@@ -288,6 +288,107 @@ La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fo
 
     return { subject, html, text };
   }
+
+  /**
+   * Sprint 4 — mail d'INFORMATION « Mode assistance » envoyé À LA DEMANDE du prestataire
+   * (super-admin) à un utilisateur (typiquement un fleet-admin) pour lui présenter la
+   * fonction AVANT activation. Pédagogique : explique le principe (écoute LIVE en cas
+   * d'accident, sur autorisation EXPLICITE du client, AUCUN enregistrement conservé,
+   * seules les métadonnées sont tracées) + la marche à suivre pour activer + les
+   * obligations. Même structure/style que buildAudioActivationEmail (mint/green, fond
+   * sombre). « le prestataire » reste générique (pas de marque tierce).
+   */
+  buildAudioInfoEmail(opts: {
+    recipientName?: string | null;
+    fleetName: string;
+  }): { subject: string; html: string; text: string } {
+    const greeting = opts.recipientName ? `Bonjour ${opts.recipientName},` : 'Bonjour,';
+    const subject = `[Vizyo Tracky] Nouvelle fonction « Mode assistance » — ${opts.fleetName}`;
+
+    const html = `<!DOCTYPE html>
+<html lang="fr">
+<body style="margin:0;padding:0;background:#0b0f12;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#f4f4f5;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#0b0f12;padding:40px 20px;">
+    <tr><td align="center">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;background:#13181d;border:1px solid #2a3036;border-radius:16px;overflow:hidden;">
+        <tr><td style="padding:32px 32px 0 32px;">
+          <div style="font-size:24px;font-weight:700;color:#10e0a0;letter-spacing:-0.5px;">Vizyo Tracky</div>
+        </td></tr>
+        <tr><td style="padding:24px 32px;">
+          <h1 style="margin:0 0 16px;font-size:22px;font-weight:600;color:#f4f4f5;">${greeting}</h1>
+          <p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:#cbd2d9;">
+            Une nouvelle fonction est disponible pour la flotte
+            <strong style="color:#f4f4f5;">${escapeHtml(opts.fleetName)}</strong> : le
+            <strong style="color:#10e0a0;">Mode assistance</strong>.
+          </p>
+          <p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:#cbd2d9;">
+            <strong style="color:#f4f4f5;">Le principe.</strong> En cas d'accident, et
+            <strong style="color:#f4f4f5;">uniquement avec votre autorisation explicite</strong>,
+            le prestataire peut ouvrir brièvement le micro de la cabine du véhicule afin de
+            porter assistance (évaluer la situation, rassurer / guider l'occupant, déclencher
+            les secours).
+          </p>
+          <p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:#cbd2d9;">
+            <strong style="color:#f4f4f5;">Aucun enregistrement n'est conservé.</strong> Il
+            s'agit d'une écoute <strong style="color:#f4f4f5;">en direct</strong> uniquement —
+            aucun fichier audio n'est stocké. Seules des
+            <strong style="color:#f4f4f5;">métadonnées</strong> sont tracées : qui a écouté,
+            quand, quel véhicule, et le motif.
+          </p>
+          <p style="margin:0 0 8px;font-size:15px;line-height:1.6;color:#cbd2d9;">
+            <strong style="color:#f4f4f5;">Comment l'activer.</strong>
+          </p>
+          <ul style="margin:0 0 16px;padding-left:20px;font-size:15px;line-height:1.7;color:#cbd2d9;">
+            <li>Rendez-vous dans <strong style="color:#f4f4f5;">Réglages → Mode assistance</strong>.</li>
+            <li>Cochez l'<strong style="color:#f4f4f5;">attestation</strong>.</li>
+            <li><strong style="color:#f4f4f5;">Activez</strong> la fonction (possible une fois que le prestataire a rendu votre flotte éligible).</li>
+          </ul>
+          <p style="margin:0 0 8px;font-size:15px;line-height:1.6;color:#cbd2d9;">
+            <strong style="color:#f4f4f5;">Vos obligations.</strong> Le Mode assistance est
+            légalement sensible. Avant tout usage, vous devez :
+          </p>
+          <ul style="margin:0 0 16px;padding-left:20px;font-size:15px;line-height:1.7;color:#cbd2d9;">
+            <li><strong style="color:#f4f4f5;">Informer</strong> les conducteurs et occupants des véhicules concernés.</li>
+            <li><strong style="color:#f4f4f5;">Poser la signalétique</strong> indiquant la présence d'un dispositif d'écoute.</li>
+            <li>Respecter la <strong style="color:#f4f4f5;">réglementation applicable</strong> (information, AIPD/CNIL, DPO le cas échéant).</li>
+          </ul>
+          <p style="margin:24px 0 0;font-size:12px;color:#6b727a;border-top:1px solid #2a3036;padding-top:16px;">
+            La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fournit l'outil et les garde-fous techniques.
+          </p>
+        </td></tr>
+        <tr><td style="padding:16px 32px 24px;text-align:center;">
+          <p style="margin:0;font-size:12px;color:#6b727a;">— L'equipe Vizyo</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+    const text = `${greeting}
+
+Une nouvelle fonction est disponible pour la flotte ${opts.fleetName} : le Mode assistance.
+
+Le principe. En cas d'accident, et uniquement avec votre autorisation explicite, le prestataire peut ouvrir brièvement le micro de la cabine du véhicule afin de porter assistance (évaluer la situation, rassurer / guider l'occupant, déclencher les secours).
+
+Aucun enregistrement n'est conservé. Il s'agit d'une écoute en direct uniquement — aucun fichier audio n'est stocké. Seules des métadonnées sont tracées : qui a écouté, quand, quel véhicule, et le motif.
+
+Comment l'activer.
+- Rendez-vous dans Réglages → Mode assistance.
+- Cochez l'attestation.
+- Activez la fonction (possible une fois que le prestataire a rendu votre flotte éligible).
+
+Vos obligations. Le Mode assistance est légalement sensible. Avant tout usage, vous devez :
+- Informer les conducteurs et occupants des véhicules concernés.
+- Poser la signalétique indiquant la présence d'un dispositif d'écoute.
+- Respecter la réglementation applicable (information, AIPD/CNIL, DPO le cas échéant).
+
+La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fournit l'outil et les garde-fous techniques.
+
+— L'equipe Vizyo`;
+
+    return { subject, html, text };
+  }
 }
 
 function escapeHtml(s: string): string {

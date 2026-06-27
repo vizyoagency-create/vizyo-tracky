@@ -1,8 +1,9 @@
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { LucideAngularModule, Plus, Archive, Users, Shield, Pencil, KeyRound, Send, XCircle } from 'lucide-angular';
+import { LucideAngularModule, Plus, Archive, Users, Shield, Pencil, KeyRound, Send, XCircle, Mail } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
+import { AudioMonitoringService } from '../../core/services/audio-monitoring.service';
 import { AuthService } from '../../core/services/auth.service';
 import { FleetsApiService, type FleetSummary } from '../../core/services/fleets.service';
 import { PermissionsService } from '../../core/services/permissions.service';
@@ -105,6 +106,11 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
                   <button (click)="onResetPassword(u)" class="u-action-btn" title="Reinitialiser le mot de passe">
                     <lucide-icon [img]="KeyIcon" [size]="14"></lucide-icon>
                   </button>
+                  @if (isSuperAdmin()) {
+                    <button (click)="confirmAudioInfoMail(u)" class="u-action-btn" title="Envoyer l'info Mode assistance">
+                      <lucide-icon [img]="MailIcon" [size]="14"></lucide-icon> Info Mode assistance
+                    </button>
+                  }
                   <button (click)="confirmDelete(u)" class="u-action-btn danger" title="Archiver">
                     <lucide-icon [img]="ArchiveIcon" [size]="14"></lucide-icon>
                   </button>
@@ -190,6 +196,17 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
       [loading]="deleting()"
       (confirmed)="onDelete()"
       (cancelled)="showDeleteModal.set(false)"
+    />
+
+    <!-- Info Mode assistance — confirmation (SUPER_ADMIN only) -->
+    <app-confirm-modal
+      [open]="showAudioInfoModal()"
+      title="Envoyer l'info Mode assistance"
+      [description]="audioInfoDescription()"
+      confirmLabel="Envoyer"
+      [loading]="sendingAudioInfo()"
+      (confirmed)="onSendAudioInfoMail()"
+      (cancelled)="showAudioInfoModal.set(false)"
     />
 
     <!-- Vehicle Access Drawer -->
@@ -346,6 +363,7 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
 })
 export class UsersListComponent implements OnInit {
   private readonly usersService = inject(UsersApiService);
+  private readonly audioApi = inject(AudioMonitoringService);
   private readonly toast = inject(ToastService);
 
   readonly loading = signal(true);
@@ -362,6 +380,21 @@ export class UsersListComponent implements OnInit {
   readonly showDeleteModal = signal(false);
   readonly deleting = signal(false);
   readonly userToDelete = signal<TrackyUser | null>(null);
+
+  // Info Mode assistance — confirmation modal (SUPER_ADMIN only)
+  readonly showAudioInfoModal = signal(false);
+  readonly sendingAudioInfo = signal(false);
+  readonly audioInfoTarget = signal<TrackyUser | null>(null);
+  /** Corps de la modale : destinataire + résumé court de ce que contient le mail. */
+  readonly audioInfoDescription = computed(() => {
+    const email = this.audioInfoTarget()?.email ?? '';
+    return (
+      `Envoyer le mail d'information <strong>Mode assistance</strong> à <strong>${email}</strong> ?` +
+      `<br/><br/>Le mail explique le principe (écoute en direct en cas d'accident, sur autorisation ` +
+      `explicite du client, aucun enregistrement conservé — seules les métadonnées sont tracées), ` +
+      `la marche à suivre pour l'activer et les obligations (information des conducteurs, signalétique, réglementation).`
+    );
+  });
 
   private readonly vehiclesApi = inject(VehiclesApiService);
   private readonly groupsService = inject(VehicleGroupsService);
@@ -401,6 +434,7 @@ export class UsersListComponent implements OnInit {
   protected readonly PencilIcon = Pencil;
   protected readonly SendIcon = Send;
   protected readonly XCircleIcon = XCircle;
+  protected readonly MailIcon = Mail;
 
   async ngOnInit(): Promise<void> {
     await this.loadUsers();
@@ -542,6 +576,32 @@ export class UsersListComponent implements OnInit {
       this.toast.success(`Un email de reinitialisation a ete envoye a ${user.email}.`);
     } catch {
       this.toast.error('Erreur lors de l\'envoi du lien de reinitialisation.');
+    }
+  }
+
+  // ─── Info Mode assistance (SUPER_ADMIN only) ───────────────
+
+  /** Ouvre la modale de confirmation d'envoi du mail d'info Mode assistance. */
+  confirmAudioInfoMail(user: TrackyUser): void {
+    this.audioInfoTarget.set(user);
+    this.showAudioInfoModal.set(true);
+  }
+
+  /** Confirme : envoie le mail d'info Mode assistance au destinataire, puis toast + ferme. */
+  async onSendAudioInfoMail(): Promise<void> {
+    const user = this.audioInfoTarget();
+    if (!user) return;
+    this.sendingAudioInfo.set(true);
+    try {
+      await firstValueFrom(this.audioApi.sendAudioInfoMail(user.id));
+      this.toast.success(`Mail envoye a ${user.email}`);
+      this.showAudioInfoModal.set(false);
+      this.audioInfoTarget.set(null);
+    } catch (err) {
+      this.toast.error(err instanceof Error ? err.message : 'Erreur lors de l\'envoi du mail.');
+      this.showAudioInfoModal.set(false);
+    } finally {
+      this.sendingAudioInfo.set(false);
     }
   }
 

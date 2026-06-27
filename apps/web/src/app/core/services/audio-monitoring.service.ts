@@ -113,6 +113,18 @@ export class AudioMonitoringService {
     );
   }
 
+  /**
+   * Envoie À LA DEMANDE le mail d'INFORMATION « Mode assistance » à un utilisateur
+   * (typiquement un fleet-admin, ex: onboarding client). SUPER_ADMIN only (le serveur
+   * @Roles le restreint). Présente la fonction AVANT activation. Retourne le destinataire.
+   */
+  sendAudioInfoMail(userId: string): Observable<{ ok: boolean; sentTo: string }> {
+    return this.http.post<{ ok: boolean; sentTo: string }>(
+      `/api/audio-monitoring/users/${userId}/info-mail`,
+      {},
+    );
+  }
+
   /** Audit des écoutes (qui/quand/véhicule/motif/env) — vue admin paginée (cursor `before`). */
   getAudit(filters: {
     limit?: number;

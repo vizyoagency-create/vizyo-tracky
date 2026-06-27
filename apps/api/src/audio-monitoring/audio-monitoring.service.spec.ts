@@ -70,7 +70,7 @@ describe('AudioMonitoringService', () => {
     fleet: { findUnique: jest.Mock; findMany: jest.Mock };
     user: { findMany: jest.Mock; findUnique: jest.Mock };
   };
-  let email: { send: jest.Mock; buildAudioActivationEmail: jest.Mock };
+  let email: { send: jest.Mock; buildAudioActivationEmail: jest.Mock; buildAudioInfoEmail: jest.Mock };
   let errorLogger: { record: jest.Mock };
   // Passerelle SMS mockée — JAMAIS de vrai SMS dans les tests. isEnabled()=true + send() OK
   // par défaut ; chaque test ajuste selon le scénario (désactivée, refus, throw).
@@ -108,6 +108,9 @@ describe('AudioMonitoringService', () => {
       buildAudioActivationEmail: jest
         .fn()
         .mockReturnValue({ subject: 's', html: 'h', text: 't' }),
+      buildAudioInfoEmail: jest
+        .fn()
+        .mockReturnValue({ subject: 'info-s', html: 'info-h', text: 'info-t' }),
     };
 
     errorLogger = { record: jest.fn().mockResolvedValue('error-id') };
@@ -750,6 +753,73 @@ describe('AudioMonitoringService', () => {
         attestationVersion: null,
         activationEmailSentAt: null,
       });
+    });
+  });
+
+  describe('sendAudioInfoMail (info à la demande — super-admin)', () => {
+    const RECIPIENT_ID = '00000000-0000-0000-0000-000000000040';
+
+    // envoi nominal : charge le user (+ flotte), construit le template info-mail,
+    // et l'envoie via email.send avec le contexte feature='audio-info'.
+    it('sends the audio-info template to a known user', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: RECIPIENT_ID,
+        email: 'anouar@test.fr',
+        firstName: 'Anouar',
+        lastName: 'B',
+        fleet: { name: 'Flotte Anouar' },
+      });
+
+      const res = await service.sendAudioInfoMail(RECIPIENT_ID, superAdmin);
+
+      // template info construit avec le nom + la flotte du destinataire.
+      expect(email.buildAudioInfoEmail).toHaveBeenCalledWith(
+        expect.objectContaining({ recipientName: 'Anouar B', fleetName: 'Flotte Anouar' }),
+      );
+      // mail envoyé au bon destinataire + contexte feature='audio-info'.
+      expect(email.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'anouar@test.fr',
+          subject: 'info-s',
+          html: 'info-h',
+          text: 'info-t',
+          context: expect.objectContaining({ feature: 'audio-info', userId: RECIPIENT_ID }),
+        }),
+      );
+      expect(res).toEqual({ ok: true, sentTo: 'anouar@test.fr' });
+      // aucun échec → pas d'alerte.
+      expect(errorLogger.record).not.toHaveBeenCalled();
+    });
+
+    // utilisateur inconnu → NotFound, aucun mail envoyé.
+    it('throws NotFound for an unknown user (no mail sent)', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      await expect(service.sendAudioInfoMail(RECIPIENT_ID, superAdmin)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(email.send).not.toHaveBeenCalled();
+    });
+
+    // échec d'envoi (provider KO) → alerte ERROR au centre d'alertes, mais réponse ok.
+    it('records an audio-monitoring ERROR alert when the send fails', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: RECIPIENT_ID,
+        email: 'anouar@test.fr',
+        firstName: 'Anouar',
+        lastName: 'B',
+        fleet: { name: 'Flotte Anouar' },
+      });
+      email.send.mockResolvedValue({ ok: false, error: 'provider down' });
+
+      const res = await service.sendAudioInfoMail(RECIPIENT_ID, superAdmin);
+
+      expect(errorLogger.record).toHaveBeenCalledWith(
+        expect.stringContaining('Mode assistance'),
+        'audio-monitoring',
+        expect.objectContaining({ userId: RECIPIENT_ID }),
+        'ERROR',
+      );
+      expect(res).toEqual({ ok: true, sentTo: 'anouar@test.fr' });
     });
   });
 
