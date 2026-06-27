@@ -15,6 +15,7 @@ import {
   Phone,
   PhoneOff,
   ShieldAlert,
+  Square,
   X,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
@@ -155,6 +156,16 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
                   </div>
                 }
 
+                <!-- Note auto-disarm : le mode monitor coupe le GPS → le serveur désarme
+                     automatiquement après quelques minutes (filet de sécurité). N'apparaît
+                     que si le micro a réellement été armé (SIM présente). -->
+                @if (result()?.simPhoneNumber) {
+                  <p class="mt-3 text-[11px] text-fg-tertiary leading-relaxed">
+                    Désarmement automatique après {{ autoDisarmMinutes }} min (le mode écoute
+                    suspend le suivi GPS du véhicule).
+                  </p>
+                }
+
                 <!-- Rappel légal (toujours affiché après déclenchement) -->
                 <div class="flex items-start gap-2 mt-3 text-[11px] text-fg-tertiary leading-relaxed">
                   <lucide-icon [img]="AlertTriangle" [size]="13" class="shrink-0 mt-0.5"></lucide-icon>
@@ -164,12 +175,34 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
                   </span>
                 </div>
 
-                <div class="flex items-center justify-end mt-5">
+                <div class="flex items-center justify-end gap-3 mt-5">
+                  <!-- Terminer l'écoute : désarme le micro (retour suivi GPS). Affiché seulement
+                       si le micro a été armé (SIM présente). -->
+                  @if (result()?.simPhoneNumber) {
+                    <button
+                      type="button"
+                      (click)="terminate()"
+                      [disabled]="stopping()"
+                      class="px-4 py-2 text-sm font-medium rounded-xl flex items-center gap-2
+                             bg-amber-600/20 text-amber-200 border border-amber-600/30
+                             hover:bg-amber-600/30 transition-all cursor-pointer
+                             disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      @if (stopping()) {
+                        <span class="w-4 h-4 border-2 border-amber-200/30 border-t-amber-200 rounded-full animate-spin"></span>
+                      } @else {
+                        <lucide-icon [img]="Square" [size]="14"></lucide-icon>
+                      }
+                      Terminer l'écoute
+                    </button>
+                  }
                   <button
                     type="button"
                     (click)="close()"
+                    [disabled]="stopping()"
                     class="px-4 py-2 text-sm font-medium rounded-xl text-white
-                           bg-tracky hover:bg-tracky-dark transition-all cursor-pointer"
+                           bg-tracky hover:bg-tracky-dark transition-all cursor-pointer
+                           disabled:opacity-50"
                   >
                     Fermer
                   </button>
@@ -193,8 +226,15 @@ export class AudioListenButtonComponent implements OnInit {
 
   protected readonly isOpen = signal(false);
   protected readonly loading = signal(false);
+  /** Désarmement en cours (bouton « Terminer l'écoute »). */
+  protected readonly stopping = signal(false);
   protected readonly reason = signal('');
   protected readonly result = signal<{ simPhoneNumber: string | null } | null>(null);
+  /**
+   * Fenêtre du filet auto-disarm côté serveur (env AUDIO_AUTO_DISARM_MINUTES, défaut 5).
+   * Purement informatif dans la note — le désarmement réel est piloté par le cron serveur.
+   */
+  protected readonly autoDisarmMinutes = 5;
   /**
    * Gating flotte à DEUX étages (false par défaut → masqué). L'écoute exige que la
    * flotte soit ÉLIGIBLE (N1 superAdminEnabled, prestataire) ET que le « Mode assistance »
@@ -207,6 +247,7 @@ export class AudioListenButtonComponent implements OnInit {
   protected readonly PhoneOff = PhoneOff;
   protected readonly ShieldAlert = ShieldAlert;
   protected readonly AlertTriangle = AlertTriangle;
+  protected readonly Square = Square;
   protected readonly X = X;
 
   private readonly audio = inject(AudioMonitoringService);
@@ -248,7 +289,7 @@ export class AudioListenButtonComponent implements OnInit {
   }
 
   protected close(): void {
-    if (this.loading()) return;
+    if (this.loading() || this.stopping()) return;
     this.isOpen.set(false);
     this.reason.set('');
     this.result.set(null);
@@ -270,6 +311,29 @@ export class AudioListenButtonComponent implements OnInit {
       this.isOpen.set(false);
     } finally {
       this.loading.set(false);
+    }
+  }
+
+  /**
+   * Termine l'écoute : désarme le micro (SMS `tracker<password>` côté serveur) → le boîtier
+   * reprend le suivi GPS. À la réussite on ferme la modale.
+   */
+  protected async terminate(): Promise<void> {
+    if (this.stopping()) return;
+    this.stopping.set(true);
+    try {
+      const res = await firstValueFrom(this.audio.stopListen(this.trackerId()));
+      if (res.ok) {
+        this.toast.success('Écoute terminée', 'Le micro a été désarmé — suivi GPS rétabli.');
+      } else {
+        // L'audit a été posé mais la passerelle a refusé l'envoi → l'opérateur doit le savoir.
+        this.toast.error('Désarmement incertain', "L'ordre de désarmement n'a pas été confirmé.");
+      }
+      this.stopping.set(false);
+      this.close();
+    } catch (err) {
+      this.stopping.set(false);
+      this.toast.error('Désarmement échoué', this.extractErrorMessage(err));
     }
   }
 

@@ -29,6 +29,12 @@ export interface ListenResult {
   simPhoneNumber: string | null;
 }
 
+/** Résultat du désarmement (retour mode track). `ok` = SMS `tracker<pwd>` accepté. */
+export interface StopResult {
+  ok: boolean;
+  simPhoneNumber: string | null;
+}
+
 @Injectable({ providedIn: 'root' })
 export class AudioMonitoringService {
   private readonly http = inject(HttpClient);
@@ -41,6 +47,18 @@ export class AudioMonitoringService {
     return this.http.post<ListenResult>(
       `/api/audio-monitoring/trackers/${trackerId}/listen`,
       { reason },
+    );
+  }
+
+  /**
+   * DÉSARME le micro (retour mode « track »). CRITIQUE : le mode monitor coupe le report
+   * GPS, donc terminer l'écoute remet le véhicule visible sur la carte. Le serveur envoie
+   * `tracker<password>` à la SIM du boîtier (super-admin only, mêmes gates que `listen`).
+   */
+  stopListen(trackerId: string): Observable<StopResult> {
+    return this.http.post<StopResult>(
+      `/api/audio-monitoring/trackers/${trackerId}/stop`,
+      {},
     );
   }
 

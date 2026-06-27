@@ -69,6 +69,24 @@ export class AudioMonitoringController {
   }
 
   /**
+   * POST /audio-monitoring/trackers/:trackerId/stop — DÉSARME le micro (retour mode track).
+   * CRITIQUE : le mode monitor coupe le report GPS, donc le désarmement remet le véhicule
+   * « visible » sur la carte. Même gate que `listen` (SUPER_ADMIN, phase de test ; #2/#3 via
+   * AudioMonitoringGuard). Envoie `tracker<password>` à la SIM + pose disarmedAt sur l'écoute
+   * armée la plus récente du tracker.
+   */
+  @Post('trackers/:trackerId/stop')
+  @Roles(UserRole.SUPER_ADMIN)
+  @UseGuards(RolesGuard, AudioMonitoringGuard)
+  stop(@Param('trackerId') trackerId: string, @Req() req: AuthenticatedRequest) {
+    return this.audio.stopListen(trackerId, {
+      userId: req.user.id,
+      role: req.user.role,
+      fleetId: req.user.fleetId,
+    });
+  }
+
+  /**
    * PATCH /audio-monitoring/fleets/:fleetId/eligibility — N1 : le super-admin/prestataire
    * rend une flotte ÉLIGIBLE (ou non) au « Mode assistance ». `eligible:false` cascade
    * « tout OFF » (le consentement N2 de la flotte est aussi remis à false). SUPER_ADMIN only.

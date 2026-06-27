@@ -1001,12 +1001,22 @@ model AudioMonitoringCommand {
   lastError       String?
   sentAt          DateTime?
   ackedAt         DateTime?
+  // Sprint 4 — DISARM : horodatage du retour du boîtier en mode « track » (SMS
+  // `tracker<password>`). Une écoute ARMÉE est SENT + disarmedAt=null ; le désarmement
+  // (manuel /stop OU filet auto-disarm) pose ce timestamp. CRITIQUE : le mode monitor
+  // coupe le report GPS, donc une ligne SENT+disarmedAt=null = véhicule potentiellement
+  // « dark » sur la carte → c'est exactement la cible du cron AudioAutoDisarmService.
+  disarmedAt      DateTime?
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
 
   @@index([fleetId, createdAt(sort: Desc)])
   @@index([vehicleId, createdAt(sort: Desc)])
   @@index([trackerId, status])
+  // Sprint 4 — le cron auto-disarm scanne les écoutes ARMÉES restées ouvertes
+  // (status=SENT AND disarmedAt IS NULL), filtré par sentAt. Cet index couvre la
+  // requête du filet de sécurité sans full-scan de la table d'audit.
+  @@index([status, disarmedAt, sentAt])
   @@map("audio_monitoring_commands")
 }
 

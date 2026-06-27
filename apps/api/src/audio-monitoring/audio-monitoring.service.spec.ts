@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { AudioCommandStatus, UserRole } from '@prisma/client';
@@ -9,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { EmailService } from '../email/email.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SmsGatewayService } from '../sms/sms-gateway.service';
 import { AudioMonitoringService } from './audio-monitoring.service';
 
 const TRACKER_ID = '00000000-0000-0000-0000-000000000010';
@@ -58,12 +60,21 @@ describe('AudioMonitoringService', () => {
   let prisma: {
     tracker: { findFirst: jest.Mock };
     fleetAudioConfig: { findUnique: jest.Mock; upsert: jest.Mock; update: jest.Mock };
-    audioMonitoringCommand: { create: jest.Mock; update: jest.Mock; findMany: jest.Mock };
+    audioMonitoringCommand: {
+      create: jest.Mock;
+      update: jest.Mock;
+      updateMany: jest.Mock;
+      findFirst: jest.Mock;
+      findMany: jest.Mock;
+    };
     fleet: { findUnique: jest.Mock; findMany: jest.Mock };
     user: { findMany: jest.Mock; findUnique: jest.Mock };
   };
   let email: { send: jest.Mock; buildAudioActivationEmail: jest.Mock };
   let errorLogger: { record: jest.Mock };
+  // Passerelle SMS mockée — JAMAIS de vrai SMS dans les tests. isEnabled()=true + send() OK
+  // par défaut ; chaque test ajuste selon le scénario (désactivée, refus, throw).
+  let sms: { isEnabled: jest.Mock; send: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -78,6 +89,8 @@ describe('AudioMonitoringService', () => {
         update: jest
           .fn()
           .mockImplementation(({ data }) => Promise.resolve(createdCommand({ ...data }))),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
       },
       fleet: {
@@ -99,8 +112,18 @@ describe('AudioMonitoringService', () => {
 
     errorLogger = { record: jest.fn().mockResolvedValue('error-id') };
 
+    sms = {
+      isEnabled: jest.fn().mockReturnValue(true),
+      send: jest.fn().mockResolvedValue({ ok: true }),
+    };
+
     const config = {
-      get: (key: string) => (key === 'NODE_ENV' ? 'development' : undefined),
+      get: (key: string) =>
+        key === 'NODE_ENV'
+          ? 'development'
+          : key === 'AUDIO_DEVICE_PASSWORD'
+            ? '123456'
+            : undefined,
     } as unknown as ConfigService;
 
     const module = await Test.createTestingModule({
@@ -110,6 +133,7 @@ describe('AudioMonitoringService', () => {
         { provide: EmailService, useValue: email },
         { provide: ConfigService, useValue: config },
         { provide: ErrorLogger, useValue: errorLogger },
+        { provide: SmsGatewayService, useValue: sms },
       ],
     }).compile();
 
@@ -191,7 +215,13 @@ describe('AudioMonitoringService', () => {
       const createOrder = prisma.audioMonitoringCommand.create.mock.invocationCallOrder[0];
       const updateOrder = prisma.audioMonitoringCommand.update.mock.invocationCallOrder[0];
       expect(createOrder).toBeLessThan(updateOrder);
-      // Dispatch MOCKÉ → SENT + sentAt.
+      // ARMEMENT RÉEL : SMS `monitor123456` envoyé à la SIM du boîtier (mode monitor Coban).
+      expect(sms.send).toHaveBeenCalledWith(
+        '+33656691615',
+        'monitor123456',
+        expect.objectContaining({ imei: '123456789012345', source: 'audio-monitor' }),
+      );
+      // Dispatch OK → SENT + sentAt.
       expect(prisma.audioMonitoringCommand.update).toHaveBeenCalledWith({
         where: { id: expect.any(String) },
         data: expect.objectContaining({ status: AudioCommandStatus.SENT, sentAt: expect.any(Date) }),
@@ -199,6 +229,86 @@ describe('AudioMonitoringService', () => {
       expect(command.status).toBe(AudioCommandStatus.SENT);
       // Scénario A : on renvoie le n° SIM à appeler.
       expect(simPhoneNumber).toBe('+33656691615');
+    });
+
+    // ARMEMENT RÉEL — SMS désactivé ⇒ on NE peut PAS armer → FAILED + alerte CRITICAL +
+    // ServiceUnavailableException. AUCUN sms.send n'est tenté.
+    it('marks FAILED + alerts + throws 503 when the SMS gateway is disabled', async () => {
+      prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+      prisma.fleetAudioConfig.findUnique.mockResolvedValue({
+        superAdminEnabled: true,
+        assistanceEnabled: true,
+      });
+      sms.isEnabled.mockReturnValue(false);
+
+      await expect(
+        service.requestListen(TRACKER_ID, 'vol suspecté', fleetAdmin),
+      ).rejects.toThrow(ServiceUnavailableException);
+
+      expect(sms.send).not.toHaveBeenCalled();
+      // commande marquée FAILED.
+      expect(prisma.audioMonitoringCommand.update).toHaveBeenCalledWith({
+        where: { id: expect.any(String) },
+        data: expect.objectContaining({ status: AudioCommandStatus.FAILED }),
+      });
+      // alerte centre d'alertes (source audio-monitoring, CRITICAL).
+      expect(errorLogger.record).toHaveBeenCalledWith(
+        expect.any(String),
+        'audio-monitoring',
+        expect.objectContaining({ trackerId: TRACKER_ID, commandId: expect.any(String) }),
+        'CRITICAL',
+      );
+    });
+
+    // ARMEMENT RÉEL — SIM absente ⇒ pas de numéro pour armer → FAILED + alerte + 503.
+    it('marks FAILED + alerts + throws 503 when the tracker has no SIM', async () => {
+      prisma.tracker.findFirst.mockResolvedValue({ ...trackerWithVehicle, simPhoneNumber: null });
+      prisma.fleetAudioConfig.findUnique.mockResolvedValue({
+        superAdminEnabled: true,
+        assistanceEnabled: true,
+      });
+
+      await expect(
+        service.requestListen(TRACKER_ID, 'vol suspecté', fleetAdmin),
+      ).rejects.toThrow(ServiceUnavailableException);
+
+      expect(sms.send).not.toHaveBeenCalled();
+      expect(prisma.audioMonitoringCommand.update).toHaveBeenCalledWith({
+        where: { id: expect.any(String) },
+        data: expect.objectContaining({ status: AudioCommandStatus.FAILED }),
+      });
+      expect(errorLogger.record).toHaveBeenCalledWith(
+        expect.any(String),
+        'audio-monitoring',
+        expect.objectContaining({ trackerId: TRACKER_ID }),
+        'CRITICAL',
+      );
+    });
+
+    // ARMEMENT RÉEL — la passerelle refuse l'envoi (r.ok=false) → FAILED + alerte + 503.
+    it('marks FAILED + alerts + throws 503 when the gateway rejects the monitor SMS', async () => {
+      prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+      prisma.fleetAudioConfig.findUnique.mockResolvedValue({
+        superAdminEnabled: true,
+        assistanceEnabled: true,
+      });
+      sms.send.mockResolvedValue({ ok: false, error: 'HTTP 500' });
+
+      await expect(
+        service.requestListen(TRACKER_ID, 'vol suspecté', fleetAdmin),
+      ).rejects.toThrow(ServiceUnavailableException);
+
+      expect(sms.send).toHaveBeenCalledWith('+33656691615', 'monitor123456', expect.any(Object));
+      expect(prisma.audioMonitoringCommand.update).toHaveBeenCalledWith({
+        where: { id: expect.any(String) },
+        data: expect.objectContaining({ status: AudioCommandStatus.FAILED }),
+      });
+      expect(errorLogger.record).toHaveBeenCalledWith(
+        expect.stringContaining('monitor'),
+        'audio-monitoring',
+        expect.objectContaining({ trackerId: TRACKER_ID }),
+        'CRITICAL',
+      );
     });
 
     // scope tenant : tracker d'une autre flotte → NotFound (fail-closed via where)
@@ -274,6 +384,93 @@ describe('AudioMonitoringService', () => {
       });
       await service.requestListen(TRACKER_ID, 'vol suspecté', fleetAdmin);
       expect(errorLogger.record).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('stopListen (DISARM — retour mode track)', () => {
+    // tracker mocké pour le SELECT de stopListen (id/imei/simPhoneNumber/vehicle).
+    const stopTracker = {
+      id: TRACKER_ID,
+      imei: '123456789012345',
+      simPhoneNumber: '+33656691615',
+      vehicle: { id: VEHICLE_ID, fleetId: FLEET_ID },
+    };
+
+    // Désarmement nominal : envoie `tracker123456` + pose disarmedAt sur l'écoute armée
+    // la plus récente (SENT + disarmedAt null).
+    it('sends tracker123456 and stamps disarmedAt on the most recent armed command', async () => {
+      prisma.tracker.findFirst.mockResolvedValue(stopTracker);
+      prisma.audioMonitoringCommand.findFirst.mockResolvedValue({ id: 'armed-cmd-id' });
+
+      const res = await service.stopListen(TRACKER_ID, superAdmin);
+
+      expect(sms.send).toHaveBeenCalledWith(
+        '+33656691615',
+        'tracker123456',
+        expect.objectContaining({ imei: '123456789012345', source: 'audio-disarm' }),
+      );
+      // recherche de l'écoute armée la plus récente.
+      expect(prisma.audioMonitoringCommand.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { trackerId: TRACKER_ID, status: AudioCommandStatus.SENT, disarmedAt: null },
+          orderBy: { sentAt: 'desc' },
+        }),
+      );
+      // disarmedAt posé sur cette ligne.
+      expect(prisma.audioMonitoringCommand.update).toHaveBeenCalledWith({
+        where: { id: 'armed-cmd-id' },
+        data: { disarmedAt: expect.any(Date) },
+      });
+      expect(res.ok).toBe(true);
+    });
+
+    // Aucune écoute armée trouvée → on envoie quand même le désarmement (forcer un boîtier
+    // qu'on croit en monitor) mais on ne pose pas de disarmedAt (no-op update).
+    it('still sends the disarm SMS when no armed command exists (no stamp)', async () => {
+      prisma.tracker.findFirst.mockResolvedValue(stopTracker);
+      prisma.audioMonitoringCommand.findFirst.mockResolvedValue(null);
+
+      const res = await service.stopListen(TRACKER_ID, superAdmin);
+
+      expect(sms.send).toHaveBeenCalledWith('+33656691615', 'tracker123456', expect.any(Object));
+      expect(prisma.audioMonitoringCommand.update).not.toHaveBeenCalled();
+      expect(res.ok).toBe(true);
+    });
+
+    // Échec d'envoi (passerelle refuse) → alerte centre d'alertes, ok=false.
+    it('records an alert when the disarm SMS is rejected', async () => {
+      prisma.tracker.findFirst.mockResolvedValue(stopTracker);
+      prisma.audioMonitoringCommand.findFirst.mockResolvedValue({ id: 'armed-cmd-id' });
+      sms.send.mockResolvedValue({ ok: false, error: 'HTTP 500' });
+
+      const res = await service.stopListen(TRACKER_ID, superAdmin);
+
+      expect(res.ok).toBe(false);
+      expect(errorLogger.record).toHaveBeenCalledWith(
+        expect.stringContaining('tracker'),
+        'audio-monitoring',
+        expect.objectContaining({ trackerId: TRACKER_ID }),
+        'CRITICAL',
+      );
+    });
+
+    // SMS désactivé → 503 + alerte, aucun envoi.
+    it('throws 503 when the SMS gateway is disabled', async () => {
+      prisma.tracker.findFirst.mockResolvedValue(stopTracker);
+      sms.isEnabled.mockReturnValue(false);
+      await expect(service.stopListen(TRACKER_ID, superAdmin)).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+      expect(sms.send).not.toHaveBeenCalled();
+    });
+
+    // tracker introuvable (cross-tenant pour un non-super) → NotFound, aucun envoi.
+    it('throws NotFound for an unknown/cross-tenant tracker', async () => {
+      prisma.tracker.findFirst.mockResolvedValue(null);
+      await expect(service.stopListen(TRACKER_ID, otherFleetAdmin)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(sms.send).not.toHaveBeenCalled();
     });
   });
 

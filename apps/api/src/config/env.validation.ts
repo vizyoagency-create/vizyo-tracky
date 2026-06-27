@@ -111,6 +111,17 @@ const envSchema = z.object({
   //   config.get('AUDIO_SUPERADMIN_ENABLED',{infer:true})==='true'.
   AUDIO_SUPERADMIN_ENABLED: z.string().default('false'),
   AUDIO_RETENTION_DAYS: z.coerce.number().int().positive().default(7),
+  // AUDIO_DEVICE_PASSWORD : mot de passe boitier Coban/Baanool pour l'armement du
+  //   micro. ARM = SMS `monitor<password>` (le boitier ouvre son micro), DISARM =
+  //   SMS `tracker<password>` (retour mode tracking). Convention 123456 par defaut
+  //   (meme que stop123456/resume123456 du coupe-circuit). Lecture via
+  //   config.get('AUDIO_DEVICE_PASSWORD',{infer:true}).
+  AUDIO_DEVICE_PASSWORD: z.string().default('123456'),
+  // AUDIO_AUTO_DISARM_MINUTES : filet de securite. Le mode monitor COUPE le report
+  //   de position GPS — un vehicule laisse arme « disparait » de la carte. Un cron
+  //   desarme automatiquement (SMS `tracker<password>`) toute ecoute SENT non desarmee
+  //   plus vieille que cette fenetre. Defaut 5 min. DB-driven (survit aux redemarrages).
+  AUDIO_AUTO_DISARM_MINUTES: z.coerce.number().int().positive().default(5),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -22,6 +23,7 @@ import type { Env } from '../config/env.validation';
 import { EmailService } from '../email/email.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SmsGatewayService } from '../sms/sms-gateway.service';
 
 interface RequestedBy {
   userId: string;
@@ -45,11 +47,15 @@ function fullName(u: { firstName?: string | null; lastName?: string | null }): s
  * Scénario A confirmé (cf. docs/sprint-4/ANALYSE.md §0) : l'« écoute » = le boîtier
  * OUVRE SON MICRO et le fleet-admin APPELLE la SIM pour entendre la cabine en direct.
  * Conséquence : AUCUN clip n'est uploadé au serveur, AUCUN stockage, AUCUNE rétention
- * de clip (garde-fou #8 sans objet). Le rôle du serveur = GATE + AUDIT + (mock-)ARM
+ * de clip (garde-fou #8 sans objet). Le rôle du serveur = GATE + AUDIT + ARM (SMS réel)
  * + renvoyer le numéro SIM à appeler.
  *
- * Le device est MOCKÉ : on ne dispatche JAMAIS vers un boîtier réel ici (la commande
- * d'armement Coban exacte est inconnue, cf. ANALYSE §2 → TODO explicite).
+ * ARMEMENT RÉEL (Coban GPS103 / Baanool = rebrand Coban) : l'écoute s'arme par SMS
+ * `monitor<password>` envoyé à la SIM du boîtier → le boîtier passe en mode « monitor »
+ * (micro ouvert) ; on rappelle ensuite la SIM pour entendre. Le désarmement renvoie
+ * `tracker<password>` → retour mode « track ». ATTENTION (légalement + opérationnellement
+ * sensible) : le mode monitor COUPE le report de position GPS, donc un véhicule laissé
+ * armé « disparaît » de la carte → désarmement OBLIGATOIRE + filet auto-disarm (cron).
  *
  * Les garde-fous d'environnement (#2 flag prod, #3 super-admin bloqué en prod) sont
  * portés EN AMONT par AudioMonitoringGuard. La permission per-véhicule (#1 perm) est
@@ -65,7 +71,15 @@ export class AudioMonitoringService {
     private readonly email: EmailService,
     private readonly config: ConfigService<Env, true>,
     private readonly errorLogger: ErrorLogger,
+    // Sprint 4 — ARM/DISARM réel via la même passerelle SMS que le coupe-circuit
+    // (EngineControlService) : `monitor<pwd>` / `tracker<pwd>` vers la SIM du boîtier.
+    private readonly sms: SmsGatewayService,
   ) {}
+
+  /** Mot de passe boîtier Coban/Baanool (ARM `monitor<pwd>` / DISARM `tracker<pwd>`). */
+  private devicePassword(): string {
+    return this.config.get('AUDIO_DEVICE_PASSWORD', { infer: true });
+  }
 
   /**
    * Déclenche une écoute (Scénario A : arme le micro pour un appel live).
@@ -131,54 +145,175 @@ export class AudioMonitoringService {
       },
     });
 
-    // ARMEMENT MOCKÉ — on ne dispatche JAMAIS vers un boîtier réel ici.
-    // TODO Scénario A: armer le mode monitor Coban (commande exacte à confirmer via
-    // source Baanool, cf docs/sprint-4/ANALYSE.md §2) — ici dispatch mocké. Une fois
-    // la commande connue : encoder + socket-registry.send + fallback SMS (le monitor
-    // Coban s'arme par SMS), puis attendre la confirmation. JAMAIS vers prod tant que
-    // le flag #2 n'est pas posé.
+    // ARMEMENT RÉEL — envoie `monitor<password>` à la SIM du boîtier (mode monitor Coban,
+    // micro ouvert). MÊME passerelle que le coupe-circuit (EngineControlService) qui envoie
+    // `stop123456`/`resume123456` — convention de mot de passe identique. ⚠️ ce SMS RÉEL part
+    // vers un BOÎTIER RÉEL : tout le gating amont reste la seule barrière (guard #2/#3, rôle,
+    // permission per-véhicule, gating flotte 2 étages).
     //
-    // Le DISPATCH est enveloppé : une erreur SYSTÈME inattendue (DB indisponible, futur
-    // armement device en échec) marque la commande FAILED + alimente le centre d'alertes
-    // (source 'audio-monitoring', niveau CRITICAL) puis re-throw. Les refus de validation
-    // attendus (404/403/400 ci-dessus) sont levés AVANT ce bloc → jamais loggés comme alertes.
+    // Toute défaillance du chemin d'armement (SMS désactivé, SIM absente, refus passerelle,
+    // erreur système) marque la commande FAILED + lastError + alimente le centre d'alertes
+    // (source 'audio-monitoring', niveau CRITICAL). Les refus de validation attendus
+    // (404/403/400 ci-dessus) sont levés AVANT ce bloc → jamais loggés comme alertes.
+    const alertCtx = {
+      trackerId,
+      commandId: command.id,
+      vehicleId: tracker.vehicle.id,
+      fleetId,
+      userId: requestedBy.userId,
+      reason: trimmedReason,
+    };
+
+    // Pré-requis du chemin SMS : passerelle active ET SIM connue. Sinon on NE peut PAS
+    // armer le micro → FAILED + alerte + 503 (le mock historique est supprimé).
+    if (!this.sms.isEnabled() || !tracker.simPhoneNumber) {
+      const lastError = !this.sms.isEnabled()
+        ? 'Passerelle SMS désactivée — armement micro impossible'
+        : 'SIM non provisionnée — aucun numéro pour armer le micro';
+      await this.prisma.audioMonitoringCommand
+        .update({ where: { id: command.id }, data: { status: AudioCommandStatus.FAILED, lastError } })
+        .catch(() => {});
+      await this.errorLogger
+        .record(lastError, 'audio-monitoring', alertCtx, 'CRITICAL')
+        .catch(() => {});
+      throw new ServiceUnavailableException('Passerelle SMS indisponible ou SIM absente');
+    }
+
     let sent: AudioMonitoringCommand;
     try {
+      const pwd = this.devicePassword();
+      const r = await this.sms.send(tracker.simPhoneNumber, 'monitor' + pwd, {
+        imei: tracker.imei,
+        commandId: command.id,
+        source: 'audio-monitor',
+      });
+      if (!r.ok) {
+        const lastError = `Échec armement micro (SMS monitor) : ${r.error ?? 'refus passerelle'}`;
+        await this.prisma.audioMonitoringCommand
+          .update({ where: { id: command.id }, data: { status: AudioCommandStatus.FAILED, lastError } })
+          .catch(() => {});
+        await this.errorLogger.record(lastError, 'audio-monitoring', alertCtx, 'CRITICAL').catch(() => {});
+        throw new ServiceUnavailableException("Échec de l'armement du micro (passerelle SMS)");
+      }
+      // ARMÉ : SENT + sentAt. disarmedAt reste null → ligne « armée » ciblée par le DISARM
+      // manuel (/stop) et le filet auto-disarm (cron).
       sent = await this.prisma.audioMonitoringCommand.update({
         where: { id: command.id },
         data: { status: AudioCommandStatus.SENT, sentAt: new Date() },
       });
     } catch (err) {
+      // Un ServiceUnavailableException ci-dessus a déjà été tracé (FAILED + alerte) → on le
+      // relance tel quel. Tout AUTRE throw (DB indisponible, etc.) est une panne système :
+      // best-effort FAILED + alerte CRITICAL puis re-throw.
+      if (err instanceof ServiceUnavailableException) throw err;
       const lastError = err instanceof Error ? err.message : String(err);
-      // Best-effort : marquer la commande FAILED (trace d'audit cohérente).
       await this.prisma.audioMonitoringCommand
-        .update({
-          where: { id: command.id },
-          data: { status: AudioCommandStatus.FAILED, lastError },
-        })
+        .update({ where: { id: command.id }, data: { status: AudioCommandStatus.FAILED, lastError } })
         .catch(() => {});
-      // Visibilité opérateur : une panne d'armement audio remonte au centre d'alertes.
       await this.errorLogger
-        .record(err instanceof Error ? err : new Error(lastError), 'audio-monitoring', {
-          trackerId,
-          commandId: command.id,
-          vehicleId: tracker.vehicle.id,
-          fleetId,
-          userId: requestedBy.userId,
-          reason: trimmedReason,
-        }, 'CRITICAL')
+        .record(err instanceof Error ? err : new Error(lastError), 'audio-monitoring', alertCtx, 'CRITICAL')
         .catch(() => {});
       throw err;
     }
 
     this.logger.log(
       { commandId: command.id, trackerId: tracker.id, fleetId, requestedBy: requestedBy.userId },
-      'Audio listen armed (MOCKED dispatch — Scénario A appel live)',
+      'Audio listen armed (SMS monitor envoyé — Scénario A appel live)',
     );
 
     // simPhoneNumber : le n° SIM du boîtier que l'admin doit APPELER pour entendre la
-    // cabine (Scénario A). null possible (SIM non provisionnée) → l'UI le signale.
+    // cabine (Scénario A). Toujours non-null ici (le chemin null a été rejeté plus haut).
     return { command: sent, simPhoneNumber: tracker.simPhoneNumber };
+  }
+
+  /**
+   * Sprint 4 — DISARM : renvoie le boîtier en mode « track » (SMS `tracker<password>`) et
+   * pose `disarmedAt` sur l'écoute armée la plus récente du tracker. CRITIQUE : le mode
+   * monitor coupe le report GPS, donc désarmer remet le véhicule « visible » sur la carte.
+   *
+   * Tenant : un non-SUPER_ADMIN ne peut désarmer qu'un tracker de SA flotte (where filtré,
+   * comme requestListen). Échec d'envoi → alerte (centre d'alertes) MAIS on n'empêche pas
+   * d'enregistrer la tentative — l'opérateur doit savoir que le désarmement a échoué.
+   */
+  async stopListen(
+    trackerId: string,
+    actor: RequestedBy,
+  ): Promise<{ ok: boolean; simPhoneNumber: string | null }> {
+    const trackerWhere: Prisma.TrackerWhereInput = { id: trackerId };
+    if (actor.role !== UserRole.SUPER_ADMIN) {
+      if (!actor.fleetId) throw new NotFoundException('Tracker introuvable');
+      trackerWhere.vehicle = { fleetId: actor.fleetId };
+    }
+    const tracker = await this.prisma.tracker.findFirst({
+      where: trackerWhere,
+      select: { id: true, imei: true, simPhoneNumber: true, vehicle: { select: { id: true, fleetId: true } } },
+    });
+    if (!tracker) {
+      throw new NotFoundException('Tracker introuvable');
+    }
+
+    const alertCtx = {
+      trackerId,
+      vehicleId: tracker.vehicle?.id,
+      fleetId: tracker.vehicle?.fleetId,
+      userId: actor.userId,
+    };
+
+    if (!this.sms.isEnabled() || !tracker.simPhoneNumber) {
+      const lastError = !this.sms.isEnabled()
+        ? 'Passerelle SMS désactivée — désarmement micro impossible'
+        : 'SIM non provisionnée — aucun numéro pour désarmer le micro';
+      await this.errorLogger.record(lastError, 'audio-monitoring', alertCtx, 'CRITICAL').catch(() => {});
+      throw new ServiceUnavailableException('Passerelle SMS indisponible ou SIM absente');
+    }
+
+    let ok = false;
+    try {
+      const pwd = this.devicePassword();
+      const r = await this.sms.send(tracker.simPhoneNumber, 'tracker' + pwd, {
+        imei: tracker.imei,
+        source: 'audio-disarm',
+      });
+      ok = r.ok;
+      if (!r.ok) {
+        await this.errorLogger
+          .record(
+            `Échec désarmement micro (SMS tracker) : ${r.error ?? 'refus passerelle'}`,
+            'audio-monitoring',
+            alertCtx,
+            'CRITICAL',
+          )
+          .catch(() => {});
+      }
+    } catch (err) {
+      await this.errorLogger
+        .record(err instanceof Error ? err : new Error(String(err)), 'audio-monitoring', alertCtx, 'CRITICAL')
+        .catch(() => {});
+      throw err;
+    }
+
+    // Pose disarmedAt sur l'écoute armée la plus récente (SENT + disarmedAt null) de ce
+    // tracker. updateMany borné au plus récent via une sous-requête d'id (Prisma n'autorise
+    // pas orderBy+limit sur updateMany) ; si aucune ligne armée, no-op (désarmement quand
+    // même envoyé — utile pour « forcer » un boîtier qu'on croit encore en monitor).
+    const armed = await this.prisma.audioMonitoringCommand.findFirst({
+      where: { trackerId: tracker.id, status: AudioCommandStatus.SENT, disarmedAt: null },
+      orderBy: { sentAt: 'desc' },
+      select: { id: true },
+    });
+    if (armed) {
+      await this.prisma.audioMonitoringCommand.update({
+        where: { id: armed.id },
+        data: { disarmedAt: new Date() },
+      });
+    }
+
+    this.logger.log(
+      { trackerId: tracker.id, ok, disarmedCommandId: armed?.id ?? null },
+      'Audio listen disarmed (SMS tracker envoyé — retour mode track)',
+    );
+
+    return { ok, simPhoneNumber: tracker.simPhoneNumber };
   }
 
   /**
