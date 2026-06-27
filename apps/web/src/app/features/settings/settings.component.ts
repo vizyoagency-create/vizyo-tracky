@@ -1,8 +1,10 @@
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
+import { firstValueFrom } from 'rxjs';
 import { LucideAngularModule, LogOut, User, Moon, Sun, Bell, BellOff, Map, MapPin, RotateCcw, Palette, Navigation, Route, ArrowRight, Smartphone, Ear } from 'lucide-angular';
 import { AuthService } from '../../core/services/auth.service';
+import { AudioMonitoringService } from '../../core/services/audio-monitoring.service';
 import { PreferencesService } from '../../core/services/preferences.service';
 import { NotificationsApiService } from '../../core/services/notifications.service';
 import { PermissionsService } from '../../core/services/permissions.service';
@@ -244,9 +246,11 @@ import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
           </div>
           }
 
-          <!-- AUDIO N2 — FLEET_ADMIN/client : Mode assistance. Toujours affiché ; si la flotte
-               n'est pas éligible, l'écran N2 montre un message « non disponible » (pas de toggle). -->
-          @if (user()?.role === 'FLEET_ADMIN' && perms.can('audio_monitoring')) {
+          <!-- AUDIO N2 — FLEET_ADMIN/client : Mode assistance. Masqué tant que le prestataire
+               n'a pas rendu la flotte ÉLIGIBLE (N1 superAdminEnabled). Fail-closed : la carte
+               reste cachée par défaut (pas de fleetId, fetch en échec). Une fois éligible, elle
+               ouvre l'écran N2 (consentement/attestation). -->
+          @if (user()?.role === 'FLEET_ADMIN' && perms.can('audio_monitoring') && audioEligible()) {
           <div class="s-card">
             <div class="s-card-head">
               <div class="s-icon violet"><lucide-icon [img]="EarIcon" [size]="16"></lucide-icon></div>
@@ -491,6 +495,7 @@ import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
 })
 export class SettingsComponent implements OnInit {
   private readonly auth = inject(AuthService);
+  private readonly audioApi = inject(AudioMonitoringService);
   private readonly preferencesService = inject(PreferencesService);
   private readonly notifApi = inject(NotificationsApiService);
   private readonly realtime = inject(RealtimeService);
@@ -522,6 +527,11 @@ export class SettingsComponent implements OnInit {
   protected readonly pushSubscribed = signal(false);
   protected readonly pushLoading = signal(false);
   protected readonly pushDiagReason = signal('');
+
+  // Sprint 4 — AUDIO N1 : la flotte est-elle ÉLIGIBLE au Mode assistance (le prestataire
+  // l'a-t-il autorisée, `superAdminEnabled`) ? Gate l'affichage de la carte N2 du fleet-admin.
+  // Fail-closed : false par défaut → carte masquée tant que l'éligibilité n'est pas confirmée.
+  protected readonly audioEligible = signal(false);
 
   // V1.12 — Mode UI (Tracky riche vs Baanool simplifie)
   protected readonly isBaanoolMode = computed(() => this.user()?.preferences?.uiMode === 'baanool');
@@ -574,6 +584,18 @@ export class SettingsComponent implements OnInit {
     }
     await this.notifApi.loadStatus();
     this.pushSubscribed.set(this.notifApi.isSubscribed());
+
+    // Sprint 4 — éligibilité audio (N1) : un FLEET_ADMIN ne voit la carte « Mode assistance »
+    // que si le prestataire a rendu sa flotte éligible. Un seul fetch, mis en cache dans un
+    // signal. Fail-closed : pas de fleetId ou fetch en échec → la carte reste masquée.
+    const u = this.user();
+    if (u?.role === 'FLEET_ADMIN' && u.fleetId) {
+      firstValueFrom(this.audioApi.getFleetAudioConfig(u.fleetId))
+        .then((cfg) => this.audioEligible.set(cfg.superAdminEnabled === true))
+        .catch(() => {
+          // Échec silencieux → fail-closed : la carte reste cachée (default false).
+        });
+    }
   }
 
   protected async enablePush(): Promise<void> {
