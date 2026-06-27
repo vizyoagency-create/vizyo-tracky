@@ -15,7 +15,9 @@
 
 **Conséquence** : sur le hardware tel que documenté dans le repo, il n'existe **ni commande d'enregistrement-clip, ni canal de retour de fichier audio**. Le brief dit « déjà fait sur Baanool » — mais **le code Tracky ne contient AUCUNE implémentation Baanool de snapshot audio** (vérifié, cf §2). Il manque la **source autoritaire** (doc Coban/Baanool « voice monitor » + comment le clip revient : callback HTTP ? port dédié ? cloud Baanool ? format/taille).
 
-> **Décision requise (toi) avant Phase 2** : confirmer le modèle réel du hardware avec la doc/réf Baanool —
+> **✅ DÉCISION 2026-06-27 — Scénario A retenu (appel live).** Implémenté en Phase 3 (commande + 8 garde-fous + audit + activation/attestation + mail + front, **device mocké** ; la commande d'armement Coban réelle reste un **TODO en attente de la source Baanool**). Pas de clip / réception / stockage / rétention → **garde-fou #8 sans objet**. L'écoute = appel vers la SIM du boîtier. Les deux scénarios initiaux restent ci-dessous pour mémoire.
+>
+> **Décision (historique) avant Phase 2** : confirmer le modèle réel du hardware avec la doc/réf Baanool —
 > - **Scénario A — appel live** : pas de fichier serveur. L'« écoute » = un appel vers la SIM du boîtier. Le serveur **envoie la commande monitor** + trace ; il n'y a **rien à stocker/purger** (garde-fou #8 sans objet, mais audit #7 toujours requis). Garde-fous 1-7 inchangés.
 > - **Scénario B — clip enregistré uploadé** (le brief) : il faut **le canal de retour** (endpoint callback + réception binaire — **inexistant aujourd'hui**, à construire) + stockage + rétention. **Bloqué tant que le format/canal Baanool n'est pas fourni** — sinon on code à l'aveugle un sous-système de réception qui ne matchera pas le device.
 
