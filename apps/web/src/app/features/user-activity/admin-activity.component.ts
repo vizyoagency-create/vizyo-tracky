@@ -355,6 +355,32 @@ type Period = '24h' | '7d' | '30d';
 
       <!-- ─────────── ÉCOUTES AUDIO ─────────── -->
       @if (tab() === 'audio-listens') {
+        <!-- Clarification : METADATA d'audit uniquement (qui a écouté quoi / quand), AUCUN
+             contenu audio (Scénario A — appel live, rien n'est enregistré ni stocké). -->
+        <div class="flex items-start gap-2 text-xs text-fg-tertiary bg-bg-secondary border border-border-subtle rounded-[--radius-card] px-3 py-2.5">
+          <lucide-icon [img]="Ear" [size]="14" class="text-tracky-light shrink-0 mt-0.5"></lucide-icon>
+          <span>
+            Journal d'audit : <strong class="text-fg-secondary">qui a écouté quoi et quand</strong>.
+            Aucun contenu audio n'est enregistré ni conservé (écoute en direct, Scénario A).
+          </span>
+        </div>
+
+        <!-- Filtre statut (miroir de l'onglet commandes moteur). -->
+        <div class="flex flex-wrap items-end gap-3">
+          <div class="flex flex-col gap-1">
+            <label class="text-xs text-fg-tertiary">Statut</label>
+            <select [ngModel]="audioStatusFilter()" (ngModelChange)="setAudioStatusFilter($event)"
+                    class="bg-bg-secondary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary">
+              <option value="">Tous</option>
+              <option value="ACKNOWLEDGED">Confirmé</option>
+              <option value="SENT">Armé</option>
+              <option value="PENDING">En attente</option>
+              <option value="FAILED">Échec</option>
+              <option value="REJECTED">Refusé</option>
+            </select>
+          </div>
+        </div>
+
         @if (audioListens().length > 0) {
           <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-hidden">
             <table class="w-full text-sm">
@@ -363,6 +389,7 @@ type Period = '24h' | '7d' | '30d';
                   <th class="px-4 py-3 text-left font-medium">Par</th>
                   <th class="px-4 py-3 text-left font-medium">Quand</th>
                   <th class="px-4 py-3 text-left font-medium">Véhicule</th>
+                  <th class="px-4 py-3 text-left font-medium">Statut</th>
                   <th class="px-4 py-3 text-left font-medium">Motif</th>
                   <th class="px-4 py-3 text-left font-medium">Env.</th>
                 </tr>
@@ -389,6 +416,12 @@ type Period = '24h' | '7d' | '30d';
                       @if (!a.vehiclePlate) {
                         <span class="block text-[10px] text-fg-tertiary">IMEI</span>
                       }
+                    </td>
+                    <!-- Statut -->
+                    <td class="px-4 py-3">
+                      <span class="inline-block px-2 py-0.5 text-xs font-medium rounded-full" [class]="audioStatusClass(a.status)">
+                        {{ audioStatusLabel(a.status) }}
+                      </span>
                     </td>
                     <!-- Motif -->
                     <td class="px-4 py-3">
@@ -463,8 +496,9 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
   readonly actionFilter = signal('');
   readonly statusFilter = signal('');
 
-  // Écoutes audio (audit micro embarqué — qui/quand/véhicule/motif/env).
+  // Écoutes audio (audit micro embarqué — qui/quand/véhicule/motif/env/statut).
   readonly audioListens = signal<AudioCommandAuditDto[]>([]);
+  readonly audioStatusFilter = signal('');
 
   readonly maxSessions = computed(() =>
     Math.max(1, ...(this.stats()?.sessionsPerDay ?? []).map((d) => d.count)),
@@ -548,9 +582,14 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
       .subscribe({ next: (l) => this.enginecmds.set(l), error: () => undefined });
   }
 
+  setAudioStatusFilter(v: string): void {
+    this.audioStatusFilter.set(v);
+    this.loadAudio();
+  }
+
   private loadAudio(): void {
     this.audioApi
-      .getAudit({ limit: 50 })
+      .getAudit({ limit: 50, status: this.audioStatusFilter() || undefined })
       .subscribe({ next: (l) => this.audioListens.set(l), error: () => undefined });
   }
 
@@ -558,13 +597,15 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
     const last = this.audioListens()[this.audioListens().length - 1];
     if (!last) return;
     this.loadingMore.set(true);
-    this.audioApi.getAudit({ limit: 50, before: last.createdAt }).subscribe({
-      next: (items) => {
-        this.audioListens.update((l) => [...l, ...items]);
-        this.loadingMore.set(false);
-      },
-      error: () => this.loadingMore.set(false),
-    });
+    this.audioApi
+      .getAudit({ limit: 50, before: last.createdAt, status: this.audioStatusFilter() || undefined })
+      .subscribe({
+        next: (items) => {
+          this.audioListens.update((l) => [...l, ...items]);
+          this.loadingMore.set(false);
+        },
+        error: () => this.loadingMore.set(false),
+      });
   }
 
   private loadLive(): void {
@@ -633,6 +674,32 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
       case 'SCHEDULER': return 'Planning';
       case 'DEVICE_OBSERVED': return 'Boîtier';
       default: return src;
+    }
+  }
+
+  // ── helpers écoutes audio (statut) ──
+  // SENT = micro armé (Scénario A), ACKNOWLEDGED = confirmé par le boîtier.
+  protected audioStatusLabel(s: AudioCommandAuditDto['status']): string {
+    switch (s) {
+      case 'ACKNOWLEDGED': return 'Confirmé';
+      case 'SENT': return 'Armé';
+      case 'PENDING': return 'En attente';
+      case 'FAILED': return 'Échec';
+      case 'REJECTED': return 'Refusé';
+      default: return s;
+    }
+  }
+  protected audioStatusClass(s: AudioCommandAuditDto['status']): string {
+    switch (s) {
+      case 'SENT':
+      case 'ACKNOWLEDGED':
+        return 'bg-emerald-500/15 text-emerald-400';
+      case 'FAILED':
+      case 'REJECTED':
+        return 'bg-rose-500/15 text-rose-400';
+      case 'PENDING':
+      default:
+        return 'bg-bg-tertiary text-fg-tertiary';
     }
   }
   protected describe(a: ActivityFeedItemDto): string {

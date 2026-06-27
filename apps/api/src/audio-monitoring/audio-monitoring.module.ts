@@ -11,9 +11,10 @@ import { AudioMonitoringService } from './audio-monitoring.service';
  * la SIM) — aucun clip reçu/stocké. Device MOCKÉ dans le service.
  *
  * DI : AuthModule fournit JwtAuthGuard/RolesGuard. PrismaService, PermissionsResolver
- * (PermissionsGuard), EmailService et ConfigService sont GLOBAUX (PrismaModule,
- * PermissionsModule, EmailModule @Global + ConfigModule root) → injectés sans import
- * explicite. Le service injecte Prisma + Email + Config. Rien n'est exporté.
+ * (PermissionsGuard), EmailService, ConfigService et ErrorLogger sont GLOBAUX (PrismaModule,
+ * PermissionsModule, EmailModule, ObservabilityModule @Global + ConfigModule root) → injectés
+ * sans import explicite. Le service injecte Prisma + Email + Config + ErrorLogger (centre
+ * d'alertes : une panne d'armement/mail audio devient visible). Rien n'est exporté.
  */
 @Module({
   imports: [AuthModule],

@@ -64,35 +64,71 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
               <li class="fleet-row">
                 <div class="fleet-main">
                   <div class="fleet-name">{{ f.fleetName }}</div>
-                  <!-- Badge LECTURE SEULE : état du consentement client (N2). -->
+                  <!-- Badge : état du consentement client (N2). Reste la SOURCE DE VÉRITÉ
+                       du consentement réel ; le toggle N2 ci-contre est un override de test. -->
                   <span class="client-badge" [class.on]="f.assistanceEnabled">
                     <span class="dot"></span>
                     @if (f.assistanceEnabled) {
-                      Mode assistance ON par le client
+                      Mode assistance ON
                     } @else {
-                      Mode assistance OFF par le client
+                      Mode assistance OFF
                     }
                   </span>
                 </div>
 
                 <div class="fleet-action">
-                  <span class="elig-label">{{ f.superAdminEnabled ? 'Éligible' : 'Non éligible' }}</span>
-                  <button
-                    type="button"
-                    role="switch"
-                    [attr.aria-checked]="f.superAdminEnabled"
-                    [attr.aria-label]="'Éligibilité audio de ' + f.fleetName"
-                    (click)="toggleEligibility(f)"
-                    [disabled]="savingId() === f.fleetId"
-                    class="switch"
-                    [class.on]="f.superAdminEnabled"
-                  >
-                    <span class="knob"></span>
-                  </button>
+                  <!-- N1 — ÉLIGIBILITÉ (prestataire) : autorise la flotte au Mode assistance. -->
+                  <div class="toggle-cell">
+                    <span class="elig-label">{{ f.superAdminEnabled ? 'Éligible' : 'Non éligible' }}</span>
+                    <button
+                      type="button"
+                      role="switch"
+                      [attr.aria-checked]="f.superAdminEnabled"
+                      [attr.aria-label]="'Éligibilité audio de ' + f.fleetName"
+                      (click)="toggleEligibility(f)"
+                      [disabled]="savingId() === f.fleetId || savingAssistId() === f.fleetId"
+                      class="switch"
+                      [class.on]="f.superAdminEnabled"
+                    >
+                      <span class="knob"></span>
+                    </button>
+                  </div>
+
+                  <!-- N2 — MODE ASSISTANCE (override de TEST super-admin) : visible UNIQUEMENT
+                       si la flotte est éligible. Permet d'activer le Mode assistance en solo
+                       (sans compte fleet-admin) pour tester. Le consentement RÉEL reste celui du client. -->
+                  @if (f.superAdminEnabled) {
+                    <div class="toggle-cell n2">
+                      <span class="elig-label">Assistance</span>
+                      <button
+                        type="button"
+                        role="switch"
+                        [attr.aria-checked]="f.assistanceEnabled"
+                        [attr.aria-label]="'Mode assistance (test) de ' + f.fleetName"
+                        (click)="toggleAssistance(f)"
+                        [disabled]="savingAssistId() === f.fleetId || savingId() === f.fleetId"
+                        class="switch"
+                        [class.on]="f.assistanceEnabled"
+                      >
+                        <span class="knob"></span>
+                      </button>
+                    </div>
+                  }
                 </div>
               </li>
             }
           </ul>
+        </div>
+
+        <!-- Note : le toggle « Assistance » est un override de TEST super-admin. -->
+        <div class="note">
+          <lucide-icon [img]="ShieldCheck" [size]="14" class="text-tracky-light shrink-0 mt-0.5"></lucide-icon>
+          <span>
+            Le toggle <strong>Assistance</strong> (visible uniquement sur une flotte éligible) est un
+            <strong>override de test super-admin</strong> : il active le Mode assistance en solo, sans
+            compte fleet-admin, pour vérifier le déclenchement. Le consentement <em>réel</em> reste celui
+            du client (attestation + mail d'obligations côté fleet-admin).
+          </span>
         </div>
 
         <!-- Rappel : retirer l'éligibilité coupe tout pour la flotte. -->
@@ -137,7 +173,9 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
     .client-badge.on { background: rgba(16,224,160,.15); color: var(--tracky-light) }
     .client-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .8 }
 
-    .fleet-action { display: flex; align-items: center; gap: 10px; flex-shrink: 0 }
+    .fleet-action { display: flex; align-items: center; gap: 16px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end }
+    .toggle-cell { display: flex; flex-direction: column; align-items: center; gap: 5px }
+    .toggle-cell.n2 { padding-left: 14px; border-left: 1px solid var(--border-subtle) }
     .elig-label { font-size: 11px; font-weight: 600; color: var(--fg-tertiary); white-space: nowrap }
 
     .switch {
@@ -154,6 +192,12 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
       line-height: 1.5; padding: 12px 14px; border-radius: 12px;
       background: rgba(245,158,11,.06); border: 1px solid rgba(245,158,11,.16);
     }
+    .note {
+      display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: var(--fg-secondary);
+      line-height: 1.5; padding: 12px 14px; border-radius: 12px;
+      background: rgba(16,224,160,.05); border: 1px solid rgba(16,224,160,.16);
+    }
+    .note strong { color: var(--fg-primary); font-weight: 600 }
   `],
 })
 export class AudioEligibilityComponent implements OnInit {
@@ -163,6 +207,8 @@ export class AudioEligibilityComponent implements OnInit {
   protected readonly fleets = signal<FleetAudioEligibilityDto[]>([]);
   protected readonly loading = signal(true);
   protected readonly savingId = signal<string | null>(null);
+  /** Flotte dont le toggle N2 « Mode assistance » (override de test) est en cours d'écriture. */
+  protected readonly savingAssistId = signal<string | null>(null);
   protected readonly query = signal('');
 
   protected readonly ArrowLeft = ArrowLeft;
@@ -216,6 +262,54 @@ export class AudioEligibilityComponent implements OnInit {
       this.toast.error('Opération refusée', "L'éligibilité n'a pas pu être modifiée.");
     } finally {
       this.savingId.set(null);
+    }
+  }
+
+  /**
+   * N2 — override de TEST super-admin du « Mode assistance ». Visible/appelable uniquement
+   * sur une flotte éligible (le bouton n'est rendu que si superAdminEnabled). Le backend
+   * autorise SUPER_ADMIN et SAUTE le mail d'obligations pour un acteur super-admin
+   * (attestationVersion 'superadmin-test' → bascule technique de test, la flotte n'est PAS
+   * notifiée). Le consentement réel reste celui du client.
+   */
+  protected async toggleAssistance(fleet: FleetAudioEligibilityDto): Promise<void> {
+    if (this.savingAssistId() || this.savingId()) return;
+    // Garde-fou UI : pas d'activation N2 si la flotte n'est pas éligible (N1).
+    if (!fleet.superAdminEnabled) return;
+    const next = !fleet.assistanceEnabled;
+    this.savingAssistId.set(fleet.fleetId);
+    try {
+      const cfg = await firstValueFrom(
+        this.audio.setFleetAssistanceMode(fleet.fleetId, {
+          assistanceEnabled: next,
+          attestation: true,
+          attestationVersion: 'superadmin-test',
+        }),
+      );
+      // On reflète les DEUX étages renvoyés par le serveur (source de vérité).
+      this.fleets.update((list) =>
+        list.map((f) =>
+          f.fleetId === fleet.fleetId
+            ? {
+                ...f,
+                superAdminEnabled: cfg.superAdminEnabled,
+                assistanceEnabled: cfg.assistanceEnabled,
+              }
+            : f,
+        ),
+      );
+      if (next) {
+        this.toast.success(
+          'Mode assistance activé (test)',
+          `Override super-admin posé sur « ${fleet.fleetName} ». L'écoute est testable.`,
+        );
+      } else {
+        this.toast.success('Mode assistance désactivé', `Override retiré sur « ${fleet.fleetName} ».`);
+      }
+    } catch {
+      this.toast.error('Opération refusée', "Le Mode assistance n'a pas pu être modifié.");
+    } finally {
+      this.savingAssistId.set(null);
     }
   }
 }

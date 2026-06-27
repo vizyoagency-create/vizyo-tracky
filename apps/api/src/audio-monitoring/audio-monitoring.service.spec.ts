@@ -7,6 +7,7 @@ import { Test } from '@nestjs/testing';
 import { AudioCommandStatus, UserRole } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { EmailService } from '../email/email.service';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AudioMonitoringService } from './audio-monitoring.service';
 
@@ -62,6 +63,7 @@ describe('AudioMonitoringService', () => {
     user: { findMany: jest.Mock; findUnique: jest.Mock };
   };
   let email: { send: jest.Mock; buildAudioActivationEmail: jest.Mock };
+  let errorLogger: { record: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -95,6 +97,8 @@ describe('AudioMonitoringService', () => {
         .mockReturnValue({ subject: 's', html: 'h', text: 't' }),
     };
 
+    errorLogger = { record: jest.fn().mockResolvedValue('error-id') };
+
     const config = {
       get: (key: string) => (key === 'NODE_ENV' ? 'development' : undefined),
     } as unknown as ConfigService;
@@ -105,6 +109,7 @@ describe('AudioMonitoringService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: EmailService, useValue: email },
         { provide: ConfigService, useValue: config },
+        { provide: ErrorLogger, useValue: errorLogger },
       ],
     }).compile();
 
@@ -203,6 +208,72 @@ describe('AudioMonitoringService', () => {
       await expect(
         service.requestListen(TRACKER_ID, 'vol suspecté', otherFleetAdmin),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    // Part A — une panne SYSTÈME au DISPATCH (update SENT qui throw) doit :
+    //  (a) marquer la commande FAILED (best-effort, trace d'audit cohérente),
+    //  (b) alimenter le centre d'alertes via errorLogger.record(source='audio-monitoring',
+    //      niveau CRITICAL),
+    //  (c) re-throw l'erreur d'origine.
+    it('marks FAILED + records an audio-monitoring CRITICAL alert on a forced dispatch failure', async () => {
+      prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+      prisma.fleetAudioConfig.findUnique.mockResolvedValue({
+        superAdminEnabled: true,
+        assistanceEnabled: true,
+      });
+      const boom = new Error('DB write failed');
+      // 1er update (dispatch → SENT) throw ; 2e update (FAILED best-effort) ok.
+      prisma.audioMonitoringCommand.update
+        .mockRejectedValueOnce(boom)
+        .mockResolvedValueOnce(
+          createdCommand({ status: AudioCommandStatus.FAILED, lastError: 'DB write failed' }),
+        );
+
+      await expect(
+        service.requestListen(TRACKER_ID, 'vol suspecté', fleetAdmin),
+      ).rejects.toThrow(boom);
+
+      // (a) commande marquée FAILED + lastError.
+      expect(prisma.audioMonitoringCommand.update).toHaveBeenCalledWith({
+        where: { id: expect.any(String) },
+        data: expect.objectContaining({
+          status: AudioCommandStatus.FAILED,
+          lastError: 'DB write failed',
+        }),
+      });
+      // (b) alerte poussée avec la BONNE source + le niveau CRITICAL + le contexte.
+      expect(errorLogger.record).toHaveBeenCalledWith(
+        boom,
+        'audio-monitoring',
+        expect.objectContaining({
+          trackerId: TRACKER_ID,
+          commandId: expect.any(String),
+          vehicleId: VEHICLE_ID,
+          fleetId: FLEET_ID,
+          userId: USER_ID,
+        }),
+        'CRITICAL',
+      );
+    });
+
+    // Part A (garde-fou) — un refus de validation ATTENDU (404/403/400) ne doit JAMAIS
+    // alimenter le centre d'alertes (ce ne sont pas des erreurs système).
+    it('does NOT record an alert for an expected validation throw (empty motif)', async () => {
+      await expect(service.requestListen(TRACKER_ID, '   ', fleetAdmin)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(errorLogger.record).not.toHaveBeenCalled();
+    });
+
+    // Non-régression — le chemin nominal (dispatch OK) ne loggue AUCUNE alerte.
+    it('does NOT record an alert on a successful listen', async () => {
+      prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+      prisma.fleetAudioConfig.findUnique.mockResolvedValue({
+        superAdminEnabled: true,
+        assistanceEnabled: true,
+      });
+      await service.requestListen(TRACKER_ID, 'vol suspecté', fleetAdmin);
+      expect(errorLogger.record).not.toHaveBeenCalled();
     });
   });
 
@@ -325,6 +396,39 @@ describe('AudioMonitoringService', () => {
       });
       expect(result.assistanceEnabled).toBe(true);
       expect(result.activationEmailSentAt).not.toBeNull();
+    });
+
+    // Part A — un ÉCHEC d'envoi du mail OBLIGATIONS est best-effort (l'activation est
+    // conservée, stamp laissé null) MAIS doit devenir VISIBLE au centre d'alertes via
+    // errorLogger.record(source='audio-monitoring', niveau ERROR).
+    it('records an audio-monitoring ERROR alert when the activation mail fails (#6)', async () => {
+      eligibleConfig(true);
+      prisma.fleetAudioConfig.upsert.mockResolvedValue({
+        superAdminEnabled: true,
+        assistanceEnabled: true,
+        attestedAt: new Date(),
+        attestationVersion: 'v1',
+        activationEmailSentAt: null,
+      });
+      prisma.user.findMany.mockResolvedValue([{ email: 'a@test.fr' }]);
+      // L'envoi du mail échoue → sendActivationEmails catch → alerte ERROR.
+      email.send.mockRejectedValue(new Error('SMTP down'));
+
+      const result = await service.setFleetAssistanceMode(
+        FLEET_ID,
+        { assistanceEnabled: true, attestation: true, attestationVersion: 'v1' },
+        fleetAdmin,
+      );
+
+      expect(errorLogger.record).toHaveBeenCalledWith(
+        expect.any(Error),
+        'audio-monitoring',
+        expect.objectContaining({ fleetId: FLEET_ID }),
+        'ERROR',
+      );
+      // Activation conservée, mais on ne prétend pas avoir notifié la flotte (#6 honnête).
+      expect(result.assistanceEnabled).toBe(true);
+      expect(result.activationEmailSentAt).toBeNull();
     });
 
     // désactiver → pas de mail, pas d'attestation exigée (flotte éligible).

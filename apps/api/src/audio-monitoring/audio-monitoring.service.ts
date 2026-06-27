@@ -20,6 +20,7 @@ import type {
 import { resolveTenantScope } from '../common/tenant-scope';
 import type { Env } from '../config/env.validation';
 import { EmailService } from '../email/email.service';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 interface RequestedBy {
@@ -63,6 +64,7 @@ export class AudioMonitoringService {
     private readonly prisma: PrismaService,
     private readonly email: EmailService,
     private readonly config: ConfigService<Env, true>,
+    private readonly errorLogger: ErrorLogger,
   ) {}
 
   /**
@@ -135,10 +137,39 @@ export class AudioMonitoringService {
     // la commande connue : encoder + socket-registry.send + fallback SMS (le monitor
     // Coban s'arme par SMS), puis attendre la confirmation. JAMAIS vers prod tant que
     // le flag #2 n'est pas posé.
-    const sent = await this.prisma.audioMonitoringCommand.update({
-      where: { id: command.id },
-      data: { status: AudioCommandStatus.SENT, sentAt: new Date() },
-    });
+    //
+    // Le DISPATCH est enveloppé : une erreur SYSTÈME inattendue (DB indisponible, futur
+    // armement device en échec) marque la commande FAILED + alimente le centre d'alertes
+    // (source 'audio-monitoring', niveau CRITICAL) puis re-throw. Les refus de validation
+    // attendus (404/403/400 ci-dessus) sont levés AVANT ce bloc → jamais loggés comme alertes.
+    let sent: AudioMonitoringCommand;
+    try {
+      sent = await this.prisma.audioMonitoringCommand.update({
+        where: { id: command.id },
+        data: { status: AudioCommandStatus.SENT, sentAt: new Date() },
+      });
+    } catch (err) {
+      const lastError = err instanceof Error ? err.message : String(err);
+      // Best-effort : marquer la commande FAILED (trace d'audit cohérente).
+      await this.prisma.audioMonitoringCommand
+        .update({
+          where: { id: command.id },
+          data: { status: AudioCommandStatus.FAILED, lastError },
+        })
+        .catch(() => {});
+      // Visibilité opérateur : une panne d'armement audio remonte au centre d'alertes.
+      await this.errorLogger
+        .record(err instanceof Error ? err : new Error(lastError), 'audio-monitoring', {
+          trackerId,
+          commandId: command.id,
+          vehicleId: tracker.vehicle.id,
+          fleetId,
+          userId: requestedBy.userId,
+          reason: trimmedReason,
+        }, 'CRITICAL')
+        .catch(() => {});
+      throw err;
+    }
 
     this.logger.log(
       { commandId: command.id, trackerId: tracker.id, fleetId, requestedBy: requestedBy.userId },
@@ -365,6 +396,16 @@ export class AudioMonitoringService {
         { fleetId, error: (err as Error).message },
         'Audio activation emails failed (activation conservée — best effort, stamp laissé null)',
       );
+      // (#6) Un échec d'envoi du mail OBLIGATIONS est légalement sensible : il doit être
+      // VISIBLE au centre d'alertes (niveau ERROR), même si l'activation est conservée.
+      await this.errorLogger
+        .record(
+          err instanceof Error ? err : new Error(String(err)),
+          'audio-monitoring',
+          { fleetId, userId: actorUserId, reason: 'activation-email-failed' },
+          'ERROR',
+        )
+        .catch(() => {});
       return null; // échec : on NE prétend PAS avoir notifié la flotte (#6 honnête)
     }
   }
