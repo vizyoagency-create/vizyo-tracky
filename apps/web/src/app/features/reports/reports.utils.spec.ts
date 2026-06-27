@@ -8,10 +8,20 @@
  */
 import {
   REPORT_MAX_PLAUSIBLE_SPEED_KMH,
+  REPORT_MAX_RANGE_DAYS,
   aggregateKpis,
+  clampDateToMax,
   clampSpeed,
+  compareTrips,
   formatDuration,
+  inclusiveDaySpan,
+  isIsoDate,
+  kpiToSortColumn,
   max0,
+  normalizeCustomRange,
+  sortTrips,
+  todayIsoLocal,
+  type TripSortShape,
 } from './reports.utils';
 
 describe('reports.utils — formatDuration', () => {
@@ -146,5 +156,193 @@ describe('reports.utils — aggregateKpis', () => {
       { durationSeconds: 600, distanceMeters: 5000, maxSpeed: -50 },
     ]);
     expect(kpis.maxSpeed).toBe(0);
+  });
+});
+
+/* ─── Sprint 5 — PÉRIODE (objectif #2) ─── */
+
+describe('reports.utils — isIsoDate', () => {
+  it('accepte une date calendaire valide', () => {
+    expect(isIsoDate('2026-06-27')).toBe(true);
+    expect(isIsoDate('2024-02-29')).toBe(true); // annee bissextile
+  });
+
+  it('rejette format invalide ou date overflow', () => {
+    expect(isIsoDate('')).toBe(false);
+    expect(isIsoDate(null)).toBe(false);
+    expect(isIsoDate('2026-6-7')).toBe(false);
+    expect(isIsoDate('27/06/2026')).toBe(false);
+    expect(isIsoDate('2026-02-31')).toBe(false); // overflow → rejete
+    expect(isIsoDate('2026-13-01')).toBe(false);
+  });
+});
+
+describe('reports.utils — clampDateToMax / inclusiveDaySpan', () => {
+  it('clampe une date au-dela du max', () => {
+    expect(clampDateToMax('2026-12-31', '2026-06-27')).toBe('2026-06-27');
+    expect(clampDateToMax('2026-01-01', '2026-06-27')).toBe('2026-01-01');
+    expect(clampDateToMax('2026-06-27', '2026-06-27')).toBe('2026-06-27');
+  });
+
+  it('compte les jours inclusifs', () => {
+    expect(inclusiveDaySpan('2026-06-27', '2026-06-27')).toBe(1);
+    expect(inclusiveDaySpan('2026-06-01', '2026-06-30')).toBe(30);
+    expect(inclusiveDaySpan('2026-01-01', '2026-12-31')).toBe(365);
+  });
+});
+
+describe('reports.utils — todayIsoLocal', () => {
+  it('formate aujourd\'hui en YYYY-MM-DD heure LOCALE (pas UTC)', () => {
+    // 7 juin 2026 23h30 heure locale → doit rester le 07, pas basculer le 08.
+    const d = new Date(2026, 5, 7, 23, 30);
+    expect(todayIsoLocal(d)).toBe('2026-06-07');
+  });
+});
+
+describe('reports.utils — normalizeCustomRange (auto-fill + cohérence)', () => {
+  const TODAY = '2026-06-27';
+
+  it('auto-remplit « jusqu\'a » = aujourd\'hui quand from saisi et to vide', () => {
+    const r = normalizeCustomRange({ from: '2026-06-01', to: '' }, TODAY);
+    expect(r.from).toBe('2026-06-01');
+    expect(r.to).toBe(TODAY);
+    expect(r.error).toBe('');
+    expect(r.valid).toBe(true);
+  });
+
+  it('pas d\'erreur tant que les deux champs sont vides (saisie en cours)', () => {
+    const r = normalizeCustomRange({ from: '', to: '' }, TODAY);
+    expect(r.valid).toBe(false);
+    expect(r.error).toBe('');
+  });
+
+  it('clampe une date de fin future a aujourd\'hui (no-future)', () => {
+    const r = normalizeCustomRange({ from: '2026-06-01', to: '2099-01-01' }, TODAY);
+    expect(r.to).toBe(TODAY);
+    expect(r.valid).toBe(true);
+  });
+
+  it('clampe une date de debut future → from = today', () => {
+    const r = normalizeCustomRange({ from: '2099-01-01', to: '2099-02-01' }, TODAY);
+    expect(r.from).toBe(TODAY);
+    expect(r.to).toBe(TODAY);
+    expect(r.valid).toBe(true);
+  });
+
+  it('renvoie un message clair quand from > to', () => {
+    const r = normalizeCustomRange({ from: '2026-06-20', to: '2026-06-10' }, TODAY);
+    expect(r.valid).toBe(false);
+    expect(r.error).toContain('antérieure');
+  });
+
+  it('refuse une plage > 365 jours', () => {
+    const r = normalizeCustomRange({ from: '2024-01-01', to: '2026-06-27' }, TODAY);
+    expect(r.valid).toBe(false);
+    expect(r.error).toContain(String(REPORT_MAX_RANGE_DAYS));
+  });
+
+  it('accepte une plage de 365 jours exactement', () => {
+    const r = normalizeCustomRange({ from: '2025-06-28', to: '2026-06-27' }, TODAY);
+    expect(inclusiveDaySpan(r.from, r.to)).toBe(365);
+    expect(r.valid).toBe(true);
+    expect(r.error).toBe('');
+  });
+
+  it('signale une date invalide', () => {
+    const r = normalizeCustomRange({ from: 'pas-une-date', to: '2026-06-27' }, TODAY);
+    expect(r.valid).toBe(false);
+    expect(r.error).toBe('Date invalide.');
+  });
+
+  it('garde le « to » INCLUSIF (le +1 jour exclusif est fait par le composant)', () => {
+    const r = normalizeCustomRange({ from: '2026-06-10', to: '2026-06-15' }, TODAY);
+    expect(r.to).toBe('2026-06-15');
+  });
+});
+
+/* ─── Sprint 5 — TRI du tableau + mapping KPI (objectif #4) ─── */
+
+describe('reports.utils — tri du tableau', () => {
+  const trip = (over: Partial<TripSortShape>): TripSortShape => ({
+    startedAt: '2026-06-10T08:00:00.000Z',
+    durationSeconds: 600,
+    distanceMeters: 5000,
+    avgSpeed: 40,
+    maxSpeed: 80,
+    ...over,
+  });
+
+  it('compareTrips trie par maxSpeed desc (le plus rapide en premier)', () => {
+    const a = trip({ maxSpeed: 50 });
+    const b = trip({ maxSpeed: 120 });
+    expect(compareTrips(a, b, 'maxSpeed', 'desc')).toBeGreaterThan(0);
+    expect(compareTrips(b, a, 'maxSpeed', 'desc')).toBeLessThan(0);
+  });
+
+  it('compareTrips trie par distance asc', () => {
+    const a = trip({ distanceMeters: 1000 });
+    const b = trip({ distanceMeters: 9000 });
+    expect(compareTrips(a, b, 'distanceMeters', 'asc')).toBeLessThan(0);
+  });
+
+  it('sortTrips ne mute pas l\'entree et renvoie une nouvelle reference', () => {
+    const input = [trip({ maxSpeed: 30 }), trip({ maxSpeed: 90 }), trip({ maxSpeed: 60 })];
+    const snapshot = input.map((t) => t.maxSpeed);
+    const out = sortTrips(input, 'maxSpeed', 'desc');
+    expect(out).not.toBe(input);
+    expect(input.map((t) => t.maxSpeed)).toEqual(snapshot);
+    expect(out.map((t) => t.maxSpeed)).toEqual([90, 60, 30]);
+  });
+
+  it('sortTrips maxSpeed desc — la 1ere ligne est le trajet le plus rapide', () => {
+    const out = sortTrips(
+      [trip({ maxSpeed: 70 }), trip({ maxSpeed: 142 }), trip({ maxSpeed: 30 })],
+      'maxSpeed',
+      'desc',
+    );
+    expect(out[0]!.maxSpeed).toBe(142);
+  });
+
+  it('tri STABLE : a vitesse egale, tie-break sur startedAt croissant', () => {
+    const t1 = trip({ maxSpeed: 100, startedAt: '2026-06-10T10:00:00.000Z' });
+    const t2 = trip({ maxSpeed: 100, startedAt: '2026-06-10T08:00:00.000Z' });
+    const t3 = trip({ maxSpeed: 100, startedAt: '2026-06-10T09:00:00.000Z' });
+    const desc = sortTrips([t1, t2, t3], 'maxSpeed', 'desc');
+    expect(desc.map((t) => t.startedAt)).toEqual([
+      '2026-06-10T08:00:00.000Z',
+      '2026-06-10T09:00:00.000Z',
+      '2026-06-10T10:00:00.000Z',
+    ]);
+  });
+
+  it('clampe les valeurs aberrantes avant tri (9999 km/h ~ 250)', () => {
+    const out = sortTrips(
+      [trip({ maxSpeed: 9999 }), trip({ maxSpeed: 200 })],
+      'maxSpeed',
+      'desc',
+    );
+    expect(clampSpeed(out[0]!.maxSpeed)).toBe(250);
+  });
+
+  it('tri par startedAt dans les deux sens', () => {
+    const early = trip({ startedAt: '2026-06-01T00:00:00.000Z' });
+    const late = trip({ startedAt: '2026-06-20T00:00:00.000Z' });
+    expect(compareTrips(early, late, 'startedAt', 'asc')).toBeLessThan(0);
+    expect(compareTrips(early, late, 'startedAt', 'desc')).toBeGreaterThan(0);
+  });
+});
+
+describe('reports.utils — kpiToSortColumn (mapping KPI→colonne)', () => {
+  it('Vitesse max → maxSpeed', () => {
+    expect(kpiToSortColumn('maxSpeed')).toBe('maxSpeed');
+  });
+  it('Distance → distanceMeters', () => {
+    expect(kpiToSortColumn('totalDistance')).toBe('distanceMeters');
+  });
+  it('Duree → durationSeconds', () => {
+    expect(kpiToSortColumn('totalDuration')).toBe('durationSeconds');
+  });
+  it('Trajets → null (non triable)', () => {
+    expect(kpiToSortColumn('tripCount')).toBeNull();
   });
 });
