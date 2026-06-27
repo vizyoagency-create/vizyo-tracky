@@ -5,7 +5,8 @@
 > tests avant de construire le reste dessus.
 
 ## Hypothèses actées (à corriger si besoin)
-- **Périmètre Phase 2** : on construit **ENVOI de commande + 8 garde-fous + attestation + mail + audit**, **device MOCKÉ**. La **réception/stockage du vocal (AudioClip) est DIFFÉRÉE** au modèle confirmé (A appel live / B clip) + source Baanool (cf `ANALYSE.md §0`).
+- **Périmètre Phase 2** : on construit **ENVOI de commande + 8 garde-fous + attestation + mail + audit**, **device MOCKÉ**.
+- **Modèle CONFIRMÉ (2026-06-27) = Scénario A (appel live)** : l'écoute = appel vers la **SIM du boîtier** ; le serveur **arme le monitor + audite** uniquement. **Aucun clip serveur, aucune réception, aucune rétention-clip → garde-fou #8 SANS OBJET.** L'`AudioMonitoringCommand` (audit légal) est conservé. L'`AudioClip` n'est pas créé.
 - **Déclencheur en prod** : `FLEET_ADMIN` du client **uniquement**. `SUPER_ADMIN` = **dev/test only** (bloqué en prod). `FLEET_MANAGER` **exclu** du déclenchement.
 - **Rétention** : audit commande = long (immuable, légal) ; clip = court `AUDIO_RETENTION_DAYS=7` (différé).
 
@@ -58,7 +59,7 @@ model FleetAudioConfig {
 }
 ```
 
-### `AudioClip` — **DIFFÉRÉ** (scénario B uniquement, source Baanool requise). Non créé en Phase 2.
+### `AudioClip` — **SANS OBJET** (Scénario A retenu : appel live, aucun clip serveur). Non créé.
 
 ---
 
