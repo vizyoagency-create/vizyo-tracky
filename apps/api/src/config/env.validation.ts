@@ -95,6 +95,16 @@ const envSchema = z.object({
   // ERROR_LOGS = erreurs applicatives.
   WIRE_LOGS_RETENTION_DAYS: z.coerce.number().int().positive().default(7),
   ERROR_LOGS_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
+
+  // Sprint 4 — Écoute audio à distance (micro vehicule), LEGALEMENT SENSIBLE.
+  // AUDIO_MONITORING_ENABLED : interrupteur prod. En production, sans 'true'
+  //   explicite, l'ecoute est techniquement IMPOSSIBLE (AudioMonitoringGuard
+  //   garde-fou #2). Defaut 'false' (OFF) — lecture via
+  //   config.get('AUDIO_MONITORING_ENABLED',{infer:true})==='true'.
+  // AUDIO_RETENTION_DAYS : retention des clips audio (garde-fou #8, DIFFEREE).
+  //   Audit de la commande = conserve (legal) ; le clip est court.
+  AUDIO_MONITORING_ENABLED: z.string().default('false'),
+  AUDIO_RETENTION_DAYS: z.coerce.number().int().positive().default(7),
 });
 
 export type Env = z.infer<typeof envSchema>;
