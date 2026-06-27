@@ -84,4 +84,11 @@ Vérité terrain confirmée par l'utilisateur : **038** = SIM HS · **493** = IM
 - Compte fiable : **25 / 27 posés remontent**. Les 3 restants sont des chantiers terrain identifiés, pas des mystères.
 
 ## Statut
-Phase 2 **data terminée** (A + C résolus, planning aligné sur la réalité, fantômes purgés). Restent **3 chantiers terrain** (038 SIM · 493 IMEI+SIM · 443 pose) — non réparables à distance, suivis ci-dessus. **Capture IMEI 493 armée** : dès qu'il tape le serveur, je le chope.
+Phase 2 **data terminée** (A + C résolus, planning aligné, fantômes purgés).
+
+### Mise à jour 2026-06-27 — GT-493-KS RÉSOLU ✅
+Utilisateur a connecté le boîtier → son **vrai IMEI `864035054758058`** a tapé le serveur (« Unknown IMEI », 8 trames, wire_logs) → **capturé** puis **enregistré** sur le tracker GT-493-KS (placeholder `…750000` remplacé, tâche mise à jour). **Preuve** : `Tracker connected: 864035054758058`, **status ONLINE**, `lastSeen=1s`, **position OK** → il est passé en GPRS, **le repli SMS s'arrête**. (N° de SIM à confirmer — n'empêche pas le GPRS.)
+
+Restent **2 chantiers terrain** : **FY-038-TS** (SIM HS, à reprendre sur place) · **HD-443-QY** (boîtier à poser).
+
+**Réconciliation à jour : 26 / 27 posés remontent réellement** — 1 à reprendre (FY-038) + 1 à poser (HD-443).
