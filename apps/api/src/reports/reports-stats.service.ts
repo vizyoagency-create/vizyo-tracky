@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
 
 /**
  * V1.5 (Sprint L) — Agregation KPI pour les rapports & export.
@@ -87,7 +88,7 @@ export class ReportsStatsService {
     fleetId: string,
     from: Date,
     to: Date,
-    requestedBy?: { role: UserRole | string; fleetId: string | null },
+    requestedBy?: { role: UserRole | string; fleetId: string | null; accessibleVehicleIds?: string[] | 'ALL' },
     filters?: { vehicleIds?: string[]; maxRecentTrips?: number },
   ): Promise<FleetStatsReport> {
     if (requestedBy && requestedBy.role !== UserRole.SUPER_ADMIN) {
@@ -101,17 +102,31 @@ export class ReportsStatsService {
 
     const days = Math.max(1, Math.round((to.getTime() - from.getTime()) / (24 * 3600 * 1000)));
 
-    // Normalise le filtre vehicleIds : trim, dedup, ignore les chaines vides.
-    // Une liste vide ou absente => pas de filtre (rapport flotte complet).
+    // Normalise le filtre vehicleIds demande par l'appelant (filtre groupe /
+    // selection multi-vehicules cote front). Liste vide / absente => pas de
+    // demande explicite (rapport flotte complet, sauf perimetre user ci-dessous).
     const requestedIds = (filters?.vehicleIds ?? [])
       .map((id) => id?.trim())
       .filter((id): id is string => !!id);
     const uniqueRequestedIds = Array.from(new Set(requestedIds));
-    const isVehicleScopeRestricted = uniqueRequestedIds.length > 0;
+
+    // 🔒 Sprint 5 — borne de PERIMETRE UTILISATEUR (anti-IDOR intra-flotte).
+    // Si l'appelant n'a PAS acces a tout (VIEWER/FLEET_MANAGER scope groupe ou
+    // vehicules), on borne le rapport a ses vehicules accessibles ET on rejette
+    // (403) toute demande explicite hors perimetre — plus strict que l'ancien
+    // check « hors flotte ». 'ALL' (admins) => comportement historique.
+    // `accessibleVehicleIds` absent (appel interne/cron sans user) => 'ALL'.
+    const scope = resolveReportVehicleScope(
+      requestedBy?.accessibleVehicleIds ?? 'ALL',
+      uniqueRequestedIds,
+    );
+    const isVehicleScopeRestricted = scope !== 'ALL';
+    // Liste effective des vehicleIds qui bornent toutes les requetes ci-dessous.
+    const scopedVehicleIds = isVehicleScopeRestricted ? (scope as string[]) : [];
 
     const vehicles = await this.prisma.vehicle.findMany({
       where: isVehicleScopeRestricted
-        ? { fleetId, id: { in: uniqueRequestedIds } }
+        ? { fleetId, id: { in: scopedVehicleIds } }
         : { fleetId },
       select: {
         id: true, plate: true, type: true, fuelConsumptionL100km: true,
@@ -124,13 +139,19 @@ export class ReportsStatsService {
       },
     });
 
-    // Security check : si l'utilisateur a demande des vehicleIds inconnus dans
-    // sa flotte, on rejette (pour eviter qu'un FLEET_ADMIN devine des IDs
-    // appartenant a une autre flotte).
-    if (isVehicleScopeRestricted && vehicles.length !== uniqueRequestedIds.length) {
-      throw new BadRequestException(
-        'Un ou plusieurs vehicleIds n\'appartiennent pas a la flotte demandee',
-      );
+    // Security check (defense en profondeur, borne FLOTTE) : si une demande
+    // explicite de vehicleIds a ete faite, on verifie qu'ils appartiennent tous
+    // a la flotte (pour qu'un FLEET_ADMIN ne devine pas des IDs d'une autre
+    // flotte). Le perimetre UTILISATEUR (groupe/vehicules) est deja garanti par
+    // resolveReportVehicleScope ci-dessus (403 si hors perimetre).
+    if (uniqueRequestedIds.length > 0) {
+      const foundIds = new Set(vehicles.map((v) => v.id));
+      const missing = uniqueRequestedIds.filter((id) => !foundIds.has(id));
+      if (missing.length > 0) {
+        throw new BadRequestException(
+          'Un ou plusieurs vehicleIds n\'appartiennent pas a la flotte demandee',
+        );
+      }
     }
 
     const totalVehicles = vehicles.length;
@@ -144,7 +165,7 @@ export class ReportsStatsService {
     // Le filtre vehicleIds (feature d3dca0c) est conserve via tripVehicleFilter
     // injecte dans le where commun.
     const tripVehicleFilter = isVehicleScopeRestricted
-      ? { vehicleId: { in: uniqueRequestedIds } }
+      ? { vehicleId: { in: scopedVehicleIds } }
       : {};
     const tripWhere = {
       fleetId,
@@ -157,7 +178,7 @@ export class ReportsStatsService {
       createdAt: { gte: from, lte: to },
       // Quand un filtre vehicleIds est actif, les alertes sans vehicleId
       // (ex. tracker isole) sont exclues par definition du sous-ensemble.
-      ...(isVehicleScopeRestricted ? { vehicleId: { in: uniqueRequestedIds } } : {}),
+      ...(isVehicleScopeRestricted ? { vehicleId: { in: scopedVehicleIds } } : {}),
     } as const;
     const recentTripsCap = this.clampRecentTripsCap(filters?.maxRecentTrips);
 

@@ -19,8 +19,11 @@ import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guar
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { PrismaService } from '../prisma/prisma.service';
+import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
+import { GenerateExcelDto } from './dto/generate-excel.dto';
 import { GeneratePdfDto } from './dto/generate-pdf.dto';
 import { ReportCsvService } from './report-csv.service';
+import { ReportExcelService } from './report-excel.service';
 import { ReportPdfService } from './report-pdf.service';
 import { ReportsStatsService } from './reports-stats.service';
 import { SpeedReportService } from './speed-report.service';
@@ -42,9 +45,20 @@ export class ReportsController {
     private readonly stats: ReportsStatsService,
     private readonly pdf: ReportPdfService,
     private readonly csv: ReportCsvService,
+    private readonly excel: ReportExcelService,
     private readonly speedReport: SpeedReportService,
     private readonly prisma: PrismaService,
+    private readonly vehicleAccess: VehicleAccessService,
   ) {}
+
+  /**
+   * 🔒 Sprint 5 — borne de perimetre transmise a chaque service de rapport :
+   * 'ALL' pour les admins, sinon la liste des vehicules accessibles de l'user.
+   * Memoise par requete (cf. VehicleAccessService).
+   */
+  private accessibleVehicleIds(req: AuthenticatedRequest): Promise<string[] | 'ALL'> {
+    return this.vehicleAccess.getAccessibleVehicleIds(req.user);
+  }
 
   @Get('stats')
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
@@ -56,7 +70,8 @@ export class ReportsController {
     @Query('to') toRaw: string,
   ) {
     const { from, to, fleetId } = await this.parseRange(req, fleetIdQ, fromRaw, toRaw);
-    return this.stats.compute(fleetId, from, to, { role: req.user.role, fleetId: req.user.fleetId });
+    const accessibleVehicleIds = await this.accessibleVehicleIds(req);
+    return this.stats.compute(fleetId, from, to, { role: req.user.role, fleetId: req.user.fleetId, accessibleVehicleIds });
   }
 
   @Get('pdf')
@@ -70,7 +85,8 @@ export class ReportsController {
     @Query('to') toRaw: string,
   ): Promise<void> {
     const { from, to, fleetId } = await this.parseRange(req, fleetIdQ, fromRaw, toRaw);
-    const report = await this.stats.compute(fleetId, from, to, { role: req.user.role, fleetId: req.user.fleetId });
+    const accessibleVehicleIds = await this.accessibleVehicleIds(req);
+    const report = await this.stats.compute(fleetId, from, to, { role: req.user.role, fleetId: req.user.fleetId, accessibleVehicleIds });
     const buffer = await this.pdf.generate(report);
     const filename = `tracky-rapport-${from.toISOString().slice(0, 10)}_${to.toISOString().slice(0, 10)}.pdf`;
     res.setHeader('Content-Type', 'application/pdf');
@@ -99,11 +115,12 @@ export class ReportsController {
       ? `${vehicleIds.length} vehicule${vehicleIds.length > 1 ? 's' : ''} selectionne${vehicleIds.length > 1 ? 's' : ''}`
       : undefined;
 
+    const accessibleVehicleIds = await this.accessibleVehicleIds(req);
     const report = await this.stats.compute(
       fleetId,
       from,
       to,
-      { role: req.user.role, fleetId: req.user.fleetId },
+      { role: req.user.role, fleetId: req.user.fleetId, accessibleVehicleIds },
       { vehicleIds, maxRecentTrips: body.maxTrips },
     );
 
@@ -132,18 +149,50 @@ export class ReportsController {
     @Query('to') toRaw: string,
   ): Promise<void> {
     const { from, to, fleetId } = await this.parseRange(req, fleetIdQ, fromRaw, toRaw);
+    const ids = await this.accessibleVehicleIds(req);
     let result;
     switch (type) {
-      case 'positions': result = await this.csv.positions(fleetId, from, to); break;
-      case 'trips': result = await this.csv.trips(fleetId, from, to); break;
-      case 'alerts': result = await this.csv.alerts(fleetId, from, to); break;
-      case 'commands': result = await this.csv.commands(fleetId, from, to); break;
+      case 'positions': result = await this.csv.positions(fleetId, from, to, ids); break;
+      case 'trips': result = await this.csv.trips(fleetId, from, to, ids); break;
+      case 'alerts': result = await this.csv.alerts(fleetId, from, to, ids); break;
+      case 'commands': result = await this.csv.commands(fleetId, from, to, ids); break;
       default:
         throw new BadRequestException('type doit valoir positions / trips / alerts / commands');
     }
     res.setHeader('Content-Type', result.contentType);
     res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
     res.send(result.body);
+  }
+
+  /**
+   * Sprint 5 — Export Excel « soigné » PAR VÉHICULE (exceljs).
+   * Body { vehicleId, from, to }. Le périmètre utilisateur est vérifié dans le
+   * service (vehicleId doit être dans le périmètre accessible + la flotte de
+   * l'appelant) → 403 sinon. Même périmètre d'auth que les autres exports.
+   */
+  @Post('excel')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  @RequirePermissions('reports_view')
+  async excelDownload(
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+    @Body() body: GenerateExcelDto,
+  ): Promise<void> {
+    const from = new Date(body.from);
+    const to = new Date(body.to);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+      throw new BadRequestException('from et to doivent etre des dates ISO valides');
+    }
+    if (from.getTime() >= to.getTime()) {
+      throw new BadRequestException('from doit etre strictement avant to');
+    }
+    const { buffer, filename } = await this.excel.generate(body.vehicleId, from, to, req.user);
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
   }
 
   /**

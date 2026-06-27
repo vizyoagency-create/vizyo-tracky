@@ -2,12 +2,19 @@ import { Injectable } from '@nestjs/common';
 import Papa from 'papaparse';
 import { PrismaService } from '../prisma/prisma.service';
 import { VEHICLE_GROUP_SELECT, vehicleGroupOf } from '../common/vehicle-group';
+import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
 
 /**
  * V1.5 (Sprint L) — Export CSV brut.
  *
  * Format Excel-friendly : BOM UTF-8 + separateur ';' (les Excel FR/EU utilisent
  * ';' par defaut, ',' rentre en conflit avec la virgule decimale).
+ *
+ * 🔒 Sprint 5 — chaque export est borne au PERIMETRE UTILISATEUR : un VIEWER /
+ * FLEET_MANAGER scope groupe ou vehicules ne peut exporter QUE ses vehicules
+ * accessibles (pas toute la flotte). `accessibleVehicleIds === 'ALL'` (admins)
+ * => comportement historique (toute la flotte). Le filtre `fleetId` est conserve
+ * en defense en profondeur dans tous les cas.
  */
 
 const BOM = '﻿';
@@ -15,6 +22,15 @@ const BOM = '﻿';
 @Injectable()
 export class ReportCsvService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Retourne la liste des vehicleIds qui bornent un export, ou null quand
+   * l'appelant a acces a tout (=> pas de borne vehicule, seulement le fleetId).
+   */
+  private scopedVehicleIds(accessibleVehicleIds: string[] | 'ALL'): string[] | null {
+    const scope = resolveReportVehicleScope(accessibleVehicleIds);
+    return scope === 'ALL' ? null : scope;
+  }
 
   private wrap(rows: Record<string, string | number | null | undefined>[], filename: string, truncated = false): {
     filename: string;
@@ -33,11 +49,14 @@ export class ReportCsvService {
     };
   }
 
-  async positions(fleetId: string, from: Date, to: Date) {
+  async positions(fleetId: string, from: Date, to: Date, accessibleVehicleIds: string[] | 'ALL' = 'ALL') {
+    const ids = this.scopedVehicleIds(accessibleVehicleIds);
     const positions = await this.prisma.position.findMany({
       where: {
         timestamp: { gte: from, lte: to },
-        tracker: { vehicle: { fleetId } },
+        // Borne flotte (defense en profondeur) + perimetre user via le vehicule
+        // du tracker. `positions`/`commands` n'ont pas de vehicleId direct.
+        tracker: { vehicle: ids ? { fleetId, id: { in: ids } } : { fleetId } },
       },
       orderBy: { timestamp: 'asc' },
       include: { tracker: { include: { vehicle: { select: { plate: true } } } } },
@@ -56,9 +75,10 @@ export class ReportCsvService {
     return this.wrap(rows, `tracky-positions-${this.dateSuffix(from, to)}.csv`, rows.length >= 100_000);
   }
 
-  async trips(fleetId: string, from: Date, to: Date) {
+  async trips(fleetId: string, from: Date, to: Date, accessibleVehicleIds: string[] | 'ALL' = 'ALL') {
+    const ids = this.scopedVehicleIds(accessibleVehicleIds);
     const trips = await this.prisma.trip.findMany({
-      where: { fleetId, startedAt: { gte: from, lte: to } },
+      where: { fleetId, startedAt: { gte: from, lte: to }, ...(ids ? { vehicleId: { in: ids } } : {}) },
       orderBy: { startedAt: 'desc' },
       include: {
         vehicle: { select: { plate: true, ...VEHICLE_GROUP_SELECT } },
@@ -103,9 +123,12 @@ export class ReportCsvService {
     return full || author.email;
   }
 
-  async alerts(fleetId: string, from: Date, to: Date) {
+  async alerts(fleetId: string, from: Date, to: Date, accessibleVehicleIds: string[] | 'ALL' = 'ALL') {
+    const ids = this.scopedVehicleIds(accessibleVehicleIds);
     const alerts = await this.prisma.alert.findMany({
-      where: { fleetId, createdAt: { gte: from, lte: to } },
+      // Quand un perimetre est actif, les alertes sans vehicleId (tracker isole)
+      // sont exclues par definition du sous-ensemble (cf. reports-stats).
+      where: { fleetId, createdAt: { gte: from, lte: to }, ...(ids ? { vehicleId: { in: ids } } : {}) },
       orderBy: { createdAt: 'desc' },
       include: { vehicle: { select: { plate: true, ...VEHICLE_GROUP_SELECT } } },
       take: 50_000,
@@ -125,11 +148,12 @@ export class ReportCsvService {
     return this.wrap(rows, `tracky-alerts-${this.dateSuffix(from, to)}.csv`, rows.length >= 50_000);
   }
 
-  async commands(fleetId: string, from: Date, to: Date) {
+  async commands(fleetId: string, from: Date, to: Date, accessibleVehicleIds: string[] | 'ALL' = 'ALL') {
+    const ids = this.scopedVehicleIds(accessibleVehicleIds);
     const commands = await this.prisma.engineControlCommand.findMany({
       where: {
         createdAt: { gte: from, lte: to },
-        tracker: { vehicle: { fleetId } },
+        tracker: { vehicle: ids ? { fleetId, id: { in: ids } } : { fleetId } },
       },
       orderBy: { createdAt: 'desc' },
       include: { tracker: { include: { vehicle: { select: { plate: true } } } } },
