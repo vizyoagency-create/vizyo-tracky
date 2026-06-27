@@ -166,13 +166,23 @@ export const routes: Routes = [
         data: { title: 'Regles de notification' },
       },
       {
-        // Sprint 4 — écran d'activation de l'écoute audio (fleet-admin). Gaté audio_monitoring.
-        // Sprint 4 — temporairement SUPER_ADMIN only (Vizyo) ; rouvrir aux fleet-admins à l'activation.
+        // Sprint 4 — N1 « flottes éligibles » (super-admin/prestataire) : autorise les
+        // flottes au Mode assistance. SUPER_ADMIN only.
+        path: 'settings/audio-eligibility',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/audio-monitoring/audio-eligibility.component').then((m) => m.AudioEligibilityComponent),
+        data: { title: 'Audio — flottes éligibles' },
+      },
+      {
+        // Sprint 4 — N2 « Mode assistance » (fleet-admin/client). Gaté audio_monitoring
+        // (FLEET_ADMIN/SUPER_ADMIN bypassent ; le backend exige l'éligibilité N1). L'écran
+        // affiche un message « non disponible » si la flotte n'est pas éligible.
         path: 'settings/audio-monitoring',
-        canActivate: [superAdminGuard, permissionGuard('audio_monitoring')],
+        canActivate: [roleGuard('FLEET_ADMIN', 'SUPER_ADMIN'), permissionGuard('audio_monitoring')],
         loadComponent: () =>
           import('./features/audio-monitoring/audio-activation.component').then((m) => m.AudioActivationComponent),
-        data: { title: 'Écoute audio' },
+        data: { title: 'Mode assistance' },
       },
       {
         path: 'admin',

@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   Check,
   Ear,
+  Info,
   LucideAngularModule,
   Mail,
   ShieldAlert,
@@ -21,13 +22,15 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 const ATTESTATION_VERSION = 'v1';
 
 /**
- * Sprint 4 — Écran d'ACTIVATION de l'écoute audio pour la flotte (fleet-admin).
- * LÉGALEMENT CRITIQUE.
+ * Sprint 4 — Écran « Mode assistance » de la flotte (fleet-admin / client). N2 du
+ * gating à deux étages. LÉGALEMENT CRITIQUE.
  *
- * L'écoute est OFF par défaut. Activer EXIGE de cocher l'attestation (le toggle reste
- * DÉSACTIVÉ tant que la case n'est pas cochée). À l'activation, le serveur envoie un mail
- * OBLIGATIONS à tous les utilisateurs de la flotte et horodate l'attestation. La
- * désactivation est possible à tout moment.
+ * GATING (N1) : le Mode assistance n'est consultable que si le prestataire a rendu la
+ * flotte ÉLIGIBLE (`superAdminEnabled`). Sinon → message neutre « non disponible » et
+ * AUCUN toggle. Si éligible → consentement : obligations + attestation (le toggle reste
+ * DÉSACTIVÉ tant que la case n'est pas cochée) + toggle « Mode assistance »
+ * (`assistanceEnabled`, OFF par défaut). À l'activation, le serveur envoie un mail
+ * OBLIGATIONS à la flotte et horodate l'attestation. Désactivable à tout moment.
  */
 @Component({
   selector: 'app-audio-activation',
@@ -39,9 +42,10 @@ const ATTESTATION_VERSION = 'v1';
          class="text-xs text-fg-tertiary hover:text-fg-secondary inline-flex items-center gap-1 mb-1">
         <lucide-icon [img]="ArrowLeft" [size]="12"></lucide-icon> Paramètres
       </a>
-      <h1 class="text-2xl font-display font-bold text-fg-primary">Écoute audio (micro embarqué)</h1>
+      <h1 class="text-2xl font-display font-bold text-fg-primary">Mode assistance</h1>
       <p class="text-sm text-fg-tertiary mb-5">
-        Capacité légalement sensible. Activez-la pour votre flotte en attestant des obligations.
+        Capacité légalement sensible : en cas d'accident, le prestataire peut activer l'écoute
+        de la cabine pour vous porter assistance.
       </p>
 
       @if (loading()) {
@@ -50,22 +54,36 @@ const ATTESTATION_VERSION = 'v1';
         </div>
       } @else if (noFleet()) {
         <div class="s-card p-5 text-sm text-fg-tertiary">
-          Aucune flotte associée à votre compte — activation indisponible.
+          Aucune flotte associée à votre compte — Mode assistance indisponible.
         </div>
-      } @else {
-        <!-- État courant -->
+      } @else if (!eligible()) {
+        <!-- N1 NON ÉLIGIBLE — message neutre, AUCUN toggle. -->
         <div class="s-card">
           <div class="s-card-head">
-            <div class="s-icon" [class]="config()?.enabled ? 'on' : 'off'">
-              <lucide-icon [img]="config()?.enabled ? ShieldCheck : ShieldAlert" [size]="16"></lucide-icon>
+            <div class="s-icon off"><lucide-icon [img]="Info" [size]="16"></lucide-icon></div>
+            <div class="s-card-title">Mode assistance non disponible</div>
+          </div>
+          <div class="s-card-body">
+            <p class="text-sm text-fg-secondary">
+              Le Mode assistance n'est pas disponible pour votre flotte. Pour l'activer,
+              contactez le prestataire.
+            </p>
+          </div>
+        </div>
+      } @else {
+        <!-- État courant (éligible) -->
+        <div class="s-card">
+          <div class="s-card-head">
+            <div class="s-icon" [class]="assistanceOn() ? 'on' : 'off'">
+              <lucide-icon [img]="assistanceOn() ? ShieldCheck : ShieldAlert" [size]="16"></lucide-icon>
             </div>
-            <div class="s-card-title">État de l'écoute audio</div>
-            <span class="ml-auto state-pill" [class]="config()?.enabled ? 'on' : 'off'">
-              {{ config()?.enabled ? 'Activée' : 'Désactivée' }}
+            <div class="s-card-title">État du Mode assistance</div>
+            <span class="ml-auto state-pill" [class]="assistanceOn() ? 'on' : 'off'">
+              {{ assistanceOn() ? 'Activé' : 'Désactivé' }}
             </span>
           </div>
           <div class="s-card-body">
-            @if (config()?.enabled) {
+            @if (assistanceOn()) {
               <div class="info-row">
                 <lucide-icon [img]="Check" [size]="14" class="text-tracky-light shrink-0"></lucide-icon>
                 <span>
@@ -91,8 +109,8 @@ const ATTESTATION_VERSION = 'v1';
               </div>
             } @else {
               <p class="text-sm text-fg-secondary">
-                L'écoute est actuellement désactivée pour toute la flotte. Aucun véhicule ne peut être
-                écouté tant qu'elle n'est pas activée ci-dessous.
+                Le Mode assistance est actuellement désactivé pour votre flotte. Tant qu'il
+                n'est pas activé ci-dessous, aucune écoute de cabine ne peut avoir lieu.
               </p>
             }
           </div>
@@ -108,12 +126,17 @@ const ATTESTATION_VERSION = 'v1';
             <div class="obligations">
               <div class="obl-head">
                 <lucide-icon [img]="AlertTriangle" [size]="15" class="text-amber-400 shrink-0"></lucide-icon>
-                <span>Avant d'activer, vous devez :</span>
+                <span>En activant le Mode assistance :</span>
               </div>
+              <p class="obl-lead">
+                Vous autorisez le prestataire à activer l'écoute de la cabine de vos véhicules
+                <strong>en cas d'accident</strong>, pour vous porter assistance. Vous attestez avoir
+                informé vos conducteurs et posé la signalétique réglementaire.
+              </p>
               <ul>
                 <li>Informer les conducteurs et occupants des véhicules concernés.</li>
                 <li>Poser la signalétique réglementaire dans la cabine.</li>
-                <li>Limiter l'usage à une finalité légitime et proportionnée (chaque écoute est tracée).</li>
+                <li>Chaque écoute est tracée dans l'audit (finalité limitée et proportionnée).</li>
               </ul>
             </div>
 
@@ -130,23 +153,23 @@ const ATTESTATION_VERSION = 'v1';
             <!-- Toggle d'activation : DÉSACTIVÉ tant que l'attestation n'est pas cochée -->
             <div class="enable-row">
               <div class="enable-text">
-                <div class="enable-label">{{ config()?.enabled ? 'Écoute activée' : 'Activer l\\'écoute pour la flotte' }}</div>
+                <div class="enable-label">{{ assistanceOn() ? 'Mode assistance activé' : 'Activer le Mode assistance' }}</div>
                 <p class="enable-desc">
-                  @if (!config()?.enabled) {
+                  @if (!assistanceOn()) {
                     Cochez l'attestation pour pouvoir activer.
                   } @else {
-                    Vous pouvez désactiver l'écoute à tout moment.
+                    Vous pouvez désactiver le Mode assistance à tout moment.
                   }
                 </p>
               </div>
               <button
                 type="button"
                 role="switch"
-                [attr.aria-checked]="config()?.enabled"
+                [attr.aria-checked]="assistanceOn()"
                 (click)="toggle()"
-                [disabled]="saving() || (!config()?.enabled && !attested())"
+                [disabled]="saving() || (!assistanceOn() && !attested())"
                 class="switch"
-                [class.on]="config()?.enabled"
+                [class.on]="assistanceOn()"
               >
                 <span class="knob"></span>
               </button>
@@ -175,6 +198,7 @@ const ATTESTATION_VERSION = 'v1';
 
     .obligations { border-radius: 12px; background: rgba(245,158,11,.06); border: 1px solid rgba(245,158,11,.16); padding: 12px 14px }
     .obl-head { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--fg-primary); margin-bottom: 6px }
+    .obl-lead { font-size: 12px; color: var(--fg-secondary); line-height: 1.5; margin: 0 0 8px }
     .obligations ul { margin: 0; padding-left: 26px; display: flex; flex-direction: column; gap: 4px }
     .obligations li { font-size: 12px; color: var(--fg-secondary); line-height: 1.5 }
 
@@ -215,6 +239,7 @@ export class AudioActivationComponent implements OnInit {
 
   protected readonly ArrowLeft = ArrowLeft;
   protected readonly Ear = Ear;
+  protected readonly Info = Info;
   protected readonly Mail = Mail;
   protected readonly Check = Check;
   protected readonly AlertTriangle = AlertTriangle;
@@ -223,6 +248,11 @@ export class AudioActivationComponent implements OnInit {
 
   private readonly fleetId = computed(() => this.auth.user()?.fleetId ?? null);
   protected readonly noFleet = computed(() => this.fleetId() === null);
+
+  /** N1 — la flotte est-elle éligible (autorisée par le prestataire) ? */
+  protected readonly eligible = computed(() => this.config()?.superAdminEnabled === true);
+  /** N2 — le Mode assistance est-il consenti par le client ? */
+  protected readonly assistanceOn = computed(() => this.config()?.assistanceEnabled === true);
 
   async ngOnInit(): Promise<void> {
     const fid = this.fleetId();
@@ -233,10 +263,10 @@ export class AudioActivationComponent implements OnInit {
     try {
       const cfg = await firstValueFrom(this.audio.getFleetAudioConfig(fid));
       this.config.set(cfg);
-      // Si déjà activée, l'attestation est réputée acquise (réactivable sans recocher).
-      this.attested.set(cfg.enabled);
+      // Si déjà activé, l'attestation est réputée acquise (réactivable sans recocher).
+      this.attested.set(cfg.assistanceEnabled);
     } catch {
-      this.toast.error('Chargement impossible', "Impossible de lire l'état de l'écoute audio.");
+      this.toast.error('Chargement impossible', "Impossible de lire l'état du Mode assistance.");
     } finally {
       this.loading.set(false);
     }
@@ -245,28 +275,30 @@ export class AudioActivationComponent implements OnInit {
   protected async toggle(): Promise<void> {
     const fid = this.fleetId();
     if (!fid || this.saving()) return;
-    const enable = !this.config()?.enabled;
+    // Garde-fou : on ne touche au consentement que si la flotte est éligible (N1).
+    if (!this.eligible()) return;
+    const enable = !this.assistanceOn();
     // Garde-fou : activer exige l'attestation cochée (double du [disabled] du toggle).
     if (enable && !this.attested()) return;
     this.saving.set(true);
     try {
       const updated = await firstValueFrom(
-        this.audio.setFleetAudioConfig(fid, {
-          enabled: enable,
+        this.audio.setFleetAssistanceMode(fid, {
+          assistanceEnabled: enable,
           ...(enable ? { attestation: true, attestationVersion: ATTESTATION_VERSION } : {}),
         }),
       );
       this.config.set(updated);
-      this.attested.set(updated.enabled);
+      this.attested.set(updated.assistanceEnabled);
       if (enable) {
         this.toast.success(
-          'Écoute audio activée',
+          'Mode assistance activé',
           updated.activationEmailSentAt
             ? 'Un mail d\'information a été envoyé à votre flotte.'
             : 'Activation enregistrée.',
         );
       } else {
-        this.toast.success('Écoute audio désactivée', 'L\'écoute est désormais refusée pour la flotte.');
+        this.toast.success('Mode assistance désactivé', 'Aucune écoute de cabine ne peut désormais avoir lieu.');
       }
     } catch {
       this.toast.error(

@@ -224,21 +224,41 @@ import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
 
           }
 
-          <!-- ÉCOUTE AUDIO (micro embarqué) — activation flotte, legalement sensible -->
-          <!-- Sprint 4 — temporairement SUPER_ADMIN only (Vizyo) ; rouvrir aux fleet-admins à l'activation. -->
-          @if (user()?.role === 'SUPER_ADMIN' && perms.can('audio_monitoring')) {
+          <!-- AUDIO N1 — SUPER_ADMIN/prestataire : flottes éligibles au Mode assistance. -->
+          @if (user()?.role === 'SUPER_ADMIN') {
           <div class="s-card">
             <div class="s-card-head">
               <div class="s-icon violet"><lucide-icon [img]="EarIcon" [size]="16"></lucide-icon></div>
-              <div class="s-card-title">Écoute audio</div>
+              <div class="s-card-title">Audio — flottes éligibles</div>
             </div>
             <div class="s-card-body">
               <p class="section-desc">
-                Activez l'écoute du micro embarqué pour votre flotte (capacité légalement sensible,
-                attestation requise).
+                Autorisez les flottes au Mode assistance (écoute de cabine en cas d'accident).
+                Capacité légalement sensible.
+              </p>
+              <a routerLink="/settings/audio-eligibility" class="advanced-link">
+                Gérer l'éligibilité des flottes
+                <lucide-icon [img]="ArrowRightIcon" [size]="13"></lucide-icon>
+              </a>
+            </div>
+          </div>
+          }
+
+          <!-- AUDIO N2 — FLEET_ADMIN/client : Mode assistance. Toujours affiché ; si la flotte
+               n'est pas éligible, l'écran N2 montre un message « non disponible » (pas de toggle). -->
+          @if (user()?.role === 'FLEET_ADMIN' && perms.can('audio_monitoring')) {
+          <div class="s-card">
+            <div class="s-card-head">
+              <div class="s-icon violet"><lucide-icon [img]="EarIcon" [size]="16"></lucide-icon></div>
+              <div class="s-card-title">Mode assistance</div>
+            </div>
+            <div class="s-card-body">
+              <p class="section-desc">
+                En cas d'accident, autorisez le prestataire à activer l'écoute de la cabine pour
+                vous porter assistance (capacité légalement sensible, attestation requise).
               </p>
               <a routerLink="/settings/audio-monitoring" class="advanced-link">
-                Gérer l'activation de l'écoute audio
+                Gérer le Mode assistance
                 <lucide-icon [img]="ArrowRightIcon" [size]="13"></lucide-icon>
               </a>
             </div>

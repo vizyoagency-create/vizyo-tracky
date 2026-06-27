@@ -195,7 +195,11 @@ export class AudioListenButtonComponent implements OnInit {
   protected readonly loading = signal(false);
   protected readonly reason = signal('');
   protected readonly result = signal<{ simPhoneNumber: string | null } | null>(null);
-  /** État d'activation de la flotte (null = pas encore chargé / inconnu → masqué). */
+  /**
+   * Gating flotte à DEUX étages (false par défaut → masqué). L'écoute exige que la
+   * flotte soit ÉLIGIBLE (N1 superAdminEnabled, prestataire) ET que le « Mode assistance »
+   * soit consenti (N2 assistanceEnabled, fleet-admin).
+   */
   private readonly fleetEnabled = signal(false);
 
   protected readonly Ear = Ear;
@@ -230,7 +234,8 @@ export class AudioListenButtonComponent implements OnInit {
     const fid = this.fleetId() ?? this.auth.user()?.fleetId ?? null;
     if (!fid) return;
     firstValueFrom(this.audio.getFleetAudioConfig(fid))
-      .then((cfg) => this.fleetEnabled.set(cfg.enabled))
+      // L'écoute exige les DEUX étages : éligibilité (N1) ET Mode assistance consenti (N2).
+      .then((cfg) => this.fleetEnabled.set(cfg.superAdminEnabled && cfg.assistanceEnabled))
       .catch(() => {
         // Échec silencieux → fail-closed : le bouton reste masqué.
       });
