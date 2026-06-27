@@ -226,26 +226,6 @@ import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
 
           }
 
-          <!-- AUDIO N1 — SUPER_ADMIN/prestataire : flottes éligibles au Mode assistance. -->
-          @if (user()?.role === 'SUPER_ADMIN') {
-          <div class="s-card">
-            <div class="s-card-head">
-              <div class="s-icon violet"><lucide-icon [img]="EarIcon" [size]="16"></lucide-icon></div>
-              <div class="s-card-title">Audio — flottes éligibles</div>
-            </div>
-            <div class="s-card-body">
-              <p class="section-desc">
-                Autorisez les flottes au Mode assistance (écoute de cabine en cas d'accident).
-                Capacité légalement sensible.
-              </p>
-              <a routerLink="/settings/audio-eligibility" class="advanced-link">
-                Gérer l'éligibilité des flottes
-                <lucide-icon [img]="ArrowRightIcon" [size]="13"></lucide-icon>
-              </a>
-            </div>
-          </div>
-          }
-
           <!-- AUDIO N2 — FLEET_ADMIN/client : Mode assistance. Masqué tant que le prestataire
                n'a pas rendu la flotte ÉLIGIBLE (N1 superAdminEnabled). Fail-closed : la carte
                reste cachée par défaut (pas de fleetId, fetch en échec). Une fois éligible, elle

@@ -2,7 +2,7 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
   LucideAngularModule, AlertTriangle, Activity, Terminal, MessageSquare,
-  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints,
+  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints, Ear,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { AdminFixModeService, type AdminAlertSummary } from '../../core/services/admin-fix-mode.service';
@@ -185,6 +185,19 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
             <div class="body-text">
               <h3>Activité utilisateurs</h3>
               <p class="desc">Qui est en ligne et sur quelle page, en direct. Sessions, navigation, temps par écran et clics — pour comprendre l'usage et améliorer l'interface.</p>
+            </div>
+            <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
+          </div>
+        </a>
+
+        <!-- ── AUDIO — FLOTTES ÉLIGIBLES (wide) — N1 super-admin/prestataire ── -->
+        <a routerLink="/admin/audio-eligibility" class="card card-wide" style="--i:11">
+          <span class="accent accent-purple"></span>
+          <div class="body body-row">
+            <div class="ico ico-purple"><lucide-icon [img]="Ear" [size]="20"></lucide-icon></div>
+            <div class="body-text">
+              <h3>Audio — flottes éligibles</h3>
+              <p class="desc">Autorisez les flottes au Mode assistance (écoute de cabine en cas d'accident). Capacité légalement sensible : seules les flottes rendues éligibles ici peuvent ensuite y consentir.</p>
             </div>
             <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
           </div>
@@ -405,6 +418,7 @@ export class AdminHubComponent implements OnInit {
   protected readonly CreditCard = CreditCard;
   protected readonly Cpu = Cpu;
   protected readonly Footprints = Footprints;
+  protected readonly Ear = Ear;
 
   readonly stats = signal<AdminAlertSummary | null>(null);
 

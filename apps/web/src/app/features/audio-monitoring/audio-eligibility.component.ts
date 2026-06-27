@@ -29,9 +29,9 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
   imports: [LucideAngularModule, RouterLink],
   template: `
     <div class="ae-page">
-      <a routerLink="/settings"
+      <a routerLink="/admin"
          class="text-xs text-fg-tertiary hover:text-fg-secondary inline-flex items-center gap-1 mb-1">
-        <lucide-icon [img]="ArrowLeft" [size]="12"></lucide-icon> Paramètres
+        <lucide-icon [img]="ArrowLeft" [size]="12"></lucide-icon> Administration
       </a>
       <h1 class="text-2xl font-display font-bold text-fg-primary">Audio — flottes éligibles</h1>
       <p class="text-sm text-fg-tertiary mb-5">

@@ -166,15 +166,6 @@ export const routes: Routes = [
         data: { title: 'Regles de notification' },
       },
       {
-        // Sprint 4 — N1 « flottes éligibles » (super-admin/prestataire) : autorise les
-        // flottes au Mode assistance. SUPER_ADMIN only.
-        path: 'settings/audio-eligibility',
-        canActivate: [superAdminGuard],
-        loadComponent: () =>
-          import('./features/audio-monitoring/audio-eligibility.component').then((m) => m.AudioEligibilityComponent),
-        data: { title: 'Audio — flottes éligibles' },
-      },
-      {
         // Sprint 4 — N2 « Mode assistance » (fleet-admin/client). Gaté audio_monitoring
         // (FLEET_ADMIN/SUPER_ADMIN bypassent ; le backend exige l'éligibilité N1). L'écran
         // affiche un message « non disponible » si la flotte n'est pas éligible.
@@ -253,6 +244,16 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/user-activity/admin-activity.component').then((m) => m.AdminActivityComponent),
         data: { title: 'Activité utilisateurs' },
+      },
+      {
+        // Sprint 4 — N1 « flottes éligibles » (super-admin/prestataire) : autorise les
+        // flottes au Mode assistance. SUPER_ADMIN only.
+        path: 'admin/audio-eligibility',
+        pathMatch: 'full',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/audio-monitoring/audio-eligibility.component').then((m) => m.AudioEligibilityComponent),
+        data: { title: 'Audio — flottes éligibles' },
       },
       {
         path: 'admin/trackers/:id/sampling',
