@@ -107,7 +107,13 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
                     <lucide-icon [img]="KeyIcon" [size]="14"></lucide-icon>
                   </button>
                   @if (isSuperAdmin()) {
-                    <button (click)="confirmAudioInfoMail(u)" class="u-action-btn" title="Envoyer l'info Mode assistance">
+                    <button
+                      (click)="confirmAudioInfoMail(u)"
+                      class="u-action-btn"
+                      [class.disabled]="audioInfoDisabled(u)"
+                      [disabled]="audioInfoDisabled(u)"
+                      [title]="audioInfoTooltip(u)"
+                    >
                       <lucide-icon [img]="MailIcon" [size]="14"></lucide-icon> Info Mode assistance
                     </button>
                   }
@@ -344,8 +350,9 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
       font-size: 11px; font-weight: 600; background: var(--bg-tertiary); border: 1px solid var(--border-subtle);
       color: var(--fg-tertiary); cursor: pointer; transition: all .2s;
     }
-    .u-action-btn:hover { color: var(--tracky-light); border-color: rgba(16,224,160,.2) }
-    .u-action-btn.danger:hover { color: #f87171; border-color: rgba(239,68,68,.2) }
+    .u-action-btn:hover:not(.disabled) { color: var(--tracky-light); border-color: rgba(16,224,160,.2) }
+    .u-action-btn.danger:hover:not(.disabled) { color: #f87171; border-color: rgba(239,68,68,.2) }
+    .u-action-btn.disabled, .u-action-btn:disabled { opacity: .4; cursor: not-allowed }
     .u-card.archived { opacity: .45; filter: grayscale(.5) }
     .u-archived-badge {
       display: inline-flex; align-items: center; gap: 4px;
@@ -385,6 +392,23 @@ export class UsersListComponent implements OnInit {
   readonly showAudioInfoModal = signal(false);
   readonly sendingAudioInfo = signal(false);
   readonly audioInfoTarget = signal<TrackyUser | null>(null);
+  /**
+   * FAIL-CLOSED — fleetIds dont la flotte est ÉLIGIBLE (N1 `superAdminEnabled === true`).
+   * Tant que `getFleetsWithAudio()` n'a pas résolu (ou s'il échoue), le set reste vide
+   * → le bouton « Info Mode assistance » reste désactivé. Inutile d'inviter un fleet-admin
+   * à activer le Mode assistance avant que le prestataire ait rendu sa flotte éligible.
+   */
+  readonly eligibleFleetIds = signal<Set<string>>(new Set());
+  /** Le bouton mail est ACTIF uniquement si l'user a une flotte ET qu'elle est éligible. */
+  protected audioInfoDisabled(user: TrackyUser): boolean {
+    return !user.fleetId || !this.eligibleFleetIds().has(user.fleetId);
+  }
+  /** Tooltip du bouton mail : explique pourquoi il est grisé tant que la flotte n'est pas éligible. */
+  protected audioInfoTooltip(user: TrackyUser): string {
+    return this.audioInfoDisabled(user)
+      ? "Rendez d'abord la flotte éligible (Réglages → Audio — flottes éligibles)"
+      : "Envoyer l'info Mode assistance";
+  }
   /** Corps de la modale : destinataire + résumé court de ce que contient le mail. */
   readonly audioInfoDescription = computed(() => {
     const email = this.audioInfoTarget()?.email ?? '';
@@ -440,6 +464,15 @@ export class UsersListComponent implements OnInit {
     await this.loadUsers();
     if (this.isSuperAdmin()) {
       this.fleets = await firstValueFrom(this.fleetsApi.list()).catch(() => []);
+      // FAIL-CLOSED : on construit l'ensemble des flottes éligibles (N1). En cas d'erreur,
+      // le set reste vide → tous les boutons « Info Mode assistance » restent désactivés.
+      await firstValueFrom(this.audioApi.getFleetsWithAudio())
+        .then((fleets) =>
+          this.eligibleFleetIds.set(
+            new Set(fleets.filter((f) => f.superAdminEnabled).map((f) => f.fleetId)),
+          ),
+        )
+        .catch(() => { /* fail-closed : on laisse le set vide */ });
     }
   }
 
