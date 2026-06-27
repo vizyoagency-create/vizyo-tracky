@@ -211,7 +211,10 @@ export class AudioListenButtonComponent implements OnInit {
   private readonly toast = inject(ToastService);
 
   /** Gate per-véhicule, identique au coupe-circuit (perms.can bypass admin). */
-  private readonly allowed = computed(() => this.perms.can('audio_monitoring', this.vehicleId()));
+  // Sprint 4 — temporairement SUPER_ADMIN only (Vizyo) ; rouvrir aux fleet-admins à l'activation.
+  private readonly allowed = computed(
+    () => this.auth.user()?.role === 'SUPER_ADMIN' && this.perms.can('audio_monitoring', this.vehicleId()),
+  );
 
   /** Le bouton n'apparaît que si l'utilisateur a la permission ET la flotte a activé l'écoute. */
   protected readonly visible = computed(() => this.allowed() && this.fleetEnabled());

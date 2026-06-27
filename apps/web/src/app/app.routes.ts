@@ -167,8 +167,9 @@ export const routes: Routes = [
       },
       {
         // Sprint 4 — écran d'activation de l'écoute audio (fleet-admin). Gaté audio_monitoring.
+        // Sprint 4 — temporairement SUPER_ADMIN only (Vizyo) ; rouvrir aux fleet-admins à l'activation.
         path: 'settings/audio-monitoring',
-        canActivate: [permissionGuard('audio_monitoring')],
+        canActivate: [superAdminGuard, permissionGuard('audio_monitoring')],
         loadComponent: () =>
           import('./features/audio-monitoring/audio-activation.component').then((m) => m.AudioActivationComponent),
         data: { title: 'Écoute audio' },

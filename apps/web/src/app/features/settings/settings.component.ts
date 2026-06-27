@@ -225,7 +225,8 @@ import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
           }
 
           <!-- ÉCOUTE AUDIO (micro embarqué) — activation flotte, legalement sensible -->
-          @if (perms.can('audio_monitoring')) {
+          <!-- Sprint 4 — temporairement SUPER_ADMIN only (Vizyo) ; rouvrir aux fleet-admins à l'activation. -->
+          @if (user()?.role === 'SUPER_ADMIN' && perms.can('audio_monitoring')) {
           <div class="s-card">
             <div class="s-card-head">
               <div class="s-icon violet"><lucide-icon [img]="EarIcon" [size]="16"></lucide-icon></div>
