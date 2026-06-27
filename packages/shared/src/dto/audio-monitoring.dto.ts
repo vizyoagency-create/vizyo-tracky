@@ -32,12 +32,27 @@ export interface AudioCommandAuditDto {
 }
 
 /**
- * État d'activation de l'écoute audio pour une flotte (garde-fous #1 + #5 + #6).
- * `enabled=false` (défaut) ⇒ l'écoute est refusée pour toute la flotte.
+ * État d'activation de l'écoute audio pour une flotte — gating à DEUX étages.
+ * `superAdminEnabled` (N1, prestataire) : la flotte est-elle ÉLIGIBLE ? OFF par défaut.
+ * `assistanceEnabled` (N2, fleet-admin) : consentement « Mode assistance ». OFF par défaut.
+ * L'écoute n'est permise que si superAdminEnabled ET assistanceEnabled sont true.
+ * (garde-fous #1 + #5 + #6).
  */
 export interface FleetAudioConfigDto {
-  enabled: boolean;
+  superAdminEnabled: boolean;
+  assistanceEnabled: boolean;
   attestedAt: string | null;
   attestationVersion: string | null;
   activationEmailSentAt: string | null;
+}
+
+/**
+ * Ligne de la vue super-admin « éligibilité audio » : pour chaque flotte, son état
+ * sur les deux étages. Source : fleets ⟕ FleetAudioConfig (config absente ⇒ both false).
+ */
+export interface FleetAudioEligibilityDto {
+  fleetId: string;
+  fleetName: string;
+  superAdminEnabled: boolean;
+  assistanceEnabled: boolean;
 }

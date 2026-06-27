@@ -12,7 +12,11 @@ import {
   UserRole,
   type AudioMonitoringCommand,
 } from '@prisma/client';
-import type { AudioCommandAuditDto, FleetAudioConfigDto } from '@vizyo/tracky-shared';
+import type {
+  AudioCommandAuditDto,
+  FleetAudioConfigDto,
+  FleetAudioEligibilityDto,
+} from '@vizyo/tracky-shared';
 import { resolveTenantScope } from '../common/tenant-scope';
 import type { Env } from '../config/env.validation';
 import { EmailService } from '../email/email.service';
@@ -97,11 +101,15 @@ export class AudioMonitoringService {
 
     const fleetId = tracker.vehicle.fleetId;
 
-    // (#1) Activation flotte — l'écoute est refusée tant que la flotte ne l'a pas
-    // explicitement activée (OFF par défaut). fail-closed : config absente ⇒ refus.
+    // (#1) Activation flotte — gating à DEUX étages : l'écoute exige que la flotte soit
+    // ÉLIGIBLE (N1 superAdminEnabled, posé par le prestataire) ET que le « Mode assistance »
+    // soit consenti (N2 assistanceEnabled, posé par le fleet-admin). fail-closed : config
+    // absente OU l'un des deux étages manquant ⇒ refus.
     const audioConfig = await this.prisma.fleetAudioConfig.findUnique({ where: { fleetId } });
-    if (!audioConfig || !audioConfig.enabled) {
-      throw new ForbiddenException('Écoute non activée pour cette flotte.');
+    if (!audioConfig || !audioConfig.superAdminEnabled || !audioConfig.assistanceEnabled) {
+      throw new ForbiddenException(
+        'Écoute non disponible pour cette flotte (éligibilité ou mode assistance manquant).',
+      );
     }
 
     // (#7) AUDIT AVANT DISPATCH — la ligne d'audit est créée AVANT toute tentative
@@ -144,8 +152,8 @@ export class AudioMonitoringService {
 
   /**
    * État d'activation de l'écoute audio POUR UNE FLOTTE — lecture (écran d'activation).
-   * Tenant-checké comme `setFleetAudioConfig` : un FLEET_ADMIN ne lit QUE sa propre
-   * flotte (sauf SUPER_ADMIN). fail-closed : config absente ⇒ enabled:false + nulls.
+   * Tenant-checké comme `setFleetAssistanceMode` : un FLEET_ADMIN ne lit QUE sa propre
+   * flotte (sauf SUPER_ADMIN). fail-closed : config absente ⇒ les deux étages false + nulls.
    */
   async getFleetAudioConfig(fleetId: string, actor: RequestedBy): Promise<FleetAudioConfigDto> {
     // Tenant — un FLEET_ADMIN ne peut consulter que SA flotte.
@@ -155,9 +163,10 @@ export class AudioMonitoringService {
 
     const config = await this.prisma.fleetAudioConfig.findUnique({ where: { fleetId } });
     if (!config) {
-      // fail-closed : aucune config ⇒ écoute désactivée, aucune attestation/mail.
+      // fail-closed : aucune config ⇒ ni éligible ni consenti, aucune attestation/mail.
       return {
-        enabled: false,
+        superAdminEnabled: false,
+        assistanceEnabled: false,
         attestedAt: null,
         attestationVersion: null,
         activationEmailSentAt: null,
@@ -165,7 +174,8 @@ export class AudioMonitoringService {
     }
 
     return {
-      enabled: config.enabled,
+      superAdminEnabled: config.superAdminEnabled,
+      assistanceEnabled: config.assistanceEnabled,
       attestedAt: config.attestedAt ? config.attestedAt.toISOString() : null,
       attestationVersion: config.attestationVersion,
       activationEmailSentAt: config.activationEmailSentAt
@@ -175,14 +185,55 @@ export class AudioMonitoringService {
   }
 
   /**
-   * Active / désactive l'écoute audio POUR UNE FLOTTE (garde-fous #1 + #5 + #6).
-   * - Activer EXIGE l'attestation (#5) → sinon BadRequestException.
-   * - À l'activation : mail OBLIGATIONS à tous les users actifs de la flotte (#6).
-   * - Tenant : un FLEET_ADMIN ne configure QUE sa propre flotte (sauf SUPER_ADMIN).
+   * N1 — ÉLIGIBILITÉ de la flotte (super-admin/prestataire). Décide si la flotte est
+   * AUTORISÉE à voir/activer le « Mode assistance ». OFF par défaut.
+   * - `eligible=true`  : la flotte devient éligible (le fleet-admin pourra consentir N2).
+   * - `eligible=false` : cascade « tout OFF » — on remet AUSSI le consentement N2
+   *   assistanceEnabled à false (retirer l'éligibilité coupe toute écoute possible).
+   * Tenant : N1 est une décision PRESTATAIRE (le controller restreint déjà à SUPER_ADMIN).
    */
-  async setFleetAudioConfig(
+  async setFleetEligibility(
     fleetId: string,
-    dto: { enabled: boolean; attestation?: boolean; attestationVersion?: string },
+    eligible: boolean,
+    _actor: RequestedBy,
+  ): Promise<FleetAudioConfigDto> {
+    // eligible=false ⇒ cascade : on force AUSSI assistanceEnabled=false (tout OFF).
+    const config = await this.prisma.fleetAudioConfig.upsert({
+      where: { fleetId },
+      create: {
+        fleetId,
+        superAdminEnabled: eligible,
+        assistanceEnabled: false,
+      },
+      update: {
+        superAdminEnabled: eligible,
+        ...(eligible ? {} : { assistanceEnabled: false }),
+      },
+    });
+
+    return {
+      superAdminEnabled: config.superAdminEnabled,
+      assistanceEnabled: config.assistanceEnabled,
+      attestedAt: config.attestedAt ? config.attestedAt.toISOString() : null,
+      attestationVersion: config.attestationVersion,
+      activationEmailSentAt: config.activationEmailSentAt
+        ? config.activationEmailSentAt.toISOString()
+        : null,
+    };
+  }
+
+  /**
+   * N2 — CONSENTEMENT « Mode assistance » de la flotte (fleet-admin) (garde-fous #1+#5+#6).
+   * - Tenant : un FLEET_ADMIN ne configure QUE sa propre flotte (sauf SUPER_ADMIN).
+   * - ÉLIGIBILITÉ (N1) requise : si la flotte n'est pas superAdminEnabled ⇒ Forbidden
+   *   (le prestataire doit d'abord l'autoriser).
+   * - Activer (assistanceEnabled=true) EXIGE l'attestation (#5) → sinon BadRequest.
+   * - À l'activation : mail OBLIGATIONS à tous les users actifs de la flotte (#6),
+   *   SAUF si l'acteur est SUPER_ADMIN (bascule technique de test → pas de notif).
+   */
+  async setFleetAssistanceMode(
+    fleetId: string,
+    dto: { assistanceEnabled: boolean; attestation?: boolean; attestationVersion?: string },
     actor: RequestedBy,
   ): Promise<FleetAudioConfigDto> {
     // Tenant — un FLEET_ADMIN ne peut configurer que SA flotte.
@@ -190,26 +241,34 @@ export class AudioMonitoringService {
       throw new ForbiddenException('Vous ne pouvez configurer que votre propre flotte.');
     }
 
+    // (N1) Éligibilité requise — la flotte doit avoir été autorisée par le prestataire.
+    // fail-closed : config absente ⇒ non éligible ⇒ refus.
+    const existing = await this.prisma.fleetAudioConfig.findUnique({ where: { fleetId } });
+    if (!existing?.superAdminEnabled) {
+      throw new ForbiddenException("Flotte non éligible — le prestataire doit l'autoriser.");
+    }
+
     // (#5) Activer sans attestation est refusé.
-    if (dto.enabled === true && dto.attestation !== true) {
+    if (dto.assistanceEnabled === true && dto.attestation !== true) {
       throw new BadRequestException("Attestation requise pour activer l'écoute audio.");
     }
 
     const now = new Date();
-    const willEnable = dto.enabled === true;
+    const willEnable = dto.assistanceEnabled === true;
 
     // Upsert de la config. On ne pose l'attestation que si on (ré)active.
     const config = await this.prisma.fleetAudioConfig.upsert({
       where: { fleetId },
       create: {
         fleetId,
-        enabled: willEnable,
+        superAdminEnabled: true, // éligibilité déjà vérifiée ci-dessus
+        assistanceEnabled: willEnable,
         attestedByUserId: willEnable ? actor.userId : null,
         attestedAt: willEnable ? now : null,
         attestationVersion: willEnable ? (dto.attestationVersion ?? null) : null,
       },
       update: {
-        enabled: willEnable,
+        assistanceEnabled: willEnable,
         ...(willEnable
           ? {
               attestedByUserId: actor.userId,
@@ -237,11 +296,35 @@ export class AudioMonitoringService {
     }
 
     return {
-      enabled: config.enabled,
+      superAdminEnabled: config.superAdminEnabled,
+      assistanceEnabled: config.assistanceEnabled,
       attestedAt: config.attestedAt ? config.attestedAt.toISOString() : null,
       attestationVersion: config.attestationVersion,
       activationEmailSentAt: activationEmailSentAt ? activationEmailSentAt.toISOString() : null,
     };
+  }
+
+  /**
+   * Vue super-admin « éligibilité audio » : TOUTES les flottes avec leur état sur les
+   * deux étages (left-join fleets ⟕ FleetAudioConfig ; config absente ⇒ both false).
+   * Triée par nom de flotte. Réservée au SUPER_ADMIN (controller @Roles).
+   */
+  async getFleetsWithAudio(_actor: RequestedBy): Promise<FleetAudioEligibilityDto[]> {
+    const fleets = await this.prisma.fleet.findMany({
+      orderBy: { name: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        audioConfig: { select: { superAdminEnabled: true, assistanceEnabled: true } },
+      },
+    });
+
+    return fleets.map((f) => ({
+      fleetId: f.id,
+      fleetName: f.name,
+      superAdminEnabled: f.audioConfig?.superAdminEnabled ?? false,
+      assistanceEnabled: f.audioConfig?.assistanceEnabled ?? false,
+    }));
   }
 
   /** (#6) Envoie le mail OBLIGATIONS à tous les users actifs de la flotte. Retourne

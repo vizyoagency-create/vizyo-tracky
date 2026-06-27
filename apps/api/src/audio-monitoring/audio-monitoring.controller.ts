@@ -19,6 +19,7 @@ import { AudioMonitoringGuard } from './audio-monitoring.guard';
 import { AudioMonitoringService } from './audio-monitoring.service';
 import { RequestListenDto } from './dto/request-listen.dto';
 import { SetFleetAudioConfigDto } from './dto/set-fleet-audio-config.dto';
+import { SetFleetEligibilityDto } from './dto/set-fleet-eligibility.dto';
 
 /**
  * Sprint 4 — Écoute audio à distance (micro embarqué). LÉGALEMENT CRITIQUE.
@@ -30,11 +31,13 @@ import { SetFleetAudioConfigDto } from './dto/set-fleet-audio-config.dto';
  *
  * Ordre des guards (legal-critical) :
  *   classe → JwtAuthGuard (auth)
- *   listen → RolesGuard (FLEET_ADMIN | SUPER_ADMIN)
- *          → AudioMonitoringGuard (pivot dev/prod, #2/#3)
- *          → PermissionsGuard (audio_monitoring résolu per-véhicule, #1)
- *   config → RolesGuard + AudioMonitoringGuard
- *   audit  → RolesGuard
+ *   listen      → RolesGuard (SUPER_ADMIN, phase de test)
+ *               → AudioMonitoringGuard (pivot dev/prod, #2/#3)
+ *               → PermissionsGuard (audio_monitoring résolu per-véhicule, #1)
+ *   eligibility → RolesGuard (SUPER_ADMIN) + AudioMonitoringGuard   (N1 prestataire)
+ *   config      → RolesGuard (FLEET_ADMIN | SUPER_ADMIN) + AudioMonitoringGuard (N2 consentement)
+ *   fleets      → RolesGuard (SUPER_ADMIN)  (vue éligibilité, lecture)
+ *   audit       → RolesGuard
  */
 @Controller('audio-monitoring')
 @UseGuards(JwtAuthGuard)
@@ -66,23 +69,43 @@ export class AudioMonitoringController {
   }
 
   /**
-   * PATCH /audio-monitoring/fleets/:fleetId/config — active/désactive l'écoute pour
-   * une flotte. Activer EXIGE l'attestation (#5) ; à l'activation un mail OBLIGATIONS
-   * part à tous les users actifs (#6). Un FLEET_ADMIN ne configure que SA flotte.
+   * PATCH /audio-monitoring/fleets/:fleetId/eligibility — N1 : le super-admin/prestataire
+   * rend une flotte ÉLIGIBLE (ou non) au « Mode assistance ». `eligible:false` cascade
+   * « tout OFF » (le consentement N2 de la flotte est aussi remis à false). SUPER_ADMIN only.
+   */
+  @Patch('fleets/:fleetId/eligibility')
+  @Roles(UserRole.SUPER_ADMIN)
+  @UseGuards(RolesGuard, AudioMonitoringGuard)
+  setFleetEligibility(
+    @Param('fleetId') fleetId: string,
+    @Body() dto: SetFleetEligibilityDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.audio.setFleetEligibility(fleetId, dto.eligible, {
+      userId: req.user.id,
+      role: req.user.role,
+      fleetId: req.user.fleetId,
+    });
+  }
+
+  /**
+   * PATCH /audio-monitoring/fleets/:fleetId/config — N2 : le fleet-admin active/désactive
+   * son « Mode assistance ». Refusé si la flotte n'est pas éligible (N1). Activer EXIGE
+   * l'attestation (#5) ; à l'activation un mail OBLIGATIONS part à tous les users actifs
+   * (#6, sauf bascule super-admin). Un FLEET_ADMIN ne configure que SA flotte.
    */
   @Patch('fleets/:fleetId/config')
-  // Sprint 4 — phase de test SUPER_ADMIN only ; rouvrir a FLEET_ADMIN ensuite.
-  @Roles(UserRole.SUPER_ADMIN)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
   @UseGuards(RolesGuard, AudioMonitoringGuard)
   setFleetConfig(
     @Param('fleetId') fleetId: string,
     @Body() dto: SetFleetAudioConfigDto,
     @Req() req: AuthenticatedRequest,
   ) {
-    return this.audio.setFleetAudioConfig(
+    return this.audio.setFleetAssistanceMode(
       fleetId,
       {
-        enabled: dto.enabled,
+        assistanceEnabled: dto.assistanceEnabled,
         attestation: dto.attestation,
         attestationVersion: dto.attestationVersion,
       },
@@ -100,6 +123,22 @@ export class AudioMonitoringController {
   @UseGuards(RolesGuard)
   getFleetConfig(@Param('fleetId') fleetId: string, @Req() req: AuthenticatedRequest) {
     return this.audio.getFleetAudioConfig(fleetId, {
+      userId: req.user.id,
+      role: req.user.role,
+      fleetId: req.user.fleetId,
+    });
+  }
+
+  /**
+   * GET /audio-monitoring/fleets — vue super-admin de l'éligibilité audio : TOUTES les
+   * flottes avec leur état (superAdminEnabled N1 / assistanceEnabled N2). Lecture seule
+   * → PAS d'AudioMonitoringGuard (comme les autres GET). SUPER_ADMIN only.
+   */
+  @Get('fleets')
+  @Roles(UserRole.SUPER_ADMIN)
+  @UseGuards(RolesGuard)
+  getFleets(@Req() req: AuthenticatedRequest) {
+    return this.audio.getFleetsWithAudio({
       userId: req.user.id,
       role: req.user.role,
       fleetId: req.user.fleetId,

@@ -117,6 +117,53 @@ describe('Sprint 4 — Sécurité écoute audio (audio-monitoring)', () => {
     });
   });
 
+  describe('B2. Gating à deux étages — @Roles + guards des endpoints config/éligibilité', () => {
+    // N1 — éligibilité : décision PRESTATAIRE, SUPER_ADMIN strictement.
+    it('setFleetEligibility (N1) = [SUPER_ADMIN] exactement', () => {
+      expect(rolesOf(AudioMonitoringController, 'setFleetEligibility')).toEqual([SA]);
+    });
+
+    it('setFleetEligibility : @UseGuards contient RolesGuard ET AudioMonitoringGuard', () => {
+      const guards = methodGuards(AudioMonitoringController, 'setFleetEligibility');
+      expect(guards).toContain(RolesGuard);
+      expect(guards).toContain(AudioMonitoringGuard);
+    });
+
+    // N2 — consentement « Mode assistance » : ROUVERT à FLEET_ADMIN (+ SUPER_ADMIN).
+    it('setFleetConfig (N2) = [FLEET_ADMIN, SUPER_ADMIN] exactement', () => {
+      expect(rolesOf(AudioMonitoringController, 'setFleetConfig')).toEqual([FA, SA]);
+    });
+
+    it('setFleetConfig : @UseGuards contient RolesGuard ET AudioMonitoringGuard', () => {
+      const guards = methodGuards(AudioMonitoringController, 'setFleetConfig');
+      expect(guards).toContain(RolesGuard);
+      expect(guards).toContain(AudioMonitoringGuard);
+    });
+
+    it('setFleetConfig ne contient NI FLEET_MANAGER, NI VIEWER, NI NIGHT_WATCHMAN', () => {
+      const roles = rolesOf(AudioMonitoringController, 'setFleetConfig');
+      expect(roles).not.toContain(FM);
+      expect(roles).not.toContain(VIEWER);
+      expect(roles).not.toContain(NW);
+    });
+
+    // Vue éligibilité (lecture) : SUPER_ADMIN only, RolesGuard (PAS d'AudioMonitoringGuard).
+    it('getFleets = [SUPER_ADMIN] exactement', () => {
+      expect(rolesOf(AudioMonitoringController, 'getFleets')).toEqual([SA]);
+    });
+
+    it('getFleets : @UseGuards contient RolesGuard (lecture, pas d’AudioMonitoringGuard)', () => {
+      const guards = methodGuards(AudioMonitoringController, 'getFleets');
+      expect(guards).toContain(RolesGuard);
+      expect(guards).not.toContain(AudioMonitoringGuard);
+    });
+
+    // GET config (écran d'activation) reste ouvert FLEET_ADMIN + SUPER_ADMIN.
+    it('getFleetConfig = [FLEET_ADMIN, SUPER_ADMIN] exactement', () => {
+      expect(rolesOf(AudioMonitoringController, 'getFleetConfig')).toEqual([FA, SA]);
+    });
+  });
+
   describe('C. AudioMonitoringGuard — pivot dev/prod (#2/#3)', () => {
     it('prod + master flag OFF + n’importe quel rôle → 403 (#2 : écoute impossible sans flag)', () => {
       // master OFF : même le flag super-admin ON ne débloque rien (#2 prime).

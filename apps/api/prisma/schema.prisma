@@ -1018,16 +1018,22 @@ enum AudioCommandStatus {
   REJECTED
 }
 
-/// Sprint 4 — Activation de l'écoute audio PAR FLOTTE (garde-fous #1 + #5).
-/// #1 : OFF par défaut (enabled=false) — l'écoute reste impossible tant que la flotte
-/// ne l'a pas explicitement activée. #5 : l'activation EXIGE une attestation (le client
-/// atteste avoir informé occupants/conducteurs + posé la signalétique) — tracée ici.
+/// Sprint 4 — Activation de l'écoute audio PAR FLOTTE — gating à DEUX étages.
+/// N1 `superAdminEnabled` (prestataire/super-admin) : la flotte est-elle ÉLIGIBLE ?
+///   OFF par défaut — tant que false, RIEN n'est possible et le fleet-admin ne voit
+///   même pas le « Mode assistance ».
+/// N2 `assistanceEnabled` (fleet-admin) : le CONSENTEMENT « Mode assistance » de la
+///   flotte. OFF par défaut, ne peut passer ON que si superAdminEnabled est true.
+/// Une écoute n'est permise que si superAdminEnabled ET assistanceEnabled sont true.
+/// #5 : passer assistanceEnabled à true EXIGE une attestation (le client atteste avoir
+/// informé occupants/conducteurs + posé la signalétique) — tracée ici.
 /// Scénario A : pas de clip → pas de retentionDays.
 model FleetAudioConfig {
   id                    String    @id @default(uuid()) @db.Uuid
   fleetId               String    @unique @db.Uuid
   fleet                 Fleet     @relation(fields: [fleetId], references: [id], onDelete: Cascade)
-  enabled               Boolean   @default(false) // #1 OFF par défaut
+  superAdminEnabled     Boolean   @default(false) // N1 éligibilité prestataire — OFF par défaut
+  assistanceEnabled     Boolean   @default(false) // N2 consentement « Mode assistance » fleet-admin — OFF par défaut
   attestedByUserId      String?   @db.Uuid // #5 qui a attesté
   attestedAt            DateTime?
   attestationVersion    String? // version du texte d'attestation accepté
