@@ -7,6 +7,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import type { Env } from './config/env.validation';
 import { AlertsModule } from './alerts/alerts.module';
+import { AudioMonitoringModule } from './audio-monitoring/audio-monitoring.module';
 import { AuthClientModule } from './auth-client/auth-client.module';
 import { AuthModule } from './auth/auth.module';
 import { validateEnv } from './config/env.validation';
@@ -118,6 +119,9 @@ import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.modul
     SystemMetricsModule,
     UserActivityModule,
     UnknownTrackersModule,
+    // Sprint 4 — écoute audio (micro embarqué), LÉGALEMENT CRITIQUE. Device MOCKÉ ;
+    // en prod l'écoute reste impossible sans AUDIO_MONITORING_ENABLED='true' (#2).
+    AudioMonitoringModule,
   ],
   controllers: [HealthController],
   providers: [

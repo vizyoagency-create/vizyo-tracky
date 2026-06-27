@@ -29,6 +29,7 @@ import { DriverPickerComponent } from '../../shared/ui/driver-picker/driver-pick
 import { DriverDrawerComponent, type DriverDrawerData, type DriverDrawerResult } from '../drivers/driver-drawer.component';
 import { MiniMapComponent } from '../../shared/ui/mini-map/mini-map.component';
 import { EngineControlButtonComponent } from '../engine-control/engine-control-button.component';
+import { AudioListenButtonComponent } from '../audio-monitoring/audio-listen-button.component';
 import { SurveillancePanelComponent } from '../surveillance/surveillance-panel.component';
 import { CommandsPanelComponent } from '../tracker-commands/commands-panel.component';
 import { TripReplayComponent } from '../reports/trip-replay.component';
@@ -45,7 +46,7 @@ import { InstallReviewBadgeComponent } from '../../shared/ui/install-review-badg
   standalone: true,
   imports: [
     FormsModule, LucideAngularModule, DatePipe, DecimalPipe, GroupBadgeComponent,
-    MiniMapComponent, EngineControlButtonComponent, CommandsPanelComponent,
+    MiniMapComponent, EngineControlButtonComponent, AudioListenButtonComponent, CommandsPanelComponent,
     VehicleScheduleComponent, VehicleReportsTabComponent, DriverPickerComponent, DriverDrawerComponent, SurveillancePanelComponent, TripReplayComponent,
     InstallReviewBadgeComponent,
   ],
@@ -86,17 +87,29 @@ import { InstallReviewBadgeComponent } from '../../shared/ui/install-review-badg
             </div>
           </div>
 
-          @if (v.tracker && currentPosition(); as pos) {
-            <app-engine-control-button
-              [trackerId]="v.tracker.id"
-              [vehicleId]="v.id"
-              [vehiclePlate]="v.plate"
-              [currentSpeedKmh]="pos.speedKmh"
-              [validFix]="pos.valid"
-              [positionAge]="positionAgeSeconds()"
-              [ignition]="pos.ignition"
-              (scheduleDisabled)="onScheduleDisabled()"
-            />
+          @if (v.tracker) {
+            <div class="flex items-center gap-2 flex-wrap shrink-0">
+              @if (currentPosition(); as pos) {
+                <app-engine-control-button
+                  [trackerId]="v.tracker.id"
+                  [vehicleId]="v.id"
+                  [vehiclePlate]="v.plate"
+                  [currentSpeedKmh]="pos.speedKmh"
+                  [validFix]="pos.valid"
+                  [positionAge]="positionAgeSeconds()"
+                  [ignition]="pos.ignition"
+                  (scheduleDisabled)="onScheduleDisabled()"
+                />
+              }
+              <!-- Sprint 4 — Écoute audio (micro embarqué) : gaté audio_monitoring + activation flotte.
+                   Scénario A : arme le micro et renvoie le n° SIM à appeler (aucun audio joué dans l'app). -->
+              <app-audio-listen-button
+                [trackerId]="v.tracker.id"
+                [vehicleId]="v.id"
+                [vehiclePlate]="v.plate"
+                [fleetId]="v.fleetId"
+              />
+            </div>
           }
         </div>
 

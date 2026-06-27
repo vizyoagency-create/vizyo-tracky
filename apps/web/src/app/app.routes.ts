@@ -166,6 +166,14 @@ export const routes: Routes = [
         data: { title: 'Regles de notification' },
       },
       {
+        // Sprint 4 — écran d'activation de l'écoute audio (fleet-admin). Gaté audio_monitoring.
+        path: 'settings/audio-monitoring',
+        canActivate: [permissionGuard('audio_monitoring')],
+        loadComponent: () =>
+          import('./features/audio-monitoring/audio-activation.component').then((m) => m.AudioActivationComponent),
+        data: { title: 'Écoute audio' },
+      },
+      {
         path: 'admin',
         pathMatch: 'full',
         canActivate: [superAdminGuard],

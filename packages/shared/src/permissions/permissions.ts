@@ -45,6 +45,12 @@ export interface UserPermissions {
   sims_view: boolean;
   /** Assigner / detacher une carte SIM a un tracker. */
   sims_assign: boolean;
+  /**
+   * Sprint 4 — Declencher l'ecoute audio a distance du vehicule (micro). Capacite
+   * LEGALEMENT SENSIBLE : OFF par defaut PARTOUT sauf admin, gate env supplementaire
+   * (desactivee en production sans flag explicite, cf. AudioMonitoringGuard).
+   */
+  audio_monitoring: boolean;
 }
 
 const VIEWER_DEFAULTS: UserPermissions = {
@@ -68,6 +74,7 @@ const VIEWER_DEFAULTS: UserPermissions = {
   drivers_manage: false,
   sims_view: false,
   sims_assign: false,
+  audio_monitoring: false,
 };
 
 const FLEET_MANAGER_DEFAULTS: UserPermissions = {
@@ -91,6 +98,7 @@ const FLEET_MANAGER_DEFAULTS: UserPermissions = {
   drivers_manage: true,
   sims_view: true,
   sims_assign: false,
+  audio_monitoring: false,
 };
 
 const ADMIN_DEFAULTS: UserPermissions = {
@@ -114,6 +122,7 @@ const ADMIN_DEFAULTS: UserPermissions = {
   drivers_manage: true,
   sims_view: true,
   sims_assign: true,
+  audio_monitoring: true,
 };
 
 /**
@@ -142,6 +151,7 @@ const NIGHT_WATCHMAN_DEFAULTS: UserPermissions = {
   drivers_manage: false,
   sims_view: false,
   sims_assign: false,
+  audio_monitoring: false,
 };
 
 export function getDefaultPermissions(role: UserRoleSlug): UserPermissions {
@@ -285,6 +295,12 @@ export const PERMISSION_LABELS: Record<keyof UserPermissions, PermissionLabel> =
     label: 'Assigner une carte SIM a un tracker',
     description: 'Poser / detacher une SIM sur un boitier de la flotte.',
   },
+  audio_monitoring: {
+    group: 'Audio',
+    label: 'Écouter l\'audio du véhicule',
+    description:
+      'Capacite legalement sensible (micro embarque). Desactivee en production sans flag dedie, attestation flotte requise. OFF par defaut.',
+  },
 };
 
 /** Ordre d'affichage canonique des groupes dans l'UI. */
@@ -298,4 +314,5 @@ export const PERMISSION_GROUP_ORDER: readonly string[] = [
   'Utilisateurs',
   'Conducteurs',
   'Cartes SIM',
+  'Audio',
 ] as const;

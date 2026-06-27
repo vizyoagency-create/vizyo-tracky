@@ -5,6 +5,7 @@ import { RouterLink } from '@angular/router';
 import type {
   ActivityFeedItemDto,
   ActivityStatsDto,
+  AudioCommandAuditDto,
   EngineCommandAuditDto,
   OnlineUserDto,
   PresenceStatus,
@@ -14,6 +15,7 @@ import {
   ArrowLeft,
   ArrowRight,
   CircleAlert,
+  Ear,
   LogIn,
   LogOut,
   LucideAngularModule,
@@ -26,10 +28,11 @@ import {
   RotateCcw,
   Users,
 } from 'lucide-angular';
+import { AudioMonitoringService } from '../../core/services/audio-monitoring.service';
 import { relativeTime } from '../../shared/utils/relative-time';
 import { UserActivityApiService } from './user-activity-api.service';
 
-type Tab = 'live' | 'history' | 'analytics' | 'engine-commands';
+type Tab = 'live' | 'history' | 'analytics' | 'engine-commands' | 'audio-listens';
 type Period = '24h' | '7d' | '30d';
 
 @Component({
@@ -349,11 +352,81 @@ type Period = '24h' | '7d' | '30d';
           </div>
         }
       }
+
+      <!-- ─────────── ÉCOUTES AUDIO ─────────── -->
+      @if (tab() === 'audio-listens') {
+        @if (audioListens().length > 0) {
+          <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-hidden">
+            <table class="w-full text-sm">
+              <thead class="border-b border-border-subtle text-fg-tertiary text-xs uppercase tracking-wide">
+                <tr>
+                  <th class="px-4 py-3 text-left font-medium">Par</th>
+                  <th class="px-4 py-3 text-left font-medium">Quand</th>
+                  <th class="px-4 py-3 text-left font-medium">Véhicule</th>
+                  <th class="px-4 py-3 text-left font-medium">Motif</th>
+                  <th class="px-4 py-3 text-left font-medium">Env.</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (a of audioListens(); track a.id) {
+                  <tr class="border-b border-border-subtle/50 hover:bg-bg-tertiary/40 align-top">
+                    <!-- Par (qui) -->
+                    <td class="px-4 py-3">
+                      <div class="flex items-center gap-1.5 flex-wrap">
+                        <span class="text-fg-secondary">{{ a.requestedByName }}</span>
+                        @if (a.requestedByRole) {
+                          <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-bg-tertiary text-fg-tertiary uppercase tracking-wide">{{ a.requestedByRole }}</span>
+                        }
+                      </div>
+                    </td>
+                    <!-- Quand -->
+                    <td class="px-4 py-3 text-fg-tertiary whitespace-nowrap" [title]="(a.createdAt | date: 'dd/MM/yyyy HH:mm:ss') ?? ''">
+                      {{ relativeTime(a.createdAt) }}
+                    </td>
+                    <!-- Véhicule -->
+                    <td class="px-4 py-3">
+                      <span class="font-mono text-fg-primary">{{ a.vehiclePlate ?? a.trackerImei }}</span>
+                      @if (!a.vehiclePlate) {
+                        <span class="block text-[10px] text-fg-tertiary">IMEI</span>
+                      }
+                    </td>
+                    <!-- Motif -->
+                    <td class="px-4 py-3">
+                      <span class="text-fg-secondary block max-w-[320px] truncate" [title]="a.reason">{{ a.reason }}</span>
+                      @if (a.lastError) {
+                        <span class="block text-[11px] text-rose-400 mt-1 max-w-[320px] truncate" [title]="a.lastError">{{ a.lastError }}</span>
+                      }
+                    </td>
+                    <!-- Env -->
+                    <td class="px-4 py-3">
+                      <span class="inline-block px-2 py-0.5 text-xs rounded-md"
+                            [class]="a.requestedInEnv === 'production' ? 'bg-rose-500/15 text-rose-400' : 'bg-bg-tertiary text-fg-tertiary'">
+                        {{ a.requestedInEnv }}
+                      </span>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          <button (click)="loadMoreAudio()" [disabled]="loadingMore()"
+                  class="w-full py-2 text-sm text-fg-secondary border border-border-subtle rounded-lg hover:border-tracky disabled:opacity-50">
+            {{ loadingMore() ? 'Chargement…' : 'Charger plus' }}
+          </button>
+        } @else {
+          <div class="flex flex-col items-center justify-center h-40 rounded-[--radius-card]
+                      bg-bg-secondary border border-border-subtle text-fg-tertiary gap-2">
+            <lucide-icon [img]="Ear" [size]="40" class="opacity-30"></lucide-icon>
+            <p class="text-sm">Aucune écoute audio.</p>
+          </div>
+        }
+      }
     </div>
   `,
 })
 export class AdminActivityComponent implements OnInit, OnDestroy {
   private readonly api = inject(UserActivityApiService);
+  private readonly audioApi = inject(AudioMonitoringService);
 
   protected readonly ArrowLeft = ArrowLeft;
   protected readonly RefreshCw = RefreshCw;
@@ -361,6 +434,7 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
   protected readonly MapPin = MapPin;
   protected readonly Power = Power;
   protected readonly PowerOff = PowerOff;
+  protected readonly Ear = Ear;
   protected readonly relativeTime = relativeTime;
 
   readonly tabs: { id: Tab; label: string }[] = [
@@ -368,6 +442,7 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
     { id: 'history', label: 'Historique' },
     { id: 'analytics', label: 'Analytics' },
     { id: 'engine-commands', label: 'Commandes moteur' },
+    { id: 'audio-listens', label: 'Écoutes audio' },
   ];
   readonly periods: { id: Period; label: string }[] = [
     { id: '24h', label: '24h' },
@@ -387,6 +462,9 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
   readonly enginecmds = signal<EngineCommandAuditDto[]>([]);
   readonly actionFilter = signal('');
   readonly statusFilter = signal('');
+
+  // Écoutes audio (audit micro embarqué — qui/quand/véhicule/motif/env).
+  readonly audioListens = signal<AudioCommandAuditDto[]>([]);
 
   readonly maxSessions = computed(() =>
     Math.max(1, ...(this.stats()?.sessionsPerDay ?? []).map((d) => d.count)),
@@ -410,6 +488,7 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
     if (t === 'live') this.loadLive();
     else if (t === 'history') this.loadHistory();
     else if (t === 'engine-commands') this.loadEngine();
+    else if (t === 'audio-listens') this.loadAudio();
     else this.loadStats();
   }
 
@@ -417,6 +496,7 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
     if (this.tab() === 'live') this.loadLive();
     else if (this.tab() === 'history') this.loadHistory();
     else if (this.tab() === 'engine-commands') this.loadEngine();
+    else if (this.tab() === 'audio-listens') this.loadAudio();
     else this.loadStats();
   }
 
@@ -466,6 +546,25 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
     this.api
       .engineCommands(50, undefined, this.actionFilter() || undefined, this.statusFilter() || undefined)
       .subscribe({ next: (l) => this.enginecmds.set(l), error: () => undefined });
+  }
+
+  private loadAudio(): void {
+    this.audioApi
+      .getAudit({ limit: 50 })
+      .subscribe({ next: (l) => this.audioListens.set(l), error: () => undefined });
+  }
+
+  loadMoreAudio(): void {
+    const last = this.audioListens()[this.audioListens().length - 1];
+    if (!last) return;
+    this.loadingMore.set(true);
+    this.audioApi.getAudit({ limit: 50, before: last.createdAt }).subscribe({
+      next: (items) => {
+        this.audioListens.update((l) => [...l, ...items]);
+        this.loadingMore.set(false);
+      },
+      error: () => this.loadingMore.set(false),
+    });
   }
 
   private loadLive(): void {

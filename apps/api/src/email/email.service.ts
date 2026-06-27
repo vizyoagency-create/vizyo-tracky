@@ -213,6 +213,81 @@ Si vous n'avez pas demande cette reinitialisation, ignorez cet email.
 
     return { subject, html, text };
   }
+
+  /**
+   * Sprint 4 (garde-fou #6) — mail OBLIGATIONS envoyé à TOUS les utilisateurs actifs
+   * d'une flotte à l'activation de l'écoute audio (micro embarqué). Rappel des
+   * obligations de l'exploitant : informer conducteurs/occupants, poser la
+   * signalétique, finalité strictement limitée. La conformité (mandat, information,
+   * AIPD/CNIL) reste la RESPONSABILITÉ de l'exploitant — le mail trace l'information.
+   */
+  buildAudioActivationEmail(opts: {
+    fleetName: string;
+    activatedBy: string;
+  }): { subject: string; html: string; text: string } {
+    const subject = `[Vizyo Tracky] Écoute audio activée pour ${opts.fleetName} — obligations`;
+
+    const html = `<!DOCTYPE html>
+<html lang="fr">
+<body style="margin:0;padding:0;background:#0b0f12;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#f4f4f5;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#0b0f12;padding:40px 20px;">
+    <tr><td align="center">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;background:#13181d;border:1px solid #2a3036;border-radius:16px;overflow:hidden;">
+        <tr><td style="padding:32px 32px 0 32px;">
+          <div style="font-size:24px;font-weight:700;color:#10e0a0;letter-spacing:-0.5px;">Vizyo Tracky</div>
+        </td></tr>
+        <tr><td style="padding:24px 32px;">
+          <h1 style="margin:0 0 16px;font-size:22px;font-weight:600;color:#f4f4f5;">Écoute audio activée</h1>
+          <p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:#cbd2d9;">
+            La fonction d'<strong style="color:#f4f4f5;">écoute audio à distance</strong> (micro embarqué) a été activée
+            pour la flotte <strong style="color:#f4f4f5;">${escapeHtml(opts.fleetName)}</strong>
+            par <strong style="color:#f4f4f5;">${escapeHtml(opts.activatedBy)}</strong>.
+          </p>
+          <p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:#cbd2d9;">
+            Cette capacité est <strong style="color:#10e0a0;">légalement sensible</strong>. En tant qu'exploitant, vous
+            êtes responsable de sa conformité. Avant tout usage, vous devez :
+          </p>
+          <ul style="margin:0 0 16px;padding-left:20px;font-size:15px;line-height:1.7;color:#cbd2d9;">
+            <li><strong style="color:#f4f4f5;">Informer</strong> les conducteurs et occupants des véhicules concernés.</li>
+            <li><strong style="color:#f4f4f5;">Poser la signalétique</strong> indiquant la présence d'un dispositif d'écoute.</li>
+            <li>Limiter strictement la <strong style="color:#f4f4f5;">finalité</strong> (sécurité / sûreté) — jamais de surveillance permanente ou détournée.</li>
+            <li>Respecter le cadre applicable (information, AIPD/CNIL, DPO le cas échéant).</li>
+          </ul>
+          <p style="margin:0 0 8px;font-size:13px;color:#8b939c;">
+            Chaque déclenchement est tracé (qui, quand, quel véhicule, motif obligatoire). La fonction
+            peut être désactivée à tout moment depuis les paramètres de la flotte.
+          </p>
+          <p style="margin:24px 0 0;font-size:12px;color:#6b727a;border-top:1px solid #2a3036;padding-top:16px;">
+            La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fournit l'outil et les garde-fous techniques.
+          </p>
+        </td></tr>
+        <tr><td style="padding:16px 32px 24px;text-align:center;">
+          <p style="margin:0;font-size:12px;color:#6b727a;">— L'equipe Vizyo</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+    const text = `Écoute audio activée — ${opts.fleetName}
+
+La fonction d'écoute audio à distance (micro embarqué) a été activée pour la flotte ${opts.fleetName} par ${opts.activatedBy}.
+
+Cette capacité est légalement sensible. En tant qu'exploitant, vous êtes responsable de sa conformité. Avant tout usage, vous devez :
+- Informer les conducteurs et occupants des véhicules concernés.
+- Poser la signalétique indiquant la présence d'un dispositif d'écoute.
+- Limiter strictement la finalité (sécurité / sûreté) — jamais de surveillance permanente ou détournée.
+- Respecter le cadre applicable (information, AIPD/CNIL, DPO le cas échéant).
+
+Chaque déclenchement est tracé (qui, quand, quel véhicule, motif obligatoire). La fonction peut être désactivée à tout moment depuis les paramètres de la flotte.
+
+La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fournit l'outil et les garde-fous techniques.
+
+— L'equipe Vizyo`;
+
+    return { subject, html, text };
+  }
 }
 
 function escapeHtml(s: string): string {

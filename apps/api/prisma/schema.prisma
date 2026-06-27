@@ -186,6 +186,8 @@ model Fleet {
   installationPlans    InstallationPlan[]
   // V1.16 — SIM allouees a cette flotte (parc WhereverSIM).
   sims                 Sim[]
+  // Sprint 4 — config d'activation de l'ecoute audio (1:1, OFF par defaut).
+  audioConfig          FleetAudioConfig?
 
   @@map("fleets")
 }
@@ -403,6 +405,8 @@ model Tracker {
   positions  Position[]
   samplingDecisions PositionSamplingDecision[]
   commands        EngineControlCommand[]
+  // Sprint 4 — commandes d'ecoute audio (audit immuable, Scenario A appel live).
+  audioCommands   AudioMonitoringCommand[]
   trackerCommands TrackerCommand[]
   alerts          Alert[]
   installationTasks InstallationTask[] @relation("InstallationTaskTracker")
@@ -973,6 +977,65 @@ model EngineControlCommand {
   // dégrade avec le volume. Index global dédié.
   @@index([createdAt(sort: Desc)])
   @@map("engine_control_commands")
+}
+
+/// Sprint 4 — Écoute audio à distance (micro embarqué), LÉGALEMENT CRITIQUE.
+/// AUDIT IMMUABLE (garde-fou #7) : miroir d'EngineControlCommand, mais pour l'écoute.
+/// Scénario A confirmé (appel live) : l'« écoute » = le boîtier ouvre son micro et
+/// l'admin APPELLE la SIM pour entendre la cabine. AUCUN clip n'est uploadé au serveur
+/// → PAS de clipId. Append-only : INSERT + transitions de statut uniquement, jamais de
+/// DELETE par l'usage (purge éventuelle = cron dédié, hors usage). Aucun endpoint de
+/// suppression exposé.
+model AudioMonitoringCommand {
+  id              String             @id @default(uuid()) @db.Uuid
+  trackerId       String             @db.Uuid
+  tracker         Tracker            @relation(fields: [trackerId], references: [id], onDelete: Cascade)
+  vehicleId       String?            @db.Uuid // snapshot du véhicule au déclenchement
+  fleetId         String             @db.Uuid // scope tenant
+  status          AudioCommandStatus @default(PENDING) // PENDING|SENT|ACKNOWLEDGED|FAILED|REJECTED
+  reason          String             @db.Text // MOTIF — NOT NULL (garde-fou #4)
+  requestedBy     String             @db.Uuid // qui (garde-fou #7)
+  requestedByRole String // rôle au déclenchement (traçabilité #3)
+  requestedInEnv  String // 'development'|'production' (traçabilité du gate #3)
+  source          String             @default("MANUAL")
+  lastError       String?
+  sentAt          DateTime?
+  ackedAt         DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([fleetId, createdAt(sort: Desc)])
+  @@index([vehicleId, createdAt(sort: Desc)])
+  @@index([trackerId, status])
+  @@map("audio_monitoring_commands")
+}
+
+enum AudioCommandStatus {
+  PENDING
+  SENT
+  ACKNOWLEDGED
+  FAILED
+  REJECTED
+}
+
+/// Sprint 4 — Activation de l'écoute audio PAR FLOTTE (garde-fous #1 + #5).
+/// #1 : OFF par défaut (enabled=false) — l'écoute reste impossible tant que la flotte
+/// ne l'a pas explicitement activée. #5 : l'activation EXIGE une attestation (le client
+/// atteste avoir informé occupants/conducteurs + posé la signalétique) — tracée ici.
+/// Scénario A : pas de clip → pas de retentionDays.
+model FleetAudioConfig {
+  id                    String    @id @default(uuid()) @db.Uuid
+  fleetId               String    @unique @db.Uuid
+  fleet                 Fleet     @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  enabled               Boolean   @default(false) // #1 OFF par défaut
+  attestedByUserId      String?   @db.Uuid // #5 qui a attesté
+  attestedAt            DateTime?
+  attestationVersion    String? // version du texte d'attestation accepté
+  activationEmailSentAt DateTime? // #6 trace du mail flotte
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@map("fleet_audio_configs")
 }
 
 model VehicleSchedule {

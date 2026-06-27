@@ -1,7 +1,7 @@
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, LogOut, User, Moon, Sun, Bell, BellOff, Map, MapPin, RotateCcw, Palette, Navigation, Route, ArrowRight, Smartphone } from 'lucide-angular';
+import { LucideAngularModule, LogOut, User, Moon, Sun, Bell, BellOff, Map, MapPin, RotateCcw, Palette, Navigation, Route, ArrowRight, Smartphone, Ear } from 'lucide-angular';
 import { AuthService } from '../../core/services/auth.service';
 import { PreferencesService } from '../../core/services/preferences.service';
 import { NotificationsApiService } from '../../core/services/notifications.service';
@@ -224,6 +224,26 @@ import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
 
           }
 
+          <!-- ÉCOUTE AUDIO (micro embarqué) — activation flotte, legalement sensible -->
+          @if (perms.can('audio_monitoring')) {
+          <div class="s-card">
+            <div class="s-card-head">
+              <div class="s-icon violet"><lucide-icon [img]="EarIcon" [size]="16"></lucide-icon></div>
+              <div class="s-card-title">Écoute audio</div>
+            </div>
+            <div class="s-card-body">
+              <p class="section-desc">
+                Activez l'écoute du micro embarqué pour votre flotte (capacité légalement sensible,
+                attestation requise).
+              </p>
+              <a routerLink="/settings/audio-monitoring" class="advanced-link">
+                Gérer l'activation de l'écoute audio
+                <lucide-icon [img]="ArrowRightIcon" [size]="13"></lucide-icon>
+              </a>
+            </div>
+          </div>
+          }
+
           <!-- CARTE -->
           @if (perms.can('vehicles_view')) {
           <div class="s-card">
@@ -306,6 +326,7 @@ import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
     .s-icon.amber { background: rgba(245,158,11,.12); color: #f59e0b }
     .s-icon.blue { background: rgba(59,130,246,.12); color: #3b82f6 }
     .s-icon.cyan { background: rgba(6,182,212,.12); color: #06b6d4 }
+    .s-icon.violet { background: rgba(139,92,246,.12); color: #a78bfa }
 
     /* Account */
     .account-block { display: flex; align-items: center; gap: 14px; padding: 14px; border-radius: 12px; background: var(--bg-tertiary); margin-bottom: 14px }
@@ -474,6 +495,7 @@ export class SettingsComponent implements OnInit {
   protected readonly NavigationIcon = Navigation;
   protected readonly RouteIcon = Route;
   protected readonly ArrowRightIcon = ArrowRight;
+  protected readonly EarIcon = Ear;
 
   protected readonly pushSupported = signal(false);
   protected readonly pushSubscribed = signal(false);
