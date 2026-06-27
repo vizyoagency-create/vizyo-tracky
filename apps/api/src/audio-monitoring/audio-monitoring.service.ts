@@ -223,7 +223,12 @@ export class AudioMonitoringService {
     let activationEmailSentAt = config.activationEmailSentAt;
 
     // (#6) À l'activation : mail OBLIGATIONS à tous les users actifs de la flotte.
-    if (willEnable) {
+    // Sprint 4 — phase de test interne : on N'ENVOIE PAS le mail quand l'acteur est
+    // SUPER_ADMIN. Une activation super-admin/prestataire est une bascule technique
+    // de test et ne doit PAS notifier la flotte ; le mail OBLIGATIONS (#6) est réservé
+    // à un véritable onboarding fleet-admin/client. Dans ce cas activationEmailSentAt
+    // reste null (on ne prétend pas avoir notifié la flotte).
+    if (willEnable && actor.role !== UserRole.SUPER_ADMIN) {
       activationEmailSentAt = await this.sendActivationEmails(fleetId, actor.userId);
       await this.prisma.fleetAudioConfig.update({
         where: { fleetId },

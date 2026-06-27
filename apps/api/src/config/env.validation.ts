@@ -104,6 +104,12 @@ const envSchema = z.object({
   // AUDIO_RETENTION_DAYS : retention des clips audio (garde-fou #8, DIFFEREE).
   //   Audit de la commande = conserve (legal) ; le clip est court.
   AUDIO_MONITORING_ENABLED: z.string().default('false'),
+  // AUDIO_SUPERADMIN_ENABLED : phase de test interne (Sprint 4). En production,
+  //   le super-admin (prestataire) ne declenche PAS d'ecoute PAR DEFAUT (garde-fou
+  //   #3). Poser 'true' l'autorise EXPLICITEMENT pour la phase de test — reversible
+  //   d'un flag. Defaut 'false' (OFF). Lecture via
+  //   config.get('AUDIO_SUPERADMIN_ENABLED',{infer:true})==='true'.
+  AUDIO_SUPERADMIN_ENABLED: z.string().default('false'),
   AUDIO_RETENTION_DAYS: z.coerce.number().int().positive().default(7),
 });
 

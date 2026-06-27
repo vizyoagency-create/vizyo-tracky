@@ -48,7 +48,8 @@ export class AudioMonitoringController {
    * Retourne la commande (audit) + le n° SIM à appeler (Scénario A appel live).
    */
   @Post('trackers/:trackerId/listen')
-  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  // Sprint 4 — phase de test SUPER_ADMIN only ; rouvrir a FLEET_ADMIN ensuite.
+  @Roles(UserRole.SUPER_ADMIN)
   @UseGuards(RolesGuard, AudioMonitoringGuard)
   @RequireVehiclePermission('audio_monitoring', { paramName: 'trackerId' })
   @UseGuards(PermissionsGuard)
@@ -70,7 +71,8 @@ export class AudioMonitoringController {
    * part à tous les users actifs (#6). Un FLEET_ADMIN ne configure que SA flotte.
    */
   @Patch('fleets/:fleetId/config')
-  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  // Sprint 4 — phase de test SUPER_ADMIN only ; rouvrir a FLEET_ADMIN ensuite.
+  @Roles(UserRole.SUPER_ADMIN)
   @UseGuards(RolesGuard, AudioMonitoringGuard)
   setFleetConfig(
     @Param('fleetId') fleetId: string,

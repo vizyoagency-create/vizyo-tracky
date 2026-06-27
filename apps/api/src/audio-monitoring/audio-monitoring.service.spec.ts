@@ -193,7 +193,8 @@ describe('AudioMonitoringService', () => {
       expect(prisma.fleetAudioConfig.upsert).not.toHaveBeenCalled();
     });
 
-    // (#6) activer avec attestation → mail envoyé + activationEmailSentAt posé
+    // (#6) activer avec attestation par un acteur NON super-admin → mail envoyé
+    //      + activationEmailSentAt posé
     it('enabling sends the obligations mail and sets activationEmailSentAt (#6)', async () => {
       prisma.fleetAudioConfig.upsert.mockResolvedValue({
         enabled: true,
@@ -260,6 +261,36 @@ describe('AudioMonitoringService', () => {
         service.setFleetAudioConfig(OTHER_FLEET_ID, { enabled: true, attestation: true }, superAdmin),
       ).resolves.toBeDefined();
       expect(prisma.fleetAudioConfig.upsert).toHaveBeenCalled();
+    });
+
+    // Sprint 4 — activation SUPER_ADMIN (phase de test interne) → AUCUN mail OBLIGATIONS
+    //   (la flotte ne doit pas être notifiée d'une bascule technique) et
+    //   activationEmailSentAt reste null.
+    it('does NOT send the obligations mail on a SUPER_ADMIN activation (test phase, stamp stays null)', async () => {
+      prisma.fleetAudioConfig.upsert.mockResolvedValue({
+        enabled: true,
+        attestedAt: new Date(),
+        attestationVersion: 'v1',
+        activationEmailSentAt: null,
+      });
+      prisma.user.findMany.mockResolvedValue([
+        { email: 'a@test.fr' },
+        { email: 'b@test.fr' },
+      ]);
+
+      const result = await service.setFleetAudioConfig(
+        FLEET_ID,
+        { enabled: true, attestation: true, attestationVersion: 'v1' },
+        superAdmin,
+      );
+
+      // aucun mail construit ni envoyé, pas de persistance d'horodatage d'envoi.
+      expect(email.buildAudioActivationEmail).not.toHaveBeenCalled();
+      expect(email.send).not.toHaveBeenCalled();
+      expect(prisma.fleetAudioConfig.update).not.toHaveBeenCalled();
+      // activationEmailSentAt reste null (la flotte n'a pas été notifiée).
+      expect(result.activationEmailSentAt).toBeNull();
+      expect(result.enabled).toBe(true);
     });
   });
 

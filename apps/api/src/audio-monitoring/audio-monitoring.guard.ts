@@ -12,15 +12,16 @@ import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
  * AVANT PermissionsGuard. Logique stricte :
  *
  *   - En **production** :
- *       • si le flag `AUDIO_MONITORING_ENABLED` n'est pas exactement 'true' →
- *         403 (#2 : l'écoute est techniquement impossible sans interrupteur
- *         explicite, OFF par défaut) ;
- *       • si l'appelant est SUPER_ADMIN → 403 (#3 : le prestataire/super-admin
- *         ne déclenche JAMAIS d'écoute en production sur le parc d'un client).
+ *       • si `AUDIO_MONITORING_ENABLED` n'est pas exactement 'true' → 403 (#2 :
+ *         écoute techniquement impossible sans interrupteur explicite, OFF par défaut) ;
+ *       • si l'appelant est SUPER_ADMIN ET `AUDIO_SUPERADMIN_ENABLED` != 'true' →
+ *         403 (#3 : le prestataire/super-admin ne déclenche PAS en prod PAR DÉFAUT).
+ *         Phase de test interne : `AUDIO_SUPERADMIN_ENABLED=true` l'autorise
+ *         explicitement (réversible d'un seul flag).
  *   - En **dev/test** : super-admin autorisé (véhicule de test), pas de flag exigé.
  *
- * Le rôle déclenchant légitime en prod est donc FLEET_ADMIN (filtré en amont par
- * @Roles). Ici on ne fait que refermer les portes prod.
+ * Phase actuelle : le déclenchement (@Roles) est restreint à SUPER_ADMIN (test
+ * interne) ; FLEET_ADMIN sera rouvert ensuite. Ici on ne fait que l'arbitrage prod.
  */
 @Injectable()
 export class AudioMonitoringGuard implements CanActivate {
@@ -28,22 +29,22 @@ export class AudioMonitoringGuard implements CanActivate {
 
   canActivate(context: ExecutionContext): boolean {
     const env = this.config.get('NODE_ENV', { infer: true });
-    const flag = this.config.get('AUDIO_MONITORING_ENABLED', { infer: true }) === 'true';
-
+    const masterFlag = this.config.get('AUDIO_MONITORING_ENABLED', { infer: true }) === 'true';
+    const superAdminAllowed =
+      this.config.get('AUDIO_SUPERADMIN_ENABLED', { infer: true }) === 'true';
     const req = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const user = req.user;
-
     if (env === 'production') {
-      if (!flag) {
-        throw new ForbiddenException('Écoute audio désactivée en production (flag absent).');
-      }
-      if (user.role === UserRole.SUPER_ADMIN) {
+      if (!masterFlag)
+        throw new ForbiddenException('Écoute audio désactivée en production (flag absent).'); // #2
+      // #3 : le super-admin (prestataire) ne déclenche PAS en prod PAR DÉFAUT.
+      // Phase de test interne : AUDIO_SUPERADMIN_ENABLED=true l'autorise explicitement (réversible d'un flag).
+      if (user.role === UserRole.SUPER_ADMIN && !superAdminAllowed) {
         throw new ForbiddenException(
-          "Le super-admin ne peut pas déclencher d'écoute en production.",
+          "Le super-admin ne peut pas déclencher d'écoute en production (hors phase de test).",
         );
       }
     }
-
     return true;
   }
 }

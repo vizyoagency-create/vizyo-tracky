@@ -23,11 +23,14 @@ import { RequestListenDto } from './dto/request-listen.dto';
  * et NON juste une intention déclarée.
  *
  * On reflète :
- *  (1) le @Roles réellement posé sur `listen` (= [FLEET_ADMIN, SUPER_ADMIN]),
+ *  (1) le @Roles réellement posé sur `listen` (Sprint 4, phase de test interne :
+ *      = [SUPER_ADMIN] seul — FLEET_ADMIN temporairement retiré, à rouvrir ensuite),
  *  (2) que la chaîne @UseGuards contient RolesGuard + AudioMonitoringGuard +
  *      PermissionsGuard (sinon @Roles / la gate seraient des no-op),
- *  (3) le comportement binaire du AudioMonitoringGuard (prod sans flag → 403 ;
- *      prod + super-admin → 403 ; prod + fleet-admin + flag → OK ; dev → OK).
+ *  (3) le comportement du AudioMonitoringGuard (prod + master OFF → 403 #2 ;
+ *      prod + master ON + super-admin + flag super-admin OFF → 403 #3 par défaut ;
+ *      prod + master ON + super-admin + flag super-admin ON → OK phase de test ;
+ *      dev → OK sans flag).
  */
 
 // NestJS stocke les guards via cette clé de métadonnée (constante interne).
@@ -52,12 +55,20 @@ function methodGuards(ctrl: { prototype: object }, method: string): unknown[] {
 
 /**
  * Construit un AudioMonitoringGuard avec un ConfigService mocké : NODE_ENV → env,
- * AUDIO_MONITORING_ENABLED → flag. Reflète l'idiome `config.get(k,{infer:true})`.
+ * AUDIO_MONITORING_ENABLED → masterFlag (#2), AUDIO_SUPERADMIN_ENABLED → superFlag
+ * (#3, phase de test). Reflète l'idiome `config.get(k,{infer:true})`. superFlag
+ * défaut 'false' (super-admin bloqué en prod par défaut).
  */
-function guardWith(env: string, flag: string): AudioMonitoringGuard {
+function guardWith(env: string, masterFlag: string, superFlag = 'false'): AudioMonitoringGuard {
   const config = {
     get: (key: string) =>
-      key === 'NODE_ENV' ? env : key === 'AUDIO_MONITORING_ENABLED' ? flag : undefined,
+      key === 'NODE_ENV'
+        ? env
+        : key === 'AUDIO_MONITORING_ENABLED'
+          ? masterFlag
+          : key === 'AUDIO_SUPERADMIN_ENABLED'
+            ? superFlag
+            : undefined,
   } as unknown as ConfigService<Env, true>;
   return new AudioMonitoringGuard(config);
 }
@@ -73,8 +84,14 @@ function ctxWithRole(role: UserRole): ExecutionContext {
 
 describe('Sprint 4 — Sécurité écoute audio (audio-monitoring)', () => {
   describe('A. @Roles posés sur listen (déclenchement)', () => {
-    it('listen = [FLEET_ADMIN, SUPER_ADMIN] exactement', () => {
-      expect(rolesOf(AudioMonitoringController, 'listen')).toEqual([FA, SA]);
+    // Sprint 4 — phase de test interne : SUPER_ADMIN seul (FLEET_ADMIN retiré
+    // temporairement, à rouvrir ensuite).
+    it('listen = [SUPER_ADMIN] exactement (phase de test)', () => {
+      expect(rolesOf(AudioMonitoringController, 'listen')).toEqual([SA]);
+    });
+
+    it('listen ne contient PAS FLEET_ADMIN (retiré pour la phase de test)', () => {
+      expect(rolesOf(AudioMonitoringController, 'listen')).not.toContain(FA);
     });
 
     it('listen ne contient NI FLEET_MANAGER, NI VIEWER, NI NIGHT_WATCHMAN', () => {
@@ -101,26 +118,31 @@ describe('Sprint 4 — Sécurité écoute audio (audio-monitoring)', () => {
   });
 
   describe('C. AudioMonitoringGuard — pivot dev/prod (#2/#3)', () => {
-    it('prod + flag OFF + n’importe quel rôle → 403 (#2 : écoute impossible sans flag)', () => {
+    it('prod + master flag OFF + n’importe quel rôle → 403 (#2 : écoute impossible sans flag)', () => {
+      // master OFF : même le flag super-admin ON ne débloque rien (#2 prime).
       for (const role of [FA, SA, FM, VIEWER, NW]) {
-        expect(() => guardWith('production', 'false').canActivate(ctxWithRole(role))).toThrow(
-          ForbiddenException,
-        );
+        expect(() =>
+          guardWith('production', 'false', 'true').canActivate(ctxWithRole(role)),
+        ).toThrow(ForbiddenException);
       }
     });
 
-    it('prod + flag ON + SUPER_ADMIN → 403 (#3 : le super-admin ne déclenche pas en prod)', () => {
-      expect(() => guardWith('production', 'true').canActivate(ctxWithRole(SA))).toThrow(
+    it('prod + master ON + SUPER_ADMIN + flag super-admin OFF → 403 (#3 défaut)', () => {
+      expect(() => guardWith('production', 'true', 'false').canActivate(ctxWithRole(SA))).toThrow(
         ForbiddenException,
       );
     });
 
-    it('prod + flag ON + FLEET_ADMIN → passe le guard', () => {
-      expect(guardWith('production', 'true').canActivate(ctxWithRole(FA))).toBe(true);
+    it('prod + master ON + SUPER_ADMIN + flag super-admin ON → passe (phase de test interne)', () => {
+      expect(guardWith('production', 'true', 'true').canActivate(ctxWithRole(SA))).toBe(true);
     });
 
-    it('development + flag OFF + SUPER_ADMIN → passe (véhicule de test, pas de flag exigé)', () => {
-      expect(guardWith('development', 'false').canActivate(ctxWithRole(SA))).toBe(true);
+    it('prod + master ON + FLEET_ADMIN → passe le guard (rôle non super-admin)', () => {
+      expect(guardWith('production', 'true', 'false').canActivate(ctxWithRole(FA))).toBe(true);
+    });
+
+    it('development + master OFF + SUPER_ADMIN → passe (véhicule de test, pas de flag exigé)', () => {
+      expect(guardWith('development', 'false', 'false').canActivate(ctxWithRole(SA))).toBe(true);
     });
   });
 
