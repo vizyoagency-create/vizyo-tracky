@@ -10,6 +10,7 @@ import {
   Bell,
   Shield,
   FileBarChart,
+  Calendar,
   Users,
   Settings,
   Menu,
@@ -902,6 +903,8 @@ export class DashboardLayoutComponent {
       ...(this.perms.can('alerts_view') ? [{ label: 'Alertes', route: '/alerts', icon: Bell }] : []),
       ...(this.perms.can('geofences_view') ? [{ label: 'Géofences', route: '/geofences', icon: Shield }] : []),
       ...(this.perms.can('reports_view') ? [{ label: 'Rapports', route: '/reports', icon: FileBarChart }] : []),
+      // Sprint 7 — Agenda (maintenance + incidents), gaté agenda_view. Pas dans la barre mobile.
+      ...(this.perms.can('agenda_view') ? [{ label: 'Agenda', route: '/agenda', icon: Calendar }] : []),
       ...(this.perms.can('drivers_view') ? [{ label: 'Conducteurs', route: '/drivers', icon: UserRound }] : []),
       ...(this.perms.can('users_view') ? [{ label: 'Utilisateurs', route: '/users', icon: Users }] : []),
       // V1.16 — Parc SIM : visible des qu'on a sims_view (FLEET_ADMIN/SUPER_ADMIN bypass).
