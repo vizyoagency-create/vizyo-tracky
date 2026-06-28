@@ -624,7 +624,7 @@ const TIMEZONES = [
     }
     .vsched-adv-day:last-child { border-bottom: 0 }
     .vsched-adv-day-label { width: 80px; font-size: 12px; color: var(--fg-secondary); font-weight: 600 }
-    .vsched-adv-base { font-size: 11px; color: var(--fg-tertiary); font-family: monospace }
+    .vsched-adv-base { font-size: 11px; color: var(--fg-tertiary); font-family: var(--font-mono, monospace) }
     .vsched-adv-slot {
       display: inline-flex; align-items: center; gap: 4px;
       padding: 4px 8px;
@@ -634,7 +634,7 @@ const TIMEZONES = [
     }
     .vsched-adv-slot input[type="time"] {
       background: transparent; border: 0; color: var(--fg-primary);
-      font-size: 11px; font-family: monospace;
+      font-size: 11px; font-family: var(--font-mono, monospace);
       width: 60px;
     }
     .vsched-adv-slot-remove {
@@ -661,7 +661,7 @@ const TIMEZONES = [
     .vsched-adv-cdate input[type="date"], .vsched-adv-cdate input[type="time"] {
       background: var(--bg-tertiary); border: 1px solid var(--border-subtle);
       color: var(--fg-primary); padding: 4px 6px; border-radius: 4px;
-      font-size: 11px; font-family: monospace;
+      font-size: 11px; font-family: var(--font-mono, monospace);
     }
     .vsched-adv-checkbox {
       display: inline-flex; align-items: center; gap: 6px;

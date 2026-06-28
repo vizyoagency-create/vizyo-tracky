@@ -342,7 +342,7 @@ import {
     .sp-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 22px }
     .sp-back { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--fg-tertiary); text-decoration: none; margin-bottom: 6px }
     .sp-back:hover { color: var(--tracky-light) }
-    .sp-head h1 { font-family: var(--font-display, Poppins, sans-serif); font-size: 26px; font-weight: 800; color: var(--fg-primary); margin: 0 }
+    .sp-head h1 { font-family: var(--font-display, Poppins, sans-serif); font-size: 24px; font-weight: 800; color: var(--fg-primary); margin: 0 }
     .sp-sub { font-size: 13px; color: var(--fg-tertiary); margin: 4px 0 0 }
     .sp-actions { display: flex; gap: 8px; flex-wrap: wrap }
 

@@ -16,6 +16,7 @@ import {
   MapPin,
   Bell,
   Loader,
+  Info,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import {
@@ -249,7 +250,7 @@ const TRIGGER_LABELS: Record<string, string> = {
                 <span class="italic">Aucun contact additionnel configuré.</span>
               }
               <span class="block mt-1 opacity-70">
-                ℹ️ La gestion des contacts additionnels (FLEET_MANAGER opt-in) sera disponible dans une prochaine version.
+                <lucide-icon [img]="Info" [size]="12" class="inline-block align-[-2px]"></lucide-icon> La gestion des contacts additionnels (FLEET_MANAGER opt-in) sera disponible dans une prochaine version.
               </span>
             </p>
           </div>
@@ -540,6 +541,7 @@ export class SurveillancePanelComponent implements OnInit {
   protected readonly MapPin = MapPin;
   protected readonly Bell = Bell;
   protected readonly Loader = Loader;
+  protected readonly Info = Info;
 
   protected readonly DAY_LABELS = DAY_LABELS;
   protected readonly DAY_ORDER = DAY_ORDER;

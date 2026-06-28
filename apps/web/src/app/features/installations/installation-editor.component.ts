@@ -8,7 +8,7 @@ import {
 import {
   LucideAngularModule, ArrowLeft, Plus, Pencil, Trash2, ChevronUp, ChevronDown,
   Wrench, X, Save, ExternalLink, RefreshCw, Check, CalendarDays, GripVertical,
-  Spline, List, ArrowRight, CornerDownLeft,
+  Spline, List, ArrowRight, CornerDownLeft, StickyNote, AlertTriangle,
 } from 'lucide-angular';
 import type {
   InstallationEnergy, InstallationPlanDto, InstallationTaskDto, InstallationTaskStatus,
@@ -144,7 +144,7 @@ interface TaskForm {
                           <lucide-icon [img]="ExternalLinkIcon" [size]="11"></lucide-icon> Véhicule
                         </a>
                       }
-                      @if (t.fieldNotes) { <span class="notes">📝 {{ t.fieldNotes }}</span> }
+                      @if (t.fieldNotes) { <span class="notes"><lucide-icon [img]="StickyNoteIcon" [size]="11"></lucide-icon> {{ t.fieldNotes }}</span> }
                     </div>
                   </div>
 
@@ -227,7 +227,7 @@ interface TaskForm {
                     @if (g.theme) { <p class="station-theme" [title]="g.theme">{{ g.theme }}</p> }
                     @if (g.tasks.length >= 6) {
                       <p class="station-warn">
-                        <lucide-icon [img]="CalendarDaysIcon" [size]="11"></lucide-icon> ⚠ à étaler
+                        <lucide-icon [img]="AlertTriangleIcon" [size]="11"></lucide-icon> à étaler
                       </p>
                     }
                   } @else {
@@ -422,7 +422,7 @@ interface TaskForm {
     .ed-head { display: flex; gap: 20px; justify-content: space-between; flex-wrap: wrap; padding: 20px; border-radius: 16px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); margin-bottom: 18px }
     .ed-head-main { min-width: 240px; flex: 1 }
     .ed-title-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap }
-    .ed-head h1 { font-family: var(--font-display, Poppins, sans-serif); font-size: 22px; font-weight: 800; color: var(--fg-primary); margin: 0 }
+    .ed-head h1 { font-family: var(--font-display, Poppins, sans-serif); font-size: 24px; font-weight: 800; color: var(--fg-primary); margin: 0 }
     .ed-addr { font-size: 12px; color: var(--fg-tertiary); margin-top: 4px }
     .ed-desc { font-size: 13px; color: var(--fg-secondary); margin-top: 6px }
     .ed-period { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg-tertiary); margin-top: 8px; font-family: var(--font-mono, monospace) }
@@ -483,7 +483,7 @@ interface TaskForm {
     .row-proc { font-size: 11px; color: var(--fg-tertiary); margin-top: 5px; line-height: 1.4 }
     .row-meta { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 6px; font-size: 11px; color: var(--fg-tertiary) }
     .row-meta .mono { font-family: var(--font-mono, monospace) }
-    .row-meta .notes { font-style: italic }
+    .row-meta .notes { display: inline-flex; align-items: center; gap: 4px; font-style: italic }
     .veh-link { display: inline-flex; align-items: center; gap: 4px; color: var(--tracky-light); text-decoration: none }
     .veh-link:hover { text-decoration: underline }
 
@@ -669,6 +669,8 @@ export class InstallationEditorComponent implements OnInit {
   protected readonly ListIcon = List;
   protected readonly ArrowRightIcon = ArrowRight;
   protected readonly CornerDownLeftIcon = CornerDownLeft;
+  protected readonly StickyNoteIcon = StickyNote;
+  protected readonly AlertTriangleIcon = AlertTriangle;
 
   protected readonly energyOptions = ENERGY_OPTIONS;
   protected readonly statusOptions = PLAN_STATUS_OPTIONS;

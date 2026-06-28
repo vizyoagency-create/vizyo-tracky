@@ -7,6 +7,8 @@ import {
   Bell,
   Edit2,
   LucideAngularModule,
+  Mail,
+  MessageCircle,
   Plus,
   Trash2,
   XCircle,
@@ -47,10 +49,10 @@ const ALERT_TYPES: { value: string; label: string; severity: string }[] = [
   { value: 'IDLE_TIME', label: 'Arret prolonge', severity: 'info' },
 ];
 
-const ALL_CHANNELS: { value: 'WEB_PUSH' | 'EMAIL' | 'WHATSAPP'; label: string; icon: string }[] = [
-  { value: 'WEB_PUSH', label: 'Notifications push (navigateur)', icon: '🔔' },
-  { value: 'EMAIL', label: 'Email', icon: '✉️' },
-  { value: 'WHATSAPP', label: 'WhatsApp', icon: '💬' },
+const ALL_CHANNELS: { value: 'WEB_PUSH' | 'EMAIL' | 'WHATSAPP'; label: string; icon: typeof Bell }[] = [
+  { value: 'WEB_PUSH', label: 'Notifications push (navigateur)', icon: Bell },
+  { value: 'EMAIL', label: 'Email', icon: Mail },
+  { value: 'WHATSAPP', label: 'WhatsApp', icon: MessageCircle },
 ];
 
 interface RuleForm {
@@ -142,7 +144,7 @@ const EMPTY_FORM: RuleForm = {
                     <td>
                       <div class="channels">
                         @for (c of rule.channels; track c) {
-                          <span class="ch-pill">{{ channelLabel(c) }}</span>
+                          <span class="ch-pill" [title]="channelLabel(c)"><lucide-icon [img]="channelIcon(c)" [size]="12"></lucide-icon></span>
                         }
                         @if (rule.channels.length === 0) {
                           <span class="muted">—</span>
@@ -190,7 +192,7 @@ const EMPTY_FORM: RuleForm = {
                 <label>Type d'alerte</label>
                 <select [(ngModel)]="formAlertType">
                   @for (t of alertTypes; track t.value) {
-                    <option [value]="t.value">{{ t.severity === 'critical' ? '🔴' : t.severity === 'warning' ? '🟠' : t.severity === 'info' ? '🔵' : '⚪' }} {{ t.label }}</option>
+                    <option [value]="t.value">{{ t.label }}</option>
                   }
                 </select>
               </div>
@@ -203,7 +205,7 @@ const EMPTY_FORM: RuleForm = {
                       <input type="checkbox"
                              [checked]="form().channels.includes(c.value)"
                              (change)="toggleChannel(c.value, $any($event.target).checked)" />
-                      <span>{{ c.icon }} {{ c.label }}</span>
+                      <span><lucide-icon [img]="c.icon" [size]="13"></lucide-icon> {{ c.label }}</span>
                     </label>
                   }
                 </div>
@@ -264,12 +266,12 @@ const EMPTY_FORM: RuleForm = {
     table { width: 100%; min-width: 700px; border-collapse: collapse; font-size: 13px }
     th { text-align: left; padding: 10px 12px; color: var(--fg-tertiary); font-size: 11px; text-transform: uppercase; border-bottom: 1px solid var(--border-subtle) }
     td { padding: 10px 12px; border-bottom: 1px solid var(--border-subtle); color: var(--fg-primary) }
-    code { font-family: monospace; font-size: 11px; background: var(--bg-tertiary); padding: 2px 6px; border-radius: 4px }
+    code { font-family: var(--font-mono, monospace); font-size: 11px; background: var(--bg-tertiary); padding: 2px 6px; border-radius: 4px }
     .pill { display: inline-flex; padding: 2px 8px; border-radius: 9999px; font-size: 10px; font-weight: 600 }
     .pill-on { background: rgba(16,224,160,.12); color: var(--tracky-light) }
     .pill-off { background: var(--bg-tertiary); color: var(--fg-tertiary) }
     .channels { display: flex; gap: 4px; flex-wrap: wrap }
-    .ch-pill { padding: 2px 6px; background: var(--bg-tertiary); border-radius: 4px; font-size: 10px; font-family: monospace }
+    .ch-pill { display: inline-flex; align-items: center; padding: 3px 6px; background: var(--bg-tertiary); border-radius: 4px; color: var(--fg-secondary) }
     .btn-primary {
       background: var(--tracky); color: var(--bg-primary);
       border: 0; padding: 8px 14px; border-radius: 8px;
@@ -323,6 +325,7 @@ const EMPTY_FORM: RuleForm = {
       cursor: pointer; font-size: 13px;
     }
     .channel-toggle:hover { background: var(--bg-primary) }
+    .channel-toggle span { display: inline-flex; align-items: center; gap: 6px }
     .checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer }
   `],
 })
@@ -369,7 +372,11 @@ export class AlertRulesComponent implements OnInit {
   }
 
   channelLabel(c: string): string {
-    return ALL_CHANNELS.find((x) => x.value === c)?.icon ?? c;
+    return ALL_CHANNELS.find((x) => x.value === c)?.label ?? c;
+  }
+
+  channelIcon(c: string): typeof Bell {
+    return ALL_CHANNELS.find((x) => x.value === c)?.icon ?? Bell;
   }
 
   openCreate(): void {

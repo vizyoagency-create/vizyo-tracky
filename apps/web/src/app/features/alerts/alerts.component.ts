@@ -14,9 +14,12 @@ import {
   Gauge,
   Info,
   LucideAngularModule,
+  Mail,
+  MessageCircle,
   MoreVertical,
   Plus,
   Settings,
+  Smartphone,
   Trash2,
   XCircle,
 } from 'lucide-angular';
@@ -58,11 +61,11 @@ const ALERT_TYPES: { value: string; label: string; severity: string }[] = [
   { value: 'IDLE_TIME', label: 'Arret prolonge', severity: 'info' },
 ];
 
-const ALL_CHANNELS: { value: 'WEB_PUSH' | 'EMAIL' | 'WHATSAPP' | 'SMS'; label: string; icon: string }[] = [
-  { value: 'WEB_PUSH', label: 'Push', icon: '🔔' },
-  { value: 'EMAIL', label: 'Email', icon: '✉️' },
-  { value: 'WHATSAPP', label: 'WhatsApp', icon: '💬' },
-  { value: 'SMS', label: 'SMS', icon: '📱' },
+const ALL_CHANNELS: { value: 'WEB_PUSH' | 'EMAIL' | 'WHATSAPP' | 'SMS'; label: string; icon: typeof Bell }[] = [
+  { value: 'WEB_PUSH', label: 'Push', icon: Bell },
+  { value: 'EMAIL', label: 'Email', icon: Mail },
+  { value: 'WHATSAPP', label: 'WhatsApp', icon: MessageCircle },
+  { value: 'SMS', label: 'SMS', icon: Smartphone },
 ];
 
 /**
@@ -430,7 +433,7 @@ const EMPTY_FORM: RuleForm = {
                     <div class="cfg-rule-channels">
                       @for (c of rule.channels; track c) {
                         @if (c !== 'IN_APP') {
-                          <span class="cfg-ch-pill">{{ channelIcon(c) }} {{ channelLabel(c) }}</span>
+                          <span class="cfg-ch-pill"><lucide-icon [img]="channelIcon(c)" [size]="11"></lucide-icon> {{ channelLabel(c) }}</span>
                         }
                       }
                       @if (rule.channels.length === 0 || (rule.channels.length === 1 && rule.channels[0] === 'IN_APP')) {
@@ -474,7 +477,7 @@ const EMPTY_FORM: RuleForm = {
                   <label>Type d'alerte</label>
                   <select [(ngModel)]="formAlertType">
                     @for (t of alertTypes; track t.value) {
-                      <option [value]="t.value">{{ t.severity === 'critical' ? '🔴' : t.severity === 'warning' ? '🟠' : t.severity === 'info' ? '🔵' : '⚪' }} {{ t.label }}</option>
+                      <option [value]="t.value">{{ t.label }}</option>
                     }
                   </select>
                 </div>
@@ -498,7 +501,7 @@ const EMPTY_FORM: RuleForm = {
                         <input type="checkbox"
                                [checked]="ruleForm().channels.includes(c.value)"
                                (change)="toggleRuleChannel(c.value, $any($event.target).checked)" />
-                        <span>{{ c.icon }} {{ c.label }}</span>
+                        <span><lucide-icon [img]="c.icon" [size]="13"></lucide-icon> {{ c.label }}</span>
                       </label>
                     }
                   </div>
@@ -852,6 +855,7 @@ const EMPTY_FORM: RuleForm = {
     .cfg-rule-vehicle.fleet-wide { color: var(--tracky-light); font-weight: 600 }
     .cfg-rule-channels { display: flex; gap: 4px; flex-wrap: wrap }
     .cfg-ch-pill {
+      display: inline-flex; align-items: center; gap: 4px;
       padding: 2px 8px; border-radius: 6px; font-size: 10px; font-weight: 600;
       background: var(--bg-tertiary); color: var(--fg-secondary);
     }
@@ -899,6 +903,7 @@ const EMPTY_FORM: RuleForm = {
       cursor: pointer; font-size: 13px; color: var(--fg-primary);
     }
     .cfg-channel-toggle:hover { background: var(--bg-primary) }
+    .cfg-channel-toggle span { display: inline-flex; align-items: center; gap: 6px }
     .cfg-checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; color: var(--fg-primary) }
     .cfg-btn-ghost {
       background: transparent; color: var(--fg-secondary);
@@ -1256,8 +1261,8 @@ export class AlertsComponent implements OnInit {
     return ALERT_TYPES.find((t) => t.value === value)?.label ?? value;
   }
 
-  protected channelIcon(c: string): string {
-    return ALL_CHANNELS.find((x) => x.value === c)?.icon ?? '';
+  protected channelIcon(c: string): typeof Bell {
+    return ALL_CHANNELS.find((x) => x.value === c)?.icon ?? Bell;
   }
 
   protected channelLabel(c: string): string {

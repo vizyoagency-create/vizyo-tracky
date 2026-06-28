@@ -118,7 +118,7 @@ import { formatDateFr, PLAN_STATUS_CLASS, PLAN_STATUS_LABELS } from './installat
     .ip-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 24px }
     .ip-back { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--fg-tertiary); text-decoration: none; margin-bottom: 6px }
     .ip-back:hover { color: var(--tracky-light) }
-    .ip-head h1 { font-family: var(--font-display, Poppins, sans-serif); font-size: 26px; font-weight: 800; color: var(--fg-primary); margin: 0 }
+    .ip-head h1 { font-family: var(--font-display, Poppins, sans-serif); font-size: 24px; font-weight: 800; color: var(--fg-primary); margin: 0 }
     .ip-sub { font-size: 13px; color: var(--fg-tertiary); margin: 4px 0 0 }
     .ip-add { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 10px; font-size: 12px; font-weight: 700; background: #059669; color: #fff; border: none; cursor: pointer; box-shadow: 0 2px 8px rgba(5,150,105,.3) }
     .ip-add:hover { background: #047857 }

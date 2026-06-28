@@ -12,9 +12,11 @@ import {
   Copy,
   Download,
   LucideAngularModule,
+  Radio,
   TrendingDown,
   TrendingUp,
   RefreshCw,
+  User,
   Wifi,
   WifiOff,
   Zap,
@@ -392,7 +394,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
                       </div>
                       <div class="text-xs text-fg-secondary mt-1 truncate">{{ e.message }}</div>
                       @if (who(e); as w) {
-                        <div class="text-[11px] text-amber-300/90 mt-0.5 truncate">👤 {{ w }}</div>
+                        <div class="text-[11px] text-amber-300/90 mt-0.5 truncate"><lucide-icon [img]="User" [size]="11" class="inline-block align-[-2px]"></lucide-icon> {{ w }}</div>
                       }
                     </div>
                   </button>
@@ -428,9 +430,9 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
                   </div>
                   <div class="text-xs text-fg-secondary mt-1 truncate">{{ e.message }}</div>
                   @if (who(e); as w) {
-                    <div class="text-[11px] text-amber-300/90 mt-0.5 truncate">👤 {{ w }}</div>
+                    <div class="text-[11px] text-amber-300/90 mt-0.5 truncate"><lucide-icon [img]="User" [size]="11" class="inline-block align-[-2px]"></lucide-icon> {{ w }}</div>
                   } @else if (e.imei) {
-                    <div class="text-[11px] text-fg-tertiary mt-0.5">📡 {{ e.imei }} · erreur tracker (sans user)</div>
+                    <div class="text-[11px] text-fg-tertiary mt-0.5"><lucide-icon [img]="Radio" [size]="11" class="inline-block align-[-2px]"></lucide-icon> {{ e.imei }} · erreur tracker (sans user)</div>
                   }
                 </div>
               }
@@ -528,6 +530,8 @@ export class AdminAlertsComponent implements OnInit {
   protected readonly Clock = Clock;
   protected readonly RefreshCw = RefreshCw;
   protected readonly Wifi = Wifi;
+  protected readonly User = User;
+  protected readonly Radio = Radio;
   protected readonly WifiOff = WifiOff;
   protected readonly Zap = Zap;
 

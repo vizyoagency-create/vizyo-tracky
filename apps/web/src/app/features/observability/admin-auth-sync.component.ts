@@ -217,7 +217,7 @@ interface SyncData {
     table { width: 100%; border-collapse: collapse; font-size: 12px }
     th { text-align: left; padding: 8px 10px; color: var(--fg-tertiary); font-size: 10px; text-transform: uppercase; border-bottom: 1px solid var(--border-subtle) }
     td { padding: 8px 10px; border-bottom: 1px solid var(--border-subtle); color: var(--fg-primary) }
-    .email-cell { font-family: monospace; font-size: 11px }
+    .email-cell { font-family: var(--font-mono, monospace); font-size: 11px }
     .pill { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 10px; font-weight: 600; background: var(--bg-tertiary); color: var(--fg-tertiary) }
     .pill-on { background: rgba(16,224,160,.12); color: var(--tracky-light) }
     .pill-off { background: rgba(239,68,68,.1); color: #f87171 }

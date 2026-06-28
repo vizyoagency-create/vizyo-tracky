@@ -213,7 +213,7 @@ const LOOP_MS = 40_000;
       }
       :host ::ng-deep .auth-city__label {
         position: absolute;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+        font-family: var(--font-sans);
         font-size: 10px;
         font-weight: 600;
         letter-spacing: 0.04em;

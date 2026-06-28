@@ -104,7 +104,7 @@ interface VehicleForAssign {
         <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-8 text-center">
           <lucide-icon [img]="CheckCircle" [size]="36" class="mx-auto mb-3 text-emerald-400"></lucide-icon>
           <p class="text-sm text-fg-secondary font-medium">Aucun boîtier non reconnu.</p>
-          <p class="text-xs text-fg-tertiary mt-1">Tous les boîtiers qui se connectent sont enregistrés. 🎉</p>
+          <p class="text-xs text-fg-tertiary mt-1">Tous les boîtiers qui se connectent sont enregistrés.</p>
         </div>
       }
 

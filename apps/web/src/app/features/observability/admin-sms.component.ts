@@ -119,7 +119,7 @@ interface PrefillItem {
               }
               @if ((status()?.recentFailures24h ?? 0) > 0) {
                 <div class="mt-2 text-xs text-amber-300">
-                  ⚠ {{ status()?.recentFailures24h }} SMS en echec sur les 24h
+                  <lucide-icon [img]="AlertTriangle" [size]="12" class="inline-block align-[-2px]"></lucide-icon> {{ status()?.recentFailures24h }} SMS en echec sur les 24h
                   @if (status()?.lastFailure; as lf) {
                     · dernier : {{ lf.errorCode ?? '—' }} vers {{ lf.toNumber }}
                   }
@@ -588,7 +588,7 @@ interface PrefillItem {
             </div>
           } @else {
             <div class="bg-emerald-500/10 border border-emerald-500/30 rounded-[--radius-card] p-3 text-sm text-emerald-300">
-              ✓ Tous les SIM trackers sont synchronises ({{ st.trackersWithSim }} tracker(s) avec SIM).
+              <lucide-icon [img]="CheckCircle" [size]="12" class="inline-block align-[-2px]"></lucide-icon> Tous les SIM trackers sont synchronises ({{ st.trackersWithSim }} tracker(s) avec SIM).
             </div>
           }
         }

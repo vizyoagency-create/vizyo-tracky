@@ -487,7 +487,7 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
       border-radius: 6px;
       background: var(--bg-tertiary);
       font-size: 11px;
-      font-family: monospace;
+      font-family: var(--font-mono, monospace);
     }
     .status {
       display: inline-flex;

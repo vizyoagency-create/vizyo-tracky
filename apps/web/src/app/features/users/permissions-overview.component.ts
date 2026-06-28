@@ -252,7 +252,7 @@ const PERM_GROUPS = [
     .po-pill {
       display: inline-block; padding: 2px 7px; border-radius: 6px;
       font-size: 10px; font-weight: 600; background: var(--bg-tertiary); color: var(--fg-tertiary);
-      font-family: monospace;
+      font-family: var(--font-mono, monospace);
     }
 
     /* Users list */
