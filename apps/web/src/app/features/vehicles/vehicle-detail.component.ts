@@ -40,6 +40,7 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
 import { GeofencesApiService } from '../../core/services/geofences.service';
 import { connectivityMeta } from '../../shared/ui/connectivity-badge/connectivity-badge.component';
 import { InstallReviewBadgeComponent } from '../../shared/ui/install-review-badge/install-review-badge.component';
+import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.component';
 
 @Component({
   selector: 'app-vehicle-detail',
@@ -48,7 +49,7 @@ import { InstallReviewBadgeComponent } from '../../shared/ui/install-review-badg
     FormsModule, LucideAngularModule, DatePipe, DecimalPipe, GroupBadgeComponent,
     MiniMapComponent, EngineControlButtonComponent, AudioListenButtonComponent, CommandsPanelComponent,
     VehicleScheduleComponent, VehicleReportsTabComponent, DriverPickerComponent, DriverDrawerComponent, SurveillancePanelComponent, TripReplayComponent,
-    InstallReviewBadgeComponent,
+    InstallReviewBadgeComponent, BrandLogoComponent,
   ],
   template: `
     @if (loading()) {
@@ -66,6 +67,7 @@ import { InstallReviewBadgeComponent } from '../../shared/ui/install-review-badg
                 hover:text-fg-primary transition-colors cursor-pointer shrink-0">
               <lucide-icon [img]="ArrowLeft" [size]="20"></lucide-icon>
             </button>
+            <app-brand-logo [brand]="v.brand" [size]="40" [chip]="true" />
             <div class="min-w-0">
               <h1 class="text-2xl sm:text-3xl font-display font-bold text-fg-primary truncate">{{ v.plate }}</h1>
               <p class="text-xs sm:text-sm text-fg-tertiary truncate">

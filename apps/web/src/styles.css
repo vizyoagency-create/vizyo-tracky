@@ -502,6 +502,31 @@ button, a, [role="button"], input[type="button"], input[type="submit"], label {
 .tracky-acc--on { background: #10e0a0; }
 .tracky-acc--off { background: #6b7280; }
 
+/* Badge logo de marque (haut-gauche, pastille blanche pour rester lisible) */
+.tracky-marker__brand {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  background: #fff;
+  border: 2px solid white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.tracky-marker__brand--dark {
+  background: #1a1d21;
+}
+.tracky-marker__brand img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 /* Plaque flottante */
 .tracky-marker__plate {
   position: absolute;
@@ -624,6 +649,7 @@ textarea:focus-visible,
 .tracky-marker--mini .tracky-marker__pulse,
 .tracky-marker--mini .tracky-marker__heading-ring,
 .tracky-marker--mini .tracky-marker__acc,
+.tracky-marker--mini .tracky-marker__brand,
 .tracky-marker--mini .tracky-marker__plate {
   display: none;
 }
