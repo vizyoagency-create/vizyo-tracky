@@ -1,6 +1,7 @@
 import * as maplibregl from 'maplibre-gl';
 import type { Map as MlMap, Marker as MlMarker } from 'maplibre-gl';
 import { getVehicleSvg } from './vehicle-icons';
+import { findBrand } from './vehicle-brands';
 
 export function speedColor(speed: number): string {
   if (speed <= 0) return '#5C746C';
@@ -22,6 +23,8 @@ export interface VehicleMarkerData {
   vehicleId: string;
   type: string;
   plate?: string;
+  /** Marque (texte libre). Sert à afficher le logo de marque sur le marqueur. */
+  brand?: string | null;
   speedKmh: number;
   heading: number;
   ignition: boolean;
@@ -65,6 +68,9 @@ export function buildVehicleMarkerEl(data: VehicleMarkerData): HTMLElement {
   const isArrow = data.type === 'OTHER';
   const headingDeg = Math.round(data.heading || 0);
   const svgContent = getVehicleSvg(data.type);
+  const brandInfo = findBrand(data.brand);
+  const logoUrl = brandInfo ? `logos/brands/${brandInfo.slug}.png` : null;
+  const brandDarkClass = brandInfo?.darkBg ? ' tracky-marker__brand--dark' : '';
 
   // Pour les types vehicule (CAR, TRUCK, etc.), l'icone reste droite : on pivote
   // uniquement la fleche externe (.tracky-marker__heading-ring). Pour OTHER,
@@ -90,8 +96,17 @@ export function buildVehicleMarkerEl(data: VehicleMarkerData): HTMLElement {
       </svg>
     </div>
     <div class="tracky-marker__acc ${ignClass}"></div>
+    ${logoUrl ? `<div class="tracky-marker__brand${brandDarkClass}"><img src="${escapeHtml(logoUrl)}" alt="" /></div>` : ''}
     ${data.plate ? `<div class="tracky-marker__plate">${escapeHtml(data.plate)}</div>` : ''}
   `;
+  // Si le PNG du logo n'existe pas (pas encore exporté), on retire le badge au
+  // lieu d'afficher une image cassée. Pas de handler inline (compat CSP).
+  const logoImg = el.querySelector<HTMLImageElement>('.tracky-marker__brand img');
+  if (logoImg) {
+    logoImg.addEventListener('error', () => {
+      logoImg.closest('.tracky-marker__brand')?.remove();
+    });
+  }
   return el;
 }
 

@@ -18,6 +18,7 @@ import { EngineControlButtonComponent } from '../engine-control/engine-control-b
 import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fleet-badge.component';
 import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.component';
 import { ConnectivityBadgeComponent } from '../../shared/ui/connectivity-badge/connectivity-badge.component';
+import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.component';
 import { InstallReviewBadgeComponent } from '../../shared/ui/install-review-badge/install-review-badge.component';
 import { TrackClickDirective } from '../../shared/directives/track-click.directive';
 import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnectivityState } from '@vizyo/tracky-shared';
@@ -26,7 +27,7 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
   selector: 'app-vehicles-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, InstallReviewBadgeComponent, TrackClickDirective, EngineControlButtonComponent],
+  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, BrandLogoComponent, InstallReviewBadgeComponent, TrackClickDirective, EngineControlButtonComponent],
   template: `
     @if (auth.isWatchman()) {
       <!-- ───────────────────────────────────────────────────────────────────
@@ -56,6 +57,7 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
             @for (v of vehicles(); track v.id) {
               <div class="wn-row">
                 <div class="wn-veh">
+                  <app-brand-logo [brand]="v.brand" [size]="26" [chip]="true" />
                   <div class="wn-icon" [innerHTML]="getTypeIconHtml(v.type)"></div>
                   <div class="wn-veh-text">
                     <span class="wn-plate">{{ v.plate }}</span>
@@ -200,13 +202,16 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
                   <tr class="v-row">
                     <td class="v-td-plate"><a [routerLink]="['/vehicles', v.id]">{{ v.plate }}</a></td>
                     <td>
-                      @if (v.brand) {
-                        {{ v.brand }} {{ v.model ?? '' }}
-                      } @else {
-                        <span class="muted">Non renseigné</span>
-                      }
-                      @if (v.year) { <span class="v-td-year">· {{ v.year }}</span> }
-                      @if (v.group) { <app-group-badge [group]="v.group" /> }
+                      <span class="v-td-veh">
+                        <app-brand-logo [brand]="v.brand" [size]="20" [chip]="true" />
+                        @if (v.brand) {
+                          <span>{{ v.brand }} {{ v.model ?? '' }}</span>
+                        } @else {
+                          <span class="muted">Non renseigné</span>
+                        }
+                        @if (v.year) { <span class="v-td-year">· {{ v.year }}</span> }
+                        @if (v.group) { <app-group-badge [group]="v.group" /> }
+                      </span>
                     </td>
                     <td>
                       @if (liveStatus(v.id); as ls) {
@@ -273,6 +278,7 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
                         <div class="v-type-icon" [class]="connectivity(v) === 'ONLINE' ? 'online' : 'offline'"
                              [innerHTML]="getTypeIconHtml(v.type)"></div>
                         <span class="v-group-row-plate">{{ v.plate }}</span>
+                        <app-brand-logo [brand]="v.brand" [size]="18" [chip]="true" />
                         @if (v.brand) { <span class="v-group-row-brand">{{ v.brand }} {{ v.model ?? '' }}</span> }
                         <span class="v-group-row-spacer"></span>
                         @if (liveStatus(v.id); as ls) {
@@ -303,6 +309,7 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
                     <div class="v-type-icon" [class]="connectivity(v) === 'ONLINE' ? 'online' : 'offline'"
                       [innerHTML]="getTypeIconHtml(v.type)"></div>
                     <span class="v-plate">{{ v.plate }}</span>
+                    <app-brand-logo [brand]="v.brand" [size]="24" [chip]="true" />
                   </div>
                   @if (v.year) {
                     <span class="v-year">{{ v.year }}</span>
@@ -643,6 +650,7 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
     .v-table td { padding: 10px 14px; color: var(--fg-secondary); vertical-align: middle }
     .v-td-plate a { font-family: var(--font-mono, monospace); font-weight: 800; color: var(--fg-primary); text-decoration: none; letter-spacing: .03em }
     .v-td-plate a:hover { color: var(--tracky-light) }
+    .v-td-veh { display: inline-flex; align-items: center; gap: 7px; flex-wrap: wrap }
     .v-td-year { color: var(--fg-tertiary); font-size: 12px }
     .v-td-imei { font-family: var(--font-mono, monospace); font-size: 12px; color: var(--fg-tertiary) }
     .v-table .muted { color: var(--fg-tertiary); font-style: italic }

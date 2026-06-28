@@ -83,6 +83,8 @@ interface MarkerEntry {
 interface VehicleMeta {
   type: string;
   plate: string;
+  /** Marque (texte libre) pour le logo de marque sur le marqueur. */
+  brand?: string | null;
   /** V1.15 — Source SA pour la card popup (badge fleet + meta tracker). */
   fleetId?: string | null;
   imei?: string | null;
@@ -2192,10 +2194,12 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         trackerImei?: string | null;
         lastSeenAt?: string | null;
         group?: { id: string; name: string } | null;
+        brand?: string | null;
       };
       this.vehicleMeta.set(v.vehicleId, {
         type: v.type,
         plate: v.plate,
+        brand: snapMeta.brand ?? null,
         fleetId: snapMeta.fleetId ?? null,
         imei: snapMeta.trackerImei ?? null,
         lastSeenAt: snapMeta.lastSeenAt ?? null,
@@ -2211,6 +2215,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         this.vehicleMeta.set(v.id, {
           type: cast.type ?? 'OTHER',
           plate: v.plate,
+          brand: v.brand ?? null,
           fleetId: v.fleetId ?? null,
           imei: v.tracker?.imei ?? null,
           lastSeenAt: v.tracker?.lastSeenAt ?? null,
@@ -3385,6 +3390,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         vehicleId: pos.vehicleId,
         type: meta.type,
         plate: meta.plate,
+        brand: meta.brand ?? null,
         speedKmh: pos.speedKmh,
         heading: pos.heading,
         ignition: patched.ignition,

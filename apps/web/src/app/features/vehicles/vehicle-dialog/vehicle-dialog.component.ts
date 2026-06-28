@@ -9,11 +9,13 @@ import { FleetsApiService, type FleetSummary } from '../../../core/services/flee
 import { TrackersApiService } from '../../../core/services/trackers.service';
 import { VehiclesApiService } from '../../../core/services/vehicles.service';
 import { VEHICLE_TYPES } from '../../../shared/utils/vehicle-icons';
+import { VEHICLE_BRANDS } from '../../../shared/utils/vehicle-brands';
+import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.component';
 
 @Component({
   selector: 'app-vehicle-dialog',
   standalone: true,
-  imports: [FormsModule, LucideAngularModule],
+  imports: [FormsModule, LucideAngularModule, BrandLogoComponent],
   template: `
     @if (open()) {
       <div class="fixed inset-0 z-[9000] flex justify-end">
@@ -156,7 +158,15 @@ import { VEHICLE_TYPES } from '../../../shared/utils/vehicle-icons';
                   <div class="grid grid-cols-2 gap-3">
                     <div>
                       <label class="field-label">Marque</label>
-                      <input type="text" [(ngModel)]="brand" placeholder="Renault" class="field-input" />
+                      <div class="brand-field">
+                        <app-brand-logo [brand]="brand" [size]="22" [chip]="true" />
+                        <select [(ngModel)]="brand" class="field-input">
+                          <option value="">— Sélectionner —</option>
+                          @for (b of brandOptions(); track b) {
+                            <option [value]="b">{{ b }}</option>
+                          }
+                        </select>
+                      </div>
                     </div>
                     <div>
                       <label class="field-label">Modèle</label>
@@ -281,6 +291,8 @@ import { VEHICLE_TYPES } from '../../../shared/utils/vehicle-icons';
     }
     select.field-input option { background: #1a1d21; color: #e5e7eb }
     select.field-input option:checked { background: #10b981; color: white }
+    .brand-field { display: flex; align-items: center; gap: 8px }
+    .brand-field select { flex: 1; min-width: 0 }
     .type-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px }
     .type-btn {
       display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 4px; border-radius: 10px;
@@ -325,6 +337,21 @@ export class VehicleDialogComponent {
   private readonly createdVehicleId = signal('');
 
   protected readonly vehicleTypes = VEHICLE_TYPES;
+  private readonly brandLabels = VEHICLE_BRANDS.map((b) => b.label);
+
+  /**
+   * Options de la liste déroulante Marque. Inclut la valeur courante si elle
+   * n'est pas dans la liste connue (ex. ancien véhicule saisi en texte libre)
+   * pour ne pas la perdre à l'édition.
+   */
+  protected brandOptions(): string[] {
+    const current = this.brand.trim();
+    if (current && !this.brandLabels.includes(current)) {
+      return [current, ...this.brandLabels];
+    }
+    return this.brandLabels;
+  }
+
   protected plate = '';
   protected vehicleType = 'CAR';
   protected brand = '';
