@@ -901,3 +901,43 @@ textarea:focus-visible,
   background: rgba(16, 224, 160, 0.22);
   border-color: rgba(16, 224, 160, 0.48);
 }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Composants partagés (dedup) — source unique pour éléments répétés dans
+   plusieurs features. Les composants Angular peuvent utiliser ces classes
+   directement (styles globaux, non scopés).
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* Bouton primaire (vert de marque). Remplace les .add-btn/.btn-primary dupliqués. */
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 9px 18px; border-radius: 10px;
+  font-size: 12px; font-weight: 700;
+  background: var(--tracky); color: #fff;
+  border: none; cursor: pointer;
+  box-shadow: 0 2px 8px rgba(5, 150, 105, 0.3);
+  transition: background 0.2s;
+}
+.btn-primary:hover { background: var(--tracky-dark); }
+.btn-primary:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
+
+/* Interrupteur on/off. Markup attendu :
+   <label class="toggle"><input type="checkbox"><span class="toggle-track">
+     <span class="toggle-thumb"></span></span></label> */
+.toggle { position: relative; display: inline-block; cursor: pointer; flex-shrink: 0; }
+.toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+.toggle-track {
+  display: flex; align-items: center; width: 40px; height: 22px;
+  background: rgba(239, 68, 68, 0.15); border: 1.5px solid rgba(239, 68, 68, 0.25);
+  border-radius: 22px; transition: all 0.25s; position: relative; padding: 0 2px;
+}
+.toggle-thumb {
+  position: relative; width: 16px; height: 16px;
+  display: flex; align-items: center; justify-content: center;
+  background: #ef4444; border-radius: 50%;
+  transition: transform 0.25s, background 0.25s; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+.toggle-thumb::after { content: '✕'; font-size: 8px; font-weight: 700; color: white; line-height: 1; }
+.toggle input:checked + .toggle-track { background: rgba(16, 224, 160, 0.15); border-color: rgba(16, 224, 160, 0.3); }
+.toggle input:checked + .toggle-track .toggle-thumb { transform: translateX(18px); background: var(--tracky-light); }
+.toggle input:checked + .toggle-track .toggle-thumb::after { content: '✓'; }

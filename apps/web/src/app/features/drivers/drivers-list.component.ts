@@ -43,7 +43,7 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
               <input type="checkbox" [checked]="includeArchived()" (change)="toggleArchived()" />
               <span>Archivés</span>
             </label>
-            <button (click)="openCreateDrawer()" class="d-add-btn">
+            <button (click)="openCreateDrawer()" class="btn-primary">
               <lucide-icon [img]="Plus" [size]="15"></lucide-icon> Nouveau
             </button>
           }
@@ -203,12 +203,7 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
       font-size: 11px; color: var(--fg-tertiary); cursor: pointer;
     }
     .d-toggle-archived input { accent-color: var(--tracky); cursor: pointer }
-    .d-add-btn {
-      display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 10px;
-      font-size: 12px; font-weight: 700; background: #059669; color: white; border: none; cursor: pointer;
-      box-shadow: 0 2px 8px rgba(5,150,105,.3);
-    }
-    .d-add-btn:hover { background: #047857 }
+    /* bouton « Ajouter » : .btn-primary global (styles.css) */
 
     .d-loading { position: relative; z-index: 1; display: flex; justify-content: center; padding: 60px 0 }
     .d-empty {

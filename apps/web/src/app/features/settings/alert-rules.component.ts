@@ -272,14 +272,7 @@ const EMPTY_FORM: RuleForm = {
     .pill-off { background: var(--bg-tertiary); color: var(--fg-tertiary) }
     .channels { display: flex; gap: 4px; flex-wrap: wrap }
     .ch-pill { display: inline-flex; align-items: center; padding: 3px 6px; background: var(--bg-tertiary); border-radius: 4px; color: var(--fg-secondary) }
-    .btn-primary {
-      background: var(--tracky); color: var(--bg-primary);
-      border: 0; padding: 8px 14px; border-radius: 8px;
-      font-weight: 600; font-size: 12px; cursor: pointer;
-      display: inline-flex; align-items: center; gap: 6px;
-    }
-    .btn-primary:hover { background: var(--tracky-light) }
-    .btn-primary:disabled { opacity: .5; cursor: not-allowed }
+    /* .btn-primary : styles globaux (styles.css) */
     .btn-ghost {
       background: transparent; color: var(--fg-secondary);
       border: 1px solid var(--border-subtle); padding: 8px 14px; border-radius: 8px;

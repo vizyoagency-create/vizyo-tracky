@@ -552,13 +552,13 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
       background: var(--bg-secondary); color: var(--fg-tertiary); cursor: pointer; transition: all .2s; border: none;
     }
     .tab-btn:hover { color: var(--fg-secondary) }
-    .tab-btn.active { background: #059669; color: white }
+    .tab-btn.active { background: var(--tracky); color: white }
 
     .add-btn {
       display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 10px; font-size: 12px; font-weight: 700;
-      background: #059669; color: white; border: none; cursor: pointer; box-shadow: 0 2px 8px rgba(5,150,105,.3);
+      background: var(--tracky); color: white; border: none; cursor: pointer; box-shadow: 0 2px 8px rgba(5,150,105,.3);
     }
-    .add-btn:hover { background: #047857 }
+    .add-btn:hover { background: var(--tracky-dark) }
 
     /* FAB mobile : visible uniquement < 768px (cohérent avec Map FAB).
        Doit se poser AU-DESSUS de la bottom-bar (60-72px selon iOS PWA bump
@@ -638,7 +638,7 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
     .view-switch { display: flex; margin-left: auto; border-radius: 9px; border: 1px solid var(--border-subtle); overflow: hidden }
     .view-btn { display: flex; align-items: center; padding: 7px 11px; background: var(--bg-secondary); color: var(--fg-tertiary); border: none; cursor: pointer; transition: all .2s }
     .view-btn:hover { color: var(--fg-secondary) }
-    .view-btn.active { background: #059669; color: #fff }
+    .view-btn.active { background: var(--tracky); color: #fff }
 
     /* #3 — vue tableau véhicules */
     .v-table-wrap { position: relative; z-index: 1; overflow-x: auto; border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--bg-secondary) }

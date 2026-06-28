@@ -491,8 +491,8 @@ interface TaskForm {
     .day-move { padding: 5px 8px; border-radius: 8px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-tertiary); font-size: 11px; outline: none; max-width: 120px }
     .act { display: inline-flex; align-items: center; gap: 4px; padding: 5px 9px; border-radius: 8px; font-size: 11px; font-weight: 600; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-tertiary); cursor: pointer }
     .act:hover { color: var(--tracky-light); border-color: rgba(16,224,160,.2) }
-    .act.primary { background: #059669; color: #fff; border-color: transparent }
-    .act.primary:hover { background: #047857; color: #fff }
+    .act.primary { background: var(--tracky); color: #fff; border-color: transparent }
+    .act.primary:hover { background: var(--tracky-dark); color: #fff }
     .act.danger:hover { color: #f87171; border-color: rgba(239,68,68,.2) }
 
     .add-row { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; padding: 7px 12px; border-radius: 8px; font-size: 11px; font-weight: 600; background: transparent; border: 1px dashed var(--border-subtle); color: var(--fg-tertiary); cursor: pointer }
@@ -519,8 +519,7 @@ interface TaskForm {
     .btn-ghost { padding: 9px 16px; border-radius: 10px; font-size: 12px; font-weight: 600; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-secondary); cursor: pointer }
     .btn-ghost.sm { padding: 6px 10px; font-size: 11px }
     .btn-ghost.sm.danger:hover { color: #f87171; border-color: rgba(239,68,68,.2) }
-    .btn-primary { display: inline-flex; align-items: center; gap: 6px; padding: 9px 18px; border-radius: 10px; font-size: 12px; font-weight: 700; background: #059669; color: #fff; border: none; cursor: pointer }
-    .btn-primary:disabled { opacity: .5; cursor: default }
+    /* .btn-primary : styles globaux (styles.css) */
 
     /* ════════════════════════════════════════════════════════════
        BASCULE DE VUE (segmented control Serpent / Liste)

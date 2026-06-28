@@ -120,8 +120,8 @@ import { formatDateFr, PLAN_STATUS_CLASS, PLAN_STATUS_LABELS } from './installat
     .ip-back:hover { color: var(--tracky-light) }
     .ip-head h1 { font-family: var(--font-display, Poppins, sans-serif); font-size: 24px; font-weight: 800; color: var(--fg-primary); margin: 0 }
     .ip-sub { font-size: 13px; color: var(--fg-tertiary); margin: 4px 0 0 }
-    .ip-add { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 10px; font-size: 12px; font-weight: 700; background: #059669; color: #fff; border: none; cursor: pointer; box-shadow: 0 2px 8px rgba(5,150,105,.3) }
-    .ip-add:hover { background: #047857 }
+    .ip-add { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 10px; font-size: 12px; font-weight: 700; background: var(--tracky); color: #fff; border: none; cursor: pointer; box-shadow: 0 2px 8px rgba(5,150,105,.3) }
+    .ip-add:hover { background: var(--tracky-dark) }
 
     .ip-loading { display: flex; justify-content: center; padding: 60px 0 }
     .spinner { width: 22px; height: 22px; border: 2px solid var(--border-subtle); border-top-color: var(--tracky-light); border-radius: 50%; animation: sp 0.7s linear infinite; display: inline-block }
@@ -170,8 +170,7 @@ import { formatDateFr, PLAN_STATUS_CLASS, PLAN_STATUS_LABELS } from './installat
     .fi { width: 100%; padding: 9px 12px; background: var(--bg-secondary); border: 1.5px solid var(--border-subtle); border-radius: 10px; color: var(--fg-primary); font-size: 13px; outline: none }
     .fi:focus { border-color: var(--tracky) }
     .btn-ghost { padding: 9px 16px; border-radius: 10px; font-size: 12px; font-weight: 600; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-secondary); cursor: pointer }
-    .btn-primary { display: inline-flex; align-items: center; gap: 6px; padding: 9px 18px; border-radius: 10px; font-size: 12px; font-weight: 700; background: #059669; color: #fff; border: none; cursor: pointer }
-    .btn-primary:disabled { opacity: .5; cursor: default }
+    /* .btn-primary : styles globaux (styles.css) */
   `],
 })
 export class InstallationsListComponent implements OnInit {
