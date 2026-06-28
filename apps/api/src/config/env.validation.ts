@@ -80,16 +80,23 @@ const envSchema = z.object({
   WHEREVER_SIM_API_URL: z.string().default('https://graphql.api.whereversim.com/graphql'),
   WHEREVER_SIM_TOKEN: z.string().default(''),
 
-  // Retention donnees (V1.18) — purge auto nocturne (3h30), cf. DataRetentionService.
-  // SAMPLING_DECISIONS_RETENTION_DAYS : audit-trail du sampling. Defaut 7j (deja
-  //   documente dans le schema Prisma). 0 => desactive.
-  // POSITIONS_RETENTION_DAYS : positions GPS. DESACTIVE par defaut (0 = retention
-  //   infinie, comportement historique). Purger supprime le replay des vieux
-  //   trajets => duree de conservation = decision metier/legale, a activer en
-  //   connaissance de cause. Suppression par lots (10k) pour ne pas verrouiller
-  //   l'ingestion temps reel.
+  // Retention donnees — purge auto nocturne (3h30), cf. DataRetentionService.
+  // SAMPLING_DECISIONS_RETENTION_DAYS : audit-trail du sampling. Defaut 7j. 0 => desactive.
+  // --- Sprint 6 — Retention & archivage des positions GPS ---
+  // POSITIONS_RETENTION_DAYS : fenetre ACTIVE (jours) avant passage en archive/preavis.
+  //   Defaut 365. 0 => retention infinie = TOUT desactive (ni snapshot ni suppression).
+  // POSITIONS_ARCHIVE_DAYS : duree du PREAVIS / archive recuperable (jours) au-dela de la
+  //   fenetre active, AVANT suppression. Defaut 30. La donnee reste en base (recuperable)
+  //   pendant ce mois, marquee « suppression le … » dans les vues de suivi.
+  // POSITIONS_PURGE_ENABLED : 'true' => suppression REELLE des positions au-dela de
+  //   (retention+archive) jours, par lots (10k) bornes. Defaut 'false' => DRY-RUN : le cron
+  //   COMPTE et alimente les vues mais N'EFFACE RIEN. La vraie suppression ne s'active
+  //   qu'APRES validation du dry-run. Lecture via
+  //   config.get('POSITIONS_PURGE_ENABLED',{infer:true})==='true'.
   SAMPLING_DECISIONS_RETENTION_DAYS: z.coerce.number().int().nonnegative().default(7),
-  POSITIONS_RETENTION_DAYS: z.coerce.number().int().nonnegative().default(0),
+  POSITIONS_RETENTION_DAYS: z.coerce.number().int().nonnegative().default(365),
+  POSITIONS_ARCHIVE_DAYS: z.coerce.number().int().nonnegative().default(30),
+  POSITIONS_PURGE_ENABLED: z.string().default('false'),
   // Retention des logs (LogCleanupService, cron 3h00) — env-configurables pour
   // ajuster sans redeploy. WIRE_LOGS = trames brutes (volumineux : 1 ligne/trame),
   // ERROR_LOGS = erreurs applicatives.
