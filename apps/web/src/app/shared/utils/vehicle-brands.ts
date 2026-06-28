@@ -48,24 +48,25 @@ export function normalizeBrandKey(input: string): string {
  */
 export const VEHICLE_BRANDS: VehicleBrand[] = [
   { slug: 'alfa-romeo', label: 'Alfa Romeo', aliases: ['alfa'] },
-  // Logo fourni = badge RS3 (tracé clair) → pastille sombre pour rester lisible.
-  { slug: 'audi', label: 'Audi', darkBg: true },
+  { slug: 'audi', label: 'Audi' },
+  // Badge modèle RS3 (tracé clair) → pastille sombre pour rester lisible.
+  { slug: 'audi-rs3', label: 'Audi RS3', aliases: ['rs3', 'audirs3'], darkBg: true },
   { slug: 'bmw', label: 'BMW' },
   { slug: 'citroen', label: 'Citroën', aliases: ['citroen'] },
   { slug: 'dacia', label: 'Dacia' },
-  { slug: 'ds', label: 'DS' },
+  { slug: 'ds', label: 'DS', darkBg: true },
   { slug: 'fiat', label: 'Fiat' },
   { slug: 'ford', label: 'Ford' },
-  { slug: 'honda', label: 'Honda' },
-  { slug: 'hyundai', label: 'Hyundai' },
+  { slug: 'honda', label: 'Honda', darkBg: true },
+  { slug: 'hyundai', label: 'Hyundai', darkBg: true },
   { slug: 'isuzu', label: 'Isuzu' },
-  { slug: 'iveco', label: 'Iveco' },
+  { slug: 'iveco', label: 'Iveco', darkBg: true },
   { slug: 'jeep', label: 'Jeep' },
   { slug: 'kia', label: 'Kia' },
   { slug: 'land-rover', label: 'Land Rover', aliases: ['landrover'] },
-  { slug: 'man', label: 'MAN' },
+  { slug: 'man', label: 'MAN', darkBg: true },
   { slug: 'mazda', label: 'Mazda' },
-  { slug: 'mercedes', label: 'Mercedes-Benz', aliases: ['mercedes', 'mercedesbenz', 'benz'] },
+  { slug: 'mercedes', label: 'Mercedes-Benz', aliases: ['mercedes', 'mercedesbenz', 'benz'], darkBg: true },
   { slug: 'mini', label: 'Mini' },
   { slug: 'mitsubishi', label: 'Mitsubishi' },
   { slug: 'nissan', label: 'Nissan' },
@@ -82,7 +83,7 @@ export const VEHICLE_BRANDS: VehicleBrand[] = [
   { slug: 'tesla', label: 'Tesla' },
   { slug: 'toyota', label: 'Toyota' },
   { slug: 'volkswagen', label: 'Volkswagen', aliases: ['vw'] },
-  { slug: 'volvo', label: 'Volvo' },
+  { slug: 'volvo', label: 'Volvo', darkBg: true },
 ];
 
 /** Index normalisé (label + alias) → marque, construit une seule fois. */
