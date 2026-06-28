@@ -256,6 +256,15 @@ export const routes: Routes = [
         data: { title: 'Audio — flottes éligibles' },
       },
       {
+        // Sprint 6 — Rétention des positions (état global + par flotte + recalcul). SUPER_ADMIN.
+        path: 'admin/retention',
+        pathMatch: 'full',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/observability/admin-retention.component').then((m) => m.AdminRetentionComponent),
+        data: { title: 'Rétention des données' },
+      },
+      {
         path: 'admin/trackers/:id/sampling',
         canActivate: [superAdminGuard],
         loadComponent: () =>

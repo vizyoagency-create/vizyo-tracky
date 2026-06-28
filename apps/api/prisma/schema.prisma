@@ -459,6 +459,8 @@ model Position {
   createdAt  DateTime @default(now())
 
   @@index([trackerId, timestamp(sort: Desc)])
+  // Sprint 6 — ancrage de la purge par rétention (createdAt = heure serveur, fiable).
+  @@index([createdAt])
   @@map("positions")
 }
 
@@ -1271,6 +1273,24 @@ model SystemMetric {
 
   @@index([timestamp])
   @@map("system_metrics")
+}
+
+/// Sprint 6 — Snapshot de rétention des positions, calculé par DataRetentionService
+/// (cron nocturne 3h30 + rafraîchissement à la demande super-admin). Une ligne
+/// `scope='GLOBAL'` + une par flotte. Évite de scanner `positions` (table volumineuse)
+/// à chaque ouverture des vues de suivi. `scope` = 'GLOBAL' ou un fleetId.
+model RetentionSnapshot {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  scope           String    @unique
+  fleetName       String    @default("")
+  activeCount     Int       @default(0)
+  archiveCount    Int       @default(0)
+  toDeleteCount   Int       @default(0)
+  oldestCreatedAt DateTime?
+  nextDeletionAt  DateTime?
+  computedAt      DateTime  @default(now())
+
+  @@map("retention_snapshots")
 }
 
 /// Sprint user-activity — une session = une présence continue d'un user dans

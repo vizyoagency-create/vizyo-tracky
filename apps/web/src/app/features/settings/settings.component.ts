@@ -11,12 +11,13 @@ import { PermissionsService } from '../../core/services/permissions.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { ThemeService } from '../../core/theme/theme.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
+import { RetentionFleetCardComponent } from './retention-fleet-card.component';
 import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
 
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [FormsModule, LucideAngularModule, RouterLink],
+  imports: [FormsModule, LucideAngularModule, RouterLink, RetentionFleetCardComponent],
   template: `
     <div class="settings-page">
       <div class="settings-header">
@@ -247,6 +248,11 @@ import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
               </a>
             </div>
           </div>
+          }
+
+          <!-- Sprint 6 — Rétention des données de la flotte (lecture seule, FLEET_ADMIN). -->
+          @if (user()?.role === 'FLEET_ADMIN') {
+            <app-retention-fleet-card />
           }
 
           <!-- CARTE -->

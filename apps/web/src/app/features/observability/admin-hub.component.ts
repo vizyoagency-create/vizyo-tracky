@@ -202,6 +202,19 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
             <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
           </div>
         </a>
+
+        <!-- ── RÉTENTION DES DONNÉES (wide) — Sprint 6 ── -->
+        <a routerLink="/admin/retention" class="card card-wide" style="--i:12">
+          <span class="accent accent-teal"></span>
+          <div class="body body-row">
+            <div class="ico ico-teal"><lucide-icon [img]="Database" [size]="20"></lucide-icon></div>
+            <div class="body-text">
+              <h3>Rétention des données</h3>
+              <p class="desc">État de conservation des positions GPS (global + par flotte) : actives, archive/préavis récupérable, et ce qui sera supprimé — recalcul à la demande. Mode observation par défaut (aucune suppression).</p>
+            </div>
+            <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
+          </div>
+        </a>
       </div>
     </div>
   `,
