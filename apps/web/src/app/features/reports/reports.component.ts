@@ -1,7 +1,7 @@
-import { ChangeDetectionStrategy, Component, computed, HostListener, inject, OnDestroy, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, ElementRef, HostListener, inject, OnDestroy, OnInit, signal, viewChild } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, BarChart3, Route, Clock, Gauge, Play, ChevronDown, Truck, Check, MessageSquare, Pencil, UserRound, Download, Calendar, FileText, Layers } from 'lucide-angular';
+import { LucideAngularModule, BarChart3, Route, Clock, Gauge, Play, ChevronDown, Truck, Check, MessageSquare, Pencil, UserRound, Download, Calendar, FileText, Layers, ArrowUp, ArrowDown, ArrowUpDown, FileSpreadsheet, RotateCcw, MousePointerClick } from 'lucide-angular';
 import type { DriverDto, TripDailySummaryDto, TripDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { DriversApiService } from '../../core/services/drivers.service';
@@ -26,7 +26,13 @@ import {
   aggregateKpis,
   clampSpeed as clampSpeedFn,
   formatDuration as formatDurationFn,
+  kpiToSortColumn,
   max0 as max0Fn,
+  normalizeCustomRange,
+  sortTrips,
+  todayIsoLocal,
+  type SortDirection,
+  type TripSortColumn,
 } from './reports.utils';
 
 @Component({
@@ -66,6 +72,19 @@ import {
           <button type="button" (click)="onExportCsv('alerts')" trackClick="rapport-export-alerts" [disabled]="!!exporting()" class="rep-export-btn">
             <lucide-icon [img]="DownloadIcon" [size]="13"></lucide-icon>
             <span>{{ exporting() === 'csv-summary' ? 'Export…' : 'CSV alertes' }}</span>
+          </button>
+          <!-- Sprint 5 — Export Excel « soigné » PAR VÉHICULE : nécessite un
+               véhicule précis (sinon désactivé + hint). -->
+          <button type="button" (click)="onExportExcel()" trackClick="rapport-export-excel"
+                  [disabled]="!!exporting() || !canExportExcel()"
+                  [title]="canExportExcel() ? 'Export Excel détaillé du véhicule' : 'Sélectionnez un véhicule'"
+                  class="rep-export-btn rep-export-btn--excel">
+            @if (exporting() === 'excel') {
+              <span class="rep-export-spin"></span>
+            } @else {
+              <lucide-icon [img]="FileSpreadsheetIcon" [size]="13"></lucide-icon>
+            }
+            <span>{{ exporting() === 'excel' ? 'Export…' : 'Excel' }}</span>
           </button>
         </div>
       </div>
@@ -207,11 +226,14 @@ import {
                 @if (customRangeError(); as err) {
                   <p class="rep-custom-error">{{ err }}</p>
                 }
+                @if (customFrom() && !customTo() && !customRangeError()) {
+                  <p class="rep-custom-hint">« Jusqu'à » sera fixé à aujourd'hui.</p>
+                }
                 <div class="rep-custom-actions">
                   <button type="button" (click)="customRangeOpen.set(false)" class="rep-custom-cancel">Annuler</button>
                   <button type="button"
                           (click)="applyCustomRange()"
-                          [disabled]="!!customRangeError() || !customFrom() || !customTo()"
+                          [disabled]="!customRangeValid()"
                           class="rep-custom-apply">
                     Appliquer
                   </button>
@@ -243,6 +265,16 @@ import {
             @if (recomputing()) { Recalcul... } @else { Recalculer }
           </button>
         }
+
+        <!-- Sprint 5 — Réinitialiser : tous groupes / tous véhicules / 7 jours.
+             Désactivé quand les filtres sont déjà sur leurs valeurs par défaut. -->
+        <button type="button" (click)="resetFilters()" [disabled]="!filtersDirty()"
+                trackClick="rapport-reset-filtres"
+                title="Réinitialiser les filtres (tous véhicules · 7 jours)"
+                class="rep-reset-btn">
+          <lucide-icon [img]="RotateCcwIcon" [size]="13"></lucide-icon>
+          <span>Réinitialiser</span>
+        </button>
       </div>
 
       <!-- Sparkline KPI cards : compactes, lecture rapide -->
@@ -296,10 +328,18 @@ import {
           </div>
         </div>
 
-        <div class="rep-kpi-card">
+        <!-- Sprint 5 — KPI « Vitesse max » CLIQUABLE : trie le tableau par
+             vitesse max desc + scrolle + surligne la 1ʳᵉ ligne (le trajet le
+             plus rapide). Affordance : curseur, hover, icône de clic. -->
+        <button type="button" class="rep-kpi-card rep-kpi-card--clickable"
+                (click)="onMaxSpeedKpiClick()"
+                [disabled]="trips().length === 0"
+                trackClick="rapport-kpi-vitesse-max"
+                title="Voir le trajet le plus rapide (trie le tableau)">
           <div class="rep-kpi-head">
             <lucide-icon [img]="Gauge" [size]="14"></lucide-icon>
             <span>Vitesse max</span>
+            <lucide-icon [img]="MousePointerClickIcon" [size]="12" class="rep-kpi-click-hint"></lucide-icon>
           </div>
           <div class="rep-kpi-body">
             <p class="rep-kpi-value">
@@ -309,7 +349,7 @@ import {
             <span class="rep-kpi-dot" [style.background]="speedDotColor()"
                   [attr.title]="speedDotLabel()" [attr.aria-label]="speedDotLabel()"></span>
           </div>
-        </div>
+        </button>
       </div>
 
       <!-- Charts : full-width line+bar puis 2 demi-largeur en grid -->
@@ -351,24 +391,55 @@ import {
           Aucun trajet pour cette période
         </div>
       } @else {
-        <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-x-auto">
+        <div #tripsTable class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-x-auto">
           <table class="w-full text-sm" style="min-width:880px">
             <thead class="border-b border-border-subtle text-fg-tertiary text-xs uppercase">
               <tr>
-                <th class="p-3 text-left">Départ</th>
+                <th class="p-0 text-left">
+                  <button type="button" class="rep-th rep-th--left" (click)="onSort('startedAt')">
+                    <span>Départ</span>
+                    <lucide-icon [img]="sortIcon('startedAt')" [size]="13"
+                                 [class.rep-th-arrow--active]="sortIndicator('startedAt')"></lucide-icon>
+                  </button>
+                </th>
                 <th class="p-3 text-left">Arrivée</th>
-                <th class="p-3 text-right">Durée</th>
-                <th class="p-3 text-right">Distance</th>
-                <th class="p-3 text-right">V. moy</th>
-                <th class="p-3 text-right">V. max</th>
+                <th class="p-0 text-right">
+                  <button type="button" class="rep-th rep-th--right" (click)="onSort('durationSeconds')">
+                    <span>Durée</span>
+                    <lucide-icon [img]="sortIcon('durationSeconds')" [size]="13"
+                                 [class.rep-th-arrow--active]="sortIndicator('durationSeconds')"></lucide-icon>
+                  </button>
+                </th>
+                <th class="p-0 text-right">
+                  <button type="button" class="rep-th rep-th--right" (click)="onSort('distanceMeters')">
+                    <span>Distance</span>
+                    <lucide-icon [img]="sortIcon('distanceMeters')" [size]="13"
+                                 [class.rep-th-arrow--active]="sortIndicator('distanceMeters')"></lucide-icon>
+                  </button>
+                </th>
+                <th class="p-0 text-right">
+                  <button type="button" class="rep-th rep-th--right" (click)="onSort('avgSpeed')">
+                    <span>V. moy</span>
+                    <lucide-icon [img]="sortIcon('avgSpeed')" [size]="13"
+                                 [class.rep-th-arrow--active]="sortIndicator('avgSpeed')"></lucide-icon>
+                  </button>
+                </th>
+                <th class="p-0 text-right">
+                  <button type="button" class="rep-th rep-th--right" (click)="onSort('maxSpeed')">
+                    <span>V. max</span>
+                    <lucide-icon [img]="sortIcon('maxSpeed')" [size]="13"
+                                 [class.rep-th-arrow--active]="sortIndicator('maxSpeed')"></lucide-icon>
+                  </button>
+                </th>
                 <th class="p-3 text-left">Conducteur</th>
                 <th class="p-3 text-left">Note</th>
                 <th class="p-3 text-center">Replay</th>
               </tr>
             </thead>
             <tbody>
-              @for (trip of trips(); track trip.id) {
-                <tr class="border-b border-border-subtle/50 hover:bg-bg-tertiary/50 transition-colors">
+              @for (trip of sortedTrips(); track trip.id) {
+                <tr class="border-b border-border-subtle/50 hover:bg-bg-tertiary/50 transition-colors"
+                    [class.rep-row--highlight]="highlightTripId() === trip.id">
                   <td class="p-3 text-fg-primary">
                     <div>{{ trip.startedAt | date:'dd/MM HH:mm' }}</div>
                     @if (vehiclePlate(trip.vehicleId); as plate) {
@@ -577,6 +648,31 @@ import {
       .rep-kpi-value { font-size: 18px; }
       .rep-spark { width: 60px; height: 22px; }
     }
+    /* KPI cliquable (Vitesse max → drilldown tableau). Reset des defauts <button>
+     * + affordance hover/curseur + petite icône de clic. */
+    .rep-kpi-card--clickable {
+      cursor: pointer;
+      text-align: left;
+      font: inherit;
+      color: inherit;
+      transition: border-color .15s, background .15s, transform .05s;
+    }
+    .rep-kpi-card--clickable:hover:not(:disabled) {
+      border-color: color-mix(in srgb, var(--tracky, #10E0A0) 45%, var(--border-subtle));
+      background: color-mix(in srgb, var(--tracky, #10E0A0) 6%, var(--bg-secondary));
+    }
+    .rep-kpi-card--clickable:active:not(:disabled) { transform: translateY(1px); }
+    .rep-kpi-card--clickable:disabled { cursor: default; opacity: .75; }
+    .rep-kpi-click-hint {
+      color: var(--fg-tertiary) !important;
+      margin-left: auto;
+      opacity: .5;
+      transition: opacity .15s, color .15s;
+    }
+    .rep-kpi-card--clickable:hover:not(:disabled) .rep-kpi-click-hint {
+      opacity: 1;
+      color: var(--tracky-light) !important;
+    }
 
     /* ─── Charts grid ─── */
     .rep-charts-grid {
@@ -705,6 +801,9 @@ import {
     .rep-custom-error {
       font-size: 11px; color: #f87171; margin: 0;
     }
+    .rep-custom-hint {
+      font-size: 11px; color: var(--fg-tertiary); margin: 0;
+    }
     .rep-custom-actions {
       display: flex; gap: 6px; justify-content: flex-end; margin-top: 4px;
     }
@@ -759,6 +858,49 @@ import {
       background: rgba(16,224,160,.14);
       border-color: rgba(16,224,160,.32);
     }
+    /* Excel — teinte verte « tableur » (217954) distincte du tracky. */
+    .rep-export-btn--excel {
+      color: #34d399;
+      background: rgba(33,121,84,.10);
+      border-color: rgba(33,121,84,.28);
+    }
+    .rep-export-btn--excel:hover:not(:disabled) {
+      background: rgba(33,121,84,.18);
+      border-color: rgba(33,121,84,.40);
+    }
+    .rep-export-btn--excel lucide-icon { color: #34d399; }
+    .rep-export-spin {
+      width: 13px; height: 13px;
+      border: 2px solid color-mix(in srgb, #34d399 35%, transparent);
+      border-top-color: #34d399;
+      border-radius: 50%;
+      animation: rep-export-spin .7s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes rep-export-spin { to { transform: rotate(360deg); } }
+
+    /* ─── Bouton Réinitialiser (filtres) ─── */
+    .rep-reset-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--fg-tertiary);
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-subtle);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: color .15s, background .15s, border-color .15s;
+    }
+    .rep-reset-btn lucide-icon { color: var(--fg-tertiary); }
+    .rep-reset-btn:hover:not(:disabled) {
+      color: var(--fg-primary);
+      border-color: var(--border-strong);
+      background: var(--bg-secondary);
+    }
+    .rep-reset-btn:disabled { opacity: .4; cursor: not-allowed; }
 
     /* ─── Dropdown véhicule custom ─── */
     .rep-dropdown-wrapper {
@@ -963,6 +1105,41 @@ import {
       background: rgba(16,224,160,.05);
     }
     .rep-driver--add lucide-icon { color: inherit; flex-shrink: 0 }
+
+    /* ─── En-têtes de colonne triables (Sprint 5) ─── */
+    .rep-th {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      width: 100%;
+      padding: 12px;
+      background: transparent;
+      border: 0;
+      color: inherit;
+      font: inherit;
+      text-transform: inherit;
+      letter-spacing: inherit;
+      cursor: pointer;
+      transition: color .12s;
+    }
+    .rep-th--right { justify-content: flex-end; }
+    .rep-th--left { justify-content: flex-start; }
+    .rep-th:hover { color: var(--fg-secondary); }
+    /* Flèche neutre discrète, accentuée quand la colonne est active. */
+    .rep-th lucide-icon { opacity: .35; transition: opacity .12s, color .12s; }
+    .rep-th:hover lucide-icon { opacity: .6; }
+    .rep-th .rep-th-arrow--active { opacity: 1; color: var(--tracky-light); }
+
+    /* ─── Highlight de la ligne ciblée par le clic KPI « Vitesse max » ─── */
+    .rep-row--highlight {
+      background: color-mix(in srgb, var(--tracky, #10E0A0) 16%, transparent) !important;
+      box-shadow: inset 3px 0 0 var(--tracky-light, #10E0A0);
+      animation: rep-row-flash 2.4s ease-out;
+    }
+    @keyframes rep-row-flash {
+      0%   { background: color-mix(in srgb, var(--tracky, #10E0A0) 34%, transparent); }
+      100% { background: color-mix(in srgb, var(--tracky, #10E0A0) 16%, transparent); }
+    }
   `],
 })
 export class ReportsComponent implements OnInit, OnDestroy {
@@ -973,7 +1150,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   private readonly authService = inject(AuthService);
   private readonly toast = inject(ToastService);
   private readonly reportsApi = inject(ReportsApiService);
-  protected readonly exporting = signal<null | 'pdf' | 'csv-trips' | 'csv-summary'>(null);
+  protected readonly exporting = signal<null | 'pdf' | 'csv-trips' | 'csv-summary' | 'excel'>(null);
 
   protected readonly vehicles = signal<VehicleDetailDto[]>([]);
   protected readonly trips = signal<TripDto[]>([]);
@@ -1010,13 +1187,20 @@ export class ReportsComponent implements OnInit, OnDestroy {
   protected readonly DownloadIcon = Download;
   protected readonly CalendarIcon = Calendar;
   protected readonly FileTextIcon = FileText;
+  protected readonly ArrowUpIcon = ArrowUp;
+  protected readonly ArrowDownIcon = ArrowDown;
+  protected readonly ArrowUpDownIcon = ArrowUpDown;
+  protected readonly FileSpreadsheetIcon = FileSpreadsheet;
+  protected readonly RotateCcwIcon = RotateCcw;
+  protected readonly MousePointerClickIcon = MousePointerClick;
 
   // ─── Date range custom ────────────────────────────────────────────────
   protected readonly customRangeOpen = signal(false);
   protected readonly customFrom = signal('');
   protected readonly customTo = signal('');
-  /** Aujourd'hui au format YYYY-MM-DD (limite haute pour le date picker). */
-  protected readonly todayIso = new Date().toISOString().slice(0, 10);
+  /** Aujourd'hui au format YYYY-MM-DD heure LOCALE (limite haute du date picker
+   *  + borne no-future). Local pour rester cohérent avec localIso/buildPeriods. */
+  protected readonly todayIso = todayIsoLocal();
 
   /** True quand viewport >= 768px : calendrier inline. Sinon : inputs natifs.
    *  Mis a jour live via matchMedia. */
@@ -1048,19 +1232,20 @@ export class ReportsComponent implements OnInit, OnDestroy {
     } catch { return 'Personnalisée'; }
   });
 
-  /** Validation : retourne un message d'erreur ou '' si OK. */
-  protected readonly customRangeError = computed(() => {
-    const f = this.customFrom();
-    const t = this.customTo();
-    if (!f || !t) return '';
-    if (f > t) return 'La date de début doit être antérieure à la date de fin.';
-    if (t > this.todayIso) return 'La date de fin ne peut pas être dans le futur.';
-    const fDate = new Date(f);
-    const tDate = new Date(t);
-    const days = Math.round((tDate.getTime() - fDate.getTime()) / 86400000);
-    if (days > 365) return 'La plage ne peut pas dépasser 365 jours.';
-    return '';
-  });
+  /**
+   * Sprint 5 — Normalisation centralisée de la plage perso (auto-fill +
+   * cohérence + no-future + max 365j), déléguée au helper pur testable
+   * `normalizeCustomRange` (cf. reports.utils). Réagit à customFrom/customTo.
+   */
+  protected readonly normalizedCustomRange = computed(() =>
+    normalizeCustomRange({ from: this.customFrom(), to: this.customTo() }, this.todayIso),
+  );
+
+  /** Validation : retourne le message d'erreur du helper ('' si OK). */
+  protected readonly customRangeError = computed(() => this.normalizedCustomRange().error);
+
+  /** True si la plage saisie est applicable (helper). Pilote le bouton Appliquer. */
+  protected readonly customRangeValid = computed(() => this.normalizedCustomRange().valid);
 
   /** Presets dynamiques (calculés au render pour rester relatifs à aujourd'hui). */
   protected readonly customPresets = computed(() => {
@@ -1091,18 +1276,25 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.customRangeOpen.set(false);
   }
 
-  /** Applique la plage saisie dans les 2 inputs date. Le `to` est exclusif
-   *  cote API (convention periods existante : +1 jour) — on ajoute donc 1 jour
-   *  au `customTo` saisi par l'utilisateur. */
+  /**
+   * Applique la plage saisie dans les 2 inputs date.
+   * Sprint 5 — passe par `normalizeCustomRange` (auto-fill « jusqu'à » =
+   * aujourd'hui si vide, clamp no-future, coherence from<=to, max 365j). La
+   * plage normalisée est INCLUSIVE → on convertit le `to` en exclusif (+1 jour,
+   * convention `periods` existante) avant `setPeriod`. On réinjecte aussi le
+   * `to` auto-rempli dans le signal pour que l'UI reflète ce qui a été appliqué.
+   */
   protected applyCustomRange(): void {
-    if (this.customRangeError()) return;
-    const f = this.customFrom();
-    const t = this.customTo();
-    if (!f || !t) return;
-    const tDate = new Date(t);
+    const norm = this.normalizedCustomRange();
+    if (!norm.valid) return;
+    // Si le `to` a été auto-rempli (saisie « from » seule), on le reflète dans
+    // l'input pour cohérence visuelle.
+    if (norm.to !== this.customTo()) this.customTo.set(norm.to);
+    if (norm.from !== this.customFrom()) this.customFrom.set(norm.from);
+    const tDate = new Date(`${norm.to}T00:00:00`);
     tDate.setDate(tDate.getDate() + 1);
-    const tExclusive = tDate.toISOString().slice(0, 10);
-    this.setPeriod(f, tExclusive);
+    const tExclusive = this.localIso(tDate);
+    this.setPeriod(norm.from, tExclusive);
     this.customRangeOpen.set(false);
   }
 
@@ -1186,6 +1378,43 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.loadData();
   }
 
+  /**
+   * Sprint 5 — Réinitialise les filtres aux valeurs par défaut : tous groupes,
+   * tous véhicules, période « 7 jours ». Ferme les dropdowns / panneaux ouverts
+   * et relance le chargement via setPeriod (qui appelle loadData une seule fois).
+   */
+  protected resetFilters(): void {
+    this.selectedGroupId.set('');
+    this.selectedVehicleId.set('');
+    this.groupDropdownOpen.set(false);
+    this.vehicleDropdownOpen.set(false);
+    this.customRangeOpen.set(false);
+    this.customFrom.set('');
+    this.customTo.set('');
+    // Realigne les presets (anti-stale) puis applique « 7 jours » (index 1).
+    this.periods = this.buildPeriods();
+    const sevenDays = this.periods[1]!;
+    this.setPeriod(sevenDays.from, sevenDays.to);
+  }
+
+  /**
+   * Sprint 5 — true si les filtres ne sont PAS sur leurs valeurs par défaut
+   * (un groupe ou un véhicule est sélectionné, ou la période n'est pas « 7j »).
+   * Pilote l'état visuel/disabled du bouton « Réinitialiser ».
+   */
+  protected readonly filtersDirty = computed(() => {
+    this.periodKey();
+    if (this.selectedGroupId() || this.selectedVehicleId()) return true;
+    const sevenDays = this.periods[1];
+    return !sevenDays || this.periodFrom !== sevenDays.from || this.periodTo !== sevenDays.to;
+  });
+
+  /**
+   * Sprint 5 — l'export Excel est PAR VÉHICULE : il faut un véhicule précis
+   * sélectionné. Sinon le bouton est désactivé avec un hint.
+   */
+  protected readonly canExportExcel = computed(() => !!this.selectedVehicleId());
+
   /** Format une Date en YYYY-MM-DD en HEURE LOCALE (pas UTC).
    *  Important : `toISOString()` decale d'1 jour si le user est a UTC+X et qu'on est
    *  proche de minuit. Cela peut envoyer un from/to errone au backend. */
@@ -1215,6 +1444,85 @@ export class ReportsComponent implements OnInit, OnDestroy {
   protected periods = this.buildPeriods();
 
   protected readonly kpis = computed(() => aggregateKpis(this.trips()));
+
+  // ─── Tri du tableau (Sprint 5, client-side) ─────────────────────────────
+  /** Colonne de tri active. Defaut : depart (ordre chronologique inverse). */
+  protected readonly sortBy = signal<TripSortColumn>('startedAt');
+  /** Direction de tri active. */
+  protected readonly sortDir = signal<SortDirection>('desc');
+  /** Id du trajet a surligner brievement (clic KPI « Vitesse max »). */
+  protected readonly highlightTripId = signal<string | null>(null);
+  /** Handle du timer de highlight, nettoye en ngOnDestroy / re-clic. */
+  private highlightTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Référence au conteneur du tableau (scroll au clic KPI « Vitesse max »). */
+  private readonly tableEl = viewChild<ElementRef<HTMLElement>>('tripsTable');
+
+  /**
+   * Trajets affichés dans le tableau, triés en mémoire (~100 lignes déjà
+   * chargées → zéro serveur). `trips()` reste la source non triée pour les
+   * KPIs / charts / replay (qui n'ont pas besoin d'ordre). Nouvelle référence
+   * à chaque tri → re-render Angular.
+   */
+  protected readonly sortedTrips = computed(() =>
+    sortTrips(this.trips(), this.sortBy(), this.sortDir()),
+  );
+
+  /**
+   * Clic sur un en-tête de colonne : si déjà active → inverse la direction ;
+   * sinon active la colonne avec une direction par défaut sensée (date/vitesses/
+   * distance/durée = desc d'abord, plus parlant).
+   */
+  protected onSort(col: TripSortColumn): void {
+    if (this.sortBy() === col) {
+      this.sortDir.update((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      this.sortBy.set(col);
+      this.sortDir.set('desc');
+    }
+  }
+
+  /** Direction affichée pour la flèche d'un en-tête (null si colonne inactive). */
+  protected sortIndicator(col: TripSortColumn): SortDirection | null {
+    return this.sortBy() === col ? this.sortDir() : null;
+  }
+
+  /** Icône de tri pour un en-tête : flèche directionnelle si actif, sinon
+   *  l'icône neutre « triable » (affordance discrète). */
+  protected sortIcon(col: TripSortColumn) {
+    const dir = this.sortIndicator(col);
+    if (dir === 'asc') return this.ArrowUpIcon;
+    if (dir === 'desc') return this.ArrowDownIcon;
+    return this.ArrowUpDownIcon;
+  }
+
+  /**
+   * Clic sur la carte KPI « Vitesse max » → trie le tableau par maxSpeed desc,
+   * scrolle vers le tableau et surligne brièvement la 1ʳᵉ ligne (le trajet le
+   * plus rapide) ~2,5 s. Drilldown KPI→trajet (objectif #4).
+   */
+  protected onMaxSpeedKpiClick(): void {
+    const col = kpiToSortColumn('maxSpeed');
+    if (!col) return;
+    this.sortBy.set(col);
+    this.sortDir.set('desc');
+    // La 1ʳᵉ ligne du tri desc = le trajet à la vitesse max.
+    const top = this.sortedTrips()[0];
+    if (top) this.flashHighlight(top.id);
+    // Scroll vers le tableau (après le re-render du tri).
+    queueMicrotask(() => {
+      this.tableEl()?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
+  /** Surligne un trajet ~2,5 s puis retire le highlight. Idempotent. */
+  private flashHighlight(tripId: string): void {
+    if (this.highlightTimer) clearTimeout(this.highlightTimer);
+    this.highlightTripId.set(tripId);
+    this.highlightTimer = setTimeout(() => {
+      this.highlightTripId.set(null);
+      this.highlightTimer = null;
+    }, 2500);
+  }
 
   // ─── Charts datasets ────────────────────────────────────────────────────
   /** Series journaliere remplie (jours sans trajet a 0) entre periodFrom et
@@ -1442,6 +1750,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.desktopMql?.removeEventListener('change', this.desktopMqlListener);
+    if (this.highlightTimer) clearTimeout(this.highlightTimer);
   }
 
   /** Ferme le panel custom à Escape (cf. a11y picker calendrier). */
@@ -1544,6 +1853,35 @@ export class ReportsComponent implements OnInit, OnDestroy {
       this.toast.success(kind === 'trips' ? 'CSV trajets téléchargé' : 'CSV alertes téléchargé');
     } catch (err) {
       this.toast.error('Échec export CSV', err instanceof Error ? err.message : '');
+    } finally {
+      this.exporting.set(null);
+    }
+  }
+
+  /**
+   * Sprint 5 — Export Excel « soigné » PAR VÉHICULE. Désactivé (gardé) si aucun
+   * véhicule précis n'est sélectionné. Réutilise le pattern `exporting` (spinner)
+   * + `downloadExcel` côté service. La période courante (to déjà exclusif) borne
+   * l'export.
+   */
+  protected async onExportExcel(): Promise<void> {
+    if (this.exporting()) return;
+    const vehicleId = this.selectedVehicleId();
+    if (!vehicleId) {
+      this.toast.error('Export Excel', 'Sélectionnez un véhicule pour exporter.');
+      return;
+    }
+    this.refreshPeriodIfStalePreset();
+    if (!this.periodFrom || !this.periodTo) {
+      this.toast.error('Échec export Excel', 'Période invalide — recharge la page.');
+      return;
+    }
+    this.exporting.set('excel');
+    try {
+      await this.reportsApi.downloadExcel(vehicleId, this.periodFrom, this.periodTo);
+      this.toast.success('Excel généré');
+    } catch (err) {
+      this.toast.error('Échec export Excel', err instanceof Error ? err.message : '');
     } finally {
       this.exporting.set(null);
     }

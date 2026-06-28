@@ -12,6 +12,7 @@ import type { Trip } from '@prisma/client';
 import type { TripCompletedEvent, TripStartedEvent } from '@vizyo/tracky-shared';
 import { douglasPeucker, isPlausibleJump, isValidLatLng } from '@vizyo/tracky-shared';
 import { distanceMeters } from '../common/utils/haversine';
+import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { MapMatchingService } from './map-matching.service';
@@ -508,8 +509,17 @@ export class TripsService implements OnModuleInit {
 
   /**
    * Résout le filtre `where.vehicleId` depuis un véhicule unique OU une liste
-   * (filtre groupe), intersecté avec les véhicules autorisés de l'appelant.
-   * `['__none__']` = aucun résultat (demande hors périmètre / groupe vide).
+   * (filtre groupe), borné au périmètre véhicules de l'appelant.
+   *
+   * 🔒 Sprint 5 — délègue à `resolveReportVehicleScope` (helper partagé avec les
+   * rapports/exports) pour une règle EXACTE et cohérente :
+   *   - périmètre 'ALL' (admins) : pas de borne (ou la demande explicite telle
+   *     quelle, la borne `fleetId` couvrant l'appartenance flotte) ;
+   *   - périmètre restreint : borne par défaut au périmètre permis, ET **rejet
+   *     (ForbiddenException)** de toute demande explicite hors périmètre — plus
+   *     strict que l'ancien retour silencieux `['__none__']`.
+   *
+   * Retourne `undefined` quand aucune borne `vehicleId` n'est nécessaire.
    */
   private resolveVehicleScope(
     rb: RequestedBy,
@@ -517,15 +527,10 @@ export class TripsService implements OnModuleInit {
     vehicleIds?: string,
   ): Prisma.TripWhereInput['vehicleId'] {
     const requested = (vehicleIds ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-    const wanted = requested.length ? requested : vehicleId ? [vehicleId] : null;
-    if (rb.accessibleVehicleIds && rb.accessibleVehicleIds !== 'ALL') {
-      const allowed = wanted
-        ? wanted.filter((id) => (rb.accessibleVehicleIds as string[]).includes(id))
-        : rb.accessibleVehicleIds;
-      return { in: allowed.length ? allowed : ['__none__'] };
-    }
-    if (wanted) return wanted.length === 1 ? wanted[0] : { in: wanted };
-    return undefined;
+    const wanted = requested.length ? requested : vehicleId ? [vehicleId] : undefined;
+    const scope = resolveReportVehicleScope(rb.accessibleVehicleIds ?? 'ALL', wanted);
+    if (scope === 'ALL') return undefined;
+    return scope.length === 1 ? scope[0] : { in: scope };
   }
 
   async list(

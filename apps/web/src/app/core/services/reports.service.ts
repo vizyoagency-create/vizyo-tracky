@@ -1,4 +1,4 @@
-import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpParams, HttpResponse } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 
@@ -135,13 +135,53 @@ export class ReportsApiService {
     }
   }
 
+  /**
+   * Sprint 5 — Export Excel « soigné » PAR VÉHICULE.
+   * POST /api/reports/excel { vehicleId, from, to } → .xlsx en streaming.
+   * `from`/`to` sont les bornes de la période courante (le `to` est déjà
+   * exclusif côté composant, ce que le backend attend : from < to strict).
+   * Le nom de fichier est lu depuis le Content-Disposition (le backend nomme
+   * `tracky-{plaque}-{from}_{to}.xlsx`), avec un fallback générique.
+   */
+  async downloadExcel(vehicleId: string, from: string, to: string): Promise<void> {
+    try {
+      const res = await firstValueFrom(
+        this.http.post('/api/reports/excel', { vehicleId, from, to }, {
+          responseType: 'blob',
+          observe: 'response',
+        }),
+      );
+      const filename = this.filenameFromResponse(res, 'tracky-export.xlsx');
+      this.triggerDownload(res.body ?? new Blob(), filename);
+    } catch (err) {
+      throw new Error(await this.formatHttpError(err, 'Excel'));
+    }
+  }
+
+  /**
+   * Extrait le filename du header Content-Disposition d'une réponse, sinon
+   * `fallback`. Gère `filename="..."` et `filename*=UTF-8''...` (RFC 5987).
+   */
+  private filenameFromResponse(res: HttpResponse<unknown>, fallback: string): string {
+    const cd = res.headers.get('Content-Disposition') ?? res.headers.get('content-disposition');
+    if (!cd) return fallback;
+    // filename*=UTF-8''nom%20encode.xlsx  (prioritaire si présent)
+    const star = /filename\*=(?:UTF-8'')?([^;]+)/i.exec(cd);
+    if (star?.[1]) {
+      try { return decodeURIComponent(star[1].trim().replace(/^"|"$/g, '')); } catch { /* fallthrough */ }
+    }
+    const plain = /filename="?([^";]+)"?/i.exec(cd);
+    if (plain?.[1]) return plain[1].trim();
+    return fallback;
+  }
+
   /** Extrait le message d'erreur reel renvoye par l'API.
    *  Avec responseType:'blob', l'error.error d'Angular est un Blob → on le parse.
    *  Robuste face aux 3 formes que NestJS peut renvoyer :
    *   - { message: "string" }                          (BadRequestException simple)
    *   - { message: ["err1", "err2"] }                  (class-validator)
    *   - { message: [{ constraints: {...}, property }] } (class-validator detaille) */
-  private async formatHttpError(err: unknown, kind: 'PDF' | 'CSV'): Promise<string> {
+  private async formatHttpError(err: unknown, kind: 'PDF' | 'CSV' | 'Excel'): Promise<string> {
     if (err instanceof HttpErrorResponse) {
       const detail = await this.extractErrorDetail(err);
       return `Echec export ${kind} (${err.status})${detail ? ' : ' + detail : ''}`;
