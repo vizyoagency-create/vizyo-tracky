@@ -16,6 +16,7 @@ exactement d'après le `slug` défini dans
 | -------------- | --------------------- |
 | Alfa Romeo     | `alfa-romeo.png`      |
 | Audi           | `audi.png`            |
+| Audi RS3       | `audi-rs3.png`        |
 | BMW            | `bmw.png`             |
 | Citroën        | `citroen.png`         |
 | Dacia          | `dacia.png`           |
