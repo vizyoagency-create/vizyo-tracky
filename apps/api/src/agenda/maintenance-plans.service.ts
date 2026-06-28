@@ -100,9 +100,8 @@ export class MaintenancePlansService {
       data: { lastDoneAt: doneAt, lastDoneKm: doneKm ?? undefined },
     });
     if (doneKm != null) {
-      await this.prisma.vehicle
-        .update({ where: { id: plan.vehicleId }, data: { lastOdometerKm: doneKm, lastOdometerAt: doneAt } })
-        .catch(() => undefined);
+      // Passe par le garde non-régressif (ne recule jamais le baseline km).
+      await this.events.maybeUpdateOdometer(plan.vehicleId, doneKm, doneAt).catch(() => undefined);
     }
     await this.materializePlannedEvent(updated);
     return this.toDto(updated);

@@ -122,7 +122,7 @@ export class VehicleEventsService {
       this.prisma.vehicleEvent.count({
         where: {
           ...where,
-          status: { in: [VehicleEventStatus.PLANNED, VehicleEventStatus.OPEN] },
+          status: VehicleEventStatus.PLANNED,
           startAt: { lt: now },
         },
       }),
@@ -207,7 +207,11 @@ export class VehicleEventsService {
     if (dto.endAt !== undefined) data.endAt = dto.endAt ? this.parseDate(dto.endAt, 'endAt') : null;
     if (dto.allDay !== undefined) data.allDay = dto.allDay;
     if (dto.odometerKm !== undefined) data.odometerKm = dto.odometerKm;
-    if (dto.linkedEventId !== undefined) data.linkedEventId = dto.linkedEventId;
+    if (dto.linkedEventId !== undefined) {
+      // Anti-IDOR : un lien ne peut pointer que vers un evenement DANS le perimetre (S8-ready).
+      if (dto.linkedEventId) await this.loadScoped(user, dto.linkedEventId);
+      data.linkedEventId = dto.linkedEventId;
+    }
     if (dto.metadata !== undefined) data.metadata = dto.metadata as Prisma.InputJsonValue;
 
     const row = await this.prisma.vehicleEvent.update({
@@ -262,7 +266,7 @@ export class VehicleEventsService {
   }
 
   /** Met à jour le baseline km du véhicule (jamais en arrière : on n'écrase qu'avec une saisie plus récente). */
-  private async maybeUpdateOdometer(
+  async maybeUpdateOdometer(
     vehicleId: string,
     odometerKm: number | null | undefined,
     at: Date,
