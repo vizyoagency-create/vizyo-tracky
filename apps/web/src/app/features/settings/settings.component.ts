@@ -445,20 +445,7 @@ import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
     .range-sm { width: 70px }
 
     /* Toggle */
-    .toggle { position: relative; display: inline-block; cursor: pointer; flex-shrink: 0 }
-    .toggle input { opacity: 0; width: 0; height: 0; position: absolute }
-    .toggle-track {
-      display: flex; align-items: center; width: 40px; height: 22px; background: rgba(239,68,68,.15); border: 1.5px solid rgba(239,68,68,.25);
-      border-radius: 22px; transition: all .25s; position: relative; padding: 0 2px;
-    }
-    .toggle-thumb {
-      position: relative; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center;
-      background: #ef4444; border-radius: 50%; transition: transform .25s, background .25s; box-shadow: 0 1px 3px rgba(0,0,0,.3);
-    }
-    .toggle-thumb::after { content: '✕'; font-size: 8px; font-weight: 700; color: white; line-height: 1 }
-    .toggle input:checked + .toggle-track { background: rgba(16,224,160,.15); border-color: rgba(16,224,160,.3) }
-    .toggle input:checked + .toggle-track .toggle-thumb { transform: translateX(18px); background: var(--tracky-light) }
-    .toggle input:checked + .toggle-track .toggle-thumb::after { content: '✓' }
+    /* .toggle : styles globaux (styles.css) */
 
     /* Reset */
     .reset-btn {

@@ -346,8 +346,7 @@ import {
     .sp-sub { font-size: 13px; color: var(--fg-tertiary); margin: 4px 0 0 }
     .sp-actions { display: flex; gap: 8px; flex-wrap: wrap }
 
-    .btn-primary { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 10px; font-size: 12px; font-weight: 700; background: #059669; color: #fff; border: none; cursor: pointer }
-    .btn-primary:hover { background: #047857 } .btn-primary:disabled { opacity: .5; cursor: default }
+    /* .btn-primary : styles globaux (styles.css) */
     .btn-primary.sm { padding: 7px 12px }
     .btn-ghost { display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 10px; font-size: 12px; font-weight: 600; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-secondary); cursor: pointer }
     .btn-ghost:hover { color: var(--fg-primary) } .btn-ghost:disabled { opacity: .5 }

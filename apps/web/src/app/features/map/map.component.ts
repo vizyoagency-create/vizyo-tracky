@@ -1794,7 +1794,7 @@ const RESYNC_RADIUS_M = 150;
     }
     .bn-vcard-badge.on {
       background: rgba(16, 224, 160, 0.12);
-      color: #059669;
+      color: var(--tracky);
     }
     .bn-vcard-badge-dot {
       width: 6px;
@@ -1856,7 +1856,7 @@ const RESYNC_RADIUS_M = 150;
     .bn-vcard-act:active { transform: scale(0.94); background: rgba(0, 0, 0, 0.08); }
     .bn-vcard-act--primary {
       background: rgba(16, 224, 160, 0.12);
-      color: #047857;
+      color: var(--tracky-dark);
     }
     .bn-vcard-act--primary:active { background: rgba(16, 224, 160, 0.22); }
     .bn-vcard-act--danger {
@@ -1865,7 +1865,7 @@ const RESYNC_RADIUS_M = 150;
     }
     .bn-vcard-act--danger:active { background: rgba(239, 68, 68, 0.16); }
     .bn-vcard-act--restore {
-      color: #059669;
+      color: var(--tracky);
       background: rgba(16, 224, 160, 0.10);
     }
     .bn-vcard-act--restore:active { background: rgba(16, 224, 160, 0.18); }

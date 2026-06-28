@@ -174,20 +174,7 @@ export interface AccessDrawerResult {
     }
     .access-row:last-child { border-bottom: none }
 
-    .toggle { position: relative; display: inline-block; cursor: pointer }
-    .toggle input { opacity: 0; width: 0; height: 0; position: absolute }
-    .toggle-track {
-      display: flex; align-items: center; width: 44px; height: 24px; background: rgba(239,68,68,.15); border: 1.5px solid rgba(239,68,68,.25);
-      border-radius: 24px; transition: all .25s; position: relative; padding: 0 3px;
-    }
-    .toggle-thumb {
-      position: relative; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center;
-      background: #ef4444; border-radius: 50%; transition: transform .25s, background .25s; box-shadow: 0 1px 3px rgba(0,0,0,.3);
-    }
-    .toggle-thumb::after { content: '✕'; font-size: 9px; font-weight: 700; color: white; line-height: 1 }
-    .toggle input:checked + .toggle-track { background: rgba(16,224,160,.15); border-color: rgba(16,224,160,.3) }
-    .toggle input:checked + .toggle-track .toggle-thumb { transform: translateX(20px); background: var(--tracky-light) }
-    .toggle input:checked + .toggle-track .toggle-thumb::after { content: '✓' }
+    /* .toggle : styles globaux (styles.css) */
   `],
 })
 export class VehicleAccessDrawerComponent implements OnChanges {
