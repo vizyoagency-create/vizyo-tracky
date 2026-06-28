@@ -12,6 +12,7 @@ export * from './dto/system-metrics.dto';
 export * from './dto/user-activity.dto';
 export * from './dto/audio-monitoring.dto';
 export * from './dto/retention.dto';
+export * from './dto/agenda.dto';
 export * from './events/ws-events';
 export * from './permissions';
 export * from './protocol';

@@ -7,7 +7,7 @@ import {
   LucideAngularModule, ArrowLeft, Wifi, WifiOff, Gauge, MapPin, Radio,
   AlertTriangle, AlertCircle, Info, Check, Power, Route, BarChart3, BellOff, Map,
   History, Bell, Zap, Clock, ShieldAlert, ShieldCheck, MessageSquare, Pencil, X,
-  UserRound, UserPlus, Copy, Play, Layers,
+  UserRound, UserPlus, Copy, Play, Layers, Wrench,
 } from 'lucide-angular';
 import type { AlertEvent, DriverDto, TripDto } from '@vizyo/tracky-shared';
 import { isAcceptableLiveFix } from '@vizyo/tracky-shared';
@@ -35,6 +35,9 @@ import { CommandsPanelComponent } from '../tracker-commands/commands-panel.compo
 import { TripReplayComponent } from '../reports/trip-replay.component';
 import { VehicleScheduleComponent } from './vehicle-schedule/vehicle-schedule.component';
 import { VehicleReportsTabComponent } from './vehicle-reports-tab.component';
+import { VehicleMaintenanceTabComponent } from './vehicle-maintenance-tab.component';
+import { AgendaApiService } from '../../core/services/agenda.service';
+import type { VehicleEventSeverity } from '@vizyo/tracky-shared';
 import { relativeTime } from '../../shared/utils/relative-time';
 import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnectivityState, type GeofenceDto } from '@vizyo/tracky-shared';
 import { GeofencesApiService } from '../../core/services/geofences.service';
@@ -48,7 +51,7 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
   imports: [
     FormsModule, LucideAngularModule, DatePipe, DecimalPipe, GroupBadgeComponent,
     MiniMapComponent, EngineControlButtonComponent, AudioListenButtonComponent, CommandsPanelComponent,
-    VehicleScheduleComponent, VehicleReportsTabComponent, DriverPickerComponent, DriverDrawerComponent, SurveillancePanelComponent, TripReplayComponent,
+    VehicleScheduleComponent, VehicleReportsTabComponent, VehicleMaintenanceTabComponent, DriverPickerComponent, DriverDrawerComponent, SurveillancePanelComponent, TripReplayComponent,
     InstallReviewBadgeComponent, BrandLogoComponent,
   ],
   template: `
@@ -89,8 +92,8 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
             </div>
           </div>
 
-          @if (v.tracker) {
-            <div class="flex items-center gap-2 flex-wrap shrink-0">
+          <div class="flex items-center gap-2 flex-wrap shrink-0">
+            @if (v.tracker) {
               @if (currentPosition(); as pos) {
                 <app-engine-control-button
                   [trackerId]="v.tracker.id"
@@ -111,8 +114,15 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
                 [vehiclePlate]="v.plate"
                 [fleetId]="v.fleetId"
               />
-            </div>
-          }
+            }
+            <!-- Sprint 7 — Signaler un incident (gaté agenda_view) : POST /api/agenda/incidents. -->
+            @if (canReportIncident()) {
+              <button type="button" (click)="openIncident()" class="vd-incident-btn" title="Signaler un incident sur ce véhicule">
+                <lucide-icon [img]="AlertTriangle" [size]="14"></lucide-icon>
+                <span>Incident</span>
+              </button>
+            }
+          </div>
         </div>
 
         <!-- Sprint 1 — Sélecteur de groupe (assignation depuis le détail) -->
@@ -549,6 +559,10 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
           />
         }
 
+        @if (activeTab() === 'maintenance') {
+          <app-vehicle-maintenance-tab [vehicleId]="v.id" />
+        }
+
         @if (activeTab() === 'geofences') {
           @if (vehicleGeofences().length === 0) {
             <div class="flex flex-col items-center justify-center h-40 rounded-[--radius-card]
@@ -660,6 +674,54 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
         (closed)="driverDrawerOpen.set(false)"
         (saved)="onDriverDrawerSave($event)"
       />
+
+      <!-- Sprint 7 — Modal « Signaler un incident » → POST /api/agenda/incidents -->
+      @if (incidentOpen()) {
+        <div class="vd-inc-root" (click)="incidentOpen.set(false)">
+          <div class="vd-inc-modal" (click)="$event.stopPropagation()" role="dialog" aria-label="Signaler un incident">
+            <header class="vd-inc-head">
+              <div class="flex items-center gap-2">
+                <lucide-icon [img]="AlertTriangle" [size]="16" class="text-amber-400"></lucide-icon>
+                <h3 class="vd-inc-title">Signaler un incident</h3>
+              </div>
+              <button type="button" (click)="incidentOpen.set(false)" aria-label="Fermer" class="vd-inc-close">
+                <lucide-icon [img]="XIcon" [size]="18"></lucide-icon>
+              </button>
+            </header>
+            <div class="vd-inc-body">
+              <p class="vd-inc-veh">{{ v.plate }} @if (v.brand) { · {{ v.brand }} {{ v.model }} }</p>
+              <div class="vd-inc-field">
+                <label for="vd-inc-title">Titre</label>
+                <input id="vd-inc-title" type="text" class="vd-inc-input" [(ngModel)]="incidentForm.title"
+                       placeholder="Ex. Crevaison pneu avant droit" />
+              </div>
+              <div class="vd-inc-field">
+                <label>Sévérité</label>
+                <div class="vd-inc-seg">
+                  <button type="button" (click)="incidentForm.severity = 'LOW'"
+                          class="vd-inc-seg-btn" [class.vd-inc-seg-btn--active]="incidentForm.severity === 'LOW'">Faible</button>
+                  <button type="button" (click)="incidentForm.severity = 'MEDIUM'"
+                          class="vd-inc-seg-btn" [class.vd-inc-seg-btn--active]="incidentForm.severity === 'MEDIUM'">Moyenne</button>
+                  <button type="button" (click)="incidentForm.severity = 'HIGH'"
+                          class="vd-inc-seg-btn" [class.vd-inc-seg-btn--active]="incidentForm.severity === 'HIGH'">Critique</button>
+                </div>
+              </div>
+              <div class="vd-inc-field">
+                <label for="vd-inc-desc">Description</label>
+                <textarea id="vd-inc-desc" class="vd-inc-input vd-inc-textarea" rows="3"
+                          [(ngModel)]="incidentForm.description" placeholder="Détails (optionnel)"></textarea>
+              </div>
+            </div>
+            <footer class="vd-inc-foot">
+              <button type="button" (click)="incidentOpen.set(false)" class="vd-inc-cancel">Annuler</button>
+              <button type="button" (click)="submitIncident()"
+                      [disabled]="!incidentForm.title.trim() || savingIncident()" class="vd-inc-submit">
+                {{ savingIncident() ? 'Envoi…' : 'Signaler' }}
+              </button>
+            </footer>
+          </div>
+        </div>
+      }
     }
   `,
   styles: [`
@@ -1395,6 +1457,92 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
       .vd-tabs { padding: 0; }
       .vd-tabs-wrapper::after { display: none; }
     }
+
+    /* ─── Sprint 7 — Bouton « Signaler un incident » (header) ─── */
+    .vd-incident-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 12px; border-radius: 10px;
+      background: rgba(245,158,11,.10); border: 1px solid rgba(245,158,11,.28);
+      color: #f59e0b; font-size: 12px; font-weight: 700; cursor: pointer; transition: all .15s;
+      white-space: nowrap;
+    }
+    .vd-incident-btn:hover { background: rgba(245,158,11,.18); border-color: rgba(245,158,11,.42); }
+
+    /* ─── Sprint 7 — Modal incident ─── */
+    .vd-inc-root {
+      position: fixed; inset: 0; z-index: 9000;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,.5); backdrop-filter: blur(2px); padding: 16px;
+      animation: vd-inc-fade .15s ease-out;
+    }
+    @keyframes vd-inc-fade { from { opacity: 0; } to { opacity: 1; } }
+    .vd-inc-modal {
+      width: 100%; max-width: 420px; max-height: 88vh; display: flex; flex-direction: column;
+      background: var(--bg-primary); border: 1px solid var(--border-subtle);
+      border-radius: 18px; box-shadow: 0 24px 60px rgba(0,0,0,.4); overflow: hidden;
+      animation: vd-inc-rise .2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes vd-inc-rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+    .vd-inc-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 14px 16px; border-bottom: 1px solid var(--border-subtle); flex-shrink: 0;
+    }
+    .vd-inc-title { font-size: 15px; font-weight: 700; color: var(--fg-primary); margin: 0; }
+    .vd-inc-close {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 32px; height: 32px; border-radius: 8px;
+      background: transparent; border: 0; color: var(--fg-tertiary); cursor: pointer; transition: all .15s;
+    }
+    .vd-inc-close:hover { color: var(--fg-primary); background: var(--bg-tertiary); }
+    .vd-inc-body { padding: 14px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+    .vd-inc-veh { font-size: 12px; font-weight: 700; color: var(--fg-secondary); font-family: var(--font-mono, monospace); margin: 0; }
+    .vd-inc-field { display: flex; flex-direction: column; gap: 5px; }
+    .vd-inc-field label {
+      font-size: 11px; font-weight: 600; color: var(--fg-tertiary);
+      text-transform: uppercase; letter-spacing: .03em;
+    }
+    .vd-inc-input {
+      width: 100%; padding: 9px 11px; border-radius: 10px;
+      background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+      color: var(--fg-primary); font-size: 13px; font-family: inherit; transition: border-color .15s;
+    }
+    .vd-inc-input:focus { outline: none; border-color: var(--tracky-light); }
+    .vd-inc-input::placeholder { color: var(--fg-tertiary); }
+    .vd-inc-textarea { resize: vertical; min-height: 56px; line-height: 1.45; }
+    .vd-inc-seg {
+      display: flex; padding: 3px; gap: 2px;
+      background: var(--bg-tertiary); border: 1px solid var(--border-subtle); border-radius: 12px;
+    }
+    .vd-inc-seg-btn {
+      flex: 1; padding: 7px 10px; border-radius: 9px;
+      background: transparent; border: 0; color: var(--fg-tertiary);
+      font-size: 12px; font-weight: 600; cursor: pointer; transition: all .15s;
+    }
+    .vd-inc-seg-btn:hover { color: var(--fg-secondary); }
+    .vd-inc-seg-btn--active { background: var(--bg-secondary); color: #f59e0b; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+    .vd-inc-foot {
+      display: flex; gap: 8px; justify-content: flex-end;
+      padding: 12px 16px; border-top: 1px solid var(--border-subtle); flex-shrink: 0;
+    }
+    .vd-inc-cancel {
+      padding: 8px 14px; border-radius: 10px;
+      background: transparent; color: var(--fg-secondary); border: 1px solid var(--border-subtle);
+      font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s;
+    }
+    .vd-inc-cancel:hover { color: var(--fg-primary); border-color: var(--border-strong); }
+    .vd-inc-submit {
+      padding: 8px 14px; border-radius: 10px;
+      background: #f59e0b; color: #fff; border: none;
+      font-size: 13px; font-weight: 700; cursor: pointer; transition: background .15s, opacity .15s;
+    }
+    .vd-inc-submit:hover:not(:disabled) { background: #d97706; }
+    .vd-inc-submit:disabled { opacity: .5; cursor: not-allowed; }
+
+    @media (max-width: 480px) {
+      .vd-inc-root { align-items: flex-end; padding: 0; }
+      .vd-inc-modal { max-width: none; max-height: 92vh; border-radius: 18px 18px 0 0; border-bottom: 0; }
+      @keyframes vd-inc-rise { from { opacity: 0; transform: translateY(100%); } to { opacity: 1; transform: none; } }
+    }
   `],
 })
 export class VehicleDetailComponent implements OnInit {
@@ -1412,6 +1560,7 @@ export class VehicleDetailComponent implements OnInit {
   private readonly auth = inject(AuthService);
   private readonly toast = inject(ToastService);
   private readonly vehicleGroups = inject(VehicleGroupsService);
+  private readonly agendaApi = inject(AgendaApiService);
 
   protected readonly vehicle = signal<VehicleDetailDto | null>(null);
   // Sprint 1 (Fondation Groupes) — assignation de groupe depuis le détail.
@@ -1584,6 +1733,8 @@ export class VehicleDetailComponent implements OnInit {
       { key: 'history', label: 'Historique', icon: History },
       { key: 'alerts', label: 'Alertes', icon: Bell, perm: 'alerts_view' },
       { key: 'surveillance', label: 'Surveillance', icon: ShieldCheck, perm: 'alerts_acknowledge', show: hasTracker },
+      // Sprint 7 — Agenda : onglet Maintenance (entretiens + plans + estimation km), gaté agenda_view.
+      { key: 'maintenance', label: 'Maintenance', icon: Wrench, perm: 'agenda_view' },
       { key: 'geofences', label: 'Géofences', icon: MapPin },
       // Sprint 3 — l'onglet Horaires suit la permission backend `schedules_manage`
       // (et non plus `engine_control`) : sinon le veilleur (engine_control=true,
@@ -1878,6 +2029,40 @@ export class VehicleDetailComponent implements OnInit {
 
   protected onScheduleDisabled(): void {
     this.scheduleRevision.set(this.scheduleRevision() + 1);
+  }
+
+  // ─── Sprint 7 — Signalement d'incident ────────────────────────────────────
+  /** Le bouton « Incident » suit la permission de lecture agenda (agenda_view). */
+  protected readonly canReportIncident = computed(() => this.perms.can('agenda_view', this.vehicle()?.id));
+  protected readonly incidentOpen = signal(false);
+  protected readonly savingIncident = signal(false);
+  protected incidentForm: { title: string; severity: VehicleEventSeverity; description: string } = {
+    title: '', severity: 'MEDIUM', description: '',
+  };
+
+  protected openIncident(): void {
+    this.incidentForm = { title: '', severity: 'MEDIUM', description: '' };
+    this.incidentOpen.set(true);
+  }
+
+  protected async submitIncident(): Promise<void> {
+    const v = this.vehicle();
+    if (!v || !this.incidentForm.title.trim() || this.savingIncident()) return;
+    this.savingIncident.set(true);
+    try {
+      await firstValueFrom(this.agendaApi.reportIncident({
+        vehicleId: v.id,
+        title: this.incidentForm.title.trim(),
+        severity: this.incidentForm.severity,
+        description: this.incidentForm.description.trim() || undefined,
+      }));
+      this.toast.success('Incident signalé', this.incidentForm.title.trim());
+      this.incidentOpen.set(false);
+    } catch (err) {
+      this.toast.error('Échec', err instanceof HttpErrorResponse ? err.error?.message : 'Signalement impossible.');
+    } finally {
+      this.savingIncident.set(false);
+    }
   }
 
   async ngOnInit(): Promise<void> {

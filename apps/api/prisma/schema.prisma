@@ -61,6 +61,7 @@ enum AlertType {
   GPS_LOST
   IDLE_TIME
   SURVEILLANCE_TRIGGERED
+  MAINTENANCE_DUE
   UNKNOWN
 }
 
@@ -340,6 +341,11 @@ model Vehicle {
   surveillanceProfile SurveillanceProfile?
   surveillanceEvents  SurveillanceEvent[]
   installationTasks   InstallationTask[] @relation("InstallationTaskVehicle")
+  // Sprint 7 — baseline kilometrique autoritaire (saisi a l'entretien) + agenda.
+  lastOdometerKm   Int?
+  lastOdometerAt   DateTime?
+  vehicleEvents    VehicleEvent[]
+  maintenancePlans MaintenancePlan[]
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -347,6 +353,95 @@ model Vehicle {
   @@index([fleetId])
   @@index([currentDriverId])
   @@map("vehicles")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sprint 7 — Agenda générique (maintenance + incidents ; fondation Sprint 8 réservations)
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum VehicleEventType {
+  MAINTENANCE
+  INCIDENT
+  RESERVATION // (Sprint 8) STUB — non câblé en S7
+}
+
+enum VehicleEventStatus {
+  PLANNED
+  OPEN
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+/// Sprint 7 — Événement générique sur la timeline d'un véhicule. Porte la maintenance et
+/// les incidents ; conçu pour accueillir les réservations (Sprint 8) sans refonte
+/// (startAt/endAt/allDay = créneau, metadata = champs par type, type extensible).
+model VehicleEvent {
+  id            String   @id @default(uuid()) @db.Uuid
+  fleetId       String   @db.Uuid            // tenant (scoping) — scalaire, cascade via le véhicule
+  vehicleId     String   @db.Uuid
+  vehicle       Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  type          VehicleEventType
+  category      String?            // sous-type libre extensible : 'OIL_CHANGE','TECHNICAL_INSPECTION','DOOR_ISSUE'…
+  status        VehicleEventStatus @default(PLANNED)
+  severity      String?            // incidents : 'LOW'|'MEDIUM'|'HIGH'
+
+  title         String
+  description   String?
+
+  startAt       DateTime           // ancrage temporel (échéance/réalisation/début)
+  endAt         DateTime?          // plage (garage du X au Y ; créneau réservation S8)
+  allDay        Boolean  @default(true)
+
+  odometerKm    Int?               // km saisi (autoritaire) au moment de l'événement
+  planId        String?  @db.Uuid
+  plan          MaintenancePlan? @relation(fields: [planId], references: [id], onDelete: SetNull)
+  linkedEventId String?  @db.Uuid  // chaînage : incident -> passage garage
+
+  resolvedAt    DateTime?
+  metadata      Json?              // extensible par type sans migration (S8 : réservé par, motif…)
+
+  createdBy     String   @db.Uuid
+  source        String   @default("MANUAL") // MANUAL | AUTO | SYSTEM
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([fleetId, startAt])
+  @@index([vehicleId, startAt(sort: Desc)])
+  @@index([fleetId, type, startAt])
+  @@index([fleetId, status])
+  @@index([planId])
+  @@map("vehicle_events")
+}
+
+/// Sprint 7 — Plan de maintenance récurrent (CT/vidange « tous les X mois/km »). Génère
+/// des VehicleEvent PLANNED (prochaine échéance) + déclenche les rappels.
+model MaintenancePlan {
+  id              String   @id @default(uuid()) @db.Uuid
+  fleetId         String   @db.Uuid
+  vehicleId       String   @db.Uuid
+  vehicle         Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  category        String   // 'OIL_CHANGE','TECHNICAL_INSPECTION',…
+  label           String
+  intervalMonths  Int?     // tous les N mois (l'un et/ou l'autre)
+  intervalKm      Int?     // tous les N km
+  lastDoneAt      DateTime?
+  lastDoneKm      Int?
+  reminderDaysBefore Int  @default(30)
+  reminderKmBefore   Int? @default(1000)
+  enabled         Boolean  @default(true)
+
+  events          VehicleEvent[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([fleetId, vehicleId])
+  @@index([enabled])
+  @@map("maintenance_plans")
 }
 
 model Tracker {

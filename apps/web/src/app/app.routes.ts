@@ -111,6 +111,15 @@ export const routes: Routes = [
         data: { title: 'Rapports' },
       },
       {
+        // Sprint 7 — Agenda (maintenance + incidents). Gaté agenda_view
+        // (FLEET_ADMIN/SUPER_ADMIN bypass via PermissionsService.can).
+        path: 'agenda',
+        canActivate: [permissionGuard('agenda_view')],
+        loadComponent: () =>
+          import('./features/agenda/agenda.component').then((m) => m.AgendaComponent),
+        data: { title: 'Agenda' },
+      },
+      {
         path: 'users/overview',
         canActivate: [permissionGuard('users_view')],
         loadComponent: () =>
