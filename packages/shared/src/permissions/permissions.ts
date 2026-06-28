@@ -51,6 +51,15 @@ export interface UserPermissions {
    * (desactivee en production sans flag explicite, cf. AudioMonitoringGuard).
    */
   audio_monitoring: boolean;
+
+  /**
+   * Sprint 7 — Voir l'agenda (calendrier maintenance/incidents) et signaler un
+   * incident sur un vehicule accessible. OFF par defaut sauf SUPER_ADMIN/FLEET_ADMIN ;
+   * accordable par utilisateur.
+   */
+  agenda_view: boolean;
+  /** Sprint 7 — Gerer la maintenance : creer/editer/resoudre les evenements + plans recurrents. */
+  agenda_manage: boolean;
 }
 
 const VIEWER_DEFAULTS: UserPermissions = {
@@ -75,6 +84,8 @@ const VIEWER_DEFAULTS: UserPermissions = {
   sims_view: false,
   sims_assign: false,
   audio_monitoring: false,
+  agenda_view: false,
+  agenda_manage: false,
 };
 
 const FLEET_MANAGER_DEFAULTS: UserPermissions = {
@@ -99,6 +110,8 @@ const FLEET_MANAGER_DEFAULTS: UserPermissions = {
   sims_view: true,
   sims_assign: false,
   audio_monitoring: false,
+  agenda_view: false,
+  agenda_manage: false,
 };
 
 const ADMIN_DEFAULTS: UserPermissions = {
@@ -123,6 +136,8 @@ const ADMIN_DEFAULTS: UserPermissions = {
   sims_view: true,
   sims_assign: true,
   audio_monitoring: true,
+  agenda_view: true,
+  agenda_manage: true,
 };
 
 /**
@@ -152,6 +167,8 @@ const NIGHT_WATCHMAN_DEFAULTS: UserPermissions = {
   sims_view: false,
   sims_assign: false,
   audio_monitoring: false,
+  agenda_view: false,
+  agenda_manage: false,
 };
 
 export function getDefaultPermissions(role: UserRoleSlug): UserPermissions {
@@ -301,6 +318,18 @@ export const PERMISSION_LABELS: Record<keyof UserPermissions, PermissionLabel> =
     description:
       'Capacite legalement sensible (micro embarque). Desactivee en production sans flag dedie, attestation flotte requise. OFF par defaut.',
   },
+  agenda_view: {
+    group: 'Agenda',
+    label: 'Voir l\'agenda + signaler un incident',
+    description:
+      'Calendrier maintenance/incidents. Permet aussi de signaler un incident sur un vehicule accessible.',
+  },
+  agenda_manage: {
+    group: 'Agenda',
+    label: 'Gerer la maintenance (evenements, plans, echeances)',
+    description:
+      'Creer/editer/resoudre les evenements de maintenance et les plans recurrents (CT, vidange...).',
+  },
 };
 
 /** Ordre d'affichage canonique des groupes dans l'UI. */
@@ -315,4 +344,5 @@ export const PERMISSION_GROUP_ORDER: readonly string[] = [
   'Conducteurs',
   'Cartes SIM',
   'Audio',
+  'Agenda',
 ] as const;
