@@ -113,7 +113,7 @@ import { formatBytes, formatDataLimit, simBadgeClass } from './sim-ui';
     @keyframes sp { to { transform: rotate(360deg) } }
     .sp-empty { padding: 44px 20px; border-radius: 14px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); color: var(--fg-tertiary); text-align: center; font-size: 13px }
     .ov { position: fixed; inset: 0; z-index: 9000; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.5); backdrop-filter: blur(4px); padding: 16px }
-    .ov-panel { width: 100%; max-width: 440px; background: var(--bg-primary); border: 1px solid var(--border-subtle); border-radius: 16px; overflow: hidden; display: flex; flex-direction: column; max-height: 90vh }
+    .ov-panel { width: 100%; max-width: 440px; background: var(--bg-primary); border: 1px solid var(--border-subtle); border-radius: 16px; overflow: hidden; display: flex; flex-direction: column; max-height: 90vh; max-height: 90dvh }
     .ov-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border-subtle) }
     .ov-head h2 { font-size: 16px; font-weight: 700; color: var(--fg-primary) }
     .ov-x { padding: 6px; border-radius: 8px; background: none; border: none; color: var(--fg-tertiary); cursor: pointer }

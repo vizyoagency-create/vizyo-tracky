@@ -614,7 +614,8 @@ interface GroupOption {
     }
     @keyframes ag-fade { from { opacity: 0; } to { opacity: 1; } }
     .ag-sheet, .ag-modal {
-      width: 100%; max-width: 440px; max-height: 86vh;
+      width: 100%; max-width: 440px;
+      max-height: 86vh; max-height: 86dvh; /* dvh = iOS-safe (tient compte de la barre Safari) */
       display: flex; flex-direction: column;
       background: var(--bg-primary); border: 1px solid var(--border-subtle);
       border-radius: 18px; box-shadow: 0 24px 60px rgba(0,0,0,.4); overflow: hidden;
@@ -627,7 +628,7 @@ interface GroupOption {
     }
     .ag-sheet-title { font-size: 15px; font-weight: 700; color: var(--fg-primary); margin: 0; }
     .ag-sheet-sub { font-size: 11px; color: var(--fg-tertiary); margin: 2px 0 0; }
-    .ag-sheet-body { padding: 12px 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+    .ag-sheet-body { padding: 12px 14px; padding-bottom: max(14px, env(safe-area-inset-bottom)); overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
     .ag-sheet-empty { text-align: center; color: var(--fg-tertiary); font-size: 13px; padding: 20px 0; }
 
     .ag-day-card {
@@ -662,7 +663,8 @@ interface GroupOption {
     .ag-modal-body { padding: 14px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
     .ag-modal-foot {
       display: flex; gap: 8px; justify-content: flex-end;
-      padding: 12px 16px; border-top: 1px solid var(--border-subtle); flex-shrink: 0;
+      padding: 12px 16px; padding-bottom: max(12px, env(safe-area-inset-bottom));
+      border-top: 1px solid var(--border-subtle); flex-shrink: 0;
     }
     .ag-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
     .ag-field-row { display: flex; gap: 10px; }
@@ -693,7 +695,8 @@ interface GroupOption {
     @media (max-width: 480px) {
       .ag-sheet-root, .ag-modal-root { align-items: flex-end; padding: 0; }
       .ag-sheet, .ag-modal {
-        max-width: none; max-height: 92vh;
+        max-width: none;
+        max-height: 92vh; max-height: 92dvh; /* iOS-safe */
         border-radius: 18px 18px 0 0; border-bottom: 0;
       }
       @keyframes ag-rise { from { opacity: 0; transform: translateY(100%); } to { opacity: 1; transform: none; } }
@@ -860,10 +863,14 @@ export class AgendaComponent implements OnInit {
       .slice(0, 25);
   });
 
-  protected readonly canSubmitCreate = computed(() => {
+  // Méthode (PAS un computed) : `form` est un objet simple muté par ngModel — un computed
+  // ne lit aucun signal donc resterait FIGÉ à sa valeur initiale (form vide → false → bouton
+  // toujours grisé). Une méthode est ré-évaluée à chaque détection de changement (les events
+  // ngModel/click en déclenchent une), donc elle reflète l'état réel du formulaire.
+  protected canSubmitCreate(): boolean {
     const f = this.form;
     return !!f.vehicleId && f.title.trim().length > 0 && !!f.date;
-  });
+  }
 
   // ─── Lifecycle ───────────────────────────────────────────────────────────────
   async ngOnInit(): Promise<void> {

@@ -1477,7 +1477,7 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
     }
     @keyframes vd-inc-fade { from { opacity: 0; } to { opacity: 1; } }
     .vd-inc-modal {
-      width: 100%; max-width: 420px; max-height: 88vh; display: flex; flex-direction: column;
+      width: 100%; max-width: 420px; max-height: 88vh; max-height: 88dvh; display: flex; flex-direction: column;
       background: var(--bg-primary); border: 1px solid var(--border-subtle);
       border-radius: 18px; box-shadow: 0 24px 60px rgba(0,0,0,.4); overflow: hidden;
       animation: vd-inc-rise .2s cubic-bezier(0.16, 1, 0.3, 1);
@@ -1522,7 +1522,8 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
     .vd-inc-seg-btn--active { background: var(--bg-secondary); color: #f59e0b; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
     .vd-inc-foot {
       display: flex; gap: 8px; justify-content: flex-end;
-      padding: 12px 16px; border-top: 1px solid var(--border-subtle); flex-shrink: 0;
+      padding: 12px 16px; padding-bottom: max(12px, env(safe-area-inset-bottom));
+      border-top: 1px solid var(--border-subtle); flex-shrink: 0;
     }
     .vd-inc-cancel {
       padding: 8px 14px; border-radius: 10px;
@@ -1540,7 +1541,7 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
 
     @media (max-width: 480px) {
       .vd-inc-root { align-items: flex-end; padding: 0; }
-      .vd-inc-modal { max-width: none; max-height: 92vh; border-radius: 18px 18px 0 0; border-bottom: 0; }
+      .vd-inc-modal { max-width: none; max-height: 92vh; max-height: 92dvh; border-radius: 18px 18px 0 0; border-bottom: 0; }
       @keyframes vd-inc-rise { from { opacity: 0; transform: translateY(100%); } to { opacity: 1; transform: none; } }
     }
   `],

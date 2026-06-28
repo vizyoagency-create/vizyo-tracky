@@ -386,7 +386,7 @@ import {
     }
     @keyframes vmt-fade { from { opacity: 0; } to { opacity: 1; } }
     .vmt-modal {
-      width: 100%; max-width: 420px; max-height: 88vh; display: flex; flex-direction: column;
+      width: 100%; max-width: 420px; max-height: 88vh; max-height: 88dvh; display: flex; flex-direction: column;
       background: var(--bg-primary); border: 1px solid var(--border-subtle);
       border-radius: 18px; box-shadow: 0 24px 60px rgba(0,0,0,.4); overflow: hidden;
       animation: vmt-rise .2s cubic-bezier(0.16, 1, 0.3, 1);
@@ -445,7 +445,7 @@ import {
 
     @media (max-width: 480px) {
       .vmt-modal-root { align-items: flex-end; padding: 0; }
-      .vmt-modal { max-width: none; max-height: 92vh; border-radius: 18px 18px 0 0; border-bottom: 0; }
+      .vmt-modal { max-width: none; max-height: 92vh; max-height: 92dvh; border-radius: 18px 18px 0 0; border-bottom: 0; }
       @keyframes vmt-rise { from { opacity: 0; transform: translateY(100%); } to { opacity: 1; transform: none; } }
     }
   `],
@@ -506,10 +506,12 @@ export class VehicleMaintenanceTabComponent implements OnInit {
   protected readonly savingPlan = signal(false);
   protected planForm = this.blankPlanForm();
 
-  protected readonly canSavePlan = computed(() => {
+  // Méthode (PAS un computed) : `planForm` est un objet simple muté par ngModel — un computed
+  // ne lit aucun signal et resterait FIGÉ (bouton toujours grisé). Ré-évaluée à chaque cycle.
+  protected canSavePlan(): boolean {
     const f = this.planForm;
     return f.label.trim().length > 0 && f.category.trim().length > 0;
-  });
+  }
 
   // ─── Enregistrer un entretien ────────────────────────────────────────────────
   protected readonly doneEditorOpen = signal(false);

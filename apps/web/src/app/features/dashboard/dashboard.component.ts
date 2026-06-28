@@ -580,7 +580,7 @@ interface WidgetMeta {
       box-shadow: 0 20px 50px rgba(0,0,0,.25);
       padding: 16px;
       animation: slide-up .25s cubic-bezier(0.16, 1, 0.3, 1);
-      max-height: 70vh; overflow-y: auto;
+      max-height: 70vh; max-height: 70dvh; overflow-y: auto;
     }
     @keyframes slide-up { from { transform: translateY(20px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
     .dash-customizer-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px }

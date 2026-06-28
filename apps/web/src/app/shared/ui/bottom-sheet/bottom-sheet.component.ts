@@ -83,7 +83,7 @@ import {
 
     .bs-panel {
       position: fixed; left: 0; right: 0; bottom: 0; z-index: 8001;
-      max-height: 85vh;
+      max-height: 85vh; max-height: 85dvh;
       display: flex; flex-direction: column;
       background: var(--bg-secondary, #0F1714);
       border-top-left-radius: 20px;

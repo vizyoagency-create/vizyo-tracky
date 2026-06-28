@@ -879,7 +879,7 @@ const EMPTY_FORM: RuleForm = {
     }
     .cfg-modal {
       background: var(--bg-secondary); border-radius: 16px;
-      width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto;
+      width: 100%; max-width: 480px; max-height: 90vh; max-height: 90dvh; overflow-y: auto;
       border: 1px solid var(--border-subtle);
     }
     .cfg-modal-header, .cfg-modal-footer {
