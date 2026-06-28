@@ -1,5 +1,5 @@
 import { DatePipe, DecimalPipe } from '@angular/common';
-import { Component, type OnInit, computed, inject, signal } from '@angular/core';
+import { Component, type OnInit, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import type { RetentionOverviewDto } from '@vizyo/tracky-shared';
 import {
@@ -219,8 +219,6 @@ export class AdminRetentionComponent implements OnInit {
   protected readonly Trash2 = Trash2;
   protected readonly Archive = Archive;
   protected readonly HardDrive = HardDrive;
-
-  protected readonly purgeEnabled = computed(() => this.data()?.config.purgeEnabled ?? false);
 
   async ngOnInit(): Promise<void> {
     await this.load();
