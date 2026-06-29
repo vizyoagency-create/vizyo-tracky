@@ -137,6 +137,15 @@ export const routes: Routes = [
         data: { title: 'Réservations' },
       },
       {
+        // Sprint 9 — Copilote IA d'optimisation (capacité + placement). Gaté ai_optimize
+        // (FLEET_ADMIN/SUPER_ADMIN bypass via PermissionsService.can).
+        path: 'ia',
+        canActivate: [permissionGuard('ai_optimize')],
+        loadComponent: () =>
+          import('./features/ai-optimization/ai-optimization.component').then((m) => m.AiOptimizationComponent),
+        data: { title: 'Optimisation IA' },
+      },
+      {
         path: 'users/overview',
         canActivate: [permissionGuard('users_view')],
         loadComponent: () =>

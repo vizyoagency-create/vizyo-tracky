@@ -13,6 +13,7 @@ import {
   Calendar,
   CalendarCheck,
   Gauge,
+  Sparkles,
   Users,
   Settings,
   Menu,
@@ -911,6 +912,8 @@ export class DashboardLayoutComponent {
       ...(this.perms.can('reservations_view') ? [{ label: 'Optimisation', route: '/optimisation', icon: Gauge }] : []),
       // Sprint 8 — Réservations : visible dès qu'on peut VOIR ou DEMANDER (un user request-only doit y accéder).
       ...(this.perms.can('reservations_view') || this.perms.can('reservations_request') ? [{ label: 'Réservations', route: '/reservations', icon: CalendarCheck }] : []),
+      // Sprint 9 — Copilote IA d'optimisation (capacité + placement), gaté ai_optimize.
+      ...(this.perms.can('ai_optimize') ? [{ label: 'Optimisation IA', route: '/ia', icon: Sparkles }] : []),
       ...(this.perms.can('drivers_view') ? [{ label: 'Conducteurs', route: '/drivers', icon: UserRound }] : []),
       ...(this.perms.can('users_view') ? [{ label: 'Utilisateurs', route: '/users', icon: Users }] : []),
       // V1.16 — Parc SIM : visible des qu'on a sims_view (FLEET_ADMIN/SUPER_ADMIN bypass).

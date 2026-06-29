@@ -7,6 +7,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import type { Env } from './config/env.validation';
 import { AgendaModule } from './agenda/agenda.module';
+import { AiModule } from './ai/ai.module';
 import { AlertsModule } from './alerts/alerts.module';
 import { AudioMonitoringModule } from './audio-monitoring/audio-monitoring.module';
 import { AuthClientModule } from './auth-client/auth-client.module';
@@ -124,6 +125,9 @@ import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.modul
     // en prod l'écoute reste impossible sans AUDIO_MONITORING_ENABLED='true' (#2).
     AudioMonitoringModule,
     AgendaModule,
+    // Sprint 9 — Copilote IA d'optimisation (capacité + placement). Inactif sans
+    // ANTHROPIC_API_KEY (endpoints 503). L'IA propose, l'app valide.
+    AiModule,
   ],
   controllers: [HealthController],
   providers: [

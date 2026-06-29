@@ -153,10 +153,22 @@ enum InstallationEnergy {
   AUTRE
 }
 
+/// Sprint 9 — Metier d'une flotte : conditionne l'objectif d'optimisation IA.
+enum FleetMetier {
+  CHILDREN_TRANSPORT
+  PARCELS
+  RENTAL
+  GENERIC
+}
+
 model Fleet {
   id        String   @id @default(uuid()) @db.Uuid
   name      String
   clientId  String?
+  // Sprint 9 — Metier de la flotte : conditionne l'objectif d'optimisation IA
+  // (CHILDREN_TRANSPORT = enfants/places, PARCELS = colis, RENTAL = location).
+  // Defaut GENERIC. Regle par un super-admin.
+  metier    FleetMetier @default(GENERIC)
   // V1.5 (Sprint H1) — sampling adaptatif des positions cote serveur.
   // true = positions redondantes (vehicule arrete) ne sont pas persistees pour
   // economiser le stockage. UX-first : le broadcast WS reste integral.
