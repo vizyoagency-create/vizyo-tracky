@@ -305,7 +305,10 @@ interface TimelineState {
   styles: [`
     :host { display: contents; }
     .pr-shell {
-      padding-top: max(1rem, env(safe-area-inset-top));
+      /* La top-bar de l'app (z-1800) repeint par-dessus le replay sur iOS (stacking
+         context piege). On descend le contenu SOUS la top-bar (hauteur 56px + safe-area
+         + 10px = env+66px) pour que le bouton X reste atteignable. */
+      padding-top: calc(env(safe-area-inset-top) + 70px);
       padding-bottom: max(1rem, env(safe-area-inset-bottom));
       padding-left: max(1rem, env(safe-area-inset-left));
       padding-right: max(1rem, env(safe-area-inset-right));
