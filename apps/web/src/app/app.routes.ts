@@ -129,6 +129,14 @@ export const routes: Routes = [
         data: { title: 'Optimisation' },
       },
       {
+        // Sprint 8 — Réservations (demande + validation + auto-complétion). Gaté reservations_view.
+        path: 'reservations',
+        canActivate: [permissionGuard('reservations_view')],
+        loadComponent: () =>
+          import('./features/reservations/reservations.component').then((m) => m.ReservationsComponent),
+        data: { title: 'Réservations' },
+      },
+      {
         path: 'users/overview',
         canActivate: [permissionGuard('users_view')],
         loadComponent: () =>

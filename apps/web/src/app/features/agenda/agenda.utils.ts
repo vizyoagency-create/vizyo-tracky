@@ -76,6 +76,10 @@ export function eventStatusLabel(status: VehicleEventStatus): string {
       return 'Terminé';
     case 'CANCELLED':
       return 'Annulé';
+    case 'REQUESTED':
+      return 'Demande';
+    case 'CONFIRMED':
+      return 'Confirmée';
     default:
       return status;
   }

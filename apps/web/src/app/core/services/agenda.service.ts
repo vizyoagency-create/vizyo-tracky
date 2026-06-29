@@ -4,6 +4,10 @@ import type {
   AgendaSummaryDto,
   FleetOptimizationDto,
   VehicleAvailabilityDto,
+  RequestReservationDto,
+  ConfirmReservationDto,
+  UpdateReservationDto,
+  SuggestReservationResultDto,
   CreateVehicleEventDto,
   MaintenancePlanDto,
   OdometerEstimateDto,
@@ -134,5 +138,59 @@ export class AgendaApiService {
     if (query?.vehicleId) params['vehicleId'] = query.vehicleId;
     if (query?.groupId) params['groupId'] = query.groupId;
     return this.http.get<FleetOptimizationDto>('/api/optimization/utilization', { params });
+  }
+
+  // ─── Sprint 8 (Palier B) — Réservations ───
+
+  /** GET /api/reservations — réservations scopées (status=REQUESTED = file de validation). */
+  listReservations(filters?: {
+    status?: VehicleEventStatus;
+    from?: string;
+    to?: string;
+    vehicleId?: string;
+    groupId?: string;
+  }): Observable<VehicleEventDto[]> {
+    const params: Record<string, string> = {};
+    if (filters?.status) params['status'] = filters.status;
+    if (filters?.from) params['from'] = filters.from;
+    if (filters?.to) params['to'] = filters.to;
+    if (filters?.vehicleId) params['vehicleId'] = filters.vehicleId;
+    if (filters?.groupId) params['groupId'] = filters.groupId;
+    return this.http.get<VehicleEventDto[]>('/api/reservations', { params });
+  }
+
+  /** GET /api/reservations/suggest — véhicules libres + conformes aux critères. */
+  suggestReservation(query: {
+    startAt: string;
+    endAt: string;
+    minSeats?: number;
+    minChildSeats?: number;
+    features?: string[];
+  }): Observable<SuggestReservationResultDto> {
+    const params: Record<string, string> = { startAt: query.startAt, endAt: query.endAt };
+    if (query.minSeats) params['minSeats'] = String(query.minSeats);
+    if (query.minChildSeats) params['minChildSeats'] = String(query.minChildSeats);
+    if (query.features?.length) params['features'] = query.features.join(',');
+    return this.http.get<SuggestReservationResultDto>('/api/reservations/suggest', { params });
+  }
+
+  /** POST /api/reservations/request — déposer une demande (REQUESTED). */
+  requestReservation(dto: RequestReservationDto): Observable<VehicleEventDto> {
+    return this.http.post<VehicleEventDto>('/api/reservations/request', dto);
+  }
+
+  /** POST /api/reservations/:id/confirm — valider (CONFIRMED). */
+  confirmReservation(id: string, dto: ConfirmReservationDto = {}): Observable<VehicleEventDto> {
+    return this.http.post<VehicleEventDto>(`/api/reservations/${id}/confirm`, dto);
+  }
+
+  /** POST /api/reservations/:id/cancel — refuser / annuler (CANCELLED). */
+  cancelReservation(id: string): Observable<VehicleEventDto> {
+    return this.http.post<VehicleEventDto>(`/api/reservations/${id}/cancel`, {});
+  }
+
+  /** PATCH /api/reservations/:id — éditer (créneau / critères / libellé). */
+  updateReservation(id: string, dto: UpdateReservationDto): Observable<VehicleEventDto> {
+    return this.http.patch<VehicleEventDto>(`/api/reservations/${id}`, dto);
   }
 }

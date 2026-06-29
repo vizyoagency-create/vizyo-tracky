@@ -777,6 +777,7 @@ export class AgendaComponent implements OnInit {
     { value: '', label: 'Tous' },
     { value: 'MAINTENANCE', label: 'Maintenance' },
     { value: 'INCIDENT', label: 'Incident' },
+    { value: 'RESERVATION', label: 'Réservation' },
   ];
 
   private readonly monthFmt = new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' });
