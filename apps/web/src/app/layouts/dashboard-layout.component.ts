@@ -11,9 +11,6 @@ import {
   Shield,
   FileBarChart,
   Calendar,
-  CalendarCheck,
-  Gauge,
-  Sparkles,
   Users,
   Settings,
   Menu,
@@ -906,14 +903,11 @@ export class DashboardLayoutComponent {
       ...(this.perms.can('alerts_view') ? [{ label: 'Alertes', route: '/alerts', icon: Bell }] : []),
       ...(this.perms.can('geofences_view') ? [{ label: 'Géofences', route: '/geofences', icon: Shield }] : []),
       ...(this.perms.can('reports_view') ? [{ label: 'Rapports', route: '/reports', icon: FileBarChart }] : []),
-      // Sprint 7 — Agenda (maintenance + incidents), gaté agenda_view. Pas dans la barre mobile.
-      ...(this.perms.can('agenda_view') ? [{ label: 'Agenda', route: '/agenda', icon: Calendar }] : []),
-      // Sprint 8 — Optimisation de flotte (dispo/activité + sous-utilisation), gaté reservations_view.
-      ...(this.perms.can('reservations_view') ? [{ label: 'Optimisation', route: '/optimisation', icon: Gauge }] : []),
-      // Sprint 8 — Réservations : visible dès qu'on peut VOIR ou DEMANDER (un user request-only doit y accéder).
-      ...(this.perms.can('reservations_view') || this.perms.can('reservations_request') ? [{ label: 'Réservations', route: '/reservations', icon: CalendarCheck }] : []),
-      // Sprint 9 — Copilote IA d'optimisation (capacité + placement), gaté ai_optimize.
-      ...(this.perms.can('ai_optimize') ? [{ label: 'Optimisation IA', route: '/ia', icon: Sparkles }] : []),
+      // Sprint 7 + Sprint 9 (consolidation) — Agenda = hub calendrier UNIQUE : maintenance,
+      // incidents, réservations, optimisation et copilote IA réunis (ouverts en feuilles DEPUIS
+      // le calendrier). Visible dès qu'un des accès liés est présent ; plus d'entrées séparées.
+      ...(this.perms.can('agenda_view') || this.perms.can('reservations_view') || this.perms.can('reservations_request') || this.perms.can('ai_optimize')
+        ? [{ label: 'Agenda', route: '/agenda', icon: Calendar }] : []),
       ...(this.perms.can('drivers_view') ? [{ label: 'Conducteurs', route: '/drivers', icon: UserRound }] : []),
       ...(this.perms.can('users_view') ? [{ label: 'Utilisateurs', route: '/users', icon: Users }] : []),
       // V1.16 — Parc SIM : visible des qu'on a sims_view (FLEET_ADMIN/SUPER_ADMIN bypass).

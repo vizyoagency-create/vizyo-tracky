@@ -111,40 +111,20 @@ export const routes: Routes = [
         data: { title: 'Rapports' },
       },
       {
-        // Sprint 7 — Agenda (maintenance + incidents). Gaté agenda_view
-        // (FLEET_ADMIN/SUPER_ADMIN bypass via PermissionsService.can).
+        // Sprint 7 + Sprint 9 (consolidation) — Agenda = hub calendrier unique : maintenance,
+        // incidents, réservations, optimisation et copilote IA réunis (ouverts en feuilles depuis
+        // le calendrier). Gaté large pour ne pas régresser l'accès des délégués qui n'avaient que
+        // reservations_*/ai_optimize ; chaque action interne reste gardée par sa permission.
         path: 'agenda',
-        canActivate: [permissionGuard('agenda_view')],
+        canActivate: [anyPermissionGuard('agenda_view', 'reservations_view', 'reservations_request', 'ai_optimize')],
         loadComponent: () =>
           import('./features/agenda/agenda.component').then((m) => m.AgendaComponent),
         data: { title: 'Agenda' },
       },
-      {
-        // Sprint 8 — Optimisation de flotte (dispo/activité + sous-utilisation). Gaté reservations_view
-        // (FLEET_ADMIN/SUPER_ADMIN bypass via PermissionsService.can).
-        path: 'optimisation',
-        canActivate: [permissionGuard('reservations_view')],
-        loadComponent: () =>
-          import('./features/optimization/fleet-optimization.component').then((m) => m.FleetOptimizationComponent),
-        data: { title: 'Optimisation' },
-      },
-      {
-        // Sprint 8 — Réservations (demande + validation + auto-complétion). Gaté reservations_view.
-        path: 'reservations',
-        canActivate: [anyPermissionGuard('reservations_view', 'reservations_request')],
-        loadComponent: () =>
-          import('./features/reservations/reservations.component').then((m) => m.ReservationsComponent),
-        data: { title: 'Réservations' },
-      },
-      {
-        // Sprint 9 — Copilote IA d'optimisation (capacité + placement). Gaté ai_optimize
-        // (FLEET_ADMIN/SUPER_ADMIN bypass via PermissionsService.can).
-        path: 'ia',
-        canActivate: [permissionGuard('ai_optimize')],
-        loadComponent: () =>
-          import('./features/ai-optimization/ai-optimization.component').then((m) => m.AiOptimizationComponent),
-        data: { title: 'Optimisation IA' },
-      },
+      // Sprint 9 (consolidation) — anciennes pages fondues dans l'Agenda → redirections (liens conservés).
+      { path: 'optimisation', redirectTo: 'agenda', pathMatch: 'full' },
+      { path: 'reservations', redirectTo: 'agenda', pathMatch: 'full' },
+      { path: 'ia', redirectTo: 'agenda', pathMatch: 'full' },
       {
         path: 'users/overview',
         canActivate: [permissionGuard('users_view')],

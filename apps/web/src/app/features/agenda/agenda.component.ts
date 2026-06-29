@@ -13,6 +13,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import {
   LucideAngularModule, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Check,
   Layers, Truck, Plus, AlertTriangle, CalendarClock, Wrench, X, Trash2, Play, ListChecks,
+  Gauge, CalendarCheck, Inbox,
 } from 'lucide-angular';
 import type {
   AgendaSummaryDto,
@@ -28,6 +29,8 @@ import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/v
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.component';
 import { AgendaCalendarComponent } from './agenda-calendar.component';
+import { ReservationSheetComponent } from './sheets/reservation-sheet.component';
+import { OptimizationSheetComponent } from './sheets/optimization-sheet.component';
 import {
   addMonths,
   eventColor,
@@ -50,7 +53,7 @@ interface GroupOption {
   selector: 'app-agenda',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, LucideAngularModule, DatePipe, GroupBadgeComponent, AgendaCalendarComponent],
+  imports: [FormsModule, LucideAngularModule, DatePipe, GroupBadgeComponent, AgendaCalendarComponent, ReservationSheetComponent, OptimizationSheetComponent],
   template: `
     <div class="flex flex-col gap-5">
       <!-- Header + résumé -->
@@ -65,12 +68,28 @@ interface GroupOption {
               Entretiens planifiés et incidents de votre flotte
             </p>
           </div>
-          @if (canManage()) {
-            <button type="button" (click)="openCreate()" class="ag-btn-primary">
-              <lucide-icon [img]="PlusIcon" [size]="15"></lucide-icon>
-              <span>Événement</span>
-            </button>
-          }
+          <div class="ag-actions">
+            @if (canReserve()) {
+              <button type="button" (click)="openReserve()" class="ag-btn-soft">
+                <lucide-icon [img]="CalendarCheckIcon" [size]="15"></lucide-icon><span>Réserver</span>
+              </button>
+            }
+            @if (canValidate() && pendingCount() > 0) {
+              <button type="button" (click)="openValidate()" class="ag-btn-soft">
+                <lucide-icon [img]="InboxIcon" [size]="15"></lucide-icon><span>Demandes</span><span class="ag-badge">{{ pendingCount() }}</span>
+              </button>
+            }
+            @if (canOptimize()) {
+              <button type="button" (click)="openOptim()" class="ag-btn-soft">
+                <lucide-icon [img]="GaugeIcon" [size]="15"></lucide-icon><span>Optimisation</span>
+              </button>
+            }
+            @if (canManage()) {
+              <button type="button" (click)="openCreate()" class="ag-btn-primary">
+                <lucide-icon [img]="PlusIcon" [size]="15"></lucide-icon><span>Événement</span>
+              </button>
+            }
+          </div>
         </div>
 
         <!-- Strip de 3 stats -->
@@ -307,6 +326,13 @@ interface GroupOption {
               </article>
             }
           </div>
+          @if (canReserve()) {
+            <footer class="ag-sheet-foot">
+              <button type="button" (click)="reserveThisDay()" class="ag-btn-primary ag-btn-full">
+                <lucide-icon [img]="CalendarCheckIcon" [size]="15"></lucide-icon><span>Réserver ce jour</span>
+              </button>
+            </footer>
+          }
         </div>
       </div>
     }
@@ -413,6 +439,19 @@ interface GroupOption {
         </div>
       </div>
     }
+
+    <!-- ─── Sprint 9 (consolidation) — feuilles ouvertes depuis le calendrier ─── -->
+    <app-reservation-sheet
+      [open]="resSheetOpen()"
+      [vehicles]="vehicles()"
+      [defaultDate]="resDefaultDate()"
+      [startMode]="resStartMode()"
+      (closed)="resSheetOpen.set(false)"
+      (created)="onReservationChanged()" />
+    <app-optimization-sheet
+      [open]="optSheetOpen()"
+      (closed)="optSheetOpen.set(false)"
+      (applied)="onReservationChanged()" />
   `,
   styles: [`
     /* ─── Boutons génériques ─── */
@@ -433,6 +472,27 @@ interface GroupOption {
       transition: all .15s;
     }
     .ag-btn-ghost:hover { color: var(--fg-primary); border-color: var(--border-strong); }
+    .ag-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .ag-btn-soft {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 12px; border-radius: 10px;
+      background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+      color: var(--fg-secondary); font-size: 13px; font-weight: 600; cursor: pointer;
+      transition: all .15s; white-space: nowrap;
+    }
+    .ag-btn-soft:hover { color: var(--fg-primary); border-color: var(--border-strong); }
+    .ag-btn-soft lucide-icon { color: var(--tracky-light); }
+    .ag-badge { font-size: 11px; font-weight: 800; padding: 0 6px; border-radius: 999px; background: rgba(56,189,248,.18); color: #38BDF8; }
+    .ag-btn-full { width: 100%; justify-content: center; }
+    .ag-sheet-foot {
+      display: flex; gap: 8px; padding: 12px 16px;
+      padding-bottom: max(12px, env(safe-area-inset-bottom));
+      border-top: 1px solid var(--border-subtle); flex-shrink: 0;
+    }
+    @media (max-width: 480px) {
+      .ag-actions { width: 100%; }
+      .ag-actions .ag-btn-soft, .ag-actions .ag-btn-primary { flex: 1; justify-content: center; }
+    }
     .ag-icon-btn {
       display: inline-flex; align-items: center; justify-content: center;
       width: 32px; height: 32px; border-radius: 8px;
@@ -734,6 +794,9 @@ export class AgendaComponent implements OnInit {
   protected readonly Trash2Icon = Trash2;
   protected readonly PlayIcon = Play;
   protected readonly ListChecksIcon = ListChecks;
+  protected readonly GaugeIcon = Gauge;
+  protected readonly CalendarCheckIcon = CalendarCheck;
+  protected readonly InboxIcon = Inbox;
 
   // ─── Helpers exposés au template ───────────────────────────────────────────
   protected readonly eventColor = eventColor;
@@ -795,6 +858,18 @@ export class AgendaComponent implements OnInit {
 
   // ─── Permissions ────────────────────────────────────────────────────────────
   protected readonly canManage = computed(() => this.perms.can('agenda_manage'));
+  // Sprint 9 (consolidation) — actions Réservation / Optimisation ouvertes depuis le calendrier.
+  protected readonly canReserve = computed(() => this.perms.can('reservations_request'));
+  protected readonly canValidate = computed(() => this.perms.can('reservations_manage'));
+  protected readonly canOptimize = computed(() => this.perms.can('reservations_view'));
+  protected readonly resSheetOpen = signal(false);
+  protected readonly resStartMode = signal<'request' | 'validate'>('request');
+  protected readonly resDefaultDate = signal<string | null>(null);
+  protected readonly optSheetOpen = signal(false);
+  /** Nb de demandes de réservation en attente (dérivé des événements déjà chargés). */
+  protected readonly pendingCount = computed(() =>
+    this.events().filter((e) => e.type === 'RESERVATION' && e.status === 'REQUESTED').length,
+  );
 
   // ─── Dérivés filtres ─────────────────────────────────────────────────────────
   /** Groupes uniques tirés des véhicules (dédup par id). */
@@ -1207,5 +1282,36 @@ export class AgendaComponent implements OnInit {
     } finally {
       this.saving.set(false);
     }
+  }
+
+  // ─── Sprint 9 (consolidation) — feuilles Réservation / Optimisation ─────────
+  protected openReserve(date?: string): void {
+    this.resDefaultDate.set(date ?? null);
+    this.resStartMode.set('request');
+    this.resSheetOpen.set(true);
+  }
+
+  protected openValidate(): void {
+    this.resDefaultDate.set(null);
+    this.resStartMode.set('validate');
+    this.resSheetOpen.set(true);
+  }
+
+  protected openOptim(): void {
+    this.optSheetOpen.set(true);
+  }
+
+  /** « Réserver ce jour » depuis le panneau jour : ferme le panneau, ouvre la demande pré-datée. */
+  protected reserveThisDay(): void {
+    const day = this.selectedDay();
+    this.closeDayPanel();
+    this.openReserve(day || undefined);
+  }
+
+  /** Une réservation a été déposée / validée / refusée → recharge l'agenda. */
+  protected onReservationChanged(): void {
+    void this.loadEvents();
+    void this.loadSummary();
+    void this.loadActivity();
   }
 }
