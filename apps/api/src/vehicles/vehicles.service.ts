@@ -94,6 +94,26 @@ export class VehiclesService {
     return { ...rest, group: groups?.[0]?.group ?? null };
   }
 
+  /**
+   * Sprint 8 — Normalise les tags d'équipement (critères de réservation) : trim,
+   * dédup insensible à la casse (garde la 1re occurrence), drop des vides. Renvoie
+   * `undefined` si l'entrée n'est pas un tableau (=> ne pas toucher au champ).
+   */
+  static normalizeFeatures(features?: string[] | null): string[] | undefined {
+    if (!Array.isArray(features)) return undefined;
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const raw of features) {
+      const t = (raw ?? '').trim();
+      if (!t) continue;
+      const key = t.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(t);
+    }
+    return out;
+  }
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly cache: InMemoryCacheService,
@@ -157,6 +177,9 @@ export class VehiclesService {
           model: dto.model,
           year: dto.year,
           color: dto.color,
+          seats: dto.seats,
+          childSeats: dto.childSeats,
+          features: VehiclesService.normalizeFeatures(dto.features),
         },
         include: { tracker: true, ...VehiclesService.CURRENT_DRIVER_INCLUDE },
       });
@@ -270,6 +293,12 @@ export class VehiclesService {
     if (dto.model !== undefined) data.model = dto.model;
     if (dto.year !== undefined) data.year = dto.year;
     if (dto.color !== undefined) data.color = dto.color;
+    if (dto.seats !== undefined) data.seats = dto.seats;
+    if (dto.childSeats !== undefined) data.childSeats = dto.childSeats;
+    if (dto.features !== undefined) {
+      const f = VehiclesService.normalizeFeatures(dto.features);
+      if (f !== undefined) data.features = f;
+    }
     if (dto.fleetId !== undefined && requestedBy.role === UserRole.SUPER_ADMIN) {
       data.fleet = { connect: { id: dto.fleetId } };
       // #28 — changement de flotte : detacher le conducteur courant (il appartient
