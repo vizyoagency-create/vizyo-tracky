@@ -7,10 +7,12 @@ import {
 import { Prisma, UserRole } from '@prisma/client';
 import type {
   AiCapacityApplyDto,
+  AiCapacityInputDto,
   AiCapacityProposalDto,
   AiCapacityResultDto,
   AiCapacitySuggestRequestDto,
   AiPlacementCandidateInput,
+  AiPlacementInputDto,
   AiPlacementProposalDto,
   AiPlacementResultDto,
   AiPlacementSuggestRequestDto,
@@ -23,9 +25,10 @@ import { ForecastService } from '../agenda/forecast.service';
 import { ReservationsService } from '../agenda/reservations.service';
 import { VehicleEventsService } from '../agenda/vehicle-events.service';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
-import { AnthropicClient } from './anthropic.client';
+import { AiServiceError, AnthropicClient, type AiErrorKind } from './anthropic.client';
 import {
   CAPACITY_SCHEMA,
   PLACEMENT_SCHEMA,
@@ -51,6 +54,17 @@ function cleanFeatures(f: unknown): string[] {
   return f.filter((x): x is string => typeof x === 'string').map((s) => s.trim()).filter(Boolean).slice(0, 20);
 }
 
+type CapacityVehicleRow = {
+  id: string;
+  plate: string | null;
+  type: string;
+  brand: string | null;
+  model: string | null;
+  seats: number | null;
+  childSeats: number | null;
+  features: string[];
+};
+
 type CapacityAiOutput = {
   proposals: Array<{
     vehicleId: string;
@@ -67,15 +81,25 @@ type PlacementAiOutput = {
   notes?: string | null;
 };
 
+/** Anti-spam des alertes IA : 1 entrée / fenêtre par (capacité, flotte, nature). */
+const AI_ALERT_THROTTLE_MS = 5 * 60 * 1000;
+
 /**
  * Sprint 9 — Copilote IA d'optimisation. L'IA PROPOSE (sortie structurée) ; l'app
  * VALIDE/APPLIQUE. Toutes les lectures passent par les services SCOPÉS (chaîne S5
  * anti-IDOR) : l'IA ne reçoit jamais que le périmètre de l'appelant. Aucune
  * proposition n'écrit en base : capacité → applyCapacity (perm vehicles_edit),
  * placement → flux de réservation S8 (request/confirm, gardes EXCLUDE + scoping).
+ *
+ * Les `preview*` renvoient le PAYLOAD EXACT envoyé à Claude (sans appel) → permet de
+ * tester en Console avec les vraies données live + prouve la fraîcheur du parc.
+ * Chaque échec IA est journalisé (ErrorLogger, source AI_OPTIMIZER) → centre d'alerte.
  */
 @Injectable()
 export class AiOptimizationService {
+  /** Dernière alerte IA émise par clé (anti-spam). */
+  private readonly aiErrLast = new Map<string, number>();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly vehicleAccess: VehicleAccessService,
@@ -83,13 +107,18 @@ export class AiOptimizationService {
     private readonly reservations: ReservationsService,
     private readonly forecast: ForecastService,
     private readonly anthropic: AnthropicClient,
+    private readonly errors: ErrorLogger,
   ) {}
 
-  // ─── Capacité 1 — enrichissement de capacité (dry-run) ─────────────────────
+  // ─── Capacité 1 — enrichissement de capacité ───────────────────────────────
 
-  async suggestCapacity(user: AuthUser, dto: AiCapacitySuggestRequestDto): Promise<AiCapacityResultDto> {
+  /** Construit le payload capacité (scopé). Réutilisé par preview + suggest. */
+  private async buildCapacityPayload(
+    user: AuthUser,
+    dto: AiCapacitySuggestRequestDto,
+  ): Promise<{ payload: AiCapacityInputDto; vehicles: CapacityVehicleRow[]; metier: FleetMetier; fleetId: string }> {
     const fleetId = this.resolveFleetId(user, dto?.fleetId);
-    const fleet = await this.prisma.fleet.findUnique({ where: { id: fleetId }, select: { metier: true } });
+    const fleet = await this.prisma.fleet.findUnique({ where: { id: fleetId }, select: { metier: true, name: true } });
     if (!fleet) throw new NotFoundException('Flotte introuvable.');
     const metier = fleet.metier as FleetMetier;
 
@@ -106,23 +135,25 @@ export class AiOptimizationService {
       },
       take: 2000,
     });
-    if (vehicles.length === 0) return { metier, proposals: [] };
 
     // Énergie : depuis l'InstallationTask liée si disponible (le planning porte model + energy).
     const vids = vehicles.map((v) => v.id);
-    const tasks = await this.prisma.installationTask.findMany({
-      where: { vehicleId: { in: vids } },
-      select: { vehicleId: true, energy: true },
-      orderBy: { createdAt: 'asc' },
-    });
+    const tasks = vids.length
+      ? await this.prisma.installationTask.findMany({
+          where: { vehicleId: { in: vids } },
+          select: { vehicleId: true, energy: true },
+          orderBy: { createdAt: 'asc' },
+        })
+      : [];
     const energyByVeh = new Map<string, string | null>();
     for (const t of tasks) {
       // 1re tâche (la plus ancienne) gagne — déterministe grâce à l'orderBy.
       if (t.vehicleId && !energyByVeh.has(t.vehicleId)) energyByVeh.set(t.vehicleId, t.energy ?? null);
     }
 
-    const payload = {
+    const payload: AiCapacityInputDto = {
       metier,
+      fleetContext: fleet.name ?? null,
       vehicles: vehicles.map((v) => ({
         vehicleId: v.id,
         plate: v.plate,
@@ -135,15 +166,32 @@ export class AiOptimizationService {
         currentFeatures: v.features,
       })),
     };
+    return { payload, vehicles, metier, fleetId };
+  }
 
-    const ai = await this.anthropic.completeJson<CapacityAiOutput>({
-      system: renderCapacitySystem(metier),
-      userPayload: payload,
-      schema: CAPACITY_SCHEMA,
-      // Une proposition par véhicule : marge pour une grande flotte sans risquer le
-      // timeout HTTP (16k = plafond non-stream confortable, ~200 véhicules).
-      maxTokens: 16000,
-    });
+  /** Aperçu du payload capacité (DRY-RUN, aucun appel Claude) — testable en Console. */
+  async previewCapacity(user: AuthUser, dto: AiCapacitySuggestRequestDto): Promise<AiCapacityInputDto> {
+    return (await this.buildCapacityPayload(user, dto)).payload;
+  }
+
+  async suggestCapacity(user: AuthUser, dto: AiCapacitySuggestRequestDto): Promise<AiCapacityResultDto> {
+    const { payload, vehicles, metier, fleetId } = await this.buildCapacityPayload(user, dto);
+    if (vehicles.length === 0) return { metier, proposals: [] };
+
+    let ai: CapacityAiOutput;
+    try {
+      ai = await this.anthropic.completeJson<CapacityAiOutput>({
+        system: renderCapacitySystem(metier),
+        userPayload: payload,
+        schema: CAPACITY_SCHEMA,
+        // Une proposition par véhicule : marge pour une grande flotte sans risquer le
+        // timeout HTTP (16k = plafond non-stream confortable, ~200 véhicules).
+        maxTokens: 16000,
+      });
+    } catch (err) {
+      await this.recordAiFailure(err, 'capacity', { userId: user.id, fleetId, vehicleCount: vehicles.length });
+      throw err;
+    }
 
     const byId = new Map(vehicles.map((v) => [v.id, v]));
     const proposals: AiCapacityProposalDto[] = (ai?.proposals ?? [])
@@ -184,9 +232,13 @@ export class AiOptimizationService {
     return { updated };
   }
 
-  // ─── Capacité 2 — optimiseur de placement (dry-run) ────────────────────────
+  // ─── Capacité 2 — optimiseur de placement ──────────────────────────────────
 
-  async suggestPlacement(user: AuthUser, dto: AiPlacementSuggestRequestDto): Promise<AiPlacementResultDto> {
+  /** Construit le payload placement (scopé, candidats disponibles). Réutilisé par preview + suggest. */
+  private async buildPlacementPayload(
+    user: AuthUser,
+    dto: AiPlacementSuggestRequestDto,
+  ): Promise<{ payload: AiPlacementInputDto; candidates: AiPlacementCandidateInput[]; slot: { startAt: string; endAt: string } }> {
     if (!dto?.startAt || !dto?.endAt) throw new BadRequestException('startAt et endAt (ISO) requis.');
     const start = new Date(dto.startAt);
     const end = new Date(dto.endAt);
@@ -201,14 +253,6 @@ export class AiOptimizationService {
       endAt: dto.endAt,
       criteria: dto.criteria,
     });
-    if (sug.vehicles.length === 0) {
-      return {
-        slot,
-        proposals: [],
-        noGoodMatch: true,
-        notes: 'Aucun véhicule libre ne correspond aux critères sur ce créneau.',
-      };
-    }
 
     // Prévision : indique « souvent pris à ce moment » (informe le tri, jamais bloquant).
     let forecastBusy = new Set<string>();
@@ -235,10 +279,11 @@ export class AiOptimizationService {
       forecastBusy: forecastBusy.has(v.vehicleId),
     }));
     const underutilizedCount = candidates.filter((c) => c.underutilized).length;
-    const avg = candidates.reduce((s, c) => s + c.utilizationRatio, 0) / candidates.length;
+    const avg = candidates.length ? candidates.reduce((s, c) => s + c.utilizationRatio, 0) / candidates.length : 0;
 
-    const payload = {
+    const payload: AiPlacementInputDto = {
       metier,
+      fleetContext: null,
       request: {
         startAt: slot.startAt,
         endAt: slot.endAt,
@@ -253,13 +298,37 @@ export class AiOptimizationService {
         avgUtilization: Math.round(avg * 100) / 100,
       },
     };
+    return { payload, candidates, slot };
+  }
 
-    const ai = await this.anthropic.completeJson<PlacementAiOutput>({
-      system: renderPlacementSystem(metier),
-      userPayload: payload,
-      schema: PLACEMENT_SCHEMA,
-      maxTokens: 4096,
-    });
+  /** Aperçu du payload placement (DRY-RUN, aucun appel Claude) — testable en Console. */
+  async previewPlacement(user: AuthUser, dto: AiPlacementSuggestRequestDto): Promise<AiPlacementInputDto> {
+    return (await this.buildPlacementPayload(user, dto)).payload;
+  }
+
+  async suggestPlacement(user: AuthUser, dto: AiPlacementSuggestRequestDto): Promise<AiPlacementResultDto> {
+    const { payload, candidates, slot } = await this.buildPlacementPayload(user, dto);
+    if (candidates.length === 0) {
+      return {
+        slot,
+        proposals: [],
+        noGoodMatch: true,
+        notes: 'Aucun véhicule libre ne correspond aux critères sur ce créneau.',
+      };
+    }
+
+    let ai: PlacementAiOutput;
+    try {
+      ai = await this.anthropic.completeJson<PlacementAiOutput>({
+        system: renderPlacementSystem(payload.metier),
+        userPayload: payload,
+        schema: PLACEMENT_SCHEMA,
+        maxTokens: 4096,
+      });
+    } catch (err) {
+      await this.recordAiFailure(err, 'placement', { userId: user.id, fleetId: user.fleetId ?? undefined });
+      throw err;
+    }
 
     const byId = new Map(candidates.map((c) => [c.vehicleId, c]));
     const proposals: AiPlacementProposalDto[] = (ai?.proposals ?? [])
@@ -287,6 +356,30 @@ export class AiOptimizationService {
       select: { metier: true },
     });
     return (fleet?.metier as FleetMetier) ?? 'GENERIC';
+  }
+
+  // ─── Journalisation des échecs IA → centre d'alerte ────────────────────────
+
+  /** Journalise un échec IA (source AI_OPTIMIZER) avec anti-spam. Ne propage pas d'erreur. */
+  private async recordAiFailure(
+    err: unknown,
+    capability: 'capacity' | 'placement',
+    ctx: { userId?: string; fleetId?: string; vehicleCount?: number },
+  ): Promise<void> {
+    const kind: AiErrorKind = err instanceof AiServiceError ? err.kind : 'http';
+    // Clé IA configurée mais invalide = vrai incident (CRITICAL) ; le reste = ERROR.
+    const level: 'ERROR' | 'CRITICAL' = kind === 'invalid_key' ? 'CRITICAL' : 'ERROR';
+    const key = `${capability}:${ctx.fleetId ?? 'all'}:${kind}`;
+    const now = Date.now();
+    const last = this.aiErrLast.get(key);
+    if (last && now - last < AI_ALERT_THROTTLE_MS) return; // anti-spam
+    this.aiErrLast.set(key, now);
+    const message = err instanceof Error ? err.message : String(err);
+    try {
+      await this.errors.record(message, 'AI_OPTIMIZER', { ...ctx, capability, kind }, level);
+    } catch {
+      // la journalisation ne doit jamais casser la requête.
+    }
   }
 
   // ─── Métier de la flotte (lecture / réglage) ───────────────────────────────

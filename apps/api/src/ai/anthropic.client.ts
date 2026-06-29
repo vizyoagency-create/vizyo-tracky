@@ -16,6 +16,28 @@ const MODEL = 'claude-opus-4-8';
 /** Borne le temps d'attente (adaptive thinking + effort high peut être long). */
 const REQUEST_TIMEOUT_MS = 120_000;
 
+/** Nature d'un échec IA — pour classer le niveau d'alerte + l'anti-spam (pas de match texte fragile). */
+export type AiErrorKind =
+  | 'no_key'
+  | 'invalid_key'
+  | 'quota'
+  | 'timeout'
+  | 'network'
+  | 'refusal'
+  | 'empty'
+  | 'parse'
+  | 'http';
+
+/** Échec IA typé (toujours un 503 pour l'appelant) portant son `kind` pour la journalisation. */
+export class AiServiceError extends ServiceUnavailableException {
+  constructor(
+    public readonly kind: AiErrorKind,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
 export interface AnthropicJsonRequest {
   /** System prompt (préfixe stable → mis en cache). */
   system: string;
@@ -42,9 +64,7 @@ export class AnthropicClient {
   async completeJson<T>(req: AnthropicJsonRequest): Promise<T> {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
-      throw new ServiceUnavailableException(
-        'Copilote IA non configuré (ANTHROPIC_API_KEY absente côté serveur).',
-      );
+      throw new AiServiceError('no_key', 'Copilote IA non configuré (ANTHROPIC_API_KEY absente côté serveur).');
     }
 
     const body = {
@@ -72,7 +92,8 @@ export class AnthropicClient {
       const name = (e as Error)?.name;
       const timeout = name === 'TimeoutError' || name === 'AbortError';
       this.logger.error(`Appel Anthropic échoué (${timeout ? 'timeout' : 'réseau'}) : ${(e as Error)?.message ?? e}`);
-      throw new ServiceUnavailableException(
+      throw new AiServiceError(
+        timeout ? 'timeout' : 'network',
         timeout ? "Le service IA n'a pas répondu à temps (timeout)." : 'Le service IA est injoignable.',
       );
     });
@@ -82,12 +103,12 @@ export class AnthropicClient {
       const text = await res.text().catch(() => '');
       this.logger.warn(`Anthropic HTTP ${res.status} : ${text.slice(0, 300)}`);
       if (res.status === 401 || res.status === 403) {
-        throw new ServiceUnavailableException('Clé IA invalide ou non autorisée.');
+        throw new AiServiceError('invalid_key', 'Clé IA invalide ou non autorisée.');
       }
       if (res.status === 429) {
-        throw new ServiceUnavailableException('Quota IA atteint, réessayez plus tard.');
+        throw new AiServiceError('quota', 'Quota IA atteint, réessayez plus tard.');
       }
-      throw new ServiceUnavailableException(`Erreur du service IA (${res.status}).`);
+      throw new AiServiceError('http', `Erreur du service IA (${res.status}).`);
     }
 
     const data = (await res.json()) as {
@@ -95,16 +116,16 @@ export class AnthropicClient {
       content?: Array<{ type: string; text?: string }>;
     };
     if (data.stop_reason === 'refusal') {
-      throw new ServiceUnavailableException("L'IA a refusé de traiter cette requête.");
+      throw new AiServiceError('refusal', "L'IA a refusé de traiter cette requête.");
     }
     const block = (data.content ?? []).find((b) => b.type === 'text' && typeof b.text === 'string');
     if (!block?.text) {
-      throw new ServiceUnavailableException('Réponse IA vide.');
+      throw new AiServiceError('empty', 'Réponse IA vide.');
     }
     try {
       return JSON.parse(block.text) as T;
     } catch {
-      throw new ServiceUnavailableException('Réponse IA non conforme (JSON invalide).');
+      throw new AiServiceError('parse', 'Réponse IA non conforme (JSON invalide).');
     }
   }
 }

@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { AiOptimizationService } from './ai-optimization.service';
+import { AiServiceError } from './anthropic.client';
 
 function makeUser(over: Record<string, unknown> = {}) {
   return { id: 'u1', role: UserRole.FLEET_ADMIN, fleetId: 'f1', ...over } as never;
@@ -8,7 +9,7 @@ function makeUser(over: Record<string, unknown> = {}) {
 
 function makePrisma(over: Record<string, unknown> = {}) {
   return {
-    fleet: { findUnique: jest.fn().mockResolvedValue({ metier: 'CHILDREN_TRANSPORT' }) },
+    fleet: { findUnique: jest.fn().mockResolvedValue({ metier: 'CHILDREN_TRANSPORT', name: 'CDEF' }) },
     vehicle: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn().mockResolvedValue({}) },
     installationTask: { findMany: jest.fn().mockResolvedValue([]) },
     ...over,
@@ -35,12 +36,36 @@ function makeAnthropic(result: unknown) {
   return { completeJson: jest.fn().mockResolvedValue(result), isConfigured: () => true } as never;
 }
 
+function makeErrors() {
+  return { record: jest.fn().mockResolvedValue('log-1') } as never;
+}
+
+function build(over: {
+  prisma?: unknown;
+  access?: unknown;
+  events?: unknown;
+  reservations?: unknown;
+  forecast?: unknown;
+  anthropic?: unknown;
+  errors?: unknown;
+} = {}) {
+  return new AiOptimizationService(
+    (over.prisma ?? makePrisma()) as never,
+    (over.access ?? access('ALL')) as never,
+    (over.events ?? makeEvents()) as never,
+    (over.reservations ?? makeReservations()) as never,
+    (over.forecast ?? makeForecast()) as never,
+    (over.anthropic ?? makeAnthropic({ proposals: [] })) as never,
+    (over.errors ?? makeErrors()) as never,
+  );
+}
+
 const SLOT = { startAt: '2026-07-06T06:00:00.000Z', endAt: '2026-07-06T07:00:00.000Z' };
 
 describe('AiOptimizationService — Sprint 9 (copilote IA)', () => {
   // ─── Capacité ──────────────────────────────────────────────────────────────
 
-  it('suggestCapacity : payload scopé (énergie du planning), filtre les ids hallucinés, ne montre pas un id inconnu', async () => {
+  it('suggestCapacity : payload scopé (énergie du planning), filtre les ids hallucinés', async () => {
     const prisma = makePrisma({
       vehicle: {
         findMany: jest.fn().mockResolvedValue([
@@ -56,20 +81,38 @@ describe('AiOptimizationService — Sprint 9 (copilote IA)', () => {
         { vehicleId: 'GHOST', seats: 5, childSeats: 3, features: [], confidence: 0.9, reasoning: 'inconnu' },
       ],
     });
-    const svc = new AiOptimizationService(prisma, access('ALL'), makeEvents(), makeReservations(), makeForecast(), anthropic);
+    const svc = build({ prisma, anthropic });
 
     const res = await svc.suggestCapacity(makeUser(), {});
     expect(res.metier).toBe('CHILDREN_TRANSPORT');
     expect(res.proposals.map((p) => p.vehicleId)).toEqual(['v1']); // GHOST ignoré
     expect(res.proposals[0]).toMatchObject({ plate: 'AA', model: 'ë-Jumpy', seats: 9, childSeats: 6 });
-    // L'énergie issue du planning entre bien dans le payload IA.
     const payload = (anthropic as unknown as { completeJson: jest.Mock }).completeJson.mock.calls[0][0].userPayload;
     expect(payload.vehicles[0].energy).toBe('ELECTRIQUE');
-    // DRY-RUN : aucune écriture véhicule.
     expect((prisma as unknown as { vehicle: { update: jest.Mock } }).vehicle.update).not.toHaveBeenCalled();
   });
 
-  it('suggestCapacity : assainit les valeurs aberrantes de l\'IA (seats négatif → null, confidence clampée, features non-array → [])', async () => {
+  it('previewCapacity : renvoie le payload EXACT sans appeler l\'IA (live data, testable Console)', async () => {
+    const prisma = makePrisma({
+      vehicle: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'v1', plate: 'AA', type: 'VAN', brand: 'Citroën', model: 'ë-Jumpy', seats: null, childSeats: null, features: [] },
+        ]),
+        update: jest.fn(),
+      },
+      installationTask: { findMany: jest.fn().mockResolvedValue([{ vehicleId: 'v1', energy: 'ELECTRIQUE' }]) },
+    });
+    const anthropic = makeAnthropic({});
+    const svc = build({ prisma, anthropic });
+
+    const payload = await svc.previewCapacity(makeUser(), {});
+    expect(payload.metier).toBe('CHILDREN_TRANSPORT');
+    expect(payload.fleetContext).toBe('CDEF');
+    expect(payload.vehicles[0]).toMatchObject({ vehicleId: 'v1', model: 'ë-Jumpy', energy: 'ELECTRIQUE' });
+    expect((anthropic as unknown as { completeJson: jest.Mock }).completeJson).not.toHaveBeenCalled();
+  });
+
+  it('suggestCapacity : assainit les valeurs aberrantes (seats négatif → null, confidence clampée, features non-array → [])', async () => {
     const prisma = makePrisma({
       vehicle: {
         findMany: jest.fn().mockResolvedValue([{ id: 'v1', plate: 'AA', type: 'CAR', brand: 'X', model: 'Y', seats: null, childSeats: null, features: [] }]),
@@ -79,26 +122,46 @@ describe('AiOptimizationService — Sprint 9 (copilote IA)', () => {
     const anthropic = makeAnthropic({
       proposals: [{ vehicleId: 'v1', seats: -3, childSeats: 2.7, features: 'pas-un-tableau', confidence: 5, reasoning: 42 }],
     });
-    const svc = new AiOptimizationService(prisma, access('ALL'), makeEvents(), makeReservations(), makeForecast(), anthropic);
+    const svc = build({ prisma, anthropic });
 
     const res = await svc.suggestCapacity(makeUser(), {});
     expect(res.proposals[0]).toMatchObject({ seats: null, childSeats: 2, features: [], confidence: 1, reasoning: '' });
   });
 
+  it('suggestCapacity : échec IA → journalisé (centre d\'alerte) + propagé', async () => {
+    const prisma = makePrisma({
+      vehicle: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'v1', plate: 'AA', type: 'CAR', brand: 'X', model: 'Y', seats: null, childSeats: null, features: [] }]),
+        update: jest.fn(),
+      },
+    });
+    const anthropic = { completeJson: jest.fn().mockRejectedValue(new AiServiceError('quota', 'Quota IA atteint')), isConfigured: () => true } as never;
+    const errors = makeErrors();
+    const svc = build({ prisma, anthropic, errors });
+
+    await expect(svc.suggestCapacity(makeUser(), {})).rejects.toBeInstanceOf(AiServiceError);
+    expect((errors as unknown as { record: jest.Mock }).record).toHaveBeenCalledWith(
+      'Quota IA atteint',
+      'AI_OPTIMIZER',
+      expect.objectContaining({ capability: 'capacity', kind: 'quota', fleetId: 'f1' }),
+      'ERROR',
+    );
+  });
+
   it('suggestCapacity : super-admin sans fleetId et sans dto.fleetId -> 400', async () => {
-    const svc = new AiOptimizationService(makePrisma(), access('ALL'), makeEvents(), makeReservations(), makeForecast(), makeAnthropic({ proposals: [] }));
+    const svc = build();
     await expect(svc.suggestCapacity(makeUser({ role: UserRole.SUPER_ADMIN, fleetId: null }), {})).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('suggestCapacity : non-super qui vise une autre flotte -> 403 (anti-IDOR)', async () => {
-    const svc = new AiOptimizationService(makePrisma(), access('ALL'), makeEvents(), makeReservations(), makeForecast(), makeAnthropic({ proposals: [] }));
+    const svc = build();
     await expect(svc.suggestCapacity(makeUser(), { fleetId: 'f2' })).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('applyCapacity : écrit la capacité scopée (assertVehicleAccess) + assainit ; retourne le nb mis à jour', async () => {
+  it('applyCapacity : écrit la capacité scopée (assertVehicleAccess) + assainit', async () => {
     const prisma = makePrisma({ vehicle: { findMany: jest.fn(), update: jest.fn().mockResolvedValue({}) } });
     const events = makeEvents();
-    const svc = new AiOptimizationService(prisma, access('ALL'), events, makeReservations(), makeForecast(), makeAnthropic({}));
+    const svc = build({ prisma, events });
 
     const res = await svc.applyCapacity(makeUser(), { items: [{ vehicleId: 'v1', seats: 9, childSeats: -1, features: ['clim'] }] });
     expect(res.updated).toBe(1);
@@ -107,10 +170,10 @@ describe('AiOptimizationService — Sprint 9 (copilote IA)', () => {
     expect(data).toMatchObject({ seats: 9, childSeats: null, features: ['clim'] }); // childSeats négatif → null
   });
 
-  it('applyCapacity : véhicule hors périmètre -> rejette (assertVehicleAccess) sans écrire', async () => {
+  it('applyCapacity : véhicule hors périmètre -> rejette sans écrire', async () => {
     const prisma = makePrisma({ vehicle: { findMany: jest.fn(), update: jest.fn() } });
     const events = makeEvents({ assertVehicleAccess: jest.fn().mockRejectedValue(new ForbiddenException()) });
-    const svc = new AiOptimizationService(prisma, access('ALL'), events, makeReservations(), makeForecast(), makeAnthropic({}));
+    const svc = build({ prisma, events });
 
     await expect(svc.applyCapacity(makeUser(), { items: [{ vehicleId: 'vX', seats: 5 }] })).rejects.toBeInstanceOf(ForbiddenException);
     expect((prisma as unknown as { vehicle: { update: jest.Mock } }).vehicle.update).not.toHaveBeenCalled();
@@ -120,15 +183,15 @@ describe('AiOptimizationService — Sprint 9 (copilote IA)', () => {
 
   it('suggestPlacement : aucun candidat libre -> noGoodMatch sans appeler l\'IA', async () => {
     const anthropic = makeAnthropic({ proposals: [], noGoodMatch: false });
-    const svc = new AiOptimizationService(makePrisma(), access('ALL'), makeEvents(), makeReservations(), makeForecast(), anthropic);
+    const svc = build({ anthropic });
 
     const res = await svc.suggestPlacement(makeUser(), { ...SLOT, criteria: { minChildSeats: 7 } });
     expect(res.noGoodMatch).toBe(true);
     expect(res.proposals).toEqual([]);
-    expect((anthropic as unknown as { completeJson: jest.Mock }).completeJson).not.toHaveBeenCalled(); // pas de tokens gaspillés
+    expect((anthropic as unknown as { completeJson: jest.Mock }).completeJson).not.toHaveBeenCalled();
   });
 
-  it('suggestPlacement : marque forecastBusy, filtre les hallucinations, trie par score, DRY-RUN', async () => {
+  it('suggestPlacement : marque forecastBusy, filtre les hallucinations, trie par score', async () => {
     const reservations = makeReservations({
       suggest: jest.fn().mockResolvedValue({
         startAt: SLOT.startAt,
@@ -155,7 +218,7 @@ describe('AiOptimizationService — Sprint 9 (copilote IA)', () => {
       notes: null,
     });
     const prisma = makePrisma();
-    const svc = new AiOptimizationService(prisma, access('ALL'), makeEvents(), reservations, forecast, anthropic);
+    const svc = build({ prisma, reservations, forecast, anthropic });
 
     const res = await svc.suggestPlacement(makeUser(), { ...SLOT, title: '7 enfants', criteria: { minChildSeats: 7 } });
     expect(res.proposals.map((p) => p.vehicleId)).toEqual(['v1', 'v2']); // trié par score, GHOST filtré

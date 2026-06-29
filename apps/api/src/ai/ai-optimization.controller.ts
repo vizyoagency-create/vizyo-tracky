@@ -57,6 +57,22 @@ export class AiOptimizationController {
     return this.ai.suggestPlacement(req.user, dto);
   }
 
+  /** Aperçu du payload capacité EXACT (dry-run, aucun appel Claude) — pour tester en Console. */
+  @Post('capacity/preview')
+  @Roles(...ALL_ROLES)
+  @RequirePermissions('ai_optimize')
+  previewCapacity(@Req() req: AuthenticatedRequest, @Body() dto: AiCapacitySuggestRequestDto) {
+    return this.ai.previewCapacity(req.user, dto ?? {});
+  }
+
+  /** Aperçu du payload placement EXACT (dry-run, aucun appel Claude) — pour tester en Console. */
+  @Post('placement/preview')
+  @Roles(...ALL_ROLES)
+  @RequirePermissions('ai_optimize')
+  previewPlacement(@Req() req: AuthenticatedRequest, @Body() dto: AiPlacementSuggestRequestDto) {
+    return this.ai.previewPlacement(req.user, dto);
+  }
+
   /** Lire le métier de la flotte (conditionne l'objectif d'optimisation IA). */
   @Get('fleet-metier')
   @Roles(...ALL_ROLES)

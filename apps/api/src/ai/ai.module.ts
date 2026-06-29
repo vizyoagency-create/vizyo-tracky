@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AgendaModule } from '../agenda/agenda.module';
 import { AuthModule } from '../auth/auth.module';
+import { ObservabilityModule } from '../observability/observability.module';
 import { AiOptimizationController } from './ai-optimization.controller';
 import { AiOptimizationService } from './ai-optimization.service';
 import { AnthropicClient } from './anthropic.client';
@@ -12,7 +13,7 @@ import { AnthropicClient } from './anthropic.client';
  * ANTHROPIC_API_KEY (les endpoints renvoient 503) — l'app continue de tourner.
  */
 @Module({
-  imports: [AuthModule, AgendaModule],
+  imports: [AuthModule, AgendaModule, ObservabilityModule],
   controllers: [AiOptimizationController],
   providers: [AnthropicClient, AiOptimizationService],
 })
