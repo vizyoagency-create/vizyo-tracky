@@ -31,11 +31,11 @@ export interface DriverDrawerResult {
   imports: [FormsModule, LucideAngularModule],
   template: `
     @if (open()) {
-      <div class="fixed inset-0 z-[9000] flex justify-end drawer-overlay-safe">
+      <div class="fixed inset-0 z-[9000] flex justify-end">
         <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" (click)="onClose()"></div>
 
         <div class="relative w-full max-w-md max-h-full bg-bg-primary border-l border-border-subtle shadow-2xl
-                    flex flex-col animate-slide-in overflow-hidden">
+                    flex flex-col animate-slide-in overflow-hidden drawer-overlay-safe">
 
           <!-- Header -->
           <div class="flex items-center justify-between px-6 py-4 border-b border-border-subtle">
