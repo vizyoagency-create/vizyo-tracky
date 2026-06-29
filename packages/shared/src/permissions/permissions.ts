@@ -70,6 +70,15 @@ export interface UserPermissions {
   reservations_view: boolean;
   reservations_request: boolean;
   reservations_manage: boolean;
+
+  /**
+   * Sprint 9 — Copilote IA d'optimisation : lancer les propositions IA
+   * (enrichissement de capacite du parc + classement de placement). L'IA PROPOSE
+   * seulement ; l'APPLICATION d'une proposition reutilise les perms existantes
+   * (vehicles_edit pour ecrire une capacite, reservations_* pour une reservation).
+   * OFF par defaut sauf SUPER_ADMIN/FLEET_ADMIN ; accordable par utilisateur.
+   */
+  ai_optimize: boolean;
 }
 
 const VIEWER_DEFAULTS: UserPermissions = {
@@ -99,6 +108,7 @@ const VIEWER_DEFAULTS: UserPermissions = {
   reservations_view: false,
   reservations_request: false,
   reservations_manage: false,
+  ai_optimize: false,
 };
 
 const FLEET_MANAGER_DEFAULTS: UserPermissions = {
@@ -128,6 +138,7 @@ const FLEET_MANAGER_DEFAULTS: UserPermissions = {
   reservations_view: false,
   reservations_request: false,
   reservations_manage: false,
+  ai_optimize: false,
 };
 
 const ADMIN_DEFAULTS: UserPermissions = {
@@ -157,6 +168,7 @@ const ADMIN_DEFAULTS: UserPermissions = {
   reservations_view: true,
   reservations_request: true,
   reservations_manage: true,
+  ai_optimize: true,
 };
 
 /**
@@ -191,6 +203,7 @@ const NIGHT_WATCHMAN_DEFAULTS: UserPermissions = {
   reservations_view: false,
   reservations_request: false,
   reservations_manage: false,
+  ai_optimize: false,
 };
 
 export function getDefaultPermissions(role: UserRoleSlug): UserPermissions {
@@ -370,6 +383,12 @@ export const PERMISSION_LABELS: Record<keyof UserPermissions, PermissionLabel> =
     description:
       'Valider / refuser / editer / annuler / supprimer les reservations et auto-affecter un vehicule libre.',
   },
+  ai_optimize: {
+    group: 'Optimisation IA',
+    label: 'Lancer les propositions IA',
+    description:
+      'Demander a l\'IA des propositions (capacite du parc, placement optimise). L\'IA propose ; l\'application reutilise vehicles_edit / reservations_*.',
+  },
 };
 
 /** Ordre d'affichage canonique des groupes dans l'UI. */
@@ -386,4 +405,5 @@ export const PERMISSION_GROUP_ORDER: readonly string[] = [
   'Audio',
   'Agenda',
   'Reservations',
+  'Optimisation IA',
 ] as const;
