@@ -276,6 +276,16 @@ export class FleetOptimizationComponent implements OnInit {
   protected readonly totalKm = computed(() =>
     (this.data()?.vehicles ?? []).reduce((s, v) => s + v.distanceKm, 0),
   );
+  /** Pré-calcul O(1) des occupations par cellule (évite un .find() par cellule à chaque rendu). */
+  private readonly cellMaps = computed(() => {
+    const m = new Map<string, Map<string, number>>();
+    for (const v of this.data()?.vehicles ?? []) {
+      const cm = new Map<string, number>();
+      for (const c of v.cells) cm.set(`${c.dayOfWeek}:${c.slot}`, c.occupancy);
+      m.set(v.vehicleId, cm);
+    }
+    return m;
+  });
 
   ngOnInit(): void {
     void this.load();
@@ -313,7 +323,7 @@ export class FleetOptimizationComponent implements OnInit {
 
   /** Occupation d'une cellule (jour × créneau) pour un véhicule. */
   protected occ(v: VehicleUtilizationDto, dow: number, slot: UtilizationSlot): number {
-    return v.cells.find((c) => c.dayOfWeek === dow && c.slot === slot)?.occupancy ?? 0;
+    return this.cellMaps().get(v.vehicleId)?.get(`${dow}:${slot}`) ?? 0;
   }
 
   /** Fond d'une cellule : neutre si libre, intensité verte selon l'occupation. */

@@ -974,7 +974,7 @@ export class AgendaComponent implements OnInit {
         const cursor = new Date(start);
         cursor.setHours(0, 0, 0, 0);
         let steps = 0;
-        while (cursor.getTime() <= end.getTime() && steps < 14) {
+        while (cursor.getTime() <= end.getTime() && steps < 45) {
           const key = localIso(cursor);
           let set = perDay.get(key);
           if (!set) {

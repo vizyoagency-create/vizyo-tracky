@@ -126,6 +126,10 @@ export class ReservationsService {
   }
 
   private isExclusionConflict(err: unknown): boolean {
+    // Code SQLSTATE fiable s'il est exposé (23P01 = exclusion_violation) ; sinon repli sur le
+    // texte (nom de la contrainte / « exclusion constraint » dans le message Postgres).
+    const e = err as { code?: unknown; meta?: { code?: unknown } } | null;
+    if (e?.code === '23P01' || e?.meta?.code === '23P01') return true;
     const msg = err instanceof Error ? err.message : String(err);
     return (
       msg.includes('no_overlap_reservation') ||
@@ -308,8 +312,10 @@ export class ReservationsService {
   /** Validation d'une demande -> CONFIRMED (bloquant). Perm reservations_manage. */
   async confirm(user: AuthUser, id: string, dto: ConfirmReservationDto): Promise<VehicleEventDto> {
     const resa = await this.loadScoped(user, id);
-    if (resa.status === VehicleEventStatus.DONE || resa.status === VehicleEventStatus.CANCELLED) {
-      throw new BadRequestException('Réservation déjà clôturée.');
+    // Seule une demande EN ATTENTE peut être validée : pas de re-confirm d'un CONFIRMED/IN_PROGRESS
+    // (qui régresserait le cycle de vie), ni d'un DONE/CANCELLED clôturé.
+    if (resa.status !== VehicleEventStatus.REQUESTED) {
+      throw new BadRequestException('Seule une demande en attente peut être validée.');
     }
 
     let vehicleId = resa.vehicleId;
@@ -324,6 +330,11 @@ export class ReservationsService {
     const conflicts = await this.findOverlaps(vehicleId, resa.startAt, resa.endAt, id);
     if (conflicts.length > 0) {
       throw new ConflictException('Conflit : une réservation ferme existe déjà sur ce créneau.');
+    }
+    // Cohérence avec la réalité : refuser si le véhicule roule déjà sur le créneau (symétrique
+    // de request() ; surtout pertinent quand confirm réaffecte un autre véhicule).
+    if (await this.hasTripOverlap(vehicleId, resa.startAt, resa.endAt)) {
+      throw new ConflictException('Ce véhicule roule déjà sur ce créneau.');
     }
 
     try {
@@ -343,7 +354,12 @@ export class ReservationsService {
 
   /** Refus / annulation -> CANCELLED. Perm reservations_manage. */
   async cancel(user: AuthUser, id: string): Promise<VehicleEventDto> {
-    await this.loadScoped(user, id);
+    const resa = await this.loadScoped(user, id);
+    // Un DONE est terminal (immuable) ; un CANCELLED est idempotent.
+    if (resa.status === VehicleEventStatus.DONE) {
+      throw new BadRequestException('Une réservation terminée ne peut pas être annulée.');
+    }
+    if (resa.status === VehicleEventStatus.CANCELLED) return this.toDto(resa);
     const row = await this.prisma.vehicleEvent.update({
       where: { id },
       data: { status: VehicleEventStatus.CANCELLED, resolvedAt: new Date() },
@@ -381,6 +397,9 @@ export class ReservationsService {
     if (blocking && (dto.startAt !== undefined || dto.endAt !== undefined) && end) {
       const conflicts = await this.findOverlaps(resa.vehicleId, start, end, id);
       if (conflicts.length > 0) throw new ConflictException('Conflit sur le nouveau créneau.');
+      if (await this.hasTripOverlap(resa.vehicleId, start, end)) {
+        throw new ConflictException('Ce véhicule roule déjà sur le nouveau créneau.');
+      }
     }
 
     try {

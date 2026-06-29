@@ -10,3 +10,9 @@ ALTER TABLE "vehicle_events" ADD CONSTRAINT "no_overlap_reservation"
     tsrange("startAt", "endAt", '[)') WITH &&
   )
   WHERE ("type" = 'RESERVATION' AND "status" IN ('CONFIRMED', 'IN_PROGRESS'));
+
+-- Garde-fou structurel : une réservation FERME doit avoir un endAt — sinon tsrange("startAt",
+-- NULL) = [startAt, ∞) bloquerait tout le futur du véhicule. L'invariant vit au niveau base
+-- (pas seulement dans le service TS), pour résister à tout writer hors-bande.
+ALTER TABLE "vehicle_events" ADD CONSTRAINT "reservation_requires_endat"
+  CHECK ("type" <> 'RESERVATION' OR "status" NOT IN ('CONFIRMED', 'IN_PROGRESS') OR "endAt" IS NOT NULL);

@@ -370,6 +370,7 @@ export class ReservationsComponent implements OnInit {
     const slot = this.buildSlot();
     if (!slot) return;
     this.submitting.set(v.vehicleId);
+    let createdId: string | null = null;
     try {
       const created = await firstValueFrom(this.api.requestReservation({
         vehicleId: v.vehicleId,
@@ -378,6 +379,7 @@ export class ReservationsComponent implements OnInit {
         title: this.form.title.trim() || undefined,
         criteria: this.buildCriteria(),
       }));
+      createdId = created.id;
       if (this.canManage()) {
         await firstValueFrom(this.api.confirmReservation(created.id, {}));
         this.toast.success('Réservation confirmée', `${v.vehiclePlate ?? 'Véhicule'} réservé.`);
@@ -387,7 +389,17 @@ export class ReservationsComponent implements OnInit {
       this.closeModal();
       await this.load();
     } catch (err) {
-      this.toast.error('Échec de la réservation', this.errMsg(err));
+      // La demande a pu être créée mais la confirmation échouer (créneau pris entre-temps) :
+      // on nettoie la demande orpheline pour ne pas polluer la file de validation.
+      if (createdId && this.canManage()) {
+        try {
+          await firstValueFrom(this.api.cancelReservation(createdId));
+        } catch {
+          /* best effort */
+        }
+        await this.load();
+      }
+      this.toast.error('Réservation impossible', this.errMsg(err));
     } finally {
       this.submitting.set(null);
     }
@@ -407,10 +419,13 @@ export class ReservationsComponent implements OnInit {
   }
 
   protected async rejectPending(r: VehicleEventDto): Promise<void> {
+    const isFirm = r.status === 'CONFIRMED';
+    // Garde-fou : une réservation FERME ne doit pas être annulée sur un mistap.
+    if (isFirm && !confirm(`Annuler la réservation confirmée de ${r.vehiclePlate ?? 'ce véhicule'} ?`)) return;
     this.actioning.set(r.id);
     try {
       await firstValueFrom(this.api.cancelReservation(r.id));
-      this.toast.success('Réservation annulée', '');
+      this.toast.success(isFirm ? 'Réservation annulée' : 'Demande refusée', '');
       await this.load();
     } catch (err) {
       this.toast.error('Action impossible', this.errMsg(err));
@@ -420,12 +435,16 @@ export class ReservationsComponent implements OnInit {
   }
 
   protected criteriaLabel(r: VehicleEventDto): string {
-    const c = (r.metadata?.['criteria'] ?? null) as { minSeats?: number; minChildSeats?: number; requiredFeatures?: string[] } | null;
-    if (!c) return '';
+    const c = (r.metadata?.['criteria'] ?? null) as
+      | { minSeats?: unknown; minChildSeats?: unknown; requiredFeatures?: unknown }
+      | null;
+    if (!c || typeof c !== 'object') return '';
     const parts: string[] = [];
-    if (c.minSeats) parts.push(`${c.minSeats}+ places`);
-    if (c.minChildSeats) parts.push(`${c.minChildSeats}+ sièges enf.`);
-    if (c.requiredFeatures?.length) parts.push(c.requiredFeatures.join(', '));
+    if (typeof c.minSeats === 'number' && c.minSeats > 0) parts.push(`${c.minSeats}+ places`);
+    if (typeof c.minChildSeats === 'number' && c.minChildSeats > 0) parts.push(`${c.minChildSeats}+ sièges enf.`);
+    if (Array.isArray(c.requiredFeatures) && c.requiredFeatures.length) {
+      parts.push(c.requiredFeatures.filter((x): x is string => typeof x === 'string').join(', '));
+    }
     return parts.length ? `· ${parts.join(' · ')}` : '';
   }
 

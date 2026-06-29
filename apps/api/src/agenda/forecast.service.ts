@@ -161,7 +161,7 @@ export class ForecastService {
           vehicleId,
           dow,
           typStart: sumStart / activeWeeks,
-          typEnd: Math.min(24, sumEnd / activeWeeks),
+          typEnd: Math.min(23.98, sumEnd / activeWeeks), // borne : évite le 24:00 -> 23:59 du projeté
           activeWeeks,
         });
       }

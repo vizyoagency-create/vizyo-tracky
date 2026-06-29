@@ -194,6 +194,12 @@ export class VehicleEventsService {
 
   async update(user: AuthUser, id: string, dto: UpdateVehicleEventDto): Promise<VehicleEventDto> {
     const existing = await this.loadScoped(user, id);
+    // Sprint 8 — une réservation ne se gère QUE via ReservationsService (perms reservations_*),
+    // jamais via l'endpoint agenda générique : sinon agenda_manage contournerait reservations_manage
+    // et court-circuiterait les pré-checks de conflit. Symétrique du refus dans create().
+    if (existing.type === VehicleEventType.RESERVATION) {
+      throw new BadRequestException('Les réservations se gèrent depuis l\'espace Réservations.');
+    }
     const data: Prisma.VehicleEventUpdateInput = {};
     if (dto.status !== undefined) {
       data.status = dto.status;
@@ -226,7 +232,10 @@ export class VehicleEventsService {
   }
 
   async remove(user: AuthUser, id: string): Promise<{ ok: true }> {
-    await this.loadScoped(user, id);
+    const existing = await this.loadScoped(user, id);
+    if (existing.type === VehicleEventType.RESERVATION) {
+      throw new BadRequestException('Les réservations se gèrent depuis l\'espace Réservations.');
+    }
     await this.prisma.vehicleEvent.delete({ where: { id } });
     return { ok: true };
   }
@@ -255,11 +264,11 @@ export class VehicleEventsService {
   }
 
   /** Charge un événement en garantissant qu'il est dans le périmètre de l'user. */
-  private async loadScoped(user: AuthUser, id: string): Promise<{ vehicleId: string }> {
+  private async loadScoped(user: AuthUser, id: string): Promise<{ vehicleId: string; type: VehicleEventType }> {
     const where = await this.scopedWhere(user);
     const ev = await this.prisma.vehicleEvent.findFirst({
       where: { ...where, id },
-      select: { id: true, vehicleId: true },
+      select: { id: true, vehicleId: true, type: true },
     });
     if (!ev) throw new NotFoundException('Evenement introuvable');
     return ev;

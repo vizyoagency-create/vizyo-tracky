@@ -176,4 +176,59 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
     const dto = await svc.cancel(makeUser(), 'r1');
     expect(dto.status).toBe('CANCELLED');
   });
+
+  it('confirm : refuse une réservation NON en attente (déjà CONFIRMED) -> BadRequest', async () => {
+    const prisma = makePrisma({
+      vehicleEvent: {
+        findUnique: jest.fn().mockResolvedValue(evRow({ status: 'CONFIRMED' })),
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn(),
+        update: jest.fn(),
+      },
+    });
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents());
+    await expect(svc.confirm(makeUser(), 'r1', {})).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('confirm : véhicule qui roule déjà sur le créneau (trajet réel) -> 409 Conflict', async () => {
+    const prisma = makePrisma({
+      vehicleEvent: {
+        findUnique: jest.fn().mockResolvedValue(evRow()),
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn(),
+        update: jest.fn(),
+      },
+      trip: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue({ id: 't1' }) },
+    });
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents());
+    await expect(svc.confirm(makeUser(), 'r1', {})).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('cancel : refuse une réservation TERMINÉE (DONE) -> BadRequest', async () => {
+    const prisma = makePrisma({
+      vehicleEvent: {
+        findUnique: jest.fn().mockResolvedValue(evRow({ status: 'DONE' })),
+        findMany: jest.fn().mockResolvedValue([]),
+        update: jest.fn(),
+        create: jest.fn(),
+      },
+    });
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents());
+    await expect(svc.cancel(makeUser(), 'r1')).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('confirm : violation de la contrainte EXCLUDE -> traduite en 409 (course concurrente)', async () => {
+    const prisma = makePrisma({
+      vehicleEvent: {
+        findUnique: jest.fn().mockResolvedValue(evRow()),
+        findMany: jest.fn().mockResolvedValue([]),
+        update: jest.fn().mockRejectedValue(
+          new Error('conflicting key value violates exclusion constraint "no_overlap_reservation"'),
+        ),
+        create: jest.fn(),
+      },
+    });
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents());
+    await expect(svc.confirm(makeUser(), 'r1', {})).rejects.toBeInstanceOf(ConflictException);
+  });
 });

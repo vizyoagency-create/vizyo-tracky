@@ -909,8 +909,8 @@ export class DashboardLayoutComponent {
       ...(this.perms.can('agenda_view') ? [{ label: 'Agenda', route: '/agenda', icon: Calendar }] : []),
       // Sprint 8 — Optimisation de flotte (dispo/activité + sous-utilisation), gaté reservations_view.
       ...(this.perms.can('reservations_view') ? [{ label: 'Optimisation', route: '/optimisation', icon: Gauge }] : []),
-      // Sprint 8 — Réservations (demande + validation), gaté reservations_view.
-      ...(this.perms.can('reservations_view') ? [{ label: 'Réservations', route: '/reservations', icon: CalendarCheck }] : []),
+      // Sprint 8 — Réservations : visible dès qu'on peut VOIR ou DEMANDER (un user request-only doit y accéder).
+      ...(this.perms.can('reservations_view') || this.perms.can('reservations_request') ? [{ label: 'Réservations', route: '/reservations', icon: CalendarCheck }] : []),
       ...(this.perms.can('drivers_view') ? [{ label: 'Conducteurs', route: '/drivers', icon: UserRound }] : []),
       ...(this.perms.can('users_view') ? [{ label: 'Utilisateurs', route: '/users', icon: Users }] : []),
       // V1.16 — Parc SIM : visible des qu'on a sims_view (FLEET_ADMIN/SUPER_ADMIN bypass).

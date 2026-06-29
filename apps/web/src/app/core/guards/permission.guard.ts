@@ -20,3 +20,16 @@ export function permissionGuard(permission: keyof UserPermissions): CanActivateF
     return router.createUrlTree(['/dashboard']);
   };
 }
+
+/**
+ * Sprint 8 — variante « au moins une » : autorise si l'user détient l'UNE des permissions.
+ * Ex. /reservations accessible à qui peut VOIR ou DEMANDER (un grant request-only doit entrer).
+ */
+export function anyPermissionGuard(...permissions: (keyof UserPermissions)[]): CanActivateFn {
+  return () => {
+    const perms = inject(PermissionsService);
+    const router = inject(Router);
+    if (permissions.some((p) => perms.can(p))) return true;
+    return router.createUrlTree(['/dashboard']);
+  };
+}

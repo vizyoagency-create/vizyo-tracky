@@ -223,13 +223,16 @@ export class FleetInsightsService {
     const fromMs = from.getTime();
     const toMs = to.getTime();
     const nowMs = Date.now();
+    // Le numérateur (activeMs) ne court que jusqu'à maintenant ; on borne AUSSI le dénominateur
+    // à `now` pour ne pas déflater l'occupation quand la fenêtre `to` est dans le futur.
+    const effectiveToMs = Math.min(toMs, nowMs);
 
     // Dénominateur : occurrences de chaque jour-de-semaine sur la fenêtre + total jours.
     const dowOccurrences = new Map<number, number>();
     const seenDates = new Set<string>();
     let dayCursor = fromMs;
     let daySteps = 0;
-    while (dayCursor < toMs && daySteps < MAX_DAY_STEPS) {
+    while (dayCursor < effectiveToMs && daySteps < MAX_DAY_STEPS) {
       const { dateKey, dow } = this.localParts(fmt, dayCursor);
       if (!seenDates.has(dateKey)) {
         seenDates.add(dateKey);
@@ -259,7 +262,7 @@ export class FleetInsightsService {
       a.distanceKm += t.distanceKm ?? 0;
 
       const startMs = Math.max(t.startedAt.getTime(), fromMs);
-      const endMs = Math.min(t.endedAt ? t.endedAt.getTime() : nowMs, toMs);
+      const endMs = Math.min(t.endedAt ? t.endedAt.getTime() : nowMs, effectiveToMs);
       if (endMs <= startMs) continue;
       a.activeMs += endMs - startMs;
 
@@ -281,7 +284,7 @@ export class FleetInsightsService {
       }
     }
 
-    const windowMs = Math.max(1, toMs - fromMs);
+    const windowMs = Math.max(1, effectiveToMs - fromMs);
     const slotOrder: UtilizationSlot[] = ['night', 'morning', 'afternoon', 'evening'];
 
     const out: VehicleUtilizationDto[] = vehicles.map((v) => {
