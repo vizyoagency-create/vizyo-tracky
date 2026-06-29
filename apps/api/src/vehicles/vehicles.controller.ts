@@ -24,6 +24,7 @@ import { DriversService } from '../drivers/drivers.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 import { CreateVehicleDto } from './dto/create-vehicle.dto';
 import { SetVehicleGroupDto } from './dto/set-vehicle-group.dto';
+import { SyncFromInstallationDto } from './dto/sync-from-installation.dto';
 import { UpdateVehicleDto } from './dto/update-vehicle.dto';
 import type { RequestedBy } from './vehicles.service';
 import { VehiclesService } from './vehicles.service';
@@ -54,6 +55,15 @@ export class VehiclesController {
   async snapshot(@Req() req: AuthenticatedRequest) {
     const items = await this.vehicles.snapshot(await this.buildRequestedBy(req));
     return { items };
+  }
+
+  // Sprint 10 — Vue « Parc & capacités » : déclarée AVANT @Get(':id') (sinon 'capacity-overview'
+  // serait capturé comme un :id). Lecture scopée tenant + accès granulaire (vehicles_view).
+  @Get('capacity-overview')
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  @RequirePermissions('vehicles_view')
+  async capacityOverview(@Req() req: AuthenticatedRequest) {
+    return this.vehicles.capacityOverview(await this.buildRequestedBy(req));
   }
 
   @Post()
@@ -93,6 +103,30 @@ export class VehiclesController {
   @RequirePermissions('vehicles_edit')
   update(@Param('id') id: string, @Body() dto: UpdateVehicleDto, @Req() req: AuthenticatedRequest) {
     return this.vehicles.update(id, dto, {
+      userId: req.user.id,
+      role: req.user.role,
+      fleetId: req.user.fleetId,
+    });
+  }
+
+  /** Sprint 10 — Source de synchro (planning d'installation lié) pour pré-remplir/comparer. Lecture scopée. */
+  @Get(':id/installation-source')
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  @RequirePermissions('vehicles_view')
+  async installationSource(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.vehicles.getInstallationSource(id, await this.buildRequestedBy(req));
+  }
+
+  /** Sprint 10 — Recopie les champs choisis (marque/modèle/énergie) du planning vers le véhicule. */
+  @Post(':id/sync-from-installation')
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
+  @RequirePermissions('vehicles_edit')
+  syncFromInstallation(
+    @Param('id') id: string,
+    @Body() dto: SyncFromInstallationDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.vehicles.syncFromInstallation(id, dto.fields, {
       userId: req.user.id,
       role: req.user.role,
       fleetId: req.user.fleetId,

@@ -39,6 +39,7 @@ describe('VehiclesService', () => {
     vehicleGroup: { findFirst: jest.Mock };
     vehicleGroupAssignment: { deleteMany: jest.Mock; create: jest.Mock };
     engineControlCommand: { findMany: jest.Mock };
+    installationTask: { findFirst: jest.Mock; findMany: jest.Mock };
     $transaction: jest.Mock;
   };
 
@@ -62,6 +63,8 @@ describe('VehiclesService', () => {
       },
       // Sprint 2 — snapshot() derive l'etat coupe TRI-ETAT depuis les commandes moteur.
       engineControlCommand: { findMany: jest.fn().mockResolvedValue([]) },
+      // Sprint 10 — synchro véhicule ↔ planning : source = tâche d'installation liée.
+      installationTask: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
       $transaction: jest.fn().mockResolvedValue([]),
     };
 
@@ -308,5 +311,74 @@ describe('VehiclesService', () => {
     // C : RESTORE plus recent qu'un CUT confirme -> 'normal' (revue #1 : sinon "coupe" colle a jamais)
     expect(byTracker.get(C)?.engineCutState).toBe('normal');
     expect(byTracker.get(C)?.engineCutActive).toBe(false);
+  });
+
+  // --- Sprint 10 (Synchro véhicule ↔ planning d'installation) ---
+
+  const taskRecord = (overrides: Record<string, unknown> = {}) => ({
+    id: 'task-1',
+    planId: 'plan-1',
+    vehicleId: VEHICLE_ID,
+    brand: 'Peugeot',
+    model: 'Expert',
+    energy: 'DIESEL',
+    scheduledDate: null,
+    firstRegistrationDate: null,
+    plan: { clientName: 'CDEF' },
+    ...overrides,
+  });
+
+  // 16. capacityOverview scope par fleetId (non-super) + mappe la source planning + divergence.
+  it('capacityOverview scopes by fleet and computes divergent fields vs the linked task', async () => {
+    prisma.vehicle.findMany.mockResolvedValue([
+      vehicleRecord({ brand: 'Renault', model: 'Master', energy: null, seats: null, childSeats: null, features: [], groups: [] }),
+    ]);
+    prisma.installationTask.findMany.mockResolvedValue([taskRecord()]); // brand/model/energy diffèrent
+
+    const rows = await service.capacityOverview(fleetAdmin);
+
+    expect(prisma.vehicle.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ fleetId: FLEET_ID }) }),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].installationSource?.model).toBe('Expert');
+    expect(rows[0].divergentFields.slice().sort()).toEqual(['brand', 'energy', 'model']);
+  });
+
+  // 17. syncFromInstallation recopie (écrase) les champs choisis non-vides depuis le planning.
+  it('syncFromInstallation overwrites the chosen non-empty fields from the planning', async () => {
+    prisma.vehicle.findFirst.mockResolvedValue(vehicleRecord());
+    prisma.installationTask.findFirst.mockResolvedValue(taskRecord());
+
+    await service.syncFromInstallation(VEHICLE_ID, ['model', 'energy'], fleetAdmin);
+
+    expect(prisma.vehicle.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: VEHICLE_ID }, data: { model: 'Expert', energy: 'DIESEL' } }),
+    );
+  });
+
+  // 18. syncFromInstallation ne vide JAMAIS un champ : source vide -> rien à synchroniser -> BadRequest.
+  it('syncFromInstallation never clears a field (empty planning value -> BadRequest, no update)', async () => {
+    prisma.vehicle.findFirst.mockResolvedValue(vehicleRecord());
+    prisma.installationTask.findFirst.mockResolvedValue(taskRecord({ energy: null }));
+
+    await expect(service.syncFromInstallation(VEHICLE_ID, ['energy'], fleetAdmin)).rejects.toThrow(BadRequestException);
+    expect(prisma.vehicle.update).not.toHaveBeenCalled();
+  });
+
+  // 19. syncFromInstallation -> NotFound si aucune tâche d'installation liée.
+  it('syncFromInstallation throws NotFound when no installation task is linked', async () => {
+    prisma.vehicle.findFirst.mockResolvedValue(vehicleRecord());
+    prisma.installationTask.findFirst.mockResolvedValue(null);
+
+    await expect(service.syncFromInstallation(VEHICLE_ID, ['model'], fleetAdmin)).rejects.toThrow(NotFoundException);
+  });
+
+  // 20. syncFromInstallation sur un véhicule cross-fleet -> NotFound (IDOR via findOne).
+  it('syncFromInstallation throws NotFound on a cross-fleet vehicle (IDOR)', async () => {
+    prisma.vehicle.findFirst.mockResolvedValue(null);
+
+    await expect(service.syncFromInstallation(VEHICLE_ID, ['model'], fleetAdmin)).rejects.toThrow(NotFoundException);
+    expect(prisma.installationTask.findFirst).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,5 @@
 import { ArrayMaxSize, IsArray, IsEnum, IsInt, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min } from 'class-validator';
-import { VehicleType } from '@prisma/client';
+import { InstallationEnergy, VehicleType } from '@prisma/client';
 
 export class CreateVehicleDto {
   @IsString()
@@ -19,6 +19,11 @@ export class CreateVehicleDto {
   @IsString()
   @Length(1, 50)
   model?: string;
+
+  // Sprint 10 — type de carburant (synchro depuis le planning d'installation).
+  @IsOptional()
+  @IsEnum(InstallationEnergy)
+  energy?: InstallationEnergy;
 
   @IsOptional()
   @IsInt()

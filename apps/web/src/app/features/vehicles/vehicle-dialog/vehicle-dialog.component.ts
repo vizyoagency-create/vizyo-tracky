@@ -8,6 +8,7 @@ import { AuthService } from '../../../core/services/auth.service';
 import { FleetsApiService, type FleetSummary } from '../../../core/services/fleets.service';
 import { TrackersApiService } from '../../../core/services/trackers.service';
 import { VehiclesApiService } from '../../../core/services/vehicles.service';
+import type { InstallationEnergy } from '@vizyo/tracky-shared';
 import { VEHICLE_TYPES } from '../../../shared/utils/vehicle-icons';
 import { VEHICLE_BRANDS } from '../../../shared/utils/vehicle-brands';
 import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.component';
@@ -194,6 +195,13 @@ import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.com
                       <label class="field-label">Sièges enfants</label>
                       <input type="number" [(ngModel)]="childSeats" placeholder="0" min="0" max="20" class="field-input" />
                     </div>
+                  </div>
+                  <div class="mt-3">
+                    <label class="field-label">Énergie</label>
+                    <select [(ngModel)]="energy" class="field-input">
+                      <option [ngValue]="undefined">—</option>
+                      @for (e of energyOptions; track e.value) { <option [ngValue]="e.value">{{ e.label }}</option> }
+                    </select>
                   </div>
                   <div class="mt-3">
                     <label class="field-label">Équipements</label>
@@ -402,6 +410,15 @@ export class VehicleDialogComponent {
   // Sprint 8 — caractéristiques (critères de réservation)
   protected seats: number | undefined;
   protected childSeats: number | undefined;
+  // Sprint 10 — type de carburant (synchronisé depuis le planning d'installation).
+  protected energy: InstallationEnergy | undefined;
+  protected readonly energyOptions: { value: InstallationEnergy; label: string }[] = [
+    { value: 'DIESEL', label: 'Diesel' },
+    { value: 'ESSENCE', label: 'Essence' },
+    { value: 'ELECTRIQUE', label: 'Électrique' },
+    { value: 'HYBRIDE', label: 'Hybride' },
+    { value: 'AUTRE', label: 'Autre' },
+  ];
   protected features: string[] = [];
   protected featureInput = '';
   protected imei = '';
@@ -473,6 +490,7 @@ export class VehicleDialogComponent {
       this.color = v.color ?? '';
       this.seats = v.seats ?? undefined;
       this.childSeats = v.childSeats ?? undefined;
+      this.energy = v.energy ?? undefined;
       this.features = Array.isArray(v.features) ? [...v.features] : [];
       this.selectedFleetId = v.fleetId;
     } catch {
@@ -563,6 +581,7 @@ export class VehicleDialogComponent {
   private applyCharacteristics(data: Record<string, unknown>): void {
     data['seats'] = this.seats ?? null;
     data['childSeats'] = this.childSeats ?? null;
+    data['energy'] = this.energy ?? null;
     data['features'] = this.features;
   }
 
@@ -579,6 +598,7 @@ export class VehicleDialogComponent {
     this.color = '';
     this.seats = undefined;
     this.childSeats = undefined;
+    this.energy = undefined;
     this.features = [];
     this.featureInput = '';
     this.imei = '';

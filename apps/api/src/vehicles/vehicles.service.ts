@@ -7,7 +7,12 @@ import {
 } from '@nestjs/common';
 import { CommandStatus, EngineAction, Prisma, UserRole } from '@prisma/client';
 import type { Vehicle } from '@prisma/client';
-import type { VehicleSnapshotDto } from '@vizyo/tracky-shared';
+import type {
+  VehicleCapacityRowDto,
+  VehicleInstallationSourceDto,
+  VehicleSnapshotDto,
+  VehicleSyncableField,
+} from '@vizyo/tracky-shared';
 import { InMemoryCacheService } from '../common/cache/in-memory-cache.service';
 import { resolveTenantScope } from '../common/tenant-scope';
 import { PrismaService } from '../prisma/prisma.service';
@@ -175,6 +180,7 @@ export class VehiclesService {
           type: dto.type,
           brand: dto.brand,
           model: dto.model,
+          energy: dto.energy,
           year: dto.year,
           color: dto.color,
           seats: dto.seats,
@@ -291,6 +297,7 @@ export class VehiclesService {
     if (dto.type !== undefined) data.type = dto.type;
     if (dto.brand !== undefined) data.brand = dto.brand;
     if (dto.model !== undefined) data.model = dto.model;
+    if (dto.energy !== undefined) data.energy = dto.energy;
     if (dto.year !== undefined) data.year = dto.year;
     if (dto.color !== undefined) data.color = dto.color;
     if (dto.seats !== undefined) data.seats = dto.seats;
@@ -379,6 +386,147 @@ export class VehiclesService {
     }
 
     return this.findOne(id, requestedBy);
+  }
+
+  /**
+   * Sprint 10 — Source de synchro : la tâche d'installation liée la plus récente. Le planning
+   * porte marque/modèle/énergie (saisis à la prépa de la pose) ; on les expose pour pré-remplir
+   * / synchroniser la fiche véhicule. `null` si le véhicule n'a aucune tâche liée (créé manuellement).
+   */
+  private async installationSourceRow(vehicleId: string): Promise<VehicleInstallationSourceDto | null> {
+    const task = await this.prisma.installationTask.findFirst({
+      where: { vehicleId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true, planId: true, brand: true, model: true, energy: true,
+        scheduledDate: true, firstRegistrationDate: true,
+        plan: { select: { clientName: true } },
+      },
+    });
+    if (!task) return null;
+    return {
+      taskId: task.id,
+      planId: task.planId,
+      planName: task.plan?.clientName ?? null,
+      scheduledDate: task.scheduledDate ? task.scheduledDate.toISOString() : null,
+      brand: task.brand ?? null,
+      model: task.model ?? null,
+      energy: task.energy ?? null,
+      firstRegistrationDate: task.firstRegistrationDate ? task.firstRegistrationDate.toISOString() : null,
+    };
+  }
+
+  /** Sprint 10 — Source de synchro pour UN véhicule (scopée : 404 hors périmètre via findOne). */
+  async getInstallationSource(
+    id: string,
+    requestedBy: RequestedBy,
+  ): Promise<VehicleInstallationSourceDto | null> {
+    await this.findOne(id, requestedBy); // garde tenant + accès granulaire
+    return this.installationSourceRow(id);
+  }
+
+  /**
+   * Sprint 10 — Recopie (écrasement assumé) des champs choisis depuis la tâche d'installation liée
+   * vers le véhicule. Ne recopie QUE les champs demandés ET non vides côté planning : la synchro ne
+   * vide jamais un champ. Scopée via findOne (mêmes gardes tenant/IDOR que l'édition).
+   */
+  async syncFromInstallation(
+    id: string,
+    fields: VehicleSyncableField[],
+    requestedBy: RequestedBy,
+  ): Promise<Vehicle> {
+    const vehicle = await this.findOne(id, requestedBy);
+    const source = await this.installationSourceRow(id);
+    if (!source) {
+      throw new NotFoundException("Aucune tâche d'installation liée à ce véhicule");
+    }
+    const requested = new Set(Array.isArray(fields) ? fields : []);
+    const data: Prisma.VehicleUpdateInput = {};
+    if (requested.has('brand') && source.brand) data.brand = source.brand;
+    if (requested.has('model') && source.model) data.model = source.model;
+    if (requested.has('energy') && source.energy) data.energy = source.energy;
+    if (Object.keys(data).length === 0) {
+      throw new BadRequestException('Aucun champ à synchroniser (planning vide pour les champs choisis)');
+    }
+    return this.prisma.vehicle.update({
+      where: { id: vehicle.id },
+      data,
+      include: { tracker: true, ...VehiclesService.CURRENT_DRIVER_INCLUDE },
+    });
+  }
+
+  /**
+   * Sprint 10 — Vue « Parc & capacités » : tous les véhicules accessibles + leur capacité
+   * (places / sièges-enfant / équipements) alignée sur la source planning (marque/modèle/énergie),
+   * avec les champs divergents pré-calculés (proposables à la synchro). Scopée tenant + granulaire.
+   */
+  async capacityOverview(requestedBy: RequestedBy): Promise<VehicleCapacityRowDto[]> {
+    const scope = resolveTenantScope(requestedBy);
+    if (scope.mode === 'DENY') return [];
+    const where: Prisma.VehicleWhereInput = {};
+    if (scope.mode === 'FLEET') where.fleetId = scope.fleetId;
+    if (requestedBy.accessibleVehicleIds && requestedBy.accessibleVehicleIds !== 'ALL') {
+      where.id = { in: requestedBy.accessibleVehicleIds };
+    }
+    const vehicles = await this.prisma.vehicle.findMany({
+      where,
+      select: {
+        id: true, plate: true, type: true, brand: true, model: true, energy: true,
+        seats: true, childSeats: true, features: true,
+        ...VehiclesService.GROUP_INCLUDE,
+      },
+      orderBy: { plate: 'asc' },
+      take: 500,
+    });
+    const vids = vehicles.map((v) => v.id);
+    const tasks = vids.length
+      ? await this.prisma.installationTask.findMany({
+          where: { vehicleId: { in: vids } },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true, planId: true, vehicleId: true, brand: true, model: true, energy: true,
+            scheduledDate: true, firstRegistrationDate: true,
+            plan: { select: { clientName: true } },
+          },
+        })
+      : [];
+    const srcByVeh = new Map<string, VehicleInstallationSourceDto>();
+    for (const t of tasks) {
+      if (!t.vehicleId || srcByVeh.has(t.vehicleId)) continue; // 1re rencontrée (desc) = la plus récente
+      srcByVeh.set(t.vehicleId, {
+        taskId: t.id,
+        planId: t.planId,
+        planName: t.plan?.clientName ?? null,
+        scheduledDate: t.scheduledDate ? t.scheduledDate.toISOString() : null,
+        brand: t.brand ?? null,
+        model: t.model ?? null,
+        energy: t.energy ?? null,
+        firstRegistrationDate: t.firstRegistrationDate ? t.firstRegistrationDate.toISOString() : null,
+      });
+    }
+    return vehicles.map((v) => {
+      const source = srcByVeh.get(v.id) ?? null;
+      const divergentFields: VehicleSyncableField[] = [];
+      if (source) {
+        if (source.brand && source.brand !== v.brand) divergentFields.push('brand');
+        if (source.model && source.model !== v.model) divergentFields.push('model');
+        if (source.energy && source.energy !== v.energy) divergentFields.push('energy');
+      }
+      return {
+        vehicleId: v.id,
+        plate: v.plate,
+        type: v.type,
+        brand: v.brand,
+        model: v.model,
+        energy: v.energy,
+        seats: v.seats,
+        childSeats: v.childSeats,
+        features: v.features,
+        group: v.groups?.[0]?.group ?? null,
+        installationSource: source,
+        divergentFields,
+      };
+    });
   }
 
   async stats(requestedBy: RequestedBy): Promise<{

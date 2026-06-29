@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } 
 import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { LucideAngularModule, Plus, Truck, ExternalLink, FolderOpen, Radio, X, Save, Wifi, Pencil, Trash2, Eye, Search, LayoutGrid, Table, Layers, ChevronRight, ChevronDown } from 'lucide-angular';
+import { LucideAngularModule, Plus, Truck, ExternalLink, FolderOpen, Radio, X, Save, Wifi, Pencil, Trash2, Eye, Search, LayoutGrid, Table, Layers, ChevronRight, ChevronDown, Gauge } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { PreferencesService } from '../../core/services/preferences.service';
@@ -14,6 +14,7 @@ import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/v
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
 import { VehicleDialogComponent } from './vehicle-dialog/vehicle-dialog.component';
 import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
+import { VehicleCapacityTableComponent } from './vehicle-capacity-table.component';
 import { EngineControlButtonComponent } from '../engine-control/engine-control-button.component';
 import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fleet-badge.component';
 import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.component';
@@ -27,7 +28,7 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
   selector: 'app-vehicles-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, BrandLogoComponent, InstallReviewBadgeComponent, TrackClickDirective, EngineControlButtonComponent],
+  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, VehicleCapacityTableComponent, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, BrandLogoComponent, InstallReviewBadgeComponent, TrackClickDirective, EngineControlButtonComponent],
   template: `
     @if (auth.isWatchman()) {
       <!-- ───────────────────────────────────────────────────────────────────
@@ -92,16 +93,19 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
           <p class="vlist-sub">{{ vehicles().length }} véhicule(s) dans votre flotte</p>
         </div>
         <div class="vlist-actions">
-          @if (perms.can('groups_view')) {
-            <div class="tab-switch">
-              <button (click)="activeTab.set('vehicles')" class="tab-btn" [class.active]="activeTab() === 'vehicles'">
-                <lucide-icon [img]="TruckIcon" [size]="15"></lucide-icon> Véhicules
-              </button>
+          <div class="tab-switch">
+            <button (click)="activeTab.set('vehicles')" class="tab-btn" [class.active]="activeTab() === 'vehicles'">
+              <lucide-icon [img]="TruckIcon" [size]="15"></lucide-icon> Véhicules
+            </button>
+            @if (perms.can('groups_view')) {
               <button (click)="activeTab.set('groups')" class="tab-btn" [class.active]="activeTab() === 'groups'">
                 <lucide-icon [img]="FolderOpenIcon" [size]="15"></lucide-icon> Groupes
               </button>
-            </div>
-          }
+            }
+            <button (click)="activeTab.set('capacity')" class="tab-btn" [class.active]="activeTab() === 'capacity'">
+              <lucide-icon [img]="GaugeIcon" [size]="15"></lucide-icon> Capacités
+            </button>
+          </div>
           @if (perms.can('vehicles_create') && activeTab() === 'vehicles') {
             <button (click)="showAddDialog.set(true)" trackClick="vehicule-ajouter" class="add-btn add-btn--inline">
               <lucide-icon [img]="Plus" [size]="15"></lucide-icon> Ajouter
@@ -124,6 +128,8 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
 
       @if (activeTab() === 'groups') {
         <app-vehicle-groups-tab />
+      } @else if (activeTab() === 'capacity') {
+        <app-vehicle-capacity-table />
       } @else {
         @if (!loading() && vehicles().length > 0) {
           <div class="vlist-toolbar">
@@ -884,7 +890,7 @@ export class VehiclesListComponent implements OnInit {
   protected readonly showAddDialog = signal(false);
   protected readonly showEditDialog = signal(false);
   protected readonly editVehicleId = signal('');
-  protected readonly activeTab = signal<'vehicles' | 'groups'>('vehicles');
+  protected readonly activeTab = signal<'vehicles' | 'groups' | 'capacity'>('vehicles');
 
   // Assign tracker drawer
   readonly showAssignTracker = signal(false);
@@ -900,6 +906,7 @@ export class VehiclesListComponent implements OnInit {
   protected readonly Truck = Truck;
   protected readonly ExternalLink = ExternalLink;
   protected readonly FolderOpenIcon = FolderOpen;
+  protected readonly GaugeIcon = Gauge;
   protected readonly RadioIcon = Radio;
   protected readonly PencilIcon = Pencil;
   protected readonly Trash2Icon = Trash2;

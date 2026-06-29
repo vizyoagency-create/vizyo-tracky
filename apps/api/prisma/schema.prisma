@@ -333,6 +333,9 @@ model Vehicle {
   type      VehicleType @default(CAR)
   brand     String?
   model     String?
+  /// Type de carburant. Synchronisé depuis le planning d'installation (InstallationTask.energy),
+  /// éditable sur la fiche. Réutilise l'enum InstallationEnergy (Diesel/Essence/Électrique/Hybride/Autre).
+  energy    InstallationEnergy?
   year      Int?
   color     String?
   // V1.5 (Sprint L) — Estimation consommation pour les rapports : litres

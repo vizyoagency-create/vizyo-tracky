@@ -1,6 +1,12 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import type { DriverSummaryDto } from '@vizyo/tracky-shared';
+import type {
+  DriverSummaryDto,
+  InstallationEnergy,
+  VehicleCapacityRowDto,
+  VehicleInstallationSourceDto,
+  VehicleSyncableField,
+} from '@vizyo/tracky-shared';
 import { Observable } from 'rxjs';
 
 export interface VehicleDetailDto {
@@ -9,6 +15,8 @@ export interface VehicleDetailDto {
   type: string;
   brand: string | null;
   model: string | null;
+  /** Sprint 10 — type de carburant (synchronisé depuis le planning d'installation). */
+  energy: InstallationEnergy | null;
   year: number | null;
   color: string | null;
   /** Sprint 8 — caractéristiques (critères de réservation). */
@@ -52,6 +60,7 @@ export class VehiclesApiService {
     type?: 'CAR' | 'TRUCK' | 'VAN' | 'MOTORCYCLE' | 'BICYCLE' | 'BUS' | 'CONSTRUCTION' | 'OTHER';
     brand?: string;
     model?: string;
+    energy?: InstallationEnergy;
     year?: number;
     color?: string;
     seats?: number;
@@ -84,6 +93,23 @@ export class VehiclesApiService {
 
   stats(): Observable<VehicleStatsDto> {
     return this.http.get<VehicleStatsDto>('/api/vehicles/stats');
+  }
+
+  // ─── Sprint 10 — Synchro véhicules ↔ planning d'installation ───
+
+  /** Vue « Parc & capacités » : véhicules + capacité + source planning (modèle/énergie). */
+  capacityOverview(): Observable<VehicleCapacityRowDto[]> {
+    return this.http.get<VehicleCapacityRowDto[]>('/api/vehicles/capacity-overview');
+  }
+
+  /** Source de synchro (tâche d'installation liée la plus récente) d'un véhicule. */
+  installationSource(id: string): Observable<VehicleInstallationSourceDto | null> {
+    return this.http.get<VehicleInstallationSourceDto | null>(`/api/vehicles/${id}/installation-source`);
+  }
+
+  /** Recopie les champs choisis (marque/modèle/énergie) du planning vers le véhicule. */
+  syncFromInstallation(id: string, fields: VehicleSyncableField[]): Observable<VehicleDetailDto> {
+    return this.http.post<VehicleDetailDto>(`/api/vehicles/${id}/sync-from-installation`, { fields });
   }
 }
 

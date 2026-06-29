@@ -325,6 +325,8 @@ export class InstallationsService {
               type: 'CAR',
               brand: task.brand ?? undefined,
               model: task.model ?? undefined,
+              // Sprint 10 — synchro à la pose : le véhicule hérite l'énergie du planning.
+              energy: task.energy ?? undefined,
             },
           });
         }
