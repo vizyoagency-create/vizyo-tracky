@@ -197,8 +197,16 @@ interface GroupOption {
           [events]="filteredEvents()"
           [currentMonth]="currentMonth()"
           [activityByDay]="activityByDay()"
+          [forecastByDay]="forecastByDay()"
           (dayClick)="onDayClick($event)"
         />
+        <div class="flex flex-wrap gap-x-4 gap-y-1.5 px-1 pt-2.5 text-[11px] text-fg-tertiary">
+          <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-[3px]" style="background:#10E0A0"></span>Maintenance</span>
+          <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-[3px]" style="background:#F59E0B"></span>Incident</span>
+          <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-[3px]" style="background:#38BDF8"></span>Réservation</span>
+          <span class="inline-flex items-center gap-1.5"><span style="color:#38BDF8;font-weight:800">●</span>Activité réelle</span>
+          <span class="inline-flex items-center gap-1.5"><span style="color:#A78BFA;font-weight:800">~</span>Usage prévu</span>
+        </div>
       }
 
       <!-- À venir / en retard -->
@@ -744,6 +752,8 @@ export class AgendaComponent implements OnInit {
   protected readonly currentMonth = signal(startOfMonth(new Date()));
   /** Sprint 8 — activité réelle par jour (nb véhicules ayant roulé), couche agenda (gardée reservations_view). */
   protected readonly activityByDay = signal<Map<string, number>>(new Map());
+  /** Sprint 8 (Palier C) — usage prévu par jour (nb véhicules), couche fantôme (gardée reservations_view). */
+  protected readonly forecastByDay = signal<Map<string, number>>(new Map());
   protected readonly selectedGroupId = signal('');
   protected readonly selectedVehicleId = signal('');
   protected readonly selectedType = signal<'' | VehicleEventType>('');
@@ -881,6 +891,7 @@ export class AgendaComponent implements OnInit {
     await Promise.all([this.loadVehicles(), this.loadSummary()]);
     await this.loadEvents();
     void this.loadActivity();
+    void this.loadForecast();
   }
 
   @HostListener('document:keydown.escape')
@@ -983,6 +994,38 @@ export class AgendaComponent implements OnInit {
     }
   }
 
+  /**
+   * Sprint 8 (Palier C) — couche « usage prévu » : nb de véhicules dont l'usage récurrent est
+   * prévu par jour (dérivé des trajets, jamais bloquant). Gardée par `reservations_view`.
+   */
+  private async loadForecast(): Promise<void> {
+    if (!this.perms.can('reservations_view')) {
+      this.forecastByDay.set(new Map());
+      return;
+    }
+    try {
+      const { from, to } = this.monthWindow();
+      const res = await firstValueFrom(this.api.getForecast({ from, to }));
+      const perDay = new Map<string, Set<string>>();
+      for (const slot of res.slots) {
+        const start = new Date(slot.startAt);
+        if (Number.isNaN(start.getTime())) continue;
+        const key = localIso(start);
+        let set = perDay.get(key);
+        if (!set) {
+          set = new Set();
+          perDay.set(key, set);
+        }
+        set.add(slot.vehicleId);
+      }
+      const counts = new Map<string, number>();
+      for (const [key, set] of perDay) counts.set(key, set.size);
+      this.forecastByDay.set(counts);
+    } catch {
+      this.forecastByDay.set(new Map());
+    }
+  }
+
   // ─── Filtres ─────────────────────────────────────────────────────────────────
   protected selectGroup(id: string): void {
     this.selectedGroupId.set(id);
@@ -1007,12 +1050,14 @@ export class AgendaComponent implements OnInit {
     this.currentMonth.set(addMonths(this.currentMonth(), -1));
     void this.loadEvents();
     void this.loadActivity();
+    void this.loadForecast();
   }
 
   protected nextMonth(): void {
     this.currentMonth.set(addMonths(this.currentMonth(), 1));
     void this.loadEvents();
     void this.loadActivity();
+    void this.loadForecast();
   }
 
   protected goToday(): void {
@@ -1020,6 +1065,7 @@ export class AgendaComponent implements OnInit {
     this.currentMonth.set(startOfMonth(new Date()));
     void this.loadEvents();
     void this.loadActivity();
+    void this.loadForecast();
   }
 
   // ─── Panneau jour ──────────────────────────────────────────────────────────

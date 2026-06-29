@@ -4,6 +4,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { AgendaController } from './agenda.controller';
 import { FleetInsightsController } from './fleet-insights.controller';
 import { FleetInsightsService } from './fleet-insights.service';
+import { ForecastService } from './forecast.service';
 import { MaintenancePlansService } from './maintenance-plans.service';
 import { MaintenanceReminderService } from './maintenance-reminder.service';
 import { ReservationsController } from './reservations.controller';
@@ -24,7 +25,8 @@ import { VehicleEventsService } from './vehicle-events.service';
     MaintenanceReminderService,
     FleetInsightsService,
     ReservationsService,
+    ForecastService,
   ],
-  exports: [VehicleEventsService, FleetInsightsService, ReservationsService],
+  exports: [VehicleEventsService, FleetInsightsService, ReservationsService, ForecastService],
 })
 export class AgendaModule {}

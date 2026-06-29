@@ -30,6 +30,8 @@ interface CalendarCell {
   count: number;
   /** Sprint 8 — nb de véhicules ayant roulé ce jour-là (couche activité). */
   active: number;
+  /** Sprint 8 (Palier C) — nb de véhicules dont l'usage est prévu ce jour (couche fantôme). */
+  forecast: number;
 }
 
 const MAX_PILLS = 3;
@@ -66,9 +68,14 @@ const weekdayFmt = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'num
             [attr.aria-label]="c.aria + (c.count ? ' — ' + c.count + ' événement(s)' : '')"
             (click)="dayClick.emit(c.iso)">
             <span class="cal-cell-day">{{ c.day }}</span>
-            @if (c.active > 0) {
-              <span class="cal-activity" [attr.title]="c.active + ' véhicule(s) ayant roulé ce jour'">
-                <span class="cal-activity-dot"></span>{{ c.active }}
+            @if (c.active > 0 || c.forecast > 0) {
+              <span class="cal-badges">
+                @if (c.active > 0) {
+                  <span class="cal-activity" [attr.title]="c.active + ' véhicule(s) ayant roulé ce jour'"><span class="cal-activity-dot"></span>{{ c.active }}</span>
+                }
+                @if (c.forecast > 0) {
+                  <span class="cal-forecast" [attr.title]="c.forecast + ' véhicule(s) — usage habituel prévu'">~{{ c.forecast }}</span>
+                }
               </span>
             }
             <span class="cal-cell-pills">
@@ -194,11 +201,9 @@ const weekdayFmt = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'num
       color: var(--fg-tertiary);
       padding-left: 3px;
     }
-    /* Sprint 8 — badge « activité réelle » (nb véhicules ayant roulé), coin haut-droit. */
+    /* Sprint 8 — badges coin haut-droit : activité réelle (bleu plein) + usage prévu (violet pointillé). */
+    .cal-badges { position: absolute; top: 5px; right: 5px; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
     .cal-activity {
-      position: absolute;
-      top: 5px;
-      right: 5px;
       display: inline-flex;
       align-items: center;
       gap: 3px;
@@ -211,6 +216,17 @@ const weekdayFmt = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'num
       background: color-mix(in srgb, #38BDF8 14%, transparent);
     }
     .cal-activity-dot { width: 5px; height: 5px; border-radius: 50%; background: #38BDF8; }
+    .cal-forecast {
+      display: inline-flex;
+      align-items: center;
+      padding: 1px 5px;
+      font-size: 9px;
+      font-weight: 700;
+      line-height: 1.4;
+      border-radius: 999px;
+      color: #A78BFA;
+      border: 1px dashed color-mix(in srgb, #A78BFA 45%, transparent);
+    }
     /* Pastilles compactes — affichées seulement en mobile (pilules texte masquées). */
     .cal-dots { display: none; gap: 3px; margin-top: auto; }
     .cal-dot {
@@ -235,8 +251,8 @@ const weekdayFmt = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'num
       .cal-cell-day { font-size: 12px; }
       /* En mobile : on remplace les pilules texte par des pastilles colorées. */
       .cal-cell-pills { display: none; }
-      /* Cellules trop compactes en mobile pour le badge d'activité : masqué. */
-      .cal-activity { display: none; }
+      /* Cellules trop compactes en mobile pour les badges : masqués. */
+      .cal-badges { display: none; }
       .cal-dots { display: flex; justify-content: center; flex-wrap: wrap; }
     }
   `],
@@ -248,6 +264,8 @@ export class AgendaCalendarComponent {
   readonly currentMonth = input<Date>(new Date());
   /** Sprint 8 — nb de véhicules ayant roulé par jour (clé ISO locale) : couche « activité réelle ». */
   readonly activityByDay = input<Map<string, number>>(new Map());
+  /** Sprint 8 (Palier C) — nb de véhicules dont l'usage est PRÉVU ce jour (couche fantôme). */
+  readonly forecastByDay = input<Map<string, number>>(new Map());
   /** Émis avec l'ISO (YYYY-MM-DD) du jour cliqué. */
   readonly dayClick = output<string>();
 
@@ -273,6 +291,7 @@ export class AgendaCalendarComponent {
     const today = new Date();
     const byDay = this.eventsByDay();
     const byActivity = this.activityByDay();
+    const byForecast = this.forecastByDay();
     const start = startOfWeekMonday(monthFirst);
 
     return Array.from({ length: 42 }, (_, i) => {
@@ -302,6 +321,7 @@ export class AgendaCalendarComponent {
         overflow: Math.max(0, sorted.length - MAX_PILLS),
         count: sorted.length,
         active: byActivity.get(iso) ?? 0,
+        forecast: byForecast.get(iso) ?? 0,
       };
     });
   });

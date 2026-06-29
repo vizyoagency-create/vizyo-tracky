@@ -6,6 +6,7 @@ import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guar
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { FleetInsightsService } from './fleet-insights.service';
+import { ForecastService } from './forecast.service';
 
 const ALL_ROLES = [
   UserRole.SUPER_ADMIN,
@@ -41,7 +42,10 @@ function assertWindow(from: Date, to: Date): void {
 @Controller()
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class FleetInsightsController {
-  constructor(private readonly insights: FleetInsightsService) {}
+  constructor(
+    private readonly insights: FleetInsightsService,
+    private readonly forecastSvc: ForecastService,
+  ) {}
 
   @Get('agenda/availability')
   @Roles(...ALL_ROLES)
@@ -73,5 +77,16 @@ export class FleetInsightsController {
     const f = from ? parseDate(from, 'from') : new Date(t.getTime() - DEFAULT_UTILIZATION_DAYS * DAY_MS);
     assertWindow(f, t);
     return this.insights.getUtilization(req.user, f, t, { vehicleId, groupId });
+  }
+
+  /** Sprint 8 (Palier C) — usage PRÉVU (récurrence dérivée des trajets), projeté sur la fenêtre. */
+  @Get('agenda/forecast')
+  @Roles(...ALL_ROLES)
+  @RequirePermissions('reservations_view')
+  forecast(@Req() req: AuthenticatedRequest, @Query('from') from: string, @Query('to') to: string) {
+    const f = parseDate(from, 'from');
+    const t = parseDate(to, 'to');
+    assertWindow(f, t);
+    return this.forecastSvc.getForecast(req.user, f, t);
   }
 }

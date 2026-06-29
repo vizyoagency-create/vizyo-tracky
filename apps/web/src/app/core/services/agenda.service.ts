@@ -3,6 +3,7 @@ import { inject, Injectable } from '@angular/core';
 import type {
   AgendaSummaryDto,
   FleetOptimizationDto,
+  ForecastResultDto,
   VehicleAvailabilityDto,
   RequestReservationDto,
   ConfirmReservationDto,
@@ -192,5 +193,12 @@ export class AgendaApiService {
   /** PATCH /api/reservations/:id — éditer (créneau / critères / libellé). */
   updateReservation(id: string, dto: UpdateReservationDto): Observable<VehicleEventDto> {
     return this.http.patch<VehicleEventDto>(`/api/reservations/${id}`, dto);
+  }
+
+  /** GET /api/agenda/forecast — usage PRÉVU (récurrence dérivée), projeté sur la fenêtre. */
+  getForecast(query: { from: string; to: string }): Observable<ForecastResultDto> {
+    return this.http.get<ForecastResultDto>('/api/agenda/forecast', {
+      params: { from: query.from, to: query.to },
+    });
   }
 }
