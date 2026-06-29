@@ -344,6 +344,11 @@ model Vehicle {
   // Sprint 7 — baseline kilometrique autoritaire (saisi a l'entretien) + agenda.
   lastOdometerKm   Int?
   lastOdometerAt   DateTime?
+  // Sprint 8 — caractéristiques pour les critères de réservation : nb de places,
+  // sièges enfants/pouponnière, équipements (tags libres extensibles).
+  seats            Int?
+  childSeats       Int?
+  features         String[] @default([])
   vehicleEvents    VehicleEvent[]
   maintenancePlans MaintenancePlan[]
   createdAt  DateTime @default(now())
@@ -371,6 +376,8 @@ enum VehicleEventStatus {
   IN_PROGRESS
   DONE
   CANCELLED
+  REQUESTED // Sprint 8 — réservation déposée, en attente de validation (NON bloquant)
+  CONFIRMED // Sprint 8 — réservation ferme (BLOQUANTE : conflits + disponibilité)
 }
 
 /// Sprint 7 — Événement générique sur la timeline d'un véhicule. Porte la maintenance et

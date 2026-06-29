@@ -1,6 +1,6 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/auth/auth.guard';
-import { permissionGuard } from './core/guards/permission.guard';
+import { anyPermissionGuard, permissionGuard } from './core/guards/permission.guard';
 import { roleGuard } from './core/guards/role.guard';
 import { superAdminGuard } from './core/guards/super-admin.guard';
 import { watchmanChildGuard } from './core/guards/watchman.guard';
@@ -118,6 +118,23 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/agenda/agenda.component').then((m) => m.AgendaComponent),
         data: { title: 'Agenda' },
+      },
+      {
+        // Sprint 8 — Optimisation de flotte (dispo/activité + sous-utilisation). Gaté reservations_view
+        // (FLEET_ADMIN/SUPER_ADMIN bypass via PermissionsService.can).
+        path: 'optimisation',
+        canActivate: [permissionGuard('reservations_view')],
+        loadComponent: () =>
+          import('./features/optimization/fleet-optimization.component').then((m) => m.FleetOptimizationComponent),
+        data: { title: 'Optimisation' },
+      },
+      {
+        // Sprint 8 — Réservations (demande + validation + auto-complétion). Gaté reservations_view.
+        path: 'reservations',
+        canActivate: [anyPermissionGuard('reservations_view', 'reservations_request')],
+        loadComponent: () =>
+          import('./features/reservations/reservations.component').then((m) => m.ReservationsComponent),
+        data: { title: 'Réservations' },
       },
       {
         path: 'users/overview',

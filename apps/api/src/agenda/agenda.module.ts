@@ -2,8 +2,13 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AgendaController } from './agenda.controller';
+import { FleetInsightsController } from './fleet-insights.controller';
+import { FleetInsightsService } from './fleet-insights.service';
+import { ForecastService } from './forecast.service';
 import { MaintenancePlansService } from './maintenance-plans.service';
 import { MaintenanceReminderService } from './maintenance-reminder.service';
+import { ReservationsController } from './reservations.controller';
+import { ReservationsService } from './reservations.service';
 import { VehicleEventsService } from './vehicle-events.service';
 
 /**
@@ -13,8 +18,15 @@ import { VehicleEventsService } from './vehicle-events.service';
  */
 @Module({
   imports: [AuthModule, NotificationsModule],
-  controllers: [AgendaController],
-  providers: [VehicleEventsService, MaintenancePlansService, MaintenanceReminderService],
-  exports: [VehicleEventsService],
+  controllers: [AgendaController, FleetInsightsController, ReservationsController],
+  providers: [
+    VehicleEventsService,
+    MaintenancePlansService,
+    MaintenanceReminderService,
+    FleetInsightsService,
+    ReservationsService,
+    ForecastService,
+  ],
+  exports: [VehicleEventsService, FleetInsightsService, ReservationsService, ForecastService],
 })
 export class AgendaModule {}

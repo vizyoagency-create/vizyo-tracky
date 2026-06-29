@@ -60,6 +60,16 @@ export interface UserPermissions {
   agenda_view: boolean;
   /** Sprint 7 — Gerer la maintenance : creer/editer/resoudre les evenements + plans recurrents. */
   agenda_manage: boolean;
+
+  /**
+   * Sprint 8 — Reservations de vehicules (creneau + criteres). Trois niveaux :
+   * voir (reservations & disponibilites), demander (deposer une demande dans son
+   * perimetre), gerer (valider/refuser/editer/annuler/supprimer/auto-affecter).
+   * OFF par defaut sauf SUPER_ADMIN/FLEET_ADMIN ; accordables par utilisateur.
+   */
+  reservations_view: boolean;
+  reservations_request: boolean;
+  reservations_manage: boolean;
 }
 
 const VIEWER_DEFAULTS: UserPermissions = {
@@ -86,6 +96,9 @@ const VIEWER_DEFAULTS: UserPermissions = {
   audio_monitoring: false,
   agenda_view: false,
   agenda_manage: false,
+  reservations_view: false,
+  reservations_request: false,
+  reservations_manage: false,
 };
 
 const FLEET_MANAGER_DEFAULTS: UserPermissions = {
@@ -112,6 +125,9 @@ const FLEET_MANAGER_DEFAULTS: UserPermissions = {
   audio_monitoring: false,
   agenda_view: false,
   agenda_manage: false,
+  reservations_view: false,
+  reservations_request: false,
+  reservations_manage: false,
 };
 
 const ADMIN_DEFAULTS: UserPermissions = {
@@ -138,6 +154,9 @@ const ADMIN_DEFAULTS: UserPermissions = {
   audio_monitoring: true,
   agenda_view: true,
   agenda_manage: true,
+  reservations_view: true,
+  reservations_request: true,
+  reservations_manage: true,
 };
 
 /**
@@ -169,6 +188,9 @@ const NIGHT_WATCHMAN_DEFAULTS: UserPermissions = {
   audio_monitoring: false,
   agenda_view: false,
   agenda_manage: false,
+  reservations_view: false,
+  reservations_request: false,
+  reservations_manage: false,
 };
 
 export function getDefaultPermissions(role: UserRoleSlug): UserPermissions {
@@ -330,6 +352,24 @@ export const PERMISSION_LABELS: Record<keyof UserPermissions, PermissionLabel> =
     description:
       'Creer/editer/resoudre les evenements de maintenance et les plans recurrents (CT, vidange...).',
   },
+  reservations_view: {
+    group: 'Reservations',
+    label: 'Voir les reservations & disponibilites',
+    description:
+      'Voir les reservations de vehicules et les creneaux de disponibilite (activite reelle, dashboard d\'optimisation).',
+  },
+  reservations_request: {
+    group: 'Reservations',
+    label: 'Demander une reservation',
+    description:
+      'Deposer une demande de reservation (creneau + criteres) sur un vehicule accessible ; validee ensuite par un gestionnaire.',
+  },
+  reservations_manage: {
+    group: 'Reservations',
+    label: 'Gerer les reservations',
+    description:
+      'Valider / refuser / editer / annuler / supprimer les reservations et auto-affecter un vehicule libre.',
+  },
 };
 
 /** Ordre d'affichage canonique des groupes dans l'UI. */
@@ -345,4 +385,5 @@ export const PERMISSION_GROUP_ORDER: readonly string[] = [
   'Cartes SIM',
   'Audio',
   'Agenda',
+  'Reservations',
 ] as const;

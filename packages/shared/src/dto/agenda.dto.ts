@@ -6,7 +6,14 @@
  */
 
 export type VehicleEventType = 'MAINTENANCE' | 'INCIDENT' | 'RESERVATION';
-export type VehicleEventStatus = 'PLANNED' | 'OPEN' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
+export type VehicleEventStatus =
+  | 'PLANNED'
+  | 'OPEN'
+  | 'IN_PROGRESS'
+  | 'DONE'
+  | 'CANCELLED'
+  | 'REQUESTED' // Sprint 8 — réservation en attente de validation (non bloquant)
+  | 'CONFIRMED'; // Sprint 8 — réservation ferme (bloquante)
 export type VehicleEventSeverity = 'LOW' | 'MEDIUM' | 'HIGH';
 
 export interface VehicleEventDto {

@@ -183,6 +183,28 @@ import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.com
                       <input type="text" [(ngModel)]="color" placeholder="Blanc" class="field-input" />
                     </div>
                   </div>
+
+                  <!-- Sprint 8 — Caractéristiques (critères de réservation) -->
+                  <div class="grid grid-cols-2 gap-3 mt-3">
+                    <div>
+                      <label class="field-label">Places</label>
+                      <input type="number" [(ngModel)]="seats" placeholder="5" min="1" max="99" class="field-input" />
+                    </div>
+                    <div>
+                      <label class="field-label">Sièges enfants</label>
+                      <input type="number" [(ngModel)]="childSeats" placeholder="0" min="0" max="20" class="field-input" />
+                    </div>
+                  </div>
+                  <div class="mt-3">
+                    <label class="field-label">Équipements</label>
+                    <div class="vd-chips">
+                      @for (f of features; track f) {
+                        <span class="vd-chip">{{ f }}<button type="button" class="vd-chip-x" (click)="removeFeature(f)" aria-label="Retirer">×</button></span>
+                      }
+                      <input type="text" [(ngModel)]="featureInput" (keydown.enter)="addFeature($event)" placeholder="Ajouter (Entrée)…" class="vd-chip-input" />
+                    </div>
+                    <p class="vd-hint">Ex. climatisation, GPS, hayon, galerie, frigo — servent aux critères de réservation.</p>
+                  </div>
                 </div>
               </section>
             }
@@ -296,6 +318,13 @@ import { BrandLogoComponent } from '../../../shared/ui/brand-logo/brand-logo.com
     }
     .field-input:focus { border-color: var(--tracky) }
     .field-input::placeholder { color: var(--fg-tertiary) }
+    .vd-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px; border: 1.5px solid var(--border-subtle); border-radius: 12px; background: var(--bg-secondary) }
+    .vd-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 4px 3px 9px; border-radius: 8px; font-size: 12px; font-weight: 600; color: var(--tracky-light, #10E0A0); background: rgba(16,224,160,.12) }
+    .vd-chip-x { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 5px; font-size: 14px; line-height: 1; color: var(--fg-tertiary); cursor: pointer }
+    .vd-chip-x:hover { color: #EF4444; background: rgba(239,68,68,.12) }
+    .vd-chip-input { flex: 1; min-width: 90px; background: transparent; border: none; outline: none; color: var(--fg-primary); font-size: 13px }
+    .vd-chip-input::placeholder { color: var(--fg-tertiary) }
+    .vd-hint { font-size: 10.5px; color: var(--fg-muted); margin-top: 5px }
     select.field-input {
       appearance: none;
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
@@ -370,6 +399,11 @@ export class VehicleDialogComponent {
   protected model = '';
   protected year: number | undefined;
   protected color = '';
+  // Sprint 8 — caractéristiques (critères de réservation)
+  protected seats: number | undefined;
+  protected childSeats: number | undefined;
+  protected features: string[] = [];
+  protected featureInput = '';
   protected imei = '';
   protected trackerModel = '';
   protected simPhoneNumber = '';
@@ -437,6 +471,9 @@ export class VehicleDialogComponent {
       this.model = v.model ?? '';
       this.year = v.year ?? undefined;
       this.color = v.color ?? '';
+      this.seats = v.seats ?? undefined;
+      this.childSeats = v.childSeats ?? undefined;
+      this.features = Array.isArray(v.features) ? [...v.features] : [];
       this.selectedFleetId = v.fleetId;
     } catch {
       this.errorMessage.set('Impossible de charger le véhicule');
@@ -454,6 +491,7 @@ export class VehicleDialogComponent {
       if (this.model.trim()) data['model'] = this.model.trim();
       if (this.year) data['year'] = this.year;
       if (this.color.trim()) data['color'] = this.color.trim();
+      this.applyCharacteristics(data);
       if (this.selectedFleetId) data['fleetId'] = this.selectedFleetId;
       const vehicle = await firstValueFrom(this.vehiclesApi.create(data as Parameters<VehiclesApiService['create']>[0]));
       this.createdVehicleId.set(vehicle.id);
@@ -475,6 +513,7 @@ export class VehicleDialogComponent {
       if (this.model.trim()) data['model'] = this.model.trim();
       if (this.year) data['year'] = this.year;
       if (this.color.trim()) data['color'] = this.color.trim();
+      this.applyCharacteristics(data);
       if (this.isSuperAdmin() && this.selectedFleetId) {
         data['fleetId'] = this.selectedFleetId;
       }
@@ -505,6 +544,28 @@ export class VehicleDialogComponent {
     } finally { this.isLoading.set(false); }
   }
 
+  /** Sprint 8 — ajoute un équipement (tag) depuis l'input (Entrée). */
+  protected addFeature(ev: Event): void {
+    ev.preventDefault();
+    const raw = this.featureInput.trim();
+    if (!raw) return;
+    const exists = this.features.some((f) => f.toLowerCase() === raw.toLowerCase());
+    if (!exists && this.features.length < 30) this.features = [...this.features, raw];
+    this.featureInput = '';
+  }
+
+  /** Sprint 8 — retire un équipement. */
+  protected removeFeature(f: string): void {
+    this.features = this.features.filter((x) => x !== f);
+  }
+
+  /** Sprint 8 — ajoute les caractéristiques (places / sièges enfants / équipements) au payload. */
+  private applyCharacteristics(data: Record<string, unknown>): void {
+    data['seats'] = this.seats ?? null;
+    data['childSeats'] = this.childSeats ?? null;
+    data['features'] = this.features;
+  }
+
   private reset(): void {
     this.currentStep.set(1);
     this.errorMessage.set('');
@@ -516,6 +577,10 @@ export class VehicleDialogComponent {
     this.model = '';
     this.year = undefined;
     this.color = '';
+    this.seats = undefined;
+    this.childSeats = undefined;
+    this.features = [];
+    this.featureInput = '';
     this.imei = '';
     this.trackerModel = '';
     this.simPhoneNumber = '';

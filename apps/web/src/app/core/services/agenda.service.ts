@@ -2,6 +2,13 @@ import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import type {
   AgendaSummaryDto,
+  FleetOptimizationDto,
+  ForecastResultDto,
+  VehicleAvailabilityDto,
+  RequestReservationDto,
+  ConfirmReservationDto,
+  UpdateReservationDto,
+  SuggestReservationResultDto,
   CreateVehicleEventDto,
   MaintenancePlanDto,
   OdometerEstimateDto,
@@ -102,5 +109,96 @@ export class AgendaApiService {
   /** DELETE /api/agenda/plans/:id — suppression d'un plan d'entretien. */
   deletePlan(id: string): Observable<void> {
     return this.http.delete<void>(`/api/agenda/plans/${id}`);
+  }
+
+  // ─── Sprint 8 (Palier A) — Visibilité flotte (lecture seule, gardé reservations_view) ───
+
+  /** GET /api/agenda/availability — activité réelle (trajets) sur une fenêtre, couche agenda. */
+  getAvailability(query: {
+    from: string;
+    to: string;
+    vehicleId?: string;
+    groupId?: string;
+  }): Observable<VehicleAvailabilityDto> {
+    const params: Record<string, string> = { from: query.from, to: query.to };
+    if (query.vehicleId) params['vehicleId'] = query.vehicleId;
+    if (query.groupId) params['groupId'] = query.groupId;
+    return this.http.get<VehicleAvailabilityDto>('/api/agenda/availability', { params });
+  }
+
+  /** GET /api/optimization/utilization — heatmap d'utilisation + sous-utilisation (dashboard). */
+  getUtilization(query?: {
+    from?: string;
+    to?: string;
+    vehicleId?: string;
+    groupId?: string;
+  }): Observable<FleetOptimizationDto> {
+    const params: Record<string, string> = {};
+    if (query?.from) params['from'] = query.from;
+    if (query?.to) params['to'] = query.to;
+    if (query?.vehicleId) params['vehicleId'] = query.vehicleId;
+    if (query?.groupId) params['groupId'] = query.groupId;
+    return this.http.get<FleetOptimizationDto>('/api/optimization/utilization', { params });
+  }
+
+  // ─── Sprint 8 (Palier B) — Réservations ───
+
+  /** GET /api/reservations — réservations scopées (status=REQUESTED = file de validation). */
+  listReservations(filters?: {
+    status?: VehicleEventStatus;
+    from?: string;
+    to?: string;
+    vehicleId?: string;
+    groupId?: string;
+  }): Observable<VehicleEventDto[]> {
+    const params: Record<string, string> = {};
+    if (filters?.status) params['status'] = filters.status;
+    if (filters?.from) params['from'] = filters.from;
+    if (filters?.to) params['to'] = filters.to;
+    if (filters?.vehicleId) params['vehicleId'] = filters.vehicleId;
+    if (filters?.groupId) params['groupId'] = filters.groupId;
+    return this.http.get<VehicleEventDto[]>('/api/reservations', { params });
+  }
+
+  /** GET /api/reservations/suggest — véhicules libres + conformes aux critères. */
+  suggestReservation(query: {
+    startAt: string;
+    endAt: string;
+    minSeats?: number;
+    minChildSeats?: number;
+    features?: string[];
+  }): Observable<SuggestReservationResultDto> {
+    const params: Record<string, string> = { startAt: query.startAt, endAt: query.endAt };
+    if (query.minSeats) params['minSeats'] = String(query.minSeats);
+    if (query.minChildSeats) params['minChildSeats'] = String(query.minChildSeats);
+    if (query.features?.length) params['features'] = query.features.join(',');
+    return this.http.get<SuggestReservationResultDto>('/api/reservations/suggest', { params });
+  }
+
+  /** POST /api/reservations/request — déposer une demande (REQUESTED). */
+  requestReservation(dto: RequestReservationDto): Observable<VehicleEventDto> {
+    return this.http.post<VehicleEventDto>('/api/reservations/request', dto);
+  }
+
+  /** POST /api/reservations/:id/confirm — valider (CONFIRMED). */
+  confirmReservation(id: string, dto: ConfirmReservationDto = {}): Observable<VehicleEventDto> {
+    return this.http.post<VehicleEventDto>(`/api/reservations/${id}/confirm`, dto);
+  }
+
+  /** POST /api/reservations/:id/cancel — refuser / annuler (CANCELLED). */
+  cancelReservation(id: string): Observable<VehicleEventDto> {
+    return this.http.post<VehicleEventDto>(`/api/reservations/${id}/cancel`, {});
+  }
+
+  /** PATCH /api/reservations/:id — éditer (créneau / critères / libellé). */
+  updateReservation(id: string, dto: UpdateReservationDto): Observable<VehicleEventDto> {
+    return this.http.patch<VehicleEventDto>(`/api/reservations/${id}`, dto);
+  }
+
+  /** GET /api/agenda/forecast — usage PRÉVU (récurrence dérivée), projeté sur la fenêtre. */
+  getForecast(query: { from: string; to: string }): Observable<ForecastResultDto> {
+    return this.http.get<ForecastResultDto>('/api/agenda/forecast', {
+      params: { from: query.from, to: query.to },
+    });
   }
 }
