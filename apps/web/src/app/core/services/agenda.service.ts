@@ -2,6 +2,8 @@ import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import type {
   AgendaSummaryDto,
+  FleetOptimizationDto,
+  VehicleAvailabilityDto,
   CreateVehicleEventDto,
   MaintenancePlanDto,
   OdometerEstimateDto,
@@ -102,5 +104,35 @@ export class AgendaApiService {
   /** DELETE /api/agenda/plans/:id — suppression d'un plan d'entretien. */
   deletePlan(id: string): Observable<void> {
     return this.http.delete<void>(`/api/agenda/plans/${id}`);
+  }
+
+  // ─── Sprint 8 (Palier A) — Visibilité flotte (lecture seule, gardé reservations_view) ───
+
+  /** GET /api/agenda/availability — activité réelle (trajets) sur une fenêtre, couche agenda. */
+  getAvailability(query: {
+    from: string;
+    to: string;
+    vehicleId?: string;
+    groupId?: string;
+  }): Observable<VehicleAvailabilityDto> {
+    const params: Record<string, string> = { from: query.from, to: query.to };
+    if (query.vehicleId) params['vehicleId'] = query.vehicleId;
+    if (query.groupId) params['groupId'] = query.groupId;
+    return this.http.get<VehicleAvailabilityDto>('/api/agenda/availability', { params });
+  }
+
+  /** GET /api/optimization/utilization — heatmap d'utilisation + sous-utilisation (dashboard). */
+  getUtilization(query?: {
+    from?: string;
+    to?: string;
+    vehicleId?: string;
+    groupId?: string;
+  }): Observable<FleetOptimizationDto> {
+    const params: Record<string, string> = {};
+    if (query?.from) params['from'] = query.from;
+    if (query?.to) params['to'] = query.to;
+    if (query?.vehicleId) params['vehicleId'] = query.vehicleId;
+    if (query?.groupId) params['groupId'] = query.groupId;
+    return this.http.get<FleetOptimizationDto>('/api/optimization/utilization', { params });
   }
 }

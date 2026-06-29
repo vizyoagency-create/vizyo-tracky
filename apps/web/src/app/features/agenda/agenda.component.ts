@@ -196,6 +196,7 @@ interface GroupOption {
         <app-agenda-calendar
           [events]="filteredEvents()"
           [currentMonth]="currentMonth()"
+          [activityByDay]="activityByDay()"
           (dayClick)="onDayClick($event)"
         />
       }
@@ -741,6 +742,8 @@ export class AgendaComponent implements OnInit {
   protected readonly loading = signal(true);
 
   protected readonly currentMonth = signal(startOfMonth(new Date()));
+  /** Sprint 8 — activité réelle par jour (nb véhicules ayant roulé), couche agenda (gardée reservations_view). */
+  protected readonly activityByDay = signal<Map<string, number>>(new Map());
   protected readonly selectedGroupId = signal('');
   protected readonly selectedVehicleId = signal('');
   protected readonly selectedType = signal<'' | VehicleEventType>('');
@@ -876,6 +879,7 @@ export class AgendaComponent implements OnInit {
   async ngOnInit(): Promise<void> {
     await Promise.all([this.loadVehicles(), this.loadSummary()]);
     await this.loadEvents();
+    void this.loadActivity();
   }
 
   @HostListener('document:keydown.escape')
@@ -937,6 +941,47 @@ export class AgendaComponent implements OnInit {
     }
   }
 
+  /**
+   * Sprint 8 — couche « activité réelle » : nb de véhicules ayant roulé par jour sur la
+   * fenêtre du mois (dérivé des trajets). Gardée par `reservations_view` (sinon masquée).
+   * Échec silencieux : l'agenda reste fonctionnel sans cette couche.
+   */
+  private async loadActivity(): Promise<void> {
+    if (!this.perms.can('reservations_view')) {
+      this.activityByDay.set(new Map());
+      return;
+    }
+    try {
+      const { from, to } = this.monthWindow();
+      const avail = await firstValueFrom(this.api.getAvailability({ from, to }));
+      const perDay = new Map<string, Set<string>>();
+      for (const slot of avail.slots) {
+        const start = new Date(slot.startAt);
+        if (Number.isNaN(start.getTime())) continue;
+        const end = slot.endAt ? new Date(slot.endAt) : start;
+        const cursor = new Date(start);
+        cursor.setHours(0, 0, 0, 0);
+        let steps = 0;
+        while (cursor.getTime() <= end.getTime() && steps < 14) {
+          const key = localIso(cursor);
+          let set = perDay.get(key);
+          if (!set) {
+            set = new Set();
+            perDay.set(key, set);
+          }
+          set.add(slot.vehicleId);
+          cursor.setDate(cursor.getDate() + 1);
+          steps++;
+        }
+      }
+      const counts = new Map<string, number>();
+      for (const [key, set] of perDay) counts.set(key, set.size);
+      this.activityByDay.set(counts);
+    } catch {
+      this.activityByDay.set(new Map());
+    }
+  }
+
   // ─── Filtres ─────────────────────────────────────────────────────────────────
   protected selectGroup(id: string): void {
     this.selectedGroupId.set(id);
@@ -960,17 +1005,20 @@ export class AgendaComponent implements OnInit {
   protected prevMonth(): void {
     this.currentMonth.set(addMonths(this.currentMonth(), -1));
     void this.loadEvents();
+    void this.loadActivity();
   }
 
   protected nextMonth(): void {
     this.currentMonth.set(addMonths(this.currentMonth(), 1));
     void this.loadEvents();
+    void this.loadActivity();
   }
 
   protected goToday(): void {
     if (this.isCurrentMonth()) return;
     this.currentMonth.set(startOfMonth(new Date()));
     void this.loadEvents();
+    void this.loadActivity();
   }
 
   // ─── Panneau jour ──────────────────────────────────────────────────────────

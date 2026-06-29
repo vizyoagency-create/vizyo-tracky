@@ -11,6 +11,10 @@ export interface VehicleDetailDto {
   model: string | null;
   year: number | null;
   color: string | null;
+  /** Sprint 8 — caractéristiques (critères de réservation). */
+  seats: number | null;
+  childSeats: number | null;
+  features: string[];
   fleetId: string;
   tracker: {
     id: string;
@@ -50,6 +54,9 @@ export class VehiclesApiService {
     model?: string;
     year?: number;
     color?: string;
+    seats?: number;
+    childSeats?: number;
+    features?: string[];
     fleetId?: string;
   }): Observable<VehicleDetailDto> {
     return this.http.post<VehicleDetailDto>('/api/vehicles', data);

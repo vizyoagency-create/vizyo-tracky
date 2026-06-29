@@ -120,6 +120,15 @@ export const routes: Routes = [
         data: { title: 'Agenda' },
       },
       {
+        // Sprint 8 — Optimisation de flotte (dispo/activité + sous-utilisation). Gaté reservations_view
+        // (FLEET_ADMIN/SUPER_ADMIN bypass via PermissionsService.can).
+        path: 'optimisation',
+        canActivate: [permissionGuard('reservations_view')],
+        loadComponent: () =>
+          import('./features/optimization/fleet-optimization.component').then((m) => m.FleetOptimizationComponent),
+        data: { title: 'Optimisation' },
+      },
+      {
         path: 'users/overview',
         canActivate: [permissionGuard('users_view')],
         loadComponent: () =>
