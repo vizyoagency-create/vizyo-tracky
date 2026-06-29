@@ -6,6 +6,8 @@ import { FleetInsightsController } from './fleet-insights.controller';
 import { FleetInsightsService } from './fleet-insights.service';
 import { MaintenancePlansService } from './maintenance-plans.service';
 import { MaintenanceReminderService } from './maintenance-reminder.service';
+import { ReservationsController } from './reservations.controller';
+import { ReservationsService } from './reservations.service';
 import { VehicleEventsService } from './vehicle-events.service';
 
 /**
@@ -15,8 +17,14 @@ import { VehicleEventsService } from './vehicle-events.service';
  */
 @Module({
   imports: [AuthModule, NotificationsModule],
-  controllers: [AgendaController, FleetInsightsController],
-  providers: [VehicleEventsService, MaintenancePlansService, MaintenanceReminderService, FleetInsightsService],
-  exports: [VehicleEventsService, FleetInsightsService],
+  controllers: [AgendaController, FleetInsightsController, ReservationsController],
+  providers: [
+    VehicleEventsService,
+    MaintenancePlansService,
+    MaintenanceReminderService,
+    FleetInsightsService,
+    ReservationsService,
+  ],
+  exports: [VehicleEventsService, FleetInsightsService, ReservationsService],
 })
 export class AgendaModule {}

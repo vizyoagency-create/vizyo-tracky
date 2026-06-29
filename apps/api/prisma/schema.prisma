@@ -376,6 +376,8 @@ enum VehicleEventStatus {
   IN_PROGRESS
   DONE
   CANCELLED
+  REQUESTED // Sprint 8 — réservation déposée, en attente de validation (NON bloquant)
+  CONFIRMED // Sprint 8 — réservation ferme (BLOQUANTE : conflits + disponibilité)
 }
 
 /// Sprint 7 — Événement générique sur la timeline d'un véhicule. Porte la maintenance et
