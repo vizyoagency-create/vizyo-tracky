@@ -2,8 +2,10 @@ import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import type {
   AiCapacityApplyDto,
+  AiCapacityInputDto,
   AiCapacityResultDto,
   AiCapacitySuggestRequestDto,
+  AiPlacementInputDto,
   AiPlacementResultDto,
   AiPlacementSuggestRequestDto,
   FleetMetierDto,
@@ -34,6 +36,16 @@ export class AiApiService {
   /** POST /api/ai/placement/suggest — classement raisonné parmi les disponibles (DRY-RUN). */
   placementSuggest(body: AiPlacementSuggestRequestDto): Observable<AiPlacementResultDto> {
     return this.http.post<AiPlacementResultDto>('/api/ai/placement/suggest', body);
+  }
+
+  /** POST /api/ai/capacity/preview — payload EXACT envoyé à Claude (dry-run) → tester en Console. */
+  capacityPreview(body: AiCapacitySuggestRequestDto = {}): Observable<AiCapacityInputDto> {
+    return this.http.post<AiCapacityInputDto>('/api/ai/capacity/preview', body);
+  }
+
+  /** POST /api/ai/placement/preview — payload EXACT envoyé à Claude (dry-run) → tester en Console. */
+  placementPreview(body: AiPlacementSuggestRequestDto): Observable<AiPlacementInputDto> {
+    return this.http.post<AiPlacementInputDto>('/api/ai/placement/preview', body);
   }
 
   /** GET /api/ai/fleet-metier — métier courant de la flotte. */
