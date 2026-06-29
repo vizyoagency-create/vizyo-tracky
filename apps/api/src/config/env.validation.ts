@@ -129,6 +129,11 @@ const envSchema = z.object({
   //   desarme automatiquement (SMS `tracker<password>`) toute ecoute SENT non desarmee
   //   plus vieille que cette fenetre. Defaut 5 min. DB-driven (survit aux redemarrages).
   AUDIO_AUTO_DISARM_MINUTES: z.coerce.number().int().positive().default(5),
+
+  // Sprint 9 — Copilote IA d'optimisation (Claude). Si ANTHROPIC_API_KEY est vide,
+  // les endpoints /ai/* renvoient 503 (le reste de l'app tourne). A tester d'abord
+  // en Console Anthropic ; lue cote serveur via process.env, jamais loggee.
+  ANTHROPIC_API_KEY: z.string().default(''),
 });
 
 export type Env = z.infer<typeof envSchema>;
