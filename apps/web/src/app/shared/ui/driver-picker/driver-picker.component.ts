@@ -28,7 +28,7 @@ import { DriversApiService } from '../../../core/services/drivers.service';
         <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" (click)="onClose()"></div>
 
         <div class="relative bg-bg-secondary border border-border-subtle rounded-[--radius-card]
-                    p-5 max-w-md w-full mx-4 shadow-2xl flex flex-col gap-4 max-h-[80vh]">
+                    p-5 max-w-md w-full mx-4 shadow-2xl flex flex-col gap-4 max-h-[80dvh]">
 
           <div class="flex items-start gap-3">
             <div class="w-9 h-9 rounded-xl flex items-center justify-center

@@ -400,7 +400,10 @@ import {
     .vmt-modal-body { padding: 14px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
     .vmt-modal-foot {
       display: flex; gap: 8px; justify-content: flex-end;
-      padding: 12px 16px; border-top: 1px solid var(--border-subtle); flex-shrink: 0;
+      /* padding-bottom safe-area : sur mobile la modale docke en bas (bottom-sheet),
+         le footer toucherait le home indicator iOS sinon. max(12px, env) = additif. */
+      padding: 12px 16px; padding-bottom: max(12px, env(safe-area-inset-bottom));
+      border-top: 1px solid var(--border-subtle); flex-shrink: 0;
     }
     .vmt-modal-hint { font-size: 11px; color: var(--fg-tertiary); margin: 0; }
     .vmt-done-plan { font-size: 13px; font-weight: 700; color: var(--tracky-light); margin: 0; }

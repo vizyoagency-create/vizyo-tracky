@@ -404,9 +404,9 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
 
       <!-- Assign Tracker Drawer -->
       @if (showAssignTracker()) {
-        <div class="fixed inset-0 z-[9000] flex justify-end">
+        <div class="fixed inset-0 z-[9000] flex justify-end drawer-overlay-safe">
           <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" (click)="showAssignTracker.set(false)"></div>
-          <div class="relative w-full max-w-md bg-bg-primary border-l border-border-subtle shadow-2xl
+          <div class="relative w-full max-w-md max-h-full bg-bg-primary border-l border-border-subtle shadow-2xl
                       flex flex-col animate-slide-in overflow-hidden">
             <div class="flex items-center justify-between px-6 py-4 border-b border-border-subtle">
               <div class="flex items-center gap-3">
@@ -794,6 +794,15 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
     .v-group-row-spacer { flex: 1 }
     .v-group-row-chev { color: var(--fg-tertiary); flex-shrink: 0 }
 
+    /* iOS PWA standalone : insette l'overlay drawer (assign tracker) par les
+       safe-areas pour que le header ne passe pas sous le notch ni le footer sous
+       le home indicator. Combine au max-h-full du panneau. env()=0 hors iOS. */
+    .drawer-overlay-safe {
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+      padding-left: env(safe-area-inset-left);
+      padding-right: env(safe-area-inset-right);
+    }
     .animate-slide-in { animation: slideIn .25s ease-out }
     @keyframes slideIn { from { transform: translateX(100%) } to { transform: translateX(0) } }
   `],

@@ -31,10 +31,10 @@ export interface DriverDrawerResult {
   imports: [FormsModule, LucideAngularModule],
   template: `
     @if (open()) {
-      <div class="fixed inset-0 z-[9000] flex justify-end">
+      <div class="fixed inset-0 z-[9000] flex justify-end drawer-overlay-safe">
         <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" (click)="onClose()"></div>
 
-        <div class="relative w-full max-w-md bg-bg-primary border-l border-border-subtle shadow-2xl
+        <div class="relative w-full max-w-md max-h-full bg-bg-primary border-l border-border-subtle shadow-2xl
                     flex flex-col animate-slide-in overflow-hidden">
 
           <!-- Header -->
@@ -185,6 +185,15 @@ export interface DriverDrawerResult {
     }
   `,
   styles: [`
+    /* iOS PWA standalone : insette l'overlay drawer par les safe-areas pour que
+       le header (titre) ne passe pas sous le notch et le footer pas sous le home
+       indicator. Combine au max-h-full du panneau. env() = 0 hors iOS => additif. */
+    .drawer-overlay-safe {
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+      padding-left: env(safe-area-inset-left);
+      padding-right: env(safe-area-inset-right);
+    }
     .animate-slide-in { animation: slideIn .25s ease-out }
     @keyframes slideIn { from { transform: translateX(100%) } to { transform: translateX(0) } }
 

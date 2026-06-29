@@ -26,7 +26,7 @@ const RADIUS_STEPS = [50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000]
         <div class="relative bg-bg-primary border-l border-border-subtle shadow-2xl
                     flex flex-col animate-slide-in overflow-hidden"
              [style.width]="currentStep() === 2 ? '600px' : '420px'"
-             style="max-width:95vw; transition: width .3s ease">
+             style="max-width:95vw; max-height:100%; transition: width .3s ease">
 
           <div class="flex items-center justify-between px-6 py-4 border-b border-border-subtle">
             <div class="flex items-center gap-3">
@@ -181,6 +181,15 @@ const RADIUS_STEPS = [50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000]
     }
   `,
   styles: [`
+    /* iOS PWA standalone : insette l'overlay drawer par les safe-areas pour que
+       le header (titre) ne passe pas sous le notch et le footer pas sous le home
+       indicator. Combine au max-h-full du panneau. env() = 0 hors iOS => additif. */
+    .drawer-overlay-safe {
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+      padding-left: env(safe-area-inset-left);
+      padding-right: env(safe-area-inset-right);
+    }
     .animate-slide-in { animation: slideIn .25s ease-out }
     @keyframes slideIn { from { transform: translateX(100%) } to { transform: translateX(0) } }
     .section-title { font-size: 10px; font-weight: 700; color: var(--fg-tertiary); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px }

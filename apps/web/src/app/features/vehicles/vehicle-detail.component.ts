@@ -129,7 +129,7 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
         @if (groupPickerOpen()) {
           <div class="fixed inset-0 z-[9000] flex items-center justify-center p-4">
             <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" (click)="groupPickerOpen.set(false)"></div>
-            <div class="relative w-full max-w-sm bg-bg-primary border border-border-subtle rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+            <div class="relative w-full max-w-sm bg-bg-primary border border-border-subtle rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80dvh]">
               <div class="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
                 <div class="flex items-center gap-2">
                   <lucide-icon [img]="LayersIcon" [size]="16" class="text-fg-tertiary"></lucide-icon>

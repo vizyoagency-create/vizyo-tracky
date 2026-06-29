@@ -214,7 +214,9 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
       border-radius: 12px;
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
       overflow: hidden;
+      /* dvh = iOS-safe (tient compte de la barre/safe-area) ; vh reste en fallback. */
       max-height: calc(100vh - 200px);
+      max-height: calc(100dvh - 200px);
       display: flex;
       flex-direction: column;
     }
@@ -282,6 +284,7 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
       overflow-y: auto;
       padding: 4px 0;
       max-height: 50vh;
+      max-height: 50dvh;
     }
     .bn-vehicle-row {
       width: 100%;

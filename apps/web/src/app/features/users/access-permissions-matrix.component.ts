@@ -40,10 +40,10 @@ export interface MatrixDrawerData {
   imports: [FormsModule, LucideAngularModule],
   template: `
     @if (open()) {
-      <div class="fixed inset-0 z-[9000] flex justify-end">
+      <div class="fixed inset-0 z-[9000] flex justify-end drawer-overlay-safe">
         <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" (click)="onClose()"></div>
 
-        <div class="relative w-full max-w-3xl bg-bg-primary border-l border-border-subtle shadow-2xl
+        <div class="relative w-full max-w-3xl max-h-full bg-bg-primary border-l border-border-subtle shadow-2xl
                     flex flex-col animate-slide-in overflow-hidden">
 
           <div class="flex items-center justify-between px-6 py-4 border-b border-border-subtle">
@@ -164,6 +164,15 @@ export interface MatrixDrawerData {
   styles: [`
     @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
     .animate-slide-in { animation: slideIn 0.25s ease-out; }
+    /* iOS PWA standalone : insette l'overlay drawer par les safe-areas pour que
+       le header ne passe pas sous le notch ni le footer sous le home indicator.
+       Combine au max-h-full du panneau. env() = 0 hors iOS => additif. */
+    .drawer-overlay-safe {
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+      padding-left: env(safe-area-inset-left);
+      padding-right: env(safe-area-inset-right);
+    }
     .add-scope-btn {
       display: inline-flex; align-items: center; gap: 0.375rem;
       padding: 0.375rem 0.75rem; font-size: 0.75rem; border-radius: 0.5rem;

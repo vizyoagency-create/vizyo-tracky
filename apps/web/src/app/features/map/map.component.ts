@@ -1633,7 +1633,7 @@ const RESYNC_RADIUS_M = 150;
         top: auto !important;
         transform: translate3d(0, calc(110% + var(--sheet-drag-y, 0px)), 0);
         transition: transform 280ms cubic-bezier(0.16, 1, 0.3, 1);
-        max-height: calc(85vh - env(safe-area-inset-bottom));
+        max-height: calc(85dvh - env(safe-area-inset-bottom));
         z-index: 1700 !important;
       }
       .tracky-calques-panel.tracky-mobile-sheet--open {
@@ -1641,7 +1641,7 @@ const RESYNC_RADIUS_M = 150;
       }
       .tracky-calques-inner {
         border-radius: 20px 20px 0 0 !important;
-        max-height: calc(85vh - env(safe-area-inset-bottom));
+        max-height: calc(85dvh - env(safe-area-inset-bottom));
         overflow-y: auto;
         padding: 0 16px !important;
         padding-bottom: calc(env(safe-area-inset-bottom) + 24px) !important;
