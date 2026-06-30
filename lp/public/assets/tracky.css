@@ -74,7 +74,9 @@ main .lbl::before{content:counter(lbl,decimal-leading-zero);font-weight:800;opac
 .cd{background:var(--surf);backdrop-filter:blur(12px);border-radius:1rem;padding:1.75rem;position:relative;transition:background .3s,transform .3s}
 .cd::before{content:'';position:absolute;inset:0;border-radius:inherit;padding:1px;background:linear-gradient(135deg,rgba(16,224,160,.3),rgba(16,224,160,.03),rgba(16,224,160,.15));-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
 .cd:hover{background:var(--elev)}@media(min-width:768px){.cd:hover{transform:translateY(-4px)}}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:.625rem;font-weight:700;border-radius:.75rem;padding:1rem 1.75rem;font-size:1rem;transition:all .3s;line-height:1.2;white-space:nowrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:.625rem;font-weight:700;border-radius:.75rem;padding:1rem 1.75rem;font-size:1rem;transition:all .3s;line-height:1.2;white-space:nowrap;max-width:100%}
+/* Mobile : les boutons à texte long passent à la ligne au lieu de déborder */
+@media(max-width:560px){.btn{white-space:normal;text-align:center}}
 .bp{background:var(--vg);color:#fff;box-shadow:0 0 24px -4px rgba(16,224,160,.35)}.bp:hover{background:var(--vg);filter:brightness(1.08);box-shadow:0 0 48px -8px rgba(16,224,160,.5);transform:translateY(-2px)}
 .bo{border:1px solid var(--brds);color:var(--g3)}.bo:hover{border-color:rgba(16,224,160,.4);color:var(--tw);background:rgba(255,255,255,.03)}
 .bs{padding:.625rem 1.25rem;font-size:.875rem}.bl{padding:1rem 2rem;font-size:1.125rem}
