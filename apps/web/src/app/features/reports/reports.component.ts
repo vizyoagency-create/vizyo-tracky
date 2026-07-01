@@ -7,6 +7,7 @@ import { firstValueFrom } from 'rxjs';
 import { DriversApiService } from '../../core/services/drivers.service';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { ReportsApiService } from '../../core/services/reports.service';
+import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { TripsApiService } from '../../core/services/trips.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
@@ -1150,6 +1151,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   private readonly authService = inject(AuthService);
   private readonly toast = inject(ToastService);
   private readonly reportsApi = inject(ReportsApiService);
+  private readonly fleetFilter = inject(FleetFilterService);
   protected readonly exporting = signal<null | 'pdf' | 'csv-trips' | 'csv-summary' | 'excel'>(null);
 
   protected readonly vehicles = signal<VehicleDetailDto[]>([]);
@@ -1347,15 +1349,15 @@ export class ReportsComponent implements OnInit, OnDestroy {
   protected readonly groupOptions = computed(() => {
     const map = new Map<string, string>();
     for (const v of this.vehicles()) {
-      if (v.group) map.set(v.group.id, v.group.name);
+      if (this.fleetFilter.matches(v.fleetId) && v.group) map.set(v.group.id, v.group.name);
     }
     return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
   });
 
-  /** Véhicules visibles dans le sélecteur, restreints au groupe filtré. */
+  /** Véhicules visibles dans le sélecteur, restreints à la société (SA) puis au groupe filtré. */
   protected readonly visibleVehicles = computed(() => {
     const gid = this.selectedGroupId();
-    const all = this.vehicles();
+    const all = this.vehicles().filter((v) => this.fleetFilter.matches(v.fleetId));
     return gid ? all.filter((v) => v.group?.id === gid) : all;
   });
 

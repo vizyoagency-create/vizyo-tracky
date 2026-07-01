@@ -1,11 +1,12 @@
 import { HttpClient } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { LucideAngularModule, Plus, Shield, Trash2, Pencil, MapPin, Circle, ArrowDownLeft, ArrowUpRight, ArrowLeftRight, Upload, ChevronDown, ChevronRight } from 'lucide-angular';
 import type { GeofenceDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { GeofencesApiService } from '../../core/services/geofences.service';
+import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
 import { GeofenceDrawDialogComponent } from './geofence-draw-dialog/geofence-draw-dialog.component';
@@ -18,16 +19,24 @@ import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.com
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [LucideAngularModule, RouterLink, ConfirmModalComponent, GeofenceDrawDialogComponent, SaFleetBadgeComponent, GroupBadgeComponent],
   template: `
-    <div class="gf-page">
-      <div class="gf-blobs"></div>
-      <div class="gf-blob-c"></div>
+    <div class="gf-page" [class.gf-page--embedded]="embedded()">
+      @if (!embedded()) {
+        <div class="gf-blobs"></div>
+        <div class="gf-blob-c"></div>
+      }
 
-      <!-- Header -->
-      <div class="gf-header">
-        <div>
-          <h1 class="gf-title">Géofences</h1>
-          <p class="gf-sub">{{ geofences().length }} zone(s) configurée(s)</p>
-        </div>
+      <!-- Header (masqué quand embarqué dans l'onglet Alertes : le titre vient de la page) -->
+      <div class="gf-header" [class.gf-header--embedded]="embedded()">
+        @if (!embedded()) {
+          <div>
+            <h1 class="gf-title">Géofences</h1>
+            <p class="gf-sub">{{ visibleGeofences().length }} zone(s) configurée(s)</p>
+          </div>
+        } @else {
+          <p class="gf-sub gf-sub--embedded">
+            {{ visibleGeofences().length }} zone(s) — délimitations géographiques qui déclenchent des alertes à l'entrée / sortie.
+          </p>
+        }
         @if (perms.can('geofences_manage')) {
           <div class="gf-header-actions">
             <button (click)="onImportClick()" class="gf-import-btn" [disabled]="importing()" title="Importer un fichier GeoJSON (FeatureCollection)">
@@ -43,7 +52,7 @@ import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.com
 
       @if (loading()) {
         <div class="gf-loading"><span class="w-6 h-6 border-2 border-fg-tertiary border-t-tracky-light rounded-full animate-spin"></span></div>
-      } @else if (geofences().length === 0) {
+      } @else if (visibleGeofences().length === 0) {
         <div class="gf-empty">
           <div class="gf-empty-icon"><lucide-icon [img]="Shield" [size]="32"></lucide-icon></div>
           <p>Aucune géofence configurée</p>
@@ -53,7 +62,7 @@ import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.com
         </div>
       } @else {
         <div class="gf-grid">
-          @for (g of geofences(); track g.id) {
+          @for (g of visibleGeofences(); track g.id) {
             <div class="gf-card">
               <!-- Visual circle representation -->
               <div class="gf-visual">
@@ -245,6 +254,11 @@ import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.com
     }
     .gf-action-btn.edit:hover { color: var(--tracky-light); background: rgba(16,224,160,.1) }
     .gf-action-btn.delete:hover { color: #f87171; background: rgba(239,68,68,.1) }
+
+    /* ─── Mode embarqué (onglet Géofences dans Alertes) ─── */
+    .gf-page--embedded { min-height: auto }
+    .gf-header--embedded { align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px }
+    .gf-sub--embedded { font-size: 12px; color: var(--fg-tertiary); margin: 0; flex: 1; min-width: 200px }
   `],
 })
 export class GeofencesListComponent implements OnInit {
@@ -252,8 +266,17 @@ export class GeofencesListComponent implements OnInit {
   private readonly toast = inject(ToastService);
   private readonly http = inject(HttpClient);
   protected readonly perms = inject(PermissionsService);
+  private readonly fleetFilter = inject(FleetFilterService);
+
+  /** Embarqué comme onglet (page Alertes) : masque l'en-tête de page + les blobs. */
+  readonly embedded = input(false);
 
   protected readonly geofences = signal<GeofenceDto[]>([]);
+
+  /** Vue filtrée par le sélecteur de société global (SUPER_ADMIN). No-op sinon. */
+  protected readonly visibleGeofences = computed(() =>
+    this.geofences().filter((g) => this.fleetFilter.matches(g.fleetId)),
+  );
 
   /** Géofences dont la liste des véhicules ciblés est dépliée (drill-down). */
   protected readonly expandedTargets = signal<Set<string>>(new Set());

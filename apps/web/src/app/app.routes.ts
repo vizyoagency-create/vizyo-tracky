@@ -1,4 +1,5 @@
-import { Routes } from '@angular/router';
+import { inject } from '@angular/core';
+import { Router, Routes } from '@angular/router';
 import { authGuard } from './core/auth/auth.guard';
 import { anyPermissionGuard, permissionGuard } from './core/guards/permission.guard';
 import { roleGuard } from './core/guards/role.guard';
@@ -83,25 +84,27 @@ export const routes: Routes = [
         data: { title: 'Détail véhicule' },
       },
       {
+        // Consolidation IA : « Groupes » est un onglet de la page Véhicules.
+        // Redirection (deep-link onglet) pour conserver les anciens liens / raccourcis PWA.
         path: 'groups',
-        canActivate: [permissionGuard('groups_view')],
-        loadComponent: () =>
-          import('./features/vehicle-groups/vehicle-groups.page').then((m) => m.VehicleGroupsPageComponent),
-        data: { title: 'Groupes de véhicules' },
+        pathMatch: 'full',
+        redirectTo: () => inject(Router).parseUrl('/vehicles?tab=groups'),
       },
       {
+        // Consolidation IA : Alertes héberge aussi l'onglet Géofences → la garde
+        // accepte l'une OU l'autre permission (les onglets se gèrent finement dedans).
         path: 'alerts',
-        canActivate: [permissionGuard('alerts_view')],
+        canActivate: [anyPermissionGuard('alerts_view', 'geofences_view')],
         loadComponent: () =>
           import('./features/alerts/alerts.component').then((m) => m.AlertsComponent),
         data: { title: 'Alertes' },
       },
       {
+        // Consolidation IA : « Géofences » est un onglet de la page Alertes
+        // (zones qui déclenchent des alertes). Redirection (deep-link onglet).
         path: 'geofences',
-        canActivate: [permissionGuard('geofences_view')],
-        loadComponent: () =>
-          import('./features/geofences/geofences-list.component').then((m) => m.GeofencesListComponent),
-        data: { title: 'Géofences' },
+        pathMatch: 'full',
+        redirectTo: () => inject(Router).parseUrl('/alerts?tab=geofences'),
       },
       {
         path: 'reports',
@@ -139,10 +142,11 @@ export const routes: Routes = [
         data: { title: 'Utilisateurs' },
       },
       {
+        // Consolidation IA : « Conducteurs » est un onglet de la page Utilisateurs.
+        // Redirection (deep-link onglet) pour conserver les anciens liens.
         path: 'drivers',
-        loadComponent: () =>
-          import('./features/drivers/drivers-list.component').then((m) => m.DriversListComponent),
-        data: { title: 'Conducteurs' },
+        pathMatch: 'full',
+        redirectTo: () => inject(Router).parseUrl('/users?tab=drivers'),
       },
       {
         // Vue client (FLEET_ADMIN) — consultation + reordonnancement du sens d'installation.

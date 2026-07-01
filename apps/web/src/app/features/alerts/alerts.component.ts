@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
   AlertCircle,
   AlertTriangle,
@@ -19,6 +19,7 @@ import {
   MoreVertical,
   Plus,
   Settings,
+  Shield,
   Smartphone,
   Trash2,
   XCircle,
@@ -29,6 +30,7 @@ import { firstValueFrom } from 'rxjs';
 import { InstallReviewBadgeComponent } from '../../shared/ui/install-review-badge/install-review-badge.component';
 import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.component';
 import { AlertsApiService } from '../../core/services/alerts.service';
+import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { AuthService } from '../../core/services/auth.service';
 import { AlertRuleDto, NotificationsApiService } from '../../core/services/notifications.service';
 import { PermissionsService } from '../../core/services/permissions.service';
@@ -36,6 +38,7 @@ import { RealtimeService } from '../../core/services/realtime.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { relativeTime } from '../../shared/utils/relative-time';
 import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fleet-badge.component';
+import { GeofencesListComponent } from '../geofences/geofences-list.component';
 const ALERT_TYPES: { value: string; label: string; severity: string }[] = [
   { value: '*', label: 'Tous les types', severity: '' },
   { value: 'SOS', label: 'SOS', severity: 'critical' },
@@ -117,7 +120,7 @@ const EMPTY_FORM: RuleForm = {
   selector: 'app-alerts',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [LucideAngularModule, RouterLink, FormsModule, SaFleetBadgeComponent, InstallReviewBadgeComponent, GroupBadgeComponent],
+  imports: [LucideAngularModule, RouterLink, FormsModule, SaFleetBadgeComponent, InstallReviewBadgeComponent, GroupBadgeComponent, GeofencesListComponent],
   template: `
     @if (isBaanoolMode()) {
       <!-- V1.12 — Mode Baanool : "Centre de messages" style ultra-simple -->
@@ -186,33 +189,43 @@ const EMPTY_FORM: RuleForm = {
           <h1 class="a-title">Alertes</h1>
           <p class="a-sub">
             @if (activeTab() === 'alerts') {
-              {{ alerts().length }} affichée{{ alerts().length > 1 ? 's' : '' }}
+              {{ visibleAlerts().length }} affichée{{ visibleAlerts().length > 1 ? 's' : '' }}
               @if (filterActive()) {
                 <span class="a-sub-filter">· filtre actif</span>
-              } @else if (totalUnack() > alerts().length) {
+              } @else if (totalUnack() > visibleAlerts().length) {
                 · {{ totalUnack() }} non acquittée{{ totalUnack() > 1 ? 's' : '' }} au total
               }
+            } @else if (activeTab() === 'geofences') {
+              Zones géographiques qui déclenchent des alertes à l'entrée / la sortie des véhicules
             } @else {
               Configurez les règles de notification par type et par véhicule
             }
           </p>
         </div>
-        @if (activeTab() === 'alerts' && perms.can('alerts_acknowledge') && !showAcknowledged() && alerts().length > 0) {
+        @if (activeTab() === 'alerts' && perms.can('alerts_acknowledge') && !showAcknowledged() && visibleAlerts().length > 0) {
           <button (click)="onAcknowledgeAll()" class="a-ack-all">
             <lucide-icon [img]="CheckCheck" [size]="14"></lucide-icon> Tout acquitter
           </button>
         }
       </div>
 
-      <!-- Main tabs: Alertes / Réglages -->
+      <!-- Main tabs: Alertes (événements) / Géofences (zones) / Réglages (règles) -->
       <div class="main-tabs">
-        <button class="main-tab" [class.active]="activeTab() === 'alerts'" (click)="activeTab.set('alerts')">
-          <lucide-icon [img]="AlertTriangle" [size]="14"></lucide-icon>
-          Alertes
-          @if (totalUnack() > 0) {
-            <span class="tab-badge" [class.critical]="hasCriticalUnack()">{{ totalUnack() }}</span>
-          }
-        </button>
+        @if (perms.can('alerts_view')) {
+          <button class="main-tab" [class.active]="activeTab() === 'alerts'" (click)="activeTab.set('alerts')">
+            <lucide-icon [img]="AlertTriangle" [size]="14"></lucide-icon>
+            Alertes
+            @if (totalUnack() > 0) {
+              <span class="tab-badge" [class.critical]="hasCriticalUnack()">{{ totalUnack() }}</span>
+            }
+          </button>
+        }
+        @if (perms.can('geofences_view')) {
+          <button class="main-tab" [class.active]="activeTab() === 'geofences'" (click)="activeTab.set('geofences')">
+            <lucide-icon [img]="ShieldIcon" [size]="14"></lucide-icon>
+            Géofences
+          </button>
+        }
         @if (perms.can('alerts_configure')) {
           <button class="main-tab" [class.active]="activeTab() === 'settings'" (click)="switchToSettings()">
             <lucide-icon [img]="SettingsIcon" [size]="14"></lucide-icon>
@@ -365,6 +378,11 @@ const EMPTY_FORM: RuleForm = {
             Charger plus
           </button>
         }
+      }
+
+      <!-- ═══════════════ TAB: GÉOFENCES (zones de déclenchement) ═══════════════ -->
+      @if (activeTab() === 'geofences') {
+        <app-geofences-list [embedded]="true" />
       }
 
       <!-- ═══════════════ TAB: RÉGLAGES ═══════════════ -->
@@ -934,8 +952,10 @@ export class AlertsComponent implements OnInit {
   private readonly toast = inject(ToastService);
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
   private readonly notifApi = inject(NotificationsApiService);
   protected readonly perms = inject(PermissionsService);
+  private readonly fleetFilter = inject(FleetFilterService);
 
   // V1.12 — Mode Baanool
   protected readonly isBaanoolMode = computed(() => this.auth.user()?.preferences?.uiMode === 'baanool');
@@ -992,10 +1012,14 @@ export class AlertsComponent implements OnInit {
   }
 
   // ─── Tab state ────────────────────────────────────────────
-  protected readonly activeTab = signal<'alerts' | 'settings'>('alerts');
+  protected readonly activeTab = signal<'alerts' | 'geofences' | 'settings'>('alerts');
 
   // ─── Alerts tab state ─────────────────────────────────────
   protected readonly alerts = signal<AlertEvent[]>([]);
+  /** Alertes filtrées par le sélecteur de société global (SUPER_ADMIN). No-op sinon. */
+  protected readonly visibleAlerts = computed(() =>
+    this.alerts().filter((a) => this.fleetFilter.matches(a.fleetId)),
+  );
   protected readonly loading = signal(false);
   protected readonly nextCursor = signal<string | null>(null);
   protected readonly filterSeverity = signal<string | null>(null);
@@ -1012,7 +1036,7 @@ export class AlertsComponent implements OnInit {
     const WINDOW_MS = 30 * 60 * 1000;
     const clusters: AlertCluster[] = [];
     const openByKey = new Map<string, AlertCluster>();
-    for (const a of this.alerts()) {
+    for (const a of this.visibleAlerts()) {
       const key = `${a.vehicleId ?? 'none'}|${a.type}`;
       const open = openByKey.get(key);
       const aMs = new Date(a.createdAt).getTime();
@@ -1124,6 +1148,7 @@ export class AlertsComponent implements OnInit {
   protected readonly ChevronDownIcon = ChevronDown;
   protected readonly ChevronRightIcon = ChevronRight;
   protected readonly SettingsIcon = Settings;
+  protected readonly ShieldIcon = Shield;
   protected readonly BellIcon = Bell;
   protected readonly PlusIcon = Plus;
   protected readonly Edit2Icon = Edit2;
@@ -1147,7 +1172,18 @@ export class AlertsComponent implements OnInit {
     }
   });
 
-  ngOnInit(): void {}
+  ngOnInit(): void {
+    // Deep-link d'onglet via ?tab= (ex : redirection /geofences → /alerts?tab=geofences).
+    const tab = this.route.snapshot.queryParamMap.get('tab');
+    if (tab === 'geofences' && this.perms.can('geofences_view')) {
+      this.activeTab.set('geofences');
+    } else if (tab === 'settings' && this.perms.can('alerts_configure')) {
+      this.activeTab.set('settings');
+    } else if (!this.perms.can('alerts_view') && this.perms.can('geofences_view')) {
+      // Accès géofences sans accès aux événements : ouvrir directement l'onglet disponible.
+      this.activeTab.set('geofences');
+    }
+  }
 
   protected isAcknowledged(alert: any): boolean {
     return !!alert.acknowledgedAt;

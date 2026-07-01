@@ -6,9 +6,7 @@ import {
   LayoutDashboard,
   Map,
   Truck,
-  Layers,
   Bell,
-  Shield,
   FileBarChart,
   Calendar,
   Users,
@@ -22,7 +20,6 @@ import {
   Terminal,
   ClipboardList,
   CreditCard,
-  UserRound,
   UserCircle2,
   LogOut,
   Sun,
@@ -30,6 +27,7 @@ import {
 } from 'lucide-angular';
 import { ThemeService } from '../core/theme/theme.service';
 import { AlertsBellComponent } from '../shared/ui/alerts-bell/alerts-bell.component';
+import { FleetSelectorComponent } from '../shared/ui/super-admin-context/fleet-selector.component';
 import { AuthService } from '../core/services/auth.service';
 import { NetworkStatusService } from '../core/services/network-status.service';
 import { RealtimeService } from '../core/services/realtime.service';
@@ -48,7 +46,7 @@ import { MenuStateService } from '../core/services/menu-state.service';
 @Component({
   selector: 'app-dashboard-layout',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, AlertsBellComponent, LogoComponent, InstallBannerComponent, PushPromptComponent, BottomSheetComponent, OnboardingWizardComponent, BaanoolMapOverlayComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, AlertsBellComponent, FleetSelectorComponent, LogoComponent, InstallBannerComponent, PushPromptComponent, BottomSheetComponent, OnboardingWizardComponent, BaanoolMapOverlayComponent],
   template: `
     <a href="#main-content" class="skip-link">Aller au contenu principal</a>
     <div class="layout" [class.layout--fullscreen]="fullscreen()" [class.layout--ios-pwa]="isIosPwa" [class.layout--baanool]="isBaanoolMode()">
@@ -162,6 +160,9 @@ import { MenuStateService } from '../core/services/menu-state.service';
                 <lucide-icon [img]="LogOutIcon" [size]="18"></lucide-icon>
               </button>
             } @else {
+            <!-- Filtre societe global — SUPER_ADMIN uniquement (rend rien sinon).
+                 Ecrit dans FleetFilterService, consomme par les pages liste. -->
+            <app-fleet-selector />
             <app-alerts-bell />
             <div class="user-menu-wrapper">
               <button (click)="userMenuOpen.set(!userMenuOpen())" class="user-menu-trigger">
@@ -887,8 +888,8 @@ export class DashboardLayoutComponent {
           { label: 'Véhicules', route: '/vehicles', icon: Truck },
         ] : []),
         ...(this.perms.can('alerts_view') ? [{ label: 'Alertes', route: '/alerts', icon: Bell }] : []),
-        ...(this.perms.can('groups_view') ? [{ label: 'Groupes', route: '/groups', icon: Layers }] : []),
-        ...(this.perms.can('drivers_view') ? [{ label: 'Conducteurs', route: '/drivers', icon: UserRound }] : []),
+        // Consolidation IA : Groupes = onglet de Véhicules, Conducteurs = onglet
+        // d'Utilisateurs. Plus d'entrées de nav séparées (accès via les onglets).
         ...(this.perms.can('users_view') ? [{ label: 'Utilisateurs', route: '/users', icon: Users }] : []),
         { label: 'Paramètres', route: '/settings', icon: Settings },
       ];
@@ -897,18 +898,19 @@ export class DashboardLayoutComponent {
       { label: 'Tableau de bord', route: '/dashboard', icon: LayoutDashboard },
       ...(this.perms.can('vehicles_view') ? [
         { label: 'Carte', route: '/map', icon: Map },
+        // Consolidation IA : « Groupes » est désormais un onglet DANS Véhicules.
         { label: 'Véhicules', route: '/vehicles', icon: Truck },
       ] : []),
-      ...(this.perms.can('groups_view') ? [{ label: 'Groupes', route: '/groups', icon: Layers }] : []),
+      // Consolidation IA : « Géofences » est désormais un onglet DANS Alertes
+      // (zones de déclenchement), à côté des événements et des règles.
       ...(this.perms.can('alerts_view') ? [{ label: 'Alertes', route: '/alerts', icon: Bell }] : []),
-      ...(this.perms.can('geofences_view') ? [{ label: 'Géofences', route: '/geofences', icon: Shield }] : []),
       ...(this.perms.can('reports_view') ? [{ label: 'Rapports', route: '/reports', icon: FileBarChart }] : []),
       // Sprint 7 + Sprint 9 (consolidation) — Agenda = hub calendrier UNIQUE : maintenance,
       // incidents, réservations, optimisation et copilote IA réunis (ouverts en feuilles DEPUIS
       // le calendrier). Visible dès qu'un des accès liés est présent ; plus d'entrées séparées.
       ...(this.perms.can('agenda_view') || this.perms.can('reservations_view') || this.perms.can('reservations_request') || this.perms.can('ai_optimize')
         ? [{ label: 'Agenda', route: '/agenda', icon: Calendar }] : []),
-      ...(this.perms.can('drivers_view') ? [{ label: 'Conducteurs', route: '/drivers', icon: UserRound }] : []),
+      // Consolidation IA : « Conducteurs » est désormais un onglet DANS Utilisateurs.
       ...(this.perms.can('users_view') ? [{ label: 'Utilisateurs', route: '/users', icon: Users }] : []),
       // V1.16 — Parc SIM : visible des qu'on a sims_view (FLEET_ADMIN/SUPER_ADMIN bypass).
       ...(this.perms.can('sims_view') ? [{ label: 'Cartes SIM', route: '/sims', icon: CreditCard }] : []),

@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
-import { LucideAngularModule, Plus, Archive, Users, Shield, Pencil, KeyRound, Send, XCircle, Mail } from 'lucide-angular';
+import { ActivatedRoute, RouterLink } from '@angular/router';
+import { LucideAngularModule, Plus, Archive, Users, Shield, Pencil, KeyRound, Send, XCircle, Mail, UserRound, UserCog } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { AudioMonitoringService } from '../../core/services/audio-monitoring.service';
 import { AuthService } from '../../core/services/auth.service';
@@ -17,12 +17,14 @@ import { UserDrawerComponent, type UserDrawerData, type UserDrawerResult } from 
 import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerResult } from './vehicle-access-drawer.component';
 import { AccessPermissionsMatrixComponent, type MatrixDrawerData } from './access-permissions-matrix.component';
 import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fleet-badge.component';
+import { FleetFilterService } from '../../core/services/fleet-filter.service';
+import { DriversListComponent } from '../drivers/drivers-list.component';
 
 @Component({
   selector: 'app-users-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, RouterLink, LucideAngularModule, ConfirmModalComponent, UserDrawerComponent, VehicleAccessDrawerComponent, AccessPermissionsMatrixComponent, SaFleetBadgeComponent],
+  imports: [FormsModule, RouterLink, LucideAngularModule, ConfirmModalComponent, UserDrawerComponent, VehicleAccessDrawerComponent, AccessPermissionsMatrixComponent, SaFleetBadgeComponent, DriversListComponent],
   template: `
     <div class="upage">
       <div class="u-blobs"></div>
@@ -32,28 +34,50 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
       <div class="u-header">
         <div>
           <h1 class="u-title">Utilisateurs</h1>
-          <p class="u-sub">{{ totalCount() }} membre(s){{ includeArchived() ? ' (archives inclus)' : ' dans votre flotte' }}</p>
+          <p class="u-sub">
+            @if (activeTab() === 'accounts') {
+              {{ visibleTotalCount() }} membre(s){{ includeArchived() ? ' (archives inclus)' : ' dans votre flotte' }}
+            } @else {
+              Comptes d'accès à l'application &amp; conducteurs des véhicules
+            }
+          </p>
         </div>
-        <div class="u-header-actions">
-          <a routerLink="/users/overview" class="u-overview-btn" title="Vue d'ensemble permissions">
-            <lucide-icon [img]="ShieldIcon" [size]="15"></lucide-icon>
-            <span class="u-overview-label">Vue d'ensemble</span>
-          </a>
-          @if (perms.can('users_manage')) {
-            <label class="u-toggle-archived">
-              <input type="checkbox" [checked]="includeArchived()" (change)="toggleArchived()" />
-              <span>Archives</span>
-            </label>
-            <button (click)="openCreateDrawer()" class="btn-primary">
-              <lucide-icon [img]="Plus" [size]="15"></lucide-icon> Inviter
-            </button>
-          }
-        </div>
+        @if (activeTab() === 'accounts') {
+          <div class="u-header-actions">
+            <a routerLink="/users/overview" class="u-overview-btn" title="Vue d'ensemble permissions">
+              <lucide-icon [img]="ShieldIcon" [size]="15"></lucide-icon>
+              <span class="u-overview-label">Vue d'ensemble</span>
+            </a>
+            @if (perms.can('users_manage')) {
+              <label class="u-toggle-archived">
+                <input type="checkbox" [checked]="includeArchived()" (change)="toggleArchived()" />
+                <span>Archives</span>
+              </label>
+              <button (click)="openCreateDrawer()" class="btn-primary">
+                <lucide-icon [img]="Plus" [size]="15"></lucide-icon> Inviter
+              </button>
+            }
+          </div>
+        }
       </div>
 
-      @if (loading()) {
+      <!-- Consolidation IA : onglets Comptes (accès app) / Conducteurs (personnes). -->
+      @if (perms.can('drivers_view')) {
+        <div class="u-tabs">
+          <button class="u-tab" [class.active]="activeTab() === 'accounts'" (click)="activeTab.set('accounts')">
+            <lucide-icon [img]="UserCogIcon" [size]="14"></lucide-icon> Comptes
+          </button>
+          <button class="u-tab" [class.active]="activeTab() === 'drivers'" (click)="activeTab.set('drivers')">
+            <lucide-icon [img]="UserRoundIcon" [size]="14"></lucide-icon> Conducteurs
+          </button>
+        </div>
+      }
+
+      @if (activeTab() === 'drivers') {
+        <app-drivers-list [embedded]="true" />
+      } @else if (loading()) {
         <div class="u-loading"><span class="w-6 h-6 border-2 border-fg-tertiary border-t-tracky-light rounded-full animate-spin"></span></div>
-      } @else if (users().length === 0 && pendingInvitations().length === 0) {
+      } @else if (visibleUsers().length === 0 && visiblePendingInvitations().length === 0) {
         <div class="u-empty">
           <div class="u-empty-icon"><lucide-icon [img]="UsersIcon" [size]="32"></lucide-icon></div>
           <p>Aucun utilisateur dans votre flotte</p>
@@ -64,7 +88,7 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
       } @else {
         <div class="u-grid">
           <!-- Active users -->
-          @for (u of users(); track u.id) {
+          @for (u of visibleUsers(); track u.id) {
             <div class="u-card" [class.admin]="u.role === 'FLEET_ADMIN'" [class.archived]="!u.isActive">
               <div class="u-card-glow" [class]="u.role === 'FLEET_ADMIN' ? 'green' : u.role === 'FLEET_MANAGER' ? 'blue' : 'gray'"></div>
 
@@ -82,13 +106,19 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
                 </div>
               </div>
 
-              <!-- Mid: role + meta -->
+              <!-- Mid: type + role + meta -->
               <div class="u-card-mid">
-                <span class="u-role-badge" [class]="u.role === 'FLEET_ADMIN' ? 'admin' : u.role === 'FLEET_MANAGER' ? 'manager' : 'viewer'">
-                  {{ roleLabel(u.role) }}
-                </span>
-                <!-- V1.15 — Badge contextuel SUPER_ADMIN : la flotte de l'user. -->
-                <app-sa-fleet-badge [fleetId]="u.fleetId" />
+                <div class="u-badges">
+                  <!-- Consolidation IA : marqueur de type explicite (≠ conducteur). -->
+                  <span class="u-type-badge">
+                    <lucide-icon [img]="UserCogIcon" [size]="10"></lucide-icon> Compte
+                  </span>
+                  <span class="u-role-badge" [class]="u.role === 'FLEET_ADMIN' ? 'admin' : u.role === 'FLEET_MANAGER' ? 'manager' : 'viewer'">
+                    {{ roleLabel(u.role) }}
+                  </span>
+                  <!-- V1.15 — Badge contextuel SUPER_ADMIN : la flotte de l'user. -->
+                  <app-sa-fleet-badge [fleetId]="u.fleetId" />
+                </div>
                 <span class="u-date">Depuis {{ formatDate(u.createdAt) }}</span>
               </div>
 
@@ -138,7 +168,7 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
           }
 
           <!-- Pending invitations -->
-          @for (inv of pendingInvitations(); track inv.id) {
+          @for (inv of visiblePendingInvitations(); track inv.id) {
             <div class="u-card invited" [class.expired]="inv.status === 'EXPIRED'">
               <div class="u-card-glow gray"></div>
 
@@ -361,6 +391,32 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
       font-size: 11px; color: var(--fg-tertiary); cursor: pointer;
     }
     .u-toggle-archived input { accent-color: var(--tracky); cursor: pointer }
+
+    /* ─── Onglets Comptes / Conducteurs ─── */
+    .u-tabs {
+      position: relative; z-index: 1;
+      display: inline-flex; gap: 4px; margin-bottom: 18px; padding: 4px;
+      border-radius: 12px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle);
+    }
+    .u-tab {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 14px; border-radius: 9px; border: none; background: transparent;
+      color: var(--fg-tertiary); font-size: 13px; font-weight: 600; cursor: pointer;
+      transition: color .15s, background .15s;
+    }
+    .u-tab:hover { color: var(--fg-secondary) }
+    .u-tab.active { background: var(--bg-secondary); color: var(--tracky-light) }
+
+    /* Regroupe les badges à gauche du mid-row (type + rôle + société). */
+    .u-badges { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0 }
+    /* Marqueur de type « Compte » (différenciation vs cartes Conducteur). */
+    .u-type-badge {
+      display: inline-flex; align-items: center; gap: 3px;
+      font-size: 10px; font-weight: 700; letter-spacing: .02em;
+      padding: 2px 7px; border-radius: 9999px;
+      background: rgba(59,130,246,.12); color: #60a5fa;
+      border: 1px solid rgba(59,130,246,.25); white-space: nowrap;
+    }
   `],
 })
 export class UsersListComponent implements OnInit {
@@ -368,11 +424,24 @@ export class UsersListComponent implements OnInit {
   private readonly audioApi = inject(AudioMonitoringService);
   private readonly toast = inject(ToastService);
 
+  private readonly fleetFilter = inject(FleetFilterService);
+  private readonly route = inject(ActivatedRoute);
+
   readonly loading = signal(true);
   readonly users = signal<TrackyUser[]>([]);
   readonly pendingInvitations = signal<PendingInvitation[]>([]);
   readonly includeArchived = signal(false);
   readonly totalCount = computed(() => this.users().length + this.pendingInvitations().length);
+
+  /** Onglet actif : comptes (accès app) ou conducteurs (personnes). */
+  readonly activeTab = signal<'accounts' | 'drivers'>('accounts');
+
+  /** Vues filtrées par le sélecteur de société global (SUPER_ADMIN). No-op sinon. */
+  readonly visibleUsers = computed(() => this.users().filter((u) => this.fleetFilter.matches(u.fleetId)));
+  readonly visiblePendingInvitations = computed(() =>
+    this.pendingInvitations().filter((i) => this.fleetFilter.matches(i.fleetId)),
+  );
+  readonly visibleTotalCount = computed(() => this.visibleUsers().length + this.visiblePendingInvitations().length);
 
   // Drawer (create + edit)
   readonly showDrawer = signal(false);
@@ -454,8 +523,14 @@ export class UsersListComponent implements OnInit {
   protected readonly SendIcon = Send;
   protected readonly XCircleIcon = XCircle;
   protected readonly MailIcon = Mail;
+  protected readonly UserRoundIcon = UserRound;
+  protected readonly UserCogIcon = UserCog;
 
   async ngOnInit(): Promise<void> {
+    // Deep-link d'onglet via ?tab=drivers (redirection /drivers → /users?tab=drivers).
+    if (this.route.snapshot.queryParamMap.get('tab') === 'drivers' && this.perms.can('drivers_view')) {
+      this.activeTab.set('drivers');
+    }
     await this.loadUsers();
     if (this.isSuperAdmin()) {
       this.fleets = await firstValueFrom(this.fleetsApi.list()).catch(() => []);

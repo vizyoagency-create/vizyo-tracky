@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { LucideAngularModule, Plus, Archive, Pencil, Mail, Phone, IdCard, UserRound, Truck, Route, ChevronDown, ChevronRight } from 'lucide-angular';
@@ -6,6 +6,7 @@ import type { DriverDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
 import { DriversApiService } from '../../core/services/drivers.service';
+import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
@@ -27,14 +28,19 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [FormsModule, RouterLink, LucideAngularModule, ConfirmModalComponent, DriverDrawerComponent, SaFleetBadgeComponent],
   template: `
-    <div class="dpage">
-      <div class="d-blobs"></div>
+    <div class="dpage" [class.dpage--embedded]="embedded()">
+      @if (!embedded()) {
+        <div class="d-blobs"></div>
+      }
 
-      <div class="d-header">
+      <div class="d-header" [class.d-header--embedded]="embedded()">
         <div>
-          <h1 class="d-title">Conducteurs</h1>
+          @if (!embedded()) {
+            <h1 class="d-title">Conducteurs</h1>
+          }
           <p class="d-sub">
-            {{ drivers().length }} conducteur(s){{ includeArchived() ? ' (archivés inclus)' : ' actif(s)' }}
+            {{ visibleDrivers().length }} conducteur(s){{ includeArchived() ? ' (archivés inclus)' : ' actif(s)' }}
+            @if (embedded()) { — personnes qui conduisent les véhicules (≠ comptes d'accès à l'app). }
           </p>
         </div>
         <div class="d-header-actions">
@@ -54,7 +60,7 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
         <div class="d-loading">
           <span class="w-6 h-6 border-2 border-fg-tertiary border-t-tracky-light rounded-full animate-spin"></span>
         </div>
-      } @else if (drivers().length === 0) {
+      } @else if (visibleDrivers().length === 0) {
         <div class="d-empty">
           <div class="d-empty-icon"><lucide-icon [img]="UserRoundIcon" [size]="32"></lucide-icon></div>
           <p>Aucun conducteur enregistré</p>
@@ -66,7 +72,7 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
         </div>
       } @else {
         <div class="d-grid">
-          @for (d of drivers(); track d.id) {
+          @for (d of visibleDrivers(); track d.id) {
             <div class="d-card" [class.archived]="!d.isActive">
               <!-- Pastille couleur en glow d'angle -->
               <div class="d-card-glow"
@@ -94,6 +100,10 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
 
               <!-- V1.15 — Badge contextuel SUPER_ADMIN + compteurs vehicules/trajets -->
               <div class="d-meta-row">
+                <!-- Consolidation IA : marqueur de type explicite (≠ compte utilisateur). -->
+                <span class="d-type-badge">
+                  <lucide-icon [img]="UserRoundIcon" [size]="10"></lucide-icon> Conducteur
+                </span>
                 <app-sa-fleet-badge [fleetId]="d.fleetId" />
                 @if ((d._count?.currentVehicles ?? 0) > 0) {
                   <button type="button" class="d-count-chip d-count-chip--btn" (click)="toggleDriver(d.id)"
@@ -315,6 +325,19 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
     }
     .d-action-btn:hover { color: var(--tracky-light); border-color: rgba(16,224,160,.2) }
     .d-action-btn.danger:hover { color: #f87171; border-color: rgba(239,68,68,.2) }
+
+    /* Marqueur de type « Conducteur » (différenciation vs cartes Compte). */
+    .d-type-badge {
+      display: inline-flex; align-items: center; gap: 3px;
+      font-size: 10px; font-weight: 700; letter-spacing: .02em;
+      padding: 2px 7px; border-radius: 9999px;
+      background: rgba(16,224,160,.12); color: var(--tracky-light);
+      border: 1px solid rgba(16,224,160,.25); white-space: nowrap;
+    }
+
+    /* ─── Mode embarqué (onglet Conducteurs dans Utilisateurs) ─── */
+    .dpage--embedded { min-height: auto }
+    .d-header--embedded { align-items: center; margin-bottom: 16px }
   `],
 })
 export class DriversListComponent implements OnInit {
@@ -322,9 +345,18 @@ export class DriversListComponent implements OnInit {
   private readonly auth = inject(AuthService);
   private readonly perms = inject(PermissionsService);
   private readonly toast = inject(ToastService);
+  private readonly fleetFilter = inject(FleetFilterService);
+
+  /** Embarqué comme onglet (page Utilisateurs) : masque l'en-tête de page + les blobs. */
+  readonly embedded = input(false);
 
   readonly loading = signal(true);
   readonly drivers = signal<DriverDto[]>([]);
+
+  /** Vue filtrée par le sélecteur de société global (SUPER_ADMIN). No-op sinon. */
+  protected readonly visibleDrivers = computed(() =>
+    this.drivers().filter((d) => this.fleetFilter.matches(d.fleetId)),
+  );
   /** Conducteurs dont la liste de véhicules attribués est dépliée (drill-down). */
   protected readonly expandedDrivers = signal<Set<string>>(new Set());
   protected toggleDriver(id: string): void {

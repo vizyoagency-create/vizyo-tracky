@@ -6,6 +6,7 @@ import { LucideAngularModule, Plus, Truck, ExternalLink, FolderOpen, Radio, X, S
 import { firstValueFrom } from 'rxjs';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { PreferencesService } from '../../core/services/preferences.service';
+import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { AuthService } from '../../core/services/auth.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { TrackersApiService } from '../../core/services/trackers.service';
@@ -821,6 +822,7 @@ export class VehiclesListComponent implements OnInit {
   private readonly preferences = inject(PreferencesService);
   protected readonly auth = inject(AuthService);
   private readonly route = inject(ActivatedRoute);
+  private readonly fleetFilter = inject(FleetFilterService);
   // Sprint 1 — section de groupe vers laquelle scroller au retour depuis le détail.
   private readonly pendingScrollGroup = signal<string | null>(null);
 
@@ -849,7 +851,8 @@ export class VehiclesListComponent implements OnInit {
   protected readonly filteredVehicles = computed(() => {
     const gid = this.groupFilter();
     const q = this.search().trim().toLowerCase();
-    let list = this.vehicles();
+    // Filtre société global (SUPER_ADMIN) — no-op pour les autres rôles.
+    let list = this.vehicles().filter((v) => this.fleetFilter.matches(v.fleetId));
     if (gid) list = list.filter((v) => v.group?.id === gid);
     if (q) {
       list = list.filter((v) =>
@@ -940,6 +943,11 @@ export class VehiclesListComponent implements OnInit {
     // les préférences, et les sections sont dépliées par défaut).
     const g = this.route.snapshot.queryParams['group'];
     if (g) this.pendingScrollGroup.set(g);
+    // Deep-link d'onglet via ?tab= (redirection /groups → /vehicles?tab=groups).
+    const tab = this.route.snapshot.queryParamMap.get('tab');
+    if ((tab === 'groups' && this.perms.can('groups_view')) || tab === 'capacity') {
+      this.activeTab.set(tab as 'groups' | 'capacity');
+    }
     this.loadVehicles();
   }
 

@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { LucideAngularModule, Plus, Trash2, FolderOpen, Truck, Eye } from 'lucide-angular';
@@ -7,6 +7,7 @@ import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/v
 import { FleetsApiService, type FleetSummary } from '../../core/services/fleets.service';
 import { AuthService } from '../../core/services/auth.service';
 import { PermissionsService } from '../../core/services/permissions.service';
+import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { firstValueFrom } from 'rxjs';
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
 import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fleet-badge.component';
@@ -45,7 +46,7 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
         <div class="flex items-center justify-center h-32">
           <span class="w-5 h-5 border-2 border-fg-tertiary border-t-tracky-light rounded-full animate-spin"></span>
         </div>
-      } @else if (groups().length === 0) {
+      } @else if (visibleGroups().length === 0) {
         <div class="flex flex-col items-center justify-center h-32 rounded-xl
                     bg-bg-secondary border border-border-subtle text-fg-tertiary gap-2">
           <lucide-icon [img]="FolderOpen" [size]="36" class="opacity-30"></lucide-icon>
@@ -53,7 +54,7 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
         </div>
       } @else {
         <div class="flex flex-col gap-3">
-          @for (g of groups(); track g.id) {
+          @for (g of visibleGroups(); track g.id) {
             <div class="bg-bg-secondary border border-border-subtle rounded-xl p-4">
               <div class="flex items-center justify-between mb-3">
                 <div class="flex items-center gap-2 flex-wrap">
@@ -163,10 +164,16 @@ export class VehicleGroupsTabComponent implements OnInit {
   private readonly fleetsApi = inject(FleetsApiService);
   private readonly auth = inject(AuthService);
   protected readonly perms = inject(PermissionsService);
+  private readonly fleetFilter = inject(FleetFilterService);
 
   readonly loading = signal(true);
   readonly groups = signal<VehicleGroup[]>([]);
   readonly allVehicles = signal<VehicleDetailDto[]>([]);
+
+  /** Groupes filtrés par le sélecteur de société global (SUPER_ADMIN). No-op sinon. */
+  protected readonly visibleGroups = computed(() =>
+    this.groups().filter((g) => this.fleetFilter.matches(g.fleetId)),
+  );
   readonly fleets = signal<FleetSummary[]>([]);
 
   readonly showCreateModal = signal(false);
