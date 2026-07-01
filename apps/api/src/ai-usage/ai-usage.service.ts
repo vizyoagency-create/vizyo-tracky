@@ -58,6 +58,16 @@ export class AiUsageService {
     return (input * p.input + output * p.output + cacheWrite * p.cacheWrite + cacheRead * p.cacheRead) / 1_000_000;
   }
 
+  /** Coût USD d'un usage donné (réutilisé pour stocker le coût ailleurs, ex. rapport d'activité). */
+  costOf(model: string, usage: { inputTokens: number; outputTokens: number; cacheWriteTokens: number; cacheReadTokens: number }): number {
+    return this.computeCostUsd(model, usage.inputTokens, usage.outputTokens, usage.cacheWriteTokens, usage.cacheReadTokens);
+  }
+
+  /** Taux USD→€ appliqué (exposé pour convertir des coûts stockés ailleurs). */
+  eurRate(): number {
+    return this.usdToEur();
+  }
+
   /** Journalise un appel IA. Ne lève jamais (le coût ne doit pas casser la requête métier). */
   async record(entry: AiUsageEntry): Promise<void> {
     try {

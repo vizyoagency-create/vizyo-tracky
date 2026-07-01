@@ -16,5 +16,7 @@ import { AnthropicClient } from './anthropic.client';
   imports: [AuthModule, AgendaModule, ObservabilityModule],
   controllers: [AiOptimizationController],
   providers: [AnthropicClient, AiOptimizationService],
+  // Palier 3 — le client Claude est réutilisé par le service de rapports d'activité.
+  exports: [AnthropicClient],
 })
 export class AiModule {}
