@@ -941,3 +941,11 @@ textarea:focus-visible,
 .toggle input:checked + .toggle-track { background: rgba(16, 224, 160, 0.15); border-color: rgba(16, 224, 160, 0.3); }
 .toggle input:checked + .toggle-track .toggle-thumb { transform: translateX(18px); background: var(--tracky-light); }
 .toggle input:checked + .toggle-track .toggle-thumb::after { content: '✓'; }
+
+/* ─── Verrou de scroll global des overlays (ScrollLockService) ───────────────
+   Le scroller réel du shell est `.content` (pas body — cf. dashboard-layout).
+   Quand une modal/drawer est ouverte, on fige `.content` ET body pour éviter
+   que la page défile DERRIÈRE l'overlay sur mobile/iOS. */
+html.scroll-locked,
+html.scroll-locked body { overflow: hidden !important; }
+html.scroll-locked .content { overflow: hidden !important; }

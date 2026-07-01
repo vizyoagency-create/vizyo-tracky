@@ -1,5 +1,6 @@
-import { Component, HostListener, input, output, signal } from '@angular/core';
+import { Component, effect, HostListener, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { ScrollLockService } from '../../core/services/scroll-lock.service';
 import { LucideAngularModule, IdCard, Mail, Palette, Phone, Save, StickyNote, User, X } from 'lucide-angular';
 import type { DriverDto } from '@vizyo/tracky-shared';
 
@@ -215,6 +216,15 @@ export class DriverDrawerComponent {
   readonly open = input.required<boolean>();
   readonly data = input.required<DriverDrawerData | null>();
   readonly loading = input(false);
+
+  // Verrou de scroll : fige la page derrière le drawer tant qu'il est ouvert.
+  private readonly scrollLock = inject(ScrollLockService);
+  private readonly lockEffect = effect((onCleanup) => {
+    if (this.open()) {
+      this.scrollLock.lock();
+      onCleanup(() => this.scrollLock.unlock());
+    }
+  });
 
   readonly closed = output<void>();
   readonly saved = output<DriverDrawerResult>();

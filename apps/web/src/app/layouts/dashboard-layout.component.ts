@@ -676,8 +676,11 @@ import { MenuStateService } from '../core/services/menu-state.service';
       /* Sur mobile, on cache le titre de page (présent dans la page) et on affiche
          le logo + brand pour rappeler l'identité Vizyo Tracky. */
       .top-title { display: none }
-      .top-bar-brand { display: flex }
+      .top-bar-brand { display: flex; flex-shrink: 0 }
       .top-bar-brand-text { font-size: 13px }
+      /* Place réduite sur mobile (sélecteur société SA) : on garde le logo + « Tracky »
+         seul, on masque « Vizyo » pour éviter que la barre soit trop tassée. */
+      .top-bar-brand-name:not(.top-bar-brand-name--accent) { display: none }
 
       /* Padding-bottom du content : reserve la place pour la bottom-bar fixe.
          Bottom-bar = padding-top 6px + bottom-item (52px ios-pwa) +

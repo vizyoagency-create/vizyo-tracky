@@ -91,9 +91,9 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
 
               <!-- Ajouter un véhicule -->
               @if (perms.can('groups_manage')) {
-              <div class="flex items-center gap-2">
+              <div class="flex items-center gap-2 min-w-0">
                 <select [(ngModel)]="selectedVehicleForGroup[g.id]"
-                  class="flex-1 px-2.5 py-1.5 rounded-lg bg-bg-tertiary border border-border-subtle text-fg-primary text-xs
+                  class="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-bg-tertiary border border-border-subtle text-fg-primary text-xs
                          focus:outline-none focus:border-tracky">
                   <option value="">Ajouter un véhicule...</option>
                   @for (v of availableVehicles(g); track v.id) {
@@ -102,7 +102,7 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
                 </select>
                 <button (click)="addToGroup(g.id)"
                   [disabled]="!selectedVehicleForGroup[g.id]"
-                  class="px-2.5 py-1.5 rounded-lg bg-tracky/20 text-tracky-light text-xs font-medium
+                  class="shrink-0 px-2.5 py-1.5 rounded-lg bg-tracky/20 text-tracky-light text-xs font-medium
                          hover:bg-tracky/30 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors">
                   Ajouter
                 </button>

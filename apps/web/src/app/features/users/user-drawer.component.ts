@@ -1,4 +1,5 @@
-import { Component, HostListener, input, output, signal } from '@angular/core';
+import { Component, effect, HostListener, inject, input, output, signal } from '@angular/core';
+import { ScrollLockService } from '../../core/services/scroll-lock.service';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, X, Truck, FolderOpen, Shield, Bell, FileBarChart, Users, Save, UserRound, Map } from 'lucide-angular';
 import type { TrackyUser } from '../../core/services/users.service';
@@ -306,6 +307,16 @@ const ROLE_DEFAULTS: Record<string, Record<string, boolean>> = {
 })
 export class UserDrawerComponent {
   readonly open = input.required<boolean>();
+
+  // Verrou de scroll : fige la page derrière le drawer tant qu'il est ouvert
+  // (cleanup = déverrouille aussi si le composant est détruit en étant ouvert).
+  private readonly scrollLock = inject(ScrollLockService);
+  private readonly lockEffect = effect((onCleanup) => {
+    if (this.open()) {
+      this.scrollLock.lock();
+      onCleanup(() => this.scrollLock.unlock());
+    }
+  });
   readonly data = input.required<UserDrawerData | null>();
   readonly loading = input(false);
 

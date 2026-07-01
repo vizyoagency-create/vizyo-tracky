@@ -2,11 +2,13 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
   HostListener,
   inject,
   OnInit,
   signal,
 } from '@angular/core';
+import { ScrollLockService } from '../../core/services/scroll-lock.service';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -777,6 +779,16 @@ export class AgendaComponent implements OnInit {
   private readonly vehiclesApi = inject(VehiclesApiService);
   private readonly perms = inject(PermissionsService);
   private readonly toast = inject(ToastService);
+  private readonly scrollLock = inject(ScrollLockService);
+
+  // Verrou de scroll pour les overlays custom (modal création/incident + panneau
+  // du jour) : fige la page derrière tant qu'un des deux est ouvert.
+  private readonly lockEffect = effect((onCleanup) => {
+    if (this.createOpen() || this.dayPanelOpen()) {
+      this.scrollLock.lock();
+      onCleanup(() => this.scrollLock.unlock());
+    }
+  });
 
   // ─── Icônes ───────────────────────────────────────────────────────────────
   protected readonly CalendarDaysIcon = CalendarDays;
