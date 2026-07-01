@@ -31,14 +31,15 @@ import {
 import { AudioMonitoringService } from '../../core/services/audio-monitoring.service';
 import { relativeTime } from '../../shared/utils/relative-time';
 import { UserActivityApiService } from './user-activity-api.service';
+import { ActivityReportsComponent } from './activity-reports.component';
 
-type Tab = 'live' | 'history' | 'analytics' | 'engine-commands' | 'audio-listens';
+type Tab = 'live' | 'history' | 'reports' | 'analytics' | 'engine-commands' | 'audio-listens';
 type Period = '24h' | '7d' | '30d';
 
 @Component({
   selector: 'app-admin-activity',
   standalone: true,
-  imports: [DatePipe, FormsModule, RouterLink, LucideAngularModule],
+  imports: [DatePipe, FormsModule, RouterLink, LucideAngularModule, ActivityReportsComponent],
   template: `
     <div class="flex flex-col gap-5">
       <!-- Header -->
@@ -151,6 +152,11 @@ type Period = '24h' | '7d' | '30d';
             </button>
           }
         </div>
+      }
+
+      <!-- ─────────── RAPPORTS IA ─────────── -->
+      @if (tab() === 'reports') {
+        <app-activity-reports />
       }
 
       <!-- ─────────── ANALYTICS ─────────── -->
@@ -474,6 +480,7 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
     { id: 'live', label: 'Live' },
     { id: 'history', label: 'Historique' },
     { id: 'analytics', label: 'Analytics' },
+    { id: 'reports', label: 'Rapports IA' },
     { id: 'engine-commands', label: 'Commandes moteur' },
     { id: 'audio-listens', label: 'Écoutes audio' },
   ];
