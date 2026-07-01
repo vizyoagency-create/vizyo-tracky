@@ -20,6 +20,15 @@ const BUFFER_CAP = 200;
 const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'] as const;
 
 /**
+ * Palier 2 — Éléments considérés « cliquables » pour la CAPTURE AUTOMATIQUE du parcours.
+ * Couvre boutons, liens, onglets, interrupteurs, listes déroulantes… sur toute l'app sans
+ * instrumenter chaque template. Un élément peut porter `data-track="libellé"` pour un libellé
+ * propre, ou `data-no-track` pour être exclu (zones sensibles / bruit).
+ */
+const INTERACTIVE_SELECTOR =
+  'button, a[href], [role="button"], [role="tab"], [role="menuitem"], [role="switch"], [role="option"], input[type="submit"], input[type="button"], select, summary, [data-track]';
+
+/**
  * Tracking d'activité utilisateur (transparent). Démarre/s'arrête selon l'état
  * d'authentification. Collecte la navigation (PAGE_VIEW + durée), la présence
  * (ACTIVE/IDLE/AWAY via inactivité + Page Visibility), un heartbeat (route
@@ -49,6 +58,7 @@ export class ActivityTrackerService {
   private routerSub: Subscription | null = null;
   private readonly onActivity = () => this.handleUserActivity();
   private readonly onUnload = () => this.handleUnload();
+  private readonly onDocClick = (e: Event) => this.handleDocClick(e);
 
   constructor() {
     // Démarre quand l'utilisateur est authentifié, arrête sinon (logout).
@@ -66,11 +76,28 @@ export class ActivityTrackerService {
     this.destroyRef.onDestroy(() => this.stop());
   }
 
-  /** Appelé par la directive [trackClick]. */
+  /** Appelé par la directive [trackClick] (libellé explicite, prioritaire). */
   trackClick(target: string): void {
     if (!this.started || !target) return;
     this.push({ type: 'CLICK', target, route: this.currentRoute ?? undefined });
     this.handleUserActivity();
+  }
+
+  /**
+   * Palier 2 — capture automatique d'un clic sur un élément interactif. Dérive un libellé
+   * lisible (data-track > aria-label > texte > titre). Ignore les éléments gérés par la
+   * directive [trackClick] (anti-doublon) et les sous-arbres `data-no-track`.
+   */
+  private handleDocClick(e: Event): void {
+    if (!this.started) return;
+    const origin = (e.composedPath?.()[0] as Element | undefined) ?? (e.target as Element | null);
+    if (!origin || typeof origin.closest !== 'function') return;
+    const el = origin.closest(INTERACTIVE_SELECTOR);
+    if (!el || el.closest('[trackclick]') || el.closest('[data-no-track]')) return;
+    const target = deriveClickLabel(el);
+    if (!target) return;
+    this.push({ type: 'CLICK', target, route: this.currentRoute ?? undefined });
+    // La présence (ACTIVE) est déjà rafraîchie par le listener 'click' de ACTIVITY_EVENTS.
   }
 
   // ---------------------------------------------------------------------
@@ -97,6 +124,10 @@ export class ActivityTrackerService {
     for (const ev of ACTIVITY_EVENTS) {
       window.addEventListener(ev, this.onActivity, { passive: true });
     }
+    // Palier 2 — capture automatique des clics (parcours complet). Phase de capture pour
+    // l'attraper même si un handler stoppe la propagation. La directive [trackClick] reste
+    // prioritaire (ses éléments sont ignorés ici pour éviter le doublon).
+    document.addEventListener('click', this.onDocClick, { capture: true, passive: true });
     window.addEventListener('pagehide', this.onUnload);
     window.addEventListener('beforeunload', this.onUnload);
 
@@ -121,6 +152,7 @@ export class ActivityTrackerService {
     if (this.flushTimer) clearInterval(this.flushTimer);
     this.idleTimer = this.awayTimer = this.heartbeatTimer = this.flushTimer = null;
     for (const ev of ACTIVITY_EVENTS) window.removeEventListener(ev, this.onActivity);
+    document.removeEventListener('click', this.onDocClick, { capture: true } as EventListenerOptions);
     window.removeEventListener('pagehide', this.onUnload);
     window.removeEventListener('beforeunload', this.onUnload);
     this.started = false;
@@ -226,6 +258,23 @@ function randomId(): string {
     /* fallback below */
   }
   return `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * Palier 2 — libellé lisible d'un élément cliqué (capture auto du parcours) :
+ * data-track > aria-label > texte visible (tronqué) > title > rôle/tag.
+ */
+function deriveClickLabel(el: Element): string | null {
+  const dt = el.getAttribute('data-track');
+  if (dt?.trim()) return dt.trim().slice(0, 60);
+  const aria = el.getAttribute('aria-label');
+  if (aria?.trim()) return aria.trim().slice(0, 60);
+  const text = (el.textContent ?? '').replace(/\s+/g, ' ').trim();
+  if (text) return text.slice(0, 60);
+  const title = el.getAttribute('title');
+  if (title?.trim()) return title.trim().slice(0, 60);
+  const role = el.getAttribute('role');
+  return role || el.tagName.toLowerCase();
 }
 
 function detectDeviceType(): string {
