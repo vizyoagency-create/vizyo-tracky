@@ -3,14 +3,38 @@
   <head>
     <meta charset="utf-8" />
     <!--
-      Le <title> contient uniquement le nom de la page (pas la marque) pour eviter
-      la duplication dans le header de fenetre de la PWA installee : Chromium y
-      affiche "[manifest.name] - [document.title]". La marque vient deja du
-      manifest, le AppTitleStrategy met a jour ce title a chaque navigation.
+      <title> statique = version avec marque : c'est ce que lisent les crawlers de
+      partage de lien (WhatsApp, iMessage, Slack, Facebook…) qui n'executent pas le JS.
+      Au runtime, AppTitleStrategy remplace document.title par le seul nom de la page,
+      donc le header de la PWA installee reste "[manifest.name] - [page]" sans doublon.
     -->
-    <title>Tableau de bord</title>
-    <meta name="description" content="Plateforme de gestion de flotte GPS Vizyo Tracky. Suivi temps reel, coupure moteur securisee, alertes." />
+    <title>Vizyo Tracky — Gestion de flotte GPS</title>
+    <meta name="description" content="Plateforme française de gestion de flotte GPS. Suivi temps réel, coupure moteur sécurisée, alertes intelligentes et rapports. Accédez à votre espace Vizyo Tracky." />
     <base href="/" />
+    <link rel="canonical" href="https://app-tracky.vizyoagency.com/" />
+    <meta name="robots" content="index,follow" />
+
+    <!-- Open Graph — apercu de partage de lien (WhatsApp, iMessage, Slack, Facebook, LinkedIn…) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Vizyo Tracky" />
+    <meta property="og:locale" content="fr_FR" />
+    <meta property="og:title" content="Vizyo Tracky — Gestion de flotte GPS" />
+    <meta property="og:description" content="Suivi GPS temps réel, coupure moteur sécurisée, alertes et rapports. Accédez à votre espace de gestion de flotte Vizyo Tracky." />
+    <meta property="og:url" content="https://app-tracky.vizyoagency.com/" />
+    <meta property="og:image" content="https://app-tracky.vizyoagency.com/og-cover.jpg" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Vizyo Tracky — plateforme française de gestion de flotte GPS" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Vizyo Tracky — Gestion de flotte GPS" />
+    <meta name="twitter:description" content="Suivi GPS temps réel, coupure moteur sécurisée, alertes et rapports. Accédez à votre espace de gestion de flotte Vizyo Tracky." />
+    <meta name="twitter:image" content="https://app-tracky.vizyoagency.com/og-cover.jpg" />
+
+    <!-- Donnees structurees (marque + application) -->
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"Vizyo Tracky","applicationCategory":"BusinessApplication","operatingSystem":"Web, iOS, Android","url":"https://app-tracky.vizyoagency.com/","inLanguage":"fr-FR","description":"Plateforme française de gestion de flotte GPS : suivi temps réel, coupure moteur sécurisée, alertes et rapports.","publisher":{"@type":"Organization","name":"Vizyo Tracky","url":"https://vizyo-tracky.vizyoagency.com"}}</script>
 
     <!--
       Theme initial : lu depuis localStorage si l'user a deja choisi, sinon
