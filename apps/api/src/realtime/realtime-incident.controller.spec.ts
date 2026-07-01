@@ -16,14 +16,29 @@ describe('RealtimeIncidentController', () => {
     jest.useRealTimers();
   });
 
-  it('enregistre un incident CRITICAL avec le contexte user/flotte', async () => {
-    const res = await controller.report(reqFor({ id: 'u1', fleetId: 'f1' }), { downMs: 65_000 });
+  it('enregistre un flap court (reconnecté) en ERROR avec contexte + diagnostics', async () => {
+    const res = await controller.report(reqFor({ id: 'u1', fleetId: 'f1' }), {
+      downMs: 65_000, reason: 'ping timeout', transport: 'websocket', flaps: 3, everConnected: true,
+    });
 
     expect(res).toEqual({ recorded: true });
     expect(errorLogger.record).toHaveBeenCalledWith(
       expect.stringContaining('temps réel interrompue'),
       'realtime-client',
-      expect.objectContaining({ userId: 'u1', fleetId: 'f1', route: '/map', downMs: 65_000 }),
+      expect.objectContaining({
+        userId: 'u1', fleetId: 'f1', route: '/map', downMs: 65_000,
+        reason: 'ping timeout', transport: 'websocket', flaps: 3,
+      }),
+      'ERROR',
+    );
+  });
+
+  it('escalade en CRITICAL si le canal n\'a JAMAIS été établi (API/WS injoignable)', async () => {
+    await controller.report(reqFor({ id: 'u1', fleetId: 'f1' }), { downMs: 50_000, everConnected: false });
+    expect(errorLogger.record).toHaveBeenCalledWith(
+      expect.stringContaining('JAMAIS établi'),
+      'realtime-client',
+      expect.objectContaining({ everConnected: false }),
       'CRITICAL',
     );
   });

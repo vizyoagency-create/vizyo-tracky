@@ -45,16 +45,33 @@ export class RealtimeIncidentController {
     this.gc(now);
 
     const downSec = Math.round((body.downMs ?? 0) / 1000);
+    const reason = body.reason ?? 'inconnu';
+    const transport = body.transport ?? 'n/a';
+    const neverConnected = body.everConnected === false;
+    // Niveau adaptatif (moins « crier au loup ») : JAMAIS connecté OU coupure ≥ 2 min = CRITICAL
+    // (vraie panne, plus de vue live) ; un flap court après connexion = ERROR (visible sans gonfler
+    // le compteur critique). Le détail (reason/transport/flaps) donne la cause racine.
+    const level: 'ERROR' | 'CRITICAL' =
+      neverConnected || (body.downMs ?? 0) >= 120_000 ? 'CRITICAL' : 'ERROR';
+    const head = neverConnected
+      ? `Canal temps réel JAMAIS établi (${downSec}s) — API/WS injoignable`
+      : `Connexion temps réel interrompue (${downSec}s sans live)`;
+    const detail = `reason=${reason}, transport=${transport}, flaps=${body.flaps ?? 0}${body.lastError ? `, err=${body.lastError}` : ''}`;
     await this.errorLogger.record(
-      `Connexion temps réel interrompue côté client (${downSec}s sans live) — utilisateur sans vue live des véhicules`,
+      `${head} — ${detail}`,
       'realtime-client',
       {
         userId: user.id,
         fleetId: user.fleetId ?? undefined,
         route: '/map',
         downMs: body.downMs ?? null,
+        reason,
+        transport,
+        flaps: body.flaps ?? null,
+        everConnected: body.everConnected ?? null,
+        lastError: body.lastError ?? null,
       },
-      'CRITICAL',
+      level,
     );
     return { recorded: true };
   }

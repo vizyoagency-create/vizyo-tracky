@@ -67,6 +67,11 @@ export class RealtimeService {
   // (panne grave : plus de vue live). Re-report périodique tant que coupé.
   private disconnectedSince: number | null = null;
   private incidentTimer: ReturnType<typeof setTimeout> | null = null;
+  // Instrumentation — pour identifier POURQUOI le live tombe (remonté au centre d'alerte).
+  private lastDisconnectReason: string | null = null;
+  private lastConnectError: string | null = null;
+  private flapCount = 0;
+  private everConnected = false;
   private static readonly INCIDENT_DELAY_MS = 45_000;
   // Re-report espacé (1 incident/30min max pour une coupure qui dure) pour ne
   // PAS inonder le centre d'alerte — une coupure de 16 min ne produit qu'1 alerte.
@@ -191,18 +196,22 @@ export class RealtimeService {
 
     this.socket.on('connect', () => {
       this.connected.set(true);
+      this.everConnected = true;
       this.clearIncidentWatch();
       this.loadInitialAlerts();
     });
 
-    this.socket.on('disconnect', () => {
+    this.socket.on('disconnect', (reason: string) => {
       this.connected.set(false);
+      this.lastDisconnectReason = reason;
+      this.flapCount++;
       this.startIncidentWatch();
     });
 
     // Token expire → socket.io reconnecte avec l'ancien token → rejet backend.
     // On refresh le JWT et on met a jour le handshake auth pour la prochaine tentative.
-    this.socket.on('connect_error', async () => {
+    this.socket.on('connect_error', async (err: Error) => {
+      this.lastConnectError = (err?.message ?? 'connect_error').slice(0, 200);
       if (this.refreshingToken || !this.socket) return;
       this.refreshingToken = true;
       let refreshed = false;
@@ -379,6 +388,10 @@ export class RealtimeService {
     this.flushScheduled = false;
     this.lastToastByKey.clear();
     this.clearIncidentWatch();
+    this.flapCount = 0;
+    this.everConnected = false;
+    this.lastDisconnectReason = null;
+    this.lastConnectError = null;
   }
 
   // ---------------------------------------------------------------------
@@ -437,7 +450,18 @@ export class RealtimeService {
       return;
     }
     const downMs = Date.now() - this.disconnectedSince;
-    firstValueFrom(this.http.post('/api/realtime/incident', { downMs })).catch(() => {
+    const transport =
+      (this.socket?.io?.engine as { transport?: { name?: string } } | undefined)?.transport?.name ?? undefined;
+    firstValueFrom(
+      this.http.post('/api/realtime/incident', {
+        downMs,
+        reason: this.lastDisconnectReason ?? undefined,
+        transport,
+        lastError: this.lastConnectError ?? undefined,
+        flaps: this.flapCount,
+        everConnected: this.everConnected,
+      }),
+    ).catch(() => {
       /* silent */
     });
     this.incidentTimer = setTimeout(

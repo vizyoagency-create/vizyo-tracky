@@ -6,6 +6,7 @@ import { provideServiceWorker } from '@angular/service-worker';
 import { routes } from './app.routes';
 import { GlobalErrorHandler } from './core/error/global-error-handler';
 import { authInterceptor } from './core/interceptors/auth.interceptor';
+import { errorReportInterceptor } from './core/interceptors/error-report.interceptor';
 import { AppTitleStrategy } from './core/title.strategy';
 
 export const appConfig: ApplicationConfig = {
@@ -24,7 +25,9 @@ export const appConfig: ApplicationConfig = {
       withViewTransitions(),
     ),
     { provide: TitleStrategy, useClass: AppTitleStrategy },
-    provideHttpClient(withInterceptors([authInterceptor])),
+    // errorReportInterceptor en 1er = le plus externe : voit l'erreur finale de toute la
+    // chaîne (réseau/infra) et la remonte au centre d'alerte. authInterceptor gère le token/401.
+    provideHttpClient(withInterceptors([errorReportInterceptor, authInterceptor])),
     // Service Worker : on registre `/sw.js` (notre SW custom) qui charge
     // ngsw-worker.js via importScripts en interne. Ca evite le bug "double SW
     // race" en standalone PWA iOS qui empechait le badge "1" de fonctionner
