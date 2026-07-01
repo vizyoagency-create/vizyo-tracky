@@ -41,6 +41,7 @@ import { ReportsModule } from './reports/reports.module';
 import { SimsModule } from './sims/sims.module';
 import { SmsModule } from './sms/sms.module';
 import { SurveillanceModule } from './surveillance/surveillance.module';
+import { SystemActivityModule } from './system-activity/system-activity.module';
 import { SystemMetricsModule } from './system-metrics/system-metrics.module';
 import { TrackerCommandsModule } from './tracker-commands/tracker-commands.module';
 import { UserActivityModule } from './user-activity/user-activity.module';
@@ -108,6 +109,8 @@ import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.modul
     ReportsModule,
     SimsModule,
     ObservabilityModule,
+    // Palier B — journal des actions auto/système (arrière-plan), @Global comme Observability.
+    SystemActivityModule,
     RealtimeModule,
     VehicleAccessModule,
     VehicleGroupsModule,

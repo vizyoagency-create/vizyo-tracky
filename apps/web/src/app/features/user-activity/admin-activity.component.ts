@@ -9,7 +9,9 @@ import type {
   EngineCommandAuditDto,
   OnlineUserDto,
   PresenceStatus,
+  SystemActivityDto,
 } from '@vizyo/tracky-shared';
+import { SYSTEM_ACTIVITY_CATEGORY_LABELS } from '@vizyo/tracky-shared';
 import {
   Activity,
   ArrowLeft,
@@ -22,10 +24,18 @@ import {
   MapPin,
   Moon,
   MousePointer2,
+  MoveVertical,
+  Bell,
+  Mail,
+  MessageSquare,
+  Server,
+  Sparkles,
+  Trash2,
   Power,
   PowerOff,
   RefreshCw,
   RotateCcw,
+  Send,
   Users,
 } from 'lucide-angular';
 import { AudioMonitoringService } from '../../core/services/audio-monitoring.service';
@@ -33,7 +43,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
 import { UserActivityApiService } from './user-activity-api.service';
 import { ActivityReportsComponent } from './activity-reports.component';
 
-type Tab = 'live' | 'history' | 'reports' | 'analytics' | 'engine-commands' | 'audio-listens';
+type Tab = 'live' | 'history' | 'reports' | 'analytics' | 'engine-commands' | 'audio-listens' | 'system';
 type Period = '24h' | '7d' | '30d';
 
 @Component({
@@ -359,6 +369,94 @@ type Period = '24h' | '7d' | '30d';
         }
       }
 
+      <!-- ─────────── SYSTÈME (actions auto / arrière-plan) ─────────── -->
+      @if (tab() === 'system') {
+        <!-- Ces lignes sont AUTO/système (pas des actions manuelles utilisateur). -->
+        <div class="flex items-start gap-2 text-xs text-fg-tertiary bg-bg-secondary border border-border-subtle rounded-[--radius-card] px-3 py-2.5">
+          <lucide-icon [img]="Server" [size]="14" class="text-tracky-light shrink-0 mt-0.5"></lucide-icon>
+          <span>
+            Actions <strong class="text-fg-secondary">automatiques / en arrière-plan</strong> de l'application :
+            e-mails, SMS, notifications push, commandes moteur, purges de rétention, rapports IA planifiés.
+            Distinct de l'activité <em>manuelle</em> des utilisateurs (onglets Live / Historique).
+          </span>
+        </div>
+
+        <!-- Filtre par catégorie -->
+        <div class="flex flex-wrap items-center gap-1.5">
+          <button (click)="setSystemCategory('')"
+                  class="px-3 py-1.5 text-xs font-medium rounded-full border transition-colors"
+                  [class]="systemCategory() === ''
+                    ? 'border-tracky text-fg-primary bg-tracky/10'
+                    : 'border-border-subtle text-fg-tertiary hover:text-fg-secondary'">
+            Tout
+          </button>
+          @for (c of systemCategories; track c.id) {
+            <button (click)="setSystemCategory(c.id)"
+                    class="px-3 py-1.5 text-xs font-medium rounded-full border transition-colors inline-flex items-center gap-1.5"
+                    [class]="systemCategory() === c.id
+                      ? 'border-tracky text-fg-primary bg-tracky/10'
+                      : 'border-border-subtle text-fg-tertiary hover:text-fg-secondary'">
+              <lucide-icon [img]="sysIcon(c.id)" [size]="12"></lucide-icon>
+              {{ c.label }}
+            </button>
+          }
+        </div>
+
+        @if (systemActs().length > 0) {
+          <div class="flex flex-col gap-1.5">
+            @for (a of systemActs(); track a.id) {
+              <div class="flex items-start gap-3 bg-bg-secondary border border-border-subtle rounded-xl px-3 py-2.5">
+                <!-- Icône catégorie -->
+                <div class="shrink-0 w-8 h-8 rounded-lg flex items-center justify-center" [class]="sysIconBg(a.category)">
+                  <lucide-icon [img]="sysIcon(a.category)" [size]="15"></lucide-icon>
+                </div>
+                <!-- Corps -->
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span class="text-sm font-medium text-fg-primary">{{ sysCategoryLabel(a.category) }}</span>
+                    @if (a.triggeredByName) {
+                      <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-sky-500/15 text-sky-400">déclenché par {{ a.triggeredByName }}</span>
+                    } @else {
+                      <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-bg-tertiary text-fg-tertiary uppercase tracking-wide">{{ a.actor ?? 'système' }}</span>
+                    }
+                    <span class="inline-flex items-center gap-1 text-[11px]" [style.color]="sysStatusColor(a.status)">
+                      <span class="w-1.5 h-1.5 rounded-full" [style.background]="sysStatusColor(a.status)"></span>
+                      {{ sysStatusLabel(a.status) }}
+                    </span>
+                  </div>
+                  @if (a.target || a.detail) {
+                    <p class="text-xs text-fg-secondary truncate mt-0.5"
+                       [title]="(a.detail ?? '') + (a.target ? ' — ' + a.target : '')">
+                      @if (a.target) { <span class="text-fg-primary">{{ a.target }}</span> }
+                      @if (a.target && a.detail) { <span class="text-fg-tertiary"> · </span> }
+                      @if (a.detail) { <span>{{ a.detail }}</span> }
+                    </p>
+                  }
+                  @if (a.fleetName) {
+                    <span class="text-[10px] text-fg-tertiary">{{ a.fleetName }}</span>
+                  }
+                </div>
+                <!-- Quand -->
+                <span class="shrink-0 text-[11px] text-fg-tertiary whitespace-nowrap"
+                      [title]="(a.createdAt | date: 'dd/MM/yyyy HH:mm:ss') ?? ''">
+                  {{ relativeTime(a.createdAt) }}
+                </span>
+              </div>
+            }
+          </div>
+          <button (click)="loadMoreSystem()" [disabled]="loadingMore()"
+                  class="w-full py-2 text-sm text-fg-secondary border border-border-subtle rounded-lg hover:border-tracky disabled:opacity-50">
+            {{ loadingMore() ? 'Chargement…' : 'Charger plus' }}
+          </button>
+        } @else {
+          <div class="flex flex-col items-center justify-center h-40 rounded-[--radius-card]
+                      bg-bg-secondary border border-border-subtle text-fg-tertiary gap-2">
+            <lucide-icon [img]="Server" [size]="40" class="opacity-30"></lucide-icon>
+            <p class="text-sm">Aucune action système enregistrée.</p>
+          </div>
+        }
+      }
+
       <!-- ─────────── ÉCOUTES AUDIO ─────────── -->
       @if (tab() === 'audio-listens') {
         <!-- Clarification : METADATA d'audit uniquement (qui a écouté quoi / quand), AUCUN
@@ -483,6 +581,16 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
     { id: 'reports', label: 'Rapports IA' },
     { id: 'engine-commands', label: 'Commandes moteur' },
     { id: 'audio-listens', label: 'Écoutes audio' },
+    { id: 'system', label: 'Système' },
+  ];
+  /** Catégories du journal des actions système (chips de filtre). */
+  readonly systemCategories: { id: string; label: string }[] = [
+    { id: 'EMAIL', label: 'E-mails' },
+    { id: 'SMS', label: 'SMS' },
+    { id: 'PUSH', label: 'Push' },
+    { id: 'ENGINE', label: 'Moteur' },
+    { id: 'RETENTION', label: 'Rétention' },
+    { id: 'AI_REPORT', label: 'Rapports IA' },
   ];
   readonly periods: { id: Period; label: string }[] = [
     { id: '24h', label: '24h' },
@@ -507,6 +615,10 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
   readonly audioListens = signal<AudioCommandAuditDto[]>([]);
   readonly audioStatusFilter = signal('');
 
+  // Système (actions auto / arrière-plan : e-mails, SMS, push, moteur, rétention, rapports IA).
+  readonly systemActs = signal<SystemActivityDto[]>([]);
+  readonly systemCategory = signal('');
+
   readonly maxSessions = computed(() =>
     Math.max(1, ...(this.stats()?.sessionsPerDay ?? []).map((d) => d.count)),
   );
@@ -530,6 +642,7 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
     else if (t === 'history') this.loadHistory();
     else if (t === 'engine-commands') this.loadEngine();
     else if (t === 'audio-listens') this.loadAudio();
+    else if (t === 'system') this.loadSystem();
     else this.loadStats();
   }
 
@@ -538,6 +651,7 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
     else if (this.tab() === 'history') this.loadHistory();
     else if (this.tab() === 'engine-commands') this.loadEngine();
     else if (this.tab() === 'audio-listens') this.loadAudio();
+    else if (this.tab() === 'system') this.loadSystem();
     else this.loadStats();
   }
 
@@ -615,6 +729,30 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
       });
   }
 
+  setSystemCategory(c: string): void {
+    this.systemCategory.set(c);
+    this.loadSystem();
+  }
+
+  private loadSystem(): void {
+    this.api
+      .systemFeed(60, undefined, this.systemCategory() || undefined)
+      .subscribe({ next: (l) => this.systemActs.set(l), error: () => undefined });
+  }
+
+  loadMoreSystem(): void {
+    const last = this.systemActs()[this.systemActs().length - 1];
+    if (!last) return;
+    this.loadingMore.set(true);
+    this.api.systemFeed(60, last.createdAt, this.systemCategory() || undefined).subscribe({
+      next: (items) => {
+        this.systemActs.update((l) => [...l, ...items]);
+        this.loadingMore.set(false);
+      },
+      error: () => this.loadingMore.set(false),
+    });
+  }
+
   private loadLive(): void {
     this.api.online().subscribe({ next: (u) => this.online.set(u), error: () => undefined });
     this.api.feed(50).subscribe({ next: (f) => this.feed.set(f), error: () => undefined });
@@ -645,6 +783,8 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
     switch (t) {
       case 'PAGE_VIEW': return ArrowRight;
       case 'CLICK': return MousePointer2;
+      case 'SCROLL': return MoveVertical;
+      case 'FORM_SUBMIT': return Send;
       case 'SESSION_START': return LogIn;
       case 'SESSION_END': return LogOut;
       case 'SESSION_RESUME': return RotateCcw;
@@ -652,6 +792,40 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
       case 'AWAY': return CircleAlert;
       default: return Activity;
     }
+  }
+
+  // ── helpers Système (actions auto / arrière-plan) ──
+  protected readonly Server = Server;
+  protected sysIcon(category: string) {
+    switch (category) {
+      case 'EMAIL': return Mail;
+      case 'SMS': return MessageSquare;
+      case 'PUSH': return Bell;
+      case 'ENGINE': return Power;
+      case 'RETENTION': return Trash2;
+      case 'AI_REPORT': return Sparkles;
+      default: return Server;
+    }
+  }
+  protected sysIconBg(category: string): string {
+    switch (category) {
+      case 'EMAIL': return 'bg-sky-500/15 text-sky-400';
+      case 'SMS': return 'bg-violet-500/15 text-violet-400';
+      case 'PUSH': return 'bg-amber-500/15 text-amber-400';
+      case 'ENGINE': return 'bg-rose-500/15 text-rose-400';
+      case 'RETENTION': return 'bg-emerald-500/15 text-emerald-400';
+      case 'AI_REPORT': return 'bg-fuchsia-500/15 text-fuchsia-400';
+      default: return 'bg-bg-tertiary text-fg-tertiary';
+    }
+  }
+  protected sysCategoryLabel(category: string): string {
+    return SYSTEM_ACTIVITY_CATEGORY_LABELS[category] ?? category;
+  }
+  protected sysStatusColor(s: string): string {
+    return s === 'SUCCESS' ? '#34d399' : s === 'FAILURE' ? '#f87171' : '#fbbf24';
+  }
+  protected sysStatusLabel(s: string): string {
+    return s === 'SUCCESS' ? 'ok' : s === 'FAILURE' ? 'échec' : s === 'SKIPPED' ? 'ignoré' : s.toLowerCase();
   }
 
   // ── helpers commandes moteur ──
@@ -714,8 +888,13 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
       case 'PAGE_VIEW':
         return `${a.routeLabel ?? a.route ?? ''}${a.durationMs != null ? ` (${this.fmtMs(a.durationMs)})` : ''}`;
       case 'CLICK': return `cliqué « ${a.target} »`;
+      case 'SCROLL': return `défilé${a.target ? ` (${a.target})` : ''}`;
+      case 'FORM_SUBMIT': return `formulaire envoyé${a.target ? ` « ${a.target} »` : ''}`;
       case 'SESSION_START': return 'connecté';
-      case 'SESSION_END': return 'déconnecté';
+      case 'SESSION_END': {
+        const r = a.target === 'manual' ? 'volontaire' : a.target === 'tab_close' ? 'onglet fermé' : a.target === 'auto' ? 'expiration/système' : null;
+        return `déconnecté${r ? ` (${r})` : ''}`;
+      }
       case 'SESSION_RESUME': return 'session reprise';
       case 'IDLE': return 'inactif';
       case 'AWAY': return 'absent';

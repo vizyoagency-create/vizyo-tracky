@@ -6,6 +6,7 @@ import type { Twilio } from 'twilio';
 import type { Env } from '../config/env.validation';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 
 /**
  * V1.5 (Sprint I) — SMS Gateway via Twilio.
@@ -57,6 +58,7 @@ export class SmsGatewayService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly errorLogger: ErrorLogger,
     private readonly eventEmitter: EventEmitter2,
+    private readonly systemActivity: SystemActivityService,
     @Optional() @Inject(ConfigService) private readonly config?: ConfigService<Env, true>,
   ) {
     this.textoUrl = (this.config?.get('VIZYO_TEXTO_URL', { infer: true }) ?? '').replace(/\/+$/, '');
@@ -213,8 +215,23 @@ export class SmsGatewayService implements OnModuleInit {
   /**
    * Send an SMS and persist the audit row in `sms_logs`.
    * In no-op mode, the audit row is still written with `status = 'noop'`.
+   *
+   * Palier B — wrapper qui journalise l'action système (arrière-plan) une fois le résultat
+   * connu, quel que soit le canal (vizyo-texto / Twilio / no-op). Le corps technique est dans
+   * `performSend()`. Couvre commandes device, provisioning, audio arm/disarm, alertes SMS.
    */
   async send(
+    to: string,
+    body: string,
+    context?: { imei?: string; provisioningId?: string; [k: string]: unknown },
+  ): Promise<SendSmsResult> {
+    const result = await this.performSend(to, body, context);
+    const safeTo = to.trim();
+    if (safeTo) this.recordSystemActivity(safeTo, body, context, result);
+    return result;
+  }
+
+  private async performSend(
     to: string,
     body: string,
     context?: { imei?: string; provisioningId?: string; [k: string]: unknown },
@@ -285,6 +302,37 @@ export class SmsGatewayService implements OnModuleInit {
       this.logger.error(`SMS send failed to ${safeTo}: ${errorMessage}`);
       return { ok: false, error: errorMessage };
     }
+  }
+
+  /**
+   * Palier B — trace le SMS dans le journal des actions système. Le numéro est MASQUÉ et le
+   * corps CAVIARDÉ (les commandes device contiennent le mot de passe boîtier — jamais en clair
+   * ici ; l'audit brut reste dans sms_logs, réservé SUPER_ADMIN). `context.source` fournit un
+   * libellé lisible ('alert-notification', 'audio-auto-disarm', 'engine-control-fallback'…).
+   */
+  private recordSystemActivity(
+    to: string,
+    body: string,
+    context: { imei?: string; provisioningId?: string; [k: string]: unknown } | undefined,
+    result: SendSmsResult,
+  ): void {
+    const source = typeof context?.source === 'string' ? context.source : undefined;
+    const triggeredByUserId =
+      typeof context?.requestedByUserId === 'string' ? context.requestedByUserId : null;
+    this.systemActivity.record({
+      category: 'SMS',
+      action: source ? `sms_${source}`.replace(/[^a-z0-9_-]/gi, '_').slice(0, 60) : 'sms_sent',
+      status: result.ok ? 'SUCCESS' : 'FAILURE',
+      actor: 'system',
+      target: maskPhone(to),
+      detail: source ? `SMS (${source})` : redactSmsBody(body),
+      triggeredByUserId,
+      meta: {
+        imei: typeof context?.imei === 'string' ? context.imei : undefined,
+        provider: this.provider,
+        error: result.error,
+      },
+    });
   }
 
   /**
@@ -520,4 +568,15 @@ export class SmsGatewayService implements OnModuleInit {
       trackerImei: tracker.imei,
     };
   }
+}
+
+/** Masque un numéro pour l'affichage admin : garde l'indicatif + 2 derniers chiffres. */
+function maskPhone(phone: string): string {
+  const s = phone.replace(/\s+/g, '');
+  return s.length <= 6 ? s : `${s.slice(0, 4)}••••${s.slice(-2)}`;
+}
+
+/** Caviarde les longues séquences de chiffres (mots de passe boîtier) et tronque. */
+function redactSmsBody(body: string): string {
+  return body.replace(/\d{5,}/g, '••••').slice(0, 80);
 }

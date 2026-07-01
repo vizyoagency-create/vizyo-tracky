@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import webpush, { PushSubscription as WebPushSubscription } from 'web-push';
 import type { Env } from '../config/env.validation';
 import { PrismaService } from '../prisma/prisma.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 
 /**
  * V1.5 (Sprint M) — Web Push notifications via VAPID.
@@ -65,6 +66,7 @@ export class WebPushService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService<Env, true>,
+    private readonly systemActivity: SystemActivityService,
   ) {
     this.publicKey = this.config.get('VAPID_PUBLIC_KEY', { infer: true });
     const privateKey = this.config.get('VAPID_PRIVATE_KEY', { infer: true });
@@ -211,7 +213,22 @@ export class WebPushService {
       }
     }
     const subs = await this.listForUser(userId);
-    return this.sendToSubscriptions(subs, payload, 'user:' + userId.slice(0, 8));
+    const result = await this.sendToSubscriptions(subs, payload, 'user:' + userId.slice(0, 8));
+    // Palier B — trace la notif push dans le journal système (arrière-plan). On n'enregistre
+    // que les tentatives réelles (≥1 device ciblé) : pas de bruit quand l'user n'a aucun device.
+    if (result.sent > 0 || result.failed > 0) {
+      this.systemActivity.record({
+        category: 'PUSH',
+        action: 'push_sent',
+        status: result.sent > 0 ? 'SUCCESS' : 'FAILURE',
+        actor: 'system',
+        target: payload.title?.slice(0, 120) ?? null,
+        detail: `${result.sent} envoyé(s)${result.failed ? `, ${result.failed} échec(s)` : ''}`,
+        fleetId: expectedFleetId ?? null,
+        meta: { sent: result.sent, failed: result.failed, severity: payload.severity },
+      });
+    }
+    return result;
   }
 
   /**

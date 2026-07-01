@@ -6,6 +6,7 @@ import type {
   ActivityStatsDto,
   EngineCommandAuditDto,
   OnlineUserDto,
+  SystemActivityDto,
 } from '@vizyo/tracky-shared';
 
 /** Client REST du tracking d'activité (lecture admin, SUPER_ADMIN). */
@@ -44,5 +45,13 @@ export class UserActivityApiService {
     return this.http.get<EngineCommandAuditDto[]>('/api/admin/activity/engine-commands', {
       params,
     });
+  }
+
+  /** Palier B — journal des actions AUTO/système (arrière-plan) : e-mails, SMS, push, moteur… */
+  systemFeed(limit = 60, before?: string, category?: string): Observable<SystemActivityDto[]> {
+    let params = new HttpParams().set('limit', String(limit));
+    if (before) params = params.set('before', before);
+    if (category) params = params.set('category', category);
+    return this.http.get<SystemActivityDto[]>('/api/admin/activity/system', { params });
   }
 }

@@ -28,6 +28,9 @@ const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scr
 const INTERACTIVE_SELECTOR =
   'button, a[href], [role="button"], [role="tab"], [role="menuitem"], [role="switch"], [role="option"], input[type="submit"], input[type="button"], select, summary, [data-track]';
 
+/** Throttle du tracking de défilement — 1 event / 5s / page (« limite les scrolls »). */
+const SCROLL_THROTTLE_MS = 5_000;
+
 /**
  * Tracking d'activité utilisateur (transparent). Démarre/s'arrête selon l'état
  * d'authentification. Collecte la navigation (PAGE_VIEW + durée), la présence
@@ -64,6 +67,9 @@ export class ActivityTrackerService {
   private readonly onActivity = () => this.handleUserActivity();
   private readonly onUnload = () => this.handleUnload();
   private readonly onDocClick = (e: Event) => this.handleDocClick(e);
+  private readonly onDocScroll = (e: Event) => this.handleScroll(e);
+  private readonly onSubmit = (e: Event) => this.handleSubmit(e);
+  private lastScrollAt = 0;
 
   constructor() {
     // Démarre quand l'utilisateur est authentifié, arrête sinon (logout).
@@ -111,12 +117,46 @@ export class ActivityTrackerService {
     if (!this.started) return;
     const origin = (e.composedPath?.()[0] as Element | undefined) ?? (e.target as Element | null);
     if (!origin || typeof origin.closest !== 'function') return;
-    const el = origin.closest(INTERACTIVE_SELECTOR);
-    if (!el || el.closest('[trackclick]') || el.closest('[data-no-track]')) return;
+    if (origin.closest('[data-no-track]')) return;
+    // 1. élément interactif standard (bouton/lien/onglet…). 2. sinon fallback : élément custom
+    // cliquable détecté par `cursor: pointer` → capture les <div>/<tr>/<li> à handler (click) sur
+    // toute l'app SANS instrumenter chaque template.
+    const el = origin.closest(INTERACTIVE_SELECTOR) ?? findPointerAncestor(origin);
+    if (!el || el.closest('[trackclick]')) return;
     const target = deriveClickLabel(el);
     if (!target) return;
     this.push({ type: 'CLICK', target, route: this.currentRoute ?? undefined });
     // La présence (ACTIVE) est déjà rafraîchie par le listener 'click' de ACTIVITY_EVENTS.
+  }
+
+  /** Capture (throttlée) du défilement — page + profondeur % (« limite les scrolls »). */
+  private handleScroll(e: Event): void {
+    if (!this.started) return;
+    const now = Date.now();
+    if (now - this.lastScrollAt < SCROLL_THROTTLE_MS) return;
+    this.lastScrollAt = now;
+    const t = e.target;
+    const se = t === document || t == null ? document.scrollingElement : (t as Element);
+    let depth = 0;
+    if (se && 'scrollHeight' in se) {
+      const s = se as unknown as { scrollTop: number; scrollHeight: number; clientHeight: number };
+      const max = s.scrollHeight - s.clientHeight;
+      depth = max > 0 ? Math.min(100, Math.max(0, Math.round((s.scrollTop / max) * 100))) : 0;
+    }
+    this.push({ type: 'SCROLL', route: this.currentRoute ?? undefined, target: `${depth}%` });
+  }
+
+  /** Capture d'une soumission de formulaire (action manuelle distincte d'un simple clic). */
+  private handleSubmit(e: Event): void {
+    if (!this.started) return;
+    const form = e.target as Element | null;
+    if (!form || (form.closest && form.closest('[data-no-track]'))) return;
+    const label =
+      form.getAttribute?.('data-track') ||
+      form.getAttribute?.('aria-label') ||
+      form.getAttribute?.('name') ||
+      'formulaire';
+    this.push({ type: 'FORM_SUBMIT', route: this.currentRoute ?? undefined, target: label.slice(0, 60) });
   }
 
   // ---------------------------------------------------------------------
@@ -147,6 +187,8 @@ export class ActivityTrackerService {
     // l'attraper même si un handler stoppe la propagation. La directive [trackClick] reste
     // prioritaire (ses éléments sont ignorés ici pour éviter le doublon).
     document.addEventListener('click', this.onDocClick, { capture: true, passive: true });
+    document.addEventListener('scroll', this.onDocScroll, { capture: true, passive: true });
+    document.addEventListener('submit', this.onSubmit, { capture: true });
     window.addEventListener('pagehide', this.onUnload);
     window.addEventListener('beforeunload', this.onUnload);
 
@@ -173,6 +215,8 @@ export class ActivityTrackerService {
     this.idleTimer = this.awayTimer = this.heartbeatTimer = this.flushTimer = null;
     for (const ev of ACTIVITY_EVENTS) window.removeEventListener(ev, this.onActivity);
     document.removeEventListener('click', this.onDocClick, { capture: true } as EventListenerOptions);
+    document.removeEventListener('scroll', this.onDocScroll, { capture: true } as EventListenerOptions);
+    document.removeEventListener('submit', this.onSubmit, { capture: true } as EventListenerOptions);
     window.removeEventListener('pagehide', this.onUnload);
     window.removeEventListener('beforeunload', this.onUnload);
     this.started = false;
@@ -298,6 +342,22 @@ function randomId(): string {
     /* fallback below */
   }
   return `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** Remonte jusqu'à ~4 niveaux pour trouver un élément custom cliquable (cursor:pointer). */
+function findPointerAncestor(start: Element): Element | null {
+  let el: Element | null = start;
+  for (let i = 0; el && i < 4; i++) {
+    if (el instanceof HTMLElement) {
+      try {
+        if (getComputedStyle(el).cursor === 'pointer') return el;
+      } catch {
+        /* getComputedStyle peut échouer sur un nœud détaché */
+      }
+    }
+    el = el.parentElement;
+  }
+  return null;
 }
 
 /**

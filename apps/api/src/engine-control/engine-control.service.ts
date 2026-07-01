@@ -18,6 +18,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SmsGatewayService } from '../sms/sms-gateway.service';
 import { SocketRegistryService } from '../socket-registry/socket-registry.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 import { AckWaiterService } from '../tracker-commands/ack-waiter.service';
 
 const STALE_THRESHOLD_MOVING_MS = 60 * 1000; // position fraîche exigée si véhicule roulait
@@ -75,6 +76,7 @@ export class EngineControlService {
     private readonly gateway: RealtimeGateway,
     private readonly errorLogger: ErrorLogger,
     private readonly sms: SmsGatewayService,
+    private readonly systemActivity: SystemActivityService,
   ) {}
 
   async requestCommand(
@@ -280,10 +282,41 @@ export class EngineControlService {
     });
 
     if (command.status === CommandStatus.PENDING) {
-      await this.dispatchCommand(tracker.imei, command, action, fleetId);
+      // Palier B — journalise la commande moteur (arrière-plan / device). SUCCESS = commande
+      // livrée (TCP ou SMS) ; FAILURE = dispatch impossible. L'ACK/confirmation détaillé reste
+      // dans l'onglet « Commandes moteur ». Les refus (REJECTED_SPEED) lèvent avant ce point.
+      try {
+        await this.dispatchCommand(tracker.imei, command, action, fleetId);
+        this.recordSystemActivity(action, tracker.vehicle, reason, requestedBy, source, fleetId, 'SUCCESS');
+      } catch (err) {
+        this.recordSystemActivity(action, tracker.vehicle, reason, requestedBy, source, fleetId, 'FAILURE');
+        throw err;
+      }
     }
 
     return command;
+  }
+
+  /** Palier B — trace la commande moteur (coupe-circuit) dans le journal des actions système. */
+  private recordSystemActivity(
+    action: EngineAction,
+    vehicle: { id: string; plate: string | null } | null,
+    reason: string | null,
+    requestedBy: RequestedBy,
+    source: 'MANUAL' | 'SCHEDULER',
+    fleetId: string,
+    status: 'SUCCESS' | 'FAILURE',
+  ): void {
+    this.systemActivity.record({
+      category: 'ENGINE',
+      action: action === EngineAction.CUT ? 'engine_cut' : 'engine_restore',
+      status,
+      actor: source === 'SCHEDULER' ? 'planning' : 'utilisateur',
+      target: vehicle?.plate ?? vehicle?.id ?? null,
+      detail: reason ?? (action === EngineAction.CUT ? 'Coupure moteur' : 'Rétablissement moteur'),
+      fleetId,
+      triggeredByUserId: source === 'MANUAL' ? requestedBy.userId : null,
+    });
   }
 
   /**

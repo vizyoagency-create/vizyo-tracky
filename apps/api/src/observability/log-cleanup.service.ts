@@ -23,18 +23,23 @@ export class LogCleanupService {
     const wireThreshold = new Date(Date.now() - wireDays * DAY_MS);
     const errorThreshold = new Date(Date.now() - errorDays * DAY_MS);
 
-    const [wireResult, errorResult] = await Promise.all([
+    const [wireResult, errorResult, sysActivityResult] = await Promise.all([
       this.prisma.wireLog.deleteMany({
         where: { createdAt: { lt: wireThreshold } },
       }),
       this.prisma.errorLog.deleteMany({
         where: { createdAt: { lt: errorThreshold } },
       }),
+      // Palier B — le journal des actions système (arrière-plan) suit la même rétention que les
+      // error logs (ERROR_LOGS_RETENTION_DAYS) pour ne pas croître indéfiniment.
+      this.prisma.systemActivityLog.deleteMany({
+        where: { createdAt: { lt: errorThreshold } },
+      }),
     ]);
 
     this.logger.log(
-      { wireDeleted: wireResult.count, errorDeleted: errorResult.count },
-      `Log cleanup: ${wireResult.count} wire logs (>${wireDays}d), ${errorResult.count} error logs (>${errorDays}d) deleted`,
+      { wireDeleted: wireResult.count, errorDeleted: errorResult.count, sysActivityDeleted: sysActivityResult.count },
+      `Log cleanup: ${wireResult.count} wire logs (>${wireDays}d), ${errorResult.count} error logs (>${errorDays}d), ${sysActivityResult.count} system-activity logs (>${errorDays}d) deleted`,
     );
   }
 }

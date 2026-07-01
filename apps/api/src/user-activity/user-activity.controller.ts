@@ -5,6 +5,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { ErrorLogger } from '../observability/error-logger.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 import { ActivityBatchDto, ClientErrorDto } from './dto/track-event.dto';
 import { UserActivityService } from './user-activity.service';
 
@@ -19,6 +20,7 @@ export class UserActivityController {
   constructor(
     private readonly svc: UserActivityService,
     private readonly errorLogger: ErrorLogger,
+    private readonly system: SystemActivityService,
   ) {}
 
   @Post('activity/batch')
@@ -98,6 +100,26 @@ export class UserActivityController {
       before,
       action,
       status,
+    });
+  }
+
+  /**
+   * Palier B — journal des actions AUTOMATIQUES / système (arrière-plan) :
+   * e-mails, SMS, notifications push, commandes moteur, purges de rétention,
+   * rapports IA planifiés. Distinct du feed d'activité MANUELLE (front).
+   */
+  @Get('admin/activity/system')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN)
+  systemFeed(
+    @Query('limit') limit?: string,
+    @Query('before') before?: string,
+    @Query('category') category?: string,
+  ) {
+    return this.system.getFeed({
+      limit: limit ? parseInt(limit, 10) || 60 : 60,
+      before,
+      category,
     });
   }
 }

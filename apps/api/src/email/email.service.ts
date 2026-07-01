@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
 import type { Env } from '../config/env.validation';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 
 /**
  * V1.5 (Sprint J) — Service d'envoi d'emails via Resend.
@@ -30,7 +31,10 @@ export class EmailService {
   private readonly fromAddress: string;
   private readonly enabled: boolean;
 
-  constructor(private readonly config: ConfigService<Env, true>) {
+  constructor(
+    private readonly config: ConfigService<Env, true>,
+    private readonly systemActivity: SystemActivityService,
+  ) {
     const apiKey = this.config.get('RESEND_API_KEY', { infer: true });
     this.fromAddress = this.config.get('RESEND_FROM', { infer: true });
     this.enabled = !!apiKey;
@@ -64,14 +68,36 @@ export class EmailService {
       });
       if (result.error) {
         this.logger.warn(`Email send failed to ${params.to}: ${result.error.message}`);
+        this.recordActivity(params, false, result.error.message);
         return { ok: false, error: result.error.message };
       }
+      this.recordActivity(params, true);
       return { ok: true, id: result.data?.id };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`Email send threw to ${params.to}: ${message}`);
+      this.recordActivity(params, false, message);
       return { ok: false, error: message };
     }
+  }
+
+  /**
+   * Palier B — trace l'e-mail envoyé dans le journal des actions système (arrière-plan).
+   * Le mode no-op (dev, sans RESEND_API_KEY) n'est PAS journalisé (aucun envoi réel). Couvre
+   * invitations, reset MDP, rapports hebdo, alertes/escalades — toutes passent par `send()`.
+   */
+  private recordActivity(params: SendEmailParams, ok: boolean, error?: string): void {
+    const fleetId = typeof params.context?.['fleetId'] === 'string' ? (params.context['fleetId'] as string) : null;
+    this.systemActivity.record({
+      category: 'EMAIL',
+      action: 'email_sent',
+      status: ok ? 'SUCCESS' : 'FAILURE',
+      actor: 'system',
+      target: params.to,
+      detail: params.subject,
+      fleetId,
+      meta: error ? { error } : undefined,
+    });
   }
 
   /**

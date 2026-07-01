@@ -11,7 +11,7 @@ describe('UserActivityController', () => {
   beforeEach(() => {
     svc = { ingestBatch: jest.fn().mockResolvedValue(undefined) };
     errorLogger = { record: jest.fn().mockResolvedValue('id') };
-    controller = new UserActivityController(svc as any, errorLogger as any);
+    controller = new UserActivityController(svc as any, errorLogger as any, { getFeed: jest.fn() } as any);
   });
 
   it('reportError enregistre une erreur frontend enrichie (user/page/session/device)', async () => {

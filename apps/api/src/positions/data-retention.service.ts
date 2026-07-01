@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import type { Env } from '../config/env.validation';
 import { PrismaService } from '../prisma/prisma.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -70,6 +71,7 @@ export class DataRetentionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService<Env, true>,
+    private readonly systemActivity: SystemActivityService,
   ) {}
 
   @Cron('0 30 3 * * *')
@@ -154,6 +156,19 @@ export class DataRetentionService {
     this.logger.log(
       `[retention] SUPPRESSION REELLE : ${deletedCount} position(s) > ${horizon}j supprimee(s) par lots (cible ${toDeleteCount}).`,
     );
+    // Palier B — trace la purge RÉELLE (action système destructive) quand elle efface vraiment
+    // quelque chose. Le dry-run (POSITIONS_PURGE_ENABLED=false) n'atteint jamais cette branche.
+    if (deletedCount > 0) {
+      this.systemActivity.record({
+        category: 'RETENTION',
+        action: 'positions_purged',
+        status: 'SUCCESS',
+        actor: 'retention-cron',
+        target: `${deletedCount} position(s)`,
+        detail: `Purge > ${horizon}j (cible ${toDeleteCount})`,
+        meta: { deletedCount, toDeleteCount, retentionDays: cfg.retentionDays, archiveDays: cfg.archiveDays },
+      });
+    }
     return {
       disabled: false,
       mode: 'REAL',

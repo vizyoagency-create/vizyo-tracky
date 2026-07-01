@@ -1007,6 +1007,38 @@ model AiBudget {
   @@map("ai_budget")
 }
 
+/// Palier B — Journal des actions AUTOMATIQUES / système (arrière-plan), distinct de
+/// UserActivity (actions manuelles front). Alimenté par les primitives d'envoi (email / SMS /
+/// push), les commandes moteur, la purge de rétention et les rapports IA planifiés. Couche
+/// « feed » lisible ; l'audit technique détaillé reste dans smsLog / engineControlCommand /
+/// aiUsageLog. Purgé par LogCleanupService (rétention ERROR_LOGS_RETENTION_DAYS).
+model SystemActivityLog {
+  id                String   @id @default(uuid()) @db.Uuid
+  createdAt         DateTime @default(now())
+  /// 'EMAIL' | 'SMS' | 'PUSH' | 'ENGINE' | 'RETENTION' | 'AI_REPORT'
+  category          String
+  /// Libellé court machine ('email_sent', 'engine_cut', 'positions_purged'…).
+  action            String
+  /// 'SUCCESS' | 'FAILURE' | 'SKIPPED'
+  status            String   @default("SUCCESS")
+  /// Acteur d'origine : 'system' | 'planning' | nom d'un cron | nom d'utilisateur.
+  actor             String?
+  /// Cible lisible : destinataire (masqué), plaque véhicule, résumé…
+  target            String?
+  /// Détail lisible (sujet d'e-mail, motif, compteur…).
+  detail            String?
+  fleetId           String?  @db.Uuid
+  /// Utilisateur déclencheur si l'action découle d'un acte manuel (sinon null = auto/système).
+  triggeredByUserId String?  @db.Uuid
+  durationMs        Int?
+  meta              Json?
+
+  @@index([createdAt])
+  @@index([category, createdAt])
+  @@index([fleetId, createdAt])
+  @@map("system_activity_logs")
+}
+
 enum ActivityReportStatus {
   PENDING
   READY

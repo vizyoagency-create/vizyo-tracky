@@ -12,6 +12,9 @@ function makeConfig(overrides: Record<string, unknown> = {}) {
   return { get: (k: string) => values[k] } as never;
 }
 
+/** Mock du journal des actions système (fire-and-forget, jamais awaité). */
+const sysAct = { record: jest.fn() } as never;
+
 /** Mock Prisma : compteurs de fenetre + flottes + snapshot + delete par lots. */
 function makePrisma() {
   return {
@@ -34,7 +37,7 @@ function makePrisma() {
 describe('DataRetentionService — retention positions (Sprint 6)', () => {
   it('DRY-RUN par defaut : calcule le snapshot mais ne supprime AUCUNE position', async () => {
     const prisma = makePrisma();
-    const svc = new DataRetentionService(prisma, makeConfig({ POSITIONS_PURGE_ENABLED: 'false' }));
+    const svc = new DataRetentionService(prisma, makeConfig({ POSITIONS_PURGE_ENABLED: 'false' }), sysAct);
 
     const res = await svc.runPositionsRetention();
 
@@ -51,7 +54,7 @@ describe('DataRetentionService — retention positions (Sprint 6)', () => {
     const prisma = makePrisma();
     const exec = (prisma as unknown as { $executeRawUnsafe: jest.Mock }).$executeRawUnsafe;
     exec.mockResolvedValue(3); // < batch => un seul lot
-    const svc = new DataRetentionService(prisma, makeConfig({ POSITIONS_PURGE_ENABLED: 'true' }));
+    const svc = new DataRetentionService(prisma, makeConfig({ POSITIONS_PURGE_ENABLED: 'true' }), sysAct);
 
     const res = await svc.runPositionsRetention();
 
@@ -69,7 +72,7 @@ describe('DataRetentionService — retention positions (Sprint 6)', () => {
     const prisma = makePrisma();
     const exec = (prisma as unknown as { $executeRawUnsafe: jest.Mock }).$executeRawUnsafe;
     exec.mockResolvedValue(10_000); // lot toujours plein => doit s'arreter a la borne
-    const svc = new DataRetentionService(prisma, makeConfig({ POSITIONS_PURGE_ENABLED: 'true' }));
+    const svc = new DataRetentionService(prisma, makeConfig({ POSITIONS_PURGE_ENABLED: 'true' }), sysAct);
 
     const res = await svc.runPositionsRetention();
 
@@ -80,7 +83,7 @@ describe('DataRetentionService — retention positions (Sprint 6)', () => {
 
   it('POSITIONS_RETENTION_DAYS=0 : desactive, ni snapshot ni suppression', async () => {
     const prisma = makePrisma();
-    const svc = new DataRetentionService(prisma, makeConfig({ POSITIONS_RETENTION_DAYS: 0 }));
+    const svc = new DataRetentionService(prisma, makeConfig({ POSITIONS_RETENTION_DAYS: 0 }), sysAct);
 
     const res = await svc.runPositionsRetention();
 
@@ -91,7 +94,7 @@ describe('DataRetentionService — retention positions (Sprint 6)', () => {
 
   it('recomputeSnapshot : calcule le snapshot sans rien supprimer (refresh lecture seule)', async () => {
     const prisma = makePrisma();
-    const svc = new DataRetentionService(prisma, makeConfig({ POSITIONS_PURGE_ENABLED: 'true' }));
+    const svc = new DataRetentionService(prisma, makeConfig({ POSITIONS_PURGE_ENABLED: 'true' }), sysAct);
 
     const at = await svc.recomputeSnapshot();
 

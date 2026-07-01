@@ -10,6 +10,8 @@
 export type ActivityType =
   | 'PAGE_VIEW'
   | 'CLICK'
+  | 'SCROLL'
+  | 'FORM_SUBMIT'
   | 'SESSION_START'
   | 'SESSION_END'
   | 'SESSION_RESUME'

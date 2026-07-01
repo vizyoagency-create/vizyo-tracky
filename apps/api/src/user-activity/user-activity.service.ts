@@ -33,6 +33,8 @@ const RETENTION_DAYS = 90;
 const VALID_TYPES = new Set([
   'PAGE_VIEW',
   'CLICK',
+  'SCROLL',
+  'FORM_SUBMIT',
   'SESSION_START',
   'SESSION_END',
   'SESSION_RESUME',

@@ -26,6 +26,7 @@ describe('tenant-scope résiduels (fail-closed)', () => {
         {} as never,
         {} as never,
         {} as never,
+        {} as never,
       );
 
     it('non-super sans fleetId → [] et aucune requête DB', async () => {

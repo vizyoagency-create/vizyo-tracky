@@ -16,6 +16,7 @@ import type {
 import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { AnthropicClient } from '../ai/anthropic.client';
 import { PrismaService } from '../prisma/prisma.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 import { ACTIVITY_REPORT_SCHEMA, ACTIVITY_REPORT_SYSTEM } from './activity-report.prompt';
 
 /** Auteur d'une génération : un super-admin (id) ou le système (null, cas planifié). */
@@ -49,6 +50,7 @@ export class ActivityReportService {
     private readonly prisma: PrismaService,
     private readonly anthropic: AnthropicClient,
     private readonly aiUsage: AiUsageService,
+    private readonly systemActivity: SystemActivityService,
   ) {}
 
   // ─── Génération ────────────────────────────────────────────────────────────
@@ -169,7 +171,18 @@ export class ActivityReportService {
       const from = new Date(to.getTime() - dueMs);
       const userIds = await this.pickScheduledUsers(row.scope as ActivityReportScope, from, to);
       if (userIds.length > 0) {
-        await this.generate({ id: null, fleetId: null }, { userIds, from: from.toISOString(), to: to.toISOString() }, 'scheduled');
+        const report = await this.generate({ id: null, fleetId: null }, { userIds, from: from.toISOString(), to: to.toISOString() }, 'scheduled');
+        // Palier B — trace la génération PLANIFIÉE (action IA en arrière-plan). La génération
+        // manuelle (super-admin) est une action front, pas journalisée ici.
+        this.systemActivity.record({
+          category: 'AI_REPORT',
+          action: 'activity_report_generated',
+          status: report.status === 'FAILED' ? 'FAILURE' : 'SUCCESS',
+          actor: 'planning',
+          target: report.title ?? `${userIds.length} utilisateur(s)`,
+          detail: `Rapport IA ${row.frequency} — ${userIds.length} utilisateur(s) observé(s)`,
+          meta: { reportId: report.id, frequency: row.frequency, scope: row.scope, costUsd: report.costUsd },
+        });
       }
       await this.prisma.activityReportSchedule.update({ where: { id: row.id }, data: { lastRunAt: to } });
     } catch (e) {
