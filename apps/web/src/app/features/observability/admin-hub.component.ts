@@ -215,6 +215,19 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
             <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
           </div>
         </a>
+
+        <!-- ── COÛTS IA (wide) — Palier Coûts IA ── -->
+        <a routerLink="/admin/ai-usage" class="card card-wide" style="--i:13">
+          <span class="accent accent-amber"></span>
+          <div class="body body-row">
+            <div class="ico ico-amber"><lucide-icon [img]="Zap" [size]="20"></lucide-icon></div>
+            <div class="body-text">
+              <h3>Coûts IA</h3>
+              <p class="desc">Dépenses du copilote IA (Claude) : coût par utilisateur, flotte, type et jour, tendance du mois et journal des appels — avec budget mensuel et alerte rouge à l'approche du plafond.</p>
+            </div>
+            <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
+          </div>
+        </a>
       </div>
     </div>
   `,

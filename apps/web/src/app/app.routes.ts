@@ -265,6 +265,15 @@ export const routes: Routes = [
         data: { title: 'Activité utilisateurs' },
       },
       {
+        // Palier « Coûts IA » — supervision des dépenses du copilote IA (super-admin).
+        path: 'admin/ai-usage',
+        pathMatch: 'full',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/observability/admin-ai-usage.component').then((m) => m.AdminAiUsageComponent),
+        data: { title: 'Coûts IA' },
+      },
+      {
         // Sprint 4 — N1 « flottes éligibles » (super-admin/prestataire) : autorise les
         // flottes au Mode assistance. SUPER_ADMIN only.
         path: 'admin/audio-eligibility',
