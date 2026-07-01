@@ -31,6 +31,7 @@ import { FleetSelectorComponent } from '../shared/ui/super-admin-context/fleet-s
 import { AuthService } from '../core/services/auth.service';
 import { NetworkStatusService } from '../core/services/network-status.service';
 import { RealtimeService } from '../core/services/realtime.service';
+import { ActivityTrackerService } from '../core/services/activity-tracker.service';
 import { NotificationsApiService } from '../core/services/notifications.service';
 import { FleetCacheService } from '../core/services/fleet-cache.service';
 import { OnboardingService } from '../core/services/onboarding.service';
@@ -752,6 +753,7 @@ export class DashboardLayoutComponent {
     return this.auth.user()?.role === 'SUPER_ADMIN';
   }
   private readonly realtime = inject(RealtimeService);
+  private readonly activityTracker = inject(ActivityTrackerService);
   protected readonly themeService = inject(ThemeService);
   protected readonly userMenuOpen = signal(false);
 
@@ -785,6 +787,7 @@ export class DashboardLayoutComponent {
   protected confirmLogout(): void {
     this.userMenuOpen.set(false);
     if (confirm('Se déconnecter de Vizyo Tracky ?')) {
+      this.activityTracker.markSessionEnd('manual');
       this.realtime.disconnect();
       this.auth.logout();
       this.router.navigate(['/login']);
@@ -792,6 +795,7 @@ export class DashboardLayoutComponent {
   }
 
   protected logout(): void {
+    this.activityTracker.markSessionEnd('manual');
     this.realtime.disconnect();
     this.auth.logout();
     this.router.navigate(['/login']);

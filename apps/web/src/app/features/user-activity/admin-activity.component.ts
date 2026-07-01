@@ -58,11 +58,11 @@ type Period = '24h' | '7d' | '30d';
         </button>
       </div>
 
-      <!-- Tabs -->
-      <div class="flex items-center gap-1 border-b border-border-subtle">
+      <!-- Tabs (défilables horizontalement sur mobile — même pattern que véhicule détail / admin-sms) -->
+      <div class="flex items-center gap-1 border-b border-border-subtle overflow-x-auto scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">
         @for (t of tabs; track t.id) {
           <button (click)="setTab(t.id)"
-                  class="px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors"
+                  class="px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors shrink-0 whitespace-nowrap"
                   [class]="t.id === tab()
                     ? 'border-tracky text-fg-primary'
                     : 'border-transparent text-fg-tertiary hover:text-fg-secondary'">

@@ -218,7 +218,7 @@ export class ActivityReportService {
           take: 20,
         }),
         this.prisma.userActivity.findMany({
-          where: { userId: u.id, type: { in: ['PAGE_VIEW', 'CLICK'] }, createdAt: { gte: from, lte: to } },
+          where: { userId: u.id, type: { in: ['PAGE_VIEW', 'CLICK', 'SESSION_START', 'SESSION_END'] }, createdAt: { gte: from, lte: to } },
           orderBy: { createdAt: 'asc' },
           take: JOURNEY_CAP,
           select: { type: true, route: true, routeLabel: true, target: true, durationMs: true },
@@ -230,11 +230,13 @@ export class ActivityReportService {
         sessionCount,
         pages: pv.map((p) => ({ route: p.route, views: p._count._all, totalSec: Math.round((p._sum.durationMs ?? 0) / 1000) })),
         topClicks: clicks.map((c) => ({ target: c.target, count: c._count._all })),
-        journey: journey.map((j) =>
-          j.type === 'PAGE_VIEW'
-            ? `page:${j.routeLabel ?? j.route ?? '?'}${j.durationMs ? ` (${Math.round(j.durationMs / 1000)}s)` : ''}`
-            : `clic:${j.target ?? '?'}`,
-        ),
+        journey: journey.map((j) => {
+          if (j.type === 'PAGE_VIEW') return `page:${j.routeLabel ?? j.route ?? '?'}${j.durationMs ? ` (${Math.round(j.durationMs / 1000)}s actif)` : ''}`;
+          if (j.type === 'CLICK') return `clic:${j.target ?? '?'}`;
+          if (j.type === 'SESSION_START') return 'session:début';
+          if (j.type === 'SESSION_END') return `session:fin (${j.target ?? 'auto'})`;
+          return j.type;
+        }),
         totalEvents: journey.length,
       });
     }

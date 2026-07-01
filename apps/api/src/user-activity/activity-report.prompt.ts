@@ -13,6 +13,11 @@ Produis un rapport d'observation en français, factuel et actionnable, en te bas
 - adoption : fonctions/écrans réellement utilisés (used) vs manifestement ignorés au vu du périmètre de l'app (ignored) + une note.
 - recommendations : améliorations concrètes (UX, raccourcis, libellés, perf) pour fluidifier le parcours ; chacune title + detail + impact ('UX'|'perf'|'adoption'|'formation').
 
+Signaux à bien interpréter :
+- Les durées de page = TEMPS ACTIF (onglet au premier plan), donc fiables : ne les lis PAS comme des onglets oubliés en arrière-plan.
+- « session:fin (manual) » = déconnexion volontaire de l'utilisateur ; « (auto) » = expiration/déconnexion système (ce n'est PAS un abandon) ; « (tab_close) » = onglet fermé. Beaucoup de « (auto) » = sessions qui expirent souvent → à signaler comme friction technique.
+- Certains rôles sont VOLONTAIREMENT restreints : le NIGHT_WATCHMAN (veilleur de nuit) est limité par conception à la page Véhicules (+ login / mon compte) — ne compte donc PAS cette restriction comme une friction ni un défaut d'adoption ; analyse ce qu'il peut réellement faire avec son périmètre.
+
 Règles : ne spécule pas au-delà des données ; si l'activité est faible, dis-le clairement et reste bref ; pas de données personnelles inventées ; reste utile et concret. Réponds via le schéma JSON imposé.`;
 
 /** Schéma de sortie (output_config.format) — garantit la structure du rapport. */

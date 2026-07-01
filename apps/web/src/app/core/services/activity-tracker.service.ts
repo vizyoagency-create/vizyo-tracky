@@ -47,8 +47,13 @@ export class ActivityTrackerService {
   private buffer: ActivityEventInput[] = [];
   private status: Status = 'ACTIVE';
   private currentRoute: string | null = null;
-  private pageEnterAt = 0;
+  // Durée d'une page = temps ACTIF (onglet au premier plan), pas le temps horloge :
+  // on accumule `pageActiveMs` et on ferme le segment courant quand l'onglet est caché.
+  private pageActiveMs = 0;
+  private lastVisibleAt = 0;
   private lastActivityAt = 0;
+  /** Raison à joindre au prochain SESSION_END : 'manual' (user) | 'auto' (système/expiration) | 'tab_close'. */
+  private pendingEndReason: string | null = null;
   private readonly deviceType = detectDeviceType();
 
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -66,12 +71,17 @@ export class ActivityTrackerService {
       if (this.auth.isAuthenticated()) this.start();
       else this.stop();
     });
-    // Présence pilotée par la visibilité de l'onglet.
+    // Présence + comptage du temps ACTIF pilotés par la visibilité de l'onglet.
     effect(() => {
       const visible = this.visibility.isVisible();
       if (!this.started) return;
-      if (visible) this.handleUserActivity();
-      else this.setStatus('AWAY');
+      if (visible) {
+        this.lastVisibleAt = Date.now(); // reprend le décompte actif de la page
+        this.handleUserActivity();
+      } else {
+        this.accrueActive(); // fige le temps actif quand l'onglet passe en arrière-plan
+        this.setStatus('AWAY');
+      }
     });
     this.destroyRef.onDestroy(() => this.stop());
   }
@@ -81,6 +91,15 @@ export class ActivityTrackerService {
     if (!this.started || !target) return;
     this.push({ type: 'CLICK', target, route: this.currentRoute ?? undefined });
     this.handleUserActivity();
+  }
+
+  /**
+   * Le shell signale une déconnexion VOLONTAIRE (clic « Se déconnecter ») avant de couper la
+   * session, pour que le SESSION_END porte la bonne raison. Sans appel, une coupure de session
+   * (expiration/token invalide) est journalisée comme 'auto'.
+   */
+  markSessionEnd(reason: string): void {
+    this.pendingEndReason = reason;
   }
 
   /**
@@ -108,7 +127,7 @@ export class ActivityTrackerService {
     this.status = 'ACTIVE';
     this.lastActivityAt = Date.now();
     this.currentRoute = this.router.url;
-    this.pageEnterAt = Date.now();
+    this.resetPageTiming();
     // Identifiant de corrélation session (côté client) : attaché aux requêtes
     // + aux erreurs pour relier une erreur à ce que faisait l'utilisateur.
     activityContext.sessionId = randomId();
@@ -142,7 +161,8 @@ export class ActivityTrackerService {
   private stop(): void {
     if (!this.started) return;
     this.handleNavigationDuration(); // clôt la page courante
-    this.push({ type: 'SESSION_END' });
+    this.push({ type: 'SESSION_END', target: this.pendingEndReason ?? 'auto' });
+    this.pendingEndReason = null;
     this.flush();
     this.routerSub?.unsubscribe();
     this.routerSub = null;
@@ -166,21 +186,41 @@ export class ActivityTrackerService {
     this.handleNavigationDuration();
     this.currentRoute = url;
     activityContext.route = url;
-    this.pageEnterAt = Date.now();
+    this.resetPageTiming();
     this.pushHeartbeat(); // met à jour la route courante côté serveur sans attendre 30s
     this.handleUserActivity();
   }
 
-  /** Émet le PAGE_VIEW de la page quittée avec sa durée (analytics). */
+  /** Émet le PAGE_VIEW de la page quittée avec sa durée ACTIVE (temps onglet au premier plan). */
   private handleNavigationDuration(): void {
     if (!this.currentRoute) return;
-    const durationMs = Math.max(0, Date.now() - this.pageEnterAt);
+    const durationMs = Math.min(this.currentPageActiveMs(), 86_400_000);
     this.push({
       type: 'PAGE_VIEW',
       route: this.currentRoute,
       routeLabel: labelForRoute(this.currentRoute),
       durationMs,
     });
+  }
+
+  /** (Ré)initialise le décompte de temps actif à l'entrée d'une page. */
+  private resetPageTiming(): void {
+    this.pageActiveMs = 0;
+    this.lastVisibleAt = this.visibility.isVisible() ? Date.now() : 0;
+  }
+
+  /** Fige le segment actif courant (onglet qui passe en arrière-plan). */
+  private accrueActive(): void {
+    if (this.lastVisibleAt > 0) {
+      this.pageActiveMs += Math.max(0, Date.now() - this.lastVisibleAt);
+      this.lastVisibleAt = 0;
+    }
+  }
+
+  /** Temps actif cumulé de la page courante (segments passés + segment visible en cours). */
+  private currentPageActiveMs(): number {
+    const live = this.lastVisibleAt > 0 ? Math.max(0, Date.now() - this.lastVisibleAt) : 0;
+    return this.pageActiveMs + live;
   }
 
   private handleUserActivity(): void {
@@ -239,7 +279,7 @@ export class ActivityTrackerService {
   private handleUnload(): void {
     if (!this.started) return;
     this.handleNavigationDuration();
-    this.push({ type: 'SESSION_END' });
+    this.push({ type: 'SESSION_END', target: 'tab_close' });
     const payload = { events: this.buffer, deviceType: this.deviceType };
     this.buffer = [];
     try {
