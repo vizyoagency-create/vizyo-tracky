@@ -61,7 +61,18 @@ export class RedisIoAdapter extends IoAdapter {
   }
 
   createIOServer(port: number, options?: ServerOptions): Server {
-    const server = super.createIOServer(port, options) as Server;
+    // Tolérance ping ÉLARGIE (cause racine des faux « live interrompu 45s »). Défauts socket.io :
+    // pingInterval 25s / pingTimeout 20s → fenêtre de coupure ~45s (= signature EXACTE observée en
+    // prod : tous les incidents pile à 45s). Sous charge VPS (2 vCPU), l'API rate un pong bref → le
+    // socket est coupé → 45s de gap live. On porte pingTimeout à 60s (tolérance ~85s avant coupure) :
+    // un pic de charge court ne tue plus le live. Un client réellement mort est détecté un peu plus
+    // tard, mais il a sa propre reconnexion → sans impact utilisateur.
+    const tuned = {
+      ...(options ?? {}),
+      pingInterval: 25_000,
+      pingTimeout: 60_000,
+    } as ServerOptions;
+    const server = super.createIOServer(port, tuned) as Server;
     if (this.adapterConstructor) {
       server.adapter(this.adapterConstructor as Parameters<Server['adapter']>[0]);
     }
