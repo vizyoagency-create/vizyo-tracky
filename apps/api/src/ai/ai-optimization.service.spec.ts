@@ -33,11 +33,24 @@ function makeForecast(over: Record<string, unknown> = {}) {
 }
 
 function makeAnthropic(result: unknown) {
-  return { completeJson: jest.fn().mockResolvedValue(result), isConfigured: () => true } as never;
+  // completeJson renvoie désormais { result, usage, model, latencyMs } (palier « Coûts IA »).
+  return {
+    completeJson: jest.fn().mockResolvedValue({
+      result,
+      usage: { inputTokens: 0, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0 },
+      model: 'claude-opus-4-8',
+      latencyMs: 1,
+    }),
+    isConfigured: () => true,
+  } as never;
 }
 
 function makeErrors() {
   return { record: jest.fn().mockResolvedValue('log-1') } as never;
+}
+
+function makeAiUsage() {
+  return { record: jest.fn().mockResolvedValue(undefined) } as never;
 }
 
 function build(over: {
@@ -48,6 +61,7 @@ function build(over: {
   forecast?: unknown;
   anthropic?: unknown;
   errors?: unknown;
+  aiUsage?: unknown;
 } = {}) {
   return new AiOptimizationService(
     (over.prisma ?? makePrisma()) as never,
@@ -57,6 +71,7 @@ function build(over: {
     (over.forecast ?? makeForecast()) as never,
     (over.anthropic ?? makeAnthropic({ proposals: [] })) as never,
     (over.errors ?? makeErrors()) as never,
+    (over.aiUsage ?? makeAiUsage()) as never,
   );
 }
 

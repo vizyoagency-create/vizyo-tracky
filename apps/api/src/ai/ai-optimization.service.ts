@@ -25,6 +25,7 @@ import { ForecastService } from '../agenda/forecast.service';
 import { ReservationsService } from '../agenda/reservations.service';
 import { VehicleEventsService } from '../agenda/vehicle-events.service';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
+import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
@@ -108,6 +109,7 @@ export class AiOptimizationService {
     private readonly forecast: ForecastService,
     private readonly anthropic: AnthropicClient,
     private readonly errors: ErrorLogger,
+    private readonly aiUsage: AiUsageService,
   ) {}
 
   // ─── Capacité 1 — enrichissement de capacité ───────────────────────────────
@@ -180,13 +182,21 @@ export class AiOptimizationService {
 
     let ai: CapacityAiOutput;
     try {
-      ai = await this.anthropic.completeJson<CapacityAiOutput>({
+      const call = await this.anthropic.completeJson<CapacityAiOutput>({
         system: renderCapacitySystem(metier),
         userPayload: payload,
         schema: CAPACITY_SCHEMA,
         // Une proposition par véhicule : marge pour une grande flotte sans risquer le
         // timeout HTTP (16k = plafond non-stream confortable, ~200 véhicules).
         maxTokens: 16000,
+      });
+      ai = call.result;
+      // Palier « Coûts IA » — journalise l'usage (non bloquant).
+      void this.aiUsage.record({
+        userId: user.id, fleetId, action: 'capacity', model: call.model,
+        inputTokens: call.usage.inputTokens, outputTokens: call.usage.outputTokens,
+        cacheWriteTokens: call.usage.cacheWriteTokens, cacheReadTokens: call.usage.cacheReadTokens,
+        latencyMs: call.latencyMs, ok: true,
       });
     } catch (err) {
       await this.recordAiFailure(err, 'capacity', { userId: user.id, fleetId, vehicleCount: vehicles.length });
@@ -319,11 +329,18 @@ export class AiOptimizationService {
 
     let ai: PlacementAiOutput;
     try {
-      ai = await this.anthropic.completeJson<PlacementAiOutput>({
+      const call = await this.anthropic.completeJson<PlacementAiOutput>({
         system: renderPlacementSystem(payload.metier),
         userPayload: payload,
         schema: PLACEMENT_SCHEMA,
         maxTokens: 4096,
+      });
+      ai = call.result;
+      void this.aiUsage.record({
+        userId: user.id, fleetId: user.fleetId ?? null, action: 'placement', model: call.model,
+        inputTokens: call.usage.inputTokens, outputTokens: call.usage.outputTokens,
+        cacheWriteTokens: call.usage.cacheWriteTokens, cacheReadTokens: call.usage.cacheReadTokens,
+        latencyMs: call.latencyMs, ok: true,
       });
     } catch (err) {
       await this.recordAiFailure(err, 'placement', { userId: user.id, fleetId: user.fleetId ?? undefined });

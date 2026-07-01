@@ -971,6 +971,42 @@ model ErrorLog {
   @@map("error_logs")
 }
 
+/// Palier « Coûts IA » — un enregistrement par appel Claude RÉUSSI (les échecs vont dans ErrorLog).
+/// Sert au tableau de bord super-admin : coût par requête / jour / mois / flotte / utilisateur.
+model AiUsageLog {
+  id               String   @id @default(uuid()) @db.Uuid
+  createdAt        DateTime @default(now())
+  userId           String?  @db.Uuid
+  fleetId          String?  @db.Uuid
+  model            String
+  action           String // 'capacity' | 'placement'
+  inputTokens      Int      @default(0)
+  outputTokens     Int      @default(0)
+  cacheWriteTokens Int      @default(0)
+  cacheReadTokens  Int      @default(0)
+  /// Coût estimé en USD (tarifs figés côté serveur au moment de l'appel).
+  costUsd          Float    @default(0)
+  latencyMs        Int?
+  ok               Boolean  @default(true)
+
+  @@index([createdAt])
+  @@index([fleetId, createdAt])
+  @@index([userId, createdAt])
+  @@index([action])
+  @@map("ai_usage_logs")
+}
+
+/// Palier « Coûts IA » — budget mensuel (singleton) posé par le super-admin. Le tableau de bord
+/// vire au rouge quand la dépense du mois approche/dépasse ce plafond. 0 = pas de budget défini.
+model AiBudget {
+  id               String   @id @default(uuid()) @db.Uuid
+  monthlyBudgetEur Float    @default(0)
+  updatedAt        DateTime @updatedAt
+  updatedByUserId  String?  @db.Uuid
+
+  @@map("ai_budget")
+}
+
 /// V1.5 (Sprint I) — Etat de la sequence d'init SMS d'un tracker neuf.
 /// Le SUPER_ADMIN lance le workflow depuis /admin/sms/provision/:imei,
 /// le service envoie 9 SMS sequentiels avec ACK entre chaque etape.

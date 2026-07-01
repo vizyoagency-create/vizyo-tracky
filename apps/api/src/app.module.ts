@@ -8,6 +8,7 @@ import { LoggerModule } from 'nestjs-pino';
 import type { Env } from './config/env.validation';
 import { AgendaModule } from './agenda/agenda.module';
 import { AiModule } from './ai/ai.module';
+import { AiUsageModule } from './ai-usage/ai-usage.module';
 import { AlertsModule } from './alerts/alerts.module';
 import { AudioMonitoringModule } from './audio-monitoring/audio-monitoring.module';
 import { AuthClientModule } from './auth-client/auth-client.module';
@@ -128,6 +129,8 @@ import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.modul
     // Sprint 9 — Copilote IA d'optimisation (capacité + placement). Inactif sans
     // ANTHROPIC_API_KEY (endpoints 503). L'IA propose, l'app valide.
     AiModule,
+    // Palier « Coûts IA » — journalise l'usage/coût de chaque appel IA + budget (super-admin).
+    AiUsageModule,
   ],
   controllers: [HealthController],
   providers: [

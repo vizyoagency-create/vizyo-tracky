@@ -40,12 +40,19 @@ describe('AnthropicClient — couche wire (Sprint 9)', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('happy path : renvoie le JSON parsé + body bien formé (model, output_config.format, adaptive, caching, headers)', async () => {
-    fetchMock.mockResolvedValue(res({ json: { stop_reason: 'end_turn', content: [{ type: 'text', text: '{"x":42}' }] } }));
+  it('happy path : renvoie le JSON parsé + usage + body bien formé (model, output_config.format, adaptive, caching, headers)', async () => {
+    fetchMock.mockResolvedValue(res({ json: {
+      stop_reason: 'end_turn',
+      model: 'claude-opus-4-8',
+      content: [{ type: 'text', text: '{"x":42}' }],
+      usage: { input_tokens: 100, output_tokens: 20, cache_read_input_tokens: 80 },
+    } }));
     const client = new AnthropicClient();
 
     const out = await client.completeJson<{ x: number }>(REQ);
-    expect(out).toEqual({ x: 42 });
+    expect(out.result).toEqual({ x: 42 });
+    expect(out.usage).toEqual({ inputTokens: 100, outputTokens: 20, cacheWriteTokens: 0, cacheReadTokens: 80 });
+    expect(out.model).toBe('claude-opus-4-8');
 
     const [url, opts] = fetchMock.mock.calls[0];
     expect(url).toBe('https://api.anthropic.com/v1/messages');

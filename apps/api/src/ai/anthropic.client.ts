@@ -48,6 +48,22 @@ export interface AnthropicJsonRequest {
   maxTokens?: number;
 }
 
+/** Consommation de tokens renvoyée par l'API — base du calcul de coût (palier « Coûts IA »). */
+export interface AnthropicUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheWriteTokens: number;
+  cacheReadTokens: number;
+}
+
+/** Résultat d'un appel : sortie JSON + consommation + modèle + latence. */
+export interface AnthropicJsonResult<T> {
+  result: T;
+  usage: AnthropicUsage;
+  model: string;
+  latencyMs: number;
+}
+
 @Injectable()
 export class AnthropicClient {
   private readonly logger = new Logger(AnthropicClient.name);
@@ -61,7 +77,8 @@ export class AnthropicClient {
    * Un appel = une réponse JSON structurée. Adaptive thinking + effort high pour le
    * raisonnement ; prompt caching sur le system stable.
    */
-  async completeJson<T>(req: AnthropicJsonRequest): Promise<T> {
+  async completeJson<T>(req: AnthropicJsonRequest): Promise<AnthropicJsonResult<T>> {
+    const startedAt = Date.now();
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       throw new AiServiceError('no_key', 'Copilote IA non configuré (ANTHROPIC_API_KEY absente côté serveur).');
@@ -113,7 +130,14 @@ export class AnthropicClient {
 
     const data = (await res.json()) as {
       stop_reason?: string;
+      model?: string;
       content?: Array<{ type: string; text?: string }>;
+      usage?: {
+        input_tokens?: number;
+        output_tokens?: number;
+        cache_creation_input_tokens?: number;
+        cache_read_input_tokens?: number;
+      };
     };
     if (data.stop_reason === 'refusal') {
       throw new AiServiceError('refusal', "L'IA a refusé de traiter cette requête.");
@@ -122,10 +146,23 @@ export class AnthropicClient {
     if (!block?.text) {
       throw new AiServiceError('empty', 'Réponse IA vide.');
     }
+    let result: T;
     try {
-      return JSON.parse(block.text) as T;
+      result = JSON.parse(block.text) as T;
     } catch {
       throw new AiServiceError('parse', 'Réponse IA non conforme (JSON invalide).');
     }
+    const u = data.usage ?? {};
+    return {
+      result,
+      usage: {
+        inputTokens: u.input_tokens ?? 0,
+        outputTokens: u.output_tokens ?? 0,
+        cacheWriteTokens: u.cache_creation_input_tokens ?? 0,
+        cacheReadTokens: u.cache_read_input_tokens ?? 0,
+      },
+      model: data.model ?? MODEL,
+      latencyMs: Date.now() - startedAt,
+    };
   }
 }
