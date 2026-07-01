@@ -1007,6 +1007,53 @@ model AiBudget {
   @@map("ai_budget")
 }
 
+enum ActivityReportStatus {
+  PENDING
+  READY
+  FAILED
+}
+
+/// Palier 3 — Rapport d'observation IA sur l'activité d'un ou plusieurs utilisateurs.
+/// Généré à la demande (ou par planification), PERSISTÉ pour conserver + ré-exploiter
+/// (parcours + points de friction + adoption + recommandations). Le coût est aussi
+/// journalisé dans AiUsageLog (tableau de bord Coûts IA).
+model ActivityReport {
+  id              String               @id @default(uuid()) @db.Uuid
+  createdAt       DateTime             @default(now())
+  createdByUserId String?              @db.Uuid
+  /// Utilisateurs observés (UUIDs). Vide = tous les actifs (cas planification « ALL »).
+  targetUserIds   String[]             @db.Uuid
+  fromAt          DateTime
+  toAt            DateTime
+  status          ActivityReportStatus @default(READY)
+  /// 'manual' | 'scheduled'
+  origin          String               @default("manual")
+  title           String?
+  /// Contenu structuré (résumé, parcours, friction, adoption, recommandations).
+  content         Json?
+  error           String?
+  model           String?
+  costUsd         Float                @default(0)
+
+  @@index([createdAt])
+  @@map("activity_reports")
+}
+
+/// Palier 3 — Planification RÉGLABLE de la génération de rapports (singleton).
+model ActivityReportSchedule {
+  id              String    @id @default(uuid()) @db.Uuid
+  enabled         Boolean   @default(false)
+  /// 'daily' | 'weekly' | 'monthly'
+  frequency       String    @default("weekly")
+  /// Périmètre : 'ACTIVE' (utilisateurs actifs sur la période) | 'ALL'.
+  scope           String    @default("ACTIVE")
+  lastRunAt       DateTime?
+  updatedAt       DateTime  @updatedAt
+  updatedByUserId String?   @db.Uuid
+
+  @@map("activity_report_schedule")
+}
+
 /// V1.5 (Sprint I) — Etat de la sequence d'init SMS d'un tracker neuf.
 /// Le SUPER_ADMIN lance le workflow depuis /admin/sms/provision/:imei,
 /// le service envoie 9 SMS sequentiels avec ACK entre chaque etape.

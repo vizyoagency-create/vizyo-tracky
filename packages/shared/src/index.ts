@@ -18,6 +18,7 @@ export * from './dto/reservation.dto';
 export * from './dto/forecast.dto';
 export * from './dto/ai-optimization.dto';
 export * from './dto/ai-usage.dto';
+export * from './dto/activity-report.dto';
 export * from './events/ws-events';
 export * from './permissions';
 export * from './protocol';
