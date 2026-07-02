@@ -90,6 +90,8 @@ function toLocalInput(d: Date): string {
 
             @if (aiError()) { <div class="rs-alert rs-alert--err"><lucide-icon [img]="AlertIcon" [size]="13"></lucide-icon> {{ aiError() }}</div> }
             @if (aiNoMatch()) { <div class="rs-alert rs-alert--warn"><lucide-icon [img]="AlertIcon" [size]="13"></lucide-icon> {{ aiNotes() || 'Aucun véhicule ne couvre bien le besoin sur ce créneau.' }}</div> }
+            <!-- Transparence : véhicules écartés AVANT le raisonnement IA (résultats non faussés en silence) -->
+            @if (aiExcludedInfo()) { <div class="rs-alert rs-alert--info">{{ aiExcludedInfo() }}</div> }
             @if (aiProposals().length > 0) {
               <div class="rs-ai-list">
                 <span class="rs-ai-hint">Proposé par l'IA — touchez pour choisir :</span>
@@ -180,6 +182,7 @@ function toLocalInput(d: Date): string {
     .rs-alert { display: flex; align-items: center; gap: 7px; padding: 9px 11px; border-radius: 10px; font-size: 12px; }
     .rs-alert--err { background: rgba(239,68,68,.1); color: #EF4444; }
     .rs-alert--warn { background: rgba(245,158,11,.12); color: #B45309; }
+    .rs-alert--info { background: var(--bg-tertiary); color: var(--fg-secondary); }
     .rs-foot { display: flex; justify-content: flex-end; padding: 12px 0 max(6px, env(safe-area-inset-bottom)); }
     .rs-btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 16px; border-radius: 10px; font-size: 13px; font-weight: 700; }
     .rs-btn--primary { background: var(--tracky, #10B981); color: #fff; }
@@ -244,6 +247,8 @@ export class ReservationSheetComponent {
   protected readonly aiNoMatch = signal(false);
   protected readonly aiNotes = signal<string | null>(null);
   protected readonly aiProposals = signal<{ vehicleId: string; plate: string | null; seats: number | null; childSeats: number | null; score: number; reasoning: string }[]>([]);
+  /** Phrase « N véhicule(s) écarté(s) » (immobilisés / capacité inconnue), sinon null. */
+  protected readonly aiExcludedInfo = signal<string | null>(null);
 
   // File de validation
   protected readonly queueLoading = signal(false);
@@ -277,6 +282,16 @@ export class ReservationSheetComponent {
 
   private resetAi(): void {
     this.aiProposals.set([]); this.aiError.set(null); this.aiNoMatch.set(false); this.aiNotes.set(null);
+    this.aiExcludedInfo.set(null);
+  }
+
+  /** Compose la phrase de transparence sur les véhicules écartés avant le raisonnement IA. */
+  private excludedInfo(immobilized: number, unknownCapacity: number): string | null {
+    const parts: string[] = [];
+    if (immobilized > 0) parts.push(`${immobilized} immobilisé(s) (incident ou maintenance)`);
+    if (unknownCapacity > 0) parts.push(`${unknownCapacity} sans capacité renseignée (à compléter dans Parc & capacités)`);
+    if (parts.length === 0) return null;
+    return `Écartés d'office : ${parts.join(' · ')}.`;
   }
 
   private criteria() {
@@ -306,6 +321,7 @@ export class ReservationSheetComponent {
       this.aiProposals.set(res.proposals);
       this.aiNoMatch.set(res.noGoodMatch);
       this.aiNotes.set(res.notes ?? null);
+      this.aiExcludedInfo.set(this.excludedInfo(res.excludedImmobilized ?? 0, res.excludedUnknownCapacity ?? 0));
       if (res.proposals.length > 0) this.vehicleId.set(res.proposals[0].vehicleId); // pré-sélectionne le meilleur
     } catch (e) {
       this.aiError.set(this.errMsg(e));

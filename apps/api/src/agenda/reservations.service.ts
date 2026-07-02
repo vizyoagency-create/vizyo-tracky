@@ -26,6 +26,17 @@ const INCLUDE_PLATE = { vehicle: { select: { plate: true } } } as const;
 
 /** Statuts « bloquants » : occupent le véhicule (conflits + disponibilité). */
 const BLOCKING: VehicleEventStatus[] = [VehicleEventStatus.CONFIRMED, VehicleEventStatus.IN_PROGRESS];
+/** Statuts « actifs » d'un événement immobilisant (incident/maintenance non clôturé). */
+const IMMOBILIZING_ACTIVE: VehicleEventStatus[] = [
+  VehicleEventStatus.PLANNED,
+  VehicleEventStatus.OPEN,
+  VehicleEventStatus.IN_PROGRESS,
+];
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** Trajet ouvert (endedAt NULL) : ne bloque que les créneaux qui démarrent bientôt… */
+const OPEN_TRIP_NEAR_START_MS = 60 * 60 * 1000;
+/** …et seulement s'il n'est pas une anomalie jamais clôturée (> 24h). */
+const OPEN_TRIP_STALE_MS = 24 * 60 * 60 * 1000;
 /** Fenêtre récente pour le tri par sous-utilisation (auto-complétion). */
 const RECENT_WINDOW_MS = 28 * 24 * 60 * 60 * 1000;
 const UNDERUTILIZED_RATIO = 0.12;
@@ -101,13 +112,53 @@ export class ReservationsService {
     });
   }
 
+  /**
+   * Clauses « trajet en cours » (endedAt NULL), bornées : un véhicule qui roule MAINTENANT
+   * ne doit bloquer que les créneaux imminents (pas ceux de demain — sa fin est inconnue,
+   * pas infinie), et un trajet jamais clôturé (anomalie > 24h) ne doit plus rien bloquer.
+   */
+  private openTripOr(start: Date): Prisma.TripWhereInput[] {
+    const now = Date.now();
+    if (start.getTime() > now + OPEN_TRIP_NEAR_START_MS) return [];
+    return [{ endedAt: null, startedAt: { gte: new Date(now - OPEN_TRIP_STALE_MS) } }];
+  }
+
   /** Un trajet RÉEL chevauche-t-il le créneau (véhicule effectivement pris) ? */
   private async hasTripOverlap(vehicleId: string, start: Date, end: Date): Promise<boolean> {
     const t = await this.prisma.trip.findFirst({
-      where: { vehicleId, startedAt: { lt: end }, OR: [{ endedAt: null }, { endedAt: { gt: start } }] },
+      where: { vehicleId, startedAt: { lt: end }, OR: [{ endedAt: { gt: start } }, ...this.openTripOr(start)] },
       select: { id: true },
     });
     return !!t;
+  }
+
+  /**
+   * Véhicules immobilisés par un événement bloquant actif (incident/maintenance avec
+   * `blocksVehicle`) chevauchant [start,end). Fin effective si endAt absent : un incident
+   * bloque jusqu'à résolution, une maintenance all-day bloque sa journée.
+   */
+  private async findImmobilized(vehicleIds: string[], start: Date, end: Date): Promise<Set<string>> {
+    const out = new Set<string>();
+    if (vehicleIds.length === 0) return out;
+    const rows = await this.prisma.vehicleEvent.findMany({
+      where: {
+        vehicleId: { in: vehicleIds },
+        blocksVehicle: true,
+        type: { not: VehicleEventType.RESERVATION },
+        status: { in: IMMOBILIZING_ACTIVE },
+        startAt: { lt: end },
+      },
+      select: { vehicleId: true, type: true, startAt: true, endAt: true },
+    });
+    for (const r of rows) {
+      const effectiveEnd = r.endAt
+        ? r.endAt.getTime()
+        : r.type === VehicleEventType.INCIDENT
+          ? Number.POSITIVE_INFINITY
+          : r.startAt.getTime() + DAY_MS;
+      if (effectiveEnd > start.getTime()) out.add(r.vehicleId);
+    }
+    return out;
   }
 
   /** Charge une réservation en vérifiant le scope (flotte + périmètre véhicule). */
@@ -153,6 +204,7 @@ export class ReservationsService {
       startAt: r.startAt.toISOString(),
       endAt: r.endAt ? r.endAt.toISOString() : null,
       allDay: r.allDay,
+      blocksVehicle: r.blocksVehicle,
       odometerKm: r.odometerKm,
       planId: r.planId,
       linkedEventId: r.linkedEventId,
@@ -177,8 +229,6 @@ export class ReservationsService {
     if (scope.fleetId) where.fleetId = scope.fleetId;
     if (scope.ids !== 'ALL') where.id = { in: scope.ids };
     const c = this.sanitizeCriteria(query.criteria);
-    if (c.minSeats) where.seats = { gte: c.minSeats };
-    if (c.minChildSeats) where.childSeats = { gte: c.minChildSeats };
 
     const candidates = await this.prisma.vehicle.findMany({
       where,
@@ -186,21 +236,39 @@ export class ReservationsService {
       take: 2000,
     });
 
+    // Capacité filtrée EN JS (pas via `gte` Prisma, qui écarterait silencieusement les
+    // NULL) : les véhicules à capacité inconnue sont COMPTÉS et rendus visibles à l'UI.
+    let excludedUnknownCapacity = 0;
+    const capacityOk = candidates.filter((v) => {
+      if ((c.minSeats && v.seats == null) || (c.minChildSeats && v.childSeats == null)) {
+        excludedUnknownCapacity++;
+        return false;
+      }
+      if (c.minSeats && (v.seats ?? 0) < c.minSeats) return false;
+      if (c.minChildSeats && (v.childSeats ?? 0) < c.minChildSeats) return false;
+      return true;
+    });
+
     // Équipements : superset insensible à la casse (non exprimable en `hasEvery` Prisma).
     const required = (c.requiredFeatures ?? []).map((f) => f.trim().toLowerCase()).filter(Boolean);
     const matching =
       required.length === 0
-        ? candidates
-        : candidates.filter((v) => {
+        ? capacityOk
+        : capacityOk.filter((v) => {
             const have = new Set(v.features.map((f) => f.toLowerCase()));
             return required.every((r) => have.has(r));
           });
-    if (matching.length === 0) {
-      return { startAt: start.toISOString(), endAt: end.toISOString(), vehicles: [] };
-    }
+    const empty = (excludedImmobilized: number): SuggestReservationResultDto => ({
+      startAt: start.toISOString(),
+      endAt: end.toISOString(),
+      vehicles: [],
+      excludedUnknownCapacity,
+      excludedImmobilized,
+    });
+    if (matching.length === 0) return empty(0);
 
     const ids = matching.map((v) => v.id);
-    const [busyResas, busyTrips] = await Promise.all([
+    const [busyResas, busyTrips, immobilized] = await Promise.all([
       this.prisma.vehicleEvent.findMany({
         where: {
           vehicleId: { in: ids },
@@ -212,15 +280,19 @@ export class ReservationsService {
         select: { vehicleId: true },
       }),
       this.prisma.trip.findMany({
-        where: { vehicleId: { in: ids }, startedAt: { lt: end }, OR: [{ endedAt: null }, { endedAt: { gt: start } }] },
+        where: {
+          vehicleId: { in: ids },
+          startedAt: { lt: end },
+          OR: [{ endedAt: { gt: start } }, ...this.openTripOr(start)],
+        },
         select: { vehicleId: true },
       }),
+      this.findImmobilized(ids, start, end),
     ]);
     const busy = new Set<string>([...busyResas.map((b) => b.vehicleId), ...busyTrips.map((b) => b.vehicleId)]);
-    const free = matching.filter((v) => !busy.has(v.id));
-    if (free.length === 0) {
-      return { startAt: start.toISOString(), endAt: end.toISOString(), vehicles: [] };
-    }
+    const excludedImmobilized = matching.filter((v) => immobilized.has(v.id)).length;
+    const free = matching.filter((v) => !busy.has(v.id) && !immobilized.has(v.id));
+    if (free.length === 0) return empty(excludedImmobilized);
 
     const util = await this.recentUtilization(free.map((v) => v.id));
     const vehicles: SuggestedVehicleDto[] = free
@@ -238,7 +310,13 @@ export class ReservationsService {
       })
       .sort((a, b) => a.utilizationRatio - b.utilizationRatio); // sous-utilisés d'abord
 
-    return { startAt: start.toISOString(), endAt: end.toISOString(), vehicles };
+    return {
+      startAt: start.toISOString(),
+      endAt: end.toISOString(),
+      vehicles,
+      excludedUnknownCapacity,
+      excludedImmobilized,
+    };
   }
 
   private async recentUtilization(vehicleIds: string[]): Promise<Map<string, number>> {
@@ -284,6 +362,9 @@ export class ReservationsService {
     }
     if (await this.hasTripOverlap(vehicleId, start, end)) {
       throw new ConflictException('Ce véhicule roule déjà sur ce créneau.');
+    }
+    if ((await this.findImmobilized([vehicleId], start, end)).has(vehicleId)) {
+      throw new ConflictException('Ce véhicule est immobilisé (incident ou maintenance) sur ce créneau.');
     }
 
     const row = await this.prisma.vehicleEvent.create({
@@ -335,6 +416,9 @@ export class ReservationsService {
     // de request() ; surtout pertinent quand confirm réaffecte un autre véhicule).
     if (await this.hasTripOverlap(vehicleId, resa.startAt, resa.endAt)) {
       throw new ConflictException('Ce véhicule roule déjà sur ce créneau.');
+    }
+    if ((await this.findImmobilized([vehicleId], resa.startAt, resa.endAt)).has(vehicleId)) {
+      throw new ConflictException('Ce véhicule est immobilisé (incident ou maintenance) sur ce créneau.');
     }
 
     try {
@@ -399,6 +483,9 @@ export class ReservationsService {
       if (conflicts.length > 0) throw new ConflictException('Conflit sur le nouveau créneau.');
       if (await this.hasTripOverlap(resa.vehicleId, start, end)) {
         throw new ConflictException('Ce véhicule roule déjà sur le nouveau créneau.');
+      }
+      if ((await this.findImmobilized([resa.vehicleId], start, end)).has(resa.vehicleId)) {
+        throw new ConflictException('Ce véhicule est immobilisé (incident ou maintenance) sur le nouveau créneau.');
       }
     }
 

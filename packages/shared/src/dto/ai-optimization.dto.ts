@@ -145,6 +145,10 @@ export interface AiPlacementResultDto {
   /** L'IA signale qu'aucun candidat ne couvre correctement le besoin. */
   noGoodMatch: boolean;
   notes?: string | null;
+  /** Transparence : véhicules écartés AVANT le raisonnement IA (capacité inconnue). */
+  excludedUnknownCapacity?: number;
+  /** Transparence : véhicules écartés car immobilisés (incident/maintenance bloquant). */
+  excludedImmobilized?: number;
 }
 
 /** Requête front → API (placement) : le serveur construit les candidats via suggest(). */

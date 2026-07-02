@@ -68,6 +68,43 @@ describe('VehicleEventsService — scoping tenant (Sprint 7, anti-IDOR)', () => 
     expect(p.vehicleEvent.create.mock.calls[0][0].data.fleetId).toBe('f1');
   });
 
+  it('reportIncident : immobilise le véhicule par défaut (blocksVehicle=true)', async () => {
+    const prisma = makePrisma();
+    const p = prisma as { vehicle: { findUnique: jest.Mock }; vehicleEvent: { create: jest.Mock } };
+    p.vehicle.findUnique.mockResolvedValue({ id: 'v1', fleetId: 'f1' });
+    p.vehicleEvent.create.mockResolvedValue({
+      id: 'e1', fleetId: 'f1', vehicleId: 'v1', vehicle: { plate: 'AA-1' }, type: 'INCIDENT', status: 'OPEN',
+      severity: 'MEDIUM', title: 'Roue crevée', description: null, startAt: new Date(), endAt: null, allDay: true,
+      blocksVehicle: true, odometerKm: null, planId: null, linkedEventId: null, resolvedAt: null, metadata: null,
+      source: 'MANUAL', createdAt: new Date(), updatedAt: new Date(),
+    });
+    const svc = new VehicleEventsService(prisma, access('ALL'));
+    const dto = await svc.reportIncident(makeUser({ role: UserRole.FLEET_ADMIN }), { vehicleId: 'v1', title: 'Roue crevée' });
+    expect(p.vehicleEvent.create.mock.calls[0][0].data.blocksVehicle).toBe(true);
+    expect(dto.blocksVehicle).toBe(true);
+  });
+
+  it('create : MAINTENANCE n\'immobilise pas par défaut, INCIDENT si', async () => {
+    const prisma = makePrisma();
+    const p = prisma as { vehicle: { findUnique: jest.Mock }; vehicleEvent: { create: jest.Mock } };
+    p.vehicle.findUnique.mockResolvedValue({ id: 'v1', fleetId: 'f1', lastOdometerAt: null });
+    p.vehicleEvent.create.mockResolvedValue({
+      id: 'e1', fleetId: 'f1', vehicleId: 'v1', vehicle: { plate: 'AA-1' }, type: 'MAINTENANCE', status: 'PLANNED',
+      severity: null, title: 'Vidange', description: null, startAt: new Date(), endAt: null, allDay: true,
+      blocksVehicle: false, odometerKm: null, planId: null, linkedEventId: null, resolvedAt: null, metadata: null,
+      source: 'MANUAL', createdAt: new Date(), updatedAt: new Date(),
+    });
+    const svc = new VehicleEventsService(prisma, access('ALL'));
+    const base = { vehicleId: 'v1', title: 'x', startAt: new Date().toISOString() };
+    await svc.create(makeUser({ role: UserRole.FLEET_ADMIN }), { ...base, type: 'MAINTENANCE' });
+    expect(p.vehicleEvent.create.mock.calls[0][0].data.blocksVehicle).toBe(false);
+    await svc.create(makeUser({ role: UserRole.FLEET_ADMIN }), { ...base, type: 'INCIDENT' });
+    expect(p.vehicleEvent.create.mock.calls[1][0].data.blocksVehicle).toBe(true);
+    // Choix explicite de l'utilisateur respecté (incident mineur non immobilisant).
+    await svc.create(makeUser({ role: UserRole.FLEET_ADMIN }), { ...base, type: 'INCIDENT', blocksVehicle: false });
+    expect(p.vehicleEvent.create.mock.calls[2][0].data.blocksVehicle).toBe(false);
+  });
+
   it('create : refuse le type RESERVATION (reserve Sprint 8)', async () => {
     const svc = new VehicleEventsService(makePrisma(), access('ALL'));
     await expect(

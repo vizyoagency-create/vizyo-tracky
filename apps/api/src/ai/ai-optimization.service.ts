@@ -248,7 +248,12 @@ export class AiOptimizationService {
   private async buildPlacementPayload(
     user: AuthUser,
     dto: AiPlacementSuggestRequestDto,
-  ): Promise<{ payload: AiPlacementInputDto; candidates: AiPlacementCandidateInput[]; slot: { startAt: string; endAt: string } }> {
+  ): Promise<{
+    payload: AiPlacementInputDto;
+    candidates: AiPlacementCandidateInput[];
+    slot: { startAt: string; endAt: string };
+    excluded: { unknownCapacity: number; immobilized: number };
+  }> {
     if (!dto?.startAt || !dto?.endAt) throw new BadRequestException('startAt et endAt (ISO) requis.');
     const start = new Date(dto.startAt);
     const end = new Date(dto.endAt);
@@ -308,7 +313,13 @@ export class AiOptimizationService {
         avgUtilization: Math.round(avg * 100) / 100,
       },
     };
-    return { payload, candidates, slot };
+    return {
+      payload,
+      candidates,
+      slot,
+      // Transparence UI : véhicules écartés AVANT le raisonnement IA (résultats non faussés en silence).
+      excluded: { unknownCapacity: sug.excludedUnknownCapacity ?? 0, immobilized: sug.excludedImmobilized ?? 0 },
+    };
   }
 
   /** Aperçu du payload placement (DRY-RUN, aucun appel Claude) — testable en Console. */
@@ -317,13 +328,15 @@ export class AiOptimizationService {
   }
 
   async suggestPlacement(user: AuthUser, dto: AiPlacementSuggestRequestDto): Promise<AiPlacementResultDto> {
-    const { payload, candidates, slot } = await this.buildPlacementPayload(user, dto);
+    const { payload, candidates, slot, excluded } = await this.buildPlacementPayload(user, dto);
     if (candidates.length === 0) {
       return {
         slot,
         proposals: [],
         noGoodMatch: true,
         notes: 'Aucun véhicule libre ne correspond aux critères sur ce créneau.',
+        excludedUnknownCapacity: excluded.unknownCapacity,
+        excludedImmobilized: excluded.immobilized,
       };
     }
 
@@ -363,7 +376,14 @@ export class AiOptimizationService {
       })
       .sort((a, b) => b.score - a.score);
 
-    return { slot, proposals, noGoodMatch: !!ai?.noGoodMatch, notes: ai?.notes ?? null };
+    return {
+      slot,
+      proposals,
+      noGoodMatch: !!ai?.noGoodMatch,
+      notes: ai?.notes ?? null,
+      excludedUnknownCapacity: excluded.unknownCapacity,
+      excludedImmobilized: excluded.immobilized,
+    };
   }
 
   private async fleetMetier(user: AuthUser): Promise<FleetMetier> {

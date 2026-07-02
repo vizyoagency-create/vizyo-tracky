@@ -415,6 +415,9 @@ model VehicleEvent {
   startAt       DateTime           // ancrage temporel (échéance/réalisation/début)
   endAt         DateTime?          // plage (garage du X au Y ; créneau réservation S8)
   allDay        Boolean  @default(true)
+  // Immobilise le véhicule : tant que l'événement est actif (PLANNED/OPEN/IN_PROGRESS),
+  // le véhicule est exclu des suggestions/réservations (roue crevée, passage garage…).
+  blocksVehicle Boolean  @default(false)
 
   odometerKm    Int?               // km saisi (autoritaire) au moment de l'événement
   planId        String?  @db.Uuid

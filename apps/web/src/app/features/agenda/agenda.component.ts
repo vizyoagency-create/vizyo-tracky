@@ -296,7 +296,12 @@ interface GroupOption {
                     <lucide-icon [img]="ev.type === 'INCIDENT' ? AlertTriangleIcon : WrenchIcon" [size]="12"></lucide-icon>
                     {{ eventTypeLabel(ev.type) }}
                   </span>
-                  <span class="ag-status" [attr.data-status]="ev.status">{{ eventStatusLabel(ev.status) }}</span>
+                  <span class="ag-day-card-badges">
+                    @if (isImmobilizing(ev)) {
+                      <span class="ag-blocked" title="Véhicule exclu des réservations et suggestions IA tant que l'événement est actif">Immobilisé</span>
+                    }
+                    <span class="ag-status" [attr.data-status]="ev.status">{{ eventStatusLabel(ev.status) }}</span>
+                  </span>
                 </div>
                 <p class="ag-day-card-title">{{ ev.title }}</p>
                 <p class="ag-day-card-meta">
@@ -354,9 +359,9 @@ interface GroupOption {
             <div class="ag-field">
               <label>Type</label>
               <div class="ag-seg ag-seg--full">
-                <button type="button" (click)="form.type = 'MAINTENANCE'"
+                <button type="button" (click)="setFormType('MAINTENANCE')"
                         class="ag-seg-btn" [class.ag-seg-btn--active]="form.type === 'MAINTENANCE'">Maintenance</button>
-                <button type="button" (click)="form.type = 'INCIDENT'"
+                <button type="button" (click)="setFormType('INCIDENT')"
                         class="ag-seg-btn" [class.ag-seg-btn--active]="form.type === 'INCIDENT'">Incident</button>
               </div>
             </div>
@@ -415,6 +420,17 @@ interface GroupOption {
                 <input id="ag-f-time" type="time" class="ag-input" [(ngModel)]="form.time" />
               </div>
             }
+            <!-- Immobilisation : rend le véhicule indisponible (réservations + IA) -->
+            <div class="ag-field">
+              <label class="ag-check">
+                <input type="checkbox" [(ngModel)]="form.blocksVehicle" />
+                <span>Immobilise le véhicule</span>
+              </label>
+              <p class="ag-field-note">
+                Tant que l'événement n'est pas terminé, le véhicule est exclu des réservations
+                et des suggestions de l'IA (ex. roue crevée, passage au garage).
+              </p>
+            </div>
             <!-- Odomètre (pré-rempli via estimation GPS) -->
             <div class="ag-field">
               <label for="ag-f-odo">
@@ -747,6 +763,13 @@ interface GroupOption {
       display: flex; align-items: center; gap: 6px;
     }
     .ag-field-hint { text-transform: none; letter-spacing: 0; color: var(--tracky-light); font-weight: 600; font-size: 10px; }
+    .ag-field-note { font-size: 11px; color: var(--fg-tertiary); margin: 0; line-height: 1.4; }
+    .ag-day-card-badges { display: inline-flex; align-items: center; gap: 6px; }
+    .ag-blocked {
+      font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 9999px;
+      background: rgba(239,68,68,.12); color: #ef4444; white-space: nowrap;
+      text-transform: uppercase; letter-spacing: .03em;
+    }
     .ag-input {
       width: 100%; padding: 9px 11px; border-radius: 10px;
       background: var(--bg-secondary); border: 1px solid var(--border-subtle);
@@ -854,6 +877,7 @@ export class AgendaComponent implements OnInit {
     date: string;
     time: string;
     allDay: boolean;
+    blocksVehicle: boolean;
     odometerKm: number | null;
     description: string;
   } = this.blankForm();
@@ -1221,9 +1245,21 @@ export class AgendaComponent implements OnInit {
       date: today,
       time: '09:00',
       allDay: true,
+      blocksVehicle: false, // défaut MAINTENANCE ; setFormType() le passe à true pour un incident
       odometerKm: null as number | null,
       description: '',
     };
+  }
+
+  /** Changement de type : ajuste le défaut d'immobilisation (incident = indisponible). */
+  protected setFormType(type: VehicleEventType): void {
+    this.form.type = type;
+    this.form.blocksVehicle = type === 'INCIDENT';
+  }
+
+  /** L'événement immobilise-t-il ENCORE le véhicule (actif, non clôturé) ? */
+  protected isImmobilizing(ev: VehicleEventDto): boolean {
+    return ev.blocksVehicle && ev.status !== 'DONE' && ev.status !== 'CANCELLED';
   }
 
   protected openCreate(): void {
@@ -1270,6 +1306,7 @@ export class AgendaComponent implements OnInit {
       title: f.title.trim(),
       startAt,
       allDay: f.allDay,
+      blocksVehicle: f.blocksVehicle,
       status: f.type === 'INCIDENT' ? 'OPEN' : 'PLANNED',
     };
     if (f.category.trim()) payload.category = f.category.trim();

@@ -39,6 +39,24 @@ describe('ForecastService — Sprint 8 Palier C (prévision dérivée, non bloqu
     expect(res.slots).toEqual([]);
   });
 
+  it('anti-bruit : les micro-trajets (durée < 2 min) sont ignorés par l\'apprentissage', async () => {
+    const trips = FOUR_WEEKS.map((d) => {
+      const s = new Date(`${d}T10:00:00Z`);
+      return { vehicleId: 'v1', startedAt: s, endedAt: new Date(s.getTime() + 60_000), vehicle: { plate: 'AA-1' } };
+    });
+    const svc = new ForecastService(makePrisma(trips), access('ALL'));
+    const res = await svc.getForecast(makeUser({ role: UserRole.SUPER_ADMIN, fleetId: null }), WIN_FROM, WIN_TO);
+    expect(res.slots).toEqual([]); // 4 semaines de « trajets » d'1 min = pas un usage réel
+  });
+
+  it('anti-bruit : le WHERE exclut les trajets < 300 m (sur les 2 champs de distance)', async () => {
+    const prisma = makePrisma([]);
+    const svc = new ForecastService(prisma, access('ALL'));
+    await svc.getForecast(makeUser(), WIN_FROM, WIN_TO);
+    const where = (prisma as { trip: { findMany: jest.Mock } }).trip.findMany.mock.calls[0][0].where;
+    expect(where.OR).toEqual([{ distanceMeters: { gte: 300 } }, { distanceKm: { gte: 0.3 } }]);
+  });
+
   it('scoping : borne par fleetId + périmètre véhicules (anti-IDOR)', async () => {
     const prisma = makePrisma([]);
     const svc = new ForecastService(prisma, access(['v1']));

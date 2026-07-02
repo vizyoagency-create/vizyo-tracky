@@ -160,6 +160,8 @@ export class VehicleEventsService {
         startAt,
         endAt,
         allDay: dto.allDay ?? true,
+        // Un incident immobilise par défaut (roue crevée = indisponible) ; une maintenance non.
+        blocksVehicle: dto.blocksVehicle ?? dto.type === VehicleEventType.INCIDENT,
         odometerKm: dto.odometerKm ?? null,
         metadata: dto.metadata ? (dto.metadata as Prisma.InputJsonValue) : undefined,
         createdBy: user.id,
@@ -184,6 +186,7 @@ export class VehicleEventsService {
         description: dto.description ?? null,
         startAt: new Date(),
         allDay: true,
+        blocksVehicle: dto.blocksVehicle ?? true,
         createdBy: user.id,
         source: 'MANUAL',
       },
@@ -212,6 +215,7 @@ export class VehicleEventsService {
     if (dto.startAt !== undefined) data.startAt = this.parseDate(dto.startAt, 'startAt');
     if (dto.endAt !== undefined) data.endAt = dto.endAt ? this.parseDate(dto.endAt, 'endAt') : null;
     if (dto.allDay !== undefined) data.allDay = dto.allDay;
+    if (dto.blocksVehicle !== undefined) data.blocksVehicle = dto.blocksVehicle;
     if (dto.odometerKm !== undefined) data.odometerKm = dto.odometerKm;
     if (dto.linkedEventId !== undefined) {
       // Anti-IDOR : un lien ne peut pointer que vers un evenement DANS le perimetre (S8-ready).
@@ -315,6 +319,7 @@ export class VehicleEventsService {
       startAt: r.startAt.toISOString(),
       endAt: r.endAt?.toISOString() ?? null,
       allDay: r.allDay,
+      blocksVehicle: r.blocksVehicle,
       odometerKm: r.odometerKm,
       planId: r.planId,
       linkedEventId: r.linkedEventId,

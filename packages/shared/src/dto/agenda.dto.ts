@@ -31,6 +31,8 @@ export interface VehicleEventDto {
   startAt: string;
   endAt: string | null;
   allDay: boolean;
+  /** Immobilise le véhicule : exclu des réservations/suggestions tant que l'événement est actif. */
+  blocksVehicle: boolean;
   odometerKm: number | null;
   planId: string | null;
   linkedEventId: string | null;
@@ -54,6 +56,8 @@ export interface CreateVehicleEventDto {
   startAt: string;
   endAt?: string;
   allDay?: boolean;
+  /** Immobilise le véhicule. Défaut serveur : true pour un INCIDENT, false sinon. */
+  blocksVehicle?: boolean;
   odometerKm?: number;
   metadata?: Record<string, unknown>;
 }
@@ -63,6 +67,8 @@ export interface ReportIncidentDto {
   title: string;
   severity?: VehicleEventSeverity;
   description?: string;
+  /** Immobilise le véhicule (défaut : true — un incident signalé rend indisponible). */
+  blocksVehicle?: boolean;
 }
 
 export interface UpdateVehicleEventDto {
@@ -74,6 +80,7 @@ export interface UpdateVehicleEventDto {
   startAt?: string;
   endAt?: string | null;
   allDay?: boolean;
+  blocksVehicle?: boolean;
   odometerKm?: number;
   linkedEventId?: string;
   metadata?: Record<string, unknown>;

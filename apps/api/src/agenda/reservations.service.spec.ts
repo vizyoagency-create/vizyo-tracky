@@ -109,7 +109,10 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
         ]),
       },
       vehicleEvent: {
-        findMany: jest.fn().mockResolvedValue([{ vehicleId: 'v3' }]), // v3 a une réservation ferme
+        // Résas fermes -> v3 occupé ; requête immobilisations (blocksVehicle) -> aucune.
+        findMany: jest.fn().mockImplementation(({ where }: { where: { blocksVehicle?: boolean } }) =>
+          Promise.resolve(where?.blocksVehicle ? [] : [{ vehicleId: 'v3' }]),
+        ),
         findUnique: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
@@ -119,6 +122,106 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
     const res = await svc.suggest(makeUser(), { ...SLOT, criteria: { requiredFeatures: ['clim'] } });
     expect(res.vehicles.map((v) => v.vehicleId)).toEqual(['v1']); // v2 sans Clim, v3 occupé
     expect(res.vehicles[0].underutilized).toBe(true);
+  });
+
+  it('suggest : véhicule immobilisé par un incident bloquant -> exclu ET compté', async () => {
+    const now = Date.now();
+    const start = new Date(now + 24 * 3_600_000); // demain
+    const end = new Date(now + 26 * 3_600_000);
+    const prisma = makePrisma({
+      vehicle: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'v1', plate: 'AA-1', seats: 5, childSeats: 0, features: [] },
+          { id: 'v2', plate: 'BB-2', seats: 5, childSeats: 0, features: [] },
+        ]),
+      },
+      vehicleEvent: {
+        // Incident OPEN bloquant sans fin sur v2 -> immobilisé jusqu'à résolution.
+        findMany: jest.fn().mockImplementation(({ where }: { where: { blocksVehicle?: boolean } }) =>
+          Promise.resolve(
+            where?.blocksVehicle
+              ? [{ vehicleId: 'v2', type: 'INCIDENT', startAt: new Date(now - 3_600_000), endAt: null }]
+              : [],
+          ),
+        ),
+        findUnique: jest.fn(),
+        create: jest.fn(),
+        update: jest.fn(),
+      },
+    });
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents());
+    const res = await svc.suggest(makeUser(), { startAt: start.toISOString(), endAt: end.toISOString() });
+    expect(res.vehicles.map((v) => v.vehicleId)).toEqual(['v1']);
+    expect(res.excludedImmobilized).toBe(1);
+  });
+
+  it('suggest : capacité inconnue (places NULL) avec critère -> exclu mais COMPTÉ (pas de silence)', async () => {
+    const prisma = makePrisma({
+      vehicle: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'v1', plate: 'AA-1', seats: null, childSeats: null, features: [] }, // capacité non renseignée
+          { id: 'v2', plate: 'BB-2', seats: 5, childSeats: null, features: [] },
+        ]),
+      },
+    });
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents());
+    const res = await svc.suggest(makeUser(), { ...SLOT, criteria: { minSeats: 4 } });
+    expect(res.vehicles.map((v) => v.vehicleId)).toEqual(['v2']);
+    expect(res.excludedUnknownCapacity).toBe(1);
+    expect(res.excludedImmobilized).toBe(0);
+  });
+
+  it('suggest : un trajet EN COURS (endedAt NULL) ne bloque PLUS un créneau futur', async () => {
+    const now = Date.now();
+    const start = new Date(now + 24 * 3_600_000);
+    const end = new Date(now + 26 * 3_600_000);
+    const prisma = makePrisma({
+      vehicle: { findMany: jest.fn().mockResolvedValue([{ id: 'v1', plate: 'AA-1', seats: 5, childSeats: 0, features: [] }]) },
+    });
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents());
+    await svc.suggest(makeUser(), { startAt: start.toISOString(), endAt: end.toISOString() });
+    // Créneau lointain -> la clause « trajet ouvert » n'est PAS incluse (fin inconnue ≠ infinie).
+    const or = (prisma as { trip: { findMany: jest.Mock } }).trip.findMany.mock.calls[0][0].where.OR;
+    expect(or).toEqual([{ endedAt: { gt: start } }]);
+  });
+
+  it('request : véhicule immobilisé (incident bloquant) -> 409 Conflict', async () => {
+    const prisma = makePrisma({
+      vehicleEvent: {
+        findMany: jest.fn().mockImplementation(({ where }: { where: { blocksVehicle?: boolean } }) =>
+          Promise.resolve(
+            where?.blocksVehicle
+              ? [{ vehicleId: 'v1', type: 'INCIDENT', startAt: new Date('2026-06-30T00:00:00Z'), endAt: null }]
+              : [],
+          ),
+        ),
+        findUnique: jest.fn(),
+        create: jest.fn(),
+        update: jest.fn(),
+      },
+    });
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents());
+    await expect(svc.request(makeUser(), { vehicleId: 'v1', ...SLOT })).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('request : maintenance bloquante SANS fin d\'il y a 3 jours -> ne bloque plus (fenêtre = sa journée)', async () => {
+    const prisma = makePrisma({
+      vehicleEvent: {
+        findMany: jest.fn().mockImplementation(({ where }: { where: { blocksVehicle?: boolean } }) =>
+          Promise.resolve(
+            where?.blocksVehicle
+              ? [{ vehicleId: 'v1', type: 'MAINTENANCE', startAt: new Date('2026-06-28T00:00:00Z'), endAt: null }]
+              : [],
+          ),
+        ),
+        findUnique: jest.fn(),
+        create: jest.fn().mockResolvedValue(evRow()),
+        update: jest.fn(),
+      },
+    });
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents());
+    const dto = await svc.request(makeUser(), { vehicleId: 'v1', ...SLOT });
+    expect(dto.status).toBe('REQUESTED');
   });
 
   it('confirm : réservation hors périmètre véhicule -> Forbidden (anti-IDOR)', async () => {

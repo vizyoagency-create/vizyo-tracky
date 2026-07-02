@@ -41,6 +41,11 @@ export interface SuggestReservationResultDto {
   startAt: string;
   endAt: string;
   vehicles: SuggestedVehicleDto[];
+  /** Véhicules écartés faute de capacité renseignée (places/sièges-enfant NULL avec critère).
+   *  Rendus visibles pour ne pas fausser silencieusement les résultats. */
+  excludedUnknownCapacity: number;
+  /** Véhicules conformes mais immobilisés (incident/maintenance bloquant sur le créneau). */
+  excludedImmobilized: number;
 }
 
 /** Validation d'une demande : fixe le véhicule (si « ouverte ») et passe CONFIRMED. */

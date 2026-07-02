@@ -13,6 +13,11 @@ const FLEET_TZ = 'Europe/Paris';
 const LOOKBACK_WEEKS = 10;
 /** Récurrence retenue si le motif (véhicule × jour) est observé ≥ ce nb de semaines. */
 const MIN_ACTIVE_WEEKS = 4;
+/** Bruit de mesure exclu de l'apprentissage : micro-trajets (< 300 m ou < 2 min) qui
+ *  fausseraient l'enveloppe horaire (même seuil d'esprit que la règle 0 km/2 min). */
+const MIN_TRIP_METERS = 300;
+const MIN_TRIP_KM = MIN_TRIP_METERS / 1000;
+const MIN_TRIP_DURATION_MS = 2 * 60 * 1000;
 const MAX_TRIPS = 20_000;
 const MAX_DAY_STEPS = 800;
 const MAX_SLOTS = 2_000;
@@ -97,7 +102,12 @@ export class ForecastService {
     const scope = await this.resolveScope(user);
 
     const learnFrom = new Date(Date.now() - LOOKBACK_WEEKS * WEEK_MS);
-    const tripWhere: Prisma.TripWhereInput = { startedAt: { gte: learnFrom } };
+    const tripWhere: Prisma.TripWhereInput = {
+      startedAt: { gte: learnFrom },
+      // Anti-bruit : les micro-déplacements n'apprennent rien (OR sur les 2 champs de
+      // distance car les anciens trajets peuvent n'avoir que distanceKm renseigné).
+      OR: [{ distanceMeters: { gte: MIN_TRIP_METERS } }, { distanceKm: { gte: MIN_TRIP_KM } }],
+    };
     if (scope.fleetId) tripWhere.fleetId = scope.fleetId;
     if (scope.ids !== 'ALL') tripWhere.vehicleId = { in: scope.ids };
 
@@ -118,6 +128,8 @@ export class ForecastService {
     const byVehicle = new Map<string, Map<number, DowAccum>>();
 
     for (const t of trips) {
+      // Anti-bruit (complément du WHERE) : trajet clos trop court pour être un usage réel.
+      if (t.endedAt && t.endedAt.getTime() - t.startedAt.getTime() < MIN_TRIP_DURATION_MS) continue;
       plates.set(t.vehicleId, t.vehicle?.plate ?? null);
       const startMs = t.startedAt.getTime();
       const { dateKey, dow, hourFrac: startH } = this.localParts(fmt, startMs);
