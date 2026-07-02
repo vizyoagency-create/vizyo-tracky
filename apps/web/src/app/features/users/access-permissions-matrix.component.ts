@@ -19,6 +19,13 @@ export interface MatrixDrawerData {
   userRole: 'SUPER_ADMIN' | 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN';
   groups: VehicleGroup[];
   vehicles: VehicleDetailDto[];
+  /**
+   * La flotte de l'utilisateur est-elle ÉLIGIBLE à l'écoute audio (N1 `superAdminEnabled`) ?
+   * FAIL-CLOSED : si false/absent, la permission `audio_monitoring` (LÉGALEMENT SENSIBLE)
+   * n'apparait PAS dans la matrice — on ne propose pas d'accorder une écoute que le
+   * prestataire n'a pas activée pour cette flotte dans l'admin.
+   */
+  audioEligible?: boolean;
 }
 
 /**
@@ -128,12 +135,13 @@ export interface MatrixDrawerData {
                       }
                     </div>
 
-                    <!-- Permission groups -->
-                    @for (group of permissionGroups; track group) {
+                    <!-- Permission groups (le groupe « Audio » n'apparait que si la flotte
+                         est ÉLIGIBLE N1 — fail-closed, cf. visibleGroups()/audioEligible). -->
+                    @for (grp of visibleGroups(); track grp.group) {
                       <div class="mb-2 last:mb-0">
-                        <p class="text-[10px] uppercase tracking-wide text-fg-tertiary mb-1.5">{{ group }}</p>
+                        <p class="text-[10px] uppercase tracking-wide text-fg-tertiary mb-1.5">{{ grp.group }}</p>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1.5">
-                          @for (k of permissionsByGroup[group]; track k) {
+                          @for (k of grp.keys; track k) {
                             <label class="flex items-center gap-2 text-xs text-fg-primary cursor-pointer hover:bg-bg-tertiary px-2 py-1 rounded">
                               <input type="checkbox"
                                      [checked]="isChecked(entry, k)"
@@ -233,6 +241,24 @@ export class AccessPermissionsMatrixComponent implements OnInit, OnChanges {
   protected readonly availableVehicles = computed(() => {
     const used = this.usedVehicleIds();
     return (this.data()?.vehicles ?? []).filter((v) => !used.has(v.id));
+  });
+
+  /**
+   * Groupes + permissions RÉELLEMENT affichés. Le groupe « Audio » (permission
+   * `audio_monitoring`, LÉGALEMENT SENSIBLE) est masqué tant que la flotte n'est pas
+   * éligible N1 (`data().audioEligible`). Réactif à `data()` ; les tableaux de base
+   * (`permissionGroups`/`permissionsByGroup`) sont figés en ngOnInit.
+   */
+  protected readonly visibleGroups = computed<{ group: string; keys: (keyof UserPermissions)[] }[]>(() => {
+    const audioOk = this.data()?.audioEligible === true;
+    return this.permissionGroups
+      .map((group) => ({
+        group,
+        keys: (this.permissionsByGroup[group] ?? []).filter(
+          (k) => audioOk || k !== 'audio_monitoring',
+        ),
+      }))
+      .filter((g) => g.keys.length > 0);
   });
 
   ngOnInit(): void {

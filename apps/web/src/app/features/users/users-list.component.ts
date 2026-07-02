@@ -794,6 +794,9 @@ export class UsersListComponent implements OnInit {
       userRole: user.role as 'SUPER_ADMIN' | 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN',
       groups,
       vehicles,
+      // Fail-closed : la permission « Écouter l'audio » n'est proposée QUE si la flotte
+      // de l'utilisateur est éligible N1 (activée par le prestataire dans l'admin).
+      audioEligible: !!user.fleetId && this.eligibleFleetIds().has(user.fleetId),
     });
     this.showMatrixDrawer.set(true);
   }
