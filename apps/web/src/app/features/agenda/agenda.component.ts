@@ -26,6 +26,7 @@ import type {
   VehicleEventStatus,
   VehicleEventType,
 } from '@vizyo/tracky-shared';
+import { effectiveBlockingEndMs, isImmobilizingEvent } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { AgendaApiService } from '../../core/services/agenda.service';
 import { PermissionsService } from '../../core/services/permissions.service';
@@ -1239,8 +1240,9 @@ export class AgendaComponent implements OnInit {
       .filter((ev) => {
         const st = new Date(ev.startAt).getTime();
         if (Number.isNaN(st)) return false;
-        const effEnd = ev.endAt ? new Date(ev.endAt).getTime() : st;
-        // Chevauche le jour ; les événements ponctuels/all-day couvrent leur jour de début.
+        const effEnd = this.eventSpanEndMs(ev, st);
+        // Chevauche le jour ; un événement immobilisant actif (ex. incident ouvert sans fin)
+        // apparaît chaque jour où il rend le véhicule indisponible — cohérent avec la Disponibilité.
         return st < b.end && (effEnd >= b.start || (st >= b.start && st < b.end));
       })
       .sort((a, b2) => {
@@ -1319,16 +1321,15 @@ export class AgendaComponent implements OnInit {
       if (ev.status === 'DONE' || ev.status === 'CANCELLED') continue;
       const st = new Date(ev.startAt).getTime();
       if (Number.isNaN(st)) continue;
-      let effEnd: number;
-      if (ev.endAt) effEnd = new Date(ev.endAt).getTime();
-      else if (ev.type === 'INCIDENT') effEnd = Number.POSITIVE_INFINITY;
-      else effEnd = startOfDay(new Date(ev.startAt)).getTime() + 86400000;
+      // Fin effective = SOURCE UNIQUE partagée avec le back (findImmobilized) : la disponibilité
+      // affichée correspond exactement à ce que la réservation acceptera (pas de « libre » → 409).
+      const effEnd = effectiveBlockingEndMs(ev.type, st, ev.endAt ? new Date(ev.endAt).getTime() : null);
       if (!(st < b.end && effEnd > b.start)) continue; // ne chevauche pas le jour
       if (ev.type === 'RESERVATION') {
         if (ev.status === 'CONFIRMED' || ev.status === 'IN_PROGRESS') {
           reserved.set(ev.vehicleId, ev.endAt ? `${this.hm(ev.startAt)} → ${this.hm(ev.endAt)}` : this.hm(ev.startAt));
         }
-      } else if (ev.blocksVehicle) {
+      } else if (isImmobilizingEvent(ev)) {
         immobilized.set(ev.vehicleId, ev.title);
       }
     }
@@ -1614,9 +1615,17 @@ export class AgendaComponent implements OnInit {
     this.form.blocksVehicle = type === 'INCIDENT';
   }
 
-  /** L'événement immobilise-t-il ENCORE le véhicule (actif, non clôturé) ? */
+  /** L'événement immobilise-t-il ENCORE le véhicule (actif, non clôturé) ? Source partagée avec le back. */
   protected isImmobilizing(ev: VehicleEventDto): boolean {
-    return ev.blocksVehicle && ev.status !== 'DONE' && ev.status !== 'CANCELLED';
+    return isImmobilizingEvent(ev);
+  }
+
+  /** Fin d'un événement pour le test de chevauchement du jour : étendue si immobilisation active. */
+  private eventSpanEndMs(ev: VehicleEventDto, startMs: number): number {
+    if (isImmobilizingEvent(ev)) {
+      return effectiveBlockingEndMs(ev.type, startMs, ev.endAt ? new Date(ev.endAt).getTime() : null);
+    }
+    return ev.endAt ? new Date(ev.endAt).getTime() : startMs;
   }
 
   protected openCreate(): void {

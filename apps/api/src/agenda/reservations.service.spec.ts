@@ -171,18 +171,22 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
     expect(res.excludedImmobilized).toBe(0);
   });
 
-  it('suggest : un trajet EN COURS (endedAt NULL) ne bloque PLUS un créneau futur', async () => {
+  it('suggest : un trajet EN COURS (endedAt NULL) est borné par une fenêtre d\'occupation (≤ 8h) — pas de blocage lointain', async () => {
     const now = Date.now();
-    const start = new Date(now + 24 * 3_600_000);
+    const start = new Date(now + 24 * 3_600_000); // créneau dans 24h
     const end = new Date(now + 26 * 3_600_000);
     const prisma = makePrisma({
       vehicle: { findMany: jest.fn().mockResolvedValue([{ id: 'v1', plate: 'AA-1', seats: 5, childSeats: 0, features: [] }]) },
     });
     const svc = new ReservationsService(prisma, access('ALL'), makeEvents());
     await svc.suggest(makeUser(), { startAt: start.toISOString(), endAt: end.toISOString() });
-    // Créneau lointain -> la clause « trajet ouvert » n'est PAS incluse (fin inconnue ≠ infinie).
     const or = (prisma as { trip: { findMany: jest.Mock } }).trip.findMany.mock.calls[0][0].where.OR;
-    expect(or).toEqual([{ endedAt: { gt: start } }]);
+    // Trajet clos : endedAt > start. Trajet ouvert : borné à (start − 8h) — un trajet démarré
+    // MAINTENANT ne bloque pas ce créneau lointain (bug B4 corrigé) mais bloquerait un créneau proche.
+    expect(or).toHaveLength(2);
+    expect(or[0]).toEqual({ endedAt: { gt: start } });
+    expect(or[1].endedAt).toBeNull();
+    expect(or[1].startedAt.gt.getTime()).toBe(start.getTime() - 8 * 3_600_000);
   });
 
   it('request : véhicule immobilisé (incident bloquant) -> 409 Conflict', async () => {

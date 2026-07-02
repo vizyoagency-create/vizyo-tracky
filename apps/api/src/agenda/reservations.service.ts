@@ -15,6 +15,7 @@ import type {
   VehicleEventDto,
   VehicleEventStatus as VehicleEventStatusDto,
 } from '@vizyo/tracky-shared';
+import { effectiveBlockingEndMs, IMMOBILIZING_STATUSES } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
 import { PrismaService } from '../prisma/prisma.service';
@@ -26,17 +27,14 @@ const INCLUDE_PLATE = { vehicle: { select: { plate: true } } } as const;
 
 /** Statuts « bloquants » : occupent le véhicule (conflits + disponibilité). */
 const BLOCKING: VehicleEventStatus[] = [VehicleEventStatus.CONFIRMED, VehicleEventStatus.IN_PROGRESS];
-/** Statuts « actifs » d'un événement immobilisant (incident/maintenance non clôturé). */
-const IMMOBILIZING_ACTIVE: VehicleEventStatus[] = [
-  VehicleEventStatus.PLANNED,
-  VehicleEventStatus.OPEN,
-  VehicleEventStatus.IN_PROGRESS,
-];
-const DAY_MS = 24 * 60 * 60 * 1000;
-/** Trajet ouvert (endedAt NULL) : ne bloque que les créneaux qui démarrent bientôt… */
-const OPEN_TRIP_NEAR_START_MS = 60 * 60 * 1000;
-/** …et seulement s'il n'est pas une anomalie jamais clôturée (> 24h). */
-const OPEN_TRIP_STALE_MS = 24 * 60 * 60 * 1000;
+/**
+ * Durée d'occupation MAXIMALE supposée d'un trajet encore ouvert (endedAt NULL). Un tel trajet
+ * n'a pas de fin connue : on suppose qu'il dure au plus « une journée d'activité ». Il bloque donc
+ * les créneaux PROCHES (véhicule qui roule) mais ni les créneaux LOINTAINS (sinon un véhicule qui
+ * roule serait injustement injoignable pour la semaine prochaine), ni un trajet fantôme jamais
+ * clôturé (au-delà de cette durée = anomalie tracker, ne bloque plus rien).
+ */
+const MAX_OPEN_TRIP_MS = 8 * 60 * 60 * 1000;
 /** Fenêtre récente pour le tri par sous-utilisation (auto-complétion). */
 const RECENT_WINDOW_MS = 28 * 24 * 60 * 60 * 1000;
 const UNDERUTILIZED_RATIO = 0.12;
@@ -113,14 +111,14 @@ export class ReservationsService {
   }
 
   /**
-   * Clauses « trajet en cours » (endedAt NULL), bornées : un véhicule qui roule MAINTENANT
-   * ne doit bloquer que les créneaux imminents (pas ceux de demain — sa fin est inconnue,
-   * pas infinie), et un trajet jamais clôturé (anomalie > 24h) ne doit plus rien bloquer.
+   * Clause « trajet en cours » (endedAt NULL), bornée par une durée d'occupation max : un trajet
+   * ouvert bloque un créneau qui commence dans (start − MAX_OPEN_TRIP_MS, end). Conséquences : un
+   * véhicule qui roule MAINTENANT bloque bien les créneaux proches (même journée), mais pas ceux de
+   * la semaine prochaine (sa fin n'est pas « infinie »), et un trajet jamais clôturé (démarré il y a
+   * plus que cette durée = anomalie tracker) ne bloque plus rien.
    */
   private openTripOr(start: Date): Prisma.TripWhereInput[] {
-    const now = Date.now();
-    if (start.getTime() > now + OPEN_TRIP_NEAR_START_MS) return [];
-    return [{ endedAt: null, startedAt: { gte: new Date(now - OPEN_TRIP_STALE_MS) } }];
+    return [{ endedAt: null, startedAt: { gt: new Date(start.getTime() - MAX_OPEN_TRIP_MS) } }];
   }
 
   /** Un trajet RÉEL chevauche-t-il le créneau (véhicule effectivement pris) ? */
@@ -145,17 +143,14 @@ export class ReservationsService {
         vehicleId: { in: vehicleIds },
         blocksVehicle: true,
         type: { not: VehicleEventType.RESERVATION },
-        status: { in: IMMOBILIZING_ACTIVE },
+        status: { in: IMMOBILIZING_STATUSES },
         startAt: { lt: end },
       },
       select: { vehicleId: true, type: true, startAt: true, endAt: true },
     });
     for (const r of rows) {
-      const effectiveEnd = r.endAt
-        ? r.endAt.getTime()
-        : r.type === VehicleEventType.INCIDENT
-          ? Number.POSITIVE_INFINITY
-          : r.startAt.getTime() + DAY_MS;
+      // Source UNIQUE partagée avec le front (disponibilité affichée = ce que la résa accepte).
+      const effectiveEnd = effectiveBlockingEndMs(r.type, r.startAt.getTime(), r.endAt ? r.endAt.getTime() : null);
       if (effectiveEnd > start.getTime()) out.add(r.vehicleId);
     }
     return out;

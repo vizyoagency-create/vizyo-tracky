@@ -144,3 +144,31 @@ export interface AgendaSummaryDto {
   /** Incidents OPEN/IN_PROGRESS. */
   openIncidents: number;
 }
+
+/** Statuts d'un événement (incident/maintenance) encore ACTIF → immobilisant si `blocksVehicle`. */
+export const IMMOBILIZING_STATUSES: VehicleEventStatus[] = ['PLANNED', 'OPEN', 'IN_PROGRESS'];
+
+/** L'événement immobilise-t-il ENCORE le véhicule (bloquant + non clôturé) ? */
+export function isImmobilizingEvent(
+  ev: Pick<VehicleEventDto, 'type' | 'status' | 'blocksVehicle'>,
+): boolean {
+  return (
+    ev.blocksVehicle && ev.type !== 'RESERVATION' && IMMOBILIZING_STATUSES.includes(ev.status)
+  );
+}
+
+/**
+ * Fin EFFECTIVE d'immobilisation d'un événement bloquant (ms epoch). SOURCE UNIQUE partagée
+ * API ↔ web : la disponibilité affichée DOIT correspondre exactement à ce que la réservation
+ * accepte, sinon l'UI montre « libre » là où le serveur renvoie un 409. Règle : `endAt` si présent ;
+ * sinon un INCIDENT bloque jusqu'à résolution (∞), une MAINTENANCE ~24 h (sa journée).
+ */
+export function effectiveBlockingEndMs(
+  type: VehicleEventType,
+  startAtMs: number,
+  endAtMs: number | null,
+): number {
+  if (endAtMs != null) return endAtMs;
+  if (type === 'INCIDENT') return Number.POSITIVE_INFINITY;
+  return startAtMs + 24 * 60 * 60 * 1000;
+}
