@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, UserRole } from '@prisma/client';
+import { Prisma, UserRole, VehicleEventStatus, VehicleEventType } from '@prisma/client';
 import type {
   AiCapacityApplyDto,
   AiCapacityInputDto,
@@ -53,6 +53,29 @@ function cleanInt(n: unknown): number | null {
 function cleanFeatures(f: unknown): string[] {
   if (!Array.isArray(f)) return [];
   return f.filter((x): x is string => typeof x === 'string').map((s) => s.trim()).filter(Boolean).slice(0, 20);
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** Fenêtre « maintenance imminente » : maintenance prévue dans les 7 jours suivant le créneau. */
+const MAINT_SOON_MS = 7 * DAY_MS;
+/**
+ * Coût/km INDICATIF pour aider l'IA à mutualiser vers le véhicule le moins cher à mission égale.
+ * Prix carburant TTC moyens France (approximatifs, 2026) ; l'électrique est estimé à un forfait
+ * recharge dépôt. Volontairement grossier : sert au CLASSEMENT relatif, pas à une facturation.
+ */
+const FUEL_PRICE_EUR_PER_L: Record<string, number> = { DIESEL: 1.75, ESSENCE: 1.9, HYBRIDE: 1.9 };
+const DEFAULT_CONSO_L100: Record<string, number> = { DIESEL: 6.5, ESSENCE: 7.5, HYBRIDE: 5 };
+const ELECTRIC_COST_PER_KM = 0.03;
+
+/** Estime un coût/km (€) depuis l'énergie + la conso (L/100km si connue, sinon défaut par énergie). */
+function estimateCostPerKm(energy: string | null, consoL100: number | null): number | null {
+  if (!energy) return null;
+  if (energy === 'ELECTRIQUE') return ELECTRIC_COST_PER_KM;
+  const price = FUEL_PRICE_EUR_PER_L[energy];
+  if (!price) return null;
+  const conso = consoL100 && consoL100 > 0 ? consoL100 : DEFAULT_CONSO_L100[energy];
+  if (!conso) return null;
+  return Math.round((conso / 100) * price * 1000) / 1000; // €/km, 3 décimales
 }
 
 type CapacityVehicleRow = {
@@ -282,19 +305,53 @@ export class AiOptimizationService {
       // best-effort : on continue sans la prévision si elle échoue.
     }
 
+    // Enrichissement COÛT (P3) : énergie + coût/km estimé + maintenance imminente par candidat,
+    // pour que l'IA puisse mutualiser vers le véhicule le moins cher À MISSION ÉGALE.
+    const candidateIds = sug.vehicles.map((v) => v.vehicleId);
+    const [meta, maintRows] = await Promise.all([
+      candidateIds.length
+        ? this.prisma.vehicle.findMany({
+            where: { id: { in: candidateIds } },
+            select: { id: true, energy: true, fuelConsumptionL100km: true },
+          })
+        : Promise.resolve([] as { id: string; energy: string | null; fuelConsumptionL100km: number | null }[]),
+      candidateIds.length
+        ? this.prisma.vehicleEvent.findMany({
+            where: {
+              vehicleId: { in: candidateIds },
+              type: VehicleEventType.MAINTENANCE,
+              status: { in: [VehicleEventStatus.PLANNED, VehicleEventStatus.OPEN, VehicleEventStatus.IN_PROGRESS] },
+              startAt: { gte: new Date(start.getTime() - DAY_MS), lte: new Date(start.getTime() + MAINT_SOON_MS) },
+            },
+            select: { vehicleId: true },
+          })
+        : Promise.resolve([] as { vehicleId: string }[]),
+    ]);
+    const metaById = new Map(meta.map((m) => [m.id, m]));
+    const maintSet = new Set(maintRows.map((r) => r.vehicleId));
+
     const metier = await this.fleetMetier(user);
-    const candidates: AiPlacementCandidateInput[] = sug.vehicles.map((v) => ({
-      vehicleId: v.vehicleId,
-      plate: v.vehiclePlate,
-      seats: v.seats,
-      childSeats: v.childSeats,
-      features: v.features,
-      utilizationRatio: v.utilizationRatio,
-      underutilized: v.underutilized,
-      forecastBusy: forecastBusy.has(v.vehicleId),
-    }));
+    const candidates: AiPlacementCandidateInput[] = sug.vehicles.map((v) => {
+      const m = metaById.get(v.vehicleId);
+      const energy = m?.energy ?? null;
+      return {
+        vehicleId: v.vehicleId,
+        plate: v.vehiclePlate,
+        seats: v.seats,
+        childSeats: v.childSeats,
+        features: v.features,
+        utilizationRatio: v.utilizationRatio,
+        underutilized: v.underutilized,
+        forecastBusy: forecastBusy.has(v.vehicleId),
+        energy,
+        costPerKm: estimateCostPerKm(energy, m?.fuelConsumptionL100km ?? null),
+        upcomingMaintenance: maintSet.has(v.vehicleId),
+      };
+    });
     const underutilizedCount = candidates.filter((c) => c.underutilized).length;
     const avg = candidates.length ? candidates.reduce((s, c) => s + c.utilizationRatio, 0) / candidates.length : 0;
+    const costs = candidates.map((c) => c.costPerKm).filter((x): x is number => typeof x === 'number');
+    const cheapestCostPerKm = costs.length ? Math.min(...costs) : null;
 
     const payload: AiPlacementInputDto = {
       metier,
@@ -311,6 +368,7 @@ export class AiOptimizationService {
         totalVehicles: candidates.length,
         underutilizedCount,
         avgUtilization: Math.round(avg * 100) / 100,
+        cheapestCostPerKm,
       },
     };
     return {
@@ -341,6 +399,7 @@ export class AiOptimizationService {
     }
 
     let ai: PlacementAiOutput;
+    let aiCostEur: number | null = null;
     try {
       const call = await this.anthropic.completeJson<PlacementAiOutput>({
         system: renderPlacementSystem(payload.metier),
@@ -349,6 +408,8 @@ export class AiOptimizationService {
         maxTokens: 4096,
       });
       ai = call.result;
+      // Transparence : coût € de CET appel (même calcul que le palier « Coûts IA »).
+      aiCostEur = Math.round(this.aiUsage.costOf(call.model, call.usage) * this.aiUsage.eurRate() * 10000) / 10000;
       void this.aiUsage.record({
         userId: user.id, fleetId: user.fleetId ?? null, action: 'placement', model: call.model,
         inputTokens: call.usage.inputTokens, outputTokens: call.usage.outputTokens,
@@ -370,6 +431,8 @@ export class AiOptimizationService {
           plate: c.plate,
           seats: c.seats,
           childSeats: c.childSeats,
+          energy: c.energy ?? null,
+          costPerKm: c.costPerKm ?? null,
           score: clamp01(p.score),
           reasoning: typeof p.reasoning === 'string' ? p.reasoning.slice(0, 400) : '',
         };
@@ -383,6 +446,7 @@ export class AiOptimizationService {
       notes: ai?.notes ?? null,
       excludedUnknownCapacity: excluded.unknownCapacity,
       excludedImmobilized: excluded.immobilized,
+      aiCostEur,
     };
   }
 

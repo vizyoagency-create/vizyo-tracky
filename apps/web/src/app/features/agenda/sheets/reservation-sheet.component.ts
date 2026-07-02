@@ -88,13 +88,23 @@ function toLocalInput(d: Date): string {
               </select>
             </div>
 
+            <!-- Loader explicatif : l'utilisateur comprend ce que fait l'IA et combien de temps ça prend -->
+            @if (aiLoading()) {
+              <div class="rs-ai-loading">
+                <lucide-icon [img]="LoaderIcon" [size]="16" class="rs-spin"></lucide-icon>
+                <div>
+                  <p class="rs-ai-loading-t">Analyse en cours… (10–30 s)</p>
+                  <p class="rs-ai-loading-s">L'IA compare les places, l'énergie et le coût au km des véhicules disponibles pour proposer le placement le plus adapté et le moins cher.</p>
+                </div>
+              </div>
+            }
             @if (aiError()) { <div class="rs-alert rs-alert--err"><lucide-icon [img]="AlertIcon" [size]="13"></lucide-icon> {{ aiError() }}</div> }
             @if (aiNoMatch()) { <div class="rs-alert rs-alert--warn"><lucide-icon [img]="AlertIcon" [size]="13"></lucide-icon> {{ aiNotes() || 'Aucun véhicule ne couvre bien le besoin sur ce créneau.' }}</div> }
             <!-- Transparence : véhicules écartés AVANT le raisonnement IA (résultats non faussés en silence) -->
             @if (aiExcludedInfo()) { <div class="rs-alert rs-alert--info">{{ aiExcludedInfo() }}</div> }
             @if (aiProposals().length > 0) {
               <div class="rs-ai-list">
-                <span class="rs-ai-hint">Proposé par l'IA — touchez pour choisir :</span>
+                <span class="rs-ai-hint">Proposé par l'IA — touchez pour choisir. Le n°1 est le meilleur compromis besoin / coût :</span>
                 @for (p of aiProposals(); track p.vehicleId; let i = $index) {
                   <button type="button" class="rs-ai-card" [class.rs-ai-card--on]="vehicleId() === p.vehicleId" (click)="vehicleId.set(p.vehicleId)">
                     <div class="rs-ai-top">
@@ -103,8 +113,15 @@ function toLocalInput(d: Date): string {
                       <span class="rs-chip" [ngClass]="scoreClass(p.score)">{{ p.score * 100 | number:'1.0-0' }}%</span>
                     </div>
                     <p class="rs-ai-reason">{{ p.reasoning }}</p>
-                    <span class="rs-ai-seats">{{ valOf(p.seats) }} places · {{ valOf(p.childSeats) }} sièges-enfant</span>
+                    <span class="rs-ai-seats">
+                      {{ valOf(p.seats) }} places · {{ valOf(p.childSeats) }} sièges-enfant
+                      @if (p.energy) { · <span class="rs-tag">{{ energyLabel(p.energy) }}</span> }
+                      @if (p.costPerKm != null) { · <span class="rs-tag rs-tag--cost">≈ {{ p.costPerKm | number:'1.2-2' }} €/km</span> }
+                    </span>
                   </button>
+                }
+                @if (aiCost() != null) {
+                  <p class="rs-ai-cost">Coût de cette analyse IA : ≈ {{ aiCost() | number:'1.2-2' }} €</p>
                 }
               </div>
             }
@@ -174,6 +191,17 @@ function toLocalInput(d: Date): string {
     .rs-ai-top .rs-plate { flex: 1; }
     .rs-ai-reason { font-size: 12px; color: var(--fg-secondary); margin-top: 6px; line-height: 1.4; }
     .rs-ai-seats { font-size: 11px; color: var(--fg-tertiary); margin-top: 5px; display: block; }
+    .rs-tag { font-weight: 700; color: var(--fg-secondary); }
+    .rs-tag--cost { color: var(--tracky-light); }
+    .rs-ai-cost { font-size: 11px; color: var(--fg-tertiary); text-align: right; margin: 2px 2px 0; }
+    .rs-ai-loading {
+      display: flex; align-items: flex-start; gap: 10px; padding: 12px;
+      border-radius: 12px; background: rgba(16,224,160,.06);
+      border: 1px solid color-mix(in srgb, var(--tracky-light) 30%, var(--border-subtle));
+    }
+    .rs-ai-loading lucide-icon { color: var(--tracky-light); flex-shrink: 0; margin-top: 1px; }
+    .rs-ai-loading-t { font-size: 12.5px; font-weight: 700; color: var(--fg-primary); margin: 0; }
+    .rs-ai-loading-s { font-size: 11.5px; color: var(--fg-tertiary); margin: 3px 0 0; line-height: 1.45; }
     .rs-plate { font-weight: 800; color: var(--fg-primary); letter-spacing: .3px; }
     .rs-chip { font-size: 12px; font-weight: 800; padding: 2px 9px; border-radius: 999px; }
     .rs-chip--hi { color: #10B981; background: rgba(16,185,129,.13); }
@@ -246,9 +274,11 @@ export class ReservationSheetComponent {
   protected readonly aiError = signal<string | null>(null);
   protected readonly aiNoMatch = signal(false);
   protected readonly aiNotes = signal<string | null>(null);
-  protected readonly aiProposals = signal<{ vehicleId: string; plate: string | null; seats: number | null; childSeats: number | null; score: number; reasoning: string }[]>([]);
+  protected readonly aiProposals = signal<{ vehicleId: string; plate: string | null; seats: number | null; childSeats: number | null; energy?: string | null; costPerKm?: number | null; score: number; reasoning: string }[]>([]);
   /** Phrase « N véhicule(s) écarté(s) » (immobilisés / capacité inconnue), sinon null. */
   protected readonly aiExcludedInfo = signal<string | null>(null);
+  /** Coût € de l'appel IA (transparence), affiché après l'analyse. */
+  protected readonly aiCost = signal<number | null>(null);
 
   // File de validation
   protected readonly queueLoading = signal(false);
@@ -275,6 +305,17 @@ export class ReservationSheetComponent {
   protected valOf(n: number | null): string { return n === null || n === undefined ? '—' : String(n); }
   protected scoreClass(v: number): string { return v >= 0.7 ? 'rs-chip--hi' : v >= 0.4 ? 'rs-chip--mid' : 'rs-chip--lo'; }
 
+  /** Libellé court d'énergie (badge de proposition). */
+  protected energyLabel(e: string | null | undefined): string {
+    switch (e) {
+      case 'ELECTRIQUE': return 'Électrique';
+      case 'DIESEL': return 'Diesel';
+      case 'ESSENCE': return 'Essence';
+      case 'HYBRIDE': return 'Hybride';
+      default: return e ?? '';
+    }
+  }
+
   protected setValidate(): void {
     this.mode.set('validate');
     void this.loadQueue();
@@ -282,7 +323,7 @@ export class ReservationSheetComponent {
 
   private resetAi(): void {
     this.aiProposals.set([]); this.aiError.set(null); this.aiNoMatch.set(false); this.aiNotes.set(null);
-    this.aiExcludedInfo.set(null);
+    this.aiExcludedInfo.set(null); this.aiCost.set(null);
   }
 
   /** Compose la phrase de transparence sur les véhicules écartés avant le raisonnement IA. */
@@ -322,6 +363,7 @@ export class ReservationSheetComponent {
       this.aiNoMatch.set(res.noGoodMatch);
       this.aiNotes.set(res.notes ?? null);
       this.aiExcludedInfo.set(this.excludedInfo(res.excludedImmobilized ?? 0, res.excludedUnknownCapacity ?? 0));
+      this.aiCost.set(res.aiCostEur ?? null);
       if (res.proposals.length > 0) this.vehicleId.set(res.proposals[0].vehicleId); // pré-sélectionne le meilleur
     } catch (e) {
       this.aiError.set(this.errMsg(e));

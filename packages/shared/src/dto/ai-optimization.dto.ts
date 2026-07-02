@@ -105,6 +105,12 @@ export interface AiPlacementCandidateInput {
   underutilized: boolean;
   /** Prévision d'usage récurrent fort sur ce créneau (informe le tri, jamais bloquant). */
   forecastBusy: boolean;
+  /** Énergie (DIESEL/ESSENCE/ELECTRIQUE/HYBRIDE/AUTRE) — sert à arbitrer le coût. */
+  energy?: string | null;
+  /** Coût/km estimé (€) — bas = mission moins chère : levier de RÉDUCTION DES COÛTS. */
+  costPerKm?: number | null;
+  /** Une maintenance est prévue peu après le créneau (à éviter si une alternative existe). */
+  upcomingMaintenance?: boolean;
 }
 
 export interface AiPlacementRequestInput {
@@ -125,6 +131,8 @@ export interface AiPlacementInputDto {
     totalVehicles: number;
     underutilizedCount: number;
     avgUtilization: number;
+    /** Coût/km le plus bas parmi les candidats (repère « au mieux » pour l'IA). */
+    cheapestCostPerKm?: number | null;
   };
 }
 
@@ -134,6 +142,10 @@ export interface AiPlacementProposalDto {
   plate: string | null;
   seats: number | null;
   childSeats: number | null;
+  /** Énergie du véhicule (affichée dans la proposition). */
+  energy?: string | null;
+  /** Coût/km estimé (€) — transparence sur le levier coût. */
+  costPerKm?: number | null;
   /** 0..1 — adéquation globale (1 = idéal). */
   score: number;
   reasoning: string;
@@ -149,6 +161,8 @@ export interface AiPlacementResultDto {
   excludedUnknownCapacity?: number;
   /** Transparence : véhicules écartés car immobilisés (incident/maintenance bloquant). */
   excludedImmobilized?: number;
+  /** Coût € estimé de CET appel IA (transparence ; le budget mensuel vit côté admin). */
+  aiCostEur?: number | null;
 }
 
 /** Requête front → API (placement) : le serveur construit les candidats via suggest(). */

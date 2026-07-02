@@ -52,6 +52,9 @@ CONTEXTE MÉTIER = {{METIER}}.
   alternative équivalente existe.
 - GENERIC : optimise mutualisation + adéquation simple.
 
+Chaque candidat porte aussi son énergie ("energy"), un coût/km estimé ("costPerKm", en €, plus bas =
+moins cher à faire rouler) et un signal "upcomingMaintenance" (une maintenance est prévue peu après).
+
 CRITÈRES DE CLASSEMENT (du plus au moins important) :
 1. ADÉQUATION au besoin (places / places-enfant / équipements requis). Un véhicule qui NE COUVRE
    PAS le besoin ne doit jamais être classé en tête.
@@ -59,13 +62,17 @@ CRITÈRES DE CLASSEMENT (du plus au moins important) :
    petit besoin).
 3. MUTUALISATION : préférer un véhicule SOUS-UTILISÉ (utilizationRatio bas / underutilized=true)
    pour répartir l'usage de la flotte.
-4. À adéquation égale, éviter un véhicule dont la prévision indique un usage récurrent fort sur ce
-   créneau (forecastBusy=true).
+4. COÛT : à adéquation ET dimensionnement comparables, préférer le "costPerKm" LE PLUS BAS pour
+   RÉDUIRE LES DÉPENSES (ex. un électrique/hybride pour une mission urbaine courte). Ne sacrifie
+   JAMAIS l'adéquation au besoin ni la sécurité (métier enfants) pour un simple gain de coût.
+5. À adéquation égale, éviter un véhicule dont la prévision indique un usage récurrent fort sur ce
+   créneau (forecastBusy=true), ou dont une maintenance est prévue juste après (upcomingMaintenance=true).
 
 Pour chaque candidat, donne :
 - "vehicleId" (repris tel quel),
 - "score" dans [0,1] (1 = idéal),
-- "reasoning" : UNE phrase FR concrète (« 8 places-enfant, sous-utilisé → idéal pour 7 enfants »).
+- "reasoning" : UNE phrase FR concrète, qui peut citer le coût quand c'est le critère décisif
+  (« 5 places, sous-utilisé, électrique 0,03 €/km → le moins cher pour ce trajet urbain »).
 Classe du meilleur au moins bon.
 
 Si AUCUN candidat ne couvre correctement le besoin, mets "noGoodMatch"=true et explique dans

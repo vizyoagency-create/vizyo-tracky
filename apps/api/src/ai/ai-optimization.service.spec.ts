@@ -11,6 +11,7 @@ function makePrisma(over: Record<string, unknown> = {}) {
   return {
     fleet: { findUnique: jest.fn().mockResolvedValue({ metier: 'CHILDREN_TRANSPORT', name: 'CDEF' }) },
     vehicle: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn().mockResolvedValue({}) },
+    vehicleEvent: { findMany: jest.fn().mockResolvedValue([]) },
     installationTask: { findMany: jest.fn().mockResolvedValue([]) },
     ...over,
   } as never;
@@ -50,7 +51,11 @@ function makeErrors() {
 }
 
 function makeAiUsage() {
-  return { record: jest.fn().mockResolvedValue(undefined) } as never;
+  return {
+    record: jest.fn().mockResolvedValue(undefined),
+    costOf: jest.fn().mockReturnValue(0.02),
+    eurRate: jest.fn().mockReturnValue(0.92),
+  } as never;
 }
 
 function build(over: {
@@ -242,5 +247,44 @@ describe('AiOptimizationService — Sprint 9 (copilote IA)', () => {
     const v2 = payload.candidates.find((c: { vehicleId: string }) => c.vehicleId === 'v2');
     expect(v2.forecastBusy).toBe(true);
     expect((prisma as unknown as { vehicle: { update: jest.Mock } }).vehicle.update).not.toHaveBeenCalled();
+  });
+
+  it('suggestPlacement : enrichit le payload avec énergie + coût/km + maintenance imminente (P3)', async () => {
+    const reservations = makeReservations({
+      suggest: jest.fn().mockResolvedValue({
+        startAt: SLOT.startAt, endAt: SLOT.endAt,
+        vehicles: [
+          { vehicleId: 'v1', vehiclePlate: 'AA', seats: 5, childSeats: 0, features: [], utilizationRatio: 0.05, underutilized: true },
+          { vehicleId: 'v2', vehiclePlate: 'BB', seats: 5, childSeats: 0, features: [], utilizationRatio: 0.2, underutilized: false },
+        ],
+      }),
+    });
+    const prisma = makePrisma({
+      fleet: { findUnique: jest.fn().mockResolvedValue({ metier: 'GENERIC', name: 'F' }) },
+      vehicle: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'v1', energy: 'ELECTRIQUE', fuelConsumptionL100km: null }, // 0,03 €/km forfait
+          { id: 'v2', energy: 'DIESEL', fuelConsumptionL100km: 8 },        // 8/100 * 1,75 = 0,14 €/km
+        ]),
+        update: jest.fn(),
+      },
+      vehicleEvent: { findMany: jest.fn().mockResolvedValue([{ vehicleId: 'v2' }]) }, // maintenance imminente sur v2
+    });
+    const anthropic = makeAnthropic({
+      proposals: [{ vehicleId: 'v1', score: 0.9, reasoning: 'électrique, le moins cher' }],
+      noGoodMatch: false, notes: null,
+    });
+    const svc = build({ prisma, reservations, anthropic });
+
+    const res = await svc.suggestPlacement(makeUser(), { ...SLOT });
+    const payload = (anthropic as unknown as { completeJson: jest.Mock }).completeJson.mock.calls[0][0].userPayload;
+    const v1 = payload.candidates.find((c: { vehicleId: string }) => c.vehicleId === 'v1');
+    const v2 = payload.candidates.find((c: { vehicleId: string }) => c.vehicleId === 'v2');
+    expect(v1).toMatchObject({ energy: 'ELECTRIQUE', costPerKm: 0.03, upcomingMaintenance: false });
+    expect(v2).toMatchObject({ energy: 'DIESEL', costPerKm: 0.14, upcomingMaintenance: true });
+    expect(payload.fleetSummary.cheapestCostPerKm).toBe(0.03);
+    // Proposition : coût/km propagé ; coût de l'appel IA renvoyé (costOf 0,02 × 0,92).
+    expect(res.proposals[0]).toMatchObject({ energy: 'ELECTRIQUE', costPerKm: 0.03 });
+    expect(res.aiCostEur).toBeCloseTo(0.0184, 4);
   });
 });
