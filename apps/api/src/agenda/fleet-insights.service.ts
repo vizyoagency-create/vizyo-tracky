@@ -97,15 +97,17 @@ export class FleetInsightsService {
     };
   }
 
-  /** Résout le périmètre (flotte + véhicules accessibles), avec filtre véhicule/groupe optionnel. */
+  /** Résout le périmètre (flotte + véhicules accessibles), avec filtre véhicule/groupe/flotte optionnel. */
   private async resolveScope(
     user: AuthUser,
-    filter?: { vehicleId?: string; groupId?: string },
+    filter?: { vehicleId?: string; groupId?: string; fleetId?: string },
   ): Promise<ResolvedScope | null> {
     let fleetId: string | undefined;
     if (user.role !== UserRole.SUPER_ADMIN) {
       if (!user.fleetId) throw new ForbiddenException('Aucune flotte associee');
       fleetId = user.fleetId;
+    } else if (filter?.fleetId) {
+      fleetId = filter.fleetId; // filtre société global (SUPER_ADMIN)
     }
 
     let requested: string[] | undefined;
@@ -164,7 +166,7 @@ export class FleetInsightsService {
     user: AuthUser,
     from: Date,
     to: Date,
-    filter?: { vehicleId?: string; groupId?: string },
+    filter?: { vehicleId?: string; groupId?: string; fleetId?: string },
   ): Promise<VehicleAvailabilityDto> {
     const scope = await this.resolveScope(user, filter);
     if (!scope) return { from: from.toISOString(), to: to.toISOString(), slots: [], truncated: false };
@@ -201,7 +203,7 @@ export class FleetInsightsService {
     user: AuthUser,
     from: Date,
     to: Date,
-    filter?: { vehicleId?: string; groupId?: string },
+    filter?: { vehicleId?: string; groupId?: string; fleetId?: string },
   ): Promise<FleetOptimizationDto> {
     const scope = await this.resolveScope(user, filter);
     if (!scope) {

@@ -48,11 +48,15 @@ export class VehicleEventsService {
   private async scopedWhere(
     user: AuthUser,
     requestedVehicleIds?: string[],
+    fleetId?: string,
   ): Promise<Prisma.VehicleEventWhereInput> {
     const where: Prisma.VehicleEventWhereInput = {};
     if (user.role !== UserRole.SUPER_ADMIN) {
       if (!user.fleetId) throw new ForbiddenException('Aucune flotte associee');
       where.fleetId = user.fleetId;
+    } else if (fleetId) {
+      // Filtre société global (SUPER_ADMIN) : restreint à la société choisie dans le top-bar.
+      where.fleetId = fleetId;
     }
     const accessible = await this.vehicleAccess.getAccessibleVehicleIds(user);
     const scope = resolveReportVehicleScope(accessible, requestedVehicleIds);
@@ -83,6 +87,7 @@ export class VehicleEventsService {
       groupId?: string;
       type?: VehicleEventType;
       status?: VehicleEventStatus;
+      fleetId?: string;
     },
   ): Promise<VehicleEventDto[]> {
     let requested: string[] | undefined;
@@ -92,7 +97,7 @@ export class VehicleEventsService {
       if (requested.length === 0) return []; // groupe vide -> ne rien exposer d'autre
     }
 
-    const where = await this.scopedWhere(user, requested);
+    const where = await this.scopedWhere(user, requested, q.fleetId);
     // Fenêtre temporelle : événements qui chevauchent [from, to].
     where.AND = [
       {
@@ -114,8 +119,8 @@ export class VehicleEventsService {
     return rows.map((r) => this.toDto(r));
   }
 
-  async summary(user: AuthUser): Promise<AgendaSummaryDto> {
-    const where = await this.scopedWhere(user);
+  async summary(user: AuthUser, fleetId?: string): Promise<AgendaSummaryDto> {
+    const where = await this.scopedWhere(user, undefined, fleetId);
     const now = new Date();
     const in30 = new Date(now.getTime() + 30 * DAY_MS);
     const [overdue, upcoming, openIncidents] = await Promise.all([

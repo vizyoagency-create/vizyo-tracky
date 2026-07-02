@@ -30,6 +30,7 @@ import { effectiveBlockingEndMs, isImmobilizingEvent } from '@vizyo/tracky-share
 import { firstValueFrom } from 'rxjs';
 import { AgendaApiService } from '../../core/services/agenda.service';
 import { PermissionsService } from '../../core/services/permissions.service';
+import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.component';
@@ -563,7 +564,7 @@ interface GroupOption {
     <!-- ─── Sprint 9 (consolidation) — feuilles ouvertes depuis le calendrier ─── -->
     <app-reservation-sheet
       [open]="resSheetOpen()"
-      [vehicles]="vehicles()"
+      [vehicles]="scopedVehicles()"
       [defaultDate]="resDefaultDate()"
       [startMode]="resStartMode()"
       (closed)="resSheetOpen.set(false)"
@@ -973,6 +974,7 @@ export class AgendaComponent implements OnInit {
   private readonly perms = inject(PermissionsService);
   private readonly toast = inject(ToastService);
   private readonly scrollLock = inject(ScrollLockService);
+  private readonly fleetFilter = inject(FleetFilterService);
 
   // Verrou de scroll pour les overlays custom (modal création/incident + panneau
   // du jour) : fige la page derrière tant qu'un des deux est ouvert.
@@ -982,6 +984,24 @@ export class AgendaComponent implements OnInit {
       onCleanup(() => this.scrollLock.unlock());
     }
   });
+
+  // Filtre société global (SUPER_ADMIN) : recharge tout l'agenda quand la société change,
+  // et réinitialise les filtres groupe/véhicule (ils appartiennent à l'ancienne société).
+  // Les écritures de signaux sont différées hors de l'exécution synchrone de l'effect.
+  private readonly fleetFilterEffect = effect(() => {
+    this.fleetFilter.selectedFleetId(); // dépendance
+    if (!this.initialised) return; // ne pas re-déclencher pendant le premier chargement
+    queueMicrotask(() => {
+      this.selectedGroupId.set('');
+      this.selectedVehicleId.set('');
+      void this.loadEvents();
+      void this.loadSummary();
+      void this.loadActivity();
+      void this.loadForecast();
+    });
+  });
+  /** Passe à true après le premier chargement (évite un double-fetch au démarrage). */
+  private initialised = false;
 
   // ─── Icônes ───────────────────────────────────────────────────────────────
   protected readonly CalendarDaysIcon = CalendarDays;
@@ -1088,19 +1108,24 @@ export class AgendaComponent implements OnInit {
   );
 
   // ─── Dérivés filtres ─────────────────────────────────────────────────────────
-  /** Groupes uniques tirés des véhicules (dédup par id). */
+  /** Véhicules restreints à la société sélectionnée (filtre global SUPER_ADMIN ; no-op sinon). */
+  protected readonly scopedVehicles = computed(() =>
+    this.vehicles().filter((v) => this.fleetFilter.matches(v.fleetId)),
+  );
+
+  /** Groupes uniques tirés des véhicules de la société courante (dédup par id). */
   protected readonly groupOptions = computed<GroupOption[]>(() => {
     const map = new Map<string, GroupOption>();
-    for (const v of this.vehicles()) {
+    for (const v of this.scopedVehicles()) {
       if (v.group?.id && !map.has(v.group.id)) map.set(v.group.id, { id: v.group.id, name: v.group.name });
     }
     return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
   });
 
-  /** Véhicules visibles dans le dropdown (restreints au groupe sélectionné). */
+  /** Véhicules visibles dans le dropdown (société courante, restreints au groupe sélectionné). */
   protected readonly visibleVehicles = computed(() => {
     const gid = this.selectedGroupId();
-    const list = this.vehicles();
+    const list = this.scopedVehicles();
     return gid ? list.filter((v) => v.group?.id === gid) : list;
   });
 
@@ -1128,7 +1153,7 @@ export class AgendaComponent implements OnInit {
   private readonly groupVehicleIdSet = computed<Set<string> | null>(() => {
     const gid = this.selectedGroupId();
     if (!gid) return null;
-    return new Set(this.vehicles().filter((v) => v.group?.id === gid).map((v) => v.id));
+    return new Set(this.scopedVehicles().filter((v) => v.group?.id === gid).map((v) => v.id));
   });
 
   /**
@@ -1152,11 +1177,11 @@ export class AgendaComponent implements OnInit {
     return type ? this.scopedEvents().filter((ev) => ev.type === type) : this.scopedEvents();
   });
 
-  /** Véhicules du périmètre courant (groupe + véhicule) — dénominateur de la disponibilité. */
+  /** Véhicules du périmètre courant (société + groupe + véhicule) — dénominateur de la disponibilité. */
   private readonly availabilityVehicles = computed(() => {
     const vid = this.selectedVehicleId();
     const gids = this.groupVehicleIdSet();
-    return this.vehicles().filter((v) => {
+    return this.scopedVehicles().filter((v) => {
       if (vid && v.id !== vid) return false;
       if (gids && !gids.has(v.id)) return false;
       return true;
@@ -1374,6 +1399,12 @@ export class AgendaComponent implements OnInit {
     await this.loadEvents();
     void this.loadActivity();
     void this.loadForecast();
+    this.initialised = true; // à partir d'ici, un changement de société recharge tout
+  }
+
+  /** Société filtrée (SUPER_ADMIN) passée aux endpoints ; undefined = toutes / rôle non-SA. */
+  private currentFleetId(): string | undefined {
+    return this.fleetFilter.selectedFleetId() ?? undefined;
   }
 
   @HostListener('document:keydown.escape')
@@ -1394,7 +1425,7 @@ export class AgendaComponent implements OnInit {
 
   private async loadSummary(): Promise<void> {
     try {
-      this.summary.set(await firstValueFrom(this.api.summary()));
+      this.summary.set(await firstValueFrom(this.api.summary(this.currentFleetId())));
     } catch {
       this.summary.set(null);
     }
@@ -1419,8 +1450,8 @@ export class AgendaComponent implements OnInit {
         this.api.listEvents({
           from,
           to,
-          // Le groupe/véhicule/type sont appliqués côté client (filtre instantané) ;
-          // on charge tout le périmètre autorisé sur la fenêtre du mois.
+          // Société filtrée côté serveur (SUPER_ADMIN) ; groupe/véhicule/type = filtre client instantané.
+          fleetId: this.currentFleetId(),
         }),
       );
       this.events.set(events);
@@ -1447,7 +1478,7 @@ export class AgendaComponent implements OnInit {
     }
     try {
       const { from, to } = this.monthWindow();
-      const avail = await firstValueFrom(this.api.getAvailability({ from, to }));
+      const avail = await firstValueFrom(this.api.getAvailability({ from, to, fleetId: this.currentFleetId() }));
       this.activitySlots.set(avail.slots);
     } catch {
       this.activitySlots.set([]);
@@ -1466,7 +1497,7 @@ export class AgendaComponent implements OnInit {
     }
     try {
       const { from, to } = this.monthWindow();
-      const res = await firstValueFrom(this.api.getForecast({ from, to }));
+      const res = await firstValueFrom(this.api.getForecast({ from, to, fleetId: this.currentFleetId() }));
       this.forecastSlots.set(res.slots);
     } catch {
       this.forecastSlots.set([]);

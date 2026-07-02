@@ -56,11 +56,12 @@ export class FleetInsightsController {
     @Query('to') to: string,
     @Query('vehicleId') vehicleId?: string,
     @Query('groupId') groupId?: string,
+    @Query('fleetId') fleetId?: string,
   ) {
     const f = parseDate(from, 'from');
     const t = parseDate(to, 'to');
     assertWindow(f, t);
-    return this.insights.getAvailability(req.user, f, t, { vehicleId, groupId });
+    return this.insights.getAvailability(req.user, f, t, { vehicleId, groupId, fleetId });
   }
 
   @Get('optimization/utilization')
@@ -72,21 +73,27 @@ export class FleetInsightsController {
     @Query('to') to?: string,
     @Query('vehicleId') vehicleId?: string,
     @Query('groupId') groupId?: string,
+    @Query('fleetId') fleetId?: string,
   ) {
     const t = to ? parseDate(to, 'to') : new Date();
     const f = from ? parseDate(from, 'from') : new Date(t.getTime() - DEFAULT_UTILIZATION_DAYS * DAY_MS);
     assertWindow(f, t);
-    return this.insights.getUtilization(req.user, f, t, { vehicleId, groupId });
+    return this.insights.getUtilization(req.user, f, t, { vehicleId, groupId, fleetId });
   }
 
   /** Sprint 8 (Palier C) — usage PRÉVU (récurrence dérivée des trajets), projeté sur la fenêtre. */
   @Get('agenda/forecast')
   @Roles(...ALL_ROLES)
   @RequirePermissions('reservations_view')
-  forecast(@Req() req: AuthenticatedRequest, @Query('from') from: string, @Query('to') to: string) {
+  forecast(
+    @Req() req: AuthenticatedRequest,
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Query('fleetId') fleetId?: string,
+  ) {
     const f = parseDate(from, 'from');
     const t = parseDate(to, 'to');
     assertWindow(f, t);
-    return this.forecastSvc.getForecast(req.user, f, t);
+    return this.forecastSvc.getForecast(req.user, f, t, fleetId);
   }
 }

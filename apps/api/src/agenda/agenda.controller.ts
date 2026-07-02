@@ -71,6 +71,7 @@ export class AgendaController {
     @Query('groupId') groupId?: string,
     @Query('type') type?: VehicleEventType,
     @Query('status') status?: VehicleEventStatus,
+    @Query('fleetId') fleetId?: string,
   ) {
     return this.events.list(req.user, {
       from: parseRequired(from, 'from'),
@@ -79,14 +80,15 @@ export class AgendaController {
       groupId,
       type,
       status,
+      fleetId,
     });
   }
 
   @Get('summary')
   @Roles(...ALL_ROLES)
   @RequirePermissions('agenda_view')
-  summary(@Req() req: AuthenticatedRequest) {
-    return this.events.summary(req.user);
+  summary(@Req() req: AuthenticatedRequest, @Query('fleetId') fleetId?: string) {
+    return this.events.summary(req.user, fleetId);
   }
 
   @Get('vehicles/:vehicleId/odometer')

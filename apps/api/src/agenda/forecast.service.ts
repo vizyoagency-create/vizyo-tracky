@@ -87,19 +87,24 @@ export class ForecastService {
     return new Date(naive.getTime() - offset);
   }
 
-  private async resolveScope(user: AuthUser): Promise<{ fleetId?: string; ids: string[] | 'ALL' }> {
+  private async resolveScope(
+    user: AuthUser,
+    fleetIdArg?: string,
+  ): Promise<{ fleetId?: string; ids: string[] | 'ALL' }> {
     let fleetId: string | undefined;
     if (user.role !== UserRole.SUPER_ADMIN) {
       if (!user.fleetId) throw new ForbiddenException('Aucune flotte associee');
       fleetId = user.fleetId;
+    } else if (fleetIdArg) {
+      fleetId = fleetIdArg; // filtre société global (SUPER_ADMIN)
     }
     const accessible = await this.vehicleAccess.getAccessibleVehicleIds(user);
     const ids = resolveReportVehicleScope(accessible, undefined);
     return { fleetId, ids };
   }
 
-  async getForecast(user: AuthUser, from: Date, to: Date): Promise<ForecastResultDto> {
-    const scope = await this.resolveScope(user);
+  async getForecast(user: AuthUser, from: Date, to: Date, fleetId?: string): Promise<ForecastResultDto> {
+    const scope = await this.resolveScope(user, fleetId);
 
     const learnFrom = new Date(Date.now() - LOOKBACK_WEEKS * WEEK_MS);
     const tripWhere: Prisma.TripWhereInput = {

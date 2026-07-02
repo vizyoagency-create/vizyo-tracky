@@ -36,6 +36,8 @@ export interface AgendaEventQuery {
   groupId?: string;
   type?: VehicleEventType;
   status?: VehicleEventStatus;
+  /** Filtre société global (SUPER_ADMIN) : restreint à cette flotte. */
+  fleetId?: string;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -51,12 +53,15 @@ export class AgendaApiService {
     if (query.groupId) params['groupId'] = query.groupId;
     if (query.type) params['type'] = query.type;
     if (query.status) params['status'] = query.status;
+    if (query.fleetId) params['fleetId'] = query.fleetId;
     return this.http.get<VehicleEventDto[]>('/api/agenda/events', { params });
   }
 
   /** GET /api/agenda/summary — compteurs (en retard / à venir / incidents ouverts). */
-  summary(): Observable<AgendaSummaryDto> {
-    return this.http.get<AgendaSummaryDto>('/api/agenda/summary');
+  summary(fleetId?: string): Observable<AgendaSummaryDto> {
+    const params: Record<string, string> = {};
+    if (fleetId) params['fleetId'] = fleetId;
+    return this.http.get<AgendaSummaryDto>('/api/agenda/summary', { params });
   }
 
   /** GET /api/agenda/vehicles/:id/odometer — estimation kilométrique (relevé + GPS). */
@@ -119,10 +124,12 @@ export class AgendaApiService {
     to: string;
     vehicleId?: string;
     groupId?: string;
+    fleetId?: string;
   }): Observable<VehicleAvailabilityDto> {
     const params: Record<string, string> = { from: query.from, to: query.to };
     if (query.vehicleId) params['vehicleId'] = query.vehicleId;
     if (query.groupId) params['groupId'] = query.groupId;
+    if (query.fleetId) params['fleetId'] = query.fleetId;
     return this.http.get<VehicleAvailabilityDto>('/api/agenda/availability', { params });
   }
 
@@ -196,9 +203,9 @@ export class AgendaApiService {
   }
 
   /** GET /api/agenda/forecast — usage PRÉVU (récurrence dérivée), projeté sur la fenêtre. */
-  getForecast(query: { from: string; to: string }): Observable<ForecastResultDto> {
-    return this.http.get<ForecastResultDto>('/api/agenda/forecast', {
-      params: { from: query.from, to: query.to },
-    });
+  getForecast(query: { from: string; to: string; fleetId?: string }): Observable<ForecastResultDto> {
+    const params: Record<string, string> = { from: query.from, to: query.to };
+    if (query.fleetId) params['fleetId'] = query.fleetId;
+    return this.http.get<ForecastResultDto>('/api/agenda/forecast', { params });
   }
 }
