@@ -1,4 +1,5 @@
-import { Component, computed, inject, input, OnChanges, OnInit, output, signal, SimpleChanges } from '@angular/core';
+import { Component, computed, effect, ElementRef, inject, input, OnChanges, OnInit, output, Renderer2, signal, SimpleChanges, viewChild } from '@angular/core';
+import { DOCUMENT } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, X, Plus, Trash2, Globe, FolderOpen, Truck } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
@@ -47,10 +48,10 @@ export interface MatrixDrawerData {
   imports: [FormsModule, LucideAngularModule],
   template: `
     @if (open()) {
-      <div class="fixed inset-0 z-[9000] flex justify-end">
+      <div #overlay class="fixed inset-0 z-[9000] flex justify-end">
         <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" (click)="onClose()"></div>
 
-        <div class="relative w-full max-w-3xl max-h-full bg-bg-primary border-l border-border-subtle shadow-2xl
+        <div class="relative w-full max-w-3xl max-h-[100dvh] bg-bg-primary border-l border-border-subtle shadow-2xl
                     flex flex-col animate-slide-in overflow-hidden drawer-overlay-safe">
 
           <div class="flex items-center justify-between px-6 py-4 border-b border-border-subtle">
@@ -207,6 +208,25 @@ export class AccessPermissionsMatrixComponent implements OnInit, OnChanges {
 
   private readonly api = inject(UserAccessService);
   private readonly toast = inject(ToastService);
+  private readonly renderer = inject(Renderer2);
+  private readonly doc = inject(DOCUMENT);
+
+  /**
+   * iOS / PWA standalone : le conteneur `.content` (dashboard-layout) a
+   * `overflow-y:auto` + `-webkit-overflow-scrolling:touch` → il devient le bloc
+   * conteneur du `position:fixed` et PIÈGE l'overlay (qui défile avec la page au
+   * lieu de couvrir l'écran). On téléporte donc l'overlay dans `<body>` pour qu'il
+   * redevienne un vrai plein-écran (même parade que le mode Baanool, cf. layout).
+   * Angular retire proprement le nœud (via `el.remove()`) quand `@if` se ferme,
+   * même déplacé dans body ; à la ré-ouverture un nouvel élément est recréé.
+   */
+  private readonly overlayRef = viewChild<ElementRef<HTMLElement>>('overlay');
+  private readonly _bodyPortal = effect(() => {
+    const el = this.overlayRef()?.nativeElement;
+    if (el && el.parentElement && el.parentElement !== this.doc.body) {
+      this.renderer.appendChild(this.doc.body, el);
+    }
+  });
 
   protected readonly XIcon = X;
   protected readonly GlobeIcon = Globe;
