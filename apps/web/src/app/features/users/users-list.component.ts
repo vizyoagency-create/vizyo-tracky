@@ -134,7 +134,7 @@ import { DriversListComponent } from '../drivers/drivers-list.component';
                     </button>
                   }
                   <button (click)="onResetPassword(u)" class="u-action-btn" title="Reinitialiser le mot de passe">
-                    <lucide-icon [img]="KeyIcon" [size]="14"></lucide-icon>
+                    <lucide-icon [img]="KeyIcon" [size]="14"></lucide-icon> Réinit. mot de passe
                   </button>
                   @if (isSuperAdmin()) {
                     <button
@@ -148,7 +148,7 @@ import { DriversListComponent } from '../drivers/drivers-list.component';
                     </button>
                   }
                   <button (click)="confirmDelete(u)" class="u-action-btn danger" title="Archiver">
-                    <lucide-icon [img]="ArchiveIcon" [size]="14"></lucide-icon>
+                    <lucide-icon [img]="ArchiveIcon" [size]="14"></lucide-icon> Archiver
                   </button>
                 </div>
               }
