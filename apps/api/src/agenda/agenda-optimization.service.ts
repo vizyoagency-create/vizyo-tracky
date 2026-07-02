@@ -1,27 +1,43 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { Prisma, UserRole } from '@prisma/client';
 import {
   effectiveBlockingEndMs,
   estimateCostPerKm,
   isImmobilizingEvent,
   type AgendaOptimizationDashboardDto,
+  type AgendaOptimizationOrigin,
+  type AgendaOptimizationReportDto,
   type AgendaOptimizationScheduleDto,
   type AgendaReportStatus,
   type AiAgendaProposalDto,
-  type AgendaOptimizationReportDto,
+  type ApplyAgendaProposalDto,
   type ForecastWeekBucketDto,
   type OptimizationOpportunityDto,
   type SetAgendaOptimizationScheduleDto,
   type VehicleEventDto,
 } from '@vizyo/tracky-shared';
+import { AiUsageService } from '../ai-usage/ai-usage.service';
+import { AnthropicClient } from '../ai/anthropic.client';
 import type { AuthUser } from '../auth/types/auth-user';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
+import { AGENDA_OPTIMIZATION_SCHEMA, AGENDA_OPTIMIZATION_SYSTEM } from './agenda-optimization.prompt';
 import { ForecastService } from './forecast.service';
 import { FleetInsightsService } from './fleet-insights.service';
+import { ReservationsService } from './reservations.service';
 import { VehicleEventsService } from './vehicle-events.service';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** Marqueur "système" (createdBy des événements auto-générés — pas de FK, simple traçabilité). */
+const SYSTEM_UUID = '00000000-0000-0000-0000-000000000000';
+/** Bornes du payload IA (perf + coût). */
+const AI_MAX_RESERVATIONS = 200;
+const AI_MAX_FORECAST = 300;
+type AiAgendaOutput = { summary?: string; proposals?: Array<Partial<AiAgendaProposalDto>> };
 /** Horizon de la vue d'optimisation : ≈ 2 mois. */
 const HORIZON_DAYS = 60;
 /** Fenêtre d'apprentissage de l'utilisation (mutualisation) : 28 jours passés. */
@@ -57,7 +73,20 @@ export class AgendaOptimizationService {
     private readonly forecast: ForecastService,
     private readonly insights: FleetInsightsService,
     private readonly events: VehicleEventsService,
+    private readonly reservations: ReservationsService,
+    private readonly anthropic: AnthropicClient,
+    private readonly aiUsage: AiUsageService,
+    private readonly systemActivity: SystemActivityService,
+    private readonly errors: ErrorLogger,
   ) {}
+
+  /** Utilisateur SYSTÈME (super-admin synthétique) pour les lectures des exécutions planifiées. */
+  private systemReader(fleetId: string): AuthUser {
+    return {
+      id: SYSTEM_UUID, authUserId: SYSTEM_UUID, email: 'system@tracky', firstName: null, lastName: null,
+      role: UserRole.SUPER_ADMIN, fleetId, isActive: true, permissions: null,
+    };
+  }
 
   // ─── Scope ───────────────────────────────────────────────────────────────
 
@@ -96,18 +125,12 @@ export class AgendaOptimizationService {
     const to = new Date(from.getTime() + HORIZON_DAYS * DAY_MS);
     const utilFrom = new Date(from.getTime() - UTIL_WINDOW_DAYS * DAY_MS);
 
-    const [forecastRes, allEvents, utilization, latestReport, schedule] = await Promise.all([
-      this.forecast.getForecast(user, from, to),
-      this.events.list(user, { from, to }),
-      this.insights.getUtilization(user, utilFrom, from),
+    const [gathered, latestReport, schedule] = await Promise.all([
+      this.gather(user, from, to, utilFrom, vehicleIds),
       this.loadLatestReport(fid),
       this.getSchedule(user, fid),
     ]);
-
-    // Restreint tout au périmètre véhicule de la flotte cible (cas super-admin multi-flottes).
-    const events = allEvents.filter((e) => vehicleIds.has(e.vehicleId));
-    const forecastSlots = forecastRes.slots.filter((s) => vehicleIds.has(s.vehicleId));
-    const utilVehicles = utilization.vehicles.filter((v) => vehicleIds.has(v.vehicleId));
+    const { events, forecastSlots, utilVehicles } = gathered;
 
     const { weeks, tensionDays } = this.buildTimeline(from, to, forecastSlots, events, vehicles.length);
     const opportunities = this.buildOpportunities(vehicles, utilVehicles, events, from, to, tensionDays);
@@ -128,6 +151,30 @@ export class AgendaOptimizationService {
       opportunities,
       latestReport,
       schedule,
+    };
+  }
+
+  /** Collecte + filtre au périmètre flotte (prévision, événements, utilisation). Réutilisé agent. */
+  private async gather(
+    user: AuthUser,
+    from: Date,
+    to: Date,
+    utilFrom: Date,
+    vehicleIds: Set<string>,
+  ): Promise<{
+    events: VehicleEventDto[];
+    forecastSlots: { vehicleId: string; vehiclePlate: string | null; startAt: string; endAt: string; dayOfWeek: number; basis: string; confidence: number }[];
+    utilVehicles: { vehicleId: string; vehiclePlate: string | null; underutilized: boolean; distanceKm: number; utilizationRatio: number; freePatterns: string[] }[];
+  }> {
+    const [forecastRes, allEvents, utilization] = await Promise.all([
+      this.forecast.getForecast(user, from, to),
+      this.events.list(user, { from, to }),
+      this.insights.getUtilization(user, utilFrom, from),
+    ]);
+    return {
+      events: allEvents.filter((e) => vehicleIds.has(e.vehicleId)),
+      forecastSlots: forecastRes.slots.filter((s) => vehicleIds.has(s.vehicleId)),
+      utilVehicles: utilization.vehicles.filter((v) => vehicleIds.has(v.vehicleId)),
     };
   }
 
@@ -384,9 +431,321 @@ export class AgendaOptimizationService {
       costEur: Math.round(row.costUsd * 0.92 * 10000) / 10000,
     };
   }
+
+  // ─── Agent IA — génération / application / planification ──────────────────
+
+  /** Lance une analyse IA à la demande (utilisateur). Perm ai_optimize (contrôleur). */
+  async runOnDemand(user: AuthUser, fleetId?: string): Promise<AgendaOptimizationReportDto> {
+    const { fleetId: fid } = await this.resolveFleet(user, fleetId);
+    return this.runAnalysis(user, user.id, fid, 'manual');
+  }
+
+  async listReports(user: AuthUser, fleetId?: string, limit = 20): Promise<AgendaOptimizationReportDto[]> {
+    const { fleetId: fid } = await this.resolveFleet(user, fleetId);
+    const rows = await this.prisma.agendaOptimizationReport.findMany({
+      where: { fleetId: fid },
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(Math.max(limit, 1), 50),
+    });
+    return rows.map((r) => this.reportToDto(r));
+  }
+
+  /**
+   * Génère un rapport d'optimisation IA pour une flotte : construit le payload (véhicules, coûts,
+   * réservations, maintenances, incidents, prévision, tensions), fait analyser par Claude, filtre
+   * les hallucinations, PERSISTE, journalise le coût (Coûts IA) + l'activité + les échecs (alerte).
+   * En mode AUTO : applique automatiquement les propositions SÛRES (planif de maintenance).
+   */
+  async runAnalysis(
+    reader: AuthUser,
+    actorUserId: string | null,
+    fleetId: string,
+    origin: AgendaOptimizationOrigin,
+    trigger?: string,
+  ): Promise<AgendaOptimizationReportDto> {
+    const { fleetId: fid, vehicles, vehicleIds } = await this.resolveFleet(reader, fleetId);
+    const from = new Date();
+    from.setHours(0, 0, 0, 0);
+    const to = new Date(from.getTime() + HORIZON_DAYS * DAY_MS);
+    const utilFrom = new Date(from.getTime() - UTIL_WINDOW_DAYS * DAY_MS);
+    const { events, forecastSlots, utilVehicles } = await this.gather(reader, from, to, utilFrom, vehicleIds);
+    const { tensionDays } = this.buildTimeline(from, to, forecastSlots, events, vehicles.length);
+    const fleet = await this.prisma.fleet.findUnique({ where: { id: fid }, select: { name: true, metier: true } });
+
+    const payload = this.buildAiPayload(fleet, vehicles, utilVehicles, events, forecastSlots, tensionDays, from, to);
+    const validResa = new Set(events.filter((e) => e.type === 'RESERVATION').map((e) => e.id));
+
+    try {
+      const call = await this.anthropic.completeJson<AiAgendaOutput>({
+        system: AGENDA_OPTIMIZATION_SYSTEM,
+        userPayload: payload,
+        schema: AGENDA_OPTIMIZATION_SCHEMA,
+        maxTokens: 4096,
+      });
+      const proposals = this.sanitizeProposals(call.result?.proposals, vehicleIds, validResa, vehicles);
+      const costUsd = this.aiUsage.costOf(call.model, call.usage);
+      void this.aiUsage.record({
+        userId: actorUserId, fleetId: fid, action: 'agenda_optimization', model: call.model,
+        inputTokens: call.usage.inputTokens, outputTokens: call.usage.outputTokens,
+        cacheWriteTokens: call.usage.cacheWriteTokens, cacheReadTokens: call.usage.cacheReadTokens,
+        latencyMs: call.latencyMs, ok: true,
+      });
+      const row = await this.prisma.agendaOptimizationReport.create({
+        data: {
+          fleetId: fid, createdByUserId: actorUserId, fromAt: from, toAt: to, status: 'READY',
+          origin, trigger: trigger ?? null, summary: clip(call.result?.summary, 1500) || null,
+          proposals: proposals as unknown as Prisma.InputJsonValue, model: call.model, costUsd,
+        },
+      });
+      this.trackRun(fid, origin, 'SUCCESS', actorUserId, { reportId: row.id, proposals: proposals.length, costUsd });
+
+      const schedule = await this.getSchedule(reader, fid);
+      if (schedule.autonomy === 'AUTO') await this.autoApply(reader, row.id, fid, proposals);
+      const fresh = await this.prisma.agendaOptimizationReport.findUniqueOrThrow({ where: { id: row.id } });
+      return this.reportToDto(fresh);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Analyse agenda IA en échec (flotte ${fid}) : ${message}`);
+      await this.recordFailure(err, fid, actorUserId ?? undefined);
+      const row = await this.prisma.agendaOptimizationReport.create({
+        data: {
+          fleetId: fid, createdByUserId: actorUserId, fromAt: from, toAt: to, status: 'FAILED',
+          origin, trigger: trigger ?? null, error: message.slice(0, 400), costUsd: 0,
+        },
+      });
+      this.trackRun(fid, origin, 'FAILURE', actorUserId, { reportId: row.id });
+      return this.reportToDto(row);
+    }
+  }
+
+  /** Applique une proposition (validation humaine). */
+  async applyProposal(user: AuthUser, dto: ApplyAgendaProposalDto): Promise<AgendaOptimizationReportDto> {
+    const report = await this.loadReportScoped(user, dto.reportId);
+    const proposals = Array.isArray(report.proposals) ? (report.proposals as unknown as AiAgendaProposalDto[]) : [];
+    const p = proposals.find((x) => x.id === dto.proposalId);
+    if (!p) throw new NotFoundException('Proposition introuvable.');
+    if (p.status !== 'pending') return this.reportToDto(report);
+    await this.executeProposal(user, p); // lève 409 si conflit (véhicule cible pris, etc.)
+    p.status = 'applied';
+    await this.prisma.agendaOptimizationReport.update({
+      where: { id: report.id },
+      data: { proposals: proposals as unknown as Prisma.InputJsonValue },
+    });
+    this.systemActivity.record({
+      category: 'AI', action: 'agenda_proposal_applied', status: 'SUCCESS', actor: 'utilisateur',
+      target: p.title, detail: p.why, fleetId: report.fleetId, triggeredByUserId: user.id,
+      meta: { kind: p.kind, reportId: report.id },
+    });
+    return this.reportToDto(await this.prisma.agendaOptimizationReport.findUniqueOrThrow({ where: { id: report.id } }));
+  }
+
+  /** Rejette une proposition (l'utilisateur ne la retient pas). */
+  async dismissProposal(user: AuthUser, dto: ApplyAgendaProposalDto): Promise<AgendaOptimizationReportDto> {
+    const report = await this.loadReportScoped(user, dto.reportId);
+    const proposals = Array.isArray(report.proposals) ? (report.proposals as unknown as AiAgendaProposalDto[]) : [];
+    const p = proposals.find((x) => x.id === dto.proposalId);
+    if (!p) throw new NotFoundException('Proposition introuvable.');
+    if (p.status === 'pending') {
+      p.status = 'dismissed';
+      await this.prisma.agendaOptimizationReport.update({
+        where: { id: report.id },
+        data: { proposals: proposals as unknown as Prisma.InputJsonValue },
+      });
+    }
+    return this.reportToDto(await this.prisma.agendaOptimizationReport.findUniqueOrThrow({ where: { id: report.id } }));
+  }
+
+  /** Exécute une proposition via les flux existants (gardes/scoping/conflits inclus). */
+  private async executeProposal(user: AuthUser, p: AiAgendaProposalDto): Promise<void> {
+    if (p.kind === 'reassign') {
+      if (!p.reservationId || !p.vehicleId) throw new BadRequestException('Réassignation incomplète.');
+      await this.reservations.reassign(user, p.reservationId, p.vehicleId);
+    } else if (p.kind === 'schedule_maintenance') {
+      if (!p.vehicleId) throw new BadRequestException('Maintenance sans véhicule cible.');
+      const startAt = p.startAt ?? new Date().toISOString();
+      await this.events.create(user, {
+        vehicleId: p.vehicleId, type: 'MAINTENANCE', title: clip(p.title, 160) || 'Maintenance planifiée',
+        description: p.why, startAt, endAt: p.endAt ?? undefined, allDay: !p.startAt || !p.endAt, status: 'PLANNED',
+      });
+    }
+    // 'mutualize' / 'note' : conseils (aucune écriture), simplement marqués « appliqués » (acquittés).
+  }
+
+  /** Mode AUTO : applique seulement le SÛR (planif de maintenance) ; le reste reste proposé. */
+  private async autoApply(user: AuthUser, reportId: string, fleetId: string, proposals: AiAgendaProposalDto[]): Promise<void> {
+    let changed = false;
+    for (const p of proposals) {
+      if (p.kind !== 'schedule_maintenance') continue;
+      try {
+        await this.executeProposal(user, p);
+        p.status = 'applied';
+        changed = true;
+        this.systemActivity.record({
+          category: 'AI', action: 'agenda_proposal_auto_applied', status: 'SUCCESS', actor: 'planning',
+          target: p.title, detail: p.why, fleetId, meta: { kind: p.kind, reportId },
+        });
+      } catch (e) {
+        this.logger.warn(`Auto-apply proposition échouée : ${(e as Error)?.message}`);
+      }
+    }
+    if (changed) {
+      await this.prisma.agendaOptimizationReport.update({
+        where: { id: reportId },
+        data: { proposals: proposals as unknown as Prisma.InputJsonValue },
+      });
+    }
+  }
+
+  private async loadReportScoped(user: AuthUser, id: string) {
+    const row = await this.prisma.agendaOptimizationReport.findUnique({ where: { id } });
+    if (!row) throw new NotFoundException('Rapport introuvable.');
+    if (user.role !== UserRole.SUPER_ADMIN && row.fleetId !== user.fleetId) {
+      throw new NotFoundException('Rapport introuvable.');
+    }
+    return row;
+  }
+
+  private buildAiPayload(
+    fleet: { name: string | null; metier: string } | null,
+    vehicles: VehRow[],
+    utilVehicles: { vehicleId: string; underutilized: boolean; utilizationRatio: number }[],
+    events: VehicleEventDto[],
+    forecastSlots: { vehicleId: string; vehiclePlate: string | null; startAt: string; dayOfWeek: number; basis: string; confidence: number }[],
+    tensionDays: Set<number>,
+    from: Date,
+    to: Date,
+  ) {
+    const utilById = new Map(utilVehicles.map((v) => [v.vehicleId, v]));
+    const fromMs = from.getTime();
+    const isResa = (e: VehicleEventDto) => e.type === 'RESERVATION' && (e.status === 'CONFIRMED' || e.status === 'IN_PROGRESS' || e.status === 'REQUESTED');
+    return {
+      fleetName: fleet?.name ?? null,
+      metier: fleet?.metier ?? 'GENERIC',
+      period: { from: from.toISOString(), to: to.toISOString() },
+      vehicles: vehicles.map((v) => ({
+        vehicleId: v.id, plate: v.plate, seats: v.seats, energy: v.energy,
+        costPerKm: estimateCostPerKm(v.energy, v.fuelConsumptionL100km),
+        utilizationRatio: utilById.get(v.id)?.utilizationRatio ?? 0,
+        underutilized: utilById.get(v.id)?.underutilized ?? false,
+      })),
+      reservations: events.filter(isResa).slice(0, AI_MAX_RESERVATIONS).map((e) => ({
+        reservationId: e.id, vehicleId: e.vehicleId, plate: e.vehiclePlate,
+        startAt: e.startAt, endAt: e.endAt, title: e.title, status: e.status,
+      })),
+      maintenances: events.filter((e) => e.type === 'MAINTENANCE').slice(0, 100).map((e) => ({
+        vehicleId: e.vehicleId, plate: e.vehiclePlate, startAt: e.startAt, endAt: e.endAt,
+        title: e.title, status: e.status, blocksVehicle: e.blocksVehicle,
+      })),
+      incidents: events.filter((e) => e.type === 'INCIDENT').slice(0, 100).map((e) => ({
+        vehicleId: e.vehicleId, plate: e.vehiclePlate, startAt: e.startAt, title: e.title,
+        severity: e.severity, blocksVehicle: e.blocksVehicle,
+      })),
+      forecast: forecastSlots.slice(0, AI_MAX_FORECAST).map((s) => ({
+        vehicleId: s.vehicleId, plate: s.vehiclePlate, startAt: s.startAt, dayOfWeek: s.dayOfWeek, basis: s.basis, confidence: s.confidence,
+      })),
+      tensionDays: [...tensionDays].sort((a, b) => a - b).slice(0, 20).map((d) => new Date(fromMs + d * DAY_MS).toISOString().slice(0, 10)),
+    };
+  }
+
+  /** Filtre anti-hallucination (véhicule/réservation cités doivent exister), borne et normalise. */
+  private sanitizeProposals(
+    raw: Array<Partial<AiAgendaProposalDto>> | undefined,
+    validVeh: Set<string>,
+    validResa: Set<string>,
+    vehicles: VehRow[],
+  ): AiAgendaProposalDto[] {
+    const plateOf = new Map(vehicles.map((v) => [v.id, v.plate]));
+    const kinds = new Set(['reassign', 'schedule_maintenance', 'mutualize', 'note']);
+    return (Array.isArray(raw) ? raw : [])
+      .filter((p): p is Partial<AiAgendaProposalDto> => !!p && kinds.has(String(p.kind)))
+      .filter((p) => (!p.vehicleId || validVeh.has(p.vehicleId)) && (!p.reservationId || validResa.has(p.reservationId)))
+      .filter((p) => p.kind !== 'reassign' || (!!p.reservationId && !!p.vehicleId)) // reassign exige les 2
+      .slice(0, 15)
+      .map((p) => ({
+        id: randomUUID(),
+        kind: p.kind as AiAgendaProposalDto['kind'],
+        title: clip(p.title, 160) || 'Proposition',
+        why: clip(p.why, 400),
+        detail: clip(p.detail, 600) || null,
+        reservationId: p.reservationId ?? null,
+        vehicleId: p.vehicleId ?? null,
+        vehiclePlate: p.vehicleId ? plateOf.get(p.vehicleId) ?? null : null,
+        startAt: typeof p.startAt === 'string' ? p.startAt : null,
+        endAt: typeof p.endAt === 'string' ? p.endAt : null,
+        savingsEurPerMonth: typeof p.savingsEurPerMonth === 'number' && p.savingsEurPerMonth >= 0 ? Math.round(p.savingsEurPerMonth) : null,
+        confidence: clamp01(p.confidence),
+        status: 'pending' as const,
+      }));
+  }
+
+  private trackRun(
+    fleetId: string,
+    origin: AgendaOptimizationOrigin,
+    status: 'SUCCESS' | 'FAILURE',
+    userId: string | null,
+    meta: Record<string, unknown>,
+  ): void {
+    this.systemActivity.record({
+      category: 'AI', action: 'agenda_optimization_run', status,
+      actor: userId ? 'utilisateur' : 'planning', detail: `Analyse d'optimisation d'agenda (${origin})`,
+      fleetId, triggeredByUserId: userId, meta,
+    });
+  }
+
+  private async recordFailure(err: unknown, fleetId: string, userId?: string): Promise<void> {
+    const message = err instanceof Error ? err.message : String(err);
+    try {
+      await this.errors.record(message, 'AI_OPTIMIZER', { fleetId, userId, capability: 'agenda_optimization' }, 'ERROR');
+    } catch {
+      /* la journalisation ne doit jamais casser la requête */
+    }
+  }
+
+  // ─── Déclenchements automatiques ─────────────────────────────────────────
+
+  /** Filet planifié : tourne chaque jour à 6h15, agit sur les flottes dues (daily/weekly). */
+  @Cron('0 15 6 * * *')
+  async runScheduled(): Promise<void> {
+    try {
+      const schedules = await this.prisma.agendaOptimizationSchedule.findMany({ where: { enabled: true } });
+      const now = Date.now();
+      for (const s of schedules) {
+        const dueMs = (s.frequency === 'weekly' ? 7 : 1) * DAY_MS;
+        if (s.lastRunAt && now - s.lastRunAt.getTime() < dueMs) continue;
+        try {
+          await this.runAnalysis(this.systemReader(s.fleetId), null, s.fleetId, 'scheduled');
+        } catch (e) {
+          this.logger.error(`runScheduled flotte ${s.fleetId}`, e as Error);
+        }
+        await this.prisma.agendaOptimizationSchedule.update({ where: { id: s.id }, data: { lastRunAt: new Date() } });
+      }
+    } catch (e) {
+      this.logger.error('runScheduled failed', e as Error);
+    }
+  }
+
+  /** Déclenchement événementiel (incident/maintenance ajouté) — best-effort, non bloquant. */
+  async runForEvent(fleetId: string, origin: 'incident' | 'maintenance', trigger: string): Promise<void> {
+    try {
+      const s = await this.prisma.agendaOptimizationSchedule.findUnique({ where: { fleetId } });
+      if (!s?.enabled) return;
+      await this.runAnalysis(this.systemReader(fleetId), null, fleetId, origin, trigger);
+    } catch (e) {
+      this.logger.warn(`runForEvent ${origin} flotte ${fleetId} : ${(e as Error)?.message}`);
+    }
+  }
 }
 
-// ─── Helpers date (heure locale) ───────────────────────────────────────────
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function clip(s: unknown, max: number): string {
+  return typeof s === 'string' ? s.trim().slice(0, max) : '';
+}
+function clamp01(n: unknown): number {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return 0;
+  return Math.max(0, Math.min(1, x));
+}
 
 function startOfWeekMonday(d: Date): Date {
   const r = new Date(d.getFullYear(), d.getMonth(), d.getDate());

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AnthropicClient } from '../ai/anthropic.client';
 import { AuthModule } from '../auth/auth.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AgendaController } from './agenda.controller';
@@ -29,6 +30,8 @@ import { VehicleEventsService } from './vehicle-events.service';
     ReservationsService,
     ForecastService,
     AgendaOptimizationService,
+    // Client Claude (stateless) fourni localement pour éviter un cycle AgendaModule↔AiModule.
+    AnthropicClient,
   ],
   exports: [VehicleEventsService, FleetInsightsService, ReservationsService, ForecastService, AgendaOptimizationService],
 })

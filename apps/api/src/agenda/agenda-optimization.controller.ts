@@ -1,6 +1,10 @@
-import { Body, Controller, Get, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
-import type { SetAgendaOptimizationScheduleDto } from '@vizyo/tracky-shared';
+import type {
+  ApplyAgendaProposalDto,
+  RunAgendaOptimizationDto,
+  SetAgendaOptimizationScheduleDto,
+} from '@vizyo/tracky-shared';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -46,5 +50,37 @@ export class AgendaOptimizationController {
   @RequirePermissions('ai_optimize')
   setSchedule(@Req() req: AuthenticatedRequest, @Body() dto: SetAgendaOptimizationScheduleDto) {
     return this.svc.setSchedule(req.user, dto);
+  }
+
+  /** Scan IA complet à la demande (analyse l'agenda 2 mois → propositions). */
+  @Post('run')
+  @Roles(...ALL_ROLES)
+  @RequirePermissions('ai_optimize')
+  run(@Req() req: AuthenticatedRequest, @Body() dto: RunAgendaOptimizationDto) {
+    return this.svc.runOnDemand(req.user, dto?.fleetId);
+  }
+
+  /** Historique des rapports d'optimisation IA (propositions). */
+  @Get('reports')
+  @Roles(...ALL_ROLES)
+  @RequirePermissions('reservations_view')
+  reports(@Req() req: AuthenticatedRequest, @Query('fleetId') fleetId?: string) {
+    return this.svc.listReports(req.user, fleetId);
+  }
+
+  /** Applique une proposition (validation humaine). Perm reservations_manage (écrit une résa/event). */
+  @Post('proposals/apply')
+  @Roles(...ALL_ROLES)
+  @RequirePermissions('reservations_manage')
+  apply(@Req() req: AuthenticatedRequest, @Body() dto: ApplyAgendaProposalDto) {
+    return this.svc.applyProposal(req.user, dto);
+  }
+
+  /** Rejette une proposition. */
+  @Post('proposals/dismiss')
+  @Roles(...ALL_ROLES)
+  @RequirePermissions('reservations_view')
+  dismiss(@Req() req: AuthenticatedRequest, @Body() dto: ApplyAgendaProposalDto) {
+    return this.svc.dismissProposal(req.user, dto);
   }
 }

@@ -495,6 +495,47 @@ export class ReservationsService {
     }
   }
 
+  /**
+   * Réassigne une réservation ACTIVE vers un autre véhicule (optimisation IA / résolution
+   * d'impact d'incident). Re-vérifie TOUS les conflits sur le véhicule cible (résa ferme,
+   * trajet réel, immobilisation) — mêmes gardes que confirm(), + contrainte EXCLUDE race-proof.
+   */
+  async reassign(user: AuthUser, id: string, newVehicleId: string): Promise<VehicleEventDto> {
+    const resa = await this.loadScoped(user, id);
+    if (
+      resa.status !== VehicleEventStatus.CONFIRMED &&
+      resa.status !== VehicleEventStatus.IN_PROGRESS &&
+      resa.status !== VehicleEventStatus.REQUESTED
+    ) {
+      throw new BadRequestException('Seule une réservation active peut être réassignée.');
+    }
+    if (!resa.endAt) throw new BadRequestException('Réservation sans créneau de fin.');
+    if (newVehicleId === resa.vehicleId) return this.toDto(resa);
+    const fleetId = await this.events.assertVehicleAccess(user, newVehicleId); // 403/404
+
+    const conflicts = await this.findOverlaps(newVehicleId, resa.startAt, resa.endAt, id);
+    if (conflicts.length > 0) throw new ConflictException('Le véhicule cible est déjà réservé sur ce créneau.');
+    if (await this.hasTripOverlap(newVehicleId, resa.startAt, resa.endAt)) {
+      throw new ConflictException('Le véhicule cible roule déjà sur ce créneau.');
+    }
+    if ((await this.findImmobilized([newVehicleId], resa.startAt, resa.endAt)).has(newVehicleId)) {
+      throw new ConflictException('Le véhicule cible est immobilisé sur ce créneau.');
+    }
+    try {
+      const row = await this.prisma.vehicleEvent.update({
+        where: { id },
+        data: { vehicleId: newVehicleId, fleetId },
+        include: INCLUDE_PLATE,
+      });
+      return this.toDto(row);
+    } catch (err) {
+      if (this.isExclusionConflict(err)) {
+        throw new ConflictException('Conflit : ce créneau vient d\'être réservé sur le véhicule cible.');
+      }
+      throw err;
+    }
+  }
+
   /** Liste des réservations (scopée). Délègue au scoping/mapping S7. Perm reservations_view. */
   async list(
     user: AuthUser,
