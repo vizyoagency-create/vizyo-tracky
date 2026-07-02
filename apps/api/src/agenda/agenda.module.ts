@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AgendaController } from './agenda.controller';
+import { AgendaOptimizationController } from './agenda-optimization.controller';
+import { AgendaOptimizationService } from './agenda-optimization.service';
 import { FleetInsightsController } from './fleet-insights.controller';
 import { FleetInsightsService } from './fleet-insights.service';
 import { ForecastService } from './forecast.service';
@@ -18,7 +20,7 @@ import { VehicleEventsService } from './vehicle-events.service';
  */
 @Module({
   imports: [AuthModule, NotificationsModule],
-  controllers: [AgendaController, FleetInsightsController, ReservationsController],
+  controllers: [AgendaController, AgendaOptimizationController, FleetInsightsController, ReservationsController],
   providers: [
     VehicleEventsService,
     MaintenancePlansService,
@@ -26,7 +28,8 @@ import { VehicleEventsService } from './vehicle-events.service';
     FleetInsightsService,
     ReservationsService,
     ForecastService,
+    AgendaOptimizationService,
   ],
-  exports: [VehicleEventsService, FleetInsightsService, ReservationsService, ForecastService],
+  exports: [VehicleEventsService, FleetInsightsService, ReservationsService, ForecastService, AgendaOptimizationService],
 })
 export class AgendaModule {}

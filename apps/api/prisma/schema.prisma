@@ -1094,6 +1094,58 @@ model ActivityReportSchedule {
   @@map("activity_report_schedule")
 }
 
+/// Niveau d'autonomie de l'agent d'optimisation d'agenda.
+enum AgendaOptimizationAutonomy {
+  PROPOSE // l'agent propose ; un humain valide chaque changement (défaut, sûr en prod)
+  AUTO    // l'agent applique automatiquement ses propositions (journalisé, réversible)
+}
+
+/// Agenda AI — Rapport d'optimisation généré par l'agent IA sur un horizon (≈ 2 mois).
+/// PERSISTÉ. Porte les propositions (réassignations coût/mutualisation, maintenances à
+/// planifier, résolutions d'impact d'incident) + un résumé vulgarisé. Coût aussi journalisé
+/// dans AiUsageLog (action `agenda_optimization`). Déclenché à la demande / planifié /
+/// à l'ajout d'un incident ou d'une maintenance.
+model AgendaOptimizationReport {
+  id              String               @id @default(uuid()) @db.Uuid
+  createdAt       DateTime             @default(now())
+  fleetId         String               @db.Uuid
+  createdByUserId String?              @db.Uuid // null = système (planifié / auto / événementiel)
+  fromAt          DateTime
+  toAt            DateTime
+  status          ActivityReportStatus @default(READY)
+  /// 'manual' | 'scheduled' | 'incident' | 'maintenance'
+  origin          String               @default("manual")
+  /// Contexte du déclencheur (ex. id de l'incident déclencheur), pour la traçabilité.
+  trigger         String?
+  /// Résumé lisible (vulgarisé, public non technique).
+  summary         String?
+  /// Propositions structurées (AiAgendaProposalDto[]) avec statut par proposition.
+  proposals       Json?
+  error           String?
+  model           String?
+  costUsd         Float                @default(0)
+
+  @@index([fleetId, createdAt])
+  @@index([createdAt])
+  @@map("agenda_optimization_reports")
+}
+
+/// Agenda AI — Config + planification de l'agent, PAR FLOTTE (≠ singleton). Le cron parcourt
+/// les flottes `enabled`. `autonomy` = PROPOSE (défaut) ou AUTO.
+model AgendaOptimizationSchedule {
+  id              String                     @id @default(uuid()) @db.Uuid
+  fleetId         String                     @unique @db.Uuid
+  enabled         Boolean                    @default(false)
+  /// 'daily' | 'weekly'
+  frequency       String                     @default("daily")
+  autonomy        AgendaOptimizationAutonomy @default(PROPOSE)
+  lastRunAt       DateTime?
+  updatedAt       DateTime                   @updatedAt
+  updatedByUserId String?                    @db.Uuid
+
+  @@map("agenda_optimization_schedule")
+}
+
 /// V1.5 (Sprint I) — Etat de la sequence d'init SMS d'un tracker neuf.
 /// Le SUPER_ADMIN lance le workflow depuis /admin/sms/provision/:imei,
 /// le service envoie 9 SMS sequentiels avec ACK entre chaque etape.

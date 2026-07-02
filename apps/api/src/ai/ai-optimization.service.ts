@@ -20,6 +20,7 @@ import type {
   FleetMetierDto,
   SetFleetMetierDto,
 } from '@vizyo/tracky-shared';
+import { estimateCostPerKm } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
 import { ForecastService } from '../agenda/forecast.service';
 import { ReservationsService } from '../agenda/reservations.service';
@@ -58,25 +59,6 @@ function cleanFeatures(f: unknown): string[] {
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Fenêtre « maintenance imminente » : maintenance prévue dans les 7 jours suivant le créneau. */
 const MAINT_SOON_MS = 7 * DAY_MS;
-/**
- * Coût/km INDICATIF pour aider l'IA à mutualiser vers le véhicule le moins cher à mission égale.
- * Prix carburant TTC moyens France (approximatifs, 2026) ; l'électrique est estimé à un forfait
- * recharge dépôt. Volontairement grossier : sert au CLASSEMENT relatif, pas à une facturation.
- */
-const FUEL_PRICE_EUR_PER_L: Record<string, number> = { DIESEL: 1.75, ESSENCE: 1.9, HYBRIDE: 1.9 };
-const DEFAULT_CONSO_L100: Record<string, number> = { DIESEL: 6.5, ESSENCE: 7.5, HYBRIDE: 5 };
-const ELECTRIC_COST_PER_KM = 0.03;
-
-/** Estime un coût/km (€) depuis l'énergie + la conso (L/100km si connue, sinon défaut par énergie). */
-function estimateCostPerKm(energy: string | null, consoL100: number | null): number | null {
-  if (!energy) return null;
-  if (energy === 'ELECTRIQUE') return ELECTRIC_COST_PER_KM;
-  const price = FUEL_PRICE_EUR_PER_L[energy];
-  if (!price) return null;
-  const conso = consoL100 && consoL100 > 0 ? consoL100 : DEFAULT_CONSO_L100[energy];
-  if (!conso) return null;
-  return Math.round((conso / 100) * price * 1000) / 1000; // €/km, 3 décimales
-}
 
 type CapacityVehicleRow = {
   id: string;
