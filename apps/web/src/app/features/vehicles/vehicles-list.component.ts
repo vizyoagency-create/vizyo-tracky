@@ -42,7 +42,9 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
       <div class="wn-page">
         <div class="wn-header">
           <h1 class="wn-title">Véhicules</h1>
-          <p class="wn-sub">{{ vehicles().length }} véhicule(s)</p>
+          <p class="wn-sub">
+            {{ search().trim() ? filteredVehicles().length + ' résultat(s)' : vehicles().length + ' véhicule(s)' }}
+          </p>
         </div>
 
         @if (loading()) {
@@ -55,31 +57,72 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
             <p class="wn-empty-text">Aucun véhicule accessible</p>
           </div>
         } @else {
-          <div class="wn-list">
-            @for (v of vehicles(); track v.id) {
-              <div class="wn-row">
-                <div class="wn-veh">
-                  <app-brand-logo [brand]="v.brand" [size]="26" [chip]="true" />
-                  <div class="wn-icon" [innerHTML]="getTypeIconHtml(v.type)"></div>
-                  <div class="wn-veh-text">
-                    <span class="wn-plate">{{ v.plate }}</span>
-                    @if (v.brand) {
-                      <span class="wn-brand">{{ v.brand }} {{ v.model ?? '' }}</span>
-                    }
-                  </div>
-                </div>
-                @if (v.tracker) {
-                  <app-engine-control-button
-                    [trackerId]="v.tracker.id"
-                    [vehicleId]="v.id"
-                    [vehiclePlate]="v.plate"
-                  />
-                } @else {
-                  <span class="wn-no-tracker">Pas de boîtier</span>
-                }
-              </div>
+          <!-- Recherche rapide (plaque / marque) -->
+          <div class="wn-search">
+            <lucide-icon [img]="SearchIcon" [size]="16" class="wn-search-ico"></lucide-icon>
+            <input type="text" [ngModel]="search()" (ngModelChange)="search.set($event)"
+                   data-track="Veilleur — recherche véhicule"
+                   placeholder="Rechercher une plaque, une marque…" aria-label="Rechercher un véhicule" />
+            @if (search()) {
+              <button (click)="search.set('')" class="wn-search-clear" aria-label="Effacer la recherche"
+                      data-track="Veilleur — effacer recherche">
+                <lucide-icon [img]="XIcon" [size]="15"></lucide-icon>
+              </button>
             }
           </div>
+
+          @if (groupedVehicles().length === 0) {
+            <div class="wn-empty">
+              <p class="wn-empty-text">Aucun véhicule ne correspond à la recherche</p>
+              <button (click)="search.set('')" class="wn-reset" data-track="Veilleur — réinitialiser recherche">
+                Réinitialiser
+              </button>
+            </div>
+          } @else {
+            <!-- Groupes en accordéon (repli ignoré pendant une recherche : tout s'affiche) -->
+            <div class="wn-groups">
+              @for (section of groupedVehicles(); track section.id ?? '__none__') {
+                <div class="wn-group">
+                  <button class="wn-group-head" (click)="toggleGroup(section.id ?? '__none__')"
+                          [attr.data-track]="'Veilleur — groupe ' + section.name"
+                          [attr.aria-expanded]="!wnCollapsed(section.id ?? '__none__')">
+                    <lucide-icon [img]="wnCollapsed(section.id ?? '__none__') ? ChevronRightIcon : ChevronDownIcon" [size]="18"></lucide-icon>
+                    <lucide-icon [img]="LayersIcon" [size]="14" class="wn-group-ico"></lucide-icon>
+                    <span class="wn-group-name">{{ section.name }}</span>
+                    <span class="wn-group-count">{{ section.vehicles.length }}</span>
+                  </button>
+                  @if (!wnCollapsed(section.id ?? '__none__')) {
+                    <div class="wn-group-items">
+                      @for (v of section.vehicles; track v.id) {
+                        <div class="wn-row">
+                          <div class="wn-veh">
+                            <app-brand-logo [brand]="v.brand" [size]="26" [chip]="true" />
+                            <div class="wn-icon" [innerHTML]="getTypeIconHtml(v.type)"></div>
+                            <div class="wn-veh-text">
+                              <span class="wn-plate">{{ v.plate }}</span>
+                              @if (v.brand) {
+                                <span class="wn-brand">{{ v.brand }} {{ v.model ?? '' }}</span>
+                              }
+                            </div>
+                          </div>
+                          @if (v.tracker) {
+                            <app-engine-control-button
+                              [trackLabel]="'Veilleur ' + v.plate"
+                              [trackerId]="v.tracker.id"
+                              [vehicleId]="v.id"
+                              [vehiclePlate]="v.plate"
+                            />
+                          } @else {
+                            <span class="wn-no-tracker">Pas de boîtier</span>
+                          }
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+          }
         }
       </div>
     } @else {
@@ -516,6 +559,40 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
     @media (max-width: 480px) {
       .wn-row { flex-wrap: wrap }
     }
+    /* Veilleur — recherche rapide */
+    .wn-search {
+      display: flex; align-items: center; gap: 9px; margin-bottom: 16px;
+      padding: 11px 14px; border-radius: 13px;
+      background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+    }
+    .wn-search:focus-within { border-color: rgba(16,224,160,.4) }
+    .wn-search-ico { color: var(--fg-tertiary); flex-shrink: 0 }
+    .wn-search input { flex: 1; min-width: 0; background: none; border: none; outline: none;
+      color: var(--fg-primary); font-size: 15px }
+    .wn-search input::placeholder { color: var(--fg-tertiary) }
+    .wn-search-clear { display: flex; align-items: center; background: none; border: none;
+      color: var(--fg-tertiary); cursor: pointer; padding: 0 }
+    .wn-search-clear:hover { color: var(--fg-primary) }
+    .wn-reset { margin-top: 4px; padding: 8px 16px; border-radius: 10px; border: 1px solid var(--border-subtle);
+      background: var(--bg-secondary); color: var(--fg-secondary); font-size: 13px; font-weight: 600; cursor: pointer }
+    .wn-reset:hover { color: var(--fg-primary); border-color: var(--border-strong) }
+    /* Veilleur — accordéon par groupe */
+    .wn-groups { display: flex; flex-direction: column; gap: 12px }
+    .wn-group { border-radius: 14px; overflow: hidden }
+    .wn-group-head {
+      display: flex; align-items: center; gap: 9px; width: 100%;
+      padding: 12px 14px; border-radius: 12px; cursor: pointer;
+      background: var(--bg-tertiary); border: 1px solid var(--border-subtle);
+      color: var(--fg-primary); text-align: left; transition: border-color .15s, background .15s;
+    }
+    .wn-group-head:hover { border-color: var(--border-strong) }
+    .wn-group-head lucide-icon { color: var(--fg-tertiary); flex-shrink: 0 }
+    .wn-group-ico { color: var(--tracky-light) !important }
+    .wn-group-name { flex: 1; font-size: 14px; font-weight: 700; min-width: 0;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+    .wn-group-count { font-size: 12px; font-weight: 800; padding: 2px 9px; border-radius: 999px;
+      background: var(--bg-secondary); color: var(--fg-tertiary); flex-shrink: 0 }
+    .wn-group-items { display: flex; flex-direction: column; gap: 8px; padding: 8px 0 2px }
 
     .vlist-page { position: relative; min-height: 100% }
     .vlist-grid-bg {
@@ -981,6 +1058,11 @@ export class VehiclesListComponent implements OnInit {
 
   protected isCollapsed(key: string): boolean {
     return this.collapsedGroups().has(key);
+  }
+
+  /** Veilleur : une section n'est repliée QUE hors recherche (une recherche montre tout). */
+  protected wnCollapsed(key: string): boolean {
+    return !this.search().trim() && this.isCollapsed(key);
   }
 
   /** Sprint 1 — contexte de retour rapide transmis à la fiche détail (retour groupé). */

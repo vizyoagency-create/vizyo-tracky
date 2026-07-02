@@ -27,6 +27,7 @@ const CONFIRM_WINDOW_MS = 90_000;
         @if (isCutActive()) {
           <button
             (click)="openAction('restore')"
+            [attr.data-track]="trackLabel() ? trackLabel() + ' — rallumer' : null"
             class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg
                    bg-tracky/20 text-tracky-light border border-tracky/30
                    hover:bg-tracky/30 transition-all cursor-pointer whitespace-nowrap"
@@ -40,6 +41,7 @@ const CONFIRM_WINDOW_MS = 90_000;
             (click)="canCut().allowed ? openAction('cut') : null"
             [disabled]="!canCut().allowed"
             [title]="canCut().reason ?? ''"
+            [attr.data-track]="trackLabel() ? trackLabel() + ' — couper' : null"
             class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg
                    transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
             [class]="canCut().allowed
@@ -122,6 +124,8 @@ export class EngineControlButtonComponent implements OnInit {
   readonly ignition = input(true);
   /** Si true, un schedule horaire est actif sur ce véhicule (input ou chargé dynamiquement). */
   readonly scheduleEnabledInput = input(false, { alias: 'scheduleEnabled' });
+  /** Libellé de traçage d'activité posé sur les boutons d'action (data-track). Vide = fallback texte. */
+  readonly trackLabel = input<string>('');
   /** Emis quand une action manuelle désactive le schedule horaire. */
   readonly scheduleDisabled = output<void>();
 
