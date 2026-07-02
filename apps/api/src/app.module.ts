@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
@@ -41,6 +41,7 @@ import { ReportsModule } from './reports/reports.module';
 import { SimsModule } from './sims/sims.module';
 import { SmsModule } from './sms/sms.module';
 import { SurveillanceModule } from './surveillance/surveillance.module';
+import { MutationAuditInterceptor } from './system-activity/mutation-audit.interceptor';
 import { SystemActivityModule } from './system-activity/system-activity.module';
 import { SystemMetricsModule } from './system-metrics/system-metrics.module';
 import { TrackerCommandsModule } from './tracker-commands/tracker-commands.module';
@@ -140,6 +141,12 @@ import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.modul
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    // Audit « altitude » — toute mutation HTTP journalisée dans l'onglet Système
+    // (catégorie MUTATION). Après les guards → req.user disponible.
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: MutationAuditInterceptor,
     },
   ],
 })

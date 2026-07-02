@@ -115,6 +115,9 @@ export class ActivityTrackerService {
    */
   private handleDocClick(e: Event): void {
     if (!this.started) return;
+    // Clics SYNTHÉTIQUES (a.click() des téléchargements blob, tests) : pas des actions
+    // utilisateur → jamais journalisés. Les exports ont leur trace explicite (trackClick).
+    if (!(e as MouseEvent).isTrusted) return;
     const origin = (e.composedPath?.()[0] as Element | undefined) ?? (e.target as Element | null);
     if (!origin || typeof origin.closest !== 'function') return;
     if (origin.closest('[data-no-track]')) return;

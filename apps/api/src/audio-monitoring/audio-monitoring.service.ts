@@ -24,6 +24,7 @@ import { EmailService } from '../email/email.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SmsGatewayService } from '../sms/sms-gateway.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 
 interface RequestedBy {
   userId: string;
@@ -74,6 +75,7 @@ export class AudioMonitoringService {
     // Sprint 4 — ARM/DISARM réel via la même passerelle SMS que le coupe-circuit
     // (EngineControlService) : `monitor<pwd>` / `tracker<pwd>` vers la SIM du boîtier.
     private readonly sms: SmsGatewayService,
+    private readonly systemActivity: SystemActivityService,
   ) {}
 
   /** Mot de passe boîtier Coban/Baanool (ARM `monitor<pwd>` / DISARM `tracker<pwd>`). */
@@ -361,7 +363,7 @@ export class AudioMonitoringService {
   async setFleetEligibility(
     fleetId: string,
     eligible: boolean,
-    _actor: RequestedBy,
+    actor: RequestedBy,
   ): Promise<FleetAudioConfigDto> {
     // eligible=false ⇒ cascade : on force AUSSI assistanceEnabled=false (tout OFF).
     const config = await this.prisma.fleetAudioConfig.upsert({
@@ -375,6 +377,19 @@ export class AudioMonitoringService {
         superAdminEnabled: eligible,
         ...(eligible ? {} : { assistanceEnabled: false }),
       },
+    });
+
+    // Feature LÉGALEMENT CRITIQUE : on trace QUI a rendu la flotte éligible à
+    // l'écoute micro (ou l'a coupée) — l'upsert ne garde que l'état courant.
+    this.systemActivity.record({
+      category: 'AUDIO',
+      action: 'fleet_eligibility_set',
+      status: 'SUCCESS',
+      actor: 'utilisateur',
+      detail: eligible ? 'Flotte rendue ÉLIGIBLE à l\'écoute audio (N1)' : 'Éligibilité RETIRÉE (cascade : consentement N2 coupé)',
+      fleetId,
+      triggeredByUserId: actor.userId,
+      meta: { eligible },
     });
 
     return {
@@ -421,6 +436,21 @@ export class AudioMonitoringService {
 
     const now = new Date();
     const willEnable = dto.assistanceEnabled === true;
+
+    // Trace du consentement N2 (activation ET désactivation — le disable ne
+    // laissait aucune trace alors que l'enable écrit attestedByUserId).
+    this.systemActivity.record({
+      category: 'AUDIO',
+      action: 'assistance_mode_set',
+      status: 'SUCCESS',
+      actor: 'utilisateur',
+      detail: willEnable
+        ? `Mode assistance ACTIVÉ (consentement N2, attestation ${dto.attestationVersion ?? 'v?'})`
+        : 'Mode assistance DÉSACTIVÉ',
+      fleetId,
+      triggeredByUserId: actor.userId,
+      meta: { assistanceEnabled: willEnable, attestationVersion: dto.attestationVersion ?? null },
+    });
 
     // Upsert de la config. On ne pose l'attestation que si on (ré)active.
     const config = await this.prisma.fleetAudioConfig.upsert({
@@ -508,7 +538,7 @@ export class AudioMonitoringService {
       subject: template.subject,
       html: template.html,
       text: template.text,
-      context: { feature: 'audio-info', userId: user.id },
+      context: { feature: 'audio-info', userId: user.id, requestedByUserId: actor.userId },
     });
 
     // Échec d'envoi (provider KO) → trace au centre d'alertes (ERROR). On NE casse PAS la
@@ -583,7 +613,7 @@ export class AudioMonitoringService {
             subject: template.subject,
             html: template.html,
             text: template.text,
-            context: { feature: 'audio-monitoring-activation', fleetId },
+            context: { feature: 'audio-monitoring-activation', fleetId, requestedByUserId: actorUserId },
           }),
         ),
       );

@@ -13,6 +13,7 @@ import type {
   GenerateActivityReportDto,
   SetActivityReportScheduleDto,
 } from '@vizyo/tracky-shared';
+import { labelForRoute, ROUTE_LABELS } from '@vizyo/tracky-shared';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { AnthropicClient } from '../ai/anthropic.client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -23,8 +24,19 @@ import { ACTIVITY_REPORT_SCHEMA, ACTIVITY_REPORT_SYSTEM } from './activity-repor
 type Actor = { id: string | null; fleetId: string | null };
 
 const MAX_TARGETS = 20;
+/** Cap de LIGNES du parcours envoyé à l'IA — appliqué APRÈS fusion des répétitions. */
 const JOURNEY_CAP = 120;
+/** Fenêtre d'events bruts lue en base avant fusion (biais RÉCENCE : les plus récents). */
+const JOURNEY_RAW_FETCH = 800;
 const FREQ_DAYS: Record<ActivityReportFrequency, number> = { daily: 1, weekly: 7, monthly: 30 };
+
+/** Horodatages en fuseau EXPLICITE Europe/Paris (l'API tourne en Docker/UTC). */
+const TS_DAY = new Intl.DateTimeFormat('fr-FR', {
+  timeZone: 'Europe/Paris', weekday: 'short', day: '2-digit', month: '2-digit',
+});
+const TS_TIME = new Intl.DateTimeFormat('fr-FR', {
+  timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit',
+});
 
 function fullName(u: { firstName?: string | null; lastName?: string | null }): string {
   return [u.firstName, u.lastName].filter(Boolean).join(' ') || 'Utilisateur';
@@ -65,7 +77,8 @@ export class ActivityReportService {
     }
 
     const payload = await this.buildPayload(userIds, from, to);
-    const totalEvents = payload.users.reduce((s, u) => s + u.totalEvents, 0);
+    // Erreurs comprises : un utilisateur qui n'a QUE des erreurs mérite un rapport.
+    const totalEvents = payload.users.reduce((s, u) => s + u.totalEvents + u.errorCount, 0);
     const title = this.deriveTitle(payload.users.map((u) => u.name), from, to);
 
     // Aucune activité → rapport « vide » sans appel IA (économise le coût).
@@ -134,6 +147,14 @@ export class ActivityReportService {
     const row = await this.prisma.activityReport.findUnique({ where: { id } });
     if (!row) throw new NotFoundException('Rapport introuvable.');
     return this.toDto(row);
+  }
+
+  /** Supprime un rapport (essais, échecs accumulés) — l'historique est capé à 100. */
+  async delete(id: string): Promise<{ ok: true }> {
+    const row = await this.prisma.activityReport.findUnique({ where: { id }, select: { id: true } });
+    if (!row) throw new NotFoundException('Rapport introuvable.');
+    await this.prisma.activityReport.delete({ where: { id } });
+    return { ok: true };
   }
 
   // ─── Planification (singleton) ───────────────────────────────────────────────
@@ -206,54 +227,241 @@ export class ActivityReportService {
 
   // ─── Payload d'activité (borné) ──────────────────────────────────────────────
 
+  /** Écrans accessibles selon le rôle — ancre l'analyse d'adoption sur le RÉEL. */
+  private accessibleFeatures(role: string): string[] {
+    if (role === 'NIGHT_WATCHMAN') return ['Véhicules', 'Mon compte'];
+    const labels = Object.entries(ROUTE_LABELS)
+      .filter(([k]) => k !== '/login')
+      .filter(([k]) => role === 'SUPER_ADMIN' || !k.startsWith('/admin'))
+      .map(([, v]) => v);
+    return [...new Set(labels)];
+  }
+
   private async buildPayload(userIds: string[], from: Date, to: Date) {
     const users = await this.prisma.user.findMany({
       where: { id: { in: userIds } },
       select: { id: true, firstName: true, lastName: true, role: true },
     });
+    const inWindow = { gte: from, lte: to };
     const perUser = [];
     for (const u of users) {
-      const [sessionCount, pv, clicks, journey] = await Promise.all([
-        this.prisma.userSession.count({ where: { userId: u.id, startedAt: { gte: from, lte: to } } }),
-        this.prisma.userActivity.groupBy({
-          by: ['route'],
-          where: { userId: u.id, type: 'PAGE_VIEW', route: { not: null }, createdAt: { gte: from, lte: to } },
-          _count: { _all: true },
-          _sum: { durationMs: true },
-          orderBy: { _count: { route: 'desc' } },
-          take: 15,
-        }),
-        this.prisma.userActivity.groupBy({
-          by: ['target'],
-          where: { userId: u.id, type: 'CLICK', target: { not: null }, createdAt: { gte: from, lte: to } },
-          _count: { _all: true },
-          orderBy: { _count: { target: 'desc' } },
-          take: 20,
-        }),
-        this.prisma.userActivity.findMany({
-          where: { userId: u.id, type: { in: ['PAGE_VIEW', 'CLICK', 'SESSION_START', 'SESSION_END'] }, createdAt: { gte: from, lte: to } },
-          orderBy: { createdAt: 'asc' },
-          take: JOURNEY_CAP,
-          select: { type: true, route: true, routeLabel: true, target: true, durationMs: true },
-        }),
-      ]);
+      const [sessionCount, pv, clicks, forms, endReasonsRaw, devicesRaw, scrollRaw, totalEvents, errorCount, errorRows, journeyRaw] =
+        await Promise.all([
+          this.prisma.userSession.count({ where: { userId: u.id, startedAt: inWindow } }),
+          this.prisma.userActivity.groupBy({
+            by: ['route'],
+            where: { userId: u.id, type: 'PAGE_VIEW', route: { not: null }, createdAt: inWindow },
+            _count: { _all: true },
+            _sum: { durationMs: true },
+            orderBy: { _count: { route: 'desc' } },
+            take: 15,
+          }),
+          this.prisma.userActivity.groupBy({
+            by: ['target'],
+            where: { userId: u.id, type: 'CLICK', target: { not: null }, createdAt: inWindow },
+            _count: { _all: true },
+            orderBy: { _count: { target: 'desc' } },
+            take: 20,
+          }),
+          // Formulaires SOUMIS = action menée à son terme (meilleur signal d'adoption réelle).
+          this.prisma.userActivity.groupBy({
+            by: ['target'],
+            where: { userId: u.id, type: 'FORM_SUBMIT', target: { not: null }, createdAt: inWindow },
+            _count: { _all: true },
+            orderBy: { _count: { target: 'desc' } },
+            take: 10,
+          }),
+          // Répartition COMPLÈTE des fins de session (le parcours n'est qu'un échantillon).
+          this.prisma.userActivity.groupBy({
+            by: ['target'],
+            where: { userId: u.id, type: 'SESSION_END', createdAt: inWindow },
+            _count: { _all: true },
+          }),
+          this.prisma.userSession.groupBy({
+            by: ['deviceType'],
+            where: { userId: u.id, startedAt: inWindow },
+            _count: { _all: true },
+          }),
+          // Profondeur de scroll par page — groupBy (route, '<pct>%') compresse naturellement.
+          this.prisma.userActivity.groupBy({
+            by: ['route', 'target'],
+            where: { userId: u.id, type: 'SCROLL', route: { not: null }, createdAt: inWindow },
+            _count: { _all: true },
+          }),
+          // VRAI volume (non plafonné) — le parcours est un échantillon, pas le total.
+          this.prisma.userActivity.count({
+            where: { userId: u.id, type: { in: ['PAGE_VIEW', 'CLICK', 'FORM_SUBMIT', 'SESSION_START', 'SESSION_END'] }, createdAt: inWindow },
+          }),
+          // Erreurs RÉELLEMENT subies (front + 5xx serveur) = frictions avérées.
+          this.prisma.errorLog.count({
+            where: { userId: u.id, createdAt: inWindow, source: { in: ['frontend', 'http'] } },
+          }),
+          this.prisma.errorLog.findMany({
+            where: { userId: u.id, createdAt: inWindow, source: { in: ['frontend', 'http'] } },
+            orderBy: { createdAt: 'desc' },
+            take: 30,
+            select: { source: true, level: true, message: true, createdAt: true, context: true },
+          }),
+          // Parcours brut, biais RÉCENCE (les derniers events), fusionné/sessionné ensuite.
+          this.prisma.userActivity.findMany({
+            where: { userId: u.id, type: { in: ['PAGE_VIEW', 'CLICK', 'FORM_SUBMIT', 'SESSION_END'] }, createdAt: inWindow },
+            orderBy: { createdAt: 'desc' },
+            take: JOURNEY_RAW_FETCH,
+            select: { type: true, route: true, routeLabel: true, target: true, durationMs: true, createdAt: true, sessionId: true },
+          }),
+        ]);
+
+      const { journey, truncated: journeyTruncated } = await this.compressJourney(journeyRaw.reverse());
+
+      const endReasons: Record<string, number> = {};
+      for (const r of endReasonsRaw) endReasons[r.target ?? 'auto'] = r._count._all;
+      const devices: Record<string, number> = {};
+      for (const d of devicesRaw) devices[d.deviceType ?? 'unknown'] = (devices[d.deviceType ?? 'unknown'] ?? 0) + d._count._all;
+
       perUser.push({
         name: fullName(u),
         role: u.role,
+        accessibleFeatures: this.accessibleFeatures(u.role),
         sessionCount,
-        pages: pv.map((p) => ({ route: p.route, views: p._count._all, totalSec: Math.round((p._sum.durationMs ?? 0) / 1000) })),
+        devices,
+        endReasons,
+        pages: pv.map((p) => ({
+          route: p.route,
+          label: p.route ? labelForRoute(p.route) : null,
+          views: p._count._all,
+          totalSec: Math.round((p._sum.durationMs ?? 0) / 1000),
+        })),
         topClicks: clicks.map((c) => ({ target: c.target, count: c._count._all })),
-        journey: journey.map((j) => {
-          if (j.type === 'PAGE_VIEW') return `page:${j.routeLabel ?? j.route ?? '?'}${j.durationMs ? ` (${Math.round(j.durationMs / 1000)}s actif)` : ''}`;
-          if (j.type === 'CLICK') return `clic:${j.target ?? '?'}`;
-          if (j.type === 'SESSION_START') return 'session:début';
-          if (j.type === 'SESSION_END') return `session:fin (${j.target ?? 'auto'})`;
-          return j.type;
+        formSubmits: forms.map((f) => ({ target: f.target, count: f._count._all })),
+        scrollDepth: this.aggregateScroll(scrollRaw),
+        errorCount,
+        errors: errorRows.map((e) => {
+          const ctx = (e.context ?? {}) as Record<string, unknown>;
+          return {
+            at: e.createdAt.toISOString(),
+            source: e.source,
+            level: e.level,
+            message: clip(e.message, 200),
+            route: (typeof ctx['page'] === 'string' ? ctx['page'] : typeof ctx['route'] === 'string' ? ctx['route'] : null) as string | null,
+            httpStatus: (typeof ctx['httpStatus'] === 'number' ? ctx['httpStatus'] : typeof ctx['statusCode'] === 'number' ? ctx['statusCode'] : null) as number | null,
+          };
         }),
-        totalEvents: journey.length,
+        journey,
+        totalEvents,
+        journeySampled: journeyTruncated,
+        journeyNote: journeyTruncated
+          ? `parcours = échantillon des événements les plus RÉCENTS (${journey.length} lignes) sur ${totalEvents} au total`
+          : undefined,
       });
     }
-    return { period: { from: from.toISOString(), to: to.toISOString() }, users: perUser };
+    return {
+      period: { from: from.toISOString(), to: to.toISOString() },
+      timeZone: 'Europe/Paris',
+      users: perUser,
+    };
+  }
+
+  /** Agrège les SCROLL (route, 'NN%') → profondeur max + médiane pondérée par page. */
+  private aggregateScroll(
+    rows: Array<{ route: string | null; target: string | null; _count: { _all: number } }>,
+  ): Array<{ page: string; maxPct: number; medianPct: number; samples: number }> {
+    const byRoute = new Map<string, { pcts: Array<{ pct: number; n: number }>; samples: number }>();
+    for (const r of rows) {
+      const pct = parseInt(r.target ?? '', 10);
+      if (!r.route || Number.isNaN(pct)) continue;
+      const key = labelForRoute(r.route);
+      const cur = byRoute.get(key) ?? { pcts: [], samples: 0 };
+      cur.pcts.push({ pct, n: r._count._all });
+      cur.samples += r._count._all;
+      byRoute.set(key, cur);
+    }
+    return [...byRoute.entries()]
+      .sort((a, b) => b[1].samples - a[1].samples)
+      .slice(0, 8)
+      .map(([page, v]) => {
+        const sorted = v.pcts.sort((a, b) => a.pct - b.pct);
+        const half = v.samples / 2;
+        let acc = 0;
+        let median = 0;
+        for (const p of sorted) {
+          acc += p.n;
+          if (acc >= half) { median = p.pct; break; }
+        }
+        return { page, maxPct: sorted[sorted.length - 1]?.pct ?? 0, medianPct: median, samples: v.samples };
+      });
+  }
+
+  /**
+   * Compresse le parcours brut : fusion des répétitions CONSÉCUTIVES (page ×N avec durée
+   * cumulée, clics ×N — les alternances A→B→A restent distinctes, c'est du signal),
+   * séparateurs de session horodatés (jour + device), cap aux JOURNEY_CAP dernières lignes.
+   */
+  private async compressJourney(
+    raw: Array<{ type: string; route: string | null; routeLabel: string | null; target: string | null; durationMs: number | null; createdAt: Date; sessionId: string | null }>,
+  ): Promise<{ journey: string[]; sampleSize: number; truncated: boolean }> {
+    if (raw.length === 0) return { journey: [], sampleSize: 0, truncated: false };
+
+    const sessionIds = [...new Set(raw.map((r) => r.sessionId).filter((x): x is string => !!x))];
+    const sessions = sessionIds.length
+      ? await this.prisma.userSession.findMany({
+          where: { id: { in: sessionIds } },
+          select: { id: true, startedAt: true, deviceType: true },
+        })
+      : [];
+    const sessMeta = new Map(sessions.map((s) => [s.id, s]));
+
+    const lines: string[] = [];
+    let cur: { key: string; type: string; label: string; count: number; durMs: number; at: Date } | null = null;
+    let curSession: string | null | undefined;
+
+    const flush = () => {
+      if (!cur) return;
+      const time = TS_TIME.format(cur.at);
+      const sec = Math.round(cur.durMs / 1000);
+      if (cur.type === 'PAGE_VIEW') {
+        const extra = cur.count > 1
+          ? ` (×${cur.count}${sec ? `, ${sec}s actif cumulés` : ''})`
+          : sec ? ` (${sec}s actif)` : '';
+        lines.push(`${time} · page:${cur.label}${extra}`);
+      } else if (cur.type === 'CLICK') {
+        lines.push(`${time} · clic:${cur.label}${cur.count > 1 ? ` (×${cur.count})` : ''}`);
+      } else if (cur.type === 'FORM_SUBMIT') {
+        lines.push(`${time} · envoi:${cur.label}`);
+      } else if (cur.type === 'SESSION_END') {
+        lines.push(`${time} · session:fin (${cur.label})`);
+      }
+      cur = null;
+    };
+
+    for (const j of raw) {
+      if (j.sessionId !== curSession) {
+        flush();
+        curSession = j.sessionId;
+        const m = j.sessionId ? sessMeta.get(j.sessionId) : undefined;
+        const start = m?.startedAt ?? j.createdAt;
+        lines.push(`— session du ${TS_DAY.format(start)} ${TS_TIME.format(start)}${m?.deviceType ? ` (${m.deviceType})` : ''} —`);
+      }
+      const label =
+        j.type === 'PAGE_VIEW'
+          ? (j.routeLabel ?? (j.route ? labelForRoute(j.route) : '?'))
+          : j.type === 'SESSION_END'
+            ? (j.target ?? 'auto')
+            : (j.target ?? '?');
+      const key = `${j.type}|${label}`;
+      if (cur && cur.key === key && (j.type === 'PAGE_VIEW' || j.type === 'CLICK')) {
+        cur.count++;
+        cur.durMs += j.durationMs ?? 0;
+      } else {
+        flush();
+        cur = { key, type: j.type, label, count: 1, durMs: j.durationMs ?? 0, at: j.createdAt };
+      }
+    }
+    flush();
+
+    // « Tronqué » = on a atteint le plafond de fetch (des events plus anciens
+    // existent) OU la compression a dépassé JOURNEY_CAP lignes (slice ci-dessous).
+    const truncated = raw.length >= JOURNEY_RAW_FETCH || lines.length > JOURNEY_CAP;
+    return { journey: lines.slice(-JOURNEY_CAP), sampleSize: raw.length, truncated };
   }
 
   // ─── Mapping ─────────────────────────────────────────────────────────────────
@@ -261,12 +469,23 @@ export class ActivityReportService {
   private sanitize(c: Partial<ActivityReportContent> | null | undefined): ActivityReportContent {
     const fp = Array.isArray(c?.frictionPoints) ? c!.frictionPoints : [];
     const rec = Array.isArray(c?.recommendations) ? c!.recommendations : [];
+    const per = Array.isArray(c?.perUser)
+      ? c!.perUser
+          .slice(0, MAX_TARGETS)
+          .map((p) => ({
+            name: clip(p?.name, 120),
+            highlight: clip(p?.highlight, 400),
+            mainFriction: clip(p?.mainFriction, 300) || undefined,
+          }))
+          .filter((p) => p.name && p.highlight)
+      : undefined;
     return {
       summary: clip(c?.summary, 1500),
       journey: clip(c?.journey, 3000),
       frictionPoints: fp.slice(0, 15).map((f) => ({ title: clip(f?.title, 120), detail: clip(f?.detail, 600), severity: clip(f?.severity, 10) || undefined })),
       adoption: { used: strList(c?.adoption?.used, 30), ignored: strList(c?.adoption?.ignored, 30), note: clip(c?.adoption?.note, 600) || undefined },
       recommendations: rec.slice(0, 15).map((r) => ({ title: clip(r?.title, 120), detail: clip(r?.detail, 600), impact: clip(r?.impact, 30) || undefined })),
+      perUser: per && per.length > 0 ? per : undefined,
     };
   }
 

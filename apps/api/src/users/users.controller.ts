@@ -529,7 +529,12 @@ export class UsersController {
           expiresInMinutes: 60,
         });
 
-        await this.emailService.send({ to: user.email, ...emailContent });
+        await this.emailService.send({
+          to: user.email,
+          ...emailContent,
+          // Attribution journal Système : reset déclenché PAR un admin (≠ self-service).
+          context: { requestedByUserId: req.user.id, fleetId: user.fleetId ?? undefined },
+        });
       }
     } catch (err) {
       this.logger.warn({ userId: id, error: (err as Error).message }, 'Admin password reset email failed');

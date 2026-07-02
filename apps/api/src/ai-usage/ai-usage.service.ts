@@ -7,6 +7,7 @@ import type {
   AiUsageSummaryDto,
 } from '@vizyo/tracky-shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 
 /** Tarifs Anthropic en USD / 1M tokens (figés côté serveur ; source de vérité du coût). */
 interface Pricing {
@@ -45,7 +46,10 @@ export interface AiUsageEntry {
 export class AiUsageService {
   private readonly logger = new Logger(AiUsageService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly systemActivity: SystemActivityService,
+  ) {}
 
   /** Taux USD→€ (env `AI_USD_TO_EUR`, défaut 0,92). */
   private usdToEur(): number {
@@ -75,6 +79,7 @@ export class AiUsageService {
       const o = Math.max(0, entry.outputTokens | 0);
       const cw = Math.max(0, entry.cacheWriteTokens | 0);
       const cr = Math.max(0, entry.cacheReadTokens | 0);
+      const costUsd = this.computeCostUsd(entry.model, i, o, cw, cr);
       await this.prisma.aiUsageLog.create({
         data: {
           userId: entry.userId ?? null,
@@ -85,11 +90,27 @@ export class AiUsageService {
           outputTokens: o,
           cacheWriteTokens: cw,
           cacheReadTokens: cr,
-          costUsd: this.computeCostUsd(entry.model, i, o, cw, cr),
+          costUsd,
           latencyMs: entry.latencyMs ?? null,
           ok: entry.ok ?? true,
         },
       });
+      // Funnel unique des appels IA → visible aussi dans l'onglet Système. On skippe
+      // 'activity_report' (le planifié est déjà journalisé en AI_REPORT ; le manuel
+      // est un acte utilisateur couvert par l'audit MUTATION).
+      if (entry.action !== 'activity_report') {
+        this.systemActivity.record({
+          category: 'AI',
+          action: `ai_${entry.action}`,
+          status: entry.ok === false ? 'FAILURE' : 'SUCCESS',
+          actor: entry.userId ? 'utilisateur' : 'system',
+          detail: `${ACTION_LABELS[entry.action] ?? entry.action} · ${entry.model}`,
+          fleetId: entry.fleetId ?? null,
+          triggeredByUserId: entry.userId ?? null,
+          durationMs: entry.latencyMs ?? null,
+          meta: { costUsd, model: entry.model },
+        });
+      }
     } catch (e) {
       this.logger.warn(`AiUsageLog non journalisé : ${(e as Error)?.message ?? e}`);
     }

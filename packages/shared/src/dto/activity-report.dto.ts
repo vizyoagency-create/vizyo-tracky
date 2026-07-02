@@ -34,12 +34,14 @@ export interface ActivityReportContent {
   summary: string;
   /** Parcours résumé (ce que l'utilisateur a fait, dans l'ordre / les grandes boucles). */
   journey: string;
-  /** Points de friction : blocages, hésitations, allers-retours, abandons. */
+  /** Points de friction : blocages, hésitations, allers-retours, abandons, erreurs subies. */
   frictionPoints: ActivityFrictionPoint[];
   /** Adoption : fonctions réellement utilisées vs ignorées + note. */
   adoption: { used: string[]; ignored: string[]; note?: string };
   /** Recommandations concrètes (UX / app / accompagnement). */
   recommendations: ActivityRecommendation[];
+  /** Rapports multi-utilisateurs : 1-2 phrases PAR personne (absent si un seul utilisateur). */
+  perUser?: { name: string; highlight: string; mainFriction?: string }[];
 }
 
 export interface ActivityReportUserRef {

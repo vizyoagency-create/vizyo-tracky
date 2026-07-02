@@ -88,6 +88,13 @@ export class EmailService {
    */
   private recordActivity(params: SendEmailParams, ok: boolean, error?: string): void {
     const fleetId = typeof params.context?.['fleetId'] === 'string' ? (params.context['fleetId'] as string) : null;
+    // Attribution : même clé de contexte que le SMS (`requestedByUserId`). Un reset MDP
+    // déclenché par un admin ou une invitation apparaît alors « déclenché par X » au
+    // lieu d'un « system » anonyme ; les envois cron restent 'system'.
+    const requestedBy =
+      typeof params.context?.['requestedByUserId'] === 'string'
+        ? (params.context['requestedByUserId'] as string)
+        : null;
     this.systemActivity.record({
       category: 'EMAIL',
       action: 'email_sent',
@@ -96,6 +103,7 @@ export class EmailService {
       target: params.to,
       detail: params.subject,
       fleetId,
+      triggeredByUserId: requestedBy,
       meta: error ? { error } : undefined,
     });
   }

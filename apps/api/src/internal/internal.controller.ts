@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, HttpStatus, NotFoundException,
 import { UserRole } from '@prisma/client';
 import { AuthClientService } from '../auth-client/auth-client.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 import { CreateFleetUserDto } from './dto/fleet-user.dto';
 import { FleetIdDto, ProvisionFleetDto } from './dto/provision-fleet.dto';
 import { InternalSecretGuard } from './internal-secret.guard';
@@ -12,7 +13,25 @@ export class InternalController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly authClient: AuthClientService,
+    private readonly systemActivity: SystemActivityService,
   ) {}
+
+  /**
+   * Journal Système — ces routes machine (secret partagé, PAS de req.user) sont
+   * précisément celles qu'un attaquant ayant volé INTERNAL_SECRET utiliserait :
+   * provision de flotte, kill-switch client, création/suppression de comptes.
+   */
+  private recordInternal(action: string, fleetId: string | null, target: string | null, detail?: string): void {
+    this.systemActivity.record({
+      category: 'INTERNAL',
+      action,
+      status: 'SUCCESS',
+      actor: 'vizyo-manager',
+      target,
+      detail: detail ?? null,
+      fleetId,
+    });
+  }
 
   @Post('fleet/provision')
   @HttpCode(HttpStatus.CREATED)
@@ -35,26 +54,29 @@ export class InternalController {
       },
     });
 
+    this.recordInternal('fleet_provisioned', fleet.id, dto.fleetName, `Admin ${dto.adminEmail}`);
     return { fleetId: fleet.id };
   }
 
   @Post('fleet/suspend')
   @HttpCode(HttpStatus.OK)
   async suspendFleet(@Body() dto: FleetIdDto) {
-    await this.prisma.user.updateMany({
+    const r = await this.prisma.user.updateMany({
       where: { fleetId: dto.fleetId },
       data: { isActive: false },
     });
+    this.recordInternal('fleet_suspended', dto.fleetId, `${r.count} compte(s) désactivé(s)`);
     return { status: 'suspended' };
   }
 
   @Post('fleet/activate')
   @HttpCode(HttpStatus.OK)
   async activateFleet(@Body() dto: FleetIdDto) {
-    await this.prisma.user.updateMany({
+    const r = await this.prisma.user.updateMany({
       where: { fleetId: dto.fleetId },
       data: { isActive: true },
     });
+    this.recordInternal('fleet_activated', dto.fleetId, `${r.count} compte(s) réactivé(s)`);
     return { status: 'active' };
   }
 
@@ -96,6 +118,7 @@ export class InternalController {
       },
     });
 
+    this.recordInternal('fleet_user_created', fleetId, user.email);
     return { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role };
   }
 
@@ -107,5 +130,6 @@ export class InternalController {
 
     await this.authClient.removeUserFromApp(user.authUserId);
     await this.prisma.user.delete({ where: { id: userId } });
+    this.recordInternal('fleet_user_deleted', fleetId, user.email, 'Suppression définitive (Tracky + Auth)');
   }
 }

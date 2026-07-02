@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -43,5 +43,11 @@ export class ActivityReportController {
   @Get(':id')
   get(@Param('id') id: string) {
     return this.svc.get(id);
+  }
+
+  /** Supprime un rapport (essais / échecs accumulés). */
+  @Delete(':id')
+  delete(@Param('id') id: string) {
+    return this.svc.delete(id);
   }
 }

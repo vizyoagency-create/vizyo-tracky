@@ -131,6 +131,7 @@ describe('fail-closed endpoints (audit A3/B1/B2/D9)', () => {
         {} as never,
         {} as never,
         {} as never,
+        { record: jest.fn() } as never,
       );
 
     it('list: non-super sans fleetId → [] et aucune requête DB', async () => {

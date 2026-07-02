@@ -18,6 +18,7 @@ import type {
   SurveillanceProfile,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 import { TrackerCommandsService } from '../tracker-commands/tracker-commands.service';
 import {
   AcknowledgeEventDto,
@@ -30,6 +31,10 @@ interface RequestedBy {
   role: UserRole;
   fleetId: string | null;
 }
+
+/** Anti-flood : le scheduler retente CHAQUE minute un tracker offline. On ne journalise
+ *  un échec PLANIFIÉ qu'au plus une fois par heure et par (profil, action). */
+const SCHEDULED_FAILURE_THROTTLE_MS = 60 * 60 * 1000;
 
 interface ListEventsFilters {
   vehicleId?: string;
@@ -45,7 +50,52 @@ export class SurveillanceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly trackerCommands: TrackerCommandsService,
+    private readonly systemActivity: SystemActivityService,
   ) {}
+
+  /**
+   * Journal Système — l'armement/désarmement antivol est l'exact analogue du
+   * coupe-circuit (catégorie ENGINE) : commandes Coban réelles, déclenchées à la
+   * main OU par le planificateur. Le FAILURE est le cas le plus précieux (le
+   * scheduler avale les erreurs par profil → un tracker offline qui empêche
+   * l'armement resterait invisible sans cette ligne).
+   */
+  private readonly lastScheduledFailureAt = new Map<string, number>();
+
+  private recordSurveillance(
+    action: 'surveillance_armed' | 'surveillance_disarmed',
+    profile: SurveillanceProfile,
+    requestedBy: RequestedBy,
+    source: 'manual' | 'scheduled',
+    status: 'SUCCESS' | 'FAILURE',
+    detail: string,
+  ): void {
+    // Un échec planifié répété (tracker offline, ré-essayé chaque minute) ne
+    // s'écrit qu'une fois/heure — les succès et TOUTES les actions manuelles passent.
+    if (status === 'FAILURE' && source === 'scheduled') {
+      const key = `${profile.id}|${action}`;
+      const last = this.lastScheduledFailureAt.get(key) ?? 0;
+      if (Date.now() - last < SCHEDULED_FAILURE_THROTTLE_MS) return;
+      this.lastScheduledFailureAt.set(key, Date.now());
+    }
+    this.prisma.vehicle
+      .findUnique({ where: { id: profile.vehicleId }, select: { plate: true } })
+      .then((v) =>
+        this.systemActivity.record({
+          category: 'SURVEILLANCE',
+          action,
+          status,
+          actor: source === 'scheduled' ? 'planning' : 'utilisateur',
+          target: v?.plate ?? profile.vehicleId,
+          detail,
+          fleetId: profile.fleetId,
+          triggeredByUserId: source === 'manual' ? requestedBy.userId : null,
+        }),
+      )
+      .catch(() => {
+        /* le journal ne casse jamais l'action métier */
+      });
+  }
 
   // ─── Profile CRUD ───────────────────────────────────────────────────
 
@@ -199,25 +249,33 @@ export class SurveillanceService {
 
     // Envoyer en séquence : sensitivity puis shock (l'ordre importe : on règle
     // d'abord la sensibilité, ensuite on arme).
-    await this.trackerCommands.request(
-      tracker.id,
-      'sensitivity',
-      { level: mapSensitivityToCobanLevel(profile.sensitivity) },
-      null,
-      requestedBy,
-    );
-    await this.trackerCommands.request(
-      tracker.id,
-      'shock_on',
-      {},
-      null,
-      requestedBy,
-    );
+    try {
+      await this.trackerCommands.request(
+        tracker.id,
+        'sensitivity',
+        { level: mapSensitivityToCobanLevel(profile.sensitivity) },
+        null,
+        requestedBy,
+      );
+      await this.trackerCommands.request(
+        tracker.id,
+        'shock_on',
+        {},
+        null,
+        requestedBy,
+      );
+    } catch (err) {
+      this.recordSurveillance('surveillance_armed', profile, requestedBy, source, 'FAILURE',
+        `Armement échoué (${profile.mode}, sens. ${profile.sensitivity}) : ${err instanceof Error ? err.message : String(err)}`);
+      throw err;
+    }
 
     this.logger.log(
       `[surveillance] ARM ${source} vehicle=${profile.vehicleId} ` +
         `sens=${profile.sensitivity} by=${requestedBy.userId}`,
     );
+    this.recordSurveillance('surveillance_armed', profile, requestedBy, source, 'SUCCESS',
+      `Armé (${profile.mode}, sensibilité ${profile.sensitivity})`);
 
     return this.prisma.surveillanceProfile.update({
       where: { id: profile.id },
@@ -235,18 +293,25 @@ export class SurveillanceService {
   ): Promise<SurveillanceProfile> {
     const tracker = await this.findTrackerForVehicle(profile.vehicleId);
     if (tracker) {
-      await this.trackerCommands.request(
-        tracker.id,
-        'shock_off',
-        {},
-        null,
-        requestedBy,
-      );
+      try {
+        await this.trackerCommands.request(
+          tracker.id,
+          'shock_off',
+          {},
+          null,
+          requestedBy,
+        );
+      } catch (err) {
+        this.recordSurveillance('surveillance_disarmed', profile, requestedBy, source, 'FAILURE',
+          `Désarmement échoué : ${err instanceof Error ? err.message : String(err)}`);
+        throw err;
+      }
     }
 
     this.logger.log(
       `[surveillance] DISARM ${source} vehicle=${profile.vehicleId} by=${requestedBy.userId}`,
     );
+    this.recordSurveillance('surveillance_disarmed', profile, requestedBy, source, 'SUCCESS', 'Désarmé');
 
     return this.prisma.surveillanceProfile.update({
       where: { id: profile.id },

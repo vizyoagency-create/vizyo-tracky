@@ -1,7 +1,7 @@
 import { DatePipe } from '@angular/common';
 import { Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import type {
   ActivityFeedItemDto,
   ActivityStatsDto,
@@ -26,9 +26,15 @@ import {
   MousePointer2,
   MoveVertical,
   Bell,
+  Building2,
+  CreditCard,
+  Cpu,
+  Download,
   Mail,
   MessageSquare,
+  Pencil,
   Server,
+  ShieldAlert,
   Sparkles,
   Trash2,
   Power,
@@ -39,6 +45,7 @@ import {
   Users,
 } from 'lucide-angular';
 import { AudioMonitoringService } from '../../core/services/audio-monitoring.service';
+import { UsersApiService } from '../../core/services/users.service';
 import { relativeTime } from '../../shared/utils/relative-time';
 import { UserActivityApiService } from './user-activity-api.service';
 import { ActivityReportsComponent } from './activity-reports.component';
@@ -72,6 +79,7 @@ type Period = '24h' | '7d' | '30d';
       <div class="flex items-center gap-1 border-b border-border-subtle overflow-x-auto scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">
         @for (t of tabs; track t.id) {
           <button (click)="setTab(t.id)"
+                  [attr.data-track]="'Onglet ' + t.label"
                   class="px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors shrink-0 whitespace-nowrap"
                   [class]="t.id === tab()
                     ? 'border-tracky text-fg-primary'
@@ -142,6 +150,32 @@ type Period = '24h' | '7d' | '30d';
 
       <!-- ─────────── HISTORIQUE ─────────── -->
       @if (tab() === 'history') {
+        <!-- Filtres : « qu'a fait l'utilisateur X ? » / « tous les exports » … -->
+        <div class="flex flex-wrap items-end gap-3">
+          <div class="flex flex-col gap-1">
+            <label class="text-xs text-fg-tertiary">Utilisateur</label>
+            <select [ngModel]="historyUser()" (ngModelChange)="setHistoryUser($event)"
+                    class="bg-bg-secondary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary">
+              <option value="">Tous</option>
+              @for (u of filterUsers(); track u.id) {
+                <option [value]="u.id">{{ u.name }}</option>
+              }
+            </select>
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-xs text-fg-tertiary">Type</label>
+            <select [ngModel]="historyType()" (ngModelChange)="setHistoryType($event)"
+                    class="bg-bg-secondary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary">
+              <option value="">Tous</option>
+              <option value="PAGE_VIEW">Pages vues</option>
+              <option value="CLICK">Clics</option>
+              <option value="FORM_SUBMIT">Formulaires</option>
+              <option value="SCROLL">Défilements</option>
+              <option value="SESSION_START">Connexions</option>
+              <option value="SESSION_END">Déconnexions</option>
+            </select>
+          </div>
+        </div>
         <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4">
           <div class="flex flex-col">
             @for (a of history(); track a.id) {
@@ -234,9 +268,40 @@ type Period = '24h' | '7d' | '30d';
                     <span class="text-fg-tertiary shrink-0 ml-2 tabular-nums">{{ c.count }}×</span>
                   </div>
                 } @empty {
-                  <p class="text-sm text-fg-tertiary py-4 text-center">
-                    Aucun clic tracké (ajouter <code>trackClick</code> aux boutons).
-                  </p>
+                  <p class="text-sm text-fg-tertiary py-4 text-center">Aucun clic sur la période.</p>
+                }
+              </div>
+            </div>
+          </div>
+
+          <div class="grid lg:grid-cols-2 gap-4">
+            <!-- Événements par type -->
+            <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4">
+              <div class="text-sm font-medium text-fg-secondary mb-3">Événements par type</div>
+              <div class="flex flex-wrap gap-2">
+                @for (e of s.eventsByType; track e.type) {
+                  <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-bg-tertiary text-xs">
+                    <lucide-icon [img]="typeIcon($any(e.type))" [size]="12" class="text-fg-tertiary"></lucide-icon>
+                    <span class="text-fg-secondary">{{ eventTypeLabel(e.type) }}</span>
+                    <span class="text-fg-primary font-semibold tabular-nums">{{ e.count }}</span>
+                  </span>
+                } @empty {
+                  <p class="text-sm text-fg-tertiary py-4 text-center w-full">Pas encore de données.</p>
+                }
+              </div>
+            </div>
+
+            <!-- Formulaires les plus soumis -->
+            <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4">
+              <div class="text-sm font-medium text-fg-secondary mb-3">Formulaires les plus soumis</div>
+              <div class="flex flex-col gap-1.5">
+                @for (f of s.topForms; track f.target; let i = $index) {
+                  <div class="flex items-center justify-between text-xs">
+                    <span class="text-fg-secondary truncate">{{ i + 1 }}. {{ f.target }}</span>
+                    <span class="text-fg-tertiary shrink-0 ml-2 tabular-nums">{{ f.count }}×</span>
+                  </div>
+                } @empty {
+                  <p class="text-sm text-fg-tertiary py-4 text-center">Aucun formulaire soumis sur la période.</p>
                 }
               </div>
             </div>
@@ -402,6 +467,19 @@ type Period = '24h' | '7d' | '30d';
           }
         </div>
 
+        <!-- Filtre statut : « lister uniquement les échecs » = cas d'usage n°1 du journal. -->
+        <div class="flex flex-wrap items-center gap-1.5">
+          @for (s of systemStatuses; track s.id) {
+            <button (click)="setSystemStatus(s.id)"
+                    class="px-3 py-1 text-xs font-medium rounded-full border transition-colors"
+                    [class]="systemStatus() === s.id
+                      ? 'border-tracky text-fg-primary bg-tracky/10'
+                      : 'border-border-subtle text-fg-tertiary hover:text-fg-secondary'">
+              {{ s.label }}
+            </button>
+          }
+        </div>
+
         @if (systemActs().length > 0) {
           <div class="flex flex-col gap-1.5">
             @for (a of systemActs(); track a.id) {
@@ -414,6 +492,9 @@ type Period = '24h' | '7d' | '30d';
                 <div class="min-w-0 flex-1">
                   <div class="flex items-center gap-2 flex-wrap">
                     <span class="text-sm font-medium text-fg-primary">{{ sysCategoryLabel(a.category) }}</span>
+                    @if (sysActionBadge(a); as b) {
+                      <span class="text-[10px] font-bold px-1.5 py-0.5 rounded-md" [class]="b.cls">{{ b.label }}</span>
+                    }
                     @if (a.triggeredByName) {
                       <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-sky-500/15 text-sky-400">déclenché par {{ a.triggeredByName }}</span>
                     } @else {
@@ -431,6 +512,9 @@ type Period = '24h' | '7d' | '30d';
                       @if (a.target && a.detail) { <span class="text-fg-tertiary"> · </span> }
                       @if (a.detail) { <span>{{ a.detail }}</span> }
                     </p>
+                  }
+                  @if (a.error && a.status !== 'SUCCESS') {
+                    <p class="text-xs text-rose-400 truncate mt-0.5" [title]="a.error">{{ a.error }}</p>
                   }
                   @if (a.fleetName) {
                     <span class="text-[10px] text-fg-tertiary">{{ a.fleetName }}</span>
@@ -564,6 +648,9 @@ type Period = '24h' | '7d' | '30d';
 export class AdminActivityComponent implements OnInit, OnDestroy {
   private readonly api = inject(UserActivityApiService);
   private readonly audioApi = inject(AudioMonitoringService);
+  private readonly usersApi = inject(UsersApiService);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
 
   protected readonly ArrowLeft = ArrowLeft;
   protected readonly RefreshCw = RefreshCw;
@@ -585,12 +672,26 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
   ];
   /** Catégories du journal des actions système (chips de filtre). */
   readonly systemCategories: { id: string; label: string }[] = [
+    { id: 'MUTATION', label: 'Actions API' },
     { id: 'EMAIL', label: 'E-mails' },
     { id: 'SMS', label: 'SMS' },
     { id: 'PUSH', label: 'Push' },
     { id: 'ENGINE', label: 'Moteur' },
-    { id: 'RETENTION', label: 'Rétention' },
+    { id: 'SURVEILLANCE', label: 'Antivol' },
+    { id: 'TRACKER_CMD', label: 'Cmd boîtier' },
+    { id: 'EXPORT', label: 'Exports' },
+    { id: 'SIM', label: 'SIM' },
+    { id: 'AI', label: 'IA' },
     { id: 'AI_REPORT', label: 'Rapports IA' },
+    { id: 'AUDIO', label: 'Audio' },
+    { id: 'RETENTION', label: 'Rétention' },
+    { id: 'INTERNAL', label: 'Interne' },
+  ];
+  readonly systemStatuses: { id: string; label: string }[] = [
+    { id: '', label: 'Tous statuts' },
+    { id: 'SUCCESS', label: 'Succès' },
+    { id: 'FAILURE', label: 'Échecs' },
+    { id: 'SKIPPED', label: 'Ignorés' },
   ];
   readonly periods: { id: Period; label: string }[] = [
     { id: '24h', label: '24h' },
@@ -618,6 +719,13 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
   // Système (actions auto / arrière-plan : e-mails, SMS, push, moteur, rétention, rapports IA).
   readonly systemActs = signal<SystemActivityDto[]>([]);
   readonly systemCategory = signal('');
+  readonly systemStatus = signal('');
+
+  // Filtres historique (« qu'a fait X hier ? »).
+  readonly historyUser = signal('');
+  readonly historyType = signal('');
+  readonly filterUsers = signal<{ id: string; name: string }[]>([]);
+  private filterUsersLoaded = false;
 
   readonly maxSessions = computed(() =>
     Math.max(1, ...(this.stats()?.sessionsPerDay ?? []).map((d) => d.count)),
@@ -626,6 +734,10 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
   private pollHandle: ReturnType<typeof setInterval> | null = null;
 
   ngOnInit(): void {
+    // Deep-link ?tab= (et cohérence PAGE_VIEW du tracker : « Admin · Activité · Système »).
+    const tab = this.route.snapshot.queryParamMap.get('tab');
+    if (tab && this.tabs.some((t) => t.id === tab)) this.tab.set(tab as Tab);
+    if (this.tab() !== 'live') this.setTab(this.tab());
     this.loadLive();
     this.pollHandle = setInterval(() => {
       if (this.tab() === 'live') this.loadLive();
@@ -638,6 +750,13 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
 
   setTab(t: Tab): void {
     this.tab.set(t);
+    // Synchro URL → NavigationEnd → PAGE_VIEW distinct avec durée par onglet.
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { tab: t === 'live' ? null : t },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
     if (t === 'live') this.loadLive();
     else if (t === 'history') this.loadHistory();
     else if (t === 'engine-commands') this.loadEngine();
@@ -664,13 +783,31 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
     const last = this.history()[this.history().length - 1];
     if (!last) return;
     this.loadingMore.set(true);
-    this.api.feed(50, last.at).subscribe({
-      next: (items) => {
-        this.history.update((h) => [...h, ...items]);
-        this.loadingMore.set(false);
-      },
-      error: () => this.loadingMore.set(false),
-    });
+    // Cursor composite (at, id) : les events d'un même batch partagent le timestamp.
+    this.api
+      .feed({
+        limit: 50,
+        before: last.at,
+        beforeId: last.id,
+        userId: this.historyUser() || undefined,
+        type: this.historyType() || undefined,
+      })
+      .subscribe({
+        next: (items) => {
+          this.history.update((h) => [...h, ...items]);
+          this.loadingMore.set(false);
+        },
+        error: () => this.loadingMore.set(false),
+      });
+  }
+
+  setHistoryUser(v: string): void {
+    this.historyUser.set(v);
+    this.loadHistory();
+  }
+  setHistoryType(v: string): void {
+    this.historyType.set(v);
+    this.loadHistory();
   }
 
   setActionFilter(v: string): void {
@@ -733,10 +870,18 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
     this.systemCategory.set(c);
     this.loadSystem();
   }
+  setSystemStatus(s: string): void {
+    this.systemStatus.set(s);
+    this.loadSystem();
+  }
 
   private loadSystem(): void {
     this.api
-      .systemFeed(60, undefined, this.systemCategory() || undefined)
+      .systemFeed({
+        limit: 60,
+        category: this.systemCategory() || undefined,
+        status: this.systemStatus() || undefined,
+      })
       .subscribe({ next: (l) => this.systemActs.set(l), error: () => undefined });
   }
 
@@ -744,21 +889,47 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
     const last = this.systemActs()[this.systemActs().length - 1];
     if (!last) return;
     this.loadingMore.set(true);
-    this.api.systemFeed(60, last.createdAt, this.systemCategory() || undefined).subscribe({
-      next: (items) => {
-        this.systemActs.update((l) => [...l, ...items]);
-        this.loadingMore.set(false);
-      },
-      error: () => this.loadingMore.set(false),
-    });
+    this.api
+      .systemFeed({
+        limit: 60,
+        before: last.createdAt,
+        beforeId: last.id,
+        category: this.systemCategory() || undefined,
+        status: this.systemStatus() || undefined,
+      })
+      .subscribe({
+        next: (items) => {
+          this.systemActs.update((l) => [...l, ...items]);
+          this.loadingMore.set(false);
+        },
+        error: () => this.loadingMore.set(false),
+      });
   }
 
   private loadLive(): void {
     this.api.online().subscribe({ next: (u) => this.online.set(u), error: () => undefined });
-    this.api.feed(50).subscribe({ next: (f) => this.feed.set(f), error: () => undefined });
+    this.api.feed({ limit: 50 }).subscribe({ next: (f) => this.feed.set(f), error: () => undefined });
   }
   private loadHistory(): void {
-    this.api.feed(80).subscribe({ next: (f) => this.history.set(f), error: () => undefined });
+    this.api
+      .feed({ limit: 80, userId: this.historyUser() || undefined, type: this.historyType() || undefined })
+      .subscribe({ next: (f) => this.history.set(f), error: () => undefined });
+    if (!this.filterUsersLoaded) {
+      this.filterUsersLoaded = true;
+      this.usersApi
+        .findAll()
+        .then(({ users }) =>
+          this.filterUsers.set(
+            users.map((u) => ({
+              id: u.id,
+              name: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email,
+            })),
+          ),
+        )
+        .catch(() => {
+          this.filterUsersLoaded = false;
+        });
+    }
   }
   private loadStats(): void {
     this.stats.set(null);
@@ -779,6 +950,21 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
   protected statusLabel(s: PresenceStatus): string {
     return s === 'ACTIVE' ? 'actif' : s === 'IDLE' ? 'inactif' : s === 'AWAY' ? 'absent' : 'hors ligne';
   }
+  protected eventTypeLabel(t: string): string {
+    switch (t) {
+      case 'PAGE_VIEW': return 'Pages vues';
+      case 'CLICK': return 'Clics';
+      case 'SCROLL': return 'Défilements';
+      case 'FORM_SUBMIT': return 'Formulaires';
+      case 'SESSION_START': return 'Connexions';
+      case 'SESSION_END': return 'Déconnexions';
+      case 'SESSION_RESUME': return 'Reprises';
+      case 'IDLE': return 'Inactifs';
+      case 'AWAY': return 'Absents';
+      default: return t;
+    }
+  }
+
   protected typeIcon(t: ActivityFeedItemDto['type']) {
     switch (t) {
       case 'PAGE_VIEW': return ArrowRight;
@@ -804,6 +990,14 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
       case 'ENGINE': return Power;
       case 'RETENTION': return Trash2;
       case 'AI_REPORT': return Sparkles;
+      case 'SURVEILLANCE': return ShieldAlert;
+      case 'TRACKER_CMD': return Cpu;
+      case 'EXPORT': return Download;
+      case 'SIM': return CreditCard;
+      case 'AI': return Sparkles;
+      case 'AUDIO': return Ear;
+      case 'INTERNAL': return Building2;
+      case 'MUTATION': return Pencil;
       default: return Server;
     }
   }
@@ -815,7 +1009,38 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
       case 'ENGINE': return 'bg-rose-500/15 text-rose-400';
       case 'RETENTION': return 'bg-emerald-500/15 text-emerald-400';
       case 'AI_REPORT': return 'bg-fuchsia-500/15 text-fuchsia-400';
+      case 'SURVEILLANCE': return 'bg-orange-500/15 text-orange-400';
+      case 'TRACKER_CMD': return 'bg-cyan-500/15 text-cyan-400';
+      case 'EXPORT': return 'bg-teal-500/15 text-teal-400';
+      case 'SIM': return 'bg-indigo-500/15 text-indigo-400';
+      case 'AI': return 'bg-fuchsia-500/15 text-fuchsia-400';
+      case 'AUDIO': return 'bg-red-500/15 text-red-400';
+      case 'INTERNAL': return 'bg-slate-500/15 text-slate-400';
+      case 'MUTATION': return 'bg-lime-500/15 text-lime-400';
       default: return 'bg-bg-tertiary text-fg-tertiary';
+    }
+  }
+
+  /**
+   * Badge d'action affiché SEULEMENT quand il ajoute de l'info vs la catégorie
+   * (ex. ENGINE : Coupure vs Rétablissement — indistinguables sinon dès qu'un
+   * motif remplit detail). null = action triviale 1:1 (email_sent, push_sent…).
+   */
+  protected sysActionBadge(a: SystemActivityDto): { label: string; cls: string } | null {
+    switch (a.action) {
+      case 'engine_cut': return { label: 'Coupure', cls: 'bg-rose-500/15 text-rose-400' };
+      case 'engine_restore': return { label: 'Rétablissement', cls: 'bg-emerald-500/15 text-emerald-400' };
+      case 'surveillance_armed': return { label: 'Armement', cls: 'bg-orange-500/15 text-orange-400' };
+      case 'surveillance_disarmed': return { label: 'Désarmement', cls: 'bg-emerald-500/15 text-emerald-400' };
+      case 'push_test': return { label: 'Test', cls: 'bg-bg-tertiary text-fg-tertiary' };
+      default:
+        if (a.action.startsWith('sms_') && a.action !== 'sms_sent') {
+          return { label: a.action.slice(4).replace(/-/g, ' '), cls: 'bg-violet-500/15 text-violet-400' };
+        }
+        if (a.action.startsWith('http_')) {
+          return { label: a.action.slice(5).toUpperCase(), cls: 'bg-lime-500/15 text-lime-400' };
+        }
+        return null;
     }
   }
   protected sysCategoryLabel(category: string): string {
@@ -887,9 +1112,18 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
     switch (a.type) {
       case 'PAGE_VIEW':
         return `${a.routeLabel ?? a.route ?? ''}${a.durationMs != null ? ` (${this.fmtMs(a.durationMs)})` : ''}`;
-      case 'CLICK': return `cliqué « ${a.target} »`;
-      case 'SCROLL': return `défilé${a.target ? ` (${a.target})` : ''}`;
-      case 'FORM_SUBMIT': return `formulaire envoyé${a.target ? ` « ${a.target} »` : ''}`;
+      case 'CLICK': {
+        const page = a.routeLabel ?? a.route;
+        return `cliqué « ${a.target} »${page ? ` — ${page}` : ''}`;
+      }
+      case 'SCROLL': {
+        const page = a.routeLabel ?? a.route;
+        return `défilé${a.target ? ` (${a.target})` : ''}${page ? ` — ${page}` : ''}`;
+      }
+      case 'FORM_SUBMIT': {
+        const page = a.routeLabel ?? a.route;
+        return `formulaire envoyé${a.target ? ` « ${a.target} »` : ''}${page ? ` — ${page}` : ''}`;
+      }
       case 'SESSION_START': return 'connecté';
       case 'SESSION_END': {
         const r = a.target === 'manual' ? 'volontaire' : a.target === 'tab_close' ? 'onglet fermé' : a.target === 'auto' ? 'expiration/système' : null;

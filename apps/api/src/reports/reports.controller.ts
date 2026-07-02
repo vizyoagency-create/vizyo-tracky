@@ -19,6 +19,7 @@ import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guar
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { PrismaService } from '../prisma/prisma.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 import { GenerateExcelDto } from './dto/generate-excel.dto';
 import { GeneratePdfDto } from './dto/generate-pdf.dto';
@@ -49,7 +50,33 @@ export class ReportsController {
     private readonly speedReport: SpeedReportService,
     private readonly prisma: PrismaService,
     private readonly vehicleAccess: VehicleAccessService,
+    private readonly systemActivity: SystemActivityService,
   ) {}
+
+  /**
+   * Journal Système — un export = une exfiltration de données (positions GPS
+   * complètes) déclenchable par un simple VIEWER : chaque téléchargement est
+   * tracé avec son périmètre. Fire-and-forget, ne casse jamais le download.
+   */
+  private recordExport(
+    req: AuthenticatedRequest,
+    action: string,
+    filename: string,
+    fleetId: string | null,
+    meta?: Record<string, unknown>,
+  ): void {
+    const u = req.user;
+    this.systemActivity.record({
+      category: 'EXPORT',
+      action,
+      status: 'SUCCESS',
+      actor: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email || 'utilisateur',
+      target: filename,
+      fleetId: fleetId ?? u.fleetId ?? null,
+      triggeredByUserId: u.id,
+      meta,
+    });
+  }
 
   /**
    * 🔒 Sprint 5 — borne de perimetre transmise a chaque service de rapport :
@@ -92,6 +119,7 @@ export class ReportsController {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(buffer);
+    this.recordExport(req, 'export_pdf', filename, fleetId, { from: fromRaw, to: toRaw });
   }
 
   /**
@@ -135,6 +163,9 @@ export class ReportsController {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(buffer);
+    this.recordExport(req, 'export_pdf', filename, fleetId, {
+      from: body.from, to: body.to, vehicleIds: vehicleIds.length || undefined,
+    });
   }
 
   @Get('csv')
@@ -162,6 +193,7 @@ export class ReportsController {
     res.setHeader('Content-Type', result.contentType);
     res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
     res.send(result.body);
+    this.recordExport(req, `export_csv_${type}`, result.filename, fleetId, { from: fromRaw, to: toRaw });
   }
 
   /**
@@ -193,6 +225,9 @@ export class ReportsController {
     );
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(buffer);
+    this.recordExport(req, 'export_excel', filename, null, {
+      vehicleId: body.vehicleId, from: body.from, to: body.to,
+    });
   }
 
   /**
@@ -218,6 +253,7 @@ export class ReportsController {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(html);
+    this.recordExport(req, 'export_speed', filename, null, { tripId });
   }
 
   private async parseRange(

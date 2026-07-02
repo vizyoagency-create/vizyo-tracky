@@ -74,8 +74,24 @@ export class UserActivityController {
   @Get('admin/activity/feed')
   @UseGuards(RolesGuard)
   @Roles(UserRole.SUPER_ADMIN)
-  feed(@Query('limit') limit?: string, @Query('before') before?: string) {
-    return this.svc.getFeed(limit ? parseInt(limit, 10) || 50 : 50, before);
+  feed(
+    @Query('limit') limit?: string,
+    @Query('before') before?: string,
+    @Query('beforeId') beforeId?: string,
+    @Query('userId') userId?: string,
+    @Query('type') type?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.svc.getFeed({
+      limit: limit ? parseInt(limit, 10) || 50 : 50,
+      before,
+      beforeId,
+      userId,
+      type,
+      from,
+      to,
+    });
   }
 
   @Get('admin/activity/stats')
@@ -114,12 +130,16 @@ export class UserActivityController {
   systemFeed(
     @Query('limit') limit?: string,
     @Query('before') before?: string,
+    @Query('beforeId') beforeId?: string,
     @Query('category') category?: string,
+    @Query('status') status?: string,
   ) {
     return this.system.getFeed({
       limit: limit ? parseInt(limit, 10) || 60 : 60,
       before,
+      beforeId,
       category,
+      status,
     });
   }
 }

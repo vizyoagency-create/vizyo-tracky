@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { LucideAngularModule, Plus, Archive, Users, Shield, Pencil, KeyRound, Send, XCircle, Mail, UserRound, UserCog } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { AudioMonitoringService } from '../../core/services/audio-monitoring.service';
@@ -64,10 +64,10 @@ import { DriversListComponent } from '../drivers/drivers-list.component';
       <!-- Consolidation IA : onglets Comptes (accès app) / Conducteurs (personnes). -->
       @if (perms.can('drivers_view')) {
         <div class="u-tabs">
-          <button class="u-tab" [class.active]="activeTab() === 'accounts'" (click)="activeTab.set('accounts')">
+          <button class="u-tab" data-track="Onglet Comptes" [class.active]="activeTab() === 'accounts'" (click)="selectTab('accounts')">
             <lucide-icon [img]="UserCogIcon" [size]="14"></lucide-icon> Comptes
           </button>
-          <button class="u-tab" [class.active]="activeTab() === 'drivers'" (click)="activeTab.set('drivers')">
+          <button class="u-tab" data-track="Onglet Conducteurs" [class.active]="activeTab() === 'drivers'" (click)="selectTab('drivers')">
             <lucide-icon [img]="UserRoundIcon" [size]="14"></lucide-icon> Conducteurs
           </button>
         </div>
@@ -426,6 +426,18 @@ export class UsersListComponent implements OnInit {
 
   private readonly fleetFilter = inject(FleetFilterService);
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
+
+  /** Changement d'onglet AVEC synchro URL (?tab=) → PAGE_VIEW distinct côté tracker. */
+  protected selectTab(tab: 'accounts' | 'drivers'): void {
+    this.activeTab.set(tab);
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { tab: tab === 'accounts' ? null : tab },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
+  }
 
   readonly loading = signal(true);
   readonly users = signal<TrackyUser[]>([]);

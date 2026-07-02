@@ -15,6 +15,7 @@ import { SocketRegistryService } from '../socket-registry/socket-registry.servic
 import { AckWaiterService } from '../tracker-commands/ack-waiter.service';
 import { SmsGatewayService } from '../sms/sms-gateway.service';
 import { EngineControlService } from './engine-control.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 
 const TRACKER_ID = '00000000-0000-0000-0000-000000000010';
 const VEHICLE_ID = '00000000-0000-0000-0000-000000000020';
@@ -140,6 +141,7 @@ describe('EngineControlService', () => {
         // V1.5 sprint-i) mais le provider manquait → toute la suite ne compilait pas.
         // isEnabled=false : trySmsFallback reste un no-op, on garde le chemin offline→FAILED.
         { provide: SmsGatewayService, useValue: { isEnabled: jest.fn().mockReturnValue(false), send: jest.fn() } },
+        { provide: SystemActivityService, useValue: { record: jest.fn() } },
       ],
     }).compile();
 

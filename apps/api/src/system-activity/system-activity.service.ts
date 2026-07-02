@@ -66,18 +66,26 @@ export class SystemActivityService {
 
   /** Feed admin (SUPER_ADMIN) — timeline des actions système récentes. */
   async getFeed(
-    opts: { limit?: number; before?: string; category?: string } = {},
+    opts: { limit?: number; before?: string; beforeId?: string; category?: string; status?: string } = {},
   ): Promise<SystemActivityDto[]> {
     const take = Math.min(Math.max(opts.limit ?? 60, 1), 200);
     const where: Prisma.SystemActivityLogWhereInput = {};
     if (opts.category) where.category = opts.category;
+    if (opts.status && ['SUCCESS', 'FAILURE', 'SKIPPED'].includes(opts.status)) where.status = opts.status;
     if (opts.before) {
       const d = new Date(opts.before);
-      if (!Number.isNaN(d.getTime())) where.createdAt = { lt: d };
+      if (!Number.isNaN(d.getTime())) {
+        // Cursor composite (createdAt, id) — même timestamp = tiebreak id.
+        if (opts.beforeId) {
+          where.OR = [{ createdAt: { lt: d } }, { createdAt: d, id: { lt: opts.beforeId } }];
+        } else {
+          where.createdAt = { lt: d };
+        }
+      }
     }
     const rows = await this.prisma.systemActivityLog.findMany({
       where,
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take,
     });
 
@@ -116,6 +124,11 @@ export class SystemActivityService {
       triggeredByUserId: r.triggeredByUserId,
       triggeredByName: r.triggeredByUserId ? (userName.get(r.triggeredByUserId) ?? null) : null,
       durationMs: r.durationMs,
+      // Cause d'échec extraite de meta.error — rétroactif sur les lignes déjà en base.
+      error:
+        r.meta && typeof r.meta === 'object' && typeof (r.meta as Record<string, unknown>)['error'] === 'string'
+          ? ((r.meta as Record<string, unknown>)['error'] as string)
+          : null,
     }));
   }
 }

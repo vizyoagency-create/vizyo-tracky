@@ -64,6 +64,8 @@ export interface ActivityFeedItemDto {
   routeLabel: string | null;
   target: string | null;
   durationMs: number | null;
+  /** Session d'appartenance — permet le regroupement visuel côté admin. */
+  sessionId: string | null;
   at: string;
 }
 
@@ -89,6 +91,10 @@ export interface ActivityStatsDto {
   topPages: TopPageDto[];
   topClicks: TopClickDto[];
   sessionsPerDay: { date: string; count: number }[];
+  /** Compteur d'événements par type (hors HEARTBEAT) sur la fenêtre. */
+  eventsByType: { type: string; count: number }[];
+  /** Formulaires les plus soumis (FORM_SUBMIT). */
+  topForms: TopClickDto[];
 }
 
 /**
@@ -115,18 +121,24 @@ export interface EngineCommandAuditDto {
 
 /** Libellés lisibles des routes (partagé : le client envoie, l'admin affiche). */
 export const ROUTE_LABELS: Record<string, string> = {
+  '/login': 'Connexion',
   '/map': 'Carte live',
   '/dashboard': 'Tableau de bord',
   '/vehicles': 'Véhicules',
   '/alerts': 'Alertes',
   '/reports': 'Rapports',
+  '/agenda': 'Agenda',
+  '/installations': 'Suivi installation',
+  '/sims': 'Cartes SIM',
+  // Legacy — routes devenues des redirections ?tab= (consolidation 2026-07) ;
+  // conservées pour re-labelliser l'historique pré-consolidation au read-time.
   '/geofences': 'Géofences',
   '/groups': 'Groupes',
   '/drivers': 'Chauffeurs',
   '/users': 'Utilisateurs',
   '/settings': 'Paramètres',
+  '/settings/alert-rules': 'Règles alertes',
   '/account': 'Mon compte',
-  '/alert-rules': 'Règles alertes',
   '/admin': 'Admin',
   '/admin/system': 'Admin · Système VPS',
   '/admin/activity': 'Admin · Activité',
@@ -136,15 +148,50 @@ export const ROUTE_LABELS: Record<string, string> = {
   '/admin/sms': 'Admin · SMS & Backup',
   '/admin/sims': 'Admin · Cartes SIM',
   '/admin/installations': 'Admin · Installations',
+  '/admin/ai-usage': 'Admin · Coûts IA',
+  '/admin/retention': 'Admin · Rétention',
+  '/admin/commands': 'Admin · Commandes tracker',
+  '/admin/auth-sync': 'Admin · Sync Auth',
+  '/admin/unknown-trackers': 'Admin · Boîtiers non reconnus',
+  '/admin/audio-eligibility': 'Admin · Audio éligibilité',
 };
 
-/** Résout le libellé d'une route (gère les routes à paramètres via préfixe). */
+/**
+ * Libellés des onglets in-page (`?tab=`) — suffixés au libellé de la page pour
+ * que « Véhicules · Groupes » soit distinct de « Véhicules » dans l'activité.
+ */
+export const TAB_LABELS: Record<string, string> = {
+  groups: 'Groupes',
+  capacity: 'Parc & capacités',
+  geofences: 'Géofences',
+  settings: 'Réglages',
+  drivers: 'Conducteurs',
+  vehicles: 'Véhicules',
+  alerts: 'Alertes',
+  accounts: 'Comptes',
+  live: 'Live',
+  history: 'Historique',
+  system: 'Système',
+  reports: 'Rapports IA',
+  analytics: 'Analytics',
+  'engine-commands': 'Commandes moteur',
+  'audio-listens': 'Écoutes audio',
+};
+
+/** Résout le libellé d'une route (routes à paramètres via préfixe + onglet ?tab=). */
 export function labelForRoute(route: string): string {
-  const clean = (route.split('?')[0] || route).replace(/\/+$/, '') || '/';
-  const exact = ROUTE_LABELS[clean];
-  if (exact) return exact;
-  const best = Object.keys(ROUTE_LABELS)
-    .filter((k) => clean === k || clean.startsWith(k + '/'))
-    .sort((a, b) => b.length - a.length)[0];
-  return (best && ROUTE_LABELS[best]) || clean;
+  const [path, query = ''] = route.split('?');
+  const clean = (path || route).replace(/\/+$/, '') || '/';
+  const base =
+    ROUTE_LABELS[clean] ??
+    (() => {
+      const best = Object.keys(ROUTE_LABELS)
+        .filter((k) => clean === k || clean.startsWith(k + '/'))
+        .sort((a, b) => b.length - a.length)[0];
+      return (best && ROUTE_LABELS[best]) || clean;
+    })();
+  // Onglet in-page : seul le param `tab` compte (on ignore ?group=, ?vehicle=…).
+  const tab = /(?:^|&)tab=([^&]+)/.exec(query)?.[1];
+  const tabLabel = tab ? TAB_LABELS[decodeURIComponent(tab)] : undefined;
+  return tabLabel ? `${base} · ${tabLabel}` : base;
 }

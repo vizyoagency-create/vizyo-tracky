@@ -42,7 +42,9 @@ function createController() {
     removeUserFromApp: jest.fn(),
   } as unknown as import('../auth-client/auth-client.service').AuthClientService;
 
-  return { controller: new InternalController(prisma, authClient), prisma };
+  const systemActivity = { record: jest.fn() } as unknown as import('../system-activity/system-activity.service').SystemActivityService;
+
+  return { controller: new InternalController(prisma, authClient, systemActivity), prisma };
 }
 
 describe('InternalSecretGuard', () => {

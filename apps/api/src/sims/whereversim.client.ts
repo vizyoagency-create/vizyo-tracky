@@ -1,6 +1,8 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { simStatusLabel } from '@vizyo/tracky-shared';
 import type { Env } from '../config/env.validation';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 
 /**
  * V1.16 — Client GraphQL WhereverSIM (parc SIM M2M).
@@ -90,7 +92,10 @@ export class WhereverSimClient {
   private readonly apiUrl: string;
   private readonly token: string;
 
-  constructor(private readonly config: ConfigService<Env, true>) {
+  constructor(
+    private readonly config: ConfigService<Env, true>,
+    private readonly systemActivity: SystemActivityService,
+  ) {
     this.apiUrl = (this.config.get('WHEREVER_SIM_API_URL', { infer: true }) ?? '').trim();
     this.token = (this.config.get('WHEREVER_SIM_TOKEN', { infer: true }) ?? '').trim();
   }
@@ -172,6 +177,38 @@ export class WhereverSimClient {
     return data.listSims ?? { items: [], nextToken: null, totalSims: 0 };
   }
 
+  /**
+   * Journal Système (catégorie SIM) — seule primitive de MUTATION chez l'opérateur :
+   * un changement de statut/plafond a un effet réel (et facturable) hors Tracky.
+   * ICCID masqué (mêmes 4 derniers chiffres que les numéros SMS). L'attribution
+   * utilisateur des actions manuelles vient de la ligne MUTATION (interceptor).
+   */
+  private recordSimActivity(action: string, iccid: string, status: 'SUCCESS' | 'FAILURE', detail: string): void {
+    this.systemActivity.record({
+      category: 'SIM',
+      action,
+      status,
+      actor: 'system',
+      target: `SIM ••${iccid.slice(-4)}`,
+      detail,
+      meta: status === 'FAILURE' ? { error: detail } : undefined,
+    });
+  }
+
+  /** Action métier dérivée des clés présentes dans l'input (1 clé par appel réel). */
+  private updateAction(input: UpdateSimInput): { action: string; detail: string } {
+    if (input.statusid != null) {
+      return { action: 'sim_status_changed', detail: `Statut → ${simStatusLabel(input.statusid)}` };
+    }
+    if (input.monthly_data_limit != null) {
+      return {
+        action: 'sim_data_limit_changed',
+        detail: input.monthly_data_limit === 0 ? 'Plafond data → illimité' : `Plafond data → ${input.monthly_data_limit} o`,
+      };
+    }
+    return { action: 'sim_device_name_pushed', detail: 'Nom device poussé (custom_field_1)' };
+  }
+
   /** Modifie une SIM (statut, plafond data, custom_field_1). Renvoie la SIM a jour. */
   async updateSim(input: UpdateSimInput): Promise<RawSim> {
     const query = `
@@ -189,8 +226,15 @@ export class WhereverSimClient {
         ) { ${SIM_FIELDS} }
       }
     `;
-    const data = await this.request<{ updateSim: RawSim }>(query, { ...input });
-    return data.updateSim;
+    const { action, detail } = this.updateAction(input);
+    try {
+      const data = await this.request<{ updateSim: RawSim }>(query, { ...input });
+      this.recordSimActivity(action, input.iccid, 'SUCCESS', detail);
+      return data.updateSim;
+    } catch (err) {
+      this.recordSimActivity(action, input.iccid, 'FAILURE', err instanceof Error ? err.message : String(err));
+      throw err;
+    }
   }
 
   async getStatistics(): Promise<RawStatistics> {
@@ -251,7 +295,16 @@ export class WhereverSimClient {
         sendSms(iccid: $iccid, text: $text, originator: $originator)
       }
     `;
-    const data = await this.request<{ sendSms: boolean }>(query, { iccid, text, originator });
-    return data.sendSms;
+    // Corps caviardé (mêmes règles que SmsGatewayService) : une commande Coban
+    // avec mot de passe boîtier ne doit jamais apparaître en clair dans le feed.
+    const redacted = text.replace(/\d{5,}/g, '••••');
+    try {
+      const data = await this.request<{ sendSms: boolean }>(query, { iccid, text, originator });
+      this.recordSimActivity('sim_sms_sent', iccid, data.sendSms ? 'SUCCESS' : 'FAILURE', `SMS : ${redacted.slice(0, 120)}`);
+      return data.sendSms;
+    } catch (err) {
+      this.recordSimActivity('sim_sms_sent', iccid, 'FAILURE', err instanceof Error ? err.message : String(err));
+      throw err;
+    }
   }
 }

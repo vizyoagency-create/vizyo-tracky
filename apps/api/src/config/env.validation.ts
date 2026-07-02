@@ -102,6 +102,10 @@ const envSchema = z.object({
   // ERROR_LOGS = erreurs applicatives.
   WIRE_LOGS_RETENTION_DAYS: z.coerce.number().int().positive().default(7),
   ERROR_LOGS_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
+  // MUTATION_AUDIT : lignes system_activity_logs categorie MUTATION (audit des
+  // mutations HTTP attribuees par utilisateur) — conservees plus longtemps que le
+  // reste du journal systeme (valeur d'audit).
+  MUTATION_AUDIT_RETENTION_DAYS: z.coerce.number().int().positive().default(365),
 
   // Sprint 4 — Écoute audio à distance (micro vehicule), LEGALEMENT SENSIBLE.
   // AUDIO_MONITORING_ENABLED : interrupteur prod. En production, sans 'true'

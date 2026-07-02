@@ -27,6 +27,7 @@ import {
   AdminFixModeService,
   type ErrorTimelineBucket,
 } from '../../core/services/admin-fix-mode.service';
+import { ActivityTrackerService } from '../../core/services/activity-tracker.service';
 import { ErrorTimelineChartComponent } from '../../shared/ui/charts/error-timeline-chart.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 
@@ -516,6 +517,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 export class AdminAlertsComponent implements OnInit {
   private readonly api = inject(AdminFixModeService);
   private readonly toast = inject(ToastService);
+  private readonly tracker = inject(ActivityTrackerService);
 
   protected readonly AlertTriangle = AlertTriangle;
   protected readonly ArrowLeft = ArrowLeft;
@@ -646,6 +648,8 @@ export class AdminAlertsComponent implements OnInit {
     try {
       const result = await firstValueFrom(this.api.errorsExport());
       const date = new Date().toISOString().slice(0, 10);
+      // Trace explicite : l'ancre détachée ci-dessous n'émet aucun clic capturable.
+      this.tracker.trackClick(`export:tracky-errors-${date}.md`);
       const blob = new Blob([result.markdown], { type: 'text/markdown' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');

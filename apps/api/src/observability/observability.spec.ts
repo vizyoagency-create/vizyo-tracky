@@ -6,6 +6,7 @@ import { CobanWireLogger } from './coban-wire-logger.service';
 import { ErrorLogger } from './error-logger.service';
 import { LogCleanupService } from './log-cleanup.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 
 describe('ErrorLogger', () => {
   let errorLogger: ErrorLogger;
@@ -239,26 +240,35 @@ describe('AllExceptionsFilter', () => {
 
 describe('LogCleanupService', () => {
   let cleanupService: LogCleanupService;
+  let systemActivity: { record: jest.Mock };
   let prisma: {
     wireLog: { deleteMany: jest.Mock };
     errorLog: { deleteMany: jest.Mock };
+    systemActivityLog: { deleteMany: jest.Mock };
   };
 
   beforeEach(async () => {
     prisma = {
       wireLog: { deleteMany: jest.fn().mockResolvedValue({ count: 5 }) },
       errorLog: { deleteMany: jest.fn().mockResolvedValue({ count: 2 }) },
+      systemActivityLog: { deleteMany: jest.fn().mockResolvedValue({ count: 3 }) },
     };
+    systemActivity = { record: jest.fn() };
     const module = await Test.createTestingModule({
       providers: [
         LogCleanupService,
+        { provide: SystemActivityService, useValue: systemActivity },
         { provide: PrismaService, useValue: prisma },
         {
-          // Retention desormais env-configurable : on rend les defauts attendus (7j wire, 30j error).
+          // Retention desormais env-configurable : on rend les defauts attendus
+          // (7j wire, 30j error/système, 365j audit mutations).
           provide: ConfigService,
           useValue: {
             get: jest.fn((key: string) =>
-              key === 'WIRE_LOGS_RETENTION_DAYS' ? 7 : key === 'ERROR_LOGS_RETENTION_DAYS' ? 30 : undefined,
+              key === 'WIRE_LOGS_RETENTION_DAYS' ? 7
+                : key === 'ERROR_LOGS_RETENTION_DAYS' ? 30
+                : key === 'MUTATION_AUDIT_RETENTION_DAYS' ? 365
+                : undefined,
             ),
           },
         },
@@ -285,5 +295,34 @@ describe('LogCleanupService', () => {
     const threshold = prisma.errorLog.deleteMany.mock.calls[0][0].where.createdAt.lt;
     const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
     expect(Math.abs(threshold.getTime() - thirtyDaysAgo)).toBeLessThan(1000);
+  });
+
+  it('purge le journal système en deux lots : hors MUTATION (30j) et MUTATION (365j)', async () => {
+    await cleanupService.cleanupLogs();
+    const calls = prisma.systemActivityLog.deleteMany.mock.calls.map((c) => c[0].where);
+    expect(calls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ category: { not: 'MUTATION' } }),
+        expect.objectContaining({ category: 'MUTATION' }),
+      ]),
+    );
+    const mutWhere = calls.find((w) => w.category === 'MUTATION');
+    const yearAgo = Date.now() - 365 * 24 * 60 * 60 * 1000;
+    expect(Math.abs(mutWhere.createdAt.lt.getTime() - yearAgo)).toBeLessThan(1000);
+  });
+
+  it('journalise la purge (logs_purged) quand des lignes ont été supprimées', async () => {
+    await cleanupService.cleanupLogs();
+    expect(systemActivity.record).toHaveBeenCalledWith(
+      expect.objectContaining({ category: 'RETENTION', action: 'logs_purged', status: 'SUCCESS' }),
+    );
+  });
+
+  it('ne journalise RIEN quand aucune ligne purgée', async () => {
+    prisma.wireLog.deleteMany.mockResolvedValue({ count: 0 });
+    prisma.errorLog.deleteMany.mockResolvedValue({ count: 0 });
+    prisma.systemActivityLog.deleteMany.mockResolvedValue({ count: 0 });
+    await cleanupService.cleanupLogs();
+    expect(systemActivity.record).not.toHaveBeenCalled();
   });
 });

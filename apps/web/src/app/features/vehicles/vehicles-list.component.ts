@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { LucideAngularModule, Plus, Truck, ExternalLink, FolderOpen, Radio, X, Save, Wifi, Pencil, Trash2, Eye, Search, LayoutGrid, Table, Layers, ChevronRight, ChevronDown, Gauge } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { PermissionsService } from '../../core/services/permissions.service';
@@ -95,15 +95,15 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
         </div>
         <div class="vlist-actions">
           <div class="tab-switch">
-            <button (click)="activeTab.set('vehicles')" class="tab-btn" [class.active]="activeTab() === 'vehicles'">
+            <button (click)="selectTab('vehicles')" data-track="Onglet Véhicules" class="tab-btn" [class.active]="activeTab() === 'vehicles'">
               <lucide-icon [img]="TruckIcon" [size]="15"></lucide-icon> Véhicules
             </button>
             @if (perms.can('groups_view')) {
-              <button (click)="activeTab.set('groups')" class="tab-btn" [class.active]="activeTab() === 'groups'">
+              <button (click)="selectTab('groups')" data-track="Onglet Groupes" class="tab-btn" [class.active]="activeTab() === 'groups'">
                 <lucide-icon [img]="FolderOpenIcon" [size]="15"></lucide-icon> Groupes
               </button>
             }
-            <button (click)="activeTab.set('capacity')" class="tab-btn" [class.active]="activeTab() === 'capacity'">
+            <button (click)="selectTab('capacity')" data-track="Onglet Capacités" class="tab-btn" [class.active]="activeTab() === 'capacity'">
               <lucide-icon [img]="GaugeIcon" [size]="15"></lucide-icon> Capacités
             </button>
           </div>
@@ -822,6 +822,7 @@ export class VehiclesListComponent implements OnInit {
   private readonly preferences = inject(PreferencesService);
   protected readonly auth = inject(AuthService);
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly fleetFilter = inject(FleetFilterService);
   // Sprint 1 — section de groupe vers laquelle scroller au retour depuis le détail.
   private readonly pendingScrollGroup = signal<string | null>(null);
@@ -949,6 +950,21 @@ export class VehiclesListComponent implements OnInit {
       this.activeTab.set(tab as 'groups' | 'capacity');
     }
     this.loadVehicles();
+  }
+
+  /**
+   * Changement d'onglet AVEC synchro URL (?tab=) : le Router émet un NavigationEnd
+   * → le tracker d'activité voit un PAGE_VIEW distinct (« Véhicules · Groupes »)
+   * avec sa durée. `replaceUrl` pour ne pas polluer l'historique du bouton retour.
+   */
+  protected selectTab(tab: 'vehicles' | 'groups' | 'capacity'): void {
+    this.activeTab.set(tab);
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { tab: tab === 'vehicles' ? null : tab },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
   }
 
   protected setViewMode(mode: 'cards' | 'table' | 'grouped'): void {

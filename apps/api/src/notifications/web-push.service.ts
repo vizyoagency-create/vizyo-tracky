@@ -213,22 +213,7 @@ export class WebPushService {
       }
     }
     const subs = await this.listForUser(userId);
-    const result = await this.sendToSubscriptions(subs, payload, 'user:' + userId.slice(0, 8));
-    // Palier B — trace la notif push dans le journal système (arrière-plan). On n'enregistre
-    // que les tentatives réelles (≥1 device ciblé) : pas de bruit quand l'user n'a aucun device.
-    if (result.sent > 0 || result.failed > 0) {
-      this.systemActivity.record({
-        category: 'PUSH',
-        action: 'push_sent',
-        status: result.sent > 0 ? 'SUCCESS' : 'FAILURE',
-        actor: 'system',
-        target: payload.title?.slice(0, 120) ?? null,
-        detail: `${result.sent} envoyé(s)${result.failed ? `, ${result.failed} échec(s)` : ''}`,
-        fleetId: expectedFleetId ?? null,
-        meta: { sent: result.sent, failed: result.failed, severity: payload.severity },
-      });
-    }
-    return result;
+    return this.sendToSubscriptions(subs, payload, 'user:' + userId.slice(0, 8), 'push_sent', expectedFleetId ?? null);
   }
 
   /**
@@ -250,7 +235,7 @@ export class WebPushService {
         ? { id: { in: subscriptionIds } }
         : { id: { in: subscriptionIds }, userId: ownerUserId },
     });
-    return this.sendToSubscriptions(subs, payload, 'targeted:' + subs.length);
+    return this.sendToSubscriptions(subs, payload, 'targeted:' + subs.length, 'push_test', null);
   }
 
   /**
@@ -263,6 +248,10 @@ export class WebPushService {
     subs: Array<{ id: string; endpoint: string; p256dh: string; auth: string }>,
     payload: PushPayload,
     contextLabel: string,
+    // Palier B (déplacé ici depuis sendToUser) : le cœur d'envoi journalise TOUS les
+    // chemins — notifs réelles ('push_sent') ET tests ciblés admin ('push_test').
+    activityAction: 'push_sent' | 'push_test' = 'push_sent',
+    fleetId: string | null = null,
   ): Promise<SendResult> {
     if (!this.enabled) {
       this.logger.warn(`[push] skipped (${contextLabel}) — VAPID disabled`);
@@ -373,6 +362,20 @@ export class WebPushService {
     }
 
     this.logger.log(`[push] done (${contextLabel}) sent=${sent} failed=${failed}`);
+    // Journal système — uniquement les tentatives réelles (≥1 device ciblé) : pas de
+    // bruit quand l'utilisateur n'a aucun device (les early-returns {0,0} restent muets).
+    if (sent > 0 || failed > 0) {
+      this.systemActivity.record({
+        category: 'PUSH',
+        action: activityAction,
+        status: sent > 0 ? 'SUCCESS' : 'FAILURE',
+        actor: 'system',
+        target: payload.title?.slice(0, 120) ?? null,
+        detail: `${sent} envoyé(s)${failed ? `, ${failed} échec(s)` : ''}`,
+        fleetId,
+        meta: { sent, failed, severity: payload.severity },
+      });
+    }
     return { sent, failed, results };
   }
 

@@ -14,6 +14,7 @@ import { resolveTenantScope } from '../common/tenant-scope';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SocketRegistryService } from '../socket-registry/socket-registry.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 import { AckWaiterService } from './ack-waiter.service';
 
 interface RequestedBy {
@@ -21,6 +22,15 @@ interface RequestedBy {
   role: UserRole;
   fleetId: string | null;
 }
+
+/**
+ * Sous-commandes émises par la surveillance antivol (arm/disarm). Elles ont DÉJÀ
+ * leur propre ligne catégorie SURVEILLANCE (avec la bonne attribution planning vs
+ * utilisateur + anti-flood) → on ne double PAS avec une ligne TRACKER_CMD, sinon le
+ * scheduler EVERY_MINUTE d'un tracker offline inonderait le journal (2 lignes/min).
+ * TRACKER_CMD reste réservé aux vraies commandes autonomes (fix interval, reboot…).
+ */
+const SURVEILLANCE_TEMPLATES = new Set(['sensitivity', 'shock_on', 'shock_off']);
 
 @Injectable()
 export class TrackerCommandsService {
@@ -32,6 +42,7 @@ export class TrackerCommandsService {
     private readonly ackWaiter: AckWaiterService,
     private readonly wireLogger: CobanWireLogger,
     private readonly gateway: RealtimeGateway,
+    private readonly systemActivity: SystemActivityService,
   ) {}
 
   async request(
@@ -133,6 +144,23 @@ export class TrackerCommandsService {
         data: { status: TrackerCommandStatus.FAILED, lastError: 'Tracker offline' },
       });
       this.emitUpdate(command.id, resolvedFleetId);
+      // Journal Système — couvre le scheduler 30s et les commandes manuelles.
+      // L'échec (tracker offline) est le cas clé : une commande planifiée qui ne
+      // part jamais serait sinon invisible. Les sous-commandes surveillance sont
+      // exclues (déjà tracées en SURVEILLANCE, cf. SURVEILLANCE_TEMPLATES).
+      if (!SURVEILLANCE_TEMPLATES.has(command.templateId)) {
+        this.systemActivity.record({
+          category: 'TRACKER_CMD',
+          action: 'tracker_command_sent',
+          status: 'FAILURE',
+          actor: command.scheduledAt ? 'planning' : 'utilisateur',
+          target: resolvedImei,
+          detail: `${command.templateId} — tracker hors ligne`,
+          fleetId: fleetId,
+          triggeredByUserId: command.requestedBy,
+          meta: { error: 'Tracker offline', commandId: command.id },
+        });
+      }
       throw new ServiceUnavailableException('Tracker hors ligne, commande non envoyée');
     }
 
@@ -150,6 +178,20 @@ export class TrackerCommandsService {
     });
 
     this.emitUpdate(command.id, resolvedFleetId);
+
+    if (!SURVEILLANCE_TEMPLATES.has(command.templateId)) {
+      this.systemActivity.record({
+        category: 'TRACKER_CMD',
+        action: 'tracker_command_sent',
+        status: 'SUCCESS',
+        actor: command.scheduledAt ? 'planning' : 'utilisateur',
+        target: resolvedImei,
+        detail: command.templateId,
+        fleetId: fleetId,
+        triggeredByUserId: command.requestedBy,
+        meta: { commandId: command.id },
+      });
+    }
 
     // Background ACK wait
     const template = findTemplate(command.templateId);

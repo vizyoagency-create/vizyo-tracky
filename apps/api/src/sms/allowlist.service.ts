@@ -4,6 +4,7 @@ import { OnEvent } from '@nestjs/event-emitter';
 import type { Env } from '../config/env.validation';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 
 export interface AllowlistEntryDto {
   id: string;
@@ -45,6 +46,7 @@ export class AllowlistService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService<Env, true>,
     private readonly errorLogger: ErrorLogger,
+    private readonly systemActivity: SystemActivityService,
   ) {
     this.baseUrl = (this.config.get('VIZYO_TEXTO_URL', { infer: true }) ?? '').replace(/\/+$/, '');
     this.apiKey = this.config.get('VIZYO_TEXTO_API_KEY', { infer: true }) ?? '';
@@ -163,10 +165,23 @@ export class AllowlistService {
       if (!byPhone.has(phone)) byPhone.set(phone, `User ${u.email}`);
     }
     const entries = Array.from(byPhone, ([phone, label]) => ({ phone, label }));
-    return this.call<AllowlistSyncResult>('/v1/allowlist/sync', {
+    const result = await this.call<AllowlistSyncResult>('/v1/allowlist/sync', {
       method: 'PUT',
       body: JSON.stringify({ entries }),
     });
+    // Journal Système — des numéros GAGNENT/PERDENT le droit de recevoir des SMS
+    // (effet réel côté vizyo-texto). Silencieux quand rien ne change (sync no-op).
+    if (result.added > 0 || result.removed > 0) {
+      this.systemActivity.record({
+        category: 'SMS',
+        action: 'allowlist_synced',
+        status: 'SUCCESS',
+        actor: 'system',
+        detail: `+${result.added} / -${result.removed} numéro(s) (${result.unchanged} inchangés)`,
+        meta: { added: result.added, removed: result.removed, unchanged: result.unchanged, skipped: result.skipped },
+      });
+    }
+    return result;
   }
 
   /** Reconciliation : trackers non synces + entrees orphelines. */

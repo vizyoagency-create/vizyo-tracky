@@ -12,6 +12,7 @@ import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SmsGatewayService } from '../sms/sms-gateway.service';
 import { AudioMonitoringService } from './audio-monitoring.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 
 const TRACKER_ID = '00000000-0000-0000-0000-000000000010';
 const VEHICLE_ID = '00000000-0000-0000-0000-000000000020';
@@ -137,6 +138,7 @@ describe('AudioMonitoringService', () => {
         { provide: ConfigService, useValue: config },
         { provide: ErrorLogger, useValue: errorLogger },
         { provide: SmsGatewayService, useValue: sms },
+        { provide: SystemActivityService, useValue: { record: jest.fn() } },
       ],
     }).compile();
 

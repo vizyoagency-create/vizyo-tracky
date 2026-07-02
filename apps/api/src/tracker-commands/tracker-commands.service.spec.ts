@@ -12,6 +12,7 @@ import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SocketRegistryService } from '../socket-registry/socket-registry.service';
 import { AckWaiterService } from './ack-waiter.service';
 import { TrackerCommandsService } from './tracker-commands.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 
 const TRACKER_ID = '00000000-0000-0000-0000-000000000010';
 const FLEET_ID = '00000000-0000-0000-0000-000000000001';
@@ -89,6 +90,7 @@ describe('TrackerCommandsService', () => {
         { provide: AckWaiterService, useValue: ackWaiter },
         { provide: CobanWireLogger, useValue: wireLog },
         { provide: RealtimeGateway, useValue: { server: { to: jest.fn().mockReturnThis(), emit: jest.fn() } } },
+        { provide: SystemActivityService, useValue: { record: jest.fn() } },
       ],
     }).compile();
 

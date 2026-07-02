@@ -168,7 +168,12 @@ export class InvitationsService {
       subject: tpl.subject,
       html: tpl.html,
       text: tpl.text,
-      context: { invitationId: invitation.id },
+      context: {
+        invitationId: invitation.id,
+        // Attribution journal Système : l'invitation est un acte manuel de l'inviteur.
+        requestedByUserId: params.requestedByUserId,
+        fleetId: params.fleetId ?? undefined,
+      },
     });
 
     if (!sent.ok) {

@@ -3,7 +3,7 @@ import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
   LucideAngularModule, Sparkles, Loader, Search, Check, AlertTriangle, Clock, RefreshCw,
-  FileText, TrendingDown, ThumbsUp, Lightbulb, CalendarClock,
+  FileText, TrendingDown, ThumbsUp, Lightbulb, CalendarClock, Copy, Trash2, Users as UsersIcon,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import type {
@@ -13,7 +13,7 @@ import { ActivityReportApiService } from './activity-report-api.service';
 import { UsersApiService, type TrackyUser } from '../../core/services/users.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 
-type Period = '7d' | '30d';
+type Period = '7d' | '30d' | 'custom';
 
 /**
  * Palier 3 — Onglet « Rapports IA ». Le super-admin sélectionne un/des utilisateurs + une période,
@@ -52,13 +52,24 @@ type Period = '7d' | '30d';
             <div class="ar-seg">
               <button type="button" [class.on]="period() === '7d'" (click)="period.set('7d')">7 jours</button>
               <button type="button" [class.on]="period() === '30d'" (click)="period.set('30d')">30 jours</button>
+              <button type="button" [class.on]="period() === 'custom'" (click)="period.set('custom')">Dates</button>
             </div>
+            @if (period() === 'custom') {
+              <div class="ar-dates">
+                <label class="ar-field">Du
+                  <input type="date" [value]="customFrom()" (input)="customFrom.set($any($event.target).value)">
+                </label>
+                <label class="ar-field">Au
+                  <input type="date" [value]="customTo()" (input)="customTo.set($any($event.target).value)">
+                </label>
+              </div>
+            }
             <p class="ar-sel">{{ selected().size }} sélectionné(s)</p>
-            <button type="button" class="ar-btn ar-btn--primary" [disabled]="selected().size === 0 || generating()" (click)="generate()">
+            <button type="button" class="ar-btn ar-btn--primary" [disabled]="!canGenerate()" (click)="generate()">
               @if (generating()) { <lucide-icon [img]="LoaderIcon" [size]="14" class="ar-spin"></lucide-icon> Analyse en cours… }
               @else { <lucide-icon [img]="SparkIcon" [size]="14"></lucide-icon> Générer le rapport }
             </button>
-            <p class="ar-hint">L'IA lit l'activité (parcours, durées, clics) et produit un rapport. Coût suivi dans « Coûts IA ».</p>
+            <p class="ar-hint">L'IA lit l'activité (parcours, durées, clics, formulaires, erreurs) et produit un rapport. Coût suivi dans « Coûts IA ».</p>
           </div>
         </div>
       </section>
@@ -72,13 +83,18 @@ type Period = '7d' | '30d';
           } @else {
             <div class="ar-list">
               @for (r of reports(); track r.id) {
-                <button type="button" class="ar-item" [class.on]="current()?.id === r.id" (click)="open(r.id)">
-                  <div class="ar-item-top">
-                    <span class="ar-item-title">{{ r.title || 'Rapport' }}</span>
-                    <span class="ar-badge" [attr.data-s]="r.status">{{ statusLabel(r.status) }}</span>
-                  </div>
-                  <span class="ar-item-sub">{{ r.createdAt | date:'dd/MM HH:mm' }} · {{ r.targetCount }} util. @if (r.origin === 'scheduled') { · auto }</span>
-                </button>
+                <div class="ar-item" [class.on]="current()?.id === r.id">
+                  <button type="button" class="ar-item-main" (click)="open(r.id)">
+                    <div class="ar-item-top">
+                      <span class="ar-item-title">{{ r.title || 'Rapport' }}</span>
+                      <span class="ar-badge" [attr.data-s]="r.status">{{ statusLabel(r.status) }}</span>
+                    </div>
+                    <span class="ar-item-sub">{{ r.createdAt | date:'dd/MM HH:mm' }} · {{ r.targetCount }} util. @if (r.origin === 'scheduled') { · auto }</span>
+                  </button>
+                  <button type="button" class="ar-item-del" title="Supprimer ce rapport" (click)="remove(r.id, $event)">
+                    <lucide-icon [img]="TrashIcon" [size]="13"></lucide-icon>
+                  </button>
+                </div>
               }
             </div>
           }
@@ -93,8 +109,18 @@ type Period = '7d' | '30d';
               <div class="ar-alert"><lucide-icon [img]="AlertIcon" [size]="15"></lucide-icon> Échec : {{ r.error || 'erreur inconnue' }}</div>
             } @else if (r.content; as c) {
               <div class="ar-rep-head">
-                <h3>{{ r.title }}</h3>
+                <div class="ar-rep-title-row">
+                  <h3>{{ r.title }}</h3>
+                  <button type="button" class="ar-mini" title="Copier le rapport (Markdown)" (click)="copyMarkdown(r)">
+                    <lucide-icon [img]="CopyIcon" [size]="14"></lucide-icon>
+                  </button>
+                </div>
                 <span class="ar-rep-meta">{{ r.from | date:'dd/MM' }} → {{ r.to | date:'dd/MM' }} · {{ r.targets.length }} util.</span>
+                @if (r.targets.length > 1) {
+                  <div class="ar-chips">
+                    @for (t of r.targets; track t.userId) { <span class="ar-chip">{{ t.name ?? '?' }}</span> }
+                  </div>
+                }
               </div>
               <p class="ar-summary">{{ c.summary }}</p>
 
@@ -102,6 +128,19 @@ type Period = '7d' | '30d';
                 <h4><lucide-icon [img]="FileIcon" [size]="14"></lucide-icon> Parcours</h4>
                 <p class="ar-text">{{ c.journey }}</p>
               </div>
+
+              @if (c.perUser?.length) {
+                <div class="ar-block">
+                  <h4><lucide-icon [img]="UsersI" [size]="14"></lucide-icon> Par utilisateur</h4>
+                  @for (p of c.perUser; track p.name) {
+                    <div class="ar-peruser">
+                      <span class="ar-peruser-n">{{ p.name }}</span>
+                      <span class="ar-peruser-h">{{ p.highlight }}</span>
+                      @if (p.mainFriction) { <span class="ar-peruser-f">⚠ {{ p.mainFriction }}</span> }
+                    </div>
+                  }
+                </div>
+              }
 
               @if (c.frictionPoints.length) {
                 <div class="ar-block">
@@ -210,9 +249,20 @@ type Period = '7d' | '30d';
     .ar-cols { display: grid; grid-template-columns: 1fr; gap: 14px; }
     @media (min-width: 900px) { .ar-cols { grid-template-columns: 300px 1fr; align-items: start; } }
     .ar-list { display: flex; flex-direction: column; gap: 6px; max-height: 460px; overflow-y: auto; }
-    .ar-item { text-align: left; display: flex; flex-direction: column; gap: 3px; padding: 10px; border-radius: 10px; background: var(--bg-primary); border: 1px solid var(--border-subtle); }
+    .ar-item { display: flex; align-items: stretch; gap: 4px; padding: 10px; border-radius: 10px; background: var(--bg-primary); border: 1px solid var(--border-subtle); }
     .ar-item:hover { border-color: var(--border-strong); }
     .ar-item.on { border-color: var(--tracky-light); background: rgba(16,224,160,.05); }
+    .ar-item-main { flex: 1; min-width: 0; text-align: left; display: flex; flex-direction: column; gap: 3px; }
+    .ar-item-del { color: var(--fg-tertiary); align-self: center; padding: 4px; border-radius: 6px; }
+    .ar-item-del:hover { color: #f87171; background: rgba(239,68,68,.1); }
+    .ar-dates { display: flex; gap: 8px; }
+    .ar-dates input { padding: 7px 9px; border-radius: 8px; background: var(--bg-primary); border: 1px solid var(--border-subtle); color: var(--fg-primary); font-size: 12.5px; }
+    .ar-rep-title-row { display: flex; align-items: center; gap: 8px; }
+    .ar-rep-title-row .ar-mini { margin-left: 0; }
+    .ar-peruser { display: flex; flex-direction: column; gap: 2px; padding: 8px 11px; border-radius: 9px; background: var(--bg-primary); }
+    .ar-peruser-n { font-size: 12.5px; font-weight: 700; color: var(--fg-primary); }
+    .ar-peruser-h { font-size: 12px; color: var(--fg-secondary); line-height: 1.5; }
+    .ar-peruser-f { font-size: 11.5px; color: #fbbf24; }
     .ar-item-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
     .ar-item-title { font-size: 12.5px; font-weight: 700; color: var(--fg-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .ar-item-sub { font-size: 11px; color: var(--fg-tertiary); }
@@ -282,12 +332,25 @@ export class ActivityReportsComponent implements OnInit {
   protected readonly AdoptIcon = ThumbsUp;
   protected readonly RecoIcon = Lightbulb;
   protected readonly SchedIcon = CalendarClock;
+  protected readonly CopyIcon = Copy;
+  protected readonly TrashIcon = Trash2;
+  protected readonly UsersI = UsersIcon;
 
   protected readonly users = signal<TrackyUser[]>([]);
   protected readonly search = signal('');
   protected readonly selected = signal<Set<string>>(new Set());
   protected readonly period = signal<Period>('7d');
+  protected readonly customFrom = signal('');
+  protected readonly customTo = signal('');
   protected readonly generating = signal(false);
+
+  protected readonly canGenerate = computed(() => {
+    if (this.selected().size === 0 || this.generating()) return false;
+    if (this.period() !== 'custom') return true;
+    const f = this.customFrom();
+    const t = this.customTo();
+    return !!f && !!t && f <= t;
+  });
 
   protected readonly reports = signal<ActivityReportListItemDto[]>([]);
   protected readonly current = signal<ActivityReportDto | null>(null);
@@ -324,12 +387,20 @@ export class ActivityReportsComponent implements OnInit {
 
   protected async generate(): Promise<void> {
     const userIds = [...this.selected()];
-    if (userIds.length === 0 || this.generating()) return;
-    const days = this.period() === '7d' ? 7 : 30;
-    const from = new Date(Date.now() - days * 86_400_000).toISOString();
+    if (!this.canGenerate()) return;
+    let from: string;
+    let to: string | undefined;
+    if (this.period() === 'custom') {
+      from = new Date(this.customFrom()).toISOString();
+      // Borne de fin EXCLUSIVE au lendemain minuit : un seul jour (from = to) reste valide.
+      to = new Date(new Date(this.customTo()).getTime() + 86_400_000).toISOString();
+    } else {
+      const days = this.period() === '7d' ? 7 : 30;
+      from = new Date(Date.now() - days * 86_400_000).toISOString();
+    }
     this.generating.set(true);
     try {
-      const report = await firstValueFrom(this.api.generate({ userIds, from }));
+      const report = await firstValueFrom(this.api.generate({ userIds, from, to }));
       this.current.set(report);
       await this.loadList();
       if (report.status === 'FAILED') this.toast.error('Rapport en échec', report.error ?? undefined);
@@ -388,6 +459,57 @@ export class ActivityReportsComponent implements OnInit {
 
   protected statusLabel(s: string): string {
     return s === 'READY' ? 'Prêt' : s === 'FAILED' ? 'Échec' : 'En cours';
+  }
+
+  /** Supprime un rapport (avec confirmation navigateur — action rare, super-admin). */
+  protected async remove(id: string, ev: Event): Promise<void> {
+    ev.stopPropagation();
+    if (!confirm('Supprimer ce rapport ? (définitif)')) return;
+    try {
+      await firstValueFrom(this.api.delete(id));
+      if (this.current()?.id === id) this.current.set(null);
+      await this.loadList();
+      this.toast.success('Rapport supprimé');
+    } catch (e) {
+      this.toast.error('Suppression impossible', this.errMsg(e));
+    }
+  }
+
+  /** Copie le rapport courant en Markdown (partage client / équipe). */
+  protected async copyMarkdown(r: ActivityReportDto): Promise<void> {
+    const c = r.content;
+    if (!c) return;
+    const md = [
+      `# ${r.title ?? 'Rapport d\'activité'}`,
+      ``,
+      `_Période : ${r.from.slice(0, 10)} → ${r.to.slice(0, 10)} · ${r.targets.length} utilisateur(s)_`,
+      ``,
+      `## Synthèse`,
+      c.summary,
+      ``,
+      `## Parcours`,
+      c.journey,
+      ...(c.perUser?.length
+        ? [``, `## Par utilisateur`, ...c.perUser.map((p) => `- **${p.name}** : ${p.highlight}${p.mainFriction ? ` _(friction : ${p.mainFriction})_` : ''}`)]
+        : []),
+      ``,
+      `## Points de friction`,
+      ...(c.frictionPoints.length ? c.frictionPoints.map((f) => `- **${f.title}**${f.severity ? ` (${f.severity})` : ''} — ${f.detail}`) : ['_Aucun._']),
+      ``,
+      `## Adoption`,
+      `- Utilisé : ${c.adoption.used.join(', ') || '—'}`,
+      `- Ignoré : ${c.adoption.ignored.join(', ') || '—'}`,
+      ...(c.adoption.note ? [`- Note : ${c.adoption.note}`] : []),
+      ``,
+      `## Recommandations`,
+      ...(c.recommendations.length ? c.recommendations.map((x) => `- **${x.title}**${x.impact ? ` [${x.impact}]` : ''} — ${x.detail}`) : ['_Aucune._']),
+    ].join('\n');
+    try {
+      await navigator.clipboard.writeText(md);
+      this.toast.success('Rapport copié (Markdown)');
+    } catch {
+      this.toast.error('Copie impossible');
+    }
   }
 
   private errMsg(e: unknown): string {

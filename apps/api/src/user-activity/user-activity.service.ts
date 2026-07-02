@@ -10,6 +10,7 @@ import type {
 import { labelForRoute } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
 import { PrismaService } from '../prisma/prisma.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 
 /** Forme lâche d'un event reçu (le `type`/`status` sont validés via les Sets ci-dessous). */
 interface ActivityEventLike {
@@ -52,7 +53,10 @@ function fullName(u: { firstName?: string | null; lastName?: string | null }): s
 export class UserActivityService {
   private readonly logger = new Logger(UserActivityService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly systemActivity: SystemActivityService,
+  ) {}
 
   /** Ingestion d'un batch d'events : résout/crée la session, persiste, met à jour la présence. */
   async ingestBatch(
@@ -156,15 +160,48 @@ export class UserActivityService {
     return out;
   }
 
-  /** Flux chronologique paginé (cursor `before` = timestamp ISO). */
-  async getFeed(limit = 50, beforeIso?: string): Promise<ActivityFeedItemDto[]> {
-    const take = Math.min(Math.max(limit, 1), 200);
+  /**
+   * Flux chronologique paginé + filtrable (utilisateur / type / période).
+   * Cursor COMPOSITE (createdAt, id) : les events d'un même batch (createMany)
+   * partagent le même createdAt — un cursor timestamp seul saute les lignes
+   * restantes du batch quand la coupe de page tombe au milieu.
+   */
+  async getFeed(filters: {
+    limit?: number;
+    before?: string;
+    beforeId?: string;
+    userId?: string;
+    type?: string;
+    from?: string;
+    to?: string;
+  } = {}): Promise<ActivityFeedItemDto[]> {
+    const take = Math.min(Math.max(filters.limit ?? 50, 1), 200);
     // On exclut HEARTBEAT (purement technique, 1/30s/user) du flux lisible.
-    const where: { type: { not: string }; createdAt?: { lt: Date } } = { type: { not: 'HEARTBEAT' } };
-    if (beforeIso) where.createdAt = { lt: new Date(beforeIso) };
+    const and: Record<string, unknown>[] = [{ type: { not: 'HEARTBEAT' } }];
+    if (filters.userId) and.push({ userId: filters.userId });
+    if (filters.type && VALID_TYPES.has(filters.type)) and.push({ type: filters.type });
+    if (filters.from) {
+      const d = new Date(filters.from);
+      if (!Number.isNaN(d.getTime())) and.push({ createdAt: { gte: d } });
+    }
+    if (filters.to) {
+      const d = new Date(filters.to);
+      if (!Number.isNaN(d.getTime())) and.push({ createdAt: { lte: d } });
+    }
+    if (filters.before) {
+      const d = new Date(filters.before);
+      if (!Number.isNaN(d.getTime())) {
+        and.push(
+          filters.beforeId
+            ? { OR: [{ createdAt: { lt: d } }, { createdAt: d, id: { lt: filters.beforeId } }] }
+            : { createdAt: { lt: d } },
+        );
+      }
+    }
     const acts = await this.prisma.userActivity.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
+      where: { AND: and },
+      // Tiebreak id : fige l'ordre intra-batch (createdAt identiques) + support du cursor.
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take,
     });
     const userIds = [...new Set(acts.map((a) => a.userId))];
@@ -184,6 +221,7 @@ export class UserActivityService {
       routeLabel: a.routeLabel ?? (a.route ? labelForRoute(a.route) : null),
       target: a.target,
       durationMs: a.durationMs,
+      sessionId: a.sessionId,
       at: a.createdAt.toISOString(),
     }));
   }
@@ -193,7 +231,7 @@ export class UserActivityService {
     const to = toIso ? new Date(toIso) : new Date();
     const from = fromIso ? new Date(fromIso) : new Date(to.getTime() - 7 * 86_400_000);
 
-    const [totals, topPages, topClicks, perDay] = await Promise.all([
+    const [totals, topPages, topClicks, perDay, byType, topForms] = await Promise.all([
       this.prisma.$queryRaw<
         Array<{ unique_users: number; total_sessions: number; total_page_views: number; avg_session_sec: number }>
       >`
@@ -203,11 +241,16 @@ export class UserActivityService {
           (SELECT count(*) FROM user_activities WHERE type = 'PAGE_VIEW' AND "createdAt" BETWEEN ${from} AND ${to})::int AS total_page_views,
           (SELECT COALESCE(avg(EXTRACT(EPOCH FROM (COALESCE("endedAt", "lastSeenAt") - "startedAt"))), 0)
              FROM user_sessions WHERE "startedAt" BETWEEN ${from} AND ${to})::float8 AS avg_session_sec`,
+      // Route NORMALISÉE dans le SQL (query strippée + UUID → :id) : sans ça les vues
+      // d'une même page sont éclatées en N lignes ('/vehicles?tab=…', '/vehicles/<uuid>'…)
+      // et les compteurs dilués. La route brute reste intacte en base (feed chronologique).
       this.prisma.$queryRaw<Array<{ route: string; views: number; avg_ms: number }>>`
-        SELECT route, count(*)::int AS views, COALESCE(avg("durationMs"), 0)::float8 AS avg_ms
+        SELECT regexp_replace(split_part(route, '?', 1),
+                 '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}', ':id', 'g') AS route,
+               count(*)::int AS views, COALESCE(avg("durationMs"), 0)::float8 AS avg_ms
         FROM user_activities
         WHERE type = 'PAGE_VIEW' AND route IS NOT NULL AND "createdAt" BETWEEN ${from} AND ${to}
-        GROUP BY route ORDER BY count(*) DESC LIMIT 10`,
+        GROUP BY 1 ORDER BY count(*) DESC LIMIT 10`,
       this.prisma.$queryRaw<Array<{ target: string; count: number }>>`
         SELECT target, count(*)::int AS count
         FROM user_activities
@@ -217,6 +260,16 @@ export class UserActivityService {
         SELECT to_char(date_trunc('day', "startedAt"), 'YYYY-MM-DD') AS date, count(*)::int AS count
         FROM user_sessions WHERE "startedAt" BETWEEN ${from} AND ${to}
         GROUP BY 1 ORDER BY 1`,
+      this.prisma.$queryRaw<Array<{ type: string; count: number }>>`
+        SELECT type, count(*)::int AS count
+        FROM user_activities
+        WHERE type <> 'HEARTBEAT' AND "createdAt" BETWEEN ${from} AND ${to}
+        GROUP BY type ORDER BY count(*) DESC`,
+      this.prisma.$queryRaw<Array<{ target: string; count: number }>>`
+        SELECT target, count(*)::int AS count
+        FROM user_activities
+        WHERE type = 'FORM_SUBMIT' AND target IS NOT NULL AND "createdAt" BETWEEN ${from} AND ${to}
+        GROUP BY target ORDER BY count(*) DESC LIMIT 10`,
     ]);
 
     const t = totals[0] ?? { unique_users: 0, total_sessions: 0, total_page_views: 0, avg_session_sec: 0 };
@@ -235,6 +288,8 @@ export class UserActivityService {
       })),
       topClicks: topClicks.map((r) => ({ target: r.target, count: r.count })),
       sessionsPerDay: perDay.map((r) => ({ date: r.date, count: r.count })),
+      eventsByType: byType.map((r) => ({ type: r.type, count: r.count })),
+      topForms: topForms.map((r) => ({ target: r.target, count: r.count })),
     };
   }
 
@@ -346,6 +401,17 @@ export class UserActivityService {
       });
       if (acts.count || sess.count) {
         this.logger.log(`Purged ${acts.count} activities + ${sess.count} sessions > ${RETENTION_DAYS}j`);
+        // Purge destructive de l'historique affiché dans /admin/activity → tracée
+        // comme les autres purges (positions, logs).
+        this.systemActivity.record({
+          category: 'RETENTION',
+          action: 'user_activity_purged',
+          status: 'SUCCESS',
+          actor: 'retention-cron',
+          target: `${acts.count} activité(s) + ${sess.count} session(s)`,
+          detail: `Purge > ${RETENTION_DAYS}j`,
+          meta: { activities: acts.count, sessions: sess.count, retentionDays: RETENTION_DAYS },
+        });
       }
     } catch (e) {
       this.logger.error('purgeOld failed', e as Error);

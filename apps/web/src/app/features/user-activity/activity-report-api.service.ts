@@ -24,6 +24,9 @@ export class ActivityReportApiService {
   get(id: string): Observable<ActivityReportDto> {
     return this.http.get<ActivityReportDto>(`${this.base}/${id}`);
   }
+  delete(id: string): Observable<{ ok: true }> {
+    return this.http.delete<{ ok: true }>(`${this.base}/${id}`);
+  }
   getSchedule(): Observable<ActivityReportScheduleDto> {
     return this.http.get<ActivityReportScheduleDto>(`${this.base}/schedule`);
   }

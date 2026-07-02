@@ -13,7 +13,15 @@ export type SystemActivityCategory =
   | 'PUSH'
   | 'ENGINE'
   | 'RETENTION'
-  | 'AI_REPORT';
+  | 'AI_REPORT'
+  | 'SURVEILLANCE'
+  | 'TRACKER_CMD'
+  | 'EXPORT'
+  | 'SIM'
+  | 'AI'
+  | 'AUDIO'
+  | 'INTERNAL'
+  | 'MUTATION';
 
 export type SystemActivityStatus = 'SUCCESS' | 'FAILURE' | 'SKIPPED';
 
@@ -35,6 +43,8 @@ export interface SystemActivityDto {
   triggeredByUserId: string | null;
   triggeredByName: string | null;
   durationMs: number | null;
+  /** Cause d'échec (extraite de meta.error) — renseignée surtout quand status = FAILURE. */
+  error: string | null;
 }
 
 /** Libellés lisibles des catégories (affichage admin). */
@@ -45,4 +55,12 @@ export const SYSTEM_ACTIVITY_CATEGORY_LABELS: Record<string, string> = {
   ENGINE: 'Commande moteur',
   RETENTION: 'Rétention / purge',
   AI_REPORT: 'Rapport IA',
+  SURVEILLANCE: 'Surveillance antivol',
+  TRACKER_CMD: 'Commande boîtier',
+  EXPORT: 'Export de données',
+  SIM: 'Carte SIM',
+  AI: 'Appel IA',
+  AUDIO: 'Écoute audio',
+  INTERNAL: 'Provisioning interne',
+  MUTATION: 'Action métier (API)',
 };

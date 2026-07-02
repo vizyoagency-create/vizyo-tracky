@@ -212,7 +212,7 @@ const EMPTY_FORM: RuleForm = {
       <!-- Main tabs: Alertes (événements) / Géofences (zones) / Réglages (règles) -->
       <div class="main-tabs">
         @if (perms.can('alerts_view')) {
-          <button class="main-tab" [class.active]="activeTab() === 'alerts'" (click)="activeTab.set('alerts')">
+          <button class="main-tab" data-track="Onglet Alertes" [class.active]="activeTab() === 'alerts'" (click)="selectTab('alerts')">
             <lucide-icon [img]="AlertTriangle" [size]="14"></lucide-icon>
             Alertes
             @if (totalUnack() > 0) {
@@ -221,13 +221,13 @@ const EMPTY_FORM: RuleForm = {
           </button>
         }
         @if (perms.can('geofences_view')) {
-          <button class="main-tab" [class.active]="activeTab() === 'geofences'" (click)="activeTab.set('geofences')">
+          <button class="main-tab" data-track="Onglet Géofences" [class.active]="activeTab() === 'geofences'" (click)="selectTab('geofences')">
             <lucide-icon [img]="ShieldIcon" [size]="14"></lucide-icon>
             Géofences
           </button>
         }
         @if (perms.can('alerts_configure')) {
-          <button class="main-tab" [class.active]="activeTab() === 'settings'" (click)="switchToSettings()">
+          <button class="main-tab" data-track="Onglet Réglages alertes" [class.active]="activeTab() === 'settings'" (click)="switchToSettings()">
             <lucide-icon [img]="SettingsIcon" [size]="14"></lucide-icon>
             Réglages
           </button>
@@ -1305,9 +1305,29 @@ export class AlertsComponent implements OnInit {
     return ALL_CHANNELS.find((x) => x.value === c)?.label ?? c;
   }
 
+  /**
+   * Changement d'onglet AVEC synchro URL (?tab=) : NavigationEnd → PAGE_VIEW
+   * distinct côté tracker (« Alertes · Géofences ») avec durée. `replaceUrl`
+   * pour ne pas polluer l'historique du bouton retour.
+   */
+  protected selectTab(tab: 'alerts' | 'geofences'): void {
+    this.activeTab.set(tab);
+    this.syncTabUrl(tab === 'alerts' ? null : tab);
+  }
+
+  private syncTabUrl(tab: string | null): void {
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { tab },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
+  }
+
   /** Switch to settings tab and lazy-load rules. */
   protected async switchToSettings(): Promise<void> {
     this.activeTab.set('settings');
+    this.syncTabUrl('settings');
     if (!this.rulesLoaded) {
       await this.loadRules();
     }

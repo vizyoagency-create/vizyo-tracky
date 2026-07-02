@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
 import { simStatusLabel } from '@vizyo/tracky-shared';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhereverSimClient, type RawSim } from './whereversim.client';
 
@@ -27,6 +28,7 @@ export class SimsSyncService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly client: WhereverSimClient,
+    private readonly errorLogger: ErrorLogger,
   ) {}
 
   @Cron(CronExpression.EVERY_30_MINUTES)
@@ -36,6 +38,12 @@ export class SimsSyncService {
       await this.syncAll();
     } catch (err) {
       this.logger.warn(`sync cron echoue : ${err instanceof Error ? err.message : err}`);
+      // Sans ça, un token WhereverSIM expiré fige silencieusement le miroir SIM :
+      // conso/statuts périmés affichés comme frais, seul indice = externalSyncedAt
+      // qui vieillit. Remonté au centre d'alertes comme les échecs schedule-cron.
+      this.errorLogger
+        .record(err instanceof Error ? err : new Error(String(err)), 'sims-sync')
+        .catch(() => {});
     }
   }
 

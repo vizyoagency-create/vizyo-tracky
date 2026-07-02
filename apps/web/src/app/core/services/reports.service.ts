@@ -1,6 +1,7 @@
 import { HttpClient, HttpErrorResponse, HttpParams, HttpResponse } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import { ActivityTrackerService } from './activity-tracker.service';
 
 export interface FleetStatsReportDto {
   fleet: { id: string; name: string };
@@ -63,6 +64,7 @@ export interface PdfExportConfig {
 @Injectable({ providedIn: 'root' })
 export class ReportsApiService {
   private readonly http = inject(HttpClient);
+  private readonly tracker = inject(ActivityTrackerService);
 
   stats(fleetId: string | null, from: string, to: string) {
     const params: Record<string, string> = { from, to };
@@ -227,6 +229,9 @@ export class ReportsApiService {
   }
 
   private triggerDownload(blob: Blob, filename: string): void {
+    // Trace explicite de l'export (le clic synthétique a.click() est ignoré par le
+    // tracker — isTrusted=false) : le nom de fichier porte type + période.
+    this.tracker.trackClick(`export:${filename}`);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

@@ -41,6 +41,7 @@ function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number)
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 import { firstValueFrom } from 'rxjs';
+import { ActivityTrackerService } from '../../core/services/activity-tracker.service';
 import { GeofencesApiService } from '../../core/services/geofences.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { PreferencesService, type CameraMode } from '../../core/services/preferences.service';
@@ -1893,6 +1894,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly http = inject(HttpClient);
+  private readonly activityTracker = inject(ActivityTrackerService);
 
   /** Mode Baanool : UI simplifiee, bottom card au lieu du popup MapLibre. */
   private readonly isBaanoolMode = computed(() =>
@@ -2271,6 +2273,11 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       // Eviter que rect/scroll polluent — pas critique pour V1.
       void rect;
     });
+
+    // Le canvas MapLibre ne doit PAS être capturé par le fallback cursor:pointer du
+    // tracker (libellé générique + doublon des clics cluster/point tracés explicitement
+    // ci-dessous). Les markers véhicule sont des éléments DOM frères → toujours capturés.
+    this.map.getCanvas().setAttribute('data-no-track', '');
 
     // Setup sources/layers de base apres `load`.
     this.map.on('load', () => {
@@ -3238,6 +3245,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       const feat = e.features?.[0];
       const clusterId = feat?.properties?.['cluster_id'];
       if (clusterId == null) return;
+      // Clic canvas (pas un élément DOM) → trace explicite, sinon invisible sur tactile.
+      this.activityTracker.trackClick('Carte · zoom cluster');
       const src = this.map.getSource('vehicles-cluster') as maplibregl.GeoJSONSource;
       Promise.resolve(src.getClusterExpansionZoom(clusterId)).then((zoom: number) => {
         if (!this.map) return;
@@ -3254,6 +3263,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       const feat = e.features?.[0];
       const geom = feat?.geometry as GeoJSON.Point | undefined;
       if (!geom) return;
+      const plate = this.vehicleMeta.get(feat?.properties?.['vehicleId'] as string)?.plate;
+      this.activityTracker.trackClick(`Carte · centrage véhicule${plate ? ` ${plate}` : ''}`);
       this.map.flyTo({ center: geom.coordinates as [number, number], zoom: 15, speed: 1.4, curve: 1.4 });
     };
     this.map.on('click', 'vehicles-unclustered', clickUnclustered);
