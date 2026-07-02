@@ -16,8 +16,8 @@ export const pricing = {
       key: 'lite',
       name: 'Tracky Lite',
       tagline: 'Géolocalisation simple — sans coupe-circuit',
-      annual: 16.90,
-      monthly: 24.90,
+      annual: 22.90,
+      monthly: 32.90,
       hardware: 99,
       freq: 'Suivi standard (30–60 s / sur événement)',
       retentionIncluded: '90 jours',
@@ -26,8 +26,8 @@ export const pricing = {
       key: 'pro',
       name: 'Tracky Pro',
       tagline: 'Contrôle total — coupure moteur incluse',
-      annual: 24.90,
-      monthly: 36.90,
+      annual: 29.90,
+      monthly: 42.90,
       hardware: 189,
       freq: 'Suivi standard (30–60 s / sur événement)',
       retentionIncluded: '90 jours',
@@ -46,7 +46,10 @@ export const pricing = {
   // Options facturées en plus (la partie "usage").
   addons: {
     // Temps réel 10 s : multiplie le volume de données stocké → surtaxe assumée.
-    live: { key: 'live', label: 'Live temps réel (10 s)', perVehMonth: 9.90 },
+    live: { key: 'live', label: 'Live temps réel (15 s)', perVehMonth: 9.90 },
+    // Micro d'assistance embarqué (légal, cas d'accident) et Agent IA d'optimisation.
+    micro: { key: 'micro', label: "Micro d'assistance", perVehMonth: 6.90 },
+    agent: { key: 'agent', label: 'Agent IA (optimisation)', perVehMonth: 14.90 },
     // Rétention longue : plus de stockage = palier facturé. 90 j inclus partout.
     retention: [
       { key: '90j', years: 0.25, label: '90 jours', perVehMonth: 0, included: true },

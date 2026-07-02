@@ -1,20 +1,28 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html>
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Vizyo Tracky — Traçage GPS &amp; gestion de flotte en Occitanie</title>
-<meta name="description" content="Boîtier GPS + application française pour gérer votre flotte : géolocalisation temps réel, coupure moteur, alertes, rapports. Installation à Toulouse et en Occitanie.">
-<link rel="canonical" href="https://tracky.vizyoagency.com/">
-<meta name="robots" content="index,follow">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" href="apple-touch-icon-180.png">
+<link rel="manifest" href="site.webmanifest">
 <meta name="theme-color" content="#080B0A">
-
-<meta property="og:type" content="website"><meta property="og:site_name" content="Vizyo Tracky"><meta property="og:locale" content="fr_FR">
-<meta property="og:title" content="Vizyo Tracky — Traçage GPS &amp; gestion de flotte en Occitanie"><meta property="og:description" content="Boîtier GPS + application française pour gérer votre flotte : géolocalisation temps réel, coupure moteur, alertes, rapports. Installation à Toulouse et en Occitanie."><meta property="og:url" content="https://tracky.vizyoagency.com/"><meta property="og:image" content="https://tracky.vizyoagency.com/og-cover.jpg">
-<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="Vizyo Tracky — Traçage GPS &amp; gestion de flotte en Occitanie"><meta name="twitter:description" content="Boîtier GPS + application française pour gérer votre flotte : géolocalisation temps réel, coupure moteur, alertes, rapports. Installation à Toulouse et en Occitanie."><meta name="twitter:image" content="https://tracky.vizyoagency.com/og-cover.jpg">
-<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png"><link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png"><link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png"><link rel="icon" type="image/png" sizes="96x96" href="/favicon-96.png"><link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png"><link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon-180.png"><link rel="manifest" href="/site.webmanifest">
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"Organization","name":"Vizyo Tracky","url":"https://tracky.vizyoagency.com","logo":"https://tracky.vizyoagency.com/favicon-512.png","email":"contact@vizyoagency.com","telephone":"+33652077038","areaServed":"Occitanie","sameAs":["https://www.vizyoagency.com"]}</script>
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Vizyo Tracky","url":"https://tracky.vizyoagency.com","inLanguage":"fr-FR"}</script>
+</head>
+<body>
+<template id="__bundler_thumbnail" data-bg-color="#080B0A">
+<svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+<rect width="1200" height="800" fill="#080B0A"/>
+<g transform="translate(600,398)">
+<path d="M0,-160 C-88,-160 -160,-88 -160,0 C-160,118 0,232 0,232 C0,232 160,118 160,0 C160,-88 88,-160 0,-160 Z" fill="#10E0A0"/>
+<circle cx="0" cy="-12" r="58" fill="#080B0A"/>
+</g>
+<text x="600" y="720" font-family="Manrope,sans-serif" font-size="46" font-weight="800" fill="#10E0A0" text-anchor="middle">Vizyo Tracky</text>
+</svg>
+</template>
+<x-dc>
+<helmet>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
@@ -44,8 +52,8 @@ summary::-webkit-details-marker{display:none}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 <script>(function(){try{var t=localStorage.getItem('vt-theme')||'dark';document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme='dark'}})();</script>
-</head>
-<body>
+</helmet>
+
 <div style="min-height:100vh;background:var(--bg)">
 
 <!-- ░░ HEADER ░░ -->
@@ -56,31 +64,31 @@ summary::-webkit-details-marker{display:none}
 <span style="font-weight:800;font-size:1.05rem;letter-spacing:-.01em">Vizyo<span style="color:var(--accent)"> Tracky</span></span>
 </a>
 <nav class="vt-nav" style="display:flex;align-items:center;gap:30px;font-size:.9rem;font-weight:600;color:var(--tx2)">
-<a href="#produit" style="transition:color .2s" data-vth="color:var(--tx)">Produit</a>
-<a href="fonctionnalites.html" style="transition:color .2s" data-vth="color:var(--tx)">Fonctionnalités</a>
-<a href="#etapes" style="transition:color .2s" data-vth="color:var(--tx)">Comment ça marche</a>
-<a href="#economies" style="transition:color .2s" data-vth="color:var(--tx)">Économies</a>
-<a href="#tarifs" style="transition:color .2s" data-vth="color:var(--tx)">Tarifs</a>
-<a href="#faq" style="transition:color .2s" data-vth="color:var(--tx)">FAQ</a>
+<a href="#produit" style="transition:color .2s" style-hover="color:var(--tx)">Produit</a>
+<a href="fonctionnalites.html" style="transition:color .2s" style-hover="color:var(--tx)">Fonctionnalités</a>
+<a href="#etapes" style="transition:color .2s" style-hover="color:var(--tx)">Comment ça marche</a>
+<a href="#economies" style="transition:color .2s" style-hover="color:var(--tx)">Économies</a>
+<a href="#tarifs" style="transition:color .2s" style-hover="color:var(--tx)">Tarifs</a>
+<a href="#faq" style="transition:color .2s" style-hover="color:var(--tx)">FAQ</a>
 </nav>
 <div style="display:flex;align-items:center;gap:12px">
-<button data-vt="theme" aria-label="Changer de thème" style="display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--tx2);cursor:pointer;transition:all .2s" data-vth="color:var(--tx);border-color:var(--border2)">
+<button onClick="{{ toggleTheme }}" aria-label="Changer de thème" style="display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--tx2);cursor:pointer;transition:all .2s" style-hover="color:var(--tx);border-color:var(--border2)">
 <svg class="ic-moon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
 <svg class="ic-sun" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
 </button>
-<a href="#demo" class="vt-nav" style="display:inline-flex;align-items:center;gap:7px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:.9rem;padding:10px 18px;border-radius:10px;transition:transform .2s,box-shadow .2s;box-shadow:0 6px 18px var(--accent-soft)" data-vth="transform:translateY(-1px)">Demander une démo</a>
-<button class="vt-burger" data-vt="menu" aria-label="Menu" style="display:none;align-items:center;justify-content:center;width:38px;height:38px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--tx);cursor:pointer">
+<a href="#demo" class="vt-nav" style="display:inline-flex;align-items:center;gap:7px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:.9rem;padding:10px 18px;border-radius:10px;transition:transform .2s,box-shadow .2s;box-shadow:0 6px 18px var(--accent-soft)" style-hover="transform:translateY(-1px)">Demander une démo</a>
+<button class="vt-burger" onClick="{{ toggleMenu }}" aria-label="Menu" style="display:none;align-items:center;justify-content:center;width:38px;height:38px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--tx);cursor:pointer">
 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
 </button>
 </div>
 </div>
-<div id="vt-menu" style="display:none;flex-direction:column;gap:4px;padding:8px 24px 18px;border-top:1px solid var(--border)">
-<a href="#produit" data-vt="menu" style="padding:11px 8px;font-weight:600;color:var(--tx2);border-radius:8px">Produit</a>
+<div style="display:{{ menuDisplay }};flex-direction:column;gap:4px;padding:8px 24px 18px;border-top:1px solid var(--border)">
+<a href="#produit" onClick="{{ toggleMenu }}" style="padding:11px 8px;font-weight:600;color:var(--tx2);border-radius:8px">Produit</a>
 <a href="fonctionnalites.html" style="padding:11px 8px;font-weight:600;color:var(--tx2);border-radius:8px">Fonctionnalités</a>
-<a href="#etapes" data-vt="menu" style="padding:11px 8px;font-weight:600;color:var(--tx2);border-radius:8px">Comment ça marche</a>
-<a href="#economies" data-vt="menu" style="padding:11px 8px;font-weight:600;color:var(--tx2);border-radius:8px">Économies</a>
-<a href="#tarifs" data-vt="menu" style="padding:11px 8px;font-weight:600;color:var(--tx2);border-radius:8px">Tarifs</a>
-<a href="#demo" data-vt="menu" style="margin-top:6px;text-align:center;background:var(--accent);color:var(--accent-ink);font-weight:700;padding:12px;border-radius:10px">Demander une démo</a>
+<a href="#etapes" onClick="{{ toggleMenu }}" style="padding:11px 8px;font-weight:600;color:var(--tx2);border-radius:8px">Comment ça marche</a>
+<a href="#economies" onClick="{{ toggleMenu }}" style="padding:11px 8px;font-weight:600;color:var(--tx2);border-radius:8px">Économies</a>
+<a href="#tarifs" onClick="{{ toggleMenu }}" style="padding:11px 8px;font-weight:600;color:var(--tx2);border-radius:8px">Tarifs</a>
+<a href="#demo" onClick="{{ toggleMenu }}" style="margin-top:6px;text-align:center;background:var(--accent);color:var(--accent-ink);font-weight:700;padding:12px;border-radius:10px">Demander une démo</a>
 </div>
 </header>
 
@@ -102,9 +110,9 @@ summary::-webkit-details-marker{display:none}
 <h1 style="font-size:clamp(2.4rem,4.8vw,3.7rem);font-weight:800;letter-spacing:-.03em;line-height:1.03;margin:0 0 22px">Suivez et sécurisez votre flotte, <span style="color:var(--accent)">en temps réel.</span></h1>
 <p style="font-size:1.12rem;line-height:1.65;color:var(--tx2);max-width:30rem;margin:0 0 32px">Géolocalisation live, coupure moteur à distance, alertes et rapports — sur une plateforme française que <strong style="color:var(--tx);font-weight:700">nous installons et gérons</strong> pour vous.</p>
 <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:30px">
-<a href="#demo" style="display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:.98rem;padding:14px 24px;border-radius:11px;box-shadow:0 8px 24px var(--accent-soft);transition:transform .2s" data-vth="transform:translateY(-2px)">
+<a href="#demo" style="display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:.98rem;padding:14px 24px;border-radius:11px;box-shadow:0 8px 24px var(--accent-soft);transition:transform .2s" style-hover="transform:translateY(-2px)">
 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Demander une démo</a>
-<a href="fonctionnalites.html" style="display:inline-flex;align-items:center;gap:8px;background:transparent;color:var(--tx);font-weight:600;font-size:.98rem;padding:14px 22px;border-radius:11px;border:1px solid var(--border2);transition:border-color .2s" data-vth="border-color:var(--accent)">Voir les fonctionnalités
+<a href="fonctionnalites.html" style="display:inline-flex;align-items:center;gap:8px;background:transparent;color:var(--tx);font-weight:600;font-size:.98rem;padding:14px 22px;border-radius:11px;border:1px solid var(--border2);transition:border-color .2s" style-hover="border-color:var(--accent)">Voir les fonctionnalités
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
 </div>
 <div style="display:flex;gap:22px;flex-wrap:wrap;font-size:.86rem;color:var(--tx2)">
@@ -161,19 +169,19 @@ summary::-webkit-details-marker{display:none}
 <p style="font-size:1.08rem;line-height:1.65;color:var(--tx2);margin:0">Sans visibilité ni contrôle, chaque véhicule devient une source de dépenses, de risques et de temps perdu. Vizyo Tracky transforme ces angles morts en décisions.</p>
 </div>
 <div class="vt-grid3" style="display:grid;grid-template-columns:repeat(3,1fr);gap:22px">
-<div data-reveal style="background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:28px;transition:transform .25s,border-color .25s" data-vth="transform:translateY(-4px);border-color:var(--border2)">
+<div data-reveal style="background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:28px;transition:transform .25s,border-color .25s" style-hover="transform:translateY(-4px);border-color:var(--border2)">
 <div style="display:flex;width:42px;height:42px;border-radius:11px;background:rgba(217,84,78,.12);align-items:center;justify-content:center;color:var(--red);margin-bottom:18px"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></div>
 <h3 style="font-size:1.12rem;font-weight:700;margin:0 0 9px">Où sont vos véhicules, là, maintenant&nbsp;?</h3>
 <p style="font-size:.95rem;line-height:1.6;color:var(--tx2);margin:0 0 18px">Impossible d'optimiser une tournée ou de répondre à un client sans savoir qui est où.</p>
 <div style="display:flex;align-items:flex-start;gap:10px;padding-top:16px;border-top:1px solid var(--border)"><span style="display:flex;flex:none;width:24px;height:24px;border-radius:7px;background:var(--accent-soft);align-items:center;justify-content:center;color:var(--accent);margin-top:1px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span><p style="font-size:.92rem;line-height:1.55;margin:0"><strong style="font-weight:700">Carte temps réel</strong> — chaque véhicule positionné en direct, à la seconde près.</p></div>
 </div>
-<div data-reveal style="background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:28px;transition:transform .25s,border-color .25s" data-vth="transform:translateY(-4px);border-color:var(--border2)">
+<div data-reveal style="background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:28px;transition:transform .25s,border-color .25s" style-hover="transform:translateY(-4px);border-color:var(--border2)">
 <div style="display:flex;width:42px;height:42px;border-radius:11px;background:rgba(217,84,78,.12);align-items:center;justify-content:center;color:var(--red);margin-bottom:18px"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v6m0 8v6M2 12h6m8 0h6"/><circle cx="12" cy="12" r="3"/></svg></div>
 <h3 style="font-size:1.12rem;font-weight:700;margin:0 0 9px">Usage hors cadre, vol, heures sup'</h3>
 <p style="font-size:.95rem;line-height:1.6;color:var(--tx2);margin:0 0 18px">Un véhicule utilisé le week-end ou volé la nuit, c'est du carburant et des risques que vous payez.</p>
 <div style="display:flex;align-items:flex-start;gap:10px;padding-top:16px;border-top:1px solid var(--border)"><span style="display:flex;flex:none;width:24px;height:24px;border-radius:7px;background:var(--accent-soft);align-items:center;justify-content:center;color:var(--accent);margin-top:1px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span><p style="font-size:.92rem;line-height:1.55;margin:0"><strong style="font-weight:700">Coupure moteur</strong> — immobilisez à distance ou sur plage horaire.</p></div>
 </div>
-<div data-reveal style="background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:28px;transition:transform .25s,border-color .25s" data-vth="transform:translateY(-4px);border-color:var(--border2)">
+<div data-reveal style="background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:28px;transition:transform .25s,border-color .25s" style-hover="transform:translateY(-4px);border-color:var(--border2)">
 <div style="display:flex;width:42px;height:42px;border-radius:11px;background:rgba(217,84,78,.12);align-items:center;justify-content:center;color:var(--red);margin-bottom:18px"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
 <h3 style="font-size:1.12rem;font-weight:700;margin:0 0 9px">Des rapports qui prennent des heures</h3>
 <p style="font-size:.95rem;line-height:1.6;color:var(--tx2);margin:0 0 18px">Relevés kilométriques et justificatifs à la main : chronophages et truffés d'erreurs.</p>
@@ -192,37 +200,37 @@ summary::-webkit-details-marker{display:none}
 <p style="font-size:1.08rem;line-height:1.65;color:var(--tx2);margin:0">Une plateforme unique, pensée pour les gestionnaires de flotte qui veulent du concret.</p>
 </div>
 <div class="vt-grid3" data-reveal style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px">
-<div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:26px;transition:transform .25s,border-color .25s" data-vth="transform:translateY(-4px);border-color:var(--accent)">
+<div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:26px;transition:transform .25s,border-color .25s" style-hover="transform:translateY(-4px);border-color:var(--accent)">
 <div style="display:flex;width:46px;height:46px;border-radius:12px;background:var(--accent-soft);align-items:center;justify-content:center;color:var(--accent);margin-bottom:18px"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg></div>
 <h3 style="font-size:1.1rem;font-weight:700;margin:0 0 8px">Géolocalisation temps réel</h3>
 <p style="font-size:.93rem;line-height:1.6;color:var(--tx2);margin:0">Chaque véhicule sur la carte, en direct — jusqu'à toutes les 15 secondes en mode Live.</p>
 </div>
-<div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:26px;transition:transform .25s,border-color .25s" data-vth="transform:translateY(-4px);border-color:var(--accent)">
+<div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:26px;transition:transform .25s,border-color .25s" style-hover="transform:translateY(-4px);border-color:var(--accent)">
 <div style="display:flex;width:46px;height:46px;border-radius:12px;background:rgba(217,84,78,.12);align-items:center;justify-content:center;color:var(--red);margin-bottom:18px"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h.01M12 12h.01m5-3-3 3 3 3"/></svg></div>
 <h3 style="font-size:1.1rem;font-weight:700;margin:0 0 8px">Coupure moteur à distance</h3>
 <p style="font-size:.93rem;line-height:1.6;color:var(--tx2);margin:0">Immobilisez un véhicule d'un geste, ou automatiquement hors heures de travail. Antivol intégré.</p>
 </div>
-<div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:26px;transition:transform .25s,border-color .25s" data-vth="transform:translateY(-4px);border-color:var(--accent)">
+<div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:26px;transition:transform .25s,border-color .25s" style-hover="transform:translateY(-4px);border-color:var(--accent)">
 <div style="display:flex;width:46px;height:46px;border-radius:12px;background:rgba(245,179,61,.14);align-items:center;justify-content:center;color:var(--amber);margin-bottom:18px"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></div>
 <h3 style="font-size:1.1rem;font-weight:700;margin:0 0 8px">Alertes intelligentes</h3>
 <p style="font-size:.93rem;line-height:1.6;color:var(--tx2);margin:0">Vitesse, zone, batterie, remorquage — vous êtes prévenu instantanément sur votre téléphone.</p>
 </div>
-<div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:26px;transition:transform .25s,border-color .25s" data-vth="transform:translateY(-4px);border-color:var(--accent)">
+<div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:26px;transition:transform .25s,border-color .25s" style-hover="transform:translateY(-4px);border-color:var(--accent)">
 <div style="display:flex;width:46px;height:46px;border-radius:12px;background:var(--accent-soft);align-items:center;justify-content:center;color:var(--accent);margin-bottom:18px"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="m9 12 2 2 4-4"/></svg></div>
 <h3 style="font-size:1.1rem;font-weight:700;margin:0 0 8px">Historique &amp; rapports</h3>
 <p style="font-size:.93rem;line-height:1.6;color:var(--tx2);margin:0">Rejouez chaque trajet, exportez km, arrêts et rapports hebdo par véhicule et conducteur.</p>
 </div>
-<div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:26px;transition:transform .25s,border-color .25s" data-vth="transform:translateY(-4px);border-color:var(--accent)">
+<div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:26px;transition:transform .25s,border-color .25s" style-hover="transform:translateY(-4px);border-color:var(--accent)">
 <div style="display:flex;width:46px;height:46px;border-radius:12px;background:var(--accent-soft);align-items:center;justify-content:center;color:var(--accent);margin-bottom:18px"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 20l-5-2V4l5 2 6-2 5 2v14l-5-2-6 2z"/><path d="M9 6v14M15 4v14"/></svg></div>
 <h3 style="font-size:1.1rem;font-weight:700;margin:0 0 8px">Groupes de véhicules</h3>
 <p style="font-size:.93rem;line-height:1.6;color:var(--tx2);margin:0">Organisez par site, agence ou activité. Des vues et droits adaptés à chaque équipe.</p>
 </div>
-<div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:26px;transition:transform .25s,border-color .25s" data-vth="transform:translateY(-4px);border-color:var(--accent)">
+<div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:26px;transition:transform .25s,border-color .25s" style-hover="transform:translateY(-4px);border-color:var(--accent)">
 <div style="display:flex;width:46px;height:46px;border-radius:12px;background:var(--accent-soft);align-items:center;justify-content:center;color:var(--accent);margin-bottom:18px"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg></div>
 <h3 style="font-size:1.1rem;font-weight:700;margin:0 0 8px">Multi-utilisateurs &amp; rôles</h3>
 <p style="font-size:.93rem;line-height:1.6;color:var(--tx2);margin:0">Donnez à chacun le bon niveau d'accès — gestionnaire, agent, lecture seule. Vie privée incluse.</p>
 </div>
-<div style="position:relative;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:26px;transition:transform .25s,border-color .25s" data-vth="transform:translateY(-4px);border-color:var(--accent)">
+<div style="position:relative;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:26px;transition:transform .25s,border-color .25s" style-hover="transform:translateY(-4px);border-color:var(--accent)">
 <span style="position:absolute;top:18px;right:18px;font-family:'JetBrains Mono',monospace;font-size:.6rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);background:var(--accent-soft);border-radius:6px;padding:3px 7px">Nouveau</span>
 <div style="display:flex;width:46px;height:46px;border-radius:12px;background:var(--accent-soft);align-items:center;justify-content:center;color:var(--accent);margin-bottom:18px"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div>
 <h3 style="font-size:1.1rem;font-weight:700;margin:0 0 8px">Agenda &amp; réservations</h3>
@@ -334,7 +342,7 @@ summary::-webkit-details-marker{display:none}
 <!-- ░░ CAS D'USAGE ░░ -->
 <section class="vt-sec" style="padding:104px 0">
 <div style="max-width:1100px;margin:0 auto;padding:0 32px">
-<div data-reveal style="text-align:center;max-width:42rem;margin:0 auto 48px"><p style="font-family:'JetBrains Mono',monospace;font-size:.74rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:600;margin:0 0 14px">Cas d'usage</p><h2 style="font-size:clamp(1.9rem,3.6vw,2.7rem);font-weight:800;letter-spacing:-.025em;line-height:1.08;margin:0 0 16px">Des situations concrètes, résolues.</h2><p style="font-size:1.08rem;line-height:1.65;color:var(--tx2);margin:0">De l'artisan au transporteur en passant par le médico-social — voici comment Tracky règle les vrais casse-têtes de flotte.</p></div><div data-reveal style="border:1.5px solid var(--accent);border-radius:20px;overflow:hidden;background:var(--surface);box-shadow:0 20px 55px -24px var(--accent-soft);margin-bottom:20px"><div class="vt-2col" style="display:grid;grid-template-columns:1.02fr .98fr;align-items:stretch"><div style="padding:40px"><span style="display:inline-flex;align-items:center;gap:7px;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 32%,transparent);border-radius:999px;padding:5px 12px;font-size:.7rem;font-weight:700;color:var(--accent);margin-bottom:18px;white-space:nowrap"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.6 4.4L18 8l-4.4 1.6L12 14l-1.6-4.4L6 8l4.4-1.6z"/></svg>Agenda + Agent IA</span><h3 style="font-size:clamp(1.4rem,2.4vw,1.85rem);font-weight:800;letter-spacing:-.02em;line-height:1.12;margin:0 0 14px">5 véhicules, 3 tournées.<br>L'IA compose le meilleur planning.</h3><p style="font-size:1rem;line-height:1.65;color:var(--tx2);margin:0 0 22px">Vous créez une réservation par tournée. L'agent IA choisit le bon véhicule et le bon conducteur en tenant compte des maintenances planifiées, des incidents en cours et des disponibilités — et réaffecte tout seul dès qu'un imprévu tombe. Vous mobilisez moins de véhicules, vous roulez moins à vide, vous dépensez moins.</p><div style="display:flex;flex-direction:column;gap:12px"><div style="display:flex;align-items:flex-start;gap:11px"><span style="display:flex;flex:none;width:24px;height:24px;border-radius:7px;background:var(--accent-soft);align-items:center;justify-content:center;color:var(--accent);margin-top:1px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span><span style="font-size:.95rem;line-height:1.45">Réservations qui intègrent maintenances &amp; incidents</span></div><div style="display:flex;align-items:flex-start;gap:11px"><span style="display:flex;flex:none;width:24px;height:24px;border-radius:7px;background:var(--accent-soft);align-items:center;justify-content:center;color:var(--accent);margin-top:1px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span><span style="font-size:.95rem;line-height:1.45">L'IA réaffecte conducteur et véhicule pour optimiser</span></div><div style="display:flex;align-items:flex-start;gap:11px"><span style="display:flex;flex:none;width:24px;height:24px;border-radius:7px;background:var(--accent-soft);align-items:center;justify-content:center;color:var(--accent);margin-top:1px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span><span style="font-size:.95rem;line-height:1.45">Moins de km à vide, coûts de carburant maîtrisés</span></div></div></div><div style="padding:26px;background:var(--bg2);border-left:1px solid var(--border);display:flex;align-items:center"><div style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow-sm);padding:15px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><span style="font-weight:800;font-size:.86rem;white-space:nowrap">Planning du jour</span><span style="display:inline-flex;align-items:center;gap:5px;background:var(--accent-soft);color:var(--accent);border-radius:7px;padding:4px 9px;font-size:.62rem;font-weight:700;white-space:nowrap"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.6 4.4L18 8l-4.4 1.6L12 14l-1.6-4.4L6 8l4.4-1.6z"/></svg>Agent IA</span></div><div style="display:flex;flex-direction:column;gap:7px;margin-bottom:12px"><div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid var(--border);border-radius:10px;background:var(--surface2)"><span style="flex:none;width:7px;height:7px;border-radius:50%;background:var(--accent)"></span><div style="flex:1;min-width:0"><div style="font-size:.76rem;font-weight:700">Tournée Nord</div><div style="font-size:.64rem;color:var(--tx2)">08:00 → 10:30</div></div><div style="display:flex;gap:5px;flex:none"><span style="font-size:.62rem;font-weight:600;border-radius:6px;padding:3px 7px;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 32%,transparent);color:var(--accent)">Kangoo 04</span></div></div><div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid var(--border);border-radius:10px;background:var(--surface2)"><span style="flex:none;width:7px;height:7px;border-radius:50%;background:var(--accent)"></span><div style="flex:1;min-width:0"><div style="font-size:.76rem;font-weight:700">Tournée Est</div><div style="font-size:.64rem;color:var(--tx2)">11:00 → 13:00</div></div><div style="display:flex;gap:5px;flex:none"><span style="font-size:.62rem;font-weight:600;border-radius:6px;padding:3px 7px;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 32%,transparent);color:var(--accent)">Kangoo 04</span></div></div><div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid var(--border);border-radius:10px;background:var(--surface2)"><span style="flex:none;width:7px;height:7px;border-radius:50%;background:var(--accent)"></span><div style="flex:1;min-width:0"><div style="font-size:.76rem;font-weight:700">Tournée Sud</div><div style="font-size:.64rem;color:var(--tx2)">09:00 → 12:00</div></div><div style="display:flex;gap:5px;flex:none"><span style="font-size:.62rem;font-weight:600;border-radius:6px;padding:3px 7px;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 32%,transparent);color:var(--accent)">Master 12</span></div></div><div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid var(--border);border-radius:10px;background:var(--surface2);opacity:.6"><span style="flex:none;width:7px;height:7px;border-radius:50%;background:var(--amber)"></span><div style="flex:1;min-width:0"><div style="font-size:.76rem;font-weight:700">Trafic Bleu</div><div style="font-size:.64rem;color:var(--tx2)">Maintenance prévue</div></div><div style="display:flex;gap:5px;flex:none"><span style="font-size:.62rem;font-weight:600;border-radius:6px;padding:3px 7px;background:var(--bg);border:1px solid var(--border);color:var(--tx2)"><span style="text-decoration:line-through">Indisponible</span></span></div></div></div><div style="display:flex;align-items:center;gap:10px;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 32%,transparent);border-radius:11px;padding:11px 12px"><span style="display:flex;flex:none;color:var(--accent)"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.6 4.4L18 8l-4.4 1.6L12 14l-1.6-4.4L6 8l4.4-1.6z"/></svg></span><div style="flex:1;min-width:0"><div style="font-size:.72rem;font-weight:800;color:var(--accent)">Optimisation trouvée</div><div style="font-size:.64rem;color:var(--tx2);line-height:1.35">3 tournées couvertes par 2 véhicules · −18 % de km à vide</div></div><span style="flex:none;font-size:.64rem;font-weight:700;background:var(--accent);color:var(--accent-ink);border-radius:7px;padding:6px 10px">Appliquer</span></div></div></div></div></div><div class="vt-grid3" data-reveal style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px"><div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:26px;transition:transform .25s,border-color .25s" data-vth="transform:translateY(-4px);border-color:var(--accent)"><div style="display:flex;width:46px;height:46px;border-radius:12px;background:var(--accent-soft);align-items:center;justify-content:center;color:var(--accent);margin-bottom:16px"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7h13v8H2zM15 10h4l3 3v2h-7z"/><circle cx="6" cy="17" r="2"/><circle cx="18" cy="17" r="2"/></svg></div><p style="font-family:'JetBrains Mono',monospace;font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);font-weight:600;margin:0 0 8px">Transport &amp; BTP</p><h3 style="font-size:1.12rem;font-weight:700;margin:0 0 9px;line-height:1.2">Vos camions roulent le week-end ?</h3><p style="font-size:.94rem;line-height:1.6;color:var(--tx2);margin:0">Bloquez le démarrage en dehors des heures de service avec la coupure moteur par plage horaire. Fini l'usage perso — le carburant part où il doit.</p></div><div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:26px;transition:transform .25s,border-color .25s" data-vth="transform:translateY(-4px);border-color:var(--accent)"><div style="display:flex;width:46px;height:46px;border-radius:12px;background:var(--accent-soft);align-items:center;justify-content:center;color:var(--accent);margin-bottom:16px"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg></div><p style="font-family:'JetBrains Mono',monospace;font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);font-weight:600;margin:0 0 8px">Médico-social &amp; public</p><h3 style="font-size:1.12rem;font-weight:700;margin:0 0 9px;line-height:1.2">Qui a pris quel véhicule ?</h3><p style="font-size:.94rem;line-height:1.6;color:var(--tx2);margin:0">Chaque conducteur s'identifie par code PIN, le mode vie privée CNIL protège les trajets personnels, et le kilométrage par agent se justifie tout seul.</p></div><div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:26px;transition:transform .25s,border-color .25s" data-vth="transform:translateY(-4px);border-color:var(--accent)"><div style="display:flex;width:46px;height:46px;border-radius:12px;background:var(--accent-soft);align-items:center;justify-content:center;color:var(--accent);margin-bottom:16px"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><p style="font-family:'JetBrains Mono',monospace;font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);font-weight:600;margin:0 0 8px">Sécurité &amp; antivol</p><h3 style="font-size:1.12rem;font-weight:700;margin:0 0 9px;line-height:1.2">Un véhicule disparaît la nuit ?</h3><p style="font-size:.94rem;line-height:1.6;color:var(--tx2);margin:0">Localisez-le en direct et coupez le moteur à distance : volé, il ne redémarre pas. Vous êtes alerté au moindre mouvement suspect.</p></div></div></div>
+<div data-reveal style="text-align:center;max-width:42rem;margin:0 auto 48px"><p style="font-family:'JetBrains Mono',monospace;font-size:.74rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:600;margin:0 0 14px">Cas d'usage</p><h2 style="font-size:clamp(1.9rem,3.6vw,2.7rem);font-weight:800;letter-spacing:-.025em;line-height:1.08;margin:0 0 16px">Des situations concrètes, résolues.</h2><p style="font-size:1.08rem;line-height:1.65;color:var(--tx2);margin:0">De l'artisan au transporteur en passant par le médico-social — voici comment Tracky règle les vrais casse-têtes de flotte.</p></div><div data-reveal style="border:1.5px solid var(--accent);border-radius:20px;overflow:hidden;background:var(--surface);box-shadow:0 20px 55px -24px var(--accent-soft);margin-bottom:20px"><div class="vt-2col" style="display:grid;grid-template-columns:1.02fr .98fr;align-items:stretch"><div style="padding:40px"><span style="display:inline-flex;align-items:center;gap:7px;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 32%,transparent);border-radius:999px;padding:5px 12px;font-size:.7rem;font-weight:700;color:var(--accent);margin-bottom:18px;white-space:nowrap"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.6 4.4L18 8l-4.4 1.6L12 14l-1.6-4.4L6 8l4.4-1.6z"/></svg>Agenda + Agent IA</span><h3 style="font-size:clamp(1.4rem,2.4vw,1.85rem);font-weight:800;letter-spacing:-.02em;line-height:1.12;margin:0 0 14px">5 véhicules, 3 tournées.<br>L'IA compose le meilleur planning.</h3><p style="font-size:1rem;line-height:1.65;color:var(--tx2);margin:0 0 22px">Vous créez une réservation par tournée. L'agent IA choisit le bon véhicule et le bon conducteur en tenant compte des maintenances planifiées, des incidents en cours et des disponibilités — et réaffecte tout seul dès qu'un imprévu tombe. Vous mobilisez moins de véhicules, vous roulez moins à vide, vous dépensez moins.</p><div style="display:flex;flex-direction:column;gap:12px"><div style="display:flex;align-items:flex-start;gap:11px"><span style="display:flex;flex:none;width:24px;height:24px;border-radius:7px;background:var(--accent-soft);align-items:center;justify-content:center;color:var(--accent);margin-top:1px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span><span style="font-size:.95rem;line-height:1.45">Réservations qui intègrent maintenances &amp; incidents</span></div><div style="display:flex;align-items:flex-start;gap:11px"><span style="display:flex;flex:none;width:24px;height:24px;border-radius:7px;background:var(--accent-soft);align-items:center;justify-content:center;color:var(--accent);margin-top:1px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span><span style="font-size:.95rem;line-height:1.45">L'IA réaffecte conducteur et véhicule pour optimiser</span></div><div style="display:flex;align-items:flex-start;gap:11px"><span style="display:flex;flex:none;width:24px;height:24px;border-radius:7px;background:var(--accent-soft);align-items:center;justify-content:center;color:var(--accent);margin-top:1px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span><span style="font-size:.95rem;line-height:1.45">Moins de km à vide, coûts de carburant maîtrisés</span></div></div></div><div style="padding:26px;background:var(--bg2);border-left:1px solid var(--border);display:flex;align-items:center"><div style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow-sm);padding:15px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><span style="font-weight:800;font-size:.86rem;white-space:nowrap">Planning du jour</span><span style="display:inline-flex;align-items:center;gap:5px;background:var(--accent-soft);color:var(--accent);border-radius:7px;padding:4px 9px;font-size:.62rem;font-weight:700;white-space:nowrap"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.6 4.4L18 8l-4.4 1.6L12 14l-1.6-4.4L6 8l4.4-1.6z"/></svg>Agent IA</span></div><div style="display:flex;flex-direction:column;gap:7px;margin-bottom:12px"><div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid var(--border);border-radius:10px;background:var(--surface2)"><span style="flex:none;width:7px;height:7px;border-radius:50%;background:var(--accent)"></span><div style="flex:1;min-width:0"><div style="font-size:.76rem;font-weight:700">Tournée Nord</div><div style="font-size:.64rem;color:var(--tx2)">08:00 → 10:30</div></div><div style="display:flex;gap:5px;flex:none"><span style="font-size:.62rem;font-weight:600;border-radius:6px;padding:3px 7px;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 32%,transparent);color:var(--accent)">Kangoo 04</span></div></div><div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid var(--border);border-radius:10px;background:var(--surface2)"><span style="flex:none;width:7px;height:7px;border-radius:50%;background:var(--accent)"></span><div style="flex:1;min-width:0"><div style="font-size:.76rem;font-weight:700">Tournée Est</div><div style="font-size:.64rem;color:var(--tx2)">11:00 → 13:00</div></div><div style="display:flex;gap:5px;flex:none"><span style="font-size:.62rem;font-weight:600;border-radius:6px;padding:3px 7px;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 32%,transparent);color:var(--accent)">Kangoo 04</span></div></div><div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid var(--border);border-radius:10px;background:var(--surface2)"><span style="flex:none;width:7px;height:7px;border-radius:50%;background:var(--accent)"></span><div style="flex:1;min-width:0"><div style="font-size:.76rem;font-weight:700">Tournée Sud</div><div style="font-size:.64rem;color:var(--tx2)">09:00 → 12:00</div></div><div style="display:flex;gap:5px;flex:none"><span style="font-size:.62rem;font-weight:600;border-radius:6px;padding:3px 7px;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 32%,transparent);color:var(--accent)">Master 12</span></div></div><div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid var(--border);border-radius:10px;background:var(--surface2);opacity:.6"><span style="flex:none;width:7px;height:7px;border-radius:50%;background:var(--amber)"></span><div style="flex:1;min-width:0"><div style="font-size:.76rem;font-weight:700">Trafic Bleu</div><div style="font-size:.64rem;color:var(--tx2)">Maintenance prévue</div></div><div style="display:flex;gap:5px;flex:none"><span style="font-size:.62rem;font-weight:600;border-radius:6px;padding:3px 7px;background:var(--bg);border:1px solid var(--border);color:var(--tx2)"><span style="text-decoration:line-through">Indisponible</span></span></div></div></div><div style="display:flex;align-items:center;gap:10px;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 32%,transparent);border-radius:11px;padding:11px 12px"><span style="display:flex;flex:none;color:var(--accent)"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.6 4.4L18 8l-4.4 1.6L12 14l-1.6-4.4L6 8l4.4-1.6z"/></svg></span><div style="flex:1;min-width:0"><div style="font-size:.72rem;font-weight:800;color:var(--accent)">Optimisation trouvée</div><div style="font-size:.64rem;color:var(--tx2);line-height:1.35">3 tournées couvertes par 2 véhicules · −18 % de km à vide</div></div><span style="flex:none;font-size:.64rem;font-weight:700;background:var(--accent);color:var(--accent-ink);border-radius:7px;padding:6px 10px">Appliquer</span></div></div></div></div></div><div class="vt-grid3" data-reveal style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px"><div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:26px;transition:transform .25s,border-color .25s" style-hover="transform:translateY(-4px);border-color:var(--accent)"><div style="display:flex;width:46px;height:46px;border-radius:12px;background:var(--accent-soft);align-items:center;justify-content:center;color:var(--accent);margin-bottom:16px"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 7h13v8H2zM15 10h4l3 3v2h-7z"/><circle cx="6" cy="17" r="2"/><circle cx="18" cy="17" r="2"/></svg></div><p style="font-family:'JetBrains Mono',monospace;font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);font-weight:600;margin:0 0 8px">Transport &amp; BTP</p><h3 style="font-size:1.12rem;font-weight:700;margin:0 0 9px;line-height:1.2">Vos camions roulent le week-end ?</h3><p style="font-size:.94rem;line-height:1.6;color:var(--tx2);margin:0">Bloquez le démarrage en dehors des heures de service avec la coupure moteur par plage horaire. Fini l'usage perso — le carburant part où il doit.</p></div><div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:26px;transition:transform .25s,border-color .25s" style-hover="transform:translateY(-4px);border-color:var(--accent)"><div style="display:flex;width:46px;height:46px;border-radius:12px;background:var(--accent-soft);align-items:center;justify-content:center;color:var(--accent);margin-bottom:16px"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg></div><p style="font-family:'JetBrains Mono',monospace;font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);font-weight:600;margin:0 0 8px">Médico-social &amp; public</p><h3 style="font-size:1.12rem;font-weight:700;margin:0 0 9px;line-height:1.2">Qui a pris quel véhicule ?</h3><p style="font-size:.94rem;line-height:1.6;color:var(--tx2);margin:0">Chaque conducteur s'identifie par code PIN, le mode vie privée CNIL protège les trajets personnels, et le kilométrage par agent se justifie tout seul.</p></div><div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:26px;transition:transform .25s,border-color .25s" style-hover="transform:translateY(-4px);border-color:var(--accent)"><div style="display:flex;width:46px;height:46px;border-radius:12px;background:var(--accent-soft);align-items:center;justify-content:center;color:var(--accent);margin-bottom:16px"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><p style="font-family:'JetBrains Mono',monospace;font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);font-weight:600;margin:0 0 8px">Sécurité &amp; antivol</p><h3 style="font-size:1.12rem;font-weight:700;margin:0 0 9px;line-height:1.2">Un véhicule disparaît la nuit ?</h3><p style="font-size:.94rem;line-height:1.6;color:var(--tx2);margin:0">Localisez-le en direct et coupez le moteur à distance : volé, il ne redémarre pas. Vous êtes alerté au moindre mouvement suspect.</p></div></div></div>
 </section>
 
 <!-- ░░ ÉCONOMIES / ROI ░░ -->
@@ -437,8 +445,8 @@ summary::-webkit-details-marker{display:none}
 <div><div style="font-size:1.9rem;font-weight:800;letter-spacing:-.02em;color:var(--accent)">+30 €</div><div style="font-size:.8rem;color:var(--tx2);margin-top:2px">net / véh / mois</div></div>
 </div>
 <div style="display:flex;gap:12px;flex-wrap:wrap">
-<a href="tarifs.html#simulateur" style="display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:.95rem;padding:13px 22px;border-radius:11px;box-shadow:0 8px 22px var(--accent-soft);transition:transform .2s" data-vth="transform:translateY(-2px)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="12" y2="14"/></svg>Estimer mes économies</a>
-<a href="#demo" style="display:inline-flex;align-items:center;gap:8px;color:var(--tx);font-weight:600;font-size:.95rem;padding:13px 20px;border-radius:11px;border:1px solid var(--border2);transition:border-color .2s" data-vth="border-color:var(--accent)">Demander une démo</a>
+<a href="tarifs.html#simulateur" style="display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:.95rem;padding:13px 22px;border-radius:11px;box-shadow:0 8px 22px var(--accent-soft);transition:transform .2s" style-hover="transform:translateY(-2px)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="12" y2="14"/></svg>Estimer mes économies</a>
+<a href="#demo" style="display:inline-flex;align-items:center;gap:8px;color:var(--tx);font-weight:600;font-size:.95rem;padding:13px 20px;border-radius:11px;border:1px solid var(--border2);transition:border-color .2s" style-hover="border-color:var(--accent)">Demander une démo</a>
 </div>
 </div>
 <div style="align-self:stretch;background:var(--bg2);border-left:1px solid var(--border);padding:34px 32px;display:flex;flex-direction:column;justify-content:center;gap:14px">
@@ -468,7 +476,7 @@ summary::-webkit-details-marker{display:none}
 <p style="font-size:.9rem;color:var(--tx2);margin:0 0 22px">GPS simple, sans coupe-circuit</p>
 <div style="margin-bottom:6px"><span style="font-size:2.6rem;font-weight:800;letter-spacing:-.02em">22,90</span><span style="color:var(--tx2);font-size:.95rem"> €/véh/mois</span></div>
 <p style="font-size:.82rem;color:var(--tx3);margin:0 0 22px">Boîtier 99 € · annuel renouvelable</p>
-<a href="#demo" style="display:block;text-align:center;padding:12px;border-radius:11px;border:1px solid var(--border2);font-weight:700;font-size:.92rem;transition:border-color .2s" data-vth="border-color:var(--accent)">Voir le détail</a>
+<a href="#demo" style="display:block;text-align:center;padding:12px;border-radius:11px;border:1px solid var(--border2);font-weight:700;font-size:.92rem;transition:border-color .2s" style-hover="border-color:var(--accent)">Voir le détail</a>
 <div style="margin-top:24px;display:flex;flex-direction:column;gap:11px;font-size:.9rem;color:var(--tx2)">
 <span style="display:flex;gap:9px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><polyline points="20 6 9 17 4 12"/></svg>Géolocalisation temps réel</span>
 <span style="display:flex;gap:9px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><polyline points="20 6 9 17 4 12"/></svg>Historique 90 jours</span>
@@ -481,7 +489,7 @@ summary::-webkit-details-marker{display:none}
 <p style="font-size:.9rem;color:var(--tx2);margin:0 0 22px">GPS + coupure moteur + plages horaires</p>
 <div style="margin-bottom:6px"><span style="font-size:2.6rem;font-weight:800;letter-spacing:-.02em;color:var(--accent)">29,90</span><span style="color:var(--tx2);font-size:.95rem"> €/véh/mois</span></div>
 <p style="font-size:.82rem;color:var(--tx3);margin:0 0 22px">Boîtier 189 € · annuel renouvelable</p>
-<a href="#demo" style="display:block;text-align:center;padding:12px;border-radius:11px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:.92rem;transition:transform .2s" data-vth="transform:translateY(-2px)">Choisir Pro</a>
+<a href="#demo" style="display:block;text-align:center;padding:12px;border-radius:11px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:.92rem;transition:transform .2s" style-hover="transform:translateY(-2px)">Choisir Pro</a>
 <div style="margin-top:24px;display:flex;flex-direction:column;gap:11px;font-size:.9rem;color:var(--tx2)">
 <span style="display:flex;gap:9px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><polyline points="20 6 9 17 4 12"/></svg>Tout Lite, plus&nbsp;:</span>
 <span style="display:flex;gap:9px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><polyline points="20 6 9 17 4 12"/></svg>Coupure moteur à distance</span>
@@ -493,7 +501,7 @@ summary::-webkit-details-marker{display:none}
 <p style="font-size:.9rem;color:var(--tx2);margin:0 0 22px">Sur-mesure, 10+ véhicules</p>
 <div style="margin-bottom:6px"><span style="font-size:2.2rem;font-weight:800;letter-spacing:-.02em">Sur devis</span></div>
 <p style="font-size:.82rem;color:var(--tx3);margin:0 0 22px">Tarif dégressif · installation offerte</p>
-<a href="#demo" style="display:block;text-align:center;padding:12px;border-radius:11px;border:1px solid var(--border2);font-weight:700;font-size:.92rem;transition:border-color .2s" data-vth="border-color:var(--accent)">Demander un devis</a>
+<a href="#demo" style="display:block;text-align:center;padding:12px;border-radius:11px;border:1px solid var(--border2);font-weight:700;font-size:.92rem;transition:border-color .2s" style-hover="border-color:var(--accent)">Demander un devis</a>
 <div style="margin-top:24px;display:flex;flex-direction:column;gap:11px;font-size:.9rem;color:var(--tx2)">
 <span style="display:flex;gap:9px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><polyline points="20 6 9 17 4 12"/></svg>Tout Pro, plus&nbsp;:</span>
 <span style="display:flex;gap:9px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><polyline points="20 6 9 17 4 12"/></svg>Groupes &amp; multi-utilisateurs avancés</span>
@@ -545,8 +553,8 @@ summary::-webkit-details-marker{display:none}
 <h2 style="font-size:clamp(2.1rem,4vw,3rem);font-weight:800;letter-spacing:-.03em;line-height:1.05;margin:0 0 18px">Prêt à reprendre le contrôle de votre flotte&nbsp;?</h2>
 <p style="font-size:1.12rem;line-height:1.6;color:var(--tx2);margin:0 0 32px">Démonstration gratuite et sans engagement. Réponse en moins de 2h.</p>
 <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap">
-<a href="#demo" style="display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:1rem;padding:15px 28px;border-radius:12px;box-shadow:0 10px 28px var(--accent-soft);transition:transform .2s" data-vth="transform:translateY(-2px)"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Demander une démo gratuite</a>
-<a href="#" style="display:inline-flex;align-items:center;gap:8px;background:transparent;color:var(--tx);font-weight:600;font-size:1rem;padding:15px 26px;border-radius:12px;border:1px solid var(--border2);transition:border-color .2s" data-vth="border-color:var(--accent)"><svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M.057 24l1.687-6.163a11.867 11.867 0 0 1-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 0 1 8.413 3.488 11.824 11.824 0 0 1 3.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 0 1-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 0 0 1.51 5.26l-.999 3.648 3.737-.979z"/></svg>Discuter sur WhatsApp</a>
+<a href="#demo" style="display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:1rem;padding:15px 28px;border-radius:12px;box-shadow:0 10px 28px var(--accent-soft);transition:transform .2s" style-hover="transform:translateY(-2px)"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Demander une démo gratuite</a>
+<a href="#" style="display:inline-flex;align-items:center;gap:8px;background:transparent;color:var(--tx);font-weight:600;font-size:1rem;padding:15px 26px;border-radius:12px;border:1px solid var(--border2);transition:border-color .2s" style-hover="border-color:var(--accent)"><svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M.057 24l1.687-6.163a11.867 11.867 0 0 1-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 0 1 8.413 3.488 11.824 11.824 0 0 1 3.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 0 1-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 0 0 1.51 5.26l-.999 3.648 3.737-.979z"/></svg>Discuter sur WhatsApp</a>
 </div>
 </div>
 </section>
@@ -563,15 +571,15 @@ summary::-webkit-details-marker{display:none}
 </div>
 <div>
 <p style="font-family:'JetBrains Mono',monospace;font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);margin:0 0 16px">Produit</p>
-<div style="display:flex;flex-direction:column;gap:11px;font-size:.92rem;color:var(--tx2)"><a href="fonctionnalites.html" data-vth="color:var(--tx)">Fonctionnalités</a><a href="#tarifs" data-vth="color:var(--tx)">Tarifs</a><a href="#produit" data-vth="color:var(--tx)">Secteur public</a><a href="#faq" data-vth="color:var(--tx)">Sécurité &amp; RGPD</a></div>
+<div style="display:flex;flex-direction:column;gap:11px;font-size:.92rem;color:var(--tx2)"><a href="fonctionnalites.html" style-hover="color:var(--tx)">Fonctionnalités</a><a href="#tarifs" style-hover="color:var(--tx)">Tarifs</a><a href="#produit" style-hover="color:var(--tx)">Secteur public</a><a href="#faq" style-hover="color:var(--tx)">Sécurité &amp; RGPD</a></div>
 </div>
 <div>
 <p style="font-family:'JetBrains Mono',monospace;font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);margin:0 0 16px">Société</p>
-<div style="display:flex;flex-direction:column;gap:11px;font-size:.92rem;color:var(--tx2)"><a href="#" data-vth="color:var(--tx)">vizyoagency.com</a><a href="mailto:contact@vizyoagency.com" data-vth="color:var(--tx)">contact@vizyoagency.com</a><a href="tel:+33652077038" data-vth="color:var(--tx)">06 52 07 70 38</a></div>
+<div style="display:flex;flex-direction:column;gap:11px;font-size:.92rem;color:var(--tx2)"><a href="#" style-hover="color:var(--tx)">vizyoagency.com</a><a href="mailto:contact@vizyoagency.com" style-hover="color:var(--tx)">contact@vizyoagency.com</a><a href="tel:+33652077038" style-hover="color:var(--tx)">06 52 07 70 38</a></div>
 </div>
 <div>
 <p style="font-family:'JetBrains Mono',monospace;font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);margin:0 0 16px">Légal</p>
-<div style="display:flex;flex-direction:column;gap:11px;font-size:.92rem;color:var(--tx2)"><a href="#" data-vth="color:var(--tx)">Mentions légales</a><a href="#" data-vth="color:var(--tx)">Conformité RGPD</a><a href="#" data-vth="color:var(--tx)">Fiche sécurité (PDF)</a></div>
+<div style="display:flex;flex-direction:column;gap:11px;font-size:.92rem;color:var(--tx2)"><a href="#" style-hover="color:var(--tx)">Mentions légales</a><a href="#" style-hover="color:var(--tx)">Conformité RGPD</a><a href="#" style-hover="color:var(--tx)">Fiche sécurité (PDF)</a></div>
 </div>
 </div>
 <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:40px;padding-top:28px;border-top:1px solid var(--border)">
@@ -584,6 +592,79 @@ summary::-webkit-details-marker{display:none}
 </footer>
 
 </div>
-<script src="assets/vt.js?v=566a1915"></script>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { theme: 'dark', menuOpen: false };
+
+  componentDidMount() {
+    let t = 'dark';
+    try { t = localStorage.getItem('vt-theme') || 'dark'; } catch (e) {}
+    document.documentElement.dataset.theme = t;
+    this.setState({ theme: t });
+    this.initReveal();
+    this.handleHash();
+  }
+
+  setTheme = (t) => {
+    document.documentElement.dataset.theme = t;
+    try { localStorage.setItem('vt-theme', t); } catch (e) {}
+    this.setState({ theme: t });
+  };
+
+  toggleTheme = () => { this.setTheme(this.state.theme === 'light' ? 'dark' : 'light'); };
+  toggleMenu = () => this.setState(s => ({ menuOpen: !s.menuOpen }));
+
+  initReveal() {
+    if (typeof IntersectionObserver === 'undefined') return;
+    const els = Array.from(document.querySelectorAll('[data-reveal]'));
+    const vh = window.innerHeight || 800;
+    els.forEach(el => {
+      const r = el.getBoundingClientRect();
+      if (r.top > vh * 0.82) {
+        el.style.opacity = '0';
+        el.style.transform = 'translateY(22px)';
+        el.style.transition = 'opacity .7s cubic-bezier(.16,1,.3,1), transform .7s cubic-bezier(.16,1,.3,1)';
+      }
+    });
+    const io = new IntersectionObserver((ents) => {
+      ents.forEach(e => {
+        if (e.isIntersecting) {
+          e.target.style.opacity = '1';
+          e.target.style.transform = 'none';
+          io.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.1, rootMargin: '0px 0px -8% 0px' });
+    els.forEach(el => io.observe(el));
+  }
+
+  handleHash() {
+    var hash = window.location.hash;
+    if (!hash || hash.length < 2) return;
+    var id = decodeURIComponent(hash.slice(1));
+    var doScroll = function () {
+      var el = document.getElementById(id);
+      if (!el) return;
+      var top = window.pageYOffset || document.documentElement.scrollTop || 0;
+      var y = el.getBoundingClientRect().top + top - 84;
+      window.scrollTo(0, y);
+      var se = document.scrollingElement || document.documentElement;
+      if (se) se.scrollTop = y;
+    };
+    requestAnimationFrame(doScroll);
+    [120, 350, 700, 1300].forEach(function (d) { setTimeout(doScroll, d); });
+  }
+
+  renderVals() {
+    return {
+      menuDisplay: this.state.menuOpen ? 'flex' : 'none',
+      toggleTheme: this.toggleTheme,
+      toggleMenu: this.toggleMenu,
+    };
+  }
+}
+</script>
 </body>
 </html>

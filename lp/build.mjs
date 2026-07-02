@@ -1,221 +1,172 @@
 // ──────────────────────────────────────────────────────────────────────────
-//  Générateur statique Vizyo Tracky (zéro dépendance).
-//  Assemble : head SEO paramétré + header + contenu + footer + données client.
-//  Sortie : HTML statique pur à la racine (déployé tel quel).
+//  Générateur statique Vizyo Tracky (zéro dépendance) — design premium.
+//  Prend les pages "design" (format x-dc de claude.ai/design) dans lp/design/,
+//  retire le runtime React/Babel (support.js), injecte un <head> SEO complet
+//  (title/description/canonical/OG/JSON-LD/geo) + l'interactivité vanilla vt.js,
+//  et produit du HTML statique autonome dans lp/public/ (servi tel quel).
 //  Usage : node build.mjs
 // ──────────────────────────────────────────────────────────────────────────
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { site, nav } from './src/data/site.mjs';
+import { site } from './src/data/site.mjs';
 import { pricing } from './src/data/pricing.mjs';
-import { cities, region } from './src/data/cities.mjs';
+import { cities } from './src/data/cities.mjs';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const root = (p) => join(__dir, p);
-const read = (p) => readFileSync(root('src/' + p), 'utf8');          // sources : src/
-const pub = (p) => root('public/' + p);                              // sortie servie : public/
-// Cache-busting : hash de contenu sur les assets (nouvelle URL à chaque changement réel)
-const assetV = (p) => createHash('md5').update(readFileSync(pub(p))).digest('hex').slice(0, 8);
-const ASSET_V = { css: assetV('assets/tracky.css'), js: assetV('assets/tracky.js') };
-
-const headerTpl = read('partials/header.html');
-const footerTpl = read('partials/footer.html');
-
+const readDesign = (p) => readFileSync(root('design/' + p), 'utf8');
+const pub = (p) => root('public/' + p);
 const fmt = (n) => n.toFixed(2).replace('.', ',');
-const MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
-const frDate = (iso) => { const [y, m, d] = iso.split('-'); return `${+d} ${MONTHS[+m - 1]} ${y}`; };
-const P = pricing.plans, A = pricing.addons, L = pricing.launch;
+const P = pricing.plans, A = pricing.addons;
 
-// Tokens texte remplacés dans head + header + footer + contenu
-const TOKENS = {
-  '{{APP_URL}}': site.appUrl,
-  '{{WHATSAPP}}': site.whatsapp,
-  '{{EMAIL}}': site.email,
-  '{{PHONE_E164}}': site.phoneE164,
-  '{{PHONE_DISPLAY}}': site.phoneDisplay,
-  '{{AGENCY_URL}}': site.agencyUrl,
-  '{{YEAR}}': String(new Date().getFullYear()),
-  '{{REGION}}': site.region,
-  '{{BASE_CITY}}': site.baseCity,
-  '{{PRICE_LITE_ANNUAL}}': fmt(P.lite.annual),
-  '{{PRICE_LITE_MONTHLY}}': fmt(P.lite.monthly),
-  '{{PRICE_PRO_ANNUAL}}': fmt(P.pro.annual),
-  '{{PRICE_PRO_MONTHLY}}': fmt(P.pro.monthly),
-  '{{PRICE_LIVE}}': fmt(A.live.perVehMonth),
-  '{{HW_LITE}}': String(P.lite.hardware),
-  '{{HW_PRO}}': String(P.pro.hardware),
-  '{{INSTALL_BASE}}': String(pricing.install.base),
-  '{{INSTALL_FROM5}}': String(pricing.install.from5),
-  '{{INSTALL_FREE_FROM}}': String(pricing.install.freeFrom),
-  '{{LAUNCH_UNTIL}}': frDate(L.until),
-  '{{LAUNCH_SLOTS}}': String(L.slotsLeft),
-  '{{LAUNCH_LABEL}}': L.label,
-  '{{CITY_LINKS}}': cities.map((c) => c.generate
-    ? `<a href="gps-flotte-${c.slug}.html" class="city-chip">${c.name} <span class="tg6">${c.deptNum}</span></a>`
-    : `<span class="city-chip city-soon">${c.name} <span class="tg6">${c.deptNum}</span></span>`).join(''),
-};
-const applyTokens = (s) => { for (const k in TOKENS) s = s.split(k).join(TOKENS[k]); return s; };
+// Cache-busting de vt.js (hash de contenu)
+const VT_V = createHash('md5').update(readFileSync(pub('assets/vt.js'))).digest('hex').slice(0, 8);
 
-const caret = '<svg class="nav-cv" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>';
-
-function renderNav(current) {
-  return nav.map((it) => {
-    const cur = it.href === current ? ' aria-current="page"' : '';
-    if (it.children) {
-      const sub = it.children.map((c) => `<a href="${c.href}">${c.label}</a>`).join('');
-      return `<div class="nav-dd"><a href="${it.href}"${cur}>${it.label}${caret}</a><div class="nav-dd-menu">${sub}</div></div>`;
-    }
-    return `<a href="${it.href}"${cur}>${it.label}</a>`;
-  }).join('');
-}
-const NAV_ICONS = {
-  'Fonctionnalités': '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
-  'Secteur public': '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
-  'Tarifs': '<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1.3"/>',
-  'Zones desservies': '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>',
-  'Sécurité': '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
-};
-const navIcon = (label) => `<span class="mm-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${NAV_ICONS[label] || ''}</svg></span>`;
-const MM_CHEV = '<svg class="mm-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>';
-function renderNavMobile() {
-  return nav.map((it) => {
-    let h = `<a class="mm-item" href="${it.href}" onclick="tmm()">${navIcon(it.label)}<span class="mm-lbl">${it.label}</span>${MM_CHEV}</a>`;
-    if (it.children) h += `<div class="mm-sub">` + it.children.map((c) => `<a class="mm-sub-link" href="${c.href}" onclick="tmm()"><span class="mm-dot"></span>${c.label}</a>`).join('') + `</div>`;
-    return h;
-  }).join('');
-}
-
+const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const abs = (path) => site.baseUrl + (path.startsWith('/') ? path : '/' + path);
 
-function renderHead({ title, description, canonical, ogImage, jsonld = [], geo, robots }) {
-  const img = abs(ogImage || site.ogImage);
+// ── JSON-LD ──
+const ORG_LD = { '@context': 'https://schema.org', '@type': 'Organization', name: site.name, url: site.baseUrl, logo: abs('/favicon-512.png'), email: site.email, telephone: site.phoneE164, areaServed: site.region, sameAs: [site.agencyUrl] };
+const WEBSITE_LD = { '@context': 'https://schema.org', '@type': 'WebSite', name: site.name, url: site.baseUrl, inLanguage: 'fr-FR' };
+const crumb = (items) => ({ '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: items.map((it, i) => ({ '@type': 'ListItem', position: i + 1, name: it.name, item: it.out === 'index.html' ? site.baseUrl + '/' : abs(it.out) })) });
+const faqLd = (qa) => ({ '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: qa.map((x) => ({ '@type': 'Question', name: x.q, acceptedAnswer: { '@type': 'Answer', text: x.a } })) });
+const productLd = () => ({ '@context': 'https://schema.org', '@type': 'Product', name: 'Vizyo Tracky — traceur GPS de flotte', description: 'Boîtier GPS + application française : géolocalisation temps réel, coupure moteur, alertes, rapports.', brand: { '@type': 'Brand', name: 'Vizyo Tracky' }, offers: { '@type': 'AggregateOffer', priceCurrency: 'EUR', lowPrice: P.lite.annual, highPrice: P.pro.monthly, offerCount: 3, offers: [{ '@type': 'Offer', name: 'Tracky Lite (annuel)', price: P.lite.annual, priceCurrency: 'EUR' }, { '@type': 'Offer', name: 'Tracky Pro (annuel)', price: P.pro.annual, priceCurrency: 'EUR' }] } });
+const localBizLd = (c, out) => ({ '@context': 'https://schema.org', '@type': 'LocalBusiness', name: `Vizyo Tracky — ${c.name}`, description: `Installation de traceurs GPS de flotte à ${c.name} (${c.dept}) et dans tout le département. Géolocalisation temps réel, coupure moteur, support local.`, url: abs(out), telephone: site.phoneE164, email: site.email, priceRange: '€€', areaServed: { '@type': 'City', name: c.name }, address: { '@type': 'PostalAddress', addressLocality: c.name, addressRegion: 'Occitanie', addressCountry: 'FR' }, geo: { '@type': 'GeoCoordinates', latitude: c.lat, longitude: c.lng } });
+const HOME = { name: 'Accueil', out: 'index.html' };
+
+// ── <head> SEO (le design fournit polices + styles via son <helmet>) ──
+function seoHead({ title, description, canonical, jsonld = [], geo, robots }) {
+  const img = abs(site.ogImage);
   const ld = jsonld.map((o) => `<script type="application/ld+json">${JSON.stringify(o)}</script>`).join('\n');
-  const geoTags = geo ? `<meta name="geo.region" content="FR-${geo.dept}"><meta name="geo.placename" content="${geo.place}"><meta name="geo.position" content="${geo.lat};${geo.lng}"><meta name="ICBM" content="${geo.lat}, ${geo.lng}">` : '';
-  return `<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>${title}</title>
-<meta name="description" content="${description}">
+  const geoTags = geo ? `<meta name="geo.region" content="FR-${geo.dept}"><meta name="geo.placename" content="${esc(geo.place)}"><meta name="geo.position" content="${geo.lat};${geo.lng}"><meta name="ICBM" content="${geo.lat}, ${geo.lng}">` : '';
+  return `<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(title)}</title>
+<meta name="description" content="${esc(description)}">
 <link rel="canonical" href="${canonical}">
 <meta name="robots" content="${robots || 'index,follow'}">
-<meta name="theme-color" content="#0A0F0D">
+<meta name="theme-color" content="#080B0A">
 ${geoTags}
-<meta property="og:type" content="website"><meta property="og:site_name" content="${site.name}"><meta property="og:locale" content="${site.locale}">
-<meta property="og:title" content="${title}"><meta property="og:description" content="${description}"><meta property="og:url" content="${canonical}"><meta property="og:image" content="${img}">
-<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${title}"><meta name="twitter:description" content="${description}"><meta name="twitter:image" content="${img}">
-<script>(function(){try{var t=localStorage.getItem('vt-theme');if(!t){t=window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'}document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme='dark'}})();</script>
+<meta property="og:type" content="website"><meta property="og:site_name" content="${esc(site.name)}"><meta property="og:locale" content="${site.locale}">
+<meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(description)}"><meta property="og:url" content="${canonical}"><meta property="og:image" content="${img}">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${esc(title)}"><meta name="twitter:description" content="${esc(description)}"><meta name="twitter:image" content="${img}">
 <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png"><link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png"><link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png"><link rel="icon" type="image/png" sizes="96x96" href="/favicon-96.png"><link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png"><link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon-180.png"><link rel="manifest" href="/site.webmanifest">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&display=swap" media="print" onload="this.media='all'">
-<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&display=swap"></noscript>
-<link rel="stylesheet" href="assets/tracky.css?v=${ASSET_V.css}">
 ${ld}`;
 }
 
-// Données injectées côté client (simulateur, formulaire, FABs)
-const clientData = { site: { whatsapp: site.whatsapp, leadApi: site.leadApi }, pricing };
-const clientScript = `<script>window.TRACKY=${JSON.stringify(clientData)}</script>`;
+// ── Simulateur tarifs : styles initiaux (identiques à vt.js) ──
+const seg = (a) => `flex:1;padding:11px;border-radius:9px;border:none;cursor:pointer;font-weight:700;font-size:.9rem;font-family:inherit;transition:all .2s;${a ? 'background:var(--accent);color:var(--accent-ink)' : 'background:transparent;color:var(--tx2)'}`;
+const opt = (a) => `padding:13px 10px;border-radius:11px;cursor:pointer;font-weight:700;font-size:.88rem;font-family:inherit;text-align:center;transition:all .2s;${a ? 'background:var(--accent-soft);border:1.5px solid var(--accent);color:var(--accent)' : 'background:var(--surface);border:1px solid var(--border);color:var(--tx2)'}`;
+const tog = (a) => `flex:none;width:50px;height:28px;border-radius:16px;border:none;cursor:pointer;padding:3px;display:flex;transition:all .2s;justify-content:${a ? 'flex-end' : 'flex-start'};background:${a ? 'var(--accent)' : 'var(--border2)'}`;
+const THUMB = 'width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3)';
+const optRow = (title, note, val) => `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px;border:1px solid var(--border);border-radius:12px;background:var(--surface2);margin-bottom:14px"><div><div style="font-weight:700;font-size:.92rem">${title}</div><div style="font-size:.78rem;color:var(--tx2)">${note}</div></div><button data-sim="opt" data-val="${val}" aria-label="${esc(title)}" style="${tog(false)}"><span style="${THUMB}"></span></button></div>`;
+const resCard = (label, out, sub, accent) => `<div style="border:${accent ? '1.5px solid var(--accent)' : '1px solid var(--border)'};border-radius:12px;padding:15px;background:${accent ? 'var(--accent-soft)' : 'var(--surface2)'}"><div style="font-size:.7rem;color:var(--tx2);margin-bottom:5px">${label}</div><div data-out="${out}" style="font-size:1.35rem;font-weight:800;letter-spacing:-.02em${accent ? ';color:var(--accent)' : ''}">…</div><div${sub.o ? ` data-out="${sub.o}"` : ''} style="font-size:.66rem;color:var(--tx3);margin-top:2px">${sub.t}</div></div>`;
 
-function renderPage(meta, contentHtml) {
-  const out = meta.out;
-  const canonical = out === 'index.html' ? site.baseUrl + '/' : abs(out);
-  const head = renderHead({ ...meta, canonical });
-  const header = applyTokens(headerTpl)
-    .replace('{{NAV}}', renderNav(out))
-    .replace('{{NAV_MOBILE}}', renderNavMobile());
-  const footer = applyTokens(footerTpl);
-  const content = applyTokens(contentHtml);
-  return `<!DOCTYPE html>
+// Section simulateur autonome (remplace le composant React du design).
+const SIM_SECTION = `<section class="vt-sec" id="simulateur" style="padding:96px 0">
+<div style="max-width:780px;margin:0 auto;padding:0 32px">
+<div data-reveal style="text-align:center;max-width:40rem;margin:0 auto 40px">
+<p style="font-family:'JetBrains Mono',monospace;font-size:.74rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:600;margin:0 0 14px">Simulateur</p>
+<h2 style="font-size:clamp(1.8rem,3.4vw,2.5rem);font-weight:800;letter-spacing:-.025em;line-height:1.1;margin:0 0 14px">Estimez votre budget.</h2>
+<p style="font-size:1.04rem;line-height:1.6;color:var(--tx2);margin:0">Tout compris, options incluses. Le tarif affiché est bloqué à la souscription.</p>
+</div>
+<div id="vt-sim" data-reveal style="background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:30px;box-shadow:var(--shadow-sm)">
+<div style="display:flex;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:5px;margin-bottom:26px">
+<button data-sim="plan" data-val="lite" style="${seg(false)}">Tracky Lite</button>
+<button data-sim="plan" data-val="pro" style="${seg(true)}">Tracky Pro</button>
+</div>
+<div style="margin-bottom:26px">
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><label style="font-weight:700;font-size:.95rem">Nombre de véhicules</label><span data-out="vehicles" style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:1.4rem;color:var(--accent)">5</span></div>
+<input type="range" min="1" max="50" step="1" value="5" data-sim="vehicles" aria-label="Nombre de véhicules" style="width:100%;height:6px;cursor:pointer;accent-color:var(--accent)">
+<div style="display:flex;justify-content:space-between;margin-top:6px;font-size:.74rem;color:var(--tx3)"><span>1</span><span>50+ → Tracky Fleet</span></div>
+</div>
+<div style="margin-bottom:26px">
+<label style="display:block;font-weight:700;font-size:.95rem;margin-bottom:11px">Engagement</label>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+<button data-sim="eng" data-val="annual" style="${opt(true)}">Annuel renouvelable<small style="display:block;font-weight:500;font-size:.72rem;opacity:.7;margin-top:2px">tarif bloqué</small></button>
+<button data-sim="eng" data-val="monthly" style="${opt(false)}">Mensuel<small style="display:block;font-weight:500;font-size:.72rem;opacity:.7;margin-top:2px">sans engagement</small></button>
+</div>
+</div>
+${optRow('Option Live temps réel (15 s)', '+9,90 €/véhicule/mois · <a href="#modele" style="color:var(--accent);font-weight:600">détails ›</a>', 'live')}
+${optRow("Option Micro d'assistance <span style=\"font-weight:500;color:var(--tx3)\">(légal)</span>", '+6,90 €/véhicule/mois', 'micro')}
+${optRow('Option Agent IA <span style="font-weight:500;color:var(--tx3)">(optimisation)</span>', '+14,90 €/véhicule/mois', 'agent')}
+<div style="margin-bottom:26px;margin-top:12px">
+<label style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-weight:700;font-size:.95rem;margin-bottom:11px">Rétention de l'historique</label>
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+<button data-sim="ret" data-val="90j" style="${opt(true)}">90 jours<small style="display:block;font-weight:500;font-size:.68rem;opacity:.7;margin-top:2px">inclus</small></button>
+<button data-sim="ret" data-val="1an" style="${opt(false)}">1 an<small style="display:block;font-weight:500;font-size:.68rem;opacity:.7;margin-top:2px">+3,90 €</small></button>
+<button data-sim="ret" data-val="2ans" style="${opt(false)}">2 ans<small style="display:block;font-weight:500;font-size:.68rem;opacity:.7;margin-top:2px">+6,90 €</small></button>
+<button data-sim="ret" data-val="3ans" style="${opt(false)}">3 ans<small style="display:block;font-weight:500;font-size:.68rem;opacity:.7;margin-top:2px">+9,90 €</small></button>
+</div>
+</div>
+<div style="height:1px;background:var(--border);margin:0 0 24px"></div>
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
+${resCard('Par jour / véhicule', 'perDay', { t: 'tout compris' })}
+${resCard('Mensuel total', 'monthTotal', { o: 'perVeh', t: '' }, true)}
+${resCard('Coût 1re année', 'year1', { t: 'boîtier + install + abo' })}
+${resCard('Années suivantes', 'recurring', { t: 'abonnement seul' })}
+</div>
+<div style="border:1px solid var(--border);border-radius:12px;padding:18px;background:var(--surface2);margin-bottom:22px">
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><span style="font-size:.82rem;color:var(--tx2)">Économies estimées</span><span data-out="roi" style="font-weight:800;font-size:1.15rem;color:var(--accent)">…</span></div>
+<div style="height:8px;border-radius:5px;background:var(--border);overflow:hidden"><div style="height:100%;width:62%;background:linear-gradient(90deg,var(--accent2),var(--accent))"></div></div>
+<p style="font-size:.74rem;color:var(--tx3);margin:10px 0 0">Carburant &amp; usage maîtrisés, par an pour votre flotte.</p>
+</div>
+<div style="display:flex;align-items:flex-start;gap:9px;font-size:.82rem;color:var(--tx2);margin-bottom:22px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" style="flex:none;margin-top:1px"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"/></svg><span data-out="installNote">Installation : 29 €/véhicule (dès 5).</span></div>
+<a href="index.html#demo" style="display:flex;align-items:center;justify-content:center;gap:8px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:.95rem;padding:14px;border-radius:12px;transition:transform .2s" data-vth="transform:translateY(-2px)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Recevoir mon devis personnalisé</a>
+</div>
+</div>
+</section>`;
+
+// ── Transformation d'une page design → contenu statique ──
+function transform(html, out) {
+  const helmetM = html.match(/<helmet>([\s\S]*?)<\/helmet>/);
+  const bodyM = html.match(/<\/helmet>([\s\S]*?)<\/x-dc>/);
+  if (!helmetM || !bodyM) throw new Error('structure x-dc introuvable dans ' + out);
+  const helmet = helmetM[1].trim();
+  let body = bodyM[1].trim();
+  // bindings support.js → hooks vanilla
+  body = body
+    .replace(/onClick="\{\{ toggleTheme \}\}"/g, 'data-vt="theme"')
+    .replace(/onClick="\{\{ toggleMenu \}\}"/g, 'data-vt="menu"')
+    .replace(/style="display:\{\{ menuDisplay \}\};/g, 'id="vt-menu" style="display:none;')
+    .replace(/ style-hover="([^"]*)"/g, ' data-vth="$1"');
+  // Page tarifs : remplace la section simulateur (bindings React) par la version autonome
+  if (out === 'tarifs.html') body = body.replace(/<section[^>]*id="simulateur"[\s\S]*?<\/section>/, SIM_SECTION);
+  return { helmet, body };
+}
+
+function buildPage(meta) {
+  const canonical = meta.out === 'index.html' ? site.baseUrl + '/' : abs(meta.out);
+  const { helmet, body } = transform(readDesign(meta.file || meta.out), meta.out);
+  const head = seoHead({ title: meta.title, description: meta.description, canonical, jsonld: meta.jsonld || [], geo: meta.geo, robots: meta.robots });
+  const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
 ${head}
+${helmet}
 </head>
 <body>
-${header}
-<main id="main">
-${content}
-</main>
-${footer}
-${clientScript}
-<script src="assets/tracky.js?v=${ASSET_V.js}"></script>
+${body}
+<script src="assets/vt.js?v=${VT_V}"></script>
 </body>
 </html>`;
+  const leftover = html.match(/\{\{[^}]*\}\}/);
+  if (leftover) console.warn('  ⚠︎ binding non résolu dans', meta.out, ':', leftover[0]);
+  writeFileSync(pub(meta.out), html, 'utf8');
+  return meta.out === 'index.html' ? site.baseUrl + '/' : abs(meta.out);
 }
 
-// ── Manifeste des pages (slug => fichier contenu + SEO) ──
-const ORG_LD = {
-  '@context': 'https://schema.org', '@type': 'Organization', name: site.name, url: site.baseUrl,
-  logo: abs('/apple-touch-icon-180.png'), email: site.email, telephone: site.phoneE164,
-  areaServed: site.region, sameAs: [site.agencyUrl],
-};
-const WEBSITE_LD = { '@context': 'https://schema.org', '@type': 'WebSite', name: site.name, url: site.baseUrl, inLanguage: 'fr-FR' };
-
-// Helpers JSON-LD
-const crumb = (items) => ({ '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: items.map((it, i) => ({ '@type': 'ListItem', position: i + 1, name: it.name, item: it.out === 'index.html' ? site.baseUrl + '/' : abs(it.out) })) });
-const faqLd = (qa) => ({ '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: qa.map((x) => ({ '@type': 'Question', name: x.q, acceptedAnswer: { '@type': 'Answer', text: x.a } })) });
-const productLd = () => ({
-  '@context': 'https://schema.org', '@type': 'Product', name: 'Vizyo Tracky — traceur GPS de flotte',
-  description: "Boîtier GPS + application française : géolocalisation temps réel, coupure moteur, alertes, rapports.",
-  brand: { '@type': 'Brand', name: 'Vizyo Tracky' },
-  offers: {
-    '@type': 'AggregateOffer', priceCurrency: 'EUR', lowPrice: P.lite.annual, highPrice: P.pro.monthly,
-    offerCount: 3, offers: [
-      { '@type': 'Offer', name: 'Tracky Lite (annuel)', price: P.lite.annual, priceCurrency: 'EUR' },
-      { '@type': 'Offer', name: 'Tracky Pro (annuel)', price: P.pro.annual, priceCurrency: 'EUR' },
-    ],
-  },
-});
-const localBizLd = (c, out) => ({
-  '@context': 'https://schema.org', '@type': 'LocalBusiness', name: `Vizyo Tracky — ${c.name}`,
-  description: `Installation de traceurs GPS de flotte à ${c.name} (${c.dept}) et dans tout le département. Géolocalisation temps réel, coupure moteur, support local.`,
-  url: abs(out), telephone: site.phoneE164, email: site.email, priceRange: '€€', areaServed: { '@type': 'City', name: c.name },
-  address: { '@type': 'PostalAddress', addressLocality: c.name, addressRegion: 'Occitanie', addressCountry: 'FR' },
-  geo: { '@type': 'GeoCoordinates', latitude: c.lat, longitude: c.lng },
-});
-
-const HOME = { name: 'Accueil', out: 'index.html' };
-
+// ── Manifeste des pages principales (SEO) ──
 const PAGES = [
-  {
-    out: 'index.html', file: 'pages/index.html',
-    title: 'Vizyo Tracky — Traçage GPS & gestion de flotte en Occitanie',
-    description: "Boîtier GPS + application française pour gérer votre flotte : géolocalisation temps réel, coupure moteur, alertes, rapports. Installation à Toulouse et en Occitanie.",
-    jsonld: [ORG_LD, WEBSITE_LD],
-  },
-  {
-    out: 'fonctionnalites.html', file: 'pages/fonctionnalites.html',
-    title: 'Fonctionnalités — GPS temps réel, coupure moteur, alertes | Vizyo Tracky',
-    description: "Toutes les fonctionnalités de Vizyo Tracky en détail : géolocalisation temps réel, Live 10 s, historique, coupure moteur par plage horaire, alertes, rapports, conducteurs identifiés, mode vie privée CNIL.",
-    jsonld: [productLd(), crumb([HOME, { name: 'Fonctionnalités', out: 'fonctionnalites.html' }])],
-  },
-  {
-    out: 'tarifs.html', file: 'pages/tarifs.html',
-    title: `Tarifs & simulateur GPS flotte — dès ${fmt(P.lite.annual)} €/véhicule | Vizyo Tracky`,
-    description: `Tarifs clairs et bloqués à la souscription : Tracky Lite dès ${fmt(P.lite.annual)} €, Pro dès ${fmt(P.pro.annual)} €/véhicule/mois HT. Option Live temps réel, rétention longue. Simulateur de budget en ligne.`,
-    jsonld: [productLd(), crumb([HOME, { name: 'Tarifs', out: 'tarifs.html' }]), faqLd([
-      { q: "Quels sont les tarifs de Vizyo Tracky ?", a: `Tracky Lite à ${fmt(P.lite.annual)} € et Tracky Pro à ${fmt(P.pro.annual)} € par véhicule et par mois HT en engagement annuel renouvelable. SIM et data incluses.` },
-      { q: "Le temps réel est-il inclus ?", a: `Le suivi standard est inclus. Le Live temps réel (10 s) est une option à ${fmt(A.live.perVehMonth)} €/véhicule/mois car il génère beaucoup plus de données.` },
-      { q: "Le tarif peut-il augmenter ?", a: "Non : le tarif est garanti à la souscription et reconduit au même prix. Pas d'augmentation surprise." },
-    ])],
-  },
-  {
-    out: 'secteur-public.html', file: 'pages/secteur-public.html',
-    title: 'GPS véhicules de service — secteur public & médico-social | Vizyo Tracky',
-    description: "Géolocalisation des véhicules de service pour établissements publics, foyers, structures médico-sociales et collectivités : conformité CNIL, conducteurs identifiés, données souveraines, marchés publics et contrats pluriannuels.",
-    jsonld: [crumb([HOME, { name: 'Secteur public', out: 'secteur-public.html' }])],
-  },
-  {
-    out: 'securite.html', file: 'pages/securite.html',
-    title: 'Sécurité & conformité RGPD — hébergement France | Vizyo Tracky',
-    description: "Vos données restent en France, sous votre contrôle : hébergement souverain, chiffrement TLS 1.3, conformité RGPD by design, DPA signable, mode vie privée CNIL.",
-    jsonld: [crumb([HOME, { name: 'Sécurité', out: 'securite.html' }])],
-  },
-  {
-    out: 'gps-flotte-occitanie.html', file: 'pages/gps-flotte-occitanie.html',
-    title: 'GPS flotte Occitanie — géolocalisation véhicules entreprise (13 départements)',
-    description: "Vizyo Tracky équipe les flottes professionnelles et véhicules de service dans toute l'Occitanie : Toulouse, Montpellier, Nîmes, Perpignan… Installation locale, application française, support réactif.",
-    jsonld: [localBizLd({ name: 'Occitanie', dept: 'Occitanie', lat: 43.6, lng: 2.0 }, 'gps-flotte-occitanie.html'), crumb([HOME, { name: 'Zones desservies', out: 'gps-flotte-occitanie.html' }])],
-  },
+  { out: 'index.html', title: 'Vizyo Tracky — Traçage GPS & gestion de flotte en Occitanie', description: "Boîtier GPS + application française pour gérer votre flotte : géolocalisation temps réel, coupure moteur, alertes, rapports. Installation à Toulouse et en Occitanie.", jsonld: [ORG_LD, WEBSITE_LD] },
+  { out: 'fonctionnalites.html', title: 'Fonctionnalités — GPS temps réel, coupure moteur, alertes | Vizyo Tracky', description: "Toutes les fonctionnalités de Vizyo Tracky : géolocalisation temps réel, Live 15 s, historique, coupure moteur par plage horaire, alertes, rapports, conducteurs identifiés, mode vie privée CNIL.", jsonld: [productLd(), crumb([HOME, { name: 'Fonctionnalités', out: 'fonctionnalites.html' }])] },
+  { out: 'tarifs.html', title: `Tarifs & simulateur GPS flotte — dès ${fmt(P.lite.annual)} €/véhicule | Vizyo Tracky`, description: `Tarifs clairs et bloqués à la souscription : Tracky Lite dès ${fmt(P.lite.annual)} €, Pro dès ${fmt(P.pro.annual)} €/véhicule/mois HT. Options Live temps réel, micro, agent IA, rétention. Simulateur en ligne.`, jsonld: [productLd(), crumb([HOME, { name: 'Tarifs', out: 'tarifs.html' }]), faqLd([{ q: 'Quels sont les tarifs de Vizyo Tracky ?', a: `Tracky Lite à ${fmt(P.lite.annual)} € et Tracky Pro à ${fmt(P.pro.annual)} € par véhicule et par mois HT en engagement annuel renouvelable. SIM et data incluses.` }, { q: 'Le temps réel est-il inclus ?', a: `Le suivi standard est inclus. Le Live temps réel (15 s) est une option à ${fmt(A.live.perVehMonth)} €/véhicule/mois car il génère beaucoup plus de données.` }, { q: 'Le tarif peut-il augmenter ?', a: "Non : le tarif est garanti à la souscription et reconduit au même prix. Pas d'augmentation surprise." }])] },
+  { out: 'secteur-public.html', title: 'GPS véhicules de service — secteur public & médico-social | Vizyo Tracky', description: "Géolocalisation des véhicules de service pour établissements publics, foyers, structures médico-sociales et collectivités : conformité CNIL, conducteurs identifiés, données souveraines, marchés publics.", jsonld: [crumb([HOME, { name: 'Secteur public', out: 'secteur-public.html' }])] },
+  { out: 'securite.html', title: 'Sécurité & conformité RGPD — hébergement France | Vizyo Tracky', description: "Vos données restent en France, sous votre contrôle : hébergement souverain, chiffrement TLS 1.3, conformité RGPD by design, mode vie privée CNIL.", jsonld: [crumb([HOME, { name: 'Sécurité', out: 'securite.html' }])] },
+  { out: 'gps-flotte-occitanie.html', title: 'GPS flotte Occitanie — géolocalisation véhicules entreprise (13 départements)', description: "Vizyo Tracky équipe les flottes professionnelles et véhicules de service dans toute l'Occitanie : Toulouse, Montpellier, Nîmes, Perpignan… Installation locale, application française, support réactif.", jsonld: [localBizLd({ name: 'Occitanie', dept: 'Occitanie', lat: 43.6, lng: 2.0 }, 'gps-flotte-occitanie.html'), crumb([HOME, { name: 'Zones desservies', out: 'gps-flotte-occitanie.html' }])] },
+  { out: 'mentions-legales.html', title: 'Mentions légales | Vizyo Tracky', description: 'Mentions légales du site Vizyo Tracky (Vizyo Agency).', robots: 'index,follow', noSitemap: true, jsonld: [crumb([HOME, { name: 'Mentions légales', out: 'mentions-legales.html' }])] },
 ];
 
 let built = 0;
@@ -226,51 +177,27 @@ function seoWeight(out) {
   if (out.startsWith('gps-flotte-')) return { priority: '0.7', changefreq: 'monthly' };
   return { priority: '0.8', changefreq: 'monthly' };
 }
-function emit(meta, content) {
-  writeFileSync(pub(meta.out), renderPage(meta, content), 'utf8');
-  const loc = meta.out === 'index.html' ? site.baseUrl + '/' : abs(meta.out);
-  sitemapUrls.push({ loc, ...seoWeight(meta.out) });
-  built++;
-  console.log('✓', meta.out);
+function emit(meta) {
+  const loc = buildPage(meta);
+  if (!meta.noSitemap) sitemapUrls.push({ loc, ...seoWeight(meta.out) });
+  built++; console.log('✓', meta.out);
 }
 
-for (const meta of PAGES) {
-  let content;
-  try { content = read(meta.file); }
-  catch { console.warn('⚠︎ contenu manquant, page ignorée :', meta.file); continue; }
-  emit(meta, content);
-}
+for (const meta of PAGES) emit(meta);
 
-// ── Pages villes (SEO local) depuis le gabarit ──
-let cityTpl = null;
-try { cityTpl = read('pages/_city.html'); } catch { console.warn('⚠︎ gabarit pages/_city.html manquant — pages villes ignorées'); }
-if (cityTpl) {
-  for (const c of cities.filter((x) => x.generate)) {
-    const out = `gps-flotte-${c.slug}.html`;
-    const zonesLi = c.zones.map((z) => `<span class="city-chip">${z}</span>`).join('');
-    const content = cityTpl
-      .split('{{CITY_ENC}}').join(encodeURIComponent(c.name))
-      .split('{{CITY_SLUG}}').join(c.slug)
-      .split('{{CITY}}').join(c.name)
-      .split('{{IN_DEPT}}').join(c.inDept)
-      .split('{{OF_DEPT}}').join(c.ofDept)
-      .split('{{DEPTNUM}}').join(c.deptNum)
-      .split('{{DEPT}}').join(c.dept)
-      .split('{{INTRO}}').join(c.intro || '')
-      .split('{{CONTEXT}}').join(c.context || '')
-      .split('{{ZONES}}').join(c.zones.join(', '))
-      .split('{{ZONES_LI}}').join(zonesLi);
-    emit({
-      out, file: '(gabarit)',
-      title: `GPS flotte ${c.name} — géolocalisation véhicules entreprise (${c.dept})`,
-      description: `Installation de traceurs GPS de flotte à ${c.name} et ${c.inDept} (${c.deptNum}). Géolocalisation temps réel, coupure moteur, alertes. Application française, support local, installation sous 48h.`,
-      geo: { dept: c.deptNum, place: c.name, lat: c.lat, lng: c.lng },
-      jsonld: [localBizLd(c, out), crumb([HOME, { name: 'Occitanie', out: 'gps-flotte-occitanie.html' }, { name: c.name, out }]), faqLd([
-        { q: `Installez-vous les traceurs GPS à ${c.name} ?`, a: `Oui, nous intervenons à ${c.name} et partout ${c.inDept}. Installation sur site en moins de 48h.` },
-        { q: `Quel est le tarif à ${c.name} ?`, a: `Les mêmes tarifs transparents partout : Tracky Lite dès ${fmt(P.lite.annual)} € et Pro dès ${fmt(P.pro.annual)} €/véhicule/mois HT.` },
-      ])],
-    }, content);
-  }
+// ── Pages villes (SEO local depuis cities.mjs, contenu depuis le design) ──
+for (const c of cities.filter((x) => x.generate)) {
+  const out = `gps-flotte-${c.slug}.html`;
+  emit({
+    out, file: out,
+    title: `GPS flotte ${c.name} — géolocalisation véhicules entreprise (${c.dept})`,
+    description: `Installation de traceurs GPS de flotte à ${c.name} et ${c.inDept} (${c.deptNum}). Géolocalisation temps réel, coupure moteur, alertes. Application française, support local, installation sous 48h.`,
+    geo: { dept: c.deptNum, place: c.name, lat: c.lat, lng: c.lng },
+    jsonld: [localBizLd(c, out), crumb([HOME, { name: 'Occitanie', out: 'gps-flotte-occitanie.html' }, { name: c.name, out }]), faqLd([
+      { q: `Installez-vous les traceurs GPS à ${c.name} ?`, a: `Oui, nous intervenons à ${c.name} et partout ${c.inDept}. Installation sur site en moins de 48h.` },
+      { q: `Quel est le tarif à ${c.name} ?`, a: `Les mêmes tarifs transparents partout : Tracky Lite dès ${fmt(P.lite.annual)} € et Pro dès ${fmt(P.pro.annual)} €/véhicule/mois HT.` },
+    ])],
+  });
 }
 
 // ── Sitemap + robots ──
@@ -282,4 +209,4 @@ ${sitemapUrls.map((u) => `  <url><loc>${u.loc}</loc><lastmod>${today}</lastmod><
 writeFileSync(pub('sitemap.xml'), sitemap, 'utf8');
 writeFileSync(pub('robots.txt'), `User-agent: *\nAllow: /\n\nSitemap: ${site.baseUrl}/sitemap.xml\n`, 'utf8');
 
-console.log(`\n${built} page(s) générée(s) · sitemap.xml (${sitemapUrls.length} URL) · robots.txt`);
+console.log(`\n${built} page(s) générée(s) · sitemap.xml (${sitemapUrls.length} URL) · robots.txt · vt.js?v=${VT_V}`);
