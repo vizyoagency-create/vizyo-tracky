@@ -98,6 +98,13 @@ const weekdayFmt = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'num
                 @if (c.overflow > 0) { <span class="cal-dot cal-dot--more"></span> }
               </span>
             }
+            <!-- Mobile : indicateurs de coin (les compteurs chiffrés sont masqués faute de place) -->
+            @if (c.active > 0 || c.forecast > 0) {
+              <span class="cal-mini" aria-hidden="true">
+                @if (c.active > 0) { <span class="cal-mini-dot cal-mini-dot--act"></span> }
+                @if (c.forecast > 0) { <span class="cal-mini-dot cal-mini-dot--fc"></span> }
+              </span>
+            }
           </button>
         }
       </div>
@@ -238,6 +245,11 @@ const weekdayFmt = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'num
       background: var(--fg-tertiary) !important;
       opacity: .6;
     }
+    /* Indicateurs de coin (mobile only) : activité réelle (bleu plein) + prévu (violet contour). */
+    .cal-mini { display: none; }
+    .cal-mini-dot { width: 5px; height: 5px; border-radius: 50%; }
+    .cal-mini-dot--act { background: #38BDF8; }
+    .cal-mini-dot--fc { border: 1px solid #A78BFA; }
 
     @media (max-width: 640px) {
       .cal { padding: 6px; }
@@ -251,8 +263,9 @@ const weekdayFmt = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'num
       .cal-cell-day { font-size: 12px; }
       /* En mobile : on remplace les pilules texte par des pastilles colorées. */
       .cal-cell-pills { display: none; }
-      /* Cellules trop compactes en mobile pour les badges : masqués. */
+      /* Cellules trop compactes en mobile pour les badges chiffrés : remplacés par des points de coin. */
       .cal-badges { display: none; }
+      .cal-mini { position: absolute; top: 4px; right: 4px; display: inline-flex; gap: 2px; }
       .cal-dots { display: flex; justify-content: center; flex-wrap: wrap; }
     }
   `],

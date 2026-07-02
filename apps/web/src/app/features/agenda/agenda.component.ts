@@ -15,11 +15,13 @@ import { HttpErrorResponse } from '@angular/common/http';
 import {
   LucideAngularModule, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Check,
   Layers, Truck, Plus, AlertTriangle, CalendarClock, Wrench, X, Trash2, Play, ListChecks,
-  Gauge, CalendarCheck, Inbox,
+  Gauge, CalendarCheck, Inbox, Sparkles, Activity, ShieldCheck, Ban, Info,
 } from 'lucide-angular';
 import type {
   AgendaSummaryDto,
   CreateVehicleEventDto,
+  ForecastSlotDto,
+  VehicleActivitySlotDto,
   VehicleEventDto,
   VehicleEventStatus,
   VehicleEventType,
@@ -41,6 +43,7 @@ import {
   eventUrgency,
   localIso,
   severityLabel,
+  startOfDay,
   startOfMonth,
   urgencyColor,
 } from './agenda.utils';
@@ -279,59 +282,157 @@ interface GroupOption {
           <header class="ag-sheet-head">
             <div>
               <h3 class="ag-sheet-title">{{ dayPanelLabel() }}</h3>
-              <p class="ag-sheet-sub">{{ dayPanelEvents().length }} événement(s)</p>
+              <span class="ag-ctx" [attr.data-ctx]="dayContext()">
+                <lucide-icon [img]="dayContext() === 'past' ? ActivityIcon : InfoIcon" [size]="12"></lucide-icon>
+                {{ dayContextLabel() }}
+              </span>
             </div>
             <button type="button" (click)="closeDayPanel()" aria-label="Fermer" class="ag-icon-btn">
               <lucide-icon [img]="XIcon" [size]="18"></lucide-icon>
             </button>
           </header>
           <div class="ag-sheet-body">
-            @if (dayPanelEvents().length === 0) {
-              <p class="ag-sheet-empty">Aucun événement ce jour.</p>
-            }
-            @for (ev of dayPanelEvents(); track ev.id) {
-              <article class="ag-day-card" [style.--pill]="eventColor(ev)">
-                <div class="ag-day-card-top">
-                  <span class="ag-day-card-type">
-                    <lucide-icon [img]="ev.type === 'INCIDENT' ? AlertTriangleIcon : WrenchIcon" [size]="12"></lucide-icon>
-                    {{ eventTypeLabel(ev.type) }}
+
+            <!-- ── Disponibilité (aujourd'hui + à venir) ── -->
+            @if (canSeeInsights() && dayContext() !== 'past') {
+              <div class="ag-avail" [class.ag-avail--full]="dayAvailability().unavailable.length === 0">
+                <div class="ag-avail-top">
+                  <span class="ag-avail-count">
+                    <span class="ag-avail-big">{{ dayAvailability().available }}</span>
+                    <span class="ag-avail-den">/ {{ dayAvailability().total }}</span>
                   </span>
-                  <span class="ag-day-card-badges">
-                    @if (isImmobilizing(ev)) {
-                      <span class="ag-blocked" title="Véhicule exclu des réservations et suggestions IA tant que l'événement est actif">Immobilisé</span>
-                    }
-                    <span class="ag-status" [attr.data-status]="ev.status">{{ eventStatusLabel(ev.status) }}</span>
-                  </span>
+                  <span class="ag-avail-lbl">véhicule(s) disponible(s){{ dayContext() === 'today' ? " aujourd'hui" : ' ce jour' }}</span>
                 </div>
-                <p class="ag-day-card-title">{{ ev.title }}</p>
-                <p class="ag-day-card-meta">
-                  @if (ev.vehiclePlate) { <span class="ag-day-card-plate">{{ ev.vehiclePlate }}</span> }
-                  @if (!ev.allDay) { · {{ ev.startAt | date:'HH:mm' }} }
-                  @if (ev.odometerKm != null) { · {{ ev.odometerKm }} km }
-                </p>
-                @if (ev.description) { <p class="ag-day-card-desc">{{ ev.description }}</p> }
-                @if (canManage()) {
-                  <div class="ag-day-card-actions">
-                    @if (ev.status !== 'IN_PROGRESS' && ev.status !== 'DONE' && ev.status !== 'CANCELLED') {
-                      <button type="button" (click)="setStatus(ev, 'IN_PROGRESS')" [disabled]="busyId() === ev.id"
-                              class="ag-act ag-act--start">
-                        <lucide-icon [img]="PlayIcon" [size]="12"></lucide-icon> En cours
-                      </button>
+                <div class="ag-avail-bar"><span [style.width.%]="dayAvailability().pct"></span></div>
+                @if (dayAvailability().unavailable.length > 0) {
+                  <ul class="ag-unavail">
+                    @for (u of dayAvailability().unavailable; track u.vehicleId) {
+                      <li class="ag-unavail-row">
+                        <span class="ag-unavail-ic" [attr.data-kind]="u.kind">
+                          <lucide-icon [img]="u.kind === 'immobilized' ? BanIcon : CalendarCheckIcon" [size]="12"></lucide-icon>
+                        </span>
+                        <span class="ag-unavail-plate">{{ u.plate }}</span>
+                        <span class="ag-unavail-lbl">{{ u.kind === 'immobilized' ? 'Immobilisé' : 'Réservé' }} · {{ u.label }}</span>
+                      </li>
                     }
-                    @if (ev.status !== 'DONE' && ev.status !== 'CANCELLED') {
-                      <button type="button" (click)="setStatus(ev, 'DONE')" [disabled]="busyId() === ev.id"
-                              class="ag-act ag-act--done">
-                        <lucide-icon [img]="CheckIcon" [size]="12"></lucide-icon> Terminé
-                      </button>
-                    }
-                    <button type="button" (click)="deleteEvent(ev)" [disabled]="busyId() === ev.id"
-                            class="ag-act ag-act--del" aria-label="Supprimer">
-                      <lucide-icon [img]="Trash2Icon" [size]="12"></lucide-icon>
-                    </button>
-                  </div>
+                  </ul>
+                } @else {
+                  <p class="ag-avail-ok">
+                    <lucide-icon [img]="ShieldCheckIcon" [size]="13"></lucide-icon>
+                    Tous les véhicules du périmètre sont disponibles.
+                  </p>
                 }
-              </article>
+              </div>
             }
+
+            <!-- ── Usage prévu (aujourd'hui + à venir) ── -->
+            @if (canSeeInsights() && dayContext() !== 'past') {
+              <section class="ag-sec">
+                <div class="ag-sec-head">
+                  <span class="ag-sec-titr ag-sec-titr--fc"><lucide-icon [img]="SparklesIcon" [size]="13"></lucide-icon> Usage prévu</span>
+                  <span class="ag-sec-badge ag-sec-badge--fc">{{ dayForecast().length }}</span>
+                </div>
+                <p class="ag-sec-sub">Estimé d'après l'historique récent. Indicatif — n'empêche pas de réserver.</p>
+                @if (dayForecast().length === 0) {
+                  <p class="ag-sec-empty">Aucun usage habituel prévu ce jour.</p>
+                } @else {
+                  @for (f of dayForecast(); track f.vehicleId) {
+                    <div class="ag-insight">
+                      <span class="ag-insight-plate">{{ f.plate }}</span>
+                      <span class="ag-insight-time">{{ f.time }}</span>
+                      <span class="ag-insight-conf" [title]="'Observé : ' + f.basis">
+                        <span class="ag-insight-bar"><span [style.width.%]="f.confidence * 100" [style.background]="confColor(f.confidence)"></span></span>
+                        <span class="ag-insight-basis">{{ f.basis }}</span>
+                      </span>
+                    </div>
+                  }
+                }
+              </section>
+            }
+
+            <!-- ── Utilisation réelle (jours passés) ── -->
+            @if (canSeeInsights() && dayContext() === 'past') {
+              <section class="ag-sec">
+                <div class="ag-sec-head">
+                  <span class="ag-sec-titr ag-sec-titr--act"><lucide-icon [img]="ActivityIcon" [size]="13"></lucide-icon> Utilisation réelle</span>
+                  @if (dayForecast().length > 0) {
+                    <span class="ag-cmp" title="Prévision vs réalité de ce jour">prévu {{ dayForecast().length }} · réel {{ dayActivity().length }}</span>
+                  } @else {
+                    <span class="ag-sec-badge ag-sec-badge--act">{{ dayActivity().length }}</span>
+                  }
+                </div>
+                @if (dayActivity().length === 0) {
+                  <p class="ag-sec-empty">Aucun véhicule n'a roulé ce jour.</p>
+                } @else {
+                  @for (a of dayActivity(); track a.vehicleId) {
+                    <div class="ag-insight">
+                      <span class="ag-insight-plate">{{ a.plate }}</span>
+                      <span class="ag-insight-time">{{ a.trips }} trajet{{ a.trips > 1 ? 's' : '' }}</span>
+                      <span class="ag-insight-km">{{ a.distanceKm }} km</span>
+                    </div>
+                  }
+                }
+              </section>
+            }
+
+            <!-- ── Réservations & événements (tous les jours) ── -->
+            <section class="ag-sec">
+              <div class="ag-sec-head">
+                <span class="ag-sec-titr"><lucide-icon [img]="CalendarDaysIcon" [size]="13"></lucide-icon> Réservations &amp; événements</span>
+                <span class="ag-sec-badge">{{ dayPanelEvents().length }}</span>
+              </div>
+              @if (dayPanelEvents().length === 0) {
+                <p class="ag-sec-empty">Aucun événement enregistré ce jour.</p>
+              }
+              @for (ev of dayPanelEvents(); track ev.id) {
+                <article class="ag-day-card" [style.--pill]="eventColor(ev)">
+                  <div class="ag-day-card-top">
+                    <span class="ag-day-card-type">
+                      <lucide-icon [img]="ev.type === 'INCIDENT' ? AlertTriangleIcon : ev.type === 'RESERVATION' ? CalendarCheckIcon : WrenchIcon" [size]="12"></lucide-icon>
+                      {{ eventTypeLabel(ev.type) }}
+                    </span>
+                    <span class="ag-day-card-badges">
+                      @if (isImmobilizing(ev)) {
+                        <span class="ag-blocked" title="Véhicule exclu des réservations et suggestions IA tant que l'événement est actif">Immobilisé</span>
+                      }
+                      <span class="ag-status" [attr.data-status]="ev.status">{{ eventStatusLabel(ev.status) }}</span>
+                    </span>
+                  </div>
+                  <p class="ag-day-card-title">{{ ev.title }}</p>
+                  <p class="ag-day-card-meta">
+                    @if (ev.vehiclePlate) { <span class="ag-day-card-plate">{{ ev.vehiclePlate }}</span> }
+                    @if (ev.type === 'RESERVATION' && !ev.allDay) {
+                      · {{ ev.startAt | date:'HH:mm' }}@if (ev.endAt) { → {{ ev.endAt | date:'HH:mm' }} }
+                    } @else if (!ev.allDay) { · {{ ev.startAt | date:'HH:mm' }} }
+                    @if (ev.odometerKm != null) { · {{ ev.odometerKm }} km }
+                  </p>
+                  @if (ev.description) { <p class="ag-day-card-desc">{{ ev.description }}</p> }
+                  @if (reservationReason(ev)) { <p class="ag-day-card-desc">{{ reservationReason(ev) }}</p> }
+                  @if (canManage() && ev.type !== 'RESERVATION') {
+                    <div class="ag-day-card-actions">
+                      @if (ev.status !== 'IN_PROGRESS' && ev.status !== 'DONE' && ev.status !== 'CANCELLED') {
+                        <button type="button" (click)="setStatus(ev, 'IN_PROGRESS')" [disabled]="busyId() === ev.id"
+                                class="ag-act ag-act--start">
+                          <lucide-icon [img]="PlayIcon" [size]="12"></lucide-icon> En cours
+                        </button>
+                      }
+                      @if (ev.status !== 'DONE' && ev.status !== 'CANCELLED') {
+                        <button type="button" (click)="setStatus(ev, 'DONE')" [disabled]="busyId() === ev.id"
+                                class="ag-act ag-act--done">
+                          <lucide-icon [img]="CheckIcon" [size]="12"></lucide-icon> Terminé
+                        </button>
+                      }
+                      <button type="button" (click)="deleteEvent(ev)" [disabled]="busyId() === ev.id"
+                              class="ag-act ag-act--del" aria-label="Supprimer">
+                        <lucide-icon [img]="Trash2Icon" [size]="12"></lucide-icon>
+                      </button>
+                    </div>
+                  } @else if (ev.type === 'RESERVATION') {
+                    <p class="ag-day-card-hint">Gérer depuis « Réserver » (demandes à valider).</p>
+                  }
+                </article>
+              }
+            </section>
           </div>
           @if (canReserve()) {
             <footer class="ag-sheet-foot">
@@ -770,6 +871,74 @@ interface GroupOption {
       background: rgba(239,68,68,.12); color: #ef4444; white-space: nowrap;
       text-transform: uppercase; letter-spacing: .03em;
     }
+    .ag-day-card-hint { font-size: 11px; color: var(--fg-tertiary); margin: 8px 0 0; font-style: italic; }
+
+    /* ─── P2 — Panneau jour enrichi (contexte + 3 sections) ─── */
+    .ag-ctx {
+      display: inline-flex; align-items: center; gap: 5px; margin-top: 4px;
+      font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 999px;
+    }
+    .ag-ctx[data-ctx="past"]   { color: #38BDF8; background: rgba(56,189,248,.12); }
+    .ag-ctx[data-ctx="today"]  { color: var(--tracky-light); background: rgba(16,224,160,.12); }
+    .ag-ctx[data-ctx="future"] { color: #A78BFA; background: rgba(167,139,250,.12); }
+
+    .ag-sec { display: flex; flex-direction: column; gap: 6px; }
+    .ag-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .ag-sec-titr {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+      color: var(--fg-secondary);
+    }
+    .ag-sec-titr--fc { color: #A78BFA; }
+    .ag-sec-titr--act { color: #38BDF8; }
+    .ag-sec-badge {
+      font-size: 11px; font-weight: 800; padding: 1px 8px; border-radius: 999px;
+      background: var(--bg-tertiary); color: var(--fg-tertiary);
+    }
+    .ag-sec-badge--fc { background: rgba(167,139,250,.14); color: #A78BFA; }
+    .ag-sec-badge--act { background: rgba(56,189,248,.14); color: #38BDF8; }
+    .ag-cmp { font-size: 11px; font-weight: 700; color: var(--fg-tertiary); padding: 1px 8px; border-radius: 999px; background: var(--bg-tertiary); }
+    .ag-sec-sub { font-size: 11px; color: var(--fg-tertiary); margin: -2px 0 2px; line-height: 1.4; }
+    .ag-sec-empty { font-size: 12px; color: var(--fg-tertiary); padding: 6px 0; text-align: center; }
+
+    /* Disponibilité */
+    .ag-avail {
+      padding: 14px; border-radius: 14px;
+      background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+    }
+    .ag-avail--full { border-color: color-mix(in srgb, var(--tracky-light) 35%, var(--border-subtle)); }
+    .ag-avail-top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+    .ag-avail-count { display: inline-flex; align-items: baseline; gap: 4px; }
+    .ag-avail-big { font-size: 28px; font-weight: 800; line-height: 1; color: var(--tracky-light); letter-spacing: -.02em; }
+    .ag-avail-den { font-size: 15px; font-weight: 600; color: var(--fg-tertiary); }
+    .ag-avail-lbl { font-size: 12.5px; color: var(--fg-secondary); }
+    .ag-avail-bar { height: 6px; border-radius: 999px; background: var(--bg-tertiary); overflow: hidden; margin: 12px 0 10px; }
+    .ag-avail-bar > span { display: block; height: 100%; background: var(--tracky-light); border-radius: 999px; transition: width .3s ease; }
+    .ag-avail-ok { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--tracky-light); margin: 0; }
+    .ag-unavail { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+    .ag-unavail-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+    .ag-unavail-ic {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 20px; height: 20px; border-radius: 6px; flex-shrink: 0;
+    }
+    .ag-unavail-ic[data-kind="immobilized"] { background: rgba(239,68,68,.14); color: #ef4444; }
+    .ag-unavail-ic[data-kind="reserved"] { background: rgba(56,189,248,.14); color: #38BDF8; }
+    .ag-unavail-plate { font-family: var(--font-mono, monospace); font-weight: 700; color: var(--fg-primary); }
+    .ag-unavail-lbl { font-size: 12px; color: var(--fg-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* Ligne d'insight (prévision / activité réelle) */
+    .ag-insight {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 10px; border-radius: 10px;
+      background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+    }
+    .ag-insight-plate { font-family: var(--font-mono, monospace); font-weight: 700; font-size: 12.5px; color: var(--fg-primary); min-width: 76px; }
+    .ag-insight-time { font-size: 12px; color: var(--fg-secondary); min-width: 74px; }
+    .ag-insight-km { font-size: 12px; font-weight: 600; color: var(--fg-secondary); margin-left: auto; }
+    .ag-insight-conf { flex: 1; display: flex; align-items: center; gap: 7px; min-width: 0; }
+    .ag-insight-bar { flex: 1; height: 5px; border-radius: 999px; background: var(--bg-tertiary); overflow: hidden; }
+    .ag-insight-bar > span { display: block; height: 100%; border-radius: 999px; }
+    .ag-insight-basis { font-size: 10.5px; color: var(--fg-tertiary); white-space: nowrap; }
     .ag-input {
       width: 100%; padding: 9px 11px; border-radius: 10px;
       background: var(--bg-secondary); border: 1px solid var(--border-subtle);
@@ -832,6 +1001,11 @@ export class AgendaComponent implements OnInit {
   protected readonly GaugeIcon = Gauge;
   protected readonly CalendarCheckIcon = CalendarCheck;
   protected readonly InboxIcon = Inbox;
+  protected readonly SparklesIcon = Sparkles;
+  protected readonly ActivityIcon = Activity;
+  protected readonly ShieldCheckIcon = ShieldCheck;
+  protected readonly BanIcon = Ban;
+  protected readonly InfoIcon = Info;
 
   // ─── Helpers exposés au template ───────────────────────────────────────────
   protected readonly eventColor = eventColor;
@@ -848,10 +1022,13 @@ export class AgendaComponent implements OnInit {
   protected readonly loading = signal(true);
 
   protected readonly currentMonth = signal(startOfMonth(new Date()));
-  /** Sprint 8 — activité réelle par jour (nb véhicules ayant roulé), couche agenda (gardée reservations_view). */
-  protected readonly activityByDay = signal<Map<string, number>>(new Map());
-  /** Sprint 8 (Palier C) — usage prévu par jour (nb véhicules), couche fantôme (gardée reservations_view). */
-  protected readonly forecastByDay = signal<Map<string, number>>(new Map());
+  /**
+   * Sprint 8 — créneaux BRUTS gardés en mémoire (activité réelle = trajets ; prévu = récurrence).
+   * Source unique des dérivés « par jour » (badges calendrier) ET du détail riche du panneau
+   * jour (P2). Gardés par `reservations_view` (sinon vidés). Un tableau vide = couche masquée.
+   */
+  private readonly activitySlots = signal<VehicleActivitySlotDto[]>([]);
+  private readonly forecastSlots = signal<ForecastSlotDto[]>([]);
   protected readonly selectedGroupId = signal('');
   protected readonly selectedVehicleId = signal('');
   protected readonly selectedType = signal<'' | VehicleEventType>('');
@@ -898,6 +1075,8 @@ export class AgendaComponent implements OnInit {
   protected readonly canReserve = computed(() => this.perms.can('reservations_request'));
   protected readonly canValidate = computed(() => this.perms.can('reservations_manage'));
   protected readonly canOptimize = computed(() => this.perms.can('reservations_view'));
+  /** Couches d'analyse (activité réelle, prévision, disponibilité) — même garde que la donnée. */
+  protected readonly canSeeInsights = computed(() => this.perms.can('reservations_view'));
   protected readonly resSheetOpen = signal(false);
   protected readonly resStartMode = signal<'request' | 'validate'>('request');
   protected readonly resDefaultDate = signal<string | null>(null);
@@ -944,33 +1123,224 @@ export class AgendaComponent implements OnInit {
     return now.getFullYear() === cur.getFullYear() && now.getMonth() === cur.getMonth();
   });
 
-  /**
-   * Événements filtrés CLIENT-SIDE par groupe + véhicule + type. Le mois et le
-   * périmètre véhicule/groupe sont déjà appliqués côté serveur, mais on re-filtre
-   * pour que les changements de filtre soient instantanés sans round-trip.
-   */
-  protected readonly filteredEvents = computed(() => {
+  /** Ensemble des véhicules du groupe sélectionné (null = pas de filtre groupe). */
+  private readonly groupVehicleIdSet = computed<Set<string> | null>(() => {
     const gid = this.selectedGroupId();
+    if (!gid) return null;
+    return new Set(this.vehicles().filter((v) => v.group?.id === gid).map((v) => v.id));
+  });
+
+  /**
+   * Événements restreints au périmètre groupe + véhicule (SANS le filtre de type). Base commune :
+   * le calendrier y applique le type par-dessus, mais le panneau jour et la disponibilité ont
+   * besoin de TOUS les types (une réservation ne doit pas disparaître parce qu'on filtre « Incident »).
+   */
+  private readonly scopedEvents = computed(() => {
     const vid = this.selectedVehicleId();
-    const type = this.selectedType();
-    const groupVehicleIds = gid
-      ? new Set(this.vehicles().filter((v) => v.group?.id === gid).map((v) => v.id))
-      : null;
+    const gids = this.groupVehicleIdSet();
     return this.events().filter((ev) => {
-      if (type && ev.type !== type) return false;
       if (vid && ev.vehicleId !== vid) return false;
-      if (groupVehicleIds && !groupVehicleIds.has(ev.vehicleId)) return false;
+      if (gids && !gids.has(ev.vehicleId)) return false;
       return true;
     });
   });
 
-  /** Événements du jour sélectionné (panneau). */
-  protected readonly dayPanelEvents = computed(() => {
+  /** Événements filtrés pour le calendrier : scope + filtre de type (instantané, sans round-trip). */
+  protected readonly filteredEvents = computed(() => {
+    const type = this.selectedType();
+    return type ? this.scopedEvents().filter((ev) => ev.type === type) : this.scopedEvents();
+  });
+
+  /** Véhicules du périmètre courant (groupe + véhicule) — dénominateur de la disponibilité. */
+  private readonly availabilityVehicles = computed(() => {
+    const vid = this.selectedVehicleId();
+    const gids = this.groupVehicleIdSet();
+    return this.vehicles().filter((v) => {
+      if (vid && v.id !== vid) return false;
+      if (gids && !gids.has(v.id)) return false;
+      return true;
+    });
+  });
+
+  // ─── Couches dérivées des créneaux bruts (calendrier : compteurs par jour) ──
+  /** Nb de véhicules DISTINCTS ayant roulé par jour (badge bleu « ● N » du calendrier). */
+  protected readonly activityByDay = computed<Map<string, number>>(() => {
+    const perDay = new Map<string, Set<string>>();
+    for (const slot of this.activitySlots()) {
+      const start = new Date(slot.startAt);
+      if (Number.isNaN(start.getTime())) continue;
+      const end = slot.endAt ? new Date(slot.endAt) : start;
+      const cursor = new Date(start);
+      cursor.setHours(0, 0, 0, 0);
+      let steps = 0;
+      while (cursor.getTime() <= end.getTime() && steps < 45) {
+        const key = localIso(cursor);
+        let set = perDay.get(key);
+        if (!set) { set = new Set(); perDay.set(key, set); }
+        set.add(slot.vehicleId);
+        cursor.setDate(cursor.getDate() + 1);
+        steps++;
+      }
+    }
+    const counts = new Map<string, number>();
+    for (const [key, set] of perDay) counts.set(key, set.size);
+    return counts;
+  });
+
+  /** Nb de véhicules DISTINCTS dont l'usage est PRÉVU par jour (badge violet « ~N »). */
+  protected readonly forecastByDay = computed<Map<string, number>>(() => {
+    const perDay = new Map<string, Set<string>>();
+    for (const slot of this.forecastSlots()) {
+      const start = new Date(slot.startAt);
+      if (Number.isNaN(start.getTime())) continue;
+      const key = localIso(start);
+      let set = perDay.get(key);
+      if (!set) { set = new Set(); perDay.set(key, set); }
+      set.add(slot.vehicleId);
+    }
+    const counts = new Map<string, number>();
+    for (const [key, set] of perDay) counts.set(key, set.size);
+    return counts;
+  });
+
+  // ─── Détail du jour sélectionné (P2 — panneau jour enrichi) ─────────────────
+  /** Bornes [start, end) du jour sélectionné, en heure locale (ms epoch). */
+  private readonly selectedDayBounds = computed<{ start: number; end: number } | null>(() => {
     const day = this.selectedDay();
-    if (!day) return [];
-    return this.filteredEvents()
-      .filter((ev) => localIso(new Date(ev.startAt)) === day)
-      .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
+    if (!day) return null;
+    const [y, m, d] = day.split('-').map(Number);
+    const start = new Date(y, m - 1, d).getTime();
+    return { start, end: start + 86400000 };
+  });
+
+  /** Contexte temporel du jour : conditionne ce qu'on montre (prévu vs réel). */
+  protected readonly dayContext = computed<'past' | 'today' | 'future'>(() => {
+    const b = this.selectedDayBounds();
+    if (!b) return 'future';
+    const today = startOfDay(new Date()).getTime();
+    if (b.start < today) return 'past';
+    if (b.start === today) return 'today';
+    return 'future';
+  });
+
+  protected readonly dayContextLabel = computed(() => {
+    switch (this.dayContext()) {
+      case 'past': return 'Jour passé — utilisation réelle';
+      case 'today': return "Aujourd'hui";
+      default: return 'À venir';
+    }
+  });
+
+  /** Événements du jour sélectionné (chevauchant, tous types du périmètre), triés. */
+  protected readonly dayPanelEvents = computed(() => {
+    const b = this.selectedDayBounds();
+    if (!b) return [];
+    return this.scopedEvents()
+      .filter((ev) => {
+        const st = new Date(ev.startAt).getTime();
+        if (Number.isNaN(st)) return false;
+        const effEnd = ev.endAt ? new Date(ev.endAt).getTime() : st;
+        // Chevauche le jour ; les événements ponctuels/all-day couvrent leur jour de début.
+        return st < b.end && (effEnd >= b.start || (st >= b.start && st < b.end));
+      })
+      .sort((a, b2) => {
+        const aDone = a.status === 'DONE' || a.status === 'CANCELLED' ? 1 : 0;
+        const bDone = b2.status === 'DONE' || b2.status === 'CANCELLED' ? 1 : 0;
+        if (aDone !== bDone) return aDone - bDone;
+        return new Date(a.startAt).getTime() - new Date(b2.startAt).getTime();
+      });
+  });
+
+  /** Usage PRÉVU du jour (créneaux de récurrence projetés), trié par heure. */
+  protected readonly dayForecast = computed(() => {
+    const b = this.selectedDayBounds();
+    if (!b || !this.canSeeInsights()) return [];
+    const vid = this.selectedVehicleId();
+    const gids = this.groupVehicleIdSet();
+    return this.forecastSlots()
+      .filter((s) => {
+        const t = new Date(s.startAt).getTime();
+        if (Number.isNaN(t) || t < b.start || t >= b.end) return false;
+        if (vid && s.vehicleId !== vid) return false;
+        if (gids && !gids.has(s.vehicleId)) return false;
+        return true;
+      })
+      .sort((a, b2) => new Date(a.startAt).getTime() - new Date(b2.startAt).getTime())
+      .map((s) => ({
+        vehicleId: s.vehicleId,
+        plate: s.vehiclePlate ?? '—',
+        time: `${this.hm(s.startAt)} → ${this.hm(s.endAt)}`,
+        basis: s.basis,
+        confidence: s.confidence,
+      }));
+  });
+
+  /** Utilisation RÉELLE du jour (trajets agrégés par véhicule), triée par distance. */
+  protected readonly dayActivity = computed(() => {
+    const b = this.selectedDayBounds();
+    if (!b || !this.canSeeInsights()) return [];
+    const vid = this.selectedVehicleId();
+    const gids = this.groupVehicleIdSet();
+    const byVeh = new Map<string, { plate: string; distanceKm: number; trips: number }>();
+    for (const s of this.activitySlots()) {
+      const st = new Date(s.startAt).getTime();
+      const en = s.endAt ? new Date(s.endAt).getTime() : st;
+      if (Number.isNaN(st) || st >= b.end || en < b.start) continue;
+      if (vid && s.vehicleId !== vid) continue;
+      if (gids && !gids.has(s.vehicleId)) continue;
+      const cur = byVeh.get(s.vehicleId) ?? { plate: s.vehiclePlate ?? '—', distanceKm: 0, trips: 0 };
+      cur.distanceKm += s.distanceKm ?? 0;
+      cur.trips += 1;
+      byVeh.set(s.vehicleId, cur);
+    }
+    return [...byVeh.entries()]
+      .map(([vehicleId, v]) => ({ vehicleId, plate: v.plate, trips: v.trips, distanceKm: Math.round(v.distanceKm) }))
+      .sort((a, b2) => b2.distanceKm - a.distanceKm);
+  });
+
+  /**
+   * Disponibilité du jour (aujourd'hui + à venir) : combien de véhicules du périmètre sont libres,
+   * et le détail des indisponibles (immobilisés / réservés). Aligné sur la logique backend
+   * (findImmobilized) : incident sans fin = jusqu'à résolution, maintenance sans fin = sa journée.
+   */
+  protected readonly dayAvailability = computed(() => {
+    const universe = this.availabilityVehicles();
+    const total = universe.length;
+    const b = this.selectedDayBounds();
+    const unavailable: { vehicleId: string; plate: string; kind: 'immobilized' | 'reserved'; label: string }[] = [];
+    if (!b || total === 0) return { total, available: total, pct: 100, unavailable };
+
+    const ids = new Set(universe.map((v) => v.id));
+    const plateOf = new Map(universe.map((v) => [v.id, v.plate ?? '—']));
+    const immobilized = new Map<string, string>();
+    const reserved = new Map<string, string>();
+    for (const ev of this.events()) {
+      if (!ids.has(ev.vehicleId)) continue;
+      if (ev.status === 'DONE' || ev.status === 'CANCELLED') continue;
+      const st = new Date(ev.startAt).getTime();
+      if (Number.isNaN(st)) continue;
+      let effEnd: number;
+      if (ev.endAt) effEnd = new Date(ev.endAt).getTime();
+      else if (ev.type === 'INCIDENT') effEnd = Number.POSITIVE_INFINITY;
+      else effEnd = startOfDay(new Date(ev.startAt)).getTime() + 86400000;
+      if (!(st < b.end && effEnd > b.start)) continue; // ne chevauche pas le jour
+      if (ev.type === 'RESERVATION') {
+        if (ev.status === 'CONFIRMED' || ev.status === 'IN_PROGRESS') {
+          reserved.set(ev.vehicleId, ev.endAt ? `${this.hm(ev.startAt)} → ${this.hm(ev.endAt)}` : this.hm(ev.startAt));
+        }
+      } else if (ev.blocksVehicle) {
+        immobilized.set(ev.vehicleId, ev.title);
+      }
+    }
+    for (const [vid, reason] of immobilized) {
+      unavailable.push({ vehicleId: vid, plate: plateOf.get(vid) ?? '—', kind: 'immobilized', label: reason });
+    }
+    for (const [vid, label] of reserved) {
+      if (immobilized.has(vid)) continue; // immobilisé = raison plus forte, pas de doublon
+      unavailable.push({ vehicleId: vid, plate: plateOf.get(vid) ?? '—', kind: 'reserved', label });
+    }
+    const available = Math.max(0, total - unavailable.length);
+    return { total, available, pct: Math.round((available / total) * 100), unavailable };
   });
 
   protected readonly dayPanelLabel = computed(() => {
@@ -1070,70 +1440,35 @@ export class AgendaComponent implements OnInit {
    * Échec silencieux : l'agenda reste fonctionnel sans cette couche.
    */
   private async loadActivity(): Promise<void> {
-    if (!this.perms.can('reservations_view')) {
-      this.activityByDay.set(new Map());
+    if (!this.canSeeInsights()) {
+      this.activitySlots.set([]);
       return;
     }
     try {
       const { from, to } = this.monthWindow();
       const avail = await firstValueFrom(this.api.getAvailability({ from, to }));
-      const perDay = new Map<string, Set<string>>();
-      for (const slot of avail.slots) {
-        const start = new Date(slot.startAt);
-        if (Number.isNaN(start.getTime())) continue;
-        const end = slot.endAt ? new Date(slot.endAt) : start;
-        const cursor = new Date(start);
-        cursor.setHours(0, 0, 0, 0);
-        let steps = 0;
-        while (cursor.getTime() <= end.getTime() && steps < 45) {
-          const key = localIso(cursor);
-          let set = perDay.get(key);
-          if (!set) {
-            set = new Set();
-            perDay.set(key, set);
-          }
-          set.add(slot.vehicleId);
-          cursor.setDate(cursor.getDate() + 1);
-          steps++;
-        }
-      }
-      const counts = new Map<string, number>();
-      for (const [key, set] of perDay) counts.set(key, set.size);
-      this.activityByDay.set(counts);
+      this.activitySlots.set(avail.slots);
     } catch {
-      this.activityByDay.set(new Map());
+      this.activitySlots.set([]);
     }
   }
 
   /**
-   * Sprint 8 (Palier C) — couche « usage prévu » : nb de véhicules dont l'usage récurrent est
-   * prévu par jour (dérivé des trajets, jamais bloquant). Gardée par `reservations_view`.
+   * Sprint 8 (Palier C) — couche « usage prévu » : créneaux de récurrence dérivés des trajets
+   * (jamais bloquants). Gardée par `reservations_view`. Les compteurs par jour (calendrier) et
+   * le détail du panneau jour en sont dérivés.
    */
   private async loadForecast(): Promise<void> {
-    if (!this.perms.can('reservations_view')) {
-      this.forecastByDay.set(new Map());
+    if (!this.canSeeInsights()) {
+      this.forecastSlots.set([]);
       return;
     }
     try {
       const { from, to } = this.monthWindow();
       const res = await firstValueFrom(this.api.getForecast({ from, to }));
-      const perDay = new Map<string, Set<string>>();
-      for (const slot of res.slots) {
-        const start = new Date(slot.startAt);
-        if (Number.isNaN(start.getTime())) continue;
-        const key = localIso(start);
-        let set = perDay.get(key);
-        if (!set) {
-          set = new Set();
-          perDay.set(key, set);
-        }
-        set.add(slot.vehicleId);
-      }
-      const counts = new Map<string, number>();
-      for (const [key, set] of perDay) counts.set(key, set.size);
-      this.forecastByDay.set(counts);
+      this.forecastSlots.set(res.slots);
     } catch {
-      this.forecastByDay.set(new Map());
+      this.forecastSlots.set([]);
     }
   }
 
@@ -1199,6 +1534,28 @@ export class AgendaComponent implements OnInit {
     if (u === 'overdue') return 'En retard';
     if (u === 'soon') return 'Bientôt';
     return 'Planifié';
+  }
+
+  /** Heure locale format FR compact : « 7h » ou « 7h30 ». */
+  protected hm(iso: string): string {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    const h = d.getHours();
+    const m = d.getMinutes();
+    return m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, '0')}`;
+  }
+
+  /** Couleur de la barre de confiance d'une prévision (vert fort → gris faible). */
+  protected confColor(c: number): string {
+    if (c >= 0.6) return '#10E0A0';
+    if (c >= 0.35) return '#F59E0B';
+    return '#94A3B8';
+  }
+
+  /** Motif d'une réservation (stocké en metadata) pour l'afficher dans la carte du jour. */
+  protected reservationReason(ev: VehicleEventDto): string | null {
+    const reason = (ev.metadata as { reason?: unknown } | null)?.reason;
+    return typeof reason === 'string' && reason.trim() ? reason.trim() : null;
   }
 
   /** Met à jour le statut d'un événement (En cours / Terminé) — optimiste. */
