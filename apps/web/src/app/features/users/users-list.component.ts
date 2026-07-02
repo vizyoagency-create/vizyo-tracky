@@ -369,11 +369,14 @@ import { DriversListComponent } from '../drivers/drivers-list.component';
     .u-date { font-size: 10px; color: var(--fg-tertiary) }
 
     /* Actions */
-    .u-card-actions { display: flex; gap: 6px; padding-top: 10px; border-top: 1px solid var(--border-subtle) }
+    .u-card-actions { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 10px; border-top: 1px solid var(--border-subtle) }
     .u-action-btn {
-      display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; border-radius: 8px;
+      display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 5px 10px; border-radius: 8px;
       font-size: 11px; font-weight: 600; background: var(--bg-tertiary); border: 1px solid var(--border-subtle);
       color: var(--fg-tertiary); cursor: pointer; transition: all .2s;
+      /* Le libellé reste sur UNE ligne ; si la rangée manque de place, ce sont les
+         BOUTONS qui passent à la ligne (flex-wrap), pas le texte qui se casse. */
+      white-space: nowrap; flex: 0 0 auto;
     }
     .u-action-btn:hover:not(.disabled) { color: var(--tracky-light); border-color: rgba(16,224,160,.2) }
     .u-action-btn.danger:hover:not(.disabled) { color: #f87171; border-color: rgba(239,68,68,.2) }
