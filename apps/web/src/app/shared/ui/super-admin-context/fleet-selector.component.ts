@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, ElementRef, HostListener, computed, inject, signal } from '@angular/core';
 import { Building2, ChevronDown, Check, LucideAngularModule } from 'lucide-angular';
 import { AuthService } from '../../../core/services/auth.service';
 import { FleetCacheService } from '../../../core/services/fleet-cache.service';
@@ -47,7 +47,6 @@ import { FleetFilterService } from '../../../core/services/fleet-filter.service'
               </button>
             }
           </div>
-          <div class="fs-backdrop" (click)="close()"></div>
         }
       </div>
     }
@@ -101,7 +100,6 @@ import { FleetFilterService } from '../../../core/services/fleet-filter.service'
     .fs-opt.sel { color: var(--tracky-light); }
     .fs-opt-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .fs-opt-check { flex-shrink: 0; color: var(--tracky-light); }
-    .fs-backdrop { position: fixed; inset: 0; z-index: 59; }
 
     @media (max-width: 768px) {
       .fleet-selector { max-width: 160px; height: 32px; }
@@ -114,6 +112,7 @@ export class FleetSelectorComponent {
   private readonly auth = inject(AuthService);
   private readonly fleetCache = inject(FleetCacheService);
   private readonly fleetFilter = inject(FleetFilterService);
+  private readonly host = inject(ElementRef<HTMLElement>);
 
   protected readonly BuildingIcon = Building2;
   protected readonly ChevronIcon = ChevronDown;
@@ -143,6 +142,18 @@ export class FleetSelectorComponent {
     this.open.update((v) => !v);
   }
   protected close(): void { this.open.set(false); }
+
+  /**
+   * Ferme le dropdown sur tout clic HORS du composant — y compris dans la top-bar
+   * (un backdrop z-indexé passait sous la navbar). Le clic sur le bouton fait
+   * stopPropagation, donc l'ouverture ne se referme pas immédiatement.
+   */
+  @HostListener('document:click', ['$event'])
+  protected onDocumentClick(ev: MouseEvent): void {
+    if (this.open() && !this.host.nativeElement.contains(ev.target as Node)) {
+      this.close();
+    }
+  }
 
   protected pick(id: string | null): void {
     this.fleetFilter.set(id);
