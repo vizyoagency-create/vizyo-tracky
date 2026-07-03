@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, ElementRef, HostListener, inject, OnDestroy, OnInit, signal, viewChild } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
-import { LucideAngularModule, BarChart3, Route, Clock, Gauge, Play, ChevronDown, Truck, Check, MessageSquare, Pencil, UserRound, Download, Calendar, FileText, Layers, ArrowUp, ArrowDown, ArrowUpDown, FileSpreadsheet, RotateCcw, MousePointerClick } from 'lucide-angular';
+import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.directive';
+import { LucideAngularModule, BarChart3, ChevronRight, Route, Clock, Gauge, Play, ChevronDown, Truck, Check, MessageSquare, Pencil, UserRound, Download, Calendar, FileText, Layers, ArrowUp, ArrowDown, ArrowUpDown, FileSpreadsheet, RotateCcw, MousePointerClick } from 'lucide-angular';
 import type { DriverDto, TripDailySummaryDto, TripDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { DriversApiService } from '../../core/services/drivers.service';
@@ -43,7 +43,7 @@ import {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     FormsModule,
-    RouterLink,
+    VehicleLinkDirective,
     LucideAngularModule,
     TrackClickDirective,
     GroupBadgeComponent,
@@ -405,7 +405,7 @@ import {
               <span></span>
             </div>
             @for (v of vehicleSummary(); track v.vehicleId) {
-              <div class="rep-vrow">
+              <div class="rep-vrow" [vehicleLink]="v.vehicleId" [attr.title]="'Voir ' + vehiclePlate(v.vehicleId)">
                 <div class="rep-vveh">
                   <div class="rep-vplate">{{ vehiclePlate(v.vehicleId) || '—' }}</div>
                   <div class="rep-vmodel">{{ vehicleModelLabel(v.vehicleId) }}</div>
@@ -414,7 +414,7 @@ import {
                 <span class="rep-vmeta">{{ formatDuration(v.duration) }}</span>
                 <span class="rep-vmeta rep-vt-hide">{{ v.trips }}</span>
                 <span class="rep-vmeta rep-vt-hide" [class.rep-vspeed-warn]="v.avgSpeed >= 50">{{ v.avgSpeed }} km/h</span>
-                <a [routerLink]="['/vehicles', v.vehicleId]" class="rep-vsee">Voir</a>
+                <lucide-icon [img]="ChevronRightIcon" [size]="16" class="rep-vchev" aria-hidden="true"></lucide-icon>
               </div>
             }
           </div>
@@ -483,7 +483,8 @@ import {
                   <td class="p-3 text-fg-primary">
                     <div>{{ trip.startedAt | date:'dd/MM HH:mm' }}</div>
                     @if (vehiclePlate(trip.vehicleId); as plate) {
-                      <div class="text-[10px] font-bold uppercase tracking-wider text-fg-tertiary mt-0.5">
+                      <div class="text-[10px] font-bold uppercase tracking-wider text-fg-tertiary mt-0.5"
+                           [vehicleLink]="trip.vehicleId" [attr.title]="'Voir ' + plate">
                         {{ plate }}
                       </div>
                     }
@@ -1196,8 +1197,8 @@ import {
     .rep-vunit { font-size: 10px; font-weight: 600; color: var(--fg-tertiary); }
     .rep-vmeta { font-size: 13px; color: var(--fg-secondary); }
     .rep-vspeed-warn { color: var(--warning); font-weight: 600; }
-    .rep-vsee { font-size: 12px; font-weight: 700; color: var(--tracky-light); text-align: right; }
-    .rep-vsee:hover { text-decoration: underline; }
+    .rep-vchev { color: var(--fg-tertiary); justify-self: end; transition: color .15s ease, transform .15s ease; }
+    .rep-vrow:hover .rep-vchev { color: var(--tracky-light); transform: translateX(2px); }
     @media (max-width: 1000px) {
       .rep-vt-head, .rep-vrow { grid-template-columns: minmax(140px,1.6fr) 1fr 1fr 70px; }
       .rep-vt-hide { display: none !important; }
@@ -1241,6 +1242,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   protected readonly Gauge = Gauge;
   protected readonly Play = Play;
   protected readonly ChevronDown = ChevronDown;
+  protected readonly ChevronRightIcon = ChevronRight;
   protected readonly TruckIcon = Truck;
   protected readonly Check = Check;
   protected readonly LayersIcon = Layers;

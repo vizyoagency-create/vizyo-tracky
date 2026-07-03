@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } 
 import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.directive';
 import { LucideAngularModule, Plus, Truck, ExternalLink, FolderOpen, Radio, X, Save, Wifi, Pencil, Trash2, Eye, Search, LayoutGrid, Table, Layers, ChevronRight, ChevronDown, Gauge, UserRound, Wrench } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { PermissionsService } from '../../core/services/permissions.service';
@@ -30,7 +31,7 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
   selector: 'app-vehicles-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, VehicleCapacityTableComponent, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, BrandLogoComponent, InstallReviewBadgeComponent, TrackClickDirective, EngineControlButtonComponent],
+  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, VehicleCapacityTableComponent, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, BrandLogoComponent, InstallReviewBadgeComponent, TrackClickDirective, EngineControlButtonComponent, VehicleLinkDirective],
   template: `
     @if (auth.isWatchman()) {
       <!-- ───────────────────────────────────────────────────────────────────
@@ -100,7 +101,7 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
                             <app-brand-logo [brand]="v.brand" [size]="26" [chip]="true" />
                             <div class="wn-icon" [innerHTML]="getTypeIconHtml(v.type)"></div>
                             <div class="wn-veh-text">
-                              <span class="wn-plate">{{ v.plate }}</span>
+                              <span class="wn-plate" [vehicleLink]="v.id" [attr.title]="'Voir ' + v.plate">{{ v.plate }}</span>
                               @if (v.brand) {
                                 <span class="wn-brand">{{ v.brand }} {{ v.model ?? '' }}</span>
                               }

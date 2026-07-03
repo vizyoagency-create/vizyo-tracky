@@ -965,6 +965,15 @@ textarea:focus-visible,
   color: var(--color-tracky-light);
 }
 
+/* Plaque / ligne cliquable → fiche véhicule (directive [vehicleLink]).
+   Affordance discrète : curseur + teinte accent au survol, focus clavier visible. */
+.vehicle-link { cursor: pointer; transition: color 0.15s ease; border-radius: 4px; }
+.vehicle-link:hover { color: var(--tracky-light, var(--color-tracky-light, #10E0A0)); }
+.vehicle-link:focus-visible {
+  outline: 2px solid var(--tracky-light, var(--color-tracky-light, #10E0A0));
+  outline-offset: 2px;
+}
+
 /* Label de groupe (sidebar, colonnes) — mono, tertiaire, plus discret */
 .vt-section-label {
   font-family: var(--font-mono);

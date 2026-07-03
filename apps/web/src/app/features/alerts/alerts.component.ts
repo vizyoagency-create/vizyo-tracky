@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.directive';
 import {
   AlertCircle,
   AlertTriangle,
@@ -120,7 +121,7 @@ const EMPTY_FORM: RuleForm = {
   selector: 'app-alerts',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [LucideAngularModule, RouterLink, FormsModule, SaFleetBadgeComponent, InstallReviewBadgeComponent, GroupBadgeComponent, GeofencesListComponent],
+  imports: [LucideAngularModule, RouterLink, FormsModule, SaFleetBadgeComponent, InstallReviewBadgeComponent, GroupBadgeComponent, GeofencesListComponent, VehicleLinkDirective],
   template: `
     @if (isBaanoolMode()) {
       <!-- V1.12 — Mode Baanool : "Centre de messages" style ultra-simple -->
@@ -161,7 +162,7 @@ const EMPTY_FORM: RuleForm = {
                 <div class="bn-row-main">
                   <div class="bn-row-title">{{ alertLabel(cluster.lead) }}@if (cluster.count > 1) { <span class="bn-count">×{{ cluster.count }}</span> }</div>
                   <div class="bn-row-meta">
-                    @if (cluster.lead.vehiclePlate) { <span>{{ cluster.lead.vehiclePlate }}</span> · }
+                    @if (cluster.lead.vehiclePlate) { <span [vehicleLink]="cluster.vehicleId" [attr.title]="'Voir ' + cluster.lead.vehiclePlate">{{ cluster.lead.vehiclePlate }}</span> · }
                     @if (cluster.maxSpeed) { <span class="bn-speed">{{ cluster.count > 1 ? 'max ' : '' }}{{ cluster.maxSpeed }} km/h</span> · }
                     <span>{{ formatRelative(cluster.newestAt) }}</span>
                   </div>

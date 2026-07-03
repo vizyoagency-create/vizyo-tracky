@@ -37,6 +37,7 @@ import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.com
 import { AgendaCalendarComponent } from './agenda-calendar.component';
 import { ReservationSheetComponent } from './sheets/reservation-sheet.component';
 import { OptimizationSheetComponent } from './sheets/optimization-sheet.component';
+import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.directive';
 import {
   addMonths,
   eventColor,
@@ -60,7 +61,7 @@ interface GroupOption {
   selector: 'app-agenda',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, LucideAngularModule, DatePipe, GroupBadgeComponent, AgendaCalendarComponent, ReservationSheetComponent, OptimizationSheetComponent],
+  imports: [FormsModule, LucideAngularModule, DatePipe, GroupBadgeComponent, AgendaCalendarComponent, ReservationSheetComponent, OptimizationSheetComponent, VehicleLinkDirective],
   template: `
     <div class="flex flex-col gap-5">
       <!-- Header + résumé -->
@@ -259,7 +260,7 @@ interface GroupOption {
                 <span class="ag-up-main">
                   <span class="ag-up-title">{{ ev.title }}</span>
                   <span class="ag-up-meta">
-                    @if (ev.vehiclePlate) { <span class="ag-up-plate">{{ ev.vehiclePlate }}</span> · }
+                    @if (ev.vehiclePlate) { <span class="ag-up-plate" [vehicleLink]="ev.vehicleId" [attr.title]="'Voir ' + ev.vehiclePlate">{{ ev.vehiclePlate }}</span> · }
                     {{ eventTypeLabel(ev.type) }}
                     @if (ev.type === 'INCIDENT' && ev.severity) { · {{ severityLabel(ev.severity) }} }
                   </span>
@@ -313,7 +314,7 @@ interface GroupOption {
                         <span class="ag-unavail-ic" [attr.data-kind]="u.kind">
                           <lucide-icon [img]="u.kind === 'immobilized' ? BanIcon : CalendarCheckIcon" [size]="12"></lucide-icon>
                         </span>
-                        <span class="ag-unavail-plate">{{ u.plate }}</span>
+                        <span class="ag-unavail-plate" [vehicleLink]="u.vehicleId" [attr.title]="'Voir ' + u.plate">{{ u.plate }}</span>
                         <span class="ag-unavail-lbl">{{ u.kind === 'immobilized' ? 'Immobilisé' : 'Réservé' }} · {{ u.label }}</span>
                       </li>
                     }
@@ -340,7 +341,7 @@ interface GroupOption {
                 } @else {
                   @for (f of dayForecast(); track f.vehicleId) {
                     <div class="ag-insight">
-                      <span class="ag-insight-plate">{{ f.plate }}</span>
+                      <span class="ag-insight-plate" [vehicleLink]="f.vehicleId" [attr.title]="'Voir ' + f.plate">{{ f.plate }}</span>
                       <span class="ag-insight-time">{{ f.time }}</span>
                       <span class="ag-insight-conf" [title]="'Observé : ' + f.basis">
                         <span class="ag-insight-bar"><span [style.width.%]="f.confidence * 100" [style.background]="confColor(f.confidence)"></span></span>
@@ -368,7 +369,7 @@ interface GroupOption {
                 } @else {
                   @for (a of dayActivity(); track a.vehicleId) {
                     <div class="ag-insight">
-                      <span class="ag-insight-plate">{{ a.plate }}</span>
+                      <span class="ag-insight-plate" [vehicleLink]="a.vehicleId" [attr.title]="'Voir ' + a.plate">{{ a.plate }}</span>
                       <span class="ag-insight-time">{{ a.trips }} trajet{{ a.trips > 1 ? 's' : '' }}</span>
                       <span class="ag-insight-km">{{ a.distanceKm }} km</span>
                     </div>
@@ -402,7 +403,7 @@ interface GroupOption {
                   </div>
                   <p class="ag-day-card-title">{{ ev.title }}</p>
                   <p class="ag-day-card-meta">
-                    @if (ev.vehiclePlate) { <span class="ag-day-card-plate">{{ ev.vehiclePlate }}</span> }
+                    @if (ev.vehiclePlate) { <span class="ag-day-card-plate" [vehicleLink]="ev.vehicleId" [attr.title]="'Voir ' + ev.vehiclePlate">{{ ev.vehiclePlate }}</span> }
                     @if (ev.type === 'RESERVATION' && !ev.allDay) {
                       · {{ ev.startAt | date:'HH:mm' }}@if (ev.endAt) { → {{ ev.endAt | date:'HH:mm' }} }
                     } @else if (!ev.allDay) { · {{ ev.startAt | date:'HH:mm' }} }
