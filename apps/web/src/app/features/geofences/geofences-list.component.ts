@@ -228,12 +228,12 @@ import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.com
     .gf-name { font-size: 14px; font-weight: 700; color: var(--fg-primary) }
     .gf-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 4px }
     .gf-rule-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 6px }
-    .gf-rule-badge.enter { background: rgba(59,130,246,.1); color: #60a5fa }
-    .gf-rule-badge.exit { background: rgba(245,158,11,.1); color: #f59e0b }
+    .gf-rule-badge.enter { background: color-mix(in srgb, var(--color-tracky-light) 10%, transparent); color: var(--color-tracky-light) }
+    .gf-rule-badge.exit { background: color-mix(in srgb, var(--warning) 12%, transparent); color: var(--warning) }
     .gf-rule-badge.both { background: rgba(16,224,160,.1); color: var(--tracky-light) }
     .gf-status { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 6px }
     .gf-status.active { background: rgba(16,224,160,.1); color: var(--tracky-light) }
-    .gf-status.inactive { background: rgba(239,68,68,.1); color: #f87171 }
+    .gf-status.inactive { background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--danger) }
     /* V1.15 — Chip "X véhicules ciblés" sur card geofence. */
     .gf-target-chip { font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 9999px;
       background: var(--bg-tertiary); color: var(--fg-secondary); white-space: nowrap }
@@ -253,7 +253,7 @@ import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.com
       color: var(--fg-tertiary); cursor: pointer; transition: all .2s;
     }
     .gf-action-btn.edit:hover { color: var(--tracky-light); background: rgba(16,224,160,.1) }
-    .gf-action-btn.delete:hover { color: #f87171; background: rgba(239,68,68,.1) }
+    .gf-action-btn.delete:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent) }
 
     /* ─── Mode embarqué (onglet Géofences dans Alertes) ─── */
     .gf-page--embedded { min-height: auto }
