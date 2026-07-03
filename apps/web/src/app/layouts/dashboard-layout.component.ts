@@ -75,16 +75,20 @@ interface NavGroup {
       <!-- DESKTOP SIDEBAR -->
       <aside class="desktop-sidebar" [class.collapsed]="collapsed()" aria-label="Navigation principale">
         <div class="sidebar-top">
-          <app-logo variant="icon" [size]="30" />
-          @if (!collapsed()) {
-            <span class="sidebar-brand">Vizyo <span class="text-tracky-light">Tracky</span></span>
+          @if (collapsed()) {
+            <!-- Replié : logo centré, cliquable pour déplier (fini le logo collé à gauche + burger serré). -->
+            <button type="button" (click)="collapsed.set(false)" class="sidebar-expand"
+                    aria-label="Déplier le menu" [attr.aria-expanded]="false">
+              <app-logo variant="icon" [size]="28" />
+            </button>
+          } @else {
+            <app-logo variant="icon" [size]="30" />
+            <span class="sidebar-brand text-tracky-light">Tracky</span>
+            <button (click)="collapsed.set(true)" class="sidebar-toggle"
+                    aria-label="Replier le menu" [attr.aria-expanded]="true">
+              <lucide-icon [img]="MenuIcon" [size]="18"></lucide-icon>
+            </button>
           }
-          <button (click)="collapsed.set(!collapsed())"
-                  class="sidebar-toggle"
-                  [attr.aria-label]="collapsed() ? 'Déplier le menu' : 'Replier le menu'"
-                  [attr.aria-expanded]="!collapsed()">
-            <lucide-icon [img]="MenuIcon" [size]="18"></lucide-icon>
-          </button>
         </div>
         <nav class="sidebar-nav" aria-label="Sections">
           @for (group of navItems(); track group.section ?? $index; let first = $first) {
@@ -129,7 +133,7 @@ interface NavGroup {
         (closed)="mobileMenuOpen.set(false)">
         <div class="bs-header">
           <app-logo variant="icon" [size]="22" />
-          <span class="bs-brand">Vizyo <span class="text-tracky-light">Tracky</span></span>
+          <span class="bs-brand text-tracky-light">Tracky</span>
         </div>
         <nav class="bs-nav-wrap" aria-label="Sections">
           @for (group of navItems(); track group.section ?? $index) {
@@ -178,7 +182,6 @@ interface NavGroup {
                [attr.aria-label]="isBaanoolMode() ? 'Vizyo Tracky — Carte' : 'Vizyo Tracky — Tableau de bord'">
               <app-logo variant="icon" [size]="26" />
               <span class="top-bar-brand-text" aria-hidden="true">
-                <span class="top-bar-brand-name">Vizyo</span>
                 <span class="top-bar-brand-name top-bar-brand-name--accent">Tracky</span>
               </span>
             </a>
@@ -359,6 +362,13 @@ interface NavGroup {
     .desktop-sidebar.collapsed .sidebar-toggle { margin-left: 0 }
     .desktop-sidebar.collapsed .sidebar-nav { padding: 14px 8px }
     .desktop-sidebar.collapsed .sidebar-link { justify-content: center; padding: 10px 0; gap: 0 }
+    /* Repliée : le logo centré sert de bouton « déplier ». */
+    .sidebar-expand {
+      display: flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; margin: 0 auto; border-radius: 12px;
+      border: none; background: transparent; cursor: pointer; transition: background .15s;
+    }
+    .sidebar-expand:hover { background: var(--bg-tertiary) }
     .sidebar-top {
       display: flex; align-items: center; gap: 10px; padding: 0 16px; height: 60px;
       border-bottom: 1px solid var(--border-subtle);
