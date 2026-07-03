@@ -627,13 +627,13 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
     }
     .vlist-grid-bg::after {
       content: ''; position: absolute; bottom: -20%; right: -10%; width: 50%; height: 55%;
-      background: radial-gradient(ellipse, rgba(59,130,246,.06) 0%, transparent 70%);
+      background: radial-gradient(ellipse, rgba(16,224,160,.055) 0%, transparent 70%);
       border-radius: 40% 60% 30% 50%;
       animation: morph2 10s ease-in-out infinite alternate;
     }
     .vlist-glow {
       position: fixed; top: 30%; left: 50%; transform: translate(-50%, -50%); width: 35%; height: 40%;
-      background: radial-gradient(ellipse, rgba(168,85,247,.05) 0%, transparent 70%);
+      background: radial-gradient(ellipse, rgba(16,224,160,.035) 0%, transparent 70%);
       border-radius: 60% 40% 50% 30%;
       pointer-events: none; z-index: 0;
       animation: morph3 14s ease-in-out infinite alternate;

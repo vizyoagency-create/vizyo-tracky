@@ -617,7 +617,7 @@ const EMPTY_FORM: RuleForm = {
     }
     .a-blob-c {
       position: fixed; top: 50%; left: 40%; transform: translate(-50%,-50%); width: 30%; height: 35%;
-      background: radial-gradient(ellipse, rgba(59,130,246,.04) 0%, transparent 70%);
+      background: radial-gradient(ellipse, rgba(16,224,160,.04) 0%, transparent 70%);
       border-radius: 60% 40% 50% 30%; pointer-events: none; z-index: 0;
       animation: ab3 15s ease-in-out infinite alternate;
     }

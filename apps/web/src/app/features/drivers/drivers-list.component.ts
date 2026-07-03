@@ -200,7 +200,7 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
     }
     .d-blobs::after {
       content: ''; position: absolute; bottom: -15%; left: -10%; width: 45%; height: 50%;
-      background: radial-gradient(ellipse, rgba(59,130,246,.05) 0%, transparent 70%);
+      background: radial-gradient(ellipse, rgba(16,224,160,.045) 0%, transparent 70%);
       border-radius: 40% 60% 30% 50%;
     }
 

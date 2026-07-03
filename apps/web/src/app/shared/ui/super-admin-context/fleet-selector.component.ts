@@ -51,11 +51,11 @@ import { FleetFilterService } from '../../../core/services/fleet-filter.service'
       max-width: 200px;
     }
     .fleet-selector:hover { border-color: var(--border-strong); color: var(--fg-primary); }
-    /* Une societe est choisie : accent violet coherent avec le badge societe. */
+    /* Une societe est choisie : accent emeraude DS (filtre actif). */
     .fleet-selector.is-active {
-      background: rgba(168, 85, 247, 0.12);
-      border-color: rgba(168, 85, 247, 0.35);
-      color: rgb(192, 132, 252);
+      background: color-mix(in srgb, var(--tracky) 12%, transparent);
+      border-color: color-mix(in srgb, var(--tracky) 35%, transparent);
+      color: var(--tracky-light);
     }
     .fs-icon { flex-shrink: 0; }
     .fs-select {

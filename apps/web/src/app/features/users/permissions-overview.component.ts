@@ -275,7 +275,7 @@ const PERM_GROUPS = [
       font-size: 11px; font-weight: 700; color: white;
     }
     .po-user-avatar.admin { background: var(--tracky) }
-    .po-user-avatar.manager { background: #3b82f6 }
+    .po-user-avatar.manager { background: #64748b }
     .po-user-avatar.viewer { background: #6b7280 }
     .po-user-info { flex: 1; min-width: 0 }
     .po-user-name { display: block; font-size: 13px; font-weight: 600; color: var(--fg-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
@@ -285,7 +285,7 @@ const PERM_GROUPS = [
       text-transform: uppercase; letter-spacing: .04em; flex-shrink: 0;
     }
     .po-role-badge.admin { background: rgba(16,224,160,.12); color: var(--tracky-light) }
-    .po-role-badge.manager { background: rgba(59,130,246,.12); color: #3b82f6 }
+    .po-role-badge.manager { background: var(--bg-tertiary); color: var(--fg-secondary) }
     .po-role-badge.viewer { background: rgba(107,114,128,.12); color: #9ca3af }
     .po-chevron { color: var(--fg-tertiary); flex-shrink: 0 }
 
@@ -294,7 +294,7 @@ const PERM_GROUPS = [
       padding: 2px 7px; border-radius: 6px; font-size: 10px; font-weight: 600;
     }
     .po-scope-pill.all { background: rgba(16,224,160,.1); color: var(--tracky-light) }
-    .po-scope-pill.group { background: rgba(59,130,246,.1); color: #3b82f6 }
+    .po-scope-pill.group { background: var(--bg-tertiary); color: var(--fg-secondary) }
     .po-scope-pill.vehicle { background: rgba(245,158,11,.1); color: #f59e0b }
     .po-scope-pill.none { background: rgba(239,68,68,.08); color: #f87171 }
 
