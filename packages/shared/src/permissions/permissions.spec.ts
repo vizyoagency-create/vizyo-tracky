@@ -2,6 +2,10 @@ import {
   clampPermissions,
   effectiveGranterPermissions,
   getDefaultPermissions,
+  PERMISSION_KEYS,
+  PERMISSION_LABELS,
+  type UserPermissions,
+  type UserRoleSlug,
 } from './permissions';
 
 describe('permissions — effectiveGranterPermissions', () => {
@@ -87,5 +91,64 @@ describe('permissions — clampPermissions (anti-escalade de privileges)', () =>
   it('renvoie toujours un objet exhaustif (toutes les cles de permission)', () => {
     const granted = clampPermissions({}, managerWithUsersManage, viewerDefaults);
     expect(Object.keys(granted).sort()).toEqual(Object.keys(viewerDefaults).sort());
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Robustesse à l'ajout de futures permissions — filet anti "bug silencieux".
+// TS force déjà la complétude (maps typées UserPermissions + PERMISSION_LABELS =
+// Record exhaustif), mais ces tests échouent BRUYAMMENT en CI si une nouvelle
+// permission est ajoutée à l'interface sans être câblée partout (défaut de rôle
+// manquant, label manquant), plutôt que de laisser passer un `undefined` traître.
+// ---------------------------------------------------------------------------
+describe('permissions — complétude (garde-fou ajout de permissions)', () => {
+  const ALL_ROLES: UserRoleSlug[] = [
+    'SUPER_ADMIN',
+    'FLEET_ADMIN',
+    'FLEET_MANAGER',
+    'VIEWER',
+    'NIGHT_WATCHMAN',
+  ];
+
+  it.each(ALL_ROLES)('les défauts de %s couvrent EXACTEMENT toutes les clés (aucune manquante ni en trop)', (role) => {
+    const defaults = getDefaultPermissions(role);
+    expect(Object.keys(defaults).sort()).toEqual([...PERMISSION_KEYS].sort());
+    // Aucune valeur non-booléenne (pas de undefined traître).
+    for (const key of PERMISSION_KEYS) {
+      expect(typeof defaults[key]).toBe('boolean');
+    }
+  });
+
+  it('PERMISSION_LABELS couvre exactement toutes les clés de permission', () => {
+    expect(Object.keys(PERMISSION_LABELS).sort()).toEqual([...PERMISSION_KEYS].sort());
+  });
+});
+
+describe('permissions — reset au changement de rôle borné au granter (invariant users.controller)', () => {
+  // Reproduit EXACTEMENT le pattern des routes create / update(role change) :
+  // clampPermissions(defautsDuRoleCible, granter, defautsDuRoleCible).
+  const resetForRole = (
+    targetRole: UserRoleSlug,
+    granter: { role: UserRoleSlug; permissions?: Partial<UserPermissions> | null },
+  ) => clampPermissions(getDefaultPermissions(targetRole), granter, getDefaultPermissions(targetRole));
+
+  it('un admin (bypass) obtient les défauts pleins du rôle cible', () => {
+    for (const role of ['SUPER_ADMIN', 'FLEET_ADMIN'] as const) {
+      expect(resetForRole('FLEET_MANAGER', { role })).toEqual(getDefaultPermissions('FLEET_MANAGER'));
+      expect(resetForRole('NIGHT_WATCHMAN', { role })).toEqual(getDefaultPermissions('NIGHT_WATCHMAN'));
+    }
+  });
+
+  it('un granter limité ne peut JAMAIS conférer une capacité au-delà de la sienne via un changement de rôle', () => {
+    // Hypothèse défensive : si @Roles était un jour élargi à FLEET_MANAGER, promouvoir
+    // quelqu'un vers un rôle dont les défauts incluent une capacité que le manager n'a pas
+    // (ex. engine_control du NIGHT_WATCHMAN) NE doit PAS l'accorder.
+    const manager = { role: 'FLEET_MANAGER' as const, permissions: getDefaultPermissions('FLEET_MANAGER') };
+    const granted = resetForRole('NIGHT_WATCHMAN', manager);
+    expect(granted.engine_control).toBe(false); // le manager ne l'a pas → clampé
+    const granterPerms = effectiveGranterPermissions(manager);
+    for (const key of PERMISSION_KEYS) {
+      if (granted[key]) expect(granterPerms[key]).toBe(true); // aucune perm accordée au-delà du granter
+    }
   });
 });

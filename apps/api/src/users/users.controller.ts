@@ -260,7 +260,17 @@ export class UsersController {
         firstName: dto.firstName,
         lastName: dto.lastName,
         role: dto.role,
-        permissions: getDefaultPermissions(dto.role) as unknown as Prisma.JsonObject,
+        // Sécurité — les permissions par défaut du rôle cible sont BORNÉES à l'autorité
+        // du créateur (clampPermissions) : un granter ne peut jamais doter un nouvel
+        // utilisateur d'une capacité qu'il ne possède pas lui-même. Aujourd'hui la route
+        // est FLEET_ADMIN/SUPER_ADMIN-only (tous deux ADMIN_DEFAULTS → clamp = no-op), mais
+        // ce clamp rend l'invariant robuste si @Roles était un jour élargi (pas de bug
+        // silencieux d'escalade). Cf. clampPermissions + permissions.spec.
+        permissions: clampPermissions(
+          getDefaultPermissions(dto.role),
+          req.user,
+          getDefaultPermissions(dto.role),
+        ) as unknown as Prisma.JsonObject,
         fleetId,
       },
     });
@@ -440,7 +450,20 @@ export class UsersController {
         ...(dto.firstName !== undefined ? { firstName: dto.firstName } : {}),
         ...(dto.lastName !== undefined ? { lastName: dto.lastName } : {}),
         ...(dto.role !== undefined ? { role: dto.role } : {}),
-        ...(roleChanged ? { permissions: getDefaultPermissions(dto.role!) as unknown as Prisma.JsonObject } : {}),
+        // Sécurité — au changement de rôle, on réinitialise sur les défauts du NOUVEAU
+        // rôle, mais BORNÉS à l'autorité de l'éditeur (clampPermissions) : impossible de
+        // promouvoir quelqu'un vers un rôle dont les défauts dépasseraient les capacités
+        // de l'éditeur. No-op aujourd'hui (route admin-only) mais robuste à un futur
+        // élargissement de @Roles — pas de bug silencieux d'escalade de privilèges.
+        ...(roleChanged
+          ? {
+              permissions: clampPermissions(
+                getDefaultPermissions(dto.role!),
+                req.user,
+                getDefaultPermissions(dto.role!),
+              ) as unknown as Prisma.JsonObject,
+            }
+          : {}),
         ...(dto.permissions !== undefined && !roleChanged
           ? { permissions: clampPermissions(dto.permissions, req.user, getDefaultPermissions(user.role)) as unknown as Prisma.JsonObject }
           : {}),
