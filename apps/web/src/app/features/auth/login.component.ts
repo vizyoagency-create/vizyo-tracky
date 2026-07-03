@@ -16,32 +16,7 @@ import { ThemeService } from '../../core/theme/theme.service';
          lisibilite des inputs, bord lumineux haut tracky.
          Desktop (lg+) : on retire la card -- le panneau formulaire de
          auth-layout fournit deja le contenant et le titre. -->
-    <div
-      class="relative
-             rounded-[--radius-card] lg:rounded-none
-             p-7 sm:p-8 lg:p-0
-             bg-bg-secondary/30 lg:bg-transparent
-             backdrop-blur-2xl lg:backdrop-blur-none
-             backdrop-saturate-150 lg:backdrop-saturate-100
-             border border-border-strong lg:border-0
-             shadow-[0_12px_48px_-16px_rgba(0,0,0,0.55)] lg:shadow-none
-             before:absolute before:-top-px before:left-1/2 before:-translate-x-1/2
-             before:h-px before:w-2/3 before:bg-gradient-to-r
-             before:from-transparent before:via-tracky-light/70 before:to-transparent
-             before:pointer-events-none lg:before:hidden"
-    >
-      <!-- Heading interne : visible mobile/tablet uniquement. Sur desktop,
-           le titre "Bon retour." vient du auth-layout. -->
-      <div class="mb-6 lg:hidden">
-        <h2 class="text-2xl font-display font-semibold text-fg-primary tracking-tight">
-          Connexion
-        </h2>
-        <p class="text-sm text-fg-tertiary mt-1">
-          Acces a votre tableau de bord
-        </p>
-      </div>
-
-      <form (ngSubmit)="onSubmit()" class="flex flex-col gap-4">
+    <form (ngSubmit)="onSubmit()" class="flex flex-col gap-4 w-full">
         <div class="flex flex-col gap-1.5">
           <label for="email" class="text-[13px] font-medium text-fg-secondary"
             >Email</label
@@ -138,8 +113,8 @@ import { ThemeService } from '../../core/theme/theme.service';
 
         @if (error()) {
           <div
-            class="flex items-start gap-2 p-3 rounded-lg
-                   bg-red-500/10 border border-red-500/30 text-red-400 text-sm"
+            class="flex items-start gap-2 p-3 rounded-lg text-sm"
+            style="background:color-mix(in srgb, var(--danger) 12%, transparent); border:1px solid color-mix(in srgb, var(--danger) 32%, transparent); color:var(--danger)"
             role="alert"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -156,21 +131,21 @@ import { ThemeService } from '../../core/theme/theme.service';
         <button
           type="submit"
           [disabled]="loading()"
-          class="mt-1 group relative w-full py-3 rounded-xl
-                 font-semibold text-white text-sm
-                 bg-tracky-gradient
-                 shadow-[0_4px_20px_-4px_rgba(5,150,105,0.5)]
-                 hover:shadow-[0_6px_28px_-4px_rgba(5,150,105,0.65)]
+          class="mt-1 group relative w-full py-3.5 rounded-xl
+                 font-semibold text-sm
+                 bg-tracky-light text-[var(--accent-ink)]
+                 shadow-[0_10px_26px_-8px_rgba(16,224,160,0.5)]
+                 hover:shadow-[0_16px_34px_-10px_rgba(16,224,160,0.62)]
                  hover:-translate-y-px
                  active:translate-y-0
                  disabled:opacity-60 disabled:cursor-not-allowed
-                 disabled:hover:translate-y-0 disabled:hover:shadow-[0_4px_20px_-4px_rgba(5,150,105,0.5)]
+                 disabled:hover:translate-y-0
                  transition-all duration-200 cursor-pointer
                  flex items-center justify-center gap-2"
         >
           @if (loading()) {
-            <span class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"
-                  aria-hidden="true"></span>
+            <span class="w-4 h-4 rounded-full animate-spin" aria-hidden="true"
+                  style="border:2px solid color-mix(in srgb, var(--accent-ink) 30%, transparent); border-top-color: var(--accent-ink)"></span>
             <span>Connexion en cours...</span>
           } @else {
             <span>Se connecter</span>
@@ -183,7 +158,6 @@ import { ThemeService } from '../../core/theme/theme.service';
           }
         </button>
       </form>
-    </div>
   `,
 })
 export class LoginComponent implements OnInit {

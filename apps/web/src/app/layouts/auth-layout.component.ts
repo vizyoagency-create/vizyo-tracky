@@ -1,181 +1,404 @@
-import { Component, OnDestroy, signal } from '@angular/core';
+import { Component } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { LogoComponent } from '../shared/ui/logo/logo.component';
-import { AuthBackgroundComponent } from '../shared/ui/auth-background/auth-background.component';
-import { AuthMapAnimationComponent } from '../shared/ui/auth-map-animation/auth-map-animation.component';
 
 /**
  * Layout des pages auth (login, forgot password, accept invite).
  *
- * Mobile (< lg) : empilage vertical compact dans 100svh, avec globe
- * wireframe en hero et mini-carte 3D en footer.
+ * Refonte DS : plus d'animation carte (MapLibre) ni de globe wireframe — le
+ * panneau droit est désormais STATIQUE (dot-grid masqué + glow émeraude + tracé
+ * de route SVG + carte « temps réel » en verre + ligne de confiance). Un seul
+ * micro-mouvement toléré : le point « live » qui clignote (respecte
+ * prefers-reduced-motion). Perf : aucune instance MapLibre créée sur le login.
  *
- * Desktop (>= lg) : refonte en split 50/50 -- formulaire a gauche
- * (panneau sobre, dot-grid subtil), carte 3D plein-cadre a droite avec
- * badge "Temps reel". Le globe wireframe est masque (la carte plein-cadre
- * fait deja le travail visuel).
+ * Split 50/50 en desktop (formulaire à gauche via <router-outlet>, marque à
+ * droite). En < lg le panneau marque est masqué et le formulaire passe pleine
+ * largeur (safe-area PWA iOS préservée).
  */
 @Component({
   selector: 'app-auth-layout',
   standalone: true,
-  imports: [RouterOutlet, LogoComponent, AuthBackgroundComponent, AuthMapAnimationComponent],
+  imports: [RouterOutlet, LogoComponent],
   styles: [
     `
-      :host {
-        display: block;
+      :host { display: block; }
+
+      .auth-grid {
+        display: grid;
+        grid-template-columns: minmax(440px, 520px) 1fr;
+        min-height: 100svh;
+        background: var(--bg-primary);
+        overflow: hidden;
       }
 
-      /* Tagline : blanc en dark pour contraster avec le fond sombre +
-         globe vert, gris discret en light pour ne pas ecraser. */
-      .auth-tagline {
-        color: var(--color-fg-tertiary);
+      /* ───────── Panneau formulaire (gauche) ───────── */
+      .form-pane {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        padding: 40px 56px;
+        background: var(--bg-primary);
+        overflow: hidden;
       }
-      :host-context([data-theme='dark']) .auth-tagline {
-        color: rgba(255, 255, 255, 0.92);
-      }
-
-      /* Dot-grid subtil sur le panneau formulaire desktop : evoque les
-         coordonnees GPS sans bruiter le fond. */
+      /* Dot-grid subtil : évoque les coordonnées GPS sans bruiter le fond. */
       .form-pane__grid {
         position: absolute;
         inset: 0;
-        opacity: 0.05;
+        opacity: 0.06;
         pointer-events: none;
-        background-image: radial-gradient(currentColor 1px, transparent 1px);
-        background-size: 22px 22px;
-        color: #10e0a0;
+        background-image: radial-gradient(var(--color-tracky-light) 1px, transparent 1px);
+        background-size: 24px 24px;
+        -webkit-mask-image: radial-gradient(ellipse 80% 60% at 30% 20%, #000, transparent 75%);
+        mask-image: radial-gradient(ellipse 80% 60% at 30% 20%, #000, transparent 75%);
       }
-
-      /* Voile diagonal vers le bas-droite : ajoute une legere profondeur
-         lumineuse a partir de la carte. */
       .form-pane__glow {
         position: absolute;
         inset: 0;
         pointer-events: none;
         background: radial-gradient(
           ellipse 70% 50% at 100% 100%,
-          rgba(16, 224, 160, 0.06) 0%,
+          color-mix(in srgb, var(--color-tracky-light) 7%, transparent) 0%,
           transparent 60%
         );
       }
 
-      /* Footer du panneau form : version + tagline. Couleur tertiaire. */
-      .form-pane__footer {
-        color: var(--color-fg-tertiary);
-        font-size: 12px;
-        letter-spacing: 0.04em;
+      .auth-head {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        gap: 11px;
       }
-      :host-context([data-theme='dark']) .form-pane__footer {
-        color: rgba(255, 255, 255, 0.45);
+      .brand-word {
+        font-weight: 800;
+        font-size: 1.06rem;
+        letter-spacing: -0.01em;
+        color: var(--fg-primary);
       }
 
-      /* Shell mobile : safe-area top/bottom pour PWA iOS standalone (status bar
-         black-translucent qui se superpose). py-4 garde le padding vertical
-         minimal precedent, additionne aux insets via max(). overscroll-behavior:
-         contain empeche le scroll de bubbler vers body (necessaire en standalone
-         PWA ou body est position:fixed). */
-      .auth-mobile-shell {
-        padding-top: max(1rem, env(safe-area-inset-top));
-        padding-bottom: max(1rem, env(safe-area-inset-bottom));
-        padding-left: env(safe-area-inset-left);
-        padding-right: env(safe-area-inset-right);
-        overscroll-behavior: contain;
-        -webkit-overflow-scrolling: touch;
+      .auth-main {
+        position: relative;
+        z-index: 1;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        max-width: 440px;
+        width: 100%;
+      }
+      .auth-title {
+        margin: 12px 0 0;
+        font-family: var(--font-display);
+        font-size: 2.3rem;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        line-height: 1.04;
+        color: var(--fg-primary);
+        text-wrap: balance;
+      }
+      .auth-sub {
+        margin: 12px 0 26px;
+        font-size: 1rem;
+        color: var(--fg-secondary);
+        line-height: 1.5;
+      }
+
+      .form-pane__footer {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        font-family: var(--font-mono);
+        font-size: 0.7rem;
+        letter-spacing: 0.04em;
+        color: var(--fg-tertiary);
+      }
+
+      /* ───────── Panneau marque (droite) — STATIQUE ───────── */
+      .brand-pane {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 56px;
+        background: var(--surface-rail);
+        overflow: hidden;
+        border-left: 1px solid var(--border-subtle);
+      }
+      .brand-grid {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background-image:
+          linear-gradient(color-mix(in srgb, var(--fg-primary) 4%, transparent) 1px, transparent 1px),
+          linear-gradient(90deg, color-mix(in srgb, var(--fg-primary) 4%, transparent) 1px, transparent 1px);
+        background-size: 46px 46px;
+        -webkit-mask-image: radial-gradient(ellipse 90% 80% at 70% 30%, #000, transparent 80%);
+        mask-image: radial-gradient(ellipse 90% 80% at 70% 30%, #000, transparent 80%);
+      }
+      .brand-glow {
+        position: absolute;
+        top: -15%;
+        right: -10%;
+        width: 70%;
+        height: 70%;
+        pointer-events: none;
+        background: radial-gradient(circle, color-mix(in srgb, var(--color-tracky-light) 12%, transparent), transparent 70%);
+        filter: blur(10px);
+      }
+      .brand-route {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        opacity: 0.55;
+        pointer-events: none;
+      }
+      .auth-ping-c {
+        transform-origin: 300px 300px;
+        animation: auth-ping 2.8s ease-out infinite;
+      }
+      @keyframes auth-ping {
+        0% { transform: scale(1); opacity: 0.5; }
+        80%, 100% { transform: scale(2.8); opacity: 0; }
+      }
+
+      .brand-top {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .brand-live-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--color-tracky-light);
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-tracky-light) 18%, transparent);
+        animation: vt-blink 2.4s ease-in-out infinite;
+      }
+
+      .brand-mid {
+        position: relative;
+        z-index: 1;
+        max-width: 460px;
+      }
+      .brand-h2 {
+        margin: 0;
+        font-family: var(--font-display);
+        font-size: 2.4rem;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        line-height: 1.06;
+        color: var(--fg-primary);
+        text-wrap: balance;
+      }
+      .brand-p {
+        margin: 18px 0 0;
+        font-size: 1.02rem;
+        color: var(--fg-secondary);
+        line-height: 1.6;
+      }
+
+      .brand-bottom {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+      .brand-card {
+        align-self: flex-start;
+        max-width: 340px;
+        width: 100%;
+        padding: 16px 18px;
+        border-radius: 18px;
+        background: color-mix(in srgb, var(--surface-secondary) 82%, transparent);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        border: 1px solid var(--border-strong-color);
+        box-shadow: 0 14px 44px -18px rgba(0, 0, 0, 0.45);
+      }
+      .brand-card-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .brand-card-label {
+        font-family: var(--font-mono);
+        font-size: 0.66rem;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--fg-tertiary);
+      }
+      .brand-card-big {
+        margin: 8px 0 14px;
+        font-family: var(--font-display);
+        font-size: 1.5rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        color: var(--fg-primary);
+      }
+      .brand-card-big span {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--fg-secondary);
+      }
+      .brand-card-stats {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+      }
+      .brand-card-stats > div {
+        padding: 9px 10px;
+        border-radius: 11px;
+        background: var(--surface-tertiary);
+        border: 1px solid var(--border-color);
+      }
+      .brand-card-stats span {
+        display: block;
+        font-family: var(--font-mono);
+        font-size: 0.6rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--fg-tertiary);
+      }
+      .brand-card-stats b {
+        display: block;
+        margin-top: 3px;
+        font-family: var(--font-display);
+        font-size: 1.05rem;
+        font-weight: 800;
+        color: var(--fg-primary);
+      }
+      .brand-card-stats b.accent { color: var(--color-tracky-light); }
+      .brand-card-stats b.amber { color: var(--warning); }
+
+      .brand-trust {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 22px;
+        color: var(--fg-tertiary);
+        font-size: 0.82rem;
+      }
+      .brand-trust span {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .brand-live-dot, .auth-ping-c { animation: none; }
+      }
+
+      /* ───────── Responsive (< lg) : marque masquée, formulaire plein écran ───────── */
+      @media (max-width: 1023px) {
+        .auth-grid { grid-template-columns: 1fr; }
+        .brand-pane { display: none; }
+        /* safe-area PWA iOS standalone (status bar black-translucent). */
+        .form-pane {
+          padding: max(24px, env(safe-area-inset-top)) max(22px, env(safe-area-inset-right))
+                   max(24px, env(safe-area-inset-bottom)) max(22px, env(safe-area-inset-left));
+          overscroll-behavior: contain;
+          -webkit-overflow-scrolling: touch;
+        }
+        .auth-main { justify-content: flex-start; padding-top: 8px; max-width: 460px; margin: 0 auto; }
+        .auth-head { max-width: 460px; margin: 0 auto; width: 100%; }
+        .form-pane__footer { max-width: 460px; margin: 0 auto; width: 100%; }
+        .auth-title { font-size: 2rem; }
       }
     `,
   ],
   template: `
-    @if (isDesktop()) {
-      <!-- ================== DESKTOP (>= lg) ================== -->
-      <!-- Split layout : formulaire a gauche (largeur fixe), carte 3D
-           plein-cadre a droite (le reste). Hauteur figee a 100svh,
-           jamais de scroll. -->
-      <div
-        class="grid grid-cols-[minmax(440px,520px)_1fr]
-               h-[100svh] bg-bg-primary overflow-hidden"
-      >
-        <!-- ===== Panneau formulaire (gauche) ===== -->
-        <section class="relative flex flex-col px-12 xl:px-16 py-10 bg-bg-primary">
-          <div class="form-pane__grid"></div>
-          <div class="form-pane__glow"></div>
+    <div class="auth-grid">
+      <!-- ===== Panneau formulaire (gauche) ===== -->
+      <section class="form-pane">
+        <div class="form-pane__grid"></div>
+        <div class="form-pane__glow"></div>
 
-          <header class="relative z-10 flex items-center justify-between">
-            <app-logo variant="lockup" [size]="120" />
-          </header>
+        <header class="auth-head">
+          <app-logo variant="icon" [size]="30" />
+          <span class="brand-word">Vizyo <span class="text-tracky-light">Tracky</span></span>
+        </header>
 
-          <main class="relative z-10 flex-1 flex flex-col justify-center max-w-[440px] w-full">
-            <div class="mb-8">
-              <h1 class="text-[32px] xl:text-4xl font-display font-semibold
-                         text-fg-primary tracking-tight leading-[1.05]">
-                Bon retour.
-              </h1>
-              <p class="text-fg-tertiary mt-3 text-[15px]">
-                Connectez-vous a votre tableau de bord Vizyo Tracky.
-              </p>
-            </div>
-            <router-outlet />
-          </main>
-
-          <footer class="relative z-10 form-pane__footer flex items-center justify-between">
-            <span>Suivi de flotte GPS · Temps reel</span>
-            <span>&copy; {{ year }} Vizyo</span>
-          </footer>
-        </section>
-
-        <!-- ===== Panneau carte plein-cadre (droite) ===== -->
-        <section class="relative">
-          <app-auth-map-animation [fullBleed]="true" />
-        </section>
-      </div>
-    } @else {
-      <!-- ================== MOBILE / TABLET PORTRAIT (< lg) ================== -->
-      <!-- min-h-[100svh] (au lieu de h-[100svh]) : permet au contenu de s'etendre
-           si la hauteur dispo est inferieure (iOS Safari/Chrome avec URL bar visible
-           qui reduit le viewport effectif). overflow-y-auto au lieu de overflow-hidden :
-           autorise un scroll fallback plutot que de clipper le logo en haut.
-           padding-top: env(safe-area-inset-top) : respecte le notch / status bar
-           en mode PWA iOS standalone (apple-mobile-web-app-status-bar-style: black-translucent). -->
-      <div
-        class="min-h-[100svh] flex flex-col items-center justify-center
-               bg-bg-primary relative overflow-y-auto auth-mobile-shell"
-      >
-        <app-auth-background />
-
-        <div class="relative z-10 w-full max-w-md px-5 flex flex-col items-stretch">
-          <div class="flex flex-col items-center mb-5">
-            <app-logo variant="lockup" [size]="96" />
-            <p class="auth-tagline text-[13px] mt-2.5 tracking-wide">
-              Suivi de flotte GPS · Temps reel
-            </p>
-          </div>
+        <main class="auth-main">
+          <span class="vt-eyebrow">Espace client</span>
+          <h1 class="auth-title">Bon retour.</h1>
+          <p class="auth-sub">Connectez-vous à votre tableau de bord Vizyo Tracky.</p>
           <router-outlet />
+        </main>
 
-          <div class="mt-5 px-2">
-            <app-auth-map-animation />
+        <footer class="form-pane__footer">
+          <span>Suivi de flotte GPS · Temps réel</span>
+          <span>&copy; {{ year }} Vizyo</span>
+        </footer>
+      </section>
+
+      <!-- ===== Panneau marque (droite) — statique ===== -->
+      <aside class="brand-pane" aria-hidden="true">
+        <div class="brand-grid"></div>
+        <div class="brand-glow"></div>
+
+        <svg class="brand-route" viewBox="0 0 600 600" preserveAspectRatio="xMidYMid slice">
+          <path d="M40 470 C 160 430 180 300 300 300 S 470 220 560 120" fill="none"
+                stroke="var(--color-tracky-light)" stroke-width="2.4" stroke-linecap="round"
+                stroke-opacity=".55" stroke-dasharray="1 12" />
+          <path d="M90 90 C 200 160 220 260 330 300 S 500 400 540 500" fill="none"
+                stroke="var(--color-tracky-light)" stroke-width="2" stroke-linecap="round"
+                stroke-opacity=".28" stroke-dasharray="1 14" />
+          <circle cx="300" cy="300" r="7" fill="var(--color-tracky-light)" />
+          <circle class="auth-ping-c" cx="300" cy="300" r="7" fill="var(--color-tracky-light)" />
+          <circle cx="560" cy="120" r="5" fill="var(--color-tracky-light)" fill-opacity=".8" />
+          <circle cx="40" cy="470" r="5" fill="var(--color-tracky-light)" fill-opacity=".8" />
+          <circle cx="90" cy="90" r="4" fill="var(--fg-tertiary)" />
+        </svg>
+
+        <header class="brand-top">
+          <span class="brand-live-dot"></span>
+          <span class="vt-section-label" style="color:var(--fg-secondary)">Plateforme temps réel</span>
+        </header>
+
+        <div class="brand-mid">
+          <h2 class="brand-h2">Suivez et sécurisez votre flotte, en temps réel.</h2>
+          <p class="brand-p">
+            Géolocalisation, coupure moteur à distance, alertes et rapports — une seule
+            plateforme, matériel posé par nos techniciens et données hébergées en France.
+          </p>
+        </div>
+
+        <div class="brand-bottom">
+          <div class="brand-card">
+            <div class="brand-card-top">
+              <span class="brand-card-label">Suivi temps réel</span>
+              <span class="vt-status vt-status--on"><span class="vt-status__dot"></span>En ligne</span>
+            </div>
+            <p class="brand-card-big">14 <span>véhicules actifs</span></p>
+            <div class="brand-card-stats">
+              <div><span>Roulage</span><b class="accent">9</b></div>
+              <div><span>Arrêt</span><b>5</b></div>
+              <div><span>Alertes</span><b class="amber">2</b></div>
+            </div>
+          </div>
+
+          <div class="brand-trust">
+            <span>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
+              Données hébergées en France
+            </span>
+            <span>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+              Support humain local
+            </span>
           </div>
         </div>
-      </div>
-    }
+      </aside>
+    </div>
   `,
 })
-export class AuthLayoutComponent implements OnDestroy {
+export class AuthLayoutComponent {
   protected readonly year = new Date().getFullYear();
-
-  /** Track desktop breakpoint via matchMedia : on conditionne le rendu
-   *  via @if pour qu'un seul des deux layouts soit instancie a la fois
-   *  (evite de creer deux maps MapLibre, dont une cachee). */
-  private readonly mql =
-    typeof window !== 'undefined' ? window.matchMedia('(min-width: 1024px)') : null;
-  protected readonly isDesktop = signal(this.mql?.matches ?? false);
-  private readonly onMqlChange = (e: MediaQueryListEvent): void => {
-    this.isDesktop.set(e.matches);
-  };
-
-  constructor() {
-    this.mql?.addEventListener('change', this.onMqlChange);
-  }
-
-  ngOnDestroy(): void {
-    this.mql?.removeEventListener('change', this.onMqlChange);
-  }
 }
