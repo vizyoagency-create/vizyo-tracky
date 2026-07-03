@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, HostListener, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { LucideAngularModule, Archive, Users, Shield, Pencil, KeyRound, Send, XCircle, Mail, UserPlus, MoreVertical, Check, Truck, Bell, Power, BarChart3, CalendarClock, CreditCard } from 'lucide-angular';
@@ -218,7 +218,6 @@ interface MatrixRow {
         </div>
       }
 
-      @if (openMenuId()) { <div class="u-menu-backdrop" (click)="closeMenu()"></div> }
     </div>
 
     <!-- User Drawer (create + edit) -->
@@ -331,7 +330,6 @@ interface MatrixRow {
     .u-menu-item:hover:not(.disabled) { background: var(--bg-tertiary); color: var(--fg-primary) }
     .u-menu-item.danger:hover:not(.disabled) { color: var(--danger) }
     .u-menu-item.disabled { opacity: .4; cursor: not-allowed }
-    .u-menu-backdrop { position: fixed; inset: 0; z-index: 50 }
 
     /* ─── Permission matrix ─── */
     .m-card { position: relative; z-index: 1; overflow: hidden; padding: 0 }
@@ -398,6 +396,14 @@ export class UsersListComponent implements OnInit {
     this.openMenuId.update((cur) => (cur === id ? null : id));
   }
   protected closeMenu(): void { this.openMenuId.set(null); }
+
+  /** Ferme le menu ⋮ sur tout clic hors du menu/bouton (y compris navbar, quel que soit le z-index). */
+  @HostListener('document:click', ['$event'])
+  protected onDocumentClick(ev: MouseEvent): void {
+    if (!this.openMenuId()) return;
+    const t = ev.target as HTMLElement;
+    if (!t.closest('.u-menu') && !t.closest('.u-menu-btn')) this.closeMenu();
+  }
 
   /** Vues filtrées par le sélecteur de société global (SUPER_ADMIN). No-op sinon. */
   readonly visibleUsers = computed(() => this.users().filter((u) => this.fleetFilter.matches(u.fleetId)));
