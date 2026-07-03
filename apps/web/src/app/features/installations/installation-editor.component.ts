@@ -491,9 +491,9 @@ interface TaskForm {
     .day-move { padding: 5px 8px; border-radius: 8px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-tertiary); font-size: 11px; outline: none; max-width: 120px }
     .act { display: inline-flex; align-items: center; gap: 4px; padding: 5px 9px; border-radius: 8px; font-size: 11px; font-weight: 600; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-tertiary); cursor: pointer }
     .act:hover { color: var(--tracky-light); border-color: rgba(16,224,160,.2) }
-    .act.primary { background: var(--tracky); color: #fff; border-color: transparent }
-    .act.primary:hover { background: var(--tracky-dark); color: #fff }
-    .act.danger:hover { color: #f87171; border-color: rgba(239,68,68,.2) }
+    .act.primary { background: var(--tracky); color: var(--accent-ink); border-color: transparent }
+    .act.primary:hover { filter: brightness(1.06) }
+    .act.danger:hover { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 25%, transparent) }
 
     .add-row { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; padding: 7px 12px; border-radius: 8px; font-size: 11px; font-weight: 600; background: transparent; border: 1px dashed var(--border-subtle); color: var(--fg-tertiary); cursor: pointer }
     .add-row:hover { color: var(--tracky-light); border-color: rgba(16,224,160,.3) }
@@ -518,7 +518,7 @@ interface TaskForm {
     .fi.mono { font-family: var(--font-mono, monospace) }
     .btn-ghost { padding: 9px 16px; border-radius: 10px; font-size: 12px; font-weight: 600; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-secondary); cursor: pointer }
     .btn-ghost.sm { padding: 6px 10px; font-size: 11px }
-    .btn-ghost.sm.danger:hover { color: #f87171; border-color: rgba(239,68,68,.2) }
+    .btn-ghost.sm.danger:hover { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 25%, transparent) }
     /* .btn-primary : styles globaux (styles.css) */
 
     /* ════════════════════════════════════════════════════════════
@@ -531,7 +531,7 @@ interface TaskForm {
       background: transparent; color: var(--fg-tertiary); cursor: pointer; border: none; transition: color .18s, background .18s;
     }
     .vmode-btn:hover { color: var(--fg-secondary) }
-    .vmode-btn.active { background: var(--tracky); color: #fff }
+    .vmode-btn.active { background: var(--tracky); color: var(--accent-ink) }
 
     /* ════════════════════════════════════════════════════════════
        VUE SERPENT (boustrophedon) — stations + connecteurs + chips

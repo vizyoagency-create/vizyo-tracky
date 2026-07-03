@@ -185,10 +185,10 @@ export interface MatrixDrawerData {
     .add-scope-btn {
       display: inline-flex; align-items: center; gap: 0.375rem;
       padding: 0.375rem 0.75rem; font-size: 0.75rem; border-radius: 0.5rem;
-      background: var(--tracky); color: white; cursor: pointer;
+      background: var(--tracky); color: var(--accent-ink); cursor: pointer;
       border: none; font-weight: 500;
     }
-    .add-scope-btn:hover { background: var(--tracky-dark, var(--tracky)); }
+    .add-scope-btn:hover { filter: brightness(1.06); }
     .add-scope-select {
       padding: 0.375rem 0.5rem; font-size: 0.75rem; border-radius: 0.5rem;
       background: var(--bg-tertiary); border: 1px solid var(--border-subtle);
@@ -197,7 +197,7 @@ export interface MatrixDrawerData {
     .add-scope-select:disabled { opacity: 0.4; cursor: not-allowed; }
     .add-scope-confirm {
       padding: 0.375rem 0.75rem; font-size: 0.75rem; border-radius: 0.5rem;
-      background: var(--tracky); color: white; cursor: pointer; border: none;
+      background: var(--tracky); color: var(--accent-ink); cursor: pointer; border: none;
     }
   `],
 })

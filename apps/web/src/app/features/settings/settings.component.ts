@@ -341,7 +341,7 @@ import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
 
     /* Account */
     .account-block { display: flex; align-items: center; gap: 14px; padding: 14px; border-radius: 12px; background: var(--bg-tertiary); margin-bottom: 14px }
-    .avatar { width: 44px; height: 44px; border-radius: 50%; background: var(--tracky); color: white; font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0 }
+    .avatar { width: 44px; height: 44px; border-radius: 50%; background: var(--tracky); color: var(--accent-ink); font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0 }
     .account-email { font-size: 14px; font-weight: 600; color: var(--fg-primary) }
     .role-badge { display: inline-block; margin-top: 3px; padding: 2px 10px; border-radius: 20px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em }
     .role-badge.admin { background: rgba(16,224,160,.15); color: var(--tracky-light) }

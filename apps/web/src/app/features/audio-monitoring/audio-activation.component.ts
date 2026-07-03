@@ -209,7 +209,7 @@ const ATTESTATION_VERSION = 'v1';
       display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px;
       color: transparent; transition: all .15s;
     }
-    .attest input:checked + .attest-box { background: var(--tracky); border-color: var(--tracky); color: white }
+    .attest input:checked + .attest-box { background: var(--tracky); border-color: var(--tracky); color: var(--accent-ink) }
     .attest input:disabled ~ .attest-text { opacity: .6 }
     .attest-text { font-size: 13px; color: var(--fg-secondary); line-height: 1.5 }
 
