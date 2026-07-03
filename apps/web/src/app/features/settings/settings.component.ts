@@ -30,14 +30,16 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
 
       <!-- Onglets (réf. maquette Parametres.dc.html) -->
       <div class="s-tabs">
-        <button class="s-tab" [class.active]="tab() === 'billing'" (click)="tab.set('billing')" data-track="Onglet Facturation">Facturation &amp; options</button>
+        @if (canBilling()) {
+          <button class="s-tab" [class.active]="tab() === 'billing'" (click)="tab.set('billing')" data-track="Onglet Facturation">Facturation &amp; options</button>
+        }
         <button class="s-tab" [class.active]="tab() === 'appearance'" (click)="tab.set('appearance')" data-track="Onglet Apparence">Apparence</button>
         <button class="s-tab" [class.active]="tab() === 'notifications'" (click)="tab.set('notifications')" data-track="Onglet Notifications">Notifications</button>
         <button class="s-tab" [class.active]="tab() === 'organization'" (click)="tab.set('organization')" data-track="Onglet Organisation">Organisation</button>
       </div>
 
-      <!-- ═══════════════ FACTURATION & OPTIONS ═══════════════ -->
-      @if (tab() === 'billing') {
+      <!-- ═══════════════ FACTURATION & OPTIONS (gated billing_manage) ═══════════════ -->
+      @if (tab() === 'billing' && canBilling()) {
         <!-- Plan — honnête : compteur réel + facturation gérée hors app (pas de faux moyen de paiement). -->
         <div class="s-plan">
           <div class="s-plan-glow"></div>
@@ -611,6 +613,13 @@ export class SettingsComponent implements OnInit {
 
   /** Onglet actif (réf. maquette : Facturation / Apparence / Notifications / Organisation). */
   protected readonly tab = signal<SettingsTab>('billing');
+  /** Facturation & options : réservé aux admins par défaut (perm billing_manage). */
+  protected readonly canBilling = computed(() => this.perms.can('billing_manage'));
+
+  constructor() {
+    // Non-admin sans droit de facturation : on démarre sur « Apparence » (pas de flash de l'onglet caché).
+    if (!this.perms.can('billing_manage')) this.tab.set('appearance');
+  }
 
   /** Nb de véhicules réellement suivis (snapshot flotte) — pour l'encart abonnement honnête. */
   protected readonly activeVehicleCount = computed(() => this.realtime.snapshot().length);

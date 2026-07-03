@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { LucideAngularModule, Archive, Users, Shield, Pencil, KeyRound, Send, XCircle, Mail, UserPlus, MoreVertical, Check, Truck, Bell, Power, BarChart3, CalendarClock } from 'lucide-angular';
+import { LucideAngularModule, Archive, Users, Shield, Pencil, KeyRound, Send, XCircle, Mail, UserPlus, MoreVertical, Check, Truck, Bell, Power, BarChart3, CalendarClock, CreditCard } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { getDefaultPermissions, type UserPermissions } from '@vizyo/tracky-shared';
 import { AudioMonitoringService } from '../../core/services/audio-monitoring.service';
@@ -420,6 +420,7 @@ export class UsersListComponent implements OnInit {
     { key: 'reports_view', label: 'Rapports & export', icon: BarChart3 },
     { key: 'users_manage', label: 'Gérer les utilisateurs', icon: Users },
     { key: 'agenda_manage', label: 'Agenda & maintenance', icon: CalendarClock, partial: ['FLEET_MANAGER'] },
+    { key: 'billing_manage', label: 'Facturation & options', icon: CreditCard },
   ];
   /** État d'une cellule : ✓ (défaut), ◐ (accordable par utilisateur) ou – (indisponible). */
   protected capState(row: MatrixRow, role: AppRole): 'full' | 'partial' | 'none' {

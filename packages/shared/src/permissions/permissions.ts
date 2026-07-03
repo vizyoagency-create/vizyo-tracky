@@ -79,6 +79,14 @@ export interface UserPermissions {
    * OFF par defaut sauf SUPER_ADMIN/FLEET_ADMIN ; accordable par utilisateur.
    */
   ai_optimize: boolean;
+
+  /**
+   * Facturation & options : voir les informations d'abonnement / facturation et
+   * (à terme) gérer le moyen de paiement. Par défaut réservé aux admins
+   * (SUPER_ADMIN / FLEET_ADMIN) ; accordable par utilisateur. Pas encore de
+   * backend de paiement — la perm gate aujourd'hui l'onglet « Facturation & options ».
+   */
+  billing_manage: boolean;
 }
 
 const VIEWER_DEFAULTS: UserPermissions = {
@@ -109,6 +117,7 @@ const VIEWER_DEFAULTS: UserPermissions = {
   reservations_request: false,
   reservations_manage: false,
   ai_optimize: false,
+  billing_manage: false,
 };
 
 const FLEET_MANAGER_DEFAULTS: UserPermissions = {
@@ -139,6 +148,7 @@ const FLEET_MANAGER_DEFAULTS: UserPermissions = {
   reservations_request: false,
   reservations_manage: false,
   ai_optimize: false,
+  billing_manage: false,
 };
 
 const ADMIN_DEFAULTS: UserPermissions = {
@@ -169,6 +179,7 @@ const ADMIN_DEFAULTS: UserPermissions = {
   reservations_request: true,
   reservations_manage: true,
   ai_optimize: true,
+  billing_manage: true,
 };
 
 /**
@@ -204,6 +215,7 @@ const NIGHT_WATCHMAN_DEFAULTS: UserPermissions = {
   reservations_request: false,
   reservations_manage: false,
   ai_optimize: false,
+  billing_manage: false,
 };
 
 export function getDefaultPermissions(role: UserRoleSlug): UserPermissions {
@@ -389,6 +401,12 @@ export const PERMISSION_LABELS: Record<keyof UserPermissions, PermissionLabel> =
     description:
       'Demander a l\'IA des propositions (capacite du parc, placement optimise). L\'IA propose ; l\'application reutilise vehicles_edit / reservations_*.',
   },
+  billing_manage: {
+    group: 'Facturation',
+    label: 'Facturation & options',
+    description:
+      'Voir les informations d\'abonnement / facturation et (a terme) gerer le moyen de paiement. Reserve aux admins par defaut, accordable par utilisateur.',
+  },
 };
 
 /** Ordre d'affichage canonique des groupes dans l'UI. */
@@ -406,4 +424,5 @@ export const PERMISSION_GROUP_ORDER: readonly string[] = [
   'Agenda',
   'Reservations',
   'Optimisation IA',
+  'Facturation',
 ] as const;
