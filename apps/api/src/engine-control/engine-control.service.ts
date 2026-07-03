@@ -196,8 +196,10 @@ export class EngineControlService {
           this.rejectSpeed({ trackerId, action, reason, userId: requestedBy.userId, source }, fleetId, lastError);
 
         // 1) Actuellement en mouvement (> 5 km/h) — refusé même si ≤ 20 (qui passerait pour un admin).
+        // `return reject(...)` (et pas `await`) : défense en profondeur — rejectSpeed lève déjà,
+        // mais le `return` garantit qu'aucune coupe ne peut se poursuivre si sa sémantique changeait.
         if (lastPosition.speedKmh > REST_SPEED_KMH) {
-          await reject(`Véhicule en mouvement (${lastPosition.speedKmh} km/h) — coupure réservée à l'arrêt`);
+          return reject(`Véhicule en mouvement (${lastPosition.speedKmh} km/h) — coupure réservée à l'arrêt`);
         }
 
         // 2) Immobile depuis assez longtemps ? On cherche une trame EN MOUVEMENT (> 5 km/h)
@@ -212,7 +214,7 @@ export class EngineControlService {
         });
         if (recentMovement) {
           const stoppedForMs = Date.now() - recentMovement.timestamp.getTime();
-          await reject(
+          return reject(
             `Véhicule arrêté depuis seulement ${Math.round(stoppedForMs / 1000)}s — minimum requis ${Math.round(
               ENGINE_CUT_MIN_STOPPED_MS / 1000,
             )}s`,

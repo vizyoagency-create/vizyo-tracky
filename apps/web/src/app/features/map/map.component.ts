@@ -44,6 +44,7 @@ import { firstValueFrom } from 'rxjs';
 import { ActivityTrackerService } from '../../core/services/activity-tracker.service';
 import { GeofencesApiService } from '../../core/services/geofences.service';
 import { RealtimeService } from '../../core/services/realtime.service';
+import { PermissionsService } from '../../core/services/permissions.service';
 import { PreferencesService, type CameraMode } from '../../core/services/preferences.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { AuthService } from '../../core/services/auth.service';
@@ -910,16 +911,25 @@ const RESYNC_RADIUS_M = 150;
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
             <span>Y aller</span>
           </button>
-          @if (baanoolCard()!.cutActive) {
-            <button class="bn-vcard-act bn-vcard-act--restore" (click)="baanoolCardAction('restore')">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
-              <span>Rallumer</span>
-            </button>
-          } @else {
-            <button class="bn-vcard-act bn-vcard-act--danger" (click)="baanoolCardAction('cut')">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
-              <span>Couper</span>
-            </button>
+          <!-- Fix cohérence coupe-circuit : n'afficher couper/rallumer que si l'utilisateur
+               a la permission engine_control sur ce véhicule (comme le bouton partagé, qui
+               se masque sinon). Griser « Couper » quand la coupe est interdite (mouvement /
+               fix invalide) au lieu d'afficher une action dangereuse toujours active. -->
+          @if (canEngineControl(baanoolCard()!.vehicleId)) {
+            @if (baanoolCard()!.cutActive) {
+              <button class="bn-vcard-act bn-vcard-act--restore" (click)="baanoolCardAction('restore')">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+                <span>Rallumer</span>
+              </button>
+            } @else {
+              <button class="bn-vcard-act bn-vcard-act--danger"
+                      [disabled]="cutBlockedReason() !== null"
+                      [title]="cutBlockedReason() ?? ''"
+                      (click)="cutBlockedReason() === null ? baanoolCardAction('cut') : null">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+                <span>Couper</span>
+              </button>
+            }
           }
         </div>
       </div>
@@ -1870,10 +1880,48 @@ const RESYNC_RADIUS_M = 150;
       background: rgba(16, 224, 160, 0.10);
     }
     .bn-vcard-act--restore:active { background: rgba(16, 224, 160, 0.18); }
+    /* Fix cohérence coupe-circuit — bouton « Couper » grisé quand la coupe est
+       interdite (véhicule en mouvement / fix invalide), aligné sur le garde backend. */
+    .bn-vcard-act:disabled { opacity: 0.4; cursor: not-allowed; }
+    .bn-vcard-act:disabled:active { transform: none; background: rgba(239, 68, 68, 0.08); }
   `],
 })
 export class MapComponent implements AfterViewInit, OnDestroy {
   protected readonly realtime = inject(RealtimeService);
+  private readonly perms = inject(PermissionsService);
+
+  /**
+   * Fix cohérence coupe-circuit (carte) — la carte a son PROPRE bouton « Couper »
+   * (pas le composant partagé `<app-engine-control-button>`). Il faut donc y reproduire
+   * les mêmes gardes que le backend / le bouton partagé, sinon la carte affiche une
+   * action dangereuse comme disponible (même piège que le bug veilleur, mais sans AUCUNE
+   * garde) : bouton « Couper » rouge/actif pour un rôle sans droit ou sur un véhicule en
+   * pleine vitesse.
+   */
+  protected canEngineControl(vehicleId: string | undefined): boolean {
+    return !!vehicleId && this.perms.can('engine_control', vehicleId);
+  }
+
+  /**
+   * Raison de blocage de la coupe depuis la carte (null = coupe autorisée), alignée sur
+   * le garde backend non-veilleur (engine-control.service) : vitesse > 20 km/h refusée,
+   * fix GPS invalide refusé, position trop ancienne (>60s) si le véhicule roulait. Le
+   * serveur reste le rempart final ; ceci ne fait que griser le bouton pour ne pas
+   * proposer une action qui échouera / serait dangereuse.
+   */
+  protected readonly cutBlockedReason = computed<string | null>(() => {
+    const card = this.baanoolCard();
+    if (!card) return null;
+    const pos = this.realtime.positions().get(card.trackerId);
+    const speed = pos?.speedKmh ?? card.speedKmh;
+    const valid = pos?.valid ?? true;
+    const ageS = pos ? (Date.now() - new Date(pos.timestamp).getTime()) / 1000 : undefined;
+    const atRest = speed <= 5; // REST_SPEED_KMH backend
+    if (!atRest && ageS !== undefined && ageS > 60) return `Position trop ancienne (${Math.round(ageS)}s)`;
+    if (!valid) return 'Fix GPS invalide';
+    if (speed > 20) return `Vitesse trop élevée (${speed.toFixed(0)} km/h) — coupure impossible en mouvement`;
+    return null;
+  });
   protected readonly styles = inject(MapStyleService);
   private readonly zone = inject(NgZone);
   private readonly auth = inject(AuthService);
