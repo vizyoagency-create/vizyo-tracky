@@ -475,7 +475,7 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
             </div>
             <div class="flex-1 overflow-y-auto px-6 py-5 space-y-4">
               @if (assignError()) {
-                <div class="p-3 rounded-xl bg-red-600/10 border border-red-600/20 text-red-400 text-sm">{{ assignError() }}</div>
+                <div class="p-3 rounded-xl text-sm" style="background:color-mix(in srgb, var(--danger) 12%, transparent); border:1px solid color-mix(in srgb, var(--danger) 28%, transparent); color:var(--danger)">{{ assignError() }}</div>
               }
               <div>
                 <label class="block text-[11px] font-semibold text-fg-tertiary mb-1">IMEI DU TRACKER *</label>
@@ -636,13 +636,13 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
       background: var(--bg-secondary); color: var(--fg-tertiary); cursor: pointer; transition: all .2s; border: none;
     }
     .tab-btn:hover { color: var(--fg-secondary) }
-    .tab-btn.active { background: var(--tracky); color: white }
+    .tab-btn.active { background: var(--tracky-light); color: var(--accent-ink) }
 
     .add-btn {
       display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 10px; font-size: 12px; font-weight: 700;
-      background: var(--tracky); color: white; border: none; cursor: pointer; box-shadow: 0 2px 8px rgba(5,150,105,.3);
+      background: var(--tracky-light); color: var(--accent-ink); border: none; cursor: pointer; box-shadow: var(--shadow-tracky-glow); transition: filter .15s;
     }
-    .add-btn:hover { background: var(--tracky-dark) }
+    .add-btn:hover { filter: brightness(1.05) }
 
     /* FAB mobile : visible uniquement < 768px (cohérent avec Map FAB).
        Doit se poser AU-DESSUS de la bottom-bar (60-72px selon iOS PWA bump
@@ -662,21 +662,16 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
       justify-content: center;
       isolation: isolate;
       overflow: hidden;
-      color: #FFFFFF;
-      background: linear-gradient(135deg,
-        #A7F3D0 0%, #5EEAD4 20%, #6EE7B7 40%, #34D399 55%, #67E8F9 75%, #A7F3D0 100%);
-      background-size: 240% 240%;
-      animation: vlist-fab-gradient 8s ease-in-out infinite;
+      color: var(--accent-ink);
+      background: var(--color-tracky-light);
       box-shadow:
-        0 8px 22px rgba(94,234,212,.35),
-        0 2px 8px rgba(16,224,160,.22),
-        inset 0 1px 0 rgba(255,255,255,.55);
-      opacity: .92;
+        0 10px 26px -8px color-mix(in srgb, var(--color-tracky-light) 55%, transparent),
+        0 2px 8px rgba(0,0,0,.14);
+      opacity: 1;
       transition: transform .25s cubic-bezier(0.34, 1.56, 0.64, 1), filter .2s, opacity .2s;
     }
     .vlist-fab:hover { opacity: 1; filter: brightness(1.05); }
     .vlist-fab:active { transform: scale(.92); opacity: 1; filter: brightness(1.08); }
-    :host-context([data-theme='dark']) .vlist-fab { color: #000000; }
     @keyframes vlist-fab-gradient {
       0%, 100% { background-position: 0% 50% }
       50%      { background-position: 100% 50% }
@@ -722,7 +717,7 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
     .view-switch { display: flex; margin-left: auto; border-radius: 9px; border: 1px solid var(--border-subtle); overflow: hidden }
     .view-btn { display: flex; align-items: center; padding: 7px 11px; background: var(--bg-secondary); color: var(--fg-tertiary); border: none; cursor: pointer; transition: all .2s }
     .view-btn:hover { color: var(--fg-secondary) }
-    .view-btn.active { background: var(--tracky); color: #fff }
+    .view-btn.active { background: var(--tracky-light); color: var(--accent-ink) }
 
     /* #3 — vue tableau véhicules */
     .v-table-wrap { position: relative; z-index: 1; overflow-x: auto; border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--bg-secondary) }
@@ -798,7 +793,7 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
     }
     .v-driver-dot {
       width: 7px; height: 7px; border-radius: 50%;
-      background: #10b981;
+      background: var(--color-tracky-light);
       flex-shrink: 0;
     }
 
@@ -818,9 +813,9 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
     }
     .v-live-pill--moving .v-live-dot { background: #10E0A0; box-shadow: 0 0 6px rgba(16,224,160,.6) }
     .v-live-pill--idle {
-      color: #f59e0b; background: rgba(245,158,11,.1); border-color: rgba(245,158,11,.22);
+      color: var(--warning); background: color-mix(in srgb, var(--warning) 12%, transparent); border-color: color-mix(in srgb, var(--warning) 24%, transparent);
     }
-    .v-live-pill--idle .v-live-dot { background: #f59e0b }
+    .v-live-pill--idle .v-live-dot { background: var(--warning) }
     .v-live-pill--stopped {
       color: var(--fg-tertiary); background: var(--bg-tertiary); border-color: var(--border-subtle);
     }
@@ -829,7 +824,7 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
     /* V1.15 — badge installation (derive IMEI + SIM) */
     .v-inst { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 9999px; line-height: 1.4 }
     .v-inst--installed { color: var(--tracky-light); background: rgba(16,224,160,.12); border: 1px solid rgba(16,224,160,.22) }
-    .v-inst--no-sim { color: #f59e0b; background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.22) }
+    .v-inst--no-sim { color: var(--warning); background: color-mix(in srgb, var(--warning) 12%, transparent); border: 1px solid color-mix(in srgb, var(--warning) 24%, transparent) }
 
     .v-card-bottom { padding-top: 10px; border-top: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between }
     .v-tracker-info { flex: 1; min-width: 0 }
@@ -841,8 +836,8 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
     }
     .v-action-btn lucide-icon { width: 16px; height: 16px; }
     .v-action-btn.view:hover { color: var(--tracky-light); border-color: rgba(16,224,160,.2); background: rgba(16,224,160,.06) }
-    .v-action-btn.edit:hover { color: #60a5fa; border-color: rgba(59,130,246,.2); background: rgba(59,130,246,.06) }
-    .v-action-btn.delete:hover { color: #f87171; border-color: rgba(239,68,68,.2); background: rgba(239,68,68,.06) }
+    .v-action-btn.edit:hover { color: var(--color-tracky-light); border-color: color-mix(in srgb, var(--color-tracky-light) 25%, transparent); background: color-mix(in srgb, var(--color-tracky-light) 8%, transparent) }
+    .v-action-btn.delete:hover { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 25%, transparent); background: color-mix(in srgb, var(--danger) 8%, transparent) }
     .v-tracker { display: flex; align-items: center; gap: 5px; font-size: 11px; font-family: var(--font-mono, monospace); color: var(--fg-tertiary) }
     .v-assign-btn {
       font-size: 11px; color: var(--tracky-light); background: none; border: none; cursor: pointer; font-weight: 600;
