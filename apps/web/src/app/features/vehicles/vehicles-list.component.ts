@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } 
 import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { LucideAngularModule, Plus, Truck, ExternalLink, FolderOpen, Radio, X, Save, Wifi, Pencil, Trash2, Eye, Search, LayoutGrid, Table, Layers, ChevronRight, ChevronDown, Gauge } from 'lucide-angular';
+import { LucideAngularModule, Plus, Truck, ExternalLink, FolderOpen, Radio, X, Save, Wifi, Pencil, Trash2, Eye, Search, LayoutGrid, Table, Layers, ChevronRight, ChevronDown, Gauge, UserRound, Wrench } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { PreferencesService } from '../../core/services/preferences.service';
@@ -134,8 +134,9 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
       <!-- Header -->
       <div class="vlist-header">
         <div>
-          <h1 class="vlist-title">Véhicules</h1>
-          <p class="vlist-sub">{{ vehicles().length }} véhicule(s) dans votre flotte</p>
+          <span class="vt-eyebrow">Flotte</span>
+          <h1 class="vlist-title">{{ vehicles().length }} véhicule{{ vehicles().length > 1 ? 's' : '' }}</h1>
+          <p class="vlist-sub">Suivi temps réel de votre flotte</p>
         </div>
         <div class="vlist-actions">
           <div class="tab-switch">
@@ -146,6 +147,18 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
               <button (click)="selectTab('groups')" data-track="Onglet Groupes" class="tab-btn" [class.active]="activeTab() === 'groups'">
                 <lucide-icon [img]="FolderOpenIcon" [size]="15"></lucide-icon> Groupes
               </button>
+            }
+            <!-- Conducteurs & Maintenance existent (consolidés dans Utilisateurs / Agenda) :
+                 raccourcis façon maquette, sans dupliquer la logique. -->
+            @if (perms.can('drivers_view')) {
+              <a routerLink="/users" [queryParams]="{ tab: 'drivers' }" data-track="Onglet Conducteurs" class="tab-btn">
+                <lucide-icon [img]="UserRoundIcon" [size]="15"></lucide-icon> Conducteurs
+              </a>
+            }
+            @if (perms.can('agenda_view')) {
+              <a routerLink="/agenda" data-track="Onglet Maintenance" class="tab-btn">
+                <lucide-icon [img]="WrenchIcon" [size]="15"></lucide-icon> Maintenance
+              </a>
             }
             <button (click)="selectTab('capacity')" data-track="Onglet Capacités" class="tab-btn" [class.active]="activeTab() === 'capacity'">
               <lucide-icon [img]="GaugeIcon" [size]="15"></lucide-icon> Capacités
@@ -1018,6 +1031,8 @@ export class VehiclesListComponent implements OnInit {
   protected readonly ExternalLink = ExternalLink;
   protected readonly FolderOpenIcon = FolderOpen;
   protected readonly GaugeIcon = Gauge;
+  protected readonly UserRoundIcon = UserRound;
+  protected readonly WrenchIcon = Wrench;
   protected readonly RadioIcon = Radio;
   protected readonly PencilIcon = Pencil;
   protected readonly Trash2Icon = Trash2;
