@@ -1769,7 +1769,7 @@ const RESYNC_RADIUS_M = 150;
       min-width: 0;
     }
     .bn-vcard-plate {
-      font-family: 'Poppins', sans-serif;
+      font-family: var(--font-display);
       font-weight: 700;
       font-size: 17px;
       color: #111;
@@ -1808,7 +1808,7 @@ const RESYNC_RADIUS_M = 150;
       box-shadow: 0 0 0 2px rgba(16, 224, 160, 0.3);
     }
     .bn-vcard-speed-badge {
-      font-family: 'Poppins', sans-serif;
+      font-family: var(--font-display);
       font-size: 13px;
       font-weight: 700;
       letter-spacing: -0.01em;
