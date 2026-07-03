@@ -904,33 +904,8 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
     .v-assign-btn:hover { text-decoration: underline }
     .v-no-tracker { font-size: 11px; color: var(--fg-tertiary); font-style: italic }
 
-    /* Sprint 1 — vue groupée */
-    .v-groups { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 10px }
-    .v-group-section { border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--bg-secondary); overflow: hidden }
-    .v-group-head {
-      width: 100%; display: flex; align-items: center; gap: 8px; padding: 11px 14px;
-      background: transparent; border: none; cursor: pointer; color: var(--fg-primary); text-align: left; transition: background .15s;
-    }
-    .v-group-head:hover { background: var(--bg-tertiary) }
-    .v-group-head-ico { color: var(--fg-tertiary); flex-shrink: 0 }
-    .v-group-name { font-size: 13px; font-weight: 700; letter-spacing: -.01em }
-    .v-group-name--none { color: var(--fg-tertiary); font-style: italic; font-weight: 600 }
-    .v-group-count {
-      margin-left: auto; font-size: 11px; font-weight: 700; color: var(--fg-tertiary);
-      background: var(--bg-tertiary); border-radius: 9999px; padding: 2px 9px; font-variant-numeric: tabular-nums;
-    }
-    .v-group-items { display: flex; flex-direction: column; border-top: 1px solid var(--border-subtle) }
-    .v-group-row {
-      display: flex; align-items: center; gap: 10px; padding: 10px 14px; text-decoration: none; color: inherit;
-      border-bottom: 1px solid var(--border-subtle); transition: background .15s;
-    }
-    .v-group-row:last-child { border-bottom: none }
-    .v-group-row:hover { background: var(--bg-tertiary) }
-    .v-group-row .v-type-icon { width: 26px; height: 26px; border-radius: 7px }
-    .v-group-row-plate { font-family: var(--font-mono, monospace); font-weight: 800; font-size: 14px; color: var(--fg-primary); letter-spacing: .03em }
-    .v-group-row-brand { font-size: 12px; color: var(--fg-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40% }
-    .v-group-row-spacer { flex: 1 }
-    .v-group-row-chev { color: var(--fg-tertiary); flex-shrink: 0 }
+    /* Ancienne vue groupée (.v-group-*) retirée : remplacée par le tableau
+       groupé .v-gtable (rebuild maquette). */
 
     /* iOS PWA standalone : insette l'overlay drawer (assign tracker) par les
        safe-areas pour que le header ne passe pas sous le notch ni le footer sous
