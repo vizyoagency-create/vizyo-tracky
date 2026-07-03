@@ -24,6 +24,7 @@ import {
   LogOut,
   Sun,
   Moon,
+  Sparkles,
 } from 'lucide-angular';
 import { ThemeService } from '../core/theme/theme.service';
 import { AlertsBellComponent } from '../shared/ui/alerts-bell/alerts-bell.component';
@@ -43,6 +44,19 @@ import { BottomSheetComponent } from '../shared/ui/bottom-sheet/bottom-sheet.com
 import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wizard.component';
 import { BaanoolMapOverlayComponent } from '../features/baanool/baanool-map-overlay.component';
 import { MenuStateService } from '../core/services/menu-state.service';
+
+/** Élément de navigation (sidebar / bottom-sheet). */
+interface NavItem {
+  label: string;
+  route: string;
+  icon: typeof LayoutDashboard;
+}
+/** Groupe de navigation : une section (eyebrow) + ses items.
+ *  `section: null` = groupe sans en-tête (modes veilleur / baanool). */
+interface NavGroup {
+  section: string | null;
+  items: NavItem[];
+}
 
 @Component({
   selector: 'app-dashboard-layout',
@@ -73,17 +87,36 @@ import { MenuStateService } from '../core/services/menu-state.service';
           </button>
         </div>
         <nav class="sidebar-nav" aria-label="Sections">
-          @for (item of navItems(); track item.label) {
-            <a [routerLink]="item.route" routerLinkActive="active"
-               #rla="routerLinkActive"
-               class="sidebar-link"
-               [attr.aria-current]="rla.isActive ? 'page' : null"
-               [attr.aria-label]="collapsed() ? item.label : null">
-              <lucide-icon [img]="item.icon" [size]="20" aria-hidden="true"></lucide-icon>
-              @if (!collapsed()) { <span>{{ item.label }}</span> }
-            </a>
+          @for (group of navItems(); track group.section ?? $index; let first = $first) {
+            @if (collapsed()) {
+              @if (!first) { <span class="sidebar-divider" aria-hidden="true"></span> }
+            } @else if (group.section) {
+              <span class="vt-section-label sidebar-section">{{ group.section }}</span>
+            }
+            @for (item of group.items; track item.label) {
+              <a [routerLink]="item.route" routerLinkActive="active"
+                 #rla="routerLinkActive"
+                 class="sidebar-link"
+                 [attr.aria-current]="rla.isActive ? 'page' : null"
+                 [attr.aria-label]="collapsed() ? item.label : null">
+                <lucide-icon [img]="item.icon" [size]="20" aria-hidden="true"></lucide-icon>
+                @if (!collapsed()) { <span>{{ item.label }}</span> }
+              </a>
+            }
           }
         </nav>
+        @if (!collapsed() && showAiPromo()) {
+          <div class="sidebar-foot">
+            <a routerLink="/agenda" class="ai-promo">
+              <span class="ai-promo-head">
+                <lucide-icon [img]="SparklesIcon" [size]="15" aria-hidden="true"></lucide-icon>
+                <span>Agent IA</span>
+              </span>
+              <span class="ai-promo-text">Optimisez vos tournées et réaffectations.</span>
+              <span class="ai-promo-cta">Découvrir →</span>
+            </a>
+          </div>
+        }
       </aside>
 
       <!-- MOBILE BOTTOM SHEET — remplace l'ancien drawer lateral.
@@ -98,16 +131,21 @@ import { MenuStateService } from '../core/services/menu-state.service';
           <app-logo variant="icon" [size]="22" />
           <span class="bs-brand">Vizyo <span class="text-tracky-light">Tracky</span></span>
         </div>
-        <nav class="bs-nav" aria-label="Sections">
-          @for (item of navItems(); track item.label) {
-            <a [routerLink]="item.route" routerLinkActive="active"
-               #rla="routerLinkActive"
-               class="bs-link"
-               [attr.aria-current]="rla.isActive ? 'page' : null"
-               (click)="mobileMenuOpen.set(false)">
-              <lucide-icon [img]="item.icon" [size]="20" aria-hidden="true"></lucide-icon>
-              <span>{{ item.label }}</span>
-            </a>
+        <nav class="bs-nav-wrap" aria-label="Sections">
+          @for (group of navItems(); track group.section ?? $index) {
+            @if (group.section) { <span class="vt-section-label bs-section">{{ group.section }}</span> }
+            <div class="bs-nav">
+              @for (item of group.items; track item.label) {
+                <a [routerLink]="item.route" routerLinkActive="active"
+                   #rla="routerLinkActive"
+                   class="bs-link"
+                   [attr.aria-current]="rla.isActive ? 'page' : null"
+                   (click)="mobileMenuOpen.set(false)">
+                  <lucide-icon [img]="item.icon" [size]="20" aria-hidden="true"></lucide-icon>
+                  <span>{{ item.label }}</span>
+                </a>
+              }
+            </div>
           }
         </nav>
       </app-bottom-sheet>
@@ -161,6 +199,14 @@ import { MenuStateService } from '../core/services/menu-state.service';
                 <lucide-icon [img]="LogOutIcon" [size]="18"></lucide-icon>
               </button>
             } @else {
+            <!-- Pastille « Connecté » — état du socket temps réel (RealtimeService). -->
+            <span class="top-connected vt-status"
+                  [class.vt-status--on]="realtime.connected()"
+                  [class.vt-status--offline]="!realtime.connected()"
+                  role="status" aria-live="polite">
+              <span class="vt-status__dot" aria-hidden="true"></span>
+              {{ realtime.connected() ? 'Connecté' : 'Hors ligne' }}
+            </span>
             <!-- Filtre societe global — SUPER_ADMIN uniquement (rend rien sinon).
                  Ecrit dans FleetFilterService, consomme par les pages liste. -->
             <app-fleet-selector />
@@ -301,30 +347,48 @@ import { MenuStateService } from '../core/services/menu-state.service';
        * width fixe et le calcul flex-basis: auto. Sans ca, lors du toggle de
        * la classe .collapsed, la transition CSS sur width ne se reflete pas
        * dans le flex-basis et la .main-area ne reprend pas l'espace libere. */
-      flex: 0 0 240px;
-      width: 240px;
+      flex: 0 0 248px;
+      width: 248px;
       border-right: 1px solid var(--border-subtle);
-      background: var(--bg-secondary); transition: flex-basis .3s, width .3s;
+      background: var(--surface-rail); transition: flex-basis .3s, width .3s;
     }
     .desktop-sidebar.collapsed { flex-basis: 64px; width: 64px }
     .sidebar-top {
-      display: flex; align-items: center; gap: 8px; padding: 0 12px; height: 56px;
+      display: flex; align-items: center; gap: 10px; padding: 0 16px; height: 60px;
       border-bottom: 1px solid var(--border-subtle);
     }
-    .sidebar-brand { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: var(--fg-primary); white-space: nowrap }
+    .sidebar-brand { font-size: 15px; font-weight: 800; letter-spacing: -.01em; color: var(--fg-primary); white-space: nowrap }
     .sidebar-toggle {
       margin-left: auto; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
       color: var(--fg-tertiary); background: transparent; border: none; cursor: pointer;
     }
     .sidebar-toggle:hover { color: var(--fg-primary); background: var(--bg-tertiary) }
-    .sidebar-nav { flex: 1; display: flex; flex-direction: column; gap: 2px; padding: 8px }
+    .sidebar-nav { flex: 1; display: flex; flex-direction: column; gap: 2px; padding: 14px 12px; overflow-y: auto }
+    /* En-tête de groupe (eyebrow mono) — .vt-section-label fournit la typo. */
+    .sidebar-section { padding: 6px 12px 4px }
+    .sidebar-section:not(:first-child) { padding-top: 16px }
+    /* Séparateur entre groupes quand la sidebar est repliée (pas d'eyebrows). */
+    .sidebar-divider { height: 1px; background: var(--border-subtle); margin: 8px 10px }
     .sidebar-link {
       display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px;
-      color: var(--fg-secondary); text-decoration: none; font-size: 13px; font-weight: 500;
+      color: var(--fg-secondary); text-decoration: none; font-size: 13.5px; font-weight: 600;
       border: 1px solid transparent; transition: all .2s;
     }
     .sidebar-link:hover { background: var(--bg-tertiary); color: var(--fg-primary) }
     .sidebar-link.active { background: var(--bg-tertiary); color: var(--tracky-light); border-color: var(--border-strong) }
+    /* Pied de sidebar — carte promo « Agent IA » (réf. maquette). */
+    .sidebar-foot { padding: 12px; border-top: 1px solid var(--border-subtle) }
+    .ai-promo {
+      display: block; text-decoration: none;
+      padding: 12px 13px; border-radius: 14px;
+      background: var(--bg-tertiary); border: 1px solid var(--border-strong);
+      transition: border-color .2s;
+    }
+    .ai-promo:hover { border-color: var(--tracky-light) }
+    .ai-promo-head { display: flex; align-items: center; gap: 8px; color: var(--fg-primary); font-size: 13px; font-weight: 700 }
+    .ai-promo-head lucide-icon { color: var(--tracky-light); display: flex }
+    .ai-promo-text { display: block; margin: 7px 0 9px; font-size: 12px; color: var(--fg-secondary); line-height: 1.45 }
+    .ai-promo-cta { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--tracky-light) }
 
     /* ─── MOBILE DRAWER ─── */
     /* Anciens drawers mobiles supprimes (remplaces par <app-bottom-sheet>). */
@@ -332,7 +396,7 @@ import { MenuStateService } from '../core/services/menu-state.service';
     /* ─── TOP BAR avec effet vague glassy ─── */
     .top-bar {
       display: flex; align-items: center; justify-content: space-between;
-      height: 56px;
+      height: 60px;
       flex-shrink: 0;
       position: relative;
       /* Pas d'overflow:hidden ici : la popup alerts-bell deborde et serait clippee.
@@ -342,7 +406,7 @@ import { MenuStateService } from '../core/services/menu-state.service';
          au-dessus de ces boutons. Reste sous les modals (toast 6000, drawer 8000). */
       z-index: 1800;
       border-bottom: 1px solid color-mix(in srgb, var(--tracky-light, #10E0A0) 14%, var(--border-subtle));
-      background: color-mix(in srgb, var(--bg-secondary) 70%, transparent);
+      background: color-mix(in srgb, var(--surface-rail) 72%, transparent);
       backdrop-filter: blur(14px) saturate(1.5);
       -webkit-backdrop-filter: blur(14px) saturate(1.5);
       /* Safe-area :
@@ -443,6 +507,7 @@ import { MenuStateService } from '../core/services/menu-state.service';
     .mobile-burger { display: none }
     .top-title { font-size: 16px; font-weight: 700; color: var(--fg-primary); position: relative; z-index: 1 }
     .top-actions { display: flex; align-items: center; gap: 8px; position: relative; z-index: 1 }
+    .top-connected { flex-shrink: 0 }
     /* Sprint 3 — veilleur : boutons icône top-bar (thème + déconnexion) qui
        remplacent l'avatar profil. Même gabarit cercle 40px bordé pour la cohérence. */
     .top-icon-btn {
@@ -452,7 +517,7 @@ import { MenuStateService } from '../core/services/menu-state.service';
       color: var(--fg-secondary); cursor: pointer; padding: 0; transition: all .2s;
     }
     .top-icon-btn:hover { border-color: var(--tracky-light); color: var(--fg-primary) }
-    .top-icon-btn--danger:hover { border-color: #f87171; color: #f87171 }
+    .top-icon-btn--danger:hover { border-color: var(--danger); color: var(--danger) }
     /* User menu dropdown */
     .user-menu-wrapper { position: relative }
     .user-menu-trigger {
@@ -464,7 +529,7 @@ import { MenuStateService } from '../core/services/menu-state.service';
     .user-menu-trigger:hover { border-color: var(--tracky-light) }
     .user-avatar {
       width: 36px; height: 36px; border-radius: 9999px;
-      background: var(--tracky); color: white;
+      background: var(--color-tracky-light); color: var(--accent-ink);
       font-size: 12px; font-weight: 700;
       display: flex; align-items: center; justify-content: center;
     }
@@ -494,7 +559,7 @@ import { MenuStateService } from '../core/services/menu-state.service';
     }
     .user-menu-item:hover { background: var(--bg-tertiary); color: var(--fg-primary) }
     .user-menu-item--danger { color: var(--fg-tertiary) }
-    .user-menu-item--danger:hover { color: #f87171; background: rgba(239,68,68,.06) }
+    .user-menu-item--danger:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, transparent) }
 
     /* ─── MAIN ─── */
     .main-area { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0 }
@@ -643,9 +708,11 @@ import { MenuStateService } from '../core/services/menu-state.service';
         font-size: 13px; font-weight: 800; text-transform: uppercase;
         letter-spacing: .08em; color: var(--fg-primary);
       }
+      .bs-nav-wrap { display: flex; flex-direction: column; gap: 4px }
+      .bs-section { padding: 12px 4px 2px }
       .bs-nav {
         display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;
-        padding: 4px 0 8px;
+        padding: 2px 0 6px;
       }
       .bs-link {
         display: flex; align-items: center; gap: 12px;
@@ -677,6 +744,7 @@ import { MenuStateService } from '../core/services/menu-state.service';
       /* Sur mobile, on cache le titre de page (présent dans la page) et on affiche
          le logo + brand pour rappeler l'identité Vizyo Tracky. */
       .top-title { display: none }
+      .top-connected { display: none }
       .top-bar-brand { display: flex; flex-shrink: 0 }
       .top-bar-brand-text { font-size: 13px }
       /* Place réduite sur mobile (sélecteur société SA) : on garde le logo + « Tracky »
@@ -748,11 +816,20 @@ export class DashboardLayoutComponent {
   protected readonly MoonIcon = Moon;
   protected readonly SettingsIcon = Settings;
   protected readonly TerminalIcon = Terminal;
+  protected readonly SparklesIcon = Sparkles;
+
+  /** Carte promo « Agent IA » en pied de sidebar : masquée pour le veilleur et
+   *  affichée seulement si l'utilisateur a accès à l'agenda / à l'optimisation IA. */
+  protected readonly showAiPromo = computed(() =>
+    !this.auth.isWatchman() &&
+    (this.perms.can('ai_optimize') || this.perms.can('agenda_view')),
+  );
 
   protected isSuperAdmin(): boolean {
     return this.auth.user()?.role === 'SUPER_ADMIN';
   }
-  private readonly realtime = inject(RealtimeService);
+  /** Exposé au template pour la pastille « Connecté » (état socket temps réel). */
+  protected readonly realtime = inject(RealtimeService);
   private readonly activityTracker = inject(ActivityTrackerService);
   protected readonly themeService = inject(ThemeService);
   protected readonly userMenuOpen = signal(false);
@@ -877,52 +954,57 @@ export class DashboardLayoutComponent {
   private readonly perms = inject(PermissionsService);
   protected readonly network = inject(NetworkStatusService);
 
-  protected readonly navItems = computed(() => {
+  protected readonly navItems = computed<NavGroup[]>(() => {
     // Sprint 3 — veilleur de nuit : navigation réduite à « Véhicules » (liste groupée + détail).
     // Cosmétique : le périmètre réel est garanti serveur (403) + watchmanChildGuard.
     if (this.auth.isWatchman()) {
-      return [{ label: 'Véhicules', route: '/vehicles', icon: Truck }];
+      return [{ section: null, items: [{ label: 'Véhicules', route: '/vehicles', icon: Truck }] }];
     }
-    const isSuperAdmin = this.auth.user()?.role === 'SUPER_ADMIN';
-    // V1.12 — Mode Baanool : menu reduit aux essentiels. Pas de dashboard,
-    // groupes, geofences, rapports, conducteurs, utilisateurs. Garde Carte,
-    // Vehicules (pour accéder au detail), Alertes, et les pages personnelles
-    // (Compte/Parametres sont accessibles via top-right ou directement).
+    // V1.12 — Mode Baanool : menu reduit aux essentiels (un seul groupe, sans
+    // en-tête). Pas de dashboard, groupes, geofences, rapports. Groupes =
+    // onglet de Véhicules, Conducteurs = onglet d'Utilisateurs.
     if (this.isBaanoolMode()) {
-      return [
+      const items: NavItem[] = [
         ...(this.perms.can('vehicles_view') ? [
           { label: 'Carte', route: '/map', icon: Map },
           { label: 'Véhicules', route: '/vehicles', icon: Truck },
         ] : []),
         ...(this.perms.can('alerts_view') ? [{ label: 'Alertes', route: '/alerts', icon: Bell }] : []),
-        // Consolidation IA : Groupes = onglet de Véhicules, Conducteurs = onglet
-        // d'Utilisateurs. Plus d'entrées de nav séparées (accès via les onglets).
         ...(this.perms.can('users_view') ? [{ label: 'Utilisateurs', route: '/users', icon: Users }] : []),
         { label: 'Paramètres', route: '/settings', icon: Settings },
       ];
+      return [{ section: null, items }];
     }
-    return [
+    // Regroupement en sections (eyebrows mono) — refonte DS §3.
+    const supervision: NavItem[] = [
       { label: 'Tableau de bord', route: '/dashboard', icon: LayoutDashboard },
+      // Consolidation IA : « Groupes » est un onglet DANS Véhicules.
       ...(this.perms.can('vehicles_view') ? [
         { label: 'Carte', route: '/map', icon: Map },
-        // Consolidation IA : « Groupes » est désormais un onglet DANS Véhicules.
         { label: 'Véhicules', route: '/vehicles', icon: Truck },
       ] : []),
-      // Consolidation IA : « Géofences » est désormais un onglet DANS Alertes
-      // (zones de déclenchement), à côté des événements et des règles.
+      // Consolidation IA : « Géofences » est un onglet DANS Alertes.
       ...(this.perms.can('alerts_view') ? [{ label: 'Alertes', route: '/alerts', icon: Bell }] : []),
+    ];
+    const analyse: NavItem[] = [
       ...(this.perms.can('reports_view') ? [{ label: 'Rapports', route: '/reports', icon: FileBarChart }] : []),
-      // Sprint 7 + Sprint 9 (consolidation) — Agenda = hub calendrier UNIQUE : maintenance,
-      // incidents, réservations, optimisation et copilote IA réunis (ouverts en feuilles DEPUIS
-      // le calendrier). Visible dès qu'un des accès liés est présent ; plus d'entrées séparées.
+      // Sprint 7/9 — Agenda = hub calendrier unique (maintenance, incidents,
+      // réservations, optimisation, copilote IA). Visible dès qu'un accès lié existe.
       ...(this.perms.can('agenda_view') || this.perms.can('reservations_view') || this.perms.can('reservations_request') || this.perms.can('ai_optimize')
         ? [{ label: 'Agenda', route: '/agenda', icon: Calendar }] : []),
-      // Consolidation IA : « Conducteurs » est désormais un onglet DANS Utilisateurs.
+    ];
+    const administration: NavItem[] = [
+      // Consolidation IA : « Conducteurs » est un onglet DANS Utilisateurs.
       ...(this.perms.can('users_view') ? [{ label: 'Utilisateurs', route: '/users', icon: Users }] : []),
-      // V1.16 — Parc SIM : visible des qu'on a sims_view (FLEET_ADMIN/SUPER_ADMIN bypass).
+      // V1.16 — Parc SIM : visible dès sims_view (FLEET_ADMIN/SUPER_ADMIN bypass).
       ...(this.perms.can('sims_view') ? [{ label: 'Cartes SIM', route: '/sims', icon: CreditCard }] : []),
-      // V1.15 — Suivi installation : reserve au FLEET_ADMIN (consultation + reordonnancement).
+      // V1.15 — Suivi installation : réservé au FLEET_ADMIN (consultation + réordonnancement).
       ...(this.auth.user()?.role === 'FLEET_ADMIN' ? [{ label: 'Installation', route: '/installations', icon: ClipboardList }] : []),
     ];
+    return ([
+      { section: 'Supervision', items: supervision },
+      { section: 'Analyse', items: analyse },
+      { section: 'Administration', items: administration },
+    ] satisfies NavGroup[]).filter((g) => g.items.length > 0);
   });
 }
