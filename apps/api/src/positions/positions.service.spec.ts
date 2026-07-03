@@ -68,7 +68,7 @@ describe('PositionsService.list', () => {
       providers: [
         PositionsService,
         { provide: PrismaService, useValue: prisma },
-        { provide: RealtimeGateway, useValue: { broadcastPosition: jest.fn(), emitTrackerStatus: jest.fn() } },
+        { provide: RealtimeGateway, useValue: { broadcastPosition: jest.fn(), emitTrackerStatus: jest.fn(), emitVehicleMovement: jest.fn() } },
         { provide: GeofencesService, useValue: { checkViolations: jest.fn() } },
         { provide: TripsService, useValue: { processPosition: jest.fn() } },
         { provide: ErrorLogger, useValue: { record: jest.fn().mockResolvedValue('id') } },
@@ -156,6 +156,7 @@ describe('PositionsService.ingest — garde-fou replay/teleportation', () => {
     broadcastPosition: jest.Mock;
     emitTrackerStatus: jest.Mock;
     emitEngineCommandUpdate: jest.Mock;
+    emitVehicleMovement: jest.Mock;
   };
   let trackerRow: Record<string, unknown>;
 
@@ -248,6 +249,7 @@ describe('PositionsService.ingest — garde-fou replay/teleportation', () => {
       broadcastPosition: jest.fn(),
       emitTrackerStatus: jest.fn(),
       emitEngineCommandUpdate: jest.fn(),
+      emitVehicleMovement: jest.fn(),
     };
 
     const module = await Test.createTestingModule({
@@ -410,6 +412,34 @@ describe('PositionsService.ingest — garde-fou replay/teleportation', () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(prisma.engineControlCommand.create).not.toHaveBeenCalled();
     expect(prisma.engineControlCommand.update).not.toHaveBeenCalled();
+  });
+
+  // Fix veilleur — transition « en mouvement » émise au veilleur (booléen, aucune position).
+  it('émet VEHICLE_MOVEMENT moving=true quand un véhicule à l\'arrêt se met à rouler', async () => {
+    trackerRow = makeTracker({ lastKnownIgnition: true, lastIgnition: true, lastSpeedKmh: 0 });
+    await service.ingest(makeFrame({ ignition: true, speedKph: 50 }));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(gateway.emitVehicleMovement).toHaveBeenCalledWith(
+      FLEET_ID,
+      expect.objectContaining({ trackerId: TRACKER_ID, moving: true }),
+    );
+  });
+
+  it('émet VEHICLE_MOVEMENT moving=false quand un véhicule qui roulait s\'arrête (contact coupé)', async () => {
+    trackerRow = makeTracker({ lastKnownIgnition: true, lastIgnition: true, lastSpeedKmh: 40 });
+    await service.ingest(makeFrame({ ignition: false, alarm: 'acc_off' }));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(gateway.emitVehicleMovement).toHaveBeenCalledWith(
+      FLEET_ID,
+      expect.objectContaining({ trackerId: TRACKER_ID, moving: false }),
+    );
+  });
+
+  it('n\'émet PAS VEHICLE_MOVEMENT quand l\'état de mouvement ne change pas (roule → roule)', async () => {
+    trackerRow = makeTracker({ lastKnownIgnition: true, lastIgnition: true, lastSpeedKmh: 40 });
+    await service.ingest(makeFrame({ ignition: true, speedKph: 50 }));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(gateway.emitVehicleMovement).not.toHaveBeenCalled();
   });
 
   it('accepts the first ever valid frame when the tracker has no baseline', async () => {

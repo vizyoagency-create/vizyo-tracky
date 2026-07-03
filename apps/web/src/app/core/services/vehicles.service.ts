@@ -45,6 +45,12 @@ export interface VehicleDetailDto {
   schedule?: { enabled: boolean } | null;
   /** Sprint 1 (Fondation Groupes) — groupe (unique) du véhicule. null = sans groupe. */
   group?: { id: string; name: string } | null;
+  /**
+   * Fix veilleur — le véhicule roule-t-il (ignition ON + vitesse > 5 km/h) d'après la
+   * dernière position connue ? Sert à hydrater l'état « en mouvement » côté veilleur
+   * (qui ne reçoit aucune position) pour griser le bouton « Couper ».
+   */
+  moving?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })

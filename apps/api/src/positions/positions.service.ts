@@ -317,6 +317,28 @@ export class PositionsService {
       });
     }
 
+    // Fix veilleur — transition « en mouvement ». Le veilleur de nuit ne reçoit AUCUNE
+    // position ; on lui pousse un simple booléen (roule/à l'arrêt) pour qu'il puisse
+    // griser le bouton « Couper » sur un véhicule en marche. Émis SEULEMENT au changement
+    // d'état → volume négligeable. Seuil aligné sur REST_SPEED_KMH (5 km/h) du garde
+    // coupe-moteur ; le serveur reste le rempart final (engine-control.service).
+    if (tracker.vehicle) {
+      const MOVING_SPEED_KMH = 5;
+      const prevMoving =
+        tracker.lastKnownIgnition === true && (tracker.lastSpeedKmh ?? 0) > MOVING_SPEED_KMH;
+      const effIgnition = resolvedIgnition ?? tracker.lastKnownIgnition ?? false;
+      // La vitesse ne se met à jour que sur trame valide ; sinon on conserve la dernière connue.
+      const effSpeed = frame.valid ? frame.speedKph : tracker.lastSpeedKmh ?? 0;
+      const newMoving = effIgnition === true && effSpeed > MOVING_SPEED_KMH;
+      if (newMoving !== prevMoving) {
+        this.gateway.emitVehicleMovement(tracker.vehicle.fleetId, {
+          trackerId: tracker.id,
+          fleetId: tracker.vehicle.fleetId,
+          moving: newMoving,
+        });
+      }
+    }
+
     // Detect ignition transitions for SMS bypass / relay reset
     if (ignitionChanged && tracker.vehicle) {
       this.handleIgnitionTransition(

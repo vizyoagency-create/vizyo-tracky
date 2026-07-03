@@ -6,7 +6,7 @@ import {
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
-import type { AlertEvent, EngineCommandUpdatedEvent, GeofenceViolationEvent, PositionUpdateEvent, TrackerStatusChangedDto, TripStartedEvent, TripCompletedEvent } from '@vizyo/tracky-shared';
+import type { AlertEvent, EngineCommandUpdatedEvent, GeofenceViolationEvent, PositionUpdateEvent, TrackerStatusChangedDto, TripStartedEvent, TripCompletedEvent, VehicleMovementEvent } from '@vizyo/tracky-shared';
 import { WS_EVENTS } from '@vizyo/tracky-shared';
 import type { Alert, Vehicle, Tracker } from '@prisma/client';
 import { Server, Socket } from 'socket.io';
@@ -142,6 +142,16 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   broadcastPosition(fleetId: string, payload: PositionUpdateEvent): void {
     // Sprint 3 — positions live sur la room dédiée `pos:fleet:*` (le veilleur n'y est pas).
     this.server.to(`pos:fleet:${fleetId}`).to('pos:fleet:*').emit(WS_EVENTS.POSITION_UPDATE, payload);
+  }
+
+  /**
+   * Fix veilleur — diffuse une transition « en mouvement » (booléen, aucune position)
+   * vers `ops:fleet:*` (où siège le veilleur) + les rooms flotte classiques. Permet au
+   * client veilleur — privé de toute position — de griser le bouton « Couper » quand le
+   * véhicule roule. Le garde serveur (engine-control.service) reste le rempart final.
+   */
+  emitVehicleMovement(fleetId: string, payload: VehicleMovementEvent): void {
+    this.server.to(`fleet:${fleetId}`).to('fleet:*').to(`ops:fleet:${fleetId}`).emit(WS_EVENTS.VEHICLE_MOVEMENT, payload);
   }
 
   emitTrackerStatus(fleetId: string, payload: TrackerStatusChangedDto): void {

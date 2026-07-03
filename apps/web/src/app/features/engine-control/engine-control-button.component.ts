@@ -295,6 +295,17 @@ export class EngineControlButtonComponent implements OnInit {
     // bouton resterait désactivé (« Aucune position connue ») et le veilleur ne pourrait
     // jamais couper depuis la liste.
     if (this.authService.isWatchman()) {
+      // Fix veilleur — le client veilleur ne reçoit AUCUNE position, mais reçoit un flag
+      // « en mouvement » minimal (hydraté via /vehicles + transitions WS VEHICLE_MOVEMENT).
+      // Si le véhicule roule, on grise le bouton (au lieu d'un rouge trompeur) : la coupe
+      // est réservée à l'arrêt. Si l'état est inconnu / à l'arrêt, on autorise l'envoi et
+      // le SERVEUR reste seul juge (refus clair en toast si mouvement détecté côté backend).
+      if (this.realtime.movingTrackerIds().has(this.trackerId())) {
+        return {
+          allowed: false as const,
+          reason: 'Véhicule en mouvement — coupure réservée à l\'arrêt',
+        };
+      }
       return { allowed: true as const, reason: null };
     }
 

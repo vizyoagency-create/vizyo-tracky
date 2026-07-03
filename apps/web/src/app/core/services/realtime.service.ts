@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { computed, effect, inject, Injectable, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import type { AlertAcknowledgedEvent, AlertEvent, EngineCommandUpdatedEvent, FleetSnapshotResponse, PositionsBatchEvent, PositionUpdateEvent, TrackerStatusChangedDto, VehicleSnapshotDto } from '@vizyo/tracky-shared';
+import type { AlertAcknowledgedEvent, AlertEvent, EngineCommandUpdatedEvent, FleetSnapshotResponse, PositionsBatchEvent, PositionUpdateEvent, TrackerStatusChangedDto, VehicleMovementEvent, VehicleSnapshotDto } from '@vizyo/tracky-shared';
 import { WS_EVENTS } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { io, Socket } from 'socket.io-client';
@@ -53,6 +53,15 @@ export class RealtimeService {
    */
   private readonly _cutPendingTrackerIds = signal<Set<string>>(new Set());
   readonly cutPendingTrackerIds = this._cutPendingTrackerIds.asReadonly();
+
+  /**
+   * Fix veilleur — trackers actuellement EN MOUVEMENT (ignition ON + vitesse > 5 km/h).
+   * Hydraté depuis la liste véhicules REST (`seedMovingState`) puis maintenu à jour par
+   * les transitions WS `VEHICLE_MOVEMENT`. Le bouton « Couper » du veilleur se grise pour
+   * ces trackers (le serveur reste seul juge de la coupe).
+   */
+  private readonly _movingTrackerIds = signal<Set<string>>(new Set());
+  readonly movingTrackerIds = this._movingTrackerIds.asReadonly();
 
   private socket: Socket | null = null;
   private refreshingToken = false;
@@ -297,6 +306,15 @@ export class RealtimeService {
       this._trackerStatuses.set(next);
     });
 
+    // Fix veilleur — transition « en mouvement ». Le veilleur (room ops:fleet) ne reçoit
+    // aucune position ; cet event booléen maintient l'état à jour pour griser le bouton.
+    this.socket.on(WS_EVENTS.VEHICLE_MOVEMENT, (event: VehicleMovementEvent) => {
+      const next = new Set(this._movingTrackerIds());
+      if (event.moving) next.add(event.trackerId);
+      else next.delete(event.trackerId);
+      this._movingTrackerIds.set(next);
+    });
+
     this.socket.on(WS_EVENTS.ENGINE_COMMAND_UPDATED, (event: EngineCommandUpdatedEvent) => {
       const next = new Map(this._engineCommandUpdates());
       next.set(event.trackerId, event);
@@ -342,6 +360,20 @@ export class RealtimeService {
     });
   }
 
+  /**
+   * Fix veilleur — amorce l'état « en mouvement » depuis une liste REST (hydratation au
+   * chargement de /vehicles). Les transitions live `VEHICLE_MOVEMENT` prennent ensuite le
+   * relais. Idempotent : recalcule l'appartenance de chaque tracker fourni.
+   */
+  seedMovingState(entries: { trackerId: string; moving: boolean }[]): void {
+    const next = new Set(this._movingTrackerIds());
+    for (const e of entries) {
+      if (e.moving) next.add(e.trackerId);
+      else next.delete(e.trackerId);
+    }
+    this._movingTrackerIds.set(next);
+  }
+
   dismissAlert(id: string): void {
     this._alerts.update((list) => list.filter((a) => a.id !== id));
   }
@@ -384,6 +416,7 @@ export class RealtimeService {
     this._engineCommandUpdates.set(new Map());
     this._cutActiveTrackerIds.set(new Set());
     this._cutPendingTrackerIds.set(new Set());
+    this._movingTrackerIds.set(new Set());
     this.positionBuffer.clear();
     this.flushScheduled = false;
     this.lastToastByKey.clear();

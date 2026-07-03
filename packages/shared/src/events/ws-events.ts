@@ -13,6 +13,10 @@ export const WS_EVENTS = {
   TRIP_STARTED: 'trip:started',
   TRIP_COMPLETED: 'trip:completed',
   ENGINE_COMMAND_UPDATED: 'engine-command:updated',
+  // Fix veilleur — état « en mouvement » minimal (booléen, aucune position) émis vers
+  // `ops:fleet:*`. Le veilleur de nuit ne reçoit AUCUNE position ; ce flag lui permet de
+  // griser le bouton « Couper » sur un véhicule en marche (le serveur reste seul juge).
+  VEHICLE_MOVEMENT: 'vehicle:movement',
 } as const;
 
 export interface PositionsBatchEvent {
@@ -76,12 +80,25 @@ export interface EngineCommandUpdatedEvent {
   source?: 'MANUAL' | 'SCHEDULER' | 'DEVICE_OBSERVED';
 }
 
+/**
+ * Fix veilleur — transition d'état « en mouvement » d'un véhicule. Émis UNIQUEMENT
+ * au changement (roule ↔ à l'arrêt) → volume faible. Ne porte AUCUNE donnée de
+ * position (ni lat/lng, ni vitesse exacte) : juste le booléen dont le veilleur a
+ * besoin pour savoir si la coupe est permise.
+ */
+export interface VehicleMovementEvent {
+  trackerId: string;
+  fleetId: string;
+  moving: boolean;
+}
+
 export interface ServerToClientEvents {
   'position:update': (payload: PositionUpdateEvent) => void;
   'tracker:status': (payload: TrackerStatusChangedDto) => void;
   'alert:new': (payload: AlertEvent) => void;
   'alert:acknowledged': (payload: AlertAcknowledgedEvent) => void;
   'engine-command:updated': (payload: EngineCommandUpdatedEvent) => void;
+  'vehicle:movement': (payload: VehicleMovementEvent) => void;
 }
 
 export interface ClientToServerEvents {

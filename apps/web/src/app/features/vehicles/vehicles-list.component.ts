@@ -1183,6 +1183,14 @@ export class VehiclesListComponent implements OnInit {
     try {
       const list = await firstValueFrom(this.vehiclesApi.list());
       this.vehicles.set(list);
+      // Fix veilleur — amorce l'état « en mouvement » (le veilleur ne reçoit aucune
+      // position en live) pour griser le bouton « Couper » dès le chargement. Les
+      // transitions WS `VEHICLE_MOVEMENT` prennent ensuite le relais.
+      this.realtime.seedMovingState(
+        list
+          .filter((v) => v.tracker)
+          .map((v) => ({ trackerId: v.tracker!.id, moving: !!v.moving })),
+      );
       this.scrollToPendingGroup();
     } catch {
       this.vehicles.set([]);

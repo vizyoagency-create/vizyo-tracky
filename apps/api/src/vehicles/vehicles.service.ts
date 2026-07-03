@@ -37,7 +37,7 @@ export interface RequestedBy {
 
 /** Sprint 1 (Fondation Groupes) — référence groupe (single) attachée aux réponses véhicule. */
 export type VehicleGroupRef = { id: string; name: string } | null;
-export type VehicleWithGroup = Vehicle & { group: VehicleGroupRef };
+export type VehicleWithGroup = Vehicle & { group: VehicleGroupRef; moving?: boolean };
 
 @Injectable()
 export class VehiclesService {
@@ -246,7 +246,16 @@ export class VehiclesService {
       take: limit,
       ...(filters?.cursor ? { skip: 1, cursor: { id: filters.cursor } } : {}),
     });
-    return rows.map((v) => VehiclesService.withGroup(v)) as VehicleWithGroup[];
+    // Fix veilleur — `moving` (booléen) dérivé de la dernière position connue, pour
+    // hydrater l'état « en mouvement » côté client (le veilleur grise alors le bouton
+    // « Couper » dès l'ouverture, sans attendre une transition WS). Seuil aligné sur
+    // REST_SPEED_KMH (5 km/h) du garde coupe-moteur.
+    return rows.map((v) => {
+      const withGroup = VehiclesService.withGroup(v);
+      const moving =
+        !!v.tracker && v.tracker.lastIgnition === true && (v.tracker.lastSpeedKmh ?? 0) > 5;
+      return { ...withGroup, moving };
+    }) as VehicleWithGroup[];
   }
 
   async findOne(id: string, requestedBy: RequestedBy): Promise<VehicleWithGroup> {
