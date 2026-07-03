@@ -49,6 +49,19 @@ const METIERS: FleetMetier[] = ['CHILDREN_TRANSPORT', 'PARCELS', 'RENTAL', 'GENE
         </div>
 
         <div class="op-body">
+          <!-- Hero IA (réf. maquette AgentIA.dc.html) : identité « agent » honnête,
+               sans KPI inventés (km/€/CO₂) ni suggestions de tournée non implémentées. -->
+          <div class="op-hero">
+            <span class="op-hero-ico"><lucide-icon [img]="SparklesIcon" [size]="20"></lucide-icon></span>
+            <div class="op-hero-txt">
+              <div class="op-hero-eye">
+                <span class="op-hero-kick">Optimisation</span>
+                <span class="op-hero-live"><span class="op-hero-dot"></span>Analyse active</span>
+              </div>
+              <p class="op-hero-lead">L'agent analyse votre parc et propose des améliorations chiffrées. <span class="op-muted">Rien n'est appliqué sans votre validation.</span></p>
+            </div>
+          </div>
+
           <!-- Flotte (super-admin) -->
           @if (isSuperAdmin() && fleetOptions().length > 0) {
             <label class="op-f"><span>Flotte</span>
@@ -138,6 +151,16 @@ const METIERS: FleetMetier[] = ['CHILDREN_TRANSPORT', 'PARCELS', 'RENTAL', 'GENE
               </div>
             }
           </section>
+
+          <!-- Comment ça marche (réf. maquette AgentIA.dc.html) -->
+          <section class="op-sec">
+            <h4 class="op-sec-title"><lucide-icon [img]="InfoIcon" [size]="14" class="op-accent"></lucide-icon> Comment ça marche</h4>
+            <div class="op-steps">
+              <div class="op-step"><span class="op-step-n">1</span><p>L'IA lit les capacités du parc et l'utilisation réelle des 28 derniers jours.</p></div>
+              <div class="op-step"><span class="op-step-n">2</span><p>Elle propose des enrichissements de capacité et des mutualisations, avec un indice de confiance.</p></div>
+              <div class="op-step"><span class="op-step-n">3</span><p>Vous validez ; l'application met à jour les véhicules concernés. Jamais d'action automatique.</p></div>
+            </div>
+          </section>
         </div>
       </div>
     </app-bottom-sheet>
@@ -201,6 +224,22 @@ const METIERS: FleetMetier[] = ['CHILDREN_TRANSPORT', 'PARCELS', 'RENTAL', 'GENE
     @keyframes op-sh { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
     .op-spin { animation: op-spin 1s linear infinite; }
     @keyframes op-spin { to { transform: rotate(360deg); } }
+
+    /* Hero IA */
+    .op-hero { display: flex; gap: 13px; padding: 14px 15px; border-radius: 14px; border: 1px solid var(--border-subtle); background: color-mix(in srgb, var(--tracky) 5%, var(--bg-secondary)); }
+    .op-hero-ico { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 12px; background: var(--tracky); color: var(--accent-ink); flex-shrink: 0; }
+    .op-hero-eye { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .op-hero-kick { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--tracky-light); }
+    .op-hero-live { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; color: var(--tracky-light); }
+    .op-hero-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--tracky-light); animation: op-blink 2s ease-in-out infinite; }
+    @keyframes op-blink { 0%,100%{opacity:1} 50%{opacity:.25} }
+    .op-hero-lead { font-size: 12.5px; color: var(--fg-secondary); margin-top: 6px; line-height: 1.5; }
+
+    /* Comment ça marche */
+    .op-steps { display: flex; flex-direction: column; gap: 9px; }
+    .op-step { display: flex; gap: 10px; }
+    .op-step-n { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 7px; background: color-mix(in srgb, var(--tracky) 12%, transparent); color: var(--tracky-light); font-family: var(--font-mono); font-size: 11px; font-weight: 700; flex-shrink: 0; }
+    .op-step p { font-size: 12px; color: var(--fg-secondary); line-height: 1.5; margin: 0; }
   `],
 })
 export class OptimizationSheetComponent {
