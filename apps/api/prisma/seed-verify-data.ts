@@ -40,6 +40,7 @@ async function main(): Promise<void> {
   if (!admin) throw new Error('Aucun admin.');
 
   // --- reset idempotent (fleet-scopé + users de démo) ---
+  await prisma.trip.deleteMany({ where: { fleetId } });
   await prisma.alert.deleteMany({ where: { fleetId } });
   await prisma.vehicleEvent.deleteMany({ where: { fleetId } });
   await prisma.vehicleGroupAssignment.deleteMany({ where: { vehicle: { fleetId } } });
@@ -202,12 +203,49 @@ async function main(): Promise<void> {
     });
   }
 
+  // --- trajets (pour les Rapports : synthèse par véhicule + graphes distance/jour) ---
+  let tripCount = 0;
+  for (let vi = 0; vi < vehicles.length; vi++) {
+    const vh = vehicles[vi];
+    const veh = await prisma.vehicle.findUnique({ where: { id: vh.id }, select: { currentDriverId: true } });
+    for (let d = 1; d <= 4; d++) {
+      const avg = 38 + ((vi * 3 + d * 5) % 22); // 38..60 km/h
+      const durMin = 35 + ((vi * 7 + d * 11) % 60); // 35..95 min
+      const durSec = durMin * 60;
+      const distM = Math.round((avg * durMin / 60) * 1000);
+      const started = new Date(now - d * 86_400_000 - (9 + (vi % 3)) * 3_600_000);
+      const ended = new Date(started.getTime() + durSec * 1000);
+      await prisma.trip.create({
+        data: {
+          vehicleId: vh.id,
+          trackerId: vh.trackerId,
+          fleetId,
+          startedAt: started,
+          endedAt: ended,
+          durationSeconds: durSec,
+          startLat: TLS.lat, startLng: TLS.lng,
+          endLat: TLS.lat + 0.012, endLng: TLS.lng + 0.009,
+          distanceKm: distM / 1000,
+          distanceMeters: distM,
+          maxSpeed: avg + 18 + (d % 3) * 6,
+          avgSpeed: avg,
+          positionCount: 20 + durMin,
+          segmentationSource: 'seed',
+          driverId: veh?.currentDriverId ?? null,
+          driverSource: veh?.currentDriverId ? 'AUTO' : null,
+        },
+      });
+      tripCount++;
+    }
+  }
+
   const counts = {
     vehicles: vehicles.length,
     drivers: drivers.length,
     alerts: alertSpec.length,
     users: userSpec.length,
     events: eventSpec.length,
+    trips: tripCount,
   };
   console.log('OK seed-verify-data →', JSON.stringify(counts));
 }
