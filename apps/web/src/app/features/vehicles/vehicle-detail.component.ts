@@ -1728,7 +1728,15 @@ export class VehicleDetailComponent implements OnInit {
     // Onglet Commandes filtre si pas de tracker : sinon l'onglet apparait
     // pour ne montrer que "Aucun tracker associé", ce qui est de la noise.
     const hasTracker = !!this.vehicle()?.tracker;
-    const all: { key: string; label: string; icon: any; perm?: string; show?: boolean }[] = [
+    // Onglet « Commandes » = commandes tracker génériques (reboot, intervalle GPS…),
+    // dont l'ENVOI/ANNULATION est réservé côté backend à FLEET_ADMIN/SUPER_ADMIN
+    // (tracker-commands.controller @Roles). On gate donc l'onglet sur le rôle admin,
+    // PAS sur la permission `engine_control` (mauvais critère : c'est le coupe-circuit,
+    // une autre feature) — sinon un FLEET_MANAGER/VIEWER à qui on a accordé engine_control
+    // voyait un constructeur de commandes qui échoue en 403 à l'envoi.
+    const role = this.auth.user()?.role;
+    const isAdmin = role === 'SUPER_ADMIN' || role === 'FLEET_ADMIN';
+    const all: { key: string; label: string; icon: any; perm?: string; show?: boolean; adminOnly?: boolean }[] = [
       { key: 'map', label: 'Carte', icon: Map },
       { key: 'reports', label: 'Rapports', icon: BarChart3 },
       { key: 'history', label: 'Historique', icon: History },
@@ -1741,13 +1749,14 @@ export class VehicleDetailComponent implements OnInit {
       // (et non plus `engine_control`) : sinon le veilleur (engine_control=true,
       // schedules_manage=false) voyait l'onglet mais le GET /schedule renvoyait 403.
       { key: 'schedule', label: 'Horaires', icon: Clock, perm: 'schedules_manage' },
-      { key: 'commands', label: 'Commandes', icon: Zap, perm: 'engine_control', show: hasTracker },
+      { key: 'commands', label: 'Commandes', icon: Zap, adminOnly: true, show: hasTracker },
     ];
     return all
       .filter((t) => t.show !== false)
       // Sprint 3 — veilleur de nuit : page détail réduite à la Carte (position) + Horaires
       // (si toggle). Le bloquer/débloquer reste dans l'en-tête. Tout le reste est hors périmètre.
       .filter((t) => !this.isWatchman() || t.key === 'map' || t.key === 'schedule')
+      .filter((t) => !t.adminOnly || isAdmin)
       .filter((t) => !t.perm || this.perms.can(t.perm as any));
   });
 
