@@ -338,7 +338,7 @@ import { DriversListComponent } from '../drivers/drivers-list.component';
 
     .u-card-glow { position: absolute; top: 0; right: 0; width: 60px; height: 60px; border-radius: 0 0 0 60px; opacity: .08; pointer-events: none }
     .u-card-glow.green { background: var(--tracky-light) }
-    .u-card-glow.blue { background: #3b82f6 }
+    .u-card-glow.blue { background: var(--fg-tertiary) }
     .u-card-glow.gray { background: var(--fg-tertiary) }
 
     /* Top */
@@ -347,24 +347,24 @@ import { DriversListComponent } from '../drivers/drivers-list.component';
       width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
       font-size: 13px; font-weight: 700; color: white; flex-shrink: 0;
     }
-    .u-avatar.admin { background: var(--tracky) }
-    .u-avatar.manager { background: #3b82f6 }
+    .u-avatar.admin { background: var(--tracky); color: var(--accent-ink) }
+    .u-avatar.manager { background: var(--text-secondary) }
     .u-avatar.viewer { background: var(--fg-tertiary) }
-    .u-avatar.pending { background: transparent; border: 2px dashed rgba(245,158,11,.4); color: #f59e0b }
+    .u-avatar.pending { background: transparent; border: 2px dashed color-mix(in srgb, var(--warning) 40%, transparent); color: var(--warning) }
     .u-info { flex: 1; min-width: 0 }
     .u-name { font-size: 14px; font-weight: 700; color: var(--fg-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
     .u-email { font-size: 11px; color: var(--fg-tertiary); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
     .u-status { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 6px; flex-shrink: 0 }
     .u-status.active { background: rgba(16,224,160,.1); color: var(--tracky-light) }
-    .u-status.suspended { background: rgba(239,68,68,.1); color: #f87171 }
-    .u-status.pending { background: rgba(245,158,11,.1); color: #f59e0b }
-    .u-status.expired { background: rgba(239,68,68,.1); color: #f87171 }
+    .u-status.suspended { background: rgba(239,68,68,.1); color: var(--danger) }
+    .u-status.pending { background: rgba(245,158,11,.1); color: var(--warning) }
+    .u-status.expired { background: rgba(239,68,68,.1); color: var(--danger) }
 
     /* Mid */
     .u-card-mid { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding-top: 10px; border-top: 1px solid var(--border-subtle) }
     .u-role-badge { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 8px }
     .u-role-badge.admin { background: rgba(16,224,160,.12); color: var(--tracky-light) }
-    .u-role-badge.manager { background: rgba(59,130,246,.12); color: #60a5fa }
+    .u-role-badge.manager { background: var(--bg-tertiary); color: var(--fg-secondary) }
     .u-role-badge.viewer { background: var(--bg-tertiary); color: var(--fg-tertiary) }
     .u-date { font-size: 10px; color: var(--fg-tertiary) }
 
@@ -417,8 +417,8 @@ import { DriversListComponent } from '../drivers/drivers-list.component';
       display: inline-flex; align-items: center; gap: 3px;
       font-size: 10px; font-weight: 700; letter-spacing: .02em;
       padding: 2px 7px; border-radius: 9999px;
-      background: rgba(59,130,246,.12); color: #60a5fa;
-      border: 1px solid rgba(59,130,246,.25); white-space: nowrap;
+      background: var(--bg-tertiary); color: var(--fg-secondary);
+      border: 1px solid var(--border-subtle); white-space: nowrap;
     }
   `],
 })
