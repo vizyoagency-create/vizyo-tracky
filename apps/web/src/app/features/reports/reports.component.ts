@@ -800,7 +800,7 @@ import {
       outline-offset: 1px; border-color: var(--tracky-light, #10E0A0);
     }
     .rep-custom-error {
-      font-size: 11px; color: #f87171; margin: 0;
+      font-size: 11px; color: var(--danger); margin: 0;
     }
     .rep-custom-hint {
       font-size: 11px; color: var(--fg-tertiary); margin: 0;
@@ -817,7 +817,7 @@ import {
     .rep-custom-cancel:hover { color: var(--fg-secondary); border-color: var(--border-strong) }
     .rep-custom-apply {
       padding: 7px 14px; border-radius: 8px;
-      background: var(--tracky, #10E0A0); color: white;
+      background: var(--tracky, #10E0A0); color: var(--accent-ink);
       border: none; font-size: 12px; font-weight: 700; cursor: pointer;
       transition: opacity .15s;
     }
