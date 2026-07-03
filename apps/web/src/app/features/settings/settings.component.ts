@@ -332,12 +332,11 @@ import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
     .s-card-title { font-size: 13px; font-weight: 700; color: var(--fg-primary) }
     .s-card-body { padding: 18px }
     .s-icon { width: 32px; height: 32px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0 }
-    .s-icon.green { background: rgba(16,224,160,.12); color: var(--tracky-light) }
-    .s-icon.purple { background: rgba(168,85,247,.12); color: #a855f7 }
-    .s-icon.amber { background: rgba(245,158,11,.12); color: #f59e0b }
-    .s-icon.blue { background: rgba(59,130,246,.12); color: #3b82f6 }
-    .s-icon.cyan { background: rgba(6,182,212,.12); color: #06b6d4 }
-    .s-icon.violet { background: rgba(139,92,246,.12); color: #a78bfa }
+    /* DS : accent émeraude unique — les sections se distinguent par leur icône,
+       pas par une couleur différente (fin de l'arc-en-ciel violet/bleu/cyan). */
+    .s-icon.green, .s-icon.purple, .s-icon.amber, .s-icon.blue, .s-icon.cyan, .s-icon.violet {
+      background: color-mix(in srgb, var(--color-tracky-light) 12%, transparent); color: var(--color-tracky-light);
+    }
 
     /* Account */
     .account-block { display: flex; align-items: center; gap: 14px; padding: 14px; border-radius: 12px; background: var(--bg-tertiary); margin-bottom: 14px }
@@ -348,7 +347,7 @@ import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
     .role-badge.viewer { background: var(--bg-secondary); color: var(--fg-tertiary) }
     .logout-btn {
       display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; border-radius: 10px; font-size: 13px; font-weight: 600;
-      background: rgba(239,68,68,.08); color: #f87171; border: 1px solid rgba(239,68,68,.15); cursor: pointer; transition: all .2s;
+      background: color-mix(in srgb, var(--danger) 9%, transparent); color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 18%, transparent); cursor: pointer; transition: all .2s;
     }
     .logout-btn:hover { background: rgba(239,68,68,.15) }
     .account-link {
@@ -381,7 +380,7 @@ import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
     }
     .btn-push:hover { background: var(--tracky-light) }
     .btn-push:disabled { opacity: .5; cursor: not-allowed }
-    .btn-push-off { background: rgba(239,68,68,.1); color: #f87171; border: 1px solid rgba(239,68,68,.2) }
+    .btn-push-off { background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 22%, transparent) }
     .btn-push-off:hover { background: rgba(239,68,68,.2) }
     .push-types-section { margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--border-subtle) }
     .push-types-title { font-size: 11px; font-weight: 600; color: var(--fg-tertiary); text-transform: uppercase; margin: 0 0 8px }
@@ -411,9 +410,9 @@ import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
     .notif-left { display: flex; align-items: center; gap: 10px }
     .notif-right { display: flex; align-items: center; gap: 8px }
     .notif-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0 }
-    .notif-dot.red { background: #ef4444 }
-    .notif-dot.amber { background: #f59e0b }
-    .notif-dot.blue { background: #3b82f6 }
+    .notif-dot.red { background: var(--danger) }
+    .notif-dot.amber { background: var(--warning) }
+    .notif-dot.blue { background: var(--fg-tertiary) }
     .notif-name { font-size: 13px; font-weight: 600; color: var(--fg-primary) }
     .notif-desc { font-size: 10px; color: var(--fg-tertiary); margin-top: 1px }
     .permanent-badge { font-size: 11px; color: var(--fg-tertiary); padding: 2px 8px; border-radius: 6px; background: var(--bg-tertiary) }
