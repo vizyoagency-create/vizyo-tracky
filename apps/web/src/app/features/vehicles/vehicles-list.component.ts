@@ -9,6 +9,7 @@ import { PreferencesService } from '../../core/services/preferences.service';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { AuthService } from '../../core/services/auth.service';
 import { RealtimeService } from '../../core/services/realtime.service';
+import { GeocodeService } from '../../core/services/geocode.service';
 import { TrackersApiService } from '../../core/services/trackers.service';
 import { getVehicleSvg, getVehicleTypeLabel } from '../../shared/utils/vehicle-icons';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
@@ -307,46 +308,66 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
             </table>
           </div>
         } @else if (viewMode() === 'grouped') {
-          <div class="v-groups">
+          <!-- Tableau groupé (réf. maquette Vehicules.dc.html) : colonnes
+               Véhicule / Statut / Vitesse / Conducteur / Dernière position. -->
+          <div class="v-gtable">
+            <div class="v-gt-head">
+              <span class="v-gt-h">Véhicule</span>
+              <span class="v-gt-h">Statut</span>
+              <span class="v-gt-h">Vitesse</span>
+              <span class="v-gt-h v-col-drv">Conducteur</span>
+              <span class="v-gt-h v-col-pos">Dernière position</span>
+              <span></span>
+            </div>
             @for (section of groupedVehicles(); track section.id ?? '__none__') {
-              <div class="v-group-section" [id]="'vg-' + (section.id ?? 'none')">
-                <button class="v-group-head" (click)="toggleGroup(section.id ?? '__none__')"
-                        [attr.aria-expanded]="!isCollapsed(section.id ?? '__none__')">
-                  <lucide-icon [img]="isCollapsed(section.id ?? '__none__') ? ChevronRightIcon : ChevronDownIcon" [size]="16"></lucide-icon>
-                  @if (section.id) {
-                    <lucide-icon [img]="LayersIcon" [size]="14" class="v-group-head-ico"></lucide-icon>
-                    <span class="v-group-name">{{ section.name }}</span>
-                  } @else {
-                    <span class="v-group-name v-group-name--none">Sans groupe</span>
-                  }
-                  <span class="v-group-count">{{ section.vehicles.length }}</span>
-                </button>
-                @if (!isCollapsed(section.id ?? '__none__')) {
-                  <div class="v-group-items">
-                    @for (v of section.vehicles; track v.id) {
-                      <a [routerLink]="['/vehicles', v.id]" [queryParams]="groupedLinkParams(section.id)" class="v-group-row">
-                        <div class="v-type-icon" [class]="connectivity(v) === 'ONLINE' ? 'online' : 'offline'"
-                             [innerHTML]="getTypeIconHtml(v.type)"></div>
-                        <span class="v-group-row-plate">{{ v.plate }}</span>
-                        <app-brand-logo [brand]="v.brand" [size]="18" [chip]="true" />
-                        @if (v.brand) { <span class="v-group-row-brand">{{ v.brand }} {{ v.model ?? '' }}</span> }
-                        <span class="v-group-row-spacer"></span>
-                        @if (liveStatus(v.id); as ls) {
-                          <span class="v-live-pill" [class]="ls.cssClass">
-                            <span class="v-live-dot"></span>
-                            @if (ls.kind === 'moving') { {{ ls.speedKmh }} km/h }
-                            @else if (ls.kind === 'idle') { À l'arrêt }
-                            @else { Stationné }
-                          </span>
-                        }
-                        <app-connectivity-badge [state]="connectivity(v)" [hideWhenOnline]="true" [compact]="true" />
-                        @if (installToReview(v)) { <app-install-review-badge [compact]="true" /> }
-                        <lucide-icon [img]="ChevronRightIcon" [size]="15" class="v-group-row-chev"></lucide-icon>
-                      </a>
-                    }
-                  </div>
+              <button class="v-gt-group" [id]="'vg-' + (section.id ?? 'none')"
+                      (click)="toggleGroup(section.id ?? '__none__')"
+                      [attr.aria-expanded]="!isCollapsed(section.id ?? '__none__')">
+                <lucide-icon [img]="isCollapsed(section.id ?? '__none__') ? ChevronRightIcon : ChevronDownIcon" [size]="14"></lucide-icon>
+                <lucide-icon [img]="LayersIcon" [size]="14" class="v-gt-group-ico" [class.none]="!section.id"></lucide-icon>
+                <span class="v-gt-group-name" [class.none]="!section.id">{{ section.id ? section.name : 'Sans groupe' }}</span>
+                <span class="v-gt-group-count mono">{{ section.vehicles.length }} véhicule{{ section.vehicles.length > 1 ? 's' : '' }}</span>
+              </button>
+              @if (!isCollapsed(section.id ?? '__none__')) {
+                @for (v of section.vehicles; track v.id) {
+                  <a [routerLink]="['/vehicles', v.id]" [queryParams]="groupedLinkParams(section.id)" class="v-trow">
+                    <div class="v-trow-veh">
+                      <span class="v-trow-ico" [innerHTML]="getTypeIconHtml(v.type)"></span>
+                      <div class="v-trow-veh-txt">
+                        <div class="v-trow-plate mono">{{ v.plate }}</div>
+                        <div class="v-trow-model">{{ v.brand ? (v.brand + ' ' + (v.model ?? '')) : 'Non renseigné' }}</div>
+                      </div>
+                    </div>
+                    <span class="v-trow-status">
+                      @if (liveStatus(v.id); as ls) {
+                        <span class="v-live-pill" [class]="ls.cssClass">
+                          <span class="v-live-dot"></span>
+                          @if (ls.kind === 'moving') { En roulage } @else if (ls.kind === 'idle') { Au ralenti } @else { À l'arrêt }
+                        </span>
+                      } @else {
+                        <app-connectivity-badge [state]="connectivity(v)" [compact]="true" />
+                      }
+                      @if (installToReview(v)) { <app-install-review-badge [compact]="true" /> }
+                    </span>
+                    <span class="v-trow-speed"
+                          [class.spd-move]="liveStatus(v.id)?.kind === 'moving'"
+                          [class.spd-idle]="liveStatus(v.id)?.kind === 'idle'">
+                      @if (liveStatus(v.id); as ls) { {{ ls.speedKmh }}<span class="v-trow-speed-u"> km/h</span> } @else { <span class="v-trow-dash">—</span> }
+                    </span>
+                    <span class="v-trow-drv v-col-drv" [class.v-trow-dash]="!v.currentDriver">{{ driverLabel(v) }}</span>
+                    <div class="v-trow-pos v-col-pos">
+                      @if (positionFor(v.id)) {
+                        <div class="v-trow-addr">{{ addressFor(v.id) || 'Position en cours…' }}</div>
+                        <div class="v-trow-ago mono">{{ lastContactLabel(v) }}</div>
+                      } @else {
+                        <div class="v-trow-addr v-trow-dash">Hors ligne</div>
+                        @if (v.tracker?.lastSeenAt) { <div class="v-trow-ago mono">{{ lastContactLabel(v) }}</div> }
+                      }
+                    </div>
+                    <lucide-icon [img]="ChevronRightIcon" [size]="15" class="v-trow-chev"></lucide-icon>
+                  </a>
                 }
-              </div>
+              }
             }
           </div>
         } @else {
@@ -720,6 +741,44 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
     .view-btn.active { background: var(--tracky-light); color: var(--accent-ink) }
 
     /* #3 — vue tableau véhicules */
+    /* ─── Tableau groupé (réf. maquette Vehicules.dc.html) ─── */
+    .v-gtable { position: relative; z-index: 1; background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: 18px; overflow: hidden }
+    .v-gt-head, .v-trow { display: grid; grid-template-columns: minmax(170px,2fr) 132px 92px 1.2fr 1.7fr 40px; align-items: center; gap: 14px; padding: 11px 18px }
+    .v-gt-head { background: var(--surface-rail) }
+    .v-gt-h { font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--fg-tertiary) }
+    .v-gt-group { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; padding: 10px 18px; border: none; border-top: 1px solid var(--border-subtle); background: color-mix(in srgb, var(--tracky-light) 5%, var(--bg-secondary)); color: var(--fg-primary); cursor: pointer }
+    .v-gt-group:hover { background: color-mix(in srgb, var(--tracky-light) 9%, var(--bg-secondary)) }
+    .v-gt-group > lucide-icon:first-child { color: var(--fg-tertiary); display: inline-flex }
+    .v-gt-group-ico { color: var(--tracky-light); display: inline-flex }
+    .v-gt-group-ico.none { color: var(--fg-tertiary) }
+    .v-gt-group-name { font-size: 13px; font-weight: 700 }
+    .v-gt-group-name.none { color: var(--fg-tertiary); font-style: italic; font-weight: 600 }
+    .v-gt-group-count { font-size: 11px; color: var(--fg-tertiary); margin-left: 2px }
+    .v-trow { border-top: 1px solid var(--border-subtle); text-decoration: none; color: inherit; transition: background .15s; cursor: pointer }
+    .v-trow:hover { background: var(--bg-tertiary) }
+    .v-trow-veh { display: flex; align-items: center; gap: 11px; min-width: 0 }
+    .v-trow-ico { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 10px; background: var(--bg-tertiary); color: var(--fg-secondary); flex-shrink: 0 }
+    .v-trow-veh-txt { min-width: 0 }
+    .v-trow-plate { font-size: 13.5px; font-weight: 700; color: var(--fg-primary); letter-spacing: .02em }
+    .v-trow-model { font-size: 11.5px; color: var(--fg-tertiary); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+    .v-trow-status { display: flex; align-items: center; gap: 6px; flex-wrap: wrap }
+    .v-trow-speed { font-size: 14px; font-weight: 800; font-family: var(--font-display); color: var(--fg-secondary); white-space: nowrap }
+    .v-trow-speed.spd-move { color: var(--tracky-light) }
+    .v-trow-speed.spd-idle { color: var(--warning) }
+    .v-trow-speed-u { font-size: 9px; font-weight: 600; color: var(--fg-tertiary) }
+    .v-trow-drv { font-size: 13px; color: var(--fg-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+    .v-trow-drv.v-trow-dash { color: var(--fg-tertiary) }
+    .v-trow-pos { min-width: 0 }
+    .v-trow-addr { font-size: 13px; color: var(--fg-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+    .v-trow-addr.v-trow-dash { color: var(--fg-tertiary) }
+    .v-trow-ago { font-size: 11px; color: var(--fg-tertiary); margin-top: 1px }
+    .v-trow-dash { color: var(--fg-tertiary) }
+    .v-trow-chev { color: var(--fg-tertiary); justify-self: end; flex-shrink: 0 }
+    @media (max-width: 960px) {
+      .v-gt-head, .v-trow { grid-template-columns: minmax(150px,2fr) 118px 74px 40px; gap: 10px }
+      .v-col-drv, .v-col-pos { display: none }
+    }
+
     .v-table-wrap { position: relative; z-index: 1; overflow-x: auto; border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--bg-secondary) }
     .v-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 640px }
     .v-table thead th { text-align: left; padding: 11px 14px; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; color: var(--fg-tertiary); border-bottom: 1px solid var(--border-subtle); font-weight: 700 }
@@ -890,6 +949,7 @@ export class VehiclesListComponent implements OnInit {
   private readonly vehiclesApi = inject(VehiclesApiService);
   private readonly trackersApi = inject(TrackersApiService);
   private readonly realtime = inject(RealtimeService);
+  private readonly geocode = inject(GeocodeService);
   protected readonly perms = inject(PermissionsService);
   private readonly preferences = inject(PreferencesService);
   protected readonly auth = inject(AuthService);
@@ -1115,6 +1175,45 @@ export class VehiclesListComponent implements OnInit {
       return { kind: 'idle', speedKmh, cssClass: 'v-live-pill--idle' };
     }
     return { kind: 'stopped', speedKmh, cssClass: 'v-live-pill--stopped' };
+  }
+
+  /** Dernière position live (lat/lng/horodatage) depuis le snapshot temps réel. */
+  protected positionFor(vehicleId: string): { lat: number; lng: number; timestamp: string } | null {
+    const pos = this.realtime.positionsList().find((p) => p.vehicleId === vehicleId);
+    if (!pos) return null;
+    return { lat: pos.lat, lng: pos.lng, timestamp: pos.timestamp };
+  }
+
+  /** Adresse courte de la dernière position (géocodage inverse serveur, mémoïsé). '' si indispo. */
+  protected addressFor(vehicleId: string): string {
+    const pos = this.positionFor(vehicleId);
+    if (!pos) return '';
+    return this.geocode.reverse(pos.lat, pos.lng)();
+  }
+
+  /** « il y a X » depuis la dernière position (ou dernier contact tracker). */
+  protected lastContactLabel(v: VehicleDetailDto): string {
+    const iso = this.positionFor(v.id)?.timestamp ?? v.tracker?.lastSeenAt ?? null;
+    if (!iso) return '';
+    const diff = Date.now() - new Date(iso).getTime();
+    if (diff < 0) return "à l'instant";
+    const s = Math.floor(diff / 1000);
+    if (s < 60) return `il y a ${s} s`;
+    const m = Math.floor(s / 60);
+    if (m < 60) return `il y a ${m} min`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `il y a ${h} h`;
+    return `il y a ${Math.floor(h / 24)} j`;
+  }
+
+  /** Conducteur assigné, format « P. Nom » (réf. maquette). « Non assigné » sinon. */
+  protected driverLabel(v: VehicleDetailDto): string {
+    const d = v.currentDriver;
+    if (!d) return 'Non assigné';
+    const first = d.firstName?.trim() ?? '';
+    const last = d.lastName?.trim() ?? '';
+    if (first && last) return `${first[0]}. ${last}`;
+    return last || first || 'Conducteur';
   }
 
   /** V1.15 — badge installation derive : tracker + IMEI + SIM => Installé. */
