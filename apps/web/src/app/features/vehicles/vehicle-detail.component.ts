@@ -72,7 +72,12 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
             </button>
             <app-brand-logo [brand]="v.brand" [size]="40" [chip]="true" />
             <div class="min-w-0">
-              <h1 class="text-2xl sm:text-3xl font-display font-bold text-fg-primary truncate">{{ v.plate }}</h1>
+              <div class="flex items-center gap-2.5 flex-wrap">
+                <h1 class="text-2xl sm:text-3xl font-display font-bold text-fg-primary truncate">{{ v.plate }}</h1>
+                <span class="vt-status" [class.vt-status--on]="connectivity() === 'ONLINE'" [class.vt-status--offline]="connectivity() !== 'ONLINE'">
+                  <span class="vt-status__dot"></span>{{ heroStatusLabel() }}
+                </span>
+              </div>
               <p class="text-xs sm:text-sm text-fg-tertiary truncate">
                 {{ v.brand }} {{ v.model }}
                 @if (v.year) { · {{ v.year }} }
@@ -2009,6 +2014,12 @@ export class VehicleDetailComponent implements OnInit {
   });
 
   protected readonly connMeta = computed(() => connectivityMeta(this.connectivity()));
+
+  /** Libellé de la pastille de statut du hero (réf. maquette : « En ligne · Contact ON »). */
+  protected heroStatusLabel(): string {
+    if (this.connectivity() !== 'ONLINE') return this.connMeta().label;
+    return this.currentPosition()?.ignition ? 'En ligne · Contact ON' : 'En ligne';
+  }
 
   /** « Installation à revoir » : pose < 1 mois + hors-ligne (a déjà communiqué). */
   protected readonly installToReview = computed(() =>
