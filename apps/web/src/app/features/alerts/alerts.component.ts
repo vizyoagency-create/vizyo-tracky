@@ -186,7 +186,8 @@ const EMPTY_FORM: RuleForm = {
       <!-- Header -->
       <div class="a-header">
         <div>
-          <h1 class="a-title">Alertes</h1>
+          <span class="vt-eyebrow">Surveillance</span>
+          <h1 class="a-title">Alertes &amp; géofences</h1>
           <p class="a-sub">
             @if (activeTab() === 'alerts') {
               {{ visibleAlerts().length }} affichée{{ visibleAlerts().length > 1 ? 's' : '' }}
@@ -214,7 +215,7 @@ const EMPTY_FORM: RuleForm = {
         @if (perms.can('alerts_view')) {
           <button class="main-tab" data-track="Onglet Alertes" [class.active]="activeTab() === 'alerts'" (click)="selectTab('alerts')">
             <lucide-icon [img]="AlertTriangle" [size]="14"></lucide-icon>
-            Alertes
+            Événements
             @if (totalUnack() > 0) {
               <span class="tab-badge" [class.critical]="hasCriticalUnack()">{{ totalUnack() }}</span>
             }
@@ -229,13 +230,33 @@ const EMPTY_FORM: RuleForm = {
         @if (perms.can('alerts_configure')) {
           <button class="main-tab" data-track="Onglet Réglages alertes" [class.active]="activeTab() === 'settings'" (click)="switchToSettings()">
             <lucide-icon [img]="SettingsIcon" [size]="14"></lucide-icon>
-            Réglages
+            Règles
           </button>
         }
       </div>
 
       <!-- ═══════════════ TAB: ALERTES ═══════════════ -->
       @if (activeTab() === 'alerts') {
+        <!-- Récap sévérité (réf. maquette Alertes.dc.html) — compté sur les alertes chargées -->
+        <div class="a-summary">
+          <div class="a-sum a-sum-critical">
+            <span class="a-sum-tile"><lucide-icon [img]="AlertCircle" [size]="16"></lucide-icon></span>
+            <div><div class="a-sum-num">{{ sevCounts().critical }}</div><div class="a-sum-lbl">Critiques</div></div>
+          </div>
+          <div class="a-sum a-sum-warning">
+            <span class="a-sum-tile"><lucide-icon [img]="AlertTriangle" [size]="16"></lucide-icon></span>
+            <div><div class="a-sum-num">{{ sevCounts().warning }}</div><div class="a-sum-lbl">Avertissements</div></div>
+          </div>
+          <div class="a-sum a-sum-info">
+            <span class="a-sum-tile"><lucide-icon [img]="Info" [size]="16"></lucide-icon></span>
+            <div><div class="a-sum-num">{{ sevCounts().info }}</div><div class="a-sum-lbl">Information</div></div>
+          </div>
+          <div class="a-sum a-sum-acked">
+            <span class="a-sum-tile"><lucide-icon [img]="Check" [size]="16"></lucide-icon></span>
+            <div><div class="a-sum-num">{{ sevCounts().acked }}</div><div class="a-sum-lbl">Acquittées</div></div>
+          </div>
+        </div>
+
         <!-- Filters -->
         <div class="a-filters">
           @for (sev of severities; track sev.value) {
@@ -289,86 +310,60 @@ const EMPTY_FORM: RuleForm = {
           </div>
         }
 
-        <!-- Timeline -->
-        <div class="timeline">
-          @for (cluster of groupedAlerts(); track cluster.key; let i = $index) {
-            <div class="tl-item" [class.acked]="cluster.unackCount === 0">
-              <div class="tl-line-wrap">
-                <div class="tl-node" [class]="cluster.severity === 'CRITICAL' ? 'critical' : cluster.severity === 'WARNING' ? 'warning' : 'info'">
-                  @if (cluster.severity === 'CRITICAL' && cluster.unackCount > 0) {
-                    <span class="tl-pulse" [class]="'critical'"></span>
+        <!-- Feed (réf. maquette Alertes.dc.html) : cards à sévérité colorée. Conserve
+             le regroupement anti-spam (×N + occurrences dépliables) et l'acquittement groupé. -->
+        <div class="a-feed">
+          @for (cluster of groupedAlerts(); track cluster.key) {
+            <div class="al-card" [class]="'sev-' + cluster.severity.toLowerCase()" [class.acked]="cluster.unackCount === 0">
+              <span class="al-itile" [class]="'sev-' + cluster.severity.toLowerCase()">
+                <lucide-icon [img]="severityIcon(cluster.severity)" [size]="18"></lucide-icon>
+              </span>
+              <div class="al-body">
+                <div class="al-top">
+                  <span class="al-title">{{ cluster.lead.title }}</span>
+                  @if (cluster.count > 1) {
+                    <span class="al-count" [attr.title]="cluster.count + ' alertes regroupées'">×{{ cluster.count }}</span>
                   }
-                </div>
-                @if (i < groupedAlerts().length - 1) {
-                  <div class="tl-line"></div>
-                }
-              </div>
-
-              <div class="tl-card" [class]="cluster.severity === 'CRITICAL' ? 'sev-critical' : cluster.severity === 'WARNING' ? 'sev-warning' : 'sev-info'">
-                <div class="tl-card-top">
-                  <div class="tl-card-info">
-                    <span class="tl-alert-title">{{ cluster.lead.title }}</span>
-                    <span class="tl-severity" [class]="severityBadge(cluster.severity)">{{ severityLabel(cluster.severity) }}</span>
-                    @if (cluster.count > 1) {
-                      <span class="tl-count" [attr.title]="cluster.count + ' alertes regroupées'">×{{ cluster.count }}</span>
-                    }
-                    @if (cluster.maxSpeed) {
-                      <span class="tl-speed-badge">
-                        <lucide-icon [img]="GaugeIcon" [size]="10"></lucide-icon>
-                        {{ cluster.count > 1 ? 'max ' : '' }}{{ cluster.maxSpeed }} km/h
-                      </span>
-                    }
-                    <!-- V1.15 — Badge fleet (visible SA only). -->
-                    <app-sa-fleet-badge [fleetId]="cluster.lead.fleetId" />
-                  </div>
-                  <span class="tl-time">{{ relativeTime(cluster.newestAt) }}</span>
-                </div>
-                <div class="tl-card-mid">
-                  @if (cluster.vehicleId) {
-                    <a [routerLink]="['/vehicles', cluster.vehicleId]" class="tl-vehicle">
-                      {{ alertVehiclePlate(cluster.lead) }}
-                    </a>
+                  @if (cluster.maxSpeed) {
+                    <span class="al-badge" [class]="'sev-' + cluster.severity.toLowerCase()">{{ cluster.count > 1 ? 'max ' : '' }}{{ cluster.maxSpeed }} km/h</span>
                   }
                   @if (cluster.lead.vehicle?.group; as g) { <app-group-badge [group]="g" /> }
-                  @if (cluster.lead.message) {
-                    <span class="tl-msg">{{ cluster.lead.message }}</span>
+                  <app-sa-fleet-badge [fleetId]="cluster.lead.fleetId" />
+                  @if (cluster.unackCount === 0) {
+                    <span class="al-acked-tag">· acquittée{{ cluster.count > 1 ? 's' : '' }}</span>
                   }
                 </div>
-
+                <div class="al-meta mono">
+                  @if (cluster.vehicleId) {
+                    <a [routerLink]="['/vehicles', cluster.vehicleId]" class="al-plate">{{ alertVehiclePlate(cluster.lead) }}</a>
+                  }
+                  @if (cluster.lead.message) { <span class="al-sep">·</span> {{ cluster.lead.message }} }
+                  <span class="al-sep">·</span> {{ relativeTime(cluster.newestAt) }}
+                </div>
                 @if (cluster.count > 1) {
-                  <button class="tl-expand" (click)="toggleCluster(cluster.key)" [attr.aria-expanded]="isClusterExpanded(cluster.key)">
+                  <button class="al-expand" (click)="toggleCluster(cluster.key)" [attr.aria-expanded]="isClusterExpanded(cluster.key)">
                     <lucide-icon [img]="isClusterExpanded(cluster.key) ? ChevronDownIcon : ChevronRightIcon" [size]="13"></lucide-icon>
                     <span>{{ cluster.count }} occurrences</span>
-                    @if (cluster.avgSpeed) {
-                      <span class="tl-expand-stats">· moy {{ cluster.avgSpeed }} · max {{ cluster.maxSpeed }} km/h</span>
-                    }
+                    @if (cluster.avgSpeed) { <span class="al-expand-stats">· moy {{ cluster.avgSpeed }} · max {{ cluster.maxSpeed }} km/h</span> }
                   </button>
                   @if (isClusterExpanded(cluster.key)) {
-                    <div class="tl-occurrences">
+                    <div class="al-occs">
                       @for (it of cluster.items; track it.id) {
-                        <div class="tl-occ" [class.acked]="isAcknowledged(it)">
-                          <span class="tl-occ-time">{{ occTime(it.createdAt) }}</span>
-                          @if (alertSpeed(it); as sp) { <span class="tl-occ-speed">{{ sp }} km/h</span> }
-                          @if (isAcknowledged(it)) { <lucide-icon [img]="Check" [size]="10" class="tl-occ-ack"></lucide-icon> }
+                        <div class="al-occ" [class.acked]="isAcknowledged(it)">
+                          <span class="al-occ-time">{{ occTime(it.createdAt) }}</span>
+                          @if (alertSpeed(it); as sp) { <span class="al-occ-speed">{{ sp }} km/h</span> }
+                          @if (isAcknowledged(it)) { <lucide-icon [img]="Check" [size]="10" class="al-occ-ack"></lucide-icon> }
                         </div>
                       }
                     </div>
                   }
                 }
-
-                @if (cluster.unackCount > 0 && perms.can('alerts_acknowledge')) {
-                  <div class="tl-card-bottom">
-                    <button (click)="acknowledgeCluster(cluster)" class="tl-ack-btn">
-                      <lucide-icon [img]="Check" [size]="12"></lucide-icon>
-                      {{ cluster.unackCount > 1 ? 'Acquitter (' + cluster.unackCount + ')' : 'Acquitter' }}
-                    </button>
-                  </div>
-                } @else {
-                  <div class="tl-card-bottom">
-                    <span class="tl-acked"><lucide-icon [img]="Check" [size]="10"></lucide-icon> Acquittée{{ cluster.count > 1 ? 's' : '' }}</span>
-                  </div>
-                }
               </div>
+              @if (cluster.unackCount > 0 && perms.can('alerts_acknowledge')) {
+                <button (click)="acknowledgeCluster(cluster)" class="al-ack">
+                  {{ cluster.unackCount > 1 ? 'Acquitter (' + cluster.unackCount + ')' : 'Acquitter' }}
+                </button>
+              }
             </div>
           }
         </div>
@@ -944,6 +939,59 @@ const EMPTY_FORM: RuleForm = {
       .main-tab { padding: 6px 10px; font-size: 11px }
       .cfg-rules-grid { grid-template-columns: 1fr }
     }
+
+    /* ═══ Récap sévérité (tuiles) ═══ */
+    .a-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px }
+    .a-sum { display: flex; align-items: center; gap: 11px; padding: 13px 15px; border-radius: 14px; background: var(--bg-secondary); border: 1px solid var(--border-subtle) }
+    .a-sum-tile { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0 }
+    .a-sum-num { font-size: 20px; font-weight: 800; line-height: 1.1 }
+    .a-sum-lbl { font-size: 11.5px; color: var(--fg-tertiary); margin-top: 1px }
+    .a-sum-critical .a-sum-tile { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger) }
+    .a-sum-critical .a-sum-num { color: var(--danger) }
+    .a-sum-warning .a-sum-tile { background: color-mix(in srgb, var(--warning) 15%, transparent); color: var(--warning) }
+    .a-sum-warning .a-sum-num { color: var(--warning) }
+    .a-sum-info .a-sum-tile { background: var(--bg-tertiary); color: var(--fg-secondary) }
+    .a-sum-acked .a-sum-tile { background: color-mix(in srgb, var(--tracky) 14%, transparent); color: var(--tracky-light) }
+    .a-sum-acked .a-sum-num { color: var(--tracky-light) }
+
+    /* ═══ Feed cards ═══ */
+    .a-feed { display: flex; flex-direction: column; gap: 10px }
+    .al-card { display: flex; align-items: flex-start; gap: 13px; padding: 14px 15px; border: 1px solid var(--border-subtle); border-radius: 14px; background: var(--bg-secondary); transition: border-color .18s, transform .18s }
+    .al-card:hover { border-color: var(--border-strong, var(--border-subtle)); transform: translateY(-2px) }
+    .al-card.acked { opacity: .62 }
+    .al-card.acked:hover { transform: none }
+    .al-itile { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0; margin-top: 1px }
+    .al-itile.sev-critical { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger) }
+    .al-itile.sev-warning { background: color-mix(in srgb, var(--warning) 15%, transparent); color: var(--warning) }
+    .al-itile.sev-info { background: color-mix(in srgb, var(--tracky) 12%, transparent); color: var(--tracky-light) }
+    .al-body { flex: 1; min-width: 0 }
+    .al-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap }
+    .al-title { font-size: 14px; font-weight: 700; color: var(--fg-primary) }
+    .al-count { font-size: 11px; font-weight: 700; color: var(--fg-tertiary); font-family: var(--font-mono) }
+    .al-badge { padding: 2px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 700 }
+    .al-badge.sev-critical { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger) }
+    .al-badge.sev-warning { background: color-mix(in srgb, var(--warning) 15%, transparent); color: var(--warning) }
+    .al-badge.sev-info { background: var(--bg-tertiary); color: var(--fg-secondary) }
+    .al-acked-tag { font-size: 11px; font-weight: 600; color: var(--fg-tertiary) }
+    .al-meta { font-size: 11.5px; color: var(--fg-tertiary); margin-top: 4px; line-height: 1.5 }
+    .al-plate { color: var(--fg-secondary); font-weight: 600 }
+    .al-plate:hover { color: var(--tracky-light) }
+    .al-sep { color: var(--fg-tertiary); opacity: .6; margin: 0 4px }
+    .al-expand { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; padding: 4px 9px; border-radius: 8px; border: 1px solid var(--border-subtle); background: transparent; color: var(--fg-tertiary); font-size: 11px; font-weight: 600; cursor: pointer; transition: color .15s, border-color .15s }
+    .al-expand:hover { color: var(--fg-primary); border-color: var(--border-strong, var(--border-subtle)) }
+    .al-expand-stats { color: var(--fg-tertiary); font-family: var(--font-mono) }
+    .al-occs { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; padding: 8px 10px; border-radius: 10px; background: var(--bg-tertiary) }
+    .al-occ { display: flex; align-items: center; gap: 10px; font-size: 11px; font-family: var(--font-mono); color: var(--fg-secondary) }
+    .al-occ.acked { opacity: .5 }
+    .al-occ-time { color: var(--fg-tertiary) }
+    .al-occ-speed { color: var(--fg-secondary); font-weight: 600 }
+    .al-occ-ack { color: var(--tracky-light) }
+    .al-ack { flex-shrink: 0; align-self: center; height: 32px; padding: 0 13px; border-radius: 9px; border: 1px solid var(--border-strong, var(--border-subtle)); background: transparent; color: var(--fg-secondary); font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; transition: color .15s, border-color .15s }
+    .al-ack:hover { color: var(--tracky-light); border-color: color-mix(in srgb, var(--tracky) 40%, transparent) }
+
+    @media (max-width: 720px) {
+      .a-summary { grid-template-columns: repeat(2, 1fr) }
+    }
   `],
 })
 export class AlertsComponent implements OnInit {
@@ -1134,6 +1182,22 @@ export class AlertsComponent implements OnInit {
 
   protected readonly totalUnack = this.realtime.unacknowledgedCount;
   protected readonly hasCriticalUnack = computed(() => this.realtime.hasCritical());
+
+  /**
+   * Récap par sévérité pour les 4 tuiles (réf. maquette). Compté sur les alertes
+   * actuellement chargées/visibles : non-acquittées ventilées par sévérité, plus
+   * le total acquitté. Cohérent avec le feed affiché (même jeu de données).
+   */
+  protected readonly sevCounts = computed(() => {
+    let critical = 0, warning = 0, info = 0, acked = 0;
+    for (const a of this.visibleAlerts()) {
+      if (this.isAcknowledged(a)) { acked++; continue; }
+      if (a.severity === 'CRITICAL') critical++;
+      else if (a.severity === 'WARNING') warning++;
+      else info++;
+    }
+    return { critical, warning, info, acked };
+  });
 
   protected readonly filterActive = computed(() =>
     !!this.filterSeverity() || !!this.filterVehicleId() || this.showAcknowledged(),
