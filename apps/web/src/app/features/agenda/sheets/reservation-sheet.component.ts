@@ -20,6 +20,7 @@ import { AiApiService } from '../../../core/services/ai.service';
 import { PermissionsService } from '../../../core/services/permissions.service';
 import { ToastService } from '../../../shared/ui/toast/toast.service';
 import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-sheet.component';
+import { DateTimeRangePickerComponent } from '../../../shared/ui/datetime-range/datetime-range-picker.component';
 
 export interface ReservationSheetVehicle {
   id: string;
@@ -42,7 +43,7 @@ function toLocalInput(d: Date): string {
   selector: 'app-reservation-sheet',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DatePipe, DecimalPipe, NgClass, LucideAngularModule, BottomSheetComponent],
+  imports: [DatePipe, DecimalPipe, NgClass, LucideAngularModule, BottomSheetComponent, DateTimeRangePickerComponent],
   template: `
     <app-bottom-sheet [open]="open()" ariaLabel="Réservations" (closed)="closed.emit()">
       <div class="rs">
@@ -63,9 +64,11 @@ function toLocalInput(d: Date): string {
         <!-- ───── DEMANDER ───── -->
         @if (mode() === 'request') {
           <div class="rs-body">
+            <div class="rs-f">
+              <span>Créneau</span>
+              <app-datetime-range [start]="startAt()" [end]="endAt()" (startChange)="startAt.set($event)" (endChange)="endAt.set($event)"></app-datetime-range>
+            </div>
             <div class="rs-grid">
-              <label class="rs-f"><span>Début</span><input type="datetime-local" class="rs-in rs-in--date" [value]="startAt()" (input)="setStart($any($event.target).value)" (click)="openPicker($event)"></label>
-              <label class="rs-f"><span>Fin</span><input type="datetime-local" class="rs-in rs-in--date" [value]="endAt()" (input)="endAt.set($any($event.target).value)" (click)="openPicker($event)"></label>
               <label class="rs-f rs-f--sm"><span>Places min.</span><input type="number" min="0" inputmode="numeric" class="rs-in" [value]="minSeats()" (input)="minSeats.set($any($event.target).value)"></label>
               <label class="rs-f rs-f--sm"><span>Sièges-enfant min.</span><input type="number" min="0" inputmode="numeric" class="rs-in" [value]="minChildSeats()" (input)="minChildSeats.set($any($event.target).value)"></label>
             </div>
@@ -180,7 +183,6 @@ function toLocalInput(d: Date): string {
     .rs-lbl-row { display: flex; align-items: center; justify-content: space-between; }
     .rs-in { width: 100%; padding: 10px 11px; border-radius: 10px; background: var(--bg-secondary); border: 1px solid var(--border-strong); color: var(--fg-primary); font-size: 16px; }
     .rs-in:focus { outline: none; border-color: var(--tracky-light); box-shadow: 0 0 0 3px rgba(16,224,160,.14); }
-    .rs-in--date { cursor: pointer; }
     .rs-ai { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; color: var(--tracky-light); text-transform: none; letter-spacing: 0; padding: 3px 8px; border-radius: 8px; background: rgba(16,224,160,.1); }
     .rs-ai:disabled { opacity: .6; }
     .rs-ai-list { display: flex; flex-direction: column; gap: 8px; }
@@ -316,34 +318,6 @@ export class ReservationSheetComponent {
 
   protected valOf(n: number | null): string { return n === null || n === undefined ? '—' : String(n); }
   protected scoreClass(v: number): string { return v >= 0.7 ? 'rs-chip--hi' : v >= 0.4 ? 'rs-chip--mid' : 'rs-chip--lo'; }
-
-  /** Ouvre le sélecteur de date natif dès le 1er clic (au lieu de devoir viser la
-   *  petite icône calendrier). Repli silencieux si non supporté / déjà ouvert. */
-  protected openPicker(ev: Event): void {
-    const el = ev.target as HTMLInputElement & { showPicker?: () => void };
-    try { el.showPicker?.(); } catch { /* clic natif classique en repli */ }
-  }
-
-  /** Règle le début en conservant la durée du créneau : la fin suit toute seule.
-   *  L'utilisateur n'a le plus souvent qu'un seul champ à toucher. */
-  protected setStart(v: string): void {
-    const durationMs = this.currentDurationMs();
-    this.startAt.set(v);
-    const start = new Date(v).getTime();
-    if (v && Number.isFinite(start)) {
-      this.endAt.set(toLocalInput(new Date(start + durationMs)));
-    }
-  }
-
-  /** Durée actuelle du créneau (fin − début), 1 h par défaut si indéterminée. */
-  private currentDurationMs(): number {
-    const s = this.startAt(); const e = this.endAt();
-    if (s && e) {
-      const d = new Date(e).getTime() - new Date(s).getTime();
-      if (Number.isFinite(d) && d > 0) return d;
-    }
-    return 60 * 60 * 1000;
-  }
 
   /** Libellé court d'énergie (badge de proposition). */
   protected energyLabel(e: string | null | undefined): string {
