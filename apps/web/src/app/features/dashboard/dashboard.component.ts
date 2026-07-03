@@ -162,7 +162,7 @@ interface WidgetMeta {
               [speedKmh]="firstVehicleMeta().speedKmh"
               [heading]="firstVehicleMeta().heading"
               [ignition]="firstVehicleMeta().ignition"
-              height="180px" />
+              height="100%" />
             <div class="widget-map-overlay">
               <div class="widget-map-stat">
                 <strong>{{ enrichedPositions().length }}</strong>
@@ -480,8 +480,12 @@ interface WidgetMeta {
     .widget-empty--map { padding: 40px 0 }
 
     /* Widget map */
-    .widget--map { padding: 14px; position: relative }
-    .widget--map app-mini-map { display: block; border-radius: 10px; overflow: hidden }
+    .widget--map { padding: 14px; position: relative; display: flex; flex-direction: column }
+    /* La mini-carte remplit la hauteur du widget (qui s'étire pour matcher la
+       colonne activité/alertes en 2-col) — fini le grand vide sous une carte fixe.
+       Le composant mini-map resize MapLibre via ResizeObserver. */
+    .widget--map app-mini-map { display: block; border-radius: 10px; overflow: hidden; flex: 1 1 auto; min-height: 220px }
+    .widget--map app-mini-map > div { height: 100% }
     .widget-map-overlay { position: absolute; bottom: 22px; left: 22px; z-index: 2; pointer-events: none }
     .widget-map-stat {
       display: inline-flex; align-items: baseline; gap: 4px;
