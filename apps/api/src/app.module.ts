@@ -17,6 +17,7 @@ import { validateEnv } from './config/env.validation';
 import { DriversModule } from './drivers/drivers.module';
 import { EngineControlModule } from './engine-control/engine-control.module';
 import { FleetsModule } from './fleets/fleets.module';
+import { GeocodeModule } from './geocode/geocode.module';
 import { GeofencesModule } from './geofences/geofences.module';
 import { InstallationsModule } from './installations/installations.module';
 import { InternalModule } from './internal/internal.module';
@@ -96,6 +97,7 @@ import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.modul
     EngineControlModule,
     FleetsModule,
     GeofencesModule,
+    GeocodeModule,
     TripsModule,
     VehiclesModule,
     TrackersModule,
