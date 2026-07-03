@@ -353,6 +353,12 @@ interface NavGroup {
       background: var(--surface-rail); transition: flex-basis .3s, width .3s;
     }
     .desktop-sidebar.collapsed { flex-basis: 64px; width: 64px }
+    /* Repliée : tout est centré (icônes + burger), sinon l'alignement label
+       laisse les icônes collées à gauche dans les 64px. */
+    .desktop-sidebar.collapsed .sidebar-top { padding: 0; justify-content: center }
+    .desktop-sidebar.collapsed .sidebar-toggle { margin-left: 0 }
+    .desktop-sidebar.collapsed .sidebar-nav { padding: 14px 8px }
+    .desktop-sidebar.collapsed .sidebar-link { justify-content: center; padding: 10px 0; gap: 0 }
     .sidebar-top {
       display: flex; align-items: center; gap: 10px; padding: 0 16px; height: 60px;
       border-bottom: 1px solid var(--border-subtle);
