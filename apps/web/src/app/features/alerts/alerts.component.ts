@@ -663,9 +663,9 @@ const EMPTY_FORM: RuleForm = {
       display: inline-flex; align-items: center; justify-content: center;
       min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
       font-size: 10px; font-weight: 700;
-      background: rgba(245,158,11,.15); color: #f59e0b;
+      background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--warning);
     }
-    .tab-badge.critical { background: rgba(239,68,68,.15); color: #ef4444; animation: pulse-badge 2s infinite; }
+    .tab-badge.critical { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); animation: pulse-badge 2s infinite; }
     @keyframes pulse-badge { 0%,100%{opacity:1} 50%{opacity:.6} }
 
     /* ─── Filters ─── */
@@ -687,15 +687,15 @@ const EMPTY_FORM: RuleForm = {
       max-width: 160px;
     }
     .a-filter-dot { width: 6px; height: 6px; border-radius: 50% }
-    .a-filter-dot.red { background: #ef4444 }
-    .a-filter-dot.amber { background: #f59e0b }
-    .a-filter-dot.blue { background: #3b82f6 }
+    .a-filter-dot.red { background: var(--danger) }
+    .a-filter-dot.amber { background: var(--warning) }
+    .a-filter-dot.blue { background: var(--fg-tertiary) }
 
     .a-review-banner {
       margin-bottom: 14px; padding: 12px 14px; border-radius: 12px;
-      background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.3);
+      background: color-mix(in srgb, var(--danger) 9%, transparent); border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
     }
-    .a-review-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: #ef4444 }
+    .a-review-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--danger) }
     .a-review-title { font-weight: 800; font-size: 13px }
     .a-review-sub { font-size: 11px; color: var(--fg-tertiary); font-weight: 500 }
     .a-review-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px }
@@ -726,11 +726,11 @@ const EMPTY_FORM: RuleForm = {
 
     .tl-line-wrap { display: flex; flex-direction: column; align-items: center; width: 16px; flex-shrink: 0; padding-top: 4px }
     .tl-node { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; position: relative; z-index: 1 }
-    .tl-node.critical { background: #ef4444; box-shadow: 0 0 8px rgba(239,68,68,.5) }
-    .tl-node.warning { background: #f59e0b; box-shadow: 0 0 6px rgba(245,158,11,.4) }
-    .tl-node.info { background: #3b82f6; box-shadow: 0 0 6px rgba(59,130,246,.4) }
+    .tl-node.critical { background: var(--danger); box-shadow: 0 0 8px color-mix(in srgb, var(--danger) 50%, transparent) }
+    .tl-node.warning { background: var(--warning); box-shadow: 0 0 6px color-mix(in srgb, var(--warning) 40%, transparent) }
+    .tl-node.info { background: var(--fg-tertiary) }
     .tl-pulse { position: absolute; inset: -4px; border-radius: 50%; animation: tlpulse 2s ease infinite; }
-    .tl-pulse.critical { background: rgba(239,68,68,.3) }
+    .tl-pulse.critical { background: color-mix(in srgb, var(--danger) 30%, transparent) }
     @keyframes tlpulse { 0%,100%{transform:scale(1);opacity:.6} 50%{transform:scale(1.8);opacity:0} }
     .tl-line { width: 2px; flex: 1; min-height: 16px; background: var(--border-subtle); margin: 4px 0 }
 
@@ -741,9 +741,9 @@ const EMPTY_FORM: RuleForm = {
       border: 1px solid rgba(255,255,255,.04); transition: all .25s;
     }
     .tl-card:hover { transform: translateX(4px) }
-    .tl-card.sev-critical { border-left: 3px solid #ef4444 }
-    .tl-card.sev-warning { border-left: 3px solid #f59e0b }
-    .tl-card.sev-info { border-left: 3px solid #3b82f6 }
+    .tl-card.sev-critical { border-left: 3px solid var(--danger) }
+    .tl-card.sev-warning { border-left: 3px solid var(--warning) }
+    .tl-card.sev-info { border-left: 3px solid var(--fg-tertiary) }
     :host-context([data-theme="light"]) .tl-card { background: rgba(255,255,255,.55); border-color: rgba(0,0,0,.06) }
 
     .tl-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px }
@@ -753,7 +753,7 @@ const EMPTY_FORM: RuleForm = {
     .tl-speed-badge {
       display: inline-flex; align-items: center; gap: 3px;
       padding: 2px 7px; border-radius: 6px; font-size: 10px; font-weight: 700;
-      background: rgba(245,158,11,.12); color: #f59e0b;
+      background: color-mix(in srgb, var(--warning) 12%, transparent); color: var(--warning);
     }
     .tl-count {
       display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 9999px;
@@ -780,7 +780,7 @@ const EMPTY_FORM: RuleForm = {
     .tl-occ:last-child { border-bottom: none }
     .tl-occ.acked { opacity: .5 }
     .tl-occ-time { font-family: var(--font-mono, monospace); color: var(--fg-tertiary); min-width: 64px }
-    .tl-occ-speed { font-weight: 700; color: #f59e0b }
+    .tl-occ-speed { font-weight: 700; color: var(--warning) }
     .tl-occ-ack { color: var(--tracky-light); margin-left: auto }
     .tl-time { font-size: 10px; color: var(--fg-tertiary); white-space: nowrap; flex-shrink: 0 }
 
@@ -861,10 +861,10 @@ const EMPTY_FORM: RuleForm = {
     .cfg-rule-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px }
     .cfg-rule-type { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--fg-primary) }
     .cfg-sev-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0 }
-    .cfg-sev-dot.sev-critical { background: #ef4444 }
-    .cfg-sev-dot.sev-warning { background: #f59e0b }
-    .cfg-sev-dot.sev-info { background: #3b82f6 }
-    .cfg-sev-dot.sev-all { background: linear-gradient(135deg, #ef4444, #f59e0b, #3b82f6) }
+    .cfg-sev-dot.sev-critical { background: var(--danger) }
+    .cfg-sev-dot.sev-warning { background: var(--warning) }
+    .cfg-sev-dot.sev-info { background: var(--fg-tertiary) }
+    .cfg-sev-dot.sev-all { background: linear-gradient(135deg, var(--danger), var(--warning), var(--fg-tertiary)) }
     .cfg-pill { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 9999px }
     .cfg-pill-on { background: rgba(16,224,160,.12); color: var(--tracky-light) }
     .cfg-pill-off { background: var(--bg-tertiary); color: var(--fg-tertiary) }
@@ -887,7 +887,7 @@ const EMPTY_FORM: RuleForm = {
       padding: 6px; border-radius: 6px; cursor: pointer; transition: all .15s;
     }
     .cfg-btn-icon:hover { background: var(--bg-tertiary); color: var(--fg-primary) }
-    .cfg-btn-danger:hover { color: #f87171 }
+    .cfg-btn-danger:hover { color: var(--danger) }
 
     /* ─── Modal ─── */
     .cfg-modal-overlay {
@@ -1196,7 +1196,7 @@ export class AlertsComponent implements OnInit {
   protected severityBadge(severity: string): string {
     if (severity === 'CRITICAL') return 'bg-red-500/20 text-red-400';
     if (severity === 'WARNING') return 'bg-amber-500/20 text-amber-400';
-    return 'bg-sky-500/20 text-sky-400';
+    return 'bg-fg-tertiary/15 text-fg-secondary';
   }
 
   protected severityLabel(severity: string): string {
