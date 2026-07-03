@@ -60,7 +60,10 @@ import {
   template: `
     <div class="flex flex-col gap-6">
       <div class="flex items-start justify-between gap-3 flex-wrap">
-        <h1 class="text-2xl font-display font-bold text-fg-primary">Rapports</h1>
+        <div>
+          <span class="vt-eyebrow">Analyse</span>
+          <h1 class="text-2xl font-display font-bold text-fg-primary mt-2">Rapports d'activité</h1>
+        </div>
         <div class="rep-export-group" role="group" aria-label="Exporter le rapport">
           <button type="button" (click)="onExportPdf()" trackClick="rapport-export-pdf" [disabled]="!!exporting()" class="rep-export-btn rep-export-btn--pdf">
             <lucide-icon [img]="DownloadIcon" [size]="13"></lucide-icon>
