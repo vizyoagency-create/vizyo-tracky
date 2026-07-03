@@ -38,6 +38,7 @@ interface WidgetMeta {
       <!-- Header -->
       <div class="dash-header">
         <div>
+          <span class="vt-eyebrow">Temps réel</span>
           <h1 class="dash-title">Vue d'ensemble</h1>
           <p class="dash-sub">Suivi en temps réel de votre flotte</p>
         </div>
@@ -46,15 +47,6 @@ interface WidgetMeta {
             <lucide-icon [img]="Settings2" [size]="14"></lucide-icon>
             <span class="dash-customize-label">Personnaliser</span>
           </button>
-          <div class="dash-status">
-            @if (realtime.connected()) {
-              <span class="status-dot online"></span>
-              <span class="status-text online">Connecté</span>
-            } @else {
-              <span class="status-dot"></span>
-              <span class="status-text">Connexion...</span>
-            }
-          </div>
         </div>
       </div>
 
@@ -73,9 +65,9 @@ interface WidgetMeta {
       <!-- KPIs compactes (2x2 mobile, 4x1 desktop) -->
       @if (isWidgetEnabled('kpis')) {
         <div class="metrics-grid">
-          <a routerLink="/vehicles" class="metric-card metric-card--link green">
-            <div class="metric-icon-wrap green">
-              <lucide-icon [img]="Truck" [size]="16"></lucide-icon>
+          <a routerLink="/vehicles" class="metric-card metric-card--link">
+            <div class="vt-icon-tile">
+              <lucide-icon [img]="Truck" [size]="18"></lucide-icon>
             </div>
             <div class="metric-content">
               <span class="metric-value">{{ stats()?.total ?? '—' }}</span>
@@ -84,9 +76,9 @@ interface WidgetMeta {
             <lucide-icon [img]="ChevronRight" [size]="14" class="metric-arrow"></lucide-icon>
           </a>
 
-          <a routerLink="/map" class="metric-card metric-card--link blue">
-            <div class="metric-icon-wrap blue">
-              <lucide-icon [img]="Navigation" [size]="16"></lucide-icon>
+          <a routerLink="/map" class="metric-card metric-card--link">
+            <div class="vt-icon-tile">
+              <lucide-icon [img]="Navigation" [size]="18"></lucide-icon>
             </div>
             <div class="metric-content">
               <span class="metric-value">{{ stats()?.moving ?? '—' }}</span>
@@ -95,9 +87,9 @@ interface WidgetMeta {
             <lucide-icon [img]="ChevronRight" [size]="14" class="metric-arrow"></lucide-icon>
           </a>
 
-          <a routerLink="/map" class="metric-card metric-card--link amber">
-            <div class="metric-icon-wrap amber">
-              <lucide-icon [img]="Activity" [size]="16"></lucide-icon>
+          <a routerLink="/map" class="metric-card metric-card--link">
+            <div class="vt-icon-tile vt-icon-tile--muted">
+              <lucide-icon [img]="Activity" [size]="18"></lucide-icon>
             </div>
             <div class="metric-content">
               <span class="metric-value">{{ stats()?.idle ?? '—' }}</span>
@@ -106,12 +98,12 @@ interface WidgetMeta {
             <lucide-icon [img]="ChevronRight" [size]="14" class="metric-arrow"></lucide-icon>
           </a>
 
-          <a routerLink="/alerts" class="metric-card metric-card--link red">
-            <div class="metric-icon-wrap red">
-              <lucide-icon [img]="AlertTriangle" [size]="16"></lucide-icon>
+          <a routerLink="/alerts" class="metric-card metric-card--link">
+            <div class="vt-icon-tile vt-icon-tile--danger">
+              <lucide-icon [img]="AlertTriangle" [size]="18"></lucide-icon>
             </div>
             <div class="metric-content">
-              <span class="metric-value">{{ stats()?.criticalAlerts ?? '—' }}</span>
+              <span class="metric-value metric-value--danger">{{ stats()?.criticalAlerts ?? '—' }}</span>
               <span class="metric-label">Alertes critiques</span>
             </div>
             <lucide-icon [img]="ChevronRight" [size]="14" class="metric-arrow"></lucide-icon>
@@ -228,7 +220,7 @@ interface WidgetMeta {
         <div class="widget">
           <div class="widget-header">
             <h3 class="widget-title">
-              <lucide-icon [img]="Bell" [size]="16" class="text-amber-400"></lucide-icon>
+              <lucide-icon [img]="Bell" [size]="16" style="color:var(--warning)"></lucide-icon>
               Alertes récentes
             </h3>
             <a routerLink="/alerts" class="widget-action">
@@ -395,42 +387,28 @@ interface WidgetMeta {
     .dash-review-banner {
       position: relative; z-index: 1; display: flex; align-items: center; gap: 10px;
       margin-bottom: 16px; padding: 11px 14px; border-radius: 12px; text-decoration: none;
-      background: rgba(239,68,68,.09); border: 1px solid rgba(239,68,68,.32); color: #ef4444;
+      background: color-mix(in srgb, var(--danger) 10%, transparent); border: 1px solid color-mix(in srgb, var(--danger) 32%, transparent); color: var(--danger);
       transition: border-color .15s;
     }
-    .dash-review-banner:hover { border-color: rgba(239,68,68,.55) }
+    .dash-review-banner:hover { border-color: color-mix(in srgb, var(--danger) 55%, transparent) }
     .dash-review-text { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0 }
     .dash-review-text strong { font-size: 13px; font-weight: 800 }
     .dash-review-text span { font-size: 11px; color: var(--fg-tertiary); font-weight: 500 }
     .dash-review-arrow { color: var(--fg-tertiary); flex-shrink: 0 }
     .metric-card {
-      position: relative; display: flex; align-items: center; gap: 10px;
-      padding: 12px; border-radius: 14px;
+      position: relative; display: flex; align-items: center; gap: 12px;
+      padding: 14px 16px; border-radius: 16px;
       background: var(--bg-secondary); border: 1px solid var(--border-subtle);
-      overflow: hidden; transition: all .25s var(--ease-tracky, ease);
+      transition: transform .2s var(--ease-tracky, ease), border-color .2s;
       text-decoration: none; color: inherit;
     }
     .metric-card:hover, .metric-card:active {
-      border-color: var(--border-strong); transform: translateY(-1px);
-      box-shadow: var(--shadow-tracky-glow);
+      border-color: var(--tracky-light); transform: translateY(-3px);
     }
-    .metric-card::before {
-      content: ''; position: absolute; top: 0; right: 0; width: 60px; height: 60px;
-      border-radius: 0 0 0 60px; opacity: .06; pointer-events: none;
-    }
-    .metric-card.green::before { background: var(--tracky-light) }
-    .metric-card.blue::before { background: #3b82f6 }
-    .metric-card.amber::before { background: #f59e0b }
-    .metric-card.red::before { background: #ef4444 }
-
-    .metric-icon-wrap { width: 32px; height: 32px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0 }
-    .metric-icon-wrap.green { background: rgba(16,224,160,.12); color: var(--tracky-light) }
-    .metric-icon-wrap.blue { background: rgba(59,130,246,.12); color: #3b82f6 }
-    .metric-icon-wrap.amber { background: rgba(245,158,11,.12); color: #f59e0b }
-    .metric-icon-wrap.red { background: rgba(239,68,68,.12); color: #ef4444 }
 
     .metric-content { display: flex; flex-direction: column; min-width: 0; flex: 1 }
-    .metric-value { font-size: 22px; font-weight: 800; color: var(--fg-primary); font-family: var(--font-display, Poppins, sans-serif); letter-spacing: -.02em; line-height: 1 }
+    .metric-value { font-size: 24px; font-weight: 800; color: var(--fg-primary); font-family: var(--font-display); letter-spacing: -.02em; line-height: 1 }
+    .metric-value--danger { color: var(--danger) }
     /* Label complet sans tronquer : on autorise le wrap sur 2 lignes */
     .metric-label { font-size: 11px; font-weight: 500; color: var(--fg-tertiary); margin-top: 3px; line-height: 1.2 }
     .metric-arrow { color: var(--fg-tertiary); flex-shrink: 0; opacity: .5 }
@@ -452,11 +430,11 @@ interface WidgetMeta {
     .widget {
       position: relative; z-index: 1;
       background: var(--bg-secondary); border: 1px solid var(--border-subtle);
-      border-radius: 14px; padding: 14px; margin-bottom: 12px;
+      border-radius: 16px; padding: 16px; margin-bottom: 12px;
       text-decoration: none; color: inherit; display: block;
       transition: border-color .2s;
     }
-    .widget:hover { border-color: var(--border-strong) }
+    .widget:hover { border-color: var(--tracky-light) }
     /* Désactive le tooltip/preview natif du lien (long-press iOS, hover desktop)
        sur les widgets entiers — l'utilisateur clique pour naviguer, sans preview parasite. */
     a.widget,
@@ -508,9 +486,9 @@ interface WidgetMeta {
     .widget-row-title { font-size: 13px; font-weight: 700; color: var(--fg-primary); font-family: var(--font-mono, monospace) }
     .widget-row-title--small { font-size: 12px; font-family: var(--font-sans, sans-serif); font-weight: 600 }
     .widget-row-sub { font-size: 10px; color: var(--fg-tertiary); margin-top: 1px }
-    .widget-row-speed { font-size: 16px; font-weight: 800; font-family: var(--font-display, Poppins, sans-serif); letter-spacing: -.02em }
-    .widget-row-speed.fast { color: #ef4444 }
-    .widget-row-speed.medium { color: #f59e0b }
+    .widget-row-speed { font-size: 16px; font-weight: 800; font-family: var(--font-display); letter-spacing: -.02em }
+    .widget-row-speed.fast { color: var(--danger) }
+    .widget-row-speed.medium { color: var(--warning) }
     .widget-row-speed.slow { color: var(--tracky-light) }
     .widget-row-speed.stopped { color: var(--fg-tertiary) }
     .speed-unit { font-size: 9px; font-weight: 500; opacity: .65; margin-left: 2px }
@@ -518,9 +496,9 @@ interface WidgetMeta {
 
     /* Alert severity */
     .widget-row--alert .widget-alert-severity { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0 }
-    .widget-alert-severity.crit { background: rgba(239,68,68,.12); color: #ef4444 }
-    .widget-alert-severity.warn { background: rgba(245,158,11,.12); color: #f59e0b }
-    .widget-alert-severity.info { background: rgba(59,130,246,.12); color: #3b82f6 }
+    .widget-alert-severity.crit { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger) }
+    .widget-alert-severity.warn { background: color-mix(in srgb, var(--warning) 14%, transparent); color: var(--warning) }
+    .widget-alert-severity.info { background: var(--bg-tertiary); color: var(--fg-secondary) }
 
     /* Widget Schedule */
     .widget-schedule-content { display: flex; flex-direction: column; gap: 12px }
@@ -560,7 +538,7 @@ interface WidgetMeta {
     }
     .dash-empty-btn {
       padding: 8px 16px; border-radius: 9999px;
-      background: var(--tracky); color: white;
+      background: var(--tracky-light); color: var(--accent-ink);
       border: 0; font-size: 12px; font-weight: 700; cursor: pointer;
     }
 
@@ -607,7 +585,7 @@ interface WidgetMeta {
       background: var(--bg-secondary); border: 1px solid var(--border-subtle);
       cursor: pointer; transition: background .2s;
     }
-    .dash-customizer-toggle--on { background: var(--tracky); border-color: var(--tracky) }
+    .dash-customizer-toggle--on { background: var(--tracky-light); border-color: var(--tracky-light) }
     .dash-customizer-toggle-knob {
       position: absolute; top: 2px; left: 2px;
       width: 16px; height: 16px; border-radius: 50%;
@@ -620,10 +598,10 @@ interface WidgetMeta {
     .dash-customizer-done {
       display: inline-flex; align-items: center; gap: 6px;
       padding: 9px 16px; border-radius: 10px;
-      background: var(--tracky); color: white; border: 0;
-      font-size: 12px; font-weight: 700; cursor: pointer;
+      background: var(--tracky-light); color: var(--accent-ink); border: 0;
+      font-size: 12px; font-weight: 700; cursor: pointer; transition: filter .15s;
     }
-    .dash-customizer-done:hover { background: var(--tracky-dark) }
+    .dash-customizer-done:hover { filter: brightness(1.05) }
 
     /* Desktop */
     @media (min-width: 1024px) {
