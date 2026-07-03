@@ -492,8 +492,8 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
                       <lucide-icon [img]="AlertCircle" [size]="16" class="text-amber-400"></lucide-icon>
                     </div>
                   } @else {
-                    <div class="w-8 h-8 rounded-full bg-sky-500/20 flex items-center justify-center shrink-0">
-                      <lucide-icon [img]="InfoIcon" [size]="16" class="text-sky-400"></lucide-icon>
+                    <div class="w-8 h-8 rounded-full bg-fg-tertiary/15 flex items-center justify-center shrink-0">
+                      <lucide-icon [img]="InfoIcon" [size]="16" class="text-fg-secondary"></lucide-icon>
                     </div>
                   }
                   <div class="flex-1">
@@ -750,7 +750,7 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
       color: var(--tracky-light);
     }
     .vd-admin-card--warning .vd-admin-card-header {
-      color: #f59e0b;
+      color: var(--warning);
     }
     .vd-admin-toggle {
       display: flex;
@@ -807,7 +807,7 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
       background: rgba(239, 68, 68, 0.12);
       border: 1px solid rgba(239, 68, 68, 0.3);
       border-radius: 8px;
-      color: #fca5a5;
+      color: var(--danger);
       font-size: 11px;
       font-weight: 500;
     }
@@ -961,7 +961,7 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
       padding: 2px 6px;
       border-radius: 9999px;
       background: rgba(245,158,11,.18);
-      color: #f59e0b;
+      color: var(--warning);
       font-size: 10px;
       font-weight: 700;
       line-height: 1;
@@ -1088,9 +1088,9 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
       white-space: nowrap;
     }
     .vd-history-flag--on { background: rgba(16,224,160,.12); color: var(--tracky-light); }
-    .vd-history-flag--off { background: rgba(239,68,68,.12); color: #ef4444; }
+    .vd-history-flag--off { background: rgba(239,68,68,.12); color: var(--danger); }
     .vd-history-flag--ok { background: var(--bg-tertiary); color: var(--fg-tertiary); }
-    .vd-history-flag--ko { background: rgba(239,68,68,.08); color: #ef4444; }
+    .vd-history-flag--ko { background: rgba(239,68,68,.08); color: var(--danger); }
 
     /* ─── Trajets : cards mobile-first ─── */
     .vd-trips-list {
@@ -1164,7 +1164,7 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
       font-weight: 700;
       color: var(--fg-primary);
     }
-    .vd-trip-stat-value--max { color: #f59e0b; }
+    .vd-trip-stat-value--max { color: var(--warning); }
 
     /* ─── Phase 2 : carte "Conducteur courant" du vehicule ─── */
     .vd-driver-card {
@@ -1360,7 +1360,7 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
       color: var(--fg-tertiary);
       font-variant-numeric: tabular-nums;
     }
-    .vd-trip-note-counter--warn { color: #f59e0b; }
+    .vd-trip-note-counter--warn { color: var(--warning); }
     .vd-trip-note-buttons { display: flex; gap: 6px; }
     .vd-trip-note-btn {
       display: inline-flex;
@@ -1384,12 +1384,10 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
     .vd-trip-note-btn--primary {
       background: var(--tracky);
       border-color: var(--tracky);
-      color: white;
+      color: var(--accent-ink);
     }
     .vd-trip-note-btn--primary:hover:not(:disabled) {
-      background: var(--tracky-dark, #0bb586);
-      border-color: var(--tracky-dark, #0bb586);
-      color: white;
+      filter: brightness(1.06);
     }
 
     .vd-trip-note-add {
@@ -1418,13 +1416,13 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
     .vd-tracker-extra { display: flex; align-items: center; gap: 8px; margin-top: 4px; flex-wrap: wrap }
     .vd-inst { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 9999px }
     .vd-inst--installed { color: var(--tracky-light); background: rgba(16,224,160,.12); border: 1px solid rgba(16,224,160,.22) }
-    .vd-inst--no-sim { color: #f59e0b; background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.22) }
+    .vd-inst--no-sim { color: var(--warning); background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.22) }
     .vd-sim { font-size: 10px; color: var(--fg-tertiary); font-family: var(--font-mono, monospace) }
     .vd-tracker-detach {
       background: transparent; border: 0; padding: 3px; border-radius: 4px;
       color: var(--fg-tertiary); cursor: pointer; transition: all .15s;
     }
-    .vd-tracker-detach:hover { color: #ef4444; background: rgba(239,68,68,.1) }
+    .vd-tracker-detach:hover { color: var(--danger); background: rgba(239,68,68,.1) }
     .vd-tracker-assign-btn {
       background: rgba(16,224,160,.08); border: 1px dashed rgba(16,224,160,.3);
       color: var(--tracky-light); padding: 4px 10px; border-radius: 6px;
@@ -1463,7 +1461,7 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
       display: inline-flex; align-items: center; gap: 6px;
       padding: 8px 12px; border-radius: 10px;
       background: rgba(245,158,11,.10); border: 1px solid rgba(245,158,11,.28);
-      color: #f59e0b; font-size: 12px; font-weight: 700; cursor: pointer; transition: all .15s;
+      color: var(--warning); font-size: 12px; font-weight: 700; cursor: pointer; transition: all .15s;
       white-space: nowrap;
     }
     .vd-incident-btn:hover { background: rgba(245,158,11,.18); border-color: rgba(245,158,11,.42); }
@@ -1519,7 +1517,7 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
       font-size: 12px; font-weight: 600; cursor: pointer; transition: all .15s;
     }
     .vd-inc-seg-btn:hover { color: var(--fg-secondary); }
-    .vd-inc-seg-btn--active { background: var(--bg-secondary); color: #f59e0b; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+    .vd-inc-seg-btn--active { background: var(--bg-secondary); color: var(--warning); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
     .vd-inc-foot {
       display: flex; gap: 8px; justify-content: flex-end;
       padding: 12px 16px; padding-bottom: max(12px, env(safe-area-inset-bottom));
@@ -1533,10 +1531,10 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
     .vd-inc-cancel:hover { color: var(--fg-primary); border-color: var(--border-strong); }
     .vd-inc-submit {
       padding: 8px 14px; border-radius: 10px;
-      background: #f59e0b; color: #fff; border: none;
-      font-size: 13px; font-weight: 700; cursor: pointer; transition: background .15s, opacity .15s;
+      background: var(--warning); color: var(--accent-ink); border: none;
+      font-size: 13px; font-weight: 700; cursor: pointer; transition: filter .15s, opacity .15s;
     }
-    .vd-inc-submit:hover:not(:disabled) { background: #d97706; }
+    .vd-inc-submit:hover:not(:disabled) { filter: brightness(.95); }
     .vd-inc-submit:disabled { opacity: .5; cursor: not-allowed; }
 
     @media (max-width: 480px) {
