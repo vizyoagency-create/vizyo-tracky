@@ -326,9 +326,9 @@ import { LogoComponent } from '../shared/ui/logo/logo.component';
         </header>
 
         <main class="auth-main">
-          <span class="vt-eyebrow">Espace client</span>
-          <h1 class="auth-title">Bon retour.</h1>
-          <p class="auth-sub">Connectez-vous à votre tableau de bord Vizyo Tracky.</p>
+          <!-- Chaque écran auth (login, forgot-password) fournit son propre titre
+               + contenu : indispensable pour les états qui remplacent le titre
+               (« Vérifiez votre boîte mail »). auth-layout = cadre pur. -->
           <router-outlet />
         </main>
 

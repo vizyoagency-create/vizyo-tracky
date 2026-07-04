@@ -16,6 +16,11 @@ import { ThemeService } from '../../core/theme/theme.service';
          lisibilite des inputs, bord lumineux haut tracky.
          Desktop (lg+) : on retire la card -- le panneau formulaire de
          auth-layout fournit deja le contenant et le titre. -->
+    <div class="mb-6">
+      <span class="vt-eyebrow">Espace client</span>
+      <h1 class="font-display text-[2.15rem] font-extrabold tracking-[-0.03em] leading-[1.07] text-fg-primary mt-3">Bon retour.</h1>
+      <p class="text-[1.02rem] text-fg-secondary leading-[1.5] mt-3">Connectez-vous à votre tableau de bord Vizyo Tracky.</p>
+    </div>
     <form (ngSubmit)="onSubmit()" class="flex flex-col gap-4 w-full">
         <div class="flex flex-col gap-1.5">
           <label for="email" class="text-[13px] font-medium text-fg-secondary"
