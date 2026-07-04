@@ -1307,6 +1307,15 @@ import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
       .vdx-hero-name { font-size: 1.3rem; }
     }
 
+    /* Mobile étroit : la barre d'actions (Couper / Écoute / Incident) passe SOUS le
+       titre (pleine largeur) au lieu d'écraser le nom du véhicule sur plusieurs lignes.
+       Cause : .vdx-hero-main flex:1+min-width:0 se comprime au lieu que les actions
+       (flex-shrink:0) retombent à la ligne. */
+    @media (max-width: 600px) {
+      .vdx-hero { flex-direction: column; align-items: stretch; }
+      .vdx-hero-actions { width: 100%; }
+    }
+
     /* ─── Sprint 7 — Bouton « Signaler un incident » (header) ─── */
     .vd-incident-btn {
       display: inline-flex; align-items: center; gap: 6px;

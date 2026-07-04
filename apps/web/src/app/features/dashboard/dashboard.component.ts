@@ -562,6 +562,13 @@ interface WidgetMeta {
        Le composant mini-map resize MapLibre via ResizeObserver. */
     .widget--map app-mini-map { display: block; border-radius: 10px; overflow: hidden; flex: 1 1 auto; min-height: 220px }
     .widget--map app-mini-map > div { height: 100% }
+    /* Mobile / tablette (1 colonne) : pas de colonne sœur pour étirer le flex-fill,
+       donc la mini-carte doit avoir une hauteur FIXE — sinon le div interne
+       [style.height]="100%" tombe à 0, la carte s'effondre et l'overlay « N actif(s) »
+       remonte chevaucher l'en-tête « Carte temps réel ». */
+    @media (max-width: 1023px) {
+      .widget--map app-mini-map { flex: none; height: 240px; min-height: 240px }
+    }
     .widget-map-overlay { position: absolute; bottom: 22px; left: 22px; z-index: 2; pointer-events: none }
     .widget-map-stat {
       display: inline-flex; align-items: baseline; gap: 4px;

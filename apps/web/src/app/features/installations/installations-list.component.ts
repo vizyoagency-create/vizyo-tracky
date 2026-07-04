@@ -123,6 +123,12 @@ import { formatDateFr, PLAN_STATUS_CLASS, PLAN_STATUS_LABELS } from './installat
     .ip-sub { font-size: 13px; color: var(--fg-tertiary); margin: 4px 0 0 }
     .ip-add { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 10px; font-size: 12px; font-weight: 700; background: var(--tracky-light); color: var(--accent-ink); border: none; cursor: pointer; box-shadow: var(--shadow-tracky-glow); transition: filter .15s }
     .ip-add:hover { filter: brightness(1.05) }
+    /* Mobile : en-tête empilé (retour + titre, puis bouton pleine largeur) au lieu de
+       forcer titre et « Nouveau plan » sur une rangée trop étroite (pas de flex-wrap). */
+    @media (max-width: 600px) {
+      .ip-head { flex-direction: column; align-items: stretch; gap: 12px; }
+      .ip-add { width: 100%; justify-content: center; }
+    }
 
     .ip-loading { display: flex; justify-content: center; padding: 60px 0 }
 

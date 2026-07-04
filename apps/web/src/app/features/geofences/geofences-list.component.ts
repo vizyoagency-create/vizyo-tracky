@@ -168,6 +168,12 @@ import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.com
     .gf-title { font-size: 24px; font-weight: 800; color: var(--fg-primary); letter-spacing: -.02em }
     .gf-sub { font-size: 13px; color: var(--fg-tertiary); margin-top: 2px }
     .gf-header-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center }
+    /* Mobile : l'en-tête (titre + Importer/Nouvelle zone) s'empile au lieu de forcer
+       titre et boutons sur une seule rangée (pas de flex-wrap ici) → titre écrasé. */
+    @media (max-width: 600px) {
+      .gf-header { flex-direction: column; align-items: stretch; gap: 12px; }
+      .gf-header-actions { width: 100%; }
+    }
     .gf-import-btn {
       display: inline-flex; align-items: center; gap: 6px;
       padding: 8px 14px; border-radius: 8px;

@@ -789,7 +789,7 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
     .v-trow-dash { color: var(--fg-tertiary) }
     .v-trow-chev { color: var(--fg-tertiary); justify-self: end; flex-shrink: 0 }
     @media (max-width: 960px) {
-      .v-gt-head, .v-trow { grid-template-columns: minmax(150px,2fr) 118px 74px 40px; gap: 10px }
+      .v-gt-head, .v-trow { grid-template-columns: minmax(0,2fr) 118px 74px 40px; gap: 10px }
       .v-col-drv, .v-col-pos { display: none }
     }
 

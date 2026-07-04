@@ -208,6 +208,12 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
     .d-title { font-size: 24px; font-weight: 800; color: var(--fg-primary); letter-spacing: -.02em }
     .d-sub { font-size: 13px; color: var(--fg-tertiary); margin-top: 2px }
     .d-header-actions { display: flex; align-items: center; gap: 10px }
+    /* Mobile : en-tête empilé (titre au-dessus, actions pleine largeur en dessous)
+       au lieu de comprimer le titre — .d-header n'a pas de flex-wrap. */
+    @media (max-width: 600px) {
+      .d-header { flex-direction: column; align-items: stretch; gap: 12px; }
+      .d-header-actions { width: 100%; }
+    }
     .d-toggle-archived {
       display: inline-flex; align-items: center; gap: 6px;
       font-size: 11px; color: var(--fg-tertiary); cursor: pointer;
