@@ -1,6 +1,6 @@
 import { Component, computed, HostListener, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, RouterOutlet, RouterLink, RouterLinkActive, NavigationEnd, Router } from '@angular/router';
+import { ActivatedRoute, RouterOutlet, RouterLink, RouterLinkActive, NavigationEnd, NavigationStart, NavigationCancel, NavigationError, Router } from '@angular/router';
 import {
   LucideAngularModule,
   LayoutDashboard,
@@ -24,6 +24,7 @@ import {
   LogOut,
   Sun,
   Moon,
+  Sparkles,
 } from 'lucide-angular';
 import { ThemeService } from '../core/theme/theme.service';
 import { AlertsBellComponent } from '../shared/ui/alerts-bell/alerts-bell.component';
@@ -44,6 +45,19 @@ import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wiz
 import { BaanoolMapOverlayComponent } from '../features/baanool/baanool-map-overlay.component';
 import { MenuStateService } from '../core/services/menu-state.service';
 
+/** Élément de navigation (sidebar / bottom-sheet). */
+interface NavItem {
+  label: string;
+  route: string;
+  icon: typeof LayoutDashboard;
+}
+/** Groupe de navigation : une section (eyebrow) + ses items.
+ *  `section: null` = groupe sans en-tête (modes veilleur / baanool). */
+interface NavGroup {
+  section: string | null;
+  items: NavItem[];
+}
+
 @Component({
   selector: 'app-dashboard-layout',
   standalone: true,
@@ -61,29 +75,52 @@ import { MenuStateService } from '../core/services/menu-state.service';
       <!-- DESKTOP SIDEBAR -->
       <aside class="desktop-sidebar" [class.collapsed]="collapsed()" aria-label="Navigation principale">
         <div class="sidebar-top">
-          <app-logo variant="icon" [size]="30" />
-          @if (!collapsed()) {
-            <span class="sidebar-brand">Vizyo <span class="text-tracky-light">Tracky</span></span>
+          @if (collapsed()) {
+            <!-- Replié : logo centré, cliquable pour déplier (fini le logo collé à gauche + burger serré). -->
+            <button type="button" (click)="collapsed.set(false)" class="sidebar-expand"
+                    aria-label="Déplier le menu" [attr.aria-expanded]="false">
+              <app-logo variant="icon" [size]="28" />
+            </button>
+          } @else {
+            <app-logo variant="icon" [size]="30" />
+            <span class="sidebar-brand text-tracky-light">Tracky</span>
+            <button (click)="collapsed.set(true)" class="sidebar-toggle"
+                    aria-label="Replier le menu" [attr.aria-expanded]="true">
+              <lucide-icon [img]="MenuIcon" [size]="18"></lucide-icon>
+            </button>
           }
-          <button (click)="collapsed.set(!collapsed())"
-                  class="sidebar-toggle"
-                  [attr.aria-label]="collapsed() ? 'Déplier le menu' : 'Replier le menu'"
-                  [attr.aria-expanded]="!collapsed()">
-            <lucide-icon [img]="MenuIcon" [size]="18"></lucide-icon>
-          </button>
         </div>
         <nav class="sidebar-nav" aria-label="Sections">
-          @for (item of navItems(); track item.label) {
-            <a [routerLink]="item.route" routerLinkActive="active"
-               #rla="routerLinkActive"
-               class="sidebar-link"
-               [attr.aria-current]="rla.isActive ? 'page' : null"
-               [attr.aria-label]="collapsed() ? item.label : null">
-              <lucide-icon [img]="item.icon" [size]="20" aria-hidden="true"></lucide-icon>
-              @if (!collapsed()) { <span>{{ item.label }}</span> }
-            </a>
+          @for (group of navItems(); track group.section ?? $index; let first = $first) {
+            @if (collapsed()) {
+              @if (!first) { <span class="sidebar-divider" aria-hidden="true"></span> }
+            } @else if (group.section) {
+              <span class="vt-section-label sidebar-section">{{ group.section }}</span>
+            }
+            @for (item of group.items; track item.label) {
+              <a [routerLink]="item.route" routerLinkActive="active"
+                 #rla="routerLinkActive"
+                 class="sidebar-link"
+                 [attr.aria-current]="rla.isActive ? 'page' : null"
+                 [attr.aria-label]="collapsed() ? item.label : null">
+                <lucide-icon [img]="item.icon" [size]="20" aria-hidden="true"></lucide-icon>
+                @if (!collapsed()) { <span>{{ item.label }}</span> }
+              </a>
+            }
           }
         </nav>
+        @if (!collapsed() && showAiPromo()) {
+          <div class="sidebar-foot">
+            <a routerLink="/agenda" class="ai-promo">
+              <span class="ai-promo-head">
+                <lucide-icon [img]="SparklesIcon" [size]="15" aria-hidden="true"></lucide-icon>
+                <span>Agent IA</span>
+              </span>
+              <span class="ai-promo-text">Optimisez vos tournées et réaffectations.</span>
+              <span class="ai-promo-cta">Découvrir →</span>
+            </a>
+          </div>
+        }
       </aside>
 
       <!-- MOBILE BOTTOM SHEET — remplace l'ancien drawer lateral.
@@ -96,18 +133,23 @@ import { MenuStateService } from '../core/services/menu-state.service';
         (closed)="mobileMenuOpen.set(false)">
         <div class="bs-header">
           <app-logo variant="icon" [size]="22" />
-          <span class="bs-brand">Vizyo <span class="text-tracky-light">Tracky</span></span>
+          <span class="bs-brand text-tracky-light">Tracky</span>
         </div>
-        <nav class="bs-nav" aria-label="Sections">
-          @for (item of navItems(); track item.label) {
-            <a [routerLink]="item.route" routerLinkActive="active"
-               #rla="routerLinkActive"
-               class="bs-link"
-               [attr.aria-current]="rla.isActive ? 'page' : null"
-               (click)="mobileMenuOpen.set(false)">
-              <lucide-icon [img]="item.icon" [size]="20" aria-hidden="true"></lucide-icon>
-              <span>{{ item.label }}</span>
-            </a>
+        <nav class="bs-nav-wrap" aria-label="Sections">
+          @for (group of navItems(); track group.section ?? $index) {
+            @if (group.section) { <span class="vt-section-label bs-section">{{ group.section }}</span> }
+            <div class="bs-nav">
+              @for (item of group.items; track item.label) {
+                <a [routerLink]="item.route" routerLinkActive="active"
+                   #rla="routerLinkActive"
+                   class="bs-link"
+                   [attr.aria-current]="rla.isActive ? 'page' : null"
+                   (click)="mobileMenuOpen.set(false)">
+                  <lucide-icon [img]="item.icon" [size]="20" aria-hidden="true"></lucide-icon>
+                  <span>{{ item.label }}</span>
+                </a>
+              }
+            </div>
           }
         </nav>
       </app-bottom-sheet>
@@ -121,6 +163,11 @@ import { MenuStateService } from '../core/services/menu-state.service';
             <span class="top-bar-wave top-bar-wave--1"></span>
             <span class="top-bar-wave top-bar-wave--2"></span>
           </div>
+
+          <!-- §2.3 — barre de progression de route (navigations lentes uniquement). -->
+          @if (routeLoading()) {
+            <div class="route-progress" role="progressbar" aria-label="Chargement de la page" aria-busy="true"></div>
+          }
 
           <div class="top-bar-left">
             <!-- Sprint 3 — veilleur : pas de menu burger (sa nav = « Véhicules » seul). -->
@@ -140,7 +187,6 @@ import { MenuStateService } from '../core/services/menu-state.service';
                [attr.aria-label]="isBaanoolMode() ? 'Vizyo Tracky — Carte' : 'Vizyo Tracky — Tableau de bord'">
               <app-logo variant="icon" [size]="26" />
               <span class="top-bar-brand-text" aria-hidden="true">
-                <span class="top-bar-brand-name">Vizyo</span>
                 <span class="top-bar-brand-name top-bar-brand-name--accent">Tracky</span>
               </span>
             </a>
@@ -161,6 +207,14 @@ import { MenuStateService } from '../core/services/menu-state.service';
                 <lucide-icon [img]="LogOutIcon" [size]="18"></lucide-icon>
               </button>
             } @else {
+            <!-- Pastille « Connecté » — état du socket temps réel (RealtimeService). -->
+            <span class="top-connected vt-status"
+                  [class.vt-status--on]="realtime.connected()"
+                  [class.vt-status--offline]="!realtime.connected()"
+                  role="status" aria-live="polite">
+              <span class="vt-status__dot" aria-hidden="true"></span>
+              {{ realtime.connected() ? 'Connecté' : 'Hors ligne' }}
+            </span>
             <!-- Filtre societe global — SUPER_ADMIN uniquement (rend rien sinon).
                  Ecrit dans FleetFilterService, consomme par les pages liste. -->
             <app-fleet-selector />
@@ -301,30 +355,61 @@ import { MenuStateService } from '../core/services/menu-state.service';
        * width fixe et le calcul flex-basis: auto. Sans ca, lors du toggle de
        * la classe .collapsed, la transition CSS sur width ne se reflete pas
        * dans le flex-basis et la .main-area ne reprend pas l'espace libere. */
-      flex: 0 0 240px;
-      width: 240px;
+      flex: 0 0 248px;
+      width: 248px;
       border-right: 1px solid var(--border-subtle);
-      background: var(--bg-secondary); transition: flex-basis .3s, width .3s;
+      background: var(--surface-rail); transition: flex-basis .3s, width .3s;
     }
     .desktop-sidebar.collapsed { flex-basis: 64px; width: 64px }
+    /* Repliée : tout est centré (icônes + burger), sinon l'alignement label
+       laisse les icônes collées à gauche dans les 64px. */
+    .desktop-sidebar.collapsed .sidebar-top { padding: 0; justify-content: center }
+    .desktop-sidebar.collapsed .sidebar-toggle { margin-left: 0 }
+    .desktop-sidebar.collapsed .sidebar-nav { padding: 14px 8px }
+    .desktop-sidebar.collapsed .sidebar-link { justify-content: center; padding: 10px 0; gap: 0 }
+    /* Repliée : le logo centré sert de bouton « déplier ». */
+    .sidebar-expand {
+      display: flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; margin: 0 auto; border-radius: 12px;
+      border: none; background: transparent; cursor: pointer; transition: background .15s;
+    }
+    .sidebar-expand:hover { background: var(--bg-tertiary) }
     .sidebar-top {
-      display: flex; align-items: center; gap: 8px; padding: 0 12px; height: 56px;
+      display: flex; align-items: center; gap: 10px; padding: 0 16px; height: 60px;
       border-bottom: 1px solid var(--border-subtle);
     }
-    .sidebar-brand { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: var(--fg-primary); white-space: nowrap }
+    .sidebar-brand { font-size: 15px; font-weight: 800; letter-spacing: -.01em; color: var(--fg-primary); white-space: nowrap }
     .sidebar-toggle {
       margin-left: auto; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
       color: var(--fg-tertiary); background: transparent; border: none; cursor: pointer;
     }
     .sidebar-toggle:hover { color: var(--fg-primary); background: var(--bg-tertiary) }
-    .sidebar-nav { flex: 1; display: flex; flex-direction: column; gap: 2px; padding: 8px }
+    .sidebar-nav { flex: 1; display: flex; flex-direction: column; gap: 2px; padding: 14px 12px; overflow-y: auto }
+    /* En-tête de groupe (eyebrow mono) — .vt-section-label fournit la typo. */
+    .sidebar-section { padding: 6px 12px 4px }
+    .sidebar-section:not(:first-child) { padding-top: 16px }
+    /* Séparateur entre groupes quand la sidebar est repliée (pas d'eyebrows). */
+    .sidebar-divider { height: 1px; background: var(--border-subtle); margin: 8px 10px }
     .sidebar-link {
       display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px;
-      color: var(--fg-secondary); text-decoration: none; font-size: 13px; font-weight: 500;
+      color: var(--fg-secondary); text-decoration: none; font-size: 13.5px; font-weight: 600;
       border: 1px solid transparent; transition: all .2s;
     }
     .sidebar-link:hover { background: var(--bg-tertiary); color: var(--fg-primary) }
     .sidebar-link.active { background: var(--bg-tertiary); color: var(--tracky-light); border-color: var(--border-strong) }
+    /* Pied de sidebar — carte promo « Agent IA » (réf. maquette). */
+    .sidebar-foot { padding: 12px; border-top: 1px solid var(--border-subtle) }
+    .ai-promo {
+      display: block; text-decoration: none;
+      padding: 12px 13px; border-radius: 14px;
+      background: var(--bg-tertiary); border: 1px solid var(--border-strong);
+      transition: border-color .2s;
+    }
+    .ai-promo:hover { border-color: var(--tracky-light) }
+    .ai-promo-head { display: flex; align-items: center; gap: 8px; color: var(--fg-primary); font-size: 13px; font-weight: 700 }
+    .ai-promo-head lucide-icon { color: var(--tracky-light); display: flex }
+    .ai-promo-text { display: block; margin: 7px 0 9px; font-size: 12px; color: var(--fg-secondary); line-height: 1.45 }
+    .ai-promo-cta { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--tracky-light) }
 
     /* ─── MOBILE DRAWER ─── */
     /* Anciens drawers mobiles supprimes (remplaces par <app-bottom-sheet>). */
@@ -332,7 +417,7 @@ import { MenuStateService } from '../core/services/menu-state.service';
     /* ─── TOP BAR avec effet vague glassy ─── */
     .top-bar {
       display: flex; align-items: center; justify-content: space-between;
-      height: 56px;
+      height: 60px;
       flex-shrink: 0;
       position: relative;
       /* Pas d'overflow:hidden ici : la popup alerts-bell deborde et serait clippee.
@@ -342,7 +427,7 @@ import { MenuStateService } from '../core/services/menu-state.service';
          au-dessus de ces boutons. Reste sous les modals (toast 6000, drawer 8000). */
       z-index: 1800;
       border-bottom: 1px solid color-mix(in srgb, var(--tracky-light, #10E0A0) 14%, var(--border-subtle));
-      background: color-mix(in srgb, var(--bg-secondary) 70%, transparent);
+      background: color-mix(in srgb, var(--surface-rail) 72%, transparent);
       backdrop-filter: blur(14px) saturate(1.5);
       -webkit-backdrop-filter: blur(14px) saturate(1.5);
       /* Safe-area :
@@ -365,6 +450,18 @@ import { MenuStateService } from '../core/services/menu-state.service';
       z-index: 0;
       border-bottom-left-radius: inherit;
       border-bottom-right-radius: inherit;
+    }
+    /* Barre de progression de route (§2.3) — épinglée sur la bordure basse du top-bar.
+       Réutilise le keyframe global vt-route (styles.css) : se remplit puis disparaît. */
+    .route-progress {
+      position: absolute; left: 0; bottom: 0; height: 2px; width: 0;
+      z-index: 3; pointer-events: none; border-radius: 0 2px 2px 0;
+      background: linear-gradient(90deg, var(--tracky, #0A9E6C), var(--tracky-light, #10E0A0));
+      box-shadow: 0 0 8px color-mix(in srgb, var(--tracky-light, #10E0A0) 55%, transparent);
+      animation: vt-route 900ms ease-out both;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .route-progress { animation: none; width: 100%; opacity: .9; }
     }
     .top-bar-wave {
       content: '';
@@ -443,6 +540,7 @@ import { MenuStateService } from '../core/services/menu-state.service';
     .mobile-burger { display: none }
     .top-title { font-size: 16px; font-weight: 700; color: var(--fg-primary); position: relative; z-index: 1 }
     .top-actions { display: flex; align-items: center; gap: 8px; position: relative; z-index: 1 }
+    .top-connected { flex-shrink: 0 }
     /* Sprint 3 — veilleur : boutons icône top-bar (thème + déconnexion) qui
        remplacent l'avatar profil. Même gabarit cercle 40px bordé pour la cohérence. */
     .top-icon-btn {
@@ -452,7 +550,7 @@ import { MenuStateService } from '../core/services/menu-state.service';
       color: var(--fg-secondary); cursor: pointer; padding: 0; transition: all .2s;
     }
     .top-icon-btn:hover { border-color: var(--tracky-light); color: var(--fg-primary) }
-    .top-icon-btn--danger:hover { border-color: #f87171; color: #f87171 }
+    .top-icon-btn--danger:hover { border-color: var(--danger); color: var(--danger) }
     /* User menu dropdown */
     .user-menu-wrapper { position: relative }
     .user-menu-trigger {
@@ -464,7 +562,7 @@ import { MenuStateService } from '../core/services/menu-state.service';
     .user-menu-trigger:hover { border-color: var(--tracky-light) }
     .user-avatar {
       width: 36px; height: 36px; border-radius: 9999px;
-      background: var(--tracky); color: white;
+      background: var(--color-tracky-light); color: var(--accent-ink);
       font-size: 12px; font-weight: 700;
       display: flex; align-items: center; justify-content: center;
     }
@@ -494,7 +592,7 @@ import { MenuStateService } from '../core/services/menu-state.service';
     }
     .user-menu-item:hover { background: var(--bg-tertiary); color: var(--fg-primary) }
     .user-menu-item--danger { color: var(--fg-tertiary) }
-    .user-menu-item--danger:hover { color: #f87171; background: rgba(239,68,68,.06) }
+    .user-menu-item--danger:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, transparent) }
 
     /* ─── MAIN ─── */
     .main-area { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0 }
@@ -643,9 +741,11 @@ import { MenuStateService } from '../core/services/menu-state.service';
         font-size: 13px; font-weight: 800; text-transform: uppercase;
         letter-spacing: .08em; color: var(--fg-primary);
       }
+      .bs-nav-wrap { display: flex; flex-direction: column; gap: 4px }
+      .bs-section { padding: 12px 4px 2px }
       .bs-nav {
         display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;
-        padding: 4px 0 8px;
+        padding: 2px 0 6px;
       }
       .bs-link {
         display: flex; align-items: center; gap: 12px;
@@ -677,6 +777,7 @@ import { MenuStateService } from '../core/services/menu-state.service';
       /* Sur mobile, on cache le titre de page (présent dans la page) et on affiche
          le logo + brand pour rappeler l'identité Vizyo Tracky. */
       .top-title { display: none }
+      .top-connected { display: none }
       .top-bar-brand { display: flex; flex-shrink: 0 }
       .top-bar-brand-text { font-size: 13px }
       /* Place réduite sur mobile (sélecteur société SA) : on garde le logo + « Tracky »
@@ -723,6 +824,11 @@ export class DashboardLayoutComponent {
   protected readonly collapsed = signal(false);
   protected readonly fullscreen = signal(false);
   protected readonly pageTitle = signal('Tableau de bord');
+  /** Barre de progression de route (§2.3) — affichée seulement pour les navigations
+   *  « lentes » (> ~220ms). Les routes préchargées naviguent instantanément, donc
+   *  aucun flash de barre à chaque clic (règle « loaders tardifs »). */
+  protected readonly routeLoading = signal(false);
+  private routeBarTimer: ReturnType<typeof setTimeout> | null = null;
   /** Alias vers le service partage (lecture seule depuis le template).
    *  V1.12 — Le state du menu mobile vit dans MenuStateService pour permettre
    *  au BaanoolMapOverlay de l'ouvrir sans passer par EventEmitter
@@ -748,11 +854,20 @@ export class DashboardLayoutComponent {
   protected readonly MoonIcon = Moon;
   protected readonly SettingsIcon = Settings;
   protected readonly TerminalIcon = Terminal;
+  protected readonly SparklesIcon = Sparkles;
+
+  /** Carte promo « Agent IA » en pied de sidebar : masquée pour le veilleur et
+   *  affichée seulement si l'utilisateur a accès à l'agenda / à l'optimisation IA. */
+  protected readonly showAiPromo = computed(() =>
+    !this.auth.isWatchman() &&
+    (this.perms.can('ai_optimize') || this.perms.can('agenda_view')),
+  );
 
   protected isSuperAdmin(): boolean {
     return this.auth.user()?.role === 'SUPER_ADMIN';
   }
-  private readonly realtime = inject(RealtimeService);
+  /** Exposé au template pour la pastille « Connecté » (état socket temps réel). */
+  protected readonly realtime = inject(RealtimeService);
   private readonly activityTracker = inject(ActivityTrackerService);
   protected readonly themeService = inject(ThemeService);
   protected readonly userMenuOpen = signal(false);
@@ -829,6 +944,14 @@ export class DashboardLayoutComponent {
     // subscriptions sur router.events si le layout est detruit/recree (cas
     // logout puis re-login dans la meme session navigateur).
     this.router.events.pipe(takeUntilDestroyed()).subscribe((event) => {
+      // Barre de route (§2.3) — armée en différé au départ, coupée à l'arrivée.
+      if (event instanceof NavigationStart) {
+        if (this.routeBarTimer) clearTimeout(this.routeBarTimer);
+        this.routeBarTimer = setTimeout(() => this.routeLoading.set(true), 220);
+      } else if (event instanceof NavigationEnd || event instanceof NavigationCancel || event instanceof NavigationError) {
+        if (this.routeBarTimer) { clearTimeout(this.routeBarTimer); this.routeBarTimer = null; }
+        this.routeLoading.set(false);
+      }
       if (event instanceof NavigationEnd) {
         const child = this.route.firstChild;
         const data = child?.snapshot.data ?? {};
@@ -877,52 +1000,57 @@ export class DashboardLayoutComponent {
   private readonly perms = inject(PermissionsService);
   protected readonly network = inject(NetworkStatusService);
 
-  protected readonly navItems = computed(() => {
+  protected readonly navItems = computed<NavGroup[]>(() => {
     // Sprint 3 — veilleur de nuit : navigation réduite à « Véhicules » (liste groupée + détail).
     // Cosmétique : le périmètre réel est garanti serveur (403) + watchmanChildGuard.
     if (this.auth.isWatchman()) {
-      return [{ label: 'Véhicules', route: '/vehicles', icon: Truck }];
+      return [{ section: null, items: [{ label: 'Véhicules', route: '/vehicles', icon: Truck }] }];
     }
-    const isSuperAdmin = this.auth.user()?.role === 'SUPER_ADMIN';
-    // V1.12 — Mode Baanool : menu reduit aux essentiels. Pas de dashboard,
-    // groupes, geofences, rapports, conducteurs, utilisateurs. Garde Carte,
-    // Vehicules (pour accéder au detail), Alertes, et les pages personnelles
-    // (Compte/Parametres sont accessibles via top-right ou directement).
+    // V1.12 — Mode Baanool : menu reduit aux essentiels (un seul groupe, sans
+    // en-tête). Pas de dashboard, groupes, geofences, rapports. Groupes =
+    // onglet de Véhicules, Conducteurs = onglet d'Utilisateurs.
     if (this.isBaanoolMode()) {
-      return [
+      const items: NavItem[] = [
         ...(this.perms.can('vehicles_view') ? [
           { label: 'Carte', route: '/map', icon: Map },
           { label: 'Véhicules', route: '/vehicles', icon: Truck },
         ] : []),
         ...(this.perms.can('alerts_view') ? [{ label: 'Alertes', route: '/alerts', icon: Bell }] : []),
-        // Consolidation IA : Groupes = onglet de Véhicules, Conducteurs = onglet
-        // d'Utilisateurs. Plus d'entrées de nav séparées (accès via les onglets).
         ...(this.perms.can('users_view') ? [{ label: 'Utilisateurs', route: '/users', icon: Users }] : []),
         { label: 'Paramètres', route: '/settings', icon: Settings },
       ];
+      return [{ section: null, items }];
     }
-    return [
+    // Regroupement en sections (eyebrows mono) — refonte DS §3.
+    const supervision: NavItem[] = [
       { label: 'Tableau de bord', route: '/dashboard', icon: LayoutDashboard },
+      // Consolidation IA : « Groupes » est un onglet DANS Véhicules.
       ...(this.perms.can('vehicles_view') ? [
         { label: 'Carte', route: '/map', icon: Map },
-        // Consolidation IA : « Groupes » est désormais un onglet DANS Véhicules.
         { label: 'Véhicules', route: '/vehicles', icon: Truck },
       ] : []),
-      // Consolidation IA : « Géofences » est désormais un onglet DANS Alertes
-      // (zones de déclenchement), à côté des événements et des règles.
+      // Consolidation IA : « Géofences » est un onglet DANS Alertes.
       ...(this.perms.can('alerts_view') ? [{ label: 'Alertes', route: '/alerts', icon: Bell }] : []),
+    ];
+    const analyse: NavItem[] = [
       ...(this.perms.can('reports_view') ? [{ label: 'Rapports', route: '/reports', icon: FileBarChart }] : []),
-      // Sprint 7 + Sprint 9 (consolidation) — Agenda = hub calendrier UNIQUE : maintenance,
-      // incidents, réservations, optimisation et copilote IA réunis (ouverts en feuilles DEPUIS
-      // le calendrier). Visible dès qu'un des accès liés est présent ; plus d'entrées séparées.
+      // Sprint 7/9 — Agenda = hub calendrier unique (maintenance, incidents,
+      // réservations, optimisation, copilote IA). Visible dès qu'un accès lié existe.
       ...(this.perms.can('agenda_view') || this.perms.can('reservations_view') || this.perms.can('reservations_request') || this.perms.can('ai_optimize')
         ? [{ label: 'Agenda', route: '/agenda', icon: Calendar }] : []),
-      // Consolidation IA : « Conducteurs » est désormais un onglet DANS Utilisateurs.
+    ];
+    const administration: NavItem[] = [
+      // Consolidation IA : « Conducteurs » est un onglet DANS Utilisateurs.
       ...(this.perms.can('users_view') ? [{ label: 'Utilisateurs', route: '/users', icon: Users }] : []),
-      // V1.16 — Parc SIM : visible des qu'on a sims_view (FLEET_ADMIN/SUPER_ADMIN bypass).
+      // V1.16 — Parc SIM : visible dès sims_view (FLEET_ADMIN/SUPER_ADMIN bypass).
       ...(this.perms.can('sims_view') ? [{ label: 'Cartes SIM', route: '/sims', icon: CreditCard }] : []),
-      // V1.15 — Suivi installation : reserve au FLEET_ADMIN (consultation + reordonnancement).
+      // V1.15 — Suivi installation : réservé au FLEET_ADMIN (consultation + réordonnancement).
       ...(this.auth.user()?.role === 'FLEET_ADMIN' ? [{ label: 'Installation', route: '/installations', icon: ClipboardList }] : []),
     ];
+    return ([
+      { section: 'Supervision', items: supervision },
+      { section: 'Analyse', items: analyse },
+      { section: 'Administration', items: administration },
+    ] satisfies NavGroup[]).filter((g) => g.items.length > 0);
   });
 }

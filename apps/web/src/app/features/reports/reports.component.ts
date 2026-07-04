@@ -1,7 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, ElementRef, HostListener, inject, OnDestroy, OnInit, signal, viewChild } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, BarChart3, Route, Clock, Gauge, Play, ChevronDown, Truck, Check, MessageSquare, Pencil, UserRound, Download, Calendar, FileText, Layers, ArrowUp, ArrowDown, ArrowUpDown, FileSpreadsheet, RotateCcw, MousePointerClick } from 'lucide-angular';
+import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.directive';
+import { LucideAngularModule, BarChart3, ChevronRight, Route, Clock, Gauge, Play, ChevronDown, Truck, Check, MessageSquare, Pencil, UserRound, Download, Calendar, FileText, Layers, ArrowUp, ArrowDown, ArrowUpDown, FileSpreadsheet, RotateCcw, MousePointerClick } from 'lucide-angular';
 import type { DriverDto, TripDailySummaryDto, TripDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { DriversApiService } from '../../core/services/drivers.service';
@@ -42,6 +43,7 @@ import {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     FormsModule,
+    VehicleLinkDirective,
     LucideAngularModule,
     TrackClickDirective,
     GroupBadgeComponent,
@@ -60,7 +62,10 @@ import {
   template: `
     <div class="flex flex-col gap-6">
       <div class="flex items-start justify-between gap-3 flex-wrap">
-        <h1 class="text-2xl font-display font-bold text-fg-primary">Rapports</h1>
+        <div>
+          <span class="vt-eyebrow">Analyse</span>
+          <h1 class="text-2xl font-display font-bold text-fg-primary mt-2">Rapports d'activité</h1>
+        </div>
         <div class="rep-export-group" role="group" aria-label="Exporter le rapport">
           <button type="button" (click)="onExportPdf()" trackClick="rapport-export-pdf" [disabled]="!!exporting()" class="rep-export-btn rep-export-btn--pdf">
             <lucide-icon [img]="DownloadIcon" [size]="13"></lucide-icon>
@@ -382,6 +387,40 @@ import {
         </div>
       }
 
+      <!-- Synthèse par véhicule (réf. maquette Rapports) — rollup de la période,
+           complémentaire du tableau détaillé par trajet ci-dessous. -->
+      @if (!loading() && vehicleSummary().length > 0) {
+        <section class="rep-vsum">
+          <header class="rep-chart-head rep-vsum-head">
+            <h2>Par véhicule</h2>
+            <p>Synthèse de la période — cliquez « Voir » pour le détail</p>
+          </header>
+          <div class="rep-vtable">
+            <div class="rep-vt-head">
+              <span>Véhicule</span>
+              <span>Distance</span>
+              <span>Conduite</span>
+              <span class="rep-vt-hide">Trajets</span>
+              <span class="rep-vt-hide">V. moy</span>
+              <span></span>
+            </div>
+            @for (v of vehicleSummary(); track v.vehicleId) {
+              <div class="rep-vrow" [vehicleLink]="v.vehicleId" [attr.title]="'Voir ' + vehiclePlate(v.vehicleId)">
+                <div class="rep-vveh">
+                  <div class="rep-vplate">{{ vehiclePlate(v.vehicleId) || '—' }}</div>
+                  <div class="rep-vmodel">{{ vehicleModelLabel(v.vehicleId) }}</div>
+                </div>
+                <span class="rep-vdist">{{ (v.distance / 1000) | number:'1.0-0' }} <span class="rep-vunit">km</span></span>
+                <span class="rep-vmeta">{{ formatDuration(v.duration) }}</span>
+                <span class="rep-vmeta rep-vt-hide">{{ v.trips }}</span>
+                <span class="rep-vmeta rep-vt-hide" [class.rep-vspeed-warn]="v.avgSpeed >= 50">{{ v.avgSpeed }} km/h</span>
+                <lucide-icon [img]="ChevronRightIcon" [size]="16" class="rep-vchev" aria-hidden="true"></lucide-icon>
+              </div>
+            }
+          </div>
+        </section>
+      }
+
       @if (loading()) {
         <div class="flex items-center justify-center h-32">
           <span class="w-6 h-6 border-2 border-fg-tertiary border-t-tracky-light rounded-full animate-spin"></span>
@@ -444,7 +483,8 @@ import {
                   <td class="p-3 text-fg-primary">
                     <div>{{ trip.startedAt | date:'dd/MM HH:mm' }}</div>
                     @if (vehiclePlate(trip.vehicleId); as plate) {
-                      <div class="text-[10px] font-bold uppercase tracking-wider text-fg-tertiary mt-0.5">
+                      <div class="text-[10px] font-bold uppercase tracking-wider text-fg-tertiary mt-0.5"
+                           [vehicleLink]="trip.vehicleId" [attr.title]="'Voir ' + plate">
                         {{ plate }}
                       </div>
                     }
@@ -800,7 +840,7 @@ import {
       outline-offset: 1px; border-color: var(--tracky-light, #10E0A0);
     }
     .rep-custom-error {
-      font-size: 11px; color: #f87171; margin: 0;
+      font-size: 11px; color: var(--danger); margin: 0;
     }
     .rep-custom-hint {
       font-size: 11px; color: var(--fg-tertiary); margin: 0;
@@ -817,7 +857,7 @@ import {
     .rep-custom-cancel:hover { color: var(--fg-secondary); border-color: var(--border-strong) }
     .rep-custom-apply {
       padding: 7px 14px; border-radius: 8px;
-      background: var(--tracky, #10E0A0); color: white;
+      background: var(--tracky, #10E0A0); color: var(--accent-ink);
       border: none; font-size: 12px; font-weight: 700; cursor: pointer;
       transition: opacity .15s;
     }
@@ -1141,6 +1181,28 @@ import {
       0%   { background: color-mix(in srgb, var(--tracky, #10E0A0) 34%, transparent); }
       100% { background: color-mix(in srgb, var(--tracky, #10E0A0) 16%, transparent); }
     }
+
+    /* ─── Synthèse par véhicule (réf. maquette Rapports) ─── */
+    .rep-vsum { margin-bottom: 16px; }
+    .rep-vsum-head { margin-bottom: 12px; }
+    .rep-vtable { background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: var(--radius-card, 16px); overflow: hidden; }
+    .rep-vt-head, .rep-vrow { display: grid; grid-template-columns: minmax(160px,1.8fr) 1fr 1fr .9fr 1fr 70px; align-items: center; gap: 14px; padding: 12px 18px; }
+    .rep-vt-head { background: var(--surface-rail); border-bottom: 1px solid var(--border-subtle); font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--fg-tertiary); }
+    .rep-vrow { border-top: 1px solid var(--border-subtle); transition: background .15s; }
+    .rep-vrow:hover { background: var(--bg-tertiary); }
+    .rep-vveh { min-width: 0; }
+    .rep-vplate { font-family: var(--font-mono); font-size: 13px; font-weight: 700; color: var(--fg-primary); }
+    .rep-vmodel { font-size: 11px; color: var(--fg-tertiary); margin-top: 1px; }
+    .rep-vdist { font-size: 15px; font-weight: 800; color: var(--fg-primary); }
+    .rep-vunit { font-size: 10px; font-weight: 600; color: var(--fg-tertiary); }
+    .rep-vmeta { font-size: 13px; color: var(--fg-secondary); }
+    .rep-vspeed-warn { color: var(--warning); font-weight: 600; }
+    .rep-vchev { color: var(--fg-tertiary); justify-self: end; transition: color .15s ease, transform .15s ease; }
+    .rep-vrow:hover .rep-vchev { color: var(--tracky-light); transform: translateX(2px); }
+    @media (max-width: 1000px) {
+      .rep-vt-head, .rep-vrow { grid-template-columns: minmax(140px,1.6fr) 1fr 1fr 70px; }
+      .rep-vt-hide { display: none !important; }
+    }
   `],
 })
 export class ReportsComponent implements OnInit, OnDestroy {
@@ -1180,6 +1242,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   protected readonly Gauge = Gauge;
   protected readonly Play = Play;
   protected readonly ChevronDown = ChevronDown;
+  protected readonly ChevronRightIcon = ChevronRight;
   protected readonly TruckIcon = Truck;
   protected readonly Check = Check;
   protected readonly LayersIcon = Layers;
@@ -1695,6 +1758,41 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (!vehicleId) return null;
     return this.vehicles().find((x) => x.id === vehicleId)?.group ?? null;
   }
+
+  /** Marque + modèle d'un véhicule (ligne secondaire du tableau par véhicule). */
+  protected vehicleModelLabel(vehicleId: string): string {
+    const v = this.vehicles().find((x) => x.id === vehicleId);
+    if (!v) return '—';
+    return [v.brand, v.model].filter(Boolean).join(' ') || '—';
+  }
+
+  /**
+   * Synthèse PAR VÉHICULE de la période (réf. maquette Rapports) : agrège les
+   * trajets déjà chargés (distance / conduite / nb trajets / vitesse moy). Vue
+   * complémentaire du tableau détaillé par trajet — n'enlève rien, ajoute un
+   * rollup lisible. Triée par distance décroissante.
+   */
+  protected readonly vehicleSummary = computed(() => {
+    const by = new Map<string, { vehicleId: string; distance: number; duration: number; trips: number; speedSum: number }>();
+    for (const t of this.trips()) {
+      if (!t.vehicleId) continue;
+      const e = by.get(t.vehicleId) ?? { vehicleId: t.vehicleId, distance: 0, duration: 0, trips: 0, speedSum: 0 };
+      e.distance += this.max0(t.distanceMeters);
+      e.duration += t.durationSeconds || 0;
+      e.trips += 1;
+      e.speedSum += this.clampSpeed(t.avgSpeed);
+      by.set(t.vehicleId, e);
+    }
+    return [...by.values()]
+      .map((e) => ({
+        vehicleId: e.vehicleId,
+        distance: e.distance,
+        duration: e.duration,
+        trips: e.trips,
+        avgSpeed: e.trips ? Math.round(e.speedSum / e.trips) : 0,
+      }))
+      .sort((a, b) => b.distance - a.distance);
+  });
 
   // ─── Period replay ────────────────────────────────────────────────────
   /** Modal replay-periode ouverte ? Toggled par `onOpenPeriodReplay`. */

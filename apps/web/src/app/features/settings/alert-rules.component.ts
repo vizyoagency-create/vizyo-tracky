@@ -81,27 +81,27 @@ const EMPTY_FORM: RuleForm = {
   imports: [LucideAngularModule, DatePipe, FormsModule, RouterLink],
   template: `
     <div class="page">
-      <header class="page-header">
-        <a routerLink="/settings" class="back-link">
-          <lucide-icon [img]="ArrowLeft" [size]="14"></lucide-icon>
-          Réglages
-        </a>
-        <h1>Règles de notification</h1>
-        <p class="muted">
-          Pour chaque type d'alerte, choisis sur quels canaux la flotte est
-          notifiée. Les règles s'appliquent par flotte ; tu peux affiner par
-          véhicule.
-        </p>
-      </header>
-
-      @if (canEdit()) {
-        <div class="page-actions">
+      <a routerLink="/settings" class="back-link">
+        <lucide-icon [img]="ArrowLeft" [size]="13"></lucide-icon>
+        Réglages
+      </a>
+      <div class="page-head-row">
+        <div class="page-head-txt">
+          <h1>Règles de notification.</h1>
+          <p class="page-desc">
+            Pour chaque type d'alerte, choisissez les canaux sur lesquels la flotte
+            est notifiée. Les règles s'appliquent par flotte ; affinez au besoin par véhicule.
+          </p>
+        </div>
+        @if (canEdit()) {
           <button class="btn-primary" (click)="openCreate()">
-            <lucide-icon [img]="Plus" [size]="14"></lucide-icon>
+            <lucide-icon [img]="Plus" [size]="15"></lucide-icon>
             Ajouter une règle
           </button>
-        </div>
-      } @else {
+        }
+      </div>
+
+      @if (!canEdit()) {
         <div class="info-box">
           <lucide-icon [img]="Bell" [size]="20"></lucide-icon>
           <div>
@@ -239,18 +239,19 @@ const EMPTY_FORM: RuleForm = {
   `,
   styles: [`
     .page { display: flex; flex-direction: column; gap: 16px }
-    .page-header { display: flex; flex-direction: column; gap: 6px }
-    .page-header h1 { font-size: 22px; font-weight: 700; color: var(--fg-primary); margin: 0 }
+    .page-head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap }
+    .page-head-txt { max-width: 560px }
+    .page-head-txt h1 { font-family: var(--font-display, inherit); font-size: 1.72rem; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; color: var(--fg-primary); margin: 0 }
+    .page-desc { font-size: 14px; color: var(--fg-secondary); line-height: 1.5; margin: 8px 0 0 }
     .back-link {
       display: inline-flex; align-items: center; gap: 4px;
-      color: var(--fg-tertiary); font-size: 12px; text-decoration: none;
+      color: var(--fg-tertiary); font-size: 12px; text-decoration: none; align-self: flex-start;
     }
     .back-link:hover { color: var(--fg-secondary) }
     .muted { color: var(--fg-tertiary); font-size: 12px; margin: 0 }
-    .page-actions { display: flex; justify-content: flex-end }
     .card {
       background: var(--bg-secondary); border: 1px solid var(--border-subtle);
-      border-radius: var(--radius-card);
+      border-radius: 18px;
     }
     .info-box {
       display: flex; gap: 12px; padding: 14px;
@@ -292,9 +293,9 @@ const EMPTY_FORM: RuleForm = {
       z-index: 100; padding: 16px;
     }
     .modal {
-      background: var(--bg-secondary); border-radius: var(--radius-card);
+      background: var(--bg-secondary); border-radius: 20px;
       width: 100%; max-width: 480px; max-height: 90vh; max-height: 90dvh; overflow-y: auto;
-      border: 1px solid var(--border-subtle);
+      border: 1px solid var(--border-strong);
     }
     .modal-header, .modal-footer {
       display: flex; justify-content: space-between; align-items: center;

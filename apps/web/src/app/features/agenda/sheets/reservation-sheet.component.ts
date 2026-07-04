@@ -20,6 +20,7 @@ import { AiApiService } from '../../../core/services/ai.service';
 import { PermissionsService } from '../../../core/services/permissions.service';
 import { ToastService } from '../../../shared/ui/toast/toast.service';
 import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-sheet.component';
+import { DateTimeRangePickerComponent } from '../../../shared/ui/datetime-range/datetime-range-picker.component';
 
 export interface ReservationSheetVehicle {
   id: string;
@@ -42,7 +43,7 @@ function toLocalInput(d: Date): string {
   selector: 'app-reservation-sheet',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DatePipe, DecimalPipe, NgClass, LucideAngularModule, BottomSheetComponent],
+  imports: [DatePipe, DecimalPipe, NgClass, LucideAngularModule, BottomSheetComponent, DateTimeRangePickerComponent],
   template: `
     <app-bottom-sheet [open]="open()" ariaLabel="Réservations" (closed)="closed.emit()">
       <div class="rs">
@@ -63,9 +64,11 @@ function toLocalInput(d: Date): string {
         <!-- ───── DEMANDER ───── -->
         @if (mode() === 'request') {
           <div class="rs-body">
+            <div class="rs-f">
+              <span>Créneau</span>
+              <app-datetime-range [start]="startAt()" [end]="endAt()" (startChange)="startAt.set($event)" (endChange)="endAt.set($event)"></app-datetime-range>
+            </div>
             <div class="rs-grid">
-              <label class="rs-f"><span>Début</span><input type="datetime-local" class="rs-in" [value]="startAt()" (input)="startAt.set($any($event.target).value)"></label>
-              <label class="rs-f"><span>Fin</span><input type="datetime-local" class="rs-in" [value]="endAt()" (input)="endAt.set($any($event.target).value)"></label>
               <label class="rs-f rs-f--sm"><span>Places min.</span><input type="number" min="0" inputmode="numeric" class="rs-in" [value]="minSeats()" (input)="minSeats.set($any($event.target).value)"></label>
               <label class="rs-f rs-f--sm"><span>Sièges-enfant min.</span><input type="number" min="0" inputmode="numeric" class="rs-in" [value]="minChildSeats()" (input)="minChildSeats.set($any($event.target).value)"></label>
             </div>
@@ -165,7 +168,7 @@ function toLocalInput(d: Date): string {
   `,
   styles: [`
     .rs { display: flex; flex-direction: column; padding: 2px 2px 0; }
-    .rs-head { display: flex; align-items: center; justify-content: space-between; }
+    .rs-head { display: flex; align-items: center; justify-content: space-between; padding-bottom: 10px; border-bottom: 1px solid var(--border-subtle); }
     .rs-title { display: flex; align-items: center; gap: 7px; font-size: 15px; font-weight: 700; color: var(--fg-primary); font-family: var(--font-display, inherit); }
     .rs-x { width: 34px; height: 34px; border-radius: 9px; color: var(--fg-tertiary); display: inline-flex; align-items: center; justify-content: center; }
     .rs-x:hover { color: var(--fg-primary); background: var(--bg-tertiary); }
@@ -178,8 +181,8 @@ function toLocalInput(d: Date): string {
     .rs-f { display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; color: var(--fg-tertiary); }
     .rs-f > span:first-child, .rs-lbl-row { font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
     .rs-lbl-row { display: flex; align-items: center; justify-content: space-between; }
-    .rs-in { width: 100%; padding: 10px 11px; border-radius: 10px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); color: var(--fg-primary); font-size: 16px; }
-    .rs-in:focus { outline: none; border-color: var(--tracky-light); }
+    .rs-in { width: 100%; padding: 10px 11px; border-radius: 10px; background: var(--bg-secondary); border: 1px solid var(--border-strong); color: var(--fg-primary); font-size: 16px; }
+    .rs-in:focus { outline: none; border-color: var(--tracky-light); box-shadow: 0 0 0 3px rgba(16,224,160,.14); }
     .rs-ai { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; color: var(--tracky-light); text-transform: none; letter-spacing: 0; padding: 3px 8px; border-radius: 8px; background: rgba(16,224,160,.1); }
     .rs-ai:disabled { opacity: .6; }
     .rs-ai-list { display: flex; flex-direction: column; gap: 8px; }
@@ -211,7 +214,7 @@ function toLocalInput(d: Date): string {
     .rs-alert--err { background: rgba(239,68,68,.1); color: #EF4444; }
     .rs-alert--warn { background: rgba(245,158,11,.12); color: #B45309; }
     .rs-alert--info { background: var(--bg-tertiary); color: var(--fg-secondary); }
-    .rs-foot { display: flex; justify-content: flex-end; padding: 12px 0 max(6px, env(safe-area-inset-bottom)); }
+    .rs-foot { display: flex; justify-content: flex-end; padding: 12px 0 max(6px, env(safe-area-inset-bottom)); margin-top: 2px; border-top: 1px solid var(--border-subtle); }
     .rs-btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 16px; border-radius: 10px; font-size: 13px; font-weight: 700; }
     .rs-btn--primary { background: var(--tracky, #10B981); color: #fff; }
     .rs-btn--primary:disabled { opacity: .55; }
@@ -229,6 +232,17 @@ function toLocalInput(d: Date): string {
     @keyframes rs-sh { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
     .rs-spin { animation: rs-spin 1s linear infinite; }
     @keyframes rs-spin { to { transform: rotate(360deg); } }
+    /* ── Dark : les bordures à 8 % de blanc sont presque invisibles sur le fond
+       sombre. On renforce les traits pour structurer la feuille et détacher les
+       champs (bordures d'inputs + séparateurs haut/bas + cartes). ── */
+    :host-context([data-theme='dark']) .rs-in { border-color: rgba(255,255,255,.15); color-scheme: dark; }
+    :host-context([data-theme='dark']) .rs-in:focus { border-color: var(--tracky-light); }
+    :host-context([data-theme='dark']) .rs-head,
+    :host-context([data-theme='dark']) .rs-foot { border-color: rgba(255,255,255,.10); }
+    :host-context([data-theme='dark']) .rs-seg,
+    :host-context([data-theme='dark']) .rs-ai-card,
+    :host-context([data-theme='dark']) .rs-q { border-color: rgba(255,255,255,.12); }
+
     @media (max-width: 480px) { .rs-grid { grid-template-columns: 1fr; } }
   `],
 })

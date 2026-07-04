@@ -1,25 +1,21 @@
 /* Self-host des polices : pas de render-blocking sur fonts.googleapis.com,
    cache via service worker, fonctionne offline une fois installe. */
-@import '@fontsource/inter/300.css';
-@import '@fontsource/inter/400.css';
-@import '@fontsource/inter/500.css';
-@import '@fontsource/inter/600.css';
-@import '@fontsource/inter/700.css';
-@import '@fontsource/poppins/500.css';
-@import '@fontsource/poppins/600.css';
-@import '@fontsource/poppins/700.css';
-@import '@fontsource/poppins/800.css';
-@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/manrope/400.css';
+@import '@fontsource/manrope/500.css';
+@import '@fontsource/manrope/600.css';
+@import '@fontsource/manrope/700.css';
+@import '@fontsource/manrope/800.css';
 @import '@fontsource/jetbrains-mono/500.css';
+@import '@fontsource/jetbrains-mono/600.css';
 @import 'tailwindcss';
 
 @theme {
   --color-tracky-light: #10e0a0;
-  --color-tracky: #059669;
+  --color-tracky: #10e0a0; /* aligné sur l'accent DS (était #059669) */
   --color-tracky-dark: #047857;
 
-  --font-display: 'Poppins', sans-serif;
-  --font-sans: 'Inter', sans-serif;
+  --font-display: 'Manrope', system-ui, sans-serif; /* était Poppins */
+  --font-sans: 'Manrope', system-ui, sans-serif; /* était Inter */
   --font-mono: 'JetBrains Mono', monospace;
 
   --radius-card: 16px;
@@ -42,27 +38,42 @@
 
 :root,
 [data-theme='dark'] {
-  --surface-primary: #0A0F0D;
-  --surface-secondary: #0F1714;
-  --surface-tertiary: #14201C;
-  --text-primary: #F0FDF9;
-  --text-secondary: #A7C7BC;
-  --text-tertiary: #5C746C;
-  --border-color: rgba(16, 224, 160, 0.08);
-  --border-strong-color: rgba(16, 224, 160, 0.16);
-  --surface-secondary-rgb: 15, 23, 20;
+  --surface-primary: #080B0A;
+  --surface-secondary: #101514;
+  --surface-tertiary: #161D1B;
+  --surface-rail: #0B0F0E; /* bg sidebar / top-bar (DS bg-2) */
+  --text-primary: #EAEFED;
+  --text-secondary: #9BA5A1;
+  --text-tertiary: #69736E;
+  --border-color: rgba(255, 255, 255, 0.08);
+  --border-strong-color: rgba(255, 255, 255, 0.14);
+  --accent-ink: #04130D; /* texte SUR l'accent */
+  --danger: #F2706B;
+  --warning: #F5B33D;
+  --surface-secondary-rgb: 16, 21, 20;
+  /* Skeletons de chargement : base + reflet du balayage. */
+  --sk: rgba(255, 255, 255, 0.06);
+  --sk-hi: rgba(255, 255, 255, 0.10);
 }
 
 [data-theme='light'] {
-  --surface-primary: #FFFFFF;
-  --surface-secondary: #F0FDF9;
-  --surface-tertiary: #DCFCE7;
-  --text-primary: #042F2A;
-  --text-secondary: #047857;
-  --text-tertiary: #6B8A81;
-  --border-color: rgba(4, 120, 87, 0.1);
-  --border-strong-color: rgba(4, 120, 87, 0.2);
-  --surface-secondary-rgb: 240, 253, 249;
+  --surface-primary: #FBFCFB;
+  --surface-secondary: #FFFFFF;
+  --surface-tertiary: #F6F9F7;
+  --surface-rail: #F2F5F3; /* bg sidebar / top-bar */
+  --text-primary: #0A1311;
+  --text-secondary: #56635E;
+  --text-tertiary: #8A938F;
+  --border-color: rgba(10, 25, 18, 0.09);
+  --border-strong-color: rgba(10, 25, 18, 0.16);
+  --accent-ink: #FFFFFF; /* texte SUR l'accent (light) */
+  --color-tracky-light: #0A9E6C; /* accent light */
+  --color-tracky: #0A9E6C;
+  --danger: #D9544E;
+  --warning: #C98708;
+  --surface-secondary-rgb: 255, 255, 255;
+  --sk: rgba(10, 25, 18, 0.055);
+  --sk-hi: rgba(10, 25, 18, 0.085);
 }
 
 /* Aliases — bare names used directly in component styles (without --color- prefix). */
@@ -686,7 +697,7 @@ textarea:focus-visible,
   padding: 0 !important;
   overflow: hidden;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.18), 0 4px 12px rgba(0, 0, 0, 0.08);
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-sans);
 }
 .maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
 .maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
@@ -737,7 +748,7 @@ textarea:focus-visible,
 }
 .tk-popup-header-text { min-width: 0; }
 .tk-popup-plate {
-  font-family: 'Poppins', sans-serif;
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: 16px;
   color: var(--text-primary);
@@ -802,7 +813,7 @@ textarea:focus-visible,
   letter-spacing: 0.06em;
 }
 .tk-popup-stat-value {
-  font-family: 'Poppins', sans-serif;
+  font-family: var(--font-display);
   font-weight: 800;
   font-size: 15px;
   color: var(--text-primary);
@@ -820,7 +831,7 @@ textarea:focus-visible,
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   color: var(--text-tertiary);
   padding: 4px 0;
@@ -839,7 +850,7 @@ textarea:focus-visible,
   gap: 7px;
   padding: 10px 12px;
   border-radius: 10px;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-sans);
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
@@ -913,13 +924,13 @@ textarea:focus-visible,
   display: inline-flex; align-items: center; gap: 6px;
   padding: 9px 18px; border-radius: 10px;
   font-size: 12px; font-weight: 700;
-  background: var(--tracky); color: #fff;
+  background: var(--color-tracky-light); color: var(--accent-ink);
   border: none; cursor: pointer;
-  box-shadow: 0 2px 8px rgba(5, 150, 105, 0.3);
-  transition: background 0.2s;
+  box-shadow: var(--shadow-tracky-glow);
+  transition: filter 0.2s, box-shadow 0.2s;
 }
-.btn-primary:hover { background: var(--tracky-dark); }
-.btn-primary:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
+.btn-primary:hover { filter: brightness(1.05); box-shadow: 0 0 24px rgba(16, 224, 160, 0.28), 0 0 64px rgba(16, 224, 160, 0.08); }
+.btn-primary:disabled { opacity: 0.5; cursor: default; box-shadow: none; filter: none; }
 
 /* Interrupteur on/off. Markup attendu :
    <label class="toggle"><input type="checkbox"><span class="toggle-track">
@@ -941,6 +952,161 @@ textarea:focus-visible,
 .toggle input:checked + .toggle-track { background: rgba(16, 224, 160, 0.15); border-color: rgba(16, 224, 160, 0.3); }
 .toggle input:checked + .toggle-track .toggle-thumb { transform: translateX(18px); background: var(--tracky-light); }
 .toggle input:checked + .toggle-track .toggle-thumb::after { content: '✓'; }
+
+/* ════════════════════════════════════════════════════════════
+   KIT UI TRACKY — grammaire réutilisable (refonte DS)
+   Classes globales, token-driven, à réutiliser dans TOUTES les
+   features pour un style cohérent sans dupliquer de CSS. Toutes
+   préfixées `vt-` pour éviter toute collision avec les styles
+   scopés existants des composants.
+   Réf. maquettes app/*.dc.html (.card / .chip / .kpi / eyebrow).
+   ════════════════════════════════════════════════════════════ */
+
+/* Eyebrow — sur-titre mono MAJUSCULE accent (au-dessus d'un titre de section) */
+.vt-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--color-tracky-light);
+}
+
+/* Plaque / ligne cliquable → fiche véhicule (directive [vehicleLink]).
+   Affordance discrète : curseur + teinte accent au survol, focus clavier visible. */
+.vehicle-link { cursor: pointer; transition: color 0.15s ease; border-radius: 4px; }
+.vehicle-link:hover { color: var(--tracky-light, var(--color-tracky-light, #10E0A0)); }
+.vehicle-link:focus-visible {
+  outline: 2px solid var(--tracky-light, var(--color-tracky-light, #10E0A0));
+  outline-offset: 2px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Grammaire de chargement (handoff splash/loaders). Émeraude = seule couleur
+   de mouvement. Loaders tardifs côté composants ; fallback reduced-motion ici.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Skeleton — primitive : assembler des .sk aux dimensions réelles pour copier
+   un écran (aucun saut de mise en page à l'arrivée des données). */
+.sk { position: relative; overflow: hidden; background: var(--sk); border-radius: 7px; }
+.sk::after {
+  content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, var(--sk-hi), transparent);
+  animation: sk-sweep 1.5s ease-in-out infinite;
+}
+@keyframes sk-sweep { 0% { transform: translateX(-100%); } 60%, 100% { transform: translateX(100%); } }
+
+/* Barre de progression de route (top-bar) : se remplit puis disparaît. */
+.vt-route {
+  position: absolute; left: 0; top: 0; height: 2px; width: 0;
+  background: linear-gradient(90deg, var(--tracky, #0A9E6C), var(--tracky-light, #10E0A0));
+  border-radius: 0 2px 2px 0; z-index: 6; pointer-events: none;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--tracky-light, #10E0A0) 55%, transparent);
+  animation: vt-route 900ms ease-out both;
+}
+@keyframes vt-route {
+  0% { width: 0; opacity: 1; } 70% { width: 82%; } 92% { width: 100%; opacity: 1; } 100% { width: 100%; opacity: 0; }
+}
+
+/* Substitution en cascade : chaque bloc réel monte légèrement (délai croissant ~70ms). */
+.vt-realin > * { opacity: 0; animation: vt-realin 480ms both; }
+.vt-realin > *:nth-child(1) { animation-delay: 0ms; }
+.vt-realin > *:nth-child(2) { animation-delay: 70ms; }
+.vt-realin > *:nth-child(3) { animation-delay: 140ms; }
+.vt-realin > *:nth-child(4) { animation-delay: 210ms; }
+.vt-realin > *:nth-child(5) { animation-delay: 280ms; }
+.vt-realin > *:nth-child(6) { animation-delay: 350ms; }
+@keyframes vt-realin { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
+
+/* Spinner unifié — anneau discret + arc émeraude. Dimensions posées par <app-spinner>. */
+.vt-spinner {
+  display: inline-block;
+  box-sizing: border-box;
+  border: 2px solid var(--border-strong, rgba(255, 255, 255, 0.14));
+  border-top-color: var(--tracky-light, #10E0A0);
+  border-radius: 50%;
+  animation: vt-spin 0.7s linear infinite;
+}
+@keyframes vt-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .sk::after { animation: none; }
+  .vt-route { animation: none; width: 100%; opacity: 0; }
+  .vt-realin > * { opacity: 1; animation: none; transform: none; }
+  /* Spinner : rotation (vestibulaire) → pulsation d'opacité, plus douce. */
+  .vt-spinner { animation: vt-spin-rm 1.4s ease-in-out infinite; }
+}
+@keyframes vt-spin-rm { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+
+/* Label de groupe (sidebar, colonnes) — mono, tertiaire, plus discret */
+.vt-section-label {
+  font-family: var(--font-mono);
+  font-size: 10px; font-weight: 600;
+  letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+/* Carte — surface + hairline + radius ; `--hover` ajoute le lift + bord émeraude */
+.vt-card {
+  background: var(--surface-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 18px;
+}
+.vt-card--hover {
+  cursor: pointer;
+  transition: transform 0.2s var(--ease-tracky), border-color 0.2s;
+}
+.vt-card--hover:hover { transform: translateY(-3px); border-color: var(--color-tracky-light); }
+
+/* Pastille d'icône 40px, lavis accent (KPI, en-têtes de section) */
+.vt-icon-tile {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border-radius: 12px; flex-shrink: 0;
+  background: color-mix(in srgb, var(--color-tracky-light) 12%, transparent);
+  color: var(--color-tracky-light);
+}
+.vt-icon-tile--muted { background: var(--surface-tertiary); color: var(--text-secondary); }
+.vt-icon-tile--danger { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
+.vt-icon-tile--warning { background: color-mix(in srgb, var(--warning) 14%, transparent); color: var(--warning); }
+
+/* Puce de statut — point + libellé. Variantes on/idle/offline/warning/danger. */
+.vt-status {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 12px; border-radius: 9999px;
+  font-size: 12px; font-weight: 700; line-height: 1; white-space: nowrap;
+  border: 1px solid transparent;
+}
+.vt-status__dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.vt-status--on {
+  color: var(--color-tracky-light);
+  background: color-mix(in srgb, var(--color-tracky-light) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-tracky-light) 28%, transparent);
+}
+.vt-status--on .vt-status__dot { animation: vt-blink 2s ease-in-out infinite; }
+.vt-status--idle { color: var(--text-secondary); background: var(--surface-tertiary); }
+.vt-status--offline { color: var(--text-tertiary); background: var(--surface-tertiary); }
+.vt-status--warning {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  border-color: color-mix(in srgb, var(--warning) 26%, transparent);
+}
+.vt-status--danger {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 26%, transparent);
+}
+@keyframes vt-blink { 0%, 100% { opacity: 1 } 50% { opacity: 0.25 } }
+@media (prefers-reduced-motion: reduce) { .vt-status--on .vt-status__dot { animation: none } }
+
+/* Chip — bouton/lien discret : surface + hairline, bord émeraude au hover */
+.vt-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 9px 14px; border-radius: 11px;
+  background: var(--surface-secondary);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: border-color 0.18s, color 0.18s;
+}
+.vt-chip:hover { border-color: var(--color-tracky-light); color: var(--text-primary); }
 
 /* ─── Verrou de scroll global des overlays (ScrollLockService) ───────────────
    Le scroller réel du shell est `.content` (pas body — cf. dashboard-layout).

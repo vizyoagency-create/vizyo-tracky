@@ -8,7 +8,9 @@ import {
   Compass,
   LucideAngularModule,
   Mail,
+  Moon,
   PartyPopper,
+  Sun,
   Truck,
   UserCircle2,
   X,
@@ -19,6 +21,8 @@ import { OnboardingService } from '../../core/services/onboarding.service';
 import { UsersApiService } from '../../core/services/users.service';
 import { VehiclesApiService } from '../../core/services/vehicles.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
+import { ThemeService } from '../../core/theme/theme.service';
+import { LogoComponent } from '../../shared/ui/logo/logo.component';
 
 type Step = 1 | 2 | 3 | 4 | 5;
 
@@ -39,7 +43,7 @@ type Step = 1 | 2 | 3 | 4 | 5;
 @Component({
   selector: 'app-onboarding-wizard',
   standalone: true,
-  imports: [LucideAngularModule, FormsModule],
+  imports: [LucideAngularModule, FormsModule, LogoComponent],
   template: `
     @if (onboarding.shouldShow()) {
       <div class="wizard-overlay" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
@@ -49,13 +53,21 @@ type Step = 1 | 2 | 3 | 4 | 5;
             <span class="header-wave header-wave--1" aria-hidden="true"></span>
             <span class="header-wave header-wave--2" aria-hidden="true"></span>
             <div class="header-content">
-              <div class="header-title-block">
-                <h1 id="onboarding-title" class="header-title">Bienvenue sur Vizyo Tracky</h1>
-                <p class="header-step">Etape {{ stepIndex() }} sur {{ totalSteps() }}</p>
+              <div class="header-brand">
+                <app-logo variant="icon" [size]="26" />
+                <div class="header-title-block">
+                  <h1 id="onboarding-title" class="header-title">Bienvenue sur Tracky</h1>
+                  <p class="header-step">Étape {{ stepIndex() }} sur {{ totalSteps() }}</p>
+                </div>
               </div>
-              <button (click)="dismiss()" class="header-close" aria-label="Fermer le wizard">
-                <lucide-icon [img]="X" [size]="18"></lucide-icon>
-              </button>
+              <div class="header-actions">
+                <button type="button" (click)="theme.toggle()" class="header-close" aria-label="Changer de thème">
+                  <lucide-icon [img]="theme.theme() === 'dark' ? MoonIcon : SunIcon" [size]="16"></lucide-icon>
+                </button>
+                <button (click)="dismiss()" class="header-close" aria-label="Fermer le wizard">
+                  <lucide-icon [img]="X" [size]="17"></lucide-icon>
+                </button>
+              </div>
             </div>
             <div class="progress-bar">
               <div class="progress-fill" [style.width.%]="(stepIndex() / totalSteps()) * 100"></div>
@@ -73,9 +85,9 @@ type Step = 1 | 2 | 3 | 4 | 5;
                   Configurons ensemble votre compte en quelques minutes.
                 </p>
                 <ul class="step-bullets">
-                  <li><lucide-icon [img]="Check" [size]="14"></lucide-icon> Suivi GPS en direct</li>
-                  <li><lucide-icon [img]="Check" [size]="14"></lucide-icon> Coupure moteur securisee a distance</li>
-                  <li><lucide-icon [img]="Check" [size]="14"></lucide-icon> Alertes et rapports automatises</li>
+                  <li><span class="bullet-chip"><lucide-icon [img]="Check" [size]="14"></lucide-icon></span> Suivi GPS en direct</li>
+                  <li><span class="bullet-chip"><lucide-icon [img]="Check" [size]="14"></lucide-icon></span> Coupure moteur sécurisée à distance</li>
+                  <li><span class="bullet-chip"><lucide-icon [img]="Check" [size]="14"></lucide-icon></span> Alertes et rapports automatisés</li>
                 </ul>
               }
               @case (2) {
@@ -149,13 +161,20 @@ type Step = 1 | 2 | 3 | 4 | 5;
               }
               @case (5) {
                 <div class="step-icon"><lucide-icon [img]="PartyPopper" [size]="56"></lucide-icon></div>
-                <h2 class="step-title">Tout est pret !</h2>
+                <h2 class="step-title">Tout est prêt !</h2>
                 <p class="step-lead">
-                  Votre compte est configure. Le tableau de bord va s'ouvrir avec vos vehicules,
-                  vos alertes et la carte en temps reel.
+                  Votre compte est configuré. Le tableau de bord va s'ouvrir avec vos véhicules,
+                  vos alertes et la carte en temps réel.
                 </p>
+                @if (isAdmin()) {
+                  <div class="recap">
+                    <div class="recap-card"><div class="recap-n">{{ plate.trim() ? '1' : '0' }}</div><div class="recap-l">Véhicule ajouté</div></div>
+                    <div class="recap-card"><div class="recap-n">{{ inviteEmail.trim() ? '1' : '0' }}</div><div class="recap-l">Invitation envoyée</div></div>
+                    <div class="recap-card"><div class="recap-n recap-n--ok"><lucide-icon [img]="Check" [size]="18"></lucide-icon></div><div class="recap-l">Profil complété</div></div>
+                  </div>
+                }
                 <p class="hint">
-                  Vous pouvez modifier vos preferences a tout moment depuis "Mon compte".
+                  Vous pouvez modifier vos préférences à tout moment depuis « Mon compte ».
                 </p>
               }
             }
@@ -276,6 +295,8 @@ type Step = 1 | 2 | 3 | 4 | 5;
       cursor: pointer;
     }
     .header-close:hover { background: var(--bg-tertiary); color: var(--fg-primary); }
+    .header-brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
+    .header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
     .progress-bar {
       position: relative; z-index: 1;
       margin-top: 14px;
@@ -316,6 +337,12 @@ type Step = 1 | 2 | 3 | 4 | 5;
       font-size: 14px;
     }
     .step-bullets lucide-icon { color: var(--tracky-light, #10E0A0); }
+    .bullet-chip { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 8px; background: color-mix(in srgb, var(--tracky-light, #10E0A0) 12%, transparent); color: var(--tracky-light, #10E0A0); flex-shrink: 0; }
+    .recap { display: flex; gap: 10px; width: 100%; margin-top: 2px; }
+    .recap-card { flex: 1; padding: 13px 14px; border-radius: 13px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); }
+    .recap-n { font-size: 1.35rem; font-weight: 800; color: var(--tracky-light, #10E0A0); line-height: 1; }
+    .recap-n--ok { color: var(--fg-primary); display: inline-flex; }
+    .recap-l { font-size: .8rem; color: var(--fg-secondary); margin-top: 3px; }
     .form-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -335,7 +362,7 @@ type Step = 1 | 2 | 3 | 4 | 5;
     }
     .field input, .field select {
       background: var(--bg-tertiary);
-      border: 1px solid var(--border-subtle);
+      border: 1px solid var(--border-strong);
       border-radius: 10px;
       padding: 10px 12px;
       font-size: 14px;
@@ -388,6 +415,7 @@ type Step = 1 | 2 | 3 | 4 | 5;
 })
 export class OnboardingWizardComponent {
   protected readonly onboarding = inject(OnboardingService);
+  protected readonly theme = inject(ThemeService);
   private readonly auth = inject(AuthService);
   private readonly usersApi = inject(UsersApiService);
   private readonly vehiclesApi = inject(VehiclesApiService);
@@ -403,6 +431,8 @@ export class OnboardingWizardComponent {
   protected readonly Truck = Truck;
   protected readonly UserCircle2 = UserCircle2;
   protected readonly X = X;
+  protected readonly MoonIcon = Moon;
+  protected readonly SunIcon = Sun;
 
   readonly step = signal<Step>(1);
   readonly loading = signal(false);

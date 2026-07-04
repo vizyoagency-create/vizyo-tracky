@@ -66,8 +66,18 @@ export class ReportsCronService {
         await this.email.send({
           to: recipient,
           subject,
-          html: `<pre style="font-family:-apple-system,Segoe UI,sans-serif;font-size:14px;color:#1f2937;line-height:1.5;white-space:pre-wrap;">${this.escapeHtml(body)}</pre>`,
+          html: this.email.buildWeeklyReportEmail({
+            fromStr,
+            toStr,
+            tripsCount: report.trips.count,
+            totalKm: report.trips.totalKm,
+            alertsTotal: report.alerts.total,
+            liters: report.consumption.estimatedLiters,
+            costEur: report.consumption.estimatedCostEur,
+            pdfName: `rapport-${fromStr.replace(/\//g, '-')}.pdf`,
+          }),
           text: body,
+          template: 'weekly_report',
           context: { fleetId: fleet.id, weekly: true, pdfBytes: pdfBuffer.length },
         });
 
@@ -93,11 +103,5 @@ export class ReportsCronService {
     const lastMonday = new Date(thisMonday.getTime() - 7 * 24 * 3600 * 1000);
     const lastSundayEnd = new Date(thisMonday.getTime() - 1);
     return { from: lastMonday, to: lastSundayEnd };
-  }
-
-  private escapeHtml(s: string): string {
-    return s.replace(/[&<>"']/g, (m) => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;',
-    }[m]!));
   }
 }

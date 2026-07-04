@@ -37,6 +37,7 @@ import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.com
 import { AgendaCalendarComponent } from './agenda-calendar.component';
 import { ReservationSheetComponent } from './sheets/reservation-sheet.component';
 import { OptimizationSheetComponent } from './sheets/optimization-sheet.component';
+import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.directive';
 import {
   addMonths,
   eventColor,
@@ -60,7 +61,7 @@ interface GroupOption {
   selector: 'app-agenda',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, LucideAngularModule, DatePipe, GroupBadgeComponent, AgendaCalendarComponent, ReservationSheetComponent, OptimizationSheetComponent],
+  imports: [FormsModule, LucideAngularModule, DatePipe, GroupBadgeComponent, AgendaCalendarComponent, ReservationSheetComponent, OptimizationSheetComponent, VehicleLinkDirective],
   template: `
     <div class="flex flex-col gap-5">
       <!-- Header + résumé -->
@@ -259,7 +260,7 @@ interface GroupOption {
                 <span class="ag-up-main">
                   <span class="ag-up-title">{{ ev.title }}</span>
                   <span class="ag-up-meta">
-                    @if (ev.vehiclePlate) { <span class="ag-up-plate">{{ ev.vehiclePlate }}</span> · }
+                    @if (ev.vehiclePlate) { <span class="ag-up-plate" [vehicleLink]="ev.vehicleId" [attr.title]="'Voir ' + ev.vehiclePlate">{{ ev.vehiclePlate }}</span> · }
                     {{ eventTypeLabel(ev.type) }}
                     @if (ev.type === 'INCIDENT' && ev.severity) { · {{ severityLabel(ev.severity) }} }
                   </span>
@@ -313,7 +314,7 @@ interface GroupOption {
                         <span class="ag-unavail-ic" [attr.data-kind]="u.kind">
                           <lucide-icon [img]="u.kind === 'immobilized' ? BanIcon : CalendarCheckIcon" [size]="12"></lucide-icon>
                         </span>
-                        <span class="ag-unavail-plate">{{ u.plate }}</span>
+                        <span class="ag-unavail-plate" [vehicleLink]="u.vehicleId" [attr.title]="'Voir ' + u.plate">{{ u.plate }}</span>
                         <span class="ag-unavail-lbl">{{ u.kind === 'immobilized' ? 'Immobilisé' : 'Réservé' }} · {{ u.label }}</span>
                       </li>
                     }
@@ -340,7 +341,7 @@ interface GroupOption {
                 } @else {
                   @for (f of dayForecast(); track f.vehicleId) {
                     <div class="ag-insight">
-                      <span class="ag-insight-plate">{{ f.plate }}</span>
+                      <span class="ag-insight-plate" [vehicleLink]="f.vehicleId" [attr.title]="'Voir ' + f.plate">{{ f.plate }}</span>
                       <span class="ag-insight-time">{{ f.time }}</span>
                       <span class="ag-insight-conf" [title]="'Observé : ' + f.basis">
                         <span class="ag-insight-bar"><span [style.width.%]="f.confidence * 100" [style.background]="confColor(f.confidence)"></span></span>
@@ -368,7 +369,7 @@ interface GroupOption {
                 } @else {
                   @for (a of dayActivity(); track a.vehicleId) {
                     <div class="ag-insight">
-                      <span class="ag-insight-plate">{{ a.plate }}</span>
+                      <span class="ag-insight-plate" [vehicleLink]="a.vehicleId" [attr.title]="'Voir ' + a.plate">{{ a.plate }}</span>
                       <span class="ag-insight-time">{{ a.trips }} trajet{{ a.trips > 1 ? 's' : '' }}</span>
                       <span class="ag-insight-km">{{ a.distanceKm }} km</span>
                     </div>
@@ -402,7 +403,7 @@ interface GroupOption {
                   </div>
                   <p class="ag-day-card-title">{{ ev.title }}</p>
                   <p class="ag-day-card-meta">
-                    @if (ev.vehiclePlate) { <span class="ag-day-card-plate">{{ ev.vehiclePlate }}</span> }
+                    @if (ev.vehiclePlate) { <span class="ag-day-card-plate" [vehicleLink]="ev.vehicleId" [attr.title]="'Voir ' + ev.vehiclePlate">{{ ev.vehiclePlate }}</span> }
                     @if (ev.type === 'RESERVATION' && !ev.allDay) {
                       · {{ ev.startAt | date:'HH:mm' }}@if (ev.endAt) { → {{ ev.endAt | date:'HH:mm' }} }
                     } @else if (!ev.allDay) { · {{ ev.startAt | date:'HH:mm' }} }
@@ -640,8 +641,8 @@ interface GroupOption {
       display: flex; align-items: center; justify-content: center;
       width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
     }
-    .ag-stat--danger .ag-stat-icon { background: rgba(239,68,68,.14); color: #ef4444; }
-    .ag-stat--warn .ag-stat-icon { background: rgba(245,158,11,.14); color: #f59e0b; }
+    .ag-stat--danger .ag-stat-icon { background: rgba(239,68,68,.14); color: var(--danger); }
+    .ag-stat--warn .ag-stat-icon { background: rgba(245,158,11,.14); color: var(--warning); }
     .ag-stat--info .ag-stat-icon { background: rgba(16,224,160,.14); color: var(--tracky-light); }
     .ag-stat-body { display: flex; flex-direction: column; min-width: 0; }
     .ag-stat-value {
@@ -649,7 +650,7 @@ interface GroupOption {
       color: var(--fg-primary); font-family: var(--font-display, Poppins, sans-serif);
       letter-spacing: -.02em;
     }
-    .ag-stat--danger .ag-stat-value { color: #ef4444; }
+    .ag-stat--danger .ag-stat-value { color: var(--danger); }
     .ag-stat-label {
       font-size: 10px; font-weight: 600; color: var(--fg-tertiary);
       text-transform: uppercase; letter-spacing: .04em; margin-top: 4px;
@@ -789,8 +790,8 @@ interface GroupOption {
       font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 9999px;
       background: var(--bg-tertiary); color: var(--fg-tertiary); white-space: nowrap;
     }
-    .ag-status[data-status="OPEN"] { background: rgba(239,68,68,.12); color: #ef4444; }
-    .ag-status[data-status="IN_PROGRESS"] { background: rgba(245,158,11,.14); color: #f59e0b; }
+    .ag-status[data-status="OPEN"] { background: rgba(239,68,68,.12); color: var(--danger); }
+    .ag-status[data-status="IN_PROGRESS"] { background: rgba(245,158,11,.14); color: var(--warning); }
     .ag-status[data-status="DONE"] { background: rgba(16,224,160,.12); color: var(--tracky-light); }
     .ag-status[data-status="PLANNED"] { background: var(--bg-tertiary); color: var(--fg-secondary); }
     .ag-status[data-status="CANCELLED"] { background: var(--bg-tertiary); color: var(--fg-tertiary); text-decoration: line-through; }
@@ -844,10 +845,10 @@ interface GroupOption {
       background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-secondary);
     }
     .ag-act:disabled { opacity: .5; cursor: wait; }
-    .ag-act--start:hover:not(:disabled) { color: #f59e0b; border-color: rgba(245,158,11,.3); background: rgba(245,158,11,.06); }
+    .ag-act--start:hover:not(:disabled) { color: var(--warning); border-color: rgba(245,158,11,.3); background: rgba(245,158,11,.06); }
     .ag-act--done:hover:not(:disabled) { color: var(--tracky-light); border-color: rgba(16,224,160,.3); background: rgba(16,224,160,.06); }
     .ag-act--del { margin-left: auto; }
-    .ag-act--del:hover:not(:disabled) { color: #ef4444; border-color: rgba(239,68,68,.3); background: rgba(239,68,68,.06); }
+    .ag-act--del:hover:not(:disabled) { color: var(--danger); border-color: rgba(239,68,68,.3); background: rgba(239,68,68,.06); }
 
     /* ─── Formulaire de création ─── */
     .ag-modal-body { padding: 14px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
@@ -870,7 +871,7 @@ interface GroupOption {
     .ag-day-card-badges { display: inline-flex; align-items: center; gap: 6px; }
     .ag-blocked {
       font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 9999px;
-      background: rgba(239,68,68,.12); color: #ef4444; white-space: nowrap;
+      background: rgba(239,68,68,.12); color: var(--danger); white-space: nowrap;
       text-transform: uppercase; letter-spacing: .03em;
     }
     .ag-day-card-hint { font-size: 11px; color: var(--fg-tertiary); margin: 8px 0 0; font-style: italic; }
@@ -923,7 +924,7 @@ interface GroupOption {
       display: inline-flex; align-items: center; justify-content: center;
       width: 20px; height: 20px; border-radius: 6px; flex-shrink: 0;
     }
-    .ag-unavail-ic[data-kind="immobilized"] { background: rgba(239,68,68,.14); color: #ef4444; }
+    .ag-unavail-ic[data-kind="immobilized"] { background: rgba(239,68,68,.14); color: var(--danger); }
     .ag-unavail-ic[data-kind="reserved"] { background: rgba(56,189,248,.14); color: #38BDF8; }
     .ag-unavail-plate { font-family: var(--font-mono, monospace); font-weight: 700; color: var(--fg-primary); }
     .ag-unavail-lbl { font-size: 12px; color: var(--fg-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

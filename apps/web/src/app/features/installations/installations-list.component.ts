@@ -7,6 +7,7 @@ import { firstValueFrom } from 'rxjs';
 import { FleetsApiService, type FleetSummary } from '../../core/services/fleets.service';
 import { InstallationsApiService } from '../../core/services/installations.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
+import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
 import { formatDateFr, PLAN_STATUS_CLASS, PLAN_STATUS_LABELS } from './installation-ui';
 
 /**
@@ -17,7 +18,7 @@ import { formatDateFr, PLAN_STATUS_CLASS, PLAN_STATUS_LABELS } from './installat
   selector: 'app-installations-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, RouterLink, LucideAngularModule],
+  imports: [FormsModule, RouterLink, LucideAngularModule, SpinnerComponent],
   template: `
     <div class="ip">
       <div class="ip-head">
@@ -34,7 +35,7 @@ import { formatDateFr, PLAN_STATUS_CLASS, PLAN_STATUS_LABELS } from './installat
       </div>
 
       @if (loading()) {
-        <div class="ip-loading"><span class="spinner"></span></div>
+        <div class="ip-loading"><app-spinner [size]="22" /></div>
       } @else if (plans().length === 0) {
         <div class="ip-empty">
           <div class="ip-empty-ico"><lucide-icon [img]="ClipboardListIcon" [size]="30"></lucide-icon></div>
@@ -105,7 +106,7 @@ import { formatDateFr, PLAN_STATUS_CLASS, PLAN_STATUS_LABELS } from './installat
           <div class="ov-foot">
             <button class="btn-ghost" (click)="closeCreate()">Annuler</button>
             <button class="btn-primary" [disabled]="creating() || !fleetId || !clientName.trim()" (click)="create()">
-              @if (creating()) { <span class="spinner sm"></span> } Créer
+              @if (creating()) { <app-spinner [size]="14" /> } Créer
             </button>
           </div>
         </div>
@@ -120,13 +121,10 @@ import { formatDateFr, PLAN_STATUS_CLASS, PLAN_STATUS_LABELS } from './installat
     .ip-back:hover { color: var(--tracky-light) }
     .ip-head h1 { font-family: var(--font-display, Poppins, sans-serif); font-size: 24px; font-weight: 800; color: var(--fg-primary); margin: 0 }
     .ip-sub { font-size: 13px; color: var(--fg-tertiary); margin: 4px 0 0 }
-    .ip-add { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 10px; font-size: 12px; font-weight: 700; background: var(--tracky); color: #fff; border: none; cursor: pointer; box-shadow: 0 2px 8px rgba(5,150,105,.3) }
-    .ip-add:hover { background: var(--tracky-dark) }
+    .ip-add { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border-radius: 10px; font-size: 12px; font-weight: 700; background: var(--tracky-light); color: var(--accent-ink); border: none; cursor: pointer; box-shadow: var(--shadow-tracky-glow); transition: filter .15s }
+    .ip-add:hover { filter: brightness(1.05) }
 
     .ip-loading { display: flex; justify-content: center; padding: 60px 0 }
-    .spinner { width: 22px; height: 22px; border: 2px solid var(--border-subtle); border-top-color: var(--tracky-light); border-radius: 50%; animation: sp 0.7s linear infinite; display: inline-block }
-    .spinner.sm { width: 14px; height: 14px; border-width: 2px }
-    @keyframes sp { to { transform: rotate(360deg) } }
 
     .ip-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 50px 20px; border-radius: 16px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); color: var(--fg-tertiary) }
     .ip-empty-ico { width: 58px; height: 58px; border-radius: 16px; background: var(--bg-tertiary); display: flex; align-items: center; justify-content: center }

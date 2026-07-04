@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.directive';
 import {
   AlertCircle,
   AlertTriangle,
@@ -120,7 +121,7 @@ const EMPTY_FORM: RuleForm = {
   selector: 'app-alerts',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [LucideAngularModule, RouterLink, FormsModule, SaFleetBadgeComponent, InstallReviewBadgeComponent, GroupBadgeComponent, GeofencesListComponent],
+  imports: [LucideAngularModule, RouterLink, FormsModule, SaFleetBadgeComponent, InstallReviewBadgeComponent, GroupBadgeComponent, GeofencesListComponent, VehicleLinkDirective],
   template: `
     @if (isBaanoolMode()) {
       <!-- V1.12 — Mode Baanool : "Centre de messages" style ultra-simple -->
@@ -161,7 +162,7 @@ const EMPTY_FORM: RuleForm = {
                 <div class="bn-row-main">
                   <div class="bn-row-title">{{ alertLabel(cluster.lead) }}@if (cluster.count > 1) { <span class="bn-count">×{{ cluster.count }}</span> }</div>
                   <div class="bn-row-meta">
-                    @if (cluster.lead.vehiclePlate) { <span>{{ cluster.lead.vehiclePlate }}</span> · }
+                    @if (cluster.lead.vehiclePlate) { <span [vehicleLink]="cluster.vehicleId" [attr.title]="'Voir ' + cluster.lead.vehiclePlate">{{ cluster.lead.vehiclePlate }}</span> · }
                     @if (cluster.maxSpeed) { <span class="bn-speed">{{ cluster.count > 1 ? 'max ' : '' }}{{ cluster.maxSpeed }} km/h</span> · }
                     <span>{{ formatRelative(cluster.newestAt) }}</span>
                   </div>
@@ -186,7 +187,8 @@ const EMPTY_FORM: RuleForm = {
       <!-- Header -->
       <div class="a-header">
         <div>
-          <h1 class="a-title">Alertes</h1>
+          <span class="vt-eyebrow">Surveillance</span>
+          <h1 class="a-title">Alertes &amp; géofences</h1>
           <p class="a-sub">
             @if (activeTab() === 'alerts') {
               {{ visibleAlerts().length }} affichée{{ visibleAlerts().length > 1 ? 's' : '' }}
@@ -214,7 +216,7 @@ const EMPTY_FORM: RuleForm = {
         @if (perms.can('alerts_view')) {
           <button class="main-tab" data-track="Onglet Alertes" [class.active]="activeTab() === 'alerts'" (click)="selectTab('alerts')">
             <lucide-icon [img]="AlertTriangle" [size]="14"></lucide-icon>
-            Alertes
+            Événements
             @if (totalUnack() > 0) {
               <span class="tab-badge" [class.critical]="hasCriticalUnack()">{{ totalUnack() }}</span>
             }
@@ -229,13 +231,33 @@ const EMPTY_FORM: RuleForm = {
         @if (perms.can('alerts_configure')) {
           <button class="main-tab" data-track="Onglet Réglages alertes" [class.active]="activeTab() === 'settings'" (click)="switchToSettings()">
             <lucide-icon [img]="SettingsIcon" [size]="14"></lucide-icon>
-            Réglages
+            Règles
           </button>
         }
       </div>
 
       <!-- ═══════════════ TAB: ALERTES ═══════════════ -->
       @if (activeTab() === 'alerts') {
+        <!-- Récap sévérité (réf. maquette Alertes.dc.html) — compté sur les alertes chargées -->
+        <div class="a-summary">
+          <div class="a-sum a-sum-critical">
+            <span class="a-sum-tile"><lucide-icon [img]="AlertCircle" [size]="16"></lucide-icon></span>
+            <div><div class="a-sum-num">{{ sevCounts().critical }}</div><div class="a-sum-lbl">Critiques</div></div>
+          </div>
+          <div class="a-sum a-sum-warning">
+            <span class="a-sum-tile"><lucide-icon [img]="AlertTriangle" [size]="16"></lucide-icon></span>
+            <div><div class="a-sum-num">{{ sevCounts().warning }}</div><div class="a-sum-lbl">Avertissements</div></div>
+          </div>
+          <div class="a-sum a-sum-info">
+            <span class="a-sum-tile"><lucide-icon [img]="Info" [size]="16"></lucide-icon></span>
+            <div><div class="a-sum-num">{{ sevCounts().info }}</div><div class="a-sum-lbl">Information</div></div>
+          </div>
+          <div class="a-sum a-sum-acked">
+            <span class="a-sum-tile"><lucide-icon [img]="Check" [size]="16"></lucide-icon></span>
+            <div><div class="a-sum-num">{{ sevCounts().acked }}</div><div class="a-sum-lbl">Acquittées</div></div>
+          </div>
+        </div>
+
         <!-- Filters -->
         <div class="a-filters">
           @for (sev of severities; track sev.value) {
@@ -289,86 +311,60 @@ const EMPTY_FORM: RuleForm = {
           </div>
         }
 
-        <!-- Timeline -->
-        <div class="timeline">
-          @for (cluster of groupedAlerts(); track cluster.key; let i = $index) {
-            <div class="tl-item" [class.acked]="cluster.unackCount === 0">
-              <div class="tl-line-wrap">
-                <div class="tl-node" [class]="cluster.severity === 'CRITICAL' ? 'critical' : cluster.severity === 'WARNING' ? 'warning' : 'info'">
-                  @if (cluster.severity === 'CRITICAL' && cluster.unackCount > 0) {
-                    <span class="tl-pulse" [class]="'critical'"></span>
+        <!-- Feed (réf. maquette Alertes.dc.html) : cards à sévérité colorée. Conserve
+             le regroupement anti-spam (×N + occurrences dépliables) et l'acquittement groupé. -->
+        <div class="a-feed">
+          @for (cluster of groupedAlerts(); track cluster.key) {
+            <div class="al-card" [class]="'sev-' + cluster.severity.toLowerCase()" [class.acked]="cluster.unackCount === 0">
+              <span class="al-itile" [class]="'sev-' + cluster.severity.toLowerCase()">
+                <lucide-icon [img]="severityIcon(cluster.severity)" [size]="18"></lucide-icon>
+              </span>
+              <div class="al-body">
+                <div class="al-top">
+                  <span class="al-title">{{ cluster.lead.title }}</span>
+                  @if (cluster.count > 1) {
+                    <span class="al-count" [attr.title]="cluster.count + ' alertes regroupées'">×{{ cluster.count }}</span>
                   }
-                </div>
-                @if (i < groupedAlerts().length - 1) {
-                  <div class="tl-line"></div>
-                }
-              </div>
-
-              <div class="tl-card" [class]="cluster.severity === 'CRITICAL' ? 'sev-critical' : cluster.severity === 'WARNING' ? 'sev-warning' : 'sev-info'">
-                <div class="tl-card-top">
-                  <div class="tl-card-info">
-                    <span class="tl-alert-title">{{ cluster.lead.title }}</span>
-                    <span class="tl-severity" [class]="severityBadge(cluster.severity)">{{ severityLabel(cluster.severity) }}</span>
-                    @if (cluster.count > 1) {
-                      <span class="tl-count" [attr.title]="cluster.count + ' alertes regroupées'">×{{ cluster.count }}</span>
-                    }
-                    @if (cluster.maxSpeed) {
-                      <span class="tl-speed-badge">
-                        <lucide-icon [img]="GaugeIcon" [size]="10"></lucide-icon>
-                        {{ cluster.count > 1 ? 'max ' : '' }}{{ cluster.maxSpeed }} km/h
-                      </span>
-                    }
-                    <!-- V1.15 — Badge fleet (visible SA only). -->
-                    <app-sa-fleet-badge [fleetId]="cluster.lead.fleetId" />
-                  </div>
-                  <span class="tl-time">{{ relativeTime(cluster.newestAt) }}</span>
-                </div>
-                <div class="tl-card-mid">
-                  @if (cluster.vehicleId) {
-                    <a [routerLink]="['/vehicles', cluster.vehicleId]" class="tl-vehicle">
-                      {{ alertVehiclePlate(cluster.lead) }}
-                    </a>
+                  @if (cluster.maxSpeed) {
+                    <span class="al-badge" [class]="'sev-' + cluster.severity.toLowerCase()">{{ cluster.count > 1 ? 'max ' : '' }}{{ cluster.maxSpeed }} km/h</span>
                   }
                   @if (cluster.lead.vehicle?.group; as g) { <app-group-badge [group]="g" /> }
-                  @if (cluster.lead.message) {
-                    <span class="tl-msg">{{ cluster.lead.message }}</span>
+                  <app-sa-fleet-badge [fleetId]="cluster.lead.fleetId" />
+                  @if (cluster.unackCount === 0) {
+                    <span class="al-acked-tag">· acquittée{{ cluster.count > 1 ? 's' : '' }}</span>
                   }
                 </div>
-
+                <div class="al-meta mono">
+                  @if (cluster.vehicleId) {
+                    <a [routerLink]="['/vehicles', cluster.vehicleId]" class="al-plate">{{ alertVehiclePlate(cluster.lead) }}</a>
+                  }
+                  @if (cluster.lead.message) { <span class="al-sep">·</span> {{ cluster.lead.message }} }
+                  <span class="al-sep">·</span> {{ relativeTime(cluster.newestAt) }}
+                </div>
                 @if (cluster.count > 1) {
-                  <button class="tl-expand" (click)="toggleCluster(cluster.key)" [attr.aria-expanded]="isClusterExpanded(cluster.key)">
+                  <button class="al-expand" (click)="toggleCluster(cluster.key)" [attr.aria-expanded]="isClusterExpanded(cluster.key)">
                     <lucide-icon [img]="isClusterExpanded(cluster.key) ? ChevronDownIcon : ChevronRightIcon" [size]="13"></lucide-icon>
                     <span>{{ cluster.count }} occurrences</span>
-                    @if (cluster.avgSpeed) {
-                      <span class="tl-expand-stats">· moy {{ cluster.avgSpeed }} · max {{ cluster.maxSpeed }} km/h</span>
-                    }
+                    @if (cluster.avgSpeed) { <span class="al-expand-stats">· moy {{ cluster.avgSpeed }} · max {{ cluster.maxSpeed }} km/h</span> }
                   </button>
                   @if (isClusterExpanded(cluster.key)) {
-                    <div class="tl-occurrences">
+                    <div class="al-occs">
                       @for (it of cluster.items; track it.id) {
-                        <div class="tl-occ" [class.acked]="isAcknowledged(it)">
-                          <span class="tl-occ-time">{{ occTime(it.createdAt) }}</span>
-                          @if (alertSpeed(it); as sp) { <span class="tl-occ-speed">{{ sp }} km/h</span> }
-                          @if (isAcknowledged(it)) { <lucide-icon [img]="Check" [size]="10" class="tl-occ-ack"></lucide-icon> }
+                        <div class="al-occ" [class.acked]="isAcknowledged(it)">
+                          <span class="al-occ-time">{{ occTime(it.createdAt) }}</span>
+                          @if (alertSpeed(it); as sp) { <span class="al-occ-speed">{{ sp }} km/h</span> }
+                          @if (isAcknowledged(it)) { <lucide-icon [img]="Check" [size]="10" class="al-occ-ack"></lucide-icon> }
                         </div>
                       }
                     </div>
                   }
                 }
-
-                @if (cluster.unackCount > 0 && perms.can('alerts_acknowledge')) {
-                  <div class="tl-card-bottom">
-                    <button (click)="acknowledgeCluster(cluster)" class="tl-ack-btn">
-                      <lucide-icon [img]="Check" [size]="12"></lucide-icon>
-                      {{ cluster.unackCount > 1 ? 'Acquitter (' + cluster.unackCount + ')' : 'Acquitter' }}
-                    </button>
-                  </div>
-                } @else {
-                  <div class="tl-card-bottom">
-                    <span class="tl-acked"><lucide-icon [img]="Check" [size]="10"></lucide-icon> Acquittée{{ cluster.count > 1 ? 's' : '' }}</span>
-                  </div>
-                }
               </div>
+              @if (cluster.unackCount > 0 && perms.can('alerts_acknowledge')) {
+                <button (click)="acknowledgeCluster(cluster)" class="al-ack">
+                  {{ cluster.unackCount > 1 ? 'Acquitter (' + cluster.unackCount + ')' : 'Acquitter' }}
+                </button>
+              }
             </div>
           }
         </div>
@@ -622,7 +618,7 @@ const EMPTY_FORM: RuleForm = {
     }
     .a-blob-c {
       position: fixed; top: 50%; left: 40%; transform: translate(-50%,-50%); width: 30%; height: 35%;
-      background: radial-gradient(ellipse, rgba(59,130,246,.04) 0%, transparent 70%);
+      background: radial-gradient(ellipse, rgba(16,224,160,.04) 0%, transparent 70%);
       border-radius: 60% 40% 50% 30%; pointer-events: none; z-index: 0;
       animation: ab3 15s ease-in-out infinite alternate;
     }
@@ -663,9 +659,9 @@ const EMPTY_FORM: RuleForm = {
       display: inline-flex; align-items: center; justify-content: center;
       min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
       font-size: 10px; font-weight: 700;
-      background: rgba(245,158,11,.15); color: #f59e0b;
+      background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--warning);
     }
-    .tab-badge.critical { background: rgba(239,68,68,.15); color: #ef4444; animation: pulse-badge 2s infinite; }
+    .tab-badge.critical { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); animation: pulse-badge 2s infinite; }
     @keyframes pulse-badge { 0%,100%{opacity:1} 50%{opacity:.6} }
 
     /* ─── Filters ─── */
@@ -687,15 +683,15 @@ const EMPTY_FORM: RuleForm = {
       max-width: 160px;
     }
     .a-filter-dot { width: 6px; height: 6px; border-radius: 50% }
-    .a-filter-dot.red { background: #ef4444 }
-    .a-filter-dot.amber { background: #f59e0b }
-    .a-filter-dot.blue { background: #3b82f6 }
+    .a-filter-dot.red { background: var(--danger) }
+    .a-filter-dot.amber { background: var(--warning) }
+    .a-filter-dot.blue { background: var(--fg-tertiary) }
 
     .a-review-banner {
       margin-bottom: 14px; padding: 12px 14px; border-radius: 12px;
-      background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.3);
+      background: color-mix(in srgb, var(--danger) 9%, transparent); border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
     }
-    .a-review-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: #ef4444 }
+    .a-review-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--danger) }
     .a-review-title { font-weight: 800; font-size: 13px }
     .a-review-sub { font-size: 11px; color: var(--fg-tertiary); font-weight: 500 }
     .a-review-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px }
@@ -714,89 +710,7 @@ const EMPTY_FORM: RuleForm = {
     }
     .a-empty-icon { width: 56px; height: 56px; border-radius: 14px; background: var(--bg-tertiary); display: flex; align-items: center; justify-content: center; color: var(--fg-tertiary) }
 
-    /* ─── Timeline ─── */
-    .timeline {
-      position: relative; z-index: 1; display: flex; flex-direction: column; gap: 0; padding-left: 6px;
-      padding-bottom: 140px;
-    }
-    @media (min-width: 768px) { .timeline { padding-bottom: 24px } }
-
-    .tl-item { display: flex; gap: 16px; position: relative }
-    .tl-item.acked { opacity: .5 }
-
-    .tl-line-wrap { display: flex; flex-direction: column; align-items: center; width: 16px; flex-shrink: 0; padding-top: 4px }
-    .tl-node { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; position: relative; z-index: 1 }
-    .tl-node.critical { background: #ef4444; box-shadow: 0 0 8px rgba(239,68,68,.5) }
-    .tl-node.warning { background: #f59e0b; box-shadow: 0 0 6px rgba(245,158,11,.4) }
-    .tl-node.info { background: #3b82f6; box-shadow: 0 0 6px rgba(59,130,246,.4) }
-    .tl-pulse { position: absolute; inset: -4px; border-radius: 50%; animation: tlpulse 2s ease infinite; }
-    .tl-pulse.critical { background: rgba(239,68,68,.3) }
-    @keyframes tlpulse { 0%,100%{transform:scale(1);opacity:.6} 50%{transform:scale(1.8);opacity:0} }
-    .tl-line { width: 2px; flex: 1; min-height: 16px; background: var(--border-subtle); margin: 4px 0 }
-
-    .tl-card {
-      flex: 1; padding: 14px 16px; border-radius: 12px; margin-bottom: 12px;
-      background: rgba(var(--bg-secondary-rgb,15,23,20),.5);
-      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-      border: 1px solid rgba(255,255,255,.04); transition: all .25s;
-    }
-    .tl-card:hover { transform: translateX(4px) }
-    .tl-card.sev-critical { border-left: 3px solid #ef4444 }
-    .tl-card.sev-warning { border-left: 3px solid #f59e0b }
-    .tl-card.sev-info { border-left: 3px solid #3b82f6 }
-    :host-context([data-theme="light"]) .tl-card { background: rgba(255,255,255,.55); border-color: rgba(0,0,0,.06) }
-
-    .tl-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px }
-    .tl-card-info { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; flex-wrap: wrap }
-    .tl-alert-title { font-size: 13px; font-weight: 700; color: var(--fg-primary) }
-    .tl-severity { font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; letter-spacing: .04em }
-    .tl-speed-badge {
-      display: inline-flex; align-items: center; gap: 3px;
-      padding: 2px 7px; border-radius: 6px; font-size: 10px; font-weight: 700;
-      background: rgba(245,158,11,.12); color: #f59e0b;
-    }
-    .tl-count {
-      display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 9999px;
-      font-size: 10px; font-weight: 800; letter-spacing: .02em;
-      background: var(--tracky-light, #10E0A0); color: #04140d;
-    }
-    .tl-expand {
-      display: inline-flex; align-items: center; gap: 5px; margin-top: 8px;
-      padding: 3px 9px; border-radius: 7px; font-size: 10px; font-weight: 600;
-      background: var(--bg-tertiary); border: 1px solid var(--border-subtle);
-      color: var(--fg-secondary); cursor: pointer; transition: all .15s;
-    }
-    .tl-expand:hover { color: var(--fg-primary); border-color: var(--border-strong) }
-    .tl-expand-stats { color: var(--fg-tertiary); font-weight: 500 }
-    .tl-occurrences {
-      margin-top: 6px; display: flex; flex-direction: column; gap: 2px;
-      max-height: 220px; overflow-y: auto; padding: 6px 9px; border-radius: 8px;
-      background: var(--bg-tertiary); border: 1px solid var(--border-subtle);
-    }
-    .tl-occ {
-      display: flex; align-items: center; gap: 10px; font-size: 10px; color: var(--fg-secondary);
-      padding: 3px 0; border-bottom: 1px solid var(--border-subtle);
-    }
-    .tl-occ:last-child { border-bottom: none }
-    .tl-occ.acked { opacity: .5 }
-    .tl-occ-time { font-family: var(--font-mono, monospace); color: var(--fg-tertiary); min-width: 64px }
-    .tl-occ-speed { font-weight: 700; color: #f59e0b }
-    .tl-occ-ack { color: var(--tracky-light); margin-left: auto }
-    .tl-time { font-size: 10px; color: var(--fg-tertiary); white-space: nowrap; flex-shrink: 0 }
-
-    .tl-card-mid { display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap }
-    .tl-vehicle { font-size: 11px; font-weight: 600; color: var(--tracky-light); text-decoration: none }
-    .tl-vehicle:hover { text-decoration: underline }
-    .tl-msg { font-size: 11px; color: var(--fg-tertiary) }
-
-    .tl-card-bottom { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-subtle) }
-    .tl-ack-btn {
-      display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 8px;
-      font-size: 11px; font-weight: 600; background: var(--bg-tertiary); border: 1px solid var(--border-subtle);
-      color: var(--fg-tertiary); cursor: pointer; transition: all .2s;
-    }
-    .tl-ack-btn:hover { color: var(--tracky-light); border-color: rgba(16,224,160,.2) }
-    .tl-acked { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; color: var(--fg-tertiary) }
+/* Timeline retirée — remplacée par le feed .al-* (cf. rebuild Alertes). */
 
     .a-load-more {
       position: relative; z-index: 1; display: block; margin: 16px auto 0; padding: 10px 24px;
@@ -861,10 +775,10 @@ const EMPTY_FORM: RuleForm = {
     .cfg-rule-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px }
     .cfg-rule-type { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--fg-primary) }
     .cfg-sev-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0 }
-    .cfg-sev-dot.sev-critical { background: #ef4444 }
-    .cfg-sev-dot.sev-warning { background: #f59e0b }
-    .cfg-sev-dot.sev-info { background: #3b82f6 }
-    .cfg-sev-dot.sev-all { background: linear-gradient(135deg, #ef4444, #f59e0b, #3b82f6) }
+    .cfg-sev-dot.sev-critical { background: var(--danger) }
+    .cfg-sev-dot.sev-warning { background: var(--warning) }
+    .cfg-sev-dot.sev-info { background: var(--fg-tertiary) }
+    .cfg-sev-dot.sev-all { background: linear-gradient(135deg, var(--danger), var(--warning), var(--fg-tertiary)) }
     .cfg-pill { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 9999px }
     .cfg-pill-on { background: rgba(16,224,160,.12); color: var(--tracky-light) }
     .cfg-pill-off { background: var(--bg-tertiary); color: var(--fg-tertiary) }
@@ -887,7 +801,7 @@ const EMPTY_FORM: RuleForm = {
       padding: 6px; border-radius: 6px; cursor: pointer; transition: all .15s;
     }
     .cfg-btn-icon:hover { background: var(--bg-tertiary); color: var(--fg-primary) }
-    .cfg-btn-danger:hover { color: #f87171 }
+    .cfg-btn-danger:hover { color: var(--danger) }
 
     /* ─── Modal ─── */
     .cfg-modal-overlay {
@@ -943,6 +857,59 @@ const EMPTY_FORM: RuleForm = {
       .tl-card { padding: 12px 14px }
       .main-tab { padding: 6px 10px; font-size: 11px }
       .cfg-rules-grid { grid-template-columns: 1fr }
+    }
+
+    /* ═══ Récap sévérité (tuiles) ═══ */
+    .a-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px }
+    .a-sum { display: flex; align-items: center; gap: 11px; padding: 13px 15px; border-radius: 14px; background: var(--bg-secondary); border: 1px solid var(--border-subtle) }
+    .a-sum-tile { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0 }
+    .a-sum-num { font-size: 20px; font-weight: 800; line-height: 1.1 }
+    .a-sum-lbl { font-size: 11.5px; color: var(--fg-tertiary); margin-top: 1px }
+    .a-sum-critical .a-sum-tile { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger) }
+    .a-sum-critical .a-sum-num { color: var(--danger) }
+    .a-sum-warning .a-sum-tile { background: color-mix(in srgb, var(--warning) 15%, transparent); color: var(--warning) }
+    .a-sum-warning .a-sum-num { color: var(--warning) }
+    .a-sum-info .a-sum-tile { background: var(--bg-tertiary); color: var(--fg-secondary) }
+    .a-sum-acked .a-sum-tile { background: color-mix(in srgb, var(--tracky) 14%, transparent); color: var(--tracky-light) }
+    .a-sum-acked .a-sum-num { color: var(--tracky-light) }
+
+    /* ═══ Feed cards ═══ */
+    .a-feed { display: flex; flex-direction: column; gap: 10px }
+    .al-card { display: flex; align-items: flex-start; gap: 13px; padding: 14px 15px; border: 1px solid var(--border-subtle); border-radius: 14px; background: var(--bg-secondary); transition: border-color .18s, transform .18s }
+    .al-card:hover { border-color: var(--border-strong, var(--border-subtle)); transform: translateY(-2px) }
+    .al-card.acked { opacity: .62 }
+    .al-card.acked:hover { transform: none }
+    .al-itile { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0; margin-top: 1px }
+    .al-itile.sev-critical { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger) }
+    .al-itile.sev-warning { background: color-mix(in srgb, var(--warning) 15%, transparent); color: var(--warning) }
+    .al-itile.sev-info { background: color-mix(in srgb, var(--tracky) 12%, transparent); color: var(--tracky-light) }
+    .al-body { flex: 1; min-width: 0 }
+    .al-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap }
+    .al-title { font-size: 14px; font-weight: 700; color: var(--fg-primary) }
+    .al-count { font-size: 11px; font-weight: 700; color: var(--fg-tertiary); font-family: var(--font-mono) }
+    .al-badge { padding: 2px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 700 }
+    .al-badge.sev-critical { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger) }
+    .al-badge.sev-warning { background: color-mix(in srgb, var(--warning) 15%, transparent); color: var(--warning) }
+    .al-badge.sev-info { background: var(--bg-tertiary); color: var(--fg-secondary) }
+    .al-acked-tag { font-size: 11px; font-weight: 600; color: var(--fg-tertiary) }
+    .al-meta { font-size: 11.5px; color: var(--fg-tertiary); margin-top: 4px; line-height: 1.5 }
+    .al-plate { color: var(--fg-secondary); font-weight: 600 }
+    .al-plate:hover { color: var(--tracky-light) }
+    .al-sep { color: var(--fg-tertiary); opacity: .6; margin: 0 4px }
+    .al-expand { display: inline-flex; align-items: center; gap: 5px; margin-top: 8px; padding: 4px 9px; border-radius: 8px; border: 1px solid var(--border-subtle); background: transparent; color: var(--fg-tertiary); font-size: 11px; font-weight: 600; cursor: pointer; transition: color .15s, border-color .15s }
+    .al-expand:hover { color: var(--fg-primary); border-color: var(--border-strong, var(--border-subtle)) }
+    .al-expand-stats { color: var(--fg-tertiary); font-family: var(--font-mono) }
+    .al-occs { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; padding: 8px 10px; border-radius: 10px; background: var(--bg-tertiary) }
+    .al-occ { display: flex; align-items: center; gap: 10px; font-size: 11px; font-family: var(--font-mono); color: var(--fg-secondary) }
+    .al-occ.acked { opacity: .5 }
+    .al-occ-time { color: var(--fg-tertiary) }
+    .al-occ-speed { color: var(--fg-secondary); font-weight: 600 }
+    .al-occ-ack { color: var(--tracky-light) }
+    .al-ack { flex-shrink: 0; align-self: center; height: 32px; padding: 0 13px; border-radius: 9px; border: 1px solid var(--border-strong, var(--border-subtle)); background: transparent; color: var(--fg-secondary); font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; transition: color .15s, border-color .15s }
+    .al-ack:hover { color: var(--tracky-light); border-color: color-mix(in srgb, var(--tracky) 40%, transparent) }
+
+    @media (max-width: 720px) {
+      .a-summary { grid-template-columns: repeat(2, 1fr) }
     }
   `],
 })
@@ -1135,6 +1102,22 @@ export class AlertsComponent implements OnInit {
   protected readonly totalUnack = this.realtime.unacknowledgedCount;
   protected readonly hasCriticalUnack = computed(() => this.realtime.hasCritical());
 
+  /**
+   * Récap par sévérité pour les 4 tuiles (réf. maquette). Compté sur les alertes
+   * actuellement chargées/visibles : non-acquittées ventilées par sévérité, plus
+   * le total acquitté. Cohérent avec le feed affiché (même jeu de données).
+   */
+  protected readonly sevCounts = computed(() => {
+    let critical = 0, warning = 0, info = 0, acked = 0;
+    for (const a of this.visibleAlerts()) {
+      if (this.isAcknowledged(a)) { acked++; continue; }
+      if (a.severity === 'CRITICAL') critical++;
+      else if (a.severity === 'WARNING') warning++;
+      else info++;
+    }
+    return { critical, warning, info, acked };
+  });
+
   protected readonly filterActive = computed(() =>
     !!this.filterSeverity() || !!this.filterVehicleId() || this.showAcknowledged(),
   );
@@ -1196,7 +1179,7 @@ export class AlertsComponent implements OnInit {
   protected severityBadge(severity: string): string {
     if (severity === 'CRITICAL') return 'bg-red-500/20 text-red-400';
     if (severity === 'WARNING') return 'bg-amber-500/20 text-amber-400';
-    return 'bg-sky-500/20 text-sky-400';
+    return 'bg-fg-tertiary/15 text-fg-secondary';
   }
 
   protected severityLabel(severity: string): string {

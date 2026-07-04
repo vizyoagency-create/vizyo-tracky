@@ -282,7 +282,7 @@ export interface UserDrawerResult {
     }
     .role-btn:hover { border-color: var(--border-strong) }
     .role-btn.active.viewer { border-color: var(--tracky); color: var(--tracky-light); background: rgba(16,224,160,.06) }
-    .role-btn.active.manager { border-color: #3b82f6; color: #60a5fa; background: rgba(59,130,246,.06) }
+    .role-btn.active.manager { border-color: var(--border-strong); color: var(--fg-secondary); background: var(--bg-tertiary) }
     .role-btn.active.admin-role { border-color: var(--tracky); color: var(--tracky-light); background: rgba(16,224,160,.06) }
 
     .field-select {

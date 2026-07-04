@@ -2,7 +2,7 @@ import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
-import { LucideAngularModule, LogOut, User, Moon, Sun, Bell, BellOff, Map, MapPin, RotateCcw, Palette, Navigation, Route, ArrowRight, Smartphone, Ear } from 'lucide-angular';
+import { LucideAngularModule, LogOut, User, Moon, Sun, Bell, BellOff, Map, MapPin, RotateCcw, Palette, Navigation, Route, ArrowRight, Smartphone, Ear, Zap, Sparkles } from 'lucide-angular';
 import { AuthService } from '../../core/services/auth.service';
 import { AudioMonitoringService } from '../../core/services/audio-monitoring.service';
 import { PreferencesService } from '../../core/services/preferences.service';
@@ -14,6 +14,8 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 import { RetentionFleetCardComponent } from './retention-fleet-card.component';
 import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
 
+type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
+
 @Component({
   selector: 'app-settings',
   standalone: true,
@@ -21,310 +23,436 @@ import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
   template: `
     <div class="settings-page">
       <div class="settings-header">
-        <h1 class="settings-title">Paramètres</h1>
-        <p class="settings-sub">Personnalisez votre expérience Vizyo Tracky</p>
+        <span class="vt-eyebrow">Compte</span>
+        <h1 class="settings-title">Paramètres &amp; facturation</h1>
+        <p class="settings-sub">Personnalisez votre expérience et gérez vos options.</p>
       </div>
 
-      <div class="settings-grid">
-        <!-- LEFT COLUMN -->
-        <div class="settings-col">
+      <!-- Onglets (réf. maquette Parametres.dc.html) -->
+      <div class="s-tabs">
+        @if (canBilling()) {
+          <button class="s-tab" [class.active]="tab() === 'billing'" (click)="tab.set('billing')" data-track="Onglet Facturation">Facturation &amp; options</button>
+        }
+        <button class="s-tab" [class.active]="tab() === 'appearance'" (click)="tab.set('appearance')" data-track="Onglet Apparence">Apparence</button>
+        <button class="s-tab" [class.active]="tab() === 'notifications'" (click)="tab.set('notifications')" data-track="Onglet Notifications">Notifications</button>
+        <button class="s-tab" [class.active]="tab() === 'organization'" (click)="tab.set('organization')" data-track="Onglet Organisation">Organisation</button>
+      </div>
 
-          <!-- COMPTE -->
-          <div class="s-card">
-            <div class="s-card-head">
-              <div class="s-icon green"><lucide-icon [img]="UserIcon" [size]="16"></lucide-icon></div>
-              <div class="s-card-title">Compte</div>
+      <!-- ═══════════════ FACTURATION & OPTIONS (gated billing_manage) ═══════════════ -->
+      @if (tab() === 'billing' && canBilling()) {
+        <!-- Plan — honnête : compteur réel + facturation gérée hors app (pas de faux moyen de paiement). -->
+        <div class="s-plan">
+          <div class="s-plan-glow"></div>
+          <div class="s-plan-row">
+            <div class="s-plan-info">
+              <span class="vt-eyebrow">Votre abonnement</span>
+              <div class="s-plan-count">{{ activeVehicleCount() }} véhicule{{ activeVehicleCount() > 1 ? 's' : '' }} suivi{{ activeVehicleCount() > 1 ? 's' : '' }}</div>
+              <div class="s-plan-note">La facturation est gérée par votre conseiller Vizyo. Contactez-le pour changer d'offre, ajouter des véhicules ou activer une option.</div>
             </div>
-            <div class="s-card-body">
-              <div class="account-block">
-                <div class="avatar">{{ initials() }}</div>
-                <div class="account-info">
-                  <p class="account-email">{{ user()?.email || '—' }}</p>
-                  <span class="role-badge" [class]="user()?.role === 'FLEET_ADMIN' || user()?.role === 'SUPER_ADMIN' ? 'admin' : 'viewer'">
-                    {{ roleLabel() || 'Utilisateur' }}
-                  </span>
-                </div>
-              </div>
-              <a routerLink="/account" class="account-link">
-                <lucide-icon [img]="UserIcon" [size]="14"></lucide-icon>
-                Voir mon profil
-              </a>
-              <button (click)="logout()" class="logout-btn">
-                <lucide-icon [img]="LogOutIcon" [size]="15"></lucide-icon>
-                Se déconnecter
-              </button>
-            </div>
-          </div>
-
-          <!-- APPARENCE -->
-          <div class="s-card">
-            <div class="s-card-head">
-              <div class="s-icon purple"><lucide-icon [img]="PaletteIcon" [size]="16"></lucide-icon></div>
-              <div class="s-card-title">Apparence</div>
-            </div>
-            <div class="s-card-body">
-              <div class="theme-picker">
-                <button (click)="theme.setTheme('dark')" class="theme-option" [class.active]="theme.theme() === 'dark'">
-                  <div class="theme-preview dark-preview">
-                    <div class="tp-bar"></div><div class="tp-content"><div class="tp-line"></div><div class="tp-line short"></div></div>
-                  </div>
-                  <div class="theme-label">
-                    <lucide-icon [img]="MoonIcon" [size]="12"></lucide-icon> Sombre
-                  </div>
-                </button>
-                <button (click)="theme.setTheme('light')" class="theme-option" [class.active]="theme.theme() === 'light'">
-                  <div class="theme-preview light-preview">
-                    <div class="tp-bar"></div><div class="tp-content"><div class="tp-line"></div><div class="tp-line short"></div></div>
-                  </div>
-                  <div class="theme-label">
-                    <lucide-icon [img]="SunIcon" [size]="12"></lucide-icon> Clair
-                  </div>
-                </button>
-              </div>
-
-              <!-- V1.12 — Mode interface : Tracky (riche) vs Baanool (simplifie) -->
-              <div class="ui-mode-section" style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border-subtle)">
-                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
-                  <div style="flex:1;min-width:0">
-                    <div style="font-size:13px;font-weight:600;color:var(--fg-primary);margin-bottom:4px">
-                      Mode interface simplifiee
-                    </div>
-                    <p style="font-size:11px;color:var(--fg-tertiary);margin:0;line-height:1.4">
-                      Connexion directe a la carte, sidebar et bottom-bar masquees,
-                      navigation via le menu burger uniquement. Toutes les pages
-                      restent accessibles.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    (click)="toggleBaanoolMode()"
-                    [attr.aria-pressed]="isBaanoolMode()"
-                    [disabled]="savingUiMode()"
-                    style="flex-shrink:0;width:44px;height:24px;border-radius:9999px;border:none;cursor:pointer;position:relative;transition:background 200ms"
-                    [style.background]="isBaanoolMode() ? 'var(--tracky)' : 'var(--bg-tertiary)'">
-                    <span style="position:absolute;top:2px;width:20px;height:20px;border-radius:50%;background:white;transition:left 200ms"
-                          [style.left]="isBaanoolMode() ? '22px' : '2px'"></span>
-                  </button>
-                </div>
-              </div>
-            </div>
+            <a href="mailto:contact@vizyo.agency" class="s-plan-btn">Contacter mon conseiller</a>
           </div>
         </div>
 
-        <!-- RIGHT COLUMN -->
-        <div class="settings-col">
-
-          <!-- NOTIFICATIONS IN-APP -->
-          @if (perms.can('alerts_view')) {
-          <div class="s-card">
-            <div class="s-card-head">
-              <div class="s-icon amber"><lucide-icon [img]="BellIcon" [size]="16"></lucide-icon></div>
-              <div class="s-card-title">Notifications in-app</div>
+        <div class="s-opt-head">
+          <h3>Options premium</h3>
+          <p>Des capacités avancées activables sur votre flotte.</p>
+        </div>
+        <div class="s-opt-grid">
+          <!-- Suivi temps réel : capacité de base de l'app (honnête : « inclus »). -->
+          <div class="s-opt">
+            <div class="s-opt-top">
+              <span class="s-opt-ico on"><lucide-icon [img]="ZapIcon" [size]="20"></lucide-icon></span>
+              <span class="s-opt-status on">Inclus</span>
             </div>
-            <div class="s-card-body">
-              <p class="section-desc">Toasts affichés dans l'application selon la sévérité.</p>
-              @for (n of notifItems; track n.key) {
-                <div class="notif-row">
-                  <div class="notif-left">
-                    <div class="notif-dot" [class]="n.color"></div>
-                    <div>
-                      <p class="notif-name">{{ n.label }}</p>
-                      <p class="notif-desc">{{ n.desc }}</p>
+            <h4>Suivi temps réel</h4>
+            <p>Positions rafraîchies en direct, rejeu des trajets et carte live. Inclus dans votre abonnement.</p>
+          </div>
+
+          <!-- Micro d'assistance : état RÉEL d'éligibilité audio (N1 prestataire). -->
+          <div class="s-opt">
+            <div class="s-opt-top">
+              <span class="s-opt-ico" [class.on]="audioEligible()"><lucide-icon [img]="EarIcon" [size]="20"></lucide-icon></span>
+              @if (audioEligible()) {
+                <span class="s-opt-status on">Éligible</span>
+              } @else {
+                <span class="s-opt-status">Sur demande</span>
+              }
+            </div>
+            <h4>Micro d'assistance</h4>
+            <p>Écoute d'habitacle sous cadre légal, en cas d'accident ou de litige (attestation requise).</p>
+            @if (audioEligible() && perms.can('audio_monitoring')) {
+              <a routerLink="/settings/audio-monitoring" class="s-opt-link">Gérer le Mode assistance <lucide-icon [img]="ArrowRightIcon" [size]="13"></lucide-icon></a>
+            } @else {
+              <span class="s-opt-hint">Activation par votre conseiller Vizyo.</span>
+            }
+          </div>
+
+          <!-- Agent IA : état RÉEL de la permission ai_optimize. -->
+          <div class="s-opt">
+            <div class="s-opt-top">
+              <span class="s-opt-ico" [class.on]="perms.can('ai_optimize')"><lucide-icon [img]="SparklesIcon" [size]="20"></lucide-icon></span>
+              @if (perms.can('ai_optimize')) {
+                <span class="s-opt-status on">Activé</span>
+              } @else {
+                <span class="s-opt-status">Sur demande</span>
+              }
+            </div>
+            <h4>Agent IA</h4>
+            <p>Optimisation des tournées et réaffectations véhicule / conducteur, avec propositions expliquées.</p>
+            @if (perms.can('ai_optimize')) {
+              <a routerLink="/agenda" class="s-opt-link">Ouvrir l'agenda IA <lucide-icon [img]="ArrowRightIcon" [size]="13"></lucide-icon></a>
+            } @else {
+              <span class="s-opt-hint">Disponible sur demande.</span>
+            }
+          </div>
+        </div>
+      }
+
+      <!-- ═══════════════ APPARENCE ═══════════════ -->
+      @if (tab() === 'appearance') {
+        <div class="settings-grid">
+          <div class="settings-col">
+            <!-- APPARENCE -->
+            <div class="s-card">
+              <div class="s-card-head">
+                <div class="s-icon purple"><lucide-icon [img]="PaletteIcon" [size]="16"></lucide-icon></div>
+                <div class="s-card-title">Thème &amp; interface</div>
+              </div>
+              <div class="s-card-body">
+                <div class="theme-picker">
+                  <button (click)="theme.setTheme('dark')" class="theme-option" [class.active]="theme.theme() === 'dark'">
+                    <div class="theme-preview dark-preview">
+                      <div class="tp-bar"></div><div class="tp-content"><div class="tp-line"></div><div class="tp-line short"></div></div>
                     </div>
+                    <div class="theme-label">
+                      <lucide-icon [img]="MoonIcon" [size]="12"></lucide-icon> Sombre
+                    </div>
+                  </button>
+                  <button (click)="theme.setTheme('light')" class="theme-option" [class.active]="theme.theme() === 'light'">
+                    <div class="theme-preview light-preview">
+                      <div class="tp-bar"></div><div class="tp-content"><div class="tp-line"></div><div class="tp-line short"></div></div>
+                    </div>
+                    <div class="theme-label">
+                      <lucide-icon [img]="SunIcon" [size]="12"></lucide-icon> Clair
+                    </div>
+                  </button>
+                </div>
+
+                <!-- V1.12 — Mode interface : Tracky (riche) vs Baanool (simplifie) -->
+                <div class="ui-mode-section" style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border-subtle)">
+                  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+                    <div style="flex:1;min-width:0">
+                      <div style="font-size:13px;font-weight:600;color:var(--fg-primary);margin-bottom:4px">
+                        Mode interface simplifiee
+                      </div>
+                      <p style="font-size:11px;color:var(--fg-tertiary);margin:0;line-height:1.4">
+                        Connexion directe a la carte, sidebar et bottom-bar masquees,
+                        navigation via le menu burger uniquement. Toutes les pages
+                        restent accessibles.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      (click)="toggleBaanoolMode()"
+                      [attr.aria-pressed]="isBaanoolMode()"
+                      [disabled]="savingUiMode()"
+                      style="flex-shrink:0;width:44px;height:24px;border-radius:9999px;border:none;cursor:pointer;position:relative;transition:background 200ms"
+                      [style.background]="isBaanoolMode() ? 'var(--tracky)' : 'var(--bg-tertiary)'">
+                      <span style="position:absolute;top:2px;width:20px;height:20px;border-radius:50%;background:white;transition:left 200ms"
+                            [style.left]="isBaanoolMode() ? '22px' : '2px'"></span>
+                    </button>
                   </div>
-                  <div class="notif-right">
-                    @if (prefs().notifications[n.key].enabled && n.key !== 'critical') {
-                      <select [ngModel]="prefs().notifications[n.key].duration" (ngModelChange)="setNotifDuration(n.key, $event)" class="duration-select">
-                        <option [ngValue]="3000">3s</option>
-                        <option [ngValue]="6000">6s</option>
-                        <option [ngValue]="10000">10s</option>
-                        <option [ngValue]="0">∞</option>
-                      </select>
-                    }
-                    @if (n.key === 'critical' && prefs().notifications.critical.enabled) {
-                      <span class="permanent-badge">∞</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-col">
+            <!-- CARTE -->
+            @if (perms.can('vehicles_view')) {
+            <div class="s-card">
+              <div class="s-card-head">
+                <div class="s-icon blue"><lucide-icon [img]="MapIcon" [size]="16"></lucide-icon></div>
+                <div class="s-card-title">Carte</div>
+              </div>
+              <div class="s-card-body">
+                <!-- Centre -->
+                <div class="map-row">
+                  <div class="map-row-left">
+                    <lucide-icon [img]="NavigationIcon" [size]="14" class="text-fg-tertiary"></lucide-icon>
+                    <span class="map-label">Centre</span>
+                  </div>
+                  <div class="map-row-right">
+                    <input type="number" step="0.001" [ngModel]="prefs().map.centerLat" (ngModelChange)="setMapPref('centerLat', $event)" class="coord-input" />
+                    <input type="number" step="0.001" [ngModel]="prefs().map.centerLng" (ngModelChange)="setMapPref('centerLng', $event)" class="coord-input" />
+                    <button (click)="useMyPosition()" class="geo-btn" title="Ma position">
+                      <lucide-icon [img]="MapPinIcon" [size]="13"></lucide-icon>
+                    </button>
+                  </div>
+                </div>
+                <!-- Zoom -->
+                <div class="map-row">
+                  <div class="map-row-left">
+                    <lucide-icon [img]="MapIcon" [size]="14" class="text-fg-tertiary"></lucide-icon>
+                    <span class="map-label">Zoom</span>
+                  </div>
+                  <div class="map-row-right gap-2">
+                    <span class="zoom-value">{{ prefs().map.zoom }}</span>
+                    <input type="range" min="5" max="18" [ngModel]="prefs().map.zoom" (ngModelChange)="setMapPref('zoom', $event)" class="range-styled" />
+                  </div>
+                </div>
+                <!-- Trails -->
+                <div class="map-row">
+                  <div class="map-row-left">
+                    <lucide-icon [img]="RouteIcon" [size]="14" class="text-fg-tertiary"></lucide-icon>
+                    <span class="map-label">Traînées</span>
+                  </div>
+                  <div class="map-row-right">
+                    @if (prefs().map.showTrails) {
+                      <span class="zoom-value">{{ prefs().map.trailLength }}pts</span>
+                      <input type="range" min="5" max="50" [ngModel]="prefs().map.trailLength" (ngModelChange)="setMapPref('trailLength', $event)" class="range-styled range-sm" />
                     }
                     <label class="toggle">
-                      <input type="checkbox" [checked]="prefs().notifications[n.key].enabled" (change)="toggleNotif(n.key)" />
+                      <input type="checkbox" [checked]="prefs().map.showTrails" (change)="setMapPref('showTrails', !prefs().map.showTrails)" />
                       <span class="toggle-track"><span class="toggle-thumb"></span></span>
                     </label>
                   </div>
                 </div>
-              }
-              <a routerLink="/settings/alert-rules" class="advanced-link">
-                Configurer les règles avancées
-                <lucide-icon [img]="ArrowRightIcon" [size]="13"></lucide-icon>
-              </a>
+              </div>
             </div>
+            }
           </div>
+        </div>
+      }
 
-          }
-
-          <!-- PUSH NOTIFICATIONS -->
-          @if (perms.can('alerts_view')) {
-          <div class="s-card">
-            <div class="s-card-head">
-              <div class="s-icon cyan"><lucide-icon [img]="SmartphoneIcon" [size]="16"></lucide-icon></div>
-              <div class="s-card-title">Notifications push</div>
-            </div>
-            <div class="s-card-body">
-              <p class="section-desc">Recevez des alertes même quand l'application est fermée.</p>
-
-              @if (!pushSupported()) {
-                <div class="push-status push-unsupported">
-                  <lucide-icon [img]="BellOffIcon" [size]="16"></lucide-icon>
-                  <div>
-                    <p class="notif-name">Non disponible</p>
-                    <p class="notif-desc">{{ pushDiagReason() }}</p>
-                  </div>
-                </div>
-              } @else if (!pushSubscribed()) {
-                <div class="push-status push-inactive">
-                  <lucide-icon [img]="BellOffIcon" [size]="16"></lucide-icon>
-                  <div>
-                    <p class="notif-name">Push désactivé</p>
-                    <p class="notif-desc">Activez pour recevoir des alertes sur cet appareil.</p>
-                  </div>
-                  <button (click)="enablePush()" class="btn-push" [disabled]="pushLoading()">
-                    {{ pushLoading() ? 'Activation...' : 'Activer' }}
-                  </button>
-                </div>
-              } @else {
-                <div class="push-status push-active">
-                  <lucide-icon [img]="BellIcon" [size]="16"></lucide-icon>
-                  <div>
-                    <p class="notif-name">Push actif</p>
-                    <p class="notif-desc">Les alertes arrivent sur cet appareil.</p>
-                  </div>
-                  <button (click)="disablePush()" class="btn-push btn-push-off" [disabled]="pushLoading()">
-                    Désactiver
-                  </button>
-                </div>
-
-                <div class="push-types-section">
-                  <p class="push-types-title">Types d'alertes push</p>
-                  @for (pt of pushAlertTypes; track pt.type) {
-                    <div class="notif-row">
-                      <div class="notif-left">
-                        <div class="notif-dot" [class]="pt.color"></div>
-                        <div>
-                          <p class="notif-name">{{ pt.label }}</p>
-                          <p class="notif-desc">{{ pt.desc }}</p>
-                        </div>
-                      </div>
-                      <div class="notif-right">
-                        <label class="toggle">
-                          <input type="checkbox" [checked]="prefs().pushAlerts[pt.type] !== false" (change)="togglePushType(pt.type)" />
-                          <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                        </label>
+      <!-- ═══════════════ NOTIFICATIONS ═══════════════ -->
+      @if (tab() === 'notifications') {
+        <div class="settings-grid">
+          <div class="settings-col">
+            <!-- NOTIFICATIONS IN-APP -->
+            @if (perms.can('alerts_view')) {
+            <div class="s-card">
+              <div class="s-card-head">
+                <div class="s-icon amber"><lucide-icon [img]="BellIcon" [size]="16"></lucide-icon></div>
+                <div class="s-card-title">Notifications in-app</div>
+              </div>
+              <div class="s-card-body">
+                <p class="section-desc">Toasts affichés dans l'application selon la sévérité.</p>
+                @for (n of notifItems; track n.key) {
+                  <div class="notif-row">
+                    <div class="notif-left">
+                      <div class="notif-dot" [class]="n.color"></div>
+                      <div>
+                        <p class="notif-name">{{ n.label }}</p>
+                        <p class="notif-desc">{{ n.desc }}</p>
                       </div>
                     </div>
-                  }
-                </div>
-              }
-            </div>
-          </div>
-
-          }
-
-          <!-- AUDIO N2 — FLEET_ADMIN/client : Mode assistance. Masqué tant que le prestataire
-               n'a pas rendu la flotte ÉLIGIBLE (N1 superAdminEnabled). Fail-closed : la carte
-               reste cachée par défaut (pas de fleetId, fetch en échec). Une fois éligible, elle
-               ouvre l'écran N2 (consentement/attestation). -->
-          @if (user()?.role === 'FLEET_ADMIN' && perms.can('audio_monitoring') && audioEligible()) {
-          <div class="s-card">
-            <div class="s-card-head">
-              <div class="s-icon violet"><lucide-icon [img]="EarIcon" [size]="16"></lucide-icon></div>
-              <div class="s-card-title">Mode assistance</div>
-            </div>
-            <div class="s-card-body">
-              <p class="section-desc">
-                En cas d'accident, autorisez le prestataire à activer l'écoute de la cabine pour
-                vous porter assistance (capacité légalement sensible, attestation requise).
-              </p>
-              <a routerLink="/settings/audio-monitoring" class="advanced-link">
-                Gérer le Mode assistance
-                <lucide-icon [img]="ArrowRightIcon" [size]="13"></lucide-icon>
-              </a>
-            </div>
-          </div>
-          }
-
-          <!-- Sprint 6 — Rétention des données de la flotte (lecture seule, FLEET_ADMIN). -->
-          @if (user()?.role === 'FLEET_ADMIN') {
-            <app-retention-fleet-card />
-          }
-
-          <!-- CARTE -->
-          @if (perms.can('vehicles_view')) {
-          <div class="s-card">
-            <div class="s-card-head">
-              <div class="s-icon blue"><lucide-icon [img]="MapIcon" [size]="16"></lucide-icon></div>
-              <div class="s-card-title">Carte</div>
-            </div>
-            <div class="s-card-body">
-              <!-- Centre -->
-              <div class="map-row">
-                <div class="map-row-left">
-                  <lucide-icon [img]="NavigationIcon" [size]="14" class="text-fg-tertiary"></lucide-icon>
-                  <span class="map-label">Centre</span>
-                </div>
-                <div class="map-row-right">
-                  <input type="number" step="0.001" [ngModel]="prefs().map.centerLat" (ngModelChange)="setMapPref('centerLat', $event)" class="coord-input" />
-                  <input type="number" step="0.001" [ngModel]="prefs().map.centerLng" (ngModelChange)="setMapPref('centerLng', $event)" class="coord-input" />
-                  <button (click)="useMyPosition()" class="geo-btn" title="Ma position">
-                    <lucide-icon [img]="MapPinIcon" [size]="13"></lucide-icon>
-                  </button>
-                </div>
-              </div>
-              <!-- Zoom -->
-              <div class="map-row">
-                <div class="map-row-left">
-                  <lucide-icon [img]="MapIcon" [size]="14" class="text-fg-tertiary"></lucide-icon>
-                  <span class="map-label">Zoom</span>
-                </div>
-                <div class="map-row-right gap-2">
-                  <span class="zoom-value">{{ prefs().map.zoom }}</span>
-                  <input type="range" min="5" max="18" [ngModel]="prefs().map.zoom" (ngModelChange)="setMapPref('zoom', $event)" class="range-styled" />
-                </div>
-              </div>
-              <!-- Trails -->
-              <div class="map-row">
-                <div class="map-row-left">
-                  <lucide-icon [img]="RouteIcon" [size]="14" class="text-fg-tertiary"></lucide-icon>
-                  <span class="map-label">Traînées</span>
-                </div>
-                <div class="map-row-right">
-                  @if (prefs().map.showTrails) {
-                    <span class="zoom-value">{{ prefs().map.trailLength }}pts</span>
-                    <input type="range" min="5" max="50" [ngModel]="prefs().map.trailLength" (ngModelChange)="setMapPref('trailLength', $event)" class="range-styled range-sm" />
-                  }
-                  <label class="toggle">
-                    <input type="checkbox" [checked]="prefs().map.showTrails" (change)="setMapPref('showTrails', !prefs().map.showTrails)" />
-                    <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                  </label>
-                </div>
+                    <div class="notif-right">
+                      @if (prefs().notifications[n.key].enabled && n.key !== 'critical') {
+                        <select [ngModel]="prefs().notifications[n.key].duration" (ngModelChange)="setNotifDuration(n.key, $event)" class="duration-select">
+                          <option [ngValue]="3000">3s</option>
+                          <option [ngValue]="6000">6s</option>
+                          <option [ngValue]="10000">10s</option>
+                          <option [ngValue]="0">∞</option>
+                        </select>
+                      }
+                      @if (n.key === 'critical' && prefs().notifications.critical.enabled) {
+                        <span class="permanent-badge">∞</span>
+                      }
+                      <label class="toggle">
+                        <input type="checkbox" [checked]="prefs().notifications[n.key].enabled" (change)="toggleNotif(n.key)" />
+                        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                      </label>
+                    </div>
+                  </div>
+                }
+                <a routerLink="/settings/alert-rules" class="advanced-link">
+                  Configurer les règles avancées
+                  <lucide-icon [img]="ArrowRightIcon" [size]="13"></lucide-icon>
+                </a>
               </div>
             </div>
+            }
           </div>
-          }
+
+          <div class="settings-col">
+            <!-- PUSH NOTIFICATIONS -->
+            @if (perms.can('alerts_view')) {
+            <div class="s-card">
+              <div class="s-card-head">
+                <div class="s-icon cyan"><lucide-icon [img]="SmartphoneIcon" [size]="16"></lucide-icon></div>
+                <div class="s-card-title">Notifications push</div>
+              </div>
+              <div class="s-card-body">
+                <p class="section-desc">Recevez des alertes même quand l'application est fermée.</p>
+
+                @if (!pushSupported()) {
+                  <div class="push-status push-unsupported">
+                    <lucide-icon [img]="BellOffIcon" [size]="16"></lucide-icon>
+                    <div>
+                      <p class="notif-name">Non disponible</p>
+                      <p class="notif-desc">{{ pushDiagReason() }}</p>
+                    </div>
+                  </div>
+                } @else if (!pushSubscribed()) {
+                  <div class="push-status push-inactive">
+                    <lucide-icon [img]="BellOffIcon" [size]="16"></lucide-icon>
+                    <div>
+                      <p class="notif-name">Push désactivé</p>
+                      <p class="notif-desc">Activez pour recevoir des alertes sur cet appareil.</p>
+                    </div>
+                    <button (click)="enablePush()" class="btn-push" [disabled]="pushLoading()">
+                      {{ pushLoading() ? 'Activation...' : 'Activer' }}
+                    </button>
+                  </div>
+                } @else {
+                  <div class="push-status push-active">
+                    <lucide-icon [img]="BellIcon" [size]="16"></lucide-icon>
+                    <div>
+                      <p class="notif-name">Push actif</p>
+                      <p class="notif-desc">Les alertes arrivent sur cet appareil.</p>
+                    </div>
+                    <button (click)="disablePush()" class="btn-push btn-push-off" [disabled]="pushLoading()">
+                      Désactiver
+                    </button>
+                  </div>
+
+                  <div class="push-types-section">
+                    <p class="push-types-title">Types d'alertes push</p>
+                    @for (pt of pushAlertTypes; track pt.type) {
+                      <div class="notif-row">
+                        <div class="notif-left">
+                          <div class="notif-dot" [class]="pt.color"></div>
+                          <div>
+                            <p class="notif-name">{{ pt.label }}</p>
+                            <p class="notif-desc">{{ pt.desc }}</p>
+                          </div>
+                        </div>
+                        <div class="notif-right">
+                          <label class="toggle">
+                            <input type="checkbox" [checked]="prefs().pushAlerts[pt.type] !== false" (change)="togglePushType(pt.type)" />
+                            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                          </label>
+                        </div>
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
+            </div>
+            }
+          </div>
         </div>
-      </div>
+      }
 
-      <!-- RESET -->
-      <button (click)="resetAll()" class="reset-btn">
-        <lucide-icon [img]="ResetIcon" [size]="14"></lucide-icon>
-        Réinitialiser tous les paramètres
-      </button>
+      <!-- ═══════════════ ORGANISATION ═══════════════ -->
+      @if (tab() === 'organization') {
+        <div class="settings-grid">
+          <div class="settings-col">
+            <!-- COMPTE -->
+            <div class="s-card">
+              <div class="s-card-head">
+                <div class="s-icon green"><lucide-icon [img]="UserIcon" [size]="16"></lucide-icon></div>
+                <div class="s-card-title">Compte</div>
+              </div>
+              <div class="s-card-body">
+                <div class="account-block">
+                  <div class="avatar">{{ initials() }}</div>
+                  <div class="account-info">
+                    <p class="account-email">{{ user()?.email || '—' }}</p>
+                    <span class="role-badge" [class]="user()?.role === 'FLEET_ADMIN' || user()?.role === 'SUPER_ADMIN' ? 'admin' : 'viewer'">
+                      {{ roleLabel() || 'Utilisateur' }}
+                    </span>
+                  </div>
+                </div>
+                <a routerLink="/account" class="account-link">
+                  <lucide-icon [img]="UserIcon" [size]="14"></lucide-icon>
+                  Voir mon profil
+                </a>
+                <button (click)="logout()" class="logout-btn">
+                  <lucide-icon [img]="LogOutIcon" [size]="15"></lucide-icon>
+                  Se déconnecter
+                </button>
+              </div>
+            </div>
+
+            <!-- AUDIO N2 — Mode assistance (fleet-admin éligible). -->
+            @if (user()?.role === 'FLEET_ADMIN' && perms.can('audio_monitoring') && audioEligible()) {
+            <div class="s-card">
+              <div class="s-card-head">
+                <div class="s-icon violet"><lucide-icon [img]="EarIcon" [size]="16"></lucide-icon></div>
+                <div class="s-card-title">Mode assistance</div>
+              </div>
+              <div class="s-card-body">
+                <p class="section-desc">
+                  En cas d'accident, autorisez le prestataire à activer l'écoute de la cabine pour
+                  vous porter assistance (capacité légalement sensible, attestation requise).
+                </p>
+                <a routerLink="/settings/audio-monitoring" class="advanced-link">
+                  Gérer le Mode assistance
+                  <lucide-icon [img]="ArrowRightIcon" [size]="13"></lucide-icon>
+                </a>
+              </div>
+            </div>
+            }
+          </div>
+
+          <div class="settings-col">
+            <!-- Sprint 6 — Rétention des données de la flotte (lecture seule, FLEET_ADMIN). -->
+            @if (user()?.role === 'FLEET_ADMIN') {
+              <app-retention-fleet-card />
+            }
+          </div>
+        </div>
+
+        <!-- RESET -->
+        <button (click)="resetAll()" class="reset-btn">
+          <lucide-icon [img]="ResetIcon" [size]="14"></lucide-icon>
+          Réinitialiser tous les paramètres
+        </button>
+      }
     </div>
   `,
   styles: [`
-    .settings-page { max-width: 900px; margin: 0 auto }
-    .settings-header { margin-bottom: 24px }
-    .settings-title { font-size: 24px; font-weight: 800; color: var(--fg-primary); letter-spacing: -.02em }
-    .settings-sub { font-size: 13px; color: var(--fg-tertiary); margin-top: 2px }
+    .settings-page { max-width: 1080px; margin: 0 auto }
+    .settings-header { margin-bottom: 18px }
+    .settings-title { font-size: 26px; font-weight: 800; color: var(--fg-primary); letter-spacing: -.03em; margin-top: 6px }
+    .settings-sub { font-size: 13px; color: var(--fg-tertiary); margin-top: 3px }
     .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start }
     .settings-col { display: flex; flex-direction: column; gap: 16px }
+
+    /* Tabs */
+    .s-tabs { display: flex; align-items: center; gap: 6px; margin-bottom: 20px; padding-bottom: 14px; border-bottom: 1px solid var(--border-subtle); flex-wrap: wrap }
+    .s-tab { padding: 8px 15px; border-radius: 10px; font-size: 13px; font-weight: 700; color: var(--fg-tertiary); cursor: pointer; border: 1px solid transparent; background: transparent; white-space: nowrap; transition: color .15s, background .15s, border-color .15s }
+    .s-tab:hover { color: var(--fg-secondary) }
+    .s-tab.active { background: var(--bg-secondary); color: var(--fg-primary); border-color: var(--border-strong, var(--border-subtle)) }
+
+    /* Plan hero */
+    .s-plan { position: relative; overflow: hidden; padding: 22px 24px; margin-bottom: 22px; border-radius: 18px; border: 1px solid var(--border-strong, var(--border-subtle)); background: color-mix(in srgb, var(--tracky) 5%, var(--bg-secondary)) }
+    .s-plan-glow { position: absolute; top: -30%; right: -8%; width: 45%; height: 120%; pointer-events: none; background: radial-gradient(circle, color-mix(in srgb, var(--tracky) 12%, transparent), transparent 70%); filter: blur(8px) }
+    .s-plan-row { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap }
+    .s-plan-count { font-size: 1.9rem; font-weight: 800; letter-spacing: -.03em; margin-top: 8px }
+    .s-plan-note { font-size: .84rem; color: var(--fg-secondary); margin-top: 8px; max-width: 56ch; line-height: 1.5 }
+    .s-plan-btn { display: inline-flex; align-items: center; height: 40px; padding: 0 18px; border-radius: 11px; border: none; background: var(--tracky); color: var(--accent-ink); font-size: .84rem; font-weight: 700; cursor: pointer; white-space: nowrap; text-decoration: none }
+    .s-plan-btn:hover { background: var(--tracky-light) }
+
+    /* Options premium */
+    .s-opt-head { margin-bottom: 12px }
+    .s-opt-head h3 { font-size: 1.05rem; font-weight: 800; letter-spacing: -.01em; color: var(--fg-primary) }
+    .s-opt-head p { margin-top: 5px; font-size: .86rem; color: var(--fg-tertiary) }
+    .s-opt-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px }
+    .s-opt { padding: 18px 19px; border-radius: 16px; border: 1px solid var(--border-subtle); background: var(--bg-secondary); transition: transform .2s, border-color .2s }
+    .s-opt:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--tracky) 40%, transparent) }
+    .s-opt-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px }
+    .s-opt-ico { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 12px; background: var(--bg-tertiary); color: var(--fg-tertiary) }
+    .s-opt-ico.on { background: color-mix(in srgb, var(--tracky) 12%, transparent); color: var(--tracky-light) }
+    .s-opt-status { padding: 3px 10px; border-radius: 999px; font-size: .68rem; font-weight: 800; background: var(--bg-tertiary); color: var(--fg-tertiary) }
+    .s-opt-status.on { background: color-mix(in srgb, var(--tracky) 14%, transparent); color: var(--tracky-light) }
+    .s-opt h4 { margin: 14px 0 0; font-size: 1rem; font-weight: 700; color: var(--fg-primary) }
+    .s-opt p { margin: 6px 0 0; font-size: .82rem; color: var(--fg-secondary); line-height: 1.5 }
+    .s-opt-link { display: inline-flex; align-items: center; gap: 5px; margin-top: 12px; font-size: .8rem; font-weight: 700; color: var(--tracky-light) }
+    .s-opt-link:hover { text-decoration: underline }
+    .s-opt-hint { display: block; margin-top: 12px; font-size: .76rem; color: var(--fg-tertiary) }
 
     /* Card */
     .s-card { background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: 16px; overflow: hidden }
@@ -332,23 +460,22 @@ import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
     .s-card-title { font-size: 13px; font-weight: 700; color: var(--fg-primary) }
     .s-card-body { padding: 18px }
     .s-icon { width: 32px; height: 32px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0 }
-    .s-icon.green { background: rgba(16,224,160,.12); color: var(--tracky-light) }
-    .s-icon.purple { background: rgba(168,85,247,.12); color: #a855f7 }
-    .s-icon.amber { background: rgba(245,158,11,.12); color: #f59e0b }
-    .s-icon.blue { background: rgba(59,130,246,.12); color: #3b82f6 }
-    .s-icon.cyan { background: rgba(6,182,212,.12); color: #06b6d4 }
-    .s-icon.violet { background: rgba(139,92,246,.12); color: #a78bfa }
+    /* DS : accent émeraude unique — les sections se distinguent par leur icône,
+       pas par une couleur différente (fin de l'arc-en-ciel violet/bleu/cyan). */
+    .s-icon.green, .s-icon.purple, .s-icon.amber, .s-icon.blue, .s-icon.cyan, .s-icon.violet {
+      background: color-mix(in srgb, var(--color-tracky-light) 12%, transparent); color: var(--color-tracky-light);
+    }
 
     /* Account */
     .account-block { display: flex; align-items: center; gap: 14px; padding: 14px; border-radius: 12px; background: var(--bg-tertiary); margin-bottom: 14px }
-    .avatar { width: 44px; height: 44px; border-radius: 50%; background: var(--tracky); color: white; font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0 }
+    .avatar { width: 44px; height: 44px; border-radius: 50%; background: var(--tracky); color: var(--accent-ink); font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0 }
     .account-email { font-size: 14px; font-weight: 600; color: var(--fg-primary) }
     .role-badge { display: inline-block; margin-top: 3px; padding: 2px 10px; border-radius: 20px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em }
     .role-badge.admin { background: rgba(16,224,160,.15); color: var(--tracky-light) }
     .role-badge.viewer { background: var(--bg-secondary); color: var(--fg-tertiary) }
     .logout-btn {
       display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; border-radius: 10px; font-size: 13px; font-weight: 600;
-      background: rgba(239,68,68,.08); color: #f87171; border: 1px solid rgba(239,68,68,.15); cursor: pointer; transition: all .2s;
+      background: color-mix(in srgb, var(--danger) 9%, transparent); color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 18%, transparent); cursor: pointer; transition: all .2s;
     }
     .logout-btn:hover { background: rgba(239,68,68,.15) }
     .account-link {
@@ -381,7 +508,7 @@ import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
     }
     .btn-push:hover { background: var(--tracky-light) }
     .btn-push:disabled { opacity: .5; cursor: not-allowed }
-    .btn-push-off { background: rgba(239,68,68,.1); color: #f87171; border: 1px solid rgba(239,68,68,.2) }
+    .btn-push-off { background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 22%, transparent) }
     .btn-push-off:hover { background: rgba(239,68,68,.2) }
     .push-types-section { margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--border-subtle) }
     .push-types-title { font-size: 11px; font-weight: 600; color: var(--fg-tertiary); text-transform: uppercase; margin: 0 0 8px }
@@ -411,9 +538,9 @@ import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
     .notif-left { display: flex; align-items: center; gap: 10px }
     .notif-right { display: flex; align-items: center; gap: 8px }
     .notif-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0 }
-    .notif-dot.red { background: #ef4444 }
-    .notif-dot.amber { background: #f59e0b }
-    .notif-dot.blue { background: #3b82f6 }
+    .notif-dot.red { background: var(--danger) }
+    .notif-dot.amber { background: var(--warning) }
+    .notif-dot.blue { background: var(--fg-tertiary) }
     .notif-name { font-size: 13px; font-weight: 600; color: var(--fg-primary) }
     .notif-desc { font-size: 10px; color: var(--fg-tertiary); margin-top: 1px }
     .permanent-badge { font-size: 11px; color: var(--fg-tertiary); padding: 2px 8px; border-radius: 6px; background: var(--bg-tertiary) }
@@ -440,18 +567,19 @@ import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
       color: var(--fg-primary); font-size: 11px; font-family: var(--font-mono, monospace); text-align: center; outline: none;
     }
     .coord-input:focus { border-color: var(--tracky) }
-    .geo-btn {
-      width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
-      background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-tertiary);
-      cursor: pointer; transition: all .2s;
-    }
+    .geo-btn { padding: 6px; border-radius: 8px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-secondary); cursor: pointer; transition: all .2s }
     .geo-btn:hover { color: var(--tracky-light); border-color: var(--tracky) }
-    .zoom-value { font-size: 11px; font-weight: 700; color: var(--tracky-light); min-width: 28px; text-align: center }
-    .range-styled { width: 100px; accent-color: var(--tracky) }
-    .range-sm { width: 70px }
+    .zoom-value { font-size: 12px; font-weight: 700; color: var(--fg-secondary); font-family: var(--font-mono, monospace); min-width: 30px; text-align: right }
+    .range-styled { accent-color: var(--tracky); cursor: pointer }
+    .range-sm { width: 80px }
 
     /* Toggle */
-    /* .toggle : styles globaux (styles.css) */
+    .toggle { position: relative; display: inline-flex; cursor: pointer }
+    .toggle input { position: absolute; opacity: 0; width: 0; height: 0 }
+    .toggle-track { width: 40px; height: 22px; border-radius: 9999px; background: var(--bg-tertiary); transition: background .2s; position: relative; display: inline-block }
+    .toggle-thumb { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: white; transition: left .2s }
+    .toggle input:checked + .toggle-track { background: var(--tracky) }
+    .toggle input:checked + .toggle-track .toggle-thumb { left: 20px }
 
     /* Reset */
     .reset-btn {
@@ -461,6 +589,9 @@ import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
     }
     .reset-btn:hover { color: var(--fg-secondary); border-color: var(--border-strong) }
 
+    @media (max-width: 900px) {
+      .s-opt-grid { grid-template-columns: 1fr }
+    }
     @media (max-width: 768px) {
       .settings-grid { grid-template-columns: 1fr }
     }
@@ -480,6 +611,19 @@ export class SettingsComponent implements OnInit {
   protected readonly user = this.auth.user;
   protected readonly prefs = this.preferencesService.prefs;
 
+  /** Onglet actif (réf. maquette : Facturation / Apparence / Notifications / Organisation). */
+  protected readonly tab = signal<SettingsTab>('billing');
+  /** Facturation & options : réservé aux admins par défaut (perm billing_manage). */
+  protected readonly canBilling = computed(() => this.perms.can('billing_manage'));
+
+  constructor() {
+    // Non-admin sans droit de facturation : on démarre sur « Apparence » (pas de flash de l'onglet caché).
+    if (!this.perms.can('billing_manage')) this.tab.set('appearance');
+  }
+
+  /** Nb de véhicules réellement suivis (snapshot flotte) — pour l'encart abonnement honnête. */
+  protected readonly activeVehicleCount = computed(() => this.realtime.snapshot().length);
+
   protected readonly UserIcon = User;
   protected readonly LogOutIcon = LogOut;
   protected readonly MoonIcon = Moon;
@@ -495,6 +639,8 @@ export class SettingsComponent implements OnInit {
   protected readonly RouteIcon = Route;
   protected readonly ArrowRightIcon = ArrowRight;
   protected readonly EarIcon = Ear;
+  protected readonly ZapIcon = Zap;
+  protected readonly SparklesIcon = Sparkles;
 
   protected readonly pushSupported = signal(false);
   protected readonly pushSubscribed = signal(false);

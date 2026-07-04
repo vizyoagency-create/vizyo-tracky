@@ -2,13 +2,15 @@ import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } 
 import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { LucideAngularModule, Plus, Truck, ExternalLink, FolderOpen, Radio, X, Save, Wifi, Pencil, Trash2, Eye, Search, LayoutGrid, Table, Layers, ChevronRight, ChevronDown, Gauge } from 'lucide-angular';
+import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.directive';
+import { LucideAngularModule, Plus, Truck, ExternalLink, FolderOpen, Radio, X, Save, Wifi, Pencil, Trash2, Eye, Search, LayoutGrid, Table, Layers, ChevronRight, ChevronDown, Gauge, UserRound, Wrench } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { PreferencesService } from '../../core/services/preferences.service';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { AuthService } from '../../core/services/auth.service';
 import { RealtimeService } from '../../core/services/realtime.service';
+import { GeocodeService } from '../../core/services/geocode.service';
 import { TrackersApiService } from '../../core/services/trackers.service';
 import { getVehicleSvg, getVehicleTypeLabel } from '../../shared/utils/vehicle-icons';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
@@ -29,7 +31,7 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
   selector: 'app-vehicles-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, VehicleCapacityTableComponent, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, BrandLogoComponent, InstallReviewBadgeComponent, TrackClickDirective, EngineControlButtonComponent],
+  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, VehicleCapacityTableComponent, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, BrandLogoComponent, InstallReviewBadgeComponent, TrackClickDirective, EngineControlButtonComponent, VehicleLinkDirective],
   template: `
     @if (auth.isWatchman()) {
       <!-- ───────────────────────────────────────────────────────────────────
@@ -99,7 +101,7 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
                             <app-brand-logo [brand]="v.brand" [size]="26" [chip]="true" />
                             <div class="wn-icon" [innerHTML]="getTypeIconHtml(v.type)"></div>
                             <div class="wn-veh-text">
-                              <span class="wn-plate">{{ v.plate }}</span>
+                              <span class="wn-plate" [vehicleLink]="v.id" [attr.title]="'Voir ' + v.plate">{{ v.plate }}</span>
                               @if (v.brand) {
                                 <span class="wn-brand">{{ v.brand }} {{ v.model ?? '' }}</span>
                               }
@@ -133,8 +135,9 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
       <!-- Header -->
       <div class="vlist-header">
         <div>
-          <h1 class="vlist-title">Véhicules</h1>
-          <p class="vlist-sub">{{ vehicles().length }} véhicule(s) dans votre flotte</p>
+          <span class="vt-eyebrow">Flotte</span>
+          <h1 class="vlist-title">{{ vehicles().length }} véhicule{{ vehicles().length > 1 ? 's' : '' }}</h1>
+          <p class="vlist-sub">Suivi temps réel de votre flotte</p>
         </div>
         <div class="vlist-actions">
           <div class="tab-switch">
@@ -145,6 +148,18 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
               <button (click)="selectTab('groups')" data-track="Onglet Groupes" class="tab-btn" [class.active]="activeTab() === 'groups'">
                 <lucide-icon [img]="FolderOpenIcon" [size]="15"></lucide-icon> Groupes
               </button>
+            }
+            <!-- Conducteurs & Maintenance existent (consolidés dans Utilisateurs / Agenda) :
+                 raccourcis façon maquette, sans dupliquer la logique. -->
+            @if (perms.can('drivers_view')) {
+              <a routerLink="/users" [queryParams]="{ tab: 'drivers' }" data-track="Onglet Conducteurs" class="tab-btn">
+                <lucide-icon [img]="UserRoundIcon" [size]="15"></lucide-icon> Conducteurs
+              </a>
+            }
+            @if (perms.can('agenda_view')) {
+              <a routerLink="/agenda" data-track="Onglet Maintenance" class="tab-btn">
+                <lucide-icon [img]="WrenchIcon" [size]="15"></lucide-icon> Maintenance
+              </a>
             }
             <button (click)="selectTab('capacity')" data-track="Onglet Capacités" class="tab-btn" [class.active]="activeTab() === 'capacity'">
               <lucide-icon [img]="GaugeIcon" [size]="15"></lucide-icon> Capacités
@@ -307,46 +322,66 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
             </table>
           </div>
         } @else if (viewMode() === 'grouped') {
-          <div class="v-groups">
+          <!-- Tableau groupé (réf. maquette Vehicules.dc.html) : colonnes
+               Véhicule / Statut / Vitesse / Conducteur / Dernière position. -->
+          <div class="v-gtable">
+            <div class="v-gt-head">
+              <span class="v-gt-h">Véhicule</span>
+              <span class="v-gt-h">Statut</span>
+              <span class="v-gt-h">Vitesse</span>
+              <span class="v-gt-h v-col-drv">Conducteur</span>
+              <span class="v-gt-h v-col-pos">Dernière position</span>
+              <span></span>
+            </div>
             @for (section of groupedVehicles(); track section.id ?? '__none__') {
-              <div class="v-group-section" [id]="'vg-' + (section.id ?? 'none')">
-                <button class="v-group-head" (click)="toggleGroup(section.id ?? '__none__')"
-                        [attr.aria-expanded]="!isCollapsed(section.id ?? '__none__')">
-                  <lucide-icon [img]="isCollapsed(section.id ?? '__none__') ? ChevronRightIcon : ChevronDownIcon" [size]="16"></lucide-icon>
-                  @if (section.id) {
-                    <lucide-icon [img]="LayersIcon" [size]="14" class="v-group-head-ico"></lucide-icon>
-                    <span class="v-group-name">{{ section.name }}</span>
-                  } @else {
-                    <span class="v-group-name v-group-name--none">Sans groupe</span>
-                  }
-                  <span class="v-group-count">{{ section.vehicles.length }}</span>
-                </button>
-                @if (!isCollapsed(section.id ?? '__none__')) {
-                  <div class="v-group-items">
-                    @for (v of section.vehicles; track v.id) {
-                      <a [routerLink]="['/vehicles', v.id]" [queryParams]="groupedLinkParams(section.id)" class="v-group-row">
-                        <div class="v-type-icon" [class]="connectivity(v) === 'ONLINE' ? 'online' : 'offline'"
-                             [innerHTML]="getTypeIconHtml(v.type)"></div>
-                        <span class="v-group-row-plate">{{ v.plate }}</span>
-                        <app-brand-logo [brand]="v.brand" [size]="18" [chip]="true" />
-                        @if (v.brand) { <span class="v-group-row-brand">{{ v.brand }} {{ v.model ?? '' }}</span> }
-                        <span class="v-group-row-spacer"></span>
-                        @if (liveStatus(v.id); as ls) {
-                          <span class="v-live-pill" [class]="ls.cssClass">
-                            <span class="v-live-dot"></span>
-                            @if (ls.kind === 'moving') { {{ ls.speedKmh }} km/h }
-                            @else if (ls.kind === 'idle') { À l'arrêt }
-                            @else { Stationné }
-                          </span>
-                        }
-                        <app-connectivity-badge [state]="connectivity(v)" [hideWhenOnline]="true" [compact]="true" />
-                        @if (installToReview(v)) { <app-install-review-badge [compact]="true" /> }
-                        <lucide-icon [img]="ChevronRightIcon" [size]="15" class="v-group-row-chev"></lucide-icon>
-                      </a>
-                    }
-                  </div>
+              <button class="v-gt-group" [id]="'vg-' + (section.id ?? 'none')"
+                      (click)="toggleGroup(section.id ?? '__none__')"
+                      [attr.aria-expanded]="!isCollapsed(section.id ?? '__none__')">
+                <lucide-icon [img]="isCollapsed(section.id ?? '__none__') ? ChevronRightIcon : ChevronDownIcon" [size]="14"></lucide-icon>
+                <lucide-icon [img]="LayersIcon" [size]="14" class="v-gt-group-ico" [class.none]="!section.id"></lucide-icon>
+                <span class="v-gt-group-name" [class.none]="!section.id">{{ section.id ? section.name : 'Sans groupe' }}</span>
+                <span class="v-gt-group-count mono">{{ section.vehicles.length }} véhicule{{ section.vehicles.length > 1 ? 's' : '' }}</span>
+              </button>
+              @if (!isCollapsed(section.id ?? '__none__')) {
+                @for (v of section.vehicles; track v.id) {
+                  <a [routerLink]="['/vehicles', v.id]" [queryParams]="groupedLinkParams(section.id)" class="v-trow">
+                    <div class="v-trow-veh">
+                      <span class="v-trow-ico" [innerHTML]="getTypeIconHtml(v.type)"></span>
+                      <div class="v-trow-veh-txt">
+                        <div class="v-trow-plate mono">{{ v.plate }}</div>
+                        <div class="v-trow-model">{{ v.brand ? (v.brand + ' ' + (v.model ?? '')) : 'Non renseigné' }}</div>
+                      </div>
+                    </div>
+                    <span class="v-trow-status">
+                      @if (liveStatus(v.id); as ls) {
+                        <span class="v-live-pill" [class]="ls.cssClass">
+                          <span class="v-live-dot"></span>
+                          @if (ls.kind === 'moving') { En roulage } @else if (ls.kind === 'idle') { Au ralenti } @else { À l'arrêt }
+                        </span>
+                      } @else {
+                        <app-connectivity-badge [state]="connectivity(v)" [compact]="true" />
+                      }
+                      @if (installToReview(v)) { <app-install-review-badge [compact]="true" /> }
+                    </span>
+                    <span class="v-trow-speed"
+                          [class.spd-move]="liveStatus(v.id)?.kind === 'moving'"
+                          [class.spd-idle]="liveStatus(v.id)?.kind === 'idle'">
+                      @if (liveStatus(v.id); as ls) { {{ ls.speedKmh }}<span class="v-trow-speed-u"> km/h</span> } @else { <span class="v-trow-dash">—</span> }
+                    </span>
+                    <span class="v-trow-drv v-col-drv" [class.v-trow-dash]="!v.currentDriver">{{ driverLabel(v) }}</span>
+                    <div class="v-trow-pos v-col-pos">
+                      @if (positionFor(v.id)) {
+                        <div class="v-trow-addr">{{ addressFor(v.id) || 'Position en cours…' }}</div>
+                        <div class="v-trow-ago mono">{{ lastContactLabel(v) }}</div>
+                      } @else {
+                        <div class="v-trow-addr v-trow-dash">Hors ligne</div>
+                        @if (v.tracker?.lastSeenAt) { <div class="v-trow-ago mono">{{ lastContactLabel(v) }}</div> }
+                      }
+                    </div>
+                    <lucide-icon [img]="ChevronRightIcon" [size]="15" class="v-trow-chev"></lucide-icon>
+                  </a>
                 }
-              </div>
+              }
             }
           </div>
         } @else {
@@ -475,7 +510,7 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
             </div>
             <div class="flex-1 overflow-y-auto px-6 py-5 space-y-4">
               @if (assignError()) {
-                <div class="p-3 rounded-xl bg-red-600/10 border border-red-600/20 text-red-400 text-sm">{{ assignError() }}</div>
+                <div class="p-3 rounded-xl text-sm" style="background:color-mix(in srgb, var(--danger) 12%, transparent); border:1px solid color-mix(in srgb, var(--danger) 28%, transparent); color:var(--danger)">{{ assignError() }}</div>
               }
               <div>
                 <label class="block text-[11px] font-semibold text-fg-tertiary mb-1">IMEI DU TRACKER *</label>
@@ -606,13 +641,13 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
     }
     .vlist-grid-bg::after {
       content: ''; position: absolute; bottom: -20%; right: -10%; width: 50%; height: 55%;
-      background: radial-gradient(ellipse, rgba(59,130,246,.06) 0%, transparent 70%);
+      background: radial-gradient(ellipse, rgba(16,224,160,.055) 0%, transparent 70%);
       border-radius: 40% 60% 30% 50%;
       animation: morph2 10s ease-in-out infinite alternate;
     }
     .vlist-glow {
       position: fixed; top: 30%; left: 50%; transform: translate(-50%, -50%); width: 35%; height: 40%;
-      background: radial-gradient(ellipse, rgba(168,85,247,.05) 0%, transparent 70%);
+      background: radial-gradient(ellipse, rgba(16,224,160,.035) 0%, transparent 70%);
       border-radius: 60% 40% 50% 30%;
       pointer-events: none; z-index: 0;
       animation: morph3 14s ease-in-out infinite alternate;
@@ -636,13 +671,13 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
       background: var(--bg-secondary); color: var(--fg-tertiary); cursor: pointer; transition: all .2s; border: none;
     }
     .tab-btn:hover { color: var(--fg-secondary) }
-    .tab-btn.active { background: var(--tracky); color: white }
+    .tab-btn.active { background: var(--tracky-light); color: var(--accent-ink) }
 
     .add-btn {
       display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 10px; font-size: 12px; font-weight: 700;
-      background: var(--tracky); color: white; border: none; cursor: pointer; box-shadow: 0 2px 8px rgba(5,150,105,.3);
+      background: var(--tracky-light); color: var(--accent-ink); border: none; cursor: pointer; box-shadow: var(--shadow-tracky-glow); transition: filter .15s;
     }
-    .add-btn:hover { background: var(--tracky-dark) }
+    .add-btn:hover { filter: brightness(1.05) }
 
     /* FAB mobile : visible uniquement < 768px (cohérent avec Map FAB).
        Doit se poser AU-DESSUS de la bottom-bar (60-72px selon iOS PWA bump
@@ -662,21 +697,16 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
       justify-content: center;
       isolation: isolate;
       overflow: hidden;
-      color: #FFFFFF;
-      background: linear-gradient(135deg,
-        #A7F3D0 0%, #5EEAD4 20%, #6EE7B7 40%, #34D399 55%, #67E8F9 75%, #A7F3D0 100%);
-      background-size: 240% 240%;
-      animation: vlist-fab-gradient 8s ease-in-out infinite;
+      color: var(--accent-ink);
+      background: var(--color-tracky-light);
       box-shadow:
-        0 8px 22px rgba(94,234,212,.35),
-        0 2px 8px rgba(16,224,160,.22),
-        inset 0 1px 0 rgba(255,255,255,.55);
-      opacity: .92;
+        0 10px 26px -8px color-mix(in srgb, var(--color-tracky-light) 55%, transparent),
+        0 2px 8px rgba(0,0,0,.14);
+      opacity: 1;
       transition: transform .25s cubic-bezier(0.34, 1.56, 0.64, 1), filter .2s, opacity .2s;
     }
     .vlist-fab:hover { opacity: 1; filter: brightness(1.05); }
     .vlist-fab:active { transform: scale(.92); opacity: 1; filter: brightness(1.08); }
-    :host-context([data-theme='dark']) .vlist-fab { color: #000000; }
     @keyframes vlist-fab-gradient {
       0%, 100% { background-position: 0% 50% }
       50%      { background-position: 100% 50% }
@@ -722,9 +752,47 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
     .view-switch { display: flex; margin-left: auto; border-radius: 9px; border: 1px solid var(--border-subtle); overflow: hidden }
     .view-btn { display: flex; align-items: center; padding: 7px 11px; background: var(--bg-secondary); color: var(--fg-tertiary); border: none; cursor: pointer; transition: all .2s }
     .view-btn:hover { color: var(--fg-secondary) }
-    .view-btn.active { background: var(--tracky); color: #fff }
+    .view-btn.active { background: var(--tracky-light); color: var(--accent-ink) }
 
     /* #3 — vue tableau véhicules */
+    /* ─── Tableau groupé (réf. maquette Vehicules.dc.html) ─── */
+    .v-gtable { position: relative; z-index: 1; background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: 18px; overflow: hidden }
+    .v-gt-head, .v-trow { display: grid; grid-template-columns: minmax(170px,2fr) 132px 92px 1.2fr 1.7fr 40px; align-items: center; gap: 14px; padding: 11px 18px }
+    .v-gt-head { background: var(--surface-rail) }
+    .v-gt-h { font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--fg-tertiary) }
+    .v-gt-group { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; padding: 10px 18px; border: none; border-top: 1px solid var(--border-subtle); background: color-mix(in srgb, var(--tracky-light) 5%, var(--bg-secondary)); color: var(--fg-primary); cursor: pointer }
+    .v-gt-group:hover { background: color-mix(in srgb, var(--tracky-light) 9%, var(--bg-secondary)) }
+    .v-gt-group > lucide-icon:first-child { color: var(--fg-tertiary); display: inline-flex }
+    .v-gt-group-ico { color: var(--tracky-light); display: inline-flex }
+    .v-gt-group-ico.none { color: var(--fg-tertiary) }
+    .v-gt-group-name { font-size: 13px; font-weight: 700 }
+    .v-gt-group-name.none { color: var(--fg-tertiary); font-style: italic; font-weight: 600 }
+    .v-gt-group-count { font-size: 11px; color: var(--fg-tertiary); margin-left: 2px }
+    .v-trow { border-top: 1px solid var(--border-subtle); text-decoration: none; color: inherit; transition: background .15s; cursor: pointer }
+    .v-trow:hover { background: var(--bg-tertiary) }
+    .v-trow-veh { display: flex; align-items: center; gap: 11px; min-width: 0 }
+    .v-trow-ico { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 10px; background: var(--bg-tertiary); color: var(--fg-secondary); flex-shrink: 0 }
+    .v-trow-veh-txt { min-width: 0 }
+    .v-trow-plate { font-size: 13.5px; font-weight: 700; color: var(--fg-primary); letter-spacing: .02em }
+    .v-trow-model { font-size: 11.5px; color: var(--fg-tertiary); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+    .v-trow-status { display: flex; align-items: center; gap: 6px; flex-wrap: wrap }
+    .v-trow-speed { font-size: 14px; font-weight: 800; font-family: var(--font-display); color: var(--fg-secondary); white-space: nowrap }
+    .v-trow-speed.spd-move { color: var(--tracky-light) }
+    .v-trow-speed.spd-idle { color: var(--warning) }
+    .v-trow-speed-u { font-size: 9px; font-weight: 600; color: var(--fg-tertiary) }
+    .v-trow-drv { font-size: 13px; color: var(--fg-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+    .v-trow-drv.v-trow-dash { color: var(--fg-tertiary) }
+    .v-trow-pos { min-width: 0 }
+    .v-trow-addr { font-size: 13px; color: var(--fg-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+    .v-trow-addr.v-trow-dash { color: var(--fg-tertiary) }
+    .v-trow-ago { font-size: 11px; color: var(--fg-tertiary); margin-top: 1px }
+    .v-trow-dash { color: var(--fg-tertiary) }
+    .v-trow-chev { color: var(--fg-tertiary); justify-self: end; flex-shrink: 0 }
+    @media (max-width: 960px) {
+      .v-gt-head, .v-trow { grid-template-columns: minmax(150px,2fr) 118px 74px 40px; gap: 10px }
+      .v-col-drv, .v-col-pos { display: none }
+    }
+
     .v-table-wrap { position: relative; z-index: 1; overflow-x: auto; border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--bg-secondary) }
     .v-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 640px }
     .v-table thead th { text-align: left; padding: 11px 14px; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; color: var(--fg-tertiary); border-bottom: 1px solid var(--border-subtle); font-weight: 700 }
@@ -798,7 +866,7 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
     }
     .v-driver-dot {
       width: 7px; height: 7px; border-radius: 50%;
-      background: #10b981;
+      background: var(--color-tracky-light);
       flex-shrink: 0;
     }
 
@@ -818,9 +886,9 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
     }
     .v-live-pill--moving .v-live-dot { background: #10E0A0; box-shadow: 0 0 6px rgba(16,224,160,.6) }
     .v-live-pill--idle {
-      color: #f59e0b; background: rgba(245,158,11,.1); border-color: rgba(245,158,11,.22);
+      color: var(--warning); background: color-mix(in srgb, var(--warning) 12%, transparent); border-color: color-mix(in srgb, var(--warning) 24%, transparent);
     }
-    .v-live-pill--idle .v-live-dot { background: #f59e0b }
+    .v-live-pill--idle .v-live-dot { background: var(--warning) }
     .v-live-pill--stopped {
       color: var(--fg-tertiary); background: var(--bg-tertiary); border-color: var(--border-subtle);
     }
@@ -829,7 +897,7 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
     /* V1.15 — badge installation (derive IMEI + SIM) */
     .v-inst { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 9999px; line-height: 1.4 }
     .v-inst--installed { color: var(--tracky-light); background: rgba(16,224,160,.12); border: 1px solid rgba(16,224,160,.22) }
-    .v-inst--no-sim { color: #f59e0b; background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.22) }
+    .v-inst--no-sim { color: var(--warning); background: color-mix(in srgb, var(--warning) 12%, transparent); border: 1px solid color-mix(in srgb, var(--warning) 24%, transparent) }
 
     .v-card-bottom { padding-top: 10px; border-top: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between }
     .v-tracker-info { flex: 1; min-width: 0 }
@@ -841,8 +909,8 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
     }
     .v-action-btn lucide-icon { width: 16px; height: 16px; }
     .v-action-btn.view:hover { color: var(--tracky-light); border-color: rgba(16,224,160,.2); background: rgba(16,224,160,.06) }
-    .v-action-btn.edit:hover { color: #60a5fa; border-color: rgba(59,130,246,.2); background: rgba(59,130,246,.06) }
-    .v-action-btn.delete:hover { color: #f87171; border-color: rgba(239,68,68,.2); background: rgba(239,68,68,.06) }
+    .v-action-btn.edit:hover { color: var(--color-tracky-light); border-color: color-mix(in srgb, var(--color-tracky-light) 25%, transparent); background: color-mix(in srgb, var(--color-tracky-light) 8%, transparent) }
+    .v-action-btn.delete:hover { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 25%, transparent); background: color-mix(in srgb, var(--danger) 8%, transparent) }
     .v-tracker { display: flex; align-items: center; gap: 5px; font-size: 11px; font-family: var(--font-mono, monospace); color: var(--fg-tertiary) }
     .v-assign-btn {
       font-size: 11px; color: var(--tracky-light); background: none; border: none; cursor: pointer; font-weight: 600;
@@ -850,33 +918,8 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
     .v-assign-btn:hover { text-decoration: underline }
     .v-no-tracker { font-size: 11px; color: var(--fg-tertiary); font-style: italic }
 
-    /* Sprint 1 — vue groupée */
-    .v-groups { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 10px }
-    .v-group-section { border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--bg-secondary); overflow: hidden }
-    .v-group-head {
-      width: 100%; display: flex; align-items: center; gap: 8px; padding: 11px 14px;
-      background: transparent; border: none; cursor: pointer; color: var(--fg-primary); text-align: left; transition: background .15s;
-    }
-    .v-group-head:hover { background: var(--bg-tertiary) }
-    .v-group-head-ico { color: var(--fg-tertiary); flex-shrink: 0 }
-    .v-group-name { font-size: 13px; font-weight: 700; letter-spacing: -.01em }
-    .v-group-name--none { color: var(--fg-tertiary); font-style: italic; font-weight: 600 }
-    .v-group-count {
-      margin-left: auto; font-size: 11px; font-weight: 700; color: var(--fg-tertiary);
-      background: var(--bg-tertiary); border-radius: 9999px; padding: 2px 9px; font-variant-numeric: tabular-nums;
-    }
-    .v-group-items { display: flex; flex-direction: column; border-top: 1px solid var(--border-subtle) }
-    .v-group-row {
-      display: flex; align-items: center; gap: 10px; padding: 10px 14px; text-decoration: none; color: inherit;
-      border-bottom: 1px solid var(--border-subtle); transition: background .15s;
-    }
-    .v-group-row:last-child { border-bottom: none }
-    .v-group-row:hover { background: var(--bg-tertiary) }
-    .v-group-row .v-type-icon { width: 26px; height: 26px; border-radius: 7px }
-    .v-group-row-plate { font-family: var(--font-mono, monospace); font-weight: 800; font-size: 14px; color: var(--fg-primary); letter-spacing: .03em }
-    .v-group-row-brand { font-size: 12px; color: var(--fg-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40% }
-    .v-group-row-spacer { flex: 1 }
-    .v-group-row-chev { color: var(--fg-tertiary); flex-shrink: 0 }
+    /* Ancienne vue groupée (.v-group-*) retirée : remplacée par le tableau
+       groupé .v-gtable (rebuild maquette). */
 
     /* iOS PWA standalone : insette l'overlay drawer (assign tracker) par les
        safe-areas pour que le header ne passe pas sous le notch ni le footer sous
@@ -895,6 +938,7 @@ export class VehiclesListComponent implements OnInit {
   private readonly vehiclesApi = inject(VehiclesApiService);
   private readonly trackersApi = inject(TrackersApiService);
   private readonly realtime = inject(RealtimeService);
+  private readonly geocode = inject(GeocodeService);
   protected readonly perms = inject(PermissionsService);
   private readonly preferences = inject(PreferencesService);
   protected readonly auth = inject(AuthService);
@@ -988,6 +1032,8 @@ export class VehiclesListComponent implements OnInit {
   protected readonly ExternalLink = ExternalLink;
   protected readonly FolderOpenIcon = FolderOpen;
   protected readonly GaugeIcon = Gauge;
+  protected readonly UserRoundIcon = UserRound;
+  protected readonly WrenchIcon = Wrench;
   protected readonly RadioIcon = Radio;
   protected readonly PencilIcon = Pencil;
   protected readonly Trash2Icon = Trash2;
@@ -1120,6 +1166,45 @@ export class VehiclesListComponent implements OnInit {
       return { kind: 'idle', speedKmh, cssClass: 'v-live-pill--idle' };
     }
     return { kind: 'stopped', speedKmh, cssClass: 'v-live-pill--stopped' };
+  }
+
+  /** Dernière position live (lat/lng/horodatage) depuis le snapshot temps réel. */
+  protected positionFor(vehicleId: string): { lat: number; lng: number; timestamp: string } | null {
+    const pos = this.realtime.positionsList().find((p) => p.vehicleId === vehicleId);
+    if (!pos) return null;
+    return { lat: pos.lat, lng: pos.lng, timestamp: pos.timestamp };
+  }
+
+  /** Adresse courte de la dernière position (géocodage inverse serveur, mémoïsé). '' si indispo. */
+  protected addressFor(vehicleId: string): string {
+    const pos = this.positionFor(vehicleId);
+    if (!pos) return '';
+    return this.geocode.reverse(pos.lat, pos.lng)();
+  }
+
+  /** « il y a X » depuis la dernière position (ou dernier contact tracker). */
+  protected lastContactLabel(v: VehicleDetailDto): string {
+    const iso = this.positionFor(v.id)?.timestamp ?? v.tracker?.lastSeenAt ?? null;
+    if (!iso) return '';
+    const diff = Date.now() - new Date(iso).getTime();
+    if (diff < 0) return "à l'instant";
+    const s = Math.floor(diff / 1000);
+    if (s < 60) return `il y a ${s} s`;
+    const m = Math.floor(s / 60);
+    if (m < 60) return `il y a ${m} min`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `il y a ${h} h`;
+    return `il y a ${Math.floor(h / 24)} j`;
+  }
+
+  /** Conducteur assigné, format « P. Nom » (réf. maquette). « Non assigné » sinon. */
+  protected driverLabel(v: VehicleDetailDto): string {
+    const d = v.currentDriver;
+    if (!d) return 'Non assigné';
+    const first = d.firstName?.trim() ?? '';
+    const last = d.lastName?.trim() ?? '';
+    if (first && last) return `${first[0]}. ${last}`;
+    return last || first || 'Conducteur';
   }
 
   /** V1.15 — badge installation derive : tracker + IMEI + SIM => Installé. */

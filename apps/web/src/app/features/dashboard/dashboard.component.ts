@@ -5,7 +5,7 @@ import { RouterLink } from '@angular/router';
 import {
   Truck, Navigation, Activity, AlertTriangle, Map as MapIcon, Plus,
   FileBarChart, Shield, ChevronRight, Bell, Radio, Gauge, Clock,
-  Settings2, X, Check,
+  Settings2, X, Check, ArrowRight,
 } from 'lucide-angular';
 import { LucideAngularModule } from 'lucide-angular';
 import { filter, interval, startWith, switchMap, catchError, of } from 'rxjs';
@@ -16,6 +16,7 @@ import { VehiclesApiService } from '../../core/services/vehicles.service';
 import { AlertsApiService } from '../../core/services/alerts.service';
 import { PreferencesService, type DashboardWidgetKey } from '../../core/services/preferences.service';
 import { MiniMapComponent } from '../../shared/ui/mini-map/mini-map.component';
+import { SkeletonComponent } from '../../shared/ui/skeleton/skeleton.component';
 import { getVehicleConnectivityState, isAcceptableLiveFix, isInstallationToReview, isTrackerOnline } from '@vizyo/tracky-shared';
 
 interface WidgetMeta {
@@ -28,7 +29,7 @@ interface WidgetMeta {
   selector: 'app-dashboard',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [LucideAngularModule, DatePipe, RouterLink, MiniMapComponent],
+  imports: [LucideAngularModule, DatePipe, RouterLink, MiniMapComponent, SkeletonComponent],
   template: `
     <div class="dash-page">
       <!-- Background grid -->
@@ -37,26 +38,87 @@ interface WidgetMeta {
 
       <!-- Header -->
       <div class="dash-header">
-        <div>
-          <h1 class="dash-title">Vue d'ensemble</h1>
+        <div class="dash-header-text">
+          <span class="vt-eyebrow">Vue d'ensemble</span>
+          <h1 class="dash-title">Votre flotte est active.</h1>
           <p class="dash-sub">Suivi en temps réel de votre flotte</p>
         </div>
-        <div class="dash-header-actions">
-          <button (click)="customizerOpen.set(true)" class="dash-customize-btn" aria-label="Personnaliser">
-            <lucide-icon [img]="Settings2" [size]="14"></lucide-icon>
-            <span class="dash-customize-label">Personnaliser</span>
-          </button>
-          <div class="dash-status">
-            @if (realtime.connected()) {
-              <span class="status-dot online"></span>
-              <span class="status-text online">Connecté</span>
-            } @else {
-              <span class="status-dot"></span>
-              <span class="status-text">Connexion...</span>
+        <button (click)="customizerOpen.set(true)" class="dash-customize-btn" aria-label="Personnaliser">
+          <lucide-icon [img]="Settings2" [size]="15"></lucide-icon>
+          <span class="dash-customize-label">Personnaliser</span>
+        </button>
+      </div>
+
+      <!-- Pont splash → données (§2.2) : squelette qui copie EXACTEMENT la grille réelle
+           (4 KPI + carte + activité + alertes). Dimensions = dimensions réelles → aucun
+           saut de mise en page à la substitution. Balayage émeraude via .sk (styles.css). -->
+      @if (!loaded()) {
+        <div class="dash-content dash-sk" aria-hidden="true">
+          <div class="metrics-grid">
+            @for (i of skFour; track i) {
+              <div class="metric-card">
+                <app-skeleton w="34px" h="34px" radius="10px" />
+                <div class="metric-content" style="gap:6px">
+                  <app-skeleton w="46px" h="22px" />
+                  <app-skeleton w="72px" h="11px" radius="5px" />
+                </div>
+              </div>
             }
           </div>
+          <div class="quick-actions">
+            @for (i of skFour; track i) {
+              <app-skeleton w="104px" h="36px" radius="11px" />
+            }
+          </div>
+          <div class="dash-2col">
+            <div class="widget widget--map dash-2col-main">
+              <div class="widget-header">
+                <app-skeleton w="150px" h="16px" />
+                <app-skeleton w="42px" h="12px" radius="5px" />
+              </div>
+              <div class="sk" style="flex:1 1 auto;min-height:240px;border-radius:10px"></div>
+            </div>
+            <div class="dash-col">
+              <div class="widget">
+                <div class="widget-header">
+                  <app-skeleton w="130px" h="15px" />
+                  <app-skeleton w="34px" h="12px" radius="5px" />
+                </div>
+                <div class="widget-list">
+                  @for (i of skThree; track i) {
+                    <div class="widget-row">
+                      <app-skeleton [circle]="true" w="8px" h="8px" />
+                      <div class="widget-row-info" style="display:flex;flex-direction:column;gap:5px">
+                        <app-skeleton w="72px" h="13px" />
+                        <app-skeleton w="48px" h="10px" radius="4px" />
+                      </div>
+                      <app-skeleton w="42px" h="16px" />
+                    </div>
+                  }
+                </div>
+              </div>
+              <div class="widget">
+                <div class="widget-header">
+                  <app-skeleton w="130px" h="15px" />
+                  <app-skeleton w="46px" h="12px" radius="5px" />
+                </div>
+                <div class="widget-list">
+                  @for (i of skThree; track i) {
+                    <div class="widget-row">
+                      <app-skeleton w="28px" h="28px" radius="8px" />
+                      <div class="widget-row-info" style="display:flex;flex-direction:column;gap:5px">
+                        <app-skeleton w="120px" h="12px" />
+                        <app-skeleton w="70px" h="10px" radius="4px" />
+                      </div>
+                    </div>
+                  }
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      } @else {
+      <div class="dash-content vt-realin">
 
       <!-- Installations à revoir : boîtier posé < 1 mois qui se déconnecte. -->
       @if (vehiclesToReview().length > 0) {
@@ -73,9 +135,9 @@ interface WidgetMeta {
       <!-- KPIs compactes (2x2 mobile, 4x1 desktop) -->
       @if (isWidgetEnabled('kpis')) {
         <div class="metrics-grid">
-          <a routerLink="/vehicles" class="metric-card metric-card--link green">
-            <div class="metric-icon-wrap green">
-              <lucide-icon [img]="Truck" [size]="16"></lucide-icon>
+          <a routerLink="/vehicles" class="metric-card metric-card--link">
+            <div class="vt-icon-tile">
+              <lucide-icon [img]="Truck" [size]="18"></lucide-icon>
             </div>
             <div class="metric-content">
               <span class="metric-value">{{ stats()?.total ?? '—' }}</span>
@@ -84,9 +146,9 @@ interface WidgetMeta {
             <lucide-icon [img]="ChevronRight" [size]="14" class="metric-arrow"></lucide-icon>
           </a>
 
-          <a routerLink="/map" class="metric-card metric-card--link blue">
-            <div class="metric-icon-wrap blue">
-              <lucide-icon [img]="Navigation" [size]="16"></lucide-icon>
+          <a routerLink="/map" class="metric-card metric-card--link">
+            <div class="vt-icon-tile">
+              <lucide-icon [img]="Navigation" [size]="18"></lucide-icon>
             </div>
             <div class="metric-content">
               <span class="metric-value">{{ stats()?.moving ?? '—' }}</span>
@@ -95,9 +157,9 @@ interface WidgetMeta {
             <lucide-icon [img]="ChevronRight" [size]="14" class="metric-arrow"></lucide-icon>
           </a>
 
-          <a routerLink="/map" class="metric-card metric-card--link amber">
-            <div class="metric-icon-wrap amber">
-              <lucide-icon [img]="Activity" [size]="16"></lucide-icon>
+          <a routerLink="/map" class="metric-card metric-card--link">
+            <div class="vt-icon-tile vt-icon-tile--muted">
+              <lucide-icon [img]="Activity" [size]="18"></lucide-icon>
             </div>
             <div class="metric-content">
               <span class="metric-value">{{ stats()?.idle ?? '—' }}</span>
@@ -106,12 +168,12 @@ interface WidgetMeta {
             <lucide-icon [img]="ChevronRight" [size]="14" class="metric-arrow"></lucide-icon>
           </a>
 
-          <a routerLink="/alerts" class="metric-card metric-card--link red">
-            <div class="metric-icon-wrap red">
-              <lucide-icon [img]="AlertTriangle" [size]="16"></lucide-icon>
+          <a routerLink="/alerts" class="metric-card metric-card--link">
+            <div class="vt-icon-tile vt-icon-tile--danger">
+              <lucide-icon [img]="AlertTriangle" [size]="18"></lucide-icon>
             </div>
             <div class="metric-content">
-              <span class="metric-value">{{ stats()?.criticalAlerts ?? '—' }}</span>
+              <span class="metric-value metric-value--danger">{{ stats()?.criticalAlerts ?? '—' }}</span>
               <span class="metric-label">Alertes critiques</span>
             </div>
             <lucide-icon [img]="ChevronRight" [size]="14" class="metric-arrow"></lucide-icon>
@@ -147,9 +209,12 @@ interface WidgetMeta {
         </div>
       }
 
+      <!-- Aperçu 2 colonnes : carte (gauche) + activité / alertes (droite) -->
+      @if (isWidgetEnabled('map') || isWidgetEnabled('activity') || isWidgetEnabled('alerts')) {
+      <div class="dash-2col">
       <!-- Mini-map widget -->
       @if (isWidgetEnabled('map')) {
-        <a routerLink="/map" class="widget widget--map">
+        <a routerLink="/map" class="widget widget--map dash-2col-main">
           <div class="widget-header">
             <h3 class="widget-title">
               <lucide-icon [img]="MapIcon" [size]="16" class="text-tracky-light"></lucide-icon>
@@ -169,7 +234,7 @@ interface WidgetMeta {
               [speedKmh]="firstVehicleMeta().speedKmh"
               [heading]="firstVehicleMeta().heading"
               [ignition]="firstVehicleMeta().ignition"
-              height="180px" />
+              height="100%" />
             <div class="widget-map-overlay">
               <div class="widget-map-stat">
                 <strong>{{ enrichedPositions().length }}</strong>
@@ -185,6 +250,8 @@ interface WidgetMeta {
         </a>
       }
 
+      @if (isWidgetEnabled('activity') || isWidgetEnabled('alerts')) {
+      <div class="dash-col">
       <!-- Widget : Activité en direct -->
       @if (isWidgetEnabled('activity')) {
         <div class="widget">
@@ -228,7 +295,7 @@ interface WidgetMeta {
         <div class="widget">
           <div class="widget-header">
             <h3 class="widget-title">
-              <lucide-icon [img]="Bell" [size]="16" class="text-amber-400"></lucide-icon>
+              <lucide-icon [img]="Bell" [size]="16" style="color:var(--warning)"></lucide-icon>
               Alertes récentes
             </h3>
             <a routerLink="/alerts" class="widget-action">
@@ -265,37 +332,23 @@ interface WidgetMeta {
           }
         </div>
       }
+      </div>
+      }
+      </div>
+      }
 
-      <!-- Widget : Automatisation horaire -->
+      <!-- Automatisation horaire (bannière) -->
       @if (isWidgetEnabled('schedule')) {
-        <div class="widget widget--schedule">
-          <div class="widget-header">
-            <h3 class="widget-title">
-              <lucide-icon [img]="Clock" [size]="16" class="text-tracky-light"></lucide-icon>
-              Automatisation horaire
-            </h3>
-            <a routerLink="/vehicles" class="widget-action">
-              Configurer
-              <lucide-icon [img]="ChevronRight" [size]="14"></lucide-icon>
-            </a>
+        <div class="dash-banner">
+          <span class="dash-banner-icon"><lucide-icon [img]="Clock" [size]="22"></lucide-icon></span>
+          <div class="dash-banner-text">
+            <h3 class="dash-banner-title">Pilotez les plages horaires de chaque véhicule</h3>
+            <p class="dash-banner-sub">Coupez automatiquement le moteur en dehors des heures de service.</p>
           </div>
-          <div class="widget-schedule-content">
-            <div class="widget-schedule-card">
-              <div class="widget-schedule-icon">
-                <lucide-icon [img]="Shield" [size]="18"></lucide-icon>
-              </div>
-              <div class="widget-schedule-info">
-                <p class="widget-schedule-title">Pilotez les plages horaires de chaque véhicule</p>
-                <p class="widget-schedule-sub">Coupez automatiquement le moteur en dehors des heures de service</p>
-              </div>
-            </div>
-            <div class="widget-schedule-presets">
-              <a routerLink="/vehicles" class="widget-schedule-preset">
-                <lucide-icon [img]="Truck" [size]="14"></lucide-icon>
-                <span>{{ stats()?.total ?? 0 }} véhicule{{ (stats()?.total ?? 0) > 1 ? 's' : '' }} à configurer</span>
-              </a>
-            </div>
-          </div>
+          <a routerLink="/vehicles" class="dash-banner-btn">
+            Configurer
+            <lucide-icon [img]="ArrowRight" [size]="15"></lucide-icon>
+          </a>
         </div>
       }
 
@@ -307,6 +360,8 @@ interface WidgetMeta {
             Personnaliser le tableau de bord
           </button>
         </div>
+      }
+      </div>
       }
     </div>
 
@@ -351,6 +406,8 @@ interface WidgetMeta {
   `,
   styles: [`
     .dash-page { position: relative; overflow: hidden }
+    /* Conteneur commun squelette / contenu réel — au-dessus du fond (grille + glow). */
+    .dash-content { position: relative; z-index: 1 }
 
     /* Grid background */
     .dash-grid-bg {
@@ -369,7 +426,8 @@ interface WidgetMeta {
 
     /* Header */
     .dash-header { position: relative; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 18px }
-    .dash-title { font-size: 22px; font-weight: 800; color: var(--fg-primary); letter-spacing: -.02em }
+    .dash-title { font-size: 22px; font-weight: 800; color: var(--fg-primary); letter-spacing: -.03em; margin-top: 8px; line-height: 1.1 }
+    .dash-header-text { min-width: 0 }
     .dash-sub { font-size: 12px; color: var(--fg-tertiary); margin-top: 2px }
     .dash-header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end }
     .dash-customize-btn {
@@ -395,68 +453,84 @@ interface WidgetMeta {
     .dash-review-banner {
       position: relative; z-index: 1; display: flex; align-items: center; gap: 10px;
       margin-bottom: 16px; padding: 11px 14px; border-radius: 12px; text-decoration: none;
-      background: rgba(239,68,68,.09); border: 1px solid rgba(239,68,68,.32); color: #ef4444;
+      background: color-mix(in srgb, var(--danger) 10%, transparent); border: 1px solid color-mix(in srgb, var(--danger) 32%, transparent); color: var(--danger);
       transition: border-color .15s;
     }
-    .dash-review-banner:hover { border-color: rgba(239,68,68,.55) }
+    .dash-review-banner:hover { border-color: color-mix(in srgb, var(--danger) 55%, transparent) }
     .dash-review-text { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0 }
     .dash-review-text strong { font-size: 13px; font-weight: 800 }
     .dash-review-text span { font-size: 11px; color: var(--fg-tertiary); font-weight: 500 }
     .dash-review-arrow { color: var(--fg-tertiary); flex-shrink: 0 }
     .metric-card {
-      position: relative; display: flex; align-items: center; gap: 10px;
-      padding: 12px; border-radius: 14px;
+      position: relative; display: flex; align-items: center; gap: 12px;
+      padding: 14px 16px; border-radius: 16px;
       background: var(--bg-secondary); border: 1px solid var(--border-subtle);
-      overflow: hidden; transition: all .25s var(--ease-tracky, ease);
+      transition: transform .2s var(--ease-tracky, ease), border-color .2s;
       text-decoration: none; color: inherit;
     }
     .metric-card:hover, .metric-card:active {
-      border-color: var(--border-strong); transform: translateY(-1px);
-      box-shadow: var(--shadow-tracky-glow);
+      border-color: var(--tracky-light); transform: translateY(-3px);
     }
-    .metric-card::before {
-      content: ''; position: absolute; top: 0; right: 0; width: 60px; height: 60px;
-      border-radius: 0 0 0 60px; opacity: .06; pointer-events: none;
-    }
-    .metric-card.green::before { background: var(--tracky-light) }
-    .metric-card.blue::before { background: #3b82f6 }
-    .metric-card.amber::before { background: #f59e0b }
-    .metric-card.red::before { background: #ef4444 }
-
-    .metric-icon-wrap { width: 32px; height: 32px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0 }
-    .metric-icon-wrap.green { background: rgba(16,224,160,.12); color: var(--tracky-light) }
-    .metric-icon-wrap.blue { background: rgba(59,130,246,.12); color: #3b82f6 }
-    .metric-icon-wrap.amber { background: rgba(245,158,11,.12); color: #f59e0b }
-    .metric-icon-wrap.red { background: rgba(239,68,68,.12); color: #ef4444 }
 
     .metric-content { display: flex; flex-direction: column; min-width: 0; flex: 1 }
-    .metric-value { font-size: 22px; font-weight: 800; color: var(--fg-primary); font-family: var(--font-display, Poppins, sans-serif); letter-spacing: -.02em; line-height: 1 }
+    .metric-value { font-size: 24px; font-weight: 800; color: var(--fg-primary); font-family: var(--font-display); letter-spacing: -.02em; line-height: 1 }
+    .metric-value--danger { color: var(--danger) }
     /* Label complet sans tronquer : on autorise le wrap sur 2 lignes */
     .metric-label { font-size: 11px; font-weight: 500; color: var(--fg-tertiary); margin-top: 3px; line-height: 1.2 }
-    .metric-arrow { color: var(--fg-tertiary); flex-shrink: 0; opacity: .5 }
-    .metric-card--link:active .metric-arrow { opacity: 1; transform: translateX(2px) }
+    .metric-arrow { color: var(--fg-tertiary); flex-shrink: 0; opacity: 0; transition: opacity .2s, transform .2s }
+    .metric-card:hover .metric-arrow, .metric-card--link:active .metric-arrow { opacity: 1; transform: translateX(2px) }
 
-    /* Quick actions chips */
-    .quick-actions { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 18px }
+    /* Quick actions : chips horizontales (réf. maquette) */
+    .quick-actions { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 9px; margin-bottom: 22px }
     .quick-chip {
-      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px;
-      padding: 12px 6px; border-radius: 12px;
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 9px 14px; border-radius: 11px;
       background: var(--bg-secondary); border: 1px solid var(--border-subtle);
-      color: var(--fg-secondary); text-decoration: none; font-size: 11px; font-weight: 600;
-      transition: all .2s; min-height: 64px;
+      color: var(--fg-secondary); text-decoration: none; font-size: 13px; font-weight: 600;
+      transition: border-color .18s, color .18s;
     }
-    .quick-chip:hover, .quick-chip:active { border-color: var(--border-strong); color: var(--tracky-light); transform: translateY(-1px) }
+    .quick-chip:hover, .quick-chip:active { border-color: var(--tracky-light); color: var(--fg-primary) }
     .quick-chip lucide-icon { color: var(--tracky-light) }
+
+    /* Aperçu 2 colonnes : carte (gauche) + colonne activité/alertes (droite).
+       Flex -> se réagence gracieusement si un widget est désactivé. */
+    .dash-2col { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 16px; margin-bottom: 16px }
+    .dash-2col-main { flex: 1.35 1 0; min-width: 0; margin-bottom: 0 }
+    .dash-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 16px }
+    .dash-col .widget { margin-bottom: 0 }
+
+    /* Bannière « Automatisation horaire » (réf. maquette) */
+    .dash-banner {
+      position: relative; z-index: 1; display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+      padding: 18px 20px; border-radius: 18px;
+      background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+    }
+    .dash-banner-icon {
+      display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+      width: 46px; height: 46px; border-radius: 13px;
+      background: color-mix(in srgb, var(--tracky-light) 12%, transparent); color: var(--tracky-light);
+    }
+    .dash-banner-text { flex: 1; min-width: 200px }
+    .dash-banner-title { font-size: 15px; font-weight: 700; color: var(--fg-primary); line-height: 1.3 }
+    .dash-banner-sub { font-size: 13px; color: var(--fg-secondary); margin-top: 4px; line-height: 1.4 }
+    .dash-banner-btn {
+      display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0;
+      padding: 11px 18px; border-radius: 11px;
+      background: var(--tracky-light); color: var(--accent-ink);
+      font-size: 13px; font-weight: 700; text-decoration: none; cursor: pointer;
+      box-shadow: var(--shadow-tracky-glow); transition: filter .15s;
+    }
+    .dash-banner-btn:hover { filter: brightness(1.05) }
 
     /* Widget générique */
     .widget {
       position: relative; z-index: 1;
       background: var(--bg-secondary); border: 1px solid var(--border-subtle);
-      border-radius: 14px; padding: 14px; margin-bottom: 12px;
+      border-radius: 18px; padding: 16px; margin-bottom: 12px;
       text-decoration: none; color: inherit; display: block;
       transition: border-color .2s;
     }
-    .widget:hover { border-color: var(--border-strong) }
+    .widget:hover { border-color: var(--tracky-light) }
     /* Désactive le tooltip/preview natif du lien (long-press iOS, hover desktop)
        sur les widgets entiers — l'utilisateur clique pour naviguer, sans preview parasite. */
     a.widget,
@@ -482,8 +556,12 @@ interface WidgetMeta {
     .widget-empty--map { padding: 40px 0 }
 
     /* Widget map */
-    .widget--map { padding: 14px; position: relative }
-    .widget--map app-mini-map { display: block; border-radius: 10px; overflow: hidden }
+    .widget--map { padding: 14px; position: relative; display: flex; flex-direction: column }
+    /* La mini-carte remplit la hauteur du widget (qui s'étire pour matcher la
+       colonne activité/alertes en 2-col) — fini le grand vide sous une carte fixe.
+       Le composant mini-map resize MapLibre via ResizeObserver. */
+    .widget--map app-mini-map { display: block; border-radius: 10px; overflow: hidden; flex: 1 1 auto; min-height: 220px }
+    .widget--map app-mini-map > div { height: 100% }
     .widget-map-overlay { position: absolute; bottom: 22px; left: 22px; z-index: 2; pointer-events: none }
     .widget-map-stat {
       display: inline-flex; align-items: baseline; gap: 4px;
@@ -508,9 +586,9 @@ interface WidgetMeta {
     .widget-row-title { font-size: 13px; font-weight: 700; color: var(--fg-primary); font-family: var(--font-mono, monospace) }
     .widget-row-title--small { font-size: 12px; font-family: var(--font-sans, sans-serif); font-weight: 600 }
     .widget-row-sub { font-size: 10px; color: var(--fg-tertiary); margin-top: 1px }
-    .widget-row-speed { font-size: 16px; font-weight: 800; font-family: var(--font-display, Poppins, sans-serif); letter-spacing: -.02em }
-    .widget-row-speed.fast { color: #ef4444 }
-    .widget-row-speed.medium { color: #f59e0b }
+    .widget-row-speed { font-size: 16px; font-weight: 800; font-family: var(--font-display); letter-spacing: -.02em }
+    .widget-row-speed.fast { color: var(--danger) }
+    .widget-row-speed.medium { color: var(--warning) }
     .widget-row-speed.slow { color: var(--tracky-light) }
     .widget-row-speed.stopped { color: var(--fg-tertiary) }
     .speed-unit { font-size: 9px; font-weight: 500; opacity: .65; margin-left: 2px }
@@ -518,9 +596,9 @@ interface WidgetMeta {
 
     /* Alert severity */
     .widget-row--alert .widget-alert-severity { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0 }
-    .widget-alert-severity.crit { background: rgba(239,68,68,.12); color: #ef4444 }
-    .widget-alert-severity.warn { background: rgba(245,158,11,.12); color: #f59e0b }
-    .widget-alert-severity.info { background: rgba(59,130,246,.12); color: #3b82f6 }
+    .widget-alert-severity.crit { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger) }
+    .widget-alert-severity.warn { background: color-mix(in srgb, var(--warning) 14%, transparent); color: var(--warning) }
+    .widget-alert-severity.info { background: var(--bg-tertiary); color: var(--fg-secondary) }
 
     /* Widget Schedule */
     .widget-schedule-content { display: flex; flex-direction: column; gap: 12px }
@@ -560,7 +638,7 @@ interface WidgetMeta {
     }
     .dash-empty-btn {
       padding: 8px 16px; border-radius: 9999px;
-      background: var(--tracky); color: white;
+      background: var(--tracky-light); color: var(--accent-ink);
       border: 0; font-size: 12px; font-weight: 700; cursor: pointer;
     }
 
@@ -607,7 +685,7 @@ interface WidgetMeta {
       background: var(--bg-secondary); border: 1px solid var(--border-subtle);
       cursor: pointer; transition: background .2s;
     }
-    .dash-customizer-toggle--on { background: var(--tracky); border-color: var(--tracky) }
+    .dash-customizer-toggle--on { background: var(--tracky-light); border-color: var(--tracky-light) }
     .dash-customizer-toggle-knob {
       position: absolute; top: 2px; left: 2px;
       width: 16px; height: 16px; border-radius: 50%;
@@ -620,10 +698,10 @@ interface WidgetMeta {
     .dash-customizer-done {
       display: inline-flex; align-items: center; gap: 6px;
       padding: 9px 16px; border-radius: 10px;
-      background: var(--tracky); color: white; border: 0;
-      font-size: 12px; font-weight: 700; cursor: pointer;
+      background: var(--tracky-light); color: var(--accent-ink); border: 0;
+      font-size: 12px; font-weight: 700; cursor: pointer; transition: filter .15s;
     }
-    .dash-customizer-done:hover { background: var(--tracky-dark) }
+    .dash-customizer-done:hover { filter: brightness(1.05) }
 
     /* Desktop */
     @media (min-width: 1024px) {
@@ -632,8 +710,8 @@ interface WidgetMeta {
       .metric-icon-wrap { width: 36px; height: 36px }
       .metric-value { font-size: 26px }
       .metric-label { font-size: 12px }
-      .quick-actions { grid-template-columns: repeat(4, 1fr); gap: 12px; max-width: 600px }
-      .dash-title { font-size: 26px }
+      .dash-2col { flex-direction: row }
+      .dash-title { font-size: 28px }
       .dash-sub { font-size: 13px }
       .dash-customizer { right: auto; left: 50%; transform: translateX(-50%); bottom: auto; top: 100px; width: 480px }
     }
@@ -672,8 +750,19 @@ export class DashboardComponent implements OnInit {
   protected readonly Settings2 = Settings2;
   protected readonly X = X;
   protected readonly Check = Check;
+  protected readonly ArrowRight = ArrowRight;
 
   protected readonly customizerOpen = signal(false);
+
+  /**
+   * Chargement initial (§2). `stats` (toSignal sans initialValue) reste `undefined`
+   * jusqu'à la première réponse — même vide ou en erreur (catchError → null). Avant :
+   * squelette copiant la grille. Après : contenu réel qui se substitue en cascade.
+   */
+  protected readonly loaded = computed(() => this.stats() !== undefined);
+  /** Itérateurs statiques pour les blocs squelette (évite de recréer les tableaux à chaque CD). */
+  protected readonly skFour = [0, 1, 2, 3];
+  protected readonly skThree = [0, 1, 2];
 
   protected readonly widgetMeta: WidgetMeta[] = [
     { key: 'kpis', label: 'KPIs', description: 'Compteurs Véhicules / En mouvement / Arrêt / Alertes' },

@@ -41,3 +41,7 @@ __screenshots__/
 # System files
 .DS_Store
 Thumbs.db
+
+# Page de connexion de l'instance de test LOCALE (porte un token admin —
+# ne JAMAIS versionner ; à supprimer en fin de tests).
+/public/dev-login.html

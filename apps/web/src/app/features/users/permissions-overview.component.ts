@@ -9,6 +9,7 @@ import {
 import { firstValueFrom } from 'rxjs';
 import type { UserPermissions } from '@vizyo/tracky-shared';
 import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
+import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
 
 interface AccessEntry {
   id: string;
@@ -74,16 +75,17 @@ const PERM_GROUPS = [
 @Component({
   selector: 'app-permissions-overview',
   standalone: true,
-  imports: [RouterLink, FormsModule, LucideAngularModule],
+  imports: [RouterLink, FormsModule, LucideAngularModule, SpinnerComponent],
   template: `
     <div class="po-page">
       <header class="po-header">
         <a routerLink="/users" class="po-back">
-          <lucide-icon [img]="ArrowLeft" [size]="14"></lucide-icon>
+          <lucide-icon [img]="ArrowLeft" [size]="13"></lucide-icon>
           Utilisateurs
         </a>
-        <h1>Vue d'ensemble</h1>
-        <p class="po-sub">Permissions, groupes et acces de chaque utilisateur.</p>
+        <span class="vt-eyebrow">Pilotage des accès</span>
+        <h1>Vue d'ensemble.</h1>
+        <p class="po-sub">Permissions, groupes et accès de chaque utilisateur.</p>
       </header>
 
       <!-- Search -->
@@ -93,7 +95,7 @@ const PERM_GROUPS = [
       </div>
 
       @if (loading()) {
-        <div class="po-loading"><span class="po-spinner"></span></div>
+        <div class="po-loading"><app-spinner [size]="24" /></div>
       } @else {
         <!-- Groups summary -->
         <section class="po-section">
@@ -211,13 +213,11 @@ const PERM_GROUPS = [
   styles: [`
     .po-page { max-width: 1000px }
     .po-header { margin-bottom: 20px }
-    .po-header h1 { font-size: 22px; font-weight: 700; color: var(--fg-primary); margin: 4px 0 0 }
-    .po-sub { font-size: 12px; color: var(--fg-tertiary); margin: 2px 0 0 }
+    .po-header h1 { font-family: var(--font-display, inherit); font-size: 1.72rem; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; color: var(--fg-primary); margin: 8px 0 0 }
+    .po-sub { font-size: 14px; color: var(--fg-tertiary); margin: 8px 0 0 }
     .po-back { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--fg-tertiary); text-decoration: none }
     .po-back:hover { color: var(--fg-secondary) }
     .po-loading { display: flex; justify-content: center; padding: 40px }
-    .po-spinner { width: 24px; height: 24px; border: 2px solid var(--fg-tertiary); border-top-color: var(--tracky-light); border-radius: 50%; animation: spin .6s linear infinite }
-    @keyframes spin { to { transform: rotate(360deg) } }
 
     .po-search {
       display: flex; align-items: center; gap: 8px;
@@ -275,7 +275,7 @@ const PERM_GROUPS = [
       font-size: 11px; font-weight: 700; color: white;
     }
     .po-user-avatar.admin { background: var(--tracky) }
-    .po-user-avatar.manager { background: #3b82f6 }
+    .po-user-avatar.manager { background: #64748b }
     .po-user-avatar.viewer { background: #6b7280 }
     .po-user-info { flex: 1; min-width: 0 }
     .po-user-name { display: block; font-size: 13px; font-weight: 600; color: var(--fg-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
@@ -285,7 +285,7 @@ const PERM_GROUPS = [
       text-transform: uppercase; letter-spacing: .04em; flex-shrink: 0;
     }
     .po-role-badge.admin { background: rgba(16,224,160,.12); color: var(--tracky-light) }
-    .po-role-badge.manager { background: rgba(59,130,246,.12); color: #3b82f6 }
+    .po-role-badge.manager { background: var(--bg-tertiary); color: var(--fg-secondary) }
     .po-role-badge.viewer { background: rgba(107,114,128,.12); color: #9ca3af }
     .po-chevron { color: var(--fg-tertiary); flex-shrink: 0 }
 
@@ -294,7 +294,7 @@ const PERM_GROUPS = [
       padding: 2px 7px; border-radius: 6px; font-size: 10px; font-weight: 600;
     }
     .po-scope-pill.all { background: rgba(16,224,160,.1); color: var(--tracky-light) }
-    .po-scope-pill.group { background: rgba(59,130,246,.1); color: #3b82f6 }
+    .po-scope-pill.group { background: var(--bg-tertiary); color: var(--fg-secondary) }
     .po-scope-pill.vehicle { background: rgba(245,158,11,.1); color: #f59e0b }
     .po-scope-pill.none { background: rgba(239,68,68,.08); color: #f87171 }
 
@@ -318,7 +318,7 @@ const PERM_GROUPS = [
       padding: 2px 6px; border-radius: 5px; font-size: 10px; font-weight: 500;
     }
     .po-perm-item.on { background: rgba(16,224,160,.1); color: var(--tracky-light) }
-    .po-perm-item.off { background: rgba(239,68,68,.06); color: var(--fg-tertiary) }
+    .po-perm-item.off { background: var(--bg-tertiary); color: var(--fg-tertiary) }
 
     /* Mobile */
     @media (max-width: 640px) {

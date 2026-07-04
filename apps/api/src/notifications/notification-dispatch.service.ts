@@ -230,18 +230,19 @@ export class NotificationDispatchService {
       return;
     }
     if (channel === 'EMAIL') {
-      const html = `<div style="font-family:-apple-system,Segoe UI,sans-serif;color:#1f2937;">
-<h2 style="color:${isEscalation ? '#dc2626' : '#10E0A0'};">${prefix}${escapeHtml(alert.title)}</h2>
-<p style="color:#374151;">${escapeHtml(alert.message ?? '')}</p>
-<table style="border-collapse:collapse;margin-top:12px;">
-  <tr><td style="padding:4px 8px;color:#6b7280;">Vehicule</td><td style="padding:4px 8px;">${escapeHtml(plate || 'N/A')}</td></tr>
-  <tr><td style="padding:4px 8px;color:#6b7280;">Severite</td><td style="padding:4px 8px;">${alert.severity}</td></tr>
-  <tr><td style="padding:4px 8px;color:#6b7280;">Type</td><td style="padding:4px 8px;font-family:monospace;">${alert.type}</td></tr>
-  <tr><td style="padding:4px 8px;color:#6b7280;">Cree le</td><td style="padding:4px 8px;">${alert.createdAt.toLocaleString('fr-FR')}</td></tr>
-</table>
-<p style="margin-top:18px;"><a href="${escapeHtml(process.env.APP_BASE_URL ?? 'http://localhost:4200')}/alerts" style="background:#10E0A0;color:#0b0f12;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:600;">Acquitter l'alerte</a></p>
-</div>`;
-      await this.email.send({ to: user.email, subject, html, text: bodyText });
+      // Charte 2026 : HTML délégué à EmailService.buildAlertEmail (shell commun).
+      // subject/bodyText inchangés (tests + escalade en dépendent).
+      const html = this.email.buildAlertEmail(
+        {
+          title: alert.title,
+          message: alert.message ?? null,
+          plate,
+          severity: alert.severity as string,
+          createdAt: alert.createdAt,
+        },
+        { isEscalation },
+      );
+      await this.email.send({ to: user.email, subject, html, text: bodyText, template: 'alert', fleetId: alert.fleetId });
       return;
     }
     if (channel === 'WHATSAPP' && user.phone) {
@@ -310,10 +311,4 @@ export class NotificationDispatchService {
     });
     return recent !== null;
   }
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (m) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;',
-  }[m]!));
 }

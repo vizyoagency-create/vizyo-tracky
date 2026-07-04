@@ -538,6 +538,7 @@ export class AudioMonitoringService {
       subject: template.subject,
       html: template.html,
       text: template.text,
+      template: 'audio_info',
       context: { feature: 'audio-info', userId: user.id, requestedByUserId: actor.userId },
     });
 
@@ -613,6 +614,7 @@ export class AudioMonitoringService {
             subject: template.subject,
             html: template.html,
             text: template.text,
+            template: 'audio_activation',
             context: { feature: 'audio-monitoring-activation', fleetId, requestedByUserId: actorUserId },
           }),
         ),

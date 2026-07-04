@@ -17,6 +17,7 @@ import { validateEnv } from './config/env.validation';
 import { DriversModule } from './drivers/drivers.module';
 import { EngineControlModule } from './engine-control/engine-control.module';
 import { FleetsModule } from './fleets/fleets.module';
+import { GeocodeModule } from './geocode/geocode.module';
 import { GeofencesModule } from './geofences/geofences.module';
 import { InstallationsModule } from './installations/installations.module';
 import { InternalModule } from './internal/internal.module';
@@ -34,6 +35,7 @@ import { ObservabilityModule } from './observability/observability.module';
 import { BackupHealthModule } from './backup-health/backup-health.module';
 import { CacheModule } from './common/cache/cache.module';
 import { EmailModule } from './email/email.module';
+import { EmailAdminModule } from './email/email-admin.module';
 import { InvitationsModule } from './invitations/invitations.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PermissionsModule } from './permissions/permissions.module';
@@ -96,6 +98,7 @@ import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.modul
     EngineControlModule,
     FleetsModule,
     GeofencesModule,
+    GeocodeModule,
     TripsModule,
     VehiclesModule,
     TrackersModule,
@@ -105,6 +108,7 @@ import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.modul
     SmsModule,
     BackupHealthModule,
     EmailModule,
+    EmailAdminModule,
     InvitationsModule,
     NotificationsModule,
     ReportsModule,

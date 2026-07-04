@@ -313,8 +313,8 @@ const RESYNC_RADIUS_M = 150;
             (click)="centerOnUser()"
             class="px-2 py-1.5 text-xs rounded-lg bg-bg-tertiary/60 border border-border-subtle
                    text-fg-secondary hover:text-fg-primary cursor-pointer"
-            [class.text-blue-400]="userPosition()"
-            [class.border-blue-500/30]="userPosition()"
+            [class.text-tracky-light]="userPosition()"
+            [class.border-tracky/30]="userPosition()"
             title="Ma position">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="4"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M2 12h4"/><path d="M18 12h4"/>
@@ -336,7 +336,7 @@ const RESYNC_RADIUS_M = 150;
             trackClick="carte-mesure"
             [class]="'flex-1 text-[10px] font-medium py-1.5 rounded-lg cursor-pointer transition-colors ' +
                      (measureMode()
-                       ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                       ? 'bg-tracky/20 text-tracky-light border border-tracky/40'
                        : 'bg-bg-tertiary/60 text-fg-secondary border border-border-subtle hover:text-fg-primary')"
             title="Mesurer une distance">
             Mesurer
@@ -359,15 +359,15 @@ const RESYNC_RADIUS_M = 150;
           </button>
         </div>
         @if (measureMode()) {
-          <div class="mt-2 px-2 py-1 rounded bg-purple-500/10 border border-purple-500/30
-                      text-[10px] text-purple-300 flex items-center justify-between">
+          <div class="mt-2 px-2 py-1 rounded bg-tracky/10 border border-tracky/30
+                      text-[10px] text-tracky-light flex items-center justify-between">
             <span>{{ measurePoints().length }} pts · {{ measureTotalKm() | number:'1.2-2' }} km</span>
             <button (click)="clearMeasure()" class="text-[10px] underline cursor-pointer">Effacer</button>
           </div>
         }
         @if (miniReplayVehicleId()) {
-          <div class="mt-2 px-2 py-1 rounded bg-blue-500/10 border border-blue-500/30
-                      text-[10px] text-blue-300 flex items-center justify-between">
+          <div class="mt-2 px-2 py-1 rounded bg-tracky/10 border border-tracky/30
+                      text-[10px] text-tracky-light flex items-center justify-between">
             <span>Replay 1h actif</span>
             <button (click)="toggleMiniReplay(miniReplayVehicleId()!)" class="text-[10px] underline cursor-pointer">Fermer</button>
           </div>
@@ -1779,7 +1779,7 @@ const RESYNC_RADIUS_M = 150;
       min-width: 0;
     }
     .bn-vcard-plate {
-      font-family: 'Poppins', sans-serif;
+      font-family: var(--font-display);
       font-weight: 700;
       font-size: 17px;
       color: #111;
@@ -1818,7 +1818,7 @@ const RESYNC_RADIUS_M = 150;
       box-shadow: 0 0 0 2px rgba(16, 224, 160, 0.3);
     }
     .bn-vcard-speed-badge {
-      font-family: 'Poppins', sans-serif;
+      font-family: var(--font-display);
       font-size: 13px;
       font-weight: 700;
       letter-spacing: -0.01em;

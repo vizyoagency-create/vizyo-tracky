@@ -1,80 +1,121 @@
-import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, HostListener, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { LucideAngularModule, Plus, Archive, Users, Shield, Pencil, KeyRound, Send, XCircle, Mail, UserRound, UserCog } from 'lucide-angular';
+import { LucideAngularModule, Archive, Users, Shield, Pencil, KeyRound, Send, XCircle, Mail, UserPlus, MoreVertical, Check, Truck, Bell, Power, BarChart3, CalendarClock, CreditCard } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
+import { getDefaultPermissions, type UserPermissions } from '@vizyo/tracky-shared';
 import { AudioMonitoringService } from '../../core/services/audio-monitoring.service';
 import { AuthService } from '../../core/services/auth.service';
 import { FleetsApiService, type FleetSummary } from '../../core/services/fleets.service';
 import { PermissionsService } from '../../core/services/permissions.service';
-import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
+import { VehiclesApiService } from '../../core/services/vehicles.service';
 import { VehicleGroupsService } from '../../core/services/vehicle-groups.service';
-import { UserAccessService } from '../../core/services/user-access.service';
 import { UsersApiService, type TrackyUser, type PendingInvitation } from '../../core/services/users.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
 import { UserDrawerComponent, type UserDrawerData, type UserDrawerResult } from './user-drawer.component';
 import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerResult } from './vehicle-access-drawer.component';
+import { AccessPermissionsMatrixComponent, type MatrixDrawerData } from './access-permissions-matrix.component';
 import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fleet-badge.component';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { DriversListComponent } from '../drivers/drivers-list.component';
+
+type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN';
+interface MatrixRow {
+  key: keyof UserPermissions;
+  label: string;
+  icon: typeof Truck;
+  danger?: boolean;
+  /** Rôles pour qui la capacité est OFF par défaut mais couramment accordée par utilisateur (état ◐). */
+  partial?: AppRole[];
+}
 
 @Component({
   selector: 'app-users-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, RouterLink, LucideAngularModule, ConfirmModalComponent, UserDrawerComponent, VehicleAccessDrawerComponent, SaFleetBadgeComponent, DriversListComponent],
+  imports: [FormsModule, RouterLink, LucideAngularModule, ConfirmModalComponent, UserDrawerComponent, VehicleAccessDrawerComponent, AccessPermissionsMatrixComponent, SaFleetBadgeComponent, DriversListComponent],
   template: `
     <div class="upage">
-      <div class="u-blobs"></div>
-      <div class="u-blob-c"></div>
-
       <!-- Header -->
       <div class="u-header">
-        <div>
-          <h1 class="u-title">Utilisateurs</h1>
+        <div class="u-head-titles">
+          <span class="vt-eyebrow">Pilotage</span>
+          <h1 class="u-title">Utilisateurs &amp; rôles</h1>
           <p class="u-sub">
             @if (activeTab() === 'accounts') {
-              {{ visibleTotalCount() }} membre(s){{ includeArchived() ? ' (archives inclus)' : ' dans votre flotte' }}
+              {{ visibleTotalCount() }} membre(s){{ includeArchived() ? ' · archives inclus' : ' dans votre flotte' }}
+            } @else if (activeTab() === 'roles') {
+              Capacités par défaut de chaque rôle applicatif
             } @else {
-              Comptes d'accès à l'application &amp; conducteurs des véhicules
+              Personnes qui conduisent les véhicules
             }
           </p>
         </div>
-        @if (activeTab() === 'accounts') {
+        @if (activeTab() === 'accounts' && perms.can('users_manage')) {
           <div class="u-header-actions">
-            <a routerLink="/users/overview" class="u-overview-btn" title="Vue d'ensemble permissions">
-              <lucide-icon [img]="ShieldIcon" [size]="15"></lucide-icon>
-              <span class="u-overview-label">Vue d'ensemble</span>
-            </a>
-            @if (perms.can('users_manage')) {
-              <label class="u-toggle-archived">
-                <input type="checkbox" [checked]="includeArchived()" (change)="toggleArchived()" />
-                <span>Archives</span>
-              </label>
-              <button (click)="openCreateDrawer()" class="btn-primary">
-                <lucide-icon [img]="Plus" [size]="15"></lucide-icon> Inviter
-              </button>
-            }
+            <label class="u-toggle-archived">
+              <input type="checkbox" [checked]="includeArchived()" (change)="toggleArchived()" />
+              <span>Archives</span>
+            </label>
+            <button (click)="openCreateDrawer()" class="btn-primary u-invite-btn">
+              <lucide-icon [img]="UserPlusIcon" [size]="16"></lucide-icon> Inviter un utilisateur
+            </button>
           </div>
         }
       </div>
 
-      <!-- Consolidation IA : onglets Comptes (accès app) / Conducteurs (personnes). -->
-      @if (perms.can('drivers_view')) {
-        <div class="u-tabs">
-          <button class="u-tab" data-track="Onglet Comptes" [class.active]="activeTab() === 'accounts'" (click)="selectTab('accounts')">
-            <lucide-icon [img]="UserCogIcon" [size]="14"></lucide-icon> Comptes
-          </button>
-          <button class="u-tab" data-track="Onglet Conducteurs" [class.active]="activeTab() === 'drivers'" (click)="selectTab('drivers')">
-            <lucide-icon [img]="UserRoundIcon" [size]="14"></lucide-icon> Conducteurs
-          </button>
-        </div>
-      }
+      <!-- Onglets : Utilisateurs / Rôles & permissions / Conducteurs -->
+      <div class="u-tabs">
+        <button class="u-tab" data-track="Onglet Utilisateurs" [class.active]="activeTab() === 'accounts'" (click)="selectTab('accounts')">Utilisateurs</button>
+        <button class="u-tab" data-track="Onglet Rôles" [class.active]="activeTab() === 'roles'" (click)="selectTab('roles')">Rôles &amp; permissions</button>
+        @if (perms.can('drivers_view')) {
+          <button class="u-tab" data-track="Onglet Conducteurs" [class.active]="activeTab() === 'drivers'" (click)="selectTab('drivers')">Conducteurs</button>
+        }
+      </div>
 
       @if (activeTab() === 'drivers') {
         <app-drivers-list [embedded]="true" />
+      } @else if (activeTab() === 'roles') {
+        <!-- ══ Matrice de permissions (référence rôles, pilotée par les defaults réels) ══ -->
+        <div class="vt-card m-card">
+          <div class="m-head">
+            <div>
+              <h3 class="m-title">Matrice de permissions</h3>
+              <p class="m-desc">Ce que chaque rôle peut faire par défaut. Les accès fins (par groupe / véhicule) se règlent utilisateur par utilisateur.</p>
+            </div>
+            <a routerLink="/users/overview" class="m-detail-link">Détail par utilisateur →</a>
+          </div>
+          <div class="m-grid m-grid-head">
+            <span></span>
+            @for (r of roleCols; track r.role) {
+              <span class="m-col-h">{{ r.short }}</span>
+            }
+          </div>
+          @for (row of matrixRows; track row.key) {
+            <div class="m-grid">
+              <span class="m-cap">
+                <lucide-icon [img]="row.icon" [size]="15" [class.m-cap-danger]="row.danger" class="m-cap-ico"></lucide-icon>
+                {{ row.label }}
+              </span>
+              @for (r of roleCols; track r.role) {
+                <span class="m-cell">
+                  @switch (capState(row, r.role)) {
+                    @case ('full') { <span class="chk"><lucide-icon [img]="CheckIcon" [size]="13"></lucide-icon></span> }
+                    @case ('partial') { <span class="chk-part" title="Accordable par utilisateur">◐</span> }
+                    @default { <span class="chk-none">–</span> }
+                  }
+                </span>
+              }
+            </div>
+          }
+          <div class="m-legend">
+            <span><span class="chk chk-sm"><lucide-icon [img]="CheckIcon" [size]="11"></lucide-icon></span> Par défaut</span>
+            <span><span class="chk-part chk-sm">◐</span> Accordable par utilisateur</span>
+            <span><span class="chk-none chk-sm">–</span> Non disponible</span>
+          </div>
+        </div>
       } @else if (loading()) {
         <div class="u-loading"><span class="w-6 h-6 border-2 border-fg-tertiary border-t-tracky-light rounded-full animate-spin"></span></div>
       } @else if (visibleUsers().length === 0 && visiblePendingInvitations().length === 0) {
@@ -86,126 +127,97 @@ import { DriversListComponent } from '../drivers/drivers-list.component';
           }
         </div>
       } @else {
-        <div class="u-grid">
-          <!-- Active users -->
+        <!-- ══ Table utilisateurs (réf. maquette Utilisateurs.dc.html) ══ -->
+        <div class="vt-card u-table">
+          <div class="u-thead">
+            <span class="u-th">Utilisateur</span>
+            <span class="u-th">Rôle</span>
+            <span class="u-th u-col-scope">Périmètre</span>
+            <span class="u-th u-col-last">Membre depuis</span>
+            <span></span>
+          </div>
+
+          <!-- Comptes actifs / archivés -->
           @for (u of visibleUsers(); track u.id) {
-            <div class="u-card" [class.admin]="u.role === 'FLEET_ADMIN'" [class.archived]="!u.isActive">
-              <div class="u-card-glow" [class]="u.role === 'FLEET_ADMIN' ? 'green' : u.role === 'FLEET_MANAGER' ? 'blue' : 'gray'"></div>
-
-              <!-- Top: avatar + info -->
-              <div class="u-card-top">
-                <div class="u-avatar" [class]="u.role === 'FLEET_ADMIN' ? 'admin' : u.role === 'FLEET_MANAGER' ? 'manager' : 'viewer'">
-                  {{ userInitials(u) }}
-                </div>
-                <div class="u-info">
-                  <p class="u-name">{{ u.firstName ?? '' }} {{ u.lastName ?? '' }}{{ !u.firstName && !u.lastName ? u.email.split('&#64;')[0] : '' }}</p>
-                  <p class="u-email">{{ u.email }}</p>
-                </div>
-                <div class="u-status" [class]="u.isActive ? 'active' : 'suspended'">
-                  {{ u.isActive ? 'Actif' : 'Suspendu' }}
+            <div class="u-row" [class.u-row-archived]="!u.isActive">
+              <div class="u-cell-user">
+                <span class="u-avatar" [class]="avatarClass(u)">{{ userInitials(u) }}</span>
+                <div class="u-user-txt">
+                  <div class="u-name">{{ displayName(u) }}</div>
+                  <div class="u-email mono">{{ u.email }}</div>
                 </div>
               </div>
-
-              <!-- Mid: type + role + meta -->
-              <div class="u-card-mid">
-                <div class="u-badges">
-                  <!-- Consolidation IA : marqueur de type explicite (≠ conducteur). -->
-                  <span class="u-type-badge">
-                    <lucide-icon [img]="UserCogIcon" [size]="10"></lucide-icon> Compte
-                  </span>
-                  <span class="u-role-badge" [class]="u.role === 'FLEET_ADMIN' ? 'admin' : u.role === 'FLEET_MANAGER' ? 'manager' : 'viewer'">
-                    {{ roleLabel(u.role) }}
-                  </span>
-                  <!-- V1.15 — Badge contextuel SUPER_ADMIN : la flotte de l'user. -->
-                  <app-sa-fleet-badge [fleetId]="u.fleetId" />
-                </div>
-                <span class="u-date">Depuis {{ formatDate(u.createdAt) }}</span>
-              </div>
-
-              <!-- Bottom: actions -->
-              @if ((isSuperAdmin() || u.role !== 'FLEET_ADMIN') && perms.can('users_manage') && u.isActive) {
-                <div class="u-card-actions">
-                  <button (click)="openEditDrawer(u)" class="u-action-btn" title="Modifier (infos, rôle, accès & permissions)">
-                    <lucide-icon [img]="PencilIcon" [size]="14"></lucide-icon> Modifier
+              <span class="u-cell-role">
+                <span class="u-role-pill" [class]="rolePillClass(u.role)">{{ roleLabel(u.role) }}</span>
+                <app-sa-fleet-badge [fleetId]="u.fleetId" />
+              </span>
+              <span class="u-col-scope u-scope" [class.u-scope-muted]="!u.isActive">{{ perimeterLabel(u) }}</span>
+              <span class="u-col-last mono u-since">{{ u.isActive ? formatDate(u.createdAt) : 'Archivé' }}</span>
+              <div class="u-row-menu">
+                @if (perms.can('users_manage') && (isSuperAdmin() || u.role !== 'FLEET_ADMIN')) {
+                  <button class="u-menu-btn" (click)="toggleMenu(u.id, $event)" [attr.aria-label]="'Actions ' + u.email">
+                    <lucide-icon [img]="MoreVerticalIcon" [size]="16"></lucide-icon>
                   </button>
-                  <button (click)="onResetPassword(u)" class="u-action-btn" title="Reinitialiser le mot de passe">
-                    <lucide-icon [img]="KeyIcon" [size]="14"></lucide-icon> Réinit. mot de passe
-                  </button>
-                  @if (isSuperAdmin()) {
-                    <button
-                      (click)="confirmAudioInfoMail(u)"
-                      class="u-action-btn"
-                      [class.disabled]="audioInfoDisabled(u)"
-                      [disabled]="audioInfoDisabled(u)"
-                      [title]="audioInfoTooltip(u)"
-                    >
-                      <lucide-icon [img]="MailIcon" [size]="14"></lucide-icon> Info Mode assistance
-                    </button>
+                  @if (openMenuId() === u.id) {
+                    <div class="u-menu" role="menu">
+                      @if (u.isActive) {
+                        <button class="u-menu-item" (click)="closeMenu(); openEditDrawer(u)"><lucide-icon [img]="PencilIcon" [size]="14"></lucide-icon> Modifier</button>
+                        @if (u.role !== 'FLEET_ADMIN' && u.role !== 'SUPER_ADMIN') {
+                          <button class="u-menu-item" (click)="closeMenu(); openMatrixModal(u)"><lucide-icon [img]="ShieldIcon" [size]="14"></lucide-icon> Accès &amp; permissions</button>
+                        }
+                        <button class="u-menu-item" (click)="closeMenu(); onResetPassword(u)"><lucide-icon [img]="KeyIcon" [size]="14"></lucide-icon> Réinit. mot de passe</button>
+                        @if (isSuperAdmin()) {
+                          <button class="u-menu-item" [class.disabled]="audioInfoDisabled(u)" [disabled]="audioInfoDisabled(u)" [title]="audioInfoTooltip(u)" (click)="closeMenu(); confirmAudioInfoMail(u)"><lucide-icon [img]="MailIcon" [size]="14"></lucide-icon> Info Mode assistance</button>
+                        }
+                        <button class="u-menu-item danger" (click)="closeMenu(); confirmDelete(u)"><lucide-icon [img]="ArchiveIcon" [size]="14"></lucide-icon> Archiver</button>
+                      } @else {
+                        <button class="u-menu-item" (click)="closeMenu(); onUnarchive(u)"><lucide-icon [img]="ArchiveIcon" [size]="14"></lucide-icon> Désarchiver</button>
+                      }
+                    </div>
                   }
-                  <button (click)="confirmDelete(u)" class="u-action-btn danger" title="Archiver">
-                    <lucide-icon [img]="ArchiveIcon" [size]="14"></lucide-icon> Archiver
-                  </button>
-                </div>
-              }
-              @if (!u.isActive && perms.can('users_manage')) {
-                <div class="u-card-actions">
-                  <span class="u-archived-badge">Archivé</span>
-                  <button (click)="onUnarchive(u)" class="u-action-btn">
-                    <lucide-icon [img]="ArchiveIcon" [size]="14"></lucide-icon> Désarchiver
-                  </button>
-                </div>
-              } @else if (!u.isActive) {
-                <div class="u-card-actions">
-                  <span class="u-archived-badge">Archivé</span>
-                </div>
-              }
+                }
+              </div>
             </div>
           }
 
-          <!-- Pending invitations -->
+          <!-- Invitations en attente -->
           @for (inv of visiblePendingInvitations(); track inv.id) {
-            <div class="u-card invited" [class.expired]="inv.status === 'EXPIRED'">
-              <div class="u-card-glow gray"></div>
-
-              <div class="u-card-top">
-                <div class="u-avatar pending">
-                  {{ inv.email.slice(0, 2).toUpperCase() }}
-                </div>
-                <div class="u-info">
-                  <p class="u-name">{{ inv.email.split('&#64;')[0] }}</p>
-                  <p class="u-email">{{ inv.email }}</p>
-                </div>
-                <div class="u-status" [class]="inv.status === 'PENDING' ? 'pending' : 'expired'">
-                  {{ inv.status === 'PENDING' ? 'Invite' : 'Expire' }}
+            <div class="u-row u-row-inv">
+              <div class="u-cell-user">
+                <span class="u-avatar pending">{{ invInitials(inv) }}</span>
+                <div class="u-user-txt">
+                  <div class="u-name">{{ invName(inv) }}</div>
+                  <div class="u-email mono">{{ inv.email }}</div>
                 </div>
               </div>
-
-              <div class="u-card-mid">
-                <span class="u-role-badge" [class]="inv.role === 'FLEET_MANAGER' ? 'manager' : 'viewer'">
-                  {{ roleLabel(inv.role) }}
+              <span class="u-cell-role">
+                <span class="u-role-pill" [class]="inv.status === 'PENDING' ? 'invited' : 'expired'">
+                  <span class="u-pill-dot"></span>{{ inv.status === 'PENDING' ? 'Invité' : 'Expiré' }}
                 </span>
-                <span class="u-date">Invite {{ formatDate(inv.createdAt) }}</span>
-              </div>
-
-              @if (perms.can('users_manage')) {
-                <div class="u-card-actions">
-                  @if (isSuperAdmin() && inv.status === 'PENDING') {
-                    <button (click)="openEditInvitationDrawer(inv)" class="u-action-btn" title="Modifier l'invitation">
-                      <lucide-icon [img]="PencilIcon" [size]="14"></lucide-icon> Modifier
-                    </button>
+              </span>
+              <span class="u-col-scope u-scope u-scope-muted">{{ roleLabel(inv.role) }} · en attente</span>
+              <span class="u-col-last mono u-since">—</span>
+              <div class="u-row-menu">
+                @if (perms.can('users_manage')) {
+                  <button class="u-menu-btn" (click)="toggleMenu(inv.id, $event)" [attr.aria-label]="'Actions ' + inv.email">
+                    <lucide-icon [img]="MoreVerticalIcon" [size]="16"></lucide-icon>
+                  </button>
+                  @if (openMenuId() === inv.id) {
+                    <div class="u-menu" role="menu">
+                      @if (isSuperAdmin() && inv.status === 'PENDING') {
+                        <button class="u-menu-item" (click)="closeMenu(); openEditInvitationDrawer(inv)"><lucide-icon [img]="PencilIcon" [size]="14"></lucide-icon> Modifier l'invitation</button>
+                      }
+                      <button class="u-menu-item" (click)="closeMenu(); onResendInvitation(inv)"><lucide-icon [img]="SendIcon" [size]="14"></lucide-icon> Renvoyer</button>
+                      <button class="u-menu-item danger" (click)="closeMenu(); onRevokeInvitation(inv)"><lucide-icon [img]="XCircleIcon" [size]="14"></lucide-icon> Révoquer</button>
+                    </div>
                   }
-                  <button (click)="onResendInvitation(inv)" class="u-action-btn" title="Renvoyer l'invitation">
-                    <lucide-icon [img]="SendIcon" [size]="14"></lucide-icon> Renvoyer
-                  </button>
-                  <button (click)="onRevokeInvitation(inv)" class="u-action-btn danger" title="Revoquer l'invitation">
-                    <lucide-icon [img]="XCircleIcon" [size]="14"></lucide-icon> Revoquer
-                  </button>
-                </div>
-              }
+                }
+              </div>
             </div>
           }
         </div>
       }
+
     </div>
 
     <!-- User Drawer (create + edit) -->
@@ -249,164 +261,101 @@ import { DriversListComponent } from '../drivers/drivers-list.component';
       (saved)="onAccessDrawerSave($event)"
     />
 
+    <!-- V1.11 Phase 1 — Matrice scope x permissions -->
+    <app-access-permissions-matrix
+      [open]="showMatrixDrawer()"
+      [data]="matrixDrawerData()"
+      (closed)="showMatrixDrawer.set(false)"
+    />
+
   `,
   styles: [`
-    .upage { position: relative; min-height: 100% }
-    .u-blobs {
-      position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden;
-    }
-    .u-blobs::before {
-      content: ''; position: absolute; top: -10%; right: -10%; width: 50%; height: 55%;
-      background: radial-gradient(ellipse, rgba(168,85,247,.06) 0%, transparent 70%);
-      border-radius: 50% 40% 60% 30%; animation: ub1 12s ease-in-out infinite alternate;
-    }
-    .u-blobs::after {
-      content: ''; position: absolute; bottom: -15%; left: -10%; width: 45%; height: 50%;
-      background: radial-gradient(ellipse, rgba(16,224,160,.07) 0%, transparent 70%);
-      border-radius: 40% 60% 30% 50%; animation: ub2 10s ease-in-out infinite alternate;
-    }
-    .u-blob-c {
-      position: fixed; top: 40%; left: 55%; transform: translate(-50%,-50%); width: 30%; height: 35%;
-      background: radial-gradient(ellipse, rgba(59,130,246,.05) 0%, transparent 70%);
-      border-radius: 60% 40% 50% 30%; pointer-events: none; z-index: 0;
-      animation: ub3 14s ease-in-out infinite alternate;
-    }
-    @keyframes ub1 { 0%{border-radius:50% 40% 60% 30%;transform:translate(0,0)} 100%{border-radius:30% 60% 40% 50%;transform:translate(-4%,6%)} }
-    @keyframes ub2 { 0%{border-radius:40% 60% 30% 50%;transform:translate(0,0)} 100%{border-radius:60% 30% 50% 40%;transform:translate(4%,-4%)} }
-    @keyframes ub3 { 0%{border-radius:60% 40% 50% 30%;transform:translate(-50%,-50%) scale(1)} 100%{border-radius:40% 50% 30% 60%;transform:translate(-50%,-50%) scale(1.1)} }
+    .upage { position: relative; min-height: 100%; max-width: 1240px; margin: 0 auto }
 
-    .u-header { position: relative; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px }
-    .u-title { font-size: 24px; font-weight: 800; color: var(--fg-primary); letter-spacing: -.02em }
-    .u-sub { font-size: 13px; color: var(--fg-tertiary); margin-top: 2px }
-    /* bouton « Ajouter » : .btn-primary global (styles.css) */
-    .u-overview-btn {
-      display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 10px;
-      font-size: 12px; font-weight: 600; background: var(--bg-secondary); color: var(--fg-secondary);
-      border: 1px solid var(--border-subtle); text-decoration: none; cursor: pointer;
-      transition: all .15s;
-    }
-    .u-overview-btn:hover { color: var(--tracky-light); border-color: rgba(16,224,160,.3); background: rgba(16,224,160,.06) }
-    @media (max-width: 640px) {
-      .u-overview-label { display: none }
-      .u-overview-btn { width: 36px; height: 36px; padding: 0; justify-content: center }
-    }
+    /* ─── Header ─── */
+    .u-header { position: relative; z-index: 1; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px }
+    .u-title { font-size: 26px; font-weight: 800; color: var(--fg-primary); letter-spacing: -.03em; margin-top: 6px }
+    .u-sub { font-size: 13px; color: var(--fg-tertiary); margin-top: 3px }
+    .u-header-actions { display: flex; align-items: center; gap: 12px }
+    .u-invite-btn { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap }
+    .u-toggle-archived { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg-tertiary); cursor: pointer }
+    .u-toggle-archived input { accent-color: var(--tracky); cursor: pointer }
+
+    /* ─── Tabs ─── */
+    .u-tabs { position: relative; z-index: 1; display: flex; align-items: center; gap: 6px; margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid var(--border-subtle); flex-wrap: wrap }
+    .u-tab { padding: 8px 15px; border-radius: 10px; font-size: 13px; font-weight: 700; color: var(--fg-tertiary); cursor: pointer; border: 1px solid transparent; background: transparent; white-space: nowrap; transition: color .15s, background .15s, border-color .15s }
+    .u-tab:hover { color: var(--fg-secondary) }
+    .u-tab.active { background: var(--bg-secondary); color: var(--fg-primary); border-color: var(--border-strong, var(--border-subtle)) }
 
     .u-loading { position: relative; z-index: 1; display: flex; justify-content: center; padding: 60px 0 }
-    .u-empty {
-      position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 10px;
-      padding: 50px 20px; border-radius: 16px;
-      background: rgba(var(--bg-secondary-rgb,15,23,20),.55); backdrop-filter: blur(16px);
-      border: 1px solid rgba(16,224,160,.1); color: var(--fg-tertiary);
-    }
+    .u-empty { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 50px 20px; border-radius: 16px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); color: var(--fg-tertiary) }
     .u-empty-icon { width: 60px; height: 60px; border-radius: 16px; background: var(--bg-tertiary); display: flex; align-items: center; justify-content: center; color: var(--fg-tertiary) }
     .u-empty-cta { font-size: 13px; color: var(--tracky-light); background: none; border: none; cursor: pointer; text-decoration: underline }
 
-    /* Grid */
-    .u-grid { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px }
-    @media (max-width: 1100px) { .u-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) } }
-    @media (max-width: 680px) { .u-grid { grid-template-columns: 1fr } }
+    /* ─── Users table ─── */
+    .u-table { position: relative; z-index: 1; overflow: hidden; padding: 0 }
+    .u-thead, .u-row { display: grid; grid-template-columns: minmax(200px,2fr) 168px 1fr 128px 44px; align-items: center; gap: 14px; padding: 12px 18px }
+    .u-thead { background: var(--surface-rail); border-bottom: 1px solid var(--border-subtle) }
+    .u-th { font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--fg-tertiary) }
+    .u-row { border-top: 1px solid var(--border-subtle); transition: background .15s }
+    .u-row:hover { background: var(--bg-secondary) }
+    .u-row-archived { opacity: .55 }
 
-    /* Card */
-    .u-card {
-      position: relative; padding: 18px; border-radius: 14px; overflow: hidden;
-      background: rgba(var(--bg-secondary-rgb,15,23,20),.55);
-      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-      border: 1px solid rgba(16,224,160,.08); transition: all .3s;
-    }
-    .u-card:hover { border-color: rgba(16,224,160,.2); box-shadow: 0 0 30px rgba(16,224,160,.06), 0 8px 24px rgba(0,0,0,.15) }
-    .u-card.admin { border-color: rgba(16,224,160,.15) }
-    .u-card.invited { border-style: dashed; border-color: rgba(245,158,11,.2) }
-    .u-card.invited:hover { border-color: rgba(245,158,11,.35); box-shadow: 0 0 30px rgba(245,158,11,.06), 0 8px 24px rgba(0,0,0,.15) }
-    .u-card.invited.expired { border-color: rgba(239,68,68,.2) }
-    .u-card.invited.expired:hover { border-color: rgba(239,68,68,.3) }
-
-    :host-context([data-theme="light"]) .u-card { background: rgba(255,255,255,.6); border-color: rgba(16,224,160,.1) }
-    :host-context([data-theme="light"]) .u-card:hover { border-color: rgba(16,224,160,.25); box-shadow: 0 0 30px rgba(16,224,160,.05), 0 8px 24px rgba(0,0,0,.05) }
-    :host-context([data-theme="light"]) .u-card.invited { border-color: rgba(245,158,11,.25) }
-
-    .u-card-glow { position: absolute; top: 0; right: 0; width: 60px; height: 60px; border-radius: 0 0 0 60px; opacity: .08; pointer-events: none }
-    .u-card-glow.green { background: var(--tracky-light) }
-    .u-card-glow.blue { background: #3b82f6 }
-    .u-card-glow.gray { background: var(--fg-tertiary) }
-
-    /* Top */
-    .u-card-top { display: flex; align-items: center; gap: 12px; margin-bottom: 12px }
-    .u-avatar {
-      width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-      font-size: 13px; font-weight: 700; color: white; flex-shrink: 0;
-    }
-    .u-avatar.admin { background: var(--tracky) }
-    .u-avatar.manager { background: #3b82f6 }
-    .u-avatar.viewer { background: var(--fg-tertiary) }
-    .u-avatar.pending { background: transparent; border: 2px dashed rgba(245,158,11,.4); color: #f59e0b }
-    .u-info { flex: 1; min-width: 0 }
-    .u-name { font-size: 14px; font-weight: 700; color: var(--fg-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+    .u-cell-user { display: flex; align-items: center; gap: 11px; min-width: 0 }
+    .u-avatar { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 999px; font-size: 12.5px; font-weight: 700; flex-shrink: 0; background: var(--bg-tertiary); color: var(--fg-secondary) }
+    .u-avatar.admin { background: var(--tracky); color: var(--accent-ink) }
+    .u-avatar.manager { background: var(--bg-tertiary); color: var(--fg-secondary) }
+    .u-avatar.viewer { background: var(--bg-tertiary); color: var(--fg-tertiary) }
+    .u-avatar.pending { background: transparent; border: 1px dashed color-mix(in srgb, var(--warning) 45%, transparent); color: var(--warning) }
+    .u-user-txt { min-width: 0 }
+    .u-name { font-size: 13.5px; font-weight: 700; color: var(--fg-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
     .u-email { font-size: 11px; color: var(--fg-tertiary); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
-    .u-status { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 6px; flex-shrink: 0 }
-    .u-status.active { background: rgba(16,224,160,.1); color: var(--tracky-light) }
-    .u-status.suspended { background: rgba(239,68,68,.1); color: #f87171 }
-    .u-status.pending { background: rgba(245,158,11,.1); color: #f59e0b }
-    .u-status.expired { background: rgba(239,68,68,.1); color: #f87171 }
 
-    /* Mid */
-    .u-card-mid { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding-top: 10px; border-top: 1px solid var(--border-subtle) }
-    .u-role-badge { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 8px }
-    .u-role-badge.admin { background: rgba(16,224,160,.12); color: var(--tracky-light) }
-    .u-role-badge.manager { background: rgba(59,130,246,.12); color: #60a5fa }
-    .u-role-badge.viewer { background: var(--bg-tertiary); color: var(--fg-tertiary) }
-    .u-date { font-size: 10px; color: var(--fg-tertiary) }
+    .u-cell-role { display: flex; align-items: center; gap: 7px; flex-wrap: wrap }
+    .u-role-pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 700; background: var(--bg-tertiary); color: var(--fg-secondary) }
+    .u-role-pill.admin { background: color-mix(in srgb, var(--tracky) 14%, transparent); color: var(--tracky-light) }
+    .u-role-pill.invited { background: color-mix(in srgb, var(--warning) 14%, transparent); color: var(--warning) }
+    .u-role-pill.expired { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger) }
+    .u-pill-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor }
 
-    /* Actions */
-    .u-card-actions { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 10px; border-top: 1px solid var(--border-subtle) }
-    .u-action-btn {
-      display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 5px 10px; border-radius: 8px;
-      font-size: 11px; font-weight: 600; background: var(--bg-tertiary); border: 1px solid var(--border-subtle);
-      color: var(--fg-tertiary); cursor: pointer; transition: all .2s;
-      /* Le libellé reste sur UNE ligne ; si la rangée manque de place, ce sont les
-         BOUTONS qui passent à la ligne (flex-wrap), pas le texte qui se casse. */
-      white-space: nowrap; flex: 0 0 auto;
-    }
-    .u-action-btn:hover:not(.disabled) { color: var(--tracky-light); border-color: rgba(16,224,160,.2) }
-    .u-action-btn.danger:hover:not(.disabled) { color: #f87171; border-color: rgba(239,68,68,.2) }
-    .u-action-btn.disabled, .u-action-btn:disabled { opacity: .4; cursor: not-allowed }
-    .u-card.archived { opacity: .45; filter: grayscale(.5) }
-    .u-archived-badge {
-      display: inline-flex; align-items: center; gap: 4px;
-      padding: 4px 10px; border-radius: 6px; font-size: 10px; font-weight: 700;
-      background: rgba(239,68,68,.1); color: #f87171; text-transform: uppercase;
-      letter-spacing: .04em;
-    }
-    .u-header-actions { display: flex; align-items: center; gap: 10px }
-    .u-toggle-archived {
-      display: inline-flex; align-items: center; gap: 6px;
-      font-size: 11px; color: var(--fg-tertiary); cursor: pointer;
-    }
-    .u-toggle-archived input { accent-color: var(--tracky); cursor: pointer }
+    .u-scope { font-size: 12.5px; color: var(--fg-secondary) }
+    .u-scope-muted { color: var(--fg-tertiary) }
+    .u-since { font-size: 12px; color: var(--fg-tertiary) }
 
-    /* ─── Onglets Comptes / Conducteurs ─── */
-    .u-tabs {
-      position: relative; z-index: 1;
-      display: inline-flex; gap: 4px; margin-bottom: 18px; padding: 4px;
-      border-radius: 12px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle);
-    }
-    .u-tab {
-      display: inline-flex; align-items: center; gap: 6px;
-      padding: 7px 14px; border-radius: 9px; border: none; background: transparent;
-      color: var(--fg-tertiary); font-size: 13px; font-weight: 600; cursor: pointer;
-      transition: color .15s, background .15s;
-    }
-    .u-tab:hover { color: var(--fg-secondary) }
-    .u-tab.active { background: var(--bg-secondary); color: var(--tracky-light) }
+    .u-row-menu { position: relative; display: flex; justify-content: flex-end }
+    .u-menu-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: var(--fg-tertiary); cursor: pointer; transition: all .15s }
+    .u-menu-btn:hover { background: var(--bg-tertiary); color: var(--fg-primary) }
+    .u-menu { position: absolute; top: 34px; right: 0; z-index: 51; min-width: 208px; padding: 6px; border-radius: 12px; background: var(--surface, var(--bg-secondary)); border: 1px solid var(--border-strong, var(--border-subtle)); box-shadow: 0 18px 44px -14px rgba(0,0,0,.5) }
+    .u-menu-item { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 10px; border-radius: 8px; border: none; background: transparent; color: var(--fg-secondary); font-size: 12.5px; font-weight: 600; text-align: left; cursor: pointer; transition: background .12s, color .12s; white-space: nowrap }
+    .u-menu-item:hover:not(.disabled) { background: var(--bg-tertiary); color: var(--fg-primary) }
+    .u-menu-item.danger:hover:not(.disabled) { color: var(--danger) }
+    .u-menu-item.disabled { opacity: .4; cursor: not-allowed }
 
-    /* Regroupe les badges à gauche du mid-row (type + rôle + société). */
-    .u-badges { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0 }
-    /* Marqueur de type « Compte » (différenciation vs cartes Conducteur). */
-    .u-type-badge {
-      display: inline-flex; align-items: center; gap: 3px;
-      font-size: 10px; font-weight: 700; letter-spacing: .02em;
-      padding: 2px 7px; border-radius: 9999px;
-      background: rgba(59,130,246,.12); color: #60a5fa;
-      border: 1px solid rgba(59,130,246,.25); white-space: nowrap;
+    /* ─── Permission matrix ─── */
+    .m-card { position: relative; z-index: 1; overflow: hidden; padding: 0 }
+    .m-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 16px 18px 14px; border-bottom: 1px solid var(--border-subtle) }
+    .m-title { font-size: 15px; font-weight: 700; color: var(--fg-primary) }
+    .m-desc { margin-top: 5px; font-size: 12.5px; color: var(--fg-tertiary); max-width: 62ch }
+    .m-detail-link { font-size: 12px; font-weight: 600; color: var(--tracky-light); white-space: nowrap; flex-shrink: 0 }
+    .m-detail-link:hover { text-decoration: underline }
+    .m-grid { display: grid; grid-template-columns: minmax(180px,2fr) repeat(4,1fr); align-items: center; gap: 10px; padding: 11px 18px; border-top: 1px solid var(--border-subtle) }
+    .m-grid-head { border-top: none; background: var(--surface-rail) }
+    .m-col-h { text-align: center; font-size: 12px; font-weight: 700; color: var(--fg-secondary) }
+    .m-cap { display: flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 600; color: var(--fg-primary) }
+    .m-cap-ico { color: var(--fg-tertiary) }
+    .m-cap-danger { color: var(--danger) }
+    .m-cell { display: flex; justify-content: center }
+    .chk { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 7px; background: color-mix(in srgb, var(--tracky) 14%, transparent); color: var(--tracky-light) }
+    .chk-part { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 7px; background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--warning); font-size: 13px }
+    .chk-none { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; color: var(--fg-tertiary); font-weight: 700 }
+    .m-legend { display: flex; flex-wrap: wrap; gap: 16px; padding: 12px 18px; border-top: 1px solid var(--border-subtle); background: var(--bg-secondary); font-size: 11.5px; color: var(--fg-tertiary) }
+    .m-legend > span { display: inline-flex; align-items: center; gap: 7px }
+    .chk-sm { width: 18px; height: 18px }
+
+    @media (max-width: 1000px) {
+      .u-thead, .u-row { grid-template-columns: minmax(160px,2fr) 140px 44px }
+      .u-col-scope, .u-col-last { display: none !important }
+      .m-grid { grid-template-columns: minmax(140px,1.6fr) repeat(4,1fr) }
     }
   `],
 })
@@ -419,9 +368,13 @@ export class UsersListComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
 
+  /** Onglet actif : comptes (accès app) / rôles (matrice) / conducteurs (personnes). */
+  readonly activeTab = signal<'accounts' | 'roles' | 'drivers'>('accounts');
+
   /** Changement d'onglet AVEC synchro URL (?tab=) → PAGE_VIEW distinct côté tracker. */
-  protected selectTab(tab: 'accounts' | 'drivers'): void {
+  protected selectTab(tab: 'accounts' | 'roles' | 'drivers'): void {
     this.activeTab.set(tab);
+    this.closeMenu();
     void this.router.navigate([], {
       relativeTo: this.route,
       queryParams: { tab: tab === 'accounts' ? null : tab },
@@ -436,8 +389,21 @@ export class UsersListComponent implements OnInit {
   readonly includeArchived = signal(false);
   readonly totalCount = computed(() => this.users().length + this.pendingInvitations().length);
 
-  /** Onglet actif : comptes (accès app) ou conducteurs (personnes). */
-  readonly activeTab = signal<'accounts' | 'drivers'>('accounts');
+  /** Menu d'actions par ligne (⋮) : id de la ligne ouverte, ou null. */
+  readonly openMenuId = signal<string | null>(null);
+  protected toggleMenu(id: string, ev: Event): void {
+    ev.stopPropagation();
+    this.openMenuId.update((cur) => (cur === id ? null : id));
+  }
+  protected closeMenu(): void { this.openMenuId.set(null); }
+
+  /** Ferme le menu ⋮ sur tout clic hors du menu/bouton (y compris navbar, quel que soit le z-index). */
+  @HostListener('document:click', ['$event'])
+  protected onDocumentClick(ev: MouseEvent): void {
+    if (!this.openMenuId()) return;
+    const t = ev.target as HTMLElement;
+    if (!t.closest('.u-menu') && !t.closest('.u-menu-btn')) this.closeMenu();
+  }
 
   /** Vues filtrées par le sélecteur de société global (SUPER_ADMIN). No-op sinon. */
   readonly visibleUsers = computed(() => this.users().filter((u) => this.fleetFilter.matches(u.fleetId)));
@@ -445,6 +411,29 @@ export class UsersListComponent implements OnInit {
     this.pendingInvitations().filter((i) => this.fleetFilter.matches(i.fleetId)),
   );
   readonly visibleTotalCount = computed(() => this.visibleUsers().length + this.visiblePendingInvitations().length);
+
+  // ─── Matrice de permissions (référence rôles) ─────────────────
+  protected readonly roleCols: { role: AppRole; short: string }[] = [
+    { role: 'FLEET_ADMIN', short: 'Admin' },
+    { role: 'FLEET_MANAGER', short: 'Gestionnaire' },
+    { role: 'VIEWER', short: 'Lecteur' },
+    { role: 'NIGHT_WATCHMAN', short: 'Veilleur' },
+  ];
+  protected readonly matrixRows: MatrixRow[] = [
+    { key: 'vehicles_view', label: 'Voir la flotte & carte', icon: Truck },
+    { key: 'alerts_acknowledge', label: 'Gérer les alertes', icon: Bell, partial: ['VIEWER'] },
+    { key: 'engine_control', label: 'Couper le moteur', icon: Power, danger: true, partial: ['FLEET_MANAGER'] },
+    { key: 'reports_view', label: 'Rapports & export', icon: BarChart3 },
+    { key: 'users_manage', label: 'Gérer les utilisateurs', icon: Users },
+    { key: 'agenda_manage', label: 'Agenda & maintenance', icon: CalendarClock, partial: ['FLEET_MANAGER'] },
+    { key: 'billing_manage', label: 'Facturation & options', icon: CreditCard },
+  ];
+  /** État d'une cellule : ✓ (défaut), ◐ (accordable par utilisateur) ou – (indisponible). */
+  protected capState(row: MatrixRow, role: AppRole): 'full' | 'partial' | 'none' {
+    if (getDefaultPermissions(role)[row.key]) return 'full';
+    if (row.partial?.includes(role)) return 'partial';
+    return 'none';
+  }
 
   // Drawer (create + edit)
   readonly showDrawer = signal(false);
@@ -462,21 +451,17 @@ export class UsersListComponent implements OnInit {
   /**
    * FAIL-CLOSED — fleetIds dont la flotte est ÉLIGIBLE (N1 `superAdminEnabled === true`).
    * Tant que `getFleetsWithAudio()` n'a pas résolu (ou s'il échoue), le set reste vide
-   * → le bouton « Info Mode assistance » reste désactivé. Inutile d'inviter un fleet-admin
-   * à activer le Mode assistance avant que le prestataire ait rendu sa flotte éligible.
+   * → le bouton « Info Mode assistance » reste désactivé.
    */
   readonly eligibleFleetIds = signal<Set<string>>(new Set());
-  /** Le bouton mail est ACTIF uniquement si l'user a une flotte ET qu'elle est éligible. */
   protected audioInfoDisabled(user: TrackyUser): boolean {
     return !user.fleetId || !this.eligibleFleetIds().has(user.fleetId);
   }
-  /** Tooltip du bouton mail : explique pourquoi il est grisé tant que la flotte n'est pas éligible. */
   protected audioInfoTooltip(user: TrackyUser): string {
     return this.audioInfoDisabled(user)
       ? "Rendez d'abord la flotte éligible (Réglages → Audio — flottes éligibles)"
       : "Envoyer l'info Mode assistance";
   }
-  /** Corps de la modale : destinataire + résumé court de ce que contient le mail. */
   readonly audioInfoDescription = computed(() => {
     const email = this.audioInfoTarget()?.email ?? '';
     return (
@@ -489,13 +474,15 @@ export class UsersListComponent implements OnInit {
 
   private readonly vehiclesApi = inject(VehiclesApiService);
   private readonly groupsService = inject(VehicleGroupsService);
-  private readonly userAccess = inject(UserAccessService);
 
   // Access drawer
   readonly showAccessDrawer = signal(false);
   readonly accessDrawerData = signal<AccessDrawerData | null>(null);
   readonly savingAccess = signal(false);
 
+  // V1.11 Phase 1 — Matrice scope x permissions
+  readonly showMatrixDrawer = signal(false);
+  readonly matrixDrawerData = signal<MatrixDrawerData | null>(null);
 
   private readonly auth = inject(AuthService);
   private readonly fleetsApi = inject(FleetsApiService);
@@ -509,13 +496,34 @@ export class UsersListComponent implements OnInit {
     return u.email.slice(0, 2).toUpperCase();
   }
 
+  /** Nom affiché : « Prénom Nom », sinon la partie locale de l'email. */
+  protected displayName(u: TrackyUser): string {
+    const n = `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim();
+    return n || u.email.split('@')[0];
+  }
+  protected invName(inv: PendingInvitation): string { return inv.email.split('@')[0]; }
+  protected invInitials(inv: PendingInvitation): string { return inv.email.slice(0, 2).toUpperCase(); }
+
+  /** Classe d'avatar par rôle (accent pour admin, neutre sinon). */
+  protected avatarClass(u: TrackyUser): string {
+    return u.role === 'FLEET_ADMIN' || u.role === 'SUPER_ADMIN' ? 'admin' : u.role === 'FLEET_MANAGER' ? 'manager' : 'viewer';
+  }
+  protected rolePillClass(role: string): string {
+    return role === 'FLEET_ADMIN' || role === 'SUPER_ADMIN' ? 'admin' : 'neutral';
+  }
+  /** Périmètre honnête dérivé du rôle (le détail par groupe/véhicule est dans le drawer Accès). */
+  protected perimeterLabel(u: TrackyUser): string {
+    if (!u.isActive) return 'Archivé';
+    if (u.role === 'SUPER_ADMIN' || u.role === 'FLEET_ADMIN') return 'Toute la flotte';
+    return 'Accès personnalisé';
+  }
+
   protected formatDate(date: string): string {
     try {
       return new Intl.DateTimeFormat('fr-FR', { month: 'short', year: 'numeric' }).format(new Date(date));
     } catch { return ''; }
   }
 
-  protected readonly Plus = Plus;
   protected readonly ArchiveIcon = Archive;
   protected readonly KeyIcon = KeyRound;
   protected readonly UsersIcon = Users;
@@ -524,19 +532,21 @@ export class UsersListComponent implements OnInit {
   protected readonly SendIcon = Send;
   protected readonly XCircleIcon = XCircle;
   protected readonly MailIcon = Mail;
-  protected readonly UserRoundIcon = UserRound;
-  protected readonly UserCogIcon = UserCog;
+  protected readonly UserPlusIcon = UserPlus;
+  protected readonly MoreVerticalIcon = MoreVertical;
+  protected readonly CheckIcon = Check;
 
   async ngOnInit(): Promise<void> {
-    // Deep-link d'onglet via ?tab=drivers (redirection /drivers → /users?tab=drivers).
-    if (this.route.snapshot.queryParamMap.get('tab') === 'drivers' && this.perms.can('drivers_view')) {
+    // Deep-link d'onglet via ?tab=drivers|roles.
+    const tab = this.route.snapshot.queryParamMap.get('tab');
+    if (tab === 'drivers' && this.perms.can('drivers_view')) {
       this.activeTab.set('drivers');
+    } else if (tab === 'roles') {
+      this.activeTab.set('roles');
     }
     await this.loadUsers();
     if (this.isSuperAdmin()) {
       this.fleets = await firstValueFrom(this.fleetsApi.list()).catch(() => []);
-      // FAIL-CLOSED : on construit l'ensemble des flottes éligibles (N1). En cas d'erreur,
-      // le set reste vide → tous les boutons « Info Mode assistance » restent désactivés.
       await firstValueFrom(this.audioApi.getFleetsWithAudio())
         .then((fleets) =>
           this.eligibleFleetIds.set(
@@ -561,56 +571,26 @@ export class UsersListComponent implements OnInit {
     return roleLabelFr(role);
   }
 
-  async openCreateDrawer(): Promise<void> {
-    // Charge véhicules + groupes pour la matrice d'accès intégrée (scopes GROUP/VEHICLE).
-    // Best-effort : en cas d'échec on ouvre quand même (scope « Toute la flotte » suffit).
-    const [groups, vehicles] = await Promise.all([
-      this.groupsService.list().catch(() => []),
-      firstValueFrom(this.vehiclesApi.list()).catch(() => []),
-    ]);
+  openCreateDrawer(): void {
     this.drawerData.set({
       mode: 'create',
       isSuperAdmin: this.isSuperAdmin(),
       fleets: this.fleets,
-      groups,
-      vehicles,
-      // Audio hors invitation (accordable après acceptation via la matrice, garde d'éligibilité).
-      audioEligible: false,
     });
     this.showDrawer.set(true);
   }
 
-  async openEditDrawer(user: TrackyUser): Promise<void> {
-    // Charge la matrice : véhicules/groupes + scopes d'accès existants de l'utilisateur.
-    const [groups, vehicles, access] = await Promise.all([
-      this.groupsService.list().catch(() => []),
-      firstValueFrom(this.vehiclesApi.list()).catch(() => []),
-      firstValueFrom(this.userAccess.getAccess(user.id)).catch(() => null),
-    ]);
-    const accessEntries = (access?.entries ?? []).map((e) => ({
-      type: e.accessType,
-      groupId: e.groupId ?? undefined,
-      vehicleId: e.vehicleId ?? undefined,
-      permissions: (e.permissions ?? undefined) as Record<string, boolean> | undefined,
-    }));
+  openEditDrawer(user: TrackyUser): void {
     this.drawerData.set({
       mode: 'edit',
       user,
       isSuperAdmin: this.isSuperAdmin(),
       fleets: this.fleets,
-      groups,
-      vehicles,
-      audioEligible: !!user.fleetId && this.eligibleFleetIds().has(user.fleetId),
-      accessEntries,
     });
     this.showDrawer.set(true);
   }
 
-  async openEditInvitationDrawer(inv: PendingInvitation): Promise<void> {
-    const [groups, vehicles] = await Promise.all([
-      this.groupsService.list().catch(() => []),
-      firstValueFrom(this.vehiclesApi.list()).catch(() => []),
-    ]);
+  openEditInvitationDrawer(inv: PendingInvitation): void {
     this.drawerData.set({
       mode: 'edit-invitation',
       invitation: {
@@ -619,13 +599,9 @@ export class UsersListComponent implements OnInit {
         role: inv.role,
         fleetId: inv.fleetId,
         permissions: inv.permissions,
-        accessScopes: (inv.accessScopes ?? undefined) as { type: 'ALL' | 'GROUP' | 'VEHICLE'; groupId?: string; vehicleId?: string; permissions?: Record<string, boolean> }[] | undefined,
       },
       isSuperAdmin: this.isSuperAdmin(),
       fleets: this.fleets,
-      groups,
-      vehicles,
-      audioEligible: !!inv.fleetId && this.eligibleFleetIds().has(inv.fleetId),
     });
     this.showDrawer.set(true);
   }
@@ -639,7 +615,7 @@ export class UsersListComponent implements OnInit {
           email: result.email!,
           role: result.role,
           fleetId: result.fleetId,
-          accessScopes: result.accessScopes,
+          permissions: result.permissions,
         });
         this.toast.success(`Invitation envoyee a ${result.email}`);
       } else if (mode === 'edit-invitation') {
@@ -648,29 +624,23 @@ export class UsersListComponent implements OnInit {
           await this.usersService.updateInvitation(invId, {
             fleetId: result.fleetId,
             role: result.role,
-            accessScopes: result.accessScopes,
+            permissions: result.permissions,
           });
           this.toast.success('Invitation mise a jour');
         }
       } else {
         const userId = this.drawerData()?.user?.id;
         if (userId) {
+          const roleChanged = result.role !== this.drawerData()?.user?.role;
           const fleetChanged = this.isSuperAdmin() && result.fleetId !== undefined;
-          // 1) Champs utilisateur (rôle/actif/flotte). Le changement de rôle réinitialise
-          //    la base d'héritage `User.permissions` côté backend ; les scopes ci-dessous
-          //    pilotent l'accès résolu (per-véhicule + union globale).
           await this.usersService.update(userId, {
             firstName: result.firstName,
             lastName: result.lastName,
             role: result.role,
             isActive: result.isActive,
+            ...(!roleChanged ? { permissions: result.permissions } : {}),
             ...(fleetChanged ? { fleetId: result.fleetId } : {}),
           });
-          // 2) Matrice d'accès : remplace les scopes (UserVehicleAccess) — même chemin que
-          //    le bouton « Accès & Perms » (conservé), donc parfaitement cohérent.
-          if (result.accessScopes && result.accessScopes.length > 0) {
-            await firstValueFrom(this.userAccess.setAccess(userId, result.accessScopes));
-          }
         }
       }
       this.showDrawer.set(false);
@@ -725,13 +695,11 @@ export class UsersListComponent implements OnInit {
 
   // ─── Info Mode assistance (SUPER_ADMIN only) ───────────────
 
-  /** Ouvre la modale de confirmation d'envoi du mail d'info Mode assistance. */
   confirmAudioInfoMail(user: TrackyUser): void {
     this.audioInfoTarget.set(user);
     this.showAudioInfoModal.set(true);
   }
 
-  /** Confirme : envoie le mail d'info Mode assistance au destinataire, puis toast + ferme. */
   async onSendAudioInfoMail(): Promise<void> {
     const user = this.audioInfoTarget();
     if (!user) return;
@@ -806,5 +774,24 @@ export class UsersListComponent implements OnInit {
       this.showAccessDrawer.set(false);
     } catch { /* error */ }
     finally { this.savingAccess.set(false); }
+  }
+
+  /**
+   * V1.11 Phase 1 — Ouvre la matrice scope x permissions pour ce user.
+   */
+  async openMatrixModal(user: TrackyUser): Promise<void> {
+    const [groups, vehicles] = await Promise.all([
+      this.groupsService.list(),
+      firstValueFrom(this.vehiclesApi.list()),
+    ]);
+    this.matrixDrawerData.set({
+      userId: user.id,
+      userEmail: user.email,
+      userRole: user.role as 'SUPER_ADMIN' | 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN',
+      groups,
+      vehicles,
+      audioEligible: !!user.fleetId && this.eligibleFleetIds().has(user.fleetId),
+    });
+    this.showMatrixDrawer.set(true);
   }
 }

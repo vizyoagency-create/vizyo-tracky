@@ -54,6 +54,16 @@ const envSchema = z.object({
   RESEND_API_KEY: z.string().default(''),
   RESEND_FROM: z.string().default('contact@vizyoagency.com'),
 
+  // URL absolue du logo PNG des e-mails. Gmail/Outlook/Yahoo suppriment le SVG
+  // inline → le logo doit etre une image hebergee. Servi par la LP
+  // (lp/public/email/vizyo-logo.png). Override possible en prod si le domaine differe.
+  EMAIL_LOGO_URL: z.string().default('https://tracky.vizyoagency.com/email/vizyo-logo.png'),
+
+  // Secret du webhook Resend (Svix, format 'whsec_…'). Sert a verifier la signature
+  // des events entrants (delivered/opened/clicked/bounced/complained) sur /api/email/webhook.
+  // Si vide : en production le webhook REJETTE tout (fail-closed) ; en dev on tolere.
+  RESEND_WEBHOOK_SECRET: z.string().default(''),
+
   // URL publique de l'app Angular — utilise pour les liens dans les emails
   // d'invitation (`{APP_BASE_URL}/accept-invite?token=...`). En dev pointe sur
   // localhost:4200, en prod sur https://app-tracky.vizyoagency.com.

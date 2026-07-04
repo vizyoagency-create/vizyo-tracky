@@ -163,6 +163,7 @@ export class AuthController {
         subject: emailContent.subject,
         html: emailContent.html,
         text: emailContent.text,
+        template: 'password_reset',
       });
     } catch (err) {
       // Swallow errors to prevent email enumeration

@@ -27,6 +27,10 @@ export class MockPositionEmitterService implements OnModuleInit, OnModuleDestroy
   private trackers = new Map<string, TrackerState>();
   private fakeSockets = new Map<string, FakeTcpSocket>();
   private enabled = false;
+  /** Alarmes mock (SOS / vitesse / batterie…) : OFF par défaut pour ne pas
+   *  spammer d'alertes en dev. Les positions restent émises (mouvement).
+   *  Réactiver avec MOCK_ALARMS=true. */
+  private alarmsEnabled = false;
 
   constructor(
     private readonly config: ConfigService<Env, true>,
@@ -47,7 +51,8 @@ export class MockPositionEmitterService implements OnModuleInit, OnModuleDestroy
     }
 
     this.enabled = true;
-    this.logger.warn('Mock position emitter ENABLED');
+    this.alarmsEnabled = process.env.MOCK_ALARMS === 'true';
+    this.logger.warn(`Mock position emitter ENABLED (alarmes mock: ${this.alarmsEnabled ? 'ON' : 'OFF'})`);
 
     await this.syncTrackers();
 
@@ -221,6 +226,7 @@ export class MockPositionEmitterService implements OnModuleInit, OnModuleDestroy
   private readonly CRITICAL_ALARMS: CobanAlarmType[] = ['sos', 'accident', 'power_cut'];
 
   private maybeInjectAlarm(): CobanAlarmType {
+    if (!this.alarmsEnabled) return 'none'; // alarmes mock muettes par défaut (dev)
     const r = Math.random();
     if (r < 0.003) return this.CRITICAL_ALARMS[Math.floor(Math.random() * this.CRITICAL_ALARMS.length)]!;
     if (r < 0.023) return this.WARNING_ALARMS[Math.floor(Math.random() * this.WARNING_ALARMS.length)]!;

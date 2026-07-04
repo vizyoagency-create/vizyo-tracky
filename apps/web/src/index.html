@@ -334,18 +334,51 @@
       html[data-theme="light"] #app-splash .splash-glow {
         background: radial-gradient(circle, rgba(5, 150, 105, 0.32), transparent 65%);
       }
+      #app-splash .splash-logo-wrap {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
       #app-splash .splash-logo {
         width: 88px;
         height: auto;
         display: block;
         filter: drop-shadow(0 2px 16px rgba(0, 0, 0, 0.35));
       }
-      #app-splash .splash-logo--dark { display: block; }
-      #app-splash .splash-logo--light { display: none; }
-      html[data-theme="light"] #app-splash .splash-logo--dark { display: none; }
-      html[data-theme="light"] #app-splash .splash-logo--light { display: block; }
       html[data-theme="light"] #app-splash .splash-logo {
         filter: drop-shadow(0 2px 12px rgba(0, 0, 0, 0.10));
+      }
+      /* §1.1 — Logo qui se dessine : tracé du contour → remplissage → retrait du contour. */
+      #app-splash .splash-logo path {
+        fill-opacity: 0;
+        stroke-opacity: 1;
+        stroke-dasharray: 1;
+        stroke-dashoffset: 1;
+        animation: sp-draw 900ms 200ms both, sp-fill 520ms 820ms both, sp-sout 420ms 1180ms both;
+      }
+      @keyframes sp-draw { to { stroke-dashoffset: 0; } }
+      @keyframes sp-fill { to { fill-opacity: 1; } }
+      @keyframes sp-sout { to { stroke-opacity: 0.14; } }
+      /* §1.2 — Anneau de halo qui se propage, centré sur le logo. */
+      #app-splash .splash-ring {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 74px;
+        height: 74px;
+        margin: -37px 0 0 -37px;
+        border: 1px solid #10B981;
+        border-radius: 50%;
+        opacity: 0;
+        z-index: -1;
+        pointer-events: none;
+        animation: sp-ring 2600ms ease-out infinite;
+      }
+      html[data-theme="light"] #app-splash .splash-ring { border-color: #059669; }
+      @keyframes sp-ring {
+        0% { transform: scale(0.55); opacity: 0.5; }
+        100% { transform: scale(2.5); opacity: 0; }
       }
       #app-splash .splash-title {
         margin: 0;
@@ -412,11 +445,16 @@
         #app-splash .splash-stack,
         #app-splash .splash-glow,
         #app-splash .splash-loader,
-        #app-splash .splash-loader::before {
+        #app-splash .splash-loader::before,
+        #app-splash .splash-logo path,
+        #app-splash .splash-ring {
           animation: none;
         }
         #app-splash .splash-stack { opacity: 1; transform: none; }
         #app-splash .splash-loader { opacity: 1; }
+        /* Logo en état final (rempli, contour discret) ; anneau masqué. */
+        #app-splash .splash-logo path { fill-opacity: 1; stroke-opacity: 0.14; }
+        #app-splash .splash-ring { display: none; }
       }
     </style>
   </head>
@@ -424,8 +462,19 @@
     <div id="app-splash" role="status" aria-label="Chargement de Vizyo Tracky">
       <div class="splash-stack">
         <div class="splash-glow" aria-hidden="true"></div>
-        <img class="splash-logo splash-logo--dark" src="logos/svg/vizyo-tracky-icon-white.svg" alt="" aria-hidden="true" />
-        <img class="splash-logo splash-logo--light" src="logos/svg/vizyo-tracky-icon-black.svg" alt="" aria-hidden="true" />
+        <div class="splash-logo-wrap" aria-hidden="true">
+          <span class="splash-ring"></span>
+          <svg class="splash-logo" viewBox="0 0 283 290" fill="none" width="88" xmlns="http://www.w3.org/2000/svg">
+            <path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z"
+                  stroke="#10B981" stroke-width="4" stroke-linejoin="round" fill="url(#splash-grad)" pathLength="1" />
+            <defs>
+              <linearGradient id="splash-grad" x1="28" y1="280" x2="230" y2="79" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#10E0A0" />
+                <stop offset="1" stop-color="#047857" />
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
         <h1 class="splash-title">Vizyo Tracky</h1>
         <div class="splash-loader" aria-hidden="true"></div>
       </div>

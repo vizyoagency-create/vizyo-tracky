@@ -16,6 +16,7 @@ import type {
 import { InstallationsApiService } from '../../core/services/installations.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
+import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
 import {
   DayGroup, distinctDays, ENERGY_LABELS, ENERGY_OPTIONS, formatDateFr, groupByDay,
   installState, PLAN_STATUS_CLASS, PLAN_STATUS_LABELS, PLAN_STATUS_OPTIONS, TASK_STATUS_LABELS,
@@ -32,7 +33,7 @@ interface TaskForm {
   selector: 'app-installation-editor',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, RouterLink, LucideAngularModule, ConfirmModalComponent, CdkDropListGroup, CdkDropList, CdkDrag, CdkDragHandle, CdkDragPlaceholder],
+  imports: [FormsModule, RouterLink, LucideAngularModule, ConfirmModalComponent, SpinnerComponent, CdkDropListGroup, CdkDropList, CdkDrag, CdkDragHandle, CdkDragPlaceholder],
   template: `
     <div class="ed">
       <a routerLink="/admin/installations" class="ed-back">
@@ -40,7 +41,7 @@ interface TaskForm {
       </a>
 
       @if (loading()) {
-        <div class="ed-loading"><span class="spinner"></span></div>
+        <div class="ed-loading"><app-spinner [size]="22" /></div>
       } @else if (plan(); as p) {
         <!-- ── HEADER ── -->
         <div class="ed-head">
@@ -310,7 +311,7 @@ interface TaskForm {
           <div class="ov-foot">
             <button class="btn-ghost" (click)="closePose()">Annuler</button>
             <button class="btn-primary" [disabled]="posing() || poseImei.trim().length !== 15" (click)="submitPose()">
-              @if (posing()) { <span class="spinner sm"></span> } Valider la pose
+              @if (posing()) { <app-spinner [size]="14" /> } Valider la pose
             </button>
           </div>
         </div>
@@ -359,7 +360,7 @@ interface TaskForm {
           <div class="ov-foot">
             <button class="btn-ghost" (click)="closeTaskForm()">Annuler</button>
             <button class="btn-primary" [disabled]="savingTask() || !f.plate.trim()" (click)="saveTask()">
-              @if (savingTask()) { <span class="spinner sm"></span> } Enregistrer
+              @if (savingTask()) { <app-spinner [size]="14" /> } Enregistrer
             </button>
           </div>
         </div>
@@ -389,7 +390,7 @@ interface TaskForm {
           <div class="ov-foot">
             <button class="btn-ghost" (click)="closeEditPlan()">Annuler</button>
             <button class="btn-primary" [disabled]="savingPlan() || !editClientName.trim()" (click)="saveEditPlan()">
-              @if (savingPlan()) { <span class="spinner sm"></span> } Enregistrer
+              @if (savingPlan()) { <app-spinner [size]="14" /> } Enregistrer
             </button>
           </div>
         </div>
@@ -414,9 +415,6 @@ interface TaskForm {
     .ed-back { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--fg-tertiary); text-decoration: none; margin-bottom: 14px }
     .ed-back:hover { color: var(--tracky-light) }
     .ed-loading { display: flex; justify-content: center; padding: 60px 0 }
-    .spinner { width: 22px; height: 22px; border: 2px solid var(--border-subtle); border-top-color: var(--tracky-light); border-radius: 50%; animation: sp .7s linear infinite; display: inline-block }
-    .spinner.sm { width: 14px; height: 14px }
-    @keyframes sp { to { transform: rotate(360deg) } }
     .ed-empty { padding: 40px; text-align: center; color: var(--fg-tertiary) }
 
     .ed-head { display: flex; gap: 20px; justify-content: space-between; flex-wrap: wrap; padding: 20px; border-radius: 16px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); margin-bottom: 18px }
@@ -491,9 +489,9 @@ interface TaskForm {
     .day-move { padding: 5px 8px; border-radius: 8px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-tertiary); font-size: 11px; outline: none; max-width: 120px }
     .act { display: inline-flex; align-items: center; gap: 4px; padding: 5px 9px; border-radius: 8px; font-size: 11px; font-weight: 600; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-tertiary); cursor: pointer }
     .act:hover { color: var(--tracky-light); border-color: rgba(16,224,160,.2) }
-    .act.primary { background: var(--tracky); color: #fff; border-color: transparent }
-    .act.primary:hover { background: var(--tracky-dark); color: #fff }
-    .act.danger:hover { color: #f87171; border-color: rgba(239,68,68,.2) }
+    .act.primary { background: var(--tracky); color: var(--accent-ink); border-color: transparent }
+    .act.primary:hover { filter: brightness(1.06) }
+    .act.danger:hover { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 25%, transparent) }
 
     .add-row { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; padding: 7px 12px; border-radius: 8px; font-size: 11px; font-weight: 600; background: transparent; border: 1px dashed var(--border-subtle); color: var(--fg-tertiary); cursor: pointer }
     .add-row:hover { color: var(--tracky-light); border-color: rgba(16,224,160,.3) }
@@ -518,7 +516,7 @@ interface TaskForm {
     .fi.mono { font-family: var(--font-mono, monospace) }
     .btn-ghost { padding: 9px 16px; border-radius: 10px; font-size: 12px; font-weight: 600; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-secondary); cursor: pointer }
     .btn-ghost.sm { padding: 6px 10px; font-size: 11px }
-    .btn-ghost.sm.danger:hover { color: #f87171; border-color: rgba(239,68,68,.2) }
+    .btn-ghost.sm.danger:hover { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 25%, transparent) }
     /* .btn-primary : styles globaux (styles.css) */
 
     /* ════════════════════════════════════════════════════════════
@@ -531,7 +529,7 @@ interface TaskForm {
       background: transparent; color: var(--fg-tertiary); cursor: pointer; border: none; transition: color .18s, background .18s;
     }
     .vmode-btn:hover { color: var(--fg-secondary) }
-    .vmode-btn.active { background: var(--tracky); color: #fff }
+    .vmode-btn.active { background: var(--tracky); color: var(--accent-ink) }
 
     /* ════════════════════════════════════════════════════════════
        VUE SERPENT (boustrophedon) — stations + connecteurs + chips

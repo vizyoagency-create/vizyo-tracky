@@ -42,9 +42,9 @@ import { FleetCacheService } from '../../../core/services/fleet-cache.service';
       line-height: 1.2;
       font-weight: 600;
       border-radius: 9999px;
-      background: rgba(168, 85, 247, 0.12);
-      color: rgb(192, 132, 252);
-      border: 1px solid rgba(168, 85, 247, 0.25);
+      background: var(--bg-tertiary);
+      color: var(--fg-secondary);
+      border: 1px solid var(--border-subtle);
       white-space: nowrap;
       max-width: 140px;
       overflow: hidden;
@@ -53,12 +53,7 @@ import { FleetCacheService } from '../../../core/services/fleet-cache.service';
       text-overflow: ellipsis;
       overflow: hidden;
     }
-    /* Light mode override : reste lisible sur fond clair */
-    :host-context(html.light) .sa-fleet-badge {
-      background: rgba(168, 85, 247, 0.08);
-      color: rgb(126, 34, 206);
-      border-color: rgba(168, 85, 247, 0.2);
-    }
+    /* Tokens DS : adaptation clair/sombre automatique, plus d'override violet. */
   `],
 })
 export class SaFleetBadgeComponent {
