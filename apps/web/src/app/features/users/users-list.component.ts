@@ -9,6 +9,7 @@ import { FleetsApiService, type FleetSummary } from '../../core/services/fleets.
 import { PermissionsService } from '../../core/services/permissions.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { VehicleGroupsService } from '../../core/services/vehicle-groups.service';
+import { UserAccessService } from '../../core/services/user-access.service';
 import { UsersApiService, type TrackyUser, type PendingInvitation } from '../../core/services/users.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
@@ -501,6 +502,7 @@ export class UsersListComponent implements OnInit {
 
   private readonly vehiclesApi = inject(VehiclesApiService);
   private readonly groupsService = inject(VehicleGroupsService);
+  private readonly userAccess = inject(UserAccessService);
 
   // Access drawer
   readonly showAccessDrawer = signal(false);
@@ -575,26 +577,56 @@ export class UsersListComponent implements OnInit {
     return roleLabelFr(role);
   }
 
-  openCreateDrawer(): void {
+  async openCreateDrawer(): Promise<void> {
+    // Charge véhicules + groupes pour la matrice d'accès intégrée (scopes GROUP/VEHICLE).
+    // Best-effort : en cas d'échec on ouvre quand même (scope « Toute la flotte » suffit).
+    const [groups, vehicles] = await Promise.all([
+      this.groupsService.list().catch(() => []),
+      firstValueFrom(this.vehiclesApi.list()).catch(() => []),
+    ]);
     this.drawerData.set({
       mode: 'create',
       isSuperAdmin: this.isSuperAdmin(),
       fleets: this.fleets,
+      groups,
+      vehicles,
+      // Audio hors invitation (accordable après acceptation via la matrice, garde d'éligibilité).
+      audioEligible: false,
     });
     this.showDrawer.set(true);
   }
 
-  openEditDrawer(user: TrackyUser): void {
+  async openEditDrawer(user: TrackyUser): Promise<void> {
+    // Charge la matrice : véhicules/groupes + scopes d'accès existants de l'utilisateur.
+    const [groups, vehicles, access] = await Promise.all([
+      this.groupsService.list().catch(() => []),
+      firstValueFrom(this.vehiclesApi.list()).catch(() => []),
+      firstValueFrom(this.userAccess.getAccess(user.id)).catch(() => null),
+    ]);
+    const accessEntries = (access?.entries ?? []).map((e) => ({
+      type: e.accessType,
+      groupId: e.groupId ?? undefined,
+      vehicleId: e.vehicleId ?? undefined,
+      permissions: (e.permissions ?? undefined) as Record<string, boolean> | undefined,
+    }));
     this.drawerData.set({
       mode: 'edit',
       user,
       isSuperAdmin: this.isSuperAdmin(),
       fleets: this.fleets,
+      groups,
+      vehicles,
+      audioEligible: !!user.fleetId && this.eligibleFleetIds().has(user.fleetId),
+      accessEntries,
     });
     this.showDrawer.set(true);
   }
 
-  openEditInvitationDrawer(inv: PendingInvitation): void {
+  async openEditInvitationDrawer(inv: PendingInvitation): Promise<void> {
+    const [groups, vehicles] = await Promise.all([
+      this.groupsService.list().catch(() => []),
+      firstValueFrom(this.vehiclesApi.list()).catch(() => []),
+    ]);
     this.drawerData.set({
       mode: 'edit-invitation',
       invitation: {
@@ -603,9 +635,13 @@ export class UsersListComponent implements OnInit {
         role: inv.role,
         fleetId: inv.fleetId,
         permissions: inv.permissions,
+        accessScopes: (inv.accessScopes ?? undefined) as { type: 'ALL' | 'GROUP' | 'VEHICLE'; groupId?: string; vehicleId?: string; permissions?: Record<string, boolean> }[] | undefined,
       },
       isSuperAdmin: this.isSuperAdmin(),
       fleets: this.fleets,
+      groups,
+      vehicles,
+      audioEligible: !!inv.fleetId && this.eligibleFleetIds().has(inv.fleetId),
     });
     this.showDrawer.set(true);
   }
@@ -619,7 +655,7 @@ export class UsersListComponent implements OnInit {
           email: result.email!,
           role: result.role,
           fleetId: result.fleetId,
-          permissions: result.permissions,
+          accessScopes: result.accessScopes,
         });
         this.toast.success(`Invitation envoyee a ${result.email}`);
       } else if (mode === 'edit-invitation') {
@@ -628,23 +664,29 @@ export class UsersListComponent implements OnInit {
           await this.usersService.updateInvitation(invId, {
             fleetId: result.fleetId,
             role: result.role,
-            permissions: result.permissions,
+            accessScopes: result.accessScopes,
           });
           this.toast.success('Invitation mise a jour');
         }
       } else {
         const userId = this.drawerData()?.user?.id;
         if (userId) {
-          const roleChanged = result.role !== this.drawerData()?.user?.role;
           const fleetChanged = this.isSuperAdmin() && result.fleetId !== undefined;
+          // 1) Champs utilisateur (rôle/actif/flotte). Le changement de rôle réinitialise
+          //    la base d'héritage `User.permissions` côté backend ; les scopes ci-dessous
+          //    pilotent l'accès résolu (per-véhicule + union globale).
           await this.usersService.update(userId, {
             firstName: result.firstName,
             lastName: result.lastName,
             role: result.role,
             isActive: result.isActive,
-            ...(!roleChanged ? { permissions: result.permissions } : {}),
             ...(fleetChanged ? { fleetId: result.fleetId } : {}),
           });
+          // 2) Matrice d'accès : remplace les scopes (UserVehicleAccess) — même chemin que
+          //    le bouton « Accès & Perms » (conservé), donc parfaitement cohérent.
+          if (result.accessScopes && result.accessScopes.length > 0) {
+            await firstValueFrom(this.userAccess.setAccess(userId, result.accessScopes));
+          }
         }
       }
       this.showDrawer.set(false);

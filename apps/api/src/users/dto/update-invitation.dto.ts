@@ -1,5 +1,7 @@
-import { IsEnum, IsObject, IsOptional, IsUUID } from 'class-validator';
+import { IsArray, IsEnum, IsObject, IsOptional, IsUUID, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import { UserRole } from '@prisma/client';
+import { AccessEntryDto } from './set-access.dto';
 
 /**
  * V1.16 (audit A1) — DTO de modification d'une invitation PENDING. Remplace le
@@ -23,4 +25,11 @@ export class UpdateInvitationDto {
   @IsObject()
   @IsOptional()
   permissions?: Record<string, boolean>;
+
+  /** Scopes d'accès (matrice) — remplace ceux de l'invitation. Cf. CreateInvitationDto. */
+  @IsArray()
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => AccessEntryDto)
+  accessScopes?: AccessEntryDto[];
 }

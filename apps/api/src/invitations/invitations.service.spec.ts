@@ -327,3 +327,78 @@ describe('InvitationsService.update — privilege escalation guard (A1)', () => 
     expect(prisma.invitation.update).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('InvitationsService.create — access scopes (matrice dès invitation)', () => {
+  const VEHICLE_ID = '00000000-0000-0000-0000-0000000000a1';
+  const FOREIGN_VEHICLE_ID = '00000000-0000-0000-0000-0000000000b2';
+  let service: InvitationsService;
+  let prisma: any;
+
+  beforeEach(async () => {
+    prisma = {
+      user: {
+        findUnique: jest.fn().mockImplementation(({ where }: any) =>
+          where.email
+            ? Promise.resolve(null) // pas d'utilisateur existant pour cet email
+            : Promise.resolve({ id: ADMIN_USER_ID, role: UserRole.SUPER_ADMIN, permissions: null, fleetId: null }),
+        ),
+        create: jest.fn(),
+      },
+      invitation: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockImplementation(({ data }: any) => Promise.resolve({ id: 'inv-1', ...data, createdAt: new Date() })),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      fleet: { findUnique: jest.fn().mockResolvedValue({ id: FLEET_ID, name: 'Demo' }) },
+      vehicleGroup: { findMany: jest.fn().mockResolvedValue([]) },
+      vehicle: { findMany: jest.fn().mockImplementation(({ where }: any) => {
+        const ids: string[] = where.id.in;
+        return Promise.resolve(ids.filter((id) => id === VEHICLE_ID).map((id) => ({ id })));
+      }) },
+    };
+    const module = await Test.createTestingModule({
+      providers: [
+        InvitationsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: EmailService, useValue: { isEnabled: () => false, send: jest.fn().mockResolvedValue({ ok: true }), buildInvitationEmail: () => ({ subject: 's', html: 'h', text: 't' }) } },
+        { provide: AuthClientService, useValue: { register: jest.fn(), login: jest.fn(), me: jest.fn() } },
+        { provide: ConfigService, useValue: { get: (k: string) => (k === 'APP_BASE_URL' ? 'http://localhost:4200' : 'secret') } },
+      ],
+    }).compile();
+    service = module.get(InvitationsService);
+  });
+
+  it('persiste les scopes et dérive `permissions` depuis le scope ALL', async () => {
+    await service.create({
+      email: 'scoped@demo.com',
+      role: UserRole.VIEWER,
+      fleetId: FLEET_ID,
+      requestedByUserId: ADMIN_USER_ID,
+      accessScopes: [
+        { type: 'ALL', permissions: { vehicles_view: true, engine_control: false } },
+        { type: 'VEHICLE', vehicleId: VEHICLE_ID, permissions: { engine_control: true } },
+      ],
+    });
+    const data = prisma.invitation.create.mock.calls[0][0].data;
+    expect(Array.isArray(data.accessScopes)).toBe(true);
+    expect(data.accessScopes).toHaveLength(2);
+    // `permissions` (compat / User.permissions) = jeu complet dérivé du scope ALL.
+    expect(data.permissions.vehicles_view).toBe(true);
+    expect(data.permissions.engine_control).toBe(false);
+    // La surcharge véhicule est conservée dans les scopes.
+    const vScope = data.accessScopes.find((s: any) => s.type === 'VEHICLE');
+    expect(vScope.vehicleId).toBe(VEHICLE_ID);
+    expect(vScope.permissions.engine_control).toBe(true);
+  });
+
+  it('rejette un scope VEHICLE hors de la flotte de l\'invité (anti-IDOR)', async () => {
+    await expect(service.create({
+      email: 'scoped@demo.com',
+      role: UserRole.VIEWER,
+      fleetId: FLEET_ID,
+      requestedByUserId: ADMIN_USER_ID,
+      accessScopes: [{ type: 'VEHICLE', vehicleId: FOREIGN_VEHICLE_ID, permissions: { vehicles_view: true } }],
+    })).rejects.toThrow(BadRequestException);
+    expect(prisma.invitation.create).not.toHaveBeenCalled();
+  });
+});

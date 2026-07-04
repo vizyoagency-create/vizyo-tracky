@@ -8,14 +8,14 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Prisma, UserRole } from '@prisma/client';
+import { AccessType, Prisma, UserRole } from '@prisma/client';
 import { createHash, randomBytes } from 'crypto';
 import * as jwt from 'jsonwebtoken';
 import { AuthClientService } from '../auth-client/auth-client.service';
 import type { Env } from '../config/env.validation';
 import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { clampPermissions, getDefaultPermissions } from '../users/default-permissions';
+import { clampPartialPermissions, clampPermissions, getDefaultPermissions } from '../users/default-permissions';
 
 /**
  * V1.5 (Sprint J) — Workflow d'invitation utilisateur.
@@ -38,12 +38,21 @@ import { clampPermissions, getDefaultPermissions } from '../users/default-permis
 const TOKEN_BYTES = 32;
 const TOKEN_TTL_SECONDS = 24 * 60 * 60;
 
+/** Un scope d'accès porté par l'invitation (miroir de UserVehicleAccess). */
+export interface InvitationAccessScope {
+  type: 'ALL' | 'GROUP' | 'VEHICLE';
+  groupId?: string | null;
+  vehicleId?: string | null;
+  permissions?: Record<string, boolean> | null;
+}
+
 interface CreateInvitationParams {
   email: string;
   role: UserRole;
   fleetId: string | null;
   requestedByUserId: string;
   permissions?: Record<string, boolean> | null;
+  accessScopes?: InvitationAccessScope[] | null;
 }
 
 export interface AcceptInvitationResult {
@@ -124,11 +133,21 @@ export class InvitationsService {
     // celles de l'inviteur : un inviteur ne peut JAMAIS accorder une capacite
     // qu'il n'a pas (anti-escalade via compte-pantin). SUPER_ADMIN/FLEET_ADMIN
     // = bypass (toutes permissions). Cf. clampPermissions (lot 5, desormais fait).
-    const invPermissions = clampPermissions(
+    let invPermissions: Record<string, boolean> = clampPermissions(
       params.permissions,
       inviter,
       getDefaultPermissions(params.role),
-    );
+    ) as unknown as Record<string, boolean>;
+
+    // Matrice d'acces des l'invitation : si des scopes sont fournis, on les valide
+    // (flotte) + clampe (anti-escalade), on les persiste, et on derive `permissions`
+    // (= scope ALL) pour la compat / User.permissions a l'acceptation.
+    let storedScopes: InvitationAccessScope[] | null = null;
+    if (params.accessScopes && params.accessScopes.length > 0) {
+      const resolved = await this.resolveScopes(params.accessScopes, inviter, params.role, params.fleetId);
+      storedScopes = resolved.stored;
+      invPermissions = resolved.permissions;
+    }
 
     const invitation = await this.prisma.invitation.create({
       data: {
@@ -136,6 +155,7 @@ export class InvitationsService {
         role: params.role,
         fleetId: params.fleetId,
         permissions: invPermissions as unknown as Prisma.JsonObject,
+        ...(storedScopes ? { accessScopes: storedScopes as unknown as Prisma.InputJsonValue } : {}),
         tokenHash,
         expiresAt,
         createdById: params.requestedByUserId,
@@ -294,7 +314,7 @@ export class InvitationsService {
 
     // 4) Create local Tracky User with the invited role + fleet + pre-configured permissions.
     const userPermissions = (invitation.permissions ?? getDefaultPermissions(invitation.role)) as unknown as Prisma.JsonObject;
-    await this.prisma.user.create({
+    const createdUser = await this.prisma.user.create({
       data: {
         authUserId: me.id,
         email: invitation.email,
@@ -304,6 +324,25 @@ export class InvitationsService {
         fleetId: invitation.fleetId,
         permissions: userPermissions,
       },
+    });
+
+    // 4b) Matérialiser la matrice d'accès en lignes UserVehicleAccess. On utilise les
+    // scopes de l'invitation s'ils existent, sinon on seede un unique scope ALL depuis
+    // `permissions` (même pour les invitations legacy) — ainsi la matrice « Accès &
+    // Permissions » n'est JAMAIS vide après acceptation (fin du « on doit remettre les
+    // rôles »). Les valeurs ont déjà été clampées à la création/màj de l'invitation.
+    const scopes: InvitationAccessScope[] =
+      (invitation.accessScopes as unknown as InvitationAccessScope[] | null)?.length
+        ? (invitation.accessScopes as unknown as InvitationAccessScope[])
+        : [{ type: 'ALL', permissions: invitation.permissions as Record<string, boolean> | null }];
+    await this.prisma.userVehicleAccess.createMany({
+      data: scopes.map((s) => ({
+        userId: createdUser.id,
+        accessType: s.type as AccessType,
+        groupId: s.type === 'GROUP' ? s.groupId ?? null : null,
+        vehicleId: s.type === 'VEHICLE' ? s.vehicleId ?? null : null,
+        permissions: (s.permissions ?? null) as unknown as Prisma.InputJsonValue,
+      })),
     });
 
     // 5) Mark invitation accepted.
@@ -354,6 +393,7 @@ export class InvitationsService {
       fleetId: original.fleetId,
       requestedByUserId: requestedBy.id,
       permissions: original.permissions as Record<string, boolean> | null,
+      accessScopes: original.accessScopes as unknown as InvitationAccessScope[] | null,
     });
   }
 
@@ -362,7 +402,7 @@ export class InvitationsService {
    */
   async update(
     invitationId: string,
-    data: { fleetId?: string | null; role?: UserRole; permissions?: Record<string, boolean> | null },
+    data: { fleetId?: string | null; role?: UserRole; permissions?: Record<string, boolean> | null; accessScopes?: InvitationAccessScope[] | null },
     requestedBy: { id: string; role: UserRole; fleetId: string | null },
   ) {
     const where: Prisma.InvitationWhereInput = { id: invitationId };
@@ -405,6 +445,19 @@ export class InvitationsService {
         : data.permissions) as unknown as Prisma.JsonObject;
     }
 
+    // Matrice d'acces : si des scopes sont fournis, on les revalide/clampe contre la
+    // flotte RESULTANTE (targetFleetId) et on re-derive `permissions` (scope ALL).
+    if (data.accessScopes !== undefined) {
+      if (data.accessScopes && data.accessScopes.length > 0) {
+        const resolved = await this.resolveScopes(data.accessScopes, inviter, targetRole, targetFleetId);
+        updateData.accessScopes = resolved.stored as unknown as Prisma.InputJsonValue;
+        updateData.permissions = resolved.permissions as unknown as Prisma.JsonObject;
+      } else {
+        // Liste vide/null → on efface les scopes (retour au comportement legacy ALL).
+        updateData.accessScopes = Prisma.JsonNull;
+      }
+    }
+
     return this.prisma.invitation.update({
       where: { id: invitationId },
       data: updateData,
@@ -425,6 +478,71 @@ export class InvitationsService {
       where: { id: invitationId },
       data: { status: 'REVOKED' },
     });
+  }
+
+  /**
+   * Valide + clampe une liste de scopes d'accès fournie à l'invitation :
+   *  - structure : GROUP requiert groupId, VEHICLE requiert vehicleId ;
+   *  - flotte (anti-IDOR) : chaque groupe/véhicule doit appartenir à `fleetId` ;
+   *  - anti-escalade : chaque scope est clampé aux permissions de l'inviteur.
+   * Retourne les scopes normalisés à persister + les `permissions` dérivées du scope
+   * ALL (jeu COMPLET clampé, pour la compat `permissions` / User.permissions à l'accept).
+   */
+  private async resolveScopes(
+    scopes: InvitationAccessScope[],
+    inviter: { role: UserRole; permissions: Prisma.JsonValue | null },
+    role: UserRole,
+    fleetId: string | null,
+  ): Promise<{ stored: InvitationAccessScope[]; permissions: Record<string, boolean> }> {
+    const granter = { role: inviter.role, permissions: inviter.permissions };
+
+    const groupIds: string[] = [];
+    const vehicleIds: string[] = [];
+    for (const s of scopes) {
+      if (s.type === 'GROUP') {
+        if (!s.groupId) throw new BadRequestException('groupId requis pour un scope GROUP');
+        groupIds.push(s.groupId);
+      } else if (s.type === 'VEHICLE') {
+        if (!s.vehicleId) throw new BadRequestException('vehicleId requis pour un scope VEHICLE');
+        vehicleIds.push(s.vehicleId);
+      }
+    }
+    if (groupIds.length > 0) {
+      const found = await this.prisma.vehicleGroup.findMany({
+        where: { id: { in: groupIds }, fleetId: fleetId ?? undefined },
+        select: { id: true },
+      });
+      if (found.length !== new Set(groupIds).size) {
+        throw new BadRequestException("Un ou plusieurs groupes n'appartiennent pas à la flotte de l'invité");
+      }
+    }
+    if (vehicleIds.length > 0) {
+      const found = await this.prisma.vehicle.findMany({
+        where: { id: { in: vehicleIds }, fleetId: fleetId ?? undefined },
+        select: { id: true },
+      });
+      if (found.length !== new Set(vehicleIds).size) {
+        throw new BadRequestException("Un ou plusieurs véhicules n'appartiennent pas à la flotte de l'invité");
+      }
+    }
+
+    const stored: InvitationAccessScope[] = scopes.map((s) => ({
+      type: s.type,
+      groupId: s.type === 'GROUP' ? s.groupId ?? null : null,
+      vehicleId: s.type === 'VEHICLE' ? s.vehicleId ?? null : null,
+      permissions: s.permissions
+        ? (clampPartialPermissions(s.permissions, granter) as unknown as Record<string, boolean>)
+        : null,
+    }));
+
+    const allScope = stored.find((s) => s.type === 'ALL');
+    const permissions = clampPermissions(
+      allScope?.permissions ?? undefined,
+      granter,
+      getDefaultPermissions(role),
+    ) as unknown as Record<string, boolean>;
+
+    return { stored, permissions };
   }
 
   /**

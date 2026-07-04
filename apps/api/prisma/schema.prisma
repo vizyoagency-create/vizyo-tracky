@@ -311,6 +311,11 @@ model Invitation {
   tokenHash   String   @unique
   expiresAt   DateTime
   permissions Json?
+  // Scopes d'acces (matrice Acces & Permissions) configures des l'invitation :
+  // tableau de { type: ALL|GROUP|VEHICLE, groupId?, vehicleId?, permissions }.
+  // Materialises en lignes UserVehicleAccess a l'acceptation. Null = legacy
+  // (retombe sur `permissions` = un unique scope ALL).
+  accessScopes Json?
   status      String   @default("PENDING") // 'PENDING' | 'ACCEPTED' | 'EXPIRED' | 'REVOKED'
   createdById String   @db.Uuid
   createdBy   User     @relation("InvitationCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)

@@ -1,5 +1,7 @@
-import { IsEmail, IsEnum, IsObject, IsOptional, IsUUID } from 'class-validator';
+import { IsArray, IsEmail, IsEnum, IsObject, IsOptional, IsUUID, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import { UserRole } from '@prisma/client';
+import { AccessEntryDto } from './set-access.dto';
 
 /**
  * V1.16 (audit A1) — DTO de creation d'invitation. Remplace le `@Body()` inline
@@ -25,4 +27,16 @@ export class CreateInvitationDto {
   @IsObject()
   @IsOptional()
   permissions?: Record<string, boolean>;
+
+  /**
+   * Scopes d'accès (matrice) configurés dès l'invitation. Chaque scope porte son
+   * type (ALL/GROUP/VEHICLE) + ses permissions. Optionnel : si absent, comportement
+   * legacy (un unique scope ALL dérivé de `permissions`). Clamp anti-escalade +
+   * validation de flotte appliqués côté InvitationsService.
+   */
+  @IsArray()
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => AccessEntryDto)
+  accessScopes?: AccessEntryDto[];
 }

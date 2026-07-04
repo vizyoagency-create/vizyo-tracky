@@ -158,6 +158,7 @@ export class UsersController {
       fleetId,
       requestedByUserId: req.user.id,
       permissions: dto.permissions ?? null,
+      accessScopes: dto.accessScopes ?? null,
     });
   }
 
@@ -338,6 +339,7 @@ export class UsersController {
           fleetId: inv.fleetId,
           status: inv.status,
           permissions: inv.permissions,
+          accessScopes: inv.accessScopes,
           expiresAt: inv.expiresAt.toISOString(),
           createdAt: inv.createdAt.toISOString(),
         })),

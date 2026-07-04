@@ -48,6 +48,13 @@ export interface InvitationDto {
   acceptUrlForDevDebug?: string | null;
 }
 
+export interface InvitationAccessScopeDto {
+  type: 'ALL' | 'GROUP' | 'VEHICLE';
+  groupId?: string | null;
+  vehicleId?: string | null;
+  permissions?: Record<string, boolean> | null;
+}
+
 export interface PendingInvitation {
   id: string;
   email: string;
@@ -55,6 +62,8 @@ export interface PendingInvitation {
   fleetId: string | null;
   status: 'PENDING' | 'EXPIRED';
   permissions: Record<string, boolean> | null;
+  /** Scopes d'accès (matrice) configurés à l'invitation. Null = legacy (scope ALL implicite). */
+  accessScopes?: InvitationAccessScopeDto[] | null;
   expiresAt: string;
   createdAt: string;
 }
@@ -180,6 +189,8 @@ export class UsersApiService {
     role: string;
     fleetId?: string | null;
     permissions?: Record<string, boolean>;
+    /** Scopes d'accès (matrice) configurés dès l'invitation. */
+    accessScopes?: { type: 'ALL' | 'GROUP' | 'VEHICLE'; groupId?: string; vehicleId?: string; permissions?: Record<string, boolean> }[];
   }): Promise<InvitationDto> {
     const res = await fetch('/api/users/invitations', {
       method: 'POST',
@@ -214,7 +225,7 @@ export class UsersApiService {
     return body.items;
   }
 
-  async updateInvitation(id: string, data: { fleetId?: string | null; role?: string; permissions?: Record<string, boolean> }): Promise<void> {
+  async updateInvitation(id: string, data: { fleetId?: string | null; role?: string; permissions?: Record<string, boolean>; accessScopes?: InvitationAccessScopeDto[] }): Promise<void> {
     const res = await fetch(`/api/users/invitations/${id}`, {
       method: 'PATCH',
       headers: this.headers,

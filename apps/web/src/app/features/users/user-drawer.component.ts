@@ -1,16 +1,37 @@
 import { Component, effect, HostListener, inject, input, output, signal } from '@angular/core';
 import { ScrollLockService } from '../../core/services/scroll-lock.service';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, X, Truck, FolderOpen, Shield, Bell, FileBarChart, Users, Save, UserRound, Map } from 'lucide-angular';
+import { LucideAngularModule, X, Save, Map } from 'lucide-angular';
 import type { TrackyUser } from '../../core/services/users.service';
 import type { FleetSummary } from '../../core/services/fleets.service';
+import type { VehicleGroup } from '../../core/services/vehicle-groups.service';
+import type { VehicleDetailDto } from '../../core/services/vehicles.service';
+import { AccessMatrixEditorComponent, type EditableAccessScope } from './access-matrix-editor.component';
+
+/** Scope d'accès envoyé au backend (miroir de AccessEntryDto, sans clé locale). */
+export interface DrawerAccessScope {
+  type: 'ALL' | 'GROUP' | 'VEHICLE';
+  groupId?: string;
+  vehicleId?: string;
+  permissions?: Record<string, boolean>;
+}
 
 export interface UserDrawerData {
   mode: 'create' | 'edit' | 'edit-invitation';
   user?: TrackyUser;
-  invitation?: { id: string; email: string; role: string; fleetId: string | null; permissions: Record<string, boolean> | null };
+  invitation?: {
+    id: string; email: string; role: string; fleetId: string | null;
+    permissions: Record<string, boolean> | null;
+    accessScopes?: DrawerAccessScope[] | null;
+  };
   isSuperAdmin?: boolean;
   fleets?: FleetSummary[];
+  /** Véhicules/groupes de la flotte (pour les scopes GROUP/VEHICLE de la matrice). */
+  groups?: VehicleGroup[];
+  vehicles?: VehicleDetailDto[];
+  audioEligible?: boolean;
+  /** Mode edit — scopes d'accès existants de l'utilisateur (UserVehicleAccess), pour amorcer la matrice. */
+  accessEntries?: DrawerAccessScope[];
 }
 
 export interface UserDrawerResult {
@@ -24,21 +45,14 @@ export interface UserDrawerResult {
   lastName?: string;
   role: string;
   isActive: boolean;
-  permissions: Record<string, boolean>;
+  /** Matrice d'accès — scopes à envoyer (invitation ou setAccess utilisateur). */
+  accessScopes?: DrawerAccessScope[];
 }
-
-const ROLE_DEFAULTS: Record<string, Record<string, boolean>> = {
-  VIEWER: { vehicles_view: true, vehicles_create: false, vehicles_edit: false, vehicles_delete: false, groups_view: false, groups_manage: false, geofences_view: true, geofences_manage: false, alerts_view: true, alerts_acknowledge: false, reports_view: true, users_view: false, users_manage: false, drivers_view: true, drivers_manage: false },
-  FLEET_MANAGER: { vehicles_view: true, vehicles_create: true, vehicles_edit: true, vehicles_delete: true, groups_view: true, groups_manage: true, geofences_view: true, geofences_manage: true, alerts_view: true, alerts_acknowledge: true, reports_view: true, users_view: false, users_manage: false, drivers_view: true, drivers_manage: true },
-  FLEET_ADMIN: { vehicles_view: true, vehicles_create: true, vehicles_edit: true, vehicles_delete: true, groups_view: true, groups_manage: true, geofences_view: true, geofences_manage: true, alerts_view: true, alerts_acknowledge: true, reports_view: true, users_view: true, users_manage: true, drivers_view: true, drivers_manage: true },
-  // Sprint 3 — veilleur de nuit : voit ses véhicules + coupe/redémarre le moteur (engine_control), rien d'autre.
-  NIGHT_WATCHMAN: { vehicles_view: true, vehicles_create: false, vehicles_edit: false, vehicles_delete: false, engine_control: true, schedules_manage: false, groups_view: false, groups_manage: false, geofences_view: false, geofences_manage: false, alerts_view: false, alerts_acknowledge: false, reports_view: false, users_view: false, users_manage: false, drivers_view: false, drivers_manage: false },
-};
 
 @Component({
   selector: 'app-user-drawer',
   standalone: true,
-  imports: [FormsModule, LucideAngularModule],
+  imports: [FormsModule, LucideAngularModule, AccessMatrixEditorComponent],
   template: `
     @if (open()) {
       <div class="fixed inset-0 z-[9000] flex justify-end">
@@ -189,39 +203,26 @@ const ROLE_DEFAULTS: Record<string, Record<string, boolean>> = {
               </section>
             }
 
-            <!-- Permissions -->
+            <!-- Accès & Permissions -->
             <section>
-              <h3 class="section-title">Permissions</h3>
-              @if (data()?.mode === 'edit') {
-                <div class="p-3 rounded-xl bg-bg-secondary border border-border-subtle">
-                  <p class="text-xs text-fg-tertiary">
-                    Configurez les permissions via le bouton <strong>Acces & Perms</strong> sur la carte utilisateur.
-                  </p>
-                </div>
-              } @else {
-                <p class="text-xs text-fg-tertiary mb-3">
-                  Permissions preconfigurées pour l'utilisateur invité.
-                </p>
-                <div class="space-y-4">
-                  @for (group of permGroups; track group.label) {
-                    <div class="perm-group">
-                      <div class="perm-group-header">
-                        <lucide-icon [img]="group.icon" [size]="14" class="text-tracky-light"></lucide-icon>
-                        <span>{{ group.label }}</span>
-                      </div>
-                      @for (p of group.items; track p.key) {
-                        <div class="perm-row">
-                          <span class="text-sm text-fg-secondary">{{ p.label }}</span>
-                          <label class="toggle">
-                            <input type="checkbox" [checked]="perms[p.key]" (change)="perms[p.key] = !perms[p.key]" />
-                            <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                          </label>
-                        </div>
-                      }
-                    </div>
-                  }
-                </div>
-              }
+              <h3 class="section-title">Accès & permissions</h3>
+              <p class="text-xs text-fg-tertiary mb-3">
+                @if (data()?.mode === 'create') {
+                  Préconfiguré selon le rôle. Le scope « Toute la flotte » couvre tout ;
+                  ajoutez des scopes Groupe/Véhicule pour des permissions plus fines.
+                } @else {
+                  Le scope « Toute la flotte » couvre tout ; ajoutez des scopes
+                  Groupe/Véhicule pour des permissions plus fines.
+                }
+              </p>
+              <app-access-matrix-editor
+                [scopes]="scopes()"
+                [groups]="data()?.groups ?? []"
+                [vehicles]="data()?.vehicles ?? []"
+                [role]="$any(role)"
+                [audioEligible]="!!data()?.audioEligible"
+                (scopesChange)="scopes.set($event)"
+              />
             </section>
           </div>
 
@@ -333,43 +334,16 @@ export class UserDrawerComponent {
   role = 'VIEWER';
   isActive = true;
   selectedFleetId = '';
-  perms: Record<string, boolean> = { ...ROLE_DEFAULTS['VIEWER'] };
+
+  /**
+   * Scopes d'accès édités en mémoire (matrice), tous modes. Amorcé selon le mode
+   * (scopes existants ou un scope « Toute la flotte » hérité du rôle). Émis au Save.
+   */
+  readonly scopes = signal<EditableAccessScope[]>([]);
 
   protected readonly XIcon = X;
   protected readonly SaveIcon = Save;
   protected readonly MapIcon = Map;
-
-  readonly permGroups = [
-    { label: 'Véhicules', icon: Truck, items: [
-      { key: 'vehicles_view', label: 'Voir la liste' },
-      { key: 'vehicles_create', label: 'Ajouter' },
-      { key: 'vehicles_edit', label: 'Modifier' },
-      { key: 'vehicles_delete', label: 'Supprimer' },
-    ]},
-    { label: 'Groupes', icon: FolderOpen, items: [
-      { key: 'groups_view', label: 'Voir les groupes' },
-      { key: 'groups_manage', label: 'Gérer les groupes' },
-    ]},
-    { label: 'Géofences', icon: Shield, items: [
-      { key: 'geofences_view', label: 'Voir' },
-      { key: 'geofences_manage', label: 'Créer / Supprimer' },
-    ]},
-    { label: 'Alertes', icon: Bell, items: [
-      { key: 'alerts_view', label: 'Voir' },
-      { key: 'alerts_acknowledge', label: 'Acquitter' },
-    ]},
-    { label: 'Rapports', icon: FileBarChart, items: [
-      { key: 'reports_view', label: 'Voir' },
-    ]},
-    { label: 'Utilisateurs', icon: Users, items: [
-      { key: 'users_view', label: 'Voir' },
-      { key: 'users_manage', label: 'Gérer' },
-    ]},
-    { label: 'Conducteurs', icon: UserRound, items: [
-      { key: 'drivers_view', label: 'Voir' },
-      { key: 'drivers_manage', label: 'Gérer' },
-    ]},
-  ];
 
   @HostListener('document:keydown.escape')
   onEscape() { if (this.open() && !this.loading()) this.onClose(); }
@@ -384,14 +358,15 @@ export class UserDrawerComponent {
       this.role = d.user.role;
       this.isActive = d.user.isActive;
       this.selectedFleetId = d.user.fleetId ?? '';
-      const existing = (d.user as unknown as { permissions?: Record<string, boolean> }).permissions;
-      this.perms = existing ? { ...existing } : { ...(ROLE_DEFAULTS[d.user.role] ?? ROLE_DEFAULTS['VIEWER']) };
+      // Amorce la matrice depuis les scopes d'accès existants (UserVehicleAccess), sinon
+      // un scope ALL hérité du rôle.
+      this.scopes.set(this.toEditableScopes(d.accessEntries, d.user.role));
     } else if (d.mode === 'edit-invitation' && d.invitation) {
       this.email = d.invitation.email;
       this.role = d.invitation.role;
       this.selectedFleetId = d.invitation.fleetId ?? '';
       this.isActive = true;
-      this.perms = d.invitation.permissions ? { ...d.invitation.permissions } : { ...(ROLE_DEFAULTS[d.invitation.role] ?? ROLE_DEFAULTS['VIEWER']) };
+      this.scopes.set(this.toEditableScopes(d.invitation.accessScopes, d.invitation.role));
     } else {
       this.email = '';
       this.password = '';
@@ -400,14 +375,37 @@ export class UserDrawerComponent {
       this.role = 'VIEWER';
       this.isActive = true;
       this.selectedFleetId = d.fleets?.length === 1 ? d.fleets[0].id : '';
-      this.perms = { ...ROLE_DEFAULTS['VIEWER'] };
+      // Amorce la matrice : un scope « Toute la flotte », permissions héritées du rôle.
+      this.scopes.set([{ _key: this.newScopeKey(), type: 'ALL', permissions: {} }]);
     }
     this.error.set('');
   }
 
+  /**
+   * Convertit des scopes backend (invitation.accessScopes / UserVehicleAccess) en scopes
+   * éditables. Si la liste est vide/absente (invitation ou utilisateur legacy), on amorce
+   * un unique scope « Toute la flotte » hérité du rôle → la matrice n'est jamais vide.
+   */
+  private toEditableScopes(scopes: DrawerAccessScope[] | null | undefined, _role: string): EditableAccessScope[] {
+    if (scopes && scopes.length > 0) {
+      return scopes.map((s) => ({
+        _key: this.newScopeKey(),
+        type: s.type,
+        groupId: s.groupId ?? null,
+        vehicleId: s.vehicleId ?? null,
+        permissions: { ...(s.permissions ?? {}) },
+      }));
+    }
+    return [{ _key: this.newScopeKey(), type: 'ALL', permissions: {} }];
+  }
+
+  private newScopeKey(): string {
+    const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+    return c?.randomUUID ? c.randomUUID() : 'k' + Date.now() + Math.round(Math.random() * 1e6);
+  }
+
   setRole(role: string): void {
     this.role = role;
-    this.perms = { ...(ROLE_DEFAULTS[role] ?? ROLE_DEFAULTS['VIEWER']) };
   }
 
   onClose(): void {
@@ -419,14 +417,21 @@ export class UserDrawerComponent {
       this.error.set('Email requis');
       return;
     }
+    const isCreate = this.data()?.mode === 'create';
     this.saved.emit({
-      ...(this.data()?.mode === 'create' ? { email: this.email } : {}),
+      ...(isCreate ? { email: this.email } : {}),
       firstName: this.firstName || undefined,
       lastName: this.lastName || undefined,
       role: this.role,
       isActive: this.isActive,
-      permissions: this.perms,
       fleetId: this.selectedFleetId || null,
+      // La matrice pilote l'accès (tous les modes) → on envoie les scopes (sans clé locale).
+      accessScopes: this.scopes().map((s) => ({
+        type: s.type,
+        ...(s.type === 'GROUP' && s.groupId ? { groupId: s.groupId } : {}),
+        ...(s.type === 'VEHICLE' && s.vehicleId ? { vehicleId: s.vehicleId } : {}),
+        permissions: s.permissions,
+      })),
     });
   }
 }
