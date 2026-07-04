@@ -79,11 +79,12 @@ const PERM_GROUPS = [
     <div class="po-page">
       <header class="po-header">
         <a routerLink="/users" class="po-back">
-          <lucide-icon [img]="ArrowLeft" [size]="14"></lucide-icon>
+          <lucide-icon [img]="ArrowLeft" [size]="13"></lucide-icon>
           Utilisateurs
         </a>
-        <h1>Vue d'ensemble</h1>
-        <p class="po-sub">Permissions, groupes et acces de chaque utilisateur.</p>
+        <span class="vt-eyebrow">Pilotage des accès</span>
+        <h1>Vue d'ensemble.</h1>
+        <p class="po-sub">Permissions, groupes et accès de chaque utilisateur.</p>
       </header>
 
       <!-- Search -->
@@ -211,8 +212,8 @@ const PERM_GROUPS = [
   styles: [`
     .po-page { max-width: 1000px }
     .po-header { margin-bottom: 20px }
-    .po-header h1 { font-size: 22px; font-weight: 700; color: var(--fg-primary); margin: 4px 0 0 }
-    .po-sub { font-size: 12px; color: var(--fg-tertiary); margin: 2px 0 0 }
+    .po-header h1 { font-family: var(--font-display, inherit); font-size: 1.72rem; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; color: var(--fg-primary); margin: 8px 0 0 }
+    .po-sub { font-size: 14px; color: var(--fg-tertiary); margin: 8px 0 0 }
     .po-back { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--fg-tertiary); text-decoration: none }
     .po-back:hover { color: var(--fg-secondary) }
     .po-loading { display: flex; justify-content: center; padding: 40px }
@@ -318,7 +319,7 @@ const PERM_GROUPS = [
       padding: 2px 6px; border-radius: 5px; font-size: 10px; font-weight: 500;
     }
     .po-perm-item.on { background: rgba(16,224,160,.1); color: var(--tracky-light) }
-    .po-perm-item.off { background: rgba(239,68,68,.06); color: var(--fg-tertiary) }
+    .po-perm-item.off { background: var(--bg-tertiary); color: var(--fg-tertiary) }
 
     /* Mobile */
     @media (max-width: 640px) {
