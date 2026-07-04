@@ -42,8 +42,8 @@ const ATTESTATION_VERSION = 'v1';
          class="text-xs text-fg-tertiary hover:text-fg-secondary inline-flex items-center gap-1 mb-1">
         <lucide-icon [img]="ArrowLeft" [size]="12"></lucide-icon> Paramètres
       </a>
-      <h1 class="text-2xl font-display font-bold text-fg-primary">Mode assistance</h1>
-      <p class="text-sm text-fg-tertiary mb-5">
+      <h1 class="font-display font-extrabold text-[1.72rem] tracking-[-0.03em] leading-[1.1] text-fg-primary">Mode assistance.</h1>
+      <p class="text-[0.95rem] text-fg-secondary leading-relaxed mt-2 mb-5">
         Capacité légalement sensible : en cas d'accident, le prestataire peut activer l'écoute
         de la cabine pour vous porter assistance.
       </p>
@@ -181,7 +181,7 @@ const ATTESTATION_VERSION = 'v1';
   `,
   styles: [`
     .aa-page { max-width: 680px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px }
-    .s-card { background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: 16px; overflow: hidden }
+    .s-card { background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: 18px; overflow: hidden }
     .s-card-head { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--border-subtle) }
     .s-card-title { font-size: 13px; font-weight: 700; color: var(--fg-primary) }
     .s-card-body { padding: 18px; display: flex; flex-direction: column; gap: 14px }
