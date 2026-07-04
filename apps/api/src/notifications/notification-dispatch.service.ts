@@ -242,7 +242,7 @@ export class NotificationDispatchService {
         },
         { isEscalation },
       );
-      await this.email.send({ to: user.email, subject, html, text: bodyText });
+      await this.email.send({ to: user.email, subject, html, text: bodyText, template: 'alert', fleetId: alert.fleetId });
       return;
     }
     if (channel === 'WHATSAPP' && user.phone) {

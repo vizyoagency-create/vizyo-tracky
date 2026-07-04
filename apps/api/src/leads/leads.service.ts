@@ -59,7 +59,7 @@ export class LeadsService {
     const subject = `${subjectPrefix}Nouveau lead Tracky — ${dto.company || dto.name}${dto.fleetSize ? ` (${dto.fleetSize} vehicules)` : ''}`;
 
     const { html, text } = this.buildLeadNotificationEmail(lead, isResubmission, submissionCount);
-    const result = await this.email.send({ to: ADMIN_EMAIL, subject, html, text });
+    const result = await this.email.send({ to: ADMIN_EMAIL, subject, html, text, template: 'lead' });
 
     if (!result.ok) {
       this.logger.warn(`Failed to send lead notification: ${result.error}`);

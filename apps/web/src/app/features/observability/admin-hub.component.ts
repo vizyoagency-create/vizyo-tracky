@@ -2,7 +2,7 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
   LucideAngularModule, AlertTriangle, Activity, Terminal, MessageSquare,
-  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints, Ear,
+  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints, Ear, Mail,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { AdminFixModeService, type AdminAlertSummary } from '../../core/services/admin-fix-mode.service';
@@ -146,6 +146,19 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
             <div class="body-text">
               <h3>Cartes SIM</h3>
               <p class="desc">Parc SIM M2M WhereverSIM : synchro inventaire, conso data, allocation aux flottes, assignation aux trackers, cycle de vie (activer / suspendre / résilier).</p>
+            </div>
+            <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
+          </div>
+        </a>
+
+        <!-- ── E-MAILS (wide) ── -->
+        <a routerLink="/admin/emails" class="card card-wide" style="--i:9">
+          <span class="accent accent-green"></span>
+          <div class="body body-row">
+            <div class="ico ico-green"><lucide-icon [img]="Mail" [size]="20"></lucide-icon></div>
+            <div class="body-text">
+              <h3>E-mails</h3>
+              <p class="desc">Suivi des envois transactionnels, aperçu des modèles et santé de la délivrabilité (SPF/DKIM/DMARC, bounces, suppression). Toute la vie e-mail de Tracky au même endroit.</p>
             </div>
             <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
           </div>
@@ -445,6 +458,7 @@ export class AdminHubComponent implements OnInit {
   protected readonly Cpu = Cpu;
   protected readonly Footprints = Footprints;
   protected readonly Ear = Ear;
+  protected readonly Mail = Mail;
 
   readonly stats = signal<AdminAlertSummary | null>(null);
 

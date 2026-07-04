@@ -1,8 +1,20 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { EmailStatus } from '@prisma/client';
 import { Resend } from 'resend';
 import type { Env } from '../config/env.validation';
+import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
+
+/** Identifiant de modèle e-mail (journalisé dans EmailLog.template). */
+export type EmailTemplateId =
+  | 'invitation'
+  | 'password_reset'
+  | 'weekly_report'
+  | 'alert'
+  | 'lead'
+  | 'audio_activation'
+  | 'audio_info';
 
 /**
  * V1.5 (Sprint J) — Service d'envoi d'emails via Resend.
@@ -21,6 +33,10 @@ export interface SendEmailParams {
   subject: string;
   html: string;
   text?: string;
+  /** Modèle e-mail — journalisé dans EmailLog (centre e-mails admin). */
+  template?: EmailTemplateId;
+  /** Flotte concernée si connue (sinon lue depuis context.fleetId). */
+  fleetId?: string | null;
   context?: Record<string, unknown>;
 }
 
@@ -36,6 +52,7 @@ export class EmailService {
   constructor(
     private readonly config: ConfigService<Env, true>,
     private readonly systemActivity: SystemActivityService,
+    private readonly prisma: PrismaService,
   ) {
     const apiKey = this.config.get('RESEND_API_KEY', { infer: true });
     this.fromAddress = this.config.get('RESEND_FROM', { infer: true });
@@ -59,6 +76,8 @@ export class EmailService {
         { to: params.to, subject: params.subject, ctx: params.context },
         `[noop] Email to ${params.to}: ${params.subject}`,
       );
+      // Journal EmailLog même en no-op (dev/test) : l'admin voit les envois simulés.
+      await this.persistLog(params, { status: EmailStatus.SENT });
       return { ok: true };
     }
     try {
@@ -72,15 +91,47 @@ export class EmailService {
       if (result.error) {
         this.logger.warn(`Email send failed to ${params.to}: ${result.error.message}`);
         this.recordActivity(params, false, result.error.message);
+        await this.persistLog(params, { status: EmailStatus.FAILED, errorMessage: result.error.message });
         return { ok: false, error: result.error.message };
       }
       this.recordActivity(params, true);
+      await this.persistLog(params, { status: EmailStatus.QUEUED, providerId: result.data?.id ?? null });
       return { ok: true, id: result.data?.id };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`Email send threw to ${params.to}: ${message}`);
       this.recordActivity(params, false, message);
+      await this.persistLog(params, { status: EmailStatus.FAILED, errorMessage: message });
       return { ok: false, error: message };
+    }
+  }
+
+  /**
+   * Centre e-mails (admin) — journalise l'envoi dans EmailLog. BEST-EFFORT : un
+   * échec d'écriture ne DOIT JAMAIS faire échouer un envoi (try/catch + warn).
+   * QUEUED = accepté par Resend (providerId présent, statut affiné ensuite par le
+   * webhook) ; SENT = mode no-op ; FAILED = erreur d'envoi immédiate.
+   */
+  private async persistLog(
+    params: SendEmailParams,
+    opts: { status: EmailStatus; providerId?: string | null; errorMessage?: string },
+  ): Promise<void> {
+    try {
+      const ctxFleet =
+        typeof params.context?.['fleetId'] === 'string' ? (params.context['fleetId'] as string) : null;
+      await this.prisma.emailLog.create({
+        data: {
+          providerId: opts.providerId ?? null,
+          template: params.template ?? 'unknown',
+          toAddress: params.to,
+          subject: params.subject,
+          status: opts.status,
+          fleetId: params.fleetId ?? ctxFleet,
+          errorMessage: opts.errorMessage ?? null,
+        },
+      });
+    } catch (e) {
+      this.logger.warn(`EmailLog persist failed: ${String(e)}`);
     }
   }
 
@@ -510,6 +561,95 @@ La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fo
           </td></tr></table>
         </td></tr>`,
     });
+  }
+
+  /**
+   * Centre e-mails (admin) — rend un modèle avec des DONNÉES D'EXEMPLE, pour l'aperçu
+   * (drawer, via iframe srcdoc) et le bouton « Envoyer un test ». Réutilise les builders
+   * existants → aucune duplication du markup des modèles côté front.
+   */
+  previewTemplate(id: EmailTemplateId): { subject: string; html: string; text: string } {
+    const appBase = this.config.get('APP_BASE_URL', { infer: true });
+    const fleetName = 'Transports Legrand';
+    switch (id) {
+      case 'invitation':
+        return this.buildInvitationEmail({
+          recipientName: 'Camille',
+          inviterName: 'Julien Marchetti',
+          fleetName,
+          role: 'Gestionnaire',
+          acceptUrl: `${appBase}/accept-invite?token=apercu`,
+          expiresAt: new Date(Date.now() + 7 * 86_400_000),
+        });
+      case 'password_reset':
+        return this.buildPasswordResetEmail({
+          recipientName: 'Camille',
+          resetUrl: `${appBase}/reset?token=apercu`,
+          expiresInMinutes: 30,
+        });
+      case 'audio_activation':
+        return this.buildAudioActivationEmail({ fleetName, activatedBy: 'Julien Marchetti' });
+      case 'audio_info':
+        return this.buildAudioInfoEmail({ recipientName: 'Camille', fleetName });
+      case 'weekly_report':
+        return {
+          subject: `[Vizyo Tracky] Rapport hebdomadaire — ${fleetName}`,
+          html: this.buildWeeklyReportEmail({
+            fromStr: '23/06/2026',
+            toStr: '29/06/2026',
+            tripsCount: 128,
+            totalKm: 2340,
+            alertsTotal: 14,
+            liters: 287,
+            costEur: 458,
+            pdfName: 'rapport-semaine.pdf',
+          }),
+          text: 'Aperçu du rapport hebdomadaire (données d’exemple).',
+        };
+      case 'alert':
+        return {
+          subject: '[Tracky] Excès de vitesse détecté — TE-002-ST',
+          html: this.buildAlertEmail({
+            title: 'Excès de vitesse détecté',
+            message: '142 km/h relevés sur une portion limitée à 110 km/h.',
+            plate: 'TE-002-ST',
+            severity: 'CRITICAL',
+            createdAt: new Date(),
+          }),
+          text: 'Aperçu de l’alerte (données d’exemple).',
+        };
+      case 'lead':
+        return {
+          subject: 'Nouveau lead Tracky — SARL Delmas (25 véhicules)',
+          html: this.shell({
+            eyebrow: 'Lead · Prospect',
+            footer: 'VIZYO TRACKY · NOTIFICATION INTERNE · LEADS',
+            body: `
+              <tr><td style="padding:26px 36px 0;">
+                <h1 style="margin:0 0 4px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:24px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;color:#EAEFED;">Nouveau prospect</h1>
+                <p style="margin:0 0 20px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;color:#69736E;">Reçu à l'instant via la landing page</p>
+              </td></tr>
+              <tr><td style="padding:0 36px;">
+                <table role="presentation" width="100%" style="background:#161D1B;border:1px solid rgba(255,255,255,.07);border-radius:13px;">
+                  <tr><td style="padding:12px 18px;font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#69736E;width:110px;">Nom</td><td style="padding:12px 18px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;color:#EAEFED;">Antoine Delmas</td></tr>
+                  <tr><td colspan="2" style="border-top:1px solid rgba(255,255,255,.06);"></td></tr>
+                  <tr><td style="padding:12px 18px;font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#69736E;">Société</td><td style="padding:12px 18px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;color:#EAEFED;">SARL Delmas · <span style="color:#10E0A0;font-family:'JetBrains Mono',ui-monospace,Menlo,monospace;font-size:13px;">25 véhicules</span></td></tr>
+                </table>
+              </td></tr>`,
+          }),
+          text: 'Aperçu du lead (données d’exemple).',
+        };
+      default:
+        return {
+          subject: 'Aperçu',
+          html: this.shell({
+            eyebrow: 'Aperçu',
+            footer: 'VIZYO TRACKY',
+            body: `<tr><td style="padding:26px 36px;font-family:'Manrope',system-ui,sans-serif;color:#9BA5A1;">Modèle inconnu.</td></tr>`,
+          }),
+          text: '',
+        };
+    }
   }
 }
 

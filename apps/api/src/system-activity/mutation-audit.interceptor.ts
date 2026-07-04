@@ -26,6 +26,7 @@ const EXCLUDED_PREFIXES = [
   '/api/activity/', // batchs de tracking (volume dominant, c'est déjà le journal)
   '/api/auth/', // login/refresh/logout — sensibles + fréquents
   '/api/sms/webhook', // callbacks passerelle vizyo-texto
+  '/api/email/webhook', // callbacks Resend (events délivrabilité) — signés Svix
   '/api/realtime/incident', // déjà routé vers ErrorLog
   '/api/internal/', // instrumentation dédiée catégorie INTERNAL (plus riche) + BackupRun
   '/api/leads/contact', // formulaire public LP

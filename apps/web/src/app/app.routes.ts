@@ -224,6 +224,13 @@ export const routes: Routes = [
         data: { title: 'SMS & Backup' },
       },
       {
+        path: 'admin/emails',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/observability/admin-emails.component').then((m) => m.AdminEmailsComponent),
+        data: { title: 'E-mails' },
+      },
+      {
         path: 'admin/auth-sync',
         canActivate: [superAdminGuard],
         loadComponent: () =>

@@ -1182,6 +1182,41 @@ model SmsLog {
   @@map("sms_logs")
 }
 
+/// Centre de gestion des e-mails (admin) — journal des envois transactionnels.
+/// Alimenté best-effort par EmailService.send() ; mis à jour par le webhook Resend.
+enum EmailStatus {
+  QUEUED // accepté par Resend, pas encore remis
+  SENT // envoyé (mode no-op, ou avant le 1er event webhook)
+  DELIVERED // delivered
+  OPENED // opened (pixel)
+  CLICKED // clicked
+  BOUNCED // bounced (soft/hard)
+  COMPLAINED // marqué spam
+  FAILED // delivery_failed / erreur d'envoi
+}
+
+model EmailLog {
+  id           String      @id @default(cuid())
+  providerId   String?     @unique // id Resend (re_…)
+  template     String // 'invitation' | 'password_reset' | 'weekly_report' | 'alert' | 'lead' | 'audio_activation' | 'audio_info'
+  toAddress    String
+  subject      String
+  status       EmailStatus @default(SENT)
+  fleetId      String? // contexte flotte si connu
+  errorCode    String?
+  errorMessage String?
+  openedAt     DateTime?
+  clickedAt    DateTime?
+  bouncedAt    DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@index([template, createdAt])
+  @@index([status, createdAt])
+  @@index([toAddress])
+  @@map("email_logs")
+}
+
 model EngineControlCommand {
   id          String        @id @default(uuid()) @db.Uuid
   trackerId   String        @db.Uuid

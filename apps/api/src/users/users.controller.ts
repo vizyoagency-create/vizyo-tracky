@@ -532,6 +532,7 @@ export class UsersController {
         await this.emailService.send({
           to: user.email,
           ...emailContent,
+          template: 'password_reset',
           // Attribution journal Système : reset déclenché PAR un admin (≠ self-service).
           context: { requestedByUserId: req.user.id, fleetId: user.fleetId ?? undefined },
         });

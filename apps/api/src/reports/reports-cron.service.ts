@@ -77,6 +77,7 @@ export class ReportsCronService {
             pdfName: `rapport-${fromStr.replace(/\//g, '-')}.pdf`,
           }),
           text: body,
+          template: 'weekly_report',
           context: { fleetId: fleet.id, weekly: true, pdfBytes: pdfBuffer.length },
         });
 

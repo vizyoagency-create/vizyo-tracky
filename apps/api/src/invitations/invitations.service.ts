@@ -168,6 +168,7 @@ export class InvitationsService {
       subject: tpl.subject,
       html: tpl.html,
       text: tpl.text,
+      template: 'invitation',
       context: {
         invitationId: invitation.id,
         // Attribution journal Système : l'invitation est un acte manuel de l'inviteur.
