@@ -16,7 +16,6 @@ import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
 import { UserDrawerComponent, type UserDrawerData, type UserDrawerResult } from './user-drawer.component';
 import { VehicleAccessDrawerComponent, type AccessDrawerData, type AccessDrawerResult } from './vehicle-access-drawer.component';
-import { AccessPermissionsMatrixComponent, type MatrixDrawerData } from './access-permissions-matrix.component';
 import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fleet-badge.component';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { DriversListComponent } from '../drivers/drivers-list.component';
@@ -25,7 +24,7 @@ import { DriversListComponent } from '../drivers/drivers-list.component';
   selector: 'app-users-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, RouterLink, LucideAngularModule, ConfirmModalComponent, UserDrawerComponent, VehicleAccessDrawerComponent, AccessPermissionsMatrixComponent, SaFleetBadgeComponent, DriversListComponent],
+  imports: [FormsModule, RouterLink, LucideAngularModule, ConfirmModalComponent, UserDrawerComponent, VehicleAccessDrawerComponent, SaFleetBadgeComponent, DriversListComponent],
   template: `
     <div class="upage">
       <div class="u-blobs"></div>
@@ -126,14 +125,9 @@ import { DriversListComponent } from '../drivers/drivers-list.component';
               <!-- Bottom: actions -->
               @if ((isSuperAdmin() || u.role !== 'FLEET_ADMIN') && perms.can('users_manage') && u.isActive) {
                 <div class="u-card-actions">
-                  <button (click)="openEditDrawer(u)" class="u-action-btn" title="Modifier">
+                  <button (click)="openEditDrawer(u)" class="u-action-btn" title="Modifier (infos, rôle, accès & permissions)">
                     <lucide-icon [img]="PencilIcon" [size]="14"></lucide-icon> Modifier
                   </button>
-                  @if (u.role !== 'FLEET_ADMIN' && u.role !== 'SUPER_ADMIN') {
-                    <button (click)="openMatrixModal(u)" class="u-action-btn" title="Acces & Permissions">
-                      <lucide-icon [img]="ShieldIcon" [size]="14"></lucide-icon> Acces & Perms
-                    </button>
-                  }
                   <button (click)="onResetPassword(u)" class="u-action-btn" title="Reinitialiser le mot de passe">
                     <lucide-icon [img]="KeyIcon" [size]="14"></lucide-icon> Réinit. mot de passe
                   </button>
@@ -253,13 +247,6 @@ import { DriversListComponent } from '../drivers/drivers-list.component';
       [loading]="savingAccess()"
       (closed)="showAccessDrawer.set(false)"
       (saved)="onAccessDrawerSave($event)"
-    />
-
-    <!-- V1.11 Phase 1 — Matrice scope x permissions -->
-    <app-access-permissions-matrix
-      [open]="showMatrixDrawer()"
-      [data]="matrixDrawerData()"
-      (closed)="showMatrixDrawer.set(false)"
     />
 
   `,
@@ -509,9 +496,6 @@ export class UsersListComponent implements OnInit {
   readonly accessDrawerData = signal<AccessDrawerData | null>(null);
   readonly savingAccess = signal(false);
 
-  // V1.11 Phase 1 — Matrice scope x permissions
-  readonly showMatrixDrawer = signal(false);
-  readonly matrixDrawerData = signal<MatrixDrawerData | null>(null);
 
   private readonly auth = inject(AuthService);
   private readonly fleetsApi = inject(FleetsApiService);
@@ -822,27 +806,5 @@ export class UsersListComponent implements OnInit {
       this.showAccessDrawer.set(false);
     } catch { /* error */ }
     finally { this.savingAccess.set(false); }
-  }
-
-  /**
-   * V1.11 Phase 1 — Ouvre la matrice scope x permissions pour ce user.
-   * Affiche les permissions per-scope (vs perm global du drawer "Acces").
-   */
-  async openMatrixModal(user: TrackyUser): Promise<void> {
-    const [groups, vehicles] = await Promise.all([
-      this.groupsService.list(),
-      firstValueFrom(this.vehiclesApi.list()),
-    ]);
-    this.matrixDrawerData.set({
-      userId: user.id,
-      userEmail: user.email,
-      userRole: user.role as 'SUPER_ADMIN' | 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN',
-      groups,
-      vehicles,
-      // Fail-closed : la permission « Écouter l'audio » n'est proposée QUE si la flotte
-      // de l'utilisateur est éligible N1 (activée par le prestataire dans l'admin).
-      audioEligible: !!user.fleetId && this.eligibleFleetIds().has(user.fleetId),
-    });
-    this.showMatrixDrawer.set(true);
   }
 }
