@@ -20,11 +20,21 @@ import { formatBytes, formatDataLimit, simBadgeClass } from './sim-ui';
     <div class="sp">
       <div class="sp-head">
         <div>
-          <h1>Cartes SIM</h1>
-          <p class="sp-sub">{{ sims().length }} SIM allouée(s) à votre flotte</p>
+          <span class="vt-eyebrow">Connectivité</span>
+          <h1>Cartes SIM.</h1>
+          <p class="sp-sub">{{ sims().length }} SIM allouée(s) à votre flotte · suivi statut &amp; consommation.</p>
         </div>
         <button class="btn-ghost" (click)="reload()"><lucide-icon [img]="RefreshIcon" [size]="15"></lucide-icon> Rafraîchir</button>
       </div>
+
+      @if (!loading() && sims().length > 0) {
+        <div class="sp-stats">
+          <div class="sp-stat"><div class="sp-stat-n">{{ stats().active }}</div><div class="sp-stat-l">Active{{ stats().active > 1 ? 's' : '' }}</div></div>
+          <div class="sp-stat"><div class="sp-stat-n sp-stat-n--amber">{{ stats().suspended }}</div><div class="sp-stat-l">Suspendue{{ stats().suspended > 1 ? 's' : '' }}</div></div>
+          <div class="sp-stat"><div class="sp-stat-n sp-stat-n--blue">{{ stats().pending }}</div><div class="sp-stat-l">En attente</div></div>
+          <div class="sp-stat"><div class="sp-stat-n">{{ stats().conso }}</div><div class="sp-stat-l">Conso ce mois</div></div>
+        </div>
+      }
 
       <div class="sp-search">
         <lucide-icon [img]="SearchIcon" [size]="14"></lucide-icon>
@@ -87,8 +97,15 @@ import { formatBytes, formatDataLimit, simBadgeClass } from './sim-ui';
     :host { display: block }
     .sp { max-width: 920px }
     .sp-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px }
-    .sp-head h1 { font-family: var(--font-display, Poppins, sans-serif); font-size: 24px; font-weight: 800; color: var(--fg-primary); margin: 0 }
-    .sp-sub { font-size: 13px; color: var(--fg-tertiary); margin: 4px 0 0 }
+    .sp-head h1 { font-family: var(--font-display, Poppins, sans-serif); font-size: 1.72rem; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; color: var(--fg-primary); margin: 8px 0 0 }
+    .sp-sub { font-size: 14px; color: var(--fg-tertiary); margin: 8px 0 0 }
+    .sp-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px }
+    @media (max-width: 640px) { .sp-stats { grid-template-columns: repeat(2, 1fr) } }
+    .sp-stat { padding: 14px 16px; border-radius: 16px; background: var(--bg-secondary); border: 1px solid var(--border-subtle) }
+    .sp-stat-n { font-size: 1.4rem; font-weight: 800; line-height: 1; color: var(--fg-primary) }
+    .sp-stat-n--amber { color: var(--warning) }
+    .sp-stat-n--blue { color: #60a5fa }
+    .sp-stat-l { font-size: .74rem; color: var(--fg-secondary); margin-top: 3px }
     .btn-ghost { display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 10px; font-size: 12px; font-weight: 600; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-secondary); cursor: pointer }
     .sp-search { position: relative; display: flex; align-items: center; max-width: 360px; margin-bottom: 14px }
     .sp-search.mb { max-width: none; margin-bottom: 12px }
@@ -157,6 +174,19 @@ export class SimsClientComponent implements OnInit {
       (s.msisdn ?? '').toLowerCase().includes(q) ||
       (s.tracker?.imei ?? '').toLowerCase().includes(q) ||
       (s.tracker?.vehiclePlate ?? '').toLowerCase().includes(q));
+  });
+
+  /** Bandeau de stats (maquette) : compte par statut + conso totale du mois. */
+  readonly stats = computed(() => {
+    let active = 0, suspended = 0, pending = 0, bytes = 0;
+    for (const s of this.sims()) {
+      const cls = simBadgeClass(s.statusId);
+      if (cls === 'st-active') active++;
+      else if (cls === 'st-suspended') suspended++;
+      else if (cls === 'st-pending') pending++;
+      bytes += s.monthlyDataVolumeBytes ?? 0;
+    }
+    return { active, suspended, pending, conso: formatBytes(bytes) };
   });
 
   readonly filteredTrackers = computed(() => {
