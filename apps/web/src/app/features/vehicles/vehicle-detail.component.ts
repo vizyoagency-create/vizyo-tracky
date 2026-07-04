@@ -60,44 +60,38 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
         <span class="w-6 h-6 border-2 border-fg-tertiary border-t-tracky-light rounded-full animate-spin"></span>
       </div>
     } @else if (vehicle(); as v) {
-      <div class="flex flex-col gap-4 sm:gap-6">
-        <!-- Header -->
-        <div class="flex items-start justify-between gap-3 flex-wrap">
-          <div class="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
-            <button type="button" (click)="goBack()" aria-label="Retour"
-                class="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-xl
-                bg-bg-secondary border border-border-subtle text-fg-tertiary
-                hover:text-fg-primary transition-colors cursor-pointer shrink-0">
-              <lucide-icon [img]="ArrowLeft" [size]="20"></lucide-icon>
+      <div class="vdx-wrap">
+        <!-- Hero (maquette 06) : nom du véhicule + pastille de statut, plaque/couleur/groupe en sous-ligne -->
+        <div class="vdx-hero">
+          <div class="vdx-hero-main">
+            <button type="button" (click)="goBack()" aria-label="Retour" class="vdx-back">
+              <lucide-icon [img]="ArrowLeft" [size]="18"></lucide-icon>
             </button>
-            <app-brand-logo [brand]="v.brand" [size]="40" [chip]="true" />
-            <div class="min-w-0">
-              <div class="flex items-center gap-2.5 flex-wrap">
-                <h1 class="text-2xl sm:text-3xl font-display font-bold text-fg-primary truncate">{{ v.plate }}</h1>
+            <app-brand-logo [brand]="v.brand" [size]="48" [chip]="true" />
+            <div class="vdx-hero-txt">
+              <div class="vdx-hero-titlerow">
+                <h1 class="vdx-hero-name">@if (v.brand || v.model) { {{ v.brand }} {{ v.model }} } @else { {{ v.plate }} }</h1>
                 <span class="vt-status" [class.vt-status--on]="connectivity() === 'ONLINE'" [class.vt-status--offline]="connectivity() !== 'ONLINE'">
                   <span class="vt-status__dot"></span>{{ heroStatusLabel() }}
                 </span>
               </div>
-              <p class="text-xs sm:text-sm text-fg-tertiary truncate">
-                {{ v.brand }} {{ v.model }}
-                @if (v.year) { · {{ v.year }} }
-                @if (v.color) { · {{ v.color }} }
-              </p>
-              <!-- Sprint 1 — Groupe du véhicule + assignation -->
-              <div class="flex items-center gap-2 mt-1.5 flex-wrap">
-                <app-group-badge [group]="v.group" [showEmpty]="true" />
-                @if (canManageGroups()) {
-                  <button type="button" (click)="openGroupPicker()"
-                          class="text-[11px] font-semibold text-tracky-light hover:underline cursor-pointer">
-                    {{ v.group ? 'Changer' : 'Assigner' }}
-                  </button>
-                }
+              <div class="vdx-hero-sub">
+                <span class="vdx-hero-plate font-mono">{{ v.plate }}</span>
+                @if (v.year) { <span class="vdx-dot">·</span><span>{{ v.year }}</span> }
+                @if (v.color) { <span class="vdx-dot">·</span><span>{{ v.color }}</span> }
+                <span class="vdx-dot">·</span>
+                <span class="vdx-hero-group">
+                  <app-group-badge [group]="v.group" [showEmpty]="true" />
+                  @if (canManageGroups()) {
+                    <button type="button" (click)="openGroupPicker()" class="vdx-link">{{ v.group ? 'Changer' : 'Assigner' }}</button>
+                  }
+                </span>
                 @if (installToReview()) { <app-install-review-badge /> }
               </div>
             </div>
           </div>
 
-          <div class="flex items-center gap-2 flex-wrap shrink-0">
+          <div class="vdx-hero-actions">
             @if (v.tracker) {
               @if (currentPosition(); as pos) {
                 <app-engine-control-button
@@ -181,133 +175,59 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
           </div>
         }
 
-        <!-- V1.7 — Reglage materiel ACC (SUPER_ADMIN only) -->
-        @if (isSuperAdmin() && v.tracker) {
-          <div class="vd-admin-card" [class.vd-admin-card--warning]="!v.tracker.accConnected">
-            <div class="vd-admin-card-header">
-              @if (v.tracker.accConnected) {
-                <lucide-icon [img]="ShieldCheck" [size]="14"></lucide-icon>
-              } @else {
-                <lucide-icon [img]="ShieldAlert" [size]="14"></lucide-icon>
-              }
-              <span>Réglage matériel · super-admin</span>
-            </div>
-            <label class="vd-admin-toggle">
-              <input
-                #accCheckbox
-                type="checkbox"
-                [checked]="v.tracker.accConnected"
-                [disabled]="accUpdating()"
-                (change)="toggleAccConnected(v.tracker.id, accCheckbox)"
-              />
-              <span class="vd-admin-toggle-text">
-                <strong>Fil ACC connecté</strong>
-                <small>
-                  Le fil jaune (ACC) du tracker est branché au +12V après contact.
-                  Décochez si l'installation n'a pas câblé l'ACC — l'ignition sera alors
-                  inférée depuis la vitesse GPS (seuil 3 km/h).
-                </small>
-              </span>
-              @if (accUpdating()) {
-                <span class="vd-admin-spinner"></span>
-              }
-            </label>
-            @if (!v.tracker.accConnected) {
-              <div class="vd-admin-warning">
-                <lucide-icon [img]="AlertTriangle" [size]="12"></lucide-icon>
-                <span>
-                  Mode dégradé actif : ignition basée sur la vitesse, fiabilité réduite à l'arrêt.
-                </span>
-              </div>
-            }
+        <!-- Cartes stat (maquette 06) : Vitesse · Position · Dernière comm. · Boîtier/SIM -->
+        <div class="vdx-stats">
+          <div class="vdx-stat">
+            <div class="vdx-stat-k">Vitesse</div>
+            <div class="vdx-stat-v">@if (currentPosition(); as pos) { {{ pos.speedKmh | number:'1.0-0' }} <span class="vdx-stat-u">km/h</span> } @else { — }</div>
           </div>
-        }
 
-        <!-- Stats compactes (info-bar horizontale) -->
-        <div class="vd-stats-bar">
-          <div class="vd-stat" [class.vd-stat--online]="connectivity() === 'ONLINE'"
-               [style.--vd-conn]="connMeta().color">
-            @if (connectivity() === 'ONLINE') {
-              <lucide-icon [img]="Wifi" [size]="14"></lucide-icon>
+          <div class="vdx-stat vdx-stat--link" role="button" tabindex="0" (click)="activeTab.set('map')" (keydown.enter)="activeTab.set('map')">
+            <div class="vdx-stat-k">Position</div>
+            @if (currentPosition(); as pos) {
+              <div class="vdx-stat-v vdx-stat-v--sm">Voir sur la carte</div>
+              <div class="vdx-stat-coord">{{ pos.lat | number:'1.4-4' }}, {{ pos.lng | number:'1.4-4' }}</div>
             } @else {
-              <lucide-icon [img]="WifiOff" [size]="14"></lucide-icon>
+              <div class="vdx-stat-v vdx-stat-v--sm">Inconnue</div>
             }
-            <div class="vd-stat-content">
-              <span class="vd-stat-label">Statut</span>
-              <span class="vd-stat-value" [style.color]="connectivity() === 'ONLINE' ? null : connMeta().color">
-                {{ connMeta().label }}
-                @if (currentPosition(); as pos) {
-                  · <span [class]="pos.ignition ? 'text-tracky-light' : 'text-fg-tertiary'">{{ pos.ignition ? 'ON' : 'OFF' }}</span>
-                }
-              </span>
+          </div>
+
+          <div class="vdx-stat">
+            <div class="vdx-stat-k">Dernière comm.</div>
+            <div class="vdx-stat-v vdx-stat-v--sm">@if (currentPosition(); as pos) { {{ relativeTime(pos.timestamp) }} } @else { Jamais }</div>
+            <div class="vdx-stat-live" [class.vdx-stat-live--on]="connectivity() === 'ONLINE'">
+              <span class="vdx-live-dot"></span>{{ connectivity() === 'ONLINE' ? 'temps réel' : connMeta().label }}
             </div>
           </div>
 
-          <div class="vd-stat">
-            <lucide-icon [img]="Gauge" [size]="14"></lucide-icon>
-            <div class="vd-stat-content">
-              <span class="vd-stat-label">Vitesse</span>
-              <span class="vd-stat-value">
-                @if (currentPosition(); as pos) { {{ pos.speedKmh | number:'1.0-0' }} km/h } @else { — }
-              </span>
-            </div>
-          </div>
-
-          <div class="vd-stat">
-            <lucide-icon [img]="MapPin" [size]="14"></lucide-icon>
-            <div class="vd-stat-content">
-              <span class="vd-stat-label">Position</span>
-              <span class="vd-stat-value">
-                @if (currentPosition(); as pos) { {{ relativeTime(pos.timestamp) }} } @else { Jamais }
-              </span>
-              @if (currentPosition(); as pos) {
-                <span class="vd-stat-coords">{{ pos.lat | number:'1.5-5' }}, {{ pos.lng | number:'1.5-5' }}</span>
-              }
-            </div>
-          </div>
-
-          <div class="vd-stat vd-stat--mono">
-            <lucide-icon [img]="Radio" [size]="14"></lucide-icon>
-            <div class="vd-stat-content">
-              <span class="vd-stat-label">Tracker</span>
-              @if (v.tracker; as tr) {
-                <div class="vd-tracker-row">
-                  <button type="button"
-                          class="vd-stat-value vd-stat-value--copy"
-                          (click)="copyImei(tr.imei)"
-                          [attr.aria-label]="'Copier l\\'IMEI ' + tr.imei"
-                          title="Cliquer pour copier l'IMEI complet">
-                    {{ tr.imei.slice(0,4) }}…{{ tr.imei.slice(-4) }}
-                    @if (imeiCopied()) {
-                      <lucide-icon [img]="CheckIcon" [size]="11" class="vd-stat-copy-ok"></lucide-icon>
-                    } @else {
-                      <lucide-icon [img]="CopyIcon" [size]="11" class="vd-stat-copy-icon"></lucide-icon>
-                    }
-                  </button>
-                  @if (canEditVehicle()) {
-                    <button type="button" class="vd-tracker-detach" (click)="detachTracker(tr.id)" title="Detacher le tracker">
-                      <lucide-icon [img]="XIcon" [size]="12"></lucide-icon>
-                    </button>
-                  }
-                </div>
-                <div class="vd-tracker-extra">
-                  @if (instBadge(); as b) {
-                    <span class="vd-inst" [class]="'vd-inst--' + b.cls">{{ b.label }}</span>
-                  }
-                  @if (tr.simPhoneNumber) {
-                    <span class="vd-sim">SIM {{ tr.simPhoneNumber }}</span>
-                  }
-                </div>
-              } @else {
-                @if (canEditVehicle()) {
-                  <button type="button" class="vd-tracker-assign-btn" (click)="showTrackerPicker.set(true)">
-                    Assigner un tracker
-                  </button>
+          <div class="vdx-stat">
+            <div class="vdx-stat-k">Boîtier · SIM</div>
+            @if (v.tracker; as tr) {
+              <button type="button" class="vdx-imei" (click)="copyImei(tr.imei)"
+                      [attr.aria-label]="'Copier l\\'IMEI ' + tr.imei" title="Cliquer pour copier l'IMEI complet">
+                {{ tr.imei.slice(0,4) }}…{{ tr.imei.slice(-4) }}
+                @if (imeiCopied()) {
+                  <lucide-icon [img]="CheckIcon" [size]="12" class="vd-stat-copy-ok"></lucide-icon>
                 } @else {
-                  <span class="vd-stat-value">—</span>
+                  <lucide-icon [img]="CopyIcon" [size]="12" class="vd-stat-copy-icon"></lucide-icon>
                 }
+              </button>
+              <div class="vdx-stat-tags">
+                @if (instBadge(); as b) { <span class="vd-inst" [class]="'vd-inst--' + b.cls">{{ b.label }}</span> }
+                @if (tr.simPhoneNumber) { <span class="vd-sim">SIM {{ tr.simPhoneNumber }}</span> }
+                @if (canEditVehicle()) {
+                  <button type="button" class="vd-tracker-detach" (click)="detachTracker(tr.id)" title="Detacher le tracker">
+                    <lucide-icon [img]="XIcon" [size]="12"></lucide-icon>
+                  </button>
+                }
+              </div>
+            } @else {
+              @if (canEditVehicle()) {
+                <button type="button" class="vd-tracker-assign-btn" (click)="showTrackerPicker.set(true)" style="margin-top:8px">Assigner un tracker</button>
+              } @else {
+                <div class="vdx-stat-v vdx-stat-v--sm">—</div>
               }
-            </div>
+            }
           </div>
         </div>
 
@@ -357,23 +277,57 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
           }
         </div>
 
-        <!-- Tabs avec icônes + fade scroll indicator -->
-        <div class="vd-tabs-wrapper">
-          <div class="vd-tabs">
-            @for (tab of tabs(); track tab.key) {
-              <button
-                (click)="activeTab.set(tab.key)"
-                class="vd-tab"
-                [class.vd-tab--active]="activeTab() === tab.key"
-              >
-                <lucide-icon [img]="tab.icon" [size]="16"></lucide-icon>
-                <span class="vd-tab-label">{{ tab.label }}</span>
-                @if (tab.key === 'alerts' && alerts().length > 0) {
-                  <span class="vd-tab-badge">{{ alerts().length }}</span>
-                }
-              </button>
+        <!-- Réglage matériel ACC (SUPER_ADMIN) — carte matériel, placée sous le conducteur (maquette) -->
+        @if (isSuperAdmin() && v.tracker) {
+          <div class="vd-admin-card" [class.vd-admin-card--warning]="!v.tracker.accConnected">
+            <div class="vd-admin-card-header">
+              @if (v.tracker.accConnected) {
+                <lucide-icon [img]="ShieldCheck" [size]="14"></lucide-icon>
+              } @else {
+                <lucide-icon [img]="ShieldAlert" [size]="14"></lucide-icon>
+              }
+              <span>Réglage matériel · super-admin</span>
+            </div>
+            <label class="vd-admin-toggle">
+              <input
+                #accCheckbox
+                type="checkbox"
+                [checked]="v.tracker.accConnected"
+                [disabled]="accUpdating()"
+                (change)="toggleAccConnected(v.tracker.id, accCheckbox)"
+              />
+              <span class="vd-admin-toggle-text">
+                <strong>Fil ACC connecté</strong>
+                <small>
+                  Le fil jaune (ACC) du tracker est branché au +12V après contact.
+                  Décochez si l'installation n'a pas câblé l'ACC — l'ignition sera alors
+                  inférée depuis la vitesse GPS (seuil 3 km/h).
+                </small>
+              </span>
+              @if (accUpdating()) {
+                <span class="vd-admin-spinner"></span>
+              }
+            </label>
+            @if (!v.tracker.accConnected) {
+              <div class="vd-admin-warning">
+                <lucide-icon [img]="AlertTriangle" [size]="12"></lucide-icon>
+                <span>
+                  Mode dégradé actif : ignition basée sur la vitesse, fiabilité réduite à l'arrêt.
+                </span>
+              </div>
             }
           </div>
+        }
+
+        <!-- Onglets (dtab, maquette 06) -->
+        <div class="vdx-tabs">
+          @for (tab of tabs(); track tab.key) {
+            <button (click)="activeTab.set(tab.key)" class="vdx-tab" [class.vdx-tab--active]="activeTab() === tab.key">
+              <lucide-icon [img]="tab.icon" [size]="15"></lucide-icon>
+              <span class="vdx-tab-label">{{ tab.label }}</span>
+              @if (tab.key === 'alerts' && alerts().length > 0) { <span class="vdx-tab-badge">{{ alerts().length }}</span> }
+            </button>
+          }
         </div>
 
         <!-- Tab content -->
@@ -730,6 +684,75 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
     }
   `,
   styles: [`
+    /* ═══════════════════════════════════════════════════════════════════
+       Maquette 06 — Détail véhicule. Intégration DS (mêmes tokens que l'app).
+       Préfixe .vdx-* pour la refonte, réutilise les tokens --tracky-light /
+       --bg-secondary / --border-* / --accent-ink.
+       ═══════════════════════════════════════════════════════════════════ */
+    .vdx-wrap { display: flex; flex-direction: column; gap: 20px; }
+    .vdx-card {
+      background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+    }
+
+    /* ── Hero ── */
+    .vdx-hero { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .vdx-hero-main { display: flex; align-items: center; gap: 14px; min-width: 0; flex: 1; }
+    .vdx-back {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0;
+      background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+      color: var(--fg-tertiary); cursor: pointer; transition: color .15s, border-color .15s;
+    }
+    .vdx-back:hover { color: var(--fg-primary); border-color: var(--border-strong); }
+    .vdx-hero-txt { min-width: 0; }
+    .vdx-hero-titlerow { display: flex; align-items: center; gap: 11px; flex-wrap: wrap; }
+    .vdx-hero-name { margin: 0; font-size: 1.5rem; font-weight: 800; letter-spacing: -.02em; color: var(--fg-primary); }
+    .vdx-hero-sub { display: flex; align-items: center; gap: 9px; margin-top: 6px; font-size: .82rem; color: var(--fg-secondary); flex-wrap: wrap; }
+    .vdx-hero-plate { font-weight: 700; color: var(--fg-primary); letter-spacing: .02em; }
+    .vdx-dot { color: var(--fg-tertiary); }
+    .vdx-hero-group { display: inline-flex; align-items: center; gap: 7px; }
+    .vdx-link { font-size: .76rem; font-weight: 700; color: var(--tracky-light); cursor: pointer; }
+    .vdx-link:hover { text-decoration: underline; }
+    .vdx-hero-actions { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; flex-shrink: 0; }
+
+    /* ── Cartes stat (4) ── */
+    .vdx-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 13px; }
+    .vdx-stat { padding: 14px 15px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: 16px; min-width: 0; }
+    .vdx-stat--link { cursor: pointer; transition: border-color .15s; }
+    .vdx-stat--link:hover { border-color: var(--border-strong); }
+    .vdx-stat-k { font-family: var(--font-mono, monospace); font-size: .6rem; letter-spacing: .08em; text-transform: uppercase; color: var(--fg-tertiary); }
+    .vdx-stat-v { font-size: 1.4rem; font-weight: 800; letter-spacing: -.02em; color: var(--fg-primary); margin-top: 6px; }
+    .vdx-stat-v--sm { font-size: .9rem; font-weight: 700; }
+    .vdx-stat-u { font-size: .72rem; font-weight: 600; color: var(--fg-tertiary); }
+    .vdx-stat-coord { font-family: var(--font-mono, monospace); font-size: .66rem; color: var(--fg-tertiary); margin-top: 2px; }
+    .vdx-stat-live { display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; font-size: .68rem; font-weight: 700; color: var(--fg-tertiary); }
+    .vdx-stat-live--on { color: var(--tracky-light); }
+    .vdx-live-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+    .vdx-stat-live--on .vdx-live-dot { animation: vt-blink 2s ease-in-out infinite; }
+    .vdx-stat-tags { display: flex; align-items: center; gap: 7px; margin-top: 6px; flex-wrap: wrap; }
+    .vdx-imei {
+      display: inline-flex; align-items: center; gap: 6px; margin-top: 6px;
+      font-family: var(--font-mono, monospace); font-size: .86rem; font-weight: 600;
+      color: var(--fg-primary); background: none; border: 0; padding: 0; cursor: pointer;
+    }
+    .vdx-imei:hover .vd-stat-copy-icon { opacity: 1; color: var(--tracky-light); }
+    @keyframes vt-blink { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+
+    /* ── Onglets (dtab) ── */
+    .vdx-tabs { display: flex; align-items: center; gap: 5px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 13px; overflow-x: auto; scrollbar-width: none; }
+    .vdx-tabs::-webkit-scrollbar { display: none; }
+    .vdx-tab {
+      display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+      padding: 9px 14px; border-radius: 10px; border: 1px solid transparent;
+      font-size: .83rem; font-weight: 700; color: var(--fg-tertiary); cursor: pointer;
+      transition: color .15s, background .15s, border-color .15s;
+    }
+    .vdx-tab:hover { color: var(--fg-secondary); }
+    .vdx-tab--active { background: var(--bg-secondary); color: var(--fg-primary); border-color: var(--border-strong); }
+    .vdx-tab-badge { min-width: 18px; height: 18px; padding: 0 5px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); font-size: .66rem; font-weight: 800; }
+
+
     /* ─── V1.7 — Carte super-admin "Reglage materiel ACC" ─── */
     .vd-admin-card {
       display: flex;
@@ -820,163 +843,12 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
       flex-shrink: 0;
     }
 
-    /* ─── Stats bar horizontale compacte ─── */
-    .vd-stats-bar {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 8px;
-    }
-    .vd-stat {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 12px;
-      background: var(--bg-secondary);
-      border: 1px solid var(--border-subtle);
-      border-radius: 12px;
-      min-width: 0;
-    }
-    .vd-stat lucide-icon {
-      flex-shrink: 0;
-      color: var(--fg-tertiary);
-    }
-    .vd-stat--online lucide-icon { color: var(--tracky-light); }
-    .vd-stat-content {
-      display: flex;
-      flex-direction: column;
-      min-width: 0;
-      flex: 1;
-    }
-    .vd-stat-label {
-      font-size: 10px;
-      font-weight: 600;
-      color: var(--fg-tertiary);
-      text-transform: uppercase;
-      letter-spacing: .04em;
-      line-height: 1.2;
-    }
-    .vd-stat-value {
-      font-size: 13px;
-      font-weight: 700;
-      color: var(--fg-primary);
-      line-height: 1.3;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .vd-stat--mono .vd-stat-value {
-      font-family: var(--font-mono, monospace);
-      font-size: 12px;
-    }
-    .vd-stat-coords {
-      font-family: var(--font-mono, monospace);
-      font-size: 10px;
-      color: var(--fg-tertiary);
-      line-height: 1.3;
-      letter-spacing: .01em;
-      margin-top: 1px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .vd-stat-value--copy {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      background: transparent;
-      border: none;
-      padding: 0;
-      color: inherit;
-      font: inherit;
-      cursor: pointer;
-      text-align: left;
-    }
-    .vd-stat-value--copy:hover .vd-stat-copy-icon { opacity: 1; color: var(--tracky-light, #10E0A0) }
+    /* Ancienne stats-bar → remplacée par .vdx-stats (haut du fichier). Styles copie IMEI conservés : */
     .vd-stat-copy-icon { opacity: .5; color: var(--fg-tertiary); transition: opacity .15s, color .15s }
     .vd-stat-copy-ok { color: var(--tracky-light, #10E0A0); animation: vd-copy-pop .25s ease-out }
     @keyframes vd-copy-pop { 0% { transform: scale(.6); opacity: 0 } 100% { transform: scale(1); opacity: 1 } }
 
-    /* ─── Tabs avec icônes + fade scroll indicator ─── */
-    .vd-tabs-wrapper {
-      position: relative;
-      border-bottom: 1px solid var(--border-subtle);
-      margin-left: -16px;
-      margin-right: -16px;
-    }
-    /* V1.12 — Fade gradient des DEUX cotes pour indiquer le scroll horizontal.
-       Avant : un seul fade a droite, peu visible. Maintenant : gauche+droite,
-       et plus larges (40px vs 32px). Aide les users a comprendre qu'il y a
-       d'autres onglets a faire defiler. */
-    .vd-tabs-wrapper::before,
-    .vd-tabs-wrapper::after {
-      content: '';
-      position: absolute;
-      top: 0; bottom: 1px;
-      width: 40px;
-      pointer-events: none;
-      z-index: 1;
-      opacity: 0.9;
-    }
-    .vd-tabs-wrapper::before {
-      left: 0;
-      background: linear-gradient(to left, transparent, var(--bg-primary) 70%);
-    }
-    .vd-tabs-wrapper::after {
-      right: 0;
-      background: linear-gradient(to right, transparent, var(--bg-primary) 70%);
-    }
-    .vd-tabs {
-      display: flex;
-      gap: 2px;
-      overflow-x: auto;
-      /* overflow-y explicite : 'overflow-x: auto' force 'overflow-y: auto'
-         par defaut (spec CSS), ce qui peut creer une scrollbar verticale
-         parasite si la hauteur du contenu deborde d'un pixel. */
-      overflow-y: hidden;
-      scrollbar-width: none;
-      padding: 0 16px;
-      scroll-snap-type: x proximity;
-    }
-    .vd-tabs::-webkit-scrollbar { display: none; }
-
-    .vd-tab {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 10px 12px;
-      background: transparent;
-      border: 0;
-      border-bottom: 2px solid transparent;
-      margin-bottom: -1px;
-      color: var(--fg-tertiary);
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: color .15s, border-color .15s;
-      flex-shrink: 0;
-      white-space: nowrap;
-      scroll-snap-align: start;
-    }
-    .vd-tab:hover { color: var(--fg-secondary); }
-    .vd-tab--active {
-      color: var(--tracky-light) !important;
-      border-bottom-color: var(--tracky-light);
-    }
-    .vd-tab-badge {
-      padding: 2px 6px;
-      border-radius: 9999px;
-      background: rgba(245,158,11,.18);
-      color: var(--warning);
-      font-size: 10px;
-      font-weight: 700;
-      line-height: 1;
-    }
-
-    /* Mobile : tabs plus compacts (icône + texte) */
-    @media (max-width: 640px) {
-      .vd-tab { padding: 10px 10px; font-size: 12px; gap: 5px; }
-      .vd-tab-label { display: inline; }
-    }
+    /* Anciens onglets → remplacés par .vdx-tabs (haut du fichier). */
 
     /* ─── Filtre date (Historique + Trajets) ─── */
     .vd-date-filter {
@@ -1450,15 +1322,10 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
       background: rgba(16,224,160,.06);
     }
 
-    /* Desktop : 4 stats en ligne, plus d'espace */
-    @media (min-width: 1024px) {
-      .vd-stats-bar { grid-template-columns: repeat(4, 1fr); gap: 12px; }
-      .vd-stat { padding: 12px 14px; }
-      .vd-stat-value { font-size: 14px; }
-      .vd-stat-label { font-size: 11px; }
-      .vd-tabs-wrapper { margin-left: 0; margin-right: 0; }
-      .vd-tabs { padding: 0; }
-      .vd-tabs-wrapper::after { display: none; }
+    /* Cartes stat (maquette) : 2 colonnes sur mobile, 4 en desktop. */
+    @media (max-width: 720px) {
+      .vdx-stats { grid-template-columns: repeat(2, 1fr); }
+      .vdx-hero-name { font-size: 1.3rem; }
     }
 
     /* ─── Sprint 7 — Bouton « Signaler un incident » (header) ─── */
