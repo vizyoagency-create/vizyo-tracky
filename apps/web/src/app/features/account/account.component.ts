@@ -60,7 +60,8 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
         </button>
       }
       <header class="page-header">
-        <h1>Mon compte</h1>
+        <span class="vt-eyebrow">Espace personnel</span>
+        <h1>Mon compte.</h1>
         <p class="muted">Gérez votre profil, vos invitations et vos préférences.</p>
       </header>
 
@@ -350,7 +351,7 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
       flex-direction: column;
       gap: 18px;
     }
-    .page-header h1 { margin: 0 0 4px; font-size: 24px; color: var(--fg-primary); }
+    .page-header h1 { margin: 8px 0 6px; font-family: var(--font-display, inherit); font-size: 1.72rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; color: var(--fg-primary); }
     .muted { color: var(--fg-tertiary); }
     .tabs {
       display: flex;
@@ -389,10 +390,10 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
     .card {
       background: var(--bg-secondary);
       border: 1px solid var(--border-subtle);
-      border-radius: var(--radius-card, 16px);
-      padding: 20px;
+      border-radius: 18px;
+      padding: 22px;
     }
-    .card h2 { margin: 0 0 16px; font-size: 16px; color: var(--fg-primary); }
+    .card h2 { margin: 0 0 16px; font-size: 1.05rem; font-weight: 700; color: var(--fg-primary); }
     .form-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -409,7 +410,7 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
     }
     .field input, .field select {
       background: var(--bg-tertiary);
-      border: 1px solid var(--border-subtle);
+      border: 1px solid var(--border-strong);
       border-radius: 10px;
       padding: 10px 12px;
       font-size: 14px;
@@ -447,8 +448,8 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
     }
     .btn-primary {
       background: var(--tracky-light, #10E0A0);
-      color: var(--bg-primary);
-      font-weight: 600;
+      color: var(--accent-ink, #04130D);
+      font-weight: 700;
     }
     .btn-primary[disabled] { opacity: 0.55; cursor: not-allowed; }
     .btn-primary:hover:not([disabled]) { filter: brightness(1.05); }
