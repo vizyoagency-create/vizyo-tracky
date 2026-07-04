@@ -30,6 +30,8 @@ export class EmailService {
   private readonly client: Resend | null;
   private readonly fromAddress: string;
   private readonly enabled: boolean;
+  /** URL absolue du logo PNG (charte 2026) — cf. EMAIL_LOGO_URL. */
+  private readonly logoUrl: string;
 
   constructor(
     private readonly config: ConfigService<Env, true>,
@@ -37,6 +39,7 @@ export class EmailService {
   ) {
     const apiKey = this.config.get('RESEND_API_KEY', { infer: true });
     this.fromAddress = this.config.get('RESEND_FROM', { infer: true });
+    this.logoUrl = this.config.get('EMAIL_LOGO_URL', { infer: true });
     this.enabled = !!apiKey;
     this.client = this.enabled ? new Resend(apiKey) : null;
     if (this.enabled) {
@@ -109,8 +112,60 @@ export class EmailService {
   }
 
   /**
+   * Gabarit e-mail commun (charte 2026). Header logo + eyebrow, carte sombre,
+   * footer mono. `body` = HTML interne DÉJÀ échappé (rangées `<tr><td>…`). `accent`
+   * colore le filet haut + l'eyebrow (emerald par défaut, ambre conformité, rouge
+   * alerte). Un seul endroit à maintenir → header/footer/logo cohérents partout.
+   *
+   * Public : réutilisé par LeadsService (même en-tête/pied que les e-mails du service).
+   */
+  shell(opts: {
+    eyebrow: string;
+    body: string;
+    footer: string;
+    accent?: string;
+    borderColor?: string;
+  }): string {
+    const accent = opts.accent ?? '#10E0A0';
+    const border = opts.borderColor ?? 'rgba(255,255,255,.08)';
+    return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="supported-color-schemes" content="dark">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body style="margin:0;padding:0;background:#060807;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#060807;padding:32px 16px;">
+    <tr><td align="center">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;width:100%;background:#101514;border:1px solid ${border};border-radius:18px;overflow:hidden;">
+        <tr><td style="height:3px;background:${accent};line-height:3px;font-size:0;">&nbsp;</td></tr>
+        <tr><td style="padding:30px 36px 0;">
+          <table role="presentation" width="100%"><tr>
+            <td style="vertical-align:middle;">
+              <img src="${this.logoUrl}" width="27" height="27" alt="Vizyo Tracky" style="display:inline-block;vertical-align:middle;border:0;" />
+              <span style="font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:16px;font-weight:700;letter-spacing:-0.01em;color:#EAEFED;vertical-align:middle;margin-left:8px;">Vizyo <span style="color:#10E0A0;">Tracky</span></span>
+            </td>
+            <td align="right" style="font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:10px;font-weight:600;letter-spacing:0.16em;text-transform:uppercase;color:${accent};">${opts.eyebrow}</td>
+          </tr></table>
+        </td></tr>
+        ${opts.body}
+        <tr><td style="padding:24px 36px 30px;">
+          <div style="height:1px;background:rgba(255,255,255,.07);margin-bottom:16px;"></div>
+          <p style="margin:0;font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:10.5px;line-height:1.7;letter-spacing:0.03em;color:#565f5b;">${opts.footer}</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+  }
+
+  /**
    * Template invitation utilisateur — utilise par InvitationsService.
-   * Couleurs Tracky : mint/green (#10e0a0), fond sombre (#0b0f12).
+   * Charte 2026 (charte e-mails Tracky) via shell().
    */
   buildInvitationEmail(opts: {
     recipientName?: string | null;
@@ -127,46 +182,22 @@ export class EmailService {
     });
     const subject = `[Vizyo Tracky] Vous etes invite a rejoindre ${opts.fleetName}`;
 
-    const html = `<!DOCTYPE html>
-<html lang="fr">
-<body style="margin:0;padding:0;background:#0b0f12;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#f4f4f5;">
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#0b0f12;padding:40px 20px;">
-    <tr><td align="center">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;background:#13181d;border:1px solid #2a3036;border-radius:16px;overflow:hidden;">
-        <tr><td style="padding:32px 32px 0 32px;">
-          <div style="font-size:24px;font-weight:700;color:#10e0a0;letter-spacing:-0.5px;">Vizyo Tracky</div>
+    const html = this.shell({
+      eyebrow: 'Accès · Invitation',
+      footer: 'VIZYO TRACKY · GPS FLOTTE · OCCITANIE<br>Vous recevez cet e-mail suite à une invitation. Ne pas répondre.',
+      body: `
+        <tr><td style="padding:28px 36px 8px;">
+          <h1 style="margin:0 0 6px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:26px;line-height:1.15;font-weight:800;letter-spacing:-0.025em;color:#EAEFED;">Rejoignez la flotte<br><span style="color:#10E0A0;">${escapeHtml(opts.fleetName)}</span></h1>
         </td></tr>
-        <tr><td style="padding:24px 32px;">
-          <h1 style="margin:0 0 16px;font-size:22px;font-weight:600;color:#f4f4f5;">${greeting}</h1>
-          <p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:#cbd2d9;">
-            <strong style="color:#f4f4f5;">${escapeHtml(opts.inviterName)}</strong> vous a invite a rejoindre la flotte
-            <strong style="color:#f4f4f5;">${escapeHtml(opts.fleetName)}</strong>
-            sur Vizyo Tracky en tant que <strong style="color:#10e0a0;">${escapeHtml(opts.role)}</strong>.
-          </p>
-          <p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:#cbd2d9;">
-            Cliquez le bouton ci-dessous pour creer votre mot de passe et acceder a votre compte :
-          </p>
-          <div style="text-align:center;margin:32px 0;">
-            <a href="${opts.acceptUrl}" style="display:inline-block;background:#10e0a0;color:#0b0f12;text-decoration:none;font-weight:600;font-size:15px;padding:14px 32px;border-radius:10px;">
-              Accepter l'invitation
-            </a>
-          </div>
-          <p style="margin:0 0 8px;font-size:13px;color:#8b939c;">
-            Ce lien est valide jusqu'au <strong>${expiresLabel}</strong>. Si vous ne reconnaissez pas cette invitation, ignorez cet email.
-          </p>
-          <p style="margin:24px 0 0;font-size:12px;color:#6b727a;border-top:1px solid #2a3036;padding-top:16px;">
-            Si le bouton ne fonctionne pas, copier ce lien dans votre navigateur :<br/>
-            <span style="word-break:break-all;color:#8b939c;">${opts.acceptUrl}</span>
-          </p>
-        </td></tr>
-        <tr><td style="padding:16px 32px 24px;text-align:center;">
-          <p style="margin:0;font-size:12px;color:#6b727a;">— L'equipe Vizyo</p>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`;
+        <tr><td style="padding:8px 36px 0;">
+          <p style="margin:0 0 16px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:15px;line-height:1.65;color:#9BA5A1;">${escapeHtml(greeting)}</p>
+          <p style="margin:0 0 22px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:15px;line-height:1.65;color:#9BA5A1;"><span style="color:#EAEFED;font-weight:600;">${escapeHtml(opts.inviterName)}</span> vous invite à rejoindre sa flotte sur Vizyo Tracky en tant que <span style="color:#10E0A0;font-weight:600;">${escapeHtml(opts.role)}</span>. Créez votre mot de passe pour accéder à votre espace.</p>
+          <table role="presentation"><tr><td style="border-radius:11px;background:#10E0A0;">
+            <a href="${opts.acceptUrl}" style="display:inline-block;padding:14px 30px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;font-weight:700;letter-spacing:-0.01em;color:#04130D;text-decoration:none;">Accepter l'invitation →</a>
+          </td></tr></table>
+          <p style="margin:22px 0 0;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:13px;line-height:1.6;color:#69736E;">Ce lien expire le <span style="font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;color:#9BA5A1;">${expiresLabel}</span>. Si vous ne reconnaissez pas cette invitation, ignorez cet e-mail.</p>
+        </td></tr>`,
+    });
 
     const text = `${greeting}
 
@@ -193,44 +224,22 @@ Ce lien est valide jusqu'au ${expiresLabel}.
     const greeting = opts.recipientName ? `Bonjour ${opts.recipientName},` : 'Bonjour,';
     const subject = `[Vizyo Tracky] Réinitialisation de votre mot de passe`;
 
-    const html = `<!DOCTYPE html>
-<html lang="fr">
-<body style="margin:0;padding:0;background:#0b0f12;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#f4f4f5;">
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#0b0f12;padding:40px 20px;">
-    <tr><td align="center">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;background:#13181d;border:1px solid #2a3036;border-radius:16px;overflow:hidden;">
-        <tr><td style="padding:32px 32px 0 32px;">
-          <div style="font-size:24px;font-weight:700;color:#10e0a0;letter-spacing:-0.5px;">Vizyo Tracky</div>
-        </td></tr>
-        <tr><td style="padding:24px 32px;">
-          <h1 style="margin:0 0 16px;font-size:22px;font-weight:600;color:#f4f4f5;">${greeting}</h1>
-          <p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:#cbd2d9;">
-            Vous avez demande la reinitialisation de votre mot de passe sur Vizyo Tracky.
-          </p>
-          <p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:#cbd2d9;">
-            Cliquez le bouton ci-dessous pour choisir un nouveau mot de passe :
-          </p>
-          <div style="text-align:center;margin:32px 0;">
-            <a href="${opts.resetUrl}" style="display:inline-block;background:#10e0a0;color:#0b0f12;text-decoration:none;font-weight:600;font-size:15px;padding:14px 32px;border-radius:10px;">
-              Reinitialiser mon mot de passe
-            </a>
+    const html = this.shell({
+      eyebrow: 'Sécurité · Mot de passe',
+      footer: 'VIZYO TRACKY · SÉCURITÉ DU COMPTE<br>E-mail automatique de sécurité. Ne pas répondre.',
+      body: `
+        <tr><td style="padding:28px 36px 0;">
+          <div style="width:46px;height:46px;border-radius:12px;background:rgba(16,224,160,.12);text-align:center;line-height:46px;font-size:22px;margin-bottom:18px;">🔐</div>
+          <h1 style="margin:0 0 12px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:26px;line-height:1.15;font-weight:800;letter-spacing:-0.025em;color:#EAEFED;">Réinitialisez votre mot de passe</h1>
+          <p style="margin:0 0 22px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:15px;line-height:1.65;color:#9BA5A1;">Vous avez demandé à réinitialiser votre mot de passe. Choisissez-en un nouveau en cliquant ci-dessous.</p>
+          <table role="presentation"><tr><td style="border-radius:11px;background:#10E0A0;">
+            <a href="${opts.resetUrl}" style="display:inline-block;padding:14px 30px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;font-weight:700;letter-spacing:-0.01em;color:#04130D;text-decoration:none;">Choisir un nouveau mot de passe →</a>
+          </td></tr></table>
+          <div style="margin:22px 0 0;padding:14px 16px;background:#161D1B;border:1px solid rgba(255,255,255,.07);border-radius:11px;">
+            <p style="margin:0;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:13px;line-height:1.6;color:#9BA5A1;">Ce lien est valide <span style="font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;color:#10E0A0;">${opts.expiresInMinutes} min</span>. Vous n'êtes pas à l'origine de cette demande ? <span style="color:#EAEFED;">Ignorez cet e-mail</span>, votre mot de passe reste inchangé.</p>
           </div>
-          <p style="margin:0 0 8px;font-size:13px;color:#8b939c;">
-            Ce lien est valide pendant <strong>${opts.expiresInMinutes} minutes</strong>. Si vous n'avez pas demande cette reinitialisation, ignorez cet email.
-          </p>
-          <p style="margin:24px 0 0;font-size:12px;color:#6b727a;border-top:1px solid #2a3036;padding-top:16px;">
-            Si le bouton ne fonctionne pas, copier ce lien dans votre navigateur :<br/>
-            <span style="word-break:break-all;color:#8b939c;">${opts.resetUrl}</span>
-          </p>
-        </td></tr>
-        <tr><td style="padding:16px 32px 24px;text-align:center;">
-          <p style="margin:0;font-size:12px;color:#6b727a;">— L'equipe Vizyo</p>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`;
+        </td></tr>`,
+    });
 
     const text = `${greeting}
 
@@ -261,48 +270,28 @@ Si vous n'avez pas demande cette reinitialisation, ignorez cet email.
   }): { subject: string; html: string; text: string } {
     const subject = `[Vizyo Tracky] Écoute audio activée pour ${opts.fleetName} — obligations`;
 
-    const html = `<!DOCTYPE html>
-<html lang="fr">
-<body style="margin:0;padding:0;background:#0b0f12;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#f4f4f5;">
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#0b0f12;padding:40px 20px;">
-    <tr><td align="center">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;background:#13181d;border:1px solid #2a3036;border-radius:16px;overflow:hidden;">
-        <tr><td style="padding:32px 32px 0 32px;">
-          <div style="font-size:24px;font-weight:700;color:#10e0a0;letter-spacing:-0.5px;">Vizyo Tracky</div>
+    const html = this.shell({
+      eyebrow: 'Conformité · Écoute audio',
+      accent: '#F5B33D',
+      borderColor: 'rgba(245,179,61,.25)',
+      footer: "VIZYO TRACKY · GARDE-FOU CONFORMITÉ<br>La conformité réglementaire reste la responsabilité de l'exploitant.",
+      body: `
+        <tr><td style="padding:26px 36px 0;">
+          <h1 style="margin:0 0 12px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:24px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;color:#EAEFED;">Écoute audio activée</h1>
+          <p style="margin:0 0 18px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:15px;line-height:1.65;color:#9BA5A1;">L'écoute audio à distance (micro embarqué) a été activée pour <span style="color:#EAEFED;font-weight:600;">${escapeHtml(opts.fleetName)}</span> par <span style="color:#EAEFED;font-weight:600;">${escapeHtml(opts.activatedBy)}</span>. Cette capacité est <span style="color:#F5B33D;font-weight:600;">légalement sensible</span> : avant tout usage, vous devez —</p>
         </td></tr>
-        <tr><td style="padding:24px 32px;">
-          <h1 style="margin:0 0 16px;font-size:22px;font-weight:600;color:#f4f4f5;">Écoute audio activée</h1>
-          <p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:#cbd2d9;">
-            La fonction d'<strong style="color:#f4f4f5;">écoute audio à distance</strong> (micro embarqué) a été activée
-            pour la flotte <strong style="color:#f4f4f5;">${escapeHtml(opts.fleetName)}</strong>
-            par <strong style="color:#f4f4f5;">${escapeHtml(opts.activatedBy)}</strong>.
-          </p>
-          <p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:#cbd2d9;">
-            Cette capacité est <strong style="color:#10e0a0;">légalement sensible</strong>. En tant qu'exploitant, vous
-            êtes responsable de sa conformité. Avant tout usage, vous devez :
-          </p>
-          <ul style="margin:0 0 16px;padding-left:20px;font-size:15px;line-height:1.7;color:#cbd2d9;">
-            <li><strong style="color:#f4f4f5;">Informer</strong> les conducteurs et occupants des véhicules concernés.</li>
-            <li><strong style="color:#f4f4f5;">Poser la signalétique</strong> indiquant la présence d'un dispositif d'écoute.</li>
-            <li>Limiter strictement la <strong style="color:#f4f4f5;">finalité</strong> (sécurité / sûreté) — jamais de surveillance permanente ou détournée.</li>
-            <li>Respecter le cadre applicable (information, AIPD/CNIL, DPO le cas échéant).</li>
-          </ul>
-          <p style="margin:0 0 8px;font-size:13px;color:#8b939c;">
-            Chaque déclenchement est tracé (qui, quand, quel véhicule, motif obligatoire). La fonction
-            peut être désactivée à tout moment depuis les paramètres de la flotte.
-          </p>
-          <p style="margin:24px 0 0;font-size:12px;color:#6b727a;border-top:1px solid #2a3036;padding-top:16px;">
-            La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fournit l'outil et les garde-fous techniques.
-          </p>
+        <tr><td style="padding:0 36px;">
+          <table role="presentation" width="100%" style="background:#161D1B;border:1px solid rgba(255,255,255,.07);border-radius:13px;">
+            <tr><td style="padding:14px 18px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;line-height:1.5;color:#9BA5A1;"><span style="color:#F5B33D;font-weight:700;">01</span>&nbsp;&nbsp;<span style="color:#EAEFED;font-weight:600;">Informer</span> les conducteurs et occupants concernés.</td></tr>
+            <tr><td style="border-top:1px solid rgba(255,255,255,.06);padding:14px 18px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;line-height:1.5;color:#9BA5A1;"><span style="color:#F5B33D;font-weight:700;">02</span>&nbsp;&nbsp;<span style="color:#EAEFED;font-weight:600;">Poser la signalétique</span> indiquant le dispositif.</td></tr>
+            <tr><td style="border-top:1px solid rgba(255,255,255,.06);padding:14px 18px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;line-height:1.5;color:#9BA5A1;"><span style="color:#F5B33D;font-weight:700;">03</span>&nbsp;&nbsp;Limiter la <span style="color:#EAEFED;font-weight:600;">finalité</span> à la sécurité / sûreté.</td></tr>
+            <tr><td style="border-top:1px solid rgba(255,255,255,.06);padding:14px 18px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;line-height:1.5;color:#9BA5A1;"><span style="color:#F5B33D;font-weight:700;">04</span>&nbsp;&nbsp;Respecter le cadre applicable <span style="color:#565f5b;">(information, AIPD/CNIL, DPO)</span>.</td></tr>
+          </table>
         </td></tr>
-        <tr><td style="padding:16px 32px 24px;text-align:center;">
-          <p style="margin:0;font-size:12px;color:#6b727a;">— L'equipe Vizyo</p>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`;
+        <tr><td style="padding:18px 36px 0;">
+          <p style="margin:0;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:13px;line-height:1.6;color:#69736E;">Chaque déclenchement est tracé (qui, quand, quel véhicule, motif). La fonction est désactivable à tout moment dans les réglages de la flotte.</p>
+        </td></tr>`,
+    });
 
     const text = `Écoute audio activée — ${opts.fleetName}
 
@@ -339,65 +328,43 @@ La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fo
     const greeting = opts.recipientName ? `Bonjour ${opts.recipientName},` : 'Bonjour,';
     const subject = `[Vizyo Tracky] Nouvelle fonction « Mode assistance » — ${opts.fleetName}`;
 
-    const html = `<!DOCTYPE html>
-<html lang="fr">
-<body style="margin:0;padding:0;background:#0b0f12;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#f4f4f5;">
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#0b0f12;padding:40px 20px;">
-    <tr><td align="center">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;background:#13181d;border:1px solid #2a3036;border-radius:16px;overflow:hidden;">
-        <tr><td style="padding:32px 32px 0 32px;">
-          <div style="font-size:24px;font-weight:700;color:#10e0a0;letter-spacing:-0.5px;">Vizyo Tracky</div>
+    const appBase = this.config.get('APP_BASE_URL', { infer: true });
+
+    const html = this.shell({
+      eyebrow: 'Nouveauté · Assistance',
+      footer: 'VIZYO TRACKY · NOUVELLE FONCTION<br>Informez conducteurs et occupants, posez la signalétique. Conformité à votre charge.',
+      body: `
+        <tr><td style="padding:26px 36px 0;">
+          <p style="margin:0 0 6px;font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:#10E0A0;">Disponible pour ${escapeHtml(opts.fleetName)}</p>
+          <h1 style="margin:0 0 14px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:26px;line-height:1.15;font-weight:800;letter-spacing:-0.025em;color:#EAEFED;">Le Mode assistance<br>arrive sur votre flotte</h1>
+          <p style="margin:0 0 18px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:15px;line-height:1.65;color:#9BA5A1;">En cas d'accident, et <span style="color:#EAEFED;font-weight:600;">uniquement avec votre autorisation explicite</span>, le prestataire peut ouvrir brièvement le micro de la cabine pour porter assistance.</p>
         </td></tr>
-        <tr><td style="padding:24px 32px;">
-          <h1 style="margin:0 0 16px;font-size:22px;font-weight:600;color:#f4f4f5;">${greeting}</h1>
-          <p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:#cbd2d9;">
-            Une nouvelle fonction est disponible pour la flotte
-            <strong style="color:#f4f4f5;">${escapeHtml(opts.fleetName)}</strong> : le
-            <strong style="color:#10e0a0;">Mode assistance</strong>.
-          </p>
-          <p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:#cbd2d9;">
-            <strong style="color:#f4f4f5;">Le principe.</strong> En cas d'accident, et
-            <strong style="color:#f4f4f5;">uniquement avec votre autorisation explicite</strong>,
-            le prestataire peut ouvrir brièvement le micro de la cabine du véhicule afin de
-            porter assistance (évaluer la situation, rassurer / guider l'occupant, déclencher
-            les secours).
-          </p>
-          <p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:#cbd2d9;">
-            <strong style="color:#f4f4f5;">Aucun enregistrement n'est conservé.</strong> Il
-            s'agit d'une écoute <strong style="color:#f4f4f5;">en direct</strong> uniquement —
-            aucun fichier audio n'est stocké. Seules des
-            <strong style="color:#f4f4f5;">métadonnées</strong> sont tracées : qui a écouté,
-            quand, quel véhicule, et le motif.
-          </p>
-          <p style="margin:0 0 8px;font-size:15px;line-height:1.6;color:#cbd2d9;">
-            <strong style="color:#f4f4f5;">Comment l'activer.</strong>
-          </p>
-          <ul style="margin:0 0 16px;padding-left:20px;font-size:15px;line-height:1.7;color:#cbd2d9;">
-            <li>Rendez-vous dans <strong style="color:#f4f4f5;">Réglages → Mode assistance</strong>.</li>
-            <li>Cochez l'<strong style="color:#f4f4f5;">attestation</strong>.</li>
-            <li><strong style="color:#f4f4f5;">Activez</strong> la fonction (possible une fois que le prestataire a rendu votre flotte éligible).</li>
-          </ul>
-          <p style="margin:0 0 8px;font-size:15px;line-height:1.6;color:#cbd2d9;">
-            <strong style="color:#f4f4f5;">Vos obligations.</strong> Le Mode assistance est
-            légalement sensible. Avant tout usage, vous devez :
-          </p>
-          <ul style="margin:0 0 16px;padding-left:20px;font-size:15px;line-height:1.7;color:#cbd2d9;">
-            <li><strong style="color:#f4f4f5;">Informer</strong> les conducteurs et occupants des véhicules concernés.</li>
-            <li><strong style="color:#f4f4f5;">Poser la signalétique</strong> indiquant la présence d'un dispositif d'écoute.</li>
-            <li>Respecter la <strong style="color:#f4f4f5;">réglementation applicable</strong> (information, AIPD/CNIL, DPO le cas échéant).</li>
-          </ul>
-          <p style="margin:24px 0 0;font-size:12px;color:#6b727a;border-top:1px solid #2a3036;padding-top:16px;">
-            La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fournit l'outil et les garde-fous techniques.
-          </p>
+        <tr><td style="padding:0 36px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;border-spacing:10px;margin:0 -10px;">
+            <tr>
+              <td width="50%" style="background:#161D1B;border:1px solid rgba(255,255,255,.07);border-radius:13px;padding:16px 18px;vertical-align:top;">
+                <div style="font-size:20px;margin-bottom:8px;">🎧</div>
+                <div style="font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;font-weight:700;color:#EAEFED;margin-bottom:4px;">Écoute en direct</div>
+                <div style="font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:12.5px;line-height:1.5;color:#69736E;">Aucun fichier audio n'est stocké.</div>
+              </td>
+              <td width="50%" style="background:#161D1B;border:1px solid rgba(255,255,255,.07);border-radius:13px;padding:16px 18px;vertical-align:top;">
+                <div style="font-size:20px;margin-bottom:8px;">🗂️</div>
+                <div style="font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;font-weight:700;color:#EAEFED;margin-bottom:4px;">Métadonnées tracées</div>
+                <div style="font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:12.5px;line-height:1.5;color:#69736E;">Qui, quand, quel véhicule, motif.</div>
+              </td>
+            </tr>
+          </table>
         </td></tr>
-        <tr><td style="padding:16px 32px 24px;text-align:center;">
-          <p style="margin:0;font-size:12px;color:#6b727a;">— L'equipe Vizyo</p>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`;
+        <tr><td style="padding:20px 36px 0;">
+          <p style="margin:0 0 12px;font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:#69736E;">Pour l'activer</p>
+          <p style="margin:0 0 6px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;line-height:1.6;color:#9BA5A1;"><span style="color:#10E0A0;font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;">1 →</span> Réglages → Mode assistance</p>
+          <p style="margin:0 0 6px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;line-height:1.6;color:#9BA5A1;"><span style="color:#10E0A0;font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;">2 →</span> Cochez l'attestation</p>
+          <p style="margin:0 0 20px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;line-height:1.6;color:#9BA5A1;"><span style="color:#10E0A0;font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;">3 →</span> Activez la fonction</p>
+          <table role="presentation"><tr><td style="border-radius:11px;background:#10E0A0;">
+            <a href="${appBase}/settings/audio-monitoring" style="display:inline-block;padding:14px 30px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;font-weight:700;letter-spacing:-0.01em;color:#04130D;text-decoration:none;">Découvrir dans les réglages →</a>
+          </td></tr></table>
+        </td></tr>`,
+    });
 
     const text = `${greeting}
 
@@ -422,6 +389,127 @@ La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fo
 — L'equipe Vizyo`;
 
     return { subject, html, text };
+  }
+
+  /**
+   * Charte 2026 — rapport hebdomadaire. Déplacé de ReportsCronService pour passer
+   * par le shell(). Renvoie UNIQUEMENT le HTML ; le cron conserve subject / text /
+   * pièce jointe PDF (logique métier inchangée). Grille de 4 stats mono.
+   */
+  buildWeeklyReportEmail(opts: {
+    fromStr: string;
+    toStr: string;
+    tripsCount: number;
+    totalKm: number;
+    alertsTotal: number;
+    liters: number;
+    costEur: number;
+    pdfName?: string;
+  }): string {
+    const appBase = this.config.get('APP_BASE_URL', { infer: true });
+    const km = opts.totalKm.toFixed(1);
+    const liters = opts.liters.toFixed(0);
+    const cost = opts.costEur.toFixed(2);
+    const chip = opts.pdfName
+      ? `<table role="presentation"><tr><td style="background:rgba(16,224,160,.1);border:1px solid rgba(16,224,160,.25);border-radius:9px;padding:9px 14px;font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:11px;color:#10E0A0;">📎 ${escapeHtml(opts.pdfName)} en pièce jointe</td></tr></table>`
+      : '';
+    return this.shell({
+      eyebrow: 'Rapport · Hebdo',
+      footer: 'VIZYO TRACKY · RAPPORT AUTOMATIQUE HEBDOMADAIRE<br>Gérez la fréquence depuis Réglages → Rapports.',
+      body: `
+        <tr><td style="padding:26px 36px 0;">
+          <p style="margin:0 0 6px;font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:11px;letter-spacing:0.06em;color:#69736E;">SEMAINE DU ${escapeHtml(opts.fromStr)} → ${escapeHtml(opts.toStr)}</p>
+          <h1 style="margin:0 0 20px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:26px;line-height:1.15;font-weight:800;letter-spacing:-0.025em;color:#EAEFED;">Votre semaine en bref</h1>
+        </td></tr>
+        <tr><td style="padding:0 36px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate;border-spacing:10px;margin:0 -10px;">
+            <tr>
+              <td width="50%" style="background:#161D1B;border:1px solid rgba(255,255,255,.07);border-radius:13px;padding:16px 18px;">
+                <div style="font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:#69736E;margin-bottom:8px;">Trajets</div>
+                <div style="font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:30px;font-weight:600;color:#EAEFED;">${opts.tripsCount}</div>
+              </td>
+              <td width="50%" style="background:#161D1B;border:1px solid rgba(255,255,255,.07);border-radius:13px;padding:16px 18px;">
+                <div style="font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:#69736E;margin-bottom:8px;">Distance</div>
+                <div style="font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:30px;font-weight:600;color:#10E0A0;">${km}<span style="font-size:14px;color:#69736E;"> km</span></div>
+              </td>
+            </tr>
+            <tr>
+              <td width="50%" style="background:#161D1B;border:1px solid rgba(255,255,255,.07);border-radius:13px;padding:16px 18px;">
+                <div style="font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:#69736E;margin-bottom:8px;">Alertes</div>
+                <div style="font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:30px;font-weight:600;color:#F5B33D;">${opts.alertsTotal}</div>
+              </td>
+              <td width="50%" style="background:#161D1B;border:1px solid rgba(255,255,255,.07);border-radius:13px;padding:16px 18px;">
+                <div style="font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:#69736E;margin-bottom:8px;">Conso estimée</div>
+                <div style="font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:30px;font-weight:600;color:#EAEFED;">${liters}<span style="font-size:14px;color:#69736E;"> L</span></div>
+                <div style="font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:12px;color:#69736E;margin-top:3px;">≈ ${cost} €</div>
+              </td>
+            </tr>
+          </table>
+        </td></tr>
+        <tr><td style="padding:20px 36px 0;">
+          ${chip}
+          <table role="presentation" style="margin-top:${opts.pdfName ? '20px' : '0'};"><tr><td style="border-radius:11px;background:#10E0A0;">
+            <a href="${appBase}/dashboard" style="display:inline-block;padding:14px 30px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;font-weight:700;letter-spacing:-0.01em;color:#04130D;text-decoration:none;">Ouvrir le tableau de bord →</a>
+          </td></tr></table>
+        </td></tr>`,
+    });
+  }
+
+  /**
+   * Charte 2026 — e-mail d'alerte. Déplacé de NotificationDispatchService pour
+   * passer par le shell(). Renvoie le HTML ; le dispatch conserve subject / bodyText.
+   * Accent conditionnel : escalade OU CRITICAL → rouge, WARNING → ambre, INFO →
+   * emerald. Le bouton d'action reste emerald (charte). `plate` déjà résolu par l'appelant.
+   */
+  buildAlertEmail(
+    alert: { title: string; message: string | null; plate: string; severity: string; createdAt: Date },
+    opts: { isEscalation?: boolean } = {},
+  ): string {
+    const isEsc = opts.isEscalation ?? false;
+    const sev = alert.severity;
+    const accent = isEsc || sev === 'CRITICAL' ? '#F2706B' : sev === 'WARNING' ? '#F5B33D' : '#10E0A0';
+    const border = isEsc || sev === 'CRITICAL' ? 'rgba(242,112,107,.28)' : sev === 'WARNING' ? 'rgba(245,179,61,.25)' : 'rgba(255,255,255,.08)';
+    const sevLabel = sev === 'CRITICAL' ? 'Critique' : sev === 'WARNING' ? 'Avertissement' : 'Information';
+    const eyebrow = `● ${isEsc ? 'Escalade' : 'Alerte'} · ${sevLabel}`;
+    const appBase = this.config.get('APP_BASE_URL', { infer: true });
+    const heure = alert.createdAt.toLocaleString('fr-FR');
+    const messageP = alert.message
+      ? `<p style="margin:0 0 20px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:15px;line-height:1.6;color:#9BA5A1;">${escapeHtml(alert.message)}</p>`
+      : '';
+    return this.shell({
+      eyebrow,
+      accent,
+      borderColor: border,
+      footer: "VIZYO TRACKY · NOTIFICATION D'ALERTE<br>Réglez vos canaux dans Réglages → Alertes.",
+      body: `
+        <tr><td style="padding:26px 36px 0;">
+          <h1 style="margin:0 0 6px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:24px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;color:#EAEFED;">${escapeHtml(alert.title)}</h1>
+          ${messageP}
+        </td></tr>
+        <tr><td style="padding:0 36px;">
+          <table role="presentation" width="100%" style="background:#161D1B;border:1px solid rgba(255,255,255,.07);border-radius:13px;">
+            <tr>
+              <td style="padding:13px 18px;font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:#69736E;">Véhicule</td>
+              <td align="right" style="padding:13px 18px;"><span style="font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:13px;font-weight:600;color:#EAEFED;background:rgba(255,255,255,.05);border-radius:6px;padding:3px 9px;">${escapeHtml(alert.plate || 'N/A')}</span></td>
+            </tr>
+            <tr><td colspan="2" style="border-top:1px solid rgba(255,255,255,.06);"></td></tr>
+            <tr>
+              <td style="padding:13px 18px;font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:#69736E;">Sévérité</td>
+              <td align="right" style="padding:13px 18px;font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:13px;font-weight:600;color:${accent};">${escapeHtml(sev)}</td>
+            </tr>
+            <tr><td colspan="2" style="border-top:1px solid rgba(255,255,255,.06);"></td></tr>
+            <tr>
+              <td style="padding:13px 18px;font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:#69736E;">Heure</td>
+              <td align="right" style="padding:13px 18px;font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:13px;color:#9BA5A1;">${escapeHtml(heure)}</td>
+            </tr>
+          </table>
+        </td></tr>
+        <tr><td style="padding:22px 36px 0;">
+          <table role="presentation"><tr><td style="border-radius:11px;background:#10E0A0;">
+            <a href="${appBase}/alerts" style="display:inline-block;padding:14px 30px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;font-weight:700;letter-spacing:-0.01em;color:#04130D;text-decoration:none;">Acquitter l'alerte →</a>
+          </td></tr></table>
+        </td></tr>`,
+    });
   }
 }
 

@@ -75,61 +75,59 @@ export class LeadsService {
   ) {
     const escHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-    const resubBanner = isResubmission
-      ? `<tr><td style="padding:12px 32px;background:#3b2f00;border-bottom:1px solid #5a4800;">
-           <p style="margin:0;font-size:13px;font-weight:600;color:#fbbf24;">Re-soumission #${submissionCount} — Ce prospect a deja soumis le formulaire.</p>
-         </td></tr>`
+    // Rangées de contact (mono label + valeur Manrope), séparées par un filet.
+    const sep = `<tr><td colspan="2" style="border-top:1px solid rgba(255,255,255,.06);"></td></tr>`;
+    const labelStyle = `padding:12px 18px;font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#69736E;width:110px;vertical-align:top;`;
+    const valStyle = `padding:12px 18px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;color:#EAEFED;`;
+    const rows: string[] = [
+      `<tr><td style="${labelStyle}">Nom</td><td style="${valStyle}">${escHtml(lead.name)}</td></tr>`,
+      `<tr><td style="${labelStyle}">E-mail</td><td style="padding:12px 18px;font-size:14px;"><a href="mailto:${lead.email}" style="color:#10E0A0;text-decoration:none;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;">${escHtml(lead.email)}</a></td></tr>`,
+    ];
+    if (lead.phone) {
+      rows.push(`<tr><td style="${labelStyle}">Téléphone</td><td style="${valStyle}"><a href="tel:${escHtml(lead.phone)}" style="color:#EAEFED;text-decoration:none;">${escHtml(lead.phone)}</a></td></tr>`);
+    }
+    if (lead.company || lead.fleetSize) {
+      const parts: string[] = [];
+      if (lead.company) parts.push(escHtml(lead.company));
+      if (lead.fleetSize) parts.push(`<span style="color:#10E0A0;font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:13px;">${escHtml(lead.fleetSize)} véhicules</span>`);
+      rows.push(`<tr><td style="${labelStyle}">Société</td><td style="${valStyle}">${parts.join(' · ')}</td></tr>`);
+    }
+    const contactTable = rows.join(sep);
+
+    const messageBlock = lead.message
+      ? `<div style="margin-top:12px;padding:14px 16px;background:#0C110F;border:1px solid rgba(255,255,255,.06);border-radius:11px;">
+            <div style="font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:#565f5b;margin-bottom:6px;">Message</div>
+            <p style="margin:0;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;line-height:1.6;color:#9BA5A1;">${escHtml(lead.message)}</p>
+          </div>`
       : '';
 
-    const row = (label: string, value: string | null | undefined, href?: string) => {
-      if (!value) return '';
-      const val = href
-        ? `<a href="${href}" style="color:#10e0a0;text-decoration:none;">${escHtml(value)}</a>`
-        : `<span style="color:#f4f4f5;">${escHtml(value)}</span>`;
-      return `<tr>
-        <td style="padding:8px 0;font-size:13px;color:#8b939c;width:120px;vertical-align:top;">${label}</td>
-        <td style="padding:8px 0;font-size:14px;">${val}</td>
-      </tr>`;
-    };
+    const resubBanner = isResubmission
+      ? `<tr><td style="padding:22px 36px 0;">
+            <div style="padding:11px 15px;background:rgba(245,179,61,.1);border:1px solid rgba(245,179,61,.3);border-radius:11px;">
+              <p style="margin:0;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:13px;font-weight:600;color:#F5B33D;">Re-soumission #${submissionCount} — ce prospect a déjà soumis le formulaire.</p>
+            </div>
+          </td></tr>`
+      : '';
 
-    const html = `<!DOCTYPE html>
-<html lang="fr">
-<body style="margin:0;padding:0;background:#0b0f12;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#f4f4f5;">
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#0b0f12;padding:40px 20px;">
-    <tr><td align="center">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width:600px;background:#13181d;border:1px solid #2a3036;border-radius:16px;overflow:hidden;">
-        <tr><td style="padding:32px 32px 0 32px;">
-          <div style="font-size:24px;font-weight:700;color:#10e0a0;letter-spacing:-0.5px;">Vizyo Tracky</div>
-          <p style="margin:8px 0 0;font-size:12px;color:#6b727a;text-transform:uppercase;letter-spacing:0.1em;">Nouveau prospect</p>
-        </td></tr>
+    const html = this.email.shell({
+      eyebrow: 'Lead · Prospect',
+      footer: 'VIZYO TRACKY · NOTIFICATION INTERNE · LEADS',
+      body: `
         ${resubBanner}
-        <tr><td style="padding:24px 32px;">
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-            ${row('Nom', lead.name)}
-            ${row('Email', lead.email, `mailto:${lead.email}`)}
-            ${row('Telephone', lead.phone, lead.phone ? `tel:${lead.phone}` : undefined)}
-            ${row('Societe', lead.company)}
-            ${row('Flotte', lead.fleetSize ? `${lead.fleetSize} vehicules` : null)}
-          </table>
-          ${lead.message ? `<div style="margin-top:16px;padding:14px;background:#1a1f25;border:1px solid #2a3036;border-radius:8px;">
-            <p style="margin:0 0 6px;font-size:11px;color:#6b727a;text-transform:uppercase;letter-spacing:0.08em;font-weight:600;">Message</p>
-            <p style="margin:0;font-size:14px;line-height:1.6;color:#cbd2d9;">${escHtml(lead.message)}</p>
-          </div>` : ''}
-          <div style="margin-top:24px;text-align:center;">
-            <a href="https://manager.vizyoagency.com/services/leads" style="display:block;background:#10e0a0;color:#0b0f12;text-decoration:none;font-weight:700;font-size:14px;padding:14px 32px;border-radius:10px;text-align:center;">
-              Ouvrir Vizyo Manager
-            </a>
-            <p style="margin:10px 0 0;font-size:11px;color:#6b727a;">Connectez-vous pour acceder au dashboard Leads</p>
-          </div>
+        <tr><td style="padding:26px 36px 0;">
+          <h1 style="margin:0 0 4px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:24px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;color:#EAEFED;">Nouveau prospect</h1>
+          <p style="margin:0 0 20px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;color:#69736E;">Reçu à l'instant via la landing page</p>
         </td></tr>
-        <tr><td style="padding:16px 32px 24px;text-align:center;">
-          <p style="margin:0;font-size:12px;color:#6b727a;">— Vizyo Tracky LP</p>
+        <tr><td style="padding:0 36px;">
+          <table role="presentation" width="100%" style="background:#161D1B;border:1px solid rgba(255,255,255,.07);border-radius:13px;">${contactTable}</table>
+          ${messageBlock}
         </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`;
+        <tr><td style="padding:20px 36px 0;">
+          <table role="presentation"><tr><td style="border-radius:11px;background:#10E0A0;">
+            <a href="https://manager.vizyoagency.com/services/leads" style="display:inline-block;padding:14px 30px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;font-weight:700;letter-spacing:-0.01em;color:#04130D;text-decoration:none;">Ouvrir Vizyo Manager →</a>
+          </td></tr></table>
+        </td></tr>`,
+    });
 
     const text = `Nouveau lead Tracky${isResubmission ? ` (Re-soumission #${submissionCount})` : ''}
 
