@@ -12,6 +12,7 @@ import type {
 } from '@vizyo/tracky-shared';
 import { InstallationsApiService } from '../../core/services/installations.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
+import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
 import {
   DayGroup, distinctDays, ENERGY_LABELS, formatDateFr, groupByDay, installState,
   PLAN_STATUS_CLASS, PLAN_STATUS_LABELS, TASK_STATUS_LABELS, weekdayFr,
@@ -27,7 +28,7 @@ import {
   selector: 'app-installations-client',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, LucideAngularModule, CdkDropListGroup, CdkDropList, CdkDrag, CdkDragHandle],
+  imports: [FormsModule, LucideAngularModule, CdkDropListGroup, CdkDropList, CdkDrag, CdkDragHandle, SpinnerComponent],
   template: `
     <div class="cl">
       <div class="cl-head">
@@ -37,7 +38,7 @@ import {
       </div>
 
       @if (loading()) {
-        <div class="cl-loading"><span class="spinner"></span></div>
+        <div class="cl-loading"><app-spinner [size]="22" /></div>
       } @else if (plans().length === 0) {
         <div class="cl-empty">
           <div class="cl-empty-ico"><lucide-icon [img]="ClipboardListIcon" [size]="30"></lucide-icon></div>
@@ -142,8 +143,6 @@ import {
     .cl-head h1 { font-family: var(--font-display, Poppins, sans-serif); font-size: 1.72rem; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; color: var(--fg-primary); margin: 8px 0 0 }
     .cl-sub { font-size: 14px; color: var(--fg-tertiary); margin: 8px 0 20px }
     .cl-loading { display: flex; justify-content: center; padding: 60px 0 }
-    .spinner { width: 22px; height: 22px; border: 2px solid var(--border-subtle); border-top-color: var(--tracky-light); border-radius: 50%; animation: sp .7s linear infinite; display: inline-block }
-    @keyframes sp { to { transform: rotate(360deg) } }
     .cl-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 50px 20px; border-radius: 16px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); color: var(--fg-tertiary) }
     .cl-empty-ico { width: 58px; height: 58px; border-radius: 16px; background: var(--bg-tertiary); display: flex; align-items: center; justify-content: center }
     .cl-back { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--fg-tertiary); background: none; border: none; cursor: pointer; margin-bottom: 12px }

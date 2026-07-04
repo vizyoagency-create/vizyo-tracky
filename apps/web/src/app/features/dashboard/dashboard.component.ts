@@ -16,6 +16,7 @@ import { VehiclesApiService } from '../../core/services/vehicles.service';
 import { AlertsApiService } from '../../core/services/alerts.service';
 import { PreferencesService, type DashboardWidgetKey } from '../../core/services/preferences.service';
 import { MiniMapComponent } from '../../shared/ui/mini-map/mini-map.component';
+import { SkeletonComponent } from '../../shared/ui/skeleton/skeleton.component';
 import { getVehicleConnectivityState, isAcceptableLiveFix, isInstallationToReview, isTrackerOnline } from '@vizyo/tracky-shared';
 
 interface WidgetMeta {
@@ -28,7 +29,7 @@ interface WidgetMeta {
   selector: 'app-dashboard',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [LucideAngularModule, DatePipe, RouterLink, MiniMapComponent],
+  imports: [LucideAngularModule, DatePipe, RouterLink, MiniMapComponent, SkeletonComponent],
   template: `
     <div class="dash-page">
       <!-- Background grid -->
@@ -47,6 +48,77 @@ interface WidgetMeta {
           <span class="dash-customize-label">Personnaliser</span>
         </button>
       </div>
+
+      <!-- Pont splash → données (§2.2) : squelette qui copie EXACTEMENT la grille réelle
+           (4 KPI + carte + activité + alertes). Dimensions = dimensions réelles → aucun
+           saut de mise en page à la substitution. Balayage émeraude via .sk (styles.css). -->
+      @if (!loaded()) {
+        <div class="dash-content dash-sk" aria-hidden="true">
+          <div class="metrics-grid">
+            @for (i of skFour; track i) {
+              <div class="metric-card">
+                <app-skeleton w="34px" h="34px" radius="10px" />
+                <div class="metric-content" style="gap:6px">
+                  <app-skeleton w="46px" h="22px" />
+                  <app-skeleton w="72px" h="11px" radius="5px" />
+                </div>
+              </div>
+            }
+          </div>
+          <div class="quick-actions">
+            @for (i of skFour; track i) {
+              <app-skeleton w="104px" h="36px" radius="11px" />
+            }
+          </div>
+          <div class="dash-2col">
+            <div class="widget widget--map dash-2col-main">
+              <div class="widget-header">
+                <app-skeleton w="150px" h="16px" />
+                <app-skeleton w="42px" h="12px" radius="5px" />
+              </div>
+              <div class="sk" style="flex:1 1 auto;min-height:240px;border-radius:10px"></div>
+            </div>
+            <div class="dash-col">
+              <div class="widget">
+                <div class="widget-header">
+                  <app-skeleton w="130px" h="15px" />
+                  <app-skeleton w="34px" h="12px" radius="5px" />
+                </div>
+                <div class="widget-list">
+                  @for (i of skThree; track i) {
+                    <div class="widget-row">
+                      <app-skeleton [circle]="true" w="8px" h="8px" />
+                      <div class="widget-row-info" style="display:flex;flex-direction:column;gap:5px">
+                        <app-skeleton w="72px" h="13px" />
+                        <app-skeleton w="48px" h="10px" radius="4px" />
+                      </div>
+                      <app-skeleton w="42px" h="16px" />
+                    </div>
+                  }
+                </div>
+              </div>
+              <div class="widget">
+                <div class="widget-header">
+                  <app-skeleton w="130px" h="15px" />
+                  <app-skeleton w="46px" h="12px" radius="5px" />
+                </div>
+                <div class="widget-list">
+                  @for (i of skThree; track i) {
+                    <div class="widget-row">
+                      <app-skeleton w="28px" h="28px" radius="8px" />
+                      <div class="widget-row-info" style="display:flex;flex-direction:column;gap:5px">
+                        <app-skeleton w="120px" h="12px" />
+                        <app-skeleton w="70px" h="10px" radius="4px" />
+                      </div>
+                    </div>
+                  }
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      } @else {
+      <div class="dash-content vt-realin">
 
       <!-- Installations à revoir : boîtier posé < 1 mois qui se déconnecte. -->
       @if (vehiclesToReview().length > 0) {
@@ -289,6 +361,8 @@ interface WidgetMeta {
           </button>
         </div>
       }
+      </div>
+      }
     </div>
 
     <!-- Customizer dialog -->
@@ -332,6 +406,8 @@ interface WidgetMeta {
   `,
   styles: [`
     .dash-page { position: relative; overflow: hidden }
+    /* Conteneur commun squelette / contenu réel — au-dessus du fond (grille + glow). */
+    .dash-content { position: relative; z-index: 1 }
 
     /* Grid background */
     .dash-grid-bg {
@@ -677,6 +753,16 @@ export class DashboardComponent implements OnInit {
   protected readonly ArrowRight = ArrowRight;
 
   protected readonly customizerOpen = signal(false);
+
+  /**
+   * Chargement initial (§2). `stats` (toSignal sans initialValue) reste `undefined`
+   * jusqu'à la première réponse — même vide ou en erreur (catchError → null). Avant :
+   * squelette copiant la grille. Après : contenu réel qui se substitue en cascade.
+   */
+  protected readonly loaded = computed(() => this.stats() !== undefined);
+  /** Itérateurs statiques pour les blocs squelette (évite de recréer les tableaux à chaque CD). */
+  protected readonly skFour = [0, 1, 2, 3];
+  protected readonly skThree = [0, 1, 2];
 
   protected readonly widgetMeta: WidgetMeta[] = [
     { key: 'kpis', label: 'KPIs', description: 'Compteurs Véhicules / En mouvement / Arrêt / Alertes' },

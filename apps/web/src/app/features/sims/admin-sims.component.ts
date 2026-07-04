@@ -32,6 +32,7 @@ import { FleetsApiService, type FleetSummary } from '../../core/services/fleets.
 import { SimsApiService } from '../../core/services/sims.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.component';
+import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
 import {
   dataPercent,
   formatBytes,
@@ -46,7 +47,7 @@ import {
   selector: 'app-admin-sims',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, RouterLink, LucideAngularModule, GroupBadgeComponent],
+  imports: [FormsModule, RouterLink, LucideAngularModule, GroupBadgeComponent, SpinnerComponent],
   template: `
     <div class="sp">
       <!-- Header -->
@@ -108,7 +109,7 @@ import {
 
       <!-- Table -->
       @if (loading()) {
-        <div class="sp-loading"><span class="spinner"></span></div>
+        <div class="sp-loading"><app-spinner [size]="22" /></div>
       } @else if (filtered().length > 0) {
         <div class="sp-table-wrap">
           <table class="sp-table">
@@ -179,7 +180,7 @@ import {
           <div class="ov-foot">
             <button class="btn-ghost" (click)="closeCreate()">Annuler</button>
             <button class="btn-primary" [disabled]="creating() || !cIccid.trim()" (click)="create()">
-              @if (creating()) { <span class="spinner sm"></span> } Créer
+              @if (creating()) { <app-spinner [size]="14" /> } Créer
             </button>
           </div>
         </div>
@@ -205,7 +206,7 @@ import {
           <div class="ov-foot">
             <button class="btn-ghost" (click)="closeBulk()">Fermer</button>
             <button class="btn-primary" [disabled]="bulking() || !bulkRaw.trim()" (click)="runBulk()">
-              @if (bulking()) { <span class="spinner sm"></span> } Importer
+              @if (bulking()) { <app-spinner [size]="14" /> } Importer
             </button>
           </div>
         </div>
@@ -293,7 +294,7 @@ import {
             <!-- Consumption -->
             <div class="sec">
               <h3><lucide-icon [img]="ActivityIcon" [size]="14"></lucide-icon> Conso 30 jours</h3>
-              @if (consoLoading()) { <span class="spinner sm"></span> }
+              @if (consoLoading()) { <app-spinner [size]="14" /> }
               @else if (conso().length) {
                 <div class="spark">
                   @for (p of conso(); track p.day) {
@@ -307,7 +308,7 @@ import {
             <!-- Events -->
             <div class="sec">
               <h3>Événements récents</h3>
-              @if (eventsLoading()) { <span class="spinner sm"></span> }
+              @if (eventsLoading()) { <app-spinner [size]="14" /> }
               @else if (events().length) {
                 <ul class="evts">
                   @for (e of events(); track $index) {
@@ -390,9 +391,7 @@ import {
     .lnk:hover { color: var(--fg-primary) } .lnk.green { color: var(--tracky-light) } .lnk.amber { color: #fbbf24 }
 
     .sp-loading { display: flex; justify-content: center; padding: 60px 0 }
-    .spinner { width: 22px; height: 22px; border: 2px solid var(--border-subtle); border-top-color: var(--tracky-light); border-radius: 50%; animation: sp .7s linear infinite; display: inline-block }
-    .spinner.sm { width: 14px; height: 14px } .spin { animation: sp 1s linear infinite }
-    @keyframes sp { to { transform: rotate(360deg) } }
+    .spin { animation: vt-spin 1s linear infinite }
 
     .sp-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 50px 20px; border-radius: 16px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); color: var(--fg-tertiary); text-align: center }
     .sp-empty-ico { width: 58px; height: 58px; border-radius: 16px; background: var(--bg-tertiary); display: flex; align-items: center; justify-content: center }

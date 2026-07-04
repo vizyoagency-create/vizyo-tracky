@@ -5,6 +5,7 @@ import { simStatusLabel, type SimDto } from '@vizyo/tracky-shared';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { SimsApiService } from '../../core/services/sims.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
+import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
 import { formatBytes, formatDataLimit, simBadgeClass } from './sim-ui';
 
 /**
@@ -15,7 +16,7 @@ import { formatBytes, formatDataLimit, simBadgeClass } from './sim-ui';
   selector: 'app-sims-client',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, LucideAngularModule],
+  imports: [FormsModule, LucideAngularModule, SpinnerComponent],
   template: `
     <div class="sp">
       <div class="sp-head">
@@ -42,7 +43,7 @@ import { formatBytes, formatDataLimit, simBadgeClass } from './sim-ui';
       </div>
 
       @if (loading()) {
-        <div class="sp-loading"><span class="spinner"></span></div>
+        <div class="sp-loading"><app-spinner [size]="22" /></div>
       } @else if (filtered().length > 0) {
         <div class="sp-table-wrap">
           <table class="sp-table">
@@ -126,8 +127,6 @@ import { formatBytes, formatDataLimit, simBadgeClass } from './sim-ui';
     .lnk { background: none; border: none; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--fg-tertiary); padding: 3px 6px; display: inline-flex; align-items: center; gap: 4px }
     .lnk.green { color: var(--tracky-light) } .lnk.amber { color: #fbbf24 }
     .sp-loading { display: flex; justify-content: center; padding: 60px 0 }
-    .spinner { width: 22px; height: 22px; border: 2px solid var(--border-subtle); border-top-color: var(--tracky-light); border-radius: 50%; animation: sp .7s linear infinite; display: inline-block }
-    @keyframes sp { to { transform: rotate(360deg) } }
     .sp-empty { padding: 44px 20px; border-radius: 14px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); color: var(--fg-tertiary); text-align: center; font-size: 13px }
     .ov { position: fixed; inset: 0; z-index: 9000; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.5); backdrop-filter: blur(4px); padding: 16px }
     .ov-panel { width: 100%; max-width: 440px; background: var(--bg-primary); border: 1px solid var(--border-subtle); border-radius: 16px; overflow: hidden; display: flex; flex-direction: column; max-height: 90vh; max-height: 90dvh }

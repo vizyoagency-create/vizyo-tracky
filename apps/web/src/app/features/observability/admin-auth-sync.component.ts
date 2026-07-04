@@ -5,6 +5,7 @@ import { RouterLink } from '@angular/router';
 import { LucideAngularModule, ArrowLeft, RefreshCw, Trash2, CheckCircle, AlertTriangle, XCircle } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { ToastService } from '../../shared/ui/toast/toast.service';
+import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
 
 interface SyncedUser {
   authId: string;
@@ -42,7 +43,7 @@ interface SyncData {
 @Component({
   selector: 'app-admin-auth-sync',
   standalone: true,
-  imports: [LucideAngularModule, DatePipe, RouterLink],
+  imports: [LucideAngularModule, DatePipe, RouterLink, SpinnerComponent],
   template: `
     <div class="page">
       <header class="page-header">
@@ -64,7 +65,7 @@ interface SyncData {
 
       @if (loading()) {
         <div class="loading">
-          <span class="spinner"></span>
+          <app-spinner [size]="24" />
         </div>
       } @else if (data()) {
         <!-- Stats -->
@@ -193,8 +194,6 @@ interface SyncData {
     .btn-refresh:hover { color: var(--fg-primary); border-color: var(--border-strong) }
     .btn-refresh:disabled { opacity: .5; cursor: not-allowed }
     .loading { display: flex; justify-content: center; padding: 40px }
-    .spinner { width: 24px; height: 24px; border: 2px solid var(--fg-tertiary); border-top-color: var(--tracky-light); border-radius: 50%; animation: spin .6s linear infinite }
-    @keyframes spin { to { transform: rotate(360deg) } }
 
     .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px }
     .stat-card {

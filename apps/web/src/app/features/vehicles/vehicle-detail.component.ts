@@ -44,6 +44,7 @@ import { GeofencesApiService } from '../../core/services/geofences.service';
 import { connectivityMeta } from '../../shared/ui/connectivity-badge/connectivity-badge.component';
 import { InstallReviewBadgeComponent } from '../../shared/ui/install-review-badge/install-review-badge.component';
 import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.component';
+import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
 
 @Component({
   selector: 'app-vehicle-detail',
@@ -52,7 +53,7 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
     FormsModule, LucideAngularModule, DatePipe, DecimalPipe, GroupBadgeComponent,
     MiniMapComponent, EngineControlButtonComponent, AudioListenButtonComponent, CommandsPanelComponent,
     VehicleScheduleComponent, VehicleReportsTabComponent, VehicleMaintenanceTabComponent, DriverPickerComponent, DriverDrawerComponent, SurveillancePanelComponent, TripReplayComponent,
-    InstallReviewBadgeComponent, BrandLogoComponent,
+    InstallReviewBadgeComponent, BrandLogoComponent, SpinnerComponent,
   ],
   template: `
     @if (loading()) {
@@ -266,7 +267,7 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
                     (click)="openDriverPicker()"
                     [disabled]="assigningDriver()">
               @if (assigningDriver()) {
-                <span class="vd-admin-spinner" style="width:12px;height:12px;border-width:1.5px"></span>
+                <app-spinner [size]="12" />
               } @else if (v.currentDriver) {
                 <lucide-icon [img]="PencilIcon" [size]="12"></lucide-icon>
               } @else {
@@ -305,7 +306,7 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
                 </small>
               </span>
               @if (accUpdating()) {
-                <span class="vd-admin-spinner"></span>
+                <app-spinner [size]="14" />
               }
             </label>
             @if (!v.tracker.accConnected) {
@@ -386,7 +387,7 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
               />
             }
             @if (rangeLoading()) {
-              <span class="vd-date-spinner" aria-label="Chargement"></span>
+              <app-spinner [size]="14" label="Chargement" style="margin-left:auto" />
             }
           </div>
         }
@@ -815,18 +816,6 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
       font-size: 11px;
       line-height: 1.4;
     }
-    .vd-admin-spinner {
-      width: 14px;
-      height: 14px;
-      border: 2px solid var(--fg-tertiary);
-      border-top-color: var(--tracky-light);
-      border-radius: 50%;
-      animation: vd-spin 0.7s linear infinite;
-      flex-shrink: 0;
-    }
-    @keyframes vd-spin {
-      to { transform: rotate(360deg); }
-    }
     .vd-admin-warning {
       display: flex;
       align-items: center;
@@ -893,16 +882,6 @@ import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.compon
     }
     .vd-date-input { font-family: var(--font-mono, monospace); font-size: 12px; }
     .vd-date-sep { color: var(--fg-tertiary); font-size: 13px; font-weight: 600; flex-shrink: 0; }
-    .vd-date-spinner {
-      width: 14px;
-      height: 14px;
-      border: 2px solid var(--fg-tertiary);
-      border-top-color: var(--tracky-light);
-      border-radius: 50%;
-      animation: vd-spin 0.7s linear infinite;
-      margin-left: auto;
-      flex-shrink: 0;
-    }
 
     /* ─── Historique : cards mobile-first ─── */
     .vd-history-list {

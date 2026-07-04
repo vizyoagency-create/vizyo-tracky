@@ -51,6 +51,9 @@
   --danger: #F2706B;
   --warning: #F5B33D;
   --surface-secondary-rgb: 16, 21, 20;
+  /* Skeletons de chargement : base + reflet du balayage. */
+  --sk: rgba(255, 255, 255, 0.06);
+  --sk-hi: rgba(255, 255, 255, 0.10);
 }
 
 [data-theme='light'] {
@@ -69,6 +72,8 @@
   --danger: #D9544E;
   --warning: #C98708;
   --surface-secondary-rgb: 255, 255, 255;
+  --sk: rgba(10, 25, 18, 0.055);
+  --sk-hi: rgba(10, 25, 18, 0.085);
 }
 
 /* Aliases — bare names used directly in component styles (without --color- prefix). */
@@ -973,6 +978,63 @@ textarea:focus-visible,
   outline: 2px solid var(--tracky-light, var(--color-tracky-light, #10E0A0));
   outline-offset: 2px;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Grammaire de chargement (handoff splash/loaders). Émeraude = seule couleur
+   de mouvement. Loaders tardifs côté composants ; fallback reduced-motion ici.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Skeleton — primitive : assembler des .sk aux dimensions réelles pour copier
+   un écran (aucun saut de mise en page à l'arrivée des données). */
+.sk { position: relative; overflow: hidden; background: var(--sk); border-radius: 7px; }
+.sk::after {
+  content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, var(--sk-hi), transparent);
+  animation: sk-sweep 1.5s ease-in-out infinite;
+}
+@keyframes sk-sweep { 0% { transform: translateX(-100%); } 60%, 100% { transform: translateX(100%); } }
+
+/* Barre de progression de route (top-bar) : se remplit puis disparaît. */
+.vt-route {
+  position: absolute; left: 0; top: 0; height: 2px; width: 0;
+  background: linear-gradient(90deg, var(--tracky, #0A9E6C), var(--tracky-light, #10E0A0));
+  border-radius: 0 2px 2px 0; z-index: 6; pointer-events: none;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--tracky-light, #10E0A0) 55%, transparent);
+  animation: vt-route 900ms ease-out both;
+}
+@keyframes vt-route {
+  0% { width: 0; opacity: 1; } 70% { width: 82%; } 92% { width: 100%; opacity: 1; } 100% { width: 100%; opacity: 0; }
+}
+
+/* Substitution en cascade : chaque bloc réel monte légèrement (délai croissant ~70ms). */
+.vt-realin > * { opacity: 0; animation: vt-realin 480ms both; }
+.vt-realin > *:nth-child(1) { animation-delay: 0ms; }
+.vt-realin > *:nth-child(2) { animation-delay: 70ms; }
+.vt-realin > *:nth-child(3) { animation-delay: 140ms; }
+.vt-realin > *:nth-child(4) { animation-delay: 210ms; }
+.vt-realin > *:nth-child(5) { animation-delay: 280ms; }
+.vt-realin > *:nth-child(6) { animation-delay: 350ms; }
+@keyframes vt-realin { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
+
+/* Spinner unifié — anneau discret + arc émeraude. Dimensions posées par <app-spinner>. */
+.vt-spinner {
+  display: inline-block;
+  box-sizing: border-box;
+  border: 2px solid var(--border-strong, rgba(255, 255, 255, 0.14));
+  border-top-color: var(--tracky-light, #10E0A0);
+  border-radius: 50%;
+  animation: vt-spin 0.7s linear infinite;
+}
+@keyframes vt-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .sk::after { animation: none; }
+  .vt-route { animation: none; width: 100%; opacity: 0; }
+  .vt-realin > * { opacity: 1; animation: none; transform: none; }
+  /* Spinner : rotation (vestibulaire) → pulsation d'opacité, plus douce. */
+  .vt-spinner { animation: vt-spin-rm 1.4s ease-in-out infinite; }
+}
+@keyframes vt-spin-rm { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
 
 /* Label de groupe (sidebar, colonnes) — mono, tertiaire, plus discret */
 .vt-section-label {

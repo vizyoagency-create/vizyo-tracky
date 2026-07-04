@@ -1,6 +1,6 @@
 import { Component, computed, HostListener, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, RouterOutlet, RouterLink, RouterLinkActive, NavigationEnd, Router } from '@angular/router';
+import { ActivatedRoute, RouterOutlet, RouterLink, RouterLinkActive, NavigationEnd, NavigationStart, NavigationCancel, NavigationError, Router } from '@angular/router';
 import {
   LucideAngularModule,
   LayoutDashboard,
@@ -163,6 +163,11 @@ interface NavGroup {
             <span class="top-bar-wave top-bar-wave--1"></span>
             <span class="top-bar-wave top-bar-wave--2"></span>
           </div>
+
+          <!-- §2.3 — barre de progression de route (navigations lentes uniquement). -->
+          @if (routeLoading()) {
+            <div class="route-progress" role="progressbar" aria-label="Chargement de la page" aria-busy="true"></div>
+          }
 
           <div class="top-bar-left">
             <!-- Sprint 3 — veilleur : pas de menu burger (sa nav = « Véhicules » seul). -->
@@ -445,6 +450,18 @@ interface NavGroup {
       z-index: 0;
       border-bottom-left-radius: inherit;
       border-bottom-right-radius: inherit;
+    }
+    /* Barre de progression de route (§2.3) — épinglée sur la bordure basse du top-bar.
+       Réutilise le keyframe global vt-route (styles.css) : se remplit puis disparaît. */
+    .route-progress {
+      position: absolute; left: 0; bottom: 0; height: 2px; width: 0;
+      z-index: 3; pointer-events: none; border-radius: 0 2px 2px 0;
+      background: linear-gradient(90deg, var(--tracky, #0A9E6C), var(--tracky-light, #10E0A0));
+      box-shadow: 0 0 8px color-mix(in srgb, var(--tracky-light, #10E0A0) 55%, transparent);
+      animation: vt-route 900ms ease-out both;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .route-progress { animation: none; width: 100%; opacity: .9; }
     }
     .top-bar-wave {
       content: '';
@@ -807,6 +824,11 @@ export class DashboardLayoutComponent {
   protected readonly collapsed = signal(false);
   protected readonly fullscreen = signal(false);
   protected readonly pageTitle = signal('Tableau de bord');
+  /** Barre de progression de route (§2.3) — affichée seulement pour les navigations
+   *  « lentes » (> ~220ms). Les routes préchargées naviguent instantanément, donc
+   *  aucun flash de barre à chaque clic (règle « loaders tardifs »). */
+  protected readonly routeLoading = signal(false);
+  private routeBarTimer: ReturnType<typeof setTimeout> | null = null;
   /** Alias vers le service partage (lecture seule depuis le template).
    *  V1.12 — Le state du menu mobile vit dans MenuStateService pour permettre
    *  au BaanoolMapOverlay de l'ouvrir sans passer par EventEmitter
@@ -922,6 +944,14 @@ export class DashboardLayoutComponent {
     // subscriptions sur router.events si le layout est detruit/recree (cas
     // logout puis re-login dans la meme session navigateur).
     this.router.events.pipe(takeUntilDestroyed()).subscribe((event) => {
+      // Barre de route (§2.3) — armée en différé au départ, coupée à l'arrivée.
+      if (event instanceof NavigationStart) {
+        if (this.routeBarTimer) clearTimeout(this.routeBarTimer);
+        this.routeBarTimer = setTimeout(() => this.routeLoading.set(true), 220);
+      } else if (event instanceof NavigationEnd || event instanceof NavigationCancel || event instanceof NavigationError) {
+        if (this.routeBarTimer) { clearTimeout(this.routeBarTimer); this.routeBarTimer = null; }
+        this.routeLoading.set(false);
+      }
       if (event instanceof NavigationEnd) {
         const child = this.route.firstChild;
         const data = child?.snapshot.data ?? {};

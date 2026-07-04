@@ -9,6 +9,7 @@ import {
 import { firstValueFrom } from 'rxjs';
 import type { UserPermissions } from '@vizyo/tracky-shared';
 import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
+import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
 
 interface AccessEntry {
   id: string;
@@ -74,7 +75,7 @@ const PERM_GROUPS = [
 @Component({
   selector: 'app-permissions-overview',
   standalone: true,
-  imports: [RouterLink, FormsModule, LucideAngularModule],
+  imports: [RouterLink, FormsModule, LucideAngularModule, SpinnerComponent],
   template: `
     <div class="po-page">
       <header class="po-header">
@@ -94,7 +95,7 @@ const PERM_GROUPS = [
       </div>
 
       @if (loading()) {
-        <div class="po-loading"><span class="po-spinner"></span></div>
+        <div class="po-loading"><app-spinner [size]="24" /></div>
       } @else {
         <!-- Groups summary -->
         <section class="po-section">
@@ -217,8 +218,6 @@ const PERM_GROUPS = [
     .po-back { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--fg-tertiary); text-decoration: none }
     .po-back:hover { color: var(--fg-secondary) }
     .po-loading { display: flex; justify-content: center; padding: 40px }
-    .po-spinner { width: 24px; height: 24px; border: 2px solid var(--fg-tertiary); border-top-color: var(--tracky-light); border-radius: 50%; animation: spin .6s linear infinite }
-    @keyframes spin { to { transform: rotate(360deg) } }
 
     .po-search {
       display: flex; align-items: center; gap: 8px;
