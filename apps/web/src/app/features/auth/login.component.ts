@@ -17,7 +17,7 @@ import { ThemeService } from '../../core/theme/theme.service';
          Desktop (lg+) : on retire la card -- le panneau formulaire de
          auth-layout fournit deja le contenant et le titre. -->
     <div class="mb-6">
-      <span class="vt-eyebrow">Espace client</span>
+      <span class="vt-eyebrow">Espace pro</span>
       <h1 class="font-display text-[2.15rem] font-extrabold tracking-[-0.03em] leading-[1.07] text-fg-primary mt-3">Bon retour.</h1>
       <p class="text-[1.02rem] text-fg-secondary leading-[1.5] mt-3">Connectez-vous à votre tableau de bord Vizyo Tracky.</p>
     </div>

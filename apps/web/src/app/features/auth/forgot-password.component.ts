@@ -51,7 +51,7 @@ import { RouterLink } from '@angular/router';
     } @else {
       <!-- ═══ État FORMULAIRE ═══ -->
       <div>
-        <span class="vt-eyebrow">Espace client</span>
+        <span class="vt-eyebrow">Espace pro</span>
         <h1 class="font-display text-[2.15rem] font-extrabold tracking-[-0.03em] leading-[1.07] text-fg-primary mt-3">
           Mot de passe oublié ?
         </h1>
