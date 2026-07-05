@@ -97,11 +97,11 @@ type Step = 1 | 2 | 3 | 4 | 5;
                 <div class="form-grid">
                   <div class="field">
                     <label>Prenom</label>
-                    <input [(ngModel)]="firstName" placeholder="Jean" autocomplete="given-name" />
+                    <input [(ngModel)]="firstName" placeholder="Votre prénom" autocomplete="given-name" />
                   </div>
                   <div class="field">
                     <label>Nom</label>
-                    <input [(ngModel)]="lastName" placeholder="Dupont" autocomplete="family-name" />
+                    <input [(ngModel)]="lastName" placeholder="Votre nom" autocomplete="family-name" />
                   </div>
                   <div class="field field--full">
                     <label>Telephone (optionnel)</label>

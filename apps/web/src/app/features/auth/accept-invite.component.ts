@@ -5,8 +5,10 @@ import {
   AlertTriangle, ArrowRight, Check, Eye, EyeOff, KeyRound, Lock, LucideAngularModule,
   Moon, ShieldAlert, Sun, UserCircle2,
 } from 'lucide-angular';
-import { AuthService } from '../../core/services/auth.service';
+import { AuthService, type AuthUser } from '../../core/services/auth.service';
 import { UsersApiService } from '../../core/services/users.service';
+import { RealtimeService } from '../../core/services/realtime.service';
+import { PreferencesService } from '../../core/services/preferences.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { ThemeService } from '../../core/theme/theme.service';
 import { LogoComponent } from '../../shared/ui/logo/logo.component';
@@ -54,10 +56,10 @@ import { LogoComponent } from '../../shared/ui/logo/logo.component';
             <h1>Bienvenue sur Vizyo Tracky&nbsp;!</h1>
             <p>
               Votre compte @if (userEmail()) { <strong>{{ userEmail() }}</strong> } est prêt.
-              Connectez-vous pour accéder à votre tableau de bord.
+              Vous êtes connecté — redirection vers votre tableau de bord…
             </p>
-            <a [routerLink]="['/login']" [queryParams]="{ email: userEmail() || null }" class="ai-submit ai-submit--link">
-              <span>Se connecter</span>
+            <a [routerLink]="homeRoute()" class="ai-submit ai-submit--link">
+              <span>Accéder à mon tableau de bord</span>
               <lucide-icon [img]="ArrowRightIcon" [size]="16"></lucide-icon>
             </a>
           </div>
@@ -74,7 +76,7 @@ import { LogoComponent } from '../../shared/ui/logo/logo.component';
             <div class="ai-field">
               <label for="ai-name">Nom complet</label>
               <input id="ai-name" class="ai-in" [(ngModel)]="displayName" name="displayName"
-                     placeholder="Jean Dupont" autocomplete="name" required />
+                     placeholder="Prénom Nom" autocomplete="name" required />
             </div>
 
             <div class="ai-field">
@@ -235,7 +237,7 @@ import { LogoComponent } from '../../shared/ui/logo/logo.component';
     }
     .ai-submit:hover:not([disabled]) { transform: translateY(-2px); box-shadow: 0 16px 34px -10px color-mix(in srgb, var(--tracky-light) 55%, transparent); }
     .ai-submit[disabled] { opacity: .55; cursor: not-allowed; }
-    /* Bouton « Se connecter » de l'état succès (rendu <a>). */
+    /* Bouton « Accéder au tableau de bord » de l'état succès (rendu <a>, auto-connecté). */
     .ai-submit--link { margin-top: 22px; text-decoration: none; }
 
     .ai-terms { margin: 16px 0 0; font-size: .76rem; color: var(--fg-tertiary); line-height: 1.5; text-align: center; }
@@ -273,6 +275,8 @@ export class AcceptInviteComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly usersApi = inject(UsersApiService);
   private readonly auth = inject(AuthService);
+  private readonly realtime = inject(RealtimeService);
+  private readonly preferences = inject(PreferencesService);
   private readonly toast = inject(ToastService);
   protected readonly theme = inject(ThemeService);
 
@@ -295,8 +299,10 @@ export class AcceptInviteComponent implements OnInit {
   readonly loading = signal(false);
   readonly showPassword = signal(false);
   readonly showConfirm = signal(false);
-  /** E-mail du compte activé (pré-remplit ensuite le login). */
+  /** E-mail du compte activé (affiché dans l'état succès). */
   readonly userEmail = signal<string>('');
+  /** Destination post-activation, role-aware : dashboard, sauf veilleur → /vehicles. */
+  readonly homeRoute = signal('/dashboard');
 
   displayName = '';
   password = '';
@@ -352,12 +358,24 @@ export class AcceptInviteComponent implements OnInit {
         throw new Error(`Echec de la creation de session (HTTP ${meRes.status}${body ? ': ' + body.slice(0, 200) : ''})`);
       }
       const me = await meRes.json() as { id: string; email: string; role: string; fleetId: string | null };
-      // Compte créé : on NE connecte PAS automatiquement. L'utilisateur se connecte
-      // explicitement depuis l'état succès (bouton « Se connecter », e-mail pré-rempli
-      // via /login?email=). Plus lisible qu'un auto-redirect fugace.
+      // Compte créé → AUTO-CONNEXION (demande user) : on ouvre la session tout de suite
+      // et on branche temps réel + préférences comme un login normal (app.ts ne le fait
+      // qu'au bootstrap, pas sur une navigation interne). On affiche l'état succès
+      // « Bienvenue », puis redirection automatique. Le bouton « Accéder » saute l'attente.
+      this.auth.setSession(result.accessToken, {
+        sub: me.id,
+        email: me.email,
+        role: me.role as AuthUser['role'],
+        fleetId: me.fleetId ?? null,
+        permissions: null,
+      }, result.refreshToken);
+      this.preferences.load(me.id);
+      this.realtime.connect(result.accessToken);
       this.userEmail.set(me.email);
+      this.homeRoute.set(this.auth.isWatchman() ? '/vehicles' : '/dashboard');
       this.success.set(true);
-      this.toast.success('Compte activé. Vous pouvez maintenant vous connecter.');
+      this.toast.success('Compte activé. Bienvenue sur Tracky !');
+      setTimeout(() => this.router.navigate([this.homeRoute()]), 2200);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Echec de l\'activation';
       console.error('[accept-invite] submit failed:', err);
