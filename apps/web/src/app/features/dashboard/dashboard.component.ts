@@ -562,12 +562,16 @@ interface WidgetMeta {
        Le composant mini-map resize MapLibre via ResizeObserver. */
     .widget--map app-mini-map { display: block; border-radius: 10px; overflow: hidden; flex: 1 1 auto; min-height: 220px }
     .widget--map app-mini-map > div { height: 100% }
-    /* Mobile / tablette (1 colonne) : pas de colonne sœur pour étirer le flex-fill,
-       donc la mini-carte doit avoir une hauteur FIXE — sinon le div interne
-       [style.height]="100%" tombe à 0, la carte s'effondre et l'overlay « N actif(s) »
-       remonte chevaucher l'en-tête « Carte temps réel ». */
+    /* Mobile / tablette (1 colonne) : en 2-col desktop, la RANGÉE étire le widget carte
+       et lui donne sa hauteur ; en mono-colonne cette hauteur disparaît. Le widget garde
+       pourtant flex 1.35/1/0 (flex-basis:0) → il se rétrécit ET ignore la hauteur de la
+       carte → la mini-carte (dont le div interne fait height:100%) tombe à ~0, déborde et
+       la carte « Activité » se pose par-dessus. Fix : hauteur DÉFINIE sur le widget +
+       flex:none (sinon flex-basis:0 l'ignore) ; app-mini-map remplit cette hauteur définie
+       → le height:100% interne se résout enfin. */
     @media (max-width: 1023px) {
-      .widget--map app-mini-map { flex: none; height: 240px; min-height: 240px }
+      .widget--map.dash-2col-main { flex: none; height: 280px; }
+      .widget--map app-mini-map { flex: 1 1 auto; height: auto; min-height: 0; }
     }
     .widget-map-overlay { position: absolute; bottom: 22px; left: 22px; z-index: 2; pointer-events: none }
     .widget-map-stat {
