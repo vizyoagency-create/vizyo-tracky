@@ -2,7 +2,7 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
-  AlertTriangle, Check, Eye, EyeOff, KeyRound, Lock, LucideAngularModule,
+  AlertTriangle, ArrowRight, Check, Eye, EyeOff, KeyRound, Lock, LucideAngularModule,
   Moon, ShieldAlert, Sun, UserCircle2,
 } from 'lucide-angular';
 import { AuthService } from '../../core/services/auth.service';
@@ -50,9 +50,16 @@ import { LogoComponent } from '../../shared/ui/logo/logo.component';
           <!-- ═══ ÉTAT SUCCÈS ═══ -->
           <div class="ai-state ai-pop">
             <span class="ai-state-ic ai-state-ic--ok"><lucide-icon [img]="Check" [size]="32"></lucide-icon></span>
-            <h1>Bienvenue !</h1>
-            <p>Votre compte est activé. Connexion à votre tableau de bord…</p>
-            <div class="ai-prep"><span class="ai-spin ai-spin--sm"></span>Préparation de votre espace</div>
+            <div class="ai-eyebrow">Compte activé</div>
+            <h1>Bienvenue sur Vizyo Tracky&nbsp;!</h1>
+            <p>
+              Votre compte @if (userEmail()) { <strong>{{ userEmail() }}</strong> } est prêt.
+              Connectez-vous pour accéder à votre tableau de bord.
+            </p>
+            <a [routerLink]="['/login']" [queryParams]="{ email: userEmail() || null }" class="ai-submit ai-submit--link">
+              <span>Se connecter</span>
+              <lucide-icon [img]="ArrowRightIcon" [size]="16"></lucide-icon>
+            </a>
           </div>
         } @else {
           <!-- ═══ ÉTAT FORMULAIRE ═══ -->
@@ -89,9 +96,15 @@ import { LogoComponent } from '../../shared/ui/logo/logo.component';
 
             <div class="ai-field">
               <label for="ai-pw2">Confirmer le mot de passe</label>
-              <input id="ai-pw2" class="ai-in" [(ngModel)]="passwordConfirm" name="passwordConfirm"
-                     [type]="showPassword() ? 'text' : 'password'"
-                     placeholder="Saisir à nouveau" autocomplete="new-password" required />
+              <div class="ai-pw-wrap">
+                <input id="ai-pw2" class="ai-in" [(ngModel)]="passwordConfirm" name="passwordConfirm"
+                       [type]="showConfirm() ? 'text' : 'password'"
+                       placeholder="Saisir à nouveau" autocomplete="new-password" required />
+                <button type="button" class="ai-pw-toggle" (click)="showConfirm.set(!showConfirm())"
+                        [attr.aria-label]="showConfirm() ? 'Masquer le mot de passe' : 'Afficher le mot de passe'">
+                  <lucide-icon [img]="showConfirm() ? EyeOffIcon : EyeIcon" [size]="17"></lucide-icon>
+                </button>
+              </div>
               @if (passwordConfirm.length > 0 && !passwordsMatch()) {
                 <span class="ai-mismatch"><lucide-icon [img]="AlertTriangleIcon" [size]="13"></lucide-icon>Les mots de passe ne correspondent pas.</span>
               }
@@ -222,6 +235,8 @@ import { LogoComponent } from '../../shared/ui/logo/logo.component';
     }
     .ai-submit:hover:not([disabled]) { transform: translateY(-2px); box-shadow: 0 16px 34px -10px color-mix(in srgb, var(--tracky-light) 55%, transparent); }
     .ai-submit[disabled] { opacity: .55; cursor: not-allowed; }
+    /* Bouton « Se connecter » de l'état succès (rendu <a>). */
+    .ai-submit--link { margin-top: 22px; text-decoration: none; }
 
     .ai-terms { margin: 16px 0 0; font-size: .76rem; color: var(--fg-tertiary); line-height: 1.5; text-align: center; }
 
@@ -271,6 +286,7 @@ export class AcceptInviteComponent implements OnInit {
   protected readonly SunIcon = Sun;
   protected readonly LockIcon = Lock;
   protected readonly AlertTriangleIcon = AlertTriangle;
+  protected readonly ArrowRightIcon = ArrowRight;
 
   readonly token = signal<string>('');
   readonly errorMessage = signal<string>('');
@@ -278,6 +294,9 @@ export class AcceptInviteComponent implements OnInit {
   readonly success = signal(false);
   readonly loading = signal(false);
   readonly showPassword = signal(false);
+  readonly showConfirm = signal(false);
+  /** E-mail du compte activé (pré-remplit ensuite le login). */
+  readonly userEmail = signal<string>('');
 
   displayName = '';
   password = '';
@@ -333,20 +352,12 @@ export class AcceptInviteComponent implements OnInit {
         throw new Error(`Echec de la creation de session (HTTP ${meRes.status}${body ? ': ' + body.slice(0, 200) : ''})`);
       }
       const me = await meRes.json() as { id: string; email: string; role: string; fleetId: string | null };
-      this.auth.setSession(
-        result.accessToken,
-        {
-          sub: me.id,
-          email: me.email,
-          role: me.role as 'SUPER_ADMIN' | 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER',
-          fleetId: me.fleetId ?? null,
-          permissions: null,
-        },
-        result.refreshToken,
-      );
+      // Compte créé : on NE connecte PAS automatiquement. L'utilisateur se connecte
+      // explicitement depuis l'état succès (bouton « Se connecter », e-mail pré-rempli
+      // via /login?email=). Plus lisible qu'un auto-redirect fugace.
+      this.userEmail.set(me.email);
       this.success.set(true);
-      this.toast.success('Compte active. Bienvenue sur Tracky !');
-      setTimeout(() => this.router.navigate(['/dashboard']), 800);
+      this.toast.success('Compte activé. Vous pouvez maintenant vous connecter.');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Echec de l\'activation';
       console.error('[accept-invite] submit failed:', err);

@@ -163,6 +163,21 @@ import { ThemeService } from '../../core/theme/theme.service';
           }
         </button>
       </form>
+
+      <!-- Crédit discret : l'auth déléguée à Vizyo Auth (fournisseur d'identité). -->
+      <div class="mt-7 flex flex-col items-center gap-1 text-center">
+        <span class="inline-flex items-center gap-1.5 text-[11px] text-fg-tertiary">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="shrink-0">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="m9 12 2 2 4-4" />
+          </svg>
+          Authentification sécurisée par
+          <span class="font-semibold text-fg-secondary">Vizyo&nbsp;Auth</span>
+        </span>
+        <span class="text-[10px] text-fg-tertiary/70">
+          Plateforme d'identité dédiée à la sécurité des applications Vizyo
+        </span>
+      </div>
   `,
 })
 export class LoginComponent implements OnInit {
