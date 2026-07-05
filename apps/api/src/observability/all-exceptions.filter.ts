@@ -10,6 +10,25 @@ import type { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { ErrorLogger } from './error-logger.service';
 
+/**
+ * Abandon de la requête CÔTÉ CLIENT (pas une faute serveur) : un mobile qui passe en
+ * arrière-plan ou perd le réseau au milieu d'un POST (typiquement `/api/activity/batch`
+ * envoyé en keepalive/beacon depuis un iPhone) → `raw-body` lève
+ * `BadRequestError: request aborted` (`type: 'request.aborted'`), ou le socket est reset
+ * (`ECONNRESET`/`ECONNABORTED`). Ces cas ne doivent PAS polluer le centre d'alerte (encore
+ * moins en CRITICAL) : il n'y a plus personne au bout du fil.
+ */
+function isClientDisconnect(e: unknown): boolean {
+  if (!e || typeof e !== 'object') return false;
+  const err = e as { type?: string; code?: string; message?: string };
+  return (
+    err.type === 'request.aborted' ||
+    err.code === 'ECONNRESET' ||
+    err.code === 'ECONNABORTED' ||
+    err.message === 'request aborted'
+  );
+}
+
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger('ExceptionFilter');
@@ -22,6 +41,16 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const req = ctx.getRequest<Request>();
 
     const requestId = (req as any).id ?? randomUUID().slice(0, 8);
+
+    // Client parti en cours de requête : rien à journaliser (pas une faute serveur) et
+    // plus personne à qui répondre. On sort tôt pour ne pas gonfler le centre d'alerte.
+    if (isClientDisconnect(exception)) {
+      this.logger.debug(
+        { requestId, route: `${req.method} ${req.url}` },
+        'Requête abandonnée par le client (ignorée)',
+      );
+      return;
+    }
 
     let status: number;
     let message: string;
