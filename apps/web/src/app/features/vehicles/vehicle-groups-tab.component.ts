@@ -1,7 +1,7 @@
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { LucideAngularModule, Plus, Trash2, FolderOpen, Truck, Eye } from 'lucide-angular';
+import { LucideAngularModule, Plus, Trash2, FolderOpen, Truck, Eye, X } from 'lucide-angular';
 import { VehicleGroupsService, type VehicleGroup } from '../../core/services/vehicle-groups.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { FleetsApiService, type FleetSummary } from '../../core/services/fleets.service';
@@ -11,11 +11,12 @@ import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { firstValueFrom } from 'rxjs';
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
 import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fleet-badge.component';
+import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.directive';
 
 @Component({
   selector: 'app-vehicle-groups-tab',
   standalone: true,
-  imports: [FormsModule, RouterLink, LucideAngularModule, ConfirmModalComponent, SaFleetBadgeComponent],
+  imports: [FormsModule, RouterLink, LucideAngularModule, ConfirmModalComponent, SaFleetBadgeComponent, VehicleLinkDirective],
   template: `
     <div class="flex flex-col gap-4">
       <!-- Header : description + bouton (stack en mobile, row en desktop) -->
@@ -72,15 +73,24 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
                 }
               </div>
 
-              <!-- Véhicules du groupe -->
+              <!-- Véhicules du groupe — la plaque est cliquable → fiche véhicule ;
+                   le × (si gestion) retire du groupe, cible distincte (aucune navigation). -->
               <div class="flex flex-wrap gap-2 mb-3">
                 @for (va of g.vehicles; track va.vehicleId) {
-                  <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-bg-tertiary text-xs text-fg-secondary">
-                    <lucide-icon [img]="TruckIcon" [size]="12"></lucide-icon>
-                    {{ vehiclePlate(va.vehicleId) }}
+                  <span class="inline-flex items-center rounded-lg bg-bg-tertiary text-xs text-fg-secondary">
+                    <span [vehicleLink]="va.vehicleId"
+                      [title]="'Voir la fiche de ' + vehiclePlate(va.vehicleId)"
+                      class="inline-flex items-center gap-1.5 pl-2.5 pr-2 py-1.5 font-medium">
+                      <lucide-icon [img]="TruckIcon" [size]="12"></lucide-icon>
+                      {{ vehiclePlate(va.vehicleId) }}
+                    </span>
                     @if (perms.can('groups_manage')) {
                       <button (click)="removeFromGroup(g.id, va.vehicleId)"
-                        class="ml-1 text-fg-tertiary hover:text-red-400 cursor-pointer">&times;</button>
+                        [attr.aria-label]="'Retirer ' + vehiclePlate(va.vehicleId) + ' du groupe'"
+                        class="inline-flex items-center justify-center w-6 h-6 mr-1 rounded-md
+                               text-fg-tertiary hover:text-red-400 hover:bg-red-400/10 transition-colors cursor-pointer">
+                        <lucide-icon [img]="XIcon" [size]="13"></lucide-icon>
+                      </button>
                     }
                   </span>
                 }
@@ -193,6 +203,7 @@ export class VehicleGroupsTabComponent implements OnInit {
   protected readonly FolderOpen = FolderOpen;
   protected readonly TruckIcon = Truck;
   protected readonly EyeIcon = Eye;
+  protected readonly XIcon = X;
 
   protected isSuperAdmin(): boolean {
     return this.auth.user()?.role === 'SUPER_ADMIN';

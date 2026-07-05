@@ -3,7 +3,7 @@ import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.directive';
-import { LucideAngularModule, Plus, Truck, ExternalLink, FolderOpen, Radio, X, Save, Wifi, Pencil, Trash2, Eye, Search, LayoutGrid, Table, Layers, ChevronRight, ChevronDown, Gauge, UserRound, Wrench } from 'lucide-angular';
+import { LucideAngularModule, Plus, Truck, ExternalLink, FolderOpen, Radio, X, Save, Wifi, Pencil, Trash2, Eye, Search, LayoutGrid, Table, Layers, ChevronRight, ChevronDown, Gauge, Wrench } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { PreferencesService } from '../../core/services/preferences.service';
@@ -149,13 +149,8 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
                 <lucide-icon [img]="FolderOpenIcon" [size]="15"></lucide-icon> Groupes
               </button>
             }
-            <!-- Conducteurs & Maintenance existent (consolidés dans Utilisateurs / Agenda) :
-                 raccourcis façon maquette, sans dupliquer la logique. -->
-            @if (perms.can('drivers_view')) {
-              <a routerLink="/users" [queryParams]="{ tab: 'drivers' }" data-track="Onglet Conducteurs" class="tab-btn">
-                <lucide-icon [img]="UserRoundIcon" [size]="15"></lucide-icon> Conducteurs
-              </a>
-            }
+            <!-- Maintenance = raccourci vers l'Agenda (consolidé). Conducteurs retiré ici :
+                 déjà accessible depuis Utilisateurs, on évite le doublon. -->
             @if (perms.can('agenda_view')) {
               <a routerLink="/agenda" data-track="Onglet Maintenance" class="tab-btn">
                 <lucide-icon [img]="WrenchIcon" [size]="15"></lucide-icon> Maintenance
@@ -662,11 +657,21 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
     .vlist-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap }
     @media (max-width: 640px) {
       .vlist-header { flex-direction: column }
-      .vlist-actions { width: 100%; justify-content: space-between }
+      .vlist-actions { width: 100%; justify-content: flex-start; gap: 8px; flex-wrap: nowrap }
+      /* Le pill occupe la largeur restante et défile ; l'œil (vue d'ensemble) reste à droite. */
+      .tab-switch { flex: 1 1 auto; min-width: 0 }
     }
 
-    .tab-switch { display: flex; border-radius: 10px; border: 1px solid var(--border-subtle); overflow: hidden }
+    /* Segmented pill défilable horizontalement : sur mobile les onglets dépassent la
+       largeur → défilement tactile (scrollbar masquée) plutôt qu'une troncature. */
+    .tab-switch {
+      display: flex; border-radius: 10px; border: 1px solid var(--border-subtle);
+      overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch;
+      scrollbar-width: none; -ms-overflow-style: none; min-width: 0; max-width: 100%;
+    }
+    .tab-switch::-webkit-scrollbar { display: none; }
     .tab-btn {
+      flex: 0 0 auto; white-space: nowrap;
       display: inline-flex; align-items: center; gap: 5px; padding: 7px 14px; font-size: 12px; font-weight: 600;
       background: var(--bg-secondary); color: var(--fg-tertiary); cursor: pointer; transition: all .2s; border: none;
     }
@@ -1032,7 +1037,6 @@ export class VehiclesListComponent implements OnInit {
   protected readonly ExternalLink = ExternalLink;
   protected readonly FolderOpenIcon = FolderOpen;
   protected readonly GaugeIcon = Gauge;
-  protected readonly UserRoundIcon = UserRound;
   protected readonly WrenchIcon = Wrench;
   protected readonly RadioIcon = Radio;
   protected readonly PencilIcon = Pencil;
