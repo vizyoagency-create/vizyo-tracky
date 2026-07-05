@@ -101,7 +101,10 @@ export class ActivityReportService {
         system: ACTIVITY_REPORT_SYSTEM,
         userPayload: payload,
         schema: ACTIVITY_REPORT_SCHEMA,
-        maxTokens: 4096,
+        // 16000 (parité optimiseur) : un rapport large (8-12 users / longue période) avec
+        // thinking adaptatif dépassait 4096 → JSON tronqué → échec. Plafond only (sans coût
+        // supplémentaire pour les rapports qui tenaient déjà).
+        maxTokens: 16000,
       });
       const content = this.sanitize(call.result);
       const costUsd = this.aiUsage.costOf(call.model, call.usage);

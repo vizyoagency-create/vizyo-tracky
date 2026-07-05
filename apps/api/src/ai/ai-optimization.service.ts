@@ -405,7 +405,8 @@ export class AiOptimizationService {
         system: renderPlacementSystem(payload.metier),
         userPayload: payload,
         schema: PLACEMENT_SCHEMA,
-        maxTokens: 4096,
+        // 8192 : une longue liste de propositions (grosse flotte) pouvait être tronquée à 4096.
+        maxTokens: 8192,
       });
       ai = call.result;
       // Transparence : coût € de CET appel (même calcul que le palier « Coûts IA »).

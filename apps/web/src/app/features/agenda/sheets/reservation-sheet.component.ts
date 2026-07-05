@@ -399,9 +399,16 @@ export class ReservationSheetComponent {
         reason: this.reason() || undefined,
         criteria: this.criteria(),
       }));
-      this.toast.success('Demande déposée', 'À valider par un gestionnaire.');
       this.created.emit();
-      this.closed.emit();
+      if (this.canManage()) {
+        // L'auteur peut valider lui-même : ne pas laisser croire qu'il attend un tiers.
+        // On l'amène directement sur la file « À valider » (sa demande y figure déjà).
+        this.toast.success('Demande déposée', 'Validez-la dans l\'onglet « À valider ».');
+        this.setValidate();
+      } else {
+        this.toast.success('Demande déposée', 'À valider par un gestionnaire.');
+        this.closed.emit();
+      }
     } catch (e) {
       this.reqError.set(this.errMsg(e));
     } finally {

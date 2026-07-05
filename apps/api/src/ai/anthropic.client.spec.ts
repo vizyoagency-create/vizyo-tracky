@@ -73,6 +73,11 @@ describe('AnthropicClient — couche wire (Sprint 9)', () => {
     await expect(new AnthropicClient().completeJson(REQ)).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
 
+  it('stop_reason=max_tokens -> 503 « tronqué » (détecté AVANT le parse, pas le JSON opaque)', async () => {
+    fetchMock.mockResolvedValue(res({ json: { stop_reason: 'max_tokens', content: [{ type: 'text', text: '{"x":4' }] } }));
+    await expect(new AnthropicClient().completeJson(REQ)).rejects.toThrow(/tronqu/i);
+  });
+
   it('HTTP 401 -> 503 (clé invalide), corps tronqué non fatal', async () => {
     fetchMock.mockResolvedValue(res({ ok: false, status: 401, text: 'unauthorized' }));
     await expect(new AnthropicClient().completeJson(REQ)).rejects.toThrow(/invalide|autoris/i);

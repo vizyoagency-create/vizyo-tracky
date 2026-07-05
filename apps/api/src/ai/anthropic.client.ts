@@ -26,6 +26,7 @@ export type AiErrorKind =
   | 'refusal'
   | 'empty'
   | 'parse'
+  | 'truncated'
   | 'http';
 
 /** Échec IA typé (toujours un 503 pour l'appelant) portant son `kind` pour la journalisation. */
@@ -141,6 +142,15 @@ export class AnthropicClient {
     };
     if (data.stop_reason === 'refusal') {
       throw new AiServiceError('refusal', "L'IA a refusé de traiter cette requête.");
+    }
+    // Sortie plafonnée par max_tokens (le raisonnement adaptatif consomme le budget) :
+    // le JSON est coupé → détecter AVANT le parse pour une erreur claire (au lieu du
+    // « JSON invalide » opaque). Protège tous les appelants IA (rapport, optimiseur).
+    if (data.stop_reason === 'max_tokens' || data.stop_reason === 'model_context_window_exceeded') {
+      throw new AiServiceError(
+        'truncated',
+        'Réponse IA tronquée (limite de tokens atteinte) : requête trop volumineuse, réduisez la période ou le périmètre.',
+      );
     }
     const block = (data.content ?? []).find((b) => b.type === 'text' && typeof b.text === 'string');
     if (!block?.text) {
