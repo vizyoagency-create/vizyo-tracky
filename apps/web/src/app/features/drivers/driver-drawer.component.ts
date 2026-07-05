@@ -66,12 +66,12 @@ export interface DriverDrawerResult {
               <div class="grid grid-cols-2 gap-3">
                 <div>
                   <label class="field-label">Prenom *</label>
-                  <input type="text" [(ngModel)]="firstName" placeholder="Eric"
+                  <input type="text" [(ngModel)]="firstName" placeholder="Votre prénom"
                     class="field-input" maxlength="80" />
                 </div>
                 <div>
                   <label class="field-label">Nom *</label>
-                  <input type="text" [(ngModel)]="lastName" placeholder="Dupont"
+                  <input type="text" [(ngModel)]="lastName" placeholder="Votre nom"
                     class="field-input" maxlength="80" />
                 </div>
               </div>
@@ -94,7 +94,7 @@ export interface DriverDrawerResult {
                     <lucide-icon [img]="MailIcon" [size]="11" class="inline mr-1"></lucide-icon>
                     Email
                   </label>
-                  <input type="email" [(ngModel)]="email" placeholder="eric.dupont&#64;exemple.com"
+                  <input type="email" [(ngModel)]="email" placeholder="prenom.nom&#64;exemple.com"
                     class="field-input" maxlength="255" />
                 </div>
               </div>

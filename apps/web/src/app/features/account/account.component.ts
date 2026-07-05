@@ -98,11 +98,11 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
             </div>
             <div class="field">
               <label>Prénom</label>
-              <input [(ngModel)]="firstName" name="firstName" placeholder="Jean" />
+              <input [(ngModel)]="firstName" name="firstName" placeholder="Votre prénom" />
             </div>
             <div class="field">
               <label>Nom</label>
-              <input [(ngModel)]="lastName" name="lastName" placeholder="Dupont" />
+              <input [(ngModel)]="lastName" name="lastName" placeholder="Votre nom" />
             </div>
             <div class="field field--full">
               <label>Téléphone</label>
