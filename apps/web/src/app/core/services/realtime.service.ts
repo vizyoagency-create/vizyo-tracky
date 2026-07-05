@@ -71,6 +71,19 @@ export class RealtimeService {
   private connectErrorRefreshFailures = 0;
   private static readonly MAX_CONNECT_REFRESH_FAILURES = 3;
 
+  // Sprint 0.1 (fix live figé) — reconnexion après une coupure INITIÉE PAR LE SERVEUR
+  // (reason='io server disconnect'). socket.io ne se reconnecte PAS tout seul dans ce
+  // cas (règle du client), et cette coupure ne passe PAS par `connect_error` (donc le
+  // refresh de token n'y court pas). Cause racine observée en prod : une reconnexion
+  // socket.io réutilise l'ancien token du handshake ; s'il a expiré, `handleConnection`
+  // le rejette via `client.disconnect()` → l'utilisateur reste gelé sans live jusqu'à
+  // une action (retour d'onglet) → faux incident « 45s sans live ». On rafraîchit donc
+  // le token et on relance manuellement. Compteur = garde anti-boucle si le serveur nous
+  // éjecte en boucle (compte suspendu : le handshake rejette même avec un token frais).
+  private serverKickReconnects = 0;
+  private serverKickTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly MAX_SERVER_KICK_RECONNECTS = 5;
+
   // Sprint 0.1 — surveillance d'interruption du canal temps réel. Si le socket
   // reste coupé au-delà du seuil, on remonte un incident au centre d'alerte
   // (panne grave : plus de vue live). Re-report périodique tant que coupé.
@@ -206,6 +219,7 @@ export class RealtimeService {
     this.socket.on('connect', () => {
       this.connected.set(true);
       this.everConnected = true;
+      this.serverKickReconnects = 0; // reconnexion réussie → on ré-autorise le self-heal
       this.clearIncidentWatch();
       this.loadInitialAlerts();
     });
@@ -214,6 +228,11 @@ export class RealtimeService {
       this.connected.set(false);
       this.lastDisconnectReason = reason;
       this.flapCount++;
+      // Coupure initiée par le serveur : socket.io ne se reconnecte pas seul et le
+      // refresh de `connect_error` ne court pas ici → on relance nous-mêmes (le plus
+      // souvent le token du handshake a expiré). Les autres raisons (transport close,
+      // ping timeout…) restent gérées par la reconnexion automatique de socket.io.
+      if (reason === 'io server disconnect') this.scheduleReconnectAfterServerKick();
       this.startIncidentWatch();
     });
 
@@ -403,6 +422,33 @@ export class RealtimeService {
     void this.router.navigate(['/login']);
   }
 
+  /**
+   * Reconnexion après une éjection serveur (`io server disconnect`). On rafraîchit le
+   * token (le handshake réutilise l'ancien, souvent expiré) AVANT de relancer. Petit
+   * délai pour laisser l'API redémarrer (cas redéploiement) et éviter une boucle serrée.
+   * Au-delà de MAX éjections consécutives sans reconnexion réussie, le serveur nous
+   * refuse durablement (compte suspendu/supprimé) → session expirée (logout propre).
+   */
+  private scheduleReconnectAfterServerKick(): void {
+    if (this.serverKickTimer) return; // déjà programmé
+    if (this.serverKickReconnects >= RealtimeService.MAX_SERVER_KICK_RECONNECTS) {
+      this.handleSessionExpired();
+      return;
+    }
+    this.serverKickReconnects++;
+    this.serverKickTimer = setTimeout(async () => {
+      this.serverKickTimer = null;
+      if (!this.socket || this.socket.connected) return;
+      try {
+        const newToken = await this.auth.tryRefresh();
+        if (newToken && this.socket) (this.socket.auth as Record<string, string>)['token'] = newToken;
+      } catch {
+        /* on tente quand même la reconnexion avec le token courant */
+      }
+      this.socket?.connect();
+    }, 1000);
+  }
+
   disconnect(): void {
     this.socket?.disconnect();
     this.socket = null;
@@ -421,6 +467,11 @@ export class RealtimeService {
     this.flushScheduled = false;
     this.lastToastByKey.clear();
     this.clearIncidentWatch();
+    if (this.serverKickTimer) {
+      clearTimeout(this.serverKickTimer);
+      this.serverKickTimer = null;
+    }
+    this.serverKickReconnects = 0;
     this.flapCount = 0;
     this.everConnected = false;
     this.lastDisconnectReason = null;

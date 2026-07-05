@@ -41,6 +41,11 @@ export const errorReportInterceptor: HttpInterceptorFn = (req, next) =>
 
 function reportHttpError(method: string, rawUrl: string, status: number): void {
   if (!activityContext.sessionId) return; // endpoint gardé : rien à reporter sans session
+  // Bruit : un status 0 alors que le NAVIGATEUR se sait hors ligne = coupure réseau
+  // LOCALE (wifi tombé, veille…), pas un incident backend. On ne le remonte pas au
+  // centre d'alerte. Un status 0 avec navigator.onLine=true (API/proxy injoignable
+  // alors qu'on a du réseau) reste, lui, un vrai signal → on le garde.
+  if (status === 0 && typeof navigator !== 'undefined' && navigator.onLine === false) return;
   const url = stripQuery(rawUrl).slice(0, 300);
   const key = `${method} ${url} ${status}`;
   const now = Date.now();

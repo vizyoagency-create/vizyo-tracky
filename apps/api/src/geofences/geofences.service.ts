@@ -112,16 +112,12 @@ export class GeofencesService {
       },
     });
 
-    this.prisma.$executeRaw`
-      UPDATE geofences SET geometry = ST_Buffer(
-        ST_MakePoint(${dto.centerLng}, ${dto.centerLat})::geography,
-        ${dto.radiusMeters}
-      ) WHERE id = ${geofence.id}::uuid
-    `.catch((err) => {
-      this.logger.warn('Failed to update PostGIS geometry (non-blocking)', err.message);
-      this.errorLogger.record(err instanceof Error ? err : new Error(String(err)), 'geofences').catch((e2) => this.logger.error('ErrorLogger persist failed', e2));
-    });
-
+    // NB : plus de maintenance d'une colonne PostGIS `geometry`. La détection
+    // entrée/sortie est 100 % JS (pointInPolygon / isInsideCorridor / distance haversine
+    // sur centerLat/Lng/radiusMeters) ; aucune requête ne lit `geometry`. L'UPDATE brut
+    // qui l'alimentait échouait en prod (colonne absente → SQLSTATE 42703) et polluait le
+    // centre d'alerte pour rien. Si un jour on veut des requêtes spatiales PostGIS, on
+    // réintroduira la colonne ET son lecteur ensemble (via migration).
     this.invalidateCache(fleetId);
     return geofence;
   }
@@ -188,9 +184,9 @@ export class GeofencesService {
     if (dto.name !== undefined) data.name = dto.name;
     if (dto.type !== undefined) {
       // #26 — un changement de type vers POLYGON/CORRIDOR exige la geometrie
-      // correspondante (sinon la zone degrade SILENCIEUSEMENT en cercle : la
-      // geometry PostGIS est recalculee comme buffer du centre). On valide comme
-      // a la creation au lieu d'appliquer le type aveuglement.
+      // correspondante (sinon la zone degraderait SILENCIEUSEMENT en cercle : la
+      // detection retomberait sur centre+rayon). On valide comme a la creation au
+      // lieu d'appliquer le type aveuglement.
       if (dto.type === 'POLYGON') {
         const poly = (dto.polygonPoints ?? existing.polygonPoints) as unknown;
         if (!Array.isArray(poly) || poly.length < 3) {
@@ -216,21 +212,9 @@ export class GeofencesService {
 
     const updated = await this.prisma.geofence.update({ where: { id }, data });
 
-    const lat = dto.centerLat ?? existing.centerLat;
-    const lng = dto.centerLng ?? existing.centerLng;
-    const radius = dto.radiusMeters ?? existing.radiusMeters;
-
-    if (dto.centerLat !== undefined || dto.centerLng !== undefined || dto.radiusMeters !== undefined) {
-      this.prisma.$executeRaw`
-        UPDATE geofences SET geometry = ST_Buffer(
-          ST_MakePoint(${lng}, ${lat})::geography,
-          ${radius}
-        ) WHERE id = ${id}::uuid
-      `.catch((err) => {
-      this.logger.warn('Failed to update PostGIS geometry (non-blocking)', err.message);
-      this.errorLogger.record(err instanceof Error ? err : new Error(String(err)), 'geofences').catch((e2) => this.logger.error('ErrorLogger persist failed', e2));
-    });
-    }
+    // (cf. create) — plus de colonne PostGIS `geometry` à maintenir : détection en JS,
+    // aucune lecture de cette colonne. L'UPDATE brut échouait (42703) et bruitait le
+    // centre d'alerte.
 
     this.invalidateCache(existing.fleetId);
     return updated;
