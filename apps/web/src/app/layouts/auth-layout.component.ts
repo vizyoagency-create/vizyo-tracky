@@ -297,16 +297,21 @@ import { LogoComponent } from '../shared/ui/logo/logo.component';
 
       /* ───────── Responsive (< lg) : marque masquée, formulaire plein écran ───────── */
       @media (max-width: 1023px) {
-        .auth-grid { grid-template-columns: 1fr; }
+        /* Marque masquée + formulaire pleine largeur, VERTICALEMENT CENTRÉ.
+           overflow:visible + min-height:100svh → si un formulaire est plus haut que
+           l'écran, c'est la PAGE qui défile (contenu jamais coupé, pas de bug flex). */
+        .auth-grid { grid-template-columns: 1fr; overflow: visible; }
         .brand-pane { display: none; }
         /* safe-area PWA iOS standalone (status bar black-translucent). */
         .form-pane {
+          min-height: 100svh;
+          overflow: visible;
           padding: max(24px, env(safe-area-inset-top)) max(22px, env(safe-area-inset-right))
                    max(24px, env(safe-area-inset-bottom)) max(22px, env(safe-area-inset-left));
           overscroll-behavior: contain;
           -webkit-overflow-scrolling: touch;
         }
-        .auth-main { justify-content: flex-start; padding-top: 8px; max-width: 460px; margin: 0 auto; }
+        .auth-main { justify-content: center; max-width: 460px; margin: 0 auto; }
         .auth-head { max-width: 460px; margin: 0 auto; width: 100%; }
         .form-pane__footer { max-width: 460px; margin: 0 auto; width: 100%; }
         .auth-title { font-size: 2rem; }

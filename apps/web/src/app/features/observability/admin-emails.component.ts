@@ -334,8 +334,8 @@ const BREAKDOWN_COLORS = ['bg-tracky-light', 'bg-rose-400', 'bg-tracky', 'bg-sky
 
     <!-- ══ PREVIEW DRAWER ══ -->
     @if (previewOpen()) {
-      <div (click)="closePreview()" class="fixed inset-0 bg-black/70 backdrop-blur-[3px] z-[40]"></div>
-      <div class="fixed top-0 right-0 bottom-0 w-[min(560px,94vw)] bg-bg-primary border-l border-border-subtle z-[41] overflow-y-auto em-drawer flex flex-col">
+      <div (click)="closePreview()" class="fixed inset-0 bg-black/70 backdrop-blur-[3px] z-[2000]"></div>
+      <div class="fixed top-0 right-0 bottom-0 w-[min(560px,94vw)] bg-bg-primary border-l border-border-subtle z-[2001] overflow-y-auto em-drawer flex flex-col">
         <div class="sticky top-0 z-[2] flex items-center justify-between gap-3 p-[18px_24px] bg-bg-primary/90 backdrop-blur border-b border-border-subtle">
           <div class="min-w-0">
             <div class="font-mono text-[9.5px] tracking-[0.14em] uppercase text-tracky-light mb-0.5">Aperçu du modèle</div>
