@@ -1936,7 +1936,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.exporting.set('pdf');
     try {
       await this.reportsApi.downloadConfiguredPdf(
-        null,
+        this.fleetFilter.selectedFleetId(),
         this.periodFrom,
         this.periodTo,
         {
@@ -1965,7 +1965,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
     this.exporting.set(kind === 'trips' ? 'csv-trips' : 'csv-summary');
     try {
-      await this.reportsApi.downloadCsv(kind, null, this.periodFrom, this.periodTo);
+      await this.reportsApi.downloadCsv(kind, this.fleetFilter.selectedFleetId(), this.periodFrom, this.periodTo);
       this.toast.success(kind === 'trips' ? 'CSV trajets téléchargé' : 'CSV alertes téléchargé');
     } catch (err) {
       this.toast.error('Échec export CSV', err instanceof Error ? err.message : '');
