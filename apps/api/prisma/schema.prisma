@@ -208,6 +208,8 @@ model Fleet {
   surveillanceEvents   SurveillanceEvent[]
   installationPlans    InstallationPlan[]
   installationBookingLinks InstallationBookingLink[]
+  // Refonte agenda/IA (2026-07) — reglages de l'agent d'optimisation d'agenda (1:1, opt-in).
+  agendaAgentSettings      AgendaAgentSettings?
   // V1.16 — SIM allouees a cette flotte (parc WhereverSIM).
   sims                 Sim[]
   // Sprint 4 — config d'activation de l'ecoute audio (1:1, OFF par defaut).
@@ -1131,6 +1133,38 @@ model ActivityReportSchedule {
   updatedByUserId String?   @db.Uuid
 
   @@map("activity_report_schedule")
+}
+
+/// Refonte agenda/IA (2026-07) — Reglages de l'agent d'optimisation d'agenda, PAR FLOTTE.
+/// Pilotes depuis la roue crantee « Parametres de l'agenda ». Consommes par l'agent nocturne (P3).
+/// 1 ligne par flotte (opt-in : enabled=false par defaut).
+model AgendaAgentSettings {
+  id                           String    @id @default(uuid()) @db.Uuid
+  fleetId                      String    @unique @db.Uuid
+  fleet                        Fleet     @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  /// Interrupteur global de l'agent pour cette societe.
+  enabled                      Boolean   @default(false)
+  /// Heure de l'analyse nocturne (0-23, Europe/Paris). Defaut 2h.
+  nightlyHour                  Int       @default(2)
+  /// 'daily' | 'weekly'.
+  frequency                    String    @default("daily")
+  /// 'suggest' (propose seulement) | 'auto_high_confidence' (reserve ferme au-dessus du seuil).
+  autonomy                     String    @default("suggest")
+  /// Seuil de confiance % (0-100) au-dessus duquel l'auto reserve fermement.
+  confidenceThreshold          Int       @default(80)
+  /// Apres une reservation, l'IA optimise autour (mutualisation, cout).
+  autoCompleteAfterReservation Boolean   @default(false)
+  /// Declencheurs de (re)analyse.
+  triggerNightly               Boolean   @default(true)
+  triggerIncident              Boolean   @default(true)
+  triggerMaintenance           Boolean   @default(true)
+  triggerReservation           Boolean   @default(false)
+  lastRunAt                    DateTime?
+  updatedByUserId              String?   @db.Uuid
+  createdAt                    DateTime  @default(now())
+  updatedAt                    DateTime  @updatedAt
+
+  @@map("agenda_agent_settings")
 }
 
 /// V1.5 (Sprint I) — Etat de la sequence d'init SMS d'un tracker neuf.

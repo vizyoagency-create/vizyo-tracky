@@ -15,7 +15,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import {
   LucideAngularModule, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Check,
   Layers, Truck, Plus, AlertTriangle, CalendarClock, Wrench, X, Trash2, Play, ListChecks,
-  Gauge, CalendarCheck, Inbox, Sparkles, Activity, ShieldCheck, Ban, Info, Pencil,
+  Gauge, CalendarCheck, Inbox, Sparkles, Activity, ShieldCheck, Ban, Info, Pencil, Settings,
 } from 'lucide-angular';
 import type {
   AgendaSummaryDto,
@@ -37,6 +37,8 @@ import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.com
 import { AgendaCalendarComponent } from './agenda-calendar.component';
 import { ReservationSheetComponent } from './sheets/reservation-sheet.component';
 import { OptimizationSheetComponent } from './sheets/optimization-sheet.component';
+import { AgendaAgentSettingsSheetComponent } from './sheets/agenda-agent-settings-sheet.component';
+import { AuthService } from '../../core/services/auth.service';
 import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.directive';
 import {
   addMonths,
@@ -61,7 +63,7 @@ interface GroupOption {
   selector: 'app-agenda',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, LucideAngularModule, DatePipe, GroupBadgeComponent, AgendaCalendarComponent, ReservationSheetComponent, OptimizationSheetComponent, VehicleLinkDirective],
+  imports: [FormsModule, LucideAngularModule, DatePipe, GroupBadgeComponent, AgendaCalendarComponent, ReservationSheetComponent, OptimizationSheetComponent, AgendaAgentSettingsSheetComponent, VehicleLinkDirective],
   template: `
     <div class="flex flex-col gap-5">
       <!-- Header + résumé -->
@@ -95,6 +97,11 @@ interface GroupOption {
             @if (canManage()) {
               <button type="button" (click)="openCreate()" class="ag-btn-primary">
                 <lucide-icon [img]="PlusIcon" [size]="15"></lucide-icon><span>Événement</span>
+              </button>
+            }
+            @if (canConfigureAgent()) {
+              <button type="button" (click)="openAgentSettings()" class="ag-icon-btn" title="Paramètres de l'agenda" aria-label="Paramètres de l'agenda">
+                <lucide-icon [img]="SettingsIcon" [size]="17"></lucide-icon>
               </button>
             }
           </div>
@@ -586,6 +593,9 @@ interface GroupOption {
       [open]="optSheetOpen()"
       (closed)="optSheetOpen.set(false)"
       (applied)="onReservationChanged()" />
+    <app-agenda-agent-settings-sheet
+      [open]="agentSheetOpen()"
+      (closed)="agentSheetOpen.set(false)" />
   `,
   styles: [`
     /* ─── Boutons génériques ─── */
@@ -988,6 +998,7 @@ export class AgendaComponent implements OnInit {
   private readonly toast = inject(ToastService);
   private readonly scrollLock = inject(ScrollLockService);
   private readonly fleetFilter = inject(FleetFilterService);
+  private readonly auth = inject(AuthService);
 
   // Verrou de scroll pour les overlays custom (modal création/incident + panneau
   // du jour) : fige la page derrière tant qu'un des deux est ouvert.
@@ -1031,6 +1042,7 @@ export class AgendaComponent implements OnInit {
   protected readonly XIcon = X;
   protected readonly Trash2Icon = Trash2;
   protected readonly PencilIcon = Pencil;
+  protected readonly SettingsIcon = Settings;
   protected readonly PlayIcon = Play;
   protected readonly ListChecksIcon = ListChecks;
   protected readonly GaugeIcon = Gauge;
@@ -1110,6 +1122,11 @@ export class AgendaComponent implements OnInit {
   protected readonly canReserve = computed(() => this.perms.can('reservations_request'));
   protected readonly canValidate = computed(() => this.perms.can('reservations_manage'));
   protected readonly canOptimize = computed(() => this.perms.can('reservations_view'));
+  /** ⚙️ Paramètres de l'agent : super-admin + fleet-admin (config par société). */
+  protected readonly canConfigureAgent = computed(() => {
+    const r = this.auth.user()?.role;
+    return r === 'SUPER_ADMIN' || r === 'FLEET_ADMIN';
+  });
   /** Couches d'analyse (activité réelle, prévision, disponibilité) — même garde que la donnée. */
   protected readonly canSeeInsights = computed(() => this.perms.can('reservations_view'));
   protected readonly resSheetOpen = signal(false);
@@ -1117,6 +1134,8 @@ export class AgendaComponent implements OnInit {
   protected readonly resDefaultDate = signal<string | null>(null);
   /** #4 — réservation en cours d'édition (null = création / validation). */
   protected readonly resEditReservation = signal<VehicleEventDto | null>(null);
+  /** ⚙️ Paramètres de l'agenda (agent IA). */
+  protected readonly agentSheetOpen = signal(false);
   protected readonly optSheetOpen = signal(false);
   /** Nb de demandes de réservation en attente (dérivé des événements déjà chargés). */
   protected readonly pendingCount = computed(() =>
@@ -1788,6 +1807,11 @@ export class AgendaComponent implements OnInit {
 
   protected openOptim(): void {
     this.optSheetOpen.set(true);
+  }
+
+  /** ⚙️ Ouvre les paramètres de l'agent (config par société via le sélecteur global). */
+  protected openAgentSettings(): void {
+    this.agentSheetOpen.set(true);
   }
 
   /** « Réserver ce jour » depuis le panneau jour : ferme le panneau, ouvre la demande pré-datée. */

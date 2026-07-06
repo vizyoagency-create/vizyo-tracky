@@ -9,6 +9,7 @@ import {
 import { firstValueFrom } from 'rxjs';
 import type { AiUsageBreakdownRowDto, AiUsageLogRowDto, AiUsageSummaryDto } from '@vizyo/tracky-shared';
 import { AiUsageApiService } from '../../core/services/ai-usage.service';
+import { AuthService } from '../../core/services/auth.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 
 type Period = '24h' | '7d' | '30d';
@@ -57,7 +58,7 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
         <section class="au-budget" [attr.data-status]="s.budget.status">
           <div class="au-budget-head">
             <div>
-              <span class="au-budget-label"><lucide-icon [img]="WalletIcon" [size]="14"></lucide-icon> Budget du mois</span>
+              <span class="au-budget-label"><lucide-icon [img]="WalletIcon" [size]="14"></lucide-icon> {{ isSuperAdmin() ? 'Budget du mois' : 'Coûts IA de votre société (ce mois)' }}</span>
               <div class="au-budget-spent">
                 {{ eur(s.budget.spentThisMonthEur) }}
                 @if (s.budget.monthlyBudgetEur > 0) { <span class="au-budget-of">/ {{ eur(s.budget.monthlyBudgetEur) }}</span> }
@@ -68,15 +69,17 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
           @if (s.budget.monthlyBudgetEur > 0) {
             <div class="au-bar"><div class="au-bar-fill" [attr.data-status]="s.budget.status" [style.width.%]="budgetPct(s)"></div></div>
           }
-          <div class="au-budget-edit">
-            <label>Plafond mensuel (€)</label>
-            <input type="number" min="0" step="1" inputmode="decimal" [value]="budgetInput()" (input)="budgetInput.set($any($event.target).value)" placeholder="ex. 10" />
-            <button type="button" class="au-btn" [disabled]="savingBudget()" (click)="saveBudget()">
-              @if (savingBudget()) { <lucide-icon [img]="LoaderIcon" [size]="14" class="au-spin"></lucide-icon> } @else { <lucide-icon [img]="SaveIcon" [size]="14"></lucide-icon> }
-              Enregistrer
-            </button>
-            <span class="au-budget-hint">0 = pas de budget. Marqueur rouge dès {{ '100 %' }} (orange à 80 %).</span>
-          </div>
+          @if (isSuperAdmin()) {
+            <div class="au-budget-edit">
+              <label>Plafond mensuel (€)</label>
+              <input type="number" min="0" step="1" inputmode="decimal" [value]="budgetInput()" (input)="budgetInput.set($any($event.target).value)" placeholder="ex. 10" />
+              <button type="button" class="au-btn" [disabled]="savingBudget()" (click)="saveBudget()">
+                @if (savingBudget()) { <lucide-icon [img]="LoaderIcon" [size]="14" class="au-spin"></lucide-icon> } @else { <lucide-icon [img]="SaveIcon" [size]="14"></lucide-icon> }
+                Enregistrer
+              </button>
+              <span class="au-budget-hint">0 = pas de budget. Marqueur rouge dès {{ '100 %' }} (orange à 80 %).</span>
+            </div>
+          }
         </section>
 
         <!-- ── KPIs ── -->
@@ -280,7 +283,10 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
 })
 export class AdminAiUsageComponent implements OnInit {
   private readonly api = inject(AiUsageApiService);
+  private readonly auth = inject(AuthService);
   private readonly toast = inject(ToastService);
+  /** Le budget (plafond global) n'est éditable que par un super-admin ; un fleet-admin est en lecture seule scopée. */
+  protected readonly isSuperAdmin = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
 
   protected readonly BackIcon = ChevronLeft;
   protected readonly ZapIcon = Zap;

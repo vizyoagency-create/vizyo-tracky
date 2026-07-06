@@ -286,10 +286,11 @@ export const routes: Routes = [
         data: { title: 'Activité utilisateurs' },
       },
       {
-        // Palier « Coûts IA » — supervision des dépenses du copilote IA (super-admin).
+        // Palier « Coûts IA » — supervision des dépenses du copilote IA. Super-admin (transverse)
+        // + fleet-admin (scopé à sa société côté serveur : visibilité « qui consomme quoi »).
         path: 'admin/ai-usage',
         pathMatch: 'full',
-        canActivate: [superAdminGuard],
+        canActivate: [roleGuard('SUPER_ADMIN', 'FLEET_ADMIN')],
         loadComponent: () =>
           import('./features/observability/admin-ai-usage.component').then((m) => m.AdminAiUsageComponent),
         data: { title: 'Coûts IA' },

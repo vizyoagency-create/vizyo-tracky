@@ -11,11 +11,15 @@ import { Observable } from 'rxjs';
 export class AiUsageApiService {
   private readonly http = inject(HttpClient);
 
-  /** KPIs + répartitions (type/flotte/utilisateur/jour) + budget, sur une fenêtre. */
-  summary(from?: string, to?: string): Observable<AiUsageSummaryDto> {
+  /**
+   * KPIs + répartitions (type/flotte/utilisateur/jour) + budget, sur une fenêtre.
+   * `fleetId` : le super-admin peut cibler une société ; ignoré pour un fleet-admin (forcé serveur).
+   */
+  summary(from?: string, to?: string, fleetId?: string): Observable<AiUsageSummaryDto> {
     const params: Record<string, string> = {};
     if (from) params['from'] = from;
     if (to) params['to'] = to;
+    if (fleetId) params['fleetId'] = fleetId;
     return this.http.get<AiUsageSummaryDto>('/api/admin/ai-usage/summary', { params });
   }
 

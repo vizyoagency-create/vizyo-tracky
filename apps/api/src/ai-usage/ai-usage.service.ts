@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import type {
   AiBudgetStatus,
   AiUsageBreakdownRowDto,
@@ -22,7 +23,12 @@ const PRICING: Record<string, Pricing> = {
 };
 const FALLBACK_PRICING: Pricing = PRICING['claude-opus-4-8'];
 
-const ACTION_LABELS: Record<string, string> = { capacity: 'Capacité', placement: 'Placement' };
+const ACTION_LABELS: Record<string, string> = {
+  capacity: 'Capacité',
+  placement: 'Placement',
+  agenda_optimization: 'Agenda (agent)',
+  activity_report: "Rapport d'activité",
+};
 
 export interface AiUsageEntry {
   userId?: string | null;
@@ -118,11 +124,14 @@ export class AiUsageService {
 
   // ─── Tableau de bord ───────────────────────────────────────────────────────
 
-  async summary(fromIso?: string, toIso?: string): Promise<AiUsageSummaryDto> {
+  async summary(fromIso?: string, toIso?: string, scopeFleetId?: string): Promise<AiUsageSummaryDto> {
     const rate = this.usdToEur();
     const to = toIso ? new Date(toIso) : new Date();
     const from = fromIso ? new Date(fromIso) : new Date(to.getTime() - 30 * 24 * 3600 * 1000);
-    const where = { createdAt: { gte: from, lte: to } };
+    // scopeFleetId : un FLEET_ADMIN ne voit QUE sa société (forcé par le controller) ; un
+    // SUPER_ADMIN peut filtrer librement (undefined = toutes sociétés).
+    const where = { createdAt: { gte: from, lte: to }, ...(scopeFleetId ? { fleetId: scopeFleetId } : {}) };
+    const fleetCond = scopeFleetId ? Prisma.sql`AND "fleetId" = ${scopeFleetId}::uuid` : Prisma.empty;
 
     const [agg, byActionRaw, byFleetRaw, byUserRaw, dayRows] = await Promise.all([
       this.prisma.aiUsageLog.aggregate({
@@ -136,7 +145,7 @@ export class AiUsageService {
       this.prisma.$queryRaw<Array<{ day: Date; calls: bigint; cost: number }>>`
         SELECT date_trunc('day', "createdAt") AS day, COUNT(*)::bigint AS calls, COALESCE(SUM("costUsd"), 0) AS cost
         FROM ai_usage_logs
-        WHERE "createdAt" >= ${from} AND "createdAt" <= ${to}
+        WHERE "createdAt" >= ${from} AND "createdAt" <= ${to} ${fleetCond}
         GROUP BY 1 ORDER BY 1 ASC`,
     ]);
 
@@ -174,7 +183,8 @@ export class AiUsageService {
     });
 
     const totalCostUsd = agg._sum.costUsd ?? 0;
-    const budget = await this.getBudget();
+    // Budget : global (super-admin) OU vue scopée flotte (visibilité seule, pas de plafond par flotte).
+    const budget = scopeFleetId ? await this.fleetBudgetView(scopeFleetId, rate) : await this.getBudget();
 
     return {
       from: from.toISOString(),
@@ -242,6 +252,42 @@ export class AiUsageService {
         ok: r.ok,
       })),
       nextCursor: hasMore ? page[page.length - 1].createdAt.toISOString() : null,
+    };
+  }
+
+  // ─── Coût par flotte (visibilité) ──────────────────────────────────────────
+
+  private monthStart(): Date {
+    const d = new Date();
+    d.setDate(1);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  /** Dépense IA (USD) d'une flotte depuis le 1er du mois courant. */
+  private async fleetMonthSpendUsd(fleetId: string): Promise<number> {
+    const agg = await this.prisma.aiUsageLog.aggregate({
+      where: { fleetId, createdAt: { gte: this.monthStart() } },
+      _sum: { costUsd: true },
+    });
+    return agg._sum.costUsd ?? 0;
+  }
+
+  /** Coût IA (€) d'une flotte depuis le 1er du mois — pour la ⚙️ agenda + les vues scopées. */
+  async monthCostEur(fleetId: string): Promise<number> {
+    return (await this.fleetMonthSpendUsd(fleetId)) * this.usdToEur();
+  }
+
+  /** Vue budget SCOPÉE flotte : pas de plafond par flotte (visibilité seule), juste la dépense du mois. */
+  private async fleetBudgetView(fleetId: string, rate: number): Promise<AiUsageBudgetDto> {
+    const usd = await this.fleetMonthSpendUsd(fleetId);
+    return {
+      monthlyBudgetEur: 0,
+      spentThisMonthEur: usd * rate,
+      spentThisMonthUsd: usd,
+      status: 'none',
+      usdToEurRate: rate,
+      updatedAt: null,
     };
   }
 
