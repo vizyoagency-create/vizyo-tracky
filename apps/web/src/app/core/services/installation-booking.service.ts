@@ -23,31 +23,31 @@ import { Observable } from 'rxjs';
 export class InstallationBookingApiService {
   private readonly http = inject(HttpClient);
 
-  // ── Admin (SUPER_ADMIN) ──
+  // ── Admin (SUPER_ADMIN) ── base `installation-bookings` (évite la collision avec /installations/:id)
   listLinks(): Observable<InstallationBookingLinkDto[]> {
-    return this.http.get<InstallationBookingLinkDto[]>('/api/installations/booking-links');
+    return this.http.get<InstallationBookingLinkDto[]>('/api/installation-bookings/links');
   }
   createLink(dto: CreateInstallationBookingLinkDto): Observable<InstallationBookingLinkDto> {
-    return this.http.post<InstallationBookingLinkDto>('/api/installations/booking-links', dto);
+    return this.http.post<InstallationBookingLinkDto>('/api/installation-bookings/links', dto);
   }
   updateLink(id: string, dto: UpdateInstallationBookingLinkDto): Observable<InstallationBookingLinkDto> {
-    return this.http.patch<InstallationBookingLinkDto>(`/api/installations/booking-links/${id}`, dto);
+    return this.http.patch<InstallationBookingLinkDto>(`/api/installation-bookings/links/${id}`, dto);
   }
   deleteLink(id: string): Observable<void> {
-    return this.http.delete<void>(`/api/installations/booking-links/${id}`);
+    return this.http.delete<void>(`/api/installation-bookings/links/${id}`);
   }
   listBookings(filters?: { status?: InstallationBookingStatus; from?: string; to?: string }): Observable<InstallationBookingDto[]> {
     const params: Record<string, string> = {};
     if (filters?.status) params['status'] = filters.status;
     if (filters?.from) params['from'] = filters.from;
     if (filters?.to) params['to'] = filters.to;
-    return this.http.get<InstallationBookingDto[]>('/api/installations/bookings', { params });
+    return this.http.get<InstallationBookingDto[]>('/api/installation-bookings', { params });
   }
   confirmBooking(id: string, dto: ConfirmInstallationBookingDto): Observable<InstallationBookingDto> {
-    return this.http.post<InstallationBookingDto>(`/api/installations/bookings/${id}/confirm`, dto);
+    return this.http.post<InstallationBookingDto>(`/api/installation-bookings/${id}/confirm`, dto);
   }
   rejectBooking(id: string, dto: RejectInstallationBookingDto): Observable<InstallationBookingDto> {
-    return this.http.post<InstallationBookingDto>(`/api/installations/bookings/${id}/reject`, dto);
+    return this.http.post<InstallationBookingDto>(`/api/installation-bookings/${id}/reject`, dto);
   }
 
   // ── Public (page /book/:token, hors auth) ──

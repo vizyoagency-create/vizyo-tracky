@@ -28,37 +28,41 @@ import { InstallationBookingService } from './installation-booking.service';
  * Prise de RDV en ligne — administration (SUPER_ADMIN). Génération/gestion des liens
  * publics + traitement (validation/refus) des demandes de créneau. La partie PUBLIQUE
  * (page client) vit dans {@link PublicBookingController}, hors auth.
+ *
+ * NB base path `installation-bookings` (et PAS `installations`) : l'`InstallationsController`
+ * existant a une route greedy `GET /installations/:id` qui capturerait `booking-links`/
+ * `bookings` (→ cast UUID en erreur). On évite la collision avec un préfixe distinct.
  */
-@Controller('installations')
+@Controller('installation-bookings')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.SUPER_ADMIN)
 export class InstallationBookingController {
   constructor(private readonly service: InstallationBookingService) {}
 
   // ── Liens ──
-  @Post('booking-links')
+  @Post('links')
   createLink(@Req() req: AuthenticatedRequest, @Body() dto: CreateBookingLinkDto) {
     return this.service.createLink(req.user.id, dto);
   }
 
-  @Get('booking-links')
+  @Get('links')
   listLinks() {
     return this.service.listLinks();
   }
 
-  @Patch('booking-links/:id')
+  @Patch('links/:id')
   updateLink(@Param('id') id: string, @Body() dto: UpdateBookingLinkDto) {
     return this.service.updateLink(id, dto);
   }
 
-  @Delete('booking-links/:id')
+  @Delete('links/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteLink(@Param('id') id: string) {
     await this.service.deleteLink(id);
   }
 
   // ── Demandes ──
-  @Get('bookings')
+  @Get()
   listBookings(
     @Query('status') status?: string,
     @Query('from') from?: string,
@@ -72,12 +76,12 @@ export class InstallationBookingController {
     });
   }
 
-  @Post('bookings/:id/confirm')
+  @Post(':id/confirm')
   confirm(@Req() req: AuthenticatedRequest, @Param('id') id: string, @Body() dto: ConfirmBookingDto) {
     return this.service.confirmBooking(req.user.id, id, dto);
   }
 
-  @Post('bookings/:id/reject')
+  @Post(':id/reject')
   reject(@Param('id') id: string, @Body() dto: RejectBookingDto) {
     return this.service.rejectBooking(id, dto);
   }
