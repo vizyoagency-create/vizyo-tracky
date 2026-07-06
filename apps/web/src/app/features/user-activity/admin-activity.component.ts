@@ -43,6 +43,7 @@ import {
   RotateCcw,
   Send,
   Users,
+  CalendarClock,
 } from 'lucide-angular';
 import { AudioMonitoringService } from '../../core/services/audio-monitoring.service';
 import { UsersApiService } from '../../core/services/users.service';
@@ -685,6 +686,7 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
     { id: 'AI_REPORT', label: 'Rapports IA' },
     { id: 'AUDIO', label: 'Audio' },
     { id: 'RETENTION', label: 'Rétention' },
+    { id: 'INSTALLATION', label: 'Installations' },
     { id: 'INTERNAL', label: 'Interne' },
   ];
   readonly systemStatuses: { id: string; label: string }[] = [
@@ -996,6 +998,7 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
       case 'SIM': return CreditCard;
       case 'AI': return Sparkles;
       case 'AUDIO': return Ear;
+      case 'INSTALLATION': return CalendarClock;
       case 'INTERNAL': return Building2;
       case 'MUTATION': return Pencil;
       default: return Server;
@@ -1015,6 +1018,7 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
       case 'SIM': return 'bg-indigo-500/15 text-indigo-400';
       case 'AI': return 'bg-fuchsia-500/15 text-fuchsia-400';
       case 'AUDIO': return 'bg-red-500/15 text-red-400';
+      case 'INSTALLATION': return 'bg-emerald-500/15 text-emerald-400';
       case 'INTERNAL': return 'bg-slate-500/15 text-slate-400';
       case 'MUTATION': return 'bg-lime-500/15 text-lime-400';
       default: return 'bg-bg-tertiary text-fg-tertiary';

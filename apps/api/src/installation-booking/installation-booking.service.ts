@@ -18,6 +18,7 @@ import type {
 import type { Env } from '../config/env.validation';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 import {
   type SlotConfig,
   generateAvailability,
@@ -47,6 +48,7 @@ export class InstallationBookingService {
     private readonly prisma: PrismaService,
     private readonly email: EmailService,
     private readonly config: ConfigService<Env, true>,
+    private readonly systemActivity: SystemActivityService,
   ) {}
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -191,12 +193,44 @@ export class InstallationBookingService {
     return null;
   }
 
+  /** Trace une ouverture de la page publique (fire-and-forget, ne jette jamais). */
+  private trackOpen(linkId: string, isFirst: boolean, fleetId: string, label: string): void {
+    const now = new Date();
+    this.prisma.installationBookingLink
+      .update({
+        where: { id: linkId },
+        data: {
+          openCount: { increment: 1 },
+          lastOpenedAt: now,
+          ...(isFirst ? { firstOpenedAt: now } : {}),
+        },
+      })
+      .catch((e) => this.logger.warn(`trackOpen échoué: ${e instanceof Error ? e.message : e}`));
+    // Seule la 1re ouverture alimente le feed « Système » (anti-flood ; les suivantes = compteur).
+    if (isFirst) {
+      this.systemActivity.record({
+        category: 'INSTALLATION',
+        action: 'booking_link_opened',
+        status: 'SUCCESS',
+        actor: 'client',
+        target: label,
+        detail: `Lien de prise de RDV ouvert pour la 1re fois`,
+        fleetId,
+        meta: { linkId },
+      });
+    }
+  }
+
   async getPublicLink(rawToken: string): Promise<PublicBookingLinkDto> {
     const link = await this.prisma.installationBookingLink.findUnique({
       where: { token: rawToken },
       include: { fleet: { select: { name: true } } },
     });
     if (!link) throw new NotFoundException('Lien de réservation introuvable.');
+
+    // Observabilité : on trace l'OUVERTURE du lien (compteur + 1re/dernière). Best-effort,
+    // ne bloque jamais la réponse. La 1re ouverture est journalisée dans le feed « Système ».
+    this.trackOpen(link.id, link.firstOpenedAt === null, link.fleetId, link.label);
 
     const closedReason = this.closedReason(link);
     const base: PublicBookingLinkDto = {
@@ -315,6 +349,17 @@ export class InstallationBookingService {
       })
       .catch((e) => this.logger.warn(`Notif demande créneau échouée: ${e instanceof Error ? e.message : e}`));
 
+    this.systemActivity.record({
+      category: 'INSTALLATION',
+      action: 'booking_requested',
+      status: 'SUCCESS',
+      actor: 'client',
+      target: `${clientName} — ${label}`,
+      detail: 'Demande de créneau déposée via le lien public',
+      fleetId: link.fleetId,
+      meta: { bookingId: booking.id, linkId: link.id },
+    });
+
     return { ok: true, startAt: start.toISOString(), endAt: end.toISOString(), slotLabel: label };
   }
 
@@ -429,6 +474,18 @@ export class InstallationBookingService {
       })
       .catch((e) => this.logger.warn(`Confirmation client échouée: ${e instanceof Error ? e.message : e}`));
 
+    this.systemActivity.record({
+      category: 'INSTALLATION',
+      action: 'booking_confirmed',
+      status: 'SUCCESS',
+      actor: 'opérateur',
+      target: `${booking.clientName} — ${slotLabel(booking.startAt, booking.endAt)}`,
+      detail: 'Créneau validé → pose créée dans le planning',
+      fleetId: booking.fleetId,
+      triggeredByUserId: userId,
+      meta: { bookingId: booking.id },
+    });
+
     return this.toBookingDto(updated);
   }
 
@@ -447,6 +504,17 @@ export class InstallationBookingService {
       where: { id },
       data: { status: 'REJECTED', rejectionReason: dto.reason?.trim() || null },
       include: { link: { select: { label: true, planId: true } } },
+    });
+
+    this.systemActivity.record({
+      category: 'INSTALLATION',
+      action: 'booking_rejected',
+      status: 'SUCCESS',
+      actor: 'opérateur',
+      target: `${booking.clientName} — ${slotLabel(booking.startAt, booking.endAt)}`,
+      detail: dto.reason?.trim() || 'Demande de créneau refusée',
+      fleetId: booking.fleetId,
+      meta: { bookingId: booking.id, notifiedClient: !!dto.notifyClient },
     });
 
     if (dto.notifyClient) {
@@ -496,6 +564,9 @@ export class InstallationBookingService {
       updatedAt: row.updatedAt.toISOString(),
       pendingCount,
       confirmedCount,
+      openCount: row.openCount,
+      firstOpenedAt: row.firstOpenedAt ? row.firstOpenedAt.toISOString() : null,
+      lastOpenedAt: row.lastOpenedAt ? row.lastOpenedAt.toISOString() : null,
     };
   }
 

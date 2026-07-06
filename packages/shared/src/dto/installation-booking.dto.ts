@@ -126,6 +126,10 @@ export interface InstallationBookingLinkDto {
   updatedAt: string;
   pendingCount: number;
   confirmedCount: number;
+  /** Observabilité : nombre d'ouvertures de la page publique + 1re / dernière ouverture. */
+  openCount: number;
+  firstOpenedAt: string | null;
+  lastOpenedAt: string | null;
 }
 
 export interface CreateInstallationBookingLinkDto {

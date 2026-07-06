@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
-  ArrowLeft, CalendarClock, Check, ChevronRight, Copy, Link2, LucideAngularModule, Plus, Trash2, X,
+  ArrowLeft, CalendarClock, Check, ChevronRight, Copy, Eye, Link2, LucideAngularModule, Plus, Trash2, X,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import type {
@@ -132,6 +132,11 @@ const TIME_FMT = new Intl.DateTimeFormat('fr-FR', { timeZone: TZ, hour: '2-digit
               <div>
                 <div class="ib-slot"><lucide-icon [img]="Link2" [size]="14"></lucide-icon> {{ l.label }} @if (!l.active) { <span class="ib-off-tag">désactivé</span> }</div>
                 <div class="ib-meta">{{ l.fleetName }} · {{ l.pendingCount }} en attente · {{ l.confirmedCount }} confirmé{{ l.confirmedCount > 1 ? 's' : '' }}@if (l.clientEmail) { · lien direct ({{ l.clientEmail }}) }</div>
+                <div class="ib-meta ib-opens" [class.ib-opens--none]="l.openCount === 0">
+                  <lucide-icon [img]="Eye" [size]="13"></lucide-icon>
+                  @if (l.openCount === 0) { Jamais ouvert par le client }
+                  @else { Ouvert {{ l.openCount }} fois · dernière : {{ formatSlotShort(l.lastOpenedAt) }} }
+                </div>
                 @if (l.publicUrl) { <div class="ib-url"><code>{{ l.publicUrl }}</code><button class="ib-copy" (click)="copy(l.publicUrl!)"><lucide-icon [img]="Copy" [size]="13"></lucide-icon></button></div> }
               </div>
             </div>
@@ -180,6 +185,8 @@ const TIME_FMT = new Intl.DateTimeFormat('fr-FR', { timeZone: TZ, hour: '2-digit
     .ib-client { font-size:13px; color:var(--fg-secondary,#9BA5A1); margin-top:5px; }
     .ib-client a { color:var(--tracky,#10E0A0); text-decoration:none; }
     .ib-meta { font-size:12.5px; color:var(--fg-tertiary,#69736E); margin-top:4px; }
+    .ib-opens { display:inline-flex; align-items:center; gap:5px; color:#10E0A0; }
+    .ib-opens--none { color:var(--fg-tertiary,#69736E); }
     .ib-status { font-size:11px; font-weight:700; padding:3px 9px; border-radius:999px; white-space:nowrap; }
     .ib-status--pending { background:rgba(245,179,61,.15); color:#F5B33D; }
     .ib-status--confirmed { background:rgba(16,224,160,.15); color:#10E0A0; }
@@ -227,7 +234,7 @@ export class AdminInstallationBookingsComponent implements OnInit {
   protected readonly ArrowLeft = ArrowLeft; protected readonly CalendarClock = CalendarClock;
   protected readonly Check = Check; protected readonly X = X; protected readonly Copy = Copy;
   protected readonly Trash2 = Trash2; protected readonly Plus = Plus; protected readonly Link2 = Link2;
-  protected readonly ChevronRight = ChevronRight;
+  protected readonly ChevronRight = ChevronRight; protected readonly Eye = Eye;
 
   protected readonly tab = signal<'requests' | 'links' | 'agenda'>('requests');
   protected readonly loading = signal(true);
@@ -303,6 +310,9 @@ export class AdminInstallationBookingsComponent implements OnInit {
     return `${DAY_FMT.format(new Date(startAt))}, ${TIME_FMT.format(new Date(startAt))} – ${TIME_FMT.format(new Date(endAt))}`;
   }
   protected timeOnly(iso: string): string { return TIME_FMT.format(new Date(iso)); }
+  protected formatSlotShort(iso: string | null): string {
+    return iso ? `${DAY_FMT.format(new Date(iso))} ${TIME_FMT.format(new Date(iso))}` : '—';
+  }
 
   protected copy(url: string): void {
     navigator.clipboard?.writeText(url).then(

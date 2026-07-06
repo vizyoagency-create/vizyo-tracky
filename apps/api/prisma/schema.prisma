@@ -1535,6 +1535,11 @@ model InstallationBookingLink {
   /// true => le lien se ferme apres la 1re reservation confirmee.
   singleUse       Boolean           @default(false)
   expiresAt       DateTime?
+  /// Observabilite : combien de fois la page publique a ete OUVERTE (chargee), +
+  /// 1re et derniere ouverture. Repond a « le client a-t-il cliqué / ouvert le lien ? ».
+  openCount       Int               @default(0)
+  firstOpenedAt   DateTime?
+  lastOpenedAt    DateTime?
   createdBy       String?           @db.Uuid
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
