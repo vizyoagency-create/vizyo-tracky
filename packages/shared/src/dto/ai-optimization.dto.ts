@@ -167,6 +167,9 @@ export interface AiPlacementResultDto {
 
 /** Requête front → API (placement) : le serveur construit les candidats via suggest(). */
 export interface AiPlacementSuggestRequestDto {
+  /** Société ciblée. REQUIS pour un super-admin (sinon 400) — évite d'agréger toutes
+   *  les flottes dans le raisonnement et de perdre le métier. Ignoré pour un non-SA. */
+  fleetId?: string;
   startAt: string; // ISO
   endAt: string; // ISO
   title?: string;

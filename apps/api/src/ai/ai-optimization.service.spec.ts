@@ -287,4 +287,37 @@ describe('AiOptimizationService — Sprint 9 (copilote IA)', () => {
     expect(res.proposals[0]).toMatchObject({ energy: 'ELECTRIQUE', costPerKm: 0.03 });
     expect(res.aiCostEur).toBeCloseTo(0.0184, 4);
   });
+
+  it('suggestPlacement : super-admin SANS fleetId -> 400 (jamais d\'agrégation multi-flottes)', async () => {
+    const reservations = makeReservations();
+    const svc = build({ reservations });
+    await expect(
+      svc.suggestPlacement(makeUser({ role: UserRole.SUPER_ADMIN, fleetId: null }), { ...SLOT }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    // La flotte est exigée AVANT de lister le moindre candidat : pas de fuite inter-tenant.
+    expect((reservations as unknown as { suggest: jest.Mock }).suggest).not.toHaveBeenCalled();
+  });
+
+  it('suggestPlacement : super-admin AVEC fleetId -> candidats + coût IA scopés à CETTE flotte', async () => {
+    const reservations = makeReservations({
+      suggest: jest.fn().mockResolvedValue({
+        startAt: SLOT.startAt, endAt: SLOT.endAt,
+        vehicles: [{ vehicleId: 'v1', vehiclePlate: 'AA', seats: 9, childSeats: 8, features: [], utilizationRatio: 0.05, underutilized: true }],
+      }),
+    });
+    const aiUsage = makeAiUsage();
+    const anthropic = makeAnthropic({ proposals: [{ vehicleId: 'v1', score: 0.9, reasoning: 'ok' }], noGoodMatch: false, notes: null });
+    const svc = build({ reservations, aiUsage, anthropic });
+
+    await svc.suggestPlacement(makeUser({ role: UserRole.SUPER_ADMIN, fleetId: null }), { ...SLOT, fleetId: 'f9' });
+    // suggest() est appelé scopé à la flotte demandée (plus de parc agrégé)
+    expect((reservations as unknown as { suggest: jest.Mock }).suggest).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ fleetId: 'f9' }),
+    );
+    // le coût IA est imputé à la flotte résolue (avant : null pour un super-admin)
+    expect((aiUsage as unknown as { record: jest.Mock }).record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'placement', fleetId: 'f9' }),
+    );
+  });
 });

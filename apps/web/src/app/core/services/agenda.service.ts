@@ -139,12 +139,14 @@ export class AgendaApiService {
     to?: string;
     vehicleId?: string;
     groupId?: string;
+    fleetId?: string;
   }): Observable<FleetOptimizationDto> {
     const params: Record<string, string> = {};
     if (query?.from) params['from'] = query.from;
     if (query?.to) params['to'] = query.to;
     if (query?.vehicleId) params['vehicleId'] = query.vehicleId;
     if (query?.groupId) params['groupId'] = query.groupId;
+    if (query?.fleetId) params['fleetId'] = query.fleetId;
     return this.http.get<FleetOptimizationDto>('/api/optimization/utilization', { params });
   }
 

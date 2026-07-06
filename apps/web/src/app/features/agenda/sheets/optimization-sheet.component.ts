@@ -314,6 +314,7 @@ export class OptimizationSheetComponent {
     this.capResult.set(null);
     this.selected.set(new Set());
     void this.loadMetier();
+    void this.loadUtil();
   }
 
   private async loadMetier(): Promise<void> {
@@ -340,7 +341,7 @@ export class OptimizationSheetComponent {
   private async loadUtil(): Promise<void> {
     this.utilLoading.set(true);
     try {
-      this.util.set(await firstValueFrom(this.agendaApi.getUtilization({})));
+      this.util.set(await firstValueFrom(this.agendaApi.getUtilization({ fleetId: this.selectedFleetId() ?? undefined })));
     } catch {
       this.util.set(null);
     } finally {

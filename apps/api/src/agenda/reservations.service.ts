@@ -84,11 +84,22 @@ export class ReservationsService {
     };
   }
 
-  private async resolveScope(user: AuthUser): Promise<{ fleetId?: string; ids: string[] | 'ALL' }> {
+  private async resolveScope(
+    user: AuthUser,
+    requestedFleetId?: string,
+  ): Promise<{ fleetId?: string; ids: string[] | 'ALL' }> {
     let fleetId: string | undefined;
     if (user.role !== UserRole.SUPER_ADMIN) {
       if (!user.fleetId) throw new ForbiddenException('Aucune flotte associee');
       fleetId = user.fleetId;
+      // Un non-super-admin ne peut jamais viser une autre société que la sienne.
+      if (requestedFleetId && requestedFleetId !== user.fleetId) {
+        throw new ForbiddenException('Flotte hors périmètre.');
+      }
+    } else if (requestedFleetId) {
+      // SUPER_ADMIN : scoper sur la société demandée (filtre société global) au lieu de
+      // balayer tout le parc de toutes les sociétés.
+      fleetId = requestedFleetId;
     }
     const accessible = await this.vehicleAccess.getAccessibleVehicleIds(user);
     const ids = resolveReportVehicleScope(accessible, undefined);
@@ -215,10 +226,10 @@ export class ReservationsService {
 
   async suggest(
     user: AuthUser,
-    query: { startAt: string; endAt: string; criteria?: RequestReservationDto['criteria'] },
+    query: { startAt: string; endAt: string; criteria?: RequestReservationDto['criteria']; fleetId?: string },
   ): Promise<SuggestReservationResultDto> {
     const { start, end } = this.parseSlot(query.startAt, query.endAt);
-    const scope = await this.resolveScope(user);
+    const scope = await this.resolveScope(user, query.fleetId);
 
     const where: Prisma.VehicleWhereInput = {};
     if (scope.fleetId) where.fleetId = scope.fleetId;
@@ -342,7 +353,12 @@ export class ReservationsService {
       fleetId = await this.events.assertVehicleAccess(user, vehicleId); // 403/404
     } else {
       // Demande « ouverte » sur critères : on attache le meilleur véhicule libre (sous-utilisé d'abord).
-      const sug = await this.suggest(user, { startAt: dto.startAt, endAt: dto.endAt, criteria: dto.criteria });
+      const sug = await this.suggest(user, {
+        startAt: dto.startAt,
+        endAt: dto.endAt,
+        criteria: dto.criteria,
+        fleetId: dto.fleetId,
+      });
       if (sug.vehicles.length === 0) {
         throw new BadRequestException('Aucun véhicule libre ne correspond aux critères sur ce créneau.');
       }

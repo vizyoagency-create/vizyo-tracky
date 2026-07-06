@@ -276,6 +276,7 @@ export class AiOptimizationService {
     candidates: AiPlacementCandidateInput[];
     slot: { startAt: string; endAt: string };
     excluded: { unknownCapacity: number; immobilized: number };
+    fleetId: string;
   }> {
     if (!dto?.startAt || !dto?.endAt) throw new BadRequestException('startAt et endAt (ISO) requis.');
     const start = new Date(dto.startAt);
@@ -285,17 +286,30 @@ export class AiOptimizationService {
     }
     const slot = { startAt: start.toISOString(), endAt: end.toISOString() };
 
-    // Candidats = véhicules DISPONIBLES sur le créneau (scoping + conflits réels gérés par suggest()).
+    // Calibrage flotte : le placement raisonne sur UNE société (comme la capacité). Un super-admin
+    // DOIT préciser la flotte (sinon 400) — sans quoi les candidats agrègent TOUTES les sociétés et
+    // le métier retombe sur GENERIC. Le métier + le nom viennent de CETTE flotte (injectés au prompt).
+    const fleetId = this.resolveFleetId(user, dto?.fleetId);
+    const fleet = await this.prisma.fleet.findUnique({
+      where: { id: fleetId },
+      select: { metier: true, name: true },
+    });
+    if (!fleet) throw new NotFoundException('Flotte introuvable.');
+    const metier = fleet.metier as FleetMetier;
+
+    // Candidats = véhicules DISPONIBLES sur le créneau, SCOPÉS à la flotte résolue
+    // (scoping + conflits réels gérés par suggest()).
     const sug = await this.reservations.suggest(user, {
       startAt: dto.startAt,
       endAt: dto.endAt,
       criteria: dto.criteria,
+      fleetId,
     });
 
     // Prévision : indique « souvent pris à ce moment » (informe le tri, jamais bloquant).
     let forecastBusy = new Set<string>();
     try {
-      const fc = await this.forecast.getForecast(user, start, end);
+      const fc = await this.forecast.getForecast(user, start, end, fleetId);
       forecastBusy = new Set(
         fc.slots
           .filter((s) => new Date(s.startAt).getTime() < end.getTime() && new Date(s.endAt).getTime() > start.getTime())
@@ -330,7 +344,6 @@ export class AiOptimizationService {
     const metaById = new Map(meta.map((m) => [m.id, m]));
     const maintSet = new Set(maintRows.map((r) => r.vehicleId));
 
-    const metier = await this.fleetMetier(user);
     const candidates: AiPlacementCandidateInput[] = sug.vehicles.map((v) => {
       const m = metaById.get(v.vehicleId);
       const energy = m?.energy ?? null;
@@ -355,7 +368,7 @@ export class AiOptimizationService {
 
     const payload: AiPlacementInputDto = {
       metier,
-      fleetContext: null,
+      fleetContext: fleet.name ?? null,
       request: {
         startAt: slot.startAt,
         endAt: slot.endAt,
@@ -377,6 +390,7 @@ export class AiOptimizationService {
       slot,
       // Transparence UI : véhicules écartés AVANT le raisonnement IA (résultats non faussés en silence).
       excluded: { unknownCapacity: sug.excludedUnknownCapacity ?? 0, immobilized: sug.excludedImmobilized ?? 0 },
+      fleetId,
     };
   }
 
@@ -386,7 +400,7 @@ export class AiOptimizationService {
   }
 
   async suggestPlacement(user: AuthUser, dto: AiPlacementSuggestRequestDto): Promise<AiPlacementResultDto> {
-    const { payload, candidates, slot, excluded } = await this.buildPlacementPayload(user, dto);
+    const { payload, candidates, slot, excluded, fleetId } = await this.buildPlacementPayload(user, dto);
     if (candidates.length === 0) {
       return {
         slot,
@@ -412,13 +426,13 @@ export class AiOptimizationService {
       // Transparence : coût € de CET appel (même calcul que le palier « Coûts IA »).
       aiCostEur = Math.round(this.aiUsage.costOf(call.model, call.usage) * this.aiUsage.eurRate() * 10000) / 10000;
       void this.aiUsage.record({
-        userId: user.id, fleetId: user.fleetId ?? null, action: 'placement', model: call.model,
+        userId: user.id, fleetId, action: 'placement', model: call.model,
         inputTokens: call.usage.inputTokens, outputTokens: call.usage.outputTokens,
         cacheWriteTokens: call.usage.cacheWriteTokens, cacheReadTokens: call.usage.cacheReadTokens,
         latencyMs: call.latencyMs, ok: true,
       });
     } catch (err) {
-      await this.recordAiFailure(err, 'placement', { userId: user.id, fleetId: user.fleetId ?? undefined });
+      await this.recordAiFailure(err, 'placement', { userId: user.id, fleetId });
       throw err;
     }
 
@@ -449,15 +463,6 @@ export class AiOptimizationService {
       excludedImmobilized: excluded.immobilized,
       aiCostEur,
     };
-  }
-
-  private async fleetMetier(user: AuthUser): Promise<FleetMetier> {
-    if (!user.fleetId) return 'GENERIC';
-    const fleet = await this.prisma.fleet.findUnique({
-      where: { id: user.fleetId },
-      select: { metier: true },
-    });
-    return (fleet?.metier as FleetMetier) ?? 'GENERIC';
   }
 
   // ─── Journalisation des échecs IA → centre d'alerte ────────────────────────

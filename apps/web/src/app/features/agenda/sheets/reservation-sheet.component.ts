@@ -17,6 +17,8 @@ import type { VehicleEventDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { AgendaApiService } from '../../../core/services/agenda.service';
 import { AiApiService } from '../../../core/services/ai.service';
+import { AuthService } from '../../../core/services/auth.service';
+import { FleetFilterService } from '../../../core/services/fleet-filter.service';
 import { PermissionsService } from '../../../core/services/permissions.service';
 import { ToastService } from '../../../shared/ui/toast/toast.service';
 import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-sheet.component';
@@ -64,6 +66,9 @@ function toLocalInput(d: Date): string {
         <!-- ───── DEMANDER ───── -->
         @if (mode() === 'request') {
           <div class="rs-body">
+            @if (needsFleet()) {
+              <div class="rs-alert rs-alert--info">Choisis d'abord une société dans le sélecteur en haut de page pour réserver sur son parc.</div>
+            }
             <div class="rs-f">
               <span>Créneau</span>
               <app-datetime-range [start]="startAt()" [end]="endAt()" (startChange)="startAt.set($event)" (endChange)="endAt.set($event)"></app-datetime-range>
@@ -79,7 +84,7 @@ function toLocalInput(d: Date): string {
               <span class="rs-lbl-row">
                 Véhicule
                 @if (canAi()) {
-                  <button type="button" class="rs-ai" [disabled]="aiLoading()" (click)="suggestAi()">
+                  <button type="button" class="rs-ai" [disabled]="aiLoading() || needsFleet()" (click)="suggestAi()">
                     @if (aiLoading()) { <lucide-icon [img]="LoaderIcon" [size]="13" class="rs-spin"></lucide-icon> } @else { <lucide-icon [img]="SparklesIcon" [size]="13"></lucide-icon> }
                     Suggérer avec l'IA
                   </button>
@@ -132,7 +137,7 @@ function toLocalInput(d: Date): string {
             @if (reqError()) { <div class="rs-alert rs-alert--err"><lucide-icon [img]="AlertIcon" [size]="13"></lucide-icon> {{ reqError() }}</div> }
           </div>
           <div class="rs-foot">
-            <button type="button" class="rs-btn rs-btn--primary" [disabled]="submitting()" (click)="submit()">
+            <button type="button" class="rs-btn rs-btn--primary" [disabled]="submitting() || needsFleet()" (click)="submit()">
               @if (submitting()) { <lucide-icon [img]="LoaderIcon" [size]="15" class="rs-spin"></lucide-icon> }
               {{ submitting() ? 'Envoi…' : 'Déposer la demande' }}
             </button>
@@ -249,6 +254,8 @@ function toLocalInput(d: Date): string {
 export class ReservationSheetComponent {
   private readonly api = inject(AgendaApiService);
   private readonly ai = inject(AiApiService);
+  private readonly auth = inject(AuthService);
+  private readonly fleetFilter = inject(FleetFilterService);
   private readonly perms = inject(PermissionsService);
   private readonly toast = inject(ToastService);
 
@@ -272,6 +279,10 @@ export class ReservationSheetComponent {
   protected readonly mode = signal<'request' | 'validate'>('request');
   protected readonly canManage = computed(() => this.perms.can('reservations_manage'));
   protected readonly canAi = computed(() => this.perms.can('ai_optimize'));
+  /** Super-admin sans société choisie : réserver mélangerait toutes les flottes → on gate. */
+  protected readonly needsFleet = computed(
+    () => this.auth.user()?.role === 'SUPER_ADMIN' && !this.fleetFilter.selectedFleetId(),
+  );
 
   // Demande
   protected readonly startAt = signal('');
@@ -368,11 +379,17 @@ export class ReservationSheetComponent {
 
   protected async suggestAi(): Promise<void> {
     this.reqError.set(null); this.resetAi();
+    if (this.needsFleet()) { this.aiError.set('Choisis une société dans le sélecteur en haut de page avant de lancer l\'IA.'); return; }
     const slot = this.slot();
     if (!slot) return;
     this.aiLoading.set(true);
     try {
-      const res = await firstValueFrom(this.ai.placementSuggest({ ...slot, reason: this.reason() || undefined, criteria: this.criteria() }));
+      const res = await firstValueFrom(this.ai.placementSuggest({
+        ...slot,
+        fleetId: this.fleetFilter.selectedFleetId() ?? undefined,
+        reason: this.reason() || undefined,
+        criteria: this.criteria(),
+      }));
       this.aiProposals.set(res.proposals);
       this.aiNoMatch.set(res.noGoodMatch);
       this.aiNotes.set(res.notes ?? null);
@@ -388,12 +405,14 @@ export class ReservationSheetComponent {
 
   protected async submit(): Promise<void> {
     this.reqError.set(null);
+    if (this.needsFleet()) { this.reqError.set('Choisis une société dans le sélecteur en haut de page avant de réserver.'); return; }
     const slot = this.slot();
     if (!slot) return;
     this.submitting.set(true);
     try {
       await firstValueFrom(this.api.requestReservation({
         vehicleId: this.vehicleId() || undefined,
+        fleetId: this.fleetFilter.selectedFleetId() ?? undefined,
         startAt: slot.startAt,
         endAt: slot.endAt,
         reason: this.reason() || undefined,

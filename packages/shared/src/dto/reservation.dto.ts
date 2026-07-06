@@ -18,6 +18,9 @@ export interface ReservationCriteria {
 export interface RequestReservationDto {
   /** Véhicule visé. Absent = demande « ouverte » sur critères (à affecter à la validation). */
   vehicleId?: string;
+  /** Société ciblée pour une demande OUVERTE (sans véhicule) — requis côté super-admin pour
+   *  ne pas auto-affecter un véhicule d'une autre société. Ignoré si `vehicleId` est fourni. */
+  fleetId?: string;
   startAt: string; // ISO
   endAt: string; // ISO
   title?: string;

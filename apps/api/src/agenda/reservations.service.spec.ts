@@ -124,6 +124,21 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
     expect(res.vehicles[0].underutilized).toBe(true);
   });
 
+  it('suggest : super-admin avec fleetId -> scope le parc à CETTE société (where.fleetId)', async () => {
+    const prisma = makePrisma({ vehicle: { findMany: jest.fn().mockResolvedValue([]) } });
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents());
+    await svc.suggest(makeUser({ role: UserRole.SUPER_ADMIN, fleetId: null }), { ...SLOT, fleetId: 'f9' });
+    const where = (prisma as { vehicle: { findMany: jest.Mock } }).vehicle.findMany.mock.calls[0][0].where;
+    expect(where.fleetId).toBe('f9'); // plus d'agrégation multi-flottes pour un super-admin
+  });
+
+  it('suggest : non-super-admin ne peut pas viser une autre société (fleetId ≠ la sienne) -> 403', async () => {
+    const svc = new ReservationsService(makePrisma(), access('ALL'), makeEvents());
+    await expect(
+      svc.suggest(makeUser({ fleetId: 'f1' }), { ...SLOT, fleetId: 'fOTHER' }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
   it('suggest : véhicule immobilisé par un incident bloquant -> exclu ET compté', async () => {
     const now = Date.now();
     const start = new Date(now + 24 * 3_600_000); // demain
