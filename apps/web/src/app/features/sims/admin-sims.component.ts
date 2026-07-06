@@ -29,6 +29,7 @@ import {
   type SimStatsDto,
 } from '@vizyo/tracky-shared';
 import { FleetsApiService, type FleetSummary } from '../../core/services/fleets.service';
+import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { SimsApiService } from '../../core/services/sims.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.component';
@@ -444,6 +445,7 @@ import {
 export class AdminSimsComponent implements OnInit {
   private readonly api = inject(SimsApiService);
   private readonly fleetsApi = inject(FleetsApiService);
+  private readonly fleetFilter = inject(FleetFilterService);
   private readonly toast = inject(ToastService);
 
   protected readonly ArrowLeftIcon = ArrowLeft;
@@ -509,7 +511,9 @@ export class AdminSimsComponent implements OnInit {
   dFleetId = ''; dLimitMo: number | null = null; smsText = '';
 
   readonly filtered = computed(() => {
-    let list = this.sims();
+    // Filtre société global (sélecteur super-admin) : n'affiche que les SIM de la société
+    // choisie (allocation `sim.fleet`). matches() = no-op pour un non-super ou sans société.
+    let list = this.sims().filter((s) => this.fleetFilter.matches(s.fleet?.id ?? null));
     const q = this.search.toLowerCase().trim();
     if (q) {
       list = list.filter((s) =>

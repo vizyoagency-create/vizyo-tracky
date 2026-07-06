@@ -856,11 +856,11 @@ export class DashboardLayoutComponent {
   protected readonly TerminalIcon = Terminal;
   protected readonly SparklesIcon = Sparkles;
 
-  /** Carte promo « Agent IA » en pied de sidebar : masquée pour le veilleur et
-   *  affichée seulement si l'utilisateur a accès à l'agenda / à l'optimisation IA. */
+  /** Carte promo « Agent IA » en pied de sidebar. L'agent IA est une fonction DE L'AGENDA
+   *  (on y accède via /agenda) → on l'affiche seulement si l'utilisateur a réellement accès
+   *  à l'agenda (`agenda_view`). Pas d'agenda = pas de carte IA. Masquée pour le veilleur. */
   protected readonly showAiPromo = computed(() =>
-    !this.auth.isWatchman() &&
-    (this.perms.can('ai_optimize') || this.perms.can('agenda_view')),
+    !this.auth.isWatchman() && this.perms.can('agenda_view'),
   );
 
   protected isSuperAdmin(): boolean {
