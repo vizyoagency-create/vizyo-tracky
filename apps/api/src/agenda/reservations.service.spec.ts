@@ -403,4 +403,39 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
     expect(data.fleetId).toBe('f2'); // dérivé du nouveau véhicule, jamais du client
     expect((events as { assertVehicleAccess: jest.Mock }).assertVehicleAccess).toHaveBeenCalledWith(expect.anything(), 'v2');
   });
+
+  // ─── P3 — création système (agent nocturne) ───
+  it('systemConfirm : créneau LIBRE -> réservation CONFIRMED source SYSTEM', async () => {
+    const prisma = makePrisma();
+    const p = prisma as { vehicleEvent: { create: jest.Mock } };
+    p.vehicleEvent.create.mockResolvedValue(evRow({ status: 'CONFIRMED' }));
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms());
+
+    const dto = await svc.systemConfirm({
+      fleetId: 'f1', vehicleId: 'v1',
+      start: new Date('2026-08-03T08:00:00Z'), end: new Date('2026-08-03T10:00:00Z'),
+      title: 'Trajet récurrent → Carcassonne',
+    });
+    expect(dto?.status).toBe('CONFIRMED');
+    const data = p.vehicleEvent.create.mock.calls[0][0].data;
+    expect(data.source).toBe('SYSTEM');
+    expect(data.status).toBe('CONFIRMED');
+  });
+
+  it('systemConfirm : créneau OCCUPÉ -> null (aucune création)', async () => {
+    const prisma = makePrisma({
+      vehicleEvent: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'x', vehicle: { plate: 'AA-1' } }]),
+        findUnique: jest.fn(), create: jest.fn(), update: jest.fn(),
+      },
+    });
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms());
+
+    const dto = await svc.systemConfirm({
+      fleetId: 'f1', vehicleId: 'v1',
+      start: new Date('2026-08-03T08:00:00Z'), end: new Date('2026-08-03T10:00:00Z'), title: 'x',
+    });
+    expect(dto).toBeNull();
+    expect((prisma as { vehicleEvent: { create: jest.Mock } }).vehicleEvent.create).not.toHaveBeenCalled();
+  });
 });

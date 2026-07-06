@@ -46,6 +46,40 @@ export interface AgendaAgentSettingsDto {
   monthCostEur: number;
 }
 
+/** Statut d'une proposition de l'agent. */
+export type AgendaAgentProposalStatus = 'pending' | 'auto_applied' | 'applied' | 'dismissed';
+
+/** Une proposition de l'agent nocturne : occurrence récurrente projetée (suggestion ou auto). */
+export interface AgendaAgentProposalDto {
+  id: string;
+  fleetId: string;
+  vehicleId: string;
+  vehiclePlate: string | null;
+  startAt: string; // ISO
+  endAt: string; // ISO
+  dayOfWeek: number; // 1-7
+  destinationLabel: string | null;
+  confidence: number; // 0..1
+  basis: string;
+  reasoning: string;
+  status: AgendaAgentProposalStatus;
+  origin: string; // scheduled | manual | incident | maintenance | reservation
+  createdEventId: string | null;
+  createdAt: string; // ISO
+}
+
+/** Bilan d'une exécution de l'agent. */
+export interface AgendaAgentRunResultDto {
+  /** Réservations FERMES créées automatiquement (autonomie auto + confiance ≥ seuil). */
+  created: number;
+  /** Suggestions ajoutées (à valider). */
+  proposed: number;
+  /** Occurrences ignorées (créneau occupé / déjà proposée / trop proche). */
+  skipped: number;
+  /** L'agent tournait déjà pour cette flotte (anti-chevauchement). */
+  alreadyRunning?: boolean;
+}
+
 /** Mise à jour des réglages (partielle). `fleetId` requis pour un super-admin. */
 export interface SetAgendaAgentSettingsDto {
   fleetId?: string;

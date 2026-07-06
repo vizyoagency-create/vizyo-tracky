@@ -1181,6 +1181,37 @@ model GeocodeCache {
   @@map("geocode_cache")
 }
 
+/// Refonte agenda/IA (2026-07, P3) — Propositions de l'agent nocturne (par flotte).
+/// Une occurrence récurrente projetée : soit une SUGGESTION (`pending`) à valider, soit une
+/// réservation AUTO déjà créée (`auto_applied`, `createdEventId` renseigné). L'unicité
+/// (fleet, véhicule, créneau) évite de re-proposer la même occurrence à chaque nuit.
+model AgendaAgentProposal {
+  id               String   @id @default(uuid()) @db.Uuid
+  fleetId          String   @db.Uuid
+  vehicleId        String   @db.Uuid
+  startAt          DateTime
+  endAt            DateTime
+  dayOfWeek        Int
+  destinationLabel String?
+  destLat          Float
+  destLng          Float
+  confidence       Float
+  basis            String
+  reasoning        String
+  /// 'pending' | 'auto_applied' | 'applied' | 'dismissed'
+  status           String   @default("pending")
+  /// Réservation créée si appliquée / auto (VehicleEvent.id).
+  createdEventId   String?  @db.Uuid
+  /// 'scheduled' | 'manual' | 'incident' | 'maintenance' | 'reservation'
+  origin           String   @default("scheduled")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([fleetId, vehicleId, startAt])
+  @@index([fleetId, status, startAt])
+  @@map("agenda_agent_proposals")
+}
+
 /// V1.5 (Sprint I) — Etat de la sequence d'init SMS d'un tracker neuf.
 /// Le SUPER_ADMIN lance le workflow depuis /admin/sms/provision/:imei,
 /// le service envoie 9 SMS sequentiels avec ACK entre chaque etape.

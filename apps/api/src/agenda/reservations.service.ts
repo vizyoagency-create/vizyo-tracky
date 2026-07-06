@@ -28,6 +28,8 @@ const INCLUDE_PLATE = { vehicle: { select: { plate: true } } } as const;
 
 /** Statuts « bloquants » : occupent le véhicule (conflits + disponibilité). */
 const BLOCKING: VehicleEventStatus[] = [VehicleEventStatus.CONFIRMED, VehicleEventStatus.IN_PROGRESS];
+/** Acteur « système » des réservations créées par l'agent (createdBy = colonne UUID sans FK User). */
+const SYSTEM_ACTOR_ID = '00000000-0000-0000-0000-000000000000';
 /**
  * Durée d'occupation MAXIMALE supposée d'un trajet encore ouvert (endedAt NULL). Un tel trajet
  * n'a pas de fin connue : on suppose qu'il dure au plus « une journée d'activité ». Il bloque donc
@@ -559,5 +561,56 @@ export class ReservationsService {
       vehicleId: filters.vehicleId,
       groupId: filters.groupId,
     });
+  }
+
+  // ─── Agent d'agenda (P3) : disponibilité + création système ────────────────
+
+  /** Le véhicule est-il LIBRE sur [start,end) ? (résa ferme + trajet réel + immobilisation). */
+  async isVehicleFree(vehicleId: string, start: Date, end: Date): Promise<boolean> {
+    if ((await this.findOverlaps(vehicleId, start, end)).length > 0) return false;
+    if (await this.hasTripOverlap(vehicleId, start, end)) return false;
+    if ((await this.findImmobilized([vehicleId], start, end)).has(vehicleId)) return false;
+    return true;
+  }
+
+  /**
+   * Création SYSTÈME d'une réservation FERME (agent nocturne / application d'une proposition).
+   * Rejoue les pré-checks + s'appuie sur la contrainte EXCLUDE ; renvoie null si le créneau est
+   * occupé (course incluse), ne lève que sur erreur inattendue. La permission est vérifiée EN AMONT
+   * (agent scopé flotte, ou application humaine déjà gardée par reservations_manage).
+   */
+  async systemConfirm(input: {
+    fleetId: string;
+    vehicleId: string;
+    start: Date;
+    end: Date;
+    title: string;
+    createdBy?: string;
+    metadata?: Prisma.InputJsonValue;
+  }): Promise<VehicleEventDto | null> {
+    const { fleetId, vehicleId, start, end } = input;
+    if (!(await this.isVehicleFree(vehicleId, start, end))) return null;
+    try {
+      const row = await this.prisma.vehicleEvent.create({
+        data: {
+          fleetId,
+          vehicleId,
+          type: VehicleEventType.RESERVATION,
+          status: VehicleEventStatus.CONFIRMED,
+          title: input.title,
+          startAt: start,
+          endAt: end,
+          allDay: false,
+          metadata: input.metadata ?? Prisma.JsonNull,
+          createdBy: input.createdBy ?? SYSTEM_ACTOR_ID,
+          source: 'SYSTEM',
+        },
+        include: INCLUDE_PLATE,
+      });
+      return this.toDto(row);
+    } catch (err) {
+      if (this.isExclusionConflict(err)) return null; // course : créneau pris entre-temps
+      throw err;
+    }
   }
 }

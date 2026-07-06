@@ -1,0 +1,346 @@
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
+import { Prisma, UserRole } from '@prisma/client';
+import type {
+  AgendaAgentProposalDto,
+  AgendaAgentProposalStatus,
+  AgendaAgentRunResultDto,
+} from '@vizyo/tracky-shared';
+import type { AuthUser } from '../auth/types/auth-user';
+import { PrismaService } from '../prisma/prisma.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
+import { fleetTzFormatter, localParts, localWallToUtc } from './fleet-tz.util';
+import { RecurrenceDetectorService, type RecurringPattern } from './recurrence-detector.service';
+import { ReservationsService } from './reservations.service';
+import { VehicleEventsService } from './vehicle-events.service';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** Horizon de projection des occurrences récurrentes (jours à venir). */
+const HORIZON_DAYS = 14;
+/** On ne réserve/propose jamais dans l'heure qui vient (créneau trop proche = inutile). */
+const LEAD_MS = 60 * 60 * 1000;
+const MAX_DAY_STEPS = 60;
+
+type ProposalRow = {
+  id: string;
+  fleetId: string;
+  vehicleId: string;
+  startAt: Date;
+  endAt: Date;
+  dayOfWeek: number;
+  destinationLabel: string | null;
+  confidence: number;
+  basis: string;
+  reasoning: string;
+  status: string;
+  origin: string;
+  createdEventId: string | null;
+  createdAt: Date;
+};
+
+/**
+ * Refonte agenda/IA (2026-07, P3) — Agent nocturne d'optimisation d'agenda.
+ * Chaque nuit (à l'heure réglée par flotte) — ou à la demande — il détecte les trajets récurrents
+ * (RecurrenceDetectorService, DÉTERMINISTE), projette les prochaines occurrences, et selon
+ * l'autonomie réglée (P2) : ajoute des SUGGESTIONS (`pending`) OU crée des réservations FERMES
+ * au-dessus du seuil de confiance (`auto_applied`). Anti-double-réservation entre les nuits via
+ * l'unicité (flotte, véhicule, créneau) + les pré-checks/EXCLUDE des réservations. Scoping tenant
+ * strict. Aucun appel LLM : fiable et gratuit.
+ */
+@Injectable()
+export class AgendaAgentRunnerService {
+  private readonly logger = new Logger(AgendaAgentRunnerService.name);
+  /** Flottes en cours d'analyse (anti-chevauchement in-process). */
+  private readonly running = new Set<string>();
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly detector: RecurrenceDetectorService,
+    private readonly reservations: ReservationsService,
+    private readonly events: VehicleEventsService,
+    private readonly systemActivity: SystemActivityService,
+  ) {}
+
+  private resolveFleetId(user: AuthUser, fleetId?: string): string {
+    const id = fleetId ?? user.fleetId ?? undefined;
+    if (!id) throw new BadRequestException('Préciser la flotte (fleetId).');
+    if (user.role !== UserRole.SUPER_ADMIN && id !== user.fleetId) {
+      throw new ForbiddenException('Flotte hors périmètre.');
+    }
+    return id;
+  }
+
+  private assertScope(user: AuthUser, fleetId: string): void {
+    // 404 (pas 403) pour ne pas révéler l'existence d'une proposition hors périmètre.
+    if (user.role !== UserRole.SUPER_ADMIN && fleetId !== user.fleetId) {
+      throw new NotFoundException('Proposition introuvable');
+    }
+  }
+
+  // ─── Exécution ─────────────────────────────────────────────────────────────
+
+  /** Lancement À LA DEMANDE (super/fleet admin). */
+  async runOnDemand(user: AuthUser, fleetId?: string): Promise<AgendaAgentRunResultDto> {
+    return this.runForFleet(this.resolveFleetId(user, fleetId), 'manual');
+  }
+
+  /** Analyse une flotte : détecte, projette, dédup, propose ou réserve (auto). */
+  async runForFleet(fleetId: string, origin: string): Promise<AgendaAgentRunResultDto> {
+    if (this.running.has(fleetId)) return { created: 0, proposed: 0, skipped: 0, alreadyRunning: true };
+    this.running.add(fleetId);
+    try {
+      const settings = await this.prisma.agendaAgentSettings.findUnique({ where: { fleetId } });
+      const enabled = settings?.enabled ?? false;
+      // Planifié : rien si l'agent est désactivé. Manuel : on tourne quand même, mais on ne réserve
+      // AUTO que si l'agent est activé ET en autonomie « auto si confiance haute ».
+      if (origin === 'scheduled' && !enabled) return { created: 0, proposed: 0, skipped: 0 };
+      const autoOn = enabled && (settings?.autonomy ?? 'suggest') === 'auto_high_confidence';
+      const threshold = (settings?.confidenceThreshold ?? 80) / 100;
+
+      const patterns = await this.detector.detect(fleetId);
+      const now = Date.now();
+      const horizonEnd = now + HORIZON_DAYS * DAY_MS;
+      const fmt = fleetTzFormatter();
+
+      let created = 0;
+      let proposed = 0;
+      let skipped = 0;
+
+      for (const p of patterns) {
+        for (const dateKey of this.occurrences(p.dayOfWeek, now, horizonEnd, fmt)) {
+          const start = localWallToUtc(dateKey, p.startMinutes);
+          const end = localWallToUtc(dateKey, p.endMinutes);
+          if (start.getTime() <= now + LEAD_MS || end.getTime() <= start.getTime()) continue;
+
+          // Dédup entre les nuits : une occurrence déjà traitée n'est jamais re-proposée.
+          const existing = await this.prisma.agendaAgentProposal.findUnique({
+            where: { fleetId_vehicleId_startAt: { fleetId, vehicleId: p.vehicleId, startAt: start } },
+          });
+          if (existing) {
+            skipped++;
+            continue;
+          }
+
+          let status: AgendaAgentProposalStatus = 'pending';
+          let createdEventId: string | null = null;
+
+          if (autoOn && p.confidence >= threshold) {
+            const resa = await this.reservations.systemConfirm({
+              fleetId,
+              vehicleId: p.vehicleId,
+              start,
+              end,
+              title: this.title(p),
+              metadata: this.meta(p, origin),
+            });
+            if (resa) {
+              status = 'auto_applied';
+              createdEventId = resa.id;
+              created++;
+            } else {
+              skipped++; // créneau occupé → pas de proposition inutile
+              continue;
+            }
+          } else {
+            // Suggestion : n'a de sens que si le créneau est encore LIBRE.
+            if (!(await this.reservations.isVehicleFree(p.vehicleId, start, end))) {
+              skipped++;
+              continue;
+            }
+            proposed++;
+          }
+
+          await this.prisma.agendaAgentProposal
+            .create({
+              data: {
+                fleetId,
+                vehicleId: p.vehicleId,
+                startAt: start,
+                endAt: end,
+                dayOfWeek: p.dayOfWeek,
+                destinationLabel: p.destinationLabel,
+                destLat: p.destLat,
+                destLng: p.destLng,
+                confidence: p.confidence,
+                basis: p.basis,
+                reasoning: this.reasoning(p),
+                status,
+                createdEventId,
+                origin,
+              },
+            })
+            .catch(() => {
+              /* course sur la clé unique (fleet,véhicule,créneau) : sans gravité */
+            });
+        }
+      }
+
+      if (settings) {
+        await this.prisma.agendaAgentSettings.update({ where: { fleetId }, data: { lastRunAt: new Date() } });
+      }
+      this.track(fleetId, origin, { created, proposed, skipped });
+      return { created, proposed, skipped };
+    } finally {
+      this.running.delete(fleetId);
+    }
+  }
+
+  /** Cron horaire : chaque flotte activée se déclenche à SON heure nocturne réglée. */
+  @Cron('0 0 * * * *')
+  async runScheduled(): Promise<void> {
+    let rows: { fleetId: string; nightlyHour: number; frequency: string; triggerNightly: boolean; lastRunAt: Date | null }[];
+    try {
+      rows = await this.prisma.agendaAgentSettings.findMany({ where: { enabled: true } });
+    } catch (e) {
+      this.logger.error(`runScheduled (lecture réglages) : ${(e as Error)?.message ?? e}`);
+      return;
+    }
+    const fmt = fleetTzFormatter();
+    const parisHour = Math.floor(localParts(fmt, Date.now()).minutes / 60);
+    for (const s of rows) {
+      if (!s.triggerNightly || (s.nightlyHour ?? 2) !== parisHour) continue;
+      const periodMs = (s.frequency === 'weekly' ? 7 : 1) * DAY_MS - 2 * 60 * 60 * 1000; // marge anti-jitter
+      if (s.lastRunAt && Date.now() - s.lastRunAt.getTime() < periodMs) continue;
+      try {
+        await this.runForFleet(s.fleetId, 'scheduled');
+      } catch (e) {
+        this.logger.error(`runScheduled ${s.fleetId} : ${(e as Error)?.message ?? e}`);
+      }
+    }
+  }
+
+  // ─── Propositions (revue humaine) ──────────────────────────────────────────
+
+  async list(user: AuthUser, fleetId?: string, status: string = 'pending'): Promise<AgendaAgentProposalDto[]> {
+    const id = this.resolveFleetId(user, fleetId);
+    const rows = (await this.prisma.agendaAgentProposal.findMany({
+      where: { fleetId: id, ...(status ? { status } : {}) },
+      orderBy: { startAt: 'asc' },
+      take: 200,
+    })) as ProposalRow[];
+    const vids = [...new Set(rows.map((r) => r.vehicleId))];
+    const vehicles = vids.length
+      ? await this.prisma.vehicle.findMany({ where: { id: { in: vids } }, select: { id: true, plate: true } })
+      : [];
+    const plate = new Map(vehicles.map((v) => [v.id, v.plate]));
+    return rows.map((r) => this.toDto(r, plate.get(r.vehicleId) ?? null));
+  }
+
+  /** Valide une SUGGESTION -> crée la réservation ferme. Perm reservations_manage (controller). */
+  async apply(user: AuthUser, id: string): Promise<AgendaAgentProposalDto> {
+    const p = (await this.prisma.agendaAgentProposal.findUnique({ where: { id } })) as ProposalRow | null;
+    if (!p) throw new NotFoundException('Proposition introuvable');
+    this.assertScope(user, p.fleetId);
+    await this.events.assertVehicleAccess(user, p.vehicleId); // 403/404 périmètre véhicule
+    if (p.status !== 'pending') throw new BadRequestException('Proposition déjà traitée.');
+
+    const resa = await this.reservations.systemConfirm({
+      fleetId: p.fleetId,
+      vehicleId: p.vehicleId,
+      start: p.startAt,
+      end: p.endAt,
+      title: this.title(p),
+      createdBy: user.id,
+      metadata: { agent: true, appliedBy: user.id, destinationLabel: p.destinationLabel, confidence: p.confidence, basis: p.basis },
+    });
+    if (!resa) throw new ConflictException('Le créneau est déjà occupé.');
+    const updated = (await this.prisma.agendaAgentProposal.update({
+      where: { id },
+      data: { status: 'applied', createdEventId: resa.id },
+    })) as ProposalRow;
+    return this.toDto(updated, resa.vehiclePlate ?? null);
+  }
+
+  /** Rejette une SUGGESTION. Perm reservations_manage (controller). */
+  async dismiss(user: AuthUser, id: string): Promise<AgendaAgentProposalDto> {
+    const p = (await this.prisma.agendaAgentProposal.findUnique({ where: { id } })) as ProposalRow | null;
+    if (!p) throw new NotFoundException('Proposition introuvable');
+    this.assertScope(user, p.fleetId);
+    if (p.status === 'auto_applied' || p.status === 'applied') {
+      throw new BadRequestException('Une réservation déjà créée s\'annule depuis l\'agenda.');
+    }
+    const updated = (await this.prisma.agendaAgentProposal.update({
+      where: { id },
+      data: { status: 'dismissed' },
+    })) as ProposalRow;
+    return this.toDto(updated, null);
+  }
+
+  // ─── Helpers ───────────────────────────────────────────────────────────────
+
+  /** Dates locales (YYYY-MM-DD) de la fenêtre qui tombent sur le jour-de-semaine du motif. */
+  private occurrences(dow: number, fromMs: number, toMs: number, fmt: Intl.DateTimeFormat): string[] {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    let cursor = fromMs;
+    let steps = 0;
+    while (cursor < toMs && steps < MAX_DAY_STEPS) {
+      const p = localParts(fmt, cursor);
+      if (!seen.has(p.dateKey)) {
+        seen.add(p.dateKey);
+        if (p.dow === dow) out.push(p.dateKey);
+      }
+      cursor += 12 * 60 * 60 * 1000; // pas de 12 h (robuste DST), dédup par dateKey
+      steps++;
+    }
+    return out;
+  }
+
+  private hhmm(minutes: number): string {
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return `${h < 10 ? '0' + h : h}:${m < 10 ? '0' + m : m}`;
+  }
+
+  private title(p: RecurringPattern | ProposalRow): string {
+    return `Trajet récurrent${p.destinationLabel ? ' → ' + p.destinationLabel : ''}`;
+  }
+
+  private reasoning(p: RecurringPattern): string {
+    const dest = p.destinationLabel ? ` vers ${p.destinationLabel}` : '';
+    return `${p.basis}. Départ habituel ~${this.hhmm(p.startMinutes)}${dest} — occurrence récurrente projetée par l'agent.`;
+  }
+
+  private meta(p: RecurringPattern, origin: string): Prisma.InputJsonValue {
+    return { agent: true, origin, destinationLabel: p.destinationLabel, confidence: p.confidence, basis: p.basis } as Prisma.InputJsonValue;
+  }
+
+  private toDto(r: ProposalRow, vehiclePlate: string | null): AgendaAgentProposalDto {
+    return {
+      id: r.id,
+      fleetId: r.fleetId,
+      vehicleId: r.vehicleId,
+      vehiclePlate,
+      startAt: r.startAt.toISOString(),
+      endAt: r.endAt.toISOString(),
+      dayOfWeek: r.dayOfWeek,
+      destinationLabel: r.destinationLabel,
+      confidence: r.confidence,
+      basis: r.basis,
+      reasoning: r.reasoning,
+      status: r.status as AgendaAgentProposalStatus,
+      origin: r.origin,
+      createdEventId: r.createdEventId,
+      createdAt: r.createdAt.toISOString(),
+    };
+  }
+
+  private track(fleetId: string, origin: string, counts: { created: number; proposed: number; skipped: number }): void {
+    this.systemActivity.record({
+      category: 'AI',
+      action: 'agenda_agent_run',
+      status: 'SUCCESS',
+      actor: origin === 'manual' ? 'utilisateur' : 'system',
+      detail: `Agent agenda (${origin}) : ${counts.created} réservé(s), ${counts.proposed} proposé(s), ${counts.skipped} ignoré(s)`,
+      fleetId,
+      meta: counts,
+    });
+  }
+}

@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { AgendaAgentController } from './agenda-agent.controller';
+import { AgendaAgentRunnerService } from './agenda-agent-runner.service';
 import { AgendaAgentSettingsController } from './agenda-agent-settings.controller';
 import { AgendaAgentSettingsService } from './agenda-agent-settings.service';
 import { AgendaController } from './agenda.controller';
@@ -26,6 +28,7 @@ import { VehicleEventsService } from './vehicle-events.service';
     FleetInsightsController,
     ReservationsController,
     AgendaAgentSettingsController,
+    AgendaAgentController,
   ],
   providers: [
     VehicleEventsService,
@@ -36,6 +39,7 @@ import { VehicleEventsService } from './vehicle-events.service';
     ForecastService,
     AgendaAgentSettingsService,
     RecurrenceDetectorService,
+    AgendaAgentRunnerService,
   ],
   exports: [VehicleEventsService, FleetInsightsService, ReservationsService, ForecastService],
 })
