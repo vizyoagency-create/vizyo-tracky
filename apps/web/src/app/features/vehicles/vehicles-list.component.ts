@@ -3,7 +3,7 @@ import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.directive';
-import { LucideAngularModule, Plus, Truck, ExternalLink, FolderOpen, Radio, X, Save, Wifi, Pencil, Trash2, Eye, Search, LayoutGrid, Table, Layers, ChevronRight, ChevronDown, Gauge, Wrench } from 'lucide-angular';
+import { LucideAngularModule, Plus, Truck, ExternalLink, FolderOpen, Radio, X, Save, Wifi, Pencil, Trash2, Eye, Search, LayoutGrid, Table, Layers, ChevronRight, ChevronDown, Gauge, Wrench, ShieldOff } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { PreferencesService } from '../../core/services/preferences.service';
@@ -18,6 +18,7 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
 import { VehicleDialogComponent } from './vehicle-dialog/vehicle-dialog.component';
 import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
 import { VehicleCapacityTableComponent } from './vehicle-capacity-table.component';
+import { PrivacyModeTabComponent } from './privacy-mode-tab.component';
 import { EngineControlButtonComponent } from '../engine-control/engine-control-button.component';
 import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fleet-badge.component';
 import { GroupBadgeComponent } from '../../shared/ui/group-badge/group-badge.component';
@@ -31,7 +32,7 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
   selector: 'app-vehicles-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, VehicleCapacityTableComponent, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, BrandLogoComponent, InstallReviewBadgeComponent, TrackClickDirective, EngineControlButtonComponent, VehicleLinkDirective],
+  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, VehicleCapacityTableComponent, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, BrandLogoComponent, InstallReviewBadgeComponent, TrackClickDirective, EngineControlButtonComponent, VehicleLinkDirective, PrivacyModeTabComponent],
   template: `
     @if (auth.isWatchman()) {
       <!-- ───────────────────────────────────────────────────────────────────
@@ -159,6 +160,11 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
             <button (click)="selectTab('capacity')" data-track="Onglet Capacités" class="tab-btn" [class.active]="activeTab() === 'capacity'">
               <lucide-icon [img]="GaugeIcon" [size]="15"></lucide-icon> Capacités
             </button>
+            @if (perms.can('privacy_manage')) {
+              <button (click)="selectTab('privacy')" data-track="Onglet Mode privé" class="tab-btn" [class.active]="activeTab() === 'privacy'">
+                <lucide-icon [img]="ShieldOffIcon" [size]="15"></lucide-icon> Mode privé
+              </button>
+            }
           </div>
           @if (perms.can('vehicles_create') && activeTab() === 'vehicles') {
             <button (click)="showAddDialog.set(true)" trackClick="vehicule-ajouter" class="add-btn add-btn--inline">
@@ -184,6 +190,8 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
         <app-vehicle-groups-tab />
       } @else if (activeTab() === 'capacity') {
         <app-vehicle-capacity-table />
+      } @else if (activeTab() === 'privacy') {
+        <app-privacy-mode-tab [vehicles]="filteredVehicles()" (changed)="loadVehicles()" />
       } @else {
         @if (!loading() && vehicles().length > 0) {
           <div class="vlist-toolbar">
@@ -1020,7 +1028,7 @@ export class VehiclesListComponent implements OnInit {
   protected readonly showAddDialog = signal(false);
   protected readonly showEditDialog = signal(false);
   protected readonly editVehicleId = signal('');
-  protected readonly activeTab = signal<'vehicles' | 'groups' | 'capacity'>('vehicles');
+  protected readonly activeTab = signal<'vehicles' | 'groups' | 'capacity' | 'privacy'>('vehicles');
 
   // Assign tracker drawer
   readonly showAssignTracker = signal(false);
@@ -1064,6 +1072,7 @@ export class VehiclesListComponent implements OnInit {
   protected readonly WifiIcon = Wifi;
   protected readonly XIcon = X;
   protected readonly SaveIcon = Save;
+  protected readonly ShieldOffIcon = ShieldOff;
 
   ngOnInit(): void {
     // Sprint 1 — retour depuis le détail : si on revient d'un groupe précis, on
@@ -1084,7 +1093,7 @@ export class VehiclesListComponent implements OnInit {
    * → le tracker d'activité voit un PAGE_VIEW distinct (« Véhicules · Groupes »)
    * avec sa durée. `replaceUrl` pour ne pas polluer l'historique du bouton retour.
    */
-  protected selectTab(tab: 'vehicles' | 'groups' | 'capacity'): void {
+  protected selectTab(tab: 'vehicles' | 'groups' | 'capacity' | 'privacy'): void {
     this.activeTab.set(tab);
     void this.router.navigate([], {
       relativeTo: this.route,
@@ -1267,7 +1276,7 @@ export class VehiclesListComponent implements OnInit {
     } finally { this.assignLoading.set(false); }
   }
 
-  private async loadVehicles(): Promise<void> {
+  protected async loadVehicles(): Promise<void> {
     this.loading.set(true);
     try {
       const list = await firstValueFrom(this.vehiclesApi.list());

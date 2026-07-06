@@ -8,10 +8,11 @@ import {
   Settings2, X, Check, ArrowRight,
 } from 'lucide-angular';
 import { LucideAngularModule } from 'lucide-angular';
-import { filter, interval, startWith, switchMap, catchError, of } from 'rxjs';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { filter, interval, startWith, switchMap, catchError, of, combineLatest } from 'rxjs';
+import { toSignal, toObservable } from '@angular/core/rxjs-interop';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { RealtimeService } from '../../core/services/realtime.service';
+import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { VehiclesApiService } from '../../core/services/vehicles.service';
 import { AlertsApiService } from '../../core/services/alerts.service';
 import { PreferencesService, type DashboardWidgetKey } from '../../core/services/preferences.service';
@@ -730,15 +731,19 @@ interface WidgetMeta {
 })
 export class DashboardComponent implements OnInit {
   protected readonly realtime = inject(RealtimeService);
+  /** Filtre société global (sélecteur super-admin). matches() = true pour un non-super. */
+  private readonly fleetFilter = inject(FleetFilterService);
 
   /** Véhicules dont l'installation est à revoir (boîtier posé < 1 mois + hors-ligne). */
   protected readonly vehiclesToReview = computed(() =>
-    this.realtime.snapshot().filter((v) =>
-      isInstallationToReview(
-        getVehicleConnectivityState({ trackerId: v.trackerId, lastSeenAt: v.lastSeenAt, lastIgnition: v.lastIgnition }),
-        v.trackerCreatedAt,
+    this.realtime.snapshot()
+      .filter((v) => this.fleetFilter.matches(v.fleetId))
+      .filter((v) =>
+        isInstallationToReview(
+          getVehicleConnectivityState({ trackerId: v.trackerId, lastSeenAt: v.lastSeenAt, lastIgnition: v.lastIgnition }),
+          v.trackerCreatedAt,
+        ),
       ),
-    ),
   );
   protected readonly preferences = inject(PreferencesService);
   protected readonly perms = inject(PermissionsService);
@@ -817,11 +822,15 @@ export class DashboardComponent implements OnInit {
   // Au retour visible, on force un fetch immediat via le startWith(0) lors de la
   // souscription suivante. Reduit la charge backend ~50% sur les utilisateurs
   // qui laissent l'onglet ouvert sans le regarder.
+  // KPI scopés au filtre société : re-fetch au tick 30s ET à chaque changement de
+  // société dans le sélecteur (combineLatest émet sur l'un ou l'autre).
   protected readonly stats = toSignal(
-    interval(30_000).pipe(
-      startWith(0),
+    combineLatest([
+      interval(30_000).pipe(startWith(0)),
+      toObservable(this.fleetFilter.selectedFleetId),
+    ]).pipe(
       filter(() => typeof document === 'undefined' || !document.hidden),
-      switchMap(() => this.vehiclesApi.stats()),
+      switchMap(() => this.vehiclesApi.stats(this.fleetFilter.selectedFleetId())),
       catchError(() => of(null)),
     ),
   );
@@ -830,6 +839,7 @@ export class DashboardComponent implements OnInit {
     const ids = this.accessibleVehicleIds();
     const meta = this.vehicleMetaMap();
     return this.realtime.positionsList()
+      .filter((pos) => this.fleetFilter.matches(pos.fleetId))
       .filter((pos) => ids === 'ALL' || ids.has(pos.vehicleId))
       // GPS sanity : ecarte les fixes `valid:false` (broadcastes par le backend
       // pour propager l'ignition mais lat/lng degradees) et Null Island. Sans
@@ -894,9 +904,9 @@ export class DashboardComponent implements OnInit {
     { initialValue: { items: [], nextCursor: null } },
   );
   protected readonly recentAlerts = computed(() => {
-    const live = this.liveAlerts();
+    const live = this.liveAlerts().filter((a) => this.fleetFilter.matches(a.fleetId));
     if (live.length > 0) return live.slice(0, 3);
-    return (this.fetchedAlerts()?.items ?? []).slice(0, 3);
+    return (this.fetchedAlerts()?.items ?? []).filter((a) => this.fleetFilter.matches(a.fleetId)).slice(0, 3);
   });
 
   protected speedClass(speed: number): string {

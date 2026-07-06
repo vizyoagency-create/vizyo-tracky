@@ -24,6 +24,8 @@ export interface UserPermissions {
   vehicles_delete: boolean;
   /** Couper / redemarrer le moteur du vehicule. Validation metier en plus : vitesse < 20 km/h, position fraiche, fix GPS valide. */
   engine_control: boolean;
+  /** Mode vie privee : activer/desactiver la pause de collecte des positions d'un vehicule. OFF par defaut sauf admin. */
+  privacy_manage: boolean;
   /** Sprint 3 — gerer les horaires (schedules) marche/coupure d'un vehicule. Toggle per-user (veilleur de nuit, OFF par defaut). */
   schedules_manage: boolean;
   groups_view: boolean;
@@ -95,6 +97,7 @@ const VIEWER_DEFAULTS: UserPermissions = {
   vehicles_edit: false,
   vehicles_delete: false,
   engine_control: false,
+  privacy_manage: false,
   schedules_manage: false,
   groups_view: false,
   groups_manage: false,
@@ -126,6 +129,7 @@ const FLEET_MANAGER_DEFAULTS: UserPermissions = {
   vehicles_edit: true,
   vehicles_delete: true,
   engine_control: false,
+  privacy_manage: false,
   schedules_manage: true,
   groups_view: true,
   groups_manage: true,
@@ -157,6 +161,7 @@ const ADMIN_DEFAULTS: UserPermissions = {
   vehicles_edit: true,
   vehicles_delete: true,
   engine_control: true,
+  privacy_manage: true,
   schedules_manage: true,
   groups_view: true,
   groups_manage: true,
@@ -193,6 +198,7 @@ const NIGHT_WATCHMAN_DEFAULTS: UserPermissions = {
   vehicles_edit: false,
   vehicles_delete: false,
   engine_control: true,
+  privacy_manage: false,
   schedules_manage: false,
   groups_view: false,
   groups_manage: false,
@@ -332,6 +338,12 @@ export const PERMISSION_LABELS: Record<keyof UserPermissions, PermissionLabel> =
     label: 'Couper / redemarrer le moteur',
     description: 'Action sensible. Soumise aux contraintes metier (vitesse, fix GPS).',
   },
+  privacy_manage: {
+    group: 'Vehicules',
+    label: 'Gerer le mode vie privee',
+    description: 'Activer/desactiver la pause de collecte des positions d\'un vehicule (aucune position enregistree pendant le mode prive).',
+  },
+
   schedules_manage: {
     group: 'Horaires',
     label: 'Gerer les horaires marche/coupure',

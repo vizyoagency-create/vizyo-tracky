@@ -35,6 +35,7 @@ import {
   Pencil,
   Server,
   ShieldAlert,
+  ShieldOff,
   Sparkles,
   Trash2,
   Power,
@@ -687,6 +688,7 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
     { id: 'AUDIO', label: 'Audio' },
     { id: 'RETENTION', label: 'Rétention' },
     { id: 'INSTALLATION', label: 'Installations' },
+    { id: 'PRIVACY', label: 'Vie privée' },
     { id: 'INTERNAL', label: 'Interne' },
   ];
   readonly systemStatuses: { id: string; label: string }[] = [
@@ -999,6 +1001,7 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
       case 'AI': return Sparkles;
       case 'AUDIO': return Ear;
       case 'INSTALLATION': return CalendarClock;
+      case 'PRIVACY': return ShieldOff;
       case 'INTERNAL': return Building2;
       case 'MUTATION': return Pencil;
       default: return Server;
@@ -1019,6 +1022,7 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
       case 'AI': return 'bg-fuchsia-500/15 text-fuchsia-400';
       case 'AUDIO': return 'bg-red-500/15 text-red-400';
       case 'INSTALLATION': return 'bg-emerald-500/15 text-emerald-400';
+      case 'PRIVACY': return 'bg-sky-500/15 text-sky-400';
       case 'INTERNAL': return 'bg-slate-500/15 text-slate-400';
       case 'MUTATION': return 'bg-lime-500/15 text-lime-400';
       default: return 'bg-bg-tertiary text-fg-tertiary';

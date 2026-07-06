@@ -56,6 +56,28 @@ export class PositionsService {
       return;
     }
 
+    // Mode vie privée — quand le véhicule est en mode privé, AUCUNE position n'est
+    // collectée : on JETTE la trame ici (avant toute persistance/diffusion/trajet/
+    // géofence). Le boîtier COMMUNIQUE quand même → on rafraîchit la liveness
+    // (lastSeenAt + ONLINE) comme la garde lat/lng, si bien qu'il reste « en ligne »
+    // et que la dernière position connue reste figée (pas de nouvelle donnée).
+    if (tracker.vehicle?.privacyModeEnabled) {
+      const wasOffline = tracker.status !== 'ONLINE';
+      await this.prisma.tracker.update({
+        where: { id: tracker.id },
+        data: { lastSeenAt: new Date(), status: 'ONLINE' },
+      });
+      if (wasOffline && tracker.vehicle) {
+        this.gateway.emitTrackerStatus(tracker.vehicle.fleetId, {
+          trackerId: tracker.id,
+          imei: tracker.imei,
+          status: 'online',
+          at: new Date().toISOString(),
+        });
+      }
+      return;
+    }
+
     // Resolve ignition from binary field OR acc alarm
     let resolvedIgnition: boolean | undefined = frame.ignition;
     if (resolvedIgnition === undefined) {

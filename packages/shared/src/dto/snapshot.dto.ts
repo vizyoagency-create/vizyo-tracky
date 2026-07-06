@@ -60,6 +60,15 @@ export interface VehicleSnapshotDto {
   scheduleEnabled: boolean;
 
   /**
+   * Mode vie privée — quand true, la collecte des positions est en pause pour ce
+   * véhicule (la dernière position connue reste figée). Permet d'afficher un badge
+   * « Mode privé » sur la carte / la liste. Défaut false.
+   */
+  privacyModeEnabled?: boolean;
+  /** ISO — depuis quand le mode privé est actif (null si inactif). */
+  privacyModeSince?: string | null;
+
+  /**
    * Sprint 1 (Fondation Groupes) — groupe (unique) du véhicule, ou null si sans
    * groupe. Optionnel pour la backward-compat des consommateurs existants.
    */

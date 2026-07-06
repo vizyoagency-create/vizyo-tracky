@@ -538,7 +538,7 @@ export class VehiclesService {
     });
   }
 
-  async stats(requestedBy: RequestedBy): Promise<{
+  async stats(requestedBy: RequestedBy, superFleetId?: string | null): Promise<{
     total: number;
     moving: number;
     idle: number;
@@ -555,7 +555,15 @@ export class VehiclesService {
       return { total: 0, moving: 0, idle: 0, criticalAlerts: 0, newThisMonth: 0 };
     }
 
-    const cacheKey = this.kpiCacheKey('stats', requestedBy);
+    // Filtre société GLOBAL (sélecteur super-admin) : un SUPER_ADMIN peut scoper les KPI
+    // à une flotte précise. Un non-super est déjà borné à SA flotte (superFleetId ignoré).
+    const effectiveFleetId: string | null =
+      scope.mode === 'FLEET' ? scope.fleetId : (superFleetId ?? null);
+
+    // On BYPASSE le cache quand un super-admin filtre par flotte (sinon la clé partagée
+    // 'stats:super' serait empoisonnée par une vue mono-flotte). Ces vues filtrées sont
+    // plus rares que le poll « toutes flottes ».
+    const cacheKey = effectiveFleetId && scope.mode !== 'FLEET' ? null : this.kpiCacheKey('stats', requestedBy);
     if (cacheKey) {
       const hit = this.cache.get<{
         total: number; moving: number; idle: number; criticalAlerts: number; newThisMonth: number;
@@ -564,7 +572,7 @@ export class VehiclesService {
     }
 
     let fleetFilter: Prisma.VehicleWhereInput =
-      scope.mode === 'FLEET' ? { fleetId: scope.fleetId } : {};
+      effectiveFleetId ? { fleetId: effectiveFleetId } : {};
 
     if (requestedBy.accessibleVehicleIds && requestedBy.accessibleVehicleIds !== 'ALL') {
       fleetFilter = { ...fleetFilter, id: { in: requestedBy.accessibleVehicleIds } };
@@ -585,8 +593,8 @@ export class VehiclesService {
         JOIN positions p ON p."trackerId" = t."id"
         WHERE p."timestamp" > ${fiveMinAgo}
           AND p."speedKmh" > 5
-          ${scope.mode === 'FLEET'
-            ? Prisma.sql`AND v."fleetId" = ${scope.fleetId}::uuid`
+          ${effectiveFleetId
+            ? Prisma.sql`AND v."fleetId" = ${effectiveFleetId}::uuid`
             : Prisma.empty}
           ${requestedBy.accessibleVehicleIds && requestedBy.accessibleVehicleIds !== 'ALL'
             ? Prisma.sql`AND v."id" = ANY(${requestedBy.accessibleVehicleIds}::uuid[])`
@@ -596,8 +604,8 @@ export class VehiclesService {
         where: {
           severity: 'CRITICAL',
           acknowledgedAt: null,
-          ...(scope.mode === 'FLEET'
-            ? { fleetId: scope.fleetId }
+          ...(effectiveFleetId
+            ? { fleetId: effectiveFleetId }
             : {}),
           ...(requestedBy.accessibleVehicleIds && requestedBy.accessibleVehicleIds !== 'ALL'
             ? { vehicleId: { in: requestedBy.accessibleVehicleIds } }
@@ -665,6 +673,8 @@ export class VehiclesService {
         type: true,
         brand: true,
         model: true,
+        privacyModeEnabled: true,
+        privacyModeSince: true,
         tracker: {
           select: {
             id: true,
@@ -759,6 +769,8 @@ export class VehiclesService {
         engineCutActive: t ? cutStateByTracker.get(t.id) === 'cut' : null,
         engineCutState: t ? (cutStateByTracker.get(t.id) ?? 'normal') : null,
         scheduleEnabled: !!v.schedule?.enabled,
+        privacyModeEnabled: v.privacyModeEnabled,
+        privacyModeSince: v.privacyModeSince ? v.privacyModeSince.toISOString() : null,
         group: v.groups?.[0]?.group ?? null,
       };
     });

@@ -45,8 +45,10 @@ export class VehiclesController {
 
   @Get('stats')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
-  async stats(@Req() req: AuthenticatedRequest) {
-    return this.vehicles.stats(await this.buildRequestedBy(req));
+  async stats(@Req() req: AuthenticatedRequest, @Query('fleetId') fleetId?: string) {
+    // `fleetId` = filtre société global (sélecteur super-admin). Ignoré pour un non-super
+    // (déjà borné à sa flotte). Anti-IDOR : le super-admin a accès à toutes les flottes.
+    return this.vehicles.stats(await this.buildRequestedBy(req), fleetId || null);
   }
 
   @Get('snapshot')

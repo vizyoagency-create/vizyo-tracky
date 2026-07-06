@@ -382,6 +382,15 @@ model Vehicle {
   features         String[] @default([])
   vehicleEvents    VehicleEvent[]
   maintenancePlans MaintenancePlan[]
+  // Mode vie privee : quand ON, AUCUNE position n'est collectee/diffusee pour ce
+  // vehicule (la trame est jetee a l'ingestion ; la derniere position connue reste
+  // figee). `privacyModeSince`/`By`/`Note` = etat courant ; l'historique complet
+  // (qui/quand/note) vit dans PrivacyModeEvent.
+  privacyModeEnabled Boolean  @default(false)
+  privacyModeSince   DateTime?
+  privacyModeById    String?  @db.Uuid
+  privacyModeNote    String?
+  privacyModeEvents  PrivacyModeEvent[]
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -389,6 +398,25 @@ model Vehicle {
   @@index([fleetId])
   @@index([currentDriverId])
   @@map("vehicles")
+}
+
+/// Historique des bascules du mode vie privee d'un vehicule (tracabilite :
+/// qui a active/desactive, quand, avec quelle note). Une ligne par bascule.
+model PrivacyModeEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  vehicleId String   @db.Uuid
+  vehicle   Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  fleetId   String   @db.Uuid
+  /// true = mode prive ACTIVE ; false = DESACTIVE.
+  enabled   Boolean
+  reason    String?
+  /// Auteur de la bascule (null = systeme/auto, reserve phase 2 horaires).
+  userId    String?  @db.Uuid
+  createdAt DateTime @default(now())
+
+  @@index([vehicleId, createdAt])
+  @@index([fleetId, createdAt])
+  @@map("privacy_mode_events")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

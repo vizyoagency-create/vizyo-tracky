@@ -43,6 +43,9 @@ export interface VehicleDetailDto {
   currentDriver?: DriverSummaryDto | null;
   createdAt: string;
   schedule?: { enabled: boolean } | null;
+  /** Mode vie privée — collecte des positions en pause pour ce véhicule. */
+  privacyModeEnabled?: boolean;
+  privacyModeSince?: string | null;
   /** Sprint 1 (Fondation Groupes) — groupe (unique) du véhicule. null = sans groupe. */
   group?: { id: string; name: string } | null;
   /**
@@ -97,8 +100,8 @@ export class VehiclesApiService {
     return this.http.patch<VehicleDetailDto>(`/api/vehicles/${id}/group`, { groupId });
   }
 
-  stats(): Observable<VehicleStatsDto> {
-    return this.http.get<VehicleStatsDto>('/api/vehicles/stats');
+  stats(fleetId?: string | null): Observable<VehicleStatsDto> {
+    return this.http.get<VehicleStatsDto>('/api/vehicles/stats', fleetId ? { params: { fleetId } } : {});
   }
 
   // ─── Sprint 10 — Synchro véhicules ↔ planning d'installation ───

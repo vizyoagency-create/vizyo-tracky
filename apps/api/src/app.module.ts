@@ -21,6 +21,7 @@ import { GeocodeModule } from './geocode/geocode.module';
 import { GeofencesModule } from './geofences/geofences.module';
 import { InstallationsModule } from './installations/installations.module';
 import { InstallationBookingModule } from './installation-booking/installation-booking.module';
+import { PrivacyModeModule } from './privacy-mode/privacy-mode.module';
 import { InternalModule } from './internal/internal.module';
 import { TripsModule } from './trips/trips.module';
 import { PositionsModule } from './positions/positions.module';
@@ -124,6 +125,7 @@ import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.modul
     VehicleSchedulesModule,
     InstallationsModule,
     InstallationBookingModule,
+    PrivacyModeModule,
     InternalModule,
     LeadsModule,
     UsersModule,

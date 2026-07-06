@@ -44,6 +44,7 @@ import { firstValueFrom } from 'rxjs';
 import { ActivityTrackerService } from '../../core/services/activity-tracker.service';
 import { GeofencesApiService } from '../../core/services/geofences.service';
 import { RealtimeService } from '../../core/services/realtime.service';
+import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { PreferencesService, type CameraMode } from '../../core/services/preferences.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
@@ -676,10 +677,10 @@ const RESYNC_RADIUS_M = 150;
                 Choisir un véhicule à suivre
                 <button (click)="cancelVehiclePicker()" class="tracky-vehicle-picker-cancel">×</button>
               </p>
-              @if (realtime.snapshot().length === 0) {
+              @if (scopedSnapshot().length === 0) {
                 <p class="tracky-vehicle-picker-empty">Aucun véhicule disponible</p>
               } @else {
-                @for (v of realtime.snapshot(); track v.vehicleId) {
+                @for (v of scopedSnapshot(); track v.vehicleId) {
                   <button (click)="pickVehicleForCamera(v.vehicleId)" class="tracky-vehicle-picker-item">
                     <span class="tracky-vehicle-picker-plate">{{ v.plate }}</span>
                     <span class="tracky-vehicle-picker-meta">{{ v.type }}</span>
@@ -1888,6 +1889,12 @@ const RESYNC_RADIUS_M = 150;
 })
 export class MapComponent implements AfterViewInit, OnDestroy {
   protected readonly realtime = inject(RealtimeService);
+  /** Filtre société global (sélecteur super-admin). matches() = true pour un non-super. */
+  private readonly fleetFilter = inject(FleetFilterService);
+  /** Snapshot borné à la société sélectionnée (picker + comptes). */
+  protected readonly scopedSnapshot = computed(() =>
+    this.realtime.snapshot().filter((v) => this.fleetFilter.matches(v.fleetId)),
+  );
   private readonly perms = inject(PermissionsService);
 
   /**
@@ -2035,7 +2042,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   protected readonly vehicleMatches = computed(() => {
     const q = this.searchQuery().trim().toLowerCase();
     if (q.length < 1) return [];
-    const snap = this.realtime.snapshot();
+    const snap = this.scopedSnapshot();
     return snap
       .filter((v) => v.plate.toLowerCase().includes(q) || v.type.toLowerCase().includes(q))
       .slice(0, 5);
@@ -2149,7 +2156,9 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       ids === 'ALL'
         ? this.realtime.positionsList()
         : this.realtime.positionsList().filter((p) => (ids as Set<string>).has(p.vehicleId));
-    return accessible.filter((p) => isTrackerOnline(p.timestamp)).length;
+    return accessible
+      .filter((p) => this.fleetFilter.matches(p.fleetId))
+      .filter((p) => isTrackerOnline(p.timestamp)).length;
   });
 
   protected readonly followedPlate = computed(() => {
@@ -2963,14 +2972,20 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private applyFilters(positions: PositionUpdateEvent[]): PositionUpdateEvent[] {
     const f = this.filters();
     const now = Date.now();
-    return positions.filter((p) => {
-      // Hors-ligne = pas de signal frais (seuil online partagé, 15 min) — même
-      // définition que la couleur grise du marqueur, pour rester cohérent.
-      if (!isTrackerOnline(p.timestamp, now)) return f.offline;
-      if (!p.ignition) return f.off;
-      if (p.speedKmh > 5) return f.moving;
-      return f.idle;
-    });
+    // Filtre société global (sélecteur super-admin). Lecture explicite du signal pour
+    // que l'effet de rendu des markers se relance au changement de société (même si la
+    // liste est momentanément vide → aucune position ne serait sinon lue).
+    this.fleetFilter.selectedFleetId();
+    return positions
+      .filter((p) => this.fleetFilter.matches(p.fleetId))
+      .filter((p) => {
+        // Hors-ligne = pas de signal frais (seuil online partagé, 15 min) — même
+        // définition que la couleur grise du marqueur, pour rester cohérent.
+        if (!isTrackerOnline(p.timestamp, now)) return f.offline;
+        if (!p.ignition) return f.off;
+        if (p.speedKmh > 5) return f.moving;
+        return f.idle;
+      });
   }
 
   protected toggleGeofences(): void {

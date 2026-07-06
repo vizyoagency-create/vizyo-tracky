@@ -8,6 +8,7 @@ export * from './dto/driver.dto';
 export * from './dto/snapshot.dto';
 export * from './dto/installation.dto';
 export * from './dto/installation-booking.dto';
+export * from './dto/privacy-mode.dto';
 export * from './dto/sim.dto';
 export * from './dto/system-metrics.dto';
 export * from './dto/user-activity.dto';
