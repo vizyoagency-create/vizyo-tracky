@@ -39,8 +39,9 @@ export class TripsController {
     @Query('vehicleIds') vehicleIds?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('fleetId') fleetId?: string,
   ) {
-    return this.trips.dailySummary(await this.rb(req), { vehicleId, vehicleIds, from, to });
+    return this.trips.dailySummary(await this.rb(req), { vehicleId, vehicleIds, from, to, fleetId });
   }
 
   @Get(':id')

@@ -8,4 +8,6 @@ export class ListTripsDto {
   @IsOptional() @IsString() to?: string;
   @IsOptional() @IsString() limit?: string;
   @IsOptional() @IsString() cursor?: string;
+  /** Filtre société global (sélecteur super-admin). Ignoré pour un non-super. */
+  @IsOptional() @IsUUID() fleetId?: string;
 }

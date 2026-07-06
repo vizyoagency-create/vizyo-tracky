@@ -535,7 +535,7 @@ export class TripsService implements OnModuleInit {
 
   async list(
     requestedBy: RequestedBy,
-    filters: { vehicleId?: string; vehicleIds?: string; from?: string; to?: string; limit?: string; cursor?: string },
+    filters: { vehicleId?: string; vehicleIds?: string; from?: string; to?: string; limit?: string; cursor?: string; fleetId?: string },
   ): Promise<{ items: Trip[]; nextCursor: string | null }> {
     // Mode vie privée (RGPD) : masque les trajets d'un véhicule actuellement en mode privé.
     const where: Prisma.TripWhereInput = { endedAt: { not: null }, NOT: { vehicle: { privacyModeEnabled: true } } };
@@ -544,6 +544,10 @@ export class TripsService implements OnModuleInit {
       // where.fleetId=null exposerait les trajets a fleetId null). Idem findOne().
       if (!requestedBy.fleetId) return { items: [], nextCursor: null };
       where.fleetId = requestedBy.fleetId;
+    } else if (filters.fleetId) {
+      // Filtre société GLOBAL (sélecteur super-admin) : scope le rapport à une flotte.
+      // Anti-IDOR : le super-admin a accès à toutes les flottes.
+      where.fleetId = filters.fleetId;
     }
     // Périmètre véhicule : vehicleId unique OU vehicleIds (filtre groupe), borné aux accès.
     const vScope = this.resolveVehicleScope(requestedBy, filters.vehicleId, filters.vehicleIds);
@@ -646,12 +650,15 @@ export class TripsService implements OnModuleInit {
 
   async dailySummary(
     requestedBy: RequestedBy,
-    filters: { vehicleId?: string; vehicleIds?: string; from?: string; to?: string },
+    filters: { vehicleId?: string; vehicleIds?: string; from?: string; to?: string; fleetId?: string },
   ): Promise<Array<{ date: string; tripCount: number; totalDistanceMeters: number; totalDurationSeconds: number; maxSpeed: number }>> {
-    const where: Prisma.TripWhereInput = { endedAt: { not: null } };
+    // Mode vie privée (RGPD) : exclut les véhicules en mode privé des agrégats.
+    const where: Prisma.TripWhereInput = { endedAt: { not: null }, NOT: { vehicle: { privacyModeEnabled: true } } };
     if (requestedBy.role !== UserRole.SUPER_ADMIN) {
       if (!requestedBy.fleetId) return []; // #31 — fail-closed (cf. list / findOne)
       where.fleetId = requestedBy.fleetId;
+    } else if (filters.fleetId) {
+      where.fleetId = filters.fleetId; // filtre société global (super-admin)
     }
     // Périmètre véhicule (unique ou groupe), borné aux accès — cf. list().
     const vScope = this.resolveVehicleScope(requestedBy, filters.vehicleId, filters.vehicleIds);

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, ElementRef, HostListener, inject, OnDestroy, OnInit, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, ElementRef, HostListener, inject, OnDestroy, OnInit, signal, viewChild } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.directive';
@@ -1216,6 +1216,22 @@ export class ReportsComponent implements OnInit, OnDestroy {
   private readonly fleetFilter = inject(FleetFilterService);
   protected readonly exporting = signal<null | 'pdf' | 'csv-trips' | 'csv-summary' | 'excel'>(null);
 
+  // Recharge le rapport (KPI/trajets/charts scopés serveur) quand la société change dans
+  // le sélecteur global. On saute le 1er run (le chargement initial se fait via ngOnInit).
+  private prevFleet: string | null | undefined = undefined;
+  private readonly fleetReloadEffect = effect(() => {
+    const sel = this.fleetFilter.selectedFleetId();
+    if (this.prevFleet === undefined) { this.prevFleet = sel; return; }
+    if (sel !== this.prevFleet) {
+      this.prevFleet = sel;
+      // Un véhicule/groupe choisi peut appartenir à l'ancienne société → on repart sur le
+      // rapport « toute la flotte » de la nouvelle société.
+      this.selectedVehicleId.set('');
+      this.selectedGroupId.set('');
+      void this.loadData();
+    }
+  });
+
   protected readonly vehicles = signal<VehicleDetailDto[]>([]);
   protected readonly trips = signal<TripDto[]>([]);
   protected readonly dailySummary = signal<TripDailySummaryDto[]>([]);
@@ -2008,6 +2024,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
           tripParams['vehicleIds'] = ids;
           summaryParams['vehicleIds'] = ids;
         }
+      }
+      // Filtre société GLOBAL (sélecteur super-admin) : scope le rapport entier (KPI + trajets
+      // + charts) à la flotte choisie, côté serveur (les agrégats ne sont pas filtrables client).
+      const fleet = this.fleetFilter.selectedFleetId();
+      if (fleet) {
+        tripParams['fleetId'] = fleet;
+        summaryParams['fleetId'] = fleet;
       }
       if (this.periodFrom) {
         tripParams['from'] = this.periodFrom;
