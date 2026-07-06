@@ -9,6 +9,7 @@ import type { Env } from './config/env.validation';
 import { AgendaModule } from './agenda/agenda.module';
 import { AiModule } from './ai/ai.module';
 import { AiUsageModule } from './ai-usage/ai-usage.module';
+import { GeocodingModule } from './geocoding/geocoding.module';
 import { AlertsModule } from './alerts/alerts.module';
 import { AudioMonitoringModule } from './audio-monitoring/audio-monitoring.module';
 import { AuthClientModule } from './auth-client/auth-client.module';
@@ -143,6 +144,8 @@ import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.modul
     AiModule,
     // Palier « Coûts IA » — journalise l'usage/coût de chaque appel IA + budget (super-admin).
     AiUsageModule,
+    // Refonte agenda/IA (P3) — géocodage inverse (Nominatim) pour nommer les destinations récurrentes.
+    GeocodingModule,
   ],
   controllers: [HealthController],
   providers: [

@@ -1167,6 +1167,20 @@ model AgendaAgentSettings {
   @@map("agenda_agent_settings")
 }
 
+/// Refonte agenda/IA (2026-07, P3) — Cache de géocodage inverse (Nominatim/OSM).
+/// Nomme un point d'arrivée récurrent (ex. « Carcassonne ») sans re-taper l'API à chaque analyse.
+/// Clé = "lat,lng" arrondi à 3 décimales (~110 m). `label` vide = géocodage sans résultat (mémorisé).
+model GeocodeCache {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique
+  label     String
+  lat       Float
+  lng       Float
+  createdAt DateTime @default(now())
+
+  @@map("geocode_cache")
+}
+
 /// V1.5 (Sprint I) — Etat de la sequence d'init SMS d'un tracker neuf.
 /// Le SUPER_ADMIN lance le workflow depuis /admin/sms/provision/:imei,
 /// le service envoie 9 SMS sequentiels avec ACK entre chaque etape.
