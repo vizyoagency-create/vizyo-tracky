@@ -15,7 +15,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import {
   LucideAngularModule, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Check,
   Layers, Truck, Plus, AlertTriangle, CalendarClock, Wrench, X, Trash2, Play, ListChecks,
-  Gauge, CalendarCheck, Inbox, Sparkles, Activity, ShieldCheck, Ban, Info,
+  Gauge, CalendarCheck, Inbox, Sparkles, Activity, ShieldCheck, Ban, Info, Pencil,
 } from 'lucide-angular';
 import type {
   AgendaSummaryDto,
@@ -430,8 +430,19 @@ interface GroupOption {
                         <lucide-icon [img]="Trash2Icon" [size]="12"></lucide-icon>
                       </button>
                     </div>
+                  } @else if (ev.type === 'RESERVATION' && canManage() && ev.status !== 'DONE' && ev.status !== 'CANCELLED') {
+                    <div class="ag-day-card-actions">
+                      <button type="button" (click)="openEditReservation(ev)" [disabled]="busyId() === ev.id"
+                              class="ag-act ag-act--start">
+                        <lucide-icon [img]="PencilIcon" [size]="12"></lucide-icon> Éditer
+                      </button>
+                      <button type="button" (click)="cancelDayReservation(ev)" [disabled]="busyId() === ev.id"
+                              class="ag-act ag-act--del">
+                        <lucide-icon [img]="XIcon" [size]="12"></lucide-icon> Annuler
+                      </button>
+                    </div>
                   } @else if (ev.type === 'RESERVATION') {
-                    <p class="ag-day-card-hint">Gérer depuis « Réserver » (demandes à valider).</p>
+                    <p class="ag-day-card-hint">Réservation gérée par un gestionnaire.</p>
                   }
                 </article>
               }
@@ -568,6 +579,7 @@ interface GroupOption {
       [vehicles]="scopedVehicles()"
       [defaultDate]="resDefaultDate()"
       [startMode]="resStartMode()"
+      [editReservation]="resEditReservation()"
       (closed)="resSheetOpen.set(false)"
       (created)="onReservationChanged()" />
     <app-optimization-sheet
@@ -1018,6 +1030,7 @@ export class AgendaComponent implements OnInit {
   protected readonly WrenchIcon = Wrench;
   protected readonly XIcon = X;
   protected readonly Trash2Icon = Trash2;
+  protected readonly PencilIcon = Pencil;
   protected readonly PlayIcon = Play;
   protected readonly ListChecksIcon = ListChecks;
   protected readonly GaugeIcon = Gauge;
@@ -1102,6 +1115,8 @@ export class AgendaComponent implements OnInit {
   protected readonly resSheetOpen = signal(false);
   protected readonly resStartMode = signal<'request' | 'validate'>('request');
   protected readonly resDefaultDate = signal<string | null>(null);
+  /** #4 — réservation en cours d'édition (null = création / validation). */
+  protected readonly resEditReservation = signal<VehicleEventDto | null>(null);
   protected readonly optSheetOpen = signal(false);
   /** Nb de demandes de réservation en attente (dérivé des événements déjà chargés). */
   protected readonly pendingCount = computed(() =>
@@ -1733,15 +1748,42 @@ export class AgendaComponent implements OnInit {
 
   // ─── Sprint 9 (consolidation) — feuilles Réservation / Optimisation ─────────
   protected openReserve(date?: string): void {
+    this.resEditReservation.set(null);
     this.resDefaultDate.set(date ?? null);
     this.resStartMode.set('request');
     this.resSheetOpen.set(true);
   }
 
   protected openValidate(): void {
+    this.resEditReservation.set(null);
     this.resDefaultDate.set(null);
     this.resStartMode.set('validate');
     this.resSheetOpen.set(true);
+  }
+
+  /** #4 — Éditer une réservation depuis le panneau jour (ouvre la feuille en mode édition). */
+  protected openEditReservation(ev: VehicleEventDto): void {
+    this.closeDayPanel();
+    this.resEditReservation.set(ev);
+    this.resDefaultDate.set(null);
+    this.resSheetOpen.set(true);
+  }
+
+  /** #4 — Annuler une réservation depuis le panneau jour (annulable même validée). */
+  protected async cancelDayReservation(ev: VehicleEventDto): Promise<void> {
+    if (!this.canManage()) return;
+    if (!confirm(`Annuler la réservation « ${ev.title} » ?`)) return;
+    this.busyId.set(ev.id);
+    try {
+      await firstValueFrom(this.api.cancelReservation(ev.id));
+      this.toast.success('Réservation annulée');
+      this.onReservationChanged();
+      this.closeDayPanel();
+    } catch (err) {
+      this.toast.error('Échec', err instanceof HttpErrorResponse ? err.error?.message : 'Annulation impossible.');
+    } finally {
+      this.busyId.set(null);
+    }
   }
 
   protected openOptim(): void {

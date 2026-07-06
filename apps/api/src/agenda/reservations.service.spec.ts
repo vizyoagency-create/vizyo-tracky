@@ -32,6 +32,14 @@ function makeEvents(over: Record<string, unknown> = {}) {
   } as never;
 }
 
+/** Résolveur de permissions mocké. `canManage` pilote le direct-confirm (#5). */
+function makePerms(canManage = false) {
+  return {
+    canOnVehicle: jest.fn().mockResolvedValue(canManage),
+    canGlobally: jest.fn().mockResolvedValue(canManage),
+  } as never;
+}
+
 function evRow(over: Record<string, unknown> = {}) {
   return {
     id: 'r1',
@@ -66,7 +74,7 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
     const prisma = makePrisma();
     const p = prisma as { vehicleEvent: { create: jest.Mock } };
     p.vehicleEvent.create.mockResolvedValue(evRow({ status: 'REQUESTED', metadata: { requesterId: 'u1' } }));
-    const svc = new ReservationsService(prisma, access('ALL'), makeEvents());
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms());
 
     const dto = await svc.request(makeUser(), { vehicleId: 'v1', ...SLOT });
     expect(dto.status).toBe('REQUESTED');
@@ -87,7 +95,7 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
         update: jest.fn(),
       },
     });
-    const svc = new ReservationsService(prisma, access('ALL'), makeEvents());
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms());
     await expect(svc.request(makeUser(), { vehicleId: 'v1', ...SLOT })).rejects.toBeInstanceOf(ConflictException);
   });
 
@@ -95,7 +103,7 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
     const prisma = makePrisma({
       trip: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue({ id: 't1' }) },
     });
-    const svc = new ReservationsService(prisma, access('ALL'), makeEvents());
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms());
     await expect(svc.request(makeUser(), { vehicleId: 'v1', ...SLOT })).rejects.toBeInstanceOf(ConflictException);
   });
 
@@ -118,7 +126,7 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
         update: jest.fn(),
       },
     });
-    const svc = new ReservationsService(prisma, access('ALL'), makeEvents());
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms());
     const res = await svc.suggest(makeUser(), { ...SLOT, criteria: { requiredFeatures: ['clim'] } });
     expect(res.vehicles.map((v) => v.vehicleId)).toEqual(['v1']); // v2 sans Clim, v3 occupé
     expect(res.vehicles[0].underutilized).toBe(true);
@@ -126,14 +134,14 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
 
   it('suggest : super-admin avec fleetId -> scope le parc à CETTE société (where.fleetId)', async () => {
     const prisma = makePrisma({ vehicle: { findMany: jest.fn().mockResolvedValue([]) } });
-    const svc = new ReservationsService(prisma, access('ALL'), makeEvents());
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms());
     await svc.suggest(makeUser({ role: UserRole.SUPER_ADMIN, fleetId: null }), { ...SLOT, fleetId: 'f9' });
     const where = (prisma as { vehicle: { findMany: jest.Mock } }).vehicle.findMany.mock.calls[0][0].where;
     expect(where.fleetId).toBe('f9'); // plus d'agrégation multi-flottes pour un super-admin
   });
 
   it('suggest : non-super-admin ne peut pas viser une autre société (fleetId ≠ la sienne) -> 403', async () => {
-    const svc = new ReservationsService(makePrisma(), access('ALL'), makeEvents());
+    const svc = new ReservationsService(makePrisma(), access('ALL'), makeEvents(), makePerms());
     await expect(
       svc.suggest(makeUser({ fleetId: 'f1' }), { ...SLOT, fleetId: 'fOTHER' }),
     ).rejects.toBeInstanceOf(ForbiddenException);
@@ -164,7 +172,7 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
         update: jest.fn(),
       },
     });
-    const svc = new ReservationsService(prisma, access('ALL'), makeEvents());
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms());
     const res = await svc.suggest(makeUser(), { startAt: start.toISOString(), endAt: end.toISOString() });
     expect(res.vehicles.map((v) => v.vehicleId)).toEqual(['v1']);
     expect(res.excludedImmobilized).toBe(1);
@@ -179,7 +187,7 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
         ]),
       },
     });
-    const svc = new ReservationsService(prisma, access('ALL'), makeEvents());
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms());
     const res = await svc.suggest(makeUser(), { ...SLOT, criteria: { minSeats: 4 } });
     expect(res.vehicles.map((v) => v.vehicleId)).toEqual(['v2']);
     expect(res.excludedUnknownCapacity).toBe(1);
@@ -193,7 +201,7 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
     const prisma = makePrisma({
       vehicle: { findMany: jest.fn().mockResolvedValue([{ id: 'v1', plate: 'AA-1', seats: 5, childSeats: 0, features: [] }]) },
     });
-    const svc = new ReservationsService(prisma, access('ALL'), makeEvents());
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms());
     await svc.suggest(makeUser(), { startAt: start.toISOString(), endAt: end.toISOString() });
     const or = (prisma as { trip: { findMany: jest.Mock } }).trip.findMany.mock.calls[0][0].where.OR;
     // Trajet clos : endedAt > start. Trajet ouvert : borné à (start − 8h) — un trajet démarré
@@ -219,7 +227,7 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
         update: jest.fn(),
       },
     });
-    const svc = new ReservationsService(prisma, access('ALL'), makeEvents());
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms());
     await expect(svc.request(makeUser(), { vehicleId: 'v1', ...SLOT })).rejects.toBeInstanceOf(ConflictException);
   });
 
@@ -238,7 +246,7 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
         update: jest.fn(),
       },
     });
-    const svc = new ReservationsService(prisma, access('ALL'), makeEvents());
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms());
     const dto = await svc.request(makeUser(), { vehicleId: 'v1', ...SLOT });
     expect(dto.status).toBe('REQUESTED');
   });
@@ -252,7 +260,7 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
         update: jest.fn(),
       },
     });
-    const svc = new ReservationsService(prisma, access(['v1']), makeEvents()); // v2 hors périmètre
+    const svc = new ReservationsService(prisma, access(['v1']), makeEvents(), makePerms()); // v2 hors périmètre
     await expect(svc.confirm(makeUser({ role: UserRole.VIEWER }), 'r1', {})).rejects.toBeInstanceOf(ForbiddenException);
   });
 
@@ -265,7 +273,7 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
         update: jest.fn(),
       },
     });
-    const svc = new ReservationsService(prisma, access('ALL'), makeEvents());
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms());
     await expect(svc.confirm(makeUser(), 'r1', {})).rejects.toBeInstanceOf(ConflictException);
   });
 
@@ -279,7 +287,7 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
       },
     });
     const p = prisma as { vehicleEvent: { update: jest.Mock } };
-    const svc = new ReservationsService(prisma, access('ALL'), makeEvents());
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms());
     const dto = await svc.confirm(makeUser(), 'r1', {});
     expect(dto.status).toBe('CONFIRMED');
     expect(p.vehicleEvent.update.mock.calls[0][0].data.status).toBe('CONFIRMED');
@@ -294,7 +302,7 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
         create: jest.fn(),
       },
     });
-    const svc = new ReservationsService(prisma, access('ALL'), makeEvents());
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms());
     const dto = await svc.cancel(makeUser(), 'r1');
     expect(dto.status).toBe('CANCELLED');
   });
@@ -308,7 +316,7 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
         update: jest.fn(),
       },
     });
-    const svc = new ReservationsService(prisma, access('ALL'), makeEvents());
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms());
     await expect(svc.confirm(makeUser(), 'r1', {})).rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -322,7 +330,7 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
       },
       trip: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue({ id: 't1' }) },
     });
-    const svc = new ReservationsService(prisma, access('ALL'), makeEvents());
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms());
     await expect(svc.confirm(makeUser(), 'r1', {})).rejects.toBeInstanceOf(ConflictException);
   });
 
@@ -335,7 +343,7 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
         create: jest.fn(),
       },
     });
-    const svc = new ReservationsService(prisma, access('ALL'), makeEvents());
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms());
     await expect(svc.cancel(makeUser(), 'r1')).rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -350,7 +358,49 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
         create: jest.fn(),
       },
     });
-    const svc = new ReservationsService(prisma, access('ALL'), makeEvents());
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms());
     await expect(svc.confirm(makeUser(), 'r1', {})).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  // ─── #5 — droit de gérer -> placement DIRECT / sinon -> file de demandes ───
+  it('request : appelant qui peut GÉRER -> réservation CONFIRMED directe (pas de demande)', async () => {
+    const prisma = makePrisma();
+    const p = prisma as { vehicleEvent: { create: jest.Mock } };
+    p.vehicleEvent.create.mockResolvedValue(evRow({ status: 'CONFIRMED' }));
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms(true));
+
+    const dto = await svc.request(makeUser(), { vehicleId: 'v1', ...SLOT });
+    expect(dto.status).toBe('CONFIRMED');
+    expect(p.vehicleEvent.create.mock.calls[0][0].data.status).toBe('CONFIRMED');
+  });
+
+  it('request : appelant SANS droit de gérer -> REQUESTED (file de demandes)', async () => {
+    const prisma = makePrisma();
+    const p = prisma as { vehicleEvent: { create: jest.Mock } };
+    p.vehicleEvent.create.mockResolvedValue(evRow({ status: 'REQUESTED' }));
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms(false));
+
+    const dto = await svc.request(makeUser(), { vehicleId: 'v1', ...SLOT });
+    expect(dto.status).toBe('REQUESTED');
+  });
+
+  // ─── #4 — réservation validée éditable (réaffectation de véhicule) ───
+  it('update : réaffecte le véhicule d\'une réservation CONFIRMED (fleetId dérivé + re-check conflits)', async () => {
+    const prisma = makePrisma({
+      vehicleEvent: {
+        findUnique: jest.fn().mockResolvedValue(evRow({ status: 'CONFIRMED' })),
+        findMany: jest.fn().mockResolvedValue([]), // aucun conflit sur le nouveau véhicule
+        create: jest.fn(),
+        update: jest.fn().mockResolvedValue(evRow({ status: 'CONFIRMED', vehicleId: 'v2', fleetId: 'f2' })),
+      },
+    });
+    const events = makeEvents({ assertVehicleAccess: jest.fn().mockResolvedValue('f2') });
+    const svc = new ReservationsService(prisma, access('ALL'), events, makePerms());
+
+    await svc.update(makeUser(), 'r1', { vehicleId: 'v2' });
+    const data = (prisma as { vehicleEvent: { update: jest.Mock } }).vehicleEvent.update.mock.calls[0][0].data;
+    expect(data.vehicleId).toBe('v2');
+    expect(data.fleetId).toBe('f2'); // dérivé du nouveau véhicule, jamais du client
+    expect((events as { assertVehicleAccess: jest.Mock }).assertVehicleAccess).toHaveBeenCalledWith(expect.anything(), 'v2');
   });
 });

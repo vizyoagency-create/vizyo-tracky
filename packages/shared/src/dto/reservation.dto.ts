@@ -56,11 +56,13 @@ export interface ConfirmReservationDto {
   vehicleId?: string;
 }
 
-/** Mise à jour d'une réservation (créneau / critères / libellé). */
+/** Mise à jour d'une réservation (créneau / critères / libellé / véhicule). */
 export interface UpdateReservationDto {
   startAt?: string;
   endAt?: string;
   title?: string;
   reason?: string;
   criteria?: ReservationCriteria;
+  /** Réaffecter la réservation à un autre véhicule (re-vérifie les conflits sur la cible). */
+  vehicleId?: string;
 }

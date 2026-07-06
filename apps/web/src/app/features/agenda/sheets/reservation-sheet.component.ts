@@ -54,7 +54,7 @@ function toLocalInput(d: Date): string {
           <button type="button" class="rs-x" (click)="closed.emit()" aria-label="Fermer"><lucide-icon [img]="XIcon" [size]="18"></lucide-icon></button>
         </div>
 
-        @if (canManage()) {
+        @if (canManage() && mode() !== 'edit') {
           <div class="rs-seg">
             <button type="button" class="rs-seg-btn" [class.rs-seg-btn--on]="mode() === 'request'" (click)="mode.set('request')">Demander</button>
             <button type="button" class="rs-seg-btn" [class.rs-seg-btn--on]="mode() === 'validate'" (click)="setValidate()">
@@ -63,10 +63,13 @@ function toLocalInput(d: Date): string {
           </div>
         }
 
-        <!-- ───── DEMANDER ───── -->
-        @if (mode() === 'request') {
+        <!-- ───── DEMANDER / ÉDITER ───── -->
+        @if (mode() === 'request' || mode() === 'edit') {
           <div class="rs-body">
-            @if (needsFleet()) {
+            @if (mode() === 'edit') {
+              <div class="rs-alert rs-alert--info">Modifier la réservation@if (editReservation()?.vehiclePlate) { — {{ editReservation()?.vehiclePlate }}}</div>
+            }
+            @if (mode() === 'request' && needsFleet()) {
               <div class="rs-alert rs-alert--info">Choisis d'abord une société dans le sélecteur en haut de page pour réserver sur son parc.</div>
             }
             <div class="rs-f">
@@ -83,7 +86,7 @@ function toLocalInput(d: Date): string {
             <div class="rs-f">
               <span class="rs-lbl-row">
                 Véhicule
-                @if (canAi()) {
+                @if (mode() === 'request' && canAi()) {
                   <button type="button" class="rs-ai" [disabled]="aiLoading() || needsFleet()" (click)="suggestAi()">
                     @if (aiLoading()) { <lucide-icon [img]="LoaderIcon" [size]="13" class="rs-spin"></lucide-icon> } @else { <lucide-icon [img]="SparklesIcon" [size]="13"></lucide-icon> }
                     Suggérer avec l'IA
@@ -137,10 +140,18 @@ function toLocalInput(d: Date): string {
             @if (reqError()) { <div class="rs-alert rs-alert--err"><lucide-icon [img]="AlertIcon" [size]="13"></lucide-icon> {{ reqError() }}</div> }
           </div>
           <div class="rs-foot">
-            <button type="button" class="rs-btn rs-btn--primary" [disabled]="submitting() || needsFleet()" (click)="submit()">
-              @if (submitting()) { <lucide-icon [img]="LoaderIcon" [size]="15" class="rs-spin"></lucide-icon> }
-              {{ submitting() ? 'Envoi…' : 'Déposer la demande' }}
-            </button>
+            @if (mode() === 'edit') {
+              <button type="button" class="rs-btn rs-btn--no" [disabled]="submitting()" (click)="cancelResa()">Annuler la réservation</button>
+              <button type="button" class="rs-btn rs-btn--primary" [disabled]="submitting()" (click)="saveEdit()">
+                @if (submitting()) { <lucide-icon [img]="LoaderIcon" [size]="15" class="rs-spin"></lucide-icon> }
+                {{ submitting() ? 'Enregistrement…' : 'Enregistrer' }}
+              </button>
+            } @else {
+              <button type="button" class="rs-btn rs-btn--primary" [disabled]="submitting() || needsFleet()" (click)="submit()">
+                @if (submitting()) { <lucide-icon [img]="LoaderIcon" [size]="15" class="rs-spin"></lucide-icon> }
+                {{ submitting() ? 'Envoi…' : (canManage() ? 'Réserver' : 'Déposer la demande') }}
+              </button>
+            }
           </div>
         }
 
@@ -219,7 +230,7 @@ function toLocalInput(d: Date): string {
     .rs-alert--err { background: rgba(239,68,68,.1); color: #EF4444; }
     .rs-alert--warn { background: rgba(245,158,11,.12); color: #B45309; }
     .rs-alert--info { background: var(--bg-tertiary); color: var(--fg-secondary); }
-    .rs-foot { display: flex; justify-content: flex-end; padding: 12px 0 max(6px, env(safe-area-inset-bottom)); margin-top: 2px; border-top: 1px solid var(--border-subtle); }
+    .rs-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 0 max(6px, env(safe-area-inset-bottom)); margin-top: 2px; border-top: 1px solid var(--border-subtle); }
     .rs-btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 16px; border-radius: 10px; font-size: 13px; font-weight: 700; }
     .rs-btn--primary { background: var(--tracky, #10B981); color: #fff; }
     .rs-btn--primary:disabled { opacity: .55; }
@@ -265,6 +276,8 @@ export class ReservationSheetComponent {
   readonly defaultDate = input<string | null>(null);
   /** Mode initial à l'ouverture ('request' ou 'validate'). */
   readonly startMode = input<'request' | 'validate'>('request');
+  /** Réservation à ÉDITER (ouvre la feuille en mode édition). Null = création / validation. */
+  readonly editReservation = input<VehicleEventDto | null>(null);
   readonly closed = output<void>();
   readonly created = output<void>();
 
@@ -276,7 +289,7 @@ export class ReservationSheetComponent {
   protected readonly InboxIcon = Inbox;
   protected readonly XIcon = X;
 
-  protected readonly mode = signal<'request' | 'validate'>('request');
+  protected readonly mode = signal<'request' | 'validate' | 'edit'>('request');
   protected readonly canManage = computed(() => this.perms.can('reservations_manage'));
   protected readonly canAi = computed(() => this.perms.can('ai_optimize'));
   /** Super-admin sans société choisie : réserver mélangerait toutes les flottes → on gate. */
@@ -311,16 +324,30 @@ export class ReservationSheetComponent {
   protected readonly busyId = signal<string | null>(null);
 
   constructor() {
-    // À l'ouverture : (ré)initialise le créneau depuis la date cliquée (ou prochaine heure).
+    // À l'ouverture : mode ÉDITION si une réservation est fournie, sinon (ré)initialise le
+    // créneau depuis la date cliquée (ou la prochaine heure) pour une demande / validation.
     effect(() => {
       if (!this.open()) return;
+      const edit = this.editReservation();
+      this.resetAi();
+      this.reqError.set(null);
+      if (edit) {
+        const meta = (edit.metadata ?? {}) as { reason?: string; criteria?: { minSeats?: number; minChildSeats?: number } };
+        this.startAt.set(toLocalInput(new Date(edit.startAt)));
+        this.endAt.set(edit.endAt ? toLocalInput(new Date(edit.endAt)) : '');
+        this.vehicleId.set(edit.vehicleId);
+        this.reason.set(meta.reason ?? '');
+        this.minSeats.set(meta.criteria?.minSeats ? String(meta.criteria.minSeats) : '');
+        this.minChildSeats.set(meta.criteria?.minChildSeats ? String(meta.criteria.minChildSeats) : '');
+        this.mode.set('edit');
+        return;
+      }
       const base = this.defaultDate() ? new Date(`${this.defaultDate()}T09:00:00`) : new Date();
       if (!this.defaultDate()) { base.setMinutes(0, 0, 0); base.setHours(base.getHours() + 1); }
       this.startAt.set(toLocalInput(base));
       this.endAt.set(toLocalInput(new Date(base.getTime() + 60 * 60 * 1000)));
-      this.resetAi();
-      this.reqError.set(null);
       this.vehicleId.set('');
+      this.minSeats.set(''); this.minChildSeats.set(''); this.reason.set('');
       const m = this.startMode() === 'validate' && this.canManage() ? 'validate' : 'request';
       this.mode.set(m);
       if (m === 'validate') void this.loadQueue();
@@ -410,7 +437,7 @@ export class ReservationSheetComponent {
     if (!slot) return;
     this.submitting.set(true);
     try {
-      await firstValueFrom(this.api.requestReservation({
+      const res = await firstValueFrom(this.api.requestReservation({
         vehicleId: this.vehicleId() || undefined,
         fleetId: this.fleetFilter.selectedFleetId() ?? undefined,
         startAt: slot.startAt,
@@ -419,15 +446,57 @@ export class ReservationSheetComponent {
         criteria: this.criteria(),
       }));
       this.created.emit();
-      if (this.canManage()) {
-        // L'auteur peut valider lui-même : ne pas laisser croire qu'il attend un tiers.
-        // On l'amène directement sur la file « À valider » (sa demande y figure déjà).
-        this.toast.success('Demande déposée', 'Validez-la dans l\'onglet « À valider ».');
-        this.setValidate();
+      // #5 — le backend place la réservation selon le droit de l'appelant : CONFIRMED (directement
+      // dans l'agenda) s'il peut gérer, sinon REQUESTED (demande à valider). On reflète le résultat.
+      if (res.status === 'CONFIRMED') {
+        this.toast.success('Réservé', 'La réservation est placée dans l\'agenda.');
       } else {
         this.toast.success('Demande déposée', 'À valider par un gestionnaire.');
-        this.closed.emit();
       }
+      this.closed.emit();
+    } catch (e) {
+      this.reqError.set(this.errMsg(e));
+    } finally {
+      this.submitting.set(false);
+    }
+  }
+
+  /** #4 — Enregistrer l'édition d'une réservation (créneau / véhicule / motif / critères). */
+  protected async saveEdit(): Promise<void> {
+    this.reqError.set(null);
+    const edit = this.editReservation();
+    if (!edit) return;
+    const slot = this.slot();
+    if (!slot) return;
+    this.submitting.set(true);
+    try {
+      await firstValueFrom(this.api.updateReservation(edit.id, {
+        startAt: slot.startAt,
+        endAt: slot.endAt,
+        reason: this.reason() || undefined,
+        criteria: this.criteria(),
+        vehicleId: this.vehicleId() || undefined,
+      }));
+      this.toast.success('Réservation modifiée', 'Les changements sont enregistrés.');
+      this.created.emit();
+      this.closed.emit();
+    } catch (e) {
+      this.reqError.set(this.errMsg(e));
+    } finally {
+      this.submitting.set(false);
+    }
+  }
+
+  /** #4 — Annuler une réservation validée depuis le mode édition. */
+  protected async cancelResa(): Promise<void> {
+    const edit = this.editReservation();
+    if (!edit) return;
+    this.submitting.set(true);
+    try {
+      await firstValueFrom(this.api.cancelReservation(edit.id));
+      this.toast.success('Réservation annulée', '');
+      this.created.emit();
+      this.closed.emit();
     } catch (e) {
       this.reqError.set(this.errMsg(e));
     } finally {

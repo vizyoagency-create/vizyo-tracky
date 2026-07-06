@@ -18,6 +18,7 @@ import type {
 import { effectiveBlockingEndMs, IMMOBILIZING_STATUSES } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
+import { PermissionsResolverService } from '../permissions/permissions-resolver.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 import { VehicleEventsService } from './vehicle-events.service';
@@ -51,6 +52,7 @@ export class ReservationsService {
     private readonly prisma: PrismaService,
     private readonly vehicleAccess: VehicleAccessService,
     private readonly events: VehicleEventsService,
+    private readonly permissions: PermissionsResolverService,
   ) {}
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -378,27 +380,43 @@ export class ReservationsService {
       throw new ConflictException('Ce véhicule est immobilisé (incident ou maintenance) sur ce créneau.');
     }
 
-    const row = await this.prisma.vehicleEvent.create({
-      data: {
-        fleetId,
-        vehicleId,
-        type: VehicleEventType.RESERVATION,
-        status: VehicleEventStatus.REQUESTED,
-        title: dto.title?.trim() || 'Réservation',
-        startAt: start,
-        endAt: end,
-        allDay: false,
-        metadata: {
-          requesterId: user.id,
-          reason: dto.reason ?? null,
-          criteria: dto.criteria ?? null,
-        } as Prisma.InputJsonValue,
-        createdBy: user.id,
-        source: 'MANUAL',
-      },
-      include: INCLUDE_PLATE,
-    });
-    return this.toDto(row);
+    // #5 — Placement DIRECT si l'appelant peut GÉRER les réservations de CE véhicule
+    // (droit reservations_manage résolu par véhicule) : sa réservation entre CONFIRMÉE
+    // dans l'agenda, sans passer par la file de demandes. Sinon (droit reservations_request
+    // seul) → REQUESTED (une demande qu'un gestionnaire validera).
+    const canManage = await this.permissions.canOnVehicle(user, vehicleId, 'reservations_manage');
+    const status = canManage ? VehicleEventStatus.CONFIRMED : VehicleEventStatus.REQUESTED;
+
+    try {
+      const row = await this.prisma.vehicleEvent.create({
+        data: {
+          fleetId,
+          vehicleId,
+          type: VehicleEventType.RESERVATION,
+          status,
+          title: dto.title?.trim() || 'Réservation',
+          startAt: start,
+          endAt: end,
+          allDay: false,
+          metadata: {
+            requesterId: user.id,
+            reason: dto.reason ?? null,
+            criteria: dto.criteria ?? null,
+          } as Prisma.InputJsonValue,
+          createdBy: user.id,
+          source: 'MANUAL',
+        },
+        include: INCLUDE_PLATE,
+      });
+      return this.toDto(row);
+    } catch (err) {
+      // Une réservation FERME (CONFIRMED) est soumise à la contrainte EXCLUDE : traduire
+      // la course concurrente en 409 lisible (le pré-check plus haut a déjà écarté le reste).
+      if (status === VehicleEventStatus.CONFIRMED && this.isExclusionConflict(err)) {
+        throw new ConflictException("Ce créneau vient d'être réservé (course concurrente).");
+      }
+      throw err;
+    }
   }
 
   /** Validation d'une demande -> CONFIRMED (bloquant). Perm reservations_manage. */
@@ -463,14 +481,20 @@ export class ReservationsService {
     return this.toDto(row);
   }
 
-  /** Édition (créneau / critères / libellé). Perm reservations_manage. */
+  /**
+   * Édition d'une réservation (créneau / critères / libellé / VÉHICULE). Perm reservations_manage.
+   * Une réservation VALIDÉE (CONFIRMED) reste éditable : le créneau, le motif, les critères ET le
+   * véhicule affecté peuvent changer, avec re-vérification des conflits sur la cible (véhicule +
+   * créneau) et la contrainte EXCLUDE en dernier rempart.
+   */
   async update(user: AuthUser, id: string, dto: UpdateReservationDto): Promise<VehicleEventDto> {
     const resa = await this.loadScoped(user, id);
 
     let start = resa.startAt;
     let end = resa.endAt;
-    const data: Prisma.VehicleEventUpdateInput = {};
-    if (dto.startAt !== undefined || dto.endAt !== undefined) {
+    const data: Prisma.VehicleEventUncheckedUpdateInput = {};
+    const slotChanged = dto.startAt !== undefined || dto.endAt !== undefined;
+    if (slotChanged) {
       const slot = this.parseSlot(dto.startAt ?? resa.startAt.toISOString(), dto.endAt ?? resa.endAt?.toISOString() ?? '');
       start = slot.start;
       end = slot.end;
@@ -487,15 +511,26 @@ export class ReservationsService {
       } as Prisma.InputJsonValue;
     }
 
-    // Si la réservation est bloquante et le créneau change, re-vérifier les conflits.
+    // Réaffectation de véhicule (ex. changer le véhicule d'une réservation validée). Le fleetId
+    // est DÉRIVÉ du nouveau véhicule via assertVehicleAccess (anti-IDOR, jamais lu du client).
+    let targetVehicleId = resa.vehicleId;
+    const vehicleChanged = !!dto.vehicleId && dto.vehicleId !== resa.vehicleId;
+    if (vehicleChanged) {
+      const newFleetId = await this.events.assertVehicleAccess(user, dto.vehicleId!); // 403/404
+      targetVehicleId = dto.vehicleId!;
+      data.vehicleId = targetVehicleId;
+      data.fleetId = newFleetId;
+    }
+
+    // Réservation bloquante + (créneau OU véhicule change) → re-vérifier les conflits sur la CIBLE.
     const blocking = resa.status === VehicleEventStatus.CONFIRMED || resa.status === VehicleEventStatus.IN_PROGRESS;
-    if (blocking && (dto.startAt !== undefined || dto.endAt !== undefined) && end) {
-      const conflicts = await this.findOverlaps(resa.vehicleId, start, end, id);
+    if (blocking && (slotChanged || vehicleChanged) && end) {
+      const conflicts = await this.findOverlaps(targetVehicleId, start, end, id);
       if (conflicts.length > 0) throw new ConflictException('Conflit sur le nouveau créneau.');
-      if (await this.hasTripOverlap(resa.vehicleId, start, end)) {
+      if (await this.hasTripOverlap(targetVehicleId, start, end)) {
         throw new ConflictException('Ce véhicule roule déjà sur le nouveau créneau.');
       }
-      if ((await this.findImmobilized([resa.vehicleId], start, end)).has(resa.vehicleId)) {
+      if ((await this.findImmobilized([targetVehicleId], start, end)).has(targetVehicleId)) {
         throw new ConflictException('Ce véhicule est immobilisé (incident ou maintenance) sur le nouveau créneau.');
       }
     }
