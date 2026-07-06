@@ -1,7 +1,7 @@
 import { ErrorHandler, Injectable, inject, isDevMode } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ToastService } from '../../shared/ui/toast/toast.service';
-import { activityContext } from '../services/activity-context';
+import { reportClientError } from './report-client-error';
 
 /**
  * V1.10 (Sprint 5 stabilite) — ErrorHandler global pour Tracky.
@@ -29,11 +29,6 @@ import { activityContext } from '../services/activity-context';
 let lastErrorMessage: string | null = null;
 let lastErrorAt = 0;
 const DEDUP_WINDOW_MS = 3_000;
-
-// Dedup séparé pour la remontée serveur (évite d'inonder le centre d'alerte).
-let lastReportMessage: string | null = null;
-let lastReportAt = 0;
-const REPORT_DEDUP_MS = 15_000;
 
 @Injectable()
 export class GlobalErrorHandler implements ErrorHandler {
@@ -71,39 +66,11 @@ export class GlobalErrorHandler implements ErrorHandler {
     );
   }
 
-  /** Remonte une erreur JS client au backend avec le contexte page/session. */
+  /** Remonte une erreur JS client au centre d'alerte (pipeline unifié `reportClientError`). */
   private reportToServer(error: unknown): void {
-    // On saute les HttpError (déjà journalisées serveur) et les Abort, et on ne
-    // remonte que si une session est active (authentifié) pour éviter le bruit.
-    if (this.shouldSkipToast(error) || !activityContext.sessionId) return;
-
-    const message = this.describe(error).slice(0, 2000);
-    const now = Date.now();
-    // #38 — cle de dedup incluant le sessionId : sinon la meme erreur recurrente
-    // d'une NOUVELLE session (re-login / autre user) etait suppressee a tort par cet
-    // etat module-global. Une nouvelle session re-rapporte donc l'erreur.
-    const dedupKey = `${activityContext.sessionId ?? ''}:${message}`;
-    if (lastReportMessage === dedupKey && now - lastReportAt < REPORT_DEDUP_MS) return;
-    lastReportMessage = dedupKey;
-    lastReportAt = now;
-
-    const payload = {
-      message,
-      stack: error instanceof Error ? error.stack?.slice(0, 6000) : undefined,
-      route: activityContext.route ?? undefined,
-      sessionId: activityContext.sessionId ?? undefined,
-    };
-    try {
-      void fetch('/api/activity/error', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        keepalive: true,
-        body: JSON.stringify(payload),
-      }).catch(() => undefined);
-    } catch {
-      /* best-effort */
-    }
+    // On saute les HttpError (déjà journalisées serveur) et les Abort ; le reste = vrai bug.
+    if (this.shouldSkipToast(error)) return;
+    reportClientError('uncaught', error);
   }
 
   private shouldSkipToast(error: unknown): boolean {

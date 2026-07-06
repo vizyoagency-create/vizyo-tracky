@@ -736,14 +736,13 @@ export class DashboardComponent implements OnInit {
 
   /** Véhicules dont l'installation est à revoir (boîtier posé < 1 mois + hors-ligne). */
   protected readonly vehiclesToReview = computed(() =>
-    this.realtime.snapshot()
-      .filter((v) => this.fleetFilter.matches(v.fleetId))
-      .filter((v) =>
-        isInstallationToReview(
-          getVehicleConnectivityState({ trackerId: v.trackerId, lastSeenAt: v.lastSeenAt, lastIgnition: v.lastIgnition }),
-          v.trackerCreatedAt,
-        ),
+    // scopedSnapshot = déjà filtré par le sélecteur société (source centralisée, réactive).
+    this.realtime.scopedSnapshot().filter((v) =>
+      isInstallationToReview(
+        getVehicleConnectivityState({ trackerId: v.trackerId, lastSeenAt: v.lastSeenAt, lastIgnition: v.lastIgnition }),
+        v.trackerCreatedAt,
       ),
+    ),
   );
   protected readonly preferences = inject(PreferencesService);
   protected readonly perms = inject(PermissionsService);
@@ -838,8 +837,7 @@ export class DashboardComponent implements OnInit {
   protected readonly enrichedPositions = computed(() => {
     const ids = this.accessibleVehicleIds();
     const meta = this.vehicleMetaMap();
-    return this.realtime.positionsList()
-      .filter((pos) => this.fleetFilter.matches(pos.fleetId))
+    return this.realtime.scopedPositionsList()
       .filter((pos) => ids === 'ALL' || ids.has(pos.vehicleId))
       // GPS sanity : ecarte les fixes `valid:false` (broadcastes par le backend
       // pour propager l'ignition mais lat/lng degradees) et Null Island. Sans
@@ -904,7 +902,8 @@ export class DashboardComponent implements OnInit {
     { initialValue: { items: [], nextCursor: null } },
   );
   protected readonly recentAlerts = computed(() => {
-    const live = this.liveAlerts().filter((a) => this.fleetFilter.matches(a.fleetId));
+    // Live = scopedAlerts (source centralisée) ; le fetch initial (HTTP one-shot) est filtré réactivement.
+    const live = this.realtime.scopedAlerts();
     if (live.length > 0) return live.slice(0, 3);
     return (this.fetchedAlerts()?.items ?? []).filter((a) => this.fleetFilter.matches(a.fleetId)).slice(0, 3);
   });

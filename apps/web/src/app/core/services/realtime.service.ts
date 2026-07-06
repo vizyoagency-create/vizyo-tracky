@@ -7,6 +7,7 @@ import { firstValueFrom } from 'rxjs';
 import { io, Socket } from 'socket.io-client';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { AuthService } from './auth.service';
+import { FleetFilterService } from './fleet-filter.service';
 import { NotificationsApiService } from './notifications.service';
 import { PreferencesService } from './preferences.service';
 import { VisibilityService } from './visibility.service';
@@ -35,6 +36,16 @@ export class RealtimeService {
   readonly alerts = this._alerts.asReadonly();
   readonly unacknowledgedCount = computed(() => this._alerts().length);
   readonly hasCritical = computed(() => this._alerts().some((a) => a.severity === 'CRITICAL'));
+
+  /**
+   * Filtre SOCIÉTÉ global appliqué À LA SOURCE du temps réel : tout consommateur (carte,
+   * dashboard, futures vues live) utilise ces signaux déjà scopés → plus de filtre à
+   * répéter par composant. `matches()` = no-op pour un non-super ou sans société choisie.
+   */
+  private readonly fleetFilter = inject(FleetFilterService);
+  readonly scopedSnapshot = computed(() => this.snapshot().filter((v) => this.fleetFilter.matches(v.fleetId)));
+  readonly scopedPositionsList = computed(() => this.positionsList().filter((p) => this.fleetFilter.matches(p.fleetId)));
+  readonly scopedAlerts = computed(() => this._alerts().filter((a) => this.fleetFilter.matches(a.fleetId)));
 
   private readonly _trackerStatuses = signal<Map<string, string>>(new Map());
   readonly trackerStatuses = this._trackerStatuses.asReadonly();
