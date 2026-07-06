@@ -174,9 +174,14 @@ export class AlertsService {
 
     const hasMore = items.length > limit;
     // Aplatit le groupe du véhicule (vehicle.group) pour la liste d'alertes.
-    const page = (hasMore ? items.slice(0, limit) : items).map((a) =>
-      a.vehicle ? { ...a, vehicle: flattenVehicleGroup(a.vehicle) } : a,
-    );
+    // Mode vie privée (RGPD) : on CAVIARDE la localisation (lat/lng) des alertes d'un
+    // véhicule en mode privé — l'alerte reste visible (sécurité : SOS, coupure…) mais
+    // sans révéler OÙ. Réapparaît si le mode privé est désactivé.
+    const page = (hasMore ? items.slice(0, limit) : items).map((a) => {
+      const priv = (a.vehicle as { privacyModeEnabled?: boolean } | null)?.privacyModeEnabled === true;
+      const redacted = priv ? { ...a, latitude: null, longitude: null } : a;
+      return redacted.vehicle ? { ...redacted, vehicle: flattenVehicleGroup(redacted.vehicle) } : redacted;
+    });
     return {
       items: page,
       nextCursor: hasMore ? page[page.length - 1]!.id : null,

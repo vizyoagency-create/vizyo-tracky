@@ -56,7 +56,8 @@ export class ReportCsvService {
         timestamp: { gte: from, lte: to },
         // Borne flotte (defense en profondeur) + perimetre user via le vehicule
         // du tracker. `positions`/`commands` n'ont pas de vehicleId direct.
-        tracker: { vehicle: ids ? { fleetId, id: { in: ids } } : { fleetId } },
+        // Mode vie privée (RGPD) : on exclut les véhicules actuellement en mode privé.
+        tracker: { vehicle: ids ? { fleetId, id: { in: ids }, privacyModeEnabled: false } : { fleetId, privacyModeEnabled: false } },
       },
       orderBy: { timestamp: 'asc' },
       include: { tracker: { include: { vehicle: { select: { plate: true } } } } },
@@ -78,7 +79,8 @@ export class ReportCsvService {
   async trips(fleetId: string, from: Date, to: Date, accessibleVehicleIds: string[] | 'ALL' = 'ALL') {
     const ids = this.scopedVehicleIds(accessibleVehicleIds);
     const trips = await this.prisma.trip.findMany({
-      where: { fleetId, startedAt: { gte: from, lte: to }, ...(ids ? { vehicleId: { in: ids } } : {}) },
+      // Mode vie privée (RGPD) : exclut les trajets d'un véhicule actuellement en mode privé.
+      where: { fleetId, startedAt: { gte: from, lte: to }, ...(ids ? { vehicleId: { in: ids } } : {}), NOT: { vehicle: { privacyModeEnabled: true } } },
       orderBy: { startedAt: 'desc' },
       include: {
         vehicle: { select: { plate: true, ...VEHICLE_GROUP_SELECT } },
@@ -128,7 +130,8 @@ export class ReportCsvService {
     const alerts = await this.prisma.alert.findMany({
       // Quand un perimetre est actif, les alertes sans vehicleId (tracker isole)
       // sont exclues par definition du sous-ensemble (cf. reports-stats).
-      where: { fleetId, createdAt: { gte: from, lte: to }, ...(ids ? { vehicleId: { in: ids } } : {}) },
+      // Mode vie privée (RGPD) : exclut les alertes d'un véhicule en mode privé (garde les alertes flotte sans véhicule).
+      where: { fleetId, createdAt: { gte: from, lte: to }, ...(ids ? { vehicleId: { in: ids } } : {}), NOT: { vehicle: { privacyModeEnabled: true } } },
       orderBy: { createdAt: 'desc' },
       include: { vehicle: { select: { plate: true, ...VEHICLE_GROUP_SELECT } } },
       take: 50_000,

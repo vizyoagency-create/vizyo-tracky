@@ -77,6 +77,7 @@ export class ReportExcelService {
         type: true,
         fuelConsumptionL100km: true,
         fleetId: true,
+        privacyModeEnabled: true,
         fleet: { select: { id: true, name: true, fuelPriceEurL: true } },
       },
     });
@@ -86,6 +87,10 @@ export class ReportExcelService {
       vehicle.fleetId !== requestedBy.fleetId
     ) {
       throw new ForbiddenException('Acces refuse a ce vehicule');
+    }
+    // Mode vie privée (RGPD) : les trajets révèlent les déplacements → export bloqué tant qu'actif.
+    if (vehicle.privacyModeEnabled) {
+      throw new ForbiddenException('Véhicule en mode vie privée : export indisponible tant que le mode privé est actif.');
     }
 
     // 3) Trajets du véhicule sur la période (capés, triés). PAS de positions.

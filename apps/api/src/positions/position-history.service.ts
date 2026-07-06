@@ -77,6 +77,8 @@ export class PositionHistoryService {
 
     let trackerId = params.trackerId;
     let vehicleId = params.vehicleId;
+    // Mode vie privée (RGPD) : renseigné à la résolution du véhicule ci-dessous.
+    let privacyOn = false;
     const scopedIds =
       requestedBy.accessibleVehicleIds && requestedBy.accessibleVehicleIds !== 'ALL'
         ? requestedBy.accessibleVehicleIds
@@ -100,6 +102,7 @@ export class PositionHistoryService {
         include: { tracker: true },
       });
       if (!v) throw new NotFoundException('Vehicule introuvable');
+      privacyOn = v.privacyModeEnabled;
       trackerId = v.tracker?.id;
       if (!trackerId) {
         return { detail: 'fine', points: [] };
@@ -119,6 +122,12 @@ export class PositionHistoryService {
         throw new NotFoundException('Tracker introuvable');
       }
       vehicleId = t.vehicle?.id;
+      privacyOn = !!t.vehicle?.privacyModeEnabled;
+    }
+
+    // Mode vie privée (RGPD) — masque tout l'historique du véhicule tant qu'il est actif.
+    if (privacyOn) {
+      return { detail: 'fine', points: [] };
     }
 
     const rangeMs = to.getTime() - from.getTime();

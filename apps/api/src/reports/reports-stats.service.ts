@@ -167,11 +167,15 @@ export class ReportsStatsService {
     const tripVehicleFilter = isVehicleScopeRestricted
       ? { vehicleId: { in: scopedVehicleIds } }
       : {};
+    // Mode vie privée (RGPD) : exclut de TOUTES les agrégations les véhicules
+    // actuellement en mode privé (trajets + alertes portant une localisation).
+    const privacyExclude = { NOT: { vehicle: { privacyModeEnabled: true } } } as const;
     const tripWhere = {
       fleetId,
       ...tripVehicleFilter,
       startedAt: { lte: to },
       endedAt: { gte: from, not: null },
+      ...privacyExclude,
     } as const;
     const alertWhere = {
       fleetId,
@@ -179,6 +183,7 @@ export class ReportsStatsService {
       // Quand un filtre vehicleIds est actif, les alertes sans vehicleId
       // (ex. tracker isole) sont exclues par definition du sous-ensemble.
       ...(isVehicleScopeRestricted ? { vehicleId: { in: scopedVehicleIds } } : {}),
+      ...privacyExclude,
     } as const;
     const recentTripsCap = this.clampRecentTripsCap(filters?.maxRecentTrips);
 

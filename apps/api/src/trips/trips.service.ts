@@ -537,7 +537,8 @@ export class TripsService implements OnModuleInit {
     requestedBy: RequestedBy,
     filters: { vehicleId?: string; vehicleIds?: string; from?: string; to?: string; limit?: string; cursor?: string },
   ): Promise<{ items: Trip[]; nextCursor: string | null }> {
-    const where: Prisma.TripWhereInput = { endedAt: { not: null } };
+    // Mode vie privée (RGPD) : masque les trajets d'un véhicule actuellement en mode privé.
+    const where: Prisma.TripWhereInput = { endedAt: { not: null }, NOT: { vehicle: { privacyModeEnabled: true } } };
     if (requestedBy.role !== UserRole.SUPER_ADMIN) {
       // #31 — fail-closed : un non-super sans fleetId ne voit AUCUN trajet (sinon
       // where.fleetId=null exposerait les trajets a fleetId null). Idem findOne().
@@ -579,6 +580,9 @@ export class TripsService implements OnModuleInit {
       include: { vehicle: true, ...TripsService.NOTES_AUTHOR_INCLUDE },
     });
     if (!trip) throw new NotFoundException('Trajet introuvable');
+
+    // Mode vie privée (RGPD) : un trajet d'un véhicule en mode privé est masqué (404, pas d'énum).
+    if (trip.vehicle?.privacyModeEnabled) throw new NotFoundException('Trajet introuvable');
 
     // Acces granulaire : si l'utilisateur a un access scope (groupes/vehicules),
     // verifier que le vehicule du trajet est bien dans son scope.

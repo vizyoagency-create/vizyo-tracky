@@ -109,6 +109,8 @@ interface BaanoolCardData {
   cutActive: boolean;
   /** Sprint 2 (revue #2) — coupure commandée non confirmée (en attente). Affichage tri-état. */
   cutPending: boolean;
+  /** Mode vie privée actif : la position affichée est FIGÉE (dernière connue avant activation). */
+  privacyModeEnabled?: boolean;
   /** V1.15 — Contexte SUPER_ADMIN. */
   fleetId?: string | null;
   imei?: string | null;
@@ -867,6 +869,13 @@ const RESYNC_RADIUS_M = 150;
               @if (baanoolCard()!.group; as g) { <app-group-badge [group]="g" /> }
               <!-- Connectivité : flague un boîtier hors-ligne / non configuré. -->
               <app-connectivity-badge [state]="cardConnectivity()" [hideWhenOnline]="true" />
+              <!-- Mode vie privée : position figée, collecte en pause. -->
+              @if (baanoolCard()!.privacyModeEnabled) {
+                <span class="bn-vcard-badge" style="color:#38bdf8">
+                  <span class="bn-vcard-badge-dot" style="background:#38bdf8"></span>
+                  Mode privé (position figée)
+                </span>
+              }
               <!-- Sprint 2 (revue #2) — état coupe TRI-ÉTAT (badge statut, distinct du bouton d'action). -->
               @if (baanoolCard()!.cutActive) {
                 <span class="bn-vcard-badge" style="color:#ef4444">
@@ -3865,6 +3874,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       lng: pos.lng,
       cutActive: this.isCutActiveForTracker(trackerId),
       cutPending: this.isCutPendingForTracker(trackerId),
+      privacyModeEnabled: this.realtime.snapshot().find((s) => s.vehicleId === pos.vehicleId)?.privacyModeEnabled ?? false,
       fleetId: meta.fleetId,
       imei: meta.imei,
       lastSeenAt: meta.lastSeenAt,

@@ -636,6 +636,12 @@ export class PositionsService {
       throw new NotFoundException('Tracker introuvable');
     }
 
+    // Mode vie privée (RGPD) — tant qu'il est ACTIF, on ne renvoie AUCUNE position
+    // historique de ce véhicule (masquage, pas suppression : réapparaît si désactivé).
+    if (tracker.vehicle?.privacyModeEnabled) {
+      return { items: [], nextCursor: null };
+    }
+
     const where: Prisma.PositionWhereInput = { trackerId };
     if (filters.from || filters.to) {
       where.timestamp = {};

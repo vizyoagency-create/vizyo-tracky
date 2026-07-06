@@ -42,6 +42,12 @@ export class SpeedReportService {
       throw new ForbiddenException();
     }
 
+    // Mode vie privée (RGPD) — tant qu'il est actif, aucune donnée de localisation de ce
+    // véhicule n'est exposée (le rapport détaille les positions du trajet). On bloque.
+    if (trip.vehicle?.privacyModeEnabled) {
+      throw new ForbiddenException('Véhicule en mode vie privée : rapport indisponible tant que le mode privé est actif.');
+    }
+
     // Resolve tracker IMEI via separate query (Trip has no tracker relation).
     let imei = 'N/A';
     if (trip.trackerId) {

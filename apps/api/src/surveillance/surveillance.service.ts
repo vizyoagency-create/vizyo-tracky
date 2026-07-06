@@ -328,7 +328,9 @@ export class SurveillanceService {
     requestedBy: RequestedBy,
     filters: ListEventsFilters,
   ): Promise<{ items: SurveillanceEvent[]; nextCursor: string | null }> {
-    const where: Prisma.SurveillanceEventWhereInput = {};
+    // Mode vie privée (RGPD) : les événements de surveillance portent lat/lng/vitesse
+    // → masqués tant que le véhicule est en mode privé.
+    const where: Prisma.SurveillanceEventWhereInput = { NOT: { vehicle: { privacyModeEnabled: true } } };
 
     if (requestedBy.role !== UserRole.SUPER_ADMIN) {
       if (!requestedBy.fleetId) return { items: [], nextCursor: null };
