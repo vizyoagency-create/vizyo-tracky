@@ -23,6 +23,8 @@ const TEMPLATE_META: {
   { id: 'lead', label: 'Nouveau lead', category: 'Interne', subject: 'Nouveau lead Tracky — {société}', trigger: 'Formulaire landing page' },
   { id: 'audio_activation', label: 'Écoute audio activée', category: 'Conformité', subject: 'Écoute audio activée — obligations', trigger: 'Activation micro embarqué' },
   { id: 'audio_info', label: 'Mode assistance', category: 'Nouveauté', subject: 'Nouvelle fonction « Mode assistance »', trigger: 'Présentation par le prestataire' },
+  { id: 'installation_slot_requested', label: 'Demande de créneau', category: 'Installation', subject: 'Demande de créneau d\'installation — {flotte}', trigger: 'Client réserve via un lien public' },
+  { id: 'installation_slot_confirmed', label: 'Créneau confirmé', category: 'Installation', subject: 'Votre créneau d\'installation est confirmé', trigger: 'L\'opérateur valide la demande', noOpenTracking: true },
 ];
 const TEMPLATE_IDS = new Set(TEMPLATE_META.map((t) => t.id));
 const TEMPLATE_LABELS = new Map(TEMPLATE_META.map((t) => [t.id as string, t.label]));

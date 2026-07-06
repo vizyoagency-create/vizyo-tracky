@@ -14,7 +14,9 @@ export type EmailTemplateId =
   | 'alert'
   | 'lead'
   | 'audio_activation'
-  | 'audio_info';
+  | 'audio_info'
+  | 'installation_slot_requested'
+  | 'installation_slot_confirmed';
 
 /**
  * V1.5 (Sprint J) — Service d'envoi d'emails via Resend.
@@ -563,6 +565,111 @@ La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fo
     });
   }
 
+  /** Ligne « clé / valeur » réutilisable dans une carte détail (charte). */
+  private kvRow(key: string, value: string, last = false): string {
+    const border = last ? '' : 'border-bottom:1px solid rgba(255,255,255,.06);';
+    return `<tr>
+      <td style="padding:12px 18px;${border}font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:#69736E;white-space:nowrap;">${escapeHtml(key)}</td>
+      <td align="right" style="padding:12px 18px;${border}font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:13px;color:#EAEFED;">${escapeHtml(value)}</td>
+    </tr>`;
+  }
+
+  /**
+   * Prise de RDV en ligne — NOTIFICATION OPÉRATEUR (→ contact@vizyoagency.com) quand un
+   * client dépose une demande de créneau via un lien public.
+   */
+  buildInstallationSlotRequestedEmail(opts: {
+    companyName: string;
+    slotLabel: string;
+    clientName: string;
+    clientEmail: string;
+    clientPhone?: string | null;
+    clientAddress?: string | null;
+    vehicle?: string | null;
+    notes?: string | null;
+    manageUrl: string;
+  }): { subject: string; html: string; text: string } {
+    const subject = `[Vizyo Tracky] Demande de créneau d'installation — ${opts.companyName}`;
+    const rows = [
+      this.kvRow('Créneau', opts.slotLabel),
+      this.kvRow('Client', opts.clientName),
+      this.kvRow('E-mail', opts.clientEmail),
+      opts.clientPhone ? this.kvRow('Téléphone', opts.clientPhone) : '',
+      opts.clientAddress ? this.kvRow('Adresse', opts.clientAddress) : '',
+      opts.vehicle ? this.kvRow('Véhicule', opts.vehicle) : '',
+    ].filter(Boolean);
+    // Dernière ligne sans bordure basse.
+    const body = `
+        <tr><td style="padding:28px 36px 8px;">
+          <h1 style="margin:0 0 6px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:24px;line-height:1.15;font-weight:800;letter-spacing:-0.025em;color:#EAEFED;">Nouvelle demande de créneau</h1>
+          <p style="margin:0;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;line-height:1.6;color:#9BA5A1;">Pour <span style="color:#10E0A0;font-weight:600;">${escapeHtml(opts.companyName)}</span>, à valider.</p>
+        </td></tr>
+        <tr><td style="padding:18px 36px 0;">
+          <table role="presentation" width="100%" style="background:#161D1B;border:1px solid rgba(255,255,255,.07);border-radius:12px;border-collapse:separate;">
+            ${rows.join('')}
+          </table>
+          ${opts.notes ? `<p style="margin:16px 0 0;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:13px;line-height:1.6;color:#9BA5A1;"><span style="color:#69736E;">Note du client :</span> ${escapeHtml(opts.notes)}</p>` : ''}
+        </td></tr>
+        <tr><td style="padding:22px 36px 0;">
+          <table role="presentation"><tr><td style="border-radius:11px;background:#10E0A0;">
+            <a href="${opts.manageUrl}" style="display:inline-block;padding:14px 30px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;font-weight:700;letter-spacing:-0.01em;color:#04130D;text-decoration:none;">Gérer la demande →</a>
+          </td></tr></table>
+        </td></tr>`;
+    const html = this.shell({
+      eyebrow: 'Installation · Demande',
+      footer: 'VIZYO TRACKY · PLANIFICATION DES INSTALLATIONS<br>Notification automatique. Répondez au client via son e-mail.',
+      body,
+    });
+    const text = `Nouvelle demande de créneau d'installation — ${opts.companyName}
+Créneau : ${opts.slotLabel}
+Client : ${opts.clientName} (${opts.clientEmail})${opts.clientPhone ? `\nTéléphone : ${opts.clientPhone}` : ''}${opts.clientAddress ? `\nAdresse : ${opts.clientAddress}` : ''}${opts.vehicle ? `\nVéhicule : ${opts.vehicle}` : ''}${opts.notes ? `\nNote : ${opts.notes}` : ''}
+
+Gérer : ${opts.manageUrl}`;
+    return { subject, html, text };
+  }
+
+  /**
+   * Prise de RDV en ligne — CONFIRMATION CLIENT (→ e-mail du client) quand l'opérateur
+   * valide le créneau. Envoyée depuis contact@vizyoagency.com (RESEND_FROM).
+   */
+  buildInstallationSlotConfirmedEmail(opts: {
+    companyName: string;
+    slotLabel: string;
+    clientName?: string | null;
+    address?: string | null;
+  }): { subject: string; html: string; text: string } {
+    const greeting = opts.clientName ? `Bonjour ${opts.clientName},` : 'Bonjour,';
+    const subject = `[Vizyo Tracky] Votre créneau d'installation est confirmé`;
+    const rows = [
+      this.kvRow('Créneau', opts.slotLabel),
+      opts.address ? this.kvRow('Lieu', opts.address) : '',
+    ].filter(Boolean);
+    const body = `
+        <tr><td style="padding:28px 36px 0;">
+          <div style="width:46px;height:46px;border-radius:12px;background:rgba(16,224,160,.12);text-align:center;line-height:46px;font-size:22px;margin-bottom:18px;">✅</div>
+          <h1 style="margin:0 0 12px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:25px;line-height:1.15;font-weight:800;letter-spacing:-0.025em;color:#EAEFED;">Votre créneau est confirmé</h1>
+          <p style="margin:0 0 6px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:15px;line-height:1.65;color:#9BA5A1;">${escapeHtml(greeting)}</p>
+          <p style="margin:0 0 20px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:15px;line-height:1.65;color:#9BA5A1;">Votre rendez-vous d'installation est bien confirmé. Voici le récapitulatif :</p>
+          <table role="presentation" width="100%" style="background:#161D1B;border:1px solid rgba(255,255,255,.07);border-radius:12px;border-collapse:separate;">
+            ${rows.join('')}
+          </table>
+          <p style="margin:20px 0 0;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:13px;line-height:1.6;color:#69736E;">Un imprévu ? Répondez à cet e-mail pour convenir d'un autre créneau. À très bientôt.</p>
+        </td></tr>`;
+    const html = this.shell({
+      eyebrow: 'Installation · Confirmation',
+      footer: 'VIZYO TRACKY · GPS FLOTTE · OCCITANIE',
+      body,
+    });
+    const text = `${greeting}
+
+Votre créneau d'installation est confirmé.
+Créneau : ${opts.slotLabel}${opts.address ? `\nLieu : ${opts.address}` : ''}
+
+Un imprévu ? Répondez à cet e-mail. À bientôt.
+— L'équipe Vizyo`;
+    return { subject, html, text };
+  }
+
   /**
    * Centre e-mails (admin) — rend un modèle avec des DONNÉES D'EXEMPLE, pour l'aperçu
    * (drawer, via iframe srcdoc) et le bouton « Envoyer un test ». Réutilise les builders
@@ -591,6 +698,25 @@ La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fo
         return this.buildAudioActivationEmail({ fleetName, activatedBy: 'Julien Marchetti' });
       case 'audio_info':
         return this.buildAudioInfoEmail({ recipientName: 'Camille', fleetName });
+      case 'installation_slot_requested':
+        return this.buildInstallationSlotRequestedEmail({
+          companyName: fleetName,
+          slotLabel: 'lun. 7 juil., 08:00 – 10:00',
+          clientName: 'Camille Bernard',
+          clientEmail: 'camille.bernard@example.com',
+          clientPhone: '+33 6 12 34 56 78',
+          clientAddress: '12 rue des Fleurs, 31000 Toulouse',
+          vehicle: 'AB-123-CD · Renault Kangoo · Diesel',
+          notes: 'Disponible plutôt le matin.',
+          manageUrl: `${appBase}/admin/installation-bookings`,
+        });
+      case 'installation_slot_confirmed':
+        return this.buildInstallationSlotConfirmedEmail({
+          companyName: fleetName,
+          slotLabel: 'lun. 7 juil., 08:00 – 10:00',
+          clientName: 'Camille',
+          address: '12 rue des Fleurs, 31000 Toulouse',
+        });
       case 'weekly_report':
         return {
           subject: `[Vizyo Tracky] Rapport hebdomadaire — ${fleetName}`,

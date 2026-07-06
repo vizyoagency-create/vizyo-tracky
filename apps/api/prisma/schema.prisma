@@ -153,6 +153,16 @@ enum InstallationEnergy {
   AUTRE
 }
 
+// Prise de RDV en ligne (lien public). Une demande de creneau passe de PENDING
+// (client a reserve) a CONFIRMED (l'operateur valide -> pose creee) ou REJECTED.
+// CANCELLED = annulee (ex. client/operateur). Cf. InstallationBookingService.
+enum InstallationBookingStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+  CANCELLED
+}
+
 /// Sprint 9 — Metier d'une flotte : conditionne l'objectif d'optimisation IA.
 enum FleetMetier {
   CHILDREN_TRANSPORT
@@ -197,6 +207,7 @@ model Fleet {
   surveillanceProfiles SurveillanceProfile[]
   surveillanceEvents   SurveillanceEvent[]
   installationPlans    InstallationPlan[]
+  installationBookingLinks InstallationBookingLink[]
   // V1.16 — SIM allouees a cette flotte (parc WhereverSIM).
   sims                 Sim[]
   // Sprint 4 — config d'activation de l'ecoute audio (1:1, OFF par defaut).
@@ -1428,6 +1439,7 @@ model InstallationPlan {
   // { "2026-06-08": "Vieux diesels (coupure simple)", ... }
   dayThemes     Json?
   tasks         InstallationTask[]
+  bookingLinks  InstallationBookingLink[]
   createdAt     DateTime               @default(now())
   updatedAt     DateTime               @updatedAt
 
@@ -1471,6 +1483,106 @@ model InstallationTask {
   @@index([vehicleId])
   @@index([trackerId])
   @@map("installation_tasks")
+
+  booking InstallationBooking?
+}
+
+/// Prise de RDV en ligne — LIEN PUBLIC de reservation de creneau d'installation.
+///
+/// Le SUPER_ADMIN genere un lien (scope flotte) a envoyer au client. Le client
+/// ouvre `/book/<token>` (page publique, hors auth), choisit un creneau LIBRE et
+/// depose une demande (InstallationBooking). Le `token` brut vit dans l'URL ; seul
+/// son SHA-256 (`tokenHash`) est stocke (meme pattern que les invitations).
+///
+/// Deux modes :
+///  - GENERIQUE (clientEmail null) : la page publique demande les infos du client.
+///  - DIRECT CLIENT CONNU (clientEmail renseigne) : infos pre-remplies, l'email
+///    n'est PAS redemande (on a deja tout ce qu'il faut pour le prevenir).
+///
+/// `planId` = le planning d'installation alimente par ce lien : cree a la 1re
+/// validation (lazy) OU lie a un plan existant choisi a la creation. Meme lien =>
+/// meme planning (les creneaux valides s'y ajoutent comme des poses).
+///
+/// Config creneaux reglable par lien (defaut : 2h, 08h-21h, lun-ven, horizon 6
+/// semaines, delai mini 24h).
+model InstallationBookingLink {
+  id              String            @id @default(uuid()) @db.Uuid
+  fleetId         String            @db.Uuid
+  fleet           Fleet             @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  planId          String?           @db.Uuid
+  plan            InstallationPlan? @relation(fields: [planId], references: [id], onDelete: SetNull)
+  /// Libelle interne (identifie le lien cote admin).
+  label           String
+  /// Token public (aleatoire, 256 bits) porte par l'URL `/book/<token>`. Lien
+  /// PARTAGEABLE facon Calendly (faible enjeu) : stocke tel quel pour pouvoir
+  /// re-afficher/re-copier l'URL cote admin a tout moment.
+  token           String            @unique
+  /// Client pre-connu (mode « lien direct »). clientEmail present => page publique sans saisie d'email.
+  clientName      String?
+  clientEmail     String?
+  clientPhone     String?
+  clientAddress   String?
+  /// Config creneaux (minutes depuis minuit, fuseau Europe/Paris).
+  slotMinutes     Int               @default(120)
+  dayStartMinutes Int               @default(480)
+  dayEndMinutes   Int               @default(1260)
+  /// Jours ouvres ISO (1=lundi … 7=dimanche).
+  workingDays     Int[]             @default([1, 2, 3, 4, 5])
+  /// Horizon de reservation (jours) et delai minimum avant un creneau (heures).
+  horizonDays     Int               @default(42)
+  leadHours       Int               @default(24)
+  active          Boolean           @default(true)
+  /// true => le lien se ferme apres la 1re reservation confirmee.
+  singleUse       Boolean           @default(false)
+  expiresAt       DateTime?
+  createdBy       String?           @db.Uuid
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  bookings InstallationBooking[]
+
+  @@index([fleetId])
+  @@index([token])
+  @@map("installation_booking_links")
+}
+
+/// Une demande de creneau deposee via un lien public. `startAt`/`endAt` = le
+/// creneau choisi (instants UTC ; affichage en Europe/Paris). L'occupation du
+/// planning est portee par CETTE table (une pose = un booking) : la contrainte
+/// EXCLUDE (btree_gist) garantit qu'aucun creneau actif (PENDING/CONFIRMED) ne
+/// chevauche un autre — anti-double-reservation RACE-PROOF (capacite 1 equipe).
+/// A la validation, on cree la pose (`taskId`) dans le planning du lien.
+model InstallationBooking {
+  id              String                    @id @default(uuid()) @db.Uuid
+  linkId          String                    @db.Uuid
+  link            InstallationBookingLink   @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  /// Denormalise depuis le lien (scoping/filtre sans jointure).
+  fleetId         String                    @db.Uuid
+  startAt         DateTime
+  endAt           DateTime
+  status          InstallationBookingStatus @default(PENDING)
+  clientName      String
+  clientEmail     String
+  clientPhone     String?
+  clientAddress   String?
+  vehiclePlate    String?
+  vehicleBrand    String?
+  vehicleModel    String?
+  vehicleEnergy   InstallationEnergy?
+  notes           String?                   @db.Text
+  /// Pose creee a la validation (SetNull : supprimer la pose n'efface pas l'historique).
+  taskId          String?                   @unique @db.Uuid
+  task            InstallationTask?         @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  rejectionReason String?
+  confirmedAt     DateTime?
+  confirmedBy     String?                   @db.Uuid
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+
+  @@index([linkId])
+  @@index([fleetId, status])
+  @@index([status, startAt])
+  @@map("installation_bookings")
 }
 
 /// V1.16 — Carte SIM M2M du parc WhereverSIM.

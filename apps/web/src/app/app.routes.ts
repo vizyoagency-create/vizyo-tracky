@@ -49,6 +49,13 @@ export const routes: Routes = [
     data: { title: 'Installer Vizyo Tracky' },
   },
   {
+    // Prise de RDV en ligne — page PUBLIQUE (hors auth). Token porté par l'URL.
+    path: 'book/:token',
+    loadComponent: () =>
+      import('./features/booking/public-booking.component').then((m) => m.PublicBookingComponent),
+    data: { title: 'Réserver un créneau d\'installation' },
+  },
+  {
     path: '',
     loadComponent: () =>
       import('./layouts/dashboard-layout.component').then((m) => m.DashboardLayoutComponent),
@@ -229,6 +236,13 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/observability/admin-emails.component').then((m) => m.AdminEmailsComponent),
         data: { title: 'E-mails' },
+      },
+      {
+        path: 'admin/installation-bookings',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/observability/admin-installation-bookings.component').then((m) => m.AdminInstallationBookingsComponent),
+        data: { title: 'Réservations d\'installation' },
       },
       {
         path: 'admin/auth-sync',

@@ -2,7 +2,7 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
   LucideAngularModule, AlertTriangle, Activity, Terminal, MessageSquare,
-  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints, Ear, Mail,
+  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints, Ear, Mail, CalendarClock,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { AdminFixModeService, type AdminAlertSummary } from '../../core/services/admin-fix-mode.service';
@@ -133,6 +133,19 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
             <div class="body-text">
               <h3>Plannings d'installation</h3>
               <p class="desc">Planifier les poses de boîtiers par client, saisir IMEI + SIM à la pose, suivre l'avancement. Le client consulte son planning.</p>
+            </div>
+            <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
+          </div>
+        </a>
+
+        <!-- ── RÉSERVATIONS D'INSTALLATION (wide) ── -->
+        <a routerLink="/admin/installation-bookings" class="card card-wide" style="--i:6">
+          <span class="accent accent-green"></span>
+          <div class="body body-row">
+            <div class="ico ico-green"><lucide-icon [img]="CalendarClock" [size]="20"></lucide-icon></div>
+            <div class="body-text">
+              <h3>Réservations d'installation</h3>
+              <p class="desc">Générer un lien public de prise de RDV, valider les créneaux choisis par les clients (crée la pose + e-mails) et voir l'agenda des poses.</p>
             </div>
             <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
           </div>
@@ -452,6 +465,7 @@ export class AdminHubComponent implements OnInit {
   protected readonly Shield = Shield;
   protected readonly Zap = Zap;
   protected readonly ChevronRight = ChevronRight;
+  protected readonly CalendarClock = CalendarClock;
   protected readonly Database = Database;
   protected readonly ClipboardList = ClipboardList;
   protected readonly CreditCard = CreditCard;
