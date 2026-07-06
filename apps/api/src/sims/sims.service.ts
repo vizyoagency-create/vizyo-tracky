@@ -38,7 +38,9 @@ interface SimFilters {
 
 const SIM_INCLUDE = {
   fleet: { select: { id: true, name: true } },
-  tracker: { select: { id: true, imei: true, vehicle: { select: { plate: true, ...VEHICLE_GROUP_SELECT } } } },
+  // vehicle.fleet = flotte RÉELLE de la SIM quand elle est posée sur un véhicule (fiable,
+  // vs l'allocation `sim.fleet` qui peut être null pour les SIM synchronisées de WhereverSIM).
+  tracker: { select: { id: true, imei: true, vehicle: { select: { plate: true, fleet: { select: { id: true, name: true } }, ...VEHICLE_GROUP_SELECT } } } },
 } satisfies Prisma.SimInclude;
 
 type SimWithRefs = Prisma.SimGetPayload<{ include: typeof SIM_INCLUDE }>;
@@ -455,6 +457,8 @@ export class SimsService {
             imei: s.tracker.imei,
             vehiclePlate: s.tracker.vehicle?.plate ?? null,
             vehicleGroup: vehicleGroupOf(s.tracker.vehicle),
+            // Flotte du véhicule porteur (fiable) — sert au filtre société + à l'affichage.
+            vehicleFleet: s.tracker.vehicle?.fleet ? { id: s.tracker.vehicle.fleet.id, name: s.tracker.vehicle.fleet.name } : null,
           }
         : null,
       externalSyncedAt: s.externalSyncedAt ? s.externalSyncedAt.toISOString() : null,

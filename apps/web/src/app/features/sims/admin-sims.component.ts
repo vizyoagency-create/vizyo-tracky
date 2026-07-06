@@ -132,7 +132,7 @@ import {
                       @if (pct(s) > 0) { <div class="conso-bar"><span [style.width.%]="pct(s)" [class.hot]="pct(s) >= 90"></span></div> }
                     </div>
                   </td>
-                  <td class="dim">{{ s.fleet?.name || '—' }}</td>
+                  <td class="dim">{{ s.tracker?.vehicleFleet?.name || s.fleet?.name || '—' }}</td>
                   <td class="dim">
                     @if (s.tracker) { <span class="mono">{{ s.tracker.imei }}</span>@if (s.tracker.vehiclePlate) { <span class="plate"> · {{ s.tracker.vehiclePlate }}</span> } @if (s.tracker.vehicleGroup) { <app-group-badge [group]="s.tracker.vehicleGroup" /> } }
                     @else { — }
@@ -512,8 +512,9 @@ export class AdminSimsComponent implements OnInit {
 
   readonly filtered = computed(() => {
     // Filtre société global (sélecteur super-admin) : n'affiche que les SIM de la société
-    // choisie (allocation `sim.fleet`). matches() = no-op pour un non-super ou sans société.
-    let list = this.sims().filter((s) => this.fleetFilter.matches(s.fleet?.id ?? null));
+    // choisie. On prend la flotte du VÉHICULE porteur (fiable quand la SIM est posée) et on
+    // retombe sur l'allocation. matches() = no-op pour un non-super ou sans société choisie.
+    let list = this.sims().filter((s) => this.fleetFilter.matches(s.tracker?.vehicleFleet?.id ?? s.fleet?.id ?? null));
     const q = this.search.toLowerCase().trim();
     if (q) {
       list = list.filter((s) =>

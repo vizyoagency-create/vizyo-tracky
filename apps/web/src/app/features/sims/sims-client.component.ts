@@ -4,6 +4,8 @@ import { Link, LucideAngularModule, RefreshCw, Search, Unlink, X } from 'lucide-
 import { simStatusLabel, type SimDto } from '@vizyo/tracky-shared';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { SimsApiService } from '../../core/services/sims.service';
+import { FleetFilterService } from '../../core/services/fleet-filter.service';
+import { AuthService } from '../../core/services/auth.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
 import { formatBytes, formatDataLimit, simBadgeClass } from './sim-ui';
@@ -47,7 +49,7 @@ import { formatBytes, formatDataLimit, simBadgeClass } from './sim-ui';
       } @else if (filtered().length > 0) {
         <div class="sp-table-wrap">
           <table class="sp-table">
-            <thead><tr><th>ICCID</th><th>Numéro</th><th>Statut</th><th>Conso (mois)</th><th>Tracker</th>@if (canAssign) { <th class="ta-r">Actions</th> }</tr></thead>
+            <thead><tr><th>ICCID</th><th>Numéro</th><th>Statut</th><th>Conso (mois)</th>@if (isSuperAdmin()) { <th>Flotte</th> }<th>Tracker</th>@if (canAssign) { <th class="ta-r">Actions</th> }</tr></thead>
             <tbody>
               @for (s of filtered(); track s.id) {
                 <tr>
@@ -55,6 +57,9 @@ import { formatBytes, formatDataLimit, simBadgeClass } from './sim-ui';
                   <td class="mono dim">{{ s.msisdn || '—' }}</td>
                   <td><span class="badge" [class]="badgeClass(s.statusId)">{{ statusLabel(s.statusId) }}</span></td>
                   <td class="dim">{{ fmtBytes(s.monthlyDataVolumeBytes) }} / {{ fmtLimit(s.monthlyDataLimitBytes) }}</td>
+                  @if (isSuperAdmin()) {
+                    <td class="dim">{{ s.tracker?.vehicleFleet?.name || s.fleet?.name || '—' }}</td>
+                  }
                   <td class="dim">
                     @if (s.tracker) { <span class="mono">{{ s.tracker.imei }}</span>@if (s.tracker.vehiclePlate) { · {{ s.tracker.vehiclePlate }} } }
                     @else { <span class="dim">non posée</span> }
@@ -143,7 +148,13 @@ import { formatBytes, formatDataLimit, simBadgeClass } from './sim-ui';
 export class SimsClientComponent implements OnInit {
   private readonly api = inject(SimsApiService);
   private readonly perms = inject(PermissionsService);
+  private readonly fleetFilter = inject(FleetFilterService);
+  private readonly auth = inject(AuthService);
   private readonly toast = inject(ToastService);
+
+  /** Colonne + filtre société : uniquement pour le SUPER_ADMIN (les autres sont déjà
+   *  scopés à leur flotte côté serveur — un client ne voit JAMAIS les SIM d'un autre). */
+  protected readonly isSuperAdmin = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
 
   protected readonly RefreshIcon = RefreshCw;
   protected readonly SearchIcon = Search;
@@ -166,13 +177,18 @@ export class SimsClientComponent implements OnInit {
   trackerSearch = '';
 
   readonly filtered = computed(() => {
+    // Filtre société global (super-admin) : flotte du véhicule porteur (fiable), sinon
+    // allocation. No-op pour un non-super (déjà scopé serveur → matches() = true).
+    let list = this.sims().filter((s) => this.fleetFilter.matches(s.tracker?.vehicleFleet?.id ?? s.fleet?.id ?? null));
     const q = this.search.toLowerCase().trim();
-    if (!q) return this.sims();
-    return this.sims().filter((s) =>
-      s.iccid.toLowerCase().includes(q) ||
-      (s.msisdn ?? '').toLowerCase().includes(q) ||
-      (s.tracker?.imei ?? '').toLowerCase().includes(q) ||
-      (s.tracker?.vehiclePlate ?? '').toLowerCase().includes(q));
+    if (q) {
+      list = list.filter((s) =>
+        s.iccid.toLowerCase().includes(q) ||
+        (s.msisdn ?? '').toLowerCase().includes(q) ||
+        (s.tracker?.imei ?? '').toLowerCase().includes(q) ||
+        (s.tracker?.vehiclePlate ?? '').toLowerCase().includes(q));
+    }
+    return list;
   });
 
   /** Bandeau de stats (maquette) : compte par statut + conso totale du mois. */
