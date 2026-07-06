@@ -9,6 +9,7 @@ import { FleetInsightsService } from './fleet-insights.service';
 import { ForecastService } from './forecast.service';
 import { MaintenancePlansService } from './maintenance-plans.service';
 import { MaintenanceReminderService } from './maintenance-reminder.service';
+import { RecurrenceDetectorService } from './recurrence-detector.service';
 import { ReservationsController } from './reservations.controller';
 import { ReservationsService } from './reservations.service';
 import { VehicleEventsService } from './vehicle-events.service';
@@ -34,6 +35,7 @@ import { VehicleEventsService } from './vehicle-events.service';
     ReservationsService,
     ForecastService,
     AgendaAgentSettingsService,
+    RecurrenceDetectorService,
   ],
   exports: [VehicleEventsService, FleetInsightsService, ReservationsService, ForecastService],
 })
