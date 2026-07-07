@@ -66,26 +66,25 @@ describe('ReservationBookingService (P4 — lien public)', () => {
   });
 
   it('submitPublic : sans contact (e-mail/téléphone) -> 400', async () => {
+    const svc = new ReservationBookingService(makePrisma(), makeReservations([veh('v1', 9)]), makeActivity(), makeNotifier());
+    await expect(
+      svc.submitPublic('t', { ...futureSlot(), seatsNeeded: 5 }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('submitPublic : #4 aucun véhicule dispo pour le besoin -> 400 (le demandeur ne voit rien)', async () => {
     const svc = new ReservationBookingService(makePrisma(), makeReservations([]), makeActivity(), makeNotifier());
     await expect(
-      svc.submitPublic('t', { ...futureSlot(), vehicleIds: ['v1'] }),
+      svc.submitPublic('t', { ...futureSlot(), ...CONTACT, seatsNeeded: 5 }),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('submitPublic : véhicule hors société du lien -> 400 (anti-tamper)', async () => {
-    const prisma = makePrisma({ vehicle: { findMany: jest.fn().mockResolvedValue([]) } });
-    const svc = new ReservationBookingService(prisma, makeReservations([]), makeActivity(), makeNotifier());
-    await expect(
-      svc.submitPublic('t', { ...futureSlot(), ...CONTACT, vehicleIds: ['vX'] }),
-    ).rejects.toBeInstanceOf(BadRequestException);
-  });
-
-  it('submitPublic : crée une demande REQUESTED par véhicule valide + accuse réception', async () => {
-    const prisma = makePrisma({ vehicle: { findMany: jest.fn().mockResolvedValue([{ id: 'v1' }, { id: 'v2' }]) } });
-    const reservations = makeReservations([]);
+  it('submitPublic : #4 sélectionne le(s) véhicule(s) CÔTÉ SERVEUR (sans vehicleIds client) + crée REQUESTED + accuse réception', async () => {
+    // 11 places → combinaison serveur 9+5 = 2 véhicules ; le demandeur n'a envoyé AUCUN véhicule.
+    const reservations = makeReservations([veh('v1', 9), veh('v2', 5)]);
     const notifier = makeNotifier();
-    const svc = new ReservationBookingService(prisma, reservations, makeActivity(), notifier);
-    const res = await svc.submitPublic('t', { ...futureSlot(), ...CONTACT, vehicleIds: ['v1', 'v2'], requesterName: 'Jean' });
+    const svc = new ReservationBookingService(makePrisma(), reservations, makeActivity(), notifier);
+    const res = await svc.submitPublic('t', { ...futureSlot(), ...CONTACT, seatsNeeded: 11, requesterName: 'Jean' });
     expect(res.created).toBe(2);
     expect((reservations as unknown as { systemRequest: jest.Mock }).systemRequest).toHaveBeenCalledTimes(2);
     expect((notifier as unknown as { sendAcknowledgment: jest.Mock }).sendAcknowledgment).toHaveBeenCalled();

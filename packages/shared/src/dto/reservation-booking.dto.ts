@@ -59,7 +59,7 @@ export interface PublicReservationSuggestRequestDto {
   freeText?: string;
 }
 
-/** Soumission publique finale (combinaison choisie). */
+/** Soumission publique : le BESOIN (le serveur choisit le véhicule, invisible au demandeur). */
 export interface SubmitPublicReservationDto {
   startAt: string;
   endAt: string;
@@ -68,7 +68,8 @@ export interface SubmitPublicReservationDto {
   freeText?: string;
   requesterName?: string;
   requesterContact?: string;
-  vehicleIds: string[];
+  // #4 — Plus de `vehicleIds` : un lien public n'expose AUCUN véhicule. Le serveur choisit le
+  // véhicule à la soumission (d'après le besoin) ; le gestionnaire valide.
 }
 
 export interface SubmitPublicReservationResultDto {

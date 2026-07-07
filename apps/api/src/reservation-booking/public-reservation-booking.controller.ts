@@ -2,7 +2,6 @@ import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type {
   ParsePublicNeedDto,
-  PublicReservationSuggestRequestDto,
   SubmitPublicReservationDto,
 } from '@vizyo/tracky-shared';
 import { ReservationBookingService } from './reservation-booking.service';
@@ -30,14 +29,11 @@ export class PublicReservationBookingController {
     return this.svc.parsePublic(token, dto?.text ?? '');
   }
 
-  /** Recherche : véhicules/combinaisons disponibles pour le besoin décrit. */
-  @Post(':token/suggest')
-  @Throttle({ default: { ttl: 60_000, limit: 20 } })
-  suggest(@Param('token') token: string, @Body() dto: PublicReservationSuggestRequestDto) {
-    return this.svc.suggestPublic(token, dto ?? ({} as PublicReservationSuggestRequestDto));
-  }
+  // #4 — La route publique /suggest a été RETIRÉE : un lien public ne doit PAS exposer les véhicules
+  // (données sensibles). Le demandeur décrit son besoin et soumet ; le serveur choisit le véhicule
+  // à la soumission (invisible au demandeur), et un gestionnaire valide.
 
-  /** Soumission : crée des demandes REQUESTED (file de validation). */
+  /** Soumission : crée des demandes REQUESTED (file de validation) — véhicule choisi côté serveur. */
   @Post(':token/submit')
   @Throttle({ default: { ttl: 60_000, limit: 8 } })
   submit(@Param('token') token: string, @Body() dto: SubmitPublicReservationDto) {

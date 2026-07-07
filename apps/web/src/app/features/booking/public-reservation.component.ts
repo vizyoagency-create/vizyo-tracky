@@ -1,12 +1,8 @@
-import { ChangeDetectionStrategy, Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { apiErrorMessage } from '../../core/error/api-error';
 import { ActivatedRoute } from '@angular/router';
-import { LucideAngularModule, CalendarCheck, MapPin, Users, Check, Loader, Send, Sparkles, Mic, MicOff } from 'lucide-angular';
-import type {
-  PublicReservationLinkDto,
-  PublicReservationSuggestionDto,
-  PublicSuggestedVehicleDto,
-} from '@vizyo/tracky-shared';
+import { LucideAngularModule, MapPin, Users, Check, Loader, Send, Sparkles, Mic, MicOff } from 'lucide-angular';
+import type { PublicReservationLinkDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { ReservationBookingApiService } from '../../core/services/reservation-booking.service';
 
@@ -39,7 +35,7 @@ import { ReservationBookingApiService } from '../../core/services/reservation-bo
           <header class="pr-head">
             <span class="pr-brand"><lucide-icon [img]="SparklesIcon" [size]="16"></lucide-icon> {{ link()?.fleetName || 'Réservation' }}</span>
             <h1 class="pr-h1">{{ link()?.label || 'Demander un véhicule' }}</h1>
-            <p class="pr-sub">Décrivez votre besoin — on vous propose les véhicules disponibles.</p>
+            <p class="pr-sub">Décrivez votre besoin — {{ link()?.fleetName || 'la société' }} s'occupe du véhicule et vous confirme.</p>
           </header>
 
           <div class="pr-f">
@@ -72,41 +68,22 @@ import { ReservationBookingApiService } from '../../core/services/reservation-bo
             <label class="pr-f"><span>Fin</span><input type="datetime-local" class="pr-in" [value]="endAt()" (input)="endAt.set($any($event.target).value)"></label>
           </div>
 
+          <!-- #4 — Lien PUBLIC : on n'expose AUCUN véhicule (donnée sensible). Le demandeur décrit son
+               besoin + son contact et envoie ; la société choisit le véhicule et valide. -->
+          <div class="pr-grid">
+            <label class="pr-f"><span>Votre nom</span><input type="text" class="pr-in" [value]="requesterName()" (input)="requesterName.set($any($event.target).value)" placeholder="Nom / structure"></label>
+            <label class="pr-f"><span>Contact <span class="pr-req">obligatoire</span></span><input type="text" class="pr-in" [class.pr-in--req]="!requesterContact().trim()" [value]="requesterContact()" (input)="requesterContact.set($any($event.target).value)" placeholder="E-mail ou téléphone"></label>
+          </div>
+          <p class="pr-hint">📩 Un e-mail ou un téléphone est <strong>obligatoire</strong> : c'est par là que {{ link()?.fleetName || 'la société' }} vous confirmera la réservation.</p>
+
           @if (formError()) { <div class="pr-alert">{{ formError() }}</div> }
+          @if (submitError()) { <div class="pr-alert">{{ submitError() }}</div> }
 
-          <button type="button" class="pr-btn pr-btn--soft" [disabled]="searching()" (click)="search()">
-            @if (searching()) { <lucide-icon [img]="LoaderIcon" [size]="15" class="pr-spin"></lucide-icon> } @else { <lucide-icon [img]="SparklesIcon" [size]="15"></lucide-icon> }
-            Voir les véhicules disponibles
+          <button type="button" class="pr-btn" [disabled]="submitting() || !requesterContact().trim()" (click)="submit()">
+            @if (submitting()) { <lucide-icon [img]="LoaderIcon" [size]="15" class="pr-spin"></lucide-icon> Envoi de la demande… }
+            @else { <lucide-icon [img]="SendIcon" [size]="15"></lucide-icon> Envoyer la demande }
           </button>
-
-          @if (suggestion(); as s) {
-            <div class="pr-result">
-              <p class="pr-result-msg" [class.pr-result-msg--ko]="!s.covered">{{ s.message }}</p>
-              @if (s.combination.length > 0) {
-                <p class="pr-lbl">Proposition ({{ s.totalSeats }} places pour {{ s.seatsNeeded }}) :</p>
-                @for (v of s.combination; track v.vehicleId) {
-                  <label class="pr-veh pr-veh--on"><input type="checkbox" [checked]="selected().has(v.vehicleId)" (change)="toggle(v.vehicleId)"><span class="pr-plate">{{ v.plate || '—' }}</span><span class="pr-seats">{{ v.seats ?? '?' }} places</span></label>
-                }
-              }
-              @if (s.alternatives.length > 0) {
-                <p class="pr-lbl">Autres véhicules libres :</p>
-                @for (v of s.alternatives; track v.vehicleId) {
-                  <label class="pr-veh"><input type="checkbox" [checked]="selected().has(v.vehicleId)" (change)="toggle(v.vehicleId)"><span class="pr-plate">{{ v.plate || '—' }}</span><span class="pr-seats">{{ v.seats ?? '?' }} places</span></label>
-                }
-              }
-
-              <div class="pr-grid">
-                <label class="pr-f"><span>Votre nom</span><input type="text" class="pr-in" [value]="requesterName()" (input)="requesterName.set($any($event.target).value)" placeholder="Nom / structure"></label>
-                <label class="pr-f"><span>Contact <span class="pr-req">obligatoire</span></span><input type="text" class="pr-in" [class.pr-in--req]="!requesterContact().trim()" [value]="requesterContact()" (input)="requesterContact.set($any($event.target).value)" placeholder="E-mail ou téléphone"></label>
-              </div>
-              <p class="pr-hint">📩 Un e-mail ou un téléphone est <strong>obligatoire</strong> pour recevoir la validation de votre réservation.</p>
-              @if (submitError()) { <div class="pr-alert">{{ submitError() }}</div> }
-              <button type="button" class="pr-btn" [disabled]="submitting() || selectedCount() === 0 || !requesterContact().trim()" (click)="submit()">
-                @if (submitting()) { <lucide-icon [img]="LoaderIcon" [size]="15" class="pr-spin"></lucide-icon> } @else { <lucide-icon [img]="SendIcon" [size]="15"></lucide-icon> }
-                Envoyer la demande ({{ selectedCount() }})
-              </button>
-            </div>
-          }
+          <p class="pr-tiny">Votre demande part directement à {{ link()?.fleetName || 'la société' }}, qui choisit le véhicule adapté et vous répond.</p>
         }
       </div>
       <p class="pr-footer">Propulsé par Tracky</p>
@@ -139,6 +116,7 @@ import { ReservationBookingApiService } from '../../core/services/reservation-bo
     .pr-req { font-size: 10px; font-weight: 700; color: #fbbf24; text-transform: uppercase; letter-spacing: .03em; margin-left: 4px; }
     .pr-in--req { border-color: rgba(245,158,11,.55); }
     .pr-hint { font-size: 11.5px; color: #cbd5e1; background: rgba(16,185,129,.08); border: 1px solid rgba(16,185,129,.2); padding: 9px 11px; border-radius: 9px; margin: 0 0 12px; line-height: 1.45; }
+    .pr-tiny { font-size: 11px; color: #9ca3af; text-align: center; margin: 10px 0 0; line-height: 1.4; }
     .pr-btn { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 13px; border-radius: 12px; font-size: 14px; font-weight: 700; background: var(--pr-accent); color: #05261c; cursor: pointer; }
     .pr-btn--soft { background: rgba(16,185,129,.14); color: var(--pr-accent); border: 1px solid rgba(16,185,129,.3); }
     .pr-btn:disabled { opacity: .55; cursor: not-allowed; }
@@ -161,7 +139,6 @@ export class PublicReservationComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly api = inject(ReservationBookingApiService);
 
-  protected readonly CalendarCheckIcon = CalendarCheck;
   protected readonly MapPinIcon = MapPin;
   protected readonly UsersIcon = Users;
   protected readonly CheckIcon = Check;
@@ -183,10 +160,7 @@ export class PublicReservationComponent implements OnInit, OnDestroy {
   protected readonly requesterName = signal('');
   protected readonly requesterContact = signal('');
 
-  protected readonly searching = signal(false);
   protected readonly formError = signal<string | null>(null);
-  protected readonly suggestion = signal<PublicReservationSuggestionDto | null>(null);
-  protected readonly selected = signal<Set<string>>(new Set());
   protected readonly submitting = signal(false);
   protected readonly submitError = signal<string | null>(null);
   protected readonly done = signal<string | null>(null);
@@ -197,8 +171,6 @@ export class PublicReservationComponent implements OnInit, OnDestroy {
   protected readonly parsing = signal(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private recognition: any = null;
-
-  protected readonly selectedCount = computed(() => this.selected().size);
 
   async ngOnInit(): Promise<void> {
     this.token = this.route.snapshot.paramMap.get('token') ?? '';
@@ -227,46 +199,17 @@ export class PublicReservationComponent implements OnInit, OnDestroy {
     return Number.isNaN(d.getTime()) ? null : d.toISOString();
   }
 
-  protected async search(): Promise<void> {
-    this.formError.set(null);
-    this.suggestion.set(null);
-    const startAt = this.iso(this.startAt());
-    const endAt = this.iso(this.endAt());
-    if (!startAt || !endAt) { this.formError.set('Renseignez le créneau.'); return; }
-    this.searching.set(true);
-    try {
-      const seatsNum = parseInt(this.seats(), 10);
-      const res = await firstValueFrom(this.api.suggest(this.token, {
-        startAt, endAt,
-        seatsNeeded: Number.isFinite(seatsNum) && seatsNum > 0 ? seatsNum : undefined,
-        destination: this.destination().trim() || undefined,
-        freeText: this.freeText().trim() || undefined,
-      }));
-      this.suggestion.set(res);
-      // Pré-sélectionne la combinaison proposée + reflète les valeurs extraites.
-      this.selected.set(new Set(res.combination.map((v) => v.vehicleId)));
-      if (!this.seats()) this.seats.set(String(res.seatsNeeded));
-      if (!this.destination() && res.destination) this.destination.set(res.destination);
-    } catch (e) {
-      this.formError.set(this.msg(e, 'Recherche impossible.'));
-    } finally {
-      this.searching.set(false);
-    }
-  }
-
-  protected toggle(id: string): void {
-    const next = new Set(this.selected());
-    if (next.has(id)) next.delete(id); else next.add(id);
-    this.selected.set(next);
-  }
-
+  /**
+   * #4 — Envoi de la demande PUBLIQUE : on transmet le BESOIN (places / destination / créneau /
+   * contact), JAMAIS un véhicule (le demandeur n'en voit aucun). Le serveur choisit le véhicule et
+   * la société valide. Loader visible pendant l'envoi.
+   */
   protected async submit(): Promise<void> {
     this.submitError.set(null);
+    this.formError.set(null);
     const startAt = this.iso(this.startAt());
     const endAt = this.iso(this.endAt());
-    if (!startAt || !endAt) { this.submitError.set('Créneau invalide.'); return; }
-    const vehicleIds = [...this.selected()];
-    if (vehicleIds.length === 0) { this.submitError.set('Choisissez au moins un véhicule.'); return; }
+    if (!startAt || !endAt) { this.submitError.set('Renseignez le créneau (début et fin).'); return; }
     if (!this.requesterContact().trim()) {
       this.submitError.set('Renseignez un e-mail ou un téléphone : il est obligatoire pour recevoir la validation.');
       return;
@@ -275,7 +218,7 @@ export class PublicReservationComponent implements OnInit, OnDestroy {
     try {
       const seatsNum = parseInt(this.seats(), 10);
       const res = await firstValueFrom(this.api.submit(this.token, {
-        startAt, endAt, vehicleIds,
+        startAt, endAt,
         seatsNeeded: Number.isFinite(seatsNum) && seatsNum > 0 ? seatsNum : undefined,
         destination: this.destination().trim() || undefined,
         freeText: this.freeText().trim() || undefined,
@@ -284,7 +227,7 @@ export class PublicReservationComponent implements OnInit, OnDestroy {
       }));
       this.done.set(res.message);
     } catch (e) {
-      this.submitError.set(this.msg(e, 'Envoi impossible.'));
+      this.submitError.set(this.msg(e, 'Envoi impossible. Réessayez dans un instant.'));
     } finally {
       this.submitting.set(false);
     }
@@ -346,7 +289,7 @@ export class PublicReservationComponent implements OnInit, OnDestroy {
     this.listening.set(false);
   }
 
-  /** Analyse IA du besoin dicté → remplit places / destination / créneau, puis lance la recherche. */
+  /** Analyse IA du besoin dicté → remplit places / destination / créneau (le demandeur envoie ensuite). */
   private async parseVoice(text: string): Promise<void> {
     if (!text) return;
     this.parsing.set(true);
@@ -356,9 +299,8 @@ export class PublicReservationComponent implements OnInit, OnDestroy {
       if (r.destination) this.destination.set(r.destination);
       if (r.startAt) this.startAt.set(this.toLocal(new Date(r.startAt)));
       if (r.endAt) this.endAt.set(this.toLocal(new Date(r.endAt)));
-      await this.search();
     } catch {
-      // silencieux : les champs déjà extraits suffisent ; l'utilisateur peut lancer la recherche.
+      // silencieux : les champs déjà extraits suffisent ; le demandeur vérifie puis envoie.
     } finally {
       this.parsing.set(false);
     }

@@ -247,29 +247,30 @@ export class ReservationBookingService {
     if (!contact) {
       throw new BadRequestException('Un e-mail ou un numéro de téléphone est obligatoire pour recevoir la validation de la réservation.');
     }
-    const vehicleIds = [...new Set((dto?.vehicleIds ?? []).filter((x): x is string => typeof x === 'string' && !!x))].slice(0, 10);
-    if (vehicleIds.length === 0) throw new BadRequestException('Choisissez au moins un véhicule.');
-
-    // Anti-tamper : les véhicules DOIVENT appartenir à la société du lien.
-    const vehicles = await this.prisma.vehicle.findMany({
-      where: { id: { in: vehicleIds }, fleetId: link.fleetId },
-      select: { id: true },
-    });
-    if (vehicles.length !== vehicleIds.length) throw new BadRequestException('Véhicule hors périmètre du lien.');
-
+    // #4 — Lien PUBLIC : le demandeur NE VOIT NI NE CHOISIT de véhicule (données sensibles). C'est
+    // le SERVEUR qui trouve le(s) véhicule(s) libre(s) couvrant le besoin (même logique que la
+    // suggestion), invisibles au demandeur. `vehicleIds` du client est IGNORÉ (anti-fuite/anti-tamper).
     const start = new Date(slot.startAt);
     const end = new Date(slot.endAt);
     const destination = (dto?.destination?.trim() || this.extractDestination(dto?.freeText)) ?? null;
+    const combination = await this.pickCombination(link.fleetId, slot, seatsNeeded);
+    const totalSeats = combination.reduce((s, v) => s + (v.seats ?? 0), 0);
+    if (combination.length === 0 || totalSeats < seatsNeeded) {
+      throw new BadRequestException(
+        `Aucun véhicule disponible pour ${seatsNeeded} place(s) sur ce créneau. Essayez un autre horaire.`,
+      );
+    }
+
     const requester = (dto?.requesterName || '').trim().slice(0, 120) || 'Demande publique';
     const bookingRef = randomBytes(8).toString('hex');
     const title = `Demande publique${destination ? ' → ' + destination : ''}`;
 
     let created = 0;
-    for (const vehicleId of vehicleIds) {
-      // REQUESTED = non bloquant : la validation humaine tranche (on ne rejette pas ici).
+    for (const v of combination) {
+      // REQUESTED = non bloquant : la validation humaine tranche (elle peut réaffecter le véhicule).
       await this.reservations.systemRequest({
         fleetId: link.fleetId,
-        vehicleId,
+        vehicleId: v.vehicleId,
         start,
         end,
         title,
@@ -333,6 +334,22 @@ export class ReservationBookingService {
     });
     const heldSet = new Set(held.map((h) => h.vehicleId));
     return vehicles.filter((v) => !heldSet.has(v.vehicleId));
+  }
+
+  /**
+   * #4 — Sélection SERVEUR de la combinaison de véhicules libres couvrant le besoin (lien public :
+   * le demandeur ne voit rien). Réutilise la logique de disponibilité (exclut réservés / en attente /
+   * tenus par l'agent) + la combinaison greedy.
+   */
+  private async pickCombination(
+    fleetId: string,
+    slot: { startAt: string; endAt: string },
+    seatsNeeded: number,
+  ): Promise<SuggestedVehicleDto[]> {
+    const avail = await this.reservations.availableForFleet(fleetId, slot.startAt, slot.endAt, undefined, { excludeRequested: true });
+    const freeVehicles = await this.withoutAgentHeld(fleetId, slot.startAt, slot.endAt, avail.vehicles);
+    const withSeats = freeVehicles.filter((v) => v.seats != null).sort((a, b) => (b.seats ?? 0) - (a.seats ?? 0));
+    return this.greedy(withSeats, seatsNeeded);
   }
 
   /** Couvre le besoin avec le MOINS de véhicules : d'abord un seul qui suffit, sinon cumul décroissant. */
