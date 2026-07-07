@@ -69,17 +69,19 @@ export class TripAnalysisController {
     @Param('tripId') tripId: string,
     @Body() body: { provider?: AiProviderId },
   ): Promise<TripAnalysisDto> {
-    const provider = body?.provider;
+    // Forcer un moteur = usage INTERNE : ignoré pour un client (fleet-admin & -) qui utilise le mode
+    // global (marque blanche). Le récit passe alors par le moteur / mixte réglé, de façon transparente.
+    const provider = req.user.role === UserRole.SUPER_ADMIN ? body?.provider : undefined;
     if (provider && provider !== 'claude' && provider !== 'gpt') throw new BadRequestException('provider invalide');
     return this.llm.narrate(req.user, tripId, provider);
   }
 
   /**
-   * POST /api/trip-analysis/:tripId/compare — mode « Comparer » : le MÊME trajet analysé par Claude
-   * ET GPT, côte à côte (coût ×2). Réservé aux admins (maîtrise du coût).
+   * POST /api/trip-analysis/:tripId/compare — mode « Comparer » (A/B Claude vs GPT). Usage INTERNE :
+   * SUPER-ADMIN uniquement (un client ne doit jamais voir quel moteur tourne — marque blanche).
    */
   @Post(':tripId/compare')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN)
   compare(@Req() req: AuthenticatedRequest, @Param('tripId') tripId: string): Promise<TripNarrativeCompareDto> {
     return this.llm.compare(req.user, tripId);
   }

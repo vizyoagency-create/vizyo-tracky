@@ -1,5 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import type { Prisma } from '@prisma/client';
+import { Prisma, UserRole } from '@prisma/client';
 import type { TripAnalysisDto } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
 import { PrismaService } from '../prisma/prisma.service';
@@ -49,7 +49,7 @@ export class TripAnalysisService {
 
     const result = await this.compute(trip);
     const row = await this.persist(trip, result);
-    return this.toDto(row);
+    return this.toDto(row, this.maskFor(user));
   }
 
   /** Lit l'analyse persistée d'un trajet (null si jamais calculée). */
@@ -57,7 +57,7 @@ export class TripAnalysisService {
     const row = await this.prisma.tripAnalysis.findUnique({ where: { tripId } });
     if (!row) return null;
     if (!(await this.vehicleAccess.hasAccessToVehicle(user, row.vehicleId))) throw new NotFoundException('Trajet introuvable');
-    return this.toDto(row);
+    return this.toDto(row, this.maskFor(user));
   }
 
   /** Analyses récentes d'un véhicule (onglet Trajets / rapports). Scopé véhicule. */
@@ -68,7 +68,16 @@ export class TripAnalysisService {
       orderBy: { computedAt: 'desc' },
       take: Math.min(Math.max(limit, 1), 200),
     });
-    return rows.map((r) => this.toDto(r));
+    const mask = this.maskFor(user);
+    return rows.map((r) => this.toDto(r, mask));
+  }
+
+  /**
+   * Marque blanche : seul le super-admin (équipe interne) voit le vrai moteur (Claude/GPT/Mixte) ;
+   * pour un fleet-admin ou en-dessous (client), on masque en « agent Tracky » (image de marque).
+   */
+  private maskFor(user: AuthUser): boolean {
+    return user.role !== UserRole.SUPER_ADMIN;
   }
 
   // ── Interne ────────────────────────────────────────────────────────────────
@@ -129,7 +138,10 @@ export class TripAnalysisService {
     speedingCount: number; speedingSec: number; maxOverKmh: number; limitsKnown: boolean;
     harshAccel: number; harshBrake: number; ecoScore: number; fuelLiters: number | null; co2Kg: number | null;
     detail: unknown; provider: string | null; narrative: string | null; advice: string | null; trustScore: number | null;
-  }): TripAnalysisDto {
+  }, maskProvider = false): TripAnalysisDto {
+    // Marque blanche : le client ne voit qu'« agent Tracky » (jamais le moteur réel). On garde un
+    // marqueur générique 'tracky' quand un récit existe (pour afficher « par l'agent Tracky »).
+    const provider = maskProvider ? (row.provider ? 'tracky' : null) : row.provider;
     return {
       tripId: row.tripId, vehicleId: row.vehicleId, computedAt: row.computedAt.toISOString(),
       distanceKm: row.distanceKm, durationSec: row.durationSec, movingSec: row.movingSec, avgSpeedKmh: row.avgSpeedKmh, maxSpeedKmh: row.maxSpeedKmh,
@@ -138,7 +150,7 @@ export class TripAnalysisService {
       speedingCount: row.speedingCount, speedingSec: row.speedingSec, maxOverKmh: row.maxOverKmh, limitsKnown: row.limitsKnown,
       harshAccel: row.harshAccel, harshBrake: row.harshBrake, ecoScore: row.ecoScore, fuelLiters: row.fuelLiters, co2Kg: row.co2Kg,
       detail: row.detail as TripAnalysisDto['detail'],
-      provider: row.provider, narrative: row.narrative, advice: row.advice, trustScore: row.trustScore,
+      provider, narrative: row.narrative, advice: row.advice, trustScore: row.trustScore,
     };
   }
 }

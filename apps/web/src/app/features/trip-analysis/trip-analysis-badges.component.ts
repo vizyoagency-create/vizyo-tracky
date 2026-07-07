@@ -245,10 +245,9 @@ export class TripAnalysisBadgesComponent {
 
   protected readonly current = computed(() => this.fresh() ?? this.analysis());
 
-  protected readonly canCompare = computed(() => {
-    const r = this.auth.user()?.role;
-    return r === 'SUPER_ADMIN' || r === 'FLEET_ADMIN';
-  });
+  /** Comparer les 2 moteurs = usage INTERNE (super-admin) : un client (fleet-admin & -) ne voit jamais
+   *  quel moteur tourne (marque blanche « agent Tracky »). */
+  protected readonly canCompare = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
 
   protected readonly ecoTier = computed(() => {
     const s = this.current()?.ecoScore ?? 100;
@@ -269,7 +268,11 @@ export class TripAnalysisBadgesComponent {
 
   protected minutes(sec: number): number { return Math.round(sec / 60); }
   protected trustTier(s: number): 'good' | 'mid' | 'bad' { return s >= 75 ? 'good' : s >= 45 ? 'mid' : 'bad'; }
-  protected providerLabel(p: AiProviderId | string): string { return p === 'gpt' ? 'GPT (OpenAI)' : 'Claude'; }
+  /** Libellé du moteur. MARQUE BLANCHE : tout ce qui n'est pas un moteur nommé (le backend masque en
+   *  'tracky' pour les clients) s'affiche « l'agent Tracky ». Seul le super-admin voit Claude/GPT/Mixte. */
+  protected providerLabel(p: AiProviderId | string): string {
+    return p === 'gpt' ? 'GPT (OpenAI)' : p === 'claude' ? 'Claude' : p === 'both' ? 'Mixte (les 2 IA)' : 'l\'agent Tracky';
+  }
   protected speedingTitle(a: TripAnalysisDto): string {
     return a.limitsKnown
       ? `${a.speedingCount} excès de vitesse — dépassement max +${Math.round(a.maxOverKmh)} km/h`
