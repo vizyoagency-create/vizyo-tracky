@@ -1,5 +1,4 @@
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
-import { DecimalPipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ActivatedRoute } from '@angular/router';
 import { LucideAngularModule, CalendarCheck, MapPin, Users, Check, Loader, Send, Sparkles } from 'lucide-angular';
@@ -21,7 +20,7 @@ import { ReservationBookingApiService } from '../../core/services/reservation-bo
   selector: 'app-public-reservation',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DecimalPipe, LucideAngularModule],
+  imports: [LucideAngularModule],
   template: `
     <div class="pr-page">
       <div class="pr-card">
