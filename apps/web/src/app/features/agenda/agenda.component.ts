@@ -39,6 +39,8 @@ import { ReservationSheetComponent } from './sheets/reservation-sheet.component'
 import { OptimizationSheetComponent } from './sheets/optimization-sheet.component';
 import { AgendaAgentSettingsSheetComponent } from './sheets/agenda-agent-settings-sheet.component';
 import { AgendaAgentProposalsSheetComponent } from './sheets/agenda-agent-proposals-sheet.component';
+import { AiJobPillComponent } from './ai-job-pill.component';
+import { AiJobService, type AiJob } from '../../core/services/ai-job.service';
 import { AuthService } from '../../core/services/auth.service';
 import { AgendaAgentApiService } from '../../core/services/agenda-agent.service';
 import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.directive';
@@ -65,7 +67,7 @@ interface GroupOption {
   selector: 'app-agenda',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, LucideAngularModule, DatePipe, GroupBadgeComponent, AgendaCalendarComponent, ReservationSheetComponent, OptimizationSheetComponent, AgendaAgentSettingsSheetComponent, AgendaAgentProposalsSheetComponent, VehicleLinkDirective],
+  imports: [FormsModule, LucideAngularModule, DatePipe, GroupBadgeComponent, AgendaCalendarComponent, ReservationSheetComponent, OptimizationSheetComponent, AgendaAgentSettingsSheetComponent, AgendaAgentProposalsSheetComponent, AiJobPillComponent, VehicleLinkDirective],
   template: `
     <div class="flex flex-col gap-5">
       <!-- Header + résumé -->
@@ -114,6 +116,9 @@ interface GroupOption {
             }
           </div>
         </div>
+
+        <!-- Suivi des opérations IA lancées en arrière-plan (analyse, optimisation…) -->
+        <app-ai-job-pill (view)="onAiJobView($event)"></app-ai-job-pill>
 
         <!-- Strip de 3 stats -->
         <div class="ag-summary">
@@ -1013,6 +1018,7 @@ export class AgendaComponent implements OnInit {
   private readonly fleetFilter = inject(FleetFilterService);
   private readonly auth = inject(AuthService);
   private readonly agentApi = inject(AgendaAgentApiService);
+  protected readonly aiJob = inject(AiJobService);
 
   // Verrou de scroll pour les overlays custom (modal création/incident + panneau
   // du jour) : fige la page derrière tant qu'un des deux est ouvert.
@@ -1839,6 +1845,23 @@ export class AgendaComponent implements OnInit {
   protected onAgentProposalsChanged(): void {
     this.onReservationChanged();
     void this.loadAgentProposals();
+  }
+
+  /** Clic « Voir » sur une pastille IA PRÊTE : ouvre les résultats selon le type d'opération. */
+  protected onAiJobView(job: AiJob): void {
+    this.aiJob.dismiss(job.id);
+    switch (job.kind) {
+      case 'agent-run':
+        void this.loadAgentProposals();
+        this.openProposals();
+        break;
+      case 'optimization':
+      case 'capacity':
+        this.openOptim();
+        break;
+      case 'report':
+        break; // (rapport : à brancher quand la génération passera en async)
+    }
   }
 
   /** Compteur de propositions en attente (pour la société active). Silencieux si non éligible. */

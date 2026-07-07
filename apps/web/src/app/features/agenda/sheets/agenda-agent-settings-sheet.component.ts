@@ -24,6 +24,7 @@ import { AgendaAgentApiService } from '../../../core/services/agenda-agent.servi
 import { ReservationBookingApiService } from '../../../core/services/reservation-booking.service';
 import { AiApiService } from '../../../core/services/ai.service';
 import { AiUsageApiService } from '../../../core/services/ai-usage.service';
+import { AiJobService } from '../../../core/services/ai-job.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { FleetFilterService } from '../../../core/services/fleet-filter.service';
 import { ToastService } from '../../../shared/ui/toast/toast.service';
@@ -224,6 +225,7 @@ export class AgendaAgentSettingsSheetComponent {
   private readonly auth = inject(AuthService);
   private readonly fleetFilter = inject(FleetFilterService);
   private readonly toast = inject(ToastService);
+  private readonly aiJob = inject(AiJobService);
 
   readonly open = input(false);
   readonly closed = output<void>();
@@ -397,19 +399,23 @@ export class AgendaAgentSettingsSheetComponent {
     }
   }
 
-  /** Lance l'analyse de l'agent maintenant (sans attendre la nuit). */
-  protected async runNow(): Promise<void> {
-    this.running.set(true);
-    this.error.set(null);
-    try {
-      const r = await firstValueFrom(this.agentApi.run(this.currentFleetId()));
-      this.toast.success('Analyse terminée', `${r.created} réservé(s) · ${r.proposed} proposé(s)`);
-      this.saved.emit(); // le parent rafraîchit le compteur de propositions
-    } catch (e) {
-      this.error.set(this.errMsg(e));
-    } finally {
-      this.running.set(false);
-    }
+  /**
+   * Lance l'analyse de l'agent EN ARRIÈRE-PLAN (sans attendre la nuit) : on ferme la modal
+   * immédiatement et une PASTILLE en haut de l'agenda montre « l'IA travaille… » puis les
+   * résultats (cliquables pour ouvrir les propositions). Fini l'attente bloquée sans retour.
+   */
+  protected runNow(): void {
+    this.aiJob.run({
+      kind: 'agent-run',
+      title: 'Analyse de l\'agenda',
+      hint: 'L\'IA parcourt les trajets récurrents et l\'agenda pour proposer (ou placer automatiquement) les réservations utiles. Ça prend quelques secondes…',
+      task: firstValueFrom(this.agentApi.run(this.currentFleetId())),
+      summarize: (r) =>
+        r.created || r.proposed
+          ? `${r.created} réservation(s) placée(s) automatiquement · ${r.proposed} proposition(s) à valider.`
+          : 'Aucune optimisation à proposer pour l\'instant : aucun trajet récurrent assez net sur la période analysée.',
+    });
+    this.closed.emit(); // suivi désormais dans la pastille : plus de blocage de la modal.
   }
 
   private errMsg(e: unknown): string {
