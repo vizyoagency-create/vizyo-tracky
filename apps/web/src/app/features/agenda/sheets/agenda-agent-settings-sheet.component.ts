@@ -11,15 +11,17 @@ import {
 import { DecimalPipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { RouterLink } from '@angular/router';
-import { LucideAngularModule, Settings, X, Loader, Zap, ExternalLink } from 'lucide-angular';
+import { LucideAngularModule, Settings, X, Loader, Zap, ExternalLink, Link2, Copy, Plus, Power } from 'lucide-angular';
 import {
   FLEET_METIER_LABELS,
   type AgendaAgentAutonomy,
   type AgendaAgentFrequency,
   type FleetMetier,
+  type ReservationBookingLinkDto,
 } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { AgendaAgentApiService } from '../../../core/services/agenda-agent.service';
+import { ReservationBookingApiService } from '../../../core/services/reservation-booking.service';
 import { AiApiService } from '../../../core/services/ai.service';
 import { AiUsageApiService } from '../../../core/services/ai-usage.service';
 import { AuthService } from '../../../core/services/auth.service';
@@ -125,6 +127,27 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
               }
               <a routerLink="/admin/ai-usage" class="aas-cost-link" (click)="closed.emit()">Ouvrir le centre Coûts IA <lucide-icon [img]="ExternalLinkIcon" [size]="12"></lucide-icon></a>
             </div>
+
+            <!-- Liens publics de réservation (P4) -->
+            <div class="aas-links">
+              <div class="aas-links-head">
+                <span class="aas-lbl"><lucide-icon [img]="LinkIcon" [size]="13"></lucide-icon> Liens publics de réservation</span>
+                <button type="button" class="aas-mini aas-mini--accent" [disabled]="creatingLink()" (click)="createLink()">
+                  @if (creatingLink()) { <lucide-icon [img]="LoaderIcon" [size]="12" class="aas-spin"></lucide-icon> } @else { <lucide-icon [img]="PlusIcon" [size]="12"></lucide-icon> } Créer
+                </button>
+              </div>
+              <span class="aas-sub">Un tiers décrit son besoin sur une page publique, l'app propose des véhicules ; la demande arrive dans « Demandes ».</span>
+              @for (l of links(); track l.id) {
+                <div class="aas-link" [class.aas-link--off]="!l.active">
+                  <div class="aas-link-main">
+                    <span class="aas-link-url">{{ l.publicUrl }}</span>
+                    <span class="aas-link-meta">{{ l.active ? 'Actif' : 'Inactif' }} · ouvert {{ l.openCount }}×</span>
+                  </div>
+                  <button type="button" class="aas-mini" (click)="copyUrl(l.publicUrl)" title="Copier"><lucide-icon [img]="CopyIcon" [size]="13"></lucide-icon></button>
+                  <button type="button" class="aas-mini" (click)="toggleLink(l)" [title]="l.active ? 'Désactiver' : 'Activer'"><lucide-icon [img]="PowerIcon" [size]="13"></lucide-icon></button>
+                </div>
+              }
+            </div>
           </div>
 
           <div class="aas-foot">
@@ -175,6 +198,15 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
     .aas-cost-list { display: flex; flex-direction: column; gap: 4px; }
     .aas-cost-list li { display: flex; justify-content: space-between; font-size: 12px; color: var(--fg-tertiary); }
     .aas-cost-link { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: var(--tracky-light); }
+    .aas-links { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--border-subtle); padding-top: 12px; }
+    .aas-links-head { display: flex; align-items: center; justify-content: space-between; }
+    .aas-mini { display: inline-flex; align-items: center; gap: 4px; padding: 6px 8px; border-radius: 8px; font-size: 11.5px; font-weight: 700; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-secondary); flex: 0 0 auto; }
+    .aas-mini--accent { background: rgba(16,224,160,.12); color: var(--tracky-light); border-color: rgba(16,224,160,.25); }
+    .aas-link { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); }
+    .aas-link--off { opacity: .55; }
+    .aas-link-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+    .aas-link-url { font-size: 11.5px; color: var(--fg-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .aas-link-meta { font-size: 10.5px; color: var(--fg-tertiary); }
     .aas-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 0 max(6px, env(safe-area-inset-bottom)); margin-top: 2px; border-top: 1px solid var(--border-subtle); }
     .aas-btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; border-radius: 10px; font-size: 13px; font-weight: 700; background: var(--tracky, #10B981); color: #fff; }
     .aas-btn--ghost { background: var(--bg-tertiary); color: var(--fg-secondary); border: 1px solid var(--border-subtle); }
@@ -186,6 +218,7 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
 })
 export class AgendaAgentSettingsSheetComponent {
   private readonly agentApi = inject(AgendaAgentApiService);
+  private readonly bookingApi = inject(ReservationBookingApiService);
   private readonly ai = inject(AiApiService);
   private readonly usage = inject(AiUsageApiService);
   private readonly auth = inject(AuthService);
@@ -201,6 +234,10 @@ export class AgendaAgentSettingsSheetComponent {
   protected readonly LoaderIcon = Loader;
   protected readonly ZapIcon = Zap;
   protected readonly ExternalLinkIcon = ExternalLink;
+  protected readonly LinkIcon = Link2;
+  protected readonly CopyIcon = Copy;
+  protected readonly PlusIcon = Plus;
+  protected readonly PowerIcon = Power;
   protected readonly metiers = Object.keys(FLEET_METIER_LABELS) as FleetMetier[];
 
   protected readonly loading = signal(false);
@@ -225,6 +262,10 @@ export class AgendaAgentSettingsSheetComponent {
   // Coûts
   protected readonly monthCostEur = signal(0);
   protected readonly byAction = signal<{ key: string; label: string; costEur: number }[]>([]);
+
+  // Liens publics de réservation (P4)
+  protected readonly links = signal<ReservationBookingLinkDto[]>([]);
+  protected readonly creatingLink = signal(false);
 
   protected readonly isSuperAdmin = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
   protected readonly needsFleet = computed(() => this.isSuperAdmin() && !this.fleetFilter.selectedFleetId());
@@ -275,6 +316,45 @@ export class AgendaAgentSettingsSheetComponent {
       const sum = await firstValueFrom(this.usage.summary(undefined, undefined, fleetId));
       this.byAction.set(sum.byAction.slice(0, 4).map((r) => ({ key: r.key, label: r.label, costEur: r.costEur })));
     } catch { /* le coût du mois (settings) suffit */ }
+    // Liens publics de réservation (best-effort).
+    try {
+      this.links.set(await firstValueFrom(this.bookingApi.listLinks(fleetId)));
+    } catch {
+      this.links.set([]);
+    }
+  }
+
+  /** Crée un lien public pour la société active + copie l'URL. */
+  protected async createLink(): Promise<void> {
+    this.creatingLink.set(true);
+    try {
+      const link = await firstValueFrom(this.bookingApi.createLink({ fleetId: this.currentFleetId() }));
+      this.links.update((l) => [link, ...l]);
+      await this.copyUrl(link.publicUrl);
+      this.toast.success('Lien créé', 'URL copiée dans le presse-papier.');
+    } catch (e) {
+      this.toast.error('Échec', this.errMsg(e));
+    } finally {
+      this.creatingLink.set(false);
+    }
+  }
+
+  protected async copyUrl(url: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(url);
+      this.toast.success('Lien copié');
+    } catch {
+      /* presse-papier indisponible (contexte non sécurisé) */
+    }
+  }
+
+  protected async toggleLink(link: ReservationBookingLinkDto): Promise<void> {
+    try {
+      const updated = await firstValueFrom(this.bookingApi.setActive(link.id, !link.active));
+      this.links.update((l) => l.map((x) => (x.id === updated.id ? updated : x)));
+    } catch (e) {
+      this.toast.error('Échec', this.errMsg(e));
+    }
   }
 
   protected async onMetierChange(m: string): Promise<void> {

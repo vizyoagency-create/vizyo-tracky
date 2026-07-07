@@ -56,6 +56,13 @@ export const routes: Routes = [
     data: { title: 'Réserver un créneau d\'installation' },
   },
   {
+    // P4 — Demande de réservation de véhicule (public, hors auth). Token porté par l'URL.
+    path: 'reserve/:token',
+    loadComponent: () =>
+      import('./features/booking/public-reservation.component').then((m) => m.PublicReservationComponent),
+    data: { title: 'Demander un véhicule' },
+  },
+  {
     path: '',
     loadComponent: () =>
       import('./layouts/dashboard-layout.component').then((m) => m.DashboardLayoutComponent),
