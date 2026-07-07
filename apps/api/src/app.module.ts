@@ -9,6 +9,7 @@ import type { Env } from './config/env.validation';
 import { AgendaModule } from './agenda/agenda.module';
 import { AiCoreModule } from './ai/ai-core.module';
 import { AiModule } from './ai/ai.module';
+import { TripAnalysisModule } from './trip-analysis/trip-analysis.module';
 import { AiUsageModule } from './ai-usage/ai-usage.module';
 import { GeocodingModule } from './geocoding/geocoding.module';
 import { ReservationBookingModule } from './reservation-booking/reservation-booking.module';
@@ -153,6 +154,8 @@ import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.modul
     AiModule,
     // Palier « Coûts IA » — journalise l'usage/coût de chaque appel IA + budget (super-admin).
     AiUsageModule,
+    // Traçabilité fine des trajets (Palier 2) — analyse déterministe (arrêts, excès OSM, éco) persistée.
+    TripAnalysisModule,
     // Refonte agenda/IA (P3) — géocodage inverse (Nominatim) pour nommer les destinations récurrentes.
     GeocodingModule,
     // Refonte agenda/IA (P4) — lien public de demande de réservation (société fixe).

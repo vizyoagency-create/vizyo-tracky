@@ -1078,6 +1078,74 @@ model AiProviderSettings {
   @@map("ai_provider_settings")
 }
 
+/// Traçabilité fine des trajets (2026-07, Palier 2) — analyse DÉTERMINISTE persistée d'un trajet
+/// (une par Trip). Calculée à partir des positions filtrées : résumé, arrêts, qualité GPS, excès de
+/// vitesse (vs limites OSM), éco-conduite (accélérations/freinages, ralenti, conso estimée). Source
+/// UNIQUE réutilisée partout (fiche véhicule, rapports, replay). Le récit/Trust Score LLM (Palier 3)
+/// s'ajoute dans les colonnes `provider`/`narrative`/`trustScore` sans recalcul.
+model TripAnalysis {
+  id            String   @id @default(uuid()) @db.Uuid
+  tripId        String   @unique @db.Uuid
+  fleetId       String   @db.Uuid
+  vehicleId     String   @db.Uuid
+
+  // Résumé
+  distanceKm    Float
+  durationSec   Int
+  movingSec     Int
+  avgSpeedKmh   Float
+  maxSpeedKmh   Float
+  stopCount     Int
+  idleSec       Int      // moteur tournant à l'arrêt (ignition ON, vitesse ~0)
+
+  // Qualité GPS
+  gpsPoints     Int
+  gpsValidRatio Float    // 0..1
+  gpsLostCount  Int      // trous de signal détectés
+
+  // Excès de vitesse (limites OSM quand connues)
+  speedingCount Int      // nb de segments en excès
+  speedingSec   Int      // durée cumulée en excès
+  maxOverKmh    Float    // plus gros dépassement (km/h au-dessus de la limite)
+  limitsKnown   Boolean  @default(false) // au moins une limite OSM résolue
+
+  // Éco-conduite
+  harshAccel    Int
+  harshBrake    Int
+  ecoScore      Int      // 0..100 (100 = conduite souple/éco)
+  fuelLiters    Float?   // conso estimée
+  co2Kg         Float?
+
+  // Détail structuré réutilisable (arrêts, segments d'excès, itinéraire, tracé simplifié)
+  detail        Json
+
+  // Couche LLM optionnelle (Palier 3) — récit + Trust Score, sans recalcul du déterministe
+  provider      String?  // 'claude' | 'gpt' | null (déterministe seul)
+  narrative     String?
+  advice        String?
+  trustScore    Int?     // Tracky Trust Score 0..100
+
+  computedAt    DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([vehicleId, computedAt])
+  @@index([fleetId, computedAt])
+  @@map("trip_analyses")
+}
+
+/// Cache des limites de vitesse OSM (Overpass `maxspeed`) — clé = coords arrondies (~55 m), comme le
+/// cache de géocodage. On mémorise MÊME l'inconnu (maxspeed=null) pour ne pas re-taper Overpass.
+model SpeedLimitCache {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique
+  maxspeed  Int?     // km/h ; null = inconnu (route sans tag maxspeed)
+  lat       Float
+  lng       Float
+  createdAt DateTime @default(now())
+
+  @@map("speed_limit_cache")
+}
+
 /// Palier B — Journal des actions AUTOMATIQUES / système (arrière-plan), distinct de
 /// UserActivity (actions manuelles front). Alimenté par les primitives d'envoi (email / SMS /
 /// push), les commandes moteur, la purge de rétention et les rapports IA planifiés. Couche
