@@ -5,9 +5,6 @@ import type {
   CreateReservationBookingLinkDto,
   ParsedNeedDto,
   PublicReservationLinkDto,
-  PublicReservationSuggestRequestDto,
-  PublicReservationSuggestionDto,
-  PublicSuggestedVehicleDto,
   ReservationBookingLinkDto,
   SubmitPublicReservationDto,
   SubmitPublicReservationResultDto,
@@ -18,6 +15,7 @@ import { fleetTzFormatter, localParts, localWallToUtc } from '../agenda/fleet-tz
 import { ReservationsService } from '../agenda/reservations.service';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { AnthropicClient } from '../ai/anthropic.client';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 import { ReservationBookingNotifier } from './reservation-booking-notifier.service';
@@ -64,6 +62,8 @@ export class ReservationBookingService {
     // IA d'analyse OPTIONNELLE (voix → champs). Injectée en prod ; omise en spec → repli déterministe.
     private readonly anthropic?: AnthropicClient,
     private readonly aiUsage?: AiUsageService,
+    // Centre d'alerte (@Global) : remonte l'échec de l'analyse IA du besoin dicté (best-effort mais visible).
+    private readonly errorLogger?: ErrorLogger,
   ) {}
 
   private resolveFleetId(user: AuthUser, fleetId?: string): string {
@@ -157,40 +157,6 @@ export class ReservationBookingService {
     return { fleetName: link.fleet?.name ?? null, label: link.label, horizonDays: link.horizonDays, leadHours: link.leadHours };
   }
 
-  async suggestPublic(token: string, need: PublicReservationSuggestRequestDto): Promise<PublicReservationSuggestionDto> {
-    const link = await this.loadActiveLink(token);
-    const slot = this.validateSlot(need?.startAt, need?.endAt, link);
-    const seatsNeeded = this.resolveSeats(need);
-    const destination = (need?.destination?.trim() || this.extractDestination(need?.freeText)) ?? null;
-
-    // excludeRequested : un demandeur public ne voit NI les véhicules réservés NI ceux en ATTENTE
-    // (déjà demandés par un autre). On écarte AUSSI ceux déjà suggérés par l'agent (proposition en
-    // attente qui chevauche) — anti-double-suggestion.
-    const avail = await this.reservations.availableForFleet(link.fleetId, slot.startAt, slot.endAt, undefined, { excludeRequested: true });
-    const freeVehicles = await this.withoutAgentHeld(link.fleetId, slot.startAt, slot.endAt, avail.vehicles);
-    // Combinaison : véhicules libres à places CONNUES, plus grande capacité d'abord.
-    const withSeats = freeVehicles.filter((v) => v.seats != null).sort((a, b) => (b.seats ?? 0) - (a.seats ?? 0));
-    const combination = this.greedy(withSeats, seatsNeeded);
-    const totalSeats = combination.reduce((s, v) => s + (v.seats ?? 0), 0);
-    const covered = totalSeats >= seatsNeeded;
-    const chosen = new Set(combination.map((v) => v.vehicleId));
-    const alternatives = freeVehicles.filter((v) => !chosen.has(v.vehicleId)).map((v) => this.pubVeh(v));
-
-    return {
-      startAt: slot.startAt,
-      endAt: slot.endAt,
-      seatsNeeded,
-      destination,
-      combination: combination.map((v) => this.pubVeh(v)),
-      totalSeats,
-      covered,
-      alternatives,
-      message: covered
-        ? `${combination.length} véhicule(s) proposé(s) pour ${seatsNeeded} place(s).`
-        : `Places insuffisantes sur ce créneau (${totalSeats}/${seatsNeeded}). Choisissez un autre créneau ou ajoutez des véhicules.`,
-    };
-  }
-
   /**
    * Analyse IA RAPIDE d'un besoin dicté (voix → texte) : renvoie places / destination / créneau.
    * Repli DÉTERMINISTE toujours calculé (regex places + destination + dates courantes FR) ; Claude
@@ -231,8 +197,13 @@ export class ReservationBookingService {
           startAt: this.validIso(r.startAt, link) ?? deterministic.startAt,
           endAt: this.validIso(r.endAt, link) ?? deterministic.endAt,
         };
-      } catch {
-        // best-effort : on garde l'analyse déterministe (aucun échec propagé au demandeur public).
+      } catch (e) {
+        // best-effort : on garde l'analyse déterministe (aucun échec propagé au demandeur public), MAIS
+        // on remonte au centre d'alerte (l'admin voit les pannes IA du parsing vocal : clé, quota, timeout).
+        this.logger.warn(`parsePublic (IA) ${link.fleetId} : ${(e as Error)?.message ?? e}`);
+        void this.errorLogger
+          ?.record(e as Error, 'BOOKING_PARSE_AI', { fleetId: link.fleetId, phase: 'parsePublic' })
+          .catch(() => {});
       }
     }
     return deterministic;
@@ -252,12 +223,20 @@ export class ReservationBookingService {
     // suggestion), invisibles au demandeur. `vehicleIds` du client est IGNORÉ (anti-fuite/anti-tamper).
     const start = new Date(slot.startAt);
     const end = new Date(slot.endAt);
-    const destination = (dto?.destination?.trim() || this.extractDestination(dto?.freeText)) ?? null;
-    const combination = await this.pickCombination(link.fleetId, slot, seatsNeeded);
+    // #5 — Entrée publique non authentifiée : borne la destination comme requester(120)/contact(160)/freeText(500).
+    const destination = ((dto?.destination?.trim() || this.extractDestination(dto?.freeText)) ?? null)?.slice(0, 120) ?? null;
+    const { combination, freeCount, withSeatsCount } = await this.pickCombination(link.fleetId, slot, seatsNeeded);
     const totalSeats = combination.reduce((s, v) => s + (v.seats ?? 0), 0);
     if (combination.length === 0 || totalSeats < seatsNeeded) {
+      // Messages SANS chiffre (anti-sondage capacité) + cause juste : si des véhicules sont libres mais
+      // qu'aucun n'a de nombre de places renseigné, ce n'est pas le créneau qui est en cause.
+      if (withSeatsCount === 0 && freeCount > 0) {
+        throw new BadRequestException(
+          "La capacité des véhicules n'est pas encore renseignée par l'organisation : votre demande ne peut pas être traitée automatiquement. Contactez directement l'organisation.",
+        );
+      }
       throw new BadRequestException(
-        `Aucun véhicule disponible pour ${seatsNeeded} place(s) sur ce créneau. Essayez un autre horaire.`,
+        "Aucun véhicule n'est disponible pour ce besoin sur ce créneau. Essayez un autre horaire.",
       );
     }
 
@@ -307,7 +286,8 @@ export class ReservationBookingService {
       fleetId: link.fleetId,
       meta: { created, seatsNeeded, linkId: link.id },
     });
-    return { created, message: `Demande envoyée : ${created} véhicule(s), en attente de validation.` };
+    // Message générique (pas de nombre de véhicules : anti-sondage capacité via le lien public).
+    return { created, message: 'Demande envoyée. Vous recevrez la confirmation dès sa validation par l\'organisation.' };
   }
 
   // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -345,11 +325,13 @@ export class ReservationBookingService {
     fleetId: string,
     slot: { startAt: string; endAt: string },
     seatsNeeded: number,
-  ): Promise<SuggestedVehicleDto[]> {
+  ): Promise<{ combination: SuggestedVehicleDto[]; freeCount: number; withSeatsCount: number }> {
     const avail = await this.reservations.availableForFleet(fleetId, slot.startAt, slot.endAt, undefined, { excludeRequested: true });
     const freeVehicles = await this.withoutAgentHeld(fleetId, slot.startAt, slot.endAt, avail.vehicles);
     const withSeats = freeVehicles.filter((v) => v.seats != null).sort((a, b) => (b.seats ?? 0) - (a.seats ?? 0));
-    return this.greedy(withSeats, seatsNeeded);
+    // freeCount/withSeatsCount : distinguent « créneau complet » de « places non renseignées » dans le
+    // message d'erreur, SANS révéler de chiffres exacts (anti-sondage de la capacité via le lien public).
+    return { combination: this.greedy(withSeats, seatsNeeded), freeCount: freeVehicles.length, withSeatsCount: withSeats.length };
   }
 
   /** Couvre le besoin avec le MOINS de véhicules : d'abord un seul qui suffit, sinon cumul décroissant. */
@@ -489,10 +471,6 @@ export class ReservationBookingService {
       throw new BadRequestException(`Créneau au-delà de l'horizon (${link.horizonDays} j).`);
     }
     return { startAt: s.toISOString(), endAt: e.toISOString() };
-  }
-
-  private pubVeh(v: SuggestedVehicleDto): PublicSuggestedVehicleDto {
-    return { vehicleId: v.vehicleId, plate: v.vehiclePlate, seats: v.seats };
   }
 
   private clampInt(v: unknown, def: number, min: number, max: number): number {

@@ -66,7 +66,7 @@ export class AgendaAgentSettingsService {
     });
     if (!fleet) throw new NotFoundException('Flotte introuvable.');
     const row = await this.prisma.agendaAgentSettings.findUnique({ where: { fleetId: id } });
-    const monthCostEur = await this.aiUsage.monthCostEur(id);
+    const monthCostEur = await this.aiUsage.monthCostEur(id, user);
     return this.toDto(fleet, row, monthCostEur);
   }
 
@@ -84,7 +84,7 @@ export class AgendaAgentSettingsService {
       create: { fleetId: id, updatedByUserId: user.id, ...data },
       update: { updatedByUserId: user.id, ...data },
     });
-    const monthCostEur = await this.aiUsage.monthCostEur(id);
+    const monthCostEur = await this.aiUsage.monthCostEur(id, user);
     return this.toDto(fleet, row, monthCostEur);
   }
 

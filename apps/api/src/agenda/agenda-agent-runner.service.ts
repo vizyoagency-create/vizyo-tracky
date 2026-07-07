@@ -18,6 +18,7 @@ import type {
 import type { AuthUser } from '../auth/types/auth-user';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { AnthropicClient } from '../ai/anthropic.client';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 import { AGENDA_AGENT_SCHEMA, renderAgendaAgentSystem } from './agenda-agent.prompt';
@@ -79,6 +80,9 @@ export class AgendaAgentRunnerService {
     // AgendaModule, AiUsageService @Global) ; omise dans les specs → 100% déterministe.
     private readonly anthropic?: AnthropicClient,
     private readonly aiUsage?: AiUsageService,
+    // Centre d'alerte (@Global) : remonte les échecs des runs de FOND (planifié / événementiel / IA)
+    // qui, sinon, ne journalisent qu'en console. Omis dans les specs (construction manuelle).
+    private readonly errorLogger?: ErrorLogger,
   ) {}
 
   private resolveFleetId(user: AuthUser, fleetId?: string): string {
@@ -219,6 +223,9 @@ export class AgendaAgentRunnerService {
       rows = await this.prisma.agendaAgentSettings.findMany({ where: { enabled: true } });
     } catch (e) {
       this.logger.error(`runScheduled (lecture réglages) : ${(e as Error)?.message ?? e}`);
+      void this.errorLogger
+        ?.record(e as Error, 'AGENDA_AGENT', { phase: 'runScheduled:settings' }, 'CRITICAL')
+        .catch(() => {});
       return;
     }
     const fmt = fleetTzFormatter();
@@ -231,6 +238,9 @@ export class AgendaAgentRunnerService {
         await this.runForFleet(s.fleetId, 'scheduled');
       } catch (e) {
         this.logger.error(`runScheduled ${s.fleetId} : ${(e as Error)?.message ?? e}`);
+        void this.errorLogger
+          ?.record(e as Error, 'AGENDA_AGENT', { fleetId: s.fleetId, phase: 'runScheduled' })
+          .catch(() => {});
       }
     }
   }
@@ -256,6 +266,9 @@ export class AgendaAgentRunnerService {
       await this.runForFleet(fleetId, kind);
     } catch (e) {
       this.logger.error(`onTrigger ${fleetId}/${kind} : ${(e as Error)?.message ?? e}`);
+      void this.errorLogger
+        ?.record(e as Error, 'AGENDA_AGENT', { fleetId, phase: `onTrigger:${kind}` })
+        .catch(() => {});
     }
   }
 
@@ -410,8 +423,13 @@ export class AgendaAgentRunnerService {
         latencyMs: call.latencyMs, ok: true,
       });
     } catch (e) {
-      // Best-effort : l'échec IA ne casse pas l'agent (raisonnement déterministe conservé).
+      // Best-effort : l'échec IA ne casse pas l'agent (raisonnement déterministe conservé), MAIS on le
+      // remonte au centre d'alerte — c'est exactement le « aucun retour » que l'admin doit pouvoir
+      // diagnostiquer (clé API absente, quota, timeout Claude…).
       this.logger.warn(`reviewPatterns ${fleetId} : ${(e as Error)?.message ?? e}`);
+      void this.errorLogger
+        ?.record(e as Error, 'AGENDA_AGENT_AI', { fleetId, phase: 'reviewPatterns' })
+        .catch(() => {});
     }
     return out;
   }

@@ -13,29 +13,6 @@ export interface PublicReservationLinkDto {
   leadHours: number;
 }
 
-/** Un véhicule proposé (vue publique, minimale). */
-export interface PublicSuggestedVehicleDto {
-  vehicleId: string;
-  plate: string | null;
-  seats: number | null;
-}
-
-/** Résultat de la recherche publique : une combinaison couvrant le besoin + alternatives. */
-export interface PublicReservationSuggestionDto {
-  startAt: string;
-  endAt: string;
-  seatsNeeded: number;
-  /** Destination éventuellement extraite/renseignée. */
-  destination: string | null;
-  /** Combinaison proposée (1 véhicule ou plusieurs) couvrant le besoin. */
-  combination: PublicSuggestedVehicleDto[];
-  totalSeats: number;
-  covered: boolean;
-  /** Autres véhicules libres (alternatives). */
-  alternatives: PublicSuggestedVehicleDto[];
-  message: string;
-}
-
 /** Analyse IA rapide d'un besoin DICTÉ (voix → texte) : extrait les champs du formulaire. */
 export interface ParsePublicNeedDto {
   text: string;
@@ -47,16 +24,6 @@ export interface ParsedNeedDto {
   destination: string | null;
   startAt: string | null;
   endAt: string | null;
-}
-
-/** Recherche publique (le tiers décrit son besoin). */
-export interface PublicReservationSuggestRequestDto {
-  startAt: string; // ISO
-  endAt: string; // ISO
-  seatsNeeded?: number;
-  destination?: string;
-  /** Texte libre (« j'ai besoin de 11 places pour Carcassonne ») — places extraites si absentes. */
-  freeText?: string;
 }
 
 /** Soumission publique : le BESOIN (le serveur choisit le véhicule, invisible au demandeur). */

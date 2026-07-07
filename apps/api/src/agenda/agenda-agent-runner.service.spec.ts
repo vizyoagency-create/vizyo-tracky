@@ -62,6 +62,10 @@ function makeReservations(over: Record<string, unknown> = {}) {
 }
 const makeEvents = () => ({ assertVehicleAccess: jest.fn().mockResolvedValue('f1') } as never);
 const makeActivity = () => ({ record: jest.fn() } as never);
+const makeErrors = () => ({ record: jest.fn().mockResolvedValue('log-1') } as never);
+/** Anthropic dont l'appel IA ÉCHOUE (quota/timeout) → l'agent doit dégrader ET journaliser l'alerte. */
+const makeAnthropicThrows = () =>
+  ({ isConfigured: () => true, completeJson: jest.fn().mockRejectedValue(new Error('quota dépassé')) } as never);
 
 describe('AgendaAgentRunnerService (P3.3 — agent nocturne)', () => {
   it('auto (confiance ≥ seuil) : crée des réservations FERMES (auto_applied)', async () => {
@@ -115,6 +119,23 @@ describe('AgendaAgentRunnerService (P3.3 — agent nocturne)', () => {
     expect((prisma as unknown as { agendaAgentProposal: { create: jest.Mock } }).agendaAgentProposal.create).not.toHaveBeenCalled();
     expect((anthropic as unknown as { completeJson: jest.Mock }).completeJson).toHaveBeenCalled();
     expect((aiUsage as unknown as { record: jest.Mock }).record).toHaveBeenCalledWith(expect.objectContaining({ action: 'agenda_agent', fleetId: 'f1' }));
+  });
+
+  it('échec de la couche IA -> journalisé au centre d\'alerte (AGENDA_AGENT_AI) sans casser le run', async () => {
+    const prisma = makePrisma(makeSettings({ autonomy: 'suggest' }));
+    const errors = makeErrors();
+    const svc = new AgendaAgentRunnerService(
+      prisma, makeDetector([PATTERN]), makeReservations(), makeEvents(), makeActivity(),
+      makeAnthropicThrows(), makeAiUsage(), errors,
+    );
+
+    const res = await svc.runForFleet('f1', 'manual'); // ne throw pas : dégrade en déterministe
+    expect(res.proposed).toBeGreaterThanOrEqual(1); // l'agent a quand même proposé (fallback)
+    expect((errors as unknown as { record: jest.Mock }).record).toHaveBeenCalledWith(
+      expect.any(Error),
+      'AGENDA_AGENT_AI',
+      expect.objectContaining({ fleetId: 'f1' }),
+    );
   });
 
   it('planifié + agent désactivé : no-op (ne détecte même pas)', async () => {

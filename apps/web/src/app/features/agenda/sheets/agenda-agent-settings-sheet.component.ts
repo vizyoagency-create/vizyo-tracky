@@ -405,6 +405,9 @@ export class AgendaAgentSettingsSheetComponent {
    * résultats (cliquables pour ouvrir les propositions). Fini l'attente bloquée sans retour.
    */
   protected runNow(): void {
+    // Anti-double-lancement : la feuille reste montée ~220 ms après fermeture (animation de sortie).
+    // Sans cette garde, un double-tap créerait 2 analyses → coût IA doublé ET double placement auto possible.
+    if (this.aiJob.hasRunningOf('agent-run')) { this.closed.emit(); return; }
     this.aiJob.run({
       kind: 'agent-run',
       title: 'Analyse de l\'agenda',

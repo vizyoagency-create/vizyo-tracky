@@ -19,7 +19,7 @@ import { AiJobService, type AiJob } from '../../core/services/ai-job.service';
   imports: [LucideAngularModule],
   template: `
     @if (jobs().length > 0) {
-      <div class="ajp">
+      <div class="ajp" role="status" aria-live="polite">
         @for (j of jobs(); track j.id) {
           <div class="ajp-card"
                [class.ajp-card--run]="j.status === 'running'"
@@ -60,13 +60,16 @@ import { AiJobService, type AiJob } from '../../core/services/ai-job.service';
                   Voir <lucide-icon [img]="ArrowRightIcon" [size]="14"></lucide-icon>
                 </button>
               }
-              @if (j.status !== 'running') {
-                <button type="button" class="ajp-x" (click)="jobSvc.dismiss(j.id)" aria-label="Fermer">
-                  <lucide-icon [img]="XIcon" [size]="15"></lucide-icon>
-                </button>
-              } @else {
+              @if (j.status === 'running') {
                 <lucide-icon [img]="LoaderIcon" [size]="15" class="ajp-spin"></lucide-icon>
               }
+              <!-- Toujours effaçable, MÊME en cours : sinon une requête qui ne répond jamais (socket
+                   pendu) laisse une pastille « IA en cours… » bloquée à vie. Masquer n'annule pas la
+                   tâche (elle finit en arrière-plan, son résultat est simplement ignoré). -->
+              <button type="button" class="ajp-x" (click)="jobSvc.dismiss(j.id)"
+                      [attr.aria-label]="j.status === 'running' ? 'Masquer (l’analyse continue en arrière-plan)' : 'Fermer'">
+                <lucide-icon [img]="XIcon" [size]="15"></lucide-icon>
+              </button>
             </div>
           </div>
         }

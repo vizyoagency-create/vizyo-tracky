@@ -61,14 +61,15 @@ export class AiUsageController {
   /** GET /api/admin/ai-usage/budget — budget mensuel + dépense du mois + statut (global). */
   @Get('budget')
   @Roles(UserRole.SUPER_ADMIN)
-  budget() {
-    return this.svc.getBudget();
+  budget(@Req() req: AuthenticatedRequest) {
+    // viewer : owner plateforme exclu de la dépense du mois pour un super-admin non-owner.
+    return this.svc.getBudget(req.user);
   }
 
   /** PUT /api/admin/ai-usage/budget — règle le budget mensuel (€). */
   @Put('budget')
   @Roles(UserRole.SUPER_ADMIN)
   setBudget(@Body() dto: SetAiBudgetBodyDto, @Req() req: AuthenticatedRequest) {
-    return this.svc.setBudget(dto.monthlyBudgetEur, req.user.id);
+    return this.svc.setBudget(dto.monthlyBudgetEur, req.user.id, req.user);
   }
 }

@@ -366,6 +366,8 @@ export class OptimizationSheetComponent {
    */
   protected runCapacity(): void {
     if (this.needsFleet()) { this.capError.set('Sélectionnez une flotte pour analyser son parc.'); return; }
+    // Anti-double-lancement (feuille encore montée ~220 ms après fermeture) : évite 2 analyses.
+    if (this.aiJob.hasRunningOf('optimization')) { this.closed.emit(); return; }
     this.aiJob.run({
       kind: 'optimization',
       title: 'Analyse des capacités',

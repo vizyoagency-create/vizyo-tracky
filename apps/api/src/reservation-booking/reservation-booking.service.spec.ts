@@ -40,29 +40,11 @@ const CONTACT = { requesterContact: 'ecole@test.fr' };
 const veh = (id: string, seats: number | null) => ({ vehicleId: id, vehiclePlate: id.toUpperCase(), seats, childSeats: 0, features: [], utilizationRatio: 0, underutilized: true });
 
 describe('ReservationBookingService (P4 — lien public)', () => {
-  it('suggestPublic : combine des véhicules pour couvrir 11 places (9 + 5)', async () => {
-    const reservations = makeReservations([veh('v1', 9), veh('v2', 5), veh('v3', 4)]);
-    const svc = new ReservationBookingService(makePrisma(), reservations, makeActivity(), makeNotifier());
-    const res = await svc.suggestPublic('t', { ...futureSlot(), seatsNeeded: 11 });
-    expect(res.covered).toBe(true);
-    expect(res.totalSeats).toBeGreaterThanOrEqual(11);
-    expect(res.combination.length).toBe(2); // 9 + 5
-  });
-
-  it('suggestPublic : un seul véhicule suffit s\'il est assez grand', async () => {
+  it('submitPublic : un seul véhicule assez grand suffit (sélection serveur greedy, created=1)', async () => {
     const reservations = makeReservations([veh('v1', 15), veh('v2', 5)]);
     const svc = new ReservationBookingService(makePrisma(), reservations, makeActivity(), makeNotifier());
-    const res = await svc.suggestPublic('t', { ...futureSlot(), seatsNeeded: 11 });
-    expect(res.combination.map((v) => v.vehicleId)).toEqual(['v1']);
-    expect(res.covered).toBe(true);
-  });
-
-  it('suggestPublic : extrait places + destination du texte libre', async () => {
-    const reservations = makeReservations([veh('v1', 15)]);
-    const svc = new ReservationBookingService(makePrisma(), reservations, makeActivity(), makeNotifier());
-    const res = await svc.suggestPublic('t', { ...futureSlot(), freeText: "j'ai besoin de 11 places pour Carcassonne" });
-    expect(res.seatsNeeded).toBe(11);
-    expect(res.destination).toBe('Carcassonne');
+    const res = await svc.submitPublic('t', { ...futureSlot(), ...CONTACT, seatsNeeded: 11 });
+    expect(res.created).toBe(1); // v1 (15) couvre 11 à lui seul
   });
 
   it('submitPublic : sans contact (e-mail/téléphone) -> 400', async () => {
@@ -90,18 +72,25 @@ describe('ReservationBookingService (P4 — lien public)', () => {
     expect((notifier as unknown as { sendAcknowledgment: jest.Mock }).sendAcknowledgment).toHaveBeenCalled();
   });
 
-  it('suggestPublic : exclut les véhicules retenus par une proposition IA en attente', async () => {
+  it('submitPublic : exclut les véhicules retenus par une proposition IA en attente (sélection serveur)', async () => {
     const prisma = makePrisma({ agendaAgentProposal: { findMany: jest.fn().mockResolvedValue([{ vehicleId: 'v1' }]) } });
     const reservations = makeReservations([veh('v1', 9), veh('v2', 5)]);
     const svc = new ReservationBookingService(prisma, reservations, makeActivity(), makeNotifier());
-    const res = await svc.suggestPublic('t', { ...futureSlot(), seatsNeeded: 5 });
-    // v1 est écarté (proposé par l'agent) → seul v2 reste proposable/alternatif.
-    const all = [...res.combination, ...res.alternatives].map((v) => v.vehicleId);
-    expect(all).not.toContain('v1');
-    expect(all).toContain('v2');
+    // besoin 5 places : v1 (9) est tenu par l'agent → le serveur retient v2 (5), jamais v1.
+    const res = await svc.submitPublic('t', { ...futureSlot(), ...CONTACT, seatsNeeded: 5 });
+    expect(res.created).toBe(1);
+    const requested = (reservations as unknown as { systemRequest: jest.Mock }).systemRequest.mock.calls.map((c) => c[0].vehicleId);
+    expect(requested).toEqual(['v2']); // v1 exclu
     // excludeRequested propagé à availableForFleet.
     expect((reservations as unknown as { availableForFleet: jest.Mock }).availableForFleet)
       .toHaveBeenCalledWith('f1', expect.any(String), expect.any(String), undefined, { excludeRequested: true });
+  });
+
+  it('submitPublic : #4 véhicules libres SANS places renseignées -> message « capacité non renseignée » (pas « créneau »)', async () => {
+    const reservations = makeReservations([veh('v1', null), veh('v2', null)]); // libres mais capacité inconnue
+    const svc = new ReservationBookingService(makePrisma(), reservations, makeActivity(), makeNotifier());
+    await expect(svc.submitPublic('t', { ...futureSlot(), ...CONTACT, seatsNeeded: 5 }))
+      .rejects.toThrow(/capacité/i);
   });
 
   it('parsePublic : extrait places + destination + créneau (déterministe) du texte dicté', async () => {

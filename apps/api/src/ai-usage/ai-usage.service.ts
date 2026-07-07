@@ -202,7 +202,7 @@ export class AiUsageService {
 
     const totalCostUsd = agg._sum.costUsd ?? 0;
     // Budget : global (super-admin) OU vue scopée flotte (visibilité seule, pas de plafond par flotte).
-    const budget = scopeFleetId ? await this.fleetBudgetView(scopeFleetId, rate) : await this.getBudget();
+    const budget = scopeFleetId ? await this.fleetBudgetView(scopeFleetId, rate, viewer) : await this.getBudget(viewer);
 
     return {
       from: from.toISOString(),
@@ -283,23 +283,35 @@ export class AiUsageService {
     return d;
   }
 
-  /** Dépense IA (USD) d'une flotte depuis le 1er du mois courant. */
-  private async fleetMonthSpendUsd(fleetId: string): Promise<number> {
+  /**
+   * Fragment WHERE excluant les appels IA de l'owner plateforme pour un viewer non-owner. IDENTIQUE
+   * à la logique de `summary`/`logs` : sans lui, la DÉPENSE DU MOIS (budget) trahirait un coût masqué
+   * (delta entre « dépensé » et Σ des lignes par utilisateur). `userId` NULLABLE (appels système) → on
+   * conserve les null. Masque par DÉFAUT (viewer omis = non-owner) : sûr.
+   */
+  private async ownerAiExclusion(viewer: { isOwner?: boolean | null }): Promise<Prisma.AiUsageLogWhereInput> {
+    if (!this.ownerVis.isMasked(viewer)) return {};
+    const ownerIds = await this.ownerVis.getOwnerIds();
+    return ownerIds.length ? { OR: [{ userId: null }, { userId: { notIn: ownerIds } }] } : {};
+  }
+
+  /** Dépense IA (USD) d'une flotte depuis le 1er du mois courant (owner exclu pour un viewer non-owner). */
+  private async fleetMonthSpendUsd(fleetId: string, viewer: { isOwner?: boolean | null } = {}): Promise<number> {
     const agg = await this.prisma.aiUsageLog.aggregate({
-      where: { fleetId, createdAt: { gte: this.monthStart() } },
+      where: { fleetId, createdAt: { gte: this.monthStart() }, ...(await this.ownerAiExclusion(viewer)) },
       _sum: { costUsd: true },
     });
     return agg._sum.costUsd ?? 0;
   }
 
   /** Coût IA (€) d'une flotte depuis le 1er du mois — pour la ⚙️ agenda + les vues scopées. */
-  async monthCostEur(fleetId: string): Promise<number> {
-    return (await this.fleetMonthSpendUsd(fleetId)) * this.usdToEur();
+  async monthCostEur(fleetId: string, viewer: { isOwner?: boolean | null } = {}): Promise<number> {
+    return (await this.fleetMonthSpendUsd(fleetId, viewer)) * this.usdToEur();
   }
 
   /** Vue budget SCOPÉE flotte : pas de plafond par flotte (visibilité seule), juste la dépense du mois. */
-  private async fleetBudgetView(fleetId: string, rate: number): Promise<AiUsageBudgetDto> {
-    const usd = await this.fleetMonthSpendUsd(fleetId);
+  private async fleetBudgetView(fleetId: string, rate: number, viewer: { isOwner?: boolean | null } = {}): Promise<AiUsageBudgetDto> {
+    const usd = await this.fleetMonthSpendUsd(fleetId, viewer);
     return {
       monthlyBudgetEur: 0,
       spentThisMonthEur: usd * rate,
@@ -312,14 +324,15 @@ export class AiUsageService {
 
   // ─── Budget mensuel (singleton) ────────────────────────────────────────────
 
-  async getBudget(): Promise<AiUsageBudgetDto> {
+  async getBudget(viewer: { isOwner?: boolean | null } = {}): Promise<AiUsageBudgetDto> {
     const rate = this.usdToEur();
     const row = await this.prisma.aiBudget.findFirst({ orderBy: { updatedAt: 'desc' } });
     const monthlyBudgetEur = row?.monthlyBudgetEur ?? 0;
     const monthStart = new Date();
     monthStart.setDate(1);
     monthStart.setHours(0, 0, 0, 0);
-    const agg = await this.prisma.aiUsageLog.aggregate({ where: { createdAt: { gte: monthStart } }, _sum: { costUsd: true } });
+    // Owner plateforme exclu de la dépense du mois pour un viewer non-owner (cohérent avec summary/logs).
+    const agg = await this.prisma.aiUsageLog.aggregate({ where: { createdAt: { gte: monthStart }, ...(await this.ownerAiExclusion(viewer)) }, _sum: { costUsd: true } });
     const spentThisMonthUsd = agg._sum.costUsd ?? 0;
     const spentThisMonthEur = spentThisMonthUsd * rate;
     let status: AiBudgetStatus = 'none';
@@ -337,7 +350,7 @@ export class AiUsageService {
     };
   }
 
-  async setBudget(monthlyBudgetEur: number, userId?: string): Promise<AiUsageBudgetDto> {
+  async setBudget(monthlyBudgetEur: number, userId?: string, viewer: { isOwner?: boolean | null } = {}): Promise<AiUsageBudgetDto> {
     const value = Number.isFinite(monthlyBudgetEur) && monthlyBudgetEur >= 0 ? monthlyBudgetEur : 0;
     const existing = await this.prisma.aiBudget.findFirst();
     if (existing) {
@@ -345,6 +358,6 @@ export class AiUsageService {
     } else {
       await this.prisma.aiBudget.create({ data: { monthlyBudgetEur: value, updatedByUserId: userId ?? null } });
     }
-    return this.getBudget();
+    return this.getBudget(viewer);
   }
 }

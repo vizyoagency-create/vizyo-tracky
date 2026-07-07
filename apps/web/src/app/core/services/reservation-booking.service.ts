@@ -4,8 +4,6 @@ import type {
   CreateReservationBookingLinkDto,
   ParsedNeedDto,
   PublicReservationLinkDto,
-  PublicReservationSuggestRequestDto,
-  PublicReservationSuggestionDto,
   ReservationBookingLinkDto,
   SubmitPublicReservationDto,
   SubmitPublicReservationResultDto,
@@ -30,9 +28,6 @@ export class ReservationBookingApiService {
     return this.http.post<ParsedNeedDto>(`/api/public/reserve/${encodeURIComponent(token)}/parse`, { text });
   }
 
-  suggest(token: string, body: PublicReservationSuggestRequestDto): Observable<PublicReservationSuggestionDto> {
-    return this.http.post<PublicReservationSuggestionDto>(`/api/public/reserve/${encodeURIComponent(token)}/suggest`, body);
-  }
   submit(token: string, body: SubmitPublicReservationDto): Observable<SubmitPublicReservationResultDto> {
     return this.http.post<SubmitPublicReservationResultDto>(`/api/public/reserve/${encodeURIComponent(token)}/submit`, body);
   }

@@ -45,6 +45,9 @@ function makeGeocode() {
 function makeStops(stops: TripStop[] = []) {
   return { deriveStops: jest.fn().mockResolvedValue(stops) } as never;
 }
+/** Détecteur d'arrêts en PANNE (ex. lecture Position échoue) → doit être remonté au centre d'alerte. */
+const makeStopsThrows = () => ({ deriveStops: jest.fn().mockRejectedValue(new Error('DB positions HS')) } as never);
+const makeErrors = () => ({ record: jest.fn().mockResolvedValue('log-1') } as never);
 
 describe('RecurrenceDetectorService (P3.2 + #3 itinéraire réel)', () => {
   it('sépare 2 destinations récurrentes du même véhicule/jour + géocode, exclut le sous-seuil', async () => {
@@ -103,6 +106,24 @@ describe('RecurrenceDetectorService (P3.2 + #3 itinéraire réel)', () => {
     expect(p.basis).toContain('itinéraire : Borderouge → Ramonville');
     // Le centroïde « destination » a suivi le 1er arrêt réel.
     expect(p.destLat).toBeCloseTo(43.63, 2);
+  });
+
+  it('capture : un échec de deriveStops est remonté au centre d\'alerte (AGENDA_RECURRENCE) sans casser l\'analyse', async () => {
+    const trips: unknown[] = [];
+    for (let w = 0; w < 5; w++) {
+      trips.push(trip('2026-06-01T00:00:00Z', w, 8, 3, 43.21, 2.35, { trackerId: 'tk1' }));
+    }
+    const errors = makeErrors();
+    const svc = new RecurrenceDetectorService(makePrisma(trips), makeGeocode(), makeStopsThrows(), errors);
+    const patterns = await svc.detect('f1'); // ne throw pas : repli sur le géocodage du point d'arrivée
+
+    expect(patterns.length).toBe(1);
+    expect(patterns[0].destinationLabel).toBe('Carcassonne'); // fallback endpoint (lat 43.21)
+    expect((errors as unknown as { record: jest.Mock }).record).toHaveBeenCalledWith(
+      expect.any(Error),
+      'AGENDA_RECURRENCE',
+      expect.objectContaining({ trackerId: 'tk1', phase: 'deriveStops' }),
+    );
   });
 
   it('#5 : trace les zones (géofences) traversées par le trajet type (dédupliquées, ordonnées)', async () => {

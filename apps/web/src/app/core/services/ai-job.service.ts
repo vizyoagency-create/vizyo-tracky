@@ -21,8 +21,6 @@ export interface AiJob {
   error?: string;
   /** Résultat BRUT de la tâche (pour ré-afficher des résultats interactifs — ex. capacités à valider). */
   payload?: unknown;
-  /** Action au clic quand le job est « prêt » (ex. ouvrir la feuille des propositions). Optionnelle. */
-  view?: () => void;
 }
 
 /**
@@ -43,6 +41,16 @@ export class AiJobService {
   private seq = 0;
 
   /**
+   * true si un job de CE TYPE est déjà en cours. Sert de garde anti-double-lancement : depuis le
+   * passage en asynchrone, la feuille se ferme AVANT que la tâche finisse et reste montée ~220 ms
+   * (animation de sortie) → un double-tap sur « Lancer l'analyse » créerait 2 jobs (coût IA doublé,
+   * voire double placement automatique pour l'agent). L'appelant renonce si un même job tourne déjà.
+   */
+  hasRunningOf(kind: AiJobKind): boolean {
+    return this._jobs().some((j) => j.kind === kind && j.status === 'running');
+  }
+
+  /**
    * Lance une tâche IA en arrière-plan. Ajoute une pastille « en cours », attend la promesse, puis
    * bascule la pastille en « prêt » (avec un résumé + une action de consultation) ou « erreur ».
    * L'appelant ferme sa modal juste après (l'UX de suivi vit dans la pastille).
@@ -54,8 +62,6 @@ export class AiJobService {
     task: Promise<T>;
     /** Texte de résultat lisible (pour un non-expert) à partir de la réponse. */
     summarize: (result: T) => string;
-    /** Action au clic sur la pastille « prêt » (ex. ouvrir les résultats). Optionnelle. */
-    view?: (result: T) => void;
   }): string {
     const id = `aijob-${++this.seq}`;
     const job: AiJob = {
@@ -75,7 +81,6 @@ export class AiJobService {
           finishedAt: Date.now(),
           resultText: safe(() => opts.summarize(result)) ?? 'Terminé.',
           payload: result,
-          view: opts.view ? () => opts.view!(result) : undefined,
         }),
       (err) => this.patch(id, { status: 'error', finishedAt: Date.now(), error: apiErrorMessage(err, 'Échec de l\'analyse IA.') }),
     );

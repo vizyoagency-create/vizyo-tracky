@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AlertType, Prisma } from '@prisma/client';
 import { ReverseGeocodeService } from '../geocoding/reverse-geocode.service';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { fleetTzFormatter, localParts } from './fleet-tz.util';
 import { TripStopDetectorService, haversineMeters, type TripStop } from './trip-stop-detector.service';
@@ -84,6 +85,9 @@ export class RecurrenceDetectorService {
     private readonly prisma: PrismaService,
     private readonly geocode: ReverseGeocodeService,
     private readonly stops: TripStopDetectorService,
+    // Centre d'alerte (@Global) : remonte les échecs DB best-effort (zones/arrêts) qui, sinon,
+    // resteraient invisibles (l'analyse dégrade en silence). Omis dans les specs (construction manuelle).
+    private readonly errorLogger?: ErrorLogger,
   ) {}
 
   /** Détecte les trajets récurrents d'une flotte (avec destination géocodée, triés par confiance). */
@@ -232,6 +236,9 @@ export class RecurrenceDetectorService {
         if (p.zones.length > 0) p.basis += ` · zones : ${p.zones.join(', ')}`;
       } catch (e) {
         this.logger.warn(`deriveZones(${c.vehicleId}) : ${(e as Error)?.message ?? e}`);
+        void this.errorLogger
+          ?.record(e as Error, 'AGENDA_RECURRENCE', { vehicleId: c.vehicleId, phase: 'deriveZones' })
+          .catch(() => {});
       }
     }
 
@@ -241,6 +248,9 @@ export class RecurrenceDetectorService {
         stops = await this.stops.deriveStops(rep.trackerId, rep.startedAt, rep.endedAt);
       } catch (e) {
         this.logger.warn(`deriveStops(${rep.trackerId}) : ${(e as Error)?.message ?? e}`);
+        void this.errorLogger
+          ?.record(e as Error, 'AGENDA_RECURRENCE', { trackerId: rep.trackerId, vehicleId: c.vehicleId, phase: 'deriveStops' })
+          .catch(() => {});
       }
     }
     // Écarte les arrêts « à la base » (dépôt) → il reste les vrais lieux servis.
