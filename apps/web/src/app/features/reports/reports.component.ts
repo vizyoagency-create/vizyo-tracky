@@ -3,9 +3,11 @@ import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.directive';
 import { LucideAngularModule, BarChart3, ChevronRight, Route, Clock, Gauge, Play, ChevronDown, Truck, Check, MessageSquare, Pencil, UserRound, Download, Calendar, FileText, Layers, ArrowUp, ArrowDown, ArrowUpDown, FileSpreadsheet, RotateCcw, MousePointerClick } from 'lucide-angular';
-import type { DriverDto, TripDailySummaryDto, TripDto } from '@vizyo/tracky-shared';
+import type { DriverDto, TripAnalysisDto, TripDailySummaryDto, TripDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { DriversApiService } from '../../core/services/drivers.service';
+import { TripAnalysisApiService } from '../../core/services/trip-analysis.service';
+import { TripAnalysisBadgesComponent } from '../trip-analysis/trip-analysis-badges.component';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { ReportsApiService } from '../../core/services/reports.service';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
@@ -49,6 +51,7 @@ import {
     GroupBadgeComponent,
     DatePipe,
     DecimalPipe,
+    TripAnalysisBadgesComponent,
     TripReplayComponent,
     TripNoteModalComponent,
     DriverPickerComponent,
@@ -473,6 +476,7 @@ import {
                 </th>
                 <th class="p-3 text-left">Conducteur</th>
                 <th class="p-3 text-left">Note</th>
+                @if (selectedVehicleId()) { <th class="p-3 text-left">Analyse</th> }
                 <th class="p-3 text-center">Replay</th>
               </tr>
             </thead>
@@ -543,6 +547,15 @@ import {
                       <span class="text-fg-tertiary text-xs">—</span>
                     }
                   </td>
+                  @if (selectedVehicleId()) {
+                    <td class="p-3 max-w-[280px]">
+                      <app-trip-analysis-badges
+                        [tripId]="trip.id"
+                        [analysis]="analysisFor(trip.id)"
+                        (analyzed)="onAnalyzed($event)"
+                      />
+                    </td>
+                  }
                   <td class="p-3 text-center">
                     <div class="flex items-center justify-center gap-1.5">
                       @if (trip.polyline) {
@@ -570,6 +583,7 @@ import {
     <app-trip-replay
       [open]="!!replayTrip()"
       [trip]="replayTrip()"
+      [analysis]="replayTrip() ? analysisFor(replayTrip()!.id) : null"
       [vehicleType]="replayVehicleType()"
       [canEditNote]="canEditNotes()"
       (closed)="replayTrip.set(null)"
@@ -1214,6 +1228,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   private readonly toast = inject(ToastService);
   private readonly reportsApi = inject(ReportsApiService);
   private readonly fleetFilter = inject(FleetFilterService);
+  private readonly analysisApi = inject(TripAnalysisApiService);
   protected readonly exporting = signal<null | 'pdf' | 'csv-trips' | 'csv-summary' | 'excel'>(null);
 
   // Recharge le rapport (KPI/trajets/charts scopés serveur) quand la société change dans
@@ -1240,6 +1255,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
   protected readonly replayTrip = signal<TripDto | null>(null);
   protected readonly noteEditTrip = signal<TripDto | null>(null);
   protected readonly driverPickerTrip = signal<TripDto | null>(null);
+  /** Traçabilité fine (Palier 4c) — analyses des trajets du VÉHICULE sélectionné (par tripId). */
+  protected readonly analysesMap = signal<Map<string, TripAnalysisDto>>(new Map());
   /** Phase 3 — Modal d'export PDF configurable (perimetre + sections + caps). */
   protected readonly pdfModalOpen = signal(false);
 
@@ -2056,6 +2073,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
       if (seq !== this.loadSeq) return;
       this.trips.set(tripsRes.items);
       this.dailySummary.set(summary);
+      // Traçabilité fine (P4c) : les badges d'analyse ne s'affichent QUE pour un véhicule choisi
+      // (sinon les trajets couvrent plusieurs véhicules, pas de chargement en lot possible).
+      void this.loadAnalyses(seq);
     } catch {
       if (seq === this.loadSeq) {
         this.trips.set([]);
@@ -2064,6 +2084,26 @@ export class ReportsComponent implements OnInit, OnDestroy {
     } finally {
       if (seq === this.loadSeq) this.loading.set(false);
     }
+  }
+
+  /** Charge en lot les analyses du véhicule sélectionné (vide sinon). Best-effort, non bloquant. */
+  private async loadAnalyses(seq: number): Promise<void> {
+    const vId = this.selectedVehicleId();
+    if (!vId) { this.analysesMap.set(new Map()); return; }
+    try {
+      const list = await firstValueFrom(this.analysisApi.listForVehicle(vId, 200));
+      if (seq === this.loadSeq) this.analysesMap.set(new Map(list.map((a) => [a.tripId, a])));
+    } catch {
+      if (seq === this.loadSeq) this.analysesMap.set(new Map());
+    }
+  }
+
+  protected analysisFor(tripId: string): TripAnalysisDto | null {
+    return this.analysesMap().get(tripId) ?? null;
+  }
+
+  protected onAnalyzed(a: TripAnalysisDto): void {
+    this.analysesMap.update((m) => { const n = new Map(m); n.set(a.tripId, a); return n; });
   }
 
   protected openReplay(trip: TripDto): void {
