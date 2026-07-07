@@ -86,6 +86,11 @@ import { apiErrorMessage } from '../../core/error/api-error';
           </header>
           <div class="taid-body">
             @if (current(); as a) {
+              <p class="taid-intro">
+                L'agent Tracky lit les positions GPS de ce trajet et le résume en clair : ce qui s'est passé,
+                les <strong>excès de vitesse</strong> et à-coups, la <strong>consommation</strong>, un <strong>score de fiabilité</strong>
+                des données, et des <strong>conseils</strong> pour mieux conduire.
+              </p>
               @if (a.trustScore != null) {
                 <div class="taid-trust" [attr.data-tier]="trustTier(a.trustScore)">
                   <span class="taid-trust-n">{{ a.trustScore }}</span>
@@ -205,6 +210,7 @@ import { apiErrorMessage } from '../../core/error/api-error';
     .taid-sec p { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--fg-secondary); white-space: pre-line; }
     .taid-sec--advice p { color: var(--fg-primary); }
     .taid-empty { margin: 0; font-size: 12.5px; color: var(--fg-tertiary); line-height: 1.5; }
+    .taid-intro { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--fg-secondary); padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--tracky-light, #10E0A0) 7%, var(--bg-tertiary)); border: 1px solid color-mix(in srgb, var(--tracky-light, #10E0A0) 16%, transparent); }
     .taid-actions { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 2px; }
     .taid-btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 10px; font-size: 12.5px; font-weight: 800; cursor: pointer; background: var(--tracky, #10E0A0); color: var(--accent-ink, #04130D); border: none; }
     .taid-btn:disabled { opacity: .6; cursor: default; }
