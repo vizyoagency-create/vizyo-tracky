@@ -19,6 +19,8 @@ export interface AiJob {
   /** Résultat lisible affiché quand c'est prêt (ex. « 2 propositions à valider »). */
   resultText?: string;
   error?: string;
+  /** Résultat BRUT de la tâche (pour ré-afficher des résultats interactifs — ex. capacités à valider). */
+  payload?: unknown;
   /** Action au clic quand le job est « prêt » (ex. ouvrir la feuille des propositions). Optionnelle. */
   view?: () => void;
 }
@@ -72,6 +74,7 @@ export class AiJobService {
           status: 'done',
           finishedAt: Date.now(),
           resultText: safe(() => opts.summarize(result)) ?? 'Terminé.',
+          payload: result,
           view: opts.view ? () => opts.view!(result) : undefined,
         }),
       (err) => this.patch(id, { status: 'error', finishedAt: Date.now(), error: apiErrorMessage(err, 'Échec de l\'analyse IA.') }),

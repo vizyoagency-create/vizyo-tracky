@@ -22,6 +22,7 @@ import {
 } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { AiApiService } from '../../../core/services/ai.service';
+import { AiJobService } from '../../../core/services/ai-job.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { FleetCacheService } from '../../../core/services/fleet-cache.service';
 import { PermissionsService } from '../../../core/services/permissions.service';
@@ -250,8 +251,12 @@ export class OptimizationSheetComponent {
   private readonly fleetCache = inject(FleetCacheService);
   private readonly perms = inject(PermissionsService);
   private readonly toast = inject(ToastService);
+  private readonly aiJob = inject(AiJobService);
 
   readonly open = input(false);
+  /** Résultat de capacité IA pré-chargé (analyse lancée en arrière-plan via la pastille) — affiché
+   *  à la ré-ouverture au clic « Voir ». */
+  readonly presetCapacity = input<AiCapacityResultDto | null>(null);
   readonly closed = output<void>();
   /** Émis quand une capacité est appliquée (le parent peut recharger si besoin). */
   readonly applied = output<void>();
@@ -298,6 +303,10 @@ export class OptimizationSheetComponent {
     effect(() => {
       if (!this.open()) return;
       void this.fleetCache.loadIfNeeded();
+      // À l'ouverture : soit on ré-affiche un résultat de capacité pré-chargé (analyse async via la
+      // pastille), soit on repart propre (pas de résultat périmé affiché).
+      this.capResult.set(this.presetCapacity() ?? null);
+      this.selected.set(new Set());
       if (!this.loadedOnce) {
         this.loadedOnce = true;
         if (!this.isSuperAdmin()) void this.loadMetier();
@@ -350,17 +359,24 @@ export class OptimizationSheetComponent {
     }
   }
 
-  protected async runCapacity(): Promise<void> {
-    this.capLoading.set(true);
-    this.capError.set(null);
-    this.selected.set(new Set());
-    try {
-      this.capResult.set(await firstValueFrom(this.ai.capacitySuggest({ fleetId: this.selectedFleetId() ?? undefined })));
-    } catch (e) {
-      this.capError.set(this.errMsg(e));
-    } finally {
-      this.capLoading.set(false);
-    }
+  /**
+   * Lance l'analyse des capacités EN ARRIÈRE-PLAN : ferme la feuille ; une pastille en haut de
+   * l'agenda montre l'avancement (« l'IA travaille… ») puis « Résultats prêts » → le clic ré-ouvre
+   * CETTE feuille avec les capacités à valider pré-chargées. Fini le spinner bloquant sans retour.
+   */
+  protected runCapacity(): void {
+    if (this.needsFleet()) { this.capError.set('Sélectionnez une flotte pour analyser son parc.'); return; }
+    this.aiJob.run({
+      kind: 'optimization',
+      title: 'Analyse des capacités',
+      hint: 'L\'IA déduit les places et sièges-enfant par modèle de véhicule à partir du parc. Ça prend quelques secondes…',
+      task: firstValueFrom(this.ai.capacitySuggest({ fleetId: this.selectedFleetId() ?? undefined })),
+      summarize: (r) =>
+        r.proposals.length
+          ? `${r.proposals.length} véhicule(s) dont la capacité peut être complétée (places / sièges-enfant).`
+          : 'Aucune capacité à compléter : le parc semble déjà renseigné.',
+    });
+    this.closed.emit(); // suivi dans la pastille ; « Voir » ré-ouvre avec le résultat.
   }
 
   protected toggleSel(id: string): void {

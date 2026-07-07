@@ -19,6 +19,7 @@ import {
 } from 'lucide-angular';
 import type {
   AgendaSummaryDto,
+  AiCapacityResultDto,
   CreateVehicleEventDto,
   ForecastSlotDto,
   VehicleActivitySlotDto,
@@ -604,6 +605,7 @@ interface GroupOption {
       (created)="onReservationChanged()" />
     <app-optimization-sheet
       [open]="optSheetOpen()"
+      [presetCapacity]="optPreset()"
       (closed)="optSheetOpen.set(false)"
       (applied)="onReservationChanged()" />
     <app-agenda-agent-settings-sheet
@@ -1161,6 +1163,8 @@ export class AgendaComponent implements OnInit {
   protected readonly proposalsSheetOpen = signal(false);
   protected readonly agentProposalCount = signal(0);
   protected readonly optSheetOpen = signal(false);
+  /** Résultat de capacité IA pré-chargé (analyse async) à réafficher quand on ouvre l'optimisation via la pastille. */
+  protected readonly optPreset = signal<AiCapacityResultDto | null>(null);
   /** Nb de demandes de réservation en attente (dérivé des événements déjà chargés). */
   protected readonly pendingCount = computed(() =>
     this.events().filter((e) => e.type === 'RESERVATION' && e.status === 'REQUESTED').length,
@@ -1828,6 +1832,7 @@ export class AgendaComponent implements OnInit {
   }
 
   protected openOptim(): void {
+    this.optPreset.set(null); // ouverture normale : pas de résultat pré-chargé
     this.optSheetOpen.set(true);
   }
 
@@ -1857,7 +1862,9 @@ export class AgendaComponent implements OnInit {
         break;
       case 'optimization':
       case 'capacity':
-        this.openOptim();
+        // Ré-affiche la feuille Optimisation avec le résultat de capacité pré-chargé.
+        this.optPreset.set((job.payload as AiCapacityResultDto) ?? null);
+        this.optSheetOpen.set(true);
         break;
       case 'report':
         break; // (rapport : à brancher quand la génération passera en async)
