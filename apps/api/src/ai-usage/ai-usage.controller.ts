@@ -34,7 +34,8 @@ export class AiUsageController {
     @Query('to') to?: string,
     @Query('fleetId') fleetId?: string,
   ) {
-    return this.svc.summary(from, to, this.scopeFleet(req, fleetId));
+    // Scope flotte (main : FLEET_ADMIN forcé à sa société) + viewer (owner : masque les owners).
+    return this.svc.summary(from, to, this.scopeFleet(req, fleetId), req.user);
   }
 
   /** GET /api/admin/ai-usage/logs — journal des appels (curseur temporel `before` = ISO). */
@@ -54,7 +55,7 @@ export class AiUsageController {
       userId,
       fleetId: this.scopeFleet(req, fleetId),
       action,
-    });
+    }, req.user);
   }
 
   /** GET /api/admin/ai-usage/budget — budget mensuel + dépense du mois + statut (global). */

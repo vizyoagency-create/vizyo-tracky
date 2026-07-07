@@ -24,7 +24,7 @@ const TO = new Date('2026-06-30T23:59:59.000Z');
 function makeUser(role: UserRole, fleetId: string | null = FLEET_ID): AuthUser {
   return {
     id: 'user-1', authUserId: 'auth-1', email: 'u@test.fr',
-    firstName: null, lastName: null, role, fleetId, isActive: true, permissions: null,
+    firstName: null, lastName: null, role, fleetId, isActive: true, isOwner: false, permissions: null,
   };
 }
 

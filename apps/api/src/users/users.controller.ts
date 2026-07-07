@@ -12,6 +12,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import type { Env } from '../config/env.validation';
 import { EmailService } from '../email/email.service';
 import { InvitationsService } from '../invitations/invitations.service';
+import { OwnerVisibilityService } from '../common/owner-visibility.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { clampPartialPermissions, clampPermissions, getDefaultPermissions } from './default-permissions';
 import { CreateInvitationDto } from './dto/create-invitation.dto';
@@ -26,6 +27,9 @@ import { UpdateUserDto } from './dto/update-user.dto';
 
 const PRIVILEGED_ROLES: UserRole[] = [UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN];
 
+/** Compte « système » (seed) — sert de cible neutre quand on masque l'auteur owner. */
+const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000';
+
 @Controller('users')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class UsersController {
@@ -37,7 +41,22 @@ export class UsersController {
     private readonly invitations: InvitationsService,
     private readonly emailService: EmailService,
     private readonly config: ConfigService<Env, true>,
+    private readonly ownerVis: OwnerVisibilityService,
   ) {}
+
+  /**
+   * Owner plateforme — un viewer NON-owner ne doit ni voir ni modifier un compte
+   * owner. Lève le MÊME 404 qu'un id inexistant (aucun oracle d'existence).
+   * No-op pour un viewer owner (il gère tout le monde) et pour une cible non-owner.
+   */
+  private async assertTargetVisible(id: string, req: AuthenticatedRequest): Promise<void> {
+    if (!this.ownerVis.isMasked(req.user)) return;
+    const target = await this.prisma.user.findUnique({
+      where: { id },
+      select: { isOwner: true },
+    });
+    if (target?.isOwner) throw new NotFoundException('User not found');
+  }
 
   // ─── /me — current user (Sprint J) ────────────────────────────
 
@@ -48,7 +67,7 @@ export class UsersController {
       select: {
         id: true, email: true, firstName: true, lastName: true,
         phone: true, role: true, permissions: true, fleetId: true,
-        isActive: true, onboardingCompletedAt: true,
+        isActive: true, isOwner: true, onboardingCompletedAt: true,
         escalationContactUserId: true,
         preferences: true,
         createdAt: true,
@@ -174,6 +193,17 @@ export class UsersController {
       role: req.user.role,
       fleetId: req.user.fleetId,
     });
+    // Owner plateforme — masque l'owner comme CRÉATEUR d'invitation (→ compte
+    // système) pour un viewer non-owner, sans cacher l'invitation elle-même
+    // (l'invité reste légitime et visible aux autres admins).
+    if (this.ownerVis.isMasked(req.user)) {
+      const ownerIds = await this.ownerVis.getOwnerIds();
+      if (ownerIds.length) {
+        for (const it of items) {
+          if (ownerIds.includes(it.createdById)) it.createdById = SYSTEM_USER_ID;
+        }
+      }
+    }
     return { items };
   }
 
@@ -303,6 +333,9 @@ export class UsersController {
       where.isActive = true;
     }
 
+    // Owner plateforme — invisible aux autres super-admins (un owner voit tout).
+    if (this.ownerVis.isMasked(req.user)) where.isOwner = false;
+
     const users = await this.prisma.user.findMany({
       where,
       select: {
@@ -360,6 +393,8 @@ export class UsersController {
       fleetFilter.fleetId = req.user.fleetId;
       groupFilter.fleetId = req.user.fleetId;
     }
+    // Owner plateforme — exclu de la vue panorama pour un viewer non-owner.
+    if (this.ownerVis.isMasked(req.user)) fleetFilter.isOwner = false;
 
     const [users, groups] = await Promise.all([
       this.prisma.user.findMany({
@@ -395,6 +430,7 @@ export class UsersController {
   @Get(':id')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
   async findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    await this.assertTargetVisible(id, req);
     // #33 — filtre tenant integre au where : un user d'une AUTRE flotte renvoie le
     // MEME 404 qu'un user inexistant. Avant : 200/null si inexistant mais 403 si
     // autre flotte -> oracle d'enumeration cross-fleet (existence distinguable).
@@ -424,6 +460,7 @@ export class UsersController {
   @Patch(':id')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
   async update(@Param('id') id: string, @Body() dto: UpdateUserDto, @Req() req: AuthenticatedRequest) {
+    await this.assertTargetVisible(id, req);
     // Filtre tenant integre au where : 404 si user d'une autre flotte.
     const where: Prisma.UserWhereInput = { id };
     if (req.user.role !== UserRole.SUPER_ADMIN) {
@@ -482,6 +519,7 @@ export class UsersController {
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
   async archive(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    await this.assertTargetVisible(id, req);
     // Filtre tenant integre au where : 404 si user d'une autre flotte.
     const where: Prisma.UserWhereInput = { id };
     if (req.user.role !== UserRole.SUPER_ADMIN) {
@@ -528,6 +566,7 @@ export class UsersController {
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
   async resetPassword(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    await this.assertTargetVisible(id, req);
     // Filtre tenant integre au where : 404 si user d'une autre flotte.
     const where: Prisma.UserWhereInput = { id };
     if (req.user.role !== UserRole.SUPER_ADMIN) {
@@ -597,6 +636,7 @@ export class UsersController {
   @Get(':id/access')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
   async getAccess(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    await this.assertTargetVisible(id, req);
     // Filtre tenant integre au where : 404 si user d'une autre flotte.
     const where: Prisma.UserWhereInput = { id };
     if (req.user.role !== UserRole.SUPER_ADMIN) {
@@ -634,6 +674,7 @@ export class UsersController {
   @Put(':id/access')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
   async setAccess(@Param('id') id: string, @Body() dto: SetUserAccessDto, @Req() req: AuthenticatedRequest) {
+    await this.assertTargetVisible(id, req);
     // Filtre tenant integre au where : 404 si user d'une autre flotte.
     const where: Prisma.UserWhereInput = { id };
     if (req.user.role !== UserRole.SUPER_ADMIN) {
@@ -709,6 +750,7 @@ export class UsersController {
     @Body() dto: UpdateAccessEntryPermissionsDto,
     @Req() req: AuthenticatedRequest,
   ) {
+    await this.assertTargetVisible(userId, req);
     // 1. Verifier que l'user cible est dans la fleet du caller (defense en profondeur)
     const userWhere: Prisma.UserWhereInput = { id: userId };
     if (req.user.role !== UserRole.SUPER_ADMIN) {
@@ -748,6 +790,7 @@ export class UsersController {
     @Param('accessId', ParseUUIDPipe) accessId: string,
     @Req() req: AuthenticatedRequest,
   ) {
+    await this.assertTargetVisible(userId, req);
     const userWhere: Prisma.UserWhereInput = { id: userId };
     if (req.user.role !== UserRole.SUPER_ADMIN) {
       if (!req.user.fleetId) throw new NotFoundException('User not found');
@@ -840,7 +883,7 @@ export class UsersController {
 
   @Get('admin/auth-sync')
   @Roles(UserRole.SUPER_ADMIN)
-  async authSync() {
+  async authSync(@Req() req: AuthenticatedRequest) {
     // Query Vizyo Auth DB directly (same Docker network)
     const { Pool } = require('pg') as typeof import('pg');
     const authDbUrl = this.config.get('VIZYO_AUTH_DB_URL', { infer: true }) as string | undefined;
@@ -871,7 +914,18 @@ export class UsersController {
       }
     }
 
+    // Owner plateforme — masqué aux autres super-admins des DEUX côtés : on retire
+    // les comptes owner du côté Auth (par email) ET du côté Tracky (isOwner), sinon
+    // l'owner ressortirait en « onlyAuth » (présent en Auth, absent en Tracky).
+    const ownerEmailsLower = this.ownerVis.isMasked(req.user)
+      ? await this.ownerVis.getOwnerEmailsLower()
+      : [];
+    if (ownerEmailsLower.length) {
+      authUsers = authUsers.filter((u) => !ownerEmailsLower.includes(u.email.toLowerCase()));
+    }
+
     const trackyUsers = await this.prisma.user.findMany({
+      where: this.ownerVis.isMasked(req.user) ? { isOwner: false } : {},
       select: { id: true, authUserId: true, email: true, role: true, fleetId: true, isActive: true, createdAt: true },
       orderBy: { email: 'asc' },
     });

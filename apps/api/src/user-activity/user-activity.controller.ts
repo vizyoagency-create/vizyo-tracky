@@ -67,14 +67,15 @@ export class UserActivityController {
   @Get('admin/activity/online')
   @UseGuards(RolesGuard)
   @Roles(UserRole.SUPER_ADMIN)
-  online() {
-    return this.svc.getOnline();
+  online(@Req() req: AuthenticatedRequest) {
+    return this.svc.getOnline(req.user);
   }
 
   @Get('admin/activity/feed')
   @UseGuards(RolesGuard)
   @Roles(UserRole.SUPER_ADMIN)
   feed(
+    @Req() req: AuthenticatedRequest,
     @Query('limit') limit?: string,
     @Query('before') before?: string,
     @Query('beforeId') beforeId?: string,
@@ -91,14 +92,14 @@ export class UserActivityController {
       type,
       from,
       to,
-    });
+    }, req.user);
   }
 
   @Get('admin/activity/stats')
   @UseGuards(RolesGuard)
   @Roles(UserRole.SUPER_ADMIN)
-  stats(@Query('from') from?: string, @Query('to') to?: string) {
-    return this.svc.getStats(from, to);
+  stats(@Req() req: AuthenticatedRequest, @Query('from') from?: string, @Query('to') to?: string) {
+    return this.svc.getStats(from, to, req.user);
   }
 
   /** Audit des commandes moteur (coupe-circuit) — historique paginé pour l'admin. */
@@ -106,6 +107,7 @@ export class UserActivityController {
   @UseGuards(RolesGuard)
   @Roles(UserRole.SUPER_ADMIN)
   engineCommands(
+    @Req() req: AuthenticatedRequest,
     @Query('limit') limit?: string,
     @Query('before') before?: string,
     @Query('action') action?: string,
@@ -116,7 +118,7 @@ export class UserActivityController {
       before,
       action,
       status,
-    });
+    }, req.user);
   }
 
   /**
@@ -128,6 +130,7 @@ export class UserActivityController {
   @UseGuards(RolesGuard)
   @Roles(UserRole.SUPER_ADMIN)
   systemFeed(
+    @Req() req: AuthenticatedRequest,
     @Query('limit') limit?: string,
     @Query('before') before?: string,
     @Query('beforeId') beforeId?: string,
@@ -140,6 +143,6 @@ export class UserActivityController {
       beforeId,
       category,
       status,
-    });
+    }, req.user);
   }
 }

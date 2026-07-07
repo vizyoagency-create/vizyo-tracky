@@ -281,12 +281,15 @@ export class TrackerCommandsService {
     if (filters?.status) where.status = filters.status;
     if (filters?.category) where.category = filters.category;
 
-    return this.prisma.trackerCommand.findMany({
+    const commands = await this.prisma.trackerCommand.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       take: limit,
-      include: { requestedByUser: { select: { email: true, firstName: true, lastName: true } } },
+      include: { requestedByUser: { select: { email: true, firstName: true, lastName: true, isOwner: true } } },
     });
+    // Owner plateforme — masqué comme demandeur (→ « Système ») sans cacher la commande.
+    for (const c of commands) this.maskOwnerRequester(c);
+    return commands;
   }
 
   async getCommand(id: string, requestedBy: RequestedBy): Promise<TrackerCommand> {
@@ -294,7 +297,7 @@ export class TrackerCommandsService {
       where: { id },
       include: {
         tracker: { include: { vehicle: true } },
-        requestedByUser: { select: { email: true, firstName: true, lastName: true } },
+        requestedByUser: { select: { email: true, firstName: true, lastName: true, isOwner: true } },
       },
     });
 
@@ -307,7 +310,25 @@ export class TrackerCommandsService {
       }
     }
 
+    this.maskOwnerRequester(command);
     return command;
+  }
+
+  /**
+   * Owner plateforme — neutralise l'identité du demandeur si c'est un owner
+   * (affiché « Système »), et retire le flag `isOwner` de la réponse. Masquage
+   * INCONDITIONNEL (vue opérationnelle) : la commande reste visible, seul l'auteur
+   * owner est anonymisé.
+   */
+  private maskOwnerRequester(command: unknown): void {
+    const u = (command as { requestedByUser?: Record<string, unknown> | null } | null)?.requestedByUser;
+    if (!u) return;
+    if (u['isOwner']) {
+      u['firstName'] = 'Système';
+      u['lastName'] = null;
+      u['email'] = null;
+    }
+    delete u['isOwner'];
   }
 
   getCatalog(role: UserRole) {

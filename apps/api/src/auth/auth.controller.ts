@@ -121,6 +121,7 @@ export class AuthController {
       firstName: req.user.firstName,
       lastName: req.user.lastName,
       role: req.user.role,
+      isOwner: req.user.isOwner,
       fleetId: req.user.fleetId,
     };
   }

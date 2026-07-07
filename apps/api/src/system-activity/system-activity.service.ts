@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import type { SystemActivityDto } from '@vizyo/tracky-shared';
+import { OwnerVisibilityService } from '../common/owner-visibility.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface SystemActivityInput {
@@ -33,7 +34,10 @@ export interface SystemActivityInput {
 export class SystemActivityService {
   private readonly logger = new Logger(SystemActivityService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly ownerVis: OwnerVisibilityService,
+  ) {}
 
   /** Enregistre une action système. Ne bloque pas et n'échoue JAMAIS dans l'appelant. */
   record(entry: SystemActivityInput): void {
@@ -67,6 +71,7 @@ export class SystemActivityService {
   /** Feed admin (SUPER_ADMIN) — timeline des actions système récentes. */
   async getFeed(
     opts: { limit?: number; before?: string; beforeId?: string; category?: string; status?: string } = {},
+    viewer: { isOwner?: boolean | null } = {},
   ): Promise<SystemActivityDto[]> {
     const take = Math.min(Math.max(opts.limit ?? 60, 1), 200);
     const where: Prisma.SystemActivityLogWhereInput = {};
@@ -83,6 +88,12 @@ export class SystemActivityService {
         }
       }
     }
+    // Owner plateforme — actions déclenchées par l'owner masquées pour un viewer
+    // non-owner. Champ NULLABLE (null = action système sans acteur) → on combine
+    // via AND un OR qui CONSERVE les null et n'exclut que les owners (sans écraser
+    // le OR du cursor ci-dessus, qui reste à la racine du where).
+    const ownerExcl = await this.ownerVis.nullableUserIdExclusion(viewer, 'triggeredByUserId');
+    if (Object.keys(ownerExcl).length) where.AND = [ownerExcl as Prisma.SystemActivityLogWhereInput];
     const rows = await this.prisma.systemActivityLog.findMany({
       where,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],

@@ -229,6 +229,14 @@ model User {
   role        UserRole @default(VIEWER)
   permissions Json?
   isActive    Boolean  @default(true)
+  /// « Owner » plateforme (niveau au-dessus des SUPER_ADMIN). Le compte reste
+  /// techniquement SUPER_ADMIN et garde TOUS ses pouvoirs ; ce flag pilote
+  /// UNIQUEMENT l'invisibilité : un compte owner est exclu des listes
+  /// d'utilisateurs, de toutes les vues d'activité, des rapports/coûts IA, et
+  /// masqué comme auteur d'action — pour tout viewer NON-owner. Un owner, lui,
+  /// voit tout (y compris les autres owners). Réversible (false = redevient un
+  /// super-admin visible). Backfill initial : admin@vizyoagency.com.
+  isOwner     Boolean  @default(false)
   fleetId    String?  @db.Uuid
   fleet      Fleet?   @relation(fields: [fleetId], references: [id], onDelete: SetNull)
   // V1.5 (Sprint J) — onboarding + profil enrichi.

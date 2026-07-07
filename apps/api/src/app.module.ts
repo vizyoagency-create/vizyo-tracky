@@ -38,6 +38,7 @@ import { VehicleGroupsModule } from './vehicle-groups/vehicle-groups.module';
 import { ObservabilityModule } from './observability/observability.module';
 import { BackupHealthModule } from './backup-health/backup-health.module';
 import { CacheModule } from './common/cache/cache.module';
+import { OwnerVisibilityModule } from './common/owner-visibility.module';
 import { EmailModule } from './email/email.module';
 import { EmailAdminModule } from './email/email-admin.module';
 import { InvitationsModule } from './invitations/invitations.module';
@@ -94,6 +95,9 @@ import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.modul
     }),
     PrismaModule,
     CacheModule,
+    // « Owner » plateforme — invisibilité des comptes owner aux autres super-admins.
+    // @Global : injectable partout (users, activité, IA, sérialiseurs d'action).
+    OwnerVisibilityModule,
     SocketRegistryModule,
     AuthClientModule,
     AuthModule,

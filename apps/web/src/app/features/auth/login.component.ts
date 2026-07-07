@@ -221,6 +221,7 @@ export class LoginComponent implements OnInit {
         sub: data.user.id,
         email: data.user.email,
         role: data.user.role,
+        isOwner: data.user.isOwner ?? false,
         fleetId: data.user.fleetId ?? null,
         permissions: data.user.permissions ?? null,
         preferences: data.user.preferences ?? null,

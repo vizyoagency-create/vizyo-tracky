@@ -36,11 +36,13 @@ function makePrisma() {
 }
 
 const USER = { id: 'u1', fleetId: 'f1', role: 'VIEWER' } as any;
+// Owner plateforme — mock du service d'invisibilité (aucun owner en contexte de test).
+const OWNER_VIS = { isMasked: () => false, getOwnerIds: async () => [], userIdExclusion: async () => ({}) } as any;
 
 describe('UserActivityService', () => {
   it('crée une session + persiste les events + met à jour la présence', async () => {
     const prisma = makePrisma();
-    const svc = new UserActivityService(prisma as any, { record: jest.fn() } as any);
+    const svc = new UserActivityService(prisma as any, { record: jest.fn() } as any, OWNER_VIS);
     await svc.ingestBatch(
       USER,
       {
@@ -66,14 +68,14 @@ describe('UserActivityService', () => {
 
   it('positionne endedAt sur SESSION_END', async () => {
     const prisma = makePrisma();
-    const svc = new UserActivityService(prisma as any, { record: jest.fn() } as any);
+    const svc = new UserActivityService(prisma as any, { record: jest.fn() } as any, OWNER_VIS);
     await svc.ingestBatch(USER, { events: [{ type: 'SESSION_END' }] });
     expect(prisma._sessionUpdates[0].endedAt).toBeInstanceOf(Date);
   });
 
   it('ignore les events de type inconnu (entrée non fiable)', async () => {
     const prisma = makePrisma();
-    const svc = new UserActivityService(prisma as any, { record: jest.fn() } as any);
+    const svc = new UserActivityService(prisma as any, { record: jest.fn() } as any, OWNER_VIS);
     await svc.ingestBatch(USER, { events: [{ type: 'HACK' }] });
     expect(prisma.userSession.create).not.toHaveBeenCalled();
     expect(prisma.userActivity.createMany).not.toHaveBeenCalled();
@@ -88,7 +90,7 @@ describe('UserActivityService', () => {
       startedAt: new Date(),
       lastSeenAt: new Date(),
     });
-    const svc = new UserActivityService(prisma as any, { record: jest.fn() } as any);
+    const svc = new UserActivityService(prisma as any, { record: jest.fn() } as any, OWNER_VIS);
     await svc.ingestBatch(USER, { events: [{ type: 'PAGE_VIEW', route: '/vehicles' }] });
     expect(prisma.userSession.create).not.toHaveBeenCalled();
     expect(prisma._activitiesCreated[0][0].sessionId).toBe('sess-existing');
@@ -119,7 +121,7 @@ describe('UserActivityService', () => {
         user: { firstName: 'Amir', lastName: 'B', role: 'FLEET_ADMIN' },
       },
     ]);
-    const svc = new UserActivityService(prisma as any, { record: jest.fn() } as any);
+    const svc = new UserActivityService(prisma as any, { record: jest.fn() } as any, OWNER_VIS);
     const online = await svc.getOnline();
     expect(online).toHaveLength(1);
     expect(online[0].name).toBe('Amir B');

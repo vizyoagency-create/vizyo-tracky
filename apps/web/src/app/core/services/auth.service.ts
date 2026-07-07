@@ -13,6 +13,10 @@ export interface AuthUser {
   sub: string;
   email: string;
   role: UserRoleSlug;
+  /** Owner plateforme : niveau au-dessus des SUPER_ADMIN, invisible aux autres
+   *  super-admins. Renseigné par /api/users/me + la réponse de login. Absent =
+   *  compte normal. L'invisibilité est de toute façon appliquée côté serveur. */
+  isOwner?: boolean;
   fleetId: string | null;
   permissions: UserPermissions | null;
   preferences?: UserUiPreferences | null;

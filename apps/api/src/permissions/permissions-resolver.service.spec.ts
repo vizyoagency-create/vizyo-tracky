@@ -20,6 +20,7 @@ function makeUser(role: UserRole, permissions: Partial<UserPermissions> | null =
     role,
     fleetId: FLEET_ID,
     isActive: true,
+    isOwner: false,
     permissions: permissions
       ? ({ ...getDefaultPermissions(role as never), ...permissions } as UserPermissions)
       : null,

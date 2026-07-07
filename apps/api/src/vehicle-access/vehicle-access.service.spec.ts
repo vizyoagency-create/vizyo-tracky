@@ -20,6 +20,7 @@ function makeUser(role: UserRole): AuthUser {
     role,
     fleetId: FLEET_ID,
     isActive: true,
+    isOwner: false,
     permissions: null,
   };
 }

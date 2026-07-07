@@ -16,6 +16,7 @@ import type {
 import { labelForRoute, ROUTE_LABELS } from '@vizyo/tracky-shared';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { AnthropicClient } from '../ai/anthropic.client';
+import { OwnerVisibilityService } from '../common/owner-visibility.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 import { ACTIVITY_REPORT_SCHEMA, ACTIVITY_REPORT_SYSTEM } from './activity-report.prompt';
@@ -63,12 +64,49 @@ export class ActivityReportService {
     private readonly anthropic: AnthropicClient,
     private readonly aiUsage: AiUsageService,
     private readonly systemActivity: SystemActivityService,
+    private readonly ownerVis: OwnerVisibilityService,
   ) {}
+
+  /** Filtre Prisma masquant les rapports liés à un owner (créés-par OU ciblant) pour
+   *  un viewer non-owner. `{}` si le viewer est owner ou s'il n'existe aucun owner. */
+  private async ownerReportFilter(viewer: { isOwner?: boolean | null }): Promise<Prisma.ActivityReportWhereInput> {
+    if (!this.ownerVis.isMasked(viewer)) return {};
+    const ownerIds = await this.ownerVis.getOwnerIds();
+    if (ownerIds.length === 0) return {};
+    return {
+      AND: [
+        // createdByUserId NULLABLE : on conserve les rapports système (null) et on
+        // n'exclut que ceux créés par un owner.
+        { OR: [{ createdByUserId: null }, { createdByUserId: { notIn: ownerIds } }] },
+        { NOT: { targetUserIds: { hasSome: ownerIds } } },
+      ],
+    };
+  }
+
+  /** true si ce rapport doit être masqué au viewer (non-owner + rapport créé-par/ciblant un owner). */
+  private async isOwnerReportHidden(
+    row: { createdByUserId: string | null; targetUserIds: string[] },
+    viewer: { isOwner?: boolean | null },
+  ): Promise<boolean> {
+    if (!this.ownerVis.isMasked(viewer)) return false;
+    const ownerIds = await this.ownerVis.getOwnerIds();
+    if (ownerIds.length === 0) return false;
+    const createdByOwner = !!row.createdByUserId && ownerIds.includes(row.createdByUserId);
+    const targetsOwner = row.targetUserIds.some((t) => ownerIds.includes(t));
+    return createdByOwner || targetsOwner;
+  }
 
   // ─── Génération ────────────────────────────────────────────────────────────
 
   async generate(actor: Actor, dto: GenerateActivityReportDto, origin: ActivityReportOrigin = 'manual'): Promise<ActivityReportDto> {
-    const userIds = [...new Set((dto.userIds ?? []).filter((x) => typeof x === 'string'))].slice(0, MAX_TARGETS);
+    let userIds = [...new Set((dto.userIds ?? []).filter((x) => typeof x === 'string'))].slice(0, MAX_TARGETS);
+    // Owner plateforme — un acteur NON-owner ne peut pas générer de rapport ciblant
+    // un owner (défense en profondeur : l'owner n'apparaît déjà pas dans le picker).
+    const ownerIds = await this.ownerVis.getOwnerIds();
+    const actorIsOwner = !!actor.id && ownerIds.includes(actor.id);
+    if (!actorIsOwner && ownerIds.length) {
+      userIds = userIds.filter((id) => !ownerIds.includes(id));
+    }
     if (userIds.length === 0) throw new BadRequestException('Sélectionnez au moins un utilisateur.');
     const to = dto.to ? new Date(dto.to) : new Date();
     const from = dto.from ? new Date(dto.from) : new Date(to.getTime() - 7 * 86_400_000);
@@ -131,9 +169,10 @@ export class ActivityReportService {
 
   // ─── Lecture ───────────────────────────────────────────────────────────────
 
-  async list(limit = 30): Promise<ActivityReportListItemDto[]> {
+  async list(limit = 30, viewer: { isOwner?: boolean | null } = {}): Promise<ActivityReportListItemDto[]> {
     const take = Math.min(Math.max(limit, 1), 100);
-    const rows = await this.prisma.activityReport.findMany({ orderBy: { createdAt: 'desc' }, take });
+    const where = await this.ownerReportFilter(viewer);
+    const rows = await this.prisma.activityReport.findMany({ where, orderBy: { createdAt: 'desc' }, take });
     return rows.map((r) => ({
       id: r.id,
       createdAt: r.createdAt.toISOString(),
@@ -146,16 +185,20 @@ export class ActivityReportService {
     }));
   }
 
-  async get(id: string): Promise<ActivityReportDto> {
+  async get(id: string, viewer: { isOwner?: boolean | null } = {}): Promise<ActivityReportDto> {
     const row = await this.prisma.activityReport.findUnique({ where: { id } });
-    if (!row) throw new NotFoundException('Rapport introuvable.');
+    // Rapport lié à un owner → même 404 qu'un id inexistant pour un viewer non-owner.
+    if (!row || (await this.isOwnerReportHidden(row, viewer))) throw new NotFoundException('Rapport introuvable.');
     return this.toDto(row);
   }
 
   /** Supprime un rapport (essais, échecs accumulés) — l'historique est capé à 100. */
-  async delete(id: string): Promise<{ ok: true }> {
-    const row = await this.prisma.activityReport.findUnique({ where: { id }, select: { id: true } });
-    if (!row) throw new NotFoundException('Rapport introuvable.');
+  async delete(id: string, viewer: { isOwner?: boolean | null } = {}): Promise<{ ok: true }> {
+    const row = await this.prisma.activityReport.findUnique({
+      where: { id },
+      select: { id: true, createdByUserId: true, targetUserIds: true },
+    });
+    if (!row || (await this.isOwnerReportHidden(row, viewer))) throw new NotFoundException('Rapport introuvable.');
     await this.prisma.activityReport.delete({ where: { id } });
     return { ok: true };
   }
@@ -215,12 +258,13 @@ export class ActivityReportService {
   }
 
   private async pickScheduledUsers(scope: ActivityReportScope, from: Date, to: Date): Promise<string[]> {
+    // Owner plateforme — jamais inclus dans une génération PLANIFIÉE (système).
     if (scope === 'ALL') {
-      const users = await this.prisma.user.findMany({ select: { id: true }, take: MAX_TARGETS });
+      const users = await this.prisma.user.findMany({ where: { isOwner: false }, select: { id: true }, take: MAX_TARGETS });
       return users.map((u) => u.id);
     }
     const sessions = await this.prisma.userSession.findMany({
-      where: { startedAt: { gte: from, lte: to } },
+      where: { startedAt: { gte: from, lte: to }, user: { isOwner: false } },
       select: { userId: true },
       distinct: ['userId'],
       take: MAX_TARGETS,

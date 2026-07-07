@@ -30,6 +30,7 @@ function makeReq(role: UserRole, fleetId: string | null = FLEET_ID): Authenticat
     role,
     fleetId,
     isActive: true,
+    isOwner: false,
     permissions: null,
   };
   return { user } as AuthenticatedRequest;
@@ -79,6 +80,8 @@ function makeController(prisma: PrismaService): UsersController {
     {} as never,
     {} as never,
     {} as never,
+    // Owner plateforme — isMasked=false ⇒ assertTargetVisible no-op (tests d'accès inchangés).
+    { isMasked: () => false } as never,
   );
 }
 

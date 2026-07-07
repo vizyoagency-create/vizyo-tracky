@@ -27,13 +27,15 @@ async function main() {
 
   await prisma.user.upsert({
     where: { email: 'admin@vizyoagency.com' },
-    update: {},
+    // Owner plateforme : re-seed idempotent qui (re)pose le flag isOwner.
+    update: { isOwner: true },
     create: {
       authUserId: adminAuthUserId,
       email: 'admin@vizyoagency.com',
       firstName: 'Admin',
       lastName: 'Vizyo',
       role: UserRole.SUPER_ADMIN,
+      isOwner: true,
       fleetId: null,
     },
   });

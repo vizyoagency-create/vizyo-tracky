@@ -18,8 +18,8 @@ export class ActivityReportController {
 
   /** Liste des rapports (les plus récents d'abord). */
   @Get()
-  list(@Query('limit') limit?: string) {
-    return this.svc.list(limit ? parseInt(limit, 10) || 30 : 30);
+  list(@Req() req: AuthenticatedRequest, @Query('limit') limit?: string) {
+    return this.svc.list(limit ? parseInt(limit, 10) || 30 : 30, req.user);
   }
 
   /** Planification courante (déclarée AVANT :id pour ne pas être capturée comme un id). */
@@ -41,13 +41,13 @@ export class ActivityReportController {
 
   /** Détail d'un rapport. */
   @Get(':id')
-  get(@Param('id') id: string) {
-    return this.svc.get(id);
+  get(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.svc.get(id, req.user);
   }
 
   /** Supprime un rapport (essais / échecs accumulés). */
   @Delete(':id')
-  delete(@Param('id') id: string) {
-    return this.svc.delete(id);
+  delete(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.svc.delete(id, req.user);
   }
 }

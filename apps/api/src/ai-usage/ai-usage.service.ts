@@ -7,6 +7,7 @@ import type {
   AiUsageLogsPageDto,
   AiUsageSummaryDto,
 } from '@vizyo/tracky-shared';
+import { OwnerVisibilityService } from '../common/owner-visibility.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 
@@ -56,6 +57,7 @@ export class AiUsageService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly systemActivity: SystemActivityService,
+    private readonly ownerVis: OwnerVisibilityService,
   ) {}
 
   /** Taux USD→€ (env `AI_USD_TO_EUR`, défaut 0,92). */
@@ -125,14 +127,29 @@ export class AiUsageService {
 
   // ─── Tableau de bord ───────────────────────────────────────────────────────
 
-  async summary(fromIso?: string, toIso?: string, scopeFleetId?: string): Promise<AiUsageSummaryDto> {
+  async summary(
+    fromIso?: string,
+    toIso?: string,
+    scopeFleetId?: string,
+    viewer: { isOwner?: boolean | null } = {},
+  ): Promise<AiUsageSummaryDto> {
     const rate = this.usdToEur();
     const to = toIso ? new Date(toIso) : new Date();
     const from = fromIso ? new Date(fromIso) : new Date(to.getTime() - 30 * 24 * 3600 * 1000);
     // scopeFleetId : un FLEET_ADMIN ne voit QUE sa société (forcé par le controller) ; un
-    // SUPER_ADMIN peut filtrer librement (undefined = toutes sociétés).
-    const where = { createdAt: { gte: from, lte: to }, ...(scopeFleetId ? { fleetId: scopeFleetId } : {}) };
+    // SUPER_ADMIN filtre librement (undefined = toutes). ET owner plateforme : exclu de TOUS les
+    // agrégats pour un viewer non-owner (total inclus, sinon le delta total − Σ(par user) trahirait
+    // une dépense masquée). userId NULLABLE (appels système) → on conserve les null, on exclut les owners.
+    const ownerIds = this.ownerVis.isMasked(viewer) ? await this.ownerVis.getOwnerIds() : [];
+    const where: Prisma.AiUsageLogWhereInput = {
+      createdAt: { gte: from, lte: to },
+      ...(scopeFleetId ? { fleetId: scopeFleetId } : {}),
+    };
+    if (ownerIds.length) where.OR = [{ userId: null }, { userId: { notIn: ownerIds } }];
     const fleetCond = scopeFleetId ? Prisma.sql`AND "fleetId" = ${scopeFleetId}::uuid` : Prisma.empty;
+    const notOwnerAi = ownerIds.length
+      ? Prisma.sql`AND ("userId" IS NULL OR "userId" <> ALL(${ownerIds}::uuid[]))`
+      : Prisma.empty;
 
     const [agg, byActionRaw, byFleetRaw, byUserRaw, dayRows] = await Promise.all([
       this.prisma.aiUsageLog.aggregate({
@@ -146,7 +163,7 @@ export class AiUsageService {
       this.prisma.$queryRaw<Array<{ day: Date; calls: bigint; cost: number }>>`
         SELECT date_trunc('day', "createdAt") AS day, COUNT(*)::bigint AS calls, COALESCE(SUM("costUsd"), 0) AS cost
         FROM ai_usage_logs
-        WHERE "createdAt" >= ${from} AND "createdAt" <= ${to} ${fleetCond}
+        WHERE "createdAt" >= ${from} AND "createdAt" <= ${to} ${fleetCond} ${notOwnerAi}
         GROUP BY 1 ORDER BY 1 ASC`,
     ]);
 
@@ -205,21 +222,22 @@ export class AiUsageService {
     };
   }
 
-  async logs(opts: { limit?: number; before?: string; userId?: string; fleetId?: string; action?: string }): Promise<AiUsageLogsPageDto> {
+  async logs(opts: { limit?: number; before?: string; userId?: string; fleetId?: string; action?: string }, viewer: { isOwner?: boolean | null } = {}): Promise<AiUsageLogsPageDto> {
     const rate = this.usdToEur();
     const take = Math.min(Math.max(opts.limit ?? 50, 1), 200);
-    const where: {
-      userId?: string;
-      fleetId?: string;
-      action?: string;
-      createdAt?: { lt: Date };
-    } = {};
+    const where: Prisma.AiUsageLogWhereInput = {};
     if (opts.userId) where.userId = opts.userId;
     if (opts.fleetId) where.fleetId = opts.fleetId;
     if (opts.action) where.action = opts.action;
     if (opts.before) {
       const d = new Date(opts.before);
       if (!Number.isNaN(d.getTime())) where.createdAt = { lt: d };
+    }
+    // Owner plateforme — appels IA de l'owner exclus pour un viewer non-owner
+    // (userId nullable → on conserve les null système).
+    if (this.ownerVis.isMasked(viewer)) {
+      const ownerIds = await this.ownerVis.getOwnerIds();
+      if (ownerIds.length) where.OR = [{ userId: null }, { userId: { notIn: ownerIds } }];
     }
     const rows = await this.prisma.aiUsageLog.findMany({ where, orderBy: { createdAt: 'desc' }, take: take + 1 });
     const hasMore = rows.length > take;

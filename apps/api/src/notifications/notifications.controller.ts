@@ -25,6 +25,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { PrismaService } from '../prisma/prisma.service';
+import { OwnerVisibilityService } from '../common/owner-visibility.service';
 import { AlertRulesService } from './alert-rules.service';
 import { WebPushService } from './web-push.service';
 
@@ -47,6 +48,7 @@ export class NotificationsController {
     private readonly webPush: WebPushService,
     private readonly alertRules: AlertRulesService,
     private readonly prisma: PrismaService,
+    private readonly ownerVis: OwnerVisibilityService,
   ) {}
 
   // ─── Push subscriptions ─────────────────────────────────────
@@ -105,8 +107,13 @@ export class NotificationsController {
     @Query('scope') scope?: 'all' | 'mine',
   ) {
     const wantAll = scope === 'all' && req.user.role === UserRole.SUPER_ADMIN;
+    // Masquage owner : un super-admin non-owner ne doit pas voir (email/nom) les devices d'un owner.
+    const hiddenOwnerIds = wantAll ? await this.ownerVis.hiddenIdsFor(req.user) : [];
     const subs = wantAll
-      ? await this.prisma.pushSubscription.findMany({ orderBy: { lastSeenAt: 'desc' } })
+      ? await this.prisma.pushSubscription.findMany({
+          where: hiddenOwnerIds.length ? { userId: { notIn: hiddenOwnerIds } } : {},
+          orderBy: { lastSeenAt: 'desc' },
+        })
       : await this.webPush.listForUser(req.user.id);
 
     // Jointure manuelle user (pas de relation Prisma declaree pour eviter une

@@ -8,7 +8,9 @@ import type {
   PresenceStatus,
 } from '@vizyo/tracky-shared';
 import { labelForRoute } from '@vizyo/tracky-shared';
+import { Prisma } from '@prisma/client';
 import type { AuthUser } from '../auth/types/auth-user';
+import { OwnerVisibilityService } from '../common/owner-visibility.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 
@@ -56,6 +58,7 @@ export class UserActivityService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly systemActivity: SystemActivityService,
+    private readonly ownerVis: OwnerVisibilityService,
   ) {}
 
   /** Ingestion d'un batch d'events : résout/crée la session, persiste, met à jour la présence. */
@@ -130,10 +133,15 @@ export class UserActivityService {
   }
 
   /** Utilisateurs en ligne maintenant (1 entrée par user, la session la plus fraîche). */
-  async getOnline(): Promise<OnlineUserDto[]> {
+  async getOnline(viewer: { isOwner?: boolean | null } = {}): Promise<OnlineUserDto[]> {
     const fresh = new Date(Date.now() - ONLINE_FRESH_MS);
     const sessions = await this.prisma.userSession.findMany({
-      where: { endedAt: null, lastSeenAt: { gte: fresh } },
+      where: {
+        endedAt: null,
+        lastSeenAt: { gte: fresh },
+        // Owner plateforme — invisible aux autres super-admins dans le live.
+        ...(this.ownerVis.isMasked(viewer) ? { user: { isOwner: false } } : {}),
+      },
       orderBy: { lastSeenAt: 'desc' },
       include: { user: { select: { firstName: true, lastName: true, role: true } } },
     });
@@ -174,11 +182,14 @@ export class UserActivityService {
     type?: string;
     from?: string;
     to?: string;
-  } = {}): Promise<ActivityFeedItemDto[]> {
+  } = {}, viewer: { isOwner?: boolean | null } = {}): Promise<ActivityFeedItemDto[]> {
     const take = Math.min(Math.max(filters.limit ?? 50, 1), 200);
     // On exclut HEARTBEAT (purement technique, 1/30s/user) du flux lisible.
     const and: Record<string, unknown>[] = [{ type: { not: 'HEARTBEAT' } }];
     if (filters.userId) and.push({ userId: filters.userId });
+    // Owner plateforme — activité de l'owner exclue pour un viewer non-owner.
+    const ownerExcl = await this.ownerVis.userIdExclusion(viewer);
+    if (Object.keys(ownerExcl).length) and.push(ownerExcl);
     if (filters.type && VALID_TYPES.has(filters.type)) and.push({ type: filters.type });
     if (filters.from) {
       const d = new Date(filters.from);
@@ -227,20 +238,25 @@ export class UserActivityService {
   }
 
   /** Analytics agrégées sur une fenêtre (défaut : 7 derniers jours). */
-  async getStats(fromIso?: string, toIso?: string): Promise<ActivityStatsDto> {
+  async getStats(fromIso?: string, toIso?: string, viewer: { isOwner?: boolean | null } = {}): Promise<ActivityStatsDto> {
     const to = toIso ? new Date(toIso) : new Date();
     const from = fromIso ? new Date(fromIso) : new Date(to.getTime() - 7 * 86_400_000);
+
+    // Owner plateforme — exclu des agrégats pour un viewer non-owner. user_sessions
+    // ET user_activities portent la même colonne "userId" → un seul fragment réutilisé.
+    const ownerIds = this.ownerVis.isMasked(viewer) ? await this.ownerVis.getOwnerIds() : [];
+    const notOwner = ownerIds.length ? Prisma.sql`AND "userId" <> ALL(${ownerIds}::uuid[])` : Prisma.empty;
 
     const [totals, topPages, topClicks, perDay, byType, topForms] = await Promise.all([
       this.prisma.$queryRaw<
         Array<{ unique_users: number; total_sessions: number; total_page_views: number; avg_session_sec: number }>
       >`
         SELECT
-          (SELECT count(DISTINCT "userId") FROM user_sessions WHERE "startedAt" BETWEEN ${from} AND ${to})::int AS unique_users,
-          (SELECT count(*) FROM user_sessions WHERE "startedAt" BETWEEN ${from} AND ${to})::int AS total_sessions,
-          (SELECT count(*) FROM user_activities WHERE type = 'PAGE_VIEW' AND "createdAt" BETWEEN ${from} AND ${to})::int AS total_page_views,
+          (SELECT count(DISTINCT "userId") FROM user_sessions WHERE "startedAt" BETWEEN ${from} AND ${to} ${notOwner})::int AS unique_users,
+          (SELECT count(*) FROM user_sessions WHERE "startedAt" BETWEEN ${from} AND ${to} ${notOwner})::int AS total_sessions,
+          (SELECT count(*) FROM user_activities WHERE type = 'PAGE_VIEW' AND "createdAt" BETWEEN ${from} AND ${to} ${notOwner})::int AS total_page_views,
           (SELECT COALESCE(avg(EXTRACT(EPOCH FROM (COALESCE("endedAt", "lastSeenAt") - "startedAt"))), 0)
-             FROM user_sessions WHERE "startedAt" BETWEEN ${from} AND ${to})::float8 AS avg_session_sec`,
+             FROM user_sessions WHERE "startedAt" BETWEEN ${from} AND ${to} ${notOwner})::float8 AS avg_session_sec`,
       // Route NORMALISÉE dans le SQL (query strippée + UUID → :id) : sans ça les vues
       // d'une même page sont éclatées en N lignes ('/vehicles?tab=…', '/vehicles/<uuid>'…)
       // et les compteurs dilués. La route brute reste intacte en base (feed chronologique).
@@ -249,26 +265,26 @@ export class UserActivityService {
                  '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}', ':id', 'g') AS route,
                count(*)::int AS views, COALESCE(avg("durationMs"), 0)::float8 AS avg_ms
         FROM user_activities
-        WHERE type = 'PAGE_VIEW' AND route IS NOT NULL AND "createdAt" BETWEEN ${from} AND ${to}
+        WHERE type = 'PAGE_VIEW' AND route IS NOT NULL AND "createdAt" BETWEEN ${from} AND ${to} ${notOwner}
         GROUP BY 1 ORDER BY count(*) DESC LIMIT 10`,
       this.prisma.$queryRaw<Array<{ target: string; count: number }>>`
         SELECT target, count(*)::int AS count
         FROM user_activities
-        WHERE type = 'CLICK' AND target IS NOT NULL AND "createdAt" BETWEEN ${from} AND ${to}
+        WHERE type = 'CLICK' AND target IS NOT NULL AND "createdAt" BETWEEN ${from} AND ${to} ${notOwner}
         GROUP BY target ORDER BY count(*) DESC LIMIT 10`,
       this.prisma.$queryRaw<Array<{ date: string; count: number }>>`
         SELECT to_char(date_trunc('day', "startedAt"), 'YYYY-MM-DD') AS date, count(*)::int AS count
-        FROM user_sessions WHERE "startedAt" BETWEEN ${from} AND ${to}
+        FROM user_sessions WHERE "startedAt" BETWEEN ${from} AND ${to} ${notOwner}
         GROUP BY 1 ORDER BY 1`,
       this.prisma.$queryRaw<Array<{ type: string; count: number }>>`
         SELECT type, count(*)::int AS count
         FROM user_activities
-        WHERE type <> 'HEARTBEAT' AND "createdAt" BETWEEN ${from} AND ${to}
+        WHERE type <> 'HEARTBEAT' AND "createdAt" BETWEEN ${from} AND ${to} ${notOwner}
         GROUP BY type ORDER BY count(*) DESC`,
       this.prisma.$queryRaw<Array<{ target: string; count: number }>>`
         SELECT target, count(*)::int AS count
         FROM user_activities
-        WHERE type = 'FORM_SUBMIT' AND target IS NOT NULL AND "createdAt" BETWEEN ${from} AND ${to}
+        WHERE type = 'FORM_SUBMIT' AND target IS NOT NULL AND "createdAt" BETWEEN ${from} AND ${to} ${notOwner}
         GROUP BY target ORDER BY count(*) DESC LIMIT 10`,
     ]);
 
@@ -305,12 +321,13 @@ export class UserActivityService {
     before?: string;
     action?: string;
     status?: string;
-  }): Promise<EngineCommandAuditDto[]> {
+  }, viewer: { isOwner?: boolean | null } = {}): Promise<EngineCommandAuditDto[]> {
     const take = Math.min(Math.max(filters.limit ?? 50, 1), 100);
     const where: {
       action?: 'CUT' | 'RESTORE';
       status?: 'PENDING' | 'SENT' | 'ACKNOWLEDGED' | 'FAILED' | 'REJECTED_SPEED';
       createdAt?: { lt: Date };
+      requestedBy?: { notIn: string[] };
     } = {};
     if (filters.action === 'CUT' || filters.action === 'RESTORE') where.action = filters.action;
     if (
@@ -325,6 +342,12 @@ export class UserActivityService {
     if (filters.before) {
       const d = new Date(filters.before);
       if (!Number.isNaN(d.getTime())) where.createdAt = { lt: d };
+    }
+    // Owner plateforme — commandes moteur demandées par l'owner exclues pour un
+    // viewer non-owner (`requestedBy` est une colonne UUID, notIn est sûr).
+    if (this.ownerVis.isMasked(viewer)) {
+      const ids = await this.ownerVis.getOwnerIds();
+      if (ids.length) where.requestedBy = { notIn: ids };
     }
 
     const commands = await this.prisma.engineControlCommand.findMany({
