@@ -28,6 +28,27 @@ export const TRIP_NARRATIVE_SCHEMA = {
   },
 } as const;
 
+/**
+ * System prompt du MIXTE (mode « les 2 IA ») — l'agent de SYNTHÈSE. Reçoit 2 analyses INDÉPENDANTES
+ * du même trajet (nommées A et B, jamais par leur marque) + les données déterministes, et produit UNE
+ * analyse finale combinant le meilleur des deux, complétant les manques, corrigeant les incohérences.
+ */
+export function renderTripSynthesisSystem(): string {
+  return [
+    "Tu es l'agent de SYNTHÈSE de Tracky. On te donne les DONNÉES DÉTERMINISTES d'un trajet et DEUX",
+    "analyses independantes (A et B) faites par deux moteurs differents.",
+    '',
+    'Produis UNE analyse FINALE, meilleure que chacune prise seule :',
+    "- Combine le meilleur des deux (details utiles, formulations claires).",
+    "- Complete ce que l'une a et pas l'autre.",
+    "- CORRIGE toute affirmation qui contredit les DONNEES (les donnees font foi ; les analyses peuvent se tromper).",
+    "- Pour le Trust Score, retiens la valeur la plus coherente avec la qualite GPS des donnees.",
+    '',
+    'Regles STRICTES : reste FACTUEL, ne mentionne NI « A » NI « B » NI aucune marque dans le texte final',
+    "(l'utilisateur ne doit voir qu'un seul recit homogene). Reponds en FRANCAIS, en JSON conforme au schema.",
+  ].join('\n');
+}
+
 /** System prompt (préfixe stable → mis en cache par les providers). */
 export function renderTripNarrativeSystem(): string {
   return [

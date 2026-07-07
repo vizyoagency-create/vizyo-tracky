@@ -8,7 +8,7 @@ import {
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import type {
-  AiProviderId, AiProviderSettingsDto, AiUsageBreakdownRowDto, AiUsageLogRowDto, AiUsageSummaryDto,
+  AiProviderMode, AiProviderSettingsDto, AiUsageBreakdownRowDto, AiUsageLogRowDto, AiUsageSummaryDto,
 } from '@vizyo/tracky-shared';
 import { AiUsageApiService } from '../../core/services/ai-usage.service';
 import { AuthService } from '../../core/services/auth.service';
@@ -110,6 +110,23 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
                   <span class="au-prov-hint">{{ p.hint }}</span>
                 </button>
               }
+              <!-- Mode MIXTE : les 2 moteurs + un agent qui combine. -->
+              <button type="button" class="au-prov au-prov--mixte"
+                      [class.on]="prov.provider === 'both'"
+                      [disabled]="savingProvider() !== null || !prov.mixteAvailable"
+                      (click)="switchProvider('both')">
+                <div class="au-prov-top">
+                  <span class="au-prov-name">Les 2 — Mixte ✨</span>
+                  @if (savingProvider() === 'both') {
+                    <lucide-icon [img]="LoaderIcon" [size]="13" class="au-spin"></lucide-icon>
+                  } @else if (prov.provider === 'both') {
+                    <span class="au-prov-badge"><lucide-icon [img]="CheckIcon" [size]="12"></lucide-icon> Actif</span>
+                  } @else if (!prov.mixteAvailable) {
+                    <span class="au-prov-badge au-prov-badge--off">2 clés requises</span>
+                  }
+                </div>
+                <span class="au-prov-hint">GPT et Claude analysent chacun, puis un agent Tracky combine le meilleur des deux. Résultat optimal (coût plus élevé) — sur l'analyse de trajets.</span>
+              </button>
             </div>
             @if (activeProviderUnconfigured(); as name) {
               <div class="au-prov-warn">
@@ -278,8 +295,10 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
     .au-prov-panel { padding: 18px; border-radius: 16px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 12px; }
     .au-prov-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
     .au-prov-note { font-size: 11.5px; color: var(--fg-tertiary); }
-    .au-prov-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    @media (max-width: 560px) { .au-prov-grid { grid-template-columns: 1fr; } }
+    .au-prov-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    @media (max-width: 720px) { .au-prov-grid { grid-template-columns: 1fr; } }
+    .au-prov--mixte.on { border-color: #A78BFA; background: color-mix(in srgb, #A78BFA 9%, var(--bg-tertiary)); }
+    .au-prov--mixte .au-prov-name { color: var(--fg-primary); }
     .au-prov { text-align: left; display: flex; flex-direction: column; gap: 5px; padding: 13px 14px; border-radius: 12px; border: 1.5px solid var(--border-subtle); background: var(--bg-tertiary); cursor: pointer; transition: border-color .15s, background .15s; }
     .au-prov:hover:not(:disabled) { border-color: color-mix(in srgb, var(--tracky-light, #10E0A0) 45%, transparent); }
     .au-prov.on { border-color: var(--tracky-light, #10E0A0); background: color-mix(in srgb, var(--tracky-light, #10E0A0) 8%, var(--bg-tertiary)); }
@@ -374,7 +393,7 @@ export class AdminAiUsageComponent implements OnInit {
 
   /** Switch de moteur IA (Claude ↔ GPT) — super-admin. */
   protected readonly provider = signal<AiProviderSettingsDto | null>(null);
-  protected readonly savingProvider = signal<AiProviderId | null>(null);
+  protected readonly savingProvider = signal<AiProviderMode | null>(null);
 
   protected readonly logRows = signal<AiUsageLogRowDto[]>([]);
   protected readonly logCursor = signal<string | null>(null);
@@ -439,15 +458,16 @@ export class AdminAiUsageComponent implements OnInit {
     }
   }
 
-  /** Bascule le moteur IA global (Claude ↔ GPT). */
-  protected async switchProvider(id: AiProviderId): Promise<void> {
+  /** Bascule le mode IA global (Claude / GPT / les 2 mixte). */
+  protected async switchProvider(id: AiProviderMode): Promise<void> {
     const cur = this.provider();
     if (!cur || cur.provider === id || this.savingProvider() !== null) return;
     this.savingProvider.set(id);
     try {
       const updated = await firstValueFrom(this.api.setProvider(id));
       this.provider.set(updated);
-      this.toast.success('Moteur IA', `Bascule sur ${updated.providers.find((p) => p.id === id)?.label ?? id}.`);
+      const name = id === 'both' ? 'Mixte (les 2 IA)' : (updated.providers.find((p) => p.id === id)?.label ?? id);
+      this.toast.success('Moteur IA', `Bascule sur ${name}.`);
     } catch (e) {
       this.toast.error('Moteur IA', this.errMsg(e));
     } finally {

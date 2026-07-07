@@ -33,7 +33,7 @@ export class AiUsageController {
       { id: 'claude', label: 'Claude — Opus 4.8', hint: 'Anthropic · raisonnement agenda & optimisation', configured: avail.claude },
       { id: 'gpt', label: 'GPT — OpenAI', hint: 'Analyse de trajets & détection d\'anomalies', configured: avail.gpt },
     ];
-    return { provider: setting.provider, updatedAt: setting.updatedAt, providers };
+    return { provider: setting.provider, updatedAt: setting.updatedAt, providers, mixteAvailable: this.aiRouter.mixteAvailable() };
   }
 
   /**

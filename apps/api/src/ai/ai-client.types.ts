@@ -12,6 +12,9 @@ import { ServiceUnavailableException } from '@nestjs/common';
 /** Providers IA supportés. `claude` = Anthropic Messages API ; `gpt` = OpenAI Responses API. */
 export type AiProvider = 'claude' | 'gpt';
 
+/** MODE réglé globalement : un seul moteur, ou `both` = MIXTE (les 2 + synthèse). */
+export type AiProviderMode = AiProvider | 'both';
+
 /** Nature d'un échec IA — pour classer le niveau d'alerte + l'anti-spam (pas de match texte fragile). */
 export type AiErrorKind =
   | 'no_key'

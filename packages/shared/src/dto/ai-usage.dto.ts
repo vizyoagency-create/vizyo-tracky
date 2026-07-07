@@ -91,6 +91,13 @@ export interface SetAiBudgetDto {
 /** Moteurs IA supportés. `claude` = Anthropic ; `gpt` = OpenAI. */
 export type AiProviderId = 'claude' | 'gpt';
 
+/**
+ * MODE de moteur IA reglé globalement. `claude`/`gpt` = un seul moteur ; `both` = MIXTE (les 2
+ * moteurs analysent, puis un agent combine/complète le meilleur des deux — appliqué à l'analyse de
+ * trajets). Pour les autres usages IA (single-shot), `both` retombe sur le moteur primaire.
+ */
+export type AiProviderMode = AiProviderId | 'both';
+
 /** Un moteur IA et sa disponibilité (clé présente côté serveur). */
 export interface AiProviderInfoDto {
   id: AiProviderId;
@@ -104,13 +111,15 @@ export interface AiProviderInfoDto {
 
 /** Réglage courant du moteur IA global + moteurs disponibles. */
 export interface AiProviderSettingsDto {
-  /** Moteur global sélectionné (appliqué à tous les appels IA sauf surcharge « par tâche »). */
-  provider: AiProviderId;
+  /** MODE global : un seul moteur (`claude`/`gpt`) ou le MIXTE (`both`). */
+  provider: AiProviderMode;
   updatedAt: string | null;
   providers: AiProviderInfoDto[];
+  /** Vrai si le mode mixte est disponible (les 2 moteurs ont une clé). */
+  mixteAvailable: boolean;
 }
 
-/** Change le moteur IA global (super-admin). */
+/** Change le mode IA global (super-admin). */
 export interface SetAiProviderDto {
-  provider: AiProviderId;
+  provider: AiProviderMode;
 }

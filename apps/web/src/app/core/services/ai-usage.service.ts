@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import type {
-  AiProviderId,
+  AiProviderMode,
   AiProviderSettingsDto,
   AiUsageBudgetDto,
   AiUsageLogsPageDto,
@@ -53,8 +53,8 @@ export class AiUsageApiService {
     return this.http.get<AiProviderSettingsDto>('/api/admin/ai-usage/provider');
   }
 
-  /** Bascule le moteur IA global. */
-  setProvider(provider: AiProviderId): Observable<AiProviderSettingsDto> {
+  /** Bascule le mode IA global (Claude / GPT / les 2 mixte). */
+  setProvider(provider: AiProviderMode): Observable<AiProviderSettingsDto> {
     return this.http.put<AiProviderSettingsDto>('/api/admin/ai-usage/provider', { provider });
   }
 }

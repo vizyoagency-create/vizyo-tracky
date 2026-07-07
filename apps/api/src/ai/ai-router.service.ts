@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { AnthropicClient } from './anthropic.client';
 import { OpenAiClient } from './openai.client';
 import { AiProviderSettingsService } from './ai-provider-settings.service';
-import type { AiClient, AiJsonRequest, AiJsonResult, AiProvider } from './ai-client.types';
+import type { AiClient, AiJsonRequest, AiJsonResult, AiProvider, AiProviderMode } from './ai-client.types';
 
 /** Options d'un appel routé. `preferProvider` = mixte « par tâche » (ex. analyse de trajets → gpt). */
 export interface AiRunOptions {
@@ -54,14 +54,24 @@ export class AiRouter {
     return this.byName(selected);
   }
 
-  /** Provider global courant (pour l'aperçu UI / le préchargement). */
-  async selectedProvider(): Promise<AiProvider> {
+  /** MODE global réglé (`claude` | `gpt` | `both`). Pour les décisions d'ensemble (analyse de trajets). */
+  async mode(): Promise<AiProviderMode> {
     return this.settings.current();
   }
 
-  /** Un appel = une réponse JSON structurée, routée vers le bon provider. Lève `AiServiceError` (503). */
+  /** true si le MIXTE est possible (les 2 moteurs ont une clé côté serveur). */
+  mixteAvailable(): boolean {
+    return this.anthropic.isConfigured() && this.openai.isConfigured();
+  }
+
+  /**
+   * Un appel = une réponse JSON structurée, routée vers le bon provider. Lève `AiServiceError` (503).
+   * Le mode `both` (mixte) n'a de sens que pour les usages qui savent lancer 2 moteurs + synthèse
+   * (analyse de trajets) ; pour un appel SIMPLE, il retombe sur le moteur primaire (Claude).
+   */
   async completeJson<T>(req: AiJsonRequest, opts?: AiRunOptions): Promise<AiJsonResult<T>> {
-    const selected = await this.settings.current();
+    const mode = await this.settings.current();
+    const selected: AiProvider = mode === 'both' ? 'claude' : mode;
     return this.pick(selected, opts?.preferProvider).completeJson<T>(req);
   }
 }
