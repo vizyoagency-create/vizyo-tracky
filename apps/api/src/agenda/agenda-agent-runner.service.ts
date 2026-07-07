@@ -262,6 +262,9 @@ export class AgendaAgentRunnerService {
   // ─── Propositions (revue humaine) ──────────────────────────────────────────
 
   async list(user: AuthUser, fleetId?: string, status: string = 'pending'): Promise<AgendaAgentProposalDto[]> {
+    // Super-admin sans société ciblée (« toutes les sociétés ») : rien à lister (pas de 400 sur le
+    // simple compteur de propositions ; il faut choisir une société pour voir/agir).
+    if (user.role === UserRole.SUPER_ADMIN && !fleetId && !user.fleetId) return [];
     const id = this.resolveFleetId(user, fleetId);
     const rows = (await this.prisma.agendaAgentProposal.findMany({
       where: { fleetId: id, ...(status ? { status } : {}) },
