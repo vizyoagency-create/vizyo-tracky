@@ -244,15 +244,20 @@ export class ReservationsService {
     return this.computeSuggestions(where, start, end, query.criteria);
   }
 
-  /** Disponibilité pour une flotte PRÉCISE (flux public P4, sans utilisateur authentifié). */
+  /**
+   * Disponibilité pour une flotte PRÉCISE (flux public P4, sans utilisateur authentifié).
+   * `excludeRequested` : traite AUSSI les demandes en attente (REQUESTED) comme occupantes — un
+   * demandeur public ne doit pas voir un véhicule déjà réservé NI déjà suggéré/demandé pour un autre.
+   */
   async availableForFleet(
     fleetId: string,
     startAt: string,
     endAt: string,
     criteria?: RequestReservationDto['criteria'],
+    opts?: { excludeRequested?: boolean },
   ): Promise<SuggestReservationResultDto> {
     const { start, end } = this.parseSlot(startAt, endAt);
-    return this.computeSuggestions({ fleetId }, start, end, criteria);
+    return this.computeSuggestions({ fleetId }, start, end, criteria, opts);
   }
 
   /** Cœur d'auto-complétion : véhicules du `where` LIBRES sur [start,end) conformes aux critères. */
@@ -261,8 +266,11 @@ export class ReservationsService {
     start: Date,
     end: Date,
     criteria?: RequestReservationDto['criteria'],
+    opts?: { excludeRequested?: boolean },
   ): Promise<SuggestReservationResultDto> {
     const c = this.sanitizeCriteria(criteria);
+    // Statuts occupants : fermes (défaut) ou fermes + en attente (flux public, anti-double-suggestion).
+    const busyStatuses = opts?.excludeRequested ? [...BLOCKING, VehicleEventStatus.REQUESTED] : BLOCKING;
 
     const candidates = await this.prisma.vehicle.findMany({
       where,
@@ -307,7 +315,7 @@ export class ReservationsService {
         where: {
           vehicleId: { in: ids },
           type: VehicleEventType.RESERVATION,
-          status: { in: BLOCKING },
+          status: { in: busyStatuses },
           startAt: { lt: end },
           endAt: { gt: start },
         },
@@ -483,6 +491,15 @@ export class ReservationsService {
         where: { id },
         data: { status: VehicleEventStatus.CONFIRMED, vehicleId, fleetId },
         include: INCLUDE_PLATE,
+      });
+      // Réservation validée : notifier le demandeur (flux public P4). Le notifier ne réagit qu'aux
+      // réservations `metadata.public` avec un contact ; sans effet pour les réservations internes.
+      this.emitter?.emit('reservation.confirmed', {
+        fleetId: row.fleetId,
+        vehiclePlate: row.vehicle?.plate ?? null,
+        startAt: row.startAt.toISOString(),
+        endAt: row.endAt ? row.endAt.toISOString() : null,
+        metadata: (row.metadata as Record<string, unknown> | null) ?? null,
       });
       return this.toDto(row);
     } catch (err) {

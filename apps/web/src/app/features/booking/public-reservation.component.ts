@@ -81,10 +81,11 @@ import { ReservationBookingApiService } from '../../core/services/reservation-bo
 
               <div class="pr-grid">
                 <label class="pr-f"><span>Votre nom</span><input type="text" class="pr-in" [value]="requesterName()" (input)="requesterName.set($any($event.target).value)" placeholder="Nom / structure"></label>
-                <label class="pr-f"><span>Contact</span><input type="text" class="pr-in" [value]="requesterContact()" (input)="requesterContact.set($any($event.target).value)" placeholder="E-mail ou téléphone"></label>
+                <label class="pr-f"><span>Contact <span class="pr-req">obligatoire</span></span><input type="text" class="pr-in" [class.pr-in--req]="!requesterContact().trim()" [value]="requesterContact()" (input)="requesterContact.set($any($event.target).value)" placeholder="E-mail ou téléphone"></label>
               </div>
+              <p class="pr-hint">📩 Un e-mail ou un téléphone est <strong>obligatoire</strong> pour recevoir la validation de votre réservation.</p>
               @if (submitError()) { <div class="pr-alert">{{ submitError() }}</div> }
-              <button type="button" class="pr-btn" [disabled]="submitting() || selectedCount() === 0" (click)="submit()">
+              <button type="button" class="pr-btn" [disabled]="submitting() || selectedCount() === 0 || !requesterContact().trim()" (click)="submit()">
                 @if (submitting()) { <lucide-icon [img]="LoaderIcon" [size]="15" class="pr-spin"></lucide-icon> } @else { <lucide-icon [img]="SendIcon" [size]="15"></lucide-icon> }
                 Envoyer la demande ({{ selectedCount() }})
               </button>
@@ -112,6 +113,9 @@ import { ReservationBookingApiService } from '../../core/services/reservation-bo
     .pr-in:focus { outline: none; border-color: var(--pr-accent); box-shadow: 0 0 0 3px rgba(16,185,129,.18); }
     textarea.pr-in { resize: vertical; }
     .pr-alert { background: rgba(239,68,68,.12); color: #fca5a5; padding: 10px 12px; border-radius: 10px; font-size: 12.5px; margin-bottom: 12px; }
+    .pr-req { font-size: 10px; font-weight: 700; color: #fbbf24; text-transform: uppercase; letter-spacing: .03em; margin-left: 4px; }
+    .pr-in--req { border-color: rgba(245,158,11,.55); }
+    .pr-hint { font-size: 11.5px; color: #cbd5e1; background: rgba(16,185,129,.08); border: 1px solid rgba(16,185,129,.2); padding: 9px 11px; border-radius: 9px; margin: 0 0 12px; line-height: 1.45; }
     .pr-btn { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 13px; border-radius: 12px; font-size: 14px; font-weight: 700; background: var(--pr-accent); color: #05261c; cursor: pointer; }
     .pr-btn--soft { background: rgba(16,185,129,.14); color: var(--pr-accent); border: 1px solid rgba(16,185,129,.3); }
     .pr-btn:disabled { opacity: .55; cursor: not-allowed; }
@@ -229,6 +233,10 @@ export class PublicReservationComponent implements OnInit {
     if (!startAt || !endAt) { this.submitError.set('Créneau invalide.'); return; }
     const vehicleIds = [...this.selected()];
     if (vehicleIds.length === 0) { this.submitError.set('Choisissez au moins un véhicule.'); return; }
+    if (!this.requesterContact().trim()) {
+      this.submitError.set('Renseignez un e-mail ou un téléphone : il est obligatoire pour recevoir la validation.');
+      return;
+    }
     this.submitting.set(true);
     try {
       const seatsNum = parseInt(this.seats(), 10);

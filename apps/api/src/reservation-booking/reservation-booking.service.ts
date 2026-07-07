@@ -16,6 +16,7 @@ import type { AuthUser } from '../auth/types/auth-user';
 import { ReservationsService } from '../agenda/reservations.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
+import { ReservationBookingNotifier } from './reservation-booking-notifier.service';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Extrait un nombre de places d'un texte libre (« 11 places », « 9 personnes »…). */
@@ -54,6 +55,7 @@ export class ReservationBookingService {
     private readonly prisma: PrismaService,
     private readonly reservations: ReservationsService,
     private readonly systemActivity: SystemActivityService,
+    private readonly notifier: ReservationBookingNotifier,
   ) {}
 
   private resolveFleetId(user: AuthUser, fleetId?: string): string {
@@ -153,14 +155,18 @@ export class ReservationBookingService {
     const seatsNeeded = this.resolveSeats(need);
     const destination = (need?.destination?.trim() || this.extractDestination(need?.freeText)) ?? null;
 
-    const avail = await this.reservations.availableForFleet(link.fleetId, slot.startAt, slot.endAt);
+    // excludeRequested : un demandeur public ne voit NI les véhicules réservés NI ceux en ATTENTE
+    // (déjà demandés par un autre). On écarte AUSSI ceux déjà suggérés par l'agent (proposition en
+    // attente qui chevauche) — anti-double-suggestion.
+    const avail = await this.reservations.availableForFleet(link.fleetId, slot.startAt, slot.endAt, undefined, { excludeRequested: true });
+    const freeVehicles = await this.withoutAgentHeld(link.fleetId, slot.startAt, slot.endAt, avail.vehicles);
     // Combinaison : véhicules libres à places CONNUES, plus grande capacité d'abord.
-    const withSeats = avail.vehicles.filter((v) => v.seats != null).sort((a, b) => (b.seats ?? 0) - (a.seats ?? 0));
+    const withSeats = freeVehicles.filter((v) => v.seats != null).sort((a, b) => (b.seats ?? 0) - (a.seats ?? 0));
     const combination = this.greedy(withSeats, seatsNeeded);
     const totalSeats = combination.reduce((s, v) => s + (v.seats ?? 0), 0);
     const covered = totalSeats >= seatsNeeded;
     const chosen = new Set(combination.map((v) => v.vehicleId));
-    const alternatives = avail.vehicles.filter((v) => !chosen.has(v.vehicleId)).map((v) => this.pubVeh(v));
+    const alternatives = freeVehicles.filter((v) => !chosen.has(v.vehicleId)).map((v) => this.pubVeh(v));
 
     return {
       startAt: slot.startAt,
@@ -181,6 +187,11 @@ export class ReservationBookingService {
     const link = await this.loadActiveLink(token);
     const slot = this.validateSlot(dto?.startAt, dto?.endAt, link);
     const seatsNeeded = this.resolveSeats(dto);
+    // Contact OBLIGATOIRE (e-mail ou téléphone) : sans lui, impossible de renvoyer la validation.
+    const contact = (dto?.requesterContact || '').trim();
+    if (!contact) {
+      throw new BadRequestException('Un e-mail ou un numéro de téléphone est obligatoire pour recevoir la validation de la réservation.');
+    }
     const vehicleIds = [...new Set((dto?.vehicleIds ?? []).filter((x): x is string => typeof x === 'string' && !!x))].slice(0, 10);
     if (vehicleIds.length === 0) throw new BadRequestException('Choisissez au moins un véhicule.');
 
@@ -212,7 +223,7 @@ export class ReservationBookingService {
           bookingRef,
           linkId: link.id,
           requester,
-          requesterContact: (dto?.requesterContact || '').slice(0, 160),
+          requesterContact: contact.slice(0, 160),
           seatsNeeded,
           destination,
           freeText: (dto?.freeText || '').slice(0, 500),
@@ -220,6 +231,16 @@ export class ReservationBookingService {
       });
       created++;
     }
+
+    // Accusé de réception au demandeur (best-effort ; tout échec d'envoi → centre d'alerte admin).
+    void this.notifier.sendAcknowledgment({
+      fleetId: link.fleetId,
+      contact,
+      destination,
+      startAt: slot.startAt,
+      endAt: slot.endAt,
+      count: created,
+    });
 
     this.systemActivity.record({
       category: 'RESERVATION',
@@ -234,6 +255,30 @@ export class ReservationBookingService {
   }
 
   // ─── Helpers ───────────────────────────────────────────────────────────────
+
+  /** Écarte les véhicules déjà retenus par une PROPOSITION EN ATTENTE de l'agent (chevauchant le créneau). */
+  private async withoutAgentHeld(
+    fleetId: string,
+    startAt: string,
+    endAt: string,
+    vehicles: SuggestedVehicleDto[],
+  ): Promise<SuggestedVehicleDto[]> {
+    if (vehicles.length === 0) return vehicles;
+    const start = new Date(startAt);
+    const end = new Date(endAt);
+    const held = await this.prisma.agendaAgentProposal.findMany({
+      where: {
+        fleetId,
+        status: 'pending',
+        startAt: { lt: end },
+        endAt: { gt: start },
+        vehicleId: { in: vehicles.map((v) => v.vehicleId) },
+      },
+      select: { vehicleId: true },
+    });
+    const heldSet = new Set(held.map((h) => h.vehicleId));
+    return vehicles.filter((v) => !heldSet.has(v.vehicleId));
+  }
 
   /** Couvre le besoin avec le MOINS de véhicules : d'abord un seul qui suffit, sinon cumul décroissant. */
   private greedy(free: SuggestedVehicleDto[], seatsNeeded: number): SuggestedVehicleDto[] {

@@ -11,7 +11,7 @@ import {
 import { DatePipe, DecimalPipe, NgClass } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
-  LucideAngularModule, Sparkles, Check, AlertTriangle, Loader, CalendarCheck, Inbox, X,
+  LucideAngularModule, Sparkles, Check, AlertTriangle, Loader, CalendarCheck, Inbox, X, User,
 } from 'lucide-angular';
 import type { VehicleEventDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
@@ -170,6 +170,13 @@ function toLocalInput(d: Date): string {
                     <span class="rs-q-when">{{ r.startAt | date:'dd MMM HH:mm' }} → {{ r.endAt | date:'HH:mm' }}</span>
                   </div>
                   <p class="rs-q-title">{{ r.title }}</p>
+                  @if (publicInfo(r); as pi) {
+                    <p class="rs-q-req">
+                      <lucide-icon [img]="UserIcon" [size]="12"></lucide-icon> {{ pi.requester }}
+                      @if (pi.contact) { · <span class="rs-q-contact">{{ pi.contact }}</span> }
+                      @if (pi.seats) { · {{ pi.seats }} places demandées }
+                    </p>
+                  }
                   <div class="rs-q-actions">
                     <button type="button" class="rs-btn rs-btn--ok" [disabled]="busyId() === r.id" (click)="confirm(r)"><lucide-icon [img]="CheckIcon" [size]="13"></lucide-icon> Valider</button>
                     <button type="button" class="rs-btn rs-btn--no" [disabled]="busyId() === r.id" (click)="reject(r)">Refuser</button>
@@ -241,6 +248,8 @@ function toLocalInput(d: Date): string {
     .rs-q-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
     .rs-q-when { font-size: 11.5px; color: var(--fg-tertiary); }
     .rs-q-title { font-size: 13px; font-weight: 600; color: var(--fg-primary); margin: 6px 0 0; }
+    .rs-q-req { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; font-size: 11.5px; color: var(--fg-tertiary); margin: 5px 0 0; }
+    .rs-q-contact { font-weight: 700; color: var(--tracky-light); }
     .rs-q-actions { display: flex; gap: 8px; margin-top: 9px; }
     .rs-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 26px; text-align: center; font-size: 13px; color: var(--fg-tertiary); }
     .rs-empty-ic { opacity: .3; }
@@ -288,6 +297,7 @@ export class ReservationSheetComponent {
   protected readonly CalendarCheckIcon = CalendarCheck;
   protected readonly InboxIcon = Inbox;
   protected readonly XIcon = X;
+  protected readonly UserIcon = User;
 
   protected readonly mode = signal<'request' | 'validate' | 'edit'>('request');
   protected readonly canManage = computed(() => this.perms.can('reservations_manage'));
@@ -356,6 +366,17 @@ export class ReservationSheetComponent {
 
   protected valOf(n: number | null): string { return n === null || n === undefined ? '—' : String(n); }
   protected scoreClass(v: number): string { return v >= 0.7 ? 'rs-chip--hi' : v >= 0.4 ? 'rs-chip--mid' : 'rs-chip--lo'; }
+
+  /** Infos du demandeur PUBLIC (P4) si la demande vient d'un lien public, sinon null. */
+  protected publicInfo(r: VehicleEventDto): { requester: string; contact: string; seats: number | null } | null {
+    const m = r.metadata as Record<string, unknown> | null;
+    if (!m || m['public'] !== true) return null;
+    return {
+      requester: typeof m['requester'] === 'string' ? (m['requester'] as string) : 'Demande publique',
+      contact: typeof m['requesterContact'] === 'string' ? (m['requesterContact'] as string) : '',
+      seats: typeof m['seatsNeeded'] === 'number' ? (m['seatsNeeded'] as number) : null,
+    };
+  }
 
   /** Libellé court d'énergie (badge de proposition). */
   protected energyLabel(e: string | null | undefined): string {
