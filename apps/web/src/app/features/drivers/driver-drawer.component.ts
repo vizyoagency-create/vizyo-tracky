@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { ScrollLockService } from '../../core/services/scroll-lock.service';
 import { LucideAngularModule, IdCard, Mail, Palette, Phone, Save, StickyNote, User, X } from 'lucide-angular';
 import type { DriverDto } from '@vizyo/tracky-shared';
+import { DrivingScoreCardComponent } from '../trip-analysis/driving-score-card.component';
 
 export interface DriverDrawerData {
   mode: 'create' | 'edit';
@@ -29,7 +30,7 @@ export interface DriverDrawerResult {
 @Component({
   selector: 'app-driver-drawer',
   standalone: true,
-  imports: [FormsModule, LucideAngularModule],
+  imports: [FormsModule, LucideAngularModule, DrivingScoreCardComponent],
   template: `
     @if (open()) {
       <div class="fixed inset-0 z-[9000] flex justify-end">
@@ -59,6 +60,11 @@ export interface DriverDrawerResult {
 
           <!-- Content (scrollable) -->
           <div class="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+
+            <!-- Score de conduite du conducteur (rang + vs moyenne) — motivation. -->
+            @if (data()?.mode === 'edit' && data()?.driver) {
+              <app-driving-score-card scope="driver" [entityId]="data()!.driver!.id" />
+            }
 
             <!-- Identite -->
             <section>

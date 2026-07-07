@@ -11,6 +11,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { DriversApiService } from '../../core/services/drivers.service';
 import { TripAnalysisApiService } from '../../core/services/trip-analysis.service';
 import { TripAnalysisBadgesComponent } from '../trip-analysis/trip-analysis-badges.component';
+import { DrivingScoreCardComponent } from '../trip-analysis/driving-score-card.component';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { ReportsApiService } from '../../core/services/reports.service';
 import { TripsApiService } from '../../core/services/trips.service';
@@ -53,9 +54,13 @@ import { relativeTime } from '../../shared/utils/relative-time';
     TripNoteModalComponent, DriverPickerComponent, DateRangePickerComponent,
     LineBarChartComponent, HistogramChartComponent, HeatmapChartComponent,
     TripAnalysisBadgesComponent,
+    DrivingScoreCardComponent,
   ],
   template: `
     <div class="flex flex-col gap-4 sm:gap-5">
+      <!-- Score de conduite de CE véhicule (rang + vs moyenne de la flotte). -->
+      <app-driving-score-card scope="vehicle" [entityId]="vehicleId()" />
+
       <!-- Barre d'actions : presets periode + custom + export + replay -->
       <div class="vrt-actionbar">
         <div class="vrt-period-pills">

@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import type { AiProviderId, DrivingScoreScope, DrivingScoresDto, TripAnalysisDto, TripNarrativeCompareDto } from '@vizyo/tracky-shared';
+import type { AiProviderId, DrivingScoreDetailDto, DrivingScoreScope, DrivingScoresDto, TripAnalysisDto, TripNarrativeCompareDto } from '@vizyo/tracky-shared';
 import { Observable } from 'rxjs';
 
 /**
@@ -44,5 +44,13 @@ export class TripAnalysisApiService {
     if (to) params['to'] = to;
     if (fleetId) params['fleetId'] = fleetId;
     return this.http.get<DrivingScoresDto>('/api/trip-analysis/scores', { params });
+  }
+
+  /** Score PERSO d'une entité (rang + vs moyenne) — carte dans les fiches détail. */
+  entityScore(scope: DrivingScoreScope, id: string, from?: string, to?: string): Observable<DrivingScoreDetailDto> {
+    const params: Record<string, string> = {};
+    if (from) params['from'] = from;
+    if (to) params['to'] = to;
+    return this.http.get<DrivingScoreDetailDto>(`/api/trip-analysis/scores/${scope}/${encodeURIComponent(id)}`, { params });
   }
 }

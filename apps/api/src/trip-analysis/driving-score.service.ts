@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { DrivingScoreRowDto, DrivingScoreScope, DrivingScoresDto } from '@vizyo/tracky-shared';
+import type { DrivingScoreDetailDto, DrivingScoreRowDto, DrivingScoreScope, DrivingScoresDto } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
 import { PrismaService } from '../prisma/prisma.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
@@ -44,7 +44,7 @@ export class DrivingScoreService {
       take: MAX_ANALYSES,
     });
     if (analyses.length >= MAX_ANALYSES) this.logger.warn(`scores : ${MAX_ANALYSES} analyses (tronqué).`);
-    if (analyses.length === 0) return { scope, from: from.toISOString(), to: to.toISOString(), rows: [], overallScore: null, overallGrade: null, totalTrips: 0 };
+    if (analyses.length === 0) return { scope, from: from.toISOString(), to: to.toISOString(), rows: [], overallScore: null, overallGrade: null, totalTrips: 0, rankedCount: 0 };
 
     // 3. Trajets correspondants DANS la période → conducteur + véhicule.
     const tripIds = analyses.map((a) => a.tripId);
@@ -116,6 +116,26 @@ export class DrivingScoreService {
     return {
       scope, from: from.toISOString(), to: to.toISOString(), rows,
       overallScore, overallGrade: overallScore != null ? grade(overallScore) : null, totalTrips: overallTrips,
+      rankedCount: rows.length,
+    };
+  }
+
+  /**
+   * Score PERSO d'UNE entité (véhicule/conducteur/groupe) : sa note + son RANG dans le classement +
+   * son écart à la moyenne. Réutilise `scores()` (même périmètre/anti-IDOR) puis extrait l'entité.
+   */
+  async entityScore(user: AuthUser, scope: DrivingScoreScope, id: string, fromIso?: string, toIso?: string, fleetId?: string): Promise<DrivingScoreDetailDto> {
+    const all = await this.scores(user, scope, fromIso, toIso, fleetId);
+    const idx = all.rows.findIndex((r) => r.id === id);
+    const row = idx >= 0 ? all.rows[idx] : null;
+    return {
+      scope, id, from: all.from, to: all.to,
+      row,
+      rank: idx >= 0 ? idx + 1 : null,
+      total: all.rows.length,
+      overallScore: all.overallScore,
+      overallGrade: all.overallGrade,
+      vsOverall: row && all.overallScore != null ? row.score - all.overallScore : null,
     };
   }
 }

@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
-import type { AiProviderId, DrivingScoreScope, DrivingScoresDto, TripAnalysisDto, TripNarrativeCompareDto } from '@vizyo/tracky-shared';
+import type { AiProviderId, DrivingScoreDetailDto, DrivingScoreScope, DrivingScoresDto, TripAnalysisDto, TripNarrativeCompareDto } from '@vizyo/tracky-shared';
 import { Roles } from '../auth/decorators/roles.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -39,6 +39,24 @@ export class TripAnalysisController {
     const s: DrivingScoreScope = scope === 'driver' || scope === 'group' ? scope : 'vehicle';
     const scopedFleet = req.user.role === UserRole.SUPER_ADMIN ? (fleetId || undefined) : undefined;
     return this.scores.scores(req.user, s, from, to, scopedFleet);
+  }
+
+  /**
+   * GET /api/trip-analysis/scores/:scope/:id — score PERSO d'une entité (rang + vs moyenne), pour la
+   * carte affichée dans chaque fiche détail (véhicule / conducteur / groupe). Scopé (anti-IDOR).
+   */
+  @Get('scores/:scope/:id')
+  getEntityScore(
+    @Req() req: AuthenticatedRequest,
+    @Param('scope') scope: string,
+    @Param('id') id: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('fleetId') fleetId?: string,
+  ): Promise<DrivingScoreDetailDto> {
+    const s: DrivingScoreScope = scope === 'driver' || scope === 'group' ? scope : 'vehicle';
+    const scopedFleet = req.user.role === UserRole.SUPER_ADMIN ? (fleetId || undefined) : undefined;
+    return this.scores.entityScore(req.user, s, id, from, to, scopedFleet);
   }
 
   /** GET /api/trip-analysis/vehicle/:vehicleId — analyses récentes d'un véhicule (onglet Trajets/rapports). */

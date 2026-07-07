@@ -137,4 +137,28 @@ export interface DrivingScoresDto {
   overallScore: number | null;
   overallGrade: string | null;
   totalTrips: number;
+  /** Nombre d'entités classées (véhicules/conducteurs/groupes). */
+  rankedCount: number;
+}
+
+/**
+ * Score PERSO d'UNE entité (véhicule/conducteur/groupe) : sa note + son RANG dans la compétition +
+ * sa comparaison à la MOYENNE. Affiché dans chaque fiche détail pour motiver (« tu es 3e / 12 »).
+ */
+export interface DrivingScoreDetailDto {
+  scope: DrivingScoreScope;
+  id: string;
+  from: string;
+  to: string;
+  /** Agrégat de l'entité (null = aucun trajet analysé sur la période). */
+  row: DrivingScoreRowDto | null;
+  /** Rang 1-based dans le classement (1 = meilleur), ou null si aucun trajet. */
+  rank: number | null;
+  /** Nombre total d'entités classées (le « / N »). */
+  total: number;
+  /** Moyenne de conduite de la flotte (0-100) sur la période. */
+  overallScore: number | null;
+  overallGrade: string | null;
+  /** Écart à la moyenne (score de l'entité − moyenne). > 0 = au-dessus. */
+  vsOverall: number | null;
 }

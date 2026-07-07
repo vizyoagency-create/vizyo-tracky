@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { LucideAngularModule, Plus, Trash2, FolderOpen, Truck, Eye, X } from 'lucide-angular';
 import { VehicleGroupsService, type VehicleGroup } from '../../core/services/vehicle-groups.service';
+import { TripAnalysisApiService } from '../../core/services/trip-analysis.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { FleetsApiService, type FleetSummary } from '../../core/services/fleets.service';
 import { AuthService } from '../../core/services/auth.service';
@@ -64,6 +65,13 @@ import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.direc
                   <span class="text-xs text-fg-tertiary">({{ g._count.vehicles }} véhicule{{ g._count.vehicles > 1 ? 's' : '' }})</span>
                   <!-- V1.15 — Badge fleet (visible SA only). -->
                   <app-sa-fleet-badge [fleetId]="g.fleetId" />
+                  <!-- Score de conduite du groupe (rang dans le classement) — motivation. -->
+                  @if (scoreFor(g.id); as sc) {
+                    <a routerLink="/scores" class="gsc-badge" [attr.data-grade]="sc.grade"
+                       [title]="'Score de conduite du groupe : ' + sc.score + '/100 — ' + sc.rank + 'e / ' + sc.total + '. Voir le classement.'">
+                      {{ sc.grade }} · {{ sc.score }} · {{ sc.rank }}<sup>{{ sc.rank === 1 ? 'er' : 'e' }}</sup>
+                    </a>
+                  }
                 </div>
                 @if (perms.can('groups_manage')) {
                   <button (click)="confirmDeleteGroup(g)"
@@ -167,6 +175,15 @@ import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.direc
       (cancelled)="showDeleteModal.set(false)"
     />
   `,
+  styles: [`
+    .gsc-badge { display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; background: var(--bg-tertiary); color: var(--fg-secondary); border: 1px solid var(--border-subtle); }
+    .gsc-badge sup { font-size: 8px; }
+    .gsc-badge[data-grade="A"] { background: color-mix(in srgb, #10E0A0 16%, transparent); color: #10E0A0; border-color: transparent; }
+    .gsc-badge[data-grade="B"] { background: color-mix(in srgb, #84CC16 16%, transparent); color: #84CC16; border-color: transparent; }
+    .gsc-badge[data-grade="C"] { background: color-mix(in srgb, #F59E0B 16%, transparent); color: #F59E0B; border-color: transparent; }
+    .gsc-badge[data-grade="D"] { background: color-mix(in srgb, #F97316 16%, transparent); color: #F97316; border-color: transparent; }
+    .gsc-badge[data-grade="E"] { background: color-mix(in srgb, #EF4444 16%, transparent); color: #EF4444; border-color: transparent; }
+  `],
 })
 export class VehicleGroupsTabComponent implements OnInit {
   private readonly groupsService = inject(VehicleGroupsService);
@@ -175,6 +192,9 @@ export class VehicleGroupsTabComponent implements OnInit {
   private readonly auth = inject(AuthService);
   protected readonly perms = inject(PermissionsService);
   private readonly fleetFilter = inject(FleetFilterService);
+  private readonly analysisApi = inject(TripAnalysisApiService);
+  /** Score de conduite par groupe (note + rang), chargé en une fois → badge sur chaque groupe. */
+  protected readonly groupScores = signal<Map<string, { score: number; grade: string; rank: number; total: number }>>(new Map());
 
   readonly loading = signal(true);
   readonly groups = signal<VehicleGroup[]>([]);
@@ -227,8 +247,24 @@ export class VehicleGroupsTabComponent implements OnInit {
       ]);
       this.groups.set(groups);
       this.allVehicles.set(vehicles);
+      void this.loadScores();
     } catch { /* error */ }
     finally { this.loading.set(false); }
+  }
+
+  /** Classement des groupes (90 j, aligné sur la carte de score) → note + rang par groupe. Best-effort (badge motivant). */
+  private async loadScores(): Promise<void> {
+    try {
+      const from = new Date(Date.now() - 90 * 24 * 3600 * 1000).toISOString();
+      const res = await firstValueFrom(this.analysisApi.scores('group', from));
+      const map = new Map<string, { score: number; grade: string; rank: number; total: number }>();
+      res.rows.forEach((r, i) => map.set(r.id, { score: r.score, grade: r.grade, rank: i + 1, total: res.rows.length }));
+      this.groupScores.set(map);
+    } catch { this.groupScores.set(new Map()); }
+  }
+
+  protected scoreFor(groupId: string): { score: number; grade: string; rank: number; total: number } | null {
+    return this.groupScores().get(groupId) ?? null;
   }
 
   vehiclePlate(vehicleId: string): string {
