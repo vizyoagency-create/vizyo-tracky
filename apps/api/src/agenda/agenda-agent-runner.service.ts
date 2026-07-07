@@ -378,6 +378,10 @@ export class AgendaAgentRunnerService {
         start: this.hhmm(p.startMinutes),
         end: this.hhmm(p.endMinutes),
         destination: p.destinationLabel,
+        // #3 — Vrai ITINÉRAIRE (lieux réellement visités, hors dépôt) : donne à l'IA le contexte du
+        // déplacement, pas juste le dépôt de retour. Ex. ["Borderouge","Ramonville"].
+        itinerary: p.itinerary,
+        roundTripFromDepot: p.roundTripFromDepot,
         weeksObserved: p.activeWeeks,
         confidence: p.confidence,
       })),

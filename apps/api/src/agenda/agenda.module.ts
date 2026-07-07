@@ -13,6 +13,7 @@ import { ForecastService } from './forecast.service';
 import { MaintenancePlansService } from './maintenance-plans.service';
 import { MaintenanceReminderService } from './maintenance-reminder.service';
 import { RecurrenceDetectorService } from './recurrence-detector.service';
+import { TripStopDetectorService } from './trip-stop-detector.service';
 import { ReservationsController } from './reservations.controller';
 import { ReservationsService } from './reservations.service';
 import { VehicleEventsService } from './vehicle-events.service';
@@ -40,6 +41,7 @@ import { VehicleEventsService } from './vehicle-events.service';
     ForecastService,
     AgendaAgentSettingsService,
     RecurrenceDetectorService,
+    TripStopDetectorService,
     AgendaAgentRunnerService,
     // Fourni LOCALEMENT (anti-cycle AgendaModule↔AiModule) : couche IA best-effort de l'agent.
     AnthropicClient,

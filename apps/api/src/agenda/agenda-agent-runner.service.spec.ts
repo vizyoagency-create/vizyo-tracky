@@ -10,6 +10,8 @@ const PATTERN: RecurringPattern = {
   destLat: 43.21,
   destLng: 2.35,
   destinationLabel: 'Carcassonne',
+  itinerary: ['Carcassonne'],
+  roundTripFromDepot: false,
   activeWeeks: 9,
   confidence: 0.9,
   basis: 'Observé 9/10 lundis',

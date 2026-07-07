@@ -39,8 +39,12 @@ export function renderAgendaAgentSystem(metier: FleetMetier): string {
   return [
     `Tu assistes le gestionnaire d'une flotte de véhicules (métier : ${METIER_HINT[metier] ?? METIER_HINT.GENERIC}).`,
     "On te fournit des trajets RÉCURRENTS détectés automatiquement à partir de l'historique GPS :",
-    'chacun a un index, une plaque, un jour de semaine, un créneau horaire, une destination, le nombre',
+    'chacun a un index, une plaque, un jour de semaine, un créneau horaire, une `destination`, le nombre',
     "de semaines où il a été observé (sur 10) et une confiance (0..1).",
+    "- `itinerary` : la liste ORDONNÉE des lieux réellement visités ce jour-là (les vrais arrêts, ex.",
+    '  ["Borderouge","Ramonville"]) — utilise-la pour décrire le déplacement, c\'est plus parlant que la',
+    "  seule destination. `roundTripFromDepot`=true signale un aller-retour depuis la base : la destination",
+    "  affichée est un lieu de l'itinéraire, PAS le dépôt de départ/retour.",
     '',
     'Pour CHAQUE trajet (référencé par son index), tu dois :',
     "- décider `keep` : true s'il est pertinent de PRÉ-RÉSERVER ce véhicule d'avance pour cette habitude,",

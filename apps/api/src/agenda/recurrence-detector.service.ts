@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { ReverseGeocodeService } from '../geocoding/reverse-geocode.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { fleetTzFormatter, localParts } from './fleet-tz.util';
+import { TripStopDetectorService, haversineMeters, type TripStop } from './trip-stop-detector.service';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAY_MS;
@@ -17,8 +18,12 @@ const MIN_TRIP_DURATION_MS = 2 * 60 * 1000;
 const MAX_TRIPS = 20_000;
 /** Cellule de destination : coords arrondies à 2 décimales (~1,1 km) → sépare les destinations. */
 const DEST_DECIMALS = 2;
-/** Plafond d'appels géocodage par analyse (respect quota Nominatim + latence bornée). */
+/** Plafond de motifs enrichis (itinéraire) par analyse (quota Nominatim + latence bornée). */
 const DEFAULT_MAX_GEOCODE = 40;
+/** #3 — Rayon (m) autour du dépôt : un arrêt/point dans ce rayon = « à la base » (pas une destination). */
+const DEPOT_RADIUS_M = 250;
+/** #3 — Nombre max d'arrêts géocodés par itinéraire (les plus longs d'abord). */
+const ITINERARY_MAX_STOPS = 3;
 
 const DOW_LABELS = ['', 'lundis', 'mardis', 'mercredis', 'jeudis', 'vendredis', 'samedis', 'dimanches'];
 
@@ -35,6 +40,11 @@ export interface RecurringPattern {
   destLng: number;
   /** Nom de lieu géocodé (Nominatim), ou null si non résolu / au-delà du plafond. */
   destinationLabel: string | null;
+  /** #3 — Vrai ITINÉRAIRE : lieux réellement visités (arrêts ≥4 min hors dépôt), dans l'ordre.
+   *  Ex. ["Borderouge", "Ramonville"]. Vide si non dérivable (pas de tracker / positions). */
+  itinerary: string[];
+  /** #3 — true si le trajet PART ET REVIENT au dépôt (boucle) : la « destination » utile est l'itinéraire. */
+  roundTripFromDepot: boolean;
   activeWeeks: number;
   /** 0..1 = activeWeeks / fenêtre d'apprentissage. */
   confidence: number;
@@ -51,6 +61,9 @@ type Cluster = {
   sumLat: number;
   sumLng: number;
   count: number;
+  /** #3 — Trajet REPRÉSENTATIF (le plus récent du cluster) pour dériver l'itinéraire réel. */
+  rep: { trackerId: string | null; startedAt: Date; endedAt: Date | null; startLat: number; startLng: number } | null;
+  repAt: number; // timestamp du rep (pour garder le plus récent)
 };
 
 /**
@@ -68,6 +81,7 @@ export class RecurrenceDetectorService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly geocode: ReverseGeocodeService,
+    private readonly stops: TripStopDetectorService,
   ) {}
 
   /** Détecte les trajets récurrents d'une flotte (avec destination géocodée, triés par confiance). */
@@ -83,13 +97,18 @@ export class RecurrenceDetectorService {
     const trips = await this.prisma.trip.findMany({
       where,
       select: {
-        vehicleId: true, startedAt: true, endedAt: true, endLat: true, endLng: true,
+        vehicleId: true, startedAt: true, endedAt: true, trackerId: true,
+        startLat: true, startLng: true, endLat: true, endLng: true,
         vehicle: { select: { plate: true } },
       },
       orderBy: { startedAt: 'asc' },
       take: MAX_TRIPS,
     });
     if (trips.length >= MAX_TRIPS) this.logger.warn(`detect(${fleetId}) : ${MAX_TRIPS} trajets (apprentissage tronqué).`);
+
+    // #3 — DÉPÔT de la flotte (base) : la cellule la plus fréquente parmi les départs ET arrivées.
+    // Sert à écarter le dépôt de l'« itinéraire utile » (un aller-retour à la base n'est pas une destination).
+    const depot = this.detectDepot(trips);
 
     const fmt = fleetTzFormatter();
     const clusters = new Map<string, Cluster>();
@@ -107,12 +126,18 @@ export class RecurrenceDetectorService {
 
       let c = clusters.get(key);
       if (!c) {
-        c = { vehicleId: t.vehicleId, plate: t.vehicle?.plate ?? null, dow: start.dow, weeks: new Map(), sumLat: 0, sumLng: 0, count: 0 };
+        c = { vehicleId: t.vehicleId, plate: t.vehicle?.plate ?? null, dow: start.dow, weeks: new Map(), sumLat: 0, sumLng: 0, count: 0, rep: null, repAt: 0 };
         clusters.set(key, c);
       }
       c.sumLat += t.endLat;
       c.sumLng += t.endLng;
       c.count += 1;
+      // Trajet REPRÉSENTATIF = le plus récent du cluster (itinéraire à jour).
+      const ts = t.startedAt.getTime();
+      if (ts >= c.repAt) {
+        c.repAt = ts;
+        c.rep = { trackerId: t.trackerId ?? null, startedAt: t.startedAt, endedAt: t.endedAt ?? null, startLat: t.startLat, startLng: t.startLng };
+      }
       const wk = c.weeks.get(weekKey);
       if (!wk) c.weeks.set(weekKey, { minStart: start.minutes, maxEnd: endMin });
       else {
@@ -122,7 +147,7 @@ export class RecurrenceDetectorService {
     }
 
     // Motifs retenus + créneau typique (moyenne des enveloppes hebdo) + centroïde.
-    const patterns: RecurringPattern[] = [];
+    const built: { pattern: RecurringPattern; cluster: Cluster }[] = [];
     for (const c of clusters.values()) {
       const activeWeeks = c.weeks.size;
       if (activeWeeks < MIN_ACTIVE_WEEKS) continue;
@@ -134,27 +159,100 @@ export class RecurrenceDetectorService {
       }
       const startMinutes = Math.round(sumStart / activeWeeks);
       const endMinutes = Math.min(23 * 60 + 59, Math.max(startMinutes + 15, Math.round(sumEnd / activeWeeks)));
-      patterns.push({
-        vehicleId: c.vehicleId,
-        vehiclePlate: c.plate,
-        dayOfWeek: c.dow,
-        startMinutes,
-        endMinutes,
-        destLat: c.sumLat / c.count,
-        destLng: c.sumLng / c.count,
-        destinationLabel: null,
-        activeWeeks,
-        confidence: Math.round((activeWeeks / LOOKBACK_WEEKS) * 100) / 100,
-        basis: `Observé ${activeWeeks}/${LOOKBACK_WEEKS} ${DOW_LABELS[c.dow] ?? ''}`.trim(),
+      const destLat = c.sumLat / c.count;
+      const destLng = c.sumLng / c.count;
+      built.push({
+        cluster: c,
+        pattern: {
+          vehicleId: c.vehicleId,
+          vehiclePlate: c.plate,
+          dayOfWeek: c.dow,
+          startMinutes,
+          endMinutes,
+          destLat,
+          destLng,
+          destinationLabel: null,
+          itinerary: [],
+          roundTripFromDepot: !!depot && haversineMeters(destLat, destLng, depot.lat, depot.lng) <= DEPOT_RADIUS_M,
+          activeWeeks,
+          confidence: Math.round((activeWeeks / LOOKBACK_WEEKS) * 100) / 100,
+          basis: `Observé ${activeWeeks}/${LOOKBACK_WEEKS} ${DOW_LABELS[c.dow] ?? ''}`.trim(),
+        },
       });
     }
 
-    // Confiance décroissante : on géocode d'abord les motifs les plus solides (plafond quota).
-    patterns.sort((a, b) => b.confidence - a.confidence || b.activeWeeks - a.activeWeeks);
+    // Confiance décroissante : on enrichit d'abord les motifs les plus solides (plafond quota).
+    built.sort((a, b) => b.pattern.confidence - a.pattern.confidence || b.pattern.activeWeeks - a.pattern.activeWeeks);
     const cap = Math.max(0, opts?.maxGeocode ?? DEFAULT_MAX_GEOCODE);
-    for (let i = 0; i < patterns.length && i < cap; i++) {
-      patterns[i].destinationLabel = await this.geocode.label(patterns[i].destLat, patterns[i].destLng);
+    for (let i = 0; i < built.length && i < cap; i++) {
+      await this.enrichDestination(built[i].pattern, built[i].cluster, depot);
     }
-    return patterns;
+    return built.map((b) => b.pattern);
+  }
+
+  /** #3 — Dépôt = cellule (départ + arrivée) la plus fréquente ; null si pas de base nette. */
+  private detectDepot(
+    trips: { startLat: number; startLng: number; endLat: number | null; endLng: number | null }[],
+  ): { lat: number; lng: number } | null {
+    const counts = new Map<string, { lat: number; lng: number; n: number }>();
+    const add = (lat: number | null | undefined, lng: number | null | undefined) => {
+      if (lat == null || lng == null || (lat === 0 && lng === 0)) return; // (0,0) = coord manquante
+      const k = `${lat.toFixed(DEST_DECIMALS)},${lng.toFixed(DEST_DECIMALS)}`;
+      const e = counts.get(k) ?? { lat, lng, n: 0 };
+      e.n += 1;
+      counts.set(k, e);
+    };
+    for (const t of trips) { add(t.startLat, t.startLng); add(t.endLat, t.endLng); }
+    let best: { lat: number; lng: number; n: number } | null = null;
+    for (const e of counts.values()) if (!best || e.n > best.n) best = e;
+    // Base NETTE : le top-lieu doit concentrer une part significative des extrémités.
+    if (!best || best.n < Math.max(6, trips.length * 2 * 0.15)) return null;
+    return { lat: best.lat, lng: best.lng };
+  }
+
+  /**
+   * #3 — Remplit `destinationLabel` + `itinerary` d'un motif à partir des ARRÊTS RÉELS du trajet
+   * représentatif (hors dépôt), géocodés. Repli sur le point d'arrivée si aucun arrêt dérivable.
+   */
+  private async enrichDestination(
+    p: RecurringPattern,
+    c: Cluster,
+    depot: { lat: number; lng: number } | null,
+  ): Promise<void> {
+    const rep = c.rep;
+    let stops: TripStop[] = [];
+    if (rep?.trackerId && rep.endedAt) {
+      try {
+        stops = await this.stops.deriveStops(rep.trackerId, rep.startedAt, rep.endedAt);
+      } catch (e) {
+        this.logger.warn(`deriveStops(${rep.trackerId}) : ${(e as Error)?.message ?? e}`);
+      }
+    }
+    // Écarte les arrêts « à la base » (dépôt) → il reste les vrais lieux servis.
+    const meaningful = stops.filter((s) => !depot || haversineMeters(s.lat, s.lng, depot.lat, depot.lng) > DEPOT_RADIUS_M);
+
+    if (meaningful.length > 0) {
+      // On géocode les N arrêts les PLUS LONGS (quota), remis dans l'ordre CHRONOLOGIQUE pour l'itinéraire.
+      const chosen = [...meaningful]
+        .sort((a, b) => b.durationMin - a.durationMin)
+        .slice(0, ITINERARY_MAX_STOPS)
+        .sort((a, b) => a.arrivedAt.getTime() - b.arrivedAt.getTime());
+      const labels: string[] = [];
+      for (const s of chosen) {
+        const label = await this.geocode.label(s.lat, s.lng);
+        if (label && !labels.includes(label)) labels.push(label);
+      }
+      if (labels.length > 0) {
+        p.itinerary = labels;
+        p.destinationLabel = labels[0]; // destination principale = 1er lieu réel (chronologique)
+        p.destLat = chosen[0].lat;
+        p.destLng = chosen[0].lng;
+        // Trace l'itinéraire complet dans la justification (persistée sur la proposition, re-rendable).
+        if (labels.length > 1) p.basis += ` · itinéraire : ${labels.join(' → ')}`;
+        return;
+      }
+    }
+    // Repli : pas d'arrêt dérivable → comportement historique (géocode du point d'arrivée).
+    p.destinationLabel = await this.geocode.label(p.destLat, p.destLng);
   }
 }
