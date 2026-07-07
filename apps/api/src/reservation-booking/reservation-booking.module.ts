@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AgendaModule } from '../agenda/agenda.module';
+import { AnthropicClient } from '../ai/anthropic.client';
 import { AuthModule } from '../auth/auth.module';
 import { SmsModule } from '../sms/sms.module';
 import { PublicReservationBookingController } from './public-reservation-booking.controller';
@@ -16,6 +17,7 @@ import { ReservationBookingService } from './reservation-booking.service';
 @Module({
   imports: [AuthModule, AgendaModule, SmsModule],
   controllers: [ReservationBookingController, PublicReservationBookingController],
-  providers: [ReservationBookingService, ReservationBookingNotifier],
+  // AnthropicClient fourni LOCALEMENT (anti-cycle) : analyse IA rapide du besoin dicté (voix).
+  providers: [ReservationBookingService, ReservationBookingNotifier, AnthropicClient],
 })
 export class ReservationBookingModule {}

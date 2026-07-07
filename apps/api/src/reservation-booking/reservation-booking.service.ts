@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { UserRole } from '@prisma/client';
 import type {
   CreateReservationBookingLinkDto,
+  ParsedNeedDto,
   PublicReservationLinkDto,
   PublicReservationSuggestRequestDto,
   PublicReservationSuggestionDto,
@@ -13,10 +14,14 @@ import type {
   SuggestedVehicleDto,
 } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
+import { fleetTzFormatter, localParts, localWallToUtc } from '../agenda/fleet-tz.util';
 import { ReservationsService } from '../agenda/reservations.service';
+import { AiUsageService } from '../ai-usage/ai-usage.service';
+import { AnthropicClient } from '../ai/anthropic.client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 import { ReservationBookingNotifier } from './reservation-booking-notifier.service';
+import { BOOKING_PARSE_SCHEMA, renderBookingParseSystem } from './reservation-parse.prompt';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Extrait un nombre de places d'un texte libre (« 11 places », « 9 personnes »…). */
@@ -56,6 +61,9 @@ export class ReservationBookingService {
     private readonly reservations: ReservationsService,
     private readonly systemActivity: SystemActivityService,
     private readonly notifier: ReservationBookingNotifier,
+    // IA d'analyse OPTIONNELLE (voix → champs). Injectée en prod ; omise en spec → repli déterministe.
+    private readonly anthropic?: AnthropicClient,
+    private readonly aiUsage?: AiUsageService,
   ) {}
 
   private resolveFleetId(user: AuthUser, fleetId?: string): string {
@@ -183,6 +191,53 @@ export class ReservationBookingService {
     };
   }
 
+  /**
+   * Analyse IA RAPIDE d'un besoin dicté (voix → texte) : renvoie places / destination / créneau.
+   * Repli DÉTERMINISTE toujours calculé (regex places + destination + dates courantes FR) ; Claude
+   * (si configuré) affine la compréhension du langage naturel. Best-effort : jamais d'échec public.
+   */
+  async parsePublic(token: string, text: string): Promise<ParsedNeedDto> {
+    const link = await this.loadActiveLink(token);
+    const clean = (text || '').trim().slice(0, 500);
+    if (!clean) return { seatsNeeded: null, destination: null, startAt: null, endAt: null };
+
+    const when = this.parseWhen(clean);
+    const deterministic: ParsedNeedDto = {
+      seatsNeeded: this.parseSeatsOrNull(clean),
+      destination: this.extractDestination(clean),
+      startAt: when.startAt,
+      endAt: when.endAt,
+    };
+
+    if (this.anthropic?.isConfigured() && this.aiUsage) {
+      try {
+        const nowIso = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Paris', dateStyle: 'short', timeStyle: 'short' }).format(new Date());
+        const call = await this.anthropic.completeJson<{ seatsNeeded: number | null; destination: string | null; startAt: string | null; endAt: string | null }>({
+          system: renderBookingParseSystem(nowIso),
+          userPayload: { text: clean },
+          schema: BOOKING_PARSE_SCHEMA,
+          maxTokens: 400,
+        });
+        const r = call.result ?? ({} as { seatsNeeded?: unknown; destination?: unknown; startAt?: unknown; endAt?: unknown });
+        void this.aiUsage.record({
+          userId: null, fleetId: link.fleetId, action: 'booking_parse', model: call.model,
+          inputTokens: call.usage.inputTokens, outputTokens: call.usage.outputTokens,
+          cacheWriteTokens: call.usage.cacheWriteTokens, cacheReadTokens: call.usage.cacheReadTokens,
+          latencyMs: call.latencyMs, ok: true,
+        });
+        return {
+          seatsNeeded: this.cleanSeats(r.seatsNeeded) ?? deterministic.seatsNeeded,
+          destination: typeof r.destination === 'string' && r.destination.trim() ? r.destination.trim().slice(0, 60) : deterministic.destination,
+          startAt: this.validIso(r.startAt, link) ?? deterministic.startAt,
+          endAt: this.validIso(r.endAt, link) ?? deterministic.endAt,
+        };
+      } catch {
+        // best-effort : on garde l'analyse déterministe (aucun échec propagé au demandeur public).
+      }
+    }
+    return deterministic;
+  }
+
   async submitPublic(token: string, dto: SubmitPublicReservationDto): Promise<SubmitPublicReservationResultDto> {
     const link = await this.loadActiveLink(token);
     const slot = this.validateSlot(dto?.startAt, dto?.endAt, link);
@@ -305,7 +360,101 @@ export class ReservationBookingService {
   private extractDestination(text?: string): string | null {
     if (!text) return null;
     const m = text.match(DEST_RE);
-    return m ? m[1].trim() : null;
+    if (!m) return null;
+    // La capture peut déborder (« Carcassonne demain de ») : garde les mots jusqu'au 1er terme
+    // temporel / numérique, et au plus 3 mots (destinations composées type « Saint-Gaudens »).
+    const STOP = new Set([
+      'demain', 'aujourd', "aujourd'hui", 'après', 'apres', 'matin', 'midi', 'soir', 'de', 'à', 'a',
+      'le', 'la', 'pour', 'vers', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche',
+    ]);
+    const words: string[] = [];
+    for (const w of m[1].trim().split(/\s+/)) {
+      const lw = w.toLowerCase().replace(/[.,;:].*$/, '');
+      if (!lw || STOP.has(lw) || /\d/.test(w)) break;
+      words.push(w);
+      if (words.length >= 3) break;
+    }
+    const dest = words.join(' ').trim();
+    return dest || null;
+  }
+
+  /** Places explicitement dictées (« 11 places »), sinon null (pas de défaut à 1 pour l'analyse). */
+  private parseSeatsOrNull(text: string): number | null {
+    const m = text.match(SEATS_RE);
+    const n = m ? parseInt(m[1], 10) : NaN;
+    return Number.isFinite(n) && n > 0 ? Math.min(200, n) : null;
+  }
+
+  private cleanSeats(v: unknown): number | null {
+    const n = Math.floor(Number(v));
+    return Number.isFinite(n) && n > 0 ? Math.min(200, n) : null;
+  }
+
+  /** Valide un ISO renvoyé par l'IA (date réelle, fenêtre plausible), sinon null. */
+  private validIso(s: unknown, link: LinkRow): string | null {
+    if (typeof s !== 'string' || !s) return null;
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return null;
+    const now = Date.now();
+    if (d.getTime() < now - DAY_MS || d.getTime() > now + (link.horizonDays + 1) * DAY_MS) return null;
+    return d.toISOString();
+  }
+
+  private addDays(dateKey: string, n: number): string {
+    const d = new Date(`${dateKey}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  }
+
+  /** Extraction DÉTERMINISTE d'un créneau depuis le langage naturel FR (jour + heures), heure Paris. */
+  private parseWhen(text: string): { startAt: string | null; endAt: string | null } {
+    const t = text.toLowerCase();
+    const fmt = fleetTzFormatter();
+    const today = localParts(fmt, Date.now()); // { dateKey, dow (1-7), minutes }
+
+    let dayOffset = 0;
+    let dayFound = false;
+    if (/aujourd'?hui|ce jour|ce soir|cet? apr[eè]s-?midi|ce matin/.test(t)) {
+      dayFound = true;
+    } else if (/apr[eè]s[ -]?demain/.test(t)) {
+      dayOffset = 2; dayFound = true;
+    } else if (/demain/.test(t)) {
+      dayOffset = 1; dayFound = true;
+    } else {
+      const DAYS = ['', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
+      for (let d = 1; d <= 7; d++) {
+        if (t.includes(DAYS[d])) {
+          let add = (d - today.dow + 7) % 7;
+          if (add === 0) add = 7; // « lundi » un lundi = lundi PROCHAIN
+          dayOffset = add; dayFound = true;
+          break;
+        }
+      }
+    }
+
+    let startMin: number | null = null;
+    let endMin: number | null = null;
+    const range = t.match(/(\d{1,2})\s*h\s*(\d{2})?\s*(?:[-–]|[àa]|jusqu'?[àa])\s*(\d{1,2})\s*h\s*(\d{2})?/);
+    if (range) {
+      startMin = parseInt(range[1], 10) * 60 + (range[2] ? parseInt(range[2], 10) : 0);
+      endMin = parseInt(range[3], 10) * 60 + (range[4] ? parseInt(range[4], 10) : 0);
+    } else {
+      const single = t.match(/(?:[àa]\s*)?(\d{1,2})\s*h\s*(\d{2})?/);
+      if (single) startMin = parseInt(single[1], 10) * 60 + (single[2] ? parseInt(single[2], 10) : 0);
+    }
+    if (/\bmatin\b/.test(t)) { startMin = startMin ?? 9 * 60; endMin = endMin ?? 12 * 60; }
+    else if (/apr[eè]s-?midi/.test(t)) { startMin = startMin ?? 14 * 60; endMin = endMin ?? 18 * 60; }
+    else if (/\bsoir\b/.test(t)) { startMin = startMin ?? 18 * 60; endMin = endMin ?? 21 * 60; }
+    else if (/\bmidi\b/.test(t) && startMin === null) { startMin = 12 * 60; }
+
+    if (!dayFound && startMin === null) return { startAt: null, endAt: null };
+    const dateKey = this.addDays(today.dateKey, dayOffset);
+    const sMin = startMin ?? 9 * 60;
+    const eMin = endMin ?? Math.min(23 * 60 + 59, sMin + 8 * 60);
+    return {
+      startAt: localWallToUtc(dateKey, sMin).toISOString(),
+      endAt: localWallToUtc(dateKey, eMin).toISOString(),
+    };
   }
 
   private validateSlot(startAt: string | undefined, endAt: string | undefined, link: LinkRow): { startAt: string; endAt: string } {

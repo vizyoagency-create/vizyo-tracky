@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type {
+  ParsePublicNeedDto,
   PublicReservationSuggestRequestDto,
   SubmitPublicReservationDto,
 } from '@vizyo/tracky-shared';
@@ -20,6 +21,13 @@ export class PublicReservationBookingController {
   @Throttle({ default: { ttl: 60_000, limit: 30 } })
   get(@Param('token') token: string) {
     return this.svc.getPublic(token);
+  }
+
+  /** Analyse IA rapide d'un besoin DICTÉ (voix → texte) → champs (places/destination/créneau). */
+  @Post(':token/parse')
+  @Throttle({ default: { ttl: 60_000, limit: 15 } })
+  parse(@Param('token') token: string, @Body() dto: ParsePublicNeedDto) {
+    return this.svc.parsePublic(token, dto?.text ?? '');
   }
 
   /** Recherche : véhicules/combinaisons disponibles pour le besoin décrit. */

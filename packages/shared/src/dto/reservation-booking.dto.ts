@@ -36,6 +36,19 @@ export interface PublicReservationSuggestionDto {
   message: string;
 }
 
+/** Analyse IA rapide d'un besoin DICTÉ (voix → texte) : extrait les champs du formulaire. */
+export interface ParsePublicNeedDto {
+  text: string;
+}
+
+/** Résultat de l'analyse : champs extraits (null = non compris). Créneaux en ISO. */
+export interface ParsedNeedDto {
+  seatsNeeded: number | null;
+  destination: string | null;
+  startAt: string | null;
+  endAt: string | null;
+}
+
 /** Recherche publique (le tiers décrit son besoin). */
 export interface PublicReservationSuggestRequestDto {
   startAt: string; // ISO

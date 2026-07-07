@@ -105,6 +105,25 @@ describe('ReservationBookingService (P4 — lien public)', () => {
       .toHaveBeenCalledWith('f1', expect.any(String), expect.any(String), undefined, { excludeRequested: true });
   });
 
+  it('parsePublic : extrait places + destination + créneau (déterministe) du texte dicté', async () => {
+    const svc = new ReservationBookingService(makePrisma(), makeReservations([]), makeActivity(), makeNotifier());
+    const r = await svc.parsePublic('t', '11 places pour Carcassonne demain de 9h à 17h');
+    expect(r.seatsNeeded).toBe(11);
+    expect(r.destination).toBe('Carcassonne');
+    expect(r.startAt).not.toBeNull();
+    expect(r.endAt).not.toBeNull();
+    expect(new Date(r.startAt as string).getTime()).toBeLessThan(new Date(r.endAt as string).getTime());
+  });
+
+  it('parsePublic : sans créneau explicite -> startAt/endAt null', async () => {
+    const svc = new ReservationBookingService(makePrisma(), makeReservations([]), makeActivity(), makeNotifier());
+    const r = await svc.parsePublic('t', '5 places pour Toulouse');
+    expect(r.seatsNeeded).toBe(5);
+    expect(r.destination).toBe('Toulouse');
+    expect(r.startAt).toBeNull();
+    expect(r.endAt).toBeNull();
+  });
+
   it('createLink : super-admin sans fleetId -> 400', async () => {
     const svc = new ReservationBookingService(makePrisma(), makeReservations([]), makeActivity(), makeNotifier());
     await expect(

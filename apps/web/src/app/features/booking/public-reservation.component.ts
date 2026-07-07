@@ -1,7 +1,7 @@
-import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ActivatedRoute } from '@angular/router';
-import { LucideAngularModule, CalendarCheck, MapPin, Users, Check, Loader, Send, Sparkles } from 'lucide-angular';
+import { LucideAngularModule, CalendarCheck, MapPin, Users, Check, Loader, Send, Sparkles, Mic, MicOff } from 'lucide-angular';
 import type {
   PublicReservationLinkDto,
   PublicReservationSuggestionDto,
@@ -42,9 +42,25 @@ import { ReservationBookingApiService } from '../../core/services/reservation-bo
             <p class="pr-sub">Décrivez votre besoin — on vous propose les véhicules disponibles.</p>
           </header>
 
-          <label class="pr-f"><span>Votre besoin (texte libre)</span>
-            <textarea class="pr-in" rows="2" [value]="freeText()" (input)="freeText.set($any($event.target).value)" placeholder="Ex. J'ai besoin de 11 places pour Carcassonne"></textarea>
-          </label>
+          <div class="pr-f">
+            <span class="pr-voice-lbl">
+              Votre besoin (texte libre)
+              @if (voiceSupported()) {
+                <button type="button" class="pr-mic" [class.pr-mic--on]="listening()" [disabled]="parsing()" (click)="toggleVoice()">
+                  @if (parsing()) { <lucide-icon [img]="LoaderIcon" [size]="14" class="pr-spin"></lucide-icon> Analyse… }
+                  @else if (listening()) { <lucide-icon [img]="MicOffIcon" [size]="14"></lucide-icon> Arrêter }
+                  @else { <lucide-icon [img]="MicIcon" [size]="14"></lucide-icon> Dicter }
+                </button>
+              }
+            </span>
+            <textarea class="pr-in" rows="2" [value]="freeText()" (input)="freeText.set($any($event.target).value)" placeholder="Ex. J'ai besoin de 11 places pour Carcassonne demain matin"></textarea>
+            @if (voiceSupported()) {
+              <p class="pr-voice-hint">
+                @if (listening()) { <span class="pr-dot"></span> <strong>À l'écoute…</strong> dites tout d'une traite : « 11 places pour Carcassonne demain de 9h à 17h ». }
+                @else { 🎤 Astuce : cliquez sur <strong>Dicter</strong> et dites votre besoin à voix haute (places, destination, date et heure) — l'IA remplit le formulaire pour vous. }
+              </p>
+            }
+          </div>
           <div class="pr-grid">
             <label class="pr-f"><span><lucide-icon [img]="UsersIcon" [size]="12"></lucide-icon> Places</span>
               <input type="number" min="1" class="pr-in" [value]="seats()" (input)="seats.set($any($event.target).value)" placeholder="ex. 11"></label>
@@ -107,6 +123,13 @@ import { ReservationBookingApiService } from '../../core/services/reservation-bo
     .pr-h1 { font-size: 22px; font-weight: 800; margin: 6px 0 4px; color: #fff; }
     .pr-sub { font-size: 13px; color: #9ca3af; margin: 0; }
     .pr-f { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: #9ca3af; margin-bottom: 12px; }
+    .pr-voice-lbl { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-weight: 600; }
+    .pr-mic { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px; border-radius: 999px; font-size: 11.5px; font-weight: 700; background: rgba(16,185,129,.14); color: var(--pr-accent); border: 1px solid rgba(16,185,129,.3); cursor: pointer; }
+    .pr-mic:disabled { opacity: .6; cursor: wait; }
+    .pr-mic--on { background: rgba(239,68,68,.16); color: #fca5a5; border-color: rgba(239,68,68,.4); animation: pr-pulse 1.4s ease-in-out infinite; }
+    .pr-voice-hint { font-size: 11px; color: #94a3b8; margin: 6px 0 0; line-height: 1.45; }
+    .pr-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ef4444; margin-right: 3px; animation: pr-pulse 1s ease-in-out infinite; }
+    @keyframes pr-pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
     .pr-f > span { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
     .pr-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .pr-in { width: 100%; padding: 11px 12px; border-radius: 11px; background: #0b1220; border: 1px solid rgba(255,255,255,.12); color: #fff; font-size: 16px; }
@@ -134,7 +157,7 @@ import { ReservationBookingApiService } from '../../core/services/reservation-bo
     @media (max-width: 460px) { .pr-grid { grid-template-columns: 1fr; } }
   `],
 })
-export class PublicReservationComponent implements OnInit {
+export class PublicReservationComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly api = inject(ReservationBookingApiService);
 
@@ -145,6 +168,8 @@ export class PublicReservationComponent implements OnInit {
   protected readonly LoaderIcon = Loader;
   protected readonly SendIcon = Send;
   protected readonly SparklesIcon = Sparkles;
+  protected readonly MicIcon = Mic;
+  protected readonly MicOffIcon = MicOff;
 
   private token = '';
   protected readonly link = signal<PublicReservationLinkDto | null>(null);
@@ -166,10 +191,19 @@ export class PublicReservationComponent implements OnInit {
   protected readonly submitError = signal<string | null>(null);
   protected readonly done = signal<string | null>(null);
 
+  // Voix (Web Speech API navigateur, fr-FR) + analyse IA du besoin dicté.
+  protected readonly voiceSupported = signal(false);
+  protected readonly listening = signal(false);
+  protected readonly parsing = signal(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private recognition: any = null;
+
   protected readonly selectedCount = computed(() => this.selected().size);
 
   async ngOnInit(): Promise<void> {
     this.token = this.route.snapshot.paramMap.get('token') ?? '';
+    const w = window as unknown as Record<string, unknown>;
+    this.voiceSupported.set(!!(w['SpeechRecognition'] || w['webkitSpeechRecognition']));
     // Créneau par défaut : demain 09:00 → 17:00 (heure locale).
     const d = new Date();
     d.setDate(d.getDate() + 1);
@@ -253,6 +287,80 @@ export class PublicReservationComponent implements OnInit {
       this.submitError.set(this.msg(e, 'Envoi impossible.'));
     } finally {
       this.submitting.set(false);
+    }
+  }
+
+  // ─── Commande vocale (Web Speech API) ───────────────────────────────────────
+
+  ngOnDestroy(): void {
+    this.stopVoice();
+  }
+
+  protected toggleVoice(): void {
+    if (this.listening()) this.stopVoice();
+    else this.startVoice();
+  }
+
+  /** Démarre la dictée (fr-FR) : le transcript alimente le champ « besoin » en direct. */
+  private startVoice(): void {
+    const w = window as unknown as Record<string, unknown>;
+    const Ctor = (w['SpeechRecognition'] || w['webkitSpeechRecognition']) as (new () => Record<string, unknown>) | undefined;
+    if (!Ctor) return;
+    this.formError.set(null);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rec: any = new Ctor();
+    rec.lang = 'fr-FR';
+    rec.continuous = true;
+    rec.interimResults = true;
+    let finalText = this.freeText().trim();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rec.onresult = (e: any) => {
+      let interim = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const tr = e.results[i][0].transcript as string;
+        if (e.results[i].isFinal) finalText = `${finalText} ${tr}`.trim();
+        else interim += tr;
+      }
+      this.freeText.set(`${finalText} ${interim}`.trim());
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rec.onerror = (e: any) => {
+      this.listening.set(false);
+      if (e?.error === 'not-allowed' || e?.error === 'service-not-allowed') {
+        this.formError.set('Micro refusé. Autorisez le micro dans votre navigateur pour dicter votre demande.');
+      }
+    };
+    rec.onend = () => {
+      this.listening.set(false);
+      this.recognition = null;
+      void this.parseVoice(this.freeText().trim());
+    };
+    this.recognition = rec;
+    this.listening.set(true);
+    try { rec.start(); } catch { this.listening.set(false); }
+  }
+
+  private stopVoice(): void {
+    const rec = this.recognition;
+    if (rec) { try { rec.stop(); } catch { /* déjà arrêté */ } }
+    this.listening.set(false);
+  }
+
+  /** Analyse IA du besoin dicté → remplit places / destination / créneau, puis lance la recherche. */
+  private async parseVoice(text: string): Promise<void> {
+    if (!text) return;
+    this.parsing.set(true);
+    try {
+      const r = await firstValueFrom(this.api.parse(this.token, text));
+      if (r.seatsNeeded != null) this.seats.set(String(r.seatsNeeded));
+      if (r.destination) this.destination.set(r.destination);
+      if (r.startAt) this.startAt.set(this.toLocal(new Date(r.startAt)));
+      if (r.endAt) this.endAt.set(this.toLocal(new Date(r.endAt)));
+      await this.search();
+    } catch {
+      // silencieux : les champs déjà extraits suffisent ; l'utilisateur peut lancer la recherche.
+    } finally {
+      this.parsing.set(false);
     }
   }
 

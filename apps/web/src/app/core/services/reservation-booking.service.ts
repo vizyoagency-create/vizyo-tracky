@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import type {
   CreateReservationBookingLinkDto,
+  ParsedNeedDto,
   PublicReservationLinkDto,
   PublicReservationSuggestRequestDto,
   PublicReservationSuggestionDto,
@@ -24,6 +25,11 @@ export class ReservationBookingApiService {
   getPublicLink(token: string): Observable<PublicReservationLinkDto> {
     return this.http.get<PublicReservationLinkDto>(`/api/public/reserve/${encodeURIComponent(token)}`);
   }
+  /** Analyse IA rapide d'un besoin dicté (voix → texte) → champs du formulaire. */
+  parse(token: string, text: string): Observable<ParsedNeedDto> {
+    return this.http.post<ParsedNeedDto>(`/api/public/reserve/${encodeURIComponent(token)}/parse`, { text });
+  }
+
   suggest(token: string, body: PublicReservationSuggestRequestDto): Observable<PublicReservationSuggestionDto> {
     return this.http.post<PublicReservationSuggestionDto>(`/api/public/reserve/${encodeURIComponent(token)}/suggest`, body);
   }
