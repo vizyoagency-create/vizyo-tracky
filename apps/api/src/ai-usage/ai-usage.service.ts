@@ -50,6 +50,7 @@ const ACTION_LABELS: Record<string, string> = {
   agenda_optimization: 'Agenda (agent)',
   agenda_agent: 'Agent agenda',
   activity_report: "Rapport d'activité",
+  trip_analysis: 'Analyse de trajet',
 };
 
 export interface AiUsageEntry {

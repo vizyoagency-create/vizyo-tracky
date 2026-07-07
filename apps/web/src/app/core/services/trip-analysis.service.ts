@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import type { TripAnalysisDto } from '@vizyo/tracky-shared';
+import type { AiProviderId, TripAnalysisDto, TripNarrativeCompareDto } from '@vizyo/tracky-shared';
 import { Observable } from 'rxjs';
 
 /**
@@ -25,5 +25,15 @@ export class TripAnalysisApiService {
   /** Analyses récentes d'un véhicule (pour pré-charger l'onglet Trajets d'un coup). */
   listForVehicle(vehicleId: string, limit = 100): Observable<TripAnalysisDto[]> {
     return this.http.get<TripAnalysisDto[]>(`/api/trip-analysis/vehicle/${encodeURIComponent(vehicleId)}`, { params: { limit: String(limit) } });
+  }
+
+  /** Génère (ou régénère) le récit IA + Trust Score + conseils d'un trajet. `provider` optionnel. */
+  narrate(tripId: string, provider?: AiProviderId): Observable<TripAnalysisDto> {
+    return this.http.post<TripAnalysisDto>(`/api/trip-analysis/${encodeURIComponent(tripId)}/narrate`, provider ? { provider } : {});
+  }
+
+  /** Mode « Comparer » : le même trajet analysé par Claude ET GPT (admin). */
+  compare(tripId: string): Observable<TripNarrativeCompareDto> {
+    return this.http.post<TripNarrativeCompareDto>(`/api/trip-analysis/${encodeURIComponent(tripId)}/compare`, {});
   }
 }

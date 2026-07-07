@@ -75,3 +75,25 @@ export interface TripAnalysisDto {
   advice: string | null;
   trustScore: number | null;
 }
+
+/* ── Palier 3 — Récit LLM + mode « Comparer » (A/B les 2 IA) ── */
+
+/** Résultat d'un moteur IA sur un trajet (récit + Trust Score + conseils + coût). */
+export interface TripAiResultDto {
+  provider: 'claude' | 'gpt';
+  model: string | null;
+  narrative: string | null;
+  advice: string | null;
+  trustScore: number | null;
+  /** Coût de CET appel (€). */
+  costEur: number;
+  latencyMs: number | null;
+  /** Renseigné si ce moteur a échoué (ex. GPT sans quota) — l'autre reste exploitable. */
+  error: string | null;
+}
+
+/** Comparaison A/B : le MÊME trajet analysé par Claude ET GPT, côte à côte. */
+export interface TripNarrativeCompareDto {
+  tripId: string;
+  results: TripAiResultDto[];
+}
