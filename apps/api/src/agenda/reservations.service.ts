@@ -16,6 +16,7 @@ import type {
   VehicleEventStatus as VehicleEventStatusDto,
 } from '@vizyo/tracky-shared';
 import { effectiveBlockingEndMs, IMMOBILIZING_STATUSES } from '@vizyo/tracky-shared';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import type { AuthUser } from '../auth/types/auth-user';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
 import { PermissionsResolverService } from '../permissions/permissions-resolver.service';
@@ -55,6 +56,9 @@ export class ReservationsService {
     private readonly vehicleAccess: VehicleAccessService,
     private readonly events: VehicleEventsService,
     private readonly permissions: PermissionsResolverService,
+    // EventEmitter2 global : injecté en prod, omis dans les specs. Déclenche l'agent sur une
+    // réservation HUMAINE uniquement (jamais depuis systemConfirm/systemRequest → anti-boucle).
+    private readonly emitter?: EventEmitter2,
   ) {}
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -430,6 +434,8 @@ export class ReservationsService {
         },
         include: INCLUDE_PLATE,
       });
+      // Déclencheur agent : une réservation HUMAINE vient d'être créée (l'agent décide selon son toggle).
+      this.emitter?.emit('agenda-agent.trigger', { fleetId, kind: 'reservation' });
       return this.toDto(row);
     } catch (err) {
       // Une réservation FERME (CONFIRMED) est soumise à la contrainte EXCLUDE : traduire

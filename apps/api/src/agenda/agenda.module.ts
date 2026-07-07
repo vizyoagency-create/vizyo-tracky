@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { AnthropicClient } from '../ai/anthropic.client';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AgendaAgentController } from './agenda-agent.controller';
 import { AgendaAgentRunnerService } from './agenda-agent-runner.service';
@@ -40,6 +41,8 @@ import { VehicleEventsService } from './vehicle-events.service';
     AgendaAgentSettingsService,
     RecurrenceDetectorService,
     AgendaAgentRunnerService,
+    // Fourni LOCALEMENT (anti-cycle AgendaModule↔AiModule) : couche IA best-effort de l'agent.
+    AnthropicClient,
   ],
   exports: [VehicleEventsService, FleetInsightsService, ReservationsService, ForecastService],
 })

@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Prisma, UserRole, VehicleEventStatus, VehicleEventType } from '@prisma/client';
 import type {
   AgendaSummaryDto,
@@ -27,7 +28,14 @@ export class VehicleEventsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly vehicleAccess: VehicleAccessService,
+    // EventEmitter2 est global (EventEmitterModule.forRoot) : injecté en prod, omis dans les specs.
+    private readonly emitter?: EventEmitter2,
   ) {}
+
+  /** Notifie l'agent d'agenda qu'un incident/maintenance vient d'être créé (déclencheur P3). */
+  private emitAgentTrigger(fleetId: string, kind: 'incident' | 'maintenance'): void {
+    this.emitter?.emit('agenda-agent.trigger', { fleetId, kind });
+  }
 
   /** Vérifie l'accès à un véhicule (cross-flotte + IDOR intra-flotte) → renvoie son fleetId. */
   async assertVehicleAccess(user: AuthUser, vehicleId: string): Promise<string> {
@@ -175,6 +183,9 @@ export class VehicleEventsService {
       include: { vehicle: { select: { plate: true } } },
     });
     await this.maybeUpdateOdometer(dto.vehicleId, dto.odometerKm, startAt);
+    if (row.type === VehicleEventType.INCIDENT || row.type === VehicleEventType.MAINTENANCE) {
+      this.emitAgentTrigger(row.fleetId, row.type === VehicleEventType.INCIDENT ? 'incident' : 'maintenance');
+    }
     return this.toDto(row);
   }
 
@@ -197,6 +208,7 @@ export class VehicleEventsService {
       },
       include: { vehicle: { select: { plate: true } } },
     });
+    this.emitAgentTrigger(row.fleetId, 'incident');
     return this.toDto(row);
   }
 

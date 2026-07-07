@@ -6,16 +6,21 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import { Prisma, UserRole } from '@prisma/client';
 import type {
   AgendaAgentProposalDto,
   AgendaAgentProposalStatus,
   AgendaAgentRunResultDto,
+  FleetMetier,
 } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
+import { AiUsageService } from '../ai-usage/ai-usage.service';
+import { AnthropicClient } from '../ai/anthropic.client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
+import { AGENDA_AGENT_SCHEMA, renderAgendaAgentSystem } from './agenda-agent.prompt';
 import { fleetTzFormatter, localParts, localWallToUtc } from './fleet-tz.util';
 import { RecurrenceDetectorService, type RecurringPattern } from './recurrence-detector.service';
 import { ReservationsService } from './reservations.service';
@@ -27,6 +32,8 @@ const HORIZON_DAYS = 14;
 /** On ne réserve/propose jamais dans l'heure qui vient (créneau trop proche = inutile). */
 const LEAD_MS = 60 * 60 * 1000;
 const MAX_DAY_STEPS = 60;
+/** Anti-storm : au plus une (re)analyse ÉVÉNEMENTIELLE par flotte toutes les 5 min. */
+const EVENT_THROTTLE_MS = 5 * 60 * 1000;
 
 type ProposalRow = {
   id: string;
@@ -59,6 +66,8 @@ export class AgendaAgentRunnerService {
   private readonly logger = new Logger(AgendaAgentRunnerService.name);
   /** Flottes en cours d'analyse (anti-chevauchement in-process). */
   private readonly running = new Set<string>();
+  /** Dernière (re)analyse événementielle par flotte (throttle anti-storm). */
+  private readonly lastEventRun = new Map<string, number>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -66,6 +75,10 @@ export class AgendaAgentRunnerService {
     private readonly reservations: ReservationsService,
     private readonly events: VehicleEventsService,
     private readonly systemActivity: SystemActivityService,
+    // Couche IA OPTIONNELLE (jugement/explication). Injectée en prod (AnthropicClient fourni par
+    // AgendaModule, AiUsageService @Global) ; omise dans les specs → 100% déterministe.
+    private readonly anthropic?: AnthropicClient,
+    private readonly aiUsage?: AiUsageService,
   ) {}
 
   private resolveFleetId(user: AuthUser, fleetId?: string): string {
@@ -105,6 +118,8 @@ export class AgendaAgentRunnerService {
       const threshold = (settings?.confidenceThreshold ?? 80) / 100;
 
       const patterns = await this.detector.detect(fleetId);
+      // Couche IA (best-effort) : jugement « garder/écarter » + « pourquoi » vulgarisé par récurrence.
+      const reviews = await this.reviewPatterns(fleetId, patterns);
       const now = Date.now();
       const horizonEnd = now + HORIZON_DAYS * DAY_MS;
       const fmt = fleetTzFormatter();
@@ -113,7 +128,11 @@ export class AgendaAgentRunnerService {
       let proposed = 0;
       let skipped = 0;
 
-      for (const p of patterns) {
+      for (let pi = 0; pi < patterns.length; pi++) {
+        const p = patterns[pi];
+        const review = reviews.get(pi);
+        if (review && !review.keep) continue; // l'IA juge cette récurrence non pertinente
+        const reasoning = review?.reasoning || this.reasoning(p);
         for (const dateKey of this.occurrences(p.dayOfWeek, now, horizonEnd, fmt)) {
           const start = localWallToUtc(dateKey, p.startMinutes);
           const end = localWallToUtc(dateKey, p.endMinutes);
@@ -170,7 +189,7 @@ export class AgendaAgentRunnerService {
                 destLng: p.destLng,
                 confidence: p.confidence,
                 basis: p.basis,
-                reasoning: this.reasoning(p),
+                reasoning,
                 status,
                 createdEventId,
                 origin,
@@ -213,6 +232,30 @@ export class AgendaAgentRunnerService {
       } catch (e) {
         this.logger.error(`runScheduled ${s.fleetId} : ${(e as Error)?.message ?? e}`);
       }
+    }
+  }
+
+  /**
+   * Déclencheur ÉVÉNEMENTIEL (incident / maintenance / réservation). Ne (re)analyse que si l'agent
+   * est activé ET la case correspondante est cochée, avec throttle anti-storm par flotte. Les
+   * réservations créées PAR l'agent (source SYSTEM) n'émettent jamais cet évènement → pas de boucle.
+   */
+  @OnEvent('agenda-agent.trigger', { async: true })
+  async onTrigger(payload: { fleetId?: string; kind?: 'incident' | 'maintenance' | 'reservation' }): Promise<void> {
+    const fleetId = payload?.fleetId;
+    const kind = payload?.kind;
+    if (!fleetId || !kind) return;
+    try {
+      const s = await this.prisma.agendaAgentSettings.findUnique({ where: { fleetId } });
+      if (!s?.enabled) return;
+      const on = kind === 'incident' ? s.triggerIncident : kind === 'maintenance' ? s.triggerMaintenance : s.triggerReservation;
+      if (!on) return;
+      const now = Date.now();
+      if (now - (this.lastEventRun.get(fleetId) ?? 0) < EVENT_THROTTLE_MS) return;
+      this.lastEventRun.set(fleetId, now);
+      await this.runForFleet(fleetId, kind);
+    } catch (e) {
+      this.logger.error(`onTrigger ${fleetId}/${kind} : ${(e as Error)?.message ?? e}`);
     }
   }
 
@@ -306,6 +349,62 @@ export class AgendaAgentRunnerService {
   private reasoning(p: RecurringPattern): string {
     const dest = p.destinationLabel ? ` vers ${p.destinationLabel}` : '';
     return `${p.basis}. Départ habituel ~${this.hhmm(p.startMinutes)}${dest} — occurrence récurrente projetée par l'agent.`;
+  }
+
+  /**
+   * Couche IA BEST-EFFORT : Claude juge, pour chaque récurrence, s'il faut la pré-réserver (`keep`)
+   * et rédige un « pourquoi » vulgarisé. Map vide si l'IA n'est pas configurée / échoue → l'agent
+   * retombe sur son raisonnement déterministe (il ne casse JAMAIS). Coût tracé (action agenda_agent).
+   */
+  private async reviewPatterns(
+    fleetId: string,
+    patterns: RecurringPattern[],
+  ): Promise<Map<number, { keep: boolean; reasoning: string }>> {
+    const out = new Map<number, { keep: boolean; reasoning: string }>();
+    if (!this.anthropic || !this.aiUsage || !this.anthropic.isConfigured() || patterns.length === 0) return out;
+    const capped = patterns.slice(0, 30); // borne le coût sur les grosses flottes
+    const fleet = await this.prisma.fleet.findUnique({ where: { id: fleetId }, select: { metier: true, name: true } });
+    const metier = (fleet?.metier as FleetMetier) ?? 'GENERIC';
+    const payload = {
+      fleetName: fleet?.name ?? null,
+      metier,
+      patterns: capped.map((p, i) => ({
+        index: i,
+        plate: p.vehiclePlate,
+        dayOfWeek: p.dayOfWeek,
+        start: this.hhmm(p.startMinutes),
+        end: this.hhmm(p.endMinutes),
+        destination: p.destinationLabel,
+        weeksObserved: p.activeWeeks,
+        confidence: p.confidence,
+      })),
+    };
+    try {
+      const call = await this.anthropic.completeJson<{ reviews: { index: number; keep: boolean; reasoning: string }[] }>({
+        system: renderAgendaAgentSystem(metier),
+        userPayload: payload,
+        schema: AGENDA_AGENT_SCHEMA,
+        maxTokens: 4096,
+      });
+      for (const r of call.result?.reviews ?? []) {
+        if (typeof r?.index === 'number' && r.index >= 0 && r.index < capped.length) {
+          out.set(r.index, {
+            keep: r.keep !== false,
+            reasoning: typeof r.reasoning === 'string' ? r.reasoning.slice(0, 400) : '',
+          });
+        }
+      }
+      void this.aiUsage.record({
+        userId: null, fleetId, action: 'agenda_agent', model: call.model,
+        inputTokens: call.usage.inputTokens, outputTokens: call.usage.outputTokens,
+        cacheWriteTokens: call.usage.cacheWriteTokens, cacheReadTokens: call.usage.cacheReadTokens,
+        latencyMs: call.latencyMs, ok: true,
+      });
+    } catch (e) {
+      // Best-effort : l'échec IA ne casse pas l'agent (raisonnement déterministe conservé).
+      this.logger.warn(`reviewPatterns ${fleetId} : ${(e as Error)?.message ?? e}`);
+    }
+    return out;
   }
 
   private meta(p: RecurringPattern, origin: string): Prisma.InputJsonValue {

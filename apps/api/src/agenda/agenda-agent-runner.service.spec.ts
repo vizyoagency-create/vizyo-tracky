@@ -33,8 +33,20 @@ function makePrisma(settings: unknown, existingProposal: unknown = null) {
       create: jest.fn().mockResolvedValue({}),
     },
     vehicle: { findMany: jest.fn().mockResolvedValue([]) },
+    fleet: { findUnique: jest.fn().mockResolvedValue({ metier: 'CHILDREN_TRANSPORT', name: 'CDEF' }) },
   } as never;
 }
+function makeAnthropic(reviews: unknown[]) {
+  return {
+    isConfigured: () => true,
+    completeJson: jest.fn().mockResolvedValue({
+      result: { reviews },
+      usage: { inputTokens: 0, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0 },
+      model: 'claude-opus-4-8', latencyMs: 1,
+    }),
+  } as never;
+}
+const makeAiUsage = () => ({ record: jest.fn() } as never);
 function makeDetector(patterns: RecurringPattern[]) {
   return { detect: jest.fn().mockResolvedValue(patterns) } as never;
 }
@@ -85,6 +97,21 @@ describe('AgendaAgentRunnerService (P3.3 — agent nocturne)', () => {
     expect(res.created).toBe(0);
     expect((prisma as unknown as { agendaAgentProposal: { create: jest.Mock } }).agendaAgentProposal.create).not.toHaveBeenCalled();
     expect((reservations as unknown as { systemConfirm: jest.Mock }).systemConfirm).not.toHaveBeenCalled();
+  });
+
+  it('couche IA : Claude écarte une récurrence (keep=false) -> pas de réservation, coût tracé', async () => {
+    const prisma = makePrisma(makeSettings());
+    const reservations = makeReservations();
+    const anthropic = makeAnthropic([{ index: 0, keep: false, reasoning: 'Récurrence trop instable' }]);
+    const aiUsage = makeAiUsage();
+    const svc = new AgendaAgentRunnerService(prisma, makeDetector([PATTERN]), reservations, makeEvents(), makeActivity(), anthropic, aiUsage);
+
+    const res = await svc.runForFleet('f1', 'scheduled');
+    expect(res.created).toBe(0);
+    expect((reservations as unknown as { systemConfirm: jest.Mock }).systemConfirm).not.toHaveBeenCalled();
+    expect((prisma as unknown as { agendaAgentProposal: { create: jest.Mock } }).agendaAgentProposal.create).not.toHaveBeenCalled();
+    expect((anthropic as unknown as { completeJson: jest.Mock }).completeJson).toHaveBeenCalled();
+    expect((aiUsage as unknown as { record: jest.Mock }).record).toHaveBeenCalledWith(expect.objectContaining({ action: 'agenda_agent', fleetId: 'f1' }));
   });
 
   it('planifié + agent désactivé : no-op (ne détecte même pas)', async () => {

@@ -27,6 +27,7 @@ const ACTION_LABELS: Record<string, string> = {
   capacity: 'Capacité',
   placement: 'Placement',
   agenda_optimization: 'Agenda (agent)',
+  agenda_agent: 'Agent agenda',
   activity_report: "Rapport d'activité",
 };
 
