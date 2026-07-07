@@ -38,7 +38,9 @@ import { AgendaCalendarComponent } from './agenda-calendar.component';
 import { ReservationSheetComponent } from './sheets/reservation-sheet.component';
 import { OptimizationSheetComponent } from './sheets/optimization-sheet.component';
 import { AgendaAgentSettingsSheetComponent } from './sheets/agenda-agent-settings-sheet.component';
+import { AgendaAgentProposalsSheetComponent } from './sheets/agenda-agent-proposals-sheet.component';
 import { AuthService } from '../../core/services/auth.service';
+import { AgendaAgentApiService } from '../../core/services/agenda-agent.service';
 import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.directive';
 import {
   addMonths,
@@ -63,7 +65,7 @@ interface GroupOption {
   selector: 'app-agenda',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, LucideAngularModule, DatePipe, GroupBadgeComponent, AgendaCalendarComponent, ReservationSheetComponent, OptimizationSheetComponent, AgendaAgentSettingsSheetComponent, VehicleLinkDirective],
+  imports: [FormsModule, LucideAngularModule, DatePipe, GroupBadgeComponent, AgendaCalendarComponent, ReservationSheetComponent, OptimizationSheetComponent, AgendaAgentSettingsSheetComponent, AgendaAgentProposalsSheetComponent, VehicleLinkDirective],
   template: `
     <div class="flex flex-col gap-5">
       <!-- Header + résumé -->
@@ -92,6 +94,12 @@ interface GroupOption {
             @if (canOptimize()) {
               <button type="button" (click)="openOptim()" class="ag-btn-soft">
                 <lucide-icon [img]="GaugeIcon" [size]="15"></lucide-icon><span>Optimisation</span>
+              </button>
+            }
+            @if (canOptimize() && (agentProposalCount() > 0 || canConfigureAgent())) {
+              <button type="button" (click)="openProposals()" class="ag-btn-soft">
+                <lucide-icon [img]="SparklesIcon" [size]="15"></lucide-icon><span>Propositions IA</span>
+                @if (agentProposalCount() > 0) { <span class="ag-badge">{{ agentProposalCount() }}</span> }
               </button>
             }
             @if (canManage()) {
@@ -595,7 +603,12 @@ interface GroupOption {
       (applied)="onReservationChanged()" />
     <app-agenda-agent-settings-sheet
       [open]="agentSheetOpen()"
-      (closed)="agentSheetOpen.set(false)" />
+      (closed)="agentSheetOpen.set(false)"
+      (saved)="loadAgentProposals()" />
+    <app-agenda-agent-proposals-sheet
+      [open]="proposalsSheetOpen()"
+      (closed)="proposalsSheetOpen.set(false)"
+      (changed)="onAgentProposalsChanged()" />
   `,
   styles: [`
     /* ─── Boutons génériques ─── */
@@ -999,6 +1012,7 @@ export class AgendaComponent implements OnInit {
   private readonly scrollLock = inject(ScrollLockService);
   private readonly fleetFilter = inject(FleetFilterService);
   private readonly auth = inject(AuthService);
+  private readonly agentApi = inject(AgendaAgentApiService);
 
   // Verrou de scroll pour les overlays custom (modal création/incident + panneau
   // du jour) : fige la page derrière tant qu'un des deux est ouvert.
@@ -1022,6 +1036,7 @@ export class AgendaComponent implements OnInit {
       void this.loadSummary();
       void this.loadActivity();
       void this.loadForecast();
+      void this.loadAgentProposals();
     });
   });
   /** Passe à true après le premier chargement (évite un double-fetch au démarrage). */
@@ -1136,6 +1151,9 @@ export class AgendaComponent implements OnInit {
   protected readonly resEditReservation = signal<VehicleEventDto | null>(null);
   /** ⚙️ Paramètres de l'agenda (agent IA). */
   protected readonly agentSheetOpen = signal(false);
+  /** Propositions de l'agent nocturne (revue). */
+  protected readonly proposalsSheetOpen = signal(false);
+  protected readonly agentProposalCount = signal(0);
   protected readonly optSheetOpen = signal(false);
   /** Nb de demandes de réservation en attente (dérivé des événements déjà chargés). */
   protected readonly pendingCount = computed(() =>
@@ -1434,6 +1452,7 @@ export class AgendaComponent implements OnInit {
     await this.loadEvents();
     void this.loadActivity();
     void this.loadForecast();
+    void this.loadAgentProposals();
     this.initialised = true; // à partir d'ici, un changement de société recharge tout
   }
 
@@ -1812,6 +1831,28 @@ export class AgendaComponent implements OnInit {
   /** ⚙️ Ouvre les paramètres de l'agent (config par société via le sélecteur global). */
   protected openAgentSettings(): void {
     this.agentSheetOpen.set(true);
+  }
+
+  /** Ouvre la revue des propositions de l'agent nocturne. */
+  protected openProposals(): void {
+    this.proposalsSheetOpen.set(true);
+  }
+
+  /** Une proposition a été validée/refusée : recharge l'agenda + le compteur. */
+  protected onAgentProposalsChanged(): void {
+    this.onReservationChanged();
+    void this.loadAgentProposals();
+  }
+
+  /** Compteur de propositions en attente (pour la société active). Silencieux si non éligible. */
+  protected async loadAgentProposals(): Promise<void> {
+    if (!this.canOptimize()) { this.agentProposalCount.set(0); return; }
+    try {
+      const list = await firstValueFrom(this.agentApi.listProposals(this.currentFleetId()));
+      this.agentProposalCount.set(list.length);
+    } catch {
+      this.agentProposalCount.set(0);
+    }
   }
 
   /** « Réserver ce jour » depuis le panneau jour : ferme le panneau, ouvre la demande pré-datée. */

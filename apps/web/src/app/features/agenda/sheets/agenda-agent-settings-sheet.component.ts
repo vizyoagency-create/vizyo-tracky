@@ -128,6 +128,10 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
           </div>
 
           <div class="aas-foot">
+            <button type="button" class="aas-btn aas-btn--ghost" [disabled]="running() || saving()" (click)="runNow()" title="Analyser maintenant (sans attendre la nuit)">
+              @if (running()) { <lucide-icon [img]="LoaderIcon" [size]="15" class="aas-spin"></lucide-icon> } @else { <lucide-icon [img]="ZapIcon" [size]="15"></lucide-icon> }
+              Lancer l'analyse
+            </button>
             <button type="button" class="aas-btn" [disabled]="saving()" (click)="save()">
               @if (saving()) { <lucide-icon [img]="LoaderIcon" [size]="15" class="aas-spin"></lucide-icon> }
               {{ saving() ? 'Enregistrement…' : 'Enregistrer' }}
@@ -171,8 +175,9 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
     .aas-cost-list { display: flex; flex-direction: column; gap: 4px; }
     .aas-cost-list li { display: flex; justify-content: space-between; font-size: 12px; color: var(--fg-tertiary); }
     .aas-cost-link { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: var(--tracky-light); }
-    .aas-foot { display: flex; justify-content: flex-end; padding: 12px 0 max(6px, env(safe-area-inset-bottom)); margin-top: 2px; border-top: 1px solid var(--border-subtle); }
+    .aas-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 0 max(6px, env(safe-area-inset-bottom)); margin-top: 2px; border-top: 1px solid var(--border-subtle); }
     .aas-btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; border-radius: 10px; font-size: 13px; font-weight: 700; background: var(--tracky, #10B981); color: #fff; }
+    .aas-btn--ghost { background: var(--bg-tertiary); color: var(--fg-secondary); border: 1px solid var(--border-subtle); }
     .aas-btn:disabled { opacity: .55; }
     .aas-spin { animation: aas-spin 1s linear infinite; }
     @keyframes aas-spin { to { transform: rotate(360deg); } }
@@ -200,6 +205,7 @@ export class AgendaAgentSettingsSheetComponent {
 
   protected readonly loading = signal(false);
   protected readonly saving = signal(false);
+  protected readonly running = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly fleetName = signal<string | null>(null);
 
@@ -308,6 +314,21 @@ export class AgendaAgentSettingsSheetComponent {
       this.error.set(this.errMsg(e));
     } finally {
       this.saving.set(false);
+    }
+  }
+
+  /** Lance l'analyse de l'agent maintenant (sans attendre la nuit). */
+  protected async runNow(): Promise<void> {
+    this.running.set(true);
+    this.error.set(null);
+    try {
+      const r = await firstValueFrom(this.agentApi.run(this.currentFleetId()));
+      this.toast.success('Analyse terminée', `${r.created} réservé(s) · ${r.proposed} proposé(s)`);
+      this.saved.emit(); // le parent rafraîchit le compteur de propositions
+    } catch (e) {
+      this.error.set(this.errMsg(e));
+    } finally {
+      this.running.set(false);
     }
   }
 
