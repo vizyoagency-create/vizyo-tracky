@@ -9,7 +9,7 @@ import {
   signal,
 } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
-import { HttpErrorResponse } from '@angular/common/http';
+import { apiErrorMessage } from '../../../core/error/api-error';
 import { LucideAngularModule, Sparkles, X, Check, MapPin, Inbox, Loader } from 'lucide-angular';
 import type { AgendaAgentProposalDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
@@ -153,7 +153,7 @@ export class AgendaAgentProposalsSheetComponent {
       this.toast.success('Réservé', 'La réservation est placée dans l\'agenda.');
       this.changed.emit();
     } catch (e) {
-      this.toast.error('Échec', e instanceof HttpErrorResponse ? e.error?.message : 'Action impossible.');
+      this.toast.error('Échec', apiErrorMessage(e, 'Action impossible.'));
     } finally {
       this.busyId.set(null);
     }
@@ -167,7 +167,7 @@ export class AgendaAgentProposalsSheetComponent {
       this.toast.success('Proposition refusée');
       this.changed.emit();
     } catch (e) {
-      this.toast.error('Échec', e instanceof HttpErrorResponse ? e.error?.message : 'Action impossible.');
+      this.toast.error('Échec', apiErrorMessage(e, 'Action impossible.'));
     } finally {
       this.busyId.set(null);
     }

@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
-import { HttpErrorResponse } from '@angular/common/http';
+import { apiErrorMessage } from '../../core/error/api-error';
 import { ActivatedRoute } from '@angular/router';
 import { LucideAngularModule, CalendarCheck, MapPin, Users, Check, Loader, Send, Sparkles, Mic, MicOff } from 'lucide-angular';
 import type {
@@ -365,6 +365,6 @@ export class PublicReservationComponent implements OnInit, OnDestroy {
   }
 
   private msg(e: unknown, fallback: string): string {
-    return e instanceof HttpErrorResponse ? (e.error?.message ?? fallback) : fallback;
+    return apiErrorMessage(e, fallback);
   }
 }

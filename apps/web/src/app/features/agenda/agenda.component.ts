@@ -11,7 +11,7 @@ import {
 import { ScrollLockService } from '../../core/services/scroll-lock.service';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { HttpErrorResponse } from '@angular/common/http';
+import { apiErrorMessage } from '../../core/error/api-error';
 import {
   LucideAngularModule, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Check,
   Layers, Truck, Plus, AlertTriangle, CalendarClock, Wrench, X, Trash2, Play, ListChecks,
@@ -1511,10 +1511,7 @@ export class AgendaComponent implements OnInit {
       this.events.set(events);
     } catch (err) {
       this.events.set([]);
-      this.toast.error(
-        'Erreur de chargement',
-        err instanceof HttpErrorResponse ? err.error?.message : 'Impossible de charger l\'agenda.',
-      );
+      this.toast.error('Erreur de chargement', apiErrorMessage(err, 'Impossible de charger l\'agenda.'));
     } finally {
       this.loading.set(false);
     }
@@ -1654,7 +1651,7 @@ export class AgendaComponent implements OnInit {
       this.toast.success(status === 'DONE' ? 'Marqué terminé' : 'Mis à jour');
       void this.loadSummary();
     } catch (err) {
-      this.toast.error('Échec', err instanceof HttpErrorResponse ? err.error?.message : 'Action impossible.');
+      this.toast.error('Échec', apiErrorMessage(err, 'Action impossible.'));
     } finally {
       this.busyId.set(null);
     }
@@ -1670,7 +1667,7 @@ export class AgendaComponent implements OnInit {
       this.toast.success('Événement supprimé');
       void this.loadSummary();
     } catch (err) {
-      this.toast.error('Échec suppression', err instanceof HttpErrorResponse ? err.error?.message : '');
+      this.toast.error('Échec suppression', apiErrorMessage(err, 'Suppression impossible.'));
     } finally {
       this.busyId.set(null);
     }
@@ -1778,7 +1775,7 @@ export class AgendaComponent implements OnInit {
       this.createOpen.set(false);
       void this.loadSummary();
     } catch (err) {
-      this.toast.error('Échec création', err instanceof HttpErrorResponse ? err.error?.message : 'Création impossible.');
+      this.toast.error('Échec création', apiErrorMessage(err, 'Création impossible.'));
     } finally {
       this.saving.set(false);
     }
@@ -1818,7 +1815,7 @@ export class AgendaComponent implements OnInit {
       this.onReservationChanged();
       this.closeDayPanel();
     } catch (err) {
-      this.toast.error('Échec', err instanceof HttpErrorResponse ? err.error?.message : 'Annulation impossible.');
+      this.toast.error('Échec', apiErrorMessage(err, 'Annulation impossible.'));
     } finally {
       this.busyId.set(null);
     }

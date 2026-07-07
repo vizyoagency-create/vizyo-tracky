@@ -9,7 +9,7 @@ import {
   signal,
 } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
-import { HttpErrorResponse } from '@angular/common/http';
+import { apiErrorMessage } from '../../../core/error/api-error';
 import { RouterLink } from '@angular/router';
 import { LucideAngularModule, Settings, X, Loader, Zap, ExternalLink, Link2, Copy, Plus, Power } from 'lucide-angular';
 import {
@@ -413,7 +413,6 @@ export class AgendaAgentSettingsSheetComponent {
   }
 
   private errMsg(e: unknown): string {
-    if (e instanceof HttpErrorResponse) return e.error?.message ?? 'Erreur serveur.';
-    return 'Une erreur est survenue.';
+    return apiErrorMessage(e, 'Erreur serveur.');
   }
 }

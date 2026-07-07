@@ -10,6 +10,7 @@ import {
 } from '@angular/core';
 import { DatePipe, DecimalPipe, NgClass } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
+import { apiErrorMessage } from '../../../core/error/api-error';
 import {
   LucideAngularModule, Sparkles, Check, AlertTriangle, Loader, CalendarCheck, Inbox, X, User,
 } from 'lucide-angular';
@@ -565,12 +566,9 @@ export class ReservationSheetComponent {
   }
 
   private errMsg(e: unknown): string {
-    if (e instanceof HttpErrorResponse) {
-      const m = (e.error as { message?: string } | null)?.message;
-      if (m) return m;
-      if (e.status === 503) return "Copilote IA non configuré côté serveur (ANTHROPIC_API_KEY).";
-      return `Erreur (${e.status}).`;
+    if (e instanceof HttpErrorResponse && e.status === 503) {
+      return apiErrorMessage(e, 'Copilote IA non configuré côté serveur (ANTHROPIC_API_KEY).');
     }
-    return 'Une erreur est survenue.';
+    return apiErrorMessage(e, e instanceof HttpErrorResponse ? `Erreur (${e.status}).` : 'Une erreur est survenue.');
   }
 }
