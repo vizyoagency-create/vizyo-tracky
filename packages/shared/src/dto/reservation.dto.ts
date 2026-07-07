@@ -26,6 +26,9 @@ export interface RequestReservationDto {
   title?: string;
   reason?: string;
   criteria?: ReservationCriteria;
+  /** Consigner une réservation DÉJÀ EFFECTUÉE mais non enregistrée (créneau passé). Réservé aux
+   *  gestionnaires : entre CONFIRMÉE à sa date réelle, sans bloquer sur le trajet réel (attendu). */
+  retroactive?: boolean;
 }
 
 /** Véhicule proposé par l'auto-complétion : libre sur le créneau ET conforme aux critères. */
@@ -65,4 +68,6 @@ export interface UpdateReservationDto {
   criteria?: ReservationCriteria;
   /** Réaffecter la réservation à un autre véhicule (re-vérifie les conflits sur la cible). */
   vehicleId?: string;
+  /** Marque/maintient la réservation comme « déjà effectuée » (autorise un créneau passé à l'édition). */
+  retroactive?: boolean;
 }

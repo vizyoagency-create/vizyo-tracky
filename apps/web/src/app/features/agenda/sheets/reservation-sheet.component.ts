@@ -75,8 +75,16 @@ function toLocalInput(d: Date): string {
             }
             <div class="rs-f">
               <span>Créneau</span>
-              <app-datetime-range [start]="startAt()" [end]="endAt()" (startChange)="startAt.set($event)" (endChange)="endAt.set($event)"></app-datetime-range>
+              <app-datetime-range [start]="startAt()" [end]="endAt()" [minDay]="retroactive() ? '' : todayIso()" (startChange)="startAt.set($event)" (endChange)="endAt.set($event)"></app-datetime-range>
             </div>
+            <!-- Consignation rétroactive : autorise un créneau passé pour enregistrer une sortie DÉJÀ faite. -->
+            <label class="rs-retro" [class.rs-retro--on]="retroactive()">
+              <input type="checkbox" [checked]="retroactive()" (change)="retroactive.set($any($event.target).checked)">
+              <span class="rs-retro-txt">
+                <span class="rs-retro-t">Réservation déjà effectuée (non enregistrée)</span>
+                <span class="rs-retro-s">Coche si la sortie a <strong>déjà eu lieu</strong> : elle sera enregistrée à sa date réelle (passée). Sinon, les dates passées sont bloquées.</span>
+              </span>
+            </label>
             <div class="rs-grid">
               <label class="rs-f rs-f--sm"><span>Places min.</span><input type="number" min="0" inputmode="numeric" class="rs-in" [value]="minSeats()" (input)="minSeats.set($any($event.target).value)"></label>
               <label class="rs-f rs-f--sm"><span>Sièges-enfant min.</span><input type="number" min="0" inputmode="numeric" class="rs-in" [value]="minChildSeats()" (input)="minChildSeats.set($any($event.target).value)"></label>
@@ -238,6 +246,12 @@ function toLocalInput(d: Date): string {
     .rs-alert--err { background: rgba(239,68,68,.1); color: #EF4444; }
     .rs-alert--warn { background: rgba(245,158,11,.12); color: #B45309; }
     .rs-alert--info { background: var(--bg-tertiary); color: var(--fg-secondary); }
+    .rs-retro { display: flex; gap: 9px; align-items: flex-start; padding: 10px 11px; border-radius: 10px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); cursor: pointer; }
+    .rs-retro--on { border-color: var(--tracky-light); background: color-mix(in srgb, var(--tracky-light) 8%, transparent); }
+    .rs-retro input { margin-top: 2px; width: 16px; height: 16px; accent-color: var(--tracky-light); flex-shrink: 0; cursor: pointer; }
+    .rs-retro-txt { display: flex; flex-direction: column; gap: 2px; }
+    .rs-retro-t { font-size: 13px; font-weight: 700; color: var(--fg-primary); }
+    .rs-retro-s { font-size: 11.5px; color: var(--fg-tertiary); line-height: 1.35; }
     .rs-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 0 max(6px, env(safe-area-inset-bottom)); margin-top: 2px; border-top: 1px solid var(--border-subtle); }
     .rs-btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 16px; border-radius: 10px; font-size: 13px; font-weight: 700; }
     .rs-btn--primary { background: var(--tracky, #10B981); color: #fff; }
@@ -317,6 +331,16 @@ export class ReservationSheetComponent {
   protected readonly vehicleId = signal('');
   protected readonly submitting = signal(false);
   protected readonly reqError = signal<string | null>(null);
+  /** Consigner une réservation DÉJÀ effectuée (autorise un créneau passé). Réservé aux gestionnaires. */
+  protected readonly retroactive = signal(false);
+  /** Aujourd'hui (YYYY-MM-DD local) — borne minimale du picker hors mode « déjà effectuée ».
+   *  Dépend de open() pour se rafraîchir à chaque ouverture du sheet. */
+  protected readonly todayIso = computed(() => {
+    void this.open();
+    const d = new Date();
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  });
 
   // IA placement
   protected readonly aiLoading = signal(false);
@@ -343,11 +367,12 @@ export class ReservationSheetComponent {
       this.resetAi();
       this.reqError.set(null);
       if (edit) {
-        const meta = (edit.metadata ?? {}) as { reason?: string; criteria?: { minSeats?: number; minChildSeats?: number } };
+        const meta = (edit.metadata ?? {}) as { reason?: string; retroactive?: boolean; criteria?: { minSeats?: number; minChildSeats?: number } };
         this.startAt.set(toLocalInput(new Date(edit.startAt)));
         this.endAt.set(edit.endAt ? toLocalInput(new Date(edit.endAt)) : '');
         this.vehicleId.set(edit.vehicleId);
         this.reason.set(meta.reason ?? '');
+        this.retroactive.set(meta.retroactive === true);
         this.minSeats.set(meta.criteria?.minSeats ? String(meta.criteria.minSeats) : '');
         this.minChildSeats.set(meta.criteria?.minChildSeats ? String(meta.criteria.minChildSeats) : '');
         this.mode.set('edit');
@@ -359,6 +384,7 @@ export class ReservationSheetComponent {
       this.endAt.set(toLocalInput(new Date(base.getTime() + 60 * 60 * 1000)));
       this.vehicleId.set('');
       this.minSeats.set(''); this.minChildSeats.set(''); this.reason.set('');
+      this.retroactive.set(false);
       const m = this.startMode() === 'validate' && this.canManage() ? 'validate' : 'request';
       this.mode.set(m);
       if (m === 'validate') void this.loadQueue();
@@ -423,6 +449,11 @@ export class ReservationSheetComponent {
     if (!s || !e) { this.reqError.set('Renseignez le créneau.'); return null; }
     const si = new Date(s).toISOString(); const ei = new Date(e).toISOString();
     if (new Date(ei).getTime() <= new Date(si).getTime()) { this.reqError.set('La fin doit être après le début.'); return null; }
+    // Dates passées bloquées, sauf consignation d'une réservation déjà effectuée (le backend revalide).
+    if (!this.retroactive() && new Date(si).getTime() < Date.now()) {
+      this.reqError.set('Impossible de réserver dans le passé. Coche « réservation déjà effectuée » pour enregistrer une sortie déjà réalisée.');
+      return null;
+    }
     return { startAt: si, endAt: ei };
   }
 
@@ -466,12 +497,16 @@ export class ReservationSheetComponent {
         endAt: slot.endAt,
         reason: this.reason() || undefined,
         criteria: this.criteria(),
+        retroactive: this.retroactive() || undefined,
       }));
       this.created.emit();
       // #5 — le backend place la réservation selon le droit de l'appelant : CONFIRMED (directement
       // dans l'agenda) s'il peut gérer, sinon REQUESTED (demande à valider). On reflète le résultat.
       if (res.status === 'CONFIRMED') {
-        this.toast.success('Réservé', 'La réservation est placée dans l\'agenda.');
+        this.toast.success(
+          this.retroactive() ? 'Réservation enregistrée' : 'Réservé',
+          this.retroactive() ? 'La sortie déjà effectuée est consignée à sa date.' : 'La réservation est placée dans l\'agenda.',
+        );
       } else {
         this.toast.success('Demande déposée', 'À valider par un gestionnaire.');
       }
@@ -498,6 +533,7 @@ export class ReservationSheetComponent {
         reason: this.reason() || undefined,
         criteria: this.criteria(),
         vehicleId: this.vehicleId() || undefined,
+        retroactive: this.retroactive() || undefined,
       }));
       this.toast.success('Réservation modifiée', 'Les changements sont enregistrés.');
       this.created.emit();

@@ -383,6 +383,21 @@ export class ReservationsService {
   async request(user: AuthUser, dto: RequestReservationDto): Promise<VehicleEventDto> {
     const { start, end } = this.parseSlot(dto.startAt, dto.endAt);
 
+    // On ne réserve pas dans le passé. Seule EXCEPTION : consigner une réservation DÉJÀ EFFECTUÉE
+    // mais non enregistrée (option « déjà effectuée ») — elle est alors placée à sa date réelle.
+    const isPast = start.getTime() < Date.now();
+    if (isPast && !dto.retroactive) {
+      throw new BadRequestException(
+        'Impossible de réserver une date passée. Pour consigner une réservation déjà effectuée mais non enregistrée, activez l’option « réservation déjà effectuée ».',
+      );
+    }
+    if (dto.retroactive && !dto.vehicleId) {
+      throw new BadRequestException('Précisez le véhicule concerné pour consigner une réservation déjà effectuée.');
+    }
+    // Rétroactif EFFECTIF = flag + créneau réellement passé (sur un créneau futur, le flag est ignoré
+    // → réservation normale, tous les contrôles s'appliquent).
+    const retro = !!dto.retroactive && isPast;
+
     let vehicleId = dto.vehicleId;
     let fleetId: string;
     if (vehicleId) {
@@ -402,16 +417,21 @@ export class ReservationsService {
       fleetId = await this.events.assertVehicleAccess(user, vehicleId);
     }
 
-    // Une réservation FERME existante (ou un trajet réel) sur le créneau rend la demande caduque.
+    // Une réservation FERME existante (une autre réservation) sur le créneau rend la demande caduque —
+    // y compris en rétroactif (on ne consigne pas deux fois le même créneau).
     const conflicts = await this.findOverlaps(vehicleId, start, end);
     if (conflicts.length > 0) {
       throw new ConflictException('Ce véhicule est déjà réservé sur ce créneau.');
     }
-    if (await this.hasTripOverlap(vehicleId, start, end)) {
-      throw new ConflictException('Ce véhicule roule déjà sur ce créneau.');
-    }
-    if ((await this.findImmobilized([vehicleId], start, end)).has(vehicleId)) {
-      throw new ConflictException('Ce véhicule est immobilisé (incident ou maintenance) sur ce créneau.');
+    // Rétroactif : le trajet réel (et une immobilisation passée) sont ATTENDUS — ils prouvent que la
+    // réservation a eu lieu ; on ne bloque donc pas dessus. Pour une réservation à venir, on refuse.
+    if (!retro) {
+      if (await this.hasTripOverlap(vehicleId, start, end)) {
+        throw new ConflictException('Ce véhicule roule déjà sur ce créneau.');
+      }
+      if ((await this.findImmobilized([vehicleId], start, end)).has(vehicleId)) {
+        throw new ConflictException('Ce véhicule est immobilisé (incident ou maintenance) sur ce créneau.');
+      }
     }
 
     // #5 — Placement DIRECT si l'appelant peut GÉRER les réservations de CE véhicule
@@ -419,6 +439,10 @@ export class ReservationsService {
     // dans l'agenda, sans passer par la file de demandes. Sinon (droit reservations_request
     // seul) → REQUESTED (une demande qu'un gestionnaire validera).
     const canManage = await this.permissions.canOnVehicle(user, vehicleId, 'reservations_manage');
+    // Consigner une réservation passée est un acte de GESTION (jamais une demande à valider).
+    if (retro && !canManage) {
+      throw new ForbiddenException('Seul un gestionnaire peut consigner une réservation déjà effectuée.');
+    }
     const status = canManage ? VehicleEventStatus.CONFIRMED : VehicleEventStatus.REQUESTED;
 
     try {
@@ -436,14 +460,16 @@ export class ReservationsService {
             requesterId: user.id,
             reason: dto.reason ?? null,
             criteria: dto.criteria ?? null,
+            ...(retro ? { retroactive: true } : {}),
           } as Prisma.InputJsonValue,
           createdBy: user.id,
           source: 'MANUAL',
         },
         include: INCLUDE_PLATE,
       });
-      // Déclencheur agent : une réservation HUMAINE vient d'être créée (l'agent décide selon son toggle).
-      this.emitter?.emit('agenda-agent.trigger', { fleetId, kind: 'reservation' });
+      // Déclencheur agent : une réservation HUMAINE À VENIR vient d'être créée (l'agent décide selon
+      // son toggle). Une consignation rétroactive (créneau passé) n'a rien à optimiser → pas de trigger.
+      if (!retro) this.emitter?.emit('agenda-agent.trigger', { fleetId, kind: 'reservation' });
       return this.toDto(row);
     } catch (err) {
       // Une réservation FERME (CONFIRMED) est soumise à la contrainte EXCLUDE : traduire
@@ -546,6 +572,15 @@ export class ReservationsService {
       data.startAt = start;
       data.endAt = end;
     }
+    // Une réservation « déjà effectuée » (metadata.retroactive, ou marquée telle par le client) reste
+    // éditable même sur un créneau passé. Sinon, on interdit de DÉPLACER une réservation dans le passé.
+    const isRetro =
+      (resa.metadata as { retroactive?: unknown } | null)?.retroactive === true || dto.retroactive === true;
+    if (slotChanged && start.getTime() < Date.now() && !isRetro) {
+      throw new BadRequestException(
+        'Impossible de déplacer une réservation dans le passé. Pour une réservation déjà effectuée, activez l’option « réservation déjà effectuée ».',
+      );
+    }
     if (dto.title !== undefined) data.title = dto.title.trim() || 'Réservation';
     if (dto.reason !== undefined || dto.criteria !== undefined) {
       const meta = (resa.metadata as Record<string, unknown> | null) ?? {};
@@ -572,11 +607,14 @@ export class ReservationsService {
     if (blocking && (slotChanged || vehicleChanged) && end) {
       const conflicts = await this.findOverlaps(targetVehicleId, start, end, id);
       if (conflicts.length > 0) throw new ConflictException('Conflit sur le nouveau créneau.');
-      if (await this.hasTripOverlap(targetVehicleId, start, end)) {
-        throw new ConflictException('Ce véhicule roule déjà sur le nouveau créneau.');
-      }
-      if ((await this.findImmobilized([targetVehicleId], start, end)).has(targetVehicleId)) {
-        throw new ConflictException('Ce véhicule est immobilisé (incident ou maintenance) sur le nouveau créneau.');
+      // Rétroactif : le trajet réel / l'immobilisation passée sont attendus → on ne bloque pas dessus.
+      if (!isRetro) {
+        if (await this.hasTripOverlap(targetVehicleId, start, end)) {
+          throw new ConflictException('Ce véhicule roule déjà sur le nouveau créneau.');
+        }
+        if ((await this.findImmobilized([targetVehicleId], start, end)).has(targetVehicleId)) {
+          throw new ConflictException('Ce véhicule est immobilisé (incident ou maintenance) sur le nouveau créneau.');
+        }
       }
     }
 

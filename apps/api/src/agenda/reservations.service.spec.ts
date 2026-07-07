@@ -67,7 +67,17 @@ function evRow(over: Record<string, unknown> = {}) {
   };
 }
 
-const SLOT = { startAt: '2026-07-01T09:00:00Z', endAt: '2026-07-01T12:00:00Z' };
+const DAY = 86_400_000;
+// Créneau FUTUR (une réservation ne se fait pas dans le passé — cf. garde request/update).
+const SLOT = {
+  startAt: new Date(Date.now() + 2 * DAY).toISOString(),
+  endAt: new Date(Date.now() + 2 * DAY + 3 * 3_600_000).toISOString(),
+};
+// Créneau PASSÉ (pour tester le blocage + la consignation rétroactive « déjà effectuée »).
+const PAST_SLOT = {
+  startAt: new Date(Date.now() - 3 * DAY).toISOString(),
+  endAt: new Date(Date.now() - 3 * DAY + 3 * 3_600_000).toISOString(),
+};
 
 describe('ReservationsService — Sprint 8 Palier B', () => {
   it('request : crée une réservation REQUESTED, fleetId DÉRIVÉ du véhicule, demandeur en metadata', async () => {
@@ -84,6 +94,33 @@ describe('ReservationsService — Sprint 8 Palier B', () => {
     expect(data.fleetId).toBe('f1');
     expect(data.allDay).toBe(false);
     expect(data.metadata.requesterId).toBe('u1');
+  });
+
+  it('request : créneau PASSÉ sans option « déjà effectuée » -> 400 BadRequest', async () => {
+    const svc = new ReservationsService(makePrisma(), access('ALL'), makeEvents(), makePerms(true));
+    await expect(svc.request(makeUser(), { vehicleId: 'v1', ...PAST_SLOT })).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('request : rétroactif (déjà effectuée) par un gestionnaire -> CONFIRMED à la date passée + metadata.retroactive, ignore le trajet réel', async () => {
+    const prisma = makePrisma({
+      // Un trajet réel EXISTE sur le créneau passé (preuve que la sortie a eu lieu) : ne doit PAS bloquer.
+      trip: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue({ id: 't1' }) },
+    });
+    const p = prisma as { vehicleEvent: { create: jest.Mock } };
+    p.vehicleEvent.create.mockResolvedValue(evRow({ status: 'CONFIRMED', metadata: { retroactive: true } }));
+    const svc = new ReservationsService(prisma, access('ALL'), makeEvents(), makePerms(true));
+    const dto = await svc.request(makeUser(), { vehicleId: 'v1', ...PAST_SLOT, retroactive: true });
+    expect(dto.status).toBe('CONFIRMED');
+    const data = p.vehicleEvent.create.mock.calls[0][0].data;
+    expect(data.status).toBe('CONFIRMED');
+    expect(data.metadata.retroactive).toBe(true);
+  });
+
+  it('request : rétroactif par un NON-gestionnaire -> 403 Forbidden (consigner est un acte de gestion)', async () => {
+    const svc = new ReservationsService(makePrisma(), access('ALL'), makeEvents(), makePerms(false));
+    await expect(
+      svc.request(makeUser(), { vehicleId: 'v1', ...PAST_SLOT, retroactive: true }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('request : créneau déjà réservé (CONFIRMED chevauchant) -> 409 Conflict', async () => {

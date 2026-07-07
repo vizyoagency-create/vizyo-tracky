@@ -50,6 +50,7 @@ interface DayCell {
   inRange: boolean;
   isStart: boolean;
   isEnd: boolean;
+  disabled: boolean;
 }
 
 /**
@@ -103,6 +104,8 @@ interface DayCell {
                 [class.dtr-day--range]="c.inRange"
                 [class.dtr-day--start]="c.isStart"
                 [class.dtr-day--end]="c.isEnd"
+                [class.dtr-day--disabled]="c.disabled"
+                [disabled]="c.disabled"
                 [attr.aria-label]="c.iso"
                 (click)="pickDay(c.iso)">
                 <span>{{ c.day }}</span>
@@ -178,6 +181,10 @@ interface DayCell {
     }
     .dtr-day:hover { background: var(--bg-tertiary); color: var(--fg-primary); }
     .dtr-day--out { color: var(--fg-tertiary); opacity: .4; }
+    .dtr-day--disabled, .dtr-day--disabled:hover {
+      color: var(--fg-tertiary); opacity: .3; cursor: not-allowed;
+      background: transparent; text-decoration: line-through;
+    }
     .dtr-day--today::after {
       content: ''; position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%);
       width: 4px; height: 4px; border-radius: 50%; background: var(--tracky-light);
@@ -226,6 +233,9 @@ export class DateTimeRangePickerComponent {
   /** Début / fin au format `YYYY-MM-DDTHH:mm` (datetime-local). */
   readonly start = input<string>('');
   readonly end = input<string>('');
+  /** Jour minimum sélectionnable (`YYYY-MM-DD`) — les jours antérieurs sont grisés et inactifs.
+   *  Vide = aucune borne (ex. consignation d'une réservation déjà effectuée). */
+  readonly minDay = input<string>('');
   readonly startChange = output<string>();
   readonly endChange = output<string>();
 
@@ -290,6 +300,7 @@ export class DateTimeRangePickerComponent {
     const lo = sIso && eIso ? (sIso <= eIso ? sIso : eIso) : '';
     const hi = sIso && eIso ? (sIso <= eIso ? eIso : sIso) : '';
     const today = new Date();
+    const min = this.minDay();
     return monthCells(startOfMonthOf(month)).map((d) => {
       const iso = localIso(d);
       return {
@@ -300,6 +311,7 @@ export class DateTimeRangePickerComponent {
         inRange: !!lo && iso >= lo && iso <= hi,
         isStart: iso === sIso,
         isEnd: iso === eIso,
+        disabled: !!min && iso < min,
       };
     });
   });
@@ -332,6 +344,8 @@ export class DateTimeRangePickerComponent {
   protected nextMonth(): void { this.viewMonth.set(addMonths(this.viewMonth(), 1)); }
 
   protected pickDay(iso: string): void {
+    const min = this.minDay();
+    if (min && iso < min) return; // jour antérieur au minimum : inactif
     if (this.phase === 'idle') {
       this.startDayIso.set(iso);
       this.endDayIso.set(iso);
