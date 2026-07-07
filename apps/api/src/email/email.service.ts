@@ -16,7 +16,9 @@ export type EmailTemplateId =
   | 'audio_activation'
   | 'audio_info'
   | 'installation_slot_requested'
-  | 'installation_slot_confirmed';
+  | 'installation_slot_confirmed'
+  | 'reservation_requested'
+  | 'reservation_confirmed';
 
 /**
  * V1.5 (Sprint J) — Service d'envoi d'emails via Resend.
@@ -671,6 +673,79 @@ Un imprévu ? Répondez à cet e-mail. À bientôt.
   }
 
   /**
+   * Lien public de réservation — ACCUSÉ DE RÉCEPTION (→ demandeur) quand une demande est déposée.
+   * Charte 2026 via shell(). Aucun véhicule exposé (la demande est en attente de validation).
+   */
+  buildReservationRequestedEmail(opts: {
+    fleetName: string;
+    slotLabel: string;
+    destination?: string | null;
+    seats?: number | null;
+  }): { subject: string; html: string; text: string } {
+    const subject = `[Vizyo Tracky] Votre demande de réservation a bien été reçue`;
+    const rows = [
+      this.kvRow('Créneau', opts.slotLabel),
+      opts.destination ? this.kvRow('Destination', opts.destination) : '',
+      opts.seats ? this.kvRow('Places', String(opts.seats)) : '',
+    ].filter(Boolean);
+    const body = `
+        <tr><td style="padding:28px 36px 0;">
+          <div style="width:46px;height:46px;border-radius:12px;background:rgba(16,224,160,.12);text-align:center;line-height:46px;font-size:22px;margin-bottom:18px;">📩</div>
+          <h1 style="margin:0 0 12px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:25px;line-height:1.15;font-weight:800;letter-spacing:-0.025em;color:#EAEFED;">Demande bien reçue</h1>
+          <p style="margin:0 0 20px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:15px;line-height:1.65;color:#9BA5A1;">Bonjour, nous avons bien reçu votre demande de véhicule auprès de <span style="color:#10E0A0;font-weight:600;">${escapeHtml(opts.fleetName)}</span>. Elle est en cours de validation — vous recevrez une confirmation dès qu'un gestionnaire l'aura validée.</p>
+          <table role="presentation" width="100%" style="background:#161D1B;border:1px solid rgba(255,255,255,.07);border-radius:12px;border-collapse:separate;">
+            ${rows.join('')}
+          </table>
+        </td></tr>`;
+    const html = this.shell({ eyebrow: 'Réservation · Demande reçue', footer: 'VIZYO TRACKY · RÉSERVATION DE VÉHICULES', body });
+    const text = `Bonjour,
+
+Nous avons bien reçu votre demande de réservation auprès de ${opts.fleetName}.
+Créneau : ${opts.slotLabel}${opts.destination ? `\nDestination : ${opts.destination}` : ''}${opts.seats ? `\nPlaces : ${opts.seats}` : ''}
+
+Vous recevrez une confirmation dès qu'elle sera validée.`;
+    return { subject, html, text };
+  }
+
+  /**
+   * Lien public de réservation — CONFIRMATION (→ demandeur) quand un gestionnaire valide. Le véhicule
+   * attribué est indiqué (post-validation : le demandeur doit savoir quel véhicule il utilisera).
+   */
+  buildReservationConfirmedEmail(opts: {
+    fleetName: string;
+    slotLabel: string;
+    destination?: string | null;
+    vehicle?: string | null;
+  }): { subject: string; html: string; text: string } {
+    const subject = `[Vizyo Tracky] Votre réservation est confirmée`;
+    const rows = [
+      this.kvRow('Créneau', opts.slotLabel),
+      opts.destination ? this.kvRow('Destination', opts.destination) : '',
+      this.kvRow('Véhicule', opts.vehicle || 'attribué par la société'),
+    ].filter(Boolean);
+    const body = `
+        <tr><td style="padding:28px 36px 0;">
+          <div style="width:46px;height:46px;border-radius:12px;background:rgba(16,224,160,.12);text-align:center;line-height:46px;font-size:22px;margin-bottom:18px;">✅</div>
+          <h1 style="margin:0 0 12px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:25px;line-height:1.15;font-weight:800;letter-spacing:-0.025em;color:#EAEFED;">Votre réservation est confirmée</h1>
+          <p style="margin:0 0 20px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:15px;line-height:1.65;color:#9BA5A1;">Bonjour, votre demande auprès de <span style="color:#10E0A0;font-weight:600;">${escapeHtml(opts.fleetName)}</span> a été <span style="color:#EAEFED;font-weight:600;">validée</span>. Voici le récapitulatif :</p>
+          <table role="presentation" width="100%" style="background:#161D1B;border:1px solid rgba(255,255,255,.07);border-radius:12px;border-collapse:separate;">
+            ${rows.join('')}
+          </table>
+          <p style="margin:20px 0 0;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:13px;line-height:1.6;color:#69736E;">Un imprévu ? Répondez à cet e-mail pour prévenir la société. À très bientôt.</p>
+        </td></tr>`;
+    const html = this.shell({ eyebrow: 'Réservation · Confirmée', footer: 'VIZYO TRACKY · RÉSERVATION DE VÉHICULES', body });
+    const text = `Bonjour,
+
+Votre réservation auprès de ${opts.fleetName} est confirmée.
+Créneau : ${opts.slotLabel}${opts.destination ? `\nDestination : ${opts.destination}` : ''}
+Véhicule : ${opts.vehicle || 'attribué par la société'}
+
+Un imprévu ? Répondez à cet e-mail. À bientôt.
+— L'équipe Vizyo`;
+    return { subject, html, text };
+  }
+
+  /**
    * Centre e-mails (admin) — rend un modèle avec des DONNÉES D'EXEMPLE, pour l'aperçu
    * (drawer, via iframe srcdoc) et le bouton « Envoyer un test ». Réutilise les builders
    * existants → aucune duplication du markup des modèles côté front.
@@ -716,6 +791,20 @@ Un imprévu ? Répondez à cet e-mail. À bientôt.
           slotLabel: 'lun. 7 juil., 08:00 – 10:00',
           clientName: 'Camille',
           address: '12 rue des Fleurs, 31000 Toulouse',
+        });
+      case 'reservation_requested':
+        return this.buildReservationRequestedEmail({
+          fleetName,
+          slotLabel: 'mar. 8 juil., 09:00 → 17:00',
+          destination: 'Carcassonne',
+          seats: 11,
+        });
+      case 'reservation_confirmed':
+        return this.buildReservationConfirmedEmail({
+          fleetName,
+          slotLabel: 'mar. 8 juil., 09:00 → 17:00',
+          destination: 'Carcassonne',
+          vehicle: 'TE-001-ST',
         });
       case 'weekly_report':
         return {

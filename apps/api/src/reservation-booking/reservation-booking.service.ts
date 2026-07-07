@@ -295,7 +295,7 @@ export class ReservationBookingService {
       destination,
       startAt: slot.startAt,
       endAt: slot.endAt,
-      count: created,
+      seats: seatsNeeded,
     });
 
     this.systemActivity.record({

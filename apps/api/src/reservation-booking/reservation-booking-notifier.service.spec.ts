@@ -1,8 +1,14 @@
 import { ReservationBookingNotifier } from './reservation-booking-notifier.service';
 
-const makeEmail = (ok = true) => ({ send: jest.fn().mockResolvedValue({ ok }) } as never);
+const built = { subject: 's', html: 'h', text: 't' };
+const makeEmail = (ok = true) => ({
+  send: jest.fn().mockResolvedValue({ ok }),
+  buildReservationRequestedEmail: jest.fn().mockReturnValue(built),
+  buildReservationConfirmedEmail: jest.fn().mockReturnValue(built),
+} as never);
 const makeSms = (ok = true) => ({ send: jest.fn().mockResolvedValue({ ok }) } as never);
 const makeErrors = () => ({ record: jest.fn().mockResolvedValue('log-1') } as never);
+const makePrisma = () => ({ fleet: { findUnique: jest.fn().mockResolvedValue({ name: 'CDEF' }) } } as never);
 
 const payload = (metadata: Record<string, unknown>) => ({
   fleetId: 'f1',
@@ -15,7 +21,7 @@ const payload = (metadata: Record<string, unknown>) => ({
 describe('ReservationBookingNotifier (P4 — notifications demandeur)', () => {
   it('confirmation par E-MAIL si le contact contient « @ »', async () => {
     const email = makeEmail(); const sms = makeSms();
-    const n = new ReservationBookingNotifier(email, sms, makeErrors());
+    const n = new ReservationBookingNotifier(email, sms, makeErrors(), makePrisma());
     await n.onConfirmed(payload({ public: true, requesterContact: 'ecole@test.fr', destination: 'Carcassonne' }));
     expect((email as unknown as { send: jest.Mock }).send).toHaveBeenCalled();
     expect((sms as unknown as { send: jest.Mock }).send).not.toHaveBeenCalled();
@@ -23,7 +29,7 @@ describe('ReservationBookingNotifier (P4 — notifications demandeur)', () => {
 
   it('confirmation par SMS si le contact est un numéro', async () => {
     const email = makeEmail(); const sms = makeSms();
-    const n = new ReservationBookingNotifier(email, sms, makeErrors());
+    const n = new ReservationBookingNotifier(email, sms, makeErrors(), makePrisma());
     await n.onConfirmed(payload({ public: true, requesterContact: '+33612345678' }));
     expect((sms as unknown as { send: jest.Mock }).send).toHaveBeenCalled();
     expect((email as unknown as { send: jest.Mock }).send).not.toHaveBeenCalled();
@@ -31,7 +37,7 @@ describe('ReservationBookingNotifier (P4 — notifications demandeur)', () => {
 
   it('réservation NON publique : aucune notification', async () => {
     const email = makeEmail(); const sms = makeSms();
-    const n = new ReservationBookingNotifier(email, sms, makeErrors());
+    const n = new ReservationBookingNotifier(email, sms, makeErrors(), makePrisma());
     await n.onConfirmed(payload({ public: false, requesterContact: 'ecole@test.fr' }));
     expect((email as unknown as { send: jest.Mock }).send).not.toHaveBeenCalled();
     expect((sms as unknown as { send: jest.Mock }).send).not.toHaveBeenCalled();
@@ -39,7 +45,7 @@ describe('ReservationBookingNotifier (P4 — notifications demandeur)', () => {
 
   it('échec d\'envoi -> journalisé dans le centre d\'alerte (source RESERVATION_BOOKING)', async () => {
     const errors = makeErrors();
-    const n = new ReservationBookingNotifier(makeEmail(false), makeSms(), errors);
+    const n = new ReservationBookingNotifier(makeEmail(false), makeSms(), errors, makePrisma());
     await n.onConfirmed(payload({ public: true, requesterContact: 'ecole@test.fr' }));
     expect((errors as unknown as { record: jest.Mock }).record).toHaveBeenCalledWith(
       expect.stringContaining('Notification'),
