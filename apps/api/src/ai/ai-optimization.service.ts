@@ -29,7 +29,8 @@ import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
-import { AiServiceError, AnthropicClient, type AiErrorKind } from './anthropic.client';
+import { AiServiceError, type AiErrorKind } from './anthropic.client';
+import { AiRouter } from './ai-router.service';
 import {
   CAPACITY_SCHEMA,
   PLACEMENT_SCHEMA,
@@ -130,7 +131,7 @@ export class AiOptimizationService {
     private readonly events: VehicleEventsService,
     private readonly reservations: ReservationsService,
     private readonly forecast: ForecastService,
-    private readonly anthropic: AnthropicClient,
+    private readonly ai: AiRouter,
     private readonly errors: ErrorLogger,
     private readonly aiUsage: AiUsageService,
   ) {}
@@ -205,7 +206,7 @@ export class AiOptimizationService {
 
     let ai: CapacityAiOutput;
     try {
-      const call = await this.anthropic.completeJson<CapacityAiOutput>({
+      const call = await this.ai.completeJson<CapacityAiOutput>({
         system: renderCapacitySystem(metier),
         userPayload: payload,
         schema: CAPACITY_SCHEMA,
@@ -415,7 +416,7 @@ export class AiOptimizationService {
     let ai: PlacementAiOutput;
     let aiCostEur: number | null = null;
     try {
-      const call = await this.anthropic.completeJson<PlacementAiOutput>({
+      const call = await this.ai.completeJson<PlacementAiOutput>({
         system: renderPlacementSystem(payload.metier),
         userPayload: payload,
         schema: PLACEMENT_SCHEMA,

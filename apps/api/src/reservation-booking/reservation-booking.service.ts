@@ -14,7 +14,7 @@ import type { AuthUser } from '../auth/types/auth-user';
 import { fleetTzFormatter, localParts, localWallToUtc } from '../agenda/fleet-tz.util';
 import { ReservationsService } from '../agenda/reservations.service';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
-import { AnthropicClient } from '../ai/anthropic.client';
+import { AiRouter } from '../ai/ai-router.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
@@ -59,8 +59,8 @@ export class ReservationBookingService {
     private readonly reservations: ReservationsService,
     private readonly systemActivity: SystemActivityService,
     private readonly notifier: ReservationBookingNotifier,
-    // IA d'analyse OPTIONNELLE (voix → champs). Injectée en prod ; omise en spec → repli déterministe.
-    private readonly anthropic?: AnthropicClient,
+    // IA d'analyse OPTIONNELLE (voix → champs). Injectée en prod (AiRouter @Global) ; omise en spec → repli déterministe.
+    private readonly ai?: AiRouter,
     private readonly aiUsage?: AiUsageService,
     // Centre d'alerte (@Global) : remonte l'échec de l'analyse IA du besoin dicté (best-effort mais visible).
     private readonly errorLogger?: ErrorLogger,
@@ -175,10 +175,10 @@ export class ReservationBookingService {
       endAt: when.endAt,
     };
 
-    if (this.anthropic?.isConfigured() && this.aiUsage) {
+    if (this.ai?.isConfigured() && this.aiUsage) {
       try {
         const nowIso = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Paris', dateStyle: 'short', timeStyle: 'short' }).format(new Date());
-        const call = await this.anthropic.completeJson<{ seatsNeeded: number | null; destination: string | null; startAt: string | null; endAt: string | null }>({
+        const call = await this.ai.completeJson<{ seatsNeeded: number | null; destination: string | null; startAt: string | null; endAt: string | null }>({
           system: renderBookingParseSystem(nowIso),
           userPayload: { text: clean },
           schema: BOOKING_PARSE_SCHEMA,

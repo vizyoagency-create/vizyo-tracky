@@ -17,7 +17,7 @@ import type {
 } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
-import { AnthropicClient } from '../ai/anthropic.client';
+import { AiRouter } from '../ai/ai-router.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
@@ -76,9 +76,9 @@ export class AgendaAgentRunnerService {
     private readonly reservations: ReservationsService,
     private readonly events: VehicleEventsService,
     private readonly systemActivity: SystemActivityService,
-    // Couche IA OPTIONNELLE (jugement/explication). Injectée en prod (AnthropicClient fourni par
-    // AgendaModule, AiUsageService @Global) ; omise dans les specs → 100% déterministe.
-    private readonly anthropic?: AnthropicClient,
+    // Couche IA OPTIONNELLE (jugement/explication). Injectée en prod (AiRouter @Global : Claude ou GPT
+    // selon le switch « Coûts IA ») ; omise dans les specs → 100% déterministe.
+    private readonly ai?: AiRouter,
     private readonly aiUsage?: AiUsageService,
     // Centre d'alerte (@Global) : remonte les échecs des runs de FOND (planifié / événementiel / IA)
     // qui, sinon, ne journalisent qu'en console. Omis dans les specs (construction manuelle).
@@ -377,7 +377,7 @@ export class AgendaAgentRunnerService {
     patterns: RecurringPattern[],
   ): Promise<Map<number, { keep: boolean; reasoning: string }>> {
     const out = new Map<number, { keep: boolean; reasoning: string }>();
-    if (!this.anthropic || !this.aiUsage || !this.anthropic.isConfigured() || patterns.length === 0) return out;
+    if (!this.ai || !this.aiUsage || !this.ai.isConfigured() || patterns.length === 0) return out;
     const capped = patterns.slice(0, 30); // borne le coût sur les grosses flottes
     const fleet = await this.prisma.fleet.findUnique({ where: { id: fleetId }, select: { metier: true, name: true } });
     const metier = (fleet?.metier as FleetMetier) ?? 'GENERIC';
@@ -402,7 +402,7 @@ export class AgendaAgentRunnerService {
       })),
     };
     try {
-      const call = await this.anthropic.completeJson<{ reviews: { index: number; keep: boolean; reasoning: string }[] }>({
+      const call = await this.ai.completeJson<{ reviews: { index: number; keep: boolean; reasoning: string }[] }>({
         system: renderAgendaAgentSystem(metier),
         userPayload: payload,
         schema: AGENDA_AGENT_SCHEMA,

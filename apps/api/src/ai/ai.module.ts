@@ -4,7 +4,6 @@ import { AuthModule } from '../auth/auth.module';
 import { ObservabilityModule } from '../observability/observability.module';
 import { AiOptimizationController } from './ai-optimization.controller';
 import { AiOptimizationService } from './ai-optimization.service';
-import { AnthropicClient } from './anthropic.client';
 
 /**
  * Sprint 9 — Copilote IA d'optimisation (capacité + placement). Réutilise les
@@ -15,8 +14,6 @@ import { AnthropicClient } from './anthropic.client';
 @Module({
   imports: [AuthModule, AgendaModule, ObservabilityModule],
   controllers: [AiOptimizationController],
-  providers: [AnthropicClient, AiOptimizationService],
-  // Palier 3 — le client Claude est réutilisé par le service de rapports d'activité.
-  exports: [AnthropicClient],
+  providers: [AiOptimizationService],
 })
 export class AiModule {}

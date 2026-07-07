@@ -1066,6 +1066,18 @@ model AiBudget {
   @@map("ai_budget")
 }
 
+/// Couche IA multi-provider (2026-07) — provider IA sélectionné (singleton, comme AiBudget).
+/// Togglé depuis la page « Coûts IA ». 'claude' (Anthropic) | 'gpt' (OpenAI). Défaut = claude
+/// (comportement existant). Le routeur peut être surchargé par appel (mixte « par tâche »).
+model AiProviderSettings {
+  id              String   @id @default(uuid()) @db.Uuid
+  provider        String   @default("claude")
+  updatedAt       DateTime @updatedAt
+  updatedByUserId String?  @db.Uuid
+
+  @@map("ai_provider_settings")
+}
+
 /// Palier B — Journal des actions AUTOMATIQUES / système (arrière-plan), distinct de
 /// UserActivity (actions manuelles front). Alimenté par les primitives d'envoi (email / SMS /
 /// push), les commandes moteur, la purge de rétention et les rapports IA planifiés. Couche

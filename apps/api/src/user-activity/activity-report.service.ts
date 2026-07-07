@@ -15,7 +15,7 @@ import type {
 } from '@vizyo/tracky-shared';
 import { labelForRoute, ROUTE_LABELS } from '@vizyo/tracky-shared';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
-import { AnthropicClient } from '../ai/anthropic.client';
+import { AiRouter } from '../ai/ai-router.service';
 import { OwnerVisibilityService } from '../common/owner-visibility.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
@@ -61,7 +61,7 @@ export class ActivityReportService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly anthropic: AnthropicClient,
+    private readonly ai: AiRouter,
     private readonly aiUsage: AiUsageService,
     private readonly systemActivity: SystemActivityService,
     private readonly ownerVis: OwnerVisibilityService,
@@ -135,7 +135,7 @@ export class ActivityReportService {
     }
 
     try {
-      const call = await this.anthropic.completeJson<ActivityReportContent>({
+      const call = await this.ai.completeJson<ActivityReportContent>({
         system: ACTIVITY_REPORT_SYSTEM,
         userPayload: payload,
         schema: ACTIVITY_REPORT_SCHEMA,

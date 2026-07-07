@@ -4,10 +4,12 @@ import { RouterLink } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
   LucideAngularModule, ChevronLeft, Zap, Wallet, Users, Building2, Layers, TrendingUp,
-  RefreshCw, AlertTriangle, Loader, Check, Save,
+  RefreshCw, AlertTriangle, Loader, Check, Save, Cpu,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
-import type { AiUsageBreakdownRowDto, AiUsageLogRowDto, AiUsageSummaryDto } from '@vizyo/tracky-shared';
+import type {
+  AiProviderId, AiProviderSettingsDto, AiUsageBreakdownRowDto, AiUsageLogRowDto, AiUsageSummaryDto,
+} from '@vizyo/tracky-shared';
 import { AiUsageApiService } from '../../core/services/ai-usage.service';
 import { AuthService } from '../../core/services/auth.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
@@ -34,7 +36,7 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
           <div class="au-ico"><lucide-icon [img]="ZapIcon" [size]="22"></lucide-icon></div>
           <div>
             <h1>Coûts IA</h1>
-            <p>Dépenses du copilote IA (Claude) — {{ periodLabel() }}.</p>
+            <p>Dépenses du copilote IA — {{ periodLabel() }}.</p>
           </div>
         </div>
         <div class="au-actions">
@@ -81,6 +83,42 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
             </div>
           }
         </section>
+
+        <!-- ── MOTEUR IA (switch Claude ↔ GPT, super-admin) ── -->
+        @if (isSuperAdmin() && provider(); as prov) {
+          <section class="au-prov-panel">
+            <div class="au-prov-head">
+              <span class="au-budget-label"><lucide-icon [img]="CpuIcon" [size]="14"></lucide-icon> Moteur IA</span>
+              <span class="au-prov-note">Appliqué à tous les appels IA (agenda, rapports, analyse de trajets…).</span>
+            </div>
+            <div class="au-prov-grid">
+              @for (p of prov.providers; track p.id) {
+                <button type="button" class="au-prov"
+                        [class.on]="prov.provider === p.id"
+                        [disabled]="savingProvider() !== null"
+                        (click)="switchProvider(p.id)">
+                  <div class="au-prov-top">
+                    <span class="au-prov-name">{{ p.label }}</span>
+                    @if (savingProvider() === p.id) {
+                      <lucide-icon [img]="LoaderIcon" [size]="13" class="au-spin"></lucide-icon>
+                    } @else if (prov.provider === p.id) {
+                      <span class="au-prov-badge"><lucide-icon [img]="CheckIcon" [size]="12"></lucide-icon> Actif</span>
+                    } @else if (!p.configured) {
+                      <span class="au-prov-badge au-prov-badge--off">Clé manquante</span>
+                    }
+                  </div>
+                  <span class="au-prov-hint">{{ p.hint }}</span>
+                </button>
+              }
+            </div>
+            @if (activeProviderUnconfigured(); as name) {
+              <div class="au-prov-warn">
+                <lucide-icon [img]="AlertIcon" [size]="13"></lucide-icon>
+                Le moteur « {{ name }} » n'a pas de clé API côté serveur : les appels basculent sur un moteur disponible. Ajoutez la clé pour l'activer réellement.
+              </div>
+            }
+          </section>
+        }
 
         <!-- ── KPIs ── -->
         <section class="au-kpis">
@@ -236,6 +274,24 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
     .au-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 9px; font-size: 12.5px; font-weight: 700; background: var(--tracky, #10B981); color: #fff; }
     .au-btn:disabled { opacity: .5; }
 
+    /* Moteur IA (switch Claude ↔ GPT) */
+    .au-prov-panel { padding: 18px; border-radius: 16px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 12px; }
+    .au-prov-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+    .au-prov-note { font-size: 11.5px; color: var(--fg-tertiary); }
+    .au-prov-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 560px) { .au-prov-grid { grid-template-columns: 1fr; } }
+    .au-prov { text-align: left; display: flex; flex-direction: column; gap: 5px; padding: 13px 14px; border-radius: 12px; border: 1.5px solid var(--border-subtle); background: var(--bg-tertiary); cursor: pointer; transition: border-color .15s, background .15s; }
+    .au-prov:hover:not(:disabled) { border-color: color-mix(in srgb, var(--tracky-light, #10E0A0) 45%, transparent); }
+    .au-prov.on { border-color: var(--tracky-light, #10E0A0); background: color-mix(in srgb, var(--tracky-light, #10E0A0) 8%, var(--bg-tertiary)); }
+    .au-prov:disabled { cursor: not-allowed; opacity: .6; }
+    .au-prov.on:disabled { opacity: 1; }
+    .au-prov-top { display: flex; align-items: center; gap: 8px; }
+    .au-prov-name { font-size: 13.5px; font-weight: 800; color: var(--fg-primary); }
+    .au-prov-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; padding: 2px 7px; border-radius: 999px; background: color-mix(in srgb, var(--tracky-light, #10E0A0) 18%, transparent); color: var(--tracky-light, #10E0A0); }
+    .au-prov-badge--off { background: color-mix(in srgb, var(--danger, #EF4444) 14%, transparent); color: var(--danger, #EF4444); }
+    .au-prov-hint { font-size: 11.5px; color: var(--fg-secondary); line-height: 1.35; }
+    .au-prov-warn { display: flex; align-items: flex-start; gap: 6px; font-size: 11.5px; line-height: 1.4; color: var(--danger, #EF4444); background: color-mix(in srgb, var(--danger, #EF4444) 9%, transparent); border-radius: 9px; padding: 8px 10px; }
+
     /* KPIs */
     .au-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
     @media (max-width: 640px) { .au-kpis { grid-template-columns: 1fr 1fr; } }
@@ -300,6 +356,7 @@ export class AdminAiUsageComponent implements OnInit {
   protected readonly LoaderIcon = Loader;
   protected readonly CheckIcon = Check;
   protected readonly SaveIcon = Save;
+  protected readonly CpuIcon = Cpu;
 
   protected readonly periods: { key: Period; label: string }[] = [
     { key: '24h', label: '24 h' },
@@ -315,6 +372,10 @@ export class AdminAiUsageComponent implements OnInit {
   protected readonly budgetInput = signal<string>('');
   protected readonly savingBudget = signal(false);
 
+  /** Switch de moteur IA (Claude ↔ GPT) — super-admin. */
+  protected readonly provider = signal<AiProviderSettingsDto | null>(null);
+  protected readonly savingProvider = signal<AiProviderId | null>(null);
+
   protected readonly logRows = signal<AiUsageLogRowDto[]>([]);
   protected readonly logCursor = signal<string | null>(null);
   protected readonly loadingMore = signal(false);
@@ -324,6 +385,14 @@ export class AdminAiUsageComponent implements OnInit {
     const s = this.summary();
     if (!s) return [];
     return this.tab() === 'user' ? s.byUser : this.tab() === 'fleet' ? s.byFleet : s.byAction;
+  });
+
+  /** Libellé du moteur actif s'il n'a PAS de clé (→ avertissement de repli), sinon null. */
+  protected readonly activeProviderUnconfigured = computed<string | null>(() => {
+    const p = this.provider();
+    if (!p) return null;
+    const active = p.providers.find((x) => x.id === p.provider);
+    return active && !active.configured ? active.label : null;
   });
 
   protected periodLabel(): string {
@@ -355,10 +424,34 @@ export class AdminAiUsageComponent implements OnInit {
         this.budgetInput.set(String(s.budget.monthlyBudgetEur));
       }
       await this.loadLogs(true);
+      // Moteur IA (super-admin uniquement ; endpoint gardé). Non bloquant.
+      if (this.isSuperAdmin()) {
+        try {
+          this.provider.set(await firstValueFrom(this.api.getProvider()));
+        } catch {
+          /* ignore : le switch reste masqué si l'appel échoue */
+        }
+      }
     } catch (e) {
       this.error.set(this.errMsg(e));
     } finally {
       this.loading.set(false);
+    }
+  }
+
+  /** Bascule le moteur IA global (Claude ↔ GPT). */
+  protected async switchProvider(id: AiProviderId): Promise<void> {
+    const cur = this.provider();
+    if (!cur || cur.provider === id || this.savingProvider() !== null) return;
+    this.savingProvider.set(id);
+    try {
+      const updated = await firstValueFrom(this.api.setProvider(id));
+      this.provider.set(updated);
+      this.toast.success('Moteur IA', `Bascule sur ${updated.providers.find((p) => p.id === id)?.label ?? id}.`);
+    } catch (e) {
+      this.toast.error('Moteur IA', this.errMsg(e));
+    } finally {
+      this.savingProvider.set(null);
     }
   }
 

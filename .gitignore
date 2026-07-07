@@ -2,6 +2,10 @@
 node_modules
 .pnpm-store
 
+# Fichiers scratch de démo/test local (seed CDEF31, mint JWT, census) — jamais versionnés.
+_scratch-*
+**/_scratch-*
+
 # build
 dist
 .turbo

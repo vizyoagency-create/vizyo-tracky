@@ -148,6 +148,12 @@ const envSchema = z.object({
   // les endpoints /ai/* renvoient 503 (le reste de l'app tourne). A tester d'abord
   // en Console Anthropic ; lue cote serveur via process.env, jamais loggee.
   ANTHROPIC_API_KEY: z.string().default(''),
+
+  // Couche IA multi-provider (2026-07) — moteur GPT (OpenAI Responses API). Si OPENAI_API_KEY est
+  // vide, le provider 'gpt' est indisponible (le routeur retombe sur Claude si sélectionné). Modèle
+  // par défaut surchargeable (OPENAI_MODEL, ex. gpt-4.1 / gpt-4.1-mini / gpt-4o). Lue via process.env.
+  OPENAI_API_KEY: z.string().default(''),
+  OPENAI_MODEL: z.string().default(''),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -1,4 +1,6 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import type { AiClient, AiJsonRequest, AiJsonResult, AiProvider } from './ai-client.types';
+import { AiServiceError } from './ai-client.types';
 
 /**
  * Sprint 9 — Client Claude minimal (Messages API, sortie structurée). On appelle
@@ -8,6 +10,7 @@ import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common'
  * 503 explicite (l'app ne casse pas ; les autres fonctionnalités tournent).
  *
  * Principe : l'IA PROPOSE (JSON garanti par output_config.format) ; l'app valide.
+ * 2026-07 — implémente le contrat commun `AiClient` (routable avec OpenAiClient via AiRouter).
  */
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
@@ -16,58 +19,14 @@ const MODEL = 'claude-opus-4-8';
 /** Borne le temps d'attente (adaptive thinking + effort high peut être long). */
 const REQUEST_TIMEOUT_MS = 120_000;
 
-/** Nature d'un échec IA — pour classer le niveau d'alerte + l'anti-spam (pas de match texte fragile). */
-export type AiErrorKind =
-  | 'no_key'
-  | 'invalid_key'
-  | 'quota'
-  | 'timeout'
-  | 'network'
-  | 'refusal'
-  | 'empty'
-  | 'parse'
-  | 'truncated'
-  | 'http';
-
-/** Échec IA typé (toujours un 503 pour l'appelant) portant son `kind` pour la journalisation. */
-export class AiServiceError extends ServiceUnavailableException {
-  constructor(
-    public readonly kind: AiErrorKind,
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
-export interface AnthropicJsonRequest {
-  /** System prompt (préfixe stable → mis en cache). */
-  system: string;
-  /** Données de la requête, sérialisées en JSON comme message user. */
-  userPayload: unknown;
-  /** JSON Schema de la sortie attendue (output_config.format). */
-  schema: unknown;
-  maxTokens?: number;
-}
-
-/** Consommation de tokens renvoyée par l'API — base du calcul de coût (palier « Coûts IA »). */
-export interface AnthropicUsage {
-  inputTokens: number;
-  outputTokens: number;
-  cacheWriteTokens: number;
-  cacheReadTokens: number;
-}
-
-/** Résultat d'un appel : sortie JSON + consommation + modèle + latence. */
-export interface AnthropicJsonResult<T> {
-  result: T;
-  usage: AnthropicUsage;
-  model: string;
-  latencyMs: number;
-}
+// Rétro-compat : ces symboles étaient exportés d'ici (des appelants les importent encore de ce module).
+export { AiServiceError } from './ai-client.types';
+export type { AiErrorKind } from './ai-client.types';
 
 @Injectable()
-export class AnthropicClient {
+export class AnthropicClient implements AiClient {
   private readonly logger = new Logger(AnthropicClient.name);
+  readonly provider: AiProvider = 'claude';
 
   /** Vrai si une clé API est présente côté serveur. */
   isConfigured(): boolean {
@@ -78,7 +37,7 @@ export class AnthropicClient {
    * Un appel = une réponse JSON structurée. Adaptive thinking + effort high pour le
    * raisonnement ; prompt caching sur le system stable.
    */
-  async completeJson<T>(req: AnthropicJsonRequest): Promise<AnthropicJsonResult<T>> {
+  async completeJson<T>(req: AiJsonRequest): Promise<AiJsonResult<T>> {
     const startedAt = Date.now();
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
@@ -172,6 +131,7 @@ export class AnthropicClient {
         cacheReadTokens: u.cache_read_input_tokens ?? 0,
       },
       model: data.model ?? MODEL,
+      provider: 'claude',
       latencyMs: Date.now() - startedAt,
     };
   }

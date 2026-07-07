@@ -85,3 +85,32 @@ export interface AiUsageLogsPageDto {
 export interface SetAiBudgetDto {
   monthlyBudgetEur: number;
 }
+
+/* ── Couche IA multi-provider (2026-07) — switch Claude ↔ GPT (super-admin) ── */
+
+/** Moteurs IA supportés. `claude` = Anthropic ; `gpt` = OpenAI. */
+export type AiProviderId = 'claude' | 'gpt';
+
+/** Un moteur IA et sa disponibilité (clé présente côté serveur). */
+export interface AiProviderInfoDto {
+  id: AiProviderId;
+  /** Libellé lisible (ex. « Claude (Opus 4.8) », « GPT (OpenAI) »). */
+  label: string;
+  /** Description courte de l'usage recommandé. */
+  hint: string;
+  /** Vrai si une clé API est présente côté serveur pour ce moteur (sinon non sélectionnable). */
+  configured: boolean;
+}
+
+/** Réglage courant du moteur IA global + moteurs disponibles. */
+export interface AiProviderSettingsDto {
+  /** Moteur global sélectionné (appliqué à tous les appels IA sauf surcharge « par tâche »). */
+  provider: AiProviderId;
+  updatedAt: string | null;
+  providers: AiProviderInfoDto[];
+}
+
+/** Change le moteur IA global (super-admin). */
+export interface SetAiProviderDto {
+  provider: AiProviderId;
+}

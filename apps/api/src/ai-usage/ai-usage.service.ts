@@ -19,10 +19,30 @@ interface Pricing {
   cacheRead: number;
 }
 const PRICING: Record<string, Pricing> = {
-  // Opus 4.8 : input 5 $, output 25 $ ; cache write (5 min) 1,25× ; cache read 0,1×.
+  // Anthropic — Opus 4.8 : input 5 $, output 25 $ ; cache write (5 min) 1,25× ; cache read 0,1×.
   'claude-opus-4-8': { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
+  // OpenAI (couche multi-provider 2026-07) — tarifs / 1M tokens. cacheWrite=0 (OpenAI ne facture
+  // pas l'écriture de cache) ; cacheRead = tarif « cached input ». Clés = préfixe de modèle (le
+  // provider renvoie une version datée, ex. `gpt-4.1-2025-04-14` → résolu par préfixe, cf. resolvePricing).
+  'gpt-4.1': { input: 2, output: 8, cacheWrite: 0, cacheRead: 0.5 },
+  'gpt-4.1-mini': { input: 0.4, output: 1.6, cacheWrite: 0, cacheRead: 0.1 },
+  'gpt-4o': { input: 2.5, output: 10, cacheWrite: 0, cacheRead: 1.25 },
 };
 const FALLBACK_PRICING: Pricing = PRICING['claude-opus-4-8'];
+
+/**
+ * Résout la grille tarifaire d'un modèle. Les providers renvoient souvent une version DATÉE
+ * (`gpt-4.1-2025-04-14`, `claude-opus-4-8-20260101`…) : on tente l'exact, puis le plus long
+ * PRÉFIXE connu. Repli = Opus (le plus cher) pour ne jamais SOUS-estimer un coût inconnu.
+ */
+function resolvePricing(model: string): Pricing {
+  if (PRICING[model]) return PRICING[model];
+  let best: { key: string; p: Pricing } | null = null;
+  for (const [key, p] of Object.entries(PRICING)) {
+    if (model.startsWith(key) && (!best || key.length > best.key.length)) best = { key, p };
+  }
+  return best?.p ?? FALLBACK_PRICING;
+}
 
 const ACTION_LABELS: Record<string, string> = {
   capacity: 'Capacité',
@@ -67,7 +87,7 @@ export class AiUsageService {
   }
 
   private computeCostUsd(model: string, input: number, output: number, cacheWrite: number, cacheRead: number): number {
-    const p = PRICING[model] ?? FALLBACK_PRICING;
+    const p = resolvePricing(model);
     return (input * p.input + output * p.output + cacheWrite * p.cacheWrite + cacheRead * p.cacheRead) / 1_000_000;
   }
 

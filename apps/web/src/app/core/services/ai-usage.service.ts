@@ -1,6 +1,12 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import type { AiUsageBudgetDto, AiUsageLogsPageDto, AiUsageSummaryDto } from '@vizyo/tracky-shared';
+import type {
+  AiProviderId,
+  AiProviderSettingsDto,
+  AiUsageBudgetDto,
+  AiUsageLogsPageDto,
+  AiUsageSummaryDto,
+} from '@vizyo/tracky-shared';
 import { Observable } from 'rxjs';
 
 /**
@@ -40,5 +46,15 @@ export class AiUsageApiService {
 
   setBudget(monthlyBudgetEur: number): Observable<AiUsageBudgetDto> {
     return this.http.put<AiUsageBudgetDto>('/api/admin/ai-usage/budget', { monthlyBudgetEur });
+  }
+
+  /** Moteur IA global sélectionné + moteurs disponibles (switch Claude ↔ GPT, super-admin). */
+  getProvider(): Observable<AiProviderSettingsDto> {
+    return this.http.get<AiProviderSettingsDto>('/api/admin/ai-usage/provider');
+  }
+
+  /** Bascule le moteur IA global. */
+  setProvider(provider: AiProviderId): Observable<AiProviderSettingsDto> {
+    return this.http.put<AiProviderSettingsDto>('/api/admin/ai-usage/provider', { provider });
   }
 }
