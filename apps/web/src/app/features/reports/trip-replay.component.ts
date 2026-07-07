@@ -14,7 +14,7 @@ import {
 import { DecimalPipe } from '@angular/common';
 import { LucideAngularModule, Play, Pause, X, MessageSquare, Pencil } from 'lucide-angular';
 import type { Map as MlMap, Marker as MlMarker } from 'maplibre-gl';
-import type { TripDto } from '@vizyo/tracky-shared';
+import type { TripAnalysisDto, TripDto } from '@vizyo/tracky-shared';
 import { isValidLatLng, haversineMeters } from '@vizyo/tracky-shared';
 import { MapService } from '../../core/services/map.service';
 import { PreferencesService } from '../../core/services/preferences.service';
@@ -54,6 +54,14 @@ import {
                   }
                 }
               </div>
+              @if (analysis(); as a) {
+                <div class="tr-analysis-summary">
+                  <span class="tr-as-chip" [attr.data-tier]="ecoTier(a.ecoScore)">🍃 Éco {{ a.ecoScore }}</span>
+                  @if (a.stopCount > 0) { <span class="tr-as-chip tr-as-chip--stop">🅿 {{ a.stopCount }} arrêt{{ a.stopCount > 1 ? 's' : '' }}</span> }
+                  @if (a.speedingCount > 0) { <span class="tr-as-chip tr-as-chip--speed" [title]="speedingTitle(a)">⚠ {{ a.speedingCount }} excès@if (a.limitsKnown && a.maxOverKmh > 0) { <span class="opacity-80"> +{{ a.maxOverKmh | number:'1.0-0' }}</span> }</span> }
+                  @if (a.fuelLiters != null) { <span class="tr-as-chip">⛽ {{ a.fuelLiters | number:'1.1-1' }} L</span> }
+                </div>
+              }
               <!-- Bandeau driver + note : visibles si presents OU si role autorise. -->
               <div class="flex items-center gap-2 mt-1.5 flex-wrap">
                 @if (trip()?.driver) {
@@ -99,7 +107,17 @@ import {
             </button>
           </div>
 
-          <div #mapContainer class="flex-1"></div>
+          <div class="relative flex-1 min-h-0">
+            <div #mapContainer class="absolute inset-0"></div>
+            @if (analysis(); as a) {
+              @if (a.stopCount > 0 || a.speedingCount > 0) {
+                <div class="tr-legend">
+                  @if (a.stopCount > 0) { <span><i class="tr-dot tr-dot--stop"></i> Arrêt</span> }
+                  @if (a.speedingCount > 0) { <span><i class="tr-dot tr-dot--speed"></i> Excès de vitesse</span> }
+                </div>
+              }
+            }
+          </div>
 
           <div class="flex items-center gap-4 px-6 py-3 border-t border-border-subtle shrink-0">
             <button (click)="togglePlay()" class="text-tracky-light cursor-pointer">
@@ -140,11 +158,43 @@ import {
       padding-right: max(1rem, env(safe-area-inset-right));
     }
     .tr-replay-card { min-height: 0; }
+
+    /* Résumé d'analyse (en-tête) */
+    .tr-analysis-summary { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+    .tr-as-chip {
+      display: inline-flex; align-items: center; gap: 3px;
+      padding: 2px 8px; border-radius: 999px;
+      font-size: 11px; font-weight: 700;
+      background: var(--bg-tertiary); color: var(--fg-secondary);
+      border: 1px solid var(--border-subtle);
+    }
+    .tr-as-chip[data-tier="good"] { background: color-mix(in srgb, var(--tracky-light,#10E0A0) 16%, transparent); color: var(--tracky-light,#10E0A0); border-color: transparent; }
+    .tr-as-chip[data-tier="mid"]  { background: color-mix(in srgb, #F59E0B 16%, transparent); color: #F59E0B; border-color: transparent; }
+    .tr-as-chip[data-tier="bad"]  { background: color-mix(in srgb, #EF4444 16%, transparent); color: #EF4444; border-color: transparent; }
+    .tr-as-chip--stop { color: #60A5FA; }
+    .tr-as-chip--speed { background: color-mix(in srgb, #EF4444 14%, transparent); color: #EF4444; border-color: transparent; }
+
+    /* Légende carte */
+    .tr-legend {
+      position: absolute; left: 10px; bottom: 10px; z-index: 5;
+      display: flex; flex-direction: column; gap: 4px;
+      padding: 8px 10px; border-radius: 10px;
+      background: color-mix(in srgb, var(--bg-secondary) 88%, transparent);
+      backdrop-filter: blur(6px);
+      border: 1px solid var(--border-subtle);
+      font-size: 11px; font-weight: 600; color: var(--fg-secondary);
+    }
+    .tr-legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .tr-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; box-shadow: 0 0 0 2px rgba(255,255,255,.5); }
+    .tr-dot--stop { background: #3B82F6; }
+    .tr-dot--speed { background: #EF4444; }
   `],
 })
 export class TripReplayComponent implements AfterViewInit, OnDestroy {
   readonly open = input.required<boolean>();
   readonly trip = input<TripDto | null>(null);
+  /** Analyse déterministe du trajet (Palier 4) — arrêts + excès de vitesse affichés sur la carte. */
+  readonly analysis = input<TripAnalysisDto | null>(null);
   readonly vehicleType = input<string>('OTHER');
   /** Si true, affiche le bouton crayon "Modifier la note". */
   readonly canEditNote = input<boolean>(false);
@@ -247,6 +297,15 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
     return n;
   }
 
+  protected ecoTier(score: number): 'good' | 'mid' | 'bad' {
+    return score >= 80 ? 'good' : score >= 50 ? 'mid' : 'bad';
+  }
+  protected speedingTitle(a: TripAnalysisDto): string {
+    return a.limitsKnown
+      ? `${a.speedingCount} excès — dépassement max +${Math.round(a.maxOverKmh)} km/h`
+      : `${a.speedingCount} pointe(s) de vitesse (limites non résolues — excès probable)`;
+  }
+
   private initReplay(trip: TripDto): void {
     this.cleanup();
 
@@ -336,9 +395,57 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
       this.markerEl = buildVehicleMarkerEl(data);
       this.markerEl.classList.add('tracky-marker--no-plate');
       this.marker = attachVehicleMarker(this.map!, this.markerEl, first[1], first[0]);
+
+      // Traçabilité fine (Palier 4) : arrêts (bleu) + excès de vitesse (rouge) sur la carte.
+      this.addAnalysisLayers();
     });
 
     setTimeout(() => this.map?.resize(), 200);
+  }
+
+  /** Ajoute les couches d'analyse (arrêts + excès) — appelé une fois la carte chargée. */
+  private addAnalysisLayers(): void {
+    const a = this.analysis();
+    const map = this.map;
+    if (!a || !map) return;
+
+    const stops = (a.detail?.stops ?? []).filter((s) => isValidLatLng(s.lat, s.lng));
+    if (stops.length > 0) {
+      map.addSource('replay-stops', {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: stops.map((s) => ({
+            type: 'Feature' as const,
+            geometry: { type: 'Point' as const, coordinates: [s.lng, s.lat] },
+            properties: { radius: Math.min(5 + s.durationMin / 4, 13) },
+          })),
+        },
+      });
+      map.addLayer({
+        id: 'replay-stops', type: 'circle', source: 'replay-stops',
+        paint: { 'circle-radius': ['get', 'radius'], 'circle-color': '#3B82F6', 'circle-opacity': 0.8, 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' },
+      });
+    }
+
+    const speeding = (a.detail?.speeding ?? []).filter((s) => isValidLatLng(s.lat, s.lng));
+    if (speeding.length > 0) {
+      map.addSource('replay-speeding', {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: speeding.map((s) => ({
+            type: 'Feature' as const,
+            geometry: { type: 'Point' as const, coordinates: [s.lng, s.lat] },
+            properties: { radius: Math.min(5 + s.overKmh / 5, 12) },
+          })),
+        },
+      });
+      map.addLayer({
+        id: 'replay-speeding', type: 'circle', source: 'replay-speeding',
+        paint: { 'circle-radius': ['get', 'radius'], 'circle-color': '#EF4444', 'circle-opacity': 0.9, 'circle-stroke-width': 2, 'circle-stroke-color': '#ffffff' },
+      });
+    }
   }
 
   private animate(): void {

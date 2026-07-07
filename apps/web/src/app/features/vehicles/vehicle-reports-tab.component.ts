@@ -364,6 +364,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
     <app-trip-replay
       [open]="!!replayTrip()"
       [trip]="replayTrip()"
+      [analysis]="replayTrip() ? analysisFor(replayTrip()!.id) : null"
       [vehicleType]="vehicleType()"
       [canEditNote]="canEditNotes()"
       (closed)="replayTrip.set(null)"
