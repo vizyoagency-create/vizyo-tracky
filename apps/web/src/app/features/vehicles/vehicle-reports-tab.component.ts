@@ -5,10 +5,12 @@ import {
   BarChart3, Calendar, Clock, Download, Gauge, LucideAngularModule,
   MessageSquare, Pencil, Play, Route, UserRound,
 } from 'lucide-angular';
-import type { DriverDto, TripDailySummaryDto, TripDto } from '@vizyo/tracky-shared';
+import type { DriverDto, TripAnalysisDto, TripDailySummaryDto, TripDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
 import { DriversApiService } from '../../core/services/drivers.service';
+import { TripAnalysisApiService } from '../../core/services/trip-analysis.service';
+import { TripAnalysisBadgesComponent } from '../trip-analysis/trip-analysis-badges.component';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { ReportsApiService } from '../../core/services/reports.service';
 import { TripsApiService } from '../../core/services/trips.service';
@@ -50,6 +52,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
     TripReplayComponent, PeriodReplayComponent,
     TripNoteModalComponent, DriverPickerComponent, DateRangePickerComponent,
     LineBarChartComponent, HistogramChartComponent, HeatmapChartComponent,
+    TripAnalysisBadgesComponent,
   ],
   template: `
     <div class="flex flex-col gap-4 sm:gap-5">
@@ -289,6 +292,13 @@ import { relativeTime } from '../../shared/utils/relative-time';
                   </span>
                 </div>
               </div>
+
+              <!-- Traçabilité fine (Palier 4) : arrêts, excès de vitesse, éco-conduite, conso. -->
+              <app-trip-analysis-badges
+                [tripId]="trip.id"
+                [analysis]="analysisFor(trip.id)"
+                (analyzed)="onAnalyzed($event)"
+              />
 
               <footer class="vrt-trip-footer">
                 <div class="vrt-trip-footer-left">
@@ -880,6 +890,7 @@ export class VehicleReportsTabComponent implements OnInit, OnDestroy {
   private readonly tripsApi = inject(TripsApiService);
   private readonly driversApi = inject(DriversApiService);
   private readonly reportsApi = inject(ReportsApiService);
+  private readonly analysisApi = inject(TripAnalysisApiService);
   private readonly perms = inject(PermissionsService);
   private readonly authService = inject(AuthService);
   private readonly toast = inject(ToastService);
@@ -893,6 +904,8 @@ export class VehicleReportsTabComponent implements OnInit, OnDestroy {
 
   protected readonly trips = signal<TripDto[]>([]);
   protected readonly dailySummary = signal<TripDailySummaryDto[]>([]);
+  /** Analyses de trajets pré-chargées en LOT (par tripId) — badges éco/excès/arrêts sur chaque card. */
+  protected readonly analysesMap = signal<Map<string, TripAnalysisDto>>(new Map());
   protected readonly loading = signal(true);
   protected readonly exporting = signal(false);
   protected readonly replayTrip = signal<TripDto | null>(null);
@@ -1234,12 +1247,32 @@ export class VehicleReportsTabComponent implements OnInit, OnDestroy {
       ]);
       this.trips.set(tripsRes.items);
       this.dailySummary.set(summary);
+      // Analyses de trajets pré-chargées en LOT (best-effort, non bloquant) → badges sur les cards.
+      void this.loadAnalyses();
     } catch {
       this.trips.set([]);
       this.dailySummary.set([]);
     } finally {
       this.loading.set(false);
     }
+  }
+
+  /** Charge en une fois les analyses persistées du véhicule (les cards non analysées gardent leur bouton). */
+  private async loadAnalyses(): Promise<void> {
+    try {
+      const list = await firstValueFrom(this.analysisApi.listForVehicle(this.vehicleId(), 200));
+      this.analysesMap.set(new Map(list.map((a) => [a.tripId, a])));
+    } catch {
+      this.analysesMap.set(new Map());
+    }
+  }
+
+  protected analysisFor(tripId: string): TripAnalysisDto | null {
+    return this.analysesMap().get(tripId) ?? null;
+  }
+
+  protected onAnalyzed(a: TripAnalysisDto): void {
+    this.analysesMap.update((m) => { const n = new Map(m); n.set(a.tripId, a); return n; });
   }
 
   // ─── Export PDF (pre-filtre sur ce vehicule) ─────────────────────────────
