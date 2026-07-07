@@ -23,8 +23,11 @@ function trip(
   };
 }
 
-function makePrisma(trips: unknown[]) {
-  return { trip: { findMany: jest.fn().mockResolvedValue(trips) } } as never;
+function makePrisma(trips: unknown[], alerts: unknown[] = []) {
+  return {
+    trip: { findMany: jest.fn().mockResolvedValue(trips) },
+    alert: { findMany: jest.fn().mockResolvedValue(alerts) }, // #5 — franchissements géofences
+  } as never;
 }
 function makeGeocode() {
   // Nomme selon la latitude : dépôt Launaguet (43.65), Borderouge (43.63), Ramonville (43.55),
@@ -100,5 +103,23 @@ describe('RecurrenceDetectorService (P3.2 + #3 itinéraire réel)', () => {
     expect(p.basis).toContain('itinéraire : Borderouge → Ramonville');
     // Le centroïde « destination » a suivi le 1er arrêt réel.
     expect(p.destLat).toBeCloseTo(43.63, 2);
+  });
+
+  it('#5 : trace les zones (géofences) traversées par le trajet type (dédupliquées, ordonnées)', async () => {
+    const trips: unknown[] = [];
+    for (let w = 0; w < 5; w++) {
+      trips.push(trip('2026-06-01T00:00:00Z', w, 8, 3, 43.21, 2.35, { trackerId: 'tk1' }));
+    }
+    const alerts = [
+      { title: 'Sortie de la zone "Toulouse"' },
+      { title: 'Entree dans la zone "Carcassonne-centre"' },
+      { title: 'Entree dans la zone "Toulouse"' }, // doublon → dédupliqué
+    ];
+    const svc = new RecurrenceDetectorService(makePrisma(trips, alerts), makeGeocode(), makeStops());
+    const patterns = await svc.detect('f1');
+
+    expect(patterns.length).toBe(1);
+    expect(patterns[0].zones).toEqual(['Toulouse', 'Carcassonne-centre']);
+    expect(patterns[0].basis).toContain('zones : Toulouse, Carcassonne-centre');
   });
 });

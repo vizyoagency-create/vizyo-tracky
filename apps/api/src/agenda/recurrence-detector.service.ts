@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { AlertType, Prisma } from '@prisma/client';
 import { ReverseGeocodeService } from '../geocoding/reverse-geocode.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { fleetTzFormatter, localParts } from './fleet-tz.util';
@@ -45,6 +45,8 @@ export interface RecurringPattern {
   itinerary: string[];
   /** #3 — true si le trajet PART ET REVIENT au dépôt (boucle) : la « destination » utile est l'itinéraire. */
   roundTripFromDepot: boolean;
+  /** #5 — ZONES (géofences) traversées par le trajet type (ex. ["Sortie Toulouse"]). Vide si aucune. */
+  zones: string[];
   activeWeeks: number;
   /** 0..1 = activeWeeks / fenêtre d'apprentissage. */
   confidence: number;
@@ -174,6 +176,7 @@ export class RecurrenceDetectorService {
           destinationLabel: null,
           itinerary: [],
           roundTripFromDepot: !!depot && haversineMeters(destLat, destLng, depot.lat, depot.lng) <= DEPOT_RADIUS_M,
+          zones: [],
           activeWeeks,
           confidence: Math.round((activeWeeks / LOOKBACK_WEEKS) * 100) / 100,
           basis: `Observé ${activeWeeks}/${LOOKBACK_WEEKS} ${DOW_LABELS[c.dow] ?? ''}`.trim(),
@@ -220,6 +223,18 @@ export class RecurrenceDetectorService {
     depot: { lat: number; lng: number } | null,
   ): Promise<void> {
     const rep = c.rep;
+
+    // #5 — Zones (géofences) traversées par le trajet type : contexte MÉTIER (l'admin a dessiné ces
+    // zones exprès, ex. « Sortie Toulouse ») → aide l'IA à comprendre le déplacement.
+    if (rep?.endedAt) {
+      try {
+        p.zones = await this.deriveZones(c.vehicleId, rep.startedAt, rep.endedAt);
+        if (p.zones.length > 0) p.basis += ` · zones : ${p.zones.join(', ')}`;
+      } catch (e) {
+        this.logger.warn(`deriveZones(${c.vehicleId}) : ${(e as Error)?.message ?? e}`);
+      }
+    }
+
     let stops: TripStop[] = [];
     if (rep?.trackerId && rep.endedAt) {
       try {
@@ -254,5 +269,29 @@ export class RecurrenceDetectorService {
     }
     // Repli : pas d'arrêt dérivable → comportement historique (géocode du point d'arrivée).
     p.destinationLabel = await this.geocode.label(p.destLat, p.destLng);
+  }
+
+  /**
+   * #5 — Zones (géofences) traversées par un véhicule sur une fenêtre = noms distincts des
+   * franchissements ENTER/EXIT (dans l'ordre). Le nom est extrait du titre de l'alerte
+   * (`… zone "X"`). Vide si la flotte n'a pas de géofence sur ce trajet. Borné (perf).
+   */
+  private async deriveZones(vehicleId: string, from: Date, to: Date): Promise<string[]> {
+    const alerts = await this.prisma.alert.findMany({
+      where: {
+        vehicleId,
+        type: { in: [AlertType.GEOFENCE_ENTER, AlertType.GEOFENCE_EXIT] },
+        createdAt: { gte: from, lte: to },
+      },
+      select: { title: true },
+      orderBy: { createdAt: 'asc' },
+      take: 50,
+    });
+    const names: string[] = [];
+    for (const a of alerts) {
+      const name = a.title.match(/"([^"]+)"/)?.[1];
+      if (name && !names.includes(name)) names.push(name);
+    }
+    return names.slice(0, 5);
   }
 }

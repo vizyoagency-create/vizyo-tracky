@@ -382,6 +382,8 @@ export class AgendaAgentRunnerService {
         // déplacement, pas juste le dépôt de retour. Ex. ["Borderouge","Ramonville"].
         itinerary: p.itinerary,
         roundTripFromDepot: p.roundTripFromDepot,
+        // #5 — ZONES (géofences) traversées : contexte métier admin-défini (ex. « Sortie Toulouse »).
+        zones: p.zones,
         weeksObserved: p.activeWeeks,
         confidence: p.confidence,
       })),
