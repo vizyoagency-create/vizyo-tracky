@@ -234,11 +234,31 @@ export class ReservationsService {
   ): Promise<SuggestReservationResultDto> {
     const { start, end } = this.parseSlot(query.startAt, query.endAt);
     const scope = await this.resolveScope(user, query.fleetId);
-
     const where: Prisma.VehicleWhereInput = {};
     if (scope.fleetId) where.fleetId = scope.fleetId;
     if (scope.ids !== 'ALL') where.id = { in: scope.ids };
-    const c = this.sanitizeCriteria(query.criteria);
+    return this.computeSuggestions(where, start, end, query.criteria);
+  }
+
+  /** Disponibilité pour une flotte PRÉCISE (flux public P4, sans utilisateur authentifié). */
+  async availableForFleet(
+    fleetId: string,
+    startAt: string,
+    endAt: string,
+    criteria?: RequestReservationDto['criteria'],
+  ): Promise<SuggestReservationResultDto> {
+    const { start, end } = this.parseSlot(startAt, endAt);
+    return this.computeSuggestions({ fleetId }, start, end, criteria);
+  }
+
+  /** Cœur d'auto-complétion : véhicules du `where` LIBRES sur [start,end) conformes aux critères. */
+  private async computeSuggestions(
+    where: Prisma.VehicleWhereInput,
+    start: Date,
+    end: Date,
+    criteria?: RequestReservationDto['criteria'],
+  ): Promise<SuggestReservationResultDto> {
+    const c = this.sanitizeCriteria(criteria);
 
     const candidates = await this.prisma.vehicle.findMany({
       where,
@@ -612,5 +632,37 @@ export class ReservationsService {
       if (this.isExclusionConflict(err)) return null; // course : créneau pris entre-temps
       throw err;
     }
+  }
+
+  /**
+   * Création SYSTÈME d'une DEMANDE (REQUESTED, non bloquante) — flux public P4. La demande atterrit
+   * dans la file de validation ; un gestionnaire la confirme (aucune permission publique). Le véhicule
+   * a déjà été vérifié appartenir à la flotte du lien EN AMONT (booking service).
+   */
+  async systemRequest(input: {
+    fleetId: string;
+    vehicleId: string;
+    start: Date;
+    end: Date;
+    title: string;
+    metadata?: Prisma.InputJsonValue;
+  }): Promise<VehicleEventDto> {
+    const row = await this.prisma.vehicleEvent.create({
+      data: {
+        fleetId: input.fleetId,
+        vehicleId: input.vehicleId,
+        type: VehicleEventType.RESERVATION,
+        status: VehicleEventStatus.REQUESTED,
+        title: input.title,
+        startAt: input.start,
+        endAt: input.end,
+        allDay: false,
+        metadata: input.metadata ?? Prisma.JsonNull,
+        createdBy: SYSTEM_ACTOR_ID,
+        source: 'SYSTEM',
+      },
+      include: INCLUDE_PLATE,
+    });
+    return this.toDto(row);
   }
 }

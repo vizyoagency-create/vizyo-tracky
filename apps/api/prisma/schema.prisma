@@ -210,6 +210,8 @@ model Fleet {
   installationBookingLinks InstallationBookingLink[]
   // Refonte agenda/IA (2026-07) — reglages de l'agent d'optimisation d'agenda (1:1, opt-in).
   agendaAgentSettings      AgendaAgentSettings?
+  // Refonte agenda/IA (P4) — liens publics de demande de reservation (societe fixe).
+  reservationBookingLinks  ReservationBookingLink[]
   // V1.16 — SIM allouees a cette flotte (parc WhereverSIM).
   sims                 Sim[]
   // Sprint 4 — config d'activation de l'ecoute audio (1:1, OFF par defaut).
@@ -1210,6 +1212,32 @@ model AgendaAgentProposal {
   @@unique([fleetId, vehicleId, startAt])
   @@index([fleetId, status, startAt])
   @@map("agenda_agent_proposals")
+}
+
+/// Refonte agenda/IA (2026-07, P4) — Lien PUBLIC de demande de réservation (façon Calendly).
+/// Porte une SOCIÉTÉ FIXE (choisie à la création) : un tiers décrit un besoin (places, date,
+/// destination) sur une page hors auth, l'app propose des véhicules/combinaisons DISPONIBLES,
+/// et la demande atterrit en REQUESTED (file de validation). `token` public en clair (256 bits).
+model ReservationBookingLink {
+  id              String    @id @default(uuid()) @db.Uuid
+  fleetId         String    @db.Uuid
+  fleet           Fleet     @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  token           String    @unique
+  label           String?
+  active          Boolean   @default(true)
+  expiresAt       DateTime?
+  /// Bornes des créneaux proposables.
+  horizonDays     Int       @default(30)
+  leadHours       Int       @default(2)
+  openCount       Int       @default(0)
+  firstOpenedAt   DateTime?
+  lastOpenedAt    DateTime?
+  createdByUserId String?   @db.Uuid
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([fleetId, createdAt])
+  @@map("reservation_booking_links")
 }
 
 /// V1.5 (Sprint I) — Etat de la sequence d'init SMS d'un tracker neuf.

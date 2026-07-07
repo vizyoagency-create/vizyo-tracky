@@ -10,6 +10,7 @@ import { AgendaModule } from './agenda/agenda.module';
 import { AiModule } from './ai/ai.module';
 import { AiUsageModule } from './ai-usage/ai-usage.module';
 import { GeocodingModule } from './geocoding/geocoding.module';
+import { ReservationBookingModule } from './reservation-booking/reservation-booking.module';
 import { AlertsModule } from './alerts/alerts.module';
 import { AudioMonitoringModule } from './audio-monitoring/audio-monitoring.module';
 import { AuthClientModule } from './auth-client/auth-client.module';
@@ -146,6 +147,8 @@ import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.modul
     AiUsageModule,
     // Refonte agenda/IA (P3) — géocodage inverse (Nominatim) pour nommer les destinations récurrentes.
     GeocodingModule,
+    // Refonte agenda/IA (P4) — lien public de demande de réservation (société fixe).
+    ReservationBookingModule,
   ],
   controllers: [HealthController],
   providers: [
