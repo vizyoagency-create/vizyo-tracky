@@ -128,6 +128,14 @@ export const routes: Routes = [
         data: { title: 'Rapports' },
       },
       {
+        // Notation — classement noté du score de conduite (véhicules / conducteurs / groupes).
+        path: 'scores',
+        canActivate: [permissionGuard('reports_view')],
+        loadComponent: () =>
+          import('./features/trip-analysis/driving-scores.component').then((m) => m.DrivingScoresComponent),
+        data: { title: 'Scores de conduite' },
+      },
+      {
         // Sprint 7 + Sprint 9 (consolidation) — Agenda = hub calendrier unique : maintenance,
         // incidents, réservations, optimisation et copilote IA réunis (ouverts en feuilles depuis
         // le calendrier). Gaté large pour ne pas régresser l'accès des délégués qui n'avaient que

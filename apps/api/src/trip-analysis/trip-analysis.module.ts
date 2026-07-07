@@ -3,6 +3,7 @@ import { AuthModule } from '../auth/auth.module';
 import { TripAnalysisController } from './trip-analysis.controller';
 import { TripAnalysisService } from './trip-analysis.service';
 import { TripAnalysisLlmService } from './trip-analysis-llm.service';
+import { DrivingScoreService } from './driving-score.service';
 import { SpeedLimitService } from './speed-limit.service';
 
 /**
@@ -13,7 +14,7 @@ import { SpeedLimitService } from './speed-limit.service';
 @Module({
   imports: [AuthModule],
   controllers: [TripAnalysisController],
-  providers: [TripAnalysisService, TripAnalysisLlmService, SpeedLimitService],
+  providers: [TripAnalysisService, TripAnalysisLlmService, DrivingScoreService, SpeedLimitService],
   exports: [TripAnalysisService],
 })
 export class TripAnalysisModule {}

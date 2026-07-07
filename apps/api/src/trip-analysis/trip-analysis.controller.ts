@@ -1,10 +1,11 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
-import type { AiProviderId, TripAnalysisDto, TripNarrativeCompareDto } from '@vizyo/tracky-shared';
+import type { AiProviderId, DrivingScoreScope, DrivingScoresDto, TripAnalysisDto, TripNarrativeCompareDto } from '@vizyo/tracky-shared';
 import { Roles } from '../auth/decorators/roles.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { DrivingScoreService } from './driving-score.service';
 import { TripAnalysisLlmService } from './trip-analysis-llm.service';
 import { TripAnalysisService } from './trip-analysis.service';
 
@@ -19,7 +20,26 @@ export class TripAnalysisController {
   constructor(
     private readonly svc: TripAnalysisService,
     private readonly llm: TripAnalysisLlmService,
+    private readonly scores: DrivingScoreService,
   ) {}
+
+  /**
+   * GET /api/trip-analysis/scores — CLASSEMENT noté du score de conduite, agrégé par véhicule /
+   * conducteur / groupe sur une période. Scopé au périmètre véhicules de l'utilisateur (anti-IDOR).
+   * (Déclaré AVANT `:tripId` pour ne pas être capté comme un id de trajet.)
+   */
+  @Get('scores')
+  getScores(
+    @Req() req: AuthenticatedRequest,
+    @Query('scope') scope?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('fleetId') fleetId?: string,
+  ): Promise<DrivingScoresDto> {
+    const s: DrivingScoreScope = scope === 'driver' || scope === 'group' ? scope : 'vehicle';
+    const scopedFleet = req.user.role === UserRole.SUPER_ADMIN ? (fleetId || undefined) : undefined;
+    return this.scores.scores(req.user, s, from, to, scopedFleet);
+  }
 
   /** GET /api/trip-analysis/vehicle/:vehicleId — analyses récentes d'un véhicule (onglet Trajets/rapports). */
   @Get('vehicle/:vehicleId')

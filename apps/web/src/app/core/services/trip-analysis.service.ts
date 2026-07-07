@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import type { AiProviderId, TripAnalysisDto, TripNarrativeCompareDto } from '@vizyo/tracky-shared';
+import type { AiProviderId, DrivingScoreScope, DrivingScoresDto, TripAnalysisDto, TripNarrativeCompareDto } from '@vizyo/tracky-shared';
 import { Observable } from 'rxjs';
 
 /**
@@ -35,5 +35,14 @@ export class TripAnalysisApiService {
   /** Mode « Comparer » : le même trajet analysé par Claude ET GPT (admin). */
   compare(tripId: string): Observable<TripNarrativeCompareDto> {
     return this.http.post<TripNarrativeCompareDto>(`/api/trip-analysis/${encodeURIComponent(tripId)}/compare`, {});
+  }
+
+  /** Classement noté du score de conduite par véhicule / conducteur / groupe. */
+  scores(scope: DrivingScoreScope, from?: string, to?: string, fleetId?: string): Observable<DrivingScoresDto> {
+    const params: Record<string, string> = { scope };
+    if (from) params['from'] = from;
+    if (to) params['to'] = to;
+    if (fleetId) params['fleetId'] = fleetId;
+    return this.http.get<DrivingScoresDto>('/api/trip-analysis/scores', { params });
   }
 }

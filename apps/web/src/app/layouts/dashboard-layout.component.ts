@@ -8,6 +8,7 @@ import {
   Truck,
   Bell,
   FileBarChart,
+  Gauge as GaugeIcon,
   Calendar,
   Users,
   Settings,
@@ -1034,6 +1035,8 @@ export class DashboardLayoutComponent {
     ];
     const analyse: NavItem[] = [
       ...(this.perms.can('reports_view') ? [{ label: 'Rapports', route: '/reports', icon: FileBarChart }] : []),
+      // Notation — score de conduite noté par véhicule / conducteur / groupe.
+      ...(this.perms.can('reports_view') ? [{ label: 'Scores de conduite', route: '/scores', icon: GaugeIcon }] : []),
       // Sprint 7/9 — Agenda = hub calendrier unique (maintenance, incidents,
       // réservations, optimisation, copilote IA). Visible dès qu'un accès lié existe.
       ...(this.perms.can('agenda_view') || this.perms.can('reservations_view') || this.perms.can('reservations_request') || this.perms.can('ai_optimize')

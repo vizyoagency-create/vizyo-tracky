@@ -97,3 +97,44 @@ export interface TripNarrativeCompareDto {
   tripId: string;
   results: TripAiResultDto[];
 }
+
+/* ── Notation — score de conduite agrégé par véhicule / conducteur / groupe ── */
+
+/** Sur quoi agréger la note de conduite. */
+export type DrivingScoreScope = 'vehicle' | 'driver' | 'group';
+
+/** Une ligne notée : une entité (véhicule/conducteur/groupe) + son score de conduite moyen. */
+export interface DrivingScoreRowDto {
+  /** vehicleId | driverId | groupId. */
+  id: string;
+  /** Plaque | Nom du conducteur | Nom du groupe. */
+  label: string;
+  /** Sous-titre (modèle du véhicule, groupe du conducteur…). */
+  sublabel: string | null;
+  /** Couleur (conducteur), sinon null. */
+  color: string | null;
+  /** Score de conduite moyen 0-100 (moyenne des éco-scores des trajets). */
+  score: number;
+  /** Note lettrée A (excellent) → E (à améliorer). */
+  grade: string;
+  tripCount: number;
+  distanceKm: number;
+  /** Nombre total de trajets AVEC au moins un excès. */
+  speedingTrips: number;
+  /** Nombre total d'à-coups (accél/freinages brusques). */
+  harshCount: number;
+  fuelLiters: number;
+  co2Kg: number;
+}
+
+/** Classement noté (meilleur → moins bon) + moyenne globale, sur une période. */
+export interface DrivingScoresDto {
+  scope: DrivingScoreScope;
+  from: string;
+  to: string;
+  rows: DrivingScoreRowDto[];
+  /** Moyenne globale de tous les trajets de la période (0-100), ou null si aucun. */
+  overallScore: number | null;
+  overallGrade: string | null;
+  totalTrips: number;
+}
