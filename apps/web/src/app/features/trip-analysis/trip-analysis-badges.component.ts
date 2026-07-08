@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
-import { LucideAngularModule, Leaf, OctagonX, Gauge, Fuel, Sparkles, Loader, AlertTriangle, ShieldCheck, FileText, X, GitCompareArrows } from 'lucide-angular';
+import { LucideAngularModule, Leaf, OctagonX, Gauge, Fuel, Sparkles, Loader, AlertTriangle, ShieldCheck, FileText, X, GitCompareArrows, MapPin } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import type { AiProviderId, TripAiResultDto, TripAnalysisDto } from '@vizyo/tracky-shared';
 import { TripAnalysisApiService } from '../../core/services/trip-analysis.service';
@@ -54,6 +54,14 @@ import { apiErrorMessage } from '../../core/error/api-error';
           </span>
         }
 
+        <!-- Passage(s) en station-service détecté(s) (P2 stations) : marque + prix capté. -->
+        @for (fs of fuelStops(); track fs.stationId + fs.arrivedAt) {
+          <span class="tab-badge tab-badge--fuel" [title]="fuelStopTitle(fs)">
+            <lucide-icon [img]="PumpIcon" [size]="12"></lucide-icon>
+            {{ fs.brand || 'Station' }}@if (fs.unitPriceEur != null) { <span class="tab-badge-sub">{{ fs.unitPriceEur | number:'1.3-3' }} €</span> }
+          </span>
+        }
+
         @if (a.trustScore != null) {
           <span class="tab-badge tab-badge--trust" [attr.data-tier]="trustTier(a.trustScore)" title="Tracky Trust Score — fiabilité de la donnée GPS">
             <lucide-icon [img]="ShieldIcon" [size]="12"></lucide-icon> {{ a.trustScore }}
@@ -96,6 +104,26 @@ import { apiErrorMessage } from '../../core/error/api-error';
                   <span class="taid-trust-n">{{ a.trustScore }}</span>
                   <span class="taid-trust-l"><strong>Tracky Trust Score</strong><small>Fiabilité de la donnée GPS de ce trajet</small></span>
                 </div>
+              }
+
+              @if (fuelStops().length) {
+                <section class="taid-sec">
+                  <h4><lucide-icon [img]="PumpIcon" [size]="13"></lucide-icon> Passages en station-service</h4>
+                  <ul class="taid-fuel">
+                    @for (fs of fuelStops(); track fs.stationId + fs.arrivedAt) {
+                      <li class="taid-fuel-row">
+                        <span class="taid-fuel-name">{{ fs.brand || 'Station-service' }}</span>
+                        <span class="taid-fuel-where">{{ fuelWhere(fs) }}</span>
+                        <span class="taid-fuel-price">
+                          @if (fs.unitPriceEur != null) { {{ fuelTypeLabel(fs.fuelType) }} · <strong>{{ fs.unitPriceEur | number:'1.3-3' }} €/L</strong> }
+                          @else { <span class="taid-fuel-noprice">prix indisponible</span> }
+                        </span>
+                        <span class="taid-fuel-dur">arrêt {{ minutes(fs.durationSec) }} min</span>
+                      </li>
+                    }
+                  </ul>
+                  <p class="taid-fuel-note">Prix relevé au moment du passage (source : prix officiels des carburants en France). Alimente le suivi des coûts et de la consommation dans les rapports.</p>
+                </section>
               }
 
               @if (a.narrative) {
@@ -169,6 +197,7 @@ import { apiErrorMessage } from '../../core/error/api-error';
     .tab-badge--eco[data-tier="bad"]  { background: color-mix(in srgb, #EF4444 16%, transparent); color: #EF4444; border-color: transparent; }
     .tab-badge--danger { background: color-mix(in srgb, #EF4444 14%, transparent); color: #EF4444; border-color: transparent; }
     .tab-badge--warn { background: color-mix(in srgb, #F59E0B 13%, transparent); color: #F59E0B; border-color: transparent; }
+    .tab-badge--fuel { background: color-mix(in srgb, #A78BFA 16%, transparent); color: #A78BFA; border-color: transparent; }
     .tab-badge--trust[data-tier="good"] { background: color-mix(in srgb, #60A5FA 16%, transparent); color: #60A5FA; border-color: transparent; }
     .tab-badge--trust[data-tier="mid"]  { background: color-mix(in srgb, #F59E0B 14%, transparent); color: #F59E0B; border-color: transparent; }
     .tab-badge--trust[data-tier="bad"]  { background: color-mix(in srgb, #EF4444 14%, transparent); color: #EF4444; border-color: transparent; }
@@ -210,6 +239,15 @@ import { apiErrorMessage } from '../../core/error/api-error';
     .taid-sec p { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--fg-secondary); white-space: pre-line; }
     .taid-sec--advice p { color: var(--fg-primary); }
     .taid-empty { margin: 0; font-size: 12.5px; color: var(--fg-tertiary); line-height: 1.5; }
+    .taid-fuel { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+    .taid-fuel-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: baseline; padding: 9px 12px; border-radius: 10px; background: color-mix(in srgb, #A78BFA 8%, var(--bg-tertiary)); border: 1px solid color-mix(in srgb, #A78BFA 20%, transparent); }
+    .taid-fuel-name { font-size: 13px; font-weight: 800; color: var(--fg-primary); }
+    .taid-fuel-price { font-size: 12.5px; font-weight: 700; color: #A78BFA; text-align: right; }
+    .taid-fuel-price strong { color: #A78BFA; }
+    .taid-fuel-noprice { color: var(--fg-tertiary); font-weight: 600; }
+    .taid-fuel-where { grid-column: 1; font-size: 11.5px; color: var(--fg-tertiary); }
+    .taid-fuel-dur { grid-column: 2; text-align: right; font-size: 11.5px; color: var(--fg-tertiary); }
+    .taid-fuel-note { margin: 8px 0 0; font-size: 11px; line-height: 1.45; color: var(--fg-tertiary); }
     .taid-intro { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--fg-secondary); padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--tracky-light, #10E0A0) 7%, var(--bg-tertiary)); border: 1px solid color-mix(in srgb, var(--tracky-light, #10E0A0) 16%, transparent); }
     .taid-actions { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 2px; }
     .taid-btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 10px; font-size: 12.5px; font-weight: 800; cursor: pointer; background: var(--tracky, #10E0A0); color: var(--accent-ink, #04130D); border: none; }
@@ -251,6 +289,9 @@ export class TripAnalysisBadgesComponent {
 
   protected readonly current = computed(() => this.fresh() ?? this.analysis());
 
+  /** Passages en station-service détectés sur ce trajet (P2 stations). */
+  protected readonly fuelStops = computed(() => this.current()?.detail?.fuelStops ?? []);
+
   /** Comparer les 2 moteurs = usage INTERNE (super-admin) : un client (fleet-admin & -) ne voit jamais
    *  quel moteur tourne (marque blanche « agent Tracky »). */
   protected readonly canCompare = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
@@ -264,6 +305,7 @@ export class TripAnalysisBadgesComponent {
   protected readonly StopIcon = OctagonX;
   protected readonly GaugeIcon = Gauge;
   protected readonly FuelIcon = Fuel;
+  protected readonly PumpIcon = MapPin;
   protected readonly SparklesIcon = Sparkles;
   protected readonly LoaderIcon = Loader;
   protected readonly AlertIcon = AlertTriangle;
@@ -274,6 +316,29 @@ export class TripAnalysisBadgesComponent {
 
   protected minutes(sec: number): number { return Math.round(sec / 60); }
   protected trustTier(s: number): 'good' | 'mid' | 'bad' { return s >= 75 ? 'good' : s >= 45 ? 'mid' : 'bad'; }
+
+  /** Libellé lisible d'un carburant de l'API (gazole → « Gazole », gplc → « GPL »…). */
+  protected fuelTypeLabel(t: string | null): string {
+    switch (t) {
+      case 'gazole': return 'Gazole';
+      case 'sp95': return 'SP95';
+      case 'sp98': return 'SP98';
+      case 'e10': return 'E10';
+      case 'e85': return 'E85 (Superéthanol)';
+      case 'gplc': return 'GPL';
+      default: return 'Carburant';
+    }
+  }
+  /** Adresse + ville d'un passage (sans les vides). */
+  protected fuelWhere(fs: { address: string | null; city: string | null }): string {
+    return [fs.address, fs.city].filter(Boolean).join(', ');
+  }
+  /** Tooltip d'un passage station (lieu + prix + durée). */
+  protected fuelStopTitle(fs: { brand: string | null; city: string | null; address: string | null; fuelType: string | null; unitPriceEur: number | null; durationSec: number }): string {
+    const where = [fs.brand, fs.address, fs.city].filter(Boolean).join(', ') || 'Station-service';
+    const price = fs.unitPriceEur != null ? ` — ${this.fuelTypeLabel(fs.fuelType)} ${fs.unitPriceEur.toFixed(3)} €/L` : '';
+    return `Passage station : ${where}${price} — arrêt ${Math.round(fs.durationSec / 60)} min`;
+  }
   /** Libellé du moteur. MARQUE BLANCHE : tout ce qui n'est pas un moteur nommé (le backend masque en
    *  'tracky' pour les clients) s'affiche « l'agent Tracky ». Seul le super-admin voit Claude/GPT/Mixte. */
   protected providerLabel(p: AiProviderId | string): string {
