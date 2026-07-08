@@ -56,11 +56,13 @@
         <span class="n cut">{{ summary().cut }}</span><span class="l">Coupés</span>
       </div>
       <div class="tile" [class.hot]="summary().driving > 0"
-           title="Véhicules qui ROULENT alors que leurs horaires sont terminés. On ne coupe jamais en marche : la coupe attend l'arrêt. Ce sont ces véhicules qu'il faut surveiller. (Un véhicule qui roule DANS ses horaires n'est pas compté ici.)">
+           title="Véhicules qui ROULENT alors que leurs horaires sont terminés (ex. encore en route après 22h). On ne coupe jamais en marche : la coupe attend l'arrêt. Ce sont ces véhicules qu'il faut surveiller. (Un véhicule qui roule DANS ses horaires n'est pas compté ici.)">
         <span class="n danger">{{ summary().driving }}</span><span class="l">Roulent encore</span>
+        <span class="l-sub">roulent après leur heure de coupe (ex. après 22h)</span>
       </div>
       <div class="tile" title="Véhicules hors horaires, à l'arrêt depuis moins de 10 min : ils seront coupés automatiquement une fois immobiles 10 minutes.">
         <span class="n warn">{{ summary().awaiting }}</span><span class="l">Attente d'arrêt</span>
+        <span class="l-sub">hors horaires, coupés dès 10 min à l'arrêt</span>
       </div>
     </div>
 
@@ -145,6 +147,11 @@
                   <div class="veh">
                     <span class="plate">{{ r.plate }}</span>
                     @if (r.group) { <span class="grp">{{ r.group.name }}</span> }
+                    @if (displayMoving(r)) {
+                      <span class="mov" title="Ce véhicule roule en ce moment">
+                        <span class="mov-dot"></span>en mouvement@if (r.lastSpeedKmh) { · {{ r.lastSpeedKmh }} km/h }
+                      </span>
+                    }
                   </div>
                   <div class="muted xsmall">{{ r.brand }} {{ r.model }}</div>
                 </td>
