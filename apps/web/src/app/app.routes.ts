@@ -98,6 +98,15 @@ export const routes: Routes = [
         data: { title: 'Détail véhicule' },
       },
       {
+        // Demande CDEF (2026-07) — Page flotte « Horaires » (vue d'ensemble + actions de masse).
+        // Réservée aux détenteurs de `schedules_manage` (fleet-admin par défaut, accordable).
+        path: 'fleet-schedules',
+        canActivate: [permissionGuard('schedules_manage')],
+        loadComponent: () =>
+          import('./features/fleet-schedules/fleet-schedules.component').then((m) => m.FleetSchedulesComponent),
+        data: { title: 'Horaires flotte' },
+      },
+      {
         // Consolidation IA : « Groupes » est un onglet de la page Véhicules.
         // Redirection (deep-link onglet) pour conserver les anciens liens / raccourcis PWA.
         path: 'groups',
@@ -318,6 +327,15 @@ export const routes: Routes = [
         loadComponent: () =>
           import('./features/trip-analysis/trip-automation.component').then((m) => m.TripAutomationComponent),
         data: { title: 'Automatisation des trajets' },
+      },
+      {
+        // Demande CDEF (2026-07) — Inventaire des tâches de fond (crons/timers) + prochain lancement. SUPER_ADMIN.
+        path: 'admin/background-tasks',
+        pathMatch: 'full',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/observability/background-tasks/background-tasks.component').then((m) => m.BackgroundTasksComponent),
+        data: { title: 'Automatisations & tâches de fond' },
       },
       {
         // Sprint 4 — N1 « flottes éligibles » (super-admin/prestataire) : autorise les

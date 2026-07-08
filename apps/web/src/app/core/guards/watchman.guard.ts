@@ -1,6 +1,7 @@
 import { inject } from '@angular/core';
 import { type CanActivateChildFn, Router, type RouterStateSnapshot } from '@angular/router';
 import { AuthService } from '../services/auth.service';
+import { PermissionsService } from '../services/permissions.service';
 
 /**
  * Sprint 3 — Confinement du rôle « veilleur de nuit » (NIGHT_WATCHMAN).
@@ -22,11 +23,17 @@ import { AuthService } from '../services/auth.service';
 export const watchmanChildGuard: CanActivateChildFn = (_childRoute, state: RouterStateSnapshot) => {
   const auth = inject(AuthService);
   const router = inject(Router);
+  const perms = inject(PermissionsService);
 
   if (!auth.isWatchman()) return true;
 
   const path = state.url.split('?')[0].split('#')[0];
-  // Seule la LISTE est autorisée : pas de détail (`/vehicles/:id`) → zéro donnée.
-  const allowed = path === '/vehicles';
+  // Liste véhicules : toujours (le veilleur agit depuis la liste, zéro donnée sensible).
+  // Demande CDEF (2026-07) — Page « Horaires flotte » : autorisée UNIQUEMENT si le veilleur
+  // désigné a reçu la permission `schedules_manage` (accordée explicitement par un admin).
+  // Reste default-deny : sans la permission, il est renvoyé vers /vehicles. Le vrai périmètre
+  // est garanti côté serveur (endpoints gatés `schedules_manage` + scope par véhicule).
+  const allowed =
+    path === '/vehicles' || (path === '/fleet-schedules' && perms.can('schedules_manage'));
   return allowed ? true : router.createUrlTree(['/vehicles']);
 };

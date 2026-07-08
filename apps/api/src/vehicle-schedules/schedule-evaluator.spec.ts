@@ -1,4 +1,4 @@
-import { evaluateSchedule } from './schedule-evaluator';
+import { computeNextTransition, evaluateSchedule } from './schedule-evaluator';
 
 /**
  * V1.6 (P6) — Tests unitaires schedule-evaluator (Sprint K).
@@ -129,5 +129,37 @@ describe('evaluateSchedule', () => {
     expect(evaluateSchedule(s, new Date('2026-04-27T03:00:00Z')).state).toBe('IN_WINDOW');
     // 10:00 -> hors plage de nuit
     expect(evaluateSchedule(s, MONDAY_10H).state).toBe('OUT_OF_WINDOW');
+  });
+});
+
+describe('computeNextTransition (compte-à-rebours page flotte)', () => {
+  it('dans la plage → prochaine bascule = CUT à la fin de plage (18:00) le jour même', () => {
+    const nt = computeNextTransition(baseSchedule(), MONDAY_10H);
+    expect(nt).not.toBeNull();
+    expect(nt!.action).toBe('CUT');
+    // 2026-04-27 18:00 UTC (timezone du planning = UTC)
+    expect(nt!.at.getUTCHours()).toBe(18);
+    expect(nt!.at.getUTCMinutes()).toBe(0);
+    expect(nt!.at.getUTCDate()).toBe(27);
+  });
+
+  it('hors plage le soir → prochaine bascule = RESTORE au début de plage du lendemain (08:00)', () => {
+    const nt = computeNextTransition(baseSchedule(), MONDAY_22H);
+    expect(nt).not.toBeNull();
+    expect(nt!.action).toBe('RESTORE');
+    // mardi 2026-04-28 08:00 UTC
+    expect(nt!.at.getUTCHours()).toBe(8);
+    expect(nt!.at.getUTCDate()).toBe(28);
+  });
+
+  it('planning « toujours ouvert » (tous les jours sans plages) → aucune bascule → null', () => {
+    const allOpen = baseSchedule({
+      mondayStart: null, mondayEnd: null, tuesdayStart: null, tuesdayEnd: null,
+      wednesdayStart: null, wednesdayEnd: null, thursdayStart: null, thursdayEnd: null,
+      fridayStart: null, fridayEnd: null,
+      saturdayEnabled: true, saturdayStart: null, saturdayEnd: null,
+      sundayEnabled: true, sundayStart: null, sundayEnd: null,
+    });
+    expect(computeNextTransition(allOpen, MONDAY_10H)).toBeNull();
   });
 });

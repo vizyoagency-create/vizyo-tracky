@@ -26,6 +26,7 @@ import {
   Sun,
   Moon,
   Sparkles,
+  AlarmClock,
 } from 'lucide-angular';
 import { ThemeService } from '../core/theme/theme.service';
 import { AlertsBellComponent } from '../shared/ui/alerts-bell/alerts-bell.component';
@@ -1005,7 +1006,13 @@ export class DashboardLayoutComponent {
     // Sprint 3 — veilleur de nuit : navigation réduite à « Véhicules » (liste groupée + détail).
     // Cosmétique : le périmètre réel est garanti serveur (403) + watchmanChildGuard.
     if (this.auth.isWatchman()) {
-      return [{ section: null, items: [{ label: 'Véhicules', route: '/vehicles', icon: Truck }] }];
+      // Demande CDEF (2026-07) — un veilleur DÉSIGNÉ (permission `schedules_manage` accordée)
+      // voit en plus la page « Horaires flotte ». Sinon, périmètre inchangé (liste véhicules).
+      const items: NavItem[] = [{ label: 'Véhicules', route: '/vehicles', icon: Truck }];
+      if (this.perms.can('schedules_manage')) {
+        items.push({ label: 'Horaires flotte', route: '/fleet-schedules', icon: AlarmClock });
+      }
+      return [{ section: null, items }];
     }
     // V1.12 — Mode Baanool : menu reduit aux essentiels (un seul groupe, sans
     // en-tête). Pas de dashboard, groupes, geofences, rapports. Groupes =
@@ -1032,6 +1039,8 @@ export class DashboardLayoutComponent {
       ] : []),
       // Consolidation IA : « Géofences » est un onglet DANS Alertes.
       ...(this.perms.can('alerts_view') ? [{ label: 'Alertes', route: '/alerts', icon: Bell }] : []),
+      // Demande CDEF (2026-07) — Page flotte des horaires (coupe/reprise auto).
+      ...(this.perms.can('schedules_manage') ? [{ label: 'Horaires flotte', route: '/fleet-schedules', icon: AlarmClock }] : []),
     ];
     const analyse: NavItem[] = [
       ...(this.perms.can('reports_view') ? [{ label: 'Rapports', route: '/reports', icon: FileBarChart }] : []),

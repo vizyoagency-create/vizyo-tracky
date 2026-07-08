@@ -10,6 +10,7 @@ import {
 } from '@vizyo/tracky-shared';
 import type { AuthUser } from './types/auth-user';
 import { ROLES_KEY } from './decorators/roles.decorator';
+import { PERMISSIONS_KEY } from './decorators/permissions.decorator';
 import { VEHICLE_PERMISSIONS_KEY } from './decorators/vehicle-permissions.decorator';
 import { RolesGuard } from './guards/roles.guard';
 import { PermissionsResolverService } from '../permissions/permissions-resolver.service';
@@ -22,6 +23,7 @@ import { ReportsController } from '../reports/reports.controller';
 import { DriversController } from '../drivers/drivers.controller';
 import { GeofencesController } from '../geofences/geofences.controller';
 import { VehicleSchedulesController } from '../vehicle-schedules/vehicle-schedules.controller';
+import { FleetSchedulesController } from '../vehicle-schedules/fleet-schedules.controller';
 import { TripsController } from '../trips/trips.controller';
 
 /**
@@ -267,6 +269,17 @@ describe('Sprint 3 — Sécurité veilleur de nuit (NIGHT_WATCHMAN)', () => {
       // Hors-scope : aucune règle ne couvre le véhicule → null → refus.
       const out = makeResolver(jest.fn().mockResolvedValue([]));
       expect(await out.canOnVehicle(makeUser(), 'veh-out', 'schedules_manage')).toBe(false);
+    });
+
+    // Demande CDEF (2026-07) — page flotte « Horaires ». Même politique que la fiche véhicule :
+    // le veilleur DÉSIGNÉ y accède UNIQUEMENT s'il a `schedules_manage` (gate global au niveau
+    // contrôleur), et le périmètre PAR véhicule est re-résolu côté service. Ce test épingle le
+    // pattern : sans ces deux décorateurs de classe, l'accès veilleur serait mal calibré.
+    it('fleet-schedules (page flotte) : @Roles inclut NIGHT_WATCHMAN ET @RequirePermissions(schedules_manage) au niveau contrôleur', () => {
+      const roles = (Reflect.getMetadata(ROLES_KEY, FleetSchedulesController) ?? []) as UserRole[];
+      expect(roles).toContain(NW);
+      const perms = (Reflect.getMetadata(PERMISSIONS_KEY, FleetSchedulesController) ?? []) as string[];
+      expect(perms).toContain('schedules_manage');
     });
   });
 });

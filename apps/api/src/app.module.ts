@@ -57,6 +57,7 @@ import { TrackerCommandsModule } from './tracker-commands/tracker-commands.modul
 import { UserActivityModule } from './user-activity/user-activity.module';
 import { TrackerFixModeModule } from './tracker-fix-mode/tracker-fix-mode.module';
 import { VehicleSchedulesModule } from './vehicle-schedules/vehicle-schedules.module';
+import { BackgroundTasksModule } from './background-tasks/background-tasks.module';
 import { HealthController } from './health/health.controller';
 import { LeadsModule } from './leads/leads.module';
 import { VehiclesModule } from './vehicles/vehicles.module';
@@ -131,6 +132,7 @@ import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.modul
     VehicleGroupsModule,
     PermissionsModule,
     VehicleSchedulesModule,
+    BackgroundTasksModule,
     InstallationsModule,
     InstallationBookingModule,
     PrivacyModeModule,

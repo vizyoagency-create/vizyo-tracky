@@ -32,6 +32,16 @@ const MAX_SPEED_FOR_CUT = 20;
  */
 const ENGINE_CUT_MIN_STOPPED_MS = Math.max(0, Number(process.env.ENGINE_CUT_MIN_STOPPED_S) || 120) * 1000;
 /**
+ * Coupe AUTOMATIQUE (planning horaire, source `SCHEDULER`) — durée minimale d'immobilité
+ * avant que l'automatisation coupe le moteur. Demande CDEF (2026-07) : l'automatisation ne
+ * doit JAMAIS couper un véhicule en mouvement, ni un véhicule à peine arrêté ; on attend un
+ * arrêt RÉEL prolongé (défaut 600 s = 10 min). Distinct de la coupe admin (antivol ≤ 20 km/h,
+ * inchangée) et de la règle veilleur (gérée par rôle) : ici on branche sur la SOURCE. Appliqué
+ * à TOUTES les flottes, réglable par l'env plateforme `SCHEDULE_CUT_MIN_STOPPED_S`. Le cron
+ * traite le refus comme un REPORT (retry au tick suivant), pas comme une erreur.
+ */
+const SCHEDULE_CUT_MIN_STOPPED_MS = Math.max(0, Number(process.env.SCHEDULE_CUT_MIN_STOPPED_S) || 600) * 1000;
+/**
  * Sprint 3 (Option A) — une COUPE VEILLEUR est une intervention de sécurité de nuit : elle
  * doit TENIR jusqu'à réactivation manuelle (RESTORE), pas être défaite par le planning au bout
  * de l'override habituel (1h). On suspend donc le planning « sans échéance » via cette sentinelle
@@ -177,6 +187,43 @@ export class EngineControlService {
           fleetId,
           'Fix GPS invalide',
         );
+      }
+
+      // Demande CDEF (2026-07) — COUPE AUTOMATIQUE (source SCHEDULER) : ne JAMAIS couper un
+      // véhicule en mouvement, et attendre un arrêt RÉEL prolongé (SCHEDULE_CUT_MIN_STOPPED_MS,
+      // défaut 10 min) avant de couper. On branche sur la SOURCE (pas le rôle : le scheduler
+      // s'identifie SUPER_ADMIN) pour ne PAS toucher aux politiques admin (≤ 20 km/h) et veilleur.
+      // On DIFFÈRE sans créer de commande (throw sec) : le cron capte le ForbiddenException et
+      // réessaie au tick suivant, sans empiler une REJECTED_SPEED à chaque minute (anti-bloat DB/WS).
+      // PLACÉ AVANT le garde antivol ≤ 20 km/h (revue) : sinon un véhicule > 20 km/h retomberait
+      // sur rejectSpeed() qui PERSISTE une commande + émet un WS à chaque tick → le bloat qu'on
+      // voulait éviter. Ici, TOUT véhicule en mouvement (> 5 km/h) en SCHEDULER = throw sec.
+      if (source === 'SCHEDULER') {
+        // 1) En mouvement (> 5 km/h) → jamais de coupe auto, on diffère.
+        if (lastPosition.speedKmh > REST_SPEED_KMH) {
+          throw new ForbiddenException(
+            `Coupe auto différée : véhicule en mouvement (${lastPosition.speedKmh} km/h)`,
+          );
+        }
+        // 2) À l'arrêt mais pas depuis assez longtemps ? On cherche une trame EN MOUVEMENT
+        // (> 5 km/h) dans [now - SCHEDULE_CUT_MIN_STOPPED_MS ; now] (index [trackerId, timestamp desc],
+        // scan borné). Si trouvée → arrêt trop récent → on diffère jusqu'à immobilité sur toute la
+        // fenêtre. Sinon (garé depuis ≥ la fenêtre, même simple heartbeat récent) → coupe autorisée.
+        if (SCHEDULE_CUT_MIN_STOPPED_MS > 0) {
+          const windowStart = new Date(Date.now() - SCHEDULE_CUT_MIN_STOPPED_MS);
+          const recentMovement = await this.prisma.position.findFirst({
+            where: { trackerId, speedKmh: { gt: REST_SPEED_KMH }, timestamp: { gte: windowStart } },
+            orderBy: { timestamp: 'desc' },
+            select: { timestamp: true },
+          });
+          if (recentMovement) {
+            const stoppedForMs = Date.now() - recentMovement.timestamp.getTime();
+            throw new ForbiddenException(
+              `Coupe auto différée : véhicule arrêté depuis seulement ${Math.round(stoppedForMs / 1000)}s ` +
+                `(minimum requis ${Math.round(SCHEDULE_CUT_MIN_STOPPED_MS / 1000)}s)`,
+            );
+          }
+        }
       }
 
       if (lastPosition.speedKmh > MAX_SPEED_FOR_CUT) {

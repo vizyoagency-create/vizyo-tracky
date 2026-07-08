@@ -1,0 +1,99 @@
+<div class="bgt">
+  <a routerLink="/admin/observability" class="crumb"><lucide-icon [img]="ArrowLeftIcon" [size]="14" /> Administration</a>
+
+  <header class="bgt-head">
+    <div>
+      <h1>Automatisations &amp; tâches de fond</h1>
+      <p class="sub">Tout ce qui tourne automatiquement en arrière-plan, réuni ici : période, prochain lancement, état et réglages. Rien d'invisible.</p>
+    </div>
+    <button type="button" class="btn ghost" (click)="load(true)" [disabled]="refreshing()">
+      <lucide-icon [img]="RefreshCwIcon" [size]="15" [class.spin]="refreshing()" /> Rafraîchir
+    </button>
+  </header>
+
+  @if (loading()) {
+    <div class="card empty">Chargement des tâches…</div>
+  } @else if (error()) {
+    <div class="banner danger">{{ error() }}</div>
+  } @else {
+    <!-- Focus « prochain rapport / automatisation IA » -->
+    @if (nextAi(); as ai) {
+      <div class="hero">
+        <div class="hero-ico"><lucide-icon [img]="AlarmClockIcon" [size]="22" /></div>
+        <div class="hero-txt">
+          <span class="hero-label">Prochaine automatisation IA</span>
+          <b>{{ ai.label }}</b>
+        </div>
+        <div class="hero-cd">
+          <span class="hero-cd-val">{{ countdown(ai.nextRunAt) }}</span>
+          <span class="hero-cd-sub">avant lancement</span>
+        </div>
+      </div>
+    }
+
+    <!-- Santé / drift -->
+    @if (health(); as h) {
+      <div class="health" [class.ok]="driftOk()" [class.warn]="!driftOk()">
+        @if (driftOk()) {
+          <lucide-icon [img]="CheckIcon" [size]="16" />
+          <span><b>{{ summary().total }} tâches recensées</b> · {{ h.registeredCronCount }} crons + {{ h.registeredIntervalCount }} intervalles actifs au runtime, tous catalogués. Rien ne tourne « en cachette ».</span>
+        } @else {
+          <lucide-icon [img]="AlertTriangleIcon" [size]="16" />
+          <span><b>Attention :</b> écart entre le runtime ({{ h.registeredCronCount }} crons, {{ h.registeredIntervalCount }} intervalles) et le catalogue ({{ h.catalogCronCount }} crons, {{ h.catalogIntervalCount }} intervalles) → une tâche a peut-être été ajoutée ou retirée sans mettre à jour cet inventaire. À vérifier.</span>
+        }
+      </div>
+    }
+
+    <!-- Synthèse -->
+    <div class="tiles">
+      <div class="tile"><span class="n">{{ summary().total }}</span><span class="l">Tâches</span></div>
+      <div class="tile"><span class="n">{{ summary().timed }}</span><span class="l">À échéance</span></div>
+      <div class="tile"><span class="n">{{ summary().continuous }}</span><span class="l">Flux continus</span></div>
+      <div class="tile"><span class="n">{{ summary().configurable }}</span><span class="l">Réglables</span></div>
+      <div class="tile" [class.muted-tile]="summary().paused === 0"><span class="n">{{ summary().paused }}</span><span class="l">En pause</span></div>
+    </div>
+
+    <!-- Groupes -->
+    @for (g of groups(); track trackByGroup($index, g)) {
+      <section class="group">
+        <h2 class="group-title">{{ g.category }}</h2>
+        <div class="rows">
+          @for (t of g.items; track trackByTask($index, t)) {
+            <div class="row" [class.dev]="t.devOnly">
+              <div class="row-main">
+                <div class="row-title">
+                  <span class="dot" [ngClass]="critClass(t.criticality)" [title]="'Criticité : ' + t.criticality"></span>
+                  <b>{{ t.label }}</b>
+                  @if (t.antiOverlap) { <span class="tag" title="Un nouveau passage ne démarre pas si le précédent tourne encore">anti-chevauchement</span> }
+                  @if (t.devOnly) { <span class="tag dev-tag">dev uniquement</span> }
+                  @if (t.configurable && t.enabled === false) { <span class="tag pause">en pause</span> }
+                </div>
+                <p class="row-purpose">{{ t.purpose }}</p>
+                @if (t.note) { <p class="row-note"><lucide-icon [img]="ShieldAlertIcon" [size]="12" /> {{ t.note }}</p> }
+                @if (t.settingsSummary) { <p class="row-settings">Réglage : {{ t.settingsSummary }}</p> }
+              </div>
+
+              <div class="row-side">
+                <div class="sched">{{ t.scheduleHuman }}</div>
+                @if (t.continuous) {
+                  <div class="cd continuous"><lucide-icon [img]="TimerIcon" [size]="13" /> en continu</div>
+                } @else if (t.configurable && t.enabled === false) {
+                  <div class="cd off">désactivé</div>
+                } @else if (countdown(t.nextRunAt); as cd) {
+                  <div class="cd"><span class="cd-verb">prochain dans</span> <span class="cd-val">{{ cd }}</span></div>
+                } @else {
+                  <div class="cd off">—</div>
+                }
+                @if (t.configurable && t.settingsRoute) {
+                  <a [routerLink]="t.settingsRoute" class="cfg">Configurer <lucide-icon [img]="ChevronRightIcon" [size]="13" /></a>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      </section>
+    }
+
+    <p class="foot">Heures serveur en <b>{{ serverTz() }}</b>. Les compte-à-rebours se mettent à jour en direct.</p>
+  }
+</div>

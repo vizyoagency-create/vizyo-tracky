@@ -142,6 +142,16 @@ export class VehicleSchedulesService {
           data: { lastEvaluatedState: state, lastEvaluatedAt: new Date() },
         });
         this.logger.log({ vehicleId, state }, 'Schedule enabled — in window, no action');
+      } else if (updated.overrideUntil && new Date() < updated.overrideUntil) {
+        // Revue : un override manuel est actif (grâce 1h après un RESTORE, ou hold veilleur).
+        // On NE coupe PAS immédiatement — même règle que le cron (schedule-cron:111). On laisse
+        // lastEvaluatedState=null : à l'expiration de l'override, le cron verra OUT_OF_WINDOW ≠ null
+        // et coupera (en respectant la règle des 10 min). Sinon un bulk « appliquer horaires »
+        // écraserait une grâce manuelle en cours.
+        this.logger.log(
+          { vehicleId, overrideUntil: updated.overrideUntil },
+          'Schedule enabled out-of-window but manual override active — deferring cut to cron',
+        );
       } else {
         // Hors fenetre → CUT immediat
         const tracker = await this.prisma.tracker.findFirst({ where: { vehicleId } });

@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, Clock, Save, X, Shield, Briefcase, Calendar, Settings2, Zap } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../../core/services/auth.service';
+import { PermissionsService } from '../../../core/services/permissions.service';
 import {
   VehicleSchedulesApiService,
   type UpsertSchedulePayload,
@@ -677,6 +678,7 @@ export class VehicleScheduleComponent {
 
   private readonly schedulesApi = inject(VehicleSchedulesApiService);
   private readonly auth = inject(AuthService);
+  private readonly perms = inject(PermissionsService);
   private readonly toast = inject(ToastService);
 
   protected readonly ClockIcon = Clock;
@@ -709,9 +711,13 @@ export class VehicleScheduleComponent {
   protected readonly advancedExpanded = signal(false);
   protected readonly countryChoices = COUNTRY_CHOICES;
 
+  // Éditable si l'utilisateur a la permission `schedules_manage` SUR CE VÉHICULE (mêmes règles
+  // per-scope que le backend). Avant : condition par RÔLE (seuls admins) → l'opérateur désigné
+  // (ex. veilleur/gestionnaire à qui le CDEF a accordé la permission) voyait l'onglet mais ne
+  // pouvait rien modifier. Admins (SA/FA) restent éditeurs via le bypass de `perms.can`.
   protected readonly readonly = computed(() => {
-    const role = this.auth.user()?.role;
-    return role !== 'FLEET_ADMIN' && role !== 'SUPER_ADMIN';
+    const vid = this.vehicleId();
+    return !this.perms.can('schedules_manage', vid);
   });
 
   /** Nombre de jours actifs (utilisé dans le sub-titre header). */
@@ -739,9 +745,10 @@ export class VehicleScheduleComponent {
       'reset-default': (key) => ({
         key,
         label: DAY_LABELS[key]!,
-        enabled: !['saturday', 'sunday'].includes(key),
+        // Défaut CDEF (2026-07) : 08:00–22:00 du lundi au dimanche.
+        enabled: true,
         start: '08:00',
-        end: '20:00',
+        end: '22:00',
       }),
     };
     this.days.set(DAY_KEYS.map((key) => map[preset](key)));
@@ -1002,12 +1009,13 @@ export class VehicleScheduleComponent {
   }
 
   private defaultDays(): DayRow[] {
+    // Défaut demandé (CDEF, 2026-07) : 08:00–22:00 du LUNDI AU DIMANCHE (tous les jours actifs).
     return DAY_KEYS.map((key) => ({
       key,
       label: DAY_LABELS[key],
-      enabled: !['saturday', 'sunday'].includes(key),
+      enabled: true,
       start: '08:00',
-      end: '20:00',
+      end: '22:00',
     }));
   }
 
@@ -1017,7 +1025,7 @@ export class VehicleScheduleComponent {
       label: DAY_LABELS[key],
       enabled: (s as any)[`${key}Enabled`] ?? false,
       start: (s as any)[`${key}Start`] ?? '08:00',
-      end: (s as any)[`${key}End`] ?? '20:00',
+      end: (s as any)[`${key}End`] ?? '22:00',
     }));
   }
 }

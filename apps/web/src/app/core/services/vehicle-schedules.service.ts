@@ -1,6 +1,11 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
+import type {
+  BulkScheduleApplyResponse,
+  BulkSchedulePreviewResponse,
+  FleetScheduleListResponse,
+} from '@vizyo/tracky-shared';
 
 export interface ScheduleSlot {
   start: string;
@@ -128,5 +133,28 @@ export class VehicleSchedulesApiService {
       `/api/vehicles/${vehicleId}/schedule/history`,
       { params: { limit: String(limit) } },
     );
+  }
+
+  // ─── Demande CDEF (2026-07) — Page flotte « Horaires » (vue d'ensemble + actions de masse) ───
+
+  /** Vue d'ensemble : 1 ligne par véhicule (config + état live + compte-à-rebours). */
+  listFleet(): Observable<FleetScheduleListResponse> {
+    return this.http.get<FleetScheduleListResponse>('/api/fleet-schedules');
+  }
+
+  /** Aperçu d'un bulk AVANT application (combien seraient coupés maintenant, etc.). */
+  bulkPreview(payload: {
+    vehicleIds?: string[];
+    schedule: UpsertSchedulePayload;
+  }): Observable<BulkSchedulePreviewResponse> {
+    return this.http.post<BulkSchedulePreviewResponse>('/api/fleet-schedules/bulk/preview', payload);
+  }
+
+  /** Applique un bulk (activer/désactiver + poser des horaires) sur le périmètre autorisé. */
+  bulkApply(payload: {
+    vehicleIds?: string[];
+    schedule: UpsertSchedulePayload;
+  }): Observable<BulkScheduleApplyResponse> {
+    return this.http.post<BulkScheduleApplyResponse>('/api/fleet-schedules/bulk', payload);
   }
 }

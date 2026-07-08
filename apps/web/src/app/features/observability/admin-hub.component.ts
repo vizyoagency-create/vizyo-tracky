@@ -267,6 +267,18 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
             <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
           </div>
         </a>
+
+        <a routerLink="/admin/background-tasks" class="card card-wide" style="--i:15">
+          <span class="accent accent-violet"></span>
+          <div class="body body-row">
+            <div class="ico ico-violet"><lucide-icon [img]="CalendarClock" [size]="20"></lucide-icon></div>
+            <div class="body-text">
+              <h3>Automatisations &amp; tâches de fond</h3>
+              <p class="desc">Tout ce qui tourne en arrière-plan (horaires véhicules, rapports IA, purges, sécurité, temps réel) réuni au même endroit : période, prochain lancement (compte-à-rebours), état et réglages. Plus rien d'invisible.</p>
+            </div>
+            <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
+          </div>
+        </a>
       </div>
     </div>
   `,

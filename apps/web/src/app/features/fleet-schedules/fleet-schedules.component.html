@@ -1,0 +1,282 @@
+<div class="fsched">
+  <!-- En-tête -->
+  <header class="fsched-head">
+    <div>
+      <h1>Horaires de la flotte</h1>
+      <p class="sub">
+        Coupe &amp; reprise moteur automatiques. La coupe n'intervient
+        <strong>jamais sur un véhicule en mouvement</strong> : on attend
+        {{ cutMinStoppedSec() >= 60 ? (cutMinStoppedSec() / 60) + ' min' : cutMinStoppedSec() + ' s' }}
+        d'arrêt réel.
+      </p>
+    </div>
+    <div class="head-actions">
+      @if (lastUpdated()) {
+        <span class="live-dot" [class.stale]="refreshing()"></span>
+        <span class="muted small">Mis à jour {{ 'à l’instant' }}</span>
+      }
+      <button type="button" class="btn ghost" (click)="load(true)" [disabled]="refreshing()">
+        <lucide-icon [img]="RefreshCwIcon" [size]="16" [class.spin]="refreshing()" />
+        Rafraîchir
+      </button>
+    </div>
+  </header>
+
+  @if (loading()) {
+    <div class="card skeleton">Chargement des horaires…</div>
+  } @else {
+    <!-- Bandeau ROULE ENCORE (priorité absolue) -->
+    @if (drivingRows().length > 0) {
+      <div class="banner danger">
+        <lucide-icon [img]="AlertTriangleIcon" [size]="20" />
+        <div>
+          <strong>{{ drivingRows().length }} véhicule(s) roulent encore après leur heure de coupe.</strong>
+          La coupe est différée jusqu'à l'arrêt (sécurité). À surveiller :
+          <span class="plates">
+            @for (r of drivingRows(); track r.vehicleId) {
+              <span class="plate-chip">{{ r.plate }}{{ r.lastSpeedKmh != null ? ' · ' + r.lastSpeedKmh + ' km/h' : '' }}</span>
+            }
+          </span>
+        </div>
+      </div>
+    }
+
+    <!-- Synthèse -->
+    <div class="tiles">
+      <div class="tile"><span class="n">{{ summary().total }}</span><span class="l">Véhicules</span></div>
+      <div class="tile"><span class="n">{{ summary().enabled }}</span><span class="l">Automatisés</span></div>
+      <div class="tile"><span class="n ok">{{ summary().total - summary().enabled }}</span><span class="l">Sans horaire</span></div>
+      <div class="tile"><span class="n cut">{{ summary().cut }}</span><span class="l">Coupés</span></div>
+      <div class="tile" [class.hot]="summary().driving > 0"><span class="n danger">{{ summary().driving }}</span><span class="l">Roulent encore</span></div>
+      <div class="tile"><span class="n warn">{{ summary().awaiting }}</span><span class="l">Attente d'arrêt</span></div>
+    </div>
+
+    <!-- Action de masse -->
+    <div class="card bulk">
+      <div class="bulk-head">
+        <h2>Appliquer des horaires à toute la flotte</h2>
+        <p class="muted small">Active l'automatisation et pose la même plage sur les véhicules de votre périmètre.</p>
+      </div>
+      <div class="bulk-form">
+        <label>De <input type="time" [ngModel]="bulkStart()" (ngModelChange)="bulkStart.set($event)" /></label>
+        <label>à <input type="time" [ngModel]="bulkEnd()" (ngModelChange)="bulkEnd.set($event)" /></label>
+        <div class="days">
+          @for (d of DAY_KEYS; track d) {
+            <button type="button" class="day" [class.on]="bulkDays()[d]" (click)="toggleDay(d)">{{ DAY_LABELS[d] }}</button>
+          }
+        </div>
+        <div class="bulk-actions">
+          <button type="button" class="btn primary" (click)="openPreview(false)" [disabled]="previewLoading()">
+            <lucide-icon [img]="PowerIcon" [size]="16" /> Aperçu &amp; appliquer
+          </button>
+          <button type="button" class="btn danger-ghost" (click)="openPreview(true)" [disabled]="previewLoading()">
+            <lucide-icon [img]="PowerOffIcon" [size]="16" /> Désactiver sur la flotte
+          </button>
+        </div>
+      </div>
+    </div>
+
+    @if (truncated()) {
+      <div class="banner info small">
+        Beaucoup de véhicules en attente d'arrêt : certains compte-à-rebours « arrêt » ne sont pas affichés précisément (ils s'afficheront au prochain rafraîchissement).
+      </div>
+    }
+
+    <!-- Tableau -->
+    @if (filteredRows().length === 0) {
+      <div class="card empty">Aucun véhicule dans votre périmètre.</div>
+    } @else {
+      <div class="card table-wrap">
+        <table class="tbl">
+          <thead>
+            <tr>
+              <th>Véhicule</th>
+              <th>Plage du jour</th>
+              <th>État</th>
+              <th>Prochaine bascule</th>
+              <th class="right">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (r of filteredRows(); track trackByVehicle($index, r)) {
+              <tr [class.row-hot]="displayPending(r) === 'DRIVING'">
+                <td>
+                  <div class="veh">
+                    <span class="plate">{{ r.plate }}</span>
+                    @if (r.group) { <span class="grp">{{ r.group.name }}</span> }
+                  </div>
+                  <div class="muted xsmall">{{ r.brand }} {{ r.model }}</div>
+                </td>
+                <td>
+                  @if (!r.scheduleEnabled) {
+                    <span class="muted">—</span>
+                  } @else if (r.windowDesc) {
+                    <span>{{ r.windowDesc }}</span>
+                  } @else {
+                    <span class="muted">Toute la journée</span>
+                  }
+                </td>
+                <td>
+                  <span class="chip" [ngClass]="stateChip(r).cls">
+                    <lucide-icon [img]="stateChip(r).icon" [size]="13" />
+                    {{ stateChip(r).label }}
+                  </span>
+                  @if (displayPending(r) === 'AWAITING_STOP' && awaitingCountdown(r)) {
+                    <div class="xsmall warn-txt">Coupe possible dans {{ awaitingCountdown(r) }}</div>
+                  }
+                </td>
+                <td>
+                  @if (r.overrideActive) {
+                    <span class="muted">Suspendu</span>
+                  } @else if (countdown(r)) {
+                    <div class="cd">
+                      <span class="cd-verb">{{ countdownVerb(r) }}</span>
+                      <span class="cd-val" [class.cd-cut]="r.nextTransitionAction === 'CUT'">{{ countdown(r) }}</span>
+                    </div>
+                  } @else {
+                    <span class="muted">—</span>
+                  }
+                </td>
+                <td class="right">
+                  <button type="button" class="btn icon" (click)="openEditor(r)" [disabled]="!canEdit(r)" title="Modifier les horaires">
+                    <lucide-icon [img]="PencilIcon" [size]="16" />
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  }
+
+  <!-- Drawer d'édition (réutilise l'éditeur de la fiche véhicule → synchro garantie) -->
+  @if (editingVehicleId(); as vid) {
+    <div class="drawer-scrim" (click)="closeEditor()"></div>
+    <aside class="drawer">
+      <div class="drawer-head">
+        <h3>Horaires — {{ editingPlate() }}</h3>
+        <button type="button" class="btn icon" (click)="closeEditor()"><lucide-icon [img]="XIcon" [size]="18" /></button>
+      </div>
+      <div class="drawer-body">
+        <app-vehicle-schedule [vehicleId]="vid" [hasTracker]="editingHasTracker()" />
+      </div>
+    </aside>
+  }
+
+  <!-- Modale d'aperçu du bulk -->
+  @if (previewData(); as pv) {
+    <div class="modal-scrim" (click)="cancelPreview()"></div>
+    <div class="modal" role="dialog" aria-modal="true">
+      <h3>
+        {{ pendingDisable() ? 'Désactiver l’automatisation' : 'Appliquer les horaires' }}
+      </h3>
+      @if (pendingDisable()) {
+        <p>L'automatisation horaire sera <strong>désactivée</strong> sur <strong>{{ pv.total }}</strong> véhicule(s). Les véhicules actuellement coupés par l'horaire seront <strong>rétablis</strong>.</p>
+      } @else {
+        <p class="muted small">Effet immédiat estimé de la plage {{ bulkStart() }}–{{ bulkEnd() }} :</p>
+        <ul class="preview-list">
+          <li><b>{{ pv.total }}</b> véhicule(s) ciblé(s)</li>
+          <li class="ok"><b>{{ pv.inWindowNow }}</b> dans la plage → aucune coupe</li>
+          <li class="cut"><b>{{ pv.wouldCutNow }}</b> à l'arrêt depuis ≥ 10 min → <strong>coupés maintenant</strong></li>
+          @if (pv.wouldDeferDwell > 0) { <li class="warn"><b>{{ pv.wouldDeferDwell }}</b> arrêtés depuis moins de 10 min → coupe différée</li> }
+          <li class="warn"><b>{{ pv.wouldDeferMoving }}</b> roulent → coupe différée jusqu'à l'arrêt</li>
+          <li class="warn"><b>{{ pv.wouldDeferOffline }}</b> hors ligne → coupe dès reconnexion</li>
+          @if (pv.withoutTracker > 0) { <li class="muted"><b>{{ pv.withoutTracker }}</b> sans boîtier → ignorés</li> }
+        </ul>
+      }
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" (click)="cancelPreview()" [disabled]="applying()">Annuler</button>
+        <button type="button" class="btn" [class.primary]="!pendingDisable()" [class.danger-solid]="pendingDisable()" (click)="confirmApply()" [disabled]="applying()">
+          <lucide-icon [img]="CheckIcon" [size]="16" />
+          {{ applying() ? 'Application…' : (pendingDisable() ? 'Désactiver' : 'Appliquer') }}
+        </button>
+      </div>
+    </div>
+  }
+
+  <!-- Panneau de SUIVI après application — pensé pour aller vite et tout comprendre -->
+  @if (applyResults(); as results) {
+    <div class="modal-scrim" (click)="closeApplyPanel()"></div>
+    <div class="modal apply-panel" role="dialog" aria-modal="true">
+      <div class="ap-head">
+        <div class="ap-badge"><lucide-icon [img]="CheckIcon" [size]="22" /></div>
+        <div class="ap-head-txt">
+          <h3>C'est appliqué&nbsp;!</h3>
+          <p class="muted small">Voici ce qui se passe pour vos véhicules. Vous n'avez rien d'autre à faire.</p>
+        </div>
+        <button type="button" class="btn icon" (click)="closeApplyPanel()"><lucide-icon [img]="XIcon" [size]="18" /></button>
+      </div>
+
+      <!-- Voitures qui roulent encore : LE point important -->
+      @if (applyPending().length > 0) {
+        <section class="ap-sec pending">
+          <div class="ap-sec-head">
+            <lucide-icon [img]="TimerIcon" [size]="16" />
+            <b>{{ applyPending().length }} voiture(s) pas encore coupée(s)</b>
+            <span class="ap-progress">{{ applyPendingDoneCount() }} / {{ applyPending().length }} coupées</span>
+          </div>
+          <p class="ap-explain">
+            On ne coupe <b>jamais</b> une voiture en marche&nbsp;: c'est pour la sécurité. Chacune se coupera
+            <b>toute seule</b> dès qu'elle restera à l'arrêt 10&nbsp;minutes.
+            @if (applyPendingOffline() > 0) {
+              {{ applyPendingOffline() }} sont hors ligne&nbsp;: elles seront coupées <b>dès qu'elles se reconnecteront</b>.
+            }
+            Cette liste se met à jour automatiquement, vous pouvez fermer cette fenêtre.
+          </p>
+          <div class="ap-cards">
+            @for (r of applyPending(); track r.vehicleId) {
+              <div class="ap-card" [class.done]="pendingResolved(r.vehicleId)">
+                @if (pendingResolved(r.vehicleId)) {
+                  <lucide-icon [img]="PowerOffIcon" [size]="15" />
+                  <span class="ap-plate">{{ r.plate }}</span>
+                  <span class="ap-state ok">✓ coupée</span>
+                } @else {
+                  <span class="ap-spinner" aria-hidden="true"></span>
+                  <span class="ap-plate">{{ r.plate }}</span>
+                  @switch (pendingKind(r.vehicleId)) {
+                    @case ('DRIVING') { <span class="ap-state">roule — en attente d'arrêt…</span> }
+                    @case ('AWAITING_STOP') { <span class="ap-state">à l'arrêt — coupe imminente…</span> }
+                    @case ('OFFLINE') { <span class="ap-state">hors ligne — dès reconnexion</span> }
+                    @default { <span class="ap-state">en attente…</span> }
+                  }
+                }
+              </div>
+            }
+          </div>
+        </section>
+      }
+
+      <!-- Déjà coupées -->
+      @if (applyCut().length > 0) {
+        <section class="ap-sec">
+          <div class="ap-sec-head"><lucide-icon [img]="PowerOffIcon" [size]="16" /><b>{{ applyCut().length }} voiture(s) déjà coupée(s)</b></div>
+          <p class="ap-explain">Elles étaient à l'arrêt&nbsp;: coupées tout de suite.</p>
+          <div class="ap-chips">@for (r of applyCut(); track r.vehicleId) { <span class="ap-chip cut">{{ r.plate }}</span> }</div>
+        </section>
+      }
+
+      <!-- Dans les horaires autorisés -->
+      @if (applyNone().length > 0) {
+        <section class="ap-sec">
+          <div class="ap-sec-head"><lucide-icon [img]="PowerIcon" [size]="16" /><b>{{ applyNone().length }} voiture(s) peuvent rouler</b></div>
+          <p class="ap-explain">On est dans leurs horaires autorisés&nbsp;: rien à couper pour l'instant. Elles seront coupées automatiquement à l'heure de fin.</p>
+          <div class="ap-chips">@for (r of applyNone(); track r.vehicleId) { <span class="ap-chip okc">{{ r.plate }}</span> }</div>
+        </section>
+      }
+
+      <!-- Échecs -->
+      @if (applyFailed().length > 0) {
+        <section class="ap-sec">
+          <div class="ap-sec-head danger-h"><lucide-icon [img]="AlertTriangleIcon" [size]="16" /><b>{{ applyFailed().length }} n'ont pas pu être réglée(s)</b></div>
+          <p class="ap-explain">Souvent&nbsp;: pas de boîtier GPS installé. Vous pouvez réessayer plus tard.</p>
+          <div class="ap-chips">@for (r of applyFailed(); track r.vehicleId) { <span class="ap-chip fail" [title]="r.error || ''">{{ r.plate }}</span> }</div>
+        </section>
+      }
+
+      <div class="modal-actions">
+        <button type="button" class="btn primary" (click)="closeApplyPanel()">J'ai compris</button>
+      </div>
+    </div>
+  }
+</div>

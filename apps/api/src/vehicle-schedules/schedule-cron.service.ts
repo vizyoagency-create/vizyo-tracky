@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import { CommandStatus, EngineAction, type VehicleSchedule } from '@prisma/client';
@@ -167,19 +167,24 @@ export class ScheduleCronService {
       );
     } catch (err) {
       const msg = (err as Error).message ?? '';
-      // REJECTED_SPEED = vehicle is moving → retry on next tick (don't update state)
-      if (msg.includes('Vitesse') || msg.includes('speed') || msg.includes('stale') || msg.includes('position')) {
+      // REPORT (defer) : la commande ne peut pas s'appliquer MAINTENANT mais devra être
+      // retentée — véhicule en mouvement, arrêt trop récent (règle 10 min CDEF), position
+      // périmée/invalide, ou tracker hors ligne. Tous ces refus sont des ForbiddenException
+      // (garde-fous de coupe) ou ServiceUnavailableException (dispatch impossible). On NE met
+      // PAS à jour lastEvaluatedState → le prochain tick réessaiera. Ce n'est PAS une erreur
+      // applicative : on log en warn, on n'alimente PAS le centre d'alertes.
+      // Revue : on NE se fie QU'aux types. Tous les refus « report » réels sont soit un
+      // ForbiddenException (garde-fous de coupe : vitesse, arrêt récent, fix, no-position) soit
+      // un ServiceUnavailableException (dispatch impossible / hors ligne). Toute AUTRE erreur
+      // (bug applicatif, panne Prisma, etc.) DOIT remonter (throw) pour alimenter le centre
+      // d'alertes — les anciens tests `msg.includes(...)` pouvaient l'avaler par coïncidence de
+      // sous-chaîne (ex. message contenant « position ») → coupe jamais appliquée, en silence.
+      const isDeferrable =
+        err instanceof ForbiddenException || err instanceof ServiceUnavailableException;
+      if (isDeferrable) {
         this.logger.warn(
           { vehicleId: schedule.vehicleId, error: msg },
-          'Schedule action deferred (speed guard)',
-        );
-        return;
-      }
-      // Tracker offline → don't update state, retry later
-      if (msg.includes('hors ligne') || msg.includes('offline')) {
-        this.logger.warn(
-          { vehicleId: schedule.vehicleId, error: msg },
-          'Schedule action deferred (tracker offline)',
+          'Schedule action deferred (retry next tick)',
         );
         return;
       }

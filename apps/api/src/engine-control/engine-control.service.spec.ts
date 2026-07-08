@@ -472,7 +472,11 @@ describe('EngineControlService', () => {
   // doit pas etre bloque par une coupure manuelle en attente de confirmation).
   it('should NOT block a SCHEDULER CUT even when a confirmable CUT is in flight', async () => {
     prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
-    prisma.position.findFirst.mockResolvedValue({ ...recentPosition(0), ignition: true });
+    // 1er findFirst = lastPosition (à l'arrêt) ; 2e = scan « mouvement récent » de la règle
+    // 10 min (source SCHEDULER) → null = aucun mouvement récent → la coupe passe le garde-fou.
+    prisma.position.findFirst
+      .mockResolvedValueOnce({ ...recentPosition(0), ignition: true })
+      .mockResolvedValueOnce(null);
     prisma.engineControlCommand.findFirst.mockResolvedValue(
       createdCommand({ status: CommandStatus.SENT, confirmationExpected: true }),
     );
@@ -626,5 +630,63 @@ describe('EngineControlService', () => {
     const deltaMs = (call![0].data.overrideUntil as Date).getTime() - Date.now();
     expect(deltaMs).toBeGreaterThan(50 * 60 * 1000); // ~1h, surtout PAS indéfini
     expect(deltaMs).toBeLessThan(70 * 60 * 1000);
+  });
+
+  // --- Demande CDEF (2026-07) — COUPE AUTOMATIQUE (source SCHEDULER) : jamais couper en
+  // mouvement + attendre 10 min d'arrêt réel. Gating par SOURCE (pas par rôle), TOUTES flottes. ---
+
+  // SCH-1. Report SEC (throw sans commande) si le véhicule roule (>5 km/h) — même ≤ 20 (qu'un
+  // admin couperait). Anti-bloat : aucune REJECTED_SPEED empilée à chaque tick minute.
+  it('should DEFER a SCHEDULER CUT (throw, no command created) when the vehicle is moving (>5 km/h)', async () => {
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+    prisma.position.findFirst.mockResolvedValue(recentPosition(15)); // roule à 15 km/h
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.CUT, null, superAdmin, 'SCHEDULER'),
+    ).rejects.toThrow(ForbiddenException);
+    expect(prisma.engineControlCommand.create).not.toHaveBeenCalled();
+    expect(prisma.position.findFirst).toHaveBeenCalledTimes(1); // pas de scan dwell si déjà en mouvement
+  });
+
+  // SCH-2. Report si à l'arrêt mais immobile depuis trop peu (trame en mouvement dans la fenêtre 10 min).
+  it('should DEFER a SCHEDULER CUT when stopped for less than the required window (recent movement)', async () => {
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+    prisma.position.findFirst
+      .mockResolvedValueOnce(recentPosition(0)) // lastPosition : à l'arrêt
+      .mockResolvedValueOnce({ timestamp: new Date(Date.now() - 2 * 60 * 1000) }); // a bougé il y a 2 min
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.CUT, null, superAdmin, 'SCHEDULER'),
+    ).rejects.toThrow(/arrêté depuis seulement/);
+    expect(prisma.engineControlCommand.create).not.toHaveBeenCalled();
+  });
+
+  // SCH-3. ACCEPTÉ si à l'arrêt ET aucun mouvement dans la fenêtre (immobile ≥ 10 min) → PENDING
+  // puis échec dispatch (offline). La coupe auto est bien émise, source SCHEDULER.
+  it('should ALLOW a SCHEDULER CUT when stopped long enough (no movement in the window)', async () => {
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+    prisma.position.findFirst
+      .mockResolvedValueOnce(recentPosition(0)) // à l'arrêt
+      .mockResolvedValueOnce(null); // aucune trame en mouvement dans la fenêtre
+    registry.send.mockReturnValue(false);
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.CUT, null, superAdmin, 'SCHEDULER'),
+    ).rejects.toThrow(ServiceUnavailableException); // passe le garde-fou, échoue au dispatch offline
+    expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ status: CommandStatus.PENDING, source: 'SCHEDULER' }),
+    });
+  });
+
+  // SCH-4. Non-régression — la règle 10 min est branchée sur la SOURCE, pas le rôle : une coupe
+  // MANUELLE (même SUPER_ADMIN) garde la coupe antivol S2 (≤ 20 km/h) et n'est PAS différée.
+  it('should NOT apply the schedule 10-min rule to a MANUAL cut (source-gated): cuts at 15 km/h', async () => {
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+    prisma.position.findFirst.mockResolvedValue(recentPosition(15));
+    registry.send.mockReturnValue(false);
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.CUT, null, superAdmin, 'MANUAL'),
+    ).rejects.toThrow(ServiceUnavailableException); // passe S2 (≤20), échoue au dispatch
+    expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ status: CommandStatus.PENDING }),
+    });
+    expect(prisma.position.findFirst).toHaveBeenCalledTimes(1); // pas de scan dwell sur une coupe manuelle
   });
 });

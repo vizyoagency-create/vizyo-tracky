@@ -48,14 +48,29 @@ const DAYS = [
  * Returns naive Date components matching the tz, so we can read getHours()
  * etc. as if we were in that timezone.
  */
+/**
+ * Cache des Intl.DateTimeFormat par fuseau. Revue perf : `computeNextTransition` peut appeler
+ * `getNowInTimezone` des milliers de fois par véhicule ; reconstruire un formateur à chaque appel
+ * saturait l'event-loop sur une grosse flotte. Un formateur par fuseau suffit (résultat identique
+ * pour un instant donné). Clé = timezone.
+ */
+const _tzFormatterCache = new Map<string, Intl.DateTimeFormat>();
+function getTzFormatter(timezone: string): Intl.DateTimeFormat {
+  let f = _tzFormatterCache.get(timezone);
+  if (!f) {
+    f = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false,
+    });
+    _tzFormatterCache.set(timezone, f);
+  }
+  return f;
+}
+
 export function getNowInTimezone(timezone: string, base: Date = new Date()): Date {
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-    hour12: false,
-  });
-  const parts = formatter.formatToParts(base);
+  const parts = getTzFormatter(timezone).formatToParts(base);
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '0';
   return new Date(
     Number(get('year')),
@@ -191,4 +206,37 @@ export function evaluateSchedule(
     reason: out.hit ? 'IN_WINDOW' : 'OUT_OF_WINDOW',
     windowDesc: out.desc,
   };
+}
+
+/**
+ * Prochaine bascule de fenêtre (CUT / RESTORE) après `base`, en INSTANT ABSOLU.
+ *
+ * Sert au compte-à-rebours « dans combien de temps la voiture sera coupée / rendue »
+ * de la page flotte. On ré-évalue `evaluateSchedule` en avançant dans le temps RÉEL
+ * (pas de calcul de fuseau à la main → nuit + DST gérés par evaluateSchedule lui-même,
+ * puisqu'on lui passe un instant absolu qu'il reconvertit dans le fuseau du planning).
+ * Pas de 1 min, horizon 8 jours, sortie anticipée au 1er changement d'état.
+ *
+ * Retourne `null` si aucune bascule dans l'horizon (planning « toujours ouvert » ou
+ * « toujours fermé », ex. tous les jours activés sans plages). Granularité = 1 min ;
+ * le client interpole ensuite en local (timer 1 s). Perf : le formateur Intl est mémoïsé
+ * par fuseau (cf getTzFormatter) et le résultat est mis en cache par
+ * (scheduleId, updatedAt) côté FleetSchedulesService — recalculé seulement à l'édition du
+ * planning ou une fois la bascule passée. Le cas courant (planning quotidien) sort en < 24 h.
+ */
+export function computeNextTransition(
+  schedule: VehicleSchedule,
+  base: Date = new Date(),
+): { at: Date; action: 'CUT' | 'RESTORE' } | null {
+  const current = evaluateSchedule(schedule, base).state;
+  const STEP_MS = 60 * 1000;
+  const HORIZON_MS = 8 * 24 * 60 * 60 * 1000;
+  for (let elapsed = STEP_MS; elapsed <= HORIZON_MS; elapsed += STEP_MS) {
+    const at = new Date(base.getTime() + elapsed);
+    const next = evaluateSchedule(schedule, at).state;
+    if (next !== current) {
+      return { at, action: next === 'IN_WINDOW' ? 'RESTORE' : 'CUT' };
+    }
+  }
+  return null;
 }
