@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma, UserRole } from '@prisma/client';
 import type { TripAnalysisDto } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 import { SpeedLimitService } from './speed-limit.service';
@@ -32,6 +33,7 @@ export class TripAnalysisService {
     private readonly prisma: PrismaService,
     private readonly vehicleAccess: VehicleAccessService,
     private readonly speedLimits: SpeedLimitService,
+    private readonly errorLogger: ErrorLogger,
   ) {}
 
   /** Analyse (ou ré-analyse) un trajet et persiste le résultat. */
@@ -47,9 +49,20 @@ export class TripAnalysisService {
     // Anti-IDOR : 404 (pas 403) pour ne pas révéler l'existence d'un trajet hors périmètre.
     if (!(await this.vehicleAccess.hasAccessToVehicle(user, trip.vehicleId))) throw new NotFoundException('Trajet introuvable');
 
-    const result = await this.compute(trip);
-    const row = await this.persist(trip, result);
-    return this.toDto(row, this.maskFor(user));
+    try {
+      const result = await this.compute(trip);
+      const row = await this.persist(trip, result);
+      return this.toDto(row, this.maskFor(user));
+    } catch (e) {
+      // Échec du calcul déterministe (positions / préprocesseur / persistance) → centre d'alerte,
+      // avec le contexte du trajet. On re-lève ensuite (le client reçoit bien l'erreur).
+      void this.errorLogger.record(
+        e instanceof Error ? e : new Error(String(e)),
+        'trip-analysis',
+        { tripId, vehicleId: trip.vehicleId, fleetId: trip.fleetId, stage: 'compute' },
+      );
+      throw e;
+    }
   }
 
   /** Lit l'analyse persistée d'un trajet (null si jamais calculée). */
@@ -103,7 +116,14 @@ export class TripAnalysisService {
     try {
       resolver = await this.speedLimits.buildResolver(candidates);
     } catch (e) {
+      // buildResolver gère déjà l'indispo Overpass en interne (best-effort + trace) ; ce catch ne se
+      // déclenche que pour un échec INATTENDU du résolveur → on trace et on continue sans limites.
       this.logger.warn(`limites OSM indisponibles : ${(e as Error)?.message ?? e}`);
+      void this.errorLogger.record(
+        e instanceof Error ? e : new Error(String(e)),
+        'trip-analysis',
+        { vehicleId: trip.vehicleId, fleetId: trip.fleetId, stage: 'speed-limit-resolver' },
+      );
     }
     return analyzeTrip(raw, this.vehicleFuel(trip), resolver);
   }

@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { LimitResolver } from './trip-analysis.preprocessor';
 
@@ -19,7 +20,10 @@ export class SpeedLimitService {
   /** Rayon de recherche de la route (m). */
   private readonly RADIUS_M = 20;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly errorLogger: ErrorLogger,
+  ) {}
 
   /** Clé de cache : coords arrondies à 4 décimales (~11 m) → mutualise un segment de route. */
   private key(lat: number, lng: number): string {
@@ -51,15 +55,34 @@ export class SpeedLimitService {
     }
     for (const c of cached) map.set(c.key, c.maxspeed);
 
-    // 2. Overpass pour les manquants (borné).
+    // 2. Overpass pour les manquants (borné). On COMPTE les échecs de transport (Overpass down) pour
+    //    remonter UNE seule alerte par analyse (pas une par point) au centre d'alerte.
     let live = 0;
+    let failures = 0;
+    let lastError: unknown = null;
     for (const [k, p] of cells) {
       if (map.has(k)) continue;
       if (live >= this.MAX_LIVE) { map.set(k, null); continue; } // au-delà du plafond → inconnu (non re-tapé)
       live++;
-      const limit = await this.fetchMaxspeed(p.lat, p.lng);
-      map.set(k, limit);
-      this.prisma.speedLimitCache.create({ data: { key: k, maxspeed: limit, lat: p.lat, lng: p.lng } }).catch(() => { /* course : sans gravité */ });
+      try {
+        const limit = await this.fetchMaxspeed(p.lat, p.lng);
+        map.set(k, limit);
+        // Mémorise MÊME l'inconnu (route sans tag) pour ne pas re-taper ; un échec transport ne cache rien.
+        this.prisma.speedLimitCache.create({ data: { key: k, maxspeed: limit, lat: p.lat, lng: p.lng } }).catch(() => { /* course : sans gravité */ });
+      } catch (e) {
+        failures++;
+        lastError = e;
+        map.set(k, null); // inconnu pour cette analyse (NON caché → sera re-tenté plus tard)
+      }
+    }
+    // Overpass systématiquement injoignable → l'excès de vitesse n'a pas pu être affirmé : on TRACE
+    // (une alerte, source `trip-analysis`, visible dans /admin/alerts). Best-effort : jamais bloquant.
+    if (live > 0 && failures === live) {
+      void this.errorLogger.record(
+        lastError instanceof Error ? lastError : new Error(String(lastError ?? 'Overpass indisponible')),
+        'trip-analysis',
+        { feature: 'speed-limit-osm', pointsAttempted: live, overpass: process.env.OVERPASS_URL || 'public' },
+      );
     }
 
     return (lat: number, lng: number) => {
@@ -86,7 +109,9 @@ export class SpeedLimitService {
         body: 'data=' + encodeURIComponent(q),
         signal: ctrl.signal,
       });
-      if (!res.ok) return null;
+      // Échec TRANSPORT (Overpass down / throttlé / 5xx) → on LÈVE pour que l'appelant compte l'échec
+      // et trace ; distinct d'une résolution légitime « aucune route » (null) qui, elle, est mémorisée.
+      if (!res.ok) throw new Error(`Overpass HTTP ${res.status}`);
       const json = (await res.json()) as { elements?: Array<{ tags?: Record<string, string> }> };
       // Voies ROUTABLES uniquement (exclut trottoirs/pistes/chemins qui fausseraient la limite).
       const ways = (json.elements ?? []).map((e) => e.tags ?? {}).filter((t) => t.highway && !NON_DRIVABLE.has(t.highway));
@@ -96,9 +121,6 @@ export class SpeedLimitService {
       // 2. Sinon, inférence par le type de la 1re route reconnue (défaut FR).
       const drivable = ways.find((t) => INFER[t.highway] != null) ?? ways[0];
       return inferFromHighway(drivable.highway);
-    } catch (e) {
-      this.logger.warn(`Overpass échec (${lat},${lng}) : ${(e as Error)?.message ?? e}`);
-      return null;
     } finally {
       clearTimeout(timer);
     }
