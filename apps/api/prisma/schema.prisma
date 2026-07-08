@@ -1146,6 +1146,74 @@ model SpeedLimitCache {
   @@map("speed_limit_cache")
 }
 
+/// Stations-service détectées (cache mutualisé). Source = API officielle prix carburants FR
+/// (`gouv-fr`, avec prix) ou OSM (`osm`, surtout la marque). Une station rencontrée par un arrêt
+/// de véhicule est mémorisée ici pour ne pas re-taper l'API et pour historiser ses prix.
+model FuelStation {
+  id         String   @id @default(uuid()) @db.Uuid
+  source     String // 'gouv-fr' | 'osm'
+  externalId String // id station gouv (ex "40500002") ou id de nœud OSM
+  brand      String? // marque (Total, Esso, Avia...) — best-effort via OSM
+  name       String?
+  address    String?
+  city       String?
+  postalCode String?
+  lat        Float
+  lng        Float
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  prices    FuelStationPrice[]
+  fuelStops TripFuelStop[]
+
+  @@unique([source, externalId])
+  @@index([lat, lng])
+  @@map("fuel_stations")
+}
+
+/// Historique des prix carburant d'une station (les prix bougent beaucoup → on capte à chaque
+/// résolution). Dédupliqué par (station, carburant, date de MAJ source) : un même relevé source
+/// n'est stocké qu'une fois, mais on garde l'évolution dans le temps pour l'analyse des coûts.
+model FuelStationPrice {
+  id              String      @id @default(uuid()) @db.Uuid
+  stationId       String      @db.Uuid
+  station         FuelStation @relation(fields: [stationId], references: [id], onDelete: Cascade)
+  fuelType        String // 'gazole' | 'sp95' | 'sp98' | 'e10' | 'e85' | 'gplc'
+  priceEur        Float // prix au litre
+  sourceUpdatedAt DateTime // date de MAJ du prix côté source (gouv)
+  capturedAt      DateTime    @default(now())
+
+  @@unique([stationId, fuelType, sourceUpdatedAt])
+  @@index([stationId, fuelType, capturedAt])
+  @@map("fuel_station_prices")
+}
+
+/// Passage détecté d'un véhicule à une station (un ARRÊT du trajet tombe sur une station). Sert à
+/// la fréquence (« passe tous les X jours »), à l'estimation de coût carburant (litres estimés ×
+/// prix capté) et aux rapports. Suit la convention de TripAnalysis : ids en Uuid sans relation
+/// Trip/Vehicle (seule la station est reliée). Re-analyse = les passages du trajet sont remplacés.
+model TripFuelStop {
+  id           String      @id @default(uuid()) @db.Uuid
+  tripId       String      @db.Uuid
+  fleetId      String      @db.Uuid
+  vehicleId    String      @db.Uuid
+  stationId    String      @db.Uuid
+  station      FuelStation @relation(fields: [stationId], references: [id], onDelete: Cascade)
+  arrivedAt    DateTime // début de l'arrêt
+  durationSec  Int
+  lat          Float
+  lng          Float
+  distanceM    Float // distance arrêt <-> station (m)
+  fuelType     String? // carburant du véhicule (mappé depuis vehicle.energy)
+  unitPriceEur Float? // prix au litre capté au moment du passage
+  createdAt    DateTime    @default(now())
+
+  @@index([vehicleId, arrivedAt])
+  @@index([fleetId, arrivedAt])
+  @@index([tripId])
+  @@map("trip_fuel_stops")
+}
+
 /// Palier B — Journal des actions AUTOMATIQUES / système (arrière-plan), distinct de
 /// UserActivity (actions manuelles front). Alimenté par les primitives d'envoi (email / SMS /
 /// push), les commandes moteur, la purge de rétention et les rapports IA planifiés. Couche

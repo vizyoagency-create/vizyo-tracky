@@ -24,6 +24,30 @@ export interface SpeedingSegmentDto {
   lng: number;
 }
 
+/**
+ * Passage détecté à une station-service (un ARRÊT du trajet tombe sur une station connue).
+ * `unitPriceEur` = prix au litre capté au moment du passage pour le carburant du véhicule (peut être
+ * null : carburant non déterminé, station sans ce carburant, ou API prix indisponible).
+ */
+export interface TripFuelStopDto {
+  stationId: string;
+  /** Marque (Total, Esso…) — best-effort via OSM, souvent null. */
+  brand: string | null;
+  name: string | null;
+  city: string | null;
+  address: string | null;
+  lat: number;
+  lng: number;
+  arrivedAt: string;
+  durationSec: number;
+  /** Distance arrêt ↔ station (m). */
+  distanceM: number;
+  /** Carburant retenu ('gazole' | 'sp95' | 'sp98' | 'e10' | 'e85' | 'gplc') ou null. */
+  fuelType: string | null;
+  /** Prix au litre capté (€) ou null. */
+  unitPriceEur: number | null;
+}
+
 export interface TripAnalysisDetailDto {
   /** Arrêts significatifs (≥ 4 min). */
   stops: TripStopDto[];
@@ -33,6 +57,8 @@ export interface TripAnalysisDetailDto {
   gpsGaps: { atSec: number; gapSec: number }[];
   /** Tracé simplifié (pour le replay / la carte) : lat/lng/temps/vitesse. */
   track: { lat: number; lng: number; t: string; speedKmh: number }[];
+  /** Passages en station-service détectés (arrêts tombant sur une station). Optionnel. */
+  fuelStops?: TripFuelStopDto[];
 }
 
 export interface TripAnalysisDto {

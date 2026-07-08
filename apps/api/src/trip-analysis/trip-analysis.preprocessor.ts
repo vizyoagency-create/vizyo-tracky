@@ -28,6 +28,12 @@ export type LimitResolver = (lat: number, lng: number) => number | null;
 export interface TripStopOut { lat: number; lng: number; arrivedAt: string; leftAt: string; durationMin: number; }
 export interface SpeedingSegment { startAt: string; endAt: string; durationSec: number; maxSpeedKmh: number; limitKmh: number; overKmh: number; lat: number; lng: number; }
 export interface TrackPoint { lat: number; lng: number; t: string; speedKmh: number; }
+/** Passage station-service (rempli par FuelStationService APRÈS le préprocesseur, jamais par la fonction pure). */
+export interface FuelStopOut {
+  stationId: string; brand: string | null; name: string | null; city: string | null; address: string | null;
+  lat: number; lng: number; arrivedAt: string; durationSec: number; distanceM: number;
+  fuelType: string | null; unitPriceEur: number | null;
+}
 
 export interface TripAnalysisResult {
   distanceKm: number;
@@ -54,6 +60,8 @@ export interface TripAnalysisResult {
     speeding: SpeedingSegment[];
     gpsGaps: { atSec: number; gapSec: number }[];
     track: TrackPoint[];
+    /** Passages en station détectés — ajoutés par le service (le préprocesseur pur laisse ce champ absent). */
+    fuelStops?: FuelStopOut[];
   };
 }
 

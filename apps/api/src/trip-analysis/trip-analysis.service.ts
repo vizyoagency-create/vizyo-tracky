@@ -5,6 +5,7 @@ import type { AuthUser } from '../auth/types/auth-user';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
+import { FuelStationService } from './fuel-station.service';
 import { SpeedLimitService } from './speed-limit.service';
 import { analyzeTrip, type RawPosition, type TripAnalysisResult } from './trip-analysis.preprocessor';
 
@@ -33,6 +34,7 @@ export class TripAnalysisService {
     private readonly prisma: PrismaService,
     private readonly vehicleAccess: VehicleAccessService,
     private readonly speedLimits: SpeedLimitService,
+    private readonly fuelStations: FuelStationService,
     private readonly errorLogger: ErrorLogger,
   ) {}
 
@@ -96,36 +98,56 @@ export class TripAnalysisService {
   // ── Interne ────────────────────────────────────────────────────────────────
 
   private async compute(trip: TripRow): Promise<TripAnalysisResult> {
+    let result: TripAnalysisResult;
     if (!trip.trackerId) {
       // Pas de tracker → pas de positions : analyse vide (mais persistable pour cohérence d'affichage).
-      return analyzeTrip([], this.vehicleFuel(trip));
-    }
-    const positions = await this.prisma.position.findMany({
-      where: { trackerId: trip.trackerId, timestamp: { gte: trip.startedAt, lte: trip.endedAt ?? new Date() } },
-      select: { lat: true, lng: true, speedKmh: true, heading: true, timestamp: true, valid: true, ignition: true, satellites: true },
-      orderBy: { timestamp: 'asc' },
-      take: MAX_POSITIONS,
-    });
-    const raw: RawPosition[] = positions;
+      result = analyzeTrip([], this.vehicleFuel(trip));
+    } else {
+      const positions = await this.prisma.position.findMany({
+        where: { trackerId: trip.trackerId, timestamp: { gte: trip.startedAt, lte: trip.endedAt ?? new Date() } },
+        select: { lat: true, lng: true, speedKmh: true, heading: true, timestamp: true, valid: true, ignition: true, satellites: true },
+        orderBy: { timestamp: 'asc' },
+        take: MAX_POSITIONS,
+      });
+      const raw: RawPosition[] = positions;
 
-    // Limites OSM uniquement pour les points RAPIDES (candidats d'excès) — borne le coût Overpass.
-    const candidates = positions
-      .filter((p) => p.valid !== false && p.speedKmh > SPEEDING_CANDIDATE_KMH && !(p.lat === 0 && p.lng === 0))
-      .map((p) => ({ lat: p.lat, lng: p.lng }));
-    let resolver;
+      // Limites OSM uniquement pour les points RAPIDES (candidats d'excès) — borne le coût Overpass.
+      const candidates = positions
+        .filter((p) => p.valid !== false && p.speedKmh > SPEEDING_CANDIDATE_KMH && !(p.lat === 0 && p.lng === 0))
+        .map((p) => ({ lat: p.lat, lng: p.lng }));
+      let resolver;
+      try {
+        resolver = await this.speedLimits.buildResolver(candidates);
+      } catch (e) {
+        // buildResolver gère déjà l'indispo Overpass en interne (best-effort + trace) ; ce catch ne se
+        // déclenche que pour un échec INATTENDU du résolveur → on trace et on continue sans limites.
+        this.logger.warn(`limites OSM indisponibles : ${(e as Error)?.message ?? e}`);
+        void this.errorLogger.record(
+          e instanceof Error ? e : new Error(String(e)),
+          'trip-analysis',
+          { vehicleId: trip.vehicleId, fleetId: trip.fleetId, stage: 'speed-limit-resolver' },
+        );
+      }
+      result = analyzeTrip(raw, this.vehicleFuel(trip), resolver);
+    }
+
+    // Passages en STATION-SERVICE (sur les arrêts détectés) — best-effort, jamais bloquant. Le service
+    // persiste TripFuelStop + cache station + prix, et remonte les indispos API au centre d'alerte.
     try {
-      resolver = await this.speedLimits.buildResolver(candidates);
+      const fuelStops = await this.fuelStations.detectAndPersist(
+        { tripId: trip.id, fleetId: trip.fleetId, vehicleId: trip.vehicleId, energy: trip.vehicle?.energy ?? null },
+        result.detail.stops,
+      );
+      if (fuelStops.length) result.detail.fuelStops = fuelStops;
     } catch (e) {
-      // buildResolver gère déjà l'indispo Overpass en interne (best-effort + trace) ; ce catch ne se
-      // déclenche que pour un échec INATTENDU du résolveur → on trace et on continue sans limites.
-      this.logger.warn(`limites OSM indisponibles : ${(e as Error)?.message ?? e}`);
+      this.logger.warn(`détection stations : ${(e as Error)?.message ?? e}`);
       void this.errorLogger.record(
         e instanceof Error ? e : new Error(String(e)),
-        'trip-analysis',
-        { vehicleId: trip.vehicleId, fleetId: trip.fleetId, stage: 'speed-limit-resolver' },
+        'fuel-station',
+        { tripId: trip.id, vehicleId: trip.vehicleId, stage: 'detect' },
       );
     }
-    return analyzeTrip(raw, this.vehicleFuel(trip), resolver);
+    return result;
   }
 
   private vehicleFuel(trip: TripRow) {

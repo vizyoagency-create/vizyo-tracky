@@ -5,6 +5,7 @@ import { TripAnalysisService } from './trip-analysis.service';
 import { TripAnalysisLlmService } from './trip-analysis-llm.service';
 import { DrivingScoreService } from './driving-score.service';
 import { SpeedLimitService } from './speed-limit.service';
+import { FuelStationService } from './fuel-station.service';
 
 /**
  * Traçabilité fine des trajets (Palier 2 déterministe + Palier 3 récit LLM). AuthModule fournit les
@@ -14,7 +15,7 @@ import { SpeedLimitService } from './speed-limit.service';
 @Module({
   imports: [AuthModule],
   controllers: [TripAnalysisController],
-  providers: [TripAnalysisService, TripAnalysisLlmService, DrivingScoreService, SpeedLimitService],
+  providers: [TripAnalysisService, TripAnalysisLlmService, DrivingScoreService, SpeedLimitService, FuelStationService],
   exports: [TripAnalysisService],
 })
 export class TripAnalysisModule {}
