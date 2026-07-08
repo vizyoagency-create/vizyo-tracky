@@ -1,11 +1,12 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
-import type { AiProviderId, DrivingScoreDetailDto, DrivingScoreScope, DrivingScoresDto, TripAnalysisDto, TripNarrativeCompareDto } from '@vizyo/tracky-shared';
+import type { AiProviderId, DrivingScoreDetailDto, DrivingScoreScope, DrivingScoresDto, TripAnalysisDto, TripNarrativeCompareDto, VehicleFuelReportDto } from '@vizyo/tracky-shared';
 import { Roles } from '../auth/decorators/roles.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { DrivingScoreService } from './driving-score.service';
+import { FuelReportService } from './fuel-report.service';
 import { TripAnalysisLlmService } from './trip-analysis-llm.service';
 import { TripAnalysisService } from './trip-analysis.service';
 
@@ -21,6 +22,7 @@ export class TripAnalysisController {
     private readonly svc: TripAnalysisService,
     private readonly llm: TripAnalysisLlmService,
     private readonly scores: DrivingScoreService,
+    private readonly fuelReport: FuelReportService,
   ) {}
 
   /**
@@ -63,6 +65,20 @@ export class TripAnalysisController {
   @Get('vehicle/:vehicleId')
   listForVehicle(@Req() req: AuthenticatedRequest, @Param('vehicleId') vehicleId: string, @Query('limit') limit?: string): Promise<TripAnalysisDto[]> {
     return this.svc.listForVehicle(req.user, vehicleId, limit ? parseInt(limit, 10) : 50);
+  }
+
+  /**
+   * GET /api/trip-analysis/fuel-report/:vehicleId — suivi carburant d'un véhicule (passages station,
+   * prix constatés, coût estimé vs prix flotte) sur une période. Scopé véhicule (anti-IDOR).
+   */
+  @Get('fuel-report/:vehicleId')
+  fuelReportForVehicle(
+    @Req() req: AuthenticatedRequest,
+    @Param('vehicleId') vehicleId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ): Promise<VehicleFuelReportDto> {
+    return this.fuelReport.vehicleReport(req.user, vehicleId, from, to);
   }
 
   /** GET /api/trip-analysis/:tripId — lit l'analyse persistée (204/null si jamais calculée). */

@@ -102,6 +102,59 @@ export interface TripAnalysisDto {
   trustScore: number | null;
 }
 
+/* ── Carburant — suivi des passages station & coûts par véhicule (P3) ── */
+
+/** Une station distincte visitée par le véhicule + nombre de passages. */
+export interface FuelStationVisitDto {
+  stationId: string;
+  brand: string | null;
+  city: string | null;
+  address: string | null;
+  visits: number;
+  /** Dernier prix capté à cette station pour le carburant du véhicule (€/L), ou null. */
+  lastPriceEur: number | null;
+}
+
+/** Un point de prix daté (pour la tendance / sparkline). */
+export interface FuelPricePointDto {
+  at: string;
+  priceEur: number;
+}
+
+/**
+ * Suivi carburant d'un véhicule sur une période : fréquence des passages en station, prix constatés,
+ * et coût carburant ESTIMÉ (litres estimés × prix). Deux coûts pour COMPARER : au prix réellement
+ * constaté en station vs au prix paramétré de la flotte (`Fleet.fuelPriceEurL`, base du PDF).
+ */
+export interface VehicleFuelReportDto {
+  vehicleId: string;
+  from: string;
+  to: string;
+  /** Nombre de passages en station détectés sur la période. */
+  visits: number;
+  /** « Passe en station tous les X jours » (null si < 2 passages). */
+  avgDaysBetween: number | null;
+  /** Stations distinctes visitées (fréquence + dernier prix). */
+  stations: FuelStationVisitDto[];
+  /** Carburant retenu pour le véhicule ('gazole'…) ou null. */
+  fuelType: string | null;
+  // Prix constatés en station (pour le carburant du véhicule) sur la période.
+  priceMin: number | null;
+  priceMax: number | null;
+  priceAvg: number | null;
+  priceLatest: number | null;
+  /** Tendance des prix constatés (dates + €/L), du plus ancien au plus récent. */
+  priceTrend: FuelPricePointDto[];
+  // Consommation & coût estimés (Σ des litres estimés des trajets analysés de la période).
+  estimatedLiters: number;
+  distanceKm: number;
+  /** Coût au PRIX RÉEL CONSTATÉ (litres × prix moyen constaté), ou null si aucun prix capté. */
+  costAtObservedEur: number | null;
+  /** Coût au PRIX PARAMÉTRÉ de la flotte (litres × Fleet.fuelPriceEurL) — base du PDF actuel. */
+  costAtFleetPriceEur: number | null;
+  fleetPriceEurL: number | null;
+}
+
 /* ── Palier 3 — Récit LLM + mode « Comparer » (A/B les 2 IA) ── */
 
 /** Résultat d'un moteur IA sur un trajet (récit + Trust Score + conseils + coût). */

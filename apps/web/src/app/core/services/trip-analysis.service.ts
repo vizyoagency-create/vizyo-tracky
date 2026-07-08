@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import type { AiProviderId, DrivingScoreDetailDto, DrivingScoreScope, DrivingScoresDto, TripAnalysisDto, TripNarrativeCompareDto } from '@vizyo/tracky-shared';
+import type { AiProviderId, DrivingScoreDetailDto, DrivingScoreScope, DrivingScoresDto, TripAnalysisDto, TripNarrativeCompareDto, VehicleFuelReportDto } from '@vizyo/tracky-shared';
 import { Observable } from 'rxjs';
 
 /**
@@ -52,5 +52,13 @@ export class TripAnalysisApiService {
     if (from) params['from'] = from;
     if (to) params['to'] = to;
     return this.http.get<DrivingScoreDetailDto>(`/api/trip-analysis/scores/${scope}/${encodeURIComponent(id)}`, { params });
+  }
+
+  /** Suivi carburant d'un véhicule (passages station, prix constatés, coût estimé vs prix flotte). */
+  fuelReport(vehicleId: string, from?: string, to?: string): Observable<VehicleFuelReportDto> {
+    const params: Record<string, string> = {};
+    if (from) params['from'] = from;
+    if (to) params['to'] = to;
+    return this.http.get<VehicleFuelReportDto>(`/api/trip-analysis/fuel-report/${encodeURIComponent(vehicleId)}`, { params });
   }
 }
