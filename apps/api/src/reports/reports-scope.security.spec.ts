@@ -72,7 +72,7 @@ describe('resolveReportVehicleScope (helper partagé)', () => {
 describe('ReportsStatsService.compute — borne périmètre', () => {
   /** Capture les `where` passés à trip.aggregate / groupBy / findMany. */
   function makePrisma(vehiclesInFleet: string[]) {
-    const captured: { tripWhere?: any; alertWhere?: any } = {};
+    const captured: { tripWhere?: any; alertWhere?: any; fuelStopWhere?: any } = {};
     const vehicleRows = vehiclesInFleet.map((id) => ({
       id, plate: id.toUpperCase(), type: 'CAR', fuelConsumptionL100km: null, groups: [],
     }));
@@ -102,6 +102,12 @@ describe('ReportsStatsService.compute — borne périmètre', () => {
           groupBy: jest.fn().mockImplementation(({ where }: any) => {
             captured.alertWhere = where;
             return Promise.resolve([]);
+          }),
+        },
+        tripFuelStop: {
+          aggregate: jest.fn().mockImplementation(({ where }: any) => {
+            captured.fuelStopWhere = where;
+            return Promise.resolve({ _avg: { unitPriceEur: null }, _count: { _all: 0 } });
           }),
         },
       } as any,

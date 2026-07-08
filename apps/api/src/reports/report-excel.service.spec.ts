@@ -63,6 +63,7 @@ function buildService(accessible: string[] | 'ALL', vehicleFleetId = FLEET_ID) {
       }),
     },
     trip: { findMany: jest.fn().mockResolvedValue(TRIP_ROWS) },
+    tripFuelStop: { findMany: jest.fn().mockResolvedValue([]) },
   } as any;
   const vehicleAccess = {
     getAccessibleVehicleIds: jest.fn().mockResolvedValue(accessible),
