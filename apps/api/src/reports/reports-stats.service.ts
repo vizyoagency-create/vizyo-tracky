@@ -50,6 +50,12 @@ export interface FleetStatsReport {
     estimatedLiters: number;
     estimatedCostEur: number;
     fuelPriceEurL: number;
+    /** Prix carburant RÉELLEMENT CONSTATÉ en station sur la période (€/L moyen), ou null si aucun passage capté (P3). */
+    observedPriceEurL: number | null;
+    /** Coût estimé au prix constaté (litres × prix constaté), ou null. */
+    estimatedCostAtObservedEur: number | null;
+    /** Nombre de passages station ayant fourni un prix (échantillon du prix constaté). */
+    observedSampleCount: number;
   };
   topVehicles: {
     vehicleId: string;
@@ -278,6 +284,20 @@ export class ReportsStatsService {
     }
     topVehicles.sort((a, b) => b.distanceKm - a.distanceKm);
 
+    // P3 carburant — prix RÉELLEMENT CONSTATÉ en station sur la période (moyenne des prix captés aux
+    // passages station du périmètre), pour comparer au prix paramétré. Best-effort : null si aucun passage.
+    const fuelStopAgg = await this.prisma.tripFuelStop.aggregate({
+      where: {
+        arrivedAt: { gte: from, lte: to },
+        unitPriceEur: { not: null },
+        ...(isVehicleScopeRestricted ? { vehicleId: { in: vehicles.map((v) => v.id) } } : { fleetId: fleet.id }),
+      },
+      _avg: { unitPriceEur: true },
+      _count: { _all: true },
+    });
+    const observedPriceEurL = fuelStopAgg._avg.unitPriceEur != null ? Math.round(fuelStopAgg._avg.unitPriceEur * 1000) / 1000 : null;
+    const observedSampleCount = fuelStopAgg._count._all;
+
     // V1.10 (Sprint 2 perf) — totalAlerts agrege depuis le groupBy au lieu
     // d'un findMany separe. Le where du groupBy applique deja le filtre
     // vehicleIds (cf. alertWhere ci-dessus).
@@ -307,6 +327,9 @@ export class ReportsStatsService {
         estimatedLiters: Math.round(totalLiters * 10) / 10,
         estimatedCostEur: Math.round(totalLiters * fuelPrice * 100) / 100,
         fuelPriceEurL: fuelPrice,
+        observedPriceEurL,
+        estimatedCostAtObservedEur: observedPriceEurL != null ? Math.round(totalLiters * observedPriceEurL * 100) / 100 : null,
+        observedSampleCount,
       },
       topVehicles: topVehicles.slice(0, 10),
       // V1.10 (Sprint 2 perf) — pas de slice ici, le take=recentTripsCap dans

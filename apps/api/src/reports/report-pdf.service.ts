@@ -123,6 +123,13 @@ export class ReportPdfService {
       { label: 'Conso estimee', value: `${report.consumption.estimatedLiters.toFixed(1)} L` },
       { label: 'Cout carburant', value: `${report.consumption.estimatedCostEur.toFixed(2)} EUR` },
     ];
+    // P3 carburant — prix REELLEMENT CONSTATE en station (si des passages ont ete captes).
+    if (report.consumption.observedPriceEurL != null) {
+      kpis.push({ label: 'Prix constate', value: `${report.consumption.observedPriceEurL.toFixed(3)} EUR/L` });
+      if (report.consumption.estimatedCostAtObservedEur != null) {
+        kpis.push({ label: 'Cout au prix constate', value: `${report.consumption.estimatedCostAtObservedEur.toFixed(2)} EUR` });
+      }
+    }
 
     const cardW = 124;
     const cardH = 56;
@@ -147,6 +154,18 @@ export class ReportPdfService {
       }
     }
     doc.y = y + cardH + 16;
+
+    // P3 carburant — ligne de comparaison prix constaté vs paramétré (base du calcul de coût).
+    const c = report.consumption;
+    if (c.observedPriceEurL != null && c.estimatedCostAtObservedEur != null) {
+      const delta = Math.round((c.estimatedCostAtObservedEur - c.estimatedCostEur) * 100) / 100;
+      const passages = `${c.observedSampleCount} passage${c.observedSampleCount > 1 ? 's' : ''} station`;
+      const txt = `Prix carburant constate en station (${passages}) : ${c.observedPriceEurL.toFixed(3)} EUR/L, contre ${c.fuelPriceEurL.toFixed(2)} EUR/L parametre. `
+        + `Cout estime au prix reel : ${c.estimatedCostAtObservedEur.toFixed(2)} EUR (${delta >= 0 ? '+' : ''}${delta.toFixed(2)} EUR vs parametre).`;
+      doc.fillColor(COLOR_FG_MUTED).fontSize(9).font('Helvetica').text(txt, 40, doc.y, { width: 515 });
+      doc.y += 6;
+      doc.moveDown(1);
+    }
   }
 
   private renderAlerts(doc: PDFKit.PDFDocument, report: FleetStatsReport): void {
