@@ -76,6 +76,8 @@ export class ReportExcelService {
         model: true,
         type: true,
         fuelConsumptionL100km: true,
+        calibratedConsumptionL100km: true,
+        calibratedTanks: true,
         fleetId: true,
         privacyModeEnabled: true,
         fleet: { select: { id: true, name: true, fuelPriceEurL: true } },
@@ -146,7 +148,7 @@ export class ReportExcelService {
 
   private aggregate(
     trips: TripRow[],
-    vehicle: { type: string; fuelConsumptionL100km: number | null; fleet: { fuelPriceEurL: number } | null },
+    vehicle: { type: string; fuelConsumptionL100km: number | null; calibratedConsumptionL100km: number | null; calibratedTanks: number; fleet: { fuelPriceEurL: number } | null },
     fuelStops: FuelStopRow[],
   ): Kpis {
     let totalKm = 0;
@@ -163,7 +165,9 @@ export class ReportExcelService {
     }
     const avgSpeed = totalDurationSeconds > 0 ? avgSpeedWeightedSum / totalDurationSeconds : 0;
 
-    const consL100 = vehicle.fuelConsumptionL100km
+    // Conso EFFECTIVE : calibrée (méthode du plein) si mesurée, sinon paramétrée, sinon défaut type.
+    const consL100 = (vehicle.calibratedTanks > 0 ? vehicle.calibratedConsumptionL100km : null)
+      ?? vehicle.fuelConsumptionL100km
       ?? DEFAULT_CONSUMPTION_L100KM[vehicle.type]
       ?? 8;
     const estimatedLiters = (totalKm * consL100) / 100;

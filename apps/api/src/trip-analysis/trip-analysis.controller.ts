@@ -1,11 +1,12 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
-import type { AiProviderId, DrivingScoreDetailDto, DrivingScoreScope, DrivingScoresDto, FuelStationMapPointDto, TripAnalysisDto, TripNarrativeCompareDto, VehicleFuelReportDto } from '@vizyo/tracky-shared';
+import type { AiProviderId, DrivingScoreDetailDto, DrivingScoreScope, DrivingScoresDto, FuelFillUpDto, FuelStationMapPointDto, TripAnalysisDto, TripNarrativeCompareDto, UpsertFuelFillUpDto, VehicleFuelModelDto, VehicleFuelReportDto } from '@vizyo/tracky-shared';
 import { Roles } from '../auth/decorators/roles.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { DrivingScoreService } from './driving-score.service';
+import { FuelCalibrationService } from './fuel-calibration.service';
 import { FuelReportService } from './fuel-report.service';
 import { TripAnalysisLlmService } from './trip-analysis-llm.service';
 import { TripAnalysisService } from './trip-analysis.service';
@@ -23,6 +24,7 @@ export class TripAnalysisController {
     private readonly llm: TripAnalysisLlmService,
     private readonly scores: DrivingScoreService,
     private readonly fuelReport: FuelReportService,
+    private readonly fuelCalibration: FuelCalibrationService,
   ) {}
 
   /**
@@ -79,6 +81,46 @@ export class TripAnalysisController {
     @Query('to') to?: string,
   ): Promise<VehicleFuelReportDto> {
     return this.fuelReport.vehicleReport(req.user, vehicleId, from, to);
+  }
+
+  /** Modèle carburant CALIBRÉ (conso estimée vs réelle « méthode du plein » + coûts au prix constaté). */
+  @Get('fuel-calibration/:vehicleId')
+  fuelCalibrationForVehicle(
+    @Req() req: AuthenticatedRequest,
+    @Param('vehicleId') vehicleId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ): Promise<VehicleFuelModelDto> {
+    return this.fuelCalibration.vehicleModel(req.user, vehicleId, from, to);
+  }
+
+  /** Liste des pleins renseignés d'un véhicule (période). */
+  @Get('fuel-fill-ups/:vehicleId')
+  fuelFillUps(
+    @Req() req: AuthenticatedRequest,
+    @Param('vehicleId') vehicleId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ): Promise<FuelFillUpDto[]> {
+    return this.fuelCalibration.listFillUps(req.user, vehicleId, from, to);
+  }
+
+  /** Enregistre un plein (méthode du plein) → recalibre la conso réelle du véhicule. */
+  @Post('fuel-fill-up')
+  createFillUp(@Req() req: AuthenticatedRequest, @Body() dto: UpsertFuelFillUpDto): Promise<FuelFillUpDto> {
+    return this.fuelCalibration.createFillUp(req.user, dto);
+  }
+
+  /** Met à jour un plein → recalibre. */
+  @Put('fuel-fill-up/:id')
+  updateFillUp(@Req() req: AuthenticatedRequest, @Param('id') id: string, @Body() dto: UpsertFuelFillUpDto): Promise<FuelFillUpDto> {
+    return this.fuelCalibration.updateFillUp(req.user, id, dto);
+  }
+
+  /** Supprime un plein → recalibre. */
+  @Delete('fuel-fill-up/:id')
+  deleteFillUp(@Req() req: AuthenticatedRequest, @Param('id') id: string): Promise<{ ok: true }> {
+    return this.fuelCalibration.deleteFillUp(req.user, id);
   }
 
   /**

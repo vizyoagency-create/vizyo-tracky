@@ -178,6 +178,83 @@ export interface FuelStationMapPointDto {
   fuelType: string | null;
 }
 
+/* ── Calibration carburant « méthode du plein » (P4) — coût auto + conso réelle ── */
+
+/** Un plein renseigné (méthode du plein) + ses valeurs dérivées (distance/conso mesurée). */
+export interface FuelFillUpDto {
+  id: string;
+  vehicleId: string;
+  filledAt: string;
+  litersFilled: number;
+  amountPaidEur: number | null;
+  fullTank: boolean;
+  odometerKm: number | null;
+  fuelType: string | null;
+  stationId: string | null;
+  /** Marque/ville de la station (si liée), pour l'affichage. */
+  stationLabel: string | null;
+  note: string | null;
+  // Dérivés (calculés) :
+  /** Distance depuis le plein complet précédent (km) — odomètre si dispo, sinon somme des trajets. */
+  distanceSinceKm: number | null;
+  /** Conso RÉELLE de ce réservoir (litres/distance × 100), si mesurable (2 pleins complets). */
+  realConsumptionL100km: number | null;
+  /** Prix au litre payé (montant/litres) ou prix constaté, ou null. */
+  unitPriceEur: number | null;
+}
+
+/** Création / mise à jour d'un plein. */
+export interface UpsertFuelFillUpDto {
+  vehicleId: string;
+  filledAt: string;
+  litersFilled: number;
+  amountPaidEur?: number | null;
+  fullTank?: boolean;
+  odometerKm?: number | null;
+  fuelType?: string | null;
+  stationId?: string | null;
+  note?: string | null;
+}
+
+/** Niveau de confiance de la consommation calibrée. */
+export type FuelConfidence = 'none' | 'low' | 'medium' | 'high';
+
+/**
+ * Modèle carburant CALIBRÉ d'un véhicule : consommation ESTIMÉE (paramètre/défaut) vs RÉELLE (méthode
+ * du plein) + confiance, et coûts au PRIX RÉELLEMENT CONSTATÉ. Permet de montrer que l'app devient
+ * précise « au fur et à mesure » : plus il y a de pleins renseignés, plus la conso/coût sont fiables.
+ */
+export interface VehicleFuelModelDto {
+  vehicleId: string;
+  from: string;
+  to: string;
+  // Consommation (L/100km)
+  estimatedConsumptionL100km: number;
+  calibratedConsumptionL100km: number | null;
+  effectiveConsumptionL100km: number;
+  consumptionSource: 'calibrated' | 'vehicle' | 'default';
+  fuelType: string | null;
+  // Confiance (basée sur le nb de réservoirs mesurés)
+  fillUpCount: number;
+  measuredTanks: number;
+  confidence: FuelConfidence;
+  // Distances / coûts sur la période
+  distanceKm: number;
+  effectiveLiters: number;
+  observedPriceEurL: number | null;
+  fleetPriceEurL: number | null;
+  /** Coût estimé au PRIX CONSTATÉ avec la conso EFFECTIVE. */
+  costAtObservedEur: number | null;
+  /** Coût au prix PARAMÉTRÉ (comparaison). */
+  costAtFleetPriceEur: number | null;
+  // Réel (pleins renseignés)
+  realLiters: number | null;
+  realSpentEur: number | null;
+  /** Écart conso estimée vs calibrée (%), si calibrée dispo. */
+  deltaPercent: number | null;
+  fillUps: FuelFillUpDto[];
+}
+
 /* ── Palier 3 — Récit LLM + mode « Comparer » (A/B les 2 IA) ── */
 
 /** Résultat d'un moteur IA sur un trajet (récit + Trust Score + conseils + coût). */

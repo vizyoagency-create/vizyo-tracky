@@ -136,6 +136,8 @@ export class ReportsStatsService {
         : { fleetId },
       select: {
         id: true, plate: true, type: true, fuelConsumptionL100km: true,
+        // Conso RÉELLE calibrée (méthode du plein) — prime sur l'estimation si mesurée.
+        calibratedConsumptionL100km: true, calibratedTanks: true,
         // Groupe (unique de-facto) pour l'afficher dans le rapport / PDF.
         groups: {
           select: { group: { select: { id: true, name: true } } },
@@ -266,7 +268,9 @@ export class ReportsStatsService {
     const topVehicles: FleetStatsReport['topVehicles'] = [];
     for (const v of vehicles) {
       const stat = perVehicle.get(v.id) ?? { distanceKm: 0, tripCount: 0 };
-      const consumptionL100 = v.fuelConsumptionL100km
+      // Conso EFFECTIVE : calibrée (méthode du plein) si mesurée, sinon paramétrée, sinon défaut type.
+      const consumptionL100 = (v.calibratedTanks > 0 ? v.calibratedConsumptionL100km : null)
+        ?? v.fuelConsumptionL100km
         ?? DEFAULT_CONSUMPTION_L100KM[v.type as keyof typeof DEFAULT_CONSUMPTION_L100KM]
         ?? 8;
       const liters = stat.distanceKm * consumptionL100 / 100;

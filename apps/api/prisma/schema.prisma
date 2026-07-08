@@ -375,6 +375,13 @@ model Vehicle {
   // au 100km par defaut selon le type vehicule. Si null, on utilise une valeur
   // par defaut cote service (CAR=7, TRUCK=22, VAN=10, MOTO=4, BUS=28).
   fuelConsumptionL100km Float?
+  // Calibration carburant « methode du plein » (2026-07) — consommation REELLE mesuree a partir des
+  // pleins renseignes (litres/distance entre 2 pleins complets). Recalculee a chaque plein. Quand
+  // presente, elle PRIME sur fuelConsumptionL100km partout (rapports/PDF/Excel/fuel card) -> l'app
+  // devient precise « au fur et a mesure ». calibratedTanks = nb de reservoirs mesures (confiance).
+  calibratedConsumptionL100km Float?
+  calibratedTanks             Int      @default(0)
+  calibratedAt                DateTime?
   /// Conducteur "courant" du vehicule. Sert de defaut snappe sur Trip.driverId
   /// au moment de la cloture du trajet (driverSource='AUTO'). Modifiable a
   /// posteriori par les admins/managers.
@@ -1170,6 +1177,7 @@ model FuelStation {
 
   prices    FuelStationPrice[]
   fuelStops TripFuelStop[]
+  fillUps   FuelFillUp[]
 
   @@unique([source, externalId])
   @@index([lat, lng])
@@ -1217,6 +1225,32 @@ model TripFuelStop {
   @@index([fleetId, arrivedAt])
   @@index([tripId])
   @@map("trip_fuel_stops")
+}
+
+/// Plein carburant RENSEIGNÉ (méthode du plein) — vérité terrain pour CALIBRER la consommation RÉELLE
+/// d'un véhicule = litres / distance entre 2 pleins complets. Optionnel : le client saisit ses pleins
+/// (litres + € du reçu) et l'app en déduit la conso réelle + affine tous les coûts « au fur et à
+/// mesure ». INDÉPENDANT de TripFuelStop (survit à la ré-analyse). Rattachable à une station détectée.
+model FuelFillUp {
+  id              String       @id @default(uuid()) @db.Uuid
+  fleetId         String       @db.Uuid
+  vehicleId       String       @db.Uuid
+  filledAt        DateTime // date/heure du plein
+  litersFilled    Float // litres ajoutés (vérité terrain)
+  amountPaidEur   Float? // montant payé (reçu) ; sinon dérivé de litres × prix constaté
+  fullTank        Boolean      @default(true) // plein COMPLET ? (la méthode du plein l'exige pour calibrer)
+  odometerKm      Float? // relevé compteur au plein (optionnel : distance précise entre pleins)
+  fuelType        String? // carburant ('gazole'…)
+  stationId       String?      @db.Uuid // lien optionnel vers une station détectée
+  station         FuelStation? @relation(fields: [stationId], references: [id], onDelete: SetNull)
+  note            String?
+  createdByUserId String?      @db.Uuid
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([vehicleId, filledAt])
+  @@index([fleetId, filledAt])
+  @@map("fuel_fill_ups")
 }
 
 /// Palier B — Journal des actions AUTOMATIQUES / système (arrière-plan), distinct de

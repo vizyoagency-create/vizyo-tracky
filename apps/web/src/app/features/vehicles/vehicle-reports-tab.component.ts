@@ -13,6 +13,7 @@ import { TripAnalysisApiService } from '../../core/services/trip-analysis.servic
 import { TripAnalysisBadgesComponent } from '../trip-analysis/trip-analysis-badges.component';
 import { DrivingScoreCardComponent } from '../trip-analysis/driving-score-card.component';
 import { FuelReportCardComponent } from '../trip-analysis/fuel-report-card.component';
+import { FuelCalibrationCardComponent } from '../trip-analysis/fuel-calibration-card.component';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { ReportsApiService } from '../../core/services/reports.service';
 import { TripsApiService } from '../../core/services/trips.service';
@@ -57,6 +58,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
     TripAnalysisBadgesComponent,
     DrivingScoreCardComponent,
     FuelReportCardComponent,
+    FuelCalibrationCardComponent,
   ],
   template: `
     <div class="flex flex-col gap-4 sm:gap-5">
@@ -65,6 +67,9 @@ import { relativeTime } from '../../shared/utils/relative-time';
 
       <!-- Suivi carburant : passages station, prix constatés, coût estimé vs prix flotte. -->
       <app-fuel-report-card [vehicleId]="vehicleId()" />
+
+      <!-- Calibration carburant (méthode du plein) : conso réelle mesurée + coûts fiabilisés. -->
+      <app-fuel-calibration-card [vehicleId]="vehicleId()" />
 
       <!-- Barre d'actions : presets periode + custom + export + replay -->
       <div class="vrt-actionbar">

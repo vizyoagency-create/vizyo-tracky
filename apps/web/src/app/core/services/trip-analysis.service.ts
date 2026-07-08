@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import type { AiProviderId, DrivingScoreDetailDto, DrivingScoreScope, DrivingScoresDto, FuelStationMapPointDto, TripAnalysisDto, TripNarrativeCompareDto, VehicleFuelReportDto } from '@vizyo/tracky-shared';
+import type { AiProviderId, DrivingScoreDetailDto, DrivingScoreScope, DrivingScoresDto, FuelFillUpDto, FuelStationMapPointDto, TripAnalysisDto, TripNarrativeCompareDto, UpsertFuelFillUpDto, VehicleFuelModelDto, VehicleFuelReportDto } from '@vizyo/tracky-shared';
 import { Observable } from 'rxjs';
 
 /**
@@ -68,5 +68,26 @@ export class TripAnalysisApiService {
     if (from) params['from'] = from;
     if (to) params['to'] = to;
     return this.http.get<FuelStationMapPointDto[]>('/api/trip-analysis/fuel-stations/map', { params });
+  }
+
+  /** Modèle carburant CALIBRÉ d'un véhicule (conso estimée vs réelle « méthode du plein » + coûts). */
+  fuelCalibration(vehicleId: string, from?: string, to?: string): Observable<VehicleFuelModelDto> {
+    const params: Record<string, string> = {};
+    if (from) params['from'] = from;
+    if (to) params['to'] = to;
+    return this.http.get<VehicleFuelModelDto>(`/api/trip-analysis/fuel-calibration/${encodeURIComponent(vehicleId)}`, { params });
+  }
+
+  /** Enregistre un plein (méthode du plein) → recalibre la conso réelle du véhicule. */
+  createFillUp(dto: UpsertFuelFillUpDto): Observable<FuelFillUpDto> {
+    return this.http.post<FuelFillUpDto>('/api/trip-analysis/fuel-fill-up', dto);
+  }
+  /** Met à jour un plein. */
+  updateFillUp(id: string, dto: UpsertFuelFillUpDto): Observable<FuelFillUpDto> {
+    return this.http.put<FuelFillUpDto>(`/api/trip-analysis/fuel-fill-up/${encodeURIComponent(id)}`, dto);
+  }
+  /** Supprime un plein. */
+  deleteFillUp(id: string): Observable<{ ok: true }> {
+    return this.http.delete<{ ok: true }>(`/api/trip-analysis/fuel-fill-up/${encodeURIComponent(id)}`);
   }
 }
