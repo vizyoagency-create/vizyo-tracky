@@ -555,6 +555,13 @@ model Tracker {
   lastIgnition         Boolean?
   lastValid            Boolean?
   lastPositionAt       DateTime?
+  // Incident FS-253 (GPS perdu) — reception de la derniere trame `no_fix` (LBS sans
+  // lock GPS). Un boitier VIVANT (lastSeenAt frais) qui emet des `no_fix` RECENTS alors
+  // que `lastPositionAt` est perime = GPS perdu (antenne debranchee / masquee / ciel).
+  // C'est le discriminant qui distingue « GPS perdu » d'un simple stationnement (un
+  // boitier gare sain n'emet PAS de `no_fix`, il dort en heartbeat). Alimente l'etat
+  // GPS_LOST cote UI + le detecteur d'alerte gps-integrity.
+  lastNoFixAt          DateTime?
   // V1.5 (Sprint H1) — etat du sampling adaptatif.
   // lastWriteAt = derniere fois ou une trame a ete reellement persistee dans `positions`
   //              (different de lastPositionAt qui suit `deviceTime` de la trame brute).

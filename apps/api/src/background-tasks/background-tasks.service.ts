@@ -152,6 +152,12 @@ const CATALOG: CatalogEntry[] = [
     fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 6 && w.getMinutes() === 0 },
   },
   {
+    id: 'gps-integrity', label: 'Détection GPS perdu (boîtiers vivants sans position)', category: 'Système & observabilité',
+    kind: 'cron', scheduleHuman: 'toutes les 5 min', criticality: 'moyenne', antiOverlap: true,
+    purpose: 'Repère les boîtiers qui communiquent encore mais n\'envoient plus de position GPS (antenne/ciel) et lève une alerte véhicule + centre d\'alertes.',
+    periodic: { everyMs: 300_000, offsetMs: 15_000 },
+  },
+  {
     id: 'metrics-collect', label: 'Collecte des métriques serveur (VPS)', category: 'Système & observabilité',
     kind: 'interval', scheduleHuman: 'flux continu · toutes les 60 s', criticality: 'basse', antiOverlap: false,
     continuous: true, settingsRoute: '/admin/system',

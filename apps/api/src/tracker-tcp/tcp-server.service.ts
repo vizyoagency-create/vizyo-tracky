@@ -326,9 +326,12 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
         // étaient jetées en `unknown` → le boîtier restait invisible bien que vivant.
         if (!currentImei || frame.imei !== currentImei) break;
         this.registry.touch(frame.imei);
+        // `lastNoFixAt` : marque que le boitier tente ACTIVEMENT de reporter mais SANS
+        // lock GPS. Couple a un `lastPositionAt` perime, c'est la preuve « GPS perdu »
+        // (antenne / ciel) — cf. Tracker.lastNoFixAt + getVehicleConnectivityState.
         await this.prisma.tracker.update({
           where: { imei: frame.imei },
-          data: { lastSeenAt: new Date() },
+          data: { lastSeenAt: new Date(), lastNoFixAt: new Date() },
         });
         this.logger.debug({ imei: frame.imei, frameRaw: frame.raw }, `No-fix frame (vivant, sans GPS): ${frame.imei}`);
         break;

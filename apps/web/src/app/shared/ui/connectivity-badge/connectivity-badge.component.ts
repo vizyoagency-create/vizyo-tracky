@@ -1,5 +1,5 @@
 import { Component, computed, input } from '@angular/core';
-import { AlertTriangle, LucideAngularModule, Moon, Satellite, Wifi, WifiOff } from 'lucide-angular';
+import { AlertTriangle, LucideAngularModule, Moon, Satellite, SatelliteDish, Wifi, WifiOff } from 'lucide-angular';
 import type { VehicleConnectivityState } from '@vizyo/tracky-shared';
 
 /**
@@ -7,6 +7,7 @@ import type { VehicleConnectivityState } from '@vizyo/tracky-shared';
  * vérité visuelle (label + couleurs + icône) réutilisée partout : badge de liste,
  * détail, popup carte. Les couleurs distinguent les deux causes de non-suivi :
  *  - AWAITING_GPS (sky)     : connecté mais sans fix GPS — vivant, cherche les satellites.
+ *  - GPS_LOST (rouge)       : vivant mais a PERDU son fix GPS (antenne/ciel) — action requise.
  *  - OFFLINE (ambre)        : débranché / hors-ligne — il fonctionnait, à traiter.
  *  - NOT_CONFIGURED (gris)  : pas (ou mal) installé — neutre, à équiper.
  */
@@ -27,6 +28,11 @@ export function connectivityMeta(state: VehicleConnectivityState): ConnectivityM
       // Connecté sans fix GPS : sky-blue « acquisition » — distinct du vert (suivi) et de
       // l'ambre (hors-ligne). Le boîtier est vivant, il cherche les satellites.
       return { label: 'Recherche GPS', color: '#0ea5e9', bg: 'rgba(14,165,233,.13)', icon: Satellite };
+    case 'GPS_LOST':
+      // GPS PERDU : le boîtier émet encore mais a perdu son lock satellite (antenne /
+      // ciel bouché). Rouge = action requise (aller vérifier l'antenne), distinct du
+      // sky-blue « acquisition » (démarrage à froid, transitoire).
+      return { label: 'GPS perdu', color: '#ef4444', bg: 'rgba(239,68,68,.12)', icon: SatelliteDish };
     case 'PARKED':
       // Garé en veille : neutre/calme (slate), pas alarmant — comportement normal.
       return { label: 'Stationné', color: '#64748b', bg: 'rgba(100,116,139,.14)', icon: Moon };
@@ -103,6 +109,7 @@ export class ConnectivityBadgeComponent {
     switch (this.state()) {
       case 'ONLINE': return 'Boîtier en ligne — suivi en direct';
       case 'AWAITING_GPS': return 'Connecté — en attente du fix GPS : le boîtier émet mais n\'a pas encore de lock satellite (intérieur / démarrage à froid / antenne). Mets-le à ciel ouvert.';
+      case 'GPS_LOST': return 'GPS perdu — le boîtier communique toujours (réseau OK) mais n\'envoie plus de position GPS depuis un moment. Antenne débranchée/masquée ou véhicule sans vue ciel : à vérifier physiquement.';
       case 'PARKED': return 'Stationné — contact coupé, boîtier en veille (dernier signal > 15 min). Normal.';
       case 'OFFLINE': return 'Hors ligne — coupé en roulant / débranché ou sans réseau depuis > 15 min';
       case 'NOT_CONFIGURED': return 'Non configuré — aucun boîtier connecté à Tracky';

@@ -25,6 +25,25 @@
 export const TRACKER_ONLINE_THRESHOLD_MS = 15 * 60 * 1000;
 
 /**
+ * Seuil (ms) au-delà duquel une dernière position GPS est considérée « périmée »
+ * alors que le boîtier est vivant → état {@link VehicleConnectivityState} `GPS_LOST`.
+ *
+ * 30 min : tolère un tunnel / parking couvert transitoire (le fix revient) sans
+ * flaguer, mais détecte une vraie perte de GPS prolongée. Couplé à `lastNoFixAt`
+ * frais (le boîtier ÉMET mais sans lock) pour ne PAS confondre avec un simple
+ * stationnement (un boîtier garé sain n'émet pas de `no_fix`).
+ */
+export const GPS_FIX_STALE_THRESHOLD_MS = 30 * 60 * 1000;
+
+/** Normalise une date (Date | ISO | epoch ms | null) en ms epoch, ou null si invalide. */
+function toEpochMs(value: Date | string | number | null | undefined): number | null {
+  if (value == null) return null;
+  const ms =
+    value instanceof Date ? value.getTime() : typeof value === 'number' ? value : new Date(value).getTime();
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/**
  * Retourne `true` si le tracker a émis depuis moins de `thresholdMs`.
  *
  * @param lastSeenAt  dernier signal connu (`Date`, ISO string, epoch ms) ou null.
@@ -56,8 +75,12 @@ export function isTrackerOnline(
  * réellement suivi en ce moment ? ». Il distingue les deux causes de
  * non-suivi que l'exploitant doit traiter différemment :
  *  - `ONLINE`         : boîtier vivant, signal frais (< seuil) ET position GPS connue → suivi direct.
- *  - `AWAITING_GPS`   : boîtier vivant (signal frais) mais SANS aucune position GPS valide →
+ *  - `AWAITING_GPS`   : boîtier vivant (signal frais) mais SANS aucune position GPS valide (jamais) →
  *                       connecté, pas encore de lock satellite (rapport LBS / démarrage à froid / antenne).
+ *  - `GPS_LOST`       : boîtier vivant qui ÉMET encore (trames `no_fix` récentes) mais dont la
+ *                       DERNIÈRE position GPS est PÉRIMÉE (> {@link GPS_FIX_STALE_THRESHOLD_MS}) →
+ *                       il AVAIT un fix puis l'a perdu (antenne débranchée/masquée, ciel bouché).
+ *                       Distinct d'`AWAITING_GPS` (jamais eu de fix) et de `PARKED` (garé sain, muet).
  *  - `PARKED`         : silencieux > seuil MAIS contact coupé à la dernière trame →
  *                       garé, boîtier en veille (silence NORMAL, pas une panne).
  *  - `OFFLINE`        : silencieux > seuil alors que le contact était ON (coupé en
@@ -68,6 +91,7 @@ export function isTrackerOnline(
 export type VehicleConnectivityState =
   | 'ONLINE'
   | 'AWAITING_GPS'
+  | 'GPS_LOST'
   | 'PARKED'
   | 'OFFLINE'
   | 'NOT_CONFIGURED';
@@ -79,6 +103,13 @@ export interface VehicleConnectivityInput {
   lastSeenAt?: Date | string | number | null;
   /** Dernière position valide connue. Repli si `lastSeenAt` absent. */
   lastPositionAt?: Date | string | number | null;
+  /**
+   * Dernière trame `no_fix` (LBS sans lock GPS). Fournie explicitement (opt-in) par les
+   * surfaces qui veulent distinguer `GPS_LOST` : un boîtier vivant qui émet des `no_fix`
+   * FRAIS mais dont `lastPositionAt` est périmé a PERDU son GPS. Absente (undefined) →
+   * l'appelant reste sur l'ancien comportement (jamais `GPS_LOST`).
+   */
+  lastNoFixAt?: Date | string | number | null;
   /**
    * Dernier état ignition connu. `false` (contact coupé) → un silence prolongé est
    * une mise en veille NORMALE du boîtier garé (→ PARKED), pas un débranchement.
@@ -100,8 +131,9 @@ export function getVehicleConnectivityState(
   input: VehicleConnectivityInput,
   now: number = Date.now(),
   thresholdMs: number = TRACKER_ONLINE_THRESHOLD_MS,
+  gpsFixStaleMs: number = GPS_FIX_STALE_THRESHOLD_MS,
 ): VehicleConnectivityState {
-  const { trackerId, lastSeenAt, lastPositionAt, lastIgnition } = input;
+  const { trackerId, lastSeenAt, lastPositionAt, lastNoFixAt, lastIgnition } = input;
   // Aucun boîtier affecté → véhicule pas équipé pour Tracky.
   if (!trackerId) return 'NOT_CONFIGURED';
   // Le boîtier a parlé récemment → vivant.
@@ -115,6 +147,22 @@ export function getVehicleConnectivityState(
     // ne fournit pas `lastPositionAt` (undefined) reste ONLINE — seuls ceux qui passent
     // explicitement `lastPositionAt: … ?? null` (liste/détail) obtiennent AWAITING_GPS.
     if (lastPositionAt === null) return 'AWAITING_GPS';
+    // GPS PERDU (incident FS-253) : le boîtier ÉMET encore activement des trames `no_fix`
+    // RÉCENTES (il tente de reporter mais sans lock satellite) ALORS QUE sa dernière
+    // position GPS est PÉRIMÉE (> gpsFixStaleMs). Il avait un fix puis l'a perdu →
+    // antenne débranchée/masquée ou ciel bouché. `lastNoFixAt` est le discriminant qui
+    // évite de flaguer une voiture simplement garée (garée saine = MUETTE, pas de no_fix).
+    // Opt-in : sans `lastNoFixAt` fourni, on ne bascule jamais en GPS_LOST (compat).
+    const noFixMs = toEpochMs(lastNoFixAt);
+    const posMs = toEpochMs(lastPositionAt);
+    if (
+      noFixMs != null &&
+      now - noFixMs <= thresholdMs &&
+      posMs != null &&
+      now - posMs > gpsFixStaleMs
+    ) {
+      return 'GPS_LOST';
+    }
     return 'ONLINE';
   }
   // Boîtier affecté mais JAMAIS aucun signal ni position → affecté mais jamais

@@ -208,4 +208,50 @@ describe('AlertsService', () => {
     // Point clé : malgré l'échec de l'audit, l'alerte de vol a bien été diffusée.
     expect(gateway.broadcastAlert).toHaveBeenCalled();
   });
+
+  // 12. GPS_LOST (incident FS-253) — aucune alerte récente → crée WARNING GPS_LOST + broadcast
+  it('createGpsLostAlert creates a WARNING GPS_LOST alert when none is recent', async () => {
+    prisma.alert.findFirst.mockResolvedValue(null);
+    const result = await service.createGpsLostAlert(
+      { id: TRACKER_ID, imei: '111111111111111', lastLat: 43.6, lastLng: 1.45, lastPositionAt: new Date() },
+      { id: VEHICLE_ID, plate: 'FS-253-HR', fleetId: FLEET_ID },
+      '29 h',
+    );
+    expect(result).not.toBeNull();
+    expect(prisma.alert.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ type: 'GPS_LOST', severity: 'WARNING', vehicleId: VEHICLE_ID }),
+      }),
+    );
+    expect(gateway.broadcastAlert).toHaveBeenCalled();
+  });
+
+  // 13. GPS_LOST — dédup : une alerte GPS_LOST récente OUVERTE → null, aucun doublon
+  it('createGpsLostAlert dedups against a recent OPEN alert', async () => {
+    prisma.alert.findFirst.mockResolvedValue(alertRecord({ type: 'GPS_LOST' }));
+    const result = await service.createGpsLostAlert(
+      { id: TRACKER_ID, imei: '111111111111111', lastLat: null, lastLng: null, lastPositionAt: null },
+      { id: VEHICLE_ID, plate: 'FS-253-HR', fleetId: FLEET_ID },
+      '29 h',
+    );
+    expect(result).toBeNull();
+    expect(prisma.alert.create).not.toHaveBeenCalled();
+  });
+
+  // 14. GPS_LOST — anti-régression (revue 2026-07-09) : une alerte ACQUITTÉE récente
+  // dédup AUSSI. Sinon acquitter recréerait une alerte au tick suivant (re-spam).
+  it('createGpsLostAlert dedups even against an ACKNOWLEDGED recent alert (no re-spawn on ack)', async () => {
+    prisma.alert.findFirst.mockResolvedValue(alertRecord({ type: 'GPS_LOST', acknowledgedAt: new Date() }));
+    const result = await service.createGpsLostAlert(
+      { id: TRACKER_ID, imei: '111111111111111', lastLat: null, lastLng: null, lastPositionAt: null },
+      { id: VEHICLE_ID, plate: 'FS-253-HR', fleetId: FLEET_ID },
+      '30 h',
+    );
+    expect(result).toBeNull();
+    expect(prisma.alert.create).not.toHaveBeenCalled();
+    // Le filtre de dédup NE DOIT PAS restreindre à acknowledgedAt: null (sinon ré-spawn).
+    const where = prisma.alert.findFirst.mock.calls[0][0].where;
+    expect(where).not.toHaveProperty('acknowledgedAt');
+    expect(where).toMatchObject({ vehicleId: VEHICLE_ID, type: 'GPS_LOST' });
+  });
 });

@@ -24,6 +24,7 @@ import {
   deriveMotion,
   extrapolate,
   getVehicleConnectivityState,
+  GPS_FIX_STALE_THRESHOLD_MS,
   isAcceptableLiveFix,
   isTrackerOnline,
   sanitizePositions,
@@ -116,6 +117,9 @@ interface BaanoolCardData {
   fleetId?: string | null;
   imei?: string | null;
   lastSeenAt?: string | null;
+  /** Incident FS-253 — ISO dernière position GPS + dernière trame `no_fix` (sans lock). */
+  lastPositionAt?: string | null;
+  lastNoFixAt?: string | null;
   /** Sprint 1 (Fondation Groupes) — groupe (single) du véhicule. */
   group?: { id: string; name: string } | null;
 }
@@ -864,19 +868,30 @@ const RESYNC_RADIUS_M = 150;
           <div class="bn-vcard-left">
             <div class="bn-vcard-plate">{{ baanoolCard()!.plate }}</div>
             <div class="bn-vcard-badges">
-              <span class="bn-vcard-badge" [class.on]="baanoolCard()!.ignition">
-                <span class="bn-vcard-badge-dot"></span>
-                {{ baanoolCard()!.ignition ? 'Contact ON' : 'Contact OFF' }}
-              </span>
-              <span class="bn-vcard-speed-badge"
-                    [style.color]="baanoolCard()!.speedKmh > 90 ? '#ef4444' : baanoolCard()!.speedKmh > 50 ? '#f59e0b' : baanoolCard()!.speedKmh > 0 ? '#10E0A0' : '#999'">
-                {{ baanoolCard()!.speedKmh | number:'1.0-0' }} km/h
-              </span>
+              @if (cardShowsLive()) {
+                <span class="bn-vcard-badge" [class.on]="baanoolCard()!.ignition">
+                  <span class="bn-vcard-badge-dot"></span>
+                  {{ baanoolCard()!.ignition ? 'Contact ON' : 'Contact OFF' }}
+                </span>
+                <span class="bn-vcard-speed-badge"
+                      [style.color]="baanoolCard()!.speedKmh > 90 ? '#ef4444' : baanoolCard()!.speedKmh > 50 ? '#f59e0b' : baanoolCard()!.speedKmh > 0 ? '#10E0A0' : '#999'">
+                  {{ baanoolCard()!.speedKmh | number:'1.0-0' }} km/h
+                </span>
+              } @else if (cardLastFixLabel(); as ago) {
+                <!-- Incident FS-253 — boîtier pas en suivi direct (GPS perdu / hors ligne /
+                     garé) : on n'affiche PAS la vitesse figée comme du live. On montre
+                     l'âge de la dernière position GPS à la place, pour ne pas tromper. -->
+                <span class="bn-vcard-badge" style="color:#94a3b8"
+                      [attr.title]="'Dernière position GPS reçue ' + ago + ' — la vitesse affichée n’est pas en direct'">
+                  <span class="bn-vcard-badge-dot" style="background:#94a3b8"></span>
+                  Dernière position {{ ago }}
+                </span>
+              }
               <!-- V1.15 — Badge Fleet (visible SA only). -->
               <app-sa-fleet-badge [fleetId]="baanoolCard()!.fleetId" />
               <!-- Sprint 1 — Groupe du véhicule. -->
               @if (baanoolCard()!.group; as g) { <app-group-badge [group]="g" /> }
-              <!-- Connectivité : flague un boîtier hors-ligne / non configuré. -->
+              <!-- Connectivité : flague un boîtier GPS perdu / hors-ligne / non configuré. -->
               <app-connectivity-badge [state]="cardConnectivity()" [hideWhenOnline]="true" />
               <!-- Mode vie privée : position figée, collecte en pause. -->
               @if (baanoolCard()!.privacyModeEnabled) {
@@ -892,9 +907,10 @@ const RESYNC_RADIUS_M = 150;
                   Moteur coupé
                 </span>
               } @else if (baanoolCard()!.cutPending) {
-                <span class="bn-vcard-badge" style="color:#f59e0b">
+                <span class="bn-vcard-badge" style="color:#f59e0b"
+                      [attr.title]="'Commande de coupure envoyée au boîtier, en attente de confirmation (chute du contact). Sans position GPS, la confirmation peut être impossible.'">
                   <span class="bn-vcard-badge-dot" style="background:#f59e0b"></span>
-                  Coupure en attente
+                  Coupure envoyée (non confirmée)
                 </span>
               }
             </div>
@@ -3907,18 +3923,21 @@ export class MapComponent implements AfterViewInit, OnDestroy {
               currentCard.cutPending !== cutPending ||
               currentCard.lat !== pos.lat ||
               currentCard.lng !== pos.lng) {
-            const meta = this.vehicleMeta.get(pos.vehicleId) ?? { type: 'OTHER', plate: '?' };
+            // Incident FS-253 — on SPREAD la card courante pour préserver lastNoFixAt /
+            // lastSeenAt / fleetId / imei / group / privacyModeEnabled, et on rafraîchit
+            // lastPositionAt avec la trame REÇUE (fraîche pour une voiture qui roule).
+            // Sans ce spread, un littéral nu écrasait lastPositionAt → cardShowsLive()
+            // masquait la vitesse/contact d'une voiture LIVE et le badge passait « Non
+            // configuré ». (Revue adversariale 2026-07-09.)
             this.baanoolCard.set({
-              trackerId: pos.trackerId,
-              vehicleId: pos.vehicleId,
-              plate: meta.plate,
-              type: meta.type,
+              ...currentCard,
               ignition: patched.ignition,
               speedKmh: patched.speedKmh,
               lat: pos.lat,
               lng: pos.lng,
               cutActive,
               cutPending,
+              lastPositionAt: pos.timestamp ?? currentCard.lastPositionAt ?? null,
             });
           }
         }
@@ -3981,8 +4000,39 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     return getVehicleConnectivityState({
       trackerId: c?.trackerId ?? null,
       lastSeenAt: c?.lastSeenAt ?? null,
+      // Incident FS-253 — on passe lastPositionAt + lastNoFixAt pour détecter GPS_LOST :
+      // boîtier vivant mais dont la position GPS est périmée (antenne / ciel).
+      lastPositionAt: c?.lastPositionAt ?? null,
+      lastNoFixAt: c?.lastNoFixAt ?? null,
       lastIgnition: c?.ignition ?? null,
     });
+  }
+
+  /**
+   * Incident FS-253 — la card n'affiche la vitesse/contact « live » QUE si la DERNIÈRE
+   * position GPS est FRAÎCHE (≤ 30 min). Basé sur l'âge RÉEL de la position, pas sur
+   * l'état de connectivité (qui dépend des reconnexions) : une position vieille de 29 h
+   * ne doit jamais s'afficher comme du direct. Une voiture qui roule a une position
+   * fraîche → aucun changement pour le cas courant. Au-delà, on montre l'âge + le badge.
+   */
+  protected cardShowsLive(): boolean {
+    const iso = this.baanoolCard()?.lastPositionAt;
+    if (!iso) return false;
+    const ageMs = Date.now() - new Date(iso).getTime();
+    return Number.isFinite(ageMs) && ageMs <= GPS_FIX_STALE_THRESHOLD_MS;
+  }
+
+  /** Libellé « dernière position il y a Xmin/Xh/Xj » (null si inconnu). */
+  protected cardLastFixLabel(): string | null {
+    const iso = this.baanoolCard()?.lastPositionAt;
+    if (!iso) return null;
+    const ms = Date.now() - new Date(iso).getTime();
+    if (!Number.isFinite(ms) || ms < 0) return null;
+    const min = Math.floor(ms / 60000);
+    if (min < 60) return `il y a ${min} min`;
+    const h = Math.floor(min / 60);
+    if (h < 48) return `il y a ${h} h`;
+    return `il y a ${Math.floor(h / 24)} j`;
   }
 
   private openMarkerPopup(trackerId: string): void {
@@ -3994,6 +4044,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     this.closePopup();
     const patched = this.patchIgnitionFromCommands(pos);
     const meta = this.vehicleMeta.get(pos.vehicleId) ?? { type: 'OTHER', plate: '?' };
+    // Incident FS-253 — on lit le snapshot pour la fraîcheur RÉELLE : lastPositionAt
+    // (dernier fix GPS) et lastNoFixAt (dernière trame sans lock). Sans ça, la card
+    // affichait la vitesse/contact de la dernière position même vieille de 29 h.
+    const snap = this.realtime.snapshot().find((s) => s.vehicleId === pos.vehicleId);
     this.baanoolCard.set({
       trackerId,
       vehicleId: pos.vehicleId,
@@ -4005,10 +4059,12 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       lng: pos.lng,
       cutActive: this.isCutActiveForTracker(trackerId),
       cutPending: this.isCutPendingForTracker(trackerId),
-      privacyModeEnabled: this.realtime.snapshot().find((s) => s.vehicleId === pos.vehicleId)?.privacyModeEnabled ?? false,
+      privacyModeEnabled: snap?.privacyModeEnabled ?? false,
       fleetId: meta.fleetId,
       imei: meta.imei,
-      lastSeenAt: meta.lastSeenAt,
+      lastSeenAt: snap?.lastSeenAt ?? meta.lastSeenAt,
+      lastPositionAt: snap?.lastPositionAt ?? pos.timestamp ?? null,
+      lastNoFixAt: snap?.lastNoFixAt ?? null,
       group: meta.group ?? null,
     });
     this.activePopupTrackerId = trackerId;

@@ -132,6 +132,66 @@ export class AlertsService {
     return alert;
   }
 
+  /**
+   * Incident FS-253 — alerte « GPS perdu » : le boîtier communique (réseau OK) mais
+   * n'envoie plus de position GPS depuis longtemps (antenne débranchée / masquée / ciel
+   * bouché). Créée par le détecteur `gps-integrity`. Un GPS perdu ne déclenche NI un état
+   * OFFLINE (le boîtier est vivant) NI `fixCommandFailing` → sans cette alerte il restait
+   * totalement invisible (le trou de « catching » signalé sur FS-253).
+   *
+   * DÉDUPLIQUÉE : au plus UNE alerte GPS_LOST par véhicule sur `dedupWindowMs`, QUEL QUE
+   * SOIT son acquittement. On NE filtre PAS sur `acknowledgedAt: null` volontairement :
+   * un boîtier GPS-perdu rafraîchit lastSeenAt/lastNoFixAt toutes les ~20 s pendant des
+   * heures, donc le détecteur le re-sélectionne à chaque tick (5 min). Si on ne dédupait
+   * que les alertes OUVERTES, acquitter l'alerte (le geste normal pour vider le centre)
+   * en ferait recréer une neuve au tick suivant → re-notification + re-ErrorLog en boucle.
+   * Ici, acquitter la fait taire pour toute la fenêtre ; une re-alerte ne repart qu'après
+   * `dedupWindowMs` (rappel « toujours perdu »). Retourne l'alerte créée, ou `null` si une
+   * alerte GPS_LOST récente existe déjà (aucun doublon, aucune re-notification).
+   */
+  async createGpsLostAlert(
+    tracker: { id: string; imei: string; lastLat: number | null; lastLng: number | null; lastPositionAt: Date | null },
+    vehicle: { id: string; plate: string; fleetId: string },
+    agoLabel: string,
+    dedupWindowMs = 24 * 60 * 60 * 1000,
+  ): Promise<Alert | null> {
+    const since = new Date(Date.now() - dedupWindowMs);
+    const existing = await this.prisma.alert.findFirst({
+      where: { vehicleId: vehicle.id, type: AlertType.GPS_LOST, createdAt: { gte: since } },
+      select: { id: true },
+    });
+    if (existing) return null;
+
+    const alert = await this.prisma.alert.create({
+      data: {
+        fleetId: vehicle.fleetId,
+        vehicleId: vehicle.id,
+        trackerId: tracker.id,
+        type: AlertType.GPS_LOST,
+        severity: AlertSeverity.WARNING,
+        title: `📡 GPS perdu — ${vehicle.plate}`,
+        message: `Le boîtier communique toujours (réseau OK) mais n'envoie plus de position GPS depuis ${agoLabel}. Antenne probablement débranchée/masquée ou véhicule sans vue ciel : à vérifier physiquement.`,
+        payload: {
+          imei: tracker.imei,
+          lastPositionAt: tracker.lastPositionAt?.toISOString() ?? null,
+          agoLabel,
+        } as any,
+        latitude: tracker.lastLat,
+        longitude: tracker.lastLng,
+      },
+      include: { vehicle: true, tracker: true },
+    });
+
+    this.gateway.broadcastAlert(alert);
+    this.logger.warn(`[ALERT] WARNING GPS_LOST for ${vehicle.plate} (${agoLabel})`);
+    // Dispatch externe best-effort (comme createFromCobanFrame) : l'échec d'un canal ne
+    // doit pas casser le détecteur.
+    this.dispatch.dispatchAlert(alert).catch((err) => {
+      this.logger.warn(`Notification dispatch failed for GPS_LOST alert ${alert.id}: ${err instanceof Error ? err.message : err}`);
+    });
+    return alert;
+  }
+
   async list(
     requestedBy: RequestedBy,
     filters: {
