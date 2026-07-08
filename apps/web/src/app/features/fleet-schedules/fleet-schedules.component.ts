@@ -9,11 +9,13 @@ import {
   signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import {
   AlarmClock,
   AlertTriangle,
   Car,
   Check,
+  ExternalLink,
   LucideAngularModule,
   Pencil,
   Power,
@@ -55,7 +57,7 @@ type LucideIcon = typeof Timer;
   selector: 'app-fleet-schedules',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule, FormsModule, LucideAngularModule, VehicleScheduleComponent],
+  imports: [CommonModule, FormsModule, RouterLink, LucideAngularModule, VehicleScheduleComponent],
   templateUrl: './fleet-schedules.component.html',
   styleUrl: './fleet-schedules.component.css',
 })
@@ -71,6 +73,8 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
   protected readonly isSuperAdmin = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
   /** Bulk interdit tant qu'un super-admin n'a pas choisi une société (filtre du haut). */
   protected readonly bulkBlocked = computed(() => this.isSuperAdmin() && !this.fleetFilter.selectedFleetId());
+  /** Lien vers la fiche véhicule : masqué pour un veilleur (confiné à /vehicles par le guard). */
+  protected readonly canOpenVehicle = computed(() => !this.auth.isWatchman());
 
   // Icônes
   protected readonly AlarmClockIcon = AlarmClock;
@@ -79,6 +83,7 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
   protected readonly CheckIcon = Check;
   protected readonly TimerIcon = Timer;
   protected readonly PencilIcon = Pencil;
+  protected readonly ExternalLinkIcon = ExternalLink;
   protected readonly PowerIcon = Power;
   protected readonly PowerOffIcon = PowerOff;
   protected readonly RefreshCwIcon = RefreshCw;

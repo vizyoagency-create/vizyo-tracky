@@ -144,9 +144,16 @@
                   }
                 </td>
                 <td class="right">
-                  <button type="button" class="btn icon" (click)="openEditor(r)" [disabled]="!canEdit(r)" title="Modifier les horaires">
-                    <lucide-icon [img]="PencilIcon" [size]="16" />
-                  </button>
+                  <div class="row-actions">
+                    <button type="button" class="btn icon" (click)="openEditor(r)" [disabled]="!canEdit(r)" title="Modifier les horaires">
+                      <lucide-icon [img]="PencilIcon" [size]="16" />
+                    </button>
+                    @if (canOpenVehicle()) {
+                      <a [routerLink]="['/vehicles', r.vehicleId]" class="btn icon" title="Ouvrir la fiche véhicule">
+                        <lucide-icon [img]="ExternalLinkIcon" [size]="16" />
+                      </a>
+                    }
+                  </div>
                 </td>
               </tr>
             }

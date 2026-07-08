@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, OnInit, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
   LucideAngularModule, ArrowLeft, Wifi, WifiOff, Gauge, MapPin, Radio,
   AlertTriangle, AlertCircle, Info, Check, Power, Route, BarChart3, BellOff, Map,
@@ -50,7 +50,7 @@ import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
   selector: 'app-vehicle-detail',
   standalone: true,
   imports: [
-    FormsModule, LucideAngularModule, DatePipe, DecimalPipe, GroupBadgeComponent,
+    FormsModule, RouterLink, LucideAngularModule, DatePipe, DecimalPipe, GroupBadgeComponent,
     MiniMapComponent, EngineControlButtonComponent, AudioListenButtonComponent, CommandsPanelComponent,
     VehicleScheduleComponent, VehicleReportsTabComponent, VehicleMaintenanceTabComponent, DriverPickerComponent, DriverDrawerComponent, SurveillancePanelComponent, TripReplayComponent,
     InstallReviewBadgeComponent, BrandLogoComponent, SpinnerComponent,
@@ -504,6 +504,11 @@ import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
         }
 
         @if (activeTab() === 'schedule') {
+          <a routerLink="/fleet-schedules"
+             class="inline-flex items-center gap-1.5 text-sm font-semibold text-tracky hover:underline mb-3">
+            <lucide-icon [img]="ArrowLeft" [size]="15" />
+            Voir &amp; gérer les horaires de toute la flotte
+          </a>
           <app-vehicle-schedule
             [vehicleId]="v.id"
             [hasTracker]="!!v.tracker"

@@ -477,7 +477,10 @@ const TIMEZONES = [
     .vsched-days { padding: 14px 16px }
     .vsched-days-grid {
       display: grid;
-      grid-template-columns: 1fr;
+      /* Fluide selon le CONTENEUR (drawer étroit OU fiche large), pas le viewport : les 7 jours
+         restent toujours visibles/éditables et s'enroulent sur plusieurs lignes si besoin.
+         Corrige le clip de « Dimanche » dans le drawer (repeat(7) forcé par un @media viewport). */
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
       gap: 8px;
     }
     .vsched-day-card {
@@ -584,12 +587,8 @@ const TIMEZONES = [
     }
     @keyframes vsched-spin { to { transform: rotate(360deg) } }
 
-    /* Tablet & Desktop : grille 2 colonnes pour les jours */
-    @media (min-width: 600px) {
-      .vsched-days-grid { grid-template-columns: repeat(2, 1fr) }
-    }
+    /* Desktop : cartes de jour un peu plus compactes (la grille reste fluide selon le conteneur). */
     @media (min-width: 1024px) {
-      .vsched-days-grid { grid-template-columns: repeat(7, 1fr) }
       .vsched-day-card { padding: 10px }
       .vsched-day-name { font-size: 11px }
       .vsched-time-input { font-size: 11px; padding: 5px 6px }
