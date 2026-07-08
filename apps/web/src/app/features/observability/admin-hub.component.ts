@@ -2,7 +2,7 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
   LucideAngularModule, AlertTriangle, Activity, Terminal, MessageSquare,
-  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints, Ear, Mail, CalendarClock,
+  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints, Ear, Mail, CalendarClock, Bot,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { AdminFixModeService, type AdminAlertSummary } from '../../core/services/admin-fix-mode.service';
@@ -254,6 +254,19 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
             <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
           </div>
         </a>
+
+        <!-- ── AUTOMATISATION DES TRAJETS (wide) ── -->
+        <a routerLink="/admin/trip-automation" class="card card-wide" style="--i:14">
+          <span class="accent accent-violet"></span>
+          <div class="body body-row">
+            <div class="ico ico-violet"><lucide-icon [img]="Bot" [size]="20"></lucide-icon></div>
+            <div class="body-text">
+              <h3>Automatisation des trajets</h3>
+              <p class="desc">Lance tout seul, pour toutes les flottes, le pipeline « recalcul → analyse déterministe → récit IA ». Cadence réglable (horaire pour tester, puis quotidien), plafonds de coût, et bouton « Lancer maintenant ».</p>
+            </div>
+            <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
+          </div>
+        </a>
       </div>
     </div>
   `,
@@ -473,6 +486,7 @@ export class AdminHubComponent implements OnInit {
   protected readonly Footprints = Footprints;
   protected readonly Ear = Ear;
   protected readonly Mail = Mail;
+  protected readonly Bot = Bot;
 
   readonly stats = signal<AdminAlertSummary | null>(null);
 

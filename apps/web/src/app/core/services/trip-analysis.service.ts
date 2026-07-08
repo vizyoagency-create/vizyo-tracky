@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import type { AiProviderId, DrivingScoreDetailDto, DrivingScoreScope, DrivingScoresDto, FuelFillUpDto, FuelStationMapPointDto, TripAnalysisDto, TripNarrativeCompareDto, UpsertFuelFillUpDto, VehicleFuelModelDto, VehicleFuelReportDto } from '@vizyo/tracky-shared';
+import type { AiProviderId, DrivingScoreDetailDto, DrivingScoreScope, DrivingScoresDto, FuelFillUpDto, FuelStationMapPointDto, SetTripAutomationSettingsDto, TripAnalysisDto, TripAutomationRunStats, TripAutomationSettingsDto, UpsertFuelFillUpDto, VehicleFuelModelDto, VehicleFuelReportDto } from '@vizyo/tracky-shared';
 import { Observable } from 'rxjs';
 
 /**
@@ -30,11 +30,6 @@ export class TripAnalysisApiService {
   /** Génère (ou régénère) le récit IA + Trust Score + conseils d'un trajet. `provider` optionnel. */
   narrate(tripId: string, provider?: AiProviderId): Observable<TripAnalysisDto> {
     return this.http.post<TripAnalysisDto>(`/api/trip-analysis/${encodeURIComponent(tripId)}/narrate`, provider ? { provider } : {});
-  }
-
-  /** Mode « Comparer » : le même trajet analysé par Claude ET GPT (admin). */
-  compare(tripId: string): Observable<TripNarrativeCompareDto> {
-    return this.http.post<TripNarrativeCompareDto>(`/api/trip-analysis/${encodeURIComponent(tripId)}/compare`, {});
   }
 
   /** Classement noté du score de conduite par véhicule / conducteur / groupe. */
@@ -91,5 +86,19 @@ export class TripAnalysisApiService {
   /** Supprime un plein. */
   deleteFillUp(id: string): Observable<{ ok: true }> {
     return this.http.delete<{ ok: true }>(`/api/trip-analysis/fuel-fill-up/${encodeURIComponent(id)}`);
+  }
+
+  // ── Automatisation des trajets (super-admin) ──────────────────────────────
+  /** Réglages de l'automatisation (recalcul → analyse → récit) pour toutes les flottes. */
+  getAutomation(): Observable<TripAutomationSettingsDto> {
+    return this.http.get<TripAutomationSettingsDto>('/api/trip-analysis/automation');
+  }
+  /** Met à jour les réglages d'automatisation. */
+  setAutomation(dto: SetTripAutomationSettingsDto): Observable<TripAutomationSettingsDto> {
+    return this.http.put<TripAutomationSettingsDto>('/api/trip-analysis/automation', dto);
+  }
+  /** Lance un run TOUT DE SUITE (bouton « Lancer maintenant ») → renvoie le bilan. */
+  runAutomationNow(): Observable<TripAutomationRunStats> {
+    return this.http.post<TripAutomationRunStats>('/api/trip-analysis/automation/run-now', {});
   }
 }

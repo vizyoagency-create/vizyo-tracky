@@ -311,6 +311,15 @@ export const routes: Routes = [
         data: { title: 'Coûts IA' },
       },
       {
+        // Automatisation trajets — cron « recalcul → analyse → récit IA » pour toutes les flottes. SUPER_ADMIN.
+        path: 'admin/trip-automation',
+        pathMatch: 'full',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/trip-analysis/trip-automation.component').then((m) => m.TripAutomationComponent),
+        data: { title: 'Automatisation des trajets' },
+      },
+      {
         // Sprint 4 — N1 « flottes éligibles » (super-admin/prestataire) : autorise les
         // flottes au Mode assistance. SUPER_ADMIN only.
         path: 'admin/audio-eligibility',

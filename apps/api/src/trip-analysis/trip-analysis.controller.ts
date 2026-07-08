@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
-import type { AiProviderId, DrivingScoreDetailDto, DrivingScoreScope, DrivingScoresDto, FuelFillUpDto, FuelStationMapPointDto, TripAnalysisDto, TripNarrativeCompareDto, UpsertFuelFillUpDto, VehicleFuelModelDto, VehicleFuelReportDto } from '@vizyo/tracky-shared';
+import type { AiProviderId, DrivingScoreDetailDto, DrivingScoreScope, DrivingScoresDto, FuelFillUpDto, FuelStationMapPointDto, SetTripAutomationSettingsDto, TripAnalysisDto, TripAutomationRunStats, TripAutomationSettingsDto, TripNarrativeCompareDto, UpsertFuelFillUpDto, VehicleFuelModelDto, VehicleFuelReportDto } from '@vizyo/tracky-shared';
 import { Roles } from '../auth/decorators/roles.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -10,6 +10,7 @@ import { FuelCalibrationService } from './fuel-calibration.service';
 import { FuelReportService } from './fuel-report.service';
 import { TripAnalysisLlmService } from './trip-analysis-llm.service';
 import { TripAnalysisService } from './trip-analysis.service';
+import { TripAutomationService } from './trip-automation.service';
 
 /**
  * Traçabilité fine des trajets (Palier 2) — API. Toute route exige une session ; le SERVICE applique
@@ -25,7 +26,34 @@ export class TripAnalysisController {
     private readonly scores: DrivingScoreService,
     private readonly fuelReport: FuelReportService,
     private readonly fuelCalibration: FuelCalibrationService,
+    private readonly automation: TripAutomationService,
   ) {}
+
+  /**
+   * Automatisation des trajets (super-admin) — réglages du pipeline « recalcul → analyse → récit IA »
+   * lancé automatiquement pour TOUTES les flottes. Déclaré AVANT `:tripId` (sinon capté comme un id).
+   */
+  @Get('automation')
+  @Roles(UserRole.SUPER_ADMIN)
+  getAutomation(): Promise<TripAutomationSettingsDto> {
+    return this.automation.getSettings();
+  }
+
+  @Put('automation')
+  @Roles(UserRole.SUPER_ADMIN)
+  setAutomation(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: SetTripAutomationSettingsDto,
+  ): Promise<TripAutomationSettingsDto> {
+    return this.automation.setSettings(body ?? {}, req.user.id);
+  }
+
+  /** Lance un run TOUT DE SUITE (ignore la cadence/heure) — pour tester le pipeline. */
+  @Post('automation/run-now')
+  @Roles(UserRole.SUPER_ADMIN)
+  runAutomationNow(): Promise<TripAutomationRunStats> {
+    return this.automation.runNow();
+  }
 
   /**
    * GET /api/trip-analysis/scores — CLASSEMENT noté du score de conduite, agrégé par véhicule /

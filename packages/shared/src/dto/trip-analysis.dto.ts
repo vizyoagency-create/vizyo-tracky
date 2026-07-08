@@ -341,3 +341,54 @@ export interface DrivingScoreDetailDto {
   /** Écart à la moyenne (score de l'entité − moyenne). > 0 = au-dessus. */
   vsOverall: number | null;
 }
+
+/* ── Automatisation trajets — pipeline recalcul → analyse → récit IA (super-admin) ── */
+
+/** Cadence de l'automatisation : horaire (phase de test) ou quotidienne. */
+export type TripAutomationFrequency = 'hourly' | 'daily';
+
+/** Bilan d'un run d'automatisation (dernier passage). */
+export interface TripAutomationRunStats {
+  fleets: number;
+  vehicles: number;
+  /** Trajets recalculés (segmentation propre) avant analyse. */
+  recomputed: number;
+  /** Analyses déterministes lancées. */
+  analyzed: number;
+  /** Récits IA générés. */
+  narrated: number;
+  failed: number;
+  durationMs: number;
+  /** ISO date de fin du run. */
+  at: string;
+}
+
+/** Réglages (singleton) de l'automatisation des trajets. */
+export interface TripAutomationSettingsDto {
+  enabled: boolean;
+  frequency: TripAutomationFrequency;
+  /** Heure du run quotidien (0-23, Europe/Paris) — utilisée si frequency='daily'. */
+  hour: number;
+  lookbackHours: number;
+  /** Recalculer les trajets avant analyse (évite d'analyser des fragments). */
+  recomputeTrips: boolean;
+  /** Générer aussi les récits IA (ignoré flotte par flotte si l'IA est coupée). */
+  narrateEnabled: boolean;
+  maxAnalysesPerRun: number;
+  maxNarrationsPerRun: number;
+  lastRunAt: string | null;
+  lastRunStats: TripAutomationRunStats | null;
+  updatedAt: string | null;
+}
+
+/** Mise à jour partielle des réglages d'automatisation. */
+export interface SetTripAutomationSettingsDto {
+  enabled?: boolean;
+  frequency?: TripAutomationFrequency;
+  hour?: number;
+  lookbackHours?: number;
+  recomputeTrips?: boolean;
+  narrateEnabled?: boolean;
+  maxAnalysesPerRun?: number;
+  maxNarrationsPerRun?: number;
+}

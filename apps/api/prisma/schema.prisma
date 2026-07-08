@@ -1332,6 +1332,37 @@ model ActivityReportSchedule {
   @@map("activity_report_schedule")
 }
 
+/// Automatisation trajets (2026-07) — planification RÉGLABLE (singleton) du pipeline
+/// « recalcul des trajets → analyse déterministe → récit IA » pour TOUTES les flottes.
+/// Piloté depuis l'espace super-admin ; consommé par TripAutomationService (cron horaire).
+model TripAutomationSettings {
+  id                  String    @id @default(uuid()) @db.Uuid
+  /// Interrupteur maître de l'automatisation.
+  enabled             Boolean   @default(false)
+  /// Cadence : 'hourly' (phase de test) | 'daily'.
+  frequency           String    @default("hourly")
+  /// Heure du run quotidien (0-23, Europe/Paris) — utilisée si frequency='daily'.
+  hour                Int       @default(2)
+  /// Fenêtre de trajets balayée à chaque run (heures).
+  lookbackHours       Int       @default(26)
+  /// Recalculer les trajets (segmentation propre) AVANT d'analyser — évite d'analyser
+  /// 10 fragments au lieu de 3 vrais trajets, et de lancer 10 récits IA au lieu de 3.
+  recomputeTrips      Boolean   @default(true)
+  /// Générer aussi les récits IA (ignoré si l'IA est coupée pour la flotte).
+  narrateEnabled      Boolean   @default(true)
+  /// Bornes de charge par run (protègent le VPS + le budget IA).
+  maxAnalysesPerRun   Int       @default(300)
+  maxNarrationsPerRun Int       @default(60)
+  lastRunAt           DateTime?
+  /// Dernier bilan { fleets, vehicles, recomputed, analyzed, narrated, failed, durationMs, at }.
+  lastRunStats        Json?
+  updatedByUserId     String?   @db.Uuid
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@map("trip_automation_settings")
+}
+
 /// Refonte agenda/IA (2026-07) — Reglages de l'agent d'optimisation d'agenda, PAR FLOTTE.
 /// Pilotes depuis la roue crantee « Parametres de l'agenda ». Consommes par l'agent nocturne (P3).
 /// 1 ligne par flotte (opt-in : enabled=false par defaut).

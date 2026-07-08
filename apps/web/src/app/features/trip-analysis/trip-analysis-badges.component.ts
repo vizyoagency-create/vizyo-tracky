@@ -1,18 +1,17 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
-import { LucideAngularModule, Leaf, OctagonX, Gauge, Fuel, Sparkles, Loader, AlertTriangle, ShieldCheck, FileText, X, GitCompareArrows, MapPin } from 'lucide-angular';
+import { LucideAngularModule, Leaf, OctagonX, Gauge, Fuel, Sparkles, Loader, AlertTriangle, ShieldCheck, FileText, X, MapPin } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
-import type { AiProviderId, TripAiResultDto, TripAnalysisDto } from '@vizyo/tracky-shared';
+import type { AiProviderId, TripAnalysisDto } from '@vizyo/tracky-shared';
 import { TripAnalysisApiService } from '../../core/services/trip-analysis.service';
-import { AuthService } from '../../core/services/auth.service';
 import { AiStatusService } from '../../core/services/ai-status.service';
 import { apiErrorMessage } from '../../core/error/api-error';
 
 /**
  * Traçabilité fine (Palier 4 + 3) — RANGÉE DE BADGES d'analyse d'un trajet, RÉUTILISABLE (fiche
  * véhicule, Rapports, Replay). Affiche l'éco-conduite / excès / arrêts / conso (déterministe) + le
- * Trust Score si présent, et ouvre un DÉTAIL IA (récit + conseils + génération LLM + mode « Comparer »
- * Claude vs GPT). Reçoit l'analyse pré-chargée en lot ; « Analyser » (POST) si absente.
+ * Trust Score si présent, et ouvre un DÉTAIL IA (récit + conseils + génération LLM).
+ * Reçoit l'analyse pré-chargée en lot ; « Analyser » (POST) si absente.
  */
 @Component({
   selector: 'app-trip-analysis-badges',
@@ -150,34 +149,8 @@ import { apiErrorMessage } from '../../core/error/api-error';
                   @if (busyNarrate()) { <lucide-icon [img]="LoaderIcon" [size]="14" class="tab-spin"></lucide-icon> Génération… }
                   @else { <lucide-icon [img]="SparklesIcon" [size]="14"></lucide-icon> {{ a.narrative ? 'Régénérer' : 'Générer le récit IA' }} }
                 </button>
-                @if (canCompare()) {
-                  <button type="button" class="taid-btn taid-btn--ghost" (click)="runCompare()" [disabled]="busyCompare()" title="Lance les 2 IA sur ce trajet (coût ×2)">
-                    @if (busyCompare()) { <lucide-icon [img]="LoaderIcon" [size]="14" class="tab-spin"></lucide-icon> Comparaison… }
-                    @else { <lucide-icon [img]="CompareIcon" [size]="14"></lucide-icon> Comparer Claude vs GPT }
-                  </button>
-                }
               </div>
               @if (detailError(); as e) { <p class="taid-err">{{ e }}</p> }
-
-              @if (compareResults(); as cr) {
-                <div class="taid-compare">
-                  @for (r of cr; track r.provider) {
-                    <div class="taid-col" [attr.data-provider]="r.provider">
-                      <div class="taid-col-head">
-                        <span>{{ providerLabel(r.provider) }}</span>
-                        @if (!r.error) { <span class="taid-col-cost">{{ r.costEur | number:'1.4-4' }} €</span> }
-                      </div>
-                      @if (r.error) {
-                        <p class="taid-col-err"><lucide-icon [img]="AlertIcon" [size]="12"></lucide-icon> {{ r.error }}</p>
-                      } @else {
-                        <div class="taid-col-trust" [attr.data-tier]="trustTier(r.trustScore ?? 0)">Trust {{ r.trustScore }}</div>
-                        <p class="taid-col-txt">{{ r.narrative }}</p>
-                        @if (r.advice) { <p class="taid-col-advice">{{ r.advice }}</p> }
-                      }
-                    </div>
-                  }
-                </div>
-              }
             }
           </div>
         </div>
@@ -259,25 +232,13 @@ import { apiErrorMessage } from '../../core/error/api-error';
     .taid-btn--ghost { background: transparent; color: var(--fg-secondary); border: 1px solid var(--border-strong, var(--border-subtle)); }
     .taid-btn--ghost:hover:not(:disabled) { color: var(--fg-primary); border-color: var(--tracky-light, #10E0A0); }
     .taid-err { margin: 0; font-size: 12px; color: #EF4444; }
-    .taid-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; }
-    @media (max-width: 560px) { .taid-compare { grid-template-columns: 1fr; } }
-    .taid-col { display: flex; flex-direction: column; gap: 7px; padding: 12px; border-radius: 12px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); }
-    .taid-col-head { display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 800; color: var(--fg-primary); }
-    .taid-col-cost { font-size: 11px; font-weight: 700; color: var(--fg-tertiary); }
-    .taid-col-trust { display: inline-block; align-self: flex-start; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, #60A5FA 16%, transparent); color: #60A5FA; }
-    .taid-col-trust[data-tier="mid"] { background: color-mix(in srgb, #F59E0B 16%, transparent); color: #F59E0B; }
-    .taid-col-trust[data-tier="bad"] { background: color-mix(in srgb, #EF4444 16%, transparent); color: #EF4444; }
-    .taid-col-txt { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--fg-secondary); }
-    .taid-col-advice { margin: 0; font-size: 12px; line-height: 1.45; color: var(--fg-primary); padding-top: 6px; border-top: 1px dashed var(--border-subtle); }
-    .taid-col-err { margin: 0; display: inline-flex; align-items: flex-start; gap: 5px; font-size: 12px; color: #EF4444; }
   `],
 })
 export class TripAnalysisBadgesComponent {
   private readonly api = inject(TripAnalysisApiService);
-  private readonly auth = inject(AuthService);
   private readonly aiStatus = inject(AiStatusService);
 
-  /** IA activée pour la flotte de l'utilisateur ? (masque « Récit IA » / génération / comparaison). */
+  /** IA activée pour la flotte de l'utilisateur ? (masque « Récit IA » / génération). */
   protected readonly aiEnabled = computed(() => this.aiStatus.enabled());
 
   constructor() { this.aiStatus.ensureLoaded(); }
@@ -290,21 +251,15 @@ export class TripAnalysisBadgesComponent {
   protected readonly busy = signal(false);
   protected readonly error = signal<string | null>(null);
 
-  // Détail IA (récit + conseils + comparaison)
+  // Détail IA (récit + conseils)
   protected readonly detailOpen = signal(false);
   protected readonly busyNarrate = signal(false);
-  protected readonly busyCompare = signal(false);
   protected readonly detailError = signal<string | null>(null);
-  protected readonly compareResults = signal<TripAiResultDto[] | null>(null);
 
   protected readonly current = computed(() => this.fresh() ?? this.analysis());
 
   /** Passages en station-service détectés sur ce trajet (P2 stations). */
   protected readonly fuelStops = computed(() => this.current()?.detail?.fuelStops ?? []);
-
-  /** Comparer les 2 moteurs = usage INTERNE (super-admin) : un client (fleet-admin & -) ne voit jamais
-   *  quel moteur tourne (marque blanche « agent Tracky »). */
-  protected readonly canCompare = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
 
   protected readonly ecoTier = computed(() => {
     const s = this.current()?.ecoScore ?? 100;
@@ -322,7 +277,6 @@ export class TripAnalysisBadgesComponent {
   protected readonly ShieldIcon = ShieldCheck;
   protected readonly FileIcon = FileText;
   protected readonly XIcon = X;
-  protected readonly CompareIcon = GitCompareArrows;
 
   protected minutes(sec: number): number { return Math.round(sec / 60); }
   protected trustTier(s: number): 'good' | 'mid' | 'bad' { return s >= 75 ? 'good' : s >= 45 ? 'mid' : 'bad'; }
@@ -394,18 +348,4 @@ export class TripAnalysisBadgesComponent {
     }
   }
 
-  /** Compare les 2 IA sur ce trajet (côte à côte). */
-  protected async runCompare(): Promise<void> {
-    if (this.busyCompare()) return;
-    this.busyCompare.set(true);
-    this.detailError.set(null);
-    try {
-      const res = await firstValueFrom(this.api.compare(this.tripId()));
-      this.compareResults.set(res.results);
-    } catch (e) {
-      this.detailError.set(apiErrorMessage(e, 'Comparaison impossible.'));
-    } finally {
-      this.busyCompare.set(false);
-    }
-  }
 }
