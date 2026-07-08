@@ -52,6 +52,23 @@
 .tile.hot { border-color: var(--fs-danger); box-shadow: 0 0 0 1px var(--fs-danger) inset; }
 .tile .n { font-size: 22px; font-weight: 700; }
 .tile .l { font-size: 12px; color: var(--fs-muted); }
+.tile[title] { cursor: help; }
+
+/* Panneau d'aide « Comment lire cette page ? » (pensé pour des opérateurs non-techniques) */
+.help { background: var(--fs-bg); border: 1px solid var(--fs-border); border-radius: 12px; overflow: hidden; }
+.help-toggle { width: 100%; display: flex; align-items: center; gap: 8px; padding: 11px 14px; background: none; border: none; color: var(--fs-text); font-size: 13.5px; font-weight: 700; cursor: pointer; text-align: left; }
+.help-toggle lucide-icon { color: var(--fs-emerald); display: inline-flex; }
+.help-caret { margin-left: auto; color: var(--fs-muted); font-size: 12px; }
+.help-body { padding: 0 16px 14px; }
+.help-intro { font-size: 13px; margin: 0 0 8px; color: var(--fs-text); }
+.help-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 7px; font-size: 13px; line-height: 1.5; }
+.help-list .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; vertical-align: baseline; }
+.help-list .dot.chip-ok { background: var(--fs-emerald); }
+.help-list .dot.chip-danger { background: var(--fs-danger); }
+.help-list .dot.chip-warn { background: var(--fs-warn); }
+.help-list .dot.chip-cut { background: #8a94a6; }
+.help-list .dot.chip-info { background: var(--fs-info); }
+.help-note { font-size: 12.5px; margin: 10px 0 0; padding: 9px 11px; background: var(--fs-emerald-soft); color: var(--fs-emerald); border-radius: 9px; line-height: 1.5; }
 .n.ok { color: var(--fs-emerald); } .n.cut { color: var(--fs-text); } .n.danger { color: var(--fs-danger); } .n.warn { color: var(--fs-warn); }
 
 /* Banners */

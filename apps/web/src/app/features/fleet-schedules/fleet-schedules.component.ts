@@ -16,6 +16,7 @@ import {
   Car,
   Check,
   ExternalLink,
+  Info,
   LucideAngularModule,
   Pencil,
   Power,
@@ -84,6 +85,11 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
   protected readonly TimerIcon = Timer;
   protected readonly PencilIcon = Pencil;
   protected readonly ExternalLinkIcon = ExternalLink;
+  protected readonly InfoIcon = Info;
+
+  /** Panneau « Comment lire cette page ? » (ouvert par défaut la 1re fois pour bien expliquer). */
+  protected readonly helpOpen = signal(true);
+  protected toggleHelp(): void { this.helpOpen.update((v) => !v); }
   protected readonly PowerIcon = Power;
   protected readonly PowerOffIcon = PowerOff;
   protected readonly RefreshCwIcon = RefreshCw;
@@ -264,6 +270,22 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
     if (cut === 'pending') return { label: 'Coupe envoyée', cls: 'chip-warn', icon: this.PowerOffIcon };
     if (r.windowState === 'IN_WINDOW') return { label: 'Autorisé', cls: 'chip-ok', icon: this.PowerIcon };
     return { label: 'Hors plage', cls: 'chip-muted', icon: this.PowerOffIcon };
+  }
+
+  /** Explication en langage simple de l'état d'une ligne (info-bulle au survol). */
+  protected stateHelp(r: FleetScheduleRowDto): string {
+    if (!r.hasTracker) return "Pas de boîtier GPS : l'automatisation horaire ne peut pas s'appliquer.";
+    if (!r.scheduleEnabled) return 'Aucun horaire programmé (pas de coupe/reprise automatique).';
+    if (r.overrideActive) return "Une action manuelle (coupure ou remise en marche) a temporairement suspendu l'automatisation sur ce véhicule.";
+    const cut = this.displayCut(r);
+    const pending = this.displayPending(r);
+    if (pending === 'DRIVING') return "Ce véhicule ROULE alors que ses horaires sont terminés. Par sécurité on ne coupe jamais en marche : la coupe se fera dès qu'il sera arrêté 10 min. À surveiller.";
+    if (pending === 'AWAITING_STOP') return "Hors horaires et à l'arrêt, mais depuis moins de 10 min : il sera coupé automatiquement une fois immobile 10 minutes.";
+    if (pending === 'OFFLINE') return "Hors horaires mais hors ligne : la coupe sera envoyée dès que le boîtier se reconnecte.";
+    if (cut === 'cut') return "Moteur coupé par l'horaire : le véhicule ne peut pas démarrer jusqu'à la reprise.";
+    if (cut === 'pending') return 'Ordre de coupure envoyé au boîtier, en attente de confirmation.';
+    if (r.windowState === 'IN_WINDOW') return "Le véhicule est DANS ses horaires : il a le droit de rouler. S'il roule, c'est normal.";
+    return 'Hors de ses horaires.';
   }
 
   /** Compte-à-rebours vers la prochaine bascule (coupe/reprise). */

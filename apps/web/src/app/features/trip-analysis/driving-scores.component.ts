@@ -116,7 +116,14 @@ type Period = '7d' | '30d' | '90d';
                     @if (r.sublabel) { <span class="ds-row-sub">{{ r.sublabel }}</span> }
                     <span>{{ r.tripCount }} trajet{{ r.tripCount > 1 ? 's' : '' }}</span>
                     <span>{{ r.distanceKm | number:'1.0-0' }} km</span>
-                    @if (r.speedingTrips > 0) { <span class="ds-warn">{{ r.speedingTrips }} avec excès</span> }
+                    @if (r.speedingTrips > 0) {
+                      @if (scope() === 'vehicle') {
+                        <a [routerLink]="['/vehicles', r.id]" [queryParams]="{ tab: 'reports' }"
+                           class="ds-warn ds-warn-link" title="Voir le détail des excès de vitesse de ce véhicule">{{ r.speedingTrips }} avec excès →</a>
+                      } @else {
+                        <span class="ds-warn">{{ r.speedingTrips }} avec excès</span>
+                      }
+                    }
                     @if (r.harshCount > 0) { <span>{{ r.harshCount }} à-coup{{ r.harshCount > 1 ? 's' : '' }}</span> }
                     @if (r.fuelLiters > 0) { <span>{{ r.fuelLiters | number:'1.0-0' }} L</span> }
                   </div>
@@ -198,6 +205,8 @@ type Period = '7d' | '30d' | '90d';
     .ds-row-stats { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: var(--fg-tertiary); }
     .ds-row-sub { font-weight: 600; }
     .ds-warn { color: #EF4444; font-weight: 700; }
+    a.ds-warn-link { text-decoration: none; cursor: pointer; white-space: nowrap; }
+    a.ds-warn-link:hover { text-decoration: underline; }
     .ds-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; padding: 40px 20px; border-radius: 14px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); color: var(--fg-tertiary); }
     .ds-empty p { margin: 0; font-weight: 700; color: var(--fg-secondary); }
     .ds-empty span { font-size: 12px; max-width: 340px; }

@@ -41,14 +41,49 @@
       </div>
     }
 
-    <!-- Synthèse -->
+    <!-- Synthèse (info-bulle au survol de chaque compteur) -->
     <div class="tiles">
-      <div class="tile"><span class="n">{{ summary().total }}</span><span class="l">Véhicules</span></div>
-      <div class="tile"><span class="n">{{ summary().enabled }}</span><span class="l">Automatisés</span></div>
-      <div class="tile"><span class="n ok">{{ summary().total - summary().enabled }}</span><span class="l">Sans horaire</span></div>
-      <div class="tile"><span class="n cut">{{ summary().cut }}</span><span class="l">Coupés</span></div>
-      <div class="tile" [class.hot]="summary().driving > 0"><span class="n danger">{{ summary().driving }}</span><span class="l">Roulent encore</span></div>
-      <div class="tile"><span class="n warn">{{ summary().awaiting }}</span><span class="l">Attente d'arrêt</span></div>
+      <div class="tile" title="Nombre total de véhicules de votre périmètre.">
+        <span class="n">{{ summary().total }}</span><span class="l">Véhicules</span>
+      </div>
+      <div class="tile" title="Véhicules avec des horaires actifs (coupe et reprise automatiques du moteur).">
+        <span class="n">{{ summary().enabled }}</span><span class="l">Automatisés</span>
+      </div>
+      <div class="tile" title="Véhicules sans horaire programmé : aucune coupe automatique.">
+        <span class="n ok">{{ summary().total - summary().enabled }}</span><span class="l">Sans horaire</span>
+      </div>
+      <div class="tile" title="Véhicules dont le moteur est actuellement coupé par l'horaire.">
+        <span class="n cut">{{ summary().cut }}</span><span class="l">Coupés</span>
+      </div>
+      <div class="tile" [class.hot]="summary().driving > 0"
+           title="Véhicules qui ROULENT alors que leurs horaires sont terminés. On ne coupe jamais en marche : la coupe attend l'arrêt. Ce sont ces véhicules qu'il faut surveiller. (Un véhicule qui roule DANS ses horaires n'est pas compté ici.)">
+        <span class="n danger">{{ summary().driving }}</span><span class="l">Roulent encore</span>
+      </div>
+      <div class="tile" title="Véhicules hors horaires, à l'arrêt depuis moins de 10 min : ils seront coupés automatiquement une fois immobiles 10 minutes.">
+        <span class="n warn">{{ summary().awaiting }}</span><span class="l">Attente d'arrêt</span>
+      </div>
+    </div>
+
+    <!-- Aide : bien expliquer les états pour les opérateurs (non-techniques) -->
+    <div class="help">
+      <button type="button" class="help-toggle" (click)="toggleHelp()">
+        <lucide-icon [img]="InfoIcon" [size]="16" />
+        <span>Comment lire cette page&nbsp;?</span>
+        <span class="help-caret">{{ helpOpen() ? '▾' : '▸' }}</span>
+      </button>
+      @if (helpOpen()) {
+        <div class="help-body">
+          <p class="help-intro">Cet écran coupe et rallume le moteur des véhicules selon leurs horaires. Voici ce que veut dire chaque état&nbsp;:</p>
+          <ul class="help-list">
+            <li><span class="dot chip-ok"></span> <b>Autorisé</b> — le véhicule a le droit de rouler maintenant (on est dans ses horaires). <b>S'il roule, c'est normal</b> : il n'est PAS compté dans « Roulent encore ».</li>
+            <li><span class="dot chip-danger"></span> <b>Roule encore</b> — il roule <b>alors que ses horaires sont terminés</b>. On ne coupe jamais en marche (sécurité) : la coupe se fera dès qu'il s'arrête 10 min. <b>Ce sont ces véhicules qu'il faut surveiller.</b></li>
+            <li><span class="dot chip-warn"></span> <b>En attente d'arrêt</b> — hors horaires, à l'arrêt depuis moins de 10 min : coupé automatiquement une fois immobile 10 minutes.</li>
+            <li><span class="dot chip-cut"></span> <b>Coupé</b> — moteur coupé par l'horaire (le véhicule ne peut pas démarrer jusqu'à la reprise).</li>
+            <li><span class="dot chip-info"></span> <b>Suspendu</b> — une coupure ou remise en marche manuelle a mis l'automatisation en pause sur ce véhicule.</li>
+          </ul>
+          <p class="help-note">💡 Les compteurs « Roulent encore » et « Attente d'arrêt » ne comptent QUE les véhicules <b>hors de leurs horaires</b>. Un véhicule qui roule pendant ses horaires est « Autorisé » — c'est pour ça qu'il peut rouler sans apparaître dans « Roulent encore ».</p>
+        </div>
+      }
     </div>
 
     <!-- Action de masse -->
@@ -123,7 +158,7 @@
                   }
                 </td>
                 <td>
-                  <span class="chip" [ngClass]="stateChip(r).cls">
+                  <span class="chip" [ngClass]="stateChip(r).cls" [title]="stateHelp(r)">
                     <lucide-icon [img]="stateChip(r).icon" [size]="13" />
                     {{ stateChip(r).label }}
                   </span>
