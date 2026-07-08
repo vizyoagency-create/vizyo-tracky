@@ -1,10 +1,11 @@
-import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, OnInit, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { LucideAngularModule, ChevronLeft, Gauge, Car, UserRound, Layers, RefreshCw, AlertTriangle, TrendingUp, Info, Trophy } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import type { DrivingScoreScope, DrivingScoresDto } from '@vizyo/tracky-shared';
 import { TripAnalysisApiService } from '../../core/services/trip-analysis.service';
+import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { apiErrorMessage } from '../../core/error/api-error';
 
 type Period = '7d' | '30d' | '90d';
@@ -206,6 +207,16 @@ type Period = '7d' | '30d' | '90d';
 })
 export class DrivingScoresComponent implements OnInit {
   private readonly api = inject(TripAnalysisApiService);
+  private readonly fleetFilter = inject(FleetFilterService);
+
+  /** Recharge le classement quand le super-admin change de société (sélecteur top-bar).
+   *  On saute le 1er run de l'effect (ngOnInit fait déjà le chargement initial). */
+  private fleetEffectFirstRun = true;
+  private readonly fleetChangeEffect = effect(() => {
+    this.fleetFilter.selectedFleetId();
+    if (this.fleetEffectFirstRun) { this.fleetEffectFirstRun = false; return; }
+    void this.reload();
+  });
 
   protected readonly scope = signal<DrivingScoreScope>('vehicle');
   protected readonly period = signal<Period>('90d');
@@ -268,7 +279,9 @@ export class DrivingScoresComponent implements OnInit {
     this.loading.set(true);
     this.error.set(null);
     try {
-      this.data.set(await firstValueFrom(this.api.scores(this.scope(), this.fromIso())));
+      this.data.set(await firstValueFrom(
+        this.api.scores(this.scope(), this.fromIso(), undefined, this.fleetFilter.selectedFleetId() ?? undefined),
+      ));
     } catch (e) {
       this.error.set(apiErrorMessage(e, 'Chargement des scores impossible.'));
     } finally {

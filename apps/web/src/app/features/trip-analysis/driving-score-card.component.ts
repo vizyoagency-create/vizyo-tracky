@@ -5,6 +5,7 @@ import { LucideAngularModule, Gauge, Trophy, TrendingUp, TrendingDown, ChevronRi
 import { firstValueFrom } from 'rxjs';
 import type { DrivingScoreDetailDto, DrivingScoreScope } from '@vizyo/tracky-shared';
 import { TripAnalysisApiService } from '../../core/services/trip-analysis.service';
+import { FleetFilterService } from '../../core/services/fleet-filter.service';
 
 /**
  * Compétition & motivation (2026-07) — CARTE de score PERSO d'une entité (véhicule / conducteur /
@@ -108,6 +109,7 @@ import { TripAnalysisApiService } from '../../core/services/trip-analysis.servic
 })
 export class DrivingScoreCardComponent {
   private readonly api = inject(TripAnalysisApiService);
+  private readonly fleetFilter = inject(FleetFilterService);
 
   /** Sur quoi porte la carte. */
   readonly scope = input.required<DrivingScoreScope>();
@@ -126,10 +128,12 @@ export class DrivingScoreCardComponent {
   protected readonly ChevronIcon = ChevronRight;
 
   constructor() {
-    // Recharge quand l'entité (ou le scope) change.
+    // Recharge quand l'entité, le scope, OU la société sélectionnée (super-admin)
+    // change — la cohorte (rang/moyenne) est bornée à cette société côté API.
     effect(() => {
       const id = this.entityId();
       const scope = this.scope();
+      this.fleetFilter.selectedFleetId();
       if (id) void this.load(scope, id);
     });
   }
@@ -163,7 +167,9 @@ export class DrivingScoreCardComponent {
   private async load(scope: DrivingScoreScope, id: string): Promise<void> {
     this.loading.set(true);
     try {
-      this.data.set(await firstValueFrom(this.api.entityScore(scope, id, this.fromIso())));
+      this.data.set(await firstValueFrom(
+        this.api.entityScore(scope, id, this.fromIso(), undefined, this.fleetFilter.selectedFleetId() ?? undefined),
+      ));
     } catch {
       this.data.set(null);
     } finally {

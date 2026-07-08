@@ -136,7 +136,7 @@ export class ReportsController {
     @Res() res: Response,
     @Body() body: GeneratePdfDto,
   ): Promise<void> {
-    const { from, to, fleetId } = await this.parseRange(req, body.fleetId, body.from, body.to);
+    const { from, to, fleetId } = await this.parseRange(req, body.fleetId, body.from, body.to, body.vehicleIds);
 
     const vehicleIds = (body.vehicleIds ?? []).filter((id) => !!id);
     const scopeLabel = vehicleIds.length > 0
@@ -261,6 +261,7 @@ export class ReportsController {
     fleetIdQ: string | undefined,
     fromRaw: string,
     toRaw: string,
+    vehicleIdsHint?: string[],
   ): Promise<{ from: Date; to: Date; fleetId: string }> {
     if (!fromRaw || !toRaw) {
       throw new BadRequestException('from et to (ISO date) requis');
@@ -277,8 +278,20 @@ export class ReportsController {
       ? (fleetIdQ ?? req.user.fleetId ?? '')
       : (req.user.fleetId ?? '');
     if (!fleetId && req.user.role === UserRole.SUPER_ADMIN) {
-      const firstFleet = await this.prisma.fleet.findFirst({ orderBy: { createdAt: 'asc' }, select: { id: true } });
-      if (firstFleet) fleetId = firstFleet.id;
+      // Super-admin sans flotte explicite : si des véhicules précis sont
+      // demandés (ex. export depuis une fiche véhicule), dériver la flotte de
+      // CES véhicules — sinon on retombait sur une flotte arbitraire (la plus
+      // ancienne), d'où le 400 « vehicleIds n'appartiennent pas a la flotte
+      // demandee » dès que le véhicule vivait dans une autre flotte.
+      const hintId = (vehicleIdsHint ?? []).find((id) => !!id);
+      if (hintId) {
+        const v = await this.prisma.vehicle.findUnique({ where: { id: hintId }, select: { fleetId: true } });
+        if (v?.fleetId) fleetId = v.fleetId;
+      }
+      if (!fleetId) {
+        const firstFleet = await this.prisma.fleet.findFirst({ orderBy: { createdAt: 'asc' }, select: { id: true } });
+        if (firstFleet) fleetId = firstFleet.id;
+      }
     }
     if (!fleetId) {
       throw new BadRequestException('fleetId requis');

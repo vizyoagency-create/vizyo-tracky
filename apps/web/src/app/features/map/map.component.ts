@@ -2203,6 +2203,19 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     this.applyPositions(this.applyFilters(filtered));
   });
 
+  // Le calque stations-service est chargé côté API (agrégat flotte), donc pas
+  // filtrable client-side comme les markers : on le recharge quand le super-admin
+  // change de société. Dépendance UNIQUE = selectedFleetId (map/showFuelStations
+  // lus en untracked pour ne pas re-déclencher au simple toggle du calque).
+  private fuelStationsFleetEffect = effect(() => {
+    this.fleetFilter.selectedFleetId();
+    untracked(() => {
+      if (this.map && this.showFuelStations()) {
+        this.loadFuelStations().catch(() => { /* silent */ });
+      }
+    });
+  });
+
   // Reagir aux events ENGINE_COMMAND_UPDATED (CUT/RESTORE via SMS, scheduler, etc.)
   // pour rafraichir la bottom card ouverte et mettre a jour l'etat ignition affiche.
   private engineCommandEffect = effect(() => {
@@ -3478,7 +3491,9 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     if (!this.map) return;
     try {
       const from = new Date(Date.now() - 90 * 24 * 3600 * 1000).toISOString();
-      const stations = await firstValueFrom(this.tripAnalysisApi.fuelStationsMap(from));
+      const stations = await firstValueFrom(
+        this.tripAnalysisApi.fuelStationsMap(from, undefined, this.fleetFilter.selectedFleetId() ?? undefined),
+      );
       const now = Date.now();
       const RECENT_MS = 21 * 24 * 3600 * 1000;
       const features: GeoJSON.Feature[] = stations.map((s) => ({

@@ -516,6 +516,7 @@ import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
             [vehicleId]="v.id"
             [vehiclePlate]="v.plate"
             [vehicleType]="v.type"
+            [fleetId]="v.fleetId"
           />
         }
 

@@ -917,6 +917,10 @@ export class VehicleReportsTabComponent implements OnInit, OnDestroy {
   readonly vehiclePlate = input.required<string>();
   /** Type vehicule (pour le marker du replay). */
   readonly vehicleType = input.required<string>();
+  /** Flotte du véhicule — indispensable pour scoper l'export PDF (sinon un
+   *  super-admin retombe sur une flotte arbitraire → 400 "vehicleIds
+   *  n'appartiennent pas a la flotte demandee"). */
+  readonly fleetId = input<string | null>(null);
 
   protected readonly trips = signal<TripDto[]>([]);
   protected readonly dailySummary = signal<TripDailySummaryDto[]>([]);
@@ -1301,7 +1305,7 @@ export class VehicleReportsTabComponent implements OnInit, OnDestroy {
     this.exporting.set(true);
     try {
       await this.reportsApi.downloadConfiguredPdf(
-        null,
+        this.fleetId(),
         this.periodFrom,
         this.periodTo,
         {

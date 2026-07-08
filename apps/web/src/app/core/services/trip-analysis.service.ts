@@ -47,10 +47,11 @@ export class TripAnalysisApiService {
   }
 
   /** Score PERSO d'une entité (rang + vs moyenne) — carte dans les fiches détail. */
-  entityScore(scope: DrivingScoreScope, id: string, from?: string, to?: string): Observable<DrivingScoreDetailDto> {
+  entityScore(scope: DrivingScoreScope, id: string, from?: string, to?: string, fleetId?: string): Observable<DrivingScoreDetailDto> {
     const params: Record<string, string> = {};
     if (from) params['from'] = from;
     if (to) params['to'] = to;
+    if (fleetId) params['fleetId'] = fleetId;
     return this.http.get<DrivingScoreDetailDto>(`/api/trip-analysis/scores/${scope}/${encodeURIComponent(id)}`, { params });
   }
 
@@ -63,10 +64,11 @@ export class TripAnalysisApiService {
   }
 
   /** Stations agrégées (passages de toute la flotte) pour la carte : fréquence + récence d'usage. */
-  fuelStationsMap(from?: string, to?: string): Observable<FuelStationMapPointDto[]> {
+  fuelStationsMap(from?: string, to?: string, fleetId?: string): Observable<FuelStationMapPointDto[]> {
     const params: Record<string, string> = {};
     if (from) params['from'] = from;
     if (to) params['to'] = to;
+    if (fleetId) params['fleetId'] = fleetId;
     return this.http.get<FuelStationMapPointDto[]>('/api/trip-analysis/fuel-stations/map', { params });
   }
 

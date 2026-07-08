@@ -107,8 +107,12 @@ import {
             </button>
           </div>
 
-          <div class="relative flex-1 min-h-0">
-            <div #mapContainer class="absolute inset-0"></div>
+          <!-- Container carte : flex-1 en flow normal (PAS absolute inset-0).
+               MapLibre s'initialise mal dans un absolute au sein d'un parent
+               flex — bug silencieux de canvas blanc constaté en prod (idem
+               period-replay). Le min-h évite un collapse à 0 au tick d'init. -->
+          <div class="relative flex-1 flex flex-col min-h-[280px]">
+            <div #mapContainer class="flex-1"></div>
             @if (analysis(); as a) {
               @if (a.stopCount > 0 || a.speedingCount > 0) {
                 <div class="tr-legend">
@@ -228,6 +232,7 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
   private marker: MlMarker | null = null;
   private markerEl: HTMLElement | null = null;
   private points: Array<[number, number]> = []; // [lng, lat]
+  private resizeObserver: ResizeObserver | null = null;
   private animId: number | null = null;
   private lastFrameTime = 0;
   private floatIndex = 0;
@@ -357,6 +362,15 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
       withGeolocateControl: false,
     });
 
+    // Observe la taille du container : la fin de l'animation d'ouverture du
+    // shell / une rotation device déclenche un resize() pour éviter un canvas
+    // rendu dans le vide (carte blanche). Idem period-replay.
+    try {
+      this.resizeObserver?.disconnect();
+      this.resizeObserver = new ResizeObserver(() => this.map?.resize());
+      this.resizeObserver.observe(el);
+    } catch { /* ResizeObserver indispo : les timers ci-dessous prennent le relais */ }
+
     this.map.on('load', () => {
       // Polyligne replay (gradient couleur si donnees vitesse, sinon vert).
       this.map!.addSource('replay-line', {
@@ -400,7 +414,11 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
       this.addAnalysisLayers();
     });
 
-    setTimeout(() => this.map?.resize(), 200);
+    // Triple resize défensif : couvre les transitions CSS qui finissent après
+    // l'init et l'animation d'apparition du shell (sinon canvas blanc).
+    setTimeout(() => this.map?.resize(), 50);
+    setTimeout(() => this.map?.resize(), 250);
+    setTimeout(() => this.map?.resize(), 600);
   }
 
   /** Ajoute les couches d'analyse (arrêts + excès) — appelé une fois la carte chargée. */
@@ -499,6 +517,10 @@ export class TripReplayComponent implements AfterViewInit, OnDestroy {
   private cleanup(): void {
     this.playing.set(false);
     if (this.animId) { cancelAnimationFrame(this.animId); this.animId = null; }
+    if (this.resizeObserver) {
+      try { this.resizeObserver.disconnect(); } catch { /* */ }
+      this.resizeObserver = null;
+    }
     this.marker?.remove();
     this.marker = null;
     this.markerEl = null;

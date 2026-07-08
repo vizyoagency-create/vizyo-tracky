@@ -1,4 +1,4 @@
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, effect, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { LucideAngularModule, Plus, Trash2, FolderOpen, Truck, Eye, X } from 'lucide-angular';
@@ -196,6 +196,15 @@ export class VehicleGroupsTabComponent implements OnInit {
   /** Score de conduite par groupe (note + rang), chargé en une fois → badge sur chaque groupe. */
   protected readonly groupScores = signal<Map<string, { score: number; grade: string; rank: number; total: number }>>(new Map());
 
+  /** Recharge les scores (rang par société) quand le super-admin change de société.
+   *  On saute le 1er run (ngOnInit → load() → loadScores() fait le chargement initial). */
+  private groupScoresFleetFirstRun = true;
+  private readonly groupScoresFleetEffect = effect(() => {
+    this.fleetFilter.selectedFleetId();
+    if (this.groupScoresFleetFirstRun) { this.groupScoresFleetFirstRun = false; return; }
+    void this.loadScores();
+  });
+
   readonly loading = signal(true);
   readonly groups = signal<VehicleGroup[]>([]);
   readonly allVehicles = signal<VehicleDetailDto[]>([]);
@@ -256,7 +265,9 @@ export class VehicleGroupsTabComponent implements OnInit {
   private async loadScores(): Promise<void> {
     try {
       const from = new Date(Date.now() - 90 * 24 * 3600 * 1000).toISOString();
-      const res = await firstValueFrom(this.analysisApi.scores('group', from));
+      const res = await firstValueFrom(
+        this.analysisApi.scores('group', from, undefined, this.fleetFilter.selectedFleetId() ?? undefined),
+      );
       const map = new Map<string, { score: number; grade: string; rank: number; total: number }>();
       res.rows.forEach((r, i) => map.set(r.id, { score: r.score, grade: r.grade, rank: i + 1, total: res.rows.length }));
       this.groupScores.set(map);
