@@ -31,7 +31,12 @@ function makePrisma() {
       findMany: jest.fn().mockResolvedValue([]),
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
-    user: { findMany: jest.fn().mockResolvedValue([]) },
+    engineControlCommand: { findMany: jest.fn().mockResolvedValue([]) },
+    // `user.findMany` sert (a) à résoudre les noms [] et (b) à lister les rôles ÉLEVÉS
+    // (requête `where.OR`) → on renvoie 2 ids élevés SEULEMENT pour cette requête.
+    user: {
+      findMany: jest.fn(async (args: any) => (args?.where?.OR ? [{ id: 'super1' }, { id: 'owner1' }] : [])),
+    },
   };
 }
 
@@ -126,5 +131,45 @@ describe('UserActivityService', () => {
     expect(online).toHaveLength(1);
     expect(online[0].name).toBe('Amir B');
     expect(online[0].currentRouteLabel).toBe('Carte live');
+  });
+
+  // ── Vue FLEET-ADMIN (scope) : bornée flotte + exclusion des rôles élevés ──────────────
+  describe('scope fleet-admin', () => {
+    it('getEngineCommands(scope) borne à la flotte via tracker→vehicle ET exclut les rôles élevés', async () => {
+      const prisma = makePrisma();
+      const svc = new UserActivityService(prisma as any, { record: jest.fn() } as any, OWNER_VIS);
+      await svc.getEngineCommands({}, USER, { fleetId: 'f1' });
+      const where = prisma.engineControlCommand.findMany.mock.calls[0][0].where;
+      expect(where.tracker).toEqual({ vehicle: { fleetId: 'f1' } });
+      expect(where.requestedBy).toEqual({ notIn: ['super1', 'owner1'] });
+    });
+
+    it('getOnline(scope) filtre fleetId ET exclut les userId élevés', async () => {
+      const prisma = makePrisma();
+      const svc = new UserActivityService(prisma as any, { record: jest.fn() } as any, OWNER_VIS);
+      await svc.getOnline(USER, { fleetId: 'f1' });
+      const where = prisma.userSession.findMany.mock.calls[0][0].where;
+      expect(where.fleetId).toBe('f1');
+      expect(where.userId).toEqual({ notIn: ['super1', 'owner1'] });
+    });
+
+    it('getFeed(scope) ajoute le filtre flotte ET l\'exclusion des rôles élevés au AND', async () => {
+      const prisma = makePrisma();
+      const svc = new UserActivityService(prisma as any, { record: jest.fn() } as any, OWNER_VIS);
+      await svc.getFeed({}, USER, { fleetId: 'f1' });
+      const and = prisma.userActivity.findMany.mock.calls[0][0].where.AND;
+      expect(and).toEqual(expect.arrayContaining([{ fleetId: 'f1' }]));
+      expect(and).toEqual(expect.arrayContaining([{ userId: { notIn: ['super1', 'owner1'] } }]));
+    });
+
+    it('SANS scope (vue super-admin) : aucun filtre flotte ni exclusion de rôle ajouté', async () => {
+      const prisma = makePrisma();
+      const svc = new UserActivityService(prisma as any, { record: jest.fn() } as any, OWNER_VIS);
+      await svc.getEngineCommands({}, { id: 'sa', role: 'SUPER_ADMIN' } as any);
+      const where = prisma.engineControlCommand.findMany.mock.calls[0][0].where;
+      expect(where.tracker).toBeUndefined();
+      // OWNER_VIS.isMasked = false en test → pas d'exclusion owner non plus.
+      expect(where.requestedBy).toBeUndefined();
+    });
   });
 });

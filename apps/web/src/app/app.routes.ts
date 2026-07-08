@@ -310,6 +310,16 @@ export const routes: Routes = [
         data: { title: 'Activité utilisateurs' },
       },
       {
+        // Espace « Activité de la flotte » — FLEET_ADMIN (+ super-admin support). Scopé flotte
+        // côté serveur, exclut les rôles élevés. Coupures/rallumages moteur + présence + historique.
+        path: 'fleet-admin/activity',
+        pathMatch: 'full',
+        canActivate: [roleGuard('FLEET_ADMIN', 'SUPER_ADMIN')],
+        loadComponent: () =>
+          import('./features/fleet-activity/fleet-activity.component').then((m) => m.FleetActivityComponent),
+        data: { title: 'Activité de la flotte' },
+      },
+      {
         // Palier « Coûts IA » — supervision des dépenses du copilote IA. Super-admin (transverse)
         // + fleet-admin (scopé à sa société côté serveur : visibilité « qui consomme quoi »).
         path: 'admin/ai-usage',

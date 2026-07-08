@@ -1058,6 +1058,9 @@ export class DashboardLayoutComponent {
       ...(this.perms.can('sims_view') ? [{ label: 'Cartes SIM', route: '/sims', icon: CreditCard }] : []),
       // V1.15 — Suivi installation : réservé au FLEET_ADMIN (consultation + réordonnancement).
       ...(this.auth.user()?.role === 'FLEET_ADMIN' ? [{ label: 'Installation', route: '/installations', icon: ClipboardList }] : []),
+      // Demande 2026-07 — « Activité flotte » : contrôle des coupures/rallumages moteur + présence
+      // + historique de SA flotte. FLEET_ADMIN uniquement (le super-admin a son propre /admin/activity).
+      ...(this.auth.user()?.role === 'FLEET_ADMIN' ? [{ label: 'Activité flotte', route: '/fleet-admin/activity', icon: Activity }] : []),
     ];
     return ([
       { section: 'Supervision', items: supervision },

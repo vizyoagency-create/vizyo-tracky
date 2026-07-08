@@ -145,4 +145,69 @@ export class UserActivityController {
       status,
     }, req.user);
   }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ESPACE FLEET-ADMIN (demande 2026-07) — « Activité de la flotte ».
+  // Un FLEET_ADMIN contrôle qui coupe/rallume les moteurs (ex. veilleurs de nuit) et voit
+  // l'activité de SA flotte UNIQUEMENT. Le scope (obligatoire) borne à la flotte ET exclut
+  // côté serveur les rôles ÉLEVÉS (super-admin/owner) : jamais visibles au fleet-admin.
+  // Pas de rapports/analytics : juste en ligne + historique + commandes moteur.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /** Flotte cible : celle du fleet-admin ; un super-admin (support) peut passer `?fleetId=`. */
+  private fleetScope(user: AuthenticatedRequest['user'], fleetIdQuery?: string): { fleetId: string } | null {
+    const fleetId = user.role === UserRole.SUPER_ADMIN ? (fleetIdQuery ?? null) : (user.fleetId ?? null);
+    return fleetId ? { fleetId } : null;
+  }
+
+  @Get('fleet-admin/activity/online')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  fleetOnline(@Req() req: AuthenticatedRequest, @Query('fleetId') fleetId?: string) {
+    const scope = this.fleetScope(req.user, fleetId);
+    return scope ? this.svc.getOnline(req.user, scope) : [];
+  }
+
+  @Get('fleet-admin/activity/feed')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  fleetFeed(
+    @Req() req: AuthenticatedRequest,
+    @Query('limit') limit?: string,
+    @Query('before') before?: string,
+    @Query('beforeId') beforeId?: string,
+    @Query('userId') userId?: string,
+    @Query('type') type?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('fleetId') fleetId?: string,
+  ) {
+    const scope = this.fleetScope(req.user, fleetId);
+    if (!scope) return [];
+    return this.svc.getFeed(
+      { limit: limit ? parseInt(limit, 10) || 50 : 50, before, beforeId, userId, type, from, to },
+      req.user,
+      scope,
+    );
+  }
+
+  @Get('fleet-admin/activity/engine-commands')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  fleetEngineCommands(
+    @Req() req: AuthenticatedRequest,
+    @Query('limit') limit?: string,
+    @Query('before') before?: string,
+    @Query('action') action?: string,
+    @Query('status') status?: string,
+    @Query('fleetId') fleetId?: string,
+  ) {
+    const scope = this.fleetScope(req.user, fleetId);
+    if (!scope) return [];
+    return this.svc.getEngineCommands(
+      { limit: limit ? parseInt(limit, 10) || 50 : 50, before, action, status },
+      req.user,
+      scope,
+    );
+  }
 }

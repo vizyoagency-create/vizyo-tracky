@@ -8,7 +8,7 @@ import type {
   PresenceStatus,
 } from '@vizyo/tracky-shared';
 import { labelForRoute } from '@vizyo/tracky-shared';
-import { Prisma } from '@prisma/client';
+import { Prisma, UserRole } from '@prisma/client';
 import type { AuthUser } from '../auth/types/auth-user';
 import { OwnerVisibilityService } from '../common/owner-visibility.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -23,6 +23,14 @@ interface ActivityEventLike {
   durationMs?: number;
   status?: string;
   at?: string;
+}
+
+/**
+ * Restreint la vue « activité » à une flotte (fleet-admin). Filtre par flotte ET exclut les
+ * acteurs de rôle ÉLEVÉ (super-admin / owner). Absent = vue super-admin complète (inchangée).
+ */
+export interface FleetActivityScope {
+  fleetId: string;
 }
 
 /** Au-delà de ce silence on rattache à une nouvelle session, pas à l'ancienne. */
@@ -132,16 +140,42 @@ export class UserActivityService {
     });
   }
 
+  /**
+   * IDs des utilisateurs de rôle ÉLEVÉ (SUPER_ADMIN ou owner). EXCLUS de la vue fleet-admin :
+   * un fleet-admin ne doit JAMAIS voir l'activité des rôles au-dessus de lui (super-admin, owner).
+   * Caché 60 s (change rarement). Filtre CÔTÉ SERVEUR, pas un simple masquage d'affichage.
+   */
+  private elevatedCache: { ids: string[]; at: number } | null = null;
+  private async getElevatedUserIds(): Promise<string[]> {
+    if (this.elevatedCache && Date.now() - this.elevatedCache.at < 60_000) return this.elevatedCache.ids;
+    const rows = await this.prisma.user.findMany({
+      where: { OR: [{ role: UserRole.SUPER_ADMIN }, { isOwner: true }] },
+      select: { id: true },
+    });
+    const ids = rows.map((r) => r.id);
+    this.elevatedCache = { ids, at: Date.now() };
+    return ids;
+  }
+
   /** Utilisateurs en ligne maintenant (1 entrée par user, la session la plus fraîche). */
-  async getOnline(viewer: { isOwner?: boolean | null } = {}): Promise<OnlineUserDto[]> {
+  async getOnline(
+    viewer: { isOwner?: boolean | null } = {},
+    scope?: FleetActivityScope,
+  ): Promise<OnlineUserDto[]> {
     const fresh = new Date(Date.now() - ONLINE_FRESH_MS);
+    const where: Prisma.UserSessionWhereInput = {
+      endedAt: null,
+      lastSeenAt: { gte: fresh },
+      // Owner plateforme — invisible aux autres super-admins dans le live.
+      ...(this.ownerVis.isMasked(viewer) ? { user: { isOwner: false } } : {}),
+    };
+    if (scope) {
+      // Vue fleet-admin : bornée à la flotte + EXCLUT les rôles élevés (super-admin/owner).
+      where.fleetId = scope.fleetId;
+      where.userId = { notIn: await this.getElevatedUserIds() };
+    }
     const sessions = await this.prisma.userSession.findMany({
-      where: {
-        endedAt: null,
-        lastSeenAt: { gte: fresh },
-        // Owner plateforme — invisible aux autres super-admins dans le live.
-        ...(this.ownerVis.isMasked(viewer) ? { user: { isOwner: false } } : {}),
-      },
+      where,
       orderBy: { lastSeenAt: 'desc' },
       include: { user: { select: { firstName: true, lastName: true, role: true } } },
     });
@@ -182,7 +216,7 @@ export class UserActivityService {
     type?: string;
     from?: string;
     to?: string;
-  } = {}, viewer: { isOwner?: boolean | null } = {}): Promise<ActivityFeedItemDto[]> {
+  } = {}, viewer: { isOwner?: boolean | null } = {}, scope?: FleetActivityScope): Promise<ActivityFeedItemDto[]> {
     const take = Math.min(Math.max(filters.limit ?? 50, 1), 200);
     // On exclut HEARTBEAT (purement technique, 1/30s/user) du flux lisible.
     const and: Record<string, unknown>[] = [{ type: { not: 'HEARTBEAT' } }];
@@ -190,6 +224,11 @@ export class UserActivityService {
     // Owner plateforme — activité de l'owner exclue pour un viewer non-owner.
     const ownerExcl = await this.ownerVis.userIdExclusion(viewer);
     if (Object.keys(ownerExcl).length) and.push(ownerExcl);
+    if (scope) {
+      // Vue fleet-admin : bornée à la flotte + EXCLUT les rôles élevés (super-admin/owner).
+      and.push({ fleetId: scope.fleetId });
+      and.push({ userId: { notIn: await this.getElevatedUserIds() } });
+    }
     if (filters.type && VALID_TYPES.has(filters.type)) and.push({ type: filters.type });
     if (filters.from) {
       const d = new Date(filters.from);
@@ -321,14 +360,9 @@ export class UserActivityService {
     before?: string;
     action?: string;
     status?: string;
-  }, viewer: { isOwner?: boolean | null } = {}): Promise<EngineCommandAuditDto[]> {
+  }, viewer: { isOwner?: boolean | null } = {}, scope?: FleetActivityScope): Promise<EngineCommandAuditDto[]> {
     const take = Math.min(Math.max(filters.limit ?? 50, 1), 100);
-    const where: {
-      action?: 'CUT' | 'RESTORE';
-      status?: 'PENDING' | 'SENT' | 'ACKNOWLEDGED' | 'FAILED' | 'REJECTED_SPEED';
-      createdAt?: { lt: Date };
-      requestedBy?: { notIn: string[] };
-    } = {};
+    const where: Prisma.EngineControlCommandWhereInput = {};
     if (filters.action === 'CUT' || filters.action === 'RESTORE') where.action = filters.action;
     if (
       filters.status === 'PENDING' ||
@@ -343,9 +377,16 @@ export class UserActivityService {
       const d = new Date(filters.before);
       if (!Number.isNaN(d.getTime())) where.createdAt = { lt: d };
     }
-    // Owner plateforme — commandes moteur demandées par l'owner exclues pour un
-    // viewer non-owner (`requestedBy` est une colonne UUID, notIn est sûr).
-    if (this.ownerVis.isMasked(viewer)) {
+    if (scope) {
+      // Vue fleet-admin : UNIQUEMENT les commandes des véhicules de SA flotte (via
+      // tracker → vehicle → fleetId, la commande ne porte pas de fleetId), et JAMAIS celles
+      // demandées par un rôle ÉLEVÉ (super-admin/owner) — un fleet-admin ne voit pas au-dessus.
+      where.tracker = { vehicle: { fleetId: scope.fleetId } };
+      const elevated = await this.getElevatedUserIds();
+      if (elevated.length) where.requestedBy = { notIn: elevated };
+    } else if (this.ownerVis.isMasked(viewer)) {
+      // Vue super-admin — commandes moteur demandées par l'owner exclues pour un viewer
+      // non-owner (`requestedBy` est une colonne UUID, notIn est sûr).
       const ids = await this.ownerVis.getOwnerIds();
       if (ids.length) where.requestedBy = { notIn: ids };
     }
