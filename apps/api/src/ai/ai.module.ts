@@ -4,6 +4,7 @@ import { AuthModule } from '../auth/auth.module';
 import { ObservabilityModule } from '../observability/observability.module';
 import { AiOptimizationController } from './ai-optimization.controller';
 import { AiOptimizationService } from './ai-optimization.service';
+import { AiStatusController } from './ai-status.controller';
 
 /**
  * Sprint 9 — Copilote IA d'optimisation (capacité + placement). Réutilise les
@@ -13,7 +14,7 @@ import { AiOptimizationService } from './ai-optimization.service';
  */
 @Module({
   imports: [AuthModule, AgendaModule, ObservabilityModule],
-  controllers: [AiOptimizationController],
+  controllers: [AiOptimizationController, AiStatusController],
   providers: [AiOptimizationService],
 })
 export class AiModule {}

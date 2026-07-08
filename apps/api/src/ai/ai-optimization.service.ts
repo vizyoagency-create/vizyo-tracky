@@ -31,6 +31,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 import { AiServiceError, type AiErrorKind } from './anthropic.client';
 import { AiRouter } from './ai-router.service';
+import { AiAvailabilityService } from './ai-availability.service';
 import {
   CAPACITY_SCHEMA,
   PLACEMENT_SCHEMA,
@@ -132,6 +133,7 @@ export class AiOptimizationService {
     private readonly reservations: ReservationsService,
     private readonly forecast: ForecastService,
     private readonly ai: AiRouter,
+    private readonly aiAvail: AiAvailabilityService,
     private readonly errors: ErrorLogger,
     private readonly aiUsage: AiUsageService,
   ) {}
@@ -203,6 +205,8 @@ export class AiOptimizationService {
   async suggestCapacity(user: AuthUser, dto: AiCapacitySuggestRequestDto): Promise<AiCapacityResultDto> {
     const { payload, vehicles, metier, fleetId } = await this.buildCapacityPayload(user, dto);
     if (vehicles.length === 0) return { metier, proposals: [] };
+    // Interrupteur maître : IA désactivée pour la flotte → aucune proposition (l'app tourne sans IA).
+    if (!(await this.aiAvail.isEnabledForFleet(fleetId))) return { metier, proposals: [] };
 
     let ai: CapacityAiOutput;
     try {
@@ -408,6 +412,17 @@ export class AiOptimizationService {
         proposals: [],
         noGoodMatch: true,
         notes: 'Aucun véhicule libre ne correspond aux critères sur ce créneau.',
+        excludedUnknownCapacity: excluded.unknownCapacity,
+        excludedImmobilized: excluded.immobilized,
+      };
+    }
+    // Interrupteur maître : IA désactivée pour la flotte → pas de placement IA (l'app tourne sans IA).
+    if (!(await this.aiAvail.isEnabledForFleet(fleetId))) {
+      return {
+        slot,
+        proposals: [],
+        noGoodMatch: true,
+        notes: 'Assistance IA désactivée pour cette flotte.',
         excludedUnknownCapacity: excluded.unknownCapacity,
         excludedImmobilized: excluded.immobilized,
       };

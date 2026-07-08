@@ -123,3 +123,29 @@ export interface AiProviderSettingsDto {
 export interface SetAiProviderDto {
   provider: AiProviderMode;
 }
+
+/**
+ * État de l'IA pour l'utilisateur courant. `enabled` = l'IA est UTILISABLE (clé présente côté serveur
+ * ET interrupteur maître de la flotte activé). Sert au front à masquer les actions IA quand l'IA est
+ * coupée. L'analyse déterministe des trajets (arrêts/excès/stations/scores) n'est PAS de l'IA et
+ * reste disponible même si `enabled` est faux.
+ */
+export interface AiStatusDto {
+  /** Au moins une clé provider (Claude/GPT) présente côté serveur. */
+  configured: boolean;
+  /** IA utilisable pour la flotte de l'utilisateur (config + interrupteur maître ON). */
+  enabled: boolean;
+  fleetId: string | null;
+}
+
+/** Interrupteur maître IA d'une flotte (fleet-admin = sa flotte ; super-admin = `fleetId` ciblé). */
+export interface SetAiEnabledDto {
+  fleetId?: string;
+  enabled: boolean;
+}
+
+/** Réglage IA courant d'une flotte (pour l'UI de réglages). */
+export interface FleetAiSettingDto {
+  fleetId: string;
+  enabled: boolean;
+}

@@ -50,6 +50,11 @@ function makeErrors() {
   return { record: jest.fn().mockResolvedValue('log-1') } as never;
 }
 
+/** Interrupteur maître IA — par défaut activé (comportement historique des tests). */
+function makeAiAvail(enabled = true) {
+  return { isConfigured: () => true, isEnabledForFleet: jest.fn().mockResolvedValue(enabled) } as never;
+}
+
 function makeAiUsage() {
   return {
     record: jest.fn().mockResolvedValue(undefined),
@@ -65,6 +70,7 @@ function build(over: {
   reservations?: unknown;
   forecast?: unknown;
   anthropic?: unknown;
+  aiAvail?: unknown;
   errors?: unknown;
   aiUsage?: unknown;
 } = {}) {
@@ -75,6 +81,7 @@ function build(over: {
     (over.reservations ?? makeReservations()) as never,
     (over.forecast ?? makeForecast()) as never,
     (over.anthropic ?? makeAnthropic({ proposals: [] })) as never,
+    (over.aiAvail ?? makeAiAvail()) as never,
     (over.errors ?? makeErrors()) as never,
     (over.aiUsage ?? makeAiUsage()) as never,
   );

@@ -18,6 +18,7 @@ import type {
 import type { AuthUser } from '../auth/types/auth-user';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { AiRouter } from '../ai/ai-router.service';
+import { AiAvailabilityService } from '../ai/ai-availability.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
@@ -83,6 +84,10 @@ export class AgendaAgentRunnerService {
     // Centre d'alerte (@Global) : remonte les échecs des runs de FOND (planifié / événementiel / IA)
     // qui, sinon, ne journalisent qu'en console. Omis dans les specs (construction manuelle).
     private readonly errorLogger?: ErrorLogger,
+    // Interrupteur maître IA par flotte (@Global) : si la flotte a désactivé l'IA, l'agent tourne en
+    // 100% déterministe (pas d'appel LLM). Optionnel comme `ai` ; PLACÉ EN FIN pour ne pas décaler les
+    // constructions positionnelles des specs (injection NestJS = par type, l'ordre n'impacte pas la prod).
+    private readonly aiAvail?: AiAvailabilityService,
   ) {}
 
   private resolveFleetId(user: AuthUser, fleetId?: string): string {
@@ -378,6 +383,8 @@ export class AgendaAgentRunnerService {
   ): Promise<Map<number, { keep: boolean; reasoning: string }>> {
     const out = new Map<number, { keep: boolean; reasoning: string }>();
     if (!this.ai || !this.aiUsage || !this.ai.isConfigured() || patterns.length === 0) return out;
+    // Interrupteur maître : IA désactivée pour la flotte → pas de couche IA (l'agent reste déterministe).
+    if (this.aiAvail && !(await this.aiAvail.isEnabledForFleet(fleetId))) return out;
     const capped = patterns.slice(0, 30); // borne le coût sur les grosses flottes
     const fleet = await this.prisma.fleet.findUnique({ where: { id: fleetId }, select: { metier: true, name: true } });
     const metier = (fleet?.metier as FleetMetier) ?? 'GENERIC';

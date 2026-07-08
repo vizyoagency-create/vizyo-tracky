@@ -1,6 +1,7 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { AiProviderId, TripAiResultDto, TripAnalysisDto, TripNarrativeCompareDto } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
+import { AiAvailabilityService } from '../ai/ai-availability.service';
 import { AiRouter } from '../ai/ai-router.service';
 import { AiServiceError, type AiProvider, type AiProviderMode } from '../ai/ai-client.types';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
@@ -29,10 +30,18 @@ export class TripAnalysisLlmService {
     private readonly prisma: PrismaService,
     private readonly vehicleAccess: VehicleAccessService,
     private readonly ai: AiRouter,
+    private readonly aiAvail: AiAvailabilityService,
     private readonly aiUsage: AiUsageService,
     private readonly analysis: TripAnalysisService,
     private readonly errorLogger: ErrorLogger,
   ) {}
+
+  /** Interrupteur maître : l'IA doit être configurée ET non désactivée par la flotte du trajet. */
+  private async ensureAiEnabled(fleetId: string): Promise<void> {
+    if (!(await this.aiAvail.isEnabledForFleet(fleetId))) {
+      throw new ForbiddenException('Assistance IA désactivée pour cette flotte.');
+    }
+  }
 
   /**
    * Génère (ou régénère) le récit IA d'un trajet déjà analysé, le persiste, renvoie l'analyse enrichie.
@@ -41,6 +50,7 @@ export class TripAnalysisLlmService {
    */
   async narrate(user: AuthUser, tripId: string, preferProvider?: AiProviderId): Promise<TripAnalysisDto> {
     const row = await this.load(user, tripId);
+    await this.ensureAiEnabled(row.fleetId);
     const useMixte = !preferProvider && (await this.ai.mode()) === 'both' && this.ai.mixteAvailable();
     const r = useMixte ? await this.runEnsemble(row) : await this.run(row, preferProvider);
     await this.prisma.tripAnalysis.update({
@@ -112,6 +122,7 @@ export class TripAnalysisLlmService {
   /** Mode « Comparer » : le MÊME trajet analysé par Claude ET GPT en parallèle, côte à côte. */
   async compare(user: AuthUser, tripId: string): Promise<TripNarrativeCompareDto> {
     const row = await this.load(user, tripId);
+    await this.ensureAiEnabled(row.fleetId);
     const providers: AiProviderId[] = ['claude', 'gpt'];
     const results = await Promise.all(
       providers.map<Promise<TripAiResultDto>>(async (p) => {

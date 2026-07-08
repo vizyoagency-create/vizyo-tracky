@@ -15,6 +15,7 @@ import { fleetTzFormatter, localParts, localWallToUtc } from '../agenda/fleet-tz
 import { ReservationsService } from '../agenda/reservations.service';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { AiRouter } from '../ai/ai-router.service';
+import { AiAvailabilityService } from '../ai/ai-availability.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
@@ -64,6 +65,9 @@ export class ReservationBookingService {
     private readonly aiUsage?: AiUsageService,
     // Centre d'alerte (@Global) : remonte l'échec de l'analyse IA du besoin dicté (best-effort mais visible).
     private readonly errorLogger?: ErrorLogger,
+    // Interrupteur maître IA par flotte (@Global) : si la flotte a désactivé l'IA, on n'affine pas au LLM.
+    // Placé EN FIN pour ne pas décaler les constructions positionnelles des specs (DI = par type).
+    private readonly aiAvail?: AiAvailabilityService,
   ) {}
 
   private resolveFleetId(user: AuthUser, fleetId?: string): string {
@@ -175,7 +179,9 @@ export class ReservationBookingService {
       endAt: when.endAt,
     };
 
-    if (this.ai?.isConfigured() && this.aiUsage) {
+    // Interrupteur maître : si la flotte a désactivé l'IA, on garde le repli déterministe (pas de LLM).
+    const aiEnabled = this.aiAvail ? await this.aiAvail.isEnabledForFleet(link.fleetId) : true;
+    if (this.ai?.isConfigured() && this.aiUsage && aiEnabled) {
       try {
         const nowIso = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Paris', dateStyle: 'short', timeStyle: 'short' }).format(new Date());
         const call = await this.ai.completeJson<{ seatsNeeded: number | null; destination: string | null; startAt: string | null; endAt: string | null }>({
