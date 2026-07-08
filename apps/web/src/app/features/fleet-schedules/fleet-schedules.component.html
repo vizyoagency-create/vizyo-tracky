@@ -56,6 +56,12 @@
       <div class="bulk-head">
         <h2>Appliquer des horaires à toute la flotte</h2>
         <p class="muted small">Active l'automatisation et pose la même plage sur les véhicules de votre périmètre.</p>
+        @if (bulkBlocked()) {
+          <p class="bulk-warn">
+            <lucide-icon [img]="AlertTriangleIcon" [size]="14" />
+            Vous êtes super-administrateur. <b>Choisissez d'abord une société</b> (sélecteur en haut à droite) : l'action ne s'appliquera qu'à cette flotte, jamais à toutes.
+          </p>
+        }
       </div>
       <div class="bulk-form">
         <label>De <input type="time" [ngModel]="bulkStart()" (ngModelChange)="bulkStart.set($event)" /></label>
@@ -66,10 +72,10 @@
           }
         </div>
         <div class="bulk-actions">
-          <button type="button" class="btn primary" (click)="openPreview(false)" [disabled]="previewLoading()">
+          <button type="button" class="btn primary" (click)="openPreview(false)" [disabled]="previewLoading() || bulkBlocked()">
             <lucide-icon [img]="PowerIcon" [size]="16" /> Aperçu &amp; appliquer
           </button>
-          <button type="button" class="btn danger-ghost" (click)="openPreview(true)" [disabled]="previewLoading()">
+          <button type="button" class="btn danger-ghost" (click)="openPreview(true)" [disabled]="previewLoading() || bulkBlocked()">
             <lucide-icon [img]="PowerOffIcon" [size]="16" /> Désactiver sur la flotte
           </button>
         </div>

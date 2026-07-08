@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { Prisma, UserRole } from '@prisma/client';
 import {
   getVehicleConnectivityState,
@@ -201,7 +201,7 @@ export class FleetSchedulesService {
   // ─────────────────────────────────────────── APERÇU (avant bulk) ───────────────────────────────────────────
 
   async preview(user: AuthUser, dto: BulkScheduleApplyDto): Promise<BulkSchedulePreviewResponse> {
-    const targets = await this.resolveTargets(user, dto.vehicleIds ?? null);
+    const targets = await this.resolveTargets(user, dto.vehicleIds ?? null, dto.fleetId ?? null);
     const targetIds = new Set(targets.map((t) => t.id));
 
     // Télémétrie live pour classer l'effet immédiat (roule / à l'arrêt / hors ligne).
@@ -289,7 +289,7 @@ export class FleetSchedulesService {
   // ─────────────────────────────────────────── BULK (appliquer) ───────────────────────────────────────────
 
   async bulkApply(user: AuthUser, dto: BulkScheduleApplyDto): Promise<BulkScheduleApplyResponse> {
-    const targets = await this.resolveTargets(user, dto.vehicleIds ?? null);
+    const targets = await this.resolveTargets(user, dto.vehicleIds ?? null, dto.fleetId ?? null);
     const requestedBy = this.toRequestedBy(user);
     const results: BulkScheduleApplyResponse['results'] = [];
 
@@ -338,11 +338,26 @@ export class FleetSchedulesService {
    *  2) permission `schedules_manage` résolue PAR véhicule (VEHICLE > GROUP > ALL) — un opérateur
    *     scopé ne peut modifier que les véhicules qu'il gère. Admins (SA/FA) → tout leur tenant.
    */
-  private async resolveTargets(user: AuthUser, vehicleIds: string[] | null): Promise<TargetVehicle[]> {
+  private async resolveTargets(
+    user: AuthUser,
+    vehicleIds: string[] | null,
+    fleetId: string | null,
+  ): Promise<TargetVehicle[]> {
     const where: Prisma.VehicleWhereInput = {};
-    if (user.role !== UserRole.SUPER_ADMIN) {
+    if (user.role === UserRole.SUPER_ADMIN) {
+      // GARDE ANTI-CATASTROPHE (revue prod) : un super-admin voit toutes les flottes ; une action
+      // de masse SANS flotte ni véhicules explicites toucherait TOUTES les flottes. On l'INTERDIT :
+      // il doit choisir une flotte (filtre société) ou fournir des véhicules précis.
+      if (fleetId) {
+        where.fleetId = fleetId;
+      } else if (!vehicleIds || vehicleIds.length === 0) {
+        throw new BadRequestException(
+          'Sélectionnez une société/flotte (filtre en haut) avant d\'appliquer des horaires en masse.',
+        );
+      }
+    } else {
       if (!user.fleetId) return []; // fail-closed
-      where.fleetId = user.fleetId;
+      where.fleetId = user.fleetId; // non-super : toujours scopé à sa flotte (fleetId param ignoré)
     }
     if (vehicleIds && vehicleIds.length > 0) where.id = { in: vehicleIds };
 

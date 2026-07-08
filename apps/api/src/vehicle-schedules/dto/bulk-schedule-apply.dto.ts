@@ -11,7 +11,15 @@ import { UpsertVehicleScheduleDto } from './upsert-vehicle-schedule.dto';
  */
 export class BulkScheduleApplyDto {
   /**
-   * Véhicules ciblés. Omis = TOUS les véhicules du périmètre de l'appelant sur lesquels il
+   * Flotte ciblée. OBLIGATOIRE pour un SUPER_ADMIN (garde anti-catastrophe côté service) :
+   * sans elle, un bulk toucherait TOUTES les flottes. Ignoré pour un non-super (déjà scopé).
+   */
+  @IsOptional()
+  @IsUUID('4')
+  fleetId?: string;
+
+  /**
+   * Véhicules ciblés. Omis = TOUS les véhicules de la flotte ciblée sur lesquels l'appelant
    * a la permission `schedules_manage` (résolue par véhicule côté service).
    */
   @IsOptional()

@@ -93,8 +93,13 @@ export interface FleetScheduleListResponse {
  */
 export interface BulkScheduleApplyRequest {
   /**
-   * Véhicules ciblés. Omis/`null` = TOUS les véhicules du périmètre de l'appelant sur
-   * lesquels il a la permission `schedules_manage`.
+   * Flotte ciblée. OBLIGATOIRE pour un SUPER_ADMIN (sinon 400) : empêche d'appliquer par
+   * mégarde à TOUTES les flottes. Pour un non-super, ignoré (déjà scopé à sa flotte).
+   */
+  fleetId?: string | null;
+  /**
+   * Véhicules ciblés. Omis/`null` = TOUS les véhicules de la flotte ciblée (ou du périmètre
+   * de l'appelant) sur lesquels il a la permission `schedules_manage`.
    */
   vehicleIds?: string[] | null;
   /** La config d'horaires à appliquer (shape UpsertVehicleScheduleDto). */

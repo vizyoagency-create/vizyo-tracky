@@ -27,6 +27,7 @@ import type {
   BulkSchedulePreviewResponse,
   FleetScheduleRowDto,
 } from '@vizyo/tracky-shared';
+import { AuthService } from '../../core/services/auth.service';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { RealtimeService } from '../../core/services/realtime.service';
@@ -62,8 +63,14 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
   private readonly api = inject(VehicleSchedulesApiService);
   private readonly realtime = inject(RealtimeService);
   private readonly fleetFilter = inject(FleetFilterService);
+  private readonly auth = inject(AuthService);
   private readonly toast = inject(ToastService);
   private readonly perms = inject(PermissionsService);
+
+  /** Super-admin : voit toutes les flottes → un bulk SANS société choisie toucherait tout le monde. */
+  protected readonly isSuperAdmin = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
+  /** Bulk interdit tant qu'un super-admin n'a pas choisi une société (filtre du haut). */
+  protected readonly bulkBlocked = computed(() => this.isSuperAdmin() && !this.fleetFilter.selectedFleetId());
 
   // Icônes
   protected readonly AlarmClockIcon = AlarmClock;
@@ -330,12 +337,18 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
 
   /** Ouvre l'aperçu (enable) ou prépare la désactivation de masse (disable). */
   protected async openPreview(disable = false): Promise<void> {
+    if (this.bulkBlocked()) {
+      this.toast.warning('Choisissez une société', 'Sélectionnez une flotte (filtre en haut) avant d\'appliquer en masse.');
+      return;
+    }
     this.pendingDisable.set(disable);
     this.previewLoading.set(true);
     this.previewData.set(null);
     try {
       const payload = this.buildPayload(!disable);
-      const res = await firstValueFrom(this.api.bulkPreview({ schedule: payload }));
+      const res = await firstValueFrom(
+        this.api.bulkPreview({ fleetId: this.fleetFilter.selectedFleetId() ?? undefined, schedule: payload }),
+      );
       this.previewData.set(res);
     } catch (e) {
       const msg = (e as { error?: { message?: string } })?.error?.message ?? 'Aperçu impossible';
@@ -354,7 +367,9 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
     this.applying.set(true);
     try {
       const payload = this.buildPayload(!disable);
-      const res = await firstValueFrom(this.api.bulkApply({ schedule: payload }));
+      const res = await firstValueFrom(
+        this.api.bulkApply({ fleetId: this.fleetFilter.selectedFleetId() ?? undefined, schedule: payload }),
+      );
       this.previewData.set(null);
       await this.load(true); // rafraîchit d'abord les lignes (pour la synchro live des cartes en attente)
       if (disable) {

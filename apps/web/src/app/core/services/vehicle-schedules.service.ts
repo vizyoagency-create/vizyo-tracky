@@ -144,6 +144,7 @@ export class VehicleSchedulesApiService {
 
   /** Aperçu d'un bulk AVANT application (combien seraient coupés maintenant, etc.). */
   bulkPreview(payload: {
+    fleetId?: string;
     vehicleIds?: string[];
     schedule: UpsertSchedulePayload;
   }): Observable<BulkSchedulePreviewResponse> {
@@ -152,6 +153,7 @@ export class VehicleSchedulesApiService {
 
   /** Applique un bulk (activer/désactiver + poser des horaires) sur le périmètre autorisé. */
   bulkApply(payload: {
+    fleetId?: string;
     vehicleIds?: string[];
     schedule: UpsertSchedulePayload;
   }): Observable<BulkScheduleApplyResponse> {
