@@ -110,8 +110,19 @@ export class ReportExcelService {
       take: TRIPS_CAP,
     });
 
-    // 4) Agrégation KPI à partir des trajets chargés (pas de calcul DB séparé).
-    const kpis = this.aggregate(trips, vehicle);
+    // 3bis) Passages en station-service du véhicule sur la période (prix DATÉ à chaque passage) —
+    //       base du suivi de coût réel et de la future section d'auto-calcul à la pompe.
+    const fuelStops = await this.prisma.tripFuelStop.findMany({
+      where: { vehicleId, arrivedAt: { gte: from, lte: to } },
+      select: {
+        arrivedAt: true, durationSec: true, fuelType: true, unitPriceEur: true,
+        station: { select: { brand: true, name: true, city: true, address: true } },
+      },
+      orderBy: { arrivedAt: 'asc' },
+    });
+
+    // 4) Agrégation KPI à partir des trajets chargés (+ prix constaté depuis les passages station).
+    const kpis = this.aggregate(trips, vehicle, fuelStops);
 
     // 5) Construit le classeur.
     const workbook = new ExcelJS.Workbook();
@@ -121,6 +132,7 @@ export class ReportExcelService {
     this.buildSynthese(workbook, vehicle, from, to, kpis);
     this.buildTrajets(workbook, trips);
     this.buildParJour(workbook, trips);
+    if (fuelStops.length) this.buildPassagesStation(workbook, fuelStops);
 
     const arrayBuffer = await workbook.xlsx.writeBuffer();
     const buffer = Buffer.from(arrayBuffer as ArrayBuffer);
@@ -135,6 +147,7 @@ export class ReportExcelService {
   private aggregate(
     trips: TripRow[],
     vehicle: { type: string; fuelConsumptionL100km: number | null; fleet: { fuelPriceEurL: number } | null },
+    fuelStops: FuelStopRow[],
   ): Kpis {
     let totalKm = 0;
     let totalDurationSeconds = 0;
@@ -156,6 +169,11 @@ export class ReportExcelService {
     const estimatedLiters = (totalKm * consL100) / 100;
     const fuelPrice = vehicle.fleet?.fuelPriceEurL ?? 1.85;
 
+    // Prix RÉELLEMENT CONSTATÉ en station (moyenne des prix captés aux passages du véhicule sur la période).
+    const priced = fuelStops.filter((s) => s.unitPriceEur != null).map((s) => s.unitPriceEur as number);
+    const observedPriceEurL = priced.length ? Math.round((priced.reduce((a, b) => a + b, 0) / priced.length) * 1000) / 1000 : null;
+    const fuelType = fuelStops.find((s) => s.fuelType)?.fuelType ?? null;
+
     return {
       tripCount: trips.length,
       totalKm: round1(totalKm),
@@ -164,6 +182,11 @@ export class ReportExcelService {
       maxSpeedKmh: round1(maxSpeed),
       estimatedLiters: round1(estimatedLiters),
       estimatedCostEur: Math.round(estimatedLiters * fuelPrice * 100) / 100,
+      fuelPriceEurL: fuelPrice,
+      fuelVisits: fuelStops.length,
+      fuelType,
+      observedPriceEurL,
+      estimatedCostAtObservedEur: observedPriceEurL != null ? Math.round(estimatedLiters * observedPriceEurL * 100) / 100 : null,
     };
   }
 
@@ -227,8 +250,17 @@ export class ReportExcelService {
       ['Vitesse moyenne (km/h)', k.avgSpeedKmh, '#,##0.0'],
       ['Vitesse max (km/h)', k.maxSpeedKmh, '#,##0.0'],
       ['Conso estimée (L)', k.estimatedLiters, '#,##0.0'],
-      ['Coût estimé (€)', k.estimatedCostEur, '#,##0.00'],
+      ['Coût estimé — prix paramétré (€)', k.estimatedCostEur, '#,##0.00'],
+      ['Prix carburant paramétré (€/L)', k.fuelPriceEurL, '#,##0.000'],
     ];
+    // Prix RÉELLEMENT CONSTATÉ en station sur la période (si des passages ont été captés).
+    if (k.fuelVisits > 0) {
+      kpiRows.push(['Passages en station', k.fuelVisits, '#,##0']);
+      if (k.observedPriceEurL != null) {
+        kpiRows.push([`Prix constaté en station (€/L${k.fuelType ? ' — ' + fuelLabelXlsx(k.fuelType) : ''})`, k.observedPriceEurL, '#,##0.000']);
+        kpiRows.push(['Coût au prix constaté (€)', k.estimatedCostAtObservedEur ?? 0, '#,##0.00']);
+      }
+    }
     const kpiStart = r;
     for (const [label, value, fmt] of kpiRows) {
       const lc = ws.getCell(`A${r}`);
@@ -347,6 +379,49 @@ export class ReportExcelService {
   }
 
   // ---------------------------------------------------------------------------
+  // Feuille « Passages station » — chaque passage DATÉ + prix du moment (matière brute
+  // pour le suivi de coût réel et la future section d'auto-calcul à la pompe).
+  // ---------------------------------------------------------------------------
+
+  private buildPassagesStation(wb: ExcelJS.Workbook, fuelStops: FuelStopRow[]): void {
+    const ws = wb.addWorksheet('Passages station', { views: [{ state: 'frozen', ySplit: 1 }] });
+    ws.columns = [
+      { header: 'Date/heure', key: 'at', width: 20, style: { numFmt: 'yyyy-mm-dd hh:mm' } },
+      { header: 'Station', key: 'station', width: 24 },
+      { header: 'Ville', key: 'city', width: 18 },
+      { header: 'Adresse', key: 'address', width: 30 },
+      { header: 'Carburant', key: 'fuel', width: 16 },
+      { header: 'Prix (€/L)', key: 'price', width: 12, style: { numFmt: '#,##0.000' } },
+      { header: 'Durée arrêt', key: 'dur', width: 14 },
+    ];
+    this.styleHeaderRow(ws.getRow(1));
+
+    let sumPrice = 0;
+    let priced = 0;
+    for (const s of fuelStops) {
+      if (s.unitPriceEur != null) { sumPrice += s.unitPriceEur; priced++; }
+      ws.addRow({
+        at: s.arrivedAt,
+        station: s.station?.brand || s.station?.name || 'Station-service',
+        city: s.station?.city ?? '',
+        address: s.station?.address ?? '',
+        fuel: s.fuelType ? fuelLabelXlsx(s.fuelType) : '',
+        price: s.unitPriceEur ?? null,
+        dur: fmtDuration(s.durationSec),
+      });
+    }
+    // Ligne PRIX MOYEN constaté sur la période.
+    if (priced > 0) {
+      const avgRow = ws.addRow({ at: 'PRIX MOYEN', price: Math.round((sumPrice / priced) * 1000) / 1000 });
+      avgRow.font = { bold: true };
+      avgRow.eachCell((cell) => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLOR_TOTAL_FILL } }; });
+      (avgRow.getCell('price') as ExcelJS.Cell).numFmt = '#,##0.000';
+    }
+
+    if (ws.rowCount >= 1) this.applyBorders(ws, `A1:G${ws.rowCount}`);
+  }
+
+  // ---------------------------------------------------------------------------
   // Helpers de mise en forme
   // ---------------------------------------------------------------------------
 
@@ -405,10 +480,39 @@ interface Kpis {
   maxSpeedKmh: number;
   estimatedLiters: number;
   estimatedCostEur: number;
+  fuelPriceEurL: number;
+  /** Nombre de passages en station sur la période. */
+  fuelVisits: number;
+  fuelType: string | null;
+  /** Prix moyen RÉELLEMENT CONSTATÉ en station (€/L) sur la période, ou null si aucun passage capté. */
+  observedPriceEurL: number | null;
+  /** Coût carburant estimé au prix constaté (litres × prix constaté), ou null. */
+  estimatedCostAtObservedEur: number | null;
+}
+
+interface FuelStopRow {
+  arrivedAt: Date;
+  durationSec: number;
+  fuelType: string | null;
+  unitPriceEur: number | null;
+  station: { brand: string | null; name: string | null; city: string | null; address: string | null } | null;
 }
 
 function round1(n: number): number {
   return Math.round(n * 10) / 10;
+}
+
+/** Libellé lisible d'un carburant de l'API (gazole → « Gazole », gplc → « GPL »…). */
+function fuelLabelXlsx(t: string): string {
+  switch (t) {
+    case 'gazole': return 'Gazole';
+    case 'sp95': return 'SP95';
+    case 'sp98': return 'SP98';
+    case 'e10': return 'E10';
+    case 'e85': return 'E85 (Superéthanol)';
+    case 'gplc': return 'GPL';
+    default: return t;
+  }
 }
 
 /** Formate une durée en secondes vers `Xh YYmin` (ou `YYmin` si < 1h). */
