@@ -43,6 +43,7 @@ function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number)
 import { firstValueFrom } from 'rxjs';
 import { ActivityTrackerService } from '../../core/services/activity-tracker.service';
 import { GeofencesApiService } from '../../core/services/geofences.service';
+import { TripAnalysisApiService } from '../../core/services/trip-analysis.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { PermissionsService } from '../../core/services/permissions.service';
@@ -483,6 +484,10 @@ const RESYNC_RADIUS_M = 150;
               <span>Arrêts > 5min (24h)</span>
             </label>
             <label class="tracky-sheet-checkbox">
+              <input type="checkbox" [checked]="showFuelStations()" (change)="toggleFuelStations()" />
+              <span>Stations-service (passages)</span>
+            </label>
+            <label class="tracky-sheet-checkbox">
               <input type="checkbox" [checked]="showHeatmap()" (change)="toggleHeatmap()" />
               <span>Heatmap densité (24h)</span>
             </label>
@@ -733,6 +738,10 @@ const RESYNC_RADIUS_M = 150;
             <label class="tracky-sheet-checkbox">
               <input type="checkbox" [checked]="showStops()" (change)="toggleStops()" />
               <span>Arrêts > 5min (24h)</span>
+            </label>
+            <label class="tracky-sheet-checkbox">
+              <input type="checkbox" [checked]="showFuelStations()" (change)="toggleFuelStations()" />
+              <span>Stations-service (passages)</span>
             </label>
             <label class="tracky-sheet-checkbox">
               <input type="checkbox" [checked]="showHeatmap()" (change)="toggleHeatmap()" />
@@ -1945,6 +1954,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   protected readonly isSuperAdmin = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
   private readonly geofencesApi = inject(GeofencesApiService);
   private readonly vehiclesApi = inject(VehiclesApiService);
+  private readonly tripAnalysisApi = inject(TripAnalysisApiService);
   private readonly preferences = inject(PreferencesService);
   private readonly mapSvc = inject(MapService);
   private readonly mapBridge = inject(MapBridgeService);
@@ -2064,6 +2074,11 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   protected readonly showStops = signal(false);
   /** Sprint G.4 — heatmap densite des positions (24h). */
   protected readonly showHeatmap = signal(false);
+  /** Carburant (2026-07) — stations-service fréquentées par la flotte (fréquence + récence). Défaut OFF. */
+  protected readonly showFuelStations = signal(false);
+  private fuelPopup: Popup | null = null;
+  private fuelClickHandler: ((e: maplibregl.MapLayerMouseEvent) => void) | null = null;
+  private fuelCursorBound = false;
   /** V1.7 — si false, jamais de mode compact a faible zoom (markers riches partout).
    *  Toggle dans le panneau Calques pour les utilisateurs qui preferent voir les
    *  markers detailles meme a zoom 5. Persisté dans les prefs. */
@@ -2353,6 +2368,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       this.setupMeasureLayer();
       this.setupStopsLayer();
       this.setupHeatmapLayer();
+      this.setupFuelStationsLayer();
       this.setupClusterLayer();
       this.loadGeofences();
       this.applyPositions(this.applyFilters(this.realtime.positionsList()));
@@ -2647,6 +2663,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         this.setupMeasureLayer();
         this.setupStopsLayer();
         this.setupHeatmapLayer();
+        this.setupFuelStationsLayer();
         this.setupClusterLayer();
         this.loadGeofences();
         this.applyPositions(this.applyFilters(this.realtime.positionsList()));
@@ -2656,6 +2673,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         if (vid) this.loadMiniReplay(vid).catch(() => { /* silent */ });
         this.refreshMeasureLayer();
         if (this.showStops()) this.loadStops().catch(() => { /* silent */ });
+        if (this.showFuelStations()) this.loadFuelStations().catch(() => { /* silent */ });
       } finally {
         this.styleChangeInFlight = false;
       }
@@ -3409,6 +3427,104 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         'text-halo-width': 1,
       },
     });
+  }
+
+  /**
+   * Carburant — calque STATIONS-SERVICE fréquentées par la flotte. Cercle violet dont la TAILLE croît
+   * avec la fréquence (nb de passages, affiché au centre) + CONTOUR ambre si récemment utilisée. Miroir
+   * de setupStopsLayer (source/layers dédiés → zéro conflit avec les markers véhicule).
+   */
+  private setupFuelStationsLayer(): void {
+    if (!this.map || this.map.getSource('fuel-stations')) return;
+    this.map.addSource('fuel-stations', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    this.map.addLayer({
+      id: 'fuel-stations-circle',
+      type: 'circle',
+      source: 'fuel-stations',
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['get', 'visits'], 1, 9, 5, 15, 15, 22],
+        'circle-color': '#A78BFA',
+        'circle-opacity': 0.85,
+        'circle-stroke-width': ['case', ['==', ['get', 'recent'], 1], 3, 1.5],
+        'circle-stroke-color': ['case', ['==', ['get', 'recent'], 1], '#F59E0B', '#ffffff'],
+      },
+    });
+    this.map.addLayer({
+      id: 'fuel-stations-count',
+      type: 'symbol',
+      source: 'fuel-stations',
+      layout: {
+        'text-field': ['to-string', ['get', 'visits']],
+        'text-size': 11,
+        'text-allow-overlap': true,
+        'text-ignore-placement': true,
+      },
+      paint: { 'text-color': '#ffffff', 'text-halo-color': '#6D28D9', 'text-halo-width': 1.2 },
+    });
+    // Clic → popup. Une seule liaison active : on retire l'ancienne avant de relier (le setup re-tourne
+    // au changement de fond de carte). Les handlers de curseur ne sont liés qu'une fois.
+    if (this.fuelClickHandler) this.map.off('click', 'fuel-stations-circle', this.fuelClickHandler);
+    this.fuelClickHandler = (e) => this.onFuelStationClick(e);
+    this.map.on('click', 'fuel-stations-circle', this.fuelClickHandler);
+    if (!this.fuelCursorBound) {
+      this.map.on('mouseenter', 'fuel-stations-circle', () => { if (this.map) this.map.getCanvas().style.cursor = 'pointer'; });
+      this.map.on('mouseleave', 'fuel-stations-circle', () => { if (this.map) this.map.getCanvas().style.cursor = ''; });
+      this.fuelCursorBound = true;
+    }
+  }
+
+  /** Charge les stations fréquentées (90 j) et alimente le calque. Best-effort (silencieux). */
+  private async loadFuelStations(): Promise<void> {
+    if (!this.map) return;
+    try {
+      const from = new Date(Date.now() - 90 * 24 * 3600 * 1000).toISOString();
+      const stations = await firstValueFrom(this.tripAnalysisApi.fuelStationsMap(from));
+      const now = Date.now();
+      const RECENT_MS = 21 * 24 * 3600 * 1000;
+      const features: GeoJSON.Feature[] = stations.map((s) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [s.lng, s.lat] },
+        properties: {
+          brand: s.brand ?? '', city: s.city ?? '', address: s.address ?? '',
+          visits: s.visits, distinctVehicles: s.distinctVehicles,
+          lastPriceEur: s.lastPriceEur, lastVisitAt: s.lastVisitAt,
+          recent: now - new Date(s.lastVisitAt).getTime() <= RECENT_MS ? 1 : 0,
+        },
+      }));
+      const src = this.map.getSource('fuel-stations') as maplibregl.GeoJSONSource | undefined;
+      src?.setData({ type: 'FeatureCollection', features });
+    } catch { /* silent */ }
+  }
+
+  /** Toggle du calque stations-service (charge à la 1re activation). */
+  protected toggleFuelStations(): void {
+    const v = !this.showFuelStations();
+    this.showFuelStations.set(v);
+    this.setLayerVisibility('fuel-stations-circle', v);
+    this.setLayerVisibility('fuel-stations-count', v);
+    if (v) this.loadFuelStations().catch(() => { /* silent */ });
+    else this.fuelPopup?.remove();
+  }
+
+  /** Popup d'une station au clic (marque, lieu, fréquence, véhicules, dernier prix/passage). */
+  private onFuelStationClick(e: maplibregl.MapLayerMouseEvent): void {
+    const f = e.features?.[0];
+    if (!f || !this.map) return;
+    const p = f.properties ?? {};
+    const coords = (f.geometry as GeoJSON.Point).coordinates as [number, number];
+    const esc = (s: unknown) => String(s ?? '').replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] as string));
+    const where = [p['address'], p['city']].filter(Boolean).join(', ');
+    const price = p['lastPriceEur'] != null && p['lastPriceEur'] !== '' ? `${Number(p['lastPriceEur']).toFixed(3)} €/L` : '—';
+    const last = p['lastVisitAt'] ? String(p['lastVisitAt']).slice(0, 10) : '—';
+    const html = `<div style="font-size:12px;line-height:1.55;min-width:170px">`
+      + `<strong style="font-size:13px">${esc(p['brand']) || 'Station-service'}</strong><br>`
+      + (where ? `<span style="color:#9ca3af">${esc(where)}</span><br>` : '')
+      + `<b>${esc(p['visits'])}</b> passage(s) · <b>${esc(p['distinctVehicles'])}</b> véhicule(s)<br>`
+      + `Dernier prix : <b>${price}</b><br>`
+      + `Dernier passage : ${last}`
+      + `</div>`;
+    this.fuelPopup?.remove();
+    this.fuelPopup = new maplibregl.Popup({ closeButton: true, offset: 14 }).setLngLat(coords).setHTML(html).addTo(this.map);
   }
 
   /** Sprint D.4 — setup layer pour l'outil de mesure (ligne + points). */

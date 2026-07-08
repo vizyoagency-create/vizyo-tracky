@@ -155,6 +155,29 @@ export interface VehicleFuelReportDto {
   fleetPriceEurL: number | null;
 }
 
+/**
+ * Station-service agrégée pour la CARTE (passages de toute la flotte). Sert à afficher un marqueur
+ * par station, mis en avant selon la FRÉQUENCE (`visits`) et la RÉCENCE (`lastVisitAt`) d'usage.
+ */
+export interface FuelStationMapPointDto {
+  stationId: string;
+  brand: string | null;
+  name: string | null;
+  city: string | null;
+  address: string | null;
+  lat: number;
+  lng: number;
+  /** Nombre total de passages (toute la flotte) sur la période. */
+  visits: number;
+  /** Nombre de véhicules distincts passés par cette station. */
+  distinctVehicles: number;
+  /** Dernier passage (ISO) — pour la mise en avant « récemment utilisée ». */
+  lastVisitAt: string;
+  /** Dernier prix capté (€/L), tous carburants confondus, ou null. */
+  lastPriceEur: number | null;
+  fuelType: string | null;
+}
+
 /* ── Palier 3 — Récit LLM + mode « Comparer » (A/B les 2 IA) ── */
 
 /** Résultat d'un moteur IA sur un trajet (récit + Trust Score + conseils + coût). */

@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import type { FuelStationVisitDto, VehicleFuelReportDto } from '@vizyo/tracky-shared';
+import type { FuelStationMapPointDto, FuelStationVisitDto, VehicleFuelReportDto } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
 import { PrismaService } from '../prisma/prisma.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
@@ -95,6 +95,56 @@ export class FuelReportService {
       priceMin, priceMax, priceAvg, priceLatest, priceTrend,
       estimatedLiters, distanceKm, costAtObservedEur, costAtFleetPriceEur, fleetPriceEurL,
     };
+  }
+
+  /**
+   * Stations agrégées pour la CARTE (passages de TOUTE la flotte accessible sur la période) : un point
+   * par station avec fréquence + récence + nb de véhicules distincts, pour mettre en avant les stations
+   * souvent/récemment utilisées. Scopé au périmètre véhicules (anti-IDOR). Trié par fréquence décroissante.
+   */
+  async fleetStationsMap(user: AuthUser, fromIso?: string, toIso?: string, fleetId?: string): Promise<FuelStationMapPointDto[]> {
+    const to = toIso ? new Date(toIso) : new Date();
+    const from = fromIso ? new Date(fromIso) : new Date(to.getTime() - 90 * 24 * 3600 * 1000);
+
+    const accessible = await this.vehicleAccess.getAccessibleVehicleIds(user);
+    const scopeWhere = accessible === 'ALL'
+      ? (fleetId ? { fleetId } : {})
+      : { vehicleId: { in: accessible.length ? accessible : ['00000000-0000-0000-0000-000000000000'] } };
+
+    const stops = await this.prisma.tripFuelStop.findMany({
+      where: { ...scopeWhere, arrivedAt: { gte: from, lte: to } },
+      select: {
+        vehicleId: true, arrivedAt: true, unitPriceEur: true, fuelType: true,
+        station: { select: { id: true, brand: true, name: true, city: true, address: true, lat: true, lng: true } },
+      },
+      orderBy: { arrivedAt: 'asc' },
+      take: MAX_ANALYSES,
+    });
+
+    type Agg = {
+      id: string; brand: string | null; name: string | null; city: string | null; address: string | null; lat: number; lng: number;
+      visits: number; vehicles: Set<string>; lastVisitAt: Date; lastPriceEur: number | null; fuelType: string | null;
+    };
+    const byStation = new Map<string, Agg>();
+    for (const s of stops) {
+      if (!s.station) continue;
+      let e = byStation.get(s.station.id);
+      if (!e) {
+        e = { id: s.station.id, brand: s.station.brand, name: s.station.name, city: s.station.city, address: s.station.address, lat: s.station.lat, lng: s.station.lng, visits: 0, vehicles: new Set(), lastVisitAt: s.arrivedAt, lastPriceEur: null, fuelType: null };
+        byStation.set(s.station.id, e);
+      }
+      e.visits += 1;
+      e.vehicles.add(s.vehicleId);
+      if (s.arrivedAt >= e.lastVisitAt) e.lastVisitAt = s.arrivedAt; // stops asc → dernier = plus récent
+      if (s.unitPriceEur != null) { e.lastPriceEur = s.unitPriceEur; e.fuelType = s.fuelType; }
+    }
+
+    return [...byStation.values()]
+      .map((e) => ({
+        stationId: e.id, brand: e.brand, name: e.name, city: e.city, address: e.address, lat: e.lat, lng: e.lng,
+        visits: e.visits, distinctVehicles: e.vehicles.size, lastVisitAt: e.lastVisitAt.toISOString(), lastPriceEur: e.lastPriceEur, fuelType: e.fuelType,
+      }))
+      .sort((a, b) => b.visits - a.visits || (a.lastVisitAt < b.lastVisitAt ? 1 : -1));
   }
 }
 

@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
-import type { AiProviderId, DrivingScoreDetailDto, DrivingScoreScope, DrivingScoresDto, TripAnalysisDto, TripNarrativeCompareDto, VehicleFuelReportDto } from '@vizyo/tracky-shared';
+import type { AiProviderId, DrivingScoreDetailDto, DrivingScoreScope, DrivingScoresDto, FuelStationMapPointDto, TripAnalysisDto, TripNarrativeCompareDto, VehicleFuelReportDto } from '@vizyo/tracky-shared';
 import { Roles } from '../auth/decorators/roles.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -79,6 +79,21 @@ export class TripAnalysisController {
     @Query('to') to?: string,
   ): Promise<VehicleFuelReportDto> {
     return this.fuelReport.vehicleReport(req.user, vehicleId, from, to);
+  }
+
+  /**
+   * GET /api/trip-analysis/fuel-stations/map — stations agrégées pour la CARTE (passages de toute la
+   * flotte accessible : fréquence + récence). Scopé au périmètre véhicules. `fleetId` = super-admin only.
+   */
+  @Get('fuel-stations/map')
+  fuelStationsMap(
+    @Req() req: AuthenticatedRequest,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('fleetId') fleetId?: string,
+  ): Promise<FuelStationMapPointDto[]> {
+    const scopedFleet = req.user.role === UserRole.SUPER_ADMIN ? (fleetId || undefined) : undefined;
+    return this.fuelReport.fleetStationsMap(req.user, from, to, scopedFleet);
   }
 
   /** GET /api/trip-analysis/:tripId — lit l'analyse persistée (204/null si jamais calculée). */
