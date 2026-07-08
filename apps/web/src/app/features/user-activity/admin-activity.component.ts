@@ -1,4 +1,4 @@
-import { DatePipe } from '@angular/common';
+import { DatePipe, NgTemplateOutlet } from '@angular/common';
 import { Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -58,7 +58,7 @@ type Period = '24h' | '7d' | '30d';
 @Component({
   selector: 'app-admin-activity',
   standalone: true,
-  imports: [DatePipe, FormsModule, RouterLink, LucideAngularModule, ActivityReportsComponent],
+  imports: [DatePipe, NgTemplateOutlet, FormsModule, RouterLink, LucideAngularModule, ActivityReportsComponent],
   template: `
     <div class="flex flex-col gap-5">
       <!-- Header -->
@@ -88,24 +88,52 @@ type Period = '24h' | '7d' | '30d';
                     : 'border-transparent text-fg-tertiary hover:text-fg-secondary'">
             {{ t.label }}
             @if (t.id === 'live') {
-              <span class="ml-1 text-xs px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400">{{ online().length }}</span>
+              <span class="ml-1 text-xs px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400">{{ visibleOnline().length }}</span>
             }
           </button>
         }
       </div>
 
+      <!-- Filtre multi-utilisateurs (le compte owner est décoché par défaut) — partagé Live + Historique. -->
+      <ng-template #userFilter>
+        <details class="relative">
+          <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none inline-flex items-center gap-2 bg-bg-secondary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary hover:border-tracky">
+            <lucide-icon [img]="Users" [size]="14" class="text-fg-tertiary"></lucide-icon>
+            Utilisateurs
+            <span class="text-xs text-fg-tertiary tabular-nums">{{ shownUserCount() }}/{{ filterUsers().length }}</span>
+          </summary>
+          <div class="absolute right-0 z-30 mt-1 w-64 max-h-72 overflow-y-auto bg-bg-secondary border border-border-subtle rounded-lg shadow-xl p-2 flex flex-col gap-0.5">
+            <div class="flex gap-3 px-1 pb-2 mb-1 border-b border-border-subtle/50">
+              <button type="button" (click)="selectAllUsers()" class="text-xs text-tracky-light hover:underline">Tout cocher</button>
+              <button type="button" (click)="clearUsers()" class="text-xs text-fg-tertiary hover:underline">Tout décocher</button>
+            </div>
+            @for (u of filterUsers(); track u.id) {
+              <label class="flex items-center gap-2 px-1.5 py-1.5 rounded-md hover:bg-bg-tertiary/50 cursor-pointer text-sm">
+                <input type="checkbox" [checked]="isUserShown(u.id)" (change)="toggleUser(u.id)" class="accent-[var(--color-tracky,#10E0A0)] shrink-0">
+                <span class="truncate text-fg-secondary">{{ u.name }}</span>
+              </label>
+            } @empty {
+              <p class="text-xs text-fg-tertiary px-1.5 py-2">Chargement…</p>
+            }
+          </div>
+        </details>
+      </ng-template>
+
       <!-- ─────────── LIVE ─────────── -->
       @if (tab() === 'live') {
+        <div class="flex items-center justify-end mb-3">
+          <ng-container [ngTemplateOutlet]="userFilter"></ng-container>
+        </div>
         <div class="grid lg:grid-cols-2 gap-4">
           <!-- Online users -->
           <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4">
             <div class="flex items-center gap-2 mb-3">
               <lucide-icon [img]="Users" [size]="16" class="text-tracky-light"></lucide-icon>
-              <span class="text-sm font-medium text-fg-secondary">En ligne maintenant ({{ online().length }})</span>
+              <span class="text-sm font-medium text-fg-secondary">En ligne maintenant ({{ visibleOnline().length }})</span>
               <span class="ml-auto inline-block w-2 h-2 rounded-full bg-rose-400 animate-pulse"></span>
             </div>
             <div class="flex flex-col gap-2">
-              @for (u of online(); track u.userId) {
+              @for (u of visibleOnline(); track u.userId) {
                 <div class="flex items-center gap-3 p-2.5 rounded-lg bg-bg-tertiary/40 border border-border-subtle/60">
                   <span class="w-2.5 h-2.5 rounded-full shrink-0" [style.background]="statusColor(u.status)"
                         [title]="statusLabel(u.status)"></span>
@@ -135,7 +163,7 @@ type Period = '24h' | '7d' | '30d';
           <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4">
             <div class="text-sm font-medium text-fg-secondary mb-3">Flux en direct</div>
             <div class="flex flex-col gap-1 max-h-[420px] overflow-y-auto">
-              @for (a of feed(); track a.id) {
+              @for (a of visibleFeed(); track a.id) {
                 <div class="flex items-center gap-2 text-xs py-1 px-1.5 rounded-md hover:bg-bg-tertiary/40">
                   <span class="text-fg-tertiary tabular-nums shrink-0 font-mono">{{ a.at | date: 'HH:mm:ss' }}</span>
                   <lucide-icon [img]="typeIcon(a.type)" [size]="13" class="text-fg-tertiary shrink-0"></lucide-icon>
@@ -155,14 +183,8 @@ type Period = '24h' | '7d' | '30d';
         <!-- Filtres : « qu'a fait l'utilisateur X ? » / « tous les exports » … -->
         <div class="flex flex-wrap items-end gap-3">
           <div class="flex flex-col gap-1">
-            <label class="text-xs text-fg-tertiary">Utilisateur</label>
-            <select [ngModel]="historyUser()" (ngModelChange)="setHistoryUser($event)"
-                    class="bg-bg-secondary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary">
-              <option value="">Tous</option>
-              @for (u of filterUsers(); track u.id) {
-                <option [value]="u.id">{{ u.name }}</option>
-              }
-            </select>
+            <label class="text-xs text-fg-tertiary">Utilisateurs</label>
+            <ng-container [ngTemplateOutlet]="userFilter"></ng-container>
           </div>
           <div class="flex flex-col gap-1">
             <label class="text-xs text-fg-tertiary">Type</label>
@@ -180,7 +202,7 @@ type Period = '24h' | '7d' | '30d';
         </div>
         <div class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] p-4">
           <div class="flex flex-col">
-            @for (a of history(); track a.id) {
+            @for (a of visibleHistory(); track a.id) {
               <div class="flex items-center gap-2 text-xs py-1.5 px-1.5 rounded-md border-b border-border-subtle/30 hover:bg-bg-tertiary/40">
                 <span class="text-fg-tertiary tabular-nums shrink-0 w-[112px] font-mono">{{ a.at | date: 'dd/MM HH:mm:ss' }}</span>
                 <lucide-icon [img]="typeIcon(a.type)" [size]="13" class="text-fg-tertiary shrink-0"></lucide-icon>
@@ -191,7 +213,7 @@ type Period = '24h' | '7d' | '30d';
               <p class="text-sm text-fg-tertiary text-center py-6">Aucun historique.</p>
             }
           </div>
-          @if (history().length > 0) {
+          @if (visibleHistory().length > 0) {
             <button (click)="loadMore()" [disabled]="loadingMore()"
                     class="mt-3 w-full py-2 text-sm text-fg-secondary border border-border-subtle rounded-lg hover:border-tracky disabled:opacity-50">
               {{ loadingMore() ? 'Chargement…' : 'Charger plus' }}
@@ -728,8 +750,38 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
   // Filtres historique (« qu'a fait X hier ? »).
   readonly historyUser = signal('');
   readonly historyType = signal('');
-  readonly filterUsers = signal<{ id: string; name: string }[]>([]);
+  readonly filterUsers = signal<{ id: string; name: string; email: string }[]>([]);
   private filterUsersLoaded = false;
+
+  /** Compte owner : jamais coché par défaut (l'admin ne veut pas voir SES propres actions polluer le flux). */
+  private readonly ownerEmail = 'admin@vizyoagency.com';
+  /** Utilisateurs à AFFICHER (multi-sélection). null = pas encore initialisé → tout afficher. */
+  readonly shownUserIds = signal<Set<string> | null>(null);
+
+  protected isUserShown(userId: string): boolean {
+    const s = this.shownUserIds();
+    return s === null ? true : s.has(userId);
+  }
+  protected shownUserCount(): number {
+    const s = this.shownUserIds();
+    return s === null ? this.filterUsers().length : s.size;
+  }
+  protected toggleUser(id: string): void {
+    const next = new Set(this.shownUserIds() ?? this.filterUsers().map((u) => u.id));
+    if (next.has(id)) next.delete(id); else next.add(id);
+    this.shownUserIds.set(next);
+  }
+  protected selectAllUsers(): void {
+    this.shownUserIds.set(new Set(this.filterUsers().map((u) => u.id)));
+  }
+  protected clearUsers(): void {
+    this.shownUserIds.set(new Set());
+  }
+
+  /** Flux/liste bornés à la sélection (owner décoché par défaut). */
+  readonly visibleOnline = computed(() => this.online().filter((u) => this.isUserShown(u.userId)));
+  readonly visibleFeed = computed(() => this.feed().filter((a) => this.isUserShown(a.userId)));
+  readonly visibleHistory = computed(() => this.history().filter((a) => this.isUserShown(a.userId)));
 
   readonly maxSessions = computed(() =>
     Math.max(1, ...(this.stats()?.sessionsPerDay ?? []).map((d) => d.count)),
@@ -805,10 +857,6 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
       });
   }
 
-  setHistoryUser(v: string): void {
-    this.historyUser.set(v);
-    this.loadHistory();
-  }
   setHistoryType(v: string): void {
     this.historyType.set(v);
     this.loadHistory();
@@ -913,27 +961,39 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
   private loadLive(): void {
     this.api.online().subscribe({ next: (u) => this.online.set(u), error: () => undefined });
     this.api.feed({ limit: 50 }).subscribe({ next: (f) => this.feed.set(f), error: () => undefined });
+    this.loadFilterUsers();
   }
   private loadHistory(): void {
     this.api
       .feed({ limit: 80, userId: this.historyUser() || undefined, type: this.historyType() || undefined })
       .subscribe({ next: (f) => this.history.set(f), error: () => undefined });
-    if (!this.filterUsersLoaded) {
-      this.filterUsersLoaded = true;
-      this.usersApi
-        .findAll()
-        .then(({ users }) =>
-          this.filterUsers.set(
-            users.map((u) => ({
-              id: u.id,
-              name: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email,
-            })),
-          ),
-        )
-        .catch(() => {
-          this.filterUsersLoaded = false;
-        });
-    }
+    this.loadFilterUsers();
+  }
+
+  /** Charge la liste d'utilisateurs (filtre) + initialise la sélection par défaut : tout coché SAUF l'owner. */
+  private loadFilterUsers(): void {
+    if (this.filterUsersLoaded) return;
+    this.filterUsersLoaded = true;
+    this.usersApi
+      .findAll()
+      .then(({ users }) => {
+        this.filterUsers.set(
+          users.map((u) => ({
+            id: u.id,
+            name: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email,
+            email: u.email,
+          })),
+        );
+        if (this.shownUserIds() === null) {
+          const owner = this.ownerEmail.toLowerCase();
+          this.shownUserIds.set(
+            new Set(users.filter((u) => (u.email ?? '').toLowerCase() !== owner).map((u) => u.id)),
+          );
+        }
+      })
+      .catch(() => {
+        this.filterUsersLoaded = false;
+      });
   }
   private loadStats(): void {
     this.stats.set(null);
