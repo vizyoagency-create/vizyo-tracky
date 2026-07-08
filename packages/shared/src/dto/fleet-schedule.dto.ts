@@ -10,6 +10,8 @@
  * poser des horaires d'un coup). Ils ne remplacent pas `UpsertVehicleScheduleDto`.
  */
 
+import type { VehicleConnectivityState } from '../utils/tracker-liveness';
+
 /** État courant de la fenêtre horaire (résultat de l'évaluateur). */
 export type FleetScheduleWindowState = 'IN_WINDOW' | 'OUT_OF_WINDOW';
 
@@ -22,8 +24,10 @@ export type FleetScheduleEngineCutState = 'normal' | 'pending' | 'cut';
  *   - DRIVING       : le véhicule ROULE ENCORE après l'heure de coupe (⚠️ à surveiller).
  *   - AWAITING_STOP : arrêté mais pas encore depuis 10 min (attente de la règle d'immobilité).
  *   - OFFLINE       : hors ligne → la commande de coupe ne peut pas être livrée pour l'instant.
+ *   - GPS_LOST      : boîtier vivant mais SANS position GPS fraîche (antenne) → la vitesse
+ *                     affichée est figée/périmée, on ne le compte donc PAS comme « roule ».
  */
-export type FleetSchedulePendingReason = 'DRIVING' | 'AWAITING_STOP' | 'OFFLINE';
+export type FleetSchedulePendingReason = 'DRIVING' | 'AWAITING_STOP' | 'OFFLINE' | 'GPS_LOST';
 
 /** Une ligne de la vue flotte : 1 véhicule + son planning + son état live dérivé. */
 export interface FleetScheduleRowDto {
@@ -53,10 +57,17 @@ export interface FleetScheduleRowDto {
   // --- Télémétrie live (dénormalisée Tracker.last*) ---
   lastSpeedKmh: number | null;
   lastIgnition: boolean | null;
-  /** ignition ON ET vitesse > 5 km/h (même seuil que l'évaluateur de coupe). */
+  /** ignition ON ET vitesse > 5 km/h (même seuil que l'évaluateur de coupe). FORCÉ à false si GPS perdu. */
   moving: boolean;
   lastPositionAt: string | null;
   lastSeenAt: string | null;
+  /** ISO — dernière trame `no_fix` (LBS sans lock GPS). Discriminant de l'état GPS_LOST. */
+  lastNoFixAt: string | null;
+  /**
+   * État de connectivité (tri/penta-état partagé). `GPS_LOST` = boîtier vivant mais sans
+   * position GPS fraîche → la vitesse figée ne doit pas faire croire qu'il roule.
+   */
+  connectivity: VehicleConnectivityState;
   /** État coupe moteur dérivé (null si pas de tracker). */
   engineCutState: FleetScheduleEngineCutState | null;
 

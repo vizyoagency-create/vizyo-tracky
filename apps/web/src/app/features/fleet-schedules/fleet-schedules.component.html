@@ -151,6 +151,10 @@
                       <span class="mov" title="Ce véhicule roule en ce moment">
                         <span class="mov-dot"></span>en mouvement@if (r.lastSpeedKmh) { · {{ r.lastSpeedKmh }} km/h }
                       </span>
+                    } @else if (r.connectivity === 'GPS_LOST') {
+                      <span class="mov" style="color:#f59e0b" title="GPS perdu : la dernière position/vitesse est FIGÉE — ce véhicule ne roule pas forcément. Antenne à vérifier.">
+                        <span class="mov-dot" style="background:#f59e0b"></span>GPS perdu
+                      </span>
                     }
                   </div>
                   <div class="muted xsmall">{{ r.brand }} {{ r.model }}</div>

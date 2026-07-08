@@ -282,6 +282,18 @@ export interface TripNarrativeCompareDto {
 /** Sur quoi agréger la note de conduite. */
 export type DrivingScoreScope = 'vehicle' | 'driver' | 'group';
 
+/**
+ * Référence d'un trajet AVEC excès de vitesse — permet de lier une ligne de score
+ * (véhicule / conducteur / groupe) directement au(x) trajet(s) fautif(s), pour ouvrir
+ * la fiche véhicule → onglet Rapports → récit IA du trajet.
+ */
+export interface SpeedingTripRef {
+  tripId: string;
+  vehicleId: string;
+  /** ISO — début du trajet (tri « plus récent d'abord » + libellé). */
+  startedAt: string;
+}
+
 /** Une ligne notée : une entité (véhicule/conducteur/groupe) + son score de conduite moyen. */
 export interface DrivingScoreRowDto {
   /** vehicleId | driverId | groupId. */
@@ -300,6 +312,11 @@ export interface DrivingScoreRowDto {
   distanceKm: number;
   /** Nombre total de trajets AVEC au moins un excès. */
   speedingTrips: number;
+  /**
+   * Trajets à excès (les plus récents d'abord, bornés) pour lier vers la fiche véhicule +
+   * le récit IA du trajet. Peut être plus court que `speedingTrips` (borné).
+   */
+  speedingTripRefs: SpeedingTripRef[];
   /** Nombre total d'à-coups (accél/freinages brusques). */
   harshCount: number;
   fuelLiters: number;

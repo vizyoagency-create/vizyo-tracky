@@ -522,6 +522,8 @@ import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
             [vehiclePlate]="v.plate"
             [vehicleType]="v.type"
             [fleetId]="v.fleetId"
+            [openTripId]="openTripId()"
+            [openTripDate]="openTripDate()"
           />
         }
 
@@ -1461,6 +1463,10 @@ export class VehicleDetailComponent implements OnInit {
   /** True pendant un refetch declenche par un changement de plage date (history/trips). */
   protected readonly rangeLoading = signal(false);
   protected readonly activeTab = signal<string>('map');
+  /** Deep-link `?trip=<id>` (depuis les scores « N avec excès ») → onglet Rapports scrolle vers ce trajet + ouvre son récit IA. */
+  protected readonly openTripId = signal<string | null>(null);
+  /** ISO du trajet ciblé (`?tripDate=`) → cadre la période de l'onglet Rapports sur son jour. */
+  protected readonly openTripDate = signal<string | null>(null);
 
   /**
    * Plage temporelle pour les onglets Historique et Trajets.
@@ -1952,6 +1958,9 @@ export class VehicleDetailComponent implements OnInit {
     this.backGroup.set(qp['group'] ?? null);
     // Deep-link vers un onglet précis (ex. lien « récit » de l'automatisation → ?tab=reports).
     if (typeof qp['tab'] === 'string' && qp['tab']) this.activeTab.set(qp['tab']);
+    // Deep-link vers un trajet précis (lien « N avec excès » des scores) → scroll + récit IA.
+    if (typeof qp['trip'] === 'string' && qp['trip']) this.openTripId.set(qp['trip']);
+    if (typeof qp['tripDate'] === 'string' && qp['tripDate']) this.openTripDate.set(qp['tripDate']);
 
     const id = this.route.snapshot.params['id'];
     if (!id) { this.router.navigate(['/vehicles']); return; }

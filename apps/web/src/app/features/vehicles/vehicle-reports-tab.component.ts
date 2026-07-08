@@ -270,7 +270,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
       } @else {
         <div class="vrt-trips-list">
           @for (trip of trips(); track trip.id) {
-            <article class="vrt-trip-card">
+            <article class="vrt-trip-card" [id]="'trip-' + trip.id" [class.vrt-trip-card--focus]="trip.id === openTripId()">
               <header class="vrt-trip-head">
                 <div class="vrt-trip-period">
                   <span class="vrt-trip-date">{{ trip.startedAt | date:'dd MMM' }}</span>
@@ -312,6 +312,7 @@ import { relativeTime } from '../../shared/utils/relative-time';
               <app-trip-analysis-badges
                 [tripId]="trip.id"
                 [analysis]="analysisFor(trip.id)"
+                [autoOpen]="trip.id === openTripId()"
                 (analyzed)="onAnalyzed($event)"
               />
 
@@ -717,6 +718,8 @@ import { relativeTime } from '../../shared/utils/relative-time';
       transition: border-color .15s;
     }
     .vrt-trip-card:hover { border-color: var(--border-strong); }
+    /* Deep-link « N avec excès » : met en évidence le trajet ciblé. */
+    .vrt-trip-card--focus { border-color: #10b981; box-shadow: 0 0 0 2px rgba(16,185,129,.25); }
     .vrt-trip-head {
       display: flex;
       align-items: center;
@@ -921,6 +924,10 @@ export class VehicleReportsTabComponent implements OnInit, OnDestroy {
    *  super-admin retombe sur une flotte arbitraire → 400 "vehicleIds
    *  n'appartiennent pas a la flotte demandee"). */
   readonly fleetId = input<string | null>(null);
+  /** Deep-link (scores « N avec excès ») : trajet à mettre en évidence (scroll + récit IA ouvert). */
+  readonly openTripId = input<string | null>(null);
+  /** ISO de début du trajet ciblé : sert à cadrer la période sur SON jour pour être sûr de le charger. */
+  readonly openTripDate = input<string | null>(null);
 
   protected readonly trips = signal<TripDto[]>([]);
   protected readonly dailySummary = signal<TripDailySummaryDto[]>([]);
@@ -1173,8 +1180,31 @@ export class VehicleReportsTabComponent implements OnInit, OnDestroy {
 
   // ─── Lifecycle ──────────────────────────────────────────────────────────
   ngOnInit(): void {
-    this.setPeriod(this.periods[0]!.from, this.periods[0]!.to);
+    // Deep-link vers un trajet précis (lien « N avec excès » des scores) : on cadre la période
+    // sur SON jour pour garantir qu'il soit chargé (il peut être plus vieux que la période par défaut).
+    const tid = this.openTripId();
+    const tdate = this.openTripDate();
+    const d = tdate ? new Date(tdate) : null;
+    if (tid && d && !isNaN(d.getTime())) {
+      const next = new Date(d);
+      next.setDate(next.getDate() + 1);
+      this.setPeriod(this.localIso(d), this.localIso(next));
+    } else {
+      this.setPeriod(this.periods[0]!.from, this.periods[0]!.to);
+    }
     this.desktopMql?.addEventListener('change', this.desktopMqlListener);
+  }
+
+  /** Deep-link : scrolle vers le trajet ciblé une fois chargé (le récit IA s'ouvre via `autoOpen`). */
+  private deepLinkDone = false;
+  private maybeDeepLinkScroll(): void {
+    const tid = this.openTripId();
+    if (!tid || this.deepLinkDone) return;
+    if (!this.trips().some((t) => t.id === tid)) return; // pas (encore) dans la période chargée
+    this.deepLinkDone = true;
+    setTimeout(() => {
+      document.getElementById('trip-' + tid)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 250);
   }
 
   ngOnDestroy(): void {
@@ -1267,6 +1297,8 @@ export class VehicleReportsTabComponent implements OnInit, OnDestroy {
       ]);
       this.trips.set(tripsRes.items);
       this.dailySummary.set(summary);
+      // Deep-link : scroll vers le trajet ciblé une fois la liste chargée.
+      this.maybeDeepLinkScroll();
       // Analyses de trajets pré-chargées en LOT (best-effort, non bloquant) → badges sur les cards.
       void this.loadAnalyses();
     } catch {

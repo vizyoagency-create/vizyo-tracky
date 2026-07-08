@@ -242,6 +242,9 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
   }
 
   protected displayMoving(r: FleetScheduleRowDto): boolean {
+    // GPS perdu → la vitesse dénormalisée est figée/périmée : jamais « en mouvement »
+    // (incident FS-253 : un boîtier sans lock GPS gardait une vieille vitesse > 5 km/h).
+    if (r.connectivity === 'GPS_LOST') return false;
     const tid = r.trackerId;
     if (tid && this.movingIds().has(tid)) return true;
     return r.moving;
@@ -252,6 +255,7 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
     if (!r.scheduleEnabled || r.overrideActive) return null;
     if (r.windowState !== 'OUT_OF_WINDOW') return null;
     if (this.displayCut(r) !== 'normal') return null; // déjà coupé / en cours
+    if (r.connectivity === 'GPS_LOST') return null; // affiché comme « GPS perdu » (chip dédié)
     if (this.displayMoving(r)) return 'DRIVING';
     return r.pendingReason === 'OFFLINE' ? 'OFFLINE' : 'AWAITING_STOP';
   }
@@ -268,6 +272,9 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
     if (pending === 'OFFLINE') return { label: 'Coupe en attente (hors ligne)', cls: 'chip-warn', icon: this.TimerIcon };
     if (cut === 'cut') return { label: 'Coupé (horaire)', cls: 'chip-cut', icon: this.PowerOffIcon };
     if (cut === 'pending') return { label: 'Coupe envoyée', cls: 'chip-warn', icon: this.PowerOffIcon };
+    // GPS perdu : boîtier vivant mais sans position GPS fraîche (antenne) — surtout NE PAS
+    // afficher « roule » (la vitesse est figée). On le signale distinctement.
+    if (r.connectivity === 'GPS_LOST') return { label: 'GPS perdu', cls: 'chip-warn', icon: this.AlertTriangleIcon };
     if (r.windowState === 'IN_WINDOW') return { label: 'Autorisé', cls: 'chip-ok', icon: this.PowerIcon };
     return { label: 'Hors plage', cls: 'chip-muted', icon: this.PowerOffIcon };
   }
@@ -284,6 +291,7 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
     if (pending === 'OFFLINE') return "Hors horaires mais hors ligne : la coupe sera envoyée dès que le boîtier se reconnecte.";
     if (cut === 'cut') return "Moteur coupé par l'horaire : le véhicule ne peut pas démarrer jusqu'à la reprise.";
     if (cut === 'pending') return 'Ordre de coupure envoyé au boîtier, en attente de confirmation.';
+    if (r.connectivity === 'GPS_LOST') return "GPS perdu : le boîtier communique encore (réseau OK) mais n'envoie plus de position GPS. La dernière vitesse affichée est FIGÉE — ce véhicule ne « roule » pas forcément. Antenne à vérifier. La coupe horaire reste possible.";
     if (r.windowState === 'IN_WINDOW') return "Le véhicule est DANS ses horaires : il a le droit de rouler. S'il roule, c'est normal.";
     return 'Hors de ses horaires.';
   }

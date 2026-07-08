@@ -6,10 +6,15 @@ import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 
 /** Borne dure d'analyses lues (perf). Au-delà, on tronque (le plus récent d'abord). */
 const MAX_ANALYSES = 20_000;
+/** Trajets à excès listés par ligne (les plus récents) — pour les liens vers le récit IA. */
+const MAX_SPEEDING_REFS = 25;
+
+type SpeedingRef = { tripId: string; vehicleId: string; startedAt: Date };
 
 type Agg = {
   id: string; label: string; sublabel: string | null; color: string | null;
   sumScore: number; trips: number; distanceKm: number; speedingTrips: number; harshCount: number; fuelLiters: number; co2Kg: number;
+  speedingRefs: SpeedingRef[];
 };
 
 /**
@@ -50,7 +55,7 @@ export class DrivingScoreService {
     const tripIds = analyses.map((a) => a.tripId);
     const trips = await this.prisma.trip.findMany({
       where: { id: { in: tripIds }, startedAt: { gte: from, lte: to } },
-      select: { id: true, vehicleId: true, driverId: true, driver: { select: { firstName: true, lastName: true, color: true } } },
+      select: { id: true, vehicleId: true, driverId: true, startedAt: true, driver: { select: { firstName: true, lastName: true, color: true } } },
     });
     const tripById = new Map(trips.map((t) => [t.id, t]));
 
@@ -88,11 +93,14 @@ export class DrivingScoreService {
       if (!key) continue;
 
       let g = map.get(key);
-      if (!g) { g = { id: key, label, sublabel, color, sumScore: 0, trips: 0, distanceKm: 0, speedingTrips: 0, harshCount: 0, fuelLiters: 0, co2Kg: 0 }; map.set(key, g); }
+      if (!g) { g = { id: key, label, sublabel, color, sumScore: 0, trips: 0, distanceKm: 0, speedingTrips: 0, harshCount: 0, fuelLiters: 0, co2Kg: 0, speedingRefs: [] }; map.set(key, g); }
       g.sumScore += a.ecoScore;
       g.trips += 1;
       g.distanceKm += a.distanceKm;
-      if (a.speedingCount > 0) g.speedingTrips += 1;
+      if (a.speedingCount > 0) {
+        g.speedingTrips += 1;
+        g.speedingRefs.push({ tripId: a.tripId, vehicleId: t.vehicleId, startedAt: t.startedAt });
+      }
       g.harshCount += a.harshAccel + a.harshBrake;
       g.fuelLiters += a.fuelLiters ?? 0;
       g.co2Kg += a.co2Kg ?? 0;
@@ -106,7 +114,12 @@ export class DrivingScoreService {
         return {
           id: g.id, label: g.label, sublabel: g.sublabel, color: g.color,
           score, grade: grade(score), tripCount: g.trips,
-          distanceKm: round(g.distanceKm, 1), speedingTrips: g.speedingTrips, harshCount: g.harshCount,
+          distanceKm: round(g.distanceKm, 1), speedingTrips: g.speedingTrips,
+          speedingTripRefs: g.speedingRefs
+            .sort((x, y) => y.startedAt.getTime() - x.startedAt.getTime())
+            .slice(0, MAX_SPEEDING_REFS)
+            .map((r) => ({ tripId: r.tripId, vehicleId: r.vehicleId, startedAt: r.startedAt.toISOString() })),
+          harshCount: g.harshCount,
           fuelLiters: round(g.fuelLiters, 1), co2Kg: round(g.co2Kg, 1),
         };
       })

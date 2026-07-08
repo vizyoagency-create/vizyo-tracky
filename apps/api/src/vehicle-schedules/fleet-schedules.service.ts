@@ -87,8 +87,23 @@ export class FleetSchedulesService {
       const enabled = !!sched?.enabled;
       const overrideActive = !!(sched?.overrideUntil && sched.overrideUntil.getTime() > nowMs);
 
+      // Connectivité calculée AVEC lastNoFixAt → détecte GPS_LOST (boîtier vivant mais sans
+      // position GPS fraîche : incident FS-253). Dans ce cas la vitesse dénormalisée est
+      // FIGÉE/PÉRIMÉE — on ne doit PAS s'en servir pour dire « il roule ».
+      const conn = getVehicleConnectivityState(
+        {
+          trackerId: s.trackerId,
+          lastSeenAt: s.lastSeenAt,
+          lastPositionAt: s.lastPositionAt ?? null,
+          lastNoFixAt: s.lastNoFixAt ?? null,
+          lastIgnition: s.lastIgnition,
+        },
+        nowMs,
+      );
+      const gpsLost = conn === 'GPS_LOST';
       const speed = s.lastSpeedKmh ?? 0;
-      const moving = speed > MOVING_SPEED_KMH;
+      // GPS perdu → vitesse périmée : jamais compté « en mouvement ».
+      const moving = !gpsLost && speed > MOVING_SPEED_KMH;
 
       const evalRes = enabled && sched ? evaluateSchedule(sched, now) : null;
       const windowState = evalRes?.state ?? null;
@@ -108,18 +123,13 @@ export class FleetSchedulesService {
 
       let pendingReason: FleetSchedulePendingReason | null = null;
       if (cutPending) {
-        if (moving) {
+        if (gpsLost) {
+          // Vivant mais sans GPS frais : la coupe reste livrable (le boîtier répond au réseau),
+          // on l'étiquette GPS_LOST pour l'afficher clairement AU LIEU de « roule » (vitesse figée).
+          pendingReason = 'GPS_LOST';
+        } else if (moving) {
           pendingReason = 'DRIVING';
         } else {
-          const conn = getVehicleConnectivityState(
-            {
-              trackerId: s.trackerId,
-              lastSeenAt: s.lastSeenAt,
-              lastPositionAt: s.lastPositionAt ?? null,
-              lastIgnition: s.lastIgnition,
-            },
-            nowMs,
-          );
           // En ligne + à l'arrêt → on attend la règle d'immobilité 10 min. Sinon la commande
           // ne peut pas être livrée (hors ligne / garé endormi / pas de boîtier).
           pendingReason = conn === 'ONLINE' || conn === 'AWAITING_GPS' ? 'AWAITING_STOP' : 'OFFLINE';
@@ -147,6 +157,8 @@ export class FleetSchedulesService {
         moving,
         lastPositionAt: s.lastPositionAt,
         lastSeenAt: s.lastSeenAt,
+        lastNoFixAt: s.lastNoFixAt ?? null,
+        connectivity: conn,
         engineCutState: s.engineCutState ?? null,
         nextTransitionAt,
         nextTransitionAction,

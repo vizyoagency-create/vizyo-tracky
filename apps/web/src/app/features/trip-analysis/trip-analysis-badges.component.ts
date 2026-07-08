@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { LucideAngularModule, Leaf, OctagonX, Gauge, Fuel, Sparkles, Loader, AlertTriangle, ShieldCheck, FileText, X, MapPin } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
@@ -241,11 +241,25 @@ export class TripAnalysisBadgesComponent {
   /** IA activée pour la flotte de l'utilisateur ? (masque « Récit IA » / génération). */
   protected readonly aiEnabled = computed(() => this.aiStatus.enabled());
 
-  constructor() { this.aiStatus.ensureLoaded(); }
+  constructor() {
+    this.aiStatus.ensureLoaded();
+    // Deep-link (scores « N avec excès » → ?trip=…) : ouvre AUTOMATIQUEMENT le récit IA de ce
+    // trajet une seule fois. Si l'analyse n'est pas encore chargée, la modal se remplit ensuite
+    // réactivement (current() suit l'input `analysis`).
+    effect(() => {
+      if (this.autoOpen() && !this.autoOpened) {
+        this.autoOpened = true;
+        this.openDetail();
+      }
+    });
+  }
 
   readonly tripId = input.required<string>();
   readonly analysis = input<TripAnalysisDto | null>(null);
+  /** Deep-link : ouvre automatiquement la modal « Récit IA » de ce trajet (une seule fois). */
+  readonly autoOpen = input<boolean>(false);
   readonly analyzed = output<TripAnalysisDto>();
+  private autoOpened = false;
 
   private readonly fresh = signal<TripAnalysisDto | null>(null);
   protected readonly busy = signal(false);

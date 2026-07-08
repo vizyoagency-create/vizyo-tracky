@@ -3,7 +3,7 @@ import { DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { LucideAngularModule, ChevronLeft, Gauge, Car, UserRound, Layers, RefreshCw, AlertTriangle, TrendingUp, Info, Trophy } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
-import type { DrivingScoreScope, DrivingScoresDto } from '@vizyo/tracky-shared';
+import type { DrivingScoreRowDto, DrivingScoreScope, DrivingScoresDto } from '@vizyo/tracky-shared';
 import { TripAnalysisApiService } from '../../core/services/trip-analysis.service';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { apiErrorMessage } from '../../core/error/api-error';
@@ -117,9 +117,10 @@ type Period = '7d' | '30d' | '90d';
                     <span>{{ r.tripCount }} trajet{{ r.tripCount > 1 ? 's' : '' }}</span>
                     <span>{{ r.distanceKm | number:'1.0-0' }} km</span>
                     @if (r.speedingTrips > 0) {
-                      @if (scope() === 'vehicle') {
-                        <a [routerLink]="['/vehicles', r.id]" [queryParams]="{ tab: 'reports' }"
-                           class="ds-warn ds-warn-link" title="Voir le détail des excès de vitesse de ce véhicule">{{ r.speedingTrips }} avec excès →</a>
+                      @if (r.speedingTripRefs.length > 0) {
+                        <a [routerLink]="['/vehicles', r.speedingTripRefs[0].vehicleId]"
+                           [queryParams]="{ tab: 'reports', trip: r.speedingTripRefs[0].tripId, tripDate: r.speedingTripRefs[0].startedAt }"
+                           class="ds-warn ds-warn-link" [title]="speedingTitle(r)">{{ r.speedingTrips }} avec excès →</a>
                       } @else {
                         <span class="ds-warn">{{ r.speedingTrips }} avec excès</span>
                       }
@@ -272,6 +273,12 @@ export class DrivingScoresComponent implements OnInit {
 
   protected medal(rank: number): string {
     return rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '';
+  }
+
+  /** Info-bulle du lien « N avec excès » → ouvre le trajet fautif le plus récent + son récit IA. */
+  protected speedingTitle(r: DrivingScoreRowDto): string {
+    const suffix = r.speedingTrips > 1 ? ` (le plus récent sur ${r.speedingTrips})` : '';
+    return `Ouvrir le trajet à excès${suffix} et son récit IA`;
   }
 
   ngOnInit(): void { void this.reload(); }
