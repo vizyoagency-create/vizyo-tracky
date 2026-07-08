@@ -5,6 +5,7 @@ import { firstValueFrom } from 'rxjs';
 import type { AiProviderId, TripAiResultDto, TripAnalysisDto } from '@vizyo/tracky-shared';
 import { TripAnalysisApiService } from '../../core/services/trip-analysis.service';
 import { AuthService } from '../../core/services/auth.service';
+import { AiStatusService } from '../../core/services/ai-status.service';
 import { apiErrorMessage } from '../../core/error/api-error';
 
 /**
@@ -68,9 +69,12 @@ import { apiErrorMessage } from '../../core/error/api-error';
           </span>
         }
 
-        <button type="button" class="tab-refresh" (click)="openDetail()" title="Récit IA, conseils & comparaison">
-          <lucide-icon [img]="FileIcon" [size]="12"></lucide-icon> Récit IA
-        </button>
+        <!-- Entrée IA (récit/conseils/comparaison) — masquée si l'IA est désactivée pour la flotte. -->
+        @if (aiEnabled()) {
+          <button type="button" class="tab-refresh" (click)="openDetail()" title="Récit IA, conseils & comparaison">
+            <lucide-icon [img]="FileIcon" [size]="12"></lucide-icon> Récit IA
+          </button>
+        }
         <button type="button" class="tab-refresh" (click)="runAnalyze()" [disabled]="busy()" title="Recalculer l'analyse (chiffres)">
           @if (busy()) { <lucide-icon [img]="LoaderIcon" [size]="12" class="tab-spin"></lucide-icon> }
           @else { <lucide-icon [img]="SparklesIcon" [size]="12"></lucide-icon> }
@@ -271,6 +275,12 @@ import { apiErrorMessage } from '../../core/error/api-error';
 export class TripAnalysisBadgesComponent {
   private readonly api = inject(TripAnalysisApiService);
   private readonly auth = inject(AuthService);
+  private readonly aiStatus = inject(AiStatusService);
+
+  /** IA activée pour la flotte de l'utilisateur ? (masque « Récit IA » / génération / comparaison). */
+  protected readonly aiEnabled = computed(() => this.aiStatus.enabled());
+
+  constructor() { this.aiStatus.ensureLoaded(); }
 
   readonly tripId = input.required<string>();
   readonly analysis = input<TripAnalysisDto | null>(null);

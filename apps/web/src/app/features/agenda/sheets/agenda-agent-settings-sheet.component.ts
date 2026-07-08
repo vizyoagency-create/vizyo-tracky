@@ -23,6 +23,7 @@ import { firstValueFrom } from 'rxjs';
 import { AgendaAgentApiService } from '../../../core/services/agenda-agent.service';
 import { ReservationBookingApiService } from '../../../core/services/reservation-booking.service';
 import { AiApiService } from '../../../core/services/ai.service';
+import { AiStatusService } from '../../../core/services/ai-status.service';
 import { AiUsageApiService } from '../../../core/services/ai-usage.service';
 import { AiJobService } from '../../../core/services/ai-job.service';
 import { AuthService } from '../../../core/services/auth.service';
@@ -57,10 +58,22 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
           <div class="aas-body">
             @if (error()) { <div class="aas-alert">{{ error() }}</div> }
 
-            <!-- Activation -->
+            <!-- Interrupteur MAÎTRE de l'IA (globale) — distinct de l'agent d'agenda. -->
+            <label class="aas-row aas-row--switch aas-row--master">
+              <div>
+                <span class="aas-lbl"><lucide-icon [img]="ZapIcon" [size]="13"></lucide-icon> Assistance IA</span>
+                <span class="aas-sub">Active/désactive <strong>toute l'IA</strong> pour cette société (récit de trajet, agent d'agenda, optimiseur, saisie vocale). L'app fonctionne parfaitement sans IA : l'analyse des trajets, les stations-service et les scores restent disponibles.</span>
+              </div>
+              <input type="checkbox" class="aas-sw" [checked]="aiMasterEnabled()" [disabled]="savingAi()" (change)="onToggleAi($any($event.target).checked)">
+            </label>
+            @if (!aiMasterEnabled()) {
+              <div class="aas-note">L'IA est désactivée pour cette société. Les réglages de l'agent ci-dessous restent sans effet tant que l'IA est coupée.</div>
+            }
+
+            <!-- Activation de l'agent d'agenda (sous-ensemble de l'IA). -->
             <label class="aas-row aas-row--switch">
               <div><span class="aas-lbl">Activer l'agent IA</span><span class="aas-sub">L'agent analyse et optimise l'agenda de {{ fleetName() || 'cette société' }}.</span></div>
-              <input type="checkbox" class="aas-sw" [checked]="enabled()" (change)="enabled.set($any($event.target).checked)">
+              <input type="checkbox" class="aas-sw" [checked]="enabled()" [disabled]="!aiMasterEnabled()" (change)="enabled.set($any($event.target).checked)">
             </label>
 
             <!-- Métier -->
@@ -178,6 +191,8 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
     .aas-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .aas-row--col { flex-direction: column; align-items: stretch; gap: 6px; }
     .aas-row--switch { padding: 4px 0; }
+    .aas-row--master { padding: 12px 14px; border-radius: 12px; background: color-mix(in srgb, var(--tracky-light, #10E0A0) 7%, var(--bg-tertiary)); border: 1px solid color-mix(in srgb, var(--tracky-light, #10E0A0) 20%, transparent); align-items: flex-start; }
+    .aas-row--master .aas-lbl lucide-icon { color: var(--tracky-light, #10E0A0); }
     .aas-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .aas-lbl { font-size: 13px; font-weight: 600; color: var(--fg-primary); display: inline-flex; align-items: center; gap: 6px; }
     .aas-sub { display: block; font-size: 11.5px; color: var(--fg-tertiary); margin-top: 2px; line-height: 1.4; }
@@ -221,6 +236,7 @@ export class AgendaAgentSettingsSheetComponent {
   private readonly agentApi = inject(AgendaAgentApiService);
   private readonly bookingApi = inject(ReservationBookingApiService);
   private readonly ai = inject(AiApiService);
+  private readonly aiStatus = inject(AiStatusService);
   private readonly usage = inject(AiUsageApiService);
   private readonly auth = inject(AuthService);
   private readonly fleetFilter = inject(FleetFilterService);
@@ -247,6 +263,10 @@ export class AgendaAgentSettingsSheetComponent {
   protected readonly running = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly fleetName = signal<string | null>(null);
+
+  // Interrupteur MAÎTRE de l'IA (globale) pour la flotte — distinct de l'agent d'agenda.
+  protected readonly aiMasterEnabled = signal(true);
+  protected readonly savingAi = signal(false);
 
   // Champs éditables
   protected readonly enabled = signal(false);
@@ -313,6 +333,11 @@ export class AgendaAgentSettingsSheetComponent {
     } finally {
       this.loading.set(false);
     }
+    // Interrupteur maître IA de la flotte (best-effort : ne bloque pas les autres réglages).
+    try {
+      const ai = await firstValueFrom(this.aiStatus.getFleetEnabled(fleetId));
+      this.aiMasterEnabled.set(ai.enabled);
+    } catch { /* garde l'optimiste */ }
     // Répartition des coûts (best-effort : ne bloque pas les réglages).
     try {
       const sum = await firstValueFrom(this.usage.summary(undefined, undefined, fleetId));
@@ -369,6 +394,26 @@ export class AgendaAgentSettingsSheetComponent {
     } catch (e) {
       this.metier.set(prev);
       this.toast.error('Échec', this.errMsg(e));
+    }
+  }
+
+  /**
+   * Interrupteur MAÎTRE : active/désactive TOUTE l'IA de la flotte. OFF → aucune fonction IA (récit de
+   * trajet, agent d'agenda, optimiseur, vocal) ; l'app reste pleinement fonctionnelle sans IA.
+   */
+  protected async onToggleAi(next: boolean): Promise<void> {
+    const prev = this.aiMasterEnabled();
+    this.aiMasterEnabled.set(next);
+    this.savingAi.set(true);
+    try {
+      await firstValueFrom(this.aiStatus.setFleetEnabled(next, this.currentFleetId()));
+      this.aiStatus.refresh(); // met à jour le masquage des boutons IA dans toute l'app
+      this.toast.success(next ? 'IA activée' : 'IA désactivée', next ? 'L\'assistance IA est active pour cette société.' : 'Toute l\'IA est coupée. L\'app reste fonctionnelle sans IA.');
+    } catch (e) {
+      this.aiMasterEnabled.set(prev);
+      this.toast.error('Échec', this.errMsg(e));
+    } finally {
+      this.savingAi.set(false);
     }
   }
 

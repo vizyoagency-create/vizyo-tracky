@@ -45,11 +45,13 @@ export class AiStatusController {
     return { fleetId: id, enabled };
   }
 
-  /** Flotte cible : super-admin peut cibler `fleetId` ; fleet-admin est FORCÉ à sa flotte (défense en profondeur). */
+  /** Flotte cible : super-admin peut cibler `fleetId` ; fleet-admin est FORCÉ à sa flotte. */
   private resolveFleet(req: AuthenticatedRequest, fleetId?: string): string {
-    const id = (req.user.role === UserRole.SUPER_ADMIN ? fleetId : undefined) ?? req.user.fleetId ?? undefined;
+    const isSuper = req.user.role === UserRole.SUPER_ADMIN;
+    // fleet-admin : un `fleetId` explicite DOIT être le sien → sinon REJET clair (pas d'application silencieuse).
+    if (!isSuper && fleetId && fleetId !== req.user.fleetId) throw new ForbiddenException('Flotte hors périmètre.');
+    const id = (isSuper ? fleetId : undefined) ?? req.user.fleetId ?? undefined;
     if (!id) throw new ForbiddenException('Flotte non déterminée.');
-    if (req.user.role !== UserRole.SUPER_ADMIN && id !== req.user.fleetId) throw new ForbiddenException('Flotte hors périmètre.');
     return id;
   }
 }
