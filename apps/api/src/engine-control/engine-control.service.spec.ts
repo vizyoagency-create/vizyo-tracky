@@ -689,4 +689,34 @@ describe('EngineControlService', () => {
     });
     expect(prisma.position.findFirst).toHaveBeenCalledTimes(1); // pas de scan dwell sur une coupe manuelle
   });
+
+  // SCH-5. Incident FS-253 : dernière position VIEILLE (28h) avec vitesse FIGÉE > 5 km/h (boîtier
+  // GPS muet mais garé) → la vitesse périmée ne bloque PLUS la coupe auto ; sans mouvement récent
+  // dans la fenêtre → la coupe est autorisée (avant : REJECTED_SPEED « position trop ancienne » en boucle).
+  it('should ALLOW a SCHEDULER CUT when last position is STALE with speed>5 but no recent movement', async () => {
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+    prisma.position.findFirst
+      .mockResolvedValueOnce(recentPosition(12.8, 28 * 3600 * 1000)) // lastPosition : 12.8 km/h figé, VIEUX de 28h
+      .mockResolvedValueOnce(null); // aucune trame en mouvement dans la fenêtre 10 min
+    registry.send.mockReturnValue(false);
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.CUT, null, superAdmin, 'SCHEDULER'),
+    ).rejects.toThrow(ServiceUnavailableException); // passe les gardes → échoue au dispatch offline
+    expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ status: CommandStatus.PENDING, source: 'SCHEDULER' }),
+    });
+  });
+
+  // SCH-6. Non-régression : une coupe MANUELLE (admin) garde le garde « stale » — une position
+  // périmée en mouvement est refusée (le garde n'est levé QUE pour le SCHEDULER).
+  it('should STILL reject a MANUAL cut on a stale moving position (guard only lifted for SCHEDULER)', async () => {
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+    prisma.position.findFirst.mockResolvedValue(recentPosition(12.8, 28 * 3600 * 1000));
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.CUT, null, superAdmin, 'MANUAL'),
+    ).rejects.toThrow(ForbiddenException);
+    expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ status: CommandStatus.REJECTED_SPEED, lastError: expect.stringContaining('Position trop ancienne') }),
+    });
+  });
 });

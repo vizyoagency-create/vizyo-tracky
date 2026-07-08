@@ -34,6 +34,15 @@ export interface ScheduleTransitionEvent {
 /** System user ID for scheduler-initiated commands. */
 const SCHEDULER_USER_ID = '00000000-0000-0000-0000-000000000000';
 
+/**
+ * Revue (incident FS-253) — une coupe/reprise horaire qui n'ABOUTIT PAS depuis ce délai est
+ * REMONTÉE au centre d'alertes. Jusqu'ici les reports étaient 100 % silencieux : un véhicule qui
+ * ne pouvait jamais être coupé (ex. GPS muet, boîtier hors ligne) passait inaperçu. Ré-alerte
+ * espacée (STUCK_REALERT_MS) pour ne pas spammer. Seuil réglable via `SCHEDULE_STUCK_ALERT_MIN`.
+ */
+const STUCK_ALERT_MS = Math.max(1, Number(process.env.SCHEDULE_STUCK_ALERT_MIN) || 30) * 60 * 1000;
+const STUCK_REALERT_MS = 3 * 60 * 60 * 1000;
+
 @Injectable()
 export class ScheduleCronService {
   private readonly logger = new Logger(ScheduleCronService.name);
@@ -46,6 +55,10 @@ export class ScheduleCronService {
   ) {}
 
   private running = false;
+
+  /** Suivi in-memory des reports (surtout coupes) par véhicule → détection des coupes « bloquées ». */
+  private readonly deferredSince = new Map<string, number>();
+  private readonly lastStuckAlertAt = new Map<string, number>();
 
   /** Runs every minute. */
   @Cron('0 * * * * *')
@@ -122,8 +135,8 @@ export class ScheduleCronService {
     const evaluation = evaluateSchedule(schedule);
     const state = evaluation.state;
 
-    // No change → skip
-    if (state === schedule.lastEvaluatedState) return;
+    // No change → skip (schedule en phase avec l'état voulu → pas de coupe bloquée)
+    if (state === schedule.lastEvaluatedState) { this.clearDeferral(schedule.vehicleId); return; }
 
     // Premier tick apres activation : si IN_WINDOW, le vehicule roule deja.
     // On initialise le baseline sans envoyer de RESTORE inutile.
@@ -136,6 +149,7 @@ export class ScheduleCronService {
         { vehicleId: schedule.vehicleId, state },
         'Schedule baseline initialized (vehicle in window, no action)',
       );
+      this.clearDeferral(schedule.vehicleId);
       return;
     }
 
@@ -182,6 +196,8 @@ export class ScheduleCronService {
       const isDeferrable =
         err instanceof ForbiddenException || err instanceof ServiceUnavailableException;
       if (isDeferrable) {
+        // Suivi : si la coupe reste bloquée trop longtemps, on la remonte au centre d'alertes.
+        this.trackDeferral(schedule, msg);
         this.logger.warn(
           { vehicleId: schedule.vehicleId, error: msg },
           'Schedule action deferred (retry next tick)',
@@ -209,6 +225,9 @@ export class ScheduleCronService {
       ).catch(() => {});
       return; // Ne pas persister l'history si le state n'a pas été mis à jour
     }
+
+    // Action aboutie → la coupe/reprise n'est plus « bloquée » pour ce véhicule.
+    this.clearDeferral(schedule.vehicleId);
 
     // Persister la transition dans schedule_history (audit + UI timeline)
     const occurredAt = new Date();
@@ -238,6 +257,33 @@ export class ScheduleCronService {
     } catch (evtErr) {
       this.logger.warn({ error: (evtErr as Error).message }, 'schedule.transition event emit failed');
     }
+  }
+
+  /** Enregistre un report ; remonte UNE alerte (ré-espacée) si la coupe/reprise reste bloquée trop longtemps. */
+  private trackDeferral(schedule: ScheduleWithVehicle, reason: string): void {
+    const vid = schedule.vehicleId;
+    const now = Date.now();
+    const since = this.deferredSince.get(vid) ?? now;
+    this.deferredSince.set(vid, since);
+    const stuckMs = now - since;
+    if (stuckMs < STUCK_ALERT_MS) return;
+    const lastAlert = this.lastStuckAlertAt.get(vid) ?? 0;
+    if (now - lastAlert < STUCK_REALERT_MS) return;
+    this.lastStuckAlertAt.set(vid, now);
+    const minutes = Math.round(stuckMs / 60000);
+    this.errorLogger
+      .record(
+        new Error(`Automatisation horaire : coupe/reprise impossible depuis ${minutes} min (${reason})`),
+        'schedule-cron',
+        { vehicleId: vid, fleetId: schedule.vehicle.fleetId, stuckMinutes: minutes, phase: 'stuck-schedule-action' },
+      )
+      .catch(() => { /* best-effort */ });
+  }
+
+  /** La coupe/reprise a abouti (ou n'est plus attendue) → on oublie le report en cours. */
+  private clearDeferral(vehicleId: string): void {
+    this.deferredSince.delete(vehicleId);
+    this.lastStuckAlertAt.delete(vehicleId);
   }
 
   /** Compute whether the current time is inside the allowed window. */

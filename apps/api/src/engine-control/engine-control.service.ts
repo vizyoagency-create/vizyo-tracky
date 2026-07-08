@@ -172,7 +172,12 @@ export class EngineControlService {
       // En mouvement → position fraîche exigée pour confirmer la vitesse actuelle.
       const isAtRest = lastPosition.speedKmh <= REST_SPEED_KMH;
 
-      if (!isAtRest && ageMs > STALE_THRESHOLD_MOVING_MS) {
+      // Revue (incident FS-253) : ce garde « stale » NE s'applique PAS au SCHEDULER. Pour l'auto-cut,
+      // une dernière vitesse FIGÉE et VIEILLE (boîtier GPS muet depuis des heures = véhicule garé) ne
+      // prouve AUCUN mouvement — l'appliquer bloquait la coupe pour toujours (74 REJECTED_SPEED/j) et
+      // le véhicule restait « en mouvement » à l'écran. Le SCHEDULER décide via le mouvement RÉCENT
+      // (scan de trames fraîches ci-dessous), jamais via lastPosition périmée. Admin/veilleur inchangés.
+      if (source !== 'SCHEDULER' && !isAtRest && ageMs > STALE_THRESHOLD_MOVING_MS) {
         return this.rejectSpeed(
           { trackerId, action, reason, userId: requestedBy.userId, source },
           fleetId,
@@ -199,8 +204,11 @@ export class EngineControlService {
       // sur rejectSpeed() qui PERSISTE une commande + émet un WS à chaque tick → le bloat qu'on
       // voulait éviter. Ici, TOUT véhicule en mouvement (> 5 km/h) en SCHEDULER = throw sec.
       if (source === 'SCHEDULER') {
-        // 1) En mouvement (> 5 km/h) → jamais de coupe auto, on diffère.
-        if (lastPosition.speedKmh > REST_SPEED_KMH) {
+        // 1) En mouvement RÉELLEMENT (position FRAÎCHE > 5 km/h) → jamais de coupe auto, on diffère.
+        // La fraîcheur (age ≤ STALE_THRESHOLD_MOVING_MS) est exigée : une dernière vitesse PÉRIMÉE
+        // (boîtier silencieux depuis des heures = garé, cf incident FS-253) ne prouve pas un mouvement
+        // en cours ; on ne bloque donc plus la coupe dessus. Le mouvement RÉCENT est vérifié en (2).
+        if (!isAtRest && ageMs <= STALE_THRESHOLD_MOVING_MS) {
           throw new ForbiddenException(
             `Coupe auto différée : véhicule en mouvement (${lastPosition.speedKmh} km/h)`,
           );
