@@ -1945,6 +1945,8 @@ export class VehicleDetailComponent implements OnInit {
     const qp = this.route.snapshot.queryParams;
     this.backFrom.set(qp['from'] ?? null);
     this.backGroup.set(qp['group'] ?? null);
+    // Deep-link vers un onglet précis (ex. lien « récit » de l'automatisation → ?tab=reports).
+    if (typeof qp['tab'] === 'string' && qp['tab']) this.activeTab.set(qp['tab']);
 
     const id = this.route.snapshot.params['id'];
     if (!id) { this.router.navigate(['/vehicles']); return; }

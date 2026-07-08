@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
-import type { AiProviderId, DrivingScoreDetailDto, DrivingScoreScope, DrivingScoresDto, FuelFillUpDto, FuelStationMapPointDto, SetTripAutomationSettingsDto, TripAnalysisDto, TripAutomationRunStats, TripAutomationSettingsDto, TripNarrativeCompareDto, UpsertFuelFillUpDto, VehicleFuelModelDto, VehicleFuelReportDto } from '@vizyo/tracky-shared';
+import type { AiProviderId, DrivingScoreDetailDto, DrivingScoreScope, DrivingScoresDto, FuelFillUpDto, FuelStationMapPointDto, SetTripAutomationSettingsDto, TripAnalysisDto, TripAutomationRunDto, TripAutomationRunStats, TripAutomationSettingsDto, TripNarrativeCompareDto, UpsertFuelFillUpDto, VehicleFuelModelDto, VehicleFuelReportDto } from '@vizyo/tracky-shared';
 import { Roles } from '../auth/decorators/roles.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -53,6 +53,13 @@ export class TripAnalysisController {
   @Roles(UserRole.SUPER_ADMIN)
   runAutomationNow(): Promise<TripAutomationRunStats> {
     return this.automation.runNow();
+  }
+
+  /** Historique des passages (quand / pour qui / quoi + récits produits cliquables). */
+  @Get('automation/runs')
+  @Roles(UserRole.SUPER_ADMIN)
+  listAutomationRuns(@Query('limit') limit?: string): Promise<TripAutomationRunDto[]> {
+    return this.automation.listRuns(limit ? parseInt(limit, 10) : 30);
   }
 
   /**

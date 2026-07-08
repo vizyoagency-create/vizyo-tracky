@@ -3,9 +3,10 @@ import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import {
   LucideAngularModule, Bot, ChevronLeft, Loader, Play, Save, Info, CheckCircle2, Gauge,
+  History, ChevronDown, Truck, ArrowUpRight, Sparkles,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
-import type { SetTripAutomationSettingsDto, TripAutomationRunStats, TripAutomationSettingsDto } from '@vizyo/tracky-shared';
+import type { SetTripAutomationSettingsDto, TripAutomationRunDto, TripAutomationRunStats, TripAutomationSettingsDto } from '@vizyo/tracky-shared';
 import { TripAnalysisApiService } from '../../core/services/trip-analysis.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { apiErrorMessage } from '../../core/error/api-error';
@@ -155,6 +156,49 @@ import { apiErrorMessage } from '../../core/error/api-error';
             <p class="ta-hint">Dernier passage automatique : {{ at | date:'dd/MM/yyyy HH:mm' }}.</p>
           }
         </section>
+
+        <!-- Historique / audit — tout sous contrôle -->
+        <section class="ta-card">
+          <div class="ta-card-h"><lucide-icon [img]="HistoryIcon" [size]="15"></lucide-icon> Historique des passages</div>
+          <p class="ta-hint">Chaque passage : quand, pour qui, ce qui a été fait. Clique un trajet pour ouvrir son récit.</p>
+          @if (runs().length === 0) {
+            <p class="ta-empty">Aucun passage pour l'instant — lances-en un avec « Lancer maintenant ».</p>
+          } @else {
+            <div class="ta-runs">
+              @for (r of runs(); track r.id) {
+                <div class="ta-run">
+                  <button type="button" class="ta-run-head" (click)="toggleRun(r.id)">
+                    <span class="ta-run-when">{{ r.startedAt | date:'dd/MM HH:mm' }}</span>
+                    <span class="ta-run-origin" [class.manual]="r.origin === 'manual'">{{ r.origin === 'manual' ? 'Manuel' : 'Auto' }}</span>
+                    <span class="ta-run-sum">{{ r.analyzed }} analysés · {{ r.narrated }} récits@if (r.failed > 0) { · <b class="err">{{ r.failed }} échecs</b> }</span>
+                    <lucide-icon [img]="ChevronDownIcon" [size]="16" class="ta-run-chev" [class.open]="expandedRun() === r.id"></lucide-icon>
+                  </button>
+                  @if (expandedRun() === r.id) {
+                    <div class="ta-run-body">
+                      <div class="ta-run-meta">{{ r.fleets }} flotte(s) · {{ r.vehicles }} véhicule(s) · {{ dur(r.durationMs) }}</div>
+                      @if (r.items.length === 0) {
+                        <p class="ta-empty sm">Rien de nouveau à traiter sur ce passage.</p>
+                      } @else {
+                        <div class="ta-items">
+                          @for (it of r.items; track it.tripId) {
+                            <a class="ta-item" [routerLink]="['/vehicles', it.vehicleId]" [queryParams]="{ tab: 'reports' }">
+                              <lucide-icon [img]="it.action === 'narrated' ? SparklesIcon : TruckIcon" [size]="14" class="ta-item-ico" [class.ai]="it.action === 'narrated'"></lucide-icon>
+                              <span class="ta-item-plate">{{ it.plate }}</span>
+                              <span class="ta-item-fleet">{{ it.fleetName }}</span>
+                              <span class="ta-item-date">{{ it.tripStartedAt | date:'dd/MM HH:mm' }}</span>
+                              <span class="ta-item-act" [class.ai]="it.action === 'narrated'">{{ it.action === 'narrated' ? 'Récit IA' : 'Analyse' }}</span>
+                              <lucide-icon [img]="LinkIcon" [size]="13" class="ta-item-link"></lucide-icon>
+                            </a>
+                          }
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+          }
+        </section>
       }
     </div>
   `,
@@ -216,6 +260,33 @@ import { apiErrorMessage } from '../../core/error/api-error';
     .ta-loading { display: flex; justify-content: center; padding: 40px; color: var(--fg-tertiary); }
     .spin { animation: taspin .8s linear infinite; }
     @keyframes taspin { to { transform: rotate(360deg); } }
+
+    /* Historique */
+    .ta-empty { font-size: 12.5px; color: var(--fg-tertiary); margin: 8px 0 0; }
+    .ta-empty.sm { margin: 6px 0 0; }
+    .ta-runs { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+    .ta-run { border: 1px solid var(--border-subtle); border-radius: 12px; overflow: hidden; background: var(--bg-tertiary); }
+    .ta-run-head { width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: none; border: none; cursor: pointer; text-align: left; color: var(--fg-primary); }
+    .ta-run-when { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .ta-run-origin { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; padding: 3px 8px; border-radius: 6px; background: color-mix(in srgb, var(--fg-tertiary) 18%, transparent); color: var(--fg-secondary); }
+    .ta-run-origin.manual { background: rgba(139,92,246,.14); color: #a78bfa; }
+    .ta-run-sum { font-size: 12px; color: var(--fg-tertiary); flex: 1; min-width: 0; }
+    .ta-run-sum .err { color: #f87171; }
+    .ta-run-chev { color: var(--fg-tertiary); transition: transform .2s; flex-shrink: 0; }
+    .ta-run-chev.open { transform: rotate(180deg); }
+    .ta-run-body { padding: 2px 14px 14px; border-top: 1px solid var(--border-subtle); }
+    .ta-run-meta { font-size: 11.5px; color: var(--fg-tertiary); padding: 10px 0; }
+    .ta-items { display: flex; flex-direction: column; gap: 4px; }
+    .ta-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 9px; text-decoration: none; color: var(--fg-secondary); background: var(--bg-secondary); border: 1px solid transparent; transition: border-color .15s; }
+    .ta-item:hover { border-color: color-mix(in srgb, var(--tracky, #10E0A0) 40%, transparent); }
+    .ta-item-ico { color: var(--fg-tertiary); flex-shrink: 0; }
+    .ta-item-ico.ai { color: #a78bfa; }
+    .ta-item-plate { font-size: 12.5px; font-weight: 700; color: var(--fg-primary); white-space: nowrap; }
+    .ta-item-fleet { font-size: 11.5px; color: var(--fg-tertiary); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ta-item-date { font-size: 11px; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .ta-item-act { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; padding: 2px 7px; border-radius: 5px; background: color-mix(in srgb, var(--tracky, #10E0A0) 14%, transparent); color: var(--tracky-light, #10E0A0); white-space: nowrap; }
+    .ta-item-act.ai { background: rgba(139,92,246,.14); color: #a78bfa; }
+    .ta-item-link { color: var(--fg-tertiary); flex-shrink: 0; }
   `],
 })
 export class TripAutomationComponent implements OnInit {
@@ -229,6 +300,8 @@ export class TripAutomationComponent implements OnInit {
   protected readonly settings = signal<TripAutomationSettingsDto | null>(null);
   protected readonly draft = signal<TripAutomationSettingsDto | null>(null);
   protected readonly lastRun = signal<TripAutomationRunStats | null>(null);
+  protected readonly runs = signal<TripAutomationRunDto[]>([]);
+  protected readonly expandedRun = signal<string | null>(null);
 
   /** Le formulaire diffère-t-il des réglages enregistrés ? (active le bouton Enregistrer). */
   protected readonly dirty = computed(() => {
@@ -246,8 +319,13 @@ export class TripAutomationComponent implements OnInit {
   protected readonly InfoIcon = Info;
   protected readonly CheckIcon = CheckCircle2;
   protected readonly GaugeIcon = Gauge;
+  protected readonly HistoryIcon = History;
+  protected readonly ChevronDownIcon = ChevronDown;
+  protected readonly TruckIcon = Truck;
+  protected readonly LinkIcon = ArrowUpRight;
+  protected readonly SparklesIcon = Sparkles;
 
-  ngOnInit(): void { void this.load(); }
+  ngOnInit(): void { void this.load(); void this.loadRuns(); }
 
   private async load(): Promise<void> {
     this.loading.set(true);
@@ -261,6 +339,16 @@ export class TripAutomationComponent implements OnInit {
     } finally {
       this.loading.set(false);
     }
+  }
+
+  private async loadRuns(): Promise<void> {
+    try {
+      this.runs.set(await firstValueFrom(this.api.listAutomationRuns(30)));
+    } catch { /* l'historique n'est pas bloquant */ }
+  }
+
+  protected toggleRun(id: string): void {
+    this.expandedRun.set(this.expandedRun() === id ? null : id);
   }
 
   protected patch<K extends keyof TripAutomationSettingsDto>(key: K, value: TripAutomationSettingsDto[K]): void {
@@ -308,6 +396,7 @@ export class TripAutomationComponent implements OnInit {
       this.lastRun.set(stats);
       this.toast.success('Run terminé', `${stats.analyzed} analysé(s) · ${stats.narrated} récit(s) IA`);
       void this.load();
+      void this.loadRuns();
     } catch (e) {
       this.toast.error('Le run a échoué', apiErrorMessage(e, ''));
     } finally {

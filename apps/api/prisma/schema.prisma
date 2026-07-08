@@ -1363,6 +1363,28 @@ model TripAutomationSettings {
   @@map("trip_automation_settings")
 }
 
+/// Historique des passages d'automatisation — 1 ligne par run, pour tout retrouver
+/// (QUAND, POUR QUI, QUOI) + les récits produits (cliquables). Élagué (garde les récents).
+model TripAutomationRun {
+  id         String    @id @default(uuid()) @db.Uuid
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  /// 'scheduled' (cron) | 'manual' (bouton « Lancer maintenant »).
+  origin     String    @default("scheduled")
+  fleets     Int       @default(0)
+  vehicles   Int       @default(0)
+  recomputed Int       @default(0)
+  analyzed   Int       @default(0)
+  narrated   Int       @default(0)
+  failed     Int       @default(0)
+  durationMs Int       @default(0)
+  /// Détail borné des trajets traités : [{ fleetId, fleetName, vehicleId, plate, tripId, tripStartedAt, action }].
+  items      Json?
+
+  @@index([startedAt(sort: Desc)])
+  @@map("trip_automation_runs")
+}
+
 /// Refonte agenda/IA (2026-07) — Reglages de l'agent d'optimisation d'agenda, PAR FLOTTE.
 /// Pilotes depuis la roue crantee « Parametres de l'agenda ». Consommes par l'agent nocturne (P3).
 /// 1 ligne par flotte (opt-in : enabled=false par defaut).

@@ -42,11 +42,16 @@ describe('TripAutomationService', () => {
         create: jest.fn().mockResolvedValue(row),
         update: jest.fn().mockResolvedValue(row),
       },
-      fleet: { findMany: jest.fn().mockResolvedValue(opts.fleets ?? [{ id: 'f1' }]) },
-      vehicle: { findMany: jest.fn().mockResolvedValue(opts.vehicles ?? [{ id: 'v1' }]) },
+      tripAutomationRun: {
+        create: jest.fn().mockResolvedValue({}),
+        findMany: jest.fn().mockResolvedValue([]),
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      fleet: { findMany: jest.fn().mockResolvedValue(opts.fleets ?? [{ id: 'f1', name: 'Flotte A' }]) },
+      vehicle: { findMany: jest.fn().mockResolvedValue(opts.vehicles ?? [{ id: 'v1', plate: 'AA-001-BB' }]) },
       trip: {
         findFirst: jest.fn().mockResolvedValue(opts.dirty ?? null),
-        findMany: jest.fn().mockResolvedValue(opts.trips ?? []),
+        findMany: jest.fn().mockResolvedValue((opts.trips ?? []).map((t) => ({ startedAt: new Date('2026-07-08T07:00:00Z'), ...t }))),
       },
       tripAnalysis: { findMany: jest.fn().mockResolvedValue(opts.analyses ?? []) },
     };
@@ -138,6 +143,21 @@ describe('TripAutomationService', () => {
     });
     await svc.runNow();
     expect(trips.recompute).not.toHaveBeenCalled();
+  });
+
+  it('enregistre le passage dans l’historique avec les récits produits (cliquables)', async () => {
+    const { svc, prisma } = build({
+      trips: [{ id: 't2' }],
+      analyses: [],
+      aiEnabled: true,
+    });
+    await svc.runNow();
+    expect(prisma.tripAutomationRun.create).toHaveBeenCalledTimes(1);
+    const data = prisma.tripAutomationRun.create.mock.calls[0][0].data;
+    expect(data.origin).toBe('manual');
+    expect(data.items).toHaveLength(1);
+    expect(data.items[0]).toMatchObject({ vehicleId: 'v1', plate: 'AA-001-BB', tripId: 't2', action: 'narrated' });
+    expect(data.finishedAt).toBeInstanceOf(Date);
   });
 
   it('setSettings clampe l’heure et normalise la fréquence', async () => {

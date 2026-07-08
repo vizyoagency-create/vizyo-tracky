@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import type { AiProviderId, DrivingScoreDetailDto, DrivingScoreScope, DrivingScoresDto, FuelFillUpDto, FuelStationMapPointDto, SetTripAutomationSettingsDto, TripAnalysisDto, TripAutomationRunStats, TripAutomationSettingsDto, UpsertFuelFillUpDto, VehicleFuelModelDto, VehicleFuelReportDto } from '@vizyo/tracky-shared';
+import type { AiProviderId, DrivingScoreDetailDto, DrivingScoreScope, DrivingScoresDto, FuelFillUpDto, FuelStationMapPointDto, SetTripAutomationSettingsDto, TripAnalysisDto, TripAutomationRunDto, TripAutomationRunStats, TripAutomationSettingsDto, UpsertFuelFillUpDto, VehicleFuelModelDto, VehicleFuelReportDto } from '@vizyo/tracky-shared';
 import { Observable } from 'rxjs';
 
 /**
@@ -100,5 +100,9 @@ export class TripAnalysisApiService {
   /** Lance un run TOUT DE SUITE (bouton « Lancer maintenant ») → renvoie le bilan. */
   runAutomationNow(): Observable<TripAutomationRunStats> {
     return this.http.post<TripAutomationRunStats>('/api/trip-analysis/automation/run-now', {});
+  }
+  /** Historique des passages (audit : quand / pour qui / quoi + récits cliquables). */
+  listAutomationRuns(limit = 30): Observable<TripAutomationRunDto[]> {
+    return this.http.get<TripAutomationRunDto[]>('/api/trip-analysis/automation/runs', { params: { limit: String(limit) } });
   }
 }

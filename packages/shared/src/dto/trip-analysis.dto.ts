@@ -392,3 +392,33 @@ export interface SetTripAutomationSettingsDto {
   maxAnalysesPerRun?: number;
   maxNarrationsPerRun?: number;
 }
+
+/** Un trajet traité par un run (analysé et/ou récit IA) — pour retrouver + cliquer. */
+export interface TripAutomationRunItemDto {
+  fleetId: string;
+  fleetName: string | null;
+  vehicleId: string;
+  plate: string;
+  tripId: string;
+  tripStartedAt: string;
+  /** Le plus notable fait sur ce trajet pendant le run. */
+  action: 'analyzed' | 'narrated';
+}
+
+/** Historique d'UN passage d'automatisation (quand, pour qui, quoi + récits produits). */
+export interface TripAutomationRunDto {
+  id: string;
+  startedAt: string;
+  finishedAt: string | null;
+  /** 'scheduled' (cron) | 'manual' (bouton « Lancer maintenant »). */
+  origin: 'scheduled' | 'manual';
+  fleets: number;
+  vehicles: number;
+  recomputed: number;
+  analyzed: number;
+  narrated: number;
+  failed: number;
+  durationMs: number;
+  /** Détail borné des trajets traités (récits/analyses), cliquables. */
+  items: TripAutomationRunItemDto[];
+}

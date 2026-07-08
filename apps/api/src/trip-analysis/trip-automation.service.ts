@@ -1,8 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { Prisma, UserRole, type TripAutomationSettings } from '@prisma/client';
+import { Prisma, UserRole, type TripAutomationRun, type TripAutomationSettings } from '@prisma/client';
 import type {
   SetTripAutomationSettingsDto,
+  TripAutomationRunDto,
+  TripAutomationRunItemDto,
   TripAutomationRunStats,
   TripAutomationSettingsDto,
 } from '@vizyo/tracky-shared';
@@ -23,6 +25,10 @@ const RECOMPUTE_TAIL_MS = 10 * 60 * 1000;
 const RECOMPUTE_BACKOFF_MS = 30 * 60 * 1000;
 /** Plafond dur de trajets listés par véhicule et par run (défense mémoire). */
 const MAX_TRIPS_PER_VEHICLE = 500;
+/** Détail borné stocké par run (les trajets traités, cliquables). */
+const MAX_ITEMS_PER_RUN = 300;
+/** Historique conservé (runs récents) — le reste est élagué à chaque insertion. */
+const KEEP_RUNS = 100;
 
 type MutableStats = {
   fleets: number;
@@ -32,6 +38,8 @@ type MutableStats = {
   narrated: number;
   failed: number;
 };
+
+type RunItem = TripAutomationRunItemDto;
 
 /**
  * Automatisation des trajets (2026-07) — un cron HORAIRE qui, pour TOUTES les flottes, exécute le
@@ -45,8 +53,9 @@ type MutableStats = {
  *   2. ANALYSE déterministe (jamais bloquée par l'IA — c'est la couche non-IA).
  *   3. RÉCIT IA, seulement si l'IA est active pour la flotte, borné par un cap de coût.
  *
- * Robustesse : verrou anti-chevauchement, tout est séquentiel (throttle OSM/Overpass partagé + VPS
- * 2 vCPU), chaque échec est capturé → centre d'alerte (jamais de throw qui casserait le run).
+ * CONTRÔLE : chaque passage est PERSISTÉ (TripAutomationRun) avec quand / pour qui / quoi + la liste
+ * cliquable des trajets traités. Robustesse : verrou anti-chevauchement, tout est séquentiel
+ * (throttle OSM/Overpass partagé + VPS 2 vCPU), chaque échec → centre d'alerte (jamais de throw).
  */
 @Injectable()
 export class TripAutomationService {
@@ -100,24 +109,26 @@ export class TripAutomationService {
       return this.finalStats(this.emptyStats(), 0);
     }
     this.running = true;
-    const startedAt = Date.now();
+    const startedAt = new Date();
+    const startMs = Date.now();
     const stats = this.emptyStats();
+    const items: RunItem[] = [];
     try {
       const user = this.systemUser();
       const now = Date.now();
       const windowFrom = new Date(now - settings.lookbackHours * 3600 * 1000);
       const windowTo = new Date(now - RECOMPUTE_TAIL_MS);
 
-      const fleets = await this.prisma.fleet.findMany({ select: { id: true } });
+      const fleets = await this.prisma.fleet.findMany({ select: { id: true, name: true } });
       for (const fleet of fleets) {
         stats.fleets++;
         const aiOn = settings.narrateEnabled && (await this.aiAvail.isEnabledForFleet(fleet.id));
 
-        let vehicles: { id: string }[];
+        let vehicles: { id: string; plate: string }[];
         try {
           vehicles = await this.prisma.vehicle.findMany({
             where: { fleetId: fleet.id, tracker: { isNot: null } },
-            select: { id: true },
+            select: { id: true, plate: true },
           });
         } catch (e) {
           stats.failed++;
@@ -131,12 +142,16 @@ export class TripAutomationService {
           const narrationCapReached = !aiOn || stats.narrated >= settings.maxNarrationsPerRun;
           if (analysisCapReached && narrationCapReached) break;
           stats.vehicles++;
-          await this.processVehicle(user, v.id, fleet.id, aiOn, windowFrom, windowTo, settings, stats);
+          await this.processVehicle(
+            user, { id: v.id, plate: v.plate, fleetId: fleet.id, fleetName: fleet.name },
+            aiOn, windowFrom, windowTo, settings, stats, items,
+          );
         }
       }
 
-      const runStats = this.finalStats(stats, Date.now() - startedAt);
+      const runStats = this.finalStats(stats, Date.now() - startMs);
       await this.persistRun(settings.id, runStats);
+      await this.recordRun(origin, startedAt, runStats, items);
       this.systemActivity.record({
         category: 'AI',
         action: 'trip_automation_run',
@@ -150,7 +165,7 @@ export class TripAutomationService {
       return runStats;
     } catch (e) {
       await this.errorLogger.record(e as Error, SOURCE, { phase: 'run' }, 'CRITICAL');
-      return this.finalStats(stats, Date.now() - startedAt);
+      return this.finalStats(stats, Date.now() - startMs);
     } finally {
       this.running = false;
     }
@@ -158,14 +173,16 @@ export class TripAutomationService {
 
   private async processVehicle(
     user: AuthUser,
-    vehicleId: string,
-    fleetId: string,
+    veh: { id: string; plate: string; fleetId: string; fleetName: string | null },
     aiOn: boolean,
     windowFrom: Date,
     windowTo: Date,
     settings: TripAutomationSettings,
     stats: MutableStats,
+    items: RunItem[],
   ): Promise<void> {
+    const { id: vehicleId, fleetId } = veh;
+
     // 1) RECALCUL « if avant pour clear les trajets » — uniquement le tail sale.
     if (settings.recomputeTrips) {
       try {
@@ -195,11 +212,11 @@ export class TripAutomationService {
     }
 
     // 2) Trajets clôturés de la fenêtre + état analyse/récit.
-    let trips: { id: string }[];
+    let trips: { id: string; startedAt: Date }[];
     try {
       trips = await this.prisma.trip.findMany({
         where: { vehicleId, endedAt: { not: null }, startedAt: { gte: windowFrom } },
-        select: { id: true },
+        select: { id: true, startedAt: true },
         orderBy: { startedAt: 'desc' },
         take: MAX_TRIPS_PER_VEHICLE,
       });
@@ -227,6 +244,8 @@ export class TripAutomationService {
     for (const t of trips) {
       const hasAnalysis = narrativeByTrip.has(t.id);
       let hasNarrative = narrativeByTrip.get(t.id) ?? false;
+      let didAnalyze = false;
+      let didNarrate = false;
 
       // 2a) ANALYSE déterministe si absente (couche non-IA, jamais coupée).
       if (!hasAnalysis) {
@@ -234,6 +253,7 @@ export class TripAutomationService {
         try {
           await this.analysis.analyze(user, t.id);
           stats.analyzed++;
+          didAnalyze = true;
           hasNarrative = false; // désormais analysé, sans récit
         } catch (e) {
           stats.failed++;
@@ -247,10 +267,21 @@ export class TripAutomationService {
         try {
           await this.llm.narrate(user, t.id);
           stats.narrated++;
+          didNarrate = true;
         } catch (e) {
           stats.failed++;
           await this.errorLogger.record(e as Error, SOURCE, { fleetId, vehicleId, tripId: t.id, phase: 'narrate' });
         }
+      }
+
+      // Trace cliquable : un trajet réellement touché ce run (analyse et/ou récit).
+      if ((didAnalyze || didNarrate) && items.length < MAX_ITEMS_PER_RUN) {
+        items.push({
+          fleetId, fleetName: veh.fleetName,
+          vehicleId, plate: veh.plate,
+          tripId: t.id, tripStartedAt: t.startedAt.toISOString(),
+          action: didNarrate ? 'narrated' : 'analyzed',
+        });
       }
     }
   }
@@ -276,6 +307,13 @@ export class TripAutomationService {
     return this.toDto(updated);
   }
 
+  /** Historique des passages (le plus récent d'abord) — audit « quand / pour qui / quoi ». */
+  async listRuns(limit = 30): Promise<TripAutomationRunDto[]> {
+    const take = this.clampInt(limit, 1, 100);
+    const rows = await this.prisma.tripAutomationRun.findMany({ orderBy: { startedAt: 'desc' }, take });
+    return rows.map((r) => this.runToDto(r));
+  }
+
   private async loadRow(): Promise<TripAutomationSettings> {
     const existing = await this.prisma.tripAutomationSettings.findFirst({ orderBy: { updatedAt: 'desc' } });
     if (existing) return existing;
@@ -293,6 +331,43 @@ export class TripAutomationService {
     }
   }
 
+  /** Enregistre le run dans l'historique (audit + récits cliquables) puis élague les vieux. */
+  private async recordRun(
+    origin: 'scheduled' | 'manual',
+    startedAt: Date,
+    runStats: TripAutomationRunStats,
+    items: RunItem[],
+  ): Promise<void> {
+    try {
+      await this.prisma.tripAutomationRun.create({
+        data: {
+          startedAt,
+          finishedAt: new Date(),
+          origin,
+          fleets: runStats.fleets,
+          vehicles: runStats.vehicles,
+          recomputed: runStats.recomputed,
+          analyzed: runStats.analyzed,
+          narrated: runStats.narrated,
+          failed: runStats.failed,
+          durationMs: runStats.durationMs,
+          items: items.slice(0, MAX_ITEMS_PER_RUN) as unknown as Prisma.InputJsonValue,
+        },
+      });
+      // Élagage best-effort : ne garder que les KEEP_RUNS plus récents.
+      const stale = await this.prisma.tripAutomationRun.findMany({
+        orderBy: { startedAt: 'desc' },
+        skip: KEEP_RUNS,
+        select: { id: true },
+      });
+      if (stale.length > 0) {
+        await this.prisma.tripAutomationRun.deleteMany({ where: { id: { in: stale.map((s) => s.id) } } });
+      }
+    } catch (e) {
+      await this.errorLogger.record(e as Error, SOURCE, { phase: 'recordRun' });
+    }
+  }
+
   private toDto(r: TripAutomationSettings): TripAutomationSettingsDto {
     return {
       enabled: r.enabled,
@@ -306,6 +381,24 @@ export class TripAutomationService {
       lastRunAt: r.lastRunAt ? r.lastRunAt.toISOString() : null,
       lastRunStats: (r.lastRunStats as unknown as TripAutomationRunStats | null) ?? null,
       updatedAt: r.updatedAt ? r.updatedAt.toISOString() : null,
+    };
+  }
+
+  private runToDto(r: TripAutomationRun): TripAutomationRunDto {
+    const items = Array.isArray(r.items) ? (r.items as unknown as TripAutomationRunItemDto[]) : [];
+    return {
+      id: r.id,
+      startedAt: r.startedAt.toISOString(),
+      finishedAt: r.finishedAt ? r.finishedAt.toISOString() : null,
+      origin: r.origin === 'manual' ? 'manual' : 'scheduled',
+      fleets: r.fleets,
+      vehicles: r.vehicles,
+      recomputed: r.recomputed,
+      analyzed: r.analyzed,
+      narrated: r.narrated,
+      failed: r.failed,
+      durationMs: r.durationMs,
+      items,
     };
   }
 
