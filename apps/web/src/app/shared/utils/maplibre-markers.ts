@@ -12,9 +12,13 @@ export function speedColor(speed: number): string {
 
 /** Couleur d'un marqueur hors-ligne (cf. légende carte « Hors-ligne »). */
 export const OFFLINE_MARKER_COLOR = '#9ca3af';
+/** Incident FS-253 — couleur « GPS perdu » (boîtier vivant mais sans position fraîche). Rouge
+ *  = à traiter, distinct du gris hors-ligne ET du vert-vitesse (on ne le montre PAS comme actif). */
+export const GPS_LOST_MARKER_COLOR = '#ef4444';
 
-/** Couleur de fond du cœur du marqueur : grise si hors-ligne, sinon couleur-vitesse. */
+/** Couleur de fond du cœur du marqueur : GPS perdu (rouge) > hors-ligne (gris) > couleur-vitesse. */
 function markerColor(data: VehicleMarkerData): string {
+  if (data.gpsLost) return GPS_LOST_MARKER_COLOR;
   return data.offline ? OFFLINE_MARKER_COLOR : speedColor(data.colorSpeedKmh ?? data.speedKmh);
 }
 
@@ -38,6 +42,11 @@ export interface VehicleMarkerData {
    * vert « actif » à sa dernière position connue.
    */
   offline?: boolean;
+  /**
+   * Incident FS-253 — boîtier VIVANT mais sans position GPS fraîche (« GPS perdu »). Le marqueur
+   * est rendu en ROUGE et estompé (comme hors-ligne) : sa position est FIGÉE, il ne « roule » pas.
+   */
+  gpsLost?: boolean;
   /**
    * Vitesse (km/h) a utiliser pour la COULEUR uniquement. Permet d'afficher une
    * couleur de mouvement (vert/orange) basee sur la vitesse robuste derivee du
@@ -64,7 +73,7 @@ export function buildVehicleMarkerEl(data: VehicleMarkerData): HTMLElement {
   const ignClass = data.ignition ? 'tracky-acc--on' : 'tracky-acc--off';
   const activeClass = data.active ? 'tracky-marker--active' : '';
   const hydClass = data.hydrated ? 'tracky-marker--hydrated' : '';
-  const offlineClass = data.offline ? 'tracky-marker--offline' : '';
+  const offlineClass = data.offline || data.gpsLost ? 'tracky-marker--offline' : '';
   const isArrow = data.type === 'OTHER';
   const headingDeg = Math.round(data.heading || 0);
   const svgContent = getVehicleSvg(data.type);
@@ -142,7 +151,7 @@ export function updateVehicleMarkerEl(el: HTMLElement, data: VehicleMarkerData):
 
   el.classList.toggle('tracky-marker--active', !!data.active);
   el.classList.toggle('tracky-marker--hydrated', !!data.hydrated);
-  el.classList.toggle('tracky-marker--offline', !!data.offline);
+  el.classList.toggle('tracky-marker--offline', !!(data.offline || data.gpsLost));
 }
 
 /**

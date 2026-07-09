@@ -31,6 +31,8 @@ export interface VehicleDetailDto {
     lastSeenAt: string | null;
     /** Dernière position GPS valide (null = jamais de fix → état « Recherche GPS »). */
     lastPositionAt: string | null;
+    /** Incident FS-253 — dernière trame no_fix (LBS sans lock GPS) → détection GPS_LOST. */
+    lastNoFixAt: string | null;
     lastKnownIgnition: boolean | null;
     /** V1.7 — fil ACC connecte (true) ou ignition inferee depuis vitesse (false). */
     accConnected: boolean;

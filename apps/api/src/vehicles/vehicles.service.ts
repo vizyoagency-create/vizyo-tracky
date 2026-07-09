@@ -70,6 +70,8 @@ export class VehiclesService {
     lastIgnition: true,
     lastValid: true,
     lastPositionAt: true,
+    // Incident FS-253 — dernière trame no_fix : permet à la LISTE de détecter GPS_LOST.
+    lastNoFixAt: true,
     accConnected: true,
     // V1.15 — expose la SIM pour le badge "Installe" (IMEI + SIM presents) cote liste.
     simPhoneNumber: true,

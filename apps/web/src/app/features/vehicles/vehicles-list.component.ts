@@ -1149,6 +1149,8 @@ export class VehiclesListComponent implements OnInit {
       lastSeenAt: v.tracker?.lastSeenAt ?? null,
       // null = boîtier jamais localisé → « Recherche GPS » s'il émet (vivant sans fix).
       lastPositionAt: v.tracker?.lastPositionAt ?? null,
+      // Incident FS-253 — no_fix frais + position périmée → GPS_LOST (« GPS perdu »).
+      lastNoFixAt: v.tracker?.lastNoFixAt ?? null,
       lastIgnition: v.tracker?.lastKnownIgnition ?? null,
     });
   }
@@ -1171,6 +1173,17 @@ export class VehiclesListComponent implements OnInit {
   protected liveStatus(vehicleId: string): { kind: 'moving' | 'idle' | 'stopped'; speedKmh: number; cssClass: string } | null {
     const pos = this.realtime.positionsList().find((p) => p.vehicleId === vehicleId);
     if (!pos) return null;
+    // Incident FS-253 — GPS perdu : la vitesse live est FIGÉE (dernière position vieille de
+    // plusieurs heures). On n'affiche AUCUNE pastille de vitesse (le badge « GPS perdu » du
+    // tri-état s'en charge) pour ne pas laisser croire que le véhicule roule.
+    const snap = this.realtime.snapshot().find((s) => s.vehicleId === vehicleId);
+    if (snap && getVehicleConnectivityState({
+      trackerId: snap.trackerId,
+      lastSeenAt: snap.lastSeenAt,
+      lastPositionAt: snap.lastPositionAt,
+      lastNoFixAt: snap.lastNoFixAt,
+      lastIgnition: snap.lastIgnition,
+    }) === 'GPS_LOST') return null;
     const speedKmh = Math.round(pos.speedKmh);
     if (pos.ignition && speedKmh > 3) {
       return { kind: 'moving', speedKmh, cssClass: 'v-live-pill--moving' };

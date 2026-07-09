@@ -180,7 +180,14 @@ import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
         <div class="vdx-stats">
           <div class="vdx-stat">
             <div class="vdx-stat-k">Vitesse</div>
-            <div class="vdx-stat-v">@if (currentPosition(); as pos) { {{ pos.speedKmh | number:'1.0-0' }} <span class="vdx-stat-u">km/h</span> } @else { — }</div>
+            <div class="vdx-stat-v">
+              @if (connectivity() === 'GPS_LOST') {
+                <!-- Incident FS-253 — GPS perdu : la vitesse est FIGÉE, on ne l'affiche PAS comme du live. -->
+                <span class="vdx-stat-v--sm" style="color:#ef4444;font-weight:700">GPS perdu</span>
+              } @else if (currentPosition(); as pos) {
+                {{ pos.speedKmh | number:'1.0-0' }} <span class="vdx-stat-u">km/h</span>
+              } @else { — }
+            </div>
           </div>
 
           <div class="vdx-stat vdx-stat--link" role="button" tabindex="0" (click)="activeTab.set('map')" (keydown.enter)="activeTab.set('map')">
@@ -195,7 +202,9 @@ import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
 
           <div class="vdx-stat">
             <div class="vdx-stat-k">Dernière comm.</div>
-            <div class="vdx-stat-v vdx-stat-v--sm">@if (currentPosition(); as pos) { {{ relativeTime(pos.timestamp) }} } @else { Jamais }</div>
+            <!-- Incident FS-253 — « Dernière comm. » = dernier SIGNAL du boîtier (lastSeenAt), pas le
+                 dernier fix GPS : un boîtier GPS-perdu communique toujours (réseau OK). -->
+            <div class="vdx-stat-v vdx-stat-v--sm">@if (v.tracker?.lastSeenAt; as ls) { {{ relativeTime(ls) }} } @else { Jamais }</div>
             <div class="vdx-stat-live" [class.vdx-stat-live--on]="connectivity() === 'ONLINE'">
               <span class="vdx-live-dot"></span>{{ connectivity() === 'ONLINE' ? 'temps réel' : connMeta().label }}
             </div>
@@ -1883,8 +1892,12 @@ export class VehicleDetailComponent implements OnInit {
     return getVehicleConnectivityState({
       trackerId: v?.tracker?.id ?? null,
       lastSeenAt: freshest,
-      // Position live (WS) ou dernier fix stocké ; null = jamais localisé → « Recherche GPS ».
-      lastPositionAt: pos?.timestamp ?? v?.tracker?.lastPositionAt ?? null,
+      // Incident FS-253 — pour détecter GPS_LOST on se base sur le DERNIER FIX RÉEL
+      // (tracker.lastPositionAt), PAS sur pos.timestamp : une trame no_fix garde un
+      // timestamp FRAIS (sans coordonnées) et masquerait la perte de GPS.
+      lastPositionAt: v?.tracker?.lastPositionAt ?? null,
+      // no_fix frais + fix périmé → GPS_LOST (« GPS perdu »).
+      lastNoFixAt: v?.tracker?.lastNoFixAt ?? null,
       lastIgnition: pos?.ignition ?? v?.tracker?.lastKnownIgnition ?? null,
     });
   });

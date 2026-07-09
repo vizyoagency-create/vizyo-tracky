@@ -3612,11 +3612,23 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
     // Pre-calculer le map des engine command updates pour patcher les markers.
     const engineUpdates = this.realtime.engineCommandUpdates();
+    // Incident FS-253 — snapshot par véhicule pour détecter GPS_LOST (lastNoFixAt/lastPositionAt).
+    const snapByVehicle = new Map(this.realtime.snapshot().map((s) => [s.vehicleId, s]));
 
     for (const pos of positions) {
       const meta = this.vehicleMeta.get(pos.vehicleId) ?? { type: 'OTHER', plate: '' };
       // Patcher l'ignition du marker avec l'etat commande moteur (meme logique que popup).
       const patched = this.patchIgnitionFromCommands(pos);
+      // GPS perdu : boîtier vivant mais dernière position GPS périmée (trames no_fix). Le marqueur
+      // ne doit PAS rester vert « actif » à une position figée — on le passe en rouge estompé.
+      const snap = snapByVehicle.get(pos.vehicleId);
+      const gpsLost = !!snap && getVehicleConnectivityState({
+        trackerId: snap.trackerId,
+        lastSeenAt: snap.lastSeenAt,
+        lastPositionAt: snap.lastPositionAt,
+        lastNoFixAt: snap.lastNoFixAt,
+        lastIgnition: snap.lastIgnition,
+      }) === 'GPS_LOST';
       const data: VehicleMarkerData = {
         trackerId: pos.trackerId,
         vehicleId: pos.vehicleId,
@@ -3632,6 +3644,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         // marqueur passe en gris/estompé au lieu de rester vert « actif » à sa
         // dernière position connue (cas boîtier débranché).
         offline: !isTrackerOnline(pos.timestamp),
+        gpsLost,
       };
 
       // GPS sanity (live) : rejette les fixes `valid: false` (broadcastes par le
@@ -3687,7 +3700,9 @@ export class MapComponent implements AfterViewInit, OnDestroy {
           // setData() ne fasse pas disparaitre la trainee (regression : le
           // continue sautait la construction du feature → trail supprime a
           // chaque trame invalide car setData remplace tout le FeatureCollection).
-          if (showTrails) {
+          // GPS perdu → on NE reconstruit PAS la trainée (position figée : pas de trajet réel,
+          // un trail vert laisserait croire qu'il roule). Elle disparaît proprement.
+          if (showTrails && !gpsLost) {
             const pts = this.trailPoints.get(pos.trackerId);
             if (pts && pts.length >= 2) {
               const smoothPts = catmullRom(
@@ -3830,7 +3845,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       // pushee a chaque appel, remplissant trailPoints de duplicats. Resultat :
       // le LineString degenere en N points superposes (segments de longueur 0)
       // → plus aucune trainee visible meme quand le vehicule bouge vraiment.
-      if (showTrails) {
+      // GPS perdu → pas de trainée (position figée). Cohérent avec la branche fix-invalide.
+      if (showTrails && !gpsLost) {
         let pts = this.trailPoints.get(pos.trackerId);
         if (!pts) {
           pts = [];
