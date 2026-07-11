@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { AlertTriangle, CheckCircle2, LoaderCircle, LucideAngularModule, MapPin, Unlock } from 'lucide-angular';
+import { AlertTriangle, CheckCircle2, LoaderCircle, LucideAngularModule, MapPin, Shield, ShieldCheck, Unlock } from 'lucide-angular';
 import { DriverUnlockApiService } from '../../core/services/driver-unlock.service';
 
 type UnlockState = 'idle' | 'locating' | 'unlocking' | 'success' | 'error';
@@ -27,6 +27,30 @@ type UnlockState = 'idle' | 'locating' | 'unlocking' | 'success' | 'error';
             <h1 class="text-lg font-semibold mb-1">Véhicule déverrouillé</h1>
             @if (plate()) { <div class="text-sm text-fg-secondary font-medium mb-2">{{ plate() }}</div> }
             <p class="text-sm text-fg-tertiary">{{ message() }}</p>
+
+            @if (canManagePrivacy()) {
+              <div class="mt-5 pt-4 border-t border-border-subtle text-left">
+                <div class="flex items-center justify-between gap-3">
+                  <div class="flex items-start gap-2">
+                    <lucide-icon [img]="privacyOn() ? ShieldCheck : Shield" [size]="18"
+                      [class]="privacyOn() ? 'text-tracky-light mt-0.5' : 'text-fg-tertiary mt-0.5'" />
+                    <div>
+                      <div class="text-sm font-medium">Mode vie privée</div>
+                      <div class="text-xs text-fg-tertiary">
+                        {{ privacyOn() ? 'Collecte GPS en pause (trajet personnel).' : 'La position est collectée normalement.' }}
+                      </div>
+                    </div>
+                  </div>
+                  <button (click)="togglePrivacy()" [disabled]="privacyBusy()" type="button" role="switch"
+                    [attr.aria-checked]="privacyOn()"
+                    class="relative shrink-0 w-11 h-6 rounded-full transition-colors disabled:opacity-50"
+                    [class]="privacyOn() ? 'bg-tracky' : 'bg-bg-tertiary border border-border-subtle'">
+                    <span class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform"
+                      [class.translate-x-5]="privacyOn()"></span>
+                  </button>
+                </div>
+              </div>
+            }
           }
           @case ('error') {
             <div class="mx-auto mb-4 w-14 h-14 rounded-full bg-red-500/15 flex items-center justify-center">
@@ -79,14 +103,23 @@ export class DriverUnlockComponent {
   protected readonly message = signal('');
   protected readonly plate = signal('');
   protected readonly needsLogin = signal(false);
+  // Incr.5 — mode vie privée du véhicule déverrouillé (si le conducteur y est autorisé).
+  protected readonly vehicleId = signal('');
+  protected readonly canManagePrivacy = signal(false);
+  protected readonly privacyOn = signal(false);
+  protected readonly privacyBusy = signal(false);
 
   private readonly token = this.route.snapshot.queryParamMap.get('token') ?? '';
+  // Incr.6 — entrée in-app (« Mes véhicules ») : vehicleId au lieu du jeton QR.
+  private readonly vehicleIdParam = this.route.snapshot.queryParamMap.get('vehicleId') ?? '';
 
   protected readonly CheckCircle2 = CheckCircle2;
   protected readonly AlertTriangle = AlertTriangle;
   protected readonly Unlock = Unlock;
   protected readonly MapPin = MapPin;
   protected readonly LoaderCircle = LoaderCircle;
+  protected readonly Shield = Shield;
+  protected readonly ShieldCheck = ShieldCheck;
 
   protected busy(): boolean {
     return this.state() === 'locating' || this.state() === 'unlocking';
@@ -94,8 +127,8 @@ export class DriverUnlockComponent {
 
   protected unlock(): void {
     this.needsLogin.set(false);
-    if (!this.token) {
-      this.fail('QR invalide ou incomplet. Rescannez le code du véhicule.');
+    if (!this.token && !this.vehicleIdParam) {
+      this.fail('QR invalide ou véhicule non spécifié. Rescannez le code du véhicule.');
       return;
     }
     if (!navigator.geolocation) {
@@ -107,12 +140,20 @@ export class DriverUnlockComponent {
       (pos) => {
         this.state.set('unlocking');
         this.api
-          .unlock({ token: this.token, lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy })
+          .unlock({
+            ...(this.vehicleIdParam ? { vehicleId: this.vehicleIdParam } : { token: this.token }),
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            accuracy: pos.coords.accuracy,
+          })
           .pipe(takeUntilDestroyed(this.destroyRef))
           .subscribe({
             next: (r) => {
               this.plate.set(r.plate);
               this.message.set(r.message);
+              this.vehicleId.set(r.vehicleId);
+              this.canManagePrivacy.set(r.canManagePrivacy);
+              this.privacyOn.set(r.privacyModeEnabled);
               this.state.set('success');
             },
             error: (err: unknown) => this.handleError(err),
@@ -137,6 +178,23 @@ export class DriverUnlockComponent {
     }
     const body = err instanceof HttpErrorResponse ? (err.error as { error?: { message?: string }; message?: string } | null) : null;
     this.fail(body?.error?.message ?? body?.message ?? 'Déverrouillage impossible. Réessayez.');
+  }
+
+  protected togglePrivacy(): void {
+    const vid = this.vehicleId();
+    if (!vid || this.privacyBusy()) return;
+    const target = !this.privacyOn();
+    this.privacyBusy.set(true);
+    this.api
+      .setPrivacy(vid, target)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.privacyOn.set(target);
+          this.privacyBusy.set(false);
+        },
+        error: () => this.privacyBusy.set(false),
+      });
   }
 
   private fail(msg: string): void {

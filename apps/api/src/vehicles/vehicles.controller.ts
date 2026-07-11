@@ -98,7 +98,9 @@ export class VehiclesController {
   }
 
   @Get()
-  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER, UserRole.NIGHT_WATCHMAN)
+  // DRIVER inclus (feat/comptes-conducteurs incr.6 : écran « Mes véhicules »). Résultats scopés
+  // au périmètre du conducteur (accessibleVehicleIds) + permission vehicles_view par véhicule.
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER, UserRole.NIGHT_WATCHMAN, UserRole.DRIVER)
   @RequirePermissions('vehicles_view')
   async findAll(
     @Req() req: AuthenticatedRequest,

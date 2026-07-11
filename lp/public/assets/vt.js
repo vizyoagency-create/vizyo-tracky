@@ -85,6 +85,22 @@
       qa('[data-sim="eng"]').forEach(function (b) { b.style.cssText = opt(b.getAttribute('data-val') === st.eng); });
       qa('[data-sim="ret"]').forEach(function (b) { b.style.cssText = opt(b.getAttribute('data-val') === st.ret); });
       qa('[data-sim="opt"]').forEach(function (b) { b.style.cssText = tog(st[b.getAttribute('data-val')]); });
+      // Devis signable : injecte le récap de la config dans les champs cachés du formulaire.
+      var msg = q('[name="message"]');
+      if (msg) {
+        var opts = []; if (st.live) opts.push('Live temps réel (15 s)'); if (st.micro) opts.push("Micro d'assistance"); if (st.agent) opts.push('Agent IA');
+        var retLbl = { '90j': '90 jours', '1an': '1 an', '2ans': '2 ans', '3ans': '3 ans' }[st.ret];
+        var planLbl = st.plan === 'pro' ? 'Tracky Pro' : 'Tracky Lite';
+        var engLbl = st.eng === 'annual' ? 'annuel renouvelable (tarif bloqué)' : 'mensuel sans engagement';
+        msg.value =
+          'DEVIS AUTO-CONFIGURÉ — ' + planLbl + ' (' + engLbl + ')\n' +
+          st.vehicles + ' véhicule(s) · Options : ' + (opts.length ? opts.join(', ') : 'aucune') + ' · Rétention : ' + retLbl + '\n' +
+          'Par véhicule : ' + fmt(perVeh, 2) + ' €/mois HT · Mensuel total : ' + fmt(monthTotal, 2) + ' € HT\n' +
+          '1re année (boîtier + install + abo) : ' + fmt(hw * st.vehicles + install * st.vehicles + monthTotal * 12, 0) + ' € · Années suivantes : ' + fmt(monthTotal * 12, 0) + ' €\n' +
+          'Économies estimées : ' + fmt(200 * st.vehicles, 0) + ' – ' + fmt(400 * st.vehicles, 0) + ' €/an\n' +
+          'Bon pour accord (devis indicatif, à confirmer par Vizyo).';
+      }
+      var fsEl = q('[name="fleetSize"]'); if (fsEl) fsEl.value = st.vehicles + ' véhicule' + (st.vehicles > 1 ? 's' : '');
     }
     qa('[data-sim="plan"]').forEach(function (b) { b.addEventListener('click', function () { st.plan = b.getAttribute('data-val'); render(); }); });
     qa('[data-sim="eng"]').forEach(function (b) { b.addEventListener('click', function () { st.eng = b.getAttribute('data-val'); render(); }); });
@@ -94,6 +110,46 @@
     render();
   }
 
-  function init() { initHover(); initReveal(); handleHash(); initSim(); }
+  // ── Formulaires lead (« recevoir une présentation » + devis) → POST /api/leads/contact ──
+  function postLead(url, data, cb) {
+    try {
+      fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+        .then(function (r) { cb(r.ok); }).catch(function () { cb(false); });
+    } catch (e) { cb(false); }
+  }
+  function initForms() {
+    slice(d.querySelectorAll('form[data-vt-lead]')).forEach(function (form) {
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var url = form.getAttribute('data-vt-lead');
+        var val = function (n) { var el = form.querySelector('[name="' + n + '"]'); return el ? String(el.value || '').trim() : ''; };
+        var status = form.querySelector('[data-form-status]');
+        var err = function (m) { if (status) { status.textContent = m; status.style.color = '#e5484d'; } };
+        var name = val('name'), email = val('email');
+        if (!name || email.indexOf('@') < 1 || email.indexOf('.') < 0) { err('Indiquez au moins votre nom et un e-mail valide.'); return; }
+        if (form.hasAttribute('data-require-accord')) {
+          var acc = form.querySelector('[name="accord"]');
+          if (!acc || !acc.checked) { err('Cochez « bon pour accord » pour valider votre devis.'); return; }
+        }
+        var btn = form.querySelector('[type="submit"]'); if (btn) btn.disabled = true;
+        if (status) { status.textContent = 'Envoi…'; status.style.color = 'var(--tx2)'; }
+        postLead(url, {
+          name: name, email: email, phone: val('phone'), company: val('company'),
+          fleetSize: val('fleetSize'), message: val('message'),
+        }, function (ok) {
+          if (btn) btn.disabled = false;
+          if (ok) {
+            form.innerHTML = '<div style="text-align:center;padding:26px 8px">' +
+              '<div style="width:52px;height:52px;border-radius:50%;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">' +
+              '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>' +
+              '<div style="font-size:1.12rem;font-weight:800;margin-bottom:6px">C\'est envoyé, merci !</div>' +
+              '<div style="color:var(--tx2);font-size:.95rem">Votre demande est bien reçue. Réponse sous 2h ouvrées.</div></div>';
+          } else { err('Une erreur est survenue. Réessayez, ou contactez-nous directement.'); }
+        });
+      });
+    });
+  }
+
+  function init() { initHover(); initReveal(); handleHash(); initSim(); initForms(); }
   if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', init); else init();
 })();

@@ -33,6 +33,8 @@ export class AuthService {
   readonly isAuthenticated = computed(() => !!this._user());
   /** Sprint 3 — true si l'utilisateur courant est un veilleur de nuit (rôle restreint NIGHT_WATCHMAN). */
   readonly isWatchman = computed(() => this._user()?.role === 'NIGHT_WATCHMAN');
+  /** feat/comptes-conducteurs — true si l'utilisateur courant est un conducteur (rôle restreint DRIVER). */
+  readonly isDriver = computed(() => this._user()?.role === 'DRIVER');
   private refreshPromise: Promise<string | null> | null = null;
 
   get token(): string | null {
