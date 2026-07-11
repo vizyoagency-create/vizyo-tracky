@@ -3,7 +3,7 @@ import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.directive';
-import { LucideAngularModule, Plus, Truck, ExternalLink, FolderOpen, Radio, X, Save, Wifi, Pencil, Trash2, Eye, Search, LayoutGrid, Table, Layers, ChevronRight, ChevronDown, Gauge, Wrench, ShieldOff } from 'lucide-angular';
+import { LucideAngularModule, Plus, Truck, ExternalLink, FolderOpen, Radio, X, Save, Wifi, Pencil, Trash2, Eye, Search, LayoutGrid, Table, Layers, ChevronRight, ChevronDown, Gauge, Wrench, ShieldOff, QrCode } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { PreferencesService } from '../../core/services/preferences.service';
@@ -16,6 +16,7 @@ import { getVehicleSvg, getVehicleTypeLabel } from '../../shared/utils/vehicle-i
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
 import { VehicleDialogComponent } from './vehicle-dialog/vehicle-dialog.component';
+import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
 import { VehicleGroupsTabComponent } from './vehicle-groups-tab.component';
 import { VehicleCapacityTableComponent } from './vehicle-capacity-table.component';
 import { PrivacyModeTabComponent } from './privacy-mode-tab.component';
@@ -32,7 +33,7 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
   selector: 'app-vehicles-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, VehicleCapacityTableComponent, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, BrandLogoComponent, InstallReviewBadgeComponent, TrackClickDirective, EngineControlButtonComponent, VehicleLinkDirective, PrivacyModeTabComponent],
+  imports: [RouterLink, FormsModule, LucideAngularModule, VehicleDialogComponent, VehicleGroupsTabComponent, VehicleCapacityTableComponent, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, BrandLogoComponent, InstallReviewBadgeComponent, TrackClickDirective, EngineControlButtonComponent, VehicleLinkDirective, PrivacyModeTabComponent, VehicleQrDialogComponent],
   template: `
     @if (auth.isWatchman()) {
       <!-- ───────────────────────────────────────────────────────────────────
@@ -169,6 +170,11 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
           @if (perms.can('vehicles_create') && activeTab() === 'vehicles') {
             <button (click)="showAddDialog.set(true)" trackClick="vehicule-ajouter" class="add-btn add-btn--inline">
               <lucide-icon [img]="Plus" [size]="15"></lucide-icon> Ajouter
+            </button>
+          }
+          @if (perms.can('qr_manage') && activeTab() === 'vehicles') {
+            <button (click)="printAllQr()" trackClick="qr-imprimer-tous" class="add-btn add-btn--inline" title="Imprimer tous les QR de déverrouillage">
+              <lucide-icon [img]="QrCodeIcon" [size]="15"></lucide-icon> Imprimer les QR
             </button>
           }
           @if (perms.can('users_view')) {
@@ -316,6 +322,12 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
                         <button class="v-action-btn delete" (click)="confirmDeleteVehicle(v)" title="Supprimer"
                                 [attr.aria-label]="'Supprimer ' + v.plate">
                           <lucide-icon [img]="Trash2Icon" [size]="15"></lucide-icon>
+                        </button>
+                      }
+                      @if (perms.can('qr_manage', v.id)) {
+                        <button class="v-action-btn" (click)="openQr(v)" title="QR de déverrouillage"
+                                [attr.aria-label]="'QR ' + v.plate">
+                          <lucide-icon [img]="QrCodeIcon" [size]="15"></lucide-icon>
                         </button>
                       }
                     </td>
@@ -475,6 +487,14 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
                         <lucide-icon [img]="Trash2Icon" [size]="15" aria-hidden="true"></lucide-icon>
                       </button>
                     }
+                    @if (perms.can('qr_manage', v.id)) {
+                      <button class="v-action-btn"
+                              [attr.aria-label]="'QR ' + v.plate"
+                              title="QR de déverrouillage"
+                              (click)="$event.preventDefault(); $event.stopPropagation(); openQr(v)">
+                        <lucide-icon [img]="QrCodeIcon" [size]="15" aria-hidden="true"></lucide-icon>
+                      </button>
+                    }
                   </div>
                 </div>
               </a>
@@ -488,6 +508,10 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
           [vehicleId]="editVehicleId()"
           (done)="onDialogClosed()"
         />
+      }
+
+      @if (qrVehicle(); as qv) {
+        <app-vehicle-qr-dialog [vehicleId]="qv.id" [plate]="qv.plate" (closed)="qrVehicle.set(null)" />
       }
 
       <!-- Assign Tracker Drawer -->
@@ -1029,6 +1053,8 @@ export class VehiclesListComponent implements OnInit {
   protected readonly showEditDialog = signal(false);
   protected readonly editVehicleId = signal('');
   protected readonly activeTab = signal<'vehicles' | 'groups' | 'capacity' | 'privacy'>('vehicles');
+  /** feat/comptes-conducteurs (4a) — véhicule dont on affiche le QR (null = modale fermée). */
+  protected readonly qrVehicle = signal<VehicleDetailDto | null>(null);
 
   // Assign tracker drawer
   readonly showAssignTracker = signal(false);
@@ -1050,6 +1076,7 @@ export class VehiclesListComponent implements OnInit {
   protected readonly PencilIcon = Pencil;
   protected readonly Trash2Icon = Trash2;
   protected readonly EyeIcon = Eye;
+  protected readonly QrCodeIcon = QrCode;
   protected readonly SearchIcon = Search;
   protected readonly LayoutGridIcon = LayoutGrid;
   protected readonly TableIcon = Table;
@@ -1243,6 +1270,15 @@ export class VehiclesListComponent implements OnInit {
   protected openEditVehicle(v: VehicleDetailDto): void {
     this.editVehicleId.set(v.id);
     this.showEditDialog.set(true);
+  }
+
+  protected openQr(v: VehicleDetailDto): void {
+    this.qrVehicle.set(v);
+  }
+
+  /** Ouvre la feuille imprimable de TOUS les QR (fleet-scopée via le sélecteur société). */
+  protected printAllQr(): void {
+    window.open(this.vehiclesApi.unlockQrSheetUrl(this.fleetFilter.selectedFleetId()), '_blank');
   }
 
   protected confirmDeleteVehicle(v: VehicleDetailDto): void {

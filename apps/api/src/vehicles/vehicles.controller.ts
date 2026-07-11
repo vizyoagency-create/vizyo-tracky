@@ -10,9 +10,11 @@ import {
   Post,
   Query,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
+import type { Response } from 'express';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
@@ -68,6 +70,22 @@ export class VehiclesController {
     return this.vehicles.capacityOverview(await this.buildRequestedBy(req));
   }
 
+  // feat/comptes-conducteurs (4a) — Feuille HTML imprimable de TOUS les QR de déverrouillage
+  // (fleet-scopée). Segment STATIQUE → déclarée AVANT @Get(':id'). `fleetId` = sélecteur société
+  // (super-admin). Gate `qr_manage` (super/fleet-admin bypass natif ; accordable aux autres).
+  @Get('unlock-qr-sheet')
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
+  @RequirePermissions('qr_manage')
+  async unlockQrSheet(
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+    @Query('fleetId') fleetId?: string,
+  ): Promise<void> {
+    const html = await this.vehicles.buildUnlockQrSheet(await this.buildRequestedBy(req), fleetId || null);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  }
+
   @Post()
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
   @RequirePermissions('vehicles_create')
@@ -98,6 +116,14 @@ export class VehiclesController {
   @RequirePermissions('vehicles_view')
   async findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.vehicles.findOne(id, await this.buildRequestedBy(req));
+  }
+
+  // feat/comptes-conducteurs (4a) — QR de déverrouillage d'un véhicule : { vehicleId, plate, token, url, svg }.
+  @Get(':id/unlock-qr')
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
+  @RequirePermissions('qr_manage')
+  async unlockQr(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.vehicles.buildUnlockQr(id, await this.buildRequestedBy(req));
   }
 
   @Patch(':id')

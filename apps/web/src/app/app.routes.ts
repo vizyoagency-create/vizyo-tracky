@@ -63,6 +63,14 @@ export const routes: Routes = [
     data: { title: 'Demander un véhicule' },
   },
   {
+    // feat/comptes-conducteurs (4b) — déverrouillage conducteur via QR. Page focalisée ;
+    // route publique mais l'API exige la session (401 → « connectez-vous »). Token en ?token=.
+    path: 'driver/unlock',
+    loadComponent: () =>
+      import('./features/drivers/driver-unlock.component').then((m) => m.DriverUnlockComponent),
+    data: { title: 'Déverrouiller un véhicule' },
+  },
+  {
     path: '',
     loadComponent: () =>
       import('./layouts/dashboard-layout.component').then((m) => m.DashboardLayoutComponent),

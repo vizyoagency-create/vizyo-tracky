@@ -16,6 +16,8 @@ import type {
 import { InMemoryCacheService } from '../common/cache/in-memory-cache.service';
 import { resolveTenantScope } from '../common/tenant-scope';
 import { PrismaService } from '../prisma/prisma.service';
+import { UnlockTokenService } from '../driver-unlock/unlock-token.service';
+import * as QRCode from 'qrcode';
 import type { CreateVehicleDto } from './dto/create-vehicle.dto';
 import type { UpdateVehicleDto } from './dto/update-vehicle.dto';
 
@@ -124,6 +126,7 @@ export class VehiclesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cache: InMemoryCacheService,
+    private readonly unlockToken: UnlockTokenService,
   ) {}
 
   /**
@@ -294,6 +297,93 @@ export class VehiclesService {
     }
 
     return VehiclesService.withGroup(vehicle);
+  }
+
+  /**
+   * feat/comptes-conducteurs (4a) — QR de déverrouillage d'UN véhicule : jeton signé + deep-link
+   * vers l'écran conducteur + rendu SVG. Le scoping IDOR (404 cross-fleet + périmètre granulaire)
+   * est délégué à `findOne`. Le QR n'est pas un secret : le verrou reste l'autorisation + la proximité.
+   */
+  async buildUnlockQr(
+    id: string,
+    requestedBy: RequestedBy,
+  ): Promise<{ vehicleId: string; plate: string | null; token: string; url: string; svg: string }> {
+    const vehicle = await this.findOne(id, requestedBy);
+    const { token, url } = this.unlockToken.buildDeepLink(vehicle.id);
+    const svg = await QRCode.toString(url, { type: 'svg', margin: 1, width: 240 });
+    return { vehicleId: vehicle.id, plate: vehicle.plate, token, url, svg };
+  }
+
+  /**
+   * feat/comptes-conducteurs (4a) — Feuille HTML imprimable de TOUS les QR du périmètre accessible
+   * (une carte plaque + QR par véhicule). Scopée tenant + granulaire. Pour un SUPER_ADMIN, `superFleetId`
+   * (sélecteur société) limite la feuille à une flotte (sinon toutes flottes, capé à 500).
+   */
+  async buildUnlockQrSheet(requestedBy: RequestedBy, superFleetId?: string | null): Promise<string> {
+    const scope = resolveTenantScope(requestedBy);
+    if (scope.mode === 'DENY') return this.renderQrSheet([]);
+    const where: Prisma.VehicleWhereInput = {};
+    if (scope.mode === 'FLEET') where.fleetId = scope.fleetId;
+    else if (scope.mode === 'ALL' && superFleetId) where.fleetId = superFleetId;
+    if (requestedBy.accessibleVehicleIds && requestedBy.accessibleVehicleIds !== 'ALL') {
+      where.id = { in: requestedBy.accessibleVehicleIds };
+    }
+    const vehicles = await this.prisma.vehicle.findMany({
+      where,
+      select: { id: true, plate: true, brand: true, model: true },
+      orderBy: { plate: 'asc' },
+      take: 500,
+    });
+    const cards = await Promise.all(
+      vehicles.map(async (v) => {
+        const { url } = this.unlockToken.buildDeepLink(v.id);
+        const svg = await QRCode.toString(url, { type: 'svg', margin: 1, width: 200 });
+        return { plate: v.plate, subtitle: [v.brand, v.model].filter(Boolean).join(' '), svg };
+      }),
+    );
+    return this.renderQrSheet(cards);
+  }
+
+  /** Rendu de la feuille imprimable (grille de cartes plaque + QR), CSS d'impression inclus. */
+  private renderQrSheet(cards: { plate: string | null; subtitle: string; svg: string }[]): string {
+    const esc = (s: string): string =>
+      s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
+    const items = cards
+      .map(
+        (c) => `
+      <div class="card">
+        <div class="svg">${c.svg}</div>
+        <div class="plate">${esc(c.plate ?? '—')}</div>
+        ${c.subtitle ? `<div class="sub">${esc(c.subtitle)}</div>` : ''}
+        <div class="hint">Scannez pour déverrouiller</div>
+      </div>`,
+      )
+      .join('');
+    const empty = cards.length === 0 ? '<p class="empty">Aucun véhicule accessible.</p>' : '';
+    return `<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8"><title>QR de déverrouillage — Vizyo Tracky</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; margin: 16px; color: #0b1220; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .meta { color: #64748b; font-size: 12px; margin: 0 0 16px; max-width: 640px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .card { border: 1px solid #cbd5e1; border-radius: 10px; padding: 12px; text-align: center; page-break-inside: avoid; }
+  .card .svg svg { width: 100%; height: auto; max-width: 200px; }
+  .plate { font-weight: 700; font-size: 15px; margin-top: 6px; letter-spacing: .5px; }
+  .sub { color: #64748b; font-size: 12px; }
+  .hint { color: #94a3b8; font-size: 10px; margin-top: 4px; }
+  .empty { color: #64748b; }
+  .toolbar { margin-bottom: 12px; }
+  @media print { .toolbar { display: none; } body { margin: 0; } .grid { gap: 8px; } }
+</style></head>
+<body>
+  <div class="toolbar"><button onclick="window.print()">Imprimer</button></div>
+  <h1>QR de déverrouillage — Vizyo Tracky</h1>
+  <p class="meta">Un QR par véhicule. Le conducteur autorisé le scanne avec son téléphone pour déverrouiller le véhicule (à proximité).</p>
+  ${empty}
+  <div class="grid">${items}</div>
+</body></html>`;
   }
 
   async update(id: string, dto: UpdateVehicleDto, requestedBy: RequestedBy): Promise<Vehicle> {

@@ -346,6 +346,40 @@ export class InvitationsService {
       })),
     });
 
+    // 4c) feat/comptes-conducteurs — un invité « conducteur » devient AUSSI une entité Driver
+    // (attribuable aux trajets + visible dans la liste des conducteurs), liée à son compte via
+    // Driver.userId. Si un Driver « tag » (sans compte) existe déjà pour cet email dans la flotte,
+    // on le PROMEUT (on pose son userId) au lieu de créer un doublon. Best-effort : un échec ici ne
+    // casse PAS l'activation du compte (le lien pourra être refait côté Conducteurs).
+    if (invitation.role === UserRole.DRIVER && invitation.fleetId) {
+      try {
+        const existingTag = await this.prisma.driver.findFirst({
+          where: { fleetId: invitation.fleetId, email: invitation.email, userId: null, isActive: true },
+        });
+        if (existingTag) {
+          await this.prisma.driver.update({
+            where: { id: existingTag.id },
+            data: { userId: createdUser.id },
+          });
+        } else {
+          await this.prisma.driver.create({
+            data: {
+              fleetId: invitation.fleetId,
+              firstName: firstName ?? invitation.email.split('@')[0]!,
+              lastName: lastName ?? '',
+              email: invitation.email,
+              userId: createdUser.id,
+            },
+          });
+        }
+      } catch (err) {
+        this.logger.warn(
+          { email: invitation.email, error: (err as Error).message },
+          'Driver link/create on invitation accept failed (non-blocking)',
+        );
+      }
+    }
+
     // 5) Mark invitation accepted.
     await this.prisma.invitation.update({
       where: { id: invitation.id },
@@ -593,6 +627,8 @@ export class InvitationsService {
       case UserRole.FLEET_ADMIN: return 'Administrateur de flotte';
       case UserRole.FLEET_MANAGER: return 'Gestionnaire de flotte';
       case UserRole.VIEWER: return 'Lecteur';
+      case UserRole.NIGHT_WATCHMAN: return 'Veilleur de nuit';
+      case UserRole.DRIVER: return 'Conducteur';
       default: return role;
     }
   }

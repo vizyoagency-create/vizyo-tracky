@@ -9,7 +9,7 @@
  *   VIEWER → Lecteur · FLEET_MANAGER → Gestionnaire
  *   FLEET_ADMIN → Administrateur · SUPER_ADMIN → Super-Administrateur
  */
-export type AppRole = 'SUPER_ADMIN' | 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN';
+export type AppRole = 'SUPER_ADMIN' | 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | 'DRIVER';
 
 const ROLE_LABELS: Record<AppRole, string> = {
   SUPER_ADMIN: 'Super-Administrateur',
@@ -17,6 +17,7 @@ const ROLE_LABELS: Record<AppRole, string> = {
   FLEET_MANAGER: 'Gestionnaire',
   VIEWER: 'Lecteur',
   NIGHT_WATCHMAN: 'Veilleur de nuit',
+  DRIVER: 'Conducteur',
 };
 
 /**

@@ -16,6 +16,9 @@ enum UserRole {
   VIEWER
   // Sprint 3 — rôle restreint « veilleur de nuit » : bloque/débloque les véhicules uniquement.
   NIGHT_WATCHMAN
+  // feat/comptes-conducteurs — rôle « conducteur » : voit ses véhicules et (si autorisé par
+  // périmètre) déverrouille le moteur / active le mode vie privée. Lié à un Driver via Driver.userId.
+  DRIVER
 }
 
 enum TrackerStatus {

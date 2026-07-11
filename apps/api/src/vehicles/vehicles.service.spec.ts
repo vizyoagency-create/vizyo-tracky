@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import { CommandStatus, EngineAction, Prisma, UserRole } from '@prisma/client';
 import { InMemoryCacheService } from '../common/cache/in-memory-cache.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { UnlockTokenService } from '../driver-unlock/unlock-token.service';
 import { VehiclesService } from './vehicles.service';
 
 const FLEET_ID = '00000000-0000-0000-0000-000000000001';
@@ -77,6 +78,16 @@ describe('VehiclesService', () => {
         {
           provide: InMemoryCacheService,
           useValue: { get: jest.fn(), set: jest.fn(), invalidate: jest.fn(), wrap: jest.fn() },
+        },
+        // feat/comptes-conducteurs — VehiclesService injecte UnlockTokenService (génération QR).
+        // Non exercé par ces tests (create/list/update/...) → mock minimal.
+        {
+          provide: UnlockTokenService,
+          useValue: {
+            buildDeepLink: jest.fn().mockReturnValue({ token: 't', url: 'u' }),
+            signVehicleToken: jest.fn(),
+            verifyVehicleToken: jest.fn(),
+          },
         },
       ],
     }).compile();

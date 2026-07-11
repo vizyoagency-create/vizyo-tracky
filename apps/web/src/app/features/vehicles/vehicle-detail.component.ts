@@ -7,7 +7,7 @@ import {
   LucideAngularModule, ArrowLeft, Wifi, WifiOff, Gauge, MapPin, Radio,
   AlertTriangle, AlertCircle, Info, Check, Power, Route, BarChart3, BellOff, Map,
   History, Bell, Zap, Clock, ShieldAlert, ShieldCheck, MessageSquare, Pencil, X,
-  UserRound, UserPlus, Copy, Play, Layers, Wrench,
+  UserRound, UserPlus, Copy, Play, Layers, Wrench, QrCode,
 } from 'lucide-angular';
 import type { AlertEvent, DriverDto, TripDto } from '@vizyo/tracky-shared';
 import { isAcceptableLiveFix } from '@vizyo/tracky-shared';
@@ -45,6 +45,7 @@ import { connectivityMeta } from '../../shared/ui/connectivity-badge/connectivit
 import { InstallReviewBadgeComponent } from '../../shared/ui/install-review-badge/install-review-badge.component';
 import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.component';
 import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
+import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
 
 @Component({
   selector: 'app-vehicle-detail',
@@ -53,7 +54,7 @@ import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
     FormsModule, RouterLink, LucideAngularModule, DatePipe, DecimalPipe, GroupBadgeComponent,
     MiniMapComponent, EngineControlButtonComponent, AudioListenButtonComponent, CommandsPanelComponent,
     VehicleScheduleComponent, VehicleReportsTabComponent, VehicleMaintenanceTabComponent, DriverPickerComponent, DriverDrawerComponent, SurveillancePanelComponent, TripReplayComponent,
-    InstallReviewBadgeComponent, BrandLogoComponent, SpinnerComponent,
+    InstallReviewBadgeComponent, BrandLogoComponent, SpinnerComponent, VehicleQrDialogComponent,
   ],
   template: `
     @if (loading()) {
@@ -122,8 +123,18 @@ import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
                 <span>Incident</span>
               </button>
             }
+            @if (canManageQr()) {
+              <button type="button" (click)="qrOpen.set(true)" class="vd-incident-btn" title="QR de déverrouillage du véhicule">
+                <lucide-icon [img]="QrCode" [size]="14"></lucide-icon>
+                <span>QR</span>
+              </button>
+            }
           </div>
         </div>
+
+        @if (qrOpen()) {
+          <app-vehicle-qr-dialog [vehicleId]="v.id" [plate]="v.plate" (closed)="qrOpen.set(false)" />
+        }
 
         <!-- Sprint 1 — Sélecteur de groupe (assignation depuis le détail) -->
         @if (groupPickerOpen()) {
@@ -1515,6 +1526,7 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly MapPin = MapPin;
   protected readonly Radio = Radio;
   protected readonly AlertTriangle = AlertTriangle;
+  protected readonly QrCode = QrCode;
   protected readonly AlertCircle = AlertCircle;
   protected readonly InfoIcon = Info;
   protected readonly Check = Check;
@@ -1933,6 +1945,9 @@ export class VehicleDetailComponent implements OnInit {
   // ─── Sprint 7 — Signalement d'incident ────────────────────────────────────
   /** Le bouton « Incident » suit la permission de lecture agenda (agenda_view). */
   protected readonly canReportIncident = computed(() => this.perms.can('agenda_view', this.vehicle()?.id));
+  // feat/comptes-conducteurs (4a) — QR de déverrouillage (gate `qr_manage`, per-vehicle).
+  protected readonly canManageQr = computed(() => this.perms.can('qr_manage', this.vehicle()?.id));
+  protected readonly qrOpen = signal(false);
   protected readonly incidentOpen = signal(false);
   protected readonly savingIncident = signal(false);
   protected incidentForm: { title: string; severity: VehicleEventSeverity; description: string } = {

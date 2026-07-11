@@ -16,6 +16,7 @@ import { AckWaiterService } from '../tracker-commands/ack-waiter.service';
 import { SmsGatewayService } from '../sms/sms-gateway.service';
 import { EngineControlService } from './engine-control.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
+import { computeNextTransition } from '../vehicle-schedules/schedule-evaluator';
 
 const TRACKER_ID = '00000000-0000-0000-0000-000000000010';
 const VEHICLE_ID = '00000000-0000-0000-0000-000000000020';
@@ -80,6 +81,43 @@ const superAdmin = { userId: USER_ID, role: UserRole.SUPER_ADMIN, fleetId: FLEET
 const otherFleetAdmin = { userId: USER_ID, role: UserRole.FLEET_ADMIN, fleetId: OTHER_FLEET_ID };
 const nightWatchman = { userId: USER_ID, role: UserRole.NIGHT_WATCHMAN, fleetId: FLEET_ID };
 
+// Fixtures planning pour la refonte « action manuelle × mode horaire » (feat/comptes-conducteurs).
+const scheduleBase = {
+  id: '00000000-0000-0000-0000-000000000060',
+  vehicleId: VEHICLE_ID,
+  enabled: true,
+  timezone: 'Europe/Paris',
+  mondayEnabled: true, mondayStart: null as string | null, mondayEnd: null as string | null,
+  tuesdayEnabled: true, tuesdayStart: null as string | null, tuesdayEnd: null as string | null,
+  wednesdayEnabled: true, wednesdayStart: null as string | null, wednesdayEnd: null as string | null,
+  thursdayEnabled: true, thursdayStart: null as string | null, thursdayEnd: null as string | null,
+  fridayEnabled: true, fridayStart: null as string | null, fridayEnd: null as string | null,
+  saturdayEnabled: true, saturdayStart: null as string | null, saturdayEnd: null as string | null,
+  sundayEnabled: true, sundayStart: null as string | null, sundayEnd: null as string | null,
+  mondaySlots: null, tuesdaySlots: null, wednesdaySlots: null, thursdaySlots: null,
+  fridaySlots: null, saturdaySlots: null, sundaySlots: null,
+  countryCode: '', // vide → pas de jours fériés → test déterministe
+  customDates: null,
+  lastEvaluatedAt: null,
+  lastEvaluatedState: null,
+  overrideUntil: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+// Toujours ouvert (aucune plage) → computeNextTransition = null → fallback override 1h.
+const enabledScheduleAlwaysOpen = { ...scheduleBase };
+// Fenêtré 08:00–22:00 tous les jours → il existe toujours une prochaine bascule (8h/22h).
+const enabledScheduleWindowed = {
+  ...scheduleBase,
+  mondayStart: '08:00', mondayEnd: '22:00',
+  tuesdayStart: '08:00', tuesdayEnd: '22:00',
+  wednesdayStart: '08:00', wednesdayEnd: '22:00',
+  thursdayStart: '08:00', thursdayEnd: '22:00',
+  fridayStart: '08:00', fridayEnd: '22:00',
+  saturdayStart: '08:00', saturdayEnd: '22:00',
+  sundayStart: '08:00', sundayEnd: '22:00',
+};
+
 describe('EngineControlService', () => {
   let service: EngineControlService;
   // V1.10 (Sprint 6) — findFirst ajoute au mock car requestCommand/getCommand
@@ -89,7 +127,7 @@ describe('EngineControlService', () => {
     tracker: { findUnique: jest.Mock; findFirst: jest.Mock };
     position: { findFirst: jest.Mock };
     engineControlCommand: { create: jest.Mock; update: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock; findFirst: jest.Mock };
-    vehicleSchedule: { updateMany: jest.Mock };
+    vehicleSchedule: { updateMany: jest.Mock; findFirst: jest.Mock };
   };
   let registry: { get: jest.Mock; send: jest.Mock };
   let ackWaiter: { waitForAck: jest.Mock; cancelAll: jest.Mock };
@@ -109,6 +147,7 @@ describe('EngineControlService', () => {
       },
       vehicleSchedule: {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        findFirst: jest.fn().mockResolvedValue(null),
       },
     };
 
@@ -594,6 +633,7 @@ describe('EngineControlService', () => {
   // (override « indéfini », pas 1h) — même si `disableSchedule:true` est forcé dans le body.
   it('NIGHT_WATCHMAN CUT → suspend le planning jusqu\'à réactivation manuelle (override indéfini), sans le désactiver', async () => {
     prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+    prisma.vehicleSchedule.findFirst.mockResolvedValue(enabledScheduleAlwaysOpen);
     prisma.position.findFirst
       .mockResolvedValueOnce(recentPosition(0)) // lastPosition : à l'arrêt
       .mockResolvedValueOnce(null); // immobile depuis > 2 min (aucune trame en mouvement)
@@ -611,6 +651,7 @@ describe('EngineControlService', () => {
 
   it('FLEET_ADMIN avec disableSchedule:true → désactive bien le planning (a schedules_manage)', async () => {
     prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+    prisma.vehicleSchedule.findFirst.mockResolvedValue(enabledScheduleAlwaysOpen);
     prisma.position.findFirst.mockResolvedValue(recentPosition(0));
     registry.send.mockReturnValue(true);
     await service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin, 'MANUAL', true);
@@ -619,10 +660,11 @@ describe('EngineControlService', () => {
     );
   });
 
-  // Sprint 3 (Option A) — un RESTORE (réactivation manuelle) lève le hold indéfini et repose
-  // une grâce 1h : le scheduler reprend la main au bout d'1h, pas avant.
-  it('NIGHT_WATCHMAN RESTORE → repose une grâce 1h (le planning reprend ensuite)', async () => {
+  // Un RESTORE (réactivation manuelle) lève le hold indéfini et suspend jusqu'à la prochaine
+  // bascule. Ici planning « toujours ouvert » (pas de bascule) → fallback override 1h.
+  it('NIGHT_WATCHMAN RESTORE sur planning toujours ouvert → fallback ~1h (surtout pas indéfini)', async () => {
     prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+    prisma.vehicleSchedule.findFirst.mockResolvedValue(enabledScheduleAlwaysOpen);
     registry.send.mockReturnValue(true);
     await service.requestCommand(TRACKER_ID, EngineAction.RESTORE, null, nightWatchman, 'MANUAL', false);
     const call = prisma.vehicleSchedule.updateMany.mock.calls.find((c) => c[0]?.data?.overrideUntil);
@@ -630,6 +672,29 @@ describe('EngineControlService', () => {
     const deltaMs = (call![0].data.overrideUntil as Date).getTime() - Date.now();
     expect(deltaMs).toBeGreaterThan(50 * 60 * 1000); // ~1h, surtout PAS indéfini
     expect(deltaMs).toBeLessThan(70 * 60 * 1000);
+  });
+
+  // Refonte « action manuelle × mode horaire » (feat/comptes-conducteurs) : une action manuelle
+  // standard NE désactive PLUS le planning — elle le suspend jusqu'à la PROCHAINE bascule (8h/22h),
+  // puis il reprend seul. On vérifie que `overrideUntil` = computeNextTransition, PAS un 1h fixe,
+  // et que `enabled:false` n'est jamais posé.
+  it('action manuelle standard sur planning fenêtré → override jusqu\'à la prochaine bascule (pas 1h fixe), sans désactiver', async () => {
+    prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+    prisma.vehicleSchedule.findFirst.mockResolvedValue(enabledScheduleWindowed);
+    registry.send.mockReturnValue(true);
+    const before = computeNextTransition(enabledScheduleWindowed as never)!.at.getTime();
+    await service.requestCommand(TRACKER_ID, EngineAction.RESTORE, null, fleetAdmin, 'MANUAL', false);
+    const after = computeNextTransition(enabledScheduleWindowed as never)!.at.getTime();
+    const call = prisma.vehicleSchedule.updateMany.mock.calls.find((c) => c[0]?.data?.overrideUntil);
+    expect(call).toBeDefined();
+    const actual = (call![0].data.overrideUntil as Date).getTime();
+    // Encadré par deux calculs de la prochaine bascule (dérive < quelques ms entre les appels).
+    expect(actual).toBeGreaterThanOrEqual(before - 1000);
+    expect(actual).toBeLessThanOrEqual(after + 1000);
+    // Le mode reste actif : jamais enabled:false sur une action manuelle standard.
+    expect(prisma.vehicleSchedule.updateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ enabled: false }) }),
+    );
   });
 
   // --- Demande CDEF (2026-07) — COUPE AUTOMATIQUE (source SCHEDULER) : jamais couper en
