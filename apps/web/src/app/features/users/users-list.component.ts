@@ -21,7 +21,7 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { DriversListComponent } from '../drivers/drivers-list.component';
 
-type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN';
+type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | 'DRIVER';
 interface MatrixRow {
   key: keyof UserPermissions;
   label: string;
@@ -408,11 +408,12 @@ export class UsersListComponent implements OnInit {
     { role: 'FLEET_MANAGER', short: 'Gestionnaire' },
     { role: 'VIEWER', short: 'Lecteur' },
     { role: 'NIGHT_WATCHMAN', short: 'Veilleur' },
+    { role: 'DRIVER', short: 'Conducteur' },
   ];
   protected readonly matrixRows: MatrixRow[] = [
     { key: 'vehicles_view', label: 'Voir la flotte & carte', icon: Truck },
     { key: 'alerts_acknowledge', label: 'Gérer les alertes', icon: Bell, partial: ['VIEWER'] },
-    { key: 'engine_control', label: 'Couper le moteur', icon: Power, danger: true, partial: ['FLEET_MANAGER'] },
+    { key: 'engine_control', label: 'Couper / déverrouiller le moteur', icon: Power, danger: true, partial: ['FLEET_MANAGER', 'DRIVER'] },
     { key: 'reports_view', label: 'Rapports & export', icon: BarChart3 },
     { key: 'users_manage', label: 'Gérer les utilisateurs', icon: Users },
     { key: 'agenda_manage', label: 'Agenda & maintenance', icon: CalendarClock, partial: ['FLEET_MANAGER'] },

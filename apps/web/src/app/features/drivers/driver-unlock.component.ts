@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AlertTriangle, CheckCircle2, LoaderCircle, LucideAngularModule, MapPin, Shield, ShieldCheck, Unlock } from 'lucide-angular';
 import { DriverUnlockApiService } from '../../core/services/driver-unlock.service';
 
@@ -59,7 +59,7 @@ type UnlockState = 'idle' | 'locating' | 'unlocking' | 'success' | 'error';
             <h1 class="text-lg font-semibold mb-1">Déverrouillage impossible</h1>
             <p class="text-sm text-fg-tertiary mb-4">{{ message() }}</p>
             @if (needsLogin()) {
-              <a routerLink="/login" class="inline-flex items-center justify-center w-full px-4 py-2.5 text-sm font-medium rounded-xl bg-tracky/20 text-tracky-light border border-tracky/30">
+              <a routerLink="/login" [queryParams]="{ returnUrl: currentUrl }" class="inline-flex items-center justify-center w-full px-4 py-2.5 text-sm font-medium rounded-xl bg-tracky/20 text-tracky-light border border-tracky/30">
                 Se connecter
               </a>
             } @else {
@@ -96,8 +96,11 @@ type UnlockState = 'idle' | 'locating' | 'unlocking' | 'success' | 'error';
 })
 export class DriverUnlockComponent {
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly api = inject(DriverUnlockApiService);
   private readonly destroyRef = inject(DestroyRef);
+  /** URL courante (ex. /driver/unlock?token=…) → renvoyée en returnUrl pour revenir ici après login. */
+  protected readonly currentUrl = this.router.url;
 
   protected readonly state = signal<UnlockState>('idle');
   protected readonly message = signal('');

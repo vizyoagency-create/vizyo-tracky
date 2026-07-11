@@ -232,6 +232,10 @@ export class LoginComponent implements OnInit {
       // V1.12 — Mode Baanool : connexion directe sur la carte au lieu du dashboard.
       // Sprint 3 — veilleur de nuit : connexion directe sur sa liste véhicules (seul périmètre).
       const baanool = data.user.preferences?.uiMode === 'baanool';
+      // feat/comptes-conducteurs — retour post-login vers la page d'origine (ex. scan QR
+      // /driver/unlock alors qu'on n'était pas connecté). URL INTERNE uniquement (anti open-redirect).
+      const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
+      const safeReturn = returnUrl && returnUrl.startsWith('/') && !returnUrl.startsWith('//') ? returnUrl : null;
       const home = this.auth.isDriver()
         ? '/driver'
         : this.auth.isWatchman()
@@ -239,7 +243,7 @@ export class LoginComponent implements OnInit {
           : baanool
             ? '/map'
             : '/dashboard';
-      this.router.navigate([home]);
+      this.router.navigateByUrl(safeReturn ?? home);
     } catch {
       this.error.set('Erreur de connexion au serveur');
     } finally {
