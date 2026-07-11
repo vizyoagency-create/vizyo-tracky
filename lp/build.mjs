@@ -64,13 +64,36 @@ const THUMB = 'width:22px;height:22px;border-radius:50%;background:#fff;box-shad
 const optRow = (title, note, val) => `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px;border:1px solid var(--border);border-radius:12px;background:var(--surface2);margin-bottom:14px"><div><div style="font-weight:700;font-size:.92rem">${title}</div><div style="font-size:.78rem;color:var(--tx2)">${note}</div></div><button data-sim="opt" data-val="${val}" aria-label="${esc(title)}" style="${tog(false)}"><span style="${THUMB}"></span></button></div>`;
 const resCard = (label, out, sub, accent) => `<div style="border:${accent ? '1.5px solid var(--accent)' : '1px solid var(--border)'};border-radius:12px;padding:15px;background:${accent ? 'var(--accent-soft)' : 'var(--surface2)'}"><div style="font-size:.7rem;color:var(--tx2);margin-bottom:5px">${label}</div><div data-out="${out}" style="font-size:1.35rem;font-weight:800;letter-spacing:-.02em${accent ? ';color:var(--accent)' : ''}">…</div><div${sub.o ? ` data-out="${sub.o}"` : ''} style="font-size:.66rem;color:var(--tx3);margin-top:2px">${sub.t}</div></div>`;
 
-// Section simulateur autonome (remplace le composant React du design).
+// ── Champs de formulaire lead (réutilisés par la section démo et le devis) ──
+const leadField = (label, name, type, req, ph) =>
+  `<div style="display:flex;flex-direction:column;gap:6px;text-align:left"><label style="font-size:.8rem;font-weight:600;color:var(--tx2)">${label}${req ? ' *' : ''}</label><input type="${type}" name="${name}"${req ? ' required' : ''} placeholder="${esc(ph || '')}" style="padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--tx);font:inherit;font-size:.92rem;outline:none"></div>`;
+
+// ── Section « Recevoir une présentation » : VRAI formulaire lead → POST site.leadApi (vt.js) ──
+const DEMO_SECTION = `<section id="demo" class="vt-sec" style="padding:104px 0;position:relative;overflow:hidden">
+<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:760px;height:380px;background:radial-gradient(ellipse,var(--accent-soft),transparent 70%);pointer-events:none"></div>
+<div data-reveal style="max-width:640px;margin:0 auto;padding:0 32px;text-align:center;position:relative">
+<div style="display:inline-flex;align-items:center;gap:13px;margin-bottom:24px"><span style="width:30px;height:2px;background:var(--accent);border-radius:2px"></span><span style="font-family:'JetBrains Mono',monospace;font-size:.72rem;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--accent)">Installation sous 48h en Occitanie</span><span style="width:30px;height:2px;background:var(--accent);border-radius:2px"></span></div>
+<h2 style="font-size:clamp(2.1rem,4vw,3rem);font-weight:800;letter-spacing:-.03em;line-height:1.05;margin:0 0 14px">Recevez une présentation.</h2>
+<p style="font-size:1.08rem;line-height:1.6;color:var(--tx2);margin:0 0 32px">Démonstration gratuite et sans engagement. Réponse en moins de 2h.</p>
+<form data-vt-lead="${site.leadApi}" style="background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:26px;box-shadow:var(--shadow-sm);display:grid;gap:14px">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">${leadField('Nom', 'name', 'text', true, 'Jean Dupont')}${leadField('Société', 'company', 'text', false, 'Votre entreprise')}</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">${leadField('E-mail', 'email', 'email', true, 'vous@societe.fr')}${leadField('Téléphone', 'phone', 'tel', false, '06 12 34 56 78')}</div>
+${leadField('Nombre de véhicules', 'fleetSize', 'text', false, 'ex : 8')}
+<div style="display:flex;flex-direction:column;gap:6px;text-align:left"><label style="font-size:.8rem;font-weight:600;color:var(--tx2)">Votre besoin (optionnel)</label><textarea name="message" rows="3" placeholder="Parlez-nous de votre flotte…" style="padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--tx);font:inherit;font-size:.92rem;resize:vertical;outline:none"></textarea></div>
+<button type="submit" style="display:flex;align-items:center;justify-content:center;gap:8px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:1rem;padding:15px;border-radius:12px;border:none;cursor:pointer;transition:transform .2s" data-vth="transform:translateY(-2px)"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Recevoir ma présentation</button>
+<div data-form-status style="font-size:.84rem;min-height:1.1em;color:var(--tx2)"></div>
+</form>
+<div style="margin-top:18px;font-size:.9rem;color:var(--tx2)">ou <a href="https://wa.me/${site.whatsapp}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600">discuter sur WhatsApp</a> · <a href="tel:${site.phoneE164}" style="color:var(--accent);font-weight:600">${site.phoneDisplay}</a></div>
+</div>
+</section>`;
+
+// Section simulateur → devis signable (remplace le composant React du design).
 const SIM_SECTION = `<section class="vt-sec" id="simulateur" style="padding:96px 0">
 <div style="max-width:780px;margin:0 auto;padding:0 32px">
 <div data-reveal style="text-align:center;max-width:40rem;margin:0 auto 40px">
-<p style="font-family:'JetBrains Mono',monospace;font-size:.74rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:600;margin:0 0 14px">Simulateur</p>
-<h2 style="font-size:clamp(1.8rem,3.4vw,2.5rem);font-weight:800;letter-spacing:-.025em;line-height:1.1;margin:0 0 14px">Estimez votre budget.</h2>
-<p style="font-size:1.04rem;line-height:1.6;color:var(--tx2);margin:0">Tout compris, options incluses. Le tarif affiché est bloqué à la souscription.</p>
+<p style="font-family:'JetBrains Mono',monospace;font-size:.74rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:600;margin:0 0 14px">Devis en ligne</p>
+<h2 style="font-size:clamp(1.8rem,3.4vw,2.5rem);font-weight:800;letter-spacing:-.025em;line-height:1.1;margin:0 0 14px">Composez votre devis.</h2>
+<p style="font-size:1.04rem;line-height:1.6;color:var(--tx2);margin:0">Configurez votre flotte, obtenez votre tarif tout compris, puis validez votre devis en un clic. Tarif bloqué à la souscription.</p>
 </div>
 <div id="vt-sim" data-reveal style="background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:30px;box-shadow:var(--shadow-sm)">
 <div style="display:flex;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:5px;margin-bottom:26px">
@@ -114,7 +137,15 @@ ${resCard('Années suivantes', 'recurring', { t: 'abonnement seul' })}
 <p style="font-size:.74rem;color:var(--tx3);margin:10px 0 0">Carburant &amp; usage maîtrisés, par an pour votre flotte.</p>
 </div>
 <div style="display:flex;align-items:flex-start;gap:9px;font-size:.82rem;color:var(--tx2);margin-bottom:22px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" style="flex:none;margin-top:1px"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"/></svg><span data-out="installNote">Installation : 29 €/véhicule (dès 5).</span></div>
-<a href="index.html#demo" style="display:flex;align-items:center;justify-content:center;gap:8px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:.95rem;padding:14px;border-radius:12px;transition:transform .2s" data-vth="transform:translateY(-2px)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Recevoir mon devis personnalisé</a>
+<form data-vt-lead="${site.leadApi}" data-require-accord style="display:grid;gap:14px;border-top:1px solid var(--border);padding-top:24px;text-align:left">
+<div style="font-weight:800;font-size:1.05rem;text-align:center;margin-bottom:2px">Recevez ce devis et validez-le</div>
+<input type="hidden" name="message"><input type="hidden" name="fleetSize">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${leadField('Nom', 'name', 'text', true, 'Jean Dupont')}${leadField('Société', 'company', 'text', false, 'Votre entreprise')}</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${leadField('E-mail', 'email', 'email', true, 'vous@societe.fr')}${leadField('Téléphone', 'phone', 'tel', false, '06 12 34 56 78')}</div>
+<label style="display:flex;align-items:flex-start;gap:10px;font-size:.86rem;color:var(--tx2);cursor:pointer"><input type="checkbox" name="accord" style="margin-top:2px;width:18px;height:18px;accent-color:var(--accent);flex:none"><span><strong style="color:var(--tx)">Bon pour accord.</strong> Je valide ce devis indicatif et souhaite être recontacté(e) pour le finaliser — tarif bloqué à la souscription, sans engagement de ma part à ce stade.</span></label>
+<button type="submit" style="display:flex;align-items:center;justify-content:center;gap:8px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:.98rem;padding:15px;border-radius:12px;border:none;cursor:pointer;transition:transform .2s" data-vth="transform:translateY(-2px)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Valider et recevoir mon devis</button>
+<div data-form-status style="font-size:.84rem;min-height:1.1em;color:var(--tx2);text-align:center"></div>
+</form>
 </div>
 </div>
 </section>`;
@@ -132,8 +163,12 @@ function transform(html, out) {
     .replace(/onClick="\{\{ toggleMenu \}\}"/g, 'data-vt="menu"')
     .replace(/style="display:\{\{ menuDisplay \}\};/g, 'id="vt-menu" style="display:none;')
     .replace(/ style-hover="([^"]*)"/g, ' data-vth="$1"');
-  // Page tarifs : remplace la section simulateur (bindings React) par la version autonome
+  // Page tarifs : remplace la section simulateur (bindings React) par le devis signable autonome
   if (out === 'tarifs.html') body = body.replace(/<section[^>]*id="simulateur"[\s\S]*?<\/section>/, SIM_SECTION);
+  // Page accueil : remplace la section #demo (2 boutons morts) par le VRAI formulaire lead.
+  if (out === 'index.html') body = body.replace(/<section[^>]*id="demo"[\s\S]*?<\/section>/, DEMO_SECTION);
+  // Répare le lien mort de l'agence en footer (toutes pages).
+  body = body.replace(/<a href="#"([^>]*)>vizyoagency\.com<\/a>/g, `<a href="${site.agencyUrl}"$1 target="_blank" rel="noopener">vizyoagency.com</a>`);
   return { helmet, body };
 }
 

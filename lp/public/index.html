@@ -540,14 +540,19 @@ summary::-webkit-details-marker{display:none}
 <!-- ░░ CTA FINAL ░░ -->
 <section id="demo" class="vt-sec" style="padding:104px 0;position:relative;overflow:hidden">
 <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:760px;height:380px;background:radial-gradient(ellipse,var(--accent-soft),transparent 70%);pointer-events:none"></div>
-<div data-reveal style="max-width:760px;margin:0 auto;padding:0 32px;text-align:center;position:relative">
+<div data-reveal style="max-width:640px;margin:0 auto;padding:0 32px;text-align:center;position:relative">
 <div style="display:inline-flex;align-items:center;gap:13px;margin-bottom:24px"><span style="width:30px;height:2px;background:var(--accent);border-radius:2px"></span><span style="font-family:'JetBrains Mono',monospace;font-size:.72rem;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--accent)">Installation sous 48h en Occitanie</span><span style="width:30px;height:2px;background:var(--accent);border-radius:2px"></span></div>
-<h2 style="font-size:clamp(2.1rem,4vw,3rem);font-weight:800;letter-spacing:-.03em;line-height:1.05;margin:0 0 18px">Prêt à reprendre le contrôle de votre flotte&nbsp;?</h2>
-<p style="font-size:1.12rem;line-height:1.6;color:var(--tx2);margin:0 0 32px">Démonstration gratuite et sans engagement. Réponse en moins de 2h.</p>
-<div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap">
-<a href="#demo" style="display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:1rem;padding:15px 28px;border-radius:12px;box-shadow:0 10px 28px var(--accent-soft);transition:transform .2s" data-vth="transform:translateY(-2px)"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Demander une démo gratuite</a>
-<a href="#" style="display:inline-flex;align-items:center;gap:8px;background:transparent;color:var(--tx);font-weight:600;font-size:1rem;padding:15px 26px;border-radius:12px;border:1px solid var(--border2);transition:border-color .2s" data-vth="border-color:var(--accent)"><svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor"><path d="M.057 24l1.687-6.163a11.867 11.867 0 0 1-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 0 1 8.413 3.488 11.824 11.824 0 0 1 3.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 0 1-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 0 0 1.51 5.26l-.999 3.648 3.737-.979z"/></svg>Discuter sur WhatsApp</a>
-</div>
+<h2 style="font-size:clamp(2.1rem,4vw,3rem);font-weight:800;letter-spacing:-.03em;line-height:1.05;margin:0 0 14px">Recevez une présentation.</h2>
+<p style="font-size:1.08rem;line-height:1.6;color:var(--tx2);margin:0 0 32px">Démonstration gratuite et sans engagement. Réponse en moins de 2h.</p>
+<form data-vt-lead="https://app-tracky.vizyoagency.com/api/leads/contact" style="background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:26px;box-shadow:var(--shadow-sm);display:grid;gap:14px">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px"><div style="display:flex;flex-direction:column;gap:6px;text-align:left"><label style="font-size:.8rem;font-weight:600;color:var(--tx2)">Nom *</label><input type="text" name="name" required placeholder="Jean Dupont" style="padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--tx);font:inherit;font-size:.92rem;outline:none"></div><div style="display:flex;flex-direction:column;gap:6px;text-align:left"><label style="font-size:.8rem;font-weight:600;color:var(--tx2)">Société</label><input type="text" name="company" placeholder="Votre entreprise" style="padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--tx);font:inherit;font-size:.92rem;outline:none"></div></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px"><div style="display:flex;flex-direction:column;gap:6px;text-align:left"><label style="font-size:.8rem;font-weight:600;color:var(--tx2)">E-mail *</label><input type="email" name="email" required placeholder="vous@societe.fr" style="padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--tx);font:inherit;font-size:.92rem;outline:none"></div><div style="display:flex;flex-direction:column;gap:6px;text-align:left"><label style="font-size:.8rem;font-weight:600;color:var(--tx2)">Téléphone</label><input type="tel" name="phone" placeholder="06 12 34 56 78" style="padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--tx);font:inherit;font-size:.92rem;outline:none"></div></div>
+<div style="display:flex;flex-direction:column;gap:6px;text-align:left"><label style="font-size:.8rem;font-weight:600;color:var(--tx2)">Nombre de véhicules</label><input type="text" name="fleetSize" placeholder="ex : 8" style="padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--tx);font:inherit;font-size:.92rem;outline:none"></div>
+<div style="display:flex;flex-direction:column;gap:6px;text-align:left"><label style="font-size:.8rem;font-weight:600;color:var(--tx2)">Votre besoin (optionnel)</label><textarea name="message" rows="3" placeholder="Parlez-nous de votre flotte…" style="padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--tx);font:inherit;font-size:.92rem;resize:vertical;outline:none"></textarea></div>
+<button type="submit" style="display:flex;align-items:center;justify-content:center;gap:8px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:1rem;padding:15px;border-radius:12px;border:none;cursor:pointer;transition:transform .2s" data-vth="transform:translateY(-2px)"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Recevoir ma présentation</button>
+<div data-form-status style="font-size:.84rem;min-height:1.1em;color:var(--tx2)"></div>
+</form>
+<div style="margin-top:18px;font-size:.9rem;color:var(--tx2)">ou <a href="https://wa.me/33652077038" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600">discuter sur WhatsApp</a> · <a href="tel:+33652077038" style="color:var(--accent);font-weight:600">06 52 07 70 38</a></div>
 </div>
 </section>
 
@@ -567,7 +572,7 @@ summary::-webkit-details-marker{display:none}
 </div>
 <div>
 <p style="font-family:'JetBrains Mono',monospace;font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);margin:0 0 16px">Société</p>
-<div style="display:flex;flex-direction:column;gap:11px;font-size:.92rem;color:var(--tx2)"><a href="#" data-vth="color:var(--tx)">vizyoagency.com</a><a href="mailto:contact@vizyoagency.com" data-vth="color:var(--tx)">contact@vizyoagency.com</a><a href="tel:+33652077038" data-vth="color:var(--tx)">06 52 07 70 38</a></div>
+<div style="display:flex;flex-direction:column;gap:11px;font-size:.92rem;color:var(--tx2)"><a href="https://www.vizyoagency.com" data-vth="color:var(--tx)" target="_blank" rel="noopener">vizyoagency.com</a><a href="mailto:contact@vizyoagency.com" data-vth="color:var(--tx)">contact@vizyoagency.com</a><a href="tel:+33652077038" data-vth="color:var(--tx)">06 52 07 70 38</a></div>
 </div>
 <div>
 <p style="font-family:'JetBrains Mono',monospace;font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);margin:0 0 16px">Légal</p>
@@ -584,6 +589,6 @@ summary::-webkit-details-marker{display:none}
 </footer>
 
 </div>
-<script src="assets/vt.js?v=566a1915"></script>
+<script src="assets/vt.js?v=7bd2d975"></script>
 </body>
 </html>

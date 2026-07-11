@@ -10,8 +10,10 @@ import { PrivacyModeService } from './privacy-mode.service';
 
 /**
  * Mode vie privée conducteur (par véhicule). Protégé par la permission
- * `privacy_manage` résolue per-vehicle (règle « spécifique gagne »). Ouvert aux 4
- * rôles non-veilleur ; le guard filtre selon la permission (admins bypass).
+ * `privacy_manage` résolue per-vehicle (règle « spécifique gagne »). Ouvert aux rôles
+ * non-veilleur, y compris DRIVER (feat/comptes-conducteurs incr.5 : le conducteur peut
+ * mettre SON véhicule en vie privée si le fleet-admin lui a accordé `privacy_manage`) ;
+ * le guard filtre selon la permission (admins bypass).
  *
  * Sous-ressource de /vehicles (pas de collision : `:vehicleId/privacy-mode` est plus
  * profond que `GET /vehicles/:id`).
@@ -22,21 +24,21 @@ export class PrivacyModeController {
   constructor(private readonly service: PrivacyModeService) {}
 
   @Get(':vehicleId/privacy-mode')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER, UserRole.DRIVER)
   @RequireVehiclePermission('vehicles_view', { paramName: 'vehicleId' })
   getState(@Param('vehicleId') vehicleId: string) {
     return this.service.getState(vehicleId);
   }
 
   @Get(':vehicleId/privacy-mode/history')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER, UserRole.DRIVER)
   @RequireVehiclePermission('vehicles_view', { paramName: 'vehicleId' })
   getHistory(@Param('vehicleId') vehicleId: string, @Query('limit') limit?: string) {
     return this.service.getHistory(vehicleId, limit ? parseInt(limit, 10) || 30 : 30);
   }
 
   @Post(':vehicleId/privacy-mode')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER, UserRole.DRIVER)
   @RequireVehiclePermission('privacy_manage', { paramName: 'vehicleId' })
   set(@Param('vehicleId') vehicleId: string, @Body() dto: SetPrivacyModeDto, @Req() req: AuthenticatedRequest) {
     return this.service.setPrivacyMode(vehicleId, { enabled: dto.enabled, reason: dto.reason ?? null }, { userId: req.user.id });

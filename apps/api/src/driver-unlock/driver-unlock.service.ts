@@ -55,9 +55,19 @@ export class DriverUnlockService {
   async unlock(
     user: AuthUser,
     dto: UnlockDriverDto,
-  ): Promise<{ ok: true; vehicleId: string; plate: string; distanceM: number; message: string }> {
-    const vehicleId = this.unlockToken.verifyVehicleToken(dto.token);
-    if (!vehicleId) throw new BadRequestException('QR invalide ou illisible.');
+  ): Promise<{
+    ok: true;
+    vehicleId: string;
+    plate: string;
+    distanceM: number;
+    message: string;
+    canManagePrivacy: boolean;
+    privacyModeEnabled: boolean;
+  }> {
+    // vehicleId in-app (« Mes véhicules ») OU résolu du jeton QR. L'autorisation + la proximité
+    // (ci-dessous) restent le vrai verrou, quel que soit le point d'entrée.
+    const vehicleId = dto.vehicleId ?? this.unlockToken.verifyVehicleToken(dto.token);
+    if (!vehicleId) throw new BadRequestException('QR invalide ou véhicule non spécifié.');
 
     const vehicle = await this.prisma.vehicle.findUnique({
       where: { id: vehicleId },
@@ -118,6 +128,10 @@ export class DriverUnlockService {
         .catch((e) => this.logger.warn(`currentDriver set failed: ${(e as Error).message}`));
     }
 
+    // Incr.5 — le conducteur peut mettre SON véhicule en vie privée s'il en a le droit (accordé
+    // par le fleet-admin sur ce périmètre). On renvoie la capacité + l'état courant pour l'UI.
+    const canManagePrivacy = await this.perms.canOnVehicle(user, vehicleId, 'privacy_manage');
+
     this.logger.log({ vehicleId, userId: user.id, distanceM: Math.round(distanceM) }, 'Driver unlock OK');
     return {
       ok: true,
@@ -125,6 +139,8 @@ export class DriverUnlockService {
       plate: vehicle.plate,
       distanceM: Math.round(distanceM),
       message: 'Véhicule déverrouillé. Vous pouvez démarrer.',
+      canManagePrivacy,
+      privacyModeEnabled: vehicle.privacyModeEnabled,
     };
   }
 }

@@ -5,6 +5,7 @@ import { anyPermissionGuard, permissionGuard } from './core/guards/permission.gu
 import { roleGuard } from './core/guards/role.guard';
 import { superAdminGuard } from './core/guards/super-admin.guard';
 import { watchmanChildGuard } from './core/guards/watchman.guard';
+import { driverAwayFromDashboardGuard } from './core/guards/driver.guard';
 
 export const routes: Routes = [
   {
@@ -71,10 +72,21 @@ export const routes: Routes = [
     data: { title: 'Déverrouiller un véhicule' },
   },
   {
+    // feat/comptes-conducteurs (6) — espace conducteur « Mes véhicules » (rôle DRIVER).
+    // Authentifié, shell focalisé (hors app d'admin). Déverrouillage in-app par véhicule.
+    path: 'driver',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/drivers/driver-home.component').then((m) => m.DriverHomeComponent),
+    data: { title: 'Mes véhicules' },
+  },
+  {
     path: '',
     loadComponent: () =>
       import('./layouts/dashboard-layout.component').then((m) => m.DashboardLayoutComponent),
-    canActivate: [authGuard],
+    // authGuard : session requise. driverAwayFromDashboardGuard : un conducteur (DRIVER) est
+    // renvoyé vers son espace `/driver` (il n'entre jamais dans l'app d'admin).
+    canActivate: [authGuard, driverAwayFromDashboardGuard],
     // Sprint 3 — confine le veilleur de nuit à /vehicles* (allowlist default-deny).
     canActivateChild: [watchmanChildGuard],
     children: [
