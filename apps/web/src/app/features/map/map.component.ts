@@ -2026,9 +2026,9 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     if (this.engineModalHasSchedule) {
       const verb = action === 'cut' ? 'immobiliser' : 'rallumer';
       return `Vous êtes sur le point de ${verb} ce véhicule.<br><br>` +
-        `<strong>Le mode horaire est actuellement actif.</strong> ` +
-        `Cette action le désactivera automatiquement. ` +
-        `Vous devrez le réactiver manuellement.<br><br>` +
+        `<strong>Le mode horaire reste actif.</strong> ` +
+        `Cette action tient jusqu'à la prochaine bascule programmée, puis le planning reprend ` +
+        `automatiquement.<br><br>` +
         `<span class="text-fg-tertiary text-xs">Cette action sera enregistrée dans l'audit trail.</span>`;
     }
     return action === 'cut'
@@ -2040,9 +2040,6 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
   protected readonly engineModalConfirmLabel = computed(() => {
     const action = this.engineModalOpen();
-    if (this.engineModalHasSchedule) {
-      return action === 'cut' ? 'Désactiver horaire et couper' : 'Désactiver horaire et rallumer';
-    }
     return action === 'cut' ? 'Oui, couper le moteur' : 'Oui, rallumer';
   });
 
@@ -4098,7 +4095,6 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   protected onEngineModalConfirm(): void {
     const trackerId = this.engineModalTrackerId;
     const action = this.engineModalOpen() === 'cut' ? 'CUT' as const : 'RESTORE' as const;
-    const hasSchedule = this.engineModalHasSchedule;
     if (!trackerId) return;
 
     this.engineModalLoading.set(true);
@@ -4106,7 +4102,9 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     // si le composant est detruit avant la reponse (cas user qui change de
     // page entre le click et l'ack reseau). Evite le warning "callback on
     // destroyed component".
-    this.engineControl.requestCommand(trackerId, action, 'depuis carte', hasSchedule || undefined).pipe(
+    // Refonte planning : une action manuelle NE désactive plus le mode horaire (elle le suspend
+    // jusqu'à la prochaine bascule côté backend). On n'envoie donc plus `disableSchedule`.
+    this.engineControl.requestCommand(trackerId, action, 'depuis carte').pipe(
       takeUntilDestroyed(this.destroyRef),
     ).subscribe({
       next: () => {
@@ -4117,10 +4115,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
           kind: 'info',
           title: action === 'CUT' ? 'Coupure envoyée' : 'Rallumage envoyé',
           message: action === 'CUT'
-            ? (hasSchedule
-                ? 'Mode horaire désactivé — en attente de confirmation du boîtier…'
-                : 'En attente de confirmation du boîtier (chute d\'ignition)…')
-            : (hasSchedule ? 'Mode horaire désactivé — commande transmise.' : 'Commande transmise au véhicule.'),
+            ? 'En attente de confirmation du boîtier (chute d\'ignition)…'
+            : 'Commande transmise au véhicule.',
           duration: 4000,
         });
         this.engineModalOpen.set(null);

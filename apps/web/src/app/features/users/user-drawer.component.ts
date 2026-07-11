@@ -165,6 +165,10 @@ export interface UserDrawerResult {
                   class="role-btn" [class.active]="role === 'NIGHT_WATCHMAN'" [class.viewer]="role === 'NIGHT_WATCHMAN'">
                   Veilleur
                 </button>
+                <button (click)="setRole('DRIVER')"
+                  class="role-btn" [class.active]="role === 'DRIVER'" [class.viewer]="role === 'DRIVER'">
+                  Conducteur
+                </button>
                 @if (data()?.isSuperAdmin) {
                   <button (click)="setRole('FLEET_ADMIN')"
                     class="role-btn" [class.active]="role === 'FLEET_ADMIN'" [class.admin-role]="role === 'FLEET_ADMIN'">

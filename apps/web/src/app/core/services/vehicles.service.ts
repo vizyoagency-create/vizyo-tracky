@@ -122,6 +122,30 @@ export class VehiclesApiService {
   syncFromInstallation(id: string, fields: VehicleSyncableField[]): Observable<VehicleDetailDto> {
     return this.http.post<VehicleDetailDto>(`/api/vehicles/${id}/sync-from-installation`, { fields });
   }
+
+  // ─── feat/comptes-conducteurs (4a) — QR de déverrouillage (gate `qr_manage`) ───
+
+  /** QR de déverrouillage d'un véhicule : jeton signé + deep-link + rendu SVG. */
+  getUnlockQr(id: string): Observable<VehicleUnlockQrDto> {
+    return this.http.get<VehicleUnlockQrDto>(`/api/vehicles/${id}/unlock-qr`);
+  }
+
+  /**
+   * URL de la feuille imprimable de TOUS les QR (fleet-scopée). Ouverte via `window.open`
+   * (cookie de session, même origine). `fleetId` = sélecteur société (super-admin) ; null = flotte de l'user.
+   */
+  unlockQrSheetUrl(fleetId: string | null): string {
+    return `/api/vehicles/unlock-qr-sheet${fleetId ? `?fleetId=${encodeURIComponent(fleetId)}` : ''}`;
+  }
+}
+
+export interface VehicleUnlockQrDto {
+  vehicleId: string;
+  plate: string | null;
+  token: string;
+  url: string;
+  /** SVG inline du QR (généré côté serveur). */
+  svg: string;
 }
 
 export interface VehicleStatsDto {

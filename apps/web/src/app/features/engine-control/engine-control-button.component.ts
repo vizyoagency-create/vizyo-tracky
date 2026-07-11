@@ -65,7 +65,7 @@ const CONFIRM_WINDOW_MS = 90_000;
       }
 
       <app-confirm-modal
-        [open]="isOpen() === 'cut' && !scheduleEnabled()"
+        [open]="isOpen() === 'cut'"
         title="Couper le moteur ?"
         [description]="cutDescription()"
         confirmLabel="Oui, couper le moteur"
@@ -85,30 +85,32 @@ const CONFIRM_WINDOW_MS = 90_000;
                  text-fg-primary placeholder:text-fg-tertiary resize-none
                  focus:outline-none focus:border-tracky"
         ></textarea>
+        @if (scheduleEnabled()) {
+          <label class="flex items-start gap-2 mt-3 text-xs text-fg-secondary cursor-pointer">
+            <input
+              type="checkbox"
+              [ngModel]="durableImmobilize()"
+              (ngModelChange)="durableImmobilize.set($event)"
+              class="mt-0.5 accent-red-500 shrink-0"
+            />
+            <span>
+              <strong>Immobilisation durable</strong> — sort du planning horaire : le véhicule
+              reste coupé jusqu'à un rallumage manuel (vol, non-paiement…). Sinon, le mode horaire
+              reste actif et reprend à la prochaine bascule.
+            </span>
+          </label>
+        }
       </app-confirm-modal>
 
       <app-confirm-modal
-        [open]="isOpen() === 'restore' && !scheduleEnabled()"
+        [open]="isOpen() === 'restore'"
         title="Rallumer le moteur ?"
-        [description]="'Le véhicule <strong>' + vehiclePlate() + '</strong> sera à nouveau utilisable.'"
+        [description]="restoreDescription()"
         confirmLabel="Oui, rallumer"
         cancelLabel="Annuler"
         [danger]="false"
         [loading]="loading()"
         (confirmed)="onConfirm('RESTORE')"
-        (cancelled)="isOpen.set(null)"
-      />
-
-      <!-- Modal spécifique quand le mode horaire est actif -->
-      <app-confirm-modal
-        [open]="isOpen() !== null && scheduleEnabled()"
-        [title]="isOpen() === 'cut' ? 'Couper le moteur ?' : 'Rallumer le moteur ?'"
-        [description]="scheduleWarningDescription()"
-        [confirmLabel]="isOpen() === 'cut' ? 'Désactiver horaire et couper' : 'Désactiver horaire et rallumer'"
-        cancelLabel="Annuler"
-        [danger]="isOpen() === 'cut'"
-        [loading]="loading()"
-        (confirmed)="onConfirmWithScheduleDisable()"
         (cancelled)="isOpen.set(null)"
       />
     </div>
@@ -132,6 +134,8 @@ export class EngineControlButtonComponent implements OnInit {
   protected readonly isOpen = signal<'cut' | 'restore' | null>(null);
   protected readonly loading = signal(false);
   protected readonly reason = signal('');
+  /** Case optionnelle « immobilisation durable » (CUT + mode horaire actif) : sort du planning. */
+  protected readonly durableImmobilize = signal(false);
   protected readonly recentCommands = signal<EngineControlCommandDto[]>([]);
   private readonly _scheduleEnabled = signal(false);
   protected readonly scheduleEnabled = computed(() => this.scheduleEnabledInput() || this._scheduleEnabled());
@@ -343,18 +347,16 @@ export class EngineControlButtonComponent implements OnInit {
       `<span class="text-fg-tertiary text-xs">Cette action sera enregistrée dans l'audit trail.</span>`,
   );
 
-  protected readonly scheduleWarningDescription = computed(() => {
-    const plate = this.vehiclePlate();
-    const action = this.isOpen() === 'cut'
-      ? `immobiliser le véhicule <strong>${plate}</strong>`
-      : `rallumer le véhicule <strong>${plate}</strong>`;
-    return (
-      `Vous êtes sur le point de ${action}.<br><br>` +
-      `<strong>Le mode horaire est actuellement actif.</strong> ` +
-      `Cette action le désactivera automatiquement. ` +
-      `Vous devrez le réactiver manuellement dans l'onglet Horaires.<br><br>` +
-      `<span class="text-fg-tertiary text-xs">Cette action sera enregistrée dans l'audit trail.</span>`
-    );
+  protected readonly restoreDescription = computed(() => {
+    const base = `Le véhicule <strong>${this.vehiclePlate()}</strong> sera à nouveau utilisable.`;
+    if (this.scheduleEnabled()) {
+      return (
+        base +
+        `<br><br><span class="text-fg-tertiary text-xs">Le mode horaire reste actif : cette action ` +
+        `tient jusqu'à la prochaine bascule, puis le planning reprend automatiquement.</span>`
+      );
+    }
+    return base;
   });
 
   // React to real-time engine command updates for this tracker (field initializer = injection context)
@@ -374,58 +376,31 @@ export class EngineControlButtonComponent implements OnInit {
   protected async openAction(action: 'cut' | 'restore'): Promise<void> {
     // Rafraîchir l'état schedule avant d'ouvrir le modal (état le plus frais)
     await this.loadScheduleStatus();
+    this.durableImmobilize.set(false);
     this.isOpen.set(action);
-  }
-
-  protected async onConfirmWithScheduleDisable(): Promise<void> {
-    const action = this.isOpen() === 'cut' ? 'CUT' as const : 'RESTORE' as const;
-    if (this.loading()) return;
-    this.loading.set(true);
-    const reasonText = action === 'CUT' ? this.reason() || 'Action manuelle (horaire désactivé)' : undefined;
-    // Fermer la modal DÈS la soumission (avant l'attente réseau), succès comme erreur/409 :
-    // sinon elle reste ouverte par-dessus et masque le toast + la pastille. Cf smoke prod 2026-06-18.
-    this.isOpen.set(null);
-    this.reason.set('');
-    try {
-      await firstValueFrom(
-        this.engineControl.requestCommand(this.trackerId(), action, reasonText, true /* disableSchedule */),
-      );
-      this.toast.success(
-        action === 'CUT' ? 'Coupure envoyée' : 'Rallumage envoyé',
-        'Mode horaire désactivé — en attente de confirmation du boîtier…',
-      );
-      this._scheduleEnabled.set(false);
-      this.scheduleDisabled.emit();
-      await this.loadRecentCommands();
-    } catch (err) {
-      if (err instanceof HttpErrorResponse && err.status === 409) {
-        this.toast.error(
-          'Commande déjà en cours',
-          'Une coupure est déjà en attente de confirmation sur ce véhicule.',
-        );
-      } else {
-        this.toast.error(
-          action === 'CUT' ? 'Coupure refusée' : 'Rallumage refusé',
-          this.extractErrorMessage(err),
-        );
-      }
-    } finally {
-      this.loading.set(false);
-    }
   }
 
   protected async onConfirm(action: 'CUT' | 'RESTORE'): Promise<void> {
     if (this.loading()) return; // Protection double-clic
     this.loading.set(true);
     const reasonText = action === 'CUT' ? this.reason() || undefined : undefined;
+    // « Immobilisation durable » (case optionnelle, CUT uniquement) → désactive le planning (sortie
+    // du mode horaire, cas anti-vol). Sinon l'action suspend juste le planning jusqu'à la prochaine
+    // bascule côté backend (le mode reste actif).
+    const durable = action === 'CUT' && this.durableImmobilize();
     // Fermer la modal DÈS la soumission (avant l'attente réseau), succès comme erreur/409 :
     // sinon elle reste ouverte par-dessus et masque le toast + la pastille. Cf smoke prod 2026-06-18.
     this.isOpen.set(null);
     this.reason.set('');
+    this.durableImmobilize.set(false);
     try {
       const cmd = await firstValueFrom(
-        this.engineControl.requestCommand(this.trackerId(), action, reasonText),
+        this.engineControl.requestCommand(this.trackerId(), action, reasonText, durable || undefined),
       );
+      if (durable) {
+        this._scheduleEnabled.set(false);
+        this.scheduleDisabled.emit();
+      }
       // Sprint 2 — PAS de faux succes : on annonce "envoyee" ; la confirmation
       // (chute d'ignition) fera basculer l'etat coupe via le WS + commandState.
       this.toast.success(

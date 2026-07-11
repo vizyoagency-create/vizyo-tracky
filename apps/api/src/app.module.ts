@@ -62,6 +62,7 @@ import { GpsIntegrityModule } from './gps-integrity/gps-integrity.module';
 import { HealthController } from './health/health.controller';
 import { LeadsModule } from './leads/leads.module';
 import { VehiclesModule } from './vehicles/vehicles.module';
+import { DriverUnlockApiModule } from './driver-unlock/driver-unlock-api.module';
 import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.module';
 
 @Module({
@@ -113,6 +114,8 @@ import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.modul
     GeocodeModule,
     TripsModule,
     VehiclesModule,
+    // feat/comptes-conducteurs (4b) — endpoint POST /driver/unlock (déverrouillage QR + proximité).
+    DriverUnlockApiModule,
     TrackersModule,
     TrackerCommandsModule,
     TrackerFixModeModule,

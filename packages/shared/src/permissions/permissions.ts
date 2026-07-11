@@ -15,7 +15,7 @@
  * SUPER_ADMIN et FLEET_ADMIN bypass (tous booleens true).
  */
 
-export type UserRoleSlug = 'SUPER_ADMIN' | 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN';
+export type UserRoleSlug = 'SUPER_ADMIN' | 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | 'DRIVER';
 
 export interface UserPermissions {
   vehicles_view: boolean;
@@ -37,6 +37,16 @@ export interface UserPermissions {
   /** Configurer les regles d'alertes (seuils, canaux, escalade) pour la flotte ou par vehicule. */
   alerts_configure: boolean;
   reports_view: boolean;
+  /** Exporter les rapports (PDF / Excel / CSV) — séparé de la simple lecture (anti-exfiltration de l'historique GPS). */
+  reports_export: boolean;
+  /**
+   * Voir la traçabilité fine des trajets : analyse déterministe (arrêts, excès OSM, éco-conduite,
+   * à-coups, ralenti, conso/CO₂), scores de conduite / classement, et suivi carburant
+   * (rapport, stations, calibration « méthode du plein » en lecture).
+   */
+  trips_view: boolean;
+  /** Renseigner / modifier / supprimer les pleins (méthode du plein) — recalibre les coûts carburant. */
+  fuel_manage: boolean;
   users_view: boolean;
   users_manage: boolean;
   /** Voir la liste des conducteurs et leur affectation aux vehicules. */
@@ -81,6 +91,10 @@ export interface UserPermissions {
    * OFF par defaut sauf SUPER_ADMIN/FLEET_ADMIN ; accordable par utilisateur.
    */
   ai_optimize: boolean;
+  /** Générer les récits IA d'un trajet (résumé vulgarisé + Trust Score + conseils). Appel LLM facturé. */
+  ai_narrate: boolean;
+  /** Configurer l'IA de la flotte : couper / activer l'assistance IA pour toute la société. */
+  ai_configure: boolean;
 
   /**
    * Facturation & options : voir les informations d'abonnement / facturation et
@@ -89,9 +103,21 @@ export interface UserPermissions {
    * backend de paiement — la perm gate aujourd'hui l'onglet « Facturation & options ».
    */
   billing_manage: boolean;
+
+  /**
+   * feat/comptes-conducteurs — Générer / imprimer les QR de déverrouillage des véhicules
+   * (depuis la fiche véhicule, la liste, et la feuille « tous les QR »). Le QR encode un
+   * deep-link signé vers l'écran conducteur. Défaut super/fleet-admin ; accordable par utilisateur.
+   */
+  qr_manage: boolean;
 }
 
 const VIEWER_DEFAULTS: UserPermissions = {
+  reports_export: false,
+  trips_view: true,
+  fuel_manage: false,
+  ai_narrate: false,
+  ai_configure: false,
   vehicles_view: true,
   vehicles_create: false,
   vehicles_edit: false,
@@ -121,9 +147,15 @@ const VIEWER_DEFAULTS: UserPermissions = {
   reservations_manage: false,
   ai_optimize: false,
   billing_manage: false,
+  qr_manage: false,
 };
 
 const FLEET_MANAGER_DEFAULTS: UserPermissions = {
+  reports_export: true,
+  trips_view: true,
+  fuel_manage: true,
+  ai_narrate: true,
+  ai_configure: false,
   vehicles_view: true,
   vehicles_create: true,
   vehicles_edit: true,
@@ -153,9 +185,15 @@ const FLEET_MANAGER_DEFAULTS: UserPermissions = {
   reservations_manage: false,
   ai_optimize: false,
   billing_manage: false,
+  qr_manage: false,
 };
 
 const ADMIN_DEFAULTS: UserPermissions = {
+  reports_export: true,
+  trips_view: true,
+  fuel_manage: true,
+  ai_narrate: true,
+  ai_configure: true,
   vehicles_view: true,
   vehicles_create: true,
   vehicles_edit: true,
@@ -185,6 +223,7 @@ const ADMIN_DEFAULTS: UserPermissions = {
   reservations_manage: true,
   ai_optimize: true,
   billing_manage: true,
+  qr_manage: true,
 };
 
 /**
@@ -193,6 +232,11 @@ const ADMIN_DEFAULTS: UserPermissions = {
  * defaut (toggle per-user accorde par un admin). Aucune autre capacite.
  */
 const NIGHT_WATCHMAN_DEFAULTS: UserPermissions = {
+  reports_export: false,
+  trips_view: false,
+  fuel_manage: false,
+  ai_narrate: false,
+  ai_configure: false,
   vehicles_view: true,
   vehicles_create: false,
   vehicles_edit: false,
@@ -222,6 +266,51 @@ const NIGHT_WATCHMAN_DEFAULTS: UserPermissions = {
   reservations_manage: false,
   ai_optimize: false,
   billing_manage: false,
+  qr_manage: false,
+};
+
+/**
+ * feat/comptes-conducteurs — « conducteur » : voit ses véhicules, rien d'autre par défaut.
+ * `engine_control` (déverrouiller le moteur) et `privacy_manage` (mode vie privée) sont OFF par
+ * défaut mais ACCORDABLES par le fleet-admin sur le périmètre du conducteur (UserVehicleAccess).
+ * Volontairement plus restreint que le veilleur (qui a engine_control ON d'office).
+ */
+const DRIVER_DEFAULTS: UserPermissions = {
+  reports_export: false,
+  trips_view: false,
+  fuel_manage: false,
+  ai_narrate: false,
+  ai_configure: false,
+  vehicles_view: true,
+  vehicles_create: false,
+  vehicles_edit: false,
+  vehicles_delete: false,
+  engine_control: false,
+  privacy_manage: false,
+  schedules_manage: false,
+  groups_view: false,
+  groups_manage: false,
+  geofences_view: false,
+  geofences_manage: false,
+  alerts_view: false,
+  alerts_acknowledge: false,
+  alerts_configure: false,
+  reports_view: false,
+  users_view: false,
+  users_manage: false,
+  drivers_view: false,
+  drivers_manage: false,
+  sims_view: false,
+  sims_assign: false,
+  audio_monitoring: false,
+  agenda_view: false,
+  agenda_manage: false,
+  reservations_view: false,
+  reservations_request: false,
+  reservations_manage: false,
+  ai_optimize: false,
+  billing_manage: false,
+  qr_manage: false,
 };
 
 export function getDefaultPermissions(role: UserRoleSlug): UserPermissions {
@@ -232,6 +321,8 @@ export function getDefaultPermissions(role: UserRoleSlug): UserPermissions {
       return { ...FLEET_MANAGER_DEFAULTS };
     case 'NIGHT_WATCHMAN':
       return { ...NIGHT_WATCHMAN_DEFAULTS };
+    case 'DRIVER':
+      return { ...DRIVER_DEFAULTS };
     case 'FLEET_ADMIN':
     case 'SUPER_ADMIN':
       return { ...ADMIN_DEFAULTS };
@@ -357,6 +448,21 @@ export const PERMISSION_LABELS: Record<keyof UserPermissions, PermissionLabel> =
   alerts_acknowledge: { group: 'Alertes', label: 'Acquitter les alertes' },
   alerts_configure: { group: 'Alertes', label: 'Configurer les regles d\'alertes', description: 'Creer, modifier et supprimer les regles de notification et seuils par vehicule.' },
   reports_view: { group: 'Rapports', label: 'Voir les rapports' },
+  reports_export: {
+    group: 'Rapports',
+    label: 'Exporter les rapports (PDF / Excel / CSV)',
+    description: 'Telecharger les rapports et exports de donnees. Separe de la simple lecture pour eviter l\'exfiltration de l\'historique GPS.',
+  },
+  trips_view: {
+    group: 'Trajets & analyse',
+    label: 'Voir l\'analyse des trajets & les scores',
+    description: 'Tracabilite fine : arrets, exces de vitesse (limites OSM), eco-conduite, conso/CO2, scores de conduite / classement et suivi carburant.',
+  },
+  fuel_manage: {
+    group: 'Trajets & analyse',
+    label: 'Renseigner les pleins (calibration carburant)',
+    description: 'Saisir / modifier / supprimer les pleins (methode du plein) pour calibrer la consommation reelle et les couts.',
+  },
   users_view: { group: 'Utilisateurs', label: 'Voir les utilisateurs' },
   users_manage: { group: 'Utilisateurs', label: 'Gerer les utilisateurs (inviter, editer)' },
   drivers_view: { group: 'Conducteurs', label: 'Voir les conducteurs' },
@@ -408,16 +514,34 @@ export const PERMISSION_LABELS: Record<keyof UserPermissions, PermissionLabel> =
       'Valider / refuser / editer / annuler / supprimer les reservations et auto-affecter un vehicule libre.',
   },
   ai_optimize: {
-    group: 'Optimisation IA',
-    label: 'Lancer les propositions IA',
+    group: 'Intelligence artificielle',
+    label: 'Lancer les propositions IA (optimisation agenda)',
     description:
       'Demander a l\'IA des propositions (capacite du parc, placement optimise). L\'IA propose ; l\'application reutilise vehicles_edit / reservations_*.',
+  },
+  ai_narrate: {
+    group: 'Intelligence artificielle',
+    label: 'Generer les recits IA de trajet',
+    description:
+      'Produire le recit IA d\'un trajet (resume vulgarise + Trust Score + conseils). Chaque generation est un appel LLM facture.',
+  },
+  ai_configure: {
+    group: 'Intelligence artificielle',
+    label: 'Configurer l\'IA de la flotte',
+    description:
+      'Couper ou activer l\'assistance IA pour toute la societe (interrupteur maitre).',
   },
   billing_manage: {
     group: 'Facturation',
     label: 'Facturation & options',
     description:
       'Voir les informations d\'abonnement / facturation et (a terme) gerer le moyen de paiement. Reserve aux admins par defaut, accordable par utilisateur.',
+  },
+  qr_manage: {
+    group: 'Vehicules',
+    label: 'Generer / imprimer les QR de deverrouillage',
+    description:
+      'Generer et imprimer les QR codes de deverrouillage des vehicules (fiche, liste, feuille « tous les QR »). Reserve aux admins par defaut, accordable.',
   },
 };
 
@@ -429,12 +553,13 @@ export const PERMISSION_GROUP_ORDER: readonly string[] = [
   'Geofences',
   'Alertes',
   'Rapports',
+  'Trajets & analyse',
   'Utilisateurs',
   'Conducteurs',
   'Cartes SIM',
   'Audio',
   'Agenda',
   'Reservations',
-  'Optimisation IA',
+  'Intelligence artificielle',
   'Facturation',
 ] as const;
