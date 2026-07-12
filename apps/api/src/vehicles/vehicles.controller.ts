@@ -23,6 +23,7 @@ import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { AssignDriverDto } from '../drivers/dto/assign-driver.dto';
 import { DriversService } from '../drivers/drivers.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 import { CreateVehicleDto } from './dto/create-vehicle.dto';
 import { SetVehicleGroupDto } from './dto/set-vehicle-group.dto';
@@ -38,6 +39,7 @@ export class VehiclesController {
     private readonly vehicles: VehiclesService,
     private readonly vehicleAccess: VehicleAccessService,
     private readonly drivers: DriversService,
+    private readonly systemActivity: SystemActivityService,
   ) {}
 
   private async buildRequestedBy(req: AuthenticatedRequest): Promise<RequestedBy> {
@@ -82,6 +84,19 @@ export class VehiclesController {
     @Query('fleetId') fleetId?: string,
   ): Promise<void> {
     const html = await this.vehicles.buildUnlockQrSheet(await this.buildRequestedBy(req), fleetId || null);
+    // Traçabilité — émission des « clés » QR de toute une flotte (action sensible → feed admin).
+    // Fire-and-forget (ne bloque pas la génération). On ne journalise JAMAIS de jeton.
+    this.systemActivity.record({
+      category: 'ENGINE',
+      action: 'unlock_qr_sheet_printed',
+      status: 'SUCCESS',
+      actor: 'opérateur',
+      target: 'Feuille QR de déverrouillage (flotte)',
+      detail: 'Génération de la feuille imprimable des QR de déverrouillage',
+      fleetId: req.user.fleetId ?? fleetId ?? null,
+      triggeredByUserId: req.user.id,
+      meta: { scope: fleetId ?? 'own' },
+    });
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(html);
   }
@@ -125,7 +140,21 @@ export class VehiclesController {
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
   @RequirePermissions('qr_manage')
   async unlockQr(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    return this.vehicles.buildUnlockQr(id, await this.buildRequestedBy(req));
+    const qr = await this.vehicles.buildUnlockQr(id, await this.buildRequestedBy(req));
+    // Traçabilité — émission de la « clé » QR d'un véhicule (action sensible → feed admin).
+    // Fire-and-forget ; le jeton n'est JAMAIS journalisé.
+    this.systemActivity.record({
+      category: 'ENGINE',
+      action: 'unlock_qr_generated',
+      status: 'SUCCESS',
+      actor: 'opérateur',
+      target: qr.plate,
+      detail: 'Génération du QR de déverrouillage du véhicule',
+      fleetId: req.user.fleetId ?? null,
+      triggeredByUserId: req.user.id,
+      meta: { vehicleId: qr.vehicleId },
+    });
+    return qr;
   }
 
   @Patch(':id')

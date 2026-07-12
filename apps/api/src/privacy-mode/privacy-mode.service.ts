@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { UserRole } from '@prisma/client';
 import type {
   PrivacyModeEventDto,
   PrivacyModeStateDto,
@@ -8,8 +9,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 
-/** Auteur d'une bascule (opérateur authentifié, ou null si système/auto). */
-type Actor = { userId: string | null };
+/**
+ * Auteur d'une bascule/lecture. `role`/`fleetId` servent au contrôle de tenant (anti
+ * cross-fleet, cf. revue adversariale) et au libellé d'acteur du feed (« conducteur » vs
+ * « opérateur »). Optionnels : absents sur les ré-lectures internes déjà tenant-vérifiées.
+ */
+type Actor = { userId: string | null; role?: UserRole; fleetId?: string | null };
 
 /**
  * Mode vie privée conducteur (par véhicule). Bascule ON/OFF la PAUSE de collecte
@@ -38,12 +43,24 @@ export class PrivacyModeService {
     return [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email || null;
   }
 
-  async getState(vehicleId: string): Promise<PrivacyModeStateDto> {
+  /**
+   * Garde de tenant (anti cross-fleet IDOR) : un non-super ne peut lire/agir que sur un
+   * véhicule de SA flotte. `canOnVehicle` (scope ALL) ne borne PAS la flotte et
+   * `UserVehicleAccess` n'a pas de colonne fleetId → on re-vérifie ici, exactement comme
+   * EngineControlService et VehiclesService.findOne. 404 (ne révèle pas l'existence).
+   */
+  private assertTenant(vehicleFleetId: string, actor?: Actor): void {
+    if (!actor || actor.role === UserRole.SUPER_ADMIN) return;
+    if (actor.fleetId !== vehicleFleetId) throw new NotFoundException('Véhicule introuvable.');
+  }
+
+  async getState(vehicleId: string, actor?: Actor): Promise<PrivacyModeStateDto> {
     const v = await this.prisma.vehicle.findUnique({
       where: { id: vehicleId },
-      select: { id: true, privacyModeEnabled: true, privacyModeSince: true, privacyModeById: true, privacyModeNote: true },
+      select: { id: true, fleetId: true, privacyModeEnabled: true, privacyModeSince: true, privacyModeById: true, privacyModeNote: true },
     });
     if (!v) throw new NotFoundException('Véhicule introuvable.');
+    this.assertTenant(v.fleetId, actor);
     return {
       vehicleId: v.id,
       enabled: v.privacyModeEnabled,
@@ -54,7 +71,11 @@ export class PrivacyModeService {
     };
   }
 
-  async getHistory(vehicleId: string, limit = 30): Promise<PrivacyModeEventDto[]> {
+  async getHistory(vehicleId: string, limit = 30, actor?: Actor): Promise<PrivacyModeEventDto[]> {
+    // Tenant (anti cross-fleet) : l'historique porte des données personnelles (auteur, note, horodatage).
+    const v = await this.prisma.vehicle.findUnique({ where: { id: vehicleId }, select: { fleetId: true } });
+    if (!v) throw new NotFoundException('Véhicule introuvable.');
+    this.assertTenant(v.fleetId, actor);
     const rows = await this.prisma.privacyModeEvent.findMany({
       where: { vehicleId },
       orderBy: { createdAt: 'desc' },
@@ -84,6 +105,7 @@ export class PrivacyModeService {
         select: { id: true, fleetId: true, plate: true, privacyModeEnabled: true },
       });
       if (!vehicle) throw new NotFoundException('Véhicule introuvable.');
+      this.assertTenant(vehicle.fleetId, actor);
 
       // Idempotent : même état demandé → pas de nouvel événement (pas de bruit).
       if (vehicle.privacyModeEnabled === dto.enabled) return this.getState(vehicleId);
@@ -108,7 +130,8 @@ export class PrivacyModeService {
         category: 'PRIVACY',
         action: dto.enabled ? 'privacy_enabled' : 'privacy_disabled',
         status: 'SUCCESS',
-        actor: 'opérateur',
+        // Libellé lisible du feed : reflète le rôle réel (un conducteur gère SON véhicule).
+        actor: actor.role === UserRole.DRIVER ? 'conducteur' : 'opérateur',
         target: vehicle.plate,
         detail: dto.enabled
           ? `Mode vie privée ACTIVÉ (collecte des positions en pause)${reason ? ` — ${reason}` : ''}`

@@ -26,21 +26,29 @@ export class PrivacyModeController {
   @Get(':vehicleId/privacy-mode')
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER, UserRole.DRIVER)
   @RequireVehiclePermission('vehicles_view', { paramName: 'vehicleId' })
-  getState(@Param('vehicleId') vehicleId: string) {
-    return this.service.getState(vehicleId);
+  getState(@Param('vehicleId') vehicleId: string, @Req() req: AuthenticatedRequest) {
+    return this.service.getState(vehicleId, { userId: req.user.id, role: req.user.role, fleetId: req.user.fleetId });
   }
 
   @Get(':vehicleId/privacy-mode/history')
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER, UserRole.DRIVER)
   @RequireVehiclePermission('vehicles_view', { paramName: 'vehicleId' })
-  getHistory(@Param('vehicleId') vehicleId: string, @Query('limit') limit?: string) {
-    return this.service.getHistory(vehicleId, limit ? parseInt(limit, 10) || 30 : 30);
+  getHistory(@Param('vehicleId') vehicleId: string, @Req() req: AuthenticatedRequest, @Query('limit') limit?: string) {
+    return this.service.getHistory(vehicleId, limit ? parseInt(limit, 10) || 30 : 30, {
+      userId: req.user.id,
+      role: req.user.role,
+      fleetId: req.user.fleetId,
+    });
   }
 
   @Post(':vehicleId/privacy-mode')
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER, UserRole.DRIVER)
   @RequireVehiclePermission('privacy_manage', { paramName: 'vehicleId' })
   set(@Param('vehicleId') vehicleId: string, @Body() dto: SetPrivacyModeDto, @Req() req: AuthenticatedRequest) {
-    return this.service.setPrivacyMode(vehicleId, { enabled: dto.enabled, reason: dto.reason ?? null }, { userId: req.user.id });
+    return this.service.setPrivacyMode(vehicleId, { enabled: dto.enabled, reason: dto.reason ?? null }, {
+      userId: req.user.id,
+      role: req.user.role,
+      fleetId: req.user.fleetId,
+    });
   }
 }
