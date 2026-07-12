@@ -2,15 +2,17 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { PrivacyModeController } from './privacy-mode.controller';
 import { PrivacyModeService } from './privacy-mode.service';
+import { WorkScheduleController } from './work-schedule.controller';
+import { WorkScheduleService } from './work-schedule.service';
 
 /**
- * Mode vie privée conducteur (par véhicule). ErrorLogger + SystemActivityService
- * sont @Global (aucun import requis). PrismaService global.
+ * Mode vie privée conducteur + CADRE de temps de travail (par véhicule). ErrorLogger +
+ * SystemActivityService sont @Global (aucun import requis). PrismaService global.
  */
 @Module({
   imports: [AuthModule],
-  controllers: [PrivacyModeController],
-  providers: [PrivacyModeService],
-  exports: [PrivacyModeService],
+  controllers: [PrivacyModeController, WorkScheduleController],
+  providers: [PrivacyModeService, WorkScheduleService],
+  exports: [PrivacyModeService, WorkScheduleService],
 })
 export class PrivacyModeModule {}
