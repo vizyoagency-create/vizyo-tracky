@@ -418,6 +418,11 @@ model Vehicle {
   privacyModeById    String?  @db.Uuid
   privacyModeNote    String?
   privacyModeEvents  PrivacyModeEvent[]
+  // Incr. RGPD calendrier — cadre de temps de travail (opt-in). Hors plages = prive (non
+  // collecte) par defaut. `workOverrideUntil` = exception ponctuelle « je travaille » (conducteur,
+  // ex. intervention un dimanche) : force le suivi jusqu'a cette date malgre le calendrier.
+  workSchedule       VehicleWorkSchedule?
+  workOverrideUntil  DateTime?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -444,6 +449,58 @@ model PrivacyModeEvent {
   @@index([vehicleId, createdAt])
   @@index([fleetId, createdAt])
   @@map("privacy_mode_events")
+}
+
+/// Incr. RGPD calendrier — CADRE de temps de travail par vehicule (usage mixte).
+/// Opt-in (`enabled`). Hors des plages declarees = mode prive AUTOMATIQUE (positions non
+/// collectees a l'ingestion). Meme structure de plages que VehicleSchedule (moteur) pour
+/// REUTILISER l'evaluateur `evaluateSchedule` (fuseau, multi-plages, feries, plages de nuit).
+/// Defini par le fleet-admin (employeur) ; visible du conducteur ; toute edition est auditee.
+model VehicleWorkSchedule {
+  id        String  @id @default(uuid()) @db.Uuid
+  vehicleId String  @unique @db.Uuid
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  enabled   Boolean @default(false)
+  timezone  String  @default("Europe/Paris")
+
+  mondayEnabled    Boolean @default(true)
+  mondayStart      String?
+  mondayEnd        String?
+  tuesdayEnabled   Boolean @default(true)
+  tuesdayStart     String?
+  tuesdayEnd       String?
+  wednesdayEnabled Boolean @default(true)
+  wednesdayStart   String?
+  wednesdayEnd     String?
+  thursdayEnabled  Boolean @default(true)
+  thursdayStart    String?
+  thursdayEnd      String?
+  fridayEnabled    Boolean @default(true)
+  fridayStart      String?
+  fridayEnd        String?
+  saturdayEnabled  Boolean @default(false)
+  saturdayStart    String?
+  saturdayEnd      String?
+  sundayEnabled    Boolean @default(false)
+  sundayStart      String?
+  sundayEnd        String?
+
+  // Multi-plages par jour (override les paires start/end legacy si non null).
+  mondaySlots    Json?
+  tuesdaySlots   Json?
+  wednesdaySlots Json?
+  thursdaySlots  Json?
+  fridaySlots    Json?
+  saturdaySlots  Json?
+  sundaySlots    Json?
+
+  countryCode String @default("FR")
+  customDates Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("vehicle_work_schedules")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
