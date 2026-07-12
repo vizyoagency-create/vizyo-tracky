@@ -292,6 +292,32 @@ describe('PositionsService.ingest — garde-fou replay/teleportation', () => {
     expect(trips.processPosition).toHaveBeenCalledTimes(1);
   });
 
+  it('mode vie privée (manuel) : JETTE la trame à l\'ingestion — AUCUNE écriture en base (pas un simple masquage)', async () => {
+    // RGPD : véhicule en mode privé manuel → la position ne doit JAMAIS être persistée.
+    trackerRow = makeTracker({
+      status: 'ONLINE',
+      vehicle: {
+        id: VEHICLE_ID, fleetId: FLEET_ID, plate: 'HD-779-MA',
+        fleet: { adaptiveSamplingEnabled: true },
+        privacyModeEnabled: true,
+      },
+    });
+
+    await service.ingest(makeFrame());
+
+    // Non collectée : ni buffer d'écriture, ni trajet, ni sampler, ni broadcast.
+    expect(batchBuffer.enqueue).not.toHaveBeenCalled();
+    expect(trips.processPosition).not.toHaveBeenCalled();
+    expect(sampling.decide).not.toHaveBeenCalled();
+    expect(gateway.broadcastPosition).not.toHaveBeenCalled();
+    // Liveness UNIQUEMENT (le boîtier communique) — pas de dénorm position.
+    expect(prisma.tracker.update).toHaveBeenCalledTimes(1);
+    expect(prisma.tracker.update).toHaveBeenCalledWith({
+      where: { id: TRACKER_ID },
+      data: { lastSeenAt: expect.any(Date), status: 'ONLINE' },
+    });
+  });
+
   it('does NOT persist a replayed frame (deviceTime anterieur + grand saut)', async () => {
     const replay = makeFrame({
       deviceTime: new Date('2026-06-11T00:59:30Z'), // 30s AVANT la derniere verite
