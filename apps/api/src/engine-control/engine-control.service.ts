@@ -97,6 +97,7 @@ export class EngineControlService {
     requestedBy: RequestedBy,
     source: 'MANUAL' | 'SCHEDULER' = 'MANUAL',
     disableSchedule?: boolean,
+    preserveSchedule?: boolean,
   ): Promise<EngineControlCommand> {
     // V1.10 (Sprint 6) — IDOR fix : filtre tenant integre au where pour
     // empecher un user d'envoyer un CUT/RESTORE sur un tracker d'une autre
@@ -292,7 +293,11 @@ export class EngineControlService {
     //   (a) veilleur qui COUPE = hold indéfini (intervention sécu de nuit, tient jusqu'à un RESTORE) ;
     //   (b) `disableSchedule:true` explicite (case « immobilisation durable / hors planning », anti-vol)
     //       = SEULE voie manuelle qui met enabled=false.
-    if (source === 'MANUAL') {
+    // `preserveSchedule` (déverrouillage conducteur) → on NE touche PAS au planning : le RESTORE est
+    // TRANSITOIRE. Le scheduler n'agit qu'aux transitions (state === lastEvaluatedState → skip, cf.
+    // schedule-cron:139), donc l'état tient jusqu'à la prochaine bascule SANS suspension ni override.
+    // Décision produit : un conducteur ne doit JAMAIS interrompre le mode horaire de la flotte.
+    if (source === 'MANUAL' && !preserveSchedule) {
       const vehicle = tracker.vehicle;
       if (vehicle) {
         const isWatchman = requestedBy.role === UserRole.NIGHT_WATCHMAN;

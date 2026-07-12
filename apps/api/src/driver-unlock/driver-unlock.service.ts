@@ -54,18 +54,7 @@ export class DriverUnlockService {
     private readonly systemActivity: SystemActivityService,
   ) {}
 
-  async unlock(
-    user: AuthUser,
-    dto: UnlockDriverDto,
-  ): Promise<{
-    ok: true;
-    vehicleId: string;
-    plate: string;
-    distanceM: number;
-    message: string;
-    canManagePrivacy: boolean;
-    privacyModeEnabled: boolean;
-  }> {
+  async unlock(user: AuthUser, dto: UnlockDriverDto): Promise<{ ok: true; message: string }> {
     const method = dto.vehicleId ? 'in-app' : 'QR';
     let vehicleId: string | null = null;
     let plate: string | null = null;
@@ -120,14 +109,17 @@ export class DriverUnlockService {
         throw new ForbiddenException('Vous êtes trop loin du véhicule. Rapprochez-vous et réessayez.');
       }
 
-      // Déverrouillage = RESTORE moteur. Source MANUAL → le planning horaire est suspendu jusqu'à
-      // la prochaine bascule (le conducteur prend la voiture hors plage → tient jusqu'au créneau).
+      // Déverrouillage = RESTORE moteur. On NE touche PAS au planning horaire (preserveSchedule) :
+      // le RESTORE est TRANSITOIRE et le scheduler reprend la main à la prochaine bascule sans être
+      // interrompu (décision produit : un conducteur n'interrompt jamais le mode horaire de la flotte).
       await this.engineControl.requestCommand(
         vehicle.tracker.id,
         EngineAction.RESTORE,
         `Déverrouillage ${method} (conducteur, proximité déclarée ~${distanceM} m)`,
         { userId: user.id, role: user.role, fleetId: user.fleetId },
         'MANUAL',
+        undefined, // disableSchedule : non
+        true, // preserveSchedule : ne PAS interrompre le mode horaire
       );
 
       // Attribution : le conducteur (Driver lié à son compte) devient conducteur courant → trajets
@@ -142,10 +134,9 @@ export class DriverUnlockService {
           .catch((e) => this.logger.warn(`currentDriver set failed: ${(e as Error).message}`));
       }
 
-      // Incr.5 — capacité + état du mode vie privée (le conducteur peut le gérer s'il en a le droit).
-      const canManagePrivacy = await this.perms.canOnVehicle(user, vehicleId, 'privacy_manage');
-
       // Traçabilité — action « qui déverrouille quoi, quand, comment » (journal Système, feed admin).
+      // NB : la plaque + la distance sont journalisées CÔTÉ SERVEUR (audit), mais JAMAIS renvoyées
+      // au conducteur (cf. réponse minimale ci-dessous).
       this.systemActivity.record({
         category: 'ENGINE',
         action: 'driver_unlock',
@@ -158,15 +149,9 @@ export class DriverUnlockService {
         meta: { vehicleId, distanceM, method },
       });
       this.logger.log({ vehicleId, userId: user.id, distanceM, method }, 'Driver unlock OK');
-      return {
-        ok: true,
-        vehicleId,
-        plate: vehicle.plate,
-        distanceM,
-        message: 'Véhicule déverrouillé. Vous pouvez démarrer.',
-        canManagePrivacy,
-        privacyModeEnabled: vehicle.privacyModeEnabled,
-      };
+      // Réponse VOLONTAIREMENT minimale : le conducteur ne voit qu'une confirmation, aucune donnée
+      // flotte (plaque, distance, mode vie privée…). Décision produit « juste déverrouiller, pas d'info ».
+      return { ok: true, message: 'Véhicule déverrouillé. Vous pouvez démarrer.' };
     } catch (err) {
       // Traçabilité des refus/échecs — motif dans le journal Système (status FAILURE). On ne pollue
       // PAS le centre d'alerte pour un refus ATTENDU (trop loin / non autorisé) ; les vraies pannes
