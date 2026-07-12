@@ -14,6 +14,7 @@ import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PositionBroadcastBuffer } from '../realtime/position-broadcast-buffer.service';
 import { PositionBatchBufferService } from './position-batch-buffer.service';
+import { resolveEffectivePrivacy } from '../privacy-mode/effective-privacy';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { TrackerFixModeService } from '../tracker-fix-mode/tracker-fix-mode.service';
 import { TripsService } from '../trips/trips.service';
@@ -48,7 +49,7 @@ export class PositionsService {
   async ingest(frame: CobanPositionFrame): Promise<void> {
     const tracker = await this.prisma.tracker.findUnique({
       where: { imei: frame.imei },
-      include: { vehicle: { include: { fleet: true } } },
+      include: { vehicle: { include: { fleet: true, workSchedule: true } } },
     });
 
     if (!tracker) {
@@ -56,12 +57,15 @@ export class PositionsService {
       return;
     }
 
-    // Mode vie privée — quand le véhicule est en mode privé, AUCUNE position n'est
-    // collectée : on JETTE la trame ici (avant toute persistance/diffusion/trajet/
-    // géofence). Le boîtier COMMUNIQUE quand même → on rafraîchit la liveness
-    // (lastSeenAt + ONLINE) comme la garde lat/lng, si bien qu'il reste « en ligne »
-    // et que la dernière position connue reste figée (pas de nouvelle donnée).
-    if (tracker.vehicle?.privacyModeEnabled) {
+    // Mode vie privée EFFECTIF — privé manuel OU hors temps de travail (cadre calendrier), cf.
+    // resolveEffectivePrivacy. Quand privé, AUCUNE position n'est collectée : on JETTE la trame ici
+    // (avant toute persistance/diffusion/trajet/géofence) → « safe forgetting » du hors-travail SANS
+    // rétro-activation (la donnée n'existe pas). Le boîtier COMMUNIQUE quand même → on rafraîchit la
+    // liveness (lastSeenAt + ONLINE) : il reste « en ligne », sa dernière position connue reste figée.
+    const effectivePrivacy = tracker.vehicle
+      ? resolveEffectivePrivacy(tracker.vehicle, tracker.vehicle.workSchedule, new Date())
+      : null;
+    if (effectivePrivacy?.isPrivate) {
       const wasOffline = tracker.status !== 'ONLINE';
       await this.prisma.tracker.update({
         where: { id: tracker.id },

@@ -318,6 +318,55 @@ describe('PositionsService.ingest — garde-fou replay/teleportation', () => {
     });
   });
 
+  it('cadre temps de travail : HORS plage (tous les jours fermés) → trame JETÉE (non collectée)', async () => {
+    // Cadre actif dont AUCUN jour n'est ouvert → toujours hors-travail → privé automatique,
+    // quelle que soit l'heure du test (déterministe). RGPD : le hors-travail n'est jamais écrit.
+    trackerRow = makeTracker({
+      status: 'ONLINE',
+      vehicle: {
+        id: VEHICLE_ID, fleetId: FLEET_ID, plate: 'HD-779-MA',
+        fleet: { adaptiveSamplingEnabled: true },
+        privacyModeEnabled: false,
+        workOverrideUntil: null,
+        workSchedule: {
+          enabled: true, timezone: 'Europe/Paris', countryCode: 'FR', customDates: null,
+          mondayEnabled: false, tuesdayEnabled: false, wednesdayEnabled: false, thursdayEnabled: false,
+          fridayEnabled: false, saturdayEnabled: false, sundayEnabled: false,
+        },
+      },
+    });
+
+    await service.ingest(makeFrame());
+
+    expect(batchBuffer.enqueue).not.toHaveBeenCalled();
+    expect(trips.processPosition).not.toHaveBeenCalled();
+    expect(sampling.decide).not.toHaveBeenCalled();
+  });
+
+  it('cadre temps de travail : DANS la plage (tous les jours ouverts, sans restriction) → trame collectée', async () => {
+    // Cadre actif, tous jours ouverts sans plage → IN_WINDOW en permanence → tracé normalement.
+    trackerRow = makeTracker({
+      vehicle: {
+        id: VEHICLE_ID, fleetId: FLEET_ID, plate: 'HD-779-MA',
+        fleet: { adaptiveSamplingEnabled: true },
+        privacyModeEnabled: false,
+        workOverrideUntil: null,
+        workSchedule: {
+          enabled: true, timezone: 'Europe/Paris', countryCode: '', customDates: null,
+          mondayEnabled: true, tuesdayEnabled: true, wednesdayEnabled: true, thursdayEnabled: true,
+          fridayEnabled: true, saturdayEnabled: true, sundayEnabled: true,
+          mondaySlots: null, tuesdaySlots: null, wednesdaySlots: null, thursdaySlots: null,
+          fridaySlots: null, saturdaySlots: null, sundaySlots: null,
+          mondayStart: null, mondayEnd: null,
+        },
+      },
+    });
+
+    await service.ingest(makeFrame());
+
+    expect(batchBuffer.enqueue).toHaveBeenCalledTimes(1);
+  });
+
   it('does NOT persist a replayed frame (deviceTime anterieur + grand saut)', async () => {
     const replay = makeFrame({
       deviceTime: new Date('2026-06-11T00:59:30Z'), // 30s AVANT la derniere verite
