@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import type {
   PrivacyModeEventDto,
@@ -8,6 +8,7 @@ import type {
 import { PrismaService } from '../prisma/prisma.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
+import { isWithinWorkHours } from './effective-privacy';
 
 /**
  * Auteur d'une bascule/lecture. `role`/`fleetId` servent au contrôle de tenant (anti
@@ -102,10 +103,32 @@ export class PrivacyModeService {
     try {
       const vehicle = await this.prisma.vehicle.findUnique({
         where: { id: vehicleId },
-        select: { id: true, fleetId: true, plate: true, privacyModeEnabled: true },
+        select: {
+          id: true,
+          fleetId: true,
+          plate: true,
+          privacyModeEnabled: true,
+          workSchedule: true,
+          currentDriver: { select: { userId: true } },
+        },
       });
       if (!vehicle) throw new NotFoundException('Véhicule introuvable.');
       this.assertTenant(vehicle.fleetId, actor);
+
+      // Incr.4 — contraintes CONDUCTEUR : (1) borné à SON véhicule courant (celui qu'il conduit),
+      // même s'il porte privacy_manage sur un scope large → ferme le cas de bord IDOR ; (2) il ne
+      // peut JAMAIS privatiser une plage déclarée temps de travail (droit de l'employeur). Les
+      // admins/gestionnaires (qui définissent le cadre) ne sont pas bornés.
+      if (actor.role === UserRole.DRIVER) {
+        if (!actor.userId || vehicle.currentDriver?.userId !== actor.userId) {
+          throw new ForbiddenException('Vous ne pouvez gérer que le véhicule que vous conduisez.');
+        }
+        if (dto.enabled && isWithinWorkHours(vehicle.workSchedule)) {
+          throw new ForbiddenException(
+            "Cette plage est déclarée temps de travail : le passage en mode privé n'est pas autorisé.",
+          );
+        }
+      }
 
       // Idempotent : même état demandé → pas de nouvel événement (pas de bruit).
       if (vehicle.privacyModeEnabled === dto.enabled) return this.getState(vehicleId);
@@ -143,7 +166,9 @@ export class PrivacyModeService {
 
       return this.getState(vehicleId);
     } catch (err) {
-      if (err instanceof NotFoundException) throw err;
+      // Refus ATTENDUS (introuvable / hors-périmètre / plage de travail) → on propage sans polluer
+      // le centre d'alerte (réservé aux vraies pannes).
+      if (err instanceof NotFoundException || err instanceof ForbiddenException) throw err;
       // Erreur inattendue → centre d'alerte (source repérable) + on propage.
       const message = err instanceof Error ? err.message : String(err);
       this.errors
