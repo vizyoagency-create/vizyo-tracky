@@ -5,6 +5,7 @@ import { LucideAngularModule, Gauge, Plus, Trash2, X, Check, Fuel, TrendingUp, T
 import { firstValueFrom } from 'rxjs';
 import type { FuelConfidence, UpsertFuelFillUpDto, VehicleFuelModelDto } from '@vizyo/tracky-shared';
 import { TripAnalysisApiService } from '../../core/services/trip-analysis.service';
+import { PermissionsService } from '../../core/services/permissions.service';
 import { apiErrorMessage } from '../../core/error/api-error';
 
 /**
@@ -75,8 +76,9 @@ import { apiErrorMessage } from '../../core/error/api-error';
           </div>
         }
 
-        <!-- Formulaire d'ajout de plein -->
-        @if (showForm()) {
+        <!-- Formulaire d'ajout de plein — écriture réservée à fuel_manage. -->
+        @if (canManage()) {
+          @if (showForm()) {
           <form class="fcal-form" (ngSubmit)="submit()">
             <div class="fcal-form-grid">
               <label>Date<input type="date" [(ngModel)]="fDate" name="d" required></label>
@@ -93,8 +95,9 @@ import { apiErrorMessage } from '../../core/error/api-error';
               </button>
             </div>
           </form>
-        } @else {
-          <button type="button" class="fcal-add" (click)="openForm()"><lucide-icon [img]="PlusIcon" [size]="14"></lucide-icon> Renseigner un plein</button>
+          } @else {
+            <button type="button" class="fcal-add" (click)="openForm()"><lucide-icon [img]="PlusIcon" [size]="14"></lucide-icon> Renseigner un plein</button>
+          }
         }
 
         <!-- Liste des pleins -->
@@ -111,7 +114,9 @@ import { apiErrorMessage } from '../../core/error/api-error';
                 <div class="fcal-fill-sub">
                   @if (f.realConsumptionL100km != null) { <span class="fcal-fill-cons">{{ f.realConsumptionL100km | number:'1.1-1' }} L/100 · {{ f.distanceSinceKm | number:'1.0-0' }} km</span> }
                   @else if (f.distanceSinceKm != null) { <span>{{ f.distanceSinceKm | number:'1.0-0' }} km depuis le dernier</span> }
-                  <button type="button" class="fcal-del" (click)="remove(f.id)" title="Supprimer" aria-label="Supprimer"><lucide-icon [img]="TrashIcon" [size]="12"></lucide-icon></button>
+                  @if (canManage()) {
+                    <button type="button" class="fcal-del" (click)="remove(f.id)" title="Supprimer" aria-label="Supprimer"><lucide-icon [img]="TrashIcon" [size]="12"></lucide-icon></button>
+                  }
                 </div>
               </li>
             }
@@ -185,9 +190,13 @@ import { apiErrorMessage } from '../../core/error/api-error';
 })
 export class FuelCalibrationCardComponent {
   private readonly api = inject(TripAnalysisApiService);
+  private readonly perms = inject(PermissionsService);
 
   readonly vehicleId = input.required<string>();
   readonly days = input<number>(90);
+
+  /** Écriture (renseigner / supprimer un plein) réservée à `fuel_manage` sur CE véhicule. La lecture reste ouverte. */
+  protected readonly canManage = computed(() => this.perms.can('fuel_manage', this.vehicleId()));
 
   protected readonly data = signal<VehicleFuelModelDto | null>(null);
   protected readonly loading = signal(true);

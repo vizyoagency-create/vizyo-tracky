@@ -103,7 +103,7 @@ export class ReportsController {
 
   @Get('pdf')
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
-  @RequirePermissions('reports_view')
+  @RequirePermissions('reports_export')
   async pdfDownload(
     @Req() req: AuthenticatedRequest,
     @Res() res: Response,
@@ -130,7 +130,7 @@ export class ReportsController {
    */
   @Post('pdf')
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
-  @RequirePermissions('reports_view')
+  @RequirePermissions('reports_export')
   async pdfDownloadConfigured(
     @Req() req: AuthenticatedRequest,
     @Res() res: Response,
@@ -170,7 +170,7 @@ export class ReportsController {
 
   @Get('csv')
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
-  @RequirePermissions('reports_view')
+  @RequirePermissions('reports_export')
   async csvDownload(
     @Req() req: AuthenticatedRequest,
     @Res() res: Response,
@@ -204,7 +204,7 @@ export class ReportsController {
    */
   @Post('excel')
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
-  @RequirePermissions('reports_view')
+  @RequirePermissions('reports_export')
   async excelDownload(
     @Req() req: AuthenticatedRequest,
     @Res() res: Response,
@@ -239,7 +239,7 @@ export class ReportsController {
    */
   @Get('speed-analysis/:tripId')
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN)
-  @RequirePermissions('reports_view')
+  @RequirePermissions('reports_export')
   async speedAnalysis(
     @Param('tripId', ParseUUIDPipe) tripId: string,
     @Req() req: AuthenticatedRequest,
