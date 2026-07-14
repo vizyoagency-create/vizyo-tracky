@@ -154,24 +154,24 @@ export function computeUpcomingHolidays(
     const hd = getHolidays(countryCode);
     const y = from.getFullYear();
     const all = [...(hd.getHolidays(y) ?? []), ...(hd.getHolidays(y + 1) ?? [])];
+    // IMPORTANT (fuseau) : on lit la CHAÎNE `h.date` (« YYYY-MM-DD ... », date LOCALE du pays),
+    // PAS `h.start` (instant UTC) : sur un serveur UTC, new Date(start).getDate() reculait d'un
+    // jour (Assomption tombait le 14 au lieu du 15 août). Les clés « YYYY-MM-DD » se comparent et
+    // se trient lexicographiquement = chronologiquement, sans dépendre du fuseau.
+    const todayKey = from.toISOString().slice(0, 10);
     const out: UpcomingHoliday[] = [];
     const seen = new Set<string>();
-    for (const h of all
-      .filter((x) => x.type === 'public')
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())) {
-      const start = new Date((h as { start?: Date }).start ?? h.date);
-      if (Number.isNaN(start.getTime())) continue;
-      // Férié « à venir » : sa journée n'est pas terminée.
-      const dayEnd = new Date(start);
-      dayEnd.setHours(23, 59, 59, 999);
-      if (dayEnd.getTime() < from.getTime()) continue;
-      const key = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+    for (const h of all) {
+      if (h.type !== 'public') continue;
+      const key = String(h.date).slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) continue;
+      if (key < todayKey) continue; // férié déjà passé
       if (seen.has(key)) continue;
       seen.add(key);
       out.push({ date: key, name: h.name });
-      if (out.length >= count) break;
     }
-    return out;
+    out.sort((a, b) => a.date.localeCompare(b.date));
+    return out.slice(0, count);
   } catch {
     return [];
   }
