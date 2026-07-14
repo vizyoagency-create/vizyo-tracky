@@ -164,7 +164,16 @@
             </tr>
           </thead>
           <tbody>
-            @for (r of filteredRows(); track trackByVehicle($index, r)) {
+            @for (grp of fleetGroups(); track grp.fleetId) {
+              @if (multiFleet()) {
+                <tr class="fleet-group-head">
+                  <td colspan="5">
+                    <span class="fg-name">🏢 {{ grp.fleetName }}</span>
+                    <span class="fg-meta">{{ grp.rows.length }} véhicule(s) · {{ grp.enabled }} automatisé(s)@if (grp.cut) { · {{ grp.cut }} coupé(s) }</span>
+                  </td>
+                </tr>
+              }
+              @for (r of grp.rows; track trackByVehicle($index, r)) {
               <tr [class.row-hot]="displayPending(r) === 'DRIVING'">
                 <td>
                   <div class="veh">
@@ -235,6 +244,7 @@
                   </div>
                 </td>
               </tr>
+              }
             }
           </tbody>
         </table>

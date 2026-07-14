@@ -111,6 +111,8 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
   protected readonly holidayForecast = signal<FleetScheduleHolidayForecast | null>(null);
   /** Véhicules dont la « Réactivation » est en cours (désactive le bouton). */
   protected readonly reactivating = signal<Set<string>>(new Set());
+  /** Nom des flottes présentes (id→nom) — pour la vue groupée par flotte. */
+  protected readonly fleetNames = signal<Record<string, string>>({});
   protected readonly truncated = signal(false);
   protected readonly lastUpdated = signal<number | null>(null);
 
@@ -165,6 +167,29 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
     return sel ? all.filter((r) => r.fleetId === sel) : all;
   });
 
+  /** Lignes GROUPÉES par flotte (vue par flotte). Triées par nom de flotte. */
+  protected readonly fleetGroups = computed(() => {
+    const rows = this.filteredRows();
+    const names = this.fleetNames();
+    const map = new Map<string, FleetScheduleRowDto[]>();
+    for (const r of rows) {
+      const arr = map.get(r.fleetId);
+      if (arr) arr.push(r); else map.set(r.fleetId, [r]);
+    }
+    return [...map.entries()]
+      .map(([fleetId, list]) => ({
+        fleetId,
+        fleetName: names[fleetId] ?? 'Flotte',
+        rows: list,
+        enabled: list.filter((r) => r.scheduleEnabled).length,
+        cut: list.filter((r) => this.displayCut(r) === 'cut').length,
+      }))
+      .sort((a, b) => a.fleetName.localeCompare(b.fleetName));
+  });
+
+  /** Plusieurs flottes visibles → on affiche les en-têtes de groupe (sinon table simple). */
+  protected readonly multiFleet = computed(() => this.fleetGroups().length > 1);
+
   protected readonly summary = computed(() => {
     const rows = this.filteredRows();
     let enabled = 0, outOfWindow = 0, cut = 0, driving = 0, awaiting = 0, noTracker = 0;
@@ -213,6 +238,7 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
     try {
       const res = await firstValueFrom(this.api.listFleet());
       this.rows.set(res.items);
+      this.fleetNames.set(Object.fromEntries((res.fleets ?? []).map((f) => [f.id, f.name])));
       this.holidayForecast.set(res.holidayForecast);
       this.cutMinStoppedSec.set(res.scheduleCutMinStoppedSec);
       this.truncated.set(res.awaitingStopScanTruncated);

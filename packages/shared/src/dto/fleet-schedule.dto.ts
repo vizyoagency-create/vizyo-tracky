@@ -100,6 +100,8 @@ export interface FleetScheduleHolidayForecast {
 
 export interface FleetScheduleListResponse {
   items: FleetScheduleRowDto[];
+  /** Flottes présentes dans `items` (id + nom) — pour la vue GROUPÉE par flotte (super-admin). */
+  fleets: { id: string; name: string }[];
   /** Aperçu jours fériés à venir + effet de l'automatisation (anticipation). */
   holidayForecast: FleetScheduleHolidayForecast;
   /** Fenêtre d'immobilité minimale avant coupe auto (secondes) — pour l'affichage. */

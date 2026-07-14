@@ -83,6 +83,10 @@
 .btn-reactivate { margin-top: 5px; padding: 3px 10px; font-size: 11.5px; font-weight: 700; border-radius: 8px; border: 1px solid #0ea5e9; background: transparent; color: #0ea5e9; cursor: pointer; white-space: nowrap; }
 .btn-reactivate:hover:not(:disabled) { background: rgba(14,165,233,.10); }
 .btn-reactivate:disabled { opacity: .5; cursor: default; }
+/* Vue GROUPÉE par flotte : en-tête de section (super-admin voyant plusieurs sociétés). */
+.fleet-group-head td { background: rgba(14,165,233,.08); padding: 9px 12px; border-top: 2px solid rgba(100,116,139,.25); }
+.fg-name { font-weight: 800; font-size: 13px; }
+.fg-meta { margin-left: 10px; font-size: 12px; color: var(--text-secondary, #64748b); }
 .plates { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .plate-chip { background: rgba(0,0,0,.06); border-radius: 6px; padding: 1px 6px; font-weight: 600; font-size: 12px; }
 

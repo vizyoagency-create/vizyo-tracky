@@ -202,8 +202,15 @@ export class FleetSchedulesService {
       );
     }
 
+    // Flottes présentes → pour la vue groupée par flotte (super-admin voyant plusieurs sociétés).
+    const fleetIds = [...new Set(rows.map((r) => r.fleetId))];
+    const fleets = fleetIds.length
+      ? await this.prisma.fleet.findMany({ where: { id: { in: fleetIds } }, select: { id: true, name: true } })
+      : [];
+
     return {
       items: rows,
+      fleets,
       holidayForecast: this.buildHolidayForecast(schedules, rows, now),
       scheduleCutMinStoppedSec: Math.round(SCHEDULE_CUT_MIN_STOPPED_MS / 1000),
       serverNow: now.toISOString(),
