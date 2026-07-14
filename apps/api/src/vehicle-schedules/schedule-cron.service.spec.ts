@@ -38,6 +38,7 @@ function makeSchedule(overrides: Partial<VehicleSchedule> = {}): VehicleSchedule
     saturdaySlots: null,
     sundaySlots: null,
     countryCode: 'FR',
+    cutOnHolidays: false,
     customDates: null,
     lastEvaluatedAt: null,
     lastEvaluatedState: null,

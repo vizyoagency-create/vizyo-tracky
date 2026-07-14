@@ -12,6 +12,7 @@ function baseSchedule(overrides: Partial<Record<string, unknown>> = {}): any {
   return {
     timezone: 'UTC',
     countryCode: '',
+    cutOnHolidays: false,
     customDates: null,
     mondayEnabled: true,  mondayStart: '08:00',  mondayEnd: '18:00',  mondaySlots: null,
     tuesdayEnabled: true, tuesdayStart: '08:00', tuesdayEnd: '18:00', tuesdaySlots: null,
@@ -98,9 +99,16 @@ describe('evaluateSchedule', () => {
     expect(r2.reason).toBe('CUSTOM_DATE_OUT');
   });
 
-  it('countryCode FR + jour ferie → OUT_OF_WINDOW HOLIDAY', () => {
-    const s = baseSchedule({ countryCode: 'FR' });
-    // 2026-05-01 (vendredi) Fete du travail FR
+  // Incident 2026-07-14 — la coupe les fériés est désormais OPT-IN (cutOnHolidays).
+  it('countryCode FR + jour ferie SANS cutOnHolidays → suit les horaires normaux (IN_WINDOW)', () => {
+    const s = baseSchedule({ countryCode: 'FR' }); // cutOnHolidays défaut false
+    // 2026-05-01 (vendredi) Fete du travail FR, 10:00 dans la plage 08-18 → doit rouler.
+    const r = evaluateSchedule(s, new Date('2026-05-01T10:00:00Z'));
+    expect(r.state).toBe('IN_WINDOW');
+  });
+
+  it('countryCode FR + cutOnHolidays=true + jour ferie → OUT_OF_WINDOW HOLIDAY (opt-in)', () => {
+    const s = baseSchedule({ countryCode: 'FR', cutOnHolidays: true });
     const r = evaluateSchedule(s, new Date('2026-05-01T10:00:00Z'));
     expect(r.state).toBe('OUT_OF_WINDOW');
     expect(r.reason).toBe('HOLIDAY');

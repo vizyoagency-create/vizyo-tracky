@@ -168,8 +168,11 @@ export function evaluateSchedule(
     }
   }
 
-  // 2) Jours feries
-  if (schedule.countryCode) {
+  // 2) Jours feries — OPT-IN (incident 2026-07-14). Ne coupe QUE si la flotte a explicitement
+  //    demandé « à l'arrêt les fériés » (cutOnHolidays). Sinon un férié suit les horaires NORMAUX
+  //    du jour : une flotte de location doit rouler le 14 juillet. Avant, le seul countryeCode
+  //    (défaut 'FR') coupait TOUT tous les fériés → 29/30 véhicules cdef31 immobilisés.
+  if (schedule.cutOnHolidays && schedule.countryCode) {
     try {
       const hd = getHolidays(schedule.countryCode);
       const matches = hd.isHoliday(now);

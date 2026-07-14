@@ -1835,6 +1835,12 @@ model VehicleSchedule {
   // V1.5 (Sprint K) — Calendrier jours feries (lib `date-holidays`).
   // 'FR' = France metropolitaine. Liste : FR / MA / BE / LU / CH (config UI).
   countryCode    String @default("FR")
+  // INCIDENT 2026-07-14 — coupe automatique les jours FÉRIÉS. OPT-IN, défaut FALSE :
+  // par défaut un férié suit les horaires NORMAUX du jour (une flotte de location doit rouler
+  // le 14 juillet !). Avant, le seul `countryCode` (défaut 'FR') coupait TOUT tous les fériés →
+  // 29/30 véhicules cdef31 immobilisés le 14/07. À n'activer que pour une flotte qui veut
+  // vraiment être à l'arrêt les fériés (les fermetures précises passent par customDates).
+  cutOnHolidays  Boolean @default(false)
 
   // V1.5 (Sprint K) — Override ponctuel pour une date specifique :
   // [{ date: "2026-12-24", slots: [{ start: "08:00", end: "16:00" }] },

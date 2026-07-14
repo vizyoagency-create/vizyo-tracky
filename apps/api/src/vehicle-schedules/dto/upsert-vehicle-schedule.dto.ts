@@ -92,6 +92,11 @@ export class UpsertVehicleScheduleDto {
   @IsOptional() @IsString() @IsIn(COUNTRY_CODES)
   countryCode?: string;
 
+  // Incident 2026-07-14 — couper les moteurs les jours FÉRIÉS. OPT-IN, défaut false : par
+  // défaut un férié suit les horaires normaux du jour (ne pas immobiliser une flotte le 14/07).
+  @IsOptional() @IsBoolean()
+  cutOnHolidays?: boolean;
+
   // V1.5 (Sprint K) — Override ponctuel par date.
   @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => CustomDateDto)
   customDates?: CustomDateDto[];

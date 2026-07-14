@@ -39,7 +39,12 @@ export function resolveEffectivePrivacy(
     return { isPrivate: false, reason: 'WORK_OVERRIDE' };
   }
   if (workSchedule?.enabled) {
-    const state = evaluateSchedule(workSchedule as unknown as VehicleSchedule, now).state;
+    // Le mode vie privée GARDE « férié = hors-travail = privé » (protection du conducteur),
+    // indépendamment de l'opt-in coupe-moteur (incident 2026-07-14) : on force cutOnHolidays.
+    const state = evaluateSchedule(
+      { ...(workSchedule as unknown as VehicleSchedule), cutOnHolidays: true },
+      now,
+    ).state;
     return state === 'OUT_OF_WINDOW'
       ? { isPrivate: true, reason: 'OUT_OF_HOURS' }
       : { isPrivate: false, reason: 'WORK_HOURS' };
@@ -57,5 +62,9 @@ export function isWithinWorkHours(
   now: Date = new Date(),
 ): boolean {
   if (!workSchedule?.enabled) return false;
-  return evaluateSchedule(workSchedule as unknown as VehicleSchedule, now).state === 'IN_WINDOW';
+  // Idem : les fériés restent « hors-travail » pour le cadre de temps de travail (cutOnHolidays forcé).
+  return evaluateSchedule(
+    { ...(workSchedule as unknown as VehicleSchedule), cutOnHolidays: true },
+    now,
+  ).state === 'IN_WINDOW';
 }
