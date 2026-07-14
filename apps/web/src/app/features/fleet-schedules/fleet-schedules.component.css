@@ -79,6 +79,10 @@
 /* Aperçu jours fériés (incident 14/07) : vert rassurant si roulent normalement, ambre si coupés. */
 .banner.holiday-ok { background: rgba(16,185,129,.10); color: #047857; border: 1px solid rgba(16,185,129,.35); }
 .banner.holiday-warn { background: rgba(245,158,11,.12); color: #b45309; border: 1px solid rgba(245,158,11,.45); }
+/* Bouton « Réactiver » sur une ligne suspendue (efface l'override → rejoint le cycle). */
+.btn-reactivate { margin-top: 5px; padding: 3px 10px; font-size: 11.5px; font-weight: 700; border-radius: 8px; border: 1px solid #0ea5e9; background: transparent; color: #0ea5e9; cursor: pointer; white-space: nowrap; }
+.btn-reactivate:hover:not(:disabled) { background: rgba(14,165,233,.10); }
+.btn-reactivate:disabled { opacity: .5; cursor: default; }
 .plates { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .plate-chip { background: rgba(0,0,0,.06); border-radius: 6px; padding: 1px 6px; font-weight: 600; font-size: 12px; }
 

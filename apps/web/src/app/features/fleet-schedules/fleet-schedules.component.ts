@@ -109,6 +109,8 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
   protected readonly cutMinStoppedSec = signal(600);
   /** Aperçu jours fériés à venir + effet de l'automatisation (incident 14/07 : anticiper). */
   protected readonly holidayForecast = signal<FleetScheduleHolidayForecast | null>(null);
+  /** Véhicules dont la « Réactivation » est en cours (désactive le bouton). */
+  protected readonly reactivating = signal<Set<string>>(new Set());
   protected readonly truncated = signal(false);
   protected readonly lastUpdated = signal<number | null>(null);
 
@@ -461,6 +463,20 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
     if (d.getFullYear() > 2900) return 'Bloqué (veilleur) — jusqu’au rallumage manuel';
     const label = d.toLocaleString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
     return `Reprend l’horaire ${label}`;
+  }
+
+  /** « Réactiver » un véhicule suspendu → efface l'override, il rejoint le cycle (coupe au prochain créneau). */
+  protected async reactivate(r: FleetScheduleRowDto): Promise<void> {
+    if (this.reactivating().has(r.vehicleId)) return;
+    this.reactivating.update((s) => new Set(s).add(r.vehicleId));
+    try {
+      await firstValueFrom(this.api.reactivate(r.vehicleId));
+      await this.load(true);
+    } catch {
+      this.error.set('Réactivation impossible.');
+    } finally {
+      this.reactivating.update((s) => { const n = new Set(s); n.delete(r.vehicleId); return n; });
+    }
   }
 
   /** Libellé lisible d'un jour férié : « mardi 15 août — Assomption ». */

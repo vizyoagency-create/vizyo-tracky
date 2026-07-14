@@ -5,6 +5,7 @@ import {
   Get,
   NotFoundException,
   Param,
+  Post,
   Put,
   Query,
   Req,
@@ -53,6 +54,25 @@ export class VehicleSchedulesController {
     @Req() req: AuthenticatedRequest,
   ) {
     return this.schedules.upsert(vehicleId, dto, {
+      userId: req.user.id,
+      role: req.user.role,
+      fleetId: req.user.fleetId,
+    });
+  }
+
+  /**
+   * « Réactiver » (incident 2026-07-14) — efface l'override manuel (« Suspendu ») pour que le
+   * véhicule REJOIGNE le cycle horaire comme les autres. Ouvert au veilleur (peut lever son
+   * propre blocage) + fleet-admin/super-admin, scopé per-véhicule via schedules_manage.
+   */
+  @Post('reactivate')
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.NIGHT_WATCHMAN)
+  @RequireVehiclePermission('schedules_manage', { paramName: 'vehicleId' })
+  reactivate(
+    @Param('vehicleId') vehicleId: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.schedules.reactivate(vehicleId, {
       userId: req.user.id,
       role: req.user.role,
       fleetId: req.user.fleetId,

@@ -202,6 +202,13 @@
                   @if (r.overrideActive && overrideResume(r); as resume) {
                     <div class="xsmall muted">↻ {{ resume }}</div>
                   }
+                  @if (r.overrideActive && canEdit(r)) {
+                    <button type="button" class="btn-reactivate" (click)="reactivate(r)"
+                            [disabled]="reactivating().has(r.vehicleId)"
+                            title="Efface la suspension : le véhicule rejoint le cycle horaire (coupé au prochain créneau, comme les autres).">
+                      ↻ Réactiver
+                    </button>
+                  }
                 </td>
                 <td>
                   @if (r.overrideActive) {

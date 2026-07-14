@@ -75,10 +75,17 @@ export class VehicleSchedulesService {
       }
     }
 
-    // Reset lastEvaluatedState when disabling (clean slate for next activation)
+    // Reset lastEvaluatedState when disabling (clean slate for next activation).
+    // Sync fiche↔flotte (incident 2026-07-14) : ACTIVER un planning efface un override PÉRIMÉ
+    // (sinon la fiche affiche « activé » mais la page flotte « suspendu »). On PRÉSERVE un
+    // blocage veilleur volontaire (sentinelle lointaine 9999).
+    const clearStaleOverride =
+      willBeEnabled && !!existing?.overrideUntil && existing.overrideUntil.getFullYear() < 2900;
     const updateData = wasEnabled && !willBeEnabled
       ? { ...jsonifiedDto, lastEvaluatedState: null, lastEvaluatedAt: null }
-      : jsonifiedDto;
+      : clearStaleOverride
+        ? { ...jsonifiedDto, overrideUntil: null }
+        : jsonifiedDto;
 
     const updated = await this.prisma.vehicleSchedule.upsert({
       where: { vehicleId },
@@ -182,6 +189,25 @@ export class VehicleSchedulesService {
 
     // Retourner l'état frais (lastEvaluatedState peut avoir changé par l'évaluation immédiate)
     return this.prisma.vehicleSchedule.findUnique({ where: { id: updated.id } }) as Promise<VehicleSchedule>;
+  }
+
+  /**
+   * « Réactiver » (incident 2026-07-14) : efface l'override manuel d'un véhicule « Suspendu »
+   * pour qu'il REJOIGNE le cycle horaire comme les autres. On force la réconciliation en posant
+   * lastEvaluatedState à l'OPPOSÉ de l'état courant → au prochain tick cron (< 1 min) la transition
+   * due est appliquée (coupe si hors plage, rallume si dans la plage), source SCHEDULER (PAS de
+   * nouvel override). Lève AUSSI un blocage veilleur (action fleet-admin délibérée).
+   */
+  async reactivate(vehicleId: string, requestedBy: RequestedBy): Promise<VehicleSchedule> {
+    await this.assertAccess(vehicleId, requestedBy);
+    const sched = await this.prisma.vehicleSchedule.findUnique({ where: { vehicleId } });
+    if (!sched) throw new NotFoundException('Aucun horaire programmé pour ce véhicule');
+    const state = sched.enabled ? evaluateSchedule(sched).state : null;
+    const opposite = state === 'IN_WINDOW' ? 'OUT_OF_WINDOW' : state === 'OUT_OF_WINDOW' ? 'IN_WINDOW' : null;
+    return this.prisma.vehicleSchedule.update({
+      where: { vehicleId },
+      data: { overrideUntil: null, lastEvaluatedState: opposite },
+    });
   }
 
   private async assertAccess(vehicleId: string, requestedBy: RequestedBy): Promise<void> {

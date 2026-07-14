@@ -127,6 +127,14 @@ export class VehicleSchedulesApiService {
     );
   }
 
+  /**
+   * « Réactiver » (incident 2026-07-14) — efface l'override manuel (« Suspendu ») pour que le
+   * véhicule REJOIGNE le cycle horaire comme les autres.
+   */
+  reactivate(vehicleId: string): Observable<VehicleScheduleDto> {
+    return this.http.post<VehicleScheduleDto>(`/api/vehicles/${vehicleId}/schedule/reactivate`, {});
+  }
+
   /** V1.5 (Sprint K) — timeline des transitions auto sur 90j. */
   history(vehicleId: string, limit = 100): Observable<{ items: ScheduleHistoryItem[] }> {
     return this.http.get<{ items: ScheduleHistoryItem[] }>(
