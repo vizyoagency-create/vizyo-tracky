@@ -6,7 +6,8 @@ import { Observable } from 'rxjs';
 /**
  * IA — état & interrupteur maître par flotte (2026-07). Le front masque les actions IA quand l'IA est
  * DÉSACTIVÉE pour la flotte de l'utilisateur (l'analyse déterministe des trajets/stations/scores reste
- * accessible). Optimiste par défaut (`enabled=true`) tant que le statut n'est pas chargé : le vrai
+ * accessible). OPT-IN (2026-07) : par défaut `enabled=false` tant que le statut n'est pas chargé —
+ * on ne montre PAS d'actions IA avant confirmation (évite un flash de boutons IA puis un 403). Le vrai
  * garde-fou reste côté serveur (403), l'UI n'est qu'un confort.
  */
 @Injectable({ providedIn: 'root' })
@@ -16,8 +17,8 @@ export class AiStatusService {
   private loading = false;
 
   readonly status = this._status.asReadonly();
-  /** IA utilisable pour la flotte de l'utilisateur (config serveur + interrupteur maître ON). */
-  readonly enabled = computed(() => this._status()?.enabled ?? true);
+  /** IA utilisable pour la flotte de l'utilisateur (config serveur + interrupteur maître ON). Défaut OFF (opt-in). */
+  readonly enabled = computed(() => this._status()?.enabled ?? false);
   /** Au moins une clé provider présente côté serveur. */
   readonly configured = computed(() => this._status()?.configured ?? false);
 

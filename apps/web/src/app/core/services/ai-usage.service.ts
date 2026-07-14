@@ -29,11 +29,12 @@ export class AiUsageApiService {
     return this.http.get<AiUsageSummaryDto>('/api/admin/ai-usage/summary', { params });
   }
 
-  /** Journal des appels (curseur temporel `before` = ISO), filtrable. */
-  logs(opts: { limit?: number; before?: string; userId?: string; fleetId?: string; action?: string } = {}): Observable<AiUsageLogsPageDto> {
+  /** Journal des appels (curseur temporel `before` = ISO ; `after` = borne basse pour un filtre jour), filtrable. */
+  logs(opts: { limit?: number; before?: string; after?: string; userId?: string; fleetId?: string; action?: string } = {}): Observable<AiUsageLogsPageDto> {
     const params: Record<string, string> = {};
     if (opts.limit) params['limit'] = String(opts.limit);
     if (opts.before) params['before'] = opts.before;
+    if (opts.after) params['after'] = opts.after;
     if (opts.userId) params['userId'] = opts.userId;
     if (opts.fleetId) params['fleetId'] = opts.fleetId;
     if (opts.action) params['action'] = opts.action;

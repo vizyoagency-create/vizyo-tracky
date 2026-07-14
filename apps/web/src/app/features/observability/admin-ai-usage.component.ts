@@ -1,17 +1,19 @@
-import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, OnInit, signal, untracked } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
   LucideAngularModule, ChevronLeft, Zap, Wallet, Users, Building2, Layers, TrendingUp,
-  RefreshCw, AlertTriangle, Loader, Check, Save, Cpu,
+  RefreshCw, AlertTriangle, Loader, Check, Save, Cpu, Calendar, Power,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import type {
   AiProviderMode, AiProviderSettingsDto, AiUsageBreakdownRowDto, AiUsageLogRowDto, AiUsageSummaryDto,
 } from '@vizyo/tracky-shared';
 import { AiUsageApiService } from '../../core/services/ai-usage.service';
+import { AiStatusService } from '../../core/services/ai-status.service';
 import { AuthService } from '../../core/services/auth.service';
+import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 
 type Period = '24h' | '7d' | '30d';
@@ -42,9 +44,13 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
         <div class="au-actions">
           <div class="au-seg">
             @for (p of periods; track p.key) {
-              <button type="button" (click)="setPeriod(p.key)" [class.on]="period() === p.key">{{ p.label }}</button>
+              <button type="button" (click)="setPeriod(p.key)" [class.on]="period() === p.key && !day()">{{ p.label }}</button>
             }
           </div>
+          <label class="au-day" [class.au-day--on]="day()" title="Filtrer sur un jour précis">
+            <lucide-icon [img]="CalendarIcon" [size]="14"></lucide-icon>
+            <input type="date" [value]="day()" (change)="setDay($any($event.target).value)" [max]="todayIso()">
+          </label>
           <button type="button" class="au-refresh" (click)="reload()" [disabled]="loading()" aria-label="Rafraîchir">
             <lucide-icon [img]="RefreshIcon" [size]="15" [class.au-spin]="loading()"></lucide-icon>
           </button>
@@ -56,6 +62,31 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
       }
 
       @if (summary(); as s) {
+        <!-- ── ASSISTANCE IA PAR SOCIÉTÉ (opt-in owner) ── -->
+        @if (isSuperAdmin()) {
+          @if (s.scopedFleet; as sf) {
+            <section class="au-ai" [attr.data-on]="sf.aiEnabled">
+              <div class="au-ai-main">
+                <div class="au-ai-ico" [attr.data-on]="sf.aiEnabled"><lucide-icon [img]="PowerIcon" [size]="18"></lucide-icon></div>
+                <div class="au-ai-txt">
+                  <span class="au-ai-title">Assistance IA — {{ sf.name }}</span>
+                  <span class="au-ai-sub">
+                    @if (sf.aiEnabled) { <strong>Active</strong> — récit de trajet, agent d'agenda, optimiseur et saisie vocale sont disponibles pour cette société. }
+                    @else { <strong>Désactivée</strong> — l'analyse déterministe (trajets, stations, scores) reste disponible ; seuls les services IA sont coupés. }
+                  </span>
+                </div>
+              </div>
+              <label class="au-ai-sw" [class.au-ai-sw--busy]="savingAi()">
+                @if (savingAi()) { <lucide-icon [img]="LoaderIcon" [size]="15" class="au-spin"></lucide-icon> }
+                <input type="checkbox" [checked]="sf.aiEnabled" [disabled]="savingAi()" (change)="toggleFleetAi($any($event.target).checked)" aria-label="Activer l'IA pour cette société">
+                <span class="au-ai-sw-track"><span class="au-ai-sw-knob"></span></span>
+              </label>
+            </section>
+          } @else {
+            <div class="au-ai-hint"><lucide-icon [img]="PowerIcon" [size]="14"></lucide-icon> Sélectionnez une société dans le sélecteur en haut pour activer ou couper son IA (l'IA est <strong>désactivée par défaut</strong>).</div>
+          }
+        }
+
         <!-- ── BUDGET ── -->
         <section class="au-budget" [attr.data-status]="s.budget.status">
           <div class="au-budget-head">
@@ -264,6 +295,32 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
     .au-refresh { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: var(--bg-secondary); border: 1px solid var(--border-subtle); color: var(--fg-secondary); }
     .au-alert { display: flex; align-items: center; gap: 8px; padding: 11px 13px; border-radius: 11px; background: rgba(239,68,68,.1); color: #EF4444; font-size: 13px; }
 
+    /* Filtre JOUR précis */
+    .au-day { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 10px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); color: var(--fg-tertiary); }
+    .au-day--on { border-color: color-mix(in srgb, var(--tracky-light, #10E0A0) 45%, transparent); color: var(--fg-secondary); }
+    .au-day input { border: 0; background: transparent; color: var(--fg-primary); font-size: 12.5px; font-family: inherit; padding: 0; }
+
+    /* Assistance IA par société (opt-in owner) */
+    .au-ai { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 15px 18px; border-radius: 16px; background: var(--bg-secondary); border: 1.5px solid var(--border-subtle); }
+    .au-ai[data-on="true"] { border-color: color-mix(in srgb, var(--tracky-light, #10E0A0) 42%, transparent); background: color-mix(in srgb, var(--tracky-light, #10E0A0) 6%, var(--bg-secondary)); }
+    .au-ai-main { display: flex; align-items: center; gap: 13px; min-width: 0; }
+    .au-ai-ico { width: 40px; height: 40px; border-radius: 11px; display: flex; align-items: center; justify-content: center; background: var(--bg-tertiary); color: var(--fg-tertiary); flex-shrink: 0; }
+    .au-ai-ico[data-on="true"] { background: rgba(16,224,160,.14); color: var(--tracky-light, #10E0A0); }
+    .au-ai-txt { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+    .au-ai-title { font-size: 14.5px; font-weight: 800; color: var(--fg-primary); }
+    .au-ai-sub { font-size: 12px; color: var(--fg-tertiary); line-height: 1.4; }
+    .au-ai-sub strong { color: var(--fg-secondary); }
+    /* Interrupteur */
+    .au-ai-sw { position: relative; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; flex-shrink: 0; }
+    .au-ai-sw input { position: absolute; opacity: 0; width: 0; height: 0; }
+    .au-ai-sw-track { width: 46px; height: 26px; border-radius: 999px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); position: relative; transition: background .18s; }
+    .au-ai-sw-knob { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: var(--fg-tertiary); transition: transform .18s, background .18s; }
+    .au-ai-sw input:checked + .au-ai-sw-track { background: var(--tracky, #10B981); border-color: transparent; }
+    .au-ai-sw input:checked + .au-ai-sw-track .au-ai-sw-knob { transform: translateX(20px); background: #fff; }
+    .au-ai-sw--busy { opacity: .6; pointer-events: none; }
+    .au-ai-hint { display: flex; align-items: center; gap: 8px; padding: 11px 14px; border-radius: 12px; background: var(--bg-secondary); border: 1px dashed var(--border-subtle); color: var(--fg-tertiary); font-size: 12.5px; }
+    .au-ai-hint strong { color: var(--fg-secondary); }
+
     /* Budget */
     .au-budget { padding: 18px; border-radius: 16px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 12px; }
     .au-budget[data-status="warn"] { border-color: rgba(245,158,11,.4); }
@@ -358,10 +415,14 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
 })
 export class AdminAiUsageComponent implements OnInit {
   private readonly api = inject(AiUsageApiService);
+  private readonly aiStatus = inject(AiStatusService);
   private readonly auth = inject(AuthService);
+  private readonly fleet = inject(FleetFilterService);
   private readonly toast = inject(ToastService);
   /** Le budget (plafond global) n'est éditable que par un super-admin ; un fleet-admin est en lecture seule scopée. */
   protected readonly isSuperAdmin = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
+  /** Société filtrée dans le sélecteur global du top-bar (null = toutes). */
+  protected readonly selectedFleetId = this.fleet.selectedFleetId;
 
   protected readonly BackIcon = ChevronLeft;
   protected readonly ZapIcon = Zap;
@@ -376,6 +437,8 @@ export class AdminAiUsageComponent implements OnInit {
   protected readonly CheckIcon = Check;
   protected readonly SaveIcon = Save;
   protected readonly CpuIcon = Cpu;
+  protected readonly CalendarIcon = Calendar;
+  protected readonly PowerIcon = Power;
 
   protected readonly periods: { key: Period; label: string }[] = [
     { key: '24h', label: '24 h' },
@@ -384,12 +447,34 @@ export class AdminAiUsageComponent implements OnInit {
   ];
 
   protected readonly period = signal<Period>('30d');
+  /** Filtre JOUR précis (YYYY-MM-DD) — prime sur la période quand renseigné ('' = période active). */
+  protected readonly day = signal<string>('');
   protected readonly tab = signal<BreakdownTab>('user');
   protected readonly summary = signal<AiUsageSummaryDto | null>(null);
   protected readonly loading = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly budgetInput = signal<string>('');
   protected readonly savingBudget = signal(false);
+  /** Bascule de l'interrupteur maître IA de la société scopée. */
+  protected readonly savingAi = signal(false);
+
+  /** Dernière société chargée (undefined = pas encore initialisé) — pour ne recharger QUE sur vrai changement. */
+  private lastFleetId: string | null | undefined = undefined;
+
+  constructor() {
+    // Rechargement AUTO quand la société du sélecteur global change (le filtre société doit « marcher »).
+    // On track UNIQUEMENT selectedFleetId ; le reload (qui lit période/jour) tourne en untracked.
+    // Le 1er run enregistre juste la valeur initiale (le chargement initial est fait par ngOnInit).
+    effect(() => {
+      const fid = this.selectedFleetId();
+      untracked(() => {
+        if (this.lastFleetId === undefined) { this.lastFleetId = fid; return; }
+        if (fid === this.lastFleetId) return;
+        this.lastFleetId = fid;
+        void this.reload();
+      });
+    });
+  }
 
   /** Switch de moteur IA (Claude ↔ GPT) — super-admin. */
   protected readonly provider = signal<AiProviderSettingsDto | null>(null);
@@ -415,29 +500,54 @@ export class AdminAiUsageComponent implements OnInit {
   });
 
   protected periodLabel(): string {
+    const d = this.day();
+    if (d) return `le ${d.split('-').reverse().join('/')}`;
     return this.period() === '24h' ? '24 dernières heures' : this.period() === '7d' ? '7 derniers jours' : '30 derniers jours';
   }
 
+  /** Date du jour (YYYY-MM-DD) — borne max de l'input date (pas de filtre sur le futur). */
+  protected todayIso(): string {
+    return new Date().toISOString().slice(0, 10);
+  }
+
   ngOnInit(): void {
+    this.lastFleetId = this.selectedFleetId();
     void this.reload();
   }
 
   protected setPeriod(p: Period): void {
-    if (p === this.period()) return;
+    // Période et JOUR précis sont exclusifs : choisir une période efface le filtre jour.
+    if (p === this.period() && !this.day()) return;
     this.period.set(p);
+    this.day.set('');
     void this.reload();
   }
 
-  private fromIso(): string {
+  /** Filtre sur un JOUR précis (input date). '' = revenir à la période glissante. */
+  protected setDay(value: string): void {
+    if (value === this.day()) return;
+    this.day.set(value);
+    void this.reload();
+  }
+
+  /** Fenêtre [from,to] envoyée à l'API : un JOUR précis si `day` est renseigné, sinon la période glissante. */
+  private range(): { from: string; to?: string } {
+    const d = this.day();
+    if (d) {
+      // Bornes du jour choisi en heure LOCALE de l'opérateur (converties en UTC pour l'API).
+      return { from: new Date(`${d}T00:00:00`).toISOString(), to: new Date(`${d}T23:59:59.999`).toISOString() };
+    }
     const days = this.period() === '24h' ? 1 : this.period() === '7d' ? 7 : 30;
-    return new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
+    return { from: new Date(Date.now() - days * 24 * 3600 * 1000).toISOString() };
   }
 
   protected async reload(): Promise<void> {
     this.loading.set(true);
     this.error.set(null);
     try {
-      const s = await firstValueFrom(this.api.summary(this.fromIso()));
+      const { from, to } = this.range();
+      const fleetId = this.selectedFleetId() ?? undefined;
+      const s = await firstValueFrom(this.api.summary(from, to, fleetId));
       this.summary.set(s);
       if (this.budgetInput() === '' && s.budget.monthlyBudgetEur > 0) {
         this.budgetInput.set(String(s.budget.monthlyBudgetEur));
@@ -455,6 +565,24 @@ export class AdminAiUsageComponent implements OnInit {
       this.error.set(this.errMsg(e));
     } finally {
       this.loading.set(false);
+    }
+  }
+
+  /** Interrupteur maître IA de la société scopée (opt-in owner). Super-admin depuis la vue filtrée société. */
+  protected async toggleFleetAi(enabled: boolean): Promise<void> {
+    const scoped = this.summary()?.scopedFleet;
+    if (!scoped || this.savingAi()) return;
+    this.savingAi.set(true);
+    try {
+      await firstValueFrom(this.aiStatus.setFleetEnabled(enabled, scoped.id));
+      const s = this.summary();
+      if (s?.scopedFleet) this.summary.set({ ...s, scopedFleet: { ...s.scopedFleet, aiEnabled: enabled } });
+      this.aiStatus.refresh(); // resynchronise l'état IA global du front
+      this.toast.success('Assistance IA', `${enabled ? 'Activée' : 'Désactivée'} pour ${scoped.name}.`);
+    } catch (e) {
+      this.toast.error('Assistance IA', this.errMsg(e));
+    } finally {
+      this.savingAi.set(false);
     }
   }
 
@@ -476,8 +604,13 @@ export class AdminAiUsageComponent implements OnInit {
   }
 
   private async loadLogs(reset: boolean): Promise<void> {
+    // Journal scopé par SOCIÉTÉ (sélecteur global) et, si un JOUR précis est filtré, borné à ce jour.
+    const { from, to } = this.range();
+    const dayFilter = !!this.day();
+    const fleetId = this.selectedFleetId() ?? undefined;
+    const before = reset ? (dayFilter ? to : undefined) : (this.logCursor() ?? undefined);
     const page = await firstValueFrom(
-      this.api.logs({ limit: 30, action: this.logAction(), before: reset ? undefined : this.logCursor() ?? undefined }),
+      this.api.logs({ limit: 30, action: this.logAction(), fleetId, before, after: dayFilter ? from : undefined }),
     );
     this.logRows.set(reset ? page.rows : [...this.logRows(), ...page.rows]);
     this.logCursor.set(page.nextCursor);
@@ -556,8 +689,13 @@ export class AdminAiUsageComponent implements OnInit {
     const max = Math.max(...rows.map((x) => x.costEur), 0);
     return max > 0 ? Math.max(2, (d.costEur / max) * 100) : 0;
   }
+  private static readonly ACTION_LABELS: Record<string, string> = {
+    capacity: 'Capacité', placement: 'Placement', agenda_optimization: 'Agenda (agent)',
+    agenda_agent: 'Agent agenda', activity_report: "Rapport d'activité",
+    trip_analysis: 'Analyse de trajet', booking_parse: 'Réservation (vocal)',
+  };
   protected actionLabel(a: string): string {
-    return a === 'capacity' ? 'Capacité' : a === 'placement' ? 'Placement' : a;
+    return AdminAiUsageComponent.ACTION_LABELS[a] ?? a;
   }
 
   private errMsg(e: unknown): string {

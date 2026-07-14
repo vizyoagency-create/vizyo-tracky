@@ -32,27 +32,29 @@ export class AiAvailabilityService {
    */
   async isEnabledForFleet(fleetId: string | null | undefined, now = Date.now()): Promise<boolean> {
     if (!this.router.isConfigured()) return false;
-    if (!fleetId) return true;
+    // OPT-IN (2026-07) : l'IA est OFF par défaut. Tous les replis sont fail-CLOSED — aucune
+    // flotte n'a l'IA tant qu'elle n'est pas explicitement activée. (Avant : fail-open `?? true`.)
+    if (!fleetId) return false;
     const hit = this.cache.get(fleetId);
     if (hit && now - hit.at < AiAvailabilityService.TTL_MS) return hit.v;
-    let enabled = true;
+    let enabled = false;
     try {
       const f = await this.prisma.fleet.findUnique({ where: { id: fleetId }, select: { aiEnabled: true } });
-      enabled = f?.aiEnabled ?? true;
+      enabled = f?.aiEnabled ?? false;
     } catch {
-      enabled = hit?.v ?? true; // erreur DB : dernière valeur connue, sinon on ne coupe pas l'existant
+      enabled = hit?.v ?? false; // erreur DB : dernière valeur connue, sinon OFF (on n'active jamais par erreur)
     }
     this.cache.set(fleetId, { v: enabled, at: now });
     return enabled;
   }
 
-  /** Réglage brut d'une flotte (pour l'UI de réglages). */
+  /** Réglage brut d'une flotte (pour l'UI de réglages). Défaut OFF (opt-in). */
   async fleetSetting(fleetId: string): Promise<boolean> {
     try {
       const f = await this.prisma.fleet.findUnique({ where: { id: fleetId }, select: { aiEnabled: true } });
-      return f?.aiEnabled ?? true;
+      return f?.aiEnabled ?? false;
     } catch {
-      return true;
+      return false;
     }
   }
 

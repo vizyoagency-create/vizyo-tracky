@@ -51,6 +51,7 @@ const ACTION_LABELS: Record<string, string> = {
   agenda_agent: 'Agent agenda',
   activity_report: "Rapport d'activité",
   trip_analysis: 'Analyse de trajet',
+  booking_parse: 'Réservation (vocal)',
 };
 
 export interface AiUsageEntry {
@@ -224,6 +225,10 @@ export class AiUsageService {
     const totalCostUsd = agg._sum.costUsd ?? 0;
     // Budget : global (super-admin) OU vue scopée flotte (visibilité seule, pas de plafond par flotte).
     const budget = scopeFleetId ? await this.fleetBudgetView(scopeFleetId, rate, viewer) : await this.getBudget(viewer);
+    // Flotte scopée : identité + interrupteur maître IA → pilotage de l'IA PAR SOCIÉTÉ depuis la page.
+    const scopedFleet = scopeFleetId
+      ? await this.prisma.fleet.findUnique({ where: { id: scopeFleetId }, select: { id: true, name: true, aiEnabled: true } })
+      : null;
 
     return {
       from: from.toISOString(),
@@ -240,20 +245,23 @@ export class AiUsageService {
       byUser,
       byDay,
       budget,
+      scopedFleet: scopedFleet ?? null,
     };
   }
 
-  async logs(opts: { limit?: number; before?: string; userId?: string; fleetId?: string; action?: string }, viewer: { isOwner?: boolean | null } = {}): Promise<AiUsageLogsPageDto> {
+  async logs(opts: { limit?: number; before?: string; after?: string; userId?: string; fleetId?: string; action?: string }, viewer: { isOwner?: boolean | null } = {}): Promise<AiUsageLogsPageDto> {
     const rate = this.usdToEur();
     const take = Math.min(Math.max(opts.limit ?? 50, 1), 200);
     const where: Prisma.AiUsageLogWhereInput = {};
     if (opts.userId) where.userId = opts.userId;
     if (opts.fleetId) where.fleetId = opts.fleetId;
     if (opts.action) where.action = opts.action;
-    if (opts.before) {
-      const d = new Date(opts.before);
-      if (!Number.isNaN(d.getTime())) where.createdAt = { lt: d };
-    }
+    // Fenêtre temporelle : `before` = curseur de pagination (borne haute exclusive) ; `after` = borne
+    // basse (filtre JOUR précis). Les deux peuvent coexister (journal borné à un jour + pagination).
+    const createdAt: Prisma.DateTimeFilter = {};
+    if (opts.before) { const d = new Date(opts.before); if (!Number.isNaN(d.getTime())) createdAt.lt = d; }
+    if (opts.after) { const d = new Date(opts.after); if (!Number.isNaN(d.getTime())) createdAt.gte = d; }
+    if (createdAt.lt || createdAt.gte) where.createdAt = createdAt;
     // Owner plateforme — appels IA de l'owner exclus pour un viewer non-owner
     // (userId nullable → on conserve les null système).
     if (this.ownerVis.isMasked(viewer)) {

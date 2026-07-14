@@ -1,9 +1,11 @@
 import { Body, Controller, ForbiddenException, Get, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import type { AiStatusDto, FleetAiSettingDto, SetAiEnabledDto } from '@vizyo/tracky-shared';
+import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { AiAvailabilityService } from './ai-availability.service';
 
@@ -15,7 +17,7 @@ import { AiAvailabilityService } from './ai-availability.service';
  *   (super-admin : n'importe quelle flotte via `fleetId`). Scopé anti-IDOR.
  */
 @Controller('ai')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class AiStatusController {
   constructor(private readonly aiAvail: AiAvailabilityService) {}
 
@@ -32,6 +34,7 @@ export class AiStatusController {
 
   @Get('fleet-enabled')
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN)
+  @RequirePermissions('ai_configure')
   async getFleetEnabled(@Req() req: AuthenticatedRequest, @Query('fleetId') fleetId?: string): Promise<FleetAiSettingDto> {
     const id = this.resolveFleet(req, fleetId);
     return { fleetId: id, enabled: await this.aiAvail.fleetSetting(id) };
@@ -39,6 +42,7 @@ export class AiStatusController {
 
   @Put('fleet-enabled')
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN)
+  @RequirePermissions('ai_configure')
   async setFleetEnabled(@Req() req: AuthenticatedRequest, @Body() dto: SetAiEnabledDto): Promise<FleetAiSettingDto> {
     const id = this.resolveFleet(req, dto?.fleetId);
     const enabled = await this.aiAvail.setFleet(id, !!dto?.enabled);

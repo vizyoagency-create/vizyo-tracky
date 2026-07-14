@@ -202,7 +202,8 @@ model Fleet {
   // (récit de trajet, agent d'agenda, optimiseur, parsing vocal des réservations) est DÉSACTIVÉE ;
   // l'app reste pleinement fonctionnelle sans IA (analyse déterministe des trajets, stations, scores
   // = NON IA, jamais coupés). Togglable par le FLEET_ADMIN depuis ses réglages (et par un super-admin).
-  aiEnabled               Boolean @default(true)
+  // OPT-IN (2026-07-14) : défaut OFF — aucune flotte n'a l'IA tant qu'un admin ne l'active pas.
+  aiEnabled               Boolean @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

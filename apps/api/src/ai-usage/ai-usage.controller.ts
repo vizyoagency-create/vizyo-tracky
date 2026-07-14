@@ -57,13 +57,14 @@ export class AiUsageController {
     return this.svc.summary(from, to, this.scopeFleet(req, fleetId), req.user);
   }
 
-  /** GET /api/admin/ai-usage/logs — journal des appels (curseur temporel `before` = ISO). */
+  /** GET /api/admin/ai-usage/logs — journal des appels (curseur `before` = ISO ; `after` = borne basse jour). */
   @Get('logs')
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN)
   logs(
     @Req() req: AuthenticatedRequest,
     @Query('limit') limit?: string,
     @Query('before') before?: string,
+    @Query('after') after?: string,
     @Query('userId') userId?: string,
     @Query('fleetId') fleetId?: string,
     @Query('action') action?: string,
@@ -71,6 +72,7 @@ export class AiUsageController {
     return this.svc.logs({
       limit: limit ? parseInt(limit, 10) : undefined,
       before,
+      after,
       userId,
       fleetId: this.scopeFleet(req, fleetId),
       action,

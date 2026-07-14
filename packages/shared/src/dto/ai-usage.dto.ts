@@ -54,6 +54,12 @@ export interface AiUsageSummaryDto {
   /** Coût par jour (ordre chronologique) — tendance. */
   byDay: AiUsageBreakdownRowDto[];
   budget: AiUsageBudgetDto;
+  /**
+   * Flotte SCOPÉE par la vue (société ciblée par le filtre société d'un super-admin, ou la flotte
+   * d'un fleet-admin) : identité + INTERRUPTEUR MAÎTRE IA. `null` en vue « toutes les sociétés ».
+   * Permet de piloter l'IA PAR SOCIÉTÉ directement depuis la page Coûts IA (opt-in owner).
+   */
+  scopedFleet: { id: string; name: string; aiEnabled: boolean } | null;
 }
 
 /** Une ligne du journal des appels (le plus récent d'abord). */
