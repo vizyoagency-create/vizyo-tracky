@@ -14,7 +14,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PermissionsResolverService } from '../permissions/permissions-resolver.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 import { VehiclesService, type RequestedBy } from '../vehicles/vehicles.service';
-import { computeNextTransition, evaluateSchedule } from './schedule-evaluator';
+import { computeNextTransition, computeUpcomingHolidays, evaluateSchedule } from './schedule-evaluator';
 import { VehicleSchedulesService } from './vehicle-schedules.service';
 import type { UpsertVehicleScheduleDto } from './dto/upsert-vehicle-schedule.dto';
 import type { BulkScheduleApplyDto } from './dto/bulk-schedule-apply.dto';
@@ -204,10 +204,35 @@ export class FleetSchedulesService {
 
     return {
       items: rows,
+      holidayForecast: this.buildHolidayForecast(schedules, rows, now),
       scheduleCutMinStoppedSec: Math.round(SCHEDULE_CUT_MIN_STOPPED_MS / 1000),
       serverNow: now.toISOString(),
       awaitingStopScanTruncated: truncated,
     };
+  }
+
+  /**
+   * Aperçu « jours fériés » de la flotte (incident 2026-07-14) : prochains fériés + effet de
+   * l'automatisation (roulent normalement / seraient coupés). Permet d'ANTICIPER au lieu de subir.
+   */
+  private buildHolidayForecast(
+    schedules: VehicleSchedule[],
+    rows: FleetScheduleRowDto[],
+    now: Date,
+  ): FleetScheduleListResponse['holidayForecast'] {
+    const enabled = schedules.filter((s) => s.enabled);
+    const scheduledCount = enabled.length;
+    const cutOnHolidayCount = enabled.filter((s) => s.cutOnHolidays).length;
+    // Pays représentatif = le plus fréquent parmi les plannings activés.
+    const ccCounts = new Map<string, number>();
+    for (const s of enabled) if (s.countryCode) ccCounts.set(s.countryCode, (ccCounts.get(s.countryCode) ?? 0) + 1);
+    const representativeCC = [...ccCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
+    const upcoming = representativeCC ? computeUpcomingHolidays(representativeCC, now, 3) : [];
+    // Fenêtre du jour la plus fréquente parmi les lignes activées (ex. « 05:00-21:00 »).
+    const winCounts = new Map<string, number>();
+    for (const r of rows) if (r.scheduleEnabled && r.windowDesc) winCounts.set(r.windowDesc, (winCounts.get(r.windowDesc) ?? 0) + 1);
+    const representativeWindow = [...winCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    return { upcoming, scheduledCount, cutOnHolidayCount, representativeWindow };
   }
 
   // ─────────────────────────────────────────── APERÇU (avant bulk) ───────────────────────────────────────────

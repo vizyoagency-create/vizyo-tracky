@@ -132,6 +132,51 @@ function getHolidays(countryCode: string): Holidays {
   return h;
 }
 
+export interface UpcomingHoliday {
+  /** YYYY-MM-DD (jour local du férié). */
+  date: string;
+  /** Nom localisé (ex. « Fête Nationale de la France »). */
+  name: string;
+}
+
+/**
+ * Prochains jours fériés PUBLICS (à partir de `from`) pour un pays. Sert à l'aperçu de la page
+ * « Horaires flotte » (incident 2026-07-14) : anticiper l'effet de l'automatisation les fériés.
+ * Retourne au plus `count` fériés à venir (jour non encore terminé), triés par date croissante.
+ */
+export function computeUpcomingHolidays(
+  countryCode: string,
+  from: Date = new Date(),
+  count = 3,
+): UpcomingHoliday[] {
+  if (!countryCode) return [];
+  try {
+    const hd = getHolidays(countryCode);
+    const y = from.getFullYear();
+    const all = [...(hd.getHolidays(y) ?? []), ...(hd.getHolidays(y + 1) ?? [])];
+    const out: UpcomingHoliday[] = [];
+    const seen = new Set<string>();
+    for (const h of all
+      .filter((x) => x.type === 'public')
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())) {
+      const start = new Date((h as { start?: Date }).start ?? h.date);
+      if (Number.isNaN(start.getTime())) continue;
+      // Férié « à venir » : sa journée n'est pas terminée.
+      const dayEnd = new Date(start);
+      dayEnd.setHours(23, 59, 59, 999);
+      if (dayEnd.getTime() < from.getTime()) continue;
+      const key = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ date: key, name: h.name });
+      if (out.length >= count) break;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Returns the schedule state at the given moment, with the matching reason
  * + a human-readable window description.

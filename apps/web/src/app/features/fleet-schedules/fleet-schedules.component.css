@@ -76,6 +76,9 @@
 .banner { display: flex; gap: 10px; align-items: flex-start; border-radius: 12px; padding: 12px 14px; font-size: 13px; }
 .banner.danger { background: var(--fs-danger-soft); color: var(--fs-danger); border: 1px solid var(--fs-danger); }
 .banner.info { background: var(--fs-info-soft); color: var(--fs-info); border: 1px solid transparent; }
+/* Aperçu jours fériés (incident 14/07) : vert rassurant si roulent normalement, ambre si coupés. */
+.banner.holiday-ok { background: rgba(16,185,129,.10); color: #047857; border: 1px solid rgba(16,185,129,.35); }
+.banner.holiday-warn { background: rgba(245,158,11,.12); color: #b45309; border: 1px solid rgba(245,158,11,.45); }
 .plates { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .plate-chip { background: rgba(0,0,0,.06); border-radius: 6px; padding: 1px 6px; font-weight: 600; font-size: 12px; }
 

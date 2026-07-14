@@ -13,6 +13,7 @@ import { RouterLink } from '@angular/router';
 import {
   AlarmClock,
   AlertTriangle,
+  CalendarDays,
   Car,
   Check,
   ExternalLink,
@@ -29,6 +30,7 @@ import type {
   BulkScheduleApplyItemResult,
   BulkSchedulePreviewResponse,
   FleetScheduleRowDto,
+  FleetScheduleHolidayForecast,
 } from '@vizyo/tracky-shared';
 import { AuthService } from '../../core/services/auth.service';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
@@ -80,6 +82,7 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
   // Icônes
   protected readonly AlarmClockIcon = AlarmClock;
   protected readonly AlertTriangleIcon = AlertTriangle;
+  protected readonly CalendarDaysIcon = CalendarDays;
   protected readonly CarIcon = Car;
   protected readonly CheckIcon = Check;
   protected readonly TimerIcon = Timer;
@@ -104,6 +107,8 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
   /** Décalage horloge serveur − client (aligne les compte-à-rebours sur l'heure serveur). */
   protected readonly skew = signal(0);
   protected readonly cutMinStoppedSec = signal(600);
+  /** Aperçu jours fériés à venir + effet de l'automatisation (incident 14/07 : anticiper). */
+  protected readonly holidayForecast = signal<FleetScheduleHolidayForecast | null>(null);
   protected readonly truncated = signal(false);
   protected readonly lastUpdated = signal<number | null>(null);
 
@@ -206,6 +211,7 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
     try {
       const res = await firstValueFrom(this.api.listFleet());
       this.rows.set(res.items);
+      this.holidayForecast.set(res.holidayForecast);
       this.cutMinStoppedSec.set(res.scheduleCutMinStoppedSec);
       this.truncated.set(res.awaitingStopScanTruncated);
       this.skew.set(new Date(res.serverNow).getTime() - Date.now());
@@ -283,7 +289,7 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
   protected stateHelp(r: FleetScheduleRowDto): string {
     if (!r.hasTracker) return "Pas de boîtier GPS : l'automatisation horaire ne peut pas s'appliquer.";
     if (!r.scheduleEnabled) return 'Aucun horaire programmé (pas de coupe/reprise automatique).';
-    if (r.overrideActive) return "Une action manuelle (coupure ou remise en marche) a temporairement suspendu l'automatisation sur ce véhicule.";
+    if (r.overrideActive) return "Une action manuelle a suspendu l'automatisation. Le véhicule REJOINT le cycle ensuite (voir la reprise) et se recoupera au prochain créneau. Exception : un blocage veilleur tient jusqu'au rallumage manuel.";
     const cut = this.displayCut(r);
     const pending = this.displayPending(r);
     if (pending === 'DRIVING') return "Ce véhicule ROULE alors que ses horaires sont terminés. Par sécurité on ne coupe jamais en marche : la coupe se fera dès qu'il sera arrêté 10 min. À surveiller.";
@@ -443,6 +449,28 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
   protected readonly applyPendingOffline = computed(
     () => this.applyPending().filter((r) => this.pendingKind(r.vehicleId) === 'OFFLINE').length,
   );
+
+  /**
+   * Quand un véhicule « Suspendu (manuel) » REJOINT l'horaire (depuis overrideUntil), pour
+   * qu'il ne paraisse pas bloqué. La coupe veilleur (hold lointain) tient jusqu'au rallumage manuel.
+   */
+  protected overrideResume(r: FleetScheduleRowDto): string | null {
+    if (!r.overrideActive || !r.overrideUntil) return null;
+    const d = new Date(r.overrideUntil);
+    if (Number.isNaN(d.getTime())) return null;
+    if (d.getFullYear() > 2900) return 'Bloqué (veilleur) — jusqu’au rallumage manuel';
+    const label = d.toLocaleString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    return `Reprend l’horaire ${label}`;
+  }
+
+  /** Libellé lisible d'un jour férié : « mardi 15 août — Assomption ». */
+  protected holidayLabel(h: { date: string; name: string }): string {
+    const d = new Date(h.date + 'T12:00:00');
+    const dateStr = Number.isNaN(d.getTime())
+      ? h.date
+      : d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+    return `${dateStr} — ${h.name}`;
+  }
 
   protected closeApplyPanel(): void {
     this.applyResults.set(null);

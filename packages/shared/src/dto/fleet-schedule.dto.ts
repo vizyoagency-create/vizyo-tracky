@@ -83,8 +83,25 @@ export interface FleetScheduleRowDto {
   awaitingStopUntil: string | null;
 }
 
+/**
+ * Aperçu « jours fériés » de la flotte (incident 2026-07-14) — pour ANTICIPER l'effet de
+ * l'automatisation horaire les fériés, au lieu de le découvrir le jour même.
+ */
+export interface FleetScheduleHolidayForecast {
+  /** Prochains jours fériés PUBLICS (max 3) du pays représentatif de la flotte. */
+  upcoming: { date: string; name: string }[];
+  /** Nb de véhicules avec une automatisation horaire ACTIVÉE. */
+  scheduledCount: number;
+  /** Nb de véhicules qui SERAIENT coupés un jour férié (option `cutOnHolidays` activée). 0 = tous roulent. */
+  cutOnHolidayCount: number;
+  /** Fenêtre horaire la plus fréquente ce jour (ex. « 05:00-21:00 »), ou null si varié/aucune. */
+  representativeWindow: string | null;
+}
+
 export interface FleetScheduleListResponse {
   items: FleetScheduleRowDto[];
+  /** Aperçu jours fériés à venir + effet de l'automatisation (anticipation). */
+  holidayForecast: FleetScheduleHolidayForecast;
   /** Fenêtre d'immobilité minimale avant coupe auto (secondes) — pour l'affichage. */
   scheduleCutMinStoppedSec: number;
   /** ISO — horloge serveur, pour aligner les compte-à-rebours côté client. */

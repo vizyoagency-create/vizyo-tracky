@@ -41,6 +41,29 @@
       </div>
     }
 
+    <!-- Aperçu JOURS FÉRIÉS (incident 14/07) — anticiper l'effet de l'automatisation les fériés. -->
+    @if (holidayForecast(); as hf) {
+      @if (hf.upcoming.length > 0 && hf.scheduledCount > 0) {
+        <div class="banner" [class.holiday-ok]="hf.cutOnHolidayCount === 0" [class.holiday-warn]="hf.cutOnHolidayCount > 0">
+          <lucide-icon [img]="CalendarDaysIcon" [size]="20" />
+          <div>
+            <strong>Prochain jour férié : {{ holidayLabel(hf.upcoming[0]) }}.</strong>
+            @if (hf.representativeWindow) { L'automatisation horaire est active <strong>{{ hf.representativeWindow }}</strong>. }
+            @if (hf.cutOnHolidayCount === 0) {
+              <div>✅ Vos <strong>{{ hf.scheduledCount }}</strong> véhicule(s) programmé(s) rouleront <strong>normalement</strong> ce jour-là (aucune coupe férié configurée).</div>
+            } @else {
+              <div>⚠️ <strong>{{ hf.cutOnHolidayCount }}</strong> véhicule(s) seront <strong>coupés</strong> ce jour-là (coupe férié activée) ; les autres rouleront.</div>
+            }
+            @if (hf.upcoming.length > 1) {
+              <div class="muted small" style="margin-top:4px">Fériés suivants :
+                @for (h of hf.upcoming.slice(1); track h.date) { <span class="plate-chip">{{ holidayLabel(h) }}</span> }
+              </div>
+            }
+          </div>
+        </div>
+      }
+    }
+
     <!-- Synthèse (info-bulle au survol de chaque compteur) -->
     <div class="tiles">
       <div class="tile" title="Nombre total de véhicules de votre périmètre.">
@@ -175,6 +198,9 @@
                   </span>
                   @if (displayPending(r) === 'AWAITING_STOP' && awaitingCountdown(r)) {
                     <div class="xsmall warn-txt">Coupe possible dans {{ awaitingCountdown(r) }}</div>
+                  }
+                  @if (r.overrideActive && overrideResume(r); as resume) {
+                    <div class="xsmall muted">↻ {{ resume }}</div>
                   }
                 </td>
                 <td>

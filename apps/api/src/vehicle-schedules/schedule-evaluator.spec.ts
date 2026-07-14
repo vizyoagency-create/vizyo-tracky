@@ -1,4 +1,4 @@
-import { computeNextTransition, evaluateSchedule } from './schedule-evaluator';
+import { computeNextTransition, computeUpcomingHolidays, evaluateSchedule } from './schedule-evaluator';
 
 /**
  * V1.6 (P6) — Tests unitaires schedule-evaluator (Sprint K).
@@ -169,5 +169,24 @@ describe('computeNextTransition (compte-à-rebours page flotte)', () => {
       sundayEnabled: true, sundayStart: null, sundayEnd: null,
     });
     expect(computeNextTransition(allOpen, MONDAY_10H)).toBeNull();
+  });
+});
+
+describe('computeUpcomingHolidays (aperçu fériés page flotte — incident 14/07)', () => {
+  it('FR renvoie les prochains fériés PUBLICS à venir, triés', () => {
+    const from = new Date('2026-07-01T10:00:00Z');
+    const up = computeUpcomingHolidays('FR', from, 2);
+    expect(up.length).toBe(2);
+    expect(up[0].date).toBe('2026-07-14'); // Fête Nationale
+    expect(up[1].date).toBe('2026-08-15'); // Assomption
+    expect(up[0].name).toBeTruthy();
+  });
+
+  it('sans countryCode → vide', () => {
+    expect(computeUpcomingHolidays('', new Date())).toEqual([]);
+  });
+
+  it('countryCode invalide → vide (ne plante pas)', () => {
+    expect(computeUpcomingHolidays('XX_INVALID', new Date())).toEqual([]);
   });
 });
