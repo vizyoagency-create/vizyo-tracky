@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vizyo Tracky — présentation animée</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;height:100%;background:#080B0A;overflow:hidden}
+  #stage{position:fixed;inset:0}
+  /* Autoplay/loop embed: hide the engine's playback bar and letterbox chrome. */
+  [data-omelette-chrome]{display:none!important}
+  #stage > div{background:#080B0A!important}
+  svg[data-om-exportable-video-with-duration-secs]{box-shadow:none!important}
+</style>
+<script>window.OM_SCENES = '[{"name":"Intro","dur":4.5},{"name":"GPS","dur":5},{"name":"CoupeCircuit","dur":5},{"name":"AnalyseIA","dur":5.5},{"name":"Alertes","dur":4},{"name":"Optimisation","dur":4.5},{"name":"Roles","dur":5},{"name":"ROI","dur":4.5},{"name":"ModulesEco","dur":6},{"name":"MultiPlateforme","dur":5},{"name":"Pivot","dur":4},{"name":"Partenariat","dur":6},{"name":"Closing","dur":4.5}]';</script>
+<script>window.OM_PLAYBACK = '{"mode":"loop"}';</script>
+</head>
+<body>
+<div id="stage"></div>
+<script src="./vendor/react.production.min.js"></script>
+<script src="./vendor/react-dom.production.min.js"></script>
+<script src="./animations-v2.js"></script>
+<script src="./vizyo-scenes.js"></script>
+<script>
+  (function () {
+    var mount = document.getElementById('stage');
+    if (!window.VizyoTrackyVideo || !window.ReactDOM || !window.React) {
+      mount.innerHTML = '<div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#69736E;font:500 15px Manrope,system-ui,sans-serif">Chargement de la présentation…</div>';
+      return;
+    }
+    var el = React.createElement(window.VizyoTrackyVideo, { width: 1920, height: 1080 });
+    ReactDOM.createRoot(mount).render(el);
+    // The Stage auto-scales off a first measure that can land before layout
+    // settles (scale floors at 0.05). Nudge its resize listener across a few
+    // frames so the fit is always correct on load.
+    var nudge = function () { window.dispatchEvent(new Event('resize')); };
+    requestAnimationFrame(nudge);
+    setTimeout(nudge, 120);
+    setTimeout(nudge, 400);
+    window.addEventListener('load', nudge);
+  })();
+</script>
+</body>
+</html>

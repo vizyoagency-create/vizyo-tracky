@@ -150,6 +150,17 @@
     });
   }
 
-  function init() { initHover(); initReveal(); handleHash(); initSim(); initForms(); }
+  // ── Pré-remplissage depuis Maestroo (?from=maestroo) : message tout prêt ──
+  function prefillPartner() {
+    try {
+      var p = new URLSearchParams(location.search);
+      if (p.get('from') !== 'maestroo') return;
+      slice(d.querySelectorAll('form[data-vt-lead] [name="message"]')).forEach(function (el) {
+        if (!el.value) el.value = 'Bonjour, je suis client Maestroo et je souhaite équiper ma flotte avec Vizyo Tracky. Pouvez-vous me présenter vos offres et l’intégration Tracky × Maestroo ? Merci.';
+      });
+    } catch (e) {}
+  }
+
+  function init() { initHover(); initReveal(); handleHash(); initSim(); initForms(); prefillPartner(); }
   if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', init); else init();
 })();
