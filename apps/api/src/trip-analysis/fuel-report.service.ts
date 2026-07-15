@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import type { FuelStationMapPointDto, FuelStationVisitDto, VehicleFuelReportDto } from '@vizyo/tracky-shared';
+import type { FuelStationMapPointDto, FuelStationVisitDto, FuelVisitDto, VehicleFuelReportDto } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
 import { PrismaService } from '../prisma/prisma.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
@@ -28,7 +28,7 @@ export class FuelReportService {
     // 1. Passages en station de la période (triés du plus ancien au plus récent).
     const stops = await this.prisma.tripFuelStop.findMany({
       where: { vehicleId, arrivedAt: { gte: from, lte: to } },
-      select: { arrivedAt: true, unitPriceEur: true, fuelType: true, station: { select: { id: true, brand: true, city: true, address: true } } },
+      select: { arrivedAt: true, durationSec: true, unitPriceEur: true, fuelType: true, station: { select: { id: true, brand: true, city: true, address: true } } },
       orderBy: { arrivedAt: 'asc' },
     });
 
@@ -52,6 +52,37 @@ export class FuelReportService {
       if (s.unitPriceEur != null) e.lastPriceEur = s.unitPriceEur; // stops asc → dernier = plus récent
     }
     const stations = [...byStation.values()].sort((a, b) => b.visits - a.visits);
+
+    // Cohérence des passages : km parcourus depuis le passage station PRÉCÉDENT (Σ des trajets entre
+    // les deux arrivées). Un vrai plein est espacé de km ; deux passages très proches en km (ou 0 km)
+    // trahissent un faux positif (arrêt près d'une station sur une route passante). On surface les
+    // derniers passages avec ce signal + la durée d'arrêt pour que l'opérateur juge.
+    const COHERENCE_MIN_KM = 15;
+    const lastStops = stops.slice(-8);
+    const recentVisits: FuelVisitDto[] = [];
+    for (let i = 0; i < lastStops.length; i++) {
+      const s = lastStops[i];
+      const globalIdx = stops.length - lastStops.length + i;
+      const prev = globalIdx > 0 ? stops[globalIdx - 1] : null;
+      let kmSincePrev: number | null = null;
+      if (prev) {
+        const agg = await this.prisma.trip.aggregate({
+          where: { vehicleId, startedAt: { gt: prev.arrivedAt, lte: s.arrivedAt } },
+          _sum: { distanceKm: true },
+        });
+        kmSincePrev = round(agg._sum.distanceKm ?? 0, 1);
+      }
+      recentVisits.push({
+        at: s.arrivedAt.toISOString(),
+        brand: s.station?.brand ?? null,
+        city: s.station?.city ?? null,
+        priceEur: s.unitPriceEur ?? null,
+        durationMin: Math.round((s.durationSec ?? 0) / 60),
+        kmSincePrev,
+        suspiciouslyClose: kmSincePrev != null && kmSincePrev < COHERENCE_MIN_KM,
+      });
+    }
+    recentVisits.reverse(); // le plus récent en premier
 
     // Prix constatés (pour le carburant du véhicule).
     const priced = stops.filter((s) => s.unitPriceEur != null) as { arrivedAt: Date; unitPriceEur: number }[];
@@ -91,7 +122,7 @@ export class FuelReportService {
 
     return {
       vehicleId, from: from.toISOString(), to: to.toISOString(),
-      visits, avgDaysBetween, stations, fuelType,
+      visits, avgDaysBetween, stations, recentVisits, fuelType,
       priceMin, priceMax, priceAvg, priceLatest, priceTrend,
       estimatedLiters, distanceKm, costAtObservedEur, costAtFleetPriceEur, fleetPriceEurL,
     };

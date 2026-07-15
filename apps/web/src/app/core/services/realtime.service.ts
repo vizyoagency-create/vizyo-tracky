@@ -620,8 +620,28 @@ export class RealtimeService {
       }
     }
 
+    // Incident FS-253 — garder le SNAPSHOT (`last*`) FRAIS depuis le flux WS. Sans ça,
+    // `lastSeenAt`/`lastPositionAt`/`lastNoFixAt` restent GELÉS à l'hydratation : une voiture
+    // qui perd le GPS en cours de session garde un snapshot périmé → le marqueur reste affiché
+    // « vert/en ligne » (bug signalé) au lieu de refléter GPS_LOST / à l'arrêt. On met à jour
+    // uniquement les entrées touchées par ce flush (les autres gardent leur référence).
+    const snap = this.snapshot();
+    let snapChanged = false;
+    const nextSnap = snap.map((s) => {
+      if (!s.trackerId) return s;
+      const ev = this.positionBuffer.get(s.trackerId);
+      if (!ev) return s;
+      snapChanged = true;
+      // Trame valide = nouveau fix GPS ; trame `no_fix` (valid=false) = boîtier vivant sans lock.
+      return ev.valid
+        ? { ...s, lastSeenAt: ev.timestamp, lastIgnition: ev.ignition, lastPositionAt: ev.timestamp,
+            lastLat: ev.lat, lastLng: ev.lng, lastSpeedKmh: ev.speedKmh, lastHeading: ev.heading, lastValid: true }
+        : { ...s, lastSeenAt: ev.timestamp, lastIgnition: ev.ignition, lastNoFixAt: ev.timestamp, lastValid: false };
+    });
+
     this.positionBuffer.clear();
     this.positions.set(next);
+    if (snapChanged) this.snapshot.set(nextSnap);
     if (hydratedDirty && newHydrated) this.hydratedTrackerIds.set(newHydrated);
     if (engineDirty && newEngineCmds) this._engineCommandUpdates.set(newEngineCmds);
   }

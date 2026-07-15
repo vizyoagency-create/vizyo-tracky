@@ -16,8 +16,14 @@ export const OFFLINE_MARKER_COLOR = '#9ca3af';
  *  = à traiter, distinct du gris hors-ligne ET du vert-vitesse (on ne le montre PAS comme actif). */
 export const GPS_LOST_MARKER_COLOR = '#ef4444';
 
-/** Couleur de fond du cœur du marqueur : GPS perdu (rouge) > hors-ligne (gris) > couleur-vitesse. */
+/**
+ * Couleur de fond du cœur du marqueur :
+ * parking souterrain confirmé (gris « à l'arrêt ») > GPS perdu réel (rouge) > hors-ligne (gris) > couleur-vitesse.
+ * Le parking souterrain confirmé PRIME sur le rouge : c'est une perte GPS NORMALE (véhicule garé sous terre),
+ * on ne l'affiche donc PAS en rouge alarmant mais en gris « éteint », comme demandé.
+ */
 function markerColor(data: VehicleMarkerData): string {
+  if (data.parkedDeadZone) return OFFLINE_MARKER_COLOR;
   if (data.gpsLost) return GPS_LOST_MARKER_COLOR;
   return data.offline ? OFFLINE_MARKER_COLOR : speedColor(data.colorSpeedKmh ?? data.speedKmh);
 }
@@ -48,6 +54,11 @@ export interface VehicleMarkerData {
    */
   gpsLost?: boolean;
   /**
+   * Zones mortes GPS (2026-07) — véhicule GPS-perdu MAIS dans un parking souterrain CONFIRMÉ.
+   * Rendu en GRIS « à l'arrêt / éteint » (pas en rouge) : la perte de GPS y est normale.
+   */
+  parkedDeadZone?: boolean;
+  /**
    * Vitesse (km/h) a utiliser pour la COULEUR uniquement. Permet d'afficher une
    * couleur de mouvement (vert/orange) basee sur la vitesse robuste derivee du
    * deplacement, meme quand le boitier rapporte `speedKmh = 0` en roulant
@@ -73,7 +84,7 @@ export function buildVehicleMarkerEl(data: VehicleMarkerData): HTMLElement {
   const ignClass = data.ignition ? 'tracky-acc--on' : 'tracky-acc--off';
   const activeClass = data.active ? 'tracky-marker--active' : '';
   const hydClass = data.hydrated ? 'tracky-marker--hydrated' : '';
-  const offlineClass = data.offline || data.gpsLost ? 'tracky-marker--offline' : '';
+  const offlineClass = data.offline || data.gpsLost || data.parkedDeadZone ? 'tracky-marker--offline' : '';
   const isArrow = data.type === 'OTHER';
   const headingDeg = Math.round(data.heading || 0);
   const svgContent = getVehicleSvg(data.type);
@@ -151,7 +162,7 @@ export function updateVehicleMarkerEl(el: HTMLElement, data: VehicleMarkerData):
 
   el.classList.toggle('tracky-marker--active', !!data.active);
   el.classList.toggle('tracky-marker--hydrated', !!data.hydrated);
-  el.classList.toggle('tracky-marker--offline', !!(data.offline || data.gpsLost));
+  el.classList.toggle('tracky-marker--offline', !!(data.offline || data.gpsLost || data.parkedDeadZone));
 }
 
 /**

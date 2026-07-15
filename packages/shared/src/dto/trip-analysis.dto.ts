@@ -122,6 +122,24 @@ export interface FuelPricePointDto {
 }
 
 /**
+ * Un passage station daté avec la distance parcourue depuis le passage PRÉCÉDENT — pour juger la
+ * COHÉRENCE d'un vrai plein. Un ravitaillement réel est espacé de km ; deux « passages » très
+ * proches en km trahissent un faux positif (arrêt près d'une station sur une route passante).
+ */
+export interface FuelVisitDto {
+  at: string;
+  brand: string | null;
+  city: string | null;
+  priceEur: number | null;
+  /** Durée de l'arrêt (min) — confirme que le véhicule s'est réellement arrêté. */
+  durationMin: number;
+  /** Km parcourus depuis le passage station précédent (Σ trajets), ou null si 1er passage. */
+  kmSincePrev: number | null;
+  /** true si suspicieusement proche du passage précédent (peut ne pas être un vrai plein). */
+  suspiciouslyClose: boolean;
+}
+
+/**
  * Suivi carburant d'un véhicule sur une période : fréquence des passages en station, prix constatés,
  * et coût carburant ESTIMÉ (litres estimés × prix). Deux coûts pour COMPARER : au prix réellement
  * constaté en station vs au prix paramétré de la flotte (`Fleet.fuelPriceEurL`, base du PDF).
@@ -136,6 +154,8 @@ export interface VehicleFuelReportDto {
   avgDaysBetween: number | null;
   /** Stations distinctes visitées (fréquence + dernier prix). */
   stations: FuelStationVisitDto[];
+  /** Derniers passages détaillés (récent→ancien) avec km depuis le précédent, pour juger la cohérence. */
+  recentVisits: FuelVisitDto[];
   /** Carburant retenu pour le véhicule ('gazole'…) ou null. */
   fuelType: string | null;
   // Prix constatés en station (pour le carburant du véhicule) sur la période.

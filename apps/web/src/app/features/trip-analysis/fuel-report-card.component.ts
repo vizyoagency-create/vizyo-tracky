@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
-import { DecimalPipe } from '@angular/common';
+import { DecimalPipe, DatePipe } from '@angular/common';
 import { LucideAngularModule, Fuel, MapPin, TrendingUp, TrendingDown } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import type { VehicleFuelReportDto } from '@vizyo/tracky-shared';
@@ -15,7 +15,7 @@ import { TripAnalysisApiService } from '../../core/services/trip-analysis.servic
   selector: 'app-fuel-report-card',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DecimalPipe, LucideAngularModule],
+  imports: [DecimalPipe, DatePipe, LucideAngularModule],
   template: `
     <section class="frc">
       <header class="frc-head">
@@ -83,6 +83,27 @@ import { TripAnalysisApiService } from '../../core/services/trip-analysis.servic
             }
           </ul>
 
+          <!-- Cohérence des passages : km depuis le passage précédent (un vrai plein est espacé de km). -->
+          @if (data()!.recentVisits?.length) {
+            <div class="frc-visits">
+              <div class="frc-visits-h">Derniers passages · cohérence</div>
+              @for (v of data()!.recentVisits; track v.at) {
+                <div class="frc-visit" [class.frc-visit--warn]="v.suspiciouslyClose">
+                  <span class="frc-visit-when">{{ v.at | date: 'dd/MM HH:mm' }}</span>
+                  <span class="frc-visit-brand">{{ v.brand || 'Station' }}</span>
+                  <span class="frc-visit-stop">arrêt {{ v.durationMin }}min</span>
+                  <span class="frc-visit-km">
+                    @if (v.kmSincePrev == null) { 1ᵉʳ passage }
+                    @else { {{ v.kmSincePrev | number: '1.0-0' }} km depuis le précédent }
+                  </span>
+                  @if (v.suspiciouslyClose) {
+                    <span class="frc-visit-flag" title="Peu (ou pas) de km depuis le passage précédent — vérifiez que c'est un vrai plein, pas un arrêt près d'une station sur la route">à vérifier</span>
+                  }
+                </div>
+              }
+            </div>
+          }
+
           <p class="frc-help">Les passages en station sont détectés automatiquement quand un trajet analysé s'arrête à une station. Le prix est relevé au moment du passage (prix officiels des carburants). Objectif : suivre la fréquence, la consommation et les coûts — et constater les améliorations dans le temps.</p>
         } @else {
           <div class="frc-empty">
@@ -132,6 +153,15 @@ import { TripAnalysisApiService } from '../../core/services/trip-analysis.servic
     .frc-st-city { color: var(--fg-tertiary); }
     .frc-st-visits { color: var(--fg-tertiary); }
     .frc-st-price { margin-left: auto; font-weight: 700; color: #A78BFA; }
+    .frc-visits { display: flex; flex-direction: column; gap: 4px; }
+    .frc-visits-h { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--fg-tertiary); }
+    .frc-visit { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 11.5px; color: var(--fg-secondary); padding: 4px 8px; border-radius: 8px; background: var(--bg-tertiary, rgba(148,163,184,.08)); }
+    .frc-visit--warn { background: color-mix(in srgb, #f59e0b 12%, transparent); }
+    .frc-visit-when { color: var(--fg-tertiary); }
+    .frc-visit-brand { font-weight: 700; color: var(--fg-primary); }
+    .frc-visit-stop { color: var(--fg-tertiary); }
+    .frc-visit-km { margin-left: auto; font-weight: 600; }
+    .frc-visit-flag { color: #b45309; background: color-mix(in srgb, #f59e0b 22%, transparent); padding: 1px 7px; border-radius: 999px; font-size: 10px; font-weight: 700; }
     .frc-help { margin: 0; font-size: 11px; line-height: 1.5; color: var(--fg-tertiary); }
     .frc-empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; padding: 16px 10px; color: var(--fg-tertiary); }
     .frc-empty p { margin: 0; font-weight: 700; color: var(--fg-secondary); }

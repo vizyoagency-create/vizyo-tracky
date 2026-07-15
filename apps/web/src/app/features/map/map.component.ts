@@ -2171,8 +2171,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   protected readonly showStops = signal(false);
   /** Sprint G.4 — heatmap densite des positions (24h). */
   protected readonly showHeatmap = signal(false);
-  /** Carburant (2026-07) — stations-service fréquentées par la flotte (fréquence + récence). Défaut OFF. */
-  protected readonly showFuelStations = signal(false);
+  /** Carburant (2026-07) — stations-service fréquentées par la flotte (fréquence + récence). Défaut ON (demande client). */
+  protected readonly showFuelStations = signal(true);
   private fuelPopup: Popup | null = null;
   private fuelClickHandler: ((e: maplibregl.MapLayerMouseEvent) => void) | null = null;
   private fuelCursorBound = false;
@@ -2180,11 +2180,14 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private fuelStationVehicles = new Map<string, { plate: string | null; visits: number }[]>();
   /** Zones mortes GPS (suivi FS-253) — parkings souterrains + zones récurrentes/suspectes de la flotte.
    *  Chargées en continu (pas seulement au toggle) pour l'override « à l'arrêt · souterrain » des cards. */
-  protected readonly showDeadZones = signal(false);
+  protected readonly showDeadZones = signal(true);
   protected readonly deadZonesData = signal<GpsDeadZoneMapDto[]>([]);
   private deadZonePopup: Popup | null = null;
   private deadZoneClickHandler: ((e: maplibregl.MapLayerMouseEvent) => void) | null = null;
   private deadZoneCursorBound = false;
+  /** Arrêts > 5min (24h) : popup + cleanups des listeners (calque re-setup au changement de fond). */
+  private stopPopup: Popup | null = null;
+  private stopsListenerCleanups: Array<() => void> = [];
   /** V1.7 — si false, jamais de mode compact a faible zoom (markers riches partout).
    *  Toggle dans le panneau Calques pour les utilisateurs qui preferent voir les
    *  markers detailles meme a zoom 5. Persisté dans les prefs. */
@@ -2223,9 +2226,11 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     // Calques optionnels comptés s'ils sont activés
     if (this.showStops()) n++;
     if (this.showHeatmap()) n++;
-    if (!this.showGeofences()) n++; // par défaut true
-    if (!this.showTrails()) n++;    // par défaut true
-    if (!this.showPlates()) n++;    // par défaut true
+    if (!this.showGeofences()) n++;     // par défaut true
+    if (!this.showTrails()) n++;        // par défaut true
+    if (!this.showPlates()) n++;        // par défaut true
+    if (!this.showFuelStations()) n++;  // par défaut true (demande client)
+    if (!this.showDeadZones()) n++;     // par défaut true (demande client)
     return n;
   });
   /** Desktop — dropdown style de carte (Plan / Sombre / Clair / etc.). */
@@ -2502,6 +2507,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       this.setupClusterLayer();
       this.loadGeofences();
       this.loadDeadZones().catch(() => { /* silent */ });
+      if (this.showFuelStations()) this.loadFuelStations().catch(() => { /* silent */ });
       this.applyPositions(this.applyFilters(this.realtime.positionsList()));
       this.applyClusterVisibility();
       this.restoreFromUrl();
@@ -3012,12 +3018,28 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
   private cinemaTick(): void {
     if (!this.map) return;
-    const list = this.realtime.positionsList();
-    if (list.length === 0) return;
+    const list = this.cinemaCandidates();
+    if (list.length === 0) { this.cinemaIndex = 0; return; }
     const target = list[this.cinemaIndex % list.length]!;
     this.cinemaIndex++;
     this.followedVehicleId.set(target.vehicleId);
     this.map.flyTo({ center: [target.lng, target.lat], zoom: 16, duration: 1500 });
+  }
+
+  /**
+   * Véhicules éligibles au mode cinéma. Corrige le bug « le cinéma jouait sur des véhicules
+   * ÉTEINTS hors filtre » : on part de la MÊME liste que les marqueurs (périmètre d'accès +
+   * filtres Calques actifs via `applyFilters`), puis on restreint aux véhicules EN MOUVEMENT
+   * (intention d'origine du mode cinéma). Si aucun ne roule, on retombe sur la liste filtrée
+   * pour que le cinéma reste utile (sinon écran figé), tout en respectant le filtre.
+   */
+  private cinemaCandidates(): PositionUpdateEvent[] {
+    const all = this.realtime.positionsList();
+    const ids = this._accessibleIds();
+    const scoped = ids === 'ALL' ? all : all.filter((p) => (ids as Set<string>).has(p.vehicleId));
+    const filtered = this.applyFilters(scoped);
+    const moving = filtered.filter((p) => isTrackerOnline(p.timestamp) && p.ignition && p.speedKmh > 5);
+    return moving.length ? moving : filtered;
   }
 
   protected setCameraMode(mode: CameraMode): void {
@@ -3217,9 +3239,11 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   protected toggleStops(): void {
     const v = !this.showStops();
     this.showStops.set(v);
-    this.setLayerVisibility('stops-circle', v);
-    this.setLayerVisibility('stops-label', v);
+    this.setLayerVisibility('stops-cluster-bg', v);
+    this.setLayerVisibility('stops-cluster-count', v);
+    this.setLayerVisibility('stops-point', v);
     if (v) this.loadStops().catch(() => { /* silent */ });
+    else this.stopPopup?.remove();
   }
 
   /**
@@ -3269,7 +3293,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
             const d = haversineMeters(clusterCenterLat, clusterCenterLng, p.lat, p.lng);
             if (d > STOP_MAX_RADIUS_M) {
               // Sortie du cluster — verifier sa duree
-              this.maybePushStopFeature(features, clusterStart, items[i - 1]!, clusterCenterLat, clusterCenterLng, STOP_MIN_DURATION_MS);
+              this.maybePushStopFeature(features, clusterStart, items[i - 1]!, clusterCenterLat, clusterCenterLng, STOP_MIN_DURATION_MS, vehicleId);
               clusterStart = p;
               clusterCenterLat = p.lat;
               clusterCenterLng = p.lng;
@@ -3282,14 +3306,14 @@ export class MapComponent implements AfterViewInit, OnDestroy {
             }
           } else if (clusterStart) {
             // Mouvement detecte — fermer le cluster precedent
-            this.maybePushStopFeature(features, clusterStart, items[i - 1]!, clusterCenterLat, clusterCenterLng, STOP_MIN_DURATION_MS);
+            this.maybePushStopFeature(features, clusterStart, items[i - 1]!, clusterCenterLat, clusterCenterLng, STOP_MIN_DURATION_MS, vehicleId);
             clusterStart = null;
             clusterCount = 0;
           }
         }
         // Cluster final
         if (clusterStart) {
-          this.maybePushStopFeature(features, clusterStart, items[items.length - 1]!, clusterCenterLat, clusterCenterLng, STOP_MIN_DURATION_MS);
+          this.maybePushStopFeature(features, clusterStart, items[items.length - 1]!, clusterCenterLat, clusterCenterLng, STOP_MIN_DURATION_MS, vehicleId);
         }
       } catch { /* silent per vehicle */ }
     }
@@ -3305,6 +3329,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     lat: number,
     lng: number,
     minDurationMs: number,
+    vehicleId: string,
   ): void {
     const dur = new Date(end.timestamp).getTime() - new Date(start.timestamp).getTime();
     if (dur < minDurationMs) return;
@@ -3313,7 +3338,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     features.push({
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [lng, lat] },
-      properties: { duration: label, startedAt: start.timestamp },
+      // vehicleId + plaque portés sur la feature → le clic peut dire QUI s'est arrêté.
+      properties: { duration: label, startedAt: start.timestamp, vehicleId, plate: this.vehicleMeta.get(vehicleId)?.plate ?? '' },
     });
   }
 
@@ -3528,38 +3554,106 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     });
   }
 
-  /** Sprint F.1 — setup layer pour les stop markers (pictos P aux arrets > 5min). */
+  /**
+   * Sprint F.1 (refonte 2026-07) — calque des arrêts > 5min (24h). REGROUPÉS (clustering, comme
+   * les véhicules) pour ne plus surcharger la carte, PETITS points (comme les stations), et CLIC →
+   * quel véhicule + durée. L'ancien style (gros pictos « P » qui se chevauchaient) est remplacé.
+   */
   private setupStopsLayer(): void {
     if (!this.map || this.map.getSource('stops')) return;
-    this.map.addSource('stops', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    for (const off of this.stopsListenerCleanups) off();
+    this.stopsListenerCleanups = [];
+    const vis: 'visible' | 'none' = this.showStops() ? 'visible' : 'none';
+    this.map.addSource('stops', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] },
+      cluster: true,
+      clusterMaxZoom: 13,
+      clusterRadius: 45,
+    });
+    // Amas d'arrêts (regroupés) — pastille ambre dont la taille croît avec le nombre.
     this.map.addLayer({
-      id: 'stops-circle',
+      id: 'stops-cluster-bg',
       type: 'circle',
       source: 'stops',
+      filter: ['has', 'point_count'],
+      layout: { visibility: vis },
       paint: {
-        'circle-radius': 14,
-        'circle-color': '#1f2937',
+        'circle-color': '#f59e0b',
+        'circle-radius': ['step', ['get', 'point_count'], 14, 10, 18, 50, 24],
+        'circle-opacity': 0.85,
         'circle-stroke-width': 2,
-        'circle-stroke-color': '#fbbf24',
-        'circle-opacity': 0.9,
+        'circle-stroke-color': '#78350f',
       },
     });
     this.map.addLayer({
-      id: 'stops-label',
+      id: 'stops-cluster-count',
       type: 'symbol',
       source: 'stops',
-      layout: {
-        'text-field': 'P',
-        'text-size': 14,
-        'text-allow-overlap': true,
-        'text-ignore-placement': true,
-      },
+      filter: ['has', 'point_count'],
+      layout: { visibility: vis, 'text-field': ['get', 'point_count_abbreviated'], 'text-size': 12, 'text-allow-overlap': true },
+      paint: { 'text-color': '#ffffff' },
+    });
+    // Arrêt unique : petit point (comme les stations), sans label permanent (déclutter).
+    this.map.addLayer({
+      id: 'stops-point',
+      type: 'circle',
+      source: 'stops',
+      filter: ['!', ['has', 'point_count']],
+      layout: { visibility: vis },
       paint: {
-        'text-color': '#fbbf24',
-        'text-halo-color': '#1f2937',
-        'text-halo-width': 1,
+        'circle-radius': 6,
+        'circle-color': '#f59e0b',
+        'circle-opacity': 0.9,
+        'circle-stroke-width': 1.5,
+        'circle-stroke-color': '#ffffff',
       },
     });
+    // Clic amas → zoom d'expansion (comme le cluster véhicules).
+    const onClusterClick = (e: maplibregl.MapLayerMouseEvent) => {
+      if (!this.map) return;
+      const feat = e.features?.[0];
+      const clusterId = feat?.properties?.['cluster_id'];
+      if (clusterId == null) return;
+      const src = this.map.getSource('stops') as maplibregl.GeoJSONSource;
+      Promise.resolve(src.getClusterExpansionZoom(clusterId)).then((zoom: number) => {
+        if (!this.map) return;
+        const geom = feat?.geometry as GeoJSON.Point | undefined;
+        if (!geom) return;
+        this.map.flyTo({ center: geom.coordinates as [number, number], zoom, speed: 1.4, curve: 1.4 });
+      });
+    };
+    this.map.on('click', 'stops-cluster-bg', onClusterClick);
+    this.stopsListenerCleanups.push(() => this.map?.off('click', 'stops-cluster-bg', onClusterClick));
+    // Clic arrêt unique → popup (quel véhicule + durée).
+    const onStop = (e: maplibregl.MapLayerMouseEvent) => this.onStopClick(e);
+    this.map.on('click', 'stops-point', onStop);
+    this.stopsListenerCleanups.push(() => this.map?.off('click', 'stops-point', onStop));
+    for (const layer of ['stops-cluster-bg', 'stops-point']) {
+      const onEnter = () => { if (this.map) this.map.getCanvas().style.cursor = 'pointer'; };
+      const onLeave = () => { if (this.map) this.map.getCanvas().style.cursor = ''; };
+      this.map.on('mouseenter', layer, onEnter);
+      this.map.on('mouseleave', layer, onLeave);
+      this.stopsListenerCleanups.push(() => this.map?.off('mouseenter', layer, onEnter));
+      this.stopsListenerCleanups.push(() => this.map?.off('mouseleave', layer, onLeave));
+    }
+  }
+
+  /** Popup d'un arrêt au clic : quel véhicule + durée + heure de début. */
+  private onStopClick(e: maplibregl.MapLayerMouseEvent): void {
+    const f = e.features?.[0];
+    if (!f || !this.map) return;
+    const p = f.properties ?? {};
+    const coords = (f.geometry as GeoJSON.Point).coordinates as [number, number];
+    const esc = (s: unknown) => String(s ?? '').replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] as string));
+    const startedAt = p['startedAt'] ? new Date(String(p['startedAt'])) : null;
+    const when = startedAt ? `${String(startedAt.getHours()).padStart(2, '0')}:${String(startedAt.getMinutes()).padStart(2, '0')}` : '';
+    const html = `<div style="font-size:12px;line-height:1.55;min-width:150px">`
+      + `<strong style="font-size:13px">${esc(p['plate']) || 'Véhicule'}</strong><br>`
+      + `Arrêt de <b>${esc(p['duration'])}</b>${when ? ` · depuis ${when}` : ''}`
+      + `</div>`;
+    this.stopPopup?.remove();
+    this.stopPopup = new maplibregl.Popup({ closeButton: true, offset: 12 }).setLngLat(coords).setHTML(html).addTo(this.map);
   }
 
   /**
@@ -3853,6 +3947,17 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         lastNoFixAt: snap.lastNoFixAt,
         lastIgnition: snap.lastIgnition,
       }) === 'GPS_LOST';
+      // Parking souterrain CONFIRMÉ : si GPS perdu ET la dernière position VALIDE (figée) tombe dans
+      // une zone morte confirmée « normale » de CE véhicule, on l'affiche « à l'arrêt » (gris éteint)
+      // et non « GPS perdu » (rouge) — la perte de GPS y est normale (véhicule garé sous terre). On
+      // matche sur `snap.lastLat/lng` (dernier fix valide) et non `pos` (trame no_fix = coords dégradées).
+      const zoneLat = snap?.lastLat ?? pos.lat;
+      const zoneLng = snap?.lastLng ?? pos.lng;
+      const parkedDeadZone = gpsLost && zoneLat != null && zoneLng != null && !!matchDeadZone(
+        this.deadZonesData().filter((z) => z.vehicleId === pos.vehicleId && z.status === 'CONFIRMED_BENIGN'),
+        zoneLat,
+        zoneLng,
+      );
       const data: VehicleMarkerData = {
         trackerId: pos.trackerId,
         vehicleId: pos.vehicleId,
@@ -3869,6 +3974,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         // dernière position connue (cas boîtier débranché).
         offline: !isTrackerOnline(pos.timestamp),
         gpsLost,
+        parkedDeadZone,
       };
 
       // GPS sanity (live) : rejette les fixes `valid: false` (broadcastes par le
