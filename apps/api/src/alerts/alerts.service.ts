@@ -154,6 +154,10 @@ export class AlertsService {
     vehicle: { id: string; plate: string; fleetId: string },
     agoLabel: string,
     dedupWindowMs = 24 * 60 * 60 * 1000,
+    // Zones mortes GPS : contexte de récurrence si la perte tombe dans une zone déjà connue.
+    // `recognized` = zone reconnue (perte récurrente au même endroit) ; `suspect` = zone marquée
+    // suspecte (brouilleur ?). Absent = 1re perte / pas de zone → message « panne d'antenne » standard.
+    recurrence?: { count: number; recognized: boolean; suspect: boolean },
   ): Promise<Alert | null> {
     const since = new Date(Date.now() - dedupWindowMs);
     const existing = await this.prisma.alert.findFirst({
@@ -162,6 +166,19 @@ export class AlertsService {
     });
     if (existing) return null;
 
+    const baseMsg = `Le boîtier communique toujours (réseau OK) mais n'envoie plus de position GPS depuis ${agoLabel}. Antenne probablement débranchée/masquée ou véhicule sans vue ciel : à vérifier physiquement.`;
+    let title = `📡 GPS perdu — ${vehicle.plate}`;
+    let message = baseMsg;
+    if (recurrence?.suspect) {
+      title = `📡 GPS perdu (zone suspecte) — ${vehicle.plate}`;
+      message = `Perte de position GPS depuis ${agoLabel} à un endroit SIGNALÉ SUSPECT (brouilleur ?). ${recurrence.count}e perte au même endroit — à surveiller de près.`;
+    } else if (recurrence?.recognized) {
+      title = `📡 GPS perdu (zone récurrente) — ${vehicle.plate}`;
+      message = `Perte GPS récurrente au même endroit (${recurrence.count}e épisode) — parking souterrain/couvert ou tunnel probable, pas nécessairement une panne. Sans position GPS depuis ${agoLabel}. Si ce lieu est normal, confirmez la zone sur la fiche véhicule pour ne plus être alerté.`;
+    } else if (recurrence && recurrence.count >= 2) {
+      message = `${baseMsg} Déjà ${recurrence.count} pertes GPS constatées à cet endroit — surveiller une éventuelle récurrence (parking couvert / zone masquée).`;
+    }
+
     const alert = await this.prisma.alert.create({
       data: {
         fleetId: vehicle.fleetId,
@@ -169,12 +186,15 @@ export class AlertsService {
         trackerId: tracker.id,
         type: AlertType.GPS_LOST,
         severity: AlertSeverity.WARNING,
-        title: `📡 GPS perdu — ${vehicle.plate}`,
-        message: `Le boîtier communique toujours (réseau OK) mais n'envoie plus de position GPS depuis ${agoLabel}. Antenne probablement débranchée/masquée ou véhicule sans vue ciel : à vérifier physiquement.`,
+        title,
+        message,
         payload: {
           imei: tracker.imei,
           lastPositionAt: tracker.lastPositionAt?.toISOString() ?? null,
           agoLabel,
+          deadZone: recurrence
+            ? { count: recurrence.count, recognized: recurrence.recognized, suspect: recurrence.suspect }
+            : null,
         } as any,
         latitude: tracker.lastLat,
         longitude: tracker.lastLng,

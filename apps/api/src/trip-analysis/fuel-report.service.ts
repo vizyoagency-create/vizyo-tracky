@@ -123,26 +123,43 @@ export class FuelReportService {
 
     type Agg = {
       id: string; brand: string | null; name: string | null; city: string | null; address: string | null; lat: number; lng: number;
-      visits: number; vehicles: Set<string>; lastVisitAt: Date; lastPriceEur: number | null; fuelType: string | null;
+      visits: number; vehicles: Map<string, number>; lastVisitAt: Date; lastPriceEur: number | null; fuelType: string | null;
     };
     const byStation = new Map<string, Agg>();
     for (const s of stops) {
       if (!s.station) continue;
       let e = byStation.get(s.station.id);
       if (!e) {
-        e = { id: s.station.id, brand: s.station.brand, name: s.station.name, city: s.station.city, address: s.station.address, lat: s.station.lat, lng: s.station.lng, visits: 0, vehicles: new Set(), lastVisitAt: s.arrivedAt, lastPriceEur: null, fuelType: null };
+        e = { id: s.station.id, brand: s.station.brand, name: s.station.name, city: s.station.city, address: s.station.address, lat: s.station.lat, lng: s.station.lng, visits: 0, vehicles: new Map(), lastVisitAt: s.arrivedAt, lastPriceEur: null, fuelType: null };
         byStation.set(s.station.id, e);
       }
       e.visits += 1;
-      e.vehicles.add(s.vehicleId);
+      // Détail par véhicule : nb de passages de CE véhicule sur CETTE station.
+      e.vehicles.set(s.vehicleId, (e.vehicles.get(s.vehicleId) ?? 0) + 1);
       if (s.arrivedAt >= e.lastVisitAt) e.lastVisitAt = s.arrivedAt; // stops asc → dernier = plus récent
       if (s.unitPriceEur != null) { e.lastPriceEur = s.unitPriceEur; e.fuelType = s.fuelType; }
+    }
+
+    // Résolution des plaques (TripFuelStop n'a pas de relation Vehicle — join séparé par ids).
+    const allVehicleIds = new Set<string>();
+    for (const e of byStation.values()) for (const id of e.vehicles.keys()) allVehicleIds.add(id);
+    const plateById = new Map<string, string | null>();
+    if (allVehicleIds.size) {
+      const vs = await this.prisma.vehicle.findMany({
+        where: { id: { in: [...allVehicleIds] } },
+        select: { id: true, plate: true },
+      });
+      for (const v of vs) plateById.set(v.id, v.plate);
     }
 
     return [...byStation.values()]
       .map((e) => ({
         stationId: e.id, brand: e.brand, name: e.name, city: e.city, address: e.address, lat: e.lat, lng: e.lng,
-        visits: e.visits, distinctVehicles: e.vehicles.size, lastVisitAt: e.lastVisitAt.toISOString(), lastPriceEur: e.lastPriceEur, fuelType: e.fuelType,
+        visits: e.visits, distinctVehicles: e.vehicles.size,
+        vehicles: [...e.vehicles.entries()]
+          .map(([vehicleId, v]) => ({ vehicleId, plate: plateById.get(vehicleId) ?? null, visits: v }))
+          .sort((a, b) => b.visits - a.visits),
+        lastVisitAt: e.lastVisitAt.toISOString(), lastPriceEur: e.lastPriceEur, fuelType: e.fuelType,
       }))
       .sort((a, b) => b.visits - a.visits || (a.lastVisitAt < b.lastVisitAt ? 1 : -1));
   }

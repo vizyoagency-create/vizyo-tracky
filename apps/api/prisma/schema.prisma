@@ -99,6 +99,33 @@ enum AlertSeverity {
   CRITICAL
 }
 
+// Zones mortes GPS (2026-07) — suivi de FS-253. Un vehicule qui perd RECURREMMENT son
+// lock GPS au MEME endroit revele une cause structurelle (parking souterrain/couvert,
+// tunnel, ou brouilleur) plutot qu'une panne d'antenne ponctuelle. Statut du cycle de vie
+// d'une zone apprise automatiquement :
+//  - LEARNING          : quelques pertes seulement, on apprend (occurrences < seuil).
+//  - RECURRING         : seuil atteint, zone reconnue automatiquement (perte recurrente ici).
+//  - CONFIRMED_BENIGN  : l'operateur a confirme « endroit normal » (parking) -> on N'ALERTE PLUS.
+//  - SUSPECT           : l'operateur marque suspect (brouilleur ?) -> on continue d'alerter.
+enum GpsDeadZoneStatus {
+  LEARNING
+  RECURRING
+  CONFIRMED_BENIGN
+  SUSPECT
+}
+
+// Nature presumee/confirmee d'une zone morte GPS. UNKNOWN par defaut ; une heuristique
+// peut SUGGERER UNDERGROUND_PARKING (perte recurrente + recouvrement rapide), mais la
+// valeur fait foi seulement quand un operateur l'a posee.
+enum GpsDeadZoneLabel {
+  UNKNOWN
+  UNDERGROUND_PARKING
+  COVERED_PARKING
+  TUNNEL
+  JAMMER_SUSPECTED
+  OTHER
+}
+
 enum VehicleType {
   CAR
   TRUCK
@@ -410,6 +437,9 @@ model Vehicle {
   features         String[] @default([])
   vehicleEvents    VehicleEvent[]
   maintenancePlans MaintenancePlan[]
+  // Zones mortes GPS (suivi FS-253) : endroits ou CE vehicule perd recurremment son lock GPS.
+  gpsDeadZones     GpsDeadZone[]
+  gpsLossEvents    GpsLossEvent[]
   // Mode vie privee : quand ON, AUCUNE position n'est collectee/diffusee pour ce
   // vehicule (la trame est jetee a l'ingestion ; la derniere position connue reste
   // figee). `privacyModeSince`/`By`/`Note` = etat courant ; l'historique complet
@@ -888,6 +918,68 @@ model Alert {
   @@index([vehicleId])
   @@index([trackerId])
   @@map("alerts")
+}
+
+/// Zones mortes GPS (2026-07, suivi FS-253) — regroupe les endroits ou un vehicule perd
+/// RECURREMMENT son lock GPS. Ancre = derniere position VALIDE avant la perte (figee cote
+/// Tracker.lastLat/lastLng pendant toute une perte continue) = point d'entree de la zone
+/// (rampe de parking, entree de tunnel). Le clustering incremental (centroide en moyenne
+/// mobile + rayon observe borne) est fait par GpsDeadZonesService. Une zone confirmee
+/// « normale » (parking souterrain) par un operateur cesse de generer des alertes GPS_LOST.
+model GpsDeadZone {
+  id           String            @id @default(uuid()) @db.Uuid
+  vehicleId    String            @db.Uuid
+  vehicle      Vehicle           @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  // fleetId denormalise (pas de relation) — scoping/filtre societe sans back-relation Fleet.
+  fleetId      String            @db.Uuid
+  // Centroide (moyenne mobile des points de perte) + rayon observe (m), borne cote service.
+  centroidLat  Float
+  centroidLng  Float
+  radiusM      Float             @default(0)
+  // Nombre d'EPISODES distincts de perte rattaches (1 episode continu = 1 occurrence).
+  occurrences  Int               @default(1)
+  firstSeenAt  DateTime          @default(now())
+  lastSeenAt   DateTime          @default(now())
+  status       GpsDeadZoneStatus @default(LEARNING)
+  label        GpsDeadZoneLabel  @default(UNKNOWN)
+  // Libelle geocode best-effort (ville/commune via Nominatim), null si inconnu/indisponible.
+  placeLabel   String?
+  note         String?
+  // Tracabilite de la revue operateur (confirmation/qualification).
+  reviewedById String?           @db.Uuid
+  reviewedAt   DateTime?
+  events       GpsLossEvent[]
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([vehicleId])
+  @@index([fleetId])
+  @@map("gps_dead_zones")
+}
+
+/// Un episode de perte GPS rattache (ou non) a une GpsDeadZone. `lostAt` = horodatage de la
+/// derniere position valide (point d'entree) : FIGE pendant toute une perte continue, donc il
+/// IDENTIFIE l'episode. La contrainte unique (vehicleId, lostAt) rend l'enregistrement
+/// IDEMPOTENT — le cron gps-integrity peut re-selectionner le meme boitier a chaque tick sans
+/// gonfler les occurrences ; deux stationnements distincts ont un `lostAt` different (= 2 lignes).
+model GpsLossEvent {
+  id         String       @id @default(uuid()) @db.Uuid
+  vehicleId  String       @db.Uuid
+  vehicle    Vehicle      @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  fleetId    String       @db.Uuid
+  trackerId  String?      @db.Uuid
+  zoneId     String?      @db.Uuid
+  zone       GpsDeadZone? @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+  // Point d'entree = derniere position valide connue avant la perte.
+  lat        Float
+  lng        Float
+  lostAt     DateTime
+  detectedAt DateTime     @default(now())
+
+  @@unique([vehicleId, lostAt])
+  @@index([zoneId])
+  @@index([fleetId, detectedAt])
+  @@map("gps_loss_events")
 }
 
 /// V1.6 — Surveillance Max : profil de surveillance renforcee par vehicule.

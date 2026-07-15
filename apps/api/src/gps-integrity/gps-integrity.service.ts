@@ -1,8 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { GpsDeadZoneStatus } from '@prisma/client';
 import { TRACKER_ONLINE_THRESHOLD_MS } from '@vizyo/tracky-shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AlertsService } from '../alerts/alerts.service';
+import { GpsDeadZonesService } from '../gps-dead-zones/gps-dead-zones.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 
 /**
@@ -34,6 +36,7 @@ export class GpsIntegrityService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly alerts: AlertsService,
+    private readonly deadZones: GpsDeadZonesService,
     private readonly errorLogger: ErrorLogger,
   ) {
     const min = Number(process.env.GPS_LOST_ALERT_MIN);
@@ -70,34 +73,85 @@ export class GpsIntegrityService {
       });
 
       let raised = 0;
+      let suppressed = 0;
       for (const t of suspects) {
         if (!t.vehicle) continue;
         try {
           const agoLabel = this.ageLabel(t.lastPositionAt, now);
+
+          // Zones mortes GPS : enregistrer la perte (idempotent par épisode via `lostAt`) et
+          // récupérer le contexte de récurrence. Nécessite une dernière position (point d'ancrage) —
+          // un boîtier jamais localisé ne peut pas être rattaché à une zone.
+          const hasAnchor = t.lastLat != null && t.lastLng != null && t.lastPositionAt != null;
+          const rec = hasAnchor
+            ? await this.deadZones
+                .recordLoss({
+                  vehicleId: t.vehicle.id,
+                  fleetId: t.vehicle.fleetId,
+                  trackerId: t.id,
+                  lat: t.lastLat as number,
+                  lng: t.lastLng as number,
+                  lostAt: t.lastPositionAt as Date,
+                })
+                .catch((err) => {
+                  this.logger.warn(
+                    `GPS-integrity: recordLoss échec ${t.imei}: ${err instanceof Error ? err.message : err}`,
+                  );
+                  return null;
+                })
+            : null;
+          const zone = rec?.zone ?? null;
+
+          // Zone confirmée « normale » par un opérateur (parking souterrain habituel) → on N'ALERTE
+          // PLUS : c'est le cœur de la feature (ne plus se déplacer / être re-signalé à chaque fois).
+          // La zone reste visible sur la fiche véhicule et la carte l'explique calmement.
+          if (zone && zone.status === GpsDeadZoneStatus.CONFIRMED_BENIGN) {
+            suppressed++;
+            continue;
+          }
+
+          const recurrence = zone
+            ? {
+                count: zone.occurrences,
+                recognized:
+                  zone.status === GpsDeadZoneStatus.RECURRING ||
+                  zone.occurrences >= this.deadZones.minOccurrences,
+                suspect: zone.status === GpsDeadZoneStatus.SUSPECT,
+              }
+            : undefined;
+
           const created = await this.alerts.createGpsLostAlert(
             { id: t.id, imei: t.imei, lastLat: t.lastLat, lastLng: t.lastLng, lastPositionAt: t.lastPositionAt },
             t.vehicle,
             agoLabel,
+            undefined,
+            recurrence,
           );
           // Nouvelle alerte (pas un doublon) → on la remonte AUSSI au centre d'alertes admin
           // (ErrorLog) : c'est le canal que le super-admin regarde. Un seul enregistrement par
           // épisode (la dédup de createGpsLostAlert renvoie null si déjà ouverte) → pas de spam.
-          if (created) {
+          // On N'INONDE PAS le centre admin pour une zone récurrente NON suspecte (parking habituel) :
+          // l'alerte fleet-admin suffit (avec le « confirmez la zone »).
+          const shouldErrorLog = !recurrence?.recognized || recurrence?.suspect === true;
+          if (created && shouldErrorLog) {
             raised++;
+            const reason = recurrence?.suspect
+              ? `GPS perdu (zone SUSPECTE, ${recurrence.count}e fois) : ${t.vehicle.plate} (${t.imei}) — brouilleur possible, à surveiller.`
+              : `GPS perdu : ${t.vehicle.plate} (${t.imei}) — boîtier vivant mais sans position GPS depuis ${agoLabel}. Antenne à vérifier.`;
             await this.errorLogger
-              .record(
-                new Error(
-                  `GPS perdu : ${t.vehicle.plate} (${t.imei}) — boîtier vivant mais sans position GPS depuis ${agoLabel}. Antenne à vérifier.`,
-                ),
-                'gps-integrity',
-                {
-                  imei: t.imei,
-                  vehicleId: t.vehicle.id,
-                  fleetId: t.vehicle.fleetId,
-                  lastPositionAt: t.lastPositionAt?.toISOString() ?? null,
-                },
-              )
+              .record(new Error(reason), 'gps-integrity', {
+                imei: t.imei,
+                vehicleId: t.vehicle.id,
+                fleetId: t.vehicle.fleetId,
+                lastPositionAt: t.lastPositionAt?.toISOString() ?? null,
+                deadZoneId: zone?.id ?? null,
+                deadZoneOccurrences: zone?.occurrences ?? null,
+              })
               .catch(() => undefined);
+          } else if (created) {
+            // Alerte fleet-admin créée mais volontairement non remontée au centre admin (zone récurrente
+            // habituelle) — on compte quand même pour le log de synthèse.
+            raised++;
           }
         } catch (err) {
           this.logger.error(
@@ -107,7 +161,8 @@ export class GpsIntegrityService {
       }
       if (suspects.length) {
         this.logger.log(
-          `GPS-integrity: ${suspects.length} boîtier(s) vivant(s) sans position GPS (${raised} nouvelle(s) alerte(s)).`,
+          `GPS-integrity: ${suspects.length} boîtier(s) vivant(s) sans position GPS ` +
+            `(${raised} nouvelle(s) alerte(s), ${suppressed} en zone confirmée).`,
         );
       }
     } catch (err) {

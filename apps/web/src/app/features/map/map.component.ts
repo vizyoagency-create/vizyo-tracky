@@ -44,6 +44,8 @@ function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number)
 import { firstValueFrom } from 'rxjs';
 import { ActivityTrackerService } from '../../core/services/activity-tracker.service';
 import { GeofencesApiService } from '../../core/services/geofences.service';
+import { GpsDeadZonesApiService, type GpsDeadZoneMapDto } from '../../core/services/gps-dead-zones.service';
+import { matchDeadZone, deadZoneNatureLabel } from '../../shared/utils/gps-dead-zone';
 import { TripAnalysisApiService } from '../../core/services/trip-analysis.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
@@ -492,6 +494,10 @@ const RESYNC_RADIUS_M = 150;
               <span>Stations-service (passages)</span>
             </label>
             <label class="tracky-sheet-checkbox">
+              <input type="checkbox" [checked]="showDeadZones()" (change)="toggleDeadZones()" />
+              <span>Parkings souterrains / zones mortes</span>
+            </label>
+            <label class="tracky-sheet-checkbox">
               <input type="checkbox" [checked]="showHeatmap()" (change)="toggleHeatmap()" />
               <span>Heatmap densité (24h)</span>
             </label>
@@ -748,6 +754,10 @@ const RESYNC_RADIUS_M = 150;
               <span>Stations-service (passages)</span>
             </label>
             <label class="tracky-sheet-checkbox">
+              <input type="checkbox" [checked]="showDeadZones()" (change)="toggleDeadZones()" />
+              <span>Parkings souterrains / zones mortes</span>
+            </label>
+            <label class="tracky-sheet-checkbox">
               <input type="checkbox" [checked]="showHeatmap()" (change)="toggleHeatmap()" />
               <span>Heatmap densité (24h)</span>
             </label>
@@ -779,6 +789,27 @@ const RESYNC_RADIUS_M = 150;
               <span>91+ km/h</span>
             </div>
           </div>
+          @if (showFuelStations() || showDeadZones()) {
+            <p class="tracky-sheet-title" style="margin-top:10px">Repères carte</p>
+            <div class="tracky-sheet-legend">
+              @if (showFuelStations()) {
+                <div class="tracky-sheet-legend-item">
+                  <span class="w-2.5 h-2.5 rounded-full" style="background:#A78BFA"></span>
+                  <span>Station-service (passages)</span>
+                </div>
+              }
+              @if (showDeadZones()) {
+                <div class="tracky-sheet-legend-item">
+                  <span class="w-2.5 h-2.5 rounded-full flex items-center justify-center text-[7px] font-bold text-white" style="background:#0ea5e9">P</span>
+                  <span>Parking souterrain</span>
+                </div>
+                <div class="tracky-sheet-legend-item">
+                  <span class="w-2.5 h-2.5 rounded-full flex items-center justify-center text-[7px] font-bold text-white" style="background:#ef4444">!</span>
+                  <span>Zone GPS suspecte</span>
+                </div>
+              }
+            </div>
+          }
         </div>
       </div>
     </div>
@@ -819,6 +850,32 @@ const RESYNC_RADIUS_M = 150;
             <span class="text-[10px] text-fg-tertiary">91+ km/h</span>
           </div>
         </div>
+        @if (showFuelStations() || showDeadZones()) {
+          <hr class="my-2 border-border-subtle" />
+          <p class="text-[10px] font-semibold text-fg-secondary mb-1.5 uppercase tracking-wider">Repères</p>
+          <div class="flex flex-col gap-1">
+            @if (showFuelStations()) {
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full" style="background:#A78BFA"></span>
+                <span class="text-[10px] text-fg-tertiary">Station-service (taille = passages)</span>
+              </div>
+            }
+            @if (showDeadZones()) {
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full flex items-center justify-center text-[7px] font-bold text-white" style="background:#0ea5e9">P</span>
+                <span class="text-[10px] text-fg-tertiary">Parking souterrain / couvert</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full flex items-center justify-center text-[7px] font-bold text-white" style="background:#f59e0b">P</span>
+                <span class="text-[10px] text-fg-tertiary">Zone GPS récurrente</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full flex items-center justify-center text-[7px] font-bold text-white" style="background:#ef4444">!</span>
+                <span class="text-[10px] text-fg-tertiary">Zone GPS suspecte (brouilleur ?)</span>
+              </div>
+            }
+          </div>
+        }
       </div>
     </div>
 
@@ -891,8 +948,28 @@ const RESYNC_RADIUS_M = 150;
               <app-sa-fleet-badge [fleetId]="baanoolCard()!.fleetId" />
               <!-- Sprint 1 — Groupe du véhicule. -->
               @if (baanoolCard()!.group; as g) { <app-group-badge [group]="g" /> }
-              <!-- Connectivité : flague un boîtier GPS perdu / hors-ligne / non configuré. -->
-              <app-connectivity-badge [state]="cardConnectivity()" [hideWhenOnline]="true" />
+              <!-- Connectivité : flague un boîtier GPS perdu / hors-ligne / non configuré.
+                   Masquée si on affiche déjà « à l'arrêt · parking souterrain » (zone confirmée),
+                   pour ne pas alarmer avec « GPS perdu » là où c'est normal. -->
+              @if (!deadZoneHint()?.benign) {
+                <app-connectivity-badge [state]="cardConnectivity()" [hideWhenOnline]="true" />
+              }
+              <!-- Zone morte GPS connue (suivi FS-253) : GPS perdu à un endroit habituel → ton calme. -->
+              @if (deadZoneHint(); as dz) {
+                @if (dz.benign) {
+                  <span class="bn-vcard-badge" style="color:#10E0A0"
+                        [attr.title]="'Parking souterrain confirmé — perte GPS normale ici, véhicule à l’arrêt'">
+                    <span class="bn-vcard-badge-dot" style="background:#10E0A0"></span>
+                    À l'arrêt · parking souterrain
+                  </span>
+                } @else {
+                  <span class="bn-vcard-badge" style="color:#0ea5e9"
+                        [attr.title]="'Endroit où ce véhicule perd régulièrement le GPS (probablement pas une panne)'">
+                    <span class="bn-vcard-badge-dot" style="background:#0ea5e9"></span>
+                    Zone morte GPS · {{ dz.label }}
+                  </span>
+                }
+              }
               <!-- Mode vie privée : position figée, collecte en pause. -->
               @if (baanoolCard()!.privacyModeEnabled) {
                 <span class="bn-vcard-badge" style="color:#38bdf8">
@@ -1969,6 +2046,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   /** V1.15 — Helper utilise dans la card popup (SA voit IMEI). */
   protected readonly isSuperAdmin = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
   private readonly geofencesApi = inject(GeofencesApiService);
+  private readonly deadZonesApi = inject(GpsDeadZonesApiService);
   private readonly vehiclesApi = inject(VehiclesApiService);
   private readonly tripAnalysisApi = inject(TripAnalysisApiService);
   private readonly preferences = inject(PreferencesService);
@@ -1992,6 +2070,12 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   );
   /** Donnees de la bottom card Baanool (null = fermee). */
   protected readonly baanoolCard = signal<BaanoolCardData | null>(null);
+  /**
+   * Zones mortes GPS (suivi FS-253) — si un véhicule GPS_LOST a sa dernière position figée dans
+   * une zone connue, on affiche un message CALME (« parking souterrain probable ») au lieu du
+   * « GPS perdu » alarmant. Chargé à la demande à l'ouverture de la card (seulement si GPS_LOST).
+   */
+  protected readonly deadZoneHint = signal<{ label: string; benign: boolean } | null>(null);
 
   private readonly mapContainerRef = viewChild.required<ElementRef<HTMLDivElement>>('mapContainer');
 
@@ -2092,6 +2176,15 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private fuelPopup: Popup | null = null;
   private fuelClickHandler: ((e: maplibregl.MapLayerMouseEvent) => void) | null = null;
   private fuelCursorBound = false;
+  /** Détail par véhicule d'une station (qui + combien de passages), indexé par stationId (popup). */
+  private fuelStationVehicles = new Map<string, { plate: string | null; visits: number }[]>();
+  /** Zones mortes GPS (suivi FS-253) — parkings souterrains + zones récurrentes/suspectes de la flotte.
+   *  Chargées en continu (pas seulement au toggle) pour l'override « à l'arrêt · souterrain » des cards. */
+  protected readonly showDeadZones = signal(false);
+  protected readonly deadZonesData = signal<GpsDeadZoneMapDto[]>([]);
+  private deadZonePopup: Popup | null = null;
+  private deadZoneClickHandler: ((e: maplibregl.MapLayerMouseEvent) => void) | null = null;
+  private deadZoneCursorBound = false;
   /** V1.7 — si false, jamais de mode compact a faible zoom (markers riches partout).
    *  Toggle dans le panneau Calques pour les utilisateurs qui preferent voir les
    *  markers detailles meme a zoom 5. Persisté dans les prefs. */
@@ -2226,6 +2319,16 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       if (this.map && this.showFuelStations()) {
         this.loadFuelStations().catch(() => { /* silent */ });
       }
+    });
+  });
+
+  // Zones mortes GPS : chargées EN CONTINU (indépendamment du toggle d'affichage) car elles servent
+  // à l'override « à l'arrêt · parking souterrain » des cards, pas seulement au calque. Rechargées
+  // au changement de société (super-admin).
+  private deadZonesFleetEffect = effect(() => {
+    this.fleetFilter.selectedFleetId();
+    untracked(() => {
+      if (this.map) this.loadDeadZones().catch(() => { /* silent */ });
     });
   });
 
@@ -2395,8 +2498,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       this.setupStopsLayer();
       this.setupHeatmapLayer();
       this.setupFuelStationsLayer();
+      this.setupDeadZonesLayer();
       this.setupClusterLayer();
       this.loadGeofences();
+      this.loadDeadZones().catch(() => { /* silent */ });
       this.applyPositions(this.applyFilters(this.realtime.positionsList()));
       this.applyClusterVisibility();
       this.restoreFromUrl();
@@ -2690,6 +2795,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         this.setupStopsLayer();
         this.setupHeatmapLayer();
         this.setupFuelStationsLayer();
+        this.setupDeadZonesLayer();
         this.setupClusterLayer();
         this.loadGeofences();
         this.applyPositions(this.applyFilters(this.realtime.positionsList()));
@@ -2700,6 +2806,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         this.refreshMeasureLayer();
         if (this.showStops()) this.loadStops().catch(() => { /* silent */ });
         if (this.showFuelStations()) this.loadFuelStations().catch(() => { /* silent */ });
+        this.loadDeadZones().catch(() => { /* silent */ });
       } finally {
         this.styleChangeInFlight = false;
       }
@@ -3509,16 +3616,23 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       );
       const now = Date.now();
       const RECENT_MS = 21 * 24 * 3600 * 1000;
-      const features: GeoJSON.Feature[] = stations.map((s) => ({
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates: [s.lng, s.lat] },
-        properties: {
-          brand: s.brand ?? '', city: s.city ?? '', address: s.address ?? '',
-          visits: s.visits, distinctVehicles: s.distinctVehicles,
-          lastPriceEur: s.lastPriceEur, lastVisitAt: s.lastVisitAt,
-          recent: now - new Date(s.lastVisitAt).getTime() <= RECENT_MS ? 1 : 0,
-        },
-      }));
+      // Détail par véhicule (qui + combien de passages) indexé par stationId pour le popup :
+      // les propriétés GeoJSON sont aplaties en primitives, on ne peut pas y stocker un tableau.
+      this.fuelStationVehicles.clear();
+      const features: GeoJSON.Feature[] = stations.map((s) => {
+        this.fuelStationVehicles.set(s.stationId, s.vehicles ?? []);
+        return {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [s.lng, s.lat] },
+          properties: {
+            stationId: s.stationId,
+            brand: s.brand ?? '', city: s.city ?? '', address: s.address ?? '',
+            visits: s.visits, distinctVehicles: s.distinctVehicles,
+            lastPriceEur: s.lastPriceEur, lastVisitAt: s.lastVisitAt,
+            recent: now - new Date(s.lastVisitAt).getTime() <= RECENT_MS ? 1 : 0,
+          },
+        };
+      });
       const src = this.map.getSource('fuel-stations') as maplibregl.GeoJSONSource | undefined;
       src?.setData({ type: 'FeatureCollection', features });
     } catch { /* silent */ }
@@ -3544,15 +3658,128 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     const where = [p['address'], p['city']].filter(Boolean).join(', ');
     const price = p['lastPriceEur'] != null && p['lastPriceEur'] !== '' ? `${Number(p['lastPriceEur']).toFixed(3)} €/L` : '—';
     const last = p['lastVisitAt'] ? String(p['lastVisitAt']).slice(0, 10) : '—';
-    const html = `<div style="font-size:12px;line-height:1.55;min-width:170px">`
+    // Détail par véhicule (qui est passé et combien de fois) — récupéré via l'index stationId.
+    const vehicles = this.fuelStationVehicles.get(String(p['stationId'] ?? '')) ?? [];
+    const vehiclesHtml = vehicles.length
+      ? `<div style="margin-top:6px;border-top:1px solid rgba(148,163,184,.25);padding-top:5px">`
+        + `<div style="color:#9ca3af;margin-bottom:2px">Véhicules passés :</div>`
+        + vehicles
+            .slice(0, 8)
+            .map((v) => `<div style="display:flex;justify-content:space-between;gap:12px"><span>${esc(v.plate || 'véhicule')}</span><b>${esc(v.visits)}×</b></div>`)
+            .join('')
+        + (vehicles.length > 8 ? `<div style="color:#9ca3af">+${vehicles.length - 8} autre(s)…</div>` : '')
+        + `</div>`
+      : '';
+    const html = `<div style="font-size:12px;line-height:1.55;min-width:190px">`
       + `<strong style="font-size:13px">${esc(p['brand']) || 'Station-service'}</strong><br>`
       + (where ? `<span style="color:#9ca3af">${esc(where)}</span><br>` : '')
       + `<b>${esc(p['visits'])}</b> passage(s) · <b>${esc(p['distinctVehicles'])}</b> véhicule(s)<br>`
-      + `Dernier prix : <b>${price}</b><br>`
-      + `Dernier passage : ${last}`
+      + `Dernier prix : <b>${price}</b> · Dernier passage : ${last}`
+      + vehiclesHtml
       + `</div>`;
     this.fuelPopup?.remove();
     this.fuelPopup = new maplibregl.Popup({ closeButton: true, offset: 14 }).setLngLat(coords).setHTML(html).addTo(this.map);
+  }
+
+  /**
+   * Zones mortes GPS (suivi FS-253) — marqueurs des parkings souterrains confirmés (bleu « P »),
+   * zones récurrentes (ambre « P ») et suspectes/brouilleur (rouge « ! »). Calque masqué par défaut
+   * (piloté par le toggle Calques) ; les DONNÉES sont chargées en continu pour l'override des cards.
+   */
+  private setupDeadZonesLayer(): void {
+    if (!this.map || this.map.getSource('dead-zones')) return;
+    this.map.addSource('dead-zones', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    const vis: 'visible' | 'none' = this.showDeadZones() ? 'visible' : 'none';
+    this.map.addLayer({
+      id: 'dead-zones-circle',
+      type: 'circle',
+      source: 'dead-zones',
+      layout: { visibility: vis },
+      paint: {
+        'circle-radius': 11,
+        'circle-color': ['match', ['get', 'status'], 'SUSPECT', '#ef4444', 'CONFIRMED_BENIGN', '#0ea5e9', '#f59e0b'],
+        'circle-opacity': 0.9,
+        'circle-stroke-width': 2,
+        'circle-stroke-color': '#ffffff',
+      },
+    });
+    this.map.addLayer({
+      id: 'dead-zones-icon',
+      type: 'symbol',
+      source: 'dead-zones',
+      layout: {
+        visibility: vis,
+        // « ! » pour une zone suspecte (brouilleur), « P » (parking) sinon.
+        'text-field': ['match', ['get', 'status'], 'SUSPECT', '!', 'P'],
+        'text-size': 13,
+        'text-allow-overlap': true,
+        'text-ignore-placement': true,
+      },
+      paint: { 'text-color': '#ffffff' },
+    });
+    if (this.deadZoneClickHandler) this.map.off('click', 'dead-zones-circle', this.deadZoneClickHandler);
+    this.deadZoneClickHandler = (e) => this.onDeadZoneClick(e);
+    this.map.on('click', 'dead-zones-circle', this.deadZoneClickHandler);
+    if (!this.deadZoneCursorBound) {
+      this.map.on('mouseenter', 'dead-zones-circle', () => { if (this.map) this.map.getCanvas().style.cursor = 'pointer'; });
+      this.map.on('mouseleave', 'dead-zones-circle', () => { if (this.map) this.map.getCanvas().style.cursor = ''; });
+      this.deadZoneCursorBound = true;
+    }
+  }
+
+  /** Charge les zones mortes de la flotte accessible (best-effort) : alimente le calque ET le signal. */
+  private async loadDeadZones(): Promise<void> {
+    if (!this.map) return;
+    try {
+      const zones = await firstValueFrom(this.deadZonesApi.listForMap(this.fleetFilter.selectedFleetId() ?? undefined));
+      this.deadZonesData.set(zones);
+      const features: GeoJSON.Feature[] = zones.map((z) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [z.centroidLng, z.centroidLat] },
+        properties: {
+          id: z.id,
+          plate: z.plate ?? '',
+          status: z.status,
+          occurrences: z.occurrences,
+          nature: deadZoneNatureLabel(z),
+          place: z.placeLabel ?? '',
+        },
+      }));
+      const src = this.map.getSource('dead-zones') as maplibregl.GeoJSONSource | undefined;
+      src?.setData({ type: 'FeatureCollection', features });
+    } catch { /* silent */ }
+  }
+
+  /** Toggle du calque parkings souterrains / zones mortes. */
+  protected toggleDeadZones(): void {
+    const v = !this.showDeadZones();
+    this.showDeadZones.set(v);
+    this.setLayerVisibility('dead-zones-circle', v);
+    this.setLayerVisibility('dead-zones-icon', v);
+    if (!v) this.deadZonePopup?.remove();
+  }
+
+  /** Popup d'une zone morte au clic (véhicule, nature, fréquence). */
+  private onDeadZoneClick(e: maplibregl.MapLayerMouseEvent): void {
+    const f = e.features?.[0];
+    if (!f || !this.map) return;
+    const p = f.properties ?? {};
+    const coords = (f.geometry as GeoJSON.Point).coordinates as [number, number];
+    const esc = (s: unknown) => String(s ?? '').replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] as string));
+    const status = String(p['status']);
+    const statusLabel = status === 'CONFIRMED_BENIGN'
+      ? '🅿️ Parking souterrain confirmé'
+      : status === 'SUSPECT'
+        ? '⚠️ Zone suspecte (brouilleur ?)'
+        : 'Perte GPS récurrente';
+    const html = `<div style="font-size:12px;line-height:1.55;min-width:180px">`
+      + `<strong style="font-size:13px">${esc(p['plate']) || 'Véhicule'}</strong><br>`
+      + (p['place'] ? `<span style="color:#9ca3af">${esc(p['place'])}</span><br>` : '')
+      + `<b>${esc(statusLabel)}</b><br>`
+      + `${esc(p['nature'])} · perte GPS ${esc(p['occurrences'])} fois ici`
+      + `</div>`;
+    this.deadZonePopup?.remove();
+    this.deadZonePopup = new maplibregl.Popup({ closeButton: true, offset: 14 }).setLngLat(coords).setHTML(html).addTo(this.map);
   }
 
   /** Sprint D.4 — setup layer pour l'outil de mesure (ligne + points). */
@@ -4082,6 +4309,17 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     });
     this.activePopupTrackerId = trackerId;
     this.activePopupVehicleId = pos.vehicleId;
+
+    // Zones mortes GPS (suivi FS-253) : si le boîtier est GPS_LOST, sa position affichée est FIGÉE
+    // sur le dernier fix (= point d'entrée). Si ce point tombe dans une zone connue de CE véhicule,
+    // on calme le message (« à l'arrêt · parking souterrain » si confirmé). Données déjà en mémoire
+    // (chargées en continu), donc lookup synchrone — aucun appel réseau au clic.
+    this.deadZoneHint.set(null);
+    if (this.cardConnectivity() === 'GPS_LOST') {
+      const zonesForVehicle = this.deadZonesData().filter((z) => z.vehicleId === pos.vehicleId);
+      const z = matchDeadZone(zonesForVehicle, pos.lat, pos.lng);
+      if (z) this.deadZoneHint.set({ label: deadZoneNatureLabel(z), benign: z.status === 'CONFIRMED_BENIGN' });
+    }
   }
 
   private requestEngine(trackerId: string, action: 'CUT' | 'RESTORE'): void {
@@ -4154,6 +4392,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
   protected closeBaanoolCard(): void {
     this.baanoolCard.set(null);
+    this.deadZoneHint.set(null);
     this.activePopupTrackerId = null;
     this.activePopupVehicleId = null;
   }

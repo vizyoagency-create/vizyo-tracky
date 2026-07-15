@@ -171,6 +171,8 @@ export interface FuelStationMapPointDto {
   visits: number;
   /** Nombre de véhicules distincts passés par cette station. */
   distinctVehicles: number;
+  /** Détail par véhicule : qui est passé et combien de fois, trié par fréquence décroissante (popup carte). */
+  vehicles: { vehicleId: string; plate: string | null; visits: number }[];
   /** Dernier passage (ISO) — pour la mise en avant « récemment utilisée ». */
   lastVisitAt: string;
   /** Dernier prix capté (€/L), tous carburants confondus, ou null. */

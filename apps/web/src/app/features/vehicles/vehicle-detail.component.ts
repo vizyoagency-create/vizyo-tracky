@@ -7,7 +7,7 @@ import {
   LucideAngularModule, ArrowLeft, Wifi, WifiOff, Gauge, MapPin, Radio,
   AlertTriangle, AlertCircle, Info, Check, Power, Route, BarChart3, BellOff, Map,
   History, Bell, Zap, Clock, ShieldAlert, ShieldCheck, MessageSquare, Pencil, X,
-  UserRound, UserPlus, Copy, Play, Layers, Wrench, QrCode,
+  UserRound, UserPlus, Copy, Play, Layers, Wrench, QrCode, SatelliteDish, ParkingSquare,
 } from 'lucide-angular';
 import type { AlertEvent, DriverDto, TripDto } from '@vizyo/tracky-shared';
 import { isAcceptableLiveFix } from '@vizyo/tracky-shared';
@@ -41,6 +41,17 @@ import type { VehicleEventSeverity } from '@vizyo/tracky-shared';
 import { relativeTime } from '../../shared/utils/relative-time';
 import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnectivityState, type GeofenceDto } from '@vizyo/tracky-shared';
 import { GeofencesApiService } from '../../core/services/geofences.service';
+import {
+  GpsDeadZonesApiService,
+  type GpsDeadZoneDto,
+  type GpsDeadZoneStatus,
+  type GpsDeadZoneLabel,
+} from '../../core/services/gps-dead-zones.service';
+import {
+  matchDeadZone,
+  deadZoneNatureLabel,
+  deadZoneStatusLabel,
+} from '../../shared/utils/gps-dead-zone';
 import { connectivityMeta } from '../../shared/ui/connectivity-badge/connectivity-badge.component';
 import { InstallReviewBadgeComponent } from '../../shared/ui/install-review-badge/install-review-badge.component';
 import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.component';
@@ -337,6 +348,99 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
                 </span>
               </div>
             }
+          </div>
+        }
+
+        <!-- Zones mortes GPS (suivi FS-253) — endroits où ce véhicule perd récurremment le GPS. -->
+        @if (deadZones().length) {
+          <div class="vd-dz-card">
+            <div class="vd-admin-card-header vd-dz-header">
+              <lucide-icon [img]="SatelliteDish" [size]="14"></lucide-icon>
+              <span>Zones mortes GPS</span>
+              <span class="vd-dz-count">{{ deadZones().length }}</span>
+            </div>
+
+            @if (currentDeadZone(); as cz) {
+              <div class="vd-dz-now">
+                <lucide-icon [img]="ParkingSquare" [size]="16"></lucide-icon>
+                @if (cz.status === 'CONFIRMED_BENIGN') {
+                  <span>
+                    Actuellement <strong>à l'arrêt en parking souterrain</strong>@if (cz.placeLabel) { ({{ cz.placeLabel }})}.
+                    Perte de GPS normale ici — ce n'est pas une panne.
+                  </span>
+                } @else {
+                  <div class="vd-dz-now-ask">
+                    <span>
+                      Ce véhicule perd le GPS <strong>ici même</strong>@if (cz.placeLabel) { ({{ cz.placeLabel }})}, déjà {{ cz.occurrences }} fois.
+                      Est-ce un <strong>parking souterrain / couvert</strong> (perte normale) ?
+                    </span>
+                    @if (canEditVehicle()) {
+                      <div class="vd-dz-actions">
+                        <button type="button" class="vd-dz-btn vd-dz-btn--ok" [disabled]="deadZoneSaving() === cz.id" (click)="confirmDeadZone(cz)">Oui, c'est un parking</button>
+                        <button type="button" class="vd-dz-btn vd-dz-btn--warn" [disabled]="deadZoneSaving() === cz.id" (click)="markDeadZoneSuspect(cz)">Non, à surveiller</button>
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
+            }
+
+            <p class="vd-dz-intro">
+              Endroits où ce véhicule reperd régulièrement le GPS (parking souterrain, tunnel… ou brouilleur).
+              Confirmez une zone « normale » pour ne plus recevoir d'alerte « GPS perdu » ici.
+            </p>
+
+            <ul class="vd-dz-list">
+              @for (z of deadZones(); track z.id) {
+                <li
+                  class="vd-dz-item"
+                  [class.vd-dz-item--benign]="z.status === 'CONFIRMED_BENIGN'"
+                  [class.vd-dz-item--suspect]="z.status === 'SUSPECT'"
+                >
+                  <div class="vd-dz-item-main">
+                    <div class="vd-dz-item-title">
+                      <strong>{{ z.placeLabel || ((z.centroidLat | number: '1.4-4') + ', ' + (z.centroidLng | number: '1.4-4')) }}</strong>
+                      <span class="vd-dz-badge" [attr.data-s]="z.status">{{ dzStatusLabel(z.status) }}</span>
+                    </div>
+                    <div class="vd-dz-item-meta">
+                      <span>Perdu {{ z.occurrences }} fois</span>
+                      <span aria-hidden="true">·</span>
+                      <span>{{ dzNatureLabel(z) }}</span>
+                      <span aria-hidden="true">·</span>
+                      <span>dernière {{ relativeTime(z.lastSeenAt) }}</span>
+                    </div>
+                    @if (z.note) { <div class="vd-dz-note">{{ z.note }}</div> }
+                  </div>
+                  @if (canEditVehicle()) {
+                    <div class="vd-dz-actions">
+                      @if (z.status !== 'CONFIRMED_BENIGN') {
+                        <button
+                          type="button"
+                          class="vd-dz-btn vd-dz-btn--ok"
+                          [disabled]="deadZoneSaving() === z.id"
+                          (click)="confirmDeadZone(z)"
+                        >C'est normal (parking)</button>
+                      } @else {
+                        <button
+                          type="button"
+                          class="vd-dz-btn"
+                          [disabled]="deadZoneSaving() === z.id"
+                          (click)="reactivateDeadZone(z)"
+                        >Réactiver les alertes</button>
+                      }
+                      @if (z.status !== 'SUSPECT') {
+                        <button
+                          type="button"
+                          class="vd-dz-btn vd-dz-btn--warn"
+                          [disabled]="deadZoneSaving() === z.id"
+                          (click)="markDeadZoneSuspect(z)"
+                        >Suspect</button>
+                      }
+                    </div>
+                  }
+                </li>
+              }
+            </ul>
           </div>
         }
 
@@ -859,6 +963,33 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
     .vd-admin-warning lucide-icon {
       flex-shrink: 0;
     }
+
+    /* Zones mortes GPS (suivi FS-253) */
+    .vd-dz-card { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; background: color-mix(in srgb, #0ea5e9 6%, var(--bg-secondary)); border: 1px solid color-mix(in srgb, #0ea5e9 22%, var(--border-subtle)); border-radius: 12px; }
+    .vd-dz-header { color: #0ea5e9; }
+    .vd-dz-count { margin-left: auto; padding: 1px 8px; border-radius: 999px; background: color-mix(in srgb, #0ea5e9 18%, transparent); color: #0ea5e9; font-size: 11px; font-weight: 700; }
+    .vd-dz-now { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; background: color-mix(in srgb, #0ea5e9 10%, var(--bg-secondary)); border: 1px solid color-mix(in srgb, #0ea5e9 28%, var(--border-subtle)); border-radius: 8px; color: var(--fg-secondary); font-size: 12px; line-height: 1.4; }
+    .vd-dz-now lucide-icon { color: #0ea5e9; flex-shrink: 0; margin-top: 1px; }
+    .vd-dz-now-ask { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+    .vd-dz-intro { margin: 0; color: var(--fg-tertiary); font-size: 11px; line-height: 1.4; }
+    .vd-dz-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+    .vd-dz-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 8px 10px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: 10px; }
+    .vd-dz-item--benign { border-color: color-mix(in srgb, var(--tracky-light) 40%, var(--border-subtle)); }
+    .vd-dz-item--suspect { border-color: color-mix(in srgb, #ef4444 40%, var(--border-subtle)); }
+    .vd-dz-item-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+    .vd-dz-item-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .vd-dz-now strong, .vd-dz-item-title strong { color: var(--fg-primary); }
+    .vd-dz-item-title strong { font-size: 13px; font-weight: 600; }
+    .vd-dz-badge { padding: 1px 7px; border-radius: 999px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; background: color-mix(in srgb, var(--fg-tertiary) 18%, transparent); color: var(--fg-secondary); }
+    .vd-dz-badge[data-s='CONFIRMED_BENIGN'] { background: color-mix(in srgb, var(--tracky-light) 20%, transparent); color: var(--tracky-light); }
+    .vd-dz-badge[data-s='SUSPECT'] { background: rgba(239,68,68,.16); color: var(--danger); }
+    .vd-dz-item-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; color: var(--fg-tertiary); font-size: 11px; }
+    .vd-dz-note { color: var(--fg-secondary); font-size: 11px; font-style: italic; }
+    .vd-dz-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .vd-dz-btn { padding: 5px 10px; border-radius: 8px; border: 1px solid var(--border-strong); background: transparent; color: var(--fg-secondary); font-size: 11px; font-weight: 600; cursor: pointer; }
+    .vd-dz-btn:disabled { opacity: .5; cursor: wait; }
+    .vd-dz-btn--ok { border-color: color-mix(in srgb, var(--tracky-light) 45%, var(--border-strong)); color: var(--tracky-light); }
+    .vd-dz-btn--warn { border-color: color-mix(in srgb, #ef4444 40%, var(--border-strong)); color: var(--danger); }
 
     /* Ancienne stats-bar → remplacée par .vdx-stats (haut du fichier). Styles copie IMEI conservés : */
     .vd-stat-copy-icon { opacity: .5; color: var(--fg-tertiary); transition: opacity .15s, color .15s }
@@ -1448,6 +1579,12 @@ export class VehicleDetailComponent implements OnInit {
   private readonly toast = inject(ToastService);
   private readonly vehicleGroups = inject(VehicleGroupsService);
   private readonly agendaApi = inject(AgendaApiService);
+  private readonly deadZonesApi = inject(GpsDeadZonesApiService);
+
+  // Zones mortes GPS (suivi FS-253) : endroits où ce véhicule perd récurremment le GPS.
+  protected readonly deadZones = signal<GpsDeadZoneDto[]>([]);
+  /** Id de la zone en cours de mise à jour (spinner/disable des boutons). */
+  protected readonly deadZoneSaving = signal<string | null>(null);
 
   protected readonly vehicle = signal<VehicleDetailDto | null>(null);
   // Sprint 1 (Fondation Groupes) — assignation de groupe depuis le détail.
@@ -1537,6 +1674,8 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly ZapIcon = Zap;
   protected readonly ShieldAlert = ShieldAlert;
   protected readonly ShieldCheck = ShieldCheck;
+  protected readonly SatelliteDish = SatelliteDish;
+  protected readonly ParkingSquare = ParkingSquare;
   protected readonly MessageSquareIcon = MessageSquare;
   protected readonly PencilIcon = Pencil;
   protected readonly XIcon = X;
@@ -1916,6 +2055,64 @@ export class VehicleDetailComponent implements OnInit {
 
   protected readonly connMeta = computed(() => connectivityMeta(this.connectivity()));
 
+  /**
+   * Zone morte GPS dans laquelle se trouve ACTUELLEMENT le véhicule (uniquement s'il est
+   * GPS_LOST) : sa dernière position figée tombe dans un cluster connu. Sert à afficher un
+   * message calme (« parking souterrain probable ») au lieu d'un « GPS perdu » alarmant.
+   */
+  protected readonly currentDeadZone = computed<GpsDeadZoneDto | null>(() => {
+    if (this.connectivity() !== 'GPS_LOST') return null;
+    const pos = this.currentPosition();
+    if (!pos || pos.lat == null || pos.lng == null) return null;
+    return matchDeadZone(this.deadZones(), pos.lat, pos.lng);
+  });
+
+  /** Libellé court du statut d'une zone morte (délègue à l'util partagé). */
+  protected dzStatusLabel(s: GpsDeadZoneStatus): string {
+    return deadZoneStatusLabel(s);
+  }
+
+  /** Nature (confirmée ou suggérée) d'une zone morte, en clair (délègue à l'util partagé). */
+  protected dzNatureLabel(z: GpsDeadZoneDto): string {
+    return deadZoneNatureLabel(z);
+  }
+
+  /** Confirme une zone comme « normale » (parking) → l'app cesse d'alerter sur les pertes ici. */
+  protected confirmDeadZone(z: GpsDeadZoneDto): void {
+    void this.reviewDeadZone(z, {
+      status: 'CONFIRMED_BENIGN',
+      // Qualifie en « parking souterrain » si la nature n'a pas encore été posée.
+      ...(z.label === 'UNKNOWN' ? { label: 'UNDERGROUND_PARKING' as GpsDeadZoneLabel } : {}),
+    });
+  }
+
+  /** Marque une zone suspecte (brouilleur ?) → on continue d'alerter. */
+  protected markDeadZoneSuspect(z: GpsDeadZoneDto): void {
+    void this.reviewDeadZone(z, { status: 'SUSPECT', label: 'JAMMER_SUSPECTED' });
+  }
+
+  /** Réactive les alertes sur une zone précédemment confirmée « normale ». */
+  protected reactivateDeadZone(z: GpsDeadZoneDto): void {
+    void this.reviewDeadZone(z, { status: 'RECURRING' });
+  }
+
+  private async reviewDeadZone(
+    z: GpsDeadZoneDto,
+    data: { status?: GpsDeadZoneStatus; label?: GpsDeadZoneLabel; note?: string | null },
+  ): Promise<void> {
+    if (this.deadZoneSaving()) return;
+    this.deadZoneSaving.set(z.id);
+    try {
+      const updated = await firstValueFrom(this.deadZonesApi.review(z.id, data));
+      this.deadZones.update((list) => list.map((x) => (x.id === z.id ? updated : x)));
+      this.toast.success('Zone morte GPS mise à jour');
+    } catch {
+      this.toast.error('Échec de la mise à jour de la zone');
+    } finally {
+      this.deadZoneSaving.set(null);
+    }
+  }
+
   /** Libellé de la pastille de statut du hero (réf. maquette : « En ligne · Contact ON »). */
   protected heroStatusLabel(): string {
     if (this.connectivity() !== 'ONLINE') return this.connMeta().label;
@@ -2011,6 +2208,11 @@ export class VehicleDetailComponent implements OnInit {
       // Géofences qui surveillent ce véhicule (onglet Géofences) — non bloquant.
       void firstValueFrom(this.geofencesApi.list())
         .then((gs) => this.allGeofences.set(gs))
+        .catch(() => { /* silencieux */ });
+
+      // Zones mortes GPS apprises pour ce véhicule (suivi FS-253) — non bloquant.
+      void firstValueFrom(this.deadZonesApi.listForVehicle(vehicleId))
+        .then((zones) => this.deadZones.set(zones))
         .catch(() => { /* silencieux */ });
 
       // Chargement initial : applique deja la plage date courante (default = today)
