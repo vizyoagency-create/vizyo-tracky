@@ -29,6 +29,19 @@ function isClientDisconnect(e: unknown): boolean {
   );
 }
 
+/**
+ * Throttling d'un service AMONT (ex. Vizyo Auth renvoie 429 « Too Many Requests » quand TOUS les
+ * onglets ouverts rafraîchissent leur token EN MÊME TEMPS — typiquement pendant un REDÉPLOIEMENT :
+ * l'API redémarre, les clients se reconnectent et refont un `/auth/refresh` d'un coup). Ce n'est ni
+ * un crash ni une faute serveur : le client réessaie et ça se résorbe tout seul. On NE l'écrit PAS
+ * au centre d'alerte — sinon un simple deploy = ~100 fausses erreurs CRITICAL (incident observé le
+ * 2026-07-15). La réponse HTTP au client reste inchangée : seule la journalisation est supprimée.
+ */
+function isUpstreamThrottle(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : typeof e === 'string' ? e : '';
+  return /Vizyo Auth error 429|ThrottlerException|Too Many Requests/i.test(msg);
+}
+
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger('ExceptionFilter');
@@ -82,7 +95,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const str = (v: unknown, max: number): string | undefined =>
       typeof v === 'string' ? v.slice(0, max) : undefined;
 
-    if (status >= 500 || !(exception instanceof HttpException)) {
+    if ((status >= 500 || !(exception instanceof HttpException)) && !isUpstreamThrottle(exception)) {
       // CRITICAL est reserve aux fautes serveur non maitrisees (exception non geree
       // -> 500). Un 5xx leve VOLONTAIREMENT (HttpException) est une condition
       // operationnelle attendue, pas un crash : ex. 503 "tracker hors ligne" sur
