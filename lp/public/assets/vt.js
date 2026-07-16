@@ -22,6 +22,22 @@
     else if (a === 'menu') toggleMenu();
   });
 
+  // Ancres MÊME PAGE (ex. « Demander une démo » → #demo) : scroll fiable via
+  // scrollIntoView (le scroll natif de l'ancre ne saute pas toujours au bon
+  // endroit après repositionnement de sections). Respecte scroll-margin-top,
+  // ferme le menu mobile, met à jour le hash.
+  d.addEventListener('click', function (e) {
+    if (e.defaultPrevented || e.button) return;
+    var a = e.target.closest && e.target.closest('a[href]'); if (!a) return;
+    var href = a.getAttribute('href') || '';
+    if (href.charAt(0) !== '#' || href.length < 2) return;
+    var el = d.getElementById(decodeURIComponent(href.slice(1))); if (!el) return;
+    e.preventDefault();
+    var m = d.getElementById('vt-menu'); if (m && m.style.display === 'flex') m.style.display = 'none';
+    try { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (x) { el.scrollIntoView(); }
+    try { if (history.replaceState) history.replaceState(null, '', href); } catch (x2) {}
+  });
+
   // ── Hover inline (remplace l'attribut style-hover du design) ──
   function initHover() {
     slice(d.querySelectorAll('[data-vth]')).forEach(function (el) {
@@ -342,6 +358,38 @@
     } catch (e) {}
   }
 
-  function init() { initHover(); initReveal(); handleHash(); initSim(); initForms(); prefillPartner(); initTracking(); initSmartPopup(); }
+  // Vidéos qui ne démarrent qu'à l'écran : on ne pose le src (donc on ne charge
+  // et ne lance le lecteur) que lorsque l'iframe est réellement visible, et on le
+  // retire quand elle sort de l'écran (le lecteur s'arrête). Marqueur data-vt-src.
+  // Technique getBoundingClientRect + scroll/resize (fiable partout), doublée d'un
+  // IntersectionObserver quand dispo.
+  function initLazyVideos() {
+    var vids = [].slice.call(d.querySelectorAll('iframe[data-vt-src]'));
+    if (!vids.length) return;
+    function vh() { return window.innerHeight || d.documentElement.clientHeight || 0; }
+    function sync() {
+      var h = vh();
+      vids.forEach(function (f) {
+        var src = f.getAttribute('data-vt-src'); if (!src) return;
+        var r = f.getBoundingClientRect();
+        var visible = r.height > 0 && r.top < h * 0.85 && r.bottom > h * 0.15;
+        if (visible) { if (f.getAttribute('src') !== src) f.src = src; }
+        else if (f.getAttribute('src')) { f.removeAttribute('src'); }
+      });
+    }
+    var ticking = false;
+    function onScroll() { if (ticking) return; ticking = true; requestAnimationFrame(function () { ticking = false; sync(); }); }
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    if ('IntersectionObserver' in window) {
+      var io = new IntersectionObserver(function () { sync(); }, { threshold: [0, 0.4] });
+      vids.forEach(function (f) { io.observe(f); });
+    }
+    sync();
+    // expose pour vérif/diagnostic
+    window.__vtSyncVideos = sync;
+  }
+
+  function init() { initHover(); initReveal(); handleHash(); initSim(); initForms(); prefillPartner(); initTracking(); initSmartPopup(); initLazyVideos(); }
   if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', init); else init();
 })();
