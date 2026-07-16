@@ -51,6 +51,9 @@ export class AudioAutoDisarmService {
       this.logger.error(
         `[auto-disarm] run a échoué: ${err instanceof Error ? err.message : err}`,
       );
+      await this.errorLogger
+        .record(err instanceof Error ? err : new Error(String(err)), 'audio-monitoring')
+        .catch(() => {});
     } finally {
       this.running = false;
     }

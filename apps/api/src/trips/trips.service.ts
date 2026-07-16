@@ -5,6 +5,7 @@ import {
   Logger,
   NotFoundException,
   OnModuleInit,
+  Optional,
 } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { Prisma, UserRole } from '@prisma/client';
@@ -13,6 +14,7 @@ import type { TripCompletedEvent, TripStartedEvent } from '@vizyo/tracky-shared'
 import { douglasPeucker, isPlausibleJump, isValidLatLng } from '@vizyo/tracky-shared';
 import { distanceMeters } from '../common/utils/haversine';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { MapMatchingService } from './map-matching.service';
@@ -97,6 +99,7 @@ export class TripsService implements OnModuleInit {
     private readonly gateway: RealtimeGateway,
     private readonly segmenter: TripSegmenterService,
     private readonly mapMatching: MapMatchingService,
+    @Optional() private readonly errorLogger?: ErrorLogger,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -274,6 +277,11 @@ export class TripsService implements OnModuleInit {
         } catch (err) {
           this.logger.error(
             `finalizeTrip (timeout) a echoue pour tracker ${trackerId}: ${err instanceof Error ? err.message : err}`,
+          );
+          this.errorLogger?.recordBackground(
+            err instanceof Error ? err : new Error(String(err)),
+            'cron:trip-timeouts',
+            { trackerId, tripId: state.tripId, vehicleId: state.vehicleId, fleetId: state.fleetId },
           );
         }
       }

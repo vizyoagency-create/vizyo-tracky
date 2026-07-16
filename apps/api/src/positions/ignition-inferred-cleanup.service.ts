@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 import type { PositionUpdateEvent } from '@vizyo/tracky-shared';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 
@@ -26,6 +27,7 @@ export class IgnitionInferredCleanupService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly gateway: RealtimeGateway,
+    private readonly errorLogger: ErrorLogger,
   ) {}
 
   @Interval(60_000)
@@ -93,6 +95,11 @@ export class IgnitionInferredCleanupService {
             `Failed to clean up inferred ignition for tracker ${t.imei}: ` +
               (err instanceof Error ? err.message : String(err)),
           );
+          this.errorLogger.recordBackground(
+            err instanceof Error ? err : new Error(String(err)),
+            'cron:ignition-cleanup',
+            { imei: t.imei, trackerId: t.id },
+          );
         }
       }
     } catch (err) {
@@ -100,6 +107,10 @@ export class IgnitionInferredCleanupService {
       this.logger.error(
         `IgnitionInferredCleanupService tick failed: ` +
           (err instanceof Error ? err.message : String(err)),
+      );
+      this.errorLogger.recordBackground(
+        err instanceof Error ? err : new Error(String(err)),
+        'cron:ignition-cleanup',
       );
     }
   }

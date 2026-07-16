@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { EmailStatus } from '@prisma/client';
 import { Resend } from 'resend';
 import type { Env } from '../config/env.validation';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 
@@ -60,6 +61,7 @@ export class EmailService {
     private readonly config: ConfigService<Env, true>,
     private readonly systemActivity: SystemActivityService,
     private readonly prisma: PrismaService,
+    private readonly errorLogger: ErrorLogger,
   ) {
     const apiKey = this.config.get('RESEND_API_KEY', { infer: true });
     this.fromAddress = this.config.get('RESEND_FROM', { infer: true });
@@ -97,6 +99,7 @@ export class EmailService {
       });
       if (result.error) {
         this.logger.warn(`Email send failed to ${params.to}: ${result.error.message}`);
+        this.errorLogger.recordBackground(result.error.message, 'email', { template: params.template, to: params.to });
         this.recordActivity(params, false, result.error.message);
         await this.persistLog(params, { status: EmailStatus.FAILED, errorMessage: result.error.message });
         return { ok: false, error: result.error.message };
@@ -107,6 +110,7 @@ export class EmailService {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`Email send threw to ${params.to}: ${message}`);
+      this.errorLogger.recordBackground(err instanceof Error ? err : new Error(message), 'email', { template: params.template, to: params.to });
       this.recordActivity(params, false, message);
       await this.persistLog(params, { status: EmailStatus.FAILED, errorMessage: message });
       return { ok: false, error: message };

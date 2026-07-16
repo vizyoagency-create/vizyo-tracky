@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { Alert, AlertRule, User, Vehicle } from '@prisma/client';
 import { UserRole } from '@prisma/client';
 import { EmailService } from '../email/email.service';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SmsGatewayService } from '../sms/sms-gateway.service';
 import { WebPushService } from './web-push.service';
@@ -43,6 +44,7 @@ export class NotificationDispatchService {
     private readonly webPush: WebPushService,
     private readonly email: EmailService,
     private readonly sms: SmsGatewayService,
+    private readonly errorLogger: ErrorLogger,
   ) {}
 
   /**
@@ -70,6 +72,11 @@ export class NotificationDispatchService {
         } catch (err) {
           this.logger.warn(
             `Dispatch ${channel} alert ${alert.id} -> ${recipient.email} failed: ${err instanceof Error ? err.message : err}`,
+          );
+          this.errorLogger.recordBackground(
+            err instanceof Error ? err : new Error(String(err)),
+            'notifications',
+            { channel, alertId: alert.id, fleetId: alert.fleetId, userId: recipient.id },
           );
         }
       }
@@ -117,6 +124,11 @@ export class NotificationDispatchService {
         } catch (err) {
           this.logger.warn(
             `Escalation ${channel} alert ${alert.id} -> ${target.email} failed: ${err instanceof Error ? err.message : err}`,
+          );
+          this.errorLogger.recordBackground(
+            err instanceof Error ? err : new Error(String(err)),
+            'notifications',
+            { channel, alertId: alert.id, fleetId: alert.fleetId, userId: target.id, escalation: true },
           );
         }
       }

@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { UserRole } from '@prisma/client';
 import { EmailService } from '../email/email.service';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReportPdfService } from './report-pdf.service';
 import { ReportsStatsService } from './reports-stats.service';
@@ -27,6 +28,7 @@ export class ReportsCronService {
     private readonly stats: ReportsStatsService,
     private readonly pdf: ReportPdfService,
     private readonly email: EmailService,
+    @Optional() private readonly errorLogger?: ErrorLogger,
   ) {}
 
   @Cron('0 0 8 * * 1')
@@ -85,6 +87,11 @@ export class ReportsCronService {
       } catch (err) {
         this.logger.warn(
           `Weekly report failed for fleet ${fleet.id}: ${err instanceof Error ? err.message : err}`,
+        );
+        this.errorLogger?.recordBackground(
+          err instanceof Error ? err : new Error(String(err)),
+          'cron:reports',
+          { fleetId: fleet.id },
         );
       }
     }

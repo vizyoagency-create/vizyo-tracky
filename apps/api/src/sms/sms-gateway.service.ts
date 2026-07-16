@@ -300,6 +300,11 @@ export class SmsGatewayService implements OnModuleInit {
         },
       });
       this.logger.error(`SMS send failed to ${safeTo}: ${errorMessage}`);
+      this.errorLogger.record(
+        err instanceof Error ? err : new Error(errorMessage),
+        'sms-gateway',
+        { imei: context?.imei, toNumber: safeTo, errorCode, provider: 'twilio' },
+      ).catch((e) => this.logger.error('ErrorLog persist failed', e));
       return { ok: false, error: errorMessage };
     }
   }

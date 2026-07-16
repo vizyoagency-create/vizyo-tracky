@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { SurveillanceMode, UserRole } from '@prisma/client';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { isWithinSchedule } from './surveillance.helpers';
 import type { ScheduleDay } from './surveillance.dto';
@@ -29,6 +30,7 @@ export class SurveillanceSchedulerService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly surveillance: SurveillanceService,
+    private readonly errorLogger: ErrorLogger,
   ) {}
 
   private running = false;
@@ -49,6 +51,7 @@ export class SurveillanceSchedulerService {
       await this.runOnce();
     } catch (err) {
       this.logger.error(`[scheduler] run a échoué: ${err instanceof Error ? err.message : err}`);
+      this.errorLogger.recordBackground(err instanceof Error ? err : new Error(String(err)), 'cron:surveillance');
     } finally {
       this.running = false;
     }
@@ -106,6 +109,11 @@ export class SurveillanceSchedulerService {
           `[scheduler] profile ${profile.id} (vehicle=${profile.vehicleId}) failed: ${
             err instanceof Error ? err.message : err
           }`,
+        );
+        this.errorLogger.recordBackground(
+          err instanceof Error ? err : new Error(String(err)),
+          'cron:surveillance',
+          { profileId: profile.id, vehicleId: profile.vehicleId, fleetId: profile.fleetId },
         );
       }
     }
