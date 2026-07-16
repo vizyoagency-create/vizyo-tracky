@@ -1,9 +1,9 @@
 import { ChangeDetectionStrategy, Component, HostListener, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { LucideAngularModule, Archive, Users, Shield, Pencil, KeyRound, Send, XCircle, Mail, UserPlus, MoreVertical, Check, Truck, Bell, Power, BarChart3, CalendarClock, CreditCard } from 'lucide-angular';
+import { LucideAngularModule, Archive, Users, Shield, Pencil, KeyRound, Send, XCircle, Mail, UserPlus, MoreVertical, Check } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
-import { getDefaultPermissions, type UserPermissions } from '@vizyo/tracky-shared';
+import { getDefaultPermissions, PERMISSION_GROUP_ORDER, PERMISSION_LABELS, type UserPermissions } from '@vizyo/tracky-shared';
 import { AudioMonitoringService } from '../../core/services/audio-monitoring.service';
 import { AuthService } from '../../core/services/auth.service';
 import { FleetsApiService, type FleetSummary } from '../../core/services/fleets.service';
@@ -22,14 +22,6 @@ import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { DriversListComponent } from '../drivers/drivers-list.component';
 
 type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | 'DRIVER';
-interface MatrixRow {
-  key: keyof UserPermissions;
-  label: string;
-  icon: typeof Truck;
-  danger?: boolean;
-  /** Rôles pour qui la capacité est OFF par défaut mais couramment accordée par utilisateur (état ◐). */
-  partial?: AppRole[];
-}
 
 @Component({
   selector: 'app-users-list',
@@ -83,7 +75,7 @@ interface MatrixRow {
           <div class="m-head">
             <div>
               <h3 class="m-title">Matrice de permissions</h3>
-              <p class="m-desc">Ce que chaque rôle peut faire par défaut. Les accès fins (par groupe / véhicule) se règlent utilisateur par utilisateur.</p>
+              <p class="m-desc">Le rôle n'est qu'un <strong>point de départ</strong>. Chaque permission ci-dessous s'active ou se coupe <strong>par utilisateur</strong> (et par groupe / véhicule) via « Détail par utilisateur » — aucune n'est définitivement bloquée par le rôle.</p>
             </div>
             <a routerLink="/users/overview" class="m-detail-link">Détail par utilisateur →</a>
           </div>
@@ -93,27 +85,26 @@ interface MatrixRow {
               <span class="m-col-h">{{ r.short }}</span>
             }
           </div>
-          @for (row of matrixRows; track row.key) {
-            <div class="m-grid">
-              <span class="m-cap">
-                <lucide-icon [img]="row.icon" [size]="15" [class.m-cap-danger]="row.danger" class="m-cap-ico"></lucide-icon>
-                {{ row.label }}
-              </span>
-              @for (r of roleCols; track r.role) {
-                <span class="m-cell">
-                  @switch (capState(row, r.role)) {
-                    @case ('full') { <span class="chk"><lucide-icon [img]="CheckIcon" [size]="13"></lucide-icon></span> }
-                    @case ('partial') { <span class="chk-part" title="Accordable par utilisateur">◐</span> }
-                    @default { <span class="chk-none">–</span> }
-                  }
-                </span>
-              }
-            </div>
+          @for (grp of permGroups; track grp.group) {
+            <div class="m-group-h">{{ grp.group }}</div>
+            @for (p of grp.perms; track p.key) {
+              <div class="m-grid">
+                <span class="m-cap" [title]="p.description">{{ p.label }}</span>
+                @for (r of roleCols; track r.role) {
+                  <span class="m-cell">
+                    @if (isDefaultOn(p.key, r.role)) {
+                      <span class="chk" title="Activé par défaut"><lucide-icon [img]="CheckIcon" [size]="13"></lucide-icon></span>
+                    } @else {
+                      <span class="chk-part" title="Désactivé par défaut — activable par utilisateur">○</span>
+                    }
+                  </span>
+                }
+              </div>
+            }
           }
           <div class="m-legend">
-            <span><span class="chk chk-sm"><lucide-icon [img]="CheckIcon" [size]="11"></lucide-icon></span> Par défaut</span>
-            <span><span class="chk-part chk-sm">◐</span> Accordable par utilisateur</span>
-            <span><span class="chk-none chk-sm">–</span> Non disponible</span>
+            <span><span class="chk chk-sm"><lucide-icon [img]="CheckIcon" [size]="11"></lucide-icon></span> Activé par défaut</span>
+            <span><span class="chk-part chk-sm">○</span> Désactivé par défaut — activable par utilisateur</span>
           </div>
         </div>
       } @else if (loading()) {
@@ -328,7 +319,8 @@ interface MatrixRow {
     .m-desc { margin-top: 5px; font-size: 12.5px; color: var(--fg-tertiary); max-width: 62ch }
     .m-detail-link { font-size: 12px; font-weight: 600; color: var(--tracky-light); white-space: nowrap; flex-shrink: 0 }
     .m-detail-link:hover { text-decoration: underline }
-    .m-grid { display: grid; grid-template-columns: minmax(180px,2fr) repeat(4,1fr); align-items: center; gap: 10px; padding: 11px 18px; border-top: 1px solid var(--border-subtle) }
+    .m-grid { display: grid; grid-template-columns: minmax(180px,2fr) repeat(5,1fr); align-items: center; gap: 10px; padding: 11px 18px; border-top: 1px solid var(--border-subtle) }
+    .m-group-h { padding: 13px 18px 5px; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--fg-tertiary); border-top: 1px solid var(--border-subtle) }
     .m-grid-head { border-top: none; background: var(--surface-rail) }
     .m-col-h { text-align: center; font-size: 12px; font-weight: 700; color: var(--fg-secondary) }
     .m-cap { display: flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 600; color: var(--fg-primary) }
@@ -345,7 +337,7 @@ interface MatrixRow {
     @media (max-width: 1000px) {
       .u-thead, .u-row { grid-template-columns: minmax(160px,2fr) 140px 44px }
       .u-col-scope, .u-col-last { display: none !important }
-      .m-grid { grid-template-columns: minmax(140px,1.6fr) repeat(4,1fr) }
+      .m-grid { grid-template-columns: minmax(140px,1.6fr) repeat(5,1fr) }
     }
   `],
 })
@@ -410,20 +402,25 @@ export class UsersListComponent implements OnInit {
     { role: 'NIGHT_WATCHMAN', short: 'Veilleur' },
     { role: 'DRIVER', short: 'Conducteur' },
   ];
-  protected readonly matrixRows: MatrixRow[] = [
-    { key: 'vehicles_view', label: 'Voir la flotte & carte', icon: Truck },
-    { key: 'alerts_acknowledge', label: 'Gérer les alertes', icon: Bell, partial: ['VIEWER'] },
-    { key: 'engine_control', label: 'Couper / déverrouiller le moteur', icon: Power, danger: true, partial: ['FLEET_MANAGER', 'DRIVER'] },
-    { key: 'reports_view', label: 'Rapports & export', icon: BarChart3 },
-    { key: 'users_manage', label: 'Gérer les utilisateurs', icon: Users },
-    { key: 'agenda_manage', label: 'Agenda & maintenance', icon: CalendarClock, partial: ['FLEET_MANAGER'] },
-    { key: 'billing_manage', label: 'Facturation & options', icon: CreditCard },
-  ];
-  /** État d'une cellule : ✓ (défaut), ◐ (accordable par utilisateur) ou – (indisponible). */
-  protected capState(row: MatrixRow, role: AppRole): 'full' | 'partial' | 'none' {
-    if (getDefaultPermissions(role)[row.key]) return 'full';
-    if (row.partial?.includes(role)) return 'partial';
-    return 'none';
+  /**
+   * TOUTES les capacités, groupées, dérivées de la SOURCE UNIQUE (packages/shared) — plus de liste
+   * codée en dur. Chaque permission du vrai modèle apparaît ; le rôle ne fait que fixer le défaut.
+   */
+  protected readonly permGroups = PERMISSION_GROUP_ORDER
+    .map((group) => ({
+      group,
+      perms: (Object.keys(PERMISSION_LABELS) as (keyof UserPermissions)[])
+        .filter((k) => PERMISSION_LABELS[k].group === group)
+        .map((k) => ({ key: k, label: PERMISSION_LABELS[k].label, description: PERMISSION_LABELS[k].description ?? '' })),
+    }))
+    .filter((g) => g.perms.length > 0);
+
+  /**
+   * Une capacité est-elle ACTIVE par défaut pour ce rôle ? Sinon elle est simplement désactivée
+   * par défaut — mais reste ACTIVABLE par utilisateur (il n'y a pas de « non disponible » réel).
+   */
+  protected isDefaultOn(key: keyof UserPermissions, role: AppRole): boolean {
+    return !!getDefaultPermissions(role)[key];
   }
 
   // Drawer (create + edit)
