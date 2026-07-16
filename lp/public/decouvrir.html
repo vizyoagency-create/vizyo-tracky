@@ -30,6 +30,8 @@ a{color:inherit;text-decoration:none}
 .vt-underline::after{content:"";position:absolute;left:0;bottom:0;height:2px;width:100%;background:linear-gradient(90deg,var(--accent),#4d75ff,var(--accent));background-size:200% 100%;border-radius:2px;animation:vt-uflow 3s linear infinite}
 @keyframes vt-uflow{to{background-position:200% 50%}}
 .vt-toc a:hover{border-color:var(--accent);color:var(--accent)}
+.vt-vid{border-radius:18px;overflow:hidden;border:1px solid var(--border2);box-shadow:var(--shadow-sm);background:#050706;aspect-ratio:16/9;position:relative}
+.vt-vid iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}
 @media (prefers-reduced-motion:reduce){.vt-underline::after{animation:none}}
 </style>
 <script>(function(){try{var t=localStorage.getItem('vt-theme')||'dark';document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme='dark'}})();</script>
@@ -67,7 +69,7 @@ a{color:inherit;text-decoration:none}
 <div><div style="font-family:'JetBrains Mono',monospace;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:8px">01 · Univers</div><h2 style="font-size:clamp(1.6rem,3vw,2.3rem);font-weight:800;letter-spacing:-.02em;margin:0 0 8px">Supervision</h2><p style="font-size:1rem;line-height:1.55;color:var(--tx2);max-width:40rem;margin:0">Carte live, alertes multi-canal, coupe-circuit antivol, géofences, écoute cabine, horaires de flotte.</p></div>
 <a href="fonctionnalites.html" style="display:inline-flex;align-items:center;gap:7px;white-space:nowrap;color:var(--accent);font-weight:700;font-size:.92rem">Voir sur le site <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
 </div>
-<div style="border-radius:18px;overflow:hidden;border:1px solid var(--border2);box-shadow:var(--shadow-sm);background:#050706;aspect-ratio:16/9;position:relative"><iframe src="assets/tracky-video/" title="Présentation animée Vizyo Tracky" loading="lazy" allow="autoplay" style="position:absolute;inset:0;width:100%;height:100%;border:0;display:block"></iframe></div>
+<div class="vt-vid"><iframe src="assets/tracky-svc/supervision.html" title="Vizyo Tracky — Supervision" loading="lazy" allow="autoplay"></iframe></div>
 </div>
 </section>
 
@@ -78,7 +80,7 @@ a{color:inherit;text-decoration:none}
 <div><div style="font-family:'JetBrains Mono',monospace;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:8px">02 · Univers</div><h2 style="font-size:clamp(1.6rem,3vw,2.3rem);font-weight:800;letter-spacing:-.02em;margin:0 0 8px">Analyse</h2><p style="font-size:1rem;line-height:1.55;color:var(--tx2);max-width:40rem;margin:0">Rapports PDF programmés, récit IA des trajets, scores conducteur, économies carburant, agenda intelligent.</p></div>
 <a href="fonctionnalites.html" style="display:inline-flex;align-items:center;gap:7px;white-space:nowrap;color:var(--accent);font-weight:700;font-size:.92rem">Voir sur le site <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
 </div>
-<div style="border-radius:18px;border:1px dashed var(--border2);background:var(--surface);aspect-ratio:16/9;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--tx3)"><svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M10 8l6 4-6 4V8z"/></svg><span style="font-family:'JetBrains Mono',monospace;font-size:.72rem;letter-spacing:.1em;text-transform:uppercase">Vidéo bientôt disponible</span></div>
+<div class="vt-vid"><iframe src="assets/tracky-svc/analyse.html" title="Vizyo Tracky — Analyse" loading="lazy" allow="autoplay"></iframe></div>
 </div>
 </section>
 
@@ -89,7 +91,7 @@ a{color:inherit;text-decoration:none}
 <div><div style="font-family:'JetBrains Mono',monospace;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:8px">03 · Univers</div><h2 style="font-size:clamp(1.6rem,3vw,2.3rem);font-weight:800;letter-spacing:-.02em;margin:0 0 8px">Administration</h2><p style="font-size:1rem;line-height:1.55;color:var(--tx2);max-width:40rem;margin:0">Utilisateurs &amp; rôles, groupes, permissions au véhicule près, identification conducteur, cartes SIM, installation.</p></div>
 <a href="fonctionnalites.html" style="display:inline-flex;align-items:center;gap:7px;white-space:nowrap;color:var(--accent);font-weight:700;font-size:.92rem">Voir sur le site <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
 </div>
-<div style="border-radius:18px;border:1px dashed var(--border2);background:var(--surface);aspect-ratio:16/9;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--tx3)"><svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M10 8l6 4-6 4V8z"/></svg><span style="font-family:'JetBrains Mono',monospace;font-size:.72rem;letter-spacing:.1em;text-transform:uppercase">Vidéo bientôt disponible</span></div>
+<div class="vt-vid"><iframe src="assets/tracky-svc/administration.html" title="Vizyo Tracky — Administration" loading="lazy" allow="autoplay"></iframe></div>
 </div>
 </section>
 

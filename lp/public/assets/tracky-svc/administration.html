@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Vizyo Tracky — Administration</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>html,body{margin:0;height:100%;background:#080B0A;overflow:hidden}#root{position:fixed;inset:0}</style>
+<script>window.OM_SCENES = "[{\"name\":\"Intro\",\"dur\":3.5,\"eyebrow\":\"Administration\",\"title\":\"Administration\",\"tagline\":\"Comptes, accès, connectivité et conformité, totalement sous contrôle.\"},{\"name\":\"Menu\",\"dur\":4,\"group\":\"Administration\",\"heading\":\"Aux commandes.\",\"sub\":\"Utilisateurs, groupes, conducteurs, cartes SIM et installation, réunis dans Administration.\"},{\"name\":\"Service\",\"dur\":3.4,\"screen\":\"utilisateurs\",\"active\":\"Utilisateurs\",\"title\":\"Utilisateurs\",\"icon\":\"users\",\"i\":1,\"total\":6,\"ct\":\"Multi-utilisateurs\",\"cd\":\"Invitez toute l'équipe en un clic et donnez à chacun son rôle : admin, gestionnaire, conducteur, lecture seule.\",\"zoom\":{\"s1\":1.2,\"ox\":54,\"oy\":48},\"corner\":\"br\"},{\"name\":\"Service\",\"dur\":3,\"screen\":\"groupes\",\"active\":\"Groupes\",\"title\":\"Groupes de véhicules\",\"icon\":\"layers\",\"i\":2,\"total\":6,\"ct\":\"Groupes par site\",\"cd\":\"Organisez le parc par site, agence ou activité, chaque groupe a ses vues et ses droits dédiés.\",\"zoom\":{\"s1\":1.14,\"ox\":50,\"oy\":46},\"corner\":\"tr\"},{\"name\":\"Service\",\"dur\":4.6,\"screen\":\"permissions\",\"active\":\"Utilisateurs\",\"title\":\"Permissions\",\"icon\":\"lock\",\"i\":3,\"total\":6,\"ct\":\"Permissions pixel-perfect\",\"cd\":\"Des droits au véhicule ou au groupe près : chacun ne voit et n'agit que sur ce que vous autorisez.\",\"zoom\":{\"s1\":1.15,\"ox\":54,\"oy\":50},\"corner\":\"bl\"},{\"name\":\"Service\",\"dur\":3.6,\"screen\":\"conducteurs\",\"active\":\"Conducteurs\",\"title\":\"Identification conducteur\",\"icon\":\"hash\",\"i\":4,\"total\":6,\"ct\":\"Identification par PIN\",\"cd\":\"Chaque conducteur saisit son code au démarrage, le trajet est attribué au bon agent, sans erreur.\",\"zoom\":{\"s1\":1.14,\"ox\":50,\"oy\":46},\"corner\":\"br\"},{\"name\":\"Stat\",\"dur\":4.4,\"layout\":\"deploy\",\"eyebrow\":\"Déploiement\",\"value\":\"48 h\",\"title\":\"pour équiper votre flotte.\",\"sub\":\"Installation partout en France, SIM, data et attestation d'assurance incluses. Vous êtes accompagné à chaque étape.\",\"items\":[[\"clipboard\",\"RDV & planning\",\"On cale l'installation selon vos disponibilités\"],[\"truck\",\"Pose des boîtiers\",\"Sur site, sans immobiliser vos véhicules\"],[\"check\",\"Recette GPS\",\"Chaque boîtier testé avant la remise des clés\"]]},{\"name\":\"Service\",\"dur\":3.2,\"screen\":\"sim\",\"active\":\"Cartes SIM\",\"title\":\"Cartes SIM\",\"icon\":\"sim\",\"i\":5,\"total\":6,\"ct\":\"Connectivité incluse\",\"cd\":\"Suivez la connectivité et la data de chaque boîtier, SIM et forfait inclus, couverture nationale.\",\"zoom\":{\"s1\":1.2,\"ox\":54,\"oy\":48},\"corner\":\"tr\"},{\"name\":\"Service\",\"dur\":3.6,\"screen\":\"installation\",\"active\":\"Installation\",\"title\":\"Planning d'installation\",\"icon\":\"clipboard\",\"i\":6,\"total\":6,\"ct\":\"Installation partout en France\",\"cd\":\"Couverture nationale, pose suivie étape par étape, installation en Occitanie sous 48 h.\",\"zoom\":{\"s1\":1.12,\"ox\":50,\"oy\":44},\"corner\":\"br\"},{\"name\":\"Maestroo\",\"dur\":6},{\"name\":\"CNIL\",\"dur\":6},{\"name\":\"Outro\",\"dur\":4.5,\"line\":\"Une flotte maîtrisée, des données protégées.\",\"cta\":\"Demander une démo\"}]";</script>
+<script>window.OM_PLAYBACK = '{"mode":"loop"}';</script>
+<script>window.OM_TWEAKS = /*EDITMODE-BEGIN*/{"motionEditor":true}/*EDITMODE-END*/;</script>
+<script>window.OM_MOTION_SEED = 4;</script>
+</head>
+<body>
+<div id="root"></div>
+<script src="vendor/react.production.min.js"></script>
+<script src="vendor/react-dom.production.min.js"></script>
+<script src="engine.js?v=4695b248"></script>
+<script>
+(function(){
+  function mount(){
+    if(!window.TrackyVideo || !window.ReactDOM){ return setTimeout(mount, 30); }
+    var el = React.createElement(window.TrackyVideo);
+    var root = document.getElementById('root');
+    if (ReactDOM.createRoot) { ReactDOM.createRoot(root).render(el); }
+    else { ReactDOM.render(el, root); }
+    // Stage auto-scales on ResizeObserver; nudge in case first measure ran pre-layout
+    var nudge = function(){ window.dispatchEvent(new Event('resize')); };
+    requestAnimationFrame(nudge); setTimeout(nudge,150); setTimeout(nudge,500);
+  }
+  mount();
+})();
+</script>
+</body>
+</html>

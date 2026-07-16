@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Vizyo Tracky — Analyse</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>html,body{margin:0;height:100%;background:#080B0A;overflow:hidden}#root{position:fixed;inset:0}</style>
+<script>window.OM_SCENES = "[{\"name\":\"Intro\",\"dur\":3.5,\"eyebrow\":\"Analyse\",\"title\":\"Analyse\",\"tagline\":\"Chaque trajet devient une décision, et des économies.\"},{\"name\":\"Menu\",\"dur\":4,\"group\":\"Analyse\",\"heading\":\"Comprendre chaque trajet.\",\"sub\":\"Rapports programmés, scores de conduite, économies et agenda intelligent, réunis dans Analyse.\"},{\"name\":\"Service\",\"dur\":4.2,\"screen\":\"rapports\",\"active\":\"Rapports\",\"title\":\"Rapports\",\"icon\":\"report\",\"i\":1,\"total\":6,\"ct\":\"Rapports PDF programmés\",\"cd\":\"Planifiez l'envoi automatique, hebdo ou mensuel, à la compta. Export PDF et CSV, zéro ressaisie.\",\"zoom\":{\"s1\":1.14,\"ox\":50,\"oy\":44},\"corner\":\"bl\"},{\"name\":\"Service\",\"dur\":5.6,\"screen\":\"recit\",\"active\":\"Rapports\",\"title\":\"Rejeu & récit IA du trajet\",\"icon\":\"sparkles\",\"i\":2,\"total\":6,\"ct\":\"Rejeu & récit du trajet\",\"cd\":\"Rejouez chaque trajet, arrêts +5 min et pleins repérés, puis obtenez un résumé clair, avec tous les excès de vitesse, même en zone 30.\",\"zoom\":{\"s1\":1.07,\"ox\":74,\"oy\":42},\"corner\":\"bl\"},{\"name\":\"Stat\",\"dur\":5.4,\"layout\":\"quote\",\"eyebrow\":\"Ils utilisent Tracky\",\"quote\":\"Avant, je passais mes lundis à reconstituer les trajets de la semaine. Aujourd'hui Tracky me sort le récit de chaque tournée, et je tranche un litige client en deux minutes.\",\"author\":\"Karim B.\",\"author_initials\":\"KB\",\"role\":\"Responsable d'exploitation · transport régional, 18 véhicules\",\"strip\":[[\"3 ans\",\"d'historique\"],[\"2 min\",\"pour un litige\"],[\"0\",\"ressaisie\"]]},{\"name\":\"Service\",\"dur\":3.8,\"screen\":\"scores\",\"active\":\"Scores de conduite\",\"title\":\"Scores de conduite\",\"icon\":\"gauge\",\"i\":3,\"total\":6,\"ct\":\"Scores par conducteur\",\"cd\":\"Chaque conducteur noté sur la vitesse, le freinage et les zones, pour progresser, sans conflit.\",\"zoom\":{\"s1\":1.2,\"ox\":54,\"oy\":48},\"corner\":\"br\"},{\"name\":\"Service\",\"dur\":4.6,\"screen\":\"economies\",\"active\":\"Économies\",\"title\":\"Économies\",\"icon\":\"euro\",\"i\":4,\"total\":6,\"ct\":\"Économies & assurance\",\"cd\":\"Jusqu'à −14 % de carburant et des km inutiles en moins, et des primes d'assurance en baisse pour une flotte tracée.\",\"zoom\":{\"s1\":1.1,\"ox\":50,\"oy\":44},\"corner\":\"bl\"},{\"name\":\"Service\",\"dur\":3.4,\"screen\":\"agenda\",\"active\":\"Agenda\",\"title\":\"Agenda\",\"icon\":\"calendar\",\"i\":5,\"total\":6,\"ct\":\"Agenda intelligent\",\"cd\":\"Réservations auto-gérées et tournées optimisées, l'agenda tient compte de tout, à votre place.\",\"zoom\":{\"s1\":1.16,\"ox\":52,\"oy\":50},\"corner\":\"tr\"},{\"name\":\"Service\",\"dur\":3.8,\"screen\":\"incident\",\"active\":\"Agenda\",\"title\":\"Déclaration d'incident\",\"icon\":\"incident\",\"i\":6,\"total\":6,\"ct\":\"Incident → agenda auto\",\"cd\":\"Déclarez un incident : il se place seul dans l'agenda, réserve l'atelier et réajuste les tournées.\",\"zoom\":{\"s1\":1.16,\"ox\":52,\"oy\":50},\"corner\":\"br\"},{\"name\":\"Outro\",\"dur\":4.5,\"line\":\"Transformez vos trajets en décisions.\",\"cta\":\"Demander une démo\"}]";</script>
+<script>window.OM_PLAYBACK = '{"mode":"loop"}';</script>
+<script>window.OM_TWEAKS = /*EDITMODE-BEGIN*/{"motionEditor":true}/*EDITMODE-END*/;</script>
+<script>window.OM_MOTION_SEED = 2;</script>
+</head>
+<body>
+<div id="root"></div>
+<script src="vendor/react.production.min.js"></script>
+<script src="vendor/react-dom.production.min.js"></script>
+<script src="engine.js?v=4695b248"></script>
+<script>
+(function(){
+  function mount(){
+    if(!window.TrackyVideo || !window.ReactDOM){ return setTimeout(mount, 30); }
+    var el = React.createElement(window.TrackyVideo);
+    var root = document.getElementById('root');
+    if (ReactDOM.createRoot) { ReactDOM.createRoot(root).render(el); }
+    else { ReactDOM.render(el, root); }
+    // Stage auto-scales on ResizeObserver; nudge in case first measure ran pre-layout
+    var nudge = function(){ window.dispatchEvent(new Event('resize')); };
+    requestAnimationFrame(nudge); setTimeout(nudge,150); setTimeout(nudge,500);
+  }
+  mount();
+})();
+</script>
+</body>
+</html>
