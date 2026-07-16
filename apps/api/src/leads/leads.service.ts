@@ -5,7 +5,7 @@ import { CreateLeadDto } from './dto/create-lead.dto';
 
 const ADMIN_EMAIL = 'contact@vizyoagency.com';
 // Suivi commercial automatisé (e-mails prospect : bienvenue + devis signé).
-const VIDEO_HUB_URL = 'https://tracky.vizyoagency.com/decouvrir';
+const VIDEO_HUB_URL = 'https://tracky.vizyoagency.com/decouvrir.html';
 const TARIFS_URL = 'https://tracky.vizyoagency.com/tarifs.html#simulateur';
 const FICHE_PRODUIT_URL = 'https://tracky.vizyoagency.com/vizyo-tracky.pdf';
 const MANAGER_LEADS_URL = 'https://manager.vizyoagency.com/services/leads';

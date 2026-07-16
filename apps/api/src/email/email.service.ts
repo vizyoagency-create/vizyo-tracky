@@ -1073,7 +1073,7 @@ ${this.commercialSignatureText()}`;
       case 'lead_welcome':
         return this.buildLeadWelcomeEmail({
           recipientName: 'Camille Bernard',
-          hubUrl: 'https://tracky.vizyoagency.com/decouvrir',
+          hubUrl: 'https://tracky.vizyoagency.com/decouvrir.html',
           tarifsUrl: 'https://tracky.vizyoagency.com/tarifs.html#simulateur',
           ficheUrl: 'https://tracky.vizyoagency.com/vizyo-tracky.pdf',
         });
