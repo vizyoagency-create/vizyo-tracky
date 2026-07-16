@@ -192,8 +192,11 @@
     }
     return VT_SID;
   }
+  // Consentement traceurs (RGPD/CNIL) : '' = non décidé, 'granted', 'denied'.
+  function vtConsent() { try { return localStorage.getItem('vt-consent') || ''; } catch (e) { return ''; } }
   function vtTrack(action, extra) {
     try {
+      if (vtConsent() !== 'granted') return; // aucune mesure tant que le consentement n'est pas donné
       var cfg = window.VT_CFG || {}; if (!cfg.partnerApi || !action) return;
       var body = { source: 'LP', action: String(action).slice(0, 60), sessionId: vtSid() };
       if (extra) {
@@ -390,6 +393,69 @@
     window.__vtSyncVideos = sync;
   }
 
-  function init() { initHover(); initReveal(); handleHash(); initSim(); initForms(); prefillPartner(); initTracking(); initSmartPopup(); initLazyVideos(); }
+  // ── Consentement traceurs (bandeau CNIL) ──────────────────────────────────
+  // Refus aussi simple que l'accord, choix mémorisé, révocable (window.vtOpenConsent).
+  // Le tracking (initTracking + beacons) ne tourne QUE si le choix est 'granted'.
+  function vtSetConsent(v) {
+    try { localStorage.setItem('vt-consent', v); } catch (e) {}
+    var b = d.getElementById('vt-consent'); if (b && b.parentNode) b.parentNode.removeChild(b);
+    if (v === 'granted') initTracking();
+  }
+  function showConsentBanner() {
+    if (d.getElementById('vt-consent')) return;
+    var btn = 'font:inherit;font-weight:700;font-size:.84rem;padding:9px 15px;border-radius:9px;cursor:pointer;border:1px solid var(--border2,rgba(255,255,255,.14));background:transparent;color:var(--tx,#EAEFED)';
+    var btnA = 'font:inherit;font-weight:700;font-size:.84rem;padding:9px 17px;border-radius:9px;cursor:pointer;border:0;background:var(--accent,#10E0A0);color:var(--accent-ink,#04130D)';
+    var chk = vtConsent() === 'granted' ? ' checked' : '';
+    var w = d.createElement('div');
+    w.id = 'vt-consent';
+    w.setAttribute('role', 'dialog'); w.setAttribute('aria-label', 'Consentement aux traceurs');
+    w.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:120;background:var(--surface,#101514);border-top:1px solid var(--border2,rgba(255,255,255,.14));box-shadow:0 -10px 34px rgba(0,0,0,.4);padding:15px 20px;font-family:inherit;transform:translateY(110%);transition:transform .34s cubic-bezier(.2,.7,.2,1)';
+    w.innerHTML =
+      '<div style="max-width:1000px;margin:0 auto;display:flex;gap:16px;flex-wrap:wrap;align-items:center;justify-content:space-between">' +
+        '<div style="flex:1;min-width:250px;font-size:.88rem;line-height:1.5;color:var(--tx2,#9BA5A1)"><strong style="color:var(--tx,#EAEFED)">Votre vie privée.</strong> Nous utilisons des traceurs de mesure d\'audience et d\'accompagnement commercial (pages vues, clics, adresse&nbsp;IP). Aucun n\'est activé sans votre accord. <a href="mentions-legales.html" style="color:var(--accent,#10E0A0);text-decoration:none">En savoir plus</a>.</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+          '<button type="button" data-vtc="refuse" style="' + btn + '">Tout refuser</button>' +
+          '<button type="button" data-vtc="custom" style="' + btn + '">Personnaliser</button>' +
+          '<button type="button" data-vtc="accept" style="' + btnA + '">Tout accepter</button>' +
+        '</div>' +
+      '</div>' +
+      '<div data-vtc-panel style="display:none;max-width:1000px;margin:13px auto 0;border-top:1px solid var(--border,rgba(255,255,255,.08));padding-top:12px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:.84rem;color:var(--tx2,#9BA5A1);padding:5px 0"><span><strong style="color:var(--tx,#EAEFED)">Strictement nécessaires</strong> — sécurité, envoi de formulaire, mémorisation de votre choix.</span><span style="color:var(--tx3,#69736E);font-size:.76rem;white-space:nowrap">Toujours actif</span></div>' +
+        '<label style="display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:.84rem;color:var(--tx2,#9BA5A1);padding:5px 0;cursor:pointer"><span><strong style="color:var(--tx,#EAEFED)">Mesure d\'audience &amp; prospection</strong> — clics, scroll, temps passé, reconnaissance par IP.</span><input type="checkbox" data-vtc-measure' + chk + ' style="width:18px;height:18px;accent-color:var(--accent,#10E0A0);flex:none"></label>' +
+        '<div style="text-align:right;margin-top:10px"><button type="button" data-vtc="save" style="' + btnA + '">Enregistrer mon choix</button></div>' +
+      '</div>';
+    d.body.appendChild(w);
+    requestAnimationFrame(function () { w.style.transform = 'translateY(0)'; });
+    w.addEventListener('click', function (e) {
+      var t = e.target.closest && e.target.closest('[data-vtc]'); if (!t) return;
+      var a = t.getAttribute('data-vtc');
+      if (a === 'accept') vtSetConsent('granted');
+      else if (a === 'refuse') vtSetConsent('denied');
+      else if (a === 'custom') { var p = w.querySelector('[data-vtc-panel]'); if (p) p.style.display = (p.style.display === 'none' || !p.style.display) ? 'block' : 'none'; }
+      else if (a === 'save') { var m = w.querySelector('[data-vtc-measure]'); vtSetConsent(m && m.checked ? 'granted' : 'denied'); }
+    });
+  }
+  function initConsent() {
+    var st = vtConsent();
+    if (st === 'granted') { initTracking(); return; }
+    if (st === 'denied') return;
+    showConsentBanner();
+  }
+  window.vtOpenConsent = function () { showConsentBanner(); };
+  // Lien « Gérer les traceurs » à côté des mentions légales (révocation en 1 clic, toutes pages).
+  function injectConsentLink() {
+    var links = d.querySelectorAll('a[href$="mentions-legales.html"]');
+    for (var i = 0; i < links.length; i++) {
+      var m = links[i];
+      if (m.__vtcDone) continue; m.__vtcDone = true;
+      var a = d.createElement('a');
+      a.href = '#'; a.textContent = 'Gérer les traceurs';
+      a.style.cssText = 'color:inherit;text-decoration:none;margin-left:14px;opacity:.9';
+      a.addEventListener('click', function (e) { e.preventDefault(); if (window.vtOpenConsent) vtOpenConsent(); });
+      if (m.parentNode) m.parentNode.insertBefore(a, m.nextSibling);
+    }
+  }
+
+  function init() { initHover(); initReveal(); handleHash(); initSim(); initForms(); prefillPartner(); initSmartPopup(); initLazyVideos(); initConsent(); injectConsentLink(); }
   if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', init); else init();
 })();
