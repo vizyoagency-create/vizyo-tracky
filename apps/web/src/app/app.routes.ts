@@ -330,6 +330,16 @@ export const routes: Routes = [
         data: { title: 'Activité utilisateurs' },
       },
       {
+        // Observabilité du trafic API public (LP / Maestroo / API / Webhook) + intelligence IP
+        // (connues vs inconnues, détection de scan/bot). SUPER_ADMIN.
+        path: 'admin/api-traffic',
+        pathMatch: 'full',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/observability/admin-api-traffic.component').then((m) => m.AdminApiTrafficComponent),
+        data: { title: 'Trafic API & Sources' },
+      },
+      {
         // Espace « Activité de la flotte » — FLEET_ADMIN (+ super-admin support). Scopé flotte
         // côté serveur, exclut les rôles élevés. Coupures/rallumages moteur + présence + historique.
         path: 'fleet-admin/activity',

@@ -2,7 +2,7 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
   LucideAngularModule, AlertTriangle, Activity, Terminal, MessageSquare,
-  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints, Ear, Mail, CalendarClock, Bot,
+  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints, Ear, Mail, CalendarClock, Bot, Globe,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { AdminFixModeService, type AdminAlertSummary } from '../../core/services/admin-fix-mode.service';
@@ -279,6 +279,19 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
             <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
           </div>
         </a>
+
+        <!-- ── TRAFIC API & SOURCES (wide) ── -->
+        <a routerLink="/admin/api-traffic" class="card card-wide" style="--i:16">
+          <span class="accent accent-cyan"></span>
+          <div class="body body-row">
+            <div class="ico ico-cyan"><lucide-icon [img]="Globe" [size]="20"></lucide-icon></div>
+            <div class="body-text">
+              <h3>Trafic API &amp; Sources</h3>
+              <p class="desc">Observabilité du trafic entrant (Landing, Maestroo, API, Webhooks) et intelligence IP : qui appelle quoi, IP connues vs inconnues, et détection des IP inconnues à forte fréquence (bot / scan). KPIs, tableau IP et flux en direct.</p>
+            </div>
+            <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
+          </div>
+        </a>
       </div>
     </div>
   `,
@@ -499,6 +512,7 @@ export class AdminHubComponent implements OnInit {
   protected readonly Ear = Ear;
   protected readonly Mail = Mail;
   protected readonly Bot = Bot;
+  protected readonly Globe = Globe;
 
   readonly stats = signal<AdminAlertSummary | null>(null);
 

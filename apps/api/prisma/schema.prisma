@@ -1445,6 +1445,40 @@ model SystemActivityLog {
   @@map("system_activity_logs")
 }
 
+/// Observabilité du trafic API PUBLIC + intelligence IP (demande client 2026-07).
+/// Une ligne = soit un HIT d'API publique capté par ApiTrafficInterceptor (kind='REQUEST'),
+/// soit un BEACON d'activité partenaire (Maestroo / LP) reçu sur POST /api/partner/activity
+/// (kind='PARTNER_EVENT'). Alimenté best-effort (fire-and-forget) — un échec du journal ne
+/// casse JAMAIS la requête observée. `ipKnown` = l'IP a déjà été vue liée à un utilisateur
+/// reconnu (leads LP + IP d'appels authentifiés) → sépare le trafic « connu » de l'« inconnu ».
+model ApiTrafficLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  createdAt  DateTime @default(now())
+  /// 'REQUEST' (hit API public capturé) | 'PARTNER_EVENT' (beacon Maestroo/LP)
+  kind       String
+  /// 'LP' | 'MAESTROO' | 'API' | 'WEBHOOK' | 'UNKNOWN'
+  source     String   @default("UNKNOWN")
+  method     String?
+  path       String?
+  statusCode Int?
+  /// Sémantique des beacons (teaser_open, cta_click, teaser_close…).
+  action     String?
+  /// Libellé bouton / cible.
+  target     String?
+  ip         String?
+  ipKnown    Boolean  @default(false)
+  userId     String?  @db.Uuid
+  userAgent  String?
+  durationMs Int?
+  meta       Json?
+
+  @@index([createdAt])
+  @@index([ip, createdAt])
+  @@index([source, createdAt])
+  @@index([kind, createdAt])
+  @@map("api_traffic_logs")
+}
+
 enum ActivityReportStatus {
   PENDING
   READY

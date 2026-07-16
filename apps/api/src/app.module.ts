@@ -62,6 +62,7 @@ import { GpsIntegrityModule } from './gps-integrity/gps-integrity.module';
 import { GpsDeadZonesModule } from './gps-dead-zones/gps-dead-zones.module';
 import { HealthController } from './health/health.controller';
 import { LeadsModule } from './leads/leads.module';
+import { ApiTrafficModule } from './api-traffic/api-traffic.module';
 import { VehiclesModule } from './vehicles/vehicles.module';
 import { DriverUnlockApiModule } from './driver-unlock/driver-unlock-api.module';
 import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.module';
@@ -145,6 +146,9 @@ import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.modul
     PrivacyModeModule,
     InternalModule,
     LeadsModule,
+    // Observabilité du trafic API PUBLIC + intelligence IP (demande client 2026-07).
+    // @Global : self-enregistre son APP_INTERCEPTOR (capture des hits publics / non authentifiés).
+    ApiTrafficModule,
     UsersModule,
     DriversModule,
     SurveillanceModule,
