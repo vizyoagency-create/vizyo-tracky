@@ -757,24 +757,14 @@ Un imprévu ? Répondez à cet e-mail. À bientôt.
    */
   private commercialSignature(): string {
     const sans = "'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif";
+    // Signature sobre, comme au bas d'un vrai e-mail personnel : pas d'avatar ni
+    // de boutons — juste un nom et un contact direct.
     return `
-      <tr><td style="padding:26px 36px 0;">
-        <div style="height:1px;background:rgba(255,255,255,.07);margin-bottom:18px;"></div>
-        <p style="margin:0 0 14px;font-family:${sans};font-size:14px;line-height:1.6;color:#9BA5A1;">Bien à vous,</p>
-        <table role="presentation" cellpadding="0" cellspacing="0"><tr>
-          <td style="vertical-align:top;padding-right:16px;">
-            <div style="width:46px;height:46px;border-radius:50%;background:rgba(16,224,160,.14);text-align:center;line-height:46px;font-family:${sans};font-size:16px;font-weight:800;color:#10E0A0;">YH</div>
-          </td>
-          <td style="vertical-align:top;">
-            <div style="font-family:${sans};font-size:15px;font-weight:800;color:#EAEFED;letter-spacing:-0.01em;">Y. Haddou</div>
-            <div style="font-family:${sans};font-size:13px;color:#9BA5A1;margin-top:1px;">Vizyo Tracky · votre interlocuteur dédié</div>
-            <div style="margin-top:12px;">
-              <a href="https://wa.me/33652077038" style="display:inline-block;margin:0 8px 8px 0;border:1px solid rgba(16,224,160,.32);border-radius:10px;padding:9px 16px;font-family:${sans};font-size:13px;font-weight:700;color:#10E0A0;text-decoration:none;">WhatsApp</a>
-              <a href="tel:+33652077038" style="display:inline-block;margin:0 8px 8px 0;border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:9px 16px;font-family:${sans};font-size:13px;font-weight:600;color:#EAEFED;text-decoration:none;">06&nbsp;52&nbsp;07&nbsp;70&nbsp;38</a>
-              <a href="mailto:contact@vizyoagency.com" style="display:inline-block;margin:0 0 8px 0;border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:9px 16px;font-family:${sans};font-size:13px;font-weight:600;color:#EAEFED;text-decoration:none;">contact@vizyoagency.com</a>
-            </div>
-          </td>
-        </tr></table>
+      <tr><td style="padding:22px 36px 0;">
+        <p style="margin:0;font-family:${sans};font-size:15px;line-height:1.75;color:#C7CFCB;">Bien à vous,</p>
+        <p style="margin:0;font-family:${sans};font-size:15px;line-height:1.75;color:#EAEFED;font-weight:700;">Y. Haddou</p>
+        <p style="margin:0;font-family:${sans};font-size:14.5px;line-height:1.75;color:#9BA5A1;">Vizyo Tracky</p>
+        <p style="margin:0;font-family:${sans};font-size:14.5px;line-height:1.75;color:#9BA5A1;">06&nbsp;52&nbsp;07&nbsp;70&nbsp;38 &nbsp;—&nbsp; tél &amp; WhatsApp &nbsp;·&nbsp; <a href="mailto:contact@vizyoagency.com" style="color:#10E0A0;text-decoration:none;">contact@vizyoagency.com</a></p>
       </td></tr>`;
   }
 
@@ -810,54 +800,35 @@ E-mail : contact@vizyoagency.com`;
     const subject = 'Votre présentation Vizyo Tracky — et mes coordonnées';
     const sans = "'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif";
 
-    const univers = (title: string, desc: string, first = false) =>
-      `<tr><td style="${first ? '' : 'border-top:1px solid rgba(255,255,255,.06);'}padding:14px 18px;font-family:${sans};font-size:14px;line-height:1.5;color:#9BA5A1;"><span style="color:#10E0A0;font-weight:700;">${title}</span> — ${desc}</td></tr>`;
-
     const html = this.shell({
-      eyebrow: 'Vizyo Tracky · Bienvenue',
+      eyebrow: 'Vizyo Tracky',
       footer: 'VIZYO TRACKY · GPS &amp; GESTION DE FLOTTE · OCCITANIE<br>Vous recevez cet e-mail suite à votre demande sur tracky.vizyoagency.com.',
       body: `
-        <tr><td style="padding:28px 36px 0;">
-          <h1 style="margin:0 0 14px;font-family:${sans};font-size:25px;line-height:1.18;font-weight:800;letter-spacing:-0.025em;color:#EAEFED;">Merci pour votre intérêt&nbsp;!</h1>
-          <p style="margin:0 0 12px;font-family:${sans};font-size:15px;line-height:1.65;color:#9BA5A1;">${escapeHtml(greeting)}</p>
-          <p style="margin:0 0 12px;font-family:${sans};font-size:15px;line-height:1.65;color:#9BA5A1;">Je suis <span style="color:#EAEFED;font-weight:600;">Y. Haddou</span>, chez Vizyo Tracky — c'est moi qui vais suivre votre demande personnellement. Pour que vous vous fassiez une idée précise, je vous ai préparé une courte présentation en vidéo de nos services, à regarder tranquillement quand vous voulez&nbsp;:</p>
-          <table role="presentation" style="margin-top:8px;"><tr><td style="border-radius:11px;background:#10E0A0;">
-            <a href="${opts.hubUrl}" style="display:inline-block;padding:14px 30px;font-family:${sans};font-size:14px;font-weight:700;letter-spacing:-0.01em;color:#04130D;text-decoration:none;">▶&nbsp;&nbsp;Voir les vidéos de présentation →</a>
-          </td></tr></table>
-        </td></tr>
-        <tr><td style="padding:22px 36px 0;">
-          <p style="margin:0 0 12px;font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:#69736E;">Ce que vous allez découvrir</p>
-          <table role="presentation" width="100%" style="background:#161D1B;border:1px solid rgba(255,255,255,.07);border-radius:13px;">
-            ${univers('Supervision', 'carte live temps réel, alertes multi-canal, coupe-circuit antivol, géofences.', true)}
-            ${univers('Analyse', "rapports PDF programmés, récit IA des trajets, scores conducteur, économies carburant.")}
-            ${univers('Administration', 'utilisateurs &amp; rôles, groupes, permissions au véhicule près, installation sous 48&nbsp;h.')}
-          </table>
-        </td></tr>
-        <tr><td style="padding:22px 36px 0;">
-          <p style="margin:0;font-family:${sans};font-size:14px;line-height:1.65;color:#9BA5A1;">Dès que vous aurez une idée du nombre de véhicules, vous pourrez <a href="${opts.tarifsUrl}" style="color:#10E0A0;text-decoration:none;font-weight:600;">estimer votre tarif et configurer un devis en ligne</a>, sans engagement — mais rien ne presse, on peut aussi en parler de vive voix, comme vous préférez. Vous pouvez également <a href="${opts.ficheUrl}" style="color:#10E0A0;text-decoration:none;">télécharger la fiche produit (PDF)</a>.</p>
-        </td></tr>
-        <tr><td style="padding:20px 36px 0;">
-          <p style="margin:0;font-family:${sans};font-size:14px;line-height:1.65;color:#9BA5A1;">Une question, un doute&nbsp;? Répondez simplement à cet e-mail, ou joignez-moi directement — je m'en occupe.</p>
+        <tr><td style="padding:30px 36px 0;">
+          <p style="margin:0 0 15px;font-family:${sans};font-size:15px;line-height:1.75;color:#C7CFCB;">${escapeHtml(greeting)}</p>
+          <p style="margin:0 0 15px;font-family:${sans};font-size:15px;line-height:1.75;color:#C7CFCB;">Merci de m'avoir contacté via le site. Je suis Y. Haddou, et c'est moi qui vais suivre votre demande — personnellement, pas un service automatique.</p>
+          <p style="margin:0 0 15px;font-family:${sans};font-size:15px;line-height:1.75;color:#C7CFCB;">Pour que vous vous fassiez une idée concrète de ce que nous faisons, j'ai réuni une courte présentation de nos services en vidéo. Vous la regardez tranquillement, quand vous avez un moment&nbsp;: <a href="${opts.hubUrl}" style="color:#10E0A0;text-decoration:none;font-weight:600;">c'est par ici</a>. Vous y verrez l'essentiel — la supervision de votre flotte en temps réel (carte live, alertes, coupe-circuit antivol), l'analyse des trajets et des coûts (rapports, économies de carburant), et toute la gestion au quotidien&nbsp;: comptes, permissions, installation partout en France.</p>
+          <p style="margin:0 0 15px;font-family:${sans};font-size:15px;line-height:1.75;color:#C7CFCB;">Dès que vous aurez une idée du nombre de véhicules à équiper, vous pouvez <a href="${opts.tarifsUrl}" style="color:#10E0A0;text-decoration:none;font-weight:600;">estimer votre tarif et configurer un devis en ligne</a>, sans le moindre engagement. Cela dit, le plus simple reste souvent d'en discuter de vive voix — dites-moi ce qui vous arrange, je m'adapte à votre rythme.</p>
+          <p style="margin:0;font-family:${sans};font-size:15px;line-height:1.75;color:#C7CFCB;">Une question, un doute, une contrainte particulière&nbsp;? Répondez simplement à cet e-mail, ou appelez-moi. Je m'en occupe.</p>
         </td></tr>
         ${this.commercialSignature()}`,
     });
 
     const text = `${greeting}
 
-Je suis Y. Haddou, chez Vizyo Tracky — c'est moi qui vais suivre votre demande personnellement. Merci pour votre intérêt !
+Merci de m'avoir contacté via le site. Je suis Y. Haddou, et c'est moi qui vais suivre votre demande — personnellement, pas un service automatique.
 
-Je vous ai préparé une courte présentation en vidéo de nos services, à regarder quand vous voulez :
+Pour que vous vous fassiez une idée concrète de ce que nous faisons, j'ai réuni une courte présentation de nos services en vidéo, à regarder tranquillement quand vous avez un moment :
 ${opts.hubUrl}
 
-Ce que vous allez découvrir :
-- Supervision : carte live temps réel, alertes multi-canal, coupe-circuit antivol, géofences.
-- Analyse : rapports PDF programmés, récit IA des trajets, scores conducteur, économies carburant.
-- Administration : utilisateurs & rôles, groupes, permissions au véhicule près, installation sous 48 h.
+Vous y verrez l'essentiel : la supervision de votre flotte en temps réel (carte live, alertes, coupe-circuit antivol), l'analyse des trajets et des coûts (rapports, économies de carburant), et toute la gestion au quotidien (comptes, permissions, installation partout en France).
 
-Dès que vous aurez une idée du nombre de véhicules, vous pourrez estimer votre tarif et configurer un devis en ligne (sans engagement) : ${opts.tarifsUrl}
-Fiche produit (PDF) : ${opts.ficheUrl}
+Dès que vous aurez une idée du nombre de véhicules à équiper, vous pouvez estimer votre tarif et configurer un devis en ligne, sans le moindre engagement :
+${opts.tarifsUrl}
 
-Une question, un doute ? Répondez simplement à cet e-mail, ou joignez-moi directement.
+Cela dit, le plus simple reste souvent d'en discuter de vive voix — dites-moi ce qui vous arrange. Si vous préférez un document, la fiche produit est là : ${opts.ficheUrl}
+
+Une question, un doute ? Répondez simplement à cet e-mail, ou appelez-moi. Je m'en occupe.
 
 ${this.commercialSignatureText()}`;
 
@@ -937,20 +908,19 @@ Gérer : ${opts.managerUrl}`;
       eyebrow: 'Vizyo Tracky · Votre devis',
       footer: 'VIZYO TRACKY · GPS &amp; GESTION DE FLOTTE · OCCITANIE<br>Devis indicatif sans engagement — tarif bloqué à la souscription.',
       body: `
-        <tr><td style="padding:28px 36px 0;">
-          <h1 style="margin:0 0 14px;font-family:${sans};font-size:25px;line-height:1.18;font-weight:800;letter-spacing:-0.025em;color:#EAEFED;">Votre devis Vizyo Tracky</h1>
-          <p style="margin:0 0 12px;font-family:${sans};font-size:15px;line-height:1.65;color:#9BA5A1;">${escapeHtml(greeting)}</p>
-          <p style="margin:0 0 18px;font-family:${sans};font-size:15px;line-height:1.65;color:#9BA5A1;">Merci d'avoir configuré votre devis&nbsp;! En voici le récapitulatif. Je le regarde de mon côté et je vous recontacte très vite pour le finaliser ensemble et répondre à toutes vos questions.</p>
+        <tr><td style="padding:30px 36px 0;">
+          <p style="margin:0 0 15px;font-family:${sans};font-size:15px;line-height:1.75;color:#C7CFCB;">${escapeHtml(greeting)}</p>
+          <p style="margin:0 0 18px;font-family:${sans};font-size:15px;line-height:1.75;color:#C7CFCB;">Merci d'avoir pris le temps de configurer votre devis. Vous en trouverez le récapitulatif juste en dessous. Je le regarde de mon côté et je reviens vers vous très vite pour le finaliser ensemble et répondre à vos questions.</p>
         </td></tr>
         <tr><td style="padding:0 36px;">
           ${this.quoteRecapCard(opts.quoteText)}
-          <p style="margin:14px 0 0;font-family:${sans};font-size:13px;line-height:1.6;color:#69736E;">Ce devis est <span style="color:#9BA5A1;">indicatif et sans engagement</span> — le tarif est bloqué à la souscription. Besoin d'ajuster&nbsp;? <a href="${opts.tarifsUrl}" style="color:#10E0A0;text-decoration:none;">Reconfigurez-le en ligne</a> ou dites-le-moi.</p>
+          <p style="margin:16px 0 0;font-family:${sans};font-size:14px;line-height:1.7;color:#9BA5A1;">C'est un devis indicatif et sans engagement — le tarif est bloqué à la souscription. Si vous souhaitez ajuster quoi que ce soit, vous pouvez le <a href="${opts.tarifsUrl}" style="color:#10E0A0;text-decoration:none;">reconfigurer en ligne</a> ou simplement me le dire.</p>
         </td></tr>
         ${this.commercialSignature()}`,
     });
     const text = `${greeting}
 
-Merci d'avoir configuré votre devis Vizyo Tracky ! En voici le récapitulatif. Je le regarde et je vous recontacte très vite pour le finaliser ensemble.
+Merci d'avoir pris le temps de configurer votre devis. Vous en trouverez le récapitulatif ci-dessous. Je le regarde de mon côté et je reviens vers vous très vite pour le finaliser ensemble et répondre à vos questions.
 
 ${opts.quoteText}
 
