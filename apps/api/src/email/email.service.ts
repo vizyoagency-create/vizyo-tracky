@@ -13,6 +13,7 @@ export type EmailTemplateId =
   | 'weekly_report'
   | 'alert'
   | 'lead'
+  | 'lead_welcome'
   | 'audio_activation'
   | 'audio_info'
   | 'installation_slot_requested'
@@ -746,6 +747,83 @@ Un imprévu ? Répondez à cet e-mail. À bientôt.
   }
 
   /**
+   * Suivi commercial — e-mail de BIENVENUE envoyé AU PROSPECT (→ son e-mail) dès
+   * qu'il remplit un formulaire de demande sur la LP. Objectif : automatiser le
+   * premier contact commercial pour que le prospect ait déjà toutes les infos.
+   * Contenu : présentation courte + bouton vers le HUB VIDÉO privé (lien partagé
+   * uniquement par e-mail, jamais public) + 3 univers (Supervision / Analyse /
+   * Administration) + fiche produit + contact WhatsApp / e-mail. Envoyé depuis
+   * contact@vizyoagency.com (RESEND_FROM).
+   */
+  buildLeadWelcomeEmail(opts: {
+    recipientName?: string | null;
+    hubUrl: string;
+    ficheUrl: string;
+    whatsappUrl: string;
+    contactEmail: string;
+  }): { subject: string; html: string; text: string } {
+    const firstName = (opts.recipientName || '').trim().split(/\s+/)[0] || '';
+    const greeting = firstName ? `Bonjour ${firstName},` : 'Bonjour,';
+    const subject = 'Bienvenue chez Vizyo Tracky — votre présentation en vidéo';
+    const sans = "'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif";
+
+    const univers = (title: string, desc: string, first = false) =>
+      `<tr><td style="${first ? '' : 'border-top:1px solid rgba(255,255,255,.06);'}padding:14px 18px;font-family:${sans};font-size:14px;line-height:1.5;color:#9BA5A1;"><span style="color:#10E0A0;font-weight:700;">${title}</span> — ${desc}</td></tr>`;
+
+    const html = this.shell({
+      eyebrow: 'Bienvenue · Vizyo Tracky',
+      footer: 'VIZYO TRACKY · GPS &amp; GESTION DE FLOTTE · OCCITANIE<br>Vous recevez cet e-mail suite à votre demande sur tracky.vizyoagency.com.',
+      body: `
+        <tr><td style="padding:28px 36px 0;">
+          <h1 style="margin:0 0 12px;font-family:${sans};font-size:26px;line-height:1.15;font-weight:800;letter-spacing:-0.025em;color:#EAEFED;">Merci de votre intérêt&nbsp;!</h1>
+          <p style="margin:0 0 10px;font-family:${sans};font-size:15px;line-height:1.65;color:#9BA5A1;">${escapeHtml(greeting)}</p>
+          <p style="margin:0 0 22px;font-family:${sans};font-size:15px;line-height:1.65;color:#9BA5A1;">Nous avons bien reçu votre demande. Pour que vous ayez tout de suite une vision claire de <span style="color:#EAEFED;font-weight:600;">Vizyo Tracky</span>, nous avons préparé une présentation en vidéo de nos services — à regarder quand vous voulez, à votre rythme.</p>
+          <table role="presentation"><tr><td style="border-radius:11px;background:#10E0A0;">
+            <a href="${opts.hubUrl}" style="display:inline-block;padding:14px 30px;font-family:${sans};font-size:14px;font-weight:700;letter-spacing:-0.01em;color:#04130D;text-decoration:none;">▶&nbsp;&nbsp;Voir les vidéos de présentation →</a>
+          </td></tr></table>
+        </td></tr>
+        <tr><td style="padding:22px 36px 0;">
+          <p style="margin:0 0 12px;font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:#69736E;">Ce que vous allez découvrir</p>
+          <table role="presentation" width="100%" style="background:#161D1B;border:1px solid rgba(255,255,255,.07);border-radius:13px;">
+            ${univers('Supervision', 'carte live temps réel, alertes multi-canal, coupe-circuit antivol, géofences.', true)}
+            ${univers('Analyse', "rapports PDF programmés, récit IA des trajets, scores conducteur, économies carburant.")}
+            ${univers('Administration', 'utilisateurs &amp; rôles, groupes, permissions au véhicule près, installation sous 48&nbsp;h.')}
+          </table>
+        </td></tr>
+        <tr><td style="padding:22px 36px 0;">
+          <p style="margin:0 0 12px;font-family:${sans};font-size:14px;line-height:1.6;color:#9BA5A1;">Une question, ou envie de démarrer&nbsp;? Écrivez-nous directement — on vous répond en moins de 2&nbsp;h ouvrées&nbsp;:</p>
+          <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+            <td style="padding-right:10px;"><a href="${opts.whatsappUrl}" style="display:inline-block;border:1px solid rgba(16,224,160,.3);border-radius:11px;padding:11px 20px;font-family:${sans};font-size:14px;font-weight:700;color:#10E0A0;text-decoration:none;">WhatsApp</a></td>
+            <td><a href="mailto:${escapeHtml(opts.contactEmail)}" style="display:inline-block;border:1px solid rgba(255,255,255,.14);border-radius:11px;padding:11px 20px;font-family:${sans};font-size:14px;font-weight:600;color:#EAEFED;text-decoration:none;">${escapeHtml(opts.contactEmail)}</a></td>
+          </tr></table>
+          <p style="margin:16px 0 0;font-family:${sans};font-size:13px;line-height:1.6;color:#69736E;">Vous pouvez aussi <a href="${opts.ficheUrl}" style="color:#10E0A0;text-decoration:none;">télécharger la fiche produit (PDF)</a>.</p>
+        </td></tr>`,
+    });
+
+    const text = `${greeting}
+
+Merci de votre intérêt pour Vizyo Tracky ! Nous avons bien reçu votre demande.
+
+Nous avons préparé une présentation en vidéo de nos services, à regarder quand vous voulez :
+${opts.hubUrl}
+
+Ce que vous allez découvrir :
+- Supervision : carte live temps réel, alertes multi-canal, coupe-circuit antivol, géofences.
+- Analyse : rapports PDF programmés, récit IA des trajets, scores conducteur, économies carburant.
+- Administration : utilisateurs & rôles, groupes, permissions au véhicule près, installation sous 48 h.
+
+Une question, ou envie de démarrer ? Écrivez-nous — réponse en moins de 2 h ouvrées :
+- WhatsApp : ${opts.whatsappUrl}
+- E-mail : ${opts.contactEmail}
+
+Fiche produit (PDF) : ${opts.ficheUrl}
+
+— L'équipe Vizyo Tracky`;
+
+    return { subject, html, text };
+  }
+
+  /**
    * Centre e-mails (admin) — rend un modèle avec des DONNÉES D'EXEMPLE, pour l'aperçu
    * (drawer, via iframe srcdoc) et le bouton « Envoyer un test ». Réutilise les builders
    * existants → aucune duplication du markup des modèles côté front.
@@ -854,6 +932,14 @@ Un imprévu ? Répondez à cet e-mail. À bientôt.
           }),
           text: 'Aperçu du lead (données d’exemple).',
         };
+      case 'lead_welcome':
+        return this.buildLeadWelcomeEmail({
+          recipientName: 'Camille Bernard',
+          hubUrl: 'https://tracky.vizyoagency.com/decouvrir',
+          ficheUrl: 'https://tracky.vizyoagency.com/vizyo-tracky.pdf',
+          whatsappUrl: 'https://wa.me/33652077038',
+          contactEmail: 'contact@vizyoagency.com',
+        });
       default:
         return {
           subject: 'Aperçu',

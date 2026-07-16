@@ -4,6 +4,10 @@ import { EmailService } from '../email/email.service';
 import { CreateLeadDto } from './dto/create-lead.dto';
 
 const ADMIN_EMAIL = 'contact@vizyoagency.com';
+// Suivi commercial automatisé (e-mail de bienvenue au prospect).
+const VIDEO_HUB_URL = 'https://tracky.vizyoagency.com/decouvrir';
+const FICHE_PRODUIT_URL = 'https://tracky.vizyoagency.com/vizyo-tracky.pdf';
+const WHATSAPP_URL = 'https://wa.me/33652077038';
 
 @Injectable()
 export class LeadsService {
@@ -63,6 +67,34 @@ export class LeadsService {
 
     if (!result.ok) {
       this.logger.warn(`Failed to send lead notification: ${result.error}`);
+    }
+
+    // Suivi commercial automatisé : e-mail de bienvenue AU PROSPECT avec le hub
+    // vidéo + fiche produit + contacts. 1re demande uniquement (pas de re-envoi
+    // en cas de re-soumission → anti-spam). Best-effort : un échec d'envoi ne
+    // DOIT jamais faire échouer la création du lead.
+    if (!isResubmission) {
+      try {
+        const welcome = this.email.buildLeadWelcomeEmail({
+          recipientName: lead.name,
+          hubUrl: VIDEO_HUB_URL,
+          ficheUrl: FICHE_PRODUIT_URL,
+          whatsappUrl: WHATSAPP_URL,
+          contactEmail: ADMIN_EMAIL,
+        });
+        const welcomeResult = await this.email.send({
+          to: lead.email,
+          subject: welcome.subject,
+          html: welcome.html,
+          text: welcome.text,
+          template: 'lead_welcome',
+        });
+        if (!welcomeResult.ok) {
+          this.logger.warn(`Failed to send lead welcome email: ${welcomeResult.error}`);
+        }
+      } catch (e) {
+        this.logger.warn(`Lead welcome email threw: ${String(e)}`);
+      }
     }
 
     return { ok: true, leadId: lead.id, isResubmission };
