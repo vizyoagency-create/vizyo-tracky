@@ -15,7 +15,7 @@
 <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png"><link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png"><link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png"><link rel="icon" type="image/png" sizes="96x96" href="/favicon-96.png"><link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png"><link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon-180.png"><link rel="manifest" href="/site.webmanifest">
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"Organization","name":"Vizyo Tracky","url":"https://tracky.vizyoagency.com","logo":"https://tracky.vizyoagency.com/favicon-512.png","email":"contact@vizyoagency.com","telephone":"+33652077038","areaServed":"Occitanie","sameAs":["https://www.vizyoagency.com"]}</script>
 <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"Vizyo Tracky","url":"https://tracky.vizyoagency.com","inLanguage":"fr-FR"}</script>
-<script>window.VT_CFG={"leadApi":"https://app-tracky.vizyoagency.com/api/leads/contact","wa":"https://wa.me/33652077038","tel":"06 52 07 70 38","telE164":"+33652077038"};</script>
+<script>window.VT_CFG={"leadApi":"https://app-tracky.vizyoagency.com/api/leads/contact","partnerApi":"https://app-tracky.vizyoagency.com/api/partner/activity","wa":"https://wa.me/33652077038","tel":"06 52 07 70 38","telE164":"+33652077038"};</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
@@ -37,6 +37,10 @@ summary::-webkit-details-marker{display:none}
 @keyframes vt-ping{0%{transform:scale(1);opacity:.55}80%,100%{transform:scale(2.6);opacity:0}}
 @keyframes vt-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
 @keyframes vt-blink{0%,100%{opacity:1}50%{opacity:.25}}
+.vt-underline{position:relative;display:inline-block;padding-bottom:6px}
+.vt-underline::after{content:"";position:absolute;left:0;bottom:0;height:2px;width:100%;background:linear-gradient(90deg,var(--accent),#4d75ff,var(--accent));background-size:200% 100%;border-radius:2px;animation:vt-uflow 3s linear infinite}
+@keyframes vt-uflow{to{background-position:200% 50%}}
+@media (prefers-reduced-motion:reduce){.vt-underline::after{animation:none}}
 .vt-herovid{transition:opacity .6s ease}
 [data-theme="light"] .vt-herovid{opacity:0!important}
 @media (prefers-reduced-motion:reduce){.vt-herovid{display:none}}
@@ -559,7 +563,7 @@ summary::-webkit-details-marker{display:none}
 <section class="vt-sec" id="maestroo" style="padding:78px 0;background:var(--bg2);border-top:1px solid var(--border)">
 <div style="max-width:820px;margin:0 auto;padding:0 32px;text-align:center">
 <div data-reveal>
-<div style="display:inline-flex;align-items:center;gap:8px;background:var(--accent-soft);border:1px solid rgba(16,224,160,.28);border-radius:999px;padding:5px 12px;font-family:'JetBrains Mono',monospace;font-size:.64rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:16px"><span style="width:5px;height:5px;border-radius:50%;background:var(--accent);animation:vt-blink 1.5s ease-in-out infinite"></span>Bientôt · Partenariat</div>
+<div style="margin-bottom:18px"><span class="vt-underline" style="font-family:'JetBrains Mono',monospace;font-size:.74rem;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--tx2)">Bientôt · Partenariat</span></div>
 <h2 style="font-size:clamp(1.4rem,2.6vw,1.9rem);font-weight:800;letter-spacing:-.02em;line-height:1.1;margin:0 0 10px"><span style="color:var(--accent)">Tracky</span> <span style="color:var(--tx3);font-weight:300">×</span> <span style="color:#4d75ff">Maestroo</span></h2>
 <p style="font-size:.98rem;line-height:1.55;color:var(--tx2);max-width:34rem;margin:0 auto 24px">Vizyo Tracky s'intégrera bientôt à <b style="color:var(--tx)">Maestroo</b>, le logiciel de gestion de transport. Aperçu en 60&nbsp;secondes.</p>
 </div>
@@ -608,6 +612,6 @@ summary::-webkit-details-marker{display:none}
 </footer>
 
 </div>
-<script src="assets/vt.js?v=68ba623d"></script>
+<script src="assets/vt.js?v=aca0a9db"></script>
 </body>
 </html>

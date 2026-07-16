@@ -140,6 +140,7 @@
           if (btn) btn.disabled = false;
           if (ok) {
             try { localStorage.setItem('vt-lead-done', '1'); } catch (e2) {}
+            vtTrack('lp_lead_submit', { target: 'form' });
             form.innerHTML = '<div style="text-align:center;padding:26px 8px">' +
               '<div style="width:52px;height:52px;border-radius:50%;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">' +
               '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>' +
@@ -160,6 +161,87 @@
         if (!el.value) el.value = 'Bonjour, je suis client Maestroo et je souhaite équiper ma flotte avec Vizyo Tracky. Pouvez-vous me présenter vos offres et l’intégration Tracky × Maestroo ? Merci.';
       });
     } catch (e) {}
+  }
+
+  // ── Beacons d'activité LP → observabilité Tracky (POST /api/partner/activity)
+  // Fire-and-forget, non bloquant. Alimente le centre « Trafic & sources » de
+  // l'app (intelligence IP : une IP déjà vue dans un lead LP = prospect reconnu).
+  var VT_SID = null;
+  function vtSid() {
+    if (VT_SID) return VT_SID;
+    try { VT_SID = sessionStorage.getItem('vt-sid') || ''; } catch (e) {}
+    if (!VT_SID) {
+      VT_SID = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('lp-' + Math.random().toString(36).slice(2) + Date.now());
+      try { sessionStorage.setItem('vt-sid', VT_SID); } catch (e) {}
+    }
+    return VT_SID;
+  }
+  function vtTrack(action, extra) {
+    try {
+      var cfg = window.VT_CFG || {}; if (!cfg.partnerApi || !action) return;
+      var body = { source: 'LP', action: String(action).slice(0, 60), sessionId: vtSid() };
+      if (extra) {
+        if (extra.target) body.target = String(extra.target).slice(0, 80);
+        if (extra.label) body.label = String(extra.label).slice(0, 120);
+        if (typeof extra.durationMs === 'number' && isFinite(extra.durationMs)) body.durationMs = Math.max(0, Math.round(extra.durationMs));
+        if (extra.meta) body.meta = extra.meta;
+      }
+      var payload = JSON.stringify(body);
+      if (payload.length > 3900) return; // borne serveur (4 Ko)
+      if (navigator.sendBeacon) navigator.sendBeacon(cfg.partnerApi, new Blob([payload], { type: 'application/json' }));
+      else fetch(cfg.partnerApi, { method: 'POST', keepalive: true, mode: 'no-cors', headers: { 'Content-Type': 'application/json' }, body: payload });
+    } catch (e) {}
+  }
+  function initTracking() {
+    var cfg = window.VT_CFG || {}; if (!cfg.partnerApi) return;
+    var page = (location.pathname.replace(/\/$/, '').split('/').pop() || 'accueil').replace(/\.html$/, '');
+    // page_view (+ referrer / utm / from)
+    var m = {};
+    try {
+      var p = new URLSearchParams(location.search);
+      ['utm_source', 'utm_medium', 'utm_campaign'].forEach(function (k) { var v = p.get(k); if (v) m[k] = v.slice(0, 60); });
+      if (p.get('from')) m.from = p.get('from').slice(0, 40);
+      if (d.referrer && d.referrer.indexOf(location.host) < 0) m.ref = d.referrer.slice(0, 120);
+    } catch (e) {}
+    vtTrack('lp_page_view', { target: page, meta: Object.keys(m).length ? m : undefined });
+
+    // clics CTA importants (délégation, capture)
+    d.addEventListener('click', function (e) {
+      var a = e.target.closest && e.target.closest('a,button'); if (!a) return;
+      var href = (a.getAttribute && a.getAttribute('href')) || '';
+      var label = (a.getAttribute('data-track') || a.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 60);
+      if (/wa\.me|whatsapp/i.test(href)) vtTrack('lp_cta_click', { target: 'whatsapp', label: label });
+      else if (/^tel:/i.test(href)) vtTrack('lp_cta_click', { target: 'phone', label: label });
+      else if (/partenariat-maestroo/i.test(href)) vtTrack('lp_cta_click', { target: 'maestroo', label: label });
+      else if (/#demo/i.test(href) || /démo|demande|rappel/i.test(label)) vtTrack('lp_cta_click', { target: 'demo', label: label });
+      else if (/tarifs/i.test(href) || /devis/i.test(label)) vtTrack('lp_cta_click', { target: 'tarifs', label: label });
+    }, true);
+
+    // simulateur utilisé (une seule fois) — « a simulé »
+    var simTracked = false;
+    d.addEventListener('click', function (e) {
+      if (simTracked || !(e.target.closest && e.target.closest('[data-sim]'))) return;
+      simTracked = true; vtTrack('lp_sim_use', { target: page });
+    }, true);
+
+    // engagement formulaire : focus = start ; touché mais non soumis = hésitation
+    var formTouched = false, formSubmitted = false;
+    d.addEventListener('focusin', function (e) {
+      if (formTouched || !(e.target.closest && e.target.closest('form[data-vt-lead], .vt-pop form'))) return;
+      formTouched = true; vtTrack('lp_form_start', { target: page });
+    });
+    d.addEventListener('submit', function (e) { if (e.target.closest && e.target.closest('form[data-vt-lead], .vt-pop form')) formSubmitted = true; }, true);
+
+    // temps passé + hésitation à la sortie (une seule fois)
+    var t0 = Date.now(), sent = false;
+    function onLeave() {
+      if (sent) return; sent = true;
+      var dur = Date.now() - t0;
+      if (formTouched && !formSubmitted) vtTrack('lp_form_abandon', { target: page, durationMs: dur, meta: { simule: simTracked } });
+      vtTrack('lp_time_spent', { target: page, durationMs: dur });
+    }
+    d.addEventListener('visibilitychange', function () { if (d.visibilityState === 'hidden') onLeave(); });
+    window.addEventListener('pagehide', onLeave);
   }
 
   // ── Pop-up « demande » intelligente & DISCRÈTE ─────────────────────────────
@@ -211,7 +293,7 @@
     }
     function show() {
       if (shown || el || formInView()) return;
-      shown = true; injectStyle();
+      shown = true; injectStyle(); vtTrack('lp_popup_shown', { target: 'popup' });
       el = d.createElement('div'); el.className = 'vt-pop'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Demander une démo Vizyo Tracky');
       el.innerHTML =
         '<button class="vt-pop-x" aria-label="Fermer">&times;</button>' +
@@ -260,6 +342,6 @@
     } catch (e) {}
   }
 
-  function init() { initHover(); initReveal(); handleHash(); initSim(); initForms(); prefillPartner(); initSmartPopup(); }
+  function init() { initHover(); initReveal(); handleHash(); initSim(); initForms(); prefillPartner(); initTracking(); initSmartPopup(); }
   if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', init); else init();
 })();

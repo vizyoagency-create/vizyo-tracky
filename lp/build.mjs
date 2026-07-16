@@ -54,7 +54,7 @@ ${geoTags}
 <meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${esc(title)}"><meta name="twitter:description" content="${esc(description)}"><meta name="twitter:image" content="${img}">
 <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png"><link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png"><link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png"><link rel="icon" type="image/png" sizes="96x96" href="/favicon-96.png"><link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png"><link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon-180.png"><link rel="manifest" href="/site.webmanifest">
 ${ld}
-<script>window.VT_CFG=${JSON.stringify({ leadApi: site.leadApi, wa: 'https://wa.me/' + site.whatsapp, tel: site.phoneDisplay, telE164: site.phoneE164 })};</script>`;
+<script>window.VT_CFG=${JSON.stringify({ leadApi: site.leadApi, partnerApi: site.appUrl + '/api/partner/activity', wa: 'https://wa.me/' + site.whatsapp, tel: site.phoneDisplay, telE164: site.phoneE164 })};</script>`;
 }
 
 // ── Simulateur tarifs : styles initiaux (identiques à vt.js) ──
