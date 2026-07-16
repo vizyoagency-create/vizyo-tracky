@@ -40,6 +40,7 @@ const EXCLUDED_PREFIXES = [
   '/api/partner', // beacons : déjà tracés en PARTNER_EVENT par le contrôleur (anti-doublon)
   '/api/admin/api-traffic', // nos propres endpoints de lecture (anti-boucle)
   '/api/health', // healthcheck Docker (wget) / Traefik toutes les ~30 s — pur bruit d'infra
+  '/api/public/client-error', // bugs JS pré-connexion : déjà dans error_logs (anti-doublon)
 ];
 
 interface TrafficRequest extends Request {
