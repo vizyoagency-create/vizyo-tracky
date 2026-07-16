@@ -4,16 +4,18 @@ import {
   NotFoundException, Param, Patch, Post, Req, UseGuards,
 } from '@nestjs/common';
 import { Prisma, UserRole } from '@prisma/client';
+import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { resolveTenantScope } from '../common/tenant-scope';
 import { PrismaService } from '../prisma/prisma.service';
 import { AddVehicleToGroupDto, CreateVehicleGroupDto, RenameVehicleGroupDto } from './dto/vehicle-group.dto';
 
 @Controller('vehicle-groups')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class VehicleGroupsController {
   constructor(private readonly prisma: PrismaService) {}
 
@@ -33,7 +35,8 @@ export class VehicleGroupsController {
   }
 
   @Post()
-  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
+  @RequirePermissions('groups_manage')
   async create(@Body() dto: CreateVehicleGroupDto, @Req() req: AuthenticatedRequest) {
     let fleetId = req.user.fleetId;
 
@@ -56,6 +59,7 @@ export class VehicleGroupsController {
 
   @Get()
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  @RequirePermissions('groups_view')
   async findAll(@Req() req: AuthenticatedRequest) {
     // V1.16 (audit B2) — fail-closed : un non-super sans fleetId ne voit RIEN.
     const scope = resolveTenantScope(req.user);
@@ -73,7 +77,8 @@ export class VehicleGroupsController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
+  @RequirePermissions('groups_manage')
   async rename(@Param('id') id: string, @Body() dto: RenameVehicleGroupDto, @Req() req: AuthenticatedRequest) {
     const group = await this.findGroupInFleet(id, req);
     if (!group) throw new NotFoundException('Group not found');
@@ -83,7 +88,8 @@ export class VehicleGroupsController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
+  @RequirePermissions('groups_manage')
   async remove(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     const group = await this.findGroupInFleet(id, req);
     if (!group) return;
@@ -92,7 +98,8 @@ export class VehicleGroupsController {
   }
 
   @Post(':id/vehicles')
-  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
+  @RequirePermissions('groups_manage')
   async addVehicle(@Param('id') id: string, @Body() dto: AddVehicleToGroupDto, @Req() req: AuthenticatedRequest) {
     const group = await this.findGroupInFleet(id, req);
     if (!group) throw new NotFoundException('Group not found');
@@ -113,7 +120,8 @@ export class VehicleGroupsController {
 
   @Delete(':id/vehicles/:vehicleId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
+  @RequirePermissions('groups_manage')
   async removeVehicle(@Param('id') id: string, @Param('vehicleId') vehicleId: string, @Req() req: AuthenticatedRequest) {
     const group = await this.findGroupInFleet(id, req);
     if (!group) return;

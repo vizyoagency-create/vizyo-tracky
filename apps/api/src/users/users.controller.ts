@@ -5,9 +5,11 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { AccessType, Prisma, UserRole } from '@prisma/client';
 import { AuthClientService } from '../auth-client/auth-client.service';
+import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import type { Env } from '../config/env.validation';
 import { EmailService } from '../email/email.service';
@@ -31,7 +33,7 @@ const PRIVILEGED_ROLES: UserRole[] = [UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN
 const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000';
 
 @Controller('users')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class UsersController {
   private readonly logger = new Logger(UsersController.name);
 
@@ -319,6 +321,7 @@ export class UsersController {
 
   @Get()
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
+  @RequirePermissions('users_view')
   async findAll(
     @Req() req: AuthenticatedRequest,
     @Query('includeArchived') includeArchived?: string,
@@ -386,6 +389,7 @@ export class UsersController {
 
   @Get('panorama')
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN)
+  @RequirePermissions('users_view')
   async panorama(@Req() req: AuthenticatedRequest) {
     const fleetFilter: Prisma.UserWhereInput = {};
     const groupFilter: Prisma.VehicleGroupWhereInput = {};
@@ -673,6 +677,7 @@ export class UsersController {
 
   @Put(':id/access')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  @RequirePermissions('users_manage')
   async setAccess(@Param('id') id: string, @Body() dto: SetUserAccessDto, @Req() req: AuthenticatedRequest) {
     await this.assertTargetVisible(id, req);
     // Filtre tenant integre au where : 404 si user d'une autre flotte.
@@ -744,6 +749,7 @@ export class UsersController {
    */
   @Patch(':userId/access/:accessId')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  @RequirePermissions('users_manage')
   async updateAccessPermissions(
     @Param('userId', ParseUUIDPipe) userId: string,
     @Param('accessId', ParseUUIDPipe) accessId: string,
@@ -785,6 +791,7 @@ export class UsersController {
   @Delete(':userId/access/:accessId')
   @HttpCode(HttpStatus.OK)
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  @RequirePermissions('users_manage')
   async deleteAccessEntry(
     @Param('userId', ParseUUIDPipe) userId: string,
     @Param('accessId', ParseUUIDPipe) accessId: string,
