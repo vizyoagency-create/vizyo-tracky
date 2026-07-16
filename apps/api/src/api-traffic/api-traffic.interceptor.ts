@@ -30,7 +30,6 @@ const PUBLIC_PREFIXES = [
   '/api/webhooks',
   '/api/sms/webhook',
   '/api/email/webhook',
-  '/api/health',
 ];
 
 /** Préfixes JAMAIS journalisés (sensibles, très fréquents, ou déjà couverts / anti-boucle). */
@@ -40,6 +39,7 @@ const EXCLUDED_PREFIXES = [
   '/api/internal/', // callbacks machine (secret guard)
   '/api/partner', // beacons : déjà tracés en PARTNER_EVENT par le contrôleur (anti-doublon)
   '/api/admin/api-traffic', // nos propres endpoints de lecture (anti-boucle)
+  '/api/health', // healthcheck Docker (wget) / Traefik toutes les ~30 s — pur bruit d'infra
 ];
 
 interface TrafficRequest extends Request {
