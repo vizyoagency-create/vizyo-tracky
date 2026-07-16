@@ -14,6 +14,8 @@ export type EmailTemplateId =
   | 'alert'
   | 'lead'
   | 'lead_welcome'
+  | 'quote_signed'
+  | 'quote_client'
   | 'audio_activation'
   | 'audio_info'
   | 'installation_slot_requested'
@@ -747,38 +749,79 @@ Un imprévu ? Répondez à cet e-mail. À bientôt.
   }
 
   /**
-   * Suivi commercial — e-mail de BIENVENUE envoyé AU PROSPECT (→ son e-mail) dès
-   * qu'il remplit un formulaire de demande sur la LP. Objectif : automatiser le
-   * premier contact commercial pour que le prospect ait déjà toutes les infos.
-   * Contenu : présentation courte + bouton vers le HUB VIDÉO privé (lien partagé
-   * uniquement par e-mail, jamais public) + 3 univers (Supervision / Analyse /
-   * Administration) + fiche produit + contact WhatsApp / e-mail. Envoyé depuis
-   * contact@vizyoagency.com (RESEND_FROM).
+   * Signature commerciale PERSONNELLE (charte) — bloc `<tr><td>` réutilisé dans
+   * les e-mails prospects pour un ton humain (« un vrai commercial », pas un
+   * robot ni « l'équipe »). Une identité + un contact direct : les gens
+   * répondent mieux à une personne. `contactEmail`/`whatsappUrl`/`phone` sont
+   * les coordonnées Vizyo (RESEND_FROM = contact@vizyoagency.com).
+   */
+  private commercialSignature(): string {
+    const sans = "'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif";
+    return `
+      <tr><td style="padding:26px 36px 0;">
+        <div style="height:1px;background:rgba(255,255,255,.07);margin-bottom:18px;"></div>
+        <p style="margin:0 0 14px;font-family:${sans};font-size:14px;line-height:1.6;color:#9BA5A1;">Bien à vous,</p>
+        <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+          <td style="vertical-align:top;padding-right:16px;">
+            <div style="width:46px;height:46px;border-radius:50%;background:rgba(16,224,160,.14);text-align:center;line-height:46px;font-family:${sans};font-size:16px;font-weight:800;color:#10E0A0;">YH</div>
+          </td>
+          <td style="vertical-align:top;">
+            <div style="font-family:${sans};font-size:15px;font-weight:800;color:#EAEFED;letter-spacing:-0.01em;">Y. Haddou</div>
+            <div style="font-family:${sans};font-size:13px;color:#9BA5A1;margin-top:1px;">Vizyo Tracky · votre interlocuteur dédié</div>
+            <div style="margin-top:12px;">
+              <a href="https://wa.me/33652077038" style="display:inline-block;margin:0 8px 8px 0;border:1px solid rgba(16,224,160,.32);border-radius:10px;padding:9px 16px;font-family:${sans};font-size:13px;font-weight:700;color:#10E0A0;text-decoration:none;">WhatsApp</a>
+              <a href="tel:+33652077038" style="display:inline-block;margin:0 8px 8px 0;border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:9px 16px;font-family:${sans};font-size:13px;font-weight:600;color:#EAEFED;text-decoration:none;">06&nbsp;52&nbsp;07&nbsp;70&nbsp;38</a>
+              <a href="mailto:contact@vizyoagency.com" style="display:inline-block;margin:0 0 8px 0;border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:9px 16px;font-family:${sans};font-size:13px;font-weight:600;color:#EAEFED;text-decoration:none;">contact@vizyoagency.com</a>
+            </div>
+          </td>
+        </tr></table>
+      </td></tr>`;
+  }
+
+  private commercialSignatureText(): string {
+    return `Bien à vous,
+
+Y. Haddou
+Vizyo Tracky · votre interlocuteur dédié
+WhatsApp / Tél : 06 52 07 70 38
+E-mail : contact@vizyoagency.com`;
+  }
+
+  /** Carte « récap devis » (le texte du simulateur, sauts de ligne préservés). */
+  private quoteRecapCard(quoteText: string): string {
+    const inner = escapeHtml(quoteText).replace(/\n/g, '<br>');
+    return `<div style="padding:16px 18px;background:#0C110F;border:1px solid rgba(16,224,160,.18);border-radius:12px;font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:12.5px;line-height:1.75;color:#9BA5A1;">${inner}</div>`;
+  }
+
+  /**
+   * Suivi commercial — e-mail de BIENVENUE au PROSPECT (→ son e-mail) dès qu'il
+   * remplit un formulaire de demande sur la LP. Ton PERSONNEL (signé Y. Haddou),
+   * comme un commercial qui prend en main le dossier. Présentation vidéo (hub
+   * privé) + 3 univers + configuration devis en soft (sans brusquer) + signature.
    */
   buildLeadWelcomeEmail(opts: {
     recipientName?: string | null;
     hubUrl: string;
+    tarifsUrl: string;
     ficheUrl: string;
-    whatsappUrl: string;
-    contactEmail: string;
   }): { subject: string; html: string; text: string } {
     const firstName = (opts.recipientName || '').trim().split(/\s+/)[0] || '';
     const greeting = firstName ? `Bonjour ${firstName},` : 'Bonjour,';
-    const subject = 'Bienvenue chez Vizyo Tracky — votre présentation en vidéo';
+    const subject = 'Votre présentation Vizyo Tracky — et mes coordonnées';
     const sans = "'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif";
 
     const univers = (title: string, desc: string, first = false) =>
       `<tr><td style="${first ? '' : 'border-top:1px solid rgba(255,255,255,.06);'}padding:14px 18px;font-family:${sans};font-size:14px;line-height:1.5;color:#9BA5A1;"><span style="color:#10E0A0;font-weight:700;">${title}</span> — ${desc}</td></tr>`;
 
     const html = this.shell({
-      eyebrow: 'Bienvenue · Vizyo Tracky',
+      eyebrow: 'Vizyo Tracky · Bienvenue',
       footer: 'VIZYO TRACKY · GPS &amp; GESTION DE FLOTTE · OCCITANIE<br>Vous recevez cet e-mail suite à votre demande sur tracky.vizyoagency.com.',
       body: `
         <tr><td style="padding:28px 36px 0;">
-          <h1 style="margin:0 0 12px;font-family:${sans};font-size:26px;line-height:1.15;font-weight:800;letter-spacing:-0.025em;color:#EAEFED;">Merci de votre intérêt&nbsp;!</h1>
-          <p style="margin:0 0 10px;font-family:${sans};font-size:15px;line-height:1.65;color:#9BA5A1;">${escapeHtml(greeting)}</p>
-          <p style="margin:0 0 22px;font-family:${sans};font-size:15px;line-height:1.65;color:#9BA5A1;">Nous avons bien reçu votre demande. Pour que vous ayez tout de suite une vision claire de <span style="color:#EAEFED;font-weight:600;">Vizyo Tracky</span>, nous avons préparé une présentation en vidéo de nos services — à regarder quand vous voulez, à votre rythme.</p>
-          <table role="presentation"><tr><td style="border-radius:11px;background:#10E0A0;">
+          <h1 style="margin:0 0 14px;font-family:${sans};font-size:25px;line-height:1.18;font-weight:800;letter-spacing:-0.025em;color:#EAEFED;">Merci pour votre intérêt&nbsp;!</h1>
+          <p style="margin:0 0 12px;font-family:${sans};font-size:15px;line-height:1.65;color:#9BA5A1;">${escapeHtml(greeting)}</p>
+          <p style="margin:0 0 12px;font-family:${sans};font-size:15px;line-height:1.65;color:#9BA5A1;">Je suis <span style="color:#EAEFED;font-weight:600;">Y. Haddou</span>, chez Vizyo Tracky — c'est moi qui vais suivre votre demande personnellement. Pour que vous vous fassiez une idée précise, je vous ai préparé une courte présentation en vidéo de nos services, à regarder tranquillement quand vous voulez&nbsp;:</p>
+          <table role="presentation" style="margin-top:8px;"><tr><td style="border-radius:11px;background:#10E0A0;">
             <a href="${opts.hubUrl}" style="display:inline-block;padding:14px 30px;font-family:${sans};font-size:14px;font-weight:700;letter-spacing:-0.01em;color:#04130D;text-decoration:none;">▶&nbsp;&nbsp;Voir les vidéos de présentation →</a>
           </td></tr></table>
         </td></tr>
@@ -791,20 +834,19 @@ Un imprévu ? Répondez à cet e-mail. À bientôt.
           </table>
         </td></tr>
         <tr><td style="padding:22px 36px 0;">
-          <p style="margin:0 0 12px;font-family:${sans};font-size:14px;line-height:1.6;color:#9BA5A1;">Une question, ou envie de démarrer&nbsp;? Écrivez-nous directement — on vous répond en moins de 2&nbsp;h ouvrées&nbsp;:</p>
-          <table role="presentation" cellpadding="0" cellspacing="0"><tr>
-            <td style="padding-right:10px;"><a href="${opts.whatsappUrl}" style="display:inline-block;border:1px solid rgba(16,224,160,.3);border-radius:11px;padding:11px 20px;font-family:${sans};font-size:14px;font-weight:700;color:#10E0A0;text-decoration:none;">WhatsApp</a></td>
-            <td><a href="mailto:${escapeHtml(opts.contactEmail)}" style="display:inline-block;border:1px solid rgba(255,255,255,.14);border-radius:11px;padding:11px 20px;font-family:${sans};font-size:14px;font-weight:600;color:#EAEFED;text-decoration:none;">${escapeHtml(opts.contactEmail)}</a></td>
-          </tr></table>
-          <p style="margin:16px 0 0;font-family:${sans};font-size:13px;line-height:1.6;color:#69736E;">Vous pouvez aussi <a href="${opts.ficheUrl}" style="color:#10E0A0;text-decoration:none;">télécharger la fiche produit (PDF)</a>.</p>
-        </td></tr>`,
+          <p style="margin:0;font-family:${sans};font-size:14px;line-height:1.65;color:#9BA5A1;">Dès que vous aurez une idée du nombre de véhicules, vous pourrez <a href="${opts.tarifsUrl}" style="color:#10E0A0;text-decoration:none;font-weight:600;">estimer votre tarif et configurer un devis en ligne</a>, sans engagement — mais rien ne presse, on peut aussi en parler de vive voix, comme vous préférez. Vous pouvez également <a href="${opts.ficheUrl}" style="color:#10E0A0;text-decoration:none;">télécharger la fiche produit (PDF)</a>.</p>
+        </td></tr>
+        <tr><td style="padding:20px 36px 0;">
+          <p style="margin:0;font-family:${sans};font-size:14px;line-height:1.65;color:#9BA5A1;">Une question, un doute&nbsp;? Répondez simplement à cet e-mail, ou joignez-moi directement — je m'en occupe.</p>
+        </td></tr>
+        ${this.commercialSignature()}`,
     });
 
     const text = `${greeting}
 
-Merci de votre intérêt pour Vizyo Tracky ! Nous avons bien reçu votre demande.
+Je suis Y. Haddou, chez Vizyo Tracky — c'est moi qui vais suivre votre demande personnellement. Merci pour votre intérêt !
 
-Nous avons préparé une présentation en vidéo de nos services, à regarder quand vous voulez :
+Je vous ai préparé une courte présentation en vidéo de nos services, à regarder quand vous voulez :
 ${opts.hubUrl}
 
 Ce que vous allez découvrir :
@@ -812,14 +854,110 @@ Ce que vous allez découvrir :
 - Analyse : rapports PDF programmés, récit IA des trajets, scores conducteur, économies carburant.
 - Administration : utilisateurs & rôles, groupes, permissions au véhicule près, installation sous 48 h.
 
-Une question, ou envie de démarrer ? Écrivez-nous — réponse en moins de 2 h ouvrées :
-- WhatsApp : ${opts.whatsappUrl}
-- E-mail : ${opts.contactEmail}
-
+Dès que vous aurez une idée du nombre de véhicules, vous pourrez estimer votre tarif et configurer un devis en ligne (sans engagement) : ${opts.tarifsUrl}
 Fiche produit (PDF) : ${opts.ficheUrl}
 
-— L'équipe Vizyo Tracky`;
+Une question, un doute ? Répondez simplement à cet e-mail, ou joignez-moi directement.
 
+${this.commercialSignatureText()}`;
+
+    return { subject, html, text };
+  }
+
+  /**
+   * Devis signé en ligne — NOTIFICATION ADMIN (→ contact@vizyoagency.com) quand un
+   * prospect valide « bon pour accord » un devis auto-configuré sur la page Tarifs.
+   * Reprend le récap exact du simulateur pour retraiter/finaliser rapidement.
+   */
+  buildQuoteSignedAdminEmail(opts: {
+    name: string;
+    email: string;
+    phone?: string | null;
+    company?: string | null;
+    fleetSize?: string | null;
+    quoteText: string;
+    managerUrl: string;
+  }): { subject: string; html: string; text: string } {
+    const sans = "'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif";
+    const subject = `Devis signé en ligne — ${opts.company || opts.name}${opts.fleetSize ? ` (${opts.fleetSize})` : ''}`;
+    const rows = [
+      this.kvRow('Nom', opts.name),
+      this.kvRow('E-mail', opts.email),
+      opts.phone ? this.kvRow('Téléphone', opts.phone) : '',
+      opts.company ? this.kvRow('Société', opts.company) : '',
+      opts.fleetSize ? this.kvRow('Flotte', opts.fleetSize, true) : '',
+    ].filter(Boolean);
+    const html = this.shell({
+      eyebrow: 'Devis signé · Prospect',
+      footer: 'VIZYO TRACKY · NOTIFICATION INTERNE · DEVIS',
+      body: `
+        <tr><td style="padding:26px 36px 0;">
+          <div style="display:inline-block;padding:5px 12px;border-radius:999px;background:rgba(16,224,160,.12);font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:10.5px;letter-spacing:0.08em;text-transform:uppercase;color:#10E0A0;margin-bottom:12px;">Bon pour accord</div>
+          <h1 style="margin:0 0 4px;font-family:${sans};font-size:24px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;color:#EAEFED;">Devis signé en ligne</h1>
+          <p style="margin:0 0 20px;font-family:${sans};font-size:14px;color:#69736E;">Configuré et validé à l'instant via la page Tarifs.</p>
+        </td></tr>
+        <tr><td style="padding:0 36px;">
+          <table role="presentation" width="100%" style="background:#161D1B;border:1px solid rgba(255,255,255,.07);border-radius:13px;border-collapse:separate;">${rows.join('')}</table>
+        </td></tr>
+        <tr><td style="padding:16px 36px 0;">
+          ${this.quoteRecapCard(opts.quoteText)}
+        </td></tr>
+        <tr><td style="padding:20px 36px 0;">
+          <table role="presentation"><tr><td style="border-radius:11px;background:#10E0A0;">
+            <a href="${opts.managerUrl}" style="display:inline-block;padding:14px 30px;font-family:${sans};font-size:14px;font-weight:700;letter-spacing:-0.01em;color:#04130D;text-decoration:none;">Ouvrir Vizyo Manager →</a>
+          </td></tr></table>
+        </td></tr>`,
+    });
+    const text = `Devis signé en ligne — ${opts.company || opts.name}
+
+Nom : ${opts.name}
+E-mail : ${opts.email}${opts.phone ? `\nTéléphone : ${opts.phone}` : ''}${opts.company ? `\nSociété : ${opts.company}` : ''}${opts.fleetSize ? `\nFlotte : ${opts.fleetSize}` : ''}
+
+${opts.quoteText}
+
+Gérer : ${opts.managerUrl}`;
+    return { subject, html, text };
+  }
+
+  /**
+   * Devis signé en ligne — COPIE CLIENT (→ e-mail du prospect). Ton personnel
+   * (signé Y. Haddou) : récap de son devis + « je vous recontacte pour
+   * finaliser ». Rassure (indicatif, sans engagement, tarif bloqué).
+   */
+  buildQuoteClientEmail(opts: {
+    recipientName?: string | null;
+    quoteText: string;
+    tarifsUrl: string;
+  }): { subject: string; html: string; text: string } {
+    const firstName = (opts.recipientName || '').trim().split(/\s+/)[0] || '';
+    const greeting = firstName ? `Bonjour ${firstName},` : 'Bonjour,';
+    const subject = 'Votre devis Vizyo Tracky — récapitulatif';
+    const sans = "'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif";
+    const html = this.shell({
+      eyebrow: 'Vizyo Tracky · Votre devis',
+      footer: 'VIZYO TRACKY · GPS &amp; GESTION DE FLOTTE · OCCITANIE<br>Devis indicatif sans engagement — tarif bloqué à la souscription.',
+      body: `
+        <tr><td style="padding:28px 36px 0;">
+          <h1 style="margin:0 0 14px;font-family:${sans};font-size:25px;line-height:1.18;font-weight:800;letter-spacing:-0.025em;color:#EAEFED;">Votre devis Vizyo Tracky</h1>
+          <p style="margin:0 0 12px;font-family:${sans};font-size:15px;line-height:1.65;color:#9BA5A1;">${escapeHtml(greeting)}</p>
+          <p style="margin:0 0 18px;font-family:${sans};font-size:15px;line-height:1.65;color:#9BA5A1;">Merci d'avoir configuré votre devis&nbsp;! En voici le récapitulatif. Je le regarde de mon côté et je vous recontacte très vite pour le finaliser ensemble et répondre à toutes vos questions.</p>
+        </td></tr>
+        <tr><td style="padding:0 36px;">
+          ${this.quoteRecapCard(opts.quoteText)}
+          <p style="margin:14px 0 0;font-family:${sans};font-size:13px;line-height:1.6;color:#69736E;">Ce devis est <span style="color:#9BA5A1;">indicatif et sans engagement</span> — le tarif est bloqué à la souscription. Besoin d'ajuster&nbsp;? <a href="${opts.tarifsUrl}" style="color:#10E0A0;text-decoration:none;">Reconfigurez-le en ligne</a> ou dites-le-moi.</p>
+        </td></tr>
+        ${this.commercialSignature()}`,
+    });
+    const text = `${greeting}
+
+Merci d'avoir configuré votre devis Vizyo Tracky ! En voici le récapitulatif. Je le regarde et je vous recontacte très vite pour le finaliser ensemble.
+
+${opts.quoteText}
+
+Ce devis est indicatif et sans engagement — le tarif est bloqué à la souscription.
+Reconfigurer en ligne : ${opts.tarifsUrl}
+
+${this.commercialSignatureText()}`;
     return { subject, html, text };
   }
 
@@ -936,9 +1074,26 @@ Fiche produit (PDF) : ${opts.ficheUrl}
         return this.buildLeadWelcomeEmail({
           recipientName: 'Camille Bernard',
           hubUrl: 'https://tracky.vizyoagency.com/decouvrir',
+          tarifsUrl: 'https://tracky.vizyoagency.com/tarifs.html#simulateur',
           ficheUrl: 'https://tracky.vizyoagency.com/vizyo-tracky.pdf',
-          whatsappUrl: 'https://wa.me/33652077038',
-          contactEmail: 'contact@vizyoagency.com',
+        });
+      case 'quote_signed':
+        return this.buildQuoteSignedAdminEmail({
+          name: 'Antoine Delmas',
+          email: 'antoine.delmas@example.com',
+          phone: '+33 6 12 34 56 78',
+          company: 'SARL Delmas',
+          fleetSize: '25 véhicules',
+          quoteText:
+            'DEVIS AUTO-CONFIGURÉ — Tracky Pro (annuel renouvelable (tarif bloqué))\n25 véhicule(s) · Options : Live temps réel (15 s), Agent IA · Rétention : 1 an\nPar véhicule : 44,80 €/mois HT · Mensuel total : 1 120,00 € HT\n1re année (boîtier + install + abo) : 18 165 € · Années suivantes : 13 440 €\nÉconomies estimées : 5 000 – 10 000 €/an\nBon pour accord (devis indicatif, à confirmer par Vizyo).',
+          managerUrl: 'https://manager.vizyoagency.com/services/leads',
+        });
+      case 'quote_client':
+        return this.buildQuoteClientEmail({
+          recipientName: 'Antoine Delmas',
+          tarifsUrl: 'https://tracky.vizyoagency.com/tarifs.html#simulateur',
+          quoteText:
+            'DEVIS AUTO-CONFIGURÉ — Tracky Pro (annuel renouvelable (tarif bloqué))\n25 véhicule(s) · Options : Live temps réel (15 s), Agent IA · Rétention : 1 an\nPar véhicule : 44,80 €/mois HT · Mensuel total : 1 120,00 € HT\n1re année (boîtier + install + abo) : 18 165 € · Années suivantes : 13 440 €\nÉconomies estimées : 5 000 – 10 000 €/an\nBon pour accord (devis indicatif, à confirmer par Vizyo).',
         });
       default:
         return {
