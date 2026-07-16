@@ -6,6 +6,7 @@ import type {
   IpIntelligenceRowDto,
 } from '@vizyo/tracky-shared';
 import { OwnerVisibilityService } from '../common/owner-visibility.service';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 /** Entrée d'écriture d'une ligne de trafic (REQUEST) ou d'un beacon (PARTNER_EVENT). */
@@ -52,6 +53,7 @@ export class ApiTrafficService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ownerVis: OwnerVisibilityService,
+    private readonly errorLogger: ErrorLogger,
   ) {}
 
   // ── Écriture (fire-and-forget) ─────────────────────────────────────────────
@@ -59,14 +61,22 @@ export class ApiTrafficService {
   /** Enregistre une ligne de trafic. Ne bloque pas et n'échoue JAMAIS dans l'appelant. */
   record(input: ApiTrafficRecordInput): void {
     // Défense en profondeur : capture même une erreur SYNCHRONE (client Prisma désynchronisé
-    // → `apiTrafficLog` absent) que le `.catch` sur la promesse ne verrait pas.
+    // → `apiTrafficLog` absent) que le `.catch` sur la promesse ne verrait pas. Les deux chemins
+    // remontent au centre d'alerte (recordBackground : dédup + jamais bloquant) — sinon un échec
+    // d'écriture d'observabilité serait lui-même une erreur fantôme.
     try {
       void this.persist(input).catch((e) =>
-        this.logger.warn(`record failed: ${e instanceof Error ? e.message : String(e)}`),
+        this.errorLogger.recordBackground(
+          e instanceof Error ? e : new Error(String(e)),
+          'api-traffic',
+          { note: 'échec écriture ligne de trafic (REQUEST/PARTNER_EVENT)' },
+        ),
       );
     } catch (e) {
-      this.logger.warn(
-        `record threw synchronously: ${e instanceof Error ? e.message : String(e)}`,
+      this.errorLogger.recordBackground(
+        e instanceof Error ? e : new Error(String(e)),
+        'api-traffic',
+        { note: 'record() a jeté de façon synchrone' },
       );
     }
   }
