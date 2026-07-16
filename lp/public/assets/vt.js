@@ -139,6 +139,7 @@
         }, function (ok) {
           if (btn) btn.disabled = false;
           if (ok) {
+            try { localStorage.setItem('vt-lead-done', '1'); } catch (e2) {}
             form.innerHTML = '<div style="text-align:center;padding:26px 8px">' +
               '<div style="width:52px;height:52px;border-radius:50%;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">' +
               '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>' +
@@ -161,6 +162,104 @@
     } catch (e) {}
   }
 
-  function init() { initHover(); initReveal(); handleHash(); initSim(); initForms(); prefillPartner(); }
+  // ── Pop-up « demande » intelligente & DISCRÈTE ─────────────────────────────
+  // Se déclenche UNE seule fois, sur intention de sortie (souris qui quitte par
+  // le haut) OU engagement (scroll > 40% ET > 4 s) OU 2ᵉ page vue dans la
+  // session. Ne s'affiche JAMAIS si : le visiteur a déjà envoyé une demande, il
+  // l'a fermée récemment (silence 3 jours), ou il regarde déjà un formulaire.
+  // Carte d'angle non bloquante, fermable — pas un spam plein écran.
+  function initSmartPopup() {
+    var cfg = window.VT_CFG || {};
+    if (!cfg.leadApi) return;
+    try {
+      if (localStorage.getItem('vt-lead-done')) return;
+      var off = +localStorage.getItem('vt-popup-off') || 0;
+      if (Date.now() - off < 3 * 864e5) return; // 3 jours de silence après fermeture
+    } catch (e) {}
+
+    var shown = false, el = null, t0 = Date.now();
+
+    function formInView() {
+      var fs = d.querySelectorAll('form[data-vt-lead]'), vh = window.innerHeight || 800;
+      for (var i = 0; i < fs.length; i++) { var r = fs[i].getBoundingClientRect(); if (r.top < vh && r.bottom > 0) return true; }
+      return false;
+    }
+    function injectStyle() {
+      if (d.getElementById('vt-pop-css')) return;
+      var s = d.createElement('style'); s.id = 'vt-pop-css';
+      s.textContent =
+        '.vt-pop{position:fixed;right:20px;bottom:20px;z-index:9999;width:340px;max-width:calc(100vw - 32px);background:var(--surface);border:1px solid var(--border2);border-radius:16px;box-shadow:0 20px 60px -12px rgba(0,0,0,.5);padding:20px 20px 18px;opacity:0;transform:translateY(16px);transition:opacity .35s cubic-bezier(.16,1,.3,1),transform .35s cubic-bezier(.16,1,.3,1)}' +
+        '.vt-pop.vt-in{opacity:1;transform:none}' +
+        '.vt-pop-x{position:absolute;top:9px;right:9px;width:28px;height:28px;border:none;background:transparent;color:var(--tx3);font-size:20px;line-height:26px;cursor:pointer;border-radius:8px;padding:0}' +
+        '.vt-pop-x:hover{background:var(--bg2);color:var(--tx)}' +
+        '.vt-pop h3{margin:0 0 5px;font-size:1.06rem;font-weight:800;letter-spacing:-.02em;color:var(--tx)}' +
+        '.vt-pop p{margin:0 0 14px;font-size:.87rem;line-height:1.5;color:var(--tx2)}' +
+        '.vt-pop input{width:100%;box-sizing:border-box;padding:11px 13px;margin-bottom:9px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--tx);font:inherit;font-size:.9rem;outline:none}' +
+        '.vt-pop input:focus{border-color:var(--accent)}' +
+        '.vt-pop button[type=submit]{width:100%;padding:12px;border:none;border-radius:10px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:.92rem;cursor:pointer}' +
+        '.vt-pop-alt{margin:10px 0 0;font-size:.8rem;color:var(--tx2);text-align:center}' +
+        '.vt-pop-st{font-size:.8rem;min-height:1em;margin-top:8px;text-align:center;color:var(--tx2)}' +
+        '@media (max-width:520px){.vt-pop{right:12px;left:12px;bottom:12px;width:auto}}' +
+        '@media (prefers-reduced-motion:reduce){.vt-pop{transition:none}}';
+      d.head.appendChild(s);
+    }
+    function close(remember) {
+      if (!el) return;
+      var e2 = el; el = null; e2.classList.remove('vt-in');
+      setTimeout(function () { if (e2 && e2.parentNode) e2.parentNode.removeChild(e2); }, 350);
+      if (remember) { try { localStorage.setItem('vt-popup-off', String(Date.now())); } catch (e) {} }
+    }
+    function show() {
+      if (shown || el || formInView()) return;
+      shown = true; injectStyle();
+      el = d.createElement('div'); el.className = 'vt-pop'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Demander une démo Vizyo Tracky');
+      el.innerHTML =
+        '<button class="vt-pop-x" aria-label="Fermer">&times;</button>' +
+        '<h3>Une démo gratuite ?</h3>' +
+        '<p>Laissez vos coordonnées, on vous rappelle sous 2h — sans engagement.</p>' +
+        '<form novalidate>' +
+        '<input name="name" placeholder="Votre nom" autocomplete="name">' +
+        '<input name="email" type="email" placeholder="E-mail" autocomplete="email">' +
+        '<input name="phone" type="tel" placeholder="Téléphone (optionnel)" autocomplete="tel">' +
+        '<button type="submit">Être rappelé →</button>' +
+        '<div class="vt-pop-st"></div></form>' +
+        '<div class="vt-pop-alt">ou <a href="' + cfg.wa + '" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600">WhatsApp</a></div>';
+      d.body.appendChild(el);
+      requestAnimationFrame(function () { if (el) el.classList.add('vt-in'); });
+      el.querySelector('.vt-pop-x').addEventListener('click', function () { close(true); });
+      var form = el.querySelector('form'), st = el.querySelector('.vt-pop-st');
+      var gv = function (n) { var e = form.querySelector('[name="' + n + '"]'); return e ? String(e.value || '').trim() : ''; };
+      form.addEventListener('submit', function (ev) {
+        ev.preventDefault();
+        var name = gv('name'), email = gv('email'), phone = gv('phone');
+        if (!name || (email.indexOf('@') < 1 && !phone)) { st.textContent = 'Votre nom + un e-mail ou un téléphone, svp.'; st.style.color = '#e5484d'; return; }
+        var b = form.querySelector('button[type=submit]'); if (b) b.disabled = true;
+        st.style.color = 'var(--tx2)'; st.textContent = 'Envoi…';
+        postLead(cfg.leadApi, { name: name, email: email, phone: phone, company: '', fleetSize: '', message: 'Demande rapide via pop-up (LP)' }, function (ok) {
+          if (b) b.disabled = false;
+          if (ok) {
+            try { localStorage.setItem('vt-lead-done', '1'); } catch (e) {}
+            el.innerHTML = '<div style="text-align:center;padding:10px 4px"><div style="font-size:1.02rem;font-weight:800;color:var(--tx);margin-bottom:4px">C\'est noté, merci !</div><div style="font-size:.86rem;color:var(--tx2)">On vous rappelle très vite.</div></div>';
+            setTimeout(function () { close(false); }, 2800);
+          } else { st.textContent = 'Une erreur est survenue. Réessayez.'; st.style.color = '#e5484d'; }
+        });
+      });
+    }
+
+    // Déclencheurs (le 1er qui arrive gagne — `shown` verrouille ensuite)
+    d.addEventListener('mouseout', function (e) { if (e.clientY <= 0 && !e.relatedTarget) show(); });
+    window.addEventListener('scroll', function () {
+      var se = root.scrollHeight - root.clientHeight;
+      var depth = se > 0 ? (window.pageYOffset || root.scrollTop || 0) / se : 0;
+      if (depth > 0.4 && Date.now() - t0 > 4000) show();
+    }, { passive: true });
+    try {
+      var pv = (+sessionStorage.getItem('vt-pv') || 0) + 1;
+      sessionStorage.setItem('vt-pv', String(pv));
+      if (pv >= 2) setTimeout(show, 7000);
+    } catch (e) {}
+  }
+
+  function init() { initHover(); initReveal(); handleHash(); initSim(); initForms(); prefillPartner(); initSmartPopup(); }
   if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', init); else init();
 })();
