@@ -22,6 +22,22 @@
     else if (a === 'menu') toggleMenu();
   });
 
+  // Ancres MÊME PAGE (ex. « Demander une démo » → #demo) : scroll fiable via
+  // scrollIntoView (le scroll natif de l'ancre ne saute pas toujours au bon
+  // endroit après repositionnement de sections). Respecte scroll-margin-top,
+  // ferme le menu mobile, met à jour le hash.
+  d.addEventListener('click', function (e) {
+    if (e.defaultPrevented || e.button) return;
+    var a = e.target.closest && e.target.closest('a[href]'); if (!a) return;
+    var href = a.getAttribute('href') || '';
+    if (href.charAt(0) !== '#' || href.length < 2) return;
+    var el = d.getElementById(decodeURIComponent(href.slice(1))); if (!el) return;
+    e.preventDefault();
+    var m = d.getElementById('vt-menu'); if (m && m.style.display === 'flex') m.style.display = 'none';
+    try { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (x) { el.scrollIntoView(); }
+    try { if (history.replaceState) history.replaceState(null, '', href); } catch (x2) {}
+  });
+
   // ── Hover inline (remplace l'attribut style-hover du design) ──
   function initHover() {
     slice(d.querySelectorAll('[data-vth]')).forEach(function (el) {
