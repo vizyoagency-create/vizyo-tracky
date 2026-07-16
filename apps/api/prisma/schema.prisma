@@ -301,6 +301,11 @@ model User {
   driverProfile      Driver?
   /// Sprint user-activity — sessions + actions de l'utilisateur dans l'app.
   sessions           UserSession[]
+  /// Consentements RGPD versionnés (CGU / Politique de confidentialité) — le gate
+  /// d'accès (403 CONSENT_REQUIRED) compare CONSENT_VERSION à la dernière acceptation.
+  consents           UserConsent[]
+  /// Permissions device accordées (notifications, localisation) — cf. UserPermission.
+  devicePermissions  UserPermission[]
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -324,6 +329,9 @@ model PushSubscription {
   /// pour la backward-compat (les subs existantes restent valides).
   deviceId    String?
   lastSeenAt  DateTime @default(now())
+  /// Nom lisible de l'appareil pour la gestion/révocation des devices (ex.
+  /// « iPhone de Jean », « Chrome — Windows »). Facultatif (dérivé du userAgent).
+  label       String?
   createdAt   DateTime @default(now())
 
   @@index([userId])
@@ -2315,4 +2323,66 @@ model UserActivity {
   @@index([createdAt])
   @@index([type])
   @@map("user_activities")
+}
+
+/// ───────────────────────────────────────────────────────────────────────────
+/// RGPD — consentements & permissions (cf. docs/consent/REDACTION_CONSENTEMENTS.md)
+/// ───────────────────────────────────────────────────────────────────────────
+
+/// Consentement RGPD d'un utilisateur à un document versionné (CGU / Politique de
+/// confidentialité) — PREUVE de consentement (CNIL) : horodatée, IP + userAgent.
+/// Une ligne par acceptation. Le gate d'accès (403 CONSENT_REQUIRED) compare la
+/// version courante serveur (CONSENT_VERSION) à la dernière version acceptée.
+model UserConsent {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  docType    String   // 'CGU' | 'PRIVACY'
+  version    String   // ex. '2026-07-16'
+  accepted   Boolean  @default(true)
+  acceptedAt DateTime @default(now())
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, docType])
+  @@map("user_consents")
+}
+
+/// Consentement traceurs d'un VISITEUR de la landing page (anonyme, non lié à un
+/// User) — preuve du choix accepter/refuser avec IP, pour l'admin. Alimenté par le
+/// bandeau CNIL de la LP (POST public NON gaté : enregistrer le choix est
+/// strictement nécessaire).
+model LpConsent {
+  id         String   @id @default(uuid()) @db.Uuid
+  sessionId  String?
+  choice     String   // 'granted' | 'denied'
+  categories Json?    // { measure: boolean }
+  ip         String?
+  userAgent  String?
+  page       String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("lp_consents")
+}
+
+/// Permission « device » accordée par un utilisateur (notifications, localisation),
+/// par appareil — traçable + révisable. Distinct de User.permissions (Json = droits
+/// applicatifs).
+model UserPermission {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId  String?
+  kind      String   // 'PUSH' | 'GEOLOCATION'
+  granted   Boolean
+  ip        String?
+  userAgent String?
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@unique([userId, deviceId, kind])
+  @@index([userId])
+  @@map("user_permissions")
 }

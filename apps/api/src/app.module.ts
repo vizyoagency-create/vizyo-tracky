@@ -17,6 +17,7 @@ import { AlertsModule } from './alerts/alerts.module';
 import { AudioMonitoringModule } from './audio-monitoring/audio-monitoring.module';
 import { AuthClientModule } from './auth-client/auth-client.module';
 import { AuthModule } from './auth/auth.module';
+import { ConsentModule } from './consent/consent.module';
 import { validateEnv } from './config/env.validation';
 import { DriversModule } from './drivers/drivers.module';
 import { EngineControlModule } from './engine-control/engine-control.module';
@@ -173,6 +174,9 @@ import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.modul
     GeocodingModule,
     // Refonte agenda/IA (P4) — lien public de demande de réservation (société fixe).
     ReservationBookingModule,
+    // RGPD — consentements (CGU/Confidentialité app + bandeau LP). @Global : self-
+    // enregistre le gate en APP_INTERCEPTOR (403 CONSENT_REQUIRED sans accord).
+    ConsentModule,
   ],
   controllers: [HealthController],
   providers: [
