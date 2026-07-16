@@ -4,6 +4,14 @@ import { EmailService } from '../email/email.service';
 import { CreateLeadDto } from './dto/create-lead.dto';
 
 const ADMIN_EMAIL = 'contact@vizyoagency.com';
+// Suivi commercial automatisé (e-mails prospect : bienvenue + devis signé).
+const VIDEO_HUB_URL = 'https://tracky.vizyoagency.com/decouvrir.html';
+const TARIFS_URL = 'https://tracky.vizyoagency.com/tarifs.html#simulateur';
+const FICHE_PRODUIT_URL = 'https://tracky.vizyoagency.com/vizyo-tracky.pdf';
+const MANAGER_LEADS_URL = 'https://manager.vizyoagency.com/services/leads';
+// Marqueur écrit par le simulateur de la LP (vt.js) dans le champ `message`
+// quand le prospect valide un devis auto-configuré (« bon pour accord »).
+const QUOTE_MARKER = 'DEVIS AUTO-CONFIGURÉ';
 
 @Injectable()
 export class LeadsService {
@@ -54,15 +62,57 @@ export class LeadsService {
       });
     }
 
-    // Envoyer email de notification à l'admin
-    const subjectPrefix = isResubmission ? `[Re-soumission #${submissionCount}] ` : '';
-    const subject = `${subjectPrefix}Nouveau lead Tracky — ${dto.company || dto.name}${dto.fleetSize ? ` (${dto.fleetSize} vehicules)` : ''}`;
+    // Un devis signé en ligne = message rempli par le simulateur (« bon pour
+    // accord »). On adapte alors les deux e-mails (admin + client).
+    const isQuote = (lead.message ?? '').includes(QUOTE_MARKER);
 
-    const { html, text } = this.buildLeadNotificationEmail(lead, isResubmission, submissionCount);
-    const result = await this.email.send({ to: ADMIN_EMAIL, subject, html, text, template: 'lead' });
+    // ── NOTIFICATION ADMIN (→ contact@vizyoagency.com) ──
+    if (isQuote) {
+      const q = this.email.buildQuoteSignedAdminEmail({
+        name: lead.name,
+        email: lead.email,
+        phone: lead.phone,
+        company: lead.company,
+        fleetSize: lead.fleetSize,
+        quoteText: lead.message ?? '',
+        managerUrl: MANAGER_LEADS_URL,
+      });
+      const prefix = isResubmission ? `[Re-soumission #${submissionCount}] ` : '';
+      const r = await this.email.send({ to: ADMIN_EMAIL, subject: prefix + q.subject, html: q.html, text: q.text, template: 'quote_signed' });
+      if (!r.ok) this.logger.warn(`Failed to send quote-signed notification: ${r.error}`);
+    } else {
+      const subjectPrefix = isResubmission ? `[Re-soumission #${submissionCount}] ` : '';
+      const subject = `${subjectPrefix}Nouveau lead Tracky — ${dto.company || dto.name}${dto.fleetSize ? ` (${dto.fleetSize} vehicules)` : ''}`;
+      const { html, text } = this.buildLeadNotificationEmail(lead, isResubmission, submissionCount);
+      const result = await this.email.send({ to: ADMIN_EMAIL, subject, html, text, template: 'lead' });
+      if (!result.ok) this.logger.warn(`Failed to send lead notification: ${result.error}`);
+    }
 
-    if (!result.ok) {
-      this.logger.warn(`Failed to send lead notification: ${result.error}`);
+    // ── COPIE / SUIVI CLIENT (→ e-mail du prospect) ──
+    // Devis : copie du récap à CHAQUE soumission (action délibérée). Contact
+    // simple : e-mail de bienvenue à la 1re demande uniquement (anti-spam).
+    // Best-effort : un échec d'envoi ne DOIT jamais faire échouer le lead.
+    try {
+      if (isQuote) {
+        const c = this.email.buildQuoteClientEmail({
+          recipientName: lead.name,
+          quoteText: lead.message ?? '',
+          tarifsUrl: TARIFS_URL,
+        });
+        const cr = await this.email.send({ to: lead.email, subject: c.subject, html: c.html, text: c.text, template: 'quote_client' });
+        if (!cr.ok) this.logger.warn(`Failed to send quote client copy: ${cr.error}`);
+      } else if (!isResubmission) {
+        const welcome = this.email.buildLeadWelcomeEmail({
+          recipientName: lead.name,
+          hubUrl: VIDEO_HUB_URL,
+          tarifsUrl: TARIFS_URL,
+          ficheUrl: FICHE_PRODUIT_URL,
+        });
+        const wr = await this.email.send({ to: lead.email, subject: welcome.subject, html: welcome.html, text: welcome.text, template: 'lead_welcome' });
+        if (!wr.ok) this.logger.warn(`Failed to send lead welcome email: ${wr.error}`);
+      }
+    } catch (e) {
+      this.logger.warn(`Client follow-up email threw: ${String(e)}`);
     }
 
     return { ok: true, leadId: lead.id, isResubmission };

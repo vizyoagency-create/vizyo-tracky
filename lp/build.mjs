@@ -53,7 +53,8 @@ ${geoTags}
 <meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(description)}"><meta property="og:url" content="${canonical}"><meta property="og:image" content="${img}">
 <meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${esc(title)}"><meta name="twitter:description" content="${esc(description)}"><meta name="twitter:image" content="${img}">
 <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png"><link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png"><link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png"><link rel="icon" type="image/png" sizes="96x96" href="/favicon-96.png"><link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png"><link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon-180.png"><link rel="manifest" href="/site.webmanifest">
-${ld}`;
+${ld}
+<script>window.VT_CFG=${JSON.stringify({ leadApi: site.leadApi, partnerApi: site.appUrl + '/api/partner/activity', wa: 'https://wa.me/' + site.whatsapp, tel: site.phoneDisplay, telE164: site.phoneE164 })};</script>`;
 }
 
 // ── Simulateur tarifs : styles initiaux (identiques à vt.js) ──
@@ -69,21 +70,19 @@ const leadField = (label, name, type, req, ph) =>
   `<div style="display:flex;flex-direction:column;gap:6px;text-align:left"><label style="font-size:.8rem;font-weight:600;color:var(--tx2)">${label}${req ? ' *' : ''}</label><input type="${type}" name="${name}"${req ? ' required' : ''} placeholder="${esc(ph || '')}" style="padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--tx);font:inherit;font-size:.92rem;outline:none"></div>`;
 
 // ── Section « Recevoir une présentation » : VRAI formulaire lead → POST site.leadApi (vt.js) ──
-const DEMO_SECTION = `<section id="demo" class="vt-sec" style="padding:104px 0;position:relative;overflow:hidden">
-<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:760px;height:380px;background:radial-gradient(ellipse,var(--accent-soft),transparent 70%);pointer-events:none"></div>
-<div data-reveal style="max-width:640px;margin:0 auto;padding:0 32px;text-align:center;position:relative">
-<div style="display:inline-flex;align-items:center;gap:13px;margin-bottom:24px"><span style="width:30px;height:2px;background:var(--accent);border-radius:2px"></span><span style="font-family:'JetBrains Mono',monospace;font-size:.72rem;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--accent)">Installation sous 48h en Occitanie</span><span style="width:30px;height:2px;background:var(--accent);border-radius:2px"></span></div>
-<h2 style="font-size:clamp(2.1rem,4vw,3rem);font-weight:800;letter-spacing:-.03em;line-height:1.05;margin:0 0 14px">Recevez une présentation.</h2>
-<p style="font-size:1.08rem;line-height:1.6;color:var(--tx2);margin:0 0 32px">Démonstration gratuite et sans engagement. Réponse en moins de 2h.</p>
-<form data-vt-lead="${site.leadApi}" style="background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:26px;box-shadow:var(--shadow-sm);display:grid;gap:14px">
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">${leadField('Nom', 'name', 'text', true, 'Jean Dupont')}${leadField('Société', 'company', 'text', false, 'Votre entreprise')}</div>
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">${leadField('E-mail', 'email', 'email', true, 'vous@societe.fr')}${leadField('Téléphone', 'phone', 'tel', false, '06 12 34 56 78')}</div>
-${leadField('Nombre de véhicules', 'fleetSize', 'text', false, 'ex : 8')}
-<div style="display:flex;flex-direction:column;gap:6px;text-align:left"><label style="font-size:.8rem;font-weight:600;color:var(--tx2)">Votre besoin (optionnel)</label><textarea name="message" rows="3" placeholder="Parlez-nous de votre flotte…" style="padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--tx);font:inherit;font-size:.92rem;resize:vertical;outline:none"></textarea></div>
-<button type="submit" style="display:flex;align-items:center;justify-content:center;gap:8px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:1rem;padding:15px;border-radius:12px;border:none;cursor:pointer;transition:transform .2s" data-vth="transform:translateY(-2px)"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Recevoir ma présentation</button>
-<div data-form-status style="font-size:.84rem;min-height:1.1em;color:var(--tx2)"></div>
+const DEMO_SECTION = `<section id="demo" class="vt-sec" style="padding:72px 0;position:relative;overflow:hidden;border-bottom:1px solid var(--border)">
+<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:640px;height:320px;background:radial-gradient(ellipse,var(--accent-soft),transparent 70%);pointer-events:none"></div>
+<div data-reveal style="max-width:560px;margin:0 auto;padding:0 32px;text-align:center;position:relative">
+<div style="display:inline-flex;align-items:center;gap:10px;margin-bottom:16px"><span style="width:26px;height:2px;background:var(--accent);border-radius:2px"></span><span style="font-family:'JetBrains Mono',monospace;font-size:.68rem;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--accent)">Réponse en moins de 2h · Sans engagement</span><span style="width:26px;height:2px;background:var(--accent);border-radius:2px"></span></div>
+<h2 style="font-size:clamp(1.7rem,3.4vw,2.3rem);font-weight:800;letter-spacing:-.03em;line-height:1.08;margin:0 0 8px">Demandez votre démo gratuite.</h2>
+<p style="font-size:1rem;line-height:1.55;color:var(--tx2);margin:0 0 22px">Laissez vos coordonnées — on s'occupe du reste, en 2 minutes.</p>
+<form data-vt-lead="${site.leadApi}" style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;box-shadow:var(--shadow-sm);display:grid;gap:12px;text-align:left">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${leadField('Nom', 'name', 'text', true, 'Jean Dupont')}${leadField('E-mail', 'email', 'email', true, 'vous@societe.fr')}</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${leadField('Téléphone', 'phone', 'tel', false, '06 12 34 56 78')}${leadField('Nombre de véhicules', 'fleetSize', 'text', false, 'ex : 8')}</div>
+<button type="submit" style="display:flex;align-items:center;justify-content:center;gap:8px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:.98rem;padding:14px;border-radius:11px;border:none;cursor:pointer;transition:transform .2s" data-vth="transform:translateY(-2px)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Recevoir ma démo</button>
+<div data-form-status style="font-size:.84rem;min-height:1.1em;color:var(--tx2);text-align:center"></div>
 </form>
-<div style="margin-top:18px;font-size:.9rem;color:var(--tx2)">ou <a href="https://wa.me/${site.whatsapp}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600">discuter sur WhatsApp</a> · <a href="tel:${site.phoneE164}" style="color:var(--accent);font-weight:600">${site.phoneDisplay}</a></div>
+<div style="margin-top:14px;font-size:.86rem;color:var(--tx2)">ou <a href="https://wa.me/${site.whatsapp}" target="_blank" rel="noopener" style="color:var(--accent);font-weight:600">WhatsApp</a> · <a href="tel:${site.phoneE164}" style="color:var(--accent);font-weight:600">${site.phoneDisplay}</a></div>
 </div>
 </section>`;
 
@@ -201,6 +200,7 @@ const PAGES = [
   { out: 'secteur-public.html', title: 'GPS véhicules de service — secteur public & médico-social | Vizyo Tracky', description: "Géolocalisation des véhicules de service pour établissements publics, foyers, structures médico-sociales et collectivités : conformité CNIL, conducteurs identifiés, données souveraines, marchés publics.", jsonld: [crumb([HOME, { name: 'Secteur public', out: 'secteur-public.html' }])] },
   { out: 'securite.html', title: 'Sécurité & conformité RGPD — hébergement France | Vizyo Tracky', description: "Vos données restent en France, sous votre contrôle : hébergement souverain, chiffrement TLS 1.3, conformité RGPD by design, mode vie privée CNIL.", jsonld: [crumb([HOME, { name: 'Sécurité', out: 'securite.html' }])] },
   { out: 'partenariat-maestroo.html', title: 'Vizyo Tracky × Maestroo — le GPS de flotte dans votre gestion de transport', description: "Vizyo Tracky en partenariat avec Maestroo : GPS temps réel, coupe-circuit moteur, analyse IA des trajets et pilotage des économies, bientôt intégrés à votre logiciel de gestion de transport. Découvrez la présentation animée.", jsonld: [crumb([HOME, { name: 'Partenariat Maestroo', out: 'partenariat-maestroo.html' }])] },
+  { out: 'decouvrir.html', title: 'Vizyo Tracky en vidéo — présentation des services', description: "Présentation animée de Vizyo Tracky : supervision, analyse et administration de votre flotte. Lien partagé par e-mail après une demande.", robots: 'noindex,follow', noSitemap: true, jsonld: [] },
   { out: 'gps-flotte-occitanie.html', title: 'GPS flotte Occitanie — géolocalisation véhicules entreprise (13 départements)', description: "Vizyo Tracky équipe les flottes professionnelles et véhicules de service dans toute l'Occitanie : Toulouse, Montpellier, Nîmes, Perpignan… Installation locale, application française, support réactif.", jsonld: [localBizLd({ name: 'Occitanie', dept: 'Occitanie', lat: 43.6, lng: 2.0 }, 'gps-flotte-occitanie.html'), crumb([HOME, { name: 'Zones desservies', out: 'gps-flotte-occitanie.html' }])] },
   { out: 'mentions-legales.html', title: 'Mentions légales | Vizyo Tracky', description: 'Mentions légales du site Vizyo Tracky (Vizyo Agency).', robots: 'index,follow', noSitemap: true, jsonld: [crumb([HOME, { name: 'Mentions légales', out: 'mentions-legales.html' }])] },
 ];
