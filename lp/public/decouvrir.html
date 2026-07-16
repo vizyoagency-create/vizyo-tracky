@@ -26,12 +26,15 @@ section[id],[id]{scroll-margin-top:78px}
 [data-theme="light"]{--bg:#FBFCFB;--bg2:#F2F5F3;--surface:#FFFFFF;--surface2:#F6F9F7;--border:rgba(10,25,18,.09);--border2:rgba(10,25,18,.16);--tx:#0A1311;--tx2:#56635E;--tx3:#8A938F;--accent:#0A9E6C;--accent-deep:#047857;--accent-soft:rgba(10,158,108,.10);--accent-ink:#FFFFFF;--shadow-sm:0 1px 2px rgba(16,30,24,.04),0 10px 26px -12px rgba(16,30,24,.12)}
 body{margin:0;font-family:'Manrope',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--tx);-webkit-font-smoothing:antialiased}
 a{color:inherit;text-decoration:none}
+.vt-hl{background:linear-gradient(transparent 58%,color-mix(in srgb,var(--accent) 20%,transparent) 58%);color:var(--tx);font-weight:600;border-radius:2px;padding:0 .5px}
 .vt-underline{position:relative;display:inline-block;padding-bottom:6px}
 .vt-underline::after{content:"";position:absolute;left:0;bottom:0;height:2px;width:100%;background:linear-gradient(90deg,var(--accent),#4d75ff,var(--accent));background-size:200% 100%;border-radius:2px;animation:vt-uflow 3s linear infinite}
 @keyframes vt-uflow{to{background-position:200% 50%}}
 .vt-toc a:hover{border-color:var(--accent);color:var(--accent)}
 .vt-vid{border-radius:18px;overflow:hidden;border:1px solid var(--border2);box-shadow:var(--shadow-sm);background:#050706;aspect-ratio:16/9;position:relative}
-.vt-vid iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}
+.vt-vid-poster{position:absolute;inset:0;z-index:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;color:var(--tx3);text-align:center;padding:16px}
+.vt-vid-poster span{font-family:'JetBrains Mono',monospace;font-size:.68rem;letter-spacing:.1em;text-transform:uppercase}
+.vt-vid iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block;z-index:1;background:transparent}
 @media (prefers-reduced-motion:reduce){.vt-underline::after{animation:none}}
 </style>
 <script>(function(){try{var t=localStorage.getItem('vt-theme')||'dark';document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme='dark'}})();</script>
@@ -53,8 +56,8 @@ a{color:inherit;text-decoration:none}
 <!-- HERO + SOMMAIRE -->
 <section style="max-width:1120px;margin:0 auto;padding:52px 28px 30px;text-align:center">
 <div style="margin-bottom:14px"><span class="vt-underline" style="font-family:'JetBrains Mono',monospace;font-size:.72rem;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--tx2)">Vizyo Tracky en vidéo</span></div>
-<h1 style="font-size:clamp(2rem,4.4vw,3.1rem);font-weight:800;letter-spacing:-.03em;line-height:1.04;margin:0 auto 14px;max-width:18ch">Nos services, expliqués en vidéo.</h1>
-<p style="font-size:1.06rem;line-height:1.6;color:var(--tx2);max-width:38rem;margin:0 auto 26px">Choisissez un thème ci-dessous : chaque univers a sa vidéo, et un lien direct vers la fonctionnalité sur le site.</p>
+<h1 style="font-size:clamp(2rem,4.4vw,3.1rem);font-weight:800;letter-spacing:-.03em;line-height:1.04;margin:0 auto 16px;max-width:20ch">La <span class="vt-hl">gestion</span> de votre flotte, expliquée en vidéo.</h1>
+<p style="font-size:1.06rem;line-height:1.65;color:var(--tx2);max-width:40rem;margin:0 auto 22px">De la <span class="vt-hl">supervision</span> en temps réel à l'<span class="vt-hl">optimisation</span> de vos coûts et aux <span class="vt-hl">économies</span> de carburant : chaque univers a sa vidéo, avec un accès direct à la fonctionnalité sur le site.</p>
 <nav class="vt-toc" style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center">
 <a href="#supervision" style="display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border2);border-radius:999px;padding:9px 18px;font-weight:700;font-size:.9rem;color:var(--tx);transition:all .2s"><span style="width:7px;height:7px;border-radius:50%;background:var(--accent)"></span>Supervision</a>
 <a href="#analyse" style="display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border2);border-radius:999px;padding:9px 18px;font-weight:700;font-size:.9rem;color:var(--tx);transition:all .2s"><span style="width:7px;height:7px;border-radius:50%;background:var(--accent)"></span>Analyse</a>
@@ -66,10 +69,13 @@ a{color:inherit;text-decoration:none}
 <section id="supervision" style="min-height:84vh;display:flex;flex-direction:column;justify-content:center;padding:40px 28px;border-top:1px solid var(--border);background:var(--bg2)">
 <div style="max-width:1000px;margin:0 auto;width:100%">
 <div style="display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:20px">
-<div><div style="font-family:'JetBrains Mono',monospace;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:8px">01 · Univers</div><h2 style="font-size:clamp(1.6rem,3vw,2.3rem);font-weight:800;letter-spacing:-.02em;margin:0 0 8px">Supervision</h2><p style="font-size:1rem;line-height:1.55;color:var(--tx2);max-width:40rem;margin:0">Carte live, alertes multi-canal, coupe-circuit antivol, géofences, écoute cabine, horaires de flotte.</p></div>
-<a href="fonctionnalites.html" style="display:inline-flex;align-items:center;gap:7px;white-space:nowrap;color:var(--accent);font-weight:700;font-size:.92rem">Voir sur le site <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+<div><div style="font-family:'JetBrains Mono',monospace;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:8px">01 · Univers</div><h2 style="font-size:clamp(1.6rem,3vw,2.3rem);font-weight:800;letter-spacing:-.02em;margin:0 0 8px">Supervision</h2><p style="font-size:1.02rem;line-height:1.6;color:var(--tx2);max-width:42rem;margin:0">La <span class="vt-hl">supervision</span> de toute votre flotte en <span class="vt-hl">temps réel</span> : carte live, alertes multi-canal, coupe-circuit antivol, géofences. Vous voyez tout, vous <span class="vt-hl">gardez le contrôle</span>, vous décidez vite.</p></div>
+<a href="fonctionnalites.html#supervision" style="display:inline-flex;align-items:center;gap:7px;white-space:nowrap;color:var(--accent);font-weight:700;font-size:.92rem">Le suivi temps réel <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
 </div>
-<div class="vt-vid"><iframe src="assets/tracky-svc/supervision.html" title="Vizyo Tracky — Supervision" loading="lazy" allow="autoplay"></iframe></div>
+<div class="vt-vid">
+<div class="vt-vid-poster"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="12" cy="12" r="10"/><path d="M10 8l6 4-6 4V8z" fill="currentColor" stroke="none"/></svg><span>La vidéo démarre à l'écran</span></div>
+<iframe data-vt-src="assets/tracky-svc/supervision.html" title="Vizyo Tracky — Supervision" allow="autoplay"></iframe>
+</div>
 </div>
 </section>
 
@@ -77,10 +83,13 @@ a{color:inherit;text-decoration:none}
 <section id="analyse" style="min-height:84vh;display:flex;flex-direction:column;justify-content:center;padding:40px 28px;border-top:1px solid var(--border)">
 <div style="max-width:1000px;margin:0 auto;width:100%">
 <div style="display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:20px">
-<div><div style="font-family:'JetBrains Mono',monospace;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:8px">02 · Univers</div><h2 style="font-size:clamp(1.6rem,3vw,2.3rem);font-weight:800;letter-spacing:-.02em;margin:0 0 8px">Analyse</h2><p style="font-size:1rem;line-height:1.55;color:var(--tx2);max-width:40rem;margin:0">Rapports PDF programmés, récit IA des trajets, scores conducteur, économies carburant, agenda intelligent.</p></div>
-<a href="fonctionnalites.html" style="display:inline-flex;align-items:center;gap:7px;white-space:nowrap;color:var(--accent);font-weight:700;font-size:.92rem">Voir sur le site <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+<div><div style="font-family:'JetBrains Mono',monospace;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:8px">02 · Univers</div><h2 style="font-size:clamp(1.6rem,3vw,2.3rem);font-weight:800;letter-spacing:-.02em;margin:0 0 8px">Analyse</h2><p style="font-size:1.02rem;line-height:1.6;color:var(--tx2);max-width:42rem;margin:0">L'<span class="vt-hl">analyse</span> qui fait baisser vos coûts : rapports automatisés, récit IA des trajets, <span class="vt-hl">optimisation</span> des tournées et <span class="vt-hl">économies</span> de carburant mesurables. Chaque trajet devient une décision, et de la <span class="vt-hl">rentabilité</span>.</p></div>
+<a href="fonctionnalites.html#analyse" style="display:inline-flex;align-items:center;gap:7px;white-space:nowrap;color:var(--accent);font-weight:700;font-size:.92rem">Alertes &amp; rapports <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
 </div>
-<div class="vt-vid"><iframe src="assets/tracky-svc/analyse.html" title="Vizyo Tracky — Analyse" loading="lazy" allow="autoplay"></iframe></div>
+<div class="vt-vid">
+<div class="vt-vid-poster"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="12" cy="12" r="10"/><path d="M10 8l6 4-6 4V8z" fill="currentColor" stroke="none"/></svg><span>La vidéo démarre à l'écran</span></div>
+<iframe data-vt-src="assets/tracky-svc/analyse.html" title="Vizyo Tracky — Analyse" allow="autoplay"></iframe>
+</div>
 </div>
 </section>
 
@@ -88,17 +97,20 @@ a{color:inherit;text-decoration:none}
 <section id="administration" style="min-height:84vh;display:flex;flex-direction:column;justify-content:center;padding:40px 28px;border-top:1px solid var(--border);background:var(--bg2)">
 <div style="max-width:1000px;margin:0 auto;width:100%">
 <div style="display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:20px">
-<div><div style="font-family:'JetBrains Mono',monospace;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:8px">03 · Univers</div><h2 style="font-size:clamp(1.6rem,3vw,2.3rem);font-weight:800;letter-spacing:-.02em;margin:0 0 8px">Administration</h2><p style="font-size:1rem;line-height:1.55;color:var(--tx2);max-width:40rem;margin:0">Utilisateurs &amp; rôles, groupes, permissions au véhicule près, identification conducteur, cartes SIM, installation.</p></div>
-<a href="fonctionnalites.html" style="display:inline-flex;align-items:center;gap:7px;white-space:nowrap;color:var(--accent);font-weight:700;font-size:.92rem">Voir sur le site <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+<div><div style="font-family:'JetBrains Mono',monospace;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:8px">03 · Univers</div><h2 style="font-size:clamp(1.6rem,3vw,2.3rem);font-weight:800;letter-spacing:-.02em;margin:0 0 8px">Administration</h2><p style="font-size:1.02rem;line-height:1.6;color:var(--tx2);max-width:42rem;margin:0">La <span class="vt-hl">gestion</span> de vos équipes et de vos accès, au cordeau : utilisateurs, rôles, permissions au véhicule près, identification conducteur, cartes SIM. Une administration simple et <span class="vt-hl">conforme</span>, déployée partout en France en 48 h.</p></div>
+<a href="fonctionnalites.html#administration" style="display:inline-flex;align-items:center;gap:7px;white-space:nowrap;color:var(--accent);font-weight:700;font-size:.92rem">Comptes &amp; accès <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
 </div>
-<div class="vt-vid"><iframe src="assets/tracky-svc/administration.html" title="Vizyo Tracky — Administration" loading="lazy" allow="autoplay"></iframe></div>
+<div class="vt-vid">
+<div class="vt-vid-poster"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="12" cy="12" r="10"/><path d="M10 8l6 4-6 4V8z" fill="currentColor" stroke="none"/></svg><span>La vidéo démarre à l'écran</span></div>
+<iframe data-vt-src="assets/tracky-svc/administration.html" title="Vizyo Tracky — Administration" allow="autoplay"></iframe>
+</div>
 </div>
 </section>
 
 <!-- CTA -->
 <section style="max-width:1000px;margin:0 auto;padding:52px 28px 8px;text-align:center;border-top:1px solid var(--border)">
-<h2 style="font-size:clamp(1.4rem,2.6vw,1.9rem);font-weight:800;letter-spacing:-.02em;margin:0 0 12px">Une question, envie de démarrer&nbsp;?</h2>
-<p style="font-size:1rem;line-height:1.6;color:var(--tx2);max-width:34rem;margin:0 auto 22px">Écrivez-nous — réponse en moins de 2h ouvrées.</p>
+<h2 style="font-size:clamp(1.4rem,2.6vw,1.9rem);font-weight:800;letter-spacing:-.02em;margin:0 0 12px">Prêt à reprendre la main sur votre flotte&nbsp;?</h2>
+<p style="font-size:1rem;line-height:1.6;color:var(--tx2);max-width:36rem;margin:0 auto 22px">Parlons de votre parc et de vos objectifs d'<span class="vt-hl">optimisation</span>. Réponse en moins de 2h ouvrées.</p>
 <div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center">
 <a href="index.html#demo" style="display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:.98rem;padding:14px 24px;border-radius:11px">Demander une démo</a>
 <a href="https://wa.me/33652077038" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;color:var(--tx);font-weight:600;font-size:.98rem;padding:14px 22px;border-radius:11px;border:1px solid var(--border2)">WhatsApp</a>
@@ -112,6 +124,6 @@ a{color:inherit;text-decoration:none}
 </div>
 </footer>
 </div>
-<script src="assets/vt.js?v=17d29204"></script>
+<script src="assets/vt.js?v=63d9a020"></script>
 </body>
 </html>
