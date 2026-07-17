@@ -454,14 +454,14 @@
     showConsentBanner();
   }
   window.vtOpenConsent = function () { showConsentBanner(); };
-  // Lien « Gérer les traceurs » à côté des mentions légales (révocation en 1 clic, toutes pages).
+  // Lien « Gérer les autorisations » à côté des mentions légales (révocation en 1 clic, toutes pages).
   function injectConsentLink() {
     var links = d.querySelectorAll('a[href$="mentions-legales.html"]');
     for (var i = 0; i < links.length; i++) {
       var m = links[i];
       if (m.__vtcDone) continue; m.__vtcDone = true;
       var a = d.createElement('a');
-      a.href = '#'; a.textContent = 'Gérer les traceurs';
+      a.href = '#'; a.textContent = 'Gérer les autorisations';
       a.style.cssText = 'color:inherit;text-decoration:none;margin-left:14px;opacity:.9';
       a.addEventListener('click', function (e) { e.preventDefault(); if (window.vtOpenConsent) vtOpenConsent(); });
       if (m.parentNode) m.parentNode.insertBefore(a, m.nextSibling);
