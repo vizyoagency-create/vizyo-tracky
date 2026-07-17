@@ -454,18 +454,23 @@
     showConsentBanner();
   }
   window.vtOpenConsent = function () { showConsentBanner(); };
-  // Lien « Gérer les autorisations » à côté des mentions légales (révocation en 1 clic, toutes pages).
+  // Lien « Gérer les autorisations » dans le FOOTER (révocation du consentement en 1
+  // clic, toutes pages) — placé juste après « Mentions légales » (repéré par son TEXTE,
+  // le href variant selon la page). JAMAIS dans le bandeau (il a déjà ses boutons) : ça
+  // évitait le « En savoir plus   Gérer les autorisations » brouillon.
   function injectConsentLink() {
-    var links = d.querySelectorAll('a[href$="mentions-legales.html"]');
-    for (var i = 0; i < links.length; i++) {
-      var m = links[i];
-      if (m.__vtcDone) continue; m.__vtcDone = true;
-      var a = d.createElement('a');
-      a.href = '#'; a.textContent = 'Gérer les autorisations';
-      a.style.cssText = 'color:inherit;text-decoration:none;margin-left:14px;opacity:.9';
-      a.addEventListener('click', function (e) { e.preventDefault(); if (window.vtOpenConsent) vtOpenConsent(); });
-      if (m.parentNode) m.parentNode.insertBefore(a, m.nextSibling);
+    if (d.querySelector('[data-vtc-manage]')) return;
+    var footer = d.querySelector('footer'); if (!footer) return;
+    var target = null, flinks = footer.querySelectorAll('a');
+    for (var i = 0; i < flinks.length; i++) {
+      if (/mentions?\s+l[ée]gales?/i.test(flinks[i].textContent || '')) { target = flinks[i]; break; }
     }
+    var a = d.createElement('a');
+    a.href = '#'; a.setAttribute('data-vtc-manage', ''); a.textContent = 'Gérer les autorisations';
+    a.style.cssText = 'color:inherit;text-decoration:none';
+    a.addEventListener('click', function (e) { e.preventDefault(); if (window.vtOpenConsent) vtOpenConsent(); });
+    if (target && target.parentNode) { target.parentNode.insertBefore(a, target.nextSibling); }
+    else { a.style.marginLeft = '14px'; a.style.opacity = '.8'; footer.appendChild(a); }
   }
 
   function init() { initHover(); initReveal(); handleHash(); initSim(); initForms(); prefillPartner(); initSmartPopup(); initLazyVideos(); initConsent(); injectConsentLink(); }

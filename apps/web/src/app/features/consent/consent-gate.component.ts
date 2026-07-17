@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { LucideAngularModule, ShieldCheck } from 'lucide-angular';
 import { AuthService } from '../../core/services/auth.service';
@@ -40,14 +40,9 @@ const LEGAL_URL = 'https://tracky.vizyoagency.com/mentions-legales.html';
           </p>
 
           <label class="cg-check">
-            <input type="checkbox" [checked]="cgu()" (change)="cgu.set(isChecked($event))" />
+            <input type="checkbox" [checked]="accepted()" (change)="accepted.set(isChecked($event))" />
             <span>J'ai lu et j'accepte les
-              <a [href]="legalUrl" target="_blank" rel="noopener">Conditions Générales d'Utilisation</a>.</span>
-          </label>
-          <label class="cg-check">
-            <input type="checkbox" [checked]="privacy()" (change)="privacy.set(isChecked($event))" />
-            <span>J'ai lu et j'accepte la
-              <a [href]="legalUrl" target="_blank" rel="noopener">Politique de confidentialité</a>.</span>
+              <a [href]="legalUrl" target="_blank" rel="noopener">conditions d'utilisation et la politique de confidentialité</a>.</span>
           </label>
 
           <p class="cg-note">
@@ -61,7 +56,7 @@ const LEGAL_URL = 'https://tracky.vizyoagency.com/mentions-legales.html';
               Refuser et me déconnecter
             </button>
             <button type="button" class="cg-btn cg-btn--primary"
-                    (click)="accept()" [disabled]="!bothChecked() || busy()">
+                    (click)="accept()" [disabled]="!accepted() || busy()">
               {{ busy() ? 'Un instant…' : 'Accepter et continuer' }}
             </button>
           </div>
@@ -129,18 +124,16 @@ export class ConsentGateComponent {
   readonly ShieldCheck = ShieldCheck;
   readonly legalUrl = LEGAL_URL;
 
-  readonly cgu = signal(false);
-  readonly privacy = signal(false);
+  readonly accepted = signal(false);
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
-  readonly bothChecked = computed(() => this.cgu() && this.privacy());
 
   isChecked(e: Event): boolean {
     return (e.target as HTMLInputElement).checked;
   }
 
   async accept(): Promise<void> {
-    if (!this.bothChecked() || this.busy()) return;
+    if (!this.accepted() || this.busy()) return;
     this.busy.set(true);
     this.error.set(null);
     const ok = await this.consent.accept();
