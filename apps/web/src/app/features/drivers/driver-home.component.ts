@@ -1,9 +1,10 @@
 import { Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router, RouterLink } from '@angular/router';
-import { Car, LogOut, LucideAngularModule, Unlock } from 'lucide-angular';
+import { Car, LogOut, LucideAngularModule, ShieldCheck, Unlock } from 'lucide-angular';
 import { AuthService } from '../../core/services/auth.service';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
+import { DriverPrivacyPanelComponent } from './driver-privacy-panel.component';
 
 /**
  * feat/comptes-conducteurs (6) — espace conducteur « Mes véhicules ».
@@ -16,7 +17,7 @@ import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/v
 @Component({
   selector: 'app-driver-home',
   standalone: true,
-  imports: [LucideAngularModule, RouterLink],
+  imports: [LucideAngularModule, RouterLink, DriverPrivacyPanelComponent],
   template: `
     <div class="min-h-dvh bg-bg-primary text-fg-primary">
       <header class="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
@@ -54,18 +55,28 @@ import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/v
                     <div class="text-xs text-fg-tertiary truncate">{{ v.brand }} {{ v.model }}</div>
                   }
                 </div>
-                <a
-                  [routerLink]="['/driver/unlock']"
-                  [queryParams]="{ vehicleId: v.id }"
-                  class="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg bg-tracky/20 text-tracky-light border border-tracky/30"
-                >
-                  <lucide-icon [img]="Unlock" [size]="14" /> Déverrouiller
-                </a>
+                <div class="shrink-0 flex items-center gap-2">
+                  <button type="button" (click)="privacyFor.set(v)" title="Vie privée & horaires"
+                    class="inline-flex items-center justify-center px-2.5 py-2 rounded-lg bg-bg-tertiary text-fg-tertiary border border-border-subtle">
+                    <lucide-icon [img]="ShieldCheck" [size]="15" />
+                  </button>
+                  <a
+                    [routerLink]="['/driver/unlock']"
+                    [queryParams]="{ vehicleId: v.id }"
+                    class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg bg-tracky/20 text-tracky-light border border-tracky/30"
+                  >
+                    <lucide-icon [img]="Unlock" [size]="14" /> Déverrouiller
+                  </a>
+                </div>
               </div>
             }
           </div>
         }
       </main>
+
+      @if (privacyFor(); as pv) {
+        <app-driver-privacy-panel [vehicleId]="pv.id" [plate]="pv.plate" (close)="privacyFor.set(null)"></app-driver-privacy-panel>
+      }
     </div>
   `,
 })
@@ -77,10 +88,13 @@ export class DriverHomeComponent implements OnInit {
 
   protected readonly loading = signal(true);
   protected readonly vehicles = signal<VehicleDetailDto[]>([]);
+  /** Véhicule dont on ouvre le panneau « Vie privée & horaires » (overlay). */
+  protected readonly privacyFor = signal<VehicleDetailDto | null>(null);
 
   protected readonly Car = Car;
   protected readonly LogOut = LogOut;
   protected readonly Unlock = Unlock;
+  protected readonly ShieldCheck = ShieldCheck;
 
   protected email(): string {
     return this.auth.user()?.email ?? '';

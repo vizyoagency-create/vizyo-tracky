@@ -2,13 +2,14 @@ import { ChangeDetectionStrategy, Component, computed, inject, input, output, si
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { EyeOff, Eye, LucideAngularModule, Search, ShieldOff } from 'lucide-angular';
+import { CalendarClock, EyeOff, Eye, LucideAngularModule, Search, ShieldOff } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import type { VehicleDetailDto } from '../../core/services/vehicles.service';
 import { PrivacyModeApiService } from '../../core/services/privacy-mode.service';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
+import { WorkScheduleEditorComponent } from './work-schedule-editor.component';
 
 /**
  * Onglet « Mode privé » de la page Véhicules. Liste les véhicules (déjà filtrés par
@@ -20,7 +21,7 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
   selector: 'app-privacy-mode-tab',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, DatePipe, RouterLink, LucideAngularModule, ConfirmModalComponent],
+  imports: [FormsModule, DatePipe, RouterLink, LucideAngularModule, ConfirmModalComponent, WorkScheduleEditorComponent],
   template: `
     <div class="pm">
       <div class="pm-intro">
@@ -53,6 +54,9 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
               <span class="pm-badge pm-badge--off"><lucide-icon [img]="Eye" [size]="13"></lucide-icon> Collecte active</span>
             }
           </div>
+          <button type="button" class="pm-cadre" (click)="editing.set(v)" title="Cadre de temps de travail (usage mixte)">
+            <lucide-icon [img]="CalendarClock" [size]="14"></lucide-icon> Cadre
+          </button>
           @if (canManage) {
             <button type="button" class="pm-toggle" [class.pm-toggle--on]="isPrivate(v)" [disabled]="busyId() === v.id" (click)="open(v)">
               {{ isPrivate(v) ? 'Désactiver' : 'Activer' }}
@@ -61,6 +65,10 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
         </div>
       }
     </div>
+
+    @if (editing(); as ev) {
+      <app-work-schedule-editor [vehicleId]="ev.id" [plate]="ev.plate" (close)="editing.set(null)" (changed)="changed.emit()"></app-work-schedule-editor>
+    }
 
     <app-confirm-modal
       [open]="!!pending()"
@@ -99,6 +107,8 @@ import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-mod
     .pm-toggle { flex:0 0 auto; padding:8px 14px; border-radius:10px; border:1px solid var(--border-subtle,rgba(255,255,255,.14)); background:transparent; color:var(--fg-secondary,#9BA5A1); font-size:13px; font-weight:600; cursor:pointer; }
     .pm-toggle--on { background:var(--tracky,#10E0A0); color:#04130D; border-color:var(--tracky,#10E0A0); }
     .pm-toggle:disabled { opacity:.5; cursor:default; }
+    .pm-cadre { flex:0 0 auto; display:inline-flex; align-items:center; gap:5px; padding:8px 12px; border-radius:10px; border:1px solid var(--border-subtle,rgba(255,255,255,.14)); background:transparent; color:var(--fg-tertiary,#9BA5A1); font-size:12.5px; font-weight:600; cursor:pointer; }
+    .pm-cadre:hover { color:var(--fg-primary,#EAEFED); border-color:var(--tracky,#10E0A0); }
     .pm-empty { padding:24px; text-align:center; color:var(--fg-tertiary,#69736E); }
     .pm-note { width:100%; margin-top:12px; padding:9px 12px; border-radius:10px; background:var(--bg-tertiary,#161D1B); border:1px solid var(--border-subtle,rgba(255,255,255,.12)); color:var(--fg-primary,#EAEFED); font-size:14px; resize:none; box-sizing:border-box; }
     .pm-note:focus { outline:none; border-color:var(--tracky,#10E0A0); }
@@ -112,9 +122,11 @@ export class PrivacyModeTabComponent {
   readonly vehicles = input<VehicleDetailDto[]>([]);
   readonly changed = output<void>();
 
-  protected readonly ShieldOff = ShieldOff; protected readonly Eye = Eye; protected readonly EyeOff = EyeOff; protected readonly Search = Search;
+  protected readonly ShieldOff = ShieldOff; protected readonly Eye = Eye; protected readonly EyeOff = EyeOff; protected readonly Search = Search; protected readonly CalendarClock = CalendarClock;
   protected readonly canManage = this.perms.can('privacy_manage');
 
+  /** Véhicule dont on édite le cadre de temps de travail (overlay). */
+  protected readonly editing = signal<VehicleDetailDto | null>(null);
   protected readonly search = signal('');
   /** Overrides optimistes { vehicleId: { enabled, since } } après une bascule. */
   private readonly override = signal<Record<string, { enabled: boolean; since: string | null }>>({});
