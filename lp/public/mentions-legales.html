@@ -38,7 +38,15 @@ grilles/flex peuvent rétrécir sous leur contenu (sinon un tableau/prix/e-mail
 force une largeur > écran → scroll horizontal). Sûr : ne rétrécit que là où la
 grille/flex l'autorise déjà. */
 img,svg,video{max-width:100%}
-[style*="display:grid"]>*,[style*="display:flex"]>*{min-width:0}</style>
+[style*="display:grid"]>*,[style*="display:flex"]>*{min-width:0}
+/* Bouton « Connexion » navbar (injecté sur toutes les pages) */
+.btn-login{display:inline-flex;align-items:center;gap:7px;color:var(--tx2);font-weight:600;font-size:.87rem;padding:9px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface);transition:color .2s,border-color .2s;white-space:nowrap;text-decoration:none}
+.btn-login:hover{color:var(--tx);border-color:var(--border2)}
+/* Bouton « revenir en haut » — masqué sous le bandeau consentement / une pop-in (piloté par vt.js) */
+#vt-totop{position:fixed;right:22px;bottom:22px;z-index:110;width:46px;height:46px;border-radius:50%;border:1px solid var(--border2);background:color-mix(in srgb,var(--surface) 90%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:var(--tx);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(0,0,0,.22);opacity:0;visibility:hidden;transform:translateY(12px);transition:opacity .3s,transform .3s,visibility .3s}
+#vt-totop.show{opacity:1;visibility:visible;transform:none}
+#vt-totop:hover{border-color:var(--accent);color:var(--accent)}
+@media(max-width:520px){#vt-totop{right:14px;bottom:14px;width:42px;height:42px}}</style>
 </head>
 <body>
 <div style="min-height:100vh;background:var(--bg)">
@@ -48,7 +56,7 @@ img,svg,video{max-width:100%}
 <a href="index.html" style="display:flex;align-items:center;gap:10px"><svg width="26" height="26" viewBox="0 0 283 290" fill="none"><path d="M180 11.6296C182 10.6295 193 -1.37044 224 0.129555C248.8 1.32956 267.333 22.2962 273.5 32.6296C289 59.6295 278 88.1296 277.5 90.1296C277.5 92 192 245.13 185 260.13C175.5 277.129 163.404 283.129 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.1296H37C55.8 33.9296 67.8333 48.1296 71.5 55.1296L137 192.63C146.6 215.429 161 220.13 166.5 220.13H166.672C171.787 220.131 182.708 220.135 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.6293 154.5 82.6296C151 67.6299 152.5 59.1296 153 53.6296C153.5 48.1296 156.5 40.6295 159.5 34.6296C162.5 28.6296 170.5 19.1295 180 11.6296ZM217 32.1296C198.775 32.1296 184 46.9042 184 65.1296C184 83.3548 198.775 98.1296 217 98.1296C235.225 98.1296 250 83.3548 250 65.1296C250 46.9042 235.225 32.1296 217 32.1296Z" fill="url(#vgml)"/><defs><linearGradient id="vgml" x1="28" y1="280" x2="230" y2="79" gradientUnits="userSpaceOnUse"><stop stop-color="#10E0A0"/><stop offset="1" stop-color="#047857"/></linearGradient></defs></svg><span style="font-weight:800;font-size:1.05rem;letter-spacing:-.01em">Vizyo<span style="color:var(--accent)"> Tracky</span></span></a>
 <div style="display:flex;align-items:center;gap:12px">
 <a href="index.html" class="vt-nav" style="font-size:.9rem;font-weight:600;color:var(--tx2);padding:8px 4px" data-vth="color:var(--tx)">Retour au site</a>
-<button data-vt="theme" aria-label="Changer de thème" style="display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--tx2);cursor:pointer;transition:all .2s" data-vth="color:var(--tx);border-color:var(--border2)"><svg class="ic-moon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><svg class="ic-sun" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></button>
+<button data-vt="theme" aria-label="Changer de thème" style="display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--tx2);cursor:pointer;transition:all .2s" data-vth="color:var(--tx);border-color:var(--border2)"><svg class="ic-moon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><svg class="ic-sun" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></button><a class="btn-login" href="https://app-tracky.vizyoagency.com/" rel="noopener" title="Accéder à l'application"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>Connexion</a>
 </div>
 </div>
 </header>
@@ -116,6 +124,7 @@ img,svg,video{max-width:100%}
 </footer>
 
 </div>
-<script src="assets/vt.js?v=659b9e07"></script>
+<button id="vt-totop" type="button" aria-label="Revenir en haut" title="Revenir en haut"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="6"/><polyline points="5 12 12 5 19 12"/></svg></button>
+<script src="assets/vt.js?v=07b898bb"></script>
 </body>
 </html>

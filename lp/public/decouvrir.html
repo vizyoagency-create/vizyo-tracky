@@ -36,6 +36,7 @@ a{color:inherit;text-decoration:none}
 .vt-vid-poster span{font-family:'JetBrains Mono',monospace;font-size:.68rem;letter-spacing:.1em;text-transform:uppercase}
 .vt-vid iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block;z-index:1;background:transparent}
 @media (prefers-reduced-motion:reduce){.vt-underline::after{animation:none}}
+@media (max-width:600px){.dcv-demo{display:none!important}}
 </style>
 <script>(function(){try{var t=localStorage.getItem('vt-theme')||'dark';document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme='dark'}})();</script>
 <style>/* Garde anti-débordement mobile (global) : médias bornés + enfants de
@@ -43,7 +44,15 @@ grilles/flex peuvent rétrécir sous leur contenu (sinon un tableau/prix/e-mail
 force une largeur > écran → scroll horizontal). Sûr : ne rétrécit que là où la
 grille/flex l'autorise déjà. */
 img,svg,video{max-width:100%}
-[style*="display:grid"]>*,[style*="display:flex"]>*{min-width:0}</style>
+[style*="display:grid"]>*,[style*="display:flex"]>*{min-width:0}
+/* Bouton « Connexion » navbar (injecté sur toutes les pages) */
+.btn-login{display:inline-flex;align-items:center;gap:7px;color:var(--tx2);font-weight:600;font-size:.87rem;padding:9px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface);transition:color .2s,border-color .2s;white-space:nowrap;text-decoration:none}
+.btn-login:hover{color:var(--tx);border-color:var(--border2)}
+/* Bouton « revenir en haut » — masqué sous le bandeau consentement / une pop-in (piloté par vt.js) */
+#vt-totop{position:fixed;right:22px;bottom:22px;z-index:110;width:46px;height:46px;border-radius:50%;border:1px solid var(--border2);background:color-mix(in srgb,var(--surface) 90%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:var(--tx);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(0,0,0,.22);opacity:0;visibility:hidden;transform:translateY(12px);transition:opacity .3s,transform .3s,visibility .3s}
+#vt-totop.show{opacity:1;visibility:visible;transform:none}
+#vt-totop:hover{border-color:var(--accent);color:var(--accent)}
+@media(max-width:520px){#vt-totop{right:14px;bottom:14px;width:42px;height:42px}}</style>
 </head>
 <body>
 <div id="top" style="min-height:100vh;background:var(--bg)">
@@ -55,7 +64,10 @@ img,svg,video{max-width:100%}
 <svg width="23" height="24" viewBox="0 0 283 290" fill="none"><path d="M180 11.63C182 10.63 193 -1.37 224 0.13C248.8 1.33 267.33 22.3 273.5 32.63C289 59.63 278 88.13 277.5 90.13C277.5 92 192 245.13 185 260.13C175.5 277.13 163.4 283.13 156 284.5C154 284.87 145.5 286.5 135 284.5C119.5 280.5 109 271 101.5 251L2 33.13H37C55.8 33.93 67.83 48.13 71.5 55.13L137 192.63C146.6 215.43 161 220.13 166.5 220.13H166.67C171.79 220.13 182.71 220.14 189 214.63C197 207.63 202 201 203.5 188C205 175 190 148.63 185 141.63C163 105.13 158 97.63 154.5 82.63C151 67.63 152.5 59.13 153 53.63C153.5 48.13 156.5 40.63 159.5 34.63C162.5 28.63 170.5 19.13 180 11.63ZM217 32.13C198.78 32.13 184 46.9 184 65.13C184 83.35 198.78 98.13 217 98.13C235.23 98.13 250 83.35 250 65.13C250 46.9 235.23 32.13 217 32.13Z" fill="url(#hg)"/><defs><linearGradient id="hg" x1="28" y1="280" x2="230" y2="79" gradientUnits="userSpaceOnUse"><stop stop-color="#10E0A0"/><stop offset="1" stop-color="#047857"/></linearGradient></defs></svg>
 <span style="font-weight:800;font-size:1rem">Vizyo<span style="color:var(--accent)"> Tracky</span></span>
 </a>
-<a href="index.html#demo" style="display:inline-flex;align-items:center;gap:7px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:.86rem;padding:9px 16px;border-radius:10px;white-space:nowrap">Demander une démo</a>
+<div style="display:flex;align-items:center;gap:10px">
+<a class="btn-login" href="https://app-tracky.vizyoagency.com/" rel="noopener" title="Accéder à l'application"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>Connexion</a>
+<a class="dcv-demo" href="index.html#demo" style="display:inline-flex;align-items:center;gap:7px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:.86rem;padding:9px 16px;border-radius:10px;white-space:nowrap">Demander une démo</a>
+</div>
 </div>
 </header>
 
@@ -130,6 +142,7 @@ img,svg,video{max-width:100%}
 </div>
 </footer>
 </div>
-<script src="assets/vt.js?v=659b9e07"></script>
+<button id="vt-totop" type="button" aria-label="Revenir en haut" title="Revenir en haut"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="6"/><polyline points="5 12 12 5 19 12"/></svg></button>
+<script src="assets/vt.js?v=07b898bb"></script>
 </body>
 </html>

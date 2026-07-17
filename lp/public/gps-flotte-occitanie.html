@@ -40,7 +40,15 @@ grilles/flex peuvent rétrécir sous leur contenu (sinon un tableau/prix/e-mail
 force une largeur > écran → scroll horizontal). Sûr : ne rétrécit que là où la
 grille/flex l'autorise déjà. */
 img,svg,video{max-width:100%}
-[style*="display:grid"]>*,[style*="display:flex"]>*{min-width:0}</style>
+[style*="display:grid"]>*,[style*="display:flex"]>*{min-width:0}
+/* Bouton « Connexion » navbar (injecté sur toutes les pages) */
+.btn-login{display:inline-flex;align-items:center;gap:7px;color:var(--tx2);font-weight:600;font-size:.87rem;padding:9px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface);transition:color .2s,border-color .2s;white-space:nowrap;text-decoration:none}
+.btn-login:hover{color:var(--tx);border-color:var(--border2)}
+/* Bouton « revenir en haut » — masqué sous le bandeau consentement / une pop-in (piloté par vt.js) */
+#vt-totop{position:fixed;right:22px;bottom:22px;z-index:110;width:46px;height:46px;border-radius:50%;border:1px solid var(--border2);background:color-mix(in srgb,var(--surface) 90%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:var(--tx);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(0,0,0,.22);opacity:0;visibility:hidden;transform:translateY(12px);transition:opacity .3s,transform .3s,visibility .3s}
+#vt-totop.show{opacity:1;visibility:visible;transform:none}
+#vt-totop:hover{border-color:var(--accent);color:var(--accent)}
+@media(max-width:520px){#vt-totop{right:14px;bottom:14px;width:42px;height:42px}}</style>
 </head>
 <body>
 <div style="min-height:100vh;background:var(--bg)">
@@ -56,12 +64,12 @@ img,svg,video{max-width:100%}
 <a href="securite.html" data-vth="color:var(--tx)">Sécurité</a>
 </nav>
 <div style="display:flex;align-items:center;gap:12px">
-<button data-vt="theme" aria-label="Changer de thème" style="display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--tx2);cursor:pointer;transition:all .2s" data-vth="color:var(--tx);border-color:var(--border2)"><svg class="ic-moon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><svg class="ic-sun" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></button>
+<button data-vt="theme" aria-label="Changer de thème" style="display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--tx2);cursor:pointer;transition:all .2s" data-vth="color:var(--tx);border-color:var(--border2)"><svg class="ic-moon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><svg class="ic-sun" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></button><a class="btn-login vt-nav" href="https://app-tracky.vizyoagency.com/" rel="noopener" title="Accéder à l'application"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>Connexion</a>
 <a href="index.html#demo" class="vt-nav" style="display:inline-flex;align-items:center;gap:7px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:.9rem;padding:10px 18px;border-radius:10px;transition:transform .2s;box-shadow:0 6px 18px var(--accent-soft)" data-vth="transform:translateY(-1px)">Demander une démo</a>
 <button class="vt-burger" data-vt="menu" aria-label="Menu" style="display:none;align-items:center;justify-content:center;width:38px;height:38px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--tx);cursor:pointer"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
 </div>
 </div>
-<div id="vt-menu" style="display:none;flex-direction:column;gap:4px;padding:8px 24px 18px;border-top:1px solid var(--border)"><a href="fonctionnalites.html" style="padding:11px 8px;font-weight:600;color:var(--tx2)">Fonctionnalités</a><a href="secteur-public.html" style="padding:11px 8px;font-weight:600;color:var(--tx2)">Secteur public</a><a href="tarifs.html" style="padding:11px 8px;font-weight:600;color:var(--tx2)">Tarifs</a><a href="index.html#demo" data-vt="menu" style="margin-top:6px;text-align:center;background:var(--accent);color:var(--accent-ink);font-weight:700;padding:12px;border-radius:10px">Demander une démo</a></div>
+<div id="vt-menu" style="display:none;flex-direction:column;gap:4px;padding:8px 24px 18px;border-top:1px solid var(--border)"><a href="https://app-tracky.vizyoagency.com/" rel="noopener" style="padding:11px 8px;font-weight:600;color:var(--tx2);border-radius:8px;display:flex;align-items:center;gap:8px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>Connexion</a><a href="fonctionnalites.html" style="padding:11px 8px;font-weight:600;color:var(--tx2)">Fonctionnalités</a><a href="secteur-public.html" style="padding:11px 8px;font-weight:600;color:var(--tx2)">Secteur public</a><a href="tarifs.html" style="padding:11px 8px;font-weight:600;color:var(--tx2)">Tarifs</a><a href="index.html#demo" data-vt="menu" style="margin-top:6px;text-align:center;background:var(--accent);color:var(--accent-ink);font-weight:700;padding:12px;border-radius:10px">Demander une démo</a></div>
 </header>
 
 <main>
@@ -146,6 +154,7 @@ img,svg,video{max-width:100%}
 </footer>
 
 </div>
-<script src="assets/vt.js?v=659b9e07"></script>
+<button id="vt-totop" type="button" aria-label="Revenir en haut" title="Revenir en haut"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="6"/><polyline points="5 12 12 5 19 12"/></svg></button>
+<script src="assets/vt.js?v=07b898bb"></script>
 </body>
 </html>

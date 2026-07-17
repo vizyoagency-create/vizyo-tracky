@@ -169,6 +169,16 @@ function transform(html, out) {
   if (out === 'index.html') body = body.replace(/<section[^>]*id="demo"[\s\S]*?<\/section>/, DEMO_SECTION);
   // Répare le lien mort de l'agence en footer (toutes pages).
   body = body.replace(/<a href="#"([^>]*)>vizyoagency\.com<\/a>/g, `<a href="${site.agencyUrl}"$1 target="_blank" rel="noopener">vizyoagency.com</a>`);
+  // « Connexion » dans la navbar de TOUTES les pages (l'accueil l'a déjà via son hero → sauté).
+  if (!body.includes('btn-login')) {
+    const loginIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>';
+    const hasMenu = body.includes('id="vt-menu"');
+    // Desktop : juste après le bouton thème (→ [thème][Connexion][CTA][burger], comme l'accueil).
+    // Page sans menu mobile (mentions légales) → pas de `vt-nav` (sinon Connexion masqué <900px sans repli burger).
+    body = body.replace(/(<button data-vt="theme"[\s\S]*?<\/button>)/, `$1<a class="btn-login${hasMenu ? ' vt-nav' : ''}" href="https://app-tracky.vizyoagency.com/" rel="noopener" title="Accéder à l'application">${loginIcon}Connexion</a>`);
+    // Mobile : en tête du menu déroulant (uniquement si la page a un menu).
+    if (hasMenu) body = body.replace(/(<div id="vt-menu"[^>]*>)/, `$1<a href="https://app-tracky.vizyoagency.com/" rel="noopener" style="padding:11px 8px;font-weight:600;color:var(--tx2);border-radius:8px;display:flex;align-items:center;gap:8px">${loginIcon}Connexion</a>`);
+  }
   return { helmet, body };
 }
 
@@ -186,10 +196,19 @@ grilles/flex peuvent rétrécir sous leur contenu (sinon un tableau/prix/e-mail
 force une largeur > écran → scroll horizontal). Sûr : ne rétrécit que là où la
 grille/flex l'autorise déjà. */
 img,svg,video{max-width:100%}
-[style*="display:grid"]>*,[style*="display:flex"]>*{min-width:0}</style>
+[style*="display:grid"]>*,[style*="display:flex"]>*{min-width:0}
+/* Bouton « Connexion » navbar (injecté sur toutes les pages) */
+.btn-login{display:inline-flex;align-items:center;gap:7px;color:var(--tx2);font-weight:600;font-size:.87rem;padding:9px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface);transition:color .2s,border-color .2s;white-space:nowrap;text-decoration:none}
+.btn-login:hover{color:var(--tx);border-color:var(--border2)}
+/* Bouton « revenir en haut » — masqué sous le bandeau consentement / une pop-in (piloté par vt.js) */
+#vt-totop{position:fixed;right:22px;bottom:22px;z-index:110;width:46px;height:46px;border-radius:50%;border:1px solid var(--border2);background:color-mix(in srgb,var(--surface) 90%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:var(--tx);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(0,0,0,.22);opacity:0;visibility:hidden;transform:translateY(12px);transition:opacity .3s,transform .3s,visibility .3s}
+#vt-totop.show{opacity:1;visibility:visible;transform:none}
+#vt-totop:hover{border-color:var(--accent);color:var(--accent)}
+@media(max-width:520px){#vt-totop{right:14px;bottom:14px;width:42px;height:42px}}</style>
 </head>
 <body>
 ${body}
+<button id="vt-totop" type="button" aria-label="Revenir en haut" title="Revenir en haut"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="6"/><polyline points="5 12 12 5 19 12"/></svg></button>
 <script src="assets/vt.js?v=${VT_V}"></script>
 </body>
 </html>`;

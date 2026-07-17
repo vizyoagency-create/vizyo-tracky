@@ -473,6 +473,27 @@
     else { a.style.marginLeft = '14px'; a.style.opacity = '.8'; footer.appendChild(a); }
   }
 
-  function init() { initHover(); initReveal(); handleHash(); initSim(); initForms(); prefillPartner(); initSmartPopup(); initLazyVideos(); initConsent(); injectConsentLink(); }
+  // ── Bouton « revenir en haut » — apparaît au scroll, masqué tant que le bandeau
+  //    consentement (bas pleine largeur) ou une pop-in lead est affiché. ──
+  function initToTop() {
+    var btn = d.getElementById('vt-totop'); if (!btn) return;
+    btn.addEventListener('click', function () {
+      try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
+    });
+    var ticking = false;
+    function update() {
+      ticking = false;
+      var y = window.pageYOffset || root.scrollTop || 0;
+      var blocked = d.getElementById('vt-consent') || d.querySelector('.vt-pop.vt-in');
+      btn.classList.toggle('show', y > 560 && !blocked);
+    }
+    window.addEventListener('scroll', function () { if (!ticking) { ticking = true; requestAnimationFrame(update); } }, { passive: true });
+    window.addEventListener('resize', update, { passive: true });
+    // Ré-évalue après un clic (fermeture du bandeau consentement / d'une pop-in).
+    d.addEventListener('click', function () { setTimeout(update, 80); }, true);
+    update();
+  }
+
+  function init() { initHover(); initReveal(); handleHash(); initSim(); initForms(); prefillPartner(); initSmartPopup(); initLazyVideos(); initConsent(); injectConsentLink(); initToTop(); }
   if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', init); else init();
 })();
