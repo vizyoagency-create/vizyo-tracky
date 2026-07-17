@@ -209,6 +209,7 @@ img,svg,video{max-width:100%}
 
 <!-- SIMULATEUR -->
 <section class="vt-sec" id="simulateur" style="padding:96px 0">
+<style>@media(max-width:760px){.vt-sim4{grid-template-columns:repeat(2,1fr)!important}}</style>
 <div style="max-width:780px;margin:0 auto;padding:0 32px">
 <div data-reveal style="text-align:center;max-width:40rem;margin:0 auto 40px">
 <p style="font-family:'JetBrains Mono',monospace;font-size:.74rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:600;margin:0 0 14px">Devis en ligne</p>
@@ -237,7 +238,7 @@ img,svg,video{max-width:100%}
 <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px;border:1px solid var(--border);border-radius:12px;background:var(--surface2);margin-bottom:14px"><div><div style="font-weight:700;font-size:.92rem">Option Agent IA <span style="font-weight:500;color:var(--tx3)">(optimisation)</span></div><div style="font-size:.78rem;color:var(--tx2)">+14,90 €/véhicule/mois</div></div><button data-sim="opt" data-val="agent" aria-label="Option Agent IA &lt;span style=&quot;font-weight:500;color:var(--tx3)&quot;&gt;(optimisation)&lt;/span&gt;" style="flex:none;width:50px;height:28px;border-radius:16px;border:none;cursor:pointer;padding:3px;display:flex;transition:all .2s;justify-content:flex-start;background:var(--border2)"><span style="width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3)"></span></button></div>
 <div style="margin-bottom:26px;margin-top:12px">
 <label style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-weight:700;font-size:.95rem;margin-bottom:11px">Rétention de l'historique</label>
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+<div class="vt-sim4" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
 <button data-sim="ret" data-val="90j" style="padding:13px 10px;border-radius:11px;cursor:pointer;font-weight:700;font-size:.88rem;font-family:inherit;text-align:center;transition:all .2s;background:var(--accent-soft);border:1.5px solid var(--accent);color:var(--accent)">90 jours<small style="display:block;font-weight:500;font-size:.68rem;opacity:.7;margin-top:2px">inclus</small></button>
 <button data-sim="ret" data-val="1an" style="padding:13px 10px;border-radius:11px;cursor:pointer;font-weight:700;font-size:.88rem;font-family:inherit;text-align:center;transition:all .2s;background:var(--surface);border:1px solid var(--border);color:var(--tx2)">1 an<small style="display:block;font-weight:500;font-size:.68rem;opacity:.7;margin-top:2px">+3,90 €</small></button>
 <button data-sim="ret" data-val="2ans" style="padding:13px 10px;border-radius:11px;cursor:pointer;font-weight:700;font-size:.88rem;font-family:inherit;text-align:center;transition:all .2s;background:var(--surface);border:1px solid var(--border);color:var(--tx2)">2 ans<small style="display:block;font-weight:500;font-size:.68rem;opacity:.7;margin-top:2px">+6,90 €</small></button>
@@ -245,7 +246,7 @@ img,svg,video{max-width:100%}
 </div>
 </div>
 <div style="height:1px;background:var(--border);margin:0 0 24px"></div>
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
+<div class="vt-sim4" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
 <div style="border:1px solid var(--border);border-radius:12px;padding:15px;background:var(--surface2)"><div style="font-size:.7rem;color:var(--tx2);margin-bottom:5px">Par jour / véhicule</div><div data-out="perDay" style="font-size:1.35rem;font-weight:800;letter-spacing:-.02em">…</div><div style="font-size:.66rem;color:var(--tx3);margin-top:2px">tout compris</div></div>
 <div style="border:1.5px solid var(--accent);border-radius:12px;padding:15px;background:var(--accent-soft)"><div style="font-size:.7rem;color:var(--tx2);margin-bottom:5px">Mensuel total</div><div data-out="monthTotal" style="font-size:1.35rem;font-weight:800;letter-spacing:-.02em;color:var(--accent)">…</div><div data-out="perVeh" style="font-size:.66rem;color:var(--tx3);margin-top:2px"></div></div>
 <div style="border:1px solid var(--border);border-radius:12px;padding:15px;background:var(--surface2)"><div style="font-size:.7rem;color:var(--tx2);margin-bottom:5px">Coût 1re année</div><div data-out="year1" style="font-size:1.35rem;font-weight:800;letter-spacing:-.02em">…</div><div style="font-size:.66rem;color:var(--tx3);margin-top:2px">boîtier + install + abo</div></div>

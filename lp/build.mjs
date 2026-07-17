@@ -88,6 +88,7 @@ const DEMO_SECTION = `<section id="demo" class="vt-sec" style="padding:72px 0;po
 
 // Section simulateur → devis signable (remplace le composant React du design).
 const SIM_SECTION = `<section class="vt-sec" id="simulateur" style="padding:96px 0">
+<style>@media(max-width:760px){.vt-sim4{grid-template-columns:repeat(2,1fr)!important}}</style>
 <div style="max-width:780px;margin:0 auto;padding:0 32px">
 <div data-reveal style="text-align:center;max-width:40rem;margin:0 auto 40px">
 <p style="font-family:'JetBrains Mono',monospace;font-size:.74rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:600;margin:0 0 14px">Devis en ligne</p>
@@ -116,7 +117,7 @@ ${optRow("Option Micro d'assistance <span style=\"font-weight:500;color:var(--tx
 ${optRow('Option Agent IA <span style="font-weight:500;color:var(--tx3)">(optimisation)</span>', '+14,90 €/véhicule/mois', 'agent')}
 <div style="margin-bottom:26px;margin-top:12px">
 <label style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-weight:700;font-size:.95rem;margin-bottom:11px">Rétention de l'historique</label>
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+<div class="vt-sim4" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
 <button data-sim="ret" data-val="90j" style="${opt(true)}">90 jours<small style="display:block;font-weight:500;font-size:.68rem;opacity:.7;margin-top:2px">inclus</small></button>
 <button data-sim="ret" data-val="1an" style="${opt(false)}">1 an<small style="display:block;font-weight:500;font-size:.68rem;opacity:.7;margin-top:2px">+3,90 €</small></button>
 <button data-sim="ret" data-val="2ans" style="${opt(false)}">2 ans<small style="display:block;font-weight:500;font-size:.68rem;opacity:.7;margin-top:2px">+6,90 €</small></button>
@@ -124,7 +125,7 @@ ${optRow('Option Agent IA <span style="font-weight:500;color:var(--tx3)">(optimi
 </div>
 </div>
 <div style="height:1px;background:var(--border);margin:0 0 24px"></div>
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
+<div class="vt-sim4" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
 ${resCard('Par jour / véhicule', 'perDay', { t: 'tout compris' })}
 ${resCard('Mensuel total', 'monthTotal', { o: 'perVeh', t: '' }, true)}
 ${resCard('Coût 1re année', 'year1', { t: 'boîtier + install + abo' })}
