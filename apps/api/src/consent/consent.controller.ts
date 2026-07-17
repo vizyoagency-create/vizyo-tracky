@@ -21,6 +21,23 @@ export class ConsentController {
     return this.consent.acceptCurrent(req.user.id, ip(req), ua(req));
   }
 
+  /** Permission device (notifications / localisation) accordée ou refusée. */
+  @Post('permission')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(204)
+  async permission(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: { kind?: string; granted?: boolean; deviceId?: string },
+  ): Promise<void> {
+    await this.consent.recordPermission(req.user.id, {
+      kind: String(body?.kind ?? ''),
+      granted: !!body?.granted,
+      deviceId: String(body?.deviceId ?? ''),
+      ip: ip(req),
+      userAgent: ua(req),
+    });
+  }
+
   /** PUBLIC — choix du bandeau LP (accepter/refuser), enregistré avec l'IP. */
   @Post('lp')
   @HttpCode(204)

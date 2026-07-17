@@ -135,6 +135,29 @@ export class ConsentService {
     });
   }
 
+  /** Enregistre une permission device accordée/refusée (notifications, localisation). */
+  async recordPermission(
+    userId: string,
+    input: { kind: string; granted: boolean; deviceId: string; ip: string | null; userAgent: string | null },
+  ): Promise<void> {
+    const kind =
+      input.kind === 'GEOLOCATION' ? 'GEOLOCATION' : input.kind === 'PUSH' ? 'PUSH' : null;
+    if (!kind || !input.deviceId) return;
+    const deviceId = input.deviceId.slice(0, 100);
+    const userAgent = input.userAgent ? input.userAgent.slice(0, 400) : null;
+    try {
+      await this.prisma.userPermission.upsert({
+        where: { userId_deviceId_kind: { userId, deviceId, kind } },
+        create: { userId, deviceId, kind, granted: input.granted, ip: input.ip, userAgent },
+        update: { granted: input.granted, ip: input.ip, userAgent },
+      });
+    } catch (e) {
+      this.logger.warn(
+        `recordPermission a échoué: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+
   /** ADMIN — derniers consentements de VISITEURS LP (choix + IP). */
   async adminLpConsents(limit: number) {
     const take = Math.min(Math.max(limit || 100, 1), 200);
