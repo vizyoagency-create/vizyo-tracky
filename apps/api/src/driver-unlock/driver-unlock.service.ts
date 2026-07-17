@@ -8,6 +8,7 @@ import {
 import { EngineAction, UserRole } from '@prisma/client';
 import type { AuthUser } from '../auth/types/auth-user';
 import { EngineControlService } from '../engine-control/engine-control.service';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PermissionsResolverService } from '../permissions/permissions-resolver.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
@@ -52,6 +53,7 @@ export class DriverUnlockService {
     private readonly perms: PermissionsResolverService,
     private readonly engineControl: EngineControlService,
     private readonly systemActivity: SystemActivityService,
+    private readonly errorLogger: ErrorLogger,
   ) {}
 
   async unlock(user: AuthUser, dto: UnlockDriverDto): Promise<{ ok: true; message: string }> {
@@ -129,9 +131,15 @@ export class DriverUnlockService {
         select: { id: true },
       });
       if (driver) {
+        // Best-effort (ne casse pas le déverrouillage), mais un échec fausse la
+        // traçabilité conducteur des trajets suivants → visible au centre d'alerte.
         await this.prisma.vehicle
           .update({ where: { id: vehicleId }, data: { currentDriverId: driver.id } })
-          .catch((e) => this.logger.warn(`currentDriver set failed: ${(e as Error).message}`));
+          .catch((e) =>
+            this.errorLogger.recordBackground(e instanceof Error ? e : new Error(String(e)), 'driver-unlock', {
+              vehicleId: vehicleId ?? undefined, userId: user.id, note: 'attribution currentDriverId échouée',
+            }),
+          );
       }
 
       // Traçabilité — action « qui déverrouille quoi, quand, comment » (journal Système, feed admin).

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { LOGIN_EVENT_RETENTION_DAYS } from './security.constants';
 
@@ -12,7 +13,10 @@ import { LOGIN_EVENT_RETENTION_DAYS } from './security.constants';
 export class SecurityCleanupService {
   private readonly logger = new Logger(SecurityCleanupService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly errorLogger: ErrorLogger,
+  ) {}
 
   @Cron(CronExpression.EVERY_DAY_AT_3AM, {
     name: 'login-events-purge',
@@ -28,7 +32,11 @@ export class SecurityCleanupService {
         );
       }
     } catch (e) {
-      this.logger.error(`Purge login_events échouée: ${String(e)}`);
+      // Engagement RGPD affiché (rétention 12 mois) : une purge qui échoue en boucle
+      // = non-conformité silencieuse → doit apparaître au centre d'alerte.
+      this.errorLogger.recordBackground(e instanceof Error ? e : new Error(String(e)), 'security-cleanup', {
+        phase: 'purge-login-events', retentionDays: LOGIN_EVENT_RETENTION_DAYS,
+      });
     }
   }
 }

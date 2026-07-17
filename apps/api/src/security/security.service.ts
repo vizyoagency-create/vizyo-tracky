@@ -1,4 +1,5 @@
 import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthClientService } from '../auth-client/auth-client.service';
 import { EmailService } from '../email/email.service';
@@ -65,6 +66,7 @@ export class SecurityService {
     private readonly authClient: AuthClientService,
     private readonly email: EmailService,
     private readonly geoip: GeoipService,
+    private readonly errorLogger: ErrorLogger,
   ) {}
 
   private key(userId: string, deviceId: string): string {
@@ -196,18 +198,33 @@ export class SecurityService {
         },
       });
     } catch (e) {
-      this.logger.warn(`loginEvent create a échoué: ${String(e)}`);
+      // Fail-open pour la session, mais VISIBLE au centre d'alerte : le journal des
+      // connexions est la baseline du 2FA adaptatif ET la carte admin — s'il ne
+      // s'écrit plus, la détection d'anomalie est aveugle en silence.
+      this.errorLogger.recordBackground(e instanceof Error ? e : new Error(String(e)), 'security-login-events', { userId });
     }
 
     const label = deviceLabelFromUa(userAgent);
     if (action === 'challenge' && deviceId) {
       this.decisionCache.set(this.key(userId, deviceId), 'challenge');
       // Envoie le code tout de suite (best-effort ; le front peut le renvoyer).
-      void this.sendCode({ email, firstName }, label).catch(() => {});
+      // Si Vizyo Auth / Resend est en panne, l'utilisateur est BLOQUÉ au challenge
+      // → l'échec DOIT remonter au centre d'alerte (sinon lockout invisible).
+      void this.sendCode({ email, firstName }, label).catch((e) =>
+        this.errorLogger.recordBackground(e instanceof Error ? e : new Error(String(e)), 'security-2fa', {
+          userId, note: 'envoi du code challenge à l\'ouverture de session',
+        }),
+      );
     } else if (deviceId) {
       // 'allow' → on fait confiance à l'appareil (apprentissage + baseline futur opt-in).
       this.decisionCache.set(this.key(userId, deviceId), 'allow');
-      await this.trustDevice(userId, deviceId, { ip, userAgent, label }).catch(() => {});
+      // Échec = l'appareil ne devient jamais « de confiance » → re-challenge en boucle
+      // pour un utilisateur 2FA : à voir au centre d'alerte, pas en silence.
+      await this.trustDevice(userId, deviceId, { ip, userAgent, label }).catch((e) =>
+        this.errorLogger.recordBackground(e instanceof Error ? e : new Error(String(e)), 'security-2fa', {
+          userId, note: 'trustDevice (apprentissage appareil) a échoué',
+        }),
+      );
     }
 
     if (propose) {
@@ -262,13 +279,18 @@ export class SecurityService {
     if (!ok) return false;
     await this.trustDevice(user.id, deviceId, meta);
     this.decisionCache.set(this.key(user.id, deviceId), 'allow');
-    // Marque la dernière connexion challengée comme vérifiée (best-effort).
+    // Marque la dernière connexion challengée comme vérifiée (best-effort, mais
+    // tracé : sinon le journal d'audit montre des challenges « jamais vérifiés »).
     await this.prisma.loginEvent
       .updateMany({
         where: { userId: user.id, deviceId, challenged: true, verified: false },
         data: { verified: true },
       })
-      .catch(() => {});
+      .catch((e) =>
+        this.errorLogger.recordBackground(e instanceof Error ? e : new Error(String(e)), 'security-login-events', {
+          userId: user.id, note: 'flag verified sur login_events',
+        }),
+      );
     return true;
   }
 

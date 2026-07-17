@@ -7,6 +7,7 @@ import {
 import { CommandStatus, EngineAction, Prisma, UserRole } from '@prisma/client';
 import type { VehicleSchedule } from '@prisma/client';
 import { EngineControlService } from '../engine-control/engine-control.service';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { evaluateSchedule } from './schedule-evaluator';
 import type { UpsertVehicleScheduleDto } from './dto/upsert-vehicle-schedule.dto';
@@ -26,6 +27,7 @@ export class VehicleSchedulesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly engineControl: EngineControlService,
+    private readonly errorLogger: ErrorLogger,
   ) {}
 
   async get(vehicleId: string, requestedBy: RequestedBy): Promise<VehicleSchedule | null> {
@@ -127,10 +129,12 @@ export class VehicleSchedulesService {
               'MANUAL',
             );
           } catch (err) {
-            this.logger.warn(
-              { vehicleId, error: (err as Error).message },
-              'Failed to emit RESTORE on scheduler disable (tracker may be offline)',
-            );
+            // Contrairement aux reports du cron, PERSONNE ne retentera ce RESTORE :
+            // le planning passe enabled=false (hors du where du cron). Un véhicule
+            // peut donc rester coupé en silence → centre d'alerte obligatoire.
+            this.errorLogger.recordBackground(err instanceof Error ? err : new Error(String(err)), 'vehicle-schedules', {
+              vehicleId, phase: 'restore-on-disable',
+            });
           }
         }
       }

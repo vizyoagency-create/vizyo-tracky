@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CONSENT_DOC_TYPES, CONSENT_ENFORCE, CONSENT_VERSION } from './consent.constants';
 
@@ -19,7 +20,10 @@ export class ConsentService {
   private readonly logger = new Logger(ConsentService.name);
   private readonly consented = new Set<string>();
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly errorLogger: ErrorLogger,
+  ) {}
 
   isCached(userId: string): boolean {
     return this.consented.has(userId);
@@ -98,7 +102,11 @@ export class ConsentService {
         },
       });
     } catch (e) {
-      this.logger.warn(`recordLp a échoué: ${e instanceof Error ? e.message : String(e)}`);
+      // Le 204 est conservé (le bandeau LP ne doit jamais casser), mais la PREUVE
+      // CNIL du choix visiteur ne doit pas se perdre en silence → centre d'alerte.
+      this.errorLogger.recordBackground(e instanceof Error ? e : new Error(String(e)), 'consent', {
+        note: 'échec écriture LpConsent (preuve bandeau LP)',
+      });
     }
   }
 
@@ -162,9 +170,11 @@ export class ConsentService {
         update: { granted: input.granted, ip: input.ip, userAgent },
       });
     } catch (e) {
-      this.logger.warn(
-        `recordPermission a échoué: ${e instanceof Error ? e.message : String(e)}`,
-      );
+      // Preuve d'octroi/refus des permissions device (dont la géoloc obligatoire à
+      // l'onboarding conducteur) : un échec silencieux fausse la vue admin conformité.
+      this.errorLogger.recordBackground(e instanceof Error ? e : new Error(String(e)), 'consent', {
+        userId, note: 'échec écriture UserPermission (preuve device)',
+      });
     }
   }
 

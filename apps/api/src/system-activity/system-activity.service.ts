@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import type { SystemActivityDto } from '@vizyo/tracky-shared';
 import { OwnerVisibilityService } from '../common/owner-visibility.service';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface SystemActivityInput {
@@ -37,6 +38,7 @@ export class SystemActivityService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ownerVis: OwnerVisibilityService,
+    private readonly errorLogger: ErrorLogger,
   ) {}
 
   /** Enregistre une action système. Ne bloque pas et n'échoue JAMAIS dans l'appelant. */
@@ -61,10 +63,16 @@ export class SystemActivityService {
           },
         })
         .catch((e) =>
-          this.logger.warn(`record failed: ${e instanceof Error ? e.message : String(e)}`),
+          // Le journal Système (e-mails, SMS, moteur, déverrouillages…) qui ne s'écrit
+          // plus = audit troué en silence → centre d'alerte (dédup ErrorLogger).
+          this.errorLogger.recordBackground(e instanceof Error ? e : new Error(String(e)), 'system-activity', {
+            note: 'échec écriture journal système (async)', action: entry.action,
+          }),
         );
     } catch (e) {
-      this.logger.warn(`record threw synchronously: ${e instanceof Error ? e.message : String(e)}`);
+      this.errorLogger.recordBackground(e instanceof Error ? e : new Error(String(e)), 'system-activity', {
+        note: 'échec écriture journal système (sync)', action: entry.action,
+      });
     }
   }
 

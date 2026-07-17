@@ -449,7 +449,11 @@ export class ApiTrafficService {
       for (const l of leads) if (l.ipAddress) set.add(l.ipAddress);
       for (const a of authored) if (a.ip) set.add(a.ip);
     } catch (e) {
-      this.logger.warn(`loadKnownIps failed: ${e instanceof Error ? e.message : String(e)}`);
+      // Cache best-effort, mais un échec permanent classe TOUTES les IP « inconnues »
+      // (faux positifs intelligence IP) → visible au centre d'alerte (dédup borne le volume).
+      this.errorLogger.recordBackground(e instanceof Error ? e : new Error(String(e)), 'api-traffic', {
+        note: 'loadKnownIps (classification ipKnown dégradée)',
+      });
     }
     this.knownIpsCache = { at: now, set };
     return set;

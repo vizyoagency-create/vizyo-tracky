@@ -158,6 +158,7 @@ export class UsersController {
 
   @Post('invitations')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
+  @RequirePermissions('users_manage')
   async invite(
     @Req() req: AuthenticatedRequest,
     @Body() dto: CreateInvitationDto,
@@ -185,6 +186,7 @@ export class UsersController {
 
   @Get('invitations')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
+  @RequirePermissions('users_manage')
   async listInvitations(@Req() req: AuthenticatedRequest) {
     if (req.user.role === UserRole.FLEET_MANAGER) {
       const perms = req.user.permissions as Record<string, boolean> | null;
@@ -211,6 +213,7 @@ export class UsersController {
 
   @Post('invitations/:id/resend')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
+  @RequirePermissions('users_manage')
   async resendInvitation(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
@@ -242,6 +245,7 @@ export class UsersController {
 
   @Post('invitations/:id/revoke')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
+  @RequirePermissions('users_manage')
   async revokeInvitation(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseUUIDPipe) id: string,
@@ -433,6 +437,7 @@ export class UsersController {
 
   @Get(':id')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
+  @RequirePermissions('users_view')
   async findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     await this.assertTargetVisible(id, req);
     // #33 — filtre tenant integre au where : un user d'une AUTRE flotte renvoie le

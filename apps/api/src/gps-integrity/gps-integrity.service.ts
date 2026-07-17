@@ -94,9 +94,11 @@ export class GpsIntegrityService {
                   lostAt: t.lastPositionAt as Date,
                 })
                 .catch((err) => {
-                  this.logger.warn(
-                    `GPS-integrity: recordLoss échec ${t.imei}: ${err instanceof Error ? err.message : err}`,
-                  );
+                  // Le clustering des zones mortes cesse d'apprendre si recordLoss échoue
+                  // en boucle (drift enum, contrainte) → visible au centre d'alerte.
+                  this.errorLogger.recordBackground(err instanceof Error ? err : new Error(String(err)), 'gps-dead-zones', {
+                    imei: t.imei, vehicleId: t.vehicle?.id, phase: 'recordLoss',
+                  });
                   return null;
                 })
             : null;
@@ -154,9 +156,9 @@ export class GpsIntegrityService {
             raised++;
           }
         } catch (err) {
-          this.logger.error(
-            `GPS-integrity: échec sur ${t.imei}: ${err instanceof Error ? err.message : String(err)}`,
-          );
+          this.errorLogger.recordBackground(err instanceof Error ? err : new Error(String(err)), 'gps-integrity', {
+            imei: t.imei, phase: 'per-tracker',
+          });
         }
       }
       if (suspects.length) {
@@ -166,10 +168,11 @@ export class GpsIntegrityService {
         );
       }
     } catch (err) {
-      // Le cron ne doit jamais throw — on log et on attend le prochain tick.
-      this.logger.error(
-        `GpsIntegrityService tick failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      // Le cron ne doit jamais throw — mais un tick qui échoue en boucle = détecteur
+      // « GPS perdu » entièrement mort : ça doit se voir au centre d'alerte (dédup ErrorLogger).
+      this.errorLogger.recordBackground(err instanceof Error ? err : new Error(String(err)), 'gps-integrity', {
+        phase: 'tick',
+      });
     } finally {
       this.running = false;
     }

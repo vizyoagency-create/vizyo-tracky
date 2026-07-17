@@ -1,4 +1,5 @@
 import { Body, Controller, Get, HttpCode, Post, Req, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ConsentService } from './consent.service';
@@ -40,6 +41,8 @@ export class ConsentController {
 
   /** PUBLIC — choix du bandeau LP (accepter/refuser), enregistré avec l'IP. */
   @Post('lp')
+  // Écriture publique en base : un visiteur légitime ne soumet le bandeau qu'1-2 fois.
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @HttpCode(204)
   async lp(
     @Req() req: Request,

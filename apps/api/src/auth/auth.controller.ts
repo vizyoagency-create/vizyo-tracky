@@ -1,5 +1,6 @@
 import { BadRequestException, Body, Controller, Get, HttpCode, HttpStatus, Logger, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { AuthClientService } from '../auth-client/auth-client.service';
 import { EmailService } from '../email/email.service';
@@ -80,6 +81,8 @@ export class AuthController {
   }
 
   @Post('login')
+  // Anti brute-force : 10 essais/min/IP (le throttle global 100/min laissait ~144k essais/jour).
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @HttpCode(HttpStatus.OK)
   async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
     const result = await this.auth.login(dto.email, dto.password);
@@ -148,6 +151,8 @@ export class AuthController {
    * Retourne toujours { ok: true } (pas d'enumeration d'emails).
    */
   @Post('forgot-password')
+  // Anti-spam e-mail : 5 demandes/min/IP (chaque appel peut déclencher un envoi Resend).
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
   @HttpCode(HttpStatus.OK)
   async forgotPassword(@Body() dto: { email: string }): Promise<{ ok: true }> {
     try {

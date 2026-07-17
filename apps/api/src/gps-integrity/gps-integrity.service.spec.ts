@@ -28,7 +28,10 @@ describe('GpsIntegrityService', () => {
       minOccurrences: 3,
       recordLoss: jest.fn().mockResolvedValue(recordLossResult),
     } as any;
-    const errorLogger = { record: jest.fn().mockResolvedValue(undefined) } as any;
+    const errorLogger = {
+      record: jest.fn().mockResolvedValue(undefined),
+      recordBackground: jest.fn(),
+    } as any;
     const svc = new GpsIntegrityService(prisma, alerts, deadZones, errorLogger);
     return { svc, prisma, alerts, deadZones, errorLogger };
   };

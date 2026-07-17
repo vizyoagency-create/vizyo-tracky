@@ -1,5 +1,6 @@
 import { Body, Controller, Get, HttpCode, Post, Req, UseGuards } from '@nestjs/common';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { DEVICE_ID_HEADER } from './security.constants';
 import { SecurityService } from './security.service';
 import { deviceLabelFromUa, maskEmail } from './security.util';
@@ -13,7 +14,10 @@ import { VerifyCodeDto } from './dto/verify-code.dto';
 @Controller('security')
 @UseGuards(JwtAuthGuard)
 export class SecurityController {
-  constructor(private readonly security: SecurityService) {}
+  constructor(
+    private readonly security: SecurityService,
+    private readonly errorLogger: ErrorLogger,
+  ) {}
 
   /** Boot : enregistre la connexion (appareil + position) et décide (allow/challenge/propose). */
   @Post('connection')
@@ -38,7 +42,12 @@ export class SecurityController {
     try {
       await this.security.sendCode({ email: u.email, firstName: u.firstName }, deviceLabelFromUa(ua(req)));
       return { ok: true, email: maskEmail(u.email) };
-    } catch {
+    } catch (e) {
+      // Le renvoi de code est le DERNIER recours d'un utilisateur bloqué au challenge :
+      // des échecs répétés (Vizyo Auth down, Resend) doivent se voir au centre d'alerte.
+      this.errorLogger.recordBackground(e instanceof Error ? e : new Error(String(e)), 'security-2fa', {
+        userId: u.id, note: 'renvoi du code (bouton « renvoyer »)',
+      });
       return { ok: false, email: maskEmail(u.email) };
     }
   }
