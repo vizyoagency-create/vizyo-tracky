@@ -161,13 +161,23 @@ export class AccessMatrixEditorComponent implements OnInit {
   protected readonly availableGroups = computed(() => this.groups().filter((g) => !this.usedGroupIds().has(g.id)));
   protected readonly availableVehicles = computed(() => this.vehicles().filter((v) => !this.usedVehicleIds().has(v.id)));
 
-  /** Groupes de permissions affichés : audio masqué tant que la flotte n'est pas éligible. */
+  /**
+   * Groupes de permissions affichés : audio masqué tant que la flotte n'est pas éligible ; et pour un
+   * CONDUCTEUR (DRIVER), on ne montre que les permissions qui ont un effet réel pour lui
+   * (`vehicles_view`, `engine_control`, `privacy_manage`). Les endpoints excluent DRIVER pour les
+   * autres (qr_manage, users_*, drivers_manage, schedules_manage, vehicles_edit…) → cocher n'aurait
+   * aucun effet ; on masque ces cases inertes (cohérence UI, revue du flux conducteur).
+   */
   protected readonly visibleGroups = computed<{ group: string; keys: (keyof UserPermissions)[] }[]>(() => {
     const audioOk = this.audioEligible();
+    const isDriver = this.role() === 'DRIVER';
+    const DRIVER_KEYS: (keyof UserPermissions)[] = ['vehicles_view', 'engine_control', 'privacy_manage'];
     return this.permissionGroups
       .map((group) => ({
         group,
-        keys: (this.permissionsByGroup[group] ?? []).filter((k) => audioOk || k !== 'audio_monitoring'),
+        keys: (this.permissionsByGroup[group] ?? []).filter(
+          (k) => (audioOk || k !== 'audio_monitoring') && (!isDriver || DRIVER_KEYS.includes(k)),
+        ),
       }))
       .filter((g) => g.keys.length > 0);
   });
