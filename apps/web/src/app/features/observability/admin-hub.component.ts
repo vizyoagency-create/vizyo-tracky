@@ -112,6 +112,19 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
           </div>
         </a>
 
+        <!-- ── CONSENTEMENTS RGPD ── -->
+        <a routerLink="/admin/consent" class="card" style="--i:5">
+          <span class="accent accent-green"></span>
+          <div class="body">
+            <div class="row-top">
+              <div class="ico ico-green"><lucide-icon [img]="Shield" [size]="20"></lucide-icon></div>
+              <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
+            </div>
+            <h3>Consentements RGPD</h3>
+            <p class="desc">Qui a consenti — application & landing page, avec l'adresse IP.</p>
+          </div>
+        </a>
+
         <!-- ── SYNC AUTH (wide) ── -->
         <a routerLink="/admin/auth-sync" class="card card-wide" style="--i:5">
           <span class="accent accent-cyan"></span>

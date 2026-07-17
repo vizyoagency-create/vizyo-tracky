@@ -7,6 +7,7 @@ export interface ConsentStatus {
   cgu: boolean;
   privacy: boolean;
   required: boolean;
+  enforce: boolean;
 }
 
 /**
@@ -28,7 +29,9 @@ export class ConsentService {
     try {
       const s = await firstValueFrom(this.http.get<ConsentStatus>('/api/consent/current'));
       this.version.set(s.version);
-      this.mustAccept.set(!!s.required);
+      // On ne lève l'écran QUE si l'enforcement est activé (déploiement sûr : flag off
+      // = capture LP + admin actifs, mais aucun blocage des utilisateurs existants).
+      this.mustAccept.set(!!s.required && !!s.enforce);
     } catch {
       // Silencieux : un 403 CONSENT_REQUIRED sur un autre appel lèvera le gate.
     }

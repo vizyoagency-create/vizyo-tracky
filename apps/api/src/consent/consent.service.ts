@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { CONSENT_DOC_TYPES, CONSENT_VERSION } from './consent.constants';
+import { CONSENT_DOC_TYPES, CONSENT_ENFORCE, CONSENT_VERSION } from './consent.constants';
 
 /**
  * Consentements RGPD. Deux surfaces :
@@ -41,7 +41,7 @@ export class ConsentService {
   /** Statut détaillé (pour l'écran de gate côté front). */
   async status(
     userId: string,
-  ): Promise<{ version: string; cgu: boolean; privacy: boolean; required: boolean }> {
+  ): Promise<{ version: string; cgu: boolean; privacy: boolean; required: boolean; enforce: boolean }> {
     const rows = await this.prisma.userConsent.findMany({
       where: { userId, version: CONSENT_VERSION, accepted: true },
       select: { docType: true },
@@ -49,7 +49,7 @@ export class ConsentService {
     const types = new Set(rows.map((r) => r.docType));
     const cgu = types.has('CGU');
     const privacy = types.has('PRIVACY');
-    return { version: CONSENT_VERSION, cgu, privacy, required: !(cgu && privacy) };
+    return { version: CONSENT_VERSION, cgu, privacy, required: !(cgu && privacy), enforce: CONSENT_ENFORCE };
   }
 
   /** Enregistre l'acceptation CGU + Confidentialité à la version courante (idempotent). */
@@ -100,5 +100,56 @@ export class ConsentService {
     } catch (e) {
       this.logger.warn(`recordLp a échoué: ${e instanceof Error ? e.message : String(e)}`);
     }
+  }
+
+  /** ADMIN — statut de consentement app par utilisateur (avec date + IP d'acceptation). */
+  async adminUsersOverview(requesterIsOwner: boolean) {
+    const users = await this.prisma.user.findMany({
+      where: { isActive: true, ...(requesterIsOwner ? {} : { isOwner: false }) },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        consents: {
+          where: { version: CONSENT_VERSION, accepted: true },
+          select: { docType: true, acceptedAt: true, ip: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return users.map((u) => {
+      const cgu = u.consents.find((c) => c.docType === 'CGU') ?? null;
+      const privacy = u.consents.find((c) => c.docType === 'PRIVACY') ?? null;
+      return {
+        userId: u.id,
+        email: u.email,
+        name: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email,
+        role: u.role,
+        version: CONSENT_VERSION,
+        cgu: cgu ? { accepted: true, at: cgu.acceptedAt, ip: cgu.ip } : { accepted: false },
+        privacy: privacy ? { accepted: true, at: privacy.acceptedAt, ip: privacy.ip } : { accepted: false },
+        compliant: !!cgu && !!privacy,
+      };
+    });
+  }
+
+  /** ADMIN — derniers consentements de VISITEURS LP (choix + IP). */
+  async adminLpConsents(limit: number) {
+    const take = Math.min(Math.max(limit || 100, 1), 200);
+    return this.prisma.lpConsent.findMany({
+      orderBy: { createdAt: 'desc' },
+      take,
+      select: {
+        id: true,
+        choice: true,
+        ip: true,
+        page: true,
+        sessionId: true,
+        categories: true,
+        createdAt: true,
+      },
+    });
   }
 }

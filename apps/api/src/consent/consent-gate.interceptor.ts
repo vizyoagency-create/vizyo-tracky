@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { Observable, from } from 'rxjs';
 import { switchMap } from 'rxjs/operators';
-import { CONSENT_VERSION } from './consent.constants';
+import { CONSENT_ENFORCE, CONSENT_VERSION } from './consent.constants';
 import { ConsentService } from './consent.service';
 
 /**
@@ -43,6 +43,7 @@ export class ConsentGateInterceptor implements NestInterceptor {
   constructor(private readonly consent: ConsentService) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    if (!CONSENT_ENFORCE) return next.handle(); // enforcement désactivé (déploiement sûr)
     if (context.getType() !== 'http') return next.handle();
     const req = context.switchToHttp().getRequest<GateRequest>();
     const userId = req.user?.id;

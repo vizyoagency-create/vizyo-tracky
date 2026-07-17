@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { PrismaModule } from '../prisma/prisma.module';
+import { ConsentAdminController } from './consent-admin.controller';
 import { ConsentController } from './consent.controller';
 import { ConsentGateInterceptor } from './consent-gate.interceptor';
 import { ConsentService } from './consent.service';
@@ -14,7 +15,7 @@ import { ConsentService } from './consent.service';
 @Global()
 @Module({
   imports: [PrismaModule],
-  controllers: [ConsentController],
+  controllers: [ConsentController, ConsentAdminController],
   providers: [ConsentService, { provide: APP_INTERCEPTOR, useClass: ConsentGateInterceptor }],
   exports: [ConsentService],
 })

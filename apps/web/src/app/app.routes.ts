@@ -282,6 +282,13 @@ export const routes: Routes = [
         data: { title: 'E-mails' },
       },
       {
+        path: 'admin/consent',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/consent-admin/consent-admin.component').then((m) => m.ConsentAdminComponent),
+        data: { title: 'Consentements RGPD' },
+      },
+      {
         path: 'admin/installation-bookings',
         canActivate: [superAdminGuard],
         loadComponent: () =>
