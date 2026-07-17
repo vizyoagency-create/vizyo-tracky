@@ -62,9 +62,20 @@ export class PositionsService {
     // (avant toute persistance/diffusion/trajet/géofence) → « safe forgetting » du hors-travail SANS
     // rétro-activation (la donnée n'existe pas). Le boîtier COMMUNIQUE quand même → on rafraîchit la
     // liveness (lastSeenAt + ONLINE) : il reste « en ligne », sa dernière position connue reste figée.
-    const effectivePrivacy = tracker.vehicle
-      ? resolveEffectivePrivacy(tracker.vehicle, tracker.vehicle.workSchedule, new Date())
-      : null;
+    // Fail-safe : une erreur de résolution ne doit NI crasher l'ingestion NI perdre le suivi. En cas
+    // d'erreur inattendue on retombe sur le seul flag manuel (privacyModeEnabled) et on remonte au
+    // centre d'alerte (source `privacy-resolve`).
+    let effectivePrivacy: { isPrivate: boolean } | null = null;
+    if (tracker.vehicle) {
+      try {
+        effectivePrivacy = resolveEffectivePrivacy(tracker.vehicle, tracker.vehicle.workSchedule, new Date());
+      } catch (err) {
+        this.errorLogger
+          .record(err instanceof Error ? err : new Error(String(err)), 'privacy-resolve', { trackerId: tracker.id }, 'ERROR')
+          .catch(() => undefined);
+        effectivePrivacy = { isPrivate: !!tracker.vehicle.privacyModeEnabled };
+      }
+    }
     if (effectivePrivacy?.isPrivate) {
       const wasOffline = tracker.status !== 'ONLINE';
       await this.prisma.tracker.update({

@@ -3,10 +3,12 @@ import { UserRole } from '@prisma/client';
 import { WorkScheduleService } from './work-schedule.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { SystemActivityService } from '../system-activity/system-activity.service';
+import type { ErrorLogger } from '../observability/error-logger.service';
 
 /**
  * Cadre de temps de travail : lecture de l'état effectif, upsert + audit (journal Système +
- * PrivacyModeEvent visible du conducteur), et garde de tenant (anti cross-fleet).
+ * PrivacyModeEvent visible du conducteur), garde de tenant (anti cross-fleet), et remontée des
+ * erreurs inattendues au centre d'alerte (ErrorLogger).
  */
 function makeService() {
   const prisma = {
@@ -15,11 +17,13 @@ function makeService() {
     privacyModeEvent: { create: jest.fn().mockResolvedValue({}) },
   };
   const systemActivity = { record: jest.fn() };
+  const errors = { record: jest.fn().mockResolvedValue('err-id') };
   const service = new WorkScheduleService(
     prisma as unknown as PrismaService,
     systemActivity as unknown as SystemActivityService,
+    errors as unknown as ErrorLogger,
   );
-  return { service, prisma, systemActivity };
+  return { service, prisma, systemActivity, errors };
 }
 
 const ADMIN = { userId: 'a1', role: UserRole.FLEET_ADMIN, fleetId: 'f1' };
@@ -64,5 +68,15 @@ describe('WorkScheduleService', () => {
     expect(prisma.vehicleWorkSchedule.upsert).not.toHaveBeenCalled();
     expect(prisma.privacyModeEvent.create).not.toHaveBeenCalled();
     expect(systemActivity.record).not.toHaveBeenCalled();
+  });
+
+  it('set : erreur INATTENDUE (DB) → remontée au centre d\'alerte (ErrorLogger) + propagée', async () => {
+    const { service, prisma, errors } = makeService();
+    prisma.vehicle.findUnique.mockResolvedValueOnce({ id: 'v1', fleetId: 'f1', plate: 'AB-123-CD' });
+    prisma.vehicleWorkSchedule.upsert.mockRejectedValueOnce(new Error('db down'));
+
+    await expect(service.set('v1', { enabled: true }, ADMIN)).rejects.toThrow('db down');
+    expect(errors.record).toHaveBeenCalledTimes(1);
+    expect(errors.record.mock.calls[0][1]).toBe('work-schedule'); // source repérable dans le centre d'alerte
   });
 });
