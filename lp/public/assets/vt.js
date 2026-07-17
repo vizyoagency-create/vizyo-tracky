@@ -424,7 +424,7 @@
     w.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:120;background:var(--surface,#101514);border-top:1px solid var(--border2,rgba(255,255,255,.14));box-shadow:0 -10px 34px rgba(0,0,0,.4);padding:15px 20px;font-family:inherit;transform:translateY(110%);transition:transform .34s cubic-bezier(.2,.7,.2,1)';
     w.innerHTML =
       '<div style="max-width:1000px;margin:0 auto;display:flex;gap:16px;flex-wrap:wrap;align-items:center;justify-content:space-between">' +
-        '<div style="flex:1;min-width:250px;font-size:.88rem;line-height:1.5;color:var(--tx2,#9BA5A1)"><strong style="color:var(--tx,#EAEFED)">Votre vie privée.</strong> Nous utilisons des traceurs de mesure d\'audience et d\'accompagnement commercial (pages vues, clics, adresse&nbsp;IP). Aucun n\'est activé sans votre accord. <a href="mentions-legales.html" style="color:var(--accent,#10E0A0);text-decoration:none">En savoir plus</a>.</div>' +
+        '<div style="flex:1;min-width:250px;font-size:.88rem;line-height:1.5;color:var(--tx2,#9BA5A1)"><strong style="color:var(--tx,#EAEFED)">Cookies &amp; confidentialité.</strong> Nous utilisons des cookies pour améliorer votre expérience et mesurer notre audience. Vous restez maître de vos choix. <a href="mentions-legales.html" style="color:var(--accent,#10E0A0);text-decoration:none">En savoir plus</a>.</div>' +
         '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
           '<button type="button" data-vtc="refuse" style="' + btn + '">Tout refuser</button>' +
           '<button type="button" data-vtc="custom" style="' + btn + '">Personnaliser</button>' +
@@ -433,7 +433,7 @@
       '</div>' +
       '<div data-vtc-panel style="display:none;max-width:1000px;margin:13px auto 0;border-top:1px solid var(--border,rgba(255,255,255,.08));padding-top:12px">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:.84rem;color:var(--tx2,#9BA5A1);padding:5px 0"><span><strong style="color:var(--tx,#EAEFED)">Strictement nécessaires</strong> — sécurité, envoi de formulaire, mémorisation de votre choix.</span><span style="color:var(--tx3,#69736E);font-size:.76rem;white-space:nowrap">Toujours actif</span></div>' +
-        '<label style="display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:.84rem;color:var(--tx2,#9BA5A1);padding:5px 0;cursor:pointer"><span><strong style="color:var(--tx,#EAEFED)">Mesure d\'audience &amp; prospection</strong> — clics, scroll, temps passé, reconnaissance par IP.</span><input type="checkbox" data-vtc-measure' + chk + ' style="width:18px;height:18px;accent-color:var(--accent,#10E0A0);flex:none"></label>' +
+        '<label style="display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:.84rem;color:var(--tx2,#9BA5A1);padding:5px 0;cursor:pointer"><span><strong style="color:var(--tx,#EAEFED)">Mesure d\'audience</strong> — nous aide à améliorer le site et votre accompagnement.</span><input type="checkbox" data-vtc-measure' + chk + ' style="width:18px;height:18px;accent-color:var(--accent,#10E0A0);flex:none"></label>' +
         '<div style="text-align:right;margin-top:10px"><button type="button" data-vtc="save" style="' + btnA + '">Enregistrer mon choix</button></div>' +
       '</div>';
     d.body.appendChild(w);

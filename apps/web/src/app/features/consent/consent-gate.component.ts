@@ -27,17 +27,16 @@ const LEGAL_URL = 'https://tracky.vizyoagency.com/mentions-legales.html';
           <div class="cg-head">
             <span class="cg-badge"><lucide-icon [img]="ShieldCheck" [size]="22"></lucide-icon></span>
             <div>
-              <h1 id="cg-title" class="cg-title">Avant de commencer</h1>
-              <p class="cg-sub">Vos données et celles de votre flotte</p>
+              <h1 id="cg-title" class="cg-title">Bienvenue sur Vizyo Tracky</h1>
+              <p class="cg-sub">Un instant avant de démarrer</p>
             </div>
             <app-logo variant="icon" [size]="26" class="cg-logo" />
           </div>
 
           <p class="cg-lead">
-            Pour utiliser Vizyo Tracky, merci d'accepter nos conditions. Elles décrivent
-            les données traitées (position des véhicules, trajets, identités conducteurs,
-            journaux d'activité), pourquoi et combien de temps, ainsi que vos droits
-            (accès, rectification, effacement, opposition).
+            Merci de confirmer que vous acceptez nos conditions d'utilisation. Vos données
+            sont hébergées en France, sécurisées, et vous en gardez le contrôle à tout
+            moment (accès, rectification, suppression).
           </p>
 
           <label class="cg-check">
@@ -52,8 +51,7 @@ const LEGAL_URL = 'https://tracky.vizyoagency.com/mentions-legales.html';
           </label>
 
           <p class="cg-note">
-            En tant qu'exploitant, vous êtes responsable d'informer vos conducteurs
-            conformément au RGPD.
+            Pensez à informer vos conducteurs de l'utilisation du service.
           </p>
 
           @if (error()) { <p class="cg-error">{{ error() }}</p> }
