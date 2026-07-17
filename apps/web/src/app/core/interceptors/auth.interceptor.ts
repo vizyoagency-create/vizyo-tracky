@@ -4,6 +4,7 @@ import { Router } from '@angular/router';
 import { catchError, from, switchMap, throwError } from 'rxjs';
 import { activityContext } from '../services/activity-context';
 import { AuthService } from '../services/auth.service';
+import { ConsentService } from '../services/consent.service';
 import { RealtimeService } from '../services/realtime.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 
@@ -46,6 +47,7 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const router = inject(Router);
   const realtime = inject(RealtimeService);
   const toast = inject(ToastService);
+  const consent = inject(ConsentService);
 
   // V1.10 (Sprint 6) — withCredentials: true active l'envoi des cookies
   // httpOnly tracky_at / tracky_rt poses au login. Le backend les lit en
@@ -80,6 +82,17 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
 
   return next(req).pipe(
     catchError((error: HttpErrorResponse) => {
+      // Gate RGPD : le back renvoie 403 { code:'CONSENT_REQUIRED' } tant que l'accord
+      // n'est pas donné → on lève l'écran de consentement (backstop des appels HttpClient ;
+      // le check boot /consent/current reste le gate primaire).
+      if (
+        error.status === 403 &&
+        (error.error as { code?: string } | null)?.code === 'CONSENT_REQUIRED'
+      ) {
+        consent.require();
+        return throwError(() => error);
+      }
+
       if (error.status === 401 && auth.refreshToken) {
         // Tenter un refresh
         return from(auth.tryRefresh()).pipe(

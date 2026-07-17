@@ -399,7 +399,19 @@
   function vtSetConsent(v) {
     try { localStorage.setItem('vt-consent', v); } catch (e) {}
     var b = d.getElementById('vt-consent'); if (b && b.parentNode) b.parentNode.removeChild(b);
+    vtRecordConsent(v); // preuve serveur (IP côté serveur), NON gatée — accepter OU refuser est tracé
     if (v === 'granted') initTracking();
+  }
+  // Enregistre le choix de consentement côté serveur (preuve CNIL + IP) — strictement
+  // nécessaire, donc envoyé quel que soit le choix (indépendant du gate de mesure).
+  function vtRecordConsent(v) {
+    try {
+      var cfg = window.VT_CFG || {}; if (!cfg.consentApi) return;
+      var page = (location.pathname.replace(/\/$/, '').split('/').pop() || 'accueil').replace(/\.html$/, '');
+      var payload = JSON.stringify({ choice: v === 'granted' ? 'granted' : 'denied', sessionId: vtSid(), categories: { measure: v === 'granted' }, page: page });
+      if (navigator.sendBeacon) navigator.sendBeacon(cfg.consentApi, new Blob([payload], { type: 'application/json' }));
+      else fetch(cfg.consentApi, { method: 'POST', keepalive: true, mode: 'no-cors', headers: { 'Content-Type': 'application/json' }, body: payload });
+    } catch (e) {}
   }
   function showConsentBanner() {
     if (d.getElementById('vt-consent')) return;

@@ -44,6 +44,8 @@ import { InstallBannerComponent } from '../shared/ui/install-banner/install-bann
 import { PushPromptComponent } from '../shared/ui/push-prompt/push-prompt.component';
 import { BottomSheetComponent } from '../shared/ui/bottom-sheet/bottom-sheet.component';
 import { OnboardingWizardComponent } from '../features/onboarding/onboarding-wizard.component';
+import { ConsentGateComponent } from '../features/consent/consent-gate.component';
+import { ConsentService } from '../core/services/consent.service';
 import { BaanoolMapOverlayComponent } from '../features/baanool/baanool-map-overlay.component';
 import { MenuStateService } from '../core/services/menu-state.service';
 
@@ -63,7 +65,7 @@ interface NavGroup {
 @Component({
   selector: 'app-dashboard-layout',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, AlertsBellComponent, FleetSelectorComponent, LogoComponent, InstallBannerComponent, PushPromptComponent, BottomSheetComponent, OnboardingWizardComponent, BaanoolMapOverlayComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, AlertsBellComponent, FleetSelectorComponent, LogoComponent, InstallBannerComponent, PushPromptComponent, BottomSheetComponent, OnboardingWizardComponent, ConsentGateComponent, BaanoolMapOverlayComponent],
   template: `
     <a href="#main-content" class="skip-link">Aller au contenu principal</a>
     <div class="layout" [class.layout--fullscreen]="fullscreen()" [class.layout--ios-pwa]="isIosPwa" [class.layout--baanool]="isBaanoolMode()">
@@ -292,6 +294,7 @@ interface NavGroup {
       <app-install-banner />
       <app-push-prompt />
       <app-onboarding-wizard />
+      <app-consent-gate />
 
       <!-- V1.12 — Mode Baanool : overlay UI style Baanool affiche UNIQUEMENT
            sur la page /map. Boutons cercles flottants (burger, recentrer,
@@ -937,6 +940,7 @@ export class DashboardLayoutComponent {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly onboarding = inject(OnboardingService);
+  private readonly consent = inject(ConsentService);
   private readonly notif = inject(NotificationsApiService);
   /** V1.15 — Cache fleet pour les badges contextuels SUPER_ADMIN. */
   private readonly fleetCache = inject(FleetCacheService);
@@ -974,6 +978,9 @@ export class DashboardLayoutComponent {
     // V1.5 (Sprint J) — au mount du layout (= apres login), charger le profil
     // et ouvrir le wizard si onboardingCompletedAt est null.
     void this.onboarding.loadProfileAndDecide();
+    // Gate RGPD : lève l'écran de consentement obligatoire si la version courante
+    // n'a pas été acceptée (le back renvoie aussi 403 CONSENT_REQUIRED en secours).
+    void this.consent.load();
     // V1.8 (web-push-finalize) — bridge SW <-> client pose des le boot session,
     // pour que les actions "Acquitter" / "Voir" depuis une notif systeme soient
     // capturees meme si l'utilisateur n'a pas visite /account dans cette session.
