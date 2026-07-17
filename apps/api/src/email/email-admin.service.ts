@@ -6,8 +6,11 @@ import type { Env } from '../config/env.validation';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService, type EmailTemplateId } from './email.service';
 
-/** Métadonnées statiques des 7 modèles (le reste vient de l'agrégation EmailLog). */
-const TEMPLATE_META: {
+/** Métadonnées statiques des modèles (le reste vient de l'agrégation EmailLog).
+ *  DOIT rester aligné sur EmailTemplateId : tout modèle réellement envoyé doit y
+ *  figurer, sinon il apparaît « brut » (id sans libellé) dans le centre e-mails et
+ *  n'est ni prévisualisable ni testable. */
+export const TEMPLATE_META: {
   id: EmailTemplateId;
   label: string;
   category: string;
@@ -18,9 +21,14 @@ const TEMPLATE_META: {
 }[] = [
   { id: 'invitation', label: 'Invitation', category: 'Accès', subject: 'Vous êtes invité à rejoindre {flotte}', trigger: 'Un admin invite un membre' },
   { id: 'password_reset', label: 'Réinitialisation MDP', category: 'Sécurité', subject: 'Réinitialisation de votre mot de passe', trigger: 'Demande « mot de passe oublié »', noOpenTracking: true },
+  { id: 'device_verification', label: 'Code nouvel appareil', category: 'Sécurité', subject: 'Votre code de connexion : {code}', trigger: 'Connexion depuis un appareil non reconnu (2FA)', noOpenTracking: true },
+  { id: 'two_factor_disable', label: 'Désactivation 2FA', category: 'Sécurité', subject: 'Code pour désactiver la double authentification : {code}', trigger: 'Demande de désactivation du 2FA', noOpenTracking: true },
   { id: 'weekly_report', label: 'Rapport hebdomadaire', category: 'Rapport', subject: 'Rapport hebdomadaire — {flotte}', trigger: 'Cron · lundi 08:00' },
   { id: 'alert', label: 'Alerte véhicule', category: 'Alerte', subject: '[Tracky] {alerte} — {plaque}', trigger: 'Alerte temps réel' },
   { id: 'lead', label: 'Nouveau lead', category: 'Interne', subject: 'Nouveau lead Tracky — {société}', trigger: 'Formulaire landing page' },
+  { id: 'lead_welcome', label: 'Bienvenue prospect', category: 'Commercial', subject: 'Votre présentation Vizyo Tracky — et mes coordonnées', trigger: '1re demande d\'un prospect (landing page)' },
+  { id: 'quote_signed', label: 'Devis signé (interne)', category: 'Interne', subject: 'Devis signé en ligne — {société}', trigger: 'Un prospect valide « bon pour accord »' },
+  { id: 'quote_client', label: 'Copie devis client', category: 'Commercial', subject: 'Votre devis Vizyo Tracky — récapitulatif', trigger: 'Copie envoyée au prospect à la signature' },
   { id: 'audio_activation', label: 'Écoute audio activée', category: 'Conformité', subject: 'Écoute audio activée — obligations', trigger: 'Activation micro embarqué' },
   { id: 'audio_info', label: 'Mode assistance', category: 'Nouveauté', subject: 'Nouvelle fonction « Mode assistance »', trigger: 'Présentation par le prestataire' },
   { id: 'installation_slot_requested', label: 'Demande de créneau', category: 'Installation', subject: 'Demande de créneau d\'installation — {flotte}', trigger: 'Client réserve via un lien public' },
@@ -165,7 +173,7 @@ export class EmailAdminService {
     };
   }
 
-  /** Métadonnées des 7 modèles + agrégats 30 j (volume, taux d'ouverture, dernier envoi). */
+  /** Métadonnées des modèles + agrégats 30 j (volume, taux d'ouverture, dernier envoi). */
   async templates() {
     const since = new Date(Date.now() - 30 * DAY_MS);
     const logs = await this.prisma.emailLog.findMany({

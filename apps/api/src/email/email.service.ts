@@ -1058,6 +1058,19 @@ ${this.commercialSignatureText()}`;
           resetUrl: `${appBase}/reset?token=apercu`,
           expiresInMinutes: 30,
         });
+      case 'device_verification':
+        return this.buildDeviceVerificationEmail({
+          recipientName: 'Camille',
+          code: '482913',
+          expiresInMinutes: 10,
+          deviceLabel: 'Chrome · Windows',
+        });
+      case 'two_factor_disable':
+        return this.buildTwoFactorDisableEmail({
+          recipientName: 'Camille',
+          code: '482913',
+          expiresInMinutes: 10,
+        });
       case 'audio_activation':
         return this.buildAudioActivationEmail({ fleetName, activatedBy: 'Julien Marchetti' });
       case 'audio_info':

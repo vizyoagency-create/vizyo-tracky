@@ -21,9 +21,14 @@ type Tab = 'suivi' | 'templates' | 'deliver';
 const TPL_PRESENT: Record<string, { icon: string; tone: 'green' | 'red' | 'amber'; desc: string }> = {
   invitation: { icon: '✉', tone: 'green', desc: 'Invitation à rejoindre une flotte avec création de mot de passe.' },
   password_reset: { icon: '🔐', tone: 'green', desc: 'Lien sécurisé de réinitialisation, valable 30 minutes.' },
+  device_verification: { icon: '📱', tone: 'green', desc: 'Code de connexion à la vérification d’un nouvel appareil (2FA).' },
+  two_factor_disable: { icon: '⚠', tone: 'amber', desc: 'Code de confirmation pour désactiver la double authentification.' },
   weekly_report: { icon: '📊', tone: 'green', desc: 'Synthèse hebdomadaire de flotte, chaque lundi 08:00.' },
   alert: { icon: '⚠', tone: 'red', desc: 'Notification temps réel (excès, sortie de zone, coupure).' },
   lead: { icon: '🎯', tone: 'green', desc: 'Notification interne équipe Vizyo à chaque prospect LP.' },
+  lead_welcome: { icon: '👋', tone: 'green', desc: 'E-mail de bienvenue personnel au prospect (présentation + contact).' },
+  quote_signed: { icon: '📝', tone: 'green', desc: 'Notification interne : un prospect a signé un devis en ligne.' },
+  quote_client: { icon: '🧾', tone: 'green', desc: 'Copie du récapitulatif de devis envoyée au prospect.' },
   audio_activation: { icon: '🔊', tone: 'amber', desc: 'Rappel des obligations légales à l’activation du micro.' },
   audio_info: { icon: '🎧', tone: 'green', desc: 'Présentation de la fonction d’assistance en cas d’accident.' },
 };
