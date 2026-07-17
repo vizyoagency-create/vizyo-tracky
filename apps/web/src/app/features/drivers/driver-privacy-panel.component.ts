@@ -1,4 +1,4 @@
-import { Component, DestroyRef, inject, input, OnInit, output, signal } from '@angular/core';
+import { Component, computed, DestroyRef, inject, input, OnInit, output, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DatePipe } from '@angular/common';
 import { CalendarClock, Eye, EyeOff, LoaderCircle, LucideAngularModule, ShieldCheck, X } from 'lucide-angular';
@@ -62,10 +62,14 @@ const REASON_LABEL: Record<string, string> = {
             }
           </div>
 
-          <button class="dp-toggle" [class.dp-toggle--on]="isPrivate()" [disabled]="busy()" (click)="toggle()">
-            <lucide-icon [img]="isPrivate() ? Eye : EyeOff" [size]="16" />
-            {{ isPrivate() ? 'Reprendre le suivi' : 'Passer en privé (usage personnel)' }}
-          </button>
+          @if (action().kind === 'none') {
+            <div class="dp-auto"><lucide-icon [img]="isPrivate() ? EyeOff : Eye" [size]="14" /> {{ action().note }}</div>
+          } @else {
+            <button class="dp-toggle" [class.dp-toggle--on]="action().kind === 'resume'" [disabled]="busy()" (click)="toggle()">
+              <lucide-icon [img]="action().kind === 'resume' ? Eye : EyeOff" [size]="16" />
+              {{ action().label }}
+            </button>
+          }
 
           @if (history().length) {
             <div class="dp-hist">
@@ -109,6 +113,7 @@ const REASON_LABEL: Record<string, string> = {
     .dp-toggle { width:100%; display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:13px; border-radius:12px; border:1px solid var(--tracky,#10E0A0); background:var(--tracky,#10E0A0); color:#04130D; font-size:14px; font-weight:700; cursor:pointer; }
     .dp-toggle--on { background:transparent; color:var(--fg-secondary,#9BA5A1); border-color:var(--border-subtle,rgba(255,255,255,.16)); }
     .dp-toggle:disabled { opacity:.55; cursor:default; }
+    .dp-auto { display:flex; align-items:center; gap:8px; padding:12px; border-radius:11px; background:var(--bg-secondary,#101514); border:1px dashed var(--border-subtle,rgba(255,255,255,.14)); font-size:12.5px; line-height:1.4; color:var(--fg-tertiary,#9BA5A1); }
     .dp-hist { margin-top:16px; }
     .dp-hist-h { font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--fg-tertiary,#69736E); margin-bottom:6px; }
     .dp-hrow { display:flex; align-items:center; gap:7px; padding:6px 0; font-size:12.5px; color:var(--fg-secondary,#9BA5A1); border-top:1px solid var(--border-subtle,rgba(255,255,255,.06)); }
@@ -139,6 +144,24 @@ export class DriverPrivacyPanelComponent implements OnInit {
 
   protected reasonLabel(): string { return REASON_LABEL[this.effReason()] ?? this.effReason(); }
 
+  /**
+   * Action de bascule proposée au conducteur selon l'état effectif :
+   * - MANUAL (privé qu'il a activé) → il peut reprendre le suivi ;
+   * - NO_SCHEDULE (aucun cadre) → il peut passer en privé (usage personnel) ;
+   * - WORK_HOURS → suivi obligatoire, aucune bascule ;
+   * - OUT_OF_HOURS → privé automatique, le suivi reprend seul à la prochaine plage (aucune bascule).
+   * Le « je travaille un dimanche » se gère côté employeur (date spéciale du cadre), pas ici.
+   */
+  protected readonly action = computed<{ kind: 'privatize' | 'resume' | 'none'; label?: string; note?: string }>(() => {
+    switch (this.effReason()) {
+      case 'MANUAL': return { kind: 'resume', label: 'Reprendre le suivi' };
+      case 'NO_SCHEDULE': return { kind: 'privatize', label: 'Passer en privé (usage personnel)' };
+      case 'WORK_HOURS': return { kind: 'none', note: 'Temps de travail : suivi actif (non désactivable).' };
+      case 'OUT_OF_HOURS': return { kind: 'none', note: 'Privé automatique (hors travail). Le suivi reprend à votre prochaine plage.' };
+      default: return { kind: 'none', note: 'Suivi actif.' };
+    }
+  });
+
   ngOnInit(): void {
     this.load();
     this.pmApi.getHistory(this.vehicleId(), 15).pipe(takeUntilDestroyed(this.destroyRef))
@@ -165,8 +188,9 @@ export class DriverPrivacyPanelComponent implements OnInit {
   }
 
   protected toggle(): void {
-    if (this.busy()) return;
-    const target = !this.isPrivate();
+    const a = this.action();
+    if (this.busy() || a.kind === 'none') return;
+    const target = a.kind === 'privatize'; // privatize → privé (true) ; resume → suivi (false)
     this.busy.set(true);
     this.pmApi.set(this.vehicleId(), target).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => {
