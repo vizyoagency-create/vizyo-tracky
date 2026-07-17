@@ -36,7 +36,7 @@ import {
               <thead>
                 <tr>
                   <th>Utilisateur</th><th>Rôle</th><th>CGU</th>
-                  <th>Confidentialité</th><th>IP</th><th>Conforme</th>
+                  <th>Confidentialité</th><th>IP</th><th>Notif</th><th>GPS</th><th>Conforme</th>
                 </tr>
               </thead>
               <tbody>
@@ -47,6 +47,8 @@ import {
                     <td>{{ u.cgu.accepted ? fmt(u.cgu.at) : '—' }}</td>
                     <td>{{ u.privacy.accepted ? fmt(u.privacy.at) : '—' }}</td>
                     <td class="ca-mono">{{ u.cgu.ip || u.privacy.ip || '—' }}</td>
+                    <td>{{ permTxt(u.notif) }}</td>
+                    <td>{{ permTxt(u.geo) }}</td>
                     <td>
                       @if (u.compliant) {
                         <span class="ca-badge ca-ok">À jour</span>
@@ -158,5 +160,9 @@ export class ConsentAdminComponent {
     return Number.isNaN(d.getTime())
       ? '—'
       : d.toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+  }
+
+  permTxt(v: boolean | null): string {
+    return v === null ? '—' : v ? 'Oui' : 'Non';
   }
 }

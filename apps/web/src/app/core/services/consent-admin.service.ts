@@ -16,6 +16,9 @@ export interface AdminConsentUser {
   cgu: AdminConsentDoc;
   privacy: AdminConsentDoc;
   compliant: boolean;
+  /** null = permission jamais demandée, true = accordée, false = refusée. */
+  notif: boolean | null;
+  geo: boolean | null;
 }
 export interface AdminLpConsent {
   id: string;

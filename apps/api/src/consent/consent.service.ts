@@ -116,12 +116,20 @@ export class ConsentService {
           where: { version: CONSENT_VERSION, accepted: true },
           select: { docType: true, acceptedAt: true, ip: true },
         },
+        devicePermissions: { select: { kind: true, granted: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
     return users.map((u) => {
       const cgu = u.consents.find((c) => c.docType === 'CGU') ?? null;
       const privacy = u.consents.find((c) => c.docType === 'PRIVACY') ?? null;
+      // État d'une permission device : null = jamais demandée, true = accordée sur au
+      // moins un appareil, false = demandée mais refusée partout.
+      const permState = (kind: string): boolean | null => {
+        const rows = u.devicePermissions.filter((p) => p.kind === kind);
+        if (rows.length === 0) return null;
+        return rows.some((p) => p.granted);
+      };
       return {
         userId: u.id,
         email: u.email,
@@ -131,6 +139,8 @@ export class ConsentService {
         cgu: cgu ? { accepted: true, at: cgu.acceptedAt, ip: cgu.ip } : { accepted: false },
         privacy: privacy ? { accepted: true, at: privacy.acceptedAt, ip: privacy.ip } : { accepted: false },
         compliant: !!cgu && !!privacy,
+        notif: permState('PUSH'),
+        geo: permState('GEOLOCATION'),
       };
     });
   }
