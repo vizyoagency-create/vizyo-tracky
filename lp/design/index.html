@@ -48,12 +48,68 @@ summary::-webkit-details-marker{display:none}
 .vt-underline::after{content:"";position:absolute;left:0;bottom:0;height:2px;width:100%;background:linear-gradient(90deg,var(--accent),#4d75ff,var(--accent));background-size:200% 100%;border-radius:2px;animation:vt-uflow 3s linear infinite}
 @keyframes vt-uflow{to{background-position:200% 50%}}
 @media (prefers-reduced-motion:reduce){.vt-underline::after{animation:none}}
-.vt-herovid{transition:opacity .6s ease}
-[data-theme="light"] .vt-herovid{opacity:0!important}
-@media (prefers-reduced-motion:reduce){.vt-herovid{display:none}}
 @media (max-width:900px){.vt-nav{display:none!important}.vt-hero-grid{grid-template-columns:1fr!important}.vt-2col{grid-template-columns:1fr!important}.vt-burger{display:inline-flex!important}}
 @media (max-width:640px){.vt-grid3,.vt-grid2{grid-template-columns:1fr!important}.vt-stats{grid-template-columns:repeat(2,1fr)!important}.vt-sec{padding:72px 0!important}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+/* ── Hero « carte immersive » (refonte 2026-07 : remplace les 2 vidéos) ── */
+[data-theme="dark"]{--violet:#9B8CE8;--violet-soft:rgba(155,140,232,.18)}
+[data-theme="light"]{--violet:#6C5CD0;--violet-soft:rgba(108,92,208,.14)}
+@keyframes vt-rise{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}
+@keyframes vt-kb{0%{transform:scale(1.05) translate(0,0)}100%{transform:scale(1.12) translate(-1%,-1.4%)}}
+@keyframes vt-evt{0%,8%{opacity:0;transform:translateX(-50%) translateY(7px) scale(.94)}17%,80%{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}92%,100%{opacity:0;transform:translateX(-50%) translateY(-4px) scale(.97)}}
+.vt-rise{animation:vt-rise .85s cubic-bezier(.16,1,.3,1) both}
+.hero2{position:relative;overflow:hidden;min-height:600px}
+.hero2-map{position:absolute;inset:0;overflow:hidden;z-index:0}
+.hero2-map img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:58% 46%;filter:saturate(.98);transform-origin:60% 48%;animation:vt-kb 32s ease-in-out infinite alternate}
+.hero2-veil-h{position:absolute;inset:0;z-index:1;background:linear-gradient(90deg,var(--bg) 30%,color-mix(in srgb,var(--bg) 55%,transparent) 52%,transparent 80%)}
+.hero2-veil-v{position:absolute;inset:0;z-index:1;background:linear-gradient(180deg,var(--bg) 0%,transparent 15%,transparent 76%,color-mix(in srgb,var(--bg) 72%,transparent) 100%)}
+.hero2-fx{position:absolute;inset:0;pointer-events:none;z-index:1}
+.hero2-fx .mk{position:absolute;transform:translate(-50%,-50%)}
+.hero2-fx .mk .ring{position:absolute;border-radius:50%}
+.hero2-fx .mk .dot{position:absolute;border-radius:50%;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4)}
+.mk-station{left:58%;top:23%}
+.mk-station .ring{left:50%;top:50%;width:32px;height:32px;transform:translate(-50%,-50%);background:var(--violet);animation:vt-ping 2.6s ease-out infinite}
+.mk-station .dot{left:50%;top:50%;width:16px;height:16px;transform:translate(-50%,-50%);background:var(--violet)}
+.station-label{position:absolute;left:50%;top:26px;transform:translateX(-50%);display:flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:6px 10px;box-shadow:0 14px 34px -12px rgba(0,0,0,.55);white-space:nowrap;animation:vt-evt 6.5s ease-in-out infinite}
+.station-label .ico{display:flex;color:var(--violet)}
+.station-label .ok{display:flex;color:var(--accent)}
+.station-label .lbl{font-size:.72rem;color:var(--tx2)}
+.station-label strong{color:var(--tx);font-weight:700}
+.mk-green{left:51%;top:61%;width:26px;height:26px}
+.mk-green .ring{inset:0;background:var(--accent);animation:vt-ping 2.1s ease-out .5s infinite}
+.mk-green .dot{inset:8px;background:var(--accent)}
+.mk-amber{left:63%;top:57%;width:22px;height:22px}
+.mk-amber .ring{inset:0;background:var(--amber);animation:vt-ping 2.1s ease-out 1.1s infinite}
+.mk-amber .dot{inset:7px;background:var(--amber)}
+.hero2-cta{display:inline-flex;align-items:center;gap:8px;background:var(--accent-soft);color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 34%,transparent);font-weight:700;font-size:.98rem;padding:13px 22px;border-radius:11px;transition:background .2s}
+.hero2-cta:hover{background:color-mix(in srgb,var(--accent) 22%,transparent)}
+.hero2-ghost{display:inline-flex;align-items:center;gap:7px;color:var(--tx2);font-weight:600;font-size:.98rem;transition:color .2s}
+.hero2-ghost:hover{color:var(--tx)}
+.live-panel{margin-left:auto;max-width:320px;background:color-mix(in srgb,var(--surface) 88%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--border);border-radius:16px;padding:16px;box-shadow:0 24px 60px -20px rgba(0,0,0,.55)}
+.live-panel *{white-space:nowrap}
+.lp-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.lp-head .title{font-weight:800;font-size:.95rem;color:var(--tx)}
+.lp-head .count{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;color:var(--tx2)}
+.lp-pulse{width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px var(--accent-soft);animation:vt-blink 1.6s ease-in-out infinite}
+.lp-rows{display:flex;flex-direction:column;gap:9px}
+.lp-row{display:flex;align-items:center;gap:10px}
+.lp-row .st{width:9px;height:9px;border-radius:50%;flex:none}
+.lp-row .plate{font-family:'JetBrains Mono',monospace;font-size:.78rem;font-weight:600;color:var(--tx)}
+.lp-row .spd{margin-left:auto;font-size:.78rem;font-weight:700;color:var(--tx2)}
+.lp-row .idle{margin-left:auto;font-size:.72rem;font-weight:600;color:var(--tx3)}
+.lp-events{margin-top:13px;padding-top:12px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:9px}
+.lp-ev{display:flex;align-items:center;gap:8px}
+.lp-ev .badge{display:flex;width:26px;height:26px;border-radius:7px;align-items:center;justify-content:center;flex:none}
+.lp-ev .badge.violet{background:var(--violet-soft);color:var(--violet)}
+.lp-ev .badge.amber{background:rgba(245,179,61,.16);color:var(--amber)}
+.lp-ev .evtx{font-size:.74rem;color:var(--tx2);line-height:1.3;white-space:normal}
+.lp-ev .evtx strong{color:var(--tx);font-weight:700}
+.lp-ev .when{margin-left:auto;font-size:.64rem;color:var(--tx3)}
+.btn-login{display:inline-flex;align-items:center;gap:7px;color:var(--tx2);font-weight:600;font-size:.87rem;padding:9px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface);transition:color .2s,border-color .2s;white-space:nowrap}
+.btn-login:hover{color:var(--tx);border-color:var(--border2)}
+@media (max-width:1200px){.hero2-fx{display:none}}
+@media (max-width:900px){.live-panel{margin:20px 0 0;max-width:none}.hero2-veil-h{background:linear-gradient(180deg,color-mix(in srgb,var(--bg) 92%,transparent),color-mix(in srgb,var(--bg) 62%,transparent))}}
+@media (max-width:600px){.hero2-ctarow{flex-direction:column;align-items:stretch}}
 </style>
 <script>(function(){try{var t=localStorage.getItem('vt-theme')||'dark';document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme='dark'}})();</script>
 </helmet>
@@ -80,6 +136,7 @@ summary::-webkit-details-marker{display:none}
 <svg class="ic-moon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
 <svg class="ic-sun" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
 </button>
+<a class="btn-login vt-nav" href="https://app-tracky.vizyoagency.com/" rel="noopener" title="Accéder à l'application"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>Connexion</a>
 <a href="#demo" class="vt-nav" style="display:inline-flex;align-items:center;gap:7px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:.9rem;padding:10px 18px;border-radius:10px;white-space:nowrap;transition:transform .2s,box-shadow .2s;box-shadow:0 6px 18px var(--accent-soft)" style-hover="transform:translateY(-1px)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Demander une démo</a>
 <button class="vt-burger" onClick="{{ toggleMenu }}" aria-label="Menu" style="display:none;align-items:center;justify-content:center;width:38px;height:38px;border-radius:10px;border:1px solid var(--border);background:var(--surface);color:var(--tx);cursor:pointer">
 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
@@ -92,6 +149,7 @@ summary::-webkit-details-marker{display:none}
 <a href="#etapes" onClick="{{ toggleMenu }}" style="padding:11px 8px;font-weight:600;color:var(--tx2);border-radius:8px">Comment ça marche</a>
 <a href="#economies" onClick="{{ toggleMenu }}" style="padding:11px 8px;font-weight:600;color:var(--tx2);border-radius:8px">Économies</a>
 <a href="#tarifs" onClick="{{ toggleMenu }}" style="padding:11px 8px;font-weight:600;color:var(--tx2);border-radius:8px">Tarifs</a>
+<a href="https://app-tracky.vizyoagency.com/" rel="noopener" style="padding:11px 8px;font-weight:600;color:var(--tx2);border-radius:8px;display:flex;align-items:center;gap:8px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>Connexion</a>
 <a href="#demo" onClick="{{ toggleMenu }}" style="margin-top:6px;display:flex;align-items:center;justify-content:center;gap:8px;background:var(--accent);color:var(--accent-ink);font-weight:700;padding:12px;border-radius:10px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Demander une démo</a>
 </div>
 </header>
@@ -99,25 +157,35 @@ summary::-webkit-details-marker{display:none}
 <main id="top">
 
 <!-- ░░ HERO ░░ -->
-<section class="vt-sec" style="position:relative;overflow:hidden;padding:96px 0 88px">
-<video class="vt-herovid" autoplay muted loop playsinline preload="auto" aria-hidden="true" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;opacity:.42;pointer-events:none"><source src="assets/video/hero-bg.mp4" type="video/mp4"></video>
-<div style="position:absolute;inset:0;z-index:1;pointer-events:none;background:radial-gradient(ellipse 105% 82% at 50% 32%,transparent 28%,var(--bg) 92%)"></div>
-<div style="position:absolute;inset:0;background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:46px 46px;mask-image:radial-gradient(ellipse 80% 65% at 70% 30%,#000 40%,transparent 100%);-webkit-mask-image:radial-gradient(ellipse 80% 65% at 70% 30%,#000 40%,transparent 100%);z-index:1"></div>
-<div style="position:absolute;top:-180px;right:-120px;width:620px;height:620px;background:radial-gradient(circle,var(--accent-soft),transparent 65%);pointer-events:none;z-index:1"></div>
-<div style="max-width:1200px;margin:0 auto;padding:0 32px;position:relative;z-index:2">
-<div class="vt-hero-grid" style="display:grid;grid-template-columns:1.05fr .95fr;gap:54px;align-items:center">
-<div data-reveal>
+<section class="hero2">
+<!-- Fond : vraie carte de flotte (agglomération de Toulouse), zoom lent. AVIF→WebP→JPG, image LCP. -->
+<div class="hero2-map"><picture>
+<source srcset="assets/img/screen-carte-toulouse.avif" type="image/avif">
+<source srcset="assets/img/screen-carte-toulouse.webp" type="image/webp">
+<img src="assets/img/screen-carte-toulouse.jpg" alt="Carte de la flotte Vizyo Tracky en temps réel — agglomération de Toulouse" width="1920" height="1032" loading="eager" fetchpriority="high" decoding="async">
+</picture></div>
+<div class="hero2-veil-h"></div>
+<div class="hero2-veil-v"></div>
+<!-- Animations sur la carte (masquées < 1200px) -->
+<div class="hero2-fx" aria-hidden="true">
+<div class="mk mk-station"><span class="ring"></span><span class="dot"></span>
+<div class="station-label"><span class="ico"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="15" y2="22"/><line x1="4" y1="9" x2="14" y2="9"/><path d="M14 22V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v18"/><path d="M14 13h2a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2 2 2 0 0 0 2-2V9.83a2 2 0 0 0-.59-1.42L18 5"/></svg></span><span class="lbl"><strong>Station-service</strong> enregistrée</span><span class="ok"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span></div>
+</div>
+<span class="mk mk-green"><span class="ring"></span><span class="dot"></span></span>
+<span class="mk mk-amber"><span class="ring"></span><span class="dot"></span></span>
+</div>
+<div style="max-width:1200px;margin:0 auto;padding:70px 32px 74px;position:relative;z-index:2">
+<div class="vt-hero-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:44px;align-items:center;min-height:452px">
+<div class="vt-rise">
 <div style="display:inline-flex;align-items:center;gap:13px;margin-bottom:24px">
 <span style="width:30px;height:2px;background:var(--accent);border-radius:2px"></span>
 <span style="font-family:'JetBrains Mono',monospace;font-size:.72rem;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--tx2)">GPS &amp; gestion de flotte</span>
 </div>
 <h1 style="font-size:clamp(2.4rem,4.8vw,3.7rem);font-weight:800;letter-spacing:-.03em;line-height:1.03;margin:0 0 22px">Suivez et sécurisez votre flotte, <span style="color:var(--accent)">en temps réel.</span></h1>
 <p style="font-size:1.12rem;line-height:1.65;color:var(--tx2);max-width:30rem;margin:0 0 32px">Géolocalisation live, coupure moteur à distance, alertes et rapports — sur une plateforme française que <strong style="color:var(--tx);font-weight:700">nous installons et gérons</strong> pour vous.</p>
-<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:30px">
-<a href="#demo" style="display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:.98rem;padding:14px 24px;border-radius:11px;box-shadow:0 8px 24px var(--accent-soft);transition:transform .2s" style-hover="transform:translateY(-2px)">
-<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Demander une démo</a>
-<a href="fonctionnalites.html" style="display:inline-flex;align-items:center;gap:8px;background:transparent;color:var(--tx);font-weight:600;font-size:.98rem;padding:14px 22px;border-radius:11px;border:1px solid var(--border2);transition:border-color .2s" style-hover="border-color:var(--accent)">Voir les fonctionnalités
-<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+<div class="hero2-ctarow" style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-bottom:30px">
+<a class="hero2-cta" href="#demo"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Demander une démo</a>
+<a class="hero2-ghost" href="fonctionnalites.html">Voir les fonctionnalités <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></a>
 </div>
 <div style="display:flex;gap:22px;flex-wrap:wrap;font-size:.86rem;color:var(--tx2)">
 <span style="display:inline-flex;align-items:center;gap:7px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Installation sous 48h</span>
@@ -126,30 +194,33 @@ summary::-webkit-details-marker{display:none}
 </div>
 </div>
 
-<!-- PRODUCT VIDEO -->
-<div data-reveal style="position:relative">
-<div style="position:absolute;inset:-9% -7%;background:radial-gradient(circle at 55% 40%,var(--accent-soft),transparent 68%);filter:blur(26px);pointer-events:none"></div>
-<div style="position:relative;border-radius:18px;overflow:hidden;border:1px solid var(--border2);background:#050706;box-shadow:var(--shadow);animation:vt-float 6.5s ease-in-out infinite">
-<video autoplay muted loop playsinline preload="auto" style="display:block;width:100%;height:100%;aspect-ratio:16/10;object-fit:cover"><source src="assets/video/feat-demo.mp4" type="video/mp4"></video>
-<div style="position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(0,0,0,.28),transparent 34%,transparent 52%,rgba(0,0,0,.6))"></div>
-<div style="position:absolute;top:14px;left:14px;display:flex;align-items:center;gap:7px;background:rgba(6,10,9,.6);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.16);border-radius:999px;padding:6px 12px">
-<span style="width:7px;height:7px;border-radius:50%;background:#10E0A0;box-shadow:0 0 0 4px rgba(16,224,160,.22);animation:vt-blink 1.6s ease-in-out infinite"></span>
-<span style="font-size:.72rem;font-weight:700;color:#fff;white-space:nowrap">Plateforme en direct</span>
+<!-- Colonne panneau : preuve produit vivante (Suivi temps réel) -->
+<div style="position:relative">
+<div class="live-panel vt-rise" style="animation-delay:.14s">
+<div class="lp-head"><span class="title">Suivi temps réel</span><span class="count"><span class="lp-pulse"></span>30 actifs</span></div>
+<div class="lp-rows">
+<div class="lp-row"><span class="st" style="background:#10E0A0"></span><span class="plate">GT-482-AL</span><span class="spd"><span data-spd>42</span> km/h</span></div>
+<div class="lp-row"><span class="st" style="background:#F5B33D"></span><span class="plate">DK-119-TR</span><span class="spd"><span data-spd>51</span> km/h</span></div>
+<div class="lp-row"><span class="st" style="background:#6b7280"></span><span class="plate">AB-204-CD</span><span class="idle">à l'arrêt</span></div>
 </div>
-<div style="position:absolute;bottom:14px;left:14px;display:flex;align-items:center;gap:9px;background:rgba(6,10,9,.58);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.13);border-radius:11px;padding:9px 12px">
-<span style="display:flex;width:28px;height:28px;border-radius:8px;background:rgba(16,224,160,.18);align-items:center;justify-content:center;color:#10E0A0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 17h14M5 17l1.5-5h11L19 17M7 12V8h10v4"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/></svg></span>
-<div><div style="font-size:.74rem;font-weight:700;color:#fff">14 véhicules actifs</div><div style="font-size:.62rem;color:rgba(255,255,255,.62)">Occitanie · temps réel</div></div>
+<div class="lp-events">
+<div class="lp-ev"><span class="badge violet"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="15" y2="22"/><line x1="4" y1="9" x2="14" y2="9"/><path d="M14 22V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v18"/><path d="M14 13h2a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2 2 2 0 0 0 2-2V9.83a2 2 0 0 0-.59-1.42L18 5"/></svg></span><span class="evtx"><strong>Station-service</strong> enregistrée</span><span class="when">à l'instant</span></div>
+<div class="lp-ev"><span class="badge amber"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></span><span class="evtx"><strong>Alerte vitesse</strong> · Kangoo 04</span></div>
 </div>
-</div>
-<!-- floating alert chip -->
-<div style="position:absolute;bottom:-16px;right:-14px;display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:11px 14px;box-shadow:var(--shadow);animation:vt-float 5s ease-in-out infinite">
-<span style="display:flex;width:30px;height:30px;border-radius:8px;background:rgba(245,179,61,.16);align-items:center;justify-content:center;color:var(--amber)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></span>
-<div><div style="font-size:.74rem;font-weight:700">Alerte vitesse</div><div style="font-size:.65rem;color:var(--tx2)">Kangoo 04 · à l'instant</div></div>
 </div>
 </div>
 </div>
 </div>
 </section>
+<script>
+/* Hero — les vitesses du panneau évoluent (illustratif, pas de vraie donnée). Coupé sous prefers-reduced-motion. */
+(function(){
+  try{ if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return; }catch(e){}
+  var seq=[42,47,51,44,38,49,53,41], i=0, els=document.querySelectorAll('[data-spd]');
+  if(!els.length) return;
+  setInterval(function(){ i=(i+1)%seq.length; els.forEach(function(el,k){ el.textContent=seq[(i+k*3)%seq.length]; }); },1900);
+})();
+</script>
 
 <!-- ░░ DEMANDE / DÉMO — remontée en haut (les visiteurs ne scrollent pas jusqu'en bas). Remplie par DEMO_SECTION au build. ░░ -->
 <section id="demo"></section>
