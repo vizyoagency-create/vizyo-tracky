@@ -18,10 +18,21 @@ import type { Env } from '../config/env.validation';
 // Both : httpOnly (pas lisible par JS, defense XSS), secure en prod (HTTPS only),
 // sameSite=lax (compatible OAuth-like + protege contre CSRF basique).
 const REFRESH_COOKIE_NAME = 'tracky_rt';
+// « Rester connecté » : marqueur (httpOnly) pour préserver le choix lors du refresh
+// (rotation) — on ne le rend pas persistant si l'utilisateur n'a pas coché.
+const REMEMBER_COOKIE_NAME = 'tracky_rem';
 const ACCESS_TTL_S = 15 * 60;
 const REFRESH_TTL_S = 30 * 24 * 60 * 60;
 
-function setAuthCookies(res: Response, accessToken: string, refreshToken: string): void {
+// remember=true → cookies PERSISTANTS (survivent à la fermeture du navigateur, 30j
+// pour le refresh). remember=false → cookies de SESSION (pas de maxAge : disparaissent
+// à la fermeture) — pour un poste partagé.
+function setAuthCookies(
+  res: Response,
+  accessToken: string,
+  refreshToken: string,
+  remember: boolean,
+): void {
   const isProd = process.env.NODE_ENV === 'production';
   const common = {
     httpOnly: true,
@@ -29,13 +40,15 @@ function setAuthCookies(res: Response, accessToken: string, refreshToken: string
     sameSite: 'lax' as const,
     path: '/',
   };
-  res.cookie(ACCESS_COOKIE_NAME, accessToken, { ...common, maxAge: ACCESS_TTL_S * 1000 });
-  res.cookie(REFRESH_COOKIE_NAME, refreshToken, { ...common, maxAge: REFRESH_TTL_S * 1000 });
+  res.cookie(ACCESS_COOKIE_NAME, accessToken, remember ? { ...common, maxAge: ACCESS_TTL_S * 1000 } : { ...common });
+  res.cookie(REFRESH_COOKIE_NAME, refreshToken, remember ? { ...common, maxAge: REFRESH_TTL_S * 1000 } : { ...common });
+  res.cookie(REMEMBER_COOKIE_NAME, remember ? '1' : '0', remember ? { ...common, maxAge: REFRESH_TTL_S * 1000 } : { ...common });
 }
 
 function clearAuthCookies(res: Response): void {
   res.clearCookie(ACCESS_COOKIE_NAME, { path: '/' });
   res.clearCookie(REFRESH_COOKIE_NAME, { path: '/' });
+  res.clearCookie(REMEMBER_COOKIE_NAME, { path: '/' });
 }
 
 @Controller('auth')
@@ -73,8 +86,9 @@ export class AuthController {
     // V1.10 (Sprint 6) — pose les cookies httpOnly. Le body continue de
     // contenir les tokens pour la backward compat des clients legacy /
     // SDK externes (header Authorization). Le frontend Tracky n'utilise
-    // que les cookies via withCredentials.
-    setAuthCookies(res, result.accessToken, result.refreshToken);
+    // que les cookies via withCredentials. « Rester connecté » (défaut true)
+    // pilote la persistance des cookies.
+    setAuthCookies(res, result.accessToken, result.refreshToken, dto.remember !== false);
     return result;
   }
 
@@ -93,7 +107,9 @@ export class AuthController {
       throw new BadRequestException('Refresh token absent (ni cookie ni body)');
     }
     const result = await this.authClient.refresh(refreshToken);
-    setAuthCookies(res, result.accessToken, result.refreshToken);
+    // Préserve le choix « rester connecté » à la rotation (défaut true si marqueur absent).
+    const remember = (req.cookies?.[REMEMBER_COOKIE_NAME] ?? '1') !== '0';
+    setAuthCookies(res, result.accessToken, result.refreshToken, remember);
     return result;
   }
 

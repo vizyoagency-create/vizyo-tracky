@@ -109,7 +109,17 @@ import { ThemeService } from '../../core/theme/theme.service';
           </div>
         </div>
 
-        <div class="flex justify-end">
+        <div class="flex items-center justify-between gap-3">
+          <label class="flex items-center gap-2 cursor-pointer select-none text-[13px] text-fg-secondary">
+            <input
+              type="checkbox"
+              [(ngModel)]="remember"
+              name="remember"
+              class="w-4 h-4 rounded cursor-pointer"
+              style="accent-color: var(--tracky)"
+            />
+            Rester connecté
+          </label>
           <a routerLink="/forgot-password"
              class="text-[13px] text-tracky-light hover:text-tracky transition-colors cursor-pointer">
             Mot de passe oublie ?
@@ -183,6 +193,8 @@ import { ThemeService } from '../../core/theme/theme.service';
 export class LoginComponent implements OnInit {
   protected email = '';
   protected password = '';
+  /** « Rester connecté » — défaut activé (la plupart des utilisateurs veulent rester connectés). */
+  protected remember = true;
   protected readonly showPassword = signal(false);
   protected readonly error = signal('');
   protected readonly loading = signal(false);
@@ -207,8 +219,9 @@ export class LoginComponent implements OnInit {
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: this.email, password: this.password }),
+        body: JSON.stringify({ email: this.email, password: this.password, remember: this.remember }),
       });
 
       if (!res.ok) {
@@ -225,7 +238,7 @@ export class LoginComponent implements OnInit {
         fleetId: data.user.fleetId ?? null,
         permissions: data.user.permissions ?? null,
         preferences: data.user.preferences ?? null,
-      }, data.refreshToken);
+      }, data.refreshToken, this.remember);
       this.preferences.load(data.user.id);
       this.themeService.init();
       this.realtime.connect(data.accessToken);
