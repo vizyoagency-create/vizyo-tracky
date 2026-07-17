@@ -3,6 +3,7 @@ import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthClientService } from '../auth-client/auth-client.service';
 import { EmailService } from '../email/email.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 import { GeoipService } from './geoip.service';
 import {
   DEVICE_CODE_TTL_MINUTES,
@@ -67,6 +68,7 @@ export class SecurityService {
     private readonly email: EmailService,
     private readonly geoip: GeoipService,
     private readonly errorLogger: ErrorLogger,
+    private readonly systemActivity: SystemActivityService,
   ) {}
 
   private key(userId: string, deviceId: string): string {
@@ -316,12 +318,49 @@ export class SecurityService {
     }
   }
 
-  async disableTwoFactor(userId: string): Promise<void> {
+  /**
+   * Envoie un code e-mail pour CONFIRMER la désactivation du 2FA. Étape obligatoire
+   * avant `disableTwoFactor` : sans preuve d'accès à la boîte mail, une session volée
+   * ne peut plus couper la protection en silence.
+   */
+  async sendDisableCode(user: { email: string; firstName?: string | null }): Promise<void> {
+    const { code, expiresIn } = await this.authClient.sendLoginCode(user.email);
+    const built = this.email.buildTwoFactorDisableEmail({
+      recipientName: user.firstName ?? null,
+      code,
+      expiresInMinutes: expiresIn ? Math.max(1, Math.round(expiresIn / 60)) : DEVICE_CODE_TTL_MINUTES,
+    });
+    await this.email.send({
+      to: user.email,
+      subject: built.subject,
+      html: built.html,
+      text: built.text,
+      template: 'two_factor_disable',
+    });
+  }
+
+  /**
+   * Désactive le 2FA UNIQUEMENT après vérification d'un code e-mail frais (anti session
+   * volée). Renvoie false si le code est invalide/expiré (le 2FA reste actif). Chaque
+   * désactivation réussie est tracée (journal Système / feed admin).
+   */
+  async disableTwoFactor(user: { id: string; email: string }, code: string): Promise<boolean> {
+    const { ok } = await this.authClient.verifyLoginCode(user.email, code);
+    if (!ok) return false;
     await this.prisma.user.update({
-      where: { id: userId },
+      where: { id: user.id },
       data: { twoFactorEnabled: false },
     });
-    this.clearUserDecisions(userId);
+    this.clearUserDecisions(user.id);
+    this.systemActivity.record({
+      category: 'SECURITY',
+      action: 'two_factor_disabled',
+      status: 'SUCCESS',
+      actor: user.email,
+      triggeredByUserId: user.id,
+      detail: 'Double authentification désactivée (code e-mail confirmé).',
+    });
+    return true;
   }
 
   /** L'utilisateur écarte la proposition (« plus tard / ne plus demander »). */

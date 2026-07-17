@@ -94,11 +94,26 @@ export class SecurityService {
     }
   }
 
-  async disableTwoFactor(): Promise<boolean> {
+  /** Désactivation — étape 1 : demande l'envoi d'un code e-mail de confirmation. */
+  async sendDisableCode(): Promise<{ ok: boolean; email?: string }> {
     try {
-      await firstValueFrom(this.http.post('/api/security/2fa/disable', {}));
-      this.twoFactorEnabled.set(false);
-      return true;
+      const r = await firstValueFrom(
+        this.http.post<{ ok: boolean; email?: string }>('/api/security/2fa/disable/send-code', {}),
+      );
+      return { ok: !!r?.ok, email: r?.email };
+    } catch {
+      return { ok: false };
+    }
+  }
+
+  /** Désactivation — étape 2 : confirme avec le code reçu (échoue si code invalide). */
+  async disableTwoFactor(code: string): Promise<boolean> {
+    try {
+      const r = await firstValueFrom(
+        this.http.post<{ ok: boolean; enabled: boolean }>('/api/security/2fa/disable', { code }),
+      );
+      if (r?.ok) this.twoFactorEnabled.set(false);
+      return !!r?.ok;
     } catch {
       return false;
     }

@@ -1,4 +1,5 @@
 import { Body, Controller, Get, HttpCode, Post, Req, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { DEVICE_ID_HEADER } from './security.constants';
@@ -85,11 +86,33 @@ export class SecurityController {
     return { ok: true, enabled: true };
   }
 
+  /**
+   * Désactivation du 2FA — étape 1 : envoie un code e-mail de confirmation.
+   * Exiger un code frais empêche une session volée de couper la protection en silence.
+   */
+  @Post('2fa/disable/send-code')
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  @HttpCode(200)
+  async disableSendCode(@Req() req: AuthenticatedRequest) {
+    const u = req.user;
+    try {
+      await this.security.sendDisableCode({ email: u.email, firstName: u.firstName });
+      return { ok: true, email: maskEmail(u.email) };
+    } catch (e) {
+      this.errorLogger.recordBackground(e instanceof Error ? e : new Error(String(e)), 'security-2fa', {
+        userId: u.id, note: 'envoi du code de désactivation 2FA',
+      });
+      return { ok: false, email: maskEmail(u.email) };
+    }
+  }
+
+  /** Désactivation du 2FA — étape 2 : confirme avec le code reçu (sinon 2FA maintenu). */
   @Post('2fa/disable')
   @HttpCode(200)
-  async disable(@Req() req: AuthenticatedRequest) {
-    await this.security.disableTwoFactor(req.user.id);
-    return { ok: true, enabled: false };
+  async disable(@Req() req: AuthenticatedRequest, @Body() dto: VerifyCodeDto) {
+    const u = req.user;
+    const ok = await this.security.disableTwoFactor({ id: u.id, email: u.email }, dto.code);
+    return { ok, enabled: !ok };
   }
 
   /** L'utilisateur écarte la proposition d'activer le 2FA. */

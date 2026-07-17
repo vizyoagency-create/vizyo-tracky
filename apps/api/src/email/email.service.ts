@@ -11,6 +11,7 @@ export type EmailTemplateId =
   | 'invitation'
   | 'password_reset'
   | 'device_verification'
+  | 'two_factor_disable'
   | 'weekly_report'
   | 'alert'
   | 'lead'
@@ -364,6 +365,53 @@ Votre code de vérification : ${opts.code}
 Ce code est valide pendant ${opts.expiresInMinutes} minutes.
 
 Si vous n'êtes pas à l'origine de cette connexion, ignorez cet e-mail et changez votre mot de passe par précaution.
+
+— L'équipe Vizyo`;
+
+    return { subject, html, text };
+  }
+
+  /**
+   * Code de confirmation pour DÉSACTIVER la double authentification. C'est un
+   * abaissement de sécurité : on insiste pour que l'utilisateur qui n'en est pas
+   * l'origine réagisse (compte potentiellement compromis).
+   */
+  buildTwoFactorDisableEmail(opts: {
+    recipientName?: string | null;
+    code: string;
+    expiresInMinutes: number;
+  }): { subject: string; html: string; text: string } {
+    const greeting = opts.recipientName ? `Bonjour ${opts.recipientName},` : 'Bonjour,';
+    const subject = `[Vizyo Tracky] Code pour désactiver la double authentification : ${opts.code}`;
+    const spaced = opts.code.split('').join('&nbsp;');
+
+    const html = this.shell({
+      eyebrow: 'Sécurité · Double authentification',
+      footer: 'VIZYO TRACKY · SÉCURITÉ DU COMPTE<br>E-mail automatique de sécurité. Ne pas répondre.',
+      body: `
+        <tr><td style="padding:28px 36px 0;">
+          <div style="width:46px;height:46px;border-radius:12px;background:rgba(245,158,11,.14);text-align:center;line-height:46px;font-size:22px;margin-bottom:18px;">⚠️</div>
+          <h1 style="margin:0 0 12px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:26px;line-height:1.15;font-weight:800;letter-spacing:-0.025em;color:#EAEFED;">Désactiver la double authentification</h1>
+          <p style="margin:0 0 6px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:15px;line-height:1.65;color:#9BA5A1;">${escapeHtml(greeting)}</p>
+          <p style="margin:0 0 20px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:15px;line-height:1.65;color:#9BA5A1;">Vous avez demandé à <span style="color:#EAEFED;font-weight:600;">désactiver</span> la double authentification de votre compte. Saisissez ce code pour le confirmer :</p>
+          <table role="presentation" width="100%"><tr><td align="center" style="background:#161D1B;border:1px solid rgba(245,158,11,.3);border-radius:13px;padding:22px 18px;">
+            <div style="font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:38px;font-weight:600;letter-spacing:0.12em;color:#F5A623;">${spaced}</div>
+          </td></tr></table>
+          <div style="margin:22px 0 0;padding:14px 16px;background:#161D1B;border:1px solid rgba(255,255,255,.07);border-radius:11px;">
+            <p style="margin:0;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:13px;line-height:1.6;color:#9BA5A1;">Ce code est valide <span style="font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;color:#F5A623;">${opts.expiresInMinutes} min</span>. <span style="color:#EAEFED;">Vous n'êtes pas à l'origine de cette demande&nbsp;?</span> N'entrez pas ce code, et changez votre mot de passe immédiatement — votre compte est peut-être compromis.</p>
+          </div>
+        </td></tr>`,
+    });
+
+    const text = `${greeting}
+
+Vous avez demandé à DÉSACTIVER la double authentification de votre compte Vizyo Tracky.
+
+Votre code de confirmation : ${opts.code}
+
+Ce code est valide pendant ${opts.expiresInMinutes} minutes.
+
+Vous n'êtes pas à l'origine de cette demande ? N'entrez pas ce code et changez votre mot de passe immédiatement — votre compte est peut-être compromis.
 
 — L'équipe Vizyo`;
 
