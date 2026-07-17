@@ -41,12 +41,15 @@ type PState = 'idle' | 'busy' | 'granted' | 'denied';
           <div class="pg-item">
             <span class="pg-ico"><lucide-icon [img]="MapPin" [size]="20"></lucide-icon></span>
             <div class="pg-txt">
-              <div class="pg-h">Localisation</div>
-              <div class="pg-d">Vous situer sur la carte et faciliter les actions de proximité. Optionnel — la position des véhicules provient des boîtiers.</div>
+              <div class="pg-h">Localisation <span class="pg-req">Requis</span></div>
+              <div class="pg-d">Nécessaire pour déverrouiller un véhicule par QR code : nous vérifions que vous êtes bien à proximité avant d'autoriser l'ouverture. Utilisée uniquement au moment de l'action.</div>
+              @if (geoState() === 'denied') {
+                <div class="pg-warn">Localisation bloquée. Autorisez-la dans votre navigateur (icône cadenas de la barre d'adresse → Localisation → Autoriser), puis réessayez.</div>
+              }
             </div>
             <button type="button" class="pg-btn" (click)="grantGeo()"
                     [class.pg-btn--ok]="geoState()==='granted'"
-                    [disabled]="geoState()==='busy' || geoState()==='granted'">{{ label(geoState()) }}</button>
+                    [disabled]="geoState()==='busy' || geoState()==='granted'">{{ geoLabel() }}</button>
           </div>
 
           <div class="pg-item pg-item--muted">
@@ -57,7 +60,11 @@ type PState = 'idle' | 'busy' | 'granted' | 'denied';
             </div>
           </div>
 
-          <button type="button" class="pg-continue" (click)="finish()">Continuer vers l'application</button>
+          @if (geoState() !== 'granted') {
+            <p class="pg-hint">Autorisez la localisation ci-dessus pour continuer.</p>
+          }
+          <button type="button" class="pg-continue" (click)="finish()"
+                  [disabled]="geoState() !== 'granted'">Continuer vers l'application</button>
         </div>
       </div>
     }
@@ -98,11 +105,23 @@ type PState = 'idle' | 'busy' | 'granted' | 'denied';
     }
     .pg-btn:disabled { cursor: default; }
     .pg-btn--ok { border-color: transparent; background: color-mix(in srgb, var(--tracky-light) 16%, transparent); color: var(--tracky-light); }
+    .pg-req {
+      display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px;
+      font-size: .62rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+      vertical-align: middle; background: color-mix(in srgb, var(--tracky-light) 18%, transparent); color: var(--tracky-light);
+    }
+    .pg-warn {
+      margin-top: 8px; padding: 8px 10px; border-radius: 9px; font-size: .78rem; line-height: 1.45;
+      background: color-mix(in srgb, #f2a33c 13%, transparent); color: #e6952f;
+      border: 1px solid color-mix(in srgb, #f2a33c 30%, transparent);
+    }
+    .pg-hint { margin: 16px 0 0; font-size: .82rem; color: var(--fg-tertiary); text-align: center; }
     .pg-continue {
       width: 100%; margin-top: 20px; font: inherit; font-weight: 700; font-size: .95rem;
       padding: 13px; border-radius: 12px; border: 0; cursor: pointer;
       background: var(--tracky-light); color: #04130d;
     }
+    .pg-continue:disabled { opacity: .45; cursor: not-allowed; }
     `,
   ],
 })
@@ -120,6 +139,12 @@ export class PermissionsGateComponent {
 
   label(s: PState): string {
     return s === 'granted' ? 'Autorisé' : s === 'denied' ? 'Refusé' : s === 'busy' ? '…' : 'Autoriser';
+  }
+
+  /** GPS est obligatoire : sur refus on propose « Réessayer » (pas un état final). */
+  geoLabel(): string {
+    const s = this.geoState();
+    return s === 'granted' ? 'Autorisé' : s === 'denied' ? 'Réessayer' : s === 'busy' ? '…' : 'Autoriser';
   }
 
   async grantNotif(): Promise<void> {
@@ -156,6 +181,9 @@ export class PermissionsGateComponent {
   }
 
   finish(): void {
+    // La localisation est obligatoire (déverrouillage QR par proximité) : on ne
+    // laisse pas passer l'onboarding tant qu'elle n'est pas accordée.
+    if (this.geoState() !== 'granted') return;
     this.perms.finish();
   }
 }
