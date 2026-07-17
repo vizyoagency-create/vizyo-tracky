@@ -67,7 +67,7 @@ const resCard = (label, out, sub, accent) => `<div style="border:${accent ? '1.5
 
 // ── Champs de formulaire lead (réutilisés par la section démo et le devis) ──
 const leadField = (label, name, type, req, ph) =>
-  `<div style="display:flex;flex-direction:column;gap:6px;text-align:left"><label style="font-size:.8rem;font-weight:600;color:var(--tx2)">${label}${req ? ' *' : ''}</label><input type="${type}" name="${name}"${req ? ' required' : ''} placeholder="${esc(ph || '')}" style="padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--tx);font:inherit;font-size:.92rem;outline:none"></div>`;
+  `<div style="display:flex;flex-direction:column;gap:6px;text-align:left"><label style="font-size:.8rem;font-weight:600;color:var(--tx2)">${label}${req ? ' *' : ''}</label><input type="${type}" name="${name}"${req ? ' required' : ''} placeholder="${esc(ph || '')}" style="width:100%;min-width:0;padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--tx);font:inherit;font-size:.92rem;outline:none"></div>`;
 
 // ── Section « Recevoir une présentation » : VRAI formulaire lead → POST site.leadApi (vt.js) ──
 const DEMO_SECTION = `<section id="demo" class="vt-sec" style="padding:72px 0;position:relative;overflow:hidden;border-bottom:1px solid var(--border)">
