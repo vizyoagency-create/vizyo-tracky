@@ -1078,8 +1078,8 @@ export class DashboardLayoutComponent {
     const administration: NavItem[] = [
       // Consolidation IA : « Conducteurs » est un onglet DANS Utilisateurs.
       ...(this.perms.can('users_view') ? [{ label: 'Utilisateurs', route: '/users', icon: Users }] : []),
-      // V1.16 — Parc SIM : visible dès sims_view (FLEET_ADMIN/SUPER_ADMIN bypass).
-      ...(this.perms.can('sims_view') ? [{ label: 'Cartes SIM', route: '/sims', icon: CreditCard }] : []),
+      // Parc SIM — RÉSERVÉ au SUPER_ADMIN (l'abonnement inclut la SIM : gestion côté
+      // opérateur uniquement). Accès via l'espace admin (/admin/sims), retiré de la nav client.
       // V1.15 — Suivi installation : réservé au FLEET_ADMIN (consultation + réordonnancement).
       ...(this.auth.user()?.role === 'FLEET_ADMIN' ? [{ label: 'Installation', route: '/installations', icon: ClipboardList }] : []),
       // Demande 2026-07 — « Activité flotte » : contrôle des coupures/rallumages moteur + présence

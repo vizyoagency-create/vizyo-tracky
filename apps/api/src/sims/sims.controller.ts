@@ -27,14 +27,10 @@ import { SetSimStatusDto } from './dto/set-status.dto';
 import { UpdateSimDto } from './dto/update-sim.dto';
 import { SimsService } from './sims.service';
 
-/** Tous les roles peuvent atteindre les routes "view"/"assign" (les admins bypass
- *  les permissions ; FLEET_MANAGER/VIEWER ont besoin de sims_view / sims_assign). */
-const ALL_ROLES = [
-  UserRole.SUPER_ADMIN,
-  UserRole.FLEET_ADMIN,
-  UserRole.FLEET_MANAGER,
-  UserRole.VIEWER,
-] as const;
+/** Parc SIM RÉSERVÉ au SUPER_ADMIN (opérateur) : l'abonnement client inclut la SIM,
+ *  la gestion se fait donc uniquement côté opérateur. Aucun accès pour les rôles
+ *  client (FLEET_ADMIN / FLEET_MANAGER / VIEWER) — page retirée de l'app client. */
+const SIM_OPERATOR = [UserRole.SUPER_ADMIN] as const;
 
 /**
  * V1.16 — Parc SIM WhereverSIM.
@@ -49,7 +45,7 @@ export class SimsController {
   constructor(private readonly sims: SimsService) {}
 
   @Get()
-  @Roles(...ALL_ROLES)
+  @Roles(...SIM_OPERATOR)
   @RequirePermissions('sims_view')
   list(
     @Req() req: AuthenticatedRequest,
@@ -61,7 +57,7 @@ export class SimsController {
   }
 
   @Get('assignable-trackers')
-  @Roles(...ALL_ROLES)
+  @Roles(...SIM_OPERATOR)
   @RequirePermissions('sims_view')
   assignableTrackers(@Req() req: AuthenticatedRequest) {
     return this.sims.assignableTrackers(this.rb(req));
@@ -93,14 +89,14 @@ export class SimsController {
   }
 
   @Get(':id')
-  @Roles(...ALL_ROLES)
+  @Roles(...SIM_OPERATOR)
   @RequirePermissions('sims_view')
   findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.sims.findOne(id, this.rb(req));
   }
 
   @Get(':id/consumption')
-  @Roles(...ALL_ROLES)
+  @Roles(...SIM_OPERATOR)
   @RequirePermissions('sims_view')
   consumption(
     @Param('id') id: string,
@@ -112,7 +108,7 @@ export class SimsController {
   }
 
   @Get(':id/events')
-  @Roles(...ALL_ROLES)
+  @Roles(...SIM_OPERATOR)
   @RequirePermissions('sims_view')
   events(
     @Param('id') id: string,
@@ -124,7 +120,7 @@ export class SimsController {
 
   @Post(':id/assign')
   @HttpCode(HttpStatus.OK)
-  @Roles(...ALL_ROLES)
+  @Roles(...SIM_OPERATOR)
   @RequirePermissions('sims_assign')
   assign(
     @Param('id') id: string,
@@ -136,7 +132,7 @@ export class SimsController {
 
   @Post(':id/unassign')
   @HttpCode(HttpStatus.OK)
-  @Roles(...ALL_ROLES)
+  @Roles(...SIM_OPERATOR)
   @RequirePermissions('sims_assign')
   unassign(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.sims.unassign(id, this.rb(req));

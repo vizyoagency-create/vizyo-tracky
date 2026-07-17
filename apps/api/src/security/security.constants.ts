@@ -36,3 +36,6 @@ export const USUAL_POINTS_SAMPLE = 60;
 
 /** On ne re-propose pas le 2FA avant ce délai (jours) après une proposition. */
 export const PROPOSE_COOLDOWN_DAYS = 14;
+
+/** RGPD — rétention des positions de connexion (login_events). Purge auto au-delà. */
+export const LOGIN_EVENT_RETENTION_DAYS = 365;

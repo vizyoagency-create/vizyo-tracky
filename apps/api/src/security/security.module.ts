@@ -4,6 +4,7 @@ import { AuthModule } from '../auth/auth.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { GeoipService } from './geoip.service';
 import { SecurityAdminController } from './security-admin.controller';
+import { SecurityCleanupService } from './security-cleanup.service';
 import { SecurityController } from './security.controller';
 import { SecurityGateInterceptor } from './security-gate.interceptor';
 import { SecurityService } from './security.service';
@@ -21,6 +22,7 @@ import { SecurityService } from './security.service';
   providers: [
     SecurityService,
     GeoipService,
+    SecurityCleanupService,
     { provide: APP_INTERCEPTOR, useClass: SecurityGateInterceptor },
   ],
   exports: [SecurityService],

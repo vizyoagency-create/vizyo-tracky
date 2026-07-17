@@ -209,14 +209,6 @@ export const routes: Routes = [
         data: { title: 'Suivi installation' },
       },
       {
-        // Vue client (FLEET_ADMIN + delegues sims_view) du parc SIM de la flotte.
-        path: 'sims',
-        canActivate: [permissionGuard('sims_view')],
-        loadComponent: () =>
-          import('./features/sims/sims-client.component').then((m) => m.SimsClientComponent),
-        data: { title: 'Cartes SIM' },
-      },
-      {
         path: 'settings',
         loadComponent: () =>
           import('./features/settings/settings.component').then((m) => m.SettingsComponent),
