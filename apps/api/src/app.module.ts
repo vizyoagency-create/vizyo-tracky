@@ -18,6 +18,7 @@ import { AudioMonitoringModule } from './audio-monitoring/audio-monitoring.modul
 import { AuthClientModule } from './auth-client/auth-client.module';
 import { AuthModule } from './auth/auth.module';
 import { ConsentModule } from './consent/consent.module';
+import { SecurityModule } from './security/security.module';
 import { validateEnv } from './config/env.validation';
 import { DriversModule } from './drivers/drivers.module';
 import { EngineControlModule } from './engine-control/engine-control.module';
@@ -177,6 +178,9 @@ import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.modul
     // RGPD — consentements (CGU/Confidentialité app + bandeau LP). @Global : self-
     // enregistre le gate en APP_INTERCEPTOR (403 CONSENT_REQUIRED sans accord).
     ConsentModule,
+    // Sécurité — 2FA app OPT-IN adaptatif (code e-mail sur anomalie) + journal/carte
+    // des connexions géo-IP. @Global : self-enregistre le gate (403 DEVICE_VERIFICATION_REQUIRED).
+    SecurityModule,
   ],
   controllers: [HealthController],
   providers: [

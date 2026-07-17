@@ -10,6 +10,7 @@ import { SystemActivityService } from '../system-activity/system-activity.servic
 export type EmailTemplateId =
   | 'invitation'
   | 'password_reset'
+  | 'device_verification'
   | 'weekly_report'
   | 'alert'
   | 'lead'
@@ -311,6 +312,60 @@ Ce lien est valide pendant ${opts.expiresInMinutes} minutes.
 Si vous n'avez pas demande cette reinitialisation, ignorez cet email.
 
 — L'equipe Vizyo`;
+
+    return { subject, html, text };
+  }
+
+  /**
+   * Sécurité (2026-07) — code de vérification d'un NOUVEL appareil (2FA app).
+   * Envoyé quand une flotte exige la vérification e-mail et qu'un appareil non
+   * reconnu se connecte. Le code (6 chiffres) est généré par Vizyo Auth ; Tracky
+   * se charge de l'envoi (même partage que le reset mot de passe). Accent emerald,
+   * code affiché en gros mono. `expiresInMinutes` = validité du code.
+   */
+  buildDeviceVerificationEmail(opts: {
+    recipientName?: string | null;
+    code: string;
+    expiresInMinutes: number;
+    deviceLabel?: string | null;
+  }): { subject: string; html: string; text: string } {
+    const greeting = opts.recipientName ? `Bonjour ${opts.recipientName},` : 'Bonjour,';
+    const subject = `[Vizyo Tracky] Votre code de connexion : ${opts.code}`;
+    const spaced = opts.code.split('').join('&nbsp;');
+    const deviceLine = opts.deviceLabel
+      ? `<p style="margin:0 0 18px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:13px;line-height:1.6;color:#69736E;">Appareil : <span style="color:#9BA5A1;">${escapeHtml(opts.deviceLabel)}</span></p>`
+      : '';
+
+    const html = this.shell({
+      eyebrow: 'Sécurité · Nouvel appareil',
+      footer: 'VIZYO TRACKY · SÉCURITÉ DU COMPTE<br>E-mail automatique de sécurité. Ne pas répondre.',
+      body: `
+        <tr><td style="padding:28px 36px 0;">
+          <div style="width:46px;height:46px;border-radius:12px;background:rgba(16,224,160,.12);text-align:center;line-height:46px;font-size:22px;margin-bottom:18px;">🔐</div>
+          <h1 style="margin:0 0 12px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:26px;line-height:1.15;font-weight:800;letter-spacing:-0.025em;color:#EAEFED;">Votre code de connexion</h1>
+          <p style="margin:0 0 6px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:15px;line-height:1.65;color:#9BA5A1;">${escapeHtml(greeting)}</p>
+          <p style="margin:0 0 20px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:15px;line-height:1.65;color:#9BA5A1;">Une connexion à votre compte a été demandée depuis un <span style="color:#EAEFED;font-weight:600;">nouvel appareil</span>. Saisissez ce code pour la confirmer :</p>
+          ${deviceLine}
+          <table role="presentation" width="100%"><tr><td align="center" style="background:#161D1B;border:1px solid rgba(16,224,160,.25);border-radius:13px;padding:22px 18px;">
+            <div style="font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:38px;font-weight:600;letter-spacing:0.12em;color:#10E0A0;">${spaced}</div>
+          </td></tr></table>
+          <div style="margin:22px 0 0;padding:14px 16px;background:#161D1B;border:1px solid rgba(255,255,255,.07);border-radius:11px;">
+            <p style="margin:0;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:13px;line-height:1.6;color:#9BA5A1;">Ce code est valide <span style="font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;color:#10E0A0;">${opts.expiresInMinutes} min</span>. Vous n'êtes pas à l'origine de cette connexion ? <span style="color:#EAEFED;">Ignorez cet e-mail</span> et changez votre mot de passe par précaution.</p>
+          </div>
+        </td></tr>`,
+    });
+
+    const text = `${greeting}
+
+Une connexion à votre compte Vizyo Tracky a été demandée depuis un nouvel appareil.
+
+Votre code de vérification : ${opts.code}
+
+Ce code est valide pendant ${opts.expiresInMinutes} minutes.
+
+Si vous n'êtes pas à l'origine de cette connexion, ignorez cet e-mail et changez votre mot de passe par précaution.
+
+— L'équipe Vizyo`;
 
     return { subject, html, text };
   }

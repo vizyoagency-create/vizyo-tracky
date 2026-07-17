@@ -5,8 +5,10 @@ import { catchError, from, switchMap, throwError } from 'rxjs';
 import { activityContext } from '../services/activity-context';
 import { AuthService } from '../services/auth.service';
 import { ConsentService } from '../services/consent.service';
+import { SecurityService } from '../services/security.service';
 import { RealtimeService } from '../services/realtime.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
+import { getOrCreateDeviceId } from '../utils/device-id';
 
 /**
  * V1.10 (Sprint 5 stabilite) — toast d'information lors d'un logout force
@@ -48,6 +50,7 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const realtime = inject(RealtimeService);
   const toast = inject(ToastService);
   const consent = inject(ConsentService);
+  const security = inject(SecurityService);
 
   // V1.10 (Sprint 6) — withCredentials: true active l'envoi des cookies
   // httpOnly tracky_at / tracky_rt poses au login. Le backend les lit en
@@ -56,6 +59,11 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   // n'est pas retire (necessaire pour le WS handshake qui ne supporte pas
   // les cookies cross-origin de maniere fiable), les 2 modes cohabitent.
   req = req.clone({ withCredentials: true });
+
+  // Sécurité — identifiant d'appareil (vérification e-mail des nouveaux appareils).
+  // Même origine → pas de preflight CORS, coût nul. Le gate serveur lit cet entête
+  // pour reconnaître un appareil de confiance.
+  req = req.clone({ setHeaders: { 'X-Device-Id': getOrCreateDeviceId() } });
 
   // Contexte d'activité (page + session client) : attaché en headers pour que le
   // backend puisse relier une erreur serveur à « où » et « chez qui ». Même
@@ -90,6 +98,17 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
         (error.error as { code?: string } | null)?.code === 'CONSENT_REQUIRED'
       ) {
         consent.require();
+        return throwError(() => error);
+      }
+
+      // Sécurité : 403 { code:'DEVICE_VERIFICATION_REQUIRED' } tant que l'appareil
+      // n'est pas vérifié → on lève l'écran de saisie du code (backstop ; le check
+      // boot du statut reste le gate primaire).
+      if (
+        error.status === 403 &&
+        (error.error as { code?: string } | null)?.code === 'DEVICE_VERIFICATION_REQUIRED'
+      ) {
+        security.require();
         return throwError(() => error);
       }
 

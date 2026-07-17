@@ -306,6 +306,20 @@ model User {
   consents           UserConsent[]
   /// Permissions device accordées (notifications, localisation) — cf. UserPermission.
   devicePermissions  UserPermission[]
+  /// Sécurité — appareils de confiance (vérification e-mail des nouveaux appareils).
+  trustedDevices     TrustedDevice[]
+  /// Sécurité — historique des connexions (appareil + position géo-IP) : socle de la
+  /// détection adaptative (appareil/zone inhabituels) et de la carte admin.
+  loginEvents        LoginEvent[]
+  /// Sécurité — 2FA app OPT-IN par l'utilisateur (jamais imposé). false = pas de
+  /// vérification. À l'activation, un code e-mail est demandé UNIQUEMENT sur une vraie
+  /// anomalie (nouvel appareil / zone inhabituelle), et seulement une fois qu'on a
+  /// assez d'historique pour juger (sinon on apprend, sans gêner).
+  twoFactorEnabled   Boolean   @default(false)
+  /// Dernière fois qu'on a PROPOSÉ le 2FA (pour ne pas harceler).
+  twoFactorPromptedAt DateTime?
+  /// L'utilisateur a écarté la proposition (« plus tard / ne plus demander »).
+  twoFactorPromptDismissed Boolean @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -2385,4 +2399,60 @@ model UserPermission {
   @@unique([userId, deviceId, kind])
   @@index([userId])
   @@map("user_permissions")
+}
+
+/// SÉCURITÉ (2026-07-17) — Appareil « de confiance » pour la vérification e-mail
+/// des NOUVEAUX appareils (2FA app, opt-in par flotte via Fleet.requireDeviceVerification).
+/// Un device devient de confiance après avoir passé le code e-mail, OU
+/// automatiquement s'il s'agit du tout premier appareil vu pour cet utilisateur
+/// (« pas à la première connexion » — et grandfathering des appareils déjà actifs
+/// au moment où une flotte active l'option). Le gate (403 DEVICE_VERIFICATION_REQUIRED)
+/// laisse passer quand (userId, deviceId) existe ici. deviceId = identifiant client
+/// stable (localStorage `tracky.device.id`).
+model TrustedDevice {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId   String
+  label      String?
+  ip         String?
+  userAgent  String?
+  trustedAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  @@unique([userId, deviceId])
+  @@index([userId])
+  @@map("trusted_devices")
+}
+
+/// SÉCURITÉ (2026-07-17) — Journal des CONNEXIONS d'un utilisateur. Une ligne par
+/// ouverture de session : appareil + position (géolocalisation par IP, niveau
+/// ville/région, via geoip-lite — AUCUNE donnée envoyée à un tiers) + résultat
+/// (anomalie détectée ? challenge demandé ? vérifié ?). Sert de socle à la
+/// détection adaptative (« appareil/zone inhabituels ») ET à la carte admin des
+/// lieux de connexion. ⚠️ Donnée personnelle (RGPD) : à couvrir par la politique
+/// de confidentialité + rétention limitée.
+model LoginEvent {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId     String?
+  ip           String?
+  /// Position géo-IP (approx. ville/région). Null si IP privée/non localisable.
+  lat          Float?
+  lng          Float?
+  city         String?
+  region       String?
+  country      String?
+  userAgent    String?
+  /// Signaux d'anomalie au moment de la connexion.
+  newDevice    Boolean  @default(false)
+  farFromUsual Boolean  @default(false)
+  /// A-t-on demandé un code (challenge) ? A-t-il été validé ?
+  challenged   Boolean  @default(false)
+  verified     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@map("login_events")
 }

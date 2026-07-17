@@ -289,6 +289,13 @@ export const routes: Routes = [
         data: { title: 'Consentements RGPD' },
       },
       {
+        path: 'admin/security',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/security-admin/security-admin.component').then((m) => m.SecurityAdminComponent),
+        data: { title: 'Sécurité & connexions' },
+      },
+      {
         path: 'admin/installation-bookings',
         canActivate: [superAdminGuard],
         loadComponent: () =>

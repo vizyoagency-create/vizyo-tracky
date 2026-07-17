@@ -48,6 +48,9 @@ import { ConsentGateComponent } from '../features/consent/consent-gate.component
 import { ConsentService } from '../core/services/consent.service';
 import { PermissionsGateComponent } from '../features/consent/permissions-gate.component';
 import { PermissionOnboardingService } from '../core/services/permission-onboarding.service';
+import { DeviceVerificationGateComponent } from '../features/security/device-verification-gate.component';
+import { TwoFactorProposalComponent } from '../features/security/two-factor-proposal.component';
+import { SecurityService } from '../core/services/security.service';
 import { BaanoolMapOverlayComponent } from '../features/baanool/baanool-map-overlay.component';
 import { MenuStateService } from '../core/services/menu-state.service';
 
@@ -67,7 +70,7 @@ interface NavGroup {
 @Component({
   selector: 'app-dashboard-layout',
   standalone: true,
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, AlertsBellComponent, FleetSelectorComponent, LogoComponent, InstallBannerComponent, PushPromptComponent, BottomSheetComponent, OnboardingWizardComponent, ConsentGateComponent, PermissionsGateComponent, BaanoolMapOverlayComponent],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, AlertsBellComponent, FleetSelectorComponent, LogoComponent, InstallBannerComponent, PushPromptComponent, BottomSheetComponent, OnboardingWizardComponent, ConsentGateComponent, PermissionsGateComponent, DeviceVerificationGateComponent, TwoFactorProposalComponent, BaanoolMapOverlayComponent],
   template: `
     <a href="#main-content" class="skip-link">Aller au contenu principal</a>
     <div class="layout" [class.layout--fullscreen]="fullscreen()" [class.layout--ios-pwa]="isIosPwa" [class.layout--baanool]="isBaanoolMode()">
@@ -297,6 +300,8 @@ interface NavGroup {
       <app-push-prompt />
       <app-onboarding-wizard />
       <app-consent-gate />
+      <app-device-verification-gate />
+      <app-two-factor-proposal />
       <app-permissions-gate />
 
       <!-- V1.12 — Mode Baanool : overlay UI style Baanool affiche UNIQUEMENT
@@ -945,6 +950,7 @@ export class DashboardLayoutComponent {
   private readonly onboarding = inject(OnboardingService);
   private readonly consent = inject(ConsentService);
   private readonly permsOnboard = inject(PermissionOnboardingService);
+  private readonly security = inject(SecurityService);
   private readonly notif = inject(NotificationsApiService);
   /** V1.15 — Cache fleet pour les badges contextuels SUPER_ADMIN. */
   private readonly fleetCache = inject(FleetCacheService);
@@ -985,6 +991,11 @@ export class DashboardLayoutComponent {
     // Gate RGPD : lève l'écran de consentement obligatoire si la version courante
     // n'a pas été acceptée (le back renvoie aussi 403 CONSENT_REQUIRED en secours).
     void this.consent.load();
+    // Sécurité — enregistre la connexion (appareil + position géo-IP) et applique la
+    // décision adaptative : code e-mail si anomalie (2FA activé), ou proposition douce
+    // d'activer le 2FA (non opt-in). Charge aussi l'état 2FA pour les Réglages.
+    void this.security.connect();
+    void this.security.loadTwoFactorStatus();
     // P3 — onboarding des permissions device (notif/GPS/hors-ligne) au 1er lancement.
     this.permsOnboard.init();
     // V1.8 (web-push-finalize) — bridge SW <-> client pose des le boot session,

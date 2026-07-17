@@ -125,6 +125,19 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
           </div>
         </a>
 
+        <!-- ── SÉCURITÉ & CONNEXIONS ── -->
+        <a routerLink="/admin/security" class="card" style="--i:5">
+          <span class="accent accent-green"></span>
+          <div class="body">
+            <div class="row-top">
+              <div class="ico ico-green"><lucide-icon [img]="Globe" [size]="20"></lucide-icon></div>
+              <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
+            </div>
+            <h3>Sécurité &amp; connexions</h3>
+            <p class="desc">Qui a activé le 2FA, et la carte des lieux de connexion par utilisateur.</p>
+          </div>
+        </a>
+
         <!-- ── SYNC AUTH (wide) ── -->
         <a routerLink="/admin/auth-sync" class="card card-wide" style="--i:5">
           <span class="accent accent-cyan"></span>

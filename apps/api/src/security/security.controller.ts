@@ -1,0 +1,112 @@
+import { Body, Controller, Get, HttpCode, Post, Req, UseGuards } from '@nestjs/common';
+import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { DEVICE_ID_HEADER } from './security.constants';
+import { SecurityService } from './security.service';
+import { deviceLabelFromUa, maskEmail } from './security.util';
+import { VerifyCodeDto } from './dto/verify-code.dto';
+
+/**
+ * Sécurité des connexions (2FA app opt-in adaptatif). Toutes les routes sont
+ * EXEMPTÉES du gate (même préfixe) : un utilisateur en cours de vérification doit
+ * pouvoir recevoir/saisir son code.
+ */
+@Controller('security')
+@UseGuards(JwtAuthGuard)
+export class SecurityController {
+  constructor(private readonly security: SecurityService) {}
+
+  /** Boot : enregistre la connexion (appareil + position) et décide (allow/challenge/propose). */
+  @Post('connection')
+  @HttpCode(200)
+  connection(@Req() req: AuthenticatedRequest) {
+    const u = req.user;
+    return this.security.recordConnection({
+      userId: u.id,
+      email: u.email,
+      firstName: u.firstName,
+      deviceId: deviceHeader(req),
+      ip: ip(req),
+      userAgent: ua(req),
+    });
+  }
+
+  /** Renvoyer un code manuellement (bouton « renvoyer »). */
+  @Post('resend')
+  @HttpCode(200)
+  async resend(@Req() req: AuthenticatedRequest) {
+    const u = req.user;
+    try {
+      await this.security.sendCode({ email: u.email, firstName: u.firstName }, deviceLabelFromUa(ua(req)));
+      return { ok: true, email: maskEmail(u.email) };
+    } catch {
+      return { ok: false, email: maskEmail(u.email) };
+    }
+  }
+
+  /** Vérifie le code ; si ok, l'appareil devient de confiance et le gate se lève. */
+  @Post('verify')
+  @HttpCode(200)
+  async verify(@Req() req: AuthenticatedRequest, @Body() dto: VerifyCodeDto) {
+    const u = req.user;
+    const deviceId = deviceHeader(req);
+    if (!deviceId) return { ok: false };
+    const ok = await this.security.verifyCode({ id: u.id, email: u.email }, dto.code, deviceId, {
+      ip: ip(req),
+      userAgent: ua(req),
+      label: deviceLabelFromUa(ua(req)),
+    });
+    return { ok };
+  }
+
+  // ── 2FA opt-in (par utilisateur) ─────────────────────────────────────────────
+
+  @Get('2fa/status')
+  twoFactorStatus(@Req() req: AuthenticatedRequest) {
+    return this.security.twoFactorStatus(req.user.id);
+  }
+
+  @Post('2fa/enable')
+  @HttpCode(200)
+  async enable(@Req() req: AuthenticatedRequest) {
+    await this.security.enableTwoFactor(req.user.id, deviceHeader(req), {
+      ip: ip(req),
+      userAgent: ua(req),
+      label: deviceLabelFromUa(ua(req)),
+    });
+    return { ok: true, enabled: true };
+  }
+
+  @Post('2fa/disable')
+  @HttpCode(200)
+  async disable(@Req() req: AuthenticatedRequest) {
+    await this.security.disableTwoFactor(req.user.id);
+    return { ok: true, enabled: false };
+  }
+
+  /** L'utilisateur écarte la proposition d'activer le 2FA. */
+  @Post('2fa/dismiss')
+  @HttpCode(200)
+  async dismiss(@Req() req: AuthenticatedRequest) {
+    await this.security.dismissPrompt(req.user.id);
+    return { ok: true };
+  }
+}
+
+function deviceHeader(req: AuthenticatedRequest): string | null {
+  const v = req.headers[DEVICE_ID_HEADER];
+  if (typeof v === 'string') return v.trim() || null;
+  if (Array.isArray(v)) return (v[0] ?? '').trim() || null;
+  return null;
+}
+
+function ip(req: AuthenticatedRequest): string | null {
+  const xff = req.headers['x-forwarded-for'];
+  const first =
+    typeof xff === 'string' ? xff.split(',')[0]?.trim() : Array.isArray(xff) ? xff[0] : undefined;
+  return first || req.ip || req.socket?.remoteAddress || null;
+}
+
+function ua(req: AuthenticatedRequest): string | null {
+  const v = req.headers['user-agent'];
+  return typeof v === 'string' ? v : Array.isArray(v) ? (v[0] ?? null) : null;
+}

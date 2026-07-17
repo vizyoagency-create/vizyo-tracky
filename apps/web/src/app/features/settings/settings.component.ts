@@ -12,6 +12,7 @@ import { RealtimeService } from '../../core/services/realtime.service';
 import { ThemeService } from '../../core/theme/theme.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { RetentionFleetCardComponent } from './retention-fleet-card.component';
+import { Security2faCardComponent } from './security-2fa-card.component';
 import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
 
 type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
@@ -19,7 +20,7 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [FormsModule, LucideAngularModule, RouterLink, RetentionFleetCardComponent],
+  imports: [FormsModule, LucideAngularModule, RouterLink, RetentionFleetCardComponent, Security2faCardComponent],
   template: `
     <div class="settings-page">
       <div class="settings-header">
@@ -398,6 +399,9 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
           </div>
 
           <div class="settings-col">
+            <!-- Sécurité du compte — vérification en 2 étapes (2FA), opt-in PAR
+                 UTILISATEUR (tout le monde peut sécuriser son propre compte). -->
+            <app-security-2fa-card />
             <!-- Sprint 6 — Rétention des données de la flotte (lecture seule, FLEET_ADMIN). -->
             @if (user()?.role === 'FLEET_ADMIN') {
               <app-retention-fleet-card />

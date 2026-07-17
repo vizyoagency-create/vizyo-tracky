@@ -165,4 +165,45 @@ export class AuthClientService {
       { email },
     );
   }
+
+  // ── Vérification e-mail des nouveaux appareils (2FA app) ────────────────────
+  // Vizyo Auth GÉNÈRE + VÉRIFIE le code ; Tracky envoie l'e-mail (même partage que
+  // le reset mot de passe). `sendLoginCode` retourne le code à envoyer par e-mail.
+
+  /** Génère un code e-mail côté Vizyo Auth et le retourne (Tracky l'envoie). */
+  async sendLoginCode(email: string): Promise<{ code: string; expiresIn: number }> {
+    return this.request<{ code: string; expiresIn: number }>(
+      'POST',
+      '/v1/auth/email-otp/send',
+      { email },
+    );
+  }
+
+  /**
+   * Vérifie un code e-mail. Renvoie { ok } sans lever d'exception sur code
+   * invalide/expiré (un 401 propagé jusqu'au front déclencherait une
+   * déconnexion) : on interroge Vizyo Auth en direct et on mappe l'échec en
+   * { ok: false }. Les vraies erreurs réseau sont, elles, relancées.
+   */
+  async verifyLoginCode(email: string, code: string): Promise<{ ok: boolean }> {
+    const url = `${this.apiUrl}/v1/auth/email-otp/verify`;
+    const body = { email, code };
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: this.signHeaders(body),
+      body: JSON.stringify(body),
+    });
+    if (res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean };
+      return { ok: data?.ok === true };
+    }
+    // 400/401/429 = code invalide/expiré/trop de tentatives → échec « métier »,
+    // pas une erreur d'auth de l'app. On ne propage PAS (éviterait un logout front).
+    if (res.status === 400 || res.status === 401 || res.status === 429) {
+      return { ok: false };
+    }
+    const text = await res.text().catch(() => '(body unreadable)');
+    this.logger.warn(`Vizyo Auth POST /v1/auth/email-otp/verify → ${res.status}: ${text}`);
+    throw new Error(`Vizyo Auth error ${res.status}: ${text}`);
+  }
 }
