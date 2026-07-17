@@ -73,7 +73,20 @@ export class GpsDeadZonesService {
     const { vehicleId, fleetId, trackerId, lat, lng, lostAt } = input;
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
 
-    // 1) Verrou d'idempotence : on tente de « réserver » l'épisode. Si déjà pris → no-op.
+    // 1) Verrou d'idempotence. On VÉRIFIE d'abord l'existence : une perte GPS EN COURS est ré-observée
+    //    à chaque tick avec le MÊME `lostAt`, donc `create()` heurterait la contrainte unique
+    //    `(vehicleId, lostAt)` en boucle → Prisma logge un `prisma:error` à chaque tick (bruit, faux
+    //    positif). Le check préalable évite la violation dans le cas courant ; `create()` reste sous
+    //    try/catch P2002 pour la course rare (deux ticks concurrents entre le check et l'insert).
+    const already = await this.prisma.gpsLossEvent.findUnique({
+      where: { vehicleId_lostAt: { vehicleId, lostAt } },
+      include: { zone: true },
+    });
+    if (already) {
+      // Épisode déjà enregistré (même `lostAt`) → idempotent, on ne re-cluster pas.
+      return already.zone ? { zone: already.zone, isNewEpisode: false } : null;
+    }
+
     let event: GpsLossEvent;
     try {
       event = await this.prisma.gpsLossEvent.create({
@@ -81,7 +94,7 @@ export class GpsDeadZonesService {
       });
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-        // Épisode déjà enregistré (même `lostAt`) → idempotent, on ne re-cluster pas.
+        // Course rare : un autre tick a inséré l'épisode entre le check et le create → idempotent.
         const existing = await this.prisma.gpsLossEvent.findUnique({
           where: { vehicleId_lostAt: { vehicleId, lostAt } },
           include: { zone: true },

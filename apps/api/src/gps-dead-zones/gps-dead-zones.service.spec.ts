@@ -55,20 +55,34 @@ describe('GpsDeadZonesService', () => {
     expect(prisma.gpsLossEvent.update).toHaveBeenCalledWith({ where: { id: 'e1' }, data: { zoneId: 'z1' } });
   });
 
-  it('est IDEMPOTENT : un même épisode (vehicleId, lostAt) ne re-cluster pas', async () => {
+  it('est IDEMPOTENT : un épisode déjà connu ne heurte PAS la contrainte (pas de create) et ne re-cluster pas', async () => {
     const { svc, prisma } = build();
-    const dup = new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'x' });
-    prisma.gpsLossEvent.create.mockRejectedValue(dup);
     prisma.gpsLossEvent.findUnique.mockResolvedValue({ id: 'e1', zone: { id: 'z1', occurrences: 3 } });
 
     const res = await svc.recordLoss(lossInput());
 
     expect(res).toMatchObject({ isNewEpisode: false });
     expect(res!.zone.id).toBe('z1');
+    // Le check préalable évite la contrainte unique → create JAMAIS appelé (plus de prisma:error en boucle).
+    expect(prisma.gpsLossEvent.create).not.toHaveBeenCalled();
     // Aucune écriture de clustering : ni findMany, ni create, ni update de zone.
     expect(prisma.gpsDeadZone.findMany).not.toHaveBeenCalled();
     expect(prisma.gpsDeadZone.create).not.toHaveBeenCalled();
     expect(prisma.gpsDeadZone.update).not.toHaveBeenCalled();
+  });
+
+  it('course rare : create throw P2002 après un check vide → idempotent via re-lecture', async () => {
+    const { svc, prisma } = build();
+    const dup = new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'x' });
+    prisma.gpsLossEvent.findUnique
+      .mockResolvedValueOnce(null) // check initial : rien
+      .mockResolvedValueOnce({ id: 'e1', zone: { id: 'z1', occurrences: 2 } }); // re-lecture après P2002
+    prisma.gpsLossEvent.create.mockRejectedValue(dup);
+
+    const res = await svc.recordLoss(lossInput());
+
+    expect(res).toMatchObject({ isNewEpisode: false });
+    expect(prisma.gpsDeadZone.create).not.toHaveBeenCalled();
   });
 
   it('rattache une perte proche à la zone existante et promeut LEARNING→RECURRING au seuil', async () => {
