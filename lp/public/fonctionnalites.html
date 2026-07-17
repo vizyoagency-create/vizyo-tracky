@@ -39,6 +39,12 @@ a{color:inherit;text-decoration:none}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 <script>(function(){try{var t=localStorage.getItem('vt-theme')||'dark';document.documentElement.dataset.theme=t}catch(e){document.documentElement.dataset.theme='dark'}})();</script>
+<style>/* Garde anti-débordement mobile (global) : médias bornés + enfants de
+grilles/flex peuvent rétrécir sous leur contenu (sinon un tableau/prix/e-mail
+force une largeur > écran → scroll horizontal). Sûr : ne rétrécit que là où la
+grille/flex l'autorise déjà. */
+img,svg,video{max-width:100%}
+[style*="display:grid"]>*,[style*="display:flex"]>*{min-width:0}</style>
 </head>
 <body>
 <div style="min-height:100vh;background:var(--bg)">

@@ -180,6 +180,12 @@ function buildPage(meta) {
 <head>
 ${head}
 ${helmet}
+<style>/* Garde anti-débordement mobile (global) : médias bornés + enfants de
+grilles/flex peuvent rétrécir sous leur contenu (sinon un tableau/prix/e-mail
+force une largeur > écran → scroll horizontal). Sûr : ne rétrécit que là où la
+grille/flex l'autorise déjà. */
+img,svg,video{max-width:100%}
+[style*="display:grid"]>*,[style*="display:flex"]>*{min-width:0}</style>
 </head>
 <body>
 ${body}
