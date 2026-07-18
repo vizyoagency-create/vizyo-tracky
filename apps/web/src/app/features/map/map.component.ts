@@ -957,9 +957,11 @@ const RESYNC_RADIUS_M = 150;
               <!-- Zone morte GPS connue (suivi FS-253) : GPS perdu à un endroit habituel → ton calme. -->
               @if (deadZoneHint(); as dz) {
                 @if (dz.benign) {
-                  <span class="bn-vcard-badge" style="color:#10E0A0"
+                  <!-- Bleu « parking » et NON vert : le vert se lit comme « actif/en ligne » et prêtait
+                       à confusion (le véhicule est à l'arrêt, pas en train de rouler). -->
+                  <span class="bn-vcard-badge" style="color:#0ea5e9"
                         [attr.title]="'Parking souterrain confirmé — perte GPS normale ici, véhicule à l’arrêt'">
-                    <span class="bn-vcard-badge-dot" style="background:#10E0A0"></span>
+                    <span class="bn-vcard-badge-dot" style="background:#0ea5e9"></span>
                     À l'arrêt · parking souterrain
                   </span>
                 } @else {
@@ -2183,8 +2185,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   protected readonly showDeadZones = signal(true);
   protected readonly deadZonesData = signal<GpsDeadZoneMapDto[]>([]);
   private deadZonePopup: Popup | null = null;
-  private deadZoneClickHandler: ((e: maplibregl.MapLayerMouseEvent) => void) | null = null;
-  private deadZoneCursorBound = false;
+  /** Pins parkings/zones mortes en marqueurs HTML (z-index > véhicules), indexés par id de zone. */
+  private deadZoneMarkers = new Map<string, maplibregl.Marker>();
   /** Arrêts > 5min (24h) : popup + cleanups des listeners (calque re-setup au changement de fond). */
   private stopPopup: Popup | null = null;
   private stopsListenerCleanups: Array<() => void> = [];
@@ -2503,7 +2505,6 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       this.setupStopsLayer();
       this.setupHeatmapLayer();
       this.setupFuelStationsLayer();
-      this.setupDeadZonesLayer();
       this.setupClusterLayer();
       this.loadGeofences();
       this.loadDeadZones().catch(() => { /* silent */ });
@@ -2801,7 +2802,6 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         this.setupStopsLayer();
         this.setupHeatmapLayer();
         this.setupFuelStationsLayer();
-        this.setupDeadZonesLayer();
         this.setupClusterLayer();
         this.loadGeofences();
         this.applyPositions(this.applyFilters(this.realtime.positionsList()));
@@ -3776,104 +3776,101 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   }
 
   /**
-   * Zones mortes GPS (suivi FS-253) — marqueurs des parkings souterrains confirmés (bleu « P »),
-   * zones récurrentes (ambre « P ») et suspectes/brouilleur (rouge « ! »). Calque masqué par défaut
-   * (piloté par le toggle Calques) ; les DONNÉES sont chargées en continu pour l'override des cards.
+   * Zones mortes GPS (suivi FS-253) — parkings souterrains confirmés (bleu « P »), zones récurrentes
+   * (ambre « P ») et suspectes/brouilleur (rouge « ! »).
+   *
+   * Rendus en MARQUEURS HTML (et NON en calque canvas) VOLONTAIREMENT : un calque MapLibre est dessiné
+   * DANS le canvas, donc TOUJOURS sous les marqueurs véhicule (qui sont du DOM) — la voiture masquait
+   * le parking et on ne comprenait pas qu'elle était DEDANS. En HTML on maîtrise le z-index : le pin
+   * parking passe DEVANT le véhicule. Bonus : les marqueurs DOM survivent au changement de fond de carte.
    */
-  private setupDeadZonesLayer(): void {
-    if (!this.map || this.map.getSource('dead-zones')) return;
-    this.map.addSource('dead-zones', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-    const vis: 'visible' | 'none' = this.showDeadZones() ? 'visible' : 'none';
-    this.map.addLayer({
-      id: 'dead-zones-circle',
-      type: 'circle',
-      source: 'dead-zones',
-      layout: { visibility: vis },
-      paint: {
-        'circle-radius': 11,
-        'circle-color': ['match', ['get', 'status'], 'SUSPECT', '#ef4444', 'CONFIRMED_BENIGN', '#0ea5e9', '#f59e0b'],
-        'circle-opacity': 0.9,
-        'circle-stroke-width': 2,
-        'circle-stroke-color': '#ffffff',
-      },
-    });
-    this.map.addLayer({
-      id: 'dead-zones-icon',
-      type: 'symbol',
-      source: 'dead-zones',
-      layout: {
-        visibility: vis,
-        // « ! » pour une zone suspecte (brouilleur), « P » (parking) sinon.
-        'text-field': ['match', ['get', 'status'], 'SUSPECT', '!', 'P'],
-        'text-size': 13,
-        'text-allow-overlap': true,
-        'text-ignore-placement': true,
-      },
-      paint: { 'text-color': '#ffffff' },
-    });
-    if (this.deadZoneClickHandler) this.map.off('click', 'dead-zones-circle', this.deadZoneClickHandler);
-    this.deadZoneClickHandler = (e) => this.onDeadZoneClick(e);
-    this.map.on('click', 'dead-zones-circle', this.deadZoneClickHandler);
-    if (!this.deadZoneCursorBound) {
-      this.map.on('mouseenter', 'dead-zones-circle', () => { if (this.map) this.map.getCanvas().style.cursor = 'pointer'; });
-      this.map.on('mouseleave', 'dead-zones-circle', () => { if (this.map) this.map.getCanvas().style.cursor = ''; });
-      this.deadZoneCursorBound = true;
+  private renderDeadZoneMarkers(): void {
+    if (!this.map) return;
+    const zones = this.showDeadZones() ? this.deadZonesData() : [];
+    const seen = new Set<string>();
+    for (const z of zones) {
+      if (!Number.isFinite(z.centroidLat) || !Number.isFinite(z.centroidLng)) continue;
+      seen.add(z.id);
+      const existing = this.deadZoneMarkers.get(z.id);
+      if (existing) {
+        existing.setLngLat([z.centroidLng, z.centroidLat]);
+        continue;
+      }
+      const marker = new maplibregl.Marker({ element: this.buildDeadZoneEl(z), anchor: 'center' })
+        .setLngLat([z.centroidLng, z.centroidLat])
+        .addTo(this.map);
+      this.deadZoneMarkers.set(z.id, marker);
+    }
+    // Retire les pins dont la zone a disparu (ou quand le calque est masqué).
+    for (const [id, marker] of this.deadZoneMarkers) {
+      if (!seen.has(id)) {
+        marker.remove();
+        this.deadZoneMarkers.delete(id);
+      }
     }
   }
 
-  /** Charge les zones mortes de la flotte accessible (best-effort) : alimente le calque ET le signal. */
+  /** Élément DOM d'un pin de zone morte. z-index élevé → passe DEVANT le marqueur véhicule. */
+  private buildDeadZoneEl(z: GpsDeadZoneMapDto): HTMLElement {
+    const suspect = z.status === 'SUSPECT';
+    const confirmed = z.status === 'CONFIRMED_BENIGN';
+    const color = suspect ? '#ef4444' : confirmed ? '#0ea5e9' : '#f59e0b';
+    const el = document.createElement('div');
+    el.className = 'tracky-deadzone-marker';
+    el.style.cssText =
+      `z-index:900;width:26px;height:26px;border-radius:50%;background:${color};` +
+      'border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);display:flex;align-items:center;' +
+      'justify-content:center;color:#fff;font-weight:800;font-size:13px;line-height:1;cursor:pointer';
+    el.textContent = suspect ? '!' : 'P';
+    el.setAttribute('aria-label', suspect ? 'Zone GPS suspecte' : 'Parking souterrain');
+    el.title = `${z.plate ?? 'Véhicule'} — ${deadZoneNatureLabel(z)}`;
+    el.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      this.openDeadZonePopup(z);
+    });
+    return el;
+  }
+
+  /** Charge les zones mortes de la flotte accessible (best-effort) : alimente le signal ET les pins. */
   private async loadDeadZones(): Promise<void> {
     if (!this.map) return;
     try {
       const zones = await firstValueFrom(this.deadZonesApi.listForMap(this.fleetFilter.selectedFleetId() ?? undefined));
       this.deadZonesData.set(zones);
-      const features: GeoJSON.Feature[] = zones.map((z) => ({
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates: [z.centroidLng, z.centroidLat] },
-        properties: {
-          id: z.id,
-          plate: z.plate ?? '',
-          status: z.status,
-          occurrences: z.occurrences,
-          nature: deadZoneNatureLabel(z),
-          place: z.placeLabel ?? '',
-        },
-      }));
-      const src = this.map.getSource('dead-zones') as maplibregl.GeoJSONSource | undefined;
-      src?.setData({ type: 'FeatureCollection', features });
-    } catch { /* silent */ }
+      this.renderDeadZoneMarkers();
+    } catch {
+      /* best-effort : la carte reste fonctionnelle sans les pins parkings */
+    }
   }
 
-  /** Toggle du calque parkings souterrains / zones mortes. */
+  /** Toggle des pins parkings souterrains / zones mortes. */
   protected toggleDeadZones(): void {
     const v = !this.showDeadZones();
     this.showDeadZones.set(v);
-    this.setLayerVisibility('dead-zones-circle', v);
-    this.setLayerVisibility('dead-zones-icon', v);
+    this.renderDeadZoneMarkers();
     if (!v) this.deadZonePopup?.remove();
   }
 
   /** Popup d'une zone morte au clic (véhicule, nature, fréquence). */
-  private onDeadZoneClick(e: maplibregl.MapLayerMouseEvent): void {
-    const f = e.features?.[0];
-    if (!f || !this.map) return;
-    const p = f.properties ?? {};
-    const coords = (f.geometry as GeoJSON.Point).coordinates as [number, number];
+  private openDeadZonePopup(z: GpsDeadZoneMapDto): void {
+    if (!this.map) return;
     const esc = (s: unknown) => String(s ?? '').replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] as string));
-    const status = String(p['status']);
-    const statusLabel = status === 'CONFIRMED_BENIGN'
+    const statusLabel = z.status === 'CONFIRMED_BENIGN'
       ? '🅿️ Parking souterrain confirmé'
-      : status === 'SUSPECT'
+      : z.status === 'SUSPECT'
         ? '⚠️ Zone suspecte (brouilleur ?)'
         : 'Perte GPS récurrente';
     const html = `<div style="font-size:12px;line-height:1.55;min-width:180px">`
-      + `<strong style="font-size:13px">${esc(p['plate']) || 'Véhicule'}</strong><br>`
-      + (p['place'] ? `<span style="color:#9ca3af">${esc(p['place'])}</span><br>` : '')
+      + `<strong style="font-size:13px">${esc(z.plate) || 'Véhicule'}</strong><br>`
+      + (z.placeLabel ? `<span style="color:#9ca3af">${esc(z.placeLabel)}</span><br>` : '')
       + `<b>${esc(statusLabel)}</b><br>`
-      + `${esc(p['nature'])} · perte GPS ${esc(p['occurrences'])} fois ici`
+      + `${esc(deadZoneNatureLabel(z))} · perte GPS ${esc(z.occurrences)} fois ici`
       + `</div>`;
     this.deadZonePopup?.remove();
-    this.deadZonePopup = new maplibregl.Popup({ closeButton: true, offset: 14 }).setLngLat(coords).setHTML(html).addTo(this.map);
+    this.deadZonePopup = new maplibregl.Popup({ closeButton: true, offset: 16 })
+      .setLngLat([z.centroidLng, z.centroidLat])
+      .setHTML(html)
+      .addTo(this.map);
   }
 
   /** Sprint D.4 — setup layer pour l'outil de mesure (ligne + points). */
