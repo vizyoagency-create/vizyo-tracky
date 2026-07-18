@@ -24,6 +24,7 @@ export * from './dto/ai-optimization.dto';
 export * from './dto/agenda-agent.dto';
 export * from './dto/reservation-booking.dto';
 export * from './dto/ai-usage.dto';
+export * from './dto/billing.dto';
 export * from './dto/trip-analysis.dto';
 export * from './dto/activity-report.dto';
 export * from './dto/system-activity.dto';

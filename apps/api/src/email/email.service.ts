@@ -23,7 +23,8 @@ export type EmailTemplateId =
   | 'installation_slot_requested'
   | 'installation_slot_confirmed'
   | 'reservation_requested'
-  | 'reservation_confirmed';
+  | 'reservation_confirmed'
+  | 'ai_invoice_request';
 
 /**
  * V1.5 (Sprint J) — Service d'envoi d'emails via Resend.
@@ -851,6 +852,40 @@ Un imprévu ? Répondez à cet e-mail. À bientôt.
     return { subject, html, text };
   }
 
+  /** Facturation — un fleet-admin demande une FACTURE PHYSIQUE pour l'option IA (→ contact@vizyoagency.com). */
+  buildAiInvoiceRequestEmail(opts: {
+    fleetName: string;
+    requester: string;
+    vehicleCount: number;
+    monthlyLabel: string;
+  }): { subject: string; html: string; text: string } {
+    const subject = `Facture physique — Option IA · ${opts.fleetName}`;
+    const rows = [
+      this.kvRow('Société', opts.fleetName),
+      this.kvRow('Demandeur', opts.requester),
+      this.kvRow('Véhicules facturables', String(opts.vehicleCount)),
+      this.kvRow('Montant estimé', `~${opts.monthlyLabel}/mois`),
+    ];
+    const body = `
+        <tr><td style="padding:28px 36px 0;">
+          <div style="width:46px;height:46px;border-radius:12px;background:rgba(16,224,160,.12);text-align:center;line-height:46px;font-size:22px;margin-bottom:18px;">🧾</div>
+          <h1 style="margin:0 0 12px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:25px;line-height:1.15;font-weight:800;letter-spacing:-0.025em;color:#EAEFED;">Demande de facture physique — Option IA</h1>
+          <p style="margin:0 0 20px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:15px;line-height:1.65;color:#9BA5A1;">La société <span style="color:#10E0A0;font-weight:600;">${escapeHtml(opts.fleetName)}</span> souhaite activer l'<span style="color:#EAEFED;font-weight:600;">option IA</span> par <span style="color:#EAEFED;font-weight:600;">facture physique</span>. Émettez la facture puis activez l'IA de la société depuis l'espace admin (page Coûts IA).</p>
+          <table role="presentation" width="100%" style="background:#161D1B;border:1px solid rgba(255,255,255,.07);border-radius:12px;border-collapse:separate;">
+            ${rows.join('')}
+          </table>
+        </td></tr>`;
+    const html = this.shell({ eyebrow: 'Facturation · Option IA', footer: 'VIZYO TRACKY · FACTURATION', body });
+    const text = `Demande de facture physique — Option IA
+Société : ${opts.fleetName}
+Demandeur : ${opts.requester}
+Véhicules facturables : ${opts.vehicleCount}
+Montant estimé : ~${opts.monthlyLabel}/mois
+
+Émettez la facture puis activez l'IA de la société depuis l'espace admin (page Coûts IA).`;
+    return { subject, html, text };
+  }
+
   /**
    * Signature commerciale PERSONNELLE (charte) — bloc `<tr><td>` réutilisé dans
    * les e-mails prospects pour un ton humain (« un vrai commercial », pas un
@@ -1107,6 +1142,13 @@ ${this.commercialSignatureText()}`;
           slotLabel: 'mar. 8 juil., 09:00 → 17:00',
           destination: 'Carcassonne',
           vehicle: 'TE-001-ST',
+        });
+      case 'ai_invoice_request':
+        return this.buildAiInvoiceRequestEmail({
+          fleetName,
+          requester: 'admin@societe.fr',
+          vehicleCount: 12,
+          monthlyLabel: '60,00 €',
         });
       case 'weekly_report':
         return {

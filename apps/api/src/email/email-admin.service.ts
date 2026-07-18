@@ -35,6 +35,7 @@ export const TEMPLATE_META: {
   { id: 'installation_slot_confirmed', label: 'Créneau confirmé', category: 'Installation', subject: 'Votre créneau d\'installation est confirmé', trigger: 'L\'opérateur valide la demande' },
   { id: 'reservation_requested', label: 'Demande de réservation reçue', category: 'Réservation', subject: 'Votre demande de réservation a bien été reçue', trigger: 'Un demandeur soumet via un lien public' },
   { id: 'reservation_confirmed', label: 'Réservation confirmée', category: 'Réservation', subject: 'Votre réservation est confirmée', trigger: 'Un gestionnaire valide la demande' },
+  { id: 'ai_invoice_request', label: 'Facture physique — Option IA', category: 'Facturation', subject: 'Facture physique — Option IA · {société}', trigger: 'Un fleet-admin demande une facture physique pour l\'option IA' },
 ];
 const TEMPLATE_IDS = new Set(TEMPLATE_META.map((t) => t.id));
 const TEMPLATE_LABELS = new Map(TEMPLATE_META.map((t) => [t.id as string, t.label]));

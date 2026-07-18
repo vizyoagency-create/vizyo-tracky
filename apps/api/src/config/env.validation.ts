@@ -64,6 +64,16 @@ const envSchema = z.object({
   // Si vide : en production le webhook REJETTE tout (fail-closed) ; en dev on tolere.
   RESEND_WEBHOOK_SECRET: z.string().default(''),
 
+  // Facturation (Stripe) — 2026-07. Si STRIPE_SECRET_KEY est vide, le module billing est DESACTIVE
+  // (no-op, comme Resend) : l'app tourne sans facturation, l'IA reste pilotee par le toggle
+  // super-admin (COMP). Cle secrete serveur (sk_test_… / sk_live_…).
+  STRIPE_SECRET_KEY: z.string().default(''),
+  // Cle publiable (pk_test_… / pk_live_…) — NON secrete, exposee au front pour Stripe.js.
+  STRIPE_PUBLISHABLE_KEY: z.string().default(''),
+  // Secret de signature du webhook Stripe (whsec_…) pour verifier /api/billing/webhook.
+  // Vide : en production le webhook REJETTE tout (fail-closed) ; en dev on tolere.
+  STRIPE_WEBHOOK_SECRET: z.string().default(''),
+
   // URL publique de l'app Angular — utilise pour les liens dans les emails
   // d'invitation (`{APP_BASE_URL}/accept-invite?token=...`). En dev pointe sur
   // localhost:4200, en prod sur https://app-tracky.vizyoagency.com.

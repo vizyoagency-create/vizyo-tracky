@@ -231,6 +231,10 @@ model Fleet {
   // = NON IA, jamais coupés). Togglable par le FLEET_ADMIN depuis ses réglages (et par un super-admin).
   // OPT-IN (2026-07-14) : défaut OFF — aucune flotte n'a l'IA tant qu'un admin ne l'active pas.
   aiEnabled               Boolean @default(false)
+  // Facturation (2026-07) — Stripe. L'IA est une OPTION PAYANTE. L'interrupteur runtime `aiEnabled`
+  // est PILOTÉ par l'abonnement (`AiSubscription`) : statut ACTIVE ou COMP → aiEnabled=true, sinon false.
+  // `stripeCustomerId` = client Stripe de la société (créé à la 1re carte / au 1er abonnement).
+  stripeCustomerId        String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -252,8 +256,61 @@ model Fleet {
   sims                 Sim[]
   // Sprint 4 — config d'activation de l'ecoute audio (1:1, OFF par defaut).
   audioConfig          FleetAudioConfig?
+  // Facturation (2026-07) — abonnement à l'option IA (1:1).
+  aiSubscription       AiSubscription?
 
   @@map("fleets")
+}
+
+/// Statut de l'option IA payante d'une société. Pilote `Fleet.aiEnabled` (ACTIVE/COMP → IA ON).
+enum AiSubscriptionStatus {
+  NONE // jamais souscrit — IA off
+  ACTIVE // abonnement payant actif (Stripe active/trialing)
+  PAST_DUE // paiement échoué (Stripe past_due/unpaid) — IA suspendue
+  CANCELED // annulé (période échue ou annulation immédiate) — IA off
+  INVOICE_PENDING // facture physique demandée — en attente d'activation manuelle owner
+  COMP // offert par l'owner/super-admin (toggle, sans paiement)
+}
+
+/// Abonnement à l'option IA d'une société (1:1 Fleet). SOURCE DE VÉRITÉ de l'état payant ;
+/// synchronise `Fleet.aiEnabled` (ACTIVE/COMP → true). Le prix unitaire (par véhicule/mois) et la
+/// quantité sont FIGÉS à la souscription pour afficher « coût / mois » et « coût / voiture » sans
+/// appel Stripe. `stripe*` nuls pour COMP (offert) et INVOICE_PENDING (facture physique).
+model AiSubscription {
+  id                   String               @id @default(uuid()) @db.Uuid
+  fleetId              String               @unique @db.Uuid
+  fleet                Fleet                @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  status               AiSubscriptionStatus @default(NONE)
+  stripeSubscriptionId String?              @unique
+  stripePriceId        String?
+  // Tarification figée pour l'affichage (centimes €). unitAmountEurCents = prix / véhicule / mois.
+  unitAmountEurCents   Int?
+  quantity             Int? // nb de véhicules facturés au moment de la souscription
+  currency             String               @default("eur")
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean              @default(false)
+  compedByUserId       String?              @db.Uuid // COMP : owner/super-admin qui a offert l'IA
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  @@map("ai_subscriptions")
+}
+
+/// Réglages de facturation (SINGLETON, édités par le super-admin/owner dans l'espace admin).
+/// Le prix de l'option IA est CONFIGURABLE ici (pas figé dans le code) : l'owner met un défaut
+/// puis ajuste le vrai prix depuis l'UI. `aiUnitAmountEurCents` = prix / véhicule / mois (centimes)
+/// quand `aiPricingUnit='per_vehicle'` ; forfait société / mois quand `'flat'`. Repris à chaque
+/// souscription et figé sur `AiSubscription` pour l'affichage.
+model BillingSettings {
+  id                   String   @id @default(uuid()) @db.Uuid
+  aiUnitAmountEurCents Int      @default(500) // défaut placeholder 5,00 €/véhicule/mois — à ajuster dans l'UI
+  aiPricingUnit        String   @default("per_vehicle") // 'per_vehicle' | 'flat'
+  currency             String   @default("eur")
+  updatedByUserId      String?  @db.Uuid
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@map("billing_settings")
 }
 
 model User {

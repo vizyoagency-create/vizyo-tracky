@@ -11,6 +11,7 @@ import { AiCoreModule } from './ai/ai-core.module';
 import { AiModule } from './ai/ai.module';
 import { TripAnalysisModule } from './trip-analysis/trip-analysis.module';
 import { AiUsageModule } from './ai-usage/ai-usage.module';
+import { BillingModule } from './billing/billing.module';
 import { GeocodingModule } from './geocoding/geocoding.module';
 import { ReservationBookingModule } from './reservation-booking/reservation-booking.module';
 import { AlertsModule } from './alerts/alerts.module';
@@ -167,6 +168,8 @@ import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.modul
     // Sprint 9 — Copilote IA d'optimisation (capacité + placement). Inactif sans
     // ANTHROPIC_API_KEY (endpoints 503). L'IA propose, l'app valide.
     AiModule,
+    // Facturation (2026-07) — option IA payante (Stripe). No-op sans STRIPE_SECRET_KEY.
+    BillingModule,
     // Palier « Coûts IA » — journalise l'usage/coût de chaque appel IA + budget (super-admin).
     AiUsageModule,
     // Traçabilité fine des trajets (Palier 2) — analyse déterministe (arrêts, excès OSM, éco) persistée.
