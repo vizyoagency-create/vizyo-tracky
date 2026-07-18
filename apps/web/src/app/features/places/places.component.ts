@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import {
   LucideAngularModule, Fuel, MapPin, ParkingSquare, Check, Trash2, RefreshCw, AlertTriangle, Info,
 } from 'lucide-angular';
@@ -90,6 +90,9 @@ import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
                     @if (p.note) { · {{ p.note }} }
                   </span>
                 </div>
+                <button type="button" class="lk-btn" (click)="showOnMap(p.lat, p.lng)" title="Voir sur la carte">
+                  <lucide-icon [img]="MapPinIcon" [size]="13"></lucide-icon>
+                </button>
                 @if (canManage()) {
                   <button
                     type="button"
@@ -150,6 +153,9 @@ import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
                     @if (s.priceEur != null) { · {{ s.priceEur | number: '1.3-3' }} €/L }
                   </span>
                 </div>
+                <button type="button" class="lk-btn" (click)="showOnMap(s.lat, s.lng)" title="Voir sur la carte">
+                  <lucide-icon [img]="MapPinIcon" [size]="13"></lucide-icon>
+                </button>
                 @if (canManage() && !s.validated) {
                   <button
                     type="button"
@@ -212,6 +218,7 @@ export class PlacesComponent {
   private readonly fleetFilter = inject(FleetFilterService);
   private readonly perms = inject(PermissionsService);
   private readonly toast = inject(ToastService);
+  private readonly router = inject(Router);
 
   protected readonly FuelIcon = Fuel;
   protected readonly MapPinIcon = MapPin;
@@ -313,6 +320,14 @@ export class PlacesComponent {
     } finally {
       this.busyId.set(null);
     }
+  }
+
+  /**
+   * Connexion page → carte : ouvre la carte CENTRÉE sur le repère (la carte lit `lat/lng/zoom`
+   * depuis l'URL via `restoreFromUrl`), pour passer de la liste au terrain en un clic.
+   */
+  protected showOnMap(lat: number, lng: number): void {
+    void this.router.navigate(['/map'], { queryParams: { lat, lng, zoom: 17 } });
   }
 
   protected kindLabel(k: FleetPlaceKind): string {

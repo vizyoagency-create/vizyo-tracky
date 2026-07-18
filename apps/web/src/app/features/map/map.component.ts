@@ -129,6 +129,27 @@ interface BaanoolCardData {
 }
 
 /**
+ * Lieux clés — données de la card d'un REPÈRE cliqué sur la carte. Deux natures :
+ *  - `station` : station-service DÉTECTÉE (agrégat des passages), pas encore adoptée par la flotte ;
+ *  - `place`   : lieu de la flotte (station validée, parking, dépôt) → renommable / déplaçable.
+ */
+type PlaceCardData =
+  | {
+      type: 'station';
+      stationId: string;
+      title: string;
+      where: string;
+      visits: number;
+      distinctVehicles: number;
+      lastPriceEur: number | null;
+      lastVisitAt: string | null;
+      lat: number;
+      lng: number;
+      vehicles: { plate: string | null; visits: number }[];
+    }
+  | { type: 'place'; place: FleetPlaceDto };
+
+/**
  * Etat de mouvement d'un marker.
  *
  * Entre deux trames Coban (~30s en MOVING), on n'interpole plus from→to (ce qui
@@ -252,6 +273,23 @@ const RESYNC_RADIUS_M = 150;
             <button (click)="clearMeasure()" class="tracky-measure-banner-btn">Effacer</button>
           }
           <button (click)="toggleMeasure()" class="tracky-measure-banner-close" aria-label="Fermer mesure">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+        </div>
+      </div>
+    }
+
+    <!-- Banner « Poser un lieu » (surtout mobile : la barre d'outils desktop est masquée). -->
+    @if (placeMode() && !pendingPlace()) {
+      <div class="tracky-measure-banner">
+        <div class="tracky-measure-banner-info">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          <span class="tracky-measure-banner-text">
+            <span class="tracky-measure-banner-hint">Touchez la carte pour poser le lieu</span>
+          </span>
+        </div>
+        <div class="tracky-measure-banner-actions">
+          <button (click)="togglePlaceMode()" class="tracky-measure-banner-close" aria-label="Annuler la pose">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
           </button>
         </div>
@@ -517,10 +555,12 @@ const RESYNC_RADIUS_M = 150;
               <input type="checkbox" [checked]="showDeadZones()" (change)="toggleDeadZones()" />
               <span>Parkings souterrains / zones mortes</span>
             </label>
-            <label class="tracky-sheet-checkbox">
-              <input type="checkbox" [checked]="showFleetPlaces()" (change)="toggleFleetPlaces()" />
-              <span>Lieux de la flotte (stations validées, parkings)</span>
-            </label>
+            @if (canViewPlaces()) {
+              <label class="tracky-sheet-checkbox">
+                <input type="checkbox" [checked]="showFleetPlaces()" (change)="toggleFleetPlaces()" />
+                <span>Lieux de la flotte (stations validées, parkings)</span>
+              </label>
+            }
             <label class="tracky-sheet-checkbox">
               <input type="checkbox" [checked]="showHeatmap()" (change)="toggleHeatmap()" />
               <span>Heatmap densité (24h)</span>
@@ -661,6 +701,15 @@ const RESYNC_RADIUS_M = 150;
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 21V11"/><path d="M2 17v-5a4 4 0 0 1 4-4h12a4 4 0 0 1 4 4v5"/><path d="m22 17-1.5 4h-17L2 17"/></svg>
               <span>Cinéma</span>
             </button>
+            <!-- Lieux clés — parité mobile du « Poser un lieu » (gaté places_manage). -->
+            @if (canManagePlaces()) {
+              <button (click)="togglePlaceMode(); mobileSheetOpen.set(false)"
+                      [class.tracky-sheet-action--active]="placeMode()"
+                      class="tracky-sheet-action">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                <span>Poser un lieu</span>
+              </button>
+            }
           </div>
           @if (measureMode()) {
             <div class="tracky-sheet-info tracky-sheet-info--purple">
@@ -781,10 +830,12 @@ const RESYNC_RADIUS_M = 150;
               <input type="checkbox" [checked]="showDeadZones()" (change)="toggleDeadZones()" />
               <span>Parkings souterrains / zones mortes</span>
             </label>
-            <label class="tracky-sheet-checkbox">
-              <input type="checkbox" [checked]="showFleetPlaces()" (change)="toggleFleetPlaces()" />
-              <span>Lieux de la flotte (stations validées, parkings)</span>
-            </label>
+            @if (canViewPlaces()) {
+              <label class="tracky-sheet-checkbox">
+                <input type="checkbox" [checked]="showFleetPlaces()" (change)="toggleFleetPlaces()" />
+                <span>Lieux de la flotte (stations validées, parkings)</span>
+              </label>
+            }
             <label class="tracky-sheet-checkbox">
               <input type="checkbox" [checked]="showHeatmap()" (change)="toggleHeatmap()" />
               <span>Heatmap densité (24h)</span>
@@ -817,7 +868,7 @@ const RESYNC_RADIUS_M = 150;
               <span>91+ km/h</span>
             </div>
           </div>
-          @if (showFuelStations() || showDeadZones() || showFleetPlaces()) {
+          @if (showFuelStations() || showDeadZones() || placesLayerVisible()) {
             <p class="tracky-sheet-title" style="margin-top:10px">Repères carte</p>
             <div class="tracky-sheet-legend">
               @if (showFuelStations()) {
@@ -826,7 +877,7 @@ const RESYNC_RADIUS_M = 150;
                   <span>Station détectée</span>
                 </div>
               }
-              @if (showFleetPlaces()) {
+              @if (placesLayerVisible()) {
                 <div class="tracky-sheet-legend-item">
                   <span class="w-2.5 h-2.5 rounded-[3px]" style="background:#10E0A0"></span>
                   <span>Station de la flotte (validée)</span>
@@ -888,7 +939,7 @@ const RESYNC_RADIUS_M = 150;
             <span class="text-[10px] text-fg-tertiary">91+ km/h</span>
           </div>
         </div>
-        @if (showFuelStations() || showDeadZones() || showFleetPlaces()) {
+        @if (showFuelStations() || showDeadZones() || placesLayerVisible()) {
           <hr class="my-2 border-border-subtle" />
           <p class="text-[10px] font-semibold text-fg-secondary mb-1.5 uppercase tracking-wider">Repères</p>
           <div class="flex flex-col gap-1">
@@ -898,7 +949,7 @@ const RESYNC_RADIUS_M = 150;
                 <span class="text-[10px] text-fg-tertiary">Station détectée (taille = passages)</span>
               </div>
             }
-            @if (showFleetPlaces()) {
+            @if (placesLayerVisible()) {
               <div class="flex items-center gap-2">
                 <span class="w-2.5 h-2.5 rounded-[3px] flex items-center justify-center text-[7px] font-bold text-white" style="background:#10E0A0">⛽</span>
                 <span class="text-[10px] text-fg-tertiary">Station de la flotte (validée)</span>
@@ -926,6 +977,108 @@ const RESYNC_RADIUS_M = 150;
         }
       </div>
     </div>
+
+    <!-- ═══ Card d'un REPÈRE : station détectée ou lieu de la flotte ═══
+         Même habillage que la card véhicule (.bn-vcard*) → carte cohérente, et connectée à la
+         page « Lieux clés » (valider une station, renommer/retirer un lieu, ouvrir la page). -->
+    @if (placeCard(); as pc) {
+      <div class="bn-vcard-backdrop" (click)="closePlaceCard()"></div>
+      <div class="bn-vcard">
+        <div class="bn-vcard-handle" (click)="closePlaceCard()"></div>
+        <div class="bn-vcard-header">
+          <div class="bn-vcard-left">
+            @if (pc.type === 'place' && renamingPlaceId() === pc.place.id) {
+              <input
+                class="bn-place-rename"
+                [(ngModel)]="renameValue"
+                maxlength="120"
+                placeholder="Nom du lieu"
+                (keydown.enter)="confirmRenamePlace()"
+                (keydown.escape)="cancelRenamePlace()"
+              />
+            } @else {
+              <div class="bn-vcard-plate">{{ pc.type === 'station' ? pc.title : pc.place.name }}</div>
+            }
+
+            <div class="bn-vcard-badges">
+              @if (pc.type === 'station') {
+                <span class="bn-vcard-badge" style="color:#A78BFA">
+                  <span class="bn-vcard-badge-dot" style="background:#A78BFA"></span>
+                  Station détectée
+                </span>
+                @if (placeCardStationValidated()) {
+                  <span class="bn-vcard-badge" style="color:#10E0A0">
+                    <span class="bn-vcard-badge-dot" style="background:#10E0A0"></span>
+                    Lieu de la flotte
+                  </span>
+                }
+              } @else {
+                <span class="bn-vcard-badge" style="color:#10E0A0">
+                  <span class="bn-vcard-badge-dot" style="background:#10E0A0"></span>
+                  {{ placeKindLabel(pc.place.kind) }}
+                </span>
+              }
+            </div>
+
+            <div class="bn-place-meta">
+              @if (pc.type === 'station') {
+                @if (pc.where) { <div>{{ pc.where }}</div> }
+                <div>
+                  <b>{{ pc.visits }}</b> passage(s) · <b>{{ pc.distinctVehicles }}</b> véhicule(s)
+                  @if (pc.lastPriceEur != null) { · <b>{{ pc.lastPriceEur | number: '1.3-3' }} €/L</b> }
+                </div>
+                @if (pc.vehicles.length) {
+                  <div class="bn-place-vehicles">
+                    @for (v of pc.vehicles; track $index) {
+                      @if ($index < 6) {
+                        <span class="bn-place-veh"><b>{{ v.plate || 'véhicule' }}</b> {{ v.visits }}×</span>
+                      }
+                    }
+                    @if (pc.vehicles.length > 6) {
+                      <span class="bn-place-veh">+{{ pc.vehicles.length - 6 }}</span>
+                    }
+                  </div>
+                }
+              } @else {
+                <div>Rayon {{ pc.place.radiusM }} m</div>
+                @if (pc.place.note) { <div>{{ pc.place.note }}</div> }
+                @if (canManagePlaces()) {
+                  <div class="bn-place-hint">Glissez le repère sur la carte pour le déplacer.</div>
+                }
+              }
+            </div>
+          </div>
+          <button class="bn-vcard-close" (click)="closePlaceCard()" aria-label="Fermer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
+        <div class="bn-vcard-actions">
+          @if (pc.type === 'station') {
+            @if (canManagePlaces() && !placeCardStationValidated()) {
+              <button class="bn-vcard-act bn-vcard-act--primary" [disabled]="placeCardSaving()" (click)="validateStationFromCard()">
+                <span>{{ placeCardSaving() ? 'Ajout…' : 'Ajouter aux lieux' }}</span>
+              </button>
+            }
+          } @else if (canManagePlaces()) {
+            @if (renamingPlaceId() === pc.place.id) {
+              <button class="bn-vcard-act bn-vcard-act--primary" [disabled]="!renameValue.trim() || placeCardSaving()" (click)="confirmRenamePlace()">
+                <span>Enregistrer</span>
+              </button>
+              <button class="bn-vcard-act" (click)="cancelRenamePlace()"><span>Annuler</span></button>
+            } @else {
+              <button class="bn-vcard-act" (click)="startRenamePlace()"><span>Renommer</span></button>
+              <button class="bn-vcard-act bn-vcard-act--danger" [disabled]="placeCardSaving()" (click)="deletePlaceFromCard()">
+                <span>Retirer</span>
+              </button>
+            }
+          }
+          @if (canViewPlaces()) {
+            <button class="bn-vcard-act" (click)="goToPlaces()"><span>Lieux clés</span></button>
+          }
+        </div>
+      </div>
+    }
 
     <!-- Lieux clés — confirmation du point posé (nom + nature) avant enregistrement. -->
     @if (pendingPlace(); as pt) {
@@ -1243,6 +1396,18 @@ const RESYNC_RADIUS_M = 150;
       flex-shrink: 0;
     }
     .tracky-measure-banner-close:active { background: var(--bg-tertiary); }
+
+    /* ─── Lieux clés : contenu de la card d'un repère (réutilise l'habillage .bn-vcard) ─── */
+    .bn-place-meta { margin-top: 6px; display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--fg-secondary); line-height: 1.45; }
+    .bn-place-meta b { color: var(--fg-primary); }
+    .bn-place-vehicles { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px; }
+    .bn-place-veh { padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--fg-tertiary) 16%, transparent); font-size: 11px; color: var(--fg-secondary); }
+    .bn-place-veh b { color: var(--fg-primary); font-weight: 700; }
+    .bn-place-hint { color: var(--fg-tertiary); font-size: 11px; font-style: italic; }
+    .bn-place-rename {
+      width: 100%; padding: 6px 9px; border-radius: 8px; font-size: 16px; font-weight: 700;
+      border: 1px solid var(--tracky-light); background: var(--bg-primary); color: var(--fg-primary); outline: none;
+    }
 
     /* ─── Lieux clés : panneau de confirmation d'un point posé ─── */
     .tracky-place-dialog-backdrop {
@@ -2292,7 +2457,6 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   protected readonly showHeatmap = signal(false);
   /** Carburant (2026-07) — stations-service fréquentées par la flotte (fréquence + récence). Défaut ON (demande client). */
   protected readonly showFuelStations = signal(true);
-  private fuelPopup: Popup | null = null;
   private fuelClickHandler: ((e: maplibregl.MapLayerMouseEvent) => void) | null = null;
   private fuelCursorBound = false;
   /** Détail par véhicule d'une station (qui + combien de passages), indexé par stationId (popup). */
@@ -2313,7 +2477,6 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   protected readonly showFleetPlaces = signal(true);
   protected readonly fleetPlaces = signal<FleetPlaceDto[]>([]);
   private fleetPlaceMarkers = new Map<string, maplibregl.Marker>();
-  private fleetPlacePopup: Popup | null = null;
   /** Mode « poser un lieu » : le prochain clic carte capture le point. */
   protected readonly placeMode = signal(false);
   /** Point capturé en attente de nom/nature (petit panneau de confirmation). */
@@ -2321,8 +2484,32 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   protected pendingPlaceName = '';
   protected pendingPlaceKind: FleetPlaceKind = 'PARKING';
   protected readonly placeSaving = signal(false);
-  /** Poser/éditer un lieu de la flotte demande `places_manage` (managers inclus par défaut). */
+  /**
+   * Permissions « Lieux clés ». `places_view` conditionne TOUT ce qui touche aux lieux sur la
+   * carte (chargement, marqueurs, calque, légende) — sans le droit, aucun appel réseau et aucun
+   * repère ; `places_manage` conditionne en plus la création/édition (poser, déplacer, renommer).
+   */
+  protected readonly canViewPlaces = computed(() => this.perms.can('places_view'));
   protected readonly canManagePlaces = computed(() => this.perms.can('places_manage'));
+  /** Repères « lieux » réellement affichés : droit de lecture ET calque activé. */
+  protected readonly placesLayerVisible = computed(() => this.canViewPlaces() && this.showFleetPlaces());
+
+  /**
+   * Card carte unifiée pour un REPÈRE (station détectée ou lieu de la flotte) — remplace les
+   * anciens popups HTML bruts. Même habillage que la card véhicule (classes `.bn-vcard*`) pour
+   * une carte cohérente, et connectée à la page « Lieux clés » (validation, renommage, retrait).
+   */
+  protected readonly placeCard = signal<PlaceCardData | null>(null);
+  /** Dérivé : la station de la card est-elle DÉJÀ un lieu de la flotte ? (suit les validations) */
+  protected readonly placeCardStationValidated = computed(() => {
+    const c = this.placeCard();
+    if (!c || c.type !== 'station') return false;
+    return this.fleetPlaces().some((p) => p.stationId === c.stationId);
+  });
+  /** Renommage inline en cours (id du lieu) + valeur saisie. */
+  protected readonly renamingPlaceId = signal<string | null>(null);
+  protected renameValue = '';
+  protected readonly placeCardSaving = signal(false);
   /** Arrêts > 5min (24h) : popup + cleanups des listeners (calque re-setup au changement de fond). */
   private stopPopup: Popup | null = null;
   private stopsListenerCleanups: Array<() => void> = [];
@@ -2369,6 +2556,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     if (!this.showPlates()) n++;        // par défaut true
     if (!this.showFuelStations()) n++;  // par défaut true (demande client)
     if (!this.showDeadZones()) n++;     // par défaut true (demande client)
+    // Lieux : ne compte que si l'utilisateur peut les voir (sinon le calque n'existe pas pour lui).
+    if (this.canViewPlaces() && !this.showFleetPlaces()) n++;
     return n;
   });
   /** Desktop — dropdown style de carte (Plan / Sombre / Clair / etc.). */
@@ -3886,40 +4075,35 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     this.setLayerVisibility('fuel-stations-circle', v);
     this.setLayerVisibility('fuel-stations-count', v);
     if (v) this.loadFuelStations().catch(() => { /* silent */ });
-    else this.fuelPopup?.remove();
+    else if (this.placeCard()?.type === 'station') this.closePlaceCard();
   }
 
-  /** Popup d'une station au clic (marque, lieu, fréquence, véhicules, dernier prix/passage). */
+  /**
+   * Clic sur une station DÉTECTÉE → ouvre la card carte stylée (détail par véhicule + action
+   * « Ajouter aux lieux » si `places_manage`). Remplace l'ancien popup HTML brut, illisible et
+   * incohérent avec le reste de l'app.
+   */
   private onFuelStationClick(e: maplibregl.MapLayerMouseEvent): void {
     const f = e.features?.[0];
     if (!f || !this.map) return;
     const p = f.properties ?? {};
     const coords = (f.geometry as GeoJSON.Point).coordinates as [number, number];
-    const esc = (s: unknown) => String(s ?? '').replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] as string));
-    const where = [p['address'], p['city']].filter(Boolean).join(', ');
-    const price = p['lastPriceEur'] != null && p['lastPriceEur'] !== '' ? `${Number(p['lastPriceEur']).toFixed(3)} €/L` : '—';
-    const last = p['lastVisitAt'] ? String(p['lastVisitAt']).slice(0, 10) : '—';
-    // Détail par véhicule (qui est passé et combien de fois) — récupéré via l'index stationId.
-    const vehicles = this.fuelStationVehicles.get(String(p['stationId'] ?? '')) ?? [];
-    const vehiclesHtml = vehicles.length
-      ? `<div style="margin-top:6px;border-top:1px solid rgba(148,163,184,.25);padding-top:5px">`
-        + `<div style="color:#9ca3af;margin-bottom:2px">Véhicules passés :</div>`
-        + vehicles
-            .slice(0, 8)
-            .map((v) => `<div style="display:flex;justify-content:space-between;gap:12px"><span>${esc(v.plate || 'véhicule')}</span><b>${esc(v.visits)}×</b></div>`)
-            .join('')
-        + (vehicles.length > 8 ? `<div style="color:#9ca3af">+${vehicles.length - 8} autre(s)…</div>` : '')
-        + `</div>`
-      : '';
-    const html = `<div style="font-size:12px;line-height:1.55;min-width:190px">`
-      + `<strong style="font-size:13px">${esc(p['brand']) || 'Station-service'}</strong><br>`
-      + (where ? `<span style="color:#9ca3af">${esc(where)}</span><br>` : '')
-      + `<b>${esc(p['visits'])}</b> passage(s) · <b>${esc(p['distinctVehicles'])}</b> véhicule(s)<br>`
-      + `Dernier prix : <b>${price}</b> · Dernier passage : ${last}`
-      + vehiclesHtml
-      + `</div>`;
-    this.fuelPopup?.remove();
-    this.fuelPopup = new maplibregl.Popup({ closeButton: true, offset: 14 }).setLngLat(coords).setHTML(html).addTo(this.map);
+    const stationId = String(p['stationId'] ?? '');
+    // Une seule card à la fois : ouvrir un repère ferme la card véhicule.
+    this.closeBaanoolCard();
+    this.placeCard.set({
+      type: 'station',
+      stationId,
+      title: String(p['brand'] ?? '') || 'Station-service',
+      where: [p['address'], p['city']].filter(Boolean).map(String).join(', '),
+      visits: Number(p['visits'] ?? 0),
+      distinctVehicles: Number(p['distinctVehicles'] ?? 0),
+      lastPriceEur: p['lastPriceEur'] != null && p['lastPriceEur'] !== '' ? Number(p['lastPriceEur']) : null,
+      lastVisitAt: p['lastVisitAt'] ? String(p['lastVisitAt']) : null,
+      lng: coords[0],
+      lat: coords[1],
+      vehicles: this.fuelStationVehicles.get(stationId) ?? [],
+    });
   }
 
   /**
@@ -4028,7 +4212,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
    * Marqueurs HTML → passent devant les véhicules.
    */
   private async loadFleetPlaces(): Promise<void> {
-    if (!this.map) return;
+    // Sans `places_view` : aucun appel réseau (l'API répondrait 403 de toute façon) et aucun repère.
+    if (!this.map || !this.canViewPlaces()) return;
     try {
       const places = await firstValueFrom(this.fleetPlacesApi.list(this.fleetFilter.selectedFleetId() ?? undefined));
       this.fleetPlaces.set(places);
@@ -4040,7 +4225,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
   private renderFleetPlaceMarkers(): void {
     if (!this.map) return;
-    const places = this.showFleetPlaces() ? this.fleetPlaces() : [];
+    // Le droit de lecture prime sur le toggle : sans `places_view`, on ne dessine jamais de lieu.
+    const places = this.canViewPlaces() && this.showFleetPlaces() ? this.fleetPlaces() : [];
     const seen = new Set<string>();
     for (const p of places) {
       if (!Number.isFinite(p.lat) || !Number.isFinite(p.lng)) continue;
@@ -4050,9 +4236,17 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         existing.setLngLat([p.lng, p.lat]);
         continue;
       }
-      const marker = new maplibregl.Marker({ element: this.buildFleetPlaceEl(p), anchor: 'center' })
+      // Glisser-déposer réservé à `places_manage` : on déplace le pin et on persiste au drop.
+      const draggable = this.canManagePlaces();
+      const marker = new maplibregl.Marker({ element: this.buildFleetPlaceEl(p), anchor: 'center', draggable })
         .setLngLat([p.lng, p.lat])
         .addTo(this.map);
+      if (draggable) {
+        marker.on('dragend', () => {
+          const ll = marker.getLngLat();
+          void this.persistPlaceMove(p.id, ll.lat, ll.lng);
+        });
+      }
       this.fleetPlaceMarkers.set(p.id, marker);
     }
     for (const [id, marker] of this.fleetPlaceMarkers) {
@@ -4074,39 +4268,161 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       'justify-content:center;color:#fff;font-weight:800;font-size:12px;line-height:1;cursor:pointer';
     el.textContent = glyph;
     el.setAttribute('aria-label', p.name);
-    el.title = p.name;
+    el.title = this.canManagePlaces() ? `${p.name} — glissez pour déplacer` : p.name;
+    if (this.canManagePlaces()) el.style.cursor = 'grab';
     el.addEventListener('click', (ev) => {
       ev.stopPropagation();
-      this.openFleetPlacePopup(p);
+      this.openPlaceCard(p);
     });
     return el;
   }
 
-  private openFleetPlacePopup(p: FleetPlaceDto): void {
-    if (!this.map) return;
-    const esc = (s: unknown) => String(s ?? '').replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] as string));
-    const kindLabel =
-      p.kind === 'FUEL_STATION' ? 'Station-service de la flotte'
-        : p.kind === 'PARKING' ? '🅿️ Parking / stationnement'
-          : p.kind === 'DEPOT' ? 'Dépôt' : 'Lieu';
-    const html = `<div style="font-size:12px;line-height:1.55;min-width:170px">`
-      + `<strong style="font-size:13px">${esc(p.name)}</strong><br>`
-      + `<b>${esc(kindLabel)}</b><br>`
-      + `<span style="color:#9ca3af">rayon ${esc(p.radiusM)} m</span>`
-      + (p.note ? `<br>${esc(p.note)}` : '')
-      + `</div>`;
-    this.fleetPlacePopup?.remove();
-    this.fleetPlacePopup = new maplibregl.Popup({ closeButton: true, offset: 16 })
-      .setLngLat([p.lng, p.lat])
-      .setHTML(html)
-      .addTo(this.map);
+  /** Clic sur un lieu de la flotte → ouvre la card (renommage inline, retrait, déplacement). */
+  private openPlaceCard(p: FleetPlaceDto): void {
+    this.closeBaanoolCard();
+    this.renamingPlaceId.set(null);
+    this.placeCard.set({ type: 'place', place: p });
+  }
+
+  /** Ferme la card repère. */
+  protected closePlaceCard(): void {
+    this.placeCard.set(null);
+    this.renamingPlaceId.set(null);
+  }
+
+  /** Connexion card ↔ page : ouvre « Lieux clés » depuis la carte. */
+  protected goToPlaces(): void {
+    void this.router.navigate(['/places']);
+  }
+
+  /** Libellé lisible de la nature d'un lieu. */
+  protected placeKindLabel(kind: FleetPlaceKind): string {
+    switch (kind) {
+      case 'FUEL_STATION': return 'Station-service de la flotte';
+      case 'PARKING': return 'Parking / stationnement';
+      case 'DEPOT': return 'Dépôt / base';
+      default: return 'Lieu';
+    }
+  }
+
+  /** Valide la station de la card → elle devient un lieu de la flotte (couleur dédiée). */
+  protected async validateStationFromCard(): Promise<void> {
+    const c = this.placeCard();
+    if (!c || c.type !== 'station' || this.placeCardSaving() || !this.canManagePlaces()) return;
+    this.placeCardSaving.set(true);
+    try {
+      // Nom lisible : marque + ville quand on l'a (« TotalEnergies — Toulouse »).
+      const city = c.where ? c.where.split(',').pop()?.trim() : '';
+      const created = await firstValueFrom(
+        this.fleetPlacesApi.create({
+          name: [c.title, city].filter(Boolean).join(' — ').slice(0, 120),
+          kind: 'FUEL_STATION',
+          lat: c.lat,
+          lng: c.lng,
+          stationId: c.stationId,
+          fleetId: this.fleetFilter.selectedFleetId() ?? undefined,
+        }),
+      );
+      this.fleetPlaces.update((list) => [...list, created]);
+      this.renderFleetPlaceMarkers();
+      this.toast.success('Station ajoutée aux lieux de la flotte', created.name);
+    } catch {
+      this.toast.error("Impossible d'ajouter cette station");
+    } finally {
+      this.placeCardSaving.set(false);
+    }
+  }
+
+  /** Démarre le renommage inline du lieu affiché. */
+  protected startRenamePlace(): void {
+    const c = this.placeCard();
+    if (!c || c.type !== 'place' || !this.canManagePlaces()) return;
+    this.renameValue = c.place.name;
+    this.renamingPlaceId.set(c.place.id);
+  }
+
+  protected cancelRenamePlace(): void {
+    this.renamingPlaceId.set(null);
+    this.renameValue = '';
+  }
+
+  /** Enregistre le nouveau nom (renommage inline depuis la card). */
+  protected async confirmRenamePlace(): Promise<void> {
+    const c = this.placeCard();
+    const name = this.renameValue.trim();
+    if (!c || c.type !== 'place' || !name || this.placeCardSaving()) return;
+    if (name === c.place.name) { this.cancelRenamePlace(); return; }
+    this.placeCardSaving.set(true);
+    try {
+      const updated = await firstValueFrom(this.fleetPlacesApi.update(c.place.id, { name }));
+      this.applyPlaceUpdate(updated, { recreateMarker: true });
+      this.cancelRenamePlace();
+      this.toast.success('Lieu renommé', updated.name);
+    } catch {
+      this.toast.error('Renommage impossible');
+    } finally {
+      this.placeCardSaving.set(false);
+    }
+  }
+
+  /** Retire le lieu affiché (dévalide une station, ou efface un parking). */
+  protected async deletePlaceFromCard(): Promise<void> {
+    const c = this.placeCard();
+    if (!c || c.type !== 'place' || this.placeCardSaving() || !this.canManagePlaces()) return;
+    this.placeCardSaving.set(true);
+    try {
+      await firstValueFrom(this.fleetPlacesApi.remove(c.place.id));
+      this.fleetPlaces.update((list) => list.filter((x) => x.id !== c.place.id));
+      this.renderFleetPlaceMarkers();
+      this.closePlaceCard();
+      this.toast.success('Lieu retiré');
+    } catch {
+      this.toast.error('Suppression impossible');
+    } finally {
+      this.placeCardSaving.set(false);
+    }
+  }
+
+  /**
+   * Persiste le déplacement d'un lieu (glisser-déposer du marqueur). En cas d'échec on RESYNCHRONISE
+   * les marqueurs sur les coordonnées connues : sans ça le pin resterait là où l'utilisateur l'a
+   * lâché alors que rien n'est enregistré (l'UI mentirait).
+   */
+  private async persistPlaceMove(id: string, lat: number, lng: number): Promise<void> {
+    try {
+      const updated = await firstValueFrom(this.fleetPlacesApi.update(id, { lat, lng }));
+      this.applyPlaceUpdate(updated, { recreateMarker: false });
+      this.toast.success('Lieu déplacé');
+    } catch {
+      this.toast.error('Déplacement non enregistré');
+      this.renderFleetPlaceMarkers(); // remet le pin à sa position enregistrée
+    }
+  }
+
+  /** Applique un lieu mis à jour partout : liste, card ouverte, et marqueur. */
+  private applyPlaceUpdate(updated: FleetPlaceDto, opts: { recreateMarker: boolean }): void {
+    this.fleetPlaces.update((list) => list.map((x) => (x.id === updated.id ? updated : x)));
+    const c = this.placeCard();
+    if (c && c.type === 'place' && c.place.id === updated.id) {
+      this.placeCard.set({ type: 'place', place: updated });
+    }
+    // Le nom est porté par le `title` du marqueur → on le recrée après un renommage.
+    if (opts.recreateMarker) {
+      const m = this.fleetPlaceMarkers.get(updated.id);
+      if (m) {
+        m.remove();
+        this.fleetPlaceMarkers.delete(updated.id);
+      }
+    }
+    this.renderFleetPlaceMarkers();
   }
 
   /** Toggle du calque « Lieux de la flotte ». */
   protected toggleFleetPlaces(): void {
     this.showFleetPlaces.set(!this.showFleetPlaces());
     this.renderFleetPlaceMarkers();
-    if (!this.showFleetPlaces()) this.fleetPlacePopup?.remove();
+    // Masquer le calque doit fermer la card d'un lieu (sinon elle reste ouverte sans repère).
+    if (!this.showFleetPlaces() && this.placeCard()?.type === 'place') this.closePlaceCard();
   }
 
   /** Active/désactive le mode « poser un lieu » (le prochain clic carte capture le point). */
@@ -4662,6 +4978,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     // Bottom card pour tous les modes — remplace le popup MapLibre qui causait
     // des bugs de zoom/pan et des interactions cassees sur mobile.
     this.closePopup();
+    // Une seule card à la fois : ouvrir un véhicule ferme la card repère (station / lieu).
+    this.closePlaceCard();
     const patched = this.patchIgnitionFromCommands(pos);
     const meta = this.vehicleMeta.get(pos.vehicleId) ?? { type: 'OTHER', plate: '?' };
     // Incident FS-253 — on lit le snapshot pour la fraîcheur RÉELLE : lastPositionAt
