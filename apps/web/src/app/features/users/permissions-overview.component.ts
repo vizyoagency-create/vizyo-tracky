@@ -62,6 +62,7 @@ const PERM_LABELS: Record<string, string> = {
   drivers_manage: 'Gerer conducteurs',
   places_view: 'Voir lieux cles',
   places_manage: 'Gerer lieux cles',
+  places_analyze: 'Analyse IA d\'un lieu',
 };
 
 const PERM_GROUPS = [
@@ -72,7 +73,7 @@ const PERM_GROUPS = [
   { label: 'Rapports', keys: ['reports_view'] },
   { label: 'Utilisateurs', keys: ['users_view', 'users_manage'] },
   { label: 'Conducteurs', keys: ['drivers_view', 'drivers_manage'] },
-  { label: 'Lieux cles', keys: ['places_view', 'places_manage'] },
+  { label: 'Lieux cles', keys: ['places_view', 'places_manage', 'places_analyze'] },
 ];
 
 @Component({

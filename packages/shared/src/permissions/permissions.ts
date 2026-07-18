@@ -123,6 +123,15 @@ export interface UserPermissions {
    * stationnement récurrent à la main (ex. « CDEF Launaguet »). Accordé aux managers par défaut.
    */
   places_manage: boolean;
+
+  /**
+   * Lieux clés — LANCER une analyse IA d'un lieu (enrichissement OSM + synthèse LLM). Séparée de
+   * `places_manage` parce qu'elle CONSOMME DES TOKENS (coût réel) : on peut donc laisser gérer les
+   * lieux sans autoriser à déclencher des analyses. Réservée aux admins par défaut, accordable.
+   * Ne suffit JAMAIS seule : l'IA reste soumise au kill-switch global `placeAnalysis` et à
+   * l'interrupteur société `Fleet.aiEnabled` (lui-même piloté par l'abonnement).
+   */
+  places_analyze: boolean;
 }
 
 const VIEWER_DEFAULTS: UserPermissions = {
@@ -163,6 +172,7 @@ const VIEWER_DEFAULTS: UserPermissions = {
   qr_manage: false,
   places_view: true,
   places_manage: false,
+  places_analyze: false,
 };
 
 const FLEET_MANAGER_DEFAULTS: UserPermissions = {
@@ -204,6 +214,8 @@ const FLEET_MANAGER_DEFAULTS: UserPermissions = {
   places_view: true,
   // Le manager gère les lieux clés par défaut (validation de stations, pose de parkings).
   places_manage: true,
+  // …mais PAS l'analyse IA (elle consomme des tokens) : un admin peut l'accorder.
+  places_analyze: false,
 };
 
 const ADMIN_DEFAULTS: UserPermissions = {
@@ -244,6 +256,7 @@ const ADMIN_DEFAULTS: UserPermissions = {
   qr_manage: true,
   places_view: true,
   places_manage: true,
+  places_analyze: true,
 };
 
 /**
@@ -291,6 +304,7 @@ const NIGHT_WATCHMAN_DEFAULTS: UserPermissions = {
   // sont vrais par défaut — invariant vérifié par night-watchman.security.spec).
   places_view: false,
   places_manage: false,
+  places_analyze: false,
 };
 
 /**
@@ -337,6 +351,7 @@ const DRIVER_DEFAULTS: UserPermissions = {
   qr_manage: false,
   places_view: false,
   places_manage: false,
+  places_analyze: false,
 };
 
 export function getDefaultPermissions(role: UserRoleSlug): UserPermissions {
@@ -580,6 +595,12 @@ export const PERMISSION_LABELS: Record<keyof UserPermissions, PermissionLabel> =
     label: 'Gerer les lieux cles',
     description:
       'Valider une station-service detectee (elle devient une station de la flotte sur la carte), creer / modifier / supprimer un parking ou un stationnement recurrent. Accorde aux managers par defaut.',
+  },
+  places_analyze: {
+    group: 'Lieux cles',
+    label: 'Lancer une analyse IA d\'un lieu',
+    description:
+      'Declencher l\'analyse IA d\'un lieu (enrichissement OSM + synthese). CONSOMME DES TOKENS (cout reel) : reserve aux admins par defaut, accordable. Reste soumis a l\'interrupteur IA de la societe et au kill-switch global.',
   },
 };
 

@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { AiFeatureFlagsDto, AiFeatureKey } from '@vizyo/tracky-shared';
 import { PrismaService } from '../prisma/prisma.service';
 
-const KEYS: AiFeatureKey[] = ['tripAnalysis', 'agendaAgent', 'capacity', 'placement', 'bookingParse', 'activityReport'];
+const KEYS: AiFeatureKey[] = ['tripAnalysis', 'agendaAgent', 'capacity', 'placement', 'bookingParse', 'activityReport', 'placeAnalysis'];
 
 /**
  * Interrupteurs GLOBAUX par fonctionnalité IA (kill-switch plateforme, super-admin/owner). Se cumule
@@ -30,6 +30,7 @@ export class AiFeatureFlagsService {
           placement: row.placement,
           bookingParse: row.bookingParse,
           activityReport: row.activityReport,
+          placeAnalysis: row.placeAnalysis,
         };
       }
     } catch {

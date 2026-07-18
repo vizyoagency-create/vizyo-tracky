@@ -338,6 +338,7 @@ model AiFeatureFlags {
   placement       Boolean  @default(true) // optimiseur — placement
   bookingParse    Boolean  @default(true) // saisie vocale des réservations
   activityReport  Boolean  @default(true) // rapport d'activité IA (owner/super-admin)
+  placeAnalysis   Boolean  @default(true) // analyse IA d'un lieu clé (station / parking)
   updatedByUserId String?  @db.Uuid
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
