@@ -63,6 +63,7 @@ import { VehicleSchedulesModule } from './vehicle-schedules/vehicle-schedules.mo
 import { BackgroundTasksModule } from './background-tasks/background-tasks.module';
 import { GpsIntegrityModule } from './gps-integrity/gps-integrity.module';
 import { GpsDeadZonesModule } from './gps-dead-zones/gps-dead-zones.module';
+import { FleetPlacesModule } from './fleet-places/fleet-places.module';
 import { HealthController } from './health/health.controller';
 import { LeadsModule } from './leads/leads.module';
 import { ApiTrafficModule } from './api-traffic/api-traffic.module';
@@ -144,6 +145,7 @@ import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.modul
     BackgroundTasksModule,
     GpsIntegrityModule,
     GpsDeadZonesModule,
+    FleetPlacesModule,
     InstallationsModule,
     InstallationBookingModule,
     PrivacyModeModule,

@@ -110,6 +110,19 @@ export interface UserPermissions {
    * deep-link signé vers l'écran conducteur. Défaut super/fleet-admin ; accordable par utilisateur.
    */
   qr_manage: boolean;
+
+  /**
+   * Lieux clés (2026-07) — consulter le référentiel des lieux de la flotte : stations-service
+   * fréquentées (passages détectés avec arrêt réel) et parkings / stationnements récurrents.
+   */
+  places_view: boolean;
+
+  /**
+   * Lieux clés — créer / modifier / supprimer les lieux de la flotte : valider une station-service
+   * détectée (elle passe en « station de la flotte » sur la carte), poser un parking ou un
+   * stationnement récurrent à la main (ex. « CDEF Launaguet »). Accordé aux managers par défaut.
+   */
+  places_manage: boolean;
 }
 
 const VIEWER_DEFAULTS: UserPermissions = {
@@ -148,6 +161,8 @@ const VIEWER_DEFAULTS: UserPermissions = {
   ai_optimize: false,
   billing_manage: false,
   qr_manage: false,
+  places_view: true,
+  places_manage: false,
 };
 
 const FLEET_MANAGER_DEFAULTS: UserPermissions = {
@@ -186,6 +201,9 @@ const FLEET_MANAGER_DEFAULTS: UserPermissions = {
   ai_optimize: false,
   billing_manage: false,
   qr_manage: false,
+  places_view: true,
+  // Le manager gère les lieux clés par défaut (validation de stations, pose de parkings).
+  places_manage: true,
 };
 
 const ADMIN_DEFAULTS: UserPermissions = {
@@ -224,6 +242,8 @@ const ADMIN_DEFAULTS: UserPermissions = {
   ai_optimize: true,
   billing_manage: true,
   qr_manage: true,
+  places_view: true,
+  places_manage: true,
 };
 
 /**
@@ -267,6 +287,10 @@ const NIGHT_WATCHMAN_DEFAULTS: UserPermissions = {
   ai_optimize: false,
   billing_manage: false,
   qr_manage: false,
+  // Veilleur de nuit : périmètre volontairement minimal (seuls vehicles_view + engine_control
+  // sont vrais par défaut — invariant vérifié par night-watchman.security.spec).
+  places_view: false,
+  places_manage: false,
 };
 
 /**
@@ -311,6 +335,8 @@ const DRIVER_DEFAULTS: UserPermissions = {
   ai_optimize: false,
   billing_manage: false,
   qr_manage: false,
+  places_view: false,
+  places_manage: false,
 };
 
 export function getDefaultPermissions(role: UserRoleSlug): UserPermissions {
@@ -543,6 +569,18 @@ export const PERMISSION_LABELS: Record<keyof UserPermissions, PermissionLabel> =
     description:
       'Generer et imprimer les QR codes de deverrouillage des vehicules (fiche, liste, feuille « tous les QR »). Reserve aux admins par defaut, accordable.',
   },
+  places_view: {
+    group: 'Lieux cles',
+    label: 'Voir les lieux cles',
+    description:
+      'Consulter les stations-service frequentees (passages detectes avec arret reel) et les parkings / stationnements recurrents de la flotte.',
+  },
+  places_manage: {
+    group: 'Lieux cles',
+    label: 'Gerer les lieux cles',
+    description:
+      'Valider une station-service detectee (elle devient une station de la flotte sur la carte), creer / modifier / supprimer un parking ou un stationnement recurrent. Accorde aux managers par defaut.',
+  },
 };
 
 /** Ordre d'affichage canonique des groupes dans l'UI. */
@@ -554,6 +592,7 @@ export const PERMISSION_GROUP_ORDER: readonly string[] = [
   'Alertes',
   'Rapports',
   'Trajets & analyse',
+  'Lieux cles',
   'Utilisateurs',
   'Conducteurs',
   'Cartes SIM',

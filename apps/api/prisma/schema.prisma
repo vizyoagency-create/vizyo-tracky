@@ -126,6 +126,20 @@ enum GpsDeadZoneLabel {
   OTHER
 }
 
+// Lieux cles (2026-07) — referentiel METIER des lieux de la flotte, cree/valide A LA MAIN par
+// l'exploitant : stations-service retenues, parkings & stationnements recurrents (ex. « CDEF
+// Launaguet »), depots. A ne PAS confondre avec :
+//  - FuelStation      = catalogue externe (API prix-carburants), non specifique a la flotte ;
+//  - GpsDeadZone      = zone DETECTEE automatiquement par vehicule (perte GPS recurrente).
+// Ici c'est ce que l'exploitant DECLARE comme lieu de reference -> pilote la couleur carte
+// (station « validee » vs simplement detectee) et le regroupement des arrets.
+enum FleetPlaceKind {
+  FUEL_STATION
+  PARKING
+  DEPOT
+  OTHER
+}
+
 enum VehicleType {
   CAR
   TRUCK
@@ -1077,6 +1091,35 @@ model GpsLossEvent {
   @@index([zoneId])
   @@index([fleetId, detectedAt])
   @@map("gps_loss_events")
+}
+
+/// Lieux cles (2026-07) — referentiel METIER des lieux de la flotte, cree/valide A LA MAIN par
+/// l'exploitant : stations-service retenues, parkings & stationnements recurrents (ex. « CDEF
+/// Launaguet »), depots. Pilote la couleur sur la carte (station VALIDEE vs simplement detectee)
+/// et sert de point de reference pour regrouper les arrets. Distinct de `FuelStation` (catalogue
+/// externe prix-carburants) et de `GpsDeadZone` (detectee automatiquement, par vehicule).
+model FleetPlace {
+  id          String         @id @default(uuid()) @db.Uuid
+  fleetId     String         @db.Uuid
+  name        String
+  kind        FleetPlaceKind @default(OTHER)
+  lat         Float
+  lng         Float
+  /// Rayon de rattachement (m) : « ce vehicule s'est arrete A ce lieu ».
+  radiusM     Float          @default(120)
+  note        String?
+  /// Station d'origine quand le lieu vient de la VALIDATION d'un passage detecte (FuelStation.id).
+  /// Unique par flotte -> une station ne peut pas etre validee deux fois. NULL pour un parking
+  /// cree a la main (plusieurs NULL autorises par l'index unique Postgres).
+  stationId   String?        @db.Uuid
+  createdById String?        @db.Uuid
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@unique([fleetId, stationId])
+  @@index([fleetId])
+  @@index([fleetId, kind])
+  @@map("fleet_places")
 }
 
 /// V1.6 — Surveillance Max : profil de surveillance renforcee par vehicule.

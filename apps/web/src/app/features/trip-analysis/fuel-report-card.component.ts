@@ -84,7 +84,7 @@ import { TripAnalysisApiService } from '../../core/services/trip-analysis.servic
           </ul>
 
           <!-- Cohérence des passages : km depuis le passage précédent (un vrai plein est espacé de km). -->
-          @if (data()!.recentVisits?.length) {
+          @if (data()!.recentVisits.length) {
             <div class="frc-visits">
               <div class="frc-visits-h">Derniers passages · cohérence</div>
               @for (v of data()!.recentVisits; track v.at) {

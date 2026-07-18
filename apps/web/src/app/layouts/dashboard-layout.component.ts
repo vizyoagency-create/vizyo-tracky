@@ -27,6 +27,7 @@ import {
   Moon,
   Sparkles,
   AlarmClock,
+  MapPin,
 } from 'lucide-angular';
 import { ThemeService } from '../core/theme/theme.service';
 import { AlertsBellComponent } from '../shared/ui/alerts-bell/alerts-bell.component';
@@ -1065,6 +1066,8 @@ export class DashboardLayoutComponent {
       ...(this.perms.can('alerts_view') ? [{ label: 'Alertes', route: '/alerts', icon: Bell }] : []),
       // Demande CDEF (2026-07) — Page flotte des horaires (coupe/reprise auto).
       ...(this.perms.can('schedules_manage') ? [{ label: 'Horaires flotte', route: '/fleet-schedules', icon: AlarmClock }] : []),
+      // Lieux clés (2026-07) — stations-service validées + parkings / stationnements récurrents.
+      ...(this.perms.can('places_view') ? [{ label: 'Lieux clés', route: '/places', icon: MapPin }] : []),
     ];
     const analyse: NavItem[] = [
       ...(this.perms.can('reports_view') ? [{ label: 'Rapports', route: '/reports', icon: FileBarChart }] : []),

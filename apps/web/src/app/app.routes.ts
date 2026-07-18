@@ -127,6 +127,16 @@ export const routes: Routes = [
         data: { title: 'Horaires flotte' },
       },
       {
+        // Lieux clés (2026-07) — stations-service validées par la flotte + parkings /
+        // stationnements récurrents. Lecture `places_view` ; la gestion (validation d'une
+        // station, pose d'un parking) est gardée finement par `places_manage` dans la page.
+        path: 'places',
+        canActivate: [permissionGuard('places_view')],
+        loadComponent: () =>
+          import('./features/places/places.component').then((m) => m.PlacesComponent),
+        data: { title: 'Lieux clés' },
+      },
+      {
         // Consolidation IA : « Groupes » est un onglet de la page Véhicules.
         // Redirection (deep-link onglet) pour conserver les anciens liens / raccourcis PWA.
         path: 'groups',

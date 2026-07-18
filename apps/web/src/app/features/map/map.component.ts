@@ -46,6 +46,8 @@ import { ActivityTrackerService } from '../../core/services/activity-tracker.ser
 import { GeofencesApiService } from '../../core/services/geofences.service';
 import { GpsDeadZonesApiService, type GpsDeadZoneMapDto } from '../../core/services/gps-dead-zones.service';
 import { matchDeadZone, deadZoneNatureLabel } from '../../shared/utils/gps-dead-zone';
+import { FormsModule } from '@angular/forms';
+import { FleetPlacesApiService, type FleetPlaceDto, type FleetPlaceKind } from '../../core/services/fleet-places.service';
 import { TripAnalysisApiService } from '../../core/services/trip-analysis.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
@@ -195,7 +197,7 @@ const RESYNC_RADIUS_M = 150;
 @Component({
   selector: 'app-map',
   standalone: true,
-  imports: [DecimalPipe, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, TrackClickDirective],
+  imports: [DecimalPipe, FormsModule, ConfirmModalComponent, SaFleetBadgeComponent, GroupBadgeComponent, ConnectivityBadgeComponent, TrackClickDirective],
   template: `
     <div #mapContainer style="position:absolute;top:0;left:0;width:100%;height:100%"></div>
 
@@ -367,7 +369,25 @@ const RESYNC_RADIUS_M = 150;
             title="Cycle automatique sur les véhicules (8s)">
             Cinéma
           </button>
+          <!-- Lieux clés — poser un parking / stationnement récurrent (ex. « CDEF Launaguet »). -->
+          @if (canManagePlaces()) {
+            <button
+              (click)="togglePlaceMode()"
+              trackClick="carte-poser-lieu"
+              [class]="'flex-1 text-[10px] font-medium py-1.5 rounded-lg cursor-pointer transition-colors ' +
+                       (placeMode()
+                         ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
+                         : 'bg-bg-tertiary/60 text-fg-secondary border border-border-subtle hover:text-fg-primary')"
+              title="Poser un lieu de la flotte (parking, stationnement récurrent, dépôt)">
+              Poser un lieu
+            </button>
+          }
         </div>
+        @if (placeMode() && !pendingPlace()) {
+          <div class="mt-2 px-2 py-1 rounded bg-sky-500/10 border border-sky-500/30 text-[10px] text-sky-300">
+            Cliquez sur la carte à l'endroit du lieu à enregistrer.
+          </div>
+        }
         @if (measureMode()) {
           <div class="mt-2 px-2 py-1 rounded bg-tracky/10 border border-tracky/30
                       text-[10px] text-tracky-light flex items-center justify-between">
@@ -496,6 +516,10 @@ const RESYNC_RADIUS_M = 150;
             <label class="tracky-sheet-checkbox">
               <input type="checkbox" [checked]="showDeadZones()" (change)="toggleDeadZones()" />
               <span>Parkings souterrains / zones mortes</span>
+            </label>
+            <label class="tracky-sheet-checkbox">
+              <input type="checkbox" [checked]="showFleetPlaces()" (change)="toggleFleetPlaces()" />
+              <span>Lieux de la flotte (stations validées, parkings)</span>
             </label>
             <label class="tracky-sheet-checkbox">
               <input type="checkbox" [checked]="showHeatmap()" (change)="toggleHeatmap()" />
@@ -758,6 +782,10 @@ const RESYNC_RADIUS_M = 150;
               <span>Parkings souterrains / zones mortes</span>
             </label>
             <label class="tracky-sheet-checkbox">
+              <input type="checkbox" [checked]="showFleetPlaces()" (change)="toggleFleetPlaces()" />
+              <span>Lieux de la flotte (stations validées, parkings)</span>
+            </label>
+            <label class="tracky-sheet-checkbox">
               <input type="checkbox" [checked]="showHeatmap()" (change)="toggleHeatmap()" />
               <span>Heatmap densité (24h)</span>
             </label>
@@ -789,13 +817,23 @@ const RESYNC_RADIUS_M = 150;
               <span>91+ km/h</span>
             </div>
           </div>
-          @if (showFuelStations() || showDeadZones()) {
+          @if (showFuelStations() || showDeadZones() || showFleetPlaces()) {
             <p class="tracky-sheet-title" style="margin-top:10px">Repères carte</p>
             <div class="tracky-sheet-legend">
               @if (showFuelStations()) {
                 <div class="tracky-sheet-legend-item">
                   <span class="w-2.5 h-2.5 rounded-full" style="background:#A78BFA"></span>
-                  <span>Station-service (passages)</span>
+                  <span>Station détectée</span>
+                </div>
+              }
+              @if (showFleetPlaces()) {
+                <div class="tracky-sheet-legend-item">
+                  <span class="w-2.5 h-2.5 rounded-[3px]" style="background:#10E0A0"></span>
+                  <span>Station de la flotte (validée)</span>
+                </div>
+                <div class="tracky-sheet-legend-item">
+                  <span class="w-2.5 h-2.5 rounded-[3px]" style="background:#0ea5e9"></span>
+                  <span>Parking de la flotte</span>
                 </div>
               }
               @if (showDeadZones()) {
@@ -850,14 +888,24 @@ const RESYNC_RADIUS_M = 150;
             <span class="text-[10px] text-fg-tertiary">91+ km/h</span>
           </div>
         </div>
-        @if (showFuelStations() || showDeadZones()) {
+        @if (showFuelStations() || showDeadZones() || showFleetPlaces()) {
           <hr class="my-2 border-border-subtle" />
           <p class="text-[10px] font-semibold text-fg-secondary mb-1.5 uppercase tracking-wider">Repères</p>
           <div class="flex flex-col gap-1">
             @if (showFuelStations()) {
               <div class="flex items-center gap-2">
                 <span class="w-2.5 h-2.5 rounded-full" style="background:#A78BFA"></span>
-                <span class="text-[10px] text-fg-tertiary">Station-service (taille = passages)</span>
+                <span class="text-[10px] text-fg-tertiary">Station détectée (taille = passages)</span>
+              </div>
+            }
+            @if (showFleetPlaces()) {
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-[3px] flex items-center justify-center text-[7px] font-bold text-white" style="background:#10E0A0">⛽</span>
+                <span class="text-[10px] text-fg-tertiary">Station de la flotte (validée)</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-[3px] flex items-center justify-center text-[7px] font-bold text-white" style="background:#0ea5e9">P</span>
+                <span class="text-[10px] text-fg-tertiary">Parking / stationnement de la flotte</span>
               </div>
             }
             @if (showDeadZones()) {
@@ -878,6 +926,47 @@ const RESYNC_RADIUS_M = 150;
         }
       </div>
     </div>
+
+    <!-- Lieux clés — confirmation du point posé (nom + nature) avant enregistrement. -->
+    @if (pendingPlace(); as pt) {
+      <div class="tracky-place-dialog-backdrop" (click)="cancelPendingPlace()"></div>
+      <div class="tracky-place-dialog">
+        <p class="tracky-place-dialog-title">Nouveau lieu de la flotte</p>
+        <p class="tracky-place-dialog-coords">
+          {{ pt.lat | number: '1.5-5' }}, {{ pt.lng | number: '1.5-5' }}
+        </p>
+        <label class="tracky-place-field">
+          <span>Nom</span>
+          <input
+            type="text"
+            [(ngModel)]="pendingPlaceName"
+            placeholder="Ex. CDEF Launaguet"
+            maxlength="120"
+            autocomplete="off"
+          />
+        </label>
+        <label class="tracky-place-field">
+          <span>Nature</span>
+          <select [(ngModel)]="pendingPlaceKind">
+            <option value="PARKING">Parking / stationnement</option>
+            <option value="DEPOT">Dépôt / base</option>
+            <option value="FUEL_STATION">Station-service</option>
+            <option value="OTHER">Autre</option>
+          </select>
+        </label>
+        <div class="tracky-place-actions">
+          <button type="button" class="tracky-place-btn" (click)="cancelPendingPlace()">Annuler</button>
+          <button
+            type="button"
+            class="tracky-place-btn tracky-place-btn--ok"
+            [disabled]="!pendingPlaceName.trim() || placeSaving()"
+            (click)="confirmPendingPlace()"
+          >
+            {{ placeSaving() ? 'Enregistrement…' : 'Enregistrer' }}
+          </button>
+        </div>
+      </div>
+    }
 
     @if (!realtime.connected()) {
       <div class="tracky-disconnect-banner">
@@ -1154,6 +1243,33 @@ const RESYNC_RADIUS_M = 150;
       flex-shrink: 0;
     }
     .tracky-measure-banner-close:active { background: var(--bg-tertiary); }
+
+    /* ─── Lieux clés : panneau de confirmation d'un point posé ─── */
+    .tracky-place-dialog-backdrop {
+      position: absolute; inset: 0; z-index: 2000; background: rgba(0, 0, 0, .35);
+    }
+    .tracky-place-dialog {
+      position: absolute; z-index: 2001; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: min(340px, calc(100% - 32px));
+      display: flex; flex-direction: column; gap: 10px; padding: 16px;
+      border-radius: 14px; background: var(--bg-secondary);
+      border: 1px solid var(--border-strong); box-shadow: 0 12px 34px rgba(0, 0, 0, .45);
+    }
+    .tracky-place-dialog-title { margin: 0; font-size: 14px; font-weight: 800; color: var(--fg-primary); }
+    .tracky-place-dialog-coords { margin: -6px 0 0; font-size: 11px; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }
+    .tracky-place-field { display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; color: var(--fg-secondary); }
+    .tracky-place-field input, .tracky-place-field select {
+      padding: 8px 10px; border-radius: 9px; border: 1px solid var(--border-strong);
+      background: var(--bg-primary); color: var(--fg-primary); font-size: 13px; outline: none;
+    }
+    .tracky-place-field input:focus, .tracky-place-field select:focus { border-color: var(--tracky-light); }
+    .tracky-place-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 2px; }
+    .tracky-place-btn {
+      padding: 7px 13px; border-radius: 9px; border: 1px solid var(--border-strong);
+      background: transparent; color: var(--fg-secondary); font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    .tracky-place-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .tracky-place-btn--ok { border-color: color-mix(in srgb, var(--tracky-light) 45%, var(--border-strong)); color: var(--tracky-light); }
 
     /* ─── Disconnect banner ─── */
     .tracky-disconnect-banner {
@@ -2049,6 +2165,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   protected readonly isSuperAdmin = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
   private readonly geofencesApi = inject(GeofencesApiService);
   private readonly deadZonesApi = inject(GpsDeadZonesApiService);
+  private readonly fleetPlacesApi = inject(FleetPlacesApiService);
   private readonly vehiclesApi = inject(VehiclesApiService);
   private readonly tripAnalysisApi = inject(TripAnalysisApiService);
   private readonly preferences = inject(PreferencesService);
@@ -2187,6 +2304,25 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private deadZonePopup: Popup | null = null;
   /** Pins parkings/zones mortes en marqueurs HTML (z-index > véhicules), indexés par id de zone. */
   private deadZoneMarkers = new Map<string, maplibregl.Marker>();
+
+  /**
+   * Lieux clés (2026-07) — stations VALIDÉES par la flotte + parkings/stationnements posés à la
+   * main. Marqueurs HTML (comme les parkings détectés) pour passer devant les véhicules.
+   */
+  /** Calque « Lieux de la flotte » (stations validées + parkings posés). Défaut ON. */
+  protected readonly showFleetPlaces = signal(true);
+  protected readonly fleetPlaces = signal<FleetPlaceDto[]>([]);
+  private fleetPlaceMarkers = new Map<string, maplibregl.Marker>();
+  private fleetPlacePopup: Popup | null = null;
+  /** Mode « poser un lieu » : le prochain clic carte capture le point. */
+  protected readonly placeMode = signal(false);
+  /** Point capturé en attente de nom/nature (petit panneau de confirmation). */
+  protected readonly pendingPlace = signal<{ lat: number; lng: number } | null>(null);
+  protected pendingPlaceName = '';
+  protected pendingPlaceKind: FleetPlaceKind = 'PARKING';
+  protected readonly placeSaving = signal(false);
+  /** Poser/éditer un lieu de la flotte demande `places_manage` (managers inclus par défaut). */
+  protected readonly canManagePlaces = computed(() => this.perms.can('places_manage'));
   /** Arrêts > 5min (24h) : popup + cleanups des listeners (calque re-setup au changement de fond). */
   private stopPopup: Popup | null = null;
   private stopsListenerCleanups: Array<() => void> = [];
@@ -2335,7 +2471,11 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private deadZonesFleetEffect = effect(() => {
     this.fleetFilter.selectedFleetId();
     untracked(() => {
-      if (this.map) this.loadDeadZones().catch(() => { /* silent */ });
+      if (this.map) {
+        this.loadDeadZones().catch(() => { /* silent */ });
+        // Lieux clés : idem, le référentiel est propre à la société sélectionnée.
+        this.loadFleetPlaces().catch(() => { /* silent */ });
+      }
     });
   });
 
@@ -2508,6 +2648,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       this.setupClusterLayer();
       this.loadGeofences();
       this.loadDeadZones().catch(() => { /* silent */ });
+      this.loadFleetPlaces().catch(() => { /* silent */ });
       if (this.showFuelStations()) this.loadFuelStations().catch(() => { /* silent */ });
       this.applyPositions(this.applyFilters(this.realtime.positionsList()));
       this.applyClusterVisibility();
@@ -2532,6 +2673,12 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         const pts = [...this.measurePoints(), { lat: e.lngLat.lat, lng: e.lngLat.lng }];
         this.measurePoints.set(pts);
         this.refreshMeasureLayer();
+        return;
+      }
+      // Lieux clés — mode « poser un lieu » : le clic capture le point, on demande ensuite
+      // le nom + la nature dans un petit panneau (pas de création silencieuse).
+      if (this.placeMode()) {
+        this.pendingPlace.set({ lat: e.lngLat.lat, lng: e.lngLat.lng });
       }
     });
 
@@ -3873,6 +4020,136 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       .addTo(this.map);
   }
 
+  /**
+   * Lieux clés (2026-07) — lieux VALIDÉS/CRÉÉS par la flotte : stations retenues (émeraude ⛽),
+   * parkings & stationnements récurrents posés à la main (bleu « P »), dépôts (ambre « D »).
+   * Distincts des stations simplement DÉTECTÉES (violet, calque `fuel-stations`) : c'est
+   * exactement la différence de couleur « nouvelle station vs station validée » demandée.
+   * Marqueurs HTML → passent devant les véhicules.
+   */
+  private async loadFleetPlaces(): Promise<void> {
+    if (!this.map) return;
+    try {
+      const places = await firstValueFrom(this.fleetPlacesApi.list(this.fleetFilter.selectedFleetId() ?? undefined));
+      this.fleetPlaces.set(places);
+      this.renderFleetPlaceMarkers();
+    } catch {
+      /* best-effort : la carte reste utilisable sans les lieux de la flotte */
+    }
+  }
+
+  private renderFleetPlaceMarkers(): void {
+    if (!this.map) return;
+    const places = this.showFleetPlaces() ? this.fleetPlaces() : [];
+    const seen = new Set<string>();
+    for (const p of places) {
+      if (!Number.isFinite(p.lat) || !Number.isFinite(p.lng)) continue;
+      seen.add(p.id);
+      const existing = this.fleetPlaceMarkers.get(p.id);
+      if (existing) {
+        existing.setLngLat([p.lng, p.lat]);
+        continue;
+      }
+      const marker = new maplibregl.Marker({ element: this.buildFleetPlaceEl(p), anchor: 'center' })
+        .setLngLat([p.lng, p.lat])
+        .addTo(this.map);
+      this.fleetPlaceMarkers.set(p.id, marker);
+    }
+    for (const [id, marker] of this.fleetPlaceMarkers) {
+      if (!seen.has(id)) {
+        marker.remove();
+        this.fleetPlaceMarkers.delete(id);
+      }
+    }
+  }
+
+  /** Élément DOM d'un lieu de la flotte (couleur + glyphe par nature). */
+  private buildFleetPlaceEl(p: FleetPlaceDto): HTMLElement {
+    const { color, glyph } = fleetPlaceStyle(p.kind);
+    const el = document.createElement('div');
+    el.className = 'tracky-place-marker';
+    el.style.cssText =
+      `z-index:880;width:26px;height:26px;border-radius:8px;background:${color};` +
+      'border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);display:flex;align-items:center;' +
+      'justify-content:center;color:#fff;font-weight:800;font-size:12px;line-height:1;cursor:pointer';
+    el.textContent = glyph;
+    el.setAttribute('aria-label', p.name);
+    el.title = p.name;
+    el.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      this.openFleetPlacePopup(p);
+    });
+    return el;
+  }
+
+  private openFleetPlacePopup(p: FleetPlaceDto): void {
+    if (!this.map) return;
+    const esc = (s: unknown) => String(s ?? '').replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c] as string));
+    const kindLabel =
+      p.kind === 'FUEL_STATION' ? 'Station-service de la flotte'
+        : p.kind === 'PARKING' ? '🅿️ Parking / stationnement'
+          : p.kind === 'DEPOT' ? 'Dépôt' : 'Lieu';
+    const html = `<div style="font-size:12px;line-height:1.55;min-width:170px">`
+      + `<strong style="font-size:13px">${esc(p.name)}</strong><br>`
+      + `<b>${esc(kindLabel)}</b><br>`
+      + `<span style="color:#9ca3af">rayon ${esc(p.radiusM)} m</span>`
+      + (p.note ? `<br>${esc(p.note)}` : '')
+      + `</div>`;
+    this.fleetPlacePopup?.remove();
+    this.fleetPlacePopup = new maplibregl.Popup({ closeButton: true, offset: 16 })
+      .setLngLat([p.lng, p.lat])
+      .setHTML(html)
+      .addTo(this.map);
+  }
+
+  /** Toggle du calque « Lieux de la flotte ». */
+  protected toggleFleetPlaces(): void {
+    this.showFleetPlaces.set(!this.showFleetPlaces());
+    this.renderFleetPlaceMarkers();
+    if (!this.showFleetPlaces()) this.fleetPlacePopup?.remove();
+  }
+
+  /** Active/désactive le mode « poser un lieu » (le prochain clic carte capture le point). */
+  protected togglePlaceMode(): void {
+    const next = !this.placeMode();
+    this.placeMode.set(next);
+    if (!next) this.cancelPendingPlace();
+  }
+
+  /** Abandonne le point en attente. */
+  protected cancelPendingPlace(): void {
+    this.pendingPlace.set(null);
+    this.pendingPlaceName = '';
+  }
+
+  /** Enregistre le lieu posé (nom + nature) via l'API, puis l'affiche immédiatement. */
+  protected async confirmPendingPlace(): Promise<void> {
+    const pt = this.pendingPlace();
+    const name = this.pendingPlaceName.trim();
+    if (!pt || !name || this.placeSaving()) return;
+    this.placeSaving.set(true);
+    try {
+      const created = await firstValueFrom(
+        this.fleetPlacesApi.create({
+          name,
+          kind: this.pendingPlaceKind,
+          lat: pt.lat,
+          lng: pt.lng,
+          fleetId: this.fleetFilter.selectedFleetId() ?? undefined,
+        }),
+      );
+      this.fleetPlaces.update((list) => [...list, created]);
+      this.renderFleetPlaceMarkers();
+      this.toast.success('Lieu enregistré', created.name);
+      this.cancelPendingPlace();
+      this.placeMode.set(false);
+    } catch {
+      this.toast.error("Impossible d'enregistrer ce lieu");
+    } finally {
+      this.placeSaving.set(false);
+    }
+  }
+
   /** Sprint D.4 — setup layer pour l'outil de mesure (ligne + points). */
   private setupMeasureLayer(): void {
     if (!this.map || this.map.getSource('measure')) return;
@@ -4640,6 +4917,24 @@ export class MapComponent implements AfterViewInit, OnDestroy {
  * Construit un Polygon GeoJSON approximant un cercle (64 segments) autour
  * d'un centre lat/lng et rayon en metres. Utilise pour les geofences.
  */
+/**
+ * Lieux clés — couleur + glyphe d'un lieu de la flotte selon sa nature. L'émeraude des stations
+ * VALIDÉES les distingue volontairement du violet des stations simplement DÉTECTÉES (calque
+ * `fuel-stations`) : c'est la différence « nouvelle station vs station de la flotte ».
+ */
+function fleetPlaceStyle(kind: FleetPlaceKind): { color: string; glyph: string } {
+  switch (kind) {
+    case 'FUEL_STATION':
+      return { color: '#10E0A0', glyph: '⛽' };
+    case 'PARKING':
+      return { color: '#0ea5e9', glyph: 'P' };
+    case 'DEPOT':
+      return { color: '#f59e0b', glyph: 'D' };
+    default:
+      return { color: '#94a3b8', glyph: '★' };
+  }
+}
+
 /** Sprint F.2 — feature GeoJSON pour un polygone defini par ses sommets. */
 function polygonFeature(
   points: Array<{ lat: number; lng: number }>,
