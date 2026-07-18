@@ -41,7 +41,7 @@ import { buildQrCardHtml, buildTrackyQrSvg, QR_CARD_CSS } from '../../shared/uti
     </div>
   `,
   styles: [QR_CARD_CSS, `
-    .tq-ov { position:fixed; inset:0; z-index:200; display:flex; align-items:center; justify-content:center; padding:16px; background:rgba(0,0,0,.6); overflow:auto; }
+    .tq-ov { position:fixed; inset:0; z-index:9000; display:flex; align-items:center; justify-content:center; padding:16px; background:rgba(0,0,0,.6); overflow:auto; }
     .tq-modal { position:relative; width:100%; max-width:452px; }
     .tq-close { position:absolute; top:-6px; right:-6px; z-index:3; width:32px; height:32px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; background:#0C1512; color:#EAF0ED; border:1px solid rgba(255,255,255,.2); cursor:pointer; }
     .tq-cardwrap { display:flex; justify-content:center; }
