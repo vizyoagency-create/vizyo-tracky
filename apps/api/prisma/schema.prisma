@@ -313,6 +313,24 @@ model BillingSettings {
   @@map("billing_settings")
 }
 
+/// Interrupteurs GLOBAUX par fonctionnalité IA (SINGLETON, super-admin/owner). Kill-switch plateforme :
+/// couper une fonction IA POUR TOUT LE MONDE, par-dessus l'interrupteur maître par société. Défaut
+/// TOUT ON (fail-open : un flag cassé ne coupe pas l'IA déjà payée). `activityReport` = outil owner.
+model AiFeatureFlags {
+  id              String   @id @default(uuid()) @db.Uuid
+  tripAnalysis    Boolean  @default(true) // récit IA de trajet
+  agendaAgent     Boolean  @default(true) // agent d'agenda
+  capacity        Boolean  @default(true) // optimiseur — capacités
+  placement       Boolean  @default(true) // optimiseur — placement
+  bookingParse    Boolean  @default(true) // saisie vocale des réservations
+  activityReport  Boolean  @default(true) // rapport d'activité IA (owner/super-admin)
+  updatedByUserId String?  @db.Uuid
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("ai_feature_flags")
+}
+
 model User {
   id         String   @id @default(uuid()) @db.Uuid
   authUserId String   @unique

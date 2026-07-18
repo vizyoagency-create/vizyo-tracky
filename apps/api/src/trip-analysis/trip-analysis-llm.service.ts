@@ -38,7 +38,7 @@ export class TripAnalysisLlmService {
 
   /** Interrupteur maître : l'IA doit être configurée ET non désactivée par la flotte du trajet. */
   private async ensureAiEnabled(fleetId: string): Promise<void> {
-    if (!(await this.aiAvail.isEnabledForFleet(fleetId))) {
+    if (!(await this.aiAvail.isEnabledForFleet(fleetId, 'tripAnalysis'))) {
       throw new ForbiddenException('Assistance IA désactivée pour cette flotte.');
     }
   }

@@ -180,7 +180,7 @@ export class ReservationBookingService {
     };
 
     // Interrupteur maître : si la flotte a désactivé l'IA, on garde le repli déterministe (pas de LLM).
-    const aiEnabled = this.aiAvail ? await this.aiAvail.isEnabledForFleet(link.fleetId) : true;
+    const aiEnabled = this.aiAvail ? await this.aiAvail.isEnabledForFleet(link.fleetId, 'bookingParse') : true;
     if (this.ai?.isConfigured() && this.aiUsage && aiEnabled) {
       try {
         const nowIso = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Paris', dateStyle: 'short', timeStyle: 'short' }).format(new Date());

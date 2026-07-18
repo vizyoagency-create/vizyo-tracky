@@ -1,6 +1,8 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import type {
+  AiFeatureFlagsDto,
+  AiFeatureKey,
   AiProviderMode,
   AiProviderSettingsDto,
   AiUsageBudgetDto,
@@ -57,5 +59,14 @@ export class AiUsageApiService {
   /** Bascule le mode IA global (Claude / GPT / les 2 mixte). */
   setProvider(provider: AiProviderMode): Observable<AiProviderSettingsDto> {
     return this.http.put<AiProviderSettingsDto>('/api/admin/ai-usage/provider', { provider });
+  }
+
+  /** Switchboard — interrupteurs GLOBAUX par fonctionnalité IA (super-admin). */
+  getFeatures(): Observable<AiFeatureFlagsDto> {
+    return this.http.get<AiFeatureFlagsDto>('/api/admin/ai-usage/features');
+  }
+
+  setFeature(feature: AiFeatureKey, enabled: boolean): Observable<AiFeatureFlagsDto> {
+    return this.http.put<AiFeatureFlagsDto>('/api/admin/ai-usage/features', { feature, enabled });
   }
 }

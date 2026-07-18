@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import type { AiFeatureKey } from '@vizyo/tracky-shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AiRouter } from './ai-router.service';
+import { AiFeatureFlagsService } from './ai-feature-flags.service';
 
 /**
  * Disponibilité de l'IA (2026-07). Combine (a) la CONFIG serveur (au moins une clé provider présente)
@@ -19,6 +21,7 @@ export class AiAvailabilityService {
   constructor(
     private readonly router: AiRouter,
     private readonly prisma: PrismaService,
+    private readonly featureFlags: AiFeatureFlagsService,
   ) {}
 
   /** Au moins une clé provider présente côté serveur (Claude et/ou GPT). */
@@ -30,8 +33,11 @@ export class AiAvailabilityService {
    * L'IA est-elle UTILISABLE pour cette flotte ? true seulement si une clé est présente ET que la
    * flotte n'a pas désactivé l'IA. `fleetId` absent (contexte super-admin global) → suit la config.
    */
-  async isEnabledForFleet(fleetId: string | null | undefined, now = Date.now()): Promise<boolean> {
+  async isEnabledForFleet(fleetId: string | null | undefined, feature?: AiFeatureKey, now = Date.now()): Promise<boolean> {
     if (!this.router.isConfigured()) return false;
+    // Kill-switch GLOBAL par fonctionnalité (owner) — se cumule PAR-DESSUS l'interrupteur société.
+    // Fail-open (défaut ON) : couper est une action explicite ; un glitch ne coupe pas l'IA payée.
+    if (feature && !(await this.featureFlags.isEnabled(feature, now))) return false;
     // OPT-IN (2026-07) : l'IA est OFF par défaut. Tous les replis sont fail-CLOSED — aucune
     // flotte n'a l'IA tant qu'elle n'est pas explicitement activée. (Avant : fail-open `?? true`.)
     if (!fleetId) return false;

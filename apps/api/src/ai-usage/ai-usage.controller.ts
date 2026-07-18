@@ -4,9 +4,11 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import type { AiProviderInfoDto, AiProviderSettingsDto } from '@vizyo/tracky-shared';
+import type { AiFeatureFlagsDto, AiProviderInfoDto, AiProviderSettingsDto } from '@vizyo/tracky-shared';
 import { AiProviderSettingsService } from '../ai/ai-provider-settings.service';
+import { AiFeatureFlagsService } from '../ai/ai-feature-flags.service';
 import { AiRouter } from '../ai/ai-router.service';
+import { SetAiFeatureFlagBodyDto } from './dto/set-ai-feature-flag.dto';
 import { AiUsageService } from './ai-usage.service';
 import { SetAiBudgetBodyDto } from './dto/set-ai-budget.dto';
 import { SetAiProviderBodyDto } from './dto/set-ai-provider.dto';
@@ -23,7 +25,22 @@ export class AiUsageController {
     private readonly svc: AiUsageService,
     private readonly aiProvider: AiProviderSettingsService,
     private readonly aiRouter: AiRouter,
+    private readonly featureFlags: AiFeatureFlagsService,
   ) {}
+
+  /** GET /api/admin/ai-usage/features — interrupteurs GLOBAUX par fonctionnalité IA (switchboard). */
+  @Get('features')
+  @Roles(UserRole.SUPER_ADMIN)
+  getFeatures(): Promise<AiFeatureFlagsDto> {
+    return this.featureFlags.getFlags();
+  }
+
+  /** PUT /api/admin/ai-usage/features — coupe/active une fonctionnalité IA POUR TOUT LE MONDE. */
+  @Put('features')
+  @Roles(UserRole.SUPER_ADMIN)
+  setFeature(@Body() dto: SetAiFeatureFlagBodyDto, @Req() req: AuthenticatedRequest): Promise<AiFeatureFlagsDto> {
+    return this.featureFlags.setFlag(dto.feature, dto.enabled, req.user.id);
+  }
 
   /** Vue du moteur IA global sélectionné + moteurs disponibles (clé présente). */
   private async providerView(): Promise<AiProviderSettingsDto> {

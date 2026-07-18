@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { Prisma, type ActivityReport } from '@prisma/client';
 import type {
@@ -16,6 +16,7 @@ import type {
 import { labelForRoute, ROUTE_LABELS } from '@vizyo/tracky-shared';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { AiRouter } from '../ai/ai-router.service';
+import { AiFeatureFlagsService } from '../ai/ai-feature-flags.service';
 import { OwnerVisibilityService } from '../common/owner-visibility.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
@@ -65,6 +66,7 @@ export class ActivityReportService {
     private readonly aiUsage: AiUsageService,
     private readonly systemActivity: SystemActivityService,
     private readonly ownerVis: OwnerVisibilityService,
+    private readonly featureFlags: AiFeatureFlagsService,
   ) {}
 
   /** Filtre Prisma masquant les rapports liés à un owner (créés-par OU ciblant) pour
@@ -99,6 +101,10 @@ export class ActivityReportService {
   // ─── Génération ────────────────────────────────────────────────────────────
 
   async generate(actor: Actor, dto: GenerateActivityReportDto, origin: ActivityReportOrigin = 'manual'): Promise<ActivityReportDto> {
+    // Kill-switch GLOBAL (owner) : rapport d'activité IA coupé pour tout le monde.
+    if (!(await this.featureFlags.isEnabled('activityReport'))) {
+      throw new ForbiddenException('Le rapport d’activité IA est désactivé.');
+    }
     let userIds = [...new Set((dto.userIds ?? []).filter((x) => typeof x === 'string'))].slice(0, MAX_TARGETS);
     // Owner plateforme — un acteur NON-owner ne peut pas générer de rapport ciblant
     // un owner (défense en profondeur : l'owner n'apparaît déjà pas dans le picker).

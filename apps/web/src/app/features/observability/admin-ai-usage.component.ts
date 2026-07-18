@@ -8,7 +8,7 @@ import {
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import type {
-  AiProviderMode, AiProviderSettingsDto, AiUsageBreakdownRowDto, AiUsageLogRowDto, AiUsageSummaryDto,
+  AiFeatureFlagsDto, AiFeatureKey, AiProviderMode, AiProviderSettingsDto, AiUsageBreakdownRowDto, AiUsageLogRowDto, AiUsageSummaryDto,
 } from '@vizyo/tracky-shared';
 import { AiUsageApiService } from '../../core/services/ai-usage.service';
 import { AiStatusService } from '../../core/services/ai-status.service';
@@ -136,6 +136,31 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
                 Enregistrer
               </button>
               @if (priceUpdatedAt()) { <span class="au-budget-hint">Dernière mise à jour : {{ priceUpdatedAt() | date:'dd/MM HH:mm' }}</span> }
+            </div>
+          </section>
+        }
+
+        <!-- ── SWITCHBOARD IA (kill-switches globaux par fonctionnalité, super-admin) ── -->
+        @if (isSuperAdmin() && features(); as ff) {
+          <section class="au-prov-panel">
+            <div class="au-prov-head">
+              <span class="au-budget-label"><lucide-icon [img]="LayersIcon" [size]="14"></lucide-icon> Fonctionnalités IA</span>
+              <span class="au-prov-note">Coupe une fonction IA <strong>pour tout le monde</strong> (par-dessus l'abonnement des sociétés). Défaut : tout actif.</span>
+            </div>
+            <div class="au-feat-list">
+              @for (f of aiFeatures; track f.key) {
+                <div class="au-feat" [class.au-feat--owner]="f.owner">
+                  <div class="au-feat-txt">
+                    <span class="au-feat-lbl">{{ f.label }}@if (f.owner) { <span class="au-feat-tag">Mon outil</span> }</span>
+                    <span class="au-feat-desc">{{ f.desc }}</span>
+                  </div>
+                  <label class="au-ai-sw" [class.au-ai-sw--busy]="savingFeature() === f.key">
+                    @if (savingFeature() === f.key) { <lucide-icon [img]="LoaderIcon" [size]="14" class="au-spin"></lucide-icon> }
+                    <input type="checkbox" [checked]="ff[f.key]" [disabled]="savingFeature() !== null" (change)="toggleFeature(f.key, $any($event.target).checked)" [attr.aria-label]="f.label">
+                    <span class="au-ai-sw-track"><span class="au-ai-sw-knob"></span></span>
+                  </label>
+                </div>
+              }
             </div>
           </section>
         }
@@ -374,6 +399,14 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
     .au-btn:disabled { opacity: .5; }
     .au-price-unit { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; color: var(--fg-secondary); }
     .au-price-select { padding: 6px 8px; border-radius: 8px; background: var(--bg-primary); border: 1px solid var(--border-subtle); color: var(--fg-primary); font-size: 12.5px; font-family: inherit; }
+    /* Switchboard fonctionnalités IA */
+    .au-feat-list { display: flex; flex-direction: column; gap: 8px; }
+    .au-feat { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 11px 13px; border-radius: 11px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); }
+    .au-feat--owner { border-color: color-mix(in srgb, var(--tracky-light, #10E0A0) 30%, transparent); background: color-mix(in srgb, var(--tracky-light, #10E0A0) 5%, var(--bg-tertiary)); }
+    .au-feat-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .au-feat-lbl { font-size: 13px; font-weight: 700; color: var(--fg-primary); display: inline-flex; align-items: center; gap: 7px; }
+    .au-feat-tag { font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; padding: 2px 6px; border-radius: 999px; background: rgba(16,224,160,.16); color: var(--tracky-light, #10E0A0); }
+    .au-feat-desc { font-size: 11.5px; color: var(--fg-tertiary); line-height: 1.4; }
 
     /* Moteur IA (switch Claude ↔ GPT) */
     .au-prov-panel { padding: 18px; border-radius: 16px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 12px; }
@@ -491,6 +524,17 @@ export class AdminAiUsageComponent implements OnInit {
   protected readonly pricingUnit = signal<'per_vehicle' | 'flat'>('per_vehicle');
   protected readonly savingPrice = signal(false);
   protected readonly priceUpdatedAt = signal<string | null>(null);
+  /** Switchboard — interrupteurs globaux par fonctionnalité IA (super-admin). */
+  protected readonly features = signal<AiFeatureFlagsDto | null>(null);
+  protected readonly savingFeature = signal<AiFeatureKey | null>(null);
+  protected readonly aiFeatures: { key: AiFeatureKey; label: string; desc: string; owner?: boolean }[] = [
+    { key: 'tripAnalysis', label: 'Récit IA de trajet', desc: 'Résumé vulgarisé + Trust Score + conseils, par trajet.' },
+    { key: 'agendaAgent', label: 'Agent d’agenda', desc: 'Analyse nocturne + propositions de réservation.' },
+    { key: 'capacity', label: 'Optimiseur — capacités', desc: 'Déduction des places / sièges-enfant par modèle.' },
+    { key: 'placement', label: 'Optimiseur — placement', desc: 'Classement des véhicules pour une réservation.' },
+    { key: 'bookingParse', label: 'Saisie vocale (réservations)', desc: 'Dictée du besoin sur les liens publics.' },
+    { key: 'activityReport', label: 'Rapport d’activité IA', desc: 'Ton outil super-admin (analyse de l’activité). Personne d’autre n’y a accès.', owner: true },
+  ];
 
   /** Dernière société chargée (undefined = pas encore initialisé) — pour ne recharger QUE sur vrai changement. */
   private lastFleetId: string | null | undefined = undefined;
@@ -602,6 +646,11 @@ export class AdminAiUsageComponent implements OnInit {
         } catch {
           /* ignore : l'éditeur de prix garde ses valeurs */
         }
+        try {
+          this.features.set(await firstValueFrom(this.api.getFeatures()));
+        } catch {
+          /* ignore : le switchboard reste masqué si l'appel échoue */
+        }
       }
     } catch (e) {
       this.error.set(this.errMsg(e));
@@ -648,6 +697,21 @@ export class AdminAiUsageComponent implements OnInit {
       this.toast.error('Échec', this.errMsg(e));
     } finally {
       this.savingPrice.set(false);
+    }
+  }
+
+  /** Coupe/active une fonctionnalité IA POUR TOUT LE MONDE (kill-switch global, super-admin). */
+  protected async toggleFeature(key: AiFeatureKey, enabled: boolean): Promise<void> {
+    if (this.savingFeature()) return;
+    this.savingFeature.set(key);
+    try {
+      this.features.set(await firstValueFrom(this.api.setFeature(key, enabled)));
+      this.aiStatus.refresh();
+      this.toast.success('Fonctionnalité IA', enabled ? 'Activée pour tout le monde.' : 'Coupée pour tout le monde.');
+    } catch (e) {
+      this.toast.error('Fonctionnalité IA', this.errMsg(e));
+    } finally {
+      this.savingFeature.set(null);
     }
   }
 

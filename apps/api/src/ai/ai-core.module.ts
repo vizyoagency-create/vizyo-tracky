@@ -4,6 +4,7 @@ import { OpenAiClient } from './openai.client';
 import { AiProviderSettingsService } from './ai-provider-settings.service';
 import { AiRouter } from './ai-router.service';
 import { AiAvailabilityService } from './ai-availability.service';
+import { AiFeatureFlagsService } from './ai-feature-flags.service';
 
 /**
  * Couche IA multi-provider (2026-07) — module GLOBAL fournissant les moteurs (Claude/GPT), le
@@ -13,7 +14,7 @@ import { AiAvailabilityService } from './ai-availability.service';
  */
 @Global()
 @Module({
-  providers: [AnthropicClient, OpenAiClient, AiProviderSettingsService, AiRouter, AiAvailabilityService],
-  exports: [AnthropicClient, OpenAiClient, AiProviderSettingsService, AiRouter, AiAvailabilityService],
+  providers: [AnthropicClient, OpenAiClient, AiProviderSettingsService, AiRouter, AiAvailabilityService, AiFeatureFlagsService],
+  exports: [AnthropicClient, OpenAiClient, AiProviderSettingsService, AiRouter, AiAvailabilityService, AiFeatureFlagsService],
 })
 export class AiCoreModule {}

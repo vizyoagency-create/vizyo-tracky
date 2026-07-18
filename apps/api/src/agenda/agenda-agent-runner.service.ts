@@ -384,7 +384,7 @@ export class AgendaAgentRunnerService {
     const out = new Map<number, { keep: boolean; reasoning: string }>();
     if (!this.ai || !this.aiUsage || !this.ai.isConfigured() || patterns.length === 0) return out;
     // Interrupteur maître : IA désactivée pour la flotte → pas de couche IA (l'agent reste déterministe).
-    if (this.aiAvail && !(await this.aiAvail.isEnabledForFleet(fleetId))) return out;
+    if (this.aiAvail && !(await this.aiAvail.isEnabledForFleet(fleetId, 'agendaAgent'))) return out;
     const capped = patterns.slice(0, 30); // borne le coût sur les grosses flottes
     const fleet = await this.prisma.fleet.findUnique({ where: { id: fleetId }, select: { metier: true, name: true } });
     const metier = (fleet?.metier as FleetMetier) ?? 'GENERIC';

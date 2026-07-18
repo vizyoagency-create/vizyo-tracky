@@ -122,7 +122,7 @@ export class TripAutomationService {
       const fleets = await this.prisma.fleet.findMany({ select: { id: true, name: true } });
       for (const fleet of fleets) {
         stats.fleets++;
-        const aiOn = settings.narrateEnabled && (await this.aiAvail.isEnabledForFleet(fleet.id));
+        const aiOn = settings.narrateEnabled && (await this.aiAvail.isEnabledForFleet(fleet.id, 'tripAnalysis'));
 
         let vehicles: { id: string; plate: string }[];
         try {

@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
-import { LucideAngularModule, Leaf, OctagonX, Gauge, Fuel, Sparkles, Loader, AlertTriangle, ShieldCheck, FileText, X, MapPin } from 'lucide-angular';
+import { RouterLink } from '@angular/router';
+import { LucideAngularModule, Leaf, OctagonX, Gauge, Fuel, Sparkles, Loader, AlertTriangle, ShieldCheck, FileText, X, MapPin, Lock } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import type { AiProviderId, TripAnalysisDto } from '@vizyo/tracky-shared';
 import { TripAnalysisApiService } from '../../core/services/trip-analysis.service';
@@ -17,7 +18,7 @@ import { apiErrorMessage } from '../../core/error/api-error';
   selector: 'app-trip-analysis-badges',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [LucideAngularModule, DecimalPipe],
+  imports: [LucideAngularModule, DecimalPipe, RouterLink],
   template: `
     @if (current(); as a) {
       <div class="tab-badges" role="group" aria-label="Analyse du trajet">
@@ -68,11 +69,16 @@ import { apiErrorMessage } from '../../core/error/api-error';
           </span>
         }
 
-        <!-- Entrée IA (récit/conseils/comparaison) — masquée si l'IA est désactivée pour la flotte. -->
+        <!-- Entrée IA (récit/conseils/comparaison). Si l'IA est coupée : TEASER d'activation (les
+             chiffres déterministes ci-dessus donnent envie ; ici le CTA vers l'option payante). -->
         @if (aiEnabled()) {
           <button type="button" class="tab-refresh" (click)="openDetail()" title="Récit IA, conseils & comparaison">
             <lucide-icon [img]="FileIcon" [size]="12"></lucide-icon> Récit IA
           </button>
+        } @else {
+          <a routerLink="/settings" class="tab-teaser" title="Activer l'option IA : récit vulgarisé du trajet, conseils d'éco-conduite et Trust Score">
+            <lucide-icon [img]="LockIcon" [size]="11"></lucide-icon> Récit IA — activer l'option
+          </a>
         }
         <button type="button" class="tab-refresh" (click)="runAnalyze()" [disabled]="busy()" title="Recalculer l'analyse (chiffres)">
           @if (busy()) { <lucide-icon [img]="LoaderIcon" [size]="12" class="tab-spin"></lucide-icon> }
@@ -188,6 +194,9 @@ import { apiErrorMessage } from '../../core/error/api-error';
     }
     .tab-analyze { padding: 5px 11px; font-size: 11.5px; }
     .tab-refresh { padding: 4px 8px; font-size: 11px; }
+    /* Teaser d'activation IA (option payante) — subtil, pointillés, couleur accent. */
+    .tab-teaser { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 8px; font-size: 11px; font-weight: 600; text-decoration: none; color: var(--tracky-light, #10E0A0); background: color-mix(in srgb, var(--tracky-light, #10E0A0) 8%, transparent); border: 1px dashed color-mix(in srgb, var(--tracky-light, #10E0A0) 40%, transparent); }
+    .tab-teaser:hover { background: color-mix(in srgb, var(--tracky-light, #10E0A0) 16%, transparent); }
     .tab-analyze:hover:not(:disabled), .tab-refresh:hover:not(:disabled) { background: color-mix(in srgb, var(--tracky-light, #10E0A0) 16%, transparent); }
     .tab-analyze:disabled, .tab-refresh:disabled { opacity: .6; cursor: default; }
     .tab-spin { animation: tab-rot .9s linear infinite; }
@@ -290,6 +299,7 @@ export class TripAnalysisBadgesComponent {
   protected readonly AlertIcon = AlertTriangle;
   protected readonly ShieldIcon = ShieldCheck;
   protected readonly FileIcon = FileText;
+  protected readonly LockIcon = Lock;
   protected readonly XIcon = X;
 
   protected minutes(sec: number): number { return Math.round(sec / 60); }

@@ -155,3 +155,17 @@ export interface FleetAiSettingDto {
   fleetId: string;
   enabled: boolean;
 }
+
+/* ── Switchboard IA (2026-07) — interrupteurs GLOBAUX par fonctionnalité (super-admin/owner) ── */
+
+/** Fonctionnalités IA pilotables globalement. `activityReport` = outil owner (super-admin only). */
+export type AiFeatureKey = 'tripAnalysis' | 'agendaAgent' | 'capacity' | 'placement' | 'bookingParse' | 'activityReport';
+
+/** État des interrupteurs globaux (true = fonction disponible, sous réserve du droit + interrupteur société). */
+export type AiFeatureFlagsDto = Record<AiFeatureKey, boolean>;
+
+/** Corps : couper/activer une fonctionnalité IA POUR TOUT LE MONDE (super-admin). */
+export interface SetAiFeatureFlagDto {
+  feature: AiFeatureKey;
+  enabled: boolean;
+}

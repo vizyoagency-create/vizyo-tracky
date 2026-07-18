@@ -206,7 +206,7 @@ export class AiOptimizationService {
     const { payload, vehicles, metier, fleetId } = await this.buildCapacityPayload(user, dto);
     if (vehicles.length === 0) return { metier, proposals: [] };
     // Interrupteur maître : IA désactivée pour la flotte → aucune proposition (l'app tourne sans IA).
-    if (!(await this.aiAvail.isEnabledForFleet(fleetId))) return { metier, proposals: [] };
+    if (!(await this.aiAvail.isEnabledForFleet(fleetId, 'capacity'))) return { metier, proposals: [] };
 
     let ai: CapacityAiOutput;
     try {
@@ -417,7 +417,7 @@ export class AiOptimizationService {
       };
     }
     // Interrupteur maître : IA désactivée pour la flotte → pas de placement IA (l'app tourne sans IA).
-    if (!(await this.aiAvail.isEnabledForFleet(fleetId))) {
+    if (!(await this.aiAvail.isEnabledForFleet(fleetId, 'placement'))) {
       return {
         slot,
         proposals: [],
