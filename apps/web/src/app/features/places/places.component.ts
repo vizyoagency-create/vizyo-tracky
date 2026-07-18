@@ -9,7 +9,7 @@ import {
   FleetPlacesApiService,
   type FleetPlaceDto,
   type FleetPlaceKind,
-  type StationPassageDto,
+  type StationGroupDto,
 } from '../../core/services/fleet-places.service';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { PermissionsService } from '../../core/services/permissions.service';
@@ -110,53 +110,59 @@ import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
         }
       </section>
 
-      <!-- ─── Passages station-service ─── -->
+      <!-- ─── Stations-service REGROUPÉES (une ligne par lieu, pas par passage) ─── -->
       <section class="lk-card">
         <div class="lk-card-head">
           <span class="lk-card-title">
             <lucide-icon [img]="FuelIcon" [size]="15"></lucide-icon>
-            Passages en station-service
+            Stations-service fréquentées
           </span>
-          <span class="lk-count">{{ passages().length }}</span>
+          <span class="lk-count">{{ stations().length }}</span>
         </div>
 
         <p class="lk-help">
           <lucide-icon [img]="InfoIcon" [size]="12"></lucide-icon>
-          Seuls les passages avec un <strong>arrêt réel d'au moins {{ minStopMin }} minutes</strong> à
-          moins de 160 m d'une station sont listés — un simple ralentissement en passant devant une
-          station n'est jamais compté.
+          Une ligne par station — avec qui s'y est arrêté et combien de fois. Seuls les
+          <strong>arrêts réels d'au moins {{ minStopMin }} minutes</strong> à moins de 160 m d'une
+          station sont comptés — un simple ralentissement devant une station ne l'est jamais.
         </p>
 
-        @if (loading() && passages().length === 0) {
+        @if (loading() && stations().length === 0) {
           <div class="lk-loading"><app-spinner [size]="20" /></div>
-        } @else if (passages().length === 0) {
+        } @else if (stations().length === 0) {
           <div class="lk-empty">
             <lucide-icon [img]="FuelIcon" [size]="26" class="lk-empty-icon"></lucide-icon>
-            <p>Aucun passage sur la période</p>
-            <span>Les passages apparaissent quand un trajet analysé s'arrête à une station.</span>
+            <p>Aucune station fréquentée sur la période</p>
+            <span>Une station apparaît dès qu'un trajet analysé s'y arrête réellement.</span>
           </div>
         } @else {
           <ul class="lk-list">
-            @for (s of passages(); track s.id) {
+            @for (s of stations(); track s.stationId) {
               <li class="lk-item">
                 <div class="lk-item-main">
                   <div class="lk-item-line">
-                    <strong class="lk-item-name">{{ s.brand || s.name || 'Station-service' }}</strong>
-                    @if (s.validated) {
+                    <strong class="lk-item-name">{{ s.label }}</strong>
+                    @if (s.placeId) {
                       <span class="lk-badge lk-badge--ok">Lieu de la flotte</span>
                     }
                   </div>
                   <span class="lk-item-meta">
-                    {{ s.plate || 'Véhicule' }} · {{ s.at | date: 'dd/MM HH:mm' }} ·
-                    arrêt {{ s.durationMin }} min · à {{ s.distanceM }} m
-                    @if (s.city) { · {{ s.city }} }
-                    @if (s.priceEur != null) { · {{ s.priceEur | number: '1.3-3' }} €/L }
+                    <b>{{ s.passages }}</b> passage{{ s.passages > 1 ? 's' : '' }} ·
+                    <b>{{ s.distinctVehicles }}</b> véhicule{{ s.distinctVehicles > 1 ? 's' : '' }} ·
+                    arrêt moy. {{ s.avgStopMin }} min · dernier {{ s.lastAt | date: 'dd/MM' }}
+                    @if (s.lastPriceEur != null) { · {{ s.lastPriceEur | number: '1.3-3' }} €/L }
                   </span>
+                  <!-- QUI est passé et COMBIEN DE FOIS (la demande client). -->
+                  <div class="lk-vehicles">
+                    @for (v of s.vehicles; track v.vehicleId) {
+                      <span class="lk-veh"><b>{{ v.plate || 'véhicule' }}</b> {{ v.visits }}×</span>
+                    }
+                  </div>
                 </div>
                 <button type="button" class="lk-btn" (click)="showOnMap(s.lat, s.lng)" title="Voir sur la carte">
                   <lucide-icon [img]="MapPinIcon" [size]="13"></lucide-icon>
                 </button>
-                @if (canManage() && !s.validated) {
+                @if (canManage() && !s.placeId) {
                   <button
                     type="button"
                     class="lk-btn lk-btn--ok"
@@ -201,6 +207,10 @@ import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
     .lk-item-line { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
     .lk-item-name { color: var(--fg-primary); font-size: 13px; font-weight: 700; }
     .lk-item-meta { color: var(--fg-tertiary); font-size: 11.5px; }
+    .lk-item-meta b { color: var(--fg-secondary); }
+    .lk-vehicles { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+    .lk-veh { padding: 1px 8px; border-radius: 999px; background: color-mix(in srgb, #A78BFA 14%, transparent); color: var(--fg-secondary); font-size: 11px; }
+    .lk-veh b { color: var(--fg-primary); font-weight: 700; }
     .lk-kind { padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; background: color-mix(in srgb, var(--fg-tertiary) 16%, transparent); color: var(--fg-secondary); flex-shrink: 0; }
     .lk-kind[data-k='FUEL_STATION'] { background: color-mix(in srgb, #A78BFA 22%, transparent); color: #A78BFA; }
     .lk-kind[data-k='PARKING'] { background: color-mix(in srgb, #0ea5e9 22%, transparent); color: #0ea5e9; }
@@ -233,7 +243,8 @@ export class PlacesComponent {
   protected readonly minStopMin = 4;
 
   protected readonly places = signal<FleetPlaceDto[]>([]);
-  protected readonly passages = signal<StationPassageDto[]>([]);
+  /** Stations REGROUPÉES (une entrée par lieu, pas une par passage). */
+  protected readonly stations = signal<StationGroupDto[]>([]);
   protected readonly loading = signal(true);
   protected readonly error = signal<string | null>(null);
   /** Id (lieu ou station) en cours d'écriture — désactive le bouton concerné. */
@@ -258,12 +269,12 @@ export class PlacesComponent {
     this.error.set(null);
     const fleetId = this.fleetFilter.selectedFleetId() ?? undefined;
     try {
-      const [places, passages] = await Promise.all([
+      const [places, stations] = await Promise.all([
         firstValueFrom(this.api.list(fleetId)),
-        firstValueFrom(this.api.stationPassages({ fleetId, minStopMin: this.minStopMin })),
+        firstValueFrom(this.api.stationGroups({ fleetId, minStopMin: this.minStopMin })),
       ]);
       this.places.set(places);
-      this.passages.set(passages);
+      this.stations.set(stations);
     } catch {
       // L'erreur détaillée part déjà au centre d'alerte via l'intercepteur HTTP ; ici on
       // informe l'utilisateur sans laisser la page vide et muette.
@@ -274,14 +285,13 @@ export class PlacesComponent {
   }
 
   /** Valide une station détectée → elle devient un lieu de la flotte (couleur dédiée sur la carte). */
-  protected async validateStation(s: StationPassageDto): Promise<void> {
+  protected async validateStation(s: StationGroupDto): Promise<void> {
     if (this.busyId()) return;
     this.busyId.set(s.stationId);
     try {
-      const name = [s.brand || s.name || 'Station-service', s.city].filter(Boolean).join(' — ');
       const created = await firstValueFrom(
         this.api.create({
-          name,
+          name: s.label.slice(0, 120),
           kind: 'FUEL_STATION',
           lat: s.lat,
           lng: s.lng,
@@ -290,11 +300,11 @@ export class PlacesComponent {
         }),
       );
       this.places.update((list) => [...list, created]);
-      // Marque tous les passages de cette station comme validés (sans recharger).
-      this.passages.update((list) =>
-        list.map((p) => (p.stationId === s.stationId ? { ...p, validated: true } : p)),
+      // La station devient un lieu de la flotte (une seule ligne à mettre à jour : c'est groupé).
+      this.stations.update((list) =>
+        list.map((x) => (x.stationId === s.stationId ? { ...x, placeId: created.id, placeName: created.name } : x)),
       );
-      this.toast.success('Station ajoutée aux lieux de la flotte');
+      this.toast.success('Station ajoutée aux lieux de la flotte', created.name);
     } catch {
       this.toast.error("Impossible d'ajouter cette station");
     } finally {
@@ -310,8 +320,8 @@ export class PlacesComponent {
       await firstValueFrom(this.api.remove(p.id));
       this.places.update((list) => list.filter((x) => x.id !== p.id));
       if (p.stationId) {
-        this.passages.update((list) =>
-          list.map((s) => (s.stationId === p.stationId ? { ...s, validated: false } : s)),
+        this.stations.update((list) =>
+          list.map((s) => (s.stationId === p.stationId ? { ...s, placeId: null, placeName: null } : s)),
         );
       }
       this.toast.success('Lieu retiré');

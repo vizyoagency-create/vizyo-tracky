@@ -162,14 +162,18 @@ export class FleetPlacesService {
   }
 
   /**
-   * Passages en station-service avec un VRAI arrêt (≥ 4 min par défaut), du plus récent au plus
-   * ancien. C'est la matière première de la page « Lieux clés » : chaque ligne dit QUI s'est
-   * arrêté, OÙ, COMBIEN DE TEMPS, et si la station est déjà validée comme lieu de la flotte.
+   * Stations-service REGROUPÉES par lieu — UNE ligne par station, pas une par passage.
+   *
+   * La vue à plat répétait la même station des dizaines de fois (41 lignes pour ~6 stations) et
+   * était inexploitable. Ici chaque station apparaît une seule fois avec : le nombre total de
+   * passages, QUI est passé et COMBIEN DE FOIS, la période couverte, la durée d'arrêt moyenne, le
+   * dernier prix, et le lieu de la flotte correspondant s'il existe. Seuls les passages avec un
+   * VRAI arrêt (≥ 4 min par défaut) sont comptés.
    */
-  async stationPassages(
+  async stationGroups(
     user: AuthUser,
     opts: { fromIso?: string; toIso?: string; fleetId?: string; minStopMin?: number } = {},
-  ): Promise<StationPassageDto[]> {
+  ): Promise<StationGroupDto[]> {
     const to = opts.toIso ? new Date(opts.toIso) : new Date();
     const from = opts.fromIso ? new Date(opts.fromIso) : new Date(to.getTime() - 90 * 24 * 3600 * 1000);
     const minStopMin = Number.isFinite(opts.minStopMin) && (opts.minStopMin as number) > 0
@@ -209,7 +213,7 @@ export class FleetPlacesService {
     // faire échouer toute la page — on dégrade (plaque nulle / non validé) ET on remonte au
     // centre d'alerte, sinon la panne serait invisible.
     const plateById = new Map<string, string | null>();
-    const validatedStationIds = new Set<string>();
+    const placeByStationId = new Map<string, { id: string; name: string }>();
     try {
       const vehicleIds = [...new Set(withStation.map((s) => s.vehicleId))];
       const stationIds = [...new Set(withStation.map((s) => s.station!.id))];
@@ -217,11 +221,11 @@ export class FleetPlacesService {
         this.prisma.vehicle.findMany({ where: { id: { in: vehicleIds } }, select: { id: true, plate: true } }),
         this.prisma.fleetPlace.findMany({
           where: { stationId: { in: stationIds }, ...(scopedFleet ? { fleetId: scopedFleet } : {}) },
-          select: { stationId: true },
+          select: { id: true, stationId: true, name: true },
         }),
       ]);
       for (const v of vehicles) plateById.set(v.id, v.plate);
-      for (const p of places) if (p.stationId) validatedStationIds.add(p.stationId);
+      for (const p of places) if (p.stationId) placeByStationId.set(p.stationId, { id: p.id, name: p.name });
     } catch (err) {
       this.errorLogger.recordBackground(
         err instanceof Error ? err : new Error(String(err)),
@@ -230,24 +234,84 @@ export class FleetPlacesService {
       );
     }
 
-    return withStation.map((s) => ({
-      id: s.id,
-      at: s.arrivedAt.toISOString(),
-      vehicleId: s.vehicleId,
-      plate: plateById.get(s.vehicleId) ?? null,
-      stationId: s.station!.id,
-      brand: s.station!.brand,
-      name: s.station!.name,
-      city: s.station!.city,
-      address: s.station!.address,
-      lat: s.station!.lat,
-      lng: s.station!.lng,
-      durationMin: Math.round(s.durationSec / 60),
-      distanceM: Math.round(s.distanceM),
-      priceEur: s.unitPriceEur,
-      fuelType: s.fuelType,
-      validated: validatedStationIds.has(s.station!.id),
-    }));
+    // Regroupement par STATION : une entrée par lieu, avec le détail par véhicule.
+    type Agg = {
+      station: { id: string; brand: string | null; name: string | null; city: string | null; address: string | null; lat: number; lng: number };
+      passages: number;
+      totalStopMin: number;
+      firstAt: Date;
+      lastAt: Date;
+      lastPriceEur: number | null;
+      fuelType: string | null;
+      vehicles: Map<string, { visits: number; lastAt: Date }>;
+    };
+    const byStation = new Map<string, Agg>();
+    for (const s of withStation) {
+      const st = s.station!;
+      let e = byStation.get(st.id);
+      if (!e) {
+        e = {
+          station: st,
+          passages: 0,
+          totalStopMin: 0,
+          firstAt: s.arrivedAt,
+          lastAt: s.arrivedAt,
+          lastPriceEur: null,
+          fuelType: null,
+          vehicles: new Map(),
+        };
+        byStation.set(st.id, e);
+      }
+      e.passages += 1;
+      e.totalStopMin += s.durationSec / 60;
+      if (s.arrivedAt < e.firstAt) e.firstAt = s.arrivedAt;
+      if (s.arrivedAt > e.lastAt) e.lastAt = s.arrivedAt;
+      const v = e.vehicles.get(s.vehicleId);
+      if (v) {
+        v.visits += 1;
+        if (s.arrivedAt > v.lastAt) v.lastAt = s.arrivedAt;
+      } else {
+        e.vehicles.set(s.vehicleId, { visits: 1, lastAt: s.arrivedAt });
+      }
+      // `stops` est trié du plus récent au plus ancien → le 1er prix non nul rencontré est le dernier relevé.
+      if (e.lastPriceEur == null && s.unitPriceEur != null) {
+        e.lastPriceEur = s.unitPriceEur;
+        e.fuelType = s.fuelType;
+      }
+    }
+
+    return [...byStation.values()]
+      .map((e) => {
+        const place = placeByStationId.get(e.station.id) ?? null;
+        return {
+          stationId: e.station.id,
+          label: stationLabel(e.station),
+          brand: e.station.brand,
+          name: e.station.name,
+          city: e.station.city,
+          address: e.station.address,
+          lat: e.station.lat,
+          lng: e.station.lng,
+          passages: e.passages,
+          distinctVehicles: e.vehicles.size,
+          vehicles: [...e.vehicles.entries()]
+            .map(([vehicleId, v]) => ({
+              vehicleId,
+              plate: plateById.get(vehicleId) ?? null,
+              visits: v.visits,
+              lastAt: v.lastAt.toISOString(),
+            }))
+            .sort((a, b) => b.visits - a.visits),
+          firstAt: e.firstAt.toISOString(),
+          lastAt: e.lastAt.toISOString(),
+          avgStopMin: Math.max(1, Math.round(e.totalStopMin / e.passages)),
+          lastPriceEur: e.lastPriceEur,
+          fuelType: e.fuelType,
+          placeId: place?.id ?? null,
+          placeName: place?.name ?? null,
+        };
+      })
+      .sort((a, b) => b.passages - a.passages || (a.lastAt < b.lastAt ? 1 : -1));
   }
 }
 
@@ -285,24 +349,48 @@ export interface FleetPlaceDto {
   updatedAt: string;
 }
 
-export interface StationPassageDto {
-  id: string;
-  at: string;
+/**
+ * Libellé lisible d'une station. Le catalogue gouv laisse souvent `brand`/`name` VIDES — sans ce
+ * repli toutes les stations s'affichaient « Station-service », impossible à distinguer dans la liste.
+ */
+function stationLabel(st: { brand: string | null; name: string | null; city: string | null; address: string | null }): string {
+  const base = st.brand?.trim() || st.name?.trim();
+  if (base) return st.city ? `${base} — ${st.city}` : base;
+  const where = st.address?.trim() || st.city?.trim();
+  return where ? `Station-service — ${where}` : 'Station-service';
+}
+
+/** Un véhicule passé par une station + son nombre de passages. */
+export interface StationGroupVehicleDto {
   vehicleId: string;
   plate: string | null;
+  visits: number;
+  lastAt: string;
+}
+
+/** Une STATION regroupée (et non un passage) : qui est passé, combien de fois, quand. */
+export interface StationGroupDto {
   stationId: string;
+  /** Libellé prêt à afficher (marque/adresse + ville) — jamais vide. */
+  label: string;
   brand: string | null;
   name: string | null;
   city: string | null;
   address: string | null;
   lat: number;
   lng: number;
-  /** Durée de l'arrêt (min) — garantie ≥ au seuil demandé (4 min par défaut). */
-  durationMin: number;
-  /** Distance arrêt ↔ station (m). */
-  distanceM: number;
-  priceEur: number | null;
+  /** Nombre total de passages (arrêts réels) sur la période. */
+  passages: number;
+  distinctVehicles: number;
+  /** Détail par véhicule, du plus fréquent au moins fréquent. */
+  vehicles: StationGroupVehicleDto[];
+  firstAt: string;
+  lastAt: string;
+  /** Durée d'arrêt moyenne (min). */
+  avgStopMin: number;
+  lastPriceEur: number | null;
   fuelType: string | null;
-  /** true si cette station fait déjà partie des lieux de la flotte. */
-  validated: boolean;
+  /** Lieu de la flotte correspondant si la station est déjà validée (sinon null). */
+  placeId: string | null;
+  placeName: string | null;
 }

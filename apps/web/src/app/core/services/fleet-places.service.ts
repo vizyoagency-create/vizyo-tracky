@@ -24,25 +24,36 @@ export interface FleetPlaceDto {
   updatedAt: string;
 }
 
-/** Un passage en station-service avec un VRAI arrêt (≥ 4 min par défaut). */
-export interface StationPassageDto {
-  id: string;
-  at: string;
+/** Un véhicule passé par une station + son nombre de passages. */
+export interface StationGroupVehicleDto {
   vehicleId: string;
   plate: string | null;
+  visits: number;
+  lastAt: string;
+}
+
+/** Une STATION regroupée (une ligne par lieu) : qui est passé, combien de fois, quand. */
+export interface StationGroupDto {
   stationId: string;
+  /** Libellé prêt à afficher (jamais vide, même si la marque est absente du catalogue). */
+  label: string;
   brand: string | null;
   name: string | null;
   city: string | null;
   address: string | null;
   lat: number;
   lng: number;
-  durationMin: number;
-  distanceM: number;
-  priceEur: number | null;
+  passages: number;
+  distinctVehicles: number;
+  vehicles: StationGroupVehicleDto[];
+  firstAt: string;
+  lastAt: string;
+  avgStopMin: number;
+  lastPriceEur: number | null;
   fuelType: string | null;
-  /** true si la station fait déjà partie des lieux de la flotte. */
-  validated: boolean;
+  /** Lieu de la flotte correspondant si la station est validée (sinon null). */
+  placeId: string | null;
+  placeName: string | null;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -56,14 +67,14 @@ export class FleetPlacesApiService {
     return this.http.get<FleetPlaceDto[]>('/api/fleet-places', { params });
   }
 
-  /** Passages station avec arrêt réel (≥ minStopMin, 4 min par défaut). */
-  stationPassages(opts: { from?: string; to?: string; fleetId?: string; minStopMin?: number } = {}): Observable<StationPassageDto[]> {
+  /** Stations REGROUPÉES (une par lieu) avec arrêt réel ≥ minStopMin (4 min par défaut). */
+  stationGroups(opts: { from?: string; to?: string; fleetId?: string; minStopMin?: number } = {}): Observable<StationGroupDto[]> {
     const params: Record<string, string> = {};
     if (opts.from) params['from'] = opts.from;
     if (opts.to) params['to'] = opts.to;
     if (opts.fleetId) params['fleetId'] = opts.fleetId;
     if (opts.minStopMin != null) params['minStopMin'] = String(opts.minStopMin);
-    return this.http.get<StationPassageDto[]>('/api/fleet-places/station-passages', { params });
+    return this.http.get<StationGroupDto[]>('/api/fleet-places/stations', { params });
   }
 
   /** Crée un lieu : parking posé à la main, ou validation d'une station détectée. */

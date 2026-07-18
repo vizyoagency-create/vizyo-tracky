@@ -20,13 +20,14 @@ export class FleetPlacesController {
   constructor(private readonly places: FleetPlacesService) {}
 
   /**
-   * Passages en station-service avec un VRAI arrêt (≥ `minStopMin`, 4 min par défaut).
+   * Stations-service REGROUPÉES (une par lieu) : passages, qui est passé et combien de fois.
+   * Seuls les VRAIS arrêts (≥ `minStopMin`, 4 min par défaut) sont comptés.
    * Route STATIQUE → déclarée avant tout segment dynamique.
    */
-  @Get('station-passages')
+  @Get('stations')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
   @RequirePermissions('places_view')
-  stationPassages(
+  stationGroups(
     @Req() req: AuthenticatedRequest,
     @Query('from') from?: string,
     @Query('to') to?: string,
@@ -34,7 +35,7 @@ export class FleetPlacesController {
     @Query('minStopMin') minStopMin?: string,
   ) {
     const min = minStopMin ? Number(minStopMin) : undefined;
-    return this.places.stationPassages(req.user, {
+    return this.places.stationGroups(req.user, {
       fromIso: from,
       toIso: to,
       fleetId,
