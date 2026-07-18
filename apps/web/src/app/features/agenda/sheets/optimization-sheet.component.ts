@@ -22,6 +22,7 @@ import {
 } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { AiApiService } from '../../../core/services/ai.service';
+import { AiStatusService } from '../../../core/services/ai-status.service';
 import { AiJobService } from '../../../core/services/ai-job.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { FleetCacheService } from '../../../core/services/fleet-cache.service';
@@ -52,17 +53,22 @@ const METIERS: FleetMetier[] = ['CHILDREN_TRANSPORT', 'PARCELS', 'RENTAL', 'GENE
 
         <div class="op-body">
           <!-- Hero IA (réf. maquette AgentIA.dc.html) : identité « agent » honnête,
-               sans KPI inventés (km/€/CO₂) ni suggestions de tournée non implémentées. -->
-          <div class="op-hero">
-            <span class="op-hero-ico"><lucide-icon [img]="SparklesIcon" [size]="20"></lucide-icon></span>
-            <div class="op-hero-txt">
-              <div class="op-hero-eye">
-                <span class="op-hero-kick">Optimisation</span>
-                <span class="op-hero-live"><span class="op-hero-dot"></span>Analyse active</span>
+               sans KPI inventés (km/€/CO₂) ni suggestions de tournée non implémentées.
+               Masqué si l'IA est coupée pour la flotte (les mutualisations déterministes restent). -->
+          @if (aiEnabled()) {
+            <div class="op-hero">
+              <span class="op-hero-ico"><lucide-icon [img]="SparklesIcon" [size]="20"></lucide-icon></span>
+              <div class="op-hero-txt">
+                <div class="op-hero-eye">
+                  <span class="op-hero-kick">Optimisation</span>
+                  <span class="op-hero-live"><span class="op-hero-dot"></span>Analyse active</span>
+                </div>
+                <p class="op-hero-lead">L'agent analyse votre parc et propose des améliorations chiffrées. <span class="op-muted">Rien n'est appliqué sans votre validation.</span></p>
               </div>
-              <p class="op-hero-lead">L'agent analyse votre parc et propose des améliorations chiffrées. <span class="op-muted">Rien n'est appliqué sans votre validation.</span></p>
             </div>
-          </div>
+          } @else {
+            <div class="op-alert op-alert--info"><lucide-icon [img]="InfoIcon" [size]="13"></lucide-icon> Assistance IA désactivée pour cette flotte. Les opportunités de mutualisation ci-dessous restent disponibles ; l'analyse IA des capacités est masquée.</div>
+          }
 
           <!-- Flotte (super-admin) -->
           @if (isSuperAdmin() && fleetOptions().length > 0) {
@@ -89,7 +95,8 @@ const METIERS: FleetMetier[] = ['CHILDREN_TRANSPORT', 'PARCELS', 'RENTAL', 'GENE
           </div>
           <p class="op-hint"><lucide-icon [img]="InfoIcon" [size]="12"></lucide-icon> Conditionne l'IA : enfants → places/sièges-enfant · colis → charge · location → disponibilité.</p>
 
-          <!-- Capacité IA -->
+          <!-- Capacité IA (masquée si l'IA est coupée pour la flotte) -->
+          @if (aiEnabled()) {
           <section class="op-sec">
             <div class="op-sec-head">
               <h4 class="op-sec-title"><lucide-icon [img]="SparklesIcon" [size]="14" class="op-accent"></lucide-icon> Compléter les capacités (IA)</h4>
@@ -136,8 +143,9 @@ const METIERS: FleetMetier[] = ['CHILDREN_TRANSPORT', 'PARCELS', 'RENTAL', 'GENE
               }
             }
           </section>
+          }
 
-          <!-- Sous-utilisés -->
+          <!-- Sous-utilisés (déterministe — toujours visible, même IA coupée) -->
           <section class="op-sec">
             <h4 class="op-sec-title"><lucide-icon [img]="TrendingDownIcon" [size]="14" class="op-accent"></lucide-icon> Opportunités de mutualisation</h4>
             @if (utilLoading()) { <div class="op-skel"></div> }
@@ -154,7 +162,8 @@ const METIERS: FleetMetier[] = ['CHILDREN_TRANSPORT', 'PARCELS', 'RENTAL', 'GENE
             }
           </section>
 
-          <!-- Comment ça marche (réf. maquette AgentIA.dc.html) -->
+          <!-- Comment ça marche (réf. maquette AgentIA.dc.html) — masqué si l'IA est coupée -->
+          @if (aiEnabled()) {
           <section class="op-sec">
             <h4 class="op-sec-title"><lucide-icon [img]="InfoIcon" [size]="14" class="op-accent"></lucide-icon> Comment ça marche</h4>
             <div class="op-steps">
@@ -163,6 +172,7 @@ const METIERS: FleetMetier[] = ['CHILDREN_TRANSPORT', 'PARCELS', 'RENTAL', 'GENE
               <div class="op-step"><span class="op-step-n">3</span><p>Vous validez ; l'application met à jour les véhicules concernés. Jamais d'action automatique.</p></div>
             </div>
           </section>
+          }
         </div>
       </div>
     </app-bottom-sheet>
@@ -246,6 +256,7 @@ const METIERS: FleetMetier[] = ['CHILDREN_TRANSPORT', 'PARCELS', 'RENTAL', 'GENE
 })
 export class OptimizationSheetComponent {
   private readonly ai = inject(AiApiService);
+  private readonly aiStatus = inject(AiStatusService);
   private readonly agendaApi = inject(AgendaApiService);
   private readonly auth = inject(AuthService);
   private readonly fleetCache = inject(FleetCacheService);
@@ -275,6 +286,8 @@ export class OptimizationSheetComponent {
   protected readonly selectedFleetId = signal<string | null>(null);
   protected readonly metier = signal<FleetMetier | null>(null);
   protected readonly isSuperAdmin = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
+  /** IA active pour la flotte : masque les sections IA (hero, capacités, « comment ça marche »). */
+  protected readonly aiEnabled = computed(() => this.aiStatus.enabled());
   protected readonly canEditMetier = computed(() => {
     const r = this.auth.user()?.role;
     return r === 'SUPER_ADMIN' || r === 'FLEET_ADMIN';
@@ -300,6 +313,7 @@ export class OptimizationSheetComponent {
   private loadedOnce = false;
 
   constructor() {
+    this.aiStatus.ensureLoaded();
     effect(() => {
       if (!this.open()) return;
       void this.fleetCache.loadIfNeeded();

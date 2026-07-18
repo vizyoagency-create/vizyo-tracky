@@ -18,6 +18,7 @@ import type { VehicleEventDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { AgendaApiService } from '../../../core/services/agenda.service';
 import { AiApiService } from '../../../core/services/ai.service';
+import { AiStatusService } from '../../../core/services/ai-status.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { FleetFilterService } from '../../../core/services/fleet-filter.service';
 import { PermissionsService } from '../../../core/services/permissions.service';
@@ -289,6 +290,7 @@ function toLocalInput(d: Date): string {
 export class ReservationSheetComponent {
   private readonly api = inject(AgendaApiService);
   private readonly ai = inject(AiApiService);
+  private readonly aiStatus = inject(AiStatusService);
   private readonly auth = inject(AuthService);
   private readonly fleetFilter = inject(FleetFilterService);
   private readonly perms = inject(PermissionsService);
@@ -316,7 +318,7 @@ export class ReservationSheetComponent {
 
   protected readonly mode = signal<'request' | 'validate' | 'edit'>('request');
   protected readonly canManage = computed(() => this.perms.can('reservations_manage'));
-  protected readonly canAi = computed(() => this.perms.can('ai_optimize'));
+  protected readonly canAi = computed(() => this.perms.can('ai_optimize') && this.aiStatus.enabled());
   /** Super-admin sans société choisie : réserver mélangerait toutes les flottes → on gate. */
   protected readonly needsFleet = computed(
     () => this.auth.user()?.role === 'SUPER_ADMIN' && !this.fleetFilter.selectedFleetId(),
@@ -359,6 +361,7 @@ export class ReservationSheetComponent {
   protected readonly busyId = signal<string | null>(null);
 
   constructor() {
+    this.aiStatus.ensureLoaded(); // « Suggérer avec l'IA » masqué si l'IA est coupée pour la flotte
     // À l'ouverture : mode ÉDITION si une réservation est fournie, sinon (ré)initialise le
     // créneau depuis la date cliquée (ou la prochaine heure) pour une demande / validation.
     effect(() => {

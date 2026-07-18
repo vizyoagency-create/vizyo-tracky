@@ -44,6 +44,7 @@ import { AiJobPillComponent } from './ai-job-pill.component';
 import { AiJobService, type AiJob } from '../../core/services/ai-job.service';
 import { AuthService } from '../../core/services/auth.service';
 import { AgendaAgentApiService } from '../../core/services/agenda-agent.service';
+import { AiStatusService } from '../../core/services/ai-status.service';
 import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.directive';
 import {
   addMonths,
@@ -94,12 +95,12 @@ interface GroupOption {
                 <lucide-icon [img]="InboxIcon" [size]="15"></lucide-icon><span>Demandes</span><span class="ag-badge">{{ pendingCount() }}</span>
               </button>
             }
-            @if (canOptimize()) {
+            @if (canOptimize() && aiEnabled()) {
               <button type="button" (click)="openOptim()" class="ag-btn-soft">
                 <lucide-icon [img]="GaugeIcon" [size]="15"></lucide-icon><span>Optimisation</span>
               </button>
             }
-            @if (canOptimize() && (agentProposalCount() > 0 || canConfigureAgent())) {
+            @if (aiEnabled() && canOptimize() && (agentProposalCount() > 0 || canConfigureAgent())) {
               <button type="button" (click)="openProposals()" class="ag-btn-soft">
                 <lucide-icon [img]="SparklesIcon" [size]="15"></lucide-icon><span>Propositions IA</span>
                 @if (agentProposalCount() > 0) { <span class="ag-badge">{{ agentProposalCount() }}</span> }
@@ -1020,6 +1021,7 @@ export class AgendaComponent implements OnInit {
   private readonly fleetFilter = inject(FleetFilterService);
   private readonly auth = inject(AuthService);
   private readonly agentApi = inject(AgendaAgentApiService);
+  private readonly aiStatus = inject(AiStatusService);
   protected readonly aiJob = inject(AiJobService);
 
   // Verrou de scroll pour les overlays custom (modal création/incident + panneau
@@ -1145,6 +1147,8 @@ export class AgendaComponent implements OnInit {
   protected readonly canReserve = computed(() => this.perms.can('reservations_request'));
   protected readonly canValidate = computed(() => this.perms.can('reservations_manage'));
   protected readonly canOptimize = computed(() => this.perms.can('reservations_view'));
+  /** Assistance IA active pour la flotte (interrupteur maître). Masque les entrées IA de l'agenda quand OFF. */
+  protected readonly aiEnabled = computed(() => this.aiStatus.enabled());
   /** ⚙️ Paramètres de l'agent : super-admin + fleet-admin (config par société). */
   protected readonly canConfigureAgent = computed(() => {
     const r = this.auth.user()?.role;
@@ -1458,6 +1462,7 @@ export class AgendaComponent implements OnInit {
 
   // ─── Lifecycle ───────────────────────────────────────────────────────────────
   async ngOnInit(): Promise<void> {
+    this.aiStatus.ensureLoaded(); // masque les entrées IA de l'agenda si l'IA est coupée pour la flotte
     await Promise.all([this.loadVehicles(), this.loadSummary()]);
     await this.loadEvents();
     void this.loadActivity();
