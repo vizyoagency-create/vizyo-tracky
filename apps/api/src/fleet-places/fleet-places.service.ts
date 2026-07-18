@@ -49,7 +49,7 @@ export class FleetPlacesService {
    * Flotte sur laquelle opérer. Un non-super est TOUJOURS borné à la sienne (le `fleetId`
    * fourni est ignoré) ; le super-admin cible celle qu'il a choisie (ou null = toutes, en lecture).
    */
-  private resolveFleetId(user: AuthUser, fleetId?: string): string | null {
+  resolveFleetId(user: AuthUser, fleetId?: string): string | null {
     if (user.role !== UserRole.SUPER_ADMIN) return user.fleetId ?? null;
     return fleetId || null;
   }
@@ -163,7 +163,9 @@ export class FleetPlacesService {
   }
 
   /** Récupère un lieu en vérifiant qu'il appartient bien au périmètre de l'utilisateur (404 sinon). */
-  private async findScoped(user: AuthUser, id: string) {
+  /** Charge un lieu en appliquant le périmètre société de l'utilisateur (anti-IDOR). Public :
+   *  `PlaceAnalysisService` s'en sert pour ne jamais dupliquer la règle de scoping. */
+  async findScoped(user: AuthUser, id: string) {
     const place = await this.prisma.fleetPlace.findUnique({ where: { id } });
     if (!place) throw new NotFoundException('Lieu introuvable.');
     if (user.role !== UserRole.SUPER_ADMIN && place.fleetId !== user.fleetId) {

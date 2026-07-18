@@ -52,6 +52,7 @@ const ACTION_LABELS: Record<string, string> = {
   activity_report: "Rapport d'activité",
   trip_analysis: 'Analyse de trajet',
   booking_parse: 'Réservation (vocal)',
+  place_analysis: 'Analyse de lieu',
 };
 
 export interface AiUsageEntry {

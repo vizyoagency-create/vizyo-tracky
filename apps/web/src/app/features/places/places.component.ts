@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
-  LucideAngularModule, Fuel, MapPin, ParkingSquare, Check, Trash2, RefreshCw, AlertTriangle, Info,
+  LucideAngularModule, Fuel, MapPin, ParkingSquare, Check, Trash2, RefreshCw, AlertTriangle, Info, Sparkles,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import {
@@ -11,6 +11,7 @@ import {
   type FleetPlaceKind,
   type StationGroupDto,
   type PlaceFactsDto,
+  type PlaceAnalysisDto,
 } from '../../core/services/fleet-places.service';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { PermissionsService } from '../../core/services/permissions.service';
@@ -159,6 +160,68 @@ import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
                       </p>
                     }
                   </div>
+
+                  <!--
+                    Analyse IA — la section n'est RENDUE que si l'IA est active pour la société
+                    (option souscrite + non coupée). Sinon : rien, pas même une analyse passée.
+                  -->
+                  @if (aiVisible()) {
+                    <div class="lk-ai">
+                      <div class="lk-ai-head">
+                        <span class="lk-ai-title">
+                          <lucide-icon [img]="SparklesIcon" [size]="13"></lucide-icon>
+                          Analyse du lieu
+                        </span>
+                        @if (canAnalyze()) {
+                          <button
+                            type="button"
+                            class="lk-btn lk-btn--ai"
+                            [disabled]="analyzingId() === p.id"
+                            (click)="analyzePlace(p)"
+                          >
+                            @if (analyzingId() === p.id) {
+                              <app-spinner [size]="12" />
+                              Analyse…
+                            } @else {
+                              {{ analysisOf(p.id) ? 'Relancer' : 'Analyser' }}
+                            }
+                          </button>
+                        }
+                      </div>
+
+                      @if (analysisOf(p.id); as a) {
+                        <p class="lk-ai-summary">{{ a.summary }}</p>
+                        @if (a.highlights.length) {
+                          <ul class="lk-ai-list">
+                            @for (h of a.highlights; track h) { <li>{{ h }}</li> }
+                          </ul>
+                        }
+                        @if (a.recommendations.length) {
+                          <div class="lk-ai-reco">
+                            <span class="lk-ai-reco-label">À envisager</span>
+                            <ul class="lk-ai-list">
+                              @for (r of a.recommendations; track r) { <li>{{ r }}</li> }
+                            </ul>
+                          </div>
+                        }
+                        <p class="lk-facts-src">
+                          Rédigé à partir des données OpenStreetMap et des passages réels de vos
+                          véhicules — aucune information extérieure.
+                          @if (a.aiModel) { · {{ a.aiModel }} }
+                          · {{ a.computedAt | date: 'dd/MM/yyyy HH:mm' }}
+                        </p>
+                      } @else if (analyzingId() !== p.id) {
+                        <p class="lk-facts-empty">
+                          @if (canAnalyze()) {
+                            Ce lieu n'a pas encore été analysé. L'analyse reprend les informations
+                            ci-dessus et l'usage réel de vos véhicules pour en faire une fiche.
+                          } @else {
+                            Ce lieu n'a pas encore été analysé.
+                          }
+                        </p>
+                      }
+                    </div>
+                  }
                 }
               </li>
             }
@@ -291,6 +354,15 @@ import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
     .lk-btn:disabled { opacity: .5; cursor: wait; }
     .lk-btn--ok { border-color: color-mix(in srgb, var(--tracky-light) 45%, var(--border-strong)); color: var(--tracky-light); }
     .lk-btn--danger { border-color: color-mix(in srgb, #ef4444 40%, var(--border-strong)); color: var(--danger); }
+    /* Analyse IA — teinte violette, la même que les autres surfaces IA de l'app. */
+    .lk-btn--ai { border-color: color-mix(in srgb, #A78BFA 45%, var(--border-strong)); color: #A78BFA; }
+    .lk-ai { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding: 10px 12px; border-radius: 10px; border: 1px solid color-mix(in srgb, #A78BFA 22%, var(--border-subtle)); background: color-mix(in srgb, #A78BFA 6%, transparent); }
+    .lk-ai-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .lk-ai-title { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700; color: #A78BFA; }
+    .lk-ai-summary { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--fg-primary); }
+    .lk-ai-list { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--fg-secondary); line-height: 1.45; }
+    .lk-ai-reco { display: flex; flex-direction: column; gap: 4px; }
+    .lk-ai-reco-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--fg-tertiary); }
   `],
 })
 export class PlacesComponent {
@@ -299,6 +371,13 @@ export class PlacesComponent {
   private readonly perms = inject(PermissionsService);
   private readonly toast = inject(ToastService);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
+
+  /**
+   * Lieu à déplier au chargement — deep-link `?place=` posé par la card de la carte (bouton
+   * « Analyser »). Consommé UNE SEULE FOIS : un changement de société ne doit pas le rejouer.
+   */
+  private pendingFocusPlaceId: string | null = null;
 
   protected readonly FuelIcon = Fuel;
   protected readonly MapPinIcon = MapPin;
@@ -308,6 +387,7 @@ export class PlacesComponent {
   protected readonly RefreshIcon = RefreshCw;
   protected readonly AlertIcon = AlertTriangle;
   protected readonly InfoIcon = Info;
+  protected readonly SparklesIcon = Sparkles;
 
   /** Seuil d'arrêt réel (min) — aligné sur la détection serveur. */
   protected readonly minStopMin = 4;
@@ -330,7 +410,23 @@ export class PlacesComponent {
 
   protected readonly canManage = computed(() => this.perms.can('places_manage'));
 
+  /**
+   * ─── Analyse IA ───────────────────────────────────────────────────────────
+   * `aiEnabled` vient du SERVEUR (clé provider + kill-switch owner + option IA de la société).
+   * Deux niveaux distincts, à ne pas confondre :
+   *  - `aiVisible` = l'IA est active pour cette société → on affiche la section. Si elle est
+   *    coupée, on n'affiche **rien du tout** (pas même une analyse passée) : une fonction non
+   *    souscrite ne doit pas être visible.
+   *  - `canAnalyze` = le droit de DÉCLENCHER (consomme des tokens). Sans lui on peut lire, pas lancer.
+   */
+  protected readonly aiEnabled = signal(false);
+  protected readonly canAnalyze = computed(() => this.perms.can('places_analyze'));
+  protected readonly aiVisible = computed(() => this.aiEnabled());
+  protected readonly analysisByPlace = signal<Record<string, PlaceAnalysisDto | null>>({});
+  protected readonly analyzingId = signal<string | null>(null);
+
   constructor() {
+    this.pendingFocusPlaceId = this.route.snapshot.queryParamMap.get('place');
     // Recharge au changement de société (sélecteur super-admin).
     effect(() => {
       this.fleetFilter.selectedFleetId();
@@ -347,12 +443,23 @@ export class PlacesComponent {
     this.error.set(null);
     const fleetId = this.fleetFilter.selectedFleetId() ?? undefined;
     try {
-      const [places, stations] = await Promise.all([
+      const [places, stations, ai] = await Promise.all([
         firstValueFrom(this.api.list(fleetId)),
         firstValueFrom(this.api.stationGroups({ fleetId, minStopMin: this.minStopMin })),
+        // Statut IA : NON bloquant et fail-CLOSED — son échec ne doit ni vider la page, ni faire
+        // apparaître une fonction que la société n'a pas.
+        firstValueFrom(this.api.aiStatus(fleetId)).catch(() => ({ enabled: false })),
       ]);
       this.places.set(places);
       this.stations.set(stations);
+      this.aiEnabled.set(ai.enabled);
+      // Arrivée depuis la carte : on ouvre directement la fiche du lieu ciblé.
+      const focusId = this.pendingFocusPlaceId;
+      if (focusId) {
+        this.pendingFocusPlaceId = null;
+        const target = places.find((p) => p.id === focusId);
+        if (target) void this.toggleFacts(target);
+      }
     } catch {
       // L'erreur détaillée part déjà au centre d'alerte via l'intercepteur HTTP ; ici on
       // informe l'utilisateur sans laisser la page vide et muette.
@@ -420,6 +527,13 @@ export class PlacesComponent {
       return;
     }
     this.expandedPlaceId.set(p.id);
+    // Analyse IA DÉJÀ calculée : simple lecture en base, aucun appel moteur, donc gratuite.
+    // Chargée seulement si l'IA est active pour la société (sinon la section n'existe pas).
+    if (this.aiVisible() && !(p.id in this.analysisByPlace())) {
+      void firstValueFrom(this.api.analysis(p.id))
+        .then((a) => this.analysisByPlace.update((m) => ({ ...m, [p.id]: a })))
+        .catch(() => this.analysisByPlace.update((m) => ({ ...m, [p.id]: null })));
+    }
     if (p.id in this.factsByPlace()) return; // déjà chargé (même si null)
     this.factsLoadingId.set(p.id);
     try {
@@ -436,6 +550,30 @@ export class PlacesComponent {
   /** Faits déjà chargés pour un lieu (undefined = jamais demandé, null = rien trouvé). */
   protected factsOf(id: string): PlaceFactsDto | null | undefined {
     return this.factsByPlace()[id];
+  }
+
+  /** Analyse IA déjà chargée (undefined = pas demandée, null = jamais analysé). */
+  protected analysisOf(id: string): PlaceAnalysisDto | null | undefined {
+    return this.analysisByPlace()[id];
+  }
+
+  /**
+   * Lance l'analyse IA d'un lieu. Double garde côté client (l'IA doit être active ET l'utilisateur
+   * habilité) — le serveur revérifie de toute façon : le client ne fait qu'éviter un appel voué au 503.
+   */
+  protected async analyzePlace(p: FleetPlaceDto): Promise<void> {
+    if (!this.aiVisible() || !this.canAnalyze() || this.analyzingId()) return;
+    this.analyzingId.set(p.id);
+    try {
+      const analysis = await firstValueFrom(this.api.analyze(p.id));
+      this.analysisByPlace.update((m) => ({ ...m, [p.id]: analysis }));
+      this.toast.success('Analyse terminée', p.name);
+    } catch {
+      // Le détail (503 IA coupée, panne provider…) part déjà au centre d'alerte via l'intercepteur.
+      this.toast.error("L'analyse n'a pas abouti", 'Réessayez dans un instant.');
+    } finally {
+      this.analyzingId.set(null);
+    }
   }
 
   /**

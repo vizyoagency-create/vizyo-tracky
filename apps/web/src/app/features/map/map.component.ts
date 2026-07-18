@@ -1073,6 +1073,14 @@ const RESYNC_RADIUS_M = 150;
               </button>
             }
           }
+          <!--
+            Analyse IA : seulement sur un lieu DÉJÀ enregistré (on n'analyse pas une station qui
+            n'appartient pas encore au référentiel), et seulement si l'IA est active pour la société.
+            Ouvre la page « Lieux clés » directement sur ce lieu, où la fiche se lit et se relance.
+          -->
+          @if (pc.type === 'place' && placeAnalyzeVisible()) {
+            <button class="bn-vcard-act bn-vcard-act--ai" (click)="goToPlaces(pc.place.id)"><span>Analyser</span></button>
+          }
           @if (canViewPlaces()) {
             <button class="bn-vcard-act" (click)="goToPlaces()"><span>Lieux clés</span></button>
           }
@@ -2270,6 +2278,9 @@ const RESYNC_RADIUS_M = 150;
       background: rgba(239, 68, 68, 0.08);
     }
     .bn-vcard-act--danger:active { background: rgba(239, 68, 68, 0.16); }
+    /* Analyse IA — même violet que les autres surfaces IA de l'app. */
+    .bn-vcard-act--ai { color: #7C3AED; background: rgba(167, 139, 250, 0.12); }
+    .bn-vcard-act--ai:active { background: rgba(167, 139, 250, 0.22); }
     .bn-vcard-act--restore {
       color: var(--tracky);
       background: rgba(16, 224, 160, 0.10);
@@ -2493,6 +2504,15 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   protected readonly canManagePlaces = computed(() => this.perms.can('places_manage'));
   /** Repères « lieux » réellement affichés : droit de lecture ET calque activé. */
   protected readonly placesLayerVisible = computed(() => this.canViewPlaces() && this.showFleetPlaces());
+  /**
+   * L'analyse IA d'un lieu est-elle proposable ? Renseigné par le SERVEUR (option IA de la société
+   * + kill-switch owner + clé provider) et fail-CLOSED. Sans ça, aucune trace d'IA sur la carte :
+   * une fonction non souscrite ne doit pas être visible.
+   */
+  protected readonly placesAiEnabled = signal(false);
+  protected readonly canAnalyzePlaces = computed(() => this.perms.can('places_analyze'));
+  /** Bouton « Analyser » de la card : IA active ET droit de déclencher. */
+  protected readonly placeAnalyzeVisible = computed(() => this.placesAiEnabled() && this.canAnalyzePlaces());
 
   /**
    * Card carte unifiée pour un REPÈRE (station détectée ou lieu de la flotte) — remplace les
@@ -4215,8 +4235,14 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     // Sans `places_view` : aucun appel réseau (l'API répondrait 403 de toute façon) et aucun repère.
     if (!this.map || !this.canViewPlaces()) return;
     try {
-      const places = await firstValueFrom(this.fleetPlacesApi.list(this.fleetFilter.selectedFleetId() ?? undefined));
+      const fleetId = this.fleetFilter.selectedFleetId() ?? undefined;
+      const [places, ai] = await Promise.all([
+        firstValueFrom(this.fleetPlacesApi.list(fleetId)),
+        // Statut IA : fail-CLOSED, son échec n'empêche jamais l'affichage des lieux.
+        firstValueFrom(this.fleetPlacesApi.aiStatus(fleetId)).catch(() => ({ enabled: false })),
+      ]);
       this.fleetPlaces.set(places);
+      this.placesAiEnabled.set(ai.enabled);
       this.renderFleetPlaceMarkers();
     } catch {
       /* best-effort : la carte reste utilisable sans les lieux de la flotte */
@@ -4290,9 +4316,13 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     this.renamingPlaceId.set(null);
   }
 
-  /** Connexion card ↔ page : ouvre « Lieux clés » depuis la carte. */
-  protected goToPlaces(): void {
-    void this.router.navigate(['/places']);
+  /**
+   * Connexion card ↔ page : ouvre « Lieux clés » depuis la carte. Avec un `placeId`, la page
+   * s'ouvre DÉPLIÉE sur ce lieu (infos + fiche IA) — sinon l'utilisateur devrait le retrouver
+   * lui-même dans la liste.
+   */
+  protected goToPlaces(placeId?: string): void {
+    void this.router.navigate(['/places'], placeId ? { queryParams: { place: placeId } } : undefined);
   }
 
   /** Libellé lisible de la nature d'un lieu. */

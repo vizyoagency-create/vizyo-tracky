@@ -126,4 +126,42 @@ export class FleetPlacesApiService {
   facts(id: string): Observable<PlaceFactsDto | null> {
     return this.http.get<PlaceFactsDto | null>(`/api/fleet-places/${id}/facts`);
   }
+
+  /**
+   * L'analyse IA est-elle proposable ? À interroger AVANT d'afficher quoi que ce soit d'IA :
+   * si la société n'a pas l'option (ou si l'owner a coupé la fonction), on n'affiche RIEN.
+   */
+  aiStatus(fleetId?: string): Observable<{ enabled: boolean }> {
+    const params: Record<string, string> = {};
+    if (fleetId) params['fleetId'] = fleetId;
+    return this.http.get<{ enabled: boolean }>('/api/fleet-places/ai-status', { params });
+  }
+
+  /** Analyse IA COURANTE d'un lieu (null si jamais analysé). Lecture seule, sans appel moteur. */
+  analysis(id: string): Observable<PlaceAnalysisDto | null> {
+    return this.http.get<PlaceAnalysisDto | null>(`/api/fleet-places/${id}/analysis`);
+  }
+
+  /** Lance (ou relance) l'analyse IA — CONSOMME DES TOKENS (permission `places_analyze`). */
+  analyze(id: string): Observable<PlaceAnalysisDto> {
+    return this.http.post<PlaceAnalysisDto>(`/api/fleet-places/${id}/analyze`, {});
+  }
+}
+
+/**
+ * Fiche IA d'un lieu. L'IA REFORMULE des faits (OSM + usage réel de la flotte), elle n'en invente
+ * pas : `facts` rappelle la source OSM figée au moment de l'analyse.
+ */
+export interface PlaceAnalysisDto {
+  id: string;
+  placeId: string;
+  summary: string;
+  highlights: string[];
+  recommendations: string[];
+  aiProvider: string | null;
+  aiModel: string | null;
+  costEur: number | null;
+  origin: string;
+  computedAt: string;
+  facts: PlaceFactsDto | null;
 }

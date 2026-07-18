@@ -7,7 +7,7 @@ import {
   ChevronDown, ChevronRight, Search, Eye, EyeOff,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
-import type { UserPermissions } from '@vizyo/tracky-shared';
+import { PERMISSION_GROUP_ORDER, PERMISSION_LABELS, type UserPermissions } from '@vizyo/tracky-shared';
 import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
 import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
 
@@ -43,38 +43,21 @@ interface PanoramaData {
   groups: PanoramaGroup[];
 }
 
-const PERM_LABELS: Record<string, string> = {
-  vehicles_view: 'Voir vehicules',
-  vehicles_create: 'Creer vehicules',
-  vehicles_edit: 'Modifier vehicules',
-  vehicles_delete: 'Supprimer vehicules',
-  engine_control: 'Coupe-circuit',
-  groups_view: 'Voir groupes',
-  groups_manage: 'Gerer groupes',
-  geofences_view: 'Voir geofences',
-  geofences_manage: 'Gerer geofences',
-  alerts_view: 'Voir alertes',
-  alerts_acknowledge: 'Acquitter alertes',
-  reports_view: 'Voir rapports',
-  users_view: 'Voir utilisateurs',
-  users_manage: 'Gerer utilisateurs',
-  drivers_view: 'Voir conducteurs',
-  drivers_manage: 'Gerer conducteurs',
-  places_view: 'Voir lieux cles',
-  places_manage: 'Gerer lieux cles',
-  places_analyze: 'Analyse IA d\'un lieu',
-};
-
-const PERM_GROUPS = [
-  { label: 'Vehicules', keys: ['vehicles_view', 'vehicles_create', 'vehicles_edit', 'vehicles_delete', 'engine_control'] },
-  { label: 'Groupes', keys: ['groups_view', 'groups_manage'] },
-  { label: 'Geofences', keys: ['geofences_view', 'geofences_manage'] },
-  { label: 'Alertes', keys: ['alerts_view', 'alerts_acknowledge'] },
-  { label: 'Rapports', keys: ['reports_view'] },
-  { label: 'Utilisateurs', keys: ['users_view', 'users_manage'] },
-  { label: 'Conducteurs', keys: ['drivers_view', 'drivers_manage'] },
-  { label: 'Lieux cles', keys: ['places_view', 'places_manage', 'places_analyze'] },
-];
+/**
+ * Catalogue des permissions — **DÉRIVÉ** de la source partagée (`PERMISSION_LABELS` +
+ * `PERMISSION_GROUP_ORDER`), plus recopié à la main.
+ *
+ * Cette page listait auparavant un sous-ensemble FIGÉ (~16 permissions sur 40) : chaque nouvelle
+ * permission la rendait un peu plus fausse, et un panorama d'accès incomplet est pire que pas de
+ * panorama — on croit voir les droits d'un utilisateur alors qu'il en a d'autres. La dérivation
+ * garantit que toute permission ajoutée au paquet partagé apparaît ici automatiquement.
+ */
+const PERM_GROUPS = PERMISSION_GROUP_ORDER.map((group) => ({
+  label: group,
+  keys: (Object.keys(PERMISSION_LABELS) as (keyof UserPermissions)[]).filter(
+    (k) => PERMISSION_LABELS[k].group === group,
+  ),
+})).filter((g) => g.keys.length > 0);
 
 @Component({
   selector: 'app-permissions-overview',
@@ -392,7 +375,7 @@ export class PermissionsOverviewComponent implements OnInit {
   }
 
   protected permLabel(key: string): string {
-    return PERM_LABELS[key] ?? key;
+    return PERMISSION_LABELS[key as keyof UserPermissions]?.label ?? key;
   }
 
   protected resolvePermission(entry: AccessEntry, user: PanoramaUser, key: string): boolean {

@@ -1123,6 +1123,32 @@ model FleetPlace {
   @@map("fleet_places")
 }
 
+/// Analyse IA d'un lieu cle. UNE analyse COURANTE par lieu (re-analyser remplace).
+/// `facts` fige les donnees OSM + flotte sur lesquelles l'IA a raisonne : sans ca on ne pourrait
+/// pas verifier a posteriori d'ou sort une affirmation (l'IA REFORMULE des faits, elle n'en cree pas).
+model PlaceAnalysis {
+  id               String   @id @default(uuid()) @db.Uuid
+  placeId          String   @unique @db.Uuid
+  fleetId          String   @db.Uuid
+  /// Faits sources figes (OSM + agregats flotte) au moment de l'analyse.
+  facts            Json?
+  summary          String   @db.Text
+  /// Points cles (string[]) et actions proposees (string[]).
+  highlights       Json
+  recommendations  Json
+  /// Attribution / audit : qui a repondu, quel modele, combien ca a coute.
+  aiProvider       String?
+  aiModel          String?
+  costEur          Float?
+  /// 'manual' (bouton) ou 'scheduled' (automatisation a venir).
+  origin           String   @default("manual")
+  computedByUserId String?  @db.Uuid
+  computedAt       DateTime @default(now())
+
+  @@index([fleetId, computedAt])
+  @@map("place_analyses")
+}
+
 /// V1.6 — Surveillance Max : profil de surveillance renforcee par vehicule.
 /// Un seul profil par vehicule. Quand `currentlyArmed = true`, toute trame
 /// d'alarme `vibration` / `movement` / `door` recue cree un SurveillanceEvent
