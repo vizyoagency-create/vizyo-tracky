@@ -10,6 +10,7 @@ import {
   type FleetPlaceDto,
   type FleetPlaceKind,
   type StationGroupDto,
+  type PlaceFactsDto,
 } from '../../core/services/fleet-places.service';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { PermissionsService } from '../../core/services/permissions.service';
@@ -90,6 +91,10 @@ import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
                     @if (p.note) { · {{ p.note }} }
                   </span>
                 </div>
+                <button type="button" class="lk-btn" (click)="toggleFacts(p)">
+                  <lucide-icon [img]="InfoIcon" [size]="13"></lucide-icon>
+                  {{ expandedPlaceId() === p.id ? 'Masquer' : 'Infos' }}
+                </button>
                 <button type="button" class="lk-btn" (click)="showOnMap(p.lat, p.lng)" title="Voir sur la carte">
                   <lucide-icon [img]="MapPinIcon" [size]="13"></lucide-icon>
                 </button>
@@ -103,6 +108,57 @@ import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
                   >
                     <lucide-icon [img]="TrashIcon" [size]="13"></lucide-icon>
                   </button>
+                }
+
+                <!-- Infos réelles du lieu (OpenStreetMap) — gratuites, jamais inventées. -->
+                @if (expandedPlaceId() === p.id) {
+                  <div class="lk-facts">
+                    @if (factsLoadingId() === p.id) {
+                      <div class="lk-loading"><app-spinner [size]="16" /></div>
+                    } @else if (factsOf(p.id); as f) {
+                      <div class="lk-facts-body">
+                        @if (f.imageUrl) {
+                          <img class="lk-facts-img" [src]="f.imageUrl" alt="" loading="lazy" />
+                        }
+                        <div class="lk-facts-cols">
+                          @if (f.name || f.brand) {
+                            <div class="lk-fact"><span>Enseigne</span><b>{{ f.brand || f.name }}</b></div>
+                          }
+                          @if (f.openingHours) {
+                            <div class="lk-fact"><span>Horaires</span><b>{{ f.openingHours }}</b></div>
+                          }
+                          @if (f.phone) {
+                            <div class="lk-fact"><span>Téléphone</span><b>{{ f.phone }}</b></div>
+                          }
+                          @if (f.address) {
+                            <div class="lk-fact"><span>Adresse</span><b>{{ f.address }}</b></div>
+                          }
+                          @if (f.parking?.capacity != null) {
+                            <div class="lk-fact"><span>Capacité</span><b>{{ f.parking!.capacity }} places</b></div>
+                          }
+                          @if (f.website) {
+                            <div class="lk-fact">
+                              <span>Site</span>
+                              <a class="lk-link" [href]="f.website" target="_blank" rel="noopener noreferrer">ouvrir</a>
+                            </div>
+                          }
+                        </div>
+                        @if (f.services.length || f.fuels.length || f.payment.length) {
+                          <div class="lk-chips">
+                            @for (s of f.services; track s) { <span class="lk-chip lk-chip--svc">{{ s }}</span> }
+                            @for (s of f.fuels; track s) { <span class="lk-chip lk-chip--fuel">{{ s }}</span> }
+                            @for (s of f.payment; track s) { <span class="lk-chip">{{ s }}</span> }
+                          </div>
+                        }
+                        <p class="lk-facts-src">Source : OpenStreetMap (contributif, gratuit)</p>
+                      </div>
+                    } @else {
+                      <p class="lk-facts-empty">
+                        Aucune information cartographiée pour ce lieu (OpenStreetMap ne le référence pas
+                        encore, ou le service est momentanément indisponible).
+                      </p>
+                    }
+                  </div>
                 }
               </li>
             }
@@ -208,6 +264,20 @@ import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
     .lk-item-name { color: var(--fg-primary); font-size: 13px; font-weight: 700; }
     .lk-item-meta { color: var(--fg-tertiary); font-size: 11.5px; }
     .lk-item-meta b { color: var(--fg-secondary); }
+    /* Infos OSM dépliées : occupe toute la largeur de l'item (flex-wrap). */
+    .lk-facts { flex-basis: 100%; margin-top: 8px; padding-top: 9px; border-top: 1px solid var(--border-subtle); }
+    .lk-facts-body { display: flex; flex-direction: column; gap: 8px; }
+    .lk-facts-img { width: 100%; max-width: 320px; border-radius: 10px; border: 1px solid var(--border-subtle); }
+    .lk-facts-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 6px 14px; }
+    .lk-fact { display: flex; flex-direction: column; gap: 1px; font-size: 12px; }
+    .lk-fact span { color: var(--fg-tertiary); font-size: 10.5px; text-transform: uppercase; letter-spacing: .03em; }
+    .lk-fact b { color: var(--fg-primary); font-weight: 600; }
+    .lk-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+    .lk-chip { padding: 2px 9px; border-radius: 999px; font-size: 11px; background: color-mix(in srgb, var(--fg-tertiary) 15%, transparent); color: var(--fg-secondary); }
+    .lk-chip--svc { background: color-mix(in srgb, var(--tracky-light) 18%, transparent); color: var(--tracky-light); }
+    .lk-chip--fuel { background: color-mix(in srgb, #A78BFA 20%, transparent); color: #A78BFA; }
+    .lk-facts-src { margin: 0; font-size: 10.5px; color: var(--fg-tertiary); font-style: italic; }
+    .lk-facts-empty { margin: 0; font-size: 11.5px; color: var(--fg-tertiary); line-height: 1.5; }
     .lk-vehicles { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
     .lk-veh { padding: 1px 8px; border-radius: 999px; background: color-mix(in srgb, #A78BFA 14%, transparent); color: var(--fg-secondary); font-size: 11px; }
     .lk-veh b { color: var(--fg-primary); font-weight: 700; }
@@ -249,6 +319,14 @@ export class PlacesComponent {
   protected readonly error = signal<string | null>(null);
   /** Id (lieu ou station) en cours d'écriture — désactive le bouton concerné. */
   protected readonly busyId = signal<string | null>(null);
+
+  /**
+   * Faits OSM par lieu (horaires, services, contact…), chargés À LA DEMANDE au dépliage :
+   * Overpass est un service communautaire, on ne le sollicite pas pour des lieux non consultés.
+   */
+  protected readonly factsByPlace = signal<Record<string, PlaceFactsDto | null>>({});
+  protected readonly factsLoadingId = signal<string | null>(null);
+  protected readonly expandedPlaceId = signal<string | null>(null);
 
   protected readonly canManage = computed(() => this.perms.can('places_manage'));
 
@@ -330,6 +408,34 @@ export class PlacesComponent {
     } finally {
       this.busyId.set(null);
     }
+  }
+
+  /**
+   * Déplie/replie les infos d'un lieu. Le chargement OSM est fait UNE SEULE FOIS par lieu et
+   * mémorisé (y compris le résultat « rien trouvé ») pour ne pas re-solliciter Overpass.
+   */
+  protected async toggleFacts(p: FleetPlaceDto): Promise<void> {
+    if (this.expandedPlaceId() === p.id) {
+      this.expandedPlaceId.set(null);
+      return;
+    }
+    this.expandedPlaceId.set(p.id);
+    if (p.id in this.factsByPlace()) return; // déjà chargé (même si null)
+    this.factsLoadingId.set(p.id);
+    try {
+      const facts = await firstValueFrom(this.api.facts(p.id));
+      this.factsByPlace.update((m) => ({ ...m, [p.id]: facts }));
+    } catch {
+      // Overpass indisponible : on mémorise « rien » pour ne pas boucler, l'UI l'explique.
+      this.factsByPlace.update((m) => ({ ...m, [p.id]: null }));
+    } finally {
+      this.factsLoadingId.set(null);
+    }
+  }
+
+  /** Faits déjà chargés pour un lieu (undefined = jamais demandé, null = rien trouvé). */
+  protected factsOf(id: string): PlaceFactsDto | null | undefined {
+    return this.factsByPlace()[id];
   }
 
   /**

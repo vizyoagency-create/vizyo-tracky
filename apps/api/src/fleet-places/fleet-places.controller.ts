@@ -59,6 +59,17 @@ export class FleetPlacesController {
     return this.places.create(req.user, dto);
   }
 
+  /**
+   * Faits OpenStreetMap d'un lieu : horaires, services, carburants, contact, capacité, image libre.
+   * GRATUIT et SANS IA → gardé par `places_view` seulement (aucun contrôle IA nécessaire ici).
+   */
+  @Get(':id/facts')
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  @RequirePermissions('places_view')
+  facts(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.places.facts(req.user, id);
+  }
+
   /** Modifie un lieu (nom, nature, position, rayon, note). */
   @Patch(':id')
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { FleetPlacesController } from './fleet-places.controller';
 import { FleetPlacesService } from './fleet-places.service';
+import { PlaceEnrichmentService } from './place-enrichment.service';
 
 /**
  * Lieux clés — stations-service validées par la flotte + parkings / stationnements récurrents.
@@ -11,7 +12,7 @@ import { FleetPlacesService } from './fleet-places.service';
 @Module({
   imports: [AuthModule],
   controllers: [FleetPlacesController],
-  providers: [FleetPlacesService],
-  exports: [FleetPlacesService],
+  providers: [FleetPlacesService, PlaceEnrichmentService],
+  exports: [FleetPlacesService, PlaceEnrichmentService],
 })
 export class FleetPlacesModule {}

@@ -56,6 +56,29 @@ export interface StationGroupDto {
   placeName: string | null;
 }
 
+/**
+ * Faits OpenStreetMap d'un lieu — source FACTUELLE (gratuite, légale, sans IA). Champs souvent
+ * partiellement nuls : OSM est du contributif, on affiche ce qui existe et rien d'autre.
+ */
+export interface PlaceFactsDto {
+  source: 'osm';
+  osmId: string | null;
+  name: string | null;
+  brand: string | null;
+  operator: string | null;
+  openingHours: string | null;
+  phone: string | null;
+  website: string | null;
+  services: string[];
+  fuels: string[];
+  payment: string[];
+  parking: { capacity: number | null; type: string | null; access: string | null; fee: string | null } | null;
+  /** Photo libre (OSM / Wikimedia). Souvent absente — jamais inventée. */
+  imageUrl: string | null;
+  wikidata: string | null;
+  address: string | null;
+}
+
 @Injectable({ providedIn: 'root' })
 export class FleetPlacesApiService {
   private readonly http = inject(HttpClient);
@@ -97,5 +120,10 @@ export class FleetPlacesApiService {
 
   remove(id: string): Observable<{ ok: true }> {
     return this.http.delete<{ ok: true }>(`/api/fleet-places/${id}`);
+  }
+
+  /** Faits OSM d'un lieu (gratuit, sans IA). `null` si le lieu n'est pas cartographié. */
+  facts(id: string): Observable<PlaceFactsDto | null> {
+    return this.http.get<PlaceFactsDto | null>(`/api/fleet-places/${id}/facts`);
   }
 }

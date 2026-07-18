@@ -4,6 +4,7 @@ import type { AuthUser } from '../auth/types/auth-user';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
+import { PlaceEnrichmentService, type PlaceFacts } from './place-enrichment.service';
 
 /** Durée d'arrêt minimale (min) pour qu'un passage station soit considéré comme un VRAI arrêt. */
 const MIN_STOP_MIN = 4;
@@ -31,7 +32,18 @@ export class FleetPlacesService {
     private readonly prisma: PrismaService,
     private readonly vehicleAccess: VehicleAccessService,
     private readonly errorLogger: ErrorLogger,
+    private readonly enrichment: PlaceEnrichmentService,
   ) {}
+
+  /**
+   * Faits OSM d'un lieu — GRATUIT et SANS IA (donc aucun gating IA) : horaires, services,
+   * carburants, contact, capacité de parking, et une image libre si OSM en référence une.
+   * `null` si le lieu n'est pas cartographié ou si Overpass est indisponible (best-effort).
+   */
+  async facts(user: AuthUser, id: string): Promise<PlaceFacts | null> {
+    const place = await this.findScoped(user, id);
+    return this.enrichment.enrich(place.lat, place.lng, place.kind);
+  }
 
   /**
    * Flotte sur laquelle opérer. Un non-super est TOUJOURS borné à la sienne (le `fleetId`
