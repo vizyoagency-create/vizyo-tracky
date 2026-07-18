@@ -96,6 +96,22 @@ export function buildQrCardHtml(d: QrCardData): string {
 </div></div>`;
 }
 
+/**
+ * Feuille imprimable de PLUSIEURS cartes premium (« Imprimer tous les QR »). Même carte + même QR
+ * stylisé que la fiche véhicule ; une carte = une page à l'impression.
+ */
+export function buildQrSheetHtml(cards: QrCardData[]): string {
+  const items = cards.map((c) => `<div class="tq-sheet-item">${buildQrCardHtml(c)}</div>`).join('');
+  const body = cards.length
+    ? `<div class="tq-sheet">${items}</div>`
+    : '<p style="padding:48px;text-align:center;font-family:system-ui,sans-serif;color:#46554F">Aucun véhicule à imprimer.</p>';
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>QR de déverrouillage — flotte</title><style>${QR_CARD_CSS}
+    body{margin:0;background:#EAF0ED;font-family:'Manrope',system-ui,sans-serif;}
+    .tq-sheet{display:flex;flex-wrap:wrap;gap:22px;justify-content:center;padding:26px;}
+    @media print{ body{background:#fff;} .tq-sheet{gap:0;padding:0;} .tq-sheet-item{break-inside:avoid;page-break-after:always;} .tq-sheet-item:last-child{page-break-after:auto;} }
+  </style></head><body>${body}<script>window.onload=function(){setTimeout(function(){window.print()},250)}<\/script></body></html>`;
+}
+
 /** CSS de la carte (portée `.tq-scope`) — partagée écran (ViewEncapsulation.None) + fenêtre print. */
 export const QR_CARD_CSS = `
 .tq-scope { --em:#0A9E6C; --ink:#0C1512; }

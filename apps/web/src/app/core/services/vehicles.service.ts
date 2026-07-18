@@ -137,6 +137,20 @@ export class VehiclesApiService {
   unlockQrSheetUrl(fleetId: string | null): string {
     return `/api/vehicles/unlock-qr-sheet${fleetId ? `?fleetId=${encodeURIComponent(fleetId)}` : ''}`;
   }
+
+  /** Données JSON des QR de la flotte (plaque/modèle/lien signé) → rendu premium client-side (Imprimer tous). */
+  getUnlockQrLinks(fleetId: string | null): Observable<{ items: UnlockQrLinkDto[] }> {
+    return this.http.get<{ items: UnlockQrLinkDto[] }>(
+      `/api/vehicles/unlock-qr-links${fleetId ? `?fleetId=${encodeURIComponent(fleetId)}` : ''}`,
+    );
+  }
+}
+
+export interface UnlockQrLinkDto {
+  vehicleId: string;
+  plate: string | null;
+  model: string | null;
+  url: string;
 }
 
 export interface VehicleUnlockQrDto {

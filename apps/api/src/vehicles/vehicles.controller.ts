@@ -101,6 +101,28 @@ export class VehiclesController {
     res.send(html);
   }
 
+  // feat/comptes-conducteurs — Données JSON des QR de déverrouillage (plaque/modèle/lien signé) pour le
+  // rendu PREMIUM client-side de la feuille imprimable. Segment STATIQUE → AVANT @Get(':id'). Gate qr_manage.
+  @Get('unlock-qr-links')
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
+  @RequirePermissions('qr_manage')
+  async unlockQrLinks(@Req() req: AuthenticatedRequest, @Query('fleetId') fleetId?: string) {
+    const result = await this.vehicles.buildUnlockQrLinks(await this.buildRequestedBy(req), fleetId || null);
+    // Traçabilité — émission de la feuille de « clés » QR (action sensible → feed admin). Sans jeton.
+    this.systemActivity.record({
+      category: 'ENGINE',
+      action: 'unlock_qr_sheet_printed',
+      status: 'SUCCESS',
+      actor: 'opérateur',
+      target: 'Feuille QR de déverrouillage (flotte)',
+      detail: `Génération de la feuille imprimable premium (${result.items.length} QR)`,
+      fleetId: req.user.fleetId ?? fleetId ?? null,
+      triggeredByUserId: req.user.id,
+      meta: { count: result.items.length, scope: fleetId ?? 'own' },
+    });
+    return result;
+  }
+
   @Post()
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER)
   @RequirePermissions('vehicles_create')

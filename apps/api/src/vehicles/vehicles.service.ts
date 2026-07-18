@@ -344,6 +344,39 @@ export class VehiclesService {
     return this.renderQrSheet(cards);
   }
 
+  /**
+   * feat/comptes-conducteurs — DONNÉES JSON des QR de déverrouillage du périmètre (plaque + modèle +
+   * lien signé), pour un rendu PREMIUM côté client de la feuille imprimable (mêmes cartes que la fiche
+   * véhicule). Même scope tenant + granulaire que `buildUnlockQrSheet` ; capé à 500.
+   */
+  async buildUnlockQrLinks(
+    requestedBy: RequestedBy,
+    superFleetId?: string | null,
+  ): Promise<{ items: { vehicleId: string; plate: string | null; model: string | null; url: string }[] }> {
+    const scope = resolveTenantScope(requestedBy);
+    if (scope.mode === 'DENY') return { items: [] };
+    const where: Prisma.VehicleWhereInput = {};
+    if (scope.mode === 'FLEET') where.fleetId = scope.fleetId;
+    else if (scope.mode === 'ALL' && superFleetId) where.fleetId = superFleetId;
+    if (requestedBy.accessibleVehicleIds && requestedBy.accessibleVehicleIds !== 'ALL') {
+      where.id = { in: requestedBy.accessibleVehicleIds };
+    }
+    const vehicles = await this.prisma.vehicle.findMany({
+      where,
+      select: { id: true, plate: true, brand: true, model: true },
+      orderBy: { plate: 'asc' },
+      take: 500,
+    });
+    return {
+      items: vehicles.map((v) => ({
+        vehicleId: v.id,
+        plate: v.plate,
+        model: [v.brand, v.model].filter(Boolean).join(' ') || null,
+        url: this.unlockToken.buildDeepLink(v.id).url,
+      })),
+    };
+  }
+
   /** Rendu de la feuille imprimable (grille de cartes plaque + QR), CSS d'impression inclus. */
   private renderQrSheet(cards: { plate: string | null; subtitle: string; svg: string }[]): string {
     const esc = (s: string): string =>

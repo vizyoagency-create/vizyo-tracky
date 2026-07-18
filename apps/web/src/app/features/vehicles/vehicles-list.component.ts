@@ -13,6 +13,7 @@ import { RealtimeService } from '../../core/services/realtime.service';
 import { GeocodeService } from '../../core/services/geocode.service';
 import { TrackersApiService } from '../../core/services/trackers.service';
 import { getVehicleSvg, getVehicleTypeLabel } from '../../shared/utils/vehicle-icons';
+import { buildQrSheetHtml, buildTrackyQrSvg } from '../../shared/utils/tracky-qr.util';
 import { VehiclesApiService, type VehicleDetailDto } from '../../core/services/vehicles.service';
 import { ConfirmModalComponent } from '../../shared/ui/confirm-modal/confirm-modal.component';
 import { VehicleDialogComponent } from './vehicle-dialog/vehicle-dialog.component';
@@ -1276,9 +1277,23 @@ export class VehiclesListComponent implements OnInit {
     this.qrVehicle.set(v);
   }
 
-  /** Ouvre la feuille imprimable de TOUS les QR (fleet-scopée via le sélecteur société). */
-  protected printAllQr(): void {
-    window.open(this.vehiclesApi.unlockQrSheetUrl(this.fleetFilter.selectedFleetId()), '_blank');
+  /**
+   * Feuille imprimable de TOUS les QR (fleet-scopée) — rendu PREMIUM client-side : on récupère les
+   * liens signés (JSON), on régénère chaque QR stylisé (buildTrackyQrSvg, niveau H) et on ouvre une
+   * feuille de cartes identiques à la fiche véhicule (une carte = une page à l'impression).
+   */
+  protected async printAllQr(): Promise<void> {
+    // Fenêtre ouverte SYNCHRONEMENT sur le clic (sinon bloquée par le navigateur), remplie après le fetch.
+    const w = window.open('', '_blank', 'width=920,height=800');
+    try {
+      const res = await firstValueFrom(this.vehiclesApi.getUnlockQrLinks(this.fleetFilter.selectedFleetId()));
+      const cards = (res.items ?? []).map((v) => ({ plate: v.plate ?? '', model: v.model, qrSvg: buildTrackyQrSvg(v.url) }));
+      if (!w) return;
+      w.document.write(buildQrSheetHtml(cards));
+      w.document.close();
+    } catch {
+      w?.close();
+    }
   }
 
   protected confirmDeleteVehicle(v: VehicleDetailDto): void {
