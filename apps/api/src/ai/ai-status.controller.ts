@@ -40,8 +40,11 @@ export class AiStatusController {
     return { fleetId: id, enabled: await this.aiAvail.fleetSetting(id) };
   }
 
+  // FACTURATION (2026-07) : l'IA est une OPTION PAYANTE. Un fleet-admin ne l'active PLUS gratuitement
+  // ici — il passe par l'abonnement (POST /api/billing/subscribe | request-invoice). Ce toggle
+  // bas-niveau reste réservé au SUPER-ADMIN (l'UI owner passe par POST /api/billing/comp → statut COMP).
   @Put('fleet-enabled')
-  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN)
+  @Roles(UserRole.SUPER_ADMIN)
   @RequirePermissions('ai_configure')
   async setFleetEnabled(@Req() req: AuthenticatedRequest, @Body() dto: SetAiEnabledDto): Promise<FleetAiSettingDto> {
     const id = this.resolveFleet(req, dto?.fleetId);

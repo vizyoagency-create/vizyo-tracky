@@ -4,7 +4,7 @@ import { RouterLink } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
   LucideAngularModule, ChevronLeft, Zap, Wallet, Users, Building2, Layers, TrendingUp,
-  RefreshCw, AlertTriangle, Loader, Check, Save, Cpu, Calendar, Power,
+  RefreshCw, AlertTriangle, Loader, Check, Save, Cpu, Calendar, Power, Tag,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import type {
@@ -12,6 +12,7 @@ import type {
 } from '@vizyo/tracky-shared';
 import { AiUsageApiService } from '../../core/services/ai-usage.service';
 import { AiStatusService } from '../../core/services/ai-status.service';
+import { BillingApiService } from '../../core/services/billing.service';
 import { AuthService } from '../../core/services/auth.service';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
@@ -114,6 +115,30 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
             </div>
           }
         </section>
+
+        <!-- ── PRIX DE L'OPTION IA (super-admin — configurable) ── -->
+        @if (isSuperAdmin()) {
+          <section class="au-prov-panel">
+            <div class="au-prov-head">
+              <span class="au-budget-label"><lucide-icon [img]="TagIcon" [size]="14"></lucide-icon> Prix de l'option IA</span>
+              <span class="au-prov-note">Ce que paie une société pour activer l'IA (abonnement mensuel). Modifiable à tout moment ; l'IA « offerte » (toggle ci-dessus) ne facture rien.</span>
+            </div>
+            <div class="au-budget-edit">
+              <input type="number" min="0" step="0.5" inputmode="decimal" [value]="priceInput()" (input)="priceInput.set($any($event.target).value)" placeholder="ex. 5" />
+              <span class="au-price-unit">€ /
+                <select class="au-price-select" [value]="pricingUnit()" (change)="pricingUnit.set($any($event.target).value)">
+                  <option value="per_vehicle">véhicule</option>
+                  <option value="flat">société</option>
+                </select>
+                / mois</span>
+              <button type="button" class="au-btn" [disabled]="savingPrice()" (click)="savePrice()">
+                @if (savingPrice()) { <lucide-icon [img]="LoaderIcon" [size]="14" class="au-spin"></lucide-icon> } @else { <lucide-icon [img]="SaveIcon" [size]="14"></lucide-icon> }
+                Enregistrer
+              </button>
+              @if (priceUpdatedAt()) { <span class="au-budget-hint">Dernière mise à jour : {{ priceUpdatedAt() | date:'dd/MM HH:mm' }}</span> }
+            </div>
+          </section>
+        }
 
         <!-- ── MOTEUR IA (switch Claude ↔ GPT, super-admin) ── -->
         @if (isSuperAdmin() && provider(); as prov) {
@@ -347,6 +372,8 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
     .au-budget-hint { font-size: 11px; color: var(--fg-tertiary); flex-basis: 100%; }
     .au-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 9px; font-size: 12.5px; font-weight: 700; background: var(--tracky, #10B981); color: #fff; }
     .au-btn:disabled { opacity: .5; }
+    .au-price-unit { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; color: var(--fg-secondary); }
+    .au-price-select { padding: 6px 8px; border-radius: 8px; background: var(--bg-primary); border: 1px solid var(--border-subtle); color: var(--fg-primary); font-size: 12.5px; font-family: inherit; }
 
     /* Moteur IA (switch Claude ↔ GPT) */
     .au-prov-panel { padding: 18px; border-radius: 16px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 12px; }
@@ -416,6 +443,7 @@ type BreakdownTab = 'user' | 'fleet' | 'action';
 export class AdminAiUsageComponent implements OnInit {
   private readonly api = inject(AiUsageApiService);
   private readonly aiStatus = inject(AiStatusService);
+  private readonly billing = inject(BillingApiService);
   private readonly auth = inject(AuthService);
   private readonly fleet = inject(FleetFilterService);
   private readonly toast = inject(ToastService);
@@ -439,6 +467,7 @@ export class AdminAiUsageComponent implements OnInit {
   protected readonly CpuIcon = Cpu;
   protected readonly CalendarIcon = Calendar;
   protected readonly PowerIcon = Power;
+  protected readonly TagIcon = Tag;
 
   protected readonly periods: { key: Period; label: string }[] = [
     { key: '24h', label: '24 h' },
@@ -457,6 +486,11 @@ export class AdminAiUsageComponent implements OnInit {
   protected readonly savingBudget = signal(false);
   /** Bascule de l'interrupteur maître IA de la société scopée. */
   protected readonly savingAi = signal(false);
+  /** Prix configurable de l'option IA (super-admin). `priceInput` en EUROS (converti en centimes). */
+  protected readonly priceInput = signal<string>('');
+  protected readonly pricingUnit = signal<'per_vehicle' | 'flat'>('per_vehicle');
+  protected readonly savingPrice = signal(false);
+  protected readonly priceUpdatedAt = signal<string | null>(null);
 
   /** Dernière société chargée (undefined = pas encore initialisé) — pour ne recharger QUE sur vrai changement. */
   private lastFleetId: string | null | undefined = undefined;
@@ -553,12 +587,20 @@ export class AdminAiUsageComponent implements OnInit {
         this.budgetInput.set(String(s.budget.monthlyBudgetEur));
       }
       await this.loadLogs(true);
-      // Moteur IA (super-admin uniquement ; endpoint gardé). Non bloquant.
+      // Moteur IA + prix de l'option IA (super-admin uniquement ; endpoints gardés). Non bloquant.
       if (this.isSuperAdmin()) {
         try {
           this.provider.set(await firstValueFrom(this.api.getProvider()));
         } catch {
           /* ignore : le switch reste masqué si l'appel échoue */
+        }
+        try {
+          const p = await firstValueFrom(this.billing.getPrice());
+          if (this.priceInput() === '') this.priceInput.set((p.aiUnitAmountEurCents / 100).toString());
+          this.pricingUnit.set(p.aiPricingUnit);
+          this.priceUpdatedAt.set(p.updatedAt);
+        } catch {
+          /* ignore : l'éditeur de prix garde ses valeurs */
         }
       }
     } catch (e) {
@@ -568,21 +610,44 @@ export class AdminAiUsageComponent implements OnInit {
     }
   }
 
-  /** Interrupteur maître IA de la société scopée (opt-in owner). Super-admin depuis la vue filtrée société. */
+  /**
+   * OFFERT (COMP) — l'owner active/coupe l'IA d'une société GRATUITEMENT (sans abonnement). Passe par
+   * /api/billing/comp (statut COMP + synchro aiEnabled) au lieu de l'ancien toggle brut. Le paiement,
+   * lui, se fait côté fleet-admin (onglet Facturation).
+   */
   protected async toggleFleetAi(enabled: boolean): Promise<void> {
     const scoped = this.summary()?.scopedFleet;
     if (!scoped || this.savingAi()) return;
     this.savingAi.set(true);
     try {
-      await firstValueFrom(this.aiStatus.setFleetEnabled(enabled, scoped.id));
+      await firstValueFrom(this.billing.comp(scoped.id, enabled));
       const s = this.summary();
       if (s?.scopedFleet) this.summary.set({ ...s, scopedFleet: { ...s.scopedFleet, aiEnabled: enabled } });
       this.aiStatus.refresh(); // resynchronise l'état IA global du front
-      this.toast.success('Assistance IA', `${enabled ? 'Activée' : 'Désactivée'} pour ${scoped.name}.`);
+      this.toast.success('Assistance IA', enabled ? `Offerte à ${scoped.name}.` : `Coupée pour ${scoped.name}.`);
     } catch (e) {
       this.toast.error('Assistance IA', this.errMsg(e));
     } finally {
       this.savingAi.set(false);
+    }
+  }
+
+  /** Enregistre le prix configurable de l'option IA (super-admin). Saisi en euros → stocké en centimes. */
+  protected async savePrice(): Promise<void> {
+    const euros = Number(this.priceInput().replace(',', '.'));
+    if (!Number.isFinite(euros) || euros < 0) {
+      this.toast.error('Prix invalide', 'Entrez un montant ≥ 0.');
+      return;
+    }
+    this.savingPrice.set(true);
+    try {
+      const p = await firstValueFrom(this.billing.setPrice(Math.round(euros * 100), this.pricingUnit()));
+      this.priceUpdatedAt.set(p.updatedAt);
+      this.toast.success('Prix enregistré', `${euros.toFixed(2)} € / ${this.pricingUnit() === 'per_vehicle' ? 'véhicule' : 'société'} / mois`);
+    } catch (e) {
+      this.toast.error('Échec', this.errMsg(e));
+    } finally {
+      this.savingPrice.set(false);
     }
   }
 

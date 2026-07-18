@@ -132,6 +132,7 @@ export class BillingService {
     if (!(await this.stripe.hasPaymentMethod(customerId))) {
       throw new BadRequestException('Ajoutez d’abord une carte avant de vous abonner.');
     }
+    await this.stripe.ensureDefaultPaymentMethod(customerId); // la 1re carte devient le moyen de paiement
     const price = await this.settings.get();
     const quantity = await this.billableVehicleCount(fleetId);
     const sub = await this.stripe.createSubscription({

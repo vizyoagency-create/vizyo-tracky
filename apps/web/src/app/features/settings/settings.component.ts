@@ -13,6 +13,7 @@ import { ThemeService } from '../../core/theme/theme.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { RetentionFleetCardComponent } from './retention-fleet-card.component';
 import { Security2faCardComponent } from './security-2fa-card.component';
+import { AiBillingCardComponent } from './ai-billing-card.component';
 import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
 
 type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
@@ -20,7 +21,7 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [FormsModule, LucideAngularModule, RouterLink, RetentionFleetCardComponent, Security2faCardComponent],
+  imports: [FormsModule, LucideAngularModule, RouterLink, RetentionFleetCardComponent, Security2faCardComponent, AiBillingCardComponent],
   template: `
     <div class="settings-page">
       <div class="settings-header">
@@ -50,9 +51,16 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
               <div class="s-plan-count">{{ activeVehicleCount() }} véhicule{{ activeVehicleCount() > 1 ? 's' : '' }} suivi{{ activeVehicleCount() > 1 ? 's' : '' }}</div>
               <div class="s-plan-note">La facturation est gérée par votre conseiller Vizyo. Contactez-le pour changer d'offre, ajouter des véhicules ou activer une option.</div>
             </div>
-            <a href="mailto:contact@vizyo.agency" class="s-plan-btn">Contacter mon conseiller</a>
+            <a href="mailto:contact@vizyoagency.com" class="s-plan-btn">Contacter mon conseiller</a>
           </div>
         </div>
+
+        <!-- Option IA payante : carte réelle (statut, coût /mois + /voiture, activer/annuler). -->
+        @if (isSuperAdmin()) {
+          <div class="s-plan-note" style="margin:14px 0 0;">L'option IA se gère <strong>par société</strong> depuis l'espace <a routerLink="/admin/ai-usage" style="color:var(--tracky-light,#10E0A0);">Coûts IA</a> (activation offerte ou suivi des abonnements).</div>
+        } @else {
+          <app-ai-billing-card></app-ai-billing-card>
+        }
 
         <div class="s-opt-head">
           <h3>Options premium</h3>
@@ -619,6 +627,8 @@ export class SettingsComponent implements OnInit {
   protected readonly tab = signal<SettingsTab>('billing');
   /** Facturation & options : réservé aux admins par défaut (perm billing_manage). */
   protected readonly canBilling = computed(() => this.perms.can('billing_manage'));
+  /** Super-admin : pas de flotte propre → l'option IA se gère par société depuis Coûts IA, pas ici. */
+  protected readonly isSuperAdmin = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
 
   constructor() {
     // Non-admin sans droit de facturation : on démarre sur « Apparence » (pas de flash de l'onglet caché).

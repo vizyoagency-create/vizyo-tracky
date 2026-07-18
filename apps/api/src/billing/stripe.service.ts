@@ -86,6 +86,16 @@ export class StripeService {
     return list.data.length > 0;
   }
 
+  /** Garantit une carte par défaut (la 1re si aucune n'est définie) pour que l'abonnement débite. */
+  async ensureDefaultPaymentMethod(customerId: string): Promise<void> {
+    const stripe = this.require();
+    const cust = await stripe.customers.retrieve(customerId);
+    if (!cust.deleted && cust.invoice_settings?.default_payment_method) return; // déjà une carte par défaut
+    const list = await stripe.paymentMethods.list({ customer: customerId, type: 'card', limit: 1 });
+    const pm = list.data[0];
+    if (pm) await stripe.customers.update(customerId, { invoice_settings: { default_payment_method: pm.id } });
+  }
+
   /** Produit Stripe unique réutilisé (évite d'en créer un par abonnement). */
   private async ensureProduct(): Promise<string> {
     if (this.cachedProductId) return this.cachedProductId;

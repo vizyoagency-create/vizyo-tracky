@@ -24,6 +24,7 @@ import { AgendaAgentApiService } from '../../../core/services/agenda-agent.servi
 import { ReservationBookingApiService } from '../../../core/services/reservation-booking.service';
 import { AiApiService } from '../../../core/services/ai.service';
 import { AiStatusService } from '../../../core/services/ai-status.service';
+import { BillingApiService } from '../../../core/services/billing.service';
 import { AiUsageApiService } from '../../../core/services/ai-usage.service';
 import { AiJobService } from '../../../core/services/ai-job.service';
 import { AuthService } from '../../../core/services/auth.service';
@@ -58,13 +59,18 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
           <div class="aas-body">
             @if (error()) { <div class="aas-alert">{{ error() }}</div> }
 
-            <!-- Interrupteur MAÎTRE de l'IA (globale) — distinct de l'agent d'agenda. -->
+            <!-- Interrupteur MAÎTRE de l'IA (globale). Option PAYANTE : super-admin peut l'OFFRIR
+                 (toggle → COMP) ; un fleet-admin l'active via son onglet Facturation (abonnement). -->
             <label class="aas-row aas-row--switch aas-row--master">
               <div>
                 <span class="aas-lbl"><lucide-icon [img]="ZapIcon" [size]="13"></lucide-icon> Assistance IA</span>
-                <span class="aas-sub">Active/désactive <strong>toute l'IA</strong> pour cette société (récit de trajet, agent d'agenda, optimiseur, saisie vocale). L'app fonctionne parfaitement sans IA : l'analyse des trajets, les stations-service et les scores restent disponibles.</span>
+                <span class="aas-sub"><strong>Toute l'IA</strong> de cette société (récit de trajet, agent d'agenda, optimiseur, saisie vocale). Option payante (abonnement mensuel) ; l'app fonctionne parfaitement sans IA (analyse des trajets, stations, scores restent inclus).</span>
               </div>
-              <input type="checkbox" class="aas-sw" [checked]="aiMasterEnabled()" [disabled]="savingAi()" (change)="onToggleAi($any($event.target).checked)">
+              @if (isSuperAdmin()) {
+                <input type="checkbox" class="aas-sw" [checked]="aiMasterEnabled()" [disabled]="savingAi()" (change)="onToggleAi($any($event.target).checked)">
+              } @else {
+                <a routerLink="/settings" (click)="closed.emit()" class="aas-manage">{{ aiMasterEnabled() ? 'Gérer' : 'Activer' }}</a>
+              }
             </label>
             @if (!aiMasterEnabled()) {
               <div class="aas-note">L'IA est désactivée pour cette société. Les réglages de l'agent ci-dessous restent sans effet tant que l'IA est coupée.</div>
@@ -197,6 +203,7 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
     .aas-lbl { font-size: 13px; font-weight: 600; color: var(--fg-primary); display: inline-flex; align-items: center; gap: 6px; }
     .aas-sub { display: block; font-size: 11.5px; color: var(--fg-tertiary); margin-top: 2px; line-height: 1.4; }
     .aas-in { padding: 9px 11px; border-radius: 10px; background: var(--bg-secondary); border: 1px solid var(--border-strong); color: var(--fg-primary); font-size: 16px; min-width: 130px; }
+    .aas-manage { flex: 0 0 auto; padding: 7px 12px; border-radius: 9px; background: var(--tracky, #10B981); color: #fff; font-size: 12.5px; font-weight: 700; text-decoration: none; white-space: nowrap; }
     .aas-sw { width: 42px; height: 24px; appearance: none; border-radius: 999px; background: var(--bg-tertiary); border: 1px solid var(--border-strong); position: relative; cursor: pointer; flex: 0 0 auto; transition: background .15s; }
     .aas-sw::after { content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .15s; }
     .aas-sw:checked { background: var(--tracky, #10B981); border-color: var(--tracky, #10B981); }
@@ -237,6 +244,7 @@ export class AgendaAgentSettingsSheetComponent {
   private readonly bookingApi = inject(ReservationBookingApiService);
   private readonly ai = inject(AiApiService);
   private readonly aiStatus = inject(AiStatusService);
+  private readonly billing = inject(BillingApiService);
   private readonly usage = inject(AiUsageApiService);
   private readonly auth = inject(AuthService);
   private readonly fleetFilter = inject(FleetFilterService);
@@ -398,17 +406,20 @@ export class AgendaAgentSettingsSheetComponent {
   }
 
   /**
-   * Interrupteur MAÎTRE : active/désactive TOUTE l'IA de la flotte. OFF → aucune fonction IA (récit de
-   * trajet, agent d'agenda, optimiseur, vocal) ; l'app reste pleinement fonctionnelle sans IA.
+   * Interrupteur MAÎTRE (SUPER-ADMIN uniquement) : OFFRE (COMP) ou coupe TOUTE l'IA d'une société,
+   * GRATUITEMENT, via /api/billing/comp. Un fleet-admin, lui, active l'IA en s'abonnant (onglet
+   * Facturation) — d'où le lien « Gérer » à sa place dans le template.
    */
   protected async onToggleAi(next: boolean): Promise<void> {
+    const fleetId = this.currentFleetId();
+    if (!fleetId) { this.toast.error('Société', 'Choisissez une société.'); return; }
     const prev = this.aiMasterEnabled();
     this.aiMasterEnabled.set(next);
     this.savingAi.set(true);
     try {
-      await firstValueFrom(this.aiStatus.setFleetEnabled(next, this.currentFleetId()));
+      await firstValueFrom(this.billing.comp(fleetId, next)); // offert (COMP) + synchro aiEnabled
       this.aiStatus.refresh(); // met à jour le masquage des boutons IA dans toute l'app
-      this.toast.success(next ? 'IA activée' : 'IA désactivée', next ? 'L\'assistance IA est active pour cette société.' : 'Toute l\'IA est coupée. L\'app reste fonctionnelle sans IA.');
+      this.toast.success(next ? 'IA offerte' : 'IA coupée', next ? 'L\'assistance IA est offerte à cette société.' : 'Toute l\'IA est coupée pour cette société.');
     } catch (e) {
       this.aiMasterEnabled.set(prev);
       this.toast.error('Échec', this.errMsg(e));
