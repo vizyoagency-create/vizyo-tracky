@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { UserRole } from '@prisma/client';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -9,6 +10,17 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { CreateFleetPlaceDto, UpdateFleetPlaceDto } from './dto/fleet-place.dto';
 import { FleetPlacesService } from './fleet-places.service';
 import { PlaceAnalysisService } from './place-analysis.service';
+import { PlaceAutomationService } from './place-automation.service';
+
+/** Corps accepté par `PUT /fleet-places/automation` — toutes les valeurs sont CLAMPÉES au service. */
+interface SetPlaceAutomationDto {
+  enabled?: boolean;
+  hour?: number;
+  minIntervalDays?: number;
+  skipUnchanged?: boolean;
+  maxAnalysesPerRun?: number;
+  maxCostEurPerRun?: number;
+}
 
 /**
  * Lieux clés (2026-07) — stations-service validées par la flotte + parkings / stationnements
@@ -21,6 +33,7 @@ export class FleetPlacesController {
   constructor(
     private readonly places: FleetPlacesService,
     private readonly placeAnalysis: PlaceAnalysisService,
+    private readonly automation: PlaceAutomationService,
   ) {}
 
   /**
@@ -35,6 +48,48 @@ export class FleetPlacesController {
   async aiStatus(@Req() req: AuthenticatedRequest, @Query('fleetId') fleetId?: string) {
     const scoped = this.places.resolveFleetId(req.user, fleetId);
     return { enabled: await this.placeAnalysis.isAvailable(scoped) };
+  }
+
+  // ─── Automatisation (super-admin) ────────────────────────────────────────
+  // Routes STATIQUES déclarées avant tout segment dynamique. Réservées au SUPER_ADMIN : ces
+  // réglages engagent une DÉPENSE récurrente pour toutes les sociétés.
+
+  /** Réglages de l'automatisation (cadence, délai minimum, plafonds de dépense). */
+  @Get('automation')
+  @Roles(UserRole.SUPER_ADMIN)
+  getAutomation() {
+    return this.automation.getSettings();
+  }
+
+  @Put('automation')
+  @Roles(UserRole.SUPER_ADMIN)
+  setAutomation(@Body() body: SetPlaceAutomationDto, @Req() req: AuthenticatedRequest) {
+    return this.automation.setSettings(body ?? {}, req.user.id);
+  }
+
+  /** Historique des passages : ce qui a été analysé, ce qui a été sauté et pourquoi, le coût réel. */
+  @Get('automation/runs')
+  @Roles(UserRole.SUPER_ADMIN)
+  automationRuns(@Query('limit') limit?: string) {
+    const n = limit ? Number(limit) : undefined;
+    return this.automation.listRuns(Number.isFinite(n) ? n : undefined);
+  }
+
+  /**
+   * SIMULATION — évalue tout (candidats, sauts, estimation de coût) sans émettre le moindre appel
+   * IA. À utiliser avant d'activer, pour savoir ce que ça coûterait.
+   */
+  @Post('automation/simulate')
+  @Roles(UserRole.SUPER_ADMIN)
+  simulateAutomation() {
+    return this.automation.runNow(true);
+  }
+
+  /** Lance un run RÉEL tout de suite (ignore la cadence). Dépense réellement. */
+  @Post('automation/run-now')
+  @Roles(UserRole.SUPER_ADMIN)
+  runAutomationNow() {
+    return this.automation.runNow(false);
   }
 
   /**
@@ -99,10 +154,15 @@ export class FleetPlacesController {
 
   /**
    * Lance (ou relance) l'analyse IA d'un lieu — CONSOMME DES TOKENS, d'où sa propre permission
-   * `places_analyze` (séparée de `places_manage`). Le service revérifie la disponibilité IA :
-   * la permission autorise la personne, elle n'active pas l'IA de la société.
+   * `places_analyze` (séparée de `places_manage`). Le service revérifie la disponibilité IA ET le
+   * budget mensuel : la permission autorise la personne, elle n'ouvre pas un robinet.
+   *
+   * ⚠️ Throttle SERRÉ (10/min/IP) : le throttle global est à 100/min, ce qui laisserait un
+   * utilisateur légitime déclencher ~100 appels payants par minute en bouclant sur le bouton.
+   * Une analyse manuelle est un geste humain — 10 par minute est déjà très large.
    */
   @Post(':id/analyze')
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
   @RequirePermissions('places_analyze')
   analyze(@Param('id') id: string, @Req() req: AuthenticatedRequest) {

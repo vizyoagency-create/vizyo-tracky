@@ -40,6 +40,7 @@ describe('PlaceAnalysisService', () => {
     fuelStops?: unknown[];
     deadZones?: unknown[];
     facts?: unknown;
+    budget?: { monthlyBudgetEur: number; spentThisMonthEur: number };
   } = {}) {
     const prisma = {
       placeAnalysis: {
@@ -63,7 +64,13 @@ describe('PlaceAnalysisService', () => {
     const enrichment = { enrich: jest.fn().mockResolvedValue(facts) };
     const aiAvail = { isEnabledForFleet: jest.fn().mockResolvedValue(over.enabled ?? true) };
     const ai = { completeJson: over.complete ?? jest.fn().mockResolvedValue(LLM_OK) };
-    const aiUsage = { record: jest.fn().mockResolvedValue(undefined), costOf: jest.fn().mockReturnValue(0.021), eurRate: jest.fn().mockReturnValue(0.92) };
+    const aiUsage = {
+      record: jest.fn().mockResolvedValue(undefined),
+      costOf: jest.fn().mockReturnValue(0.021),
+      eurRate: jest.fn().mockReturnValue(0.92),
+      // Budget mensuel : 0 = pas de plafond (cas par défaut des tests).
+      getBudget: jest.fn().mockResolvedValue(over.budget ?? { monthlyBudgetEur: 0, spentThisMonthEur: 0 }),
+    };
     const errorLogger = { recordBackground: jest.fn() };
 
     const svc = new PlaceAnalysisService(
@@ -91,6 +98,34 @@ describe('PlaceAnalysisService', () => {
     const { svc, aiAvail } = build();
     await svc.analyze(user, 'place-1');
     expect(aiAvail.isEnabledForFleet).toHaveBeenCalledWith('fleet-1', 'placeAnalysis');
+  });
+
+  it('REFUSE le déclenchement MANUEL quand le budget IA du mois est atteint', async () => {
+    // Sans ce contrôle, le plafond mensuel ne protégeait que le cron : n'importe quel clic humain
+    // pouvait le dépasser, en boucle.
+    const { svc, ai, aiUsage } = build({ budget: { monthlyBudgetEur: 10, spentThisMonthEur: 10.5 } });
+
+    await expect(svc.analyze(user, 'place-1')).rejects.toBeInstanceOf(ServiceUnavailableException);
+
+    expect(ai.completeJson).not.toHaveBeenCalled();
+    expect(aiUsage.getBudget).toHaveBeenCalled();
+  });
+
+  it('budget mensuel illisible ⇒ refus par prudence (fail-CLOSED)', async () => {
+    const { svc, ai, aiUsage } = build();
+    aiUsage.getBudget.mockRejectedValue(new Error('DB down'));
+
+    await expect(svc.analyze(user, 'place-1')).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(ai.completeJson).not.toHaveBeenCalled();
+  });
+
+  it('un échec APRÈS facturation remonte le coût engagé (paidCostEur)', async () => {
+    // L'IA a répondu (c'est payé) mais l'écriture échoue : l'appelant doit pouvoir compter la
+    // dépense, sinon ses plafonds sont aveugles aux pannes.
+    const { svc, prisma } = build();
+    prisma.placeAnalysis.upsert.mockRejectedValue(new Error('upsert failed'));
+
+    await expect(svc.analyze(user, 'place-1')).rejects.toMatchObject({ paidCostEur: 0.0193 });
   });
 
   it('isAvailable() relaie la porte telle quelle (sert à masquer le bouton côté UI)', async () => {

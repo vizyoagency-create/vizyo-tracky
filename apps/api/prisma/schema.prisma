@@ -1140,13 +1140,70 @@ model PlaceAnalysis {
   aiProvider       String?
   aiModel          String?
   costEur          Float?
-  /// 'manual' (bouton) ou 'scheduled' (automatisation a venir).
+  /// 'manual' (bouton) ou 'scheduled' (automatisation).
   origin           String   @default("manual")
+  /// EMPREINTE des faits sources (hash stable). Garde-fou COUT n1 de l'automatisation : si les
+  /// faits n'ont pas bouge depuis la derniere analyse, re-analyser produirait le meme texte pour
+  /// le meme prix -> on saute. Null = analyses avant l'automatisation (jamais sautees a tort).
+  factsHash        String?
   computedByUserId String?  @db.Uuid
   computedAt       DateTime @default(now())
 
   @@index([fleetId, computedAt])
   @@map("place_analyses")
+}
+
+/// Automatisation des analyses de lieux (singleton, comme AiBudget/TripAutomationSettings).
+/// OPT-IN : `enabled` false par defaut — aucune depense tant que le super-admin n'a rien active.
+/// Les bornes ci-dessous sont CUMULATIVES : la depense d'un run est majoree par le plus petit de
+/// (maxAnalysesPerRun x cout unitaire) et (maxCostEurPerRun), et le budget mensuel global prime.
+model PlaceAutomationSettings {
+  id                String    @id @default(uuid()) @db.Uuid
+  enabled           Boolean   @default(false)
+  /// Heure du run quotidien (0-23, Europe/Paris). 3h = creux (les crons agenda/trajets sont a 2h/45).
+  hour              Int       @default(3)
+  /// Delai MINIMUM entre deux analyses d'un meme lieu (jours). Borne principale de la depense :
+  /// un lieu coute au plus 1 analyse par periode, quoi qu'il arrive.
+  minIntervalDays   Int       @default(30)
+  /// Ne pas re-analyser un lieu dont les faits sont INCHANGES (compare `factsHash`).
+  skipUnchanged     Boolean   @default(true)
+  /// Bornes dures par run.
+  maxAnalysesPerRun Int       @default(20)
+  maxCostEurPerRun  Float     @default(1)
+  lastRunAt         DateTime?
+  lastRunStats      Json?
+  updatedByUserId   String?   @db.Uuid
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@map("place_automation_settings")
+}
+
+/// Historique des passages d'automatisation des lieux — 1 ligne par run. Sert a REPONDRE a
+/// « qu'est-ce que ca m'a coute et pourquoi » : combien analyses, combien SAUTES et pour quelle
+/// raison, cout reel en euros, et pourquoi le run s'est arrete.
+model PlaceAutomationRun {
+  id               String    @id @default(uuid()) @db.Uuid
+  startedAt        DateTime  @default(now())
+  finishedAt       DateTime?
+  /// 'scheduled' (cron) | 'manual' (bouton) | 'dry-run' (simulation, aucune depense).
+  origin           String    @default("scheduled")
+  fleets           Int       @default(0)
+  candidates       Int       @default(0)
+  analyzed         Int       @default(0)
+  skippedUnchanged Int       @default(0)
+  skippedCooldown  Int       @default(0)
+  skippedAiOff     Int       @default(0)
+  failed           Int       @default(0)
+  costEur          Float     @default(0)
+  durationMs       Int       @default(0)
+  /// Raison d'arret : 'completed' | 'max_analyses' | 'max_cost' | 'month_budget' | 'error'.
+  stopReason       String    @default("completed")
+  /// Detail borne : [{ fleetId, fleetName, placeId, placeName, action, costEur }].
+  items            Json?
+
+  @@index([startedAt(sort: Desc)])
+  @@map("place_automation_runs")
 }
 
 /// V1.6 — Surveillance Max : profil de surveillance renforcee par vehicule.

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { FleetPlaceKind } from '@prisma/client';
 import { AiAvailabilityService } from '../ai/ai-availability.service';
@@ -106,7 +107,45 @@ export class PlaceAnalysisService {
       );
     }
 
-    // ── Faits : OSM (best-effort) + usage réel de la flotte sur ce lieu.
+    // ── Budget mensuel global : il doit protéger AUSSI le déclenchement humain, sinon le plafond
+    // ne vaut que pour le cron et n'importe quel clic peut le dépasser.
+    if (await this.monthBudgetExhausted()) {
+      throw new ServiceUnavailableException(
+        "Le budget IA mensuel est atteint. L'analyse sera de nouveau possible le mois prochain, ou après relèvement du budget.",
+      );
+    }
+
+    const { facts, hash } = await this.gatherFacts(place);
+    // Déclenchement HUMAIN : on ne saute jamais sur « faits inchangés ». Quelqu'un qui clique
+    // « Relancer » demande explicitement une nouvelle passe — c'est l'automatisation, et elle
+    // seule, qui a le devoir de ne pas repayer pour rien.
+    const { analysis } = await this.analyzeFromFacts(place, facts, hash, origin, origin === 'manual' ? user.id : null);
+    return analysis;
+  }
+
+  /**
+   * Le budget IA mensuel est-il consommé ? Budget non défini (0) = pas de plafond. En cas d'erreur
+   * de lecture, on répond **true** (fail-CLOSED) : devant un doute sur l'argent, on ne dépense pas.
+   */
+  async monthBudgetExhausted(): Promise<boolean> {
+    try {
+      const budget = await this.aiUsage.getBudget({ isOwner: true });
+      if (!budget.monthlyBudgetEur || budget.monthlyBudgetEur <= 0) return false;
+      return budget.spentThisMonthEur >= budget.monthlyBudgetEur;
+    } catch (e) {
+      this.errorLogger.recordBackground(e instanceof Error ? e : new Error(String(e)), 'place-analysis', {
+        note: 'budget IA illisible — analyse refusee par prudence',
+      });
+      return true;
+    }
+  }
+
+  /**
+   * Faits + EMPREINTE stable, **sans aucun appel IA** (donc gratuit : OSM et la base seulement).
+   * C'est ce qui permet à l'automatisation de décider *avant* de dépenser si une nouvelle analyse
+   * apporterait quoi que ce soit.
+   */
+  async gatherFacts(place: PlaceForAnalysis): Promise<{ facts: Record<string, unknown>; hash: string }> {
     const osm = await this.enrichment.enrich(place.lat, place.lng, place.kind);
     const usage = await this.usageFacts(place);
     const facts = {
@@ -119,7 +158,21 @@ export class PlaceAnalysisService {
       openStreetMap: osm ?? undefined,
       usageFlotte: usage,
     };
+    return { facts, hash: fingerprint(facts) };
+  }
 
+  /**
+   * Appel IA + persistance à partir de faits DÉJÀ collectés. Renvoie le coût RÉEL de l'appel pour
+   * que l'appelant puisse tenir un plafond de dépense. Ne vérifie PAS la porte IA : l'appelant l'a
+   * déjà fait (l'automatisation la vérifie par société, avant même de collecter les faits).
+   */
+  async analyzeFromFacts(
+    place: PlaceForAnalysis,
+    facts: Record<string, unknown>,
+    hash: string,
+    origin: 'manual' | 'scheduled',
+    userId: string | null,
+  ): Promise<{ analysis: PlaceAnalysisDto; costEur: number }> {
     // ── Appel IA.
     let res;
     try {
@@ -139,9 +192,39 @@ export class PlaceAnalysisService {
       throw err;
     }
 
+    // ══ À PARTIR D'ICI, L'APPEL EST PAYÉ. ══════════════════════════════════════════════════════
+    // Tout échec en aval (journalisation, calcul, écriture en base) doit malgré tout REMONTER LE
+    // COÛT à l'appelant : sinon l'automatisation compterait 0 € pour une dépense réelle, ses
+    // plafonds testeraient des compteurs figés, et une panne de base la ferait payer TOUS les
+    // lieux en affichant « 0 € ». D'où le `paidCostEur` attaché à l'erreur (cf. `PaidCallError`).
+    const costEur = Math.round(this.aiUsage.costOf(res.model, res.usage) * this.aiUsage.eurRate() * 10000) / 10000;
+    try {
+      return await this.persist(place, facts, hash, origin, userId, res, costEur);
+    } catch (err) {
+      const wrapped = err instanceof Error ? err : new Error(String(err));
+      (wrapped as PaidCallError).paidCostEur = costEur;
+      this.errorLogger.recordBackground(wrapped, 'place-analysis', {
+        placeId: place.id, fleetId: place.fleetId, costEur,
+        note: 'analyse PAYEE mais non enregistree (le cout est bien compte)',
+      });
+      throw wrapped;
+    }
+  }
+
+  /** Journalisation du coût + persistance. Isolé pour que son échec n'efface pas la dépense. */
+  private async persist(
+    place: PlaceForAnalysis,
+    facts: Record<string, unknown>,
+    hash: string,
+    origin: 'manual' | 'scheduled',
+    userId: string | null,
+    res: { model: string; provider: string; usage: { inputTokens: number; outputTokens: number; cacheWriteTokens: number; cacheReadTokens: number }; latencyMs: number; result?: LlmOut },
+    costEur: number,
+  ): Promise<{ analysis: PlaceAnalysisDto; costEur: number }> {
     // ── Coût : OBLIGATOIRE après chaque appel, sinon il n'apparaît pas dans « Coûts IA ».
+    // `userId` null pour un run planifié → la ligne apparaît en « — (système) » dans le tableau.
     void this.aiUsage.record({
-      userId: origin === 'manual' ? user.id : null,
+      userId,
       fleetId: place.fleetId,
       model: res.model,
       action: 'place_analysis',
@@ -157,8 +240,6 @@ export class PlaceAnalysisService {
     const summary = clamp(res.result?.summary, MAX_SUMMARY);
     const highlights = clampList(res.result?.highlights);
     const recommendations = clampList(res.result?.recommendations);
-    // costOf() renvoie des USD → conversion au taux courant (même formule que l'optimiseur IA).
-    const costEur = Math.round(this.aiUsage.costOf(res.model, res.usage) * this.aiUsage.eurRate() * 10000) / 10000;
 
     const row = await this.prisma.placeAnalysis.upsert({
       where: { placeId: place.id },
@@ -173,7 +254,8 @@ export class PlaceAnalysisService {
         aiModel: res.model,
         costEur,
         origin,
-        computedByUserId: origin === 'manual' ? user.id : null,
+        factsHash: hash,
+        computedByUserId: userId,
       },
       update: {
         facts: facts as object,
@@ -184,11 +266,12 @@ export class PlaceAnalysisService {
         aiModel: res.model,
         costEur,
         origin,
-        computedByUserId: origin === 'manual' ? user.id : null,
+        factsHash: hash,
+        computedByUserId: userId,
         computedAt: new Date(),
       },
     });
-    return toDto(row);
+    return { analysis: toDto(row), costEur };
   }
 
   /**
@@ -196,9 +279,7 @@ export class PlaceAnalysisService {
    * de tes véhicules). Station : passages + véhicules + prix relevés. Parking/dépôt : zones mortes
    * GPS rattachées, c'est-à-dire les véhicules qui y perdent le signal (stationnement couvert).
    */
-  private async usageFacts(place: {
-    id: string; fleetId: string; kind: FleetPlaceKind; lat: number; lng: number; radiusM: number; stationId: string | null;
-  }): Promise<Record<string, unknown>> {
+  private async usageFacts(place: PlaceForAnalysis): Promise<Record<string, unknown>> {
     if (place.stationId) {
       const stops = await this.prisma.tripFuelStop.findMany({
         where: { fleetId: place.fleetId, stationId: place.stationId },
@@ -256,10 +337,51 @@ export class PlaceAnalysisService {
   }
 }
 
+/** Champs d'un lieu nécessaires à l'analyse (sous-ensemble de `FleetPlace`). */
+export interface PlaceForAnalysis {
+  id: string;
+  fleetId: string;
+  name: string;
+  kind: FleetPlaceKind;
+  lat: number;
+  lng: number;
+  radiusM: number;
+  note: string | null;
+  stationId: string | null;
+}
+
 interface LlmOut {
   summary?: string;
   highlights?: string[];
   recommendations?: string[];
+}
+
+/**
+ * Erreur survenue APRÈS un appel IA déjà facturé. `paidCostEur` permet à l'appelant de compter la
+ * dépense malgré l'échec — sans quoi ses plafonds de coût seraient aveugles aux pannes.
+ */
+export interface PaidCallError extends Error {
+  paidCostEur?: number;
+}
+
+/**
+ * Empreinte des faits — base du garde-fou « ne pas repayer pour un résultat identique ».
+ * Sérialisation à CLÉS TRIÉES : sans ça, deux objets identiques mais construits dans un ordre
+ * différent donneraient deux empreintes différentes, et le garde-fou ne servirait jamais.
+ */
+function fingerprint(facts: unknown): string {
+  return createHash('sha256').update(stableStringify(facts)).digest('hex').slice(0, 32);
+}
+
+function stableStringify(v: unknown): string {
+  if (v === null || typeof v !== 'object') return JSON.stringify(v) ?? 'null';
+  if (Array.isArray(v)) return `[${v.map(stableStringify).join(',')}]`;
+  const o = v as Record<string, unknown>;
+  return `{${Object.keys(o)
+    .sort()
+    .filter((k) => o[k] !== undefined)
+    .map((k) => `${JSON.stringify(k)}:${stableStringify(o[k])}`)
+    .join(',')}}`;
 }
 
 function clamp(v: unknown, max: number): string {

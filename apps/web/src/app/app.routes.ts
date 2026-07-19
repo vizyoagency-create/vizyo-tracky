@@ -385,6 +385,15 @@ export const routes: Routes = [
         data: { title: 'Automatisation des trajets' },
       },
       {
+        // Automatisation des analyses de lieux — dépense récurrente sous plafonds. SUPER_ADMIN.
+        path: 'admin/place-automation',
+        pathMatch: 'full',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/places/place-automation.component').then((m) => m.PlaceAutomationComponent),
+        data: { title: 'Analyses de lieux automatiques' },
+      },
+      {
         // Demande CDEF (2026-07) — Inventaire des tâches de fond (crons/timers) + prochain lancement. SUPER_ADMIN.
         path: 'admin/background-tasks',
         pathMatch: 'full',

@@ -3,6 +3,7 @@ import { AuthModule } from '../auth/auth.module';
 import { FleetPlacesController } from './fleet-places.controller';
 import { FleetPlacesService } from './fleet-places.service';
 import { PlaceAnalysisService } from './place-analysis.service';
+import { PlaceAutomationService } from './place-automation.service';
 import { PlaceEnrichmentService } from './place-enrichment.service';
 
 /**
@@ -14,7 +15,7 @@ import { PlaceEnrichmentService } from './place-enrichment.service';
 @Module({
   imports: [AuthModule],
   controllers: [FleetPlacesController],
-  providers: [FleetPlacesService, PlaceEnrichmentService, PlaceAnalysisService],
-  exports: [FleetPlacesService, PlaceEnrichmentService, PlaceAnalysisService],
+  providers: [FleetPlacesService, PlaceEnrichmentService, PlaceAnalysisService, PlaceAutomationService],
+  exports: [FleetPlacesService, PlaceEnrichmentService, PlaceAnalysisService, PlaceAutomationService],
 })
 export class FleetPlacesModule {}

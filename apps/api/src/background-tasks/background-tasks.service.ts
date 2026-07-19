@@ -41,7 +41,7 @@ interface CatalogEntry {
   /** Cron à heure fixe → prochain instant où l'horloge murale (tz) satisfait le matcher. */
   fire?: { tz: string; matcher: (w: Date) => boolean };
   /** Automatisation IA configurable : le « prochain » se calcule depuis ses réglages DB. */
-  ai?: 'trip' | 'activity' | 'agenda';
+  ai?: 'trip' | 'activity' | 'agenda' | 'place';
 }
 
 const CATALOG: CatalogEntry[] = [
@@ -84,6 +84,12 @@ const CATALOG: CatalogEntry[] = [
     kind: 'cron', scheduleHuman: 'toutes les heures à HH:45 (si réglé)', criticality: 'moyenne', antiOverlap: true,
     configurable: true, settingsRoute: '/admin/trip-automation', ai: 'trip',
     purpose: 'Recalcule les trajets, lance l\'analyse et le récit IA pour toutes les flottes, selon la cadence réglée.',
+  },
+  {
+    id: 'place-automation', label: 'Automatisation des analyses de lieux', category: 'IA & rapports',
+    kind: 'cron', scheduleHuman: 'chaque jour à l\'heure réglée (sondé à HH:10)', criticality: 'basse', antiOverlap: true,
+    configurable: true, settingsRoute: '/admin/place-automation', ai: 'place',
+    purpose: 'Analyse les lieux clés dont les faits ont changé, sous plafonds de nombre et de dépense. Désactivé par défaut.',
   },
   {
     id: 'activity-report', label: 'Rapport IA d\'activité utilisateurs', category: 'IA & rapports',
@@ -241,10 +247,11 @@ export class BackgroundTasksService {
     // Réglages des 3 automatisations IA (pour un « prochain lancement » fidèle à leur cadence).
     // Revue : même lecture que les crons consommateurs (orderBy updatedAt desc) pour lire
     // EXACTEMENT la ligne de réglages que le cron utilise, si plusieurs coexistent.
-    const [tripS, activityS, agendaS] = await Promise.all([
+    const [tripS, activityS, agendaS, placeS] = await Promise.all([
       this.prisma.tripAutomationSettings.findFirst({ orderBy: { updatedAt: 'desc' } }).catch(() => null),
       this.prisma.activityReportSchedule.findFirst({ orderBy: { updatedAt: 'desc' } }).catch(() => null),
       this.prisma.agendaAgentSettings.findMany({ where: { enabled: true } }).catch(() => []),
+      this.prisma.placeAutomationSettings.findFirst({ orderBy: { createdAt: 'asc' } }).catch(() => null),
     ]);
 
     const tasks: BackgroundTaskDto[] = CATALOG.map((e) => {
@@ -258,7 +265,7 @@ export class BackgroundTasksService {
 
       if (e.continuous) return base; // flux continu → pas de compte-à-rebours daté
 
-      if (e.ai) return { ...base, ...this.aiTask(e.ai, tripS, activityS, agendaS, nowMs) };
+      if (e.ai) return { ...base, ...this.aiTask(e.ai, tripS, activityS, agendaS, placeS, nowMs) };
 
       // Cron daté (heure fixe ou haute fréquence).
       const next = e.periodic
@@ -279,12 +286,26 @@ export class BackgroundTasksService {
 
   /** Calcule enabled / prochain / dernier / résumé pour une automatisation IA depuis ses réglages. */
   private aiTask(
-    kind: 'trip' | 'activity' | 'agenda',
+    kind: 'trip' | 'activity' | 'agenda' | 'place',
     tripS: { enabled: boolean; frequency: string; hour: number; lastRunAt: Date | null } | null,
     activityS: { enabled: boolean; frequency: string; lastRunAt: Date | null } | null,
     agendaS: Array<{ enabled: boolean; nightlyHour: number; frequency: string; triggerNightly: boolean; lastRunAt: Date | null }>,
+    placeS: { enabled: boolean; hour: number; minIntervalDays: number; maxAnalysesPerRun: number; maxCostEurPerRun: number; lastRunAt: Date | null } | null,
     nowMs: number,
   ): Partial<BackgroundTaskDto> {
+    if (kind === 'place') {
+      if (!placeS?.enabled) {
+        return { enabled: false, settingsSummary: 'En pause', lastRunAt: placeS?.lastRunAt?.toISOString() ?? null };
+      }
+      const lastMs = placeS.lastRunAt?.getTime() ?? 0;
+      const earliest = lastMs ? lastMs + 22 * 3600_000 : nowMs;
+      const next = nextFireInstant((w) => w.getHours() === placeS.hour && w.getMinutes() === 10, earliest, PARIS, nowMs);
+      return {
+        enabled: true, nextRunAt: next?.toISOString() ?? null, lastRunAt: placeS.lastRunAt?.toISOString() ?? null,
+        // Le résumé affiche les PLAFONDS : c'est la question qu'on se pose devant une tâche IA.
+        settingsSummary: `Actif · ${placeS.hour}h · max ${placeS.maxAnalysesPerRun} / ${placeS.maxCostEurPerRun} € par passage · 1 lieu / ${placeS.minIntervalDays} j`,
+      };
+    }
     if (kind === 'trip') {
       if (!tripS?.enabled) return { enabled: false, settingsSummary: 'En pause', lastRunAt: tripS?.lastRunAt?.toISOString() ?? null };
       const lastMs = tripS.lastRunAt?.getTime() ?? 0;

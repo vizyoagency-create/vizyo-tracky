@@ -146,6 +146,66 @@ export class FleetPlacesApiService {
   analyze(id: string): Observable<PlaceAnalysisDto> {
     return this.http.post<PlaceAnalysisDto>(`/api/fleet-places/${id}/analyze`, {});
   }
+
+  // ─── Automatisation (super-admin) ──────────────────────────────────────────
+
+  automationSettings(): Observable<PlaceAutomationSettingsDto> {
+    return this.http.get<PlaceAutomationSettingsDto>('/api/fleet-places/automation');
+  }
+
+  setAutomationSettings(dto: Partial<PlaceAutomationSettingsDto>): Observable<PlaceAutomationSettingsDto> {
+    return this.http.put<PlaceAutomationSettingsDto>('/api/fleet-places/automation', dto);
+  }
+
+  automationRuns(limit = 30): Observable<PlaceAutomationRunDto[]> {
+    return this.http.get<PlaceAutomationRunDto[]>('/api/fleet-places/automation/runs', { params: { limit: String(limit) } });
+  }
+
+  /** SIMULATION : chiffre le passage sans émettre le moindre appel IA (aucune dépense). */
+  simulateAutomation(): Observable<PlaceAutomationStatsDto> {
+    return this.http.post<PlaceAutomationStatsDto>('/api/fleet-places/automation/simulate', {});
+  }
+
+  /** Lancement RÉEL immédiat — dépense réellement. */
+  runAutomationNow(): Observable<PlaceAutomationStatsDto> {
+    return this.http.post<PlaceAutomationStatsDto>('/api/fleet-places/automation/run-now', {});
+  }
+}
+
+/** Réglages de l'automatisation. Les plafonds sont bornés CÔTÉ SERVEUR (la saisie est clampée). */
+export interface PlaceAutomationSettingsDto {
+  id: string;
+  enabled: boolean;
+  hour: number;
+  minIntervalDays: number;
+  skipUnchanged: boolean;
+  maxAnalysesPerRun: number;
+  maxCostEurPerRun: number;
+  lastRunAt: string | null;
+  /** Budget IA mensuel global (0 = non défini). Joint aux réglages : c'est le plafond qui prime. */
+  monthlyBudgetEur?: number;
+}
+
+/** Bilan d'un passage — `dryRun` distingue une simulation (coût estimé) d'un run réel. */
+export interface PlaceAutomationStatsDto {
+  fleets: number;
+  candidates: number;
+  analyzed: number;
+  skippedUnchanged: number;
+  skippedCooldown: number;
+  skippedAiOff: number;
+  failed: number;
+  costEur: number;
+  durationMs: number;
+  stopReason: string;
+  dryRun: boolean;
+}
+
+export interface PlaceAutomationRunDto extends PlaceAutomationStatsDto {
+  id: string;
+  startedAt: string;
+  finishedAt: string | null;
+  origin: string;
 }
 
 /**
