@@ -5,6 +5,7 @@ import { AdminLogsController } from './admin-logs.controller';
 import { AllExceptionsFilter } from './all-exceptions.filter';
 import { CobanWireLogger } from './coban-wire-logger.service';
 import { ErrorLogger } from './error-logger.service';
+import { ErrorRateWatchdogService } from './error-rate-watchdog.service';
 import { LogCleanupService } from './log-cleanup.service';
 
 @Global()
@@ -14,6 +15,8 @@ import { LogCleanupService } from './log-cleanup.service';
   providers: [
     CobanWireLogger,
     ErrorLogger,
+    // Vigie de saturation : EmailService vient d'EmailModule (@Global) → pas d'import croisé.
+    ErrorRateWatchdogService,
     LogCleanupService,
     {
       provide: APP_FILTER,

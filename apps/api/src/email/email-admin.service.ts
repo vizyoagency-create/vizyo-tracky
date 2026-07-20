@@ -19,6 +19,7 @@ export const TEMPLATE_META: {
   /** true = pas de pixel d'ouverture (e-mail de sécurité) → openRate affiché « — ». */
   noOpenTracking?: boolean;
 }[] = [
+  { id: 'error_rate_alert', label: "Saturation du centre d'alerte", category: 'Supervision', subject: '{n} erreurs en 1 h (dont {n} critiques)', trigger: "Plus de 5 erreurs enregistrées sur l'heure glissante (vérifié toutes les 10 min, 1 e-mail/h max)" },
   { id: 'invitation', label: 'Invitation', category: 'Accès', subject: 'Vous êtes invité à rejoindre {flotte}', trigger: 'Un admin invite un membre' },
   { id: 'password_reset', label: 'Réinitialisation MDP', category: 'Sécurité', subject: 'Réinitialisation de votre mot de passe', trigger: 'Demande « mot de passe oublié »', noOpenTracking: true },
   { id: 'device_verification', label: 'Code nouvel appareil', category: 'Sécurité', subject: 'Votre code de connexion : {code}', trigger: 'Connexion depuis un appareil non reconnu (2FA)', noOpenTracking: true },

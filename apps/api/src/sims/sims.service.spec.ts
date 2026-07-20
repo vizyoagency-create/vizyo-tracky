@@ -105,8 +105,10 @@ describe('SimsService', () => {
 
     await service.assign(SIM_ID, TRACKER_ID, fleetAdmin);
 
+    // Le MSISDN normalisé est RÉÉCRIT sur la SIM : le catalogue opérateur les renvoie sans « + »
+    // et on ne veut pas laisser une donnée inutilisable en base (incident 2026-07-19).
     expect(txSim.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { trackerId: TRACKER_ID, fleetId: FLEET_ID } }),
+      expect.objectContaining({ data: { trackerId: TRACKER_ID, fleetId: FLEET_ID, msisdn: '+33611112222' } }),
     );
     expect(txTracker.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { simPhoneNumber: '+33611112222' } }),

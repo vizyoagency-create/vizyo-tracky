@@ -18,6 +18,7 @@ import {
   type SimStatsDto,
 } from '@vizyo/tracky-shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { toE164 } from '../common/utils/phone';
 import { VEHICLE_GROUP_SELECT, vehicleGroupOf } from '../common/vehicle-group';
 import type { CreateSimDto } from './dto/create-sim.dto';
 import type { UpdateSimDto } from './dto/update-sim.dto';
@@ -163,12 +164,16 @@ export class SimsService {
     }
     // SIM en stock posée sur un tracker de flotte => auto-allocation a cette flotte.
     const newFleetId = sim.fleetId ?? trackerFleetId;
-    const simChanged = !!sim.msisdn && tracker.simPhoneNumber !== sim.msisdn;
+    // ⚠️ Incident 2026-07-19 : le catalogue opérateur renvoie les MSISDN SANS `+`. Recopiés bruts,
+    // ils rendaient tout SMS impossible (donc le repli du coupe-circuit inopérant). On normalise
+    // ICI, au point d'entrée, plutôt que de réparer les données après coup.
+    const msisdn = toE164(sim.msisdn);
+    const simChanged = !!msisdn && tracker.simPhoneNumber !== msisdn;
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.sim.update({ where: { id }, data: { trackerId, fleetId: newFleetId } });
+      await tx.sim.update({ where: { id }, data: { trackerId, fleetId: newFleetId, msisdn: msisdn ?? sim.msisdn } });
       if (simChanged) {
-        await tx.tracker.update({ where: { id: trackerId }, data: { simPhoneNumber: sim.msisdn } });
+        await tx.tracker.update({ where: { id: trackerId }, data: { simPhoneNumber: msisdn } });
       }
     });
 

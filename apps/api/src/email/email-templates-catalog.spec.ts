@@ -19,6 +19,7 @@ const EVERY_TEMPLATE: Record<EmailTemplateId, true> = {
   two_factor_disable: true,
   weekly_report: true,
   alert: true,
+  error_rate_alert: true,
   lead: true,
   lead_welcome: true,
   quote_signed: true,

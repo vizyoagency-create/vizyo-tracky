@@ -78,6 +78,13 @@ const CATALOG: CatalogEntry[] = [
     periodic: { everyMs: 60_000, offsetMs: 0 },
   },
 
+  {
+    id: 'error-rate-watchdog', label: "Vigie de saturation du centre d'alerte", category: 'Sécurité & moteur',
+    kind: 'cron', scheduleHuman: 'toutes les 10 min', criticality: 'moyenne', antiOverlap: true,
+    purpose: "Prévient par e-mail quand plus de 5 erreurs sont enregistrées sur l'heure glissante (1 e-mail/h max).",
+    periodic: { everyMs: 600_000, offsetMs: 0 },
+  },
+
   // ───────── IA & rapports ─────────
   {
     id: 'trip-automation', label: 'Automatisation des trajets (analyse + récit IA)', category: 'IA & rapports',

@@ -6,6 +6,7 @@ import type { Twilio } from 'twilio';
 import type { Env } from '../config/env.validation';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { toE164 } from '../common/utils/phone';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 
 /**
@@ -225,8 +226,13 @@ export class SmsGatewayService implements OnModuleInit {
     body: string,
     context?: { imei?: string; provisioningId?: string; [k: string]: unknown },
   ): Promise<SendSmsResult> {
-    const result = await this.performSend(to, body, context);
-    const safeTo = to.trim();
+    // ⚠️ Dernière ligne de défense (incident 2026-07-19) : un numéro international arrivé SANS `+`
+    // (catalogue opérateur) faisait échouer 100 % des envois — donc le repli SMS du coupe-circuit.
+    // On NORMALISE ici plutôt que de rejeter : si un autre chemin écrit un numéro brut un jour, le
+    // SMS partira quand même. `toE164` reste prudent (un numéro national n'est jamais préfixé).
+    const normalized = toE164(to) ?? to;
+    const result = await this.performSend(normalized, body, context);
+    const safeTo = normalized.trim();
     if (safeTo) this.recordSystemActivity(safeTo, body, context, result);
     return result;
   }

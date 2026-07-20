@@ -14,6 +14,7 @@ export type EmailTemplateId =
   | 'two_factor_disable'
   | 'weekly_report'
   | 'alert'
+  | 'error_rate_alert'
   | 'lead'
   | 'lead_welcome'
   | 'quote_signed'
@@ -623,6 +624,54 @@ La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fo
    * Accent conditionnel : escalade OU CRITICAL → rouge, WARNING → ambre, INFO →
    * emerald. Le bouton d'action reste emerald (charte). `plate` déjà résolu par l'appelant.
    */
+  /**
+   * Saturation du centre d'alerte : « ça se remplit vite ». On donne le CHIFFRE, le seuil qui a
+   * été franchi, et surtout les sources responsables — pour savoir où regarder sans ouvrir l'app.
+   */
+  buildErrorRateAlertEmail(data: {
+    total: number;
+    critical: number;
+    threshold: number;
+    top: { source: string; count: number }[];
+    since: Date;
+  }): string {
+    const accent = data.critical > 0 ? '#F2706B' : '#F5B33D';
+    const border = data.critical > 0 ? 'rgba(242,112,107,.28)' : 'rgba(245,179,61,.25)';
+    const appBase = this.config.get('APP_BASE_URL', { infer: true });
+    const depuis = data.since.toLocaleString('fr-FR');
+    const lignes = data.top
+      .map(
+        (t, i) => `
+            ${i > 0 ? '<tr><td colspan="2" style="border-top:1px solid rgba(255,255,255,.06);"></td></tr>' : ''}
+            <tr>
+              <td style="padding:13px 18px;font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:#69736E;">${escapeHtml(t.source)}</td>
+              <td align="right" style="padding:13px 18px;"><span style="font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;font-size:13px;font-weight:600;color:#EAEFED;background:rgba(255,255,255,.05);border-radius:6px;padding:3px 9px;">${t.count}</span></td>
+            </tr>`,
+      )
+      .join('');
+    return this.shell({
+      eyebrow: `● Centre d'alerte · Seuil dépassé`,
+      accent,
+      borderColor: border,
+      footer: "VIZYO TRACKY · VIGIE DU CENTRE D'ALERTE<br>Une seule alerte par heure, même si les erreurs continuent.",
+      body: `
+        <tr><td style="padding:26px 36px 0;">
+          <h1 style="margin:0 0 6px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:24px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;color:#EAEFED;">${data.total} erreurs en une heure</h1>
+          <p style="margin:0 0 20px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:15px;line-height:1.6;color:#9BA5A1;">
+            Le seuil de ${data.threshold} erreurs par heure a été franchi${data.critical > 0 ? `, dont <strong style="color:${accent};">${data.critical} critiques</strong>` : ''}.
+            Relevé depuis le ${escapeHtml(depuis)}.
+          </p>
+        </td></tr>
+        <tr><td style="padding:0 36px;">
+          <table role="presentation" width="100%" style="background:#161D1B;border:1px solid rgba(255,255,255,.07);border-radius:13px;">${lignes}
+          </table>
+        </td></tr>
+        <tr><td style="padding:22px 36px 0;">
+          <a href="${appBase}/admin/observability" style="display:inline-block;background:#10E0A0;color:#04130D;font-family:'Manrope',system-ui,sans-serif;font-size:14px;font-weight:800;text-decoration:none;padding:12px 22px;border-radius:10px;">Ouvrir le centre d'alerte</a>
+        </td></tr>`,
+    });
+  }
+
   buildAlertEmail(
     alert: { title: string; message: string | null; plate: string; severity: string; createdAt: Date },
     opts: { isEscalation?: boolean } = {},
@@ -1164,6 +1213,22 @@ ${this.commercialSignatureText()}`;
             pdfName: 'rapport-semaine.pdf',
           }),
           text: 'Aperçu du rapport hebdomadaire (données d’exemple).',
+        };
+      case 'error_rate_alert':
+        return {
+          subject: '[Tracky] 47 erreurs en 1 h (dont 12 critiques)',
+          html: this.buildErrorRateAlertEmail({
+            total: 47,
+            critical: 12,
+            threshold: 5,
+            top: [
+              { source: 'engine-control', count: 21 },
+              { source: 'sms-gateway', count: 18 },
+              { source: 'gps-integrity', count: 8 },
+            ],
+            since: new Date(Date.now() - 60 * 60 * 1000),
+          }),
+          text: "Aperçu de l'alerte de saturation (données d'exemple).",
         };
       case 'alert':
         return {
