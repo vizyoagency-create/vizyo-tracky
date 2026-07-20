@@ -13,6 +13,7 @@ import { toSignal, toObservable } from '@angular/core/rxjs-interop';
 import { PermissionsService } from '../../core/services/permissions.service';
 import { RealtimeService } from '../../core/services/realtime.service';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
+import { MapBridgeService } from '../../core/services/map-bridge.service';
 import { VehiclesApiService } from '../../core/services/vehicles.service';
 import { AlertsApiService } from '../../core/services/alerts.service';
 import { PreferencesService, type DashboardWidgetKey } from '../../core/services/preferences.service';
@@ -215,7 +216,9 @@ interface WidgetMeta {
       <div class="dash-2col">
       <!-- Mini-map widget -->
       @if (isWidgetEnabled('map')) {
-        <a routerLink="/map" class="widget widget--map dash-2col-main">
+        <!-- Clic sur la vignette → carte CENTRÉE sur le véhicule affiché (celui du cycle cinéma),
+             pas seulement « la carte ». On ouvre là où l'œil était déjà posé. -->
+        <a routerLink="/map" (click)="focusSpotlightOnMap()" class="widget widget--map dash-2col-main">
           <div class="widget-header">
             <h3 class="widget-title">
               <lucide-icon [img]="MapIcon" [size]="16" class="text-tracky-light"></lucide-icon>
@@ -892,6 +895,8 @@ export class DashboardComponent implements OnInit {
   private readonly cinemaTick = signal(0);
 
   private readonly destroyRef = inject(DestroyRef);
+  /** Pont vers la carte : permet d'ouvrir /map déjà centrée sur un véhicule précis. */
+  private readonly mapBridge = inject(MapBridgeService);
 
   /** Véhicules éligibles au cycle : ceux qui roulent. Vide = flotte à l'arrêt. */
   private readonly cinemaCandidates = computed(() =>
@@ -907,6 +912,15 @@ export class DashboardComponent implements OnInit {
 
   /** Le cycle tourne-t-il ? (≥ 2 véhicules en marche) — sert aussi à l'indicateur visuel. */
   protected readonly cinemaActive = computed(() => this.cinemaCandidates().length > 1);
+
+  /**
+   * Demande à la carte de se centrer sur le véhicule actuellement affiché dans la vignette.
+   * Le `routerLink` fait la navigation ; ce signal est consommé par la carte à son initialisation.
+   */
+  protected focusSpotlightOnMap(): void {
+    const v = this.spotlightVehicle();
+    if (v) this.mapBridge.requestFlyToVehicle(v.vehicleId);
+  }
 
   protected readonly firstActivePosition = computed(() => {
     const v = this.spotlightVehicle();

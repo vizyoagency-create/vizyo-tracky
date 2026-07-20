@@ -685,6 +685,14 @@ const RESYNC_RADIUS_M = 150;
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/></svg>
               <span>Vue d'ensemble</span>
             </button>
+            <!-- Parité mobile du bouton « Ma position » : la carte ne recentre plus d'office sur
+                 l'utilisateur au chargement, il faut donc pouvoir le demander ici aussi. -->
+            <button (click)="centerOnUser(); mobileSheetOpen.set(false)"
+                    [class.tracky-sheet-action--active]="!!userPosition()"
+                    class="tracky-sheet-action">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M2 12h4"/><path d="M18 12h4"/></svg>
+              <span>Ma position</span>
+            </button>
             <button (click)="toggleMeasure(); mobileSheetOpen.set(false)"
                     [class.tracky-sheet-action--active]="measureMode()"
                     class="tracky-sheet-action">
@@ -2734,14 +2742,26 @@ export class MapComponent implements AfterViewInit, OnDestroy {
    *  position connue (snapshot realtime). Reset le signal apres consommation
    *  pour permettre un nouveau click sur le meme vehicule. */
   private bridgeFlyToEffect = effect(() => {
+    // ⚠️ On lit les DEUX signaux AVANT tout retour anticipé. Sinon, quand la demande vient d'une
+    // AUTRE page (vignette du tableau de bord), l'effet s'exécute alors que la carte n'existe pas
+    // encore, sort immédiatement, et ne se relancerait jamais : la demande serait perdue.
     const vid = this.mapBridge.flyToVehicleId();
+    const positions = this.realtime.positionsList();
     if (!vid || !this.map) return;
-    const pos = this.realtime.positionsList().find((p) => p.vehicleId === vid);
+    this.consumeFlyTo(vid, positions);
+  });
+
+  /** Centre sur le véhicule demandé et libère la demande. Appelé aussi à la fin du chargement
+   *  de la carte, pour ne pas dépendre du prochain rafraîchissement de positions. */
+  private consumeFlyTo(vehicleId: string, positions = this.realtime.positionsList()): void {
+    if (!this.map) return;
+    const pos = positions.find((p) => p.vehicleId === vehicleId);
     if (pos) {
+      this.followedVehicleId.set(vehicleId);
       this.map.flyTo({ center: [pos.lng, pos.lat], zoom: 16, duration: 800 });
     }
     this.mapBridge.flyToVehicleId.set(null);
-  });
+  }
 
   ngAfterViewInit(): void {
     // Charger prefs map
@@ -2862,6 +2882,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       this.applyPositions(this.applyFilters(this.realtime.positionsList()));
       this.applyClusterVisibility();
       this.restoreFromUrl();
+      // Demande de centrage arrivée d'une AUTRE page (vignette dashboard) avant que la carte
+      // n'existe : on la consomme dès que la carte est prête, sans attendre une nouvelle trame.
+      const pendingVid = this.mapBridge.flyToVehicleId();
+      if (pendingVid) this.consumeFlyTo(pendingVid);
     });
 
     // Sprint G.2 — refresh cluster visibility on zoom change.
@@ -2897,8 +2921,11 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     // Boucle d'animation pour l'interpolation des markers (Sprint C).
     this.startAnimLoop();
 
-    // Géolocalisation utilisateur : centrer sur sa position au chargement.
-    this.requestUserPosition(true);
+    // Géolocalisation utilisateur : on récupère la position (point bleu + bouton « Ma position »
+    // actif) mais on NE DÉPLACE PLUS la caméra. Recentrer d'autorité sur l'utilisateur écrasait
+    // la vue d'ensemble de la flotte à chaque ouverture — il fallait dézoomer systématiquement.
+    // Le recentrage reste disponible à la demande via `centerOnUser()`.
+    this.requestUserPosition(false);
 
     // Fix defensif iOS PWA standalone (icone ecran d'accueil) : Maplibre peut
     // initialiser son canvas a 0px si la chaine flexbox du shell ne s'est pas
