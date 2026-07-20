@@ -2829,6 +2829,9 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
     this.map.on('rotate', () => this.mapBearing.set(this.map!.getBearing()));
     this.map.on('pitch', () => this.mapPitch.set(this.map!.getPitch()));
+    // Mémorisation de la dernière vue : on retrouve SA zone au retour, au lieu de repartir de la
+    // vue par défaut. `moveend` ne se déclenche qu'en fin de geste — pas de flot d'écritures.
+    this.map.on('moveend', () => this.persistLastView());
 
     // Quand l'utilisateur drag manuellement en mode follow, sortir du mode.
     // V1.12 — On en profite pour notifier les overlays (panel Baanool) qu'il
@@ -3101,6 +3104,27 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
   protected centerOnUser(): void {
     this.requestUserPosition(true);
+  }
+
+  /**
+   * Enregistre la vue courante (centre + zoom) pour la restaurer à la prochaine ouverture.
+   *
+   * ⚠️ On ignore les déplacements que l'utilisateur n'a PAS demandés : en mode cinéma ou en
+   * caméra suivie, la carte se déplace toute seule — mémoriser ces positions reviendrait à
+   * enregistrer un véhicule au hasard comme « ma vue » (et à l'écraser toutes les 8 s).
+   */
+  private persistLastView(): void {
+    if (!this.map || this.cinemaMode() || this.cameraMode() !== 'free') return;
+    const c = this.map.getCenter();
+    if (!Number.isFinite(c.lat) || !Number.isFinite(c.lng)) return;
+    this.preferences.update({
+      map: {
+        ...this.preferences.prefs().map,
+        centerLat: Math.round(c.lat * 1e5) / 1e5,
+        centerLng: Math.round(c.lng * 1e5) / 1e5,
+        zoom: Math.round(this.map.getZoom() * 10) / 10,
+      },
+    });
   }
 
   private requestUserPosition(centerMap: boolean): void {
@@ -5216,6 +5240,15 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     const q = this.searchQuery().trim();
     if (!q || !this.map) return;
 
+    // Le champ accepte « plaque OU adresse » : si la saisie correspond à un véhicule, Entrée doit
+    // y aller directement. Avant, Entrée partait TOUJOURS en géocodage — taper une plaque envoyait
+    // donc chercher « GS-138-LT » chez Nominatim, qui ne trouve évidemment rien.
+    const matches = this.vehicleMatches();
+    if (matches.length > 0) {
+      this.jumpToVehicle(matches[0]!.vehicleId);
+      return;
+    }
+
     try {
       const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`;
       const res = await fetch(url, { headers: { 'Accept-Language': 'fr' } });
@@ -5275,6 +5308,19 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       case 'f': ev.preventDefault(); this.toggleFullscreen(); break;
       case 'c': ev.preventDefault(); this.resetNorth(); break;
       case 'o': ev.preventDefault(); this.centerAll(); break;
+      // « P » comme Position — la carte ne recentre plus d'office sur l'utilisateur, un raccourci
+      // évite d'aller chercher le bouton. (`m` est déjà pris par le mode caméra.)
+      case 'p': ev.preventDefault(); this.centerOnUser(); break;
+      // Échap ferme ce qui est ouvert, du plus « au premier plan » au plus discret : on ne ferme
+      // qu'UNE couche par appui, sinon un seul Échap balaierait tout l'écran par surprise.
+      case 'escape': {
+        if (this.contextMenu()) { this.closeContextMenu(); break; }
+        if (this.placeCard()) { this.closePlaceCard(); break; }
+        if (this.baanoolCard()) { this.baanoolCard.set(null); break; }
+        if (this.mobileSheetOpen()) { this.mobileSheetOpen.set(false); break; }
+        if (this.calquesPanelOpen()) { this.calquesPanelOpen.set(false); break; }
+        break;
+      }
       case 'm': {
         ev.preventDefault();
         const idx = this.cameraModes.findIndex((m) => m.id === this.cameraMode());
