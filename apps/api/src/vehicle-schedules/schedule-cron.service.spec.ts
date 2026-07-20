@@ -1,3 +1,4 @@
+import { ServiceUnavailableException } from '@nestjs/common';
 import { ScheduleCronService } from './schedule-cron.service';
 import type { VehicleSchedule } from '@prisma/client';
 
@@ -193,6 +194,153 @@ describe('ScheduleCronService.computeState', () => {
     // if state !== lastEvaluatedState → action. null !== 'IN_WINDOW' → transition.
     const state = service.computeState(schedule);
     expect(state !== schedule.lastEvaluatedState).toBe(true);
+  });
+});
+
+/**
+ * Backoff des coupes en échec (incident 2026-07-19 — 954 commandes en échec en une nuit).
+ *
+ * Le test qui compte le plus est le 3e : une RESTAURATION ne doit JAMAIS être retardée. Rater une
+ * coupe est un désagrément ; rater une restauration immobilise un véhicule.
+ */
+describe('ScheduleCronService — backoff des coupes', () => {
+  const OUT_OF_WINDOW_SCHEDULE = () => ({
+    ...makeSchedule({
+      lastEvaluatedState: 'IN_WINDOW',
+      // Samedi désactivé → toujours hors plage, quel que soit le jour du test.
+      mondayEnabled: false, tuesdayEnabled: false, wednesdayEnabled: false,
+      thursdayEnabled: false, fridayEnabled: false,
+    }),
+    vehicle: { id: 'v-1', fleetId: 'f-1', tracker: { id: 't-1', imei: '123', status: 'OFFLINE' } },
+  } as any);
+
+  function build(failWith?: Error) {
+    const prisma = {
+      vehicleSchedule: { update: jest.fn().mockResolvedValue({}) },
+      scheduleHistory: { create: jest.fn().mockResolvedValue({}) },
+    } as any;
+    const engine = {
+      requestCommand: failWith
+        ? jest.fn().mockRejectedValue(failWith)
+        : jest.fn().mockResolvedValue({}),
+    } as any;
+    const errorLogger = { record: jest.fn().mockResolvedValue('id') } as any;
+    const service = new ScheduleCronService(prisma, engine, errorLogger, { emit: jest.fn() } as any);
+    return { service, engine, prisma, errorLogger };
+  }
+
+  afterEach(() => jest.useRealTimers());
+
+  it('ne retente PAS une coupe au tick suivant (c\'est l\'appel qui inondait le centre d\'alerte)', async () => {
+    const { service, engine } = build(new ServiceUnavailableException('Tracker hors ligne'));
+    const schedule = OUT_OF_WINDOW_SCHEDULE();
+
+    await service.evaluateOne(schedule); // 1re tentative → échec, backoff armé
+    await service.evaluateOne(schedule); // tick suivant (1 min plus tard)
+    await service.evaluateOne(schedule);
+
+    expect(engine.requestCommand).toHaveBeenCalledTimes(1);
+  });
+
+  it('retente une fois le délai écoulé, avec un palier croissant', async () => {
+    jest.useFakeTimers();
+    const { service, engine } = build(new ServiceUnavailableException('Tracker hors ligne'));
+    const schedule = OUT_OF_WINDOW_SCHEDULE();
+
+    await service.evaluateOne(schedule);
+    expect(engine.requestCommand).toHaveBeenCalledTimes(1);
+
+    jest.advanceTimersByTime(2 * 60 * 1000 + 1000); // palier 1 = 2 min
+    await service.evaluateOne(schedule);
+    expect(engine.requestCommand).toHaveBeenCalledTimes(2);
+
+    jest.advanceTimersByTime(2 * 60 * 1000 + 1000); // palier 2 = 5 min → pas encore
+    await service.evaluateOne(schedule);
+    expect(engine.requestCommand).toHaveBeenCalledTimes(2);
+
+    jest.advanceTimersByTime(3 * 60 * 1000 + 1000); // total 5 min → OK
+    await service.evaluateOne(schedule);
+    expect(engine.requestCommand).toHaveBeenCalledTimes(3);
+  });
+
+  it('⚠️ ne retarde JAMAIS une RESTAURATION, même juste après une coupe en échec', async () => {
+    const { service, engine } = build(new ServiceUnavailableException('Tracker hors ligne'));
+    const cut = OUT_OF_WINDOW_SCHEDULE();
+
+    await service.evaluateOne(cut); // coupe en échec → backoff armé pour ce véhicule
+    expect(engine.requestCommand).toHaveBeenCalledTimes(1);
+
+    // Même véhicule, mais on est maintenant DANS la plage → RESTAURATION attendue.
+    const restore = {
+      ...makeSchedule({ lastEvaluatedState: 'OUT_OF_WINDOW' }),
+      mondayEnabled: true, tuesdayEnabled: true, wednesdayEnabled: true,
+      thursdayEnabled: true, fridayEnabled: true, saturdayEnabled: true, sundayEnabled: true,
+      mondayStart: null, mondayEnd: null, tuesdayStart: null, tuesdayEnd: null,
+      wednesdayStart: null, wednesdayEnd: null, thursdayStart: null, thursdayEnd: null,
+      fridayStart: null, fridayEnd: null, saturdayStart: null, saturdayEnd: null,
+      sundayStart: null, sundayEnd: null,
+      vehicle: { id: 'v-1', fleetId: 'f-1', tracker: { id: 't-1', imei: '123', status: 'OFFLINE' } },
+    } as any;
+
+    await service.evaluateOne(restore);
+
+    // 2e appel = la restauration est bien partie SANS attendre le backoff de la coupe.
+    expect(engine.requestCommand).toHaveBeenCalledTimes(2);
+    expect(engine.requestCommand).toHaveBeenLastCalledWith(
+      't-1', 'RESTORE', expect.any(String), expect.anything(), 'SCHEDULER',
+    );
+  });
+
+  it('remet le compteur à zéro quand la coupe finit par passer', async () => {
+    const engineMock = jest.fn()
+      .mockRejectedValueOnce(new ServiceUnavailableException('hors ligne'))
+      .mockResolvedValue({});
+    const prisma = {
+      vehicleSchedule: { update: jest.fn().mockResolvedValue({}) },
+      scheduleHistory: { create: jest.fn().mockResolvedValue({}) },
+    } as any;
+    const service = new ScheduleCronService(
+      prisma, { requestCommand: engineMock } as any,
+      { record: jest.fn().mockResolvedValue('id') } as any, { emit: jest.fn() } as any,
+    );
+    jest.useFakeTimers();
+    const schedule = OUT_OF_WINDOW_SCHEDULE();
+
+    await service.evaluateOne(schedule);            // échec → backoff
+    jest.advanceTimersByTime(2 * 60 * 1000 + 1000);
+    await service.evaluateOne(schedule);            // succès → backoff effacé
+
+    // Un nouvel échec doit repartir du PREMIER palier (2 min), pas du dernier atteint.
+    engineMock.mockRejectedValue(new ServiceUnavailableException('hors ligne'));
+    await service.evaluateOne({ ...schedule, lastEvaluatedState: 'IN_WINDOW' });
+    expect(engineMock).toHaveBeenCalledTimes(3);
+    jest.advanceTimersByTime(2 * 60 * 1000 + 1000);
+    await service.evaluateOne({ ...schedule, lastEvaluatedState: 'IN_WINDOW' });
+    expect(engineMock).toHaveBeenCalledTimes(4);
+  });
+
+  it('sur une nuit entière : quelques tentatives au lieu d\'une par minute, et le blocage reste visible', async () => {
+    jest.useFakeTimers();
+    const { service, engine, errorLogger } = build(new ServiceUnavailableException('Tracker hors ligne'));
+    const schedule = OUT_OF_WINDOW_SCHEDULE();
+
+    // 12 h de ticks minute par minute — exactement le scénario de l'incident.
+    for (let minute = 0; minute < 720; minute++) {
+      await service.evaluateOne(schedule);
+      jest.advanceTimersByTime(60 * 1000);
+    }
+
+    // Avant : 720 commandes (chacune tentant TCP puis SMS, chacune journalisée).
+    // Après : paliers 2/5/15 puis 30 min → une trentaine.
+    expect(engine.requestCommand.mock.calls.length).toBeLessThan(30);
+    expect(engine.requestCommand.mock.calls.length).toBeGreaterThan(5); // on n'abandonne jamais
+
+    // Et le blocage reste REMONTÉ au centre d'alerte (sinon on l'aurait juste rendu silencieux).
+    expect(errorLogger.record).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining('coupe/reprise impossible') }),
+      'schedule-cron',
+      expect.objectContaining({ phase: 'stuck-schedule-action' }),
+    );
   });
 });
 

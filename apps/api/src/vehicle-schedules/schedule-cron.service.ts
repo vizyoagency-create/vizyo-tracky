@@ -43,6 +43,23 @@ const SCHEDULER_USER_ID = '00000000-0000-0000-0000-000000000000';
 const STUCK_ALERT_MS = Math.max(1, Number(process.env.SCHEDULE_STUCK_ALERT_MIN) || 30) * 60 * 1000;
 const STUCK_REALERT_MS = 3 * 60 * 60 * 1000;
 
+/**
+ * Backoff des COUPES en échec (incident 2026-07-19).
+ *
+ * Une coupe qui échoue était retentée à CHAQUE tick, donc toutes les minutes, sans fin : 84
+ * tentatives par véhicule en une nuit. Chaque tentative crée une commande, tente le TCP, tente le
+ * SMS et journalise — 12 véhicules injoignables ont ainsi produit 954 commandes en échec et ~1000
+ * lignes au centre d'alerte. Le diagnostic réel (un « + » manquant) était noyé dedans.
+ *
+ * ⚠️ ASYMÉTRIE VOLONTAIRE : ce backoff ne s'applique QU'À LA COUPE. Une RESTAURATION est retentée
+ * à chaque tick, sans délai — rater une coupe est un désagrément, rater une restauration immobilise
+ * un véhicule. Ne jamais « harmoniser » les deux.
+ *
+ * Palier par nombre d'échecs consécutifs (2 min, 5, 15, puis 30 max) : sur une nuit de 12 h on
+ * passe de ~720 tentatives à ~25, sans jamais renoncer à couper.
+ */
+const CUT_BACKOFF_MS = [2, 5, 15, 30].map((m) => m * 60 * 1000);
+
 @Injectable()
 export class ScheduleCronService {
   private readonly logger = new Logger(ScheduleCronService.name);
@@ -59,6 +76,9 @@ export class ScheduleCronService {
   /** Suivi in-memory des reports (surtout coupes) par véhicule → détection des coupes « bloquées ». */
   private readonly deferredSince = new Map<string, number>();
   private readonly lastStuckAlertAt = new Map<string, number>();
+  /** Backoff des COUPES : instant avant lequel on ne retente pas, et compteur d'échecs consécutifs. */
+  private readonly cutRetryAfter = new Map<string, number>();
+  private readonly cutFailures = new Map<string, number>();
 
   /** Runs every minute. */
   @Cron('0 * * * * *')
@@ -156,6 +176,19 @@ export class ScheduleCronService {
     const action =
       state === 'IN_WINDOW' ? EngineAction.RESTORE : EngineAction.CUT;
 
+    // Backoff des coupes en échec : on n'appelle même pas le moteur de commande tant que le délai
+    // n'est pas écoulé (c'est l'appel lui-même qui crée une commande, tente TCP puis SMS, et
+    // journalise). La RESTAURATION n'est jamais retardée — cf. CUT_BACKOFF_MS.
+    if (action === EngineAction.CUT) {
+      const retryAfter = this.cutRetryAfter.get(schedule.vehicleId);
+      if (retryAfter && Date.now() < retryAfter) {
+        // On continue de suivre le blocage : l'alerte « coupe impossible depuis X min » doit
+        // toujours partir, même pendant qu'on espace les tentatives.
+        this.trackDeferral(schedule, 'coupe en attente de nouvelle tentative (backoff)');
+        return;
+      }
+    }
+
     this.logger.log(
       {
         vehicleId: schedule.vehicleId,
@@ -198,9 +231,13 @@ export class ScheduleCronService {
       if (isDeferrable) {
         // Suivi : si la coupe reste bloquée trop longtemps, on la remonte au centre d'alertes.
         this.trackDeferral(schedule, msg);
+        // Une COUPE en échec est espacée ; une RESTAURATION est retentée au tick suivant.
+        const nextIn = action === EngineAction.CUT ? this.scheduleCutRetry(schedule.vehicleId) : 0;
         this.logger.warn(
-          { vehicleId: schedule.vehicleId, error: msg },
-          'Schedule action deferred (retry next tick)',
+          { vehicleId: schedule.vehicleId, error: msg, action, retryInMin: nextIn / 60000 },
+          nextIn > 0
+            ? `Coupe reportée — nouvelle tentative dans ${Math.round(nextIn / 60000)} min`
+            : 'Schedule action deferred (retry next tick)',
         );
         return;
       }
@@ -280,10 +317,24 @@ export class ScheduleCronService {
       .catch(() => { /* best-effort */ });
   }
 
-  /** La coupe/reprise a abouti (ou n'est plus attendue) → on oublie le report en cours. */
+  /**
+   * Arme le prochain essai de coupe et renvoie le délai appliqué (ms). Palier croissant borné :
+   * on n'abandonne JAMAIS de couper, on arrête juste de marteler.
+   */
+  private scheduleCutRetry(vehicleId: string): number {
+    const failures = (this.cutFailures.get(vehicleId) ?? 0) + 1;
+    this.cutFailures.set(vehicleId, failures);
+    const delay = CUT_BACKOFF_MS[Math.min(failures, CUT_BACKOFF_MS.length) - 1];
+    this.cutRetryAfter.set(vehicleId, Date.now() + delay);
+    return delay;
+  }
+
+  /** La coupe/reprise a abouti (ou n'est plus attendue) → on oublie le report ET le backoff. */
   private clearDeferral(vehicleId: string): void {
     this.deferredSince.delete(vehicleId);
     this.lastStuckAlertAt.delete(vehicleId);
+    this.cutRetryAfter.delete(vehicleId);
+    this.cutFailures.delete(vehicleId);
   }
 
   /** Compute whether the current time is inside the allowed window. */
