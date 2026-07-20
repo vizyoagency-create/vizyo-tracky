@@ -8,14 +8,15 @@ import {
   output,
   signal,
 } from '@angular/core';
-import { DecimalPipe } from '@angular/common';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import { apiErrorMessage } from '../../../core/error/api-error';
 import { RouterLink } from '@angular/router';
-import { LucideAngularModule, Settings, X, Loader, Zap, ExternalLink, Link2, Copy, Plus, Power } from 'lucide-angular';
+import { LucideAngularModule, Settings, X, Loader, Zap, ExternalLink, Link2, Copy, Plus, Power, History } from 'lucide-angular';
 import {
   FLEET_METIER_LABELS,
   type AgendaAgentAutonomy,
   type AgendaAgentFrequency,
+  type AgendaAgentRunDto,
   type FleetMetier,
   type ReservationBookingLinkDto,
 } from '@vizyo/tracky-shared';
@@ -42,7 +43,7 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
   selector: 'app-agenda-agent-settings-sheet',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DecimalPipe, RouterLink, LucideAngularModule, BottomSheetComponent],
+  imports: [DecimalPipe, DatePipe, RouterLink, LucideAngularModule, BottomSheetComponent],
   template: `
     <app-bottom-sheet [open]="open()" ariaLabel="Paramètres de l'agenda" (closed)="closed.emit()">
       <div class="aas">
@@ -170,6 +171,53 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
             </div>
           </div>
 
+          <!--
+            Derniers passages de l'agent. C'est ici qu'on règle l'agent, c'est donc ici qu'on doit
+            voir ce qu'il a RÉELLEMENT fait — sinon « rien ne se passe » reste sans explication.
+          -->
+          <div class="aas-runs">
+            <div class="aas-links-head">
+              <span class="aas-lbl"><lucide-icon [img]="HistoryIcon" [size]="13"></lucide-icon> Derniers passages</span>
+              @if (runs().length > 0) {
+                <button type="button" class="aas-mini" (click)="loadRuns()" [disabled]="runsLoading()" title="Rafraîchir">
+                  <lucide-icon [img]="LoaderIcon" [size]="12" [class.aas-spin]="runsLoading()"></lucide-icon>
+                </button>
+              }
+            </div>
+
+            @if (runsLoading() && runs().length === 0) {
+              <div class="aas-skel"></div>
+            } @else if (runs().length === 0) {
+              <span class="aas-sub">Aucun passage enregistré pour l'instant. L'agent archive chaque analyse dès qu'il tourne.</span>
+            } @else {
+              @for (r of runs(); track r.id) {
+                <div class="aas-run" [class.aas-run--err]="r.status === 'error'">
+                  <div class="aas-run-main">
+                    <span class="aas-run-when">
+                      {{ r.startedAt | date: 'dd/MM HH:mm' }}
+                      <span class="aas-run-origin">{{ r.origin === 'manual' ? 'manuel' : 'auto' }}</span>
+                      @if (r.aiUsed) { <span class="aas-run-ai">IA</span> }
+                    </span>
+                    @if (r.status === 'error') {
+                      <span class="aas-run-detail aas-run-detail--err">Échec : {{ r.error }}</span>
+                    } @else if (r.patterns === 0) {
+                      <!-- Le cas le plus fréquent d'un « il n'a rien fait » : aucune habitude détectée. -->
+                      <span class="aas-run-detail">Aucune habitude récurrente détectée — rien à proposer.</span>
+                    } @else {
+                      <span class="aas-run-detail">
+                        {{ r.patterns }} habitude{{ r.patterns > 1 ? 's' : '' }} ·
+                        {{ r.created }} réservée{{ r.created > 1 ? 's' : '' }} ·
+                        {{ r.proposed }} proposée{{ r.proposed > 1 ? 's' : '' }} ·
+                        {{ r.skipped }} ignorée{{ r.skipped > 1 ? 's' : '' }}
+                      </span>
+                    }
+                  </div>
+                  <span class="aas-run-dur">{{ runDuration(r.durationMs) }}</span>
+                </div>
+              }
+            }
+          </div>
+
           <div class="aas-foot">
             <button type="button" class="aas-btn aas-btn--ghost" [disabled]="running() || saving()" (click)="runNow()" title="Analyser maintenant (sans attendre la nuit)">
               @if (running()) { <lucide-icon [img]="LoaderIcon" [size]="15" class="aas-spin"></lucide-icon> } @else { <lucide-icon [img]="ZapIcon" [size]="15"></lucide-icon> }
@@ -230,6 +278,17 @@ import { BottomSheetComponent } from '../../../shared/ui/bottom-sheet/bottom-she
     .aas-link-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
     .aas-link-url { font-size: 11.5px; color: var(--fg-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .aas-link-meta { font-size: 10.5px; color: var(--fg-tertiary); }
+    /* Derniers passages de l'agent */
+    .aas-runs { display: flex; flex-direction: column; gap: 7px; border-top: 1px solid var(--border-subtle); padding-top: 12px; margin-top: 12px; }
+    .aas-run { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border-radius: 10px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); }
+    .aas-run--err { border-color: color-mix(in srgb, var(--danger) 35%, var(--border-subtle)); }
+    .aas-run-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+    .aas-run-when { display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700; color: var(--fg-primary); font-family: var(--font-mono, monospace); }
+    .aas-run-origin { padding: 1px 6px; border-radius: 999px; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; background: color-mix(in srgb, var(--fg-tertiary) 16%, transparent); color: var(--fg-tertiary); font-family: var(--font-sans, sans-serif); }
+    .aas-run-ai { padding: 1px 6px; border-radius: 999px; font-size: 9.5px; font-weight: 800; background: rgba(167,139,250,.16); color: #A78BFA; font-family: var(--font-sans, sans-serif); }
+    .aas-run-detail { font-size: 11px; color: var(--fg-tertiary); line-height: 1.4; }
+    .aas-run-detail--err { color: var(--danger); }
+    .aas-run-dur { flex: 0 0 auto; font-size: 10.5px; color: var(--fg-tertiary); font-family: var(--font-mono, monospace); }
     .aas-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 0 max(6px, env(safe-area-inset-bottom)); margin-top: 2px; border-top: 1px solid var(--border-subtle); }
     .aas-btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; border-radius: 10px; font-size: 13px; font-weight: 700; background: var(--tracky, #10B981); color: #fff; }
     .aas-btn--ghost { background: var(--bg-tertiary); color: var(--fg-secondary); border: 1px solid var(--border-subtle); }
@@ -264,6 +323,7 @@ export class AgendaAgentSettingsSheetComponent {
   protected readonly CopyIcon = Copy;
   protected readonly PlusIcon = Plus;
   protected readonly PowerIcon = Power;
+  protected readonly HistoryIcon = History;
   protected readonly metiers = Object.keys(FLEET_METIER_LABELS) as FleetMetier[];
 
   protected readonly loading = signal(false);
@@ -297,6 +357,14 @@ export class AgendaAgentSettingsSheetComponent {
   protected readonly links = signal<ReservationBookingLinkDto[]>([]);
   protected readonly creatingLink = signal(false);
 
+  /**
+   * Historique des passages de l'agent. Répond à la question qu'on se pose devant un agenda qui
+   * n'a pas bougé : « a-t-il seulement tourné, et qu'a-t-il vu ? ». Chargé en best-effort — son
+   * indisponibilité ne doit pas empêcher de régler l'agent.
+   */
+  protected readonly runs = signal<AgendaAgentRunDto[]>([]);
+  protected readonly runsLoading = signal(false);
+
   protected readonly isSuperAdmin = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
   protected readonly needsFleet = computed(() => this.isSuperAdmin() && !this.fleetFilter.selectedFleetId());
 
@@ -305,6 +373,26 @@ export class AgendaAgentSettingsSheetComponent {
       if (!this.open() || this.needsFleet()) return;
       void this.load();
     });
+  }
+
+  /** Charge l'historique. Best-effort : jamais bloquant pour le reste de la feuille. */
+  protected async loadRuns(): Promise<void> {
+    if (this.needsFleet()) return;
+    this.runsLoading.set(true);
+    try {
+      this.runs.set(await firstValueFrom(this.agentApi.listRuns(this.currentFleetId(), 10)));
+    } catch {
+      /* l'historique est un confort : son échec ne doit pas masquer les réglages */
+    } finally {
+      this.runsLoading.set(false);
+    }
+  }
+
+  /** Durée lisible d'un passage (les passages sont courts : secondes, sinon minutes). */
+  protected runDuration(ms: number): string {
+    if (ms < 1000) return '<1s';
+    const s = Math.round(ms / 1000);
+    return s < 60 ? `${s}s` : `${Math.floor(s / 60)}min`;
   }
 
   protected metierLabel(m: FleetMetier): string { return FLEET_METIER_LABELS[m]; }
@@ -341,6 +429,7 @@ export class AgendaAgentSettingsSheetComponent {
     } finally {
       this.loading.set(false);
     }
+    void this.loadRuns();
     // Interrupteur maître IA de la flotte (best-effort : ne bloque pas les autres réglages).
     try {
       const ai = await firstValueFrom(this.aiStatus.getFleetEnabled(fleetId));

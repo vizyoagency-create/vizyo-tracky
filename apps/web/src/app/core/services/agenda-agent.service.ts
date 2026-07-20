@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import type {
   AgendaAgentProposalDto,
+  AgendaAgentRunDto,
   AgendaAgentRunResultDto,
   AgendaAgentSettingsDto,
   SetAgendaAgentSettingsDto,
@@ -31,6 +32,13 @@ export class AgendaAgentApiService {
   /** POST /api/agenda/agent/run — lance l'analyse maintenant (super/fleet admin). */
   run(fleetId?: string): Observable<AgendaAgentRunResultDto> {
     return this.http.post<AgendaAgentRunResultDto>('/api/agenda/agent/run', fleetId ? { fleetId } : {});
+  }
+
+  /** GET /api/agenda/agent/runs — historique des passages (ce que l'agent a fait, et pourquoi si peu). */
+  listRuns(fleetId?: string, limit = 10): Observable<AgendaAgentRunDto[]> {
+    const params: Record<string, string> = { limit: String(limit) };
+    if (fleetId) params['fleetId'] = fleetId;
+    return this.http.get<AgendaAgentRunDto[]>('/api/agenda/agent/runs', { params });
   }
 
   /** GET /api/agenda/agent/proposals — propositions de l'agent (défaut : en attente). */
