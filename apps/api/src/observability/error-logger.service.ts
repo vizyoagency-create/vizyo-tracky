@@ -1,6 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
+/**
+ * Une erreur qui se DÉCLARE passagère (`transient: true`) est journalisée mais pas archivée au
+ * centre d'alerte. Contrat volontairement structurel plutôt que textuel : reconnaître « 529 » ou
+ * « overloaded » dans un message serait fragile et attraperait des erreurs légitimes au passage.
+ * Aujourd'hui posé par `AiServiceError` (fournisseur IA saturé/quota/réseau) ; ouvert à tout
+ * service qui aurait la même situation.
+ */
+export function isTransient(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { transient?: unknown }).transient === true;
+}
+
 export interface ErrorLogContext {
   imei?: string;
   commandId?: string;
@@ -45,6 +56,17 @@ export class ErrorLogger {
   ): Promise<string> {
     const message = typeof error === 'string' ? error : error.message;
     const stack = typeof error === 'string' ? undefined : error.stack;
+
+    // Échec PASSAGER d'un service tiers (fournisseur IA saturé, quota, réseau) : ni un bug de
+    // l'app, ni une action à mener. On le trace dans les logs du conteneur mais on ne l'archive
+    // PAS — sinon il gonfle le centre d'alerte et déclenche la vigie de saturation pour du bruit
+    // fournisseur. Même traitement que les 429 de Vizyo Auth (cf. `all-exceptions.filter`).
+    // Canard-typage volontaire : aucun import du module IA ici (l'observabilité ne doit rien
+    // savoir de l'IA), n'importe quel service peut marquer ses erreurs `transient`.
+    if (isTransient(error)) {
+      this.logger.warn(`[${source}] ${message} (passager — non archivé)`);
+      return 'transient';
+    }
 
     // Dédup : même source + niveau + début de message dans la fenêtre → on incrémente le
     // compteur et on n'écrit PAS de nouvelle ligne (le centre d'alerte reste lisible).

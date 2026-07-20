@@ -76,6 +76,10 @@ export class OpenAiClient implements AiClient {
       if (res.status === 429) {
         throw new AiServiceError('quota', 'Quota IA (GPT) atteint, réessayez plus tard.');
       }
+      // Saturation côté fournisseur : passager, réessayable — pas une panne de l'app.
+      if (res.status === 529 || res.status === 503) {
+        throw new AiServiceError('overloaded', 'Service IA (GPT) momentanément saturé, réessayez dans un instant.');
+      }
       throw new AiServiceError('http', `Erreur du service IA (GPT) (${res.status}).`);
     }
 

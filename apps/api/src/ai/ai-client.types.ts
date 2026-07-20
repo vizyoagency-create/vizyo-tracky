@@ -20,6 +20,8 @@ export type AiErrorKind =
   | 'no_key'
   | 'invalid_key'
   | 'quota'
+  /** Fournisseur saturé (HTTP 529 Anthropic / 503) — passager, réessayable. */
+  | 'overloaded'
   | 'timeout'
   | 'network'
   | 'refusal'
@@ -28,13 +30,29 @@ export type AiErrorKind =
   | 'truncated'
   | 'http';
 
+/**
+ * Échecs PASSAGERS côté fournisseur : ni un bug de l'app, ni une action à mener. Ils ne doivent
+ * donc pas remplir le centre d'alerte ni déclencher la vigie de saturation — au même titre que les
+ * 429 de Vizyo Auth, déjà filtrés dans `all-exceptions.filter`.
+ * (2026-07-20 : des 529 « Overloaded » d'Anthropic remontaient en ERROR pendant les récits de trajet.)
+ */
+const TRANSIENT_KINDS: ReadonlySet<AiErrorKind> = new Set<AiErrorKind>(['quota', 'overloaded', 'timeout', 'network']);
+
 /** Échec IA typé (toujours un 503 pour l'appelant) portant son `kind` pour la journalisation. */
 export class AiServiceError extends ServiceUnavailableException {
+  /**
+   * Marqueur lu par `ErrorLogger` **en canard-typage** (aucun import du module IA côté
+   * observabilité, donc aucun cycle) : tout échec qui se déclare transitoire est journalisé
+   * localement mais PAS persisté au centre d'alerte.
+   */
+  public readonly transient: boolean;
+
   constructor(
     public readonly kind: AiErrorKind,
     message: string,
   ) {
     super(message);
+    this.transient = TRANSIENT_KINDS.has(kind);
   }
 }
 

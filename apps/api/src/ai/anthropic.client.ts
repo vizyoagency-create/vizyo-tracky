@@ -85,6 +85,11 @@ export class AnthropicClient implements AiClient {
       if (res.status === 429) {
         throw new AiServiceError('quota', 'Quota IA atteint, réessayez plus tard.');
       }
+      // 529 « Overloaded » (spécifique Anthropic) et 503 : le fournisseur sature. Passager et
+      // réessayable — à distinguer d'une vraie erreur serveur, sinon ça alarme pour rien.
+      if (res.status === 529 || res.status === 503) {
+        throw new AiServiceError('overloaded', 'Service IA momentanément saturé, réessayez dans un instant.');
+      }
       throw new AiServiceError('http', `Erreur du service IA (${res.status}).`);
     }
 
