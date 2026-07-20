@@ -56,6 +56,9 @@ export class MetricsCollectorService {
       if (count > 0) this.logger.log(`Purged ${count} system_metrics > ${RETENTION_DAYS}j`);
     } catch (e) {
       this.logger.error('system metric purge failed', e as Error);
+      await this.errorLogger
+        .record(e instanceof Error ? e : new Error(String(e)), 'system-metrics')
+        .catch(() => undefined);
     }
   }
 }

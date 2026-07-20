@@ -18,6 +18,7 @@ import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { AiRouter } from '../ai/ai-router.service';
 import { AiFeatureFlagsService } from '../ai/ai-feature-flags.service';
 import { OwnerVisibilityService } from '../common/owner-visibility.service';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 import { ACTIVITY_REPORT_SCHEMA, ACTIVITY_REPORT_SYSTEM } from './activity-report.prompt';
@@ -67,6 +68,7 @@ export class ActivityReportService {
     private readonly systemActivity: SystemActivityService,
     private readonly ownerVis: OwnerVisibilityService,
     private readonly featureFlags: AiFeatureFlagsService,
+    private readonly errorLogger: ErrorLogger,
   ) {}
 
   /** Filtre Prisma masquant les rapports liés à un owner (créés-par OU ciblant) pour
@@ -260,6 +262,7 @@ export class ActivityReportService {
       await this.prisma.activityReportSchedule.update({ where: { id: row.id }, data: { lastRunAt: to } });
     } catch (e) {
       this.logger.error('runScheduled failed', e as Error);
+      this.errorLogger.recordBackground(e instanceof Error ? e : new Error(String(e)), 'cron:activity-report');
     }
   }
 

@@ -62,14 +62,17 @@ export class SystemActivityService {
             meta: (entry.meta ?? undefined) as Prisma.InputJsonValue | undefined,
           },
         })
-        .catch((e) =>
+        .catch((e) => {
+          // Log local : visible immédiatement dans `docker logs` pendant un incident.
+          this.logger.warn(`record failed: ${e instanceof Error ? e.message : String(e)}`);
           // Le journal Système (e-mails, SMS, moteur, déverrouillages…) qui ne s'écrit
           // plus = audit troué en silence → centre d'alerte (dédup ErrorLogger).
           this.errorLogger.recordBackground(e instanceof Error ? e : new Error(String(e)), 'system-activity', {
             note: 'échec écriture journal système (async)', action: entry.action,
-          }),
-        );
+          });
+        });
     } catch (e) {
+      this.logger.warn(`record threw synchronously: ${e instanceof Error ? e.message : String(e)}`);
       this.errorLogger.recordBackground(e instanceof Error ? e : new Error(String(e)), 'system-activity', {
         note: 'échec écriture journal système (sync)', action: entry.action,
       });

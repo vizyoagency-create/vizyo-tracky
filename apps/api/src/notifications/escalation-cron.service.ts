@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { AlertSeverity, type AlertRule } from '@prisma/client';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationDispatchService } from './notification-dispatch.service';
 
@@ -26,6 +27,7 @@ export class EscalationCronService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly dispatch: NotificationDispatchService,
+    private readonly errorLogger: ErrorLogger,
   ) {}
 
   @Cron(CronExpression.EVERY_MINUTE)
@@ -90,6 +92,11 @@ export class EscalationCronService {
       } catch (err) {
         this.logger.warn(
           `Escalation dispatch failed for alert ${alert.id}: ${err instanceof Error ? err.message : err}`,
+        );
+        this.errorLogger.recordBackground(
+          err instanceof Error ? err : new Error(String(err)),
+          'cron:escalation',
+          { alertId: alert.id, fleetId: alert.fleetId },
         );
         // Le claim est conserve : ne pas retenter (les destinataires habituels
         // sont deja notifies via le dispatch initial — l'escalade est un bonus,

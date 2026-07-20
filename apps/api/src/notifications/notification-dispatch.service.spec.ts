@@ -1,5 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { EmailService } from '../email/email.service';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SmsGatewayService } from '../sms/sms-gateway.service';
 import { NotificationDispatchService } from './notification-dispatch.service';
@@ -62,6 +63,9 @@ describe('NotificationDispatchService — canal SMS (V1.15)', () => {
         { provide: WebPushService, useValue: { sendToUser: jest.fn() } },
         { provide: EmailService, useValue: { send: jest.fn() } },
         { provide: SmsGatewayService, useValue: { send } },
+        // Remontée des échecs de notification au centre d'alerte : non exercée ici, mais le
+        // service l'exige à la construction.
+        { provide: ErrorLogger, useValue: { recordBackground: jest.fn(), record: jest.fn() } },
       ],
     }).compile();
     dispatch = moduleRef.get(NotificationDispatchService);

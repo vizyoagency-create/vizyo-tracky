@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import type { Env } from '../config/env.validation';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 
@@ -72,6 +73,7 @@ export class DataRetentionService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService<Env, true>,
     private readonly systemActivity: SystemActivityService,
+    @Optional() private readonly errorLogger?: ErrorLogger,
   ) {}
 
   @Cron('0 30 3 * * *')
@@ -107,6 +109,7 @@ export class DataRetentionService {
       return await this.runPositionsRetentionOnce();
     } catch (err) {
       this.logger.error(`[retention] run a echoue: ${err instanceof Error ? err.message : err}`);
+      this.errorLogger?.recordBackground(err instanceof Error ? err : new Error(String(err)), 'cron:data-retention');
       return this.disabledResult();
     } finally {
       this.positionsRunning = false;

@@ -40,7 +40,9 @@ describe('Catalogue e-mails — couverture exhaustive des modèles', () => {
   const config = {
     get: (k: string) => (k === 'APP_BASE_URL' ? 'https://app.test' : ''),
   } as never;
-  const email = new EmailService(config, {} as never, {} as never);
+  // 4e argument = ErrorLogger (remontée des échecs d'envoi au centre d'alerte) : inutilisé par
+  // previewTemplate(), mais requis par le constructeur.
+  const email = new EmailService(config, {} as never, {} as never, {} as never);
 
   it('chaque EmailTemplateId figure au catalogue TEMPLATE_META (centre e-mails)', () => {
     const cataloged = new Set(TEMPLATE_META.map((t) => t.id));
