@@ -22,6 +22,33 @@ export const GPS_LOST_MARKER_COLOR = '#ef4444';
  * Le parking souterrain confirmé PRIME sur le rouge : c'est une perte GPS NORMALE (véhicule garé sous terre),
  * on ne l'affiche donc PAS en rouge alarmant mais en gris « éteint », comme demandé.
  */
+/**
+ * La télémétrie de ce véhicule est-elle PÉRIMÉE ? (hors-ligne, GPS perdu, garé sous terre)
+ *
+ * Dans ces trois cas la dernière trame peut dater de plusieurs jours : sa vitesse ET son état de
+ * contact sont des souvenirs, pas un état courant. On ne doit donc RIEN en affirmer — cf.
+ * `accState()`.
+ */
+function isStale(data: VehicleMarkerData): boolean {
+  return !!(data.offline || data.gpsLost || data.parkedDeadZone);
+}
+
+/**
+ * État affiché du contact (ACC).
+ *
+ * ⚠️ Incident FS-253 (2026-07-20) : un véhicule garé dans un parking souterrain depuis 5 jours
+ * affichait une pastille VERTE « contact mis » — parce que sa dernière trame, vieille de 5 jours,
+ * disait `ignition: true`. Le cœur du marqueur passait bien en gris, mais la pastille continuait
+ * d'affirmer que le véhicule tournait.
+ *
+ * Règle : quand la télémétrie est périmée, l'état du contact est **INCONNU**. On ne dit ni
+ * « allumé » (mensonge) ni « éteint » (affirmation tout aussi infondée) — on l'affiche en neutre.
+ */
+function accState(data: VehicleMarkerData): 'on' | 'off' | 'unknown' {
+  if (isStale(data)) return 'unknown';
+  return data.ignition ? 'on' : 'off';
+}
+
 function markerColor(data: VehicleMarkerData): string {
   if (data.parkedDeadZone) return OFFLINE_MARKER_COLOR;
   if (data.gpsLost) return GPS_LOST_MARKER_COLOR;
@@ -81,7 +108,7 @@ export interface VehicleMarkerData {
  */
 export function buildVehicleMarkerEl(data: VehicleMarkerData): HTMLElement {
   const color = markerColor(data);
-  const ignClass = data.ignition ? 'tracky-acc--on' : 'tracky-acc--off';
+  const ignClass = `tracky-acc--${accState(data)}`;
   const activeClass = data.active ? 'tracky-marker--active' : '';
   const hydClass = data.hydrated ? 'tracky-marker--hydrated' : '';
   const offlineClass = data.offline || data.gpsLost || data.parkedDeadZone ? 'tracky-marker--offline' : '';
@@ -188,8 +215,10 @@ export function updateVehicleMarkerEl(el: HTMLElement, data: VehicleMarkerData):
 
   const acc = el.querySelector('.tracky-marker__acc');
   if (acc) {
-    acc.classList.toggle('tracky-acc--on', data.ignition);
-    acc.classList.toggle('tracky-acc--off', !data.ignition);
+    const state = accState(data);
+    acc.classList.toggle('tracky-acc--on', state === 'on');
+    acc.classList.toggle('tracky-acc--off', state === 'off');
+    acc.classList.toggle('tracky-acc--unknown', state === 'unknown');
   }
 
   el.classList.toggle('tracky-marker--active', !!data.active);

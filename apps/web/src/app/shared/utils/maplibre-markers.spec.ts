@@ -79,6 +79,47 @@ describe('updateVehicleMarkerEl — icône du véhicule', () => {
     expect(el.getAttribute('aria-label')).toBe('Vehicule GS-138-LT');
   });
 
+  /**
+   * Incident FS-253 : garé 5 jours dans un parking souterrain, la pastille de contact restait
+   * VERTE parce que la dernière trame (vieille de 5 jours) disait `ignition: true`.
+   */
+  describe('pastille de contact (ACC) — ne jamais affirmer sur une donnée périmée', () => {
+    const accClasses = (el: HTMLElement) => Array.from(el.querySelector('.tracky-marker__acc')!.classList);
+
+    it('affiche « inconnu » (ni vert ni gris plein) quand le véhicule est garé sous terre', () => {
+      const el = buildVehicleMarkerEl(data({ type: 'CAR', ignition: true, gpsLost: true, parkedDeadZone: true }));
+      expect(accClasses(el)).toContain('tracky-acc--unknown');
+      expect(accClasses(el)).not.toContain('tracky-acc--on');
+    });
+
+    it('affiche « inconnu » quand le GPS est perdu ou le boîtier hors-ligne', () => {
+      for (const stale of [{ gpsLost: true }, { offline: true }]) {
+        const el = buildVehicleMarkerEl(data({ type: 'CAR', ignition: true, ...stale }));
+        expect(accClasses(el)).toContain('tracky-acc--unknown');
+        expect(accClasses(el)).not.toContain('tracky-acc--on');
+      }
+    });
+
+    it('bascule de vert à inconnu quand la télémétrie devient périmée (mise à jour live)', () => {
+      const el = buildVehicleMarkerEl(data({ type: 'CAR', ignition: true }));
+      expect(accClasses(el)).toContain('tracky-acc--on');
+
+      updateVehicleMarkerEl(el, data({ type: 'CAR', ignition: true, gpsLost: true, parkedDeadZone: true }));
+
+      expect(accClasses(el)).toContain('tracky-acc--unknown');
+      expect(accClasses(el)).not.toContain('tracky-acc--on');
+    });
+
+    it('reste fidèle quand la donnée est FRAÎCHE (vert si contact mis, gris si coupé)', () => {
+      const on = buildVehicleMarkerEl(data({ type: 'CAR', ignition: true }));
+      expect(accClasses(on)).toContain('tracky-acc--on');
+
+      const off = buildVehicleMarkerEl(data({ type: 'CAR', ignition: false }));
+      expect(accClasses(off)).toContain('tracky-acc--off');
+      expect(accClasses(off)).not.toContain('tracky-acc--unknown');
+    });
+  });
+
   it('chaque type connu a bien une icône distincte de la flèche', () => {
     const arrow = getVehicleSvg('OTHER');
     for (const type of ['CAR', 'TRUCK', 'VAN', 'MOTORCYCLE', 'BICYCLE', 'BUS', 'CONSTRUCTION']) {

@@ -512,6 +512,9 @@ button, a, [role="button"], input[type="button"], input[type="submit"], label {
 }
 .tracky-acc--on { background: #10e0a0; }
 .tracky-acc--off { background: #6b7280; }
+/* Contact INCONNU (télémétrie périmée : hors-ligne, GPS perdu, garé sous terre). Creux et pâle :
+   visuellement « on ne sait pas », à ne pas confondre avec le gris plein « contact coupé ». */
+.tracky-acc--unknown { background: transparent; border-color: rgba(255, 255, 255, 0.55); box-shadow: none; }
 
 /* Badge logo de marque (haut-gauche, pastille blanche pour rester lisible) */
 .tracky-marker__brand {
