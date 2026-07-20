@@ -37,7 +37,18 @@ function makePrisma(settings: unknown, existingProposal: unknown = null) {
     },
     vehicle: { findMany: jest.fn().mockResolvedValue([]) },
     fleet: { findUnique: jest.fn().mockResolvedValue({ metier: 'CHILDREN_TRANSPORT', name: 'CDEF' }) },
+    // Historique des passages : présent dans le mock pour que les tests exercent la VRAIE
+    // écriture (sinon tout partirait dans le catch défensif de recordRun sans qu'on le voie).
+    agendaAgentRun: {
+      create: jest.fn().mockResolvedValue({}),
+      findMany: jest.fn().mockResolvedValue([]),
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
   } as never;
+}
+/** Accès typé au mock d'historique. */
+function runsOf(prisma: unknown) {
+  return (prisma as { agendaAgentRun: { create: jest.Mock; findMany: jest.Mock; deleteMany: jest.Mock } }).agendaAgentRun;
 }
 function makeAnthropic(reviews: unknown[]) {
   return {
@@ -92,6 +103,78 @@ describe('AgendaAgentRunnerService (P3.3 — agent nocturne)', () => {
     expect((reservations as unknown as { systemConfirm: jest.Mock }).systemConfirm).not.toHaveBeenCalled();
     const data = (prisma as unknown as { agendaAgentProposal: { create: jest.Mock } }).agendaAgentProposal.create.mock.calls[0][0].data;
     expect(data.status).toBe('pending');
+  });
+
+  /**
+   * Historique des passages. Jusqu'ici seul `lastRunAt` survivait : on savait QUAND l'agent avait
+   * tourné, jamais ce qu'il avait fait. Le test le plus important est le dernier : la traçabilité
+   * ne doit JAMAIS faire échouer un passage qui, lui, a bien travaillé.
+   */
+  describe('historique des passages', () => {
+    it('archive un passage réussi avec ce qu\'il a fait (motifs, créées, proposées, ignorées)', async () => {
+      const prisma = makePrisma(makeSettings());
+      const svc = new AgendaAgentRunnerService(prisma, makeDetector([PATTERN]), makeReservations(), makeEvents(), makeActivity());
+
+      const res = await svc.runForFleet('f1', 'scheduled');
+
+      expect(runsOf(prisma).create).toHaveBeenCalledTimes(1);
+      const data = runsOf(prisma).create.mock.calls[0]![0].data;
+      expect(data).toEqual(expect.objectContaining({
+        fleetId: 'f1', origin: 'scheduled', status: 'completed',
+        patterns: 1, created: res.created, proposed: res.proposed, skipped: res.skipped,
+        aiUsed: false, // aucune couche IA branchée dans ce test
+      }));
+      expect(data.durationMs).toBeGreaterThanOrEqual(0);
+      expect(data.finishedAt).toBeInstanceOf(Date);
+    });
+
+    it('marque aiUsed quand la couche IA a réellement jugé', async () => {
+      const prisma = makePrisma(makeSettings());
+      const svc = new AgendaAgentRunnerService(
+        prisma, makeDetector([PATTERN]), makeReservations(), makeEvents(), makeActivity(),
+        makeAnthropic([{ index: 0, keep: true, reasoning: 'Récurrence stable' }]) as never,
+        makeAiUsage() as never,
+        { isEnabledForFleet: jest.fn().mockResolvedValue(true) } as never,
+      );
+
+      await svc.runForFleet('f1', 'scheduled');
+
+      expect(runsOf(prisma).create.mock.calls[0]![0].data.aiUsed).toBe(true);
+    });
+
+    it('archive AUSSI un passage en échec (sinon un agent cassé passerait pour un agent inactif)', async () => {
+      const prisma = makePrisma(makeSettings());
+      const detector = { detect: jest.fn().mockRejectedValue(new Error('détecteur HS')) };
+      const svc = new AgendaAgentRunnerService(prisma, detector as never, makeReservations(), makeEvents(), makeActivity());
+
+      await expect(svc.runForFleet('f1', 'scheduled')).rejects.toThrow('détecteur HS');
+
+      const data = runsOf(prisma).create.mock.calls[0]![0].data;
+      expect(data).toEqual(expect.objectContaining({ status: 'error', error: 'détecteur HS' }));
+    });
+
+    it('élague au-delà du plafond par société', async () => {
+      const prisma = makePrisma(makeSettings());
+      runsOf(prisma).findMany.mockResolvedValue([{ id: 'vieux-1' }, { id: 'vieux-2' }]);
+      const svc = new AgendaAgentRunnerService(prisma, makeDetector([PATTERN]), makeReservations(), makeEvents(), makeActivity());
+
+      await svc.runForFleet('f1', 'scheduled');
+
+      expect(runsOf(prisma).deleteMany).toHaveBeenCalledWith({ where: { id: { in: ['vieux-1', 'vieux-2'] } } });
+    });
+
+    it('⚠️ un historique qui échoue ne casse PAS le passage', async () => {
+      const prisma = makePrisma(makeSettings());
+      runsOf(prisma).create.mockRejectedValue(new Error('table absente'));
+      const reservations = makeReservations();
+      const svc = new AgendaAgentRunnerService(prisma, makeDetector([PATTERN]), reservations, makeEvents(), makeActivity());
+
+      const res = await svc.runForFleet('f1', 'scheduled');
+
+      // Le travail utile a bien eu lieu, malgré la traçabilité en panne.
+      expect(res.created).toBeGreaterThanOrEqual(1);
+      expect((reservations as unknown as { systemConfirm: jest.Mock }).systemConfirm).toHaveBeenCalled();
+    });
   });
 
   it('dédup : une occurrence déjà proposée n\'est pas recréée (skipped)', async () => {

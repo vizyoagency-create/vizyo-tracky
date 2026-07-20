@@ -80,6 +80,32 @@ export interface AgendaAgentRunResultDto {
   alreadyRunning?: boolean;
 }
 
+/**
+ * Un PASSAGE de l'agent, tel qu'archivé. Répond à « qu'a fait l'agent cette nuit, et pourquoi
+ * si peu ? » — jusqu'ici seul `lastRunAt` survivait, donc la question restait sans réponse.
+ * Les passages sautés (agent désactivé, ou déjà en cours) ne produisent PAS de ligne : ils
+ * n'ont rien exécuté.
+ */
+export interface AgendaAgentRunDto {
+  id: string;
+  startedAt: string; // ISO
+  finishedAt: string | null;
+  /** 'scheduled' | 'manual' */
+  origin: string;
+  /** 'completed' | 'error' */
+  status: string;
+  /** Récurrences détectées : 0 motif explique un passage à 0 proposition. */
+  patterns: number;
+  created: number;
+  proposed: number;
+  skipped: number;
+  /** La couche IA a-t-elle réellement jugé ? false = agent déterministe seul (IA coupée). */
+  aiUsed: boolean;
+  durationMs: number;
+  /** Message d'erreur si le passage a échoué (tronqué). */
+  error: string | null;
+}
+
 /** Mise à jour des réglages (partielle). `fleetId` requis pour un super-admin. */
 export interface SetAgendaAgentSettingsDto {
   fleetId?: string;

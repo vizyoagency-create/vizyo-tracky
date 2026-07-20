@@ -32,6 +32,22 @@ export class AgendaAgentController {
     return this.runner.runOnDemand(req.user, body?.fleetId);
   }
 
+  /**
+   * Historique des passages de l'agent : ce qu'il a fait, combien de récurrences il a vues, s'il
+   * a utilisé l'IA, et ce qui a échoué. Même droit de lecture que les propositions.
+   */
+  @Get('runs')
+  @Roles(...ALL_ROLES)
+  @RequirePermissions('reservations_view')
+  runs(
+    @Req() req: AuthenticatedRequest,
+    @Query('fleetId') fleetId?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const n = limit ? Number(limit) : undefined;
+    return this.runner.listRuns(req.user, fleetId, Number.isFinite(n) ? n : undefined);
+  }
+
   /** Liste des propositions de l'agent (défaut : en attente). */
   @Get('proposals')
   @Roles(...ALL_ROLES)

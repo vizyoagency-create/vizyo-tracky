@@ -12,6 +12,7 @@ import { Prisma, UserRole } from '@prisma/client';
 import type {
   AgendaAgentProposalDto,
   AgendaAgentProposalStatus,
+  AgendaAgentRunDto,
   AgendaAgentRunResultDto,
   FleetMetier,
 } from '@vizyo/tracky-shared';
@@ -34,6 +35,8 @@ const HORIZON_DAYS = 14;
 /** On ne réserve/propose jamais dans l'heure qui vient (créneau trop proche = inutile). */
 const LEAD_MS = 60 * 60 * 1000;
 const MAX_DAY_STEPS = 60;
+/** Historique conservé par société (l'agent tourne chaque nuit → ~3 mois de recul). */
+const KEEP_RUNS_PER_FLEET = 100;
 /** Anti-storm : au plus une (re)analyse ÉVÉNEMENTIELLE par flotte toutes les 5 min. */
 const EVENT_THROTTLE_MS = 5 * 60 * 1000;
 
@@ -117,6 +120,7 @@ export class AgendaAgentRunnerService {
   async runForFleet(fleetId: string, origin: string): Promise<AgendaAgentRunResultDto> {
     if (this.running.has(fleetId)) return { created: 0, proposed: 0, skipped: 0, alreadyRunning: true };
     this.running.add(fleetId);
+    const startedAt = new Date();
     try {
       const settings = await this.prisma.agendaAgentSettings.findUnique({ where: { fleetId } });
       const enabled = settings?.enabled ?? false;
@@ -214,7 +218,22 @@ export class AgendaAgentRunnerService {
         await this.prisma.agendaAgentSettings.update({ where: { fleetId }, data: { lastRunAt: new Date() } });
       }
       this.track(fleetId, origin, { created, proposed, skipped });
+      await this.recordRun({
+        fleetId, origin, startedAt, status: 'completed',
+        patterns: patterns.length, created, proposed, skipped,
+        // `reviews` non vide = la couche IA a réellement jugé. Distingue « agent déterministe
+        // seul » (IA coupée pour la société) de « IA active mais sans effet ».
+        aiUsed: reviews.size > 0,
+      });
       return { created, proposed, skipped };
+    } catch (e) {
+      // Un passage qui échoue doit LAISSER UNE TRACE : sans ça, l'historique ne montrerait que les
+      // succès et un agent cassé passerait pour un agent qui n'a rien à faire.
+      await this.recordRun({
+        fleetId, origin, startedAt, status: 'error',
+        error: e instanceof Error ? e.message : String(e),
+      });
+      throw e;
     } finally {
       this.running.delete(fleetId);
     }
@@ -463,6 +482,83 @@ export class AgendaAgentRunnerService {
       createdEventId: r.createdEventId,
       createdAt: r.createdAt.toISOString(),
     };
+  }
+
+  /**
+   * Historique des passages (lecture). Même périmètre société que les propositions : un
+   * super-admin sans société ciblée ne voit rien (il doit choisir), un non-super est borné à
+   * la sienne par `resolveFleetId`.
+   */
+  async listRuns(user: AuthUser, fleetId?: string, limit = 30): Promise<AgendaAgentRunDto[]> {
+    if (user.role === UserRole.SUPER_ADMIN && !fleetId && !user.fleetId) return [];
+    const id = this.resolveFleetId(user, fleetId);
+    const rows = await this.prisma.agendaAgentRun.findMany({
+      where: { fleetId: id },
+      orderBy: { startedAt: 'desc' },
+      take: Math.min(Math.max(limit, 1), 100),
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      startedAt: r.startedAt.toISOString(),
+      finishedAt: r.finishedAt ? r.finishedAt.toISOString() : null,
+      origin: r.origin,
+      status: r.status,
+      patterns: r.patterns,
+      created: r.created,
+      proposed: r.proposed,
+      skipped: r.skipped,
+      aiUsed: r.aiUsed,
+      durationMs: r.durationMs,
+      error: r.error,
+    }));
+  }
+
+  /**
+   * Écrit une ligne d'historique. **Ne lève JAMAIS** : la traçabilité ne doit pas faire échouer
+   * un passage qui, lui, a bien travaillé. Élague au passage pour ne pas laisser la table croître
+   * indéfiniment (l'agent tourne toutes les nuits, par société).
+   */
+  private async recordRun(run: {
+    fleetId: string;
+    origin: string;
+    startedAt: Date;
+    status: string;
+    patterns?: number;
+    created?: number;
+    proposed?: number;
+    skipped?: number;
+    aiUsed?: boolean;
+    error?: string;
+  }): Promise<void> {
+    try {
+      await this.prisma.agendaAgentRun.create({
+        data: {
+          fleetId: run.fleetId,
+          startedAt: run.startedAt,
+          finishedAt: new Date(),
+          origin: run.origin,
+          status: run.status,
+          patterns: run.patterns ?? 0,
+          created: run.created ?? 0,
+          proposed: run.proposed ?? 0,
+          skipped: run.skipped ?? 0,
+          aiUsed: run.aiUsed ?? false,
+          durationMs: Math.max(0, Date.now() - run.startedAt.getTime()),
+          error: run.error ? run.error.slice(0, 500) : null,
+        },
+      });
+      const old = await this.prisma.agendaAgentRun.findMany({
+        where: { fleetId: run.fleetId },
+        orderBy: { startedAt: 'desc' },
+        skip: KEEP_RUNS_PER_FLEET,
+        select: { id: true },
+      });
+      if (old.length > 0) {
+        await this.prisma.agendaAgentRun.deleteMany({ where: { id: { in: old.map((r) => r.id) } } });
+      }
+    } catch (e) {
+      this.logger.warn(`Historique agent agenda non écrit : ${(e as Error)?.message ?? e}`);
+    }
   }
 
   private track(fleetId: string, origin: string, counts: { created: number; proposed: number; skipped: number }): void {
