@@ -277,6 +277,17 @@ export const routes: Routes = [
         data: { title: 'SMS & Backup' },
       },
       {
+        // Module unifié : e-mails + SMS + notifications. Les écrans par canal restent
+        // accessibles (liens profonds, détail SMS/provisioning) mais le hub pointe ici.
+        path: 'admin/communications',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/communications/admin-communications.component').then(
+            (m) => m.AdminCommunicationsComponent,
+          ),
+        data: { title: 'Communications' },
+      },
+      {
         path: 'admin/emails',
         canActivate: [superAdminGuard],
         loadComponent: () =>

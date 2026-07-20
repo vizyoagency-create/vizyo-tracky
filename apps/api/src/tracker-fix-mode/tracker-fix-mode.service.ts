@@ -99,7 +99,7 @@ export class TrackerFixModeService {
     const result = await this.sms.send(tracker.simPhoneNumber, payload, {
       imei: tracker.imei,
       commandId,
-      source: 'fix-mode-fallback',
+      template: 'fix_mode_fallback', source: 'fix-mode-fallback',
     });
     return result.ok;
   }

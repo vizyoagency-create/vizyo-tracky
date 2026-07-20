@@ -1,7 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { PushStatus } from '@prisma/client';
 import webpush, { PushSubscription as WebPushSubscription } from 'web-push';
 import type { Env } from '../config/env.validation';
+import type { PushTemplateId } from '../communications/communications.catalog';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 
@@ -18,6 +20,12 @@ import { SystemActivityService } from '../system-activity/system-activity.servic
  */
 
 export interface PushPayload {
+  /**
+   * Modèle de notification — OBLIGATOIRE et typé : c'est lui qui rend le push
+   * identifiable dans le module admin « Communications » (journal `push_logs` +
+   * espace Modèles). Le compilateur refuse donc une notification anonyme.
+   */
+  template: PushTemplateId;
   title: string;
   body: string;
   /**
@@ -213,7 +221,7 @@ export class WebPushService {
       }
     }
     const subs = await this.listForUser(userId);
-    return this.sendToSubscriptions(subs, payload, 'user:' + userId.slice(0, 8), 'push_sent', expectedFleetId ?? null);
+    return this.sendToSubscriptions(subs, payload, 'user:' + userId.slice(0, 8), 'push_sent', expectedFleetId ?? null, userId);
   }
 
   /**
@@ -235,7 +243,7 @@ export class WebPushService {
         ? { id: { in: subscriptionIds } }
         : { id: { in: subscriptionIds }, userId: ownerUserId },
     });
-    return this.sendToSubscriptions(subs, payload, 'targeted:' + subs.length, 'push_test', null);
+    return this.sendToSubscriptions(subs, payload, 'targeted:' + subs.length, 'push_test', null, ownerUserId);
   }
 
   /**
@@ -245,13 +253,15 @@ export class WebPushService {
    * Purge automatique des subs renvoyant 404/410 (Gone / Not Found).
    */
   private async sendToSubscriptions(
-    subs: Array<{ id: string; endpoint: string; p256dh: string; auth: string }>,
+    subs: Array<{ id: string; endpoint: string; p256dh: string; auth: string; userId?: string }>,
     payload: PushPayload,
     contextLabel: string,
     // Palier B (déplacé ici depuis sendToUser) : le cœur d'envoi journalise TOUS les
     // chemins — notifs réelles ('push_sent') ET tests ciblés admin ('push_test').
     activityAction: 'push_sent' | 'push_test' = 'push_sent',
     fleetId: string | null = null,
+    /** Utilisateur ciblé quand la subscription ne le porte pas (journal push_logs). */
+    fallbackUserId: string | null = null,
   ): Promise<SendResult> {
     if (!this.enabled) {
       this.logger.warn(`[push] skipped (${contextLabel}) — VAPID disabled`);
@@ -325,6 +335,21 @@ export class WebPushService {
     let sent = 0;
     let failed = 0;
     const results: SendResultEntry[] = [];
+    // Journal `push_logs` — une ligne PAR APPAREIL. Avant, ces issues étaient calculées
+    // puis jetées : impossible d'expliquer qu'un utilisateur ne reçoive plus rien. On
+    // accumule ici et on écrit en UN seul createMany après la boucle (pas de latence
+    // ajoutée par device).
+    const logRows: Array<{
+      template: string;
+      userId: string | null;
+      subscriptionId: string;
+      title: string;
+      severity: string | null;
+      status: PushStatus;
+      statusCode: number | null;
+      errorMessage: string | null;
+      fleetId: string | null;
+    }> = [];
 
     for (const sub of subs) {
       const endpointHost = (() => {
@@ -343,6 +368,17 @@ export class WebPushService {
         sent++;
         this.logger.log(`[push] OK ${code} ${endpointHost} sub=${sub.id.slice(0, 8)} (${dt}ms)`);
         results.push({ id: sub.id, endpointHost, statusCode: code });
+        logRows.push({
+          template: payload.template,
+          userId: sub.userId ?? fallbackUserId,
+          subscriptionId: sub.id,
+          title: payload.title?.slice(0, 200) ?? '',
+          severity: payload.severity ?? null,
+          status: PushStatus.SENT,
+          statusCode: code,
+          errorMessage: null,
+          fleetId,
+        });
       } catch (err: unknown) {
         const dt = Date.now() - t0;
         const status = (err as { statusCode?: number }).statusCode ?? null;
@@ -358,10 +394,29 @@ export class WebPushService {
         }
         failed++;
         results.push({ id: sub.id, endpointHost, statusCode: status, error: message.slice(0, 200) });
+        logRows.push({
+          template: payload.template,
+          userId: sub.userId ?? fallbackUserId,
+          subscriptionId: sub.id,
+          title: payload.title?.slice(0, 200) ?? '',
+          severity: payload.severity ?? null,
+          // 404/410 = abonnement mort (appareil purgé) : c'est l'explication d'un
+          // « je ne reçois plus rien », à distinguer d'un échec transitoire.
+          status: status === 404 || status === 410 ? PushStatus.EXPIRED : PushStatus.FAILED,
+          statusCode: status,
+          errorMessage: message.slice(0, 200),
+          fleetId,
+        });
       }
     }
 
     this.logger.log(`[push] done (${contextLabel}) sent=${sent} failed=${failed}`);
+    if (logRows.length > 0) {
+      // Best-effort : le journal ne doit JAMAIS faire échouer un envoi.
+      await this.prisma.pushLog
+        .createMany({ data: logRows })
+        .catch((e) => this.logger.warn(`push_logs persist failed: ${String(e)}`));
+    }
     // Journal système — uniquement les tentatives réelles (≥1 device ciblé) : pas de
     // bruit quand l'utilisateur n'a aucun device (les early-returns {0,0} restent muets).
     if (sent > 0 || failed > 0) {

@@ -623,7 +623,7 @@ export class EngineControlService {
     const result = await this.sms.send(tracker.simPhoneNumber, smsPayload, {
       imei,
       commandId,
-      source: 'engine-control-fallback',
+      template: 'engine_control_fallback', source: 'engine-control-fallback',
     });
     return result.ok;
   }

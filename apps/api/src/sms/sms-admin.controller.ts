@@ -71,7 +71,7 @@ export class SmsAdminController {
     if (!body?.to || !body?.message) {
       throw new BadRequestException('to et message sont requis');
     }
-    return this.sms.send(body.to, body.message);
+    return this.sms.send(body.to, body.message, { template: 'admin_manual' });
   }
 
   /**

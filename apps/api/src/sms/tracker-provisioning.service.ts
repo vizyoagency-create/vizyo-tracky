@@ -409,7 +409,7 @@ export class TrackerProvisioningService {
         imei: params.imei,
         provisioningId,
         provisioningStep: i + 1,
-        source: 'provision',
+        template: 'tracker_provisioning', source: 'provision',
       });
 
       if (!result.ok) {

@@ -7,6 +7,7 @@ import type { Env } from '../config/env.validation';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { toE164 } from '../common/utils/phone';
+import type { SmsTemplateId } from '../communications/communications.catalog';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 
 /**
@@ -24,6 +25,22 @@ export interface SendSmsResult {
   ok: boolean;
   twilioSid?: string;
   error?: string;
+}
+
+/**
+ * Contexte d'un envoi SMS. `template` est OBLIGATOIRE (et typé) : c'est lui qui rend
+ * le message identifiable dans le module admin « Communications ». Le compilateur
+ * refuse donc un SMS anonyme — impossible d'en envoyer un qui n'apparaîtrait nulle part.
+ *
+ * Les autres clés restent libres et sont conservées telles quelles dans `sms_logs.context`
+ * (dont l'ancien `source`, sur lequel s'appuient des requêtes JSON existantes).
+ */
+export interface SmsSendContext {
+  template: SmsTemplateId;
+  imei?: string;
+  provisioningId?: string;
+  requestedByUserId?: string;
+  [k: string]: unknown;
 }
 
 /**
@@ -224,7 +241,7 @@ export class SmsGatewayService implements OnModuleInit {
   async send(
     to: string,
     body: string,
-    context?: { imei?: string; provisioningId?: string; [k: string]: unknown },
+    context: SmsSendContext,
   ): Promise<SendSmsResult> {
     // ⚠️ Dernière ligne de défense (incident 2026-07-19) : un numéro international arrivé SANS `+`
     // (catalogue opérateur) faisait échouer 100 % des envois — donc le repli SMS du coupe-circuit.
@@ -240,7 +257,7 @@ export class SmsGatewayService implements OnModuleInit {
   private async performSend(
     to: string,
     body: string,
-    context?: { imei?: string; provisioningId?: string; [k: string]: unknown },
+    context: SmsSendContext,
   ): Promise<SendSmsResult> {
     const safeTo = to.trim();
     if (!safeTo) return { ok: false, error: 'Numero destinataire vide' };
@@ -259,6 +276,7 @@ export class SmsGatewayService implements OnModuleInit {
           toNumber: safeTo,
           body,
           status: 'noop',
+          template: context.template,
           imei: context?.imei,
           provisioningId: context?.provisioningId,
           context: context as object,
@@ -282,6 +300,7 @@ export class SmsGatewayService implements OnModuleInit {
           body,
           twilioSid: message.sid,
           status: message.status,
+          template: context.template,
           imei: context?.imei,
           provisioningId: context?.provisioningId,
           context: context as object,
@@ -300,6 +319,7 @@ export class SmsGatewayService implements OnModuleInit {
           status: 'failed',
           errorCode,
           errorMessage,
+          template: context.template,
           imei: context?.imei,
           provisioningId: context?.provisioningId,
           context: context as object,
@@ -319,10 +339,12 @@ export class SmsGatewayService implements OnModuleInit {
   private recordSystemActivity(
     to: string,
     body: string,
-    context: { imei?: string; provisioningId?: string; [k: string]: unknown } | undefined,
+    context: SmsSendContext,
     result: SendSmsResult,
   ): void {
-    const source = typeof context?.source === 'string' ? context.source : undefined;
+    // `source` historique conservé en priorité (continuité des libellés déjà journalisés) ;
+    // à défaut on retombe sur le `template` typé — plus aucun envoi n'est anonyme.
+    const source = typeof context?.source === 'string' ? context.source : context.template;
     const triggeredByUserId =
       typeof context?.requestedByUserId === 'string' ? context.requestedByUserId : null;
     this.systemActivity.record({
@@ -351,7 +373,7 @@ export class SmsGatewayService implements OnModuleInit {
   private async sendViaVizyoTexto(
     to: string,
     body: string,
-    context?: { imei?: string; provisioningId?: string; [k: string]: unknown },
+    context: SmsSendContext,
   ): Promise<SendSmsResult> {
     try {
       // B1 — timeout 10s pour ne pas rester pendu si le relay hang.
@@ -394,6 +416,7 @@ export class SmsGatewayService implements OnModuleInit {
             body,
             status: 'failed',
             errorMessage,
+            template: context.template,
             imei: context?.imei,
             provisioningId: context?.provisioningId,
             context: context as object,
@@ -419,6 +442,7 @@ export class SmsGatewayService implements OnModuleInit {
             body,
             status: 'failed',
             errorMessage,
+            template: context.template,
             imei: context?.imei,
             provisioningId: context?.provisioningId,
             context: context as object,
@@ -443,6 +467,7 @@ export class SmsGatewayService implements OnModuleInit {
           body,
           twilioSid: providerId,
           status,
+          template: context.template,
           imei: context?.imei,
           provisioningId: context?.provisioningId,
           context: context as object,
@@ -463,6 +488,7 @@ export class SmsGatewayService implements OnModuleInit {
           body,
           status: 'failed',
           errorMessage,
+          template: context.template,
           imei: context?.imei,
           provisioningId: context?.provisioningId,
           context: context as object,
@@ -563,6 +589,7 @@ export class SmsGatewayService implements OnModuleInit {
     }
     const payload = `fix030s***n123456`; // benigne 30s
     const smsResult = await this.send(safePhone, payload, {
+      template: 'admin_test_fallback',
       imei: tracker.imei,
       source: 'admin-test-fallback',
       requestedByUserId: input.requestedByUserId,

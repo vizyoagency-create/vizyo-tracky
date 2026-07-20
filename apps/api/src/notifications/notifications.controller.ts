@@ -229,6 +229,7 @@ export class NotificationsController {
       title: body?.title?.trim() || `Test Tracky (${severity})`,
       body: body?.body?.trim() || 'Ceci est une notification de test envoyee depuis Observabilite.',
       severity,
+      template: 'admin_test' as const,
       data: { kind: 'test', triggeredBy: req.user.id, at: new Date().toISOString() },
       url: '/admin/observability',
       tag: `test-${Date.now()}`,

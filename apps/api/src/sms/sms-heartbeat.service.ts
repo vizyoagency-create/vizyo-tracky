@@ -102,7 +102,7 @@ export class SmsHeartbeatService {
     let failed = 0;
 
     for (const to of recipients) {
-      const res = await this.sms.send(to, body, { source: 'sms-heartbeat' });
+      const res = await this.sms.send(to, body, { template: 'gateway_heartbeat', source: 'sms-heartbeat' });
       results.push({ to, ok: res.ok, error: res.error });
       if (res.ok) {
         sent++;

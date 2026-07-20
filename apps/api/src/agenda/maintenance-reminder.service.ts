@@ -94,6 +94,7 @@ export class MaintenanceReminderService {
       select: { id: true },
     });
     const payload = {
+      template: 'maintenance_due' as const,
       title: 'Maintenance a prevoir',
       body: `${plate} : ${label} prevu le ${frDate(dueAt)}`,
       severity: 'WARNING' as const,

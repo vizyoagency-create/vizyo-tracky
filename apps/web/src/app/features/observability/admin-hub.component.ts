@@ -2,7 +2,7 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
   LucideAngularModule, AlertTriangle, Activity, Terminal, MessageSquare,
-  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints, Ear, Mail, CalendarClock, Bot, Globe,
+  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints, Ear, Mail, CalendarClock, Bot, Globe, Send,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { AdminFixModeService, type AdminAlertSummary } from '../../core/services/admin-fix-mode.service';
@@ -26,7 +26,9 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
         }
       </div>
 
-      <div class="grid">
+      <section class="sec">
+        <h2 class="sec-t">Supervision &amp; incidents</h2>
+        <div class="grid">
         <!-- ── HERO : Centre d'alertes ── -->
         <a routerLink="/admin/alerts" class="card card-hero" style="--i:0">
           <span class="accent accent-red"></span>
@@ -73,6 +75,12 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
           </div>
         </a>
 
+        </div>
+      </section>
+
+      <section class="sec">
+        <h2 class="sec-t">Parc &amp; boîtiers</h2>
+        <div class="grid">
         <!-- ── TRACKERS ── -->
         <a routerLink="/admin/trackers" class="card" style="--i:2">
           <span class="accent accent-blue"></span>
@@ -99,6 +107,25 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
           </div>
         </a>
 
+        </div>
+      </section>
+
+      <section class="sec">
+        <h2 class="sec-t">Communications</h2>
+        <div class="grid">
+        <!-- ── COMMUNICATIONS (wide) — module unifié e-mail + SMS + push ── -->
+        <a routerLink="/admin/communications" class="card card-wide" style="--i:0">
+          <span class="accent accent-green"></span>
+          <div class="body body-row">
+            <div class="ico ico-green"><lucide-icon [img]="Send" [size]="20"></lucide-icon></div>
+            <div class="body-text">
+              <h3>Communications</h3>
+              <p class="desc">Tout ce que Tracky envoie à un humain, réuni : e-mails, SMS et notifications push. Volume et taux de succès par canal, journal unifié et catalogue des modèles — chaque message est identifiable, aucun envoi anonyme.</p>
+            </div>
+            <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
+          </div>
+        </a>
+
         <!-- ── SMS & BACKUP ── -->
         <a routerLink="/admin/sms" class="card" style="--i:4">
           <span class="accent accent-purple"></span>
@@ -112,6 +139,24 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
           </div>
         </a>
 
+        <!-- ── E-MAILS (wide) — détail d'un canal ── -->
+        <a routerLink="/admin/emails" class="card card-wide" style="--i:2">
+          <span class="accent accent-green"></span>
+          <div class="body body-row">
+            <div class="ico ico-green"><lucide-icon [img]="Mail" [size]="20"></lucide-icon></div>
+            <div class="body-text">
+              <h3>E-mails</h3>
+              <p class="desc">Vue détaillée du canal e-mail : suivi des envois, aperçu des modèles, envoi de test et santé de la délivrabilité (SPF/DKIM/DMARC, bounces, suppression).</p>
+            </div>
+            <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
+          </div>
+        </a>
+        </div>
+      </section>
+
+      <section class="sec">
+        <h2 class="sec-t">Utilisateurs &amp; conformité</h2>
+        <div class="grid">
         <!-- ── CONSENTEMENTS RGPD ── -->
         <a routerLink="/admin/consent" class="card" style="--i:5">
           <span class="accent accent-green"></span>
@@ -151,6 +196,12 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
           </div>
         </a>
 
+        </div>
+      </section>
+
+      <section class="sec">
+        <h2 class="sec-t">Installations &amp; SIM</h2>
+        <div class="grid">
         <!-- ── PLANNINGS D'INSTALLATION (wide) ── -->
         <a routerLink="/admin/installations" class="card card-wide" style="--i:6">
           <span class="accent accent-amber"></span>
@@ -190,19 +241,12 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
           </div>
         </a>
 
-        <!-- ── E-MAILS (wide) ── -->
-        <a routerLink="/admin/emails" class="card card-wide" style="--i:9">
-          <span class="accent accent-green"></span>
-          <div class="body body-row">
-            <div class="ico ico-green"><lucide-icon [img]="Mail" [size]="20"></lucide-icon></div>
-            <div class="body-text">
-              <h3>E-mails</h3>
-              <p class="desc">Suivi des envois transactionnels, aperçu des modèles et santé de la délivrabilité (SPF/DKIM/DMARC, bounces, suppression). Toute la vie e-mail de Tracky au même endroit.</p>
-            </div>
-            <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
-          </div>
-        </a>
+        </div>
+      </section>
 
+      <section class="sec">
+        <h2 class="sec-t">Système &amp; données</h2>
+        <div class="grid">
         <!-- ── SYSTÈME VPS (wide) ── -->
         <a routerLink="/admin/system" class="card card-wide" style="--i:8">
           <span class="accent accent-rose"></span>
@@ -268,6 +312,12 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
           </div>
         </a>
 
+        </div>
+      </section>
+
+      <section class="sec">
+        <h2 class="sec-t">IA &amp; automatisation</h2>
+        <div class="grid">
         <!-- ── COÛTS IA (wide) — Palier Coûts IA ── -->
         <a routerLink="/admin/ai-usage" class="card card-wide" style="--i:13">
           <span class="accent accent-amber"></span>
@@ -318,7 +368,8 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
             <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
           </div>
         </a>
-      </div>
+        </div>
+      </section>
     </div>
   `,
   styles: [`
@@ -352,6 +403,19 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
     .pulse-warn .pulse-dot { animation: pdw 1.4s ease-in-out infinite; }
     @keyframes pd  { 50% { box-shadow: 0 0 0 5px rgba(16,224,160,0); opacity:.5 } }
     @keyframes pdw { 50% { box-shadow: 0 0 0 5px rgba(239,68,68,0); opacity:.5 } }
+
+    /* ── SECTIONS ── regroupent les modules par domaine (au lieu d'une grille à plat) */
+    .sec { margin-bottom: 26px; }
+    .sec:last-child { margin-bottom: 0; }
+    .sec-t {
+      margin: 0 0 11px; font-size: .72rem; font-weight: 700; letter-spacing: .14em;
+      text-transform: uppercase; color: var(--fg-tertiary);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .sec-t::after {
+      content: ''; flex: 1; height: 1px;
+      background: linear-gradient(90deg, var(--border-subtle), transparent);
+    }
 
     /* ── GRID ── */
     .grid {
@@ -537,6 +601,7 @@ export class AdminHubComponent implements OnInit {
   protected readonly Footprints = Footprints;
   protected readonly Ear = Ear;
   protected readonly Mail = Mail;
+  protected readonly Send = Send;
   protected readonly Bot = Bot;
   protected readonly Globe = Globe;
 
