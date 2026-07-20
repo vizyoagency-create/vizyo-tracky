@@ -103,6 +103,9 @@ export function buildVehicleMarkerEl(data: VehicleMarkerData): HTMLElement {
   el.setAttribute('aria-label', data.plate ? `Vehicule ${data.plate}` : 'Vehicule');
   el.setAttribute('data-tracker-id', data.trackerId);
   el.setAttribute('data-vehicle-id', data.vehicleId);
+  // Type RENDU (≠ type courant) : permet à updateVehicleMarkerEl de détecter qu'il doit
+  // redessiner l'icône. Cf. le bug corrigé dans cette fonction de mise à jour.
+  el.setAttribute('data-vehicle-type', data.type ?? '');
   el.style.setProperty('--tracky-color', color);
   el.style.setProperty('--tracky-heading', `${headingDeg}deg`);
   el.innerHTML = `
@@ -138,7 +141,11 @@ export function buildVehicleMarkerEl(data: VehicleMarkerData): HTMLElement {
  * - indicateur ACC
  * - active/hydrated flags
  *
- * Si la plaque ou le type changent, on recree (rare).
+ * ⚠️ Le TYPE peut changer après coup : les positions arrivent par WebSocket (rapide) alors que la
+ * fiche véhicule vient d'un appel HTTP. Un marqueur est donc souvent créé AVANT de connaître son
+ * type, avec le repli « OTHER » (flèche). Cette fonction doit donc redessiner l'icône quand le type
+ * arrive — sans ça (bug 2026-07-20) toute la flotte restait en flèches jusqu'au rechargement de la
+ * page, alors que les véhicules étaient bien typés en base.
  */
 export function updateVehicleMarkerEl(el: HTMLElement, data: VehicleMarkerData): void {
   const color = markerColor(data);
@@ -152,7 +159,32 @@ export function updateVehicleMarkerEl(el: HTMLElement, data: VehicleMarkerData):
   // Pour OTHER, on pivote aussi l'icone interne. Pour les autres, on garde droite.
   const isArrow = data.type === 'OTHER';
   const svg = el.querySelector<SVGElement>('.tracky-marker__core svg');
-  if (svg) (svg as unknown as HTMLElement).style.transform = isArrow ? `rotate(${headingDeg}deg)` : 'none';
+  if (svg) {
+    // Le type a-t-il changé depuis le dernier rendu ? (typiquement : OTHER → CAR/VAN/TRUCK)
+    const rendered = el.getAttribute('data-vehicle-type') ?? '';
+    const current = data.type ?? '';
+    if (rendered !== current) {
+      svg.innerHTML = getVehicleSvg(current);
+      el.setAttribute('data-vehicle-type', current);
+    }
+    (svg as unknown as HTMLElement).style.transform = isArrow ? `rotate(${headingDeg}deg)` : 'none';
+  }
+
+  // La plaque aussi peut arriver après coup (même course WebSocket/HTTP). Elle peut même être
+  // ABSENTE du DOM si le marqueur a été créé sans plaque → on la crée alors.
+  if (data.plate) {
+    const plateEl = el.querySelector<HTMLElement>('.tracky-marker__plate');
+    if (!plateEl) {
+      const created = document.createElement('div');
+      created.className = 'tracky-marker__plate';
+      created.textContent = data.plate;
+      el.appendChild(created);
+      el.setAttribute('aria-label', `Vehicule ${data.plate}`);
+    } else if (plateEl.textContent !== data.plate) {
+      plateEl.textContent = data.plate;
+      el.setAttribute('aria-label', `Vehicule ${data.plate}`);
+    }
+  }
 
   const acc = el.querySelector('.tracky-marker__acc');
   if (acc) {

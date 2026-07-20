@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
@@ -241,6 +241,13 @@ interface WidgetMeta {
                 <strong>{{ enrichedPositions().length }}</strong>
                 <span>actif{{ enrichedPositions().length > 1 ? 's' : '' }}</span>
               </div>
+              <!-- La vignette défile : on le dit, sinon le changement de véhicule paraît erratique. -->
+              @if (cinemaActive()) {
+                <div class="widget-map-stat widget-map-stat--cinema">
+                  <span class="cinema-dot"></span>
+                  <span>{{ firstVehicleMeta().plate || 'en route' }}</span>
+                </div>
+              }
             </div>
           } @else {
             <div class="widget-empty widget-empty--map">
@@ -574,7 +581,9 @@ interface WidgetMeta {
       .widget--map.dash-2col-main { flex: none; height: 280px; }
       .widget--map app-mini-map { flex: 1 1 auto; height: auto; min-height: 0; }
     }
-    .widget-map-overlay { position: absolute; bottom: 22px; left: 22px; z-index: 2; pointer-events: none }
+    .widget-map-overlay { position: absolute; bottom: 22px; left: 22px; z-index: 2; pointer-events: none; display: flex; align-items: center; gap: 8px }
+    .widget-map-stat--cinema { gap: 6px; font-family: var(--font-mono, monospace); font-size: 10.5px; font-weight: 700; color: var(--fg-primary) }
+    .cinema-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--tracky-light); box-shadow: 0 0 8px rgba(16,224,160,.5); animation: pulse 2s ease infinite }
     .widget-map-stat {
       display: inline-flex; align-items: baseline; gap: 4px;
       padding: 6px 12px; border-radius: 9999px;
@@ -867,25 +876,53 @@ export class DashboardComponent implements OnInit {
       .slice(0, 3);
   });
 
+  /**
+   * ─── Mode cinéma de la carte du tableau de bord ───────────────────────────
+   *
+   * La vignette ne montrait QUE le premier véhicule de la liste, même quand la flotte roulait.
+   * Elle cycle désormais sur les véhicules EN MARCHE (contact mis), 8 s chacun — comme le mode
+   * Cinéma de la carte principale, mais ici en automatique : c'est une vignette de supervision,
+   * on veut voir ce qui bouge sans cliquer.
+   *
+   * Repli : si AUCUN véhicule ne roule, on n'invente pas de mouvement — on affiche simplement le
+   * premier véhicule à l'arrêt, sans cycle (comportement d'avant).
+   *
+   * ⚠️ Volontairement limité à CETTE vignette : la carte principale garde son bouton Cinéma manuel.
+   */
+  private readonly cinemaTick = signal(0);
+
+  private readonly destroyRef = inject(DestroyRef);
+
+  /** Véhicules éligibles au cycle : ceux qui roulent. Vide = flotte à l'arrêt. */
+  private readonly cinemaCandidates = computed(() =>
+    this.enrichedPositions().filter((p) => p.ignition || p.speedKmh > 3),
+  );
+
+  /** Véhicule actuellement mis en avant : celui du cycle, sinon le premier à l'arrêt. */
+  private readonly spotlightVehicle = computed(() => {
+    const running = this.cinemaCandidates();
+    if (running.length > 0) return running[this.cinemaTick() % running.length]!;
+    return this.enrichedPositions()[0] ?? null;
+  });
+
+  /** Le cycle tourne-t-il ? (≥ 2 véhicules en marche) — sert aussi à l'indicateur visuel. */
+  protected readonly cinemaActive = computed(() => this.cinemaCandidates().length > 1);
+
   protected readonly firstActivePosition = computed(() => {
-    const list = this.enrichedPositions();
-    if (list.length === 0) return null;
-    const first = list[0]!;
-    return { lat: first.lat, lng: first.lng };
+    const v = this.spotlightVehicle();
+    return v ? { lat: v.lat, lng: v.lng } : null;
   });
 
   protected readonly firstVehicleMeta = computed(() => {
-    const list = this.enrichedPositions();
-    const meta = this.vehicleMetaMap();
-    if (list.length === 0) return { type: 'OTHER', plate: '', speedKmh: 0, heading: 0, ignition: false };
-    const first = list[0]!;
-    const m = meta.get(first.vehicleId);
+    const v = this.spotlightVehicle();
+    if (!v) return { type: 'OTHER', plate: '', speedKmh: 0, heading: 0, ignition: false };
+    const m = this.vehicleMetaMap().get(v.vehicleId);
     return {
       type: m?.type ?? 'OTHER',
       plate: m?.plate ?? '',
-      speedKmh: first.speedKmh,
-      heading: first.heading,
-      ignition: first.ignition,
+      speedKmh: v.speedKmh,
+      heading: v.heading,
+      ignition: v.ignition,
     };
   });
 
@@ -932,6 +969,15 @@ export class DashboardComponent implements OnInit {
   }
 
   async ngOnInit(): Promise<void> {
+    // Cycle « cinéma » de la vignette carte : 8 s par véhicule en marche. `document.hidden` →
+    // on n'avance pas dans un onglet en arrière-plan (sinon on « saute » N vues au retour).
+    const cinemaId = setInterval(() => {
+      if (!document.hidden && this.cinemaCandidates().length > 1) {
+        this.cinemaTick.update((n) => n + 1);
+      }
+    }, 8000);
+    this.destroyRef.onDestroy(() => clearInterval(cinemaId));
+
     try {
       const vehicles = await firstValueFrom(this.vehiclesApi.list());
       this.accessibleVehicleIds.set(new Set(vehicles.map((v) => v.id)));
