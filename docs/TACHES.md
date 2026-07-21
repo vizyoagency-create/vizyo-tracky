@@ -75,7 +75,7 @@ Features implémentées et **non vendues** aujourd'hui (inventaire 21/07) :
 16. PWA installable + notifications push
 17. Coupure planifiée par horaires (multi-plages, jours fériés, dates spéciales)
 
-- ⬜ **2.1 `fonctionnalites.html`** : refonte en sections par domaine, TOUTES les features ci-dessus.
+- ✅ **2.1 `fonctionnalites.html`** : refonte en sections par domaine, TOUTES les features ci-dessus.
 - ⬜ **2.2 `index.html`** : grille features enrichie + bloc « Conducteurs & RGPD » (différenciateurs).
 - ⬜ **2.3 `securite.html`** : enrichir (2FA, audit, vie privée conducteur, consentement, hébergement UE).
 - ⬜ **2.4 `tarifs.html`** : rattacher les features aux plans (qui a quoi).
