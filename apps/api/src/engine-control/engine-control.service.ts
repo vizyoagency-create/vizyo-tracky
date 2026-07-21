@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  OnModuleDestroy,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { CommandStatus, EngineAction, Prisma, UserRole } from '@prisma/client';
@@ -76,8 +77,22 @@ interface RequestedBy {
 }
 
 @Injectable()
-export class EngineControlService {
+export class EngineControlService implements OnModuleDestroy {
   private readonly logger = new Logger(EngineControlService.name);
+
+  /**
+   * Timers armés par la sentinelle « coupure non confirmée ». SUIVIS pour pouvoir les annuler à
+   * l'arrêt du module : un timer de 90 s qui survit à son contexte se réveille dans un monde qui
+   * n'existe plus (Prisma en cours de fermeture, ou — en test — la suite suivante). Cf. l'instabilité
+   * des tests diagnostiquée le 2026-07-20.
+   */
+  private readonly confirmTimers = new Set<NodeJS.Timeout>();
+
+  /** Arrêt propre : on annule ce qui était armé plutôt que de le laisser se réveiller dans le vide. */
+  onModuleDestroy(): void {
+    for (const timer of this.confirmTimers) clearTimeout(timer);
+    this.confirmTimers.clear();
+  }
 
   constructor(
     private readonly prisma: PrismaService,
@@ -536,9 +551,18 @@ export class EngineControlService {
     // la visibilité pour le suivi opérationnel / le debug.
     if (action === EngineAction.CUT && command.confirmationExpected) {
       const timer = setTimeout(() => {
-        void this.reportIfUnconfirmed(command.id, imei);
+        this.confirmTimers.delete(timer);
+        // ⚠️ Un callback d'ARRIÈRE-PLAN ne doit JAMAIS pouvoir tuer le process. Sans ce `.catch`,
+        // un rejet inattendu (Prisma fermé pendant un arrêt, ou un mock incomplet en test) devient
+        // une « unhandled rejection » — que Node fait remonter en CRASH depuis la v15.
+        // C'est exactement ce qui rendait la suite de tests instable (2026-07-20) : le timer se
+        // réveillait pendant une AUTRE suite et emportait tout le worker avec lui.
+        void this.reportIfUnconfirmed(command.id, imei).catch((e) =>
+          this.logger.warn(`Sentinelle « coupure non confirmée » : ${(e as Error)?.message ?? e}`),
+        );
       }, ENGINE_CONFIRM_WINDOW_MS);
       if (typeof timer.unref === 'function') timer.unref();
+      this.confirmTimers.add(timer);
     }
   }
 

@@ -5,7 +5,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { CommandStatus, EngineAction, UserRole } from '@prisma/client';
 import { CobanWireLogger } from '../observability/coban-wire-logger.service';
 import { ErrorLogger } from '../observability/error-logger.service';
@@ -120,6 +120,8 @@ const enabledScheduleWindowed = {
 
 describe('EngineControlService', () => {
   let service: EngineControlService;
+  /** Conservé pour être FERMÉ après chaque test (cf. afterEach : annulation des timers). */
+  let testModule: TestingModule;
   // V1.10 (Sprint 6) — findFirst ajoute au mock car requestCommand/getCommand
   // appliquent maintenant le filtre tenant via la relation tracker.vehicle.fleetId
   // au lieu d'un check after-find.
@@ -167,7 +169,7 @@ describe('EngineControlService', () => {
 
     errorLogger = { record: jest.fn().mockResolvedValue('error-id') };
 
-    const module = await Test.createTestingModule({
+    testModule = await Test.createTestingModule({
       providers: [
         EngineControlService,
         { provide: PrismaService, useValue: prisma },
@@ -184,7 +186,17 @@ describe('EngineControlService', () => {
       ],
     }).compile();
 
-    service = module.get(EngineControlService);
+    service = testModule.get(EngineControlService);
+  });
+
+  /**
+   * Ferme le module après CHAQUE test → `onModuleDestroy` des providers est appelé, donc les
+   * timers d'arrière-plan sont annulés. Sans ça, chaque coupe testée laissait une sentinelle
+   * armée à 90 s qui se réveillait plus tard, pendant une AUTRE suite (cf. l'instabilité
+   * diagnostiquée le 2026-07-20). Bonus : tout futur timer non nettoyé sera détecté ici.
+   */
+  afterEach(async () => {
+    await testModule?.close();
   });
 
   // 1. CUT refusé si tracker introuvable
@@ -695,6 +707,62 @@ describe('EngineControlService', () => {
     expect(prisma.vehicleSchedule.updateMany).not.toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ enabled: false }) }),
     );
+  });
+
+  /**
+   * Sentinelle « coupure non confirmée » — instabilité des tests diagnostiquée le 2026-07-20.
+   *
+   * Une coupe confirmable arme un timer à 90 s. Il survivait à son contexte : il se réveillait
+   * pendant une AUTRE suite, appelait un Prisma qui n'existait plus (`findUnique()` → `undefined`),
+   * et le `.catch` sur `undefined` levait un TypeError DANS un callback fire-and-forget → rejet non
+   * rattrapé → **crash du worker Node** → des tests sans aucun rapport échouaient au hasard.
+   * Symptôme trompeur : la suite ne cassait que lorsqu'elle durait plus de 90 s.
+   */
+  describe('sentinelle « coupure non confirmée » — ne doit jamais survivre ni crasher', () => {
+    /** Arme une vraie sentinelle : coupe confirmable (contact mis) livrée en TCP. */
+    async function armSentinel() {
+      prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
+      prisma.position.findFirst.mockResolvedValue({ ...recentPosition(0), ignition: true });
+      prisma.engineControlCommand.findFirst.mockResolvedValue(null);
+      registry.send.mockReturnValue(true);
+      await service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin);
+    }
+
+    it('annule ses timers à l\'arrêt du module (ils ne réveillent plus un monde disparu)', async () => {
+      jest.useFakeTimers();
+      try {
+        await armSentinel();
+        expect(jest.getTimerCount()).toBeGreaterThan(0); // sentinelle bien armée
+
+        service.onModuleDestroy();
+
+        expect(jest.getTimerCount()).toBe(0);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('⚠️ ne produit AUCUN rejet non rattrapé, même si Prisma répond n\'importe quoi', async () => {
+      const rejections: unknown[] = [];
+      const capture = (e: unknown) => rejections.push(e);
+      process.on('unhandledRejection', capture);
+      jest.useFakeTimers();
+      try {
+        await armSentinel();
+        // Le cas EXACT du crash : le mock ne renvoie pas de promesse (contexte détruit).
+        prisma.engineControlCommand.findUnique.mockReturnValue(undefined as never);
+
+        jest.advanceTimersByTime(95_000); // la sentinelle se réveille
+        jest.useRealTimers();
+        // Laisse les microtâches (et donc un éventuel rejet) remonter.
+        await new Promise((r) => setTimeout(r, 10));
+
+        expect(rejections).toEqual([]);
+      } finally {
+        jest.useRealTimers();
+        process.off('unhandledRejection', capture);
+      }
+    });
   });
 
   // --- Demande CDEF (2026-07) — COUPE AUTOMATIQUE (source SCHEDULER) : jamais couper en
