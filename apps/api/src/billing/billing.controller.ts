@@ -11,6 +11,7 @@ import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BillingService, type BillingViewer } from './billing.service';
 import { BillingSettingsService } from './billing-settings.service';
+import { FleetSubscriptionsService } from './fleet-subscriptions.service';
 import { BillingFleetBodyDto, SetBillingPriceBodyDto, SetCompBodyDto } from './dto/billing-body.dto';
 
 /**
@@ -24,7 +25,18 @@ export class BillingController {
   constructor(
     private readonly billing: BillingService,
     private readonly settings: BillingSettingsService,
+    private readonly subscriptions: FleetSubscriptionsService,
   ) {}
+
+  /**
+   * 5.2 — offre effective de MA flotte (gating doux côté app : bannières « disponible en Pro »).
+   * Ouvert à tous les rôles connectés ; sans abonnement attribué → hasSubscription:false = aucun gating.
+   */
+  @Get('plan')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER, UserRole.NIGHT_WATCHMAN, UserRole.DRIVER)
+  myPlan(@Req() req: AuthenticatedRequest) {
+    return this.subscriptions.getEffectiveForFleet(req.user.fleetId ?? null);
+  }
 
   private viewer(req: AuthenticatedRequest): BillingViewer {
     return { id: req.user.id, role: req.user.role, fleetId: req.user.fleetId ?? null };

@@ -1,4 +1,5 @@
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { PlanService } from '../../core/services/plan.service';
 import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
@@ -49,6 +50,7 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
             <div class="s-plan-info">
               <span class="vt-eyebrow">Votre abonnement</span>
               <div class="s-plan-count">{{ activeVehicleCount() }} véhicule{{ activeVehicleCount() > 1 ? 's' : '' }} suivi{{ activeVehicleCount() > 1 ? 's' : '' }}</div>
+              @if (planLabel()) { <div class="s-plan-note" style="color:var(--tracky-light,#3EEBB8);font-weight:600">Votre offre : {{ planLabel() }}</div> }
               <div class="s-plan-note">La facturation est gérée par votre conseiller Vizyo. Contactez-le pour changer d'offre, ajouter des véhicules ou activer une option.</div>
             </div>
             <a href="mailto:contact@vizyoagency.com" class="s-plan-btn">Contacter mon conseiller</a>
@@ -610,6 +612,9 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
   `],
 })
 export class SettingsComponent implements OnInit {
+  private readonly planSvc = inject(PlanService);
+  protected planLabel(): string | null { this.planSvc.ensureLoaded(); return this.planSvc.label(); }
+
   private readonly auth = inject(AuthService);
   private readonly audioApi = inject(AudioMonitoringService);
   private readonly preferencesService = inject(PreferencesService);

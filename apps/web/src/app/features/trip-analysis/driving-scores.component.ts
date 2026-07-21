@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, OnInit, signal } from '@angular/core';
+import { PlanUpsellComponent } from '../../shared/ui/plan-upsell/plan-upsell.component';
 import { DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { LucideAngularModule, ChevronLeft, Gauge, Car, UserRound, Layers, RefreshCw, AlertTriangle, TrendingUp, Info, Trophy } from 'lucide-angular';
@@ -20,9 +21,10 @@ type Period = '7d' | '30d' | '90d';
   selector: 'app-driving-scores',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, DecimalPipe, LucideAngularModule],
+  imports: [RouterLink, DecimalPipe, LucideAngularModule, PlanUpsellComponent],
   template: `
     <div class="ds">
+      <app-plan-upsell feature="scores" />
       <a routerLink="/reports" class="ds-back"><lucide-icon [img]="BackIcon" [size]="15"></lucide-icon> Rapports</a>
       <header class="ds-head">
         <div class="ds-title">

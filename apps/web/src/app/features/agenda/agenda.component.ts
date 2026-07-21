@@ -8,6 +8,7 @@ import {
   OnInit,
   signal,
 } from '@angular/core';
+import { PlanUpsellComponent } from '../../shared/ui/plan-upsell/plan-upsell.component';
 import { ScrollLockService } from '../../core/services/scroll-lock.service';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -69,9 +70,10 @@ interface GroupOption {
   selector: 'app-agenda',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, LucideAngularModule, DatePipe, GroupBadgeComponent, AgendaCalendarComponent, ReservationSheetComponent, OptimizationSheetComponent, AgendaAgentSettingsSheetComponent, AgendaAgentProposalsSheetComponent, AiJobPillComponent, VehicleLinkDirective],
+  imports: [FormsModule, LucideAngularModule, DatePipe, GroupBadgeComponent, AgendaCalendarComponent, ReservationSheetComponent, OptimizationSheetComponent, AgendaAgentSettingsSheetComponent, AgendaAgentProposalsSheetComponent, AiJobPillComponent, VehicleLinkDirective, PlanUpsellComponent],
   template: `
     <div class="flex flex-col gap-5">
+      <app-plan-upsell feature="agenda" />
       <!-- Header + résumé -->
       <header class="flex flex-col gap-3">
         <div class="flex items-start justify-between gap-3 flex-wrap">

@@ -122,6 +122,30 @@ export class FleetSubscriptionsService {
     return { items, totalRevenueYear };
   }
 
+  /**
+   * 5.2 (gating doux) — abonnement EFFECTIF de la flotte de l'utilisateur connecté.
+   * `hasSubscription:false` (aucune ligne, ou pas de flotte) = AUCUN gating côté app :
+   * les clients existants non attribués gardent tout (décision sécurité du 21/07).
+   */
+  async getEffectiveForFleet(fleetId: string | null): Promise<{
+    hasSubscription: boolean;
+    plan: TrackyPlan | null;
+    formule: TrackyFormule | null;
+    isComp: boolean;
+    options: EffectiveOptions | null;
+  }> {
+    if (!fleetId) return { hasSubscription: false, plan: null, formule: null, isComp: false, options: null };
+    const sub = await this.prisma.fleetSubscription.findUnique({ where: { fleetId } });
+    if (!sub) return { hasSubscription: false, plan: null, formule: null, isComp: false, options: null };
+    return {
+      hasSubscription: true,
+      plan: sub.plan,
+      formule: sub.formule,
+      isComp: sub.isComp,
+      options: FleetSubscriptionsService.effectiveOptions(sub),
+    };
+  }
+
   /** Crée/modifie l'abonnement d'une flotte. Audité (qui, quoi, quand — feed admin). */
   async upsert(fleetId: string, input: SubscriptionUpsertInput, actor: Actor) {
     try {
