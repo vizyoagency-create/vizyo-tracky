@@ -66,6 +66,7 @@ import { GpsDeadZonesModule } from './gps-dead-zones/gps-dead-zones.module';
 import { FleetPlacesModule } from './fleet-places/fleet-places.module';
 import { HealthController } from './health/health.controller';
 import { LeadsModule } from './leads/leads.module';
+import { PublicStatsModule } from './public-stats/public-stats.module';
 import { ApiTrafficModule } from './api-traffic/api-traffic.module';
 import { VehiclesModule } from './vehicles/vehicles.module';
 import { DriverUnlockApiModule } from './driver-unlock/driver-unlock-api.module';
@@ -151,6 +152,8 @@ import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.modul
     PrivacyModeModule,
     InternalModule,
     LeadsModule,
+    // D5 (chantier commercial) — chiffres publics de la LP (compteur de véhicules, cache 5 min).
+    PublicStatsModule,
     // Observabilité du trafic API PUBLIC + intelligence IP (demande client 2026-07).
     // @Global : self-enregistre son APP_INTERCEPTOR (capture des hits publics / non authentifiés).
     ApiTrafficModule,

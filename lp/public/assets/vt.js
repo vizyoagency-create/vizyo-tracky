@@ -502,6 +502,22 @@
     update();
   }
 
-  function init() { initHover(); initReveal(); handleHash(); initSim(); initForms(); prefillPartner(); initSmartPopup(); initLazyVideos(); initConsent(); injectConsentLink(); initToTop(); }
+  // ── D5 — chiffres dynamiques : hydrate les compteurs [data-vt-stat] depuis l'app (vérité base).
+  // Repli silencieux sur la valeur bakée si l'API est injoignable.
+  function initStats() {
+    var els = slice(d.querySelectorAll('[data-vt-stat]')); if (!els.length) return;
+    var cfg = window.VT_CFG || {}; if (!cfg.statsApi) return;
+    try {
+      fetch(cfg.statsApi).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+        if (!j) return;
+        els.forEach(function (el) {
+          var k = el.getAttribute('data-vt-stat');
+          if (j[k] != null) el.textContent = Number(j[k]).toLocaleString('fr-FR');
+        });
+      }).catch(function () {});
+    } catch (e) {}
+  }
+
+  function init() { initHover(); initReveal(); handleHash(); initSim(); initForms(); prefillPartner(); initSmartPopup(); initLazyVideos(); initConsent(); injectConsentLink(); initToTop(); initStats(); }
   if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', init); else init();
 })();
