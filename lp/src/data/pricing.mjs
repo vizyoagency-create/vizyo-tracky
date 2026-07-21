@@ -46,7 +46,7 @@ export const pricing = {
   // Options facturées en plus (la partie "usage").
   addons: {
     // Temps réel 10 s : multiplie le volume de données stocké → surtaxe assumée.
-    live: { key: 'live', label: 'Live temps réel (15 s)', perVehMonth: 9.90 },
+    live: { key: 'live', label: 'Live temps réel (20 s)', perVehMonth: 9.90 },
     // Micro d'assistance embarqué (légal, cas d'accident) et Agent IA d'optimisation.
     micro: { key: 'micro', label: "Micro d'assistance", perVehMonth: 6.90 },
     agent: { key: 'agent', label: 'Agent IA (optimisation)', perVehMonth: 14.90 },

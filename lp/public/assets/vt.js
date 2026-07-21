@@ -104,7 +104,7 @@
       // Devis signable : injecte le récap de la config dans les champs cachés du formulaire.
       var msg = q('[name="message"]');
       if (msg) {
-        var opts = []; if (st.live) opts.push('Live temps réel (15 s)'); if (st.micro) opts.push("Micro d'assistance"); if (st.agent) opts.push('Agent IA');
+        var opts = []; if (st.live) opts.push('Live temps réel (20 s)'); if (st.micro) opts.push("Micro d'assistance"); if (st.agent) opts.push('Agent IA');
         var retLbl = { '90j': '90 jours', '1an': '1 an', '2ans': '2 ans', '3ans': '3 ans' }[st.ret];
         var planLbl = st.plan === 'pro' ? 'Tracky Pro' : 'Tracky Lite';
         var engLbl = st.eng === 'annual' ? 'annuel renouvelable (tarif bloqué)' : 'mensuel sans engagement';
