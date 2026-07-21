@@ -103,3 +103,87 @@ describe('DataRetentionService — retention positions (Sprint 6)', () => {
     expect((prisma as unknown as { $executeRawUnsafe: jest.Mock }).$executeRawUnsafe).not.toHaveBeenCalled();
   });
 });
+
+describe('DataRetentionService — cible CNIL 60 jours (lot 1)', () => {
+  const DAY = 86_400_000;
+
+  /** Borne de suppression reellement utilisee par le DELETE (2e argument = date). */
+  async function captureDeleteFrom(overrides: Record<string, unknown> = {}): Promise<Date> {
+    const prisma = makePrisma();
+    const svc = new DataRetentionService(
+      prisma,
+      makeConfig({ POSITIONS_RETENTION_DAYS: 60, POSITIONS_ARCHIVE_DAYS: 0, POSITIONS_PURGE_ENABLED: 'true', ...overrides }),
+      sysAct,
+    );
+    await svc.runPositionsRetention();
+    const call = (prisma as unknown as { $executeRawUnsafe: jest.Mock }).$executeRawUnsafe.mock.calls[0];
+    return call[1] as Date;
+  }
+
+  it('une position de 61 j est PURGEE, une position de 59 j est CONSERVEE', async () => {
+    const deleteFrom = await captureDeleteFrom();
+    const now = Date.now();
+    const pos61j = new Date(now - 61 * DAY);
+    const pos59j = new Date(now - 59 * DAY);
+
+    // Le DELETE cible tout ce qui est ANTERIEUR a deleteFrom.
+    expect(pos61j.getTime()).toBeLessThan(deleteFrom.getTime()); // supprimee
+    expect(pos59j.getTime()).toBeGreaterThan(deleteFrom.getTime()); // conservee
+    // Et la borne est bien a 60 jours (tolerance 1 min pour le temps d'execution).
+    expect(Math.abs(deleteFrom.getTime() - (now - 60 * DAY))).toBeLessThan(60_000);
+  });
+
+  it('supprime REELLEMENT (mode REAL) avec les defauts 60 + 0 armes', async () => {
+    const prisma = makePrisma();
+    const svc = new DataRetentionService(
+      prisma,
+      makeConfig({ POSITIONS_RETENTION_DAYS: 60, POSITIONS_ARCHIVE_DAYS: 0, POSITIONS_PURGE_ENABLED: 'true' }),
+      sysAct,
+    );
+    const res = await svc.runPositionsRetention();
+    expect(res.mode).toBe('REAL');
+    expect(res.deletedCount).toBeGreaterThan(0);
+    expect((prisma as unknown as { $executeRawUnsafe: jest.Mock }).$executeRawUnsafe).toHaveBeenCalled();
+  });
+
+  it('GARDE-FOU : une fenetre de 6 j fait ECHOUER le job et ne supprime RIEN', async () => {
+    const prisma = makePrisma();
+    const errorLogger = { recordBackground: jest.fn() };
+    const svc = new DataRetentionService(
+      prisma,
+      makeConfig({ POSITIONS_RETENTION_DAYS: 6, POSITIONS_ARCHIVE_DAYS: 0, POSITIONS_PURGE_ENABLED: 'true' }),
+      sysAct,
+      errorLogger as never,
+    );
+
+    const res = await svc.runPositionsRetention();
+
+    expect(res.disabled).toBe(true); // resultat neutre = run echoue
+    expect((prisma as unknown as { $executeRawUnsafe: jest.Mock }).$executeRawUnsafe).not.toHaveBeenCalled();
+    expect(errorLogger.recordBackground).toHaveBeenCalledTimes(1);
+    expect(String(errorLogger.recordBackground.mock.calls[0][0])).toMatch(/30 j|RetentionWindowTooShort/);
+  });
+
+  it('PRODUCTION : POSITIONS_PURGE_ENABLED=false est IGNORE (purge quand meme armee)', async () => {
+    const prisma = makePrisma();
+    const svc = new DataRetentionService(
+      prisma,
+      makeConfig({ NODE_ENV: 'production', POSITIONS_RETENTION_DAYS: 60, POSITIONS_ARCHIVE_DAYS: 0, POSITIONS_PURGE_ENABLED: 'false' }),
+      sysAct,
+    );
+    const res = await svc.runPositionsRetention();
+    expect(res.mode).toBe('REAL');
+  });
+
+  it('ARRET D URGENCE : POSITIONS_RETENTION_DAYS=0 desactive tout, meme en production', async () => {
+    const prisma = makePrisma();
+    const svc = new DataRetentionService(
+      prisma,
+      makeConfig({ NODE_ENV: 'production', POSITIONS_RETENTION_DAYS: 0, POSITIONS_PURGE_ENABLED: 'true' }),
+      sysAct,
+    );
+    const res = await svc.runPositionsRetention();
+    expect(res.disabled).toBe(true);
+    expect((prisma as unknown as { $executeRawUnsafe: jest.Mock }).$executeRawUnsafe).not.toHaveBeenCalled();
+  });
+});

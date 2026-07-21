@@ -102,27 +102,28 @@ const envSchema = z.object({
 
   // Retention donnees — purge auto nocturne (3h30), cf. DataRetentionService.
   // SAMPLING_DECISIONS_RETENTION_DAYS : audit-trail du sampling. Defaut 7j. 0 => desactive.
-  // --- Sprint 6 — Retention & archivage des positions GPS ---
-  // POSITIONS_RETENTION_DAYS : fenetre ACTIVE (jours) avant passage en archive/preavis.
-  //   Defaut 365. 0 => retention infinie = TOUT desactive (ni snapshot ni suppression).
-  // POSITIONS_ARCHIVE_DAYS : duree du PREAVIS / archive recuperable (jours) au-dela de la
-  //   fenetre active, AVANT suppression. Defaut 30. La donnee reste en base (recuperable)
-  //   pendant ce mois, marquee « suppression le … » dans les vues de suivi.
-  // POSITIONS_PURGE_ENABLED : 'true' => suppression REELLE des positions au-dela de
-  //   (retention+archive) jours, par lots (10k) bornes. Defaut 'false' => DRY-RUN : le cron
-  //   COMPTE et alimente les vues mais N'EFFACE RIEN. La vraie suppression ne s'active
-  //   qu'APRES validation du dry-run. Lecture via
-  //   config.get('POSITIONS_PURGE_ENABLED',{infer:true})==='true'.
+  // --- Retention des positions GPS — CIBLE CNIL 60 JOURS (lot 1, 21/07/2026) ---
+  // POSITIONS_RETENTION_DAYS : fenetre ACTIVE (jours). Defaut 60 (recommandation CNIL ~2 mois
+  //   pour la geolocalisation fine). 0 => retention infinie = TOUT desactive (ni snapshot ni
+  //   suppression) : c'est l'ARRET D'URGENCE, y compris en production.
+  // POSITIONS_ARCHIVE_DAYS : preavis/archive recuperable AU-DELA de la fenetre active, avant
+  //   suppression. Defaut 0 : on garde 60 jours, au-dela c'est supprime (decision 21/07).
+  // POSITIONS_PURGE_ENABLED : armement de la SUPPRESSION REELLE (par lots de 10k bornes).
+  //   Defaut 'true'. EN PRODUCTION le drapeau ne peut PAS desactiver la purge (cf.
+  //   resolvePurgeArmed) : desactivable en developpement/test uniquement.
+  // Garde-fou commun : toute fenetre effective < 30 j fait ECHOUER le job (retention-guard.ts).
   SAMPLING_DECISIONS_RETENTION_DAYS: z.coerce.number().int().nonnegative().default(7),
-  POSITIONS_RETENTION_DAYS: z.coerce.number().int().nonnegative().default(365),
-  // RGPD 4.1 — retention des TRAJETS (mois). 0 = desactive. Purge reelle uniquement si
-  // TRIPS_PURGE_ENABLED='true' (sinon DRY-RUN : on compte, on trace, on n'efface rien).
-  // La purge emporte aussi TripAnalysis + TripFuelStop des trajets purges (narratifs de
-  // localisation — pas de FK en base, nettoyage explicite).
+  POSITIONS_RETENTION_DAYS: z.coerce.number().int().nonnegative().default(60),
+  // RGPD — retention des TRAJETS (mois). 0 = desactive. Meme regle d'armement que les positions
+  // (production = toujours arme). La purge emporte aussi TripAnalysis + TripFuelStop des trajets
+  // purges (narratifs de localisation — pas de FK en base, nettoyage explicite).
   TRIPS_RETENTION_MONTHS: z.coerce.number().int().nonnegative().default(12),
-  TRIPS_PURGE_ENABLED: z.string().default('false'),
-  POSITIONS_ARCHIVE_DAYS: z.coerce.number().int().nonnegative().default(30),
-  POSITIONS_PURGE_ENABLED: z.string().default('false'),
+  TRIPS_PURGE_ENABLED: z.string().default('true'),
+  POSITIONS_ARCHIVE_DAYS: z.coerce.number().int().nonnegative().default(0),
+  POSITIONS_PURGE_ENABLED: z.string().default('true'),
+  // RGPD — retention des JOURNAUX SMS (sms_logs : numeros + contenu = donnees personnelles).
+  // Purgee par LogCleanupService (cron 3h00). Defaut 90 j. 0 = desactive.
+  SMS_LOGS_RETENTION_DAYS: z.coerce.number().int().nonnegative().default(90),
   // Retention des logs (LogCleanupService, cron 3h00) — env-configurables pour
   // ajuster sans redeploy. WIRE_LOGS = trames brutes (volumineux : 1 ligne/trame),
   // ERROR_LOGS = erreurs applicatives.
@@ -138,8 +139,10 @@ const envSchema = z.object({
   //   explicite, l'ecoute est techniquement IMPOSSIBLE (AudioMonitoringGuard
   //   garde-fou #2). Defaut 'false' (OFF) — lecture via
   //   config.get('AUDIO_MONITORING_ENABLED',{infer:true})==='true'.
-  // AUDIO_RETENTION_DAYS : retention des clips audio (garde-fou #8, DIFFEREE).
-  //   Audit de la commande = conserve (legal) ; le clip est court.
+  // (Il n'y a PAS de retention de clip audio : AUCUN clip n'est recu ni stocke par le serveur —
+  //  l'ecoute est un appel telephonique du boitier vers un numero autorise. Voir
+  //  docs/rgpd-retention-donnees.md et audio-monitoring.service.ts. L'ancienne variable morte
+  //  AUDIO_RETENTION_DAYS a ete retiree le 21/07/2026 : elle n'etait lue par aucun job.)
   AUDIO_MONITORING_ENABLED: z.string().default('false'),
   // AUDIO_SUPERADMIN_ENABLED : phase de test interne (Sprint 4). En production,
   //   le super-admin (prestataire) ne declenche PAS d'ecoute PAR DEFAUT (garde-fou
@@ -147,7 +150,6 @@ const envSchema = z.object({
   //   d'un flag. Defaut 'false' (OFF). Lecture via
   //   config.get('AUDIO_SUPERADMIN_ENABLED',{infer:true})==='true'.
   AUDIO_SUPERADMIN_ENABLED: z.string().default('false'),
-  AUDIO_RETENTION_DAYS: z.coerce.number().int().positive().default(7),
   // AUDIO_DEVICE_PASSWORD : mot de passe boitier Coban/Baanool pour l'armement du
   //   micro. ARM = SMS `monitor<password>` (le boitier ouvre son micro), DISARM =
   //   SMS `tracker<password>` (retour mode tracking). Convention 123456 par defaut

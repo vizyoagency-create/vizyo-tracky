@@ -5,6 +5,7 @@ import type { Env } from '../config/env.validation';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
+import { assertRetentionWindow, resolvePurgeArmed } from '../common/retention-guard';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -128,9 +129,13 @@ export class DataRetentionService {
   private async runPositionsRetentionOnce(): Promise<PositionsRetentionResult> {
     const cfg = this.readConfig();
     if (cfg.retentionDays <= 0) {
-      // 0 = retention infinie : ni snapshot ni suppression (comportement historique).
+      // 0 = retention infinie : ni snapshot ni suppression (comportement historique + arret
+      // d'urgence en production, ou le drapeau d'armement n'a plus d'effet).
       return this.disabledResult();
     }
+    // Garde-fou commun : une fenetre effective < 30 j fait ECHOUER le job (jamais de purge
+    // massive due a une variable mal saisie). L'erreur remonte au centre d'alerte.
+    assertRetentionWindow(cfg.retentionDays + cfg.archiveDays, 'positions-retention');
     const { archiveFrom, deleteFrom } = this.windows(cfg);
 
     // 1) Snapshot (DRY-RUN) — TOUJOURS. N'efface rien, alimente les vues de suivi.
@@ -279,10 +284,22 @@ export class DataRetentionService {
   }
 
   private readConfig(): RetentionConfig {
+    // Armement : en production le drapeau ne peut PAS desactiver la purge (conformite — une prod
+    // ne doit pas deriver vers « on ne purge plus »). Arret d'urgence = POSITIONS_RETENTION_DAYS=0.
+    const { armed, forced } = resolvePurgeArmed(
+      this.config.get('POSITIONS_PURGE_ENABLED', { infer: true }),
+      this.config.get('NODE_ENV', { infer: true }),
+    );
+    if (forced) {
+      this.logger.warn(
+        '[retention] POSITIONS_PURGE_ENABLED=false IGNORE en production : la purge reste armee ' +
+          '(desactivation possible en developpement uniquement ; arret d\'urgence = POSITIONS_RETENTION_DAYS=0).',
+      );
+    }
     return {
       retentionDays: this.config.get('POSITIONS_RETENTION_DAYS', { infer: true }),
       archiveDays: this.config.get('POSITIONS_ARCHIVE_DAYS', { infer: true }),
-      purgeEnabled: this.config.get('POSITIONS_PURGE_ENABLED', { infer: true }) === 'true',
+      purgeEnabled: armed,
     };
   }
 

@@ -122,14 +122,14 @@ const CATALOG: CatalogEntry[] = [
   {
     id: 'log-cleanup', label: 'Purge des journaux', category: 'Maintenance données',
     kind: 'cron', scheduleHuman: 'chaque jour à 03:00', criticality: 'moyenne', antiOverlap: false,
-    purpose: 'Supprime les vieux journaux (wire / erreurs / audit) au-delà de leur durée de rétention.',
+    purpose: 'Supprime les vieux journaux (wire / erreurs / audit) et les journaux SMS de plus de 90 jours (numéros + contenu).',
     fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 3 && w.getMinutes() === 0 },
   },
   {
     id: 'trips-retention', label: 'Rétention des trajets (RGPD)', category: 'Maintenance données',
     kind: 'cron', scheduleHuman: 'chaque jour à 03:45', criticality: 'moyenne', antiOverlap: false,
-    note: 'En DRY-RUN : n\'efface RIEN tant que TRIPS_PURGE_ENABLED n\'est pas armé.',
-    purpose: 'Compte puis (une fois armé) supprime les trajets de plus de 12 mois, avec leurs analyses IA et arrêts carburant liés.',
+    note: 'Purge REELLE et irreversible. Pour stopper : TRIPS_RETENTION_MONTHS=0.',
+    purpose: 'Supprime définitivement les trajets de plus de 12 mois, avec leurs analyses IA et arrêts carburant liés.',
     fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 3 && w.getMinutes() === 45 },
   },
   {
@@ -141,8 +141,8 @@ const CATALOG: CatalogEntry[] = [
   {
     id: 'positions-retention', label: 'Rétention des positions GPS', category: 'Maintenance données',
     kind: 'cron', scheduleHuman: 'chaque jour à 03:30', criticality: 'moyenne', antiOverlap: false,
-    configurable: true, settingsRoute: '/admin/retention', note: 'En DRY-RUN en prod : n\'efface RIEN tant que le flag n\'est pas armé.',
-    purpose: 'Archive puis (une fois armé) supprime les vieilles positions GPS selon la politique de rétention.',
+    configurable: true, settingsRoute: '/admin/retention', note: 'Purge REELLE et irreversible. Pour stopper : POSITIONS_RETENTION_DAYS=0.',
+    purpose: 'Supprime définitivement les positions GPS de plus de 60 jours (rétention CNIL), par lots bornés.',
     fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 3 && w.getMinutes() === 30 },
   },
   {

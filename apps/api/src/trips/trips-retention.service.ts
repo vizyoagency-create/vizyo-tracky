@@ -5,6 +5,7 @@ import type { Env } from '../config/env.validation';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
+import { assertRetentionWindow, resolvePurgeArmed } from '../common/retention-guard';
 
 /** Taille de lot du DELETE (borne la charge par run, comme la rétention positions). */
 const BATCH_SIZE = 5000;
@@ -45,10 +46,23 @@ export class TripsRetentionService {
 
   async runOnce(now: Date = new Date()): Promise<{ mode: 'DISABLED' | 'DRY_RUN' | 'PURGE'; candidates: number; deleted: number }> {
     const months = this.config.get('TRIPS_RETENTION_MONTHS', { infer: true });
-    const purgeEnabled = this.config.get('TRIPS_PURGE_ENABLED', { infer: true }) === 'true';
     if (!months || months <= 0) {
       this.logger.log('Rétention trajets désactivée (TRIPS_RETENTION_MONTHS=0)');
       return { mode: 'DISABLED', candidates: 0, deleted: 0 };
+    }
+    // Garde-fou commun : fenêtre effective < 30 j → le job ÉCHOUE (jamais de purge accidentelle).
+    assertRetentionWindow(Math.round(months * 30.44), 'trips-retention');
+    // Armement : en production le drapeau ne peut PAS désactiver la purge (arrêt d'urgence =
+    // TRIPS_RETENTION_MONTHS=0).
+    const { armed: purgeEnabled, forced } = resolvePurgeArmed(
+      this.config.get('TRIPS_PURGE_ENABLED', { infer: true }),
+      this.config.get('NODE_ENV', { infer: true }),
+    );
+    if (forced) {
+      this.logger.warn(
+        'TRIPS_PURGE_ENABLED=false IGNORÉ en production : la purge des trajets reste armée ' +
+          "(désactivation en développement uniquement ; arrêt d'urgence = TRIPS_RETENTION_MONTHS=0).",
+      );
     }
 
     const cutoff = new Date(now);

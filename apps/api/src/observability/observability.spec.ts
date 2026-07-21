@@ -245,6 +245,7 @@ describe('LogCleanupService', () => {
     wireLog: { deleteMany: jest.Mock };
     errorLog: { deleteMany: jest.Mock };
     systemActivityLog: { deleteMany: jest.Mock };
+    smsLog: { deleteMany: jest.Mock };
   };
 
   beforeEach(async () => {
@@ -252,6 +253,8 @@ describe('LogCleanupService', () => {
       wireLog: { deleteMany: jest.fn().mockResolvedValue({ count: 5 }) },
       errorLog: { deleteMany: jest.fn().mockResolvedValue({ count: 2 }) },
       systemActivityLog: { deleteMany: jest.fn().mockResolvedValue({ count: 3 }) },
+      // Lot 1 — purge des journaux SMS (numeros + contenu) ajoutee au meme cron.
+      smsLog: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
     };
     systemActivity = { record: jest.fn() };
     const module = await Test.createTestingModule({
@@ -268,6 +271,7 @@ describe('LogCleanupService', () => {
               key === 'WIRE_LOGS_RETENTION_DAYS' ? 7
                 : key === 'ERROR_LOGS_RETENTION_DAYS' ? 30
                 : key === 'MUTATION_AUDIT_RETENTION_DAYS' ? 365
+                : key === 'SMS_LOGS_RETENTION_DAYS' ? 90
                 : undefined,
             ),
           },
