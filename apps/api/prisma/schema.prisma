@@ -272,8 +272,67 @@ model Fleet {
   audioConfig          FleetAudioConfig?
   // Facturation (2026-07) — abonnement à l'option IA (1:1).
   aiSubscription       AiSubscription?
+  // D4 (chantier commercial 2026-07) — abonnement commercial (plan/formule/options, 1:1).
+  subscription         FleetSubscription?
 
   @@map("fleets")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// D4 + Phase 3 (chantier commercial 2026-07) — abonnements clients & grille tarifaire
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Plans commerciaux (repositionnement 2026, source xlsx « Repositionnement »).
+enum TrackyPlan {
+  LITE
+  PRO
+  SIGNATURE
+}
+
+/// Formules d'engagement : Sérénité (tout inclus, 36 mois) / Liberté (sans engagement, 12 mois).
+enum TrackyFormule {
+  SERENITE
+  LIBERTE
+}
+
+/// D4 — Abonnement commercial d'une flotte : plan + formule + options à la carte + cas spéciaux.
+/// Édité par le SUPER_ADMIN dans « Abonnements & tarifs ». SIGNATURE inclut TOUTES les options
+/// (résolution effective dans FleetSubscriptionsService.effectiveOptions). `isComp` = offert
+/// (partenaire, test) ; `customPriceEurYear` = prix négocié /véh/an qui remplace la grille.
+model FleetSubscription {
+  id                 String        @id @default(uuid()) @db.Uuid
+  fleetId            String        @unique @db.Uuid
+  fleet              Fleet         @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  plan               TrackyPlan    @default(PRO)
+  formule            TrackyFormule @default(SERENITE)
+  // Options à la carte (pertinentes en LITE/PRO — SIGNATURE les inclut toutes).
+  optLive            Boolean       @default(false)
+  optMicro           Boolean       @default(false)
+  optAgent           Boolean       @default(false)
+  /// '90j' | '1an' | '2ans' | '3ans'
+  retentionKey       String        @default("90j")
+  // Cas spéciaux.
+  isComp             Boolean       @default(false)
+  customPriceEurYear Int?
+  notes              String?
+  updatedByUserId    String?       @db.Uuid
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@map("fleet_subscriptions")
+}
+
+/// Phase 3 — Grille tarifaire PUBLIQUE (SINGLETON, éditée par le super-admin). `grid` = JSON de la
+/// même forme que lp/src/data/pricing.mjs (formules, plans, addons, launch). Consommée par la LP
+/// via GET /public/pricing (hydratation runtime) et par l'app (admin + calculs d'abonnement).
+model PricingSettings {
+  id              String   @id @default(uuid()) @db.Uuid
+  grid            Json
+  updatedByUserId String?  @db.Uuid
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("pricing_settings")
 }
 
 /// Statut de l'option IA payante d'une société. Pilote `Fleet.aiEnabled` (ACTIVE/COMP → IA ON).
