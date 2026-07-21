@@ -126,6 +126,13 @@ const CATALOG: CatalogEntry[] = [
     fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 3 && w.getMinutes() === 0 },
   },
   {
+    id: 'trips-retention', label: 'Rétention des trajets (RGPD)', category: 'Maintenance données',
+    kind: 'cron', scheduleHuman: 'chaque jour à 03:45', criticality: 'moyenne', antiOverlap: false,
+    note: 'En DRY-RUN : n\'efface RIEN tant que TRIPS_PURGE_ENABLED n\'est pas armé.',
+    purpose: 'Compte puis (une fois armé) supprime les trajets de plus de 12 mois, avec leurs analyses IA et arrêts carburant liés.',
+    fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 3 && w.getMinutes() === 45 },
+  },
+  {
     id: 'positions-retention', label: 'Rétention des positions GPS', category: 'Maintenance données',
     kind: 'cron', scheduleHuman: 'chaque jour à 03:30', criticality: 'moyenne', antiOverlap: false,
     configurable: true, settingsRoute: '/admin/retention', note: 'En DRY-RUN en prod : n\'efface RIEN tant que le flag n\'est pas armé.',

@@ -115,6 +115,12 @@ const envSchema = z.object({
   //   config.get('POSITIONS_PURGE_ENABLED',{infer:true})==='true'.
   SAMPLING_DECISIONS_RETENTION_DAYS: z.coerce.number().int().nonnegative().default(7),
   POSITIONS_RETENTION_DAYS: z.coerce.number().int().nonnegative().default(365),
+  // RGPD 4.1 — retention des TRAJETS (mois). 0 = desactive. Purge reelle uniquement si
+  // TRIPS_PURGE_ENABLED='true' (sinon DRY-RUN : on compte, on trace, on n'efface rien).
+  // La purge emporte aussi TripAnalysis + TripFuelStop des trajets purges (narratifs de
+  // localisation — pas de FK en base, nettoyage explicite).
+  TRIPS_RETENTION_MONTHS: z.coerce.number().int().nonnegative().default(12),
+  TRIPS_PURGE_ENABLED: z.string().default('false'),
   POSITIONS_ARCHIVE_DAYS: z.coerce.number().int().nonnegative().default(30),
   POSITIONS_PURGE_ENABLED: z.string().default('false'),
   // Retention des logs (LogCleanupService, cron 3h00) — env-configurables pour

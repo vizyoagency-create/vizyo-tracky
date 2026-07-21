@@ -5,12 +5,13 @@ import { RealtimeModule } from '../realtime/realtime.module';
 import { MapMatchingService } from './map-matching.service';
 import { TripSegmenterService } from './trip-segmenter.service';
 import { TripsController } from './trips.controller';
+import { TripsRetentionService } from './trips-retention.service';
 import { TripsService } from './trips.service';
 
 @Module({
   imports: [forwardRef(() => RealtimeModule), AuthModule, DriversModule],
   controllers: [TripsController],
-  providers: [TripsService, TripSegmenterService, MapMatchingService],
+  providers: [TripsService, TripSegmenterService, MapMatchingService, TripsRetentionService],
   exports: [TripsService],
 })
 export class TripsModule {}
