@@ -6,39 +6,36 @@
 
 ---
 
-## 🔑 DÉCISIONS BLOQUANTES (à trancher par Youness)
+## 🔑 DÉCISIONS — ACTÉES le 21/07/2026 (source : Vizyo_Tracky_Plan_Action_INTERNE.xlsx, feuille « Repositionnement »)
 
-### D1 — Nouvelle grille tarifaire (proposition à valider)
-Benchmark 21/07/2026 : Quartix (concurrent direct entrée de gamme) = **11,90–16,90 € HT/véh/mois**,
-install offerte, engagement 12 mois ; trackers low-cost sans abonnement ≈ 6,40 €/mois ;
-solutions complètes (Webfleet, Verizon) = 20–100 €/véh/mois (PME : 25–45 €) ; matériel marché 60–600 € HT.
+### D1 ✅ — Nouvelle grille : modèle TOUT INCLUS (bascule stratégique)
+Matériel, SIM, pose et garantie **compris dans l'abonnement** (on arrête de facturer boîtier 149 € + pose 79 €).
+Prix **HT / véhicule / AN** :
 
-| | Actuel (annuel/mensuel) | **Proposé** | Justification |
-|---|---|---|---|
-| **Lite** (géoloc simple) | 22,90 / 32,90 + 99 € HW | **16,90 / 24,90** + 99 € HW | 22,90 = trop cher face à Quartix 11,90–16,90 pour le même périmètre. 16,90 = aligné haut de gamme Quartix en offrant plus (20 s, alertes, rapports, rôles). |
-| **Pro** (coupe-circuit) | 29,90 / 42,90 + 189 € HW | **29,90 / 39,90** + 189 € HW | Annuel inchangé : le coupe-circuit + conducteurs QR + RGPD justifient la prime (~2× Quartix). Mensuel 42,90→39,90 (écart sans engagement plus lisible : +10 €). |
-| **Fleet** (10+, sur devis) | sur devis | inchangé | — |
-| Options Live 9,90 · Micro 6,90 · Agent IA 14,90 · Rétention 3,90/6,90/9,90 | — | **inchangées** | Cohérentes marché ; le Live passe de « 15 s » à « 20 s » (vérité matériel, cf. 1.1). |
-| Install 49 € / 29 € dès 5 / offerte dès 10 | — | inchangée | Marché ≈ 25 € pose simple ; ici pose coupe-circuit → justifiable. |
+| Plan | **Sérénité** (tout inclus, 36 mois) | **Liberté** (sans engagement, 12 mois, matériel restitué) |
+|---|---|---|
+| **Tracky Lite** (géoloc simple, sans coupe-circuit) | **149 €/an** (12,42 €/mois) | 199 €/an (16,58 €/mois) |
+| **Tracky Pro** (+ coupure programmée, IA, antivol, audit) | **199 €/an** (16,58 €/mois) | 259 €/an (21,58 €/mois) |
+| **Tracky Signature** (premium tout compris) | **269 €/an** (22,42 €/mois) | 349 €/an (29,08 €/mois) |
 
-### D2 — Purge des positions (RGPD)
-La CNIL recommande ~2 mois pour la géoloc fine. Aujourd'hui : `POSITIONS_RETENTION_DAYS=365` (+30 archive)
-et **DRY-RUN** (`POSITIONS_PURGE_ENABLED=false`) → rien n'est effacé.
-**À décider** : armer la purge en prod ? Avec quel seuil (60 j conforme CNIL vs 90 j = « rétention incluse » vendue) ?
-⚠️ Lien pricing : on VEND des paliers de rétention 1/2/3 ans → la purge doit devenir **par-flotte selon l'option payée**, pas un seuil global (cf. 4.2).
+Options : tarification annuelle conservée à la carte (Assistant IA 179 €/an, etc.), **incluses selon le palier**
+(Signature = tout compris). ⚠️ Le détail exact du mapping option↔palier est « à reprendre » (tâche S4 du xlsx)
+→ mapping provisoire proposé par Claude, à valider : Pro inclut conducteurs QR + vie privée + agenda + scores ;
+Signature inclut en plus Live 20 s + Agent IA + micro + rétention 3 ans + veilleur/surveillance.
 
-### D3 — PIN conducteur : ❌ ABANDONNÉ (proposé)
-Remplacé par compte + QR signé + proximité GPS (décision produit de juillet, implémentée et en prod).
-À confirmer pour clore définitivement.
+### D2 ✅ — Purge des positions : **NE PAS ARMER** (décision Youness)
+La purge reste en DRY-RUN. La tâche 4.2 reste ⏸️ jusqu'à nouvel ordre.
 
-### D4 — Application des paliers Lite/Pro/Fleet dans l'app
-Aujourd'hui : seule l'option IA est facturée (Stripe). Les plans ne sont pas appliqués.
-**À décider** : niveau d'application → (a) simple champ affiché, (b) gating doux (écran « passez à Pro »),
-(c) gating dur + facturation Stripe complète. Proposition : (b) d'abord, (c) quand les clés Stripe prod seront posées.
+### D3 ✅ — PIN : ❌ CLOS. Remplacé par QR + compte conducteur (fait, en prod, LP nettoyée).
 
-### D5 — Chiffres déclaratifs de la LP (« 850+ véhicules · 13 départements · 48h · <2h »)
-Invérifiables dans le code. **À décider** : les assumer (chiffres commerciaux) ou remplacer par du vérifiable
-(ex. « suivi 24/7 · rafraîchissement 20 s · 6 rôles d'accès · installation par nos équipes »).
+### D4 ✅ — GO abonnements par client dans l'app
+Objectif : chaque flotte a son **plan** (Lite/Pro/Signature) + sa **formule** + ses **options**, visibles et
+modifiables depuis l'espace admin (vue d'ensemble, modification, **cas spéciaux/comp**). Les options
+s'activent selon le plan. → Phase 5 réécrite en conséquence.
+
+### D5 ✅ — GO chiffres dynamiques
+Endpoint public qui lit le **nombre total de véhicules suivis** en base ; la LP (et tous les affichages de
+chiffres) se met à jour automatiquement. → nouvelle tâche 3.0.
 
 ---
 
