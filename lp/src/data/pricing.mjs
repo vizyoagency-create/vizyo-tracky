@@ -1,73 +1,67 @@
 // ──────────────────────────────────────────────────────────────────────────
 //  GRILLE TARIFAIRE — ÉDITE ICI ET NULLE PART AILLEURS.
-//  Ces valeurs alimentent à la fois le HTML (cartes tarifs) et le simulateur JS.
-//  Prix HT, par véhicule et par mois sauf mention contraire.
-//  Modèle "façon Claude" : un socle inclus + les ressources lourdes
-//  (Live temps réel, rétention longue) facturées en plus pour protéger la marge VPS.
+//  Repositionnement 2026 (source : Vizyo_Tracky_Plan_Action_INTERNE.xlsx, « Repositionnement ») :
+//  modèle TOUT INCLUS — boîtier, SIM & data, pose et garantie COMPRIS dans l'abonnement
+//  (on ne facture plus le matériel ni la pose à part). Prix HT, par véhicule et par AN.
+//  Deux formules : Sérénité (tout inclus, engagement 36 mois) et Liberté (sans
+//  engagement, 12 mois, matériel restitué en fin de contrat).
 // ──────────────────────────────────────────────────────────────────────────
 export const pricing = {
   currency: '€',
   vat: 'HT',
 
-  // Gammes. annual = tarif mis en avant (engagement 12 mois, reconductible, bloqué
-  // à la souscription). monthly = option sans engagement, volontairement plus chère.
+  /** Ce que « tout inclus » veut dire, partout où on l'affiche. */
+  toutInclus: 'Boîtier, SIM & data, pose par nos équipes et garantie inclus',
+
+  formules: {
+    serenite: { key: 'serenite', name: 'Sérénité', sub: 'Tout inclus · engagement 36 mois', engagementMois: 36 },
+    liberte: { key: 'liberte', name: 'Liberté', sub: 'Sans engagement · 12 mois · matériel restitué', engagementMois: 0 },
+  },
+
+  // Prix / véhicule / AN (HT) par formule.
   plans: {
     lite: {
       key: 'lite',
       name: 'Tracky Lite',
       tagline: 'Géolocalisation simple — sans coupe-circuit',
-      annual: 22.90,
-      monthly: 32.90,
-      hardware: 99,
-      freq: 'Suivi standard (30–60 s / sur événement)',
-      retentionIncluded: '90 jours',
+      serenite: 149,
+      liberte: 199,
     },
     pro: {
       key: 'pro',
       name: 'Tracky Pro',
       tagline: 'Contrôle total — coupure moteur incluse',
-      annual: 29.90,
-      monthly: 42.90,
-      hardware: 189,
-      freq: 'Suivi standard (30–60 s / sur événement)',
-      retentionIncluded: '90 jours',
+      serenite: 199,
+      liberte: 259,
       popular: true,
     },
-    fleet: {
-      key: 'fleet',
-      name: 'Tracky Fleet',
-      tagline: 'Sur-mesure pour flottes structurées (10+ véhicules)',
-      annual: null, // sur devis
-      monthly: null,
-      hardware: null,
+    signature: {
+      key: 'signature',
+      name: 'Tracky Signature',
+      tagline: 'Premium — tout compris, sans exception',
+      serenite: 269,
+      liberte: 349,
     },
   },
 
-  // Options facturées en plus (la partie "usage").
+  // Options à la carte (€/véhicule/AN, HT) pour Lite & Pro.
+  // ⚠️ TOUTES les options sont INCLUSES dans Tracky Signature.
   addons: {
-    // Temps réel 10 s : multiplie le volume de données stocké → surtaxe assumée.
-    live: { key: 'live', label: 'Live temps réel (20 s)', perVehMonth: 9.90 },
-    // Micro d'assistance embarqué (légal, cas d'accident) et Agent IA d'optimisation.
-    micro: { key: 'micro', label: "Micro d'assistance", perVehMonth: 6.90 },
-    agent: { key: 'agent', label: 'Agent IA (optimisation)', perVehMonth: 14.90 },
-    // Rétention longue : plus de stockage = palier facturé. 90 j inclus partout.
+    live: { key: 'live', label: 'Live temps réel (20 s)', perVehYear: 119 },
+    micro: { key: 'micro', label: "Micro d'assistance", perVehYear: 83 },
+    agent: { key: 'agent', label: 'Assistant IA (optimisation)', perVehYear: 179 },
     retention: [
-      { key: '90j', years: 0.25, label: '90 jours', perVehMonth: 0, included: true },
-      { key: '1an', years: 1, label: '1 an', perVehMonth: 3.90 },
-      { key: '2ans', years: 2, label: '2 ans', perVehMonth: 6.90 },
-      { key: '3ans', years: 3, label: '3 ans', perVehMonth: 9.90 },
+      { key: '90j', years: 0.25, label: '90 jours', perVehYear: 0, included: true },
+      { key: '1an', years: 1, label: '1 an', perVehYear: 47 },
+      { key: '2ans', years: 2, label: '2 ans', perVehYear: 83 },
+      { key: '3ans', years: 3, label: '3 ans', perVehYear: 119 },
     ],
   },
 
-  // Installation (one-shot, par véhicule).
-  install: { base: 49, from5: 29, freeFrom: 10 },
-
-  // Estimation des économies annuelles par véhicule (carburant + usage maîtrisé),
-  // utilisée pour la barre ROI du simulateur.
+  // Estimation des économies annuelles par véhicule (carburant + usage maîtrisé) — barre ROI.
   savingsPerVehYear: { low: 200, high: 400 },
 
   // Offre de lancement datée + prix bloqué à la souscription.
-  // until = date de fin (YYYY-MM-DD). slotsLeft = places restantes affichées.
   launch: {
     active: true,
     label: 'Tarif de lancement',

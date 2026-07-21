@@ -75,9 +75,11 @@
   // ── Simulateur tarifaire (page /tarifs) ──
   function initSim() {
     var wrap = d.getElementById('vt-sim'); if (!wrap) return;
-    var PR = { lite: { annual: 22.90, monthly: 32.90, hw: 99 }, pro: { annual: 29.90, monthly: 42.90, hw: 189 } };
-    var RET = { '90j': 0, '1an': 3.90, '2ans': 6.90, '3ans': 9.90 };
-    var st = { plan: 'pro', vehicles: 5, eng: 'annual', live: false, micro: false, agent: false, ret: '90j' };
+    // Repositionnement 2026 — TOUT INCLUS (boîtier, SIM, pose, garantie). Prix €/véhicule/AN HT.
+    var PR = { lite: { serenite: 149, liberte: 199 }, pro: { serenite: 199, liberte: 259 }, signature: { serenite: 269, liberte: 349 } };
+    var OPT = { live: 119, micro: 83, agent: 179 }; // options à la carte €/an — TOUTES incluses en Signature
+    var RET = { '90j': 0, '1an': 47, '2ans': 83, '3ans': 119 };
+    var st = { plan: 'pro', vehicles: 5, formule: 'serenite', live: false, micro: false, agent: false, ret: '90j' };
     var fmt = function (n, dec) { return n.toLocaleString('fr-FR', { minimumFractionDigits: dec || 0, maximumFractionDigits: dec || 0 }); };
     var seg = function (a) { return 'flex:1;padding:11px;border-radius:9px;border:none;cursor:pointer;font-weight:700;font-size:.9rem;font-family:inherit;transition:all .2s;' + (a ? 'background:var(--accent);color:var(--accent-ink)' : 'background:transparent;color:var(--tx2)'); };
     var opt = function (a) { return 'padding:13px 10px;border-radius:11px;cursor:pointer;font-weight:700;font-size:.88rem;font-family:inherit;text-align:center;transition:all .2s;' + (a ? 'background:var(--accent-soft);border:1.5px solid var(--accent);color:var(--accent)' : 'background:var(--surface);border:1px solid var(--border);color:var(--tx2)'); };
@@ -86,42 +88,48 @@
     var set = function (s, v) { var el = q('[data-out="' + s + '"]'); if (el) el.textContent = v; };
 
     function render() {
-      var base = PR[st.plan][st.eng];
-      var perVeh = base + (st.live ? 9.90 : 0) + (st.micro ? 6.90 : 0) + (st.agent ? 14.90 : 0) + RET[st.ret];
-      var monthTotal = perVeh * st.vehicles, install = st.vehicles >= 10 ? 0 : (st.vehicles >= 5 ? 29 : 49), hw = PR[st.plan].hw;
+      // Signature = premium tout compris : toutes les options + rétention 3 ans incluses.
+      var sig = st.plan === 'signature';
+      var base = PR[st.plan][st.formule];
+      var perVehYear = base + (sig ? 0 : (st.live ? OPT.live : 0) + (st.micro ? OPT.micro : 0) + (st.agent ? OPT.agent : 0) + RET[st.ret]);
+      var totalYear = perVehYear * st.vehicles;
       set('vehicles', st.vehicles);
-      set('perDay', fmt(perVeh / 30, 2) + ' €');
-      set('monthTotal', fmt(monthTotal, 2) + ' €');
-      set('perVeh', fmt(perVeh, 2) + ' €/véh');
-      set('year1', fmt(hw * st.vehicles + install * st.vehicles + monthTotal * 12, 0) + ' €');
-      set('recurring', fmt(monthTotal * 12, 0) + ' €');
+      set('perDay', fmt(perVehYear / 365, 2) + ' €');
+      set('perVehYear', fmt(perVehYear, 0) + ' €');
+      set('perVehMonth', 'soit ' + fmt(perVehYear / 12, 2) + ' €/mois/véh');
+      set('totalYear', fmt(totalYear, 0) + ' €');
+      set('totalMonth', fmt(totalYear / 12, 2) + ' €');
       set('roi', fmt(200 * st.vehicles, 0) + ' – ' + fmt(400 * st.vehicles, 0) + ' €/an');
-      set('installNote', 'Installation : ' + (st.vehicles >= 10 ? 'offerte dès 10 véhicules' : (st.vehicles >= 5 ? '29 €/véhicule (dès 5)' : '49 €/véhicule')) + '.');
+      set('installNote', st.formule === 'liberte'
+        ? 'Tout inclus : boîtier, SIM & data, pose et garantie. Sans engagement (12 mois), matériel restitué en fin de contrat.'
+        : 'Tout inclus : boîtier, SIM & data, pose par nos équipes et garantie. Engagement 36 mois, tarif bloqué.');
       qa('[data-sim="plan"]').forEach(function (b) { b.style.cssText = seg(b.getAttribute('data-val') === st.plan); });
-      qa('[data-sim="eng"]').forEach(function (b) { b.style.cssText = opt(b.getAttribute('data-val') === st.eng); });
-      qa('[data-sim="ret"]').forEach(function (b) { b.style.cssText = opt(b.getAttribute('data-val') === st.ret); });
-      qa('[data-sim="opt"]').forEach(function (b) { b.style.cssText = tog(st[b.getAttribute('data-val')]); });
+      qa('[data-sim="formule"]').forEach(function (b) { b.style.cssText = opt(b.getAttribute('data-val') === st.formule); });
+      qa('[data-sim="ret"]').forEach(function (b) { b.style.cssText = opt(sig ? b.getAttribute('data-val') === '3ans' : b.getAttribute('data-val') === st.ret) + (sig ? ';opacity:.6;cursor:default' : ''); });
+      qa('[data-sim="opt"]').forEach(function (b) { b.style.cssText = tog(sig ? true : st[b.getAttribute('data-val')]) + (sig ? ';opacity:.6;cursor:default' : ''); });
       // Devis signable : injecte le récap de la config dans les champs cachés du formulaire.
       var msg = q('[name="message"]');
       if (msg) {
-        var opts = []; if (st.live) opts.push('Live temps réel (20 s)'); if (st.micro) opts.push("Micro d'assistance"); if (st.agent) opts.push('Agent IA');
-        var retLbl = { '90j': '90 jours', '1an': '1 an', '2ans': '2 ans', '3ans': '3 ans' }[st.ret];
-        var planLbl = st.plan === 'pro' ? 'Tracky Pro' : 'Tracky Lite';
-        var engLbl = st.eng === 'annual' ? 'annuel renouvelable (tarif bloqué)' : 'mensuel sans engagement';
+        var opts = [];
+        if (sig) { opts.push('toutes incluses (Signature)'); }
+        else { if (st.live) opts.push('Live temps réel (20 s)'); if (st.micro) opts.push("Micro d'assistance"); if (st.agent) opts.push('Assistant IA'); }
+        var retLbl = sig ? '3 ans (incluse)' : { '90j': '90 jours', '1an': '1 an', '2ans': '2 ans', '3ans': '3 ans' }[st.ret];
+        var planLbl = { lite: 'Tracky Lite', pro: 'Tracky Pro', signature: 'Tracky Signature' }[st.plan];
+        var forLbl = st.formule === 'serenite' ? 'Sérénité — tout inclus, engagement 36 mois' : 'Liberté — sans engagement, 12 mois, matériel restitué';
         msg.value =
-          'DEVIS AUTO-CONFIGURÉ — ' + planLbl + ' (' + engLbl + ')\n' +
+          'DEVIS AUTO-CONFIGURÉ — ' + planLbl + ' (' + forLbl + ')\n' +
           st.vehicles + ' véhicule(s) · Options : ' + (opts.length ? opts.join(', ') : 'aucune') + ' · Rétention : ' + retLbl + '\n' +
-          'Par véhicule : ' + fmt(perVeh, 2) + ' €/mois HT · Mensuel total : ' + fmt(monthTotal, 2) + ' € HT\n' +
-          '1re année (boîtier + install + abo) : ' + fmt(hw * st.vehicles + install * st.vehicles + monthTotal * 12, 0) + ' € · Années suivantes : ' + fmt(monthTotal * 12, 0) + ' €\n' +
+          'Par véhicule : ' + fmt(perVehYear, 0) + ' €/an HT (soit ' + fmt(perVehYear / 12, 2) + ' €/mois)\n' +
+          'Total flotte : ' + fmt(totalYear, 0) + ' €/an HT (soit ' + fmt(totalYear / 12, 2) + ' €/mois) — tout inclus : boîtier, SIM, pose, garantie\n' +
           'Économies estimées : ' + fmt(200 * st.vehicles, 0) + ' – ' + fmt(400 * st.vehicles, 0) + ' €/an\n' +
           'Bon pour accord (devis indicatif, à confirmer par Vizyo).';
       }
       var fsEl = q('[name="fleetSize"]'); if (fsEl) fsEl.value = st.vehicles + ' véhicule' + (st.vehicles > 1 ? 's' : '');
     }
     qa('[data-sim="plan"]').forEach(function (b) { b.addEventListener('click', function () { st.plan = b.getAttribute('data-val'); render(); }); });
-    qa('[data-sim="eng"]').forEach(function (b) { b.addEventListener('click', function () { st.eng = b.getAttribute('data-val'); render(); }); });
-    qa('[data-sim="ret"]').forEach(function (b) { b.addEventListener('click', function () { st.ret = b.getAttribute('data-val'); render(); }); });
-    qa('[data-sim="opt"]').forEach(function (b) { b.addEventListener('click', function () { var k = b.getAttribute('data-val'); st[k] = !st[k]; render(); }); });
+    qa('[data-sim="formule"]').forEach(function (b) { b.addEventListener('click', function () { st.formule = b.getAttribute('data-val'); render(); }); });
+    qa('[data-sim="ret"]').forEach(function (b) { b.addEventListener('click', function () { if (st.plan === 'signature') return; st.ret = b.getAttribute('data-val'); render(); }); });
+    qa('[data-sim="opt"]').forEach(function (b) { b.addEventListener('click', function () { if (st.plan === 'signature') return; var k = b.getAttribute('data-val'); st[k] = !st[k]; render(); }); });
     var sl = q('[data-sim="vehicles"]'); if (sl) sl.addEventListener('input', function () { st.vehicles = parseInt(sl.value, 10) || 1; render(); });
     render();
   }

@@ -32,7 +32,7 @@ const ORG_LD = { '@context': 'https://schema.org', '@type': 'Organization', name
 const WEBSITE_LD = { '@context': 'https://schema.org', '@type': 'WebSite', name: site.name, url: site.baseUrl, inLanguage: 'fr-FR' };
 const crumb = (items) => ({ '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: items.map((it, i) => ({ '@type': 'ListItem', position: i + 1, name: it.name, item: it.out === 'index.html' ? site.baseUrl + '/' : abs(it.out) })) });
 const faqLd = (qa) => ({ '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: qa.map((x) => ({ '@type': 'Question', name: x.q, acceptedAnswer: { '@type': 'Answer', text: x.a } })) });
-const productLd = () => ({ '@context': 'https://schema.org', '@type': 'Product', name: 'Vizyo Tracky — traceur GPS de flotte', description: 'Boîtier GPS + application française : géolocalisation temps réel, coupure moteur, alertes, rapports.', brand: { '@type': 'Brand', name: 'Vizyo Tracky' }, offers: { '@type': 'AggregateOffer', priceCurrency: 'EUR', lowPrice: P.lite.annual, highPrice: P.pro.monthly, offerCount: 3, offers: [{ '@type': 'Offer', name: 'Tracky Lite (annuel)', price: P.lite.annual, priceCurrency: 'EUR' }, { '@type': 'Offer', name: 'Tracky Pro (annuel)', price: P.pro.annual, priceCurrency: 'EUR' }] } });
+const productLd = () => ({ '@context': 'https://schema.org', '@type': 'Product', name: 'Vizyo Tracky — traceur GPS de flotte', description: 'Solution tout inclus (boîtier, SIM, pose, garantie) : géolocalisation temps réel, coupure moteur, alertes, rapports, comptes conducteurs.', brand: { '@type': 'Brand', name: 'Vizyo Tracky' }, offers: { '@type': 'AggregateOffer', priceCurrency: 'EUR', lowPrice: P.lite.serenite, highPrice: P.signature.liberte, offerCount: 3, offers: [{ '@type': 'Offer', name: 'Tracky Lite (Sérénité, tout inclus, prix par véhicule et par an)', price: P.lite.serenite, priceCurrency: 'EUR' }, { '@type': 'Offer', name: 'Tracky Pro (Sérénité, tout inclus, prix par véhicule et par an)', price: P.pro.serenite, priceCurrency: 'EUR' }, { '@type': 'Offer', name: 'Tracky Signature (Sérénité, tout inclus, prix par véhicule et par an)', price: P.signature.serenite, priceCurrency: 'EUR' }] } });
 const localBizLd = (c, out) => ({ '@context': 'https://schema.org', '@type': 'LocalBusiness', name: `Vizyo Tracky — ${c.name}`, description: `Installation de traceurs GPS de flotte à ${c.name} (${c.dept}) et dans tout le département. Géolocalisation temps réel, coupure moteur, support local.`, url: abs(out), telephone: site.phoneE164, email: site.email, priceRange: '€€', areaServed: { '@type': 'City', name: c.name }, address: { '@type': 'PostalAddress', addressLocality: c.name, addressRegion: 'Occitanie', addressCountry: 'FR' }, geo: { '@type': 'GeoCoordinates', latitude: c.lat, longitude: c.lng } });
 const HOME = { name: 'Accueil', out: 'index.html' };
 
@@ -97,46 +97,47 @@ const SIM_SECTION = `<section class="vt-sec" id="simulateur" style="padding:96px
 </div>
 <div id="vt-sim" data-reveal style="background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:30px;box-shadow:var(--shadow-sm)">
 <div style="display:flex;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:5px;margin-bottom:26px">
-<button data-sim="plan" data-val="lite" style="${seg(false)}">Tracky Lite</button>
-<button data-sim="plan" data-val="pro" style="${seg(true)}">Tracky Pro</button>
+<button data-sim="plan" data-val="lite" style="${seg(false)}">Lite</button>
+<button data-sim="plan" data-val="pro" style="${seg(true)}">Pro</button>
+<button data-sim="plan" data-val="signature" style="${seg(false)}">Signature</button>
 </div>
 <div style="margin-bottom:26px">
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px"><label style="font-weight:700;font-size:.95rem">Nombre de véhicules</label><span data-out="vehicles" style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:1.4rem;color:var(--accent)">5</span></div>
 <input type="range" min="1" max="50" step="1" value="5" data-sim="vehicles" aria-label="Nombre de véhicules" style="width:100%;height:6px;cursor:pointer;accent-color:var(--accent)">
-<div style="display:flex;justify-content:space-between;margin-top:6px;font-size:.74rem;color:var(--tx3)"><span>1</span><span>50+ → Tracky Fleet</span></div>
+<div style="display:flex;justify-content:space-between;margin-top:6px;font-size:.74rem;color:var(--tx3)"><span>1</span><span>50+ → tarif dégressif, contactez-nous</span></div>
 </div>
 <div style="margin-bottom:26px">
-<label style="display:block;font-weight:700;font-size:.95rem;margin-bottom:11px">Engagement</label>
+<label style="display:block;font-weight:700;font-size:.95rem;margin-bottom:11px">Formule</label>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-<button data-sim="eng" data-val="annual" style="${opt(true)}">Annuel renouvelable<small style="display:block;font-weight:500;font-size:.72rem;opacity:.7;margin-top:2px">tarif bloqué</small></button>
-<button data-sim="eng" data-val="monthly" style="${opt(false)}">Mensuel<small style="display:block;font-weight:500;font-size:.72rem;opacity:.7;margin-top:2px">sans engagement</small></button>
+<button data-sim="formule" data-val="serenite" style="${opt(true)}">Sérénité<small style="display:block;font-weight:500;font-size:.72rem;opacity:.7;margin-top:2px">tout inclus · 36 mois</small></button>
+<button data-sim="formule" data-val="liberte" style="${opt(false)}">Liberté<small style="display:block;font-weight:500;font-size:.72rem;opacity:.7;margin-top:2px">sans engagement · 12 mois</small></button>
 </div>
 </div>
-${optRow('Option Live temps réel (20 s)', '+9,90 €/véhicule/mois · <a href="#modele" style="color:var(--accent);font-weight:600">détails ›</a>', 'live')}
-${optRow("Option Micro d'assistance <span style=\"font-weight:500;color:var(--tx3)\">(légal)</span>", '+6,90 €/véhicule/mois', 'micro')}
-${optRow('Option Agent IA <span style="font-weight:500;color:var(--tx3)">(optimisation)</span>', '+14,90 €/véhicule/mois', 'agent')}
+${optRow('Option Live temps réel (20 s)', `+${A.live.perVehYear} €/véhicule/an · incluse en Signature`, 'live')}
+${optRow("Option Micro d'assistance <span style=\"font-weight:500;color:var(--tx3)\">(légal)</span>", `+${A.micro.perVehYear} €/véhicule/an · incluse en Signature`, 'micro')}
+${optRow('Option Assistant IA <span style="font-weight:500;color:var(--tx3)">(optimisation)</span>', `+${A.agent.perVehYear} €/véhicule/an · incluse en Signature`, 'agent')}
 <div style="margin-bottom:26px;margin-top:12px">
 <label style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-weight:700;font-size:.95rem;margin-bottom:11px">Rétention de l'historique</label>
 <div class="vt-sim4" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
 <button data-sim="ret" data-val="90j" style="${opt(true)}">90 jours<small style="display:block;font-weight:500;font-size:.68rem;opacity:.7;margin-top:2px">inclus</small></button>
-<button data-sim="ret" data-val="1an" style="${opt(false)}">1 an<small style="display:block;font-weight:500;font-size:.68rem;opacity:.7;margin-top:2px">+3,90 €</small></button>
-<button data-sim="ret" data-val="2ans" style="${opt(false)}">2 ans<small style="display:block;font-weight:500;font-size:.68rem;opacity:.7;margin-top:2px">+6,90 €</small></button>
-<button data-sim="ret" data-val="3ans" style="${opt(false)}">3 ans<small style="display:block;font-weight:500;font-size:.68rem;opacity:.7;margin-top:2px">+9,90 €</small></button>
+<button data-sim="ret" data-val="1an" style="${opt(false)}">1 an<small style="display:block;font-weight:500;font-size:.68rem;opacity:.7;margin-top:2px">+47 €/an</small></button>
+<button data-sim="ret" data-val="2ans" style="${opt(false)}">2 ans<small style="display:block;font-weight:500;font-size:.68rem;opacity:.7;margin-top:2px">+83 €/an</small></button>
+<button data-sim="ret" data-val="3ans" style="${opt(false)}">3 ans<small style="display:block;font-weight:500;font-size:.68rem;opacity:.7;margin-top:2px">+119 €/an</small></button>
 </div>
 </div>
 <div style="height:1px;background:var(--border);margin:0 0 24px"></div>
 <div class="vt-sim4" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px">
 ${resCard('Par jour / véhicule', 'perDay', { t: 'tout compris' })}
-${resCard('Mensuel total', 'monthTotal', { o: 'perVeh', t: '' }, true)}
-${resCard('Coût 1re année', 'year1', { t: 'boîtier + install + abo' })}
-${resCard('Années suivantes', 'recurring', { t: 'abonnement seul' })}
+${resCard('Par véhicule / an', 'perVehYear', { o: 'perVehMonth', t: '' }, true)}
+${resCard('Total flotte / an', 'totalYear', { t: 'tout inclus, HT' })}
+${resCard('Soit par mois', 'totalMonth', { t: 'équivalent mensuel' })}
 </div>
 <div style="border:1px solid var(--border);border-radius:12px;padding:18px;background:var(--surface2);margin-bottom:22px">
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><span style="font-size:.82rem;color:var(--tx2)">Économies estimées</span><span data-out="roi" style="font-weight:800;font-size:1.15rem;color:var(--accent)">…</span></div>
 <div style="height:8px;border-radius:5px;background:var(--border);overflow:hidden"><div style="height:100%;width:62%;background:linear-gradient(90deg,var(--accent2),var(--accent))"></div></div>
 <p style="font-size:.74rem;color:var(--tx3);margin:10px 0 0">Carburant &amp; usage maîtrisés, par an pour votre flotte.</p>
 </div>
-<div style="display:flex;align-items:flex-start;gap:9px;font-size:.82rem;color:var(--tx2);margin-bottom:22px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" style="flex:none;margin-top:1px"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"/></svg><span data-out="installNote">Installation : 29 €/véhicule (dès 5).</span></div>
+<div style="display:flex;align-items:flex-start;gap:9px;font-size:.82rem;color:var(--tx2);margin-bottom:22px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" style="flex:none;margin-top:1px"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z"/></svg><span data-out="installNote">Tout inclus : boîtier, SIM &amp; data, pose par nos équipes et garantie.</span></div>
 <form data-vt-lead="${site.leadApi}" data-require-accord style="display:grid;gap:14px;border-top:1px solid var(--border);padding-top:24px;text-align:left">
 <div style="font-weight:800;font-size:1.05rem;text-align:center;margin-bottom:2px">Recevez ce devis et validez-le</div>
 <input type="hidden" name="message"><input type="hidden" name="fleetSize">
@@ -222,7 +223,7 @@ ${body}
 const PAGES = [
   { out: 'index.html', title: 'Vizyo Tracky — Traçage GPS & gestion de flotte en Occitanie', description: "Boîtier GPS + application française pour gérer votre flotte : géolocalisation temps réel, coupure moteur, alertes, rapports. Installation à Toulouse et en Occitanie.", jsonld: [ORG_LD, WEBSITE_LD] },
   { out: 'fonctionnalites.html', title: 'Fonctionnalités — GPS temps réel, coupure moteur, alertes | Vizyo Tracky', description: "Toutes les fonctionnalités de Vizyo Tracky : géolocalisation temps réel, Live 20 s, historique, coupure moteur par plage horaire, alertes, rapports, conducteurs identifiés, mode vie privée CNIL.", jsonld: [productLd(), crumb([HOME, { name: 'Fonctionnalités', out: 'fonctionnalites.html' }])] },
-  { out: 'tarifs.html', title: `Tarifs & simulateur GPS flotte — dès ${fmt(P.lite.annual)} €/véhicule | Vizyo Tracky`, description: `Tarifs clairs et bloqués à la souscription : Tracky Lite dès ${fmt(P.lite.annual)} €, Pro dès ${fmt(P.pro.annual)} €/véhicule/mois HT. Options Live temps réel, micro, agent IA, rétention. Simulateur en ligne.`, jsonld: [productLd(), crumb([HOME, { name: 'Tarifs', out: 'tarifs.html' }]), faqLd([{ q: 'Quels sont les tarifs de Vizyo Tracky ?', a: `Tracky Lite à ${fmt(P.lite.annual)} € et Tracky Pro à ${fmt(P.pro.annual)} € par véhicule et par mois HT en engagement annuel renouvelable. SIM et data incluses.` }, { q: 'Le temps réel est-il inclus ?', a: `Le suivi standard est inclus. Le Live temps réel (20 s) est une option à ${fmt(A.live.perVehMonth)} €/véhicule/mois car il génère beaucoup plus de données.` }, { q: 'Le tarif peut-il augmenter ?', a: "Non : le tarif est garanti à la souscription et reconduit au même prix. Pas d'augmentation surprise." }])] },
+  { out: 'tarifs.html', title: `Tarifs GPS flotte tout inclus — dès ${P.lite.serenite} €/véhicule/an | Vizyo Tracky`, description: `Modèle tout inclus : boîtier, SIM, pose et garantie compris. Tracky Lite ${P.lite.serenite} €, Pro ${P.pro.serenite} €, Signature ${P.signature.serenite} €/véhicule/an HT (Sérénité, 36 mois). Sans engagement dès ${P.lite.liberte} €/an. Devis en ligne.`, jsonld: [productLd(), crumb([HOME, { name: 'Tarifs', out: 'tarifs.html' }]), faqLd([{ q: 'Quels sont les tarifs de Vizyo Tracky ?', a: `Formule Sérénité (tout inclus, engagement 36 mois) : Tracky Lite ${P.lite.serenite} €, Pro ${P.pro.serenite} €, Signature ${P.signature.serenite} € par véhicule et par an HT — boîtier, SIM, pose et garantie compris. Formule Liberté (sans engagement, 12 mois, matériel restitué) : ${P.lite.liberte}, ${P.pro.liberte} et ${P.signature.liberte} €/an.` }, { q: 'Que veut dire « tout inclus » ?', a: `Le boîtier, la SIM et les données, la pose par nos équipes et la garantie échange sont compris dans l'abonnement. Rien à acheter, rien à installer vous-même.` }, { q: 'Le temps réel est-il inclus ?', a: `Le suivi standard est inclus. Le Live temps réel (20 s) est une option à ${A.live.perVehYear} €/véhicule/an, incluse dans Tracky Signature.` }, { q: 'Le tarif peut-il augmenter ?', a: "Non : le tarif est garanti à la souscription et reconduit au même prix. Pas d'augmentation surprise." }])] },
   { out: 'secteur-public.html', title: 'GPS véhicules de service — secteur public & médico-social | Vizyo Tracky', description: "Géolocalisation des véhicules de service pour établissements publics, foyers, structures médico-sociales et collectivités : conformité CNIL, conducteurs identifiés, données souveraines, marchés publics.", jsonld: [crumb([HOME, { name: 'Secteur public', out: 'secteur-public.html' }])] },
   { out: 'securite.html', title: 'Sécurité & conformité RGPD — hébergement France | Vizyo Tracky', description: "Vos données restent en France, sous votre contrôle : hébergement souverain, chiffrement TLS 1.3, conformité RGPD by design, mode vie privée CNIL.", jsonld: [crumb([HOME, { name: 'Sécurité', out: 'securite.html' }])] },
   { out: 'partenariat-maestroo.html', title: 'Vizyo Tracky × Maestroo — le GPS de flotte dans votre gestion de transport', description: "Vizyo Tracky en partenariat avec Maestroo : GPS temps réel, coupe-circuit moteur, analyse IA des trajets et pilotage des économies, bientôt intégrés à votre logiciel de gestion de transport. Découvrez la présentation animée.", jsonld: [crumb([HOME, { name: 'Partenariat Maestroo', out: 'partenariat-maestroo.html' }])] },
@@ -257,7 +258,7 @@ for (const c of cities.filter((x) => x.generate)) {
     geo: { dept: c.deptNum, place: c.name, lat: c.lat, lng: c.lng },
     jsonld: [localBizLd(c, out), crumb([HOME, { name: 'Occitanie', out: 'gps-flotte-occitanie.html' }, { name: c.name, out }]), faqLd([
       { q: `Installez-vous les traceurs GPS à ${c.name} ?`, a: `Oui, nous intervenons à ${c.name} et partout ${c.inDept}. Installation sur site en moins de 48h.` },
-      { q: `Quel est le tarif à ${c.name} ?`, a: `Les mêmes tarifs transparents partout : Tracky Lite dès ${fmt(P.lite.annual)} € et Pro dès ${fmt(P.pro.annual)} €/véhicule/mois HT.` },
+      { q: `Quel est le tarif à ${c.name} ?`, a: `Les mêmes tarifs transparents partout : tout inclus dès ${P.lite.serenite} €/véhicule/an (Tracky Lite) et ${P.pro.serenite} €/an pour Tracky Pro avec coupure moteur — boîtier, SIM et pose compris.` },
     ])],
   });
 }

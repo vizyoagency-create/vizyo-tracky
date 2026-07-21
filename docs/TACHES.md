@@ -91,7 +91,7 @@ Architecture : **DB = source de vérité**, LP statique = fallback SEO + hydrata
   Marquage DOM `data-price="lite.annual"` etc. pour l'hydratation générique.
 - ⬜ **3.4 `pricing.mjs`** : devient le fallback ; script `node build.mjs --sync-pricing` (fetch API → réécrit
   le fallback avant build) pour garder le HTML statique aligné.
-- ⏸️ **3.5 Appliquer la grille D1** (une fois validée) via l'admin + resync LP.
+- ✅ **3.5 Grille D1 appliquée** (statiquement — la couche dynamique 3.1-3.4 reste à faire).
 
 ## PHASE 4 — RGPD : les manques confirmés par l'audit
 
