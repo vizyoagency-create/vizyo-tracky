@@ -1090,6 +1090,8 @@ Gérer : ${opts.managerUrl}`;
     recipientName?: string | null;
     quoteText: string;
     tarifsUrl: string;
+    /** Hub de présentation (démos vidéo) — envoyé après CHAQUE devis pour nourrir la décision. */
+    hubUrl: string;
   }): { subject: string; html: string; text: string } {
     const firstName = (opts.recipientName || '').trim().split(/\s+/)[0] || '';
     const greeting = firstName ? `Bonjour ${firstName},` : 'Bonjour,';
@@ -1105,6 +1107,10 @@ Gérer : ${opts.managerUrl}`;
         </td></tr>
         <tr><td style="padding:0 36px;">
           ${this.quoteRecapCard(opts.quoteText)}
+          <p style="margin:18px 0 0;font-family:${sans};font-size:15px;line-height:1.75;color:#C7CFCB;">En attendant mon retour, je vous ai préparé une <a href="${opts.hubUrl}" style="color:#10E0A0;text-decoration:none;font-weight:600;">courte présentation de nos services en vidéo</a> — vous y verrez concrètement ce que votre flotte y gagne&nbsp;: la supervision en temps réel (carte live, alertes, coupe-circuit antivol), l'analyse des trajets et des coûts, et toute la gestion au quotidien (comptes conducteurs, permissions, installation par nos équipes).</p>
+          <table role="presentation" cellpadding="0" cellspacing="0" style="margin:18px 0 0;"><tr><td style="border-radius:11px;background:#10E0A0;">
+            <a href="${opts.hubUrl}" style="display:inline-block;padding:13px 24px;font-family:${sans};font-size:14px;font-weight:700;color:#04130D;text-decoration:none;">&#9654;&nbsp; Voir la présentation (2 min)</a>
+          </td></tr></table>
           <p style="margin:16px 0 0;font-family:${sans};font-size:14px;line-height:1.7;color:#9BA5A1;">C'est un devis indicatif et sans engagement — le tarif est bloqué à la souscription. Si vous souhaitez ajuster quoi que ce soit, vous pouvez le <a href="${opts.tarifsUrl}" style="color:#10E0A0;text-decoration:none;">reconfigurer en ligne</a> ou simplement me le dire.</p>
         </td></tr>
         ${this.commercialSignature()}`,
@@ -1114,6 +1120,9 @@ Gérer : ${opts.managerUrl}`;
 Merci d'avoir pris le temps de configurer votre devis. Vous en trouverez le récapitulatif ci-dessous. Je le regarde de mon côté et je reviens vers vous très vite pour le finaliser ensemble et répondre à vos questions.
 
 ${opts.quoteText}
+
+En attendant mon retour, une courte présentation de nos services en vidéo (supervision temps réel, analyse des coûts, gestion au quotidien) :
+${opts.hubUrl}
 
 Ce devis est indicatif et sans engagement — le tarif est bloqué à la souscription.
 Reconfigurer en ligne : ${opts.tarifsUrl}
@@ -1289,8 +1298,9 @@ ${this.commercialSignatureText()}`;
         return this.buildQuoteClientEmail({
           recipientName: 'Antoine Delmas',
           tarifsUrl: 'https://tracky.vizyoagency.com/tarifs.html#simulateur',
+          hubUrl: 'https://tracky.vizyoagency.com/decouvrir.html',
           quoteText:
-            'DEVIS AUTO-CONFIGURÉ — Tracky Pro (annuel renouvelable (tarif bloqué))\n25 véhicule(s) · Options : Live temps réel (15 s), Agent IA · Rétention : 1 an\nPar véhicule : 44,80 €/mois HT · Mensuel total : 1 120,00 € HT\n1re année (boîtier + install + abo) : 18 165 € · Années suivantes : 13 440 €\nÉconomies estimées : 5 000 – 10 000 €/an\nBon pour accord (devis indicatif, à confirmer par Vizyo).',
+            'DEVIS AUTO-CONFIGURÉ — Tracky Pro (Sérénité — tout inclus, engagement 36 mois)\n25 véhicule(s) · Options : Live temps réel (20 s) · Rétention : 1 an\nPar véhicule : 365 €/an HT (soit 30,42 €/mois)\nTotal flotte : 9 125 €/an HT (soit 760,42 €/mois) — tout inclus : boîtier, SIM, pose, garantie\nÉconomies estimées : 5 000 – 10 000 €/an\nBon pour accord (devis indicatif, à confirmer par Vizyo).',
         });
       default:
         return {

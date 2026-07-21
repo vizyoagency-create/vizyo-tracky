@@ -158,6 +158,18 @@
         .then(function (r) { cb(r.ok); }).catch(function () { cb(false); });
     } catch (e) { cb(false); }
   }
+  // ── Devis déjà envoyé → transforme PROPREMENT les CTA devis de la page (toutes pages).
+  // Les liens vers le simulateur deviennent « Devis envoyé · Voir la présentation » (hub démos).
+  function applyDevisDone() {
+    var done = false;
+    try { done = localStorage.getItem('vt-devis-done') === '1'; } catch (e) {}
+    if (!done) return;
+    slice(d.querySelectorAll('a[href="#simulateur"], a[href$="tarifs.html#simulateur"]')).forEach(function (a) {
+      a.setAttribute('href', 'decouvrir.html');
+      a.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px"><path d="M20 6 9 17l-5-5"/></svg>Devis envoyé · Voir la présentation';
+    });
+  }
+
   function initForms() {
     slice(d.querySelectorAll('form[data-vt-lead]')).forEach(function (form) {
       form.addEventListener('submit', function (e) {
@@ -180,13 +192,24 @@
         }, function (ok) {
           if (btn) btn.disabled = false;
           if (ok) {
-            try { localStorage.setItem('vt-lead-done', '1'); } catch (e2) {}
-            vtTrack('lp_lead_submit', { target: 'form' });
-            form.innerHTML = '<div style="text-align:center;padding:26px 8px">' +
-              '<div style="width:52px;height:52px;border-radius:50%;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">' +
-              '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>' +
-              '<div style="font-size:1.12rem;font-weight:800;margin-bottom:6px">C\'est envoyé, merci !</div>' +
-              '<div style="color:var(--tx2);font-size:.95rem">Votre demande est bien reçue. Réponse sous 2h ouvrées.</div></div>';
+            var isDevis = form.hasAttribute('data-require-accord');
+            try { localStorage.setItem('vt-lead-done', '1'); if (isDevis) localStorage.setItem('vt-devis-done', '1'); } catch (e2) {}
+            vtTrack(isDevis ? 'lp_devis_submit' : 'lp_lead_submit', { target: 'form' });
+            var CHECK_BADGE = '<div style="width:52px;height:52px;border-radius:50%;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">' +
+              '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>';
+            if (isDevis) {
+              // Devis validé → confirmation + relais direct vers la présentation (l'e-mail récap part en parallèle).
+              form.innerHTML = '<div style="text-align:center;padding:26px 8px">' + CHECK_BADGE +
+                '<div style="font-size:1.15rem;font-weight:800;margin-bottom:6px">Devis envoyé, merci !</div>' +
+                '<div style="color:var(--tx2);font-size:.95rem;line-height:1.6;max-width:26rem;margin:0 auto 18px">Votre récapitulatif arrive par e-mail. On revient vers vous sous 2h ouvrées pour le finaliser.<br>En attendant, voyez Tracky en action :</div>' +
+                '<a href="decouvrir.html" style="display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:.95rem;padding:13px 22px;border-radius:11px;text-decoration:none">' +
+                '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>Voir la présentation (2 min)</a></div>';
+              applyDevisDone();
+            } else {
+              form.innerHTML = '<div style="text-align:center;padding:26px 8px">' + CHECK_BADGE +
+                '<div style="font-size:1.12rem;font-weight:800;margin-bottom:6px">C\'est envoyé, merci !</div>' +
+                '<div style="color:var(--tx2);font-size:.95rem">Votre demande est bien reçue. Réponse sous 2h ouvrées.</div></div>';
+            }
           } else { err('Une erreur est survenue. Réessayez, ou contactez-nous directement.'); }
         });
       });
@@ -554,6 +577,6 @@
     } catch (e) {}
   }
 
-  function init() { initHover(); initReveal(); handleHash(); initSim(); initForms(); prefillPartner(); initSmartPopup(); initLazyVideos(); initConsent(); injectConsentLink(); initToTop(); initStats(); initPricing(); }
+  function init() { initHover(); initReveal(); handleHash(); initSim(); initForms(); prefillPartner(); initSmartPopup(); initLazyVideos(); initConsent(); injectConsentLink(); initToTop(); initStats(); initPricing(); applyDevisDone(); }
   if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', init); else init();
 })();

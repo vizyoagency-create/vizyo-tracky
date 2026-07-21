@@ -98,6 +98,7 @@ export class LeadsService {
           recipientName: lead.name,
           quoteText: lead.message ?? '',
           tarifsUrl: TARIFS_URL,
+          hubUrl: VIDEO_HUB_URL, // présentation vidéo aussi après un DEVIS (pas seulement au 1er contact)
         });
         const cr = await this.email.send({ to: lead.email, subject: c.subject, html: c.html, text: c.text, template: 'quote_client' });
         if (!cr.ok) this.logger.warn(`Failed to send quote client copy: ${cr.error}`);
