@@ -3,6 +3,8 @@
 (function () {
   'use strict';
   var d = document, root = d.documentElement, slice = function (n) { return Array.prototype.slice.call(n); };
+  // Phase 3 — abonnés à la grille tarifaire dynamique (le simulateur s'y inscrit).
+  var onGridCbs = [];
 
   // ── Thème sombre/clair (mémorisé) ──
   function setTheme(t) { root.dataset.theme = t; try { localStorage.setItem('vt-theme', t); } catch (e) {} }
@@ -80,6 +82,21 @@
     var OPT = { live: 119, micro: 83, agent: 179 }; // options à la carte €/an — TOUTES incluses en Signature
     var RET = { '90j': 0, '1an': 47, '2ans': 83, '3ans': 119 };
     var st = { plan: 'pro', vehicles: 5, formule: 'serenite', live: false, micro: false, agent: false, ret: '90j' };
+    // Phase 3 — quand la grille DB arrive (initPricing), on écrase les prix bakés et on re-rend.
+    onGridCbs.push(function (g) {
+      try {
+        ['lite', 'pro', 'signature'].forEach(function (p) {
+          if (g.plans[p]) { PR[p].serenite = g.plans[p].serenite; PR[p].liberte = g.plans[p].liberte; }
+        });
+        if (g.addons) {
+          if (g.addons.live) OPT.live = g.addons.live.perVehYear;
+          if (g.addons.micro) OPT.micro = g.addons.micro.perVehYear;
+          if (g.addons.agent) OPT.agent = g.addons.agent.perVehYear;
+          (g.addons.retention || []).forEach(function (r) { if (RET[r.key] != null) RET[r.key] = r.perVehYear; });
+        }
+        render();
+      } catch (e) {}
+    });
     var fmt = function (n, dec) { return n.toLocaleString('fr-FR', { minimumFractionDigits: dec || 0, maximumFractionDigits: dec || 0 }); };
     var seg = function (a) { return 'flex:1;padding:11px;border-radius:9px;border:none;cursor:pointer;font-weight:700;font-size:.9rem;font-family:inherit;transition:all .2s;' + (a ? 'background:var(--accent);color:var(--accent-ink)' : 'background:transparent;color:var(--tx2)'); };
     var opt = function (a) { return 'padding:13px 10px;border-radius:11px;cursor:pointer;font-weight:700;font-size:.88rem;font-family:inherit;text-align:center;transition:all .2s;' + (a ? 'background:var(--accent-soft);border:1.5px solid var(--accent);color:var(--accent)' : 'background:var(--surface);border:1px solid var(--border);color:var(--tx2)'); };
@@ -518,6 +535,25 @@
     } catch (e) {}
   }
 
-  function init() { initHover(); initReveal(); handleHash(); initSim(); initForms(); prefillPartner(); initSmartPopup(); initLazyVideos(); initConsent(); injectConsentLink(); initToTop(); initStats(); }
+  // ── Phase 3 — prix dynamiques : hydrate [data-vt-price] + le simulateur depuis la grille DB.
+  // Chemin pointé ex. data-vt-price="plans.lite.serenite". Repli silencieux sur les prix bakés.
+  function initPricing() {
+    var cfg = window.VT_CFG || {}; if (!cfg.pricingApi) return;
+    var els = slice(d.querySelectorAll('[data-vt-price]'));
+    if (!els.length && !onGridCbs.length) return;
+    try {
+      fetch(cfg.pricingApi).then(function (r) { return r.ok ? r.json() : null; }).then(function (g) {
+        if (!g || !g.plans) return;
+        els.forEach(function (el) {
+          var v = g;
+          el.getAttribute('data-vt-price').split('.').forEach(function (k) { v = v && v[k]; });
+          if (typeof v === 'number') el.textContent = String(v);
+        });
+        onGridCbs.forEach(function (cb) { cb(g); });
+      }).catch(function () {});
+    } catch (e) {}
+  }
+
+  function init() { initHover(); initReveal(); handleHash(); initSim(); initForms(); prefillPartner(); initSmartPopup(); initLazyVideos(); initConsent(); injectConsentLink(); initToTop(); initStats(); initPricing(); }
   if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', init); else init();
 })();

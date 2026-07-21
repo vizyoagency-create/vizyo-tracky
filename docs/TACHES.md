@@ -81,12 +81,12 @@ Features implémentées et **non vendues** aujourd'hui (inventaire 21/07) :
 ## PHASE 3 — Pricing dynamique (source unique, gérable depuis l'app)
 
 Architecture : **DB = source de vérité**, LP statique = fallback SEO + hydratation runtime.
-- ⬜ **3.1 Backend** : modèle `PricingSettings` (singleton JSON, même forme que `pricing.mjs`) + migration.
+- ✅ **3.1 Backend** : modèle `PricingSettings` (singleton JSON, même forme que `pricing.mjs`) + migration.
   `GET /public/pricing` (public, cache 5 min, CORS LP) + `PUT /admin/pricing` (owner/super-admin, gate
   `billing_manage`, **audité** SystemActivity, erreurs → centre d'alerte). Seed = grille validée D1.
-- ⬜ **3.2 App admin** : page « Tarifs & offres » (édition plans/options/install/offre de lancement,
+- ✅ **3.2 App admin** : page « Tarifs & offres » (édition plans/options/install/offre de lancement,
   aperçu, historique des modifications).
-- ⬜ **3.3 LP** : `vt.js` hydrate au chargement depuis `GET /public/pricing` (fallback = valeurs bakées) :
+- ✅ **3.3 LP** : `vt.js` hydrate au chargement depuis `GET /public/pricing` (fallback = valeurs bakées) :
   `tarifs.html` (cartes + tableau), simulateur devis, teasers index, mentions prix pages villes.
   Marquage DOM `data-price="lite.annual"` etc. pour l'hydratation générique.
 - ⬜ **3.4 `pricing.mjs`** : devient le fallback ; script `node build.mjs --sync-pricing` (fetch API → réécrit
@@ -112,7 +112,7 @@ Architecture : **DB = source de vérité**, LP statique = fallback SEO + hydrata
 
 ## PHASE 5 — Monétisation dans l'app (dépend D4)
 
-- ⏸️ **5.1** `Fleet.plan` (LITE/PRO/FLEET) + affichage dans Réglages + attribution super-admin.
+- ✅ **5.1 (via FleetSubscription)** `Fleet.plan` (LITE/PRO/FLEET) + affichage dans Réglages + attribution super-admin.
 - ⏸️ **5.2** Gating doux : features hors plan → écran « disponible en Pro » (mapping features↔plans de 2.4).
 - ⏸️ **5.3** Stripe complet par véhicule (au-delà de l'option IA) — bloqué clés Stripe prod + D1.
 

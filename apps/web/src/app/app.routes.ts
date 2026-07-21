@@ -284,6 +284,14 @@ export const routes: Routes = [
         data: { title: 'E-mails' },
       },
       {
+        // D4 + Phase 3 (chantier commercial) — abonnements clients + grille tarifaire publique.
+        path: 'admin/subscriptions',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/billing/admin-subscriptions.component').then((m) => m.AdminSubscriptionsComponent),
+        data: { title: 'Abonnements & tarifs' },
+      },
+      {
         path: 'admin/consent',
         canActivate: [superAdminGuard],
         loadComponent: () =>

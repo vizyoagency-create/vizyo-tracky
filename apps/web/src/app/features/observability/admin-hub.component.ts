@@ -203,6 +203,19 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
           </div>
         </a>
 
+        <!-- ── ABONNEMENTS & TARIFS (wide) — D4 + Phase 3 chantier commercial ── -->
+        <a routerLink="/admin/subscriptions" class="card card-wide" style="--i:9">
+          <span class="accent accent-green"></span>
+          <div class="body body-row">
+            <div class="ico ico-green"><lucide-icon [img]="CreditCard" [size]="20"></lucide-icon></div>
+            <div class="body-text">
+              <h3>Abonnements &amp; tarifs</h3>
+              <p class="desc">Plan (Lite/Pro/Signature), formule et options de chaque client — avec cas spéciaux (offert, prix négocié) et revenu estimé. Édition de la grille tarifaire publique, propagée à la LP sans redéploiement.</p>
+            </div>
+            <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
+          </div>
+        </a>
+
         <!-- ── SYSTÈME VPS (wide) ── -->
         <a routerLink="/admin/system" class="card card-wide" style="--i:8">
           <span class="accent accent-rose"></span>
