@@ -19,7 +19,24 @@ const root = (p) => join(__dir, p);
 const readDesign = (p) => readFileSync(root('design/' + p), 'utf8');
 const pub = (p) => root('public/' + p);
 const fmt = (n) => n.toFixed(2).replace('.', ',');
-const P = pricing.plans, A = pricing.addons;
+
+// ── Phase 3.4 — `node build.mjs --sync-pricing` : rebake le HTML statique (SEO) avec la grille DB
+// (source de vérité, éditée dans l'app admin). Sans le flag ou API muette → fallback pricing.mjs.
+// L'hydratation runtime (vt.js initPricing) reste active par-dessus dans tous les cas.
+let activePricing = pricing;
+if (process.argv.includes('--sync-pricing')) {
+  try {
+    const res = await fetch('https://app-tracky.vizyoagency.com/api/public/pricing');
+    const remote = res.ok ? await res.json() : null;
+    if (remote?.plans?.lite?.serenite) {
+      activePricing = remote;
+      console.log(`✔ grille synchronisée depuis l'API (Sérénité ${remote.plans.lite.serenite}/${remote.plans.pro.serenite}/${remote.plans.signature.serenite})`);
+    } else console.warn(`⚠ sync-pricing : réponse invalide (HTTP ${res.status}) — fallback pricing.mjs`);
+  } catch {
+    console.warn('⚠ sync-pricing : API injoignable — fallback pricing.mjs');
+  }
+}
+const P = activePricing.plans, A = activePricing.addons;
 
 // Cache-busting de vt.js (hash de contenu)
 const VT_V = createHash('md5').update(readFileSync(pub('assets/vt.js'))).digest('hex').slice(0, 8);
@@ -170,6 +187,13 @@ function transform(html, out) {
   if (out === 'index.html') body = body.replace(/<section[^>]*id="demo"[\s\S]*?<\/section>/, DEMO_SECTION);
   // Répare le lien mort de l'agence en footer (toutes pages).
   body = body.replace(/<a href="#"([^>]*)>vizyoagency\.com<\/a>/g, `<a href="${site.agencyUrl}"$1 target="_blank" rel="noopener">vizyoagency.com</a>`);
+  // Phase 3.4 — rebake des prix balisés [data-vt-price] avec la grille ACTIVE (DB si --sync-pricing).
+  // Le HTML statique (SEO) reste ainsi aligné sur les prix réels ; vt.js ré-hydrate par-dessus.
+  body = body.replace(/data-vt-price="([a-z0-9_.]+)">[0-9]+(<\/span>)/g, (m, path, close) => {
+    let v = activePricing;
+    for (const k of path.split('.')) v = v?.[k];
+    return typeof v === 'number' ? `data-vt-price="${path}">${v}${close}` : m;
+  });
   // « Connexion » dans la navbar de TOUTES les pages (l'accueil l'a déjà via son hero → sauté).
   if (!body.includes('btn-login')) {
     const loginIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>';

@@ -89,7 +89,7 @@ Architecture : **DB = source de vérité**, LP statique = fallback SEO + hydrata
 - ✅ **3.3 LP** : `vt.js` hydrate au chargement depuis `GET /public/pricing` (fallback = valeurs bakées) :
   `tarifs.html` (cartes + tableau), simulateur devis, teasers index, mentions prix pages villes.
   Marquage DOM `data-price="lite.annual"` etc. pour l'hydratation générique.
-- ⬜ **3.4 `pricing.mjs`** : devient le fallback ; script `node build.mjs --sync-pricing` (fetch API → réécrit
+- ✅ **3.4 `pricing.mjs`** : devient le fallback ; script `node build.mjs --sync-pricing` (fetch API → réécrit
   le fallback avant build) pour garder le HTML statique aligné.
 - ✅ **3.5 Grille D1 appliquée** (statiquement — la couche dynamique 3.1-3.4 reste à faire).
 
