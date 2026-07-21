@@ -113,13 +113,13 @@ Architecture : **DB = source de vérité**, LP statique = fallback SEO + hydrata
 ## PHASE 5 — Monétisation dans l'app (dépend D4)
 
 - ✅ **5.1 (via FleetSubscription)** `Fleet.plan` (LITE/PRO/FLEET) + affichage dans Réglages + attribution super-admin.
-- ⏸️ **5.2** Gating doux : features hors plan → écran « disponible en Pro » (mapping features↔plans de 2.4).
+- ✅ **5.2 Gating doux** — bannières upsell (Agenda/Scores=Pro, Surveillance=Signature), sans-abonnement=aucun gating, coupure jamais gâtée.
 - ⏸️ **5.3** Stripe complet par véhicule (au-delà de l'option IA) — bloqué clés Stripe prod + D1.
 
 ## PHASE 6 — Hérités / hygiène
 
-- ⬜ **6.1 Doc de référence commerciale** : 1 ligne par module (58) pour la présentation commerciale.
-- ⬜ **6.2 Relecture finale LP ↔ code** après phases 1–3 (zéro écart).
+- ✅ **6.1 Doc de référence commerciale** — docs/REFERENCE_COMMERCIALE.md (58 modules + 5 différenciateurs).
+- ✅ **6.2 Relecture finale LP ↔ code** — balayage 12 points, 0 écart (21/07).
 - ❌ **6.3 PIN conducteur** — clos si D3 confirmé.
 
 ---
