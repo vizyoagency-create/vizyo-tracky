@@ -29,10 +29,46 @@ const MON_22H = new Date('2026-01-05T21:00:00Z'); // lundi 22:00 Paris
 const SUN_13H = new Date('2026-01-04T12:00:00Z'); // dimanche 4 janv. 13:00 Paris
 const LABOUR_DAY = new Date('2026-05-01T10:00:00Z'); // vendredi 1er mai 12:00 Paris (férié FR, été UTC+2)
 
-const veh = (o: Partial<{ privacyModeEnabled: boolean; workOverrideUntil: Date | null }> = {}) => ({
+/**
+ * Véhicule à USAGE MIXTE par défaut dans ces tests : c'est le seul cas où le calendrier s'applique.
+ * (Le cas « véhicule professionnel » — mixedUseEnabled=false — est couvert par son propre bloc.)
+ */
+const veh = (o: Partial<{ mixedUseEnabled: boolean; privacyModeEnabled: boolean; workOverrideUntil: Date | null }> = {}) => ({
+  mixedUseEnabled: true,
   privacyModeEnabled: false,
   workOverrideUntil: null,
   ...o,
+});
+
+describe('resolveEffectivePrivacy — règle combinée : usage mixte ET calendrier (lot 2)', () => {
+  const pro = (o = {}) => veh({ mixedUseEnabled: false, ...o });
+
+  it('véhicule PROFESSIONNEL (usage mixte OFF) → TRACÉ la nuit : l’antivol reste actif', () => {
+    expect(resolveEffectivePrivacy(pro(), makeWS(), MON_22H)).toEqual({ isPrivate: false, reason: 'NOT_MIXED_USE' });
+  });
+
+  it('véhicule PROFESSIONNEL → TRACÉ le dimanche et les jours fériés aussi', () => {
+    expect(resolveEffectivePrivacy(pro(), makeWS(), SUN_13H)).toEqual({ isPrivate: false, reason: 'NOT_MIXED_USE' });
+    expect(resolveEffectivePrivacy(pro(), makeWS(), LABOUR_DAY)).toEqual({ isPrivate: false, reason: 'NOT_MIXED_USE' });
+  });
+
+  it('véhicule PROFESSIONNEL : même un privé manuel ne coupe pas le suivi (flag sans effet)', () => {
+    expect(resolveEffectivePrivacy(pro({ privacyModeEnabled: true }), makeWS(), MON_22H))
+      .toEqual({ isPrivate: false, reason: 'NOT_MIXED_USE' });
+  });
+
+  it('véhicule MIXTE → TRACÉ PENDANT le temps de travail (le suivi pro de la journée est préservé)', () => {
+    expect(resolveEffectivePrivacy(veh(), makeWS(), MON_10H)).toEqual({ isPrivate: false, reason: 'WORK_HOURS' });
+  });
+
+  it('véhicule MIXTE → PRIVÉ hors temps de travail (les deux conditions réunies)', () => {
+    expect(resolveEffectivePrivacy(veh(), makeWS(), MON_22H)).toEqual({ isPrivate: true, reason: 'OUT_OF_HOURS' });
+  });
+
+  it('véhicule MIXTE sans cadre actif → TRACÉ (on ne coupe jamais le suivi sans cadre défini)', () => {
+    expect(resolveEffectivePrivacy(veh(), null, MON_22H)).toEqual({ isPrivate: false, reason: 'NO_SCHEDULE' });
+    expect(resolveEffectivePrivacy(veh(), makeWS({ enabled: false }), MON_22H)).toEqual({ isPrivate: false, reason: 'NO_SCHEDULE' });
+  });
 });
 
 describe('resolveEffectivePrivacy', () => {

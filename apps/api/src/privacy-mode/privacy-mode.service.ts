@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import type {
   PrivacyModeEventDto,
@@ -58,12 +58,13 @@ export class PrivacyModeService {
   async getState(vehicleId: string, actor?: Actor): Promise<PrivacyModeStateDto> {
     const v = await this.prisma.vehicle.findUnique({
       where: { id: vehicleId },
-      select: { id: true, fleetId: true, privacyModeEnabled: true, privacyModeSince: true, privacyModeById: true, privacyModeNote: true },
+      select: { id: true, fleetId: true, mixedUseEnabled: true, privacyModeEnabled: true, privacyModeSince: true, privacyModeById: true, privacyModeNote: true },
     });
     if (!v) throw new NotFoundException('Véhicule introuvable.');
     this.assertTenant(v.fleetId, actor);
     return {
       vehicleId: v.id,
+      mixedUseEnabled: v.mixedUseEnabled,
       enabled: v.privacyModeEnabled,
       since: v.privacyModeSince ? v.privacyModeSince.toISOString() : null,
       byUserId: v.privacyModeById,
@@ -107,6 +108,7 @@ export class PrivacyModeService {
           id: true,
           fleetId: true,
           plate: true,
+          mixedUseEnabled: true,
           privacyModeEnabled: true,
           workSchedule: true,
           currentDriver: { select: { userId: true } },
@@ -114,6 +116,18 @@ export class PrivacyModeService {
       });
       if (!vehicle) throw new NotFoundException('Véhicule introuvable.');
       this.assertTenant(vehicle.fleetId, actor);
+
+      // Lot 2 — le mode privé n'existe QUE sur un véhicule déclaré à usage mixte. Sans cette
+      // déclaration, la bascule serait sans effet à l'ingestion (resolveEffectivePrivacy renvoie
+      // NOT_MIXED_USE) : on REFUSE explicitement plutôt que de laisser croire à une protection
+      // qui n'existe pas (ligne rouge : aucune modification silencieuse). La désactivation
+      // (enabled=false) reste toujours possible — on ne piège jamais un véhicule en privé.
+      if (dto.enabled && !vehicle.mixedUseEnabled) {
+        throw new BadRequestException(
+          "Ce véhicule n'est pas déclaré à usage mixte : le mode vie privée ne s'y applique pas. " +
+            "Un administrateur de flotte doit d'abord activer l'usage mixte sur ce véhicule.",
+        );
+      }
 
       // Incr.4 — contraintes CONDUCTEUR : (1) borné à SON véhicule courant (celui qu'il conduit),
       // même s'il porte privacy_manage sur un scope large → ferme le cas de bord IDOR ; (2) il ne
@@ -168,7 +182,7 @@ export class PrivacyModeService {
     } catch (err) {
       // Refus ATTENDUS (introuvable / hors-périmètre / plage de travail) → on propage sans polluer
       // le centre d'alerte (réservé aux vraies pannes).
-      if (err instanceof NotFoundException || err instanceof ForbiddenException) throw err;
+      if (err instanceof NotFoundException || err instanceof ForbiddenException || err instanceof BadRequestException) throw err;
       // Erreur inattendue → centre d'alerte (source repérable) + on propage.
       const message = err instanceof Error ? err.message : String(err);
       this.errors

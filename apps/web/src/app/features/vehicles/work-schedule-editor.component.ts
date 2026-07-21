@@ -19,6 +19,7 @@ const DAY_DEFS: { key: string; label: string; work: boolean }[] = [
 ];
 
 const REASON_LABEL: Record<string, string> = {
+  NOT_MIXED_USE: 'suivi en permanence (véhicule professionnel)',
   MANUAL: 'Privé — mode manuel',
   WORK_OVERRIDE: 'Tracé — exception « je travaille »',
   OUT_OF_HOURS: 'Privé — hors temps de travail',
@@ -57,11 +58,24 @@ const REASON_LABEL: Record<string, string> = {
             État actuel : <strong>{{ reasonLabel() }}</strong>
           </div>
 
+          <label class="ws-main ws-main--mix">
+            <input type="checkbox" [ngModel]="mixedUse()" (ngModelChange)="toggleMixedUse($event)" [disabled]="savingMix()" />
+            <span>Véhicule à <strong>usage mixte</strong> (ramené au domicile)</span>
+          </label>
+          <p class="ws-hint">
+            @if (mixedUse()) {
+              Le cadre ci-dessous <strong>s'applique</strong> : hors des plages (et les jours fériés), aucune position n'est enregistrée.
+            } @else {
+              Ce véhicule est <strong>purement professionnel</strong> : il reste suivi 24/7 et son <strong>antivol fonctionne la nuit et le week-end</strong>.
+              Le cadre ci-dessous est prêt mais ne s'applique pas. Activez l'usage mixte uniquement si le conducteur rentre avec le véhicule.
+            }
+          </p>
+
           <label class="ws-main">
             <input type="checkbox" [(ngModel)]="enabled" />
             <span>Activer le cadre de temps de travail</span>
           </label>
-          <p class="ws-hint">Hors des plages déclarées ci-dessous (et les jours fériés), <strong>aucune position n'est enregistrée</strong> — le véhicule est en mode privé automatiquement. Le conducteur voit ce cadre.</p>
+          <p class="ws-hint">Hors des plages déclarées ci-dessous (et les jours fériés), <strong>aucune position n'est enregistrée</strong> — à condition que l'usage mixte soit activé ci-dessus. Le conducteur voit ce cadre.</p>
 
           <div class="ws-days" [class.ws-days--off]="!enabled">
             @for (d of days; track d.key) {
@@ -155,10 +169,16 @@ export class WorkScheduleEditorComponent implements OnInit {
   protected reasonLabel(): string { return REASON_LABEL[this.effReason()] ?? this.effReason(); }
 
   ngOnInit(): void {
+    this.load();
+  }
+
+  /** (Re)charge le cadre + l'état effectif + l'usage mixte depuis le serveur. */
+  protected load(): void {
     this.api.get(this.vehicleId()).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (s) => {
         this.effReason.set(s.effective?.reason ?? 'NO_SCHEDULE');
         this.effPrivate.set(!!s.effective?.isPrivate);
+        this.mixedUse.set(!!s.mixedUseEnabled);
         if (s.schedule) {
           this.enabled = !!s.schedule.enabled;
           this.days = DAY_DEFS.map((d) => ({
@@ -172,6 +192,18 @@ export class WorkScheduleEditorComponent implements OnInit {
         this.loading.set(false);
       },
       error: () => { this.toast.error('Chargement impossible', 'Réessayez.'); this.loading.set(false); },
+    });
+  }
+
+  /** Usage mixte : interrupteur de proportionnalité (sans lui, le cadre ne s'applique pas). */
+  protected readonly mixedUse = signal(false);
+  protected readonly savingMix = signal(false);
+
+  protected toggleMixedUse(value: boolean): void {
+    this.savingMix.set(true);
+    this.api.setMixedUse(this.vehicleId(), value).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: () => { this.mixedUse.set(value); this.savingMix.set(false); this.changed.emit(); this.load(); },
+      error: () => this.savingMix.set(false), // l'interrupteur reste sur l'état serveur
     });
   }
 

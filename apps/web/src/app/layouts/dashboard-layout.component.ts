@@ -27,8 +27,7 @@ import {
   Moon,
   Sparkles,
   AlarmClock,
-  MapPin,
-} from 'lucide-angular';
+  MapPin, ShieldCheck } from 'lucide-angular';
 import { ThemeService } from '../core/theme/theme.service';
 import { AlertsBellComponent } from '../shared/ui/alerts-bell/alerts-bell.component';
 import { FleetSelectorComponent } from '../shared/ui/super-admin-context/fleet-selector.component';
@@ -1036,6 +1035,10 @@ export class DashboardLayoutComponent {
       const items: NavItem[] = [{ label: 'Véhicules', route: '/vehicles', icon: Truck }];
       if (this.perms.can('schedules_manage')) {
         items.push({ label: 'Horaires flotte', route: '/fleet-schedules', icon: AlarmClock });
+        // Lot 2 — visibilité de la couverture vie privée (véhicules non protégés hors travail).
+        if (this.perms.can('privacy_manage')) {
+          items.push({ label: 'Couverture vie privée', route: '/privacy-coverage', icon: ShieldCheck });
+        }
       }
       return [{ section: null, items }];
     }
@@ -1066,6 +1069,7 @@ export class DashboardLayoutComponent {
       ...(this.perms.can('alerts_view') ? [{ label: 'Alertes', route: '/alerts', icon: Bell }] : []),
       // Demande CDEF (2026-07) — Page flotte des horaires (coupe/reprise auto).
       ...(this.perms.can('schedules_manage') ? [{ label: 'Horaires flotte', route: '/fleet-schedules', icon: AlarmClock }] : []),
+      ...(this.perms.can('privacy_manage') ? [{ label: 'Couverture vie privée', route: '/privacy-coverage', icon: ShieldCheck }] : []),
       // Lieux clés (2026-07) — stations-service validées + parkings / stationnements récurrents.
       ...(this.perms.can('places_view') ? [{ label: 'Lieux clés', route: '/places', icon: MapPin }] : []),
     ];

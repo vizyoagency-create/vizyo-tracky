@@ -7,6 +7,8 @@
 
 export interface PrivacyModeStateDto {
   vehicleId: string;
+  /** Usage MIXTE déclaré : sans lui, le mode vie privée ne s'applique pas (véhicule tracé 24/7). */
+  mixedUseEnabled: boolean;
   enabled: boolean;
   /** ISO — depuis quand l'état courant est actif (null si jamais basculé). */
   since: string | null;

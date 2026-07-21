@@ -5,6 +5,7 @@ import { RequireVehiclePermission } from '../auth/decorators/vehicle-permissions
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { SetMixedUseDto } from './dto/set-mixed-use.dto';
 import { SetWorkScheduleDto } from './dto/set-work-schedule.dto';
 import { WorkScheduleService } from './work-schedule.service';
 
@@ -34,5 +35,17 @@ export class WorkScheduleController {
   @RequireVehiclePermission('schedules_manage', { paramName: 'vehicleId' })
   set(@Param('vehicleId') vehicleId: string, @Body() dto: SetWorkScheduleDto, @Req() req: AuthenticatedRequest) {
     return this.service.set(vehicleId, dto, { userId: req.user.id, role: req.user.role, fleetId: req.user.fleetId });
+  }
+
+  /**
+   * Déclare/retire l'USAGE MIXTE d'un véhicule (interrupteur de proportionnalité CNIL). Même
+   * périmètre que le cadre : c'est l'employeur qui déclare qu'un véhicule est ramené au domicile.
+   * Le conducteur ne peut PAS s'auto-déclarer en usage mixte.
+   */
+  @Put(':vehicleId/mixed-use')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER)
+  @RequireVehiclePermission('schedules_manage', { paramName: 'vehicleId' })
+  setMixedUse(@Param('vehicleId') vehicleId: string, @Body() dto: SetMixedUseDto, @Req() req: AuthenticatedRequest) {
+    return this.service.setMixedUse(vehicleId, dto.enabled, { userId: req.user.id, role: req.user.role, fleetId: req.user.fleetId });
   }
 }

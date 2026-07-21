@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { PrivacyModeController } from './privacy-mode.controller';
 import { PrivacyModeService } from './privacy-mode.service';
+import { PrivacyCoverageController } from './privacy-coverage.controller';
 import { WorkScheduleController } from './work-schedule.controller';
 import { WorkScheduleService } from './work-schedule.service';
 
@@ -11,7 +12,7 @@ import { WorkScheduleService } from './work-schedule.service';
  */
 @Module({
   imports: [AuthModule],
-  controllers: [PrivacyModeController, WorkScheduleController],
+  controllers: [PrivacyModeController, WorkScheduleController, PrivacyCoverageController],
   providers: [PrivacyModeService, WorkScheduleService],
   exports: [PrivacyModeService, WorkScheduleService],
 })

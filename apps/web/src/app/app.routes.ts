@@ -127,6 +127,16 @@ export const routes: Routes = [
         data: { title: 'Horaires flotte' },
       },
       {
+        // Lot 2 RGPD (2026-07-21) — « Couverture vie privée » : rend VISIBLE quels véhicules ne sont
+        // pas protégés hors temps de travail. Gate `privacy_manage` : porté nativement par les
+        // super/fleet-admins, et accordable par le fleet-admin à un gestionnaire ou un lecteur.
+        path: 'privacy-coverage',
+        canActivate: [permissionGuard('privacy_manage')],
+        loadComponent: () =>
+          import('./features/privacy/privacy-coverage.component').then((m) => m.PrivacyCoverageComponent),
+        data: { title: 'Couverture vie privée' },
+      },
+      {
         // Lieux clés (2026-07) — stations-service validées par la flotte + parkings /
         // stationnements récurrents. Lecture `places_view` ; la gestion (validation d'une
         // station, pose d'un parking) est gardée finement par `places_manage` dans la page.

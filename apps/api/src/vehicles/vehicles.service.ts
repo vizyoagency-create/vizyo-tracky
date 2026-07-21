@@ -156,6 +156,24 @@ export class VehiclesService {
     this.cache.invalidate('snapshot:super');
   }
 
+  /**
+   * Cadre de temps de travail par défaut (lot 2) : lun-ven 07h00-19h00, samedi/dimanche fermés.
+   * `enabled: true` = le cadre est DÉFINI ; c'est `Vehicle.mixedUseEnabled` (false par défaut) qui
+   * décide s'il s'APPLIQUE. Les horaires sont explicites à dessein : sans start/end, l'évaluateur
+   * considère la journée entière hors plage et le véhicule serait privé 24/7.
+   */
+  private static readonly DEFAULT_WORK_SCHEDULE = {
+    enabled: true,
+    timezone: 'Europe/Paris',
+    mondayEnabled: true, mondayStart: '07:00', mondayEnd: '19:00',
+    tuesdayEnabled: true, tuesdayStart: '07:00', tuesdayEnd: '19:00',
+    wednesdayEnabled: true, wednesdayStart: '07:00', wednesdayEnd: '19:00',
+    thursdayEnabled: true, thursdayStart: '07:00', thursdayEnd: '19:00',
+    fridayEnabled: true, fridayStart: '07:00', fridayEnd: '19:00',
+    saturdayEnabled: false,
+    sundayEnabled: false,
+  } as const;
+
   async create(dto: CreateVehicleDto, requestedBy: RequestedBy): Promise<Vehicle> {
     let fleetId: string;
 
@@ -191,6 +209,12 @@ export class VehiclesService {
           seats: dto.seats,
           childSeats: dto.childSeats,
           features: VehiclesService.normalizeFeatures(dto.features),
+          // Lot 2 (RGPD) — cadre de temps de travail PRÊT À L'EMPLOI dès la création : lundi→vendredi
+          // 07h00-19h00, week-end fermé. Il ne s'applique PAS tant que `mixedUseEnabled` reste false
+          // (défaut) : le véhicule est tracé 24/7, antivol actif. Le jour où un fleet-admin déclare
+          // le véhicule à usage mixte, la protection est immédiate et sensée — sans avoir à saisir
+          // des horaires (un cadre vide rendrait le véhicule privé en permanence, cf. legacyDaySlot).
+          workSchedule: { create: VehiclesService.DEFAULT_WORK_SCHEDULE },
         },
         include: { tracker: true, ...VehiclesService.CURRENT_DRIVER_INCLUDE },
       });

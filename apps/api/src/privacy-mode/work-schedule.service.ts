@@ -44,18 +44,20 @@ export class WorkScheduleService {
   /** Lit le cadre + l'état de confidentialité EFFECTIF courant (pour l'UI admin ET conducteur). */
   async get(vehicleId: string, actor: Actor): Promise<{
     vehicleId: string;
+    mixedUseEnabled: boolean;
     schedule: Prisma.VehicleWorkScheduleGetPayload<object> | null;
     effective: EffectivePrivacy;
   }> {
     try {
       const vehicle = await this.prisma.vehicle.findUnique({
         where: { id: vehicleId },
-        select: { id: true, fleetId: true, privacyModeEnabled: true, workOverrideUntil: true, workSchedule: true },
+        select: { id: true, fleetId: true, mixedUseEnabled: true, privacyModeEnabled: true, workOverrideUntil: true, workSchedule: true },
       });
       if (!vehicle) throw new NotFoundException('Véhicule introuvable.');
       this.assertTenant(vehicle.fleetId, actor);
       return {
         vehicleId: vehicle.id,
+        mixedUseEnabled: vehicle.mixedUseEnabled,
         schedule: vehicle.workSchedule,
         effective: resolveEffectivePrivacy(vehicle, vehicle.workSchedule, new Date()),
       };
@@ -126,5 +128,132 @@ export class WorkScheduleService {
       this.recordError(err, vehicleId, actor);
       throw err;
     }
+  }
+
+  /**
+   * Lot 2 — déclare (ou retire) l'USAGE MIXTE d'un véhicule. C'est l'interrupteur de
+   * proportionnalité : sans lui, aucune bascule privée n'a d'effet (le véhicule reste tracé 24/7,
+   * antivol actif). Réservé au cadre (fleet-admin/gestionnaire, `schedules_manage`).
+   *
+   * Effet de bord VOULU quand on retire l'usage mixte : le véhicule redevient traçable — on
+   * désactive donc aussi le privé manuel éventuel pour que l'état affiché reste vrai (jamais un
+   * véhicule marqué « privé » alors que ses positions sont collectées). Journalisé des deux côtés
+   * (journal Système + PrivacyModeEvent visible du conducteur) : aucune modification silencieuse.
+   *
+   * ⚠️ Aucune rétro-activation : les positions déjà écartées ne réapparaissent pas, et celles déjà
+   * collectées ne sont pas requalifiées. Le changement ne vaut que pour l'avenir (gate d'ingestion).
+   */
+  async setMixedUse(vehicleId: string, enabled: boolean, actor: Actor): Promise<{ ok: true; mixedUseEnabled: boolean }> {
+    try {
+      const vehicle = await this.prisma.vehicle.findUnique({
+        where: { id: vehicleId },
+        select: { id: true, fleetId: true, plate: true, mixedUseEnabled: true, privacyModeEnabled: true },
+      });
+      if (!vehicle) throw new NotFoundException('Véhicule introuvable.');
+      this.assertTenant(vehicle.fleetId, actor);
+      if (vehicle.mixedUseEnabled === enabled) return { ok: true, mixedUseEnabled: enabled }; // idempotent
+
+      await this.prisma.$transaction([
+        this.prisma.vehicle.update({
+          where: { id: vehicleId },
+          // Retrait de l'usage mixte → on lève aussi le privé manuel (sinon état mensonger).
+          data: enabled
+            ? { mixedUseEnabled: true }
+            : { mixedUseEnabled: false, privacyModeEnabled: false, privacyModeSince: null, privacyModeNote: null },
+        }),
+        this.prisma.privacyModeEvent.create({
+          data: {
+            vehicleId,
+            fleetId: vehicle.fleetId,
+            enabled,
+            reason: enabled
+              ? 'Usage mixte ACTIVÉ — hors temps de travail, aucune position ne sera enregistrée'
+              : 'Usage mixte RETIRÉ — le véhicule redevient suivi en permanence',
+            userId: actor.userId,
+          },
+        }),
+      ]);
+
+      this.systemActivity.record({
+        category: 'PRIVACY',
+        action: enabled ? 'mixed_use_enabled' : 'mixed_use_disabled',
+        status: 'SUCCESS',
+        actor: 'opérateur',
+        target: vehicle.plate,
+        detail: enabled
+          ? "Usage mixte activé : hors des plages de temps de travail, plus aucune position n'est collectée"
+          : 'Usage mixte retiré : le véhicule est de nouveau suivi 24/7 (antivol actif)',
+        fleetId: vehicle.fleetId,
+        triggeredByUserId: actor.userId,
+        meta: { vehicleId, mixedUseEnabled: enabled },
+      });
+      this.logger.log({ vehicleId, enabled, by: actor.userId }, 'Mixed-use flag updated');
+      return { ok: true, mixedUseEnabled: enabled };
+    } catch (err) {
+      if (err instanceof NotFoundException) throw err;
+      this.recordError(err, vehicleId, actor);
+      throw err;
+    }
+  }
+
+  /**
+   * Lot 2 — COUVERTURE vie privée de la flotte : quels véhicules sont réellement protégés, et
+   * lesquels ne le sont pas. L'absence de protection doit être VISIBLE, jamais silencieuse.
+   * Fleet-scopé (un non-super ne voit que sa flotte).
+   */
+  async coverage(actor: Actor): Promise<{
+    items: Array<{
+      vehicleId: string;
+      plate: string;
+      fleetName: string;
+      mixedUseEnabled: boolean;
+      hasSchedule: boolean;
+      scheduleEnabled: boolean;
+      driverName: string | null;
+      status: 'PROTEGE' | 'MIXTE_SANS_CADRE' | 'NON_COUVERT';
+    }>;
+    total: number;
+    protectedCount: number;
+    uncoveredCount: number;
+  }> {
+    const vehicles = await this.prisma.vehicle.findMany({
+      where: actor.role === UserRole.SUPER_ADMIN ? {} : { fleetId: actor.fleetId ?? '__none__' },
+      select: {
+        id: true,
+        plate: true,
+        mixedUseEnabled: true,
+        fleet: { select: { name: true } },
+        workSchedule: { select: { enabled: true } },
+        currentDriver: { select: { firstName: true, lastName: true } },
+      },
+      orderBy: [{ plate: 'asc' }],
+    });
+
+    const items = vehicles.map((v) => {
+      const hasSchedule = !!v.workSchedule;
+      const scheduleEnabled = !!v.workSchedule?.enabled;
+      // PROTEGE = usage mixte déclaré ET cadre actif (les deux conditions du gate d'ingestion).
+      // MIXTE_SANS_CADRE = usage mixte déclaré mais aucun cadre actif → serait privé en permanence.
+      const status: 'PROTEGE' | 'MIXTE_SANS_CADRE' | 'NON_COUVERT' = v.mixedUseEnabled
+        ? scheduleEnabled ? 'PROTEGE' : 'MIXTE_SANS_CADRE'
+        : 'NON_COUVERT';
+      return {
+        vehicleId: v.id,
+        plate: v.plate,
+        fleetName: v.fleet?.name ?? '—',
+        mixedUseEnabled: v.mixedUseEnabled,
+        hasSchedule,
+        scheduleEnabled,
+        driverName: v.currentDriver ? `${v.currentDriver.firstName} ${v.currentDriver.lastName}`.trim() : null,
+        status,
+      };
+    });
+
+    return {
+      items,
+      total: items.length,
+      protectedCount: items.filter((i) => i.status === 'PROTEGE').length,
+      uncoveredCount: items.filter((i) => i.status !== 'PROTEGE').length,
+    };
   }
 }

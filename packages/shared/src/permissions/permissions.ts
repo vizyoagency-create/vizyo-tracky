@@ -324,7 +324,9 @@ const DRIVER_DEFAULTS: UserPermissions = {
   vehicles_edit: false,
   vehicles_delete: false,
   engine_control: false,
-  privacy_manage: false,
+  // Lot 2 — le conducteur gère SES exceptions de vie privée. Bornes serveur inchangées :
+  // uniquement le véhicule qu'il conduit, et JAMAIS pendant une plage de temps de travail.
+  privacy_manage: true,
   schedules_manage: false,
   groups_view: false,
   groups_manage: false,

@@ -639,6 +639,11 @@ model Vehicle {
   // vehicule (la trame est jetee a l'ingestion ; la derniere position connue reste
   // figee). `privacyModeSince`/`By`/`Note` = etat courant ; l'historique complet
   // (qui/quand/note) vit dans PrivacyModeEvent.
+  /// Usage MIXTE déclaré (véhicule de service ramené au domicile). false = véhicule purement
+  /// professionnel : tracé 24/7, antivol actif la nuit et le week-end. true = le cadre de temps de
+  /// travail s'applique : hors plage, plus aucune position n'est collectée (RGPD/CNIL).
+  /// Activé explicitement par le fleet-admin, véhicule par véhicule (proportionnalité).
+  mixedUseEnabled    Boolean  @default(false)
   privacyModeEnabled Boolean  @default(false)
   privacyModeSince   DateTime?
   privacyModeById    String?  @db.Uuid

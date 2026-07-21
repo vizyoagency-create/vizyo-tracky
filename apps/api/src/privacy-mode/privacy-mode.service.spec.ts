@@ -47,8 +47,8 @@ describe('PrivacyModeService', () => {
   it('idempotent : même état demandé → aucun événement ni journal', async () => {
     const { service, prisma, systemActivity } = makeService();
     prisma.vehicle.findUnique
-      .mockResolvedValueOnce({ id: 'v1', fleetId: 'f1', plate: 'AB-123-CD', privacyModeEnabled: true }) // setPrivacyMode
-      .mockResolvedValueOnce({ id: 'v1', privacyModeEnabled: true, privacyModeSince: new Date(), privacyModeById: null, privacyModeNote: null }); // getState
+      .mockResolvedValueOnce({ id: 'v1', fleetId: 'f1', plate: 'AB-123-CD', mixedUseEnabled: true, privacyModeEnabled: true }) // setPrivacyMode
+      .mockResolvedValueOnce({ id: 'v1', mixedUseEnabled: true, privacyModeEnabled: true, privacyModeSince: new Date(), privacyModeById: null, privacyModeNote: null }); // getState
 
     const state = await service.setPrivacyMode('v1', { enabled: true }, ACTOR);
 
@@ -60,8 +60,8 @@ describe('PrivacyModeService', () => {
   it('activation : crée la pose d\'historique + journal Système (catégorie PRIVACY)', async () => {
     const { service, prisma, systemActivity } = makeService();
     prisma.vehicle.findUnique
-      .mockResolvedValueOnce({ id: 'v1', fleetId: 'f1', plate: 'AB-123-CD', privacyModeEnabled: false })
-      .mockResolvedValueOnce({ id: 'v1', privacyModeEnabled: true, privacyModeSince: new Date(), privacyModeById: 'u1', privacyModeNote: 'week-end' });
+      .mockResolvedValueOnce({ id: 'v1', fleetId: 'f1', plate: 'AB-123-CD', mixedUseEnabled: true, privacyModeEnabled: false })
+      .mockResolvedValueOnce({ id: 'v1', mixedUseEnabled: true, privacyModeEnabled: true, privacyModeSince: new Date(), privacyModeById: 'u1', privacyModeNote: 'week-end' });
 
     const state = await service.setPrivacyMode('v1', { enabled: true, reason: 'week-end' }, ACTOR);
 
@@ -75,9 +75,9 @@ describe('PrivacyModeService', () => {
     const { service, prisma, systemActivity } = makeService();
     prisma.vehicle.findUnique
       // Son véhicule courant, hors temps de travail → la bascule est autorisée.
-      .mockResolvedValueOnce({ id: 'v1', fleetId: 'f1', plate: 'AB-123-CD', privacyModeEnabled: false,
+      .mockResolvedValueOnce({ id: 'v1', fleetId: 'f1', plate: 'AB-123-CD', mixedUseEnabled: true, privacyModeEnabled: false,
         currentDriver: { userId: 'u1' }, workSchedule: null })
-      .mockResolvedValueOnce({ id: 'v1', privacyModeEnabled: true, privacyModeSince: new Date(), privacyModeById: 'u1', privacyModeNote: null });
+      .mockResolvedValueOnce({ id: 'v1', mixedUseEnabled: true, privacyModeEnabled: true, privacyModeSince: new Date(), privacyModeById: 'u1', privacyModeNote: null });
 
     await service.setPrivacyMode('v1', { enabled: true }, { userId: 'u1', role: UserRole.DRIVER, fleetId: 'f1' });
 
@@ -86,7 +86,7 @@ describe('PrivacyModeService', () => {
 
   it('cross-fleet (anti-IDOR) : un non-super d\'une AUTRE flotte → 404, aucune bascule ni journal', async () => {
     const { service, prisma, systemActivity } = makeService();
-    prisma.vehicle.findUnique.mockResolvedValueOnce({ id: 'v1', fleetId: 'f1', plate: 'AB-123-CD', privacyModeEnabled: false });
+    prisma.vehicle.findUnique.mockResolvedValueOnce({ id: 'v1', fleetId: 'f1', plate: 'AB-123-CD', mixedUseEnabled: true, privacyModeEnabled: false });
 
     await expect(
       service.setPrivacyMode('v1', { enabled: true }, { userId: 'intrus', role: UserRole.VIEWER, fleetId: 'AUTRE' }),
@@ -104,7 +104,7 @@ describe('PrivacyModeService', () => {
   it('conducteur : refuse de privatiser une plage de TEMPS DE TRAVAIL (403), aucune bascule', async () => {
     const { service, prisma, systemActivity } = makeService();
     prisma.vehicle.findUnique.mockResolvedValueOnce({
-      id: 'v1', fleetId: 'f1', plate: 'AB-123-CD', privacyModeEnabled: false,
+      id: 'v1', fleetId: 'f1', plate: 'AB-123-CD', mixedUseEnabled: true, privacyModeEnabled: false,
       currentDriver: { userId: 'u1' }, workSchedule: ALWAYS_WORK_WS,
     });
     await expect(service.setPrivacyMode('v1', { enabled: true }, driverActor())).rejects.toBeInstanceOf(ForbiddenException);
@@ -115,7 +115,7 @@ describe('PrivacyModeService', () => {
   it('conducteur : refuse de gérer un véhicule qui n\'est PAS le sien (403)', async () => {
     const { service, prisma } = makeService();
     prisma.vehicle.findUnique.mockResolvedValueOnce({
-      id: 'v1', fleetId: 'f1', plate: 'AB-123-CD', privacyModeEnabled: false,
+      id: 'v1', fleetId: 'f1', plate: 'AB-123-CD', mixedUseEnabled: true, privacyModeEnabled: false,
       currentDriver: { userId: 'un-autre-conducteur' }, workSchedule: null,
     });
     await expect(service.setPrivacyMode('v1', { enabled: true }, driverActor('u1'))).rejects.toBeInstanceOf(ForbiddenException);
@@ -125,12 +125,36 @@ describe('PrivacyModeService', () => {
   it('conducteur : AUTORISÉ à passer en privé HORS temps de travail sur SON véhicule', async () => {
     const { service, prisma, systemActivity } = makeService();
     prisma.vehicle.findUnique
-      .mockResolvedValueOnce({ id: 'v1', fleetId: 'f1', plate: 'AB-123-CD', privacyModeEnabled: false,
+      .mockResolvedValueOnce({ id: 'v1', fleetId: 'f1', plate: 'AB-123-CD', mixedUseEnabled: true, privacyModeEnabled: false,
         currentDriver: { userId: 'u1' }, workSchedule: ALWAYS_OFF_WS })
-      .mockResolvedValueOnce({ id: 'v1', privacyModeEnabled: true, privacyModeSince: new Date(), privacyModeById: 'u1', privacyModeNote: null });
+      .mockResolvedValueOnce({ id: 'v1', mixedUseEnabled: true, privacyModeEnabled: true, privacyModeSince: new Date(), privacyModeById: 'u1', privacyModeNote: null });
     const state = await service.setPrivacyMode('v1', { enabled: true }, driverActor('u1'));
     expect(state.enabled).toBe(true);
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(systemActivity.record.mock.calls[0][0]).toMatchObject({ actor: 'conducteur' });
+  });
+});
+
+
+describe('PrivacyModeService — garde « usage mixte » (lot 2)', () => {
+  it('REFUSE explicitement le passage en privé si le véhicule n’est pas à usage mixte', async () => {
+    const { service, prisma } = makeService();
+    prisma.vehicle.findUnique.mockResolvedValueOnce({
+      id: 'v1', fleetId: 'f1', plate: 'AB-123-CD', mixedUseEnabled: false, privacyModeEnabled: false, workSchedule: null, currentDriver: null,
+    });
+
+    // Pas un no-op silencieux : l'appelant reçoit une erreur explicite (ligne rouge b).
+    await expect(service.setPrivacyMode('v1', { enabled: true }, ACTOR)).rejects.toThrow(/usage mixte/i);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('autorise TOUJOURS la sortie du mode privé (on ne piège jamais un véhicule en privé)', async () => {
+    const { service, prisma } = makeService();
+    prisma.vehicle.findUnique
+      .mockResolvedValueOnce({ id: 'v1', fleetId: 'f1', plate: 'AB-123-CD', mixedUseEnabled: false, privacyModeEnabled: true, workSchedule: null, currentDriver: null })
+      .mockResolvedValueOnce({ id: 'v1', mixedUseEnabled: false, privacyModeEnabled: false, privacyModeSince: null, privacyModeById: null, privacyModeNote: null });
+
+    await expect(service.setPrivacyMode('v1', { enabled: false }, ACTOR)).resolves.toBeDefined();
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 });

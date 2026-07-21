@@ -299,7 +299,7 @@ describe('PositionsService.ingest — garde-fou replay/teleportation', () => {
       vehicle: {
         id: VEHICLE_ID, fleetId: FLEET_ID, plate: 'HD-779-MA',
         fleet: { adaptiveSamplingEnabled: true },
-        privacyModeEnabled: true,
+        mixedUseEnabled: true, privacyModeEnabled: true,
       },
     });
 
@@ -326,7 +326,7 @@ describe('PositionsService.ingest — garde-fou replay/teleportation', () => {
       vehicle: {
         id: VEHICLE_ID, fleetId: FLEET_ID, plate: 'HD-779-MA',
         fleet: { adaptiveSamplingEnabled: true },
-        privacyModeEnabled: false,
+        mixedUseEnabled: true, privacyModeEnabled: false,
         workOverrideUntil: null,
         workSchedule: {
           enabled: true, timezone: 'Europe/Paris', countryCode: 'FR', customDates: null,
@@ -349,7 +349,7 @@ describe('PositionsService.ingest — garde-fou replay/teleportation', () => {
       vehicle: {
         id: VEHICLE_ID, fleetId: FLEET_ID, plate: 'HD-779-MA',
         fleet: { adaptiveSamplingEnabled: true },
-        privacyModeEnabled: false,
+        mixedUseEnabled: true, privacyModeEnabled: false,
         workOverrideUntil: null,
         workSchedule: {
           enabled: true, timezone: 'Europe/Paris', countryCode: '', customDates: null,
