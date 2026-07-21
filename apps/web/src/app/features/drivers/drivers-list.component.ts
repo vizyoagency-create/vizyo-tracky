@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { LucideAngularModule, Plus, Archive, Pencil, Mail, Phone, IdCard, UserRound, Truck, Route, ChevronDown, ChevronRight, Download, UserX } from 'lucide-angular';
+import { LucideAngularModule, Plus, Archive, Pencil, Mail, Phone, IdCard, UserRound, Truck, Route, ChevronDown, ChevronRight, Download, UserX, CalendarClock } from 'lucide-angular';
 import type { DriverDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
@@ -155,6 +155,9 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
                   </button>
                   <button (click)="exportRgpd(d)" class="d-action-btn" title="Export RGPD (art. 15) — toutes les données du conducteur">
                     <lucide-icon [img]="DownloadIcon" [size]="14"></lucide-icon>
+                  </button>
+                  <button (click)="exportWorkTime(d)" class="d-action-btn" title="Registre du temps de travail (CSV, 5 ans)">
+                    <lucide-icon [img]="CalendarClockIcon" [size]="14"></lucide-icon>
                   </button>
                   <button (click)="confirmArchive(d)" class="d-action-btn danger" title="Archiver">
                     <lucide-icon [img]="ArchiveIcon" [size]="14"></lucide-icon>
@@ -413,6 +416,7 @@ export class DriversListComponent implements OnInit {
   protected readonly PencilIcon = Pencil;
   protected readonly DownloadIcon = Download;
   protected readonly UserXIcon = UserX;
+  protected readonly CalendarClockIcon = CalendarClock;
   protected readonly MailIcon = Mail;
   protected readonly PhoneIcon = Phone;
   protected readonly IdCardIcon = IdCard;
@@ -504,6 +508,22 @@ export class DriversListComponent implements OnInit {
       a.click();
       URL.revokeObjectURL(url);
       this.toast.success('Export RGPD téléchargé', `${driver.firstName} ${driver.lastName}`);
+    } catch {
+      this.toast.error('Export impossible', 'Réessayez.');
+    }
+  }
+
+  /** RGPD 4.5 — télécharge le registre du temps de travail (CSV, audité côté serveur). */
+  protected async exportWorkTime(driver: DriverDto): Promise<void> {
+    try {
+      const blob = await firstValueFrom(this.driversApi.workTimeCsv(driver.id));
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `temps-travail-${driver.lastName || driver.id}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      this.toast.success('Registre téléchargé', `${driver.firstName} ${driver.lastName}`);
     } catch {
       this.toast.error('Export impossible', 'Réessayez.');
     }

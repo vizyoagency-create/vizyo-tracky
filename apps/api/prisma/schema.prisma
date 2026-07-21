@@ -322,6 +322,30 @@ model FleetSubscription {
   @@map("fleet_subscriptions")
 }
 
+/// RGPD 4.5 — Registre du temps de travail : agrégat JOURNALIER par conducteur, SANS AUCUNE
+/// position (uniquement durées et bornes horaires). Alimenté chaque nuit depuis les trajets
+/// attribués (AUTO comme MANUEL), rétention propre 5 ans (obligation employeur), conservé après
+/// anonymisation (fiche anonyme). Les périodes en mode privé n'y figurent jamais (non collectées).
+model WorkTimeEntry {
+  id             String   @id @default(uuid()) @db.Uuid
+  fleetId        String   @db.Uuid
+  driverId       String   @db.Uuid
+  /// Jour civil (Europe/Paris).
+  day            DateTime @db.Date
+  firstTripStart DateTime
+  lastTripEnd    DateTime
+  /// Conduite pure (somme des durées de trajets), en secondes.
+  drivingSeconds Int
+  tripsCount     Int
+  vehiclePlates  String[] @default([])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([driverId, day])
+  @@index([fleetId, day])
+  @@map("work_time_entries")
+}
+
 /// Phase 3 — Grille tarifaire PUBLIQUE (SINGLETON, éditée par le super-admin). `grid` = JSON de la
 /// même forme que lp/src/data/pricing.mjs (formules, plans, addons, launch). Consommée par la LP
 /// via GET /public/pricing (hydratation runtime) et par l'app (admin + calculs d'abonnement).

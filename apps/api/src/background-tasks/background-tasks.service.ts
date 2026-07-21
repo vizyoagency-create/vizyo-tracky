@@ -133,6 +133,12 @@ const CATALOG: CatalogEntry[] = [
     fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 3 && w.getMinutes() === 45 },
   },
   {
+    id: 'work-time-registry', label: 'Registre du temps de travail (RGPD)', category: 'Maintenance données',
+    kind: 'cron', scheduleHuman: 'chaque jour à 04:00', criticality: 'basse', antiOverlap: false,
+    purpose: 'Agrège chaque nuit les trajets attribués en un registre journalier par conducteur (sans positions, rétention 5 ans) et purge les entrées expirées.',
+    fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 4 && w.getMinutes() === 0 },
+  },
+  {
     id: 'positions-retention', label: 'Rétention des positions GPS', category: 'Maintenance données',
     kind: 'cron', scheduleHuman: 'chaque jour à 03:30', criticality: 'moyenne', antiOverlap: false,
     configurable: true, settingsRoute: '/admin/retention', note: 'En DRY-RUN en prod : n\'efface RIEN tant que le flag n\'est pas armé.',

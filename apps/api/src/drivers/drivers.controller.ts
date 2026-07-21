@@ -22,11 +22,17 @@ import { AnonymizeDriverDto } from './dto/anonymize-driver.dto';
 import { CreateDriverDto } from './dto/create-driver.dto';
 import { UpdateDriverDto } from './dto/update-driver.dto';
 import { DriversService } from './drivers.service';
+import { WorkTimeService } from './work-time.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 
 @Controller('drivers')
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class DriversController {
-  constructor(private readonly drivers: DriversService) {}
+  constructor(
+    private readonly drivers: DriversService,
+    private readonly workTime: WorkTimeService,
+    private readonly systemActivity: SystemActivityService,
+  ) {}
 
   /** GET /drivers — liste fleet-scoped, ?includeArchived=true pour les archives. */
   @Get()
@@ -81,6 +87,38 @@ export class DriversController {
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="rgpd-conducteur-${id}.json"`);
     res.send(JSON.stringify(data, null, 2));
+  }
+
+  /**
+   * RGPD 4.5 — registre du temps de travail (CSV) : jours travaillés, amplitude et conduite pure,
+   * SANS aucune position. Rétention propre 5 ans. Export audité (catégorie EXPORT).
+   */
+  @Get(':id/work-time.csv')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN)
+  @RequirePermissions('drivers_manage')
+  async workTimeCsv(
+    @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
+    @Res() res: Response,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const driver = await this.drivers.findOne(id, this.rb(req)); // 404 cross-flotte
+    const csv = await this.workTime.exportCsv(driver.id, driver.fleetId, from, to);
+    this.systemActivity.record({
+      category: 'EXPORT',
+      action: 'work_time_export',
+      status: 'SUCCESS',
+      actor: 'opérateur',
+      target: `${driver.firstName} ${driver.lastName}`.trim(),
+      detail: `Export du registre de temps de travail (CSV${from || to ? `, ${from ?? '…'} → ${to ?? '…'}` : ''})`,
+      fleetId: driver.fleetId,
+      triggeredByUserId: req.user.id,
+      meta: { driverId: driver.id, from: from ?? null, to: to ?? null },
+    });
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="temps-travail-${id}.csv"`);
+    res.send('﻿' + csv);
   }
 
   /** RGPD art. 17 — anonymisation IRRÉVERSIBLE (PII effacée, compte désactivé). Confirmation exigée. */

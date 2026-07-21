@@ -42,6 +42,11 @@ export class DriversApiService {
     return this.http.get(`/api/drivers/${id}/gdpr-export`, { responseType: 'blob' });
   }
 
+  /** RGPD 4.5 — registre du temps de travail (CSV, sans positions, rétention 5 ans). */
+  workTimeCsv(id: string): Observable<Blob> {
+    return this.http.get(`/api/drivers/${id}/work-time.csv`, { responseType: 'blob' });
+  }
+
   /** RGPD art. 17 — anonymisation IRRÉVERSIBLE (PII effacée, compte désactivé). */
   anonymize(id: string): Observable<{ ok: true }> {
     return this.http.post<{ ok: true }>(`/api/drivers/${id}/anonymize`, { confirm: true });
