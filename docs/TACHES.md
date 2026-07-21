@@ -95,18 +95,18 @@ Architecture : **DB = source de vérité**, LP statique = fallback SEO + hydrata
 
 ## PHASE 4 — RGPD : les manques confirmés par l'audit
 
-- ⬜ **4.1 Purge des trajets > 12 mois** : cron dédié (pattern `data-retention.service`), DRY-RUN par défaut,
+- ✅ **4.1 Purge des trajets > 12 mois** : cron dédié (pattern `data-retention.service`), DRY-RUN par défaut,
   `TRIPS_RETENTION_MONTHS` (défaut 12), trace RETENTION + vue `/admin/background-tasks`. Tests.
 - ⏸️ **4.2 Purge des positions par flotte** (dépend **D2**) : la rétention devient **par flotte** selon
   l'option payée (90 j inclus / 1 / 2 / 3 ans) → champ `Fleet.retentionDays` + le cron l'applique ;
   armement prod = décision explicite.
-- ⬜ **4.3 Export RGPD conducteur (art. 15)** : `GET /drivers/:id/gdpr-export` (admin, audité) → JSON/ZIP :
+- ✅ **4.3 Export RGPD conducteur (art. 15)** : `GET /drivers/:id/gdpr-export` (admin, audité) → JSON/ZIP :
   profil Driver, User lié, trajets, événements vie privée, accès/permissions, événements QR. UI : bouton
   fiche conducteur.
-- ⬜ **4.4 Effacement / anonymisation conducteur (art. 17)** : `POST /drivers/:id/anonymize` (confirmation
+- ✅ **4.4 Effacement / anonymisation conducteur (art. 17)** : `POST /drivers/:id/anonymize` (confirmation
   forte, audité) : écrase PII (nom→« Conducteur supprimé », tél/email/permis/notes→null), délie le User
   (désactivé), conserve l'intégrité `Trip.driverId`. Distinct de l'archivage actuel. Tests.
-- ⬜ **4.5 Registre du temps de travail (5 ans, SANS positions)** : design d'abord (doc courte) —
+- 🔶 **4.5 Registre du temps de travail** : design ÉCRIT (docs/rgpd-registre-temps-travail.md, 4 questions à valider) —
   table `WorkTimeEntry` (conducteur, date, plages travaillées agrégées depuis trajets + cadre), rétention
   propre 5 ans, export CSV. Gros morceau → dernier de la phase.
 

@@ -37,6 +37,16 @@ export class DriversApiService {
     return this.http.delete<{ ok: true }>(`/api/drivers/${id}`);
   }
 
+  /** RGPD art. 15 — export JSON complet des données du conducteur (blob → téléchargement). */
+  gdprExport(id: string): Observable<Blob> {
+    return this.http.get(`/api/drivers/${id}/gdpr-export`, { responseType: 'blob' });
+  }
+
+  /** RGPD art. 17 — anonymisation IRRÉVERSIBLE (PII effacée, compte désactivé). */
+  anonymize(id: string): Observable<{ ok: true }> {
+    return this.http.post<{ ok: true }>(`/api/drivers/${id}/anonymize`, { confirm: true });
+  }
+
   /** Defini/retire le conducteur courant d'un vehicule. */
   assignToVehicle(vehicleId: string, driverId: string | null): Observable<{ currentDriver: DriverSummaryDto | null } & Record<string, unknown>> {
     const body: AssignDriverDto = { driverId };

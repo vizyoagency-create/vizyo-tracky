@@ -6,7 +6,9 @@ import {
 } from '@nestjs/common';
 import type { Driver } from '@prisma/client';
 import { Prisma, UserRole } from '@prisma/client';
+import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SystemActivityService } from '../system-activity/system-activity.service';
 import { CreateDriverDto } from './dto/create-driver.dto';
 import { UpdateDriverDto } from './dto/update-driver.dto';
 
@@ -29,7 +31,11 @@ interface RequestedBy {
 export class DriversService {
   private readonly logger = new Logger(DriversService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly systemActivity: SystemActivityService,
+    private readonly errors: ErrorLogger,
+  ) {}
 
   async list(requestedBy: RequestedBy, includeArchived = false) {
     // V1.15 — Inclus les compteurs (currentVehicles + trips) pour la liste
@@ -212,4 +218,150 @@ export class DriversService {
     });
   }
 
+  /**
+   * RGPD 4.3 — droit d'accès (art. 15) : export COMPLET des données d'un conducteur, en JSON.
+   * Fleet-scoped (404 cross-flotte via findOne). L'export lui-même est AUDITÉ (catégorie EXPORT) :
+   * remettre les données d'une personne est une action sensible qui doit se voir dans le journal.
+   */
+  async gdprExport(id: string, requestedBy: RequestedBy) {
+    const driver = await this.findOne(id, requestedBy);
+    try {
+      const [user, accessScopes, trips, privacyEvents, activity] = await Promise.all([
+        driver.userId
+          ? this.prisma.user.findUnique({
+              where: { id: driver.userId },
+              select: { id: true, email: true, firstName: true, lastName: true, role: true, isActive: true, createdAt: true },
+            })
+          : Promise.resolve(null),
+        driver.userId
+          ? this.prisma.userVehicleAccess.findMany({
+              where: { userId: driver.userId },
+              select: { accessType: true, groupId: true, vehicleId: true, permissions: true, createdAt: true },
+            })
+          : Promise.resolve([]),
+        this.prisma.trip.findMany({
+          where: { driverId: driver.id },
+          select: {
+            id: true, startedAt: true, endedAt: true, durationSeconds: true,
+            distanceKm: true, maxSpeed: true, driverSource: true,
+            vehicle: { select: { plate: true } },
+          },
+          orderBy: { startedAt: 'desc' },
+          take: 50_000,
+        }),
+        driver.userId
+          ? this.prisma.privacyModeEvent.findMany({
+              where: { userId: driver.userId },
+              select: { vehicleId: true, enabled: true, reason: true, createdAt: true },
+              orderBy: { createdAt: 'desc' },
+            })
+          : Promise.resolve([]),
+        driver.userId
+          ? this.prisma.systemActivityLog.findMany({
+              where: { triggeredByUserId: driver.userId, category: { in: ['ENGINE', 'PRIVACY'] } },
+              select: { category: true, action: true, status: true, target: true, detail: true, createdAt: true },
+              orderBy: { createdAt: 'desc' },
+              take: 1000,
+            })
+          : Promise.resolve([]),
+      ]);
+
+      this.systemActivity.record({
+        category: 'EXPORT',
+        action: 'gdpr_driver_export',
+        status: 'SUCCESS',
+        actor: 'opérateur',
+        target: `${driver.firstName} ${driver.lastName}`.trim(),
+        detail: `Export RGPD (art. 15) du conducteur — ${trips.length} trajet(s), ${privacyEvents.length} évènement(s) vie privée`,
+        fleetId: driver.fleetId,
+        triggeredByUserId: requestedBy.userId,
+        meta: { driverId: driver.id, trips: trips.length, privacyEvents: privacyEvents.length, activity: activity.length },
+      });
+
+      return {
+        exportedAt: new Date().toISOString(),
+        exportKind: 'RGPD article 15 — droit d’accès',
+        driver: {
+          id: driver.id, firstName: driver.firstName, lastName: driver.lastName,
+          phone: driver.phone, email: driver.email, licenseNumber: driver.licenseNumber,
+          notes: driver.notes, isActive: driver.isActive, createdAt: driver.createdAt,
+        },
+        account: user,
+        accessScopes,
+        trips: { count: trips.length, items: trips },
+        privacyModeEvents: privacyEvents,
+        activityLog: activity,
+      };
+    } catch (err) {
+      this.errors
+        .record(err instanceof Error ? err : new Error(String(err)), 'drivers-rgpd', { driverId: id, phase: 'export' }, 'ERROR')
+        .catch((e) => this.logger.error('ErrorLogger persist failed', e));
+      throw err;
+    }
+  }
+
+  /**
+   * RGPD 4.4 — droit à l'effacement (art. 17) : ANONYMISATION irréversible d'un conducteur.
+   * Écrase toute la PII du Driver (nom → « Conducteur anonymisé », tél/email/permis/notes → null),
+   * détache ses véhicules, et anonymise/désactive le compte User lié (e-mail neutralisé, accès
+   * supprimés — plus aucune connexion possible). `Trip.driverId` est CONSERVÉ : les trajets
+   * pointent vers une fiche anonyme (intégrité kilométrique sans données personnelles) et
+   * disparaissent d'eux-mêmes par la rétention 4.1. Distinct de l'archivage (réversible).
+   */
+  async anonymize(id: string, requestedBy: RequestedBy): Promise<{ ok: true }> {
+    const driver = await this.findOne(id, requestedBy);
+    const previousName = `${driver.firstName} ${driver.lastName}`.trim();
+    try {
+      const ops: Prisma.PrismaPromise<unknown>[] = [
+        this.prisma.driver.update({
+          where: { id: driver.id },
+          data: {
+            firstName: 'Conducteur',
+            lastName: 'anonymisé',
+            phone: null,
+            email: null,
+            licenseNumber: null,
+            notes: null,
+            isActive: false,
+            userId: null,
+          },
+        }),
+        this.prisma.vehicle.updateMany({ where: { currentDriverId: driver.id }, data: { currentDriverId: null } }),
+      ];
+      if (driver.userId) {
+        ops.push(
+          this.prisma.userVehicleAccess.deleteMany({ where: { userId: driver.userId } }),
+          this.prisma.user.update({
+            where: { id: driver.userId },
+            data: {
+              email: `anonyme-${driver.id}@supprime.tracky.invalid`,
+              firstName: 'Compte',
+              lastName: 'supprimé',
+              isActive: false,
+            },
+          }),
+        );
+      }
+      await this.prisma.$transaction(ops);
+
+      this.systemActivity.record({
+        category: 'PRIVACY',
+        action: 'driver_anonymized',
+        status: 'SUCCESS',
+        actor: 'opérateur',
+        target: previousName || driver.id,
+        detail: `Anonymisation RGPD (art. 17) du conducteur — PII effacée, compte désactivé${driver.userId ? ' (User lié anonymisé)' : ''}`,
+        fleetId: driver.fleetId,
+        triggeredByUserId: requestedBy.userId,
+        meta: { driverId: driver.id, hadUser: !!driver.userId },
+      });
+      this.logger.log(`Driver ${driver.id} anonymise (fleet=${driver.fleetId}) par ${requestedBy.userId}`);
+      return { ok: true };
+    } catch (err) {
+      this.errors
+        .record(err instanceof Error ? err : new Error(String(err)), 'drivers-rgpd', { driverId: id, phase: 'anonymize' }, 'ERROR')
+        .catch((e) => this.logger.error('ErrorLogger persist failed', e));
+      throw err;
+    }
+  }
 }

@@ -8,14 +8,17 @@ import {
   Post,
   Query,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
+import type { Response } from 'express';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { AnonymizeDriverDto } from './dto/anonymize-driver.dto';
 import { CreateDriverDto } from './dto/create-driver.dto';
 import { UpdateDriverDto } from './dto/update-driver.dto';
 import { DriversService } from './drivers.service';
@@ -67,6 +70,26 @@ export class DriversController {
   @RequirePermissions('drivers_manage')
   archive(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.drivers.archive(id, this.rb(req));
+  }
+
+  /** RGPD art. 15 — export JSON complet des données du conducteur (téléchargement, audité). */
+  @Get(':id/gdpr-export')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN)
+  @RequirePermissions('drivers_manage')
+  async gdprExport(@Param('id') id: string, @Req() req: AuthenticatedRequest, @Res() res: Response) {
+    const data = await this.drivers.gdprExport(id, this.rb(req));
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="rgpd-conducteur-${id}.json"`);
+    res.send(JSON.stringify(data, null, 2));
+  }
+
+  /** RGPD art. 17 — anonymisation IRRÉVERSIBLE (PII effacée, compte désactivé). Confirmation exigée. */
+  @Post(':id/anonymize')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN)
+  @RequirePermissions('drivers_manage')
+  anonymize(@Param('id') id: string, @Body() dto: AnonymizeDriverDto, @Req() req: AuthenticatedRequest) {
+    void dto; // la validation (@Equals(true)) fait office de garde-fou anti-clic accidentel
+    return this.drivers.anonymize(id, this.rb(req));
   }
 
   private rb(req: AuthenticatedRequest) {

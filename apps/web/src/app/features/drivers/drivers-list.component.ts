@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { LucideAngularModule, Plus, Archive, Pencil, Mail, Phone, IdCard, UserRound, Truck, Route, ChevronDown, ChevronRight } from 'lucide-angular';
+import { LucideAngularModule, Plus, Archive, Pencil, Mail, Phone, IdCard, UserRound, Truck, Route, ChevronDown, ChevronRight, Download, UserX } from 'lucide-angular';
 import type { DriverDto } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
@@ -153,8 +153,14 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
                   <button (click)="openEditDrawer(d)" class="d-action-btn" title="Modifier">
                     <lucide-icon [img]="PencilIcon" [size]="14"></lucide-icon> Modifier
                   </button>
+                  <button (click)="exportRgpd(d)" class="d-action-btn" title="Export RGPD (art. 15) — toutes les données du conducteur">
+                    <lucide-icon [img]="DownloadIcon" [size]="14"></lucide-icon>
+                  </button>
                   <button (click)="confirmArchive(d)" class="d-action-btn danger" title="Archiver">
                     <lucide-icon [img]="ArchiveIcon" [size]="14"></lucide-icon>
+                  </button>
+                  <button (click)="confirmAnonymize(d)" class="d-action-btn danger" title="Anonymiser (RGPD art. 17) — irréversible">
+                    <lucide-icon [img]="UserXIcon" [size]="14"></lucide-icon>
                   </button>
                 </div>
               }
@@ -162,6 +168,12 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
                 <div class="d-card-actions">
                   <button (click)="reactivate(d)" class="d-action-btn" title="Réactiver">
                     Réactiver
+                  </button>
+                  <button (click)="exportRgpd(d)" class="d-action-btn" title="Export RGPD (art. 15)">
+                    <lucide-icon [img]="DownloadIcon" [size]="14"></lucide-icon>
+                  </button>
+                  <button (click)="confirmAnonymize(d)" class="d-action-btn danger" title="Anonymiser (RGPD art. 17) — irréversible">
+                    <lucide-icon [img]="UserXIcon" [size]="14"></lucide-icon>
                   </button>
                 </div>
               }
@@ -188,6 +200,17 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
       [loading]="archiving()"
       (confirmed)="onArchive()"
       (cancelled)="showArchiveModal.set(false)"
+    />
+
+    <app-confirm-modal
+      [open]="showAnonymizeModal()"
+      title="Anonymiser ce conducteur ? (IRRÉVERSIBLE)"
+      [description]="anonymizeDescription()"
+      confirmLabel="Anonymiser définitivement"
+      [danger]="true"
+      [loading]="anonymizing()"
+      (confirmed)="onAnonymize()"
+      (cancelled)="showAnonymizeModal.set(false)"
     />
   `,
   styles: [`
@@ -379,11 +402,17 @@ export class DriversListComponent implements OnInit {
 
   readonly showArchiveModal = signal(false);
   readonly archiving = signal(false);
+  // RGPD art. 17 — anonymisation (modal dédiée, irréversible).
+  readonly showAnonymizeModal = signal(false);
+  readonly driverToAnonymize = signal<DriverDto | null>(null);
+  readonly anonymizing = signal(false);
   readonly driverToArchive = signal<DriverDto | null>(null);
 
   protected readonly Plus = Plus;
   protected readonly ArchiveIcon = Archive;
   protected readonly PencilIcon = Pencil;
+  protected readonly DownloadIcon = Download;
+  protected readonly UserXIcon = UserX;
   protected readonly MailIcon = Mail;
   protected readonly PhoneIcon = Phone;
   protected readonly IdCardIcon = IdCard;
@@ -405,6 +434,12 @@ export class DriversListComponent implements OnInit {
    * Description du modal d'archivage (avec apostrophes francaises).
    * Calculee dans un computed pour eviter les soucis de parsing inline.
    */
+  protected readonly anonymizeDescription = computed(() => {
+    const d = this.driverToAnonymize();
+    if (!d) return '';
+    return `<strong>${d.firstName} ${d.lastName}</strong> — ses nom, téléphone, e-mail, permis et notes seront <strong>définitivement effacés</strong>, son compte de connexion désactivé et ses accès supprimés. Les trajets sont conservés sous une fiche anonyme (droit à l'effacement, RGPD art. 17). Cette action est <strong>irréversible</strong>. Pensez à faire l'export RGPD avant si nécessaire.`;
+  });
+
   protected readonly archiveDescription = computed(() => {
     const d = this.driverToArchive();
     const name = d ? `${d.firstName} ${d.lastName}` : '';
@@ -455,6 +490,43 @@ export class DriversListComponent implements OnInit {
       this.toast.error('Échec archivage', err instanceof Error ? err.message : '');
     } finally {
       this.archiving.set(false);
+    }
+  }
+
+  /** RGPD art. 15 — télécharge l'export JSON complet (audité côté serveur). */
+  protected async exportRgpd(driver: DriverDto): Promise<void> {
+    try {
+      const blob = await firstValueFrom(this.driversApi.gdprExport(driver.id));
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `rgpd-conducteur-${driver.lastName || driver.id}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      this.toast.success('Export RGPD téléchargé', `${driver.firstName} ${driver.lastName}`);
+    } catch {
+      this.toast.error('Export impossible', 'Réessayez.');
+    }
+  }
+
+  protected confirmAnonymize(driver: DriverDto): void {
+    this.driverToAnonymize.set(driver);
+    this.showAnonymizeModal.set(true);
+  }
+  protected async onAnonymize(): Promise<void> {
+    const d = this.driverToAnonymize();
+    if (!d) return;
+    this.anonymizing.set(true);
+    try {
+      await firstValueFrom(this.driversApi.anonymize(d.id));
+      this.toast.success('Conducteur anonymisé', 'PII effacée, compte désactivé (irréversible).');
+      this.showAnonymizeModal.set(false);
+      this.driverToAnonymize.set(null);
+      await this.loadDrivers();
+    } catch (err) {
+      this.toast.error('Échec anonymisation', err instanceof Error ? err.message : '');
+    } finally {
+      this.anonymizing.set(false);
     }
   }
 
