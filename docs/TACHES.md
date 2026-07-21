@@ -44,11 +44,11 @@ Invérifiables dans le code. **À décider** : les assumer (chiffres commerciaux
 
 ## PHASE 1 — LP : vérité produit (rapide, AVANT toute com')
 
-- ⬜ **1.1 « 15 s » → « 20 s » partout** (réel : plancher matériel Coban 20 s, défaut 30 s).
+- ✅ **1.1 « 15 s » → « 20 s » partout** (réel : plancher matériel Coban 20 s, défaut 30 s).
   Fichiers : `lp/src/data/pricing.mjs` (label Live), `lp/design/{index,fonctionnalites,tarifs,secteur-public}.html`,
   `lp/build.mjs` (metas), `lp/public/assets/vt.js` (récap devis) → rebuild `node build.mjs`.
   Done = 0 occurrence « 15 s » trompeuse dans `lp/public`.
-- ⬜ **1.2 Matrice des rôles : 4 → réalité produit** (`lp/design/index.html` ~l.266).
+- ✅ **1.2 Matrice des rôles : 4 → réalité produit** (`lp/design/index.html` ~l.266).
   Colonnes réelles côté client : Admin flotte · Gestionnaire · Lecteur · **Veilleur de nuit** · **Conducteur**
   (le super-admin = Vizyo, hors matrice). Ajouter les capacités nouvelles : « Déverrouiller par QR (proximité) »,
   « Mode vie privée ». Badge « 6 capacités · 4 rôles » → mis à jour.
