@@ -873,7 +873,8 @@ Tracky après ajout du module — un crash-loop DI ne se voit pas au build (piè
 | ~~**0.8**~~ ✅ | ~~**Révocation partielle par scope**~~ **FAIT** — énoncé de scope signé (chaîne canonique distincte), PATCH /scopes, les DEUX chemins de purge | **T2 ✅** — la catégorie éteinte est purgée, les autres intactes ; webhook perdu rattrapé par la comparaison au bail |
 | ~~**0.9**~~ ✅ | ~~**Mode dégradé + grâce 72 h + alerte**~~ **FAIT** — aiguillage panne/révocation, anti-flapping au 2ᵉ échec, purge fail-closed à 72 h, 16 tests | **T3 ✅ T4 ✅ T5 ✅ T7 ✅** — après la grâce le lien reste `DEGRADED`, jamais `REVOKED` |
 | ~~**0.10**~~ ✅ | ~~`suspendedByPlatform` + `billingStatus` en `COMP`~~ **FAIT** — 5 routes super-admin, webhook `link.suspended` signé, dry-run par catégorie, 16 tests | **T8 ✅** (déjà couvert à l'incr. 4b-2 : handshake neuf refusé) · le dry-run n'écrit rien, des deux côtés |
-| 🟡 **0.11** | Les 3 écrans UI | **Écran client Tracky FAIT** (build + typecheck OK, **non vérifié visuellement**). Restent : super-admin Tracky, écran Maestroo, démo de bout en bout |
+| ~~**0.11**~~ ✅ | ~~Les 3 écrans UI~~ **FAIT** — client Tracky, super-admin Tracky, Maestroo. Builds OK des deux côtés, design system Maestroo respecté | ⚠️ **Aucun des 3 n'a été vérifié VISUELLEMENT** — la démo de bout en bout reste à faire |
+| ~~**H**~~ ✅ | ~~Harnais sur vraie base~~ **FAIT** — `apps/api/test/kill-switch.e2e.spec.ts`, 7 tests sur PostgreSQL réel | **T1 ✅ T2 ✅ T9 ✅ T12 ✅** — et il a révélé une faille réelle (alertes Tracky oubliées par le re-check au boot) |
 | ~~**0.12**~~ ✅ | ~~Exploitation : exclusion du dump, re-check au boot, crons~~ **FAIT** — `--exclude-table` documenté, `purgeOrphanedOnBoot`, `ScheduleModule` vérifié dans les 2 apps | **T12 ✅** (restauration de dump repurgée au boot) · T9 reste à faire sur une vraie base |
 
 > Ne pas fusionner 0.7 → 0.9 en un seul incrément. Ce sont **trois garanties distinctes** (couper
