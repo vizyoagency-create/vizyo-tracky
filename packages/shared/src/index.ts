@@ -30,6 +30,7 @@ export * from './dto/activity-report.dto';
 export * from './dto/system-activity.dto';
 export * from './dto/api-traffic.dto';
 export * from './events/ws-events';
+export * from './partner';
 export * from './permissions';
 export * from './protocol';
 export * from './utils/gps-sanity';
