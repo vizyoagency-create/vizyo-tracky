@@ -844,7 +844,8 @@ Tracky après ajout du module — un crash-loop DI ne se voit pas au build (piè
 | ~~**0.2**~~ ✅ | ~~Modèles Prisma + migrations + contraintes d'unicité (D4)~~ **FAIT** — `partner_links`/`_events`/`_access_tokens`/`_outbox_events` côté Tracky, `tracky_links`/`tracky_mirror` côté Maestroo | Migrations appliquées sur base **jetable** ; unicité `liveKey` prouvée en SQL réel (6 cas) ; `tracky_mirror` a **0 clé étrangère** (vérifié via `information_schema`) |
 | ~~**0.3**~~ ✅ | ~~Service de signature partagé (émission + vérification) des deux côtés~~ **FAIT** — fonctions pures `partner-signature.ts` (Tracky `src/partner/`, Maestroo `src/integrations/`), 32 tests chacune | Vecteurs figés identiques ; **interop croisée prouvée** (13/13 : chaque repo signe, l'autre vérifie, altérations détectées) ; format canonique corrigé (§5) |
 | ~~**0.4a**~~ ✅ | ~~Config, module Nest, garde de signature~~ **FAIT** — env des deux côtés (+ secret de plateforme), `PartnerModule`/`IntegrationsModule`, `@PartnerOp` + garde, 53 tests | **Smoke-boot des deux API** (sur base conforme) ; kill-switch prouvé OFF ; module inerte = **404, pas 403** |
-| **0.4b** | Handshake (claim / approve / complete) sans aucune donnée | Lien `ACTIVE` des deux côtés |
+| ~~**0.4b-1**~~ ✅ | ~~Permission `integrations_manage`~~ **FAIT** — défauts par rôle, groupe UI « Integrations », `shared` rebuildé | 199 tests `shared` verts (garde-fous de complétude) ; matrice d'accès câblée automatiquement (data-driven) |
+| **0.4b-2** | Handshake : chiffrement AES-GCM du secret de lien, code d'appairage à usage unique, `claim` / `approve` / `complete`, client HTTP Tracky→Maestroo | Lien `ACTIVE` des deux côtés |
 | **0.5** | Bail : `token`, Redis, `ping` | T11 |
 | **0.6** | `vehicles/count` + écriture `TrackyMirror` | Une ligne de mirror existe |
 | **0.7** | **Révocation totale** (outbox + webhook + pull + gate + purge) | T1, T6, T10 |
