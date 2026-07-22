@@ -1,5 +1,11 @@
 import { Logger, Module, OnModuleInit } from '@nestjs/common';
+import { AuthModule } from '../auth/auth.module';
+import { PrismaModule } from '../prisma/prisma.module';
+import { SystemActivityModule } from '../system-activity/system-activity.module';
+import { PartnerClientService } from './partner-client.service';
 import { PartnerConfigService } from './partner.config';
+import { PartnerController } from './partner.controller';
+import { PartnerPairingService } from './partner-pairing.service';
 import { PartnerSignatureGuard } from './partner-signature.guard';
 
 /**
@@ -12,7 +18,10 @@ import { PartnerSignatureGuard } from './partner-signature.guard';
  * Spec : docs/23-integration-maestroo-phase0-spec.md
  */
 @Module({
-  providers: [PartnerConfigService, PartnerSignatureGuard],
+  // AuthModule : requis par JwtAuthGuard sur les routes client.
+  imports: [AuthModule, PrismaModule, SystemActivityModule],
+  controllers: [PartnerController],
+  providers: [PartnerConfigService, PartnerSignatureGuard, PartnerClientService, PartnerPairingService],
   exports: [PartnerConfigService, PartnerSignatureGuard],
 })
 export class PartnerModule implements OnModuleInit {
