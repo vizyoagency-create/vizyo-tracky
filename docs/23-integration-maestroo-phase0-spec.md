@@ -868,7 +868,7 @@ Tracky après ajout du module — un crash-loop DI ne se voit pas au build (piè
 | ~~**0.4b-1**~~ ✅ | ~~Permission `integrations_manage`~~ **FAIT** — défauts par rôle, groupe UI « Integrations », `shared` rebuildé | 199 tests `shared` verts (garde-fous de complétude) ; matrice d'accès câblée automatiquement (data-driven) |
 | ~~**0.4b-2**~~ ✅ | ~~Handshake complet~~ **FAIT** — AES-GCM du secret, code à usage unique, `claim`/`approve`/`complete`/`abort`, client HTTP signé, 64 tests | **Ordre retenu : le partenaire est prévenu AVANT la création du lien local** ; compensation `abort` sur le cas résiduel ; `suspendedByPlatform` bloque un handshake NEUF ; smoke-boot des deux API, 8 routes mappées |
 | ~~**0.5**~~ ✅ | ~~Bail : `token`, Redis, `ping`~~ **FAIT** — jetons opaques hashés, garde Bearer + `@RequirePartnerScope`, `token`/`ping`/`vehicles/count`, 15 tests | T11 ✅ (jeton expiré/révoqué/lien coupé) ; **deux barrières indépendantes** ; HMAC et Redis écartés, voir §7 |
-| **0.6** | `vehicles/count` + écriture `TrackyMirror` | Une ligne de mirror existe |
+| ~~**0.6**~~ ✅ | ~~`vehicles/count` + écriture `TrackyMirror`~~ **FAIT** — `TrackyApiClient` (bail en mémoire, erreurs classées), `TrackyMirrorService`, `TrackySyncService`, 2 routes, 11 tests | `MIRROR_KINDS` : le scope est **déduit du kind**, jamais fourni par l'appelant ; expiration obligatoire ; lecture d'une entrée expirée = absente |
 | **0.7** | **Révocation totale** (outbox + webhook + pull + gate + purge) | T1, T6, T10 |
 | **0.8** | **Révocation partielle par scope** | T2 |
 | **0.9** | **Mode dégradé + grâce 72 h + alerte** | T3, T4, T5, T7 |
