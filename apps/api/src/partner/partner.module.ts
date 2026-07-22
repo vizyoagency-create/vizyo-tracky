@@ -9,6 +9,8 @@ import { PartnerClientService } from './partner-client.service';
 import { PartnerOutboxService } from './partner-outbox.service';
 import { PartnerRevocationService } from './partner-revocation.service';
 import { PartnerConfigService } from './partner.config';
+import { PartnerInvitationController } from './partner-invitation.controller';
+import { PartnerInvitationService } from './partner-invitation.service';
 import { PartnerTokenGuard } from './partner-token.guard';
 import { PartnerTokenService } from './partner-token.service';
 import { PartnerController } from './partner.controller';
@@ -26,8 +28,15 @@ import { PartnerSignatureGuard } from './partner-signature.guard';
  */
 @Module({
   // AuthModule : requis par JwtAuthGuard sur les routes client.
+  // (EmailService, injecté par PartnerInvitationService, vient d'EmailModule qui
+  // est @Global — pas d'import à ajouter ici.)
   imports: [AuthModule, PrismaModule, SystemActivityModule],
-  controllers: [PartnerController, PartnerApiController, PartnerAdminController],
+  controllers: [
+    PartnerController,
+    PartnerApiController,
+    PartnerAdminController,
+    PartnerInvitationController,
+  ],
   providers: [
     PartnerConfigService,
     PartnerSignatureGuard,
@@ -38,6 +47,7 @@ import { PartnerSignatureGuard } from './partner-signature.guard';
     PartnerRevocationService,
     PartnerOutboxService,
     PartnerAdminService,
+    PartnerInvitationService,
   ],
   exports: [PartnerConfigService, PartnerSignatureGuard, PartnerTokenService, PartnerRevocationService],
 })

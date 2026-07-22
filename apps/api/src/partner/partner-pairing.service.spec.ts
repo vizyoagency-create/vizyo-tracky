@@ -4,6 +4,7 @@ import type { PrismaService } from '../prisma/prisma.service';
 import type { SystemActivityService } from '../system-activity/system-activity.service';
 import type { PartnerClientService } from './partner-client.service';
 import type { PartnerConfigService } from './partner.config';
+import type { PartnerInvitationService } from './partner-invitation.service';
 import { PartnerPairingService, hashSecret } from './partner-pairing.service';
 
 const FLEET = 'fleet-1';
@@ -23,6 +24,7 @@ function makeService(opts: {
   enabled?: boolean;
   createThrows?: boolean;
   completeThrows?: boolean;
+  codeInvitedElsewhere?: boolean;
 } = {}) {
   const calls = { complete: [] as unknown[], abort: [] as unknown[], created: null as any };
   const links = opts.existingLinks ?? [];
@@ -58,8 +60,25 @@ function makeService(opts: {
 
   const config = { enabled: opts.enabled ?? true } as unknown as PartnerConfigService;
   const activity = { record: jest.fn() } as unknown as SystemActivityService;
+  // Par défaut le code n'est promis à personne : c'est le parcours manuel, où
+  // celui qui génère le code est celui qui le saisit. Le refus par invitation a
+  // ses propres tests (partner-invitation.service.spec.ts).
+  const invitations = {
+    assertCodeUsableBy: opts.codeInvitedElsewhere
+      ? jest.fn(async () => {
+          throw new ForbiddenException('Ce code a ete emis pour une autre flotte.');
+        })
+      : jest.fn(async () => undefined),
+    markAccepted: jest.fn(async () => undefined),
+  } as unknown as PartnerInvitationService;
 
-  return { service: new PartnerPairingService(prisma, client, config, activity), calls, client, prisma };
+  return {
+    service: new PartnerPairingService(prisma, client, config, activity, invitations),
+    calls,
+    client,
+    prisma,
+    invitations,
+  };
 }
 
 describe('claim — n\'active rien', () => {
@@ -82,6 +101,41 @@ describe('claim — n\'active rien', () => {
   it('module éteint ⇒ 404', async () => {
     const { service } = makeService({ enabled: false });
     await expect(service.claim(FLEET, CODE)).rejects.toThrow(NotFoundException);
+  });
+});
+
+describe('approve — le code promis par e-mail', () => {
+  it('code invité pour UNE AUTRE flotte ⇒ REFUS, avant même de joindre le partenaire', async () => {
+    // ⚠️ L'e-mail transféré. Sans ce garde, le fleet-admin qui reçoit le lien
+    // d'un confrère branche SA flotte sur l'organisation Maestroo de ce confrère.
+    // C'est le bug d'ambiguïté d'organisation, vu depuis l'autre bout.
+    const { service, client, prisma } = makeService({ codeInvitedElsewhere: true });
+    await expect(service.approve(FLEET, USER, CODE, ['FUEL'])).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    // Rien n'a bougé nulle part : ni chez nous, ni chez le partenaire.
+    expect(client.completePairing).not.toHaveBeenCalled();
+    expect(prisma.partnerLink.create).not.toHaveBeenCalled();
+  });
+
+  it('appairage réussi ⇒ l\'invitation est marquée acceptée APRÈS la création du lien', async () => {
+    // Une invitation « acceptée » alors que l'appairage a échoué serait un faux
+    // dans un registre qui sert de preuve de consentement.
+    const { service, invitations, prisma } = makeService();
+    await service.approve(FLEET, USER, CODE, ['FUEL']);
+
+    const acceptOrder = (invitations.markAccepted as jest.Mock).mock.invocationCallOrder[0];
+    const createOrder = (prisma.partnerLink.create as jest.Mock).mock.invocationCallOrder[0];
+    expect(createOrder).toBeLessThan(acceptOrder!);
+    expect(invitations.markAccepted).toHaveBeenCalledWith(
+      expect.objectContaining({ fleetId: FLEET, pairingCode: CODE, scopes: ['FUEL'] }),
+    );
+  });
+
+  it('appairage en échec ⇒ AUCUNE acceptation enregistrée', async () => {
+    const { service, invitations } = makeService({ completeThrows: true });
+    await expect(service.approve(FLEET, USER, CODE, ['FUEL'])).rejects.toThrow();
+    expect(invitations.markAccepted).not.toHaveBeenCalled();
   });
 });
 

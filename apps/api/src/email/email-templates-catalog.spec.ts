@@ -31,6 +31,7 @@ const EVERY_TEMPLATE: Record<EmailTemplateId, true> = {
   reservation_requested: true,
   reservation_confirmed: true,
   ai_invoice_request: true,
+  partner_consent_invitation: true,
 };
 const ALL_IDS = Object.keys(EVERY_TEMPLATE) as EmailTemplateId[];
 

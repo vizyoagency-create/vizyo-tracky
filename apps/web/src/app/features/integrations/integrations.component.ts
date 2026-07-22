@@ -1,6 +1,7 @@
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute } from '@angular/router';
 import { Observable } from 'rxjs';
 import {
   PartnerClaimPreview,
@@ -38,6 +39,15 @@ const SENSITIVE = new Set(['LIVE_POSITION', 'DRIVING_BEHAVIOR']);
 
       @if (error(); as err) {
         <p class="ig-error" role="alert">{{ err }}</p>
+      }
+
+      @if (inviteExpired()) {
+        <!-- Le client a cliqué, mais trop tard. On le dit franchement plutôt que
+             de le laisser devant un « code invalide » incompréhensible. -->
+        <p class="ig-warn" role="alert">
+          Ce lien de consentement a expiré. Demandez-nous un nouveau lien — rien n'a
+          été partagé entre-temps.
+        </p>
       }
 
       @if (loading()) {
@@ -90,6 +100,7 @@ const SENSITIVE = new Set(['LIVE_POSITION', 'DRIVING_BEHAVIOR']);
           } @else {
             <p class="ig-muted">
               Générez un code depuis l'application partenaire, puis collez-le ici.
+              Si vous avez reçu un lien par e-mail, le code est déjà rempli.
             </p>
             <div class="ig-row">
               <input
@@ -218,6 +229,7 @@ const SENSITIVE = new Set(['LIVE_POSITION', 'DRIVING_BEHAVIOR']);
       .ig-btn-primary { background: var(--tk-accent, #10e0a0); border-color: transparent; color: #06231a; font-weight: 600; }
       .ig-btn-danger { background: var(--tk-danger, #e04848); border-color: transparent; color: #fff; font-weight: 600; }
       .ig-error { margin: 0; padding: 0.6rem 0.75rem; border-radius: 8px; background: var(--tk-danger-soft, #e0484822); color: var(--tk-danger, #e04848); font-size: 0.875rem; }
+      .ig-warn { margin: 0; padding: 0.6rem 0.75rem; border-radius: 8px; background: var(--tk-warn-soft, #e0a84822); color: var(--tk-warn, #e0a848); font-size: 0.875rem; }
       .ig-log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.82rem; }
       .ig-log li { display: flex; gap: 0.5rem; align-items: baseline; }
       .ig-log-date { color: var(--tk-text-muted, #7b8794); min-width: 6.5rem; }
@@ -227,12 +239,14 @@ const SENSITIVE = new Set(['LIVE_POSITION', 'DRIVING_BEHAVIOR']);
 })
 export class IntegrationsComponent {
   private readonly api = inject(PartnerIntegrationService);
+  private readonly route = inject(ActivatedRoute);
 
   protected readonly state = signal<PartnerLinkStatus | null>(null);
   protected readonly preview = signal<PartnerClaimPreview | null>(null);
   protected readonly loading = signal(true);
   protected readonly busy = signal(false);
   protected readonly error = signal<string | null>(null);
+  protected readonly inviteExpired = signal(false);
   /** Cases cochées sur l'écran de consentement (avant activation). */
   protected readonly chosen = signal<Set<string>>(new Set());
 
@@ -244,6 +258,12 @@ export class IntegrationsComponent {
   private readonly catalogue = signal<PartnerScopeOption[]>([]);
 
   constructor() {
+    // Le lien reçu par e-mail arrive ici avec le code déjà résolu. Redemander au
+    // client de « vérifier » un code qu'il n'a pas saisi n'a aucun sens : il a
+    // cliqué sur « Voir la demande », on lui montre la demande.
+    const params = this.route.snapshot.queryParamMap;
+    this.code = (params.get('code') ?? '').trim();
+    this.inviteExpired.set(params.get('invite') === 'expired');
     this.reload();
   }
 
@@ -325,6 +345,11 @@ export class IntegrationsComponent {
       next: (st) => {
         this.state.set(st);
         this.loading.set(false);
+        // ⚠️ APRÈS le statut, jamais avant : une flotte déjà connectée ou suspendue
+        // ne doit pas voir un écran de consentement s'ouvrir sous ses yeux.
+        if (this.code && !st.suspendedByPlatform && (st.status === 'NONE' || st.status === 'REVOKED')) {
+          this.claim();
+        }
       },
       error: () => {
         this.error.set('Impossible de charger l\'état de l\'intégration.');

@@ -11,6 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 import { PartnerClientService, PartnerRemoteError } from './partner-client.service';
 import { PartnerConfigService } from './partner.config';
+import { PartnerInvitationService } from './partner-invitation.service';
 
 const PARTNER = 'MAESTROO';
 
@@ -31,6 +32,7 @@ export class PartnerPairingService {
     private readonly client: PartnerClientService,
     private readonly config: PartnerConfigService,
     private readonly activity: SystemActivityService,
+    private readonly invitations: PartnerInvitationService,
   ) {}
 
   /**
@@ -70,6 +72,10 @@ export class PartnerPairingService {
    */
   async approve(fleetId: string, userId: string, code: string, requestedScopes: unknown) {
     await this.assertPairable(fleetId);
+    // ⚠️ AVANT TOUT LE RESTE : un code promis par e-mail à une flotte n'est
+    // utilisable que par elle. Sans ce garde, un e-mail transféré suffisait à
+    // brancher la flotte du destinataire sur l'organisation Maestroo d'un autre.
+    await this.invitations.assertCodeUsableBy(fleetId, code);
 
     const fleet = await this.prisma.fleet.findUnique({ where: { id: fleetId }, select: { name: true } });
     if (!fleet) throw new NotFoundException('Fleet not found');
@@ -129,6 +135,11 @@ export class PartnerPairingService {
       await this.client.abortPairing(code, linkId);
       throw err;
     }
+
+    // Fige la preuve de consentement (qui a accepté, quoi, quand). Après la
+    // création du lien : une invitation marquée « acceptée » alors que
+    // l'appairage a échoué serait un faux dans un registre RGPD.
+    await this.invitations.markAccepted({ fleetId, pairingCode: code, userId, scopes, linkId });
 
     this.activity.record({
       category: 'PARTNER',

@@ -30,6 +30,26 @@ export interface AdminLpConsent {
   createdAt: string;
 }
 
+/**
+ * Sollicitation d'un client pour autoriser le partage vers une application
+ * partenaire, et ce qu'il en a fait. `state` est DÉRIVÉ côté serveur (il dépend
+ * de l'heure) — ne pas le recalculer ici, on obtiendrait deux vérités.
+ */
+export interface AdminPartnerInvitation {
+  id: string;
+  fleetName: string;
+  partner: string;
+  email: string;
+  sentAt: string;
+  expiresAt: string;
+  openedAt: string | null;
+  openCount: number;
+  openIp: string | null;
+  acceptedAt: string | null;
+  acceptedScopes: string[];
+  state: 'ACCEPTED' | 'OPENED' | 'EXPIRED' | 'SENT';
+}
+
 @Injectable({ providedIn: 'root' })
 export class ConsentAdminService {
   private readonly http = inject(HttpClient);
@@ -40,5 +60,11 @@ export class ConsentAdminService {
   }
   getLp(limit = 100): Promise<AdminLpConsent[]> {
     return firstValueFrom(this.http.get<AdminLpConsent[]>(`${this.base}/lp`, { params: { limit } }));
+  }
+  /** Servi par le module partenaire — 404 si l'intégration est éteinte. */
+  getPartnerInvitations(): Promise<AdminPartnerInvitation[]> {
+    return firstValueFrom(
+      this.http.get<AdminPartnerInvitation[]>('/api/admin/partner-links/invitations'),
+    );
   }
 }
