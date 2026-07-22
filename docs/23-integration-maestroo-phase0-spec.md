@@ -447,9 +447,30 @@ détectées d'une implémentation à l'autre.
 |---|---|
 | Type | **Opaque** (32 octets aléatoires, base64url) — pas un JWT |
 | TTL | 600 s (`PARTNER_TOKEN_TTL_SECONDS`) |
-| Émission | `POST /partner/v1/token`, corps `{ linkId }`, signé HMAC **avec le `linkSecret`** |
-| Validation | Redis `partner:tok:<sha256(token)>` → `{ linkId, scopes[] }`, TTL aligné. Repli DB (`PartnerAccessToken`) si absent |
-| Révocation | `DEL partner:tok:*` du lien **+** `revokedAt` en DB ⇒ **effet en millisecondes** |
+| Émission | `POST /partner/v1/token`, en-têtes `X-Partner-Link` + `X-Partner-Secret` |
+| Validation | Lecture DB (`PartnerAccessToken`) — jeton **et** état du lien, à chaque appel |
+| Révocation | `revokedAt` sur les jetons **+** statut du lien ⇒ **deux barrières indépendantes** |
+
+#### ⚠️ Deux corrections apportées à l'implémentation (incr. 0.5)
+
+1. **La demande de jeton n'est pas signée en HMAC.** La spec disait à la fois « le
+   `linkSecret` signe les demandes de bail » **et** « `secretHash` — stocké hashé, jamais
+   en clair ». C'est **incompatible** : on ne peut pas vérifier un HMAC avec une
+   empreinte. On conserve le stockage à **sens unique** (propriété la plus forte : un
+   dump de la base ne donne aucun secret utilisable) et le secret est présenté comme une
+   **crédence** sur TLS, comparée en temps constant. C'est le fonctionnement de toute clé
+   d'API ; le secret ne circule que sur cet unique endpoint.
+
+2. **Pas de cache Redis pour la validation.** Un cache introduit une **fenêtre** pendant
+   laquelle un jeton révoqué reste valide — précisément ce que le lot 0 supprime. Le
+   trafic partenaire est minuscule ici (un jeton toutes les 10 min) : on lit la base,
+   sans fenêtre. Redis redeviendra pertinent en **phase 3** (sondage de la carte live),
+   avec un TTL borné par le délai de révocation acceptable. *(Redis n'est de toute façon
+   pas encore câblé dans Nest — seulement dans l'adaptateur socket.io.)*
+
+**Deux barrières indépendantes à la validation** : le jeton (existe / non révoqué / non
+expiré) **et** l'état du lien, vérifiés à chaque appel. Révoquer le lien suffit donc à
+couper l'accès même si la purge des jetons échouait.
 
 > **Pourquoi opaque et pas JWT** : un JWT reste valide jusqu'à son expiration, donc jusqu'à 10 min
 > **après** la coupure. Avec un jeton opaque adossé à Redis, la révocation est immédiate. Le TTL de
@@ -846,7 +867,7 @@ Tracky après ajout du module — un crash-loop DI ne se voit pas au build (piè
 | ~~**0.4a**~~ ✅ | ~~Config, module Nest, garde de signature~~ **FAIT** — env des deux côtés (+ secret de plateforme), `PartnerModule`/`IntegrationsModule`, `@PartnerOp` + garde, 53 tests | **Smoke-boot des deux API** (sur base conforme) ; kill-switch prouvé OFF ; module inerte = **404, pas 403** |
 | ~~**0.4b-1**~~ ✅ | ~~Permission `integrations_manage`~~ **FAIT** — défauts par rôle, groupe UI « Integrations », `shared` rebuildé | 199 tests `shared` verts (garde-fous de complétude) ; matrice d'accès câblée automatiquement (data-driven) |
 | ~~**0.4b-2**~~ ✅ | ~~Handshake complet~~ **FAIT** — AES-GCM du secret, code à usage unique, `claim`/`approve`/`complete`/`abort`, client HTTP signé, 64 tests | **Ordre retenu : le partenaire est prévenu AVANT la création du lien local** ; compensation `abort` sur le cas résiduel ; `suspendedByPlatform` bloque un handshake NEUF ; smoke-boot des deux API, 8 routes mappées |
-| **0.5** | Bail : `token`, Redis, `ping` | T11 |
+| ~~**0.5**~~ ✅ | ~~Bail : `token`, Redis, `ping`~~ **FAIT** — jetons opaques hashés, garde Bearer + `@RequirePartnerScope`, `token`/`ping`/`vehicles/count`, 15 tests | T11 ✅ (jeton expiré/révoqué/lien coupé) ; **deux barrières indépendantes** ; HMAC et Redis écartés, voir §7 |
 | **0.6** | `vehicles/count` + écriture `TrackyMirror` | Une ligne de mirror existe |
 | **0.7** | **Révocation totale** (outbox + webhook + pull + gate + purge) | T1, T6, T10 |
 | **0.8** | **Révocation partielle par scope** | T2 |
