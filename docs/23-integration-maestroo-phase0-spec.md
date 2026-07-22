@@ -870,7 +870,7 @@ Tracky après ajout du module — un crash-loop DI ne se voit pas au build (piè
 | ~~**0.5**~~ ✅ | ~~Bail : `token`, Redis, `ping`~~ **FAIT** — jetons opaques hashés, garde Bearer + `@RequirePartnerScope`, `token`/`ping`/`vehicles/count`, 15 tests | T11 ✅ (jeton expiré/révoqué/lien coupé) ; **deux barrières indépendantes** ; HMAC et Redis écartés, voir §7 |
 | ~~**0.6**~~ ✅ | ~~`vehicles/count` + écriture `TrackyMirror`~~ **FAIT** — `TrackyApiClient` (bail en mémoire, erreurs classées), `TrackyMirrorService`, `TrackySyncService`, 2 routes, 11 tests | `MIRROR_KINDS` : le scope est **déduit du kind**, jamais fourni par l'appelant ; expiration obligatoire ; lecture d'une entrée expirée = absente |
 | ~~**0.7**~~ ✅ | ~~**Révocation totale**~~ **FAIT** — énoncé signé, révocation atomique, outbox avec rejeu, receveur idempotent, purge ordonnée | **T4/T5 ✅** (403 nu, 404 Traefik, corps HTML/vide/null ⇒ aucune purge) · **T10 ✅** (rejeu ignoré) · T1/T6 restent à prouver sur une vraie base |
-| **0.8** | **Révocation partielle par scope** | T2 |
+| ~~**0.8**~~ ✅ | ~~**Révocation partielle par scope**~~ **FAIT** — énoncé de scope signé (chaîne canonique distincte), PATCH /scopes, les DEUX chemins de purge | **T2 ✅** — la catégorie éteinte est purgée, les autres intactes ; webhook perdu rattrapé par la comparaison au bail |
 | **0.9** | **Mode dégradé + grâce 72 h + alerte** | T3, T4, T5, T7 |
 | **0.10** | `suspendedByPlatform` + `billingStatus` en `COMP` | T8 |
 | **0.11** | Les 3 écrans UI | Démo de bout en bout |
