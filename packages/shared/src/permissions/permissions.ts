@@ -132,6 +132,15 @@ export interface UserPermissions {
    * l'interrupteur société `Fleet.aiEnabled` (lui-même piloté par l'abonnement).
    */
   places_analyze: boolean;
+
+  /**
+   * Integration partenaire (Tracky x Maestroo) — connecter la flotte a une application
+   * partenaire, choisir les CATEGORIES de donnees partagees, et COUPER le partage (en
+   * totalite ou categorie par categorie) a tout moment. C'est un acte a consequence :
+   * il expose des donnees de la flotte a une application tierce. Reserve au fleet-admin
+   * par defaut ; accordable, jamais implicite.
+   */
+  integrations_manage: boolean;
 }
 
 const VIEWER_DEFAULTS: UserPermissions = {
@@ -173,6 +182,7 @@ const VIEWER_DEFAULTS: UserPermissions = {
   places_view: true,
   places_manage: false,
   places_analyze: false,
+  integrations_manage: false,
 };
 
 const FLEET_MANAGER_DEFAULTS: UserPermissions = {
@@ -216,6 +226,7 @@ const FLEET_MANAGER_DEFAULTS: UserPermissions = {
   places_manage: true,
   // …mais PAS l'analyse IA (elle consomme des tokens) : un admin peut l'accorder.
   places_analyze: false,
+  integrations_manage: false,
 };
 
 const ADMIN_DEFAULTS: UserPermissions = {
@@ -257,6 +268,7 @@ const ADMIN_DEFAULTS: UserPermissions = {
   places_view: true,
   places_manage: true,
   places_analyze: true,
+  integrations_manage: true,
 };
 
 /**
@@ -305,6 +317,7 @@ const NIGHT_WATCHMAN_DEFAULTS: UserPermissions = {
   places_view: false,
   places_manage: false,
   places_analyze: false,
+  integrations_manage: false,
 };
 
 /**
@@ -354,6 +367,7 @@ const DRIVER_DEFAULTS: UserPermissions = {
   places_view: false,
   places_manage: false,
   places_analyze: false,
+  integrations_manage: false,
 };
 
 export function getDefaultPermissions(role: UserRoleSlug): UserPermissions {
@@ -604,6 +618,12 @@ export const PERMISSION_LABELS: Record<keyof UserPermissions, PermissionLabel> =
     description:
       'Declencher l\'analyse IA d\'un lieu (enrichissement OSM + synthese). CONSOMME DES TOKENS (cout reel) : reserve aux admins par defaut, accordable. Reste soumis a l\'interrupteur IA de la societe et au kill-switch global.',
   },
+  integrations_manage: {
+    group: 'Integrations',
+    label: 'Gerer les integrations partenaires',
+    description:
+      'Connecter la flotte a une application partenaire (Maestroo), choisir les categories de donnees partagees, et couper le partage a tout moment. Acte a consequence : expose des donnees de la flotte a une application tierce. Reserve au fleet-admin par defaut.',
+  },
 };
 
 /** Ordre d'affichage canonique des groupes dans l'UI. */
@@ -624,4 +644,5 @@ export const PERMISSION_GROUP_ORDER: readonly string[] = [
   'Reservations',
   'Intelligence artificielle',
   'Facturation',
+  'Integrations',
 ] as const;

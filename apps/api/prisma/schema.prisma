@@ -274,6 +274,9 @@ model Fleet {
   aiSubscription       AiSubscription?
   // D4 (chantier commercial 2026-07) — abonnement commercial (plan/formule/options, 1:1).
   subscription         FleetSubscription?
+  // Integration partenaire (Tracky x Maestroo) — 1 lien VIVANT max par partenaire,
+  // + l'historique des liens revoques. Cf. PartnerLink.
+  partnerLinks         PartnerLink[]
 
   @@map("fleets")
 }
@@ -2775,4 +2778,166 @@ model LoginEvent {
 
   @@index([userId, createdAt])
   @@map("login_events")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Intégration partenaire (Tracky × Maestroo) — LOT 0 : socle & interrupteur
+// Spec : docs/23-integration-maestroo-phase0-spec.md
+//
+// Tracky est AUTORITAIRE : la copie côté partenaire n'est qu'un cache de « ai-je
+// encore le droit ». Aucune donnée métier ne transite en lot 0 — ces tables ne
+// portent que le lien, son consentement vivant (scopes), ses jetons et son audit.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum PartnerLinkStatus {
+  ACTIVE
+  /// Coupé — réversible. Par le client (choix) OU par la plateforme (impayé,
+  /// cf. `suspendedByPlatform` qui est un axe DISTINCT).
+  SUSPENDED
+  /// TERMINAL. On ne « réactive » pas un lien révoqué : on refait un handshake
+  /// complet, ce qui reconstruit le consentement. La ligne est CONSERVÉE (preuve
+  /// de qui a coupé quoi et quand) et son `liveKey` passe à null pour libérer le
+  /// créneau d'unicité.
+  REVOKED
+}
+
+/// Lien de partage entre une flotte Tracky et une organisation partenaire.
+///
+/// ⚠️ UNICITÉ (décision D4) — le piège : un simple `@@unique([fleetId, partner])`
+/// interdirait DÉFINITIVEMENT de se reconnecter après une révocation, puisque la
+/// ligne révoquée (qu'on conserve pour l'audit) occuperait le créneau à vie.
+/// D'où `liveKey` : il vaut `partner` tant que le lien est VIVANT et passe à NULL
+/// à la révocation. Postgres ne fait pas conflit sur les NULL dans un index
+/// unique → on obtient « au plus UN lien vivant » côté flotte ET côté organisation
+/// partenaire, tout en gardant un historique illimité. C'est une garantie de BASE,
+/// pas une règle de service : deux liens vivants rendraient « purger le lien »
+/// ambigu, et la révocation ne voudrait plus rien dire.
+model PartnerLink {
+  id                  String            @id @default(uuid()) @db.Uuid
+  fleetId             String            @db.Uuid
+  fleet               Fleet             @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  /// 'MAESTROO' — String et non enum : ajouter un partenaire ne doit pas coûter
+  /// une migration d'enum.
+  partner             String
+  externalOrgId       String
+  externalOrgName     String
+  externalOrgSiret    String?
+
+  status              PartnerLinkStatus @default(ACTIVE)
+
+  /// Créneau d'unicité (cf. commentaire du modèle). INVARIANT maintenu par le
+  /// service : `liveKey = partner` si status != REVOKED, `null` sinon.
+  liveKey             String?
+
+  /// D8 — 'COMP' (offert) | 'ACTIVE' (payant) | 'NONE'. AUCUN paiement n'est
+  /// branché en lot 0 : le point de contrôle existe pour que passer au payant
+  /// soit un changement d'état et non une refonte. Patron repris d'AiSubscription.
+  /// ⚠️ Axe INDÉPENDANT de `status` : un client peut être COMP (offert) ET
+  /// SUSPENDED (impayé sur son abonnement principal).
+  billingStatus       String            @default("COMP")
+
+  /// ⚠️ Suspension PLATEFORME (impayé) — DISTINCTE de `status`. Tant qu'elle est
+  /// levée, le client ne peut NI réactiver, NI refaire un handshake sur cette
+  /// flotte. Sans ce refus au niveau du handshake, le client révoque, recommence,
+  /// et le levier commercial ne vaut rien. Seul un SUPER_ADMIN peut la lever.
+  suspendedByPlatform Boolean           @default(false)
+  suspendedReason     String?
+
+  /// Scopes ACTIFS (PartnerScope[] — cf. packages/shared/src/partner/scopes.ts).
+  /// ÉTAT VIVANT vérifié à CHAQUE requête partenaire, pas un consentement figé.
+  /// Une liste vide veut dire « plus rien n'est partagé », jamais « applique les
+  /// défauts ».
+  scopes              Json              @default("[]")
+
+  /// Secret du lien, remis UNE SEULE FOIS au partenaire, stocké HASHÉ.
+  /// Propre à ce lien : sa compromission n'expose pas la plateforme.
+  secretHash          String
+  secretRotatedAt     DateTime?
+
+  createdByUserId     String?           @db.Uuid
+  approvedByUserId    String?           @db.Uuid
+  approvedAt          DateTime?
+  /// Dernier appel partenaire authentifié — alimente « dernière activité ».
+  lastSeenAt          DateTime?
+  revokedAt           DateTime?
+  revokedReason       String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  events              PartnerLinkEvent[]
+  tokens              PartnerAccessToken[]
+  outbox              PartnerOutboxEvent[]
+
+  /// Au plus UN lien vivant par (flotte, partenaire).
+  @@unique([fleetId, liveKey])
+  /// Au plus UN lien vivant par (organisation partenaire, partenaire) : deux
+  /// flottes ne peuvent pas alimenter la même organisation Maestroo.
+  @@unique([externalOrgId, liveKey])
+  @@index([fleetId])
+  @@index([status])
+  @@map("partner_links")
+}
+
+/// Journal IMMUABLE du lien — jamais purgé. C'est la preuve de qui a coupé quoi,
+/// quand, et sur quel scope : un acte à conséquence financière pour le client.
+model PartnerLinkEvent {
+  id        String      @id @default(uuid()) @db.Uuid
+  linkId    String      @db.Uuid
+  link      PartnerLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  /// 'created' | 'approved' | 'scope_enabled' | 'scope_disabled' | 'suspended'
+  /// | 'resumed' | 'platform_suspended' | 'platform_resumed' | 'revoked'
+  /// | 'secret_rotated' | 'billing_changed'
+  action    String
+  /// 'USER' | 'PLATFORM' | 'PARTNER' | 'SYSTEM'
+  actorType String
+  actorId   String?     @db.Uuid
+  /// Renseigné pour les actions de scope (révocation partielle).
+  scope     String?
+  detail    String?
+  createdAt DateTime    @default(now())
+
+  @@index([linkId, createdAt(sort: Desc)])
+  @@map("partner_link_events")
+}
+
+/// Jeton d'accès OPAQUE (bail, 10 min). Volontairement pas un JWT : un JWT reste
+/// valide jusqu'à son expiration, donc jusqu'à 10 min APRÈS la coupure. Ici, la
+/// révocation supprime les clés Redis et marque ces lignes → effet en
+/// millisecondes. Le TTL devient le filet de sécurité, pas le chemin normal.
+/// Redis est le chemin chaud ; cette table est la source de vérité.
+model PartnerAccessToken {
+  id        String      @id @default(uuid()) @db.Uuid
+  linkId    String      @db.Uuid
+  link      PartnerLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  /// SHA-256 du jeton — le jeton en clair n'est jamais persisté.
+  tokenHash String      @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime    @default(now())
+
+  @@index([linkId, expiresAt])
+  @@map("partner_access_tokens")
+}
+
+/// Outbox des webhooks sortants. Un webhook de révocation PERDU est une
+/// révocation perdue : on persiste avant d'émettre, et un cron rejoue les
+/// non-délivrés. `id` sert de clé d'idempotence au receveur.
+model PartnerOutboxEvent {
+  id            String      @id @default(uuid()) @db.Uuid
+  linkId        String      @db.Uuid
+  link          PartnerLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  /// 'link.revoked' | 'link.suspended' | 'link.resumed' | 'scope.revoked'
+  /// | 'scope.granted'
+  type          String
+  payload       Json
+  attempts      Int         @default(0)
+  nextAttemptAt DateTime    @default(now())
+  deliveredAt   DateTime?
+  lastError     String?
+  createdAt     DateTime    @default(now())
+
+  /// Index de balayage du cron : les non-délivrés dont l'heure est venue.
+  @@index([deliveredAt, nextAttemptAt])
+  @@index([linkId])
+  @@map("partner_outbox_events")
 }

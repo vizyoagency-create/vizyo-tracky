@@ -30,6 +30,7 @@ import { InstallationsModule } from './installations/installations.module';
 import { InstallationBookingModule } from './installation-booking/installation-booking.module';
 import { PrivacyModeModule } from './privacy-mode/privacy-mode.module';
 import { InternalModule } from './internal/internal.module';
+import { PartnerModule } from './partner/partner.module';
 import { TripsModule } from './trips/trips.module';
 import { PositionsModule } from './positions/positions.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -151,6 +152,9 @@ import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.modul
     InstallationBookingModule,
     PrivacyModeModule,
     InternalModule,
+    // Integration partenaire (Tracky x Maestroo) — lot 0. Inerte tant que
+    // PARTNER_MAESTROO_ENABLED n'est pas a true.
+    PartnerModule,
     LeadsModule,
     // D5 (chantier commercial) — chiffres publics de la LP (compteur de véhicules, cache 5 min).
     PublicStatsModule,

@@ -172,6 +172,23 @@ const envSchema = z.object({
   // par défaut surchargeable (OPENAI_MODEL, ex. gpt-4.1 / gpt-4.1-mini / gpt-4o). Lue via process.env.
   OPENAI_API_KEY: z.string().default(''),
   OPENAI_MODEL: z.string().default(''),
+
+  // ─── Integration partenaire (Tracky x Maestroo) — lot 0 ────────────────────
+  // KILL-SWITCH DE DEPLOIEMENT : a false, TOUT le module partenaire est inerte
+  // (routes montees mais qui repondent 404). Le code peut donc partir en prod et
+  // etre verifie sans qu'aucun lien ne soit creable. Default false = on n'active
+  // JAMAIS par accident.
+  PARTNER_MAESTROO_ENABLED: z.string().default('false'),
+  // Base de l'API Maestroo, appelee serveur-a-serveur pendant le handshake.
+  PARTNER_MAESTROO_API_URL: z.string().default(''),
+  // Secret d'AMORCAGE de la confiance, partage entre les deux DEPLOIEMENTS (pas
+  // par client). Il ne sert QU'au handshake et aux webhooks ; chaque lien a
+  // ensuite son propre secret. Vide = le module refuse de servir (fail-closed,
+  // cf. verifyPartnerRequest qui rejette tout sur un secret vide).
+  PARTNER_PLATFORM_SECRET: z.string().default(''),
+  // Duree de vie du bail (jeton opaque). Courte VOLONTAIREMENT : c'est le filet
+  // de securite si la purge Redis echoue a la revocation.
+  PARTNER_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(600),
 });
 
 export type Env = z.infer<typeof envSchema>;
