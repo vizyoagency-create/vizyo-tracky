@@ -872,7 +872,7 @@ Tracky après ajout du module — un crash-loop DI ne se voit pas au build (piè
 | ~~**0.7**~~ ✅ | ~~**Révocation totale**~~ **FAIT** — énoncé signé, révocation atomique, outbox avec rejeu, receveur idempotent, purge ordonnée | **T4/T5 ✅** (403 nu, 404 Traefik, corps HTML/vide/null ⇒ aucune purge) · **T10 ✅** (rejeu ignoré) · T1/T6 restent à prouver sur une vraie base |
 | ~~**0.8**~~ ✅ | ~~**Révocation partielle par scope**~~ **FAIT** — énoncé de scope signé (chaîne canonique distincte), PATCH /scopes, les DEUX chemins de purge | **T2 ✅** — la catégorie éteinte est purgée, les autres intactes ; webhook perdu rattrapé par la comparaison au bail |
 | ~~**0.9**~~ ✅ | ~~**Mode dégradé + grâce 72 h + alerte**~~ **FAIT** — aiguillage panne/révocation, anti-flapping au 2ᵉ échec, purge fail-closed à 72 h, 16 tests | **T3 ✅ T4 ✅ T5 ✅ T7 ✅** — après la grâce le lien reste `DEGRADED`, jamais `REVOKED` |
-| **0.10** | `suspendedByPlatform` + `billingStatus` en `COMP` | T8 |
+| ~~**0.10**~~ ✅ | ~~`suspendedByPlatform` + `billingStatus` en `COMP`~~ **FAIT** — 5 routes super-admin, webhook `link.suspended` signé, dry-run par catégorie, 16 tests | **T8 ✅** (déjà couvert à l'incr. 4b-2 : handshake neuf refusé) · le dry-run n'écrit rien, des deux côtés |
 | **0.11** | Les 3 écrans UI | Démo de bout en bout |
 | **0.12** | Exploitation : exclusion du dump, re-check au boot, crons | T12, T9 |
 
