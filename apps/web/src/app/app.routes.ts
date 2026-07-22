@@ -305,6 +305,18 @@ export const routes: Routes = [
       },
       {
         // D4 + Phase 3 (chantier commercial) — abonnements clients + grille tarifaire publique.
+        // Lot 0 intégration partenaire — pilotage plateforme. Porte le levier
+        // commercial : suspendre un client qui ne paye pas, sans qu'il puisse le
+        // rétablir lui-même.
+        path: 'admin/partner-links',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/observability/admin-partner-links.component').then(
+            (m) => m.AdminPartnerLinksComponent,
+          ),
+        data: { title: 'Intégrations (admin)' },
+      },
+      {
         path: 'admin/subscriptions',
         canActivate: [superAdminGuard],
         loadComponent: () =>
