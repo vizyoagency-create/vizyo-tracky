@@ -762,6 +762,24 @@ chantier** ; toutes le gênent, et deux sont de vrais risques.
    incrément. Le `CLAUDE.md` de Maestroo dit pourtant « une violation = pas de
    commit » : la barrière ne tient plus.
 
+4. **🔴 `z.coerce.boolean()` ne sait pas lire `false`** (Maestroo, relevé à l'incr. 0.4a).
+   Zod applique `Boolean()` de JS : **toute chaîne non vide vaut `true`**, y compris
+   `'false'`, `'0'`, `'no'`, `'off'`. Seule la chaîne vide donne `false`. Le défaut
+   fonctionne (variable absente) — le bug ne frappe que si la variable est POSÉE.
+   `TRACKY_INTEGRATION_ENABLED=false` **allumait donc l'intégration** : pour un
+   kill-switch, le pire mode de défaillance possible. Corrigé ici par un helper
+   `envBoolean()` dans `env.schema.ts`. **5 autres flags restent affectés**, dont
+   `COOKIE_SECURE=false` — aujourd'hui lu `true`, donc cookies marqués `Secure` en dev
+   sur `http://localhost`, que le navigateur jette — et `INVOICING_UX_V2`, documenté
+   comme « passer à false pour rollback sans revert Git », ce qui **ne fonctionnerait
+   pas**. Ticket dédié : le correctif change des comportements effectifs, il ne doit pas
+   être noyé dans une PR d'intégration.
+
+> **Le smoke-boot n'est pas une formalité.** C'est lui qui a attrapé ce bug : le
+> typecheck, les 53 tests unitaires et la revue de code étaient tous verts. Seul le
+> démarrage réel de l'application, en lisant le vrai `.env`, a montré que le
+> kill-switch était à l'envers.
+
 > **Méthode retenue pour tout le chantier** : les migrations se génèrent et se
 > valident sur une **base jetable** (`*_migrgen`, créée puis détruite), jamais sur la
 > base de dev. Les bases de dev locales des deux projets ont de la dérive ; y lancer
@@ -825,7 +843,8 @@ Tracky après ajout du module — un crash-loop DI ne se voit pas au build (piè
 | ~~**0.1**~~ ✅ | ~~Registres de scopes des deux côtés + tests de parité~~ **FAIT** — Tracky `packages/shared/src/partner/scopes.ts` (24 tests), Maestroo `packages/shared/src/enums/partner-scope.ts` + `apps/api/src/integrations/partner-scopes.spec.ts` (23 tests) | Parité prouvée par mutation (ajout d'un scope d'un seul côté ⇒ TS **et** test échouent) |
 | ~~**0.2**~~ ✅ | ~~Modèles Prisma + migrations + contraintes d'unicité (D4)~~ **FAIT** — `partner_links`/`_events`/`_access_tokens`/`_outbox_events` côté Tracky, `tracky_links`/`tracky_mirror` côté Maestroo | Migrations appliquées sur base **jetable** ; unicité `liveKey` prouvée en SQL réel (6 cas) ; `tracky_mirror` a **0 clé étrangère** (vérifié via `information_schema`) |
 | ~~**0.3**~~ ✅ | ~~Service de signature partagé (émission + vérification) des deux côtés~~ **FAIT** — fonctions pures `partner-signature.ts` (Tracky `src/partner/`, Maestroo `src/integrations/`), 32 tests chacune | Vecteurs figés identiques ; **interop croisée prouvée** (13/13 : chaque repo signe, l'autre vérifie, altérations détectées) ; format canonique corrigé (§5) |
-| **0.4** | Handshake complet (claim / approve / complete) sans aucune donnée | Lien `ACTIVE` des deux côtés |
+| ~~**0.4a**~~ ✅ | ~~Config, module Nest, garde de signature~~ **FAIT** — env des deux côtés (+ secret de plateforme), `PartnerModule`/`IntegrationsModule`, `@PartnerOp` + garde, 53 tests | **Smoke-boot des deux API** (sur base conforme) ; kill-switch prouvé OFF ; module inerte = **404, pas 403** |
+| **0.4b** | Handshake (claim / approve / complete) sans aucune donnée | Lien `ACTIVE` des deux côtés |
 | **0.5** | Bail : `token`, Redis, `ping` | T11 |
 | **0.6** | `vehicles/count` + écriture `TrackyMirror` | Une ligne de mirror existe |
 | **0.7** | **Révocation totale** (outbox + webhook + pull + gate + purge) | T1, T6, T10 |
