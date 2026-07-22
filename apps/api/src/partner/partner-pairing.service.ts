@@ -144,6 +144,15 @@ export class PartnerPairingService {
     return { linkId, status: PartnerLinkStatus.ACTIVE, scopes };
   }
 
+  /** Le lien VIVANT de cette flotte, ou 404. Utilisé par la révocation. */
+  async requireLink(fleetId: string) {
+    const link = await this.prisma.partnerLink.findFirst({
+      where: { fleetId, partner: PARTNER, liveKey: { not: null } },
+    });
+    if (!link) throw new NotFoundException('Aucune integration active pour cette flotte');
+    return link;
+  }
+
   /** État du lien pour l'écran « Intégrations ». Ne divulgue JAMAIS l'empreinte du secret. */
   async status(fleetId: string) {
     const link = await this.prisma.partnerLink.findFirst({

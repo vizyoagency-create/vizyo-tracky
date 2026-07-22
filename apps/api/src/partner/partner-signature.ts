@@ -104,6 +104,72 @@ export function signPartnerRequest(
   };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Énoncé de révocation SIGNÉ (incr. 0.7)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type RevocationEvent = 'LINK_REVOKED' | 'LINK_SUSPENDED';
+
+export interface RevocationStatement {
+  event: RevocationEvent;
+  linkId: string;
+  /** ISO-8601. */
+  at: string;
+  nonce: string;
+  signature: string;
+}
+
+/**
+ * ⚠️ LA brique du kill-switch. Un simple code HTTP 403 ne doit JAMAIS déclencher de
+ * purge : pendant l'incident Traefik du 2026-07-21, un routeur mal configuré renvoyait
+ * un `404 page not found` indiscernable d'un 404 applicatif. Si « 4xx ⇒ purge » était
+ * la règle, une panne d'infrastructure effacerait les données de TOUS les clients.
+ *
+ * Seul un énoncé SIGNÉ avec le secret de plateforme prouve que c'est bien Tracky qui
+ * a décidé de couper. Un proxy, un pare-feu ou un load-balancer ne peuvent pas le
+ * fabriquer.
+ */
+export function buildRevocationStatement(
+  secret: string,
+  input: { event: RevocationEvent; linkId: string; at: string; nonce: string },
+): RevocationStatement {
+  return { ...input, signature: revocationSignature(secret, input) };
+}
+
+/** Lève `PartnerSignatureError` si l'énoncé n'est pas authentique. */
+export function verifyRevocationStatement(secret: string, statement: Partial<RevocationStatement>): void {
+  if (!secret) throw new PartnerSignatureError('missing_headers', { reason: 'secret_not_configured' });
+  // `statement` vient du fil : il peut être null, une chaîne, un tableau… On le
+  // valide AVANT de le déstructurer, sinon un `null` produirait un TypeError au
+  // lieu du refus propre attendu par l'appelant.
+  if (!statement || typeof statement !== 'object' || Array.isArray(statement)) {
+    throw new PartnerSignatureError('missing_headers', { reason: 'not_an_object' });
+  }
+  const { event, linkId, at, nonce, signature } = statement;
+  if (!event || !linkId || !at || !nonce || !signature) {
+    throw new PartnerSignatureError('missing_headers', { reason: 'incomplete_statement' });
+  }
+  if (event !== 'LINK_REVOKED' && event !== 'LINK_SUSPENDED') {
+    throw new PartnerSignatureError('signature_mismatch', { reason: 'unknown_event' });
+  }
+  if (!HEX_64.test(signature)) throw new PartnerSignatureError('malformed_signature');
+
+  const expected = Buffer.from(revocationSignature(secret, { event, linkId, at, nonce }), 'hex');
+  const provided = Buffer.from(signature.toLowerCase(), 'hex');
+  if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+    throw new PartnerSignatureError('signature_mismatch');
+  }
+}
+
+function revocationSignature(
+  secret: string,
+  input: { event: string; linkId: string; at: string; nonce: string },
+): string {
+  return createHmac('sha256', secret)
+    .update(`${input.event}.${input.linkId}.${input.at}.${input.nonce}`)
+    .digest('hex');
+}
+
 export interface VerifyPartnerRequestInput extends Omit<PartnerSignatureInput, 'timestamp'> {
   /** En-tête `X-Partner-Timestamp` reçu (peut être absent → `missing_headers`). */
   timestamp: string | undefined;

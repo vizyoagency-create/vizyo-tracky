@@ -1,8 +1,9 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { PartnerLinkStatus } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { PartnerConfigService } from './partner.config';
+import { verifyRevocationStatement } from './partner-signature';
 import { PartnerTokenService } from './partner-token.service';
 
 const SECRET = 'secret-de-lien-remis-par-le-handshake';
@@ -37,7 +38,7 @@ function makeService(opts: { link?: unknown; tokenRow?: unknown } = {}) {
       updateMany: jest.fn(async () => ({ count: 2 })),
     },
   } as unknown as PrismaService;
-  const config = { tokenTtlSeconds: 600 } as unknown as PartnerConfigService;
+  const config = { tokenTtlSeconds: 600, platformSecret: 'secret-de-plateforme' } as unknown as PartnerConfigService;
   return { service: new PartnerTokenService(prisma, config), prisma, created };
 }
 
@@ -89,7 +90,7 @@ describe('issue — lien coupé', () => {
     'statut %s ⇒ aucun jeton délivré',
     async (status) => {
       const { service } = makeService({ link: activeLink({ status }) });
-      await expect(service.issue(LINK, SECRET)).rejects.toThrow(UnauthorizedException);
+      await expect(service.issue(LINK, SECRET)).rejects.toThrow(ForbiddenException);
     },
   );
 
@@ -97,7 +98,27 @@ describe('issue — lien coupé', () => {
     // ⚠️ Les deux axes sont indépendants : le levier commercial doit couper
     // l'accès sans dépendre du statut du lien.
     const { service } = makeService({ link: activeLink({ suspendedByPlatform: true }) });
-    await expect(service.issue(LINK, SECRET)).rejects.toThrow(UnauthorizedException);
+    await expect(service.issue(LINK, SECRET)).rejects.toThrow(ForbiddenException);
+  });
+
+  it('le refus porte un ENONCE SIGNE, verifiable par le partenaire', async () => {
+    // ⚠️ LE point du kill-switch. Sans signature, le partenaire ne peut pas
+    // distinguer ce refus d'un 403 de proxy — et doit alors le traiter comme une
+    // panne, donc ne rien purger. La signature est ce qui AUTORISE la purge.
+    const { service } = makeService({
+      link: activeLink({ status: PartnerLinkStatus.REVOKED, revokedAt: new Date('2026-07-22T10:00:00Z') }),
+    });
+    const err = await service.issue(LINK, SECRET).catch((e) => e);
+    const body = err.getResponse() as Record<string, string>;
+
+    expect(body.error).toBe('LINK_REVOKED');
+    expect(body.signature).toMatch(/^[0-9a-f]{64}$/);
+    // La signature doit VRAIMENT vérifier avec le secret de plateforme.
+    expect(() =>
+      verifyRevocationStatement('secret-de-plateforme', body as never),
+    ).not.toThrow();
+    // ...et échouer avec un autre secret.
+    expect(() => verifyRevocationStatement('autre-secret', body as never)).toThrow();
   });
 });
 
@@ -134,14 +155,14 @@ describe('resolve — validation du jeton', () => {
     const { service } = makeService({
       tokenRow: tokenRow({ link: activeLink({ status: PartnerLinkStatus.REVOKED }) }),
     });
-    await expect(service.resolve('tok')).rejects.toThrow(UnauthorizedException);
+    await expect(service.resolve('tok')).rejects.toThrow(ForbiddenException);
   });
 
   it('jeton encore valide mais lien suspendu par la PLATEFORME ⇒ refus', async () => {
     const { service } = makeService({
       tokenRow: tokenRow({ link: activeLink({ suspendedByPlatform: true }) }),
     });
-    await expect(service.resolve('tok')).rejects.toThrow(UnauthorizedException);
+    await expect(service.resolve('tok')).rejects.toThrow(ForbiddenException);
   });
 });
 

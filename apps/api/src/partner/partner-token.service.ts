@@ -1,9 +1,10 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { PartnerLinkStatus } from '@prisma/client';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { parsePartnerScopes, type PartnerScope } from '@vizyo/tracky-shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { PartnerConfigService } from './partner.config';
+import { buildRevocationStatement, type RevocationEvent } from './partner-signature';
 
 export interface PartnerTokenContext {
   linkId: string;
@@ -119,13 +120,40 @@ export class PartnerTokenService {
    * ⚠️ `suspendedByPlatform` est vérifié SÉPARÉMENT de `status` : les deux axes sont
    * indépendants (un lien peut être ACTIVE et suspendu par la plateforme).
    */
-  private assertUsable(link: { status: PartnerLinkStatus; suspendedByPlatform: boolean }): void {
-    if (link.suspendedByPlatform) {
-      throw new UnauthorizedException('Partner link suspended by platform');
+  private assertUsable(link: {
+    id: string;
+    status: PartnerLinkStatus;
+    suspendedByPlatform: boolean;
+    revokedAt: Date | null;
+  }): void {
+    // ⚠️ Le refus porte un ÉNONCÉ SIGNÉ. C'est ce qui autorise le partenaire à
+    // purger : sans signature, il doit traiter le refus comme une PANNE (un 403
+    // de proxy ou un 404 de Traefik ne doivent jamais effacer de données).
+    if (link.suspendedByPlatform || link.status === PartnerLinkStatus.SUSPENDED) {
+      throw new ForbiddenException(
+        this.statement('LINK_SUSPENDED', link.id, link.revokedAt ?? new Date()),
+      );
+    }
+    if (link.status === PartnerLinkStatus.REVOKED) {
+      throw new ForbiddenException(
+        this.statement('LINK_REVOKED', link.id, link.revokedAt ?? new Date()),
+      );
     }
     if (link.status !== PartnerLinkStatus.ACTIVE) {
-      throw new UnauthorizedException(`Partner link ${link.status.toLowerCase()}`);
+      throw new UnauthorizedException('Partner link unusable');
     }
+  }
+
+  private statement(event: RevocationEvent, linkId: string, at: Date) {
+    return {
+      error: event,
+      ...buildRevocationStatement(this.config.platformSecret, {
+        event,
+        linkId,
+        at: at.toISOString(),
+        nonce: randomBytes(12).toString('hex'),
+      }),
+    };
   }
 }
 

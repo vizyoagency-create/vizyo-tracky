@@ -4,6 +4,8 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { SystemActivityModule } from '../system-activity/system-activity.module';
 import { PartnerApiController } from './partner-api.controller';
 import { PartnerClientService } from './partner-client.service';
+import { PartnerOutboxService } from './partner-outbox.service';
+import { PartnerRevocationService } from './partner-revocation.service';
 import { PartnerConfigService } from './partner.config';
 import { PartnerTokenGuard } from './partner-token.guard';
 import { PartnerTokenService } from './partner-token.service';
@@ -31,8 +33,10 @@ import { PartnerSignatureGuard } from './partner-signature.guard';
     PartnerPairingService,
     PartnerTokenService,
     PartnerTokenGuard,
+    PartnerRevocationService,
+    PartnerOutboxService,
   ],
-  exports: [PartnerConfigService, PartnerSignatureGuard, PartnerTokenService],
+  exports: [PartnerConfigService, PartnerSignatureGuard, PartnerTokenService, PartnerRevocationService],
 })
 export class PartnerModule implements OnModuleInit {
   private readonly logger = new Logger(PartnerModule.name);

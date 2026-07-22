@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Post, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -6,7 +6,9 @@ import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { PartnerOutboxService } from './partner-outbox.service';
 import { PartnerPairingService } from './partner-pairing.service';
+import { PartnerRevocationService } from './partner-revocation.service';
 
 /**
  * Écran « Intégrations » du client (fleet-admin). C'est ICI que vit l'interrupteur :
@@ -17,7 +19,11 @@ import { PartnerPairingService } from './partner-pairing.service';
 @Controller('integrations/partner')
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
 export class PartnerController {
-  constructor(private readonly pairing: PartnerPairingService) {}
+  constructor(
+    private readonly pairing: PartnerPairingService,
+    private readonly revocation: PartnerRevocationService,
+    private readonly outbox: PartnerOutboxService,
+  ) {}
 
   @Get()
   @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
@@ -42,6 +48,27 @@ export class PartnerController {
   async approve(@Req() req: AuthenticatedRequest, @Body() body: { code?: string; scopes?: unknown }) {
     if (!body?.code) throw new BadRequestException('Code requis');
     return this.pairing.approve(this.requireFleet(req), req.user.id, body.code, body.scopes);
+  }
+
+  /**
+   * Révocation par le CLIENT. Terminal : on ne réactive pas, on refait un
+   * handshake (ce qui reconstruit le consentement).
+   */
+  @Delete()
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  @RequirePermissions('integrations_manage')
+  async revoke(@Req() req: AuthenticatedRequest, @Body() body: { reason?: string }) {
+    const fleetId = this.requireFleet(req);
+    const link = await this.pairing.requireLink(fleetId);
+    const result = await this.revocation.revoke(
+      link.id,
+      body?.reason?.slice(0, 200) || 'Revoque par le client',
+      'USER',
+      req.user.id,
+    );
+    // Tentative immédiate ; le cron de l'outbox reste le filet si elle échoue.
+    await this.outbox.dispatchNow(link.id);
+    return result;
   }
 
   /**

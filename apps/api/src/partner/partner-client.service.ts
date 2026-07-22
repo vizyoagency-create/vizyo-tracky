@@ -70,6 +70,16 @@ export class PartnerClientService {
     }
   }
 
+  /**
+   * Émet un webhook signé vers le partenaire.
+   *
+   * `eventId` est la clé d'idempotence : le receveur doit pouvoir ignorer un rejeu
+   * sans produire deux purges.
+   */
+  async sendWebhook(input: { eventId: string; type: string; payload: unknown }): Promise<void> {
+    await this.request('POST', '/partner/v1/webhooks', 'partner.webhook', input);
+  }
+
   private async request<T>(method: string, path: string, op: string, body?: unknown): Promise<T> {
     // Le corps est sérialisé UNE SEULE FOIS : c'est cette chaîne exacte qui est
     // signée ET envoyée. Re-sérialiser pour l'envoi produirait potentiellement
