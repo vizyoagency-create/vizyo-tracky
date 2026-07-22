@@ -161,6 +161,61 @@ export function verifyRevocationStatement(secret: string, statement: Partial<Rev
   }
 }
 
+export interface ScopeStatement {
+  event: 'SCOPE_REVOKED';
+  linkId: string;
+  scope: string;
+  at: string;
+  nonce: string;
+  signature: string;
+}
+
+/**
+ * Énoncé signé d'extinction d'UNE catégorie (décision D3).
+ *
+ * ⚠️ Chaîne canonique DISTINCTE de celle du lien (`SCOPE_REVOKED.linkId.scope.at.nonce`).
+ * Volontairement pas une généralisation de l'autre : un énoncé de scope ne doit jamais
+ * pouvoir être relu comme un énoncé de lien, ni l'inverse. Une signature capturée sur
+ * « éteindre le carburant » ne doit pas valoir « couper tout le lien ».
+ */
+export function buildScopeStatement(
+  secret: string,
+  input: { linkId: string; scope: string; at: string; nonce: string },
+): ScopeStatement {
+  return { event: 'SCOPE_REVOKED', ...input, signature: scopeSignature(secret, input) };
+}
+
+/** Lève `PartnerSignatureError` si l'énoncé de scope n'est pas authentique. */
+export function verifyScopeStatement(secret: string, statement: Partial<ScopeStatement>): void {
+  if (!secret) throw new PartnerSignatureError('missing_headers', { reason: 'secret_not_configured' });
+  if (!statement || typeof statement !== 'object' || Array.isArray(statement)) {
+    throw new PartnerSignatureError('missing_headers', { reason: 'not_an_object' });
+  }
+  const { event, linkId, scope, at, nonce, signature } = statement;
+  if (!linkId || !scope || !at || !nonce || !signature) {
+    throw new PartnerSignatureError('missing_headers', { reason: 'incomplete_statement' });
+  }
+  if (event !== 'SCOPE_REVOKED') {
+    throw new PartnerSignatureError('signature_mismatch', { reason: 'unknown_event' });
+  }
+  if (!HEX_64.test(signature)) throw new PartnerSignatureError('malformed_signature');
+
+  const expected = Buffer.from(scopeSignature(secret, { linkId, scope, at, nonce }), 'hex');
+  const provided = Buffer.from(signature.toLowerCase(), 'hex');
+  if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+    throw new PartnerSignatureError('signature_mismatch');
+  }
+}
+
+function scopeSignature(
+  secret: string,
+  input: { linkId: string; scope: string; at: string; nonce: string },
+): string {
+  return createHmac('sha256', secret)
+    .update(`SCOPE_REVOKED.${input.linkId}.${input.scope}.${input.at}.${input.nonce}`)
+    .digest('hex');
+}
+
 function revocationSignature(
   secret: string,
   input: { event: string; linkId: string; at: string; nonce: string },

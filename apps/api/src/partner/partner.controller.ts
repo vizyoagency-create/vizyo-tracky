@@ -1,5 +1,6 @@
-import { BadRequestException, Body, Controller, Delete, Get, Post, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
+import { isPartnerScope } from '@vizyo/tracky-shared';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
@@ -48,6 +49,25 @@ export class PartnerController {
   async approve(@Req() req: AuthenticatedRequest, @Body() body: { code?: string; scopes?: unknown }) {
     if (!body?.code) throw new BadRequestException('Code requis');
     return this.pairing.approve(this.requireFleet(req), req.user.id, body.code, body.scopes);
+  }
+
+  /**
+   * L'INTERRUPTEUR VIVANT (décision D3) : allumer ou éteindre une catégorie à tout
+   * moment, indépendamment des autres. Éteindre purge cette catégorie chez le
+   * partenaire, sans toucher au reste.
+   */
+  @Patch('scopes')
+  @Roles(UserRole.FLEET_ADMIN, UserRole.SUPER_ADMIN)
+  @RequirePermissions('integrations_manage')
+  async setScope(@Req() req: AuthenticatedRequest, @Body() body: { scope?: string; enabled?: boolean }) {
+    if (!body?.scope || !isPartnerScope(body.scope)) throw new BadRequestException('Scope inconnu');
+    if (typeof body.enabled !== 'boolean') throw new BadRequestException('`enabled` requis');
+
+    const link = await this.pairing.requireLink(this.requireFleet(req));
+    const result = await this.revocation.setScope(link.id, body.scope, body.enabled, req.user.id);
+    // Tentative immédiate ; le cron de l'outbox reste le filet.
+    if (result.changed && !body.enabled) await this.outbox.dispatchNow(link.id);
+    return result;
   }
 
   /**

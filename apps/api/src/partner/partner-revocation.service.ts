@@ -4,7 +4,8 @@ import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
 import { PartnerConfigService } from './partner.config';
-import { buildRevocationStatement, type RevocationEvent } from './partner-signature';
+import { PARTNER_SCOPES, parsePartnerScopes, type PartnerScope } from '@vizyo/tracky-shared';
+import { buildRevocationStatement, buildScopeStatement, type RevocationEvent } from './partner-signature';
 import { PartnerTokenService } from './partner-token.service';
 
 export type RevocationActor = 'USER' | 'PLATFORM' | 'SYSTEM';
@@ -91,6 +92,71 @@ export class PartnerRevocationService {
     );
 
     return { status: PartnerLinkStatus.REVOKED, alreadyRevoked: false, tokensRevoked, statement };
+  }
+
+  /**
+   * Allume ou éteint UNE catégorie — l'interrupteur vivant de la décision D3.
+   *
+   * ⚠️ Éteindre déclenche la MÊME machinerie qu'une révocation, limitée à ce scope :
+   * énoncé signé, audit, webhook. Le partenaire purge cette catégorie et elle seule,
+   * sans que le reste du lien soit affecté.
+   *
+   * Allumer n'émet PAS de webhook : le partenaire découvrira le nouveau scope au
+   * prochain renouvellement de bail (≤ 10 min) et devra alors resynchroniser la
+   * catégorie DE ZÉRO — reprendre un `lastSyncAt` périmé ressusciterait des données
+   * obsolètes.
+   */
+  async setScope(linkId: string, scope: PartnerScope, enabled: boolean, actorId: string) {
+    const link = await this.prisma.partnerLink.findUnique({ where: { id: linkId } });
+    if (!link) throw new NotFoundException('Partner link not found');
+
+    const current = parsePartnerScopes(link.scopes);
+    const already = current.includes(scope);
+    // Idempotent : rallumer un scope déjà allumé (ou éteindre un scope déjà éteint)
+    // ne doit ni ré-émettre de webhook ni polluer le journal.
+    if (already === enabled) return { scopes: current, changed: false };
+
+    const next = enabled
+      ? PARTNER_SCOPES.filter((s) => current.includes(s) || s === scope)
+      : current.filter((s) => s !== scope);
+    const at = new Date();
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.partnerLink.update({ where: { id: linkId }, data: { scopes: next } });
+      await tx.partnerLinkEvent.create({
+        data: {
+          linkId,
+          action: enabled ? 'scope_enabled' : 'scope_disabled',
+          actorType: 'USER',
+          actorId,
+          scope,
+        },
+      });
+      if (!enabled) {
+        const statement = buildScopeStatement(this.config.platformSecret, {
+          linkId,
+          scope,
+          at: at.toISOString(),
+          nonce: randomBytes(12).toString('hex'),
+        });
+        await tx.partnerOutboxEvent.create({
+          data: { linkId, type: 'scope.revoked', payload: statement as object },
+        });
+      }
+    });
+
+    this.activity.record({
+      category: 'PARTNER',
+      action: enabled ? 'partner_scope_enabled' : 'partner_scope_disabled',
+      status: 'SUCCESS',
+      actor: actorId,
+      target: link.externalOrgName,
+      detail: scope,
+      fleetId: link.fleetId,
+    });
+    this.logger.log(`Scope ${scope} ${enabled ? 'ACTIVE' : 'COUPE'} (lien=${linkId})`);
+
+    return { scopes: next, changed: true };
   }
 
   /**
