@@ -347,18 +347,42 @@ ce sont nos deux apps, déployées par nous. Il ne sert **qu'au handshake** et a
 Ensuite, **chaque lien a son propre secret** (`linkSecret`, 32 octets), remis une seule fois. C'est
 lui qui signe les demandes de jeton. Compromission d'un lien ≠ compromission de la plateforme.
 
-**Signature (identique partout, réutilise le patron déjà en prod)** :
+**Signature** (implémentée à l'incr. 0.3) :
 
 ```
-payload   = `${timestamp}.${rawBody}`          // rawBody = '' pour un GET
-signature = HMAC-SHA256(secret, payload) en hex
-headers   = X-Partner-Timestamp, X-Partner-Signature, X-Partner-Id
-drift max = 300 s   |   comparaison timingSafeEqual
+canonique = `${timestamp}.${METHOD}.${op}.${rawBody}`   // rawBody = '' pour un GET
+signature = HMAC-SHA256(secret, canonique) en hex minuscule (64 car.)
+headers   = X-Partner-Timestamp, X-Partner-Signature
+drift max = 300 s   |   comparaison timingSafeEqual sur les OCTETS
 ```
 
-Réutiliser tel quel : `maestroo/apps/api/src/vizyo-webhooks/vizyo-webhook-signature.service.ts`
-(vérif) et `tracky/apps/api/src/auth-client/auth-client.service.ts` `signHeaders()` (émission).
-**Ne rien réinventer.**
+#### ⚠️ Écart délibéré par rapport au schéma Vizyo Auth (`timestamp.rawBody`)
+
+La spec initiale prévoyait de réutiliser le schéma maison tel quel. **L'implémentation a
+montré qu'il ne convient pas ici**, pour deux raisons :
+
+1. **Une signature Vizyo Auth est valide sur N'IMPORTE QUEL endpoint.** Le cas le plus
+   net : tous les GET ont un corps vide, donc `GET /partner/v1/ping` et
+   `GET /partner/v1/vehicles/count` produisent **la même signature à la même seconde**.
+   Une signature capturée sur l'un ouvre l'autre. Lier la méthode et l'opération ferme
+   la classe entière du rejeu inter-endpoints. *(Prouvé par test : les deux GET donnent
+   désormais des empreintes différentes.)*
+
+2. **`op` est un identifiant STABLE, pas le chemin d'URL.** Signer le chemin serait plus
+   naturel mais rendrait la crypto dépendante du routage : un préfixe ajouté ou retiré
+   par Traefik (ou par `API_BASE_PATH` côté Maestroo) ferait échouer **toutes** les
+   signatures — panne totale, silencieuse, très difficile à diagnostiquer. On a déjà vu
+   ce type de surprise en prod (incident Traefik du 2026-07-21). Émetteur et récepteur
+   codent en dur la même constante `op` par route ; **le récepteur n'accepte jamais un
+   `op` fourni par l'appelant**, il utilise le sien — l'attaquant n'a aucune prise.
+
+Le schéma Vizyo Auth reste inchangé là où il est imposé
+(`maestroo/apps/api/src/vizyo-webhooks/`) : les deux coexistent volontairement.
+
+**Parité entre les deux repos** : garantie par des **vecteurs de test figés** identiques
+des deux côtés (ils épinglent le format du fil), + une preuve d'interopérabilité croisée
+exécutée à l'incr. 0.3 — Tracky signe / Maestroo vérifie **et l'inverse**, altérations
+détectées d'une implémentation à l'autre.
 
 > ⚠️ **Ne PAS réutiliser `INTERNAL_API_SECRET`** (Tracky `/internal`) : secret statique sans
 > timestamp ni anti-rejeu, qui donne accès à `fleet/suspend` et à la création de comptes. Le
@@ -800,7 +824,7 @@ Tracky après ajout du module — un crash-loop DI ne se voit pas au build (piè
 |---|---|---|
 | ~~**0.1**~~ ✅ | ~~Registres de scopes des deux côtés + tests de parité~~ **FAIT** — Tracky `packages/shared/src/partner/scopes.ts` (24 tests), Maestroo `packages/shared/src/enums/partner-scope.ts` + `apps/api/src/integrations/partner-scopes.spec.ts` (23 tests) | Parité prouvée par mutation (ajout d'un scope d'un seul côté ⇒ TS **et** test échouent) |
 | ~~**0.2**~~ ✅ | ~~Modèles Prisma + migrations + contraintes d'unicité (D4)~~ **FAIT** — `partner_links`/`_events`/`_access_tokens`/`_outbox_events` côté Tracky, `tracky_links`/`tracky_mirror` côté Maestroo | Migrations appliquées sur base **jetable** ; unicité `liveKey` prouvée en SQL réel (6 cas) ; `tracky_mirror` a **0 clé étrangère** (vérifié via `information_schema`) |
-| **0.3** | Service de signature partagé (émission + vérification) des deux côtés | Tests unitaires de signature |
+| ~~**0.3**~~ ✅ | ~~Service de signature partagé (émission + vérification) des deux côtés~~ **FAIT** — fonctions pures `partner-signature.ts` (Tracky `src/partner/`, Maestroo `src/integrations/`), 32 tests chacune | Vecteurs figés identiques ; **interop croisée prouvée** (13/13 : chaque repo signe, l'autre vérifie, altérations détectées) ; format canonique corrigé (§5) |
 | **0.4** | Handshake complet (claim / approve / complete) sans aucune donnée | Lien `ACTIVE` des deux côtés |
 | **0.5** | Bail : `token`, Redis, `ping` | T11 |
 | **0.6** | `vehicles/count` + écriture `TrackyMirror` | Une ligne de mirror existe |
