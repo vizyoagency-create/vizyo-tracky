@@ -801,6 +801,34 @@ chantier** ; toutes le gênent, et deux sont de vrais risques.
 > démarrage réel de l'application, en lisant le vrai `.env`, a montré que le
 > kill-switch était à l'envers.
 
+### 14.5 — Ce que seule la démo de bout en bout pouvait trouver
+
+Trois bugs invisibles aux tests unitaires **et** au harnais sur base — parce qu'aucun
+des deux ne met les **deux applications en présence**.
+
+1. **🔴 `TRACKY_API_URL` sans le préfixe `/api`.** Tracky monte toutes ses routes sous
+   `setGlobalPrefix('api')`. Maestroo appelait `/partner/v1/token` au lieu de
+   `/api/partner/v1/token` ⇒ 404 sur chaque appel. **Panne silencieuse** : le lien se
+   créait normalement, mais aucune donnée ne circulait jamais.
+
+2. **🔴 Le webhook `scope.revoked` n'était pas traité.** Le contrôleur tombait dans son
+   `else { status = 'ignored' }`. Couper une catégorie côté Tracky ne purgeait donc
+   **rien** côté Maestroo. Le test unitaire du service passait — il appelait
+   `applyScopeStatement` directement ; le contrôleur, lui, ne l'appelait jamais.
+
+3. **🔴 Un lien `DEGRADED` ne pouvait ni servir ses données, ni se rétablir.**
+   - La lecture n'acceptait que `ACTIVE` : pendant une panne Tracky, Maestroo
+     **cachait des données qu'il détenait encore**. Le pire des deux mondes — le client
+     croit avoir perdu l'accès, et nous détenons toujours tout. C'est exactement le mode
+     d'échec que §10 devait empêcher.
+   - `requireActiveLink` refusait `DEGRADED` : la synchro de reprise échouait, donc un
+     lien tombé en panne restait **coincé** jusqu'à la purge de grâce, même après le
+     retour de Tracky.
+
+> **La leçon.** Le smoke-boot attrape le câblage, le harnais base attrape le résultat,
+> la démo attrape **l'accord entre les deux applications**. Les trois sont nécessaires :
+> chacun voit une classe de défauts que les autres ne peuvent pas voir.
+
 > **Méthode retenue pour tout le chantier** : les migrations se génèrent et se
 > valident sur une **base jetable** (`*_migrgen`, créée puis détruite), jamais sur la
 > base de dev. Les bases de dev locales des deux projets ont de la dérive ; y lancer
@@ -850,7 +878,12 @@ Tracky après ajout du module — un crash-loop DI ne se voit pas au build (piè
 - [ ] `pnpm -w typecheck` + `ng build` OK côté Tracky ; `pnpm typecheck && pnpm lint && pnpm --filter @maestroo/web lint:all` OK côté Maestroo
 - [ ] Smoke-boot des deux API (pas de crash-loop DI)
 - [ ] `PARTNER_MAESTROO_ENABLED=false` et `TRACKY_INTEGRATION_ENABLED=false` en production : **le code est déployé, inerte, et vérifiable**
-- [ ] Démo enregistrée : connexion → donnée visible → coupure → **disparition constatée à l'écran**
+- [x] **Démo de bout en bout FAITE** (2026-07-22) — deux API réelles, vraies bases, HTTP signé.
+      Scripts dans le scratchpad de session ; scénarios : handshake, bail + quarantaine,
+      **révocation totale** (quarantaine vide, secret NULL, `liveKey` NULL, webhook livré/reçu,
+      resynchro 403), **coupure partielle** (1 catégorie tombe, 6 vivent, retour au rallumage),
+      **panne** (données conservées, `DEGRADED`), **reprise** (retour `ACTIVE` sans handshake).
+      Elle a révélé **3 bugs** invisibles aux tests unitaires ET au harnais base — voir §14.5.
 - [ ] `tracky_mirror` exclue du script de sauvegarde Maestroo
 - [ ] Aucune FK ne part de `tracky_mirror` (relecture explicite en review)
 - [ ] Les 6 points de câblage de `integrations_manage` sont faits, `packages/shared` rebuildé
