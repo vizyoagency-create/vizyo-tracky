@@ -2,6 +2,8 @@ import { Logger, Module, OnModuleInit } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { SystemActivityModule } from '../system-activity/system-activity.module';
+import { PartnerAdminController } from './partner-admin.controller';
+import { PartnerAdminService } from './partner-admin.service';
 import { PartnerApiController } from './partner-api.controller';
 import { PartnerClientService } from './partner-client.service';
 import { PartnerOutboxService } from './partner-outbox.service';
@@ -25,7 +27,7 @@ import { PartnerSignatureGuard } from './partner-signature.guard';
 @Module({
   // AuthModule : requis par JwtAuthGuard sur les routes client.
   imports: [AuthModule, PrismaModule, SystemActivityModule],
-  controllers: [PartnerController, PartnerApiController],
+  controllers: [PartnerController, PartnerApiController, PartnerAdminController],
   providers: [
     PartnerConfigService,
     PartnerSignatureGuard,
@@ -35,6 +37,7 @@ import { PartnerSignatureGuard } from './partner-signature.guard';
     PartnerTokenGuard,
     PartnerRevocationService,
     PartnerOutboxService,
+    PartnerAdminService,
   ],
   exports: [PartnerConfigService, PartnerSignatureGuard, PartnerTokenService, PartnerRevocationService],
 })

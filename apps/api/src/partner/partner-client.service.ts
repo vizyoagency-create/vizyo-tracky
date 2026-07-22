@@ -71,6 +71,18 @@ export class PartnerClientService {
   }
 
   /**
+   * DRY-RUN : demande au partenaire ce qu'il perdrait si on coupait.
+   * Lecture seule des deux côtés — n'écrit rien, ne révoque rien.
+   */
+  async purgePreview(linkId: string): Promise<{ byScope: Record<string, number>; total: number }> {
+    return this.request(
+      'GET',
+      `/partner/v1/purge-preview/${encodeURIComponent(linkId)}`,
+      'partner.purge.preview',
+    );
+  }
+
+  /**
    * Émet un webhook signé vers le partenaire.
    *
    * `eventId` est la clé d'idempotence : le receveur doit pouvoir ignorer un rejeu
