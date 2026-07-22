@@ -83,11 +83,16 @@ export const PARTNER_SCOPES_DEFAULT_ON: readonly PartnerScope[] = [
 
 ```prisma
 enum PartnerLinkStatus {
-  PENDING   // demande créée côté partenaire, pas encore approuvée dans Tracky
   ACTIVE
   SUSPENDED // coupé (client OU plateforme) — réversible
   REVOKED   // TERMINAL : on ne réactive pas, on refait un handshake
 }
+// ⚠️ CORRECTION apportée à l'implémentation (incr. 0.2) : PENDING a été RETIRÉ de
+// l'énum Tracky. Le lien n'est créé qu'à `approve`, donc directement ACTIVE — une
+// valeur PENDING n'aurait jamais été écrite. PENDING reste côté Maestroo, où il est
+// réel (un code d'appairage est en attente). Ajouter une valeur à un enum Postgres
+// est trivial (`ALTER TYPE ... ADD VALUE`), en retirer une est douloureux : on
+// n'anticipe pas.
 
 /// Lien de partage de données entre une flotte Tracky et une organisation partenaire.
 /// AUTORITAIRE : la copie côté partenaire n'est qu'un cache de « ai-je encore le droit ».
@@ -101,7 +106,10 @@ model PartnerLink {
   externalOrgName     String
   externalOrgSiret    String?
 
-  status              PartnerLinkStatus @default(PENDING)
+  status              PartnerLinkStatus @default(ACTIVE)
+  /// Créneau d'unicité — vaut `partner` tant que le lien est VIVANT, NULL une fois
+  /// révoqué. Voir l'encadré « unicité » ci-dessous.
+  liveKey             String?
   /// D8 — 'COMP' (offert) | 'ACTIVE' (payant) | 'NONE'. Aucun paiement branché en phase 0.
   /// Patron repris de AiSubscription.status : passer au payant = un changement d'état.
   billingStatus       String            @default("COMP")
@@ -131,10 +139,10 @@ model PartnerLink {
   tokens              PartnerAccessToken[]
   outbox              PartnerOutboxEvent[]
 
-  /// D4 — 1 flotte ↔ 1 organisation par partenaire. Contrainte de BASE, pas de service :
-  /// deux liens actifs rendraient « purger le lien » ambigu.
-  @@unique([fleetId, partner])
-  @@unique([partner, externalOrgId])
+  /// D4 — au plus UN lien VIVANT par (flotte, partenaire) et par (org, partenaire).
+  @@unique([fleetId, liveKey])
+  @@unique([externalOrgId, liveKey])
+  @@index([fleetId])
   @@index([status])
   @@map("partner_links")
 }
@@ -261,6 +269,34 @@ model TrackyMirror {
 
 ⚠️ **Aucune modification des tables métier Maestroo en phase 0.** `Vehicle.origin` / `Driver.origin`
 (classe C) arrivent en **phase 1**, avec l'import.
+
+### 3.2bis — ⚠️ Unicité : le piège du `@@unique([fleetId, partner])` naïf
+
+**Découvert à l'implémentation (incr. 0.2).** La version naïve interdirait
+**définitivement** de se reconnecter après une révocation : on conserve la ligne
+révoquée (c'est la preuve de qui a coupé quoi), donc elle occuperait le créneau à vie.
+Le client qui révoque par erreur ne pourrait plus jamais se reconnecter.
+
+D'où **`liveKey`** : il vaut `partner` tant que le lien est vivant, et passe à `NULL` à
+la révocation. Postgres ne fait pas conflit sur les `NULL` dans un index unique — on
+obtient donc « au plus UN lien vivant » **tout en gardant un historique illimité**.
+
+Vérifié en SQL réel sur base jetable (6 cas) :
+
+| Cas | Attendu | Résultat |
+|---|---|---|
+| 1er lien vivant sur la flotte A | passe | ✅ |
+| 2ᵉ lien vivant sur la **même flotte** | rejeté par la base | ✅ `partner_links_fleetId_liveKey_key` |
+| Autre flotte vers la **même org Maestroo** | rejeté par la base | ✅ `partner_links_externalOrgId_liveKey_key` |
+| Révocation (`liveKey → NULL`) puis **re-appairage** | passe | ✅ |
+| 2 lignes révoquées sur la même flotte | passent (historique) | ✅ |
+| État final | 1 ACTIVE + 2 REVOKED | ✅ |
+
+> **Pourquoi pas un index partiel** (`WHERE revoked_at IS NULL`) ? Parce que Prisma ne
+> sait pas le représenter dans `schema.prisma` : il faudrait l'écrire à la main dans la
+> migration, et *chaque* `migrate dev` ultérieur croirait l'index manquant et tenterait
+> de le recréer. **C'est exactement ce qui bloque `prisma migrate dev` côté Maestroo
+> aujourd'hui** (cf. §14.4). Le créneau nullable obtient la même garantie en Prisma pur.
 
 ### 3.3 — Contraintes de migration
 
@@ -673,6 +709,42 @@ les tests de complétude de `permissions.spec.ts` échouent bruyamment sinon :
 
 ---
 
+### 14.4 — Constats d'environnement (relevés à l'incr. 0.2, HORS périmètre)
+
+Trois choses découvertes en générant les migrations. **Aucune n'est causée par ce
+chantier** ; toutes le gênent, et deux sont de vrais risques.
+
+1. **🔴 L'historique de migrations Tracky ne reproduit pas `schema.prisma`.**
+   Une base construite depuis les seules migrations diverge de 30 statements :
+   5 valeurs de `AlertType` (`TOW`, `TAMPER`, `FATIGUE`, `ILLEGAL_IGNITION`,
+   `IDLE_TIME`) **présentes dans `schema.prisma`, dans zéro migration, et référencées
+   dans le code**, plus 28 `ALTER TABLE` (defaults, un changement de type sur
+   `trackers.lastIgnitionChangeAt`). Conséquence : **tout nouvel environnement créé par
+   `migrate deploy`** (nouveau VPS, base de CI, base de test e2e) planterait à la
+   première alerte de type `TOW`. À corriger par une migration de synchronisation
+   dédiée — surtout pas en la noyant dans une migration fonctionnelle.
+
+2. **🟠 `prisma migrate dev` est inutilisable côté Maestroo.** La migration
+   `20260703_add_bank_transactions` crée un **index partiel** écrit à la main
+   (`... WHERE "externalId" IS NOT NULL`) que `schema.prisma` déclare en
+   `@@unique` simple. Prisma le croit donc manquant à chaque diff, tente de le recréer,
+   et collisionne sur le nom. En mode non-interactif, `migrate dev` abandonne.
+   **Contournement utilisé ici** : `prisma migrate diff --from-schema-datamodel
+   <schéma HEAD> --to-schema-datamodel <schéma courant> --script`, qui est le même
+   moteur, 100 % hors-ligne, et ne produit que le delta voulu.
+
+3. **🟡 `pnpm typecheck` est déjà rouge sur `dev` côté Maestroo** — 12 erreurs dans
+   `prisma/seed.ts` et `src/prk/prk.service.spec.ts`, identiques avant et après cet
+   incrément. Le `CLAUDE.md` de Maestroo dit pourtant « une violation = pas de
+   commit » : la barrière ne tient plus.
+
+> **Méthode retenue pour tout le chantier** : les migrations se génèrent et se
+> valident sur une **base jetable** (`*_migrgen`, créée puis détruite), jamais sur la
+> base de dev. Les bases de dev locales des deux projets ont de la dérive ; y lancer
+> `migrate dev` proposerait un *reset* et détruirait des données.
+
+---
+
 ## 15. Plan de test — la livraison en dépend
 
 > **Aucune des 12 assertions ci-dessous ne peut être « vérifiée à la main ». Elles sont automatisées
@@ -692,6 +764,12 @@ les tests de complétude de `permissions.spec.ts` échouent bruyamment sinon :
 | **T10** | Rejeu de webhook | Un webhook capté et rejoué (drift > 300 s ou `eventId` déjà vu) est **rejeté** |
 | **T11** | Étanchéité | Jeton expiré ⇒ 401. Jeton d'un autre lien ⇒ 403. Aucune donnée d'une autre flotte n'est jamais servie |
 | **T12** | **Restauration de dump** | Restaurer un dump contenant `tracky_mirror` sur un lien révoqué, démarrer l'API ⇒ purge au boot |
+
+**T13 — invariant d'unicité `liveKey`** (ajouté à l'incr. 0.2) : les 6 cas du §3.2bis ont
+été prouvés manuellement en SQL, mais **pas encore figés en test automatique** — les tests
+actuels des deux repos mockent Prisma et n'ont pas de base. À câbler en **incr. 0.7**, qui
+aura de toute façon besoin d'une base réelle pour T1/T2/T9/T12. D'ici là, l'invariant est
+garanti par la base (index uniques posés) mais pas protégé contre une régression de schéma.
 
 **T3, T4, T5 et T9 sont les plus importants.** T3–T5 empêchent qu'une panne détruise les données de
 tous les clients ; T9 est la seule preuve *matérielle* qu'il ne reste rien.
@@ -721,7 +799,7 @@ Tracky après ajout du module — un crash-loop DI ne se voit pas au build (piè
 | Inc. | Contenu | Prouvé par |
 |---|---|---|
 | ~~**0.1**~~ ✅ | ~~Registres de scopes des deux côtés + tests de parité~~ **FAIT** — Tracky `packages/shared/src/partner/scopes.ts` (24 tests), Maestroo `packages/shared/src/enums/partner-scope.ts` + `apps/api/src/integrations/partner-scopes.spec.ts` (23 tests) | Parité prouvée par mutation (ajout d'un scope d'un seul côté ⇒ TS **et** test échouent) |
-| **0.2** | Modèles Prisma + migrations + contraintes d'unicité (D4) | Migration appliquée, `@@unique` vérifiés |
+| ~~**0.2**~~ ✅ | ~~Modèles Prisma + migrations + contraintes d'unicité (D4)~~ **FAIT** — `partner_links`/`_events`/`_access_tokens`/`_outbox_events` côté Tracky, `tracky_links`/`tracky_mirror` côté Maestroo | Migrations appliquées sur base **jetable** ; unicité `liveKey` prouvée en SQL réel (6 cas) ; `tracky_mirror` a **0 clé étrangère** (vérifié via `information_schema`) |
 | **0.3** | Service de signature partagé (émission + vérification) des deux côtés | Tests unitaires de signature |
 | **0.4** | Handshake complet (claim / approve / complete) sans aucune donnée | Lien `ACTIVE` des deux côtés |
 | **0.5** | Bail : `token`, Redis, `ping` | T11 |
