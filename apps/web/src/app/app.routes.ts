@@ -118,6 +118,16 @@ export const routes: Routes = [
         data: { title: 'Détail véhicule' },
       },
       {
+        // Lot 0 intégration partenaire (2026-07-22) — écran « Intégrations » du client.
+        // C'est ICI que vit l'interrupteur : le fleet-admin choisit ce qui est partagé
+        // avec l'application partenaire et peut tout couper à tout moment.
+        path: 'integrations',
+        canActivate: [permissionGuard('integrations_manage')],
+        loadComponent: () =>
+          import('./features/integrations/integrations.component').then((m) => m.IntegrationsComponent),
+        data: { title: 'Intégrations' },
+      },
+      {
         // Demande CDEF (2026-07) — Page flotte « Horaires » (vue d'ensemble + actions de masse).
         // Réservée aux détenteurs de `schedules_manage` (fleet-admin par défaut, accordable).
         path: 'fleet-schedules',
