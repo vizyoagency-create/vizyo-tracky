@@ -70,6 +70,9 @@ function makeService(opts: {
         })
       : jest.fn(async () => undefined),
     markAccepted: jest.fn(async () => undefined),
+    // Pas de pré-remplissage par défaut : c'est le cas d'un client qui avait
+    // déjà son Maestroo. Le parcours provisionné a ses propres tests.
+    seedVehicles: jest.fn(async () => []),
   } as unknown as PartnerInvitationService;
 
   return {

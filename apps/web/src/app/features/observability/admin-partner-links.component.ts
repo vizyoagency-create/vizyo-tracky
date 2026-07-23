@@ -118,10 +118,24 @@ interface RevocationPreview {
           @if (inviteOk(); as ok) { <span class="pl-ok">Envoyé à {{ ok }}</span> }
         </div>
         <p class="pl-muted">
-          Générez d'abord le code d'appairage dans Maestroo (écran « Intégration Tracky »),
-          puis envoyez-le ici. Le client reçoit un e-mail qui l'emmène directement sur son
-          écran de consentement — le code n'y figure pas, il est remis au moment du clic.
+          Le client reçoit un e-mail qui l'emmène directement sur son écran de consentement.
+          Le code n'y figure pas : il est remis au moment du clic.
         </p>
+
+        <!-- ⚠️ LE CAS PAR DÉFAUT EST « PAS ENCORE DE MAESTROO ». C'est le cas
+             commercial le plus fréquent, et c'était justement celui que le
+             parcours ne couvrait pas : sans espace chez le partenaire, il n'y
+             avait aucun code à saisir, donc rien à faire depuis cet écran. -->
+        <div class="pl-modes">
+          <label class="pl-mode">
+            <input type="radio" name="invite-mode" value="new" [checked]="mode() === 'new'" (change)="setMode('new')" />
+            <span>Ce client n'a pas encore de Maestroo — créer son espace</span>
+          </label>
+          <label class="pl-mode">
+            <input type="radio" name="invite-mode" value="existing" [checked]="mode() === 'existing'" (change)="setMode('existing')" />
+            <span>Il a déjà un espace — j'ai son code d'appairage</span>
+          </label>
+        </div>
 
         @if (fleets().length === 0) {
           <p class="pl-muted">
@@ -159,26 +173,39 @@ interface RevocationPreview {
               }
             </label>
 
-            <label class="pl-field">
-              <span class="pl-label">Code d'appairage (Maestroo)</span>
-              <input
-                class="pl-input"
-                [(ngModel)]="inviteCode"
-                placeholder="TRK-XXXX-XXXX-XXXX"
-                autocomplete="off"
-                spellcheck="false"
-              />
-            </label>
+            @if (mode() === 'existing') {
+              <label class="pl-field">
+                <span class="pl-label">Code d'appairage (Maestroo)</span>
+                <input
+                  class="pl-input"
+                  [(ngModel)]="inviteCode"
+                  placeholder="TRK-XXXX-XXXX-XXXX"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+              </label>
+            }
 
             <button
               type="button"
               class="pl-btn pl-btn-primary"
-              [disabled]="busy() || !canInvite()"
-              (click)="sendInvite()"
+              [disabled]="busy() || !canSubmit()"
+              (click)="submit()"
             >
-              Envoyer l'invitation
+              {{ submitLabel() }}
             </button>
           </div>
+
+          <p class="pl-muted">
+            @if (mode() === 'new') {
+              Un espace Maestroo sera créé au nom de cette flotte, <strong>vide</strong>. Ses
+              véhicules n'y arriveront qu'après le consentement du client, et c'est seulement
+              à ce moment-là qu'il recevra son accès — pour ne pas découvrir un espace vide.
+            } @else {
+              Le client a déjà un espace Maestroo : demandez-lui le code affiché dans son écran
+              « Intégration Tracky ».
+            }
+          </p>
         }
       </section>
 
@@ -256,6 +283,8 @@ interface RevocationPreview {
       .pl-field { display: flex; flex-direction: column; gap: 0.25rem; flex: 1 1 13rem; }
       .pl-label { font-size: 0.75rem; color: var(--tk-text-muted, #7b8794); }
       .pl-hint { font-size: 0.72rem; color: var(--tk-warn, #e0a848); }
+      .pl-modes { display: flex; flex-direction: column; gap: 0.3rem; }
+      .pl-mode { display: flex; align-items: center; gap: 0.45rem; font-size: 0.85rem; cursor: pointer; }
     `,
   ],
 })
@@ -273,6 +302,8 @@ export class AdminPartnerLinksComponent {
   protected readonly fleets = signal<InvitableFleet[]>([]);
   protected readonly inviteFleetId = signal('');
   protected readonly inviteOk = signal<string | null>(null);
+  /** « new » par défaut : c'est le cas le plus fréquent, et celui qui manquait. */
+  protected readonly mode = signal<'new' | 'existing'>('new');
   protected inviteEmail = '';
   protected inviteCode = '';
 
@@ -286,8 +317,48 @@ export class AdminPartnerLinksComponent {
     this.loadFleets();
   }
 
-  protected canInvite(): boolean {
-    return !!this.inviteFleetId() && this.inviteEmail.includes('@') && this.inviteCode.trim().length > 0;
+  protected setMode(mode: 'new' | 'existing'): void {
+    this.mode.set(mode);
+    this.inviteOk.set(null);
+  }
+
+  protected submitLabel(): string {
+    return this.mode() === 'new' ? "Créer l'espace et inviter" : "Envoyer l'invitation";
+  }
+
+  protected canSubmit(): boolean {
+    if (!this.inviteFleetId() || !this.inviteEmail.includes('@')) return false;
+    // Le code n'est exigé que dans le parcours « espace existant » : dans
+    // l'autre, c'est Maestroo qui l'émet, on n'a rien à saisir.
+    return this.mode() === 'new' || this.inviteCode.trim().length > 0;
+  }
+
+  protected submit(): void {
+    if (this.mode() === 'new') this.provisionAndInvite();
+    else this.sendInvite();
+  }
+
+  /** Crée l'espace Maestroo puis envoie l'invitation à consentir, d'un seul geste. */
+  private provisionAndInvite(): void {
+    const email = this.inviteEmail.trim();
+    this.run(
+      this.http.post<{ email: string; emailSent: boolean; organizationName: string; spaceCreated: boolean }>(
+        '/api/admin/partner-links/provision',
+        { fleetId: this.inviteFleetId(), email },
+      ),
+      (res) => {
+        if (res.emailSent) {
+          this.inviteOk.set(
+            `${res.email} — espace « ${res.organizationName} »${res.spaceCreated ? ' créé' : ' déjà existant'}`,
+          );
+        } else {
+          this.error.set(
+            `Espace « ${res.organizationName} » prêt, mais l'e-mail n'est pas parti (${res.email}). Vérifiez le centre e-mails.`,
+          );
+        }
+        this.loadFleets();
+      },
+    );
   }
 
   /** Changer de flotte repropose SON administrateur : garder l'ancien enverrait l'invitation à côté. */

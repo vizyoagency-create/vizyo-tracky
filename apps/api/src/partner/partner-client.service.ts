@@ -11,6 +11,43 @@ export interface PartnerPairingDetails {
   expiresAt: string;
 }
 
+/** Ce que le partenaire renvoie après avoir créé l'espace. */
+export interface PartnerProvisionResult {
+  organizationId: string;
+  organizationName: string;
+  pairingCode: string;
+  expiresAt: string;
+  /** false = l'espace existait déjà, seul le code a été régénéré (rejeu). */
+  created: boolean;
+}
+
+/** Résultat d'une re-synchronisation. `skipped` = lien non-ACTIF, rien touché. */
+export interface PartnerReseedResult {
+  created: number;
+  updated: number;
+  total: number;
+  skipped: boolean;
+}
+
+/**
+ * Un véhicule tel qu'on l'envoie au partenaire pour pré-remplir son espace.
+ *
+ * ⚠️ AUCUNE POSITION, AUCUN CONDUCTEUR : c'est l'identité du véhicule, rien de
+ * plus. Le reste relève des scopes vivants, qui se coupent ; ceci est adopté
+ * durablement côté partenaire (classe C) et ne disparaîtra pas à la révocation.
+ */
+export interface PartnerSeedVehicle {
+  plate: string;
+  brand?: string | null;
+  model?: string | null;
+  year?: number | null;
+  type?: string | null;
+  energy?: string | null;
+  consumptionL100km?: number | null;
+  odometerKm?: number | null;
+  seats?: number | null;
+}
+
 /** Levée quand le partenaire répond une erreur MÉTIER (4xx) — la faute est côté demande. */
 export class PartnerRemoteError extends Error {
   constructor(
@@ -50,9 +87,54 @@ export class PartnerClientService {
 
   async completePairing(
     code: string,
-    body: { remoteLinkId: string; fleetName: string; linkSecret: string; scopes: string[] },
+    body: {
+      remoteLinkId: string;
+      fleetName: string;
+      linkSecret: string;
+      scopes: string[];
+      /** Pré-remplissage — envoyé UNIQUEMENT pour un espace provisionné depuis Tracky. */
+      seedVehicles?: PartnerSeedVehicle[];
+    },
   ): Promise<void> {
     await this.request('POST', `/partner/v1/pairing/${encodeURIComponent(code)}/complete`, 'partner.pairing.complete', body);
+  }
+
+  /**
+   * Fait créer un espace Maestroo pour une flotte qui n'en a pas.
+   *
+   * ⚠️ N'envoie AUCUNE donnée de flotte : juste de quoi nommer l'espace et
+   * savoir à qui l'adresser. Le contenu ne part qu'avec `completePairing`, une
+   * fois le client consentant — créer l'espace n'est pas consentir au partage.
+   */
+  async provisionSpace(body: {
+    fleetId: string;
+    fleetName: string;
+    contactEmail: string;
+    contactFirstName?: string | null;
+    contactLastName?: string | null;
+    contactPhone?: string | null;
+  }): Promise<PartnerProvisionResult> {
+    return this.request<PartnerProvisionResult>(
+      'POST',
+      '/partner/v1/provision',
+      'partner.provision',
+      body,
+    );
+  }
+
+  /**
+   * Repousse l'identité des véhicules quand la flotte évolue.
+   *
+   * ⚠️ Op DISTINCTE de `provision` : une signature capturée sur l'une ne doit
+   * jamais rejouer l'autre.
+   */
+  async reseedVehicles(remoteLinkId: string, vehicles: PartnerSeedVehicle[]): Promise<PartnerReseedResult> {
+    return this.request<PartnerReseedResult>(
+      'POST',
+      '/partner/v1/provision/reseed',
+      'partner.provision.reseed',
+      { remoteLinkId, vehicles },
+    );
   }
 
   /** Compensation best-effort : n'échoue JAMAIS bruyamment, elle rattrape déjà un échec. */

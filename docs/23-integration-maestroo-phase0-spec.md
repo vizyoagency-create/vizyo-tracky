@@ -741,6 +741,67 @@ dernier ne dirait pas si le client a **refusé** ou n'a **jamais vu** la demande
 > forte : un code intercepté ne sert à rien, quelle que soit sa fraîcheur. Usage unique et
 > limitation de débit inchangés. **Ne pas raccourcir sans revoir ce parcours.**
 
+### 13.5 — Le client qui n'a PAS encore de Maestroo (provisionnement)
+
+**Pourquoi.** C'était le cas le plus fréquent, et le seul non couvert. Le handshake supposait un
+client déjà chez Maestroo qui y générait un code. Un client Tracky sans Maestroo (MH Cars) n'avait
+rien à appairer : le parcours s'arrêtait avant de commencer.
+
+**Parcours (un seul geste côté super-admin).** `/admin/partner-links`, mode « il n'a pas encore de
+Maestroo » → flotte + e-mail → `provisionAndInvite` :
+1. Tracky appelle Maestroo `POST /partner/v1/provision` (signé) → Maestroo crée une organisation
+   **vide** + un `TrackyLink(PENDING, provisionedFleetId)` et rend un code ;
+2. Tracky pose l'invitation à consentir et l'envoie (§13.4) ;
+3. le client consent depuis Tracky comme d'habitude ;
+4. à `complete`, Maestroo **pré-remplit** les véhicules (selon les scopes) **puis** envoie au client
+   son lien d'activation — dans cet ordre, pour qu'il découvre un espace **déjà peuplé** ;
+5. le client active : il choisit (ou ressaisit) son mot de passe et devient OWNER.
+
+**Ce qui rend ce parcours sûr — les invariants, et pourquoi.**
+
+| Garantie | Mécanisme | Ce qu'elle évite |
+|---|---|---|
+| Pas de doublon de flotte | `provision` idempotent sur `provisionedFleetId`, code réutilisé s'il est encore valide | Un retry réseau qui crée deux espaces |
+| Pas de doublon de client | refus si une **adhésion active** existe déjà pour cet e-mail (`TRACKY_SPACE_ALREADY_EXISTS`) — un simple compte Vizyo ne compte pas | Deux organisations jumelles, l'ancienne pleine, la neuve vide |
+| Activation possible pour un vrai client | **register-OR-login** : Maestroo et Tracky partagent Vizyo Auth, donc le client a **déjà** un compte ; register 409 ⇒ on bascule sur login avec son mot de passe Tracky | L'activation échouant pour **tous** les vrais clients (le bug le plus invisible) |
+| Rejeu d'activation | adhésion créée seulement si absente ; invitation ré-acceptée sans erreur | Un double-clic transformant un succès en violation d'unicité |
+| Pré-remplissage borné | `seedVehicles` renvoie `[]` sans `VEHICLE_IDENTITY` ; le compteur suit `MILEAGE_TRIPS` | Un pré-remplissage qui contourne les interrupteurs |
+| Pré-remplissage non destructif | seed **par plaque**, ne remplit que les champs vides, ne supprime jamais | Écraser une correction du client, ou dupliquer sa flotte |
+
+> ⚠️ **Limite 1↔1 (D4) assumée.** Une organisation Maestroo = une flotte Tracky. Un client à deux
+> flottes Tracky ne peut en connecter qu'une. Le guard anti-doublon le rappelle après la première
+> activation.
+
+### 13.6 — Synchronisation automatique (Tracky → Maestroo)
+
+**Pourquoi.** Le pré-remplissage à l'appairage est un INSTANTANÉ. Un véhicule ajouté ou corrigé dans
+Tracky APRÈS ne parvenait jamais au partenaire : le client voyait sa flotte figée au jour de la
+connexion.
+
+**Mécanisme.** `PartnerSyncService` (cron Tracky, toutes les 30 min) re-pousse l'identité des
+véhicules de chaque lien **ACTIF** vers Maestroo `POST /partner/v1/provision/reseed` (signé, op
+distincte). Idempotent des deux côtés (seed par plaque). **Respecte les scopes vivants** : rien ne
+part si `VEHICLE_IDENTITY` est coupé. **Ne supprime rien** côté partenaire — un véhicule retiré de
+Tracky ne fait pas disparaître la ligne métier adoptée (classe C) ; la suppression relève de la
+révocation, décision explicite, jamais d'un cron. Anti-recouvrement par drapeau interne (`@Cron` ne
+bloque pas le self-overlap tout seul), chaque lien isolé (une panne n'interrompt pas les suivants).
+
+**Le sens Maestroo → Tracky (données) reste en phase 4** (D5). Tracky est la source télématique ;
+c'est lui qui enrichit Maestroo, pas l'inverse. Seul l'**onboarding** est bidirectionnel : un client
+Maestroo peut découvrir et brancher Tracky (carte partenaire → écran d'intégration), mais la pose de
+boîtiers reste un acte commercial, pas un provisionnement logiciel.
+
+### 13.7 — Rendre les pannes VISIBLES
+
+Tout le parcours post-consentement est **best-effort** (échouer là ne doit pas défaire un
+consentement réussi), mais best-effort ≠ silencieux :
+- pré-remplissage ou envoi d'accès en échec ⇒ `ErrorLogger.recordBackground` → centre d'erreurs
+  Maestroo, avec `accessSent:false` renvoyé pour que le super-admin puisse renvoyer ;
+- chaque sync de lien en panne ⇒ WARN + retenté au tour suivant (rien n'est perdu, la donnée reste
+  chez nous) ;
+- succès de sync ⇒ `SystemActivityLog` (`partner_vehicles_synced`), pour qu'« il ne se passe rien »
+  soit distinguable de « tout va bien ».
+
 ---
 
 ## 14. Câblage & exploitation
