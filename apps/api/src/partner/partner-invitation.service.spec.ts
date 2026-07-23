@@ -3,6 +3,7 @@ import type { ConfigService } from '@nestjs/config';
 import type { EmailService } from '../email/email.service';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { SystemActivityService } from '../system-activity/system-activity.service';
+import type { PartnerClientService } from './partner-client.service';
 import type { PartnerConfigService } from './partner.config';
 import {
   INVITATION_TTL_HOURS,
@@ -21,6 +22,7 @@ function makeService(opts: {
   invitations?: any[];
   liveLink?: boolean;
   emailOk?: boolean;
+  vehicles?: any[];
 } = {}) {
   const invitations = opts.invitations ?? [];
   const updates: any[] = [];
@@ -57,6 +59,23 @@ function makeService(opts: {
       }),
       findMany: jest.fn(async () => invitations.map((i) => ({ ...i, fleet: { name: 'Flotte Test' } }))),
     },
+    user: {
+      findFirst: jest.fn(async () => ({ firstName: 'Camille', lastName: 'Dupont', phone: null })),
+    },
+    vehicle: {
+      // ⚠️ Reproduit fidèlement le comportement de `select` : une colonne à
+      // `false` est ABSENTE de la ligne. Un mock qui renverrait tout ferait
+      // passer le test alors que la donnée fuiterait en vrai.
+      findMany: jest.fn(async ({ select }: any) =>
+        (opts.vehicles ?? []).map((v: any) =>
+          Object.fromEntries(
+            Object.entries(select ?? {})
+              .filter(([, wanted]) => wanted)
+              .map(([key]) => [key, v[key] ?? null]),
+          ),
+        ),
+      ),
+    },
   } as unknown as PrismaService;
 
   const email = {
@@ -77,11 +96,29 @@ function makeService(opts: {
   const partnerConfig = { enabled: opts.enabled ?? true } as unknown as PartnerConfigService;
   const activity = { record: jest.fn() } as unknown as SystemActivityService;
 
+  const client = {
+    provisionSpace: jest.fn(async () => ({
+      organizationId: 'org-1',
+      organizationName: 'Flotte Test',
+      pairingCode: CODE,
+      expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+      created: true,
+    })),
+  } as unknown as PartnerClientService;
+
   return {
-    service: new PartnerInvitationService(prisma, email, config as never, partnerConfig, activity),
+    service: new PartnerInvitationService(
+      prisma,
+      email,
+      config as never,
+      partnerConfig,
+      activity,
+      client,
+    ),
     prisma,
     email,
     activity,
+    client,
     updates,
     sent,
   };
@@ -169,6 +206,84 @@ describe('send — l\'invitation à consentir', () => {
     });
     const expected = before + INVITATION_TTL_HOURS * 3600_000;
     expect(Math.abs(res.expiresAt.getTime() - expected)).toBeLessThan(5_000);
+  });
+});
+
+describe('provisionAndInvite — le client qui n\'a PAS de Maestroo', () => {
+  it('fait creer l\'espace AVANT d\'ecrire quoi que ce soit chez nous', async () => {
+    // Si le partenaire echoue, rien ne doit exister nulle part : le super-admin
+    // recommence. L'ordre inverse laisserait une invitation vers un espace
+    // inexistant, donc un lien qui mene dans le vide.
+    const { service, client, prisma } = makeService();
+    await service.provisionAndInvite({ fleetId: FLEET, email: 'client@test.fr', sentByUserId: USER });
+
+    const provisionOrder = (client.provisionSpace as jest.Mock).mock.invocationCallOrder[0];
+    const createOrder = (prisma.partnerInvitation.create as jest.Mock).mock.invocationCallOrder[0];
+    expect(provisionOrder).toBeLessThan(createOrder!);
+  });
+
+  it('n\'envoie AUCUNE donnee de flotte a la creation de l\'espace', async () => {
+    // Creer l'espace n'est pas consentir au partage. Le contenu ne part qu'apres.
+    const { service, client } = makeService({
+      vehicles: [{ plate: 'AA-123-BB', brand: 'Renault' }],
+    });
+    await service.provisionAndInvite({ fleetId: FLEET, email: 'client@test.fr', sentByUserId: USER });
+
+    const body = (client.provisionSpace as jest.Mock).mock.calls[0]![0];
+    expect(JSON.stringify(body)).not.toContain('AA-123-BB');
+    expect(body).toMatchObject({ fleetId: FLEET, fleetName: 'Flotte Test', contactEmail: 'client@test.fr' });
+  });
+
+  it('utilise le code rendu par le partenaire — jamais un code invente', async () => {
+    const { service, prisma } = makeService();
+    await service.provisionAndInvite({ fleetId: FLEET, email: 'client@test.fr', sentByUserId: USER });
+    const created = (prisma.partnerInvitation.create as jest.Mock).mock.calls[0]![0];
+    expect(created.data.pairingCode).toBe(CODE);
+  });
+
+  it('flotte DEJA connectee ⇒ refus, sans creer de second espace', async () => {
+    const { service, client } = makeService({ liveLink: true });
+    await expect(
+      service.provisionAndInvite({ fleetId: FLEET, email: 'c@test.fr', sentByUserId: USER }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(client.provisionSpace).not.toHaveBeenCalled();
+  });
+
+  it('module eteint ⇒ 404 avant tout appel au partenaire', async () => {
+    const { service, client } = makeService({ enabled: false });
+    await expect(
+      service.provisionAndInvite({ fleetId: FLEET, email: 'c@test.fr', sentByUserId: USER }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(client.provisionSpace).not.toHaveBeenCalled();
+  });
+});
+
+describe('seedVehicles — le pre-remplissage suit les scopes', () => {
+  const FLOTTE = [
+    { plate: 'AA-123-BB', brand: 'Renault', model: 'Master', year: 2021, type: 'VAN', energy: 'DIESEL', seats: 3, fuelConsumptionL100km: 9.1, lastOdometerKm: 84000 },
+  ];
+
+  it('sans VEHICLE_IDENTITY ⇒ liste VIDE, le pre-remplissage ne contourne pas l\'interrupteur', async () => {
+    const { service } = makeService({ vehicles: FLOTTE });
+    expect(await service.seedVehicles(FLEET, ['FUEL', 'ALERTS'])).toEqual([]);
+  });
+
+  it('avec VEHICLE_IDENTITY ⇒ l\'identite part', async () => {
+    const { service } = makeService({ vehicles: FLOTTE });
+    const seed = await service.seedVehicles(FLEET, ['VEHICLE_IDENTITY']);
+    expect(seed).toHaveLength(1);
+    expect(seed[0]).toMatchObject({ plate: 'AA-123-BB', brand: 'Renault', year: 2021 });
+  });
+
+  it('le compteur ne part QUE si le kilometrage est consenti', async () => {
+    // Le kilometrage est un fait d'usage, pas de l'identite : il a son propre
+    // interrupteur et doit le respecter.
+    const { service } = makeService({ vehicles: FLOTTE });
+    const sansKm = await service.seedVehicles(FLEET, ['VEHICLE_IDENTITY']);
+    expect(sansKm[0]!.odometerKm).toBeNull();
+
+    const avecKm = await service.seedVehicles(FLEET, ['VEHICLE_IDENTITY', 'MILEAGE_TRIPS']);
+    expect(avecKm[0]!.odometerKm).toBe(84000);
   });
 });
 

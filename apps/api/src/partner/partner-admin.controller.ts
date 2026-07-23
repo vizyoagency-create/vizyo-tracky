@@ -67,6 +67,24 @@ export class PartnerAdminController {
     });
   }
 
+  /**
+   * Le client n'a PAS de Maestroo : on lui crée son espace, puis on l'invite à
+   * consentir. Pas de code à récupérer ailleurs — c'est tout l'intérêt.
+   */
+  @Post('provision')
+  async provision(
+    @Body() body: { fleetId?: string; email?: string },
+    @Req() req: AuthenticatedRequest,
+  ) {
+    if (!body?.fleetId) throw new BadRequestException('Flotte requise');
+    if (!body?.email) throw new BadRequestException('Destinataire requis');
+    return this.invitations.provisionAndInvite({
+      fleetId: body.fleetId,
+      email: body.email,
+      sentByUserId: req.user.id,
+    });
+  }
+
   /** DRY-RUN — ce qui disparaîtrait. N'écrit RIEN, des deux côtés. */
   @Get(':id/revocation-preview')
   async preview(@Param('id') id: string) {

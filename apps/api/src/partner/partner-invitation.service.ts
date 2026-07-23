@@ -6,6 +6,7 @@ import type { Env } from '../config/env.validation';
 import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
+import { PartnerClientService, type PartnerSeedVehicle } from './partner-client.service';
 import { PartnerConfigService } from './partner.config';
 
 const PARTNER = 'MAESTROO';
@@ -45,6 +46,7 @@ export class PartnerInvitationService {
     private readonly config: ConfigService<Env, true>,
     private readonly partnerConfig: PartnerConfigService,
     private readonly activity: SystemActivityService,
+    private readonly client: PartnerClientService,
   ) {}
 
   /** Envoie l'invitation. L'e-mail part APRÈS l'écriture : un e-mail sans trace ne se retrouve pas. */
@@ -211,6 +213,118 @@ export class PartnerInvitationService {
         linkId: params.linkId,
       },
     });
+  }
+
+  /**
+   * PARCOURS COMPLET pour un client qui n'a PAS encore de Maestroo : on fait
+   * créer son espace, puis on lui envoie l'invitation à consentir.
+   *
+   * ⚠️ C'EST LE CAS COMMERCIAL LE PLUS FRÉQUENT, et il n'était pas couvert. Le
+   * handshake d'origine supposait un client déjà chez Maestroo, qui y générait
+   * un code. Un client Tracky sans Maestroo n'avait tout simplement rien à
+   * appairer : le parcours s'arrêtait avant de commencer.
+   *
+   * ⚠️ L'ORDRE COMPTE. On crée l'espace AVANT d'écrire quoi que ce soit chez
+   * nous : si le partenaire échoue, rien n'existe nulle part, et le super-admin
+   * peut simplement recommencer. L'inverse laisserait une invitation pointant
+   * vers un espace inexistant.
+   */
+  async provisionAndInvite(params: { fleetId: string; email: string; sentByUserId: string }) {
+    if (!this.partnerConfig.enabled) throw new NotFoundException();
+
+    const to = params.email.trim().toLowerCase();
+    if (!to.includes('@')) throw new BadRequestException('Adresse e-mail invalide');
+
+    const fleet = await this.prisma.fleet.findUnique({
+      where: { id: params.fleetId },
+      select: { id: true, name: true },
+    });
+    if (!fleet) throw new NotFoundException('Flotte introuvable');
+
+    const live = await this.prisma.partnerLink.findFirst({
+      where: { fleetId: fleet.id, partner: PARTNER, liveKey: { not: null } },
+      select: { id: true },
+    });
+    if (live) throw new BadRequestException('Cette flotte est deja connectee a Maestroo');
+
+    // Le destinataire proposé sert aussi d'adresse de l'espace : c'est là que
+    // partira, plus tard, le lien d'activation du compte.
+    const contact = await this.prisma.user.findFirst({
+      where: { fleetId: fleet.id, email: to },
+      select: { firstName: true, lastName: true, phone: true },
+    });
+
+    const space = await this.client.provisionSpace({
+      fleetId: fleet.id,
+      fleetName: fleet.name,
+      contactEmail: to,
+      contactFirstName: contact?.firstName ?? null,
+      contactLastName: contact?.lastName ?? null,
+      contactPhone: contact?.phone ?? null,
+    });
+
+    const invitation = await this.send({
+      fleetId: fleet.id,
+      pairingCode: space.pairingCode,
+      email: to,
+      sentByUserId: params.sentByUserId,
+    });
+
+    this.activity.record({
+      category: 'PARTNER',
+      action: 'partner_space_provisioned',
+      status: 'SUCCESS',
+      actor: params.sentByUserId,
+      target: space.organizationName,
+      detail: space.created ? 'Espace cree' : 'Espace deja existant, nouveau code',
+      fleetId: fleet.id,
+    });
+
+    return { ...invitation, organizationName: space.organizationName, spaceCreated: space.created };
+  }
+
+  /**
+   * Identité des véhicules, pour pré-remplir l'espace du partenaire au moment du
+   * consentement.
+   *
+   * ⚠️ Renvoie une liste VIDE si `VEHICLE_IDENTITY` n'a pas été consenti. C'est
+   * la garantie qui rend le pré-remplissage acceptable : il ne contourne pas
+   * l'interrupteur, il en dépend.
+   */
+  async seedVehicles(fleetId: string, scopes: string[]): Promise<PartnerSeedVehicle[]> {
+    if (!scopes.includes('VEHICLE_IDENTITY')) return [];
+
+    // Le compteur est un fait d'USAGE, pas de l'identité : il a son propre
+    // interrupteur. On ne le LIT même pas s'il n'est pas consenti…
+    const withMileage = scopes.includes('MILEAGE_TRIPS');
+    const vehicles = await this.prisma.vehicle.findMany({
+      where: { fleetId },
+      select: {
+        plate: true,
+        brand: true,
+        model: true,
+        year: true,
+        type: true,
+        energy: true,
+        seats: true,
+        fuelConsumptionL100km: true,
+        lastOdometerKm: withMileage,
+      },
+    });
+    return vehicles.map((v) => ({
+      plate: v.plate,
+      brand: v.brand,
+      model: v.model,
+      year: v.year,
+      type: v.type,
+      energy: v.energy,
+      seats: v.seats,
+      consumptionL100km: v.fuelConsumptionL100km,
+      // …et on re-teste ICI plutôt que de déduire la permission de la présence
+      // de la clé. Un jour quelqu'un ajoutera `lastOdometerKm: true` au select
+      // « pour simplifier » : la garantie doit survivre à ça.
+      odometerKm: withMileage ? ((v as { lastOdometerKm?: number | null }).lastOdometerKm ?? null) : null,
+    }));
   }
 
   /**

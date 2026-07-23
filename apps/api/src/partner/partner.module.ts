@@ -11,6 +11,7 @@ import { PartnerRevocationService } from './partner-revocation.service';
 import { PartnerConfigService } from './partner.config';
 import { PartnerInvitationController } from './partner-invitation.controller';
 import { PartnerInvitationService } from './partner-invitation.service';
+import { PartnerSyncService } from './partner-sync.service';
 import { PartnerTokenGuard } from './partner-token.guard';
 import { PartnerTokenService } from './partner-token.service';
 import { PartnerController } from './partner.controller';
@@ -48,6 +49,7 @@ import { PartnerSignatureGuard } from './partner-signature.guard';
     PartnerOutboxService,
     PartnerAdminService,
     PartnerInvitationService,
+    PartnerSyncService,
   ],
   exports: [PartnerConfigService, PartnerSignatureGuard, PartnerTokenService, PartnerRevocationService],
 })

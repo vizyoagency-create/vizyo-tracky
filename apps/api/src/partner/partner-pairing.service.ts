@@ -90,11 +90,22 @@ export class PartnerPairingService {
     // Secret propre à CE lien : sa compromission n'expose pas la plateforme.
     const linkSecret = randomBytes(32).toString('base64url');
 
+    // Pré-remplissage envoyé DANS l'acquittement, pas dans un appel séparé : un
+    // second appel pourrait échouer après un handshake réussi, et le client
+    // découvrirait un espace vide sans qu'aucune erreur ne le lui dise. Ici,
+    // c'est atomique du point de vue du partenaire.
+    //
+    // ⚠️ `seedVehicles` dépend des scopes consentis : liste vide si le client
+    // n'a pas coché l'identité des véhicules. Le pré-remplissage ne contourne
+    // pas l'interrupteur, il en dépend.
+    const seedVehicles = await this.invitations.seedVehicles(fleetId, scopes);
+
     await this.client.completePairing(code, {
       remoteLinkId: linkId,
       fleetName: fleet.name,
       linkSecret,
       scopes,
+      seedVehicles,
     });
 
     try {
