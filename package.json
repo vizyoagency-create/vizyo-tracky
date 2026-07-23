@@ -13,7 +13,9 @@
     "typecheck": "turbo run typecheck",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
-    "docker:logs": "docker compose logs -f"
+    "docker:logs": "docker compose logs -f",
+    "smoke": "pnpm --filter @vizyo/tracky-api exec jest --testPathPatterns app.module.smoke",
+    "verify": "pnpm typecheck && pnpm smoke && pnpm test"
   },
   "devDependencies": {
     "turbo": "^2.9.7",
