@@ -37,6 +37,12 @@ export interface PartnerReseedResult {
  * durablement côté partenaire (classe C) et ne disparaîtra pas à la révocation.
  */
 export interface PartnerSeedVehicle {
+  /**
+   * Notre `Vehicle.id` — la clé de jointure STABLE côté partenaire (C2, doc 25
+   * §4). Sans lui, la jointure se faisait par plaque : un renommage de plaque
+   * chez nous créait un doublon fantôme chez le partenaire.
+   */
+  trackyVehicleId: string;
   plate: string;
   brand?: string | null;
   model?: string | null;

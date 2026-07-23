@@ -300,6 +300,9 @@ export class PartnerInvitationService {
     const vehicles = await this.prisma.vehicle.findMany({
       where: { fleetId },
       select: {
+        // La clé de jointure STABLE côté partenaire (C2) : la plaque est
+        // éditable, l'id ne l'est pas.
+        id: true,
         plate: true,
         brand: true,
         model: true,
@@ -312,6 +315,7 @@ export class PartnerInvitationService {
       },
     });
     return vehicles.map((v) => ({
+      trackyVehicleId: v.id,
       plate: v.plate,
       brand: v.brand,
       model: v.model,
