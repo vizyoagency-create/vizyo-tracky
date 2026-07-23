@@ -41,6 +41,16 @@ const envSchema = z.object({
   VIZYO_TEXTO_API_KEY: z.string().default(''),
   VIZYO_TEXTO_WEBHOOK_SECRET: z.string().default(''),
 
+  // Sonde active des dependances (DependencyHeartbeatService). URL PUBLIQUES a
+  // sonder — elles doivent traverser Traefik/TLS, sinon la sonde ne verrait pas
+  // une panne de ROUTAGE (le cas exact de la coupure Vizyo Auth du 18-21/07 :
+  // conteneur sain, route morte). Vides => repli sur VIZYO_AUTH_API_URL /
+  // VIZYO_TEXTO_URL, avec un avertissement au demarrage si l'URL est interne.
+  // ⚠️ En prod VIZYO_AUTH_API_URL vaut http://vizyo-auth-api:3200 (interne) :
+  // DEPENDENCY_PROBE_AUTH_URL est donc NECESSAIRE pour que la sonde serve.
+  DEPENDENCY_PROBE_AUTH_URL: z.string().default(''),
+  DEPENDENCY_PROBE_TEXTO_URL: z.string().default(''),
+
   // SMS heartbeat (V1.15) — "preuve de vie" hebdo de la chaine SMS. CSV de
   // numeros E.164 (ex: +33656691615,+33687654321) qui recoivent chaque lundi
   // 09h00 (Europe/Paris) un SMS de test. Si la chaine casse, un ErrorLog

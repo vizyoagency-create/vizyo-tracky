@@ -123,4 +123,79 @@ describe('DependencyHeartbeatService', () => {
 
     await expect(svc.check()).resolves.toBeUndefined();
   });
+
+  /**
+   * Le piège qui rendait la sonde INUTILE en production : `VIZYO_AUTH_API_URL` y vaut
+   * `http://vizyo-auth-api:3200`, l'adresse interne du conteneur. Or pendant l'incident du
+   * 2026-07, ce conteneur répondait parfaitement — seule sa route Traefik était morte. Sonder
+   * l'interne aurait donc affiché VERT pendant les 3 jours de panne.
+   */
+  describe("URL sondée — l'interne ne prouve rien", () => {
+    it("DEPENDENCY_PROBE_AUTH_URL prime sur l'URL applicative interne", async () => {
+      const fetchMock = mockFetch(jest.fn().mockResolvedValue(reachable));
+      const { svc } = build({
+        VIZYO_AUTH_API_URL: 'http://vizyo-auth-api:3200', // valeur RÉELLE en prod
+        DEPENDENCY_PROBE_AUTH_URL: 'https://api.auth.vizyoagency.com',
+      });
+
+      await svc.check();
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://api.auth.vizyoagency.com/health',
+        expect.objectContaining({ method: 'GET' }),
+      );
+    });
+
+    it('idem pour texto', async () => {
+      const fetchMock = mockFetch(jest.fn().mockResolvedValue(reachable));
+      const { svc } = build({
+        VIZYO_TEXTO_URL: 'http://vizyo-texto:3000',
+        DEPENDENCY_PROBE_TEXTO_URL: 'https://texto.vizyoagency.com',
+      });
+
+      await svc.check();
+
+      expect(fetchMock.mock.calls.map((c) => c[0])).toEqual([
+        'https://texto.vizyoagency.com/health',
+      ]);
+    });
+
+    it('AVERTIT au démarrage quand la sonde ne traverse pas Traefik', () => {
+      const { svc } = build({ VIZYO_AUTH_API_URL: 'http://vizyo-auth-api:3200' });
+      const warn = jest
+        .spyOn(svc['logger'], 'warn')
+        .mockImplementation(() => undefined);
+
+      svc.onModuleInit();
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      const message = warn.mock.calls[0][0] as string;
+      expect(message).toContain('INTERNE');
+      expect(message).toContain('DEPENDENCY_PROBE_AUTH_URL');
+    });
+
+    it("n'avertit PAS quand l'URL sondée est publique", () => {
+      const { svc } = build({ DEPENDENCY_PROBE_AUTH_URL: 'https://api.auth.vizyoagency.com' });
+      const warn = jest
+        .spyOn(svc['logger'], 'warn')
+        .mockImplementation(() => undefined);
+      jest.spyOn(svc['logger'], 'log').mockImplementation(() => undefined);
+
+      svc.onModuleInit();
+
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('signale une sonde totalement inactive (aucune URL configurée)', () => {
+      const { svc } = build({});
+      const warn = jest
+        .spyOn(svc['logger'], 'warn')
+        .mockImplementation(() => undefined);
+
+      svc.onModuleInit();
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toContain('INACTIVE');
+    });
+  });
 });
