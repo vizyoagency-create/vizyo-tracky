@@ -701,6 +701,46 @@ cas échéant, bouton *Déconnecter*.
 > `var(--color-*)`, tokens de durée et de z-index. `pnpm --filter @maestroo/web lint:all` doit
 > passer — une violation bloque le commit.
 
+### 13.4 — L'invitation à consentir (e-mail)
+
+**Pourquoi.** Sans elle, consentir demandait au client d'aller chercher un code dans Maestroo puis de
+le coller dans Tracky. Personne ne fait ça, et un consentement qu'on n'obtient jamais ne protège
+personne. Le super-admin envoie donc au fleet-admin un e-mail qui l'emmène en un clic sur son écran
+de consentement.
+
+**Parcours.** Code généré dans Maestroo → collé dans `/admin/partner-links` avec la flotte et le
+destinataire → e-mail (`partner_consent_invitation`, catalogué au centre e-mails) → le client clique
+→ `GET /api/integrations/partner/invite/:token` **enregistre le clic** puis redirige (302) vers
+`/integrations?code=…&inv=…` → l'écran s'ouvre directement sur l'aperçu de consentement.
+
+**Ce qui est mesuré, et pourquoi ainsi.**
+
+| Moment | Trace | Pourquoi ce choix |
+|---|---|---|
+| Sollicité | `sentAt`, `email` | — |
+| Ouvert | `openedAt` (**premier clic, jamais écrasé**), `openCount`, `openIp`, `openUserAgent` | On mesure le **clic**, pas l'affichage : un pixel de suivi est bloqué par la moitié des clients mail et ne prouve que le chargement d'une image |
+| Autorisé | `acceptedAt`, `acceptedByUserId`, `acceptedScopes`, `linkId` | Fige ce qui a été consenti **ce jour-là** ; l'état vivant reste `PartnerLink.scopes` |
+
+Restitué dans `/admin/consent` (onglet Sécu & RGPD). Les trois moments sont affichés : s'arrêter au
+dernier ne dirait pas si le client a **refusé** ou n'a **jamais vu** la demande.
+
+**Deux propriétés à ne pas perdre.**
+
+1. **Le jeton n'autorise rien.** Il identifie une invitation. Le destinataire doit se connecter et
+   porter `integrations_manage`. La route est publique — sinon on ne saurait jamais distinguer « n'a
+   pas cliqué » de « a cliqué puis renoncé devant l'écran de connexion ». Jeton inconnu et jeton
+   expiré redirigent tous deux vers l'écran nu : rien à apprendre en énumérant.
+2. **Garde anti-transfert.** Un code envoyé par invitation n'est utilisable que par la flotte
+   invitée (`assertCodeUsableBy`, appelé en tête d'`approve`). Sans lui, un e-mail transféré mettait
+   n'importe quel fleet-admin en position de brancher **sa** flotte sur l'organisation Maestroo du
+   destinataire légitime — le bug d'ambiguïté d'organisation, vu depuis l'autre bout.
+
+> ⚠️ **`PAIRING_CODE_TTL_MINUTES` est passé de 15 min à 72 h** (Maestroo). 15 min convenait au
+> parcours « je suis devant les deux écrans » ; un client lit ses e-mails quand il peut, et le code
+> mourait avant le clic. On échange une fenêtre courte contre la garde anti-transfert, qui est plus
+> forte : un code intercepté ne sert à rien, quelle que soit sa fraîcheur. Usage unique et
+> limitation de débit inchangés. **Ne pas raccourcir sans revoir ce parcours.**
+
 ---
 
 ## 14. Câblage & exploitation

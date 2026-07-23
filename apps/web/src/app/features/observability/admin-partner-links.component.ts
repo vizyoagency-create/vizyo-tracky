@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
@@ -16,6 +16,12 @@ interface AdminPartnerLink {
   scopes: string[];
   approvedAt: string | null;
   lastSeenAt: string | null;
+}
+
+interface InvitableFleet {
+  id: string;
+  name: string;
+  admins: { email: string; name: string }[];
 }
 
 interface RevocationPreview {
@@ -103,6 +109,79 @@ interface RevocationPreview {
         </table>
       }
 
+      <!-- ── INVITER À CONSENTIR ──────────────────────────────────────────────
+           On ne peut pas consentir à la place du client. Cet écran ne fait donc
+           qu'une chose : lui envoyer le chemin le plus court vers sa décision. -->
+      <section class="pl-card">
+        <div class="pl-card-h">
+          <span>Inviter un client à consentir</span>
+          @if (inviteOk(); as ok) { <span class="pl-ok">Envoyé à {{ ok }}</span> }
+        </div>
+        <p class="pl-muted">
+          Générez d'abord le code d'appairage dans Maestroo (écran « Intégration Tracky »),
+          puis envoyez-le ici. Le client reçoit un e-mail qui l'emmène directement sur son
+          écran de consentement — le code n'y figure pas, il est remis au moment du clic.
+        </p>
+
+        @if (fleets().length === 0) {
+          <p class="pl-muted">
+            Aucune flotte à inviter — toutes celles qui existent sont déjà connectées.
+          </p>
+        } @else {
+          <div class="pl-form">
+            <label class="pl-field">
+              <span class="pl-label">Flotte</span>
+              <select class="pl-select" [ngModel]="inviteFleetId()" (ngModelChange)="pickFleet($event)">
+                <option value="">Choisir…</option>
+                @for (f of fleets(); track f.id) {
+                  <option [value]="f.id">{{ f.name }}</option>
+                }
+              </select>
+            </label>
+
+            <label class="pl-field">
+              <span class="pl-label">Destinataire</span>
+              @if (currentAdmins().length > 0) {
+                <select class="pl-select" [(ngModel)]="inviteEmail">
+                  @for (a of currentAdmins(); track a.email) {
+                    <option [value]="a.email">{{ a.name }} — {{ a.email }}</option>
+                  }
+                </select>
+              } @else {
+                <!-- Aucun admin sur cette flotte : on le DIT, au lieu de proposer
+                     une liste vide qui laisserait croire à un bug. -->
+                <input class="pl-input" [(ngModel)]="inviteEmail" placeholder="adresse@societe.fr" />
+              }
+              @if (inviteFleetId() && currentAdmins().length === 0) {
+                <span class="pl-hint">
+                  Cette flotte n'a aucun administrateur actif : vérifiez à qui vous écrivez.
+                </span>
+              }
+            </label>
+
+            <label class="pl-field">
+              <span class="pl-label">Code d'appairage (Maestroo)</span>
+              <input
+                class="pl-input"
+                [(ngModel)]="inviteCode"
+                placeholder="TRK-XXXX-XXXX-XXXX"
+                autocomplete="off"
+                spellcheck="false"
+              />
+            </label>
+
+            <button
+              type="button"
+              class="pl-btn pl-btn-primary"
+              [disabled]="busy() || !canInvite()"
+              (click)="sendInvite()"
+            >
+              Envoyer l'invitation
+            </button>
+          </div>
+        }
+      </section>
+
       @if (suspendTarget(); as t) {
         <section class="pl-card">
           <div class="pl-card-h">Suspendre {{ t.organizationName }}</div>
@@ -171,6 +250,12 @@ interface RevocationPreview {
       .pl-list { margin: 0; padding-left: 1.1rem; font-size: 0.875rem; display: flex; flex-direction: column; gap: 0.2rem; }
       .pl-warn { color: var(--tk-warn, #e0a848); }
       .pl-error { margin: 0; padding: 0.6rem 0.75rem; border-radius: 8px; background: var(--tk-danger-soft, #e0484822); color: var(--tk-danger, #e04848); font-size: 0.875rem; }
+      .pl-btn-primary { background: var(--tk-accent, #10e0a0); border-color: transparent; color: #06231a; font-weight: 600; align-self: flex-end; }
+      .pl-ok { font-size: 0.78rem; font-weight: 500; color: var(--tk-accent, #10e0a0); }
+      .pl-form { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: flex-end; }
+      .pl-field { display: flex; flex-direction: column; gap: 0.25rem; flex: 1 1 13rem; }
+      .pl-label { font-size: 0.75rem; color: var(--tk-text-muted, #7b8794); }
+      .pl-hint { font-size: 0.72rem; color: var(--tk-warn, #e0a848); }
     `,
   ],
 })
@@ -185,8 +270,63 @@ export class AdminPartnerLinksComponent {
   protected readonly error = signal<string | null>(null);
   protected reason = '';
 
+  protected readonly fleets = signal<InvitableFleet[]>([]);
+  protected readonly inviteFleetId = signal('');
+  protected readonly inviteOk = signal<string | null>(null);
+  protected inviteEmail = '';
+  protected inviteCode = '';
+
+  /** Destinataires proposés pour la flotte choisie. */
+  protected readonly currentAdmins = computed(
+    () => this.fleets().find((f) => f.id === this.inviteFleetId())?.admins ?? [],
+  );
+
   constructor() {
     this.reload();
+    this.loadFleets();
+  }
+
+  protected canInvite(): boolean {
+    return !!this.inviteFleetId() && this.inviteEmail.includes('@') && this.inviteCode.trim().length > 0;
+  }
+
+  /** Changer de flotte repropose SON administrateur : garder l'ancien enverrait l'invitation à côté. */
+  protected pickFleet(id: string): void {
+    this.inviteFleetId.set(id);
+    this.inviteOk.set(null);
+    this.inviteEmail = this.currentAdmins()[0]?.email ?? '';
+  }
+
+  protected sendInvite(): void {
+    const email = this.inviteEmail.trim();
+    this.run(
+      this.http.post<{ email: string; emailSent: boolean }>('/api/admin/partner-links/invitations', {
+        fleetId: this.inviteFleetId(),
+        email,
+        pairingCode: this.inviteCode.trim(),
+      }),
+      (res) => {
+        // ⚠️ L'invitation est enregistrée même si l'e-mail n'est pas parti : on
+        // distingue les deux, sinon on croit avoir sollicité un client qui n'a
+        // jamais rien reçu.
+        if (res.emailSent) {
+          this.inviteOk.set(res.email);
+          this.inviteCode = '';
+        } else {
+          this.error.set(
+            `Invitation enregistrée mais l'e-mail n'est pas parti (${res.email}). Vérifiez le centre e-mails.`,
+          );
+        }
+        this.loadFleets();
+      },
+    );
+  }
+
+  private loadFleets(): void {
+    this.http.get<InvitableFleet[]>('/api/admin/partner-links/invitable-fleets').subscribe({
+      next: (rows) => this.fleets.set(rows),
+      error: () => this.error.set('Impossible de charger les flottes invitables.'),
+    });
   }
 
   protected scopeRows(p: RevocationPreview): Array<[string, number]> {

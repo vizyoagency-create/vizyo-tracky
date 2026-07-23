@@ -277,6 +277,7 @@ model Fleet {
   // Integration partenaire (Tracky x Maestroo) — 1 lien VIVANT max par partenaire,
   // + l'historique des liens revoques. Cf. PartnerLink.
   partnerLinks         PartnerLink[]
+  partnerInvitations   PartnerInvitation[]
 
   @@map("fleets")
 }
@@ -2940,4 +2941,56 @@ model PartnerOutboxEvent {
   @@index([deliveredAt, nextAttemptAt])
   @@index([linkId])
   @@map("partner_outbox_events")
+}
+
+/// Invitation à consentir, envoyée par e-mail au fleet-admin.
+///
+/// ⚠️ `token` N'EST PAS UNE AUTORISATION. Il identifie une invitation, rien de
+/// plus : le destinataire doit quand même se connecter et porter la permission
+/// `integrations_manage`. Ne jamais lui faire ouvrir un accès — le jour où
+/// quelqu'un le prendra pour un jeton d'authentification, un e-mail transféré
+/// deviendra une faille.
+///
+/// Sert aussi de PREUVE DE CONSENTEMENT (RGPD) : qui a été sollicité, quand, qui
+/// a cliqué, depuis quelle IP, et ce qui a été accepté.
+model PartnerInvitation {
+  id               String    @id @default(uuid()) @db.Uuid
+  fleetId          String    @db.Uuid
+  fleet            Fleet     @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  partner          String
+  /// Code émis par le partenaire, recopié dans le lien profond.
+  /// ⚠️ Non unique à dessein : une invitation peut être renvoyée sur le même code.
+  pairingCode      String
+  token            String    @unique
+  email            String
+
+  sentByUserId     String?   @db.Uuid
+  sentAt           DateTime  @default(now())
+  /// Au-delà, le lien ne redirige plus : un lien de consentement qui traîne des
+  /// mois dans une boîte mail n'a plus rien à voir avec une décision éclairée.
+  expiresAt        DateTime
+
+  /// Premier clic — c'est LUI qui fait foi (« le client a-t-il ouvert ? »).
+  /// Un pixel de suivi mesurerait l'affichage, pas l'intention, et la moitié des
+  /// clients mail le bloquent.
+  openedAt         DateTime?
+  lastOpenedAt     DateTime?
+  openCount        Int       @default(0)
+  openIp           String?
+  openUserAgent    String?
+
+  acceptedAt       DateTime?
+  acceptedByUserId String?   @db.Uuid
+  /// Catégories effectivement acceptées — l'état vivant est dans PartnerLink.scopes,
+  /// ceci fige ce qui a été consenti CE JOUR-LÀ.
+  acceptedScopes   Json      @default("[]")
+  linkId           String?   @db.Uuid
+
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  /// Recherche du garde anti-transfert : « ce code est-il déjà promis à une flotte ? »
+  @@index([partner, pairingCode])
+  @@index([fleetId, sentAt(sort: Desc)])
+  @@map("partner_invitations")
 }

@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/cor
 import {
   AdminConsentUser,
   AdminLpConsent,
+  AdminPartnerInvitation,
   ConsentAdminService,
 } from '../../core/services/consent-admin.service';
 
@@ -56,6 +57,52 @@ import {
                         <span class="ca-badge ca-no">Non accepté</span>
                       }
                     </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </section>
+
+      <!-- ── CONSENTEMENTS D'INTÉGRATION ─────────────────────────────────────
+           Le partage vers une application partenaire est un consentement comme
+           un autre : il se demande, il se trace, et il doit pouvoir se prouver.
+           On montre les trois moments — sollicité, ouvert, accepté — parce que
+           s'arrêter au dernier ne dirait pas si le client a refusé ou n'a
+           simplement jamais vu la demande. -->
+      <section class="ca-card">
+        <div class="ca-card-h">
+          <span>Intégrations partenaires — demandes d'autorisation</span>
+          <span class="ca-count">{{ invitations().length }}</span>
+        </div>
+        @if (loadingInvitations()) {
+          <p class="ca-muted">Chargement…</p>
+        } @else if (invitations().length === 0) {
+          <p class="ca-muted">Aucune demande d'autorisation envoyée.</p>
+        } @else {
+          <div class="ca-scroll">
+            <table class="ca-table">
+              <thead>
+                <tr>
+                  <th>Flotte</th><th>Destinataire</th><th>Envoyée</th>
+                  <th>Lien ouvert</th><th>IP</th><th>Autorisé</th><th>Catégories</th><th>État</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (i of invitations(); track i.id) {
+                  <tr>
+                    <td><div class="ca-name">{{ i.fleetName }}</div><div class="ca-sub">{{ i.partner }}</div></td>
+                    <td class="ca-sub">{{ i.email }}</td>
+                    <td>{{ fmt(i.sentAt) }}</td>
+                    <td>
+                      {{ fmt(i.openedAt) }}
+                      @if (i.openCount > 1) { <span class="ca-sub">×{{ i.openCount }}</span> }
+                    </td>
+                    <td class="ca-mono">{{ i.openIp || '—' }}</td>
+                    <td>{{ fmt(i.acceptedAt) }}</td>
+                    <td class="ca-sub">{{ i.acceptedScopes.length || '—' }}</td>
+                    <td><span class="ca-badge" [class]="stateClass(i.state)">{{ stateLabel(i.state) }}</span></td>
                   </tr>
                 }
               </tbody>
@@ -122,6 +169,7 @@ import {
     .ca-badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: .76rem; font-weight: 700; }
     .ca-ok { background: color-mix(in srgb, var(--tracky-light) 16%, transparent); color: var(--tracky-light); }
     .ca-no { background: rgba(242,112,107,.16); color: #f2706b; }
+    .ca-wait { background: rgba(224,168,72,.16); color: #e0a848; }
     `,
   ],
 })
@@ -130,8 +178,10 @@ export class ConsentAdminComponent {
 
   readonly users = signal<AdminConsentUser[]>([]);
   readonly lp = signal<AdminLpConsent[]>([]);
+  readonly invitations = signal<AdminPartnerInvitation[]>([]);
   readonly loadingUsers = signal(true);
   readonly loadingLp = signal(true);
+  readonly loadingInvitations = signal(true);
 
   constructor() {
     void this.load();
@@ -146,12 +196,36 @@ export class ConsentAdminComponent {
       this.loadingUsers.set(false);
     }
     try {
+      this.invitations.set(await this.api.getPartnerInvitations());
+    } catch {
+      // Le module partenaire peut être éteint (404) : la section reste vide,
+      // le reste de la page continue de s'afficher.
+    } finally {
+      this.loadingInvitations.set(false);
+    }
+    try {
       this.lp.set(await this.api.getLp());
     } catch {
       /* silencieux */
     } finally {
       this.loadingLp.set(false);
     }
+  }
+
+  stateLabel(state: string): string {
+    const map: Record<string, string> = {
+      ACCEPTED: 'Autorisé',
+      OPENED: 'Ouvert, sans réponse',
+      EXPIRED: 'Expiré',
+      SENT: 'En attente',
+    };
+    return map[state] ?? state;
+  }
+
+  stateClass(state: string): string {
+    if (state === 'ACCEPTED') return 'ca-ok';
+    if (state === 'EXPIRED') return 'ca-no';
+    return 'ca-wait';
   }
 
   fmt(iso?: string | null): string {

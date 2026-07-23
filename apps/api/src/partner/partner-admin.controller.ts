@@ -5,6 +5,7 @@ import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BILLING_STATUSES, PartnerAdminService, type BillingStatus } from './partner-admin.service';
+import { PartnerInvitationService } from './partner-invitation.service';
 import { PartnerOutboxService } from './partner-outbox.service';
 
 /**
@@ -23,11 +24,47 @@ export class PartnerAdminController {
   constructor(
     private readonly admin: PartnerAdminService,
     private readonly outbox: PartnerOutboxService,
+    private readonly invitations: PartnerInvitationService,
   ) {}
 
   @Get()
   async list() {
     return this.admin.list();
+  }
+
+  /**
+   * Flottes que l'on peut inviter, avec les adresses des fleet-admins.
+   *
+   * ⚠️ On PROPOSE les destinataires plutôt que de laisser saisir une adresse au
+   * hasard : une invitation envoyée à la mauvaise personne n'est pas une erreur
+   * de frappe anodine, c'est une demande de consentement adressée à quelqu'un
+   * qui n'a rien à consentir.
+   */
+  @Get('invitable-fleets')
+  async invitableFleets() {
+    return this.invitations.invitableFleets();
+  }
+
+  /** Journal des sollicitations — alimente l'onglet Sécu & RGPD. */
+  @Get('invitations')
+  async listInvitations() {
+    return this.invitations.list();
+  }
+
+  @Post('invitations')
+  async invite(
+    @Body() body: { fleetId?: string; pairingCode?: string; email?: string },
+    @Req() req: AuthenticatedRequest,
+  ) {
+    if (!body?.fleetId) throw new BadRequestException('Flotte requise');
+    if (!body?.pairingCode) throw new BadRequestException('Code d\'appairage requis');
+    if (!body?.email) throw new BadRequestException('Destinataire requis');
+    return this.invitations.send({
+      fleetId: body.fleetId,
+      pairingCode: body.pairingCode,
+      email: body.email,
+      sentByUserId: req.user.id,
+    });
   }
 
   /** DRY-RUN — ce qui disparaîtrait. N'écrit RIEN, des deux côtés. */

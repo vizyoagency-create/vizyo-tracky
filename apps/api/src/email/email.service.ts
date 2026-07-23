@@ -26,7 +26,8 @@ export type EmailTemplateId =
   | 'installation_slot_confirmed'
   | 'reservation_requested'
   | 'reservation_confirmed'
-  | 'ai_invoice_request';
+  | 'ai_invoice_request'
+  | 'partner_consent_invitation';
 
 /**
  * V1.5 (Sprint J) — Service d'envoi d'emails via Resend.
@@ -737,6 +738,63 @@ La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fo
   }
 
   /**
+   * Invitation à consentir au partage vers une application partenaire.
+   *
+   * ⚠️ CET E-MAIL DEMANDE UNE AUTORISATION — il ne l'annonce pas. Le ton est donc
+   * volontairement sobre : ce qui sera partagé n'est PAS listé ici, parce que le
+   * client choisira catégorie par catégorie sur l'écran, et qu'annoncer une liste
+   * dans l'e-mail donnerait l'impression que c'est déjà décidé. On dit ce qu'on
+   * demande, on dit qu'il choisit, et on l'emmène là où il choisit vraiment.
+   *
+   * ⚠️ Aucune donnée de flotte dans l'e-mail (ni plaques, ni conducteurs) : une
+   * boîte mail n'est pas un canal maîtrisé.
+   */
+  buildPartnerConsentInvitationEmail(opts: {
+    fleetName: string;
+    partnerName: string;
+    consentUrl: string;
+    expiresAt: Date;
+  }): { subject: string; html: string; text: string } {
+    const subject = `[Vizyo Tracky] Autoriser le partage avec ${opts.partnerName}`;
+    const deadline = opts.expiresAt.toLocaleString('fr-FR', {
+      dateStyle: 'long',
+      timeStyle: 'short',
+      timeZone: 'Europe/Paris',
+    });
+    const body = `
+        <tr><td style="padding:28px 36px 0;">
+          <h1 style="margin:0 0 12px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:25px;line-height:1.15;font-weight:800;letter-spacing:-0.025em;color:#EAEFED;">Autoriser le partage avec ${escapeHtml(opts.partnerName)} ?</h1>
+          <p style="margin:0 0 14px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:15px;line-height:1.65;color:#9BA5A1;">Bonjour,</p>
+          <p style="margin:0 0 14px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:15px;line-height:1.65;color:#9BA5A1;">${escapeHtml(opts.partnerName)} souhaite recevoir certaines données de votre flotte <span style="color:#EAEFED;font-weight:600;">${escapeHtml(opts.fleetName)}</span> pour enrichir votre suivi d'exploitation.</p>
+          <p style="margin:0 0 22px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:15px;line-height:1.65;color:#9BA5A1;"><span style="color:#EAEFED;font-weight:600;">Rien n'est partagé tant que vous n'avez pas donné votre accord.</span> Le bouton ci-dessous ouvre l'écran où vous choisissez, catégorie par catégorie, ce que vous acceptez de partager — et où vous pourrez tout couper à tout moment.</p>
+          <table role="presentation"><tr><td style="border-radius:11px;background:#10E0A0;">
+            <a href="${opts.consentUrl}" style="display:inline-block;padding:14px 30px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;font-weight:700;letter-spacing:-0.01em;color:#04130D;text-decoration:none;">Voir la demande →</a>
+          </td></tr></table>
+          <p style="margin:20px 0 0;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:13px;line-height:1.6;color:#69736E;">Ce lien est valable jusqu'au ${escapeHtml(deadline)}. Il vous demandera de vous connecter à votre espace Tracky : il ne donne aucun accès par lui-même.</p>
+          <p style="margin:10px 0 0;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:13px;line-height:1.6;color:#69736E;">Vous n'attendiez pas cette demande ? Ne cliquez pas, et répondez à cet e-mail.</p>
+        </td></tr>`;
+    const html = this.shell({
+      eyebrow: 'Intégration · Autorisation',
+      footer: 'VIZYO TRACKY · GPS FLOTTE · OCCITANIE<br>Vous restez propriétaire de vos données : le partage se coupe depuis votre espace, sans nous demander.',
+      body,
+    });
+    const text = `Autoriser le partage avec ${opts.partnerName} ?
+
+Bonjour,
+
+${opts.partnerName} souhaite recevoir certaines données de votre flotte ${opts.fleetName} pour enrichir votre suivi d'exploitation.
+
+Rien n'est partagé tant que vous n'avez pas donné votre accord. Le lien ci-dessous ouvre l'écran où vous choisissez, catégorie par catégorie, ce que vous acceptez de partager — et où vous pourrez tout couper à tout moment.
+
+${opts.consentUrl}
+
+Ce lien est valable jusqu'au ${deadline}. Il vous demandera de vous connecter à votre espace Tracky : il ne donne aucun accès par lui-même.
+
+Vous n'attendiez pas cette demande ? Ne cliquez pas, et répondez à cet e-mail.`;
+    return { subject, html, text };
+  }
+
+  /**
    * Prise de RDV en ligne — NOTIFICATION OPÉRATEUR (→ contact@vizyoagency.com) quand un
    * client dépose une demande de créneau via un lien public.
    */
@@ -1211,6 +1269,15 @@ ${this.commercialSignatureText()}`;
           requester: 'admin@societe.fr',
           vehicleCount: 12,
           monthlyLabel: '60,00 €',
+        });
+      case 'partner_consent_invitation':
+        return this.buildPartnerConsentInvitationEmail({
+          fleetName,
+          partnerName: 'Maestroo',
+          consentUrl: `${appBase}/api/integrations/partner/invite/apercu`,
+          // Date FIXE : un aperçu qui change à chaque ouverture donne l'impression
+          // d'un e-mail vivant alors qu'on regarde un gabarit.
+          expiresAt: new Date('2026-01-15T18:00:00Z'),
         });
       case 'weekly_report':
         return {

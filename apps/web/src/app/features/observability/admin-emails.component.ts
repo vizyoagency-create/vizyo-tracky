@@ -31,6 +31,7 @@ const TPL_PRESENT: Record<string, { icon: string; tone: 'green' | 'red' | 'amber
   quote_client: { icon: '🧾', tone: 'green', desc: 'Copie du récapitulatif de devis envoyée au prospect.' },
   audio_activation: { icon: '🔊', tone: 'amber', desc: 'Rappel des obligations légales à l’activation du micro.' },
   audio_info: { icon: '🎧', tone: 'green', desc: 'Présentation de la fonction d’assistance en cas d’accident.' },
+  partner_consent_invitation: { icon: '🤝', tone: 'amber', desc: 'Demande d’autorisation de partage vers une application partenaire. Le lien ne donne aucun accès.' },
 };
 
 const STATUS_FILTERS: { id: string; label: string }[] = [
