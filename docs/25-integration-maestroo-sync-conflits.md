@@ -196,9 +196,13 @@ Pour la visibilité, tout existe déjà côté Maestroo (`AuthAuditLog` avec `LO
 
 ## 6. Ordre de construction proposé
 
-1. **C2 d'abord** (id stable `trackyVehicleId`) — fondation, corrige un bug latent, petit.
-2. **La base + la matrice** (§3.1) avec conflits DÉTECTÉS et JOURNALISÉS mais fast-forward seul
-   actif — on observe ce que ça détecte en réel sur MH Cars avant d'ouvrir les vannes.
+1. ✅ **C2 d'abord** (id stable `trackyVehicleId`) — fondation, corrige un bug latent — *fait le
+   2026-07-24*.
+2. ✅ **La base + la matrice** (§3.1) avec conflits DÉTECTÉS et JOURNALISÉS mais fast-forward seul
+   actif — on observe ce que ça détecte en réel sur MH Cars avant d'ouvrir les vannes — *fait le
+   2026-07-24 : `TrackySyncState`/`TrackySyncConflict` + `sync-matrix.ts` (fonctions pures) côté
+   Maestroo ; écarts remontés dans `SystemActivityLog` côté Tracky ; purgés à la révocation et à
+   l'extinction de `VEHICLE_IDENTITY`.*
 3. **Le tableau + « Garder Tracky »** (résolution côté Maestroo uniquement, aucun write-back).
 4. **Le write-back** (« Garder Maestroo ») derrière le scope `VEHICLE_WRITEBACK` + allowlist.
 5. **C3/C4/C5** dans le tableau (retraits, kilométrage à seuil, consommation calibrée).

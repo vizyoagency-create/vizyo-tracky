@@ -90,14 +90,21 @@ export class PartnerSyncService {
         this.logger.warn(`Reseed refusé par le partenaire (lien ${linkId}) — lien non actif de son côté`);
         return;
       }
-      if (res.created > 0 || res.updated > 0) {
-        this.logger.log(`Sync lien ${linkId} : +${res.created} / maj ${res.updated}`);
+      const divergences = res.divergences ?? 0;
+      if (res.created > 0 || res.updated > 0 || divergences > 0) {
+        this.logger.log(
+          `Sync lien ${linkId} : +${res.created} / maj ${res.updated} / ` +
+            `ff ${res.fastForwards ?? 0} / ecarts ${divergences}`,
+        );
         this.activity.record({
           category: 'PARTNER',
           action: 'partner_vehicles_synced',
           status: 'SUCCESS',
           target: linkId,
-          detail: `${res.created} cree(s), ${res.updated} mis a jour`,
+          // Les écarts remontent dans l'activité : « le mode observation a vu
+          // quelque chose » doit se lire depuis l'admin Tracky, pas seulement
+          // dans les logs du partenaire.
+          detail: `${res.created} cree(s), ${res.updated} mis a jour, ${divergences} ecart(s) observe(s)`,
           fleetId,
         });
       }

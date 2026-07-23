@@ -27,6 +27,10 @@ export interface PartnerReseedResult {
   updated: number;
   total: number;
   skipped: boolean;
+  /** Corrections Tracky appliquées par le merge à 3 voies (étape 2, doc 25). */
+  fastForwards?: number;
+  /** Écarts observés (MAESTROO_AHEAD + CONFLICT) — journalisés, pas résolus. */
+  divergences?: number;
 }
 
 /**
