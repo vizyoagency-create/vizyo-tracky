@@ -1,6 +1,7 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { UserRole } from '@prisma/client';
+import { formatFleetDate } from '../common/utils/datetime';
 import { EmailService } from '../email/email.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -61,8 +62,8 @@ export class ReportsCronService {
 
         const pdfBuffer = await this.pdf.generate(report);
         const subject = `[Vizyo Tracky] Rapport hebdomadaire — ${fleet.name}`;
-        const fromStr = from.toLocaleDateString('fr-FR');
-        const toStr = to.toLocaleDateString('fr-FR');
+        const fromStr = formatFleetDate(from);
+        const toStr = formatFleetDate(to);
         const body = `Bonjour,\n\nVotre rapport Vizyo Tracky pour la semaine du ${fromStr} au ${toStr} est en piece jointe.\n\nResume :\n- ${report.trips.count} trajets, ${report.trips.totalKm.toFixed(1)} km\n- ${report.alerts.total} alertes\n- Conso estimee : ${report.consumption.estimatedLiters.toFixed(1)} L (${report.consumption.estimatedCostEur.toFixed(2)} EUR)\n\nL'equipe Vizyo`;
 
         await this.email.send({

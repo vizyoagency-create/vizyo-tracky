@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Alert, AlertRule, User, Vehicle } from '@prisma/client';
 import { UserRole } from '@prisma/client';
+import { formatFleetTime } from '../common/utils/datetime';
 import { EmailService } from '../email/email.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -291,11 +292,10 @@ export class NotificationDispatchService {
    */
   private formatAlertSms(alert: AlertWithVehicle, isEscalation: boolean): string {
     const plate = alert.vehicle?.plate ?? alert.vehicleId ?? '?';
-    const time = alert.createdAt.toLocaleTimeString('fr-FR', {
-      hour: '2-digit',
-      minute: '2-digit',
-      timeZone: 'Europe/Paris',
-    });
+    // Ce canal était DÉJÀ correct (fuseau explicite) ; on passe par le helper
+    // pour que l'e-mail et le SMS d'une même alerte partagent une seule source
+    // de vérité — c'est leur divergence qui a révélé le bug.
+    const time = formatFleetTime(alert.createdAt);
     const esc = isEscalation ? 'ESCALADE ' : '';
     const body = `[Vizyo Tracky] ${esc}${alert.severity} — ${alert.title} · ${plate} · ${time}`;
     return body.length > 160 ? `${body.slice(0, 157)}...` : body;

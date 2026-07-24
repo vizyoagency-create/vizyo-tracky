@@ -1,5 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import PDFDocument from 'pdfkit';
+import {
+  formatFleetDate,
+  formatFleetDateShort,
+  formatFleetDateTime,
+  formatFleetTime,
+} from '../common/utils/datetime';
 import { FleetStatsReport } from './reports-stats.service';
 
 /**
@@ -89,8 +95,8 @@ export class ReportPdfService {
       .text('Rapport de flotte', 40, 65);
 
     // Bandeau periode en haut-droite
-    const fromStr = new Date(report.period.from).toLocaleDateString('fr-FR');
-    const toStr = new Date(report.period.to).toLocaleDateString('fr-FR');
+    const fromStr = formatFleetDate(report.period.from);
+    const toStr = formatFleetDate(report.period.to);
     doc.fillColor(COLOR_FG).fontSize(11).font('Helvetica')
       .text(`${fromStr} → ${toStr}`, 400, 42, { width: 155, align: 'right' });
     doc.fillColor(COLOR_FG_MUTED).fontSize(9)
@@ -308,12 +314,10 @@ export class ReportPdfService {
       }
 
       const rowY = doc.y;
-      const date = new Date(t.startedAt).toLocaleDateString('fr-FR', {
-        day: '2-digit', month: '2-digit', year: '2-digit',
-      });
-      const time = new Date(t.startedAt).toLocaleTimeString('fr-FR', {
-        hour: '2-digit', minute: '2-digit',
-      });
+      // Serveur en UTC : sans fuseau, un trajet parti a 07:30 s'affichait
+      // 05:30 dans le PDF du client. Cf. common/utils/datetime.ts.
+      const date = formatFleetDateShort(t.startedAt);
+      const time = formatFleetTime(t.startedAt);
 
       doc.fillColor(COLOR_FG).fontSize(9).font('Helvetica')
         .text(`${date} ${time}`, colX.date, rowY, { width: colX.plate - colX.date - 4 });
@@ -360,7 +364,7 @@ export class ReportPdfService {
       doc.switchToPage(range.start + i);
       doc.fontSize(8).fillColor(COLOR_FG_MUTED).font('Helvetica')
         .text(
-          `Genere automatiquement par Vizyo Tracky — ${new Date().toLocaleString('fr-FR')}`,
+          `Genere automatiquement par Vizyo Tracky — ${formatFleetDateTime(new Date())}`,
           40, 800, { width: 515, align: 'center' },
         );
     }

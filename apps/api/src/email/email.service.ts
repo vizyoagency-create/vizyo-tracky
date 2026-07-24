@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { EmailStatus } from '@prisma/client';
 import { Resend } from 'resend';
 import type { Env } from '../config/env.validation';
+import { formatFleetDateTime, formatFleetDateTimeLong } from '../common/utils/datetime';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
@@ -243,10 +244,7 @@ export class EmailService {
     expiresAt: Date;
   }): { subject: string; html: string; text: string } {
     const greeting = opts.recipientName ? `Bonjour ${opts.recipientName},` : 'Bonjour,';
-    const expiresLabel = opts.expiresAt.toLocaleString('fr-FR', {
-      day: '2-digit', month: '2-digit', year: 'numeric',
-      hour: '2-digit', minute: '2-digit',
-    });
+    const expiresLabel = formatFleetDateTime(opts.expiresAt);
     const subject = `[Vizyo Tracky] Vous etes invite a rejoindre ${opts.fleetName}`;
 
     const html = this.shell({
@@ -643,7 +641,7 @@ La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fo
     const accent = data.critical > 0 ? '#F2706B' : '#F5B33D';
     const border = data.critical > 0 ? 'rgba(242,112,107,.28)' : 'rgba(245,179,61,.25)';
     const appBase = this.config.get('APP_BASE_URL', { infer: true });
-    const depuis = data.since.toLocaleString('fr-FR');
+    const depuis = formatFleetDateTime(data.since);
     const lignes = data.top
       .map(
         (t, i) => `
@@ -688,7 +686,10 @@ La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fo
     const sevLabel = sev === 'CRITICAL' ? 'Critique' : sev === 'WARNING' ? 'Avertissement' : 'Information';
     const eyebrow = `● ${isEsc ? 'Escalade' : 'Alerte'} · ${sevLabel}`;
     const appBase = this.config.get('APP_BASE_URL', { infer: true });
-    const heure = alert.createdAt.toLocaleString('fr-FR');
+    // ⚠️ Le serveur tourne en UTC : sans fuseau explicite, une alerte de 07:38
+    // était annoncée « 05:38 » dans l'e-mail — alors que le SMS de la MÊME
+    // alerte disait 07:38. Cf. common/utils/datetime.ts.
+    const heure = formatFleetDateTime(alert.createdAt);
     const messageP = alert.message
       ? `<p style="margin:0 0 20px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:15px;line-height:1.6;color:#9BA5A1;">${escapeHtml(alert.message)}</p>`
       : '';
@@ -756,11 +757,7 @@ La conformité réglementaire reste la responsabilité de l'exploitant. Vizyo fo
     expiresAt: Date;
   }): { subject: string; html: string; text: string } {
     const subject = `[Vizyo Tracky] Autoriser le partage avec ${opts.partnerName}`;
-    const deadline = opts.expiresAt.toLocaleString('fr-FR', {
-      dateStyle: 'long',
-      timeStyle: 'short',
-      timeZone: 'Europe/Paris',
-    });
+    const deadline = formatFleetDateTimeLong(opts.expiresAt);
     const body = `
         <tr><td style="padding:28px 36px 0;">
           <h1 style="margin:0 0 12px;font-family:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;font-size:25px;line-height:1.15;font-weight:800;letter-spacing:-0.025em;color:#EAEFED;">Autoriser le partage avec ${escapeHtml(opts.partnerName)} ?</h1>
