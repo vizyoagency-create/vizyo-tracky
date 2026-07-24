@@ -203,7 +203,11 @@ Pour la visibilité, tout existe déjà côté Maestroo (`AuthAuditLog` avec `LO
    2026-07-24 : `TrackySyncState`/`TrackySyncConflict` + `sync-matrix.ts` (fonctions pures) côté
    Maestroo ; écarts remontés dans `SystemActivityLog` côté Tracky ; purgés à la révocation et à
    l'extinction de `VEHICLE_IDENTITY`.*
-3. **Le tableau + « Garder Tracky »** (résolution côté Maestroo uniquement, aucun write-back).
+3. ✅ **Le tableau + « Garder Tracky »** (résolution côté Maestroo uniquement, aucun write-back) —
+   *fait le 2026-07-24 : carte « Écarts de données » sur `/integrations/tracky`, résolution CAS
+   (`TRACKY_CONFLICT_STALE` si la valeur a bougé depuis l'affichage), idempotente au re-clic,
+   base réalignée pour que la synchro suivante ne re-détecte pas l'écart tranché. « Garder
+   Maestroo » affiché désactivé, avec la raison.*
 4. **Le write-back** (« Garder Maestroo ») derrière le scope `VEHICLE_WRITEBACK` + allowlist.
 5. **C3/C4/C5** dans le tableau (retraits, kilométrage à seuil, consommation calibrée).
 6. Traçage d'activité (§5) — indépendant, peut se faire en parallèle de 2–3.
