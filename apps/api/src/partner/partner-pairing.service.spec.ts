@@ -90,12 +90,15 @@ describe('claim — n\'active rien', () => {
     const result = await service.claim(FLEET, CODE);
 
     expect(result.organizationName).toBe('PegaseExpress');
-    expect(result.scopes).toHaveLength(9);
+    expect(result.scopes).toHaveLength(10);
     // Les scopes SENSIBLES arrivent DÉCOCHÉS : c'est le client qui les allume.
     const live = result.scopes.find((s) => s.key === 'LIVE_POSITION');
     const behavior = result.scopes.find((s) => s.key === 'DRIVING_BEHAVIOR');
+    const writeback = result.scopes.find((s) => s.key === 'VEHICLE_WRITEBACK');
     expect(live?.defaultOn).toBe(false);
     expect(behavior?.defaultOn).toBe(false);
+    // Le droit d'ÉCRITURE, a fortiori : jamais accordé par défaut (D11).
+    expect(writeback?.defaultOn).toBe(false);
     expect(result.scopes.find((s) => s.key === 'VEHICLE_IDENTITY')?.defaultOn).toBe(true);
     // Aucune écriture : le client doit pouvoir regarder avant de décider.
     expect(prisma.partnerLink.create).not.toHaveBeenCalled();

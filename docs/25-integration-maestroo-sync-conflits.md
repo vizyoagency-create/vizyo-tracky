@@ -208,9 +208,25 @@ Pour la visibilité, tout existe déjà côté Maestroo (`AuthAuditLog` avec `LO
    (`TRACKY_CONFLICT_STALE` si la valeur a bougé depuis l'affichage), idempotente au re-clic,
    base réalignée pour que la synchro suivante ne re-détecte pas l'écart tranché. « Garder
    Maestroo » affiché désactivé, avec la raison.*
-4. **Le write-back** (« Garder Maestroo ») derrière le scope `VEHICLE_WRITEBACK` + allowlist.
-5. **C3/C4/C5** dans le tableau (retraits, kilométrage à seuil, consommation calibrée).
-6. Traçage d'activité (§5) — indépendant, peut se faire en parallèle de 2–3.
+4. ✅ **Le write-back** (« Garder Maestroo ») derrière le scope `VEHICLE_WRITEBACK` + allowlist —
+   *fait le 2026-07-24 : 10ᵉ scope (SENSIBLE, OFF par défaut, parité testée des deux côtés),
+   `POST /partner/v1/vehicles/writeback` (jeton de bail + scope vivant + allowlist
+   brand/model/year/energy + CAS + audit `PartnerLinkEvent` visible du client), réversion des
+   traductions bloquée quand ambiguë (type jamais, HVO/GNC/OTHER jamais), ordre Tracky-d'abord
+   (un échec ne clôt RIEN côté Maestroo — pas de faux « résolu »). Au passage : le catalogue des
+   interrupteurs Tracky vient désormais du registre partagé — mémorisé au claim, il était VIDE
+   après un rechargement de page.*
+5. ✅ **C3/C4/C5** dans le tableau — *fait le 2026-07-24 : C3 retraits (« retiré de Tracky » →
+   archiver ici / garder actif, jamais de suppression auto, flux vide = scope coupé ≠ flotte
+   anéantie, réapparition = OBSOLETE) ; C4 compteur MONOTONE (une valeur Tracky inférieure ne
+   s'écrase plus, elle se signale — sauf décision « garder ma valeur » déjà prise pour ce chiffre ;
+   jamais de write-back du compteur) ; C5 la consommation CALIBRÉE (méthode du plein, scope FUEL)
+   prime la déclarative.*
+6. ✅ Traçage d'activité (§5) — *fait le 2026-07-24 en PULL signé (pas de webhook : évitait un
+   cycle AuthModule↔IntegrationsModule côté Maestroo, et une panne affiche « inconnu » au lieu de
+   mentir) : `partner.activity.summary` (dates et compteurs, jamais de nominatif) + bouton
+   « Activité » dans `/admin/partner-links` (espace activé ?, membres, dernière connexion,
+   connexions 30 j).*
 
 ## 7. Décisions à trancher (D9–D15)
 

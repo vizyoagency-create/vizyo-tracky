@@ -24,6 +24,17 @@ interface InvitableFleet {
   admins: { email: string; name: string }[];
 }
 
+/** Ce que le partenaire sait de l'usage de l'espace lié — dates et compteurs, jamais de nominatif. */
+interface PartnerActivity {
+  organizationName: string;
+  reachable: boolean;
+  found?: boolean;
+  activatedAt?: string | null;
+  memberCount?: number;
+  lastLoginAt?: string | null;
+  logins30d?: number;
+}
+
 interface RevocationPreview {
   organizationName: string;
   scopes: string[];
@@ -94,6 +105,7 @@ interface RevocationPreview {
                 </td>
                 <td>{{ l.lastSeenAt ? (l.lastSeenAt | date: 'dd/MM HH:mm') : '—' }}</td>
                 <td class="pl-actions">
+                  <button type="button" class="pl-btn" (click)="activity(l)">Activité</button>
                   <button type="button" class="pl-btn" (click)="preview(l)">Aperçu</button>
                   @if (l.suspendedByPlatform) {
                     <button type="button" class="pl-btn" [disabled]="busy()" (click)="resume(l)">Rétablir</button>
@@ -226,6 +238,33 @@ interface RevocationPreview {
         </section>
       }
 
+      @if (activityData(); as a) {
+        <section class="pl-card">
+          <div class="pl-card-h">
+            <span>Activité Maestroo — {{ a.organizationName }}</span>
+            <button type="button" class="pl-btn" (click)="activityData.set(null)">Fermer</button>
+          </div>
+          @if (!a.reachable) {
+            <p class="pl-warn">Partenaire injoignable — activité inconnue (et non « aucune »).</p>
+          } @else if (!a.found) {
+            <p class="pl-muted">Aucun espace lié trouvé côté partenaire.</p>
+          } @else {
+            <ul class="pl-list">
+              <li>
+                Espace activé :
+                {{ a.activatedAt ? (a.activatedAt | date: 'dd/MM/yyyy HH:mm') : 'PAS ENCORE — le client n\'a pas créé son accès' }}
+              </li>
+              <li>{{ a.memberCount }} membre(s) actif(s)</li>
+              <li>
+                Dernière connexion :
+                {{ a.lastLoginAt ? (a.lastLoginAt | date: 'dd/MM/yyyy HH:mm') : 'jamais' }}
+              </li>
+              <li>{{ a.logins30d }} connexion(s) sur les 30 derniers jours</li>
+            </ul>
+          }
+        </section>
+      }
+
       @if (previewData(); as p) {
         <section class="pl-card">
           <div class="pl-card-h">
@@ -293,6 +332,7 @@ export class AdminPartnerLinksComponent {
 
   protected readonly links = signal<AdminPartnerLink[]>([]);
   protected readonly previewData = signal<RevocationPreview | null>(null);
+  protected readonly activityData = signal<PartnerActivity | null>(null);
   protected readonly suspendTarget = signal<AdminPartnerLink | null>(null);
   protected readonly loading = signal(true);
   protected readonly busy = signal(false);
@@ -408,6 +448,14 @@ export class AdminPartnerLinksComponent {
     this.run(
       this.http.get<RevocationPreview>(`/api/admin/partner-links/${l.id}/revocation-preview`),
       (p) => this.previewData.set(p),
+    );
+  }
+
+  /** « Le client utilise-t-il Maestroo ? » — lu chez le partenaire à la demande. */
+  protected activity(l: AdminPartnerLink): void {
+    this.run(
+      this.http.get<Omit<PartnerActivity, 'organizationName'>>(`/api/admin/partner-links/${l.id}/activity`),
+      (a) => this.activityData.set({ ...a, organizationName: l.organizationName }),
     );
   }
 

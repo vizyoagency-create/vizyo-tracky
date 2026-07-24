@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   Get,
   Headers,
@@ -12,6 +13,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PartnerConfigService } from './partner.config';
 import { PartnerTokenGuard, RequirePartnerScope, type PartnerRequest } from './partner-token.guard';
 import { PartnerTokenService } from './partner-token.service';
+import { PartnerWritebackService } from './partner-writeback.service';
 
 /**
  * API partenaire : ce que Maestroo consomme réellement.
@@ -29,6 +31,7 @@ export class PartnerApiController {
     private readonly tokens: PartnerTokenService,
     private readonly config: PartnerConfigService,
     private readonly prisma: PrismaService,
+    private readonly writebackSvc: PartnerWritebackService,
   ) {}
 
   /** Échange crédence de lien → jeton de bail. Renvoie les scopes AUTORITAIRES. */
@@ -72,5 +75,41 @@ export class PartnerApiController {
   async vehiclesCount(@Req() req: PartnerRequest) {
     const total = await this.prisma.vehicle.count({ where: { fleetId: req.partner.fleetId } });
     return { total };
+  }
+
+  /**
+   * L'écriture ENTRANTE (étape 4, doc 25 §3.3) : le client a tranché un écart en
+   * faveur de Maestroo, la valeur choisie atterrit ici.
+   *
+   * ⚠️ Le scope `VEHICLE_WRITEBACK` est VIVANT : le client l'éteint, cette route
+   * répond 403 à la requête suivante. L'allowlist de champs et le CAS vivent
+   * dans le service.
+   */
+  @Post('vehicles/writeback')
+  @UseGuards(PartnerTokenGuard)
+  @RequirePartnerScope('VEHICLE_WRITEBACK')
+  async writeback(
+    @Req() req: PartnerRequest,
+    @Body()
+    body: {
+      vehicleId?: string;
+      field?: string;
+      value?: unknown;
+      expectedValue?: unknown;
+      resolutionId?: string;
+    },
+  ) {
+    if (!body?.vehicleId || !body?.field || !body?.resolutionId) {
+      throw new BadRequestException('vehicleId, field et resolutionId requis');
+    }
+    return this.writebackSvc.apply({
+      fleetId: req.partner.fleetId,
+      linkId: req.partner.linkId,
+      vehicleId: body.vehicleId,
+      field: body.field,
+      value: body.value ?? null,
+      expectedValue: body.expectedValue ?? null,
+      resolutionId: body.resolutionId,
+    });
   }
 }

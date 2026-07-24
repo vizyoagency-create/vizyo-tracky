@@ -297,6 +297,9 @@ export class PartnerInvitationService {
     // Le compteur est un fait d'USAGE, pas de l'identité : il a son propre
     // interrupteur. On ne le LIT même pas s'il n'est pas consenti…
     const withMileage = scopes.includes('MILEAGE_TRIPS');
+    // La consommation CALIBRÉE (méthode du plein, C5) est une MESURE : elle
+    // relève du scope FUEL. La déclarative reste une spec du véhicule (identité).
+    const withFuel = scopes.includes('FUEL');
     const vehicles = await this.prisma.vehicle.findMany({
       where: { fleetId },
       select: {
@@ -311,6 +314,7 @@ export class PartnerInvitationService {
         energy: true,
         seats: true,
         fuelConsumptionL100km: true,
+        calibratedConsumptionL100km: withFuel,
         lastOdometerKm: withMileage,
       },
     });
@@ -328,6 +332,9 @@ export class PartnerInvitationService {
       // de la clé. Un jour quelqu'un ajoutera `lastOdometerKm: true` au select
       // « pour simplifier » : la garantie doit survivre à ça.
       odometerKm: withMileage ? ((v as { lastOdometerKm?: number | null }).lastOdometerKm ?? null) : null,
+      calibratedConsumptionL100km: withFuel
+        ? ((v as { calibratedConsumptionL100km?: number | null }).calibratedConsumptionL100km ?? null)
+        : null,
     }));
   }
 
