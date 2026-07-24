@@ -29,6 +29,13 @@ export const PARTNER_SCOPES = [
   'ALERTS',
   'LIVE_POSITION',
   'DRIVING_BEHAVIOR',
+  // ⚠️ Le seul scope qui autorise une ÉCRITURE entrante (étape 4, doc 25 §3.3).
+  // Tous les autres partagent des données ; celui-ci permet au partenaire de
+  // CORRIGER l'identité d'un véhicule (marque, modèle, année, énergie) quand le
+  // client tranche un écart en faveur de Maestroo. Champs bornés par une
+  // allowlist serveur — jamais la plaque, jamais le kilométrage, jamais
+  // l'opérationnel.
+  'VEHICLE_WRITEBACK',
 ] as const;
 
 export type PartnerScope = (typeof PARTNER_SCOPES)[number];
@@ -45,6 +52,10 @@ export type PartnerScope = (typeof PARTNER_SCOPES)[number];
 export const PARTNER_SCOPES_SENSITIVE: readonly PartnerScope[] = [
   'LIVE_POSITION',
   'DRIVING_BEHAVIOR',
+  // Sensible par nature : ce n'est pas un partage, c'est un droit d'ÉCRITURE.
+  // OFF par défaut (D11) — le consentement de partage n'emporte pas le droit
+  // de modifier.
+  'VEHICLE_WRITEBACK',
 ];
 
 /** Scopes activés à la création d'un lien = tous SAUF les sensibles. */
@@ -99,6 +110,11 @@ export const PARTNER_SCOPE_LABELS: Record<PartnerScope, PartnerScopeLabel> = {
     label: 'Comportement de conduite',
     description:
       'Éco-score, excès de vitesse, accélérations et freinages brusques, RATTACHÉS À CHAQUE CONDUCTEUR.',
+  },
+  VEHICLE_WRITEBACK: {
+    label: 'Corrections depuis Maestroo',
+    description:
+      "Maestroo peut CORRIGER l'identité de vos véhicules (marque, modèle, année, énergie) quand vous tranchez un écart en sa faveur. Jamais la plaque, jamais le kilométrage.",
   },
 };
 

@@ -5,6 +5,7 @@ import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BILLING_STATUSES, PartnerAdminService, type BillingStatus } from './partner-admin.service';
+import { PartnerClientService } from './partner-client.service';
 import { PartnerInvitationService } from './partner-invitation.service';
 import { PartnerOutboxService } from './partner-outbox.service';
 
@@ -25,6 +26,7 @@ export class PartnerAdminController {
     private readonly admin: PartnerAdminService,
     private readonly outbox: PartnerOutboxService,
     private readonly invitations: PartnerInvitationService,
+    private readonly clientApi: PartnerClientService,
   ) {}
 
   @Get()
@@ -89,6 +91,21 @@ export class PartnerAdminController {
   @Get(':id/revocation-preview')
   async preview(@Param('id') id: string) {
     return this.admin.revocationPreview(id);
+  }
+
+  /**
+   * « Le client utilise-t-il Maestroo ? » — lu chez le partenaire à la demande
+   * (étape 6, doc 25 §5). Injoignable ⇒ on l'AFFICHE (reachable:false), on ne
+   * devine pas.
+   */
+  @Get(':id/activity')
+  async activity(@Param('id') id: string) {
+    try {
+      const summary = await this.clientApi.fetchActivitySummary(id);
+      return { reachable: true, ...summary };
+    } catch {
+      return { reachable: false };
+    }
   }
 
   /** LEVIER IMPAYÉ — le client ne peut pas le lever lui-même. */

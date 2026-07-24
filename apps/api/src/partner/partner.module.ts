@@ -13,6 +13,7 @@ import { PartnerInvitationController } from './partner-invitation.controller';
 import { PartnerInvitationService } from './partner-invitation.service';
 import { PartnerSyncService } from './partner-sync.service';
 import { PartnerTokenGuard } from './partner-token.guard';
+import { PartnerWritebackService } from './partner-writeback.service';
 import { PartnerTokenService } from './partner-token.service';
 import { PartnerController } from './partner.controller';
 import { PartnerPairingService } from './partner-pairing.service';
@@ -50,6 +51,7 @@ import { PartnerSignatureGuard } from './partner-signature.guard';
     PartnerAdminService,
     PartnerInvitationService,
     PartnerSyncService,
+    PartnerWritebackService,
   ],
   exports: [PartnerConfigService, PartnerSignatureGuard, PartnerTokenService, PartnerRevocationService],
 })

@@ -260,7 +260,7 @@ describe('provisionAndInvite — le client qui n\'a PAS de Maestroo', () => {
 
 describe('seedVehicles — le pre-remplissage suit les scopes', () => {
   const FLOTTE = [
-    { plate: 'AA-123-BB', brand: 'Renault', model: 'Master', year: 2021, type: 'VAN', energy: 'DIESEL', seats: 3, fuelConsumptionL100km: 9.1, lastOdometerKm: 84000 },
+    { id: 'veh-uuid-1', plate: 'AA-123-BB', brand: 'Renault', model: 'Master', year: 2021, type: 'VAN', energy: 'DIESEL', seats: 3, fuelConsumptionL100km: 9.1, lastOdometerKm: 84000 },
   ];
 
   it('sans VEHICLE_IDENTITY ⇒ liste VIDE, le pre-remplissage ne contourne pas l\'interrupteur', async () => {
@@ -273,6 +273,15 @@ describe('seedVehicles — le pre-remplissage suit les scopes', () => {
     const seed = await service.seedVehicles(FLEET, ['VEHICLE_IDENTITY']);
     expect(seed).toHaveLength(1);
     expect(seed[0]).toMatchObject({ plate: 'AA-123-BB', brand: 'Renault', year: 2021 });
+  });
+
+  it('chaque vehicule part avec son identifiant STABLE (C2) — la cle de jointure', async () => {
+    // Sans lui, le partenaire joint par plaque : un renommage de plaque chez
+    // nous cree un doublon fantome chez lui. Ce champ ne doit JAMAIS redevenir
+    // optionnel dans l'envoi.
+    const { service } = makeService({ vehicles: FLOTTE });
+    const seed = await service.seedVehicles(FLEET, ['VEHICLE_IDENTITY']);
+    expect(seed[0]!.trackyVehicleId).toBe('veh-uuid-1');
   });
 
   it('le compteur ne part QUE si le kilometrage est consenti', async () => {

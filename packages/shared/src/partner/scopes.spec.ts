@@ -32,9 +32,10 @@ const FROZEN_SCOPES = [
   'ALERTS',
   'LIVE_POSITION',
   'DRIVING_BEHAVIOR',
+  'VEHICLE_WRITEBACK',
 ];
 
-const FROZEN_SENSITIVE = ['LIVE_POSITION', 'DRIVING_BEHAVIOR'];
+const FROZEN_SENSITIVE = ['LIVE_POSITION', 'DRIVING_BEHAVIOR', 'VEHICLE_WRITEBACK'];
 
 describe('scopes partenaires — parité avec le registre figé', () => {
   it('la liste est EXACTEMENT le littéral figé, ordre compris', () => {

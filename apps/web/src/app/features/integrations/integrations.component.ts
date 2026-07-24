@@ -4,6 +4,12 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { Observable } from 'rxjs';
 import {
+  PARTNER_SCOPES,
+  PARTNER_SCOPES_DEFAULT_ON,
+  PARTNER_SCOPES_SENSITIVE,
+  PARTNER_SCOPE_LABELS,
+} from '@vizyo/tracky-shared';
+import {
   PartnerClaimPreview,
   PartnerIntegrationService,
   PartnerLinkStatus,
@@ -11,7 +17,20 @@ import {
 } from '../../core/services/partner-integration.service';
 
 /** Catégories dont l'activation expose des données particulièrement sensibles. */
-const SENSITIVE = new Set(['LIVE_POSITION', 'DRIVING_BEHAVIOR']);
+const SENSITIVE = new Set<string>(PARTNER_SCOPES_SENSITIVE);
+
+/**
+ * ⚠️ Le catalogue vient du REGISTRE partagé, pas d'un état mémorisé au `claim` :
+ * mémorisé, il était VIDE après un rechargement de page sur un lien déjà
+ * connecté — les interrupteurs disparaissaient, le client ne pouvait plus rien
+ * régler (ni couper une catégorie, ni activer « Corrections depuis Maestroo »).
+ */
+const SCOPE_CATALOGUE: PartnerScopeOption[] = PARTNER_SCOPES.map((key) => ({
+  key,
+  label: PARTNER_SCOPE_LABELS[key].label,
+  description: PARTNER_SCOPE_LABELS[key].description,
+  defaultOn: PARTNER_SCOPES_DEFAULT_ON.includes(key),
+}));
 
 /**
  * Écran « Intégrations » du client (fleet-admin). C'est ICI que vit l'interrupteur :
@@ -253,9 +272,8 @@ export class IntegrationsComponent {
   protected code = '';
   protected confirmName = '';
 
-  /** Catalogue affiché une fois connecté — mémorisé depuis le dernier `claim`. */
-  protected readonly allScopes = computed<PartnerScopeOption[]>(() => this.catalogue());
-  private readonly catalogue = signal<PartnerScopeOption[]>([]);
+  /** Catalogue statique du registre partagé — survit au rechargement de page. */
+  protected readonly allScopes = computed<PartnerScopeOption[]>(() => SCOPE_CATALOGUE);
 
   constructor() {
     // Le lien reçu par e-mail arrive ici avec le code déjà résolu. Redemander au
@@ -303,7 +321,6 @@ export class IntegrationsComponent {
   protected claim(): void {
     this.run(this.api.claim(this.code.trim()), (pv) => {
       this.preview.set(pv);
-      this.catalogue.set(pv.scopes);
       // Les catégories sensibles arrivent DÉCOCHÉES : c'est au client de les
       // allumer, en connaissance de cause.
       this.chosen.set(new Set(pv.scopes.filter((s) => s.defaultOn).map((s) => s.key)));

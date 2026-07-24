@@ -21,12 +21,25 @@ export interface PartnerProvisionResult {
   created: boolean;
 }
 
+/** Ce que le partenaire sait de l'usage de l'espace lié — jamais de nominatif. */
+export interface PartnerActivitySummary {
+  found: boolean;
+  activatedAt?: string | null;
+  memberCount?: number;
+  lastLoginAt?: string | null;
+  logins30d?: number;
+}
+
 /** Résultat d'une re-synchronisation. `skipped` = lien non-ACTIF, rien touché. */
 export interface PartnerReseedResult {
   created: number;
   updated: number;
   total: number;
   skipped: boolean;
+  /** Corrections Tracky appliquées par le merge à 3 voies (étape 2, doc 25). */
+  fastForwards?: number;
+  /** Écarts observés (MAESTROO_AHEAD + CONFLICT) — journalisés, pas résolus. */
+  divergences?: number;
 }
 
 /**
@@ -37,6 +50,12 @@ export interface PartnerReseedResult {
  * durablement côté partenaire (classe C) et ne disparaîtra pas à la révocation.
  */
 export interface PartnerSeedVehicle {
+  /**
+   * Notre `Vehicle.id` — la clé de jointure STABLE côté partenaire (C2, doc 25
+   * §4). Sans lui, la jointure se faisait par plaque : un renommage de plaque
+   * chez nous créait un doublon fantôme chez le partenaire.
+   */
+  trackyVehicleId: string;
   plate: string;
   brand?: string | null;
   model?: string | null;
@@ -44,6 +63,8 @@ export interface PartnerSeedVehicle {
   type?: string | null;
   energy?: string | null;
   consumptionL100km?: number | null;
+  /** MESURÉE (méthode du plein) — part sous le scope FUEL, prime la déclarative (C5). */
+  calibratedConsumptionL100km?: number | null;
   odometerKm?: number | null;
   seats?: number | null;
 }
@@ -150,6 +171,19 @@ export class PartnerClientService {
         }`,
       );
     }
+  }
+
+  /**
+   * Résumé d'activité de l'espace partenaire (étape 6, doc 25 §5) : espace
+   * activé ?, dernière connexion, connexions 30 j. Dates et compteurs — le
+   * « qui » reste chez le partenaire.
+   */
+  async fetchActivitySummary(remoteLinkId: string): Promise<PartnerActivitySummary> {
+    return this.request<PartnerActivitySummary>(
+      'GET',
+      `/partner/v1/provision/activity/${encodeURIComponent(remoteLinkId)}`,
+      'partner.activity.summary',
+    );
   }
 
   /**
