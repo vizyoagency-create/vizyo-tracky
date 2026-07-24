@@ -222,37 +222,53 @@ const SCOPE_CATALOGUE: PartnerScopeOption[] = PARTNER_SCOPES.map((key) => ({
   `,
   styles: [
     `
-      .ig-wrap { display: flex; flex-direction: column; gap: 1rem; padding: 1.25rem; max-width: 52rem; }
-      .ig-title { margin: 0; font-size: 1.35rem; font-weight: 650; }
-      .ig-lead, .ig-muted { margin: 0.35rem 0 0; color: var(--tk-text-muted, #7b8794); font-size: 0.9rem; }
-      .ig-card { background: var(--tk-surface, #14181d); border: 1px solid var(--tk-border, #232a32); border-radius: 12px; padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; }
-      .ig-card-danger { border-color: var(--tk-danger-border, #5a2a2a); }
-      .ig-card-h { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; font-weight: 600; }
-      .ig-status { font-size: 0.75rem; padding: 0.15rem 0.5rem; border-radius: 999px; background: var(--tk-accent-soft, #10e0a022); color: var(--tk-accent, #10e0a0); }
-      .ig-status-off { background: var(--tk-danger-soft, #e0484822); color: var(--tk-danger, #e04848); }
+      /*
+       * ⚠️ COULEUR DE TEXTE EXPLICITE SUR LA RACINE, jamais héritée.
+       *
+       * Ce composant utilisait des variables --tk-* QUI N'EXISTENT PAS dans le
+       * design system (les vraies sont --fg-* / --bg-* / --border-*). Les
+       * valeurs de repli sauvaient les fonds, mais les textes sans couleur
+       * dépendaient de l'héritage — et rendaient sombre-sur-sombre dans certains
+       * états (constaté le 2026-07-24). Sur un ÉCRAN DE CONSENTEMENT, un libellé
+       * de catégorie illisible n'est pas un défaut cosmétique : le client coche
+       * sans pouvoir lire ce qu'il autorise.
+       *
+       * Règle : tout texte porte sa couleur, issue des tokens RÉELS.
+       */
+      :host { color: var(--fg-primary, #EAEFED); }
+      .ig-wrap { display: flex; flex-direction: column; gap: 1rem; padding: 1.25rem; max-width: 52rem; color: var(--fg-primary, #EAEFED); }
+      .ig-title { margin: 0; font-size: 1.35rem; font-weight: 650; color: var(--fg-primary, #EAEFED); }
+      .ig-lead, .ig-muted { margin: 0.35rem 0 0; color: var(--fg-secondary, #9BA5A1); font-size: 0.9rem; }
+      .ig-card { background: var(--bg-secondary, #101514); border: 1px solid var(--border-subtle, rgba(255,255,255,.08)); border-radius: 12px; padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; color: var(--fg-primary, #EAEFED); }
+      .ig-card-danger { border-color: rgba(242, 112, 107, 0.35); }
+      .ig-card-h { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; font-weight: 600; color: var(--fg-primary, #EAEFED); }
+      .ig-status { font-size: 0.75rem; padding: 0.15rem 0.5rem; border-radius: 999px; background: rgba(16, 224, 160, 0.14); color: var(--color-tracky-light, #10e0a0); }
+      .ig-status-off { background: rgba(242, 112, 107, 0.16); color: var(--danger, #F2706B); }
       .ig-meta { display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 0.75rem; margin: 0; font-size: 0.875rem; }
-      .ig-meta dt { color: var(--tk-text-muted, #7b8794); }
-      .ig-meta dd { margin: 0; }
-      .ig-scope { display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.55rem; border-radius: 8px; cursor: pointer; }
-      .ig-scope:hover { background: var(--tk-surface-hover, #1a1f26); }
-      .ig-scope-sensitive { border-left: 3px solid var(--tk-warn, #e0a848); }
+      .ig-meta dt { color: var(--fg-tertiary, #69736E); }
+      .ig-meta dd { margin: 0; color: var(--fg-primary, #EAEFED); }
+      .ig-scope { display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.55rem; border-radius: 8px; cursor: pointer; color: var(--fg-primary, #EAEFED); }
+      .ig-scope:hover { background: var(--bg-tertiary, #161D1B); }
+      .ig-scope-sensitive { border-left: 3px solid #E0A848; }
       .ig-scope-body { display: flex; flex-direction: column; gap: 0.15rem; }
-      .ig-scope-label { font-size: 0.9rem; font-weight: 550; }
-      .ig-scope-desc { font-size: 0.8rem; color: var(--tk-text-muted, #7b8794); }
-      .ig-badge { font-style: normal; font-size: 0.68rem; padding: 0.05rem 0.35rem; margin-left: 0.35rem; border-radius: 999px; background: var(--tk-warn-soft, #e0a84822); color: var(--tk-warn, #e0a848); }
+      /* Le libellé que le client LIT pour décider : couleur explicite, obligatoire. */
+      .ig-scope-label { font-size: 0.9rem; font-weight: 550; color: var(--fg-primary, #EAEFED); }
+      .ig-scope-desc { font-size: 0.8rem; color: var(--fg-secondary, #9BA5A1); }
+      .ig-badge { font-style: normal; font-size: 0.68rem; padding: 0.05rem 0.35rem; margin-left: 0.35rem; border-radius: 999px; background: rgba(224, 168, 72, 0.16); color: #E0A848; }
       .ig-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-      .ig-input { flex: 1 1 14rem; padding: 0.5rem 0.65rem; border-radius: 8px; border: 1px solid var(--tk-border, #232a32); background: var(--tk-surface-2, #0f1317); color: inherit; }
+      .ig-input { flex: 1 1 14rem; padding: 0.5rem 0.65rem; border-radius: 8px; border: 1px solid var(--border-subtle, rgba(255,255,255,.08)); background: var(--bg-tertiary, #161D1B); color: var(--fg-primary, #EAEFED); }
+      .ig-input::placeholder { color: var(--fg-tertiary, #69736E); }
       .ig-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
-      .ig-btn { padding: 0.5rem 0.9rem; border-radius: 8px; border: 1px solid var(--tk-border, #232a32); background: transparent; color: inherit; cursor: pointer; font-size: 0.875rem; }
+      .ig-btn { padding: 0.5rem 0.9rem; border-radius: 8px; border: 1px solid var(--border-strong, rgba(255,255,255,.14)); background: transparent; color: var(--fg-primary, #EAEFED); cursor: pointer; font-size: 0.875rem; }
       .ig-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-      .ig-btn-primary { background: var(--tk-accent, #10e0a0); border-color: transparent; color: #06231a; font-weight: 600; }
-      .ig-btn-danger { background: var(--tk-danger, #e04848); border-color: transparent; color: #fff; font-weight: 600; }
-      .ig-error { margin: 0; padding: 0.6rem 0.75rem; border-radius: 8px; background: var(--tk-danger-soft, #e0484822); color: var(--tk-danger, #e04848); font-size: 0.875rem; }
-      .ig-warn { margin: 0; padding: 0.6rem 0.75rem; border-radius: 8px; background: var(--tk-warn-soft, #e0a84822); color: var(--tk-warn, #e0a848); font-size: 0.875rem; }
-      .ig-log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.82rem; }
+      .ig-btn-primary { background: var(--color-tracky, #10e0a0); border-color: transparent; color: #04130D; font-weight: 600; }
+      .ig-btn-danger { background: var(--danger, #F2706B); border-color: transparent; color: #2B0B0A; font-weight: 600; }
+      .ig-error { margin: 0; padding: 0.6rem 0.75rem; border-radius: 8px; background: rgba(242, 112, 107, 0.16); color: var(--danger, #F2706B); font-size: 0.875rem; }
+      .ig-warn { margin: 0; padding: 0.6rem 0.75rem; border-radius: 8px; background: rgba(224, 168, 72, 0.16); color: #E0A848; font-size: 0.875rem; }
+      .ig-log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.82rem; color: var(--fg-primary, #EAEFED); }
       .ig-log li { display: flex; gap: 0.5rem; align-items: baseline; }
-      .ig-log-date { color: var(--tk-text-muted, #7b8794); min-width: 6.5rem; }
-      .ig-log-scope { color: var(--tk-accent, #10e0a0); }
+      .ig-log-date { color: var(--fg-tertiary, #69736E); min-width: 6.5rem; }
+      .ig-log-scope { color: var(--color-tracky-light, #10e0a0); }
     `,
   ],
 })
