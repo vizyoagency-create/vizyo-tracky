@@ -158,6 +158,12 @@ const CATALOG: CatalogEntry[] = [
     fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 4 && w.getMinutes() === 15 },
   },
   {
+    id: 'security-login-purge', label: 'Purge des événements de connexion (>365j)', category: 'Maintenance données',
+    kind: 'cron', scheduleHuman: 'chaque jour à 03:00 (Paris)', criticality: 'basse', antiOverlap: false,
+    purpose: 'Supprime les événements de connexion (carte des lieux, appareils) de plus d\'un an — rétention sécurité.',
+    fire: { tz: PARIS, matcher: (w) => w.getHours() === 3 && w.getMinutes() === 0 },
+  },
+  {
     id: 'sims-sync', label: 'Synchronisation du parc SIM', category: 'Maintenance données',
     kind: 'cron', scheduleHuman: 'toutes les 30 min', criticality: 'basse', antiOverlap: false,
     purpose: 'Met à jour l\'état des cartes SIM depuis le fournisseur (consommation, statut).',
@@ -188,6 +194,13 @@ const CATALOG: CatalogEntry[] = [
     kind: 'interval', scheduleHuman: 'flux continu · toutes les 60 s', criticality: 'basse', antiOverlap: false,
     continuous: true, settingsRoute: '/admin/system',
     purpose: 'Enregistre en continu la charge CPU/mémoire/disque du serveur (monitoring VPS).',
+  },
+  {
+    id: 'dependency-heartbeat', label: 'Sonde active des dépendances externes', category: 'Système & observabilité',
+    kind: 'cron', scheduleHuman: 'toutes les 5 min (à :30 s)', criticality: 'haute', antiOverlap: true,
+    note: 'Née de la panne Vizyo Auth du 18-21/07 restée invisible 3 jours. Sonde les adresses PUBLIQUES (jamais internes).',
+    purpose: 'Vérifie que les services dont Tracky dépend (Vizyo Auth, passerelle SMS…) répondent réellement ; 2 échecs consécutifs ⇒ alerte au centre d\'alertes (panne signalée en ~10 min).',
+    periodic: { everyMs: 300_000, offsetMs: 30_000 },
   },
   {
     id: 'cache-cleanup', label: 'Nettoyage du cache mémoire', category: 'Système & observabilité',
@@ -226,6 +239,23 @@ const CATALOG: CatalogEntry[] = [
     kind: 'setInterval', scheduleHuman: 'développement uniquement', criticality: 'basse', antiOverlap: false,
     continuous: true, devOnly: true, note: 'Inactif en production.',
     purpose: 'Simule le mouvement de véhicules pour les tests (jamais actif en production).',
+  },
+
+  // ───────── Intégration partenaire (Tracky × Maestroo) ─────────
+  {
+    id: 'partner-sync', label: 'Synchro véhicules → Maestroo (merge à 3 voies)', category: 'Intégration partenaire',
+    kind: 'cron', scheduleHuman: 'toutes les 30 min', criticality: 'moyenne', antiOverlap: true,
+    settingsRoute: '/admin/partner-links',
+    purpose: 'Re-pousse l\'identité des véhicules des liens partenaires ACTIFS, applique les corrections Tracky (fast-forward) et journalise les écarts détectés. Ne supprime jamais rien, respecte les catégories consenties.',
+    periodic: { everyMs: 1_800_000, offsetMs: 0 },
+  },
+  {
+    id: 'partner-outbox', label: 'Rejeu des webhooks partenaires (révocations)', category: 'Intégration partenaire',
+    kind: 'cron', scheduleHuman: 'chaque minute', criticality: 'haute', antiOverlap: true,
+    settingsRoute: '/admin/partner-links',
+    note: 'Un webhook de révocation perdu serait une révocation perdue : ce cron est le filet du levier commercial.',
+    purpose: 'Rejoue les webhooks non délivrés au partenaire (révocation, coupure de catégorie, suspension) avec attente progressive, jusqu\'à 12 tentatives.',
+    periodic: { everyMs: 60_000, offsetMs: 0 },
   },
 
   // ───────── Notifications ─────────

@@ -13,7 +13,8 @@ export type BgTaskCategory =
   | 'Maintenance données'
   | 'Temps réel'
   | 'Système & observabilité'
-  | 'Notifications';
+  | 'Notifications'
+  | 'Intégration partenaire';
 
 /** cron = échéance datée ; interval/setInterval = flux continu (cadence ancrée au démarrage). */
 export type BgTaskKind = 'cron' | 'interval' | 'setInterval';

@@ -13,7 +13,7 @@ import { firstValueFrom } from 'rxjs';
 import { BackgroundTasksApiService } from './background-tasks.service';
 
 const CATEGORY_ORDER: BgTaskCategory[] = [
-  'IA & rapports', 'Sécurité & moteur', 'Notifications',
+  'IA & rapports', 'Sécurité & moteur', 'Notifications', 'Intégration partenaire',
   'Maintenance données', 'Temps réel', 'Système & observabilité',
 ];
 
