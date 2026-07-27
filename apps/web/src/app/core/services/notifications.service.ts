@@ -3,6 +3,12 @@ import { computed, inject, Injectable, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { SwPush } from '@angular/service-worker';
 import { firstValueFrom } from 'rxjs';
+import type {
+  AlertType,
+  NotificationPreferenceDto,
+  UpdateNotificationPreferenceDto,
+} from '@vizyo/tracky-shared';
+import { DEFAULT_MIN_SEVERITY, SEVERITY_ORDER } from '@vizyo/tracky-shared';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 
 export interface PushSubscriptionDto {
@@ -71,6 +77,19 @@ export class NotificationsApiService {
   readonly currentSubscription = signal<PushSubscription | null>(null);
   readonly devices = signal<PushSubscriptionDto[]>([]);
   readonly rules = signal<AlertRuleDto[]>([]);
+
+  /**
+   * Preferences PUSH du user courant, telles que le SERVEUR les applique au moment
+   * d'aiguiller une alerte. `null` = jamais chargees.
+   */
+  readonly preferences = signal<NotificationPreferenceDto | null>(null);
+  /**
+   * Vrai quand le GET a echoue (API pas encore deployee, hors-ligne, 500...).
+   * On affiche quand meme des valeurs par defaut pour que l'ecran reste utilisable,
+   * mais l'UI doit DIRE que ce n'est pas la verite serveur — sinon l'utilisateur croit
+   * avoir enregistre des reglages qui n'existent pas.
+   */
+  readonly preferencesUnavailable = signal(false);
 
   readonly isSubscribed = computed(() => this.currentSubscription() !== null);
 
@@ -504,6 +523,96 @@ export class NotificationsApiService {
     return firstValueFrom(
       this.http.post<TestPushResponse>('/api/notifications/test', payload),
     );
+  }
+
+  // ─── Preferences de notification PUSH ───────────────────────
+
+  /**
+   * Charge les preferences PUSH de l'utilisateur courant.
+   *
+   * Pourquoi un repli local plutot qu'une erreur : cet ecran est le SEUL endroit ou
+   * l'utilisateur peut comprendre pourquoi il ne recoit rien. S'il tombe sur une page
+   * vide parce que l'API a hoquete, on perd exactement l'information qu'on voulait lui
+   * donner. On affiche donc les defauts, en signalant que le serveur n'a pas repondu.
+   */
+  async loadPreferences(): Promise<NotificationPreferenceDto> {
+    try {
+      const raw = await firstValueFrom(
+        this.http.get<NotificationPreferenceDto>('/api/notifications/preferences'),
+      );
+      const pref = this.normalizePreference(raw);
+      this.preferences.set(pref);
+      this.preferencesUnavailable.set(false);
+      return pref;
+    } catch {
+      const fallback = this.fallbackPreference();
+      this.preferences.set(fallback);
+      this.preferencesUnavailable.set(true);
+      return fallback;
+    }
+  }
+
+  /**
+   * Enregistre une modification PARTIELLE (un seul interrupteur a la fois cote UI).
+   *
+   * Application optimiste : sur mobile, attendre l'aller-retour reseau avant de bouger
+   * l'interrupteur donne l'impression que le tap n'a pas ete pris. On bouge tout de
+   * suite et on REMET l'etat precedent si le serveur refuse — jamais d'etat affiche
+   * qui ne correspond a rien.
+   */
+  async savePreferences(patch: UpdateNotificationPreferenceDto): Promise<boolean> {
+    const previous = this.preferences();
+    if (previous) {
+      // `isDefault: false` des le premier changement : ce n'est plus un defaut applique
+      // faute de mieux, c'est un choix de l'utilisateur.
+      this.preferences.set(this.normalizePreference({ ...previous, ...patch, isDefault: false }));
+    }
+    try {
+      const saved = await firstValueFrom(
+        this.http.put<NotificationPreferenceDto>('/api/notifications/preferences', patch),
+      );
+      this.preferences.set(this.normalizePreference(saved));
+      this.preferencesUnavailable.set(false);
+      return true;
+    } catch {
+      if (previous) this.preferences.set(previous);
+      return false;
+    }
+  }
+
+  /**
+   * Blinde une reponse serveur avant de la donner a l'UI : une API plus ancienne (ou une
+   * reponse tronquee) qui renverrait `mutedTypes` absent ferait planter le `.includes()`
+   * de l'ecran. Un ecran de reglages ne doit jamais casser sur une donnee partielle.
+   */
+  private normalizePreference(raw: Partial<NotificationPreferenceDto> | null | undefined): NotificationPreferenceDto {
+    const minSeverity = raw?.minSeverity && SEVERITY_ORDER.includes(raw.minSeverity)
+      ? raw.minSeverity
+      : DEFAULT_MIN_SEVERITY;
+    return {
+      pushEnabled: raw?.pushEnabled !== false,
+      minSeverity,
+      mutedTypes: Array.isArray(raw?.mutedTypes) ? (raw.mutedTypes as AlertType[]) : [],
+      isDefault: raw?.isDefault === true,
+      eligible: raw?.eligible === true,
+      deviceCount: typeof raw?.deviceCount === 'number' ? raw.deviceCount : 0,
+    };
+  }
+
+  /**
+   * Valeurs affichees quand le serveur n'a pas repondu. `eligible: false` volontairement :
+   * on ne PROMET pas une eligibilite qu'on n'a pas pu verifier. L'ecran donne la priorite
+   * au message « reglages indisponibles » pour ne pas confondre les deux cas.
+   */
+  private fallbackPreference(): NotificationPreferenceDto {
+    return {
+      pushEnabled: true,
+      minSeverity: DEFAULT_MIN_SEVERITY,
+      mutedTypes: [],
+      isDefault: true,
+      eligible: false,
+      deviceCount: this.devices().filter((d) => d.isMine).length,
+    };
   }
 
   // ─── AlertRules CRUD ────────────────────────────────────────

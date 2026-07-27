@@ -18,6 +18,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { UserRole } from '@prisma/client';
+import type { NotificationPreferenceDto, UpdateNotificationPreferenceDto } from '@vizyo/tracky-shared';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
@@ -27,6 +28,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import { OwnerVisibilityService } from '../common/owner-visibility.service';
 import { AlertRulesService } from './alert-rules.service';
+import { NotificationPreferencesService } from './notification-preferences.service';
 import { WebPushService } from './web-push.service';
 
 /**
@@ -40,6 +42,8 @@ import { WebPushService } from './web-push.service';
  *  - POST   /api/notifications/rules
  *  - PUT    /api/notifications/rules/:id
  *  - DELETE /api/notifications/rules/:id
+ *  - GET    /api/notifications/preferences        : preferences push DE L'UTILISATEUR COURANT
+ *  - PUT    /api/notifications/preferences
  */
 @Controller('notifications')
 @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
@@ -49,7 +53,45 @@ export class NotificationsController {
     private readonly alertRules: AlertRulesService,
     private readonly prisma: PrismaService,
     private readonly ownerVis: OwnerVisibilityService,
+    private readonly preferences: NotificationPreferencesService,
   ) {}
+
+  // ─── Preferences push (utilisateur courant) ─────────────────
+
+  /**
+   * Preferences push de l'utilisateur connecte.
+   *
+   * Aucun `@Roles` volontairement : TOUT compte authentifie peut consulter et regler ses
+   * preferences, meme si son role n'est pas encore concerne par la phase de deploiement.
+   * Le drapeau `eligible` du DTO porte cette nuance, et l'ecran doit la DIRE — sinon
+   * l'utilisateur regle ses preferences, ne recoit rien, et conclut a une panne.
+   *
+   * Aucun userId en parametre, ni en query ni dans le corps : le seul identifiant retenu
+   * est celui du jeton. Un parametre ouvrirait une porte pour lire ou modifier les
+   * reglages d'autrui — et les preferences de notification renseignent sur les habitudes
+   * d'une personne.
+   */
+  @Get('preferences')
+  async getPreferences(@Req() req: AuthenticatedRequest): Promise<NotificationPreferenceDto> {
+    return this.preferences.get(req.user.id, req.user.role);
+  }
+
+  /**
+   * Mise a jour PARTIELLE des preferences de l'utilisateur connecte : seuls les champs
+   * presents sont modifies, les autres restent tels quels (l'ecran peut donc envoyer un
+   * seul interrupteur sans reecrire tout le reste).
+   *
+   * La validation des valeurs (severite connue, types d'alerte connus) se fait dans le
+   * service : un client bugue ne doit pas pouvoir ecrire un type invente qui produirait
+   * une coupure ne coupant rien.
+   */
+  @Put('preferences')
+  async updatePreferences(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: UpdateNotificationPreferenceDto,
+  ): Promise<NotificationPreferenceDto> {
+    return this.preferences.update(req.user.id, req.user.role, body ?? {});
+  }
 
   // ─── Push subscriptions ─────────────────────────────────────
 

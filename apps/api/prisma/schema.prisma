@@ -502,6 +502,7 @@ model User {
 
   @@index([fleetId])
   @@map("users")
+  notificationPreference NotificationPreference?
 }
 
 /// V1.5 (Sprint M) — Subscription Web Push d'un utilisateur (1 abonnement
@@ -2993,4 +2994,40 @@ model PartnerInvitation {
   @@index([partner, pairingCode])
   @@index([fleetId, sentAt(sort: Desc)])
   @@map("partner_invitations")
+}
+
+/// Préférences de notification PUSH, par utilisateur.
+///
+/// Une ligne PAR UTILISATEUR (pas par type) : les types désactivés sont stockés dans
+/// `mutedTypes`. Ce choix évite d'écrire 24 lignes par utilisateur (une par AlertType) et
+/// de devoir migrer la table à chaque nouveau type d'alerte — un type inconnu est
+/// simplement absent de `mutedTypes`, donc actif.
+///
+/// ⚠️ ABSENCE DE LIGNE = état par défaut, jamais « tout coupé ». Un utilisateur qui n'a
+/// jamais ouvert ses réglages doit recevoir quelque chose d'utile, pas le silence : le
+/// défaut est porté par le code (`DEFAULT_MIN_SEVERITY`), pas par la base.
+model NotificationPreference {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @unique @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Interrupteur MAÎTRE. `false` = plus aucun push, quels que soient les autres réglages.
+  /// Volontairement distinct d'un `mutedTypes` contenant tous les types : l'utilisateur
+  /// qui coupe tout puis réactive doit retrouver sa configuration fine intacte.
+  pushEnabled Boolean @default(true)
+
+  /// Seuil de sévérité : on n'envoie que les alertes de sévérité >= à ce niveau.
+  /// Le parc produit ~580 alertes WARNING par semaine (excès de vitesse) : sans ce
+  /// seuil, activer le push revient à recevoir ~80 notifications par jour.
+  minSeverity AlertSeverity @default(CRITICAL)
+
+  /// Types d'alerte explicitement coupés (valeurs de `AlertType`). Stocké en texte et
+  /// non en enum[] pour qu'un type retiré du code ne casse pas la lecture des lignes
+  /// existantes.
+  mutedTypes String[] @default([])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("notification_preferences")
 }
