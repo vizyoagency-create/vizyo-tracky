@@ -102,6 +102,21 @@ const envSchema = z.object({
   VAPID_PRIVATE_KEY: z.string().default(''),
   VAPID_SUBJECT: z.string().default('mailto:contact@vizyoagency.com'),
 
+  /**
+   * Périmètre de déploiement du push d'alerte.
+   *
+   *   SUPER_ADMIN_ONLY (défaut) — seuls les SUPER_ADMIN reçoivent des push d'alerte.
+   *                               Phase de validation : on vérifie la chaîne complète sur
+   *                               un téléphone connu avant d'exposer les clients.
+   *   ALL                       — tous les rôles reçoivent, selon leurs préférences.
+   *
+   * ⚠️ Le défaut est le périmètre RESTREINT, à dessein : une variable absente, mal
+   * orthographiée ou perdue lors d'une migration de `.env` ne doit jamais AJOUTER des
+   * destinataires. Le pire cas est le silence (visible, corrigible), pas l'envoi massif
+   * de notifications à des clients qui ne s'y attendent pas.
+   */
+  PUSH_ROLLOUT: z.enum(['SUPER_ADMIN_ONLY', 'ALL']).default('SUPER_ADMIN_ONLY'),
+
   // WhereverSIM — parc de cartes SIM M2M (V1.16). API GraphQL.
   // Si WHEREVER_SIM_TOKEN est vide, le module SIM est en mode no-op : l'UI
   // fonctionne sur le cache local mais aucun appel fournisseur n'est tente

@@ -1,0 +1,78 @@
+/**
+ * Préférences de notification PUSH — contrat partagé API ↔ PWA.
+ *
+ * Le parc produit ~580 alertes WARNING par semaine (essentiellement des excès de vitesse).
+ * Sans filtrage, « activer les notifications » revient à recevoir ~80 notifications par
+ * jour, et l'utilisateur coupe tout au bout de deux heures. Ces préférences existent pour
+ * que le push reste utilisable, pas pour faire joli dans un écran de réglages.
+ */
+
+import type { AlertSeverity, AlertType } from './alert.dto';
+
+/**
+ * Ordre de sévérité — sert au filtre « à partir de ».
+ *
+ * ⚠️ En MINUSCULES : c'est la forme du contrat client (`AlertSeverity`). La base, elle,
+ * stocke l'enum Prisma en MAJUSCULES. La conversion se fait dans la couche API, à la
+ * frontière — jamais ici.
+ */
+export const SEVERITY_ORDER: readonly AlertSeverity[] = ['info', 'warning', 'critical'];
+
+/**
+ * Sévérité minimale par défaut quand l'utilisateur n'a JAMAIS ouvert ses réglages.
+ *
+ * `critical` volontairement : le défaut doit être utilisable sans réglage préalable.
+ * Recevoir uniquement les alertes graves donne envie d'en ouvrir plus ; recevoir 80
+ * notifications le premier jour donne envie de tout couper — et on ne revient jamais.
+ */
+export const DEFAULT_MIN_SEVERITY: AlertSeverity = 'critical';
+
+/** Vrai si `severity` atteint ou dépasse le seuil `min`. */
+export function meetsSeverity(severity: AlertSeverity, min: AlertSeverity): boolean {
+  return SEVERITY_ORDER.indexOf(severity) >= SEVERITY_ORDER.indexOf(min);
+}
+
+export interface NotificationPreferenceDto {
+  /** Interrupteur MAÎTRE : `false` = plus aucun push, quels que soient les autres réglages. */
+  pushEnabled: boolean;
+  /** On n'envoie que les alertes de sévérité supérieure ou égale. */
+  minSeverity: AlertSeverity;
+  /** Types explicitement coupés. Un type absent de cette liste est actif. */
+  mutedTypes: AlertType[];
+  /**
+   * Vrai tant que l'utilisateur n'a jamais enregistré de réglages : l'écran peut alors
+   * expliquer le défaut appliqué au lieu de le présenter comme un choix déjà fait.
+   */
+  isDefault: boolean;
+  /**
+   * Faux quand le déploiement du push est encore restreint et que ce rôle n'est pas
+   * concerné. L'écran doit le DIRE — sinon l'utilisateur règle ses préférences, ne reçoit
+   * rien, et conclut que la fonctionnalité est cassée.
+   */
+  eligible: boolean;
+  /** Nombre d'appareils actuellement abonnés pour cet utilisateur. */
+  deviceCount: number;
+}
+
+/** Mise à jour partielle : seuls les champs fournis sont modifiés. */
+export interface UpdateNotificationPreferenceDto {
+  pushEnabled?: boolean;
+  minSeverity?: AlertSeverity;
+  mutedTypes?: AlertType[];
+}
+
+/**
+ * Décide si une alerte doit produire un push pour un utilisateur donné.
+ *
+ * Fonction PURE et PARTAGÉE : l'API l'utilise pour filtrer les envois, la PWA pour
+ * afficher « vous recevrez ceci » de façon cohérente. Deux implémentations séparées
+ * auraient divergé au premier changement de règle.
+ */
+export function shouldPushAlert(
+  pref: Pick<NotificationPreferenceDto, 'pushEnabled' | 'minSeverity' | 'mutedTypes'>,
+  alert: { type: AlertType; severity: AlertSeverity },
+): boolean {
+  if (!pref.pushEnabled) return false;
+  if (pref.mutedTypes.includes(alert.type)) return false;
+  return meetsSeverity(alert.severity, pref.minSeverity);
+}

@@ -1,4 +1,6 @@
+import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
+import { UserRole } from '@prisma/client';
 import { EmailService } from '../email/email.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -54,6 +56,9 @@ describe('NotificationDispatchService — canal SMS (V1.15)', () => {
       user: { findMany: userFindMany },
       smsLog: { findFirst: smsLogFindFirst },
       surveillanceProfile: { findUnique: jest.fn().mockResolvedValue(null) },
+      // Correctif push : le dispatch lit desormais les preferences avant tout
+      // envoi WEB_PUSH. Aucune ligne ici => defauts appliques.
+      notificationPreference: { findMany: jest.fn().mockResolvedValue([]) },
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -66,6 +71,7 @@ describe('NotificationDispatchService — canal SMS (V1.15)', () => {
         // Remontée des échecs de notification au centre d'alerte : non exercée ici, mais le
         // service l'exige à la construction.
         { provide: ErrorLogger, useValue: { recordBackground: jest.fn(), record: jest.fn() } },
+        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('SUPER_ADMIN_ONLY') } },
       ],
     }).compile();
     dispatch = moduleRef.get(NotificationDispatchService);
@@ -118,5 +124,424 @@ describe('NotificationDispatchService — canal SMS (V1.15)', () => {
     );
     // Cible hors flotte => aucune notification envoyee.
     expect(send).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Correctif « le push n'arrive jamais » — l'AIGUILLAGE, pas l'envoi.
+ *
+ * Contexte reel : 582 alertes en 7 jours, ZERO push, alors que VAPID est
+ * configure et que 14 appareils sont abonnes. Trois causes cumulees :
+ *   #1 la seule AlertRule listait ["EMAIL","WHATSAPP"] — 'WEB_PUSH' absent ;
+ *   #2 3 flottes sur 4 n'ont AUCUNE regle — defaut ['IN_APP'] seul ;
+ *   #3 les SUPER_ADMIN ont fleetId = NULL et le filtre tenant les excluait.
+ *
+ * Chaque test ci-dessous rejoue une de ces situations telles qu'observees en
+ * base, plus les garde-fous ajoutes (rollout, preferences, non-regression des
+ * canaux payants).
+ */
+describe('NotificationDispatchService — aiguillage du push (correctif)', () => {
+  const superAdmin = {
+    id: 'sa-0001',
+    email: 'owner@vizyo.test',
+    phone: '+33600000001',
+    // LE point de la cause #3 : le super-admin n'appartient a aucune flotte.
+    fleetId: null,
+    role: UserRole.SUPER_ADMIN,
+    isActive: true,
+  };
+
+  const fleetAdmin = {
+    id: 'fa-0001',
+    email: 'admin@mhcars.test',
+    phone: '+33600000002',
+    fleetId: 'f1',
+    role: UserRole.FLEET_ADMIN,
+    isActive: true,
+  };
+
+  interface SetupOpts {
+    /**
+     * Valeur BRUTE que `ConfigService.get('PUSH_ROLLOUT')` renverra.
+     *
+     * ⚠️ Lue via `'rollout' in opts` et NON par une valeur par defaut de
+     * destructuration : `{ rollout: undefined }` doit rejouer « variable absente
+     * du .env », pas retomber sur 'SUPER_ADMIN_ONLY' avant d'atteindre le
+     * service. Avec un defaut de destructuration, le cas le plus important du
+     * rollout (la variable oubliee) n'aurait jamais ete exerce — le test serait
+     * passe en testant autre chose.
+     */
+    rollout?: unknown;
+    /** `null` = aucune AlertRule (cas des 3 flottes sur 4). */
+    ruleChannels?: string[] | null;
+    fleetAdmins?: Array<Record<string, unknown>>;
+    superAdmins?: Array<Record<string, unknown>>;
+    preferences?: Array<Record<string, unknown>>;
+    severity?: string;
+    type?: string;
+    /** Cible renvoyee par `user.findFirst` (recherche de contact d'escalade). */
+    escalationTarget?: Record<string, unknown> | null;
+  }
+
+  function setup(opts: SetupOpts = {}) {
+    const {
+      ruleChannels = ['EMAIL', 'WHATSAPP'],
+      fleetAdmins = [],
+      superAdmins = [],
+      preferences = [],
+      severity = 'CRITICAL',
+      type = 'OVERSPEED',
+      escalationTarget = null,
+    } = opts;
+    const rollout = 'rollout' in opts ? opts.rollout : 'SUPER_ADMIN_ONLY';
+
+    const alert = {
+      id: 'alert-1',
+      fleetId: 'f1',
+      vehicleId: 'v1',
+      type,
+      severity,
+      title: 'Exces de vitesse',
+      message: 'V > 130 km/h',
+      createdAt: new Date('2026-07-27T12:23:00Z'),
+      acknowledgedAt: null,
+      escalatedAt: null,
+      vehicle: { plate: 'TE002ST' },
+    };
+
+    const sendToUser = jest.fn().mockResolvedValue({ sent: 1, failed: 0, results: [] });
+    const emailSend = jest.fn().mockResolvedValue(undefined);
+    const smsSend = jest.fn().mockResolvedValue({ ok: true });
+    const prefFindMany = jest.fn().mockResolvedValue(preferences);
+    const userFindFirst = jest.fn().mockResolvedValue(escalationTarget);
+
+    // Le service interroge `user.findMany` trois fois avec des `where` differents :
+    // les FLEET_ADMIN de la flotte, le filtre tenant strict, puis les SUPER_ADMIN.
+    // On repond selon le `where` pour verifier que chaque liste reste bien separee.
+    const userFindMany = jest.fn(async (args: { where?: Record<string, unknown> }) => {
+      const where = args?.where ?? {};
+      if (where.role === UserRole.SUPER_ADMIN) return superAdmins;
+      if (where.role === UserRole.FLEET_ADMIN) return fleetAdmins;
+      const ids = (where.id as { in?: string[] } | undefined)?.in ?? [];
+      // Filtre tenant strict reproduit fidelement : id ∈ liste ET meme flotte.
+      return fleetAdmins.filter((u) => ids.includes(u.id as string) && u.fleetId === where.fleetId);
+    });
+
+    const prisma = {
+      alertRule: {
+        findMany: jest.fn().mockResolvedValue(
+          ruleChannels === null
+            ? []
+            : [{ id: 'r1', fleetId: 'f1', vehicleId: null, alertType: '*', enabled: true, channels: ruleChannels }],
+        ),
+      },
+      user: { findMany: userFindMany, findFirst: userFindFirst },
+      smsLog: { findFirst: jest.fn().mockResolvedValue(null) },
+      surveillanceProfile: { findUnique: jest.fn().mockResolvedValue(null) },
+      notificationPreference: { findMany: prefFindMany },
+    };
+
+    const build = async () => {
+      const moduleRef = await Test.createTestingModule({
+        providers: [
+          NotificationDispatchService,
+          { provide: PrismaService, useValue: prisma },
+          { provide: WebPushService, useValue: { sendToUser } },
+          { provide: EmailService, useValue: { send: emailSend, buildAlertEmail: jest.fn().mockReturnValue('<html/>') } },
+          { provide: SmsGatewayService, useValue: { send: smsSend } },
+          { provide: ErrorLogger, useValue: { recordBackground: jest.fn(), record: jest.fn() } },
+          { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue(rollout) } },
+        ],
+      }).compile();
+      return moduleRef.get(NotificationDispatchService);
+    };
+
+    return { alert, build, sendToUser, emailSend, smsSend, prefFindMany, userFindMany, userFindFirst };
+  }
+
+  it('cause #1 + #3 — pousse au SUPER_ADMIN alors que la seule regle liste EMAIL/WHATSAPP', async () => {
+    // Configuration EXACTE de la prod : une regle sans 'WEB_PUSH', et un
+    // super-admin sans flotte. Avant le correctif : zero push.
+    const t = setup({ ruleChannels: ['EMAIL', 'WHATSAPP'], superAdmins: [superAdmin] });
+    const dispatch = await t.build();
+
+    await dispatch.dispatchAlert(t.alert as never);
+
+    expect(t.sendToUser).toHaveBeenCalledTimes(1);
+    expect(t.sendToUser.mock.calls[0][0]).toBe(superAdmin.id);
+  });
+
+  it('cause #3 — le controle de flotte est neutralise pour le SUPER_ADMIN (sinon WebPush le bloque)', async () => {
+    // `sendToUser(userId, payload, expectedFleetId)` refuse l'envoi quand la
+    // flotte de l'user differe. Un super-admin ayant fleetId = NULL, passer
+    // alert.fleetId le ferait rejeter en « cross-tenant block » : le push
+    // partirait du dispatch mais mourrait une couche plus bas.
+    const t = setup({ superAdmins: [superAdmin] });
+    const dispatch = await t.build();
+
+    await dispatch.dispatchAlert(t.alert as never);
+
+    expect(t.sendToUser.mock.calls[0][2]).toBeNull();
+  });
+
+  it('cause #2 — aucune AlertRule : le push part, les canaux payants restent muets', async () => {
+    // 3 flottes sur 4 sont dans ce cas. Le defaut doit reveiller le push SANS
+    // declencher d'e-mail/WhatsApp/SMS non voulus a des clients.
+    const t = setup({ ruleChannels: null, superAdmins: [superAdmin] });
+    const dispatch = await t.build();
+
+    await dispatch.dispatchAlert(t.alert as never);
+
+    expect(t.sendToUser).toHaveBeenCalledTimes(1);
+    expect(t.emailSend).not.toHaveBeenCalled();
+    expect(t.smsSend).not.toHaveBeenCalled();
+  });
+
+  it('le SUPER_ADMIN cross-flotte recoit le PUSH et rien d autre (pas d e-mail ni de SMS)', async () => {
+    const t = setup({ ruleChannels: ['EMAIL', 'WHATSAPP', 'SMS'], superAdmins: [superAdmin] });
+    const dispatch = await t.build();
+
+    await dispatch.dispatchAlert(t.alert as never);
+
+    expect(t.sendToUser).toHaveBeenCalledTimes(1);
+    expect(t.emailSend).not.toHaveBeenCalled();
+    expect(t.smsSend).not.toHaveBeenCalled();
+  });
+
+  it('cas coupe — preference pushEnabled=false : aucun push', async () => {
+    const t = setup({
+      superAdmins: [superAdmin],
+      preferences: [{ userId: superAdmin.id, pushEnabled: false, minSeverity: 'CRITICAL', mutedTypes: [] }],
+    });
+    const dispatch = await t.build();
+
+    await dispatch.dispatchAlert(t.alert as never);
+
+    expect(t.sendToUser).not.toHaveBeenCalled();
+  });
+
+  it('seuil de severite — une WARNING est ignoree au defaut (critical), sans ligne en base', async () => {
+    // C'est CE filtre qui rend le push tenable : le parc produit ~580 WARNING
+    // par semaine (exces de vitesse), soit ~80 notifications par jour.
+    const t = setup({ superAdmins: [superAdmin], severity: 'WARNING', preferences: [] });
+    const dispatch = await t.build();
+
+    await dispatch.dispatchAlert(t.alert as never);
+
+    expect(t.sendToUser).not.toHaveBeenCalled();
+  });
+
+  it('seuil de severite — la meme WARNING passe si l utilisateur abaisse son seuil', async () => {
+    // Conversion MAJUSCULES (enum Prisma) -> minuscules (contrat partage) : si
+    // elle manquait, la comparaison echouerait et ce test resterait rouge.
+    const t = setup({
+      superAdmins: [superAdmin],
+      severity: 'WARNING',
+      preferences: [{ userId: superAdmin.id, pushEnabled: true, minSeverity: 'WARNING', mutedTypes: [] }],
+    });
+    const dispatch = await t.build();
+
+    await dispatch.dispatchAlert(t.alert as never);
+
+    expect(t.sendToUser).toHaveBeenCalledTimes(1);
+  });
+
+  it('type coupe — mutedTypes bloque le push meme pour une alerte CRITICAL', async () => {
+    const t = setup({
+      superAdmins: [superAdmin],
+      type: 'OVERSPEED',
+      preferences: [{ userId: superAdmin.id, pushEnabled: true, minSeverity: 'CRITICAL', mutedTypes: ['OVERSPEED'] }],
+    });
+    const dispatch = await t.build();
+
+    await dispatch.dispatchAlert(t.alert as never);
+
+    expect(t.sendToUser).not.toHaveBeenCalled();
+  });
+
+  it('PUSH_ROLLOUT=SUPER_ADMIN_ONLY — pas de push pour un FLEET_ADMIN, mais son e-mail part toujours', async () => {
+    // Non-regression : le rollout coupe le PUSH, jamais les canaux existants.
+    const t = setup({ rollout: 'SUPER_ADMIN_ONLY', ruleChannels: ['EMAIL'], fleetAdmins: [fleetAdmin] });
+    const dispatch = await t.build();
+
+    await dispatch.dispatchAlert(t.alert as never);
+
+    expect(t.sendToUser).not.toHaveBeenCalled();
+    expect(t.emailSend).toHaveBeenCalledTimes(1);
+  });
+
+  it('PUSH_ROLLOUT=ALL — le FLEET_ADMIN recoit le push, scope a SA flotte', async () => {
+    const t = setup({ rollout: 'ALL', ruleChannels: ['EMAIL'], fleetAdmins: [fleetAdmin] });
+    const dispatch = await t.build();
+
+    await dispatch.dispatchAlert(t.alert as never);
+
+    expect(t.sendToUser).toHaveBeenCalledTimes(1);
+    expect(t.sendToUser.mock.calls[0][0]).toBe(fleetAdmin.id);
+    // Le garde-fou cross-tenant reste ARME pour tous les roles de flotte.
+    expect(t.sendToUser.mock.calls[0][2]).toBe('f1');
+  });
+
+  it.each([[undefined], ['all'], ['SUPER_ADMIN'], ['']])(
+    'PUSH_ROLLOUT invalide (%p) — traite comme SUPER_ADMIN_ONLY, jamais comme ALL',
+    async (rollout) => {
+      // Une variable absente ou mal orthographiee ne doit JAMAIS ajouter de
+      // destinataires : le pire cas acceptable est le silence, pas l'envoi massif.
+      const t = setup({ rollout, fleetAdmins: [fleetAdmin] });
+      const dispatch = await t.build();
+
+      await dispatch.dispatchAlert(t.alert as never);
+
+      expect(t.sendToUser).not.toHaveBeenCalled();
+    },
+  );
+
+  it('les preferences sont chargees en UNE seule requete pour tous les destinataires', async () => {
+    // Le dispatch tourne sur chaque alerte (~580/semaine) : une requete par
+    // destinataire serait un aller-retour DB gratuit a chaque envoi.
+    const secondAdmin = { ...fleetAdmin, id: 'fa-0002', email: 'second@mhcars.test' };
+    const t = setup({
+      rollout: 'ALL',
+      fleetAdmins: [fleetAdmin, secondAdmin],
+      superAdmins: [superAdmin],
+    });
+    const dispatch = await t.build();
+
+    await dispatch.dispatchAlert(t.alert as never);
+
+    expect(t.prefFindMany).toHaveBeenCalledTimes(1);
+    expect(t.prefFindMany.mock.calls[0][0].where.userId.in).toEqual(
+      expect.arrayContaining([fleetAdmin.id, secondAdmin.id, superAdmin.id]),
+    );
+    expect(t.sendToUser).toHaveBeenCalledTimes(3);
+  });
+
+  it('aucune fuite inter-flotte — un FLEET_ADMIN d une AUTRE flotte n est jamais destinataire', async () => {
+    const otherFleetAdmin = { ...fleetAdmin, id: 'fa-0003', email: 'admin@autre.test', fleetId: 'f2' };
+    const t = setup({ rollout: 'ALL', fleetAdmins: [fleetAdmin, otherFleetAdmin] });
+    const dispatch = await t.build();
+
+    await dispatch.dispatchAlert(t.alert as never);
+
+    expect(t.sendToUser).toHaveBeenCalledTimes(1);
+    expect(t.sendToUser.mock.calls[0][0]).toBe(fleetAdmin.id);
+  });
+
+  it('preferences illisibles (table absente) — on retombe sur le defaut au lieu de tout perdre', async () => {
+    // Une panne de lecture des preferences ne doit pas emporter avec elle les
+    // e-mails et les SMS, qui eux fonctionnent.
+    const t = setup({ ruleChannels: ['EMAIL'], superAdmins: [superAdmin], fleetAdmins: [fleetAdmin] });
+    t.prefFindMany.mockRejectedValue(new Error('relation "notification_preferences" does not exist'));
+    const dispatch = await t.build();
+
+    await dispatch.dispatchAlert(t.alert as never);
+
+    // Defaut applique : l'alerte est CRITICAL, le super-admin la recoit.
+    expect(t.sendToUser).toHaveBeenCalledTimes(1);
+    expect(t.sendToUser.mock.calls[0][0]).toBe(superAdmin.id);
+    // Et le canal e-mail du FLEET_ADMIN n'a pas ete sacrifie.
+    expect(t.emailSend).toHaveBeenCalledTimes(1);
+  });
+
+  it('un SUPER_ADMIN membre de la flotte garde son perimetre FLEET — il ne PERD pas son e-mail', async () => {
+    // Non-regression sur la deduplication : le correctif ajoute les SUPER_ADMIN en
+    // perimetre 'GLOBAL' (push seul). Si cet ajout ECRASAIT l'entree d'un super-admin
+    // qui appartient VRAIMENT a la flotte, on lui retirerait en silence des e-mails
+    // qu'il recoit aujourd'hui — une regression payante, invisible, et exactement le
+    // genre de detail qu'aucun test ne rattrape apres coup.
+    const memberSuperAdmin = {
+      id: 'sa-0002',
+      email: 'sa-membre@mhcars.test',
+      phone: '+33600000003',
+      fleetId: 'f1',
+      role: UserRole.SUPER_ADMIN,
+      isActive: true,
+    };
+    const t = setup({
+      ruleChannels: ['EMAIL'],
+      fleetAdmins: [memberSuperAdmin],
+      superAdmins: [memberSuperAdmin],
+    });
+    const dispatch = await t.build();
+
+    await dispatch.dispatchAlert(t.alert as never);
+
+    expect(t.emailSend).toHaveBeenCalledTimes(1);
+    // Un seul push malgre sa presence dans les DEUX listes (pas de doublon sur son tel).
+    expect(t.sendToUser).toHaveBeenCalledTimes(1);
+    // Et comme il est membre de la flotte, le garde-fou cross-tenant reste ARME.
+    expect(t.sendToUser.mock.calls[0][2]).toBe('f1');
+  });
+
+  // ─── Escalade : la meme porte, sinon c'est un trou dans le rollout ─────────
+  //
+  // L'escalade rejoue un dispatch complet sur une alerte CRITICAL non acquittee.
+  // Sans la meme porte push, elle pousserait a des roles hors perimetre et a des
+  // utilisateurs ayant coupe leurs notifications — le rollout ne servirait plus a rien.
+
+  const escalationAdmin = {
+    id: 'fa-0010',
+    email: 'admin@mhcars.test',
+    fleetId: 'f1',
+    role: UserRole.FLEET_ADMIN,
+    isActive: true,
+    escalationContactUserId: 'esc-1',
+  };
+  const escalationContact = {
+    id: 'esc-1',
+    email: 'contact@mhcars.test',
+    phone: '+33600000009',
+    fleetId: 'f1',
+    role: UserRole.FLEET_MANAGER,
+    isActive: true,
+  };
+
+  it('escalade — PUSH_ROLLOUT=SUPER_ADMIN_ONLY coupe le push d escalade, pas l e-mail d escalade', async () => {
+    const t = setup({
+      ruleChannels: ['EMAIL'],
+      fleetAdmins: [escalationAdmin],
+      escalationTarget: escalationContact,
+    });
+    const dispatch = await t.build();
+
+    await dispatch.dispatchEscalation(t.alert as never);
+
+    expect(t.sendToUser).not.toHaveBeenCalled();
+    expect(t.emailSend).toHaveBeenCalledTimes(1);
+  });
+
+  it('escalade — PUSH_ROLLOUT=ALL : le push part, scope a la flotte de l alerte', async () => {
+    const t = setup({
+      rollout: 'ALL',
+      ruleChannels: ['EMAIL'],
+      fleetAdmins: [escalationAdmin],
+      escalationTarget: escalationContact,
+    });
+    const dispatch = await t.build();
+
+    await dispatch.dispatchEscalation(t.alert as never);
+
+    expect(t.sendToUser).toHaveBeenCalledTimes(1);
+    expect(t.sendToUser.mock.calls[0][0]).toBe(escalationContact.id);
+    // Cible d'escalade = membre de la flotte : le controle cross-tenant reste ARME.
+    expect(t.sendToUser.mock.calls[0][2]).toBe('f1');
+  });
+
+  it('escalade — preference coupee : aucun push, mais l e-mail d escalade part toujours', async () => {
+    const t = setup({
+      rollout: 'ALL',
+      ruleChannels: ['EMAIL'],
+      fleetAdmins: [escalationAdmin],
+      escalationTarget: escalationContact,
+      preferences: [
+        { userId: escalationContact.id, pushEnabled: false, minSeverity: 'CRITICAL', mutedTypes: [] },
+      ],
+    });
+    const dispatch = await t.build();
+
+    await dispatch.dispatchEscalation(t.alert as never);
+
+    expect(t.sendToUser).not.toHaveBeenCalled();
+    expect(t.emailSend).toHaveBeenCalledTimes(1);
   });
 });
