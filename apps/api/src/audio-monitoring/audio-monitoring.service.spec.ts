@@ -76,6 +76,7 @@ describe('AudioMonitoringService', () => {
   // Passerelle SMS mockée — JAMAIS de vrai SMS dans les tests. isEnabled()=true + send() OK
   // par défaut ; chaque test ajuste selon le scénario (désactivée, refus, throw).
   let sms: { isEnabled: jest.Mock; send: jest.Mock };
+  let systemActivity: { record: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -121,6 +122,8 @@ describe('AudioMonitoringService', () => {
       send: jest.fn().mockResolvedValue({ ok: true }),
     };
 
+    systemActivity = { record: jest.fn() };
+
     const config = {
       get: (key: string) =>
         key === 'NODE_ENV'
@@ -138,7 +141,7 @@ describe('AudioMonitoringService', () => {
         { provide: ConfigService, useValue: config },
         { provide: ErrorLogger, useValue: errorLogger },
         { provide: SmsGatewayService, useValue: sms },
-        { provide: SystemActivityService, useValue: { record: jest.fn() } },
+        { provide: SystemActivityService, useValue: systemActivity },
       ],
     }).compile();
 
@@ -380,6 +383,97 @@ describe('AudioMonitoringService', () => {
       expect(errorLogger.record).not.toHaveBeenCalled();
     });
 
+    /**
+     * Silence prolongé du boîtier : l'écoute reste POSSIBLE (aucune porte « boîtier muet »).
+     *
+     * Une porte à 72 h avait été posée ici puis retirée à la relecture. `lastSeenAt` ne
+     * mesure QUE le lien data (trames TCP/GPRS) ; l'armement part en SMS et l'écoute se
+     * fait en APPELANT la SIM — deux porteuses GSM indépendantes du data. Un forfait data
+     * épuisé, un APN cassé ou un boîtier arraché de son alimentation data (soit exactement
+     * le cas « vol suspecté ») rend le boîtier muet en TCP alors que le SMS et la voix
+     * passent encore. La route étant purement manuelle (1 SMS par clic humain, pas de
+     * boucle d'automate), bloquer coûterait une capacité d'enquête pour économiser 2 SMS.
+     */
+    describe('silence prolongé du boîtier — la voie SMS reste ouverte', () => {
+      const HOUR = 60 * 60 * 1000;
+      const DAY = 24 * HOUR;
+      const withLastSeen = (ms: number | null) => ({
+        ...trackerWithVehicle,
+        lastSeenAt: ms === null ? null : new Date(Date.now() - ms),
+      });
+      const bothFlagsOn = () =>
+        prisma.fleetAudioConfig.findUnique.mockResolvedValue({
+          superAdminEnabled: true,
+          assistanceEnabled: true,
+        });
+
+      // LE cas à ne pas casser : boîtier muet en data depuis 89 j (prod : FV-941-LZ). La SIM
+      // peut parfaitement répondre au SMS — l'opérateur doit pouvoir tenter le micro.
+      it('arme quand même le micro sur un boîtier muet depuis 89 jours (SMS ≠ data)', async () => {
+        prisma.tracker.findFirst.mockResolvedValue(withLastSeen(89 * DAY));
+        bothFlagsOn();
+
+        const { command } = await service.requestListen(TRACKER_ID, 'vol suspecté', fleetAdmin);
+
+        expect(command.status).toBe(AudioCommandStatus.SENT);
+        expect(sms.send).toHaveBeenCalledWith('+33656691615', 'monitor123456', expect.any(Object));
+      });
+
+      // La trace ne dépend pas d'une porte : la ligne d'audit est créée AVANT tout envoi,
+      // donc une tentative sur boîtier injoignable reste lisible (traçabilité légale).
+      it('crée la ligne d\'audit avant l\'envoi, même sur un boîtier muet', async () => {
+        prisma.tracker.findFirst.mockResolvedValue(withLastSeen(89 * DAY));
+        bothFlagsOn();
+
+        await service.requestListen(TRACKER_ID, 'vol suspecté', fleetAdmin);
+
+        expect(prisma.audioMonitoringCommand.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              status: AudioCommandStatus.PENDING,
+              reason: 'vol suspecté',
+            }),
+          }),
+        );
+      });
+
+      // Un silence de 2 h (stationnement normal) n'a évidemment jamais rien changé non plus.
+      it('laisse armer un boîtier silencieux depuis 2 h', async () => {
+        prisma.tracker.findFirst.mockResolvedValue(withLastSeen(2 * HOUR));
+        bothFlagsOn();
+
+        const { command } = await service.requestListen(TRACKER_ID, 'vol suspecté', fleetAdmin);
+
+        expect(command.status).toBe(AudioCommandStatus.SENT);
+        expect(sms.send).toHaveBeenCalledWith('+33656691615', 'monitor123456', expect.any(Object));
+      });
+
+      // Boîtier jamais vu (lastSeenAt null) : chemin historique inchangé.
+      it('ne bloque pas un boîtier qui n\'a jamais émis (lastSeenAt null)', async () => {
+        prisma.tracker.findFirst.mockResolvedValue(withLastSeen(null));
+        bothFlagsOn();
+
+        await service.requestListen(TRACKER_ID, 'vol suspecté', fleetAdmin);
+
+        expect(sms.send).toHaveBeenCalled();
+      });
+
+      // Le gating flotte (garde de sécurité) reste PRIORITAIRE et intact : aucune dormance
+      // ne doit jamais servir de raccourci au-dessus d'un refus d'habilitation.
+      it('refuse toujours quand le mode assistance n\'est pas consenti (403)', async () => {
+        prisma.tracker.findFirst.mockResolvedValue(withLastSeen(89 * DAY));
+        prisma.fleetAudioConfig.findUnique.mockResolvedValue({
+          superAdminEnabled: true,
+          assistanceEnabled: false,
+        });
+
+        await expect(
+          service.requestListen(TRACKER_ID, 'vol suspecté', fleetAdmin),
+        ).rejects.toThrow(ForbiddenException);
+        expect(sms.send).not.toHaveBeenCalled();
+      });
+    });
+
     // Non-régression — le chemin nominal (dispatch OK) ne loggue AUCUNE alerte.
     it('does NOT record an alert on a successful listen', async () => {
       prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);
@@ -467,6 +561,23 @@ describe('AudioMonitoringService', () => {
         ServiceUnavailableException,
       );
       expect(sms.send).not.toHaveBeenCalled();
+    });
+
+    // La porte « boîtier muet » ne s'applique PAS au désarmement, volontairement : elle
+    // retient ce qui aggrave, jamais ce qui restaure. Un boîtier peut s'être tu JUSTEMENT
+    // parce qu'il est resté en mode monitor (ce mode coupe le report GPS) — refuser le
+    // désarmement l'y enfermerait définitivement.
+    it('désarme quand même un boîtier muet depuis 89 jours (jamais de porte sur une restauration)', async () => {
+      prisma.tracker.findFirst.mockResolvedValue({
+        ...stopTracker,
+        lastSeenAt: new Date(Date.now() - 89 * 24 * 60 * 60 * 1000),
+      });
+      prisma.audioMonitoringCommand.findFirst.mockResolvedValue({ id: 'armed-cmd-id' });
+
+      const res = await service.stopListen(TRACKER_ID, superAdmin);
+
+      expect(sms.send).toHaveBeenCalledWith('+33656691615', 'tracker123456', expect.any(Object));
+      expect(res.ok).toBe(true);
     });
 
     // tracker introuvable (cross-tenant pour un non-super) → NotFound, aucun envoi.

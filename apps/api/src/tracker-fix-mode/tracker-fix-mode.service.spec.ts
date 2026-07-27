@@ -129,6 +129,207 @@ describe('TrackerFixModeService.desiredIntervalFor', () => {
   });
 });
 
+/**
+ * Envoi réel : repli SMS + override admin.
+ *
+ * Deux défauts corrigés ici :
+ *  1. le repli SMS (seule primitive FACTURÉE de ce service) partait vers des boîtiers
+ *     muets depuis des semaines, où l'alimentation/la SIM ont disparu ;
+ *  2. `setManualOverride` effaçait l'indicateur d'échec du boîtier AVANT de savoir si
+ *     une commande était partie — l'alerte s'éteignait alors qu'aucun envoi n'avait eu
+ *     lieu, et le boîtier muet redevenait invisible.
+ */
+describe('TrackerFixModeService — envoi réel (repli SMS + override)', () => {
+  const HOUR = 60 * 60 * 1000;
+  const DAY = 24 * HOUR;
+  const TRACKER_ID = '00000000-0000-0000-0000-0000000000aa';
+
+  let service: TrackerFixModeService;
+  let prisma: {
+    tracker: { update: jest.Mock; findUnique: jest.Mock };
+    trackerCommand: { create: jest.Mock; update: jest.Mock; findFirst: jest.Mock; count: jest.Mock };
+  };
+  let registry: { send: jest.Mock };
+  let sms: { isEnabled: jest.Mock; send: jest.Mock };
+
+  /** Tracker FAILING, désaligné (desired 30 ≠ target), avec SIM provisionnée. */
+  const tracker = (overrides: { lastSeenAt?: Date | null; failing?: boolean } = {}) => ({
+    id: TRACKER_ID,
+    imei: '123456789012345',
+    simPhoneNumber: '+33656691615',
+    lastSeenAt: overrides.lastSeenAt === undefined ? new Date(Date.now() - 30 * 60_000) : overrides.lastSeenAt,
+    lastValidFrameAt: null,
+    desiredFixIntervalS: 30,
+    currentFixIntervalS: 30,
+    fixCommandFailureCount: 3,
+    fixCommandFailing: overrides.failing ?? true,
+    fixModeOverrideUntil: null,
+    vehicle: { id: 'v-1', fleetId: 'f-1', plate: 'FV-941-LZ', fleet: { adaptiveFixModeEnabled: true } },
+  });
+
+  beforeEach(async () => {
+    prisma = {
+      tracker: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn() },
+      trackerCommand: {
+        create: jest.fn().mockResolvedValue({ id: 'cmd-1' }),
+        update: jest.fn().mockResolvedValue({}),
+        findFirst: jest.fn().mockResolvedValue(null),
+        count: jest.fn().mockResolvedValue(0),
+      },
+    };
+    registry = { send: jest.fn().mockReturnValue(false) };
+    sms = { isEnabled: jest.fn().mockReturnValue(true), send: jest.fn().mockResolvedValue({ ok: true }) };
+
+    const module = await Test.createTestingModule({
+      providers: [
+        TrackerFixModeService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: SocketRegistryService, useValue: registry },
+        { provide: CobanWireLogger, useValue: { out: jest.fn() } },
+        { provide: SmsGatewayService, useValue: sms },
+      ],
+    }).compile();
+    service = module.get(TrackerFixModeService);
+  });
+
+  describe('repli SMS — porte « boîtier muet » (72 h)', () => {
+    // Le repli est déjà borné PAR LE BAS (silence > 5 min). On le borne PAR LE HAUT :
+    // au-delà de 72 h, le SMS serait facturé pour rien (alimentation/SIM disparues).
+    it('n\'envoie aucun SMS à un boîtier muet depuis 89 jours', async () => {
+      const out = await service.requestChange(
+        tracker({ lastSeenAt: new Date(Date.now() - 89 * DAY), failing: false }) as never,
+        300,
+        'TEST',
+        {},
+      );
+
+      expect(sms.send).not.toHaveBeenCalled();
+      expect(out?.sent).toBe(false);
+    });
+
+    // Entre les deux bornes, le boîtier est joignable : le repli garde tout son sens.
+    it('envoie le repli SMS pour un boîtier hors-ligne depuis 30 min', async () => {
+      const out = await service.requestChange(
+        tracker({ failing: false }) as never,
+        300,
+        'TEST',
+        {},
+      );
+
+      expect(sms.send).toHaveBeenCalledWith('+33656691615', expect.any(String), expect.any(Object));
+      expect(out?.sent).toBe(true);
+    });
+
+    // « Jamais émis » (lastSeenAt null) n'est pas « s'est tu » : le repli reste tenté,
+    // c'est même le seul moyen d'atteindre un boîtier jamais connecté en GPRS.
+    it('tente quand même le repli pour un boîtier qui n\'a jamais émis', async () => {
+      const out = await service.requestChange(
+        tracker({ lastSeenAt: null, failing: false }) as never,
+        300,
+        'TEST',
+        {},
+      );
+
+      expect(sms.send).toHaveBeenCalled();
+      expect(out?.sent).toBe(true);
+    });
+
+    // Réintégration : dès que le boîtier reparle, le repli redevient disponible.
+    it('réintègre le repli dès que lastSeenAt redevient frais', async () => {
+      await service.requestChange(
+        tracker({ lastSeenAt: new Date(Date.now() - 89 * DAY), failing: false }) as never,
+        300, 'TEST', {},
+      );
+      expect(sms.send).not.toHaveBeenCalled();
+
+      await service.requestChange(
+        tracker({ lastSeenAt: new Date(Date.now() - 10 * 60_000), failing: false }) as never,
+        300, 'TEST', {},
+      );
+      expect(sms.send).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('setManualOverride — l\'indicateur d\'échec suit l\'envoi RÉEL', () => {
+    beforeEach(() => {
+      prisma.tracker.findUnique.mockResolvedValue(tracker({ lastSeenAt: new Date() }));
+    });
+
+    // LE défaut : le reset partait AVANT l'envoi. Socket fermée + repli impossible
+    // (pas de SIM) ⇒ rien n'est parti, donc l'alerte doit RESTER.
+    it('ne remet pas le compteur à zéro quand la commande n\'est jamais partie', async () => {
+      prisma.tracker.findUnique.mockResolvedValue({
+        ...tracker({ lastSeenAt: new Date() }),
+        simPhoneNumber: null, // aucun repli SMS possible
+      });
+      registry.send.mockReturnValue(false);
+
+      const res = await service.setManualOverride(TRACKER_ID, 60, 300, 'user-1');
+
+      expect(res.failingCleared).toBe(false);
+      const cleared = prisma.tracker.update.mock.calls.some(
+        (c) => c[0]?.data?.fixCommandFailing === false,
+      );
+      expect(cleared).toBe(false);
+    });
+
+    // L'override lui-même reste posé : c'est la décision de l'admin, pas un effet de bord
+    // de l'envoi. On ne retire aucune capacité existante.
+    it('pose quand même l\'override même si rien n\'est parti', async () => {
+      prisma.tracker.findUnique.mockResolvedValue({
+        ...tracker({ lastSeenAt: new Date() }),
+        simPhoneNumber: null,
+      });
+      registry.send.mockReturnValue(false);
+
+      const res = await service.setManualOverride(TRACKER_ID, 60, 300, 'user-1');
+
+      expect(res.overrideUntil).not.toBeNull();
+      expect(prisma.tracker.update).toHaveBeenCalledWith({
+        where: { id: TRACKER_ID },
+        data: { fixModeOverrideUntil: expect.any(Date) },
+      });
+    });
+
+    // Envoi réellement accepté (write TCP) ⇒ là, et seulement là, on acquitte.
+    it('remet le compteur à zéro quand la commande est réellement partie', async () => {
+      registry.send.mockReturnValue(true);
+
+      const res = await service.setManualOverride(TRACKER_ID, 60, 300, 'user-1');
+
+      expect(res.failingCleared).toBe(true);
+      expect(prisma.tracker.update).toHaveBeenCalledWith({
+        where: { id: TRACKER_ID },
+        data: { fixCommandFailing: false, fixCommandFailureCount: 0 },
+      });
+    });
+
+    // Poser un simple override, sans commande, ne prouve rien sur le boîtier :
+    // l'acquittement explicite garde son chemin dédié (/clear-failing).
+    it('n\'acquitte rien quand aucune commande n\'est demandée', async () => {
+      const res = await service.setManualOverride(TRACKER_ID, 60, null, 'user-1');
+
+      expect(res.failingCleared).toBe(false);
+      expect(res.commandId).toBeNull();
+      expect(prisma.tracker.update).toHaveBeenCalledTimes(1); // seul l'override est écrit
+    });
+
+    // `force` traverse la porte « boîtier muet » : un humain qui décide de sonder un
+    // boîtier silencieux garde ce droit — la porte ne vise que les automates.
+    it('laisse l\'override forcé atteindre un boîtier dormant', async () => {
+      prisma.tracker.findUnique.mockResolvedValue(
+        tracker({ lastSeenAt: new Date(Date.now() - 89 * DAY) }),
+      );
+      registry.send.mockReturnValue(false);
+
+      const res = await service.setManualOverride(TRACKER_ID, 60, 300, 'user-1');
+
+      expect(sms.send).toHaveBeenCalled();
+      expect(res.failingCleared).toBe(true);
+    });
+  });
+});
+
 describe('TrackerFixModeService.reconcile', () => {
   let service: TrackerFixModeService;
   const baseTracker = {

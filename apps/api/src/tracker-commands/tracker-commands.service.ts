@@ -8,7 +8,13 @@ import {
 } from '@nestjs/common';
 import { TrackerCommandStatus, UserRole } from '@prisma/client';
 import type { TrackerCommand } from '@prisma/client';
-import { findTemplate, COBAN_COMMAND_CATALOG } from '@vizyo/tracky-shared';
+import {
+  findTemplate,
+  COBAN_COMMAND_CATALOG,
+  DORMANT_STOP_ACTING_MS,
+  formatSilenceLabel,
+  isVehicleDormant,
+} from '@vizyo/tracky-shared';
 import { CobanWireLogger } from '../observability/coban-wire-logger.service';
 import { resolveTenantScope } from '../common/tenant-scope';
 import { PrismaService } from '../prisma/prisma.service';
@@ -89,6 +95,41 @@ export class TrackerCommandsService {
         const err = spec.validate(params[spec.name]);
         if (err) throw new BadRequestException(`${spec.name}: ${err}`);
       }
+    }
+
+    // ─── PORTE « BOÎTIER MUET » (seuil AGIR = 72 h) ────────────────────────────
+    // Dernier rempart avant l'écriture : quel que soit l'appelant (bouton admin,
+    // armement antivol, script), on n'écrit PAS une commande immédiate destinée à un
+    // boîtier qui ne parle plus depuis 3 jours. Sans cette porte, le chemin nominal
+    // était : create(PENDING) → dispatch → registry.send() échoue → update(FAILED) →
+    // 503. Soit 1 ligne morte + 2 écritures + 1 entrée de journal PAR TENTATIVE,
+    // répétées à l'infini par les appelants automatiques (cf. le scheduler antivol).
+    //
+    // On refuse AVANT le `create` : sortie sèche, aucune ligne persistée. Le message
+    // porte la durée exacte du silence — l'opérateur comprend qu'il s'agit d'une
+    // intervention physique (alimentation / SIM / boîtier déposé), pas d'un retry.
+    //
+    // `scheduledAt` est volontairement ÉPARGNÉ : programmer une commande pour plus tard
+    // reste légitime sur un boîtier muet aujourd'hui (il peut être réparé d'ici là).
+    // ⚠️ Le dépilage passe par `dispatch()` DIRECTEMENT (cf. TrackerCommandsSchedulerService),
+    // donc sans cette porte : c'est assumé. Une commande planifiée n'est tentée QU'UNE
+    // FOIS (l'échec la fige en FAILED, elle ne ressort plus du `where SCHEDULED`) — un
+    // coup isolé, pas la boucle infinie que cette porte combat. `dispatch()` ne reçoit
+    // d'ailleurs que l'IMEI : y lire `lastSeenAt` coûterait une requête de plus par envoi.
+    // Aucun historique n'est masqué : les commandes passées restent consultables.
+    if (
+      !scheduledAt &&
+      isVehicleDormant(
+        { trackerId: tracker.id, lastSeenAt: tracker.lastSeenAt },
+        Date.now(),
+        DORMANT_STOP_ACTING_MS,
+      )
+    ) {
+      throw new ServiceUnavailableException(
+        `Boîtier muet depuis ${formatSilenceLabel(tracker.lastSeenAt)} — commande non envoyée. ` +
+          'Vérifier alimentation, carte SIM ou présence du boîtier ; les commandes reprendront ' +
+          'automatiquement dès la première trame reçue.',
+      );
     }
 
     const payload = template.buildPayload(tracker.imei, params);

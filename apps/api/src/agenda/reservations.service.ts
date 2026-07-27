@@ -15,7 +15,7 @@ import type {
   VehicleEventDto,
   VehicleEventStatus as VehicleEventStatusDto,
 } from '@vizyo/tracky-shared';
-import { effectiveBlockingEndMs, IMMOBILIZING_STATUSES } from '@vizyo/tracky-shared';
+import { DORMANT_STOP_COUNTING_MS, effectiveBlockingEndMs, IMMOBILIZING_STATUSES, isVehicleDormant } from '@vizyo/tracky-shared';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import type { AuthUser } from '../auth/types/auth-user';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
@@ -248,6 +248,10 @@ export class ReservationsService {
    * Disponibilité pour une flotte PRÉCISE (flux public P4, sans utilisateur authentifié).
    * `excludeRequested` : traite AUSSI les demandes en attente (REQUESTED) comme occupantes — un
    * demandeur public ne doit pas voir un véhicule déjà réservé NI déjà suggéré/demandé pour un autre.
+   *
+   * ⚠️ Le résultat porte les compteurs d'exclusion (dont `excludedDormant`) : ce sont des
+   * informations INTERNES (état du parc). L'appelant public ne consomme que `vehicles` — ne jamais
+   * remonter ces chiffres dans une réponse du lien public (anti-sondage de l'état de la flotte).
    */
   async availableForFleet(
     fleetId: string,
@@ -274,7 +278,18 @@ export class ReservationsService {
 
     const candidates = await this.prisma.vehicle.findMany({
       where,
-      select: { id: true, plate: true, seats: true, childSeats: true, features: true },
+      select: {
+        id: true,
+        plate: true,
+        seats: true,
+        childSeats: true,
+        features: true,
+        // Dormance : lue par JOINTURE sur la relation 1-1 déjà là (aucune requête de plus — le VPS
+        // 2 vCPU ne pardonne pas un N+1 sur un parc de 2000). `lastSeenAt` est l'UNIQUE source :
+        // ni Trip ni Position (vidés en mode vie privée alors que le boîtier parle), ni
+        // `Tracker.status` (colonne collante, jamais remise à OFFLINE).
+        tracker: { select: { id: true, lastSeenAt: true } },
+      },
       take: 2000,
     });
 
@@ -300,16 +315,51 @@ export class ReservationsService {
             const have = new Set(v.features.map((f) => f.toLowerCase()));
             return required.every((r) => have.has(r));
           });
-    const empty = (excludedImmobilized: number): SuggestReservationResultDto => ({
+    const empty = (excludedImmobilized: number, excludedDormant = 0): SuggestReservationResultDto => ({
       startAt: start.toISOString(),
       endAt: end.toISOString(),
       vehicles: [],
       excludedUnknownCapacity,
       excludedImmobilized,
+      excludedDormant,
     });
     if (matching.length === 0) return empty(0);
 
-    const ids = matching.map((v) => v.id);
+    // DORMANCE (seuil « arrêter de COMPTER » = 7 j) — proposer un véhicule dont le boîtier s'est tu
+    // depuis plus d'une semaine, c'est promettre une voiture qu'on ne sait plus ni localiser ni
+    // garantir présente : en prod FV-941-LZ (89 j de silence) et FL-787-KV (52 j) ressortaient
+    // encore dans le vivier, y compris via l'attribution automatique d'une demande « ouverte » et
+    // via le lien public de réservation. On les écarte ici, en AMONT — donc pour les 4 surfaces
+    // d'un coup (disponibilité flotte, suggestion, lien public, attribution automatique).
+    //
+    // Écarté du PRÉSENT seulement : la fiche, l'historique et les réservations déjà posées ne
+    // bougent pas, et le véhicule réintègre le vivier tout seul à la première trame reçue (dérivé
+    // au read-time, aucun champ en base, aucun bouton « réactiver »).
+    //
+    // ⚠️ Un véhicule SANS boîtier (TEST-001-XX) n'est PAS dormant et reste réservable :
+    // beaucoup de flottes exploitent parfaitement des véhicules non équipés. `isVehicleDormant`
+    // renvoie déjà false sans trackerId ET quand le boîtier n'a JAMAIS émis — on ne contourne pas.
+    //
+    // Compté sur les véhicules CONFORMES aux critères (comme `excludedImmobilized`) : le chiffre
+    // affiché répond à « combien j'aurais pu vous proposer si les boîtiers parlaient », pas
+    // « combien de muets dans le parc ». Le filtre est appliqué AVANT les requêtes d'occupation :
+    // inutile d'aller chercher les conflits d'un véhicule déjà hors vivier.
+    const nowMs = Date.now();
+    const awake = matching.filter(
+      (v) =>
+        !isVehicleDormant(
+          { trackerId: v.tracker?.id ?? null, lastSeenAt: v.tracker?.lastSeenAt ?? null },
+          nowMs,
+          // 7 j, explicitement. Le seuil « AGIR » (72 h) ne s'applique PAS ici : proposer un
+          // véhicule n'est pas lui envoyer une commande, et retirer à tort un vrai véhicule du
+          // parc proposé au client coûte bien plus cher qu'une tentative de commande perdue.
+          DORMANT_STOP_COUNTING_MS,
+        ),
+    );
+    const excludedDormant = matching.length - awake.length;
+    if (awake.length === 0) return empty(0, excludedDormant);
+
+    const ids = awake.map((v) => v.id);
     const [busyResas, busyTrips, immobilized] = await Promise.all([
       this.prisma.vehicleEvent.findMany({
         where: {
@@ -332,9 +382,9 @@ export class ReservationsService {
       this.findImmobilized(ids, start, end),
     ]);
     const busy = new Set<string>([...busyResas.map((b) => b.vehicleId), ...busyTrips.map((b) => b.vehicleId)]);
-    const excludedImmobilized = matching.filter((v) => immobilized.has(v.id)).length;
-    const free = matching.filter((v) => !busy.has(v.id) && !immobilized.has(v.id));
-    if (free.length === 0) return empty(excludedImmobilized);
+    const excludedImmobilized = awake.filter((v) => immobilized.has(v.id)).length;
+    const free = awake.filter((v) => !busy.has(v.id) && !immobilized.has(v.id));
+    if (free.length === 0) return empty(excludedImmobilized, excludedDormant);
 
     const util = await this.recentUtilization(free.map((v) => v.id));
     const vehicles: SuggestedVehicleDto[] = free
@@ -358,6 +408,7 @@ export class ReservationsService {
       vehicles,
       excludedUnknownCapacity,
       excludedImmobilized,
+      excludedDormant,
     };
   }
 
@@ -411,7 +462,17 @@ export class ReservationsService {
         fleetId: dto.fleetId,
       });
       if (sug.vehicles.length === 0) {
-        throw new BadRequestException('Aucun véhicule libre ne correspond aux critères sur ce créneau.');
+        // Seule surface HUMAINE où le compteur d'exclusion disparaîtrait : ici on ne renvoie pas le
+        // DTO, on lève. Sans la mention, l'exploitant lit « aucun véhicule » comme « agenda plein »
+        // et part chercher un conflit de créneau qui n'existe pas, alors que le vrai sujet est un
+        // boîtier muet (batterie débranchée, SIM coupée) à faire réparer. Une exclusion ne fait
+        // jamais baisser un chiffre client en silence — y compris dans un message d'erreur.
+        // Chemin AUTHENTIFIÉ (le lien public passe par systemRequest) : aucune fuite d'état de parc.
+        throw new BadRequestException(
+          sug.excludedDormant > 0
+            ? `Aucun véhicule libre ne correspond aux critères sur ce créneau (${sug.excludedDormant} véhicule(s) écarté(s) : boîtier muet depuis plus de 7 jours).`
+            : 'Aucun véhicule libre ne correspond aux critères sur ce créneau.',
+        );
       }
       vehicleId = sug.vehicles[0].vehicleId;
       fleetId = await this.events.assertVehicleAccess(user, vehicleId);
@@ -646,11 +707,40 @@ export class ReservationsService {
 
   // ─── Agent d'agenda (P3) : disponibilité + création système ────────────────
 
-  /** Le véhicule est-il LIBRE sur [start,end) ? (résa ferme + trajet réel + immobilisation). */
+  /**
+   * Le véhicule est-il ENGAGEABLE sur [start,end) ? (résa ferme + trajet réel + immobilisation
+   * + boîtier qui parle encore).
+   *
+   * ⚠️ Ce prédicat n'a que des appelants d'ENGAGEMENT — `systemConfirm` juste en dessous et
+   * l'agent d'agenda nocturne. Il ne sert nulle part à afficher une disponibilité. C'est pourquoi
+   * la dormance a sa place ICI et pas seulement dans le vivier de suggestion : l'agent nocturne
+   * NE PASSE PAS par le vivier (il applique un motif récurrent puis appelle directement ce
+   * prédicat), donc sans cette 4ᵉ condition il pouvait poser une réservation FERME sur un véhicule
+   * muet depuis 89 jours — la seule voie par laquelle un dormant continuait d'être engagé.
+   *
+   * Placé en DERNIER à dessein : les trois conflits ci-dessus disqualifient la plupart des
+   * candidats sans requête supplémentaire ; on ne paie la lecture du boîtier que lorsqu'on est
+   * réellement sur le point d'engager le véhicule (VPS à 2 vCPU).
+   */
   async isVehicleFree(vehicleId: string, start: Date, end: Date): Promise<boolean> {
     if ((await this.findOverlaps(vehicleId, start, end)).length > 0) return false;
     if (await this.hasTripOverlap(vehicleId, start, end)) return false;
     if ((await this.findImmobilized([vehicleId], start, end)).has(vehicleId)) return false;
+    // Seuil « arrêter de COMPTER » (7 j) : engager un véhicule n'est pas lui envoyer une commande.
+    // Un véhicule SANS boîtier reste engageable — `isVehicleDormant` renvoie déjà false sans
+    // trackerId, et beaucoup de flottes exploitent des véhicules non équipés.
+    const veh = await this.prisma.vehicle
+      .findUnique({ where: { id: vehicleId }, select: { tracker: { select: { id: true, lastSeenAt: true } } } })
+      .catch(() => null);
+    if (
+      isVehicleDormant(
+        { trackerId: veh?.tracker?.id ?? null, lastSeenAt: veh?.tracker?.lastSeenAt ?? null },
+        Date.now(),
+        DORMANT_STOP_COUNTING_MS,
+      )
+    ) {
+      return false;
+    }
     return true;
   }
 

@@ -1,12 +1,16 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { Prisma, UserRole } from '@prisma/client';
 import {
+  DORMANT_STOP_COUNTING_MS,
+  formatSilenceLabel,
   getVehicleConnectivityState,
+  getVehiclePresenceState,
   type BulkScheduleApplyResponse,
   type BulkSchedulePreviewResponse,
   type FleetScheduleListResponse,
   type FleetScheduleRowDto,
   type FleetSchedulePendingReason,
+  type VehiclePresenceState,
 } from '@vizyo/tracky-shared';
 import type { VehicleSchedule } from '@prisma/client';
 import type { AuthUser } from '../auth/types/auth-user';
@@ -31,6 +35,58 @@ interface TargetVehicle {
   plate: string | null;
   hasTracker: boolean;
 }
+
+/**
+ * Ligne de la vue flotte, ENRICHIE de la présence du boîtier.
+ *
+ * `presence` s'ajoute à `connectivity`, il ne le remplace pas : le type partagé
+ * `VehiclePresenceState` est volontairement distinct de `VehicleConnectivityState` pour que les
+ * `switch` existants côté UI ne se mettent pas à rendre « Non configuré » en silence.
+ */
+export type FleetScheduleRow = FleetScheduleRowDto & {
+  /** Connectivité élargie d'un cran `DORMANT` (muet depuis plus de 7 j). */
+  presence: VehiclePresenceState;
+  /** Ancienneté du silence en clair (« 45 min », « 89 j »), ou null si le boîtier n'a jamais parlé. */
+  silenceLabel: string | null;
+};
+
+/**
+ * Ce que l'automatisation horaire couvre RÉELLEMENT.
+ *
+ * `holidayForecast.scheduledCount` répond « combien de plannings activés ? » — et il reste
+ * inchangé, on ne fait jamais baisser un chiffre affiché au client en douce. Ce bloc répond à la
+ * question qui manquait : parmi eux, combien porteront un effet ? Un planning posé sur un boîtier
+ * muet depuis 89 jours est une coupe qui ne partira jamais ; le compter comme les autres donnait
+ * l'illusion d'une flotte protégée à 100 %.
+ */
+export interface FleetScheduleDormancySummary {
+  /** Véhicules du périmètre dont le boîtier a parlé puis s'est tu depuis plus du seuil. */
+  dormantCount: number;
+  /** Parmi les plannings ACTIVÉS : ceux posés sur un véhicule muet (ne s'appliqueront pas). */
+  scheduledDormantCount: number;
+  /**
+   * Parmi les plannings ACTIVÉS : ceux posés sur un véhicule SANS boîtier. `bulkApply` n'exige
+   * aucun tracker pour poser un planning (cf. `resolveTargets`, qui calcule `hasTracker` sans
+   * jamais filtrer dessus) : les deux TEST-00x du parc ont donc un horaire actif qui ne peut
+   * physiquement rien couper. Compté à part — ils ne sont NI muets (ils n'ont jamais parlé) NI
+   * couverts. C'est exactement la distinction que `preview()` expose déjà via `withoutTracker`.
+   */
+  scheduledWithoutTrackerCount: number;
+  /**
+   * Parmi les plannings ACTIVÉS : la couverture RÉELLE — boîtier posé ET joignable. Un véhicule
+   * sans boîtier n'y figure PAS : le compter aurait gonflé la protection annoncée, exactement le
+   * défaut symétrique de celui que ce lot corrige (une flotte « protégée à 100 % » qui ne l'est pas).
+   */
+  scheduledReachableCount: number;
+  /** Seuil de silence appliqué (ms) — pour que l'UI puisse écrire « plus de 7 jours ». */
+  thresholdMs: number;
+}
+
+/** Réponse de la vue flotte : le contrat partagé + le détail de dormance (additif). */
+export type FleetScheduleListResult = Omit<FleetScheduleListResponse, 'items'> & {
+  items: FleetScheduleRow[];
+  dormancy: FleetScheduleDormancySummary;
+};
 
 /**
  * Demande CDEF (2026-07) — Modèle de lecture + actions de MASSE de la page flotte « Horaires ».
@@ -64,7 +120,7 @@ export class FleetSchedulesService {
 
   // ─────────────────────────────────────────── LECTURE (liste flotte) ───────────────────────────────────────────
 
-  async listForFleet(requestedBy: RequestedBy): Promise<FleetScheduleListResponse> {
+  async listForFleet(requestedBy: RequestedBy): Promise<FleetScheduleListResult> {
     const now = new Date();
     const nowMs = now.getTime();
 
@@ -79,8 +135,8 @@ export class FleetSchedulesService {
 
     // 1er passage : construire les lignes + collecter les candidats « en attente d'arrêt »
     // (arrêtés, en ligne, hors plage, pas encore coupés) pour un scan borné du dernier mouvement.
-    const rows: FleetScheduleRowDto[] = [];
-    const awaitingScanByTracker: { row: FleetScheduleRowDto; trackerId: string }[] = [];
+    const rows: FleetScheduleRow[] = [];
+    const awaitingScanByTracker: { row: FleetScheduleRow; trackerId: string }[] = [];
 
     for (const s of snap) {
       const sched = byVehicle.get(s.vehicleId) ?? null;
@@ -90,16 +146,18 @@ export class FleetSchedulesService {
       // Connectivité calculée AVEC lastNoFixAt → détecte GPS_LOST (boîtier vivant mais sans
       // position GPS fraîche : incident FS-253). Dans ce cas la vitesse dénormalisée est
       // FIGÉE/PÉRIMÉE — on ne doit PAS s'en servir pour dire « il roule ».
-      const conn = getVehicleConnectivityState(
-        {
-          trackerId: s.trackerId,
-          lastSeenAt: s.lastSeenAt,
-          lastPositionAt: s.lastPositionAt ?? null,
-          lastNoFixAt: s.lastNoFixAt ?? null,
-          lastIgnition: s.lastIgnition,
-        },
-        nowMs,
-      );
+      const connInput = {
+        trackerId: s.trackerId,
+        lastSeenAt: s.lastSeenAt,
+        lastPositionAt: s.lastPositionAt ?? null,
+        lastNoFixAt: s.lastNoFixAt ?? null,
+        lastIgnition: s.lastIgnition,
+      };
+      const conn = getVehicleConnectivityState(connInput, nowMs);
+      // Même entrée, un cran plus large : `DORMANT` prime sur PARKED/OFFLINE, mais jamais sur
+      // NOT_CONFIGURED (« jamais connecté » n'est pas « s'est tu »). Dérivé, aucune écriture :
+      // à la première trame reçue, la ligne redevient PARKED/ONLINE d'elle-même.
+      const presence = getVehiclePresenceState(connInput, nowMs);
       const gpsLost = conn === 'GPS_LOST';
       const speed = s.lastSpeedKmh ?? 0;
       // GPS perdu → vitesse périmée : jamais compté « en mouvement ».
@@ -132,11 +190,16 @@ export class FleetSchedulesService {
         } else {
           // En ligne + à l'arrêt → on attend la règle d'immobilité 10 min. Sinon la commande
           // ne peut pas être livrée (hors ligne / garé endormi / pas de boîtier).
+          //
+          // Un véhicule DORMANT retombe ici en `OFFLINE` — et c'est volontaire : décider d'arrêter
+          // d'ESSAYER de couper relève du seuil d'action (72 h, côté engine-control), pas de cette
+          // vue de lecture. Ici on se contente de le NOMMER (`presence` + `silenceLabel`) pour que
+          // « hors ligne depuis 3 min » et « hors ligne depuis 89 jours » cessent de se ressembler.
           pendingReason = conn === 'ONLINE' || conn === 'AWAITING_GPS' ? 'AWAITING_STOP' : 'OFFLINE';
         }
       }
 
-      const row: FleetScheduleRowDto = {
+      const row: FleetScheduleRow = {
         vehicleId: s.vehicleId,
         fleetId: s.fleetId,
         plate: s.plate,
@@ -159,6 +222,8 @@ export class FleetSchedulesService {
         lastSeenAt: s.lastSeenAt,
         lastNoFixAt: s.lastNoFixAt ?? null,
         connectivity: conn,
+        presence,
+        silenceLabel: formatSilenceLabel(s.lastSeenAt, nowMs),
         engineCutState: s.engineCutState ?? null,
         nextTransitionAt,
         nextTransitionAction,
@@ -212,9 +277,48 @@ export class FleetSchedulesService {
       items: rows,
       fleets,
       holidayForecast: this.buildHolidayForecast(schedules, rows, now),
+      // Détail de dormance : COMPTÉ et EXPOSÉ, jamais soustrait en silence. Aucune ligne n'est
+      // retirée de `items` pour autant — un véhicule muet reste consultable, éditable, et le
+      // planning qu'on lui a posé reste visible : c'est la seule façon de le remarquer.
+      dormancy: this.buildDormancySummary(rows),
       scheduleCutMinStoppedSec: Math.round(SCHEDULE_CUT_MIN_STOPPED_MS / 1000),
       serverNow: now.toISOString(),
       awaitingStopScanTruncated: truncated,
+    };
+  }
+
+  /**
+   * « 42 plannings activés » ne dit pas si 42 véhicules seront réellement coupés. On compte
+   * séparément les populations (partition explicite, pas une soustraction) pour que la page
+   * puisse écrire « 42 planifiés · dont 2 muets · dont 2 sans boîtier » au lieu d'un chiffre rond
+   * mais faux.
+   *
+   * TROIS cases, pas deux : « muet » et « sans boîtier » sont des faits DIFFÉRENTS qui appellent
+   * des gestes différents — aller voir le véhicule (le boîtier s'est tu) contre poser un boîtier
+   * (il n'y en a jamais eu). Les fondre ensemble, c'est répéter l'erreur d'origine à l'envers.
+   * Invariant : dormant + sansBoîtier + joignable = `holidayForecast.scheduledCount`.
+   */
+  private buildDormancySummary(rows: FleetScheduleRow[]): FleetScheduleDormancySummary {
+    let dormantCount = 0;
+    let scheduledDormantCount = 0;
+    let scheduledWithoutTrackerCount = 0;
+    let scheduledReachableCount = 0;
+    for (const r of rows) {
+      const dormant = r.presence === 'DORMANT';
+      if (dormant) dormantCount++;
+      if (!r.scheduleEnabled) continue;
+      if (dormant) scheduledDormantCount++;
+      // Sans boîtier : la coupe n'a aucun destinataire. Le classer « joignable » aurait annoncé
+      // une couverture que rien ne peut honorer — `preview()` compte déjà ces véhicules à part.
+      else if (!r.hasTracker) scheduledWithoutTrackerCount++;
+      else scheduledReachableCount++;
+    }
+    return {
+      dormantCount,
+      scheduledDormantCount,
+      scheduledWithoutTrackerCount,
+      scheduledReachableCount,
+      thresholdMs: DORMANT_STOP_COUNTING_MS,
     };
   }
 
@@ -228,6 +332,8 @@ export class FleetSchedulesService {
     now: Date,
   ): FleetScheduleListResponse['holidayForecast'] {
     const enabled = schedules.filter((s) => s.enabled);
+    // Inchangé à dessein : c'est bien le nombre d'automatisations activées, dormants compris.
+    // On ne rogne pas un chiffre déjà affiché — le détail « dont N muets » vit dans `dormancy`.
     const scheduledCount = enabled.length;
     const cutOnHolidayCount = enabled.filter((s) => s.cutOnHolidays).length;
     // Pays représentatif = le plus fréquent parmi les plannings activés.

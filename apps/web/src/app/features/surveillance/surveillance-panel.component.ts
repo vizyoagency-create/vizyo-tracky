@@ -18,6 +18,11 @@ import {
   Loader,
   Info,
 } from 'lucide-angular';
+import {
+  DORMANT_STOP_ACTING_MS,
+  formatSilenceLabel,
+  trackerSilenceMs,
+} from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import {
   SurveillanceApiService,
@@ -26,6 +31,27 @@ import {
 } from '../../core/services/surveillance.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { relativeTime } from '../../shared/utils/relative-time';
+
+/**
+ * Profil + VÉRACITÉ DE LA PROTECTION (champs dérivés ajoutés par SurveillanceService côté
+ * API : `withLiveness`). Rien n'est stocké en base, tout se recalcule à chaque lecture.
+ *
+ * Le type est déclaré ICI, en intersection, plutôt que dans le DTO partagé : ce panneau est
+ * le seul consommateur de ces champs, et les marquer optionnels garantit qu'un backend qui
+ * ne les renverrait pas (déploiement partiel) laisse l'écran dans son comportement actuel
+ * au lieu de crier au boîtier muet sur la foi d'un `undefined`.
+ */
+type SurveillanceProfileWithLiveness = SurveillanceProfileDto & {
+  /** null = aucun boîtier affecté ; undefined = API antérieure (fait inconnu). */
+  trackerId?: string | null;
+  /** Dernier signal du boîtier (ISO). null = n'a jamais émis. */
+  trackerLastSeenAt?: string | null;
+  trackerSilenceLabel?: string | null;
+  /** Muet au-delà du seuil d'ACTION (72 h) → l'armement est refusé côté serveur. */
+  trackerDormant?: boolean;
+  /** false = impossible d'affirmer que le véhicule est protégé (pas de vert rassurant). */
+  protectionVerifiable?: boolean;
+};
 
 const DAY_LABELS: Record<string, string> = {
   mon: 'Lun', tue: 'Mar', wed: 'Mer', thu: 'Jeu',
@@ -51,11 +77,20 @@ const TRIGGER_LABELS: Record<string, string> = {
           <span class="w-5 h-5 border-2 border-fg-tertiary border-t-tracky-light rounded-full animate-spin"></span>
         </div>
       } @else if (profile(); as p) {
-        <div class="sm-card" [class.sm-card--armed]="p.currentlyArmed">
+        <!-- Le vert « armé » n'est mis QUE si la protection est vérifiable : un boîtier
+             injoignable affiché en vert est un mensonge de sécurité (l'exploitant croit
+             son véhicule protégé alors que l'antivol ne répond plus depuis 89 jours). -->
+        <div class="sm-card"
+             [class.sm-card--armed]="p.currentlyArmed && !protectionDoubt()"
+             [class.sm-card--doubt]="!!protectionDoubt()">
           <div class="flex items-start justify-between gap-3 flex-wrap">
             <div class="flex items-start gap-3">
-              <div class="sm-status-icon" [class.sm-status-icon--armed]="p.currentlyArmed">
-                @if (p.currentlyArmed) {
+              <div class="sm-status-icon"
+                   [class.sm-status-icon--armed]="p.currentlyArmed && !protectionDoubt()"
+                   [class.sm-status-icon--doubt]="!!protectionDoubt()">
+                @if (protectionDoubt()) {
+                  <lucide-icon [img]="ShieldAlert" [size]="20"></lucide-icon>
+                } @else if (p.currentlyArmed) {
                   <lucide-icon [img]="ShieldCheck" [size]="20"></lucide-icon>
                 } @else {
                   <lucide-icon [img]="ShieldOff" [size]="20"></lucide-icon>
@@ -63,7 +98,8 @@ const TRIGGER_LABELS: Record<string, string> = {
               </div>
               <div class="min-w-0">
                 <h3 class="text-base font-semibold text-fg-primary">
-                  @if (p.currentlyArmed) { Véhicule sous surveillance }
+                  @if (p.currentlyArmed && protectionDoubt()) { Protection non vérifiable }
+                  @else if (p.currentlyArmed) { Véhicule sous surveillance }
                   @else { Surveillance désactivée }
                 </h3>
                 <p class="text-xs text-fg-tertiary mt-0.5">
@@ -75,6 +111,11 @@ const TRIGGER_LABELS: Record<string, string> = {
                     Aucun armement récent
                   }
                 </p>
+                <!-- On DATE la valeur, on ne la supprime pas : l'état affiché reste le
+                     dernier réellement connu, et on dit depuis quand il n'est plus vérifié. -->
+                @if (protectionDoubt(); as doubt) {
+                  <p class="sm-doubt mt-1.5">{{ doubt }}</p>
+                }
                 @if (p.mode === 'SCHEDULED' && p.scheduleStartTime && p.scheduleEndTime) {
                   <p class="text-xs text-fg-secondary mt-1">
                     <lucide-icon [img]="Clock" [size]="12" class="inline align-middle"></lucide-icon>
@@ -103,18 +144,27 @@ const TRIGGER_LABELS: Record<string, string> = {
                   Désarmer
                 </button>
               } @else {
-                <button
-                  type="button"
-                  class="sm-btn sm-btn--primary"
-                  [disabled]="acting()"
-                  (click)="arm()">
-                  @if (acting()) {
-                    <lucide-icon [img]="Loader" [size]="14" class="animate-spin"></lucide-icon>
-                  } @else {
-                    <lucide-icon [img]="ShieldCheck" [size]="14"></lucide-icon>
+                <!-- ARMER aggrave (ajoute une contrainte) : gardé. DÉSARMER restaure :
+                     jamais gardé, cf. le bouton ci-dessus. Le motif est AFFICHÉ sous le
+                     bouton — un grisage muet laisse croire à un bug de l'application. -->
+                <div class="flex flex-col items-end gap-1">
+                  <button
+                    type="button"
+                    class="sm-btn sm-btn--primary"
+                    [disabled]="acting() || !!armBlock()"
+                    [title]="armBlock() ?? ''"
+                    (click)="arm()">
+                    @if (acting()) {
+                      <lucide-icon [img]="Loader" [size]="14" class="animate-spin"></lucide-icon>
+                    } @else {
+                      <lucide-icon [img]="ShieldCheck" [size]="14"></lucide-icon>
+                    }
+                    Armer maintenant
+                  </button>
+                  @if (armBlock(); as reason) {
+                    <span class="sm-doubt text-right">{{ reason }}</span>
                   }
-                  Armer maintenant
-                </button>
+                </div>
               }
             </div>
           </div>
@@ -373,6 +423,21 @@ const TRIGGER_LABELS: Record<string, string> = {
       background: rgba(16, 224, 160, 0.15);
       color: rgb(16, 224, 160);
     }
+    /* Protection non vérifiable : ambre (doute), jamais vert (fausse assurance),
+       jamais rouge non plus — on ne sait pas, on ne prétend pas savoir. */
+    .sm-card--doubt {
+      border-color: rgba(251, 191, 36, 0.45);
+      background: linear-gradient(180deg, rgba(251, 191, 36, 0.06), transparent 60%), var(--color-bg-secondary, #0e1417);
+    }
+    .sm-status-icon--doubt {
+      background: rgba(251, 191, 36, 0.15);
+      color: rgb(251, 191, 36);
+    }
+    .sm-doubt {
+      font-size: 0.75rem;
+      line-height: 1.35;
+      color: rgb(251, 191, 36);
+    }
     .sm-btn {
       display: inline-flex; align-items: center; gap: 0.375rem;
       padding: 0.5rem 0.875rem;
@@ -492,7 +557,7 @@ export class SurveillancePanelComponent implements OnInit {
 
   protected readonly loading = signal(true);
   protected readonly loadError = signal<string | null>(null);
-  protected readonly profile = signal<SurveillanceProfileDto | null>(null);
+  protected readonly profile = signal<SurveillanceProfileWithLiveness | null>(null);
   protected readonly events = signal<SurveillanceEventDto[]>([]);
   protected readonly eventsLoading = signal(false);
   protected readonly acting = signal(false);
@@ -526,6 +591,79 @@ export class SurveillancePanelComponent implements OnInit {
       triggerMovement: p.triggerMovement,
       triggerDoor: p.triggerDoor,
     };
+  });
+
+  /**
+   * BOÎTIER MUET (seuil AGIR = 72 h) — libellé de silence, ou null si le boîtier parle.
+   *
+   * Recalculé ICI à partir du fait brut (`trackerLastSeenAt`) avec la constante partagée,
+   * plutôt que de faire confiance au seul booléen renvoyé : API et UI DOIVENT lire la même
+   * valeur — le serveur refuse l'armement à 72 h, l'UI ne peut pas griser à 7 j sans
+   * laisser le bouton actif quatre jours de plus pour une commande déjà condamnée. Repli
+   * sur le booléen serveur si le champ brut manque (déploiement partiel).
+   *
+   * ⚠️ Pas de minuteur : ce `computed` ne dépend QUE de `profile()`, donc il se réévalue
+   * aux allers-retours serveur (chargement, sauvegarde d'un réglage, armement, désarmement)
+   * et pas à l'usure du temps. C'est volontaire — le fait brut vient du serveur, un tick
+   * local ne ferait que franchir le seuil dans un seul sens (griser), jamais le rendre au
+   * boîtier qui reparle. Ne pas y ajouter de `setInterval` sans recharger aussi le profil.
+   */
+  protected readonly dormantSilence = computed<string | null>(() => {
+    const p = this.profile();
+    if (!p) return null;
+    const lastSeen = p.trackerLastSeenAt;
+    if (lastSeen === undefined || lastSeen === null) {
+      // Fait brut absent : on ne devine pas, on suit le verdict du serveur s'il existe.
+      return p.trackerDormant === true ? (p.trackerSilenceLabel ?? '—') : null;
+    }
+    const now = Date.now();
+    const silent = trackerSilenceMs(lastSeen, now);
+    if (silent == null || silent <= DORMANT_STOP_ACTING_MS) return null;
+    return formatSilenceLabel(lastSeen, now) ?? '—';
+  });
+
+  /**
+   * Pourquoi la protection n'est PAS vérifiable, ou null quand elle l'est.
+   *
+   * Trois faits distincts, jamais confondus : pas de boîtier (véhicule non équipé — les
+   * TEST-00x de la flotte), boîtier qui n'a jamais émis (provisioning SIM/APN), boîtier
+   * devenu muet (le cas FV-941-LZ). Aucun des trois ne permet d'affirmer « protégé ».
+   */
+  protected readonly protectionDoubt = computed<string | null>(() => {
+    const p = this.profile();
+    if (!p) return null;
+    const silence = this.dormantSilence();
+    if (silence) {
+      return `Boîtier muet depuis ${silence} — l'antivol ne répond plus. L'état ci-dessus est ` +
+        `le dernier réellement connu ; il redeviendra fiable dès la première trame reçue.`;
+    }
+    if (p.trackerId === null) {
+      return 'Aucun boîtier n\'est affecté à ce véhicule — la protection ne peut pas être vérifiée.';
+    }
+    if (p.trackerLastSeenAt === null) {
+      return 'Le boîtier n\'a jamais émis — la protection ne peut pas être vérifiée.';
+    }
+    // Repli : le serveur dit « non vérifiable » sans qu'on sache lequel des cas ci-dessus.
+    if (p.protectionVerifiable === false) {
+      return 'Protection non vérifiable — le boîtier n\'est pas joignable.';
+    }
+    return null;
+  });
+
+  /**
+   * Motif de blocage de l'ARMEMENT, ou null s'il est possible. Reproduit EXACTEMENT les
+   * deux refus du serveur (aucun boîtier / boîtier muet > 72 h) : un bouton actif pour une
+   * commande déjà refusée fait croire à l'exploitant qu'il a agi. Ne bloque JAMAIS le
+   * désarmement — « boîtier jamais joint » n'est pas non plus un blocage : le serveur, lui,
+   * tente encore (repli SMS possible), on ne durcit pas au-delà de lui.
+   */
+  protected readonly armBlock = computed<string | null>(() => {
+    const p = this.profile();
+    if (!p) return null;
+    const silence = this.dormantSilence();
+    if (silence) return `Boîtier muet depuis ${silence} — armement impossible`;
+    if (p.trackerId === null) return 'Aucun boîtier sur ce véhicule — armement impossible';
+    return null;
   });
 
   protected readonly ShieldCheck = ShieldCheck;
@@ -586,6 +724,13 @@ export class SurveillancePanelComponent implements OnInit {
   }
 
   async arm(): Promise<void> {
+    // Filet : le boîtier peut devenir muet entre le chargement du panneau et le clic.
+    // Uniquement sur ARMER — `disarm()` reste sans garde, en toutes circonstances.
+    const blocked = this.armBlock();
+    if (blocked) {
+      this.toast.error('Armement impossible', blocked);
+      return;
+    }
     this.acting.set(true);
     try {
       const updated = await firstValueFrom(this.api.arm(this.vehicleId()));
@@ -604,7 +749,19 @@ export class SurveillancePanelComponent implements OnInit {
     try {
       const updated = await firstValueFrom(this.api.disarm(this.vehicleId()));
       this.profile.set(updated);
-      this.toast.success('Surveillance désactivée');
+      // Le désarmement N'EST JAMAIS bloqué (il restaure), mais sur un boîtier muet le
+      // serveur saute volontairement l'envoi du `shock_off` : il désarme dans l'application
+      // et l'écrit au journal. Annoncer un simple « Surveillance désactivée » laisserait
+      // croire que l'antivol physique est retombé — il ne l'est pas, et une alerte au réveil
+      // du boîtier paraîtrait alors inexplicable. On dit ce qui s'est réellement passé.
+      const silence = this.dormantSilence();
+      this.toast.success(
+        'Surveillance désactivée',
+        silence
+          ? `Boîtier muet depuis ${silence} : désarmé dans l'application, la commande ne lui est ` +
+            'pas parvenue — il conserve son dernier état physique connu.'
+          : undefined,
+      );
     } catch (err: unknown) {
       const msg = this.extractErrorMessage(err);
       this.toast.error('Désarmement impossible', msg);
@@ -621,7 +778,7 @@ export class SurveillancePanelComponent implements OnInit {
     // Optimistic UI : on patche le signal local immédiatement.
     const current = this.profile();
     if (current) {
-      this.profile.set({ ...current, [field]: value } as SurveillanceProfileDto);
+      this.profile.set({ ...current, [field]: value } as SurveillanceProfileWithLiveness);
     }
     this.pendingPatch[field] = value;
 
@@ -641,7 +798,7 @@ export class SurveillancePanelComponent implements OnInit {
           this.pendingPatch['scheduleEndTime'] = '06:00';
         }
         if (Object.keys(patch).length > 0) {
-          this.profile.set({ ...c, ...patch } as SurveillanceProfileDto);
+          this.profile.set({ ...c, ...patch } as SurveillanceProfileWithLiveness);
         }
       }
     }

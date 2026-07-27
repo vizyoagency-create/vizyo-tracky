@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable, Logger, ServiceUnavailableException } f
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import { CommandStatus, EngineAction, type VehicleSchedule } from '@prisma/client';
+import { DORMANT_STOP_ACTING_MS, formatSilenceLabel, trackerSilenceMs } from '@vizyo/tracky-shared';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EngineControlService } from '../engine-control/engine-control.service';
@@ -60,6 +61,9 @@ const STUCK_REALERT_MS = 3 * 60 * 60 * 1000;
  */
 const CUT_BACKOFF_MS = [2, 5, 15, 30].map((m) => m * 60 * 1000);
 
+/** Ré-alerte « planning suspendu pour dormance » : hebdomadaire (l'état est stable). */
+const DORMANT_REALERT_MS = 7 * 24 * 60 * 60 * 1000;
+
 @Injectable()
 export class ScheduleCronService {
   private readonly logger = new Logger(ScheduleCronService.name);
@@ -91,6 +95,8 @@ export class ScheduleCronService {
    * toujours pendant l'attente, jamais sur le tick qui a réellement échoué.
    */
   private readonly lastFailureReason = new Map<string, string>();
+  /** Dernière alerte « planning suspendu pour dormance » par véhicule (anti-répétition). */
+  private readonly lastDormantAlertAt = new Map<string, number>();
 
   /** Runs every minute. */
   @Cron('0 * * * * *')
@@ -151,6 +157,27 @@ export class ScheduleCronService {
   ): Promise<void> {
     const tracker = schedule.vehicle.tracker;
     if (!tracker) return; // no tracker → nothing to do
+
+    // ── Véhicule DORMANT : on cesse d'agir ────────────────────────────────
+    // Un boîtier muet depuis des jours ne répondra pas. Continuer à l'évaluer
+    // chaque minute revient à retenter une coupe dont on connaît déjà l'issue :
+    // en production, FV-941-LZ (89 j de silence) et FL-787-KV (52 j) produisaient
+    // ainsi ~48 tentatives par jour CHACUNE — commande créée en base, TCP tenté,
+    // SMS tenté, alerte journalisée — noyant les vrais problèmes d'exploitation.
+    //
+    // Dérivé de la donnée (aucun drapeau, aucune écriture) : dès la première trame
+    // reçue, `lastSeenAt` redevient frais et le véhicule réintègre le flux au tick
+    // suivant, en moins d'une minute, sans aucun geste d'exploitant.
+    //
+    // ⚠️ Le `clearDeferral` est OBLIGATOIRE : sans lui, les 4 Map de suivi
+    // (report, backoff, compteur d'échecs, dernière cause) garderaient une entrée
+    // par véhicule dormant indéfiniment — une fuite mémoire lente.
+    const silentMs = trackerSilenceMs(tracker.lastSeenAt);
+    if (silentMs != null && silentMs > DORMANT_STOP_ACTING_MS) {
+      this.clearDeferral(schedule.vehicleId);
+      this.reportDormant(schedule, tracker.lastSeenAt ?? null);
+      return;
+    }
 
     // Check manual override
     if (schedule.overrideUntil && new Date() < schedule.overrideUntil) {
@@ -349,6 +376,40 @@ export class ScheduleCronService {
   }
 
   /**
+   * Signale UNE FOIS qu'un planning porte sur un véhicule dormant — puis se tait.
+   *
+   * C'est une information d'exploitation réelle (« ce planning ne s'appliquera pas »),
+   * mais elle est STABLE : la répéter toutes les 3 h, comme le faisait l'alerte de
+   * blocage, produirait exactement le bruit qu'on supprime. Ré-alerte hebdomadaire
+   * pour qu'un parc oublié finisse quand même par se rappeler à l'exploitant.
+   */
+  private reportDormant(schedule: ScheduleWithVehicle, lastSeenAt: Date | null): void {
+    const vid = schedule.vehicleId;
+    const now = Date.now();
+    const last = this.lastDormantAlertAt.get(vid) ?? 0;
+    if (now - last < DORMANT_REALERT_MS) return;
+    this.lastDormantAlertAt.set(vid, now);
+    const who = schedule.vehicle.plate ? `${schedule.vehicle.plate} ` : '';
+    const depuis = formatSilenceLabel(lastSeenAt) ?? 'toujours';
+    this.errorLogger
+      .record(
+        new Error(
+          `Automatisation horaire suspendue sur ${who}: boîtier muet depuis ${depuis}. ` +
+            `Le planning reprendra tout seul dès que le boîtier réémettra.`,
+        ),
+        'schedule-cron',
+        {
+          vehicleId: vid,
+          plate: schedule.vehicle.plate ?? null,
+          fleetId: schedule.vehicle.fleetId,
+          silenceLabel: depuis,
+          phase: 'dormant-schedule-suspended',
+        },
+      )
+      .catch(() => { /* best-effort */ });
+  }
+
+  /**
    * Arme le prochain essai de coupe et renvoie le délai appliqué (ms). Palier croissant borné :
    * on n'abandonne JAMAIS de couper, on arrête juste de marteler.
    */
@@ -433,6 +494,13 @@ interface ScheduleWithVehicle extends VehicleSchedule {
     /** Optionnel dans le type (les fixtures de test ne la fournissent pas) mais TOUJOURS chargée
      *  en production : `evaluateAll` inclut le véhicule entier. Sert à nommer le véhicule en alerte. */
     plate?: string | null;
-    tracker: { id: string; imei: string; status: string } | null;
+    tracker: {
+      id: string;
+      imei: string;
+      status: string;
+      /** Optionnel dans le type (fixtures de test) mais TOUJOURS chargé en production :
+       *  `evaluateAll` inclut le tracker entier. Seule source de la dormance. */
+      lastSeenAt?: Date | null;
+    } | null;
   };
 }

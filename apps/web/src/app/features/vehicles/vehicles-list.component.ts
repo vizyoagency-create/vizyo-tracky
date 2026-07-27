@@ -28,7 +28,15 @@ import { ConnectivityBadgeComponent } from '../../shared/ui/connectivity-badge/c
 import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.component';
 import { InstallReviewBadgeComponent } from '../../shared/ui/install-review-badge/install-review-badge.component';
 import { TrackClickDirective } from '../../shared/directives/track-click.directive';
-import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnectivityState } from '@vizyo/tracky-shared';
+import {
+  formatSilenceLabel,
+  getVehicleConnectivityState,
+  getVehiclePresenceState,
+  isInstallationToReview,
+  isVehicleDormant,
+  type VehicleConnectivityState,
+  type VehiclePresenceState,
+} from '@vizyo/tracky-shared';
 
 @Component({
   selector: 'app-vehicles-list',
@@ -297,7 +305,7 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
                           @else { Stationné }
                         </span>
                       } @else {
-                        <app-connectivity-badge [state]="connectivity(v)" />
+                        <app-connectivity-badge [state]="presence(v)" [lastSeenAt]="lastSeenOf(v)" />
                       }
                       @if (installToReview(v)) { <app-install-review-badge /> }
                     </td>
@@ -375,7 +383,13 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
                           @if (ls.kind === 'moving') { En roulage } @else if (ls.kind === 'idle') { Au ralenti } @else { À l'arrêt }
                         </span>
                       } @else {
-                        <app-connectivity-badge [state]="connectivity(v)" [compact]="true" />
+                        <app-connectivity-badge [state]="presence(v)" [lastSeenAt]="lastSeenOf(v)" [compact]="true" />
+                        @if (isDormant(v)) {
+                          <!-- Le badge compact n'affiche que l'icône : sans ce texte, l'ancienneté
+                               (le seul chiffre qui distingue un congé d'un boîtier arraché) serait
+                               enfermée dans l'infobulle, donc invisible au tactile. -->
+                          <span class="v-dormant-age">Dormant · {{ silenceLabel(v) }}</span>
+                        }
                       }
                       @if (installToReview(v)) { <app-install-review-badge [compact]="true" /> }
                     </span>
@@ -387,8 +401,13 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
                     <span class="v-trow-drv v-col-drv" [class.v-trow-dash]="!v.currentDriver">{{ driverLabel(v) }}</span>
                     <div class="v-trow-pos v-col-pos">
                       @if (positionFor(v.id)) {
-                        <div class="v-trow-addr">{{ addressFor(v.id) || 'Position en cours…' }}</div>
-                        <div class="v-trow-ago mono">{{ lastContactLabel(v) }}</div>
+                        <!-- DORMANCE — l'adresse d'un dormant est un souvenir, pas une position :
+                             « Position en cours… » y serait un mensonge pur. On garde la valeur
+                             (on ne masque rien) mais on la DATE explicitement en dessous. -->
+                        <div class="v-trow-addr" [class.v-trow-stale]="isDormant(v)">
+                          {{ addressFor(v.id) || (isDormant(v) ? 'Dernière position connue' : 'Position en cours…') }}
+                        </div>
+                        <div class="v-trow-ago mono">{{ posAgeLabel(v) }}</div>
                       } @else {
                         <div class="v-trow-addr v-trow-dash">Hors ligne</div>
                         @if (v.tracker?.lastSeenAt) { <div class="v-trow-ago mono">{{ lastContactLabel(v) }}</div> }
@@ -444,7 +463,7 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
                       }
                     </span>
                   }
-                  <app-connectivity-badge [state]="connectivity(v)" [hideWhenOnline]="true" />
+                  <app-connectivity-badge [state]="presence(v)" [lastSeenAt]="lastSeenOf(v)" [hideWhenOnline]="true" />
                   @if (installToReview(v)) { <app-install-review-badge /> }
                   @if (instBadge(v); as b) {
                     <span class="v-inst" [class]="'v-inst--' + b.cls">{{ b.label }}</span>
@@ -825,6 +844,13 @@ import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnec
     .v-trow-addr.v-trow-dash { color: var(--fg-tertiary) }
     .v-trow-ago { font-size: 11px; color: var(--fg-tertiary); margin-top: 1px }
     .v-trow-dash { color: var(--fg-tertiary) }
+    /* DORMANCE — la valeur reste lisible (on ne masque jamais un véhicule) mais elle est
+       visiblement DÉCLASSÉE : ce n'est plus du direct, c'est un dernier souvenir. */
+    .v-trow-stale { color: var(--fg-tertiary); font-style: italic }
+    .v-dormant-age {
+      font-size: 10px; font-weight: 700; white-space: nowrap;
+      color: #d97706; /* même ambre brûlé que le badge « Dormant » */
+    }
     .v-trow-chev { color: var(--fg-tertiary); justify-self: end; flex-shrink: 0 }
     @media (max-width: 960px) {
       .v-gt-head, .v-trow { grid-template-columns: minmax(0,2fr) 118px 74px 40px; gap: 10px }
@@ -1184,6 +1210,55 @@ export class VehiclesListComponent implements OnInit {
   }
 
   /**
+   * Dernier signal le plus FRAIS entre le REST (liste chargée au montage) et le snapshot
+   * temps réel (rafraîchi par les événements WS). Sans ça, un véhicule dormant qui se
+   * réveille pendant que la liste est ouverte resterait marqué « Dormant » jusqu'au
+   * prochain rechargement de page — alors que la dormance doit s'inverser TOUTE SEULE
+   * dès la première trame reçue.
+   */
+  private freshestLastSeen(v: VehicleDetailDto): string | null {
+    const rest = v.tracker?.lastSeenAt ?? null;
+    const live = this.realtime.snapshot().find((s) => s.vehicleId === v.id)?.lastSeenAt ?? null;
+    if (!rest) return live;
+    if (!live) return rest;
+    return new Date(live).getTime() > new Date(rest).getTime() ? live : rest;
+  }
+
+  /**
+   * État de PRÉSENCE = le tri-état ci-dessus élargi d'un cran `DORMANT` (boîtier qui
+   * parlait puis s'est tu depuis > 7 j). C'est ce qu'on donne au badge.
+   *
+   * Seuil COUNTING (7 j) et non ACTING (72 h) : ici on AFFICHE, on ne commande rien. À 72 h
+   * un pont ou une semaine d'atelier reste plausible ; taguer « Dormant » un véhicule
+   * simplement garé depuis 4 jours serait une fausse alerte à répétition sur 37 véhicules.
+   * Les GARDES DE BOUTON, elles, doivent rester sur 72 h — exactement comme le serveur.
+   */
+  protected presence(v: VehicleDetailDto): VehiclePresenceState {
+    return getVehiclePresenceState({
+      trackerId: v.tracker?.id ?? null,
+      lastSeenAt: this.freshestLastSeen(v),
+      lastPositionAt: v.tracker?.lastPositionAt ?? null,
+      lastNoFixAt: v.tracker?.lastNoFixAt ?? null,
+      lastIgnition: v.tracker?.lastKnownIgnition ?? null,
+    });
+  }
+
+  /** Dernier signal du boîtier, pour que le badge affiche « Dormant · 89 j ». */
+  protected lastSeenOf(v: VehicleDetailDto): string | null {
+    return this.freshestLastSeen(v);
+  }
+
+  /** Le véhicule est-il dormant ? (muet > 7 j alors qu'il a un boîtier qui a déjà parlé) */
+  protected isDormant(v: VehicleDetailDto): boolean {
+    return isVehicleDormant({ trackerId: v.tracker?.id ?? null, lastSeenAt: this.freshestLastSeen(v) });
+  }
+
+  /** « 89 j » — ancienneté du silence, affichée à côté du badge compact (qui n'a pas de texte). */
+  protected silenceLabel(v: VehicleDetailDto): string | null {
+    return formatSilenceLabel(this.freshestLastSeen(v));
+  }
+
+  /**
    * « Installation à revoir » : boîtier posé depuis < 1 mois mais hors-ligne
    * (a déjà communiqué puis s'est déconnecté) → pose probablement bâclée.
    */
@@ -1201,6 +1276,14 @@ export class VehiclesListComponent implements OnInit {
   protected liveStatus(vehicleId: string): { kind: 'moving' | 'idle' | 'stopped'; speedKmh: number; cssClass: string } | null {
     const pos = this.realtime.positionsList().find((p) => p.vehicleId === vehicleId);
     if (!pos) return null;
+    // DORMANCE — garde AJOUTÉE en amont (aucune garde existante n'est retirée). Le snapshot
+    // hydrate une position pour TOUS les véhicules, y compris ceux muets depuis 89 jours :
+    // sans ce filtre, FV-941-LZ afficherait la pastille « Stationné » comme s'il venait d'être
+    // vu, et le badge de présence — le seul à dire la vérité — ne s'afficherait JAMAIS (il est
+    // dans la branche `@else` de cette pastille). Le véhicule n'est pas retiré de la liste : il
+    // bascule sur le badge « Dormant · 89 j », qui date la donnée au lieu de la maquiller.
+    const dormantV = this.vehicles().find((v) => v.id === vehicleId);
+    if (dormantV && this.isDormant(dormantV)) return null;
     // Incident FS-253 — GPS perdu : la vitesse live est FIGÉE (dernière position vieille de
     // plusieurs heures). On n'affiche AUCUNE pastille de vitesse (le badge « GPS perdu » du
     // tri-état s'en charge) pour ne pas laisser croire que le véhicule roule.
@@ -1249,6 +1332,17 @@ export class VehiclesListComponent implements OnInit {
     const h = Math.floor(m / 60);
     if (h < 24) return `il y a ${h} h`;
     return `il y a ${Math.floor(h / 24)} j`;
+  }
+
+  /**
+   * Ancienneté affichée sous la position. Pour un dormant, on préfixe « dernière valeur
+   * connue » : « il y a 89 j » seul se lit comme « il vient de bouger il y a longtemps »,
+   * alors que la donnée affichée au-dessus est un souvenir figé depuis trois mois.
+   */
+  protected posAgeLabel(v: VehicleDetailDto): string {
+    const ago = this.lastContactLabel(v);
+    if (!ago) return '';
+    return this.isDormant(v) ? `dernière valeur connue ${ago}` : ago;
   }
 
   /** Conducteur assigné, format « P. Nom » (réf. maquette). « Non assigné » sinon. */

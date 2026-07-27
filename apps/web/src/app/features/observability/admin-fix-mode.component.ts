@@ -13,6 +13,11 @@ import {
   ShieldAlert,
   Zap,
 } from 'lucide-angular';
+import {
+  DORMANT_STOP_ACTING_MS,
+  formatSilenceLabel,
+  trackerSilenceMs,
+} from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import {
   AdminFixModeService,
@@ -54,13 +59,19 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 
       <!-- State banner -->
       @if (state(); as s) {
+        <!-- Un boitier muet depuis des semaines n'est ni OK (vert) ni FAILING : il est
+             injoignable. Afficher « OK — fix interval honore » sur son dernier etat connu
+             reviendrait a certifier un pilotage qui n'a plus lieu. On DATE le silence. -->
         <div class="bg-bg-secondary border rounded-[--radius-card] p-4 flex flex-col gap-3"
-             [class.border-rose-500\\/40]="s.fixCommandFailing"
-             [class.border-amber-500\\/30]="!s.fixCommandFailing && pendingDelta()"
-             [class.border-emerald-500\\/30]="!s.fixCommandFailing && !pendingDelta()">
+             [class.border-rose-500\\/40]="!dormantSilence() && s.fixCommandFailing"
+             [class.border-amber-500\\/30]="!!dormantSilence() || (!s.fixCommandFailing && pendingDelta())"
+             [class.border-emerald-500\\/30]="!dormantSilence() && !s.fixCommandFailing && !pendingDelta()">
           <div class="flex items-center justify-between flex-wrap gap-2">
             <div class="flex items-center gap-2">
-              @if (s.fixCommandFailing) {
+              @if (dormantSilence(); as silence) {
+                <lucide-icon [img]="ShieldAlert" [size]="20" class="text-amber-400"></lucide-icon>
+                <span class="text-amber-400 font-semibold">BOITIER MUET — aucune trame depuis {{ silence }}</span>
+              } @else if (s.fixCommandFailing) {
                 <lucide-icon [img]="ShieldAlert" [size]="20" class="text-rose-400"></lucide-icon>
                 <span class="text-rose-400 font-semibold">FAILING — {{ s.fixCommandFailureCount }} trames non conformes</span>
               } @else if (pendingDelta()) {
@@ -98,6 +109,25 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
               <div class="text-xs font-mono">{{ s.lastSampledState ?? '—' }}</div>
             </div>
           </div>
+          @if (dormantSilence(); as silence) {
+            <div class="text-xs text-amber-400 bg-amber-500/10 rounded px-2 py-1.5">
+              Ce boitier n'emet plus depuis {{ silence }} (alimentation coupee, SIM desactivee
+              ou boitier depose). Les valeurs ci-dessus sont les dernieres CONNUES, pas l'etat
+              courant : plus rien ne vient les confirmer. Le pilotage automatique est suspendu
+              et reprend seul des la premiere trame recue.
+              <!-- Le bandeau « BOITIER MUET » PREND LA PLACE de la ligne FAILING : sans ce
+                   rappel, l'admin arrive depuis le centre d'alertes pour un tracker FAILING
+                   et ne trouve plus AUCUNE trace du motif de son alerte sous 11 echecs (le
+                   pave « echec persistant » ne s'affiche qu'au-dela). On DATE le fait au lieu
+                   de le supprimer : il reste vrai, il n'est simplement plus verifiable. -->
+              @if (s.fixCommandFailing) {
+                <span class="block mt-1 text-rose-400">
+                  Indicateur FAILING toujours actif ({{ s.fixCommandFailureCount }} trames non
+                  conformes) — constate AVANT le silence, donc ni confirme ni infirme depuis.
+                </span>
+              }
+            </div>
+          }
           @if (s.fixCommandFailing && s.fixCommandFailureCount > 10) {
             <div class="text-xs text-rose-400 bg-rose-500/10 rounded px-2 py-1.5">
               Echec persistant ({{ s.fixCommandFailureCount }} trames).
@@ -147,10 +177,18 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
             <option [value]="1440">24 h</option>
           </select>
         </div>
+        <!-- Bouton NON grise, et c'est verifie cote serveur : TrackerFixModeService passe
+             l'option force pour un override admin, ce qui traverse volontairement la porte
+             « boitier muet » du repli SMS (l'automate, lui, est bloque). Sonder un boitier
+             silencieux est precisement l'usage de cet ecran de diagnostic. On avertit
+             donc au lieu d'interdire — sinon on retirerait l'outil au moment ou il sert. -->
         <button (click)="applyOverride()"
                 class="px-3 py-2 bg-tracky text-white rounded-lg text-sm font-medium hover:bg-tracky-dark cursor-pointer">
           Appliquer
         </button>
+        @if (overrideWarning(); as warning) {
+          <p class="w-full text-xs text-amber-400">{{ warning }}</p>
+        }
       </div>
 
       <!-- Filter -->
@@ -270,6 +308,56 @@ export class AdminFixModeComponent implements OnInit {
     return s.currentFixIntervalS != null && s.desiredFixIntervalS !== s.currentFixIntervalS;
   });
 
+  /**
+   * BOITIER MUET (seuil AGIR = 72 h) — libelle de silence, null si le boitier parle encore.
+   *
+   * Meme constante que le serveur (DORMANT_STOP_ACTING_MS) : c'est le seuil au-dela duquel
+   * toute commande est une tentative dont on connait deja l'issue. `lastSeenAt` est la seule
+   * source valable — `status` est derive de la colonne collante Tracker.status, qui reste
+   * ONLINE pour un boitier mort depuis 89 jours.
+   *
+   * `null` (boitier qui n'a JAMAIS emis) n'est pas de la dormance : c'est un probleme de
+   * provisioning, deja nomme ailleurs, et on ne bloque rien dessus.
+   */
+  readonly dormantSilence = computed<string | null>(() => {
+    const s = this.state();
+    if (!s || s.lastSeenAt == null) return null;
+    const now = Date.now();
+    const silent = trackerSilenceMs(s.lastSeenAt, now);
+    if (silent == null || silent <= DORMANT_STOP_ACTING_MS) return null;
+    return formatSilenceLabel(s.lastSeenAt, now) ?? '—';
+  });
+
+  /**
+   * « Appliquer » va-t-il REELLEMENT pousser une commande vers le boitier ?
+   *
+   * Le serveur ne declenche `requestChange` que sous DEUX conditions reunies
+   * (`if (desiredS && overrideUntil)`, cf. TrackerFixModeService.setManualOverride) :
+   * une duree > 0 ET un intervalle choisi. « Lever override » (0 min) comme « Aucun
+   * (laisse l'algo) » n'ecrivent que `fixModeOverrideUntil` — rien ne part vers le
+   * boitier. Annoncer un envoi SMS dans ces cas serait exactement le mensonge que ce
+   * lot combat, en sens inverse : un avertissement pour une commande qui n'existe pas.
+   *
+   * `Number()` sur les deux champs : les `<option [value]>` renvoient des CHAINES, et
+   * « Aucun » donne litteralement "null" -> NaN, que les comparaisons rejettent toutes.
+   */
+  private pushesCommand(): boolean {
+    return Number(this.overrideMinutes) > 0 && Number(this.overrideIntervalS) > 0;
+  }
+
+  /**
+   * Avertissement sous « Appliquer », ou null. Methode et non `computed` :
+   * `overrideMinutes` est un champ ngModel simple, aucun signal ne le suit — la detection
+   * de changements par defaut re-evalue l'expression a chaque cycle, ce qui suffit ici.
+   */
+  overrideWarning(): string | null {
+    const silence = this.dormantSilence();
+    if (!silence) return null;
+    if (!this.pushesCommand()) return null;
+    return `Boitier muet depuis ${silence} — la commande sera tentee par SMS, sans garantie ` +
+      `d'arrivee ni de confirmation. Verifier alimentation, SIM ou presence du boitier.`;
+  }
+
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id');
     if (!id) {
@@ -312,6 +400,11 @@ export class AdminFixModeComponent implements OnInit {
   }
 
   async applyOverride(): Promise<void> {
+    // Boitier muet : « override actif » seul laisserait croire que le boitier obeit deja.
+    // On date le silence dans le message, la derniere chose lue avant de partir — mais
+    // UNIQUEMENT si une commande part vraiment (sinon on annonce un envoi inexistant).
+    // Capture AVANT l'appel : le message doit decrire ce qui vient d'etre tente.
+    const silence = this.pushesCommand() ? this.dormantSilence() : null;
     try {
       const result = await firstValueFrom(
         this.api.setOverride(
@@ -321,7 +414,12 @@ export class AdminFixModeComponent implements OnInit {
         ),
       );
       if (result.overrideUntil) {
-        this.toast.success(`Override actif jusqu'a ${new Date(result.overrideUntil).toLocaleString('fr-FR')}`);
+        this.toast.success(
+          `Override actif jusqu'a ${new Date(result.overrideUntil).toLocaleString('fr-FR')}`,
+          silence
+            ? `Boitier muet depuis ${silence} : commande tentee, aucune confirmation a attendre.`
+            : undefined,
+        );
       } else {
         this.toast.success('Override leve');
       }

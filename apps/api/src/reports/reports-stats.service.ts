@@ -1,5 +1,12 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
+import {
+  DORMANT_STOP_COUNTING_MS,
+  formatSilenceLabel,
+  isVehicleDormant,
+  isVehicleExploited,
+  trackerSilenceMs,
+} from '@vizyo/tracky-shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
 
@@ -30,14 +37,50 @@ export interface FleetStatsReport {
   fleet: { id: string; name: string };
   period: { from: string; to: string; days: number };
   vehicles: {
+    /**
+     * Total CONTRACTUEL du parc sur le perimetre du rapport. Ne bouge PAS avec la
+     * dormance : un vehicule dont le boitier s'est tu reste un vehicule du parc,
+     * il disparaitrait du chiffre facture sinon.
+     */
     total: number;
     activeDuringPeriod: number;
+    /**
+     * Parc EXPLOITE = boitier present, deja vu au moins une fois, et vu depuis
+     * moins de 7 j. C'est le DENOMINATEUR des moyennes (cf. `avgKmPerVehicle`).
+     */
+    exploited: number;
+    /** Exclus du denominateur car boitier MUET depuis > 7 j (il parlait, il s'est tu). */
+    dormant: number;
+    /**
+     * Exclus du denominateur car AUCUN boitier (ou boitier jamais connecte). Fait
+     * DIFFERENT du silence : ces vehicules n'ont jamais pu produire de km captes,
+     * les compter dans une moyenne kilometrique n'a aucun sens. Compte a part pour
+     * ne pas les faire passer pour des pannes.
+     */
+    withoutTracker: number;
+    /** Detail des dormants (plaque + anciennete du silence) pour la mention du rapport. */
+    dormantVehicles: { vehicleId: string; plate: string; silenceLabel: string | null }[];
   };
   trips: {
     count: number;
     totalKm: number;
     totalDurationHours: number;
+    /**
+     * Distance moyenne par vehicule du parc EXPLOITE (cf. `vehicles.exploited`).
+     * Numerateur et denominateur portent sur la MEME population : on ne divise pas
+     * les km de tout le parc par un sous-ensemble de vehicules.
+     */
     avgKmPerVehicle: number;
+    /** Denominateur reellement utilise pour `avgKmPerVehicle` (rend le calcul verifiable). */
+    avgKmBasisVehicles: number;
+    /**
+     * Numerateur reellement utilise : km des seuls vehicules du parc exploite.
+     * EXCEPTION du repli : quand `vehicles.exploited` vaut 0 (parc 100 % dormant ou
+     * non equipe), ce champ porte `trips.totalKm` — on ne peut pas diviser par zero,
+     * on retombe sur le parc entier. La mention du rapport dit alors explicitement
+     * que la moyenne est indicative.
+     */
+    avgKmBasisKm: number;
     avgSpeedKmh: number;
     maxSpeedKmh: number;
   };
@@ -138,6 +181,11 @@ export class ReportsStatsService {
         id: true, plate: true, type: true, fuelConsumptionL100km: true,
         // Conso RÉELLE calibrée (méthode du plein) — prime sur l'estimation si mesurée.
         calibratedConsumptionL100km: true, calibratedTanks: true,
+        // Fraîcheur du boîtier — JOINTE ici (relation 1-1 déjà chargée par cette
+        // requête) plutôt qu'en requête séparée : le VPS a 2 vCPU, un rapport
+        // hebdomadaire ne doit pas coûter une requête de plus par flotte.
+        // Sert UNIQUEMENT à décider qui compte dans les moyennes (cf. plus bas).
+        tracker: { select: { id: true, lastSeenAt: true } },
         // Groupe (unique de-facto) pour l'afficher dans le rapport / PDF.
         groups: {
           select: { group: { select: { id: true, name: true } } },
@@ -164,6 +212,52 @@ export class ReportsStatsService {
 
     const totalVehicles = vehicles.length;
     const fuelPrice = fleet.fuelPriceEurL;
+
+    // ── Parc EXPLOITÉ : qui a le droit d'entrer dans une MOYENNE ? ────────────
+    // Cas réel (prod, 39 véhicules) : FV-941-LZ muet depuis 89 j et FL-787-KV
+    // depuis 52 j — batterie débranchée / boîtier déposé — restaient comptés au
+    // dénominateur de la distance moyenne, à 0 km garanti. Le chiffre lu chaque
+    // semaine par le client était donc mécaniquement sous-évalué, d'un écart qui
+    // grandit à chaque semaine de silence supplémentaire.
+    //
+    // Source de vérité : `Tracker.lastSeenAt` UNIQUEMENT.
+    //  - pas Trip/Position : en mode vie privée (RGPD) les positions sont jetées
+    //    alors que le boîtier parle → on déclarerait dormant tout véhicule protégé ;
+    //  - pas `Tracker.status` : colonne collante, jamais remise à OFFLINE.
+    //
+    // Dérivé au read-time : aucun champ en base, aucun drapeau, aucun bouton
+    // « réactiver ». Dès que le boîtier ré-émet, `lastSeenAt` redevient frais et le
+    // véhicule réintègre le dénominateur au rapport suivant, tout seul.
+    const now = Date.now();
+    const dormancyInputs = vehicles.map((v) => ({
+      vehicle: v,
+      // `trackerId` = présence d'un boîtier ; `lastSeenAt` = a-t-il déjà parlé, et quand.
+      liveness: { trackerId: v.tracker?.id ?? null, lastSeenAt: v.tracker?.lastSeenAt ?? null },
+    }));
+    // `isVehicleExploited` n'est PAS la négation d'`isVehicleDormant` : un véhicule
+    // sans boîtier (les 2 véhicules de test du parc) n'est ni l'un ni l'autre. On
+    // garde donc les deux listes, et le reste = « pas équipé ».
+    const exploitedVehicleIds = new Set(
+      dormancyInputs.filter((d) => isVehicleExploited(d.liveness, now)).map((d) => d.vehicle.id),
+    );
+    const dormantVehicles = dormancyInputs
+      .filter((d) => isVehicleDormant(d.liveness, now))
+      .map((d) => ({
+        vehicleId: d.vehicle.id,
+        plate: d.vehicle.plate,
+        // « 89 j » — l'ancienneté rend la mention vérifiable par le client, qui sait
+        // alors s'il s'agit d'un véhicule vendu, en atelier, ou d'un boîtier à dépanner.
+        silenceLabel: formatSilenceLabel(d.liveness.lastSeenAt, now),
+        silenceMs: trackerSilenceMs(d.liveness.lastSeenAt, now) ?? 0,
+      }))
+      // Le plus silencieux d'abord : quand la place manque dans le rapport, ce sont
+      // les plaques les plus anciennes qui méritent d'être nommées.
+      .sort((a, b) => b.silenceMs - a.silenceMs || a.plate.localeCompare(b.plate))
+      .map(({ vehicleId, plate, silenceLabel }) => ({ vehicleId, plate, silenceLabel }));
+    const withoutTrackerCount = Math.max(
+      0,
+      totalVehicles - exploitedVehicleIds.size - dormantVehicles.length,
+    );
 
     // V1.10 (Sprint 2 perf) — toutes les agregations sont poussees en SQL au
     // lieu de charger tous les trips en memoire + reduce JS. A 30j × 100 vehicules
@@ -264,6 +358,23 @@ export class ReportsStatsService {
       });
     }
 
+    // Moyenne kilométrique : MÊME population des deux côtés de la division.
+    // On ne divise pas les km de TOUT le parc par le seul parc exploité — ça
+    // gonflerait la moyenne d'un véhicule tombé en panne EN COURS de période (ses
+    // km comptés, sa place non). Numérateur et dénominateur portent donc tous deux
+    // sur les véhicules exploités.
+    const exploitedKm = Array.from(exploitedVehicleIds).reduce(
+      (sum, id) => sum + (perVehicle.get(id)?.distanceKm ?? 0),
+      0,
+    );
+    // Repli anti-division-par-zéro. Un parc 100 % dormant (client qui a rendu ses
+    // boîtiers, flotte hivernée) doit produire un CHIFFRE, jamais NaN ni Infinity :
+    // on retombe alors sur le parc entier, et la mention d'exclusion explique au
+    // lecteur pourquoi ce chiffre est ce qu'il est.
+    const hasExploited = exploitedVehicleIds.size > 0;
+    const avgKmBasisVehicles = hasExploited ? exploitedVehicleIds.size : totalVehicles;
+    const avgKmBasisKm = hasExploited ? exploitedKm : totalKm;
+
     let totalLiters = 0;
     const topVehicles: FleetStatsReport['topVehicles'] = [];
     for (const v of vehicles) {
@@ -313,12 +424,22 @@ export class ReportsStatsService {
       vehicles: {
         total: totalVehicles,
         activeDuringPeriod: activeVehicleIds.size,
+        exploited: exploitedVehicleIds.size,
+        dormant: dormantVehicles.length,
+        withoutTracker: withoutTrackerCount,
+        dormantVehicles,
       },
       trips: {
         count: tripCount,
+        // Inchangé : le total kilométrique reste celui de TOUT le périmètre, y
+        // compris les km parcourus par un véhicule devenu dormant depuis. On ne
+        // supprime aucun historique, on ne fait baisser aucun total.
         totalKm: Math.round(totalKm * 10) / 10,
         totalDurationHours: Math.round((totalSeconds / 3600) * 10) / 10,
-        avgKmPerVehicle: totalVehicles > 0 ? Math.round((totalKm / totalVehicles) * 10) / 10 : 0,
+        avgKmPerVehicle:
+          avgKmBasisVehicles > 0 ? Math.round((avgKmBasisKm / avgKmBasisVehicles) * 10) / 10 : 0,
+        avgKmBasisVehicles,
+        avgKmBasisKm: Math.round(avgKmBasisKm * 10) / 10,
         avgSpeedKmh: Math.round(avgSpeedKmh * 10) / 10,
         maxSpeedKmh: Math.round(maxSpeedKmh * 10) / 10,
       },
@@ -358,4 +479,93 @@ export class ReportsStatsService {
     if (requested == null || Number.isNaN(requested)) return 30;
     return Math.min(500, Math.max(1, Math.trunc(requested)));
   }
+}
+
+/** Seuil de dormance exprimé en jours, pour le libellé client (« plus de 7 j »). */
+const DORMANT_COUNTING_DAYS = Math.round(DORMANT_STOP_COUNTING_MS / (24 * 3600 * 1000));
+
+/** Nombre de plaques nommées dans la mention avant de basculer sur « +N autres ».
+ *  6 tient sur ~2 lignes de PDF ; au-delà la mention noierait le rapport. */
+const NOTICE_MAX_PLATES = 6;
+
+const plural = (n: number): string => (n > 1 ? 's' : '');
+
+/**
+ * Mention CLIENT expliquant pourquoi la moyenne kilométrique ne se divise pas par
+ * le parc entier.
+ *
+ * Un chiffre lu chaque semaine ne doit JAMAIS changer de base en silence : le jour
+ * où la moyenne monte parce que deux épaves sont sorties du dénominateur, le
+ * rapport doit le dire lui-même, avec les plaques, sinon le client conclut à un bug
+ * (ou pire, à une flatterie du chiffre). La mention rappelle aussi que l'exclusion
+ * est RÉVERSIBLE et automatique — il n'y a rien à cliquer pour réintégrer.
+ *
+ * Exportée pour que toutes les surfaces (PDF aujourd'hui, Excel / web ensuite)
+ * disent EXACTEMENT la même phrase.
+ *
+ * @returns `null` quand rien n'est exclu — pas de mention inutile sur un parc sain.
+ */
+export function buildExploitedScopeNotice(
+  report: FleetStatsReport,
+  maxPlates: number = NOTICE_MAX_PLATES,
+): string | null {
+  const { dormant, withoutTracker, dormantVehicles, total } = report.vehicles;
+  if (dormant === 0 && withoutTracker === 0) return null;
+
+  const parts: string[] = [];
+
+  if (dormant > 0) {
+    const named = dormantVehicles
+      .slice(0, Math.max(0, maxPlates))
+      .map((v) => (v.silenceLabel ? `${v.plate} (${v.silenceLabel})` : v.plate));
+    const rest = dormantVehicles.length - named.length;
+    const plates = named.length > 0
+      ? ` : ${named.join(', ')}${rest > 0 ? `, +${rest} autre${plural(rest)}` : ''}`
+      : '';
+    // « silence constaté à la date de génération » : l'ancienneté est mesurée
+    // MAINTENANT, pas à la fin de la période couverte. Sans cette précision, un
+    // rapport de juin ré-édité en octobre affirmerait « FV-941-LZ, muet depuis
+    // 89 j » à propos d'un mois où le boîtier émettait toutes les 30 s — le
+    // client y lirait une erreur de l'outil plutôt qu'un état du parc AUJOURD'HUI.
+    parts.push(
+      `${dormant} véhicule${plural(dormant)} sans signal boîtier depuis plus de ` +
+      `${DORMANT_COUNTING_DAYS} j (silence constaté à la date de génération)${plates} — ` +
+      `exclu${plural(dormant)} du parc exploité, ` +
+      `réintégré${plural(dormant)} dès la première trame reçue.`,
+    );
+  }
+
+  if (withoutTracker > 0) {
+    // « sans boîtier ACTIF » et non « sans boîtier » : ce compteur regroupe DEUX
+    // situations que le client ne vit pas pareil — le véhicule réellement pas
+    // équipé (les 2 véhicules de test du parc), et celui dont le boîtier vient
+    // d'être posé mais n'a jamais émis (SIM/APN/provisionnement KO). Écrire
+    // « sans boîtier » au gestionnaire qui a fait installer un boîtier la veille,
+    // c'est lui faire ouvrir un ticket pour contester le rapport.
+    parts.push(
+      `${withoutTracker} véhicule${plural(withoutTracker)} sans boîtier actif ` +
+      `(aucun boîtier affecté, ou boîtier jamais connecté) : hors moyenne — ` +
+      `aucun kilomètre ne peut y être capté aujourd'hui.`,
+    );
+  }
+
+  // Toujours en dernier : la base de calcul. C'est la ligne qui permet au client de
+  // refaire l'opération lui-même, et qui rappelle que le parc facturé n'a pas bougé.
+  const basis = report.trips.avgKmBasisVehicles;
+  if (report.vehicles.exploited === 0) {
+    // Parc 100 % dormant / non équipé : on ne PEUT pas diviser par le parc exploité
+    // (ce serait NaN). On le dit au lieu de laisser croire à une moyenne réelle.
+    parts.push(
+      `Aucun véhicule exploité à ce jour : distance moyenne calculée à titre ` +
+      `indicatif sur le parc entier (${basis} véhicule${plural(basis)}).`,
+    );
+  } else {
+    parts.push(
+      `Distance moyenne calculée sur ${basis} véhicule${plural(basis)} ` +
+      `exploité${plural(basis)} (${report.trips.avgKmBasisKm.toFixed(1)} km) — ` +
+      `parc total inchangé : ${total}.`,
+    );
+  }
+
+  return parts.join(' ');
 }

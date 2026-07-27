@@ -125,6 +125,17 @@ export interface AiPlacementRequestInput {
 export interface AiPlacementInputDto {
   metier: FleetMetier;
   fleetContext?: string | null;
+  /**
+   * Avertissement de PÉRIMÈTRE, lu par le modèle en même temps que les données.
+   *
+   * Il existe parce que le prompt système décrit un « parc » : sans cette phrase, le modèle
+   * suppose que `fleetSummary` couvre TOUS les véhicules de la société et raisonne sur un
+   * parc plus large que celui qu'on lui a réellement montré (« mutualise plutôt vers le
+   * véhicule inutilisé » — celui dont le boîtier est muet depuis 3 mois). Renseigné
+   * UNIQUEMENT quand des véhicules ont vraiment été écartés : une phrase toujours présente
+   * finirait par affirmer une exclusion qui n'a pas eu lieu.
+   */
+  scopeNote?: string;
   request: AiPlacementRequestInput;
   candidates: AiPlacementCandidateInput[];
   fleetSummary: {
@@ -133,6 +144,13 @@ export interface AiPlacementInputDto {
     avgUtilization: number;
     /** Coût/km le plus bas parmi les candidats (repère « au mieux » pour l'IA). */
     cheapestCostPerKm?: number | null;
+    /**
+     * Véhicules écartés du vivier car DORMANTS (boîtier muet depuis plus de 7 j). Exposé
+     * DANS le résumé pour que l'IA sache que `totalVehicles` décrit le parc réellement
+     * suivi, et non le parc complet : un ratio moyen calculé sur des véhicules
+     * injoignables sous-estime l'usage réel et pousse à des conseils inapplicables.
+     */
+    dormantExcluded?: number;
   };
 }
 
@@ -161,6 +179,15 @@ export interface AiPlacementResultDto {
   excludedUnknownCapacity?: number;
   /** Transparence : véhicules écartés car immobilisés (incident/maintenance bloquant). */
   excludedImmobilized?: number;
+  /**
+   * Transparence : véhicules écartés car DORMANTS (boîtier muet depuis plus de 7 j).
+   *
+   * Compté et remonté à l'UI parce qu'un exploitant qui voit « 3 véhicules proposés » sur un
+   * parc de 5 doit pouvoir répondre « et les 2 autres ? ». Un chiffre client ne baisse jamais
+   * en silence : le véhicule n'est pas supprimé, il reste consultable partout, seule sa
+   * participation à CETTE proposition cesse — et il y revient seul dès la première trame reçue.
+   */
+  excludedDormant?: number;
   /** Coût € estimé de CET appel IA (transparence ; le budget mensuel vit côté admin). */
   aiCostEur?: number | null;
 }

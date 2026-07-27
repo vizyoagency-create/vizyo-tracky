@@ -20,6 +20,7 @@ import type {
   FleetMetierDto,
   SetFleetMetierDto,
 } from '@vizyo/tracky-shared';
+import { DORMANT_STOP_COUNTING_MS, isVehicleDormant } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
 import { ForecastService } from '../agenda/forecast.service';
 import { ReservationsService } from '../agenda/reservations.service';
@@ -79,6 +80,28 @@ function estimateCostPerKm(energy: string | null, consoL100: number | null): num
   if (!conso) return null;
   return Math.round((conso / 100) * price * 1000) / 1000; // €/km, 3 décimales
 }
+
+/**
+ * Métadonnées véhicule du placement. `tracker` est joint à la requête coût DÉJÀ faite (et non
+ * chargé par une requête dédiée) : le VPS tourne sur 2 vCPU, une lecture de plus par suggestion
+ * IA se paierait à chaque clic.
+ */
+type PlacementVehicleMeta = {
+  id: string;
+  energy: string | null;
+  fuelConsumptionL100km: number | null;
+  tracker: { id: string; lastSeenAt: Date | null } | null;
+};
+
+/**
+ * Le seuil de dormance en JOURS, dérivé de la constante partagée et non réécrit « 7 » à la main.
+ *
+ * Ces jours partent dans deux textes lus par des humains (la note `noGoodMatch`) et par le modèle
+ * (`scopeNote`). Un littéral y survivrait à un changement de seuil et affirmerait alors une durée
+ * fausse à l'exploitant — le genre d'écart qu'aucun test ne rattrape parce que la phrase reste
+ * grammaticalement correcte.
+ */
+const DORMANT_COUNTING_DAYS = Math.round(DORMANT_STOP_COUNTING_MS / (24 * 60 * 60 * 1000));
 
 type CapacityVehicleRow = {
   id: string;
@@ -151,6 +174,12 @@ export class AiOptimizationService {
     const metier = fleet.metier as FleetMetier;
 
     // Scoping anti-IDOR : un véhicule hors périmètre n'entre jamais dans le payload.
+    //
+    // Les DORMANTS restent VOLONTAIREMENT dans ce payload-ci, contrairement au placement : on
+    // demande ici combien de places a une Citroën ë-Jumpy, pas si elle est disponible mardi.
+    // Le nombre de places est une caractéristique PHYSIQUE et permanente ; elle ne dépend pas de
+    // l'état du boîtier. Les écarter creuserait un trou définitif dans la fiche des véhicules
+    // muets — trou que plus rien ne viendrait combler, y compris après leur retour.
     const accessible = await this.vehicleAccess.getAccessibleVehicleIds(user);
     const ids = resolveReportVehicleScope(accessible, dto?.vehicleIds); // 403 si sous-ensemble hors périmètre
     const where: Prisma.VehicleWhereInput = { fleetId };
@@ -280,7 +309,7 @@ export class AiOptimizationService {
     payload: AiPlacementInputDto;
     candidates: AiPlacementCandidateInput[];
     slot: { startAt: string; endAt: string };
-    excluded: { unknownCapacity: number; immobilized: number };
+    excluded: { unknownCapacity: number; immobilized: number; dormant: number };
     fleetId: string;
   }> {
     if (!dto?.startAt || !dto?.endAt) throw new BadRequestException('startAt et endAt (ISO) requis.');
@@ -326,14 +355,21 @@ export class AiOptimizationService {
 
     // Enrichissement COÛT (P3) : énergie + coût/km estimé + maintenance imminente par candidat,
     // pour que l'IA puisse mutualiser vers le véhicule le moins cher À MISSION ÉGALE.
+    // `tracker.lastSeenAt` voyage dans CETTE requête (et pas une de plus) : il sert à écarter
+    // les DORMANTS juste en dessous.
     const candidateIds = sug.vehicles.map((v) => v.vehicleId);
     const [meta, maintRows] = await Promise.all([
       candidateIds.length
         ? this.prisma.vehicle.findMany({
             where: { id: { in: candidateIds } },
-            select: { id: true, energy: true, fuelConsumptionL100km: true },
+            select: {
+              id: true,
+              energy: true,
+              fuelConsumptionL100km: true,
+              tracker: { select: { id: true, lastSeenAt: true } },
+            },
           })
-        : Promise.resolve([] as { id: string; energy: string | null; fuelConsumptionL100km: number | null }[]),
+        : Promise.resolve([] as PlacementVehicleMeta[]),
       candidateIds.length
         ? this.prisma.vehicleEvent.findMany({
             where: {
@@ -349,23 +385,67 @@ export class AiOptimizationService {
     const metaById = new Map(meta.map((m) => [m.id, m]));
     const maintSet = new Set(maintRows.map((r) => r.vehicleId));
 
-    const candidates: AiPlacementCandidateInput[] = sug.vehicles.map((v) => {
-      const m = metaById.get(v.vehicleId);
-      const energy = m?.energy ?? null;
-      return {
-        vehicleId: v.vehicleId,
-        plate: v.vehiclePlate,
-        seats: v.seats,
-        childSeats: v.childSeats,
-        features: v.features,
-        utilizationRatio: v.utilizationRatio,
-        underutilized: v.underutilized,
-        forecastBusy: forecastBusy.has(v.vehicleId),
-        energy,
-        costPerKm: estimateCostPerKm(energy, m?.fuelConsumptionL100km ?? null),
-        upcomingMaintenance: maintSet.has(v.vehicleId),
-      };
-    });
+    // ── DORMANCE — on ne propose pas un véhicule qu'on ne sait plus joindre ────────────────
+    //
+    // Cas réel : FV-941-LZ, boîtier muet depuis 89 jours. Il n'a aucun trajet, donc son
+    // `utilizationRatio` vaut 0 : c'est LE candidat que l'IA classe en tête au titre de la
+    // mutualisation (critère 3 du prompt). La proposition arrive en tête de liste, un exploitant
+    // la valide, et découvre à la remise des clés que le véhicule n'est plus là. On paie des
+    // jetons pour produire un conseil inapplicable.
+    //
+    // Le vivier lui-même (`reservations.suggest`) écarte déjà les muets : ce filtre-ci est une
+    // SECONDE barrière, tenue par le service qui construit le payload facturé. Elle vaut son
+    // coût (une colonne de plus sur une requête déjà faite) parce que ce chemin-ci est le seul
+    // qui envoie des véhicules à un moteur payant : si un jour le vivier change de règle ou
+    // qu'un autre appelant l'alimente, l'IA ne recommencera pas à proposer un fantôme.
+    //
+    // Semantique volontaire : un véhicule SANS boîtier, ou dont le boîtier n'a JAMAIS émis, n'est
+    // PAS dormant — il n'est pas suivi, mais il est bel et bien réservable (cf. isVehicleDormant).
+    const now = Date.now();
+    const dormantIds = new Set(
+      sug.vehicles
+        .filter((v) => {
+          const t = metaById.get(v.vehicleId)?.tracker;
+          return isVehicleDormant(
+            { trackerId: t?.id ?? null, lastSeenAt: t?.lastSeenAt ?? null },
+            now,
+            // 7 j, EXPLICITEMENT — même seuil que le vivier amont, écrit ici plutôt que laissé au
+            // défaut. Ce chemin PROPOSE, il n'agit pas : basculer sur le seuil « arrêter d'AGIR »
+            // (72 h) retirerait des propositions un véhicule simplement garé le temps d'un pont,
+            // et le client verrait son parc proposable rétrécir sans que rien n'ait changé.
+            DORMANT_STOP_COUNTING_MS,
+          );
+        })
+        .map((v) => v.vehicleId),
+    );
+    // Total = ce que le vivier a déjà écarté + ce qu'on écarte ici. Aucun double comptage
+    // possible : un véhicule écarté en amont ne figure plus dans `sug.vehicles`, donc il ne peut
+    // pas être recompté ci-dessus. Le garde `Number.isFinite` couvre les appelants qui ne
+    // renseignent pas encore le compteur (le champ est jeune) — un `undefined` ferait un NaN
+    // qui s'afficherait tel quel dans l'UI.
+    const upstreamDormant = sug.excludedDormant;
+    const excludedDormant =
+      (Number.isFinite(upstreamDormant) && upstreamDormant > 0 ? upstreamDormant : 0) + dormantIds.size;
+
+    const candidates: AiPlacementCandidateInput[] = sug.vehicles
+      .filter((v) => !dormantIds.has(v.vehicleId))
+      .map((v) => {
+        const m = metaById.get(v.vehicleId);
+        const energy = m?.energy ?? null;
+        return {
+          vehicleId: v.vehicleId,
+          plate: v.vehiclePlate,
+          seats: v.seats,
+          childSeats: v.childSeats,
+          features: v.features,
+          utilizationRatio: v.utilizationRatio,
+          underutilized: v.underutilized,
+          forecastBusy: forecastBusy.has(v.vehicleId),
+          energy,
+          costPerKm: estimateCostPerKm(energy, m?.fuelConsumptionL100km ?? null),
+          upcomingMaintenance: maintSet.has(v.vehicleId),
+        };
+      });
     const underutilizedCount = candidates.filter((c) => c.underutilized).length;
     const avg = candidates.length ? candidates.reduce((s, c) => s + c.utilizationRatio, 0) / candidates.length : 0;
     const costs = candidates.map((c) => c.costPerKm).filter((x): x is number => typeof x === 'number');
@@ -374,6 +454,24 @@ export class AiOptimizationService {
     const payload: AiPlacementInputDto = {
       metier,
       fleetContext: fleet.name ?? null,
+      // Le résumé est calculé sur les candidats RESTANTS : sans cette phrase, le modèle lit
+      // « totalVehicles: 3 » comme « cette société a 3 véhicules » et bâtit son conseil de
+      // mutualisation sur un parc qui n'est pas celui qu'on lui a montré.
+      // ⚠️ « du périmètre analysé », PAS « de cette flotte » : `suggest()` est déjà borné aux
+      // véhicules accessibles à CET utilisateur (un chef de groupe ne voit que son groupe) puis
+      // aux véhicules conformes aux critères. Écrire « de cette flotte » ferait affirmer au modèle,
+      // dans ses « notes » rendues à l'exploitant, un état du parc ENTIER que le serveur n'a jamais
+      // mesuré — et un chef de groupe lirait « 2 véhicules hors service » sur une flotte de 40.
+      ...(excludedDormant > 0
+        ? {
+            scopeNote:
+              `${excludedDormant} véhicule(s) du périmètre analysé sont exclus de cette analyse : leur ` +
+              `boîtier n'émet plus depuis plus de ${DORMANT_COUNTING_DAYS} jours, ils sont donc injoignables ` +
+              `et non affectables. « candidates » et « fleetSummary » ne décrivent QUE le parc réellement ` +
+              `suivi. Ne propose jamais un véhicule absent de « candidates », ne raisonne pas sur un parc ` +
+              `plus large, et n'affirme rien sur les véhicules exclus au-delà de leur nombre.`,
+          }
+        : {}),
       request: {
         startAt: slot.startAt,
         endAt: slot.endAt,
@@ -387,6 +485,7 @@ export class AiOptimizationService {
         underutilizedCount,
         avgUtilization: Math.round(avg * 100) / 100,
         cheapestCostPerKm,
+        dormantExcluded: excludedDormant,
       },
     };
     return {
@@ -394,7 +493,11 @@ export class AiOptimizationService {
       candidates,
       slot,
       // Transparence UI : véhicules écartés AVANT le raisonnement IA (résultats non faussés en silence).
-      excluded: { unknownCapacity: sug.excludedUnknownCapacity ?? 0, immobilized: sug.excludedImmobilized ?? 0 },
+      excluded: {
+        unknownCapacity: sug.excludedUnknownCapacity ?? 0,
+        immobilized: sug.excludedImmobilized ?? 0,
+        dormant: excludedDormant,
+      },
       fleetId,
     };
   }
@@ -411,9 +514,16 @@ export class AiOptimizationService {
         slot,
         proposals: [],
         noGoodMatch: true,
-        notes: 'Aucun véhicule libre ne correspond aux critères sur ce créneau.',
+        // « Aucun véhicule » tout court laisserait croire que la flotte est pleine sur ce créneau
+        // alors que la vraie cause est un parc qui ne répond plus : on nomme la cause, sinon
+        // l'exploitant cherche un conflit d'agenda qui n'existe pas.
+        notes:
+          excluded.dormant > 0
+            ? `Aucun véhicule libre ne correspond aux critères sur ce créneau (${excluded.dormant} véhicule(s) écarté(s) : boîtier muet depuis plus de ${DORMANT_COUNTING_DAYS} jours).`
+            : 'Aucun véhicule libre ne correspond aux critères sur ce créneau.',
         excludedUnknownCapacity: excluded.unknownCapacity,
         excludedImmobilized: excluded.immobilized,
+        excludedDormant: excluded.dormant,
       };
     }
     // Interrupteur maître : IA désactivée pour la flotte → pas de placement IA (l'app tourne sans IA).
@@ -425,6 +535,7 @@ export class AiOptimizationService {
         notes: 'Assistance IA désactivée pour cette flotte.',
         excludedUnknownCapacity: excluded.unknownCapacity,
         excludedImmobilized: excluded.immobilized,
+        excludedDormant: excluded.dormant,
       };
     }
 
@@ -477,6 +588,7 @@ export class AiOptimizationService {
       notes: ai?.notes ?? null,
       excludedUnknownCapacity: excluded.unknownCapacity,
       excludedImmobilized: excluded.immobilized,
+      excludedDormant: excluded.dormant,
       aiCostEur,
     };
   }

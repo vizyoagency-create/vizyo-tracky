@@ -372,6 +372,98 @@ describe('ScheduleCronService — backoff des coupes', () => {
     expect(err.message).not.toContain('backoff'); // l'attente n'est plus présentée comme la cause
     expect(ctx).toMatchObject({ cause: 'Aucune position connue pour ce tracker', waitingBackoff: true });
   });
+
+  /**
+   * DORMANCE — un boîtier muet depuis des jours ne doit plus être piloté.
+   *
+   * Cas réel : FV-941-LZ, 89 jours de silence, planning toujours actif → ~48 tentatives
+   * de coupe par jour, chacune créant une commande, tentant TCP puis SMS et journalisant.
+   */
+  describe('véhicule dormant', () => {
+    const DORMANT = () => {
+      const s = OUT_OF_WINDOW_SCHEDULE();
+      s.vehicle = {
+        ...s.vehicle,
+        plate: 'FV-941-LZ',
+        tracker: { ...s.vehicle.tracker, lastSeenAt: new Date(Date.now() - 89 * 24 * 60 * 60 * 1000) },
+      };
+      return s;
+    };
+
+    it('n\'appelle plus le moteur de commande du tout', async () => {
+      jest.useFakeTimers();
+      const { service, engine } = build();
+      const schedule = DORMANT();
+
+      for (let minute = 0; minute < 240; minute++) {
+        await service.evaluateOne(schedule);
+        jest.advanceTimersByTime(60 * 1000);
+      }
+
+      expect(engine.requestCommand).not.toHaveBeenCalled();
+    });
+
+    it('signale UNE fois et se tait ensuite (l\'état est stable, pas une urgence répétée)', async () => {
+      jest.useFakeTimers();
+      const { service, errorLogger } = build();
+      const schedule = DORMANT();
+
+      for (let minute = 0; minute < 24 * 60; minute++) {
+        await service.evaluateOne(schedule);
+        jest.advanceTimersByTime(60 * 1000);
+      }
+
+      expect(errorLogger.record).toHaveBeenCalledTimes(1);
+      const [err, source, ctx] = errorLogger.record.mock.calls[0];
+      expect(source).toBe('schedule-cron');
+      expect(err.message).toContain('FV-941-LZ');
+      expect(err.message).toContain('89 j');
+      expect(ctx).toMatchObject({ phase: 'dormant-schedule-suspended' });
+    });
+
+    it('⚠️ ne laisse AUCUNE entrée résiduelle dans les suivis (fuite mémoire)', async () => {
+      const { service } = build(new ServiceUnavailableException('Tracker hors ligne'));
+      const vivant = OUT_OF_WINDOW_SCHEDULE();
+
+      await service.evaluateOne(vivant); // échec → backoff + report armés
+      const maps = service as unknown as Record<string, Map<string, unknown>>;
+      expect(maps['deferredSince'].has('v-1')).toBe(true);
+
+      // Le même véhicule devient dormant : les suivis doivent être purgés.
+      await service.evaluateOne(DORMANT());
+
+      for (const nom of ['deferredSince', 'lastStuckAlertAt', 'cutRetryAfter', 'cutFailures', 'lastFailureReason']) {
+        expect(maps[nom].has('v-1')).toBe(false);
+      }
+    });
+
+    it('RÉINTÉGRATION : dès que le boîtier réémet, le planning repart au tick suivant', async () => {
+      const { service, engine } = build();
+
+      await service.evaluateOne(DORMANT());
+      expect(engine.requestCommand).not.toHaveBeenCalled();
+
+      // Une seule trame fraîche — aucun geste d'exploitant, aucun drapeau à décocher.
+      const reveille = OUT_OF_WINDOW_SCHEDULE();
+      reveille.vehicle = { ...reveille.vehicle, tracker: { ...reveille.vehicle.tracker, lastSeenAt: new Date() } };
+      await service.evaluateOne(reveille);
+
+      expect(engine.requestCommand).toHaveBeenCalledTimes(1);
+    });
+
+    it('⚠️ un véhicule silencieux depuis 2 h (garé la nuit) reste piloté', async () => {
+      const { service, engine } = build();
+      const gare = OUT_OF_WINDOW_SCHEDULE();
+      gare.vehicle = {
+        ...gare.vehicle,
+        tracker: { ...gare.vehicle.tracker, lastSeenAt: new Date(Date.now() - 2 * 60 * 60 * 1000) },
+      };
+
+      await service.evaluateOne(gare);
+
+      expect(engine.requestCommand).toHaveBeenCalledTimes(1);
+    });
+  });
 });
 
 describe('ScheduleCronService.evaluateOne override', () => {

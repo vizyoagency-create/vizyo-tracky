@@ -65,6 +65,10 @@ type ProposalRow = {
  * au-dessus du seuil de confiance (`auto_applied`). Anti-double-réservation entre les nuits via
  * l'unicité (flotte, véhicule, créneau) + les pré-checks/EXCLUDE des réservations. Scoping tenant
  * strict. Aucun appel LLM : fiable et gratuit.
+ *
+ * VIVACITÉ : l'agent n'a pas de garde propre — il ne connaît que les motifs qu'on lui donne. Les
+ * véhicules au boîtier muet et les habitudes éteintes sont écartés en AMONT (RecurrenceDetector) ;
+ * l'agent se contente de reverser ces exclusions dans son bilan pour qu'elles soient visibles.
  */
 @Injectable()
 export class AgendaAgentRunnerService {
@@ -130,7 +134,14 @@ export class AgendaAgentRunnerService {
       const autoOn = enabled && (settings?.autonomy ?? 'suggest') === 'auto_high_confidence';
       const threshold = (settings?.confidenceThreshold ?? 80) / 100;
 
-      const patterns = await this.detector.detect(fleetId);
+      // AUDIT DORMANCE : l'agent ne choisit pas ses véhicules, il applique les motifs du détecteur —
+      // c'est donc LÀ que se jouait le fait de réserver un véhicule mort depuis 89 jours, et c'est
+      // là que la garde a été posée. On récupère ici ce qu'il a écarté pour l'annoncer dans le bilan
+      // du passage : sinon « 0 proposition » ressemblerait à un agent en panne.
+      // (Les propositions DÉJÀ créées ne sont pas touchées : leur validation reste une décision
+      //  humaine, et un véhicule dormant qui réémet redevient éligible au passage suivant.)
+      const detection = await this.detector.detectWithStats(fleetId);
+      const patterns = detection.patterns;
       // Couche IA (best-effort) : jugement « garder/écarter » + « pourquoi » vulgarisé par récurrence.
       const reviews = await this.reviewPatterns(fleetId, patterns);
       const now = Date.now();
@@ -139,7 +150,10 @@ export class AgendaAgentRunnerService {
 
       let created = 0;
       let proposed = 0;
-      let skipped = 0;
+      // Les exclusions du détecteur entrent dans « ignoré(s) » — le seul compteur qui existe déjà
+      // pour « vu, pas traité ». Le détail (dormants / éteints) est écrit en clair par `track()` :
+      // aucune migration, et aucun chiffre qui baisse sans explication.
+      let skipped = detection.skippedDormantVehicles + detection.skippedStalePatterns;
 
       for (let pi = 0; pi < patterns.length; pi++) {
         const p = patterns[pi];
@@ -217,7 +231,7 @@ export class AgendaAgentRunnerService {
       if (settings) {
         await this.prisma.agendaAgentSettings.update({ where: { fleetId }, data: { lastRunAt: new Date() } });
       }
-      this.track(fleetId, origin, { created, proposed, skipped });
+      this.track(fleetId, origin, { created, proposed, skipped }, detection);
       await this.recordRun({
         fleetId, origin, startedAt, status: 'completed',
         patterns: patterns.length, created, proposed, skipped,
@@ -561,15 +575,28 @@ export class AgendaAgentRunnerService {
     }
   }
 
-  private track(fleetId: string, origin: string, counts: { created: number; proposed: number; skipped: number }): void {
+  private track(
+    fleetId: string,
+    origin: string,
+    counts: { created: number; proposed: number; skipped: number },
+    excluded?: { skippedDormantVehicles: number; skippedStalePatterns: number },
+  ): void {
+    // Le détail des exclusions n'apparaît que s'il y en a : un libellé propre les jours normaux,
+    // et une explication le jour où l'exploitant se demande où sont passées ses propositions.
+    const dormant = excluded?.skippedDormantVehicles ?? 0;
+    const stale = excluded?.skippedStalePatterns ?? 0;
+    const why =
+      dormant > 0 || stale > 0
+        ? ` (dont ${dormant} véhicule(s) au boîtier muet, ${stale} habitude(s) éteinte(s))`
+        : '';
     this.systemActivity.record({
       category: 'AI',
       action: 'agenda_agent_run',
       status: 'SUCCESS',
       actor: origin === 'manual' ? 'utilisateur' : 'system',
-      detail: `Agent agenda (${origin}) : ${counts.created} réservé(s), ${counts.proposed} proposé(s), ${counts.skipped} ignoré(s)`,
+      detail: `Agent agenda (${origin}) : ${counts.created} réservé(s), ${counts.proposed} proposé(s), ${counts.skipped} ignoré(s)${why}`,
       fleetId,
-      meta: counts,
+      meta: { ...counts, skippedDormantVehicles: dormant, skippedStalePatterns: stale },
     });
   }
 }
