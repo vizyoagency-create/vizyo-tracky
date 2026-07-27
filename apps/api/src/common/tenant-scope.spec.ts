@@ -73,8 +73,16 @@ describe('fail-closed endpoints (audit A3/B1/B2/D9)', () => {
         total: 0,
         moving: 0,
         idle: 0,
+        // Lot « dénominateurs » : la répartition du parc distingue désormais les INJOIGNABLES
+        // (boîtier muet > 7 j). Le refus fail-closed reste à zéro PARTOUT — l'égalité stricte
+        // est conservée à dessein : elle interdit qu'un compteur non nul fuite hors périmètre.
+        unreachable: 0,
         criticalAlerts: 0,
         newThisMonth: 0,
+        dormantThresholdMs: 7 * 24 * 60 * 60 * 1000,
+        // Refus = aucun balayage lancé, donc rien à tronquer : `false`, jamais `true` (qui
+        // laisserait croire à un parc partiellement compté alors qu'il n'a pas été regardé).
+        presenceScanTruncated: false,
       });
       expect(prisma.vehicle.count).not.toHaveBeenCalled();
       expect(prisma.$queryRaw).not.toHaveBeenCalled();

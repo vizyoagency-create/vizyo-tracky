@@ -399,6 +399,91 @@ describe('EngineControlService', () => {
     expect(sms.send).not.toHaveBeenCalled();
   });
 
+  /* ═══════════════════════════════════════════════════════════════════════ *
+   * DORMANCE — boîtier muet depuis des jours.
+   *
+   * Le périmètre est VOLONTAIREMENT minimal : `CUT` + `SCHEDULER` seulement.
+   * DORM-2 et DORM-3 sont les tests qui comptent le plus — ils verrouillent
+   * l'asymétrie : rater une coupe est un désagrément, rater une RESTAURATION
+   * immobilise un véhicule. Si un jour quelqu'un « harmonise » la garde, ils
+   * doivent tomber.
+   * ═══════════════════════════════════════════════════════════════════════ */
+
+  const dormant = { ...trackerWithVehicle, lastSeenAt: new Date(Date.now() - 89 * 24 * 60 * 60 * 1000) };
+
+  // DORM-1. Coupe AUTO sur boîtier dormant → report sec, rien de persisté, rien d'émis.
+  it('DORM-1: suspend une coupe AUTO sur boîtier dormant, sans persister ni émettre', async () => {
+    prisma.tracker.findFirst.mockResolvedValue(dormant);
+
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.CUT, null, superAdmin, 'SCHEDULER'),
+    ).rejects.toThrow(ForbiddenException);
+
+    expect(prisma.engineControlCommand.create).not.toHaveBeenCalled();
+    expect(gateway.emitEngineCommandUpdate).not.toHaveBeenCalled();
+    expect(registry.send).not.toHaveBeenCalled();
+    // La porte agit AVANT toute lecture de position : aucun travail inutile.
+    expect(prisma.position.findFirst).not.toHaveBeenCalled();
+  });
+
+  // DORM-2. ⚠️ Une RESTAURATION n'est JAMAIS suspendue — sinon un véhicule réellement
+  // coupé puis devenu muet resterait immobilisé pour toujours.
+  it('DORM-2: ne suspend JAMAIS une RESTAURATION, même sur boîtier dormant', async () => {
+    prisma.tracker.findFirst.mockResolvedValue(dormant);
+    registry.send.mockReturnValue(true);
+
+    await service.requestCommand(TRACKER_ID, EngineAction.RESTORE, null, superAdmin, 'SCHEDULER');
+
+    expect(registry.send).toHaveBeenCalled(); // dispatch bien tenté
+    expect(prisma.engineControlCommand.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ action: EngineAction.RESTORE }),
+    });
+  });
+
+  // DORM-3. ⚠️ Une action MANUELLE n'est jamais suspendue : immobiliser un véhicule volé
+  // sur un boîtier silencieux est exactement le cas où l'on veut tenter sa chance (TCP + SMS).
+  it('DORM-3: ne suspend JAMAIS une coupe MANUELLE, et tente le repli SMS', async () => {
+    prisma.tracker.findFirst.mockResolvedValue({ ...dormant, simPhoneNumber: '+33600000000' });
+    prisma.position.findFirst.mockResolvedValue(recentPosition(0));
+    registry.send.mockReturnValue(false); // TCP KO → le repli SMS doit être tenté
+    const sms = testModule.get(SmsGatewayService) as unknown as { isEnabled: jest.Mock; send: jest.Mock };
+    sms.isEnabled.mockReturnValue(true);
+    sms.send.mockResolvedValue({ ok: true });
+
+    await service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin);
+
+    expect(sms.send).toHaveBeenCalled();
+  });
+
+  // DORM-4. Réintégration automatique : une seule trame fraîche suffit, rien à réactiver.
+  it('DORM-4: le boîtier qui réémet redevient immédiatement pilotable par le planning', async () => {
+    prisma.tracker.findFirst.mockResolvedValue({ ...trackerWithVehicle, lastSeenAt: new Date() });
+    prisma.position.findFirst
+      .mockResolvedValueOnce(recentPosition(0))
+      .mockResolvedValueOnce(null); // aucun mouvement récent → la coupe passe les gardes
+    registry.send.mockReturnValue(true);
+
+    await service.requestCommand(TRACKER_ID, EngineAction.CUT, null, superAdmin, 'SCHEDULER');
+
+    expect(registry.send).toHaveBeenCalled();
+  });
+
+  // DORM-5. Frontière : sous le seuil d'action (72 h), on agit normalement.
+  it('DORM-5: un silence de 71 h ne suspend pas encore la coupe auto', async () => {
+    prisma.tracker.findFirst.mockResolvedValue({
+      ...trackerWithVehicle,
+      lastSeenAt: new Date(Date.now() - 71 * 60 * 60 * 1000),
+    });
+    prisma.position.findFirst
+      .mockResolvedValueOnce(recentPosition(0))
+      .mockResolvedValueOnce(null);
+    registry.send.mockReturnValue(true);
+
+    await service.requestCommand(TRACKER_ID, EngineAction.CUT, null, superAdmin, 'SCHEDULER');
+
+    expect(registry.send).toHaveBeenCalled();
+  });
+
   // 10. CUT ACCEPTÉ + dispatch réussi si tracker connecté
   it('should dispatch CUT to connected tracker and start ACK wait', async () => {
     prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);

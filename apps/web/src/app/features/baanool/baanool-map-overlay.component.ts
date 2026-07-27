@@ -6,6 +6,13 @@ import {
   Menu, Maximize2, Bell, UserCircle2,
   Car, Crosshair, Satellite, Search, ChevronRight, X,
 } from 'lucide-angular';
+import {
+  DORMANT_STOP_COUNTING_MS,
+  formatSilenceLabel,
+  isTrackerOnline,
+  isVehicleDormant,
+  MOVING_FRESHNESS_MS,
+} from '@vizyo/tracky-shared';
 import { AuthService } from '../../core/services/auth.service';
 import { MapBridgeService } from '../../core/services/map-bridge.service';
 import { MenuStateService } from '../../core/services/menu-state.service';
@@ -96,13 +103,22 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
               </div>
             } @else {
               @for (v of filteredVehicles(); track v.vehicleId) {
-                <button class="bn-vehicle-row" (click)="onVehicleClick(v.vehicleId)">
-                  <span class="bn-vehicle-dot" [class.online]="isOnline(v)"></span>
+                <button class="bn-vehicle-row" [class.bn-vehicle-row--dormant]="v.dormant" (click)="onVehicleClick(v.vehicleId)">
+                  <span class="bn-vehicle-dot" [class.online]="v.live" [class.dormant]="v.dormant"></span>
                   <div class="bn-vehicle-main">
                     <div class="bn-vehicle-plate">{{ v.plate || '—' }}</div>
+                    <!-- On DATE la ligne au lieu de la retirer : un vehicule muet reste
+                         selectionnable (on va voir sa derniere position connue), il porte
+                         juste son anciennete. Une vitesse n'est affichee que si la trame
+                         est assez fraiche pour la prouver (< 5 min) — sinon on afficherait
+                         « 62 km/h » pour un vehicule a l'arret depuis des semaines. -->
                     <div class="bn-vehicle-meta">
-                      @if (isOnline(v)) {
+                      @if (v.dormant) {
+                        Muet depuis {{ v.silenceLabel }}
+                      } @else if (v.movingFresh) {
                         {{ v.speedKmh | number: '1.0-0' }} km/h
+                      } @else if (v.silenceLabel) {
+                        Vu il y a {{ v.silenceLabel }}
                       } @else {
                         Hors ligne
                       }
@@ -307,6 +323,11 @@ import { VehicleGroupsService, type VehicleGroup } from '../../core/services/veh
       background: #ccc; flex-shrink: 0;
     }
     .bn-vehicle-dot.online { background: #00c896; box-shadow: 0 0 0 3px rgba(0, 200, 150, 0.2); }
+    /* Muet de longue date : pastille CREUSE (le signal ne revient plus) plutot
+       qu'un simple gris, et ligne estompee. Le vehicule reste dans la liste et
+       reste cliquable — il est signale, jamais masque. */
+    .bn-vehicle-dot.dormant { background: #e5e7eb; box-shadow: inset 0 0 0 2px #9ca3af; }
+    .bn-vehicle-row--dormant { opacity: 0.72; }
     .bn-vehicle-main { flex: 1; min-width: 0; }
     .bn-vehicle-plate { font-weight: 600; font-size: 14px; color: #333; }
     .bn-vehicle-meta { font-size: 12px; color: #999; margin-top: 2px; }
@@ -386,15 +407,34 @@ export class BaanoolMapOverlayComponent implements OnInit {
       .catch(() => this.groups.set([]));
   }
 
+  /**
+   * Index snapshot par vehicule — la SEULE source de fraicheur autorisee.
+   *
+   * `position.timestamp` est l'horloge DU BOITIER (Coban) : elle derive, repart a
+   * 1970 apres une coupure d'alimentation, ou avance de plusieurs heures. Compter
+   * « en ligne » dessus classait des vehicules au hasard. `lastSeenAt` est l'heure
+   * SERVEUR de la derniere trame recue : c'est elle qui dit si le boitier parle.
+   */
+  private readonly snapshotByVehicle = computed(
+    () => new Map(this.realtime.snapshot().map((s) => [s.vehicleId, s])),
+  );
+
+  /**
+   * Onglets Total / En ligne / Hors ligne.
+   *
+   * « En ligne » = le boitier a parle depuis moins de 15 min (seuil PARTAGE
+   * `isTrackerOnline`, le meme que l'admin Trackers et les marqueurs de la carte).
+   * Les 5 min reinventees ici basculaient en « hors ligne » des vehicules gares
+   * parfaitement sains : un Coban a l'arret n'emet que toutes les ~300 s.
+   */
   protected readonly counts = computed(() => {
     const positions = this.realtime.positionsList();
+    const snapshots = this.snapshotByVehicle();
     const total = positions.length;
     const now = Date.now();
-    const ONLINE_MS = 5 * 60 * 1000; // 5min
     let online = 0;
     for (const p of positions) {
-      const ts = p.timestamp ? new Date(p.timestamp).getTime() : 0;
-      if (now - ts < ONLINE_MS) online++;
+      if (isTrackerOnline(snapshots.get(p.vehicleId)?.lastSeenAt ?? p.timestamp, now)) online++;
     }
     return { total, online, offline: total - online };
   });
@@ -405,41 +445,53 @@ export class BaanoolMapOverlayComponent implements OnInit {
     return tab === 'online' ? cnt.online : tab === 'offline' ? cnt.offline : cnt.total;
   });
 
-  /** Liste filtree des vehicules : merge positions (live speed/timestamp) avec
-   *  snapshot (plate persistante). Filtres : search query + tab Total/En ligne/Hors ligne. */
+  /**
+   * Liste filtree des vehicules : merge positions (vitesse live) avec le snapshot
+   * (plaque + `lastSeenAt` serveur). Filtres : recherche + onglet.
+   *
+   * Trois faits DISTINCTS sont calcules une fois par ligne, au lieu d'un unique
+   * « online » a 5 min qui melangeait tout :
+   *  - `live`        : le boitier parle (< 15 min) → pastille verte, meme definition
+   *                    que le marqueur de la carte ;
+   *  - `movingFresh` : trame de moins de 5 min, seule condition pour AFFIRMER une
+   *                    vitesse (un vehicule qui roule emet toutes les ~30 s) ;
+   *  - `dormant`     : muet depuis plus de 7 j (seuil de COMPTAGE, c'est une liste,
+   *                    pas une commande) → il reste affiche, date de son anciennete.
+   */
   protected readonly filteredVehicles = computed(() => {
     const positions = this.realtime.positionsList();
-    const snapshots = this.realtime.snapshot();
+    const snapshots = this.snapshotByVehicle();
     const tab = this.activeTab();
     const q = this.searchQuery().trim().toLowerCase();
     const now = Date.now();
-    const ONLINE_MS = 5 * 60 * 1000;
 
-    // Map vehicleId → plate depuis le snapshot
-    const plateById = new Map<string, string>();
-    for (const s of snapshots) plateById.set(s.vehicleId, s.plate);
-
-    // Enrichir les positions avec plate
-    const enriched = positions.map((p) => ({
-      vehicleId: p.vehicleId,
-      plate: plateById.get(p.vehicleId) ?? '',
-      speedKmh: p.speedKmh,
-      timestamp: p.timestamp,
-    }));
+    const enriched = positions.map((p) => {
+      const snap = snapshots.get(p.vehicleId);
+      // Repli sur `p.timestamp` UNIQUEMENT si le vehicule n'a aucune ligne de
+      // snapshot (course au demarrage) : sans repli la liste dirait « hors ligne »
+      // pour tout le parc pendant la seconde qui precede l'hydratation.
+      const lastSeenAt = snap?.lastSeenAt ?? p.timestamp;
+      return {
+        vehicleId: p.vehicleId,
+        plate: snap?.plate ?? '',
+        speedKmh: p.speedKmh,
+        live: isTrackerOnline(lastSeenAt, now),
+        movingFresh: isTrackerOnline(lastSeenAt, now, MOVING_FRESHNESS_MS),
+        dormant: isVehicleDormant(
+          { trackerId: snap?.trackerId ?? p.trackerId, lastSeenAt },
+          now,
+          DORMANT_STOP_COUNTING_MS,
+        ),
+        silenceLabel: formatSilenceLabel(lastSeenAt, now),
+      };
+    });
 
     return enriched.filter((v) => {
       if (q && !v.plate.toLowerCase().includes(q)) return false;
       if (tab === 'total') return true;
-      const ts = v.timestamp ? new Date(v.timestamp).getTime() : 0;
-      const online = now - ts < ONLINE_MS;
-      return tab === 'online' ? online : !online;
+      return tab === 'online' ? v.live : !v.live;
     });
   });
-
-  isOnline(v: { timestamp?: string | Date }): boolean {
-    const ts = v.timestamp ? new Date(v.timestamp).getTime() : 0;
-    return Date.now() - ts < 5 * 60 * 1000;
-  }
 
   onVehicleClick(vehicleId: string): void {
     this.mapBridge.requestFlyToVehicle(vehicleId);

@@ -130,6 +130,31 @@ export class AudioMonitoringService {
       );
     }
 
+    // ⚠️ AUCUNE porte « boîtier muet » ici, VOLONTAIREMENT (une a été posée puis RETIRÉE
+    // à la relecture — ne pas la remettre sans relire ce qui suit).
+    //
+    // 1) MAUVAIS CANAL. `Tracker.lastSeenAt` ne mesure QUE le lien data (trames TCP/GPRS).
+    //    L'armement, lui, part en SMS vers la SIM et l'écoute se fait en APPELANT cette SIM :
+    //    deux porteuses GSM totalement indépendantes du data. Un forfait data épuisé, un APN
+    //    cassé ou un roaming sans data rendent le boîtier « muet » depuis des semaines alors
+    //    qu'il répond parfaitement au SMS et au téléphone. Ce service a d'ailleurs un cousin
+    //    qui repose sur ce fait : `TrackerFixModeService.tryFallbackSms` existe précisément
+    //    pour ATTEINDRE PAR SMS les boîtiers que le TCP n'atteint plus.
+    //
+    // 2) MAUVAISE CIBLE. Le seuil « arrêter d'agir » vise les AUTOMATES qui rejouent la même
+    //    action en boucle (cf. le planificateur antivol, ~1440 tentatives/jour). Ici il n'y a
+    //    pas de boucle : la route est manuelle (SUPER_ADMIN + permission par véhicule + motif
+    //    obligatoire), soit UN SMS par clic humain, plus un second si le filet auto-disarm
+    //    l'estampille. Bloquer coûte donc une capacité d'enquête pour économiser 2 SMS.
+    //
+    // 3) MAUVAIS MOMENT. Le motif type est « vol suspecté » : un boîtier arraché de son
+    //    alimentation data est EXACTEMENT le cas où l'exploitant a besoin d'essayer le micro,
+    //    et c'est le dernier canal qui lui reste. Un refus serveur ne lui laisserait aucune
+    //    porte de sortie (pas de `force` sur cette route, contrairement à l'override fix-mode).
+    //
+    // La trace ne perd rien : la ligne d'audit (#7) est créée AVANT tout envoi, puis passe
+    // SENT ou FAILED — une tentative sur boîtier injoignable reste donc lisible.
+
     // (#7) AUDIT AVANT DISPATCH — la ligne d'audit est créée AVANT toute tentative
     // d'armement, en PENDING : on garde une trace même si l'armement échoue ensuite.
     const requestedInEnv = this.config.get('NODE_ENV', { infer: true });
@@ -236,6 +261,14 @@ export class AudioMonitoringService {
    * Tenant : un non-SUPER_ADMIN ne peut désarmer qu'un tracker de SA flotte (where filtré,
    * comme requestListen). Échec d'envoi → alerte (centre d'alertes) MAIS on n'empêche pas
    * d'enregistrer la tentative — l'opérateur doit savoir que le désarmement a échoué.
+   *
+   * ⚠️ AUCUNE porte « boîtier muet » ici, VOLONTAIREMENT — pour DEUX raisons cumulées.
+   * D'abord la même que dans requestListen : le SMS est une porteuse GSM distincte du data
+   * que mesure `lastSeenAt`, donc « muet en TCP » ne veut pas dire « injoignable ». Ensuite,
+   * le désarmement RESTAURE (il rend le véhicule à la carte) : un boîtier peut s'être tu
+   * JUSTEMENT parce qu'il est resté en mode monitor, qui coupe le report GPS — l'y laisser
+   * l'enfermerait définitivement. Même principe que le backoff des coupures moteur, qui ne
+   * s'applique jamais aux restaurations.
    */
   async stopListen(
     trackerId: string,

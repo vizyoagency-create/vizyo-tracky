@@ -1,6 +1,7 @@
 import {
   douglasPeucker,
   evaluateIngestionFix,
+  MAX_DEVICE_CLOCK_AHEAD_MS,
   haversineMeters,
   isAcceptableLiveFix,
   isPlausibleJump,
@@ -93,6 +94,102 @@ describe('gps-sanity', () => {
   });
 
   describe('evaluateIngestionFix', () => {
+    /**
+     * HORLOGE BOITIER DANS LE FUTUR (critere 0).
+     *
+     * Le degat n'est pas la trame elle-meme : c'est qu'elle DEVIENT la baseline
+     * (`Tracker.lastValidFrameAt`). Toutes les trames REELLES qui suivent sont alors
+     * « anterieures » a un futur qui n'existe pas encore et tombent en 'stale_devicetime'.
+     * Un seul paquet date de 2035 suffisait a faire disparaitre un vehicule des positions,
+     * des trajets et des rapports — durablement.
+     */
+    describe('horloge boitier en avance', () => {
+      const NOW = new Date('2026-06-11T01:00:00Z').getTime();
+
+      it('REJETTE une trame nettement dans le futur, meme SANS baseline', () => {
+        // Le tracker neuf (ou remis a zero) est justement le plus vulnerable :
+        // sans reference, la trame folle s'installerait comme verite.
+        const v = evaluateIngestionFix(
+          { lat: 33.5, lng: -7.5, deviceTime: NOW + 7 * 24 * 3600 * 1000 },
+          undefined,
+          { now: NOW },
+        );
+        expect(v.authoritative).toBe(false);
+        expect(v.reason).toBe('future_devicetime');
+      });
+
+      it('TOLERE un decalage de fuseau mal interprete (2 h) — sinon on blackhole un parc entier', () => {
+        const v = evaluateIngestionFix(
+          { lat: 33.5, lng: -7.5, deviceTime: NOW + 2 * 3600 * 1000 },
+          undefined,
+          { now: NOW },
+        );
+        expect(v.authoritative).toBe(true);
+      });
+
+      it('frontiere du seuil de tolerance', () => {
+        const dansLaTolerance = evaluateIngestionFix(
+          { lat: 33.5, lng: -7.5, deviceTime: NOW + MAX_DEVICE_CLOCK_AHEAD_MS },
+          undefined,
+          { now: NOW },
+        );
+        expect(dansLaTolerance.authoritative).toBe(true);
+        const auDela = evaluateIngestionFix(
+          { lat: 33.5, lng: -7.5, deviceTime: NOW + MAX_DEVICE_CLOCK_AHEAD_MS + 1 },
+          undefined,
+          { now: NOW },
+        );
+        expect(auDela.authoritative).toBe(false);
+        expect(auDela.reason).toBe('future_devicetime');
+      });
+
+      it('tolerance surchargeable par l appelant', () => {
+        const v = evaluateIngestionFix(
+          { lat: 33.5, lng: -7.5, deviceTime: NOW + 30 * 60 * 1000 },
+          undefined,
+          { now: NOW, maxAheadMs: 10 * 60 * 1000 },
+        );
+        expect(v.reason).toBe('future_devicetime');
+      });
+
+      /**
+       * AUTO-REPARATION : un tracker dont la baseline est DEJA datee du futur (trame passee
+       * avant l'existence du critere 0) doit pouvoir s'en sortir. Sans cette branche, ses
+       * trames reelles resteraient rejetees jusqu'a ce que l'horloge murale rattrape —
+       * des annees pour une date de 2035.
+       */
+      it('REPARE une baseline deja empoisonnee : une seule trame saine suffit', () => {
+        const v = evaluateIngestionFix(
+          { lat: 33.5, lng: -7.5, deviceTime: NOW },
+          { lat: 33.4, lng: -7.4, deviceTime: NOW + 365 * 24 * 3600 * 1000 },
+          { now: NOW },
+        );
+        expect(v.authoritative).toBe(true);
+        expect(v.reason).toBeNull();
+      });
+
+      it('une baseline SAINE garde toute sa force de rejet (pas d effet de bord)', () => {
+        // La reparation ne doit pas devenir une porte derobee : face a une baseline
+        // normale, le critere « non strictement croissant » s applique comme avant.
+        const v = evaluateIngestionFix(
+          { lat: 33.5, lng: -7.5, deviceTime: NOW - 30_000 },
+          { lat: 33.4, lng: -7.4, deviceTime: NOW },
+          { now: NOW },
+        );
+        expect(v.authoritative).toBe(false);
+        expect(v.reason).toBe('stale_devicetime');
+      });
+
+      it('une date illisible garde le comportement d avant (arbitree par les criteres suivants)', () => {
+        const v = evaluateIngestionFix(
+          { lat: 33.5, lng: -7.5, deviceTime: 'pas-une-date' },
+          { lat: 33.4, lng: -7.4, deviceTime: NOW },
+          { now: NOW },
+        );
+        expect(v.reason).not.toBe('future_devicetime');
+      });
+    });
+
     const t0 = new Date('2026-06-11T01:00:00Z');
     const tPast = new Date('2026-06-11T00:59:30Z'); // 30s AVANT t0
     const tFwd30 = new Date('2026-06-11T01:00:30Z'); // 30s APRES t0

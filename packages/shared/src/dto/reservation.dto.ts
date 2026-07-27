@@ -52,6 +52,12 @@ export interface SuggestReservationResultDto {
   excludedUnknownCapacity: number;
   /** Véhicules conformes mais immobilisés (incident/maintenance bloquant sur le créneau). */
   excludedImmobilized: number;
+  /** Véhicules conformes mais DORMANTS : boîtier muet depuis plus de 7 jours (seuil « arrêter de
+   *  compter »). Écartés du vivier — on ne propose pas un véhicule qu'on ne sait plus localiser —
+   *  mais toujours consultables sur leur fiche, et de retour dans le vivier dès la trame suivante.
+   *  Exposé pour ne pas faire baisser un chiffre client EN SILENCE. Donnée INTERNE : jamais
+   *  renvoyée au demandeur du lien public de réservation. */
+  excludedDormant: number;
 }
 
 /** Validation d'une demande : fixe le véhicule (si « ouverte ») et passe CONFIRMED. */

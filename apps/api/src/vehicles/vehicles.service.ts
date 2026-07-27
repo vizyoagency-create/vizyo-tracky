@@ -13,6 +13,15 @@ import type {
   VehicleSnapshotDto,
   VehicleSyncableField,
 } from '@vizyo/tracky-shared';
+// Dormance (lot « dénominateurs ») — seuils et prédicats PARTAGÉS avec l'UI : ce fichier ne
+// doit plus contenir de seuil de fraîcheur maison. `isVehicleDormant` est volontairement
+// asymétrique (faux sans boîtier, faux si le boîtier n'a JAMAIS émis) — cf. tracker-liveness.
+import {
+  DORMANT_STOP_COUNTING_MS,
+  MOVING_FRESHNESS_MS,
+  formatSilenceLabel,
+  isVehicleDormant,
+} from '@vizyo/tracky-shared';
 import { InMemoryCacheService } from '../common/cache/in-memory-cache.service';
 import { resolveTenantScope } from '../common/tenant-scope';
 import { PrismaService } from '../prisma/prisma.service';
@@ -29,6 +38,59 @@ import type { UpdateVehicleDto } from './dto/update-vehicle.dto';
 //     suffit largement (rythme de mise a jour business = minute).
 const SNAPSHOT_TTL_MS = 15_000;
 const STATS_TTL_MS = 60_000;
+
+/**
+ * Borne du balayage de présence des KPI (`stats`). Même ordre de grandeur que le `take` de
+ * `snapshot()` : deux colonnes par véhicule (id + lastSeenAt du boîtier), donc négligeable
+ * face au reste de la requête, mais on ne descend jamais un `findMany` non borné sur un VPS
+ * 2 vCPU. `total` reste compté par la DB (exact) : seule la RÉPARTITION est bornée.
+ */
+const PRESENCE_SCAN_CAP = 2000;
+
+/**
+ * KPI du dashboard. `moving` / `idle` / `unreachable` forment une partition EXPLICITE du parc
+ * (chaque véhicule tombe dans une case et une seule), et non plus « idle = total - moving ».
+ * Le résidu masquait le fait réel : au 27/07, 2 véhicules muets depuis 89 j et 52 j étaient
+ * comptés « à l'arrêt », donc indiscernables d'une camionnette garée pour la nuit.
+ */
+export interface FleetVehicleStats {
+  total: number;
+  /** Boîtier joignable ET une position > 5 km/h dans les {@link MOVING_FRESHNESS_MS} dernières minutes. */
+  moving: number;
+  /** Boîtier joignable mais pas de mouvement récent : à l'arrêt, au sens où le client l'entend. */
+  idle: number;
+  /**
+   * INJOIGNABLES : boîtier posé, qui a déjà parlé, puis muet depuis plus de
+   * {@link DORMANT_STOP_COUNTING_MS}. Jamais retirés du `total` — on les nomme, on ne les cache pas.
+   * Les véhicules SANS boîtier n'entrent pas ici (ils ne se sont pas « tus ») : ils restent dans `idle`.
+   */
+  unreachable: number;
+  criticalAlerts: number;
+  newThisMonth: number;
+  /** Seuil de silence appliqué (ms) — permet à l'UI d'écrire « muet depuis plus de 7 jours ». */
+  dormantThresholdMs: number;
+  /**
+   * `true` si le balayage de présence a été borné ({@link PRESENCE_SCAN_CAP}) : `total` reste
+   * exact mais la somme des trois cases lui est INFÉRIEURE. Exposé au lieu d'être subi — un
+   * plafond qui rogne des compteurs en silence est précisément ce que ce lot corrige, et la
+   * page « Horaires » a déjà ce réflexe avec `awaitingStopScanTruncated`.
+   */
+  presenceScanTruncated: boolean;
+}
+
+/**
+ * Ligne « Parc & capacités » enrichie de la présence du boîtier. Les champs de dormance sont
+ * AJOUTÉS au DTO partagé, jamais substitués : un véhicule muet reste dans le tableau, avec ses
+ * capacités et sa source planning — on ne fait que le SIGNALER (pastille + ancienneté).
+ */
+export type VehicleCapacityRow = VehicleCapacityRowDto & {
+  /** `true` = boîtier muet depuis plus de {@link DORMANT_STOP_COUNTING_MS}. */
+  dormant: boolean;
+  /** ISO — dernier signal du boîtier, ou null (pas de boîtier / jamais émis). */
+  lastSeenAt: string | null;
+  /** Ancienneté du silence en clair (« 45 min », « 89 j »), ou null si le boîtier n'a jamais parlé. */
+  silenceLabel: string | null;
+};
 
 export interface RequestedBy {
   userId: string;
@@ -617,8 +679,13 @@ export class VehiclesService {
    * Sprint 10 — Vue « Parc & capacités » : tous les véhicules accessibles + leur capacité
    * (places / sièges-enfant / équipements) alignée sur la source planning (marque/modèle/énergie),
    * avec les champs divergents pré-calculés (proposables à la synchro). Scopée tenant + granulaire.
+   *
+   * Dormance : la vue SIGNALE le boîtier muet (pastille + ancienneté) sans RETIRER la ligne. Un
+   * véhicule dont le boîtier s'est tu reste un véhicule du parc : il a toujours 9 places et 2
+   * sièges-enfant, il reste planifiable, et c'est justement cette page qui doit permettre de
+   * remarquer qu'on compte sur une capacité qu'on ne voit plus depuis 89 jours.
    */
-  async capacityOverview(requestedBy: RequestedBy): Promise<VehicleCapacityRowDto[]> {
+  async capacityOverview(requestedBy: RequestedBy): Promise<VehicleCapacityRow[]> {
     const scope = resolveTenantScope(requestedBy);
     if (scope.mode === 'DENY') return [];
     const where: Prisma.VehicleWhereInput = {};
@@ -631,11 +698,15 @@ export class VehiclesService {
       select: {
         id: true, plate: true, type: true, brand: true, model: true, energy: true,
         seats: true, childSeats: true, features: true,
+        // Greffé sur la requête EXISTANTE (jointure 1-1 déjà indexée) plutôt qu'une 2e requête :
+        // le VPS 2 vCPU ne doit pas payer un aller-retour de plus pour deux colonnes.
+        tracker: { select: { id: true, lastSeenAt: true } },
         ...VehiclesService.GROUP_INCLUDE,
       },
       orderBy: { plate: 'asc' },
       take: 500,
     });
+    const now = Date.now();
     const vids = vehicles.map((v) => v.id);
     const tasks = vids.length
       ? await this.prisma.installationTask.findMany({
@@ -670,6 +741,7 @@ export class VehiclesService {
         if (source.model && source.model !== v.model) divergentFields.push('model');
         if (source.energy && source.energy !== v.energy) divergentFields.push('energy');
       }
+      const lastSeenAt = v.tracker?.lastSeenAt ?? null;
       return {
         vehicleId: v.id,
         plate: v.plate,
@@ -683,17 +755,16 @@ export class VehiclesService {
         group: v.groups?.[0]?.group ?? null,
         installationSource: source,
         divergentFields,
+        // Dérivé au read-time : aucun champ en base, aucun drapeau à lever ni à baisser.
+        // Le jour où le boîtier ré-émet, `dormant` retombe à false tout seul au prochain appel.
+        dormant: isVehicleDormant({ trackerId: v.tracker?.id ?? null, lastSeenAt }, now),
+        lastSeenAt: lastSeenAt ? lastSeenAt.toISOString() : null,
+        silenceLabel: formatSilenceLabel(lastSeenAt, now),
       };
     });
   }
 
-  async stats(requestedBy: RequestedBy, superFleetId?: string | null): Promise<{
-    total: number;
-    moving: number;
-    idle: number;
-    criticalAlerts: number;
-    newThisMonth: number;
-  }> {
+  async stats(requestedBy: RequestedBy, superFleetId?: string | null): Promise<FleetVehicleStats> {
     // V1.10 (Sprint 2 perf) — cache 60s pour le scope 'ALL'. A 10+ utilisateurs
     // sur le dashboard, divise le nombre de stats() par DB par ~30 (60 / 2s polls).
     // V1.16 (audit A3/B1) — fail-closed AVANT le cache : un non-super sans
@@ -701,7 +772,10 @@ export class VehiclesService {
     // pour ne pas lire/ecrire une entree poisonnee sous la cle 'none'.
     const scope = resolveTenantScope(requestedBy);
     if (scope.mode === 'DENY') {
-      return { total: 0, moving: 0, idle: 0, criticalAlerts: 0, newThisMonth: 0 };
+      return {
+        total: 0, moving: 0, idle: 0, unreachable: 0, criticalAlerts: 0, newThisMonth: 0,
+        dormantThresholdMs: DORMANT_STOP_COUNTING_MS, presenceScanTruncated: false,
+      };
     }
 
     // Filtre société GLOBAL (sélecteur super-admin) : un SUPER_ADMIN peut scoper les KPI
@@ -714,9 +788,7 @@ export class VehiclesService {
     // plus rares que le poll « toutes flottes ».
     const cacheKey = effectiveFleetId && scope.mode !== 'FLEET' ? null : this.kpiCacheKey('stats', requestedBy);
     if (cacheKey) {
-      const hit = this.cache.get<{
-        total: number; moving: number; idle: number; criticalAlerts: number; newThisMonth: number;
-      }>(cacheKey);
+      const hit = this.cache.get<FleetVehicleStats>(cacheKey);
       if (hit) return hit;
     }
 
@@ -727,20 +799,27 @@ export class VehiclesService {
       fleetFilter = { ...fleetFilter, id: { in: requestedBy.accessibleVehicleIds } };
     }
 
-    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const now = Date.now();
+    // Seuil de fraîcheur « en mouvement » : plus de constante locale réinventée ici. C'est la
+    // MÊME valeur (5 min) que celle lue par la carte et la fiche véhicule — sinon le dashboard
+    // pouvait annoncer « 12 en mouvement » pendant que la carte n'en montrait que 9.
+    const movingSince = new Date(now - MOVING_FRESHNESS_MS);
     const monthStart = new Date();
     monthStart.setDate(1);
     monthStart.setHours(0, 0, 0, 0);
 
-    const [total, newThisMonth, movingVehicles, criticalAlerts] = await Promise.all([
+    const [total, newThisMonth, movingVehicles, criticalAlerts, presenceRows] = await Promise.all([
       this.prisma.vehicle.count({ where: fleetFilter }),
       this.prisma.vehicle.count({ where: { ...fleetFilter, createdAt: { gte: monthStart } } }),
-      this.prisma.$queryRaw<{ count: bigint }[]>`
-        SELECT COUNT(DISTINCT v."id") as count
+      // On remonte les IDENTIFIANTS (et non plus un COUNT) : la répartition ci-dessous a besoin
+      // de savoir QUI roule pour ranger chaque véhicule dans une case et une seule. Même plan
+      // d'exécution, même index — seule la projection change.
+      this.prisma.$queryRaw<{ id: string }[]>`
+        SELECT DISTINCT v."id" AS id
         FROM vehicles v
         JOIN trackers t ON t."vehicleId" = v."id"
         JOIN positions p ON p."trackerId" = t."id"
-        WHERE p."timestamp" > ${fiveMinAgo}
+        WHERE p."timestamp" > ${movingSince}
           AND p."speedKmh" > 5
           ${effectiveFleetId
             ? Prisma.sql`AND v."fleetId" = ${effectiveFleetId}::uuid`
@@ -761,16 +840,54 @@ export class VehiclesService {
             : {}),
         },
       }),
+      // Présence du parc : `Tracker.lastSeenAt` et RIEN d'autre. Pas Trip/Position (vidés en
+      // mode vie privée alors que le boîtier parle : on classerait injoignable tout véhicule
+      // sous RGPD), pas `Tracker.status` (colonne collante, jamais remise à OFFLINE).
+      this.prisma.vehicle.findMany({
+        where: fleetFilter,
+        select: { id: true, tracker: { select: { id: true, lastSeenAt: true } } },
+        take: PRESENCE_SCAN_CAP,
+      }),
     ]);
 
-    const moving = Number(movingVehicles[0]?.count ?? 0);
+    const movingIds = new Set(movingVehicles.map((r) => r.id));
+    // Partition EXPLICITE : chaque véhicule est rangé par un test qui lui est propre. L'ancien
+    // `idle = total - moving` faisait de « à l'arrêt » un fourre-tout qui absorbait en silence
+    // tout ce qu'on ne savait pas classer — dont FV-941-LZ, muet depuis 89 jours.
+    let moving = 0;
+    let idle = 0;
+    let unreachable = 0;
+    for (const v of presenceRows) {
+      const dormant = isVehicleDormant(
+        { trackerId: v.tracker?.id ?? null, lastSeenAt: v.tracker?.lastSeenAt ?? null },
+        now,
+      );
+      // La dormance est testée EN PREMIER : un boîtier muet depuis des semaines ne peut pas
+      // avoir de position fraîche, mais si les deux se contredisaient (rejeu d'archive, horloge
+      // boîtier folle), c'est l'INJOIGNABLE qui doit gagner — le silence est le fait dur.
+      if (dormant) unreachable++;
+      else if (movingIds.has(v.id)) moving++;
+      // Reste : boîtier joignable sans mouvement récent, ET véhicules SANS boîtier. Ces derniers
+      // ne sont pas « injoignables » (ils ne se sont jamais tus, ils n'ont jamais parlé) : les
+      // deux TEST-00x du parc sont des véhicules légitimes, à l'arrêt, pas des pannes.
+      else idle++;
+    }
 
-    const result = {
+    const result: FleetVehicleStats = {
       total,
       moving,
-      idle: total - moving,
+      idle,
+      unreachable,
       criticalAlerts,
       newThisMonth,
+      dormantThresholdMs: DORMANT_STOP_COUNTING_MS,
+      // Au-delà de PRESENCE_SCAN_CAP véhicules, `total` reste exact (compté par la DB) mais la
+      // répartition ne couvre que les premiers scannés : la somme des trois cases devient
+      // inférieure au total. On le DIT au lieu de le laisser passer pour un parc qui rétrécit.
+      // (Comparaison de comptages, pas `length >= cap` : un parc de très exactement 2000
+      // véhicules n'est pas tronqué et ne doit pas déclencher l'avertissement.) Le jour où une
+      // flotte s'en approche, il faudra agréger côté SQL — pas relever le plafond en douce.
+      presenceScanTruncated: presenceRows.length < total,
     };
     if (cacheKey) this.cache.set(cacheKey, result, STATS_TTL_MS);
     return result;

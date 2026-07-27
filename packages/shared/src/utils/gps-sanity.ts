@@ -73,7 +73,27 @@ export function isPlausibleJump(
 }
 
 /** Motif de rejet d'une trame a l'ingestion (audit / log). */
-export type IngestionRejectReason = 'stale_devicetime' | 'implausible_jump';
+export type IngestionRejectReason =
+  | 'stale_devicetime'
+  | 'implausible_jump'
+  | 'future_devicetime';
+
+/**
+ * Avance maximale toleree de l'horloge boitier sur l'horloge de reception, au-dela de
+ * laquelle une trame ne peut plus faire autorite (cf. {@link evaluateIngestionFix}).
+ *
+ * Pourquoi 6 h et pas quelques minutes — on arbitre entre deux pertes de donnees :
+ *  - trop serre : un parc entier dont le `deviceTime` est decale d'un fuseau mal
+ *    interprete (1 h Maroc / 2 h France l'ete) verrait TOUTES ses trames rejetees.
+ *    Un decalage en heures ENTIERES est le symptome typique d'un bug de fuseau, pas
+ *    d'une horloge folle : on ne le traite pas comme une trame mensongere.
+ *  - trop large : une horloge datee de plusieurs jours dans le futur reste autoritaire
+ *    et empoisonne la baseline (voir plus bas), ce qui coute BEAUCOUP plus cher.
+ * Au-dela de 6 h, ce n'est plus une derive : la latence reseau se compte en secondes et
+ * la derive d'un quartz en secondes/jour. C'est une horloge fausse (RTC sans pile,
+ * boitier initialise a une date bidon avant son premier lock GPS).
+ */
+export const MAX_DEVICE_CLOCK_AHEAD_MS = 6 * 60 * 60 * 1000;
 
 export interface IngestionFixVerdict {
   /** true = la trame fait autorite : persistance + denormalisation last-position. */
@@ -93,7 +113,19 @@ export interface IngestionFixVerdict {
  * (analyse prod HD-779-MA, nuit 2026-06-10/11). Persistees, elles polluent
  * `positions`, les trips et les rapports de distance.
  *
- * Deux signaux de rejet, du moins cher au plus cher :
+ * Trois signaux de rejet, du moins cher au plus cher :
+ *  0. `deviceTime` NETTEMENT dans le futur (> {@link MAX_DEVICE_CLOCK_AHEAD_MS} devant
+ *     l'horloge de reception) → horloge boitier fausse, la trame ne peut pas faire foi.
+ *     C'est le signal le plus destructeur si on le laisse passer, parce qu'il
+ *     s'AUTO-ENTRETIENT : la trame devient la baseline (`Tracker.lastValidFrameAt`),
+ *     et le critere 1 ci-dessous rejette alors TOUTES les trames REELLES qui suivent —
+ *     elles sont « anterieures » a un futur qui n'existe pas encore. Un seul paquet date
+ *     de 2035 suffit a faire disparaitre un vehicule des positions, des trajets et des
+ *     rapports pour de bon. On le teste donc AVANT le repli « pas de prev » : c'est
+ *     precisement un tracker sans baseline (neuf, remis a zero) qui est vulnerable.
+ *     Rejeter ne fait PAS disparaitre le vehicule : l'appelant met quand meme a jour la
+ *     liveness (`lastSeenAt`/`status ONLINE`) et journalise la decision — le boitier
+ *     reste visible et joignable, seule sa position mensongere est ecartee.
  *  1. `deviceTime` non strictement croissant (<= dernier deviceTime valide) →
  *     trame REJOUEE. Meme invariant que `TripsService.processPosition` en aval.
  *  2. saut physiquement impossible : vitesse moyenne implicite > `maxKmh`
@@ -106,19 +138,57 @@ export interface IngestionFixVerdict {
  *
  * `prev` = derniere position AUTORITAIRE connue (denormalisee sur Tracker).
  * Quand `prev` est absent (tracker neuf, jamais de fix), la trame est acceptee
- * faute de reference — elle etablit la baseline.
+ * faute de reference — elle etablit la baseline, sous reserve du critere 0 (une
+ * baseline datee du futur est justement ce qu'on ne veut pas laisser s'installer).
+ * Symetriquement, un `prev` LUI-MEME date du futur au-dela de la meme tolerance est
+ * ignore : c'est une baseline empoisonnee AVANT l'existence du critere 0, et s'y
+ * fier condamnerait le tracker a rejeter ses propres trames reelles pendant des
+ * annees. Une seule trame saine la repare (critere 0 bis, dans le corps).
+ *
+ * `opts.now` (defaut `Date.now()`) rend le critere 0 testable et permet a un appelant
+ * de fournir sa propre reference de temps ; `opts.maxAheadMs` sa propre tolerance.
  */
 export function evaluateIngestionFix(
   next: { lat: number; lng: number; deviceTime: Date | string | number },
   prev?:
     | { lat: number; lng: number; deviceTime: Date | string | number | null | undefined }
     | null,
-  opts: { maxKmh?: number } = {},
+  opts: { maxKmh?: number; now?: number; maxAheadMs?: number } = {},
 ): IngestionFixVerdict {
+  const nowMs = opts.now ?? Date.now();
+  const maxAheadMs = opts.maxAheadMs ?? MAX_DEVICE_CLOCK_AHEAD_MS;
+  // 0. Horloge boitier dans le futur. Compare au `now` de l'appelant (defaut : horloge
+  // du process qui ingere) et non a `prev` : une trame en avance est fausse dans l'absolu,
+  // meme quand aucune baseline n'existe encore. `toMs` peut rendre NaN sur une date
+  // illisible ; NaN echoue toute comparaison, donc ce cas garde son comportement d'avant
+  // (arbitre par les criteres suivants) plutot que d'etre rejete ici par accident.
+  const nextMs = toMs(next.deviceTime);
+  if (nextMs - nowMs > maxAheadMs) {
+    return { authoritative: false, reason: 'future_devicetime' };
+  }
   if (!prev || prev.deviceTime == null) {
     return { authoritative: true, reason: null };
   }
-  const dtSec = (toMs(next.deviceTime) - toMs(prev.deviceTime)) / 1000;
+  const prevMs = toMs(prev.deviceTime);
+  // 0 bis. AUTO-REPARATION d'une baseline DEJA empoisonnee. Le critere 0 empeche une
+  // horloge folle de S'INSTALLER comme reference, mais il ne SOIGNE pas un tracker dont
+  // le `lastValidFrameAt` denormalise est deja date du futur — trame passee avant ce
+  // garde-fou, ou base existante reprise telle quelle. Sans cette branche, ses trames
+  // REELLES resteraient toutes « anterieures » a ce futur et seraient rejetees en
+  // 'stale_devicetime' jusqu'a ce que l'horloge murale rattrape : des ANNEES pour une
+  // date de 2035. Le vehicule disparaitrait des positions, des trajets et des rapports
+  // sans aucun moyen de le rattraper — exactement le degat que le critere 0 veut eviter,
+  // simplement decale d'un cran. On ignore donc une reference elle-meme impossible et on
+  // laisse la trame courante — deja verifiee saine par le critere 0 — retablir la baseline.
+  //
+  // Cette branche ne peut PAS affaiblir le critere 1 pour un tracker sain : une baseline
+  // ecrite APRES le critere 0 valait au plus `now + maxAheadMs` a l'instant ou elle a ete
+  // acceptee, donc son avance ne fait que decroitre avec le temps. Seule une baseline
+  // heritee d'AVANT peut franchir ce seuil, et une seule trame suffit a la reparer.
+  if (prevMs - nowMs > maxAheadMs) {
+    return { authoritative: true, reason: null };
+  }
+  const dtSec = (nextMs - prevMs) / 1000;
   // 1. deviceTime non strictement croissant → trame rejouee depuis le buffer.
   if (dtSec <= 0) {
     return { authoritative: false, reason: 'stale_devicetime' };

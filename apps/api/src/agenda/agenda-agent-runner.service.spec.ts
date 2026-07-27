@@ -61,8 +61,22 @@ function makeAnthropic(reviews: unknown[]) {
   } as never;
 }
 const makeAiUsage = () => ({ record: jest.fn() } as never);
-function makeDetector(patterns: RecurringPattern[]) {
-  return { detect: jest.fn().mockResolvedValue(patterns) } as never;
+/**
+ * Détecteur mocké. `detectWithStats` est la SEULE méthode que l'agent appelle : il ne choisit pas
+ * ses véhicules, il applique les motifs qu'on lui donne — c'est donc le détecteur qui écarte les
+ * boîtiers muets, et l'agent qui doit rendre ces exclusions visibles.
+ */
+function makeDetector(
+  patterns: RecurringPattern[],
+  excluded: { skippedDormantVehicles?: number; skippedStalePatterns?: number } = {},
+) {
+  return {
+    detectWithStats: jest.fn().mockResolvedValue({
+      patterns,
+      skippedDormantVehicles: excluded.skippedDormantVehicles ?? 0,
+      skippedStalePatterns: excluded.skippedStalePatterns ?? 0,
+    }),
+  } as never;
 }
 function makeReservations(over: Record<string, unknown> = {}) {
   return {
@@ -144,7 +158,7 @@ describe('AgendaAgentRunnerService (P3.3 — agent nocturne)', () => {
 
     it('archive AUSSI un passage en échec (sinon un agent cassé passerait pour un agent inactif)', async () => {
       const prisma = makePrisma(makeSettings());
-      const detector = { detect: jest.fn().mockRejectedValue(new Error('détecteur HS')) };
+      const detector = { detectWithStats: jest.fn().mockRejectedValue(new Error('détecteur HS')) };
       const svc = new AgendaAgentRunnerService(prisma, detector as never, makeReservations(), makeEvents(), makeActivity());
 
       await expect(svc.runForFleet('f1', 'scheduled')).rejects.toThrow('détecteur HS');
@@ -228,6 +242,46 @@ describe('AgendaAgentRunnerService (P3.3 — agent nocturne)', () => {
 
     const res = await svc.runForFleet('f1', 'scheduled');
     expect(res).toMatchObject({ created: 0, proposed: 0, skipped: 0 });
-    expect((detector as unknown as { detect: jest.Mock }).detect).not.toHaveBeenCalled();
+    expect((detector as unknown as { detectWithStats: jest.Mock }).detectWithStats).not.toHaveBeenCalled();
+  });
+
+  /**
+   * L'agent n'a pas de garde de dormance à lui : elle est en amont, dans le détecteur. Son devoir,
+   * c'est de ne pas laisser disparaître ce qui a été écarté — un « 0 proposition » silencieux
+   * passerait pour un agent en panne alors que la flotte a simplement des boîtiers muets.
+   */
+  describe('exclusions amont (boîtiers muets, habitudes éteintes)', () => {
+    it('les remonte dans ignoré(s) et les DÉTAILLE dans le journal d\'activité', async () => {
+      const prisma = makePrisma(makeSettings());
+      const activity = makeActivity();
+      const svc = new AgendaAgentRunnerService(
+        prisma,
+        makeDetector([], { skippedDormantVehicles: 2, skippedStalePatterns: 1 }),
+        makeReservations(), makeEvents(), activity,
+      );
+
+      const res = await svc.runForFleet('f1', 'scheduled');
+
+      expect(res).toMatchObject({ created: 0, proposed: 0, skipped: 3 });
+      const rec = (activity as unknown as { record: jest.Mock }).record.mock.calls[0][0];
+      expect(rec.detail).toContain('2 véhicule(s) au boîtier muet, 1 habitude(s) éteinte(s)');
+      expect(rec.meta).toMatchObject({ skippedDormantVehicles: 2, skippedStalePatterns: 1 });
+      // L'historique conserve la trace : 0 motif exploitable, 3 écartés.
+      expect(runsOf(prisma).create.mock.calls[0]![0].data).toEqual(
+        expect.objectContaining({ patterns: 0, skipped: 3, status: 'completed' }),
+      );
+    });
+
+    it('rien d\'écarté : le libellé reste propre (pas de parenthèse à zéro)', async () => {
+      const activity = makeActivity();
+      const svc = new AgendaAgentRunnerService(
+        makePrisma(makeSettings()), makeDetector([PATTERN]), makeReservations(), makeEvents(), activity,
+      );
+
+      await svc.runForFleet('f1', 'scheduled');
+
+      const rec = (activity as unknown as { record: jest.Mock }).record.mock.calls[0][0];
+      expect(rec.detail).not.toContain('boîtier muet');
+    });
   });
 });

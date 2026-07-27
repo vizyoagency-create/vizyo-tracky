@@ -8,6 +8,7 @@ import type {
   TripAutomationRunStats,
   TripAutomationSettingsDto,
 } from '@vizyo/tracky-shared';
+import { DORMANT_STOP_ACTING_MS, isVehicleDormant } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
 import { AiAvailabilityService } from '../ai/ai-availability.service';
 import { ErrorLogger } from '../observability/error-logger.service';
@@ -37,7 +38,20 @@ type MutableStats = {
   analyzed: number;
   narrated: number;
   failed: number;
+  /** Véhicules écartés d'entrée parce que leur boîtier s'est tu (cf. {@link DORMANT_STOP_ACTING_MS}). */
+  skippedDormant: number;
 };
+
+/**
+ * Bilan de run + le compteur d'exclusions pour dormance.
+ *
+ * Le champ vit UNIQUEMENT dans le JSON (`TripAutomationSettings.lastRunStats` et le `meta` de
+ * l'activité système) : la dormance est dérivée au read-time, elle ne justifie NI colonne NI
+ * migration. La table d'historique `TripAutomationRun` garde donc ses colonnes telles quelles —
+ * le nombre d'ignorés est en revanche écrit en toutes lettres dans le libellé d'activité, pour
+ * qu'un chiffre qui baisse (moins de véhicules traités) soit toujours expliqué.
+ */
+type TripAutomationRunStatsWithDormancy = TripAutomationRunStats & { skippedDormant: number };
 
 type RunItem = TripAutomationRunItemDto;
 
@@ -56,6 +70,11 @@ type RunItem = TripAutomationRunItemDto;
  * CONTRÔLE : chaque passage est PERSISTÉ (TripAutomationRun) avec quand / pour qui / quoi + la liste
  * cliquable des trajets traités. Robustesse : verrou anti-chevauchement, tout est séquentiel
  * (throttle OSM/Overpass partagé + VPS 2 vCPU), chaque échec → centre d'alerte (jamais de throw).
+ *
+ * PÉRIMÈTRE : seuls les véhicules dont le boîtier a parlé dans les 72 h entrent dans le pipeline.
+ * Un boîtier muet ne produit plus de trajet : le balayer coûtait des requêtes (et, si un recompute
+ * recréait ses vieux trajets, des appels IA facturés) pour un résultat toujours vide. Les exclus
+ * sont COMPTÉS (`skippedDormant`) et annoncés dans le journal d'activité.
  */
 @Injectable()
 export class TripAutomationService {
@@ -98,12 +117,15 @@ export class TripAutomationService {
   }
 
   /** Lancement MANUEL (bouton « Lancer maintenant » super-admin) — ignore cadence/heure. */
-  async runNow(): Promise<TripAutomationRunStats> {
+  async runNow(): Promise<TripAutomationRunStatsWithDormancy> {
     const settings = await this.loadRow();
     return this.run(settings, 'manual');
   }
 
-  private async run(settings: TripAutomationSettings, origin: 'scheduled' | 'manual'): Promise<TripAutomationRunStats> {
+  private async run(
+    settings: TripAutomationSettings,
+    origin: 'scheduled' | 'manual',
+  ): Promise<TripAutomationRunStatsWithDormancy> {
     if (this.running) {
       this.logger.warn('Run déjà en cours — skip.');
       return this.finalStats(this.emptyStats(), 0);
@@ -124,11 +146,13 @@ export class TripAutomationService {
         stats.fleets++;
         const aiOn = settings.narrateEnabled && (await this.aiAvail.isEnabledForFleet(fleet.id, 'tripAnalysis'));
 
-        let vehicles: { id: string; plate: string }[];
+        let vehicles: { id: string; plate: string; tracker: { id: string; lastSeenAt: Date | null } | null }[];
         try {
           vehicles = await this.prisma.vehicle.findMany({
             where: { fleetId: fleet.id, tracker: { isNot: null } },
-            select: { id: true, plate: true },
+            // `lastSeenAt` est JOINT à la requête qui existait déjà (rien de nouveau à exécuter) :
+            // il sert à ne pas relancer tout le pipeline sur un boîtier muet depuis des semaines.
+            select: { id: true, plate: true, tracker: { select: { id: true, lastSeenAt: true } } },
           });
         } catch (e) {
           stats.failed++;
@@ -141,6 +165,28 @@ export class TripAutomationService {
           const analysisCapReached = stats.analyzed >= settings.maxAnalysesPerRun;
           const narrationCapReached = !aiOn || stats.narrated >= settings.maxNarrationsPerRun;
           if (analysisCapReached && narrationCapReached) break;
+          // DORMANCE (seuil « arrêter d'agir », 72 h) — un boîtier muet depuis 3 jours n'a produit
+          // AUCUN trajet neuf : le recompute, le listing des trajets et la lecture des analyses
+          // tournaient à vide, une fois par heure, pour chaque véhicule mort (en prod : FV-941-LZ,
+          // 89 jours). Pire, le récit IA se déclenchait sur des trajets qu'on avait déjà narrés si
+          // un recompute les avait recréés. On borne donc l'ENTRÉE du pipeline, jamais ses refus.
+          //
+          // Le véhicule n'est ni masqué ni archivé : ses trajets, analyses et récits restent
+          // intégralement consultables. Dès la première trame reçue, `lastSeenAt` redevient frais
+          // et il repasse dans le pipeline au tick suivant — aucun bouton à cliquer.
+          //
+          // Un boîtier affecté qui n'a JAMAIS émis n'est PAS dormant (il ne s'est pas « tu ») :
+          // il traverse la boucle, ne trouve aucun trajet et sort immédiatement.
+          if (
+            isVehicleDormant(
+              { trackerId: v.tracker?.id ?? null, lastSeenAt: v.tracker?.lastSeenAt ?? null },
+              now,
+              DORMANT_STOP_ACTING_MS,
+            )
+          ) {
+            stats.skippedDormant++;
+            continue;
+          }
           stats.vehicles++;
           await this.processVehicle(
             user, { id: v.id, plate: v.plate, fleetId: fleet.id, fleetName: fleet.name },
@@ -159,7 +205,10 @@ export class TripAutomationService {
         actor: origin === 'manual' ? 'super-admin' : 'planning',
         detail:
           `Automatisation trajets (${origin}) : ${stats.recomputed} recalculé(s) · ${stats.analyzed} analysé(s) · ` +
-          `${stats.narrated} récit(s) IA · ${stats.failed} échec(s) sur ${stats.fleets} flotte(s).`,
+          `${stats.narrated} récit(s) IA · ${stats.failed} échec(s) sur ${stats.fleets} flotte(s)` +
+          // Un chiffre client ne doit jamais baisser en silence : si des véhicules ont été écartés,
+          // le libellé le DIT (sinon « 12 analysés » au lieu de 30 passerait pour une panne).
+          (stats.skippedDormant > 0 ? ` · ${stats.skippedDormant} véhicule(s) au boîtier muet ignoré(s).` : '.'),
         meta: runStats as unknown as Record<string, unknown>,
       });
       return runStats;
@@ -320,7 +369,7 @@ export class TripAutomationService {
     return this.prisma.tripAutomationSettings.create({ data: {} });
   }
 
-  private async persistRun(id: string, runStats: TripAutomationRunStats): Promise<void> {
+  private async persistRun(id: string, runStats: TripAutomationRunStatsWithDormancy): Promise<void> {
     try {
       await this.prisma.tripAutomationSettings.update({
         where: { id },
@@ -335,7 +384,7 @@ export class TripAutomationService {
   private async recordRun(
     origin: 'scheduled' | 'manual',
     startedAt: Date,
-    runStats: TripAutomationRunStats,
+    runStats: TripAutomationRunStatsWithDormancy,
     items: RunItem[],
   ): Promise<void> {
     try {
@@ -442,10 +491,10 @@ export class TripAutomationService {
   }
 
   private emptyStats(): MutableStats {
-    return { fleets: 0, vehicles: 0, recomputed: 0, analyzed: 0, narrated: 0, failed: 0 };
+    return { fleets: 0, vehicles: 0, recomputed: 0, analyzed: 0, narrated: 0, failed: 0, skippedDormant: 0 };
   }
 
-  private finalStats(s: MutableStats, durationMs: number): TripAutomationRunStats {
+  private finalStats(s: MutableStats, durationMs: number): TripAutomationRunStatsWithDormancy {
     return { ...s, durationMs, at: new Date().toISOString() };
   }
 }

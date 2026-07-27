@@ -39,7 +39,16 @@ import { VehicleMaintenanceTabComponent } from './vehicle-maintenance-tab.compon
 import { AgendaApiService } from '../../core/services/agenda.service';
 import type { VehicleEventSeverity } from '@vizyo/tracky-shared';
 import { relativeTime } from '../../shared/utils/relative-time';
-import { getVehicleConnectivityState, isInstallationToReview, type VehicleConnectivityState, type GeofenceDto } from '@vizyo/tracky-shared';
+import {
+  formatSilenceLabel,
+  getVehicleConnectivityState,
+  getVehiclePresenceState,
+  isInstallationToReview,
+  isVehicleDormant,
+  type VehicleConnectivityState,
+  type VehiclePresenceState,
+  type GeofenceDto,
+} from '@vizyo/tracky-shared';
 import { GeofencesApiService } from '../../core/services/geofences.service';
 import {
   GpsDeadZonesApiService,
@@ -198,38 +207,57 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
           </div>
         }
 
-        <!-- Cartes stat (maquette 06) : Vitesse · Position · Dernière comm. · Boîtier/SIM -->
+        <!-- Cartes stat (maquette 06) : Vitesse · Position · Dernière comm. · Boîtier/SIM
+             DORMANCE — ces trois cartes lisent la DERNIÈRE trame reçue. Pour un véhicule muet
+             depuis 89 jours (prod : FV-941-LZ), elles affichaient « 0 km/h » et une adresse
+             comme si c'était l'instant présent. On ne retire RIEN (la dernière position connue
+             est justement ce qu'on cherche quand un boîtier a disparu) : on DATE. -->
         <div class="vdx-stats">
-          <div class="vdx-stat">
+          <div class="vdx-stat" [class.vdx-stat--stale]="isDormant()">
             <div class="vdx-stat-k">Vitesse</div>
             <div class="vdx-stat-v">
-              @if (connectivity() === 'GPS_LOST') {
+              @if (isDormant()) {
+                <!-- La vitesse d'un dormant est un souvenir de plusieurs semaines : affichée en
+                     petit et déclassée, jamais en gros chiffre « live ». -->
+                @if (currentPosition(); as pos) {
+                  <span class="vdx-stat-v--sm vdx-stale-v">{{ pos.speedKmh | number:'1.0-0' }} <span class="vdx-stat-u">km/h</span></span>
+                } @else { — }
+              } @else if (connectivity() === 'GPS_LOST') {
                 <!-- Incident FS-253 — GPS perdu : la vitesse est FIGÉE, on ne l'affiche PAS comme du live. -->
                 <span class="vdx-stat-v--sm" style="color:#ef4444;font-weight:700">GPS perdu</span>
               } @else if (currentPosition(); as pos) {
                 {{ pos.speedKmh | number:'1.0-0' }} <span class="vdx-stat-u">km/h</span>
               } @else { — }
             </div>
+            @if (isDormant()) { <div class="vdx-stat-stale">{{ staleValueNote() }}</div> }
           </div>
 
-          <div class="vdx-stat vdx-stat--link" role="button" tabindex="0" (click)="activeTab.set('map')" (keydown.enter)="activeTab.set('map')">
+          <div class="vdx-stat vdx-stat--link" [class.vdx-stat--stale]="isDormant()" role="button" tabindex="0" (click)="activeTab.set('map')" (keydown.enter)="activeTab.set('map')">
             <div class="vdx-stat-k">Position</div>
             @if (currentPosition(); as pos) {
-              <div class="vdx-stat-v vdx-stat-v--sm">Voir sur la carte</div>
+              <!-- Le lien vers la carte reste actif même dormant : savoir OÙ il a été vu la
+                   dernière fois est l'information la plus utile pour aller le récupérer. -->
+              <div class="vdx-stat-v vdx-stat-v--sm">{{ isDormant() ? 'Dernière position connue' : 'Voir sur la carte' }}</div>
               <div class="vdx-stat-coord">{{ pos.lat | number:'1.4-4' }}, {{ pos.lng | number:'1.4-4' }}</div>
+              @if (isDormant()) { <div class="vdx-stat-stale">{{ staleValueNote() }}</div> }
             } @else {
               <div class="vdx-stat-v vdx-stat-v--sm">Inconnue</div>
             }
           </div>
 
-          <div class="vdx-stat">
+          <div class="vdx-stat" [class.vdx-stat--stale]="isDormant()">
             <div class="vdx-stat-k">Dernière comm.</div>
             <!-- Incident FS-253 — « Dernière comm. » = dernier SIGNAL du boîtier (lastSeenAt), pas le
                  dernier fix GPS : un boîtier GPS-perdu communique toujours (réseau OK). -->
             <div class="vdx-stat-v vdx-stat-v--sm">@if (v.tracker?.lastSeenAt; as ls) { {{ relativeTime(ls) }} } @else { Jamais }</div>
-            <div class="vdx-stat-live" [class.vdx-stat-live--on]="connectivity() === 'ONLINE'">
+            <div class="vdx-stat-live" [class.vdx-stat-live--on]="connectivity() === 'ONLINE'"
+                 [class.vdx-stat-live--dormant]="isDormant()">
               <span class="vdx-live-dot"></span>{{ connectivity() === 'ONLINE' ? 'temps réel' : connMeta().label }}
             </div>
+            @if (isDormant()) {
+              <!-- Coupe court à « comment je le réactive ? » : il n'y a rien à réactiver. -->
+              <div class="vdx-stat-stale">Redevient normal seul dès la première trame reçue</div>
+            }
           </div>
 
           <div class="vdx-stat">
@@ -861,6 +889,12 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
     .vdx-stat-coord { font-family: var(--font-mono, monospace); font-size: .66rem; color: var(--fg-tertiary); margin-top: 2px; }
     .vdx-stat-live { display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; font-size: .68rem; font-weight: 700; color: var(--fg-tertiary); }
     .vdx-stat-live--on { color: var(--tracky-light); }
+    /* DORMANCE — ambre brûlé, identique au badge « Dormant » (source unique : connectivityMeta).
+       Le liseré ambre sur la carte dit d'un coup d'œil « ces chiffres ne sont pas d'aujourd'hui ». */
+    .vdx-stat-live--dormant { color: #d97706; }
+    .vdx-stat--stale { border-color: rgba(217,119,6,.35); }
+    .vdx-stale-v { color: var(--fg-tertiary); font-weight: 700; }
+    .vdx-stat-stale { margin-top: 4px; font-size: .64rem; line-height: 1.35; color: var(--fg-tertiary); font-style: italic; }
     .vdx-live-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
     .vdx-stat-live--on .vdx-live-dot { animation: vt-blink 2s ease-in-out infinite; }
     .vdx-stat-tags { display: flex; align-items: center; gap: 7px; margin-top: 6px; flex-wrap: wrap; }
@@ -2053,7 +2087,80 @@ export class VehicleDetailComponent implements OnInit {
     });
   });
 
-  protected readonly connMeta = computed(() => connectivityMeta(this.connectivity()));
+  /**
+   * Le signal le plus FRAIS connu du boîtier : le `lastSeenAt` REST (chargé au montage de la
+   * fiche) contre celui du snapshot temps réel, que le WS réécrit à chaque trame. C'est ce qui
+   * fait qu'un dormant qui se réveille redevient normal SANS recharger la page.
+   *
+   * ⚠️ On lit `snapshot.lastSeenAt`, JAMAIS `currentPosition().timestamp` — deux horloges
+   * différentes qu'il ne faut pas mélanger dans le même champ :
+   *  - `lastSeenAt` = horloge de RÉCEPTION, la seule alignée sur le serveur
+   *    (`Tracker.lastSeenAt = new Date()` à l'ingest, et `RealtimeService` la ré-horodate
+   *    à l'arrivée de l'event WS).
+   *  - `currentPosition().timestamp` = `deviceTime` du Coban, une horloge qui dérive (skew
+   *    GPRS, RTC sans pile) et qui peut être DANS LE FUTUR. Un boîtier en avance de six mois
+   *    rendait alors sa propre dormance STRUCTURELLEMENT indétectable sur cette fiche : le
+   *    `max()` retenait toujours sa date bidon, `isDormant()` restait faux à vie, et la fiche
+   *    de FV-941-LZ continuait d'afficher « Hors ligne » + une vitesse comme si c'était du
+   *    direct. Ce même piège est déjà écarté côté `RealtimeService` et côté liste véhicules ;
+   *    cette fiche était le dernier endroit qui rouvrait le trou.
+   *  - Ce timestamp a aussi un repli `new Date()` (branche snapshot de `currentPosition`) :
+   *    l'utiliser ici revenait à dater « maintenant » un boîtier muet depuis 89 jours.
+   */
+  private readonly freshestLastSeen = computed<string | null>(() => {
+    const trackerId = this.vehicle()?.tracker?.id ?? null;
+    const rest = this.vehicle()?.tracker?.lastSeenAt ?? null;
+    // Absent du snapshot (hors périmètre flotte, pas encore hydraté) → on reste sur le REST,
+    // jamais sur une valeur inventée.
+    const live = trackerId
+      ? (this.realtime.snapshot().find((s) => s.trackerId === trackerId)?.lastSeenAt ?? null)
+      : null;
+    if (!rest) return live;
+    if (!live) return rest;
+    return new Date(live).getTime() > new Date(rest).getTime() ? live : rest;
+  });
+
+  /**
+   * État de PRÉSENCE : `connectivity()` élargi d'un cran `DORMANT` (boîtier muet > 7 j).
+   *
+   * Seuil COUNTING (7 j), pas ACTING (72 h) : cette valeur ne sert QU'À AFFICHER. Les gardes
+   * des boutons de commande (couper, armer, écouter) restent sur 72 h, exactement comme le
+   * serveur — sinon un bouton resterait actif 4 jours pour une commande déjà refusée.
+   */
+  protected readonly presence = computed<VehiclePresenceState>(() => {
+    const v = this.vehicle();
+    return getVehiclePresenceState({
+      trackerId: v?.tracker?.id ?? null,
+      lastSeenAt: this.freshestLastSeen(),
+      lastPositionAt: v?.tracker?.lastPositionAt ?? null,
+      lastNoFixAt: v?.tracker?.lastNoFixAt ?? null,
+      lastIgnition: this.currentPosition()?.ignition ?? v?.tracker?.lastKnownIgnition ?? null,
+    });
+  });
+
+  /** Le boîtier parlait puis s'est tu depuis plus d'une semaine. */
+  protected readonly isDormant = computed(() =>
+    isVehicleDormant({ trackerId: this.vehicle()?.tracker?.id ?? null, lastSeenAt: this.freshestLastSeen() }),
+  );
+
+  /** « 89 j » — ancienneté du silence, affichée telle quelle dans les cartes. */
+  protected readonly silenceLabel = computed(() => formatSilenceLabel(this.freshestLastSeen()));
+
+  /**
+   * Phrase qui DATE une valeur figée. On n'efface jamais la vitesse ni la position d'un
+   * dormant (l'exploitant a besoin de savoir où il a été vu la dernière fois) : on retire
+   * seulement le mensonge « c'est maintenant ».
+   */
+  protected readonly staleValueNote = computed(() => {
+    const age = this.silenceLabel();
+    return age ? `dernière valeur connue il y a ${age}` : 'dernière valeur connue';
+  });
+
+  /**
+   * Métadonnées du badge : basées sur la PRÉSENCE (donc « Dormant · 89 j » plutôt que
+   * « Hors ligne », qui laisserait croire à une coupure de la nuit dernière).
+   */
+  protected readonly connMeta = computed(() => connectivityMeta(this.presence(), this.silenceLabel()));
 
   /**
    * Zone morte GPS dans laquelle se trouve ACTUELLEMENT le véhicule (uniquement s'il est

@@ -88,6 +88,7 @@ function build(over: {
 }
 
 const SLOT = { startAt: '2026-07-06T06:00:00.000Z', endAt: '2026-07-06T07:00:00.000Z' };
+const DAY = 24 * 60 * 60 * 1000;
 
 describe('AiOptimizationService — Sprint 9 (copilote IA)', () => {
   // ─── Capacité ──────────────────────────────────────────────────────────────
@@ -293,6 +294,181 @@ describe('AiOptimizationService — Sprint 9 (copilote IA)', () => {
     // Proposition : coût/km propagé ; coût de l'appel IA renvoyé (costOf 0,02 × 0,92).
     expect(res.proposals[0]).toMatchObject({ energy: 'ELECTRIQUE', costPerKm: 0.03 });
     expect(res.aiCostEur).toBeCloseTo(0.0184, 4);
+  });
+
+  // ─── Placement × dormance : ne pas proposer un véhicule qu'on ne sait plus joindre ─────────
+
+  /** Vivier renvoyé par la réservation : v1 vivant, v2 (le cas prod FV-941-LZ) muet. */
+  function twoCandidates(extra: Record<string, unknown> = {}) {
+    return makeReservations({
+      suggest: jest.fn().mockResolvedValue({
+        startAt: SLOT.startAt,
+        endAt: SLOT.endAt,
+        vehicles: [
+          { vehicleId: 'v1', vehiclePlate: 'AA', seats: 9, childSeats: 8, features: [], utilizationRatio: 0.3, underutilized: false },
+          { vehicleId: 'v2', vehiclePlate: 'FV-941-LZ', seats: 9, childSeats: 8, features: [], utilizationRatio: 0, underutilized: true },
+        ],
+        excludedUnknownCapacity: 0,
+        excludedImmobilized: 0,
+        ...extra,
+      }),
+    });
+  }
+
+  /** Meta véhicules (énergie + boîtier) telle que la lit `buildPlacementPayload`. */
+  function metaPrisma(v2LastSeenAt: Date | null, v2Tracker: { id: string } | null = { id: 't2' }) {
+    return makePrisma({
+      vehicle: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'v1', energy: 'DIESEL', fuelConsumptionL100km: 8, tracker: { id: 't1', lastSeenAt: new Date() } },
+          {
+            id: 'v2',
+            energy: 'DIESEL',
+            fuelConsumptionL100km: 8,
+            tracker: v2Tracker ? { ...v2Tracker, lastSeenAt: v2LastSeenAt } : null,
+          },
+        ]),
+        update: jest.fn(),
+      },
+    });
+  }
+
+  it('suggestPlacement : véhicule DORMANT (89 j) écarté du vivier IA, compté, et le résumé annonce le périmètre réel', async () => {
+    const anthropic = makeAnthropic({ proposals: [{ vehicleId: 'v1', score: 0.9, reasoning: 'ok' }], noGoodMatch: false, notes: null });
+    const svc = build({
+      prisma: metaPrisma(new Date(Date.now() - 89 * DAY)),
+      reservations: twoCandidates(),
+      anthropic,
+    });
+
+    const res = await svc.suggestPlacement(makeUser(), { ...SLOT });
+    const payload = (anthropic as unknown as { completeJson: jest.Mock }).completeJson.mock.calls[0][0].userPayload;
+    // Le muet n'atteint jamais le raisonnement (il serait classé 1er : ratio 0 = « à mutualiser »).
+    expect(payload.candidates.map((c: { vehicleId: string }) => c.vehicleId)).toEqual(['v1']);
+    expect(payload.fleetSummary.totalVehicles).toBe(1);
+    expect(payload.fleetSummary.dormantExcluded).toBe(1);
+    expect(payload.fleetSummary.underutilizedCount).toBe(0); // le 0 % du muet ne pollue plus le résumé
+    expect(payload.scopeNote).toContain('7 jours');
+    // Le périmètre annoncé au modèle est celui qu'on a RÉELLEMENT mesuré : `suggest()` est borné
+    // aux véhicules accessibles à cet utilisateur puis aux critères. Dire « de cette flotte »
+    // ferait écrire au modèle, dans ses notes rendues au client, un état du parc entier qu'aucune
+    // requête n'a établi (un chef de groupe lirait « 2 véhicules hors service » sur 40).
+    expect(payload.scopeNote).toContain('périmètre analysé');
+    expect(payload.scopeNote).not.toContain('de cette flotte');
+    // Transparence UI : le chiffre ne baisse pas en silence.
+    expect(res.excludedDormant).toBe(1);
+  });
+
+  it('suggestPlacement : silence de 2 h -> candidat NORMAL (aucune exclusion, aucune note de périmètre)', async () => {
+    const anthropic = makeAnthropic({ proposals: [], noGoodMatch: false, notes: null });
+    const svc = build({
+      prisma: metaPrisma(new Date(Date.now() - 2 * 60 * 60 * 1000)),
+      reservations: twoCandidates(),
+      anthropic,
+    });
+
+    const res = await svc.suggestPlacement(makeUser(), { ...SLOT });
+    const payload = (anthropic as unknown as { completeJson: jest.Mock }).completeJson.mock.calls[0][0].userPayload;
+    expect(payload.candidates.map((c: { vehicleId: string }) => c.vehicleId)).toEqual(['v1', 'v2']);
+    expect(payload.scopeNote).toBeUndefined(); // pas d'exclusion -> pas d'affirmation d'exclusion
+    expect(res.excludedDormant).toBe(0);
+  });
+
+  it('suggestPlacement : véhicule SANS boîtier -> reste proposable (il est réservable, juste pas suivi)', async () => {
+    const anthropic = makeAnthropic({ proposals: [], noGoodMatch: false, notes: null });
+    const svc = build({
+      prisma: metaPrisma(null, null), // v2 sans tracker du tout
+      reservations: twoCandidates(),
+      anthropic,
+    });
+
+    const res = await svc.suggestPlacement(makeUser(), { ...SLOT });
+    const payload = (anthropic as unknown as { completeJson: jest.Mock }).completeJson.mock.calls[0][0].userPayload;
+    expect(payload.candidates.map((c: { vehicleId: string }) => c.vehicleId)).toEqual(['v1', 'v2']);
+    expect(res.excludedDormant).toBe(0);
+  });
+
+  it('suggestPlacement : boîtier affecté mais JAMAIS vu -> reste proposable (« jamais connecté » ≠ « s\'est tu »)', async () => {
+    const anthropic = makeAnthropic({ proposals: [], noGoodMatch: false, notes: null });
+    const svc = build({ prisma: metaPrisma(null), reservations: twoCandidates(), anthropic });
+
+    const res = await svc.suggestPlacement(makeUser(), { ...SLOT });
+    const payload = (anthropic as unknown as { completeJson: jest.Mock }).completeJson.mock.calls[0][0].userPayload;
+    expect(payload.candidates.map((c: { vehicleId: string }) => c.vehicleId)).toEqual(['v1', 'v2']);
+    expect(res.excludedDormant).toBe(0);
+  });
+
+  it('suggestPlacement : réintégration automatique dès que le boîtier ré-émet', async () => {
+    const muetAi = makeAnthropic({ proposals: [], noGoodMatch: false, notes: null });
+    const muet = build({ prisma: metaPrisma(new Date(Date.now() - 8 * DAY)), reservations: twoCandidates(), anthropic: muetAi });
+    await muet.suggestPlacement(makeUser(), { ...SLOT });
+    expect(
+      (muetAi as unknown as { completeJson: jest.Mock }).completeJson.mock.calls[0][0].userPayload.candidates,
+    ).toHaveLength(1);
+
+    // Une seule trame reçue suffit : aucun bouton « réactiver », aucune écriture en base.
+    const revenuAi = makeAnthropic({ proposals: [], noGoodMatch: false, notes: null });
+    const revenu = build({ prisma: metaPrisma(new Date()), reservations: twoCandidates(), anthropic: revenuAi });
+    const res = await revenu.suggestPlacement(makeUser(), { ...SLOT });
+    expect(
+      (revenuAi as unknown as { completeJson: jest.Mock }).completeJson.mock.calls[0][0].userPayload.candidates,
+    ).toHaveLength(2);
+    expect(res.excludedDormant).toBe(0);
+  });
+
+  it('suggestPlacement : compteur du vivier amont additionné SANS double comptage', async () => {
+    const anthropic = makeAnthropic({ proposals: [], noGoodMatch: false, notes: null });
+    // L'amont a déjà écarté 2 muets (ils ne sont plus dans `vehicles`) ; on en trouve 1 de plus ici.
+    const svc = build({
+      prisma: metaPrisma(new Date(Date.now() - 30 * DAY)),
+      reservations: twoCandidates({ excludedDormant: 2 }),
+      anthropic,
+    });
+
+    const res = await svc.suggestPlacement(makeUser(), { ...SLOT });
+    expect(res.excludedDormant).toBe(3);
+  });
+
+  it('suggestPlacement : parc entièrement muet -> noGoodMatch qui NOMME la cause, sans dépenser un jeton', async () => {
+    const anthropic = makeAnthropic({ proposals: [], noGoodMatch: false });
+    const prisma = makePrisma({
+      vehicle: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'v1', energy: 'DIESEL', fuelConsumptionL100km: 8, tracker: { id: 't1', lastSeenAt: new Date(Date.now() - 40 * DAY) } },
+          { id: 'v2', energy: 'DIESEL', fuelConsumptionL100km: 8, tracker: { id: 't2', lastSeenAt: new Date(Date.now() - 89 * DAY) } },
+        ]),
+        update: jest.fn(),
+      },
+    });
+    const svc = build({ prisma, reservations: twoCandidates(), anthropic });
+
+    const res = await svc.suggestPlacement(makeUser(), { ...SLOT });
+    expect(res.noGoodMatch).toBe(true);
+    expect(res.proposals).toEqual([]);
+    expect(res.excludedDormant).toBe(2);
+    expect(res.notes).toContain('boîtier muet');
+    expect((anthropic as unknown as { completeJson: jest.Mock }).completeJson).not.toHaveBeenCalled();
+  });
+
+  it('suggestCapacity : les DORMANTS restent dans le payload (le nombre de places ne dépend pas du boîtier)', async () => {
+    const prisma = makePrisma({
+      vehicle: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'v1', plate: 'AA', type: 'VAN', brand: 'Citroën', model: 'ë-Jumpy', seats: null, childSeats: null, features: [] },
+        ]),
+        update: jest.fn(),
+      },
+    });
+    const anthropic = makeAnthropic({ proposals: [] });
+    const svc = build({ prisma, anthropic });
+
+    await svc.suggestCapacity(makeUser(), {});
+    // La requête capacité ne filtre PAS sur la liveness du boîtier : elle décrit le véhicule
+    // physique. Sinon la fiche d'un véhicule muet resterait incomplète pour toujours.
+    const where = (prisma as unknown as { vehicle: { findMany: jest.Mock } }).vehicle.findMany.mock.calls[0][0].where;
+    expect(where.tracker).toBeUndefined();
+    const payload = (anthropic as unknown as { completeJson: jest.Mock }).completeJson.mock.calls[0][0].userPayload;
+    expect(payload.vehicles).toHaveLength(1);
   });
 
   it('suggestPlacement : super-admin SANS fleetId -> 400 (jamais d\'agrégation multi-flottes)', async () => {

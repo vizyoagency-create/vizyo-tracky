@@ -14,7 +14,12 @@ import { apiErrorMessage } from '../../../core/error/api-error';
 import {
   LucideAngularModule, Sparkles, Check, AlertTriangle, Loader, CalendarCheck, Inbox, X, User,
 } from 'lucide-angular';
-import type { VehicleEventDto } from '@vizyo/tracky-shared';
+import {
+  DORMANT_STOP_COUNTING_MS,
+  formatSilenceLabel,
+  isVehicleDormant,
+  type VehicleEventDto,
+} from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { AgendaApiService } from '../../../core/services/agenda.service';
 import { AiApiService } from '../../../core/services/ai.service';
@@ -31,6 +36,13 @@ export interface ReservationSheetVehicle {
   plate: string | null;
   brand?: string | null;
   model?: string | null;
+  /**
+   * Boîtier du véhicule — présence (`id`) et dernière parole (`lastSeenAt`), seule source
+   * de la dormance. Optionnel : un appelant qui ne le fournit pas garde le comportement
+   * actuel (aucun véhicule signalé). La forme est celle de `VehicleDetailDto.tracker`,
+   * donc l'agenda l'alimente déjà sans rien changer chez lui.
+   */
+  tracker?: { id: string; lastSeenAt: string | null } | null;
 }
 
 function toLocalInput(d: Date): string {
@@ -103,10 +115,24 @@ function toLocalInput(d: Date): string {
                   </button>
                 }
               </span>
+              <!-- Les dormants restent LISTÉS et lisibles, avec leur motif daté : les faire
+                   disparaître laisserait croire à une suppression du parc. Ils sont
+                   seulement non sélectionnables (cf. vehicleOptions pour les exceptions). -->
               <select class="rs-in" [value]="vehicleId()" (change)="vehicleId.set($any($event.target).value)">
                 <option value="">Auto (le 1er disponible conforme)</option>
-                @for (v of vehicles(); track v.id) { <option [value]="v.id">{{ v.plate || '—' }}@if (v.brand) { · {{ v.brand }} {{ v.model }} }</option> }
+                @for (v of vehicleOptions(); track v.id) {
+                  <option [value]="v.id" [disabled]="v.disabled">{{ v.label }}@if (v.silence) { — boîtier muet depuis {{ v.silence }} }</option>
+                }
               </select>
+              @if (dormantCount() > 0) {
+                <!-- « redeviennent sélectionnables » et non « réapparaissent » : ils n'ont
+                     jamais disparu de la liste — les faire disparaître laisserait croire à une
+                     sortie de parc. Le mot compte : c'est ce que l'exploitant voit à l'écran. -->
+                <span class="rs-hint">
+                  {{ dormantCount() }} véhicule(s) grisé(s) : boîtier muet depuis plus d'une semaine.
+                  Ils redeviennent sélectionnables d'eux-mêmes dès la première trame reçue.
+                </span>
+              }
             </div>
 
             <!-- Loader explicatif : l'utilisateur comprend ce que fait l'IA et combien de temps ça prend -->
@@ -220,6 +246,7 @@ function toLocalInput(d: Date): string {
     .rs-ai:disabled { opacity: .6; }
     .rs-ai-list { display: flex; flex-direction: column; gap: 8px; }
     .rs-ai-hint { font-size: 11.5px; color: var(--fg-tertiary); }
+    .rs-hint { font-size: 11px; color: var(--fg-tertiary); line-height: 1.35; text-transform: none; letter-spacing: 0; font-weight: 400; }
     .rs-ai-card { text-align: left; padding: 11px; border-radius: 12px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); }
     .rs-ai-card--on { border-color: var(--tracky-light); box-shadow: 0 0 0 1px var(--tracky-light) inset; background: rgba(16,224,160,.06); }
     .rs-ai-top { display: flex; align-items: center; gap: 8px; }
@@ -343,6 +370,50 @@ export class ReservationSheetComponent {
     const p = (n: number) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
   });
+
+  /**
+   * Options du sélecteur de véhicule, dormance comprise.
+   *
+   * SEUIL : {@link DORMANT_STOP_COUNTING_MS} (7 j) et NON le seuil d'action (72 h). Ce
+   * sélecteur n'envoie aucune commande au boîtier — c'est un vivier de proposition, et le
+   * fichier partagé range explicitement la réservation dans cette famille : ici le coût
+   * d'une exclusion à tort est ÉLEVÉ (on retirerait du parc réservable un vrai véhicule
+   * garé pour un pont ou une semaine d'atelier). 72 h griserait un véhicule simplement
+   * immobilisé un long week-end. Les gardes à 72 h restent réservées aux BOUTONS
+   * (couper, armer, sonder), où l'échec est certain et immédiat.
+   *
+   * Deux exceptions volontaires au grisage, sinon on casserait des usages légitimes :
+   *  - le véhicule DÉJÀ sélectionné (mode édition d'une réservation existante) reste
+   *    sélectionnable, sans quoi la feuille deviendrait inenregistrable ;
+   *  - en « réservation déjà effectuée », on consigne une sortie PASSÉE : l'état actuel du
+   *    boîtier n'a aucune importance, et refuser l'écriture ferait perdre l'information.
+   */
+  protected readonly vehicleOptions = computed(() => {
+    const now = Date.now();
+    const selected = this.vehicleId();
+    const retro = this.retroactive();
+    return this.vehicles().map((v) => {
+      const tracker = v.tracker ?? null;
+      const dormant = isVehicleDormant(
+        { trackerId: tracker?.id, lastSeenAt: tracker?.lastSeenAt },
+        now,
+        DORMANT_STOP_COUNTING_MS,
+      );
+      const brand = v.brand ? ` · ${v.brand} ${v.model ?? ''}`.trimEnd() : '';
+      return {
+        id: v.id,
+        label: `${v.plate || '—'}${brand}`,
+        // On DATE le silence au lieu de dire « indisponible » : l'exploitant sait quoi faire.
+        silence: dormant ? formatSilenceLabel(tracker?.lastSeenAt, now) : null,
+        disabled: dormant && v.id !== selected && !retro,
+      };
+    });
+  });
+
+  /** Nombre de véhicules effectivement grisés — sert la phrase d'explication sous le champ. */
+  protected readonly dormantCount = computed(
+    () => this.vehicleOptions().filter((o) => o.disabled).length,
+  );
 
   // IA placement
   protected readonly aiLoading = signal(false);

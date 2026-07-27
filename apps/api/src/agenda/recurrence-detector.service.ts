@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AlertType, Prisma } from '@prisma/client';
+import { DORMANT_STOP_ACTING_MS, isVehicleDormant } from '@vizyo/tracky-shared';
 import { ReverseGeocodeService } from '../geocoding/reverse-geocode.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -12,6 +13,16 @@ const WEEK_MS = 7 * DAY_MS;
 const LOOKBACK_WEEKS = 10;
 /** Motif retenu si observé sur ≥ ce nb de semaines DISTINCTES. */
 const MIN_ACTIVE_WEEKS = 4;
+/**
+ * RÉCENCE du motif : au-delà, l'habitude est éteinte même si elle a été très régulière.
+ *
+ * 3 semaines. Le trou que ça bouche : avec 10 semaines d'apprentissage et 4 semaines suffisantes,
+ * une tournée ARRÊTÉE fin mai « justifie » encore une réservation ferme fin juillet — l'agent
+ * bloquait un véhicule pour un trajet que plus personne ne fait. 3 semaines tolère deux occurrences
+ * manquées d'affilée (congés, pont, véhicule à l'atelier) sans ressusciter une tournée morte, et
+ * reste cohérent avec l'horizon de projection de 14 jours.
+ */
+const PATTERN_RECENCY_MS = 3 * WEEK_MS;
 /** Anti-bruit : micro-trajets exclus (même esprit que la règle 0 km / 2 min). */
 const MIN_TRIP_METERS = 300;
 const MIN_TRIP_KM = MIN_TRIP_METERS / 1000;
@@ -55,6 +66,18 @@ export interface RecurringPattern {
   basis: string;
 }
 
+/**
+ * Résultat d'une détection + ce qui a été ÉCARTÉ. Les compteurs existent pour qu'un « 0 récurrence
+ * détectée » ne soit jamais un mystère : l'agent les reverse dans son bilan de passage.
+ */
+export interface RecurrenceDetectionResult {
+  patterns: RecurringPattern[];
+  /** Véhicules dont le boîtier s'est tu depuis > 72 h : ils ne roulent plus, leurs habitudes non plus. */
+  skippedDormantVehicles: number;
+  /** Motifs réguliers mais ÉTEINTS (dernière occurrence > {@link PATTERN_RECENCY_MS}). */
+  skippedStalePatterns: number;
+}
+
 type Cluster = {
   vehicleId: string;
   plate: string | null;
@@ -76,6 +99,12 @@ type Cluster = {
  * centroïde d'arrivée est géocodé (Nominatim, best-effort, plafonné) pour nommer « Carcassonne ».
  * La séparation PAR DESTINATION distingue naturellement l'aller (→ Carcassonne) du retour (→ dépôt)
  * et deux tournées différentes du même jour. Déterministe : aucun appel LLM, fiable et gratuit.
+ *
+ * DEUX GARDES DE VIVACITÉ, parce qu'un motif se déduit d'un passé qui, lui, ne bouge plus :
+ *  - le VÉHICULE doit être vivant (boîtier entendu dans les 72 h) ;
+ *  - le MOTIF doit être récent (dernière occurrence < 3 semaines).
+ * Toutes deux sont dérivées au read-time — rien n'est écrit, rien n'est supprimé, et un véhicule
+ * qui recommence à émettre retrouve ses récurrences tout seul.
  */
 @Injectable()
 export class RecurrenceDetectorService {
@@ -92,7 +121,17 @@ export class RecurrenceDetectorService {
 
   /** Détecte les trajets récurrents d'une flotte (avec destination géocodée, triés par confiance). */
   async detect(fleetId: string, opts?: { maxGeocode?: number }): Promise<RecurringPattern[]> {
-    const learnFrom = new Date(Date.now() - LOOKBACK_WEEKS * WEEK_MS);
+    return (await this.detectWithStats(fleetId, opts)).patterns;
+  }
+
+  /**
+   * Même détection, mais qui rend AUSSI ce qu'elle a écarté (véhicules dormants, motifs éteints).
+   * C'est la variante que consomme l'agent : sans elle, une flotte dont la moitié des boîtiers
+   * s'est tue verrait ses propositions fondre sans qu'aucun écran ne dise pourquoi.
+   */
+  async detectWithStats(fleetId: string, opts?: { maxGeocode?: number }): Promise<RecurrenceDetectionResult> {
+    const nowMs = Date.now();
+    const learnFrom = new Date(nowMs - LOOKBACK_WEEKS * WEEK_MS);
     const where: Prisma.TripWhereInput = {
       fleetId,
       startedAt: { gte: learnFrom },
@@ -105,9 +144,21 @@ export class RecurrenceDetectorService {
       select: {
         vehicleId: true, startedAt: true, endedAt: true, trackerId: true,
         startLat: true, startLng: true, endLat: true, endLng: true,
-        vehicle: { select: { plate: true } },
+        // `tracker.lastSeenAt` est JOINT ici (aucune requête supplémentaire) : c'est la seule
+        // source fiable pour savoir si le véhicule roule encore. On ne peut PAS le déduire des
+        // trajets eux-mêmes — en mode vie privée les positions sont jetées alors que le boîtier
+        // parle, on classerait « mort » tout véhicule sous RGPD.
+        vehicle: { select: { plate: true, tracker: { select: { id: true, lastSeenAt: true } } } },
       },
-      orderBy: { startedAt: 'asc' },
+      // ⚠️ `desc` et non `asc` : `take` TRONQUE, et la garde de récence ci-dessous juge un motif sur
+      // sa DERNIÈRE occurrence. En ordre croissant, une flotte qui dépasse MAX_TRIPS ne recevait que
+      // ses trajets les PLUS VIEUX — chaque `repAt` se retrouvait au fond de la fenêtre de 10
+      // semaines et TOUS les motifs de la flotte tombaient d'un coup en « habitude éteinte », alors
+      // que ces véhicules roulent tous les jours. À 20 000 trajets sur 70 jours (~285/jour, soit
+      // ~8 trajets/véhicule/jour sur un parc de 37), le seuil est atteignable par un vrai client.
+      // Rien d'autre ne dépend de l'ordre (agrégats par cluster, `repAt` par max, tri final explicite),
+      // et sous le plafond les deux sens rendent exactement le même ensemble.
+      orderBy: { startedAt: 'desc' },
       take: MAX_TRIPS,
     });
     if (trips.length >= MAX_TRIPS) this.logger.warn(`detect(${fleetId}) : ${MAX_TRIPS} trajets (apprentissage tronqué).`);
@@ -118,8 +169,34 @@ export class RecurrenceDetectorService {
 
     const fmt = fleetTzFormatter();
     const clusters = new Map<string, Cluster>();
+    /** Véhicules écartés pour dormance (Set : un véhicule compte UNE fois, pas une par trajet). */
+    const dormantVehicles = new Set<string>();
 
     for (const t of trips) {
+      // DORMANCE (seuil « arrêter d'agir », 72 h) : ce détecteur alimente un agent qui RÉSERVE
+      // des véhicules. Un boîtier muet depuis 3 jours n'ajoutera plus un seul trajet à cet
+      // historique — continuer d'en tirer des habitudes revient à bloquer un créneau pour un
+      // véhicule qui, très probablement, n'est plus sur la route.
+      //
+      // Le cas qui MORD est le silence intermédiaire, pas l'extrême : à 89 jours (FV-941-LZ) la
+      // fenêtre d'apprentissage de 10 semaines ne voit déjà plus aucun trajet. À 52 jours
+      // (FL-787-KV) elle en voit encore ~5 semaines — largement de quoi franchir le seuil des
+      // 4 semaines et faire pré-réserver, la nuit prochaine, un véhicule qui ne bouge plus.
+      //
+      // On ne touche NI aux trajets NI aux propositions déjà créées : l'historique reste entier,
+      // et la première trame reçue remet le véhicule dans la détection dès le passage suivant.
+      // Un véhicule sans boîtier (ou dont le boîtier n'a jamais émis) n'est pas dormant : ses
+      // trajets — s'il en a — continuent de compter.
+      if (
+        isVehicleDormant(
+          { trackerId: t.vehicle?.tracker?.id ?? null, lastSeenAt: t.vehicle?.tracker?.lastSeenAt ?? null },
+          nowMs,
+          DORMANT_STOP_ACTING_MS,
+        )
+      ) {
+        dormantVehicles.add(t.vehicleId);
+        continue;
+      }
       if (t.endLat == null || t.endLng == null) continue;
       if (t.endedAt && t.endedAt.getTime() - t.startedAt.getTime() < MIN_TRIP_DURATION_MS) continue;
       const start = localParts(fmt, t.startedAt.getTime());
@@ -154,9 +231,17 @@ export class RecurrenceDetectorService {
 
     // Motifs retenus + créneau typique (moyenne des enveloppes hebdo) + centroïde.
     const built: { pattern: RecurringPattern; cluster: Cluster }[] = [];
+    let skippedStalePatterns = 0;
     for (const c of clusters.values()) {
       const activeWeeks = c.weeks.size;
       if (activeWeeks < MIN_ACTIVE_WEEKS) continue;
+      // RÉCENCE : `repAt` est le trajet le plus RÉCENT du motif. Régulier hier ≠ vivant aujourd'hui —
+      // une tournée abandonnée reste « observée 6/10 » pendant des semaines. Compté après le seuil
+      // de régularité pour ne mesurer que les vraies habitudes éteintes (pas le bruit).
+      if (nowMs - c.repAt > PATTERN_RECENCY_MS) {
+        skippedStalePatterns++;
+        continue;
+      }
       let sumStart = 0;
       let sumEnd = 0;
       for (const w of c.weeks.values()) {
@@ -194,7 +279,17 @@ export class RecurrenceDetectorService {
     for (let i = 0; i < built.length && i < cap; i++) {
       await this.enrichDestination(built[i].pattern, built[i].cluster, depot);
     }
-    return built.map((b) => b.pattern);
+    if (dormantVehicles.size > 0 || skippedStalePatterns > 0) {
+      this.logger.log(
+        `detect(${fleetId}) : ${dormantVehicles.size} véhicule(s) au boîtier muet et ` +
+          `${skippedStalePatterns} motif(s) éteint(s) écartés.`,
+      );
+    }
+    return {
+      patterns: built.map((b) => b.pattern),
+      skippedDormantVehicles: dormantVehicles.size,
+      skippedStalePatterns,
+    };
   }
 
   /** #3 — Dépôt = cellule (départ + arrivée) la plus fréquente ; null si pas de base nette. */

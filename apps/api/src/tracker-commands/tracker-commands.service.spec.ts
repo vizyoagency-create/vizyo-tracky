@@ -237,6 +237,113 @@ describe('TrackerCommandsService', () => {
     );
   });
 
+  /**
+   * Porte « boîtier muet » (seuil AGIR = 72 h).
+   *
+   * Sans elle, une commande immédiate vers un boîtier muet depuis des semaines suivait
+   * le chemin complet : create(PENDING) → dispatch → échec → update(FAILED) → 503, soit
+   * une ligne morte + deux écritures PAR TENTATIVE. Répété chaque minute par le
+   * planificateur antivol, cela produisait ~1440 lignes/jour pour un seul véhicule.
+   */
+  describe('porte « boîtier muet » (72 h)', () => {
+    const HOUR = 60 * 60 * 1000;
+    const DAY = 24 * HOUR;
+    const withLastSeen = (ms: number | null) => ({
+      ...trackerWithVehicle,
+      lastSeenAt: ms === null ? null : new Date(Date.now() - ms),
+    });
+
+    // (a) Dormant → refus AVANT toute écriture. Aucune ligne persistée.
+    it('refuse une commande immédiate sans persister de ligne (boîtier muet 89 j)', async () => {
+      prisma.tracker.findUnique.mockResolvedValue(withLastSeen(89 * DAY));
+
+      await expect(
+        service.request(TRACKER_ID, 'status', {}, null, fleetAdmin),
+      ).rejects.toThrow(ServiceUnavailableException);
+
+      expect(prisma.trackerCommand.create).not.toHaveBeenCalled();
+      expect(prisma.trackerCommand.update).not.toHaveBeenCalled();
+      expect(registry.send).not.toHaveBeenCalled();
+    });
+
+    // Le message porte la durée du silence : l'opérateur doit comprendre qu'il s'agit
+    // d'une intervention physique, pas d'un incident réseau à retenter.
+    it('annonce la durée du silence dans le refus', async () => {
+      prisma.tracker.findUnique.mockResolvedValue(withLastSeen(89 * DAY));
+
+      await expect(
+        service.request(TRACKER_ID, 'status', {}, null, fleetAdmin),
+      ).rejects.toThrow(/89 j/);
+    });
+
+    // (b) Un silence de 2 h est un stationnement normal : rien ne change.
+    it('laisse passer un véhicule silencieux depuis 2 h', async () => {
+      prisma.tracker.findUnique.mockResolvedValue(withLastSeen(2 * HOUR));
+      registry.send.mockReturnValue(true);
+
+      const result = await service.request(TRACKER_ID, 'status', {}, null, fleetAdmin);
+
+      expect(result.status).toBe(TrackerCommandStatus.PENDING);
+      expect(registry.send).toHaveBeenCalled();
+    });
+
+    // (c) « Jamais émis » n'est PAS « s'est tu » — on ne bloque pas un boîtier neuf
+    // mal provisionné : son échec doit rester visible en FAILED, comme avant.
+    it('ne bloque pas un boîtier qui n\'a jamais émis (lastSeenAt null)', async () => {
+      prisma.tracker.findUnique.mockResolvedValue(withLastSeen(null));
+      registry.send.mockReturnValue(false);
+
+      await expect(
+        service.request(TRACKER_ID, 'status', {}, null, fleetAdmin),
+      ).rejects.toThrow(ServiceUnavailableException);
+
+      // La ligne d'audit est bien créée puis marquée FAILED (comportement historique).
+      expect(prisma.trackerCommand.create).toHaveBeenCalled();
+      expect(prisma.trackerCommand.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: TrackerCommandStatus.FAILED }) }),
+      );
+    });
+
+    // (d) Réintégration : dès la première trame reçue, tout repart sans action manuelle.
+    it('réintègre le boîtier dès que lastSeenAt redevient frais', async () => {
+      prisma.tracker.findUnique.mockResolvedValue(withLastSeen(89 * DAY));
+      await expect(
+        service.request(TRACKER_ID, 'status', {}, null, fleetAdmin),
+      ).rejects.toThrow(ServiceUnavailableException);
+
+      prisma.tracker.findUnique.mockResolvedValue(withLastSeen(30_000));
+      registry.send.mockReturnValue(true);
+      const result = await service.request(TRACKER_ID, 'status', {}, null, fleetAdmin);
+
+      expect(result.status).toBe(TrackerCommandStatus.PENDING);
+    });
+
+    // Une commande PLANIFIÉE reste créable : le boîtier peut être réparé d'ici l'échéance.
+    // ⚠️ Son dépilage NE repasse PAS par cette porte — TrackerCommandsSchedulerService
+    // appelle `dispatch()` directement. C'est assumé : l'échec fige la ligne en FAILED,
+    // elle ne ressort plus du `where SCHEDULED`, donc c'est un coup isolé et non la boucle
+    // infinie que cette porte combat.
+    it('laisse programmer une commande future sur un boîtier muet', async () => {
+      prisma.tracker.findUnique.mockResolvedValue(withLastSeen(89 * DAY));
+      const future = new Date(Date.now() + 3600_000);
+
+      const result = await service.request(TRACKER_ID, 'status', {}, future, fleetAdmin);
+
+      expect(result.status).toBe(TrackerCommandStatus.SCHEDULED);
+      expect(registry.send).not.toHaveBeenCalled();
+    });
+
+    // La porte s'insère EN AMONT : elle ne remplace aucune garde existante. Un accès
+    // hors flotte doit toujours produire un 403, jamais une fuite d'existence via 503.
+    it('ne prend jamais le pas sur le contrôle de flotte (403 avant 503)', async () => {
+      prisma.tracker.findUnique.mockResolvedValue(withLastSeen(89 * DAY));
+
+      await expect(
+        service.request(TRACKER_ID, 'status', {}, null, otherFleetAdmin),
+      ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
   it('should compute a real ACK latency from the captured sentAt, not 0 (#36)', async () => {
     jest.useFakeTimers();
     prisma.tracker.findUnique.mockResolvedValue(trackerWithVehicle);

@@ -8,6 +8,7 @@ import type {
   VehicleAvailabilityDto,
   VehicleUtilizationDto,
 } from '@vizyo/tracky-shared';
+import { DORMANT_STOP_COUNTING_MS, formatSilenceLabel, isVehicleDormant } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
 import { resolveReportVehicleScope } from '../common/report-vehicle-scope';
 import { PrismaService } from '../prisma/prisma.service';
@@ -58,6 +59,29 @@ interface VehicleAccum {
 }
 
 type ResolvedScope = { fleetId?: string; ids: string[] | 'ALL' };
+
+/**
+ * Ligne d'utilisation ENRICHIE de la dormance.
+ *
+ * `dormant` / `silenceLabel` ne sont pas (encore) déclarés dans `VehicleUtilizationDto`, qui
+ * appartient à un autre lot : les émettre en plus est purement ADDITIF (aucun consommateur
+ * existant ne casse), et c'est le seul moyen de dire à l'écran POURQUOI un véhicule à 0 %
+ * n'est plus étiqueté « sous-utilisé ». Sans ça, on aurait juste fait disparaître un badge
+ * en silence — exactement ce qu'il ne faut pas faire à un chiffre affiché au client.
+ */
+export type VehicleUtilizationRow = VehicleUtilizationDto & {
+  /** Boîtier muet depuis plus de 7 j : le véhicule est INJOIGNABLE, pas « peu utilisé ». */
+  dormant: boolean;
+  /** Ancienneté du silence prête à afficher (« 89 j »), null si le véhicule n'est pas dormant. */
+  silenceLabel: string | null;
+};
+
+/** Reste assignable à `FleetOptimizationDto` : les consommateurs actuels ne voient rien changer. */
+export type FleetUtilizationResult = Omit<FleetOptimizationDto, 'vehicles'> & {
+  vehicles: VehicleUtilizationRow[];
+  /** Nombre de véhicules requalifiés « dormants » dans cette réponse (jamais retirés de la liste). */
+  dormantCount: number;
+};
 
 /**
  * Sprint 8 (Palier A) — Visibilité flotte en LECTURE SEULE, dérivée des trajets.
@@ -204,19 +228,21 @@ export class FleetInsightsService {
     from: Date,
     to: Date,
     filter?: { vehicleId?: string; groupId?: string; fleetId?: string },
-  ): Promise<FleetOptimizationDto> {
+  ): Promise<FleetUtilizationResult> {
     const scope = await this.resolveScope(user, filter);
     if (!scope) {
-      return { from: from.toISOString(), to: to.toISOString(), periodDays: 0, vehicles: [] };
+      return { from: from.toISOString(), to: to.toISOString(), periodDays: 0, vehicles: [], dormantCount: 0 };
     }
 
     // Tous les véhicules du périmètre (inclut ceux sans trajet = 0 % utilisé = priorité mutualisation).
+    // `tracker.lastSeenAt` est joint ICI (pas dans une seconde requête) : il tranche entre « peu
+    // utilisé » et « plus joignable », deux situations que 0 % d'utilisation ne distingue pas.
     const vehWhere: Prisma.VehicleWhereInput = {};
     if (scope.fleetId) vehWhere.fleetId = scope.fleetId;
     if (scope.ids !== 'ALL') vehWhere.id = { in: scope.ids };
     const vehicles = await this.prisma.vehicle.findMany({
       where: vehWhere,
-      select: { id: true, plate: true },
+      select: { id: true, plate: true, tracker: { select: { id: true, lastSeenAt: true } } },
       take: MAX_VEHICLES,
     });
 
@@ -289,11 +315,24 @@ export class FleetInsightsService {
     const windowMs = Math.max(1, effectiveToMs - fromMs);
     const slotOrder: UtilizationSlot[] = ['night', 'morning', 'afternoon', 'evening'];
 
-    const out: VehicleUtilizationDto[] = vehicles.map((v) => {
+    const out: VehicleUtilizationRow[] = vehicles.map((v) => {
       const a = accum.get(v.id)!;
       const cells: UtilizationCellDto[] = [];
       const freePatterns: string[] = [];
       const hasActivity = a.tripCount > 0;
+      // « Sous-utilisé » est un CONSEIL D'EXPLOITATION : il dit « donne-lui plus de missions ».
+      // Sur FV-941-LZ, muet depuis 89 jours, ce conseil est faux — on ne peut rien lui confier,
+      // on ne sait même pas où il est. On REQUALIFIE (le véhicule reste dans la liste, avec son
+      // vrai ratio et toute sa heatmap) au lieu de le retirer : c'est un fait à traiter, pas
+      // une donnée à cacher. Il redevient un candidat normal dès la première trame reçue.
+      const dormant = isVehicleDormant(
+        { trackerId: v.tracker?.id ?? null, lastSeenAt: v.tracker?.lastSeenAt ?? null },
+        nowMs,
+        // 7 j, EXPLICITEMENT. Écran de KPI : on COMPTE, on n'agit pas. Le seuil « arrêter d'AGIR »
+        // (72 h) retirerait le badge « sous-utilisé » d'un véhicule simplement garé sur un pont de
+        // trois jours — exactement le véhicule que cet écran existe pour faire remonter.
+        DORMANT_STOP_COUNTING_MS,
+      );
 
       for (let dow = 1; dow <= 7; dow++) {
         const denom = dowOccurrences.get(dow) ?? 0;
@@ -304,8 +343,13 @@ export class FleetInsightsService {
 
           // Patterns « libres » : seulement pour un véhicule par ailleurs utilisé, hors nuit,
           // sur un créneau récurrent quasi vide → vraie opportunité de mutualisation.
+          // Exclus pour un dormant : « libre tous les mardis matin » est la même promesse
+          // inapplicable que le badge « sous-utilisé » (un véhicule devenu muet EN COURS de
+          // fenêtre a bien des trajets, donc en produirait). La heatmap brute, elle, est
+          // conservée telle quelle — c'est de l'historique.
           if (
             hasActivity &&
+            !dormant &&
             slot !== 'night' &&
             denom >= FREE_PATTERN_MIN_OCCURRENCES &&
             occupancy <= FREE_PATTERN_MAX_OCCUPANCY &&
@@ -325,15 +369,29 @@ export class FleetInsightsService {
         distanceKm: Math.round(a.distanceKm * 10) / 10,
         activeDays: a.activeDays.size,
         utilizationRatio: Math.round(utilizationRatio * 100) / 100,
-        underutilized: utilizationRatio < UNDERUTILIZED_RATIO,
+        underutilized: !dormant && utilizationRatio < UNDERUTILIZED_RATIO,
         cells,
         freePatterns,
+        dormant,
+        silenceLabel: dormant ? formatSilenceLabel(v.tracker?.lastSeenAt ?? null, nowMs) : null,
       };
     });
 
-    // Tri : les plus sous-utilisés d'abord (focus mutualisation).
-    out.sort((x, y) => x.utilizationRatio - y.utilizationRatio);
+    // Tri : les plus sous-utilisés d'abord (focus mutualisation), MAIS les dormants en fin de
+    // liste. La tête de liste est la zone d'action : y laisser un véhicule injoignable (0 %
+    // d'utilisation → premier du tri) reléguait sous lui les vrais candidats à la mutualisation.
+    out.sort((x, y) => {
+      if (x.dormant !== y.dormant) return x.dormant ? 1 : -1;
+      return x.utilizationRatio - y.utilizationRatio;
+    });
 
-    return { from: from.toISOString(), to: to.toISOString(), periodDays, vehicles: out };
+    return {
+      from: from.toISOString(),
+      to: to.toISOString(),
+      periodDays,
+      vehicles: out,
+      // Requalifier sans dire combien reviendrait à faire baisser un chiffre en silence.
+      dormantCount: out.filter((v) => v.dormant).length,
+    };
   }
 }

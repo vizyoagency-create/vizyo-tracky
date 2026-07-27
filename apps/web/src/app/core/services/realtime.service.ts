@@ -179,6 +179,23 @@ export class RealtimeService {
   private flushScheduled = false;
 
   /**
+   * Instant de RÉCEPTION (horloge du navigateur) de chaque trame bufferisée, indexé par
+   * trackerId. Il est capturé À L'ARRIVÉE de l'event, pas au flush : le flush passe par
+   * requestAnimationFrame, que le navigateur gèle en arrière-plan. Sans cette capture, un
+   * onglet caché 20 min rejouerait tout son buffer au retour et daterait chaque trame de
+   * MAINTENANT — un boîtier muet depuis le début de l'absence paraîtrait frais.
+   *
+   * Pourquoi une horloge de réception et non celle de la trame : `event.timestamp` est le
+   * `deviceTime` du Coban (cf. positions.service : `frame.deviceTime.toISOString()`), une
+   * horloge qui dérive (skew GPRS, RTC sans pile) et qui peut être DANS LE FUTUR. Le serveur,
+   * lui, écrit `Tracker.lastSeenAt = new Date()` : la date de réception. Écraser `lastSeenAt`
+   * avec l'horloge boîtier revenait donc à mélanger deux horloges dans le même champ — et un
+   * boîtier en avance rendait sa propre dormance STRUCTURELLEMENT indétectable (l'âge calculé
+   * restait négatif ou minuscule, `isTrackerOnline` tolérant explicitement un âge négatif).
+   */
+  private readonly positionReceivedAt = new Map<string, number>();
+
+  /**
    * Toast throttling : memorise le timestamp du dernier toast affiche par couple
    * (vehicleId, alertType). Un toast identique dans les 60s suivantes est skip
    * (l'alerte est toujours pushee dans le signal `_alerts` et apparait dans la
@@ -475,6 +492,7 @@ export class RealtimeService {
     this._cutPendingTrackerIds.set(new Set());
     this._movingTrackerIds.set(new Set());
     this.positionBuffer.clear();
+    this.positionReceivedAt.clear();
     this.flushScheduled = false;
     this.lastToastByKey.clear();
     this.clearIncidentWatch();
@@ -571,6 +589,11 @@ export class RealtimeService {
 
   private bufferPosition(event: PositionUpdateEvent): void {
     this.positionBuffer.set(event.trackerId, event);
+    // Horodater la RÉCEPTION ici et pas au flush : c'est le seul instant où l'on sait
+    // vraiment quand le boîtier nous a parlé (le flush rAF peut arriver bien plus tard,
+    // voire jamais tant que l'onglet est caché). Écrase l'entrée précédente comme le
+    // buffer lui-même : seule la trame la plus récente par tracker sera appliquée.
+    this.positionReceivedAt.set(event.trackerId, Date.now());
     if (this.flushScheduled) return;
     this.flushScheduled = true;
 
@@ -632,14 +655,27 @@ export class RealtimeService {
       const ev = this.positionBuffer.get(s.trackerId);
       if (!ev) return s;
       snapChanged = true;
+      // Intégrité de la source de dormance — DEUX horloges, deux usages, ne jamais les mélanger :
+      //  - `lastSeenAt` = « quand le boîtier nous a parlé » → horloge de RÉCEPTION (navigateur),
+      //    seule alignée sur le serveur (`Tracker.lastSeenAt = new Date()`). C'est elle qui
+      //    décide de la dormance et du grisage des commandes ; la dériver de l'horloge boîtier
+      //    laissait un Coban en avance masquer indéfiniment son propre silence — et cette
+      //    contamination survivait à tout, puisque le snapshot REST était ensuite réécrit à
+      //    chaque trame live. Un boîtier muet reste donc muet, quoi qu'il raconte.
+      //  - `lastPositionAt` / `lastNoFixAt` = dates d'OBSERVATION GPS (quand le fix a été pris /
+      //    quand le lock a manqué) → elles GARDENT le timestamp de la trame. Les remplacer par
+      //    l'heure de réception rendrait un fix rejoué après une coupure GPRS artificiellement
+      //    frais et casserait la détection GPS_LOST (qui compare justement fix vs no_fix).
+      const receivedAt = new Date(this.positionReceivedAt.get(s.trackerId) ?? Date.now()).toISOString();
       // Trame valide = nouveau fix GPS ; trame `no_fix` (valid=false) = boîtier vivant sans lock.
       return ev.valid
-        ? { ...s, lastSeenAt: ev.timestamp, lastIgnition: ev.ignition, lastPositionAt: ev.timestamp,
+        ? { ...s, lastSeenAt: receivedAt, lastIgnition: ev.ignition, lastPositionAt: ev.timestamp,
             lastLat: ev.lat, lastLng: ev.lng, lastSpeedKmh: ev.speedKmh, lastHeading: ev.heading, lastValid: true }
-        : { ...s, lastSeenAt: ev.timestamp, lastIgnition: ev.ignition, lastNoFixAt: ev.timestamp, lastValid: false };
+        : { ...s, lastSeenAt: receivedAt, lastIgnition: ev.ignition, lastNoFixAt: ev.timestamp, lastValid: false };
     });
 
     this.positionBuffer.clear();
+    this.positionReceivedAt.clear();
     this.positions.set(next);
     if (snapChanged) this.snapshot.set(nextSnap);
     if (hydratedDirty && newHydrated) this.hydratedTrackerIds.set(newHydrated);

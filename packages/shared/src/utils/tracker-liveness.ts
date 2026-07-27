@@ -176,6 +176,174 @@ export function getVehicleConnectivityState(
   return 'OFFLINE';
 }
 
+/* ══════════════════════════════════════════════════════════════════════════ *
+ * DORMANCE — « ce véhicule fait-il encore partie du parc EXPLOITÉ ? »
+ *
+ * ORTHOGONAL à `getVehicleConnectivityState`, qui répond à « est-il live
+ * MAINTENANT ? » (15 min). Un véhicule `PARKED` depuis 2 h et un véhicule
+ * `PARKED` depuis 89 jours produisent aujourd'hui le MÊME état : c'est
+ * exactement le trou que ces prédicats comblent.
+ *
+ * Source unique : `Tracker.lastSeenAt`, jamais autre chose.
+ *  - PAS `Trip`/`Position` : en mode vie privée les positions sont JETÉES alors
+ *    que le boîtier parle — en dériver marquerait dormant tout véhicule sous RGPD.
+ *  - PAS `Tracker.status` : colonne COLLANTE (cf. en-tête de ce fichier).
+ *
+ * Dérivé au read-time, aucune écriture, aucun champ en base, aucun drapeau à
+ * maintenir : dès que le boîtier ré-émet, `lastSeenAt` redevient frais et le
+ * véhicule réintègre tout automatiquement, en moins d'une minute.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Seuil « ARRÊTER D'AGIR » — automatisations, commandes boîtier, repli SMS.
+ *
+ * 72 h. Un boîtier alimenté émet au moins toutes les ~300 s MÊME à l'arrêt
+ * (intervalle de fix adaptatif maximal). 72 h de silence total ≈ 860 trames
+ * manquées : batterie débranchée, fusible, SIM coupée ou boîtier déposé —
+ * jamais un simple stationnement. Au-delà, toute commande est une tentative
+ * dont on connaît déjà l'issue.
+ *
+ * Le coût d'une exclusion à tort est NUL : l'action reprend au tick suivant la
+ * première trame reçue.
+ */
+export const DORMANT_STOP_ACTING_MS = 72 * 60 * 60 * 1000;
+
+/**
+ * Seuil « ARRÊTER DE COMPTER » — KPI, dénominateurs, classements, viviers de
+ * proposition (réservation, optimisation IA).
+ *
+ * 7 jours. Ici le coût d'une exclusion à tort est ÉLEVÉ (on retirerait un vrai
+ * véhicule du parc affiché au client), donc on est plus prudent que pour
+ * l'action. 7 j couvre tout stationnement légitime — week-end, pont férié, une
+ * semaine d'atelier ou de congés.
+ */
+export const DORMANT_STOP_COUNTING_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Fraîcheur exigée pour affirmer qu'un véhicule est EN MOUVEMENT.
+ *
+ * 5 min, volontairement plus serré que la liveness de 15 min : un véhicule qui
+ * roule émet toutes les ~30 s, donc une trame de plus de 5 min ne prouve aucun
+ * mouvement EN COURS. Déclaré ici pour que ce seuil cesse d'être réinventé
+ * localement dans les services et les composants de carte.
+ */
+export const MOVING_FRESHNESS_MS = 5 * 60 * 1000;
+
+/**
+ * ⚠️ Ces seuils sont des littéraux, PAS des `process.env`.
+ *
+ * Ce package est consommé par l'application Angular, où `process` n'existe pas :
+ * un `process.env.X` au chargement du module ferait planter le démarrage du web.
+ * Bénéfice collatéral : API et UI lisent forcément la MÊME valeur, donc un bouton
+ * ne peut pas être actif pour une commande que le serveur refusera déjà.
+ */
+
+export interface VehicleDormancyInput {
+  /** null/undefined = aucun boîtier affecté. */
+  trackerId?: string | null;
+  /** Dernier signal reçu CÔTÉ SERVEUR. Jamais l'horloge du boîtier. */
+  lastSeenAt?: Date | string | number | null;
+}
+
+/**
+ * Durée de silence en ms, ou null si la question n'a pas de sens (entrée absente
+ * ou illisible). Un âge négatif (horloge boîtier en avance, skew GPRS) est ramené
+ * à 0 — cohérent avec `isTrackerOnline`, et évite un libellé « il y a -3 j ».
+ */
+export function trackerSilenceMs(
+  lastSeenAt: Date | string | number | null | undefined,
+  now: number = Date.now(),
+): number | null {
+  const ms = toEpochMs(lastSeenAt);
+  if (ms == null) return null;
+  return Math.max(0, now - ms);
+}
+
+/**
+ * DORMANT = « il parlait, puis il s'est tu ».
+ *
+ * Renvoie `false` sans boîtier ET `false` si le boîtier n'a JAMAIS émis : ce sont
+ * des faits DIFFÉRENTS, déjà nommés `NOT_CONFIGURED` par le tri-état. Les
+ * confondre exclurait à tort des véhicules non équipés que l'exploitant gère
+ * légitimement (agenda, capacités, réservation).
+ * Pour un DÉNOMINATEUR, utiliser plutôt {@link isVehicleExploited}, qui couvre les deux.
+ */
+export function isVehicleDormant(
+  input: VehicleDormancyInput,
+  now: number = Date.now(),
+  thresholdMs: number = DORMANT_STOP_COUNTING_MS,
+): boolean {
+  if (!input.trackerId) return false;
+  const silent = trackerSilenceMs(input.lastSeenAt, now);
+  if (silent == null) return false;
+  return silent > thresholdMs;
+}
+
+/**
+ * EXPLOITÉ = « il a un boîtier, ce boîtier a déjà parlé, et il a parlé récemment ».
+ *
+ * LE prédicat des dénominateurs : un seul appel écarte à la fois les non équipés
+ * et les dormants. Ce n'est PAS la négation d'`isVehicleDormant` — un véhicule
+ * sans boîtier n'est ni dormant, ni exploité.
+ */
+export function isVehicleExploited(
+  input: VehicleDormancyInput,
+  now: number = Date.now(),
+  thresholdMs: number = DORMANT_STOP_COUNTING_MS,
+): boolean {
+  if (!input.trackerId) return false;
+  const silent = trackerSilenceMs(input.lastSeenAt, now);
+  if (silent == null) return false;
+  return silent <= thresholdMs;
+}
+
+/**
+ * Libellé d'ancienneté en français — source unique pour l'API (alertes, e-mails,
+ * diagnostics) et l'UI. Paliers : minutes sous 2 h, heures sous 48 h, puis jours.
+ * C'est ce qui rend lisible un « muet depuis 128160 min ».
+ */
+export function formatSilenceLabel(
+  lastSeenAt: Date | string | number | null | undefined,
+  now: number = Date.now(),
+): string | null {
+  const ms = trackerSilenceMs(lastSeenAt, now);
+  if (ms == null) return null;
+  const min = Math.floor(ms / 60_000);
+  if (min < 120) return `${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 48) return `${h} h`;
+  return `${Math.floor(h / 24)} j`;
+}
+
+/**
+ * État de présence = tri-état de connectivité ÉLARGI d'un cran `DORMANT`.
+ *
+ * ⚠️ Type SÉPARÉ, et non une extension de `VehicleConnectivityState` : plusieurs
+ * consommateurs UI écrivent `case 'NOT_CONFIGURED': default:`. Ajouter `DORMANT`
+ * à l'union existante leur ferait rendre « Non configuré » en silence, SANS la
+ * moindre erreur de compilation pour le signaler.
+ */
+export type VehiclePresenceState = VehicleConnectivityState | 'DORMANT';
+
+/**
+ * Compose la dormance avec le tri-état existant — qui n'est PAS remplacé.
+ *
+ * `DORMANT` prime sur `PARKED` et `OFFLINE`. Il ne peut mathématiquement pas
+ * entrer en concurrence avec `ONLINE`/`AWAITING_GPS`/`GPS_LOST`, qui exigent tous
+ * un `lastSeenAt` de moins de 15 min. `NOT_CONFIGURED` est préservé tel quel :
+ * « jamais connecté » n'est pas « s'est tu ».
+ */
+export function getVehiclePresenceState(
+  input: VehicleConnectivityInput,
+  now: number = Date.now(),
+  dormantMs: number = DORMANT_STOP_COUNTING_MS,
+): VehiclePresenceState {
+  const base = getVehicleConnectivityState(input, now);
+  if (base === 'NOT_CONFIGURED') return base;
+  if (isVehicleDormant(input, now, dormantMs)) return 'DORMANT';
+  return base;
+}
+
 /**
  * Fenêtre « installation récente » : un boîtier ajouté il y a moins d'1 mois est
  * encore en période de rodage. Au-delà, une déconnexion n'est plus imputée à la pose.

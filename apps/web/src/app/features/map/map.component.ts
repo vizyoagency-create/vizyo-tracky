@@ -22,11 +22,16 @@ import type { Map as MlMap, Marker as MlMarker, Popup, GeoJSONSource } from 'map
 import type { GeofenceDto, PositionUpdateEvent } from '@vizyo/tracky-shared';
 import {
   deriveMotion,
+  DORMANT_STOP_ACTING_MS,
+  DORMANT_STOP_COUNTING_MS,
   extrapolate,
+  formatSilenceLabel,
   getVehicleConnectivityState,
   GPS_FIX_STALE_THRESHOLD_MS,
   isAcceptableLiveFix,
   isTrackerOnline,
+  isVehicleDormant,
+  MOVING_FRESHNESS_MS,
   sanitizePositions,
   type VehicleConnectivityState,
 } from '@vizyo/tracky-shared';
@@ -775,13 +780,26 @@ const RESYNC_RADIUS_M = 150;
                 Choisir un véhicule à suivre
                 <button (click)="cancelVehiclePicker()" class="tracky-vehicle-picker-cancel">×</button>
               </p>
-              @if (scopedSnapshot().length === 0) {
+              @if (cameraPickerVehicles().length === 0) {
                 <p class="tracky-vehicle-picker-empty">Aucun véhicule disponible</p>
               } @else {
-                @for (v of scopedSnapshot(); track v.vehicleId) {
-                  <button (click)="pickVehicleForCamera(v.vehicleId)" class="tracky-vehicle-picker-item">
+                @if (cameraPickerLiveCount() === 0) {
+                  <!-- Repli explicite : plus rien ne communique. On n'affiche pas une
+                       liste muette qui donnerait l'impression que le suivi va marcher. -->
+                  <p class="tracky-vehicle-picker-empty">
+                    Aucun véhicule ne communique. En choisir un affiche sa dernière
+                    position connue, sans suivi caméra.
+                  </p>
+                }
+                @for (v of cameraPickerVehicles(); track v.vehicleId) {
+                  <button
+                    (click)="pickVehicleForCamera(v.vehicleId)"
+                    [class.tracky-vehicle-picker-item--dormant]="v.dormant"
+                    class="tracky-vehicle-picker-item">
                     <span class="tracky-vehicle-picker-plate">{{ v.plate }}</span>
-                    <span class="tracky-vehicle-picker-meta">{{ v.type }}</span>
+                    <span class="tracky-vehicle-picker-meta">
+                      @if (v.dormant) { Muet depuis {{ v.silenceLabel }} } @else { {{ v.type }} }
+                    </span>
                   </button>
                 }
               }
@@ -1833,6 +1851,10 @@ const RESYNC_RADIUS_M = 150;
       text-transform: uppercase;
       letter-spacing: .04em;
     }
+    /* Muet de longue date : estompé et rangé en fin de liste, mais toujours
+       présent et cliquable (voir sa dernière position reste légitime). */
+    .tracky-vehicle-picker-item--dormant { opacity: .6; }
+    .tracky-vehicle-picker-item--dormant .tracky-vehicle-picker-meta { text-transform: none; }
 
     /* Sheet overlay backdrop */
     .tracky-mobile-sheet-overlay { display: none; }
@@ -2598,6 +2620,42 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   protected readonly vehiclePickerOpen = signal(false);
   /** Mode caméra cible en attente de sélection véhicule. */
   protected readonly pendingCameraMode = signal<CameraMode | null>(null);
+
+  /**
+   * Liste du picker « suivre ce véhicule », les vivants d'abord, les muets ensuite.
+   *
+   * Aucun véhicule n'est retiré de la liste — on la TRIE et on DATE les muets. Un
+   * exploitant a le droit d'aller voir où son boîtier déposé s'est arrêté ; ce qu'on
+   * lui évite, c'est de choisir « suivre » un véhicule qui ne bougera plus et de se
+   * retrouver avec une caméra verrouillée sur un point mort sans explication
+   * (cf. `pickVehicleForCamera`).
+   *
+   * Seuil d'ACTION (72 h), pas de comptage : c'est la garde d'un bouton, et on
+   * l'aligne sur le seuil au-delà duquel le serveur cesse lui-même d'agir sur un
+   * boîtier. Un véhicule SANS boîtier (TEST-xxx) n'est jamais « muet » — il n'a
+   * jamais parlé, ce n'est pas la même chose (cf. `isVehicleDormant`).
+   */
+  protected readonly cameraPickerVehicles = computed(() => {
+    const now = Date.now();
+    return this.scopedSnapshot()
+      .map((v) => ({
+        vehicleId: v.vehicleId,
+        plate: v.plate,
+        type: v.type,
+        dormant: isVehicleDormant(
+          { trackerId: v.trackerId, lastSeenAt: v.lastSeenAt },
+          now,
+          DORMANT_STOP_ACTING_MS,
+        ),
+        silenceLabel: formatSilenceLabel(v.lastSeenAt, now),
+      }))
+      .sort((a, b) => Number(a.dormant) - Number(b.dormant) || a.plate.localeCompare(b.plate));
+  });
+
+  /** Combien de véhicules du picker peuvent réellement être suivis (non muets). */
+  protected readonly cameraPickerLiveCount = computed(
+    () => this.cameraPickerVehicles().filter((v) => !v.dormant).length,
+  );
   /** Drag-to-dismiss sheet (offset Y en cours). */
   protected readonly sheetDragY = signal(0);
   private sheetTouchStartY = 0;
@@ -2646,9 +2704,14 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       ids === 'ALL'
         ? this.realtime.positionsList()
         : this.realtime.positionsList().filter((p) => (ids as Set<string>).has(p.vehicleId));
+    // Fraîcheur lue sur `lastSeenAt` (heure SERVEUR) et non sur `timestamp` (horloge
+    // du boîtier, qui dérive ou repart à zéro après une coupure) : sinon le compteur
+    // « actifs » comptait des boîtiers morts et en oubliait des vivants.
+    const now = Date.now();
+    const lastSeen = new Map(this.realtime.snapshot().map((s) => [s.vehicleId, s.lastSeenAt]));
     return accessible
       .filter((p) => this.fleetFilter.matches(p.fleetId))
-      .filter((p) => isTrackerOnline(p.timestamp)).length;
+      .filter((p) => isTrackerOnline(lastSeen.get(p.vehicleId) ?? p.timestamp, now)).length;
   });
 
   protected readonly followedPlate = computed(() => {
@@ -2725,7 +2788,13 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   // map correspondante. La 1ere lecture du signal sert juste de baseline (pas d'action).
   private bridgeRecenterEffect = effect(() => {
     const n = this.mapBridge.recenterTrigger();
-    if (n > 0) this.centerAll();
+    // ⚠️ `untracked` OBLIGATOIRE : `centerAll()` lit désormais `realtime.snapshot()` (pour
+    // écarter les muets du cadrage) et peut pousser un toast (qui lit la pile de toasts).
+    // Sans ce garde-fou, l'effet s'abonnerait à ces deux signaux alors que `n` reste > 0 :
+    // la carte se recadrerait à CHAQUE trame reçue (l'utilisateur ne pourrait plus ni
+    // déplacer ni zoomer après un seul clic sur « recentrer »), et re-cadrerait en boucle
+    // à chaque expiration du toast qu'elle vient elle-même d'afficher.
+    if (n > 0) untracked(() => this.centerAll());
   });
   private bridgeLocateEffect = effect(() => {
     const n = this.mapBridge.locateTrigger();
@@ -2759,6 +2828,35 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     if (pos) {
       this.followedVehicleId.set(vehicleId);
       this.map.flyTo({ center: [pos.lng, pos.lat], zoom: 16, duration: 800 });
+      // Le véhicule est peut-être muet depuis des semaines : on l'affiche quand même
+      // (rule : on DATE, on ne masque pas), mais on refuse de laisser croire que ce
+      // point est du live. Seuil de COMPTAGE : ce n'est pas une commande, juste une
+      // mise en garde d'affichage.
+      const snap = this.realtime.snapshot().find((s) => s.vehicleId === vehicleId);
+      if (snap && isVehicleDormant({ trackerId: snap.trackerId, lastSeenAt: snap.lastSeenAt }, Date.now(), DORMANT_STOP_COUNTING_MS)) {
+        this.toast.show({
+          kind: 'info',
+          title: `${snap.plate} — dernière position connue`,
+          message: `Ce véhicule est muet depuis ${formatSilenceLabel(snap.lastSeenAt) ?? 'longtemps'}.`,
+          duration: 5000,
+          dedupeKey: `map-flyto-dormant-${vehicleId}`,
+        });
+      }
+    } else {
+      // Course au démarrage : la carte est prête AVANT l'hydratation REST des positions.
+      // On ne consomme pas la demande dans ce cas — l'effet la rejouera dès l'arrivée des
+      // positions. Sans ça, un clic depuis le tableau de bord était perdu (et, pire, on
+      // annoncerait « position inconnue » pour un véhicule parfaitement suivi.)
+      if (!this.realtime.hydrated()) return;
+      // Avant : demande avalée en silence — l'utilisateur cliquait sur un véhicule
+      // (vignette tableau de bord, panneau Baanool) et il ne se passait RIEN.
+      this.toast.show({
+        kind: 'warning',
+        title: 'Position inconnue',
+        message: 'Aucune position connue pour ce véhicule : rien à centrer sur la carte.',
+        duration: 5000,
+        dedupeKey: `map-flyto-nopos-${vehicleId}`,
+      });
     }
     this.mapBridge.flyToVehicleId.set(null);
   }
@@ -3081,7 +3179,31 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
   /* --- Camera & view --- */
 
-  protected centerAll(): void {
+  /**
+   * `lastSeenAt` (heure SERVEUR de la dernière trame) indexé par trackerId : les
+   * marqueurs sont indexés par tracker, le snapshot par véhicule.
+   *
+   * Un tracker absent du snapshot renvoie `undefined`, et les prédicats de dormance
+   * le déclarent alors NON dormant : on ne met jamais un véhicule de côté sur la foi
+   * d'une donnée qu'on n'a pas.
+   */
+  private lastSeenByTrackerId(): Map<string, string | null> {
+    const map = new Map<string, string | null>();
+    for (const s of this.realtime.snapshot()) {
+      if (s.trackerId) map.set(s.trackerId, s.lastSeenAt);
+    }
+    return map;
+  }
+
+  /**
+   * Vue d'ensemble.
+   *
+   * @param opts.announceSetAside  annonce les véhicules muets laissés hors cadrage.
+   *   Faux pour le cadrage AUTOMATIQUE du premier rendu : l'utilisateur n'a rien
+   *   demandé, un bandeau au démarrage à chaque session serait du bruit.
+   */
+  protected centerAll(opts: { announceSetAside?: boolean } = {}): void {
+    const announceSetAside = opts.announceSetAside ?? true;
     // Vue d'ensemble = quitter cinema + camera libre + remettre pitch 0
     if (this.cinemaMode()) {
       this.cinemaMode.set(false);
@@ -3095,10 +3217,44 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     }
     if (!this.map || this.markers.size === 0) return;
     this.map.easeTo({ pitch: 0, bearing: 0, duration: 400 });
-    const points = Array.from(this.markers.values()).map((m) => {
+    const now = Date.now();
+    const lastSeen = this.lastSeenByTrackerId();
+    const all = Array.from(this.markers.entries()).map(([trackerId, m]) => {
       const ll = m.marker.getLngLat();
-      return { lat: ll.lat, lng: ll.lng };
+      return { trackerId, lat: ll.lat, lng: ll.lng };
     });
+    // CADRAGE — on n'étire plus la vue d'ensemble sur des véhicules muets depuis plus
+    // d'une semaine. Cas réel : deux boîtiers déposés (89 j et 52 j) figés loin du parc
+    // exploité ; les inclure dézoomait la carte au point d'agglutiner les 37 véhicules
+    // actifs en un seul pâté de pixels. Seuil de COMPTAGE (7 j) et non d'action : ce
+    // n'est qu'un cadrage, on reste prudent pour ne pas écarter un véhicule simplement
+    // garé une semaine. Les dormants restent DESSINÉS à leur dernière position connue —
+    // ils sortent du cadrage, pas de la carte.
+    const livePoints = all.filter(
+      (p) => !isVehicleDormant({ trackerId: p.trackerId, lastSeenAt: lastSeen.get(p.trackerId) }, now, DORMANT_STOP_COUNTING_MS),
+    );
+    const setAside = all.length - livePoints.length;
+    if (livePoints.length === 0) {
+      // Repli EXPLIQUÉ : parc entièrement muet. On cadre quand même (sinon la carte
+      // resterait où elle est, sans que rien ne dise pourquoi le bouton « ne marche
+      // pas »), mais on annonce que ce qui est affiché n'est plus du live.
+      this.toast.show({
+        kind: 'warning',
+        title: 'Aucun véhicule ne communique',
+        message: 'Vue cadrée sur les dernières positions connues.',
+        duration: 6000,
+        dedupeKey: 'map-fit-all-dormant',
+      });
+    } else if (setAside > 0 && announceSetAside) {
+      this.toast.show({
+        kind: 'info',
+        title: `${setAside} véhicule${setAside > 1 ? 's' : ''} muet${setAside > 1 ? 's' : ''} hors cadrage`,
+        message: 'Silencieux depuis plus de 7 jours — toujours affichés à leur dernière position.',
+        duration: 5000,
+        dedupeKey: 'map-fit-dormant-set-aside',
+      });
+    }
+    const points = livePoints.length > 0 ? livePoints : all;
     this.mapSvc.fitBounds(this.map, points, { padding: 70, maxZoom: 15 });
   }
 
@@ -3426,7 +3582,28 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private cinemaTick(): void {
     if (!this.map) return;
     const list = this.cinemaCandidates();
-    if (list.length === 0) { this.cinemaIndex = 0; return; }
+    if (list.length === 0) {
+      // Tant qu'on n'a RIEN reçu (hydratation en cours, reconnexion WS), une liste vide ne
+      // prouve pas que le parc est muet : on garde le mode armé et le prochain tick (8 s)
+      // réessaiera. Sans ça, activer le cinéma juste après l'ouverture de la carte le tuait
+      // aussitôt en accusant à tort les boîtiers.
+      if (!this.realtime.hydrated()) { this.cinemaIndex = 0; return; }
+      // Plus AUCUN véhicule à montrer (parc entièrement muet, ou tout masqué par les
+      // calques) : on arrête le cinéma au lieu de tourner à vide toutes les 8 s sur une
+      // carte immobile — et on dit pourquoi.
+      this.cinemaIndex = 0;
+      this.cinemaMode.set(false);
+      if (this.cinemaIntervalId) clearInterval(this.cinemaIntervalId);
+      this.cinemaIntervalId = null;
+      this.toast.show({
+        kind: 'info',
+        title: 'Cinéma arrêté',
+        message: 'Aucun véhicule à parcourir : rien ne communique (ou tout est masqué par les calques).',
+        duration: 5000,
+        dedupeKey: 'map-cinema-empty',
+      });
+      return;
+    }
     const target = list[this.cinemaIndex % list.length]!;
     this.cinemaIndex++;
     this.followedVehicleId.set(target.vehicleId);
@@ -3445,8 +3622,24 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     const ids = this._accessibleIds();
     const scoped = ids === 'ALL' ? all : all.filter((p) => (ids as Set<string>).has(p.vehicleId));
     const filtered = this.applyFilters(scoped);
-    const moving = filtered.filter((p) => isTrackerOnline(p.timestamp) && p.ignition && p.speedKmh > 5);
-    return moving.length ? moving : filtered;
+    const now = Date.now();
+    const lastSeen = this.lastSeenByTrackerId();
+    // Fraîcheur lue sur `lastSeenAt` (horloge SERVEUR) et non sur `p.timestamp`
+    // (horloge du boîtier, qui dérive) : « en mouvement » exige une trame de moins de
+    // 5 min, un véhicule qui roule émettant toutes les ~30 s.
+    const freshOf = (p: PositionUpdateEvent) => lastSeen.get(p.trackerId) ?? p.timestamp;
+    const moving = filtered.filter(
+      (p) => isTrackerOnline(freshOf(p), now, MOVING_FRESHNESS_MS) && p.ignition && p.speedKmh > 5,
+    );
+    if (moving.length) return moving;
+    // Repli quand personne ne roule : on parcourt le parc EXPLOITÉ, jamais les muets.
+    // Un carrousel qui s'arrête 8 s sur un véhicule figé depuis 89 jours laisse croire
+    // à un plantage de la carte. Seuil de COMPTAGE (7 j) : c'est un vivier, pas une
+    // commande. Si tout le parc est muet, on renvoie une liste vide et `cinemaTick`
+    // arrête le mode en l'expliquant plutôt que de tourner dans le vide.
+    return filtered.filter(
+      (p) => !isVehicleDormant({ trackerId: p.trackerId, lastSeenAt: lastSeen.get(p.trackerId) }, now, DORMANT_STOP_COUNTING_MS),
+    );
   }
 
   protected setCameraMode(mode: CameraMode): void {
@@ -3488,17 +3681,67 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
   /** Sélection d'un véhicule depuis le picker (pour Suivre/Sens). */
   protected pickVehicleForCamera(vehicleId: string): void {
-    this.followedVehicleId.set(vehicleId);
+    const picked = this.cameraPickerVehicles().find((v) => v.vehicleId === vehicleId);
+    // ⚠️ Capturer le mode demandé AVANT de vider le signal : sinon « Sens » (heading-up)
+    // retomberait silencieusement sur « Suivre ».
     const targetMode = this.pendingCameraMode() ?? 'follow';
-    this.cameraMode.set(targetMode);
-    this.preferences.update({ map: { ...this.preferences.prefs().map, cameraMode: targetMode } });
     this.vehiclePickerOpen.set(false);
     this.pendingCameraMode.set(null);
-    this.applyCameraMode();
     // Mobile : on ferme la sheet pour que l'utilisateur voit la carte
     if (window.matchMedia('(max-width: 767px)').matches) {
       this.mobileSheetOpen.set(false);
     }
+
+    if (picked?.dormant) {
+      // Muet depuis > 72 h : on l'emmène quand même à sa dernière position connue
+      // (voir où le boîtier s'est arrêté est une demande légitime), mais on n'ARME PAS
+      // le suivi. Verrouiller la caméra sur un point qui ne bougera plus afficherait
+      // « Suivi : FV-941-LZ » sur une carte définitivement immobile, et l'exploitant
+      // conclurait à un bug de la carte plutôt qu'à un boîtier muet. On le dit.
+      //
+      // ⚠️ Ne PAS se contenter de « ne pas armer » : le mode caméra courant peut DÉJÀ
+      // être verrouillant. Le picker s'ouvre depuis `setCameraMode('follow'|'heading-up')`
+      // SANS toucher `cameraMode`, et `cameraMode` est restauré des préférences au
+      // démarrage (ngAfterViewInit) — il vaut donc couramment 'follow', 'heading-up' ou
+      // 'chase' avec `followedVehicleId` à null. Renseigner `followedVehicleId` suffirait
+      // alors à ce que la boucle d'animation ET `applyCameraMode` collent la caméra au
+      // véhicule muet, et à ce que le HUD affiche « Suivi : … » : exactement ce que le
+      // toast ci-dessous prétend ne PAS faire. On désarme donc explicitement.
+      this.cameraMode.set('free');
+      this.preferences.update({ map: { ...this.preferences.prefs().map, cameraMode: 'free' } });
+      // On garde le véhicule « actif » (marqueur mis en avant, on vient d'y voler) : en
+      // caméra libre cela n'accroche rien et le HUD n'annonce aucun suivi.
+      this.followedVehicleId.set(vehicleId);
+      const moved = this.flyToVehicleLastKnown(vehicleId);
+      this.toast.show({
+        kind: 'warning',
+        title: `${picked.plate} est muet depuis ${picked.silenceLabel ?? 'longtemps'}`,
+        message: moved
+          ? 'Dernière position connue affichée. Suivi caméra non activé : ce véhicule n\'émet plus.'
+          : 'Aucune position connue pour ce véhicule. Suivi caméra non activé.',
+        duration: 6000,
+        dedupeKey: `map-follow-dormant-${vehicleId}`,
+      });
+      return;
+    }
+
+    this.followedVehicleId.set(vehicleId);
+    this.cameraMode.set(targetMode);
+    this.preferences.update({ map: { ...this.preferences.prefs().map, cameraMode: targetMode } });
+    this.applyCameraMode();
+  }
+
+  /**
+   * Centre sur la dernière position connue d'un véhicule, sans rien verrouiller.
+   * Renvoie false si on ne sait pas où il est — l'appelant doit alors le DIRE plutôt
+   * que de laisser la carte immobile sans raison affichée.
+   */
+  private flyToVehicleLastKnown(vehicleId: string, zoom = 15): boolean {
+    if (!this.map) return false;
+    const pos = this.realtime.positionsList().find((p) => p.vehicleId === vehicleId);
+    if (!pos) return false;
+    this.map.flyTo({ center: [pos.lng, pos.lat], zoom, duration: 800 });
+    return true;
   }
 
   protected cancelVehiclePicker(): void {
@@ -3534,8 +3777,31 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
     const id = this.followedVehicleId();
     if (!id) return;
-    const pos = this.realtime.positionsList().find((p) => p.vehicleId === id);
-    if (!pos) return;
+    const positions = this.realtime.positionsList();
+    const pos = positions.find((p) => p.vehicleId === id);
+    if (!pos) {
+      // ⚠️ « Je n'ai pas la position » ≠ « il n'y en a pas ». Cette méthode est appelée à
+      // CHAQUE rendu de marqueurs : pendant l'hydratation, ou après une déconnexion WS qui
+      // vide les positions, la liste est momentanément vide pour TOUT LE MONDE. Dégrader là
+      // aurait affiché « Position inconnue » et réécrit en dur la préférence caméra de
+      // l'utilisateur sur un simple aléa réseau. On ne conclut que sur des données reçues.
+      if (!this.realtime.hydrated() || positions.length === 0) return;
+      // Aucune position connue (véhicule sans boîtier type TEST-xxx, ou boîtier jamais
+      // localisé) : on ne peut pas suivre. On repasse en caméra libre et on le DIT —
+      // laisser le mode « Suivre » armé sur un véhicule introuvable donnait une carte
+      // qui ne réagit plus, sans le moindre message.
+      this.cameraMode.set('free');
+      this.followedVehicleId.set(null);
+      this.preferences.update({ map: { ...this.preferences.prefs().map, cameraMode: 'free' } });
+      this.toast.show({
+        kind: 'warning',
+        title: 'Position inconnue',
+        message: 'Ce véhicule n\'a aucune position à suivre. Retour en caméra libre.',
+        duration: 5000,
+        dedupeKey: `map-follow-nopos-${id}`,
+      });
+      return;
+    }
 
     this.map.easeTo({
       center: [pos.lng, pos.lat],
@@ -3565,12 +3831,16 @@ export class MapComponent implements AfterViewInit, OnDestroy {
     // que l'effet de rendu des markers se relance au changement de société (même si la
     // liste est momentanément vide → aucune position ne serait sinon lue).
     this.fleetFilter.selectedFleetId();
+    const lastSeen = this.lastSeenByTrackerId();
     return positions
       .filter((p) => this.fleetFilter.matches(p.fleetId))
       .filter((p) => {
         // Hors-ligne = pas de signal frais (seuil online partagé, 15 min) — même
-        // définition que la couleur grise du marqueur, pour rester cohérent.
-        if (!isTrackerOnline(p.timestamp, now)) return f.offline;
+        // définition que la couleur grise du marqueur, pour rester cohérent. Donc
+        // même SOURCE aussi : `lastSeenAt` (heure serveur), sinon un boîtier à
+        // l'horloge décalée était grisé sur la carte mais compté « en mouvement »
+        // par le filtre, et disparaissait quand on décochait « Hors-ligne ».
+        if (!isTrackerOnline(lastSeen.get(p.trackerId) ?? p.timestamp, now)) return f.offline;
         if (!p.ignition) return f.off;
         if (p.speedKmh > 5) return f.moving;
         return f.idle;
@@ -4591,6 +4861,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   private applyPositions(positions: PositionUpdateEvent[]): void {
     if (!this.map) return;
 
+    const nowMs = Date.now();
     const activeIds = new Set<string>();
     const trailFeatures: Array<GeoJSON.Feature<GeoJSON.LineString, { color: string; trackerId: string }>> = [];
     const followedId = this.followedVehicleId();
@@ -4629,6 +4900,18 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         zoneLat,
         zoneLng,
       );
+      // FRAÎCHEUR — lue sur `lastSeenAt` (heure SERVEUR de la dernière trame), jamais sur
+      // `pos.timestamp` qui est l'horloge DU BOÎTIER : un Coban qui repart après une coupure
+      // d'alimentation renvoie une date fausse (souvent très en avance ou en 1970), ce qui
+      // rendait « live » un boîtier mort — ou l'inverse. Repli sur `pos.timestamp` seulement
+      // quand le snapshot ne dit rien (ligne absente ou `lastSeenAt` vide, course au premier
+      // rendu) : on ne dégrade jamais l'affichage d'un véhicule sur une donnée manquante.
+      const lastSeenAt = snap?.lastSeenAt ?? pos.timestamp;
+      const live = isTrackerOnline(lastSeenAt, nowMs);
+      // « EN MOUVEMENT MAINTENANT » exige beaucoup plus frais que « le boîtier parle » :
+      // un véhicule qui roule émet toutes les ~30 s, donc au-delà de 5 min plus rien ne
+      // prouve un déplacement en cours. C'est ce booléen qui coupe l'extrapolation.
+      const movingFresh = isTrackerOnline(lastSeenAt, nowMs, MOVING_FRESHNESS_MS);
       const data: VehicleMarkerData = {
         trackerId: pos.trackerId,
         vehicleId: pos.vehicleId,
@@ -4642,8 +4925,9 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         hydrated: hydratedSet.has(pos.trackerId),
         // Hors-ligne = dernier signal trop ancien (> seuil online partagé). Le
         // marqueur passe en gris/estompé au lieu de rester vert « actif » à sa
-        // dernière position connue (cas boîtier débranché).
-        offline: !isTrackerOnline(pos.timestamp),
+        // dernière position connue (cas boîtier débranché). Un véhicule muet depuis
+        // des semaines est donc grisé — mais il RESTE affiché à sa dernière position.
+        offline: !live,
         gpsLost,
         parkedDeadZone,
       };
@@ -4775,7 +5059,15 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         const cur = entry.marker.getLngLat();
         const lastData = this.lastMarkerData.get(pos.trackerId);
         const isHydrated = data.hydrated === true;
-        const truthSpeedMs = pos.speedKmh / 3.6;
+        // VITESSE DE RÉFÉRENCE DE L'EXTRAPOLATION — nulle dès que le véhicule n'est plus live.
+        //
+        // Cas réel : au chargement de la carte, un véhicule muet depuis 89 jours est hydraté
+        // avec sa DERNIÈRE trame connue — qui disait « 62 km/h, cap 210° ». `truthAt` valant
+        // l'instant du rendu, la boucle d'animation le croyait en train de rouler MAINTENANT
+        // et faisait glisser son marqueur sur ~600 m avant de le figer : un véhicule immobile
+        // depuis des semaines « repartait » à chaque ouverture de la carte.
+        // La position affichée n'est pas fausse — c'est la VITESSE qui n'est plus une preuve.
+        const truthSpeedMs = movingFresh ? pos.speedKmh / 3.6 : 0;
         const nowPerf = performance.now();
 
         if (isHydrated || !lastData || forceSnap) {
@@ -4816,9 +5108,13 @@ export class MapComponent implements AfterViewInit, OnDestroy {
           data.colorSpeedKmh = Math.round(derived.effectiveSpeedKmh);
           this.motion.set(pos.trackerId, {
             truthLat: pos.lat, truthLng: pos.lng,
-            truthHeading: derived.headingDeg, truthSpeedMs: derived.speedMs,
+            truthHeading: derived.headingDeg,
+            // Même règle que ci-dessus : sans trame fraîche, aucune vitesse ne peut
+            // être affirmée, donc on ne projette rien (yaw remis à 0 par cohérence —
+            // faire tourner l'icône d'un véhicule muet serait la même illusion).
+            truthSpeedMs: movingFresh ? derived.speedMs : 0,
             truthAt: nowPerf,
-            turnRateDegPerS: derived.turnRateDegPerS,
+            turnRateDegPerS: movingFresh ? derived.turnRateDegPerS : 0,
             intervalMs,
             displayLat: prev?.displayLat ?? cur.lat,
             displayLng: prev?.displayLng ?? cur.lng,
@@ -4914,7 +5210,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       const mapPrefs = this.preferences.prefs().map;
       const defaults = this.preferences.getDefaults().map;
       const isDefaultCenter = mapPrefs.centerLat === defaults.centerLat && mapPrefs.centerLng === defaults.centerLng;
-      if (isDefaultCenter) this.centerAll();
+      // Cadrage automatique du premier rendu : muet (l'utilisateur n'a rien demandé).
+      if (isDefaultCenter) this.centerAll({ announceSetAside: false });
     }
 
     // Camera follow sur le vehicule actif.

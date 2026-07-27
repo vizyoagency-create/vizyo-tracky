@@ -1,11 +1,13 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { LucideAngularModule, Gauge, Trophy, TrendingUp, TrendingDown, ChevronRight } from 'lucide-angular';
+import { LucideAngularModule, Gauge, Trophy, TrendingUp, TrendingDown, ChevronRight, Unplug } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import type { DrivingScoreDetailDto, DrivingScoreScope } from '@vizyo/tracky-shared';
+import { formatSilenceLabel, isVehicleDormant } from '@vizyo/tracky-shared';
 import { TripAnalysisApiService } from '../../core/services/trip-analysis.service';
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
+import { RealtimeService } from '../../core/services/realtime.service';
 
 /**
  * Compétition & motivation (2026-07) — CARTE de score PERSO d'une entité (véhicule / conducteur /
@@ -34,11 +36,17 @@ import { FleetFilterService } from '../../core/services/fleet-filter.service';
             <div class="dsc-main">
               <div class="dsc-score-row">
                 <span class="dsc-score">{{ r.score }}<small>/100</small></span>
-                @if (d.rank != null && d.total > 1) {
+                <!-- DORMANCE — un véhicule muet depuis 89 jours n'a plus sa place dans une
+                     compétition qui se joue sur la période courante : son rang serait figé sur
+                     des trajets d'il y a trois mois, et il pousserait mécaniquement les autres
+                     d'un cran. On retire le RANG, pas la NOTE (l'historique reste vrai). -->
+                @if (d.rank != null && d.total > 1 && !isDormant()) {
                   <span class="dsc-rank" [class.dsc-rank--podium]="d.rank <= 3">{{ medal(d.rank) }} {{ d.rank }}<sup>{{ d.rank === 1 ? 'er' : 'e' }}</sup> / {{ d.total }}</span>
                 }
               </div>
-              @if (d.total > 1 && d.vsOverall != null && d.overallScore != null) {
+              @if (!isDormant() && d.total > 1 && d.vsOverall != null && d.overallScore != null) {
+                <!-- Même raison : comparer une note figée à une moyenne qui, elle, continue de
+                     bouger produit un écart qui ne veut plus rien dire. -->
                 <div class="dsc-vs" [class.up]="d.vsOverall >= 0" [class.down]="d.vsOverall < 0">
                   <lucide-icon [img]="d.vsOverall >= 0 ? UpIcon : DownIcon" [size]="13"></lucide-icon>
                   {{ d.vsOverall >= 0 ? '+' : '' }}{{ d.vsOverall }} pts {{ d.vsOverall >= 0 ? 'au-dessus' : 'en dessous' }} de la moyenne ({{ d.overallScore }})
@@ -47,7 +55,20 @@ import { FleetFilterService } from '../../core/services/fleet-filter.service';
             </div>
           </div>
 
-          <p class="dsc-motiv" [attr.data-tier]="tier()">{{ motivation() }}</p>
+          @if (isDormant()) {
+            <!-- À la place du message motivant (« 🏆 En tête du classement ! » sur un véhicule
+                 disparu depuis trois mois serait grotesque) : le FAIT, daté. -->
+            <p class="dsc-dormant">
+              <lucide-icon [img]="DormantIcon" [size]="14"></lucide-icon>
+              <span>
+                Boîtier muet depuis {{ silenceLabel() ?? 'plus d\\'une semaine' }} — plus de rang ni de
+                comparaison à la moyenne tant qu'il n'a pas réémis. La note ci-dessus porte sur ses
+                derniers trajets connus. Rien à réactiver : tout revient dès la première trame reçue.
+              </span>
+            </p>
+          } @else {
+            <p class="dsc-motiv" [attr.data-tier]="tier()">{{ motivation() }}</p>
+          }
 
           <div class="dsc-stats">
             <span>{{ r.tripCount }} trajet{{ r.tripCount > 1 ? 's' : '' }}</span>
@@ -56,12 +77,19 @@ import { FleetFilterService } from '../../core/services/fleet-filter.service';
             @if (r.harshCount > 0) { <span>{{ r.harshCount }} à-coup{{ r.harshCount > 1 ? 's' : '' }}</span> }
           </div>
 
-          <p class="dsc-help">La note ({{ '0 à 100' }}) résume la qualité de conduite de {{ subject() }} : elle monte quand il y a moins d'excès de vitesse, d'à-coups et de ralenti. Objectif : viser le haut du classement !</p>
+          <p class="dsc-help">La note ({{ '0 à 100' }}) résume la qualité de conduite de {{ subject() }} : elle monte quand il y a moins d'excès de vitesse, d'à-coups et de ralenti.@if (!isDormant()) { Objectif : viser le haut du classement ! }</p>
         } @else {
           <div class="dsc-empty">
-            <lucide-icon [img]="GaugeIcon" [size]="30" class="opacity-30"></lucide-icon>
-            <p>Pas encore de trajet analysé</p>
-            <span>Le score de {{ subject() }} apparaîtra ici dès qu'un trajet est analysé (bouton « Analyser » dans les trajets).</span>
+            <lucide-icon [img]="isDormant() ? DormantIcon : GaugeIcon" [size]="30" class="opacity-30"></lucide-icon>
+            @if (isDormant()) {
+              <!-- « Le score apparaîtra dès qu'un trajet est analysé » ferait attendre pour rien
+                   sur un boîtier muet depuis 89 jours : aucun trajet n'arrivera. On dit pourquoi. -->
+              <p>Aucun trajet — boîtier muet depuis {{ silenceLabel() ?? 'plus d\\'une semaine' }}</p>
+              <span>Tant que le boîtier n'émet pas, aucun trajet n'est enregistré, donc pas de score ni de classement. Rien à réactiver : la première trame reçue suffit.</span>
+            } @else {
+              <p>Pas encore de trajet analysé</p>
+              <span>Le score de {{ subject() }} apparaîtra ici dès qu'un trajet est analysé (bouton « Analyser » dans les trajets).</span>
+            }
           </div>
         }
       } @else {
@@ -99,6 +127,10 @@ import { FleetFilterService } from '../../core/services/fleet-filter.service';
     .dsc-motiv[data-tier="good"] { background: color-mix(in srgb, #84CC16 12%, transparent); color: #84CC16; }
     .dsc-motiv[data-tier="mid"] { background: color-mix(in srgb, #F59E0B 12%, transparent); color: #F59E0B; }
     .dsc-motiv[data-tier="low"] { background: color-mix(in srgb, #F97316 12%, transparent); color: #F97316; }
+    /* DORMANCE — ambre brûlé #d97706, même teinte que le badge « Dormant » du reste de l'app
+       (délibérément plus soutenu que l'ambre « Hors ligne » : ce n'est pas la même urgence). */
+    .dsc-dormant { margin: 0; display: flex; align-items: flex-start; gap: 8px; font-size: 12px; line-height: 1.45; font-weight: 600; padding: 9px 12px; border-radius: 10px; background: color-mix(in srgb, #d97706 12%, transparent); color: #d97706; }
+    .dsc-dormant lucide-icon { flex-shrink: 0; margin-top: 1px; }
     .dsc-stats { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11.5px; color: var(--fg-tertiary); }
     .dsc-warn { color: #EF4444; font-weight: 700; }
     .dsc-help { margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--fg-tertiary); }
@@ -110,6 +142,7 @@ import { FleetFilterService } from '../../core/services/fleet-filter.service';
 export class DrivingScoreCardComponent {
   private readonly api = inject(TripAnalysisApiService);
   private readonly fleetFilter = inject(FleetFilterService);
+  private readonly realtime = inject(RealtimeService);
 
   /** Sur quoi porte la carte. */
   readonly scope = input.required<DrivingScoreScope>();
@@ -126,6 +159,33 @@ export class DrivingScoreCardComponent {
   protected readonly UpIcon = TrendingUp;
   protected readonly DownIcon = TrendingDown;
   protected readonly ChevronIcon = ChevronRight;
+  /** Même icône que le badge « Dormant » de l'app — un seul symbole pour un seul état. */
+  protected readonly DormantIcon = Unplug;
+
+  /**
+   * DORMANCE du véhicule noté — lue dans le snapshot temps réel DÉJÀ en mémoire (aucun appel
+   * réseau ajouté). On ne passe pas par une entrée du composant : cette carte est instanciée
+   * depuis plusieurs écrans (onglet Rapports d'un véhicule, tiroir conducteur) et exiger d'eux
+   * qu'ils transportent `lastSeenAt` aurait laissé le cas non traité partout où on l'oublie.
+   *
+   * Seuil COUNTING (7 j) par défaut : on parle ici de CLASSEMENT et de comparaison, c'est-à-dire
+   * de comptage — jamais d'une commande envoyée au boîtier (celles-là restent à 72 h).
+   *
+   * `scope !== 'vehicle'` → jamais dormant : un conducteur ou un groupe ne se tait pas, c'est un
+   * boîtier qui se tait. Snapshot pas encore hydraté → pas dormant non plus : on n'invente pas un
+   * état à partir d'une absence de donnée, on reste sur l'affichage habituel.
+   */
+  private readonly dormancy = computed<{ dormant: boolean; silence: string | null }>(() => {
+    if (this.scope() !== 'vehicle') return { dormant: false, silence: null };
+    const snap = this.realtime.snapshot().find((s) => s.vehicleId === this.entityId());
+    if (!snap) return { dormant: false, silence: null };
+    const dormant = isVehicleDormant({ trackerId: snap.trackerId, lastSeenAt: snap.lastSeenAt });
+    return { dormant, silence: dormant ? formatSilenceLabel(snap.lastSeenAt) : null };
+  });
+
+  protected readonly isDormant = computed(() => this.dormancy().dormant);
+  /** « 89 j » — l'ancienneté qui remplace le rang et la comparaison. */
+  protected readonly silenceLabel = computed(() => this.dormancy().silence);
 
   constructor() {
     // Recharge quand l'entité, le scope, OU la société sélectionnée (super-admin)
@@ -155,6 +215,10 @@ export class DrivingScoreCardComponent {
     const d = this.data();
     const r = d?.row;
     if (!d || !r) return '';
+    // Garde de sûreté doublant le `@if` du template : trois des six phrases ci-dessous
+    // s'appuient sur le rang ou la moyenne. Si un jour quelqu'un rebranche ce texte sans
+    // regarder, « 🏆 En tête du classement » ne doit pas ressortir sur un véhicule disparu.
+    if (this.isDormant()) return '';
     const solo = d.total <= 1; // seul évalué : pas de « classement », on encourage sur la note brute.
     if (!solo && d.rank === 1) return '🏆 En tête du classement — quel exemple, continuez comme ça !';
     if (!solo && d.rank != null && d.rank <= 3 && d.total > 3) return '🎉 Sur le podium ! Excellente conduite.';

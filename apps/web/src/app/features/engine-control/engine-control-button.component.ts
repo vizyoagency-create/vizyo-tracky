@@ -2,6 +2,11 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, DestroyRef, effect, inject, input, OnInit, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, Power, PowerOff } from 'lucide-angular';
+import {
+  DORMANT_STOP_ACTING_MS,
+  formatSilenceLabel,
+  trackerSilenceMs,
+} from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
 import {
@@ -52,6 +57,17 @@ const CONFIRM_WINDOW_MS = 90_000;
             <span class="hidden sm:inline">Couper le moteur</span>
             <span class="sm:hidden">Couper</span>
           </button>
+        }
+
+        <!-- Boîtier muet : affiché pour la coupe COMME pour le rallumage. Sur les deux
+             l'opérateur doit savoir que rien ne reviendra confirmer son geste. Une
+             infobulle ne suffit pas : elle n'existe pas au doigt, et le mobile est
+             l'usage principal (cas réel FV-941-LZ, 89 j de silence). -->
+        @if (dormantWarning(); as d) {
+          <span class="ml-2 text-[11px] font-medium text-amber-400 leading-tight"
+                [title]="d.title">
+            Boîtier muet depuis {{ d.silence }} — envoi non garanti
+          </span>
         }
       }
 
@@ -124,6 +140,15 @@ export class EngineControlButtonComponent implements OnInit {
   readonly validFix = input(false);
   readonly positionAge = input<number | undefined>(undefined);
   readonly ignition = input(true);
+  /**
+   * Dernier signal reçu du BOÎTIER (pas de la position) — source unique de la dormance.
+   *
+   * Optionnel : laissé à `undefined`, le composant retombe sur l'entrée snapshot du
+   * RealtimeService pour ce tracker (hydratée au login, rafraîchie par les trames WS).
+   * On distingue volontairement `undefined` (fait INCONNU → on ne bloque rien, le serveur
+   * reste seul juge) de `null` (boîtier connu qui n'a JAMAIS émis → pas « devenu muet »).
+   */
+  readonly trackerLastSeenAt = input<string | Date | null | undefined>(undefined);
   /** Si true, un schedule horaire est actif sur ce véhicule (input ou chargé dynamiquement). */
   readonly scheduleEnabledInput = input(false, { alias: 'scheduleEnabled' });
   /** Libellé de traçage d'activité posé sur les boutons d'action (data-track). Vide = fallback texte. */
@@ -281,7 +306,63 @@ export class EngineControlButtonComponent implements OnInit {
     };
   });
 
+  /**
+   * Dernier signal du boîtier, résolu : input explicite d'abord, snapshot realtime ensuite.
+   *
+   * Retourne `undefined` quand le fait est INCONNU (aucun input, aucune entrée snapshot —
+   * c'est le cas du VEILLEUR, à qui le serveur ne sert aucune donnée véhicule). On ne
+   * grise JAMAIS sur une ignorance : sans fait, aucune garde.
+   */
+  private readonly resolvedLastSeenAt = computed<string | Date | null | undefined>(() => {
+    const direct = this.trackerLastSeenAt();
+    if (direct !== undefined) return direct;
+    const snap = this.realtime.snapshot().find((v) => v.trackerId === this.trackerId());
+    return snap ? snap.lastSeenAt : undefined;
+  });
+
+  /**
+   * BOÎTIER MUET (seuil AGIR = 72 h) — non null quand le boîtier ne parle plus du tout.
+   *
+   * Cas réel : FV-941-LZ, muet depuis 89 jours. L'opérateur cliquait « Couper », lisait
+   * « Coupure envoyée » et croyait le véhicule immobilisé. Ce n'est PAS le clic qu'il faut
+   * empêcher (le serveur tente encore le repli SMS, cf. canCut) — c'est la CROYANCE au
+   * succès. On date donc le silence partout où l'action se décide : sur le bouton, dans la
+   * confirmation, dans le toast.
+   *
+   * DORMANT_STOP_ACTING_MS (72 h) et PAS le seuil de comptage (7 j) : c'est le seuil
+   * d'ACTION, celui que le serveur applique à ses automatismes. Un véhicule simplement
+   * garé une semaine ne doit jamais être signalé ici.
+   *
+   * Dépend de `_now()` (tick 5 s) : dès la première trame reçue, `lastSeenAt` redevient
+   * frais et l'avertissement disparaît seul — aucun drapeau, aucune action manuelle.
+   */
+  protected readonly dormantWarning = computed<{ silence: string; title: string } | null>(() => {
+    const lastSeen = this.resolvedLastSeenAt();
+    // undefined = fait inconnu ; null = jamais émis (« pas configuré », pas « devenu muet »).
+    if (lastSeen === undefined || lastSeen === null) return null;
+    const now = this._now();
+    const silent = trackerSilenceMs(lastSeen, now);
+    if (silent == null || silent <= DORMANT_STOP_ACTING_MS) return null;
+    const silence = formatSilenceLabel(lastSeen, now) ?? '—';
+    return {
+      silence,
+      title:
+        `Le boîtier n'a plus émis depuis ${silence} (batterie débranchée, SIM coupée ou boîtier déposé). ` +
+        `La commande sera tout de même tentée, par SMS : ne considérez l'action faite qu'une fois ` +
+        `confirmée par le boîtier, ou vérifiée physiquement.`,
+    };
+  });
+
   readonly canCut = computed(() => {
+    // ⚠️ AUCUNE porte « boîtier muet » ici, et c'est VÉRIFIÉ, pas supposé : côté serveur
+    // (EngineControlService) la dormance ne suspend QUE la coupe automatique du planning
+    // (`source === 'SCHEDULER'`). Une coupe MANUELLE part toujours, TCP puis repli SMS —
+    // un boîtier peut avoir perdu sa data tout en recevant encore ses SMS, et c'est
+    // exactement sur un véhicule volé qu'on veut tenter sa chance. Griser ce bouton
+    // supprimerait le dernier levier disponible sur le seul cas qui compte vraiment.
+    // On ne cache donc pas le fait : il est AFFICHÉ (cf. dormantWarning) dans le bouton,
+    // dans la confirmation et dans le toast, pour que personne ne croie à un succès.
+
     // V1.11 Phase 1 — Permission per-vehicle. Admin bypass deja gere par perms.can.
     const vid = this.effectiveVehicleId();
     if (!vid) {
@@ -339,12 +420,30 @@ export class EngineControlButtonComponent implements OnInit {
     return this.perms.can('engine_control', vid);
   });
 
+  /**
+   * Avertissement inséré dans les DEUX confirmations quand le boîtier est muet.
+   *
+   * C'est le moment décisif : l'opérateur s'apprête à considérer le geste comme fait.
+   * Le dire ici, avant le clic, est ce qui empêche la fausse certitude — pas un grisage
+   * qui, lui, retirerait le seul levier restant sur un véhicule volé.
+   */
+  private readonly dormantConfirmNotice = computed(() => {
+    const d = this.dormantWarning();
+    if (!d) return '';
+    return (
+      `<br><br><span class="text-amber-400 text-xs">Attention : le boîtier n'a plus émis depuis ` +
+      `<strong>${d.silence}</strong>. La commande sera tentée (repli SMS) mais aucune confirmation ` +
+      `n'est à attendre — à vérifier physiquement.</span>`
+    );
+  });
+
   protected readonly cutDescription = computed(
     () =>
       `Vous êtes sur le point d'immobiliser le véhicule <strong>${this.vehiclePlate()}</strong>.<br><br>` +
       `Le conducteur sera impacté immédiatement et le véhicule deviendra inutilisable ` +
       `jusqu'à réactivation manuelle.<br><br>` +
-      `<span class="text-fg-tertiary text-xs">Cette action sera enregistrée dans l'audit trail.</span>`,
+      `<span class="text-fg-tertiary text-xs">Cette action sera enregistrée dans l'audit trail.</span>` +
+      this.dormantConfirmNotice(),
   );
 
   protected readonly restoreDescription = computed(() => {
@@ -353,10 +452,11 @@ export class EngineControlButtonComponent implements OnInit {
       return (
         base +
         `<br><br><span class="text-fg-tertiary text-xs">Le mode horaire reste actif : cette action ` +
-        `tient jusqu'à la prochaine bascule, puis le planning reprend automatiquement.</span>`
+        `tient jusqu'à la prochaine bascule, puis le planning reprend automatiquement.</span>` +
+        this.dormantConfirmNotice()
       );
     }
-    return base;
+    return base + this.dormantConfirmNotice();
   });
 
   // React to real-time engine command updates for this tracker (field initializer = injection context)
@@ -403,11 +503,16 @@ export class EngineControlButtonComponent implements OnInit {
       }
       // Sprint 2 — PAS de faux succes : on annonce "envoyee" ; la confirmation
       // (chute d'ignition) fera basculer l'etat coupe via le WS + commandState.
+      // Boîtier muet : « en attente de confirmation » deviendrait mensonger — il n'y aura
+      // PAS de confirmation. On le dit dans le toast, dernière chose lue avant de partir.
+      const dormant = this.dormantWarning();
       this.toast.success(
         action === 'CUT' ? 'Coupure envoyée' : 'Rallumage envoyé',
-        action === 'CUT'
-          ? `Commande ${cmd.id.slice(0, 8)} — en attente de confirmation du boîtier…`
-          : `Commande ${cmd.id.slice(0, 8)} transmise au véhicule.`,
+        dormant
+          ? `Commande ${cmd.id.slice(0, 8)} — boîtier muet depuis ${dormant.silence} : aucune confirmation à attendre, à vérifier physiquement.`
+          : action === 'CUT'
+            ? `Commande ${cmd.id.slice(0, 8)} — en attente de confirmation du boîtier…`
+            : `Commande ${cmd.id.slice(0, 8)} transmise au véhicule.`,
       );
       await this.loadRecentCommands();
     } catch (err) {

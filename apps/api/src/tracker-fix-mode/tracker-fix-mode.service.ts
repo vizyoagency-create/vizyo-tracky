@@ -1,7 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Fleet, Tracker, Vehicle } from '@prisma/client';
 import { TrackerCommandStatus } from '@prisma/client';
-import { findTemplate } from '@vizyo/tracky-shared';
+import {
+  findTemplate,
+  DORMANT_STOP_ACTING_MS,
+  formatSilenceLabel,
+  isVehicleDormant,
+} from '@vizyo/tracky-shared';
 import { CobanWireLogger } from '../observability/coban-wire-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SmsGatewayService } from '../sms/sms-gateway.service';
@@ -84,17 +89,39 @@ export class TrackerFixModeService {
    * Necessite que `Tracker.simPhoneNumber` soit renseigne (au provisionnement
    * SMS via /admin/sms/provision). Retourne true si le SMS a ete accepte
    * par le provider (pas de garantie de reception cote boitier).
+   *
+   * PORTE « BOITIER MUET » (seuil AGIR = 72 h) : ce repli est la SEULE primitive de ce
+   * service qui coute de l'argent reel. Il est deja borne PAR LE BAS (silence > 5 min,
+   * sinon la socket suffit) ; on le borne desormais aussi PAR LE HAUT. Entre les deux,
+   * le boitier est joignable et le SMS a un sens. Au-dela de 72 h de silence, on sait
+   * que l'alimentation, la SIM ou le boitier lui-meme ont disparu : le SMS serait
+   * facture pour rien. `force` (override admin explicite) reste au-dessus de cette
+   * porte — un humain qui decide de sonder un boitier silencieux garde ce droit.
    */
   private async tryFallbackSms(
-    tracker: Pick<Tracker, 'imei' | 'simPhoneNumber' | 'lastSeenAt'>,
+    tracker: Pick<Tracker, 'id' | 'imei' | 'simPhoneNumber' | 'lastSeenAt'>,
     payload: string,
     commandId: string,
+    force = false,
   ): Promise<boolean> {
     if (!tracker.simPhoneNumber) return false;
     const offlineMs = tracker.lastSeenAt
       ? Date.now() - tracker.lastSeenAt.getTime()
       : Number.POSITIVE_INFINITY;
     if (offlineMs < 5 * 60 * 1000) return false;
+    if (
+      !force &&
+      isVehicleDormant(
+        { trackerId: tracker.id, lastSeenAt: tracker.lastSeenAt },
+        Date.now(),
+        DORMANT_STOP_ACTING_MS,
+      )
+    ) {
+      this.logger.debug(
+        `Repli SMS ignore: tracker ${tracker.imei} muet depuis ${formatSilenceLabel(tracker.lastSeenAt)} (> 72 h)`,
+      );
+      return false;
+    }
     if (!this.sms.isEnabled()) return false;
     const result = await this.sms.send(tracker.simPhoneNumber, payload, {
       imei: tracker.imei,
@@ -297,6 +324,12 @@ export class TrackerFixModeService {
    * Returns the created TrackerCommand row, or null if anti-flapping or feature
    * flag prevents the change. Errors are logged but don't propagate — the
    * sampling pipeline must remain robust to fix mode failures.
+   *
+   * `sent` dit si la commande a REELLEMENT quitte le serveur (write TCP accepte ou SMS
+   * accepte par la passerelle). Un `commandId` est aussi renvoye quand l'envoi echoue —
+   * la ligne existe alors en FAILED pour l'audit. Sans ce drapeau, l'appelant ne pouvait
+   * pas distinguer « commande partie » de « ligne ecrite puis marquee FAILED », et
+   * setManualOverride en tirait la conclusion inverse de la realite (cf. plus bas).
    */
   async requestChange(
     tracker: Tracker & { vehicle: (Vehicle & { fleet: Fleet }) | null },
@@ -304,7 +337,7 @@ export class TrackerFixModeService {
     reason: string,
     contextSnapshot: Record<string, unknown>,
     options?: { force?: boolean },
-  ): Promise<{ commandId: string } | null> {
+  ): Promise<{ commandId: string; sent: boolean } | null> {
     // V1.14 — Hard cap : intervalle clampe entre 20s (minimum hardware Coban
     // GPS403D) et 300s (HARD_CAP_S, anti-spam economie batterie).
     const target = Math.min(Math.max(HARD_CAP_MIN_S, desiredS), HARD_CAP_S);
@@ -401,7 +434,9 @@ export class TrackerFixModeService {
 
     if (!sent) {
       // Tentative fallback SMS si tracker offline > 5min ET simPhoneNumber connu.
-      const smsSent = await this.tryFallbackSms(tracker, payload, command.id);
+      // `force` traverse la porte « boitier muet » du repli : un override admin explicite
+      // reste autorise a sonder un boitier silencieux, l'automate non.
+      const smsSent = await this.tryFallbackSms(tracker, payload, command.id, force);
       if (smsSent) {
         await this.prisma.trackerCommand.update({
           where: { id: command.id },
@@ -423,7 +458,7 @@ export class TrackerFixModeService {
           { trackerId: tracker.id, imei: tracker.imei, target },
           `Fix mode change envoye via SMS fallback (TCP indisponible)`,
         );
-        return { commandId: command.id };
+        return { commandId: command.id, sent: true };
       }
 
       // Pas de fallback possible — la prochaine reconnexion permettra un retry au prochain reconcile.
@@ -435,7 +470,7 @@ export class TrackerFixModeService {
           diagnosticHint,
         },
       });
-      return { commandId: command.id };
+      return { commandId: command.id, sent: false };
     }
 
     await this.prisma.trackerCommand.update({
@@ -466,7 +501,7 @@ export class TrackerFixModeService {
       `Fix mode change requested: ${tracker.desiredFixIntervalS}s -> ${target}s`,
     );
 
-    return { commandId: command.id };
+    return { commandId: command.id, sent: true };
   }
 
   /**
@@ -479,22 +514,33 @@ export class TrackerFixModeService {
     untilMinutes: number,
     desiredS: number | null,
     requestedByUserId: string,
-  ): Promise<{ overrideUntil: string | null; commandId: string | null }> {
+  ): Promise<{
+    overrideUntil: string | null;
+    commandId: string | null;
+    /** L'indicateur FAILING n'est efface que si la commande est REELLEMENT partie. */
+    failingCleared: boolean;
+  }> {
     const overrideUntil = untilMinutes > 0 ? new Date(Date.now() + untilMinutes * 60 * 1000) : null;
 
-    // V1.14 — Reset FAILING + override en une seule ecriture. L'admin qui pose
-    // un override veut reprendre le controle → on remet le compteur a zero pour
-    // que requestChange puisse passer (et on utilise force:true en securite).
+    // L'override lui-meme est la decision de l'admin : on la pose TOUJOURS, en premier.
+    //
+    // ⚠️ On n'efface PLUS `fixCommandFailing`/`fixCommandFailureCount` ICI. Avant, les
+    // deux etaient remis a zero AVANT meme de savoir si une commande partait : un boitier
+    // au fond d'un parking (socket fermee, pas de SIM) voyait son indicateur d'echec
+    // disparaitre alors que RIEN n'avait ete envoye ni corrige. L'alerte s'eteignait
+    // toute seule, le boitier restait muet, et plus personne ne le voyait.
+    //
+    // Ce reset n'a jamais ete necessaire pour debloquer l'envoi : requestChange est
+    // appele juste en dessous avec `force: true`, qui court-circuite deja la garde
+    // FAILING. L'acquittement explicite « j'ai verifie, c'est regle » garde son chemin
+    // dedie : POST /admin/alerts/trackers/:id/clear-failing.
     await this.prisma.tracker.update({
       where: { id: trackerId },
-      data: {
-        fixModeOverrideUntil: overrideUntil,
-        fixCommandFailing: false,
-        fixCommandFailureCount: 0,
-      },
+      data: { fixModeOverrideUntil: overrideUntil },
     });
 
     let commandId: string | null = null;
+    let failingCleared = false;
     if (desiredS && overrideUntil) {
       const tracker = await this.prisma.tracker.findUnique({
         where: { id: trackerId },
@@ -509,12 +555,26 @@ export class TrackerFixModeService {
           { force: true },
         );
         commandId = out?.commandId ?? null;
+
+        // Le compteur d'echecs ne retombe a zero que si la commande a REELLEMENT quitte
+        // le serveur. Un `commandId` seul ne suffit pas : la ligne existe aussi quand
+        // l'envoi a echoue (elle est alors persistee en FAILED). C'est exactement le cas
+        // qui effacait l'alerte a tort. Si le boitier continue d'ignorer la consigne,
+        // reconcile() remontera le compteur tout seul aux trames suivantes.
+        if (out?.sent) {
+          await this.prisma.tracker.update({
+            where: { id: trackerId },
+            data: { fixCommandFailing: false, fixCommandFailureCount: 0 },
+          });
+          failingCleared = true;
+        }
       }
     }
 
     return {
       overrideUntil: overrideUntil ? overrideUntil.toISOString() : null,
       commandId,
+      failingCleared,
     };
   }
 }

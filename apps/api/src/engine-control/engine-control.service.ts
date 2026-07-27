@@ -11,7 +11,7 @@ import {
 import { CommandStatus, EngineAction, Prisma, UserRole } from '@prisma/client';
 import type { EngineControlCommand } from '@prisma/client';
 import type { CobanCommand } from '@vizyo/tracky-shared';
-import { encodeCommand } from '@vizyo/tracky-shared';
+import { DORMANT_STOP_ACTING_MS, encodeCommand, formatSilenceLabel, trackerSilenceMs } from '@vizyo/tracky-shared';
 import { CobanWireLogger } from '../observability/coban-wire-logger.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { resolveTenantScope } from '../common/tenant-scope';
@@ -136,6 +136,29 @@ export class EngineControlService implements OnModuleDestroy {
     }
 
     const fleetId = tracker.vehicle.fleetId;
+
+    // ── COUPE AUTOMATIQUE sur boîtier DORMANT : on ne tente pas ──────────────
+    // Un boîtier muet depuis des jours ne répondra ni en TCP ni en SMS. Le
+    // planning retentait donc indéfiniment, empilant commandes et alertes.
+    //
+    // ⚠️ PÉRIMÈTRE VOLONTAIREMENT MINIMAL — `CUT` **et** `SCHEDULER` seulement.
+    // C'est l'asymétrie déjà posée par le planning : rater une coupe est un
+    // désagrément, rater une RESTAURATION immobilise un véhicule. Un boîtier a
+    // très bien pu être réellement coupé alors qu'il était vivant, puis se taire :
+    // si la dormance bloquait `RESTORE`, il resterait coupé pour toujours, sans
+    // même une tentative SMS. Et une action MANUELLE (ex. immobiliser un véhicule
+    // volé) doit garder TCP + repli SMS, y compris sur un boîtier silencieux —
+    // c'est précisément là qu'on veut tenter notre chance.
+    if (source === 'SCHEDULER' && action === EngineAction.CUT) {
+      const silentMs = trackerSilenceMs(tracker.lastSeenAt);
+      if (silentMs != null && silentMs > DORMANT_STOP_ACTING_MS) {
+        // ForbiddenException = « report » côté cron : aucune commande persistée,
+        // aucun événement WS émis. Le planning reprend seul dès la première trame.
+        throw new ForbiddenException(
+          `Coupe auto suspendue : boîtier muet depuis ${formatSilenceLabel(tracker.lastSeenAt)}`,
+        );
+      }
+    }
 
     // Sprint 2 (Obj 1 + revue) — verrou « une coupure en vol » : rejet d'une NOUVELLE
     // coupure MANUELLE tant qu'une coupure confirmable précédente attend sa

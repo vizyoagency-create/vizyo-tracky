@@ -29,7 +29,7 @@ describe('TripAutomationService', () => {
   function build(opts: {
     row?: Record<string, unknown>;
     fleets?: { id: string }[];
-    vehicles?: { id: string }[];
+    vehicles?: Record<string, unknown>[];
     dirty?: { startedAt: Date } | null;
     trips?: { id: string }[];
     analyses?: { tripId: string; narrative: string | null }[];
@@ -158,6 +158,87 @@ describe('TripAutomationService', () => {
     expect(data.items).toHaveLength(1);
     expect(data.items[0]).toMatchObject({ vehicleId: 'v1', plate: 'AA-001-BB', tripId: 't2', action: 'narrated' });
     expect(data.finishedAt).toBeInstanceOf(Date);
+  });
+
+  /**
+   * DORMANCE (72 h — seuil « arrêter d'agir »). En prod, 2 véhicules sur 39 sont muets depuis 52 et
+   * 89 jours : le cron horaire relançait pour eux recompute + listing + lecture des analyses, pour
+   * un résultat toujours vide. On vérifie ici l'exclusion ET, surtout, ses limites — c'est la
+   * frontière qui compte, pas le cas facile.
+   */
+  describe('dormance : on n’agit plus sur un boîtier muet', () => {
+    const H = 3600 * 1000;
+    /** Véhicule + boîtier entendu il y a `ms` (null = boîtier qui n'a jamais émis). */
+    const withTracker = (ms: number | null) => [
+      { id: 'v1', plate: 'AA-001-BB', tracker: { id: 'tk1', lastSeenAt: ms == null ? null : new Date(Date.now() - ms) } },
+    ];
+
+    it('exclut le véhicule muet depuis 89 j : AUCUNE requête trajets, aucun appel IA', async () => {
+      const { svc, prisma, trips, analysis, llm } = build({
+        vehicles: withTracker(89 * 24 * H),
+        dirty: { startedAt: new Date() },
+        trips: [{ id: 't2' }],
+        analyses: [],
+        aiEnabled: true,
+      });
+      const stats = await svc.runNow();
+      expect(trips.recompute).not.toHaveBeenCalled();
+      expect(prisma.trip.findMany).not.toHaveBeenCalled(); // le travail pour rien a bien disparu
+      expect(analysis.analyze).not.toHaveBeenCalled();
+      expect(llm.narrate).not.toHaveBeenCalled();
+      // L'exclusion est COMPTÉE : `vehicles` baisse, mais jamais en silence.
+      expect(stats.skippedDormant).toBe(1);
+      expect(stats.vehicles).toBe(0);
+    });
+
+    it('un silence de 2 h n’exclut PAS (un véhicule garé se tait aussi)', async () => {
+      const { svc, analysis } = build({
+        vehicles: withTracker(2 * H),
+        trips: [{ id: 't2' }],
+        analyses: [],
+      });
+      const stats = await svc.runNow();
+      expect(analysis.analyze).toHaveBeenCalledTimes(1);
+      expect(stats.skippedDormant).toBe(0);
+      expect(stats.vehicles).toBe(1);
+    });
+
+    it('boîtier qui n’a JAMAIS émis : pas dormant (« jamais connecté » ≠ « s’est tu »)', async () => {
+      const { svc, prisma } = build({ vehicles: withTracker(null), trips: [], analyses: [] });
+      const stats = await svc.runNow();
+      expect(prisma.trip.findMany).toHaveBeenCalled(); // il traverse le pipeline, sans rien y trouver
+      expect(stats.skippedDormant).toBe(0);
+    });
+
+    it('véhicule sans boîtier du tout : pas dormant non plus', async () => {
+      const { svc, analysis } = build({
+        vehicles: [{ id: 'v9', plate: 'TEST-001-XX', tracker: null }],
+        trips: [{ id: 't2' }],
+        analyses: [],
+      });
+      const stats = await svc.runNow();
+      expect(stats.skippedDormant).toBe(0);
+      expect(analysis.analyze).toHaveBeenCalledTimes(1);
+    });
+
+    it('réintégration automatique dès que le boîtier reparle (aucun bouton, aucun drapeau)', async () => {
+      const dormant = build({ vehicles: withTracker(80 * H), trips: [{ id: 't2' }], analyses: [] });
+      expect((await dormant.svc.runNow()).skippedDormant).toBe(1);
+
+      // Même véhicule, une trame reçue il y a 1 min : il revient dans le pipeline au passage suivant.
+      const revenu = build({ vehicles: withTracker(60_000), trips: [{ id: 't2' }], analyses: [] });
+      const stats = await revenu.svc.runNow();
+      expect(stats.skippedDormant).toBe(0);
+      expect(revenu.analysis.analyze).toHaveBeenCalledWith(expect.anything(), 't2');
+    });
+
+    it('le journal d’activité ANNONCE les véhicules ignorés (chiffre qui baisse = chiffre expliqué)', async () => {
+      const { svc, systemActivity } = build({ vehicles: withTracker(89 * 24 * H), trips: [], analyses: [] });
+      await svc.runNow();
+      const rec = systemActivity.record.mock.calls[0][0];
+      expect(rec.detail).toContain('1 véhicule(s) au boîtier muet ignoré(s)');
+      expect(rec.meta.skippedDormant).toBe(1);
+    });
   });
 
   it('setSettings clampe l’heure et normalise la fréquence', async () => {
