@@ -1,4 +1,4 @@
-import { ServiceUnavailableException } from '@nestjs/common';
+import { ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
 import { ScheduleCronService } from './schedule-cron.service';
 import type { VehicleSchedule } from '@prisma/client';
 
@@ -341,6 +341,36 @@ describe('ScheduleCronService — backoff des coupes', () => {
       'schedule-cron',
       expect.objectContaining({ phase: 'stuck-schedule-action' }),
     );
+  });
+
+  /**
+   * L'alerte doit nommer la CAUSE, pas l'attente.
+   *
+   * Constat 2026-07-27 au centre d'alerte : 16 lignes sur 16 rédigées « coupe/reprise impossible
+   * depuis N min (coupe en attente de nouvelle tentative (backoff)) » — une phrase circulaire, et
+   * AUCUNE ne nommait la cause réelle. C'est mécanique : le backoff plafonne à 30 min et le seuil
+   * d'alerte vaut 30 min, donc l'alerte tombe presque toujours pendant l'attente et jamais sur le
+   * tick qui a réellement échoué.
+   */
+  it('nomme la CAUSE RÉELLE du blocage (et la plaque), pas l\'état d\'attente', async () => {
+    jest.useFakeTimers();
+    const { service, errorLogger } = build(new ForbiddenException('Aucune position connue pour ce tracker'));
+    const schedule = { ...OUT_OF_WINDOW_SCHEDULE() };
+    schedule.vehicle = { ...schedule.vehicle, plate: 'FV-941-LZ' };
+
+    // 90 min de ticks : le 1er échec arme le backoff, l'alerte part à 30 min — donc en pleine attente.
+    for (let minute = 0; minute < 90; minute++) {
+      await service.evaluateOne(schedule);
+      jest.advanceTimersByTime(60 * 1000);
+    }
+
+    expect(errorLogger.record).toHaveBeenCalled();
+    const [err, source, ctx] = errorLogger.record.mock.calls[0];
+    expect(source).toBe('schedule-cron');
+    expect(err.message).toContain('Aucune position connue pour ce tracker');
+    expect(err.message).toContain('FV-941-LZ'); // identifiable sans ouvrir la base
+    expect(err.message).not.toContain('backoff'); // l'attente n'est plus présentée comme la cause
+    expect(ctx).toMatchObject({ cause: 'Aucune position connue pour ce tracker', waitingBackoff: true });
   });
 });
 

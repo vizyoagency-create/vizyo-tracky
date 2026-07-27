@@ -12,6 +12,37 @@ export function isTransient(error: unknown): boolean {
   return typeof error === 'object' && error !== null && (error as { transient?: unknown }).transient === true;
 }
 
+/**
+ * Marqueur posé sur une erreur DÉJÀ archivée, pour qu'une couche supérieure qui la rattrape ne
+ * l'archive pas une SECONDE fois.
+ *
+ * Cas réel (2026-07-27) : `TripAnalysisLlmService.run()` archive l'échec IA sous `TRIP_ANALYSIS_AI`
+ * puis re-lève ; `TripAutomationService` le rattrape et l'archive sous `TRAJET_AUTOMATION` → DEUX
+ * lignes à la milliseconde près pour UN seul incident. La dédup par empreinte ne les voit pas :
+ * elle porte sur `source|niveau|message`, et c'est justement la source qui diffère.
+ *
+ * On marque donc l'INSTANCE d'erreur elle-même : seule la couche la plus proche de la panne (la
+ * mieux renseignée en contexte) écrit. Non énumérable → n'altère ni la sérialisation ni les
+ * comparaisons de tests. Symbol partagé (`Symbol.for`) pour rester robuste à un double chargement
+ * du module.
+ */
+const RECORDED = Symbol.for('tracky.errorLogger.recorded');
+
+/** Vrai si cette instance d'erreur a déjà été archivée par une couche inférieure. */
+function alreadyRecorded(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as Record<symbol, unknown>)[RECORDED] === true;
+}
+
+/** Marque l'instance comme archivée. Silencieux si l'objet est gelé ou n'accepte pas la propriété. */
+function markRecorded(error: unknown): void {
+  if (typeof error !== 'object' || error === null) return;
+  try {
+    Object.defineProperty(error, RECORDED, { value: true, enumerable: false, configurable: true });
+  } catch {
+    /* objet gelé : tant pis, on retombe sur le comportement d'avant (doublon possible) */
+  }
+}
+
 export interface ErrorLogContext {
   imei?: string;
   commandId?: string;
@@ -68,6 +99,13 @@ export class ErrorLogger {
       return 'transient';
     }
 
+    // Déjà archivée par la couche qui l'a levée : on ne réécrit pas la même panne sous une autre
+    // source. La ligne existante porte le contexte le plus précis (cf. RECORDED).
+    if (alreadyRecorded(error)) {
+      this.logger.warn(`[${source}] ${message} (déjà archivé par une couche inférieure)`);
+      return 'already-recorded';
+    }
+
     // Dédup : même source + niveau + début de message dans la fenêtre → on incrémente le
     // compteur et on n'écrit PAS de nouvelle ligne (le centre d'alerte reste lisible).
     const fingerprint = `${source}|${level}|${(message ?? '').slice(0, 140)}`;
@@ -75,6 +113,7 @@ export class ErrorLogger {
     const seen = this.recent.get(fingerprint);
     if (seen && now - seen.at < this.dedupMs) {
       seen.suppressed += 1;
+      markRecorded(error); // l'incident est déjà représenté : une couche au-dessus ne doit pas le réécrire
       return 'deduped';
     }
     const suppressed = seen?.suppressed ?? 0;
@@ -100,6 +139,7 @@ export class ErrorLogger {
           context: enrichedContext ? (enrichedContext as any) : undefined,
         },
       });
+      markRecorded(error);
       return row.id;
     } catch (dbErr) {
       // Ne JAMAIS relancer : sinon un souci DB en écrivant l'erreur relance une erreur

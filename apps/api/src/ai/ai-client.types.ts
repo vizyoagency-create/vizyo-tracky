@@ -38,6 +38,45 @@ export type AiErrorKind =
  */
 const TRANSIENT_KINDS: ReadonlySet<AiErrorKind> = new Set<AiErrorKind>(['quota', 'overloaded', 'timeout', 'network']);
 
+/**
+ * Motifs d'erreur PASSAGERS que les fournisseurs renvoient en **400**.
+ *
+ * Un 400 signale normalement un appel malformé — donc un vrai bug, qui DOIT alerter. Mais
+ * certains sont des aléas d'infrastructure déguisés : « Grammar compilation timed out » = le
+ * fournisseur n'a pas réussi à compiler NOTRE schéma de sortie structurée dans son délai. Le
+ * même appel repasse à l'essai suivant, sans rien changer côté app.
+ * (2026-07-27 : un récit de trajet perdu ainsi, remonté en ERREUR au centre d'alerte alors que
+ * le schéma en cause — `TRIP_NARRATIVE_SCHEMA` — ne compte que 3 champs et passe le reste du temps.)
+ */
+const TRANSIENT_400_PATTERNS: readonly RegExp[] = [
+  /grammar compilation timed out/i,
+  /overloaded/i,
+];
+
+/** Vrai si le corps d'un 400 décrit un aléa fournisseur (réessayable) et non un appel fautif. */
+export function isTransientBadRequest(body: string): boolean {
+  return TRANSIENT_400_PATTERNS.some((re) => re.test(body));
+}
+
+/**
+ * Motif LISIBLE extrait du corps d'erreur d'un fournisseur, pour que le centre d'alerte porte la
+ * cause au lieu d'un « Erreur du service IA (400) » opaque qui obligeait à aller lire les logs du
+ * conteneur en SSH pour diagnostiquer. Les corps Claude et OpenAI ont la même forme
+ * `{ error: { message } }`. Borné : un corps d'erreur peut être volumineux.
+ */
+export function describeProviderError(body: string): string {
+  const raw = (body ?? '').trim();
+  if (!raw) return 'aucun détail renvoyé';
+  try {
+    const parsed = JSON.parse(raw) as { error?: { message?: unknown; type?: unknown } };
+    const message = parsed.error?.message;
+    if (typeof message === 'string' && message.trim()) return message.trim().slice(0, 200);
+  } catch {
+    /* corps non-JSON (page d'erreur d'un proxy, etc.) → on retombe sur le brut tronqué */
+  }
+  return raw.slice(0, 200);
+}
+
 /** Échec IA typé (toujours un 503 pour l'appelant) portant son `kind` pour la journalisation. */
 export class AiServiceError extends ServiceUnavailableException {
   /**

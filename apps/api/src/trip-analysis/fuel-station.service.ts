@@ -94,10 +94,17 @@ export class FuelStationService {
 
     // API prix carburants systématiquement injoignable → une alerte (pas une par arrêt).
     if (lookups > 0 && apiFailures === lookups) {
+      // Idem `speed-limit` : on nomme la dépendance et la conséquence. Une `AbortError` brute
+      // (« This operation was aborted ») ne disait pas que c'était un TIMEOUT sur l'API publique
+      // des prix carburants, ni que l'analyse du trajet restait valable sans elle.
+      const cause = lastError instanceof Error ? lastError.message : String(lastError ?? 'injoignable');
       void this.errorLogger.record(
-        lastError instanceof Error ? lastError : new Error(String(lastError ?? 'API prix-carburants indisponible')),
+        new Error(
+          `Passages en station non détectés : API publique des prix carburants injoignable sur ${lookups} arrêt(s) — ` +
+            `aucun plein n'est affirmé sur ce trajet, le reste de l'analyse est conservé. Cause : ${cause}`,
+        ),
         'fuel-station',
-        { tripId: ctx.tripId, vehicleId: ctx.vehicleId, stage: 'lookup', stops: lookups },
+        { tripId: ctx.tripId, vehicleId: ctx.vehicleId, stage: 'lookup', stops: lookups, cause },
       );
     }
 

@@ -466,7 +466,7 @@ export class EngineControlService implements OnModuleDestroy {
     if (!sent) {
       // Fallback SMS : envoyer stop123456 / resume123456 au boitier via Twilio.
       const smsSent = await this.trySmsFallback(imei, action, command.id);
-      if (smsSent) {
+      if (smsSent.ok) {
         const updated = await this.prisma.engineControlCommand.update({
           where: { id: command.id },
           data: { status: CommandStatus.SENT, sentAt: new Date(), lastError: 'Envoyé via SMS (TCP indisponible)' },
@@ -480,14 +480,14 @@ export class EngineControlService implements OnModuleDestroy {
         where: { id: command.id },
         data: {
           status: CommandStatus.FAILED,
-          lastError: 'Tracker offline — socket TCP indisponible et fallback SMS impossible (pas de simPhoneNumber)',
+          lastError: `Tracker hors ligne — socket TCP indisponible et repli SMS impossible : ${smsSent.reason}`,
         },
       });
       this.emitUpdate(updated, fleetId);
       this.errorLogger.record(
-        'Engine command dispatch failed: socket unavailable + no SMS fallback',
+        `Commande moteur non transmise : boîtier hors ligne et repli SMS impossible (${smsSent.reason})`,
         'engine-control',
-        { imei, commandId: command.id },
+        { imei, commandId: command.id, smsFallbackReason: smsSent.reason },
       ).catch((e) => this.logger.error('ErrorLogger persist failed', e));
       throw new ServiceUnavailableException('Tracker hors ligne, commande non envoyée');
     }
@@ -566,19 +566,44 @@ export class EngineControlService implements OnModuleDestroy {
     }
   }
 
-  /** Sprint 2 (Obj 5) — trace une coupure confirmable restée non confirmée. */
+  /**
+   * Sprint 2 (Obj 5) — trace une coupure confirmable restée non confirmée.
+   *
+   * ⚠️ La preuve attendue est une CHUTE D'IGNITION, lue sur les trames qui suivent l'envoi. Encore
+   * faut-il qu'il en arrive : un boîtier qui a perdu son fix GPS reste joignable en TCP (donc la
+   * commande PART) mais n'émet plus de position — aucune chute d'ignition ne peut alors être
+   * observée, quoi qu'ait fait la coupure. Rapporter dans ce cas « pas de chute ignition » accuse
+   * la coupure d'un échec qu'on n'a tout simplement pas pu mesurer.
+   *
+   * Constat prod (2026-07-27) : 7 alertes en 7 jours, une par jour à 20:00 pile, toujours le même
+   * boîtier — muet en position depuis le 22/07 (`lastNoFixAt` frais, `lastPositionAt` figé). On
+   * distingue donc les deux situations, et on nomme la vraie : le boîtier ne reporte plus.
+   */
   private async reportIfUnconfirmed(commandId: string, imei: string): Promise<void> {
     const cmd = await this.prisma.engineControlCommand
-      .findUnique({ where: { id: commandId }, select: { status: true, ackedAt: true, trackerId: true } })
+      .findUnique({ where: { id: commandId }, select: { status: true, ackedAt: true, trackerId: true, sentAt: true } })
       .catch(() => null);
     if (!cmd || cmd.status !== CommandStatus.SENT || cmd.ackedAt) return;
-    this.logger.warn({ commandId, imei, trackerId: cmd.trackerId }, 'Engine CUT non confirmée dans la fenêtre');
+
+    // A-t-on seulement REÇU quelque chose depuis l'envoi ? (`createdAt` = instant d'ingestion :
+    // insensible à une horloge de boîtier décalée, contrairement à `timestamp`.)
+    const since = cmd.sentAt ?? new Date(Date.now() - ENGINE_CONFIRM_WINDOW_MS);
+    const framesSinceSend = await this.prisma.position
+      .count({ where: { trackerId: cmd.trackerId, createdAt: { gte: since } } })
+      .catch(() => null);
+    const wentSilent = framesSinceSend === 0;
+
+    const message = wentSilent
+      ? 'Coupure moteur invérifiable : aucune position reçue depuis l\'envoi (boîtier sans fix GPS) — état réel du moteur inconnu'
+      : 'Coupure moteur non confirmée (pas de chute ignition dans la fenêtre)';
+    this.logger.warn({ commandId, imei, trackerId: cmd.trackerId, wentSilent }, message);
     this.errorLogger
-      .record('Coupure moteur non confirmée (pas de chute ignition dans la fenêtre)', 'engine-control', {
+      .record(message, 'engine-control', {
         commandId,
         imei,
         trackerId: cmd.trackerId,
         windowMs: ENGINE_CONFIRM_WINDOW_MS,
+        framesSinceSend,
       })
       .catch((e) => this.logger.error('ErrorLogger persist failed', e));
   }
@@ -636,20 +661,39 @@ export class EngineControlService implements OnModuleDestroy {
    * Envoie `stop123456` (CUT) ou `resume123456` (RESTORE) au numero SIM du boitier.
    * Retourne true si le SMS a ete accepte par Twilio.
    */
-  private async trySmsFallback(imei: string, action: EngineAction, commandId: string): Promise<boolean> {
-    if (!this.sms.isEnabled()) return false;
+  /**
+   * Repli SMS du coupe-circuit. Renvoie la RAISON de l'échec, pas un simple booléen : trois
+   * situations très différentes (passerelle éteinte / pas de numéro SIM / numéro REFUSÉ par la
+   * passerelle) se confondaient en `false`, et l'appelant écrivait alors invariablement
+   * « pas de simPhoneNumber » dans la commande.
+   *
+   * Constat prod (2026-07-25) : le repli échouait en réalité sur un 403 « hors allowlist » de
+   * vizyo-texto, numéro SIM bien présent — l'opérateur lisait donc un diagnostic FAUX sur un
+   * chemin de sécurité, et cherchait un numéro manquant qui ne manquait pas.
+   */
+  private async trySmsFallback(
+    imei: string,
+    action: EngineAction,
+    commandId: string,
+  ): Promise<{ ok: true } | { ok: false; reason: string }> {
+    if (!this.sms.isEnabled()) {
+      return { ok: false, reason: 'passerelle SMS non configurée' };
+    }
     const tracker = await this.prisma.tracker.findFirst({
       where: { imei },
       select: { simPhoneNumber: true },
     });
-    if (!tracker?.simPhoneNumber) return false;
+    if (!tracker?.simPhoneNumber) {
+      return { ok: false, reason: 'aucun numéro SIM enregistré pour ce boîtier' };
+    }
     const smsPayload = action === EngineAction.CUT ? 'stop123456' : 'resume123456';
     const result = await this.sms.send(tracker.simPhoneNumber, smsPayload, {
       imei,
       commandId,
       source: 'engine-control-fallback',
     });
-    return result.ok;
+    if (result.ok) return { ok: true };
+    return { ok: false, reason: result.error ?? 'envoi SMS refusé par la passerelle' };
   }
 
   async getCommand(id: string, requestedBy: RequestedBy): Promise<EngineControlCommand> {

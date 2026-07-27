@@ -338,6 +338,67 @@ describe('EngineControlService', () => {
     expect(gateway.emitEngineCommandUpdate).toHaveBeenCalled();
   });
 
+  /** Récupère la mise à jour qui passe la commande en FAILED (celle qui porte le motif). */
+  function failedUpdate(p: { engineControlCommand: { update: jest.Mock } }): { lastError: string } {
+    const data = p.engineControlCommand.update.mock.calls
+      .map((c) => (c[0] as { data: { status?: string; lastError?: string } }).data)
+      .find((d) => d.status === CommandStatus.FAILED);
+    if (!data) throw new Error('aucune mise à jour FAILED trouvée');
+    return { lastError: data.lastError ?? '' };
+  }
+
+  /**
+   * Le motif d'échec du repli SMS doit être EXACT.
+   *
+   * Constat prod 2026-07-25 : le repli échouait sur un 403 « hors allowlist » de vizyo-texto — le
+   * numéro SIM était bien renseigné — mais la commande enregistrait invariablement
+   * « pas de simPhoneNumber ». Trois causes très différentes (passerelle éteinte / numéro absent /
+   * numéro refusé) se confondaient en un `false`, et l'opérateur lisait un diagnostic FAUX sur un
+   * chemin de sécurité : il cherchait un numéro manquant qui ne manquait pas.
+   */
+  it('rapporte le VRAI motif quand la passerelle REFUSE le numéro (et non « pas de simPhoneNumber »)', async () => {
+    // Le boîtier A un numéro SIM : c'est bien la PASSERELLE qui refuse, pas le numéro qui manque.
+    prisma.tracker.findFirst.mockResolvedValue({ ...trackerWithVehicle, simPhoneNumber: '+345901030605198' });
+    prisma.position.findFirst.mockResolvedValue(recentPosition(0));
+    registry.send.mockReturnValue(false); // TCP indisponible → on bascule sur le repli SMS
+
+    const sms = testModule.get(SmsGatewayService) as unknown as {
+      isEnabled: jest.Mock; send: jest.Mock;
+    };
+    sms.isEnabled.mockReturnValue(true);
+    sms.send.mockResolvedValue({ ok: false, error: 'Destinataire +345901030605198 hors allowlist du tenant "tracky"' });
+
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin),
+    ).rejects.toThrow(ServiceUnavailableException);
+
+    const failing = failedUpdate(prisma);
+    expect(failing.lastError).toContain('hors allowlist');
+    expect(failing.lastError).not.toContain('pas de simPhoneNumber');
+    // Le centre d'alerte reçoit aussi le motif exploitable.
+    expect(errorLogger.record).toHaveBeenCalledWith(
+      expect.stringContaining('hors allowlist'),
+      'engine-control',
+      expect.objectContaining({ smsFallbackReason: expect.stringContaining('hors allowlist') }),
+    );
+  });
+
+  it('distingue le cas « aucun numéro SIM » du refus passerelle', async () => {
+    prisma.tracker.findFirst.mockResolvedValue({ ...trackerWithVehicle, simPhoneNumber: null });
+    prisma.position.findFirst.mockResolvedValue(recentPosition(0));
+    registry.send.mockReturnValue(false);
+    const sms = testModule.get(SmsGatewayService) as unknown as { isEnabled: jest.Mock; send: jest.Mock };
+    sms.isEnabled.mockReturnValue(true);
+
+    await expect(
+      service.requestCommand(TRACKER_ID, EngineAction.CUT, null, fleetAdmin),
+    ).rejects.toThrow(ServiceUnavailableException);
+
+    const failing = failedUpdate(prisma);
+    expect(failing.lastError).toContain('aucun numéro SIM enregistré');
+    expect(sms.send).not.toHaveBeenCalled();
+  });
+
   // 10. CUT ACCEPTÉ + dispatch réussi si tracker connecté
   it('should dispatch CUT to connected tracker and start ACK wait', async () => {
     prisma.tracker.findFirst.mockResolvedValue(trackerWithVehicle);

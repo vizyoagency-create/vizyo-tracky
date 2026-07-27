@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { AiClient, AiJsonRequest, AiJsonResult, AiProvider } from './ai-client.types';
-import { AiServiceError } from './ai-client.types';
+import { AiServiceError, describeProviderError, isTransientBadRequest } from './ai-client.types';
 
 /**
  * Client GPT (OpenAI **Responses API** + Structured Outputs). Même contrat `AiClient` que Claude →
@@ -80,7 +80,15 @@ export class OpenAiClient implements AiClient {
       if (res.status === 529 || res.status === 503) {
         throw new AiServiceError('overloaded', 'Service IA (GPT) momentanément saturé, réessayez dans un instant.');
       }
-      throw new AiServiceError('http', `Erreur du service IA (GPT) (${res.status}).`);
+      // Même politique que Claude : un 400 « aléa fournisseur » ne remonte pas au centre d'alerte,
+      // un vrai 400 y remonte AVEC le motif renvoyé (sinon diagnostic impossible sans SSH).
+      if (res.status === 400 && isTransientBadRequest(text)) {
+        throw new AiServiceError(
+          'overloaded',
+          `Le service IA (GPT) n'a pas pu préparer la réponse (${describeProviderError(text)}) — nouvelle tentative au prochain passage.`,
+        );
+      }
+      throw new AiServiceError('http', `Erreur du service IA (GPT) (${res.status}) : ${describeProviderError(text)}`);
     }
 
     const data = (await res.json()) as {

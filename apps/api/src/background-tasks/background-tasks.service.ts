@@ -277,6 +277,13 @@ const CATALOG: CatalogEntry[] = [
     purpose: 'Envoie un SMS de test aux admins pour vérifier que la chaîne SMS fonctionne.',
     fire: { tz: PARIS, matcher: (w) => w.getDay() === 1 && w.getHours() === 9 && w.getMinutes() === 0 },
   },
+  {
+    id: 'sms-allowlist-reconcile', label: 'Réconciliation de l\'allowlist SMS', category: 'Notifications',
+    kind: 'cron', scheduleHuman: 'toutes les heures (à h:25)', criticality: 'haute', antiOverlap: true,
+    note: 'Un numéro absent de l\'allowlist = SMS refusé (403) — dont le repli du coupe-circuit.',
+    purpose: 'Repousse les numéros SIM des boîtiers et des utilisateurs vers la passerelle SMS, pour qu\'un envoi ne soit jamais refusé faute de numéro autorisé.',
+    periodic: { everyMs: 3_600_000, offsetMs: 1_500_000 },
+  },
 ];
 
 const FREQ_DAYS: Record<string, number> = { daily: 1, weekly: 7, monthly: 30 };
