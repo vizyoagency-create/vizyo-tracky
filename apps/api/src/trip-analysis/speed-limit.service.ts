@@ -78,10 +78,17 @@ export class SpeedLimitService {
     // Overpass systématiquement injoignable → l'excès de vitesse n'a pas pu être affirmé : on TRACE
     // (une alerte, source `trip-analysis`, visible dans /admin/alerts). Best-effort : jamais bloquant.
     if (live > 0 && failures === live) {
+      // Le message porte la DÉPENDANCE et la CONSÉQUENCE. L'erreur brute du transport
+      // (« fetch failed », « This operation was aborted ») ne disait ni ce qui était injoignable,
+      // ni ce que ça coûtait — illisible au centre d'alerte, et impossible à trier d'une vraie panne.
+      const cause = lastError instanceof Error ? lastError.message : String(lastError ?? 'injoignable');
       void this.errorLogger.record(
-        lastError instanceof Error ? lastError : new Error(String(lastError ?? 'Overpass indisponible')),
+        new Error(
+          `Limites de vitesse indisponibles : Overpass (OpenStreetMap) injoignable sur ${live} point(s) — ` +
+            `les excès de vitesse ne sont pas affirmés sur ce trajet, le reste de l'analyse est conservé. Cause : ${cause}`,
+        ),
         'trip-analysis',
-        { feature: 'speed-limit-osm', pointsAttempted: live, overpass: process.env.OVERPASS_URL || 'public' },
+        { feature: 'speed-limit-osm', pointsAttempted: live, overpass: process.env.OVERPASS_URL || 'public', cause },
       );
     }
 

@@ -61,6 +61,48 @@ describe('ErrorLogger — échecs passagers', () => {
     expect(create).toHaveBeenCalledTimes(2);
   });
 
+  /**
+   * Une MÊME panne rattrapée par plusieurs couches ne doit produire qu'UNE ligne.
+   *
+   * 2026-07-27 : `TripAnalysisLlmService` archivait l'échec IA sous `TRIP_ANALYSIS_AI` puis
+   * re-levait ; `TripAutomationService` le rattrapait et l'archivait sous `TRIP_AUTOMATION` → deux
+   * lignes à la milliseconde près pour un seul incident. La dédup par empreinte ne pouvait pas le
+   * voir : elle porte sur `source|niveau|message`, et c'est justement la source qui diffère.
+   */
+  describe('double journalisation d\'une même instance d\'erreur', () => {
+    it('n\'archive QU\'UNE fois la même erreur remontée par deux couches (sources différentes)', async () => {
+      const { logger, create } = build();
+      const boom = new Error('Erreur du service IA (400) : Grammar compilation timed out.');
+
+      const first = await logger.record(boom, 'TRIP_ANALYSIS_AI', { tripId: 't-1' });
+      const second = await logger.record(boom, 'TRIP_AUTOMATION', { tripId: 't-1', phase: 'narrate' });
+
+      expect(first).toBe('log-1');
+      expect(second).toBe('already-recorded');
+      expect(create).toHaveBeenCalledTimes(1);
+      // C'est la couche la PLUS PROCHE de la panne qui écrit (contexte le plus précis).
+      expect(create.mock.calls[0][0].data.source).toBe('TRIP_ANALYSIS_AI');
+    });
+
+    it('⚠️ deux erreurs DISTINCTES restent archivées séparément (pas de sur-filtrage)', async () => {
+      const { logger, create } = build();
+
+      await logger.record(new Error('panne A'), 'engine-control');
+      await logger.record(new Error('panne B'), 'schedule-cron');
+
+      expect(create).toHaveBeenCalledTimes(2);
+    });
+
+    it('une erreur passée en chaîne de caractères n\'est jamais marquée (rien à marquer)', async () => {
+      const { logger, create } = build();
+
+      await logger.record('panne texte', 'engine-control');
+      await logger.record('panne texte', 'autre-source');
+
+      expect(create).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe('isTransient', () => {
     it('ne se déclenche que sur un marqueur explicite', () => {
       expect(isTransient(new AiServiceError('overloaded', 'x'))).toBe(true);

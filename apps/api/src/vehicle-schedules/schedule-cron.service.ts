@@ -79,6 +79,18 @@ export class ScheduleCronService {
   /** Backoff des COUPES : instant avant lequel on ne retente pas, et compteur d'échecs consécutifs. */
   private readonly cutRetryAfter = new Map<string, number>();
   private readonly cutFailures = new Map<string, number>();
+  /**
+   * DERNIÈRE cause RÉELLE de refus par véhicule (« Aucune position connue », « véhicule en
+   * mouvement », « tracker hors ligne »…).
+   *
+   * Sans elle, l'alerte « coupe impossible » partait presque toujours pendant une fenêtre de
+   * backoff et rapportait donc `coupe en attente de nouvelle tentative (backoff)` — une phrase
+   * circulaire qui dit que la coupe attend parce qu'elle attend. Constat au centre d'alerte le
+   * 2026-07-27 : 16 lignes sur 16 rédigées ainsi, AUCUNE ne nommant la cause. C'est mécanique —
+   * le backoff plafonne à 30 min et le seuil d'alerte est à 30 min, donc l'alerte tombe presque
+   * toujours pendant l'attente, jamais sur le tick qui a réellement échoué.
+   */
+  private readonly lastFailureReason = new Map<string, string>();
 
   /** Runs every minute. */
   @Cron('0 * * * * *')
@@ -183,8 +195,9 @@ export class ScheduleCronService {
       const retryAfter = this.cutRetryAfter.get(schedule.vehicleId);
       if (retryAfter && Date.now() < retryAfter) {
         // On continue de suivre le blocage : l'alerte « coupe impossible depuis X min » doit
-        // toujours partir, même pendant qu'on espace les tentatives.
-        this.trackDeferral(schedule, 'coupe en attente de nouvelle tentative (backoff)');
+        // toujours partir, même pendant qu'on espace les tentatives. On rapporte la DERNIÈRE
+        // cause réelle — pas l'état d'attente, qui n'apprend rien à qui lit l'alerte.
+        this.trackDeferral(schedule, this.lastFailureReason.get(schedule.vehicleId) ?? 'cause inconnue', true);
         return;
       }
     }
@@ -229,6 +242,9 @@ export class ScheduleCronService {
       const isDeferrable =
         err instanceof ForbiddenException || err instanceof ServiceUnavailableException;
       if (isDeferrable) {
+        // Mémorise la cause RÉELLE : les ticks suivants tombent dans le backoff et ne la
+        // reverront pas, alors que c'est elle qu'il faut rapporter (cf. lastFailureReason).
+        this.lastFailureReason.set(schedule.vehicleId, msg);
         // Suivi : si la coupe reste bloquée trop longtemps, on la remonte au centre d'alertes.
         this.trackDeferral(schedule, msg);
         // Une COUPE en échec est espacée ; une RESTAURATION est retentée au tick suivant.
@@ -296,8 +312,12 @@ export class ScheduleCronService {
     }
   }
 
-  /** Enregistre un report ; remonte UNE alerte (ré-espacée) si la coupe/reprise reste bloquée trop longtemps. */
-  private trackDeferral(schedule: ScheduleWithVehicle, reason: string): void {
+  /**
+   * Enregistre un report ; remonte UNE alerte (ré-espacée) si la coupe/reprise reste bloquée trop
+   * longtemps. `waitingBackoff` indique qu'on est dans une fenêtre d'attente — la CAUSE rapportée
+   * reste celle du dernier échec réel, l'attente n'étant qu'une précision de contexte.
+   */
+  private trackDeferral(schedule: ScheduleWithVehicle, reason: string, waitingBackoff = false): void {
     const vid = schedule.vehicleId;
     const now = Date.now();
     const since = this.deferredSince.get(vid) ?? now;
@@ -308,11 +328,22 @@ export class ScheduleCronService {
     if (now - lastAlert < STUCK_REALERT_MS) return;
     this.lastStuckAlertAt.set(vid, now);
     const minutes = Math.round(stuckMs / 60000);
+    // Le véhicule est nommé par sa PLAQUE : une alerte qui ne porte qu'un UUID oblige à ouvrir la
+    // base pour savoir de quel véhicule on parle (les alertes GPS, elles, nomment déjà la plaque).
+    const who = schedule.vehicle.plate ? `${schedule.vehicle.plate} ` : '';
     this.errorLogger
       .record(
-        new Error(`Automatisation horaire : coupe/reprise impossible depuis ${minutes} min (${reason})`),
+        new Error(`Automatisation horaire : coupe/reprise impossible sur ${who}depuis ${minutes} min — ${reason}`),
         'schedule-cron',
-        { vehicleId: vid, fleetId: schedule.vehicle.fleetId, stuckMinutes: minutes, phase: 'stuck-schedule-action' },
+        {
+          vehicleId: vid,
+          plate: schedule.vehicle.plate ?? null,
+          fleetId: schedule.vehicle.fleetId,
+          stuckMinutes: minutes,
+          cause: reason,
+          waitingBackoff,
+          phase: 'stuck-schedule-action',
+        },
       )
       .catch(() => { /* best-effort */ });
   }
@@ -335,6 +366,7 @@ export class ScheduleCronService {
     this.lastStuckAlertAt.delete(vehicleId);
     this.cutRetryAfter.delete(vehicleId);
     this.cutFailures.delete(vehicleId);
+    this.lastFailureReason.delete(vehicleId);
   }
 
   /** Compute whether the current time is inside the allowed window. */
@@ -398,6 +430,9 @@ interface ScheduleWithVehicle extends VehicleSchedule {
   vehicle: {
     id: string;
     fleetId: string;
+    /** Optionnel dans le type (les fixtures de test ne la fournissent pas) mais TOUJOURS chargée
+     *  en production : `evaluateAll` inclut le véhicule entier. Sert à nommer le véhicule en alerte. */
+    plate?: string | null;
     tracker: { id: string; imei: string; status: string } | null;
   };
 }

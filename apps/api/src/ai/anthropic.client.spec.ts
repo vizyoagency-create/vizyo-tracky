@@ -88,6 +88,33 @@ describe('AnthropicClient — couche wire (Sprint 9)', () => {
     await expect(new AnthropicClient().completeJson(REQ)).rejects.toThrow(/Quota/i);
   });
 
+  // Incident 2026-07-27 — un récit de trajet perdu sur un 400 « Grammar compilation timed out »,
+  // remonté en ERREUR au centre d'alerte. C'est un aléa du fournisseur (il n'a pas compilé NOTRE
+  // schéma à temps), pas un appel fautif : il doit être marqué passager, donc non archivé.
+  it('HTTP 400 « Grammar compilation timed out » -> passager (non archivé au centre d\'alerte)', async () => {
+    fetchMock.mockResolvedValue(res({
+      ok: false, status: 400,
+      text: '{"type":"error","error":{"type":"invalid_request_error","message":"Grammar compilation timed out."}}',
+    }));
+    await expect(new AnthropicClient().completeJson(REQ)).rejects.toMatchObject({
+      kind: 'overloaded',
+      transient: true,
+    });
+  });
+
+  // Un VRAI 400 (appel malformé) reste une erreur dure — mais doit PORTER le motif du fournisseur.
+  // Avant, le centre d'alerte n'affichait que « Erreur du service IA (400) » : diagnostiquer
+  // imposait d'aller lire les logs du conteneur en SSH.
+  it('HTTP 400 réel -> erreur dure PORTANT le motif du fournisseur', async () => {
+    fetchMock.mockResolvedValue(res({
+      ok: false, status: 400,
+      text: '{"type":"error","error":{"type":"invalid_request_error","message":"max_tokens: must be >= 1"}}',
+    }));
+    const err = await new AnthropicClient().completeJson(REQ).catch((e: unknown) => e);
+    expect(err).toMatchObject({ kind: 'http', transient: false });
+    expect((err as Error).message).toContain('max_tokens: must be >= 1');
+  });
+
   it('contenu vide -> 503', async () => {
     fetchMock.mockResolvedValue(res({ json: { stop_reason: 'end_turn', content: [] } }));
     await expect(new AnthropicClient().completeJson(REQ)).rejects.toBeInstanceOf(ServiceUnavailableException);

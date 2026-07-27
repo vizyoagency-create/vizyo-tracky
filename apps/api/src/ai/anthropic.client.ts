@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { AiClient, AiJsonRequest, AiJsonResult, AiProvider } from './ai-client.types';
-import { AiServiceError } from './ai-client.types';
+import { AiServiceError, describeProviderError, isTransientBadRequest } from './ai-client.types';
 
 /**
  * Sprint 9 — Client Claude minimal (Messages API, sortie structurée). On appelle
@@ -90,7 +90,17 @@ export class AnthropicClient implements AiClient {
       if (res.status === 529 || res.status === 503) {
         throw new AiServiceError('overloaded', 'Service IA momentanément saturé, réessayez dans un instant.');
       }
-      throw new AiServiceError('http', `Erreur du service IA (${res.status}).`);
+      // 400 « déguisé » (compilation de grammaire expirée…) : aléa fournisseur, pas un appel fautif.
+      // Le prochain passage du cron refera l'appel — inutile d'alerter (cf. TRANSIENT_400_PATTERNS).
+      if (res.status === 400 && isTransientBadRequest(text)) {
+        throw new AiServiceError(
+          'overloaded',
+          `Le service IA n'a pas pu préparer la réponse (${describeProviderError(text)}) — nouvelle tentative au prochain passage.`,
+        );
+      }
+      // Vraie faute d'appel : on PORTE le motif du fournisseur jusqu'au centre d'alerte. Sans lui,
+      // « Erreur du service IA (400) » obligeait à aller lire les logs du conteneur en SSH.
+      throw new AiServiceError('http', `Erreur du service IA (${res.status}) : ${describeProviderError(text)}`);
     }
 
     const data = (await res.json()) as {

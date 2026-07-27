@@ -1,6 +1,7 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
+import { Cron } from '@nestjs/schedule';
 import type { Env } from '../config/env.validation';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -82,6 +83,49 @@ export class AllowlistService {
         'sms-allowlist',
         { trigger: 'auto-sync' },
       ).catch((e) => this.logger.error('ErrorLog persist failed', e));
+    } finally {
+      this.syncing = false;
+    }
+  }
+
+  /**
+   * Réconciliation PÉRIODIQUE de l'allowlist (toutes les heures).
+   *
+   * Jusqu'ici la synchro ne partait QUE sur `tracker.sim-changed`. Un seul événement manqué —
+   * vizyo-texto injoignable à cet instant, SIM saisie avant l'existence de l'auto-synchro, échec
+   * réseau silencieux — et le numéro n'entrait jamais dans l'allowlist. Rien ne le rattrapait, et
+   * rien ne le signalait : le symptôme n'apparaissait qu'au pire moment, un 403 « hors allowlist »
+   * au moment d'un repli SMS de coupe-circuit.
+   *
+   * Constat prod 2026-07-27 : 9 SIM de boîtiers sur 39 étaient absentes de l'allowlist — le repli
+   * SMS était donc MORT pour ces véhicules, en silence.
+   *
+   * Idempotent (le PUT /sync reconcilie la liste entière) et non bloquant. Une dérive RÉELLEMENT
+   * corrigée est remontée au centre d'alerte : elle signale que des SMS n'auraient pas pu partir.
+   */
+  @Cron('0 25 * * * *')
+  async reconcilePeriodically(): Promise<void> {
+    if (!this.baseUrl || !this.apiKey || this.syncing) return;
+    this.syncing = true;
+    try {
+      const result = await this.syncFromTrackers();
+      if (result.added > 0) {
+        // Ces numéros ne pouvaient PAS recevoir de SMS jusqu'ici (403 côté passerelle) : c'est un
+        // trou de couverture réel, pas un simple ajustement de configuration.
+        this.errorLogger.recordBackground(
+          `Allowlist SMS incomplète : ${result.added} numéro(s) manquant(s) rétabli(s) — le repli SMS ` +
+            `(coupe-circuit, notifications) était inopérant pour ces destinataires.`,
+          'sms-allowlist',
+          { trigger: 'reconcile-cron', added: result.added, removed: result.removed },
+        );
+      }
+    } catch (err) {
+      this.logger.warn(`reconciliation allowlist echouee: ${err instanceof Error ? err.message : err}`);
+      this.errorLogger.recordBackground(
+        err instanceof Error ? err : new Error(String(err)),
+        'sms-allowlist',
+        { trigger: 'reconcile-cron' },
+      );
     } finally {
       this.syncing = false;
     }
