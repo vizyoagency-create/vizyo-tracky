@@ -11,6 +11,8 @@ import {
   DEFAULT_MUTED_TYPES,
   SEVERITY_ORDER,
   shouldPushAlert,
+  defaultReceivesFleetAlerts,
+  resolveReceivesFleetAlerts,
 } from '@vizyo/tracky-shared';
 import type { Env } from '../config/env.validation';
 import { PrismaService } from '../prisma/prisma.service';
@@ -273,11 +275,23 @@ export class NotificationPreferencesService {
     const eligible = isPushRoleEligible(role, this.rollout());
 
     if (!row) {
-      return { ...defaultPushPreference(), isDefault: true, eligible, deviceCount };
+      return {
+        ...defaultPushPreference(),
+        isDefault: true,
+        eligible,
+        deviceCount,
+        // Aucune ligne : le rôle décide, exactement comme avant l'ouverture du réglage.
+        receivesFleetAlerts: defaultReceivesFleetAlerts(String(role)),
+        receivesFleetAlertsIsDefault: true,
+      };
     }
 
     return {
       pushEnabled: row.pushEnabled,
+      // Valeur RÉSOLUE : le choix explicite s'il existe, sinon le défaut du rôle.
+      // `null` en base = « selon mon rôle », ce qui n'est PAS « non ».
+      receivesFleetAlerts: resolveReceivesFleetAlerts(row.receivesFleetAlerts, String(role)),
+      receivesFleetAlertsIsDefault: row.receivesFleetAlerts == null,
       minSeverity: toSharedSeverity(row.minSeverity),
       // ⚠️ AUCUNE fusion avec le défaut ici, et c'est délibéré : une ligne existante dont
       // `mutedTypes` est vide signifie « j'ai TOUT rallumé, y compris les coupures par
@@ -334,11 +348,18 @@ export class NotificationPreferencesService {
         pushEnabled: clean.pushEnabled ?? defaults.pushEnabled,
         minSeverity: toPrismaSeverity(clean.minSeverity ?? defaults.minSeverity),
         mutedTypes: clean.mutedTypes ?? defaults.mutedTypes,
+        // Non fourni à la création => on laisse `null`, c.-à-d. « selon mon rôle ».
+        // Matérialiser un booléen ici figerait le comportement actuel et empêcherait
+        // un changement de rôle de se répercuter.
+        receivesFleetAlerts: clean.receivesFleetAlerts ?? null,
       },
       update: {
         ...(clean.pushEnabled !== undefined ? { pushEnabled: clean.pushEnabled } : {}),
         ...(clean.minSeverity !== undefined ? { minSeverity: toPrismaSeverity(clean.minSeverity) } : {}),
         ...(clean.mutedTypes !== undefined ? { mutedTypes: clean.mutedTypes } : {}),
+        // `null` est une valeur voulue (« selon mon rôle »), pas une absence : on teste
+        // `!== undefined` et non la véracité, sinon on ne pourrait jamais revenir au défaut.
+        ...(clean.receivesFleetAlerts !== undefined ? { receivesFleetAlerts: clean.receivesFleetAlerts } : {}),
       },
     });
 
@@ -439,6 +460,16 @@ export class NotificationPreferencesService {
         throw new BadRequestException('pushEnabled doit être un booléen');
       }
       clean.pushEnabled = patch.pushEnabled;
+    }
+
+    // `null` est une valeur LÉGITIME et distincte de `undefined` : elle remet le réglage
+    // sur « selon mon rôle » au lieu de forcer oui/non. Sans ce cas, un utilisateur ne
+    // pourrait jamais revenir au défaut une fois qu'il y a touché.
+    if (patch.receivesFleetAlerts !== undefined) {
+      if (patch.receivesFleetAlerts !== null && typeof patch.receivesFleetAlerts !== 'boolean') {
+        throw new BadRequestException('receivesFleetAlerts doit être un booléen ou null');
+      }
+      clean.receivesFleetAlerts = patch.receivesFleetAlerts;
     }
 
     if (patch.minSeverity !== undefined) {

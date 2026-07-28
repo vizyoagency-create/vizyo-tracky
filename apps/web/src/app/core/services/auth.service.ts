@@ -18,6 +18,12 @@ export interface AuthUser {
    *  compte normal. L'invisibilité est de toute façon appliquée côté serveur. */
   isOwner?: boolean;
   fleetId: string | null;
+  /**
+   * Contact prévenu si CET utilisateur n'acquitte pas une alerte critique à temps.
+   * Renvoyé par `/api/users/me` — il n'était simplement pas déclaré ici, faute
+   * d'écran qui l'utilise. C'est ce qui rendait l'escalade invisible côté client.
+   */
+  escalationContactUserId?: string | null;
   permissions: UserPermissions | null;
   preferences?: UserUiPreferences | null;
 }

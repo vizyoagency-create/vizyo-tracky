@@ -7,7 +7,9 @@ import type {
   AlertType as ClientAlertType,
   SuppressionReason,
 } from '@vizyo/tracky-shared';
-import { shouldPushAlert } from '@vizyo/tracky-shared';
+import { shouldPushAlert,
+  resolveReceivesFleetAlerts,
+} from '@vizyo/tracky-shared';
 import { formatFleetTime } from '../common/utils/datetime';
 import type { Env } from '../config/env.validation';
 import { EmailService } from '../email/email.service';
@@ -427,11 +429,30 @@ export class NotificationDispatchService {
       if (rule.escalateToUserId) userIds.add(rule.escalateToUserId);
     }
 
-    // Par defaut : tous les FLEET_ADMIN de la fleet.
-    const fleetAdmins = await this.prisma.user.findMany({
-      where: { fleetId: alert.fleetId, role: UserRole.FLEET_ADMIN, isActive: true },
+    // ── Destinataires de la flotte — desormais REGLABLES ────────────────────────────
+    // Avant : la liste etait CODEE EN DUR a « tous les FLEET_ADMIN ». Constat prod
+    // 2026-07-28 : la flotte cdef31 comptait 6 utilisateurs actifs et 1 seul
+    // destinataire — un responsable d'astreinte ou un veilleur de nuit ne pouvait pas
+    // etre prevenu, et personne (pas meme son administrateur) ne pouvait y remedier.
+    //
+    // On lit maintenant `NotificationPreference.receivesFleetAlerts`. Il est NULLABLE :
+    // `null` = « selon mon role », et le defaut par role reproduit EXACTEMENT l'ancien
+    // comportement (FLEET_ADMIN oui, les autres non). Tant que personne ne touche a son
+    // reglage, les memes personnes recoivent les memes alertes — on rend configurable
+    // sans rien deplacer sous les pieds.
+    //
+    // UNE seule requete : on charge les actifs de la flotte avec leur preference, puis
+    // on filtre en memoire. Le dispatch tourne sur chaque alerte, on ne multiplie pas
+    // les allers-retours.
+    const fleetMembers = await this.prisma.user.findMany({
+      where: { fleetId: alert.fleetId, isActive: true },
+      include: { notificationPreference: { select: { receivesFleetAlerts: true } } },
     });
-    for (const admin of fleetAdmins) userIds.add(admin.id);
+    for (const member of fleetMembers) {
+      if (resolveReceivesFleetAlerts(member.notificationPreference?.receivesFleetAlerts, member.role)) {
+        userIds.add(member.id);
+      }
+    }
 
     // V1.6 — Surveillance Max : pour les alertes SURVEILLANCE_TRIGGERED, on
     // ajoute les destinataires supplementaires definis sur le profil

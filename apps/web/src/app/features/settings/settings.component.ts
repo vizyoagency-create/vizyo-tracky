@@ -14,6 +14,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
 import { RetentionFleetCardComponent } from './retention-fleet-card.component';
 import { Security2faCardComponent } from './security-2fa-card.component';
 import { AiBillingCardComponent } from './ai-billing-card.component';
+import { AlertRulesCardComponent } from './alert-rules-card.component';
 import { NotificationsCardComponent } from './notifications-card.component';
 import { roleLabel as roleLabelFr } from '../../shared/utils/role-labels';
 
@@ -22,7 +23,7 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [FormsModule, LucideAngularModule, RouterLink, RetentionFleetCardComponent, Security2faCardComponent, AiBillingCardComponent, NotificationsCardComponent],
+  imports: [FormsModule, LucideAngularModule, RouterLink, RetentionFleetCardComponent, Security2faCardComponent, AiBillingCardComponent, NotificationsCardComponent, AlertRulesCardComponent],
   template: `
     <div class="settings-page">
       <div class="settings-header">
@@ -289,12 +290,15 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
                     </div>
                   </div>
                 }
-                <a routerLink="/settings/alert-rules" class="advanced-link">
-                  Configurer les règles avancées
-                  <lucide-icon [img]="ArrowRightIcon" [size]="13"></lucide-icon>
-                </a>
               </div>
             </div>
+
+            <!-- Ce que la FLOTTE envoie (e-mail / WhatsApp), juste sous les réglages
+                 personnels : on lit d'abord « ce que je reçois », puis « ce que la
+                 flotte envoie ». Ces règles vivaient auparavant dans une page séparée
+                 ET dans un onglet de la page Alertes — deux formulaires identiques,
+                 donc deux fois les mêmes bugs. Il n'en reste qu'un. -->
+            <app-alert-rules-card />
             }
           </div>
         </div>

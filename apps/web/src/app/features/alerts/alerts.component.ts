@@ -97,26 +97,6 @@ interface AlertCluster {
   unackCount: number;
 }
 
-interface RuleForm {
-  id: string | null;
-  vehicleId: string | null;
-  alertType: string;
-  enabled: boolean;
-  channels: ('WEB_PUSH' | 'EMAIL' | 'WHATSAPP' | 'SMS')[];
-  escalateAfterMin: number | null;
-  escalateToUserId: string | null;
-}
-
-const EMPTY_FORM: RuleForm = {
-  id: null,
-  vehicleId: null,
-  alertType: '*',
-  enabled: true,
-  channels: ['EMAIL'],
-  escalateAfterMin: null,
-  escalateToUserId: null,
-};
-
 @Component({
   selector: 'app-alerts',
   standalone: true,
@@ -383,167 +363,61 @@ const EMPTY_FORM: RuleForm = {
 
       <!-- ═══════════════ TAB: RÉGLAGES ═══════════════ -->
       @if (activeTab() === 'settings') {
+        <!--
+          RÉSUMÉ EN LECTURE — le formulaire d'édition n'est plus ici.
+
+          Il vivait en double : cet onglet ET une page « /settings/alert-rules », avec une
+          logique d'enregistrement identique au caractère près. Donc les mêmes bugs des
+          deux côtés, et corriger l'un ne corrigeait pas l'autre (constaté le 2026-07-28 :
+          création impossible pour un super-admin, aux DEUX endroits). Tout est désormais
+          dans Paramètres ; on lit ici, on modifie là-bas. Un seul endroit qui écrit.
+        -->
         <div class="cfg-section">
+          <div class="rules-summary">
+            <h3>Règles d’envoi de la flotte</h3>
 
-          <!-- Vehicle filter for rules -->
-          <div class="cfg-toolbar">
-            <select class="cfg-vehicle-select"
-                    [value]="ruleVehicleFilter() ?? ''"
-                    (change)="ruleVehicleFilter.set($any($event.target).value || null)"
-                    aria-label="Filtrer les règles par véhicule">
-              <option value="">Toute la flotte</option>
-              @for (v of vehicleOptions(); track v.id) {
-                <option [value]="v.id">{{ v.plate }}</option>
-              }
-            </select>
-            @if (canEditRules()) {
-              <button class="cfg-btn-add" (click)="openCreateRule()">
-                <lucide-icon [img]="PlusIcon" [size]="14"></lucide-icon>
-                Ajouter une règle
-              </button>
+            @if (rulesLoading()) {
+              <p class="rs-muted">Chargement…</p>
+            } @else if (rules().length === 0) {
+              <p class="rs-lead"><strong>Aucune règle configurée.</strong></p>
+              <p class="rs-muted">
+                Aucun e-mail ni WhatsApp d’alerte n’est envoyé. Les alertes restent
+                visibles dans l’application et les notifications push continuent de
+                fonctionner : elles se règlent par personne, pas par règle.
+              </p>
+            } @else {
+              <p class="rs-lead">
+                <strong>{{ activeRulesCount() }}</strong> règle{{ activeRulesCount() > 1 ? 's' : '' }} active{{ activeRulesCount() > 1 ? 's' : '' }}
+                @if (rules().length > activeRulesCount()) {
+                  <span class="rs-muted"> · {{ rules().length - activeRulesCount() }} désactivée{{ rules().length - activeRulesCount() > 1 ? 's' : '' }}</span>
+                }
+              </p>
+              <ul class="rs-list">
+                @for (rule of rules(); track rule.id) {
+                  <li [class.rs-off]="!rule.enabled">
+                    <span class="rs-type">{{ alertTypeLabel(rule.alertType) }}</span>
+                    @for (c of costlyChannels(rule); track c) {
+                      <span class="rs-chip">{{ channelLabel(c) }}</span>
+                    }
+                    @if (costlyChannels(rule).length === 0) {
+                      <span class="rs-chip rs-chip-muted">Aucun envoi externe</span>
+                    }
+                  </li>
+                }
+              </ul>
             }
+
+            <p class="rs-note">
+              Les notifications push ne dépendent pas de ces règles : elles sont toujours
+              actives, et chacun choisit ce qu’il reçoit dans ses réglages.
+            </p>
+
+            <a routerLink="/settings" class="rs-link">
+              Modifier dans Paramètres
+              <lucide-icon [img]="ChevronRightIcon" [size]="14"></lucide-icon>
+            </a>
           </div>
-
-          @if (!canEditRules()) {
-            <div class="cfg-info-box">
-              <lucide-icon [img]="BellIcon" [size]="18"></lucide-icon>
-              <div>
-                <strong>Lecture seule</strong>
-                <p>Seul un administrateur peut créer ou modifier les règles de notification.</p>
-              </div>
-            </div>
-          }
-
-          @if (filteredRules().length === 0) {
-            <div class="cfg-empty">
-              <p>Aucune règle configurée{{ ruleVehicleFilter() ? ' pour ce véhicule' : '' }}.</p>
-              <p class="cfg-empty-hint">Par défaut, les alertes sont notifiées in-app uniquement.</p>
-            </div>
-          } @else {
-            <div class="cfg-rules-grid">
-              @for (rule of filteredRules(); track rule.id) {
-                <div class="cfg-rule-card">
-                  <div class="cfg-rule-header">
-                    <div class="cfg-rule-type">
-                      <span class="cfg-sev-dot" [class]="ruleSeverityClass(rule.alertType)"></span>
-                      {{ alertTypeLabel(rule.alertType) }}
-                    </div>
-                    <div class="cfg-rule-status">
-                      @if (rule.enabled) {
-                        <span class="cfg-pill cfg-pill-on">Actif</span>
-                      } @else {
-                        <span class="cfg-pill cfg-pill-off">Désactivé</span>
-                      }
-                    </div>
-                  </div>
-                  <div class="cfg-rule-body">
-                    @if (rule.vehicleId) {
-                      <div class="cfg-rule-vehicle">
-                        Véhicule : <strong>{{ ruleVehiclePlate(rule.vehicleId) }}</strong>
-                      </div>
-                    } @else {
-                      <div class="cfg-rule-vehicle fleet-wide">Toute la flotte</div>
-                    }
-                    <div class="cfg-rule-channels">
-                      @for (c of rule.channels; track c) {
-                        @if (c !== 'IN_APP') {
-                          <span class="cfg-ch-pill"><lucide-icon [img]="channelIcon(c)" [size]="11"></lucide-icon> {{ channelLabel(c) }}</span>
-                        }
-                      }
-                      @if (rule.channels.length === 0 || (rule.channels.length === 1 && rule.channels[0] === 'IN_APP')) {
-                        <span class="cfg-ch-pill muted">In-app seulement</span>
-                      }
-                    </div>
-                    @if (rule.escalateAfterMin) {
-                      <div class="cfg-rule-escalation">
-                        Escalade après {{ rule.escalateAfterMin }} min
-                      </div>
-                    }
-                  </div>
-                  @if (canEditRules()) {
-                    <div class="cfg-rule-actions">
-                      <button class="cfg-btn-icon" (click)="openEditRule(rule)" aria-label="Modifier">
-                        <lucide-icon [img]="Edit2Icon" [size]="13"></lucide-icon>
-                      </button>
-                      <button class="cfg-btn-icon cfg-btn-danger" (click)="deleteRule(rule)" aria-label="Supprimer">
-                        <lucide-icon [img]="Trash2Icon" [size]="13"></lucide-icon>
-                      </button>
-                    </div>
-                  }
-                </div>
-              }
-            </div>
-          }
         </div>
-
-        <!-- Rule create/edit modal -->
-        @if (ruleFormOpen()) {
-          <div class="cfg-modal-overlay" (click)="closeRuleForm()">
-            <div class="cfg-modal" (click)="$event.stopPropagation()">
-              <div class="cfg-modal-header">
-                <h2>{{ ruleForm().id ? 'Modifier' : 'Nouvelle' }} règle</h2>
-                <button class="cfg-btn-icon" (click)="closeRuleForm()">
-                  <lucide-icon [img]="XCircleIcon" [size]="18"></lucide-icon>
-                </button>
-              </div>
-              <div class="cfg-modal-body">
-                <div class="cfg-field">
-                  <label>Type d'alerte</label>
-                  <select [(ngModel)]="formAlertType">
-                    @for (t of alertTypes; track t.value) {
-                      <option [value]="t.value">{{ t.label }}</option>
-                    }
-                  </select>
-                </div>
-
-                <div class="cfg-field">
-                  <label>Véhicule</label>
-                  <select [(ngModel)]="formVehicleId">
-                    <option [ngValue]="null">Toute la flotte</option>
-                    @for (v of vehicleOptions(); track v.id) {
-                      <option [value]="v.id">{{ v.plate }}</option>
-                    }
-                  </select>
-                  <span class="cfg-field-hint">Laisser vide pour appliquer à toute la flotte</span>
-                </div>
-
-                <div class="cfg-field">
-                  <label>Canaux de notification</label>
-                  <div class="cfg-channel-toggles">
-                    @for (c of allChannels; track c.value) {
-                      <label class="cfg-channel-toggle">
-                        <input type="checkbox"
-                               [checked]="ruleForm().channels.includes(c.value)"
-                               (change)="toggleRuleChannel(c.value, $any($event.target).checked)" />
-                        <span><lucide-icon [img]="c.icon" [size]="13"></lucide-icon> {{ c.label }}</span>
-                      </label>
-                    }
-                  </div>
-                </div>
-
-                <div class="cfg-field">
-                  <label>Escalader après (min)</label>
-                  <input type="number" min="1" max="120" placeholder="ex: 10"
-                         [ngModel]="ruleForm().escalateAfterMin"
-                         (ngModelChange)="updateRuleForm({ escalateAfterMin: $event ? Number($event) : null })" />
-                  <span class="cfg-field-hint">Si l'alerte critique n'est pas acquittée après ce délai, escalader</span>
-                </div>
-
-                <label class="cfg-checkbox-row">
-                  <input type="checkbox" [ngModel]="ruleForm().enabled"
-                         (ngModelChange)="updateRuleForm({ enabled: $event })" />
-                  Règle active
-                </label>
-              </div>
-              <div class="cfg-modal-footer">
-                <button class="cfg-btn-ghost" (click)="closeRuleForm()">Annuler</button>
-                <button class="cfg-btn-primary" (click)="saveRule()" [disabled]="ruleSaving()">
-                  {{ ruleSaving() ? 'Enregistrement...' : 'Enregistrer' }}
-                </button>
-              </div>
-            </div>
-          </div>
-        }
       }
 
     </div>
@@ -1240,11 +1114,9 @@ export class AlertsComponent implements OnInit {
   // Settings tab — Alert Rules management
   // ═══════════════════════════════════════════════════════════
   protected readonly rules = signal<AlertRuleDto[]>([]);
-  protected readonly ruleFormOpen = signal(false);
-  protected readonly ruleForm = signal<RuleForm>({ ...EMPTY_FORM });
-  protected readonly ruleSaving = signal(false);
+  /** Signal (et non booléen nu) : `rulesLoading` en dépend et doit se recalculer. */
+  private readonly rulesLoadedSig = signal(false);
   protected readonly ruleVehicleFilter = signal<string | null>(null);
-  private rulesLoaded = false;
 
   protected readonly alertTypes = ALERT_TYPES;
   protected readonly allChannels = ALL_CHANNELS;
@@ -1311,7 +1183,7 @@ export class AlertsComponent implements OnInit {
   protected async switchToSettings(): Promise<void> {
     this.activeTab.set('settings');
     this.syncTabUrl('settings');
-    if (!this.rulesLoaded) {
+    if (!this.rulesLoadedSig()) {
       await this.loadRules();
     }
   }
@@ -1320,90 +1192,32 @@ export class AlertsComponent implements OnInit {
     try {
       await this.notifApi.listRules();
       this.rules.set(this.notifApi.rules());
-      this.rulesLoaded = true;
+      this.rulesLoadedSig.set(true);
     } catch { /* handled */ }
   }
 
-  // ─── Rule form ────────────────────────────────────────────
+  // ─── Résumé des règles (LECTURE SEULE) ───────────────────
+  //
+  // Le formulaire d'édition a été retiré d'ici : il vivait EN DOUBLE (cet onglet + une
+  // page autonome dans Paramètres), avec une logique d'enregistrement identique au
+  // caractère près — donc les mêmes bugs des deux côtés, et corriger l'un ne corrigeait
+  // pas l'autre. Il n'existe plus qu'à un seul endroit, dans Paramètres. On lit ici.
 
-  protected get formAlertType(): string { return this.ruleForm().alertType; }
-  protected set formAlertType(value: string) { this.updateRuleForm({ alertType: value }); }
+  /** Vrai tant que le premier chargement n'a pas rendu la main. */
+  protected readonly rulesLoading = computed(() => !this.rulesLoadedSig());
 
-  protected get formVehicleId(): string | null { return this.ruleForm().vehicleId; }
-  protected set formVehicleId(value: string | null) { this.updateRuleForm({ vehicleId: value || null }); }
+  /** Règles actives — le chiffre qu'on veut lire d'un coup d'œil. */
+  protected readonly activeRulesCount = computed(() => this.rules().filter((r) => r.enabled).length);
 
-  protected openCreateRule(): void {
-    const preset: RuleForm = { ...EMPTY_FORM };
-    if (this.ruleVehicleFilter()) preset.vehicleId = this.ruleVehicleFilter();
-    this.ruleForm.set(preset);
-    this.ruleFormOpen.set(true);
-  }
-
-  protected openEditRule(rule: AlertRuleDto): void {
-    this.ruleForm.set({
-      id: rule.id,
-      vehicleId: rule.vehicleId,
-      alertType: rule.alertType,
-      enabled: rule.enabled,
-      channels: rule.channels.filter((c) => c !== 'IN_APP') as RuleForm['channels'],
-      escalateAfterMin: rule.escalateAfterMin,
-      escalateToUserId: rule.escalateToUserId,
-    });
-    this.ruleFormOpen.set(true);
-  }
-
-  protected closeRuleForm(): void { this.ruleFormOpen.set(false); }
-
-  protected toggleRuleChannel(channel: 'WEB_PUSH' | 'EMAIL' | 'WHATSAPP' | 'SMS', checked: boolean): void {
-    const current = this.ruleForm().channels;
-    const next = checked ? [...current, channel] : current.filter((c) => c !== channel);
-    this.updateRuleForm({ channels: next as RuleForm['channels'] });
-  }
-
-  protected updateRuleForm(patch: Partial<RuleForm>): void {
-    this.ruleForm.update((f) => ({ ...f, ...patch }));
-  }
-
-  protected async saveRule(): Promise<void> {
-    const f = this.ruleForm();
-    if (f.channels.length === 0) {
-      this.toast.error('Choisis au moins un canal');
-      return;
-    }
-    this.ruleSaving.set(true);
-    try {
-      const payload = {
-        vehicleId: f.vehicleId,
-        alertType: f.alertType,
-        enabled: f.enabled,
-        channels: f.channels,
-        escalateAfterMin: f.escalateAfterMin,
-        escalateToUserId: f.escalateToUserId,
-      };
-      if (f.id) {
-        await this.notifApi.updateRule(f.id, payload);
-        this.toast.success('Règle mise à jour');
-      } else {
-        await this.notifApi.createRule(payload);
-        this.toast.success('Règle créée');
-      }
-      await this.loadRules();
-      this.ruleFormOpen.set(false);
-    } catch {
-      this.toast.error('Échec de l\'enregistrement');
-    } finally {
-      this.ruleSaving.set(false);
-    }
-  }
-
-  protected async deleteRule(rule: AlertRuleDto): Promise<void> {
-    if (!confirm(`Supprimer la règle "${this.alertTypeLabel(rule.alertType)}" ?`)) return;
-    try {
-      await this.notifApi.deleteRule(rule.id);
-      this.toast.success('Règle supprimée');
-      await this.loadRules();
-    } catch {
-      this.toast.error('Échec de la suppression');
-    }
+  /**
+   * N'affiche que les canaux COÛTEUX (e-mail / WhatsApp).
+   *
+   * `IN_APP` et `WEB_PUSH` peuvent traîner dans des règles créées avant que le push
+   * devienne un canal de base : les montrer laisserait croire qu'ils dépendent de la
+   * règle, alors qu'ils partent de toute façon. C'est exactement la confusion qui a
+   * laissé le push muet pendant des mois.
+   */
+  protected costlyChannels(rule: AlertRuleDto): string[] {
+    return rule.channels.filter((c) => c === 'EMAIL' || c === 'WHATSAPP');
   }
 }

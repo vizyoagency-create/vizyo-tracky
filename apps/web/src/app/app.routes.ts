@@ -251,13 +251,6 @@ export const routes: Routes = [
         data: { title: 'Mon compte' },
       },
       {
-        path: 'settings/alert-rules',
-        canActivate: [permissionGuard('alerts_view')],
-        loadComponent: () =>
-          import('./features/settings/alert-rules.component').then((m) => m.AlertRulesComponent),
-        data: { title: 'Regles de notification' },
-      },
-      {
         // Sprint 4 — N2 « Mode assistance » (fleet-admin/client). Gaté audio_monitoring
         // (FLEET_ADMIN/SUPER_ADMIN bypassent ; le backend exige l'éligibilité N1). L'écran
         // affiche un message « non disponible » si la flotte n'est pas éligible.

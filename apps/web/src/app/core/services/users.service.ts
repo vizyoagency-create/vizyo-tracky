@@ -155,6 +155,13 @@ export class UsersApiService {
     return res.json();
   }
 
+  /**
+   * ⚠️ `escalationContactUserId` était accepté ICI et validé par l'API (même flotte,
+   * jamais soi-même) depuis toujours… mais AUCUN écran ne l'envoyait. Constat prod
+   * 2026-07-28 : 0 utilisateur sur 15 en avait un, donc le cron d'escalade tournait
+   * chaque minute sans jamais pouvoir agir. Toute la plomberie existait — il ne
+   * manquait qu'un champ de formulaire.
+   */
   async updateMe(data: {
     firstName?: string;
     lastName?: string;

@@ -565,7 +565,16 @@ export class NotificationsApiService {
     if (previous) {
       // `isDefault: false` des le premier changement : ce n'est plus un defaut applique
       // faute de mieux, c'est un choix de l'utilisateur.
-      this.preferences.set(this.normalizePreference({ ...previous, ...patch, isDefault: false }));
+      // `receivesFleetAlerts: null` du patch veut dire « selon mon role » : c'est une
+      // instruction, pas une valeur affichable. On la retire de la fusion optimiste et on
+      // laisse la reponse serveur trancher — sinon l'ecran afficherait `null` comme un etat.
+      const { receivesFleetAlerts, ...rest } = patch;
+      const optimistic: Partial<NotificationPreferenceDto> = { ...previous, ...rest, isDefault: false };
+      if (typeof receivesFleetAlerts === 'boolean') {
+        optimistic.receivesFleetAlerts = receivesFleetAlerts;
+        optimistic.receivesFleetAlertsIsDefault = false;
+      }
+      this.preferences.set(this.normalizePreference(optimistic));
     }
     try {
       const saved = await firstValueFrom(
@@ -596,6 +605,11 @@ export class NotificationsApiService {
       isDefault: raw?.isDefault === true,
       eligible: raw?.eligible === true,
       deviceCount: typeof raw?.deviceCount === 'number' ? raw.deviceCount : 0,
+      // Une API anterieure ne renvoie pas ces champs : on retombe sur « non destinataire,
+      // valeur par defaut ». Prudent a dessein — on n'affiche jamais « vous recevez tout »
+      // sur la foi d'une reponse incomplete.
+      receivesFleetAlerts: raw?.receivesFleetAlerts === true,
+      receivesFleetAlertsIsDefault: raw?.receivesFleetAlertsIsDefault !== false,
     };
   }
 
@@ -612,6 +626,9 @@ export class NotificationsApiService {
       isDefault: true,
       eligible: false,
       deviceCount: this.devices().filter((d) => d.isMine).length,
+      // Prudent : on n'affirme pas que l'utilisateur est destinataire sans reponse serveur.
+      receivesFleetAlerts: false,
+      receivesFleetAlertsIsDefault: true,
     };
   }
 
@@ -624,7 +641,16 @@ export class NotificationsApiService {
     this.rules.set(res.items);
   }
 
+  /**
+   * ⚠️ `fleetId` est OBLIGATOIRE pour un SUPER_ADMIN, qui n'appartient à aucune flotte.
+   *
+   * Le backend accepte `params.fleetId ?? requestedBy.fleetId` : un chef de flotte n'a rien
+   * à fournir, mais un super-admin sans `fleetId` reçoit un 400 « fleetId requis ». Ce champ
+   * manquait purement et simplement à la signature — d'où l'impossibilité de créer la
+   * moindre règle depuis un compte super-admin (constaté le 2026-07-28).
+   */
   createRule(payload: {
+    fleetId?: string | null;
     vehicleId?: string | null;
     alertType: string;
     enabled?: boolean;
