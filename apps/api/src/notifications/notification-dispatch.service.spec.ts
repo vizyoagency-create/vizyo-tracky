@@ -1115,6 +1115,24 @@ describe('NotificationDispatchService — garde-fous anti-spam et tracage', () =
    * tant que personne n'y touche.
    */
   describe('destinataires reglables', () => {
+    it('⚠️ un SUPER_ADMIN garde son push GLOBAL par defaut (sinon on casse le deploiement en cours)', async () => {
+      const t = setup({ rollout: 'SUPER_ADMIN_ONLY', recipients: [superAdmin] });
+      const dispatch = await t.build();
+      await dispatch.dispatchAlert(t.alert as never);
+      expect(t.sendToUser).toHaveBeenCalledTimes(1);
+    });
+
+    it('un SUPER_ADMIN qui se retire EXPLICITEMENT ne recoit plus rien', async () => {
+      const t = setup({
+        rollout: 'SUPER_ADMIN_ONLY',
+        recipients: [{ ...superAdmin, notificationPreference: { receivesFleetAlerts: false } }],
+      });
+      const dispatch = await t.build();
+      await dispatch.dispatchAlert(t.alert as never);
+      // Sans ce test, l'interrupteur serait visible a l'ecran et sans aucun effet.
+      expect(t.sendToUser).not.toHaveBeenCalled();
+    });
+
     const membre = (over: Record<string, unknown>) => ({
       id: 'x', email: 'x@f1.test', fleetId: 'f1', isActive: true, ...over,
     });
