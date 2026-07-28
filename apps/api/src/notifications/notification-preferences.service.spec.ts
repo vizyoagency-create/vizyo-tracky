@@ -157,6 +157,10 @@ describe('NotificationPreferencesService', () => {
         // Le seuil seul ne trie donc rien d'utile — cf. le calcul du defaut.
         minSeverity: 'warning',
         mutedTypes: ['POWER_CUT', 'OVERSPEED'],
+        // Aucune FAMILLE coupée par défaut : le bruit mesuré vient de types précis
+        // (`POWER_CUT`, `OVERSPEED`), pas de familles entières. Couper « Entretien »
+        // d'office priverait d'un signal rare et utile.
+        mutedCategories: [],
         isDefault: true,
         eligible: true,
         deviceCount: 3,

@@ -25,6 +25,7 @@
  * seulement suggérés au client.
  */
 
+import type { NotificationCategory } from './notification-category';
 import type { AlertSeverity, AlertType } from './alert.dto';
 
 // ─── Bornes de lecture ───────────────────────────────────────────────────────────────
@@ -141,6 +142,18 @@ export interface NotificationDeliveryRowDto {
   /** ISO 8601 UTC. La mise au fuseau se fait à l'affichage. */
   createdAt: string;
 
+  /**
+   * FAMILLE de la notification. Le journal n'enregistre plus seulement des alertes :
+   * un rappel d'entretien ou un rapport hebdomadaire y figure aussi. Sans elle, l'écran
+   * afficherait « type : (vide) » pour tout ce qui n'est pas une alerte.
+   *
+   * Les lignes écrites AVANT la migration valent `'ALERT'` (défaut de colonne) — ce qui
+   * est exact : à cette date, seules les alertes passaient par le journal.
+   */
+  category: NotificationCategory | string;
+  /** Libellé FR de la famille, calculé côté serveur (l'UI n'a pas sa propre table). */
+  categoryLabel: string;
+
   /** Alerte d'origine. `null` pour un envoi de test ou hors alerte. */
   alertId: string | null;
   /** Dénormalisé : reste lisible après purge de l'alerte (rétention plus courte). */
@@ -186,6 +199,8 @@ export interface NotificationDeliveryQueryDto {
   to?: string;
   status?: NotificationDeliveryStatus | string;
   channel?: NotificationChannel | string;
+  /** Famille (`ALERT`, `MAINTENANCE`…). Sépare le bruit d'alerte du reste. */
+  category?: NotificationCategory | string;
   alertType?: string;
   severity?: AlertSeverity | string;
   userId?: string;
@@ -278,6 +293,9 @@ export interface NotificationSummaryDto {
   byChannel: NotificationCountDto[];
   bySeverity: NotificationCountDto[];
   /** Types d'alerte, du plus bruyant au moins bruyant. */
+  /** Répartition par FAMILLE — la seule lecture valable depuis que le journal
+   * reçoit autre chose que des alertes. */
+  byCategory: NotificationCountDto[];
   byAlertType: NotificationCountDto[];
 
   topRecipients: NotificationTopRecipientDto[];

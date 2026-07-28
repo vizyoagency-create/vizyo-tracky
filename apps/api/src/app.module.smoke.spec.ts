@@ -121,6 +121,54 @@ describe("SMOKE-BOOT — graphe d'injection de l'API", () => {
   }, 60_000);
 });
 
+/**
+ * UNE SEULE PORTE POUR LE PUSH.
+ *
+ * Tout le socle de notification — preferences, seuil, anti-spam, journal, centre
+ * d'administration — repose sur un invariant unique : personne n'envoie de push sans
+ * passer par `NotificationDispatchService`.
+ *
+ * Cet invariant a DEJA ete casse une fois, en silence. Le rappel d'entretien appelait
+ * `webPush.sendToUser()` en direct : impossible de le couper depuis les reglages, aucun
+ * garde-fou anti-spam, et invisible dans le centre de notifications. Le defaut n'etait
+ * visible nulle part — ni au typage, ni a l'execution, ni a l'ecran. Il a fallu relire le
+ * code pour le trouver.
+ *
+ * Ce test transforme cette relecture en verification automatique : le jour ou une
+ * fonctionnalite ajoutera un second chemin, il tombera avec le nom du fichier fautif.
+ *
+ * Deux exceptions, volontaires et nommees :
+ *   - `notification-dispatch.service.ts` — LA porte elle-meme ;
+ *   - `notifications.controller.ts` — le bouton « tester », qui doit justement contourner
+ *     les preferences pour prouver que la plomberie fonctionne (un test bride par les
+ *     reglages ne testerait rien).
+ */
+describe('socle de notification — une seule porte', () => {
+  const AUTHORIZED = ['notification-dispatch.service.ts', 'notifications.controller.ts'];
+
+  it('aucun service n envoie de push en dehors du dispatch', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require('node:fs') as typeof import('node:fs');
+    const offenders = sourceFiles('.ts')
+      .filter((f) => !AUTHORIZED.some((allowed) => f.endsWith(allowed)))
+      .filter((f) => {
+        // On cherche l'APPEL, pas la MENTION : plusieurs fichiers expliquent la regle en
+        // commentaire, et les compter comme fautes rendrait le garde-fou infalsifiable —
+        // il faudrait supprimer l'explication pour le faire passer.
+        const code = fs
+          .readFileSync(f, 'utf8')
+          .replace(/\/\*[\s\S]*?\*\//g, '')
+          .replace(/\/\/.*/g, '');
+        return /\bwebPush\s*\.\s*sendTo/.test(code);
+      })
+      // Separateur Windows ET POSIX : ne couper que sur / renverrait le chemin entier
+      // sous Windows, et le message d'echec deviendrait illisible la ou il sert le plus.
+      .map((f) => f.split(/[\\/]/).pop());
+
+    expect(offenders).toEqual([]);
+  });
+});
+
 /** Chemins absolus des fichiers `src/**\/*<suffix>`, hors specs. */
 function sourceFiles(suffix: string): string[] {
   // eslint-disable-next-line @typescript-eslint/no-require-imports

@@ -5,10 +5,13 @@ import { UserRole } from '@prisma/client';
 import type {
   AlertSeverity as ClientAlertSeverity,
   AlertType as ClientAlertType,
+  NotificationCategory,
   SuppressionReason,
 } from '@vizyo/tracky-shared';
-import { shouldPushAlert,
+import {
   resolveReceivesFleetAlerts,
+  shouldPushAlert,
+  shouldPushNotification,
 } from '@vizyo/tracky-shared';
 import { formatFleetTime } from '../common/utils/datetime';
 import type { Env } from '../config/env.validation';
@@ -87,6 +90,8 @@ interface EffectivePushPreference {
   pushEnabled: boolean;
   minSeverity: ClientAlertSeverity;
   mutedTypes: ClientAlertType[];
+  /** Categories coupees — necessaire depuis l'ouverture du socle generique. */
+  mutedCategories: NotificationCategory[];
 }
 
 /**
@@ -528,7 +533,7 @@ export class NotificationDispatchService {
     try {
       const rows = await this.prisma.notificationPreference.findMany({
         where: { userId: { in: userIds } },
-        select: { userId: true, pushEnabled: true, minSeverity: true, mutedTypes: true },
+        select: { userId: true, pushEnabled: true, minSeverity: true, mutedTypes: true, mutedCategories: true },
       });
       for (const row of rows) {
         map.set(row.userId, {
@@ -536,6 +541,7 @@ export class NotificationDispatchService {
           // Frontiere Prisma -> contrat partage : MAJUSCULES vers minuscules.
           minSeverity: this.toClientSeverity(row.minSeverity),
           mutedTypes: (row.mutedTypes ?? []) as ClientAlertType[],
+          mutedCategories: (row.mutedCategories ?? []) as NotificationCategory[],
         });
       }
     } catch (err) {
@@ -669,8 +675,12 @@ export class NotificationDispatchService {
     if (eligible.length === 0) return plan;
 
     const decisions = await this.throttle.evaluate(eligible.map((r) => r.user.id), {
-      alertType: alert.type as string,
-      vehicleId: alert.vehicleId ?? null,
+      // Catégorie ALERT : les alertes véhicule sont une nature de notification parmi
+      // d'autres depuis l'ouverture du socle générique. Le sous-type reste le type
+      // d'alerte, et le sujet le véhicule — le comportement est donc INCHANGÉ.
+      category: 'ALERT',
+      kind: alert.type as string,
+      subjectKey: alert.vehicleId ?? null,
       bypassCooldown: opts.isEscalation,
     });
 
@@ -711,6 +721,193 @@ export class NotificationDispatchService {
    * On se sert de CE resultat — un second comptage local aurait diverge au premier
    * changement de la boucle d'envoi.
    */
+
+  // ══════════════════════════════════════════════════════════════════════════════════
+  // SOCLE GENERIQUE — notifier autre chose qu'une alerte
+  //
+  // Constat qui a motive ce point d'entree (2026-07-28) : le rappel d'entretien
+  // envoyait deja du push EN DEHORS de tout ce systeme, via `webPush.sendToUser()` en
+  // direct. Consequences : destinataires recodes en dur, preferences ignorees (donc
+  // impossible a couper), anti-spam contourne, et absent du centre de notifications.
+  //
+  // Un second chemin existait donc deja. En ajouter d'autres (validation d'un lieu,
+  // rapport hebdomadaire...) de la meme facon aurait produit autant de comportements
+  // divergents que de fonctionnalites. `notifyUsers` est LE passage oblige : memes
+  // preferences, meme anti-spam, meme journal, meme centre.
+  //
+  // Le chemin ALERTE garde son code specialise (contenu, escalade, portee GLOBAL) et
+  // n'est pas touche : il partage les garde-fous, pas la mise en forme.
+  // ══════════════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Envoie une notification NON-ALERTE a une liste d'utilisateurs, en passant par les
+   * memes garde-fous que les alertes.
+   *
+   * @returns le nombre de push reellement partis (0 n'est pas une erreur : ce peut etre
+   *          une retenue volontaire, tracee dans le journal avec sa raison).
+   */
+  async notifyUsers(input: {
+    userIds: string[];
+    category: Exclude<NotificationCategory, 'ALERT'>;
+    /** Sous-type fin dans la categorie (cloisonne le cooldown). */
+    kind?: string | null;
+    /** Sujet concerne : plan d'entretien, rapport... Cloisonne le cooldown. */
+    subjectKey?: string | null;
+    title: string;
+    body: string;
+    /** Ou emmener l'utilisateur au clic. */
+    url?: string;
+    /** Flotte concernee, pour le journal et le controle anti cross-tenant. */
+    fleetId?: string | null;
+  }): Promise<number> {
+    const requested = [...new Set(input.userIds)];
+    if (requested.length === 0) return 0;
+
+    // 0. PERIMETRE DE DEPLOIEMENT (`PUSH_ROLLOUT`), avant tout le reste.
+    //
+    //    Le chemin ALERTE applique cette porte depuis l'origine ; l'ancien envoi direct
+    //    du rappel d'entretien, lui, ne l'appliquait PAS. Un rappel serait donc parti
+    //    vers des roles auxquels le push n'est pas encore ouvert — exactement ce que ce
+    //    reglage existe pour empecher pendant une mise en service progressive.
+    //
+    //    Le refus n'est volontairement PAS journalise, comme pour les alertes : il est
+    //    identique pour tout le monde, derivable de la configuration, et l'ecrire
+    //    remplirait le journal d'un motif qui n'apprend rien.
+    const roles = await this.prisma.user.findMany({
+      where: { id: { in: requested } },
+      select: { id: true, role: true },
+    });
+    const rollout = this.pushRollout();
+    const userIds = roles
+      .filter((u) => rollout === 'ALL' || u.role === UserRole.SUPER_ADMIN)
+      .map((u) => u.id);
+    if (userIds.length === 0) {
+      this.logger.log(
+        `[push] skip ${input.category} — raison=rollout (PUSH_ROLLOUT=${rollout}, ${requested.length} destinataire(s))`,
+      );
+      return 0;
+    }
+
+    const preferences = await this.loadPushPreferences(userIds);
+    const category = input.category;
+
+    // 1. Preferences. Une categorie coupee l'emporte : couper « Entretien » doit tout
+    //    taire sans avoir a enumerer quoi que ce soit.
+    const allowed: string[] = [];
+    for (const userId of userIds) {
+      const pref = preferences.get(userId) ?? DEFAULT_PUSH_PREFERENCE;
+      if (shouldPushNotification(pref, { category })) {
+        allowed.push(userId);
+        continue;
+      }
+      await this.logGenericDelivery(input, userId, DELIVERY_STATUS.SUPPRESSED, {
+        reason: pref.pushEnabled ? 'preference_category_muted' : 'preference_disabled',
+      });
+    }
+    if (allowed.length === 0) return 0;
+
+    // 2. Anti-spam, en UNE lecture groupee — comme pour les alertes.
+    const decisions = await this.throttle.evaluate(allowed, {
+      category,
+      kind: input.kind ?? null,
+      subjectKey: input.subjectKey ?? null,
+    });
+
+    let sent = 0;
+    for (const userId of allowed) {
+      const decision = decisions.get(userId);
+      if (decision && !decision.allowed) {
+        await this.logGenericDelivery(input, userId, DELIVERY_STATUS.GROUPED, {
+          reason: decision.reason ?? undefined,
+          groupedCount: decision.groupedCount,
+        });
+        continue;
+      }
+
+      try {
+        const result = await this.webPush.sendToUser(
+          userId,
+          { title: input.title, body: input.body, url: input.url, data: { category, subjectKey: input.subjectKey ?? null } },
+          input.fleetId ?? null,
+        );
+        if (result.sent > 0) sent++;
+        await this.logGenericDelivery(
+          input,
+          userId,
+          result.sent > 0 ? DELIVERY_STATUS.SENT : DELIVERY_STATUS.FAILED,
+          {
+            reason: result.sent === 0 && result.failed === 0 ? 'no_device' : undefined,
+            deviceCount: result.sent + result.failed,
+            sentCount: result.sent,
+            failedCount: result.failed,
+            groupedCount: decision?.groupedCount ?? 0,
+          },
+        );
+      } catch (err) {
+        // Trace AVANT de continuer : sans ligne, l'utilisateur ne verrait qu'une absence
+        // de notification, indiscernable d'une retenue volontaire.
+        await this.logGenericDelivery(input, userId, DELIVERY_STATUS.FAILED, {
+          errorDetail: `erreur d'envoi : ${(err instanceof Error ? err.message : String(err)).slice(0, 160)}`,
+        });
+      }
+    }
+    return sent;
+  }
+
+  /** Ecrit une ligne de journal pour une notification non-alerte. Best-effort. */
+  private async logGenericDelivery(
+    input: { category: string; kind?: string | null; subjectKey?: string | null; title: string; body: string; fleetId?: string | null },
+    userId: string,
+    status: DeliveryStatus,
+    // DEUX champs distincts pour UNE colonne, à dessein.
+    //
+    // `reason` est typé sur le CATALOGUE partagé, jamais sur `string` : un slug inventé
+    // s'écrirait sans erreur puis s'afficherait « Motif non renseigné » au centre — un
+    // non-envoi inexplicable, exactement ce que cet écran existe pour supprimer. C'est
+    // arrivé : `preference_category_muted` était écrit sans exister dans le catalogue.
+    //
+    // `errorDetail` porte le cas qui n'est PAS un motif de retenue : l'échec technique
+    // d'envoi. Le centre le rend tel quel (`labelForReason` renvoie l'inconnu verbatim),
+    // ce qui est voulu — le message du serveur de push en dit plus long qu'un libellé
+    // générique. Les séparer garde la garantie sur l'un sans interdire l'autre.
+    extra: {
+      reason?: SuppressionReason;
+      errorDetail?: string;
+      deviceCount?: number;
+      sentCount?: number;
+      failedCount?: number;
+      groupedCount?: number;
+    } = {},
+  ): Promise<void> {
+    try {
+      await this.prisma.notificationDelivery.create({
+        data: {
+          alertId: null,
+          category: input.category,
+          // Denormalise dans la meme colonne que le type d'alerte : c'est le meme role
+          // (sous-type fin), et le centre n'a ainsi qu'une colonne a lire.
+          alertType: input.kind ?? null,
+          severity: null,
+          subjectKey: input.subjectKey ?? null,
+          userId,
+          fleetId: input.fleetId ?? null,
+          channel: PUSH_CHANNEL,
+          status,
+          reason: extra.reason ?? extra.errorDetail ?? null,
+          title: input.title,
+          body: input.body,
+          deviceCount: extra.deviceCount ?? 0,
+          sentCount: extra.sentCount ?? 0,
+          failedCount: extra.failedCount ?? 0,
+          groupedCount: extra.groupedCount ?? 0,
+        },
+      });
+    } catch (err) {
+      // Le journal ne doit JAMAIS empecher une notification de partir.
+      this.logger.warn(`[push] journal indisponible : ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
   private async sendPush(
     user: User,
     alert: AlertWithVehicle,
@@ -868,6 +1065,10 @@ export class NotificationDispatchService {
       await this.prisma.notificationDelivery.create({
         data: {
           alertId: record.alert.id,
+          category: 'ALERT',
+          // Sujet = véhicule : c'est ce qui donne au cooldown sa 3ᵉ dimension sans
+          // devoir relire la table des alertes.
+          subjectKey: record.alert.vehicleId ?? null,
           // Denormalises : le centre reste lisible meme apres purge de l'alerte (les
           // alertes ont une retention plus courte que leur journal d'envoi).
           alertType: record.alert.type as string,

@@ -370,26 +370,47 @@ describe('NotificationCenterService', () => {
   // ─── Synthèse ────────────────────────────────────────────────────────────────────
 
   describe('synthèse', () => {
-    /** Branche les 6 agrégats dans l'ordre où le service les demande. */
+    /**
+     * Branche les agrégats de la synthèse — par le CHAMP demandé, jamais par le RANG.
+     *
+     * ⚠️ La version précédente enchaînait des `mockResolvedValueOnce` dans l'ordre des
+     * requêtes. Ajouter un agrégat en amont — ce qui est arrivé avec la répartition par
+     * FAMILLE — décalait toutes les réponses d'un cran : les motifs de retenue
+     * atterrissaient dans les destinataires, et cinq tests sans rapport tombaient. Pire,
+     * un décalage peut fournir une réponse du bon TYPE au mauvais agrégat et passer au
+     * vert en vérifiant autre chose.
+     *
+     * On répond donc à ce que le service DEMANDE (`args.by`), ce qui rend le harnais
+     * indifférent à l'ordre comme au nombre de requêtes.
+     */
     const wireSummary = (opts: {
       status?: Record<string, number>;
       channel?: Record<string, number>;
       severity?: Record<string, number>;
       alertType?: Record<string, number>;
+      category?: Record<string, number>;
       reason?: Record<string, number>;
       recipients?: { userId: string; status: string; n: number }[];
     }) => {
       const toGroups = (field: string, rec: Record<string, number> = {}) =>
         Object.entries(rec).map(([k, n]) => group({ [field]: k }, n));
-      deliveryGroupBy
-        .mockResolvedValueOnce(toGroups('status', opts.status))
-        .mockResolvedValueOnce(toGroups('channel', opts.channel))
-        .mockResolvedValueOnce(toGroups('severity', opts.severity))
-        .mockResolvedValueOnce(toGroups('alertType', opts.alertType))
-        .mockResolvedValueOnce(toGroups('reason', opts.reason))
-        .mockResolvedValueOnce(
-          (opts.recipients ?? []).map((r) => group({ userId: r.userId, status: r.status }, r.n)),
-        );
+      const byField: Record<string, () => unknown[]> = {
+        status: () => toGroups('status', opts.status),
+        channel: () => toGroups('channel', opts.channel),
+        severity: () => toGroups('severity', opts.severity),
+        alertType: () => toGroups('alertType', opts.alertType),
+        category: () => toGroups('category', opts.category),
+        reason: () => toGroups('reason', opts.reason),
+      };
+      deliveryGroupBy.mockImplementation(async (args: { by: string[] }) => {
+        // Les destinataires sont le seul agrégat à DEUX colonnes : on le reconnaît à ça.
+        if (args.by.includes('userId')) {
+          return (opts.recipients ?? []).map((r) => group({ userId: r.userId, status: r.status }, r.n));
+        }
+        const build = byField[args.by[0]];
+        if (!build) throw new Error(`Agrégat non branché dans le harnais : ${args.by.join(',')}`);
+        return build();
+      });
     };
 
     it('sépare les retenues volontaires des échecs techniques dans le taux', async () => {
@@ -510,7 +531,10 @@ describe('NotificationCenterService', () => {
       wireSummary({ status: { SENT: 1 } });
       await service.summary({ fleetId: 'f1' });
 
-      const reasonWhere = deliveryGroupBy.mock.calls[4][0].where;
+      // Repere par le CHAMP agrege, pas par le rang de l'appel : c'est ce rang qui a
+      // fait tomber ce test le jour ou un agregat a ete ajoute en amont.
+      const reasonCall = deliveryGroupBy.mock.calls.find((c) => c[0].by?.includes('reason'));
+      const reasonWhere = reasonCall![0].where;
       // Le filtre métier (flotte) ET le masquage owner ET la période doivent survivre à
       // l'ajout du « statut ∈ retenues » — un simple étalement d'objet les perdrait.
       expect(reasonWhere.fleetId).toBe('f1');
@@ -661,6 +685,10 @@ describe('NotificationCenterService', () => {
         '2026-07-27T00:00:00.000Z',
         'SUPPRESSED',
         'WEB_PUSH',
+        // ⚠️ Arguments POSITIONNELS : l'ordre suit la signature du contrôleur. Insérer un
+        // `@Query` en amont sans toucher ce test décale TOUT — on a alors un test vert
+        // qui compare la sévérité au type d'alerte. C'est arrivé en ajoutant « famille ».
+        'ALERT',
         'POWER_CUT',
         'critical',
         'u1',
@@ -674,6 +702,7 @@ describe('NotificationCenterService', () => {
         expect.objectContaining({
           status: 'SUPPRESSED',
           channel: 'WEB_PUSH',
+          category: 'ALERT',
           alertType: 'POWER_CUT',
           severity: 'critical',
           reason: 'cooldown',

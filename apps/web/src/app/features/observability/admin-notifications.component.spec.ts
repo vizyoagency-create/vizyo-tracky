@@ -81,6 +81,7 @@ const summary = (over: Partial<NotificationSummaryDto> = {}): NotificationSummar
   byChannel: [],
   bySeverity: [],
   byAlertType: [],
+  byCategory: [],
   topRecipients: [],
   headline: '',
   ...over,
@@ -89,6 +90,8 @@ const summary = (over: Partial<NotificationSummaryDto> = {}): NotificationSummar
 const delivery = (over: Partial<NotificationDeliveryRowDto> = {}): NotificationDeliveryRowDto => ({
   id: 'd1',
   createdAt: '2026-07-27T10:00:00.000Z',
+  category: 'ALERT',
+  categoryLabel: 'Alertes véhicule',
   alertId: 'a1',
   alertType: 'SOS',
   severity: 'critical',
@@ -579,9 +582,27 @@ describe('centre de notifications — le menu reflète le filtre actif', () => {
     return fixture;
   }
 
-  /** Menus dans l'ordre du gabarit : issue, type, sévérité, motif. */
-  const selects = (fixture: ComponentFixture<AdminNotificationsComponent>): HTMLSelectElement[] =>
-    fixture.debugElement.queryAll(By.css('.nc-field select')).map((d) => d.nativeElement as HTMLSelectElement);
+  /**
+   * Menu de filtre désigné par son INTITULÉ, pas par son rang.
+   *
+   * ⚠️ La version précédente indexait `.nc-field select` positionnellement (`[1]` = type,
+   * `[3]` = motif). Ajouter un menu en amont — ce qui est arrivé avec « Famille » — décalait
+   * tout et faisait échouer des tests qui n'avaient rien à voir avec le changement. Pire :
+   * un décalage aurait pu tomber sur un menu voisin et passer au vert en vérifiant autre
+   * chose. On cherche donc par le texte affiché, qui est aussi ce que l'utilisateur lit.
+   */
+  const selectByLabel = (
+    fixture: ComponentFixture<AdminNotificationsComponent>,
+    label: string,
+  ): HTMLSelectElement => {
+    const field = fixture.debugElement
+      .queryAll(By.css('.nc-field'))
+      .find((d) => (d.nativeElement as HTMLElement).querySelector('span')?.textContent?.includes(label));
+    if (!field) throw new Error(`Menu de filtre introuvable : ${label}`);
+    const el = (field.nativeElement as HTMLElement).querySelector('select');
+    if (!el) throw new Error(`Le champ « ${label} » n'est pas un menu déroulant`);
+    return el as HTMLSelectElement;
+  };
 
   it('affiche le motif choisi depuis une barre, au lieu de « Tous »', async () => {
     const fixture = await render();
@@ -590,7 +611,7 @@ describe('centre de notifications — le menu reflète le filtre actif', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
-    expect(selects(fixture)[3].value).toBe('cooldown');
+    expect(selectByLabel(fixture, 'Motif de non-envoi').value).toBe('cooldown');
   });
 
   it('affiche le type choisi même quand la période ne le contient plus', async () => {
@@ -602,9 +623,43 @@ describe('centre de notifications — le menu reflète le filtre actif', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
-    const menu = selects(fixture)[1];
+    const menu = selectByLabel(fixture, "Type d'alerte");
     expect(menu.value).toBe('SOS');
     expect(menu.selectedOptions[0].textContent?.trim()).toBe('SOS');
+  });
+
+  it('le filtre par FAMILLE efface le type d’alerte sélectionné (deux filtres qui s’excluent)', async () => {
+    // « Entretien » + « Excès de vitesse » ne peut donner que zéro ligne. Laisser les deux
+    // en place afficherait un écran vide qui se lit « il ne s'est rien passé » — alors que
+    // la vraie raison est que la combinaison est impossible.
+    const fixture = await render();
+    const comp = fixture.componentInstance as unknown as {
+      setType(v: string): void;
+      setCategory(v: string): void;
+    };
+    comp.setType('SOS');
+    comp.setCategory('MAINTENANCE');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(selectByLabel(fixture, 'Famille').value).toBe('MAINTENANCE');
+    expect(selectByLabel(fixture, "Type d'alerte").value).toBe('');
+  });
+
+  it('choisir la famille « Alertes véhicule » CONSERVE le type sélectionné', async () => {
+    // Symétrique du précédent : là, les deux filtres se composent parfaitement. Effacer le
+    // type serait une perte de travail pour l'utilisateur, pas une protection.
+    const fixture = await render();
+    const comp = fixture.componentInstance as unknown as {
+      setType(v: string): void;
+      setCategory(v: string): void;
+    };
+    comp.setType('SOS');
+    comp.setCategory('ALERT');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(selectByLabel(fixture, "Type d'alerte").value).toBe('SOS');
   });
 
   it('revient à « Toutes » quand les filtres sont effacés', async () => {
@@ -615,12 +670,12 @@ describe('centre de notifications — le menu reflète le filtre actif', () => {
     comp.setStatus('FAILED');
     await fixture.whenStable();
     fixture.detectChanges();
-    expect(selects(fixture)[0].value).toBe('FAILED');
+    expect(selectByLabel(fixture, 'Issue').value).toBe('FAILED');
 
     comp.clearFilters();
     await fixture.whenStable();
     fixture.detectChanges();
-    expect(selects(fixture)[0].value).toBe('');
+    expect(selectByLabel(fixture, 'Issue').value).toBe('');
   });
 });
 

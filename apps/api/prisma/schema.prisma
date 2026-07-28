@@ -3041,6 +3041,15 @@ model NotificationPreference {
   /// comportement. On rend configurable sans rien déplacer sous les pieds.
   receivesFleetAlerts Boolean?
 
+  /// Catégories de notification explicitement coupées ('MAINTENANCE', 'REPORT'…).
+  ///
+  /// Distinct de `mutedTypes`, qui ne concerne QUE les types d'alerte véhicule. Une
+  /// notification n'est pas toujours une alerte : un rappel d'entretien ou un rapport
+  /// hebdomadaire n'a ni type d'alerte ni sévérité, et devait pourtant pouvoir se couper.
+  /// Sans cette colonne, la seule façon de ne plus recevoir un rappel était de couper
+  /// TOUT le push.
+  mutedCategories String[] @default([])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -3071,6 +3080,20 @@ model NotificationDelivery {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// Flotte de l'alerte. NULL pour un envoi cross-flotte à un SUPER_ADMIN.
   fleetId String? @db.Uuid
+
+  /// Nature de la notification : 'ALERT', 'MAINTENANCE', 'REPORT'…
+  ///
+  /// Défaut 'ALERT' : toutes les lignes écrites avant l'ouverture du socle générique
+  /// étaient des alertes véhicule, et le rester est exact — pas une approximation.
+  category String @default("ALERT")
+
+  /// Sujet concerné, pour l'anti-spam et la lecture : véhicule pour une alerte, plan
+  /// d'entretien pour un rappel, etc.
+  ///
+  /// ⚠️ Existe AUSSI pour une raison de performance : sans elle, le contrôle anti-spam
+  /// devait faire une 2ᵉ requête sur `alerts` pour retrouver le véhicule d'une ligne de
+  /// journal — le seul lien étant `alertId`. La clé rend le cooldown auto-suffisant.
+  subjectKey String?
 
   /// 'WEB_PUSH' aujourd'hui ; le modèle est prêt pour EMAIL/WHATSAPP/SMS.
   channel String
@@ -3104,5 +3127,7 @@ model NotificationDelivery {
   @@index([status, createdAt(sort: Desc)])
   @@index([alertId])
   @@index([createdAt])
+  /// Cooldown : « ce destinataire a-t-il déjà reçu CE sujet récemment ? »
+  @@index([userId, category, subjectKey, createdAt(sort: Desc)])
   @@map("notification_deliveries")
 }

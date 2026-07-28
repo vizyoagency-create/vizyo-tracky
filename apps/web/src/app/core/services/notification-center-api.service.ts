@@ -92,6 +92,7 @@ function normalizeSummary(
     byChannel: list<NotificationSummaryDto['byChannel'][number]>(s.byChannel),
     bySeverity: list<NotificationSummaryDto['bySeverity'][number]>(s.bySeverity),
     byAlertType: list<NotificationSummaryDto['byAlertType'][number]>(s.byAlertType),
+    byCategory: list<NotificationSummaryDto['byCategory'][number]>(s.byCategory),
     topRecipients: list<NotificationSummaryDto['topRecipients'][number]>(s.topRecipients),
     headline: s.headline ?? '',
   };
@@ -147,6 +148,7 @@ export class NotificationCenterApiService {
     if (q.to) params = params.set('to', q.to);
     if (q.status) params = params.set('status', q.status);
     if (q.channel) params = params.set('channel', q.channel);
+    if (q.category) params = params.set('category', q.category);
     if (q.alertType) params = params.set('alertType', q.alertType);
     if (q.severity) params = params.set('severity', q.severity);
     if (q.userId) params = params.set('userId', q.userId);

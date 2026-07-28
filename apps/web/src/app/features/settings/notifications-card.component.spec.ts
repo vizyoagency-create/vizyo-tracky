@@ -1,4 +1,4 @@
-import type { AlertType } from '@vizyo/tracky-shared';
+import type { AlertType, NotificationCategory } from '@vizyo/tracky-shared';
 import { DEFAULT_MUTED_TYPES, PUSH_MAX_PER_HOUR, shouldPushAlert } from '@vizyo/tracky-shared';
 import type { PushSubscriptionDto } from '../../core/services/notifications.service';
 import {
@@ -15,6 +15,7 @@ import {
   isCurrentDeviceEndpoint,
   ownDevices,
   setGroupMuted,
+  toggleMutedCategory,
   toggleMutedType,
   type PushPreferenceCore,
 } from './notifications-card.component';
@@ -293,6 +294,40 @@ describe('notifications-card — libellés du seuil de gravité', () => {
     expect(critical.hint).toContain('batterie faible');
     const warning = SEVERITY_OPTIONS.find((o) => o.value === 'warning')!;
     expect(warning.hint).toContain('Recommandé');
+  });
+});
+
+/**
+ * LES FAMILLES — le réglage le plus large, ajouté avec le socle générique.
+ *
+ * Le push ne sert plus qu'aux alertes : rappels d'entretien aujourd'hui, rapports et
+ * validations ensuite. Sans ce cran, couper les rappels d'entretien aurait obligé à couper
+ * TOUT le push — ce qui aurait fait perdre les alertes au passage.
+ */
+describe('notifications-card — bascule des familles coupées', () => {
+  it('couper puis recouper la même famille ne crée pas de doublon', () => {
+    let muted = toggleMutedCategory([], 'MAINTENANCE', false);
+    muted = toggleMutedCategory(muted, 'MAINTENANCE', false);
+    expect(muted).toEqual(['MAINTENANCE']);
+  });
+
+  it('réactiver retire la famille de la liste des coupées', () => {
+    expect(toggleMutedCategory(['MAINTENANCE', 'REPORT'], 'MAINTENANCE', true)).toEqual(['REPORT']);
+  });
+
+  it('ne mute pas le tableau d’entrée (état optimiste réversible)', () => {
+    const source: NotificationCategory[] = ['REPORT'];
+    toggleMutedCategory(source, 'MAINTENANCE', false);
+    expect(source).toEqual(['REPORT']);
+  });
+
+  it('les deux listes sont INDÉPENDANTES : couper une famille ne touche pas les types', () => {
+    // Le piège qu'on évite en gardant deux fonctions : un réglage de famille qui
+    // atterrirait dans `mutedTypes` n'aurait aucun effet et resterait invisible.
+    const types: AlertType[] = ['POWER_CUT'];
+    const cats = toggleMutedCategory([], 'REPORT', false);
+    expect(cats).toEqual(['REPORT']);
+    expect(types).toEqual(['POWER_CUT']);
   });
 });
 

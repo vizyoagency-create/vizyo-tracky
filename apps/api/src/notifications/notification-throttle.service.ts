@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { AlertType } from '@vizyo/tracky-shared';
+import type { NotificationCategory } from '@vizyo/tracky-shared';
 import { PUSH_COOLDOWN_MS, PUSH_MAX_PER_HOUR, bypassesRateLimit } from '@vizyo/tracky-shared';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -97,10 +98,18 @@ export interface ThrottleDecision {
 }
 
 export interface ThrottleTarget {
-  /** Type de l'alerte, forme Prisma (MAJUSCULES) telle qu'écrite dans les lignes de journal. */
-  alertType: string;
-  /** Véhicule concerné. `null` pour une alerte de flotte : le cooldown se réduit à (user, type). */
-  vehicleId: string | null;
+  /** Nature de la notification ('ALERT', 'MAINTENANCE'…). Cloisonne les cooldowns. */
+  category: NotificationCategory;
+  /**
+   * Sous-type fin dans la catégorie : type d'alerte Prisma (MAJUSCULES) pour `ALERT`,
+   * nature du rappel pour `MAINTENANCE`… `null` si la catégorie n'en a pas.
+   */
+  kind: string | null;
+  /**
+   * Sujet concerné : véhicule pour une alerte, plan pour un rappel. `null` = sujet
+   * global (le cooldown se réduit alors à (utilisateur, catégorie, sous-type)).
+   */
+  subjectKey: string | null;
   /**
    * Escalade : ignore le cooldown (jamais le plafond).
    *
@@ -119,8 +128,9 @@ const PASS: ThrottleDecision = Object.freeze({ allowed: true, reason: null, grou
 interface DeliveryRow {
   userId: string;
   status: string;
-  alertId: string | null;
+  category: string;
   alertType: string | null;
+  subjectKey: string | null;
   createdAt: Date;
 }
 
@@ -166,12 +176,14 @@ export class NotificationThrottleService {
             { status: DELIVERY_STATUS.SENT },
             {
               status: DELIVERY_STATUS.GROUPED,
-              alertType: target.alertType,
+              category: target.category,
+              alertType: target.kind,
+              subjectKey: target.subjectKey,
               createdAt: { gte: cooldownSince },
             },
           ],
         },
-        select: { userId: true, status: true, alertId: true, alertType: true, createdAt: true },
+        select: { userId: true, status: true, category: true, alertType: true, subjectKey: true, createdAt: true },
         orderBy: { createdAt: 'desc' },
         take: MAX_ROWS_SCANNED,
       });
@@ -185,13 +197,11 @@ export class NotificationThrottleService {
       this.errorLogger.recordBackground(
         err instanceof Error ? err : new Error(String(err)),
         'notifications',
-        { stage: 'push-throttle', alertType: target.alertType },
+        { stage: 'push-throttle', category: target.category, kind: target.kind },
       );
       for (const id of ids) decisions.set(id, PASS);
       return decisions;
     }
-
-    const sameScopeAlertIds = await this.resolveSameScopeAlerts(rows, target);
 
     interface UserAccumulator {
       /** Push réellement partis dans l'heure, TOUS types confondus (plafond). */
@@ -211,10 +221,19 @@ export class NotificationThrottleService {
     for (const row of rows) {
       const acc = perUser.get(row.userId);
       if (!acc) continue;
-      // « Même problème, même véhicule » : une ligne sans `alertId` (push de test, notif
-      // hors alerte) ne peut être rattachée à aucun véhicule — elle compte pour le plafond
-      // (le téléphone a vibré) mais n'ouvre aucun cooldown.
-      const sameScope = !!row.alertId && sameScopeAlertIds.has(row.alertId);
+      // « Même sujet » = même catégorie, même sous-type, même sujet. Comparé EN MÉMOIRE
+      // sur les colonnes de la ligne : avant l'ajout de `subjectKey`, il fallait une 2ᵉ
+      // requête sur `alerts` pour retrouver le véhicule (le seul lien étant `alertId`).
+      // La clé rend le cooldown auto-suffisant, quelle que soit la nature de la notification.
+      //
+      // ⚠️ Transitoire au déploiement : les lignes écrites AVANT la migration ont
+      // `subjectKey = null` et ne correspondront à rien. Conséquence bornée à la fenêtre
+      // de cooldown (15 min) : au pire un push de plus. Préféré à un repli qui aurait
+      // gardé vivant le détour qu'on vient de supprimer.
+      const sameScope =
+        row.category === target.category &&
+        row.alertType === target.kind &&
+        row.subjectKey === target.subjectKey;
       const at = row.createdAt.getTime();
 
       if (row.status === DELIVERY_STATUS.SENT) {
@@ -238,7 +257,11 @@ export class NotificationThrottleService {
     // et avec le plafond contourné, ce serait le seul chemin du produit capable de faire
     // vibrer un téléphone sans aucune borne. Avec le cooldown, ça reste au pire 4 push par
     // heure et par véhicule, chacun annonçant honnêtement « ×N ».
-    const capBypassed = bypassesRateLimit(target.alertType as AlertType);
+    // Le contournement du plafond ne vaut QUE pour les alertes vitales (SOS, accident…).
+    // Une catégorie non-ALERT n'a pas de type d'alerte : elle reste bornée par le plafond,
+    // ce qui est voulu — un rapport hebdomadaire n'a jamais l'urgence d'un SOS.
+    const capBypassed =
+      target.category === 'ALERT' && !!target.kind && bypassesRateLimit(target.kind as AlertType);
 
     let cooldownBlocked = 0;
     let capBlocked = 0;
@@ -274,46 +297,11 @@ export class NotificationThrottleService {
       // Préfixe '[push]' commun avec WebPushService et le dispatch : un seul grep raconte
       // toute la chaîne, du choix des destinataires jusqu'au code HTTP du push service.
       this.logger.log(
-        `[push] throttle type=${target.alertType} vehicule=${target.vehicleId?.slice(0, 8) ?? '-'} — ${cooldownBlocked} replie(s) (cooldown), ${capBlocked} retenu(s) (plafond ${PUSH_MAX_PER_HOUR}/h)`,
+        `[push] throttle ${target.category}/${target.kind ?? '-'} sujet=${target.subjectKey?.slice(0, 8) ?? '-'} — ${cooldownBlocked} replie(s) (cooldown), ${capBlocked} retenu(s) (plafond ${PUSH_MAX_PER_HOUR}/h)`,
       );
     }
 
     return decisions;
   }
 
-  /**
-   * Parmi les alertes citées par les lignes de journal, celles qui portent sur le MÊME
-   * véhicule que l'alerte courante.
-   *
-   * `notification_deliveries` ne stocke pas le véhicule (seulement `alertId`) : c'est ce
-   * détour qui donne au cooldown sa 3e dimension. Sans lui, une coupure d'alimentation sur
-   * le véhicule A rendrait muette la même coupure sur le véhicule B pendant 15 minutes —
-   * un garde-fou qui masque de l'information au lieu de la doser.
-   *
-   * Requête par CLÉ PRIMAIRE sur une poignée d'identifiants : elle ne dépend ni du nombre
-   * de destinataires, ni de l'historique du véhicule.
-   */
-  private async resolveSameScopeAlerts(rows: DeliveryRow[], target: ThrottleTarget): Promise<Set<string>> {
-    const candidates = new Set<string>();
-    for (const row of rows) {
-      if (row.alertId && row.alertType === target.alertType) candidates.add(row.alertId);
-    }
-    if (candidates.size === 0) return new Set<string>();
-
-    try {
-      const alerts = await this.prisma.alert.findMany({
-        // `vehicleId: null` est traduit en « IS NULL » par Prisma : une alerte de flotte ne
-        // partage donc son cooldown qu'avec d'autres alertes de flotte du même type.
-        where: { id: { in: [...candidates] }, vehicleId: target.vehicleId },
-        select: { id: true },
-      });
-      return new Set(alerts.map((a) => a.id));
-    } catch (err) {
-      // Même sens d'erreur que plus haut : on préfère un push de trop à un silence.
-      this.logger.warn(
-        `[push] throttle : qualification vehicule impossible, cooldown neutralise (${err instanceof Error ? err.message : err})`,
-      );
-      return new Set<string>();
-    }
-  }
 }
