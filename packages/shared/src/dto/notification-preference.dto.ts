@@ -32,6 +32,34 @@ export function meetsSeverity(severity: AlertSeverity, min: AlertSeverity): bool
   return SEVERITY_ORDER.indexOf(severity) >= SEVERITY_ORDER.indexOf(min);
 }
 
+
+/**
+ * Qui reçoit les alertes de la flotte, PAR DÉFAUT, quand l'utilisateur n'a rien choisi.
+ *
+ * Reproduit EXACTEMENT le comportement d'avant : la liste des destinataires était codée en
+ * dur à « tous les FLEET_ADMIN de la flotte ». Le rendre explicite ici permet de l'ouvrir
+ * sans rien déplacer : tant que personne ne touche à son réglage, les mêmes personnes
+ * reçoivent les mêmes alertes.
+ *
+ * Constat qui a motivé l'ouverture (prod 2026-07-28) : la flotte cdef31 comptait 6
+ * utilisateurs actifs et 1 seul destinataire. Un responsable d'astreinte ou un veilleur de
+ * nuit ne pouvait pas être prévenu, et personne ne pouvait y remédier.
+ */
+export function defaultReceivesFleetAlerts(role: string): boolean {
+  return role === 'FLEET_ADMIN';
+}
+
+/**
+ * Résout le réglage effectif : le choix explicite s'il existe, sinon le défaut du rôle.
+ * `null`/`undefined` = « jamais choisi », ce qui n'est PAS « non ».
+ */
+export function resolveReceivesFleetAlerts(
+  explicit: boolean | null | undefined,
+  role: string,
+): boolean {
+  return explicit ?? defaultReceivesFleetAlerts(role);
+}
+
 export interface NotificationPreferenceDto {
   /** Interrupteur MAÎTRE : `false` = plus aucun push, quels que soient les autres réglages. */
   pushEnabled: boolean;
@@ -52,11 +80,20 @@ export interface NotificationPreferenceDto {
   eligible: boolean;
   /** Nombre d'appareils actuellement abonnés pour cet utilisateur. */
   deviceCount: number;
+  /**
+   * Reçoit-il les alertes de sa flotte ? Valeur RÉSOLUE (choix explicite, ou défaut du rôle).
+   * Sans destinataire, aucun canal ne part — c'est la condition amont de tout le reste.
+   */
+  receivesFleetAlerts: boolean;
+  /** Vrai si cette valeur vient du rôle et non d'un choix : l'écran doit pouvoir le dire. */
+  receivesFleetAlertsIsDefault: boolean;
 }
 
 /** Mise à jour partielle : seuls les champs fournis sont modifiés. */
 export interface UpdateNotificationPreferenceDto {
   pushEnabled?: boolean;
+  /** `null` remet le réglage sur « selon mon rôle » plutôt que de forcer une valeur. */
+  receivesFleetAlerts?: boolean | null;
   minSeverity?: AlertSeverity;
   mutedTypes?: AlertType[];
 }

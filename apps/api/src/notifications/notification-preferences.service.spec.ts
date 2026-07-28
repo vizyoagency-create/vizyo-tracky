@@ -160,7 +160,19 @@ describe('NotificationPreferencesService', () => {
         isDefault: true,
         eligible: true,
         deviceCount: 3,
+        // SUPER_ADMIN : le defaut par ROLE dit « non destinataire de flotte ».
+        // C'est exactement le comportement d'avant l'ouverture du reglage — la liste
+        // etait codee en dur aux FLEET_ADMIN. Le drapeau dit que personne n'a choisi.
+        receivesFleetAlerts: false,
+        receivesFleetAlertsIsDefault: true,
       });
+    });
+
+    it('FLEET_ADMIN sans ligne : destinataire par defaut (comportement historique)', async () => {
+      subCount.mockResolvedValue(0);
+      const dto = await service.get('u2', UserRole.FLEET_ADMIN);
+      expect(dto.receivesFleetAlerts).toBe(true);
+      expect(dto.receivesFleetAlertsIsDefault).toBe(true);
     });
 
     it('le defaut expose est celui du contrat partage, pas une liste recopiee', async () => {

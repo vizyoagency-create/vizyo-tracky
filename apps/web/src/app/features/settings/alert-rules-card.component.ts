@@ -239,6 +239,18 @@ const EMPTY_FORM: RuleForm = {
                 Si une alerte critique n’est pas acquittée dans ce délai, le contact
                 d’escalade est prévenu à son tour. Laisser vide pour ne pas escalader.
               </span>
+              <!--
+                Honnêteté sur une dépendance invisible : l'escalade ne part QUE vers le
+                « contact d'escalade » d'un destinataire. Constat prod 2026-07-28 : aucun
+                des 15 utilisateurs n'en avait un, et aucun écran ne permettait d'en
+                définir — le cron d'escalade tournait chaque minute sans jamais pouvoir
+                agir. Tant que ce contact n'est pas paramétrable, ce délai ne doit pas
+                être présenté comme une garantie.
+              -->
+              <span class="field-warn">
+                Ce délai reste sans effet tant qu’aucun contact d’escalade n’est défini
+                sur les profils des destinataires.
+              </span>
             </label>
 
             <label class="toggle">
@@ -319,6 +331,8 @@ const EMPTY_FORM: RuleForm = {
     .toggle input { width: 20px; height: 20px; margin-top: .55rem; flex: none; }
     .toggle-txt { display: grid; gap: .1rem; }
     .toggle-label { display: inline-flex; gap: .35rem; align-items: center; font-size: .89rem; }
+    .field-warn { font-size: .8rem; line-height: 1.45; color: #b45309;
+      background: rgba(245,158,11,.1); border-radius: 8px; padding: .4rem .55rem; }
     .error { display: flex; gap: .45rem; align-items: center; margin: 0; color: #dc2626; font-size: .85rem; }
     @media (min-width: 640px) {
       .overlay { align-items: center; }

@@ -3027,6 +3027,20 @@ model NotificationPreference {
   /// existantes.
   mutedTypes String[] @default([])
 
+  /// Cet utilisateur fait-il partie des DESTINATAIRES des alertes de sa flotte ?
+  ///
+  /// ⚠️ NULLABLE À DESSEIN — `null` signifie « dérive du rôle », pas « non ».
+  /// Avant ce champ, la liste des destinataires était CODÉE EN DUR : tous les
+  /// FLEET_ADMIN de la flotte, personne d'autre. Constat prod 2026-07-28 : la flotte
+  /// cdef31 compte 6 utilisateurs actifs et 1 seul recevait quoi que ce soit — les
+  /// managers, le veilleur de nuit et les lecteurs n'avaient aucun moyen d'être
+  /// prévenus, ni eux ni leur administrateur.
+  ///
+  /// Le `null` garantit que l'ouverture de ce réglage ne change RIEN tant que
+  /// personne n'y touche : le défaut par rôle reproduit exactement l'ancien
+  /// comportement. On rend configurable sans rien déplacer sous les pieds.
+  receivesFleetAlerts Boolean?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

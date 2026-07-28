@@ -786,6 +786,43 @@ export const SEVERITY_OPTIONS: readonly SeverityOption[] = [
             </label>
           </div>
 
+          <!-- ─── 3 ter. SUIS-JE DESTINATAIRE ? ───
+               Question AMONT de toutes les autres : sans être destinataire, aucun canal
+               ne part, quels que soient les réglages ci-dessous. Elle était impossible à
+               poser jusqu'ici — la liste des destinataires était codée en dur aux
+               FLEET_ADMIN. Constat prod 2026-07-28 : une flotte de 6 utilisateurs actifs
+               n'avait qu'UN destinataire, sans recours possible. -->
+          <div class="nc-row">
+            <div class="nc-row-text">
+              <p class="nc-row-title">Recevoir les alertes de la flotte</p>
+              <p class="nc-row-desc">
+                @if (p.receivesFleetAlertsIsDefault) {
+                  Selon votre rôle : {{ p.receivesFleetAlerts ? 'vous êtes destinataire' : 'vous ne l’êtes pas' }}.
+                } @else {
+                  Choix personnel — il ne suit plus votre rôle.
+                }
+              </p>
+            </div>
+            <label class="nc-toggle">
+              <input
+                type="checkbox"
+                [checked]="p.receivesFleetAlerts"
+                [disabled]="saving()"
+                (change)="setReceivesFleetAlerts($any($event.target).checked)"
+                aria-label="Recevoir les alertes de la flotte"
+              />
+              <span class="nc-track"><span class="nc-thumb"></span></span>
+            </label>
+          </div>
+
+          @if (!p.receivesFleetAlerts) {
+            <p class="nc-hint-strong">
+              Vous n’êtes pas destinataire des alertes de la flotte : aucun canal
+              (application, push, e-mail) ne vous préviendra, quels que soient les
+              réglages ci-dessous.
+            </p>
+          }
+
           <!-- ─── 3 bis. Ce que ces reglages produisent VRAIMENT ───
                Place juste sous l'interrupteur maitre, avant les reglages : c'est la
                reponse a « est-ce que je vais recevoir quelque chose, et combien ? », et
@@ -1248,6 +1285,15 @@ export class NotificationsCardComponent implements OnInit {
   }
 
   // ─── Preferences ────────────────────────────────────────────
+
+  /**
+   * Être destinataire, c'est la condition AMONT : sans elle, aucun canal ne part.
+   * On envoie un booléen explicite — le retour à « selon mon rôle » (`null`) existe
+   * côté API mais n'est pas exposé ici, pour ne pas imposer un troisième état à l'écran.
+   */
+  protected setReceivesFleetAlerts(value: boolean): void {
+    void this.patch({ receivesFleetAlerts: value });
+  }
 
   protected setPushEnabled(value: boolean): void {
     void this.patch({ pushEnabled: value });

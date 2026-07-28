@@ -43,6 +43,11 @@ describe('NotificationDispatchService — canal SMS (V1.15)', () => {
     phone: '+33656691615',
     fleetId: 'f1',
     isActive: true,
+    // ⚠️ Le rôle manquait à ce fixture. L'ancienne requête filtrait `role: FLEET_ADMIN`
+    // côté serveur, ce qui masquait l'omission ; depuis que le destinataire est décidé
+    // par `receivesFleetAlerts` (défaut dérivé du RÔLE), un utilisateur sans rôle n'est
+    // plus destinataire — et un vrai utilisateur en a toujours un.
+    role: 'FLEET_ADMIN',
   };
 
   beforeEach(async () => {
@@ -231,15 +236,23 @@ describe('NotificationDispatchService — aiguillage du push (correctif)', () =>
     const throttleEvaluate = jest.fn().mockResolvedValue(new Map());
 
     // Le service interroge `user.findMany` trois fois avec des `where` differents :
-    // les FLEET_ADMIN de la flotte, le filtre tenant strict, puis les SUPER_ADMIN.
+    //   1. les MEMBRES ACTIFS de la flotte (plus les FLEET_ADMIN en dur : depuis
+    //      l'ouverture du reglage, c'est `receivesFleetAlerts` qui decide, avec un
+    //      defaut par role qui reproduit l'ancien comportement) ;
+    //   2. le filtre tenant strict sur les ids retenus ;
+    //   3. les SUPER_ADMIN (cross-flotte).
     // On repond selon le `where` pour verifier que chaque liste reste bien separee.
     const userFindMany = jest.fn(async (args: { where?: Record<string, unknown> }) => {
       const where = args?.where ?? {};
       if (where.role === UserRole.SUPER_ADMIN) return superAdmins;
-      if (where.role === UserRole.FLEET_ADMIN) return fleetAdmins;
       const ids = (where.id as { in?: string[] } | undefined)?.in ?? [];
-      // Filtre tenant strict reproduit fidelement : id ∈ liste ET meme flotte.
-      return fleetAdmins.filter((u) => ids.includes(u.id as string) && u.fleetId === where.fleetId);
+      if (ids.length > 0) {
+        // Filtre tenant strict reproduit fidelement : id ∈ liste ET meme flotte.
+        return fleetAdmins.filter((u) => ids.includes(u.id as string) && u.fleetId === where.fleetId);
+      }
+      // Membres de la flotte : aucune preference en base ici, donc le defaut par role
+      // s'applique — seuls les FLEET_ADMIN sont retenus, comme avant.
+      return fleetAdmins.filter((u) => u.fleetId === where.fleetId);
     });
 
     const prisma = {
@@ -508,6 +521,12 @@ describe('NotificationDispatchService — aiguillage du push (correctif)', () =>
       fleetId: 'f1',
       role: UserRole.SUPER_ADMIN,
       isActive: true,
+      // Choix EXPLICITE de recevoir les alertes de sa flotte. Sans lui, le défaut du
+      // rôle SUPER_ADMIN vaut « non » — et c'était déjà le cas AVANT ce réglage, la
+      // requête filtrant `role: FLEET_ADMIN`. L'ancien mock renvoyait pourtant ce
+      // super-admin depuis cette requête : le test passait pour une mauvaise raison.
+      // Il teste désormais la vraie capacité nouvelle — pouvoir être destinataire.
+      notificationPreference: { receivesFleetAlerts: true },
     };
     const t = setup({
       ruleChannels: ['EMAIL'],
@@ -688,7 +707,13 @@ describe('NotificationDispatchService — garde-fous anti-spam et tracage', () =
         findMany: jest.fn(async (args: { where?: Record<string, unknown> }) => {
           const where = args?.where ?? {};
           if (where.role === UserRole.SUPER_ADMIN) return recipients.filter((u) => u.role === UserRole.SUPER_ADMIN);
-          if (where.role === UserRole.FLEET_ADMIN) return recipients.filter((u) => u.role === UserRole.FLEET_ADMIN);
+          // Membres ACTIFS de la flotte : le destinataire n'est plus décidé par un
+          // `where role: FLEET_ADMIN` mais par `receivesFleetAlerts` (défaut par rôle).
+          // On rend donc les membres de la flotte, et c'est le service qui trie.
+          const ids0 = (where.id as { in?: string[] } | undefined)?.in ?? [];
+          if (ids0.length === 0 && where.fleetId) {
+            return recipients.filter((u) => u.fleetId === where.fleetId);
+          }
           const ids = (where.id as { in?: string[] } | undefined)?.in ?? [];
           return recipients.filter((u) => ids.includes(u.id as string) && u.fleetId === where.fleetId);
         }),
@@ -1077,4 +1102,94 @@ describe('NotificationDispatchService — garde-fous anti-spam et tracage', () =
 
     expect(t.sendToUser).toHaveBeenCalledTimes(1);
   });
+
+  /**
+   * QUI EST PREVENU — le reglage qui n'existait pas.
+   *
+   * La liste des destinataires etait CODEE EN DUR : tous les FLEET_ADMIN, personne
+   * d'autre. Constat prod 2026-07-28 : la flotte cdef31 comptait 6 utilisateurs actifs
+   * et 1 seul destinataire — un responsable d'astreinte ou un veilleur de nuit ne
+   * pouvait pas etre prevenu, et son administrateur n'y pouvait rien.
+   *
+   * Le premier test est le plus important : l'ouverture du reglage ne doit RIEN changer
+   * tant que personne n'y touche.
+   */
+  describe('destinataires reglables', () => {
+    const membre = (over: Record<string, unknown>) => ({
+      id: 'x', email: 'x@f1.test', fleetId: 'f1', isActive: true, ...over,
+    });
+
+    it('⚠️ SANS aucune preference, les destinataires sont EXACTEMENT ceux d avant', async () => {
+      const t = setup({
+        rollout: 'ALL',
+        ruleChannels: ['EMAIL'],
+        recipients: [
+          membre({ id: 'fa', role: UserRole.FLEET_ADMIN }),
+          membre({ id: 'fm', role: UserRole.FLEET_MANAGER }),
+          membre({ id: 'nw', role: UserRole.NIGHT_WATCHMAN }),
+          membre({ id: 'vw', role: UserRole.VIEWER }),
+        ],
+      });
+      const dispatch = await t.build();
+      await dispatch.dispatchAlert(t.alert as never);
+      // Un seul e-mail : le FLEET_ADMIN. Les trois autres restent muets, comme avant.
+      expect(t.emailSend).toHaveBeenCalledTimes(1);
+    });
+
+    it('un FLEET_MANAGER qui ACTIVE le reglage devient destinataire', async () => {
+      const t = setup({
+        rollout: 'ALL',
+        ruleChannels: ['EMAIL'],
+        recipients: [
+          membre({ id: 'fa', role: UserRole.FLEET_ADMIN }),
+          membre({ id: 'fm', role: UserRole.FLEET_MANAGER, notificationPreference: { receivesFleetAlerts: true } }),
+        ],
+      });
+      const dispatch = await t.build();
+      await dispatch.dispatchAlert(t.alert as never);
+      expect(t.emailSend).toHaveBeenCalledTimes(2);
+    });
+
+    it('un FLEET_ADMIN qui SE RETIRE cesse d etre destinataire', async () => {
+      const t = setup({
+        rollout: 'ALL',
+        ruleChannels: ['EMAIL'],
+        recipients: [
+          membre({ id: 'fa', role: UserRole.FLEET_ADMIN, notificationPreference: { receivesFleetAlerts: false } }),
+        ],
+      });
+      const dispatch = await t.build();
+      await dispatch.dispatchAlert(t.alert as never);
+      expect(t.emailSend).not.toHaveBeenCalled();
+    });
+
+    it('⚠️ `null` signifie « selon mon role », PAS « non »', async () => {
+      const t = setup({
+        rollout: 'ALL',
+        ruleChannels: ['EMAIL'],
+        recipients: [
+          membre({ id: 'fa', role: UserRole.FLEET_ADMIN, notificationPreference: { receivesFleetAlerts: null } }),
+        ],
+      });
+      const dispatch = await t.build();
+      await dispatch.dispatchAlert(t.alert as never);
+      expect(t.emailSend).toHaveBeenCalledTimes(1);
+    });
+
+    it('⚠️ aucune fuite inter-flotte : un membre d une AUTRE flotte n est jamais retenu', async () => {
+      const t = setup({
+        rollout: 'ALL',
+        ruleChannels: ['EMAIL'],
+        recipients: [
+          membre({ id: 'fa', role: UserRole.FLEET_ADMIN }),
+          membre({ id: 'autre', role: UserRole.FLEET_ADMIN, fleetId: 'f2',
+                   notificationPreference: { receivesFleetAlerts: true } }),
+        ],
+      });
+      const dispatch = await t.build();
+      await dispatch.dispatchAlert(t.alert as never);
+      expect(t.emailSend).toHaveBeenCalledTimes(1);
+    });
+  });
+
 });
