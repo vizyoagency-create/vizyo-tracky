@@ -1,8 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { resolveReceivesFleetAlerts } from '@vizyo/tracky-shared';
 import { UserRole } from '@prisma/client';
 import { DORMANT_STOP_COUNTING_MS, formatSilenceLabel, isVehicleDormant } from '@vizyo/tracky-shared';
-import { WebPushService } from '../notifications/web-push.service';
+import { NotificationDispatchService } from '../notifications/notification-dispatch.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
@@ -28,7 +29,7 @@ export class MaintenanceReminderService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly plans: MaintenancePlansService,
-    private readonly webPush: WebPushService,
+    private readonly dispatch: NotificationDispatchService,
     private readonly systemActivity: SystemActivityService,
     private readonly errorLogger: ErrorLogger,
   ) {}
@@ -129,7 +130,7 @@ export class MaintenanceReminderService {
         (planned?.metadata as { reminderNotifiedFor?: string } | null)?.reminderNotifiedFor === dueIso;
       if (already) continue;
 
-      await this.notifyFleetAdmins(plan.fleetId, plan.vehicle?.plate ?? '?', plan.label, nextDueAt);
+      await this.notifyFleetAdmins(plan.fleetId, plan.vehicle?.plate ?? '?', plan.label, nextDueAt, plan.vehicleId ?? null);
       notified++;
       if (planned) {
         await this.prisma.vehicleEvent.update({
@@ -149,23 +150,44 @@ export class MaintenanceReminderService {
     plate: string,
     label: string,
     dueAt: Date,
+    /** Cloisonne le cooldown : deux echeances sur deux vehicules ne se replient pas. */
+    vehicleId: string | null,
   ): Promise<void> {
-    const admins = await this.prisma.user.findMany({
-      where: { fleetId, role: UserRole.FLEET_ADMIN },
-      select: { id: true },
+    // ── Passe desormais par le SOCLE GENERIQUE ──────────────────────────────────────
+    // Avant : `webPush.sendToUser()` en direct. Ce chemin contournait TOUT — preferences
+    // (impossible de couper les rappels autrement qu'en coupant tout le push), anti-spam
+    // (ni cooldown ni plafond) et journal (invisible dans le centre de notifications).
+    // Et il recodait les destinataires en dur sur FLEET_ADMIN, alors que le destinataire
+    // est desormais un REGLAGE (`receivesFleetAlerts`) : un gestionnaire qui s'etait
+    // abonne ne recevait rien, un admin qui s'etait retire recevait quand meme.
+    //
+    // C'etait le SECOND chemin de notification de l'application. En laisser proliferer
+    // d'autres (validation d'un lieu, rapport hebdomadaire...) aurait produit autant de
+    // comportements divergents que de fonctionnalites.
+    const members = await this.prisma.user.findMany({
+      where: { fleetId, isActive: true },
+      select: { id: true, role: true, notificationPreference: { select: { receivesFleetAlerts: true } } },
     });
-    const payload = {
+    const admins = members.filter((m) =>
+      resolveReceivesFleetAlerts(m.notificationPreference?.receivesFleetAlerts, m.role),
+    );
+    // Personne n'a demandé à être prévenu pour cette flotte : on s'arrête là. Appeler le
+    // socle avec une liste vide n'enverrait rien non plus, mais écrirait une ligne de
+    // journal sans destinataire — un bruit qui ressemblerait à un échec d'envoi.
+    if (admins.length === 0) return;
+
+    const sent = await this.dispatch.notifyUsers({
+      userIds: admins.map((a) => a.id),
+      category: 'MAINTENANCE',
+      // Sujet = le vehicule : deux echeances sur des vehicules differents ne doivent pas
+      // se replier l'une dans l'autre.
+      subjectKey: vehicleId,
       title: 'Maintenance a prevoir',
       body: `${plate} : ${label} prevu le ${frDate(dueAt)}`,
-      severity: 'WARNING' as const,
       url: '/agenda',
-      data: { kind: 'maintenance_due', fleetId },
-    };
-    const results = await Promise.all(
-      admins.map((a) =>
-        this.webPush.sendToUser(a.id, payload, fleetId).catch(() => ({ sent: 0, failed: 0 })),
-      ),
-    );
+      fleetId,
+    });
+    const results = [{ sent, failed: 0 }];
     // Angle mort : le rappel « tourne » mais PERSONNE ne le reçoit (flotte sans
     // FLEET_ADMIN, ou admins sans device push). La primitive push ne journalise
     // que les tentatives réelles → sans cette ligne, le raté serait invisible.

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Prisma, UserRole } from '@prisma/client';
 import type {
   AlertSeverity,
+  NotificationCategory,
   NotificationChannel,
   NotificationCountDto,
   NotificationDeliveryPageDto,
@@ -16,6 +17,7 @@ import type {
   SuppressionReason,
 } from '@vizyo/tracky-shared';
 import {
+  NOTIFICATION_CATEGORY_LABELS,
   NOTIFICATION_CHANNEL_LABELS,
   NOTIFICATION_DEFAULT_WINDOW_DAYS,
   NOTIFICATION_DELIVERY_STATUSES,
@@ -26,6 +28,7 @@ import {
   NOTIFICATION_STATUS_LABELS,
   NOTIFICATION_TOP_RECIPIENTS,
   SEVERITY_ORDER,
+  isNotificationCategory,
   SUPPRESSION_LABELS,
 } from '@vizyo/tracky-shared';
 import { OwnerVisibilityService } from '../common/owner-visibility.service';
@@ -180,12 +183,14 @@ export class NotificationCenterService {
     const window = this.resolveWindow(query.from, query.to);
     const where = await this.buildWhere(query, window, viewer);
 
-    const [byStatusRows, byChannelRows, bySeverityRows, byTypeRows, byReasonRows, byRecipientRows] =
+    const [byStatusRows, byChannelRows, bySeverityRows, byTypeRows,
+      byCategoryRows, byReasonRows, byRecipientRows] =
       await Promise.all([
         this.prisma.notificationDelivery.groupBy({ by: ['status'], where, _count: { _all: true } }),
         this.prisma.notificationDelivery.groupBy({ by: ['channel'], where, _count: { _all: true } }),
         this.prisma.notificationDelivery.groupBy({ by: ['severity'], where, _count: { _all: true } }),
         this.prisma.notificationDelivery.groupBy({ by: ['alertType'], where, _count: { _all: true } }),
+        this.prisma.notificationDelivery.groupBy({ by: ['category'], where, _count: { _all: true } }),
         this.prisma.notificationDelivery.groupBy({
           by: ['reason'],
           // Les motifs n'ont de sens que sur les retenues. On ANDe le filtre au lieu de
@@ -266,6 +271,16 @@ export class NotificationCenterService {
       byAlertType: this.toCounts(
         byTypeRows.map((r) => ({ key: r.alertType ?? 'hors alerte', count: r._count._all })),
       ).slice(0, TOP_ALERT_TYPES),
+      // Répartition par FAMILLE. Elle répond à une question que « par type d'alerte » ne
+      // peut plus couvrir depuis que le journal reçoit autre chose que des alertes : un
+      // rappel d'entretien y tombait dans « hors alerte », indistinct d'un envoi de test.
+      byCategory: this.toCounts(
+        byCategoryRows.map((r) => ({
+          key: isNotificationCategory(r.category) ? r.category : 'ALERT',
+          count: r._count._all,
+        })),
+        (key) => NOTIFICATION_CATEGORY_LABELS[key as NotificationCategory] ?? key,
+      ),
       topRecipients: await this.topRecipients(byRecipientRows),
       headline: this.headline({ total, sent, withheld, byReason }),
     };
@@ -443,6 +458,7 @@ export class NotificationCenterService {
     // immédiatement. Les valider figerait au contraire l'écran au premier canal ou type
     // journalisé avant que le contrat partagé ne le connaisse.
     if (query.channel) where.channel = String(query.channel).toUpperCase();
+    if (query.category) where.category = String(query.category).toUpperCase();
     if (query.alertType) where.alertType = String(query.alertType).toUpperCase();
     if (query.reason) where.reason = String(query.reason);
     if (query.userId) where.userId = query.userId;
@@ -551,6 +567,7 @@ export class NotificationCenterService {
     row: {
       id: string;
       createdAt: Date;
+      category?: string | null;
       alertId: string | null;
       alertType: string | null;
       severity: string | null;
@@ -569,9 +586,15 @@ export class NotificationCenterService {
     },
     fleetNames: Map<string, string>,
   ): NotificationDeliveryRowDto {
+    // Une ligne antérieure à la migration n'a pas de catégorie en base : c'était une
+    // alerte (rien d'autre ne passait par ici à l'époque). On la nomme plutôt que
+    // d'afficher un vide qui se lirait comme une donnée manquante.
+    const category = isNotificationCategory(row.category) ? row.category : 'ALERT';
     return {
       id: row.id,
       createdAt: row.createdAt.toISOString(),
+      category,
+      categoryLabel: NOTIFICATION_CATEGORY_LABELS[category],
       alertId: row.alertId,
       alertType: row.alertType,
       severity: this.normalizeSeverity(row.severity),

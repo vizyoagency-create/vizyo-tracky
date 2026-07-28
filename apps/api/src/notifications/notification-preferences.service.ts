@@ -5,7 +5,7 @@ import {
   AlertType as PrismaAlertType,
   UserRole,
 } from '@prisma/client';
-import type { AlertSeverity, AlertType, NotificationPreferenceDto, UpdateNotificationPreferenceDto } from '@vizyo/tracky-shared';
+import type { AlertSeverity, AlertType, NotificationCategory, NotificationPreferenceDto, UpdateNotificationPreferenceDto } from '@vizyo/tracky-shared';
 import {
   DEFAULT_MIN_SEVERITY,
   DEFAULT_MUTED_TYPES,
@@ -13,6 +13,8 @@ import {
   shouldPushAlert,
   defaultReceivesFleetAlerts,
   resolveReceivesFleetAlerts,
+  DEFAULT_MUTED_CATEGORIES,
+  isNotificationCategory,
 } from '@vizyo/tracky-shared';
 import type { Env } from '../config/env.validation';
 import { PrismaService } from '../prisma/prisma.service';
@@ -213,6 +215,8 @@ export const DEFAULT_PUSH_PREFERENCE = {
    */
   minSeverity: 'warning' as AlertSeverity,
   mutedTypes: DEFAULT_MUTED_TYPES,
+  /** Aucune catégorie coupée par défaut : le bruit vient de TYPES précis, pas de familles. */
+  mutedCategories: DEFAULT_MUTED_CATEGORIES,
 } as const;
 
 /**
@@ -226,11 +230,13 @@ export function defaultPushPreference(): {
   pushEnabled: boolean;
   minSeverity: AlertSeverity;
   mutedTypes: AlertType[];
+  mutedCategories: NotificationCategory[];
 } {
   return {
     pushEnabled: DEFAULT_PUSH_PREFERENCE.pushEnabled,
     minSeverity: DEFAULT_PUSH_PREFERENCE.minSeverity,
     mutedTypes: [...DEFAULT_PUSH_PREFERENCE.mutedTypes],
+    mutedCategories: [...DEFAULT_PUSH_PREFERENCE.mutedCategories],
   };
 }
 
@@ -292,6 +298,10 @@ export class NotificationPreferencesService {
       // `null` en base = « selon mon rôle », ce qui n'est PAS « non ».
       receivesFleetAlerts: resolveReceivesFleetAlerts(row.receivesFleetAlerts, String(role)),
       receivesFleetAlertsIsDefault: row.receivesFleetAlerts == null,
+      // Colonne ajoutée après coup : une ligne écrite avant la migration a `[]`, ce qui
+      // est le bon défaut (aucune catégorie coupée). On filtre les valeurs inconnues —
+      // une catégorie retirée du code ne doit pas casser la lecture.
+      mutedCategories: (row.mutedCategories ?? []).filter(isNotificationCategory),
       minSeverity: toSharedSeverity(row.minSeverity),
       // ⚠️ AUCUNE fusion avec le défaut ici, et c'est délibéré : une ligne existante dont
       // `mutedTypes` est vide signifie « j'ai TOUT rallumé, y compris les coupures par
@@ -352,6 +362,7 @@ export class NotificationPreferencesService {
         // Matérialiser un booléen ici figerait le comportement actuel et empêcherait
         // un changement de rôle de se répercuter.
         receivesFleetAlerts: clean.receivesFleetAlerts ?? null,
+        mutedCategories: clean.mutedCategories ?? [...defaults.mutedCategories],
       },
       update: {
         ...(clean.pushEnabled !== undefined ? { pushEnabled: clean.pushEnabled } : {}),
@@ -360,6 +371,7 @@ export class NotificationPreferencesService {
         // `null` est une valeur voulue (« selon mon rôle »), pas une absence : on teste
         // `!== undefined` et non la véracité, sinon on ne pourrait jamais revenir au défaut.
         ...(clean.receivesFleetAlerts !== undefined ? { receivesFleetAlerts: clean.receivesFleetAlerts } : {}),
+        ...(clean.mutedCategories !== undefined ? { mutedCategories: clean.mutedCategories } : {}),
       },
     });
 
@@ -479,6 +491,17 @@ export class NotificationPreferencesService {
         );
       }
       clean.minSeverity = patch.minSeverity;
+    }
+
+    if (patch.mutedCategories !== undefined) {
+      if (!Array.isArray(patch.mutedCategories)) {
+        throw new BadRequestException('mutedCategories doit être un tableau');
+      }
+      const unknown = patch.mutedCategories.filter((c) => !isNotificationCategory(c));
+      if (unknown.length > 0) {
+        throw new BadRequestException(`Catégorie inconnue : ${unknown.join(', ')}`);
+      }
+      clean.mutedCategories = patch.mutedCategories;
     }
 
     if (patch.mutedTypes !== undefined) {

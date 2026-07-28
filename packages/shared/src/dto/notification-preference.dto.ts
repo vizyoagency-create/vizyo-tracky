@@ -8,6 +8,7 @@
  */
 
 import type { AlertSeverity, AlertType } from './alert.dto';
+import type { NotificationCategory } from './notification-category';
 
 /**
  * Ordre de sévérité — sert au filtre « à partir de ».
@@ -65,8 +66,16 @@ export interface NotificationPreferenceDto {
   pushEnabled: boolean;
   /** On n'envoie que les alertes de sévérité supérieure ou égale. */
   minSeverity: AlertSeverity;
-  /** Types explicitement coupés. Un type absent de cette liste est actif. */
+  /** Types d'ALERTE explicitement coupés. Un type absent de cette liste est actif. */
   mutedTypes: AlertType[];
+  /**
+   * Catégories explicitement coupées ('MAINTENANCE', 'REPORT'…).
+   *
+   * Distinct de `mutedTypes`, qui ne concerne que les alertes véhicule : un rappel
+   * d'entretien n'a ni type d'alerte ni sévérité, et devait pourtant pouvoir se couper
+   * autrement qu'en supprimant TOUT le push.
+   */
+  mutedCategories: NotificationCategory[];
   /**
    * Vrai tant que l'utilisateur n'a jamais enregistré de réglages : l'écran peut alors
    * expliquer le défaut appliqué au lieu de le présenter comme un choix déjà fait.
@@ -96,6 +105,7 @@ export interface UpdateNotificationPreferenceDto {
   receivesFleetAlerts?: boolean | null;
   minSeverity?: AlertSeverity;
   mutedTypes?: AlertType[];
+  mutedCategories?: NotificationCategory[];
 }
 
 /**
@@ -112,4 +122,41 @@ export function shouldPushAlert(
   if (!pref.pushEnabled) return false;
   if (pref.mutedTypes.includes(alert.type)) return false;
   return meetsSeverity(alert.severity, pref.minSeverity);
+}
+
+/**
+ * Une notification, vue par le filtre de préférences — quelle que soit sa nature.
+ *
+ * `alertType` et `severity` ne sont renseignés que pour la catégorie `ALERT` : un rappel
+ * d'entretien n'a ni l'un ni l'autre, et devait pourtant traverser le même filtre.
+ */
+export interface PushCandidate {
+  category: NotificationCategory;
+  alertType?: AlertType;
+  severity?: AlertSeverity;
+}
+
+/**
+ * Décide si une notification, DE N'IMPORTE QUELLE NATURE, doit produire un push.
+ *
+ * Généralise `shouldPushAlert`, qui exigeait un type d'alerte et une sévérité — donc
+ * inutilisable pour un rappel d'entretien ou un rapport. C'est précisément pour ça que le
+ * rappel d'entretien envoyait du push en DEHORS du système, sans préférence applicable.
+ *
+ * Ordre volontaire : interrupteur maître, puis catégorie, puis (alertes seulement) type
+ * et sévérité. Une catégorie coupée l'emporte sur un réglage fin — couper « Entretien »
+ * doit tout taire, sans avoir à énumérer quoi que ce soit.
+ */
+export function shouldPushNotification(
+  pref: Pick<NotificationPreferenceDto, 'pushEnabled' | 'minSeverity' | 'mutedTypes' | 'mutedCategories'>,
+  candidate: PushCandidate,
+): boolean {
+  if (!pref.pushEnabled) return false;
+  if (pref.mutedCategories.includes(candidate.category)) return false;
+  // Hors alerte : ni type ni sévérité à évaluer — la catégorie suffit.
+  if (candidate.category !== 'ALERT') return true;
+  if (candidate.alertType && pref.mutedTypes.includes(candidate.alertType)) return false;
+  // Une alerte sans sévérité lisible est traitée comme critique : une notification de
+  // trop se voit, une alerte grave avalée ne se voit pas.
+  return meetsSeverity(candidate.severity ?? 'critical', pref.minSeverity);
 }

@@ -2,13 +2,21 @@ import { Component, computed, inject, type OnInit, signal } from '@angular/core'
 import type {
   AlertSeverity,
   AlertType,
+  NotificationCategory,
   NotificationPreferenceDto,
   UpdateNotificationPreferenceDto,
 } from '@vizyo/tracky-shared';
 // `shouldPushAlert` vient du contrat PARTAGE : c'est la fonction que le serveur applique
 // pour decider d'un envoi. La reimplementer ici ferait diverger l'ecran de la realite au
 // premier changement de regle — et cet ecran n'a qu'un seul travail, dire la verite.
-import { DEFAULT_MUTED_TYPES, PUSH_MAX_PER_HOUR, shouldPushAlert } from '@vizyo/tracky-shared';
+import {
+  DEFAULT_MUTED_TYPES,
+  NOTIFICATION_CATEGORIES,
+  NOTIFICATION_CATEGORY_DESCRIPTIONS,
+  NOTIFICATION_CATEGORY_LABELS,
+  PUSH_MAX_PER_HOUR,
+  shouldPushAlert,
+} from '@vizyo/tracky-shared';
 import {
   AlertTriangle,
   Bell,
@@ -474,6 +482,23 @@ export function toggleMutedType(
   return mutedTypes.includes(type) ? [...mutedTypes] : [...mutedTypes, type];
 }
 
+/**
+ * Même geste, un cran plus haut : ajoute/retire une FAMILLE de la liste des coupées.
+ *
+ * Séparé de `toggleMutedType` malgré la ressemblance : les deux listes ne vivent pas dans
+ * le même espace de valeurs (`AlertType` vs `NotificationCategory`) et les fusionner
+ * autoriserait, au type près, de couper « MAINTENANCE » dans la liste des types d'alerte —
+ * un réglage qui n'aurait aucun effet et qu'aucun écran ne montrerait.
+ */
+export function toggleMutedCategory(
+  mutedCategories: readonly NotificationCategory[],
+  category: NotificationCategory,
+  enabled: boolean,
+): NotificationCategory[] {
+  if (enabled) return mutedCategories.filter((c) => c !== category);
+  return mutedCategories.includes(category) ? [...mutedCategories] : [...mutedCategories, category];
+}
+
 /** Coupe (ou rallume) un groupe entier d'un seul geste. */
 export function setGroupMuted(
   mutedTypes: readonly AlertType[],
@@ -874,9 +899,48 @@ export const SEVERITY_OPTIONS: readonly SeverityOption[] = [
             </div>
           }
 
-          <!-- ─── 4. Seuil de severite ─── -->
+          <!-- ─── 3 bis. Familles de notification ───
+               Placee AVANT le seuil et les types, parce qu'elle les gouverne : couper
+               « Alertes vehicule » rend les deux blocs suivants sans effet. L'ordre de
+               l'ecran suit donc l'ordre de decision, du plus large au plus fin.
+
+               Ce bloc existe parce que le push ne sert plus qu'aux alertes : rappels
+               d'entretien aujourd'hui, rapports et validations ensuite. Sans lui, couper
+               les rappels d'entretien obligerait a couper TOUT le push. -->
           <div class="nc-block" [class.nc-dimmed]="!p.pushEnabled">
+            <p class="nc-block-title">Quelles familles de notifications ?</p>
+            <p class="nc-block-desc">
+              Le reglage le plus large : il decide des grandes familles. Les reglages
+              suivants n'affinent que les alertes vehicule.
+            </p>
+            @for (c of categories(); track c.key) {
+              <div class="nc-row">
+                <div class="nc-row-text">
+                  <p class="nc-row-title">{{ c.label }}</p>
+                  <p class="nc-row-desc">{{ c.description }}</p>
+                </div>
+                <label class="nc-toggle">
+                  <input
+                    type="checkbox"
+                    [checked]="c.enabled"
+                    [disabled]="saving()"
+                    (change)="setCategory(c.key, $any($event.target).checked)"
+                    [attr.aria-label]="c.label"
+                  />
+                  <span class="nc-track"><span class="nc-thumb"></span></span>
+                </label>
+              </div>
+            }
+          </div>
+
+          <!-- ─── 4. Seuil de severite ─── -->
+          <div class="nc-block" [class.nc-dimmed]="!p.pushEnabled || alertsMuted()">
             <p class="nc-block-title">À partir de quelle gravité ?</p>
+            @if (alertsMuted()) {
+              <p class="nc-block-desc">
+                Sans effet : la famille « Alertes véhicule » est coupée juste au-dessus.
+              </p>
+            }
             <div class="nc-sev" role="radiogroup" aria-label="Gravité minimale">
               @for (opt of severityOptions; track opt.value) {
                 <button
@@ -901,7 +965,7 @@ export const SEVERITY_OPTIONS: readonly SeverityOption[] = [
           </div>
 
           <!-- ─── 5. Types d'alerte, par famille ─── -->
-          <div class="nc-block" [class.nc-dimmed]="!p.pushEnabled">
+          <div class="nc-block" [class.nc-dimmed]="!p.pushEnabled || alertsMuted()">
             <p class="nc-block-title">Quelles alertes ?</p>
             <p class="nc-block-desc">
               Chaque type indique sa fréquence observée sur l'ensemble du parc
@@ -1389,6 +1453,34 @@ export class NotificationsCardComponent implements OnInit {
   protected setMinSeverity(value: AlertSeverity): void {
     if (this.pref()?.minSeverity === value) return;
     void this.patch({ minSeverity: value });
+  }
+
+  /**
+   * Les familles, prêtes à afficher. Le libellé et la description viennent du contrat
+   * partagé : l'écran n'a pas sa propre table, sinon elle divergerait de celle qui sert
+   * à l'API et au centre de notifications.
+   */
+  protected readonly categories = computed(() => {
+    const muted = new Set(this.pref()?.mutedCategories ?? []);
+    return NOTIFICATION_CATEGORIES.map((key) => ({
+      key,
+      label: NOTIFICATION_CATEGORY_LABELS[key],
+      description: NOTIFICATION_CATEGORY_DESCRIPTIONS[key],
+      enabled: !muted.has(key),
+    }));
+  });
+
+  /**
+   * La famille « Alertes véhicule » est-elle coupée ?
+   *
+   * Sert à éteindre le seuil de gravité et la liste des types : les laisser vifs
+   * donnerait l'impression de régler quelque chose qui, de toute façon, ne partira pas.
+   */
+  protected readonly alertsMuted = computed(() => (this.pref()?.mutedCategories ?? []).includes('ALERT'));
+
+  protected setCategory(category: NotificationCategory, enabled: boolean): void {
+    const current = this.pref()?.mutedCategories ?? [];
+    void this.patch({ mutedCategories: toggleMutedCategory(current, category, enabled) });
   }
 
   protected setType(type: AlertType, enabled: boolean): void {

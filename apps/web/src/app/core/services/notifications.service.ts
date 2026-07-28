@@ -5,6 +5,7 @@ import { SwPush } from '@angular/service-worker';
 import { firstValueFrom } from 'rxjs';
 import type {
   AlertType,
+  NotificationCategory,
   NotificationPreferenceDto,
   UpdateNotificationPreferenceDto,
 } from '@vizyo/tracky-shared';
@@ -602,6 +603,11 @@ export class NotificationsApiService {
       pushEnabled: raw?.pushEnabled !== false,
       minSeverity,
       mutedTypes: Array.isArray(raw?.mutedTypes) ? (raw.mutedTypes as AlertType[]) : [],
+      // Une reponse d'API anterieure ne porte pas ce champ : « aucune famille coupee »
+      // est le bon repli — il n'invente aucun silence que l'utilisateur n'aurait demande.
+      mutedCategories: Array.isArray(raw?.mutedCategories)
+        ? (raw.mutedCategories as NotificationCategory[])
+        : [],
       isDefault: raw?.isDefault === true,
       eligible: raw?.eligible === true,
       deviceCount: typeof raw?.deviceCount === 'number' ? raw.deviceCount : 0,
@@ -623,6 +629,7 @@ export class NotificationsApiService {
       pushEnabled: true,
       minSeverity: DEFAULT_MIN_SEVERITY,
       mutedTypes: [],
+      mutedCategories: [],
       isDefault: true,
       eligible: false,
       deviceCount: this.devices().filter((d) => d.isMine).length,

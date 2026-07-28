@@ -641,10 +641,22 @@ describe('NotificationDispatchService — garde-fous anti-spam et tracage', () =
     severity?: string;
     vehicleId?: string | null;
     preferences?: Array<Record<string, unknown>>;
-    /** Lignes de `notification_deliveries` que la requete du throttle renverrait. */
-    deliveries?: Array<{ userId: string; status: string; alertId: string | null; alertType: string; createdAt: Date }>;
-    /** Vehicule de chaque alerte citee par ces lignes (le journal ne stocke pas le vehicule). */
-    alertVehicles?: Record<string, string | null>;
+    /**
+     * Lignes DEJA en base dans `notification_deliveries`.
+     *
+     * Le journal porte desormais le vehicule DIRECTEMENT dans `subjectKey`. Avant, il ne
+     * le stockait pas : le throttle devait requeter la table des alertes pour savoir si
+     * une ligne concernait le meme vehicule. Cette seconde requete a disparu.
+     */
+    deliveries?: Array<{
+      userId: string;
+      status: string;
+      alertId: string | null;
+      alertType: string;
+      createdAt: Date;
+      subjectKey?: string | null;
+      category?: string;
+    }>;
     sendResult?: { sent: number; failed: number; results: Array<Record<string, unknown>> };
     sendThrows?: Error;
     recipients?: Array<Record<string, unknown>>;
@@ -661,7 +673,6 @@ describe('NotificationDispatchService — garde-fous anti-spam et tracage', () =
       // defaut et aucun garde-fou de debit ne serait jamais atteint.
       preferences = [{ userId: superAdmin.id, pushEnabled: true, minSeverity: 'CRITICAL', mutedTypes: [] }],
       deliveries = [],
-      alertVehicles = {},
       sendResult = { sent: 1, failed: 0, results: [{ id: 's1', endpointHost: 'fcm.googleapis.com', statusCode: 201 }] },
       sendThrows,
       recipients = [superAdmin],
@@ -687,13 +698,43 @@ describe('NotificationDispatchService — garde-fous anti-spam et tracage', () =
       ? jest.fn().mockRejectedValue(sendThrows)
       : jest.fn().mockResolvedValue(sendResult);
     const deliveryCreate = jest.fn().mockResolvedValue({});
-    const deliveryFindMany = jest.fn().mockResolvedValue(deliveries);
-    // Qualification du vehicule : reproduit fidelement le filtre SQL
-    // `id IN (...) AND vehicleId = <celui de l'alerte>`.
-    const alertFindMany = jest.fn(async (args: { where?: { id?: { in?: string[] }; vehicleId?: string | null } }) => {
-      const ids = args?.where?.id?.in ?? [];
-      const wanted = args?.where?.vehicleId ?? null;
-      return ids.filter((id) => (alertVehicles[id] ?? null) === wanted).map((id) => ({ id }));
+    /**
+     * Reproduit FIDELEMENT le OR de la requete du throttle. Un stub qui renverrait
+     * `deliveries` en bloc ferait passer le test du « meme type sur un AUTRE vehicule »
+     * pour une raison fausse : c'est le SQL qui ecarte ces lignes, pas le service.
+     */
+    const deliveryFindMany = jest.fn(async (args: { where?: Record<string, unknown> }) => {
+      const where = (args?.where ?? {}) as {
+        userId?: { in?: string[] };
+        createdAt?: { gte?: Date };
+        OR?: Array<Record<string, unknown>>;
+      };
+      const ids = where.userId?.in ?? [];
+      const hourSince = where.createdAt?.gte?.getTime() ?? 0;
+      const grouped = (where.OR ?? []).find((c) => c.status === 'GROUPED') as
+        | { category?: string; alertType?: string | null; subjectKey?: string | null; createdAt?: { gte?: Date } }
+        | undefined;
+      return deliveries
+        .filter((d) => ids.includes(d.userId) && d.createdAt.getTime() >= hourSince)
+        .filter((d) => {
+          if (d.status === 'SENT') return true;
+          if (d.status !== 'GROUPED' || !grouped) return false;
+          return (
+            (d.category ?? 'ALERT') === grouped.category &&
+            d.alertType === grouped.alertType &&
+            (d.subjectKey ?? null) === (grouped.subjectKey ?? null) &&
+            d.createdAt.getTime() >= (grouped.createdAt?.gte?.getTime() ?? 0)
+          );
+        })
+        .map((d) => ({
+          userId: d.userId,
+          status: d.status,
+          category: d.category ?? 'ALERT',
+          alertType: d.alertType,
+          subjectKey: d.subjectKey ?? null,
+          createdAt: d.createdAt,
+        }))
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     });
     const emailSend = jest.fn().mockResolvedValue(undefined);
 
@@ -723,7 +764,8 @@ describe('NotificationDispatchService — garde-fous anti-spam et tracage', () =
       surveillanceProfile: { findUnique: jest.fn().mockResolvedValue(null) },
       notificationPreference: { findMany: jest.fn().mockResolvedValue(preferences) },
       notificationDelivery: { create: deliveryCreate, findMany: deliveryFindMany },
-      alert: { findMany: alertFindMany },
+      // AUCUN `alert.findMany` : le throttle ne requete plus la table des alertes.
+      // Si un jour il recommencait, le stub manquant ferait echouer le test — c'est voulu.
     };
 
     const build = async () => {
@@ -748,7 +790,7 @@ describe('NotificationDispatchService — garde-fous anti-spam et tracage', () =
     /** Lignes reellement ecrites en base, dans l'ordre. */
     const rows = () => deliveryCreate.mock.calls.map((c) => c[0].data as Record<string, unknown>);
 
-    return { alert, build, sendToUser, emailSend, deliveryCreate, deliveryFindMany, alertFindMany, rows };
+    return { alert, build, sendToUser, emailSend, deliveryCreate, deliveryFindMany, prisma, rows };
   }
 
   const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000);
@@ -827,9 +869,8 @@ describe('NotificationDispatchService — garde-fous anti-spam et tracage', () =
   it('cooldown — un push recent sur le MEME type et le MEME vehicule replie l evenement', async () => {
     const t = setup({
       deliveries: [
-        { userId: superAdmin.id, status: 'SENT', alertId: 'alert-old', alertType: 'POWER_CUT', createdAt: minutesAgo(3) },
+        { userId: superAdmin.id, status: 'SENT', alertId: 'alert-old', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(3) },
       ],
-      alertVehicles: { 'alert-old': 'v1' },
     });
     const dispatch = await t.build();
 
@@ -846,11 +887,10 @@ describe('NotificationDispatchService — garde-fous anti-spam et tracage', () =
     // dire « 1 » (premier retenu depuis cet envoi), pas « 3 ».
     const t = setup({
       deliveries: [
-        { userId: superAdmin.id, status: 'GROUPED', alertId: 'g1', alertType: 'POWER_CUT', createdAt: minutesAgo(9) },
-        { userId: superAdmin.id, status: 'GROUPED', alertId: 'g2', alertType: 'POWER_CUT', createdAt: minutesAgo(5) },
-        { userId: superAdmin.id, status: 'SENT', alertId: 'alert-sent', alertType: 'POWER_CUT', createdAt: minutesAgo(2) },
+        { userId: superAdmin.id, status: 'GROUPED', alertId: 'g1', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(9) },
+        { userId: superAdmin.id, status: 'GROUPED', alertId: 'g2', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(5) },
+        { userId: superAdmin.id, status: 'SENT', alertId: 'alert-sent', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(2) },
       ],
-      alertVehicles: { g1: 'v1', g2: 'v1', 'alert-sent': 'v1' },
     });
     const dispatch = await t.build();
 
@@ -867,9 +907,8 @@ describe('NotificationDispatchService — garde-fous anti-spam et tracage', () =
     const t = setup({
       vehicleId: 'v2',
       deliveries: [
-        { userId: superAdmin.id, status: 'SENT', alertId: 'alert-old', alertType: 'POWER_CUT', createdAt: minutesAgo(3) },
+        { userId: superAdmin.id, status: 'SENT', alertId: 'alert-old', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(3) },
       ],
-      alertVehicles: { 'alert-old': 'v1' },
     });
     const dispatch = await t.build();
 
@@ -883,10 +922,9 @@ describe('NotificationDispatchService — garde-fous anti-spam et tracage', () =
     // depuis. Le push qui part doit dire qu'il en represente trois.
     const t = setup({
       deliveries: [
-        { userId: superAdmin.id, status: 'GROUPED', alertId: 'g1', alertType: 'POWER_CUT', createdAt: minutesAgo(9) },
-        { userId: superAdmin.id, status: 'GROUPED', alertId: 'g2', alertType: 'POWER_CUT', createdAt: minutesAgo(4) },
+        { userId: superAdmin.id, status: 'GROUPED', alertId: 'g1', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(9) },
+        { userId: superAdmin.id, status: 'GROUPED', alertId: 'g2', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(4) },
       ],
-      alertVehicles: { g1: 'v1', g2: 'v1' },
     });
     const dispatch = await t.build();
 
@@ -909,7 +947,6 @@ describe('NotificationDispatchService — garde-fous anti-spam et tracage', () =
         alertType: 'GEOFENCE_ENTER',
         createdAt: minutesAgo(50 - i),
       })),
-      alertVehicles: {},
     });
     const dispatch = await t.build();
 
@@ -946,9 +983,8 @@ describe('NotificationDispatchService — garde-fous anti-spam et tracage', () =
     const t = setup({
       type: 'SOS',
       deliveries: [
-        { userId: superAdmin.id, status: 'SENT', alertId: 'sos-old', alertType: 'SOS', createdAt: minutesAgo(2) },
+        { userId: superAdmin.id, status: 'SENT', alertId: 'sos-old', alertType: 'SOS', subjectKey: 'v1', createdAt: minutesAgo(2) },
       ],
-      alertVehicles: { 'sos-old': 'v1' },
     });
     const dispatch = await t.build();
 
@@ -966,9 +1002,8 @@ describe('NotificationDispatchService — garde-fous anti-spam et tracage', () =
       rollout: 'ALL',
       preferences: [{ userId: 'esc-1', pushEnabled: true, minSeverity: 'CRITICAL', mutedTypes: [] }],
       deliveries: [
-        { userId: 'esc-1', status: 'SENT', alertId: 'alert-old', alertType: 'POWER_CUT', createdAt: minutesAgo(2) },
+        { userId: 'esc-1', status: 'SENT', alertId: 'alert-old', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(2) },
       ],
-      alertVehicles: { 'alert-old': 'v1' },
     });
     const dispatch = await t.build();
     (dispatch as unknown as { prisma: { user: { findFirst: jest.Mock } } }).prisma.user.findFirst = jest
@@ -1069,8 +1104,10 @@ describe('NotificationDispatchService — garde-fous anti-spam et tracage', () =
     // Fenetre bornee dans le temps : la requete ne peut pas se mettre a scanner tout
     // l'historique le jour ou la table aura grossi.
     expect(Date.now() - where.createdAt.gte.getTime()).toBeLessThanOrEqual(60 * 60_000 + 5_000);
-    // Une seule qualification de vehicule, pas une par destinataire.
-    expect(t.alertFindMany.mock.calls.length).toBeLessThanOrEqual(1);
+    // Le vehicule est desormais LU sur la ligne de journal (`subjectKey`). L'ancienne
+    // qualification via la table des alertes — une requete de plus a chaque alerte, pour
+    // tout le monde — n'existe plus : le stub prisma ne l'expose meme pas.
+    expect((t.prisma as { alert?: unknown }).alert).toBeUndefined();
   });
 
   it('les canaux payants ne sont JAMAIS brides — cooldown actif, l e-mail part quand meme', async () => {
@@ -1081,9 +1118,8 @@ describe('NotificationDispatchService — garde-fous anti-spam et tracage', () =
       recipients: [{ id: 'fa-1', email: 'admin@f1.test', fleetId: 'f1', role: UserRole.FLEET_ADMIN, isActive: true }],
       preferences: [{ userId: 'fa-1', pushEnabled: true, minSeverity: 'CRITICAL', mutedTypes: [] }],
       deliveries: [
-        { userId: 'fa-1', status: 'SENT', alertId: 'alert-old', alertType: 'POWER_CUT', createdAt: minutesAgo(1) },
+        { userId: 'fa-1', status: 'SENT', alertId: 'alert-old', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(1) },
       ],
-      alertVehicles: { 'alert-old': 'v1' },
     });
     const dispatch = await t.build();
 
@@ -1210,4 +1246,156 @@ describe('NotificationDispatchService — garde-fous anti-spam et tracage', () =
     });
   });
 
+});
+
+/**
+ * SOCLE GENERIQUE — notifier autre chose qu'une alerte.
+ *
+ * Le rappel d'entretien envoyait du push EN DEHORS du systeme : preferences ignorees,
+ * anti-spam contourne, invisible au centre. `notifyUsers` est desormais le passage
+ * oblige. Le test qui compte le plus est le premier : une categorie coupee doit tout
+ * taire, sans avoir a enumerer quoi que ce soit.
+ */
+describe('NotificationDispatchService.notifyUsers — socle generique', () => {
+  function build(
+    preferences: Array<Record<string, unknown>> = [],
+    opts: { rollout?: string; users?: Array<{ id: string; role: UserRole }> } = {},
+  ) {
+    const sendToUser = jest.fn().mockResolvedValue({ sent: 1, failed: 0, results: [] });
+    const deliveryCreate = jest.fn().mockResolvedValue({});
+    const throttleEvaluate = jest.fn().mockResolvedValue(new Map());
+    // Le socle lit les ROLES pour appliquer le perimetre de deploiement : un fixture qui
+    // n'en rendrait aucun ferait passer les tests en n'ayant aucun destinataire.
+    const users = opts.users ?? [{ id: 'u1', role: UserRole.SUPER_ADMIN }];
+    const prisma = {
+      user: { findMany: jest.fn().mockResolvedValue(users) },
+      notificationPreference: { findMany: jest.fn().mockResolvedValue(preferences) },
+      notificationDelivery: { create: deliveryCreate },
+    };
+    const svc = new NotificationDispatchService(
+      prisma as never,
+      { sendToUser } as never,
+      { send: jest.fn() } as never,
+      { isEnabled: () => false, send: jest.fn() } as never,
+      { recordBackground: jest.fn() } as never,
+      { get: () => opts.rollout ?? 'ALL' } as never,
+      { evaluate: throttleEvaluate } as never,
+    );
+    return { svc, sendToUser, deliveryCreate, throttleEvaluate };
+  }
+
+  const base = {
+    userIds: ['u1'],
+    category: 'MAINTENANCE' as const,
+    title: 'Maintenance a prevoir',
+    body: 'AB-123-CD : vidange',
+    fleetId: 'f1',
+  };
+
+  it('envoie quand rien ne s y oppose', async () => {
+    const t = build();
+    await expect(t.svc.notifyUsers(base)).resolves.toBe(1);
+    expect(t.sendToUser).toHaveBeenCalledTimes(1);
+  });
+
+  it('⚠️ une CATEGORIE coupee tait tout — sans enumerer quoi que ce soit', async () => {
+    const t = build([{ userId: 'u1', pushEnabled: true, minSeverity: 'INFO', mutedTypes: [], mutedCategories: ['MAINTENANCE'] }]);
+    await expect(t.svc.notifyUsers(base)).resolves.toBe(0);
+    expect(t.sendToUser).not.toHaveBeenCalled();
+    // La retenue est TRACEE : sinon on recree un silence invisible.
+    expect(t.deliveryCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'SUPPRESSED', category: 'MAINTENANCE' }) }),
+    );
+  });
+
+  it('l interrupteur MAITRE coupe aussi les notifications non-alerte', async () => {
+    const t = build([{ userId: 'u1', pushEnabled: false, minSeverity: 'INFO', mutedTypes: [], mutedCategories: [] }]);
+    await expect(t.svc.notifyUsers(base)).resolves.toBe(0);
+    expect(t.sendToUser).not.toHaveBeenCalled();
+  });
+
+  it('⚠️ le seuil de SEVERITE ne s applique PAS hors alerte (un rappel n en a pas)', async () => {
+    // Un rappel d'entretien n'a pas de severite : le filtrer par seuil le rendrait
+    // muet pour tout utilisateur exigeant « critique seulement ».
+    const t = build([{ userId: 'u1', pushEnabled: true, minSeverity: 'CRITICAL', mutedTypes: [], mutedCategories: [] }]);
+    await expect(t.svc.notifyUsers(base)).resolves.toBe(1);
+  });
+
+  it('passe par l anti-spam, cloisonne par categorie et sujet', async () => {
+    const t = build();
+    await t.svc.notifyUsers({ ...base, subjectKey: 'v1', kind: 'VIDANGE' });
+    expect(t.throttleEvaluate).toHaveBeenCalledWith(
+      ['u1'],
+      expect.objectContaining({ category: 'MAINTENANCE', kind: 'VIDANGE', subjectKey: 'v1' }),
+    );
+  });
+
+  it('une retenue par l anti-spam est journalisee, pas jetee', async () => {
+    const t = build();
+    t.throttleEvaluate.mockResolvedValue(new Map([['u1', { allowed: false, reason: 'cooldown', groupedCount: 2 }]]));
+    await expect(t.svc.notifyUsers(base)).resolves.toBe(0);
+    expect(t.deliveryCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'GROUPED', groupedCount: 2 }) }),
+    );
+  });
+
+  it('aucun appareil abonne : trace en FAILED avec la raison, pas en silence', async () => {
+    const t = build();
+    t.sendToUser.mockResolvedValue({ sent: 0, failed: 0, results: [] });
+    await expect(t.svc.notifyUsers(base)).resolves.toBe(0);
+    expect(t.deliveryCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'FAILED', reason: 'no_device' }) }),
+    );
+  });
+
+  it('sans destinataire : aucune requete, aucun envoi', async () => {
+    const t = build();
+    await expect(t.svc.notifyUsers({ ...base, userIds: [] })).resolves.toBe(0);
+    expect(t.throttleEvaluate).not.toHaveBeenCalled();
+    expect(t.sendToUser).not.toHaveBeenCalled();
+  });
+
+  /**
+   * PERIMETRE DE DEPLOIEMENT — la vanne de la mise en service progressive.
+   *
+   * Le chemin ALERTE l'applique depuis l'origine. L'ancien envoi direct du rappel
+   * d'entretien, lui, ne l'appliquait PAS : un rappel serait parti vers des roles
+   * auxquels le push n'est pas encore ouvert, pendant qu'on croyait ne tester que sur
+   * super-admin. Le socle referme ce trou pour TOUTES les notifications a venir.
+   */
+  it('⚠️ perimetre restreint : un role non ouvert ne recoit RIEN, meme hors alerte', async () => {
+    const t = build([], {
+      rollout: 'SUPER_ADMIN_ONLY',
+      users: [{ id: 'u1', role: UserRole.FLEET_ADMIN }],
+    });
+    await expect(t.svc.notifyUsers(base)).resolves.toBe(0);
+    expect(t.sendToUser).not.toHaveBeenCalled();
+    // Refus NON journalise, comme pour les alertes : identique pour tout le monde et
+    // derivable de la configuration — l'ecrire noierait les motifs qui, eux, apprennent
+    // quelque chose.
+    expect(t.deliveryCreate).not.toHaveBeenCalled();
+  });
+
+  it('perimetre restreint : le super-admin, lui, recoit', async () => {
+    const t = build([], {
+      rollout: 'SUPER_ADMIN_ONLY',
+      users: [{ id: 'u1', role: UserRole.SUPER_ADMIN }],
+    });
+    await expect(t.svc.notifyUsers(base)).resolves.toBe(1);
+  });
+
+  it('perimetre restreint : le tri est par DESTINATAIRE, pas tout ou rien', async () => {
+    // Un lot mixte ne doit pas se resumer au premier destinataire rencontre : le
+    // super-admin recoit, le gestionnaire non, dans le meme appel.
+    const t = build([], {
+      rollout: 'SUPER_ADMIN_ONLY',
+      users: [
+        { id: 'sa', role: UserRole.SUPER_ADMIN },
+        { id: 'fa', role: UserRole.FLEET_ADMIN },
+      ],
+    });
+    await expect(t.svc.notifyUsers({ ...base, userIds: ['sa', 'fa'] })).resolves.toBe(1);
+    expect(t.sendToUser).toHaveBeenCalledTimes(1);
+    expect(t.sendToUser.mock.calls[0][0]).toBe('sa');
+  });
 });

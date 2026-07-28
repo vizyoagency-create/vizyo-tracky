@@ -8,6 +8,8 @@ import {
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import {
+  NOTIFICATION_CATEGORIES,
+  NOTIFICATION_CATEGORY_LABELS,
   NOTIFICATION_CHANNEL_LABELS,
   NOTIFICATION_PAGE_SIZE,
   NOTIFICATION_SEVERITY_LABELS,
@@ -822,6 +824,15 @@ export function windowRange(days: number, nowMs: number = Date.now()): Notificat
             </select>
           </label>
           <label class="nc-field">
+            <span>Famille</span>
+            <select (change)="setCategory($any($event.target).value)">
+              <option value="" [selected]="fCategory() === ''">Toutes</option>
+              @for (c of categoryOptions; track c.key) {
+                <option [value]="c.key" [selected]="fCategory() === c.key">{{ c.label }}</option>
+              }
+            </select>
+          </label>
+          <label class="nc-field">
             <span>Type d'alerte</span>
             <select (change)="setType($any($event.target).value)">
               <option value="" [selected]="fType() === ''">Tous</option>
@@ -871,6 +882,13 @@ export function windowRange(days: number, nowMs: number = Date.now()): Notificat
               <div class="nc-card-top">
                 <span class="nc-badge"><span class="nc-badge-dot"></span>{{ d.statusLabel || statusLabel(d.status) }}</span>
                 <span class="nc-chan">{{ channelLabel(d.channel) }}</span>
+                <!-- Affichee uniquement hors alerte : sur un journal encore compose a
+                     99 % d'alertes, une pastille « Alertes vehicule » sur chaque ligne
+                     serait du bruit — alors qu'un rappel d'entretien perdu au milieu
+                     doit sauter aux yeux. -->
+                @if (d.category && d.category !== 'ALERT') {
+                  <span class="nc-cat">{{ d.categoryLabel || d.category }}</span>
+                }
                 @if (severityKey(d.severity); as sev) {
                   <span class="nc-sev" [attr.data-sev]="sev">{{ severityLabel(d.severity) }}</span>
                 }
@@ -879,7 +897,9 @@ export function windowRange(days: number, nowMs: number = Date.now()): Notificat
                 </span>
               </div>
 
-              <h3 class="nc-card-title">{{ alertTypeLabel(d.alertType) }}</h3>
+              <!-- Hors alerte, le type est vide et le titre retombait sur un generique
+                   « Notification » : la famille dit au moins de quoi il s'agit. -->
+              <h3 class="nc-card-title">{{ d.alertType ? alertTypeLabel(d.alertType) : (d.categoryLabel || 'Notification') }}</h3>
               @if (d.title || d.body) {
                 <p class="nc-card-msg">{{ d.title }}@if (d.title && d.body) { <span> — </span> }{{ d.body }}</p>
               }
@@ -1068,6 +1088,7 @@ export function windowRange(days: number, nowMs: number = Date.now()): Notificat
     .nc-pk--bad { background: rgba(239,68,68,.13); color: #f87171; }
 
     /* ── Filtres ── */
+    .nc-cat { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--surface-2, #f1f5f9); color: var(--text-2, #475569); }
     .nc-filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
     .nc-field { display: flex; flex-direction: column; gap: 4px; }
     .nc-field--grow { flex: 1 1 220px; }
@@ -1220,6 +1241,13 @@ export class AdminNotificationsComponent implements OnInit, OnDestroy {
   /** Filtres du journal (appliqués côté serveur). */
   protected readonly fStatus = signal('');
   protected readonly fType = signal('');
+  /** Famille selectionnee ('' = toutes). Le filtre le plus large de l'ecran. */
+  protected readonly fCategory = signal('');
+  /** Options du filtre : le contrat partage fait foi, pas une table locale. */
+  protected readonly categoryOptions = NOTIFICATION_CATEGORIES.map((key) => ({
+    key,
+    label: NOTIFICATION_CATEGORY_LABELS[key],
+  }));
   protected readonly fSeverity = signal('');
   protected readonly fReason = signal('');
   protected readonly fUserId = signal('');
@@ -1389,6 +1417,7 @@ export class AdminNotificationsComponent implements OnInit, OnDestroy {
       this.api.deliveries({
         ...window,
         status: this.fStatus() || undefined,
+        category: this.fCategory() || undefined,
         alertType: this.fType() || undefined,
         severity: this.fSeverity() || undefined,
         reason: this.fReason() || undefined,
@@ -1432,6 +1461,15 @@ export class AdminNotificationsComponent implements OnInit, OnDestroy {
   /** Depuis le menu OU depuis un clic sur une barre (re-cliquer désélectionne). */
   protected setType(v: string): void {
     this.fType.set(this.fType() === v ? '' : (v || ''));
+    this.reloadLog();
+  }
+  protected setCategory(v: string): void {
+    const next = v || '';
+    this.fCategory.set(next);
+    // Changer de famille rend le type d'alerte sélectionné incohérent : « Entretien »
+    // + « Excès de vitesse » ne peut donner que zéro ligne, et l'écran se lirait alors
+    // comme « il ne s'est rien passé » au lieu de « ces deux filtres s'excluent ».
+    if (next && next !== 'ALERT') this.fType.set('');
     this.reloadLog();
   }
   protected setSeverity(v: string): void {

@@ -21,8 +21,9 @@ describe('NotificationThrottleService', () => {
   interface Row {
     userId: string;
     status: string;
-    alertId: string | null;
-    alertType: string;
+    category: string;
+    alertType: string | null;
+    subjectKey: string | null;
     createdAt: Date;
   }
 
@@ -65,7 +66,7 @@ describe('NotificationThrottleService', () => {
 
   it('sans destinataire — aucune requete (le dispatch ne doit rien payer pour rien)', async () => {
     const t = await build();
-    const decisions = await t.service.evaluate([], { alertType: 'POWER_CUT', vehicleId: 'v1' });
+    const decisions = await t.service.evaluate([], { category: 'ALERT', kind: 'POWER_CUT', subjectKey: 'v1' });
 
     expect(decisions.size).toBe(0);
     expect(t.deliveryFindMany).not.toHaveBeenCalled();
@@ -75,7 +76,7 @@ describe('NotificationThrottleService', () => {
     // Le piege evident de ce genre de filtre : une requete par destinataire, payee sur
     // chacune des ~500 alertes du jour, multipliee par le nombre d'admins.
     const t = await build();
-    await t.service.evaluate(['u1', 'u2', 'u3'], { alertType: 'POWER_CUT', vehicleId: 'v1' });
+    await t.service.evaluate(['u1', 'u2', 'u3'], { category: 'ALERT', kind: 'POWER_CUT', subjectKey: 'v1' });
 
     expect(t.deliveryFindMany).toHaveBeenCalledTimes(1);
     const args = t.deliveryFindMany.mock.calls[0][0];
@@ -95,14 +96,14 @@ describe('NotificationThrottleService', () => {
 
   it('doublons de destinataires — dedoublonnes avant la requete', async () => {
     const t = await build();
-    await t.service.evaluate(['u1', 'u1', 'u2'], { alertType: 'SOS', vehicleId: null });
+    await t.service.evaluate(['u1', 'u1', 'u2'], { category: 'ALERT', kind: 'SOS', subjectKey: null });
 
     expect(t.deliveryFindMany.mock.calls[0][0].where.userId.in).toEqual(['u1', 'u2']);
   });
 
   it('aucun historique — tout le monde passe', async () => {
     const t = await build({ rows: [] });
-    const decisions = await t.service.evaluate(['u1', 'u2'], { alertType: 'POWER_CUT', vehicleId: 'v1' });
+    const decisions = await t.service.evaluate(['u1', 'u2'], { category: 'ALERT', kind: 'POWER_CUT', subjectKey: 'v1' });
 
     expect(decisions.get('u1')).toEqual({ allowed: true, reason: null, groupedCount: 0 });
     expect(decisions.get('u2')).toEqual({ allowed: true, reason: null, groupedCount: 0 });
@@ -113,11 +114,11 @@ describe('NotificationThrottleService', () => {
   it('les decisions sont INDIVIDUELLES — le bruit d un utilisateur ne rend pas les autres muets', async () => {
     const t = await build({
       rows: [
-        { userId: 'u1', status: 'SENT', alertId: 'a-old', alertType: 'POWER_CUT', createdAt: minutesAgo(2) },
+        { userId: 'u1', status: 'SENT', category: 'ALERT', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(2) },
       ],
       alertVehicles: { 'a-old': 'v1' },
     });
-    const decisions = await t.service.evaluate(['u1', 'u2'], { alertType: 'POWER_CUT', vehicleId: 'v1' });
+    const decisions = await t.service.evaluate(['u1', 'u2'], { category: 'ALERT', kind: 'POWER_CUT', subjectKey: 'v1' });
 
     expect(decisions.get('u1')).toMatchObject({ allowed: false, reason: 'cooldown' });
     expect(decisions.get('u2')).toMatchObject({ allowed: true });
@@ -126,11 +127,11 @@ describe('NotificationThrottleService', () => {
   it('cooldown expire (> 15 min) — le push repasse', async () => {
     const t = await build({
       rows: [
-        { userId: 'u1', status: 'SENT', alertId: 'a-old', alertType: 'POWER_CUT', createdAt: minutesAgo(16) },
+        { userId: 'u1', status: 'SENT', category: 'ALERT', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(16) },
       ],
       alertVehicles: { 'a-old': 'v1' },
     });
-    const decisions = await t.service.evaluate(['u1'], { alertType: 'POWER_CUT', vehicleId: 'v1' });
+    const decisions = await t.service.evaluate(['u1'], { category: 'ALERT', kind: 'POWER_CUT', subjectKey: 'v1' });
 
     expect(decisions.get('u1')).toMatchObject({ allowed: true });
   });
@@ -138,13 +139,13 @@ describe('NotificationThrottleService', () => {
   it('report du compte — les GROUPED en attente sont rendus a l envoi qui les solde', async () => {
     const t = await build({
       rows: [
-        { userId: 'u1', status: 'GROUPED', alertId: 'g1', alertType: 'POWER_CUT', createdAt: minutesAgo(10) },
-        { userId: 'u1', status: 'GROUPED', alertId: 'g2', alertType: 'POWER_CUT', createdAt: minutesAgo(6) },
-        { userId: 'u1', status: 'GROUPED', alertId: 'g3', alertType: 'POWER_CUT', createdAt: minutesAgo(1) },
+        { userId: 'u1', status: 'GROUPED', category: 'ALERT', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(10) },
+        { userId: 'u1', status: 'GROUPED', category: 'ALERT', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(6) },
+        { userId: 'u1', status: 'GROUPED', category: 'ALERT', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(1) },
       ],
       alertVehicles: { g1: 'v1', g2: 'v1', g3: 'v1' },
     });
-    const decisions = await t.service.evaluate(['u1'], { alertType: 'POWER_CUT', vehicleId: 'v1' });
+    const decisions = await t.service.evaluate(['u1'], { category: 'ALERT', kind: 'POWER_CUT', subjectKey: 'v1' });
 
     expect(decisions.get('u1')).toEqual({ allowed: true, reason: null, groupedCount: 3 });
   });
@@ -158,14 +159,14 @@ describe('NotificationThrottleService', () => {
     // ecart invisible ailleurs que dans le journal.
     const t = await build({
       rows: [
-        { userId: 'u1', status: 'GROUPED', alertId: 'g1', alertType: 'POWER_CUT', createdAt: minutesAgo(9) },
-        { userId: 'u1', status: 'GROUPED', alertId: 'g2', alertType: 'POWER_CUT', createdAt: minutesAgo(5) },
+        { userId: 'u1', status: 'GROUPED', category: 'ALERT', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(9) },
+        { userId: 'u1', status: 'GROUPED', category: 'ALERT', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(5) },
         // Ce push est parti APRES les deux replis : il les a annonces (« ×3 »).
-        { userId: 'u1', status: 'SENT', alertId: 'a-sent', alertType: 'POWER_CUT', createdAt: minutesAgo(2) },
+        { userId: 'u1', status: 'SENT', category: 'ALERT', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(2) },
       ],
       alertVehicles: { g1: 'v1', g2: 'v1', 'a-sent': 'v1' },
     });
-    const decisions = await t.service.evaluate(['u1'], { alertType: 'POWER_CUT', vehicleId: 'v1' });
+    const decisions = await t.service.evaluate(['u1'], { category: 'ALERT', kind: 'POWER_CUT', subjectKey: 'v1' });
 
     // Retenu par le cooldown (envoi il y a 2 min), et PREMIER de la nouvelle serie.
     expect(decisions.get('u1')).toEqual({ allowed: false, reason: 'cooldown', groupedCount: 0 });
@@ -175,13 +176,13 @@ describe('NotificationThrottleService', () => {
     // Contrepartie du test precedent : on ne doit pas jeter le bebe avec l'eau du bain.
     const t = await build({
       rows: [
-        { userId: 'u1', status: 'SENT', alertId: 'a-sent', alertType: 'POWER_CUT', createdAt: minutesAgo(10) },
-        { userId: 'u1', status: 'GROUPED', alertId: 'g1', alertType: 'POWER_CUT', createdAt: minutesAgo(6) },
-        { userId: 'u1', status: 'GROUPED', alertId: 'g2', alertType: 'POWER_CUT', createdAt: minutesAgo(3) },
+        { userId: 'u1', status: 'SENT', category: 'ALERT', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(10) },
+        { userId: 'u1', status: 'GROUPED', category: 'ALERT', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(6) },
+        { userId: 'u1', status: 'GROUPED', category: 'ALERT', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(3) },
       ],
       alertVehicles: { g1: 'v1', g2: 'v1', 'a-sent': 'v1' },
     });
-    const decisions = await t.service.evaluate(['u1'], { alertType: 'POWER_CUT', vehicleId: 'v1' });
+    const decisions = await t.service.evaluate(['u1'], { category: 'ALERT', kind: 'POWER_CUT', subjectKey: 'v1' });
 
     expect(decisions.get('u1')).toEqual({ allowed: false, reason: 'cooldown', groupedCount: 2 });
   });
@@ -189,12 +190,13 @@ describe('NotificationThrottleService', () => {
   it('les GROUPED d un AUTRE vehicule ne gonflent pas le compte', async () => {
     const t = await build({
       rows: [
-        { userId: 'u1', status: 'GROUPED', alertId: 'g1', alertType: 'POWER_CUT', createdAt: minutesAgo(5) },
-        { userId: 'u1', status: 'GROUPED', alertId: 'g2', alertType: 'POWER_CUT', createdAt: minutesAgo(4) },
+        // Un repli sur le vehicule CIBLE...
+        { userId: 'u1', status: 'GROUPED', category: 'ALERT', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(5) },
+        // ...et un sur un AUTRE vehicule : il ne doit pas etre compte.
+        { userId: 'u1', status: 'GROUPED', category: 'ALERT', alertType: 'POWER_CUT', subjectKey: 'v2', createdAt: minutesAgo(4) },
       ],
-      alertVehicles: { g1: 'v1', g2: 'v2' },
     });
-    const decisions = await t.service.evaluate(['u1'], { alertType: 'POWER_CUT', vehicleId: 'v1' });
+    const decisions = await t.service.evaluate(['u1'], { category: 'ALERT', kind: 'POWER_CUT', subjectKey: 'v1' });
 
     expect(decisions.get('u1')).toMatchObject({ groupedCount: 1 });
   });
@@ -206,12 +208,15 @@ describe('NotificationThrottleService', () => {
     const rows = Array.from({ length: PUSH_MAX_PER_HOUR }, (_, i) => ({
       userId: 'u1',
       status: 'SENT',
-      alertId: `a${i}`,
+      category: 'ALERT',
       alertType: 'GEOFENCE_ENTER',
+      // Sujet different de la cible : ces lignes remplissent le PLAFOND (le telephone a
+      // vibre) sans ouvrir de cooldown sur le vehicule teste.
+      subjectKey: `autre-${i}`,
       createdAt: minutesAgo(55 - i),
     }));
     const t = await build({ rows, alertVehicles: {} });
-    const decisions = await t.service.evaluate(['u1'], { alertType: 'POWER_CUT', vehicleId: 'v1' });
+    const decisions = await t.service.evaluate(['u1'], { category: 'ALERT', kind: 'POWER_CUT', subjectKey: 'v1' });
 
     expect(decisions.get('u1')).toMatchObject({ allowed: false, reason: 'hourly_cap' });
   });
@@ -220,12 +225,15 @@ describe('NotificationThrottleService', () => {
     const rows = Array.from({ length: PUSH_MAX_PER_HOUR - 1 }, (_, i) => ({
       userId: 'u1',
       status: 'SENT',
-      alertId: `a${i}`,
+      category: 'ALERT',
       alertType: 'GEOFENCE_ENTER',
+      // Sujet different de la cible : ces lignes remplissent le PLAFOND (le telephone a
+      // vibre) sans ouvrir de cooldown sur le vehicule teste.
+      subjectKey: `autre-${i}`,
       createdAt: minutesAgo(55 - i),
     }));
     const t = await build({ rows, alertVehicles: {} });
-    const decisions = await t.service.evaluate(['u1'], { alertType: 'POWER_CUT', vehicleId: 'v1' });
+    const decisions = await t.service.evaluate(['u1'], { category: 'ALERT', kind: 'POWER_CUT', subjectKey: 'v1' });
 
     expect(decisions.get('u1')).toMatchObject({ allowed: true });
   });
@@ -236,25 +244,26 @@ describe('NotificationThrottleService', () => {
       const rows = Array.from({ length: PUSH_MAX_PER_HOUR + 8 }, (_, i) => ({
         userId: 'u1',
         status: 'SENT',
-        alertId: `a${i}`,
+        category: 'ALERT',
         alertType: 'OVERSPEED',
+        subjectKey: `autre-${i}`,
         createdAt: minutesAgo(55 - i),
       }));
       const t = await build({ rows, alertVehicles: {} });
-      const decisions = await t.service.evaluate(['u1'], { alertType, vehicleId: 'v1' });
+      const decisions = await t.service.evaluate(['u1'], { category: 'ALERT', kind: alertType, subjectKey: 'v1' });
 
       expect(decisions.get('u1')).toMatchObject({ allowed: true });
     },
   );
 
-  it('une ligne sans alertId (push de test) consomme le plafond mais n ouvre aucun cooldown', async () => {
+  it('une ligne SANS sujet (push de test) consomme le plafond mais n ouvre aucun cooldown', async () => {
     // Un push de test ou une notification hors alerte a bien fait vibrer le telephone :
-    // il compte. Mais il ne se rattache a aucun vehicule, donc il ne peut pas rendre
-    // muette une alerte reelle.
+    // il compte. Mais il ne porte aucun sujet, donc il ne peut pas rendre muette une
+    // alerte reelle sur un vehicule precis.
     const t = await build({
-      rows: [{ userId: 'u1', status: 'SENT', alertId: null, alertType: 'POWER_CUT', createdAt: minutesAgo(1) }],
+      rows: [{ userId: 'u1', status: 'SENT', category: 'ALERT', alertType: 'POWER_CUT', subjectKey: null, createdAt: minutesAgo(1) }],
     });
-    const decisions = await t.service.evaluate(['u1'], { alertType: 'POWER_CUT', vehicleId: 'v1' });
+    const decisions = await t.service.evaluate(['u1'], { category: 'ALERT', kind: 'POWER_CUT', subjectKey: 'v1' });
 
     expect(decisions.get('u1')).toMatchObject({ allowed: true });
     expect(t.alertFindMany).not.toHaveBeenCalled();
@@ -262,19 +271,21 @@ describe('NotificationThrottleService', () => {
 
   it('escalade — bypassCooldown ignore le cooldown mais PAS le plafond', async () => {
     const rows = [
-      { userId: 'u1', status: 'SENT', alertId: 'a-old', alertType: 'POWER_CUT', createdAt: minutesAgo(1) },
+      { userId: 'u1', status: 'SENT', category: 'ALERT', alertType: 'POWER_CUT', subjectKey: 'v1', createdAt: minutesAgo(1) },
       ...Array.from({ length: PUSH_MAX_PER_HOUR }, (_, i) => ({
         userId: 'u2',
         status: 'SENT',
-        alertId: `b${i}`,
+        category: 'ALERT',
         alertType: 'POWER_CUT',
+        subjectKey: `autre-${i}`,
         createdAt: minutesAgo(50 - i),
       })),
     ];
     const t = await build({ rows, alertVehicles: { 'a-old': 'v1' } });
     const decisions = await t.service.evaluate(['u1', 'u2'], {
-      alertType: 'POWER_CUT',
-      vehicleId: 'v1',
+      category: 'ALERT',
+      kind: 'POWER_CUT',
+      subjectKey: 'v1',
       bypassCooldown: true,
     });
 
@@ -286,12 +297,11 @@ describe('NotificationThrottleService', () => {
 
   it('alerte SANS vehicule — le cooldown se reduit a (utilisateur, type)', async () => {
     const t = await build({
-      rows: [{ userId: 'u1', status: 'SENT', alertId: 'a-old', alertType: 'MAINTENANCE_DUE', createdAt: minutesAgo(2) }],
+      rows: [{ userId: 'u1', status: 'SENT', category: 'ALERT', alertType: 'MAINTENANCE_DUE', subjectKey: null, createdAt: minutesAgo(2) }],
       alertVehicles: { 'a-old': null },
     });
-    const decisions = await t.service.evaluate(['u1'], { alertType: 'MAINTENANCE_DUE', vehicleId: null });
+    const decisions = await t.service.evaluate(['u1'], { category: 'ALERT', kind: 'MAINTENANCE_DUE', subjectKey: null });
 
-    expect(t.alertFindMany.mock.calls[0][0]?.where?.vehicleId).toBeNull();
     expect(decisions.get('u1')).toMatchObject({ allowed: false, reason: 'cooldown' });
   });
 
@@ -302,7 +312,7 @@ describe('NotificationThrottleService', () => {
     const t = await build({
       findManyImpl: jest.fn().mockRejectedValue(new Error('relation "notification_deliveries" does not exist')),
     });
-    const decisions = await t.service.evaluate(['u1', 'u2'], { alertType: 'POWER_CUT', vehicleId: 'v1' });
+    const decisions = await t.service.evaluate(['u1', 'u2'], { category: 'ALERT', kind: 'POWER_CUT', subjectKey: 'v1' });
 
     expect(decisions.get('u1')).toMatchObject({ allowed: true });
     expect(decisions.get('u2')).toMatchObject({ allowed: true });
@@ -310,14 +320,39 @@ describe('NotificationThrottleService', () => {
     expect(t.recordBackground).toHaveBeenCalled();
   });
 
-  it('qualification vehicule en panne — le cooldown est neutralise, pas inverse', async () => {
+  /**
+   * Remplace « qualification vehicule en panne ». Ce test verifiait le repli d'une 2e
+   * requete sur `alerts`, faite pour retrouver le vehicule d'une ligne de journal — le
+   * seul lien etant `alertId`. `subjectKey` a supprime ce detour, donc ce mode de panne
+   * n'existe plus. Ce qui compte desormais, c'est le CLOISONNEMENT PAR CATEGORIE.
+   */
+  it('le cooldown est cloisonne par CATEGORIE — un rappel d entretien ne fait pas taire une alerte', async () => {
     const t = await build({
-      rows: [{ userId: 'u1', status: 'SENT', alertId: 'a-old', alertType: 'POWER_CUT', createdAt: minutesAgo(1) }],
+      rows: [
+        // Meme utilisateur, meme sujet, mais categorie differente : ne doit RIEN replier.
+        { userId: 'u1', status: 'SENT', category: 'MAINTENANCE', alertType: null, subjectKey: 'v1', createdAt: minutesAgo(1) },
+      ],
     });
-    (t.alertFindMany as jest.Mock).mockRejectedValue(new Error('timeout'));
 
-    const decisions = await t.service.evaluate(['u1'], { alertType: 'POWER_CUT', vehicleId: 'v1' });
+    const decisions = await t.service.evaluate(['u1'], { category: 'ALERT', kind: 'POWER_CUT', subjectKey: 'v1' });
 
     expect(decisions.get('u1')).toMatchObject({ allowed: true });
+  });
+
+  it('une categorie NON-ALERT reste bornee par le plafond horaire (pas de contournement)', async () => {
+    // `bypassesRateLimit` ne vaut que pour les alertes vitales (SOS, accident...).
+    // Un rapport hebdomadaire n'a jamais cette urgence.
+    const t = await build({
+      // Sujets DISTINCTS : sinon le cooldown se declencherait avant le plafond et on
+      // testerait le mauvais garde-fou.
+      rows: Array.from({ length: PUSH_MAX_PER_HOUR }, (_, i) => ({
+        userId: 'u1', status: 'SENT', category: 'REPORT', alertType: null,
+        subjectKey: `rapport-${i}`, createdAt: minutesAgo(i + 1),
+      })),
+    });
+
+    const decisions = await t.service.evaluate(['u1'], { category: 'REPORT', kind: null, subjectKey: 'rapport-hebdo' });
+
+    expect(decisions.get('u1')).toMatchObject({ allowed: false, reason: 'hourly_cap' });
   });
 });

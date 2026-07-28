@@ -23,11 +23,25 @@ function kmPlan(over: Record<string, unknown> = {}) {
   };
 }
 
-function build(over: { plans?: unknown[]; nextDueAt?: Date | null; systemActivity?: unknown } = {}) {
+function build(
+  over: {
+    plans?: unknown[];
+    nextDueAt?: Date | null;
+    systemActivity?: unknown;
+    members?: Array<Record<string, unknown>>;
+  } = {},
+) {
   const prisma = {
     maintenancePlan: { findMany: jest.fn().mockResolvedValue(over.plans ?? [kmPlan()]) },
     vehicleEvent: { findFirst: jest.fn().mockResolvedValue(null), update: jest.fn().mockResolvedValue({}) },
-    user: { findMany: jest.fn().mockResolvedValue([{ id: 'admin-1' }]) },
+    // Un membre de flotte REEL porte un role et, eventuellement, une preference : c'est
+    // sur ces deux champs que le service decide qui est destinataire. Un fixture reduit a
+    // `{ id }` ferait passer le test sans jamais exercer cette decision.
+    user: {
+      findMany: jest.fn().mockResolvedValue(
+        over.members ?? [{ id: 'admin-1', role: 'FLEET_ADMIN', notificationPreference: null }],
+      ),
+    },
   };
   const plans = {
     materializePlannedEvent: jest.fn().mockResolvedValue(undefined),
@@ -39,17 +53,19 @@ function build(over: { plans?: unknown[]; nextDueAt?: Date | null; systemActivit
       nextDueKm: p.intervalKm && p.lastDoneKm != null ? p.lastDoneKm + p.intervalKm : null,
     })),
   };
-  const webPush = { sendToUser: jest.fn().mockResolvedValue({ sent: 1, failed: 0 }) };
+  // Le rappel ne parle plus a `WebPushService` : il passe par le SOCLE, qui applique
+  // les preferences, l'anti-spam et le journal. C'est le point de la bascule.
+  const dispatch = { notifyUsers: jest.fn().mockResolvedValue(1) };
   const systemActivity = (over.systemActivity as { record: jest.Mock }) ?? { record: jest.fn() };
   const errorLogger = { recordBackground: jest.fn() };
   const svc = new MaintenanceReminderService(
     prisma as never,
     plans as never,
-    webPush as never,
+    dispatch as never,
     systemActivity as never,
     errorLogger as never,
   );
-  return { svc, prisma, plans, webPush, systemActivity, errorLogger };
+  return { svc, prisma, plans, dispatch, systemActivity, errorLogger };
 }
 
 /** Entrées de journal « échéance km non évaluable » émises pendant le run. */
@@ -135,12 +151,71 @@ describe('MaintenanceReminderService — échéance km sur véhicule muet', () =
 
   it('non-régression : le rappel CALENDAIRE part toujours, même si le véhicule est dormant', async () => {
     const due = new Date(Date.now() + 5 * DAY_MS); // dans le préavis de 30 j
-    const { svc, webPush, prisma } = build({
+    const { svc, dispatch, prisma } = build({
       plans: [kmPlan({ intervalMonths: 12, lastDoneAt: new Date() })],
       nextDueAt: due,
     });
     await svc.run();
-    expect(webPush.sendToUser).toHaveBeenCalledTimes(1);
+    expect(dispatch.notifyUsers).toHaveBeenCalledTimes(1);
     expect(prisma.maintenancePlan.findMany).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * BASCULE SUR LE SOCLE GÉNÉRIQUE — ce que le rappel d'entretien gagne au passage.
+ *
+ * Avant : il appelait `WebPushService.sendToUser` en direct, sur une liste de destinataires
+ * codée en dur (`role: FLEET_ADMIN`). Conséquences constatées : impossible de le couper depuis
+ * les réglages, aucun garde-fou anti-spam, et RIEN dans le centre de notifications — un second
+ * chemin d'envoi, invisible. Ces tests fixent ce que la bascule doit préserver.
+ */
+describe('MaintenanceReminderService — passage par le socle générique', () => {
+  const dueSoon = { plans: [kmPlan({ intervalMonths: 12, lastDoneAt: new Date() })], nextDueAt: new Date(Date.now() + 5 * DAY_MS) };
+
+  it('adresse la notification au socle avec sa CATÉGORIE et son SUJET', async () => {
+    const { svc, dispatch } = build(dueSoon);
+    await svc.run();
+
+    const arg = dispatch.notifyUsers.mock.calls[0][0] as Record<string, unknown>;
+    expect(arg).toMatchObject({
+      category: 'MAINTENANCE',
+      // Le sujet est le VÉHICULE : deux plans du même véhicule se replient ensemble,
+      // deux véhicules différents ne se masquent pas l'un l'autre.
+      subjectKey: 'v1',
+      fleetId: 'f1',
+      userIds: ['admin-1'],
+    });
+    expect(String(arg.body)).toContain('FV-941-LZ');
+  });
+
+  it('⚠️ respecte « recevoir les alertes de la flotte » — le destinataire n’est plus codé en dur', async () => {
+    // Le membre est FLEET_ADMIN (donc destinataire par défaut) mais l'a explicitement
+    // refusé dans ses réglages. Avant la bascule, ce refus n'avait aucun effet ici.
+    const { svc, dispatch } = build({
+      ...dueSoon,
+      members: [{ id: 'admin-1', role: 'FLEET_ADMIN', notificationPreference: { receivesFleetAlerts: false } }],
+    });
+    await svc.run();
+    expect(dispatch.notifyUsers).not.toHaveBeenCalled();
+  });
+
+  it('un membre QUI A CHOISI de recevoir est notifié, même si son rôle ne le prévoyait pas', async () => {
+    // Symétrique du précédent : le réglage explicite l'emporte dans les DEUX sens.
+    // Un FLEET_MANAGER qui veut les échéances les reçoit — sans changer de rôle.
+    const { svc, dispatch } = build({
+      ...dueSoon,
+      members: [{ id: 'mgr-1', role: 'FLEET_MANAGER', notificationPreference: { receivesFleetAlerts: true } }],
+    });
+    await svc.run();
+    expect((dispatch.notifyUsers.mock.calls[0][0] as { userIds: string[] }).userIds).toEqual(['mgr-1']);
+  });
+
+  it('aucun destinataire : aucun appel au socle (et surtout aucun envoi à la cantonade)', async () => {
+    const { svc, dispatch } = build({
+      ...dueSoon,
+      members: [{ id: 'viewer-1', role: 'VIEWER', notificationPreference: null }],
+    });
+    await svc.run();
+    expect(dispatch.notifyUsers).not.toHaveBeenCalled();
   });
 });

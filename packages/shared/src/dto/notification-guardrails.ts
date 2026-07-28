@@ -83,6 +83,12 @@ export type SuppressionReason =
   | 'rollout'
   | 'preference_disabled'
   | 'preference_type_muted'
+  /**
+   * FAMILLE coupée (entretien, rapports…). Distinct de `preference_type_muted` : ce n'est
+   * pas le même réglage, et les confondre enverrait l'administrateur chercher un type
+   * d'alerte coupé alors que c'est une famille entière qui l'est.
+   */
+  | 'preference_category_muted'
   | 'preference_severity'
   | 'cooldown'
   | 'hourly_cap'
@@ -93,6 +99,7 @@ export const SUPPRESSION_LABELS: Record<SuppressionReason, string> = {
   rollout: 'Push non ouvert à ce rôle',
   preference_disabled: 'Notifications désactivées par l’utilisateur',
   preference_type_muted: 'Ce type est coupé dans ses réglages',
+  preference_category_muted: 'Cette famille est coupée dans ses réglages',
   preference_severity: 'Sous le seuil de sévérité choisi',
   cooldown: 'Regroupée — même alerte trop récente',
   hourly_cap: 'Plafond horaire atteint',
