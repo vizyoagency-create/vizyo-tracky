@@ -376,37 +376,40 @@ export class ScheduleCronService {
   }
 
   /**
-   * Signale UNE FOIS qu'un planning porte sur un véhicule dormant — puis se tait.
+   * Trace la suspension dans les LOGS DU CONTENEUR — et nulle part ailleurs.
    *
-   * C'est une information d'exploitation réelle (« ce planning ne s'appliquera pas »),
-   * mais elle est STABLE : la répéter toutes les 3 h, comme le faisait l'alerte de
-   * blocage, produirait exactement le bruit qu'on supprime. Ré-alerte hebdomadaire
-   * pour qu'un parc oublié finisse quand même par se rappeler à l'exploitant.
+   * ⚠️ N'ÉCRIT PLUS au centre d'alerte, et ce retrait est le correctif d'un vrai incident.
+   *
+   * Version précédente : une ligne ERROR au centre d'alerte, « une fois puis silence 7 j ».
+   * Deux fautes de conception cumulées, constatées en production le 2026-07-28 (12 lignes
+   * pour 2 véhicules en une soirée) :
+   *
+   *  1. L'anti-répétition était EN MÉMOIRE, pour un état qui dure des MOIS. Chaque
+   *     redémarrage d'API la remettait à zéro — six déploiements dans la soirée, plus
+   *     chaque smoke-boot jetable qui exécute un tick de cron avant de mourir. « Une fois
+   *     par semaine » est devenu « deux lignes par redémarrage ».
+   *  2. C'était classé ERREUR. Un planning suspendu sur un boîtier mort depuis 90 jours
+   *     n'est pas une faute : c'est un ÉTAT stable, connu, et déjà exposé là où il est
+   *     actionnable — `fleet-schedules.service` rend `presence: 'DORMANT'` par véhicule
+   *     et compte les plannings concernés (`scheduledDormantCount`). Le centre d'alerte
+   *     doit contenir des FAUTES, pas des états ; le dupliquer ici n'ajoutait rien et
+   *     noyait les vraies erreurs.
+   *
+   * Leçon générale : un état stable se LIT (page dédiée), il ne se NOTIFIE pas en boucle.
+   * Et un anti-répétition qui doit survivre plus longtemps qu'un processus n'a pas sa
+   * place en mémoire.
    */
   private reportDormant(schedule: ScheduleWithVehicle, lastSeenAt: Date | null): void {
     const vid = schedule.vehicleId;
     const now = Date.now();
     const last = this.lastDormantAlertAt.get(vid) ?? 0;
+    // Palier purement local aux logs : ils rotent, et personne ne les surveille en continu.
     if (now - last < DORMANT_REALERT_MS) return;
     this.lastDormantAlertAt.set(vid, now);
-    const who = schedule.vehicle.plate ? `${schedule.vehicle.plate} ` : '';
-    const depuis = formatSilenceLabel(lastSeenAt) ?? 'toujours';
-    this.errorLogger
-      .record(
-        new Error(
-          `Automatisation horaire suspendue sur ${who}: boîtier muet depuis ${depuis}. ` +
-            `Le planning reprendra tout seul dès que le boîtier réémettra.`,
-        ),
-        'schedule-cron',
-        {
-          vehicleId: vid,
-          plate: schedule.vehicle.plate ?? null,
-          fleetId: schedule.vehicle.fleetId,
-          silenceLabel: depuis,
-          phase: 'dormant-schedule-suspended',
-        },
-      )
-      .catch(() => { /* best-effort */ });
+    this.logger.log(
+      { vehicleId: vid, plate: schedule.vehicle.plate ?? null, silence: formatSilenceLabel(lastSeenAt) ?? 'toujours' },
+      'Automatisation horaire suspendue (boîtier muet) — visible sur la page Horaires, pas au centre d\'alerte',
+    );
   }
 
   /**
