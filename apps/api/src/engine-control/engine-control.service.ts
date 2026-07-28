@@ -8,10 +8,11 @@ import {
   OnModuleDestroy,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { CommandStatus, EngineAction, Prisma, UserRole } from '@prisma/client';
+import { CommandStatus, EngineAction, GpsDeadZoneStatus, Prisma, UserRole } from '@prisma/client';
 import type { EngineControlCommand } from '@prisma/client';
 import type { CobanCommand } from '@vizyo/tracky-shared';
 import { DORMANT_STOP_ACTING_MS, encodeCommand, formatSilenceLabel, trackerSilenceMs } from '@vizyo/tracky-shared';
+import { GpsDeadZonesService } from '../gps-dead-zones/gps-dead-zones.service';
 import { CobanWireLogger } from '../observability/coban-wire-logger.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { resolveTenantScope } from '../common/tenant-scope';
@@ -102,6 +103,7 @@ export class EngineControlService implements OnModuleDestroy {
     private readonly gateway: RealtimeGateway,
     private readonly errorLogger: ErrorLogger,
     private readonly sms: SmsGatewayService,
+    private readonly deadZones: GpsDeadZonesService,
     private readonly systemActivity: SystemActivityService,
   ) {}
 
@@ -620,6 +622,29 @@ export class EngineControlService implements OnModuleDestroy {
       ? 'Coupure moteur invérifiable : aucune position reçue depuis l\'envoi (boîtier sans fix GPS) — état réel du moteur inconnu'
       : 'Coupure moteur non confirmée (pas de chute ignition dans la fenêtre)';
     this.logger.warn({ commandId, imei, trackerId: cmd.trackerId, wentSilent }, message);
+
+    // ── Perte de signal EXPLIQUÉE : on se tait ────────────────────────────────────
+    // Un véhicule garé dans un parking souterrain n'a pas de fix GPS — c'est NORMAL, et
+    // ça dure tant qu'il est garé. Répéter chaque soir « coupure invérifiable » pour un
+    // fait connu et sans action possible, c'est le même travers que l'alerte de dormance
+    // qu'on vient de retirer : un état stable ne se notifie pas en boucle.
+    //
+    // L'application sait déjà reconnaître ces endroits — `GpsDeadZone` avec le statut
+    // CONFIRMED_BENIGN, qualifié par un opérateur, qui fait déjà taire le détecteur
+    // « GPS perdu ». Cette sentinelle l'ignorait : confirmer une zone silenciait un canal
+    // sur deux, et l'exploitant continuait de voir passer l'autre sans comprendre pourquoi.
+    // Une seule confirmation doit produire un effet cohérent partout.
+    //
+    // Volontairement limité à `wentSilent` : si le boîtier PARLE et qu'on n'observe
+    // simplement pas de chute d'ignition, la zone n'explique rien — l'alerte reste due.
+    if (wentSilent && (await this.isInBenignDeadZone(cmd.trackerId))) {
+      this.logger.log(
+        { commandId, imei, trackerId: cmd.trackerId },
+        'Coupure invérifiable NON remontée : le véhicule est dans une zone sans GPS confirmée (parking couvert)',
+      );
+      return;
+    }
+
     this.errorLogger
       .record(message, 'engine-control', {
         commandId,
@@ -629,6 +654,32 @@ export class EngineControlService implements OnModuleDestroy {
         framesSinceSend,
       })
       .catch((e) => this.logger.error('ErrorLogger persist failed', e));
+  }
+
+  /**
+   * La dernière position connue du véhicule tombe-t-elle dans une zone sans GPS déclarée
+   * BÉNIGNE par un opérateur (parking couvert habituel) ?
+   *
+   * Best-effort et FAIL-OPEN : si la question ne peut pas être tranchée (pas de position
+   * connue, service indisponible), on répond `false` et l'alerte part. Mieux vaut une
+   * alerte de trop qu'une coupure invérifiable passée sous silence par accident.
+   */
+  private async isInBenignDeadZone(trackerId: string): Promise<boolean> {
+    try {
+      const tracker = await this.prisma.tracker.findUnique({
+        where: { id: trackerId },
+        select: { vehicleId: true, lastLat: true, lastLng: true },
+      });
+      if (!tracker?.vehicleId || tracker.lastLat == null || tracker.lastLng == null) return false;
+      const zone = await this.deadZones.matchZoneForPoint(
+        tracker.vehicleId,
+        tracker.lastLat,
+        tracker.lastLng,
+      );
+      return zone?.status === GpsDeadZoneStatus.CONFIRMED_BENIGN;
+    } catch {
+      return false;
+    }
   }
 
   private emitUpdate(command: EngineControlCommand, fleetId: string): void {

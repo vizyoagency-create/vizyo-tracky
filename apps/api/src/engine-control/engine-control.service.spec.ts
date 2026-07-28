@@ -13,6 +13,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SocketRegistryService } from '../socket-registry/socket-registry.service';
 import { AckWaiterService } from '../tracker-commands/ack-waiter.service';
+import { GpsDeadZonesService } from '../gps-dead-zones/gps-dead-zones.service';
 import { SmsGatewayService } from '../sms/sms-gateway.service';
 import { EngineControlService } from './engine-control.service';
 import { SystemActivityService } from '../system-activity/system-activity.service';
@@ -127,7 +128,7 @@ describe('EngineControlService', () => {
   // au lieu d'un check after-find.
   let prisma: {
     tracker: { findUnique: jest.Mock; findFirst: jest.Mock };
-    position: { findFirst: jest.Mock };
+    position: { findFirst: jest.Mock; count: jest.Mock };
     engineControlCommand: { create: jest.Mock; update: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock; findFirst: jest.Mock };
     vehicleSchedule: { updateMany: jest.Mock; findFirst: jest.Mock };
   };
@@ -139,7 +140,7 @@ describe('EngineControlService', () => {
   beforeEach(async () => {
     prisma = {
       tracker: { findUnique: jest.fn(), findFirst: jest.fn() },
-      position: { findFirst: jest.fn() },
+      position: { findFirst: jest.fn(), count: jest.fn().mockResolvedValue(1) },
       engineControlCommand: {
         create: jest.fn().mockImplementation(({ data }) => Promise.resolve(createdCommand(data))),
         update: jest.fn().mockImplementation(({ data }) => Promise.resolve(createdCommand(data))),
@@ -182,6 +183,10 @@ describe('EngineControlService', () => {
         // V1.5 sprint-i) mais le provider manquait → toute la suite ne compilait pas.
         // isEnabled=false : trySmsFallback reste un no-op, on garde le chemin offline→FAILED.
         { provide: SmsGatewayService, useValue: { isEnabled: jest.fn().mockReturnValue(false), send: jest.fn() } },
+        // Zones mortes GPS : par defaut AUCUNE zone -> la sentinelle « coupure
+        // inverifiable » remonte normalement. Les tests qui veulent l'inverse
+        // surchargent matchZoneForPoint.
+        { provide: GpsDeadZonesService, useValue: { matchZoneForPoint: jest.fn().mockResolvedValue(null) } },
         { provide: SystemActivityService, useValue: { record: jest.fn() } },
       ],
     }).compile();
@@ -482,6 +487,67 @@ describe('EngineControlService', () => {
     await service.requestCommand(TRACKER_ID, EngineAction.CUT, null, superAdmin, 'SCHEDULER');
 
     expect(registry.send).toHaveBeenCalled();
+  });
+
+
+  /**
+   * ZONE SANS GPS CONFIRMEE — un vehicule gare dans un parking souterrain n'a pas de fix,
+   * c'est NORMAL et ca dure tant qu'il est gare. Repeter chaque soir « coupure inverifiable »
+   * pour un fait connu et sans action possible, c'est le meme travers que l'alerte de dormance
+   * retiree la veille : un etat stable ne se notifie pas en boucle.
+   *
+   * Cas reel (2026-07-28, FS-253-HR) : boitier vivant en TCP, sans fix GPS depuis le 22/07,
+   * gare dans un parking couvert. L'application savait deja reconnaitre ces endroits
+   * (GpsDeadZone CONFIRMED_BENIGN, qui fait taire le detecteur « GPS perdu ») mais cette
+   * sentinelle l'ignorait : confirmer une zone silenciait UN canal sur DEUX.
+   */
+  describe('sentinelle de coupure — zone sans GPS confirmee', () => {
+    function armeSentinelle(zone: unknown) {
+      const deadZones = testModule.get(GpsDeadZonesService) as unknown as { matchZoneForPoint: jest.Mock };
+      deadZones.matchZoneForPoint.mockResolvedValue(zone);
+      prisma.engineControlCommand.findUnique.mockResolvedValue({
+        status: CommandStatus.SENT, ackedAt: null, trackerId: TRACKER_ID,
+        sentAt: new Date(Date.now() - 90_000),
+      });
+      prisma.position.count.mockResolvedValue(0); // boitier muet depuis l'envoi
+      prisma.tracker.findUnique.mockResolvedValue({
+        vehicleId: VEHICLE_ID, lastLat: 43.6127, lastLng: 1.4507,
+      });
+      return (service as unknown as { reportIfUnconfirmed: (id: string, imei: string) => Promise<void> });
+    }
+
+    it('NE remonte PAS quand la derniere position est dans une zone confirmee benigne', async () => {
+      const svc = armeSentinelle({ status: 'CONFIRMED_BENIGN' });
+      await svc.reportIfUnconfirmed('cmd-1', '123456789012345');
+      expect(errorLogger.record).not.toHaveBeenCalled();
+    });
+
+    it('REMONTE quand la zone est seulement SUSPECTE (brouilleur possible)', async () => {
+      const svc = armeSentinelle({ status: 'SUSPECT' });
+      await svc.reportIfUnconfirmed('cmd-2', '123456789012345');
+      expect(errorLogger.record).toHaveBeenCalled();
+    });
+
+    it('REMONTE quand aucune zone ne correspond', async () => {
+      const svc = armeSentinelle(null);
+      await svc.reportIfUnconfirmed('cmd-3', '123456789012345');
+      expect(errorLogger.record).toHaveBeenCalled();
+    });
+
+    it('⚠️ REMONTE si le boitier PARLE : la zone n explique alors rien', async () => {
+      const svc = armeSentinelle({ status: 'CONFIRMED_BENIGN' });
+      prisma.position.count.mockResolvedValue(3); // des trames sont arrivees
+      await svc.reportIfUnconfirmed('cmd-4', '123456789012345');
+      expect(errorLogger.record).toHaveBeenCalled();
+    });
+
+    it('FAIL-OPEN : une panne de lookup ne doit pas avaler l alerte', async () => {
+      const svc = armeSentinelle({ status: 'CONFIRMED_BENIGN' });
+      const deadZones = testModule.get(GpsDeadZonesService) as unknown as { matchZoneForPoint: jest.Mock };
+      deadZones.matchZoneForPoint.mockRejectedValue(new Error('service indisponible'));
+      await svc.reportIfUnconfirmed('cmd-5', '123456789012345');
+      expect(errorLogger.record).toHaveBeenCalled();
+    });
   });
 
   // 10. CUT ACCEPTÉ + dispatch réussi si tracker connecté
