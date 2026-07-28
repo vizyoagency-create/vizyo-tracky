@@ -386,6 +386,19 @@ export const routes: Routes = [
         data: { title: 'Activité utilisateurs' },
       },
       {
+        // Centre de notifications — ce qui est parti, ce qui a été RETENU (avec son motif),
+        // et à qui. Né du push d'alerte resté mort des mois sans que personne ne le voie,
+        // faute d'un écran où le constater. SUPER_ADMIN uniquement (données cross-flotte).
+        path: 'admin/notifications',
+        pathMatch: 'full',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/observability/admin-notifications.component').then(
+            (m) => m.AdminNotificationsComponent,
+          ),
+        data: { title: 'Centre de notifications' },
+      },
+      {
         // Observabilité du trafic API public (LP / Maestroo / API / Webhook) + intelligence IP
         // (connues vs inconnues, détection de scan/bot). SUPER_ADMIN.
         path: 'admin/api-traffic',

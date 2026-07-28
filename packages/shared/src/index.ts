@@ -3,6 +3,8 @@ export * from './dto/tracker.dto';
 export * from './dto/position.dto';
 export * from './dto/alert.dto';
 export * from './dto/notification-preference.dto';
+export * from './dto/notification-guardrails';
+export * from './dto/notification-center.dto';
 export * from './dto/geofence.dto';
 export * from './dto/trip.dto';
 export * from './dto/driver.dto';

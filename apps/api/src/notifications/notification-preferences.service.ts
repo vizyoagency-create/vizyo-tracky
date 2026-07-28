@@ -6,7 +6,12 @@ import {
   UserRole,
 } from '@prisma/client';
 import type { AlertSeverity, AlertType, NotificationPreferenceDto, UpdateNotificationPreferenceDto } from '@vizyo/tracky-shared';
-import { DEFAULT_MIN_SEVERITY, SEVERITY_ORDER, shouldPushAlert } from '@vizyo/tracky-shared';
+import {
+  DEFAULT_MIN_SEVERITY,
+  DEFAULT_MUTED_TYPES,
+  SEVERITY_ORDER,
+  shouldPushAlert,
+} from '@vizyo/tracky-shared';
 import type { Env } from '../config/env.validation';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -20,9 +25,11 @@ import { PrismaService } from '../prisma/prisma.service';
  *
  * Trois principes qui expliquent chaque décision ci-dessous :
  *
- *   1. L'absence de réglage n'est JAMAIS le silence. Un utilisateur qui n'a jamais ouvert
- *      l'écran des préférences doit quand même recevoir les alertes graves. Le bug qu'on
- *      répare venait justement d'un aiguillage qui « ne trouvait rien » et n'envoyait rien.
+ *   1. L'absence de réglage n'est JAMAIS le silence — mais ce n'est pas non plus « tout ».
+ *      Un utilisateur qui n'a jamais ouvert l'écran des préférences doit recevoir les
+ *      alertes utiles ET ne pas recevoir les deux sources de bruit mesurées (POWER_CUT et
+ *      OVERSPEED, 494 notifications par jour à elles deux). Le défaut est donc CALIBRÉ sur
+ *      des chiffres, pas choisi au jugé : voir `DEFAULT_PUSH_PREFERENCE` et son calcul.
  *
  *   2. Le défaut du périmètre est RESTREINT (`PUSH_ROLLOUT=SUPER_ADMIN_ONLY`). Une variable
  *      d'environnement absente ou mal orthographiée ne doit jamais AJOUTER de destinataires :
@@ -123,12 +130,107 @@ export function isPushRoleEligible(role: UserRole | string, rollout: string | un
   return role === UserRole.SUPER_ADMIN;
 }
 
-/** Préférence appliquée tant que l'utilisateur n'a rien enregistré. */
-const DEFAULT_PREFERENCE = {
+/**
+ * ════════════════════════════════════════════════════════════════════════════════
+ * PRÉFÉRENCE PAR DÉFAUT — appliquée tant que l'utilisateur n'a JAMAIS rien enregistré.
+ * ════════════════════════════════════════════════════════════════════════════════
+ *
+ * Le couple (seuil, types coupés) n'est pas une préférence de goût : il est CALCULÉ sur
+ * les volumes réels mesurés en production le 2026-07-27, sur 30 jours glissants.
+ *
+ *   POWER_CUT    CRITICAL   9 903  →  330   / jour
+ *   OVERSPEED    WARNING    4 933  →  164   / jour
+ *   GEOFENCE_*   WARNING       54  →    1,8 / jour
+ *   GPS_LOST     WARNING       14  →    0,5 / jour
+ *   LOW_BATTERY  WARNING        4  →  ~4    par AN
+ *   SOS          CRITICAL       3  →  ~3    par AN
+ *
+ * ─── Le calcul du défaut retenu : seuil `warning` + coupure de POWER_CUT et OVERSPEED ───
+ *
+ *   POWER_CUT    330   /j  →  0      (coupé PAR TYPE)
+ *   OVERSPEED    164   /j  →  0      (coupé PAR TYPE)
+ *   GEOFENCE_*     1,8 /j  →  1,8    (WARNING, passe le seuil)
+ *   GPS_LOST       0,5 /j  →  0,5    (WARNING, passe le seuil)
+ *   LOW_BATTERY    4/an    →  0,01   (WARNING, passe le seuil)
+ *   SOS            3/an    →  0,01   (CRITICAL, passe le seuil)
+ *   freinage / accélération / virage brusque, vibration, arrêt prolongé (INFO)
+ *                          →  0      (retenus par le seuil)
+ *   ────────────────────────────────────────────────────────────────────────────
+ *   TOTAL                  ≈  2,3 notifications par jour, pour tout le parc.
+ *
+ * Soit deux ou trois vibrations par jour : on peut vivre avec, donc on ne coupe pas tout
+ * au bout d'une semaine.
+ *
+ * ─── Pourquoi PAS les trois autres couples envisagés ───
+ *
+ * 1. `critical` + rien coupé (L'ANCIEN DÉFAUT) = 330 notifications / jour. POWER_CUT est
+ *    classé CRITICAL : le réglage qui a l'air le plus prudent est en réalité le PIRE.
+ *    C'est l'enseignement central de la mesure — la sévérité seule ne protège de rien.
+ *
+ * 2. `critical` + POWER_CUT/OVERSPEED coupés ≈ 0 notification / jour… mais LOW_BATTERY est
+ *    une WARNING : elle ne passerait JAMAIS. Or c'est précisément ce que l'utilisateur veut
+ *    pouvoir vérifier. Il testerait « batterie faible », ne recevrait rien, et conclurait
+ *    que le push est encore cassé. On remplacerait un silence par un autre silence.
+ *
+ * 3. `warning` + rien coupé = 496 / jour. Le seuil abaissé SANS coupure par type est le
+ *    piège inverse : l'utilisateur qui élargit se fait ensevelir.
+ *
+ * 4. `info` + POWER_CUT/OVERSPEED coupés : ouvrirait les alertes de conduite (freinage,
+ *    accélération, virage). Aucune n'a été comptée sur 30 jours, donc leur volume est
+ *    INCONNU — et un volume inconnu n'a rien à faire dans un défaut.
+ *
+ * ⚠️ Ce défaut ne s'applique QU'À L'ABSENCE DE LIGNE. Un utilisateur qui possède une ligne
+ * avec `mutedTypes: []` a explicitement TOUT rallumé : lui superposer ces coupures
+ * reviendrait à défaire son choix en silence, exactement le comportement qu'on répare.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════
+ * ⚠️⚠️ INVARIANT INTER-SERVICES — à vérifier avant toute modification de ce bloc.
+ *
+ * Ce défaut décide de ce que l'ÉCRAN affiche et annonce (`GET /notifications/preferences`
+ * remonte ces valeurs avec `isDefault=true`, et la PWA en déduit « voici ce que vous
+ * recevrez »). Ce n'est PAS lui qui décide de l'envoi : la porte réelle est
+ * `NotificationDispatchService#checkPushPreference`, qui applique son propre défaut pour
+ * un utilisateur sans ligne.
+ *
+ * Les deux DOIVENT donc rester identiques, et la seule façon sûre est que le dispatch
+ * consomme `defaultPushPreference()` exporté ici plutôt que d'en garder une copie. Sinon
+ * l'écart ne casse aucun test — il produit simplement un écran qui promet une livraison
+ * que le serveur refuse, c'est-à-dire le bug d'origine remis dans l'autre sens.
+ * ══════════════════════════════════════════════════════════════════════════════════
+ */
+export const DEFAULT_PUSH_PREFERENCE = {
   pushEnabled: true,
-  minSeverity: DEFAULT_MIN_SEVERITY,
-  mutedTypes: [] as AlertType[],
+  /**
+   * ⚠️ Volontairement `warning`, et non `DEFAULT_MIN_SEVERITY` (= `critical`) du contrat
+   * partagé. Les deux constantes répondent à des questions différentes :
+   *   - `DEFAULT_MIN_SEVERITY` est un REPLI PRUDENT de conversion, pour une valeur d'enum
+   *     inconnue (cf. `toSharedSeverity`) : là, `critical` veut dire « le moins de push ».
+   *   - ici c'est un CHOIX PRODUIT calibré sur les volumes ci-dessus : `critical` seul
+   *     laisserait passer POWER_CUT (330/j) et bloquerait LOW_BATTERY (4/an).
+   * Les aligner « pour faire propre » casserait l'un des deux.
+   */
+  minSeverity: 'warning' as AlertSeverity,
+  mutedTypes: DEFAULT_MUTED_TYPES,
 } as const;
+
+/**
+ * Copie FRAÎCHE et mutable du défaut.
+ *
+ * `DEFAULT_MUTED_TYPES` est un tableau partagé par tout le processus : le renvoyer tel quel
+ * dans un DTO exposerait la constante à une mutation accidentelle d'un appelant (un `.push()`
+ * quelque part et tous les utilisateurs sans réglage héritent d'une coupure de plus).
+ */
+export function defaultPushPreference(): {
+  pushEnabled: boolean;
+  minSeverity: AlertSeverity;
+  mutedTypes: AlertType[];
+} {
+  return {
+    pushEnabled: DEFAULT_PUSH_PREFERENCE.pushEnabled,
+    minSeverity: DEFAULT_PUSH_PREFERENCE.minSeverity,
+    mutedTypes: [...DEFAULT_PUSH_PREFERENCE.mutedTypes],
+  };
+}
 
 /** Forme minimale d'un destinataire candidat, telle que le dispatch la possède déjà. */
 export interface PushCandidate {
@@ -151,9 +253,16 @@ export class NotificationPreferencesService {
   /**
    * Préférences de l'utilisateur courant, prêtes à afficher.
    *
-   * Renvoie TOUJOURS une préférence exploitable : sans ligne en base, le défaut utile
-   * (`critical` seulement) est retourné avec `isDefault=true`, pour que l'écran puisse
-   * expliquer « voici ce qui s'applique » au lieu de présenter un choix jamais fait.
+   * Renvoie TOUJOURS une préférence exploitable : sans ligne en base, le défaut calibré
+   * (cf. `DEFAULT_PUSH_PREFERENCE` — seuil `warning`, POWER_CUT et OVERSPEED coupés) est
+   * retourné TEL QUEL avec `isDefault=true`, pour que l'écran puisse expliquer « voici ce
+   * qui s'applique » au lieu de présenter un choix jamais fait.
+   *
+   * Le DTO expose donc de vraies coupures que l'utilisateur n'a pas posées lui-même. C'est
+   * assumé, et c'est la raison pour laquelle `isDefault` reste vrai : l'écran s'en sert pour
+   * dire QUI a coupé quoi, et affiche à côté de chaque type coupé par défaut la fréquence
+   * mesurée qui l'a motivé. Un défaut expliqué se rallume en un geste ; un défaut caché est
+   * exactement le silence qu'on vient de réparer.
    */
   async get(userId: string, role: UserRole | string): Promise<NotificationPreferenceDto> {
     const [row, deviceCount] = await Promise.all([
@@ -164,12 +273,16 @@ export class NotificationPreferencesService {
     const eligible = isPushRoleEligible(role, this.rollout());
 
     if (!row) {
-      return { ...DEFAULT_PREFERENCE, mutedTypes: [], isDefault: true, eligible, deviceCount };
+      return { ...defaultPushPreference(), isDefault: true, eligible, deviceCount };
     }
 
     return {
       pushEnabled: row.pushEnabled,
       minSeverity: toSharedSeverity(row.minSeverity),
+      // ⚠️ AUCUNE fusion avec le défaut ici, et c'est délibéré : une ligne existante dont
+      // `mutedTypes` est vide signifie « j'ai TOUT rallumé, y compris les coupures par
+      // défaut ». Ajouter POWER_CUT/OVERSPEED par-dessus annulerait ce choix sans le dire.
+      //
       // `mutedTypes` est stocké en texte (et non en enum[]) pour qu'un type retiré du code
       // ne casse pas la lecture des lignes existantes — on filtre donc ici les valeurs
       // devenues inconnues plutôt que de les propager à l'UI.
@@ -205,13 +318,22 @@ export class NotificationPreferencesService {
 
     // Upsert : première écriture = création de la ligne avec les défauts pour les champs
     // non fournis ; écritures suivantes = mise à jour des seuls champs fournis.
+    //
+    // ⚠️ À LA CRÉATION, `mutedTypes` non fourni vaut le DÉFAUT, jamais `[]`. Le scénario
+    // qui l'impose : l'utilisateur sans ligne voit l'écran afficher « alimentation coupée »
+    // et « excès de vitesse » coupés par défaut, puis il touche uniquement au seuil de
+    // gravité. Le corps envoyé ne contient alors que `minSeverity`. Avec `[]`, la ligne
+    // créée RALLUMERAIT POWER_CUT (330 notifications/jour) sans qu'il l'ait demandé — un
+    // réglage qui produit l'inverse de ce que l'écran montrait juste avant. On matérialise
+    // donc ce qui était affiché.
+    const defaults = defaultPushPreference();
     await this.prisma.notificationPreference.upsert({
       where: { userId },
       create: {
         userId,
-        pushEnabled: clean.pushEnabled ?? DEFAULT_PREFERENCE.pushEnabled,
-        minSeverity: toPrismaSeverity(clean.minSeverity ?? DEFAULT_PREFERENCE.minSeverity),
-        mutedTypes: clean.mutedTypes ?? [],
+        pushEnabled: clean.pushEnabled ?? defaults.pushEnabled,
+        minSeverity: toPrismaSeverity(clean.minSeverity ?? defaults.minSeverity),
+        mutedTypes: clean.mutedTypes ?? defaults.mutedTypes,
       },
       update: {
         ...(clean.pushEnabled !== undefined ? { pushEnabled: clean.pushEnabled } : {}),
@@ -280,13 +402,18 @@ export class NotificationPreferencesService {
         // ⚠️ Le cœur du bug d'origine : SANS ligne de préférence, on applique le défaut
         // UTILE — pas le silence. Les quatre SUPER_ADMIN de production n'ont aucune ligne ;
         // s'ils étaient écartés ici, on aurait « réparé » le push sans qu'il parte jamais.
+        //
+        // Et « utile » ne veut pas dire « tout » : ce même défaut coupe POWER_CUT et
+        // OVERSPEED, faute de quoi ces quatre comptes recevraient les 494 notifications
+        // quotidiennes mesurées. La lecture est la même que dans `get()` — un utilisateur
+        // AVEC une ligne garde ses choix intacts, défaut compris s'il l'a rallumé.
         const pref = row
           ? {
               pushEnabled: row.pushEnabled,
               minSeverity: toSharedSeverity(row.minSeverity),
               mutedTypes: row.mutedTypes.filter((t) => KNOWN_ALERT_TYPES.has(t)) as AlertType[],
             }
-          : { ...DEFAULT_PREFERENCE, mutedTypes: [] as AlertType[] };
+          : defaultPushPreference();
         // Décision déléguée au contrat partagé : l'API filtre et la PWA annonce
         // « vous recevrez ceci » avec exactement la même règle.
         return shouldPushAlert(pref, normalized);

@@ -2,7 +2,7 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
   LucideAngularModule, AlertTriangle, Activity, Terminal, MessageSquare,
-  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints, Ear, Mail, CalendarClock, Bot, Globe,
+  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints, Ear, Mail, CalendarClock, Bot, Globe, BellRing,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { AdminFixModeService, type AdminAlertSummary } from '../../core/services/admin-fix-mode.service';
@@ -319,6 +319,19 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
           </div>
         </a>
 
+        <!-- ── CENTRE DE NOTIFICATIONS (wide) ── -->
+        <a routerLink="/admin/notifications" class="card card-wide" style="--i:16">
+          <span class="accent accent-green"></span>
+          <div class="body body-row">
+            <div class="ico ico-green"><lucide-icon [img]="BellRing" [size]="20"></lucide-icon></div>
+            <div class="body-text">
+              <h3>Centre de notifications</h3>
+              <p class="desc">Toutes les notifications, envoyées comme retenues : qui l'a reçue, quand, sur combien d'appareils — et pour celles qui ne sont pas parties, POURQUOI. Santé du push en un coup d'œil (clés, périmètre, comptes sans appareil).</p>
+            </div>
+            <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
+          </div>
+        </a>
+
         <!-- ── TRAFIC API & SOURCES (wide) ── -->
         <a routerLink="/admin/api-traffic" class="card card-wide" style="--i:16">
           <span class="accent accent-cyan"></span>
@@ -552,6 +565,7 @@ export class AdminHubComponent implements OnInit {
   protected readonly Mail = Mail;
   protected readonly Bot = Bot;
   protected readonly Globe = Globe;
+  protected readonly BellRing = BellRing;
 
   readonly stats = signal<AdminAlertSummary | null>(null);
 
