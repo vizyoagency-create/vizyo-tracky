@@ -403,7 +403,19 @@ describe('ScheduleCronService — backoff des coupes', () => {
       expect(engine.requestCommand).not.toHaveBeenCalled();
     });
 
-    it('signale UNE fois et se tait ensuite (l\'état est stable, pas une urgence répétée)', async () => {
+    /**
+     * ⚠️ N'ÉCRIT RIEN au centre d'alerte — correctif d'un incident réel (2026-07-28).
+     *
+     * La version précédente y écrivait « une fois puis silence 7 j ». Deux fautes :
+     * l'anti-répétition était EN MÉMOIRE pour un état qui dure des mois (chaque
+     * redémarrage la remettait à zéro — six déploiements dans la soirée, plus chaque
+     * smoke-boot qui exécute un tick avant de mourir → 12 lignes pour 2 véhicules), et
+     * c'était classé ERREUR alors qu'un planning suspendu sur un boîtier mort est un
+     * ÉTAT, déjà exposé par la page Horaires (`presence: 'DORMANT'`).
+     *
+     * Un état stable se LIT, il ne se notifie pas en boucle.
+     */
+    it('n\'écrit RIEN au centre d\'alerte, même sur 24 h de ticks', async () => {
       jest.useFakeTimers();
       const { service, errorLogger } = build();
       const schedule = DORMANT();
@@ -413,12 +425,16 @@ describe('ScheduleCronService — backoff des coupes', () => {
         jest.advanceTimersByTime(60 * 1000);
       }
 
-      expect(errorLogger.record).toHaveBeenCalledTimes(1);
-      const [err, source, ctx] = errorLogger.record.mock.calls[0];
-      expect(source).toBe('schedule-cron');
-      expect(err.message).toContain('FV-941-LZ');
-      expect(err.message).toContain('89 j');
-      expect(ctx).toMatchObject({ phase: 'dormant-schedule-suspended' });
+      expect(errorLogger.record).not.toHaveBeenCalled();
+    });
+
+    it('⚠️ un REDÉMARRAGE ne réémet rien (l\'incident venait d\'un compteur en mémoire)', async () => {
+      // Trois instances successives = trois déploiements/smoke-boots dans la soirée.
+      for (let redemarrage = 0; redemarrage < 3; redemarrage++) {
+        const { service, errorLogger } = build();
+        await service.evaluateOne(DORMANT());
+        expect(errorLogger.record).not.toHaveBeenCalled();
+      }
     });
 
     it('⚠️ ne laisse AUCUNE entrée résiduelle dans les suivis (fuite mémoire)', async () => {
