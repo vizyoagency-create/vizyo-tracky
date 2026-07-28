@@ -1,15 +1,37 @@
 import type { AlertType } from '@vizyo/tracky-shared';
+import { DEFAULT_MUTED_TYPES, PUSH_MAX_PER_HOUR, shouldPushAlert } from '@vizyo/tracky-shared';
 import type { PushSubscriptionDto } from '../../core/services/notifications.service';
 import {
   ALERT_TYPE_GROUPS,
+  SEVERITY_OPTIONS,
   activeDeliveryHint,
+  buildDeliveryForecast,
   buildGroupViews,
+  dailyVolumeLabel,
   derivePushDeviceState,
+  forecastNotes,
+  forecastSentence,
+  frequencyLabel,
   isCurrentDeviceEndpoint,
   ownDevices,
   setGroupMuted,
   toggleMutedType,
+  type PushPreferenceCore,
 } from './notifications-card.component';
+
+/**
+ * Reglages courants d'un utilisateur, forme minimale.
+ *
+ * Defaut du harnais = le DEFAUT SERVEUR (seuil `warning`, POWER_CUT et OVERSPEED coupes),
+ * pour que les tests raisonnent sur la situation reelle d'un compte qui n'a jamais rien
+ * regle — c'est-a-dire celle de tout le monde aujourd'hui.
+ */
+const prefOf = (over: Partial<PushPreferenceCore> = {}): PushPreferenceCore => ({
+  pushEnabled: true,
+  minSeverity: 'warning',
+  mutedTypes: [...DEFAULT_MUTED_TYPES],
+  ...over,
+});
 
 /**
  * Tests de la LOGIQUE de la carte de réglages, sans DOM.
@@ -34,7 +56,7 @@ describe('notifications-card — regroupement des types', () => {
   });
 
   it('compte les types actifs par famille : un type coupé sort du compte', () => {
-    const views = buildGroupViews(ALERT_TYPE_GROUPS, ['OVERSPEED']);
+    const views = buildGroupViews(ALERT_TYPE_GROUPS, prefOf({ mutedTypes: ['OVERSPEED'] }));
     const driving = views.find((v) => v.key === 'driving')!;
     expect(driving.activeCount).toBe(driving.total - 1);
     expect(driving.allMuted).toBeFalse();
@@ -44,12 +66,233 @@ describe('notifications-card — regroupement des types', () => {
 
   it('marque une famille entièrement coupée', () => {
     const driving = ALERT_TYPE_GROUPS.find((g) => g.key === 'driving')!;
-    const views = buildGroupViews(ALERT_TYPE_GROUPS, driving.types.map((t) => t.type));
+    const views = buildGroupViews(
+      ALERT_TYPE_GROUPS,
+      prefOf({ mutedTypes: driving.types.map((t) => t.type) }),
+    );
     const view = views.find((v) => v.key === 'driving')!;
     expect(view.allMuted).toBeTrue();
     expect(view.activeCount).toBe(0);
     // Les autres familles ne bougent pas : pas de fuite d'un groupe à l'autre.
     expect(views.find((v) => v.key === 'safety')!.allMuted).toBeFalse();
+  });
+
+  it('chaque type porte une gravité et une fréquence — sans quoi le réglage est un piège', () => {
+    for (const g of ALERT_TYPE_GROUPS) {
+      for (const t of g.types) {
+        expect(['info', 'warning', 'critical']).toContain(t.severity);
+        expect(t.frequency.perDay).toBeGreaterThanOrEqual(0);
+        expect(['measured', 'none-observed']).toContain(t.frequency.basis);
+      }
+    }
+  });
+
+  it('les deux sources de bruit MESUREES sont bien celles coupees par defaut', () => {
+    // Le lien entre le chiffre et la decision doit rester verifiable : si un type
+    // depasse 100/jour sans etre coupe par defaut, c'est que l'un des deux a bouge.
+    const loud = ALERT_TYPE_GROUPS.flatMap((g) => g.types).filter((t) => t.frequency.perDay >= 100);
+    expect(loud.map((t) => t.type).sort()).toEqual([...DEFAULT_MUTED_TYPES].sort());
+    // Et ils expliquent POURQUOI ils sont coupés : une coupure muette serait un silence.
+    for (const t of loud) expect(t.noiseNote).toBeTruthy();
+  });
+});
+
+describe('notifications-card — fréquences affichées', () => {
+  it('traduit un volume en ordre de grandeur lisible, jamais en décimales', () => {
+    expect(frequencyLabel({ perDay: 330, basis: 'measured' })).toBe('≈ 330 / jour');
+    expect(frequencyLabel({ perDay: 14 / 30, basis: 'measured' })).toBe('≈ 3 / semaine');
+    expect(frequencyLabel({ perDay: 3 / 365, basis: 'measured' })).toContain('exceptionnelle');
+    expect(frequencyLabel({ perDay: 0, basis: 'none-observed' })).toBe('aucune en 30 jours');
+  });
+
+  it('SOS et batterie faible sont annoncés comme exceptionnels, pas comme « aucune »', () => {
+    // La nuance compte : « aucune en 30 jours » invite à couper, « exceptionnelle » non.
+    const all = ALERT_TYPE_GROUPS.flatMap((g) => g.types);
+    const sos = all.find((t) => t.type === 'SOS')!;
+    const battery = all.find((t) => t.type === 'LOW_BATTERY')!;
+    expect(frequencyLabel(sos.frequency)).toContain('exceptionnelle');
+    expect(frequencyLabel(battery.frequency)).toContain('exceptionnelle');
+  });
+
+  it('les deux bruyants sont annoncés en « par jour » — visible avant le clic', () => {
+    const all = ALERT_TYPE_GROUPS.flatMap((g) => g.types);
+    expect(frequencyLabel(all.find((t) => t.type === 'OVERSPEED')!.frequency)).toBe('≈ 164 / jour');
+    expect(frequencyLabel(all.find((t) => t.type === 'POWER_CUT')!.frequency)).toBe('≈ 330 / jour');
+  });
+
+  it('formule le volume attendu sans jamais annoncer « 0 par jour »', () => {
+    expect(dailyVolumeLabel(2.3)).toBe('environ 2 notifications par jour');
+    expect(dailyVolumeLabel(1)).toBe('environ 1 notification par jour');
+    expect(dailyVolumeLabel(0.5)).toBe('environ 4 notifications par semaine');
+    expect(dailyVolumeLabel(0.01)).toContain('moins d\'une');
+    expect(dailyVolumeLabel(0)).toContain('aucune');
+  });
+
+  it('accorde le singulier a la semaine — un « 1 notifications » decredibiliserait le chiffre', () => {
+    // La borne basse de la branche hebdomadaire (1/7 par jour) s'arrondit pile a 1.
+    expect(dailyVolumeLabel(1 / 7)).toBe('environ 1 notification par semaine');
+    expect(dailyVolumeLabel(2 / 7)).toBe('environ 2 notifications par semaine');
+  });
+});
+
+describe('notifications-card — ce qui sera réellement reçu', () => {
+  it('LE DEFAUT SERVEUR donne quelques notifications par jour, pas des dizaines', () => {
+    // Le calcul qui justifie le défaut : POWER_CUT (330/j) et OVERSPEED (164/j) coupés,
+    // il ne reste que les zones (~1,8/j) et le GPS perdu (~0,5/j).
+    const f = buildDeliveryForecast(ALERT_TYPE_GROUPS, prefOf());
+    expect(f.perDay).toBeLessThan(5);
+    expect(f.perDay).toBeGreaterThan(1);
+    expect(f.tone).toBe('quiet');
+    expect(f.hitsHourlyCap).toBeFalse();
+  });
+
+  it('LE CAS DE L UTILISATEUR : batterie faible et SOS passent le défaut', () => {
+    // Il veut vérifier que « batterie faible » fonctionne. Avec l'ancien défaut
+    // (`critical`), il n'aurait rien reçu et aurait conclu que c'était cassé.
+    const items = buildGroupViews(ALERT_TYPE_GROUPS, prefOf()).flatMap((g) => g.items);
+    expect(items.find((i) => i.type === 'LOW_BATTERY')!.willReceive).toBeTrue();
+    expect(items.find((i) => i.type === 'SOS')!.willReceive).toBeTrue();
+    expect(items.find((i) => i.type === 'POWER_CUT')!.willReceive).toBeFalse();
+    expect(items.find((i) => i.type === 'OVERSPEED')!.willReceive).toBeFalse();
+  });
+
+  it('L AUTRE PIEGE : un type allumé mais sous le seuil est NOMMÉ, pas passé sous silence', () => {
+    // Le scénario exact : l'utilisateur veut tester « batterie faible », ne garde qu'elle,
+    // mais son seuil est resté sur « critiques uniquement ». L'interrupteur est vert et
+    // pourtant rien n'arrivera. Sans cette mention, il conclut à une panne.
+    const everythingElse = ALERT_TYPE_GROUPS.flatMap((g) => g.types.map((t) => t.type)).filter(
+      (t) => t !== 'LOW_BATTERY',
+    );
+    const pref = prefOf({ minSeverity: 'critical', mutedTypes: everythingElse });
+    const items = buildGroupViews(ALERT_TYPE_GROUPS, pref).flatMap((g) => g.items);
+    const battery = items.find((i) => i.type === 'LOW_BATTERY')!;
+
+    expect(battery.enabled).toBeTrue();
+    expect(battery.willReceive).toBeFalse();
+    expect(battery.blockedBySeverity).toBeTrue();
+
+    const notes = forecastNotes(buildDeliveryForecast(ALERT_TYPE_GROUPS, pref));
+    expect(notes[0]).toContain('Batterie faible');
+    expect(notes[0]).toContain('seuil');
+  });
+
+  it('beaucoup de types retenus : on compte au lieu d\'aligner dix-huit noms illisibles', () => {
+    const pref = prefOf({ minSeverity: 'critical', mutedTypes: [] });
+    const f = buildDeliveryForecast(ALERT_TYPE_GROUPS, pref);
+    expect(f.blockedBySeverity.length).toBeGreaterThan(4);
+
+    const note = forecastNotes(f)[0];
+    expect(note).toContain(`${f.blockedBySeverity.length} types`);
+    expect(note).toContain('autres');
+    // Le détail reste visible ligne par ligne, à côté de chaque interrupteur.
+    const items = buildGroupViews(ALERT_TYPE_GROUPS, pref).flatMap((g) => g.items);
+    expect(items.find((i) => i.type === 'LOW_BATTERY')!.blockedBySeverity).toBeTrue();
+  });
+
+  it('un type COUPE n est pas presente comme « retenu par le seuil » (l interrupteur suffit)', () => {
+    const items = buildGroupViews(ALERT_TYPE_GROUPS, prefOf()).flatMap((g) => g.items);
+    const overspeed = items.find((i) => i.type === 'OVERSPEED')!;
+    expect(overspeed.enabled).toBeFalse();
+    expect(overspeed.blockedBySeverity).toBeFalse();
+  });
+
+  it('interrupteur maître coupé : aucun type n\'est marqué « retenu par le seuil »', () => {
+    // Sinon l'écran accuserait le seuil d'un silence que le maître explique déjà.
+    const pref = prefOf({ pushEnabled: false, mutedTypes: [] });
+    const items = buildGroupViews(ALERT_TYPE_GROUPS, pref).flatMap((g) => g.items);
+    expect(items.every((i) => !i.blockedBySeverity)).toBeTrue();
+    expect(items.every((i) => !i.willReceive)).toBeTrue();
+
+    const f = buildDeliveryForecast(ALERT_TYPE_GROUPS, pref);
+    expect(f.tone).toBe('off');
+    expect(forecastSentence(f)).toContain('coupé');
+    expect(forecastNotes(f)).toEqual([]);
+  });
+
+  it('tout rallumé : l\'écran ANNONCE l\'avalanche au lieu de la laisser découvrir', () => {
+    const pref = prefOf({ minSeverity: 'info', mutedTypes: [] });
+    const f = buildDeliveryForecast(ALERT_TYPE_GROUPS, pref);
+
+    expect(f.perDay).toBeGreaterThan(400); // 330 + 164 + le reste
+    expect(f.tone).toBe('flood');
+    expect(forecastSentence(f)).toContain('par jour');
+    expect(f.loudest[0]).toBe('Alimentation coupée');
+    expect(f.loudest[1]).toBe('Excès de vitesse');
+
+    const notes = forecastNotes(f);
+    expect(notes.some((n) => n.includes('Alimentation coupée'))).toBeTrue();
+    expect(notes.some((n) => n.includes(String(PUSH_MAX_PER_HOUR)))).toBeTrue();
+  });
+
+  it('tout coupé : on le dit franchement au lieu d\'afficher un volume de zéro', () => {
+    const pref = prefOf({ mutedTypes: ALERT_TYPE_GROUPS.flatMap((g) => g.types.map((t) => t.type)) });
+    const f = buildDeliveryForecast(ALERT_TYPE_GROUPS, pref);
+    expect(f.keptCount).toBe(0);
+    expect(f.tone).toBe('silent');
+    expect(forecastSentence(f)).toContain('aucune notification');
+  });
+
+  it('la prévision utilise la RÈGLE DU SERVEUR, pas une copie locale', () => {
+    // Garde-fou anti-divergence : si `shouldPushAlert` change côté contrat partagé, la
+    // prévision doit changer avec — sinon l'écran se remet à mentir.
+    const pref = prefOf({ minSeverity: 'critical', mutedTypes: ['SOS'] });
+    for (const g of buildGroupViews(ALERT_TYPE_GROUPS, pref)) {
+      for (const i of g.items) {
+        expect(i.willReceive).toBe(shouldPushAlert(pref, { type: i.type, severity: i.severity }));
+      }
+    }
+  });
+
+  it('le volume d\'une famille ne compte que ses types réellement reçus', () => {
+    const views = buildGroupViews(ALERT_TYPE_GROUPS, prefOf());
+    const safety = views.find((v) => v.key === 'safety')!;
+    // POWER_CUT (330/j) est coupé : la famille « Sécurité » doit rester quasi muette.
+    expect(safety.perDay).toBeLessThan(1);
+    expect(safety.receivedCount).toBe(safety.total - 1);
+  });
+
+  it('HORS PERIMETRE : on n annonce AUCUN volume — c est le bug d origine a l envers', () => {
+    // En production `PUSH_ROLLOUT=SUPER_ADMIN_ONLY` : pour un compte client, le serveur
+    // ecarte l'envoi au motif `rollout` AVANT de lire la moindre preference. Promettre
+    // « environ 2 notifications par jour » a ce compte, c'est refaire exactement ce que
+    // faisait l'ecran cassé — affirmer pendant que rien ne part.
+    const f = buildDeliveryForecast(ALERT_TYPE_GROUPS, prefOf(), false);
+    expect(f.tone).toBe('ineligible');
+    expect(forecastSentence(f)).toContain('rôle');
+    expect(forecastSentence(f)).not.toContain('par jour');
+    // Aucune precision secondaire : envoyer l'utilisateur regler son seuil alors que le
+    // perimetre bloque tout, c'est le faire chercher une panne qui n'existe pas.
+    expect(forecastNotes(f)).toEqual([]);
+  });
+
+  it('hors périmètre, même tout rallumé, aucun écrêtage horaire n\'est annoncé', () => {
+    const pref = prefOf({ minSeverity: 'info', mutedTypes: [] });
+    const f = buildDeliveryForecast(ALERT_TYPE_GROUPS, pref, false);
+    expect(f.perDay).toBeGreaterThan(400); // le filtre laisserait tout passer…
+    expect(f.hitsHourlyCap).toBeFalse(); // …mais rien n'atteindra jamais le plafond.
+    expect(f.tone).toBe('ineligible');
+  });
+
+  it('le périmètre prime sur l\'interrupteur maître : on nomme la cause qu\'on ne peut pas corriger', () => {
+    const f = buildDeliveryForecast(ALERT_TYPE_GROUPS, prefOf({ pushEnabled: false }), false);
+    expect(f.tone).toBe('ineligible');
+  });
+
+  it('éligible : le comportement d\'origine est intact (défaut du paramètre)', () => {
+    const withFlag = buildDeliveryForecast(ALERT_TYPE_GROUPS, prefOf(), true);
+    const withoutFlag = buildDeliveryForecast(ALERT_TYPE_GROUPS, prefOf());
+    expect(withFlag).toEqual(withoutFlag);
+    expect(withFlag.tone).toBe('quiet');
+  });
+});
+
+describe('notifications-card — libellés du seuil de gravité', () => {
+  it('chaque option annonce son piège, pas seulement son bénéfice', () => {
+    const critical = SEVERITY_OPTIONS.find((o) => o.value === 'critical')!;
+    // « Critiques uniquement » a l'air prudent : il faut dire qu'il coupe la batterie faible.
+    expect(critical.hint).toContain('batterie faible');
+    const warning = SEVERITY_OPTIONS.find((o) => o.value === 'warning')!;
+    expect(warning.hint).toContain('Recommandé');
   });
 });
 

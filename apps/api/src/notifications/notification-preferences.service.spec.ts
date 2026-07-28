@@ -2,6 +2,8 @@ import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { AlertSeverity as PrismaAlertSeverity, UserRole } from '@prisma/client';
+import type { AlertSeverity, AlertType } from '@vizyo/tracky-shared';
+import { DEFAULT_MUTED_TYPES, shouldPushAlert } from '@vizyo/tracky-shared';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -144,18 +146,65 @@ describe('NotificationPreferencesService', () => {
   // ─── Lecture ────────────────────────────────────────────────
 
   describe('get()', () => {
-    it('sans ligne en base : defaut UTILE (critical), isDefault=true', async () => {
+    it('sans ligne en base : defaut CALIBRE (warning + bruit coupe), isDefault=true', async () => {
       subCount.mockResolvedValue(3);
       const dto = await service.get('u1', UserRole.SUPER_ADMIN);
 
       expect(dto).toEqual({
         pushEnabled: true,
-        minSeverity: 'critical',
-        mutedTypes: [],
+        // `warning` et non `critical` : POWER_CUT est CRITICAL (330/j) tandis que
+        // LOW_BATTERY, que l'utilisateur veut pouvoir tester, est WARNING (4/an).
+        // Le seuil seul ne trie donc rien d'utile — cf. le calcul du defaut.
+        minSeverity: 'warning',
+        mutedTypes: ['POWER_CUT', 'OVERSPEED'],
         isDefault: true,
         eligible: true,
         deviceCount: 3,
       });
+    });
+
+    it('le defaut expose est celui du contrat partage, pas une liste recopiee', async () => {
+      // Si quelqu'un ajoute un type bruyant a DEFAULT_MUTED_TYPES, le defaut doit suivre
+      // sans qu'on ait a repasser ici : une liste recopiee diverge en silence.
+      const dto = await service.get('u1', UserRole.SUPER_ADMIN);
+      expect(dto.mutedTypes).toEqual([...DEFAULT_MUTED_TYPES]);
+    });
+
+    it('le tableau renvoye est une COPIE : le muter ne contamine pas les autres utilisateurs', async () => {
+      const first = await service.get('u1', UserRole.SUPER_ADMIN);
+      first.mutedTypes.push('SOS');
+
+      const second = await service.get('u2', UserRole.SUPER_ADMIN);
+      expect(second.mutedTypes).toEqual([...DEFAULT_MUTED_TYPES]);
+      expect(DEFAULT_MUTED_TYPES).toEqual(['POWER_CUT', 'OVERSPEED']);
+    });
+
+    it('LE PIEGE A EVITER : une ligne avec mutedTypes vide = TOUT rallume, defaut NON applique', async () => {
+      // L'utilisateur a explicitement reactive POWER_CUT et OVERSPEED depuis l'ecran.
+      // Superposer le defaut ici defait son choix sans le dire — exactement le genre de
+      // silence invisible qu'on repare.
+      prefFindUnique.mockResolvedValue(row({ mutedTypes: [] }));
+      const dto = await service.get('u1', UserRole.SUPER_ADMIN);
+      expect(dto.mutedTypes).toEqual([]);
+      expect(dto.isDefault).toBe(false);
+    });
+
+    it('LOW_BATTERY et SOS passent le defaut ; POWER_CUT et OVERSPEED non', async () => {
+      // La verification que l'utilisateur veut pouvoir faire (« est-ce que la batterie
+      // faible marche ? ») doit aboutir SANS qu'il ait a toucher un reglage.
+      const dto = await service.get('u1', UserRole.SUPER_ADMIN);
+      const pass = (type: AlertType, severity: AlertSeverity) =>
+        shouldPushAlert(dto, { type, severity });
+
+      expect(pass('LOW_BATTERY', 'warning')).toBe(true);
+      expect(pass('SOS', 'critical')).toBe(true);
+      expect(pass('GEOFENCE_EXIT', 'warning')).toBe(true);
+      expect(pass('GPS_LOST', 'warning')).toBe(true);
+
+      expect(pass('POWER_CUT', 'critical')).toBe(false);
+      expect(pass('OVERSPEED', 'warning')).toBe(false);
+      // Les alertes de conduite (INFO) restent sous le seuil : volume non mesure.
+      expect(pass('HARSH_BRAKING', 'info')).toBe(false);
     });
 
     it('avec ligne : severite convertie en minuscules pour le client', async () => {
@@ -209,9 +258,32 @@ describe('NotificationPreferencesService', () => {
 
       const args = prefUpsert.mock.calls[0][0];
       expect(args.update).toEqual({ pushEnabled: false });
-      // A la creation, les champs non fournis prennent le defaut utile.
-      expect(args.create.minSeverity).toBe(PrismaAlertSeverity.CRITICAL);
+      // A la creation, les champs non fournis prennent le defaut CALIBRE.
+      expect(args.create.minSeverity).toBe(PrismaAlertSeverity.WARNING);
+      expect(args.create.mutedTypes).toEqual(['POWER_CUT', 'OVERSPEED']);
+    });
+
+    it('PREMIERE ECRITURE : ne fournir que le seuil ne RALLUME PAS le bruit coupe par defaut', async () => {
+      // Scenario reel : l'utilisateur sans ligne voit l'ecran afficher POWER_CUT et
+      // OVERSPEED coupes, puis ne touche QUE le seuil de gravite. Si la creation posait
+      // `mutedTypes: []`, il repartirait avec 330 notifications/jour d'alimentation
+      // coupee — l'inverse exact de ce que l'ecran lui montrait une seconde plus tot.
+      await service.update('u1', UserRole.SUPER_ADMIN, { minSeverity: 'critical' });
+
+      const args = prefUpsert.mock.calls[0][0];
+      expect(args.create.mutedTypes).toEqual([...DEFAULT_MUTED_TYPES]);
+      // La mise a jour, elle, reste strictement partielle : on ne reecrit pas les
+      // coupures d'un utilisateur qui a DEJA une ligne.
+      expect(args.update).toEqual({ minSeverity: PrismaAlertSeverity.CRITICAL });
+    });
+
+    it('rallumer explicitement TOUT est possible : mutedTypes vide est transmis tel quel', async () => {
+      // Le pendant du test precedent : `[]` FOURNI est un choix, pas une absence.
+      await service.update('u1', UserRole.SUPER_ADMIN, { mutedTypes: [] });
+
+      const args = prefUpsert.mock.calls[0][0];
       expect(args.create.mutedTypes).toEqual([]);
+      expect(args.update.mutedTypes).toEqual([]);
     });
 
     it('dedoublonne les types coupes', async () => {
@@ -255,7 +327,7 @@ describe('NotificationPreferencesService', () => {
       const dto = await service.update('u1', UserRole.SUPER_ADMIN, {});
       expect(prefUpsert).not.toHaveBeenCalled();
       expect(dto.isDefault).toBe(true);
-      expect(dto.minSeverity).toBe('critical');
+      expect(dto.minSeverity).toBe('warning');
 
       await service.update('u1', UserRole.SUPER_ADMIN, { userId: 'quelqu-un-dautre' } as never);
       expect(prefUpsert).not.toHaveBeenCalled();
@@ -291,16 +363,44 @@ describe('NotificationPreferencesService', () => {
       await expect(service.filterPushRecipients([superAdmin], critical)).resolves.toEqual([]);
     });
 
-    it('seuil de severite : une WARNING ne passe pas le defaut critical', async () => {
+    it('seuil de severite : une INFO ne passe pas le defaut warning', async () => {
       prefFindMany.mockResolvedValue([]);
-      const warning = { type: 'OVERSPEED', severity: PrismaAlertSeverity.WARNING };
-      await expect(service.filterPushRecipients([superAdmin], warning)).resolves.toEqual([]);
+      const info = { type: 'HARSH_BRAKING', severity: PrismaAlertSeverity.INFO };
+      await expect(service.filterPushRecipients([superAdmin], info)).resolves.toEqual([]);
 
       // Le meme utilisateur qui abaisse son seuil la recoit.
       prefFindMany.mockResolvedValue([
-        row({ userId: 'sa1', minSeverity: PrismaAlertSeverity.WARNING }),
+        row({ userId: 'sa1', minSeverity: PrismaAlertSeverity.INFO }),
       ]);
-      await expect(service.filterPushRecipients([superAdmin], warning)).resolves.toEqual(['sa1']);
+      await expect(service.filterPushRecipients([superAdmin], info)).resolves.toEqual(['sa1']);
+    });
+
+    it('LE VOLUME : sans ligne, le bruit mesure est retenu et le rare passe', async () => {
+      // Les quatre SUPER_ADMIN de production n'ont aucune ligne. Avec l'ancien defaut
+      // (`critical`, rien de coupe), reparer le push leur envoyait les 330 POWER_CUT
+      // quotidiens des le premier jour.
+      prefFindMany.mockResolvedValue([]);
+
+      const sent = (type: string, severity: PrismaAlertSeverity) =>
+        service.filterPushRecipients([superAdmin], { type, severity });
+
+      await expect(sent('POWER_CUT', PrismaAlertSeverity.CRITICAL)).resolves.toEqual([]);
+      await expect(sent('OVERSPEED', PrismaAlertSeverity.WARNING)).resolves.toEqual([]);
+      // Ce qui compte vraiment passe sans qu'aucun reglage n'ait ete touche.
+      await expect(sent('SOS', PrismaAlertSeverity.CRITICAL)).resolves.toEqual(['sa1']);
+      await expect(sent('LOW_BATTERY', PrismaAlertSeverity.WARNING)).resolves.toEqual(['sa1']);
+    });
+
+    it('une ligne avec mutedTypes vide rallume POWER_CUT : le defaut ne se superpose pas', async () => {
+      prefFindMany.mockResolvedValue([
+        row({ userId: 'sa1', minSeverity: PrismaAlertSeverity.CRITICAL, mutedTypes: [] }),
+      ]);
+      await expect(
+        service.filterPushRecipients([superAdmin], {
+          type: 'POWER_CUT',
+          severity: PrismaAlertSeverity.CRITICAL,
+        }),
+      ).resolves.toEqual(['sa1']);
     });
 
     it('type coupe : l alerte ne produit pas de push, les autres types continuent', async () => {

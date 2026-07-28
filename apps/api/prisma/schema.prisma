@@ -503,6 +503,7 @@ model User {
   @@index([fleetId])
   @@map("users")
   notificationPreference NotificationPreference?
+  notificationDeliveries NotificationDelivery[]
 }
 
 /// V1.5 (Sprint M) — Subscription Web Push d'un utilisateur (1 abonnement
@@ -3030,4 +3031,64 @@ model NotificationPreference {
   updatedAt DateTime @updatedAt
 
   @@map("notification_preferences")
+}
+
+/// Issue d'une notification, PAR DESTINATAIRE — la matière du centre de notifications.
+///
+/// Aujourd'hui, seuls des agrégats existent (`system_activity_logs`, catégorie PUSH) :
+/// « 3 envoyés, 1 échec ». Impossible de répondre à « qui a reçu quoi, quand, et pourquoi
+/// untel n'a rien reçu ». Or c'est précisément ce silence qui a laissé le push mort trois
+/// mois sans que personne ne le voie.
+///
+/// ⚠️ On journalise AUSSI les non-envois (`SUPPRESSED`, `GROUPED`) avec leur raison. Une
+/// notification volontairement retenue doit être aussi visible qu'une notification partie —
+/// sinon on remplace un silence invisible par un autre.
+model NotificationDelivery {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// Alerte d'origine. NULL pour un envoi de test ou une notification hors alerte.
+  alertId String? @db.Uuid
+  /// Dénormalisés : permettent de filtrer/compter sans jointure, et surtout de garder une
+  /// trace lisible même après purge de l'alerte d'origine (rétention plus courte).
+  alertType String?
+  severity  String?
+
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Flotte de l'alerte. NULL pour un envoi cross-flotte à un SUPER_ADMIN.
+  fleetId String? @db.Uuid
+
+  /// 'WEB_PUSH' aujourd'hui ; le modèle est prêt pour EMAIL/WHATSAPP/SMS.
+  channel String
+
+  /// SENT       — au moins un appareil a accepté.
+  /// FAILED     — tous les appareils ont échoué (ou aucun appareil abonné).
+  /// SUPPRESSED — volontairement non envoyée (préférence, seuil, périmètre de déploiement).
+  /// GROUPED    — repliée dans un envoi précédent (anti-spam), avec le compte.
+  status String
+
+  /// Raison lisible, TOUJOURS renseignée quand ce n'est pas SENT. C'est la colonne qui
+  /// transforme « je n'ai rien reçu » en diagnostic immédiat.
+  reason String?
+
+  /// Contenu réellement présenté, pour que l'admin voie ce que l'utilisateur a vu.
+  title String?
+  body  String?
+
+  /// Appareils ciblés / ayant accepté / en échec.
+  deviceCount Int @default(0)
+  sentCount   Int @default(0)
+  failedCount Int @default(0)
+
+  /// Nombre d'événements repliés dans cet envoi (anti-spam). 0 = envoi simple.
+  groupedCount Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([fleetId, createdAt(sort: Desc)])
+  @@index([status, createdAt(sort: Desc)])
+  @@index([alertId])
+  @@index([createdAt])
+  @@map("notification_deliveries")
 }

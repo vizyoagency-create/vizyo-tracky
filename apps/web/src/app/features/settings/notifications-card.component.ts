@@ -5,6 +5,10 @@ import type {
   NotificationPreferenceDto,
   UpdateNotificationPreferenceDto,
 } from '@vizyo/tracky-shared';
+// `shouldPushAlert` vient du contrat PARTAGE : c'est la fonction que le serveur applique
+// pour decider d'un envoi. La reimplementer ici ferait diverger l'ecran de la realite au
+// premier changement de regle — et cet ecran n'a qu'un seul travail, dire la verite.
+import { DEFAULT_MUTED_TYPES, PUSH_MAX_PER_HOUR, shouldPushAlert } from '@vizyo/tracky-shared';
 import {
   AlertTriangle,
   Bell,
@@ -28,10 +32,90 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
    l'utilisateur comprend de sa situation, elle merite un test, pas un clic.
    ════════════════════════════════════════════════════════════════════════════ */
 
+/* ─── Frequences observees ─────────────────────────────────────────────────────
+   Sans ordre de grandeur affiche, cet ecran est un PIEGE : activer « Exces de
+   vitesse » ressemble a activer « SOS », alors que l'un vaut 164 notifications par
+   jour et l'autre trois par an. On affiche donc, pour CHAQUE type, ce qu'il coute
+   reellement — avant le clic, pas apres.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Provenance des chiffres ci-dessous, affichee a l'ecran.
+ *
+ * ⚠️ Ce sont des ORDRES DE GRANDEUR DATES, comptes en base de PRODUCTION le 2026-07-27
+ * sur les 30 jours precedents, pour l'ENSEMBLE du parc — pas une statistique recalculee
+ * en direct. Ils vieilliront : le jour ou le parc double, ou ou la trame `ac alarm` des
+ * boitiers Coban est corrigee (elle est a elle seule la source des 330 POWER_CUT
+ * quotidiens), il faut REMESURER et remettre a jour cette constante avec les valeurs.
+ * Un chiffre faux ici trompe l'utilisateur avec l'autorite d'une mesure : mieux vaut
+ * une date visible qu'une precision inventee.
+ */
+export const FREQUENCY_SNAPSHOT_LABEL = 'relevé du 27/07/2026, 30 jours, tout le parc';
+
+/** `measured` = compte non nul releve ce jour-la ; `none-observed` = zero sur la periode. */
+export type FrequencyBasis = 'measured' | 'none-observed';
+
+export interface AlertFrequency {
+  /** Evenements par jour pour tout le parc. 0 avec `none-observed` = jamais vu. */
+  perDay: number;
+  basis: FrequencyBasis;
+}
+
+/** Compte releve sur 30 jours -> evenements par jour. */
+function per30Days(count: number): AlertFrequency {
+  return { perDay: count / 30, basis: 'measured' };
+}
+
+/** Type jamais observe sur la periode mesuree. Ce n'est pas « impossible », c'est « rien vu ». */
+const NEVER_OBSERVED: AlertFrequency = { perDay: 0, basis: 'none-observed' };
+
+/**
+ * Phrase courte affichee sous chaque type. Volontairement sans decimale : « 0,47 par
+ * jour » n'aide personne a decider, « environ 3 par semaine » si.
+ */
+export function frequencyLabel(f: AlertFrequency): string {
+  if (f.basis === 'none-observed') return 'aucune en 30 jours';
+  if (f.perDay >= 1) return `≈ ${Math.round(f.perDay)} / jour`;
+  if (f.perDay >= 1 / 7) return `≈ ${Math.round(f.perDay * 7)} / semaine`;
+  if (f.perDay >= 1 / 60) return `≈ ${Math.round(f.perDay * 30)} / mois`;
+  return 'exceptionnelle (quelques-unes par an)';
+}
+
+/** Volume attendu, formule pour une phrase (« vous recevrez … »). */
+export function dailyVolumeLabel(perDay: number): string {
+  if (perDay >= 1) return `environ ${Math.round(perDay)} notification${Math.round(perDay) > 1 ? 's' : ''} par jour`;
+  if (perDay >= 1 / 7) {
+    // Accord au singulier obligatoire : la borne basse de cette branche (1/7 par jour)
+    // s'arrondit a « 1 par semaine ». Un « environ 1 notifications » suffirait a faire
+    // douter de la fiabilite du chiffre juste a cote, sur l'ecran dont le seul travail
+    // est d'etre credible.
+    const perWeek = Math.round(perDay * 7);
+    return `environ ${perWeek} notification${perWeek > 1 ? 's' : ''} par semaine`;
+  }
+  if (perDay > 0) return 'moins d\'une notification par semaine';
+  return 'aucune notification, au rythme observé';
+}
+
 /** Un type d'alerte tel qu'il est presente a l'utilisateur — jamais l'identifiant brut. */
 export interface AlertTypeOption {
   type: AlertType;
   label: string;
+  /**
+   * Severite que l'API pose sur ce type AUJOURD'HUI (apps/api/src/alerts/alert-mapping.ts,
+   * plus les producteurs dedies : `geofences.service`, `alerts.service#createGpsLostAlert`,
+   * `alerts.service` pour SURVEILLANCE_TRIGGERED).
+   *
+   * ⚠️ Elle ne sert QU'A PREDIRE ce qui passera le seuil de gravite. C'est le serveur qui
+   * decide de l'envoi : une divergence fausserait la prevision affichee, jamais la
+   * livraison. Raison de plus pour ne rien promettre de plus qu'un ordre de grandeur.
+   */
+  severity: AlertSeverity;
+  frequency: AlertFrequency;
+  /**
+   * Pourquoi ce type est bruyant. Affiche en permanence, allume ou coupe : coupe, il
+   * justifie la coupure ; allume, il rappelle ce que l'utilisateur vient de s'infliger.
+   */
+  noiseNote?: string;
 }
 
 export interface AlertTypeGroup {
@@ -57,15 +141,26 @@ export const ALERT_TYPE_GROUPS: readonly AlertTypeGroup[] = [
   {
     key: 'safety',
     label: 'Sécurité & urgence',
-    hint: 'Ce qui justifie de sortir le téléphone de sa poche.',
+    hint: 'Ce qui justifie de sortir le téléphone de sa poche. Presque tout y est exceptionnel — sauf « alimentation coupée ».',
     types: [
-      { type: 'SOS', label: 'Appel de détresse (SOS)' },
-      { type: 'ACCIDENT', label: 'Accident détecté' },
-      { type: 'COLLISION', label: 'Choc / collision' },
-      { type: 'POWER_CUT', label: 'Alimentation coupée' },
-      { type: 'TOW', label: 'Remorquage / déplacement suspect' },
-      { type: 'TAMPER', label: 'Boîtier manipulé' },
-      { type: 'ILLEGAL_IGNITION', label: 'Démarrage non autorisé' },
+      // 3 relevés sur 30 jours, lus comme « quelques-uns par an » : le type qui compte
+      // le plus est aussi le plus rare. Aucun plafond ne le retiendra jamais.
+      { type: 'SOS', label: 'Appel de détresse (SOS)', severity: 'critical', frequency: { perDay: 3 / 365, basis: 'measured' } },
+      { type: 'ACCIDENT', label: 'Accident détecté', severity: 'critical', frequency: NEVER_OBSERVED },
+      { type: 'COLLISION', label: 'Choc / collision', severity: 'critical', frequency: NEVER_OBSERVED },
+      {
+        type: 'POWER_CUT',
+        label: 'Alimentation coupée',
+        severity: 'critical',
+        // 9 903 en 30 jours. Le type le plus bruyant du parc, et pourtant classé CRITICAL :
+        // c'est la démonstration que la gravité seule ne trie rien.
+        frequency: per30Days(9903),
+        noiseNote:
+          'Sur un boîtier câblé après contact, le boîtier signale « alimentation coupée » à chaque arrêt du moteur : du stationnement normal, envoyé comme une alarme critique.',
+      },
+      { type: 'TOW', label: 'Remorquage / déplacement suspect', severity: 'critical', frequency: NEVER_OBSERVED },
+      { type: 'TAMPER', label: 'Boîtier manipulé', severity: 'critical', frequency: NEVER_OBSERVED },
+      { type: 'ILLEGAL_IGNITION', label: 'Démarrage non autorisé', severity: 'critical', frequency: NEVER_OBSERVED },
     ],
   },
   {
@@ -73,11 +168,22 @@ export const ALERT_TYPE_GROUPS: readonly AlertTypeGroup[] = [
     label: 'Conduite',
     hint: 'Le comportement au volant. C\'est la famille la plus bavarde.',
     types: [
-      { type: 'OVERSPEED', label: 'Excès de vitesse' },
-      { type: 'HARSH_BRAKING', label: 'Freinage brusque' },
-      { type: 'HARSH_ACCELERATION', label: 'Accélération brusque' },
-      { type: 'HARSH_TURN', label: 'Virage brusque' },
-      { type: 'FATIGUE', label: 'Conduite prolongée (fatigue)' },
+      {
+        type: 'OVERSPEED',
+        label: 'Excès de vitesse',
+        severity: 'warning',
+        // 4 933 en 30 jours : la deuxième source de bruit, et de loin.
+        frequency: per30Days(4933),
+        noiseNote:
+          'Une notification toutes les neuf minutes en moyenne. Le suivi des excès reste consultable dans les rapports et le centre d\'alertes, sans faire vibrer le téléphone.',
+      },
+      // Les trois « brusques » n'ont produit AUCUNE alerte sur la période mesurée : soit
+      // les boîtiers ne remontent pas ces trames, soit le seuil ne se déclenche pas. Leur
+      // volume réel est donc INCONNU — d'où leur classement INFO, sous le seuil par défaut.
+      { type: 'HARSH_BRAKING', label: 'Freinage brusque', severity: 'info', frequency: NEVER_OBSERVED },
+      { type: 'HARSH_ACCELERATION', label: 'Accélération brusque', severity: 'info', frequency: NEVER_OBSERVED },
+      { type: 'HARSH_TURN', label: 'Virage brusque', severity: 'info', frequency: NEVER_OBSERVED },
+      { type: 'FATIGUE', label: 'Conduite prolongée (fatigue)', severity: 'warning', frequency: NEVER_OBSERVED },
     ],
   },
   {
@@ -85,27 +191,67 @@ export const ALERT_TYPE_GROUPS: readonly AlertTypeGroup[] = [
     label: 'Zones & mouvements',
     hint: 'Où va le véhicule, et quand il bouge sans raison.',
     types: [
-      { type: 'GEOFENCE_ENTER', label: 'Entrée dans une zone' },
-      { type: 'GEOFENCE_EXIT', label: 'Sortie de zone' },
-      { type: 'MOVEMENT_IDLE', label: 'Mouvement moteur éteint' },
-      { type: 'IDLE_TIME', label: 'Arrêt prolongé' },
-      { type: 'SURVEILLANCE_TRIGGERED', label: 'Surveillance déclenchée' },
-      { type: 'VIBRATION', label: 'Vibration détectée' },
+      // 54 alertes de zone en 30 jours, ENTRÉES et SORTIES confondues (le relevé ne les
+      // distinguait pas) : on répartit à parts égales, faute de mieux. C'est justement
+      // pourquoi ces chiffres sont annoncés comme des ordres de grandeur.
+      { type: 'GEOFENCE_ENTER', label: 'Entrée dans une zone', severity: 'warning', frequency: per30Days(27) },
+      { type: 'GEOFENCE_EXIT', label: 'Sortie de zone', severity: 'warning', frequency: per30Days(27) },
+      { type: 'MOVEMENT_IDLE', label: 'Mouvement moteur éteint', severity: 'warning', frequency: NEVER_OBSERVED },
+      { type: 'IDLE_TIME', label: 'Arrêt prolongé', severity: 'info', frequency: NEVER_OBSERVED },
+      { type: 'SURVEILLANCE_TRIGGERED', label: 'Surveillance déclenchée', severity: 'critical', frequency: NEVER_OBSERVED },
+      { type: 'VIBRATION', label: 'Vibration détectée', severity: 'info', frequency: NEVER_OBSERVED },
     ],
   },
   {
     key: 'device',
     label: 'Véhicule & matériel',
-    hint: 'L\'état du véhicule et du boîtier.',
+    hint: 'L\'état du véhicule et du boîtier. Rare, et c\'est ce qui la rend utile.',
     types: [
-      { type: 'LOW_BATTERY', label: 'Batterie faible' },
-      { type: 'GPS_LOST', label: 'Signal GPS perdu' },
-      { type: 'BONNET', label: 'Capot ouvert' },
-      { type: 'DOOR', label: 'Portière ouverte' },
-      { type: 'MAINTENANCE_DUE', label: 'Entretien à échéance' },
+      // 4 relevées, lues comme « quelques-unes par an ». C'est l'une des deux alertes que
+      // l'utilisateur veut pouvoir vérifier — et elle est WARNING, donc invisible sous un
+      // seuil « critiques uniquement ». D'où le défaut serveur calé sur `warning`.
+      { type: 'LOW_BATTERY', label: 'Batterie faible', severity: 'warning', frequency: { perDay: 4 / 365, basis: 'measured' } },
+      // 14 en 30 jours. Producteur réel : le cron d'intégrité GPS, qui pose WARNING (le
+      // mapping Coban historique dit INFO, mais il n'alimente plus ce type en pratique).
+      { type: 'GPS_LOST', label: 'Signal GPS perdu', severity: 'warning', frequency: per30Days(14) },
+      { type: 'BONNET', label: 'Capot ouvert', severity: 'warning', frequency: NEVER_OBSERVED },
+      { type: 'DOOR', label: 'Portière ouverte', severity: 'warning', frequency: NEVER_OBSERVED },
+      // Aucun producteur côté serveur à ce jour : le type existe dans l'enum, rien ne
+      // l'émet encore. La gravité annoncée est donc une intention, pas une observation.
+      { type: 'MAINTENANCE_DUE', label: 'Entretien à échéance', severity: 'warning', frequency: NEVER_OBSERVED },
     ],
   },
 ];
+
+/** Les seuls champs de préférence dont dépend l'affichage — le reste (`eligible`…) est ailleurs. */
+export type PushPreferenceCore = Pick<
+  NotificationPreferenceDto,
+  'pushEnabled' | 'minSeverity' | 'mutedTypes'
+>;
+
+/** Ce type est-il coupé par le DÉFAUT serveur (et non par un choix de l'utilisateur) ? */
+export function isMutedByDefault(type: AlertType): boolean {
+  return DEFAULT_MUTED_TYPES.includes(type);
+}
+
+export interface AlertTypeItemView extends AlertTypeOption {
+  /** L'interrupteur est-il allumé (= type absent de `mutedTypes`) ? */
+  enabled: boolean;
+  /** Coupé par le défaut serveur : l'écran doit dire QUI a coupé, et pourquoi. */
+  mutedByDefault: boolean;
+  /**
+   * Ce type produira-t-il RÉELLEMENT une notification ? Décidé par `shouldPushAlert`, la
+   * fonction que le serveur applique lui-même — jamais par une règle réécrite ici.
+   */
+  willReceive: boolean;
+  /**
+   * Interrupteur allumé mais rien ne partira, parce que la gravité du type est sous le
+   * seuil choisi. C'est LE piège silencieux de cet écran : sans cette mention, l'utilisateur
+   * active « batterie faible », ne reçoit rien, et conclut que la fonction est cassée.
+   */
+  blockedBySeverity: boolean;
+  frequencyText: string;
+}
 
 export interface AlertTypeGroupView extends AlertTypeGroup {
   /** Types du groupe encore actifs (non coupés). */
@@ -113,30 +259,204 @@ export interface AlertTypeGroupView extends AlertTypeGroup {
   total: number;
   /** Vrai si TOUT le groupe est coupé — l'en-tête doit le dire sans avoir à déplier. */
   allMuted: boolean;
+  /** Types du groupe qui passeront vraiment les réglages courants (≤ activeCount). */
+  receivedCount: number;
+  /** Volume quotidien attendu pour ce groupe, réglages courants appliqués. */
+  perDay: number;
+  /** Volume du groupe, prêt à afficher dans l'en-tête replié. */
+  volumeText: string;
   /** Etat par type, prêt pour le template (pas de `.includes()` dans le HTML). */
-  items: Array<AlertTypeOption & { enabled: boolean }>;
+  items: AlertTypeItemView[];
 }
 
 /**
- * Projette les groupes + la liste des types coupés en une vue affichable.
- * `mutedTypes` est la liste des types EXPLICITEMENT coupés : tout type absent est actif.
+ * Projette les groupes + les réglages courants en une vue affichable.
+ *
+ * `pref.mutedTypes` est la liste des types EXPLICITEMENT coupés : tout type absent est
+ * actif. « Actif » ne veut pas dire « reçu » — d'où `willReceive`, calculé avec la règle
+ * du contrat partagé.
  */
 export function buildGroupViews(
   groups: readonly AlertTypeGroup[],
-  mutedTypes: readonly AlertType[],
+  pref: PushPreferenceCore,
 ): AlertTypeGroupView[] {
-  const muted = new Set(mutedTypes);
+  const muted = new Set(pref.mutedTypes);
   return groups.map((g) => {
-    const items = g.types.map((t) => ({ ...t, enabled: !muted.has(t.type) }));
+    const items: AlertTypeItemView[] = g.types.map((t) => {
+      const enabled = !muted.has(t.type);
+      const willReceive = shouldPushAlert(pref, { type: t.type, severity: t.severity });
+      return {
+        ...t,
+        enabled,
+        mutedByDefault: isMutedByDefault(t.type),
+        willReceive,
+        // On ne parle du seuil que si c'est bien LUI qui bloque : un type coupé à la main
+        // est déjà expliqué par son interrupteur, et l'interrupteur maître par son bandeau.
+        blockedBySeverity: enabled && pref.pushEnabled && !willReceive,
+        frequencyText: frequencyLabel(t.frequency),
+      };
+    });
     const activeCount = items.filter((i) => i.enabled).length;
+    const received = items.filter((i) => i.willReceive);
+    const perDay = received.reduce((sum, i) => sum + i.frequency.perDay, 0);
     return {
       ...g,
       items,
       activeCount,
       total: items.length,
       allMuted: activeCount === 0,
+      receivedCount: received.length,
+      perDay,
+      volumeText: dailyVolumeLabel(perDay),
     };
   });
+}
+
+/* ─── Ce qui sera REELLEMENT recu ──────────────────────────────────────────────
+   L'incident d'origine, c'est un ecran qui affirmait « actif » pendant que rien ne
+   partait. La reciproque est tout aussi trompeuse : un ecran plein d'interrupteurs
+   allumes qui laisse croire a une avalanche, ou qui la cache. On calcule donc la
+   consequence des reglages, avec la MEME fonction que le serveur.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+export interface DeliveryForecast {
+  /** Types qui passent réellement les réglages. */
+  keptCount: number;
+  total: number;
+  /** Volume quotidien attendu, tous types retenus confondus. */
+  perDay: number;
+  volumeText: string;
+  /** Les types retenus les plus bavards (3 max) : dit d'où vient le volume. */
+  loudest: string[];
+  /** Types allumés que le seuil de gravité retient malgré tout. */
+  blockedBySeverity: string[];
+  /** Vrai quand le plafond horaire deviendra le vrai limiteur. */
+  hitsHourlyCap: boolean;
+  tone: 'ineligible' | 'off' | 'silent' | 'quiet' | 'busy' | 'flood';
+}
+
+/**
+ * @param eligible Le push est-il OUVERT au rôle de cet utilisateur (`PUSH_ROLLOUT`) ?
+ *
+ * ⚠️ Ce paramètre existe pour une raison précise, et c'est la plus importante de cet écran.
+ * En production, `PUSH_ROLLOUT=SUPER_ADMIN_ONLY` : pour tout compte qui n'est pas
+ * super-admin, le serveur écarte l'envoi AVANT même de lire les préférences (motif
+ * `rollout`). Un encadré « vous recevrez environ 2 notifications par jour » affiché à ces
+ * comptes rejouerait mot pour mot le bug d'origine — un écran qui affirme pendant que rien
+ * ne part. Le récapitulatif doit donc annoncer le périmètre AVANT tout le reste, y compris
+ * avant l'interrupteur maître : c'est la cause qui rend les autres sans objet, et la seule
+ * sur laquelle l'utilisateur ne peut rien.
+ *
+ * `keptCount` / `perDay` restent calculés dans ce cas : ils décrivent le FILTRE (ce que ces
+ * réglages laisseraient passer à l'ouverture), pas une livraison promise. C'est le `tone`
+ * qui distingue les deux, et la phrase qui le dit.
+ */
+export function buildDeliveryForecast(
+  groups: readonly AlertTypeGroup[],
+  pref: PushPreferenceCore,
+  eligible = true,
+): DeliveryForecast {
+  const items = buildGroupViews(groups, pref).flatMap((g) => g.items);
+  const kept = items.filter((i) => i.willReceive);
+  const perDay = kept.reduce((sum, i) => sum + i.frequency.perDay, 0);
+
+  const loudest = [...kept]
+    .filter((i) => i.frequency.perDay > 0)
+    .sort((a, b) => b.frequency.perDay - a.frequency.perDay)
+    .slice(0, 3)
+    .map((i) => i.label);
+
+  const tone: DeliveryForecast['tone'] = !eligible
+    ? 'ineligible'
+    : !pref.pushEnabled
+      ? 'off'
+      : kept.length === 0
+        ? 'silent'
+        : perDay < 5
+          ? 'quiet'
+          : perDay < 50
+            ? 'busy'
+            : 'flood';
+
+  return {
+    keptCount: kept.length,
+    total: items.length,
+    perDay,
+    volumeText: dailyVolumeLabel(perDay),
+    loudest,
+    blockedBySeverity: items.filter((i) => i.blockedBySeverity).map((i) => i.label),
+    // Comparaison volontairement au volume QUOTIDIEN et non horaire : les alertes
+    // n'arrivent pas de façon régulière (les excès de vitesse tombent en rafale sur un
+    // trajet). Dès qu'on dépasse une douzaine par jour, le plafond horaire mordra sur
+    // au moins une heure de la journée.
+    // Hors périmètre, rien n'atteint jamais le plafond : annoncer un écrêtage serait
+    // décrire un mécanisme qui ne s'appliquera pas.
+    hitsHourlyCap: eligible && pref.pushEnabled && perDay >= PUSH_MAX_PER_HOUR,
+    tone,
+  };
+}
+
+/** Phrase principale du récapitulatif : ce qui arrivera, en français, sans jargon. */
+export function forecastSentence(f: DeliveryForecast): string {
+  // Le périmètre de déploiement d'abord : c'est le seul cas où l'utilisateur ne peut
+  // RIEN changer depuis cet écran. Lui annoncer un volume qu'il ne recevra pas serait
+  // exactement la promesse creuse qu'on est en train de réparer.
+  if (f.tone === 'ineligible') {
+    return 'Rien ne partira pour l\'instant : le push n\'est pas encore ouvert à votre rôle. Les réglages ci-dessous sont enregistrés et s\'appliqueront tels quels à l\'ouverture.';
+  }
+  if (f.tone === 'off') {
+    return 'Rien ne partira : l\'interrupteur « Recevoir les notifications » est coupé.';
+  }
+  if (f.tone === 'silent') {
+    return 'Aucun type d\'alerte ne passe vos réglages actuels : vous ne recevrez aucune notification.';
+  }
+  return `${f.keptCount} type${f.keptCount > 1 ? 's' : ''} d'alerte sur ${f.total} vous seront notifiés, soit ${f.volumeText} au rythme observé.`;
+}
+
+/**
+ * Énumère quelques libellés sans transformer la phrase en liste de courses : au-delà de
+ * `max`, on compte le reste. Une note de dix-huit noms n'est plus lue, donc plus utile —
+ * le détail reste visible ligne par ligne, à côté de chaque interrupteur.
+ */
+function joinLabels(labels: readonly string[], max: number): string {
+  if (labels.length <= max) return labels.join(', ');
+  const rest = labels.length - max;
+  return `${labels.slice(0, max).join(', ')} et ${rest} autre${rest > 1 ? 's' : ''}`;
+}
+
+/**
+ * Précisions à afficher SOUS la phrase principale, dans l'ordre d'utilité.
+ *
+ * La première est la plus importante : elle nomme les types que l'utilisateur croit avoir
+ * activés et qui ne partiront pas. C'est exactement le scénario « je teste la batterie
+ * faible et je ne reçois rien » qu'on cherche à rendre impossible.
+ */
+export function forecastNotes(f: DeliveryForecast): string[] {
+  // Deux cas sans aucune précision utile : le maître coupé et le rôle hors périmètre.
+  // Détailler « tel type est retenu par le seuil » alors qu'AUCUN type ne part de toute
+  // façon désignerait un coupable secondaire et enverrait l'utilisateur régler ce qui
+  // n'est pas le problème.
+  if (f.tone === 'off' || f.tone === 'ineligible') return [];
+  const notes: string[] = [];
+
+  if (f.blockedBySeverity.length === 1) {
+    notes.push(
+      `« ${f.blockedBySeverity[0]} » est activé mais retenu par le seuil de gravité : abaissez le seuil ci-dessus pour le recevoir.`,
+    );
+  } else if (f.blockedBySeverity.length > 1) {
+    notes.push(
+      `${f.blockedBySeverity.length} types sont activés mais retenus par le seuil de gravité (${joinLabels(f.blockedBySeverity, 3)}). Abaissez le seuil ci-dessus pour les recevoir.`,
+    );
+  }
+  if (f.loudest.length > 0 && f.perDay >= 5) {
+    notes.push(`L'essentiel du volume vient de : ${f.loudest.join(', ')}.`);
+  }
+  if (f.hitsHourlyCap) {
+    notes.push(
+      `À ce rythme, le plafond de ${PUSH_MAX_PER_HOUR} notifications par heure en retiendra une partie. Rien n'est perdu : les alertes restent dans le centre d'alertes.`,
+    );
+  }
+  return notes;
 }
 
 /**
@@ -289,11 +609,29 @@ export interface SeverityOption {
 /**
  * Le seuil est formulé en volume attendu, pas en jargon : « à partir de warning » ne dit
  * rien, « vous recevrez aussi les excès de vitesse » dit tout.
+ *
+ * ⚠️ Chaque libellé porte le PIÈGE de son option, pas seulement son bénéfice :
+ *   - « Critiques uniquement » a l'air prudent, mais « alimentation coupée » est classée
+ *     CRITICAL et vaut 330 alertes par jour à elle seule ;
+ *   - et ce même réglage écarte « batterie faible », qui est un simple avertissement.
+ * C'est la raison pour laquelle le défaut serveur est `warning` ET coupe deux types.
  */
 export const SEVERITY_OPTIONS: readonly SeverityOption[] = [
-  { value: 'critical', label: 'Critiques uniquement', hint: 'SOS, accident, alimentation coupée. Quelques notifications par semaine.' },
-  { value: 'warning', label: 'Critiques et avertissements', hint: 'Ajoute les excès de vitesse et les sorties de zone. Plusieurs par jour.' },
-  { value: 'info', label: 'Tout recevoir', hint: 'Y compris les alertes informatives. Volume élevé.' },
+  {
+    value: 'critical',
+    label: 'Critiques uniquement',
+    hint: 'SOS, accident, remorquage, démarrage non autorisé : quelques-uns par an. Mais « batterie faible » et les sorties de zone ne passeront plus.',
+  },
+  {
+    value: 'warning',
+    label: 'Critiques et avertissements',
+    hint: 'Recommandé. Ajoute batterie faible, zones et perte de signal GPS : deux ou trois par jour.',
+  },
+  {
+    value: 'info',
+    label: 'Tout recevoir',
+    hint: 'Ajoute freinage, accélération et virages brusques. Aucun n\'a été observé en 30 jours : leur volume réel est inconnu.',
+  },
 ];
 
 /* ════════════════════════════════════════════════════════════════════════════ */
@@ -411,10 +749,21 @@ export const SEVERITY_OPTIONS: readonly SeverityOption[] = [
             dès maintenant : ils seront appliqués tels quels à l'ouverture.
           </p>
         } @else if (pref()?.isDefault) {
+          <!-- Le défaut n'est PAS neutre : il coupe deux types ET pose un seuil. Le taire
+               produirait exactement le symptôme qu'on répare (« j'ai activé, je ne reçois
+               rien »).
+               ⚠️ Ne PAS écrire « tout le reste vous est envoyé » : c'est faux. Le seuil par
+               défaut est « avertissements et plus », donc les alertes de conduite classées
+               information (freinage, accélération, virage brusque, vibration, arrêt
+               prolongé) ne partent pas non plus. Une phrase fausse ici est pire que pas de
+               phrase : elle envoie l'utilisateur chercher une panne inexistante. -->
           <p class="nc-notice">
             <lucide-icon [img]="InfoIcon" [size]="13" />
-            Réglage par défaut : seules les alertes critiques vous sont envoyées. Élargissez
-            le seuil ci-dessous si vous en voulez davantage.
+            Vous n'avez encore rien réglé. Deux réglages s'appliquent par défaut :
+            « alimentation coupée » et « excès de vitesse » sont coupés (près de 500 alertes
+            par jour sur le parc à eux deux), et le seuil retient les alertes de simple
+            information. Le récapitulatif ci-dessous indique ce qu'il reste ; tout se
+            rallume ici même.
           </p>
         }
 
@@ -436,6 +785,24 @@ export const SEVERITY_OPTIONS: readonly SeverityOption[] = [
               <span class="nc-track"><span class="nc-thumb"></span></span>
             </label>
           </div>
+
+          <!-- ─── 3 bis. Ce que ces reglages produisent VRAIMENT ───
+               Place juste sous l'interrupteur maitre, avant les reglages : c'est la
+               reponse a « est-ce que je vais recevoir quelque chose, et combien ? », et
+               elle doit etre lisible sans derouler quoi que ce soit. -->
+          @if (forecast(); as f) {
+            <div
+              class="nc-forecast"
+              [class.nc-forecast-off]="f.tone === 'off' || f.tone === 'silent' || f.tone === 'ineligible'"
+              [class.nc-forecast-loud]="f.tone === 'flood'"
+            >
+              <p class="nc-forecast-title">Ce que vous recevrez</p>
+              <p class="nc-forecast-main">{{ summaryText() }}</p>
+              @for (note of summaryNotes(); track note) {
+                <p class="nc-forecast-note">{{ note }}</p>
+              }
+            </div>
+          }
 
           <!-- ─── 4. Seuil de severite ─── -->
           <div class="nc-block" [class.nc-dimmed]="!p.pushEnabled">
@@ -466,13 +833,29 @@ export const SEVERITY_OPTIONS: readonly SeverityOption[] = [
           <!-- ─── 5. Types d'alerte, par famille ─── -->
           <div class="nc-block" [class.nc-dimmed]="!p.pushEnabled">
             <p class="nc-block-title">Quelles alertes ?</p>
+            <p class="nc-block-desc">
+              Chaque type indique sa fréquence observée sur l'ensemble du parc
+              ({{ frequencySnapshot }}) : de quoi choisir en connaissance de cause plutôt
+              qu'au nom.
+            </p>
             @for (g of groups(); track g.key) {
               <div class="nc-group">
                 <button type="button" class="nc-group-head" (click)="toggleOpen(g.key)" [attr.aria-expanded]="isOpen(g.key)">
                   <span class="nc-group-text">
                     <span class="nc-group-label">{{ g.label }}</span>
-                    <span class="nc-group-count" [class.off]="g.allMuted">
-                      {{ g.allMuted ? 'tout coupé' : g.activeCount + ' sur ' + g.total }}
+                    <span class="nc-group-count" [class.off]="g.receivedCount === 0">
+                      @if (g.allMuted) {
+                        tout coupé
+                      } @else if (prefsUnavailable()) {
+                        <!-- Réglages non chargés : les valeurs affichées viennent d'un repli
+                             local, pas du serveur. Le compte « x sur y » reste vrai pour la
+                             liste montrée, mais le VOLUME qu'on en déduirait serait un
+                             chiffre inventé — et un chiffre inventé a l'autorité d'une
+                             mesure. On le tait plutôt que de le fabriquer. -->
+                        {{ g.activeCount }} sur {{ g.total }}
+                      } @else {
+                        {{ g.activeCount }} sur {{ g.total }} · {{ g.volumeText }}
+                      }
                     </span>
                   </span>
                   <span class="nc-chevron" [class.open]="isOpen(g.key)">
@@ -490,9 +873,25 @@ export const SEVERITY_OPTIONS: readonly SeverityOption[] = [
                     {{ g.allMuted ? 'Tout réactiver' : 'Tout couper' }}
                   </button>
                   @for (item of g.items; track item.type) {
-                    <div class="nc-row">
+                    <div class="nc-row nc-row-type">
                       <div class="nc-row-text">
-                        <p class="nc-row-title">{{ item.label }}</p>
+                        <p class="nc-row-title">
+                          {{ item.label }}
+                          @if (item.mutedByDefault && !item.enabled) {
+                            <span class="nc-tag">coupé par défaut</span>
+                          }
+                        </p>
+                        <p class="nc-row-desc">
+                          <span class="nc-freq" [class.loud]="item.frequency.perDay >= 1">{{ item.frequencyText }}</span>
+                          <!-- L'information la plus importante de la ligne : interrupteur
+                               allumé ET pourtant rien ne partira. -->
+                          @if (item.blockedBySeverity) {
+                            <span class="nc-blocked">· ne partira pas : sous le seuil choisi</span>
+                          }
+                        </p>
+                        @if (item.noiseNote) {
+                          <p class="nc-row-note">{{ item.noiseNote }}</p>
+                        }
                       </div>
                       <label class="nc-toggle">
                         <input
@@ -500,7 +899,7 @@ export const SEVERITY_OPTIONS: readonly SeverityOption[] = [
                           [checked]="item.enabled"
                           [disabled]="saving()"
                           (change)="setType(item.type, $any($event.target).checked)"
-                          [attr.aria-label]="item.label"
+                          [attr.aria-label]="item.label + ' — ' + item.frequencyText"
                         />
                         <span class="nc-track"><span class="nc-thumb"></span></span>
                       </label>
@@ -606,8 +1005,30 @@ export const SEVERITY_OPTIONS: readonly SeverityOption[] = [
          il ne doit pas empecher de preparer ses reglages. On attenue seulement. */
       .nc-dimmed { opacity: .55; }
 
+      /* Recapitulatif « ce que vous recevrez » — encadre, jamais une ligne de plus.
+         C'est la reponse a la question que l'utilisateur se pose vraiment. */
+      .nc-forecast { padding: 12px 14px; border-radius: 12px; background: color-mix(in srgb, var(--tracky) 8%, var(--bg-tertiary)); border: 1px solid color-mix(in srgb, var(--tracky) 28%, var(--border-subtle)); }
+      .nc-forecast-title { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--tracky-light); margin: 0 0 5px; }
+      .nc-forecast-main { font-size: 12.5px; font-weight: 600; color: var(--fg-primary); line-height: 1.5; margin: 0; }
+      .nc-forecast-note { font-size: 11.5px; color: var(--fg-tertiary); line-height: 1.5; margin: 7px 0 0; }
+      /* Aucun envoi : on retire l'accent positif, sinon l'encadre felicite d'un silence. */
+      .nc-forecast-off { background: var(--bg-tertiary); border-color: var(--border-subtle); }
+      .nc-forecast-off .nc-forecast-title { color: var(--fg-tertiary); }
+      .nc-forecast-loud { background: color-mix(in srgb, #f59e0b 10%, var(--bg-tertiary)); border-color: color-mix(in srgb, #f59e0b 38%, var(--border-subtle)); }
+      .nc-forecast-loud .nc-forecast-title { color: #f59e0b; }
+
       /* Lignes a interrupteur — 48px minimum de hauteur tactile */
       .nc-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 6px 0; }
+      /* Une ligne de type porte 2 a 3 lignes de texte : on aligne en haut pour que
+         l'interrupteur ne flotte pas au milieu d'un paragraphe. */
+      .nc-row-type { align-items: flex-start; padding: 8px 0; }
+      .nc-row-type .nc-toggle { margin-top: -2px; }
+      .nc-tag { font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; padding: 2px 7px; margin-left: 6px; border-radius: 999px; background: var(--bg-tertiary); border: 1px solid var(--border-subtle); color: var(--fg-tertiary); white-space: nowrap; }
+      .nc-freq { color: var(--fg-tertiary); }
+      /* Au-dela d'une par jour, la frequence n'est plus un detail : elle doit sauter aux yeux. */
+      .nc-freq.loud { color: #f59e0b; font-weight: 700; }
+      .nc-blocked { color: #f59e0b; margin-left: 4px; }
+      .nc-row-note { font-size: 11px; color: var(--fg-tertiary); line-height: 1.45; margin: 4px 0 0; }
       .nc-row-master { padding: 12px 14px; border-radius: 12px; background: var(--bg-tertiary); }
       .nc-row-text { flex: 1; min-width: 0; }
       .nc-row-title { font-size: 12.5px; font-weight: 600; color: var(--fg-primary); margin: 0; }
@@ -705,9 +1126,43 @@ export class NotificationsCardComponent implements OnInit {
   private readonly permission = signal<NotificationPermission | 'unsupported'>('default');
   private readonly openGroups = signal<Set<string>>(new Set());
 
-  protected readonly groups = computed(() =>
-    buildGroupViews(ALERT_TYPE_GROUPS, this.pref()?.mutedTypes ?? []),
-  );
+  /** Provenance des fréquences, affichée une fois pour toutes sous le titre du bloc. */
+  protected readonly frequencySnapshot = FREQUENCY_SNAPSHOT_LABEL;
+
+  protected readonly groups = computed(() => {
+    const p = this.pref();
+    // Pas de repli inventé ici : sans préférence chargée, il n'y a rien d'honnête à
+    // prédire, et le template ne rend ce bloc que lorsque `pref()` existe.
+    return p ? buildGroupViews(ALERT_TYPE_GROUPS, p) : [];
+  });
+
+  /**
+   * Ce que les réglages courants produiront réellement — calculé, jamais promis.
+   *
+   * Deux garde-fous, pour la même raison : ce bloc est le plus affirmatif de l'écran, donc
+   * celui qui coûte le plus cher s'il ment.
+   *   - `prefsUnavailable()` : les valeurs affichées sont un repli local inventé côté PWA
+   *     (`fallbackPreference()`), pas ce que le serveur applique. En tirer « vous recevrez
+   *     330 notifications par jour » serait une prévision fabriquée de bout en bout. On
+   *     n'affiche alors RIEN — le bandeau « réglages non chargés » dit déjà le nécessaire.
+   *   - `p.eligible` : hors périmètre de déploiement, le serveur écarte l'envoi au motif
+   *     `rollout` avant même de lire les préférences.
+   */
+  protected readonly forecast = computed(() => {
+    const p = this.pref();
+    if (!p || this.prefsUnavailable()) return null;
+    return buildDeliveryForecast(ALERT_TYPE_GROUPS, p, p.eligible);
+  });
+
+  protected readonly summaryText = computed(() => {
+    const f = this.forecast();
+    return f ? forecastSentence(f) : '';
+  });
+
+  protected readonly summaryNotes = computed(() => {
+    const f = this.forecast();
+    return f ? forecastNotes(f) : [];
+  });
 
   protected readonly deviceState = computed(() => {
     const diag = this.api.pushSupportDiagnostic();

@@ -278,6 +278,13 @@ const CATALOG: CatalogEntry[] = [
     fire: { tz: PARIS, matcher: (w) => w.getDay() === 1 && w.getHours() === 9 && w.getMinutes() === 0 },
   },
   {
+    id: 'notification-retention', label: 'Purge du journal de notifications', category: 'Notifications',
+    kind: 'cron', scheduleHuman: 'chaque jour à 04:45', criticality: 'basse', antiOverlap: false,
+    note: 'Retenues purgées à 30 j (volumineuses), envois réels conservés 180 j (trace d\'exploitation).',
+    purpose: 'Purge le journal du centre de notifications : sans elle, ~300 000 lignes par mois une fois le push ouvert à tous les rôles.',
+    fire: { tz: SERVER_TZ, matcher: (w) => w.getHours() === 4 && w.getMinutes() === 45 },
+  },
+  {
     id: 'sms-allowlist-reconcile', label: 'Réconciliation de l\'allowlist SMS', category: 'Notifications',
     kind: 'cron', scheduleHuman: 'toutes les heures (à h:25)', criticality: 'haute', antiOverlap: true,
     note: 'Un numéro absent de l\'allowlist = SMS refusé (403) — dont le repli du coupe-circuit.',
