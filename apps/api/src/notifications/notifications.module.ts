@@ -7,6 +7,8 @@ import { NotificationDispatchService } from './notification-dispatch.service';
 import { NotificationPreferencesService } from './notification-preferences.service';
 import { NotificationThrottleService } from './notification-throttle.service';
 import { NotificationRetentionService } from './notification-retention.service';
+import { NotificationCenterController } from './notification-center.controller';
+import { NotificationCenterService } from './notification-center.service';
 import { NotificationsController } from './notifications.controller';
 import { WebPushService } from './web-push.service';
 
@@ -24,8 +26,10 @@ import { WebPushService } from './web-push.service';
  */
 @Module({
   imports: [AuthModule, SmsModule],
-  controllers: [NotificationsController],
-  providers: [NotificationRetentionService, 
+  controllers: [NotificationsController, NotificationCenterController],
+  providers: [NotificationRetentionService,
+    NotificationCenterService,
+    
     WebPushService,
     NotificationDispatchService,
     NotificationThrottleService,
