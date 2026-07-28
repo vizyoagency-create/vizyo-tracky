@@ -22,7 +22,9 @@ import {
   Smartphone,
   Trash2,
 } from 'lucide-angular';
+import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../core/services/auth.service';
+import { UsersApiService } from '../../core/services/users.service';
 import { NotificationsApiService, type PushSubscriptionDto } from '../../core/services/notifications.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 
@@ -651,7 +653,7 @@ export const SEVERITY_OPTIONS: readonly SeverityOption[] = [
 @Component({
   selector: 'app-notifications-card',
   standalone: true,
-  imports: [LucideAngularModule],
+  imports: [LucideAngularModule, FormsModule],
   template: `
     <div class="nc-card">
       <div class="nc-head">
@@ -814,6 +816,37 @@ export const SEVERITY_OPTIONS: readonly SeverityOption[] = [
               <span class="nc-track"><span class="nc-thumb"></span></span>
             </label>
           </div>
+
+          <!-- ─── 3 quater. MON CONTACT D'ESCALADE ───
+               Si JE n'acquitte pas une alerte critique à temps, cette personne est
+               prévenue à ma place. Le champ existait en base et l'API le validait déjà
+               (même flotte, jamais soi-même) — mais AUCUN écran ne l'envoyait : 0
+               utilisateur sur 15 en avait un, et le cron d'escalade tournait chaque
+               minute sans jamais pouvoir agir. Toute la plomberie était là ; il ne
+               manquait que ce champ. -->
+          @if (p.receivesFleetAlerts) {
+            <div class="nc-row nc-row-stack">
+              <div class="nc-row-text">
+                <p class="nc-row-title">Si je n’acquitte pas</p>
+                <p class="nc-row-desc">
+                  Prévenir cette personne à ma place quand une alerte critique reste
+                  sans réponse. Sans contact, aucune escalade n’a lieu.
+                </p>
+              </div>
+              <select
+                class="nc-select"
+                [disabled]="savingEscalation()"
+                [ngModel]="escalationContactId()"
+                (ngModelChange)="setEscalationContact($event)"
+                aria-label="Contact d’escalade"
+              >
+                <option [ngValue]="null">Personne — pas d’escalade</option>
+                @for (c of escalationCandidates(); track c.id) {
+                  <option [ngValue]="c.id">{{ c.label }}</option>
+                }
+              </select>
+            </div>
+          }
 
           @if (!p.receivesFleetAlerts) {
             <p class="nc-hint-strong">
@@ -1133,6 +1166,7 @@ export const SEVERITY_OPTIONS: readonly SeverityOption[] = [
 export class NotificationsCardComponent implements OnInit {
   private readonly api = inject(NotificationsApiService);
   private readonly auth = inject(AuthService);
+  private readonly users = inject(UsersApiService);
   private readonly toast = inject(ToastService);
 
   protected readonly BellIcon = Bell;
@@ -1231,6 +1265,11 @@ export class NotificationsCardComponent implements OnInit {
     () => this.auth.user()?.role === 'SUPER_ADMIN' && this.devices().length > 0,
   );
 
+  /** Collegues eligibles comme contact d'escalade (meme flotte, jamais soi-meme). */
+  protected readonly escalationCandidates = signal<{ id: string; label: string }[]>([]);
+  protected readonly escalationContactId = signal<string | null>(null);
+  protected readonly savingEscalation = signal(false);
+
   async ngOnInit(): Promise<void> {
     this.refreshPermission();
     // loadStatus() interroge le serveur (VAPID actif ?) et resynchronise l'abonnement
@@ -1240,7 +1279,55 @@ export class NotificationsCardComponent implements OnInit {
     await Promise.all([
       this.api.loadPreferences(),
       this.api.listDevices('mine').catch(() => undefined),
+      this.loadEscalationChoices(),
     ]);
+  }
+
+  /**
+   * Charge les collegues proposables comme contact d'escalade.
+   *
+   * Best-effort : sans cette liste le selecteur reste vide, mais le reste de l'ecran
+   * fonctionne. On EXCLUT soi-meme — l'API le refuse de toute facon, autant ne pas
+   * proposer un choix qui echouera.
+   */
+  private async loadEscalationChoices(): Promise<void> {
+    const me = this.auth.user();
+    this.escalationContactId.set(me?.escalationContactUserId ?? null);
+    try {
+      const { users } = await this.users.findAll();
+      this.escalationCandidates.set(
+        users
+          .filter((u) => u.id !== me?.sub && u.isActive)
+          .map((u) => ({
+            id: u.id,
+            label: [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || u.email,
+          }))
+          .sort((a, b) => a.label.localeCompare(b.label, 'fr')),
+      );
+    } catch {
+      this.escalationCandidates.set([]);
+    }
+  }
+
+  /**
+   * `null` EFFACE le contact — c'est une valeur voulue (« pas d'escalade »), pas une
+   * absence. On remet l'ancienne valeur si le serveur refuse : jamais d'etat affiche
+   * qui ne correspond a rien en base.
+   */
+  protected async setEscalationContact(id: string | null): Promise<void> {
+    const previous = this.escalationContactId();
+    this.escalationContactId.set(id);
+    this.savingEscalation.set(true);
+    try {
+      await this.users.updateMe({ escalationContactUserId: id });
+      await this.auth.refreshMe();
+      this.toast.success(id ? 'Contact d’escalade enregistre' : 'Escalade desactivee');
+    } catch (e: unknown) {
+      this.escalationContactId.set(previous);
+      this.toast.error((e as Error)?.message ?? 'Echec de l’enregistrement');
+    } finally {
+      this.savingEscalation.set(false);
+    }
   }
 
   private refreshPermission(): void {
