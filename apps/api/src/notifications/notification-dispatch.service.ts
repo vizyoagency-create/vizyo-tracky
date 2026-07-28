@@ -487,12 +487,26 @@ export class NotificationDispatchService {
     if (includeGlobalAdmins) {
       const superAdmins = await this.prisma.user.findMany({
         where: { role: UserRole.SUPER_ADMIN, isActive: true },
+        include: { notificationPreference: { select: { receivesFleetAlerts: true } } },
       });
       for (const user of superAdmins) {
         // Un SUPER_ADMIN deja present comme membre de la flotte garde son
         // perimetre 'FLEET' (tous canaux) : on ne lui RETIRE pas des envois
         // qu'il recoit deja aujourd'hui.
         if (byId.has(user.id)) continue;
+        // ⚠️ ASYMETRIE VOULUE avec le defaut par ROLE ci-dessus.
+        // Cote FLOTTE, `defaultReceivesFleetAlerts('SUPER_ADMIN')` vaut FAUX : un
+        // super-admin n'est pas un destinataire ordinaire de flotte. Mais en portee
+        // GLOBALE il est, par construction, l'observateur transverse — et c'est le
+        // comportement deja en production depuis l'ouverture du push.
+        // Appliquer le defaut par role ICI le priverait de tout push du jour au
+        // lendemain, cassant precisement ce qu'on vient de livrer.
+        //
+        // On respecte donc uniquement un choix EXPLICITE de se retirer. Sans ce test,
+        // l'interrupteur « Recevoir les alertes de la flotte » n'aurait AUCUN effet
+        // pour un super-admin : un reglage visible qui ne fait rien est pire que pas
+        // de reglage du tout.
+        if (user.notificationPreference?.receivesFleetAlerts === false) continue;
         byId.set(user.id, { user, scope: 'GLOBAL' });
       }
     }

@@ -29,6 +29,8 @@ import {
   type SurveillanceEventDto,
   type SurveillanceProfileDto,
 } from '../../core/services/surveillance.service';
+import { AuthService } from '../../core/services/auth.service';
+import { UsersApiService } from '../../core/services/users.service';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { relativeTime } from '../../shared/utils/relative-time';
 
@@ -63,6 +65,16 @@ const TRIGGER_LABELS: Record<string, string> = {
   VIBRATION: 'Vibration',
   MOVEMENT: 'Mouvement',
   DOOR: 'Porte',
+};
+
+/** Libelles FR des roles — jamais l'identifiant brut a l'ecran. */
+const ROLE_LABELS: Record<string, string> = {
+  SUPER_ADMIN: 'Super-admin',
+  FLEET_ADMIN: 'Admin de flotte',
+  FLEET_MANAGER: 'Gestionnaire',
+  NIGHT_WATCHMAN: 'Veilleur de nuit',
+  DRIVER: 'Conducteur',
+  VIEWER: 'Lecteur',
 };
 
 @Component({
@@ -290,19 +302,47 @@ const TRIGGER_LABELS: Record<string, string> = {
           <div class="mt-4 pt-3 border-t border-border-subtle">
             <label class="sm-label mb-1">Destinataires des alertes</label>
             <p class="text-xs text-fg-tertiary">
-              Tous les FLEET_ADMIN de la flotte sont notifiés par défaut (push + email).
-              @if (form().mode !== 'OFF' && profile()?.additionalNotifyUserIds?.length) {
-                <strong class="text-fg-secondary">
-                  +{{ profile()?.additionalNotifyUserIds?.length }} contact(s) additionnel(s)
-                </strong>
-                configuré(s).
-              } @else {
-                <span class="italic">Aucun contact additionnel configuré.</span>
-              }
-              <span class="block mt-1 opacity-70">
-                <lucide-icon [img]="Info" [size]="12" class="inline-block align-[-2px]"></lucide-icon> La gestion des contacts additionnels (FLEET_MANAGER opt-in) sera disponible dans une prochaine version.
-              </span>
+              Les destinataires d'alertes de la flotte sont prévenus par défaut. Ajoutez ici
+              les personnes à prévenir <strong class="text-fg-secondary">en plus</strong>, pour
+              ce véhicule uniquement.
             </p>
+
+            <!--
+              L'ecran affichait « sera disponible dans une prochaine version » depuis des
+              mois, et n'exposait qu'un COMPTEUR. Pourtant toute la plomberie existait :
+              la colonne, le DTO, et une validation serveur qui verifie deja l'appartenance
+              a la flotte. Constat prod 2026-07-28 : 0 profil sur 11 renseigne — la
+              fonctionnalite etait inatteignable, pas inutilisee.
+            -->
+            @if (notifyCandidates().length === 0) {
+              <p class="text-xs text-fg-tertiary italic mt-2">
+                Aucun autre utilisateur dans cette flotte.
+              </p>
+            } @else {
+              <ul class="mt-2 space-y-1">
+                @for (c of notifyCandidates(); track c.id) {
+                  <li>
+                    <label class="sm-notify-row">
+                      <input
+                        type="checkbox"
+                        [checked]="isNotified(c.id)"
+                        [disabled]="saving()"
+                        (change)="toggleNotifyUser(c.id, $any($event.target).checked)" />
+                      <span class="sm-notify-txt">
+                        <span class="sm-notify-name">{{ c.label }}</span>
+                        <span class="sm-notify-role">{{ c.roleLabel }}</span>
+                      </span>
+                    </label>
+                  </li>
+                }
+              </ul>
+              @if (notifiedCount() > 0) {
+                <p class="text-xs text-fg-tertiary mt-1">
+                  {{ notifiedCount() }} contact(s) additionnel(s) — prévenus uniquement pour
+                  les déclenchements de CE véhicule.
+                </p>
+              }
+            }
           </div>
         </div>
 
@@ -401,6 +441,12 @@ const TRIGGER_LABELS: Record<string, string> = {
     </div>
   `,
   styles: [`
+    /* 44 px : cible tactile minimale — le panneau est utilise au telephone. */
+    .sm-notify-row { display: flex; gap: .55rem; align-items: center; min-height: 44px; cursor: pointer; }
+    .sm-notify-row input { width: 20px; height: 20px; flex: none; }
+    .sm-notify-txt { display: flex; gap: .4rem; align-items: baseline; flex-wrap: wrap; }
+    .sm-notify-name { font-size: .85rem; }
+    .sm-notify-role { font-size: .72rem; opacity: .65; }
     .sm-card {
       background: var(--color-bg-secondary, #0e1417);
       border: 1px solid var(--color-border-subtle, #1f2a30);
@@ -553,11 +599,21 @@ export class SurveillancePanelComponent implements OnInit {
   readonly vehicleId = input.required<string>();
 
   private readonly api = inject(SurveillanceApiService);
+  private readonly usersApi = inject(UsersApiService);
+  private readonly auth = inject(AuthService);
   private readonly toast = inject(ToastService);
 
   protected readonly loading = signal(true);
   protected readonly loadError = signal<string | null>(null);
   protected readonly profile = signal<SurveillanceProfileWithLiveness | null>(null);
+
+  /**
+   * Collegues proposables comme destinataire ADDITIONNEL pour ce vehicule.
+   * Soi-meme est exclu : on est deja destinataire ou on ne l'est pas, se cocher
+   * soi-meme dans une liste « en plus » n'a pas de sens.
+   */
+  protected readonly notifyCandidates = signal<{ id: string; label: string; roleLabel: string }[]>([]);
+  protected readonly notifiedCount = computed(() => this.profile()?.additionalNotifyUserIds?.length ?? 0);
   protected readonly events = signal<SurveillanceEventDto[]>([]);
   protected readonly eventsLoading = signal(false);
   protected readonly acting = signal(false);
@@ -693,6 +749,9 @@ export class SurveillancePanelComponent implements OnInit {
   async ngOnInit(): Promise<void> {
     await this.load();
     await this.loadEvents();
+    // Apres le profil : la liste des collegues n'est utile qu'une fois le bloc affiche,
+    // et son echec ne doit pas retarder l'essentiel du panneau.
+    await this.loadNotifyCandidates();
   }
 
   async load(): Promise<void> {
@@ -767,6 +826,51 @@ export class SurveillancePanelComponent implements OnInit {
       this.toast.error('Désarmement impossible', msg);
     } finally {
       this.acting.set(false);
+    }
+  }
+
+  /** Cet utilisateur est-il deja destinataire additionnel de CE vehicule ? */
+  protected isNotified(userId: string): boolean {
+    return (this.profile()?.additionalNotifyUserIds ?? []).includes(userId);
+  }
+
+  /**
+   * Ajoute ou retire un destinataire additionnel.
+   *
+   * Passe par `updateField`, donc on herite du meme comportement que les autres
+   * reglages du panneau : mise a jour optimiste, regroupement des changements et
+   * envoi differe de 400 ms (cocher trois personnes = UN appel, pas trois), avec
+   * rechargement depuis le serveur si l'enregistrement echoue.
+   */
+  protected toggleNotifyUser(userId: string, checked: boolean): void {
+    const current = this.profile()?.additionalNotifyUserIds ?? [];
+    const next = checked
+      ? Array.from(new Set([...current, userId]))
+      : current.filter((id) => id !== userId);
+    this.updateField('additionalNotifyUserIds', next);
+  }
+
+  /**
+   * Charge les collegues proposables. Best-effort : sans la liste, le bloc affiche
+   * « aucun autre utilisateur » plutot que de casser le panneau — un anti-vol doit
+   * rester utilisable meme si une liste secondaire ne se charge pas.
+   */
+  private async loadNotifyCandidates(): Promise<void> {
+    const meId = this.auth.user()?.sub;
+    try {
+      const { users } = await this.usersApi.findAll();
+      this.notifyCandidates.set(
+        users
+          .filter((u) => u.isActive && u.id !== meId)
+          .map((u) => ({
+            id: u.id,
+            label: [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || u.email,
+            roleLabel: ROLE_LABELS[u.role] ?? u.role,
+          }))
+          .sort((a, b) => a.label.localeCompare(b.label, 'fr')),
+      );
+    } catch {
+      this.notifyCandidates.set([]);
     }
   }
 
