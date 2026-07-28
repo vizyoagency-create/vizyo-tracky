@@ -624,7 +624,16 @@ export class NotificationsApiService {
     this.rules.set(res.items);
   }
 
+  /**
+   * ⚠️ `fleetId` est OBLIGATOIRE pour un SUPER_ADMIN, qui n'appartient à aucune flotte.
+   *
+   * Le backend accepte `params.fleetId ?? requestedBy.fleetId` : un chef de flotte n'a rien
+   * à fournir, mais un super-admin sans `fleetId` reçoit un 400 « fleetId requis ». Ce champ
+   * manquait purement et simplement à la signature — d'où l'impossibilité de créer la
+   * moindre règle depuis un compte super-admin (constaté le 2026-07-28).
+   */
   createRule(payload: {
+    fleetId?: string | null;
     vehicleId?: string | null;
     alertType: string;
     enabled?: boolean;
