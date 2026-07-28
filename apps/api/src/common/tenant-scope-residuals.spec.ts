@@ -17,6 +17,10 @@ const fleetUser = { userId: 'u', role: UserRole.FLEET_ADMIN, fleetId: FLEET_A };
 
 describe('tenant-scope résiduels (fail-closed)', () => {
   describe('EngineControlService.listCommands', () => {
+    // ⚠️ Construction POSITIONNELLE : ce spec doit suivre la signature du constructeur.
+    // Ajouter une dépendance au service casse ce fichier — c'est voulu, ça force à
+    // vérifier que le nouveau collaborateur n'intervient pas dans le chemin fail-closed
+    // testé ici (`listCommands` n'appelle ni les zones mortes, ni le reste).
     const make = (prisma: unknown) =>
       new EngineControlService(
         prisma as never,
@@ -26,6 +30,7 @@ describe('tenant-scope résiduels (fail-closed)', () => {
         {} as never,
         {} as never,
         {} as never,
+        {} as never, // deadZones — non sollicité par listCommands
         {} as never,
       );
 
