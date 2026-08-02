@@ -29,12 +29,26 @@ export interface MeResponse {
 export class AuthClientService {
   private readonly logger = new Logger(AuthClientService.name);
   private readonly apiUrl: string;
+  /** publicId (`app_xxx`) — va dans l'en-tete X-App-Id. */
   private readonly appId: string;
+  /**
+   * cuid interne (`cmnu...`) — va dans les CHEMINS /v1/apps/:appId/...
+   *
+   * ⚠️ Les deux identifiants ne sont PAS interchangeables : cote Vizyo Auth,
+   * `AppGuard` resout l'en-tete X-App-Id via findByPublicId() puis pose
+   * `req.appEntity` (dont `.id` est le cuid interne), et `checkAppAccess()`
+   * compare ce cuid au parametre d'URL. Passer le publicId dans le chemin
+   * donne un 403 « Access denied: you can only access users of your own
+   * application » qui laisse croire a un probleme de droits alors que c'est
+   * un probleme d'identifiant.
+   */
+  private readonly appInternalId: string;
   private readonly appSecret: string;
 
   constructor(private readonly config: ConfigService<Env, true>) {
     this.apiUrl = this.config.get('VIZYO_AUTH_API_URL', { infer: true });
     this.appId = this.config.get('VIZYO_AUTH_APP_ID', { infer: true });
+    this.appInternalId = this.config.get('VIZYO_AUTH_APP_INTERNAL_ID', { infer: true });
     this.appSecret = this.config.get('VIZYO_AUTH_APP_SECRET', { infer: true });
   }
 
@@ -123,7 +137,7 @@ export class AuthClientService {
   async suspendUser(authUserId: string): Promise<void> {
     return this.request<void>(
       'PATCH',
-      `/v1/apps/${this.appId}/users/${authUserId}/status`,
+      `/v1/apps/${this.appInternalId}/users/${authUserId}/status`,
       { status: 'suspended' },
     );
   }
@@ -131,7 +145,7 @@ export class AuthClientService {
   async activateUser(authUserId: string): Promise<void> {
     return this.request<void>(
       'PATCH',
-      `/v1/apps/${this.appId}/users/${authUserId}/status`,
+      `/v1/apps/${this.appInternalId}/users/${authUserId}/status`,
       { status: 'active' },
     );
   }
@@ -141,7 +155,7 @@ export class AuthClientService {
     // corresponde au body reellement envoye dans la requete fetch.
     return this.request<void>(
       'DELETE',
-      `/v1/apps/${this.appId}/users/${authUserId}`,
+      `/v1/apps/${this.appInternalId}/users/${authUserId}`,
       {},
     );
   }
@@ -150,10 +164,20 @@ export class AuthClientService {
     try {
       const result = await this.request<{ users: Array<{ id: string; email: string; displayName: string | null; status: string; createdAt: string }> }>(
         'GET',
-        `/v1/apps/${this.appId}/users`,
+        `/v1/apps/${this.appInternalId}/users`,
       );
       return result.users ?? [];
-    } catch {
+    } catch (err) {
+      // Repli volontaire sur une liste vide : cette methode alimente un ecran
+      // d'appoint, elle ne doit pas faire echouer la requete appelante.
+      // ⚠️ Mais un echec DOIT rester visible : c'est ce `catch` muet qui a
+      // masque pendant des mois le 403 « publicId dans le chemin » — l'ecran
+      // affichait « aucun utilisateur » au lieu de signaler une erreur.
+      this.logger.error(
+        `listAppUsers a echoue — retour d'une liste VIDE (ce n'est PAS « aucun utilisateur »): ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
       return [];
     }
   }
