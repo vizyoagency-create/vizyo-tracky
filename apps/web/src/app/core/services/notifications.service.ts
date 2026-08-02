@@ -12,6 +12,33 @@ import type {
 import { DEFAULT_MIN_SEVERITY, SEVERITY_ORDER } from '@vizyo/tracky-shared';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 
+/**
+ * Ce qu'il faut faire, au chargement, pour que le SERVEUR connaisse cet appareil.
+ *
+ *   - `resubscribe` : le navigateur n'a plus d'abonnement mais l'autorisation tient
+ *     (iOS révoque silencieusement après ~2 semaines d'inactivité). On en recrée un,
+ *     sans dialogue.
+ *   - `reassert`    : le navigateur en a un. On le redéclare quand même, parce que le
+ *     serveur a pu perdre le sien (purge d'administration, restauration). Sans ça,
+ *     l'appareil reste « abonné » à l'écran et ne reçoit plus rien, définitivement.
+ *   - `none`        : rien à faire, ou rien de possible sans redemander l'autorisation.
+ *
+ * ⚠️ Aucune branche ne déclenche de demande d'autorisation. Celle-ci ne se demande
+ * QUE depuis un geste explicite de l'utilisateur (bouton « Activer ») — la redemander
+ * au chargement serait perçu comme du harcèlement, et les navigateurs la refusent
+ * définitivement après quelques rejets.
+ */
+export type PushSyncAction = 'resubscribe' | 'reassert' | 'none';
+
+export function decidePushSync(input: {
+  /** Le NAVIGATEUR détient-il un abonnement ? (jamais l'avis du serveur) */
+  hasLocalSubscription: boolean;
+  permission: NotificationPermission | 'unsupported';
+}): PushSyncAction {
+  if (input.hasLocalSubscription) return 'reassert';
+  return input.permission === 'granted' ? 'resubscribe' : 'none';
+}
+
 export interface PushSubscriptionDto {
   id: string;
   endpoint: string;
@@ -112,8 +139,31 @@ export class NotificationsApiService {
         // Si l'utilisateur a deja accorde la permission mais qu'il n'y a plus de
         // subscription locale, on en cree une nouvelle silencieusement (pas besoin
         // de geste utilisateur tant que la permission est `granted`).
-        if (!this.isSubscribed() && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        const action = decidePushSync({
+          hasLocalSubscription: this.isSubscribed(),
+          permission: typeof Notification !== 'undefined' ? Notification.permission : 'unsupported',
+        });
+        if (action === 'resubscribe') {
           await this.silentResubscribe().catch(() => {/* silencieux : sera retente au prochain load */});
+        } else if (action === 'reassert') {
+          // ⚠️ RECONCILIATION AVEC LE SERVEUR — le cas que la branche precedente ne peut
+          // PAS voir.
+          //
+          // `isSubscribed()` ne regarde QUE le navigateur (`pushManager.getSubscription`).
+          // Le serveur n'est jamais consulte. Donc si sa table d'abonnements perd la ligne
+          // — purge d'administration, restauration de sauvegarde, compte recree — pendant
+          // que le navigateur garde le sien, on tombe dans un angle mort parfait :
+          //   - `isSubscribed()` dit oui, donc pas de re-abonnement silencieux ;
+          //   - le bandeau d'invitation ne s'affiche pas non plus (meme condition) ;
+          //   - l'ecran de reglages affiche « abonne » ;
+          //   - et le serveur ne connait plus l'appareil, donc plus AUCUN push.
+          // Etat definitif, sans aucun signal, jusqu'a une desinscription manuelle.
+          //
+          // On re-affirme donc l'abonnement local a chaque chargement. C'est un `upsert`
+          // sur l'endpoint cote serveur : idempotent, aucun doublon, et AUCUNE demande
+          // d'autorisation (elle est deja accordee — on ne redemande jamais ce qu'on a).
+          // Effet secondaire utile : `lastSeenAt` reste juste dans le centre d'administration.
+          await this.reassertSubscription().catch(() => {/* sera retente au prochain load */});
         }
       }
     } catch {
@@ -144,6 +194,27 @@ export class NotificationsApiService {
       }),
     );
     this.currentSubscription.set(sub);
+  }
+
+  /**
+   * Re-declare au serveur l'abonnement que le navigateur detient DEJA.
+   *
+   * Ne cree rien cote navigateur et ne demande aucune autorisation : on renvoie
+   * simplement ce qu'on a. Cote serveur, `subscribe` est un `upsert` sur l'endpoint,
+   * avec dedup par appareil — le rejouer est sans effet quand tout va bien, et repare
+   * la desynchronisation quand la ligne serveur a disparu.
+   */
+  private async reassertSubscription(): Promise<void> {
+    const sub = this.currentSubscription();
+    if (!sub) return;
+    const json = sub.toJSON() as { endpoint?: string; keys?: { p256dh: string; auth: string } };
+    if (!json.endpoint || !json.keys) return;
+    await firstValueFrom(
+      this.http.post('/api/notifications/push/subscribe', {
+        subscription: { endpoint: json.endpoint, keys: json.keys },
+        deviceId: this.getOrCreateDeviceId(),
+      }),
+    );
   }
 
   isPushSupported(): boolean {
