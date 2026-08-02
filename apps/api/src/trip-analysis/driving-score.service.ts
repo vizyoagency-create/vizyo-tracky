@@ -1,3 +1,4 @@
+import { tenantVehicleWhere } from '../common/tenant-vehicle-scope';
 import { Injectable, Logger } from '@nestjs/common';
 import type { DrivingScoreDetailDto, DrivingScoreRowDto, DrivingScoreScope, DrivingScoresDto } from '@vizyo/tracky-shared';
 import { formatSilenceLabel, isVehicleDormant } from '@vizyo/tracky-shared';
@@ -88,9 +89,8 @@ export class DrivingScoreService {
 
     // 1. Périmètre véhicules (anti-IDOR).
     const accessible = await this.vehicleAccess.getAccessibleVehicleIds(user);
-    const vehicleWhere = accessible === 'ALL'
-      ? (fleetId ? { fleetId } : {})
-      : { vehicleId: { in: accessible.length ? accessible : ['00000000-0000-0000-0000-000000000000'] } };
+    // Meme motif que la carte des stations : `'ALL'` ne doit jamais valoir « aucun filtre ».
+    const vehicleWhere = tenantVehicleWhere(accessible, user, fleetId);
 
     // 2. Analyses (bornées) → métriques par trajet.
     const analyses = await this.prisma.tripAnalysis.findMany({

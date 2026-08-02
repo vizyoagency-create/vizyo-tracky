@@ -30,12 +30,15 @@ interface PrismaMockFns {
   assignmentsFindMany?: jest.Mock;
 }
 
-function makePrismaMock(fns: PrismaMockFns = {}) {
+function makePrismaMock(fns: PrismaMockFns & { vehicleFindUnique?: jest.Mock } = {}) {
   return {
     userVehicleAccess: { findMany: fns.accessFindMany ?? jest.fn().mockResolvedValue([]) },
     vehicleGroupAssignment: {
       findMany: fns.assignmentsFindMany ?? jest.fn().mockResolvedValue([]),
     },
+    // Appartenance du vehicule a une flotte. Par defaut : MEME flotte que l'utilisateur
+    // de test — les cas inter-flotte la surchargent explicitement.
+    vehicle: { findUnique: fns.vehicleFindUnique ?? jest.fn().mockResolvedValue({ fleetId: FLEET_ID }) },
   } as unknown as PrismaService;
 }
 
@@ -147,25 +150,58 @@ describe('VehicleAccessService', () => {
   });
 
   describe('hasAccessToVehicle', () => {
-    it('admin → true sans query', async () => {
+    /**
+     * ⚠️ CES DEUX TESTS VERROUILLAIENT LA FAILLE.
+     *
+     * Ils affirmaient « admin → true SANS query » et « acces ALL → true », c'est-a-dire
+     * exactement le comportement qui ouvrait un IDOR inter-societes : avec un UUID d'un
+     * vehicule d'une autre flotte, un FLEET_ADMIN passait la garde. Et ces UUID etaient
+     * livres en clair par la carte des stations-service (fuite corrigee le meme jour).
+     *
+     * Le sentinel `'ALL'` signifie « aucune restriction PAR VEHICULE », sous-entendu dans
+     * SA flotte — jamais « tous les vehicules de la base ». On verifie donc l'appartenance.
+     */
+    it('⚠️ FLEET_ADMIN : autorise dans SA flotte…', async () => {
       const accessFindMany = jest.fn();
-      const svc = new VehicleAccessService(makePrismaMock({ accessFindMany }));
+      const vehicleFindUnique = jest.fn().mockResolvedValue({ fleetId: FLEET_ID });
+      const svc = new VehicleAccessService(makePrismaMock({ accessFindMany, vehicleFindUnique }));
 
-      const ok = await svc.hasAccessToVehicle(makeUser(UserRole.FLEET_ADMIN), VEHICLE_A);
-
-      expect(ok).toBe(true);
+      expect(await svc.hasAccessToVehicle(makeUser(UserRole.FLEET_ADMIN), VEHICLE_A)).toBe(true);
+      // Toujours aucune lecture des regles d'acces : le raccourci de perf est conserve.
       expect(accessFindMany).not.toHaveBeenCalled();
     });
 
-    it('user avec acces ALL → true', async () => {
+    it('⚠️ …et REFUSE sur un vehicule d’une AUTRE flotte (l’IDOR)', async () => {
+      const vehicleFindUnique = jest.fn().mockResolvedValue({ fleetId: 'une-autre-flotte' });
+      const svc = new VehicleAccessService(makePrismaMock({ vehicleFindUnique }));
+
+      expect(await svc.hasAccessToVehicle(makeUser(UserRole.FLEET_ADMIN), VEHICLE_A)).toBe(false);
+    });
+
+    it('un vehicule INEXISTANT est refuse, pas autorise par defaut', async () => {
+      const vehicleFindUnique = jest.fn().mockResolvedValue(null);
+      const svc = new VehicleAccessService(makePrismaMock({ vehicleFindUnique }));
+
+      expect(await svc.hasAccessToVehicle(makeUser(UserRole.FLEET_ADMIN), VEHICLE_A)).toBe(false);
+    });
+
+    it('SUPER_ADMIN : perimetre reellement illimite, sans lecture du vehicule', async () => {
+      // Le seul role pour qui `'ALL'` veut dire « toute la base ».
+      const vehicleFindUnique = jest.fn();
+      const svc = new VehicleAccessService(makePrismaMock({ vehicleFindUnique }));
+
+      expect(await svc.hasAccessToVehicle(makeUser(UserRole.SUPER_ADMIN), VEHICLE_A)).toBe(true);
+      expect(vehicleFindUnique).not.toHaveBeenCalled();
+    });
+
+    it('user avec une regle ALL : borne a sa flotte, pas a la base', async () => {
       const accessFindMany = jest.fn().mockResolvedValue([
         { accessType: AccessType.ALL, groupId: null, vehicleId: null },
       ]);
-      const svc = new VehicleAccessService(makePrismaMock({ accessFindMany }));
+      const vehicleFindUnique = jest.fn().mockResolvedValue({ fleetId: 'une-autre-flotte' });
+      const svc = new VehicleAccessService(makePrismaMock({ accessFindMany, vehicleFindUnique }));
 
-      const ok = await svc.hasAccessToVehicle(makeUser(UserRole.VIEWER), VEHICLE_A);
-
-      expect(ok).toBe(true);
+      expect(await svc.hasAccessToVehicle(makeUser(UserRole.VIEWER), VEHICLE_A)).toBe(false);
     });
 
     it('user avec acces VEHICLE specifique → true seulement pour ces ids', async () => {

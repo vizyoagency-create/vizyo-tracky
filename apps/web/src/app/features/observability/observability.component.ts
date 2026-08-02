@@ -55,12 +55,12 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
         <div class="flex flex-wrap gap-3 items-end">
           <div class="flex flex-col gap-1 flex-1 min-w-[180px]">
             <label class="text-xs text-fg-tertiary">IMEI</label>
-            <input [(ngModel)]="wireImeiFilter" placeholder="865328021056352"
+            <input [ngModel]="wireImeiFilter()" (ngModelChange)="wireImeiFilter.set($event)" placeholder="865328021056352"
                    class="bg-bg-secondary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary w-full" />
           </div>
           <div class="flex flex-col gap-1">
             <label class="text-xs text-fg-tertiary">Direction</label>
-            <select [(ngModel)]="wireDirectionFilter"
+            <select [ngModel]="wireDirectionFilter()" (ngModelChange)="wireDirectionFilter.set($event)"
                     class="bg-bg-secondary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary">
               <option value="">Toutes</option>
               <option value="IN">IN</option>
@@ -124,7 +124,7 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
         <div class="flex gap-3 items-end">
           <div class="flex flex-col gap-1">
             <label class="text-xs text-fg-tertiary">IMEI du tracker</label>
-            <input [(ngModel)]="timelineImei" placeholder="865328021056352"
+            <input [ngModel]="timelineImei()" (ngModelChange)="timelineImei.set($event)" placeholder="865328021056352"
                    class="bg-bg-secondary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary w-48" />
           </div>
           <button (click)="loadTimeline()" class="px-4 py-2 bg-tracky text-white rounded-lg text-sm font-medium

@@ -1,3 +1,4 @@
+import { tenantVehicleWhere } from '../common/tenant-vehicle-scope';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { FuelStationMapPointDto, FuelStationVisitDto, FuelVisitDto, VehicleFuelReportDto } from '@vizyo/tracky-shared';
 import { DORMANT_STOP_COUNTING_MS, formatSilenceLabel, isVehicleDormant, trackerSilenceMs } from '@vizyo/tracky-shared';
@@ -221,9 +222,11 @@ export class FuelReportService {
     const now = Date.now();
 
     const accessible = await this.vehicleAccess.getAccessibleVehicleIds(user);
-    const scopeWhere = accessible === 'ALL'
-      ? (fleetId ? { fleetId } : {})
-      : { vehicleId: { in: accessible.length ? accessible : ['00000000-0000-0000-0000-000000000000'] } };
+    // ⚠️ C'ETAIT LA FUITE. `accessible === 'ALL'` + `fleetId` absent donnait `{}`, donc
+    // AUCUN filtre : un FLEET_ADMIN de cdef31 recevait les passages de mh cars, avec les
+    // plaques. Le controleur ne transmet `fleetId` qu'aux SUPER_ADMIN — a juste titre —
+    // donc la branche permissive etait celle de tous les clients.
+    const scopeWhere = tenantVehicleWhere(accessible, user, fleetId);
 
     const stops = await this.prisma.tripFuelStop.findMany({
       where: { ...scopeWhere, arrivedAt: { gte: from, lte: to } },

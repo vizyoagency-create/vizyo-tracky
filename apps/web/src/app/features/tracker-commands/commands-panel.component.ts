@@ -50,7 +50,7 @@ const STATUS_LABELS: Record<string, string> = {
 
         <div class="flex flex-wrap gap-3 mb-3">
           <!-- Category -->
-          <select [(ngModel)]="selectedCategory"
+          <select [ngModel]="selectedCategory()" (ngModelChange)="selectedCategory.set($event)"
                   (ngModelChange)="onCategoryChange()"
                   class="cmd-select">
             <option value="">Catégorie...</option>
@@ -61,7 +61,7 @@ const STATUS_LABELS: Record<string, string> = {
 
           <!-- Template -->
           @if (selectedCategory()) {
-            <select [(ngModel)]="selectedTemplateId"
+            <select [ngModel]="selectedTemplateId()" (ngModelChange)="selectedTemplateId.set($event)"
                     (ngModelChange)="onTemplateChange()"
                     class="cmd-select cmd-select--flex">
               <option value="">Commande...</option>
