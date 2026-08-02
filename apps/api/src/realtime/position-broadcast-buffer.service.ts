@@ -63,10 +63,11 @@ export class PositionBroadcastBuffer {
       // toutes les instances ; emettre vers une room vide est un no-op bon marche.
       // Sprint 3 — batch des positions sur la room dédiée `pos:fleet:*` : le veilleur de
       // nuit ne la rejoint pas → il ne reçoit aucun POSITIONS_BATCH (« sans live » serveur).
-      server
-        .to(`pos:fleet:${fleetId}`)
-        .to('pos:fleet:*')
-        .emit(WS_EVENTS.POSITIONS_BATCH, { fleetId, positions });
+      // ⚠️ Passe par la PASSERELLE, pas par `server` directement : elle seule connait
+      // les raccordements au perimetre RESTREINT, qui ne sont dans aucun salon de flotte
+      // et doivent recevoir un lot FILTRE. Emettre ici sur le salon les priverait de tout
+      // live — ou, avant le correctif, leur livrait les positions des 28 autres vehicules.
+      this.gateway.emitPositionsBatch(fleetId, positions);
       fleetBucket.clear();
     }
     // Garbage collect empty buckets (evite la croissance memoire sur le long terme).
