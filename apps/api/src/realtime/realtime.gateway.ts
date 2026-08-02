@@ -241,6 +241,20 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         );
       }
 
+      // ══ EMPREINTE DU PERIMETRE ════════════════════════════════════════════════
+      //
+      // Les salons sont decides UNE FOIS, au raccordement. La revalidation periodique
+      // ne verifiait que `isActive` : deplacer un utilisateur d'une societe a l'autre,
+      // lui retirer `alerts_view` ou restreindre son acces vehicule ne changeait RIEN
+      // tant que son onglet restait ouvert. Il continuait de recevoir l'ancien perimetre,
+      // parfois pendant des jours.
+      //
+      // On memorise donc ce qui a DECIDE des salons. Au tick suivant, si l'empreinte a
+      // bouge, on coupe la socket : le client se reconnecte et rejoint les bons salons.
+      // Recalculer les salons en place serait plus subtil et plus fragile — il faudrait
+      // quitter les anciens sans en oublier un, et un oubli serait une fuite.
+      (client.data as { scopeKey?: string }).scopeKey = this.scopeKey(localUser, accessible, canSeeAlerts);
+
       this.logger.debug(`Client ${client.id} authenticated (${localUser.email}, fleet=${localUser.fleetId})`);
     } catch (err) {
       this.logger.warn(`Client ${client.id} rejected: ${err instanceof Error ? err.message : 'invalid token'}`);
@@ -268,6 +282,22 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
    * traduit par isActive=false (gere ici) ou la suppression du compte.
    */
   @Interval(60_000)
+  /**
+   * Tout ce qui decide des salons d'un raccordement, condense en une chaine comparable.
+   *
+   * ⚠️ Le perimetre vehicule est TRIE : `getAccessibleVehicleIds` ne garantit pas
+   * d'ordre stable, et une simple permutation ferait croire a un changement — on
+   * deconnecterait alors tout le monde a chaque tick, en boucle.
+   */
+  private scopeKey(
+    user: { role: string; fleetId: string | null },
+    accessible: string[] | 'ALL',
+    canSeeAlerts: boolean,
+  ): string {
+    const scope = accessible === 'ALL' ? 'ALL' : [...accessible].sort().join(',');
+    return `${user.role}|${user.fleetId ?? '-'}|${canSeeAlerts ? 'A' : '-'}|${scope}`;
+  }
+
   async revalidateConnections(): Promise<void> {
     // Garde anti unhandled-rejection : un blip DB (findMany) ne doit pas faire
     // rejeter ce cron qui tourne toutes les 60s. On log et on retente au tick suivant.
@@ -286,16 +316,43 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       }
       if (byUser.size === 0) return;
 
+      // On charge desormais AUSSI le role, la societe et les permissions : ce sont eux
+      // qui decident des salons, et leur changement doit couper la socket.
       const activeUsers = await this.prisma.user.findMany({
         where: { id: { in: [...byUser.keys()] }, isActive: true },
-        select: { id: true },
+        select: { id: true, role: true, fleetId: true, permissions: true },
       });
       const stillActive = new Set(activeUsers.map((u) => u.id));
+      const byId = new Map(activeUsers.map((u) => [u.id, u]));
 
       for (const [userId, userSockets] of byUser) {
-        if (stillActive.has(userId)) continue;
+        if (!stillActive.has(userId)) {
+          for (const socket of userSockets) {
+            this.logger.warn(`Revalidation WS: deconnexion ${socket.id} (user ${userId} inactif/supprime)`);
+            socket.disconnect();
+          }
+          continue;
+        }
+
+        // Le compte est toujours actif — mais son PERIMETRE a-t-il bouge ?
+        const row = byId.get(userId)!;
+        const current = { id: userId, role: String(row.role), fleetId: row.fleetId };
+        const accessible = await this.resolveAccessibleVehicles(current);
+        const perms = row.permissions as { alerts_view?: boolean } | null;
+        const canSeeAlerts =
+          current.role === 'SUPER_ADMIN' || current.role === 'FLEET_ADMIN'
+            ? true
+            : perms?.alerts_view === true;
+        const key = this.scopeKey(current, accessible, canSeeAlerts);
+
         for (const socket of userSockets) {
-          this.logger.warn(`Revalidation WS: deconnexion ${socket.id} (user ${userId} inactif/supprime)`);
+          const previous = (socket.data as { scopeKey?: string }).scopeKey;
+          // Une socket sans empreinte vient d'une version anterieure du serveur : on la
+          // laisse vivre plutot que de deconnecter tout le monde au premier deploiement.
+          if (previous === undefined || previous === key) continue;
+          this.logger.warn(
+            `Revalidation WS: deconnexion ${socket.id} (perimetre modifie pour ${userId}) — le client se reconnectera sur les bons salons`,
+          );
           socket.disconnect();
         }
       }
