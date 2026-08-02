@@ -2722,6 +2722,21 @@ export class MapComponent implements AfterViewInit, OnDestroy {
   });
 
   // Re-render markers chaque fois que les positions changent.
+  //
+  // ⚠️ CE FILTRE N'EST PAS LA PROTECTION — il ne fait que de la ceinture-bretelles.
+  //
+  // Il a longtemps ete le SEUL masquage des vehicules hors perimetre, et c'etait un
+  // faux cloisonnement : la donnee etait deja arrivee dans le navigateur, lisible dans
+  // l'onglet reseau, et rien ne la masquait pendant le chargement initial. Depuis
+  // 2026-08-02, le SERVEUR borne ce qu'il envoie — le chargement HTTP
+  // (`/api/vehicles/snapshot`, scope tenant + perimetre vehicule) comme le temps reel
+  // (les comptes restreints n'entrent dans aucun salon de flotte et recoivent des lots
+  // filtres socket par socket).
+  //
+  // On garde ce filtre parce qu'il ne coute rien et couvre un ecart transitoire (un
+  // acces retire pendant que l'onglet est ouvert : les salons sont figes au
+  // raccordement). Mais il ne doit JAMAIS servir de justification pour relacher le
+  // cloisonnement serveur.
   private positionsEffect = effect(() => {
     const all = this.realtime.positionsList();
     const ids = this._accessibleIds();

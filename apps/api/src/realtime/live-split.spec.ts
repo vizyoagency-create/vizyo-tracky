@@ -36,7 +36,7 @@ function makeGateway(user: { id: string; role: string; fleetId: string | null })
     verifyAccessToken: jest.fn().mockReturnValue({ sub: user.id }),
     resolveLocalUser: jest.fn().mockResolvedValue({ email: 'u@x.com', ...user }),
   };
-  const gw = new RealtimeGateway(auth as never, {} as never);
+  const gw = new RealtimeGateway(auth as never, {} as never, { getAccessibleVehicleIds: jest.fn().mockResolvedValue('ALL') } as never);
   return gw;
 }
 
@@ -97,10 +97,18 @@ describe('Sprint 3 — live-split WS (veilleur sans live, server-enforced)', () 
   });
 
   it('buffer.flush émet POSITIONS_BATCH sur pos:fleet:*', () => {
+    // ⚠️ On passe par une VRAIE passerelle, pas par `{ server }` : le buffer delegue
+    // desormais a `gateway.emitPositionsBatch`, qui seule sait servir les raccordements
+    // au perimetre restreint. Tester le buffer contre un faux serveur ne prouverait plus
+    // que le lot atteint les bons salons.
     const { server, chain } = makeServerMock();
-    const buffer = new PositionBroadcastBuffer({ server } as never);
+    const gw = makeGateway({ id: 'u1', role: 'FLEET_ADMIN', fleetId: 'f1' });
+    gw.server = server as never;
+    const buffer = new PositionBroadcastBuffer(gw as never);
+
     buffer.enqueue('f1', { trackerId: 't1' } as never);
     buffer.flush();
+
     expect(server.to).toHaveBeenCalledWith('pos:fleet:f1');
     expect(chain.to).toHaveBeenCalledWith('pos:fleet:*');
     expect(chain.emit).toHaveBeenCalledWith(
