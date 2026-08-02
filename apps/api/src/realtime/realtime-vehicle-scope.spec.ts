@@ -147,3 +147,113 @@ describe('RealtimeGateway — périmètre par véhicule', () => {
     });
   });
 });
+
+
+/**
+ * REVALIDATION PERIODIQUE — les salons sont figes au raccordement.
+ *
+ * ── Le defaut ───────────────────────────────────────────────────────────────────────
+ * Le tick de 60 s ne verifiait que `isActive`. Deplacer un utilisateur d'une societe a
+ * l'autre, lui retirer `alerts_view` ou restreindre son acces vehicule ne changeait RIEN
+ * tant que son onglet restait ouvert : il continuait de recevoir l'ANCIEN perimetre,
+ * parfois pendant des jours. C'etait le seul chemin inter-flotte restant du temps reel.
+ *
+ * On memorise donc une empreinte de ce qui a decide des salons, et on coupe la socket
+ * quand elle bouge — le client se reconnecte et rejoint les bons salons.
+ */
+describe('RealtimeGateway — revalidation du perimetre', () => {
+  function harness(user: { id: string; role: string; fleetId: string | null }, accessible: string[] | 'ALL') {
+    const auth = {
+      verifyAccessToken: jest.fn().mockReturnValue({ sub: user.id }),
+      resolveLocalUser: jest.fn().mockResolvedValue({ email: 'u@x.com', ...user }),
+    };
+    const findMany = jest.fn();
+    const prisma = {
+      user: {
+        findUnique: jest.fn().mockResolvedValue({ role: user.role, permissions: { alerts_view: true } }),
+        findMany,
+      },
+    };
+    const access = { getAccessibleVehicleIds: jest.fn().mockResolvedValue(accessible) };
+    const gw = new RealtimeGateway(auth as never, prisma as never, access as never);
+    return { gw, findMany, access };
+  }
+
+  function connectedClient(id: string) {
+    const c = makeClient(id);
+    return c;
+  }
+
+  async function connect(gw: RealtimeGateway, client: ReturnType<typeof makeClient>) {
+    gw.server = { to: jest.fn().mockReturnValue({ to: jest.fn().mockReturnThis(), emit: jest.fn() }) } as never;
+    await gw.handleConnection(client as never);
+    // Le tick lit les sockets via `server.sockets`.
+    (gw.server as unknown as { sockets: Map<string, unknown> }).sockets = new Map([[client.id, client]]);
+  }
+
+  it('perimetre inchange : la socket est CONSERVEE', async () => {
+    const t = harness({ id: 'u1', role: 'FLEET_MANAGER', fleetId: 'f1' }, ['v1']);
+    const client = connectedClient('s1');
+    await connect(t.gw, client);
+    t.findMany.mockResolvedValue([{ id: 'u1', role: 'FLEET_MANAGER', fleetId: 'f1', permissions: { alerts_view: true } }]);
+
+    await t.gw.revalidateConnections();
+    expect(client.disconnect).not.toHaveBeenCalled();
+  });
+
+  it('⚠️ changement de SOCIETE : la socket est coupee', async () => {
+    // Le seul chemin inter-flotte qui restait : sans cela, l'utilisateur continuait de
+    // recevoir les positions de son ancienne societe.
+    const t = harness({ id: 'u1', role: 'FLEET_MANAGER', fleetId: 'f1' }, ['v1']);
+    const client = connectedClient('s1');
+    await connect(t.gw, client);
+    t.findMany.mockResolvedValue([{ id: 'u1', role: 'FLEET_MANAGER', fleetId: 'f2', permissions: { alerts_view: true } }]);
+
+    await t.gw.revalidateConnections();
+    expect(client.disconnect).toHaveBeenCalled();
+  });
+
+  it('⚠️ perimetre VEHICULE restreint en cours de session : la socket est coupee', async () => {
+    const t = harness({ id: 'u1', role: 'FLEET_MANAGER', fleetId: 'f1' }, ['v1', 'v2']);
+    const client = connectedClient('s1');
+    await connect(t.gw, client);
+    t.findMany.mockResolvedValue([{ id: 'u1', role: 'FLEET_MANAGER', fleetId: 'f1', permissions: { alerts_view: true } }]);
+    t.access.getAccessibleVehicleIds.mockResolvedValue(['v1']); // v2 retire
+
+    await t.gw.revalidateConnections();
+    expect(client.disconnect).toHaveBeenCalled();
+  });
+
+  it('⚠️ `alerts_view` retire : la socket est coupee', async () => {
+    const t = harness({ id: 'u1', role: 'FLEET_MANAGER', fleetId: 'f1' }, 'ALL');
+    const client = connectedClient('s1');
+    await connect(t.gw, client);
+    t.findMany.mockResolvedValue([{ id: 'u1', role: 'FLEET_MANAGER', fleetId: 'f1', permissions: { alerts_view: false } }]);
+
+    await t.gw.revalidateConnections();
+    expect(client.disconnect).toHaveBeenCalled();
+  });
+
+  it('⚠️ une simple PERMUTATION du perimetre ne coupe rien', async () => {
+    // `getAccessibleVehicleIds` ne garantit pas d'ordre stable. Sans tri, chaque tick
+    // croirait a un changement et deconnecterait tout le monde, en boucle.
+    const t = harness({ id: 'u1', role: 'FLEET_MANAGER', fleetId: 'f1' }, ['v1', 'v2']);
+    const client = connectedClient('s1');
+    await connect(t.gw, client);
+    t.findMany.mockResolvedValue([{ id: 'u1', role: 'FLEET_MANAGER', fleetId: 'f1', permissions: { alerts_view: true } }]);
+    t.access.getAccessibleVehicleIds.mockResolvedValue(['v2', 'v1']); // meme ensemble, autre ordre
+
+    await t.gw.revalidateConnections();
+    expect(client.disconnect).not.toHaveBeenCalled();
+  });
+
+  it('compte desactive : la socket est coupee (comportement d origine, preserve)', async () => {
+    const t = harness({ id: 'u1', role: 'FLEET_MANAGER', fleetId: 'f1' }, 'ALL');
+    const client = connectedClient('s1');
+    await connect(t.gw, client);
+    t.findMany.mockResolvedValue([]); // plus actif
+
+    await t.gw.revalidateConnections();
+    expect(client.disconnect).toHaveBeenCalled();
+  });
+});

@@ -52,7 +52,7 @@ export class TripAnalysisLlmService {
     const row = await this.load(user, tripId);
     await this.ensureAiEnabled(row.fleetId);
     const useMixte = !preferProvider && (await this.ai.mode()) === 'both' && this.ai.mixteAvailable();
-    const r = useMixte ? await this.runEnsemble(row) : await this.run(row, preferProvider);
+    const r = useMixte ? await this.runEnsemble(row, user.id) : await this.run(row, user.id, preferProvider);
     await this.prisma.tripAnalysis.update({
       where: { tripId },
       data: { narrative: r.narrative, advice: r.advice, trustScore: r.trustScore, provider: r.provider },
@@ -67,8 +67,12 @@ export class TripAnalysisLlmService {
    * le meilleur des deux + corrige vs les données. Si un moteur échoue (ex. GPT sans quota), on retombe
    * proprement sur celui qui a réussi (pas de synthèse superflue). `provider` final = 'both'.
    */
-  private async runEnsemble(row: TripAnalysisRow): Promise<RunResult> {
-    const settled = await Promise.allSettled([this.run(row, 'claude'), this.run(row, 'gpt')]);
+  /**
+   * @param actorId QUI declenche. Trace dans `AiUsageLog` — sans lui, la depense
+   *                apparait chez le client sans acteur identifiable (« action fantome »).
+   */
+  private async runEnsemble(row: TripAnalysisRow, actorId: string): Promise<RunResult> {
+    const settled = await Promise.allSettled([this.run(row, actorId, 'claude'), this.run(row, actorId, 'gpt')]);
     const ok = settled.filter((s): s is PromiseFulfilledResult<RunResult> => s.status === 'fulfilled').map((s) => s.value);
     if (ok.length === 0) {
       // Les 2 ont échoué : remonte la 1re erreur (déjà journalisée par run()).
@@ -76,13 +80,13 @@ export class TripAnalysisLlmService {
       throw err ? err.reason : new Error('Échec IA (mixte)');
     }
     if (ok.length === 1) return { ...ok[0], provider: 'both' }; // un seul moteur dispo → pas de synthèse
-    const synth = await this.synthesize(row, ok[0], ok[1]);
+    const synth = await this.synthesize(row, actorId, ok[0], ok[1]);
     // Coût du mixte = somme (les 2 analyses + la synthèse).
     return { ...synth, provider: 'both', costEur: round4(ok[0].costEur + ok[1].costEur + synth.costEur) };
   }
 
   /** Agent de synthèse : combine 2 analyses en une finale (Claude). Récit homogène, sans marque. */
-  private async synthesize(row: TripAnalysisRow, a: RunResult, b: RunResult): Promise<RunResult> {
+  private async synthesize(row: TripAnalysisRow, actorId: string, a: RunResult, b: RunResult): Promise<RunResult> {
     const payload = {
       donnees: this.payload(row),
       analyses: [
@@ -103,7 +107,10 @@ export class TripAnalysisLlmService {
       throw e;
     }
     void this.aiUsage.record({
-      userId: null, fleetId: row.fleetId, action: 'trip_analysis', model: call.model,
+      // ⚠️ `userId` valait `null` : la depense s'inscrivait chez le client SANS acteur.
+      // Un super-admin analysant le trajet d'une societe y laissait une ligne de cout que
+      // personne ne pouvait rattacher a une action — invisible a expliquer au client.
+      userId: actorId, fleetId: row.fleetId, action: 'trip_analysis', model: call.model,
       inputTokens: call.usage.inputTokens, outputTokens: call.usage.outputTokens,
       cacheWriteTokens: call.usage.cacheWriteTokens, cacheReadTokens: call.usage.cacheReadTokens,
       latencyMs: call.latencyMs, ok: true,
@@ -127,7 +134,7 @@ export class TripAnalysisLlmService {
     const results = await Promise.all(
       providers.map<Promise<TripAiResultDto>>(async (p) => {
         try {
-          const r = await this.run(row, p);
+          const r = await this.run(row, user.id, p);
           return { provider: p, model: r.model, narrative: r.narrative, advice: r.advice, trustScore: r.trustScore, costEur: r.costEur, latencyMs: r.latencyMs, error: null };
         } catch (e) {
           // Un moteur peut échouer (ex. GPT sans quota) sans casser la comparaison : on renvoie son erreur.
@@ -149,7 +156,7 @@ export class TripAnalysisLlmService {
   }
 
   /** Un appel LLM sur un trajet : construit le payload compact, appelle le moteur, trace le coût. */
-  private async run(row: TripAnalysisRow, preferProvider?: AiProviderId): Promise<RunResult> {
+  private async run(row: TripAnalysisRow, actorId: string, preferProvider?: AiProviderId): Promise<RunResult> {
     const payload = this.payload(row);
     let call;
     try {
@@ -166,7 +173,10 @@ export class TripAnalysisLlmService {
     }
     // Coût tracé (action trip_analysis). Non bloquant.
     void this.aiUsage.record({
-      userId: null, fleetId: row.fleetId, action: 'trip_analysis', model: call.model,
+      // ⚠️ `userId` valait `null` : la depense s'inscrivait chez le client SANS acteur.
+      // Un super-admin analysant le trajet d'une societe y laissait une ligne de cout que
+      // personne ne pouvait rattacher a une action — invisible a expliquer au client.
+      userId: actorId, fleetId: row.fleetId, action: 'trip_analysis', model: call.model,
       inputTokens: call.usage.inputTokens, outputTokens: call.usage.outputTokens,
       cacheWriteTokens: call.usage.cacheWriteTokens, cacheReadTokens: call.usage.cacheReadTokens,
       latencyMs: call.latencyMs, ok: true,
