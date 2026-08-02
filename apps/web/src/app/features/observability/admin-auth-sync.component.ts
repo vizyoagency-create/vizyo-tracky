@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { computed, Component, inject, OnInit, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
@@ -15,6 +15,18 @@ interface SyncedUser {
   role: string;
   fleetId: string | null;
   isActive: boolean;
+  /** Statut cote Vizyo Auth, deja normalise en booleen par le serveur. */
+  authActive: boolean;
+  /**
+   * Le desaccord, NOMME par le serveur :
+   *   - `auth_ouvert` : bloque dans Tracky, mais peut TOUJOURS se connecter. Le plus grave.
+   *   - `auth_bloque` : actif dans Tracky, mais rejete au login.
+   *   - `null`        : les deux cotes sont d'accord.
+   */
+  mismatch: 'auth_ouvert' | 'auth_bloque' | null;
+  /** Faux = rapproche par e-mail seulement, pas par identifiant. Lien fragile. */
+  linkedById: boolean;
+  createdAt: string;
 }
 
 interface OnlyAuthUser {
@@ -38,6 +50,11 @@ interface SyncData {
   onlyTracky: OnlyTrackyUser[];
   totalAuth: number;
   totalTracky: number;
+  mismatchCount: number;
+  authOuvertCount: number;
+  authBloqueCount: number;
+  /** Vrai quand la base Vizyo Auth n'a pas pu etre lue — a distinguer de « 0 compte ». */
+  authUnavailable: boolean;
 }
 
 @Component({
@@ -68,6 +85,34 @@ interface SyncData {
           <app-spinner [size]="24" />
         </div>
       } @else if (data()) {
+        @if (data()!.authUnavailable) {
+          <!-- Sans ce bandeau, une liaison morte s'affiche comme un parc vide : on
+               conclurait que tout va bien alors qu'on ne voit RIEN. -->
+          <div class="banner-warn">
+            <lucide-icon [img]="AlertTriangle" [size]="16"></lucide-icon>
+            <span>
+              La base Vizyo Auth n'a pas pu etre lue. Les comptes affiches ci-dessous sont
+              ceux de Tracky uniquement — la comparaison n'est PAS fiable en l'etat.
+            </span>
+          </div>
+        }
+
+        @if (data()!.mismatchCount > 0) {
+          <div class="banner-danger">
+            <lucide-icon [img]="XCircle" [size]="16"></lucide-icon>
+            <span>
+              <strong>{{ data()!.mismatchCount }} compte(s) en desaccord.</strong>
+              @if (data()!.authOuvertCount > 0) {
+                {{ data()!.authOuvertCount }} peuvent encore se connecter alors qu'ils sont
+                archives dans Tracky.
+              }
+              @if (data()!.authBloqueCount > 0) {
+                {{ data()!.authBloqueCount }} sont actifs dans Tracky mais rejetes au login.
+              }
+            </span>
+          </div>
+        }
+
         <!-- Stats -->
         <div class="stats-row">
           <div class="stat-card green">
@@ -161,14 +206,42 @@ interface SyncData {
           </h2>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Email</th><th>Role</th><th>Auth status</th><th>Actif Tracky</th></tr></thead>
+              <thead><tr><th>Email</th><th>Role</th><th>Auth</th><th>Tracky</th><th>Lien</th><th>Etat</th><th></th></tr></thead>
               <tbody>
-                @for (u of data()!.synced; track u.trackyId) {
-                  <tr>
+                <!-- Les comptes en desaccord d'abord : c'est ce qu'on vient chercher. -->
+                @for (u of orderedSynced(); track u.trackyId) {
+                  <tr [class.row-mismatch]="u.mismatch !== null">
                     <td class="email-cell">{{ u.email }}</td>
                     <td><span class="pill">{{ u.role }}</span></td>
-                    <td><span class="pill" [class]="u.authStatus === 'active' ? 'pill-on' : 'pill-off'">{{ u.authStatus }}</span></td>
-                    <td><span class="pill" [class]="u.isActive ? 'pill-on' : 'pill-off'">{{ u.isActive ? 'Oui' : 'Non' }}</span></td>
+                    <td><span class="pill" [class]="u.authActive ? 'pill-on' : 'pill-off'">{{ u.authStatus }}</span></td>
+                    <td><span class="pill" [class]="u.isActive ? 'pill-on' : 'pill-off'">{{ u.isActive ? 'actif' : 'archive' }}</span></td>
+                    <td>
+                      <!-- Rapprochement par e-mail seulement : le lien casse si l'e-mail
+                           change d'un cote. On le dit plutot que de le laisser croire solide. -->
+                      <span class="pill" [class]="u.linkedById ? 'pill-on' : 'pill-warn'">
+                        {{ u.linkedById ? 'identifiant' : 'e-mail seul' }}
+                      </span>
+                    </td>
+                    <td>
+                      @if (u.mismatch === 'auth_ouvert') {
+                        <span class="pill pill-danger" title="Archive dans Tracky mais peut toujours se connecter">
+                          peut encore se connecter
+                        </span>
+                      } @else if (u.mismatch === 'auth_bloque') {
+                        <span class="pill pill-warn" title="Actif dans Tracky mais rejete au login">
+                          bloque au login
+                        </span>
+                      } @else {
+                        <span class="pill pill-on">coherent</span>
+                      }
+                    </td>
+                    <td>
+                      @if (u.mismatch !== null) {
+                        <button (click)="realign(u)" class="btn-realign" [disabled]="busy() === u.trackyId">
+                          {{ busy() === u.trackyId ? '...' : 'Realigner' }}
+                        </button>
+                      }
+                    </td>
                   </tr>
                 }
               </tbody>
@@ -195,6 +268,21 @@ interface SyncData {
     .btn-refresh:disabled { opacity: .5; cursor: not-allowed }
     .loading { display: flex; justify-content: center; padding: 40px }
 
+    .banner-warn, .banner-danger {
+      display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px;
+      border-radius: 10px; font-size: 12.5px; line-height: 1.5;
+    }
+    .banner-warn { background: rgba(217,119,6,.10); border: 1px solid rgba(217,119,6,.35); color: #b45309 }
+    .banner-danger { background: rgba(220,38,38,.10); border: 1px solid rgba(220,38,38,.35); color: #b91c1c }
+    .row-mismatch { background: rgba(220,38,38,.05) }
+    .pill-danger { background: rgba(220,38,38,.15); color: #b91c1c }
+    .pill-warn { background: rgba(217,119,6,.15); color: #b45309 }
+    .btn-realign {
+      padding: 5px 10px; border-radius: 7px; font-size: 11.5px; font-weight: 600;
+      background: var(--bg-secondary); border: 1px solid var(--border-strong);
+      color: var(--fg-primary); cursor: pointer; white-space: nowrap;
+    }
+    .btn-realign:disabled { opacity: .5; cursor: not-allowed }
     .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px }
     .stat-card {
       display: flex; align-items: center; gap: 12px; padding: 14px 18px;
@@ -240,6 +328,45 @@ export class AdminAuthSyncComponent implements OnInit {
 
   protected readonly loading = signal(false);
   protected readonly data = signal<SyncData | null>(null);
+  /** Identifiant Tracky en cours de realignement (desactive son seul bouton). */
+  protected readonly busy = signal<string | null>(null);
+
+  /**
+   * Les comptes en DESACCORD d'abord.
+   *
+   * Sur un parc de 15 comptes ca se voit ; sur 200, un desaccord perdu au milieu d'une
+   * liste alphabetique ne se voit plus. Or c'est precisement ce qu'on vient chercher
+   * sur cet ecran — le reste est de la confirmation.
+   */
+  protected readonly orderedSynced = computed(() => {
+    const rows = this.data()?.synced ?? [];
+    return [...rows].sort((a, b) => {
+      if ((a.mismatch !== null) !== (b.mismatch !== null)) return a.mismatch !== null ? -1 : 1;
+      return a.email.localeCompare(b.email);
+    });
+  });
+
+  /**
+   * Pousse le statut Tracky vers Vizyo Auth pour ce compte.
+   *
+   * Sens UNIQUE, a dessein : Tracky est la source de verite. Rapatrier le statut d'Auth
+   * vers Tracky pourrait REOUVRIR un compte qu'un administrateur a volontairement archive.
+   */
+  protected async realign(u: SyncedUser): Promise<void> {
+    this.busy.set(u.trackyId);
+    try {
+      await firstValueFrom(this.http.post(`/api/users/admin/auth-sync/${u.trackyId}/realign`, {}));
+      this.toast.success(`${u.email} realigne sur Vizyo Auth.`);
+      await this.load();
+    } catch (err) {
+      // Le message du serveur porte le motif reel : le jeter laisserait l'administrateur
+      // devant un echec opaque, exactement ce que cet ecran existe pour supprimer.
+      const msg = (err as { error?: { message?: string } })?.error?.message;
+      this.toast.error(msg ?? 'Echec du realignement.');
+    } finally {
+      this.busy.set(null);
+    }
+  }
 
   ngOnInit(): void {
     this.load();

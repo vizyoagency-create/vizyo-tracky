@@ -1,3 +1,4 @@
+import { AuthAccountSyncService } from './auth-account-sync.service';
 import {
   BadRequestException, Body, Controller, Delete, ForbiddenException, Get, HttpCode, HttpStatus,
   Logger, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, UseGuards,
@@ -40,6 +41,7 @@ export class UsersController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly authClient: AuthClientService,
+    private readonly accountSync: AuthAccountSyncService,
     private readonly invitations: InvitationsService,
     private readonly emailService: EmailService,
     private readonly config: ConfigService<Env, true>,
@@ -521,6 +523,19 @@ export class UsersController {
       select: { id: true, email: true, firstName: true, lastName: true, role: true, permissions: true, fleetId: true, isActive: true, createdAt: true },
     });
 
+    // ══ REACTIVATION / SUSPENSION — Vizyo Auth doit suivre ════════════════════════
+    //
+    // Le bouton « Desarchiver » de l'ecran Utilisateurs passe par ICI (`isActive: true`)
+    // et n'appelait RIEN cote Vizyo Auth : `activateUser` existait dans le client mais
+    // n'etait invoque nulle part dans le depot. Tant que `suspendUser` echouait en 403,
+    // l'asymetrie ne se voyait pas — archiver ne suspendait rien, donc desarchiver
+    // n'avait rien a defaire. Reparer l'appel (PR #51) a rendu l'archivage EFFECTIF, et
+    // donc cette absence BLOQUANTE : le compte serait reste verrouille au login tout en
+    // s'affichant actif.
+    if (dto.isActive !== undefined) {
+      await this.accountSync.applyStatus(user.authUserId, dto.isActive, `update:${user.email}`);
+    }
+
     return updated;
   }
 
@@ -537,7 +552,9 @@ export class UsersController {
     }
     const user = await this.prisma.user.findFirst({
       where,
-      select: { id: true, authUserId: true, fleetId: true, role: true },
+      // `email` sert au CONTEXTE journalise de la synchro : un identifiant tronque ne
+      // permet pas de retrouver qui, dans le centre d'alerte.
+      select: { id: true, authUserId: true, fleetId: true, role: true, email: true },
     });
 
     if (!user) throw new NotFoundException('Utilisateur introuvable');
@@ -553,11 +570,13 @@ export class UsersController {
     }
 
     // 1. Suspendre dans Vizyo Auth (plus de login possible)
-    try {
-      await this.authClient.suspendUser(user.authUserId);
-    } catch {
-      // Non-bloquant si Vizyo Auth est down
-    }
+    //
+    // ⚠️ Ce bloc etait un `catch {}` VIDE. C'est ce silence qui a masque pendant des mois
+    // un 403 systematique : l'interface annoncait « archive » alors que la personne
+    // pouvait toujours se connecter. Le repli reste NON BLOQUANT (une panne Vizyo Auth ne
+    // doit pas empecher d'archiver) mais il n'est plus MUET — l'echec part au centre
+    // d'alerte, et l'ecart reste visible dans /admin/auth-sync.
+    await this.accountSync.applyStatus(user.authUserId, false, `archive:${user.email}`);
 
     // 2. Detacher les acces vehicules
     await this.prisma.userVehicleAccess.deleteMany({ where: { userId: id } });
@@ -900,6 +919,9 @@ export class UsersController {
     const { Pool } = require('pg') as typeof import('pg');
     const authDbUrl = this.config.get('VIZYO_AUTH_DB_URL', { infer: true }) as string | undefined;
     let authUsers: Array<{ id: string; email: string; status: string; createdAt: string }> = [];
+    // ⚠️ Distinguer « aucun compte » de « je n'ai pas pu lire ». Sans ce drapeau, une
+    // liaison morte s'affiche comme un parc vide — et on conclut que tout va bien.
+    let authUsersUnavailable = false;
 
     if (authDbUrl) {
       const pool = new Pool({ connectionString: authDbUrl, max: 2 });
@@ -920,6 +942,7 @@ export class UsersController {
           createdAt: r.createdAt?.toISOString() ?? '',
         }));
       } catch (err) {
+        authUsersUnavailable = true;
         this.logger.warn(`Auth DB query failed: ${(err as Error).message}`);
       } finally {
         await pool.end();
@@ -953,7 +976,38 @@ export class UsersController {
     for (const au of authUsers) {
       const tu = trackyByAuthId.get(au.id) ?? trackyByEmail.get(au.email.toLowerCase());
       if (tu) {
-        synced.push({ authId: au.id, email: au.email, authStatus: au.status, trackyId: tu.id, role: tu.role, fleetId: tu.fleetId, isActive: tu.isActive });
+        // ══ LE DESACCORD, nomme ═══════════════════════════════════════════════════
+        //
+        // L'ecran affichait `authStatus` et `isActive` cote a cote sans jamais DIRE
+        // qu'ils se contredisent. Or c'est exactement ce qu'on vient de vivre : un
+        // compte « archive » dans Tracky restait `active` dans Vizyo Auth, donc capable
+        // de se connecter, pendant des mois. Deux colonnes a lire soi-meme ne sont pas
+        // un controle — c'est un test de vigilance qu'on finit toujours par rater.
+        //
+        // On compare donc ici, une fois, et on nomme les deux desaccords possibles :
+        //   - `auth_ouvert`  : bloque dans Tracky, mais peut TOUJOURS se connecter. Le
+        //                      plus grave — c'est une porte restee ouverte.
+        //   - `auth_bloque`  : actif dans Tracky, mais rejete au login. Genant sans
+        //                      etre dangereux : la personne appelle le support.
+        const authActive = (au.status ?? 'active').toLowerCase() === 'active';
+        const mismatch = tu.isActive === authActive
+          ? null
+          : tu.isActive ? 'auth_bloque' : 'auth_ouvert';
+        synced.push({
+          authId: au.id,
+          email: au.email,
+          authStatus: au.status,
+          trackyId: tu.id,
+          role: tu.role,
+          fleetId: tu.fleetId,
+          isActive: tu.isActive,
+          authActive,
+          mismatch,
+          // `authUserId` absent = jamais rapproche par identifiant, seulement par e-mail.
+          // Le rapprochement tient tant que l'e-mail ne change pas — fragile, donc dit.
+          linkedById: tu.authUserId === au.id,
+          createdAt: au.createdAt,
+        });
       } else {
         onlyAuth.push({ authId: au.id, email: au.email, status: au.status, createdAt: au.createdAt });
       }
@@ -965,7 +1019,49 @@ export class UsersController {
       }
     }
 
-    return { synced, onlyAuth, onlyTracky, totalAuth: authUsers.length, totalTracky: trackyUsers.length };
+    const mismatched = synced.filter((u) => u.mismatch !== null);
+    return {
+      synced,
+      onlyAuth,
+      onlyTracky,
+      totalAuth: authUsers.length,
+      totalTracky: trackyUsers.length,
+      // Compteurs prets a afficher : l'ecran ne doit pas avoir a les recalculer, sinon
+      // sa definition du « desaccord » finira par diverger de celle du serveur.
+      mismatchCount: mismatched.length,
+      authOuvertCount: mismatched.filter((u) => u.mismatch === 'auth_ouvert').length,
+      authBloqueCount: mismatched.filter((u) => u.mismatch === 'auth_bloque').length,
+      // Vrai quand la base Vizyo Auth n'a pas pu etre lue : sans ce drapeau, l'ecran
+      // afficherait « 0 compte Auth » — indiscernable de « la liaison est morte ».
+      authUnavailable: !authDbUrl || authUsersUnavailable,
+    };
+  }
+
+  /**
+   * REALIGNE Vizyo Auth sur l'etat Tracky pour un compte.
+   *
+   * Tracky est la source de verite du statut : ce bouton pousse `isActive` vers Vizyo
+   * Auth, il ne fait jamais l'inverse. Rapatrier le statut d'Auth vers Tracky pourrait
+   * REOUVRIR un compte qu'un administrateur a volontairement archive.
+   */
+  @Post('admin/auth-sync/:trackyUserId/realign')
+  @Roles(UserRole.SUPER_ADMIN)
+  async realignAuth(@Param('trackyUserId') trackyUserId: string, @Req() req: AuthenticatedRequest) {
+    await this.assertTargetVisible(trackyUserId, req);
+    const user = await this.prisma.user.findUnique({
+      where: { id: trackyUserId },
+      select: { authUserId: true, email: true, isActive: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+    if (!user.authUserId) throw new BadRequestException('Ce compte n\'a pas d\'identifiant Vizyo Auth');
+
+    const ok = await this.accountSync.applyStatus(user.authUserId, user.isActive, `realign:${user.email}`);
+    if (!ok) {
+      throw new BadRequestException(
+        'Vizyo Auth a refuse la mise a jour. Le detail est dans le centre d\'alerte.',
+      );
+    }
+    return { ok: true, applied: user.isActive ? 'active' : 'suspended' };
   }
 
   @Delete('admin/auth-sync/tracky/:trackyUserId')

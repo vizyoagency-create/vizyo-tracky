@@ -77,6 +77,9 @@ function makeController(prisma: PrismaService): UsersController {
   return new UsersController(
     prisma,
     {} as never,
+    // Synchro de statut Tracky -> Vizyo Auth : non exercee par ces tests d'ACCES, mais
+    // exigee a la construction.
+    { applyStatus: jest.fn().mockResolvedValue(true) } as never,
     {} as never,
     {} as never,
     {} as never,
