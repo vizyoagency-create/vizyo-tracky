@@ -1,3 +1,4 @@
+import { DEVICE_ID_HEADER } from '../security/security.constants';
 import {
   BadRequestException,
   Body,
@@ -119,9 +120,22 @@ export class NotificationsController {
     const ua = req.headers['user-agent']?.toString();
     // deviceId optionnel — validate format UUID si fourni (best-effort, le client
     // genere via crypto.randomUUID() donc devrait toujours etre valide).
-    const deviceId = typeof body.deviceId === 'string' && /^[0-9a-f-]{8,64}$/i.test(body.deviceId)
-      ? body.deviceId
-      : undefined;
+    // ⚠️ CETTE VALIDATION REJETAIT LE REPLI DU CLIENT, EN SILENCE.
+    //
+    // L'ancienne regle exigeait de l'hexadecimal (`/^[0-9a-f-]{8,64}$/`). Or quand
+    // `crypto.randomUUID` est indisponible, le client fabrique
+    // `${Date.now()}-${Math.random().toString(36)}` — du base36, donc des lettres g..z.
+    // Le serveur mettait alors `deviceId` a `undefined` sans erreur ni journal, et le
+    // dedoublonnage retombait sur le User-Agent, qui change a chaque mise a jour du
+    // navigateur : des lignes fantomes pour un meme appareil physique.
+    //
+    // On accepte desormais tout identifiant opaque raisonnable, et on se rabat sur
+    // l'en-tete `X-Device-Id` que le client envoie DEJA sur chaque requete.
+    const headerDeviceId = req.headers[DEVICE_ID_HEADER]?.toString();
+    const candidate = typeof body.deviceId === 'string' && body.deviceId.trim().length > 0
+      ? body.deviceId.trim()
+      : headerDeviceId?.trim();
+    const deviceId = candidate && /^[A-Za-z0-9._-]{8,128}$/.test(candidate) ? candidate : undefined;
     await this.webPush.subscribe(req.user.id, body.subscription, ua, deviceId);
     return { ok: true };
   }

@@ -57,6 +57,51 @@ export interface PushPayload {
   appBadge?: number | null;
 }
 
+
+/**
+ * Nombre maximal d'appareils VIVANTS par personne.
+ *
+ * Trois : un telephone, un poste de travail, un appareil de secours. Au-dela, on n'ajoute
+ * plus d'information — on envoie N notifications la ou une seule est lue, et la liste
+ * d'appareils devient illisible pour qui doit en revoquer un.
+ */
+export const MAX_DEVICES_PER_USER = 3;
+
+/**
+ * Nom lisible d'un appareil, derive du User-Agent.
+ *
+ * ⚠️ La colonne `label` existait depuis juillet et n'etait ECRITE NULLE PART : toutes les
+ * lignes valaient NULL, et les ecrans affichaient le User-Agent BRUT — 200 caracteres
+ * illisibles la ou l'utilisateur doit reconnaitre SON telephone pour le revoquer.
+ *
+ * Volontairement grossier : « iPhone · Safari » suffit a distinguer deux appareils d'une
+ * meme personne. Une detection fine (modele, version) vieillirait mal et n'apporterait rien
+ * a la seule question posee : « lequel est le mien ? ».
+ */
+export function deviceLabel(userAgent?: string | null): string | null {
+  if (!userAgent) return null;
+  const ua = userAgent;
+  const os =
+    /iPhone/i.test(ua) ? 'iPhone'
+    : /iPad/i.test(ua) ? 'iPad'
+    : /Android/i.test(ua) ? 'Android'
+    : /Windows/i.test(ua) ? 'Windows'
+    : /Macintosh|Mac OS/i.test(ua) ? 'Mac'
+    : /Linux/i.test(ua) ? 'Linux'
+    : null;
+  // L'ordre compte : Edge et Chrome se declarent tous deux « Chrome », Chrome se declare
+  // aussi « Safari ». Tester du plus specifique au plus generique.
+  const browser =
+    /Edg\//i.test(ua) ? 'Edge'
+    : /OPR\/|Opera/i.test(ua) ? 'Opera'
+    : /Firefox/i.test(ua) ? 'Firefox'
+    : /Chrome/i.test(ua) ? 'Chrome'
+    : /Safari/i.test(ua) ? 'Safari'
+    : null;
+  const parts = [os, browser].filter(Boolean);
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
+
 @Injectable()
 export class WebPushService {
   private readonly logger = new Logger(WebPushService.name);
@@ -130,6 +175,24 @@ export class WebPushService {
       if (deleted.count > 0) {
         this.logger.log(`[push] dedup-by-device: removed ${deleted.count} stale sub(s) for user=${userId.slice(0, 8)} device=${deviceId.slice(0, 8)}`);
       }
+      // ⚠️ RATTRAPAGE DES LIGNES ORPHELINES.
+      //
+      // Le `deleteMany` ci-dessus compare `deviceId = <valeur>` : en SQL, cette egalite
+      // ne matche JAMAIS NULL. Une ligne creee avant que l'appareil sache s'identifier
+      // (client ancien, identifiant refuse par l'ancienne validation, stockage bloque)
+      // restait donc eternellement en base, invisible et jamais nettoyee.
+      //
+      // On la rattrape par le User-Agent, le seul lien qui reste entre les deux lignes.
+      if (userAgent) {
+        const orphans = await this.prisma.pushSubscription.deleteMany({
+          where: { userId, deviceId: null, userAgent, endpoint: { not: sub.endpoint } },
+        });
+        if (orphans.count > 0) {
+          this.logger.log(
+            `[push] rattrapage: ${orphans.count} ligne(s) sans deviceId supprimee(s) pour user=${userId.slice(0, 8)}`,
+          );
+        }
+      }
     } else if (userAgent) {
       const deleted = await this.prisma.pushSubscription.deleteMany({
         where: {
@@ -143,6 +206,8 @@ export class WebPushService {
       }
     }
 
+    const label = deviceLabel(userAgent);
+
     await this.prisma.pushSubscription.upsert({
       where: { endpoint: sub.endpoint },
       create: {
@@ -152,6 +217,7 @@ export class WebPushService {
         auth: sub.keys.auth,
         userAgent,
         deviceId,
+        label,
       },
       update: {
         userId,
@@ -159,9 +225,49 @@ export class WebPushService {
         auth: sub.keys.auth,
         userAgent,
         deviceId,
+        label,
         lastSeenAt: new Date(),
       },
     });
+
+    await this.enforceDeviceCap(userId);
+  }
+
+  /**
+   * PLAFOND D'APPAREILS PAR PERSONNE.
+   *
+   * Le dedoublonnage ci-dessus supprime les doublons d'un MEME appareil. Il ne dit rien
+   * du nombre d'appareils DISTINCTS, qui peut croitre sans fin : chaque telephone change,
+   * chaque navigateur essaye, chaque poste de travail ajoute une ligne vivante. On envoie
+   * alors N notifications la ou une seule est lue, et la liste devient illisible.
+   *
+   * Au-dela du plafond, on retire les PLUS ANCIENNEMENT VUS — pas les plus anciennement
+   * crees : l'appareil reellement utilise est celui qui s'est manifeste en dernier.
+   *
+   * ⚠️ La suppression est TRACEE. Un appareil qui cesse de recevoir sans explication est
+   * exactement le genre de silence que tout ce chantier cherche a eliminer.
+   */
+  private async enforceDeviceCap(userId: string): Promise<void> {
+    try {
+      const subs = await this.prisma.pushSubscription.findMany({
+        where: { userId },
+        orderBy: { lastSeenAt: 'desc' },
+        select: { id: true, label: true, lastSeenAt: true },
+      });
+      if (subs.length <= MAX_DEVICES_PER_USER) return;
+      const excess = subs.slice(MAX_DEVICES_PER_USER);
+      await this.prisma.pushSubscription.deleteMany({ where: { id: { in: excess.map((e) => e.id) } } });
+      this.logger.log(
+        `[push] plafond appareils atteint pour user=${userId.slice(0, 8)} — ${excess.length} retire(s) : ` +
+          excess.map((e) => `${e.label ?? 'appareil inconnu'} (vu ${e.lastSeenAt.toISOString()})`).join(', '),
+      );
+    } catch (err) {
+      // Best-effort : un plafond non applique laisse une ligne de trop, ce qui est
+      // beaucoup moins grave que de faire echouer une inscription legitime.
+      this.logger.warn(
+        `[push] plafond appareils non applique pour user=${userId.slice(0, 8)}: ${err instanceof Error ? err.message : err}`,
+      );
+    }
   }
 
   async unsubscribe(endpoint: string, userId: string): Promise<void> {

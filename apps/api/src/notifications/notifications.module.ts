@@ -3,6 +3,7 @@ import { AuthModule } from '../auth/auth.module';
 import { SmsModule } from '../sms/sms.module';
 import { AlertRulesService } from './alert-rules.service';
 import { EscalationCronService } from './escalation-cron.service';
+import { NotificationEligibilityService } from './notification-eligibility.service';
 import { NotificationDispatchService } from './notification-dispatch.service';
 import { NotificationPreferencesService } from './notification-preferences.service';
 import { NotificationThrottleService } from './notification-throttle.service';
@@ -36,6 +37,7 @@ import { WebPushService } from './web-push.service';
     AlertRulesService,
     EscalationCronService,
     NotificationPreferencesService,
+    NotificationEligibilityService,
   ],
   exports: [
     WebPushService,

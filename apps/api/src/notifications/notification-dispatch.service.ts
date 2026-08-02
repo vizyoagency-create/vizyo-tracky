@@ -19,6 +19,7 @@ import { EmailService } from '../email/email.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SmsGatewayService } from '../sms/sms-gateway.service';
+import { NotificationEligibilityService } from './notification-eligibility.service';
 import { defaultPushPreference } from './notification-preferences.service';
 import type { DeliveryStatus } from './notification-throttle.service';
 import { DELIVERY_STATUS, NotificationThrottleService, PUSH_CHANNEL } from './notification-throttle.service';
@@ -180,6 +181,7 @@ export class NotificationDispatchService {
     private readonly errorLogger: ErrorLogger,
     private readonly config: ConfigService<Env, true>,
     private readonly throttle: NotificationThrottleService,
+    private readonly eligibility: NotificationEligibilityService,
   ) {}
 
   /**
@@ -195,7 +197,19 @@ export class NotificationDispatchService {
     // Si une regle specifie escalateToUserId, on l'inclut aussi. Depuis le
     // correctif, s'y ajoutent les SUPER_ADMIN en perimetre 'GLOBAL' (push seul).
     const pushChannelActive = channels.includes('WEB_PUSH');
-    const recipients = await this.resolveRecipients(alert, rules, pushChannelActive);
+    const resolved = await this.resolveRecipients(alert, rules, pushChannelActive);
+
+    // ══ A-T-IL LE DROIT DE SAVOIR ? ═══════════════════════════════════════════════
+    //
+    // Place ICI, avant toute boucle de canal, et non dans la porte push : le droit ne
+    // depend pas du canal. Un compte sans `alerts_view` ne doit recevoir ni push, ni
+    // e-mail, ni SMS, ni WhatsApp — l'audit du 2026-08-02 a montre que la MEME alerte
+    // etait filtree en HTTP (403) et servie sans controle par tous les autres chemins.
+    //
+    // Ce filtre s'applique donc aussi aux destinataires designes par un TIERS
+    // (`escalateToUserId` d'une regle, destinataires additionnels de surveillance) :
+    // c'etait la seule facon de contourner meme le refus explicite de l'interesse.
+    const recipients = await this.filterByPermission(alert, resolved);
     if (recipients.length === 0) {
       this.logger.debug(`Alert ${alert.id}: no recipients found`);
       return { channels };
@@ -517,6 +531,52 @@ export class NotificationDispatchService {
     }
 
     return Array.from(byId.values());
+  }
+
+  /**
+   * Ecarte les destinataires qui n'ont pas le droit d'etre notifies de cette alerte.
+   *
+   * ⚠️ CHAQUE refus est JOURNALISE. C'est le point qui distingue ce filtre d'un simple
+   * `if` : sans ligne, on remplacerait une fuite (recevoir sans droit) par un silence
+   * inexplicable (ne plus rien recevoir sans savoir pourquoi) — et le centre de
+   * notifications existe precisement pour qu'aucun non-envoi ne soit muet.
+   *
+   * Le motif distingue `no_permission` (il manque `alerts_view`) de `out_of_scope`
+   * (le droit est la, mais pas sur ce vehicule) : les deux se corrigent a des endroits
+   * differents, les confondre rendrait le diagnostic impossible.
+   */
+  private async filterByPermission(
+    alert: AlertWithVehicle,
+    recipients: DispatchRecipient[],
+  ): Promise<DispatchRecipient[]> {
+    if (recipients.length === 0) return recipients;
+    const verdicts = await this.eligibility.check(
+      recipients.map((r) => r.user.id),
+      alert.vehicleId ?? null,
+    );
+    const kept: DispatchRecipient[] = [];
+    for (const r of recipients) {
+      const verdict = verdicts.get(r.user.id) ?? 'no_permission';
+      if (verdict === 'ok') {
+        kept.push(r);
+        continue;
+      }
+      this.logger.log(
+        `[push] skip alert=${alert.id} user=${r.user.id.slice(0, 8)} (${r.user.email}) — raison=${verdict}`,
+      );
+      await this.logDelivery({
+        alert,
+        userId: r.user.id,
+        scope: r.scope,
+        status: DELIVERY_STATUS.SUPPRESSED,
+        reason: verdict,
+        // Meme mise en forme que l'envoi reel : la ligne de journal doit montrer ce que
+        // la personne AURAIT recu, pas un resume approximatif.
+        title: this.buildPushContent(alert, false, 0).title,
+        body: alert.message ?? '',
+      });
+    }
+    return kept;
   }
 
   /**
