@@ -34,3 +34,37 @@ export function resolveTenantScope(user: {
   if (!user.fleetId) return { mode: 'DENY' };
   return { mode: 'FLEET', fleetId: user.fleetId };
 }
+
+/**
+ * Identifiant de flotte IMPOSSIBLE, pour matcher zéro ligne.
+ *
+ * ── Pourquoi une valeur plutôt qu'une absence ────────────────────────────────────────
+ * Plusieurs écrans écrivaient `if (role !== SUPER_ADMIN && user.fleetId) { where.fleetId = … }`.
+ * Quand `fleetId` est `null`, le bloc est SAUTÉ : la clause disparaît et la requête devient
+ * globale. Le compte le moins légitime obtient la vue la plus large — l'exact inverse de
+ * l'intention. C'est un **fail-open** : il ne se voit pas, parce que l'écran s'affiche
+ * normalement, simplement avec les données de tout le monde.
+ *
+ * Le cas n'est pas théorique : `Fleet.onDelete: SetNull` met à `null` le `fleetId` de TOUS
+ * les membres d'une société supprimée, administrateur compris.
+ *
+ * En posant cette valeur, l'écran se vide — un vide se remarque et se corrige ; une fuite
+ * se découvre par le client.
+ */
+export const NO_FLEET = '00000000-0000-0000-0000-000000000000';
+
+/**
+ * Flotte à laquelle une lecture doit être bornée.
+ *
+ * `undefined` = aucune borne, et c'est réservé au SUPER_ADMIN.
+ * `NO_FLEET`  = compte non-super-admin sans société : il ne voit rien.
+ */
+export function requiredFleetScope(
+  user: { role: UserRole; fleetId: string | null | undefined },
+  requestedFleetId?: string,
+): string | undefined {
+  const scope = resolveTenantScope(user);
+  if (scope.mode === 'ALL') return requestedFleetId || undefined;
+  if (scope.mode === 'FLEET') return scope.fleetId;
+  return NO_FLEET;
+}

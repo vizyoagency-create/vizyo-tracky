@@ -192,3 +192,88 @@ describe('FuelReportService.fleetStationsMap — prix daté, historique intact',
     expect(a.vehicles.map((v) => v.vehicleId).sort()).toEqual(['v-dorm', 'v-live']);
   });
 });
+
+
+/**
+ * LE CLOISONNEMENT DE LA CARTE DES STATIONS — ce que le harnais ci-dessus ne voyait pas.
+ *
+ * ── L'incident (2026-08-02) ─────────────────────────────────────────────────────────
+ * Un FLEET_ADMIN de « cdef31 » voyait les vehicules de « mh cars » en cliquant sur une
+ * station-service. La cause : `getAccessibleVehicleIds()` renvoie `'ALL'` pour un
+ * FLEET_ADMIN — au sens « aucune restriction PAR VEHICULE » — et l'appelant le lisait
+ * comme « aucun filtre », produisant `where = {}`.
+ *
+ * ⚠️ POURQUOI AUCUN TEST N'A BRONCHE : le harnais du dessus mocke `tripFuelStop.findMany`
+ * en IGNORANT son `where`, et son utilisateur de test n'a pas de `fleetId`. La suite
+ * passait donc a l'identique avant et apres le correctif. Un mock qui ne regarde pas
+ * l'argument ne teste pas la requete — il teste la mise en forme du resultat.
+ *
+ * Ces tests-ci asserten la CLAUSE REELLEMENT TRANSMISE a Prisma.
+ */
+describe('FuelReportService.fleetStationsMap — cloisonnement par societe', () => {
+  function build(accessible: string[] | 'ALL' = 'ALL') {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const prisma = {
+      tripFuelStop: { findMany },
+      vehicle: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    const access = { getAccessibleVehicleIds: jest.fn().mockResolvedValue(accessible) };
+    return { svc: new FuelReportService(prisma as never, access as never), findMany };
+  }
+
+  /** La clause de cloisonnement, extraite du `where` reellement passe a Prisma. */
+  const scopeOf = (findMany: jest.Mock) => {
+    const where = findMany.mock.calls[0][0].where as Record<string, unknown>;
+    const { arrivedAt: _ignored, ...scope } = where;
+    return scope;
+  };
+
+  it('⚠️ un FLEET_ADMIN est borne a SA societe — la requete ne part jamais sans clause', async () => {
+    const t = build('ALL');
+    await t.svc.fleetStationsMap({ id: 'u1', role: 'FLEET_ADMIN', fleetId: 'cdef31' } as never);
+    expect(scopeOf(t.findMany)).toEqual({ fleetId: 'cdef31' });
+  });
+
+  it('⚠️ il ne peut pas viser une AUTRE societe via la query string', async () => {
+    const t = build('ALL');
+    await t.svc.fleetStationsMap(
+      { id: 'u1', role: 'FLEET_ADMIN', fleetId: 'cdef31' } as never,
+      undefined,
+      undefined,
+      'mh-cars',
+    );
+    expect(scopeOf(t.findMany)).toEqual({ fleetId: 'cdef31' });
+  });
+
+  it('un SUPER_ADMIN garde son perimetre transverse', async () => {
+    const t = build('ALL');
+    await t.svc.fleetStationsMap({ id: 'sa', role: 'SUPER_ADMIN', fleetId: null } as never);
+    expect(scopeOf(t.findMany)).toEqual({});
+  });
+
+  it('un SUPER_ADMIN qui choisit une societe y est borne', async () => {
+    const t = build('ALL');
+    await t.svc.fleetStationsMap(
+      { id: 'sa', role: 'SUPER_ADMIN', fleetId: null } as never,
+      undefined,
+      undefined,
+      'mh-cars',
+    );
+    expect(scopeOf(t.findMany)).toEqual({ fleetId: 'mh-cars' });
+  });
+
+  it('un perimetre restreint par vehicule l emporte sur la societe', async () => {
+    const t = build(['v1', 'v2']);
+    await t.svc.fleetStationsMap({ id: 'fm', role: 'FLEET_MANAGER', fleetId: 'cdef31' } as never);
+    expect(scopeOf(t.findMany)).toEqual({ vehicleId: { in: ['v1', 'v2'] } });
+  });
+
+  it('⚠️ un compte sans societe ne voit RIEN (fail-closed)', async () => {
+    // Cas reel : `Fleet.onDelete: SetNull` met a null le `fleetId` de tous les membres
+    // d'une societe supprimee, administrateur compris.
+    const t = build('ALL');
+    await t.svc.fleetStationsMap({ id: 'orphan', role: 'FLEET_ADMIN', fleetId: null } as never);
+    const scope = scopeOf(t.findMany) as { vehicleId?: { in: string[] } };
+    expect(scope.vehicleId?.in).toEqual(['00000000-0000-0000-0000-000000000000']);
+  });
+});
