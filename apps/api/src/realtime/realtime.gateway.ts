@@ -1,3 +1,5 @@
+import type { UserPermissions, UserRoleSlug } from '@vizyo/tracky-shared';
+import { getDefaultPermissions } from '@vizyo/tracky-shared';
 import { Logger } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 import {
@@ -33,6 +35,36 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     private readonly auth: AuthService,
     private readonly prisma: PrismaService,
   ) {}
+
+
+  /**
+   * Ce raccordement a-t-il le droit de recevoir des alertes ?
+   *
+   * Semantique IDENTIQUE au reste du produit : defauts du role, surcharges par
+   * `User.permissions`. On ne consulte PAS `UserVehicleAccess` ici — l'adhesion a un
+   * salon se decide une fois, alors que le perimetre depend du vehicule de chaque alerte.
+   *
+   * ⚠️ En cas de doute (compte introuvable, lecture en echec) on REFUSE : une panne ne
+   * doit jamais elargir l'audience d'une alerte qui porte une position.
+   */
+  private async mayViewAlerts(user: { id: string; role?: string }): Promise<boolean> {
+    if (user.role === 'SUPER_ADMIN' || user.role === 'FLEET_ADMIN') return true;
+    try {
+      const row = await this.prisma.user.findUnique({
+        where: { id: user.id },
+        select: { role: true, permissions: true },
+      });
+      if (!row) return false;
+      const defaults = getDefaultPermissions(row.role as UserRoleSlug);
+      const explicit = row.permissions as Partial<UserPermissions> | null;
+      return (explicit ? { ...defaults, ...explicit } : defaults).alerts_view === true;
+    } catch (err) {
+      this.logger.warn(
+        `[ws] verification alerts_view impossible pour ${user.id.slice(0, 8)} — salon d'alerte refuse: ${err instanceof Error ? err.message : err}`,
+      );
+      return false;
+    }
+  }
 
   async handleConnection(client: Socket): Promise<void> {
     try {
@@ -70,6 +102,31 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
           client.join(`fleet:${localUser.fleetId}`);
           client.join(`pos:fleet:${localUser.fleetId}`);
         }
+      }
+
+      // ══ SALON DEDIE AUX ALERTES ═══════════════════════════════════════════════
+      //
+      // Le salon `fleet:<id>` porte SEPT familles d'evenements (mouvement, statut du
+      // boitier, geofence, trajets, commandes moteur, alertes...). Le quitter pour
+      // proteger les alertes priverait de tout le reste.
+      //
+      // Les alertes sont donc emises dans un salon a part, rejoint uniquement par qui a
+      // `alerts_view`. Constat de l'audit du 2026-08-02 : un DRIVER (`alerts_view: false`
+      // par defaut) rejoignait `fleet:<id>` et recevait titre, plaque, LATITUDE et
+      // LONGITUDE de chaque alerte — alors que `GET /alerts` lui repond 403. La meme
+      // alerte etait filtree en HTTP et servie sans controle en temps reel.
+      //
+      // ⚠️ Le perimetre VEHICULE n'est pas applicable ici : l'adhesion se decide une fois,
+      // au raccordement, alors que le perimetre depend du vehicule de chaque alerte. Le
+      // filtrage fin se fait donc a l'EMISSION (voir `broadcastAlert`).
+      const canSeeAlerts = await this.mayViewAlerts(localUser);
+      if (canSeeAlerts) {
+        if (localUser.role === 'SUPER_ADMIN') client.join('alerts:fleet:*');
+        if (localUser.fleetId) client.join(`alerts:fleet:${localUser.fleetId}`);
+      } else {
+        this.logger.debug(
+          `Client ${client.id} (${localUser.email}) n'a pas alerts_view — aucun salon d'alerte`,
+        );
       }
 
       this.logger.debug(`Client ${client.id} authenticated (${localUser.email}, fleet=${localUser.fleetId})`);
@@ -176,13 +233,14 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       vehiclePlate: (alert as any).vehicle?.plate,
       speedKmh: typeof payload['speedKmh'] === 'number' ? payload['speedKmh'] : undefined,
     };
-    this.server.to(`fleet:${alert.fleetId}`).to('fleet:*').emit(WS_EVENTS.ALERT_NEW, event);
+    // Salon DEDIE : seuls les raccordements portant `alerts_view` y sont.
+    this.server.to(`alerts:fleet:${alert.fleetId}`).to('alerts:fleet:*').emit(WS_EVENTS.ALERT_NEW, event);
   }
 
   broadcastAlertAcknowledged(alert: Alert): void {
     this.server
-      .to(`fleet:${alert.fleetId}`)
-      .to('fleet:*')
+      .to(`alerts:fleet:${alert.fleetId}`)
+      .to('alerts:fleet:*')
       .emit(WS_EVENTS.ALERT_ACK, {
         id: alert.id,
         acknowledgedAt: alert.acknowledgedAt?.toISOString(),

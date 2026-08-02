@@ -89,6 +89,18 @@ export type SuppressionReason =
    * d'alerte coupé alors que c'est une famille entière qui l'est.
    */
   | 'preference_category_muted'
+  /**
+   * L'utilisateur n'a pas `alerts_view`. Distinct de tous les autres motifs : ce n'est
+   * pas un choix de sa part, c'est un refus du systeme — et cela ne se corrige pas dans
+   * ses reglages mais dans ses permissions.
+   */
+  | 'no_permission'
+  /**
+   * Il a le droit de voir des alertes, mais ce vehicule n'est pas dans son perimetre
+   * d'acces (UserVehicleAccess). Separe de `no_permission` parce que la correction est
+   * ailleurs : elargir le perimetre, pas accorder une permission.
+   */
+  | 'out_of_scope'
   | 'preference_severity'
   | 'cooldown'
   | 'hourly_cap'
@@ -100,6 +112,8 @@ export const SUPPRESSION_LABELS: Record<SuppressionReason, string> = {
   preference_disabled: 'Notifications désactivées par l’utilisateur',
   preference_type_muted: 'Ce type est coupé dans ses réglages',
   preference_category_muted: 'Cette famille est coupée dans ses réglages',
+  no_permission: 'Pas la permission de consulter les alertes',
+  out_of_scope: 'Ce véhicule est hors de son périmètre d’accès',
   preference_severity: 'Sous le seuil de sévérité choisi',
   cooldown: 'Regroupée — même alerte trop récente',
   hourly_cap: 'Plafond horaire atteint',

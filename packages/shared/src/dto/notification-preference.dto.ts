@@ -116,10 +116,24 @@ export interface UpdateNotificationPreferenceDto {
  * auraient divergé au premier changement de règle.
  */
 export function shouldPushAlert(
-  pref: Pick<NotificationPreferenceDto, 'pushEnabled' | 'minSeverity' | 'mutedTypes'>,
+  // `mutedCategories` est OPTIONNEL : d'anciens appelants construisent un apercu sans
+  // ce champ. Absent vaut « aucune famille coupee », jamais « tout coupe » — l'inverse
+  // rendrait muet quiconque n'a pas encore de reglage.
+  pref: Pick<NotificationPreferenceDto, 'pushEnabled' | 'minSeverity' | 'mutedTypes'> &
+    Partial<Pick<NotificationPreferenceDto, 'mutedCategories'>>,
   alert: { type: AlertType; severity: AlertSeverity },
 ): boolean {
   if (!pref.pushEnabled) return false;
+  // ⚠️ La FAMILLE d'abord, et elle l'emporte.
+  //
+  // Livré le 2026-07-28 sans ce test : l'écran de réglages proposait un interrupteur
+  // « Alertes véhicule » que le chemin d'alerte ne lisait pas. Le couper ne coupait rien.
+  // Un réglage visible et inerte est pire que pas de réglage : l'utilisateur croit s'être
+  // mis au silence et continue d'être réveillé.
+  //
+  // `mutedCategories` est optionnel ici parce que d'anciens appelants passent un objet
+  // sans ce champ ; absent vaut « aucune famille coupée », jamais « tout coupé ».
+  if ((pref.mutedCategories ?? []).includes('ALERT')) return false;
   if (pref.mutedTypes.includes(alert.type)) return false;
   return meetsSeverity(alert.severity, pref.minSeverity);
 }

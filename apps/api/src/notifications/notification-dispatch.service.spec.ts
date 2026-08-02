@@ -5,6 +5,7 @@ import { EmailService } from '../email/email.service';
 import { ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SmsGatewayService } from '../sms/sms-gateway.service';
+import { NotificationEligibilityService } from './notification-eligibility.service';
 import { NotificationDispatchService } from './notification-dispatch.service';
 import { defaultPushPreference } from './notification-preferences.service';
 import { NotificationThrottleService } from './notification-throttle.service';
@@ -81,6 +82,18 @@ describe('NotificationDispatchService — canal SMS (V1.15)', () => {
         // Anti-spam PUSH : jamais atteint ici (le rollout coupe le push pour ce
         // destinataire), mais le dispatch l'exige a la construction.
         { provide: NotificationThrottleService, useValue: { evaluate: jest.fn().mockResolvedValue(new Map()) } },
+        // FILTRE DE DROIT — `alerts_view` + perimetre vehicule.
+        //
+        // ⚠️ Ce mock repond « ok » pour TOUT LE MONDE : les destinataires de ces scenarios
+        // sont des comptes autorises, et c'est l'AIGUILLAGE qu'ils exercent, pas le droit.
+        // Le filtre lui-meme a ses propres tests (voir « filtre de droit » plus bas), ou le
+        // mock est au contraire refusant. Un mock permissif ici serait un faux positif si
+        // ces tests pretendaient prouver quoi que ce soit sur les permissions — ils ne le
+        // pretendent pas.
+        {
+          provide: NotificationEligibilityService,
+          useValue: { check: jest.fn(async (ids: string[]) => new Map(ids.map((id) => [id, 'ok']))) },
+        },
         // Remontée des échecs de notification au centre d'alerte : non exercée ici, mais le
         // service l'exige à la construction.
         { provide: ErrorLogger, useValue: { recordBackground: jest.fn(), record: jest.fn() } },
@@ -284,6 +297,18 @@ describe('NotificationDispatchService — aiguillage du push (correctif)', () =>
           // portent sur l'AIGUILLAGE. Les garde-fous ont leur propre suite plus bas,
           // avec le vrai service branche.
           { provide: NotificationThrottleService, useValue: { evaluate: throttleEvaluate } },
+          // FILTRE DE DROIT — `alerts_view` + perimetre vehicule.
+          //
+          // ⚠️ Ce mock repond « ok » pour TOUT LE MONDE : les destinataires de ces scenarios
+          // sont des comptes autorises, et c'est l'AIGUILLAGE qu'ils exercent, pas le droit.
+          // Le filtre lui-meme a ses propres tests (voir « filtre de droit » plus bas), ou le
+          // mock est au contraire refusant. Un mock permissif ici serait un faux positif si
+          // ces tests pretendaient prouver quoi que ce soit sur les permissions — ils ne le
+          // pretendent pas.
+          {
+            provide: NotificationEligibilityService,
+            useValue: { check: jest.fn(async (ids: string[]) => new Map(ids.map((id) => [id, 'ok']))) },
+          },
         ],
       }).compile();
       return moduleRef.get(NotificationDispatchService);
@@ -776,6 +801,18 @@ describe('NotificationDispatchService — garde-fous anti-spam et tracage', () =
           // cooldown -> plafond -> journal) qu'on veut voir fonctionner, pas un mock
           // qui repondrait toujours oui.
           NotificationThrottleService,
+          // FILTRE DE DROIT — `alerts_view` + perimetre vehicule.
+          //
+          // ⚠️ Ce mock repond « ok » pour TOUT LE MONDE : les destinataires de ces scenarios
+          // sont des comptes autorises, et c'est l'AIGUILLAGE qu'ils exercent, pas le droit.
+          // Le filtre lui-meme a ses propres tests (voir « filtre de droit » plus bas), ou le
+          // mock est au contraire refusant. Un mock permissif ici serait un faux positif si
+          // ces tests pretendaient prouver quoi que ce soit sur les permissions — ils ne le
+          // pretendent pas.
+          {
+            provide: NotificationEligibilityService,
+            useValue: { check: jest.fn(async (ids: string[]) => new Map(ids.map((id) => [id, 'ok']))) },
+          },
           { provide: PrismaService, useValue: prisma },
           { provide: WebPushService, useValue: { sendToUser } },
           { provide: EmailService, useValue: { send: emailSend, buildAlertEmail: jest.fn().mockReturnValue('<html/>') } },
@@ -1280,6 +1317,10 @@ describe('NotificationDispatchService.notifyUsers — socle generique', () => {
       { recordBackground: jest.fn() } as never,
       { get: () => opts.rollout ?? 'ALL' } as never,
       { evaluate: throttleEvaluate } as never,
+      // Le socle generique ne notifie que des NON-alertes : le filtre de droit ne
+      // s'applique pas ici (il est pose sur le chemin ALERTE). Le service est neanmoins
+      // exige a la construction.
+      { check: jest.fn().mockResolvedValue(new Map()) } as never,
     );
     return { svc, sendToUser, deliveryCreate, throttleEvaluate };
   }
