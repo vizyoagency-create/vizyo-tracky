@@ -44,7 +44,7 @@ const STATUS_LABELS: Record<string, string> = {
       <div class="flex gap-3 items-end">
         <div class="flex flex-col gap-1">
           <label class="text-xs text-fg-tertiary">Statut</label>
-          <select [(ngModel)]="statusFilter"
+          <select [ngModel]="statusFilter()" (ngModelChange)="statusFilter.set($event)"
                   class="bg-bg-secondary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary">
             <option value="">Tous</option>
             <option value="PENDING">En attente</option>
@@ -57,7 +57,7 @@ const STATUS_LABELS: Record<string, string> = {
         </div>
         <div class="flex flex-col gap-1">
           <label class="text-xs text-fg-tertiary">Catégorie</label>
-          <select [(ngModel)]="categoryFilter"
+          <select [ngModel]="categoryFilter()" (ngModelChange)="categoryFilter.set($event)"
                   class="bg-bg-secondary border border-border-subtle rounded-lg px-3 py-2 text-sm text-fg-primary">
             <option value="">Toutes</option>
             <option value="info">Information</option>

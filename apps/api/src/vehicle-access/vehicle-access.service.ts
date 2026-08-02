@@ -97,7 +97,27 @@ export class VehicleAccessService {
    */
   async hasAccessToVehicle(user: AuthUser, vehicleId: string): Promise<boolean> {
     const ids = await this.getAccessibleVehicleIds(user);
-    if (ids === 'ALL') return true;
-    return ids.includes(vehicleId);
+    if (ids !== 'ALL') return ids.includes(vehicleId);
+
+    // ⚠️ `'ALL'` NE VEUT PAS DIRE « TOUS LES VEHICULES DE LA BASE ».
+    //
+    // Pour un FLEET_ADMIN il signifie « aucune restriction PAR VEHICULE » — sous-entendu
+    // dans sa flotte. Renvoyer `true` sans regarder la flotte transformait ce sentinel en
+    // porte ouverte : avec un simple UUID d'une autre societe, un FLEET_ADMIN lisait le
+    // detail d'un vehicule ou d'un trajet qui ne lui appartient pas (IDOR).
+    //
+    // Et ces UUID n'etaient pas difficiles a obtenir : la carte des stations-service les
+    // livrait en clair (fuite corrigee le meme jour dans `fuel-report.service.ts`).
+    const scope = resolveTenantScope(user);
+    if (scope.mode === 'ALL') return true; // SUPER_ADMIN : perimetre reellement illimite
+    if (scope.mode === 'DENY') return false; // ni super-admin, ni flotte -> rien
+
+    const vehicle = await this.prisma.vehicle.findUnique({
+      where: { id: vehicleId },
+      select: { fleetId: true },
+    });
+    // Vehicule inexistant : on refuse. Repondre `true` laisserait l'appelant produire un
+    // 404 ou un 500 selon les cas — un refus franc est plus lisible et plus sur.
+    return vehicle?.fleetId === scope.fleetId;
   }
 }

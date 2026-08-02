@@ -223,13 +223,20 @@ import {
                     (toChange)="customTo.set($event)"
                   />
                 } @else {
+                  <!-- ⚠️ PAS de liaison deux-sens ngModel ICI : « customFrom » et « customTo »
+                       sont des SIGNALS. Le raccourci se compile en une AFFECTATION a la
+                       propriete — il remplace le signal au lieu d'ecrire dedans, et cote
+                       lecture il passe la FONCTION au champ au lieu de la chaine. Les deux
+                       champs de date etaient donc inertes : on saisissait une plage,
+                       applyCustomRange relisait une valeur vide et sortait sans rien faire.
+                       La branche du dessus, elle, utilisait deja le bon motif. -->
                   <div class="rep-custom-field">
                     <label>Du</label>
-                    <input type="date" [(ngModel)]="customFrom" [max]="customTo()" />
+                    <input type="date" [ngModel]="customFrom()" (ngModelChange)="customFrom.set($event)" [max]="customTo()" />
                   </div>
                   <div class="rep-custom-field">
                     <label>Au</label>
-                    <input type="date" [(ngModel)]="customTo" [min]="customFrom()" [max]="todayIso" />
+                    <input type="date" [ngModel]="customTo()" (ngModelChange)="customTo.set($event)" [min]="customFrom()" [max]="todayIso" />
                   </div>
                 }
                 @if (customRangeError(); as err) {

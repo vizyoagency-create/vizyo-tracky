@@ -1,3 +1,4 @@
+import { requiredFleetScope } from '../common/tenant-scope';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { FleetPlaceKind, Prisma, UserRole } from '@prisma/client';
 import type { AuthUser } from '../auth/types/auth-user';
@@ -50,8 +51,11 @@ export class FleetPlacesService {
    * fourni est ignoré) ; le super-admin cible celle qu'il a choisie (ou null = toutes, en lecture).
    */
   resolveFleetId(user: AuthUser, fleetId?: string): string | null {
-    if (user.role !== UserRole.SUPER_ADMIN) return user.fleetId ?? null;
-    return fleetId || null;
+    // ⚠️ Renvoyait `null` pour un non-super-admin sans societe, et plusieurs appelants
+    // traitent `null` en OUVERTURE (`where = {}`) et non en refus. Un compte sans flotte
+    // voyait donc les passages et les plaques des trois societes.
+    // `requiredFleetScope` retourne une flotte IMPOSSIBLE dans ce cas : zero ligne.
+    return requiredFleetScope(user, fleetId) ?? null;
   }
 
   /** Flotte OBLIGATOIRE pour une écriture (créer/modifier/supprimer un lieu). */

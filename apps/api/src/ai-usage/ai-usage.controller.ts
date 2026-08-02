@@ -1,3 +1,4 @@
+import { requiredFleetScope } from '../common/tenant-scope';
 import { Body, Controller, Get, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -58,7 +59,11 @@ export class AiUsageController {
    * (jamais le fleetId du client) ; un SUPER_ADMIN filtre librement (undefined = toutes).
    */
   private scopeFleet(req: AuthenticatedRequest, requested?: string): string | undefined {
-    return req.user.role === UserRole.SUPER_ADMIN ? (requested || undefined) : (req.user.fleetId ?? undefined);
+    // ⚠️ `?? undefined` etait un FAIL-OPEN : un FLEET_ADMIN sans societe (cas reel apres
+    // suppression d'une flotte, `onDelete: SetNull`) obtenait `undefined`, c'est-a-dire
+    // TOUTES les flottes — noms des societes, e-mails, couts, et bascule sur le budget
+    // plateforme. Le compte le moins legitime avait la vue la plus large.
+    return requiredFleetScope(req.user, requested);
   }
 
   /** GET /api/admin/ai-usage/summary — KPIs + répartitions (action/flotte/utilisateur/jour) + budget. */

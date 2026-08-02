@@ -1,3 +1,4 @@
+import { requiredFleetScope } from '../common/tenant-scope';
 import { AuthAccountSyncService } from './auth-account-sync.service';
 import {
   BadRequestException, Body, Controller, Delete, ForbiddenException, Get, HttpCode, HttpStatus,
@@ -399,9 +400,14 @@ export class UsersController {
   async panorama(@Req() req: AuthenticatedRequest) {
     const fleetFilter: Prisma.UserWhereInput = {};
     const groupFilter: Prisma.VehicleGroupWhereInput = {};
-    if (req.user.role !== UserRole.SUPER_ADMIN && req.user.fleetId) {
-      fleetFilter.fleetId = req.user.fleetId;
-      groupFilter.fleetId = req.user.fleetId;
+    // ⚠️ La condition portait `&& req.user.fleetId` : sans societe, le bloc etait SAUTE
+    // et le panorama renvoyait les e-mails, noms, roles et permissions de TOUS les clients.
+    // `requiredFleetScope` retourne alors une flotte impossible : l'ecran se vide au lieu
+    // de tout montrer.
+    const scopedFleet = requiredFleetScope(req.user);
+    if (scopedFleet) {
+      fleetFilter.fleetId = scopedFleet;
+      groupFilter.fleetId = scopedFleet;
     }
     // Owner plateforme — exclu de la vue panorama pour un viewer non-owner.
     if (this.ownerVis.isMasked(req.user)) fleetFilter.isOwner = false;
