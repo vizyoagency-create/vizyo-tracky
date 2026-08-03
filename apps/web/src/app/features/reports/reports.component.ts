@@ -29,7 +29,7 @@ import { HeatmapChartComponent } from '../../shared/ui/charts/heatmap-chart.comp
 import { TripReplayComponent } from './trip-replay.component';
 import { PeriodReplayComponent } from './period-replay.component';
 import {
-  aggregateKpis,
+  aggregateKpisFromDaily,
   clampSpeed as clampSpeedFn,
   formatDuration as formatDurationFn,
   kpiToSortColumn,
@@ -471,6 +471,19 @@ import {
           Aucun trajet pour cette période
         </div>
       } @else {
+        @if (tripsTruncated()) {
+          <!--
+            Le tableau est borne a 100 lignes (voir loadData) alors que les
+            KPI couvrent toute la periode. Le dire est le minimum : un utilisateur qui
+            compte les lignes et tombe sur un autre chiffre que le compteur cesse de
+            croire la page entiere.
+          -->
+          <p class="text-xs text-fg-tertiary mb-2">
+            {{ listedTripCount() }} trajets affichés sur {{ kpis().tripCount }} —
+            affinez la période ou le véhicule pour voir les autres.
+            Les indicateurs ci-dessus portent bien sur la période complète.
+          </p>
+        }
         <div #tripsTable class="bg-bg-secondary border border-border-subtle rounded-[--radius-card] overflow-x-auto">
           <table class="w-full text-sm" style="min-width:880px">
             <thead class="border-b border-border-subtle text-fg-tertiary text-xs uppercase">
@@ -1587,7 +1600,33 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   protected periods = this.buildPeriods();
 
-  protected readonly kpis = computed(() => aggregateKpis(this.trips()));
+  /**
+   * KPI de la periode — calcules depuis l'AGREGAT SERVEUR.
+   *
+   * ⚠️ AVANT : `aggregateKpis(this.trips())`, c'est-a-dire la liste AFFICHEE, demandee
+   * avec `limit: '100'`. Les trois flottes de production depassent 100 trajets meme sur
+   * SEPT jours (622 / 729 / 425), donc les KPI etaient faux en permanence — et surtout
+   * IDENTIQUES d'une periode a l'autre, puisqu'on retombait toujours sur les cent
+   * derniers trajets. Le filtre de date paraissait casse alors qu'il fonctionnait : le
+   * plafond masquait son effet.
+   *
+   * `dailySummary` est agrege cote serveur sur exactement les memes filtres, sans limite.
+   */
+  protected readonly kpis = computed(() => aggregateKpisFromDaily(this.dailySummary()));
+
+  /** Nombre de trajets REELLEMENT listes dans le tableau (borne par le plafond). */
+  protected readonly listedTripCount = computed(() => this.trips().length);
+
+  /**
+   * Vrai quand le tableau ne montre qu'une PARTIE des trajets de la periode.
+   *
+   * ⚠️ Indispensable depuis que les KPI disent la verite : le compteur annonce 622 et le
+   * tableau en affiche 100. Sans cette mention, l'ecart est incomprehensible — et c'est
+   * le genre d'incoherence qui fait douter de TOUS les chiffres de la page.
+   */
+  protected readonly tripsTruncated = computed(
+    () => this.kpis().tripCount > this.trips().length,
+  );
 
   // ─── Tri du tableau (Sprint 5, client-side) ─────────────────────────────
   /** Colonne de tri active. Defaut : depart (ordre chronologique inverse). */

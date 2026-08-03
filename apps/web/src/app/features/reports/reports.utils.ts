@@ -67,6 +67,61 @@ export interface ReportsKpis {
  * donc les totaux sont garantis >= 0 et coherents avec ce que la page
  * affiche cellule par cellule.
  */
+/** Ligne d'agrégat journalier, telle que l'API la renvoie. */
+export interface DailySummaryShape {
+  tripCount: number;
+  totalDistanceMeters: number;
+  totalDurationSeconds: number;
+  maxSpeed: number;
+}
+
+/**
+ * KPI calculés depuis l'AGRÉGAT SERVEUR — la seule source complète.
+ *
+ * ══ Pourquoi cette fonction remplace `aggregateKpis` sur l'écran Rapports ═════════════
+ *
+ * Les KPI étaient calculés depuis `trips()`, la liste affichée dans le tableau. Or cette
+ * liste est demandée avec `limit: '100'` : elle ne contient JAMAIS plus de cent trajets.
+ *
+ * Mesure en production (2026-08-03), sur SEPT jours :
+ *
+ *     cdef31 ....... 622 trajets      mh cars ...... 729      A2R .......... 425
+ *
+ * Les trois flottes dépassent le plafond, même sur la période la plus courte. Deux
+ * conséquences, et la seconde est celle qui a été signalée :
+ *
+ *   1. les KPI étaient FAUX en permanence — « 100 trajets » au lieu de 622, distance
+ *      totale divisée par six ;
+ *   2. changer la période ne changeait RIEN à l'écran. De 7 à 30 jours, on retombait sur
+ *      les mêmes cent trajets les plus récents, donc sur les mêmes chiffres. Le filtre
+ *      paraissait cassé alors qu'il fonctionnait : c'est le plafond qui masquait son effet.
+ *
+ * L'agrégat journalier (`GET /trips/daily-summary`) est calculé côté serveur sans aucune
+ * limite, sur exactement les mêmes filtres. C'est la bonne source, et elle existait déjà.
+ *
+ * ⚠️ `maxSpeed` est le MAXIMUM des maxima journaliers, pas leur somme — l'erreur classique
+ * de ce type d'agrégation.
+ */
+export function aggregateKpisFromDaily(days: ReadonlyArray<DailySummaryShape>): ReportsKpis {
+  let tripCount = 0;
+  let totalDistance = 0;
+  let totalDuration = 0;
+  let maxSpeed = 0;
+  for (const d of days) {
+    tripCount += max0(d.tripCount);
+    totalDistance += max0(d.totalDistanceMeters);
+    totalDuration += max0(d.totalDurationSeconds);
+    const spd = clampSpeed(d.maxSpeed);
+    if (spd > maxSpeed) maxSpeed = spd;
+  }
+  return { tripCount, totalDistance, totalDuration, maxSpeed };
+}
+
+/**
+ * ⚠️ CONSERVÉE, mais ne doit PLUS servir aux KPI de l'écran Rapports : elle agrège la
+ * liste AFFICHÉE, qui est plafonnée. Utiliser `aggregateKpisFromDaily` pour tout total
+ * de période. Celle-ci reste juste pour agréger un ensemble de trajets déjà complet.
+ */
 export function aggregateKpis(trips: ReadonlyArray<TripKpiShape>): ReportsKpis {
   let totalDistance = 0;
   let totalDuration = 0;
