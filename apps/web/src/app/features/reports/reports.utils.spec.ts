@@ -22,6 +22,8 @@ import {
   sortTrips,
   todayIsoLocal,
   type TripSortShape,
+  aggregateKpisFromDaily,
+  type DailySummaryShape,
 } from './reports.utils';
 
 describe('reports.utils — formatDuration', () => {
@@ -344,5 +346,74 @@ describe('reports.utils — kpiToSortColumn (mapping KPI→colonne)', () => {
   });
   it('Trajets → null (non triable)', () => {
     expect(kpiToSortColumn('tripCount')).toBeNull();
+  });
+});
+
+/**
+ * ── KPI DE PÉRIODE : l'agrégat SERVEUR, jamais la liste affichée ─────────────────────
+ *
+ * ⚠️ INCIDENT DU 2026-08-03, signalé par le client : « les KPI ne changent pas quand je
+ * modifie le filtre date ».
+ *
+ * Les KPI étaient calculés depuis `trips()`, la liste du tableau, demandée avec
+ * `limit: '100'`. Or les trois flottes de production dépassent 100 trajets même sur SEPT
+ * jours (622 / 729 / 425). Conséquences :
+ *
+ *   - les totaux étaient faux en permanence (100 au lieu de 622) ;
+ *   - et surtout IDENTIQUES d'une période à l'autre, puisqu'on retombait toujours sur les
+ *     cent derniers trajets. Le filtre semblait cassé alors qu'il fonctionnait.
+ */
+describe('aggregateKpisFromDaily — les KPI portent sur la période ENTIÈRE', () => {
+  const jour = (over: Partial<DailySummaryShape> = {}): DailySummaryShape => ({
+    tripCount: 10,
+    totalDistanceMeters: 1000,
+    totalDurationSeconds: 600,
+    maxSpeed: 90,
+    ...over,
+  });
+
+  it('somme les compteurs journaliers, sans aucun plafond', () => {
+    // 70 jours × 10 trajets = 700, très au-dessus des 100 que le tableau peut afficher.
+    const k = aggregateKpisFromDaily(Array.from({ length: 70 }, () => jour()));
+    expect(k.tripCount).toBe(700);
+    expect(k.totalDistance).toBe(70_000);
+    expect(k.totalDuration).toBe(42_000);
+  });
+
+  it('prend le MAXIMUM des vitesses, jamais leur somme', () => {
+    // L'erreur classique de ce type d'agrégation : une vitesse max de 260 km/h sur un
+    // écran de gestion de flotte se remarque, mais seulement si quelqu'un regarde.
+    const k = aggregateKpisFromDaily([jour({ maxSpeed: 80 }), jour({ maxSpeed: 130 }), jour({ maxSpeed: 95 })]);
+    expect(k.maxSpeed).toBe(130);
+  });
+
+  it('ELARGIR LA PÉRIODE CHANGE LES CHIFFRES — le défaut signalé', () => {
+    const sept = Array.from({ length: 7 }, () => jour({ tripCount: 89 }));   // 623
+    const trente = Array.from({ length: 30 }, () => jour({ tripCount: 89 })); // 2670
+
+    const k7 = aggregateKpisFromDaily(sept);
+    const k30 = aggregateKpisFromDaily(trente);
+
+    // ⚠️ C'est CETTE assertion qui aurait attrapé le bug : avec l'ancien calcul, les deux
+    // périodes rendaient exactement 100 trajets, donc des KPI identiques.
+    expect(k7.tripCount).toBe(623);
+    expect(k30.tripCount).toBe(2670);
+    expect(k30.tripCount).toBeGreaterThan(k7.tripCount);
+    expect(k30.totalDistance).toBeGreaterThan(k7.totalDistance);
+  });
+
+  it('une période vide rend des zéros, pas des NaN', () => {
+    expect(aggregateKpisFromDaily([])).toEqual({
+      tripCount: 0,
+      totalDistance: 0,
+      totalDuration: 0,
+      maxSpeed: 0,
+    });
+  });
+
+  it('ignore les valeurs négatives héritées au lieu de fausser le total', () => {
+    const k = aggregateKpisFromDaily([jour({ totalDistanceMeters: -500, tripCount: -3 })]);
+    expect(k.totalDistance).toBe(0);
+    expect(k.tripCount).toBe(0);
   });
 });
