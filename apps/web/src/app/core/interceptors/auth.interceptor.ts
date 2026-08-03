@@ -153,7 +153,18 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
               const retryReq = req.clone({ setHeaders: { Authorization: `Bearer ${newToken}` } });
               return next(retryReq);
             }
-            // Refresh échoué → logout idempotent (avec toast informatif).
+            // ⚠️ UN SERVEUR INJOIGNABLE NE DOIT PAS DÉCONNECTER.
+            //
+            // `tryRefresh()` rend `null` aussi bien pour un jeton refusé que pour une API
+            // qui ne répond pas. Traiter les deux pareil éjectait tous les utilisateurs
+            // connectés à CHAQUE redéploiement — constaté deux fois le 2026-08-03 — et au
+            // moindre hoquet de réseau.
+            //
+            // Ici, on laisse simplement l'erreur remonter : la session reste en place, et
+            // la requête suivante retentera un rafraîchissement une fois l'API revenue.
+            if (auth.refreshUnavailable()) return throwError(() => error);
+
+            // Refus réel (401/403 sur le refresh) → logout idempotent, avec son message.
             forceLogout(toast, realtime, auth, router);
             return throwError(() => error);
           }),
