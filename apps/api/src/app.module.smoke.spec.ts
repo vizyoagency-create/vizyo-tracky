@@ -200,3 +200,64 @@ function safeRequire(file: string): Record<string, unknown> {
     return {};
   }
 }
+
+
+/**
+ * UN DÉCORATEUR DOIT TOUCHER LA MÉTHODE QU'IL DÉCORE.
+ *
+ * ── L'incident (2026-08-02) ─────────────────────────────────────────────────────────
+ * Une méthode privée a été insérée ENTRE `@Interval(60_000)` et la méthode qu'il
+ * décorait. L'ordonnanceur a donc appelé ce CALCUL toutes les 60 s — sans arguments —
+ * pendant que la revalidation des connexions ne tournait PLUS DU TOUT.
+ *
+ * Le symptôme (« accessible is not iterable ») pointait vers la VALEUR, pas vers la
+ * cause : j'ai d'abord rendu le calcul défensif, ce qui a simplement déplacé l'erreur
+ * à la ligne suivante. Rien — ni le typage, ni les tests unitaires, ni le smoke-boot —
+ * ne voyait le problème : le code compilait et la classe se construisait.
+ *
+ * Ce garde-fou lit les fichiers en TEXTE : c'est la seule façon de voir un décorateur
+ * séparé de sa cible, l'information étant perdue à la compilation.
+ */
+describe('decorateurs de planification — jamais separes de leur methode', () => {
+  it('aucun @Cron/@Interval/@Timeout n est suivi d autre chose que sa methode', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require('node:fs') as typeof import('node:fs');
+    const SCHEDULER = /^@(Cron|Interval|Timeout)\s*\(/;
+    const METHOD = /^(public |private |protected )?(async )?[A-Za-z_$][\w$]*\s*[(<]/;
+    const offenders: string[] = [];
+
+    for (const file of sourceFiles('.ts')) {
+      const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
+      for (let i = 0; i < lines.length; i++) {
+        if (!SCHEDULER.test(lines[i]!.trim())) continue;
+
+        // ⚠️ Un décorateur peut s'étendre sur PLUSIEURS lignes :
+        //     @Cron(CronExpression.EVERY_DAY_AT_3AM, {
+        //       name: 'login-events-purge',
+        //     })
+        // Regarder la ligne suivante en aveugle produirait un faux positif sur
+        // chacun d'eux — et un garde-fou qui crie à tort finit par être désarmé.
+        // On suit donc la parenthèse jusqu'à sa fermeture.
+        let depth = 0;
+        let k = i;
+        do {
+          for (const ch of lines[k]!) {
+            if (ch === '(') depth++;
+            else if (ch === ')') depth--;
+          }
+          k++;
+        } while (depth > 0 && k < lines.length);
+
+        while (k < lines.length && lines[k]!.trim() === '') k++;
+        const next = lines[k]?.trim() ?? '';
+        // Un second décorateur au-dessus de la même méthode est légitime.
+        if (next.startsWith('@')) continue;
+        if (!METHOD.test(next)) {
+          offenders.push(`${file.split(/[\\/]/).pop()}:${i + 1} -> \"${next.slice(0, 60)}\"`);
+        }
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
+});
