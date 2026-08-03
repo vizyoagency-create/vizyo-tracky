@@ -288,7 +288,12 @@ export class OptimizationSheetComponent {
   protected readonly metier = signal<FleetMetier | null>(null);
   protected readonly isSuperAdmin = computed(() => this.auth.user()?.role === 'SUPER_ADMIN');
   /** IA active pour la flotte : masque les sections IA (hero, capacités, « comment ça marche »). */
-  protected readonly aiEnabled = computed(() => this.aiStatus.enabled());
+  /**
+   * Toutes les sections IA de cette feuille reposent sur `runCapacity()` → fonction `capacity`.
+   * ⚠️ Gaté sur `capacity`, PAS sur l'interrupteur maître : couper `capacity` pour tout le monde
+   * laissait auparavant le bouton « Analyser » à l'écran, et le serveur refusait le clic.
+   */
+  protected readonly aiEnabled = computed(() => this.aiStatus.can('capacity'));
   protected readonly canEditMetier = computed(() => {
     const r = this.auth.user()?.role;
     return r === 'SUPER_ADMIN' || r === 'FLEET_ADMIN';

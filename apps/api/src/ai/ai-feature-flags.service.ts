@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import type { AiFeatureFlagsDto, AiFeatureKey } from '@vizyo/tracky-shared';
+import { AI_FEATURE_KEYS } from '@vizyo/tracky-shared';
 import { PrismaService } from '../prisma/prisma.service';
 
-const KEYS: AiFeatureKey[] = ['tripAnalysis', 'agendaAgent', 'capacity', 'placement', 'bookingParse', 'activityReport', 'placeAnalysis'];
+/** Liste PARTAGÉE (shared) : une copie locale aurait fini par diverger de `AiStatusDto.features`. */
+const KEYS: readonly AiFeatureKey[] = AI_FEATURE_KEYS;
 
 /**
  * Interrupteurs GLOBAUX par fonctionnalité IA (kill-switch plateforme, super-admin/owner). Se cumule

@@ -273,8 +273,12 @@ export class TripAnalysisBadgesComponent {
   private readonly api = inject(TripAnalysisApiService);
   private readonly aiStatus = inject(AiStatusService);
 
-  /** IA activée pour la flotte ? Conditionne la GÉNÉRATION, jamais la lecture. */
-  protected readonly aiEnabled = computed(() => this.aiStatus.enabled());
+  /**
+   * Récit de trajet disponible ? Conditionne la GÉNÉRATION, jamais la lecture.
+   * ⚠️ `can('tripAnalysis')` et non `enabled()` : l'interrupteur maître ignore le kill-switch
+   * global par fonction, donc le bouton restait affiché alors que le serveur refusait le clic.
+   */
+  protected readonly aiEnabled = computed(() => this.aiStatus.can('tripAnalysis'));
 
   /**
    * Ce trajet a-t-il DÉJÀ un récit en base ?

@@ -1,6 +1,7 @@
 import { Body, Controller, ForbiddenException, Get, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
-import type { AiStatusDto, FleetAiSettingDto, SetAiEnabledDto } from '@vizyo/tracky-shared';
+import type { AiFeatureKey, AiStatusDto, FleetAiSettingDto, SetAiEnabledDto } from '@vizyo/tracky-shared';
+import { AI_FEATURE_KEYS } from '@vizyo/tracky-shared';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
@@ -21,14 +22,29 @@ import { AiAvailabilityService } from './ai-availability.service';
 export class AiStatusController {
   constructor(private readonly aiAvail: AiAvailabilityService) {}
 
+  /**
+   * ⚠️ Renvoie la disponibilité PAR FONCTIONNALITÉ, pas un seul booléen.
+   *
+   * Le serveur cumule trois verrous avant d'accepter un appel IA : clé provider, kill-switch
+   * GLOBAL par fonction (owner), interrupteur société. `enabled` n'en reflétait que deux — il
+   * ignorait le kill-switch par fonction. Couper `tripAnalysis` pour tout le monde laissait donc
+   * le bouton « Générer le récit IA » à l'écran : l'utilisateur cliquait, le serveur refusait.
+   *
+   * `enabled` est conservé (interrupteur MAÎTRE de la société : « cette société a-t-elle
+   * l'option ? ») pour les textes d'explication, mais une AFFORDANCE doit se gater sur `features`.
+   */
   @Get('status')
   async status(@Req() req: AuthenticatedRequest, @Query('fleetId') fleetId?: string): Promise<AiStatusDto> {
     // Super-admin peut viser une flotte (filtre société) ; sinon la flotte de l'utilisateur.
     const scoped = req.user.role === UserRole.SUPER_ADMIN ? (fleetId || req.user.fleetId || null) : req.user.fleetId;
+    const pairs = await Promise.all(
+      AI_FEATURE_KEYS.map(async (k) => [k, await this.aiAvail.isEnabledForFleet(scoped, k)] as const),
+    );
     return {
       configured: this.aiAvail.isConfigured(),
       enabled: await this.aiAvail.isEnabledForFleet(scoped),
       fleetId: scoped ?? null,
+      features: Object.fromEntries(pairs) as Record<AiFeatureKey, boolean>,
     };
   }
 

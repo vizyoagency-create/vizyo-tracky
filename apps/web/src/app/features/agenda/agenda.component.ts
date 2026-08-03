@@ -98,12 +98,21 @@ interface GroupOption {
                 <lucide-icon [img]="InboxIcon" [size]="15"></lucide-icon><span>Demandes</span><span class="ag-badge">{{ pendingCount() }}</span>
               </button>
             }
-            @if (canOptimize() && aiEnabled()) {
+            @if (canOptimize() && aiCapacity()) {
               <button type="button" (click)="openOptim()" class="ag-btn-soft">
                 <lucide-icon [img]="GaugeIcon" [size]="15"></lucide-icon><span>Optimisation</span>
               </button>
             }
-            @if (aiEnabled() && canOptimize() && (agentProposalCount() > 0 || canConfigureAgent())) {
+            <!--
+              Couper l'IA ne doit pas ENFERMER les propositions déjà produites : elles se
+              valident et se refusent sans aucun appel moteur, et l'API ne demande d'ailleurs
+              que la permission « reservations_manage ». Ce bouton était la seule porte vers
+              elles — 779 propositions en attente le jour du correctif.
+
+              La génération de NOUVELLES propositions, elle, reste gouvernée par l'option :
+              c'est l'accès au réglage de l'agent qui exige la fonction « agendaAgent ».
+            -->
+            @if (canOptimize() && (agentProposalCount() > 0 || (aiAgendaAgent() && canConfigureAgent()))) {
               <button type="button" (click)="openProposals()" class="ag-btn-soft">
                 <lucide-icon [img]="SparklesIcon" [size]="15"></lucide-icon><span>Propositions IA</span>
                 @if (agentProposalCount() > 0) { <span class="ag-badge">{{ agentProposalCount() }}</span> }
@@ -1150,8 +1159,12 @@ export class AgendaComponent implements OnInit {
   protected readonly canReserve = computed(() => this.perms.can('reservations_request'));
   protected readonly canValidate = computed(() => this.perms.can('reservations_manage'));
   protected readonly canOptimize = computed(() => this.perms.can('reservations_view'));
-  /** Assistance IA active pour la flotte (interrupteur maître). Masque les entrées IA de l'agenda quand OFF. */
-  protected readonly aiEnabled = computed(() => this.aiStatus.enabled());
+  // ⚠️ Plus d'`aiEnabled` global ici : l'interrupteur maître ignore le kill-switch par fonction,
+  // et gater dessus proposait des boutons que le serveur refusait. Chaque entrée suit SA fonction.
+  /** Feuille « Optimisation » → analyse de capacité. */
+  protected readonly aiCapacity = computed(() => this.aiStatus.can('capacity'));
+  /** Agent d'agenda : ne conditionne que la PRODUCTION de propositions, pas leur lecture. */
+  protected readonly aiAgendaAgent = computed(() => this.aiStatus.can('agendaAgent'));
   /** ⚙️ Paramètres de l'agent : super-admin + fleet-admin (config par société). */
   protected readonly canConfigureAgent = computed(() => {
     const r = this.auth.user()?.role;
