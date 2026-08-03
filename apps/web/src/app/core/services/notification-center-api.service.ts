@@ -26,10 +26,31 @@ import {
  * l'API construit déjà les libellés FR des issues et des motifs, et une seconde table côté
  * écran finirait par diverger (« Échec » ici, « Échec d'envoi » là, pour la même ligne).
  *
- * Aucune méthode d'écriture, volontairement : le contrôleur n'expose que des lectures. Cet
- * écran sert à COMPRENDRE ; purger ou rejouer depuis un journal de plusieurs milliers de
- * lignes serait un incident de production en puissance.
+ * UNE seule méthode d'écriture, et ciblée :
+ *
+ *   POST /api/admin/notifications/replay/:alertId — renvoie UNE alerte à ses destinataires
+ *
+ * Pas de purge ni d'acquittement de masse : sur un journal de plusieurs milliers de lignes,
+ * ce serait un incident de production en puissance. Le rejeu porte sur UNE alerte désignée,
+ * n'écrit ni ne détruit rien d'existant, et répondait à un besoin sans autre solution — le
+ * 2026-08-03, un client n'avait reçu aucune de ses 28 alertes de vitesse et rien ne
+ * permettait de lui en renvoyer une seule.
  */
+
+/** Ce qu'un rejeu a produit, destinataire par destinataire. */
+export interface ReplayResultDto {
+  alertId: string;
+  alertType: string;
+  plate: string | null;
+  destinataires: Array<{
+    email: string;
+    status: string;
+    reason: string | null;
+    reasonLabel: string | null;
+    devices: number;
+    sent: number;
+  }>;
+}
 
 /** Fenêtre de lecture, telle que l'API l'attend (bornes ISO). */
 export interface NotificationWindow {
@@ -162,5 +183,19 @@ export class NotificationCenterApiService {
     return this.http
       .get<Partial<NotificationDeliveryPageDto>>(`${this.base}/deliveries`, { params })
       .pipe(map((res) => normalizePage(res, window, q.page ?? 1)));
+  }
+
+  /**
+   * Renvoie une alerte à ses destinataires légitimes (push uniquement).
+   *
+   * ⚠️ Le résultat décrit ce qui s'est RÉELLEMENT passé, destinataire par destinataire —
+   * relu dans le journal, pas déduit de l'appel. Un rejeu retenu par une préférence ou un
+   * plafond affiche donc son motif au lieu d'un « OK » qui n'engagerait personne.
+   */
+  replay(alertId: string): Observable<ReplayResultDto> {
+    // Même base et mêmes réglages que les lectures : l'authentification passe par le
+    // cookie httpOnly posé au login, via l'intercepteur commun. Poser `withCredentials`
+    // ici seulement laisserait croire que les autres appels s'en passent.
+    return this.http.post<ReplayResultDto>(`${this.base}/replay/${alertId}`, {});
   }
 }

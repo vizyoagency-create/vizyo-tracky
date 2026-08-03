@@ -921,6 +921,36 @@ export function windowRange(days: number, nowMs: number = Date.now()): Notificat
                   @if (deliveryDetail(d); as det) { <span class="nc-detail">{{ det }}</span> }
                 </div>
               }
+
+              <!--
+                RENVOYER — visible uniquement sur une ligne RETENUE et rattachée à une
+                alerte. C'est là que la question se pose : « il n'a rien reçu, et
+                maintenant ? » Jusqu'ici la réponse était « rien », parce que l'endpoint
+                de rejeu n'existait pas et que le seul envoi de test est verrouillé sur
+                son propre compte.
+
+                ⚠️ Pas de bouton sur une ligne SENT : renvoyer ce qui est déjà parti n'a
+                pas de sens, et l'offrir inviterait à le faire.
+              -->
+              @if (d.alertId && d.status !== 'SENT') {
+                <div class="nc-card-foot nc-card-replay">
+                  <button
+                    type="button"
+                    class="nc-replay-btn"
+                    [disabled]="replayingId() === d.id"
+                    (click)="onReplay(d)"
+                  >
+                    @if (replayingId() === d.id) {
+                      <lucide-icon [img]="LoaderIcon" [size]="12" class="nc-spin"></lucide-icon> Envoi…
+                    } @else {
+                      Renvoyer
+                    }
+                  </button>
+                  @if (replayResult()[d.id]; as res) {
+                    <span class="nc-replay-res">{{ res }}</span>
+                  }
+                </div>
+              }
             </article>
           } @empty {
             <p class="nc-empty">
@@ -938,6 +968,15 @@ export function windowRange(days: number, nowMs: number = Date.now()): Notificat
     </div>
   `,
   styles: [`
+    .nc-card-replay { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+    .nc-replay-btn {
+      font-size: .7rem; padding: .2rem .55rem; border-radius: 999px; cursor: pointer;
+      border: 1px solid var(--border-subtle); background: var(--bg-secondary); color: var(--fg-secondary);
+      display: inline-flex; align-items: center; gap: .3rem;
+    }
+    .nc-replay-btn:hover:not(:disabled) { color: var(--fg-primary); border-color: var(--fg-tertiary); }
+    .nc-replay-btn:disabled { opacity: .6; cursor: default; }
+    .nc-replay-res { font-size: .68rem; color: var(--fg-tertiary); }
     .nc { max-width: 1120px; display: flex; flex-direction: column; gap: 16px; }
     .nc-back { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--fg-tertiary); text-decoration: none; width: fit-content; }
     .nc-back:hover { color: var(--fg-secondary); }
@@ -1200,6 +1239,36 @@ export class AdminNotificationsComponent implements OnInit, OnDestroy {
   protected readonly severityKey = severityKey;
   protected readonly severityLabel = severityLabel;
   protected readonly statusLabel = statusLabel;
+  /** Ligne en cours de rejeu (une seule à la fois : l'action est délibérée, pas de masse). */
+  protected readonly replayingId = signal<string | null>(null);
+  /** Compte rendu par ligne, gardé à l'écran : « c'est parti » doit rester lisible. */
+  protected readonly replayResult = signal<Record<string, string>>({});
+
+  /**
+   * Renvoie l'alerte de cette ligne à ses destinataires légitimes.
+   *
+   * ⚠️ Le compte rendu dit ce qui s'est VRAIMENT passé, y compris un échec. L'écran ne
+   * doit jamais afficher « envoyé » quand le serveur a retenu l'envoi : c'est exactement
+   * le genre de faux succès qui a laissé un client sans notification pendant des semaines
+   * pendant que tout paraissait normal.
+   */
+  protected async onReplay(d: { id: string; alertId: string | null }): Promise<void> {
+    if (!d.alertId || this.replayingId()) return;
+    this.replayingId.set(d.id);
+    try {
+      const res = await firstValueFrom(this.api.replay(d.alertId));
+      const partis = res.destinataires.filter((x) => x.sent > 0);
+      const texte = partis.length
+        ? `Envoyé à ${partis.map((x) => x.email).join(', ')}`
+        : `Toujours retenu — ${res.destinataires.map((x) => x.reasonLabel ?? x.status).join(' · ') || 'aucun destinataire'}`;
+      this.replayResult.update((m) => ({ ...m, [d.id]: texte }));
+    } catch {
+      this.replayResult.update((m) => ({ ...m, [d.id]: 'Échec du renvoi — rien n’a été envoyé.' }));
+    } finally {
+      this.replayingId.set(null);
+    }
+  }
+
   protected readonly statusTone = statusTone;
   protected readonly reasonLabel = reasonLabel;
   protected readonly channelLabel = channelLabel;
