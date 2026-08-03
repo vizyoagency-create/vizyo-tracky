@@ -1,3 +1,5 @@
+import { ToastService } from '../../shared/ui/toast/toast.service';
+import { httpFailureMessage } from '../../core/services/http-failure';
 import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -205,6 +207,7 @@ type Tab = 'engine' | 'live' | 'history';
 })
 export class FleetActivityComponent implements OnInit, OnDestroy {
   private readonly api = inject(FleetActivityApiService);
+  private readonly toast = inject(ToastService);
 
   protected readonly ActivityIcon = Activity;
   protected readonly RefreshIcon = RefreshCw;
@@ -270,7 +273,14 @@ export class FleetActivityComponent implements OnInit, OnDestroy {
     try {
       const more = await firstValueFrom(this.api.engineCommands(this.pageSize, last.createdAt, this.engineAction() || undefined, this.engineStatus() || undefined));
       if (more.length) this.engine.update((cur) => [...cur, ...more]);
-    } catch { /* ignore */ } finally { this.loading.set(false); }
+    } catch (err) {
+      // Chargement declenche par l'utilisateur (choix d'onglet ou de filtre) : une panne
+      // muette lui laisserait croire qu'il n'y a rien a montrer. Le sondage de presence,
+      // lui, reste volontairement silencieux — il tourne toutes les 5 s sans qu'on le
+      // lui demande, et le signaler a chaque tour serait du harcelement, pas de
+      // l'information.
+      this.toast.error('Chargement impossible', httpFailureMessage(err, 'cette activité'));
+    } finally { this.loading.set(false); }
   }
 
   private async loadFeed(): Promise<void> {

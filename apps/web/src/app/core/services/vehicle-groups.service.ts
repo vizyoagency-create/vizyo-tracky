@@ -1,3 +1,5 @@
+import { apiFetch, apiFetchRaw } from './api-fetch';
+import { HttpFailure } from './http-failure';
 import { inject, Injectable } from '@angular/core';
 import { AuthService } from './auth.service';
 
@@ -25,55 +27,53 @@ export class VehicleGroupsService {
   }
 
   async list(): Promise<VehicleGroup[]> {
-    const res = await fetch('/api/vehicle-groups', { headers: this.headers });
-    if (!res.ok) throw new Error('Failed to load groups');
+    const res = await apiFetch('/api/vehicle-groups', { headers: this.headers }, 'Failed to load groups');
     return res.json();
   }
 
   async create(name: string, fleetId?: string): Promise<VehicleGroup> {
     const body: Record<string, string> = { name };
     if (fleetId) body['fleetId'] = fleetId;
-    const res = await fetch('/api/vehicle-groups', {
+    const res = await apiFetch('/api/vehicle-groups', {
       method: 'POST', headers: this.headers, body: JSON.stringify(body),
     });
     if (!res.ok) {
       const b = (await res.json().catch(() => ({}))) as Record<string, string>;
-      throw new Error(b['message'] ?? 'Failed to create group');
+      throw new HttpFailure(res.status, b['message'] ?? 'Failed to create group');
     }
     return res.json();
   }
 
   async rename(id: string, name: string): Promise<void> {
-    await fetch(`/api/vehicle-groups/${id}`, {
+    await apiFetchRaw(`/api/vehicle-groups/${id}`, {
       method: 'PATCH', headers: this.headers, body: JSON.stringify({ name }),
     });
   }
 
   async remove(id: string): Promise<void> {
-    await fetch(`/api/vehicle-groups/${id}`, { method: 'DELETE', headers: this.headers });
+    await apiFetchRaw(`/api/vehicle-groups/${id}`, { method: 'DELETE', headers: this.headers });
   }
 
   async addVehicle(groupId: string, vehicleId: string): Promise<void> {
-    await fetch(`/api/vehicle-groups/${groupId}/vehicles`, {
+    await apiFetchRaw(`/api/vehicle-groups/${groupId}/vehicles`, {
       method: 'POST', headers: this.headers, body: JSON.stringify({ vehicleId }),
     });
   }
 
   async removeVehicle(groupId: string, vehicleId: string): Promise<void> {
-    await fetch(`/api/vehicle-groups/${groupId}/vehicles/${vehicleId}`, {
+    await apiFetchRaw(`/api/vehicle-groups/${groupId}/vehicles/${vehicleId}`, {
       method: 'DELETE', headers: this.headers,
     });
   }
 
   // User access
   async getUserAccess(userId: string): Promise<UserAccess> {
-    const res = await fetch(`/api/users/${userId}/access`, { headers: this.headers });
-    if (!res.ok) throw new Error('Failed to load access');
+    const res = await apiFetchRaw(`/api/users/${userId}/access`, { headers: this.headers }, 'Failed to load access');
     return res.json();
   }
 
   async setUserAccess(userId: string, access: UserAccess): Promise<void> {
-    await fetch(`/api/users/${userId}/access`, {
+    await apiFetchRaw(`/api/users/${userId}/access`, {
       method: 'PUT', headers: this.headers, body: JSON.stringify(access),
     });
   }

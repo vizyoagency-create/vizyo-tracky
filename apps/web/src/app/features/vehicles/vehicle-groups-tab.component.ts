@@ -260,8 +260,13 @@ export class VehicleGroupsTabComponent implements OnInit {
       this.groups.set(groups);
       this.allVehicles.set(vehicles);
       void this.loadScores();
-    } catch { /* error */ }
-    finally { this.loading.set(false); }
+    } catch (err) {
+      // ⚠️ C'ETAIT MUET : en panne, l'onglet affichait « aucun groupe » — donc la reponse
+      // d'une flotte qui n'en a pas. L'utilisateur pouvait en recreer un qui existait
+      // deja, ou conclure que son travail de la veille avait disparu.
+      this.groups.set([]);
+      this.toast.error('Chargement impossible', httpFailureMessage(err, 'les groupes'));
+    } finally { this.loading.set(false); }
   }
 
   /** Classement des groupes (90 j, aligné sur la carte de score) → note + rang par groupe. Best-effort (badge motivant). */

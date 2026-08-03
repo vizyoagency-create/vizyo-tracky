@@ -1,3 +1,5 @@
+import { apiFetch, apiFetchRaw } from './api-fetch';
+import { HttpFailure } from './http-failure';
 import { computed, Injectable, signal } from '@angular/core';
 import type { UserPermissions, UserRoleSlug } from '@vizyo/tracky-shared';
 
@@ -124,7 +126,7 @@ export class AuthService {
    *  signal local. Merge partiel : seules les cles fournies sont updatees,
    *  les autres preferences existantes sont preservees. */
   async updatePreferences(partial: UserUiPreferences): Promise<void> {
-    const res = await fetch('/api/users/me/preferences', {
+    const res = await apiFetch('/api/users/me/preferences', {
       method: 'PATCH',
       credentials: 'include',
       headers: {
@@ -132,8 +134,7 @@ export class AuthService {
         ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
       },
       body: JSON.stringify(partial),
-    });
-    if (!res.ok) throw new Error('Echec mise a jour preferences');
+    }, 'Echec mise a jour preferences');
     const { preferences } = (await res.json()) as { preferences: UserUiPreferences | null };
     const current = this._user();
     if (current) {
@@ -163,7 +164,7 @@ export class AuthService {
     if (!rt) return null;
 
     try {
-      const res = await fetch('/api/auth/refresh', {
+      const res = await apiFetchRaw('/api/auth/refresh', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -201,7 +202,7 @@ export class AuthService {
   async refreshMe(): Promise<void> {
     if (!this.token) return;
     try {
-      const res = await fetch('/api/users/me', {
+      const res = await apiFetchRaw('/api/users/me', {
         credentials: 'include',
         headers: { Authorization: `Bearer ${this.token}` },
       });

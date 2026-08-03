@@ -1,3 +1,4 @@
+import { httpFailureMessage } from '../../core/services/http-failure';
 import { Component, inject, OnInit, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { RouterLink } from '@angular/router';
@@ -83,6 +84,18 @@ const PERM_GROUPS = PERMISSION_GROUP_ORDER.map((group) => ({
 
       @if (loading()) {
         <div class="po-loading"><app-spinner [size]="24" /></div>
+      } @else if (loadError()) {
+        <!--
+          ⚠️ CET ETAT DOIT PRECEDER L'AFFICHAGE NORMAL.
+          En panne, la donnee vaut null : l'ecran affichait « Groupes (0) », « Aucun scope
+          d'acces configure » — c'est-a-dire la reponse d'une flotte SANS AUCUNE
+          restriction. Sur un ecran dont la seule raison d'etre est de repondre « qui a le
+          droit de voir quoi », se tromper dans ce sens-la est le pire des deux.
+        -->
+        <div class="po-loading" style="flex-direction:column;gap:.75rem;text-align:center">
+          <p>{{ loadError() }}</p>
+          <button type="button" class="btn-secondary" (click)="reload()">Réessayer</button>
+        </div>
       } @else {
         <!-- Groups summary -->
         <section class="po-section">
@@ -331,6 +344,14 @@ export class PermissionsOverviewComponent implements OnInit {
 
   protected readonly permGroups = PERM_GROUPS;
   protected readonly loading = signal(false);
+  /**
+   * Panne de chargement, DISTINCTE de « rien à afficher ».
+   *
+   * ⚠️ Sans elle, une panne ressemblait à une flotte sans aucune restriction d'accès.
+   * Un écran de contrôle qui se trompe dans ce sens-là ne se contente pas d'être faux :
+   * il rassure à tort.
+   */
+  protected readonly loadError = signal<string | null>(null);
   protected readonly data = signal<PanoramaData | null>(null);
   protected readonly expandedUserId = signal<string | null>(null);
   protected searchQuery = '';
@@ -346,13 +367,21 @@ export class PermissionsOverviewComponent implements OnInit {
     );
   });
 
+  /** Relance le chargement depuis l'écran de panne. */
+  protected reload(): void {
+    void this.ngOnInit();
+  }
+
   async ngOnInit(): Promise<void> {
     this.loading.set(true);
     try {
       const res = await firstValueFrom(this.http.get<PanoramaData>('/api/users/panorama'));
       this.data.set(res);
-    } catch { /* silent */ }
-    finally { this.loading.set(false); }
+      this.loadError.set(null);
+    } catch (err) {
+      this.data.set(null);
+      this.loadError.set(httpFailureMessage(err, 'les accès et permissions'));
+    } finally { this.loading.set(false); }
   }
 
   protected toggleUser(id: string): void {
