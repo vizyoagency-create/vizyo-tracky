@@ -24,6 +24,7 @@
     "typescript": "^5.7.3"
   },
   "jest": {
+    "maxWorkers": 2,
     "preset": "ts-jest",
     "testEnvironment": "node",
     "rootDir": "src",
