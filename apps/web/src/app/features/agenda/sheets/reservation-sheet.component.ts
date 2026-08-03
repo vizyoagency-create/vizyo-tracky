@@ -346,7 +346,8 @@ export class ReservationSheetComponent {
 
   protected readonly mode = signal<'request' | 'validate' | 'edit'>('request');
   protected readonly canManage = computed(() => this.perms.can('reservations_manage'));
-  protected readonly canAi = computed(() => this.perms.can('ai_optimize') && this.aiStatus.enabled());
+  /** « Suggérer avec l'IA » appelle `placementSuggest` → fonction `placement` (pas l'interrupteur maître). */
+  protected readonly canAi = computed(() => this.perms.can('ai_optimize') && this.aiStatus.can('placement'));
   /** Super-admin sans société choisie : réserver mélangerait toutes les flottes → on gate. */
   protected readonly needsFleet = computed(
     () => this.auth.user()?.role === 'SUPER_ADMIN' && !this.fleetFilter.selectedFleetId(),

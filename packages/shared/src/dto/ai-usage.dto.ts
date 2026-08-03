@@ -142,6 +142,17 @@ export interface AiStatusDto {
   /** IA utilisable pour la flotte de l'utilisateur (config + interrupteur maître ON). */
   enabled: boolean;
   fleetId: string | null;
+  /**
+   * Disponibilité RÉELLE par fonctionnalité, telle que le serveur l'appliquera.
+   *
+   * ⚠️ `enabled` seul ne suffit PAS à décider d'afficher un bouton. Le serveur cumule trois
+   * verrous — clé provider, kill-switch GLOBAL par fonction (owner), interrupteur société —
+   * mais `enabled` n'en reflétait que deux. Couper `tripAnalysis` pour tout le monde laissait
+   * donc « Générer le récit IA » à l'écran : l'utilisateur cliquait, le serveur refusait.
+   *
+   * Le front doit gater chaque affordance sur SA clé, jamais sur `enabled`.
+   */
+  features: Record<AiFeatureKey, boolean>;
 }
 
 /** Interrupteur maître IA d'une flotte (fleet-admin = sa flotte ; super-admin = `fleetId` ciblé). */
@@ -160,6 +171,37 @@ export interface FleetAiSettingDto {
 
 /** Fonctionnalités IA pilotables globalement. `activityReport` = outil owner (super-admin only). */
 export type AiFeatureKey = 'tripAnalysis' | 'agendaAgent' | 'capacity' | 'placement' | 'bookingParse' | 'activityReport' | 'placeAnalysis';
+
+/**
+ * LA liste des fonctionnalités IA, partagée par l'API et le front.
+ *
+ * ⚠️ Source unique : l'API l'énumère pour calculer `AiStatusDto.features`, le front pour typer
+ * ses gardes. Deux listes séparées finiraient par diverger, et une fonction absente de la liste
+ * n'aurait AUCUNE entrée dans `features` — le front la lirait `undefined`, donc « indisponible »,
+ * et masquerait une fonction pourtant payée.
+ */
+export const AI_FEATURE_KEYS = [
+  'tripAnalysis',
+  'agendaAgent',
+  'capacity',
+  'placement',
+  'bookingParse',
+  'activityReport',
+  'placeAnalysis',
+] as const satisfies readonly AiFeatureKey[];
+
+/**
+ * Verrou d'EXHAUSTIVITÉ. `satisfies` ci-dessus ne vérifie qu'un sens (chaque entrée est une clé
+ * valide) ; il laisserait passer une liste incomplète. Ici, si une clé du type manque à la liste,
+ * `Exclude<…>` cesse d'être `never` et cette ligne ne compile plus.
+ *
+ * Preuve : retirer `'placeAnalysis'` de la liste → « Type '"placeAnalysis"' does not satisfy the
+ * constraint 'never' ».
+ */
+type _AiFeatureKeysExhaustive<T extends never> = T;
+export type _AiFeatureKeysCheck = _AiFeatureKeysExhaustive<
+  Exclude<AiFeatureKey, (typeof AI_FEATURE_KEYS)[number]>
+>;
 
 /** État des interrupteurs globaux (true = fonction disponible, sous réserve du droit + interrupteur société). */
 export type AiFeatureFlagsDto = Record<AiFeatureKey, boolean>;
