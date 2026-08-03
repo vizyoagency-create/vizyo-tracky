@@ -39,6 +39,49 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   ) {}
 
 
+  // ⚠️ NE JAMAIS INSERER DE METHODE ENTRE UN DECORATEUR ET SA METHODE.
+  // Un bloc glisse sous `@Interval(60_000)` a fait que l'ordonnanceur appelait CE
+  // CALCUL toutes les 60 s — sans arguments — et que `revalidateConnections` ne
+  // tournait plus du tout. Le symptome (« not iterable ») pointait vers la valeur,
+  // pas vers la cause. Un decorateur doit toucher la methode qu'il decore.
+  /**
+   * Tout ce qui decide des salons d'un raccordement, condense en une chaine comparable.
+   *
+   * ⚠️ Le perimetre vehicule est TRIE : `getAccessibleVehicleIds` ne garantit pas
+   * d'ordre stable, et une simple permutation ferait croire a un changement — on
+   * deconnecterait alors tout le monde a chaque tick, en boucle.
+   */
+  private scopeKey(
+    user: { role: string; fleetId: string | null },
+    accessible: string[] | 'ALL',
+    canSeeAlerts: boolean,
+  ): string {
+    // ⚠️ DEFENSIF, apres un incident en production (2026-08-02) : `[...accessible]` a
+    // leve « accessible is not iterable » a chaque tick, ce qui faisait echouer TOUTE la
+    // revalidation — y compris la deconnexion des comptes desactives, qui fonctionnait
+    // avant. Un garde-fou ajoute ne doit jamais casser celui qu'il complete.
+    //
+    // On ne fait donc plus confiance a la forme de la valeur : tout ce qui n'est ni
+    // `'ALL'` ni un tableau est traite comme un perimetre INCONNU. L'empreinte devient
+    // alors instable a dessein ? Non : on renvoie un marqueur STABLE, sinon on
+    // deconnecterait tout le monde en boucle. Et on trace, pour ne pas remplacer un
+    // plantage par un silence.
+    let scope: string;
+    if (accessible === 'ALL') {
+      scope = 'ALL';
+    } else if (Array.isArray(accessible)) {
+      // TRI obligatoire : l'ordre n'est pas garanti, et une permutation ferait croire a
+      // un changement — donc une deconnexion generale a chaque tick.
+      scope = [...accessible].sort().join(',');
+    } else {
+      this.logger.warn(
+        `[ws] perimetre de forme inattendue (${typeof accessible}) pour ${user.role} — empreinte neutralisee`,
+      );
+      scope = 'INCONNU';
+    }
+    return `${user.role}|${user.fleetId ?? '-'}|${canSeeAlerts ? 'A' : '-'}|${scope}`;
+  }
+
   /**
    * Ce raccordement a-t-il le droit de recevoir des alertes ?
    *
@@ -282,44 +325,6 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
    * traduit par isActive=false (gere ici) ou la suppression du compte.
    */
   @Interval(60_000)
-  /**
-   * Tout ce qui decide des salons d'un raccordement, condense en une chaine comparable.
-   *
-   * ⚠️ Le perimetre vehicule est TRIE : `getAccessibleVehicleIds` ne garantit pas
-   * d'ordre stable, et une simple permutation ferait croire a un changement — on
-   * deconnecterait alors tout le monde a chaque tick, en boucle.
-   */
-  private scopeKey(
-    user: { role: string; fleetId: string | null },
-    accessible: string[] | 'ALL',
-    canSeeAlerts: boolean,
-  ): string {
-    // ⚠️ DEFENSIF, apres un incident en production (2026-08-02) : `[...accessible]` a
-    // leve « accessible is not iterable » a chaque tick, ce qui faisait echouer TOUTE la
-    // revalidation — y compris la deconnexion des comptes desactives, qui fonctionnait
-    // avant. Un garde-fou ajoute ne doit jamais casser celui qu'il complete.
-    //
-    // On ne fait donc plus confiance a la forme de la valeur : tout ce qui n'est ni
-    // `'ALL'` ni un tableau est traite comme un perimetre INCONNU. L'empreinte devient
-    // alors instable a dessein ? Non : on renvoie un marqueur STABLE, sinon on
-    // deconnecterait tout le monde en boucle. Et on trace, pour ne pas remplacer un
-    // plantage par un silence.
-    let scope: string;
-    if (accessible === 'ALL') {
-      scope = 'ALL';
-    } else if (Array.isArray(accessible)) {
-      // TRI obligatoire : l'ordre n'est pas garanti, et une permutation ferait croire a
-      // un changement — donc une deconnexion generale a chaque tick.
-      scope = [...accessible].sort().join(',');
-    } else {
-      this.logger.warn(
-        `[ws] perimetre de forme inattendue (${typeof accessible}) pour ${user.role} — empreinte neutralisee`,
-      );
-      scope = 'INCONNU';
-    }
-    return `${user.role}|${user.fleetId ?? '-'}|${canSeeAlerts ? 'A' : '-'}|${scope}`;
-  }
-
   async revalidateConnections(): Promise<void> {
     // Garde anti unhandled-rejection : un blip DB (findMany) ne doit pas faire
     // rejeter ce cron qui tourne toutes les 60s. On log et on retente au tick suivant.
