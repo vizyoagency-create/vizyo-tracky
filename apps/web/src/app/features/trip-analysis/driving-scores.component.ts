@@ -117,7 +117,18 @@ type Period = '7d' | '30d' | '90d';
                   <div class="ds-bar"><div class="ds-bar-fill" [attr.data-grade]="r.grade" [style.width.%]="r.score"></div></div>
                   <div class="ds-row-stats">
                     @if (r.sublabel) { <span class="ds-row-sub">{{ r.sublabel }}</span> }
-                    <span>{{ r.tripCount }} trajet{{ r.tripCount > 1 ? 's' : '' }}</span>
+                    <!--
+                      ⚠️ « N analysés sur M » et non « N trajets ». L'écran n'affichait que
+                      le nombre d'analyses : on lisait « 1 trajet » pour un véhicule qui en
+                      avait fait 75, dont un seul analysé. Impossible de voir que la note
+                      portait sur 1,3 % de son activité — et il arrivait 2e du classement.
+                    -->
+                    <span [title]="analysisRateTitle(r)">
+                      {{ r.tripCount }} analysé{{ r.tripCount > 1 ? 's' : '' }}
+                      @if (r.totalTripCount > r.tripCount) {
+                        <em class="ds-rate">sur {{ r.totalTripCount }} ({{ analysisRate(r) }} %)</em>
+                      }
+                    </span>
                     <span>{{ r.distanceKm | number:'1.0-0' }} km</span>
                     @if (r.speedingTrips > 0) {
                       @if (r.speedingTripRefs.length > 0) {
@@ -135,6 +146,37 @@ type Period = '7d' | '30d' | '90d';
               </article>
             }
           </div>
+
+          <!--
+            ⚠️ ÉCARTÉS DU CLASSEMENT, PAS CACHÉS.
+            Avant ce filtre, un véhicule noté sur UN trajet analysé (sur 75 parcourus)
+            arrivait 2e de la flotte avec 100/100 : le podium récompensait ceux qui
+            étaient le MOINS analysés. Leurs notes restent visibles ici — elles ne
+            faussent simplement plus le classement ni la moyenne de flotte.
+          -->
+          @if (d.insufficientCount > 0) {
+            <details class="ds-insuf">
+              <summary>
+                {{ d.insufficientCount }} non classé{{ d.insufficientCount > 1 ? 's' : '' }} —
+                moins de {{ d.minAnalysesForRanking }} trajets analysés
+              </summary>
+              <p class="ds-insuf-why">
+                Une note calculée sur quelques trajets ne dit rien de la conduite : elle dit
+                seulement que peu de trajets ont été analysés. Ces lignes sont donc affichées
+                à part, sans peser sur le classement ni sur la moyenne de la flotte.
+              </p>
+              @for (r of d.insufficientRows; track r.id) {
+                <div class="ds-insuf-row">
+                  <span class="ds-insuf-label">{{ r.label }}</span>
+                  <span class="ds-insuf-score">{{ r.score }}/100</span>
+                  <span class="ds-insuf-meta">
+                    {{ r.tripCount }} analysé{{ r.tripCount > 1 ? 's' : '' }}
+                    @if (r.totalTripCount > r.tripCount) { sur {{ r.totalTripCount }} }
+                  </span>
+                </div>
+              }
+            </details>
+          }
         }
       } @else if (loading()) {
         <div class="ds-loading"><span class="ds-spinner"></span></div>
@@ -154,6 +196,14 @@ type Period = '7d' | '30d' | '90d';
     .ds-spin { animation: ds-rot 1s linear infinite; } @keyframes ds-rot { to { transform: rotate(360deg); } }
     .ds-help { display: flex; gap: 8px; align-items: flex-start; padding: 10px 13px; border-radius: 11px; background: color-mix(in srgb, var(--tracky-light, #10E0A0) 7%, var(--bg-secondary)); border: 1px solid color-mix(in srgb, var(--tracky-light, #10E0A0) 20%, transparent); font-size: 12px; line-height: 1.5; color: var(--fg-secondary); }
     .ds-help lucide-icon { color: var(--tracky-light, #10E0A0); flex-shrink: 0; margin-top: 1px; }
+    .ds-rate { font-style: normal; color: var(--fg-tertiary); }
+    .ds-insuf { border: 1px solid var(--border-subtle); border-radius: 11px; background: var(--bg-secondary); padding: 10px 13px; font-size: 12.5px; }
+    .ds-insuf summary { cursor: pointer; font-weight: 700; color: var(--fg-secondary); }
+    .ds-insuf-why { margin: 8px 0 10px; color: var(--fg-tertiary); line-height: 1.5; }
+    .ds-insuf-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--border-subtle); }
+    .ds-insuf-label { font-weight: 700; color: var(--fg-primary); }
+    .ds-insuf-score { color: var(--fg-secondary); }
+    .ds-insuf-meta { margin-left: auto; color: var(--fg-tertiary); }
     .ds-controls { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
     .ds-seg { display: inline-flex; gap: 4px; background: var(--bg-tertiary); padding: 4px; border-radius: 12px; }
     .ds-seg button { display: inline-flex; align-items: center; gap: 5px; padding: 7px 13px; border-radius: 9px; font-size: 12.5px; font-weight: 700; color: var(--fg-tertiary); }
@@ -276,6 +326,25 @@ export class DrivingScoresComponent implements OnInit {
 
   protected medal(rank: number): string {
     return rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '';
+  }
+
+  /**
+   * Part des trajets réellement analysés, en pourcentage entier.
+   *
+   * C'est ce que vaut la note : à 1 %, elle décrit un trajet sur cent, pas une conduite.
+   */
+  protected analysisRate(r: { tripCount: number; totalTripCount: number }): number {
+    if (!r.totalTripCount) return 0;
+    return Math.round((r.tripCount / r.totalTripCount) * 100);
+  }
+
+  /** Info-bulle : dit explicitement sur quoi la note est calculée. */
+  protected analysisRateTitle(r: { tripCount: number; totalTripCount: number }): string {
+    if (r.totalTripCount <= r.tripCount) return 'Tous les trajets de la période sont analysés.';
+    return (
+      `Note calculée sur ${r.tripCount} trajet(s) analysé(s) parmi ${r.totalTripCount} ` +
+      `parcouru(s), soit ${this.analysisRate(r)} % de l'activité de la période.`
+    );
   }
 
   /** Info-bulle du lien « N avec excès » → ouvre le trajet fautif le plus récent + son récit IA. */

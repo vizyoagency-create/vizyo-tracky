@@ -330,7 +330,20 @@ export interface DrivingScoreRowDto {
   score: number;
   /** Note lettrée A (excellent) → E (à améliorer). */
   grade: string;
+  /** Trajets ANALYSÉS — c'est sur eux, et eux seuls, que la note est calculée. */
   tripCount: number;
+  /**
+   * Trajets réellement parcourus sur la période.
+   *
+   * ⚠️ Ajouté le 2026-08-03. L'écran n'affichait que `tripCount` : on lisait « 1 trajet »
+   * pour un véhicule qui en avait fait 75, dont un seul analysé. Sans ce second nombre,
+   * impossible de voir que la note portait sur 1,3 % de l'activité — et le véhicule
+   * arrivait 2ᵉ du classement avec 100/100.
+   *
+   * Le rapport des deux est le TAUX D'ANALYSE, la seule façon de savoir ce que la note
+   * vaut réellement.
+   */
+  totalTripCount: number;
   distanceKm: number;
   /** Nombre total de trajets AVEC au moins un excès. */
   speedingTrips: number;
@@ -357,7 +370,46 @@ export interface DrivingScoresDto {
   totalTrips: number;
   /** Nombre d'entités classées (véhicules/conducteurs/groupes). */
   rankedCount: number;
+
+  // ══ CE QUI A ÉTÉ ÉCARTÉ DU CLASSEMENT, ET POURQUOI ═══════════════════════════════════
+  //
+  // ⚠️ Ces champs étaient déclarés dans un type d'extension vivant CÔTÉ API
+  // (`DrivingScoresWithDormancyDto`, dans le fichier du service). Le serveur les envoyait
+  // donc bel et bien, mais le contrat partagé les ignorait : côté web, `DrivingScoresDto`
+  // ne les connaissait pas, et aucun écran ne pouvait les afficher sans erreur de
+  // compilation.
+  //
+  // Le commentaire de ce type d'extension disait pourtant, mot pour mot : « On n'expose
+  // jamais un chiffre rétréci en silence ». L'intention était juste ; le contrat la
+  // rendait inapplicable. C'est le même défaut que pour `unreachable` des KPI véhicules,
+  // trouvé le même jour : une donnée calculée, envoyée, et invisible faute d'être déclarée.
+
+  /** Entités sorties du classement pour dormance (boîtier muet depuis > 7 j). */
+  dormantExcludedCount: number;
+  /** Trajets retirés de la moyenne globale avec elles. */
+  dormantExcludedTrips: number;
+  /** Les lignes écartées pour dormance, du silence le plus ancien au plus récent. */
+  dormantRows: DormantDrivingScoreRowDto[];
+
+  /** Analyses minimales pour être classé — transmis pour que l'écran affiche LE seuil réel. */
+  minAnalysesForRanking: number;
+  /**
+   * Lignes écartées faute d'assez d'analyses.
+   *
+   * ⚠️ Sans ce filtre, un véhicule noté sur UN trajet analysé (sur 75 parcourus) arrivait
+   * 2ᵉ de la flotte avec 100/100 : le podium récompensait les moins analysés.
+   */
+  insufficientRows: DrivingScoreRowDto[];
+  insufficientCount: number;
 }
+
+/** Ligne écartée pour dormance : sa note, plus l'ancienneté de son silence. */
+export type DormantDrivingScoreRowDto = DrivingScoreRowDto & {
+  /** ISO du dernier signal reçu du boîtier (null si illisible). */
+  lastSeenAt: string | null;
+  /** Ancienneté lisible du silence (« 89 j »), source unique partagée avec le reste de l'app. */
+  silenceLabel: string | null;
+};
 
 /**
  * Score PERSO d'UNE entité (véhicule/conducteur/groupe) : sa note + son RANG dans la compétition +

@@ -35,20 +35,51 @@ function makeVehicles(dormantLastSeenAt: Date | null, dormantTracker: TrackerStu
   ];
 }
 
-const TRIPS = [
-  { id: 't1', vehicleId: 'v-live', driverId: 'd1', startedAt: new Date(NOW - 3 * DAY), driver: { firstName: 'Karim', lastName: 'B.', color: '#0f0' } },
-  // ⚠️ MÊME conducteur que t1, mais sur le véhicule devenu dormant.
-  { id: 't2', vehicleId: 'v-dorm', driverId: 'd1', startedAt: new Date(NOW - 20 * DAY), driver: { firstName: 'Karim', lastName: 'B.', color: '#0f0' } },
-  { id: 't3', vehicleId: 'v-nobox', driverId: null, startedAt: new Date(NOW - 5 * DAY), driver: null },
-  { id: 't4', vehicleId: 'v-never', driverId: 'd2', startedAt: new Date(NOW - 6 * DAY), driver: { firstName: 'Léa', lastName: 'M.', color: '#00f' } },
+/**
+ * ⚠️ CHAQUE VÉHICULE A `REPS` TRAJETS, ET C'EST DÉLIBÉRÉ.
+ *
+ * Depuis le 2026-08-03, une entité doit compter au moins {@link MIN_ANALYSES_FOR_RANKING}
+ * analyses pour figurer au classement — sinon un véhicule noté sur un seul trajet arrivait
+ * 2ᵉ de la flotte avec 100/100.
+ *
+ * Ces tests-ci portent sur la DORMANCE. Avec une seule analyse par véhicule, ils seraient
+ * devenus rouges pour une raison sans rapport avec leur sujet, et on aurait été tenté de
+ * baisser le seuil pour les faire passer — c'est-à-dire d'affaiblir le produit pour
+ * arranger un test. On donne donc à chaque véhicule de quoi être classable, et le seuil
+ * garde ses propres tests, séparés.
+ */
+const REPS = 25;
+
+const TRIP_TEMPLATES = [
+  { vehicleId: 'v-live', driverId: 'd1', ago: 3 * DAY, driver: { firstName: 'Karim', lastName: 'B.', color: '#0f0' } },
+  // ⚠️ MÊME conducteur que le précédent, mais sur le véhicule devenu dormant.
+  { vehicleId: 'v-dorm', driverId: 'd1', ago: 20 * DAY, driver: { firstName: 'Karim', lastName: 'B.', color: '#0f0' } },
+  { vehicleId: 'v-nobox', driverId: null, ago: 5 * DAY, driver: null },
+  { vehicleId: 'v-never', driverId: 'd2', ago: 6 * DAY, driver: { firstName: 'Léa', lastName: 'M.', color: '#00f' } },
 ];
 
-const ANALYSES = [
-  { tripId: 't1', vehicleId: 'v-live', ecoScore: 90, distanceKm: 100, speedingCount: 0, harshAccel: 0, harshBrake: 0, fuelLiters: 6, co2Kg: 15 },
-  { tripId: 't2', vehicleId: 'v-dorm', ecoScore: 50, distanceKm: 200, speedingCount: 1, harshAccel: 2, harshBrake: 1, fuelLiters: 14, co2Kg: 35 },
-  { tripId: 't3', vehicleId: 'v-nobox', ecoScore: 70, distanceKm: 50, speedingCount: 0, harshAccel: 0, harshBrake: 0, fuelLiters: 3, co2Kg: 8 },
-  { tripId: 't4', vehicleId: 'v-never', ecoScore: 60, distanceKm: 80, speedingCount: 0, harshAccel: 1, harshBrake: 0, fuelLiters: 5, co2Kg: 12 },
-];
+const ANALYSIS_TEMPLATES: Record<string, { ecoScore: number; distanceKm: number; speedingCount: number; harshAccel: number; harshBrake: number; fuelLiters: number; co2Kg: number }> = {
+  'v-live': { ecoScore: 90, distanceKm: 100, speedingCount: 0, harshAccel: 0, harshBrake: 0, fuelLiters: 6, co2Kg: 15 },
+  'v-dorm': { ecoScore: 50, distanceKm: 200, speedingCount: 1, harshAccel: 2, harshBrake: 1, fuelLiters: 14, co2Kg: 35 },
+  'v-nobox': { ecoScore: 70, distanceKm: 50, speedingCount: 0, harshAccel: 0, harshBrake: 0, fuelLiters: 3, co2Kg: 8 },
+  'v-never': { ecoScore: 60, distanceKm: 80, speedingCount: 0, harshAccel: 1, harshBrake: 0, fuelLiters: 5, co2Kg: 12 },
+};
+
+const TRIPS = TRIP_TEMPLATES.flatMap((t, i) =>
+  Array.from({ length: REPS }, (_, k) => ({
+    id: `t${i + 1}-${k}`,
+    vehicleId: t.vehicleId,
+    driverId: t.driverId,
+    startedAt: new Date(NOW - t.ago),
+    driver: t.driver,
+  })),
+);
+
+const ANALYSES = TRIPS.map((t) => ({
+  tripId: t.id,
+  vehicleId: t.vehicleId,
+  ...ANALYSIS_TEMPLATES[t.vehicleId]!,
+}));
 
 /**
  * `absent` = le véhicule que `findUnique` renverra pour une entité ABSENTE du classement (aucun
@@ -61,7 +92,25 @@ function makeSvc(
 ) {
   const prisma = {
     tripAnalysis: { findMany: jest.fn().mockResolvedValue(ANALYSES) },
-    trip: { findMany: jest.fn().mockResolvedValue(TRIPS) },
+    trip: {
+      findMany: jest.fn().mockResolvedValue(TRIPS),
+      // Comptage des trajets RÉELLEMENT parcourus (taux d'analyse). Dérivé de TRIPS pour
+      // que le mock reste cohérent avec lui-même : un total inventé rendrait les tests
+      // verts sur des ratios impossibles.
+      groupBy: jest.fn().mockResolvedValue(
+        Object.values(
+          TRIPS.reduce<Record<string, { vehicleId: string; driverId: string | null; _count: { _all: number } }>>(
+            (acc, t) => {
+              const key = `${t.vehicleId}|${t.driverId ?? ''}`;
+              acc[key] ??= { vehicleId: t.vehicleId, driverId: t.driverId ?? null, _count: { _all: 0 } };
+              acc[key]._count._all += 1;
+              return acc;
+            },
+            {},
+          ),
+        ),
+      ),
+    },
     vehicle: {
       findMany: jest.fn().mockResolvedValue(vehicles),
       findUnique: jest.fn().mockResolvedValue(opts.absent ?? null),
@@ -92,13 +141,13 @@ describe('DrivingScoreService — dormance (seuil « arrêter de compter », 7 j
     expect(res.rankedCount).toBe(3);
     // …mais PAS disparu de l'écran : listé à part, avec la raison chiffrée.
     expect(res.dormantExcludedCount).toBe(1);
-    expect(res.dormantExcludedTrips).toBe(1);
+    expect(res.dormantExcludedTrips).toBe(REPS);
     expect(res.dormantRows).toHaveLength(1);
     expect(res.dormantRows[0]).toMatchObject({ id: 'v-dorm', label: 'FV-941-LZ', score: 50, silenceLabel: '89 j' });
     expect(res.dormantRows[0].lastSeenAt).toBe(new Date(NOW - 89 * DAY).toISOString());
     // La moyenne affichée ne doit contenir QUE les lignes visibles : (90+70+60)/3.
     expect(res.overallScore).toBe(73);
-    expect(res.totalTrips).toBe(3);
+    expect(res.totalTrips).toBe(3 * REPS);
   });
 
   it('(b) un véhicule silencieux 2 h reste classé — un stationnement n\'est pas une dormance', async () => {
@@ -128,7 +177,7 @@ describe('DrivingScoreService — dormance (seuil « arrêter de compter », 7 j
     expect(res.rows.map((r) => r.id)).toEqual(['v-live', 'v-nobox', 'v-never', 'v-dorm']);
     expect(res.dormantExcludedCount).toBe(0);
     expect(res.dormantRows).toEqual([]);
-    expect(res.totalTrips).toBe(4);
+    expect(res.totalTrips).toBe(4 * REPS);
     expect(res.overallScore).toBe(68); // (90+70+60+50)/4 = 67,5 → 68
   });
 
@@ -139,12 +188,12 @@ describe('DrivingScoreService — dormance (seuil « arrêter de compter », 7 j
     const karim = res.rows.find((r) => r.id === 'd1');
     expect(karim).toBeDefined();
     // Ses DEUX trajets comptent, dont celui fait sur FV-941-LZ avant la panne du boîtier.
-    expect(karim!.tripCount).toBe(2);
+    expect(karim!.tripCount).toBe(2 * REPS);
     expect(karim!.score).toBe(70); // (90+50)/2
     // Rien n'est jamais écarté hors du scope « vehicle ».
     expect(res.dormantExcludedCount).toBe(0);
     expect(res.dormantRows).toEqual([]);
-    expect(res.totalTrips).toBe(3); // t1 + t2 + t4 (t3 sans conducteur, exclusion préexistante)
+    expect(res.totalTrips).toBe(3 * REPS); // t1 + t2 + t4 (t3 sans conducteur, exclusion préexistante)
   });
 
   it('PIÈGE — classement GROUPE : idem, un groupe ne paie pas la panne matérielle d\'un de ses véhicules', async () => {
@@ -153,10 +202,10 @@ describe('DrivingScoreService — dormance (seuil « arrêter de compter », 7 j
 
     const g1 = res.rows.find((r) => r.id === 'g1');
     expect(g1).toBeDefined();
-    expect(g1!.tripCount).toBe(2);
+    expect(g1!.tripCount).toBe(2 * REPS);
     expect(g1!.score).toBe(70); // (90+50)/2
     expect(res.dormantExcludedCount).toBe(0);
-    expect(res.totalTrips).toBe(2);
+    expect(res.totalTrips).toBe(2 * REPS);
   });
 
   it('période PASSÉE : un véhicule vivant à l\'époque reste classé, on ne réécrit pas l\'histoire', async () => {

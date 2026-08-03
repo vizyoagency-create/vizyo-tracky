@@ -1,6 +1,12 @@
 import { tenantVehicleWhere } from '../common/tenant-vehicle-scope';
 import { Injectable, Logger } from '@nestjs/common';
-import type { DrivingScoreDetailDto, DrivingScoreRowDto, DrivingScoreScope, DrivingScoresDto } from '@vizyo/tracky-shared';
+import type {
+  DormantDrivingScoreRowDto,
+  DrivingScoreDetailDto,
+  DrivingScoreRowDto,
+  DrivingScoreScope,
+  DrivingScoresDto,
+} from '@vizyo/tracky-shared';
 import { formatSilenceLabel, isVehicleDormant } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
 import { PrismaService } from '../prisma/prisma.service';
@@ -10,6 +16,25 @@ import { VehicleAccessService } from '../vehicle-access/vehicle-access.service';
 const MAX_ANALYSES = 20_000;
 /** Trajets à excès listés par ligne (les plus récents) — pour les liens vers le récit IA. */
 const MAX_SPEEDING_REFS = 25;
+
+/**
+ * Analyses minimales pour figurer au CLASSEMENT.
+ *
+ * ⚠️ Pourquoi ce seuil existe (constat du 2026-08-03). À l'écran, HD-292-SH était 2ᵉ de la
+ * flotte avec 100/100 — sur UN SEUL trajet analysé, alors qu'il en avait fait 75 sur la
+ * période. Le podium récompensait les véhicules les MOINS analysés.
+ *
+ * La note ne mesure pas la conduite : elle mesure un ÉCHANTILLON. En production ce dernier
+ * allait de 1 trajet sur 75 à 99 sur 201 — comparer ces notes entre elles n'avait aucun sens.
+ *
+ * ⚠️ 20 n'est pas un chiffre rond choisi au hasard : sur cdef31, la médiane est de 157
+ * trajets par véhicule sur 90 jours et UN SEUL véhicule sur 30 passe sous 20. Le seuil
+ * écarte donc ce qui n'est pas mesurable, sans amputer le classement.
+ *
+ * Les écartés restent RENDUS (`insufficientRows`), comme les dormants : on les nomme, on
+ * ne les cache pas.
+ */
+const MIN_ANALYSES_FOR_RANKING = 20;
 
 type SpeedingRef = { tripId: string; vehicleId: string; startedAt: Date };
 
@@ -23,33 +48,25 @@ type Agg = {
   lastSeenAt: Date | null;
 };
 
-/**
- * Une ligne écartée du classement pour cause de DORMANCE, enrichie de l'ancienneté du silence.
- *
- * Elle reste dans la réponse : un véhicule ne doit JAMAIS disparaître de l'écran sans explication.
- * Il quitte la compétition (et la moyenne), pas la page — on l'affiche à part avec « muet depuis 89 j »,
- * ce qui transforme un chiffre inexplicable en action concrète (aller voir le boîtier).
- */
-export type DormantDrivingScoreRowDto = DrivingScoreRowDto & {
-  /** ISO du dernier signal reçu du boîtier (null si illisible). */
-  lastSeenAt: string | null;
-  /** Ancienneté lisible du silence (« 89 j »), source unique partagée avec le reste de l'app. */
-  silenceLabel: string | null;
-};
+// ⚠️ `DormantDrivingScoreRowDto` a été DÉPLACÉ dans le contrat partagé (trip-analysis.dto.ts),
+// où sa documentation complète l'accompagne.
+// Déclaré ici, il n'existait que pour l'API : le web recevait les données mais son type
+// `DrivingScoresDto` les ignorait, donc aucun écran ne pouvait les afficher. Réexporté pour
+// les appelants existants.
+export type { DormantDrivingScoreRowDto } from '@vizyo/tracky-shared';
 
 /**
- * Classement + le compte de ce qui en a été retiré. On n'expose jamais un chiffre rétréci en
- * silence : `dormantExcludedCount`/`dormantExcludedTrips` expliquent l'écart entre le parc réel et
- * `rankedCount`/`totalTrips`.
+ * ⚠️ N'AJOUTE PLUS RIEN : tous les champs (dormance, seuil d'analyses) vivent désormais
+ * dans `DrivingScoresDto`, côté contrat PARTAGÉ.
+ *
+ * Ils étaient déclarés ici, dans une extension propre à l'API. Le serveur les envoyait,
+ * mais le web — qui type ses réponses avec `DrivingScoresDto` — ne les voyait pas : aucun
+ * écran ne pouvait les afficher sans erreur de compilation. Le classement rétrécissait
+ * donc en silence, ce que le commentaire d'origine voulait précisément empêcher.
+ *
+ * L'alias est conservé pour ne pas casser les appelants existants.
  */
-export type DrivingScoresWithDormancyDto = DrivingScoresDto & {
-  /** Nombre d'entités sorties du classement pour dormance (0 hors scope `vehicle`). */
-  dormantExcludedCount: number;
-  /** Nombre de trajets retirés de la moyenne globale avec elles. */
-  dormantExcludedTrips: number;
-  /** Les lignes écartées, du silence le plus ancien au plus récent. */
-  dormantRows: DormantDrivingScoreRowDto[];
-};
+export type DrivingScoresWithDormancyDto = DrivingScoresDto;
 
 /** Détail d'une entité + la raison éventuelle de son absence du classement. */
 export type DrivingScoreDetailWithDormancyDto = DrivingScoreDetailDto & {
@@ -100,7 +117,7 @@ export class DrivingScoreService {
       take: MAX_ANALYSES,
     });
     if (analyses.length >= MAX_ANALYSES) this.logger.warn(`scores : ${MAX_ANALYSES} analyses (tronqué).`);
-    if (analyses.length === 0) return { scope, from: from.toISOString(), to: to.toISOString(), rows: [], overallScore: null, overallGrade: null, totalTrips: 0, rankedCount: 0, dormantExcludedCount: 0, dormantExcludedTrips: 0, dormantRows: [] };
+    if (analyses.length === 0) return { scope, from: from.toISOString(), to: to.toISOString(), rows: [], overallScore: null, overallGrade: null, totalTrips: 0, rankedCount: 0, dormantExcludedCount: 0, dormantExcludedTrips: 0, dormantRows: [], minAnalysesForRanking: MIN_ANALYSES_FOR_RANKING, insufficientRows: [], insufficientCount: 0 };
 
     // 3. Trajets correspondants DANS la période → conducteur + véhicule.
     const tripIds = analyses.map((a) => a.tripId);
@@ -140,10 +157,39 @@ export class DrivingScoreService {
       }
     }
 
+    // ══ TRAJETS RÉELLEMENT PARCOURUS (pour le TAUX D'ANALYSE) ═══════════════════════
+    //
+    // ⚠️ L'écran affichait « 1 trajet » pour HD-292-SH — qui en avait fait 75. Ce « 1 »
+    // est le nombre de trajets ANALYSÉS, mais rien ne le disait : on lisait naturellement
+    // « ce véhicule n'a roulé qu'une fois ». Impossible, dès lors, de comprendre pourquoi
+    // sa note valait moins que celle d'un autre.
+    //
+    // Un `groupBy` et non un `findMany` : sur 90 jours, cdef31 compte ~4 700 trajets ;
+    // les charger pour en compter le nombre serait absurde sur un VPS à 2 vCPU. Ici, une
+    // ligne par couple (véhicule, conducteur) — quelques dizaines.
+    //
+    // ⚠️ MÊME `vehicleWhere` que les analyses : le comptage doit être borné au périmètre
+    // exact de l'utilisateur. Un filtre plus large ferait fuir un total inter-flottes dans
+    // un simple ratio — une fuite discrète, mais une fuite.
+    const realTripRows = await this.prisma.trip.groupBy({
+      by: ['vehicleId', 'driverId'],
+      where: { ...vehicleWhere, endedAt: { not: null }, startedAt: { gte: from, lte: to } },
+      _count: { _all: true },
+    });
+    const realTripsByKey = new Map<string, number>();
+    const addReal = (key: string | null, n: number): void => {
+      if (!key) return;
+      realTripsByKey.set(key, (realTripsByKey.get(key) ?? 0) + n);
+    };
+    for (const r of realTripRows) {
+      const n = r._count._all;
+      if (scope === 'vehicle') addReal(r.vehicleId, n);
+      else if (scope === 'driver') addReal(r.driverId, n);
+      else addReal(vehById.get(r.vehicleId)?.groups?.[0]?.group?.id ?? null, n);
+    }
+
     // 5. Agrégation par scope.
     const map = new Map<string, Agg>();
-    let overallSum = 0;
-    let overallTrips = 0;
 
     for (const a of analyses) {
       const t = tripById.get(a.tripId);
@@ -187,10 +233,6 @@ export class DrivingScoreService {
       // La moyenne globale doit refléter EXACTEMENT les lignes classées : si un dormant sort du
       // tableau mais reste dans la moyenne, le client compare ses véhicules à une moyenne qui ne
       // correspond à aucune ligne visible.
-      if (!dormant) {
-        overallSum += a.ecoScore;
-        overallTrips += 1;
-      }
     }
 
     const toRow = (g: Agg): DrivingScoreRowDto => {
@@ -198,6 +240,11 @@ export class DrivingScoreService {
       return {
         id: g.id, label: g.label, sublabel: g.sublabel, color: g.color,
         score, grade: grade(score), tripCount: g.trips,
+        // Trajets RÉELLEMENT parcourus sur la période : c'est ce qui permet à l'écran de
+        // dire « note sur 1 des 75 trajets » au lieu d'un « 1 trajet » qui trompe.
+        // Repli sur `g.trips` : un total inférieur aux analyses serait incohérent, et
+        // afficherait un taux supérieur à 100 %.
+        totalTripCount: Math.max(realTripsByKey.get(g.id) ?? 0, g.trips),
         distanceKm: round(g.distanceKm, 1), speedingTrips: g.speedingTrips,
         speedingTripRefs: g.speedingRefs
           .sort((x, y) => y.startedAt.getTime() - x.startedAt.getTime())
@@ -209,10 +256,32 @@ export class DrivingScoreService {
     };
 
     const aggs = [...map.values()];
-    const rows: DrivingScoreRowDto[] = aggs
-      .filter((g) => !g.dormant)
+
+    // ══ SEUIL DE REPRÉSENTATIVITÉ ════════════════════════════════════════════════════
+    //
+    // ⚠️ Constat du 2026-08-03, relevé à l'écran : HD-292-SH était 2ᵉ de la flotte avec
+    // 100/100 — sur UN SEUL trajet analysé, alors qu'il en avait fait 75 sur la période.
+    // Le podium récompensait donc les véhicules les MOINS analysés, exactement l'inverse
+    // de ce que l'écran promet (« une compétition amicale pour progresser »).
+    //
+    // La note ne mesure pas la conduite : elle mesure un ÉCHANTILLON. Et cet échantillon
+    // va de 1 trajet sur 75 à 99 sur 201 selon les véhicules — comparer ces notes entre
+    // elles n'a aucun sens.
+    //
+    // Les écartés sont RENDUS, jamais supprimés, comme les dormants : leur note reste
+    // consultable, elle ne fausse simplement plus le classement ni la moyenne de flotte.
+    const classables = aggs.filter((g) => !g.dormant && g.trips >= MIN_ANALYSES_FOR_RANKING);
+    const insuffisants = aggs.filter((g) => !g.dormant && g.trips < MIN_ANALYSES_FOR_RANKING);
+
+    const rows: DrivingScoreRowDto[] = classables
       .map(toRow)
       .sort((a, b) => b.score - a.score || b.tripCount - a.tripCount);
+
+    // Ordre : le plus proche du seuil en tête — c'est celui qui rejoindra le classement
+    // en premier, donc celui dont la note commence à vouloir dire quelque chose.
+    const insufficientRows: DrivingScoreRowDto[] = insuffisants
+      .map(toRow)
+      .sort((a, b) => b.tripCount - a.tripCount);
 
     // Les écartés sont RENDUS, pas supprimés (leur historique reste intégralement consultable) :
     // silence le plus ancien en tête, c'est l'ordre dans lequel l'exploitant doit s'en occuper.
@@ -221,14 +290,27 @@ export class DrivingScoreService {
       .map((g) => ({ ...toRow(g), lastSeenAt: g.lastSeenAt?.toISOString() ?? null, silenceLabel: formatSilenceLabel(g.lastSeenAt, dormantAt) }))
       .sort((a, b) => (a.lastSeenAt ?? '').localeCompare(b.lastSeenAt ?? ''));
 
-    const overallScore = overallTrips > 0 ? Math.round(overallSum / overallTrips) : null;
+    // ⚠️ La moyenne est RECALCULÉE depuis les seules lignes classées.
+    //
+    // Elle était accumulée dans la boucle sur les analyses, avec le seul filtre `dormant` —
+    // impossible d'y appliquer le seuil, puisqu'on ne connaît le nombre d'analyses d'un
+    // agrégat qu'une fois la boucle terminée. Sans ce recalcul, la moyenne aurait continué
+    // d'inclure des notes que le tableau n'affiche plus, et le client aurait comparé ses
+    // véhicules à une valeur ne correspondant à aucune ligne visible — le défaut que le
+    // commentaire de la boucle cherchait justement à éviter.
+    const rankedSum = classables.reduce((s, g) => s + g.sumScore, 0);
+    const rankedTrips = classables.reduce((s, g) => s + g.trips, 0);
+    const overallScore = rankedTrips > 0 ? Math.round(rankedSum / rankedTrips) : null;
     return {
       scope, from: from.toISOString(), to: to.toISOString(), rows,
-      overallScore, overallGrade: overallScore != null ? grade(overallScore) : null, totalTrips: overallTrips,
+      overallScore, overallGrade: overallScore != null ? grade(overallScore) : null, totalTrips: rankedTrips,
       rankedCount: rows.length,
       dormantExcludedCount: dormantRows.length,
       dormantExcludedTrips: dormantAggs.reduce((s, g) => s + g.trips, 0),
       dormantRows,
+      minAnalysesForRanking: MIN_ANALYSES_FOR_RANKING,
+      insufficientRows,
+      insufficientCount: insufficientRows.length,
     };
   }
 
