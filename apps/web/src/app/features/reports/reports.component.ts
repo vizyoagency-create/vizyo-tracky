@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { httpFailureMessage } from '../../core/services/http-failure';
 import { ChangeDetectionStrategy, Component, computed, effect, ElementRef, HostListener, inject, OnDestroy, OnInit, signal, viewChild } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
@@ -2253,6 +2254,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
     try {
       const list = await firstValueFrom(this.vehiclesApi.list());
       this.vehicles.set(list);
-    } catch { /* silent */ }
+    } catch (err) {
+      // silent
+      swallow('reports:loadVehicles', err);
+    }
   }
 }

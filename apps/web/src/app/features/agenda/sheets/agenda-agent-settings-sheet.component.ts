@@ -1,3 +1,4 @@
+import { swallow } from '../../../core/error/swallow';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -381,8 +382,9 @@ export class AgendaAgentSettingsSheetComponent {
     this.runsLoading.set(true);
     try {
       this.runs.set(await firstValueFrom(this.agentApi.listRuns(this.currentFleetId(), 10)));
-    } catch {
-      /* l'historique est un confort : son échec ne doit pas masquer les réglages */
+    } catch (err) {
+      // l'historique est un confort : son échec ne doit pas masquer les réglages
+      swallow('agenda-agent-settings-sheet:loadRuns', err);
     } finally {
       this.runsLoading.set(false);
     }
@@ -434,12 +436,18 @@ export class AgendaAgentSettingsSheetComponent {
     try {
       const ai = await firstValueFrom(this.aiStatus.getFleetEnabled(fleetId));
       this.aiMasterEnabled.set(ai.enabled);
-    } catch { /* garde l'optimiste */ }
+    } catch (err) {
+      // garde l'optimiste
+      swallow('agenda-agent-settings-sheet:load', err);
+    }
     // Répartition des coûts (best-effort : ne bloque pas les réglages).
     try {
       const sum = await firstValueFrom(this.usage.summary(undefined, undefined, fleetId));
       this.byAction.set(sum.byAction.slice(0, 4).map((r) => ({ key: r.key, label: r.label, costEur: r.costEur })));
-    } catch { /* le coût du mois (settings) suffit */ }
+    } catch (err) {
+      // le coût du mois (settings) suffit
+      swallow('agenda-agent-settings-sheet:load', err);
+    }
     // Liens publics de réservation (best-effort).
     try {
       this.links.set(await firstValueFrom(this.bookingApi.listLinks(fleetId)));

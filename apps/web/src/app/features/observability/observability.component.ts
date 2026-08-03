@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -843,8 +844,9 @@ export class ObservabilityComponent implements OnInit {
       this.smsTrackers.set(
         list.map((t) => ({ id: t.id, imei: t.imei, plate: t.vehicle?.plate ?? null })),
       );
-    } catch {
-      /* silencieux */
+    } catch (err) {
+      // silencieux
+      swallow('observability:loadTrackers', err);
     }
   }
 

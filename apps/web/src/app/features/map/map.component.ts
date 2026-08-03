@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import {
   AfterViewInit,
   Component,
@@ -3904,7 +3905,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         for (const p of res.items ?? []) {
           features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [p.lng, p.lat] }, properties: {} });
         }
-      } catch { /* silent per vehicle */ }
+      } catch (err) {
+        // silent per vehicle
+        swallow('map:loadHeatmap', err);
+      }
     }
     const src = this.map.getSource('positions-heatmap') as GeoJSONSource | undefined;
     src?.setData({ type: 'FeatureCollection', features });
@@ -4007,7 +4011,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         if (clusterStart) {
           this.maybePushStopFeature(features, clusterStart, items[items.length - 1]!, clusterCenterLat, clusterCenterLng, STOP_MIN_DURATION_MS, vehicleId);
         }
-      } catch { /* silent per vehicle */ }
+      } catch (err) {
+        // silent per vehicle
+        swallow('map:loadStops', err);
+      }
     }
 
     const src = this.map.getSource('stops') as GeoJSONSource | undefined;
@@ -4421,7 +4428,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       });
       const src = this.map.getSource('fuel-stations') as maplibregl.GeoJSONSource | undefined;
       src?.setData({ type: 'FeatureCollection', features });
-    } catch { /* silent */ }
+    } catch (err) {
+      // silent
+      swallow('map:loadFuelStations', err);
+    }
   }
 
   /** Toggle du calque stations-service (charge à la 1re activation). */
@@ -4525,8 +4535,9 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       const zones = await firstValueFrom(this.deadZonesApi.listForMap(this.fleetFilter.selectedFleetId() ?? undefined));
       this.deadZonesData.set(zones);
       this.renderDeadZoneMarkers();
-    } catch {
-      /* best-effort : la carte reste fonctionnelle sans les pins parkings */
+    } catch (err) {
+      // best-effort : la carte reste fonctionnelle sans les pins parkings
+      swallow('map:accessible', err);
     }
   }
 
@@ -4580,8 +4591,9 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       this.fleetPlaces.set(places);
       this.placesAiEnabled.set(ai.enabled);
       this.renderFleetPlaceMarkers();
-    } catch {
-      /* best-effort : la carte reste utilisable sans les lieux de la flotte */
+    } catch (err) {
+      // best-effort : la carte reste utilisable sans les lieux de la flotte
+      swallow('map:DÉTECTÉES', err);
     }
   }
 
@@ -4868,7 +4880,10 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       }
       const src = this.map.getSource('geofences') as maplibregl.GeoJSONSource | undefined;
       src?.setData({ type: 'FeatureCollection', features });
-    } catch { /* silent */ }
+    } catch (err) {
+      // silent
+      swallow('map:loadGeofences', err);
+    }
   }
 
   /* --- Markers update --- */

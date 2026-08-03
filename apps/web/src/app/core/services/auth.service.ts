@@ -1,6 +1,8 @@
-import { apiFetch, apiFetchRaw } from './api-fetch';
-import { HttpFailure } from './http-failure';
-import { computed, Injectable, signal } from '@angular/core';
+import { swallow } from '../../core/error/swallow';
+import { apiFetchRaw } from './api-fetch';
+import { HttpClient } from '@angular/common/http';
+import { computed, inject, Injectable, signal } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
 import type { UserPermissions, UserRoleSlug } from '@vizyo/tracky-shared';
 
 /** Preferences UI per-user persistees en DB (User.preferences JSONB).
@@ -38,6 +40,13 @@ const REMEMBER_KEY = 'vizyo-tracky-remember';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
+  /**
+   * ⚠️ `HttpClient` est injecté ici alors que `authInterceptor` injecte `AuthService`.
+   * Ce n'est PAS un cycle : les intercepteurs sont résolus par requête, pas à la
+   * construction du client. Le cycle n'existerait que si `HttpClient` avait besoin
+   * d'`AuthService` pour être construit — ce qui n'est pas le cas.
+   */
+  private readonly http = inject(HttpClient);
   private readonly _user = signal<AuthUser | null>(this.loadUser());
   readonly user = this._user.asReadonly();
   readonly isAuthenticated = computed(() => !!this._user());
@@ -126,16 +135,12 @@ export class AuthService {
    *  signal local. Merge partiel : seules les cles fournies sont updatees,
    *  les autres preferences existantes sont preservees. */
   async updatePreferences(partial: UserUiPreferences): Promise<void> {
-    const res = await apiFetch('/api/users/me/preferences', {
-      method: 'PATCH',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
-      },
-      body: JSON.stringify(partial),
-    }, 'Echec mise a jour preferences');
-    const { preferences } = (await res.json()) as { preferences: UserUiPreferences | null };
+    const { preferences } = await firstValueFrom(
+      this.http.patch<{ preferences: UserUiPreferences | null }>(
+        '/api/users/me/preferences',
+        partial,
+      ),
+    );
     const current = this._user();
     if (current) {
       const updated: AuthUser = { ...current, preferences };
@@ -164,12 +169,22 @@ export class AuthService {
     if (!rt) return null;
 
     try {
+      // ⚠️⚠️ CET APPEL DOIT RESTER EN `fetch` NATIF — NE PAS LE MIGRER VERS `HttpClient`.
+      //
+      // C'est `authInterceptor` qui appelle `tryRefresh()` lorsqu'il reçoit un 401. Si le
+      // rafraîchissement passait lui-même par `HttpClient`, il traverserait cet
+      // intercepteur : un refresh qui répond 401 (jeton expiré — le cas NORMAL au bout de
+      // quelques jours) redéclencherait un refresh, qui redéclencherait un refresh…
+      // Récursion infinie, sur le chemin critique de la connexion de TOUS les comptes.
+      //
+      // Les deux autres appels de ce service ont été migrés (2026-08-03) ; celui-ci est
+      // l'exception, et c'est une exception de conception, pas un oubli.
       const res = await apiFetchRaw('/api/auth/refresh', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken: rt }),
-      });
+      }, 'Rafraichissement de session');
 
       if (!res.ok) return null;
 
@@ -202,12 +217,7 @@ export class AuthService {
   async refreshMe(): Promise<void> {
     if (!this.token) return;
     try {
-      const res = await apiFetchRaw('/api/users/me', {
-        credentials: 'include',
-        headers: { Authorization: `Bearer ${this.token}` },
-      });
-      if (!res.ok) return;
-      const fresh = (await res.json()) as Partial<AuthUser>;
+      const fresh = await firstValueFrom(this.http.get<Partial<AuthUser>>('/api/users/me'));
       const current = this._user();
       if (current) {
         const updated: AuthUser = { ...current, ...fresh };
@@ -218,8 +228,9 @@ export class AuthService {
         }
         this._user.set(updated);
       }
-    } catch {
-      /* silence : non bloquant, on garde l'etat local en cas d'echec reseau */
+    } catch (err) {
+      // silence : non bloquant, on garde l'etat local en cas d'echec reseau
+      swallow('auth:refreshMe', err);
     }
   }
 

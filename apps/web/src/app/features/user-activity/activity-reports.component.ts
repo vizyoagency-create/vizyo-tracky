@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -415,7 +416,10 @@ export class ActivityReportsComponent implements OnInit {
   protected async loadList(): Promise<void> {
     try {
       this.reports.set(await firstValueFrom(this.api.list(40)));
-    } catch { /* silencieux */ }
+    } catch (err) {
+      // silencieux
+      swallow('activity-reports:loadList', err);
+    }
   }
 
   protected async open(id: string): Promise<void> {
@@ -432,7 +436,10 @@ export class ActivityReportsComponent implements OnInit {
   private async loadSchedule(): Promise<void> {
     try {
       this.schedule.set(await firstValueFrom(this.api.getSchedule()));
-    } catch { /* silencieux */ }
+    } catch (err) {
+      // silencieux
+      swallow('activity-reports:loadSchedule', err);
+    }
   }
 
   protected patchSchedule(p: Partial<ActivityReportScheduleDto>): void {

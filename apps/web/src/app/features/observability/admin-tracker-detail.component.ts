@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
@@ -131,8 +132,9 @@ export class AdminTrackerDetailComponent implements OnInit {
     if (!id) { this.loading.set(false); return; }
     try {
       this.tracker.set(await firstValueFrom(this.api.findOne(id)));
-    } catch {
-      /* 404 / accès refusé → tracker reste null */
+    } catch (err) {
+      // 404 / accès refusé → tracker reste null
+      swallow('admin-tracker-detail:ngOnInit', err);
     } finally {
       this.loading.set(false);
     }

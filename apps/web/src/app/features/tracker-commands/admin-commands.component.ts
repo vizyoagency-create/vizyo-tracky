@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -142,7 +143,10 @@ export class AdminCommandsComponent implements OnInit {
     try {
       const list = await firstValueFrom(this.api.list(params));
       this.commands.set(list);
-    } catch { /* silent */ }
+    } catch (err) {
+      // silent
+      swallow('admin-commands:load', err);
+    }
   }
 
   protected statusLabel(status: string): string {

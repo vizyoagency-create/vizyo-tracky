@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { Component, computed, inject, input, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
@@ -367,13 +368,19 @@ export class CommandsPanelComponent implements OnInit {
     try {
       const catalog = await firstValueFrom(this.api.getCatalog());
       this.catalog.set(catalog);
-    } catch { /* silent */ }
+    } catch (err) {
+      // silent
+      swallow('commands-panel:loadCatalog', err);
+    }
   }
 
   protected async loadHistory(): Promise<void> {
     try {
       const list = await firstValueFrom(this.api.list({ trackerId: this.trackerId(), limit: '50' }));
       this.history.set(list);
-    } catch { /* silent */ }
+    } catch (err) {
+      // silent
+      swallow('commands-panel:loadHistory', err);
+    }
   }
 }

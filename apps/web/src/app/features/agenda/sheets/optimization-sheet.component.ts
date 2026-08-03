@@ -1,3 +1,4 @@
+import { swallow } from '../../../core/error/swallow';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -346,7 +347,10 @@ export class OptimizationSheetComponent {
     try {
       const res = await firstValueFrom(this.ai.getFleetMetier(this.selectedFleetId() ?? undefined));
       this.metier.set(res.metier);
-    } catch { /* needsFleet hint le couvre */ }
+    } catch (err) {
+      // needsFleet hint le couvre
+      swallow('optimization-sheet:loadMetier', err);
+    }
   }
 
   protected async onMetierChange(m: string): Promise<void> {

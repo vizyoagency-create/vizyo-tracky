@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { inject, Injectable, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { AuthService } from './auth.service';
@@ -42,8 +43,9 @@ export class FleetCacheService {
       for (const f of list) map.set(f.id, f.name);
       this._fleets.set(map);
       this.loaded = true;
-    } catch {
-      /* silencieux : badge restera vide si le fetch echoue, c'est non bloquant */
+    } catch (err) {
+      // silencieux : badge restera vide si le fetch echoue, c'est non bloquant
+      swallow('fleet-cache:loadIfNeeded', err);
     } finally {
       this.loading = false;
     }

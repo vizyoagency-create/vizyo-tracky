@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
@@ -603,8 +604,9 @@ export class AdminApiTrafficComponent implements OnInit, OnDestroy {
       this.summary.set(summary);
       this.ips.set(ips);
       await this.loadEntries(true);
-    } catch {
-      /* silencieux en auto */
+    } catch (err) {
+      // silencieux en auto
+      swallow('admin-api-traffic:léger', err);
     }
   }
 

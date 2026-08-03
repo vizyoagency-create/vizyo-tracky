@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { DatePipe } from '@angular/common';
 import { Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -836,8 +837,9 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
       }
 
       this.prefillItems.set(items);
-    } catch {
-      /* silencieux */
+    } catch (err) {
+      // silencieux
+      swallow('admin-sms:loadPrefillItems', err);
     } finally {
       this.prefillLoading.set(false);
     }
@@ -1036,8 +1038,9 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
       ]);
       this.allowlistEntries.set(entries);
       this.allowlistStatus.set(st);
-    } catch {
-      /* silencieux : vizyo-texto peut etre injoignable / non configure */
+    } catch (err) {
+      // silencieux : vizyo-texto peut etre injoignable / non configure
+      swallow('admin-sms:loadAllowlist', err);
     }
   }
 
@@ -1116,8 +1119,9 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
       const provs = await firstValueFrom(this.api.listProvisionings(50));
       this.provisionings.set(provs.items);
       if (!this.shouldKeepPolling(provs.items)) this.stopPolling();
-    } catch {
-      /* transitoire : on retentera au prochain tick */
+    } catch (err) {
+      // transitoire : on retentera au prochain tick
+      swallow('admin-sms:refreshProvisionings', err);
     }
   }
 

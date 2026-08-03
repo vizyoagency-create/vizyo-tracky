@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, OnInit, signal, untracked } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
@@ -635,21 +636,24 @@ export class AdminAiUsageComponent implements OnInit {
       if (this.isSuperAdmin()) {
         try {
           this.provider.set(await firstValueFrom(this.api.getProvider()));
-        } catch {
-          /* ignore : le switch reste masqué si l'appel échoue */
+        } catch (err) {
+          // ignore : le switch reste masqué si l'appel échoue
+          swallow('admin-ai-usage:reload', err);
         }
         try {
           const p = await firstValueFrom(this.billing.getPrice());
           if (this.priceInput() === '') this.priceInput.set((p.aiUnitAmountEurCents / 100).toString());
           this.pricingUnit.set(p.aiPricingUnit);
           this.priceUpdatedAt.set(p.updatedAt);
-        } catch {
-          /* ignore : l'éditeur de prix garde ses valeurs */
+        } catch (err) {
+          // ignore : l'éditeur de prix garde ses valeurs
+          swallow('admin-ai-usage:reload', err);
         }
         try {
           this.features.set(await firstValueFrom(this.api.getFeatures()));
-        } catch {
-          /* ignore : le switchboard reste masqué si l'appel échoue */
+        } catch (err) {
+          // ignore : le switchboard reste masqué si l'appel échoue
+          swallow('admin-ai-usage:reload', err);
         }
       }
     } catch (e) {

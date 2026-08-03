@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { httpFailureMessage } from '../../core/services/http-failure';
 import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
@@ -256,7 +257,10 @@ export class FleetActivityComponent implements OnInit, OnDestroy {
   protected setEngineStatus(v: string): void { this.engineStatus.set(v); void this.loadEngine(); }
 
   private async loadOnline(): Promise<void> {
-    try { this.online.set(await firstValueFrom(this.api.online())); } catch { /* silencieux (polling) */ }
+    try { this.online.set(await firstValueFrom(this.api.online())); } catch (err) {
+      // silencieux (polling)
+      swallow('fleet-activity:loadOnline', err);
+    }
   }
 
   private async loadEngine(): Promise<void> {
@@ -296,7 +300,10 @@ export class FleetActivityComponent implements OnInit, OnDestroy {
     try {
       const more = await firstValueFrom(this.api.feed({ limit: this.pageSize, before: last.at, beforeId: last.id }));
       if (more.length) this.feed.update((cur) => [...cur, ...more]);
-    } catch { /* ignore */ } finally { this.loading.set(false); }
+    } catch (err) {
+      // ignore
+      swallow('fleet-activity:loadMoreFeed', err);
+    } finally { this.loading.set(false); }
   }
 
   // ── Libellés ──────────────────────────────────────────────────────────────
