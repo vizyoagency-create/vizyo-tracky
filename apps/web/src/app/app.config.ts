@@ -1,4 +1,4 @@
-import { ApplicationConfig, ErrorHandler, isDevMode, provideBrowserGlobalErrorListeners, provideZoneChangeDetection } from '@angular/core';
+import { ApplicationConfig, ErrorHandler, isDevMode, LOCALE_ID, provideBrowserGlobalErrorListeners, provideZoneChangeDetection } from '@angular/core';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideRouter, withPreloading, PreloadAllModules, withViewTransitions, TitleStrategy } from '@angular/router';
 import { provideServiceWorker } from '@angular/service-worker';
@@ -12,6 +12,18 @@ import { AppTitleStrategy } from './core/title.strategy';
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
+    /**
+     * Format FRANÇAIS par défaut pour les nombres et les dates.
+     *
+     * ⚠️ Sans cela, Angular formate en `en-US` : la distance totale des rapports
+     * s'affichait « 27,944.4 km ». Un francophone lit cela comme vingt-sept virgule neuf
+     * cent quarante-quatre — mille fois moins. Un chiffre de pilotage n'a pas le droit
+     * d'être ambigu.
+     *
+     * ⚠️ Dépend de `registerLocaleData(localeFr)` dans `main.ts` : sans lui, tout pipe
+     * numérique lèverait NG02100 au lieu d'afficher une valeur. Les deux vont ensemble.
+     */
+    { provide: LOCALE_ID, useValue: 'fr' },
     provideZoneChangeDetection({ eventCoalescing: true }),
     // V1.10 (Sprint 5 stabilite) — ErrorHandler global qui toast les erreurs
     // uncaught (sync, async, promises) avec dedup. Empeche le silence "ca bug

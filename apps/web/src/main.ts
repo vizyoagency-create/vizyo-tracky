@@ -15,10 +15,20 @@ import { bootstrapApplication } from '@angular/platform-browser';
  * d'alerte le 29/07 depuis un iPhone, sans qu'aucun test ni aucun build ne le voie —
  * `ng build` ne charge pas les locales, et l'erreur ne survient qu'à l'exécution du pipe.
  *
- * ⚠️ On enregistre la locale SANS toucher à `LOCALE_ID`. C'est délibéré : changer la locale
- * par défaut modifierait le formatage de TOUS les nombres et de TOUTES les dates de
- * l'application d'un seul coup. Ici on se contente de rendre disponible ce que deux pipes
- * réclamaient déjà — le reste de l'application ne bouge pas d'un pixel.
+ * ── ET POURQUOI `LOCALE_ID` SUIT DESORMAIS (constat du 2026-08-03) ───────────────────
+ *
+ * Ce commentaire disait d'abord qu'on ne toucherait PAS à `LOCALE_ID`, par prudence. Le
+ * test de l'écran Rapports a montré ce que cette prudence coûtait : la distance totale
+ * s'affichait « 27,944.4 km ».
+ *
+ * C'est le format anglais, sur une application entièrement française, pour un chiffre de
+ * pilotage. Un francophone lit « 27,944 » comme vingt-sept virgule neuf cent quarante-
+ * quatre — soit mille fois moins. Une distance de flotte n'a pas le droit d'être ambiguë.
+ *
+ * `LOCALE_ID` est donc posé à `fr` dans `app.config.ts`. Les gabarits qui imposent déjà
+ * leur format (`| date : 'dd/MM/yyyy'`) ne bougent pas ; seuls les affichages qui
+ * s'en remettaient au défaut passent de l'anglais au français, ce qui était l'intention
+ * partout.
  */
 registerLocaleData(localeFr);
 import { appConfig } from './app/app.config';
