@@ -1,3 +1,4 @@
+import { clientIp } from '../common/client-ip';
 import { Body, Controller, Post, Req, HttpCode, HttpStatus } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
@@ -13,7 +14,8 @@ export class LeadsController {
   @Throttle({ default: { ttl: 60_000, limit: 5 } })
   @HttpCode(HttpStatus.OK)
   async submitLead(@Body() dto: CreateLeadDto, @Req() req: Request) {
-    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip;
-    return this.leadsService.createLead(dto, ip);
+    // ⚠️ Plus de lecture du premier hop : il est ecrit par le client (cf. common/client-ip.ts).
+    // `?? undefined` : le service attend `string | undefined`, pas `null`.
+    return this.leadsService.createLead(dto, clientIp(req) ?? undefined);
   }
 }

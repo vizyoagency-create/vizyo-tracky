@@ -1,3 +1,4 @@
+import { clientIp } from '../common/client-ip';
 import { Body, Controller, Get, HttpCode, Post, Req, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
@@ -62,10 +63,9 @@ export class ConsentController {
 
 /** IP réelle derrière Traefik : 1er hop de X-Forwarded-For, puis req.ip / socket. */
 function ip(req: Request): string | null {
-  const xff = req.headers['x-forwarded-for'];
-  const first =
-    typeof xff === 'string' ? xff.split(',')[0]?.trim() : Array.isArray(xff) ? xff[0] : undefined;
-  return first || req.ip || req.socket?.remoteAddress || null;
+  // ⚠️ Delegue a `clientIp` : lire le PREMIER hop de x-forwarded-for revenait a
+  // faire confiance a une valeur ecrite par le client (cf. common/client-ip.ts).
+  return clientIp(req);
 }
 function ua(req: Request): string | null {
   const v = req.headers['user-agent'];

@@ -1,3 +1,4 @@
+import { clientIp } from '../common/client-ip';
 import { Body, Controller, Get, HttpCode, Post, Req, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { AuthenticatedRequest, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -132,10 +133,9 @@ function deviceHeader(req: AuthenticatedRequest): string | null {
 }
 
 function ip(req: AuthenticatedRequest): string | null {
-  const xff = req.headers['x-forwarded-for'];
-  const first =
-    typeof xff === 'string' ? xff.split(',')[0]?.trim() : Array.isArray(xff) ? xff[0] : undefined;
-  return first || req.ip || req.socket?.remoteAddress || null;
+  // ⚠️ Delegue a `clientIp` : lire le PREMIER hop de x-forwarded-for revenait a
+  // faire confiance a une valeur ecrite par le client (cf. common/client-ip.ts).
+  return clientIp(req);
 }
 
 function ua(req: AuthenticatedRequest): string | null {
