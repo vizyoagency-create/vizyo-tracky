@@ -1,8 +1,10 @@
+import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { Injectable } from '@nestjs/common';
 import { AnthropicClient } from './anthropic.client';
 import { OpenAiClient } from './openai.client';
 import { AiProviderSettingsService } from './ai-provider-settings.service';
 import type { AiClient, AiJsonRequest, AiJsonResult, AiProvider, AiProviderMode } from './ai-client.types';
+import { AiServiceError } from './ai-client.types';
 
 /** Options d'un appel routé. `preferProvider` = mixte « par tâche » (ex. analyse de trajets → gpt). */
 export interface AiRunOptions {
@@ -25,6 +27,7 @@ export class AiRouter {
     private readonly anthropic: AnthropicClient,
     private readonly openai: OpenAiClient,
     private readonly settings: AiProviderSettingsService,
+    private readonly usage: AiUsageService,
   ) {}
 
   /** L'IA est disponible dès qu'AU MOINS un provider a une clé (l'app active alors sa couche IA). */
@@ -70,6 +73,20 @@ export class AiRouter {
    * (analyse de trajets) ; pour un appel SIMPLE, il retombe sur le moteur primaire (Claude).
    */
   async completeJson<T>(req: AiJsonRequest, opts?: AiRunOptions): Promise<AiJsonResult<T>> {
+    // ══ PLAFOND MENSUEL — applique ICI, pour TOUS les appelants ═══════════════════
+    //
+    // Il ne gardait qu'UN des huit points d'appel (`place-analysis`). L'administrateur
+    // fixait un plafond, le voyait « depasse » a l'ecran, et le cron de recits, l'agent
+    // d'agenda, l'optimiseur, le rapport d'activite et la saisie vocale continuaient de
+    // depenser. Un plafond qui ne plafonne pas est pire qu'aucun plafond : il donne une
+    // fausse assurance.
+    //
+    // Ce service se declare « point d'entree UNIQUE de tous les appels IA ». C'est donc
+    // le seul endroit ou la regle ne peut pas etre oubliee par un futur appelant.
+    if (await this.usage.monthBudgetExhausted()) {
+      throw new AiServiceError('quota', 'Plafond mensuel de depense IA atteint — appel refuse.');
+    }
+
     const mode = await this.settings.current();
     const selected: AiProvider = mode === 'both' ? 'claude' : mode;
     return this.pick(selected, opts?.preferProvider).completeJson<T>(req);
