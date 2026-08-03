@@ -1,3 +1,4 @@
+import { QUIET_ERRORS_HEADER } from '../interceptors/auth.interceptor';
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import type {
@@ -102,8 +103,19 @@ export class VehiclesApiService {
     return this.http.patch<VehicleDetailDto>(`/api/vehicles/${id}/group`, { groupId });
   }
 
+  /**
+   * KPI du tableau de bord. Appel de FOND, resondé toutes les 30 s.
+   *
+   * ⚠️ Silencieux en cas de panne (`QUIET_ERRORS_HEADER`) : sans cela, une API tombée
+   * afficherait un toast toutes les 30 secondes. L'utilisateur apprendrait à les ignorer,
+   * et n'y prêterait plus attention le jour où il en reçoit un qui compte. L'écran, lui,
+   * montre déjà des KPI vides — c'est le signal qui suffit ici.
+   */
   stats(fleetId?: string | null): Observable<VehicleStatsDto> {
-    return this.http.get<VehicleStatsDto>('/api/vehicles/stats', fleetId ? { params: { fleetId } } : {});
+    return this.http.get<VehicleStatsDto>('/api/vehicles/stats', {
+      ...(fleetId ? { params: { fleetId } } : {}),
+      headers: { [QUIET_ERRORS_HEADER]: '1' },
+    });
   }
 
   // ─── Sprint 10 — Synchro véhicules ↔ planning d'installation ───

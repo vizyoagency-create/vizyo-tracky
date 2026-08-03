@@ -742,8 +742,13 @@ export class UsersListComponent implements OnInit {
       this.showDeleteModal.set(false);
       this.userToDelete.set(null);
       await this.loadUsers();
-    } catch { /* error */ }
-    finally { this.deleting.set(false); }
+    } catch (err) {
+      // ⚠️ C'ETAIT UN `catch { /* error */ }` MUET, sur un appel `fetch` NATIF — donc
+      // hors intercepteur HTTP : rien, absolument rien, n'informait l'utilisateur. Il
+      // cliquait « Archiver », la fenetre restait ouverte, et aucun message n'expliquait
+      // pourquoi. Le syndrome « j'ai clique, il ne se passe rien ».
+      this.toast.error('Archivage impossible', httpFailureMessage(err, 'cet utilisateur'));
+    } finally { this.deleting.set(false); }
   }
 
   async toggleArchived(): Promise<void> {
@@ -851,7 +856,14 @@ export class UsersListComponent implements OnInit {
         vehicleIds: result.type === 'ALL' ? [] : result.vehicleIds,
       });
       this.showAccessDrawer.set(false);
-    } catch { /* error */ }
-    finally { this.savingAccess.set(false); }
+      this.toast.success('Accès enregistré');
+    } catch (err) {
+      // ⚠️ LE PLUS GRAVE DES DEUX : c'est le PERIMETRE D'ACCES d'un utilisateur — quels
+      // vehicules il a le droit de voir. Un echec silencieux ici laisse croire qu'on a
+      // restreint quelqu'un alors que rien n'a ete enregistre. Un reglage de securite
+      // qui echoue sans le dire est pire que pas de reglage du tout : on cesse de
+      // verifier ce qu'on croit avoir fait.
+      this.toast.error('Accès non enregistré', httpFailureMessage(err, 'les accès'));
+    } finally { this.savingAccess.set(false); }
   }
 }

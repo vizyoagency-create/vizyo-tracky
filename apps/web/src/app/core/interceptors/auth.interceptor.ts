@@ -7,6 +7,7 @@ import { AuthService } from '../services/auth.service';
 import { ConsentService } from '../services/consent.service';
 import { SecurityService } from '../services/security.service';
 import { RealtimeService } from '../services/realtime.service';
+import { httpFailureMessage } from '../services/http-failure';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { getOrCreateDeviceId } from '../utils/device-id';
 
@@ -17,6 +18,37 @@ import { getOrCreateDeviceId } from '../utils/device-id';
  * (sinon plusieurs requetes 401 simultanees afficheraient N toasts).
  */
 let sessionExpiredToastShown = false;
+/**
+ * En-tête d'opt-out : une requête qui le porte ne déclenche aucun toast d'erreur.
+ *
+ * Réservé aux appels de FOND (sondage périodique, sonde de présence) : si l'API tombe,
+ * un sondage toutes les 30 s produirait un toast toutes les 30 s. L'utilisateur
+ * apprendrait à les ignorer — et n'y prêterait plus attention le jour où il en reçoit un
+ * qui compte.
+ *
+ * ⚠️ À réserver aux appels que l'utilisateur n'a PAS déclenchés. Le poser sur une action
+ * (un clic) recréerait exactement le silence corrigé ici.
+ */
+export const QUIET_ERRORS_HEADER = 'X-Quiet-Errors';
+
+/**
+ * Cette panne mérite-t-elle un message ?
+ *
+ * `0`   — la requête n'a pas abouti (réseau coupé, serveur injoignable).
+ * `403` — refus de permission : sans message, l'écran reste simplement vide.
+ * `5xx` — le serveur a échoué ; l'utilisateur n'y peut rien mais doit le savoir.
+ *
+ * Le 401 est traité plus haut (déconnexion + son propre message) ; le redoubler ici
+ * afficherait deux toasts pour un seul événement.
+ *
+ * ⚠️ EXPORTÉ pour être testé DIRECTEMENT. Une première version du test recopiait ce
+ * prédicat : il serait resté vert en cas de divergence, c'est-à-dire qu'il aurait garanti
+ * sa propre copie et rien d'autre. Un test qui duplique ce qu'il vérifie ne vérifie rien.
+ */
+export function shouldAnnounce(status: number): boolean {
+  return status === 0 || status === 403 || status >= 500;
+}
+
 function notifySessionExpired(toast: ToastService): void {
   if (sessionExpiredToastShown) return;
   sessionExpiredToastShown = true;
@@ -131,6 +163,32 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
       if (error.status === 401) {
         // Pas de refresh token → logout idempotent (avec toast informatif).
         forceLogout(toast, realtime, auth, router);
+      }
+
+      // ══ LA PANNE DOIT SE VOIR ═══════════════════════════════════════════════════════
+      //
+      // ⚠️ AUDIT DU 2026-08-03 — TROIS COUCHES SE RENVOYAIENT LA RESPONSABILITÉ.
+      //
+      //   1. `GlobalErrorHandler` ignore volontairement les `HttpErrorResponse`, en
+      //      commentant « les interceptors HTTP les gèrent ».
+      //   2. Les intercepteurs ne traitaient QUE le 401.
+      //   3. Les composants les attrapaient dans des `catch { /* handled */ }` —
+      //      « handled » par personne.
+      //
+      // Conséquence : hors session expirée, AUCUNE panne HTTP n'était jamais signalée à
+      // l'utilisateur. Serveur en erreur, réseau coupé, permission refusée : il cliquait,
+      // rien ne se passait, aucun message. Le produit savait parler quand tout allait
+      // bien (« Alerte acquittée ») et se taisait quand ça cassait.
+      //
+      // ⚠️ C'est ICI et nulle part ailleurs que la correction tient. Une erreur HTTP
+      // attrapée par un `catch` n'atteint JAMAIS le gestionnaire global — mais elle
+      // traverse toujours l'intercepteur. C'est la seule couche qui voit tout.
+      //
+      // Périmètre volontairement RESTREINT aux pannes que l'utilisateur ne peut pas
+      // deviner. Les autres 4xx (400, 404, 409…) portent un message métier que l'écran
+      // affiche déjà ; les doubler produirait du bruit, et le bruit finit ignoré.
+      if (!req.headers.has(QUIET_ERRORS_HEADER) && shouldAnnounce(error.status)) {
+        toast.error('Action impossible', httpFailureMessage(error, 'ces données'));
       }
 
       return throwError(() => error);
