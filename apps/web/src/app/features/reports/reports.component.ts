@@ -5,7 +5,13 @@ import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.directive';
 import { LucideAngularModule, BarChart3, ChevronRight, Route, Clock, Gauge, Play, ChevronDown, Truck, Check, MessageSquare, Pencil, UserRound, Download, Calendar, FileText, Layers, ArrowUp, ArrowDown, ArrowUpDown, FileSpreadsheet, RotateCcw, MousePointerClick } from 'lucide-angular';
-import type { DriverDto, TripAnalysisDto, TripDailySummaryDto, TripDto } from '@vizyo/tracky-shared';
+import type {
+  DriverDto,
+  TripAnalysisDto,
+  TripDailySummaryDto,
+  TripDto,
+  TripPeriodChartsDto,
+} from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
 import { DriversApiService } from '../../core/services/drivers.service';
 import { TripAnalysisApiService } from '../../core/services/trip-analysis.service';
@@ -402,7 +408,9 @@ import {
           <section class="rep-chart-card">
             <header class="rep-chart-head">
               <h2>Vitesses max</h2>
-              @if (tripsTruncated()) {
+              @if (periodCharts()) {
+                <p>Distribution sur la période</p>
+              } @else if (tripsTruncated()) {
                 <p>Sur les {{ listedTripCount() }} trajets les plus récents — pas toute la période</p>
               } @else {
                 <p>Distribution sur la période</p>
@@ -414,7 +422,9 @@ import {
           <section class="rep-chart-card">
             <header class="rep-chart-head">
               <h2>Fréquentation</h2>
-              @if (tripsTruncated()) {
+              @if (periodCharts()) {
+                <p>24h × 7j — sur toute la période</p>
+              } @else if (tripsTruncated()) {
                 <p>Sur les {{ listedTripCount() }} trajets les plus récents — pas toute la période</p>
               } @else {
                 <p>24h × 7j</p>
@@ -1758,13 +1768,29 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   /** Maxspeeds clampes pour l'histogramme (0..250 km/h). Recalcule a chaque
    *  changement de trips() (filtre vehicule, periode). */
-  protected readonly histoValues = computed<number[]>(() =>
-    this.trips().map((t) => this.clampSpeed(t.maxSpeed)),
-  );
+  /**
+   * Agrégat SERVEUR des deux graphiques de période (vitesses + fréquentation).
+   *
+   * ⚠️ Ils se calculaient depuis `trips()`, borné à 100 par la requête, tout en
+   * s'annonçant « sur la période ». Sur 30 jours et 2 738 trajets, la fréquentation ne
+   * couvrait qu'une journée et affichait zéro trajet le mardi, quand le tableau de la
+   * même page en comptait 132. Un graphique faux mais dessiné a plus d'autorité qu'un
+   * tableau juste — c'est ce qui rendait l'écart si trompeur.
+   */
+  protected readonly periodCharts = signal<TripPeriodChartsDto | null>(null);
 
-  /** Matrice 7×24 (lun→dim, 0h→23h) du nombre de trajets demarres a cette
-   *  case horaire. */
+  protected readonly histoValues = computed<number[]>(() => {
+    const agg = this.periodCharts();
+    // Repli sur l'échantillon tant que l'agrégat n'est pas arrivé (ou s'il a échoué) :
+    // un graphique partiel vaut mieux qu'une zone vide, et le titre dit lequel des deux
+    // est affiché.
+    return agg ? agg.speeds : this.trips().map((t) => this.clampSpeed(t.maxSpeed));
+  });
+
+  /** Matrice 7×24 (lun→dim, 0h→23h) du nombre de trajets demarres a cette case horaire. */
   protected readonly heatmapData = computed<number[][]>(() => {
+    const agg = this.periodCharts();
+    if (agg) return agg.heatmap;
     const matrix: number[][] = Array.from({ length: 7 }, () => new Array(24).fill(0));
     for (const t of this.trips()) {
       if (!t.startedAt) continue;
@@ -2131,6 +2157,31 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
   }
 
+  /**
+   * Charge l'agrégat des graphiques de période.
+   *
+   * ⚠️ Le garde anti-course (`seq`) est le MÊME que celui de `loadData` : sans lui, la
+   * réponse d'une période abandonnée pourrait repeindre les graphiques d'une période
+   * plus récente — et l'écran afficherait des chiffres justes à côté de courbes fausses,
+   * ce qui est plus difficile à repérer que deux écrans faux.
+   *
+   * ⚠️ La liste est VIDÉE avant l'appel : garder l'ancienne pendant le chargement
+   * afficherait les vitesses de la période précédente sous le nouveau titre.
+   */
+  private async loadPeriodCharts(seq: number, params: Record<string, string>): Promise<void> {
+    this.periodCharts.set(null);
+    try {
+      const agg = await firstValueFrom(this.tripsApi.periodCharts(params));
+      if (seq !== this.loadSeq) return;
+      this.periodCharts.set(agg);
+    } catch (err) {
+      // Non bloquant : le repli sur l'échantillon prend le relais, et le titre le dit.
+      // La panne part quand même au centre d'alerte — un graphique qui se dégrade en
+      // silence redeviendrait invisible, ce que tout ce lot corrige.
+      swallow('reports:loadPeriodCharts', err);
+    }
+  }
+
   /** #40 — sequence anti-race : une reponse perimee ne doit pas ecraser une fraiche. */
   private loadSeq = 0;
 
@@ -2192,6 +2243,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
       this.loadError.set(failure ? httpFailureMessage(failure, 'les trajets') : null);
       this.trips.set(tripsRes.items);
       this.dailySummary.set(summary);
+      // Agrégat des deux graphiques de période. Chargé À PART et sans bloquer : il porte
+      // le confort (deux graphiques), pas les chiffres — les KPI viennent du résumé
+      // journalier. Un échec ici laisse l'écran utilisable, avec le repli sur
+      // l'échantillon, annoncé comme tel par le titre.
+      void this.loadPeriodCharts(seq, summaryParams);
       // Traçabilité fine (P4c) : les badges d'analyse ne s'affichent QUE pour un véhicule choisi
       // (sinon les trajets couvrent plusieurs véhicules, pas de chargement en lot possible).
       void this.loadAnalyses(seq);

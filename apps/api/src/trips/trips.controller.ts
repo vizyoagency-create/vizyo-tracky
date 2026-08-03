@@ -44,6 +44,26 @@ export class TripsController {
     return this.trips.dailySummary(await this.rb(req), { vehicleId, vehicleIds, from, to, fleetId });
   }
 
+  /**
+   * Données des graphiques « Vitesses max » et « Fréquentation », sur la période ENTIÈRE.
+   *
+   * ⚠️ DOIT rester déclaré AVANT `@Get(':id')` : Nest résout les routes dans l'ordre de
+   * déclaration, et `:id` capturerait « period-charts » comme un identifiant de trajet.
+   * C'est la même raison qui place `daily-summary` juste au-dessus.
+   */
+  @Get('period-charts')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
+  async periodCharts(
+    @Req() req: AuthenticatedRequest,
+    @Query('vehicleId') vehicleId?: string,
+    @Query('vehicleIds') vehicleIds?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('fleetId') fleetId?: string,
+  ) {
+    return this.trips.periodCharts(await this.rb(req), { vehicleId, vehicleIds, from, to, fleetId });
+  }
+
   @Get(':id')
   @Roles(UserRole.SUPER_ADMIN, UserRole.FLEET_ADMIN, UserRole.FLEET_MANAGER, UserRole.VIEWER)
   async findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {

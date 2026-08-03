@@ -1,3 +1,4 @@
+import { DecimalPipe } from '@angular/common';
 import {
   AfterViewInit,
   ChangeDetectionStrategy,
@@ -54,6 +55,9 @@ export interface LineBarChartData {
 @Component({
   selector: 'app-line-bar-chart',
   standalone: true,
+  // `DecimalPipe` : les valeurs du tableau accessible passent par la locale de
+  // l'application, comme partout ailleurs (cf. le commentaire dans le gabarit).
+  imports: [DecimalPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div
@@ -73,12 +77,20 @@ export interface LineBarChartData {
           </tr>
         </thead>
         <tbody>
+          <!--
+            ⚠️ Les nombres passent par le pipe, donc par la locale de l'application.
+            Sans lui, ils s'affichaient au format JS brut (« 870.1 ») alors que le reste
+            de la page est en français (« 6 195,2 »). Ce tableau est masqué visuellement
+            (classe sr-only) : il n'est pas VU, il est LU par les lecteurs d'écran — un
+            utilisateur malvoyant entendait donc « huit cent soixante-dix POINT un ». Une
+            valeur qu'on ne montre qu'aux lecteurs d'écran mérite le même soin.
+          -->
           @for (lbl of data().labels; track lbl; let i = $index) {
             <tr>
               <td>{{ lbl }}</td>
               <td>{{ data().tripCounts[i] }}</td>
-              <td>{{ data().distancesKm[i] }}</td>
-              <td>{{ data().durationsHours[i] }}</td>
+              <td>{{ data().distancesKm[i] | number: '1.0-1' }}</td>
+              <td>{{ data().durationsHours[i] | number: '1.0-2' }}</td>
             </tr>
           }
         </tbody>

@@ -52,6 +52,21 @@ export interface TripDailySummaryDto {
   maxSpeed: number;
 }
 
+/**
+ * Données des graphiques de période — agrégées CÔTÉ SERVEUR, sans plafond.
+ *
+ * ⚠️ Ces deux graphiques se calculaient depuis la liste affichée des trajets, bornée à
+ * 100. Sur 30 jours et 2 738 trajets, la fréquentation ne couvrait qu'une journée et
+ * affichait zéro trajet le mardi, quand le résumé journalier de la même page en comptait
+ * 132. Un graphique faux mais dessiné a plus d'autorité qu'un tableau juste.
+ */
+export interface TripPeriodChartsDto {
+  /** Vitesse max de CHAQUE trajet de la période (déjà plafonnée aux valeurs plausibles). */
+  speeds: number[];
+  /** Grille 7×24 des départs, **lundi = 0**, en heure d'Europe/Paris. */
+  heatmap: number[][];
+}
+
 export interface TripRecomputeResultDto {
   deleted: number;
   created: number;
