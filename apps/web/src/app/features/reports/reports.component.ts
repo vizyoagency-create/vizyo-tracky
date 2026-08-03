@@ -1,3 +1,4 @@
+import { httpFailureMessage } from '../../core/services/http-failure';
 import { ChangeDetectionStrategy, Component, computed, effect, ElementRef, HostListener, inject, OnDestroy, OnInit, signal, viewChild } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -431,9 +432,37 @@ import {
         </section>
       }
 
+      @if (loadError() && trips().length > 0) {
+        <!--
+          Panne PARTIELLE : une des deux requetes a echoue, l'autre a repondu. On montre ce
+          qu'on a, en disant clairement que la vue est incomplete — plutot que de laisser
+          croire a des chiffres complets, ou de tout cacher.
+        -->
+        <div class="flex items-center justify-between gap-3 mb-3 px-4 py-2 rounded-[--radius-card]
+                    bg-bg-secondary border border-amber-500/40 text-fg-secondary text-sm">
+          <span>{{ loadError() }} Les données affichées sont incomplètes.</span>
+          <button type="button" class="btn-secondary text-xs shrink-0" (click)="loadData()">Réessayer</button>
+        </div>
+      }
+
       @if (loading()) {
         <div class="flex items-center justify-center h-32">
           <span class="w-6 h-6 border-2 border-fg-tertiary border-t-tracky-light rounded-full animate-spin"></span>
+        </div>
+      } @else if (loadError() && trips().length === 0) {
+        <!--
+          ⚠️ AVANT l'etat vide, sinon invisible : en panne la liste est vide, donc la
+          branche du dessous l'avalerait et l'ecran rejouerait « Aucun trajet ».
+
+          ⚠️ ET conditionne a une liste VIDE : les deux appels (trajets / resume journalier)
+          echouent independamment. Si seul le resume tombe, les trajets sont bien la — les
+          masquer derriere un ecran de panne serait une seconde perte de donnees. Ce cas-la
+          est signale par le bandeau ci-dessus, au-dessus du tableau.
+        -->
+        <div class="flex flex-col items-center justify-center gap-3 h-32 rounded-[--radius-card]
+                    bg-bg-secondary border border-border-subtle text-fg-secondary">
+          <span>{{ loadError() }}</span>
+          <button type="button" class="btn-secondary text-xs" (click)="loadData()">Réessayer</button>
         </div>
       } @else if (trips().length === 0) {
         <div class="flex items-center justify-center h-32 rounded-[--radius-card]
@@ -1258,6 +1287,15 @@ export class ReportsComponent implements OnInit, OnDestroy {
   protected readonly trips = signal<TripDto[]>([]);
   protected readonly dailySummary = signal<TripDailySummaryDto[]>([]);
   protected readonly loading = signal(true);
+  /**
+   * Message de PANNE du chargement, distinct de l'etat « aucun trajet ».
+   *
+   * ⚠️ Les deux « catch » de loadData() renvoyaient une liste VIDE : une panne serveur, un
+   * 403 ou une session expiree s'affichaient donc « Aucun trajet pour cette periode » —
+   * la reponse metier d'une periode reellement sans trajet. Le gestionnaire en concluait
+   * que ses vehicules n'avaient pas roule.
+   */
+  protected readonly loadError = signal<string | null>(null);
   protected readonly recomputing = signal(false);
   protected readonly replayTrip = signal<TripDto | null>(null);
   protected readonly noteEditTrip = signal<TripDto | null>(null);
@@ -2066,27 +2104,36 @@ export class ReportsComponent implements OnInit, OnDestroy {
       }
 
       // Fetch trips + daily summary en parallele : meme periode, meme vehicule.
-      // Si l'un fail, l'autre peut quand meme alimenter ses charts.
+      // Si l'un fail, l'autre peut quand meme alimenter ses charts — mais on RETIENT
+      // l'echec au lieu de le deguiser en liste vide.
+      //
+      // ⚠️ Ces deux `.catch()` renvoyaient un resultat vide SANS trace : l'ecran affichait
+      // « Aucun trajet pour cette periode », c'est-a-dire une reponse metier plausible,
+      // pour une panne serveur ou une session expiree. Une panne muette qui ressemble a
+      // une reponse valide est pire qu'une erreur affichee : personne ne la signale.
+      let failure: unknown = null;
       const [tripsRes, summary] = await Promise.all([
         firstValueFrom(this.tripsApi.list(tripParams)).catch(
-          () => ({ items: [] as TripDto[], nextCursor: null }),
+          (err: unknown) => { failure ??= err; return { items: [] as TripDto[], nextCursor: null }; },
         ),
         firstValueFrom(this.tripsApi.dailySummary(summaryParams)).catch(
-          () => [] as TripDailySummaryDto[],
+          (err: unknown) => { failure ??= err; return [] as TripDailySummaryDto[]; },
         ),
       ]);
       // #40 — une requete plus recente a ete lancee entre-temps : on ignore ce
       // resultat perime (sinon une reponse lente ecrase des donnees plus fraiches).
       if (seq !== this.loadSeq) return;
+      this.loadError.set(failure ? httpFailureMessage(failure, 'les trajets') : null);
       this.trips.set(tripsRes.items);
       this.dailySummary.set(summary);
       // Traçabilité fine (P4c) : les badges d'analyse ne s'affichent QUE pour un véhicule choisi
       // (sinon les trajets couvrent plusieurs véhicules, pas de chargement en lot possible).
       void this.loadAnalyses(seq);
-    } catch {
+    } catch (err) {
       if (seq === this.loadSeq) {
         this.trips.set([]);
         this.dailySummary.set([]);
+        this.loadError.set(httpFailureMessage(err, 'les trajets'));
       }
     } finally {
       if (seq === this.loadSeq) this.loading.set(false);

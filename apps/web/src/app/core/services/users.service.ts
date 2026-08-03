@@ -1,3 +1,4 @@
+import { HttpFailure } from './http-failure';
 import { inject, Injectable } from '@angular/core';
 import { AuthService } from './auth.service';
 
@@ -98,7 +99,14 @@ export class UsersApiService {
     const qs = params.toString();
     const url = `/api/users${qs ? '?' + qs : ''}`;
     const res = await fetch(url, { headers: this.headers });
-    if (!res.ok) throw new Error('Failed to load users');
+    // ⚠️ Le statut DOIT voyager avec l'erreur. Sans lui, l'ecran ne peut pas distinguer
+    // « session expiree » (401) d'« interdit » (403) ou d'une panne serveur — il affichait
+    // donc « Aucun utilisateur dans votre flotte » pour les trois.
+    //
+    // ⚠️ Cet appel utilise `fetch` NATIF, donc il ne traverse PAS les intercepteurs HTTP :
+    // le 401 ne declenche ni deconnexion ni message « Session expiree ». L'appelant doit
+    // s'en charger, faute de quoi l'utilisateur reste devant un ecran vide et muet.
+    if (!res.ok) throw new HttpFailure(res.status, 'Chargement des utilisateurs impossible');
     const body = await res.json();
     // Backward compat: without includePending the API returns a plain array
     if (Array.isArray(body)) return { users: body, pendingInvitations: [] };

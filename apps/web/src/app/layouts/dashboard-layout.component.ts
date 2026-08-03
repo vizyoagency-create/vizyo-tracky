@@ -27,7 +27,7 @@ import {
   Moon,
   Sparkles,
   AlarmClock,
-  MapPin, ShieldCheck } from 'lucide-angular';
+  MapPin, ShieldCheck, Plug } from 'lucide-angular';
 import { ThemeService } from '../core/theme/theme.service';
 import { AlertsBellComponent } from '../shared/ui/alerts-bell/alerts-bell.component';
 import { FleetSelectorComponent } from '../shared/ui/super-admin-context/fleet-selector.component';
@@ -1092,6 +1092,14 @@ export class DashboardLayoutComponent {
       // Demande 2026-07 — « Activité flotte » : contrôle des coupures/rallumages moteur + présence
       // + historique de SA flotte. FLEET_ADMIN uniquement (le super-admin a son propre /admin/activity).
       ...(this.auth.user()?.role === 'FLEET_ADMIN' ? [{ label: 'Activité flotte', route: '/fleet-admin/activity', icon: Activity }] : []),
+      // ⚠️ ECRAN SANS CHEMIN DE RETOUR (audit du 2026-08-03).
+      //
+      // Le client consent au partage partenaire depuis un lien d'e-mail, sur un ecran qui
+      // promet « vous pouvez le couper a tout moment ». La route existait et etait gardee,
+      // mais AUCUN lien de l'application n'y menait : passe le mail, la seule facon d'y
+      // revenir etait de connaitre l'URL. Une promesse de reversibilite sans porte de
+      // sortie n'est pas une promesse.
+      ...(this.perms.can('integrations_manage') ? [{ label: 'Intégrations', route: '/integrations', icon: Plug }] : []),
     ];
     return ([
       { section: 'Supervision', items: supervision },
