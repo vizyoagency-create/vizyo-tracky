@@ -36,6 +36,59 @@ const MAX_SPEEDING_REFS = 25;
  */
 const MIN_ANALYSES_FOR_RANKING = 20;
 
+/**
+ * Force de rappel vers la moyenne de flotte, pour le score de CLASSEMENT.
+ *
+ * ══ Le problème que ça résout ═══════════════════════════════════════════════════════
+ *
+ * Le seuil ci-dessus écarte l'immesurable, mais ne règle pas l'injustice qui reste : un
+ * véhicule noté sur 21 trajets n'a eu que 21 occasions de mal faire, là où un autre en a
+ * eu 200. Moins on roule, moins on risque la faute — et le classement récompensait
+ * mécaniquement les petits rouleurs.
+ *
+ * ══ La correction : moyenne bayésienne ═════════════════════════════════════════════
+ *
+ *     score_classement = (n × score_observé + C × moyenne_flotte) / (n + C)
+ *
+ * Chaque entité démarre à la moyenne de la flotte et s'en éloigne à mesure qu'elle
+ * accumule des trajets. C'est la formule utilisée pour classer des films notés par un
+ * nombre très inégal de votants — exactement le même problème.
+ *
+ * Avec C = 20 :
+ *     21 trajets  → la note observée pèse 51 %  (le reste tire vers la moyenne)
+ *     60 trajets  → 75 %
+ *    200 trajets  → 91 %
+ *
+ * Un véhicule irréprochable sur 21 trajets reste donc bien classé — mais derrière un
+ * véhicule tout aussi propre sur 200. C'est le sens de « équilibré » : la preuve compte
+ * autant que la performance.
+ *
+ * ⚠️ C est ÉGAL au seuil, et ce n'est pas une coïncidence : au moment précis où une
+ * entité devient classable, sa note pèse la moitié. Deux constantes différentes ici
+ * créeraient une marche invisible à l'entrée du classement.
+ *
+ * ⚠️ La note AFFICHÉE reste la note observée — c'est celle qui décrit la conduite, et un
+ * conducteur doit reconnaître la sienne. Seul l'ORDRE utilise le score pondéré.
+ */
+const RANKING_CONFIDENCE = MIN_ANALYSES_FOR_RANKING;
+
+/**
+ * En deçà de cet écart, deux scores de classement sont tenus pour ÉQUIVALENTS, et c'est
+ * le nombre de trajets qui départage.
+ *
+ * ⚠️ Pourquoi il faut ce complément à la moyenne bayésienne. Celle-ci rapproche les petits
+ * échantillons de la moyenne de flotte, mais elle n'INVERSE jamais un ordre : un véhicule
+ * à 97/100 sur 21 trajets restait devant un véhicule à 96/100 sur 300, quelle que soit la
+ * force du rappel. Le vérifier a demandé de poser le calcul — la formule seule ne suffit
+ * pas, et augmenter sa constante aurait écrasé les écarts RÉELS en même temps, au point
+ * de transformer le classement en compteur de kilomètres.
+ *
+ * Un point d'écart mesuré sur 21 trajets n'est pas un fait : c'est du bruit. Sous ce
+ * seuil, on tranche donc par ce qui est solide — le volume sur lequel la performance a été
+ * démontrée. Au-delà, l'écart de conduite reprend la main, ce qui est bien le but.
+ */
+const RANKING_TIE_POINTS = 1;
+
 type SpeedingRef = { tripId: string; vehicleId: string; startedAt: Date };
 
 type Agg = {
@@ -273,9 +326,45 @@ export class DrivingScoreService {
     const classables = aggs.filter((g) => !g.dormant && g.trips >= MIN_ANALYSES_FOR_RANKING);
     const insuffisants = aggs.filter((g) => !g.dormant && g.trips < MIN_ANALYSES_FOR_RANKING);
 
+    // ══ ORDRE DU CLASSEMENT : moyenne bayésienne ═════════════════════════════════════
+    //
+    // La moyenne de flotte se calcule AVANT le tri, sur les seules lignes classables :
+    // c'est le point d'ancrage vers lequel les petits échantillons sont ramenés.
+    const fleetSum = classables.reduce((s, g) => s + g.sumScore, 0);
+    const fleetTrips = classables.reduce((s, g) => s + g.trips, 0);
+    const fleetMean = fleetTrips > 0 ? fleetSum / fleetTrips : 0;
+
+    /**
+     * Score de CLASSEMENT — jamais affiché, il ne sert qu'à ordonner.
+     *
+     * ⚠️ Un véhicule noté sur 21 trajets n'a eu que 21 occasions de mal faire, là où un
+     * autre en a eu 200 : sans cette pondération, moins on roule, mieux on est classé.
+     * Ici, chaque entité part de la moyenne de flotte et gagne le droit de s'en écarter à
+     * mesure qu'elle accumule des trajets.
+     */
+    const rankingScore = (g: Agg): number =>
+      (g.trips * (g.sumScore / g.trips) + RANKING_CONFIDENCE * fleetMean) /
+      (g.trips + RANKING_CONFIDENCE);
+
     const rows: DrivingScoreRowDto[] = classables
-      .map(toRow)
-      .sort((a, b) => b.score - a.score || b.tripCount - a.tripCount);
+      .map((g) => ({ row: toRow(g), rank: rankingScore(g), trips: g.trips }))
+      .sort((a, b) => {
+        // ⚠️ DEUX SCORES À MOINS D'UN POINT NE SONT PAS DISTINGUABLES.
+        //
+        // La moyenne bayésienne rapproche les petits échantillons de la moyenne, mais elle
+        // n'INVERSE jamais un ordre : un véhicule à 97/100 sur 21 trajets restait devant un
+        // véhicule à 96/100 sur 300, quel que soit le poids donné au rappel. C'est une
+        // propriété de la formule, pas un réglage à durcir — augmenter la constante
+        // écraserait aussi les écarts réels, et le classement deviendrait un compteur de
+        // kilomètres.
+        //
+        // Or un point d'écart mesuré sur 21 trajets n'est pas un fait : c'est du bruit.
+        // Sous ce seuil, on tranche donc par ce qui EST solide — le nombre de trajets sur
+        // lequel la performance a été démontrée.
+        if (Math.abs(a.rank - b.rank) < RANKING_TIE_POINTS) return b.trips - a.trips;
+        return b.rank - a.rank;
+      })
+      .map((x) => x.row);
 
     // Ordre : le plus proche du seuil en tête — c'est celui qui rejoindra le classement
     // en premier, donc celui dont la note commence à vouloir dire quelque chose.
