@@ -72,7 +72,19 @@ import { apiErrorMessage } from '../../core/error/api-error';
 
         <!-- Entrée IA (récit/conseils/comparaison). Si l'IA est coupée : TEASER d'activation (les
              chiffres déterministes ci-dessus donnent envie ; ici le CTA vers l'option payante). -->
-        @if (aiEnabled()) {
+        <!--
+          ⚠️ LIRE CE QUI EXISTE ≠ EN GÉNÉRER DU NOUVEAU (constat du 2026-08-03).
+
+          Ce bouton était la SEULE porte vers les récits déjà produits, et il était
+          conditionné au seul interrupteur d'achat. Couper l'IA ne masquait donc pas la
+          génération : ça cachait 4 409 récits déjà générés, déjà payés, toujours en base
+          (1 790 chez cdef31, 1 709 chez MH Cars, 910 chez A2R) — avec, à la place, une
+          invitation à acheter l'option pour obtenir ce qu'on possédait déjà.
+
+          La règle est désormais explicite : on peut TOUJOURS relire une analyse existante ;
+          seule la génération dépend de l'option active.
+        -->
+        @if (aiEnabled() || hasNarrative()) {
           <button type="button" class="tab-refresh" (click)="openDetail()" title="Récit IA, conseils & comparaison">
             <lucide-icon [img]="FileIcon" [size]="12"></lucide-icon> Récit IA
           </button>
@@ -147,16 +159,29 @@ import { apiErrorMessage } from '../../core/error/api-error';
                     <p>{{ a.advice }}</p>
                   </section>
                 }
-              } @else {
+              } @else if (aiEnabled()) {
                 <p class="taid-empty">Les chiffres du trajet sont déjà calculés. Générez le récit IA ci-dessous pour une lecture vulgarisée + des conseils.</p>
               }
 
-              <div class="taid-actions">
-                <button type="button" class="taid-btn" (click)="runNarrate()" [disabled]="busyNarrate()">
-                  @if (busyNarrate()) { <lucide-icon [img]="LoaderIcon" [size]="14" class="tab-spin"></lucide-icon> Génération… }
-                  @else { <lucide-icon [img]="SparklesIcon" [size]="14"></lucide-icon> {{ a.narrative ? 'Régénérer' : 'Générer le récit IA' }} }
-                </button>
-              </div>
+              <!--
+                ⚠️ LA GÉNÉRATION, elle, dépend bien de l'option : c'est elle qui consomme.
+                Sans cette garde, le bouton restait cliquable option coupée — l'appel
+                partait, le serveur le refusait, et l'utilisateur recevait une erreur pour
+                une action que l'écran lui avait proposée.
+              -->
+              @if (aiEnabled()) {
+                <div class="taid-actions">
+                  <button type="button" class="taid-btn" (click)="runNarrate()" [disabled]="busyNarrate()">
+                    @if (busyNarrate()) { <lucide-icon [img]="LoaderIcon" [size]="14" class="tab-spin"></lucide-icon> Génération… }
+                    @else { <lucide-icon [img]="SparklesIcon" [size]="14"></lucide-icon> {{ a.narrative ? 'Régénérer' : 'Générer le récit IA' }} }
+                  </button>
+                </div>
+              } @else {
+                <p class="taid-empty">
+                  Ce récit a été produit lorsque l'option IA était active — il reste consultable.
+                  Réactivez l'option pour en générer de nouveaux.
+                </p>
+              }
               @if (detailError(); as e) { <p class="taid-err">{{ e }}</p> }
             }
           </div>
@@ -248,8 +273,20 @@ export class TripAnalysisBadgesComponent {
   private readonly api = inject(TripAnalysisApiService);
   private readonly aiStatus = inject(AiStatusService);
 
-  /** IA activée pour la flotte de l'utilisateur ? (masque « Récit IA » / génération). */
+  /** IA activée pour la flotte ? Conditionne la GÉNÉRATION, jamais la lecture. */
   protected readonly aiEnabled = computed(() => this.aiStatus.enabled());
+
+  /**
+   * Ce trajet a-t-il DÉJÀ un récit en base ?
+   *
+   * ⚠️ Sépare « je peux relire » de « je peux produire ». Un récit déjà généré appartient
+   * au client : il reste lisible même après la fin de l'option, comme une facture reste
+   * consultable après la fin d'un abonnement.
+   */
+  protected readonly hasNarrative = computed(() => {
+    const a = this.current();
+    return !!(a?.narrative || a?.advice || a?.trustScore != null);
+  });
 
   constructor() {
     this.aiStatus.ensureLoaded();

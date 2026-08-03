@@ -163,17 +163,32 @@ import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
                   </div>
 
                   <!--
-                    Analyse IA — la section n'est RENDUE que si l'IA est active pour la société
-                    (option souscrite + non coupée). Sinon : rien, pas même une analyse passée.
+                    ⚠️ CE COMMENTAIRE DISAIT : « Sinon : rien, pas même une analyse passée. »
+                    C'était un choix assumé, et c'est celui qu'on corrige (2026-08-03).
+
+                    Une analyse déjà produite appartient au client : elle a été payée, elle
+                    est en base, et la relire ne coûte rien. La cacher parce que l'option
+                    n'est plus souscrite revient à reprendre une marchandise livrée — et
+                    c'est ce qui arrivait aux 4 409 récits de trajets, même défaut.
+
+                    La section apparaît donc si l'option est active OU si une analyse
+                    existe ; seul le bouton « Analyser » dépend de l'option.
                   -->
-                  @if (aiVisible()) {
+                  @if (aiVisible() || analysisOf(p.id)) {
                     <div class="lk-ai">
                       <div class="lk-ai-head">
                         <span class="lk-ai-title">
                           <lucide-icon [img]="SparklesIcon" [size]="13"></lucide-icon>
                           Analyse du lieu
                         </span>
-                        @if (canAnalyze()) {
+                        <!--
+                          ⚠️ DEUX conditions, et elles disent deux choses différentes :
+                          la permission d'un côté, l'option souscrite de l'autre. Sans la
+                          seconde, le bouton restait cliquable option coupée : l'appel
+                          partait, le serveur le refusait, et le client récoltait une
+                          erreur pour une action que l'écran lui proposait.
+                        -->
+                        @if (canAnalyze() && aiVisible()) {
                           <button
                             type="button"
                             class="lk-btn lk-btn--ai"
@@ -532,8 +547,12 @@ export class PlacesComponent {
     }
     this.expandedPlaceId.set(p.id);
     // Analyse IA DÉJÀ calculée : simple lecture en base, aucun appel moteur, donc gratuite.
-    // Chargée seulement si l'IA est active pour la société (sinon la section n'existe pas).
-    if (this.aiVisible() && !(p.id in this.analysisByPlace())) {
+    //
+    // ⚠️ Chargée MÊME SI l'option est coupée. Elle ne l'était que si `aiVisible()` — donc
+    // une analyse existante restait invisible et, pire, l'écran ne pouvait même pas SAVOIR
+    // qu'elle existait pour décider de l'afficher. Une lecture gratuite n'a aucune raison
+    // d'être conditionnée à une option payante.
+    if (!(p.id in this.analysisByPlace())) {
       void firstValueFrom(this.api.analysis(p.id))
         .then((a) => this.analysisByPlace.update((m) => ({ ...m, [p.id]: a })))
         .catch(() => this.analysisByPlace.update((m) => ({ ...m, [p.id]: null })));
