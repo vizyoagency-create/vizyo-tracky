@@ -5,6 +5,7 @@ import { AdminLogsController } from './admin-logs.controller';
 import { AllExceptionsFilter } from './all-exceptions.filter';
 import { CobanWireLogger } from './coban-wire-logger.service';
 import { DependencyHeartbeatService } from './dependency-heartbeat.service';
+import { ScheduledTaskHeartbeatService } from './scheduled-task-heartbeat.service';
 import { ErrorLogger } from './error-logger.service';
 import { ErrorRateWatchdogService } from './error-rate-watchdog.service';
 import { LogCleanupService } from './log-cleanup.service';
@@ -21,6 +22,9 @@ import { LogCleanupService } from './log-cleanup.service';
     // Sonde active des dépendances : détecte les pannes SILENCIEUSES (une dépendance morte mais
     // non sollicitée n'écrit aucune erreur, donc la vigie de volume ci-dessus reste muette).
     DependencyHeartbeatService,
+    // Sonde des taches PLANIFIEES : une tache a l arret ne produit aucun evenement,
+    // donc aucune alerte. Il faut aller chercher son silence (incident du 2026-08-03).
+    ScheduledTaskHeartbeatService,
     LogCleanupService,
     {
       provide: APP_FILTER,
