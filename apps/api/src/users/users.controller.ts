@@ -1,4 +1,4 @@
-import { requiredFleetScope } from '../common/tenant-scope';
+import { NO_FLEET, requiredFleetScope } from '../common/tenant-scope';
 import { AuthAccountSyncService } from './auth-account-sync.service';
 import {
   BadRequestException, Body, Controller, Delete, ForbiddenException, Get, HttpCode, HttpStatus,
@@ -892,8 +892,14 @@ export class UsersController {
     const vehicleIds = entries.filter((e) => e.type === 'VEHICLE' && e.vehicleId).map((e) => e.vehicleId!);
 
     if (groupIds.length > 0) {
+      // ⚠️ `?? undefined` RENDAIT LA GARDE INERTE quand la societe est nulle : la clause
+      // disparaissait du `where` et TOUS les groupes/vehicules de TOUTES les societes
+      // passaient le controle. La garde cessait de garder exactement dans le cas ou elle
+      // compte — un compte orphelin (societe supprimee, `Fleet.onDelete: SetNull`).
+      // `NO_FLEET` est une societe IMPOSSIBLE : plus rien ne matche, l'operation echoue
+      // franchement au lieu d'autoriser en silence.
       const found = await this.prisma.vehicleGroup.findMany({
-        where: { id: { in: groupIds }, fleetId: targetUserFleetId ?? undefined },
+        where: { id: { in: groupIds }, fleetId: targetUserFleetId ?? NO_FLEET },
         select: { id: true },
       });
       if (found.length !== groupIds.length) {
@@ -905,7 +911,7 @@ export class UsersController {
 
     if (vehicleIds.length > 0) {
       const found = await this.prisma.vehicle.findMany({
-        where: { id: { in: vehicleIds }, fleetId: targetUserFleetId ?? undefined },
+        where: { id: { in: vehicleIds }, fleetId: targetUserFleetId ?? NO_FLEET },
         select: { id: true },
       });
       if (found.length !== vehicleIds.length) {

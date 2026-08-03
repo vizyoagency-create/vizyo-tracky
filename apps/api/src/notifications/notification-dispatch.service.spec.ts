@@ -1440,3 +1440,108 @@ describe('NotificationDispatchService.notifyUsers — socle generique', () => {
     expect(t.sendToUser.mock.calls[0][0]).toBe('sa');
   });
 });
+
+
+/**
+ * LE MOTIF DOIT DIRE LA VERITE.
+ *
+ * ── Le defaut (audit du 2026-08-03) ─────────────────────────────────────────────────
+ * `shouldPushAlert` refuse dans cet ordre : interrupteur maitre, FAMILLE, type, severite.
+ * Le ternaire qui NOMME le motif ignorait la famille — ajoutee plus tard sans lui. Couper
+ * « Alertes vehicule » produisait donc le motif « sous le seuil de severite ».
+ *
+ * Consequence en cascade : le centre de notifications affichait « Sous le seuil de
+ * severite choisi », et l'ecran de reglages prescrivait « abaissez le seuil » — DEUX
+ * LIGNES sous son propre message « Sans effet : la famille est coupee juste au-dessus ».
+ * Un remede prouve inoperant.
+ *
+ * ⚠️ Un motif FAUX est pire qu'un motif absent : il envoie corriger le mauvais reglage.
+ */
+describe('NotificationDispatchService — le motif de retenue ne ment pas', () => {
+  function build(preference: Record<string, unknown>) {
+    const deliveryCreate = jest.fn().mockResolvedValue({});
+    const prisma = {
+      alertRule: { findMany: jest.fn().mockResolvedValue([]) },
+      user: {
+        findMany: jest.fn(async (args: { where?: Record<string, unknown> }) =>
+          (args?.where as { role?: string })?.role === UserRole.SUPER_ADMIN
+            ? [{ id: 'sa', email: 'sa@x.test', fleetId: null, role: UserRole.SUPER_ADMIN, isActive: true }]
+            : [],
+        ),
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+      notificationPreference: { findMany: jest.fn().mockResolvedValue([preference]) },
+      notificationDelivery: { create: deliveryCreate, findMany: jest.fn().mockResolvedValue([]) },
+      smsLog: { findFirst: jest.fn().mockResolvedValue(null) },
+      surveillanceProfile: { findUnique: jest.fn().mockResolvedValue(null) },
+    };
+    const svc = new NotificationDispatchService(
+      prisma as never,
+      { sendToUser: jest.fn().mockResolvedValue({ sent: 1, failed: 0, results: [] }) } as never,
+      { send: jest.fn(), buildAlertEmail: jest.fn().mockReturnValue('<html/>') } as never,
+      { send: jest.fn() } as never,
+      { recordBackground: jest.fn(), record: jest.fn() } as never,
+      { get: () => 'ALL' } as never,
+      { evaluate: jest.fn().mockResolvedValue(new Map()) } as never,
+      { check: jest.fn(async (ids: string[]) => new Map(ids.map((id) => [id, 'ok']))) } as never,
+    );
+    return { svc, deliveryCreate };
+  }
+
+  const alert = {
+    id: 'a1', fleetId: 'f1', vehicleId: 'v1', type: 'SOS', severity: 'CRITICAL',
+    title: 'SOS', message: 'Bouton SOS', createdAt: new Date(),
+    acknowledgedAt: null, escalatedAt: null, vehicle: { plate: 'AA-111-AA' },
+  };
+
+  /** Motif reellement ecrit au journal pour la ligne retenue. */
+  const reasonOf = (create: jest.Mock) =>
+    (create.mock.calls[0]?.[0] as { data?: { reason?: string } } | undefined)?.data?.reason;
+
+  it('⚠️ famille coupee -> motif « famille coupee », PAS « seuil de severite »', async () => {
+    const t = build({
+      userId: 'sa', pushEnabled: true, minSeverity: 'INFO',
+      mutedTypes: [], mutedCategories: ['ALERT'],
+    });
+    await t.svc.dispatchAlert(alert as never);
+    expect(reasonOf(t.deliveryCreate)).toBe('preference_category_muted');
+  });
+
+  it('type coupe -> motif « type coupe »', async () => {
+    const t = build({
+      userId: 'sa', pushEnabled: true, minSeverity: 'INFO',
+      mutedTypes: ['SOS'], mutedCategories: [],
+    });
+    await t.svc.dispatchAlert(alert as never);
+    expect(reasonOf(t.deliveryCreate)).toBe('preference_type_muted');
+  });
+
+  it('seuil trop haut -> motif « seuil de severite »', async () => {
+    const t = build({
+      userId: 'sa', pushEnabled: true, minSeverity: 'CRITICAL',
+      mutedTypes: [], mutedCategories: [],
+    });
+    await t.svc.dispatchAlert({ ...alert, severity: 'INFO' } as never);
+    expect(reasonOf(t.deliveryCreate)).toBe('preference_severity');
+  });
+
+  it('⚠️ la FAMILLE l emporte sur le seuil — l ordre suit celui de la decision', async () => {
+    // Les deux raisons s'appliquent. Le motif doit nommer celle qui a REELLEMENT
+    // bloque en premier, sinon on renvoie l'utilisateur vers un reglage sans effet.
+    const t = build({
+      userId: 'sa', pushEnabled: true, minSeverity: 'CRITICAL',
+      mutedTypes: [], mutedCategories: ['ALERT'],
+    });
+    await t.svc.dispatchAlert({ ...alert, severity: 'INFO' } as never);
+    expect(reasonOf(t.deliveryCreate)).toBe('preference_category_muted');
+  });
+
+  it('interrupteur maitre coupe -> motif « push desactive », avant tout le reste', async () => {
+    const t = build({
+      userId: 'sa', pushEnabled: false, minSeverity: 'INFO',
+      mutedTypes: ['SOS'], mutedCategories: ['ALERT'],
+    });
+    await t.svc.dispatchAlert(alert as never);
+    expect(reasonOf(t.deliveryCreate)).toBe('preference_disabled');
+  });
+});
