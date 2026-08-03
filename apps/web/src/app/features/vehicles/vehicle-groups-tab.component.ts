@@ -1,3 +1,5 @@
+import { ToastService } from '../../shared/ui/toast/toast.service';
+import { httpFailureMessage } from '../../core/services/http-failure';
 import { Component, computed, effect, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -187,6 +189,7 @@ import { VehicleLinkDirective } from '../../shared/directives/vehicle-link.direc
 })
 export class VehicleGroupsTabComponent implements OnInit {
   private readonly groupsService = inject(VehicleGroupsService);
+  private readonly toast = inject(ToastService);
   private readonly vehiclesApi = inject(VehiclesApiService);
   private readonly fleetsApi = inject(FleetsApiService);
   private readonly auth = inject(AuthService);
@@ -331,7 +334,9 @@ export class VehicleGroupsTabComponent implements OnInit {
       this.showDeleteModal.set(false);
       this.groupToDelete.set(null);
       await this.load();
-    } catch { /* error */ }
-    finally { this.deleting.set(false); }
+    } catch (err) {
+      // `fetch` natif : hors intercepteur, donc le toast se pose ici ou nulle part.
+      this.toast.error('Suppression impossible', httpFailureMessage(err, 'ce groupe'));
+    } finally { this.deleting.set(false); }
   }
 }

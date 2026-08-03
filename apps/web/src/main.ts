@@ -1,4 +1,26 @@
+import { registerLocaleData } from '@angular/common';
+import localeFr from '@angular/common/locales/fr';
 import { bootstrapApplication } from '@angular/platform-browser';
+
+/**
+ * ── POURQUOI CET ENREGISTREMENT (incident du 2026-07-29) ─────────────────────────────
+ *
+ * Angular n'embarque QUE la locale « en-US ». Deux pipes de l'écran « Abonnements & tarifs »
+ * demandent explicitement la locale française — `{{ x | number : '1.0-0' : 'fr' }}` — et
+ * Angular ne trouvait pas les données correspondantes. `DecimalPipe` réemballe alors
+ * l'erreur en **NG02100 (InvalidPipeArgument)**, qui remonte en erreur non rattrapée.
+ *
+ * Le premier de ces deux pipes affiche le REVENU ANNUEL TOTAL, en haut de page : l'écran
+ * de pilotage commercial cassait donc à l'affichage. Deux occurrences remontées au centre
+ * d'alerte le 29/07 depuis un iPhone, sans qu'aucun test ni aucun build ne le voie —
+ * `ng build` ne charge pas les locales, et l'erreur ne survient qu'à l'exécution du pipe.
+ *
+ * ⚠️ On enregistre la locale SANS toucher à `LOCALE_ID`. C'est délibéré : changer la locale
+ * par défaut modifierait le formatage de TOUS les nombres et de TOUTES les dates de
+ * l'application d'un seul coup. Ici on se contente de rendre disponible ce que deux pipes
+ * réclamaient déjà — le reste de l'application ne bouge pas d'un pixel.
+ */
+registerLocaleData(localeFr);
 import { appConfig } from './app/app.config';
 import { App } from './app/app';
 

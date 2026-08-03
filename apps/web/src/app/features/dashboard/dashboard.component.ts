@@ -1001,6 +1001,20 @@ export class DashboardComponent implements OnInit {
         meta.set(v.id, { type: cast.type ?? 'OTHER', plate: v.plate });
       });
       this.vehicleMetaMap.set(meta);
-    } catch { /* fallback to ALL */ }
+    } catch {
+      // ⚠️ NE PAS retomber sur « ALL ». Le champ vaut `'ALL'` à l'initialisation, ce qui
+      // signifie « aucune restriction par véhicule » : en sortant d'ici sans rien écrire,
+      // une panne de chargement OUVRAIT le périmètre au lieu de le fermer.
+      //
+      // L'impact réel restait borné — le serveur n'émet déjà que les positions du
+      // périmètre de l'utilisateur — mais c'est une seconde barrière, et une seconde
+      // barrière qui s'ouvre toute seule n'en est pas une. Un garde-fou doit échouer
+      // FERMÉ : ici, un ensemble vide, donc aucun véhicule affiché.
+      //
+      // L'écran ne ment pas pour autant : une liste vide se voit, contrairement à un
+      // périmètre élargi en silence.
+      this.accessibleVehicleIds.set(new Set());
+      this.vehicleMetaMap.set(new Map());
+    }
   }
 }

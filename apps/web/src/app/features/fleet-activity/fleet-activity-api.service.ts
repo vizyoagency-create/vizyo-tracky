@@ -1,3 +1,4 @@
+import { QUIET_ERRORS_HEADER } from '../../core/interceptors/auth.interceptor';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
@@ -12,8 +13,14 @@ import type { ActivityFeedItemDto, EngineCommandAuditDto, OnlineUserDto } from '
 export class FleetActivityApiService {
   private readonly http = inject(HttpClient);
 
+  /**
+   * Présence en direct. Appel de FOND, resondé toutes les 5 s — silencieux en cas de
+   * panne, sinon une API tombée noierait l'écran sous un toast toutes les 5 secondes.
+   */
   online(): Observable<OnlineUserDto[]> {
-    return this.http.get<OnlineUserDto[]>('/api/fleet-admin/activity/online');
+    return this.http.get<OnlineUserDto[]>('/api/fleet-admin/activity/online', {
+      headers: { [QUIET_ERRORS_HEADER]: '1' },
+    });
   }
 
   feed(opts: { limit?: number; before?: string; beforeId?: string; userId?: string; type?: string } = {}): Observable<ActivityFeedItemDto[]> {
