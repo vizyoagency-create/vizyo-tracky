@@ -343,6 +343,7 @@ export class CommandsPanelComponent implements OnInit {
       this.paramValues = {};
       await this.loadHistory();
     } catch (err: unknown) {
+      swallow('commands-panel:doSend', err);
       const msg = (err as any)?.error?.message ?? (err as any)?.error?.error?.message ?? 'Erreur inconnue';
       this.toast.error('Erreur', msg);
     } finally {
@@ -355,7 +356,8 @@ export class CommandsPanelComponent implements OnInit {
       await firstValueFrom(this.api.cancel(id));
       this.toast.success('Commande annulée');
       await this.loadHistory();
-    } catch {
+    } catch (err) {
+      swallow('commands-panel:cancelCommand', err);
       this.toast.error('Erreur d\'annulation');
     }
   }

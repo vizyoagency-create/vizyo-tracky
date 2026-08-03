@@ -267,7 +267,8 @@ export class FleetActivityComponent implements OnInit, OnDestroy {
     this.loading.set(true);
     try {
       this.engine.set(await firstValueFrom(this.api.engineCommands(this.pageSize, undefined, this.engineAction() || undefined, this.engineStatus() || undefined)));
-    } catch { this.engine.set([]); } finally { this.loading.set(false); }
+    } catch (err) {
+      swallow('fleet-activity:loadEngine', err); this.engine.set([]); } finally { this.loading.set(false); }
   }
 
   protected async loadMoreEngine(): Promise<void> {
@@ -278,6 +279,7 @@ export class FleetActivityComponent implements OnInit, OnDestroy {
       const more = await firstValueFrom(this.api.engineCommands(this.pageSize, last.createdAt, this.engineAction() || undefined, this.engineStatus() || undefined));
       if (more.length) this.engine.update((cur) => [...cur, ...more]);
     } catch (err) {
+      swallow('fleet-activity:loadMoreEngine', err);
       // Chargement declenche par l'utilisateur (choix d'onglet ou de filtre) : une panne
       // muette lui laisserait croire qu'il n'y a rien a montrer. Le sondage de presence,
       // lui, reste volontairement silencieux — il tourne toutes les 5 s sans qu'on le
@@ -290,7 +292,8 @@ export class FleetActivityComponent implements OnInit, OnDestroy {
   private async loadFeed(): Promise<void> {
     this.loading.set(true);
     try { this.feed.set(await firstValueFrom(this.api.feed({ limit: this.pageSize }))); }
-    catch { this.feed.set([]); } finally { this.loading.set(false); }
+    catch (err) {
+      swallow('fleet-activity:loadFeed', err); this.feed.set([]); } finally { this.loading.set(false); }
   }
 
   protected async loadMoreFeed(): Promise<void> {

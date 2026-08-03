@@ -3499,7 +3499,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
         geometry: { type: 'LineString', coordinates: coords },
         properties: {},
       });
-    } catch {
+    } catch (err) {
+      swallow('map:loadMiniReplay', err);
       this.toast.show({ kind: 'error', title: 'Echec du chargement de la derniere heure', duration: 3000 });
     }
   }
@@ -4593,7 +4594,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       this.renderFleetPlaceMarkers();
     } catch (err) {
       // best-effort : la carte reste utilisable sans les lieux de la flotte
-      swallow('map:DÉTECTÉES', err);
+      swallow('map:loadFleetPlaces', err);
     }
   }
 
@@ -4704,7 +4705,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       this.fleetPlaces.update((list) => [...list, created]);
       this.renderFleetPlaceMarkers();
       this.toast.success('Station ajoutée aux lieux de la flotte', created.name);
-    } catch {
+    } catch (err) {
+      swallow('map:validateStationFromCard', err);
       this.toast.error("Impossible d'ajouter cette station");
     } finally {
       this.placeCardSaving.set(false);
@@ -4736,7 +4738,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       this.applyPlaceUpdate(updated, { recreateMarker: true });
       this.cancelRenamePlace();
       this.toast.success('Lieu renommé', updated.name);
-    } catch {
+    } catch (err) {
+      swallow('map:confirmRenamePlace', err);
       this.toast.error('Renommage impossible');
     } finally {
       this.placeCardSaving.set(false);
@@ -4754,7 +4757,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       this.renderFleetPlaceMarkers();
       this.closePlaceCard();
       this.toast.success('Lieu retiré');
-    } catch {
+    } catch (err) {
+      swallow('map:deletePlaceFromCard', err);
       this.toast.error('Suppression impossible');
     } finally {
       this.placeCardSaving.set(false);
@@ -4771,7 +4775,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       const updated = await firstValueFrom(this.fleetPlacesApi.update(id, { lat, lng }));
       this.applyPlaceUpdate(updated, { recreateMarker: false });
       this.toast.success('Lieu déplacé');
-    } catch {
+    } catch (err) {
+      swallow('map:persistPlaceMove', err);
       this.toast.error('Déplacement non enregistré');
       this.renderFleetPlaceMarkers(); // remet le pin à sa position enregistrée
     }
@@ -4837,7 +4842,8 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       this.toast.success('Lieu enregistré', created.name);
       this.cancelPendingPlace();
       this.placeMode.set(false);
-    } catch {
+    } catch (err) {
+      swallow('map:confirmPendingPlace', err);
       this.toast.error("Impossible d'enregistrer ce lieu");
     } finally {
       this.placeSaving.set(false);
@@ -5587,6 +5593,7 @@ export class MapComponent implements AfterViewInit, OnDestroy {
       const hit = data[0]!;
       this.mapSvc.flyTo(this.map, parseFloat(hit.lat), parseFloat(hit.lon), 15);
     } catch (err) {
+      swallow('map:searchAddress', err);
       this.toast.show({ kind: 'error', title: 'Recherche impossible', duration: 4000 });
       void err;
     }

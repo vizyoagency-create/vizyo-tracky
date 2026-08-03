@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { DatePipe, JsonPipe } from '@angular/common';
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -381,7 +382,8 @@ export class AdminFixModeComponent implements OnInit {
       ]);
       this.state.set(state);
       this.timeline.set(timeline.items);
-    } catch {
+    } catch (err) {
+      swallow('admin-fix-mode:reload', err);
       this.toast.error('Echec du chargement');
     } finally {
       this.loading.set(false);
@@ -394,7 +396,8 @@ export class AdminFixModeComponent implements OnInit {
         this.api.timeline(this.trackerId(), 90, this.filter || undefined),
       );
       this.timeline.set(t.items);
-    } catch {
+    } catch (err) {
+      swallow('admin-fix-mode:reloadTimeline', err);
       this.toast.error('Echec du chargement de la timeline');
     }
   }
@@ -424,7 +427,8 @@ export class AdminFixModeComponent implements OnInit {
         this.toast.success('Override leve');
       }
       this.reload();
-    } catch {
+    } catch (err) {
+      swallow('admin-fix-mode:applyOverride', err);
       this.toast.error('Echec de l\'override');
     }
   }

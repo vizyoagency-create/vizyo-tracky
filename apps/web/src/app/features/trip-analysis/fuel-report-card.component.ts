@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
 import { DecimalPipe, DatePipe } from '@angular/common';
 import { LucideAngularModule, Fuel, MapPin, TrendingUp, TrendingDown } from 'lucide-angular';
@@ -230,7 +231,8 @@ export class FuelReportCardComponent {
     this.loading.set(true);
     try {
       this.data.set(await firstValueFrom(this.api.fuelReport(vehicleId, this.fromIso())));
-    } catch {
+    } catch (err) {
+      swallow('fuel-report-card:load', err);
       this.data.set(null);
     } finally {
       this.loading.set(false);

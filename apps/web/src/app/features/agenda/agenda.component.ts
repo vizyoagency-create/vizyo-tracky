@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -1489,7 +1490,8 @@ export class AgendaComponent implements OnInit {
   private async loadVehicles(): Promise<void> {
     try {
       this.vehicles.set(await firstValueFrom(this.vehiclesApi.list()));
-    } catch {
+    } catch (err) {
+      swallow('agenda:loadVehicles', err);
       this.vehicles.set([]);
     }
   }
@@ -1497,7 +1499,8 @@ export class AgendaComponent implements OnInit {
   private async loadSummary(): Promise<void> {
     try {
       this.summary.set(await firstValueFrom(this.api.summary(this.currentFleetId())));
-    } catch {
+    } catch (err) {
+      swallow('agenda:loadSummary', err);
       this.summary.set(null);
     }
   }
@@ -1527,6 +1530,7 @@ export class AgendaComponent implements OnInit {
       );
       this.events.set(events);
     } catch (err) {
+      swallow('agenda:loadEvents', err);
       this.events.set([]);
       this.toast.error('Erreur de chargement', apiErrorMessage(err, 'Impossible de charger l\'agenda.'));
     } finally {
@@ -1548,7 +1552,8 @@ export class AgendaComponent implements OnInit {
       const { from, to } = this.monthWindow();
       const avail = await firstValueFrom(this.api.getAvailability({ from, to, fleetId: this.currentFleetId() }));
       this.activitySlots.set(avail.slots);
-    } catch {
+    } catch (err) {
+      swallow('agenda:loadActivity', err);
       this.activitySlots.set([]);
     }
   }
@@ -1567,7 +1572,8 @@ export class AgendaComponent implements OnInit {
       const { from, to } = this.monthWindow();
       const res = await firstValueFrom(this.api.getForecast({ from, to, fleetId: this.currentFleetId() }));
       this.forecastSlots.set(res.slots);
-    } catch {
+    } catch (err) {
+      swallow('agenda:loadForecast', err);
       this.forecastSlots.set([]);
     }
   }
@@ -1668,6 +1674,7 @@ export class AgendaComponent implements OnInit {
       this.toast.success(status === 'DONE' ? 'Marqué terminé' : 'Mis à jour');
       void this.loadSummary();
     } catch (err) {
+      swallow('agenda:trim', err);
       this.toast.error('Échec', apiErrorMessage(err, 'Action impossible.'));
     } finally {
       this.busyId.set(null);
@@ -1684,6 +1691,7 @@ export class AgendaComponent implements OnInit {
       this.toast.success('Événement supprimé');
       void this.loadSummary();
     } catch (err) {
+      swallow('agenda:deleteEvent', err);
       this.toast.error('Échec suppression', apiErrorMessage(err, 'Suppression impossible.'));
     } finally {
       this.busyId.set(null);
@@ -1752,7 +1760,8 @@ export class AgendaComponent implements OnInit {
       } else {
         this.odometerHint.set('');
       }
-    } catch {
+    } catch (err) {
+      swallow('agenda:prefillOdometer', err);
       this.odometerHint.set('');
     }
   }
@@ -1792,6 +1801,7 @@ export class AgendaComponent implements OnInit {
       this.createOpen.set(false);
       void this.loadSummary();
     } catch (err) {
+      swallow('agenda:toISOString', err);
       this.toast.error('Échec création', apiErrorMessage(err, 'Création impossible.'));
     } finally {
       this.saving.set(false);
@@ -1832,6 +1842,7 @@ export class AgendaComponent implements OnInit {
       this.onReservationChanged();
       this.closeDayPanel();
     } catch (err) {
+      swallow('agenda:cancelDayReservation', err);
       this.toast.error('Échec', apiErrorMessage(err, 'Annulation impossible.'));
     } finally {
       this.busyId.set(null);
@@ -1884,7 +1895,8 @@ export class AgendaComponent implements OnInit {
     try {
       const list = await firstValueFrom(this.agentApi.listProposals(this.currentFleetId()));
       this.agentProposalCount.set(list.length);
-    } catch {
+    } catch (err) {
+      swallow('agenda:loadAgentProposals', err);
       this.agentProposalCount.set(0);
     }
   }

@@ -1,3 +1,4 @@
+import { swallow } from '../../../core/error/swallow';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -138,7 +139,8 @@ export class AgendaAgentProposalsSheetComponent {
     this.loading.set(true);
     try {
       this.items.set(await firstValueFrom(this.agentApi.listProposals(this.currentFleetId())));
-    } catch {
+    } catch (err) {
+      swallow('agenda-agent-proposals-sheet:load', err);
       this.items.set([]);
     } finally {
       this.loading.set(false);
@@ -153,6 +155,7 @@ export class AgendaAgentProposalsSheetComponent {
       this.toast.success('Réservé', 'La réservation est placée dans l\'agenda.');
       this.changed.emit();
     } catch (e) {
+      swallow('agenda-agent-proposals-sheet:apply', e);
       this.toast.error('Échec', apiErrorMessage(e, 'Action impossible.'));
     } finally {
       this.busyId.set(null);
@@ -167,6 +170,7 @@ export class AgendaAgentProposalsSheetComponent {
       this.toast.success('Proposition refusée');
       this.changed.emit();
     } catch (e) {
+      swallow('agenda-agent-proposals-sheet:dismiss', e);
       this.toast.error('Échec', apiErrorMessage(e, 'Action impossible.'));
     } finally {
       this.busyId.set(null);

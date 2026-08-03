@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
@@ -234,7 +235,8 @@ export class DrivingScoreCardComponent {
       this.data.set(await firstValueFrom(
         this.api.entityScore(scope, id, this.fromIso(), undefined, this.fleetFilter.selectedFleetId() ?? undefined),
       ));
-    } catch {
+    } catch (err) {
+      swallow('driving-score-card:load', err);
       this.data.set(null);
     } finally {
       this.loading.set(false);

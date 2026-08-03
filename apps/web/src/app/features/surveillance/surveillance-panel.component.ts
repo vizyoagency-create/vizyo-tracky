@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { Component, computed, inject, input, OnInit, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -761,6 +762,7 @@ export class SurveillancePanelComponent implements OnInit {
       const p = await firstValueFrom(this.api.getProfile(this.vehicleId()));
       this.profile.set(p);
     } catch (err: unknown) {
+      swallow('surveillance-panel:load', err);
       const msg = err instanceof Error ? err.message : 'Erreur de chargement';
       this.loadError.set(msg);
     } finally {
@@ -775,7 +777,8 @@ export class SurveillancePanelComponent implements OnInit {
         this.api.listEvents({ vehicleId: this.vehicleId(), limit: '50' }),
       );
       this.events.set(res.items);
-    } catch {
+    } catch (err) {
+      swallow('surveillance-panel:loadEvents', err);
       // Silencieux — l'absence d'événements n'est pas une erreur visible.
     } finally {
       this.eventsLoading.set(false);
@@ -796,6 +799,7 @@ export class SurveillancePanelComponent implements OnInit {
       this.profile.set(updated);
       this.toast.success('Surveillance activée', 'Le véhicule est désormais sous surveillance.');
     } catch (err: unknown) {
+      swallow('surveillance-panel:arm', err);
       const msg = this.extractErrorMessage(err);
       this.toast.error('Armement impossible', msg);
     } finally {
@@ -822,6 +826,7 @@ export class SurveillancePanelComponent implements OnInit {
           : undefined,
       );
     } catch (err: unknown) {
+      swallow('surveillance-panel:disarm', err);
       const msg = this.extractErrorMessage(err);
       this.toast.error('Désarmement impossible', msg);
     } finally {
@@ -931,6 +936,7 @@ export class SurveillancePanelComponent implements OnInit {
         }
       }, 2000);
     } catch (err) {
+      swallow('surveillance-panel:flushSave', err);
       const msg = this.extractErrorMessage(err);
       this.toast.error('Enregistrement échoué', msg);
       // Recharge depuis le serveur pour resynchroniser l'UI avec l'état réel
@@ -993,6 +999,7 @@ export class SurveillancePanelComponent implements OnInit {
       };
       this.toast.success(messages[status] ?? 'Événement mis à jour');
     } catch (err) {
+      swallow('surveillance-panel:acknowledgeEvent', err);
       const msg = this.extractErrorMessage(err);
       this.toast.error('Acquittement impossible', msg);
     } finally {

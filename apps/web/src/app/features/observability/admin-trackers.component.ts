@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { DatePipe } from '@angular/common';
 import { Component, inject, OnInit, signal, computed } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -373,7 +374,8 @@ export class AdminTrackersComponent implements OnInit {
         this.trackersApi.list({ limit: '500' }),
       );
       this.trackers.set(data);
-    } catch {
+    } catch (err) {
+      swallow('admin-trackers:reload', err);
       this.toast.error('Echec du chargement des trackers');
     } finally {
       this.loading.set(false);
@@ -401,6 +403,7 @@ export class AdminTrackersComponent implements OnInit {
       this.editingSimId.set(null);
       this.reload();
     } catch (e: any) {
+      swallow('admin-trackers:saveSim', e);
       this.toast.error(e?.error?.message ?? 'Echec de la mise a jour SIM');
     }
   }
@@ -413,7 +416,8 @@ export class AdminTrackersComponent implements OnInit {
       await firstValueFrom(this.trackersApi.unassign(t.id));
       this.toast.success('Tracker detache');
       this.reload();
-    } catch {
+    } catch (err) {
+      swallow('admin-trackers:unassign', err);
       this.toast.error('Echec du detachement');
     }
   }
@@ -430,7 +434,8 @@ export class AdminTrackersComponent implements OnInit {
         plate: v.plate,
         hasTracker: !!v.tracker,
       }));
-    } catch {
+    } catch (err) {
+      swallow('admin-trackers:startAssign', err);
       this.toast.error('Echec du chargement des vehicules');
       this.assigningTracker.set(null);
     }
@@ -449,6 +454,7 @@ export class AdminTrackersComponent implements OnInit {
       this.assigningTracker.set(null);
       this.reload();
     } catch (e: any) {
+      swallow('admin-trackers:confirmAssign', e);
       this.toast.error(e?.error?.message ?? 'Echec de l\'assignation');
     }
   }

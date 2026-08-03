@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
@@ -296,7 +297,8 @@ export class AdminInstallationBookingsComponent implements OnInit {
       this.bookings.set(bookings);
       this.links.set(links);
       this.fleets.set(fleets);
-    } catch {
+    } catch (err) {
+      swallow('admin-installation-bookings:reload', err);
       this.toast.error('Chargement impossible', 'Réessayez.');
     } finally {
       this.loading.set(false);
@@ -339,7 +341,8 @@ export class AdminInstallationBookingsComponent implements OnInit {
       this.toast.success('Créneau validé', 'La pose a été ajoutée au planning et le client prévenu.');
       this.collapse();
       await this.reload();
-    } catch (e) { this.toast.error('Validation impossible', this.errMsg(e)); }
+    } catch (e) {
+      swallow('admin-installation-bookings:doConfirm', e); this.toast.error('Validation impossible', this.errMsg(e)); }
     finally { this.busy.set(false); }
   }
 
@@ -350,7 +353,8 @@ export class AdminInstallationBookingsComponent implements OnInit {
       this.toast.success('Demande refusée', 'Le créneau est de nouveau disponible.');
       this.collapse();
       await this.reload();
-    } catch (e) { this.toast.error('Refus impossible', this.errMsg(e)); }
+    } catch (e) {
+      swallow('admin-installation-bookings:doReject', e); this.toast.error('Refus impossible', this.errMsg(e)); }
     finally { this.busy.set(false); }
   }
 
@@ -373,7 +377,8 @@ export class AdminInstallationBookingsComponent implements OnInit {
       this.fLabel.set(''); this.fEmail.set(''); this.fName.set(''); this.fPhone.set(''); this.fSingle.set(false);
       await this.reload();
       this.toast.success('Lien créé', 'Copiez-le et envoyez-le au client.');
-    } catch (e) { this.createErr.set(this.errMsg(e)); }
+    } catch (e) {
+      swallow('admin-installation-bookings:createLink', e); this.createErr.set(this.errMsg(e)); }
     finally { this.busy.set(false); }
   }
 
@@ -381,7 +386,8 @@ export class AdminInstallationBookingsComponent implements OnInit {
     try {
       await firstValueFrom(this.api.updateLink(l.id, { active: !l.active }));
       await this.reload();
-    } catch (e) { this.toast.error('Action impossible', this.errMsg(e)); }
+    } catch (e) {
+      swallow('admin-installation-bookings:toggleLink', e); this.toast.error('Action impossible', this.errMsg(e)); }
   }
 
   protected async deleteLink(l: InstallationBookingLinkDto): Promise<void> {
@@ -391,7 +397,8 @@ export class AdminInstallationBookingsComponent implements OnInit {
       if (this.createdUrl() === l.publicUrl) this.createdUrl.set(null);
       await this.reload();
       this.toast.success('Lien supprimé');
-    } catch (e) { this.toast.error('Suppression impossible', this.errMsg(e)); }
+    } catch (e) {
+      swallow('admin-installation-bookings:deleteLink', e); this.toast.error('Suppression impossible', this.errMsg(e)); }
   }
 
   private errMsg(e: unknown): string {

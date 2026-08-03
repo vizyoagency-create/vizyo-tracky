@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
   Component,
@@ -307,6 +308,7 @@ export class AudioListenButtonComponent implements OnInit {
         this.toast.error('SIM non provisionnée', 'Aucun numéro à appeler — écoute impossible.');
       }
     } catch (err) {
+      swallow('audio-listen-button:confirm', err);
       this.toast.error('Écoute refusée', this.extractErrorMessage(err));
       this.isOpen.set(false);
     } finally {
@@ -332,6 +334,7 @@ export class AudioListenButtonComponent implements OnInit {
       this.stopping.set(false);
       this.close();
     } catch (err) {
+      swallow('audio-listen-button:terminate', err);
       this.stopping.set(false);
       this.toast.error('Désarmement échoué', this.extractErrorMessage(err));
     }

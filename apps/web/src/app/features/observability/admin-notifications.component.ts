@@ -1263,7 +1263,8 @@ export class AdminNotificationsComponent implements OnInit, OnDestroy {
         ? `Envoyé à ${partis.map((x) => x.email).join(', ')}`
         : `Toujours retenu — ${res.destinataires.map((x) => x.reasonLabel ?? x.status).join(' · ') || 'aucun destinataire'}`;
       this.replayResult.update((m) => ({ ...m, [d.id]: texte }));
-    } catch {
+    } catch (err) {
+      swallow('admin-notifications:onReplay', err);
       this.replayResult.update((m) => ({ ...m, [d.id]: 'Échec du renvoi — rien n’a été envoyé.' }));
     } finally {
       this.replayingId.set(null);

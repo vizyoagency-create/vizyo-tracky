@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -279,6 +280,7 @@ export class VehicleCapacityTableComponent implements OnInit {
       const data = await firstValueFrom(this.api.capacityOverview());
       this.rows.set(data.map((r) => this.toEditRow(r)));
     } catch (e) {
+      swallow('vehicle-capacity-table:String', e);
       this.error.set(this.errMsg(e));
     } finally {
       this.loading.set(false);
@@ -339,6 +341,7 @@ export class VehicleCapacityTableComponent implements OnInit {
       );
       this.toast.success('Capacité enregistrée', row.plate);
     } catch (e) {
+      swallow('vehicle-capacity-table:save', e);
       this.setRow(row.vehicleId, { saving: false });
       this.toast.error('Échec', this.errMsg(e));
     }
@@ -392,6 +395,7 @@ export class VehicleCapacityTableComponent implements OnInit {
       this.toast.success('Synchronisé depuis le planning', row.plate);
       this.closeSync();
     } catch (e) {
+      swallow('vehicle-capacity-table:energyLabel', e);
       this.setRow(row.vehicleId, { syncing: false });
       this.toast.error('Échec de la synchro', this.errMsg(e));
     }

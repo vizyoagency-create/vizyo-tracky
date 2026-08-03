@@ -1,3 +1,4 @@
+import { swallow } from '../../../core/error/swallow';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
   AfterViewInit, Component, effect, ElementRef, HostListener,
@@ -361,6 +362,7 @@ export class GeofenceDrawDialogComponent implements AfterViewInit, OnDestroy {
       this.reset();
       this.created.emit();
     } catch (err) {
+      swallow('geofence-draw-dialog:onSubmit', err);
       this.errorMessage.set(
         err instanceof HttpErrorResponse
           ? (Array.isArray(err.error?.message) ? err.error.message.join(', ') : err.error?.message ?? 'Erreur')

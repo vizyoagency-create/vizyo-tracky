@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
@@ -334,6 +335,7 @@ export class PlaceAutomationComponent implements OnInit {
       this.monthlyBudgetEur.set(settings.monthlyBudgetEur ?? null);
       this.runs.set(runs);
     } catch (e) {
+      swallow('place-automation:load', e);
       this.toast.error('Chargement impossible', apiErrorMessage(e));
     } finally {
       this.loading.set(false);
@@ -366,6 +368,7 @@ export class PlaceAutomationComponent implements OnInit {
       this.draft.set({ ...saved });
       this.toast.success('Réglages enregistrés');
     } catch (e) {
+      swallow('place-automation:save', e);
       this.toast.error('Enregistrement impossible', apiErrorMessage(e));
     } finally {
       this.saving.set(false);
@@ -381,6 +384,7 @@ export class PlaceAutomationComponent implements OnInit {
       this.runs.set(await firstValueFrom(this.api.automationRuns(30)));
       this.toast.success('Simulation terminée', `${stats.analyzed} lieu(x) seraient analysés`);
     } catch (e) {
+      swallow('place-automation:simulate', e);
       this.toast.error('Simulation impossible', apiErrorMessage(e));
     } finally {
       this.simulating.set(false);
@@ -405,6 +409,7 @@ export class PlaceAutomationComponent implements OnInit {
         this.toast.success('Passage terminé', `${stats.analyzed} analysé(s) · ${stats.costEur.toFixed(4)} €`);
       }
     } catch (e) {
+      swallow('place-automation:runNow', e);
       // Un passage peut durer plusieurs minutes : si la requête HTTP a expiré, le run CONTINUE
       // côté serveur. Ne pas laisser croire qu'il ne s'est rien passé — sinon on reclique.
       this.toast.error(

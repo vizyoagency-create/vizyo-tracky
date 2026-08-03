@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { httpFailureMessage } from '../../core/services/http-failure';
 import { Component, inject, OnInit, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
@@ -379,6 +380,7 @@ export class PermissionsOverviewComponent implements OnInit {
       this.data.set(res);
       this.loadError.set(null);
     } catch (err) {
+      swallow('permissions-overview:ngOnInit', err);
       this.data.set(null);
       this.loadError.set(httpFailureMessage(err, 'les accès et permissions'));
     } finally { this.loading.set(false); }

@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -377,6 +378,7 @@ export class AcceptInviteComponent implements OnInit {
       this.toast.success('Compte activé. Bienvenue sur Tracky !');
       setTimeout(() => this.router.navigate([this.homeRoute()]), 2200);
     } catch (err: unknown) {
+      swallow('accept-invite:submit', err);
       const message = err instanceof Error ? err.message : 'Echec de l\'activation';
       console.error('[accept-invite] submit failed:', err);
       // Compte deja active : redirection vers login

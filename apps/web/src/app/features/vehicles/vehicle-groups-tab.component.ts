@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { ToastService } from '../../shared/ui/toast/toast.service';
 import { httpFailureMessage } from '../../core/services/http-failure';
 import { Component, computed, effect, inject, OnInit, signal } from '@angular/core';
@@ -261,6 +262,7 @@ export class VehicleGroupsTabComponent implements OnInit {
       this.allVehicles.set(vehicles);
       void this.loadScores();
     } catch (err) {
+      swallow('vehicle-groups-tab:load', err);
       // ⚠️ C'ETAIT MUET : en panne, l'onglet affichait « aucun groupe » — donc la reponse
       // d'une flotte qui n'en a pas. L'utilisateur pouvait en recreer un qui existait
       // deja, ou conclure que son travail de la veille avait disparu.
@@ -279,7 +281,8 @@ export class VehicleGroupsTabComponent implements OnInit {
       const map = new Map<string, { score: number; grade: string; rank: number; total: number }>();
       res.rows.forEach((r, i) => map.set(r.id, { score: r.score, grade: r.grade, rank: i + 1, total: res.rows.length }));
       this.groupScores.set(map);
-    } catch { this.groupScores.set(new Map()); }
+    } catch (err) {
+      swallow('vehicle-groups-tab:loadScores', err); this.groupScores.set(new Map()); }
   }
 
   protected scoreFor(groupId: string): { score: number; grade: string; rank: number; total: number } | null {

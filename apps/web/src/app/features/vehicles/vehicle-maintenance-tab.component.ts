@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -555,6 +556,7 @@ export class VehicleMaintenanceTabComponent implements OnInit {
       this.events.update((list) => list.map((e) => (e.id === updated.id ? updated : e)));
       this.toast.success('Entretien marqué terminé');
     } catch (err) {
+      swallow('vehicle-maintenance-tab:markEventDone', err);
       this.toast.error('Échec', err instanceof HttpErrorResponse ? err.error?.message : '');
     } finally {
       this.busyId.set(null);
@@ -620,6 +622,7 @@ export class VehicleMaintenanceTabComponent implements OnInit {
       this.toast.success(id ? 'Plan mis à jour' : 'Plan créé', saved.label);
       this.planEditorOpen.set(false);
     } catch (err) {
+      swallow('vehicle-maintenance-tab:savePlan', err);
       this.toast.error('Échec', err instanceof HttpErrorResponse ? err.error?.message : 'Enregistrement impossible.');
     } finally {
       this.savingPlan.set(false);
@@ -634,6 +637,7 @@ export class VehicleMaintenanceTabComponent implements OnInit {
       this.plans.update((list) => list.filter((p) => p.id !== plan.id));
       this.toast.success('Plan supprimé');
     } catch (err) {
+      swallow('vehicle-maintenance-tab:deletePlan', err);
       this.toast.error('Échec suppression', err instanceof HttpErrorResponse ? err.error?.message : '');
     }
   }
@@ -668,6 +672,7 @@ export class VehicleMaintenanceTabComponent implements OnInit {
       // Recharge les événements (le backend peut générer un événement DONE) + l'odomètre.
       void this.refreshEventsAndOdometer();
     } catch (err) {
+      swallow('vehicle-maintenance-tab:saveDone', err);
       this.toast.error('Échec', err instanceof HttpErrorResponse ? err.error?.message : 'Enregistrement impossible.');
     } finally {
       this.savingDone.set(false);

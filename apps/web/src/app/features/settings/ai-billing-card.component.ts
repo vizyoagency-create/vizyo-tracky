@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, ElementRef, computed, inject, input, OnInit, signal, viewChild } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { DatePipe, TitleCasePipe } from '@angular/common';
@@ -174,6 +175,7 @@ export class AiBillingCardComponent implements OnInit {
     try {
       this.s.set(await firstValueFrom(this.api.status(this.fleetId())));
     } catch (e) {
+      swallow('ai-billing-card:reload', e);
       this.error.set(this.msg(e));
     } finally {
       this.loading.set(false);
@@ -210,6 +212,7 @@ export class AiBillingCardComponent implements OnInit {
       this.cardElement.mount(host);
       this.cardClientSecret = intent.clientSecret;
     } catch (e) {
+      swallow('ai-billing-card:startAddCard', e);
       this.addingCard.set(false);
       this.toast.error('Carte', this.msg(e));
     } finally {
@@ -261,6 +264,7 @@ export class AiBillingCardComponent implements OnInit {
       this.toast.success('Assistance IA', 'Activée. Merci !');
       await this.reload();
     } catch (e) {
+      swallow('ai-billing-card:subscribe', e);
       this.toast.error('Activation', this.msg(e));
     } finally {
       this.busy.set(false);
@@ -274,6 +278,7 @@ export class AiBillingCardComponent implements OnInit {
       this.toast.success('Facture physique', 'Demande envoyée — notre équipe vous recontacte.');
       await this.reload();
     } catch (e) {
+      swallow('ai-billing-card:requestInvoice', e);
       this.toast.error('Facture', this.msg(e));
     } finally {
       this.busy.set(false);
@@ -288,6 +293,7 @@ export class AiBillingCardComponent implements OnInit {
       this.toast.success('Abonnement', 'Annulation prise en compte.');
       await this.reload();
     } catch (e) {
+      swallow('ai-billing-card:cancel', e);
       this.toast.error('Annulation', this.msg(e));
     } finally {
       this.busy.set(false);

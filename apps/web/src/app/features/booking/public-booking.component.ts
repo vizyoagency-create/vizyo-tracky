@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
@@ -191,7 +192,8 @@ export class PublicBookingComponent implements OnInit {
       this.link.set(link);
       this.days.set(link.days);
       if (link.days.length > 0) this.selectedDate.set(link.days[0].date);
-    } catch {
+    } catch (err) {
+      swallow('public-booking:load', err);
       this.notFound.set(true);
     } finally {
       this.loading.set(false);
@@ -233,6 +235,7 @@ export class PublicBookingComponent implements OnInit {
       this.confirmedLabel.set(res.slotLabel);
       this.done.set(true);
     } catch (e: unknown) {
+      swallow('public-booking:submit', e);
       const msg = (e as { error?: { message?: string } })?.error?.message;
       this.error.set(typeof msg === 'string' ? msg : 'Une erreur est survenue. Réessayez.');
       // Créneau plus dispo → on recharge les disponibilités.

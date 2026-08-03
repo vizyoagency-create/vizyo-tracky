@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -491,6 +492,7 @@ export class DriversListComponent implements OnInit {
       this.driverToArchive.set(null);
       await this.loadDrivers();
     } catch (err) {
+      swallow('drivers-list:onArchive', err);
       this.toast.error('Échec archivage', err instanceof Error ? err.message : '');
     } finally {
       this.archiving.set(false);
@@ -508,7 +510,8 @@ export class DriversListComponent implements OnInit {
       a.click();
       URL.revokeObjectURL(url);
       this.toast.success('Export RGPD téléchargé', `${driver.firstName} ${driver.lastName}`);
-    } catch {
+    } catch (err) {
+      swallow('drivers-list:exportRgpd', err);
       this.toast.error('Export impossible', 'Réessayez.');
     }
   }
@@ -524,7 +527,8 @@ export class DriversListComponent implements OnInit {
       a.click();
       URL.revokeObjectURL(url);
       this.toast.success('Registre téléchargé', `${driver.firstName} ${driver.lastName}`);
-    } catch {
+    } catch (err) {
+      swallow('drivers-list:exportWorkTime', err);
       this.toast.error('Export impossible', 'Réessayez.');
     }
   }
@@ -544,6 +548,7 @@ export class DriversListComponent implements OnInit {
       this.driverToAnonymize.set(null);
       await this.loadDrivers();
     } catch (err) {
+      swallow('drivers-list:onAnonymize', err);
       this.toast.error('Échec anonymisation', err instanceof Error ? err.message : '');
     } finally {
       this.anonymizing.set(false);
@@ -557,6 +562,7 @@ export class DriversListComponent implements OnInit {
       this.toast.success('Conducteur réactivé');
       await this.loadDrivers();
     } catch (err) {
+      swallow('drivers-list:reactivate', err);
       this.toast.error('Échec réactivation', err instanceof Error ? err.message : '');
     }
   }
@@ -586,6 +592,7 @@ export class DriversListComponent implements OnInit {
       this.showDrawer.set(false);
       await this.loadDrivers();
     } catch (err) {
+      swallow('drivers-list:onDrawerSave', err);
       this.toast.error('Échec', err instanceof Error ? err.message : 'Erreur inconnue');
     } finally {
       this.drawerLoading.set(false);

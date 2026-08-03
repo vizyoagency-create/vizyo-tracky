@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -460,7 +461,8 @@ export class PlacesComponent {
         const target = places.find((p) => p.id === focusId);
         if (target) void this.toggleFacts(target);
       }
-    } catch {
+    } catch (err) {
+      swallow('places:load', err);
       // L'erreur détaillée part déjà au centre d'alerte via l'intercepteur HTTP ; ici on
       // informe l'utilisateur sans laisser la page vide et muette.
       this.error.set('Impossible de charger les lieux clés. Réessayez ou contactez le support.');
@@ -490,7 +492,8 @@ export class PlacesComponent {
         list.map((x) => (x.stationId === s.stationId ? { ...x, placeId: created.id, placeName: created.name } : x)),
       );
       this.toast.success('Station ajoutée aux lieux de la flotte', created.name);
-    } catch {
+    } catch (err) {
+      swallow('places:validateStation', err);
       this.toast.error("Impossible d'ajouter cette station");
     } finally {
       this.busyId.set(null);
@@ -510,7 +513,8 @@ export class PlacesComponent {
         );
       }
       this.toast.success('Lieu retiré');
-    } catch {
+    } catch (err) {
+      swallow('places:removePlace', err);
       this.toast.error('Impossible de retirer ce lieu');
     } finally {
       this.busyId.set(null);
@@ -539,7 +543,8 @@ export class PlacesComponent {
     try {
       const facts = await firstValueFrom(this.api.facts(p.id));
       this.factsByPlace.update((m) => ({ ...m, [p.id]: facts }));
-    } catch {
+    } catch (err) {
+      swallow('places:toggleFacts', err);
       // Overpass indisponible : on mémorise « rien » pour ne pas boucler, l'UI l'explique.
       this.factsByPlace.update((m) => ({ ...m, [p.id]: null }));
     } finally {
@@ -568,7 +573,8 @@ export class PlacesComponent {
       const analysis = await firstValueFrom(this.api.analyze(p.id));
       this.analysisByPlace.update((m) => ({ ...m, [p.id]: analysis }));
       this.toast.success('Analyse terminée', p.name);
-    } catch {
+    } catch (err) {
+      swallow('places:analyzePlace', err);
       // Le détail (503 IA coupée, panne provider…) part déjà au centre d'alerte via l'intercepteur.
       this.toast.error("L'analyse n'a pas abouti", 'Réessayez dans un instant.');
     } finally {

@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { HttpClient, HttpErrorResponse, HttpParams, HttpResponse } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
@@ -81,6 +82,7 @@ export class ReportsApiService {
       );
       this.triggerDownload(blob, `tracky-rapport-${from.slice(0, 10)}_${to.slice(0, 10)}.pdf`);
     } catch (err) {
+      swallow('reports:downloadPdf', err);
       throw new Error(await this.formatHttpError(err, 'PDF'));
     }
   }
@@ -109,6 +111,7 @@ export class ReportsApiService {
       );
       this.triggerDownload(blob, `tracky-rapport-${from.slice(0, 10)}_${to.slice(0, 10)}.pdf`);
     } catch (err) {
+      swallow('reports:downloadConfiguredPdf', err);
       throw new Error(await this.formatHttpError(err, 'PDF'));
     }
   }
@@ -122,6 +125,7 @@ export class ReportsApiService {
       );
       this.triggerDownload(blob, `tracky-${type}-${from.slice(0, 10)}_${to.slice(0, 10)}.csv`);
     } catch (err) {
+      swallow('reports:downloadCsv', err);
       throw new Error(await this.formatHttpError(err, 'CSV'));
     }
   }
@@ -133,6 +137,7 @@ export class ReportsApiService {
       );
       this.triggerDownload(blob, `rapport-vitesse-${tripId.slice(0, 8)}.html`);
     } catch (err) {
+      swallow('reports:downloadSpeedAnalysis', err);
       throw new Error(await this.formatHttpError(err, 'PDF'));
     }
   }
@@ -156,6 +161,7 @@ export class ReportsApiService {
       const filename = this.filenameFromResponse(res, 'tracky-export.xlsx');
       this.triggerDownload(res.body ?? new Blob(), filename);
     } catch (err) {
+      swallow('reports:downloadExcel', err);
       throw new Error(await this.formatHttpError(err, 'Excel'));
     }
   }

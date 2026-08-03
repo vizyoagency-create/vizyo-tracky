@@ -657,6 +657,7 @@ export class AdminAiUsageComponent implements OnInit {
         }
       }
     } catch (e) {
+      swallow('admin-ai-usage:reload', e);
       this.error.set(this.errMsg(e));
     } finally {
       this.loading.set(false);
@@ -679,6 +680,7 @@ export class AdminAiUsageComponent implements OnInit {
       this.aiStatus.refresh(); // resynchronise l'état IA global du front
       this.toast.success('Assistance IA', enabled ? `Offerte à ${scoped.name}.` : `Coupée pour ${scoped.name}.`);
     } catch (e) {
+      swallow('admin-ai-usage:toggleFleetAi', e);
       this.toast.error('Assistance IA', this.errMsg(e));
     } finally {
       this.savingAi.set(false);
@@ -698,6 +700,7 @@ export class AdminAiUsageComponent implements OnInit {
       this.priceUpdatedAt.set(p.updatedAt);
       this.toast.success('Prix enregistré', `${euros.toFixed(2)} € / ${this.pricingUnit() === 'per_vehicle' ? 'véhicule' : 'société'} / mois`);
     } catch (e) {
+      swallow('admin-ai-usage:savePrice', e);
       this.toast.error('Échec', this.errMsg(e));
     } finally {
       this.savingPrice.set(false);
@@ -713,6 +716,7 @@ export class AdminAiUsageComponent implements OnInit {
       this.aiStatus.refresh();
       this.toast.success('Fonctionnalité IA', enabled ? 'Activée pour tout le monde.' : 'Coupée pour tout le monde.');
     } catch (e) {
+      swallow('admin-ai-usage:toggleFeature', e);
       this.toast.error('Fonctionnalité IA', this.errMsg(e));
     } finally {
       this.savingFeature.set(null);
@@ -730,6 +734,7 @@ export class AdminAiUsageComponent implements OnInit {
       const name = id === 'both' ? 'Mixte (les 2 IA)' : (updated.providers.find((p) => p.id === id)?.label ?? id);
       this.toast.success('Moteur IA', `Bascule sur ${name}.`);
     } catch (e) {
+      swallow('admin-ai-usage:switchProvider', e);
       this.toast.error('Moteur IA', this.errMsg(e));
     } finally {
       this.savingProvider.set(null);
@@ -781,6 +786,7 @@ export class AdminAiUsageComponent implements OnInit {
       if (s) this.summary.set({ ...s, budget });
       this.toast.success('Budget enregistré', budget.monthlyBudgetEur > 0 ? `${this.eur(budget.monthlyBudgetEur)} / mois` : 'Budget retiré');
     } catch (e) {
+      swallow('admin-ai-usage:saveBudget', e);
       this.toast.error('Échec', this.errMsg(e));
     } finally {
       this.savingBudget.set(false);

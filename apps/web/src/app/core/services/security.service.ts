@@ -42,7 +42,8 @@ export class SecurityService {
       this.location.set(d.location ?? null);
       if (d.action === 'challenge') this.mustVerify.set(true);
       else if (d.propose) this.propose.set(true);
-    } catch {
+    } catch (err) {
+      swallow('security:connect', err);
       // Silencieux : un 403 DEVICE_VERIFICATION_REQUIRED sur un autre appel lèvera le gate.
     }
   }
@@ -54,7 +55,8 @@ export class SecurityService {
       );
       if (r?.ok) this.mustVerify.set(false);
       return !!r?.ok;
-    } catch {
+    } catch (err) {
+      swallow('security:verify', err);
       return false;
     }
   }
@@ -66,7 +68,8 @@ export class SecurityService {
       );
       if (r?.email) this.maskedEmail.set(r.email);
       return { ok: !!r?.ok, email: r?.email };
-    } catch {
+    } catch (err) {
+      swallow('security:resend', err);
       return { ok: false };
     }
   }
@@ -91,7 +94,8 @@ export class SecurityService {
       this.twoFactorEnabled.set(true);
       this.propose.set(false);
       return true;
-    } catch {
+    } catch (err) {
+      swallow('security:enableTwoFactor', err);
       return false;
     }
   }
@@ -103,7 +107,8 @@ export class SecurityService {
         this.http.post<{ ok: boolean; email?: string }>('/api/security/2fa/disable/send-code', {}),
       );
       return { ok: !!r?.ok, email: r?.email };
-    } catch {
+    } catch (err) {
+      swallow('security:sendDisableCode', err);
       return { ok: false };
     }
   }
@@ -116,7 +121,8 @@ export class SecurityService {
       );
       if (r?.ok) this.twoFactorEnabled.set(false);
       return !!r?.ok;
-    } catch {
+    } catch (err) {
+      swallow('security:disableTwoFactor', err);
       return false;
     }
   }

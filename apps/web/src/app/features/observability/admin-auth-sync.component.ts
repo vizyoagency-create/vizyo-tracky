@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { computed, Component, inject, OnInit, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { DatePipe } from '@angular/common';
@@ -359,6 +360,7 @@ export class AdminAuthSyncComponent implements OnInit {
       this.toast.success(`${u.email} realigne sur Vizyo Auth.`);
       await this.load();
     } catch (err) {
+      swallow('admin-auth-sync:realign', err);
       // Le message du serveur porte le motif reel : le jeter laisserait l'administrateur
       // devant un echec opaque, exactement ce que cet ecran existe pour supprimer.
       const msg = (err as { error?: { message?: string } })?.error?.message;
@@ -377,7 +379,8 @@ export class AdminAuthSyncComponent implements OnInit {
     try {
       const res = await firstValueFrom(this.http.get<SyncData>('/api/users/admin/auth-sync'));
       this.data.set(res);
-    } catch {
+    } catch (err) {
+      swallow('admin-auth-sync:load', err);
       this.toast.error('Echec du chargement');
     } finally {
       this.loading.set(false);
@@ -390,7 +393,8 @@ export class AdminAuthSyncComponent implements OnInit {
       await firstValueFrom(this.http.delete(`/api/users/admin/auth-sync/tracky/${user.trackyId}`));
       this.toast.success(`${user.email} supprime de Tracky`);
       await this.load();
-    } catch {
+    } catch (err) {
+      swallow('admin-auth-sync:removeFromTracky', err);
       this.toast.error('Echec de la suppression');
     }
   }
@@ -401,7 +405,8 @@ export class AdminAuthSyncComponent implements OnInit {
       await firstValueFrom(this.http.delete(`/api/users/admin/auth-sync/${user.authId}`));
       this.toast.success(`${user.email} supprime de Auth`);
       await this.load();
-    } catch {
+    } catch (err) {
+      swallow('admin-auth-sync:removeFromAuth', err);
       this.toast.error('Echec de la suppression');
     }
   }

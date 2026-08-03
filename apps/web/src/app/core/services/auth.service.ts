@@ -191,7 +191,8 @@ export class AuthService {
       const data = (await res.json()) as { accessToken: string; refreshToken: string };
       this.updateToken(data.accessToken, data.refreshToken);
       return data.accessToken;
-    } catch {
+    } catch (err) {
+      swallow('auth:doRefresh', err);
       return null;
     }
   }

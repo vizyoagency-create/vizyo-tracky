@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -289,6 +290,7 @@ export class AdminSamplingComponent implements OnInit {
       this.histogram.set(histo.buckets);
       this.recentDecisions.set(recent.items);
     } catch (err: unknown) {
+      swallow('admin-sampling:reload', err);
       this.toast.error('Echec du chargement des stats sampling');
     } finally {
       this.loading.set(false);
@@ -307,7 +309,8 @@ export class AdminSamplingComponent implements OnInit {
       } else {
         this.toast.success('Mode verbose desactive');
       }
-    } catch {
+    } catch (err) {
+      swallow('admin-sampling:applyVerbose', err);
       this.toast.error('Echec de la mise a jour du mode verbose');
     }
   }

@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -227,7 +228,8 @@ export class InstallationsListComponent implements OnInit {
       try {
         const list = await firstValueFrom(this.fleetsApi.list());
         this.fleets.set(list);
-      } catch {
+      } catch (err) {
+        swallow('installations-list:openCreate', err);
         this.createError.set('Impossible de charger les flottes');
       } finally {
         this.fleetsLoading.set(false);
