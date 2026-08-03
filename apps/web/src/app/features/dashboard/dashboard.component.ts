@@ -6,7 +6,7 @@ import { RouterLink } from '@angular/router';
 import {
   Truck, Navigation, Activity, AlertTriangle, Map as MapIcon, Plus,
   FileBarChart, Shield, ChevronRight, Bell, Radio, Gauge, Clock,
-  Settings2, X, Check, ArrowRight,
+  Settings2, X, Check, ArrowRight, WifiOff,
 } from 'lucide-angular';
 import { LucideAngularModule } from 'lucide-angular';
 import { filter, interval, startWith, switchMap, catchError, of, combineLatest } from 'rxjs';
@@ -170,6 +170,36 @@ interface WidgetMeta {
             </div>
             <lucide-icon [img]="ChevronRight" [size]="14" class="metric-arrow"></lucide-icon>
           </a>
+
+          <!--
+            ⚠️ VÉHICULES INJOIGNABLES — la tuile qui manquait (constat du 2026-08-03).
+
+            Le serveur calcule ce compteur depuis toujours, avec une intention explicite
+            dans son propre commentaire : « Jamais retirés du total — on les nomme, on ne
+            les cache pas ». L'écran, lui, ne l'affichait NULLE PART.
+
+            Conséquence mesurée le jour du constat : MH Cars a 2 véhicules sur 7 muets
+            depuis plus de sept jours. Son dashboard annonçait donc « 7 véhicules » puis
+            des compteurs totalisant 5. Deux véhicules disparaissaient de l'écran sans un
+            mot — et c'est exactement le cas où il faut réagir : un boîtier muet depuis
+            une semaine est débranché, arraché ou en panne.
+
+            ⚠️ Affichée SEULEMENT si > 0. Une tuile « 0 injoignable » en permanence sur
+            une flotte saine deviendrait du décor, et le jour où elle passe à 2 personne
+            ne la verrait changer. Elle apparaît, donc elle se remarque.
+          -->
+          @if ((stats()?.unreachable ?? 0) > 0) {
+            <a routerLink="/vehicles" class="metric-card metric-card--link">
+              <div class="vt-icon-tile vt-icon-tile--danger">
+                <lucide-icon [img]="WifiOff" [size]="18"></lucide-icon>
+              </div>
+              <div class="metric-content">
+                <span class="metric-value metric-value--danger">{{ stats()?.unreachable }}</span>
+                <span class="metric-label">Injoignables</span>
+              </div>
+              <lucide-icon [img]="ChevronRight" [size]="14" class="metric-arrow"></lucide-icon>
+            </a>
+          }
 
           <a routerLink="/alerts" class="metric-card metric-card--link">
             <div class="vt-icon-tile vt-icon-tile--danger">
@@ -766,6 +796,7 @@ export class DashboardComponent implements OnInit {
   protected readonly Navigation = Navigation;
   protected readonly Activity = Activity;
   protected readonly AlertTriangle = AlertTriangle;
+  protected readonly WifiOff = WifiOff;
   protected readonly MapIcon = MapIcon;
   protected readonly Plus = Plus;
   protected readonly FileBarChart = FileBarChart;
