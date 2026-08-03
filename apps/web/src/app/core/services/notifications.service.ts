@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { HttpClient } from '@angular/common/http';
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { Router } from '@angular/router';
@@ -166,7 +167,8 @@ export class NotificationsApiService {
           await this.reassertSubscription().catch(() => {/* sera retente au prochain load */});
         }
       }
-    } catch {
+    } catch (err) {
+      swallow('notifications:loadStatus', err);
       this.pushEnabled.set(false);
     }
   }
@@ -439,7 +441,8 @@ export class NotificationsApiService {
     try {
       await firstValueFrom(this.http.post(`/api/alerts/${alertId}/acknowledge`, {}));
       this.toast.success('Alerte acquittee');
-    } catch {
+    } catch (err) {
+      swallow('notifications:acknowledgeAlertFromSw', err);
       this.toast.error('Echec de l\'acquittement', 'Reessayer depuis la liste des alertes');
     }
   }
@@ -616,7 +619,8 @@ export class NotificationsApiService {
       this.preferences.set(pref);
       this.preferencesUnavailable.set(false);
       return pref;
-    } catch {
+    } catch (err) {
+      swallow('notifications:loadPreferences', err);
       const fallback = this.fallbackPreference();
       this.preferences.set(fallback);
       this.preferencesUnavailable.set(true);
@@ -655,7 +659,8 @@ export class NotificationsApiService {
       this.preferences.set(this.normalizePreference(saved));
       this.preferencesUnavailable.set(false);
       return true;
-    } catch {
+    } catch (err) {
+      swallow('notifications:savePreferences', err);
       if (previous) this.preferences.set(previous);
       return false;
     }

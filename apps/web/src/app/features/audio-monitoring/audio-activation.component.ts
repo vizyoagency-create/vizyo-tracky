@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { DatePipe } from '@angular/common';
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
@@ -265,7 +266,8 @@ export class AudioActivationComponent implements OnInit {
       this.config.set(cfg);
       // Si déjà activé, l'attestation est réputée acquise (réactivable sans recocher).
       this.attested.set(cfg.assistanceEnabled);
-    } catch {
+    } catch (err) {
+      swallow('audio-activation:ngOnInit', err);
       this.toast.error('Chargement impossible', "Impossible de lire l'état du Mode assistance.");
     } finally {
       this.loading.set(false);
@@ -300,7 +302,8 @@ export class AudioActivationComponent implements OnInit {
       } else {
         this.toast.success('Mode assistance désactivé', 'Aucune écoute de cabine ne peut désormais avoir lieu.');
       }
-    } catch {
+    } catch (err) {
+      swallow('audio-activation:toggle', err);
       this.toast.error(
         enable ? 'Activation refusée' : 'Désactivation refusée',
         'L\'opération n\'a pas abouti.',

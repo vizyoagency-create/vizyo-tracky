@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal } from '@angular/core';
 import { DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
@@ -350,6 +351,7 @@ export class TripAnalysisBadgesComponent {
       this.fresh.set(res);
       this.analyzed.emit(res);
     } catch (e) {
+      swallow('trip-analysis-badges:runAnalyze', e);
       this.error.set(apiErrorMessage(e, 'Analyse impossible.'));
     } finally {
       this.busy.set(false);
@@ -366,6 +368,7 @@ export class TripAnalysisBadgesComponent {
       this.fresh.set(res);
       this.analyzed.emit(res);
     } catch (e) {
+      swallow('trip-analysis-badges:runNarrate', e);
       this.detailError.set(apiErrorMessage(e, 'Génération du récit impossible.'));
     } finally {
       this.busyNarrate.set(false);

@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { DatePipe, JsonPipe } from '@angular/common';
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
@@ -600,7 +601,8 @@ export class AdminAlertsComponent implements OnInit {
       const now = new Date().toISOString();
       localStorage.setItem(AdminAlertsComponent.LAST_VISIT_KEY, now);
       this.lastVisitAt.set(now);
-    } catch {
+    } catch (err) {
+      swallow('admin-alerts:reload', err);
       this.toast.error('Echec du chargement des alertes');
     } finally {
       this.loading.set(false);
@@ -612,7 +614,8 @@ export class AdminAlertsComponent implements OnInit {
       await firstValueFrom(this.api.acknowledgeCommand(commandId));
       this.toast.success('Commande acquittee');
       this.reload();
-    } catch {
+    } catch (err) {
+      swallow('admin-alerts:ackCommand', err);
       this.toast.error('Echec de l\'acquittement');
     }
   }
@@ -622,7 +625,8 @@ export class AdminAlertsComponent implements OnInit {
       await firstValueFrom(this.api.clearFailing(trackerId));
       this.toast.success('Etat FAILING reinitialise');
       this.reload();
-    } catch {
+    } catch (err) {
+      swallow('admin-alerts:clearFailing', err);
       this.toast.error('Echec de la reinitialisation');
     }
   }
@@ -636,7 +640,8 @@ export class AdminAlertsComponent implements OnInit {
         `${result.errorCount} erreurs copiees`,
         'Colle le rapport dans un chat Claude pour debug.',
       );
-    } catch {
+    } catch (err) {
+      swallow('admin-alerts:exportForAI', err);
       this.toast.error('Echec de l\'export');
     } finally {
       this.exporting.set(false);
@@ -658,7 +663,8 @@ export class AdminAlertsComponent implements OnInit {
       a.click();
       URL.revokeObjectURL(url);
       this.toast.success(`${result.errorCount} erreurs exportees en fichier .md`);
-    } catch {
+    } catch (err) {
+      swallow('admin-alerts:downloadExport', err);
       this.toast.error('Echec du telechargement');
     } finally {
       this.exporting.set(false);

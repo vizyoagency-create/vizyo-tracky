@@ -361,6 +361,7 @@ export class OptimizationSheetComponent {
       await firstValueFrom(this.ai.setFleetMetier({ fleetId: this.selectedFleetId() ?? undefined, metier }));
       this.toast.success('Métier mis à jour', this.metierLabel(metier));
     } catch (e) {
+      swallow('optimization-sheet:onMetierChange', e);
       this.metier.set(prev);
       this.toast.error('Échec', this.errMsg(e));
     }
@@ -370,7 +371,8 @@ export class OptimizationSheetComponent {
     this.utilLoading.set(true);
     try {
       this.util.set(await firstValueFrom(this.agendaApi.getUtilization({ fleetId: this.selectedFleetId() ?? undefined })));
-    } catch {
+    } catch (err) {
+      swallow('optimization-sheet:loadUtil', err);
       this.util.set(null);
     } finally {
       this.utilLoading.set(false);
@@ -426,6 +428,7 @@ export class OptimizationSheetComponent {
       this.selected.set(new Set());
       this.applied.emit();
     } catch (e) {
+      swallow('optimization-sheet:Set', e);
       this.capError.set(this.errMsg(e));
     } finally {
       this.applying.set(false);

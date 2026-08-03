@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { Component, type OnInit, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
@@ -229,7 +230,8 @@ export class AdminRetentionComponent implements OnInit {
     try {
       const d = await firstValueFrom(this.retention.getOverview());
       this.data.set(d);
-    } catch {
+    } catch (err) {
+      swallow('admin-retention:load', err);
       this.toast.error('Chargement impossible', "Impossible de charger l'état de rétention.");
     } finally {
       this.loading.set(false);
@@ -243,7 +245,8 @@ export class AdminRetentionComponent implements OnInit {
       await firstValueFrom(this.retention.refresh());
       await this.load();
       this.toast.success('Snapshot recalculé', 'Les compteurs de rétention sont à jour.');
-    } catch {
+    } catch (err) {
+      swallow('admin-retention:refresh', err);
       this.toast.error('Recalcul impossible', 'Réessaie dans un instant.');
     } finally {
       this.refreshing.set(false);

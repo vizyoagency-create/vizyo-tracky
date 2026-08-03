@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { DatePipe } from '@angular/common';
 import { Component, DestroyRef, inject, OnInit, signal, computed } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -209,7 +210,8 @@ export class AdminUnknownTrackersComponent implements OnInit {
     try {
       const data = await firstValueFrom(this.unknownApi.list());
       this.entries.set(data);
-    } catch {
+    } catch (err) {
+      swallow('admin-unknown-trackers:reload', err);
       this.toast.error('Échec du chargement des boîtiers non reconnus');
     }
   }
@@ -224,7 +226,8 @@ export class AdminUnknownTrackersComponent implements OnInit {
     try {
       await firstValueFrom(this.unknownApi.forget(e.imei));
       this.entries.update((list) => list.filter((x) => x.imei !== e.imei));
-    } catch {
+    } catch (err) {
+      swallow('admin-unknown-trackers:ignore', err);
       this.toast.error('Échec');
     }
   }
@@ -242,7 +245,8 @@ export class AdminUnknownTrackersComponent implements OnInit {
       // flottes pour un SUPER_ADMIN). Modale gardée ouverte si ça échoue (création sans assign possible).
       const vehicles = await firstValueFrom(this.vehiclesApi.list({ hasTracker: 'false' }));
       this.allVehicles.set(vehicles.map((v) => ({ id: v.id, plate: v.plate, hasTracker: false })));
-    } catch {
+    } catch (err) {
+      swallow('admin-unknown-trackers:startCreate', err);
       this.toast.error('Échec du chargement des véhicules');
     }
   }
@@ -268,6 +272,7 @@ export class AdminUnknownTrackersComponent implements OnInit {
       this.creatingFor.set(null);
       this.entries.update((list) => list.filter((x) => x.imei !== entry.imei));
     } catch (e: unknown) {
+      swallow('admin-unknown-trackers:confirmCreate', e);
       const msg = (e as { error?: { message?: string } })?.error?.message ?? 'Échec de la création';
       this.toast.error(msg);
     } finally {

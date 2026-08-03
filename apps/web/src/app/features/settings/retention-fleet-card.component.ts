@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { Component, type OnInit, inject, signal } from '@angular/core';
 import type { RetentionFleetViewDto } from '@vizyo/tracky-shared';
@@ -84,7 +85,8 @@ export class RetentionFleetCardComponent implements OnInit {
   async ngOnInit(): Promise<void> {
     try {
       this.data.set(await firstValueFrom(this.retention.getFleetView()));
-    } catch {
+    } catch (err) {
+      swallow('retention-fleet-card:ngOnInit', err);
       // Encart secondaire : silencieux si pas de snapshot / pas de flotte.
     }
   }

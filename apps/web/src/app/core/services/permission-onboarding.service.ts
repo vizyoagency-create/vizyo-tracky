@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
@@ -48,7 +49,8 @@ export class PermissionOnboardingService {
       await firstValueFrom(
         this.http.post('/api/consent/permission', { kind, granted, deviceId: this.deviceId() }),
       );
-    } catch {
+    } catch (err) {
+      swallow('permission-onboarding:record', err);
       // best-effort — l'enregistrement ne doit jamais bloquer l'utilisateur.
     }
   }

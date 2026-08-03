@@ -427,6 +427,7 @@ export class AgendaAgentSettingsSheetComponent {
       this.metier.set(s.metier);
       this.monthCostEur.set(s.monthCostEur);
     } catch (e) {
+      swallow('agenda-agent-settings-sheet:load', e);
       this.error.set(this.errMsg(e));
     } finally {
       this.loading.set(false);
@@ -451,7 +452,8 @@ export class AgendaAgentSettingsSheetComponent {
     // Liens publics de réservation (best-effort).
     try {
       this.links.set(await firstValueFrom(this.bookingApi.listLinks(fleetId)));
-    } catch {
+    } catch (err) {
+      swallow('agenda-agent-settings-sheet:load', err);
       this.links.set([]);
     }
   }
@@ -465,6 +467,7 @@ export class AgendaAgentSettingsSheetComponent {
       await this.copyUrl(link.publicUrl);
       this.toast.success('Lien créé', 'URL copiée dans le presse-papier.');
     } catch (e) {
+      swallow('agenda-agent-settings-sheet:createLink', e);
       this.toast.error('Échec', this.errMsg(e));
     } finally {
       this.creatingLink.set(false);
@@ -485,6 +488,7 @@ export class AgendaAgentSettingsSheetComponent {
       const updated = await firstValueFrom(this.bookingApi.setActive(link.id, !link.active));
       this.links.update((l) => l.map((x) => (x.id === updated.id ? updated : x)));
     } catch (e) {
+      swallow('agenda-agent-settings-sheet:toggleLink', e);
       this.toast.error('Échec', this.errMsg(e));
     }
   }
@@ -497,6 +501,7 @@ export class AgendaAgentSettingsSheetComponent {
       await firstValueFrom(this.ai.setFleetMetier({ fleetId: this.currentFleetId(), metier }));
       this.toast.success('Métier mis à jour', this.metierLabel(metier));
     } catch (e) {
+      swallow('agenda-agent-settings-sheet:onMetierChange', e);
       this.metier.set(prev);
       this.toast.error('Échec', this.errMsg(e));
     }
@@ -518,6 +523,7 @@ export class AgendaAgentSettingsSheetComponent {
       this.aiStatus.refresh(); // met à jour le masquage des boutons IA dans toute l'app
       this.toast.success(next ? 'IA offerte' : 'IA coupée', next ? 'L\'assistance IA est offerte à cette société.' : 'Toute l\'IA est coupée pour cette société.');
     } catch (e) {
+      swallow('agenda-agent-settings-sheet:toggleAiMaster', e);
       this.aiMasterEnabled.set(prev);
       this.toast.error('Échec', this.errMsg(e));
     } finally {
@@ -546,6 +552,7 @@ export class AgendaAgentSettingsSheetComponent {
       this.saved.emit();
       this.closed.emit();
     } catch (e) {
+      swallow('agenda-agent-settings-sheet:save', e);
       this.error.set(this.errMsg(e));
     } finally {
       this.saving.set(false);

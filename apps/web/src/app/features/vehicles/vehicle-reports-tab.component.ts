@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, computed, HostListener, inject, input, OnDestroy, OnInit, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -1301,7 +1302,8 @@ export class VehicleReportsTabComponent implements OnInit, OnDestroy {
       this.maybeDeepLinkScroll();
       // Analyses de trajets pré-chargées en LOT (best-effort, non bloquant) → badges sur les cards.
       void this.loadAnalyses();
-    } catch {
+    } catch (err) {
+      swallow('vehicle-reports-tab:loadData', err);
       this.trips.set([]);
       this.dailySummary.set([]);
     } finally {
@@ -1314,7 +1316,8 @@ export class VehicleReportsTabComponent implements OnInit, OnDestroy {
     try {
       const list = await firstValueFrom(this.analysisApi.listForVehicle(this.vehicleId(), 200));
       this.analysesMap.set(new Map(list.map((a) => [a.tripId, a])));
-    } catch {
+    } catch (err) {
+      swallow('vehicle-reports-tab:loadAnalyses', err);
       this.analysesMap.set(new Map());
     }
   }
@@ -1401,6 +1404,7 @@ export class VehicleReportsTabComponent implements OnInit, OnDestroy {
         driver ? `${driver.firstName} ${driver.lastName}` : '',
       );
     } catch (err) {
+      swallow('vehicle-reports-tab:onDriverPickedForTrip', err);
       this.toast.error('Échec affectation', err instanceof Error ? err.message : '');
     }
   }

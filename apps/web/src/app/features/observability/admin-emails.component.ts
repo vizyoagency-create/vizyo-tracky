@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -486,7 +487,8 @@ export class AdminEmailsComponent implements OnInit {
       this.nextCursor.set(logs.nextCursor);
       this.templatesRaw.set(templates);
       this.deliver.set(deliver);
-    } catch {
+    } catch (err) {
+      swallow('admin-emails:reload', err);
       this.toast.error('Échec du chargement (accès SUPER_ADMIN requis)');
     } finally {
       this.loading.set(false);
@@ -500,7 +502,8 @@ export class AdminEmailsComponent implements OnInit {
       );
       this.logsList.set(page.items);
       this.nextCursor.set(page.nextCursor);
-    } catch {
+    } catch (err) {
+      swallow('admin-emails:reloadLogs', err);
       this.toast.error('Échec du chargement des envois');
     }
   }
@@ -515,7 +518,8 @@ export class AdminEmailsComponent implements OnInit {
       );
       this.logsList.update((l) => [...l, ...page.items]);
       this.nextCursor.set(page.nextCursor);
-    } catch {
+    } catch (err) {
+      swallow('admin-emails:loadMore', err);
       this.toast.error('Échec du chargement');
     } finally {
       this.loadingMore.set(false);
@@ -535,7 +539,8 @@ export class AdminEmailsComponent implements OnInit {
     try {
       const res = await firstValueFrom(this.api.preview(t.id));
       this.previewHtml.set(this.sanitizer.bypassSecurityTrustHtml(res.html));
-    } catch {
+    } catch (err) {
+      swallow('admin-emails:openPreview', err);
       this.toast.error("Échec du chargement de l'aperçu");
     }
   }
@@ -556,7 +561,8 @@ export class AdminEmailsComponent implements OnInit {
       const res = await firstValueFrom(this.api.sendTest(t.id, to));
       if (res.ok) this.toast.success(`Test « ${t.label} » envoyé à ${to}`);
       else this.toast.error(res.error || "Échec de l'envoi de test");
-    } catch {
+    } catch (err) {
+      swallow('admin-emails:sendTest', err);
       this.toast.error("Échec de l'envoi de test");
     } finally {
       this.sending.set(false);

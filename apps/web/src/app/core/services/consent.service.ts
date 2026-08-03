@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
@@ -32,7 +33,8 @@ export class ConsentService {
       // On ne lève l'écran QUE si l'enforcement est activé (déploiement sûr : flag off
       // = capture LP + admin actifs, mais aucun blocage des utilisateurs existants).
       this.mustAccept.set(!!s.required && !!s.enforce);
-    } catch {
+    } catch (err) {
+      swallow('consent:load', err);
       // Silencieux : un 403 CONSENT_REQUIRED sur un autre appel lèvera le gate.
     }
   }
@@ -43,7 +45,8 @@ export class ConsentService {
       await firstValueFrom(this.http.post('/api/consent/accept', {}));
       this.mustAccept.set(false);
       return true;
-    } catch {
+    } catch (err) {
+      swallow('consent:accept', err);
       return false;
     }
   }

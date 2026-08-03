@@ -261,6 +261,7 @@ export class FuelCalibrationCardComponent {
       this.showForm.set(false);
       await this.load(this.vehicleId());
     } catch (e) {
+      swallow('fuel-calibration-card:submit', e);
       this.formError.set(apiErrorMessage(e, 'Enregistrement impossible.'));
     } finally {
       this.saving.set(false);
@@ -281,7 +282,8 @@ export class FuelCalibrationCardComponent {
     this.loading.set(true);
     try {
       this.data.set(await firstValueFrom(this.api.fuelCalibration(vehicleId, this.fromIso())));
-    } catch {
+    } catch (err) {
+      swallow('fuel-calibration-card:load', err);
       this.data.set(null);
     } finally {
       this.loading.set(false);

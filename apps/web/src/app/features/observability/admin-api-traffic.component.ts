@@ -587,6 +587,7 @@ export class AdminApiTrafficComponent implements OnInit, OnDestroy {
       this.ips.set(ips);
       await this.loadEntries(true);
     } catch (e) {
+      swallow('admin-api-traffic:reload', e);
       this.error.set(this.errMsg(e));
     } finally {
       this.loading.set(false);
@@ -606,7 +607,7 @@ export class AdminApiTrafficComponent implements OnInit, OnDestroy {
       await this.loadEntries(true);
     } catch (err) {
       // silencieux en auto
-      swallow('admin-api-traffic:léger', err);
+      swallow('admin-api-traffic:reloadAuto', err);
     }
   }
 

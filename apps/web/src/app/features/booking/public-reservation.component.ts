@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { apiErrorMessage } from '../../core/error/api-error';
 import { ActivatedRoute } from '@angular/router';
@@ -185,6 +186,7 @@ export class PublicReservationComponent implements OnInit, OnDestroy {
     try {
       this.link.set(await firstValueFrom(this.api.getPublicLink(this.token)));
     } catch (e) {
+      swallow('public-reservation:ngOnInit', e);
       this.loadError.set(this.msg(e, 'Ce lien est introuvable ou a été désactivé.'));
     }
   }
@@ -227,6 +229,7 @@ export class PublicReservationComponent implements OnInit, OnDestroy {
       }));
       this.done.set(res.message);
     } catch (e) {
+      swallow('public-reservation:submit', e);
       this.submitError.set(this.msg(e, 'Envoi impossible. Réessayez dans un instant.'));
     } finally {
       this.submitting.set(false);
@@ -299,7 +302,8 @@ export class PublicReservationComponent implements OnInit, OnDestroy {
       if (r.destination) this.destination.set(r.destination);
       if (r.startAt) this.startAt.set(this.toLocal(new Date(r.startAt)));
       if (r.endAt) this.endAt.set(this.toLocal(new Date(r.endAt)));
-    } catch {
+    } catch (err) {
+      swallow('public-reservation:parseVoice', err);
       // silencieux : les champs déjà extraits suffisent ; le demandeur vérifie puis envoie.
     } finally {
       this.parsing.set(false);

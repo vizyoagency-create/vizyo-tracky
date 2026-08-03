@@ -1,3 +1,4 @@
+import { swallow } from '../../../core/error/swallow';
 import { Component, computed, effect, inject, input, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule, Clock, Save, X, Shield, Briefcase, Calendar, Settings2, Zap } from 'lucide-angular';
@@ -819,7 +820,8 @@ export class VehicleScheduleComponent {
         this.customDates.set([]);
       }
       this.dirty.set(false);
-    } catch {
+    } catch (err) {
+      swallow('vehicle-schedule:load', err);
       // No schedule yet → use defaults
     } finally {
       this.loading.set(false);
@@ -894,6 +896,7 @@ export class VehicleScheduleComponent {
       this.dirty.set(false);
       this.toast.success('Horaires enregistrés');
     } catch (err: any) {
+      swallow('vehicle-schedule:save', err);
       this.toast.error(
         'Erreur',
         err?.error?.message ?? 'Impossible de sauvegarder',

@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { HttpClient } from '@angular/common/http';
 import { computed, effect, inject, Injectable, signal } from '@angular/core';
 import { Router } from '@angular/router';
@@ -761,7 +762,8 @@ export class RealtimeService {
       this.positions.set(next);
       this.hydratedTrackerIds.set(hydratedIds);
       this.hydrated.set(true);
-    } catch {
+    } catch (err) {
+      swallow('realtime:hydrate', err);
       // Silent — la carte se peuplera via WS.
     }
   }
@@ -774,7 +776,8 @@ export class RealtimeService {
         }),
       );
       this._alerts.set(res.items ?? []);
-    } catch {
+    } catch (err) {
+      swallow('realtime:loadInitialAlerts', err);
       // Silent — alerts will come via WS
     }
   }

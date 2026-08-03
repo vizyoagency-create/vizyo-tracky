@@ -946,7 +946,8 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
       this.provisionings.set(provs.items);
       this.backupHealth.set(bh);
       if (this.shouldKeepPolling(provs.items)) this.startPolling();
-    } catch {
+    } catch (err) {
+      swallow('admin-sms:reload', err);
       this.toast.error('Echec du chargement (acces SUPER_ADMIN requis)');
     }
     await this.loadAllowlist();
@@ -962,7 +963,8 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
       } else {
         this.toast.error(result.error ?? 'Echec d\'envoi');
       }
-    } catch {
+    } catch (err) {
+      swallow('admin-sms:sendAdhoc', err);
       this.toast.error('Echec d\'envoi SMS');
     }
   }
@@ -980,7 +982,8 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
         this.toast.error(`Heartbeat : ${r.failed}/${r.recipients} echec(s) via ${r.provider} — voir ErrorLogs`);
       }
       this.reload();
-    } catch {
+    } catch (err) {
+      swallow('admin-sms:runHeartbeat', err);
       this.toast.error('Echec du heartbeat (acces SUPER_ADMIN requis)');
     } finally {
       this.heartbeatRunning.set(false);
@@ -1011,6 +1014,7 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
       await this.refreshProvisionings();
       this.startPolling();
     } catch (err: unknown) {
+      swallow('admin-sms:startProvisioning', err);
       const message = err && typeof err === 'object' && 'error' in err
         ? (err as { error?: { message?: string } }).error?.message
         : null;
@@ -1023,7 +1027,8 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
       await firstValueFrom(this.api.cancelProvisioning(id));
       this.toast.success('Sequence annulee');
       this.reload();
-    } catch {
+    } catch (err) {
+      swallow('admin-sms:cancelProv', err);
       this.toast.error('Echec annulation');
     }
   }
@@ -1055,6 +1060,7 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
       this.newLabel = '';
       await this.loadAllowlist();
     } catch (e) {
+      swallow('admin-sms:addNumber', e);
       this.toast.error(this.errMsg(e) ?? 'Echec ajout');
     }
   }
@@ -1064,7 +1070,8 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
       await firstValueFrom(this.api.removeAllowlist(phone));
       this.toast.success('Numero retire');
       await this.loadAllowlist();
-    } catch {
+    } catch (err) {
+      swallow('admin-sms:removeNumber', err);
       this.toast.error('Echec suppression');
     }
   }
@@ -1077,6 +1084,7 @@ export class AdminSmsComponent implements OnInit, OnDestroy {
       this.toast.success(`Sync OK — +${r.added} / -${r.removed} (${r.unchanged} inchanges${extra})`);
       await this.loadAllowlist();
     } catch (e) {
+      swallow('admin-sms:syncTrackers', e);
       this.toast.error(this.errMsg(e) ?? 'Echec sync');
     } finally {
       this.syncing.set(false);

@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { CommonModule } from '@angular/common';
 import {
   ChangeDetectionStrategy,
@@ -253,6 +254,7 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
       this.lastUpdated.set(Date.now());
       this.error.set(null);
     } catch (e) {
+      swallow('fleet-schedules:load', e);
       const msg = (e as { error?: { message?: string } })?.error?.message ?? 'Chargement impossible';
       this.error.set(msg);
       if (isRefresh) {
@@ -420,6 +422,7 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
       );
       this.previewData.set(res);
     } catch (e) {
+      swallow('fleet-schedules:openPreview', e);
       const msg = (e as { error?: { message?: string } })?.error?.message ?? 'Aperçu impossible';
       this.toast.error('Aperçu', msg);
     } finally {
@@ -452,6 +455,7 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
         }
       }
     } catch (e) {
+      swallow('fleet-schedules:confirmApply', e);
       const msg = (e as { error?: { message?: string } })?.error?.message ?? 'Application impossible';
       this.toast.error('Application', msg);
     } finally {
@@ -498,7 +502,8 @@ export class FleetSchedulesComponent implements OnInit, OnDestroy {
     try {
       await firstValueFrom(this.api.reactivate(r.vehicleId));
       await this.load(true);
-    } catch {
+    } catch (err) {
+      swallow('fleet-schedules:reactivate', err);
       this.error.set('Réactivation impossible.');
     } finally {
       this.reactivating.update((s) => { const n = new Set(s); n.delete(r.vehicleId); return n; });

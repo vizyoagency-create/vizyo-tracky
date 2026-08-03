@@ -672,7 +672,8 @@ export class ObservabilityComponent implements OnInit {
       const res = await firstValueFrom(this.logsApi.listWireLogs(params));
       this.wireLogs.set(res.items);
       this.wireTotal.set(res.total);
-    } catch {
+    } catch (err) {
+      swallow('observability:loadWireLogs', err);
       this.toast.error('Erreur de chargement des wire logs');
     }
   }
@@ -683,7 +684,8 @@ export class ObservabilityComponent implements OnInit {
     try {
       const res = await firstValueFrom(this.logsApi.trackerTimeline(imei));
       this.timelineEntries.set(res.items);
-    } catch {
+    } catch (err) {
+      swallow('observability:loadTimeline', err);
       this.toast.error('Erreur de chargement de la timeline');
     }
   }
@@ -863,6 +865,7 @@ export class ObservabilityComponent implements OnInit {
         this.toast.error(`Test fallback KO : ${r.smsResult.error ?? 'erreur inconnue'}`);
       }
     } catch (e) {
+      swallow('observability:testFallback', e);
       const msg = (e as { error?: { error?: { message?: string } } })?.error?.error?.message
         ?? (e as Error).message
         ?? 'Echec inconnu';

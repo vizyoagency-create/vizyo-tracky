@@ -336,6 +336,7 @@ export class TripAutomationComponent implements OnInit {
       this.draft.set({ ...s });
       this.lastRun.set(s.lastRunStats);
     } catch (e) {
+      swallow('trip-automation:load', e);
       this.toast.error('Chargement impossible', apiErrorMessage(e, ''));
     } finally {
       this.loading.set(false);
@@ -386,6 +387,7 @@ export class TripAutomationComponent implements OnInit {
       this.draft.set({ ...updated });
       this.toast.success('Réglages enregistrés');
     } catch (e) {
+      swallow('trip-automation:save', e);
       this.toast.error('Échec de l\'enregistrement', apiErrorMessage(e, ''));
     } finally {
       this.saving.set(false);
@@ -402,6 +404,7 @@ export class TripAutomationComponent implements OnInit {
       void this.load();
       void this.loadRuns();
     } catch (e) {
+      swallow('trip-automation:runNow', e);
       this.toast.error('Le run a échoué', apiErrorMessage(e, ''));
     } finally {
       this.running.set(false);

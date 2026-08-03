@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, DestroyRef, effect, inject, input, OnInit, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -516,6 +517,7 @@ export class EngineControlButtonComponent implements OnInit {
       );
       await this.loadRecentCommands();
     } catch (err) {
+      swallow('engine-control-button:onConfirm', err);
       if (err instanceof HttpErrorResponse && err.status === 409) {
         this.toast.error(
           'Commande déjà en cours',
@@ -543,7 +545,8 @@ export class EngineControlButtonComponent implements OnInit {
     try {
       const schedule = await firstValueFrom(this.schedulesApi.get(vid));
       this._scheduleEnabled.set(!!schedule?.enabled);
-    } catch {
+    } catch (err) {
+      swallow('engine-control-button:loadScheduleStatus', err);
       // Non critique
     }
   }
@@ -554,7 +557,8 @@ export class EngineControlButtonComponent implements OnInit {
         this.engineControl.listCommands(this.trackerId(), 5),
       );
       this.recentCommands.set(cmds);
-    } catch {
+    } catch (err) {
+      swallow('engine-control-button:loadRecentCommands', err);
       if (retries > 0) {
         await new Promise((r) => setTimeout(r, 1000));
         return this.loadRecentCommands(retries - 1);

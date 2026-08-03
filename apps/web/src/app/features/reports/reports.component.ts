@@ -2131,6 +2131,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       // (sinon les trajets couvrent plusieurs véhicules, pas de chargement en lot possible).
       void this.loadAnalyses(seq);
     } catch (err) {
+      swallow('reports:loadData', err);
       if (seq === this.loadSeq) {
         this.trips.set([]);
         this.dailySummary.set([]);
@@ -2148,7 +2149,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
     try {
       const list = await firstValueFrom(this.analysisApi.listForVehicle(vId, 200));
       if (seq === this.loadSeq) this.analysesMap.set(new Map(list.map((a) => [a.tripId, a])));
-    } catch {
+    } catch (err) {
+      swallow('reports:loadAnalyses', err);
       if (seq === this.loadSeq) this.analysesMap.set(new Map());
     }
   }
@@ -2225,6 +2227,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
         driver ? `${driver.firstName} ${driver.lastName}` : '',
       );
     } catch (err) {
+      swallow('reports:onDriverPickedForTrip', err);
       this.toast.error('Echec affectation', err instanceof Error ? err.message : '');
     }
   }
@@ -2241,7 +2244,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
       }));
       this.toast.success(`Recalcul terminé`, `${res.deleted} supprimés, ${res.created} créés`);
       await this.loadData();
-    } catch { this.toast.error('Échec du recalcul'); }
+    } catch (err) {
+      swallow('reports:onRecompute', err); this.toast.error('Échec du recalcul'); }
     finally { this.recomputing.set(false); }
   }
 

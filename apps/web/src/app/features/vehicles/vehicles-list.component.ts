@@ -1386,7 +1386,8 @@ export class VehiclesListComponent implements OnInit {
       if (!w) return;
       w.document.write(buildQrSheetHtml(cards));
       w.document.close();
-    } catch {
+    } catch (err) {
+      swallow('vehicles-list:printAllQr', err);
       w?.close();
     }
   }
@@ -1433,6 +1434,7 @@ export class VehiclesListComponent implements OnInit {
       this.showAssignTracker.set(false);
       await this.loadVehicles();
     } catch (err: unknown) {
+      swallow('vehicles-list:onAssignTracker', err);
       const msg = (err as { error?: { message?: string } })?.error?.message ?? 'Erreur';
       this.assignError.set(typeof msg === 'string' ? msg : String(msg));
     } finally { this.assignLoading.set(false); }
@@ -1452,7 +1454,8 @@ export class VehiclesListComponent implements OnInit {
           .map((v) => ({ trackerId: v.tracker!.id, moving: !!v.moving })),
       );
       this.scrollToPendingGroup();
-    } catch {
+    } catch (err) {
+      swallow('vehicles-list:loadVehicles', err);
       this.vehicles.set([]);
     } finally {
       this.loading.set(false);

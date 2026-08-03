@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -257,7 +258,8 @@ export class LoginComponent implements OnInit {
             ? '/map'
             : '/dashboard';
       this.router.navigateByUrl(safeReturn ?? home);
-    } catch {
+    } catch (err) {
+      swallow('login:onSubmit', err);
       this.error.set('Erreur de connexion au serveur');
     } finally {
       this.loading.set(false);

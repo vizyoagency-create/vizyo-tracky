@@ -1,3 +1,4 @@
+import { swallow } from '../../../core/error/swallow';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, HostListener, inject, input, output, signal } from '@angular/core';
 import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
@@ -470,7 +471,8 @@ export class VehicleDialogComponent {
       if (!this.isEditMode() && list.length === 1) {
         this.selectedFleetId = list[0].id;
       }
-    } catch {
+    } catch (err) {
+      swallow('vehicle-dialog:loadFleets', err);
       this.fleetsError.set('Impossible de charger les flottes');
     } finally {
       this.fleetsLoading.set(false);
@@ -493,7 +495,8 @@ export class VehicleDialogComponent {
       this.energy = v.energy ?? undefined;
       this.features = Array.isArray(v.features) ? [...v.features] : [];
       this.selectedFleetId = v.fleetId;
-    } catch {
+    } catch (err) {
+      swallow('vehicle-dialog:loadVehicle', err);
       this.errorMessage.set('Impossible de charger le véhicule');
     } finally {
       this.vehicleLoading.set(false);
@@ -515,6 +518,7 @@ export class VehicleDialogComponent {
       this.createdVehicleId.set(vehicle.id);
       this.currentStep.set(2);
     } catch (err) {
+      swallow('vehicle-dialog:onSubmitStep1', err);
       this.errorMessage.set(this.extractError(err));
     } finally { this.isLoading.set(false); }
   }
@@ -539,6 +543,7 @@ export class VehicleDialogComponent {
       this.reset();
       this.done.emit();
     } catch (err) {
+      swallow('vehicle-dialog:onSubmitEdit', err);
       this.errorMessage.set(this.extractError(err));
     } finally { this.isLoading.set(false); }
   }
@@ -558,6 +563,7 @@ export class VehicleDialogComponent {
       this.reset();
       this.done.emit();
     } catch (err) {
+      swallow('vehicle-dialog:onSubmitStep2', err);
       this.errorMessage.set(this.extractError(err));
     } finally { this.isLoading.set(false); }
   }

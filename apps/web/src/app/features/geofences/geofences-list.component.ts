@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { HttpClient } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
@@ -340,6 +341,7 @@ export class GeofencesListComponent implements OnInit {
       );
       await this.loadGeofences();
     } catch (err) {
+      swallow('geofences-list:onFileSelected', err);
       this.toast.error('Echec de l\'import (fichier GeoJSON invalide ?)');
     } finally {
       this.importing.set(false);
@@ -397,7 +399,8 @@ export class GeofencesListComponent implements OnInit {
       await firstValueFrom(this.geofencesApi.delete(g.id));
       this.geofences.update((list) => list.filter((x) => x.id !== g.id));
       this.toast.success('Géofence supprimée');
-    } catch { this.toast.error('Échec de la suppression'); }
+    } catch (err) {
+      swallow('geofences-list:onDeleteConfirmed', err); this.toast.error('Échec de la suppression'); }
     this.showDeleteConfirm.set(false);
   }
 
@@ -412,7 +415,8 @@ export class GeofencesListComponent implements OnInit {
     try {
       const list = await firstValueFrom(this.geofencesApi.list());
       this.geofences.set(list);
-    } catch { this.geofences.set([]); }
+    } catch (err) {
+      swallow('geofences-list:loadGeofences', err); this.geofences.set([]); }
     finally { this.loading.set(false); }
   }
 }

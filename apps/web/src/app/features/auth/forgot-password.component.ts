@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { Component, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -141,7 +142,8 @@ export class ForgotPasswordComponent {
 
       if (!res.ok) throw new Error('Erreur serveur');
       this.sent.set(true);
-    } catch {
+    } catch (err) {
+      swallow('forgot-password:onSubmit', err);
       this.error.set('Erreur de connexion au serveur');
     } finally {
       this.loading.set(false);

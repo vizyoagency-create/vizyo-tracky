@@ -1,3 +1,4 @@
+import { swallow } from '../../../core/error/swallow';
 import { CommonModule } from '@angular/common';
 import {
   ChangeDetectionStrategy, Component, computed, inject,
@@ -128,6 +129,7 @@ export class BackgroundTasksComponent implements OnInit, OnDestroy {
       this.nowMs.set(Date.now());
       this.error.set(null);
     } catch (e) {
+      swallow('background-tasks:load', e);
       this.error.set((e as { error?: { message?: string } })?.error?.message ?? 'Chargement impossible');
     } finally {
       this.loading.set(false);

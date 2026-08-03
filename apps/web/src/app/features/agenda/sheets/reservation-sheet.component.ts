@@ -1,3 +1,4 @@
+import { swallow } from '../../../core/error/swallow';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -551,6 +552,7 @@ export class ReservationSheetComponent {
       this.aiCost.set(res.aiCostEur ?? null);
       if (res.proposals.length > 0) this.vehicleId.set(res.proposals[0].vehicleId); // pré-sélectionne le meilleur
     } catch (e) {
+      swallow('reservation-sheet:suggestAi', e);
       this.aiError.set(this.errMsg(e));
     } finally {
       this.aiLoading.set(false);
@@ -586,6 +588,7 @@ export class ReservationSheetComponent {
       }
       this.closed.emit();
     } catch (e) {
+      swallow('reservation-sheet:submit', e);
       this.reqError.set(this.errMsg(e));
     } finally {
       this.submitting.set(false);
@@ -613,6 +616,7 @@ export class ReservationSheetComponent {
       this.created.emit();
       this.closed.emit();
     } catch (e) {
+      swallow('reservation-sheet:saveEdit', e);
       this.reqError.set(this.errMsg(e));
     } finally {
       this.submitting.set(false);
@@ -630,6 +634,7 @@ export class ReservationSheetComponent {
       this.created.emit();
       this.closed.emit();
     } catch (e) {
+      swallow('reservation-sheet:cancelResa', e);
       this.reqError.set(this.errMsg(e));
     } finally {
       this.submitting.set(false);
@@ -640,7 +645,8 @@ export class ReservationSheetComponent {
     this.queueLoading.set(true);
     try {
       this.pending.set(await firstValueFrom(this.api.listReservations({ status: 'REQUESTED' })));
-    } catch {
+    } catch (err) {
+      swallow('reservation-sheet:loadQueue', err);
       this.pending.set([]);
     } finally {
       this.queueLoading.set(false);
@@ -655,6 +661,7 @@ export class ReservationSheetComponent {
       this.toast.success('Réservation validée', r.vehiclePlate ?? '');
       this.created.emit();
     } catch (e) {
+      swallow('reservation-sheet:confirm', e);
       this.toast.error('Échec', this.errMsg(e));
     } finally {
       this.busyId.set(null);
@@ -669,6 +676,7 @@ export class ReservationSheetComponent {
       this.toast.success('Demande refusée', r.vehiclePlate ?? '');
       this.created.emit();
     } catch (e) {
+      swallow('reservation-sheet:reject', e);
       this.toast.error('Échec', this.errMsg(e));
     } finally {
       this.busyId.set(null);

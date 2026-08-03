@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import type { FleetAudioEligibilityDto } from '@vizyo/tracky-shared';
@@ -227,7 +228,8 @@ export class AudioEligibilityComponent implements OnInit {
     try {
       const list = await firstValueFrom(this.audio.getFleetsWithAudio());
       this.fleets.set(list);
-    } catch {
+    } catch (err) {
+      swallow('audio-eligibility:ngOnInit', err);
       this.toast.error('Chargement impossible', 'Impossible de lire les flottes éligibles.');
     } finally {
       this.loading.set(false);
@@ -258,7 +260,8 @@ export class AudioEligibilityComponent implements OnInit {
       } else {
         this.toast.success('Éligibilité retirée', `Toute écoute est coupée pour « ${fleet.fleetName} ».`);
       }
-    } catch {
+    } catch (err) {
+      swallow('audio-eligibility:toggleEligibility', err);
       this.toast.error('Opération refusée', "L'éligibilité n'a pas pu être modifiée.");
     } finally {
       this.savingId.set(null);
@@ -306,7 +309,8 @@ export class AudioEligibilityComponent implements OnInit {
       } else {
         this.toast.success('Mode assistance désactivé', `Override retiré sur « ${fleet.fleetName} ».`);
       }
-    } catch {
+    } catch (err) {
+      swallow('audio-eligibility:toggleAssistance', err);
       this.toast.error('Opération refusée', "Le Mode assistance n'a pas pu être modifié.");
     } finally {
       this.savingAssistId.set(null);

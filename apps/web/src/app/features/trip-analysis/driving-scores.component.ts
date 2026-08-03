@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, OnInit, signal } from '@angular/core';
 import { PlanUpsellComponent } from '../../shared/ui/plan-upsell/plan-upsell.component';
 import { DecimalPipe } from '@angular/common';
@@ -301,6 +302,7 @@ export class DrivingScoresComponent implements OnInit {
         this.api.scores(this.scope(), this.fromIso(), undefined, this.fleetFilter.selectedFleetId() ?? undefined),
       ));
     } catch (e) {
+      swallow('driving-scores:reload', e);
       this.error.set(apiErrorMessage(e, 'Chargement des scores impossible.'));
     } finally {
       this.loading.set(false);

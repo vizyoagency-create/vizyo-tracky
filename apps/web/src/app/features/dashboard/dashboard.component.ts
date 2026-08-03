@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { DatePipe } from '@angular/common';
@@ -1001,7 +1002,8 @@ export class DashboardComponent implements OnInit {
         meta.set(v.id, { type: cast.type ?? 'OTHER', plate: v.plate });
       });
       this.vehicleMetaMap.set(meta);
-    } catch {
+    } catch (err) {
+      swallow('dashboard:ngOnInit', err);
       // ⚠️ NE PAS retomber sur « ALL ». Le champ vaut `'ALL'` à l'initialisation, ce qui
       // signifie « aucune restriction par véhicule » : en sortant d'ici sans rien écrire,
       // une panne de chargement OUVRAIT le périmètre au lieu de le fermer.

@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { httpFailureMessage } from '../../core/services/http-failure';
 import { ChangeDetectionStrategy, Component, HostListener, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -723,6 +724,7 @@ export class UsersListComponent implements OnInit {
       this.showDrawer.set(false);
       await this.loadUsers();
     } catch (err) {
+      swallow('users-list:onDrawerSave', err);
       this.toast.error(err instanceof Error ? err.message : 'Erreur');
     }
     finally { this.drawerLoading.set(false); }
@@ -794,6 +796,7 @@ export class UsersListComponent implements OnInit {
       this.showAudioInfoModal.set(false);
       this.audioInfoTarget.set(null);
     } catch (err) {
+      swallow('users-list:onSendAudioInfoMail', err);
       this.toast.error(err instanceof Error ? err.message : 'Erreur lors de l\'envoi du mail.');
       this.showAudioInfoModal.set(false);
     } finally {

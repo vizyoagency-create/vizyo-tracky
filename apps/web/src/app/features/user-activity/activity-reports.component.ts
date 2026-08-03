@@ -407,6 +407,7 @@ export class ActivityReportsComponent implements OnInit {
       if (report.status === 'FAILED') this.toast.error('Rapport en échec', report.error ?? undefined);
       else this.toast.success('Rapport généré', report.title ?? undefined);
     } catch (e) {
+      swallow('activity-reports:generate', e);
       this.toast.error('Échec', this.errMsg(e));
     } finally {
       this.generating.set(false);
@@ -427,6 +428,7 @@ export class ActivityReportsComponent implements OnInit {
     try {
       this.current.set(await firstValueFrom(this.api.get(id)));
     } catch (e) {
+      swallow('activity-reports:open', e);
       this.toast.error('Chargement', this.errMsg(e));
     } finally {
       this.loadingDetail.set(false);
@@ -458,6 +460,7 @@ export class ActivityReportsComponent implements OnInit {
       this.schedDraft = {};
       this.toast.success('Planification enregistrée', saved.enabled ? `${saved.frequency}` : 'Désactivée');
     } catch (e) {
+      swallow('activity-reports:saveSchedule', e);
       this.toast.error('Échec', this.errMsg(e));
     } finally {
       this.savingSchedule.set(false);
@@ -478,6 +481,7 @@ export class ActivityReportsComponent implements OnInit {
       await this.loadList();
       this.toast.success('Rapport supprimé');
     } catch (e) {
+      swallow('activity-reports:remove', e);
       this.toast.error('Suppression impossible', this.errMsg(e));
     }
   }
