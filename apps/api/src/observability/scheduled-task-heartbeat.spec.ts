@@ -11,14 +11,23 @@ import { ScheduledTaskHeartbeatService } from './scheduled-task-heartbeat.servic
  * erreur, un échec, un dépassement. L'absence d'événement n'en est pas un. C'est ce qui
  * rend ce type de panne si durable, et pourquoi il faut aller chercher le silence.
  *
- * La sonde a d'ailleurs révélé un second cas le jour même : le rapport d'activité,
- * activé, sans passage depuis 120 heures.
+ * ── ET LA SONDE ELLE-MÊME S'EST TROMPÉE ─────────────────────────────────────────────
+ *
+ * ⚠️ Sa première version codait les seuils en dur. Dès son premier passage en production,
+ * elle a crié « Rapport d'activité arrêté depuis 121 h ». Faux : ce rapport est réglé en
+ * HEBDOMADAIRE, il avait tourné 5 jours plus tôt et n'était dû que 2 jours plus tard.
+ *
+ * Une sonde qui juge sur une cadence SUPPOSÉE est pire qu'aucune sonde : elle produit de
+ * fausses alertes, on apprend à les ignorer, et la vraie panne passe avec. La cadence est
+ * stockée à côté du `lastRunAt` — elle se lit.
  */
 describe('ScheduledTaskHeartbeatService', () => {
   const NOW = new Date('2026-08-03T18:00:00Z').getTime();
   const ilYA = (heures: number): Date => new Date(NOW - heures * 3_600_000);
 
-  function setup(etats: Record<string, { enabled: boolean; lastRunAt: Date | null } | null>) {
+  type Etat = { enabled: boolean; lastRunAt: Date | null; frequency?: string };
+
+  function setup(etats: Record<string, Etat | null>) {
     const rows = (k: string) => ({ findFirst: jest.fn().mockResolvedValue(etats[k] ?? null) });
     const prisma = {
       tripAutomationSettings: rows('trip'),
@@ -31,14 +40,10 @@ describe('ScheduledTaskHeartbeatService', () => {
     return { svc, recordBackground };
   }
 
-  /** Tâches non concernées par le test courant : absentes = non configurées. */
-  const AUCUNE = {};
-
   it('signale une tâche ACTIVÉE et muette au-delà du seuil', async () => {
     // Le cas réel : automatisation horaire, dernier passage il y a 5 jours.
     const { svc, recordBackground } = setup({
-      ...AUCUNE,
-      trip: { enabled: true, lastRunAt: ilYA(120) },
+      trip: { enabled: true, lastRunAt: ilYA(120), frequency: 'hourly' },
     });
     await svc.check(NOW);
 
@@ -46,62 +51,115 @@ describe('ScheduledTaskHeartbeatService', () => {
     const [err, source, ctx, severity] = recordBackground.mock.calls[0]!;
     expect((err as Error).message).toContain('Automatisation des trajets');
     expect((err as Error).message).toContain('120 h');
-    // ⚠️ La cadence attendue figure dans le message : sans elle, « 120 h » ne dit pas si
+    // ⚠️ La cadence CONFIGURÉE figure dans le message : sans elle, « 120 h » ne dit pas si
     // c'est anormal. Avec elle, l'écart saute aux yeux.
     expect((err as Error).message).toContain('toutes les heures');
     expect(source).toBe('scheduled-task-heartbeat');
-    expect(ctx).toEqual(jasmineLike({ task: 'Automatisation des trajets' }));
+    expect(ctx).toEqual(expect.objectContaining({ task: 'Automatisation des trajets' }));
     expect(severity).toBe('CRITICAL');
   });
+
+  // ── La cadence se LIT ────────────────────────────────────────────────────────────────
+
+  it('NE crie PAS sur un rapport HEBDOMADAIRE muet depuis 121 h — la fausse alerte du 03/08', async () => {
+    // ⚠️ LE cas qui a piégé la première version : 121 h de silence, mais la tâche est
+    // hebdomadaire. Elle a tourné il y a 5 jours et n'est due que dans 2. Rien à signaler.
+    const { svc, recordBackground } = setup({
+      report: { enabled: true, lastRunAt: ilYA(121), frequency: 'weekly' },
+    });
+    await svc.check(NOW);
+    expect(recordBackground).not.toHaveBeenCalled();
+  });
+
+  it('crie sur la MÊME durée de silence si la tâche est réglée en QUOTIDIEN', async () => {
+    // Même 121 h, cadence différente → verdict différent. C'est bien la cadence qui décide,
+    // pas une constante écrite dans la sonde.
+    const { svc, recordBackground } = setup({
+      report: { enabled: true, lastRunAt: ilYA(121), frequency: 'daily' },
+    });
+    await svc.check(NOW);
+
+    expect(recordBackground).toHaveBeenCalledTimes(1);
+    expect((recordBackground.mock.calls[0]![0] as Error).message).toContain('quotidienne');
+  });
+
+  it('tolère UNE période manquée, pas DEUX', async () => {
+    // Une seule période ratée s'explique par un redémarrage. Deux d'affilée, non.
+    const unSeulJour = setup({ report: { enabled: true, lastRunAt: ilYA(30), frequency: 'daily' } });
+    await unSeulJour.svc.check(NOW);
+    expect(unSeulJour.recordBackground).not.toHaveBeenCalled();
+
+    const deuxJours = setup({ report: { enabled: true, lastRunAt: ilYA(60), frequency: 'daily' } });
+    await deuxJours.svc.check(NOW);
+    expect(deuxJours.recordBackground).toHaveBeenCalledTimes(1);
+  });
+
+  it('une cadence inconnue est traitée comme quotidienne, jamais comme horaire', async () => {
+    // Un repli trop serré recréerait la fausse alerte qu'on vient de corriger.
+    const { svc, recordBackground } = setup({
+      trip: { enabled: true, lastRunAt: ilYA(20), frequency: 'cadence-inventee' },
+    });
+    await svc.check(NOW);
+    expect(recordBackground).not.toHaveBeenCalled();
+  });
+
+  // ── Ce qui ne doit RIEN déclencher ───────────────────────────────────────────────────
 
   it('NE signale PAS une tâche volontairement coupée', async () => {
     // Une tâche désactivée n'est pas une panne. La signaler apprendrait à ignorer la
     // sonde — et le jour où elle a raison, personne ne la lirait.
-    const { svc, recordBackground } = setup({ trip: { enabled: false, lastRunAt: ilYA(500) } });
+    const { svc, recordBackground } = setup({
+      trip: { enabled: false, lastRunAt: ilYA(500), frequency: 'hourly' },
+    });
     await svc.check(NOW);
     expect(recordBackground).not.toHaveBeenCalled();
   });
 
   it('NE signale PAS une tâche qui vient de tourner', async () => {
-    const { svc, recordBackground } = setup({ trip: { enabled: true, lastRunAt: ilYA(0.7) } });
-    await svc.check(NOW);
-    expect(recordBackground).not.toHaveBeenCalled();
-  });
-
-  it('tolère un retard NORMAL — le but est de détecter un arrêt, pas un passage manqué', async () => {
-    // Cadence horaire, seuil à 4 h : trois heures de retard (redémarrage, migration…) ne
-    // doivent rien déclencher. Une sonde qui crie pour ça finit désactivée.
-    const { svc, recordBackground } = setup({ trip: { enabled: true, lastRunAt: ilYA(3) } });
-    await svc.check(NOW);
-    expect(recordBackground).not.toHaveBeenCalled();
-  });
-
-  it('signale une tâche activée qui n’a JAMAIS tourné', async () => {
-    // Le cas le plus discret : ni succès, ni échec, aucune trace d'aucune sorte.
-    const { svc, recordBackground } = setup({ report: { enabled: true, lastRunAt: null } });
-    await svc.check(NOW);
-
-    expect(recordBackground).toHaveBeenCalledTimes(1);
-    expect((recordBackground.mock.calls[0]![0] as Error).message).toContain(
-      'aucun passage enregistré',
-    );
-  });
-
-  it('signale CHAQUE tâche en panne, pas seulement la première', async () => {
-    // Le 2026-08-03, deux tâches étaient à l'arrêt en même temps. S'arrêter à la première
-    // aurait laissé la seconde invisible — exactement le défaut qu'on répare.
     const { svc, recordBackground } = setup({
-      trip: { enabled: true, lastRunAt: ilYA(120) },
-      report: { enabled: true, lastRunAt: ilYA(120) },
+      trip: { enabled: true, lastRunAt: ilYA(0.7), frequency: 'hourly' },
     });
     await svc.check(NOW);
-    expect(recordBackground).toHaveBeenCalledTimes(2);
+    expect(recordBackground).not.toHaveBeenCalled();
+  });
+
+  it('tolère un retard NORMAL sur une tâche horaire — plancher de 4 h', async () => {
+    // Deux périodes d'une tâche horaire = 2 h : trop serré, on crierait pour un redémarrage.
+    // D'où le plancher. Ici 3 h de retard ne doivent rien déclencher.
+    const { svc, recordBackground } = setup({
+      trip: { enabled: true, lastRunAt: ilYA(3), frequency: 'hourly' },
+    });
+    await svc.check(NOW);
+    expect(recordBackground).not.toHaveBeenCalled();
   });
 
   it('une tâche NON CONFIGURÉE ne déclenche rien', async () => {
     const { svc, recordBackground } = setup({});
     await svc.check(NOW);
     expect(recordBackground).not.toHaveBeenCalled();
+  });
+
+  // ── Cas discrets ─────────────────────────────────────────────────────────────────────
+
+  it('signale une tâche activée qui n’a JAMAIS tourné', async () => {
+    // Le cas le plus discret : ni succès, ni échec, aucune trace d'aucune sorte.
+    const { svc, recordBackground } = setup({
+      report: { enabled: true, lastRunAt: null, frequency: 'weekly' },
+    });
+    await svc.check(NOW);
+
+    expect(recordBackground).toHaveBeenCalledTimes(1);
+    expect((recordBackground.mock.calls[0]![0] as Error).message).toContain('aucun passage enregistré');
+  });
+
+  it('signale CHAQUE tâche en panne, pas seulement la première', async () => {
+    // S'arrêter à la première laisserait la seconde invisible — exactement le défaut réparé.
+    const { svc, recordBackground } = setup({
+      trip: { enabled: true, lastRunAt: ilYA(120), frequency: 'hourly' },
+      report: { enabled: true, lastRunAt: ilYA(400), frequency: 'daily' },
+    });
+    await svc.check(NOW);
+    expect(recordBackground).toHaveBeenCalledTimes(2);
   });
 
   it('une lecture en ERREUR est signalée comme telle, pas comme un arrêt', async () => {
@@ -125,9 +183,14 @@ describe('ScheduledTaskHeartbeatService', () => {
     // de production.
     expect(severity).toBeUndefined();
   });
-});
 
-/** Petit helper : vérifie un sous-ensemble de clés sans dépendre de l'objet entier. */
-function jasmineLike(subset: Record<string, unknown>): unknown {
-  return expect.objectContaining(subset);
-}
+  it('l’automatisation des lieux, sans colonne de cadence, est jugée quotidienne', async () => {
+    const ok = setup({ place: { enabled: true, lastRunAt: ilYA(30) } });
+    await ok.svc.check(NOW);
+    expect(ok.recordBackground).not.toHaveBeenCalled();
+
+    const ko = setup({ place: { enabled: true, lastRunAt: ilYA(60) } });
+    await ko.svc.check(NOW);
+    expect(ko.recordBackground).toHaveBeenCalledTimes(1);
+  });
+});
