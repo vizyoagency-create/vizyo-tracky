@@ -41,8 +41,8 @@ type PState = 'idle' | 'busy' | 'granted' | 'denied';
           <div class="pg-item">
             <span class="pg-ico"><lucide-icon [img]="MapPin" [size]="20"></lucide-icon></span>
             <div class="pg-txt">
-              <div class="pg-h">Localisation <span class="pg-req">Requis</span></div>
-              <div class="pg-d">Nécessaire pour déverrouiller un véhicule par QR code : nous vérifions que vous êtes bien à proximité avant d'autoriser l'ouverture. Utilisée uniquement au moment de l'action.</div>
+              <div class="pg-h">Localisation</div>
+              <div class="pg-d">Utile pour déverrouiller un véhicule par QR code : nous vérifions que vous êtes à proximité avant d'autoriser l'ouverture. Utilisée uniquement au moment de l'action — vous pourrez l'autoriser à ce moment-là si vous préférez.</div>
               @if (geoState() === 'denied') {
                 <div class="pg-warn">Localisation bloquée. Autorisez-la dans votre navigateur (icône cadenas de la barre d'adresse → Localisation → Autoriser), puis réessayez.</div>
               }
@@ -60,11 +60,12 @@ type PState = 'idle' | 'busy' | 'granted' | 'denied';
             </div>
           </div>
 
-          @if (geoState() !== 'granted') {
-            <p class="pg-hint">Autorisez la localisation ci-dessus pour continuer.</p>
-          }
-          <button type="button" class="pg-continue" (click)="finish()"
-                  [disabled]="geoState() !== 'granted'">Continuer vers l'application</button>
+          <!--
+            ⚠️ CE BOUTON ETAIT DESACTIVE tant que la geolocalisation n'etait pas accordee,
+            et il n'existait AUCUNE autre porte. Un utilisateur qui refusait le GPS — ou
+            dont le navigateur ne le propose pas — restait enferme dehors, definitivement.
+          -->
+          <button type="button" class="pg-continue" (click)="finish()">Continuer vers l'application</button>
         </div>
       </div>
     }
@@ -141,7 +142,7 @@ export class PermissionsGateComponent {
     return s === 'granted' ? 'Autorisé' : s === 'denied' ? 'Refusé' : s === 'busy' ? '…' : 'Autoriser';
   }
 
-  /** GPS est obligatoire : sur refus on propose « Réessayer » (pas un état final). */
+  /** Sur refus on propose « Réessayer » — sans jamais bloquer l'entrée dans l'application. */
   geoLabel(): string {
     const s = this.geoState();
     return s === 'granted' ? 'Autorisé' : s === 'denied' ? 'Réessayer' : s === 'busy' ? '…' : 'Autoriser';
@@ -181,9 +182,31 @@ export class PermissionsGateComponent {
   }
 
   finish(): void {
-    // La localisation est obligatoire (déverrouillage QR par proximité) : on ne
-    // laisse pas passer l'onboarding tant qu'elle n'est pas accordée.
-    if (this.geoState() !== 'granted') return;
+    // ══ POURQUOI PLUS AUCUNE CONDITION ICI (constat du 2026-08-03) ═══════════════════
+    //
+    // Cette methode refusait de passer tant que la geolocalisation n'etait pas accordee,
+    // et le bouton etait desactive. Il n'existait aucune autre sortie : un utilisateur
+    // qui refusait le GPS ne pouvait PLUS UTILISER L'APPLICATION DU TOUT.
+    //
+    // Quatre situations menaient a ce blocage definitif, et aucune n'est un cas limite :
+    //   - le refus, qui est un droit ;
+    //   - une politique d'entreprise qui bloque la geolocalisation ;
+    //   - un navigateur sans l'API (le code posait alors « denied » sans recours — et le
+    //     message d'aide « icone cadenas → Autoriser » ne s'appliquait meme pas) ;
+    //   - un refus anterieur, le navigateur ne redemandant plus.
+    //
+    // Le motif invoque etait le deverrouillage d'un vehicule par QR code. Or :
+    //   1. `driver-unlock.component.ts` demande DEJA la position au moment du
+    //      deverrouillage — la bloquer ici n'apporte donc rien a cette fonction ;
+    //   2. ce deverrouillage concerne le role DRIVER, alors que cet ecran barrait la
+    //      route a TOUS les roles, gestionnaires compris.
+    //
+    // On bloquait donc l'acces entier au produit pour une fonction que la plupart des
+    // comptes n'utiliseront jamais, et qui redemande l'autorisation de toute facon.
+    //
+    // ⚠️ Au-dela de l'ergonomie : conditionner l'acces a un service a une autorisation de
+    // geolocalisation qui ne lui est pas necessaire est difficilement defendable vis-a-vis
+    // du RGPD. Le consentement doit rester libre.
     this.perms.finish();
   }
 }
