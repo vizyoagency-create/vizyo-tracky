@@ -218,6 +218,12 @@ export const routes: Routes = [
       },
       {
         path: 'users',
+        // ⚠️ CETTE GARDE MANQUAIT alors que sa voisine `users/overview` l'avait : la liste
+        // des utilisateurs (noms, e-mails, rôles, téléphones) s'ouvrait à qui tapait l'URL,
+        // sans permission `users_view`. L'API refusait bien la requête — mais l'écran, lui,
+        // s'affichait et transformait ce 403 en « Aucun utilisateur dans votre flotte ».
+        // Deux défauts qui se couvraient l'un l'autre : la garde absente ne se voyait pas.
+        canActivate: [permissionGuard('users_view')],
         loadComponent: () =>
           import('./features/users/users-list.component').then((m) => m.UsersListComponent),
         data: { title: 'Utilisateurs' },

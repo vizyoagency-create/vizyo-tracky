@@ -2,7 +2,7 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
   LucideAngularModule, AlertTriangle, Activity, Terminal, MessageSquare,
-  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints, Ear, Mail, CalendarClock, Bot, Globe, BellRing,
+  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints, Ear, Mail, CalendarClock, Bot, Globe, BellRing, Plug,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { AdminFixModeService, type AdminAlertSummary } from '../../core/services/admin-fix-mode.service';
@@ -211,6 +211,24 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
             <div class="body-text">
               <h3>Abonnements &amp; tarifs</h3>
               <p class="desc">Plan (Lite/Pro/Signature), formule et options de chaque client — avec cas spéciaux (offert, prix négocié) et revenu estimé. Édition de la grille tarifaire publique, propagée à la LP sans redéploiement.</p>
+            </div>
+            <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
+          </div>
+        </a>
+
+        <!--
+          ── INTÉGRATIONS PARTENAIRES (wide) ──
+          ⚠️ La page existait, gardée par « superAdminGuard », mais AUCUNE tuile n'y menait :
+          elle n'était atteignable qu'en connaissant son URL. Or c'est le levier commercial
+          (suspendre un client qui ne paye pas) — il ne peut pas vivre hors de l'interface.
+        -->
+        <a routerLink="/admin/partner-links" class="card card-wide" style="--i:9">
+          <span class="accent accent-violet"></span>
+          <div class="body body-row">
+            <div class="ico ico-violet"><lucide-icon [img]="Plug" [size]="20"></lucide-icon></div>
+            <div class="body-text">
+              <h3>Intégrations partenaires</h3>
+              <p class="desc">Liens actifs entre une flotte Tracky et un partenaire (Maestroo…) : qui partage quoi, depuis quand, et l'interrupteur pour couper un partage côté plateforme — le client ne peut pas le rétablir seul.</p>
             </div>
             <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
           </div>
@@ -559,6 +577,7 @@ export class AdminHubComponent implements OnInit {
   protected readonly Database = Database;
   protected readonly ClipboardList = ClipboardList;
   protected readonly CreditCard = CreditCard;
+  protected readonly Plug = Plug;
   protected readonly Cpu = Cpu;
   protected readonly Footprints = Footprints;
   protected readonly Ear = Ear;

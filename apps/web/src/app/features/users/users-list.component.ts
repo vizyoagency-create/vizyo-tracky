@@ -1,7 +1,8 @@
+import { httpFailureMessage } from '../../core/services/http-failure';
 import { ChangeDetectionStrategy, Component, HostListener, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { LucideAngularModule, Archive, Users, Shield, Pencil, KeyRound, Send, XCircle, Mail, UserPlus, MoreVertical, Check } from 'lucide-angular';
+import { LucideAngularModule, Archive, Users, Shield, Pencil, KeyRound, Send, XCircle, Mail, UserPlus, MoreVertical, Check, AlertTriangle } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { getDefaultPermissions, PERMISSION_GROUP_ORDER, PERMISSION_LABELS, type UserPermissions } from '@vizyo/tracky-shared';
 import { AudioMonitoringService } from '../../core/services/audio-monitoring.service';
@@ -109,6 +110,17 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
         </div>
       } @else if (loading()) {
         <div class="u-loading"><span class="w-6 h-6 border-2 border-fg-tertiary border-t-tracky-light rounded-full animate-spin"></span></div>
+      } @else if (loadError()) {
+        <!--
+          ⚠️ CET ETAT DOIT PASSER AVANT « aucun utilisateur », sinon il reste invisible :
+          en panne la liste est vide, donc la branche du dessous l'avalerait et l'ecran
+          rejouerait le message d'une flotte vide — exactement le defaut corrige ici.
+        -->
+        <div class="u-empty">
+          <div class="u-empty-icon"><lucide-icon [img]="AlertTriangleIcon" [size]="32"></lucide-icon></div>
+          <p>{{ loadError() }}</p>
+          <button (click)="reload()" class="u-empty-cta">Réessayer</button>
+        </div>
       } @else if (visibleUsers().length === 0 && visiblePendingInvitations().length === 0) {
         <div class="u-empty">
           <div class="u-empty-icon"><lucide-icon [img]="UsersIcon" [size]="32"></lucide-icon></div>
@@ -366,6 +378,15 @@ export class UsersListComponent implements OnInit {
   }
 
   readonly loading = signal(true);
+  /**
+   * Message de PANNE, distinct de l'etat « aucun utilisateur ».
+   *
+   * ⚠️ Les deux se ressemblaient a l'ecran : un `catch {}` vide laissait la liste vide,
+   * et l'utilisateur lisait « Aucun utilisateur dans votre flotte » pour une panne
+   * serveur ou une session expiree. Un ecran vide et un ecran en panne ne se corrigent
+   * pas au meme endroit — ils ne doivent pas se ressembler.
+   */
+  readonly loadError = signal<string | null>(null);
   readonly users = signal<TrackyUser[]>([]);
   readonly pendingInvitations = signal<PendingInvitation[]>([]);
   readonly includeArchived = signal(false);
@@ -517,6 +538,7 @@ export class UsersListComponent implements OnInit {
   protected readonly ArchiveIcon = Archive;
   protected readonly KeyIcon = KeyRound;
   protected readonly UsersIcon = Users;
+  protected readonly AlertTriangleIcon = AlertTriangle;
   protected readonly ShieldIcon = Shield;
   protected readonly PencilIcon = Pencil;
   protected readonly SendIcon = Send;
@@ -549,14 +571,37 @@ export class UsersListComponent implements OnInit {
     }
   }
 
+  /** Relance le chargement depuis l'écran de panne (une panne réseau est souvent passagère). */
+  protected reload(): void {
+    void this.loadUsers();
+  }
+
   private async loadUsers(): Promise<void> {
     this.loading.set(true);
+    this.loadError.set(null);
     try {
       const result = await this.usersService.findAll(this.includeArchived(), true);
       this.users.set(result.users);
       this.pendingInvitations.set(result.pendingInvitations);
-    } catch { /* error */ }
-    finally { this.loading.set(false); }
+    } catch (err) {
+      // ⚠️ C'ETAIT UN `catch {}` VIDE. L'ecran affichait alors « Aucun utilisateur dans
+      // votre flotte » — la reponse metier d'une flotte vide — pour une panne serveur,
+      // une coupure reseau, un 403, ou une SESSION EXPIREE. L'utilisateur concluait que
+      // son parc etait vide et ne rappelait personne.
+      //
+      // Un ecran vide et un ecran en panne ne se corrigent pas au meme endroit : ils ne
+      // doivent pas se ressembler.
+      this.users.set([]);
+      this.pendingInvitations.set([]);
+      // Message CENTRALISE : deux ecrans ne doivent pas raconter deux histoires
+      // differentes de la meme panne.
+      //
+      // ⚠️ Cet appel passe par `fetch` natif, donc hors intercepteurs : un 401 ne
+      // declenche NI deconnexion NI toast « Session expiree ». On le dit au moins.
+      this.loadError.set(httpFailureMessage(err, 'les utilisateurs'));
+    } finally {
+      this.loading.set(false);
+    }
   }
 
   roleLabel(role: string): string {
