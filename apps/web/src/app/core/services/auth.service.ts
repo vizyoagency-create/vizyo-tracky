@@ -47,6 +47,32 @@ export class AuthService {
    * d'`AuthService` pour être construit — ce qui n'est pas le cas.
    */
   private readonly http = inject(HttpClient);
+
+  /**
+   * Le dernier rafraîchissement a-t-il échoué parce que le SERVEUR était injoignable ?
+   *
+   * ⚠️ POURQUOI CE DRAPEAU EXISTE (constat du 2026-08-03). `tryRefresh()` renvoyait `null`
+   * dans DEUX situations que rien ne distinguait :
+   *
+   *   - le jeton est refusé (401/403) — définitif, il FAUT déconnecter ;
+   *   - le serveur ne répond pas (5xx, réseau coupé) — temporaire, la session est
+   *     parfaitement valide.
+   *
+   * L'intercepteur lisait ce `null` comme un refus et déconnectait dans les deux cas.
+   * Conséquence observée deux fois dans la même journée : CHAQUE redéploiement de l'API
+   * éjectait les utilisateurs connectés, le temps du redémarrage. Un simple hoquet de wifi
+   * produisait le même effet.
+   *
+   * C'est le motif corrigé partout ailleurs aujourd'hui : deux situations différentes
+   * traitées à l'identique, et c'est la plus grave qui l'emporte à tort.
+   *
+   * ⚠️ Un drapeau plutôt qu'un changement de signature : `tryRefresh()` a CINQ appelants
+   * (intercepteur, refresh proactif, trois chemins du temps réel). Élargir son type les
+   * aurait tous forcés à traiter un cas qui ne concerne que la décision de déconnecter.
+   */
+  private readonly _refreshUnavailable = signal(false);
+  readonly refreshUnavailable = this._refreshUnavailable.asReadonly();
+
   private readonly _user = signal<AuthUser | null>(this.loadUser());
   readonly user = this._user.asReadonly();
   readonly isAuthenticated = computed(() => !!this._user());
@@ -186,12 +212,24 @@ export class AuthService {
         body: JSON.stringify({ refreshToken: rt }),
       }, 'Rafraichissement de session');
 
-      if (!res.ok) return null;
+      if (!res.ok) {
+        // ⚠️ UN SERVEUR INJOIGNABLE N'EST PAS UN JETON REFUSÉ.
+        //
+        // 5xx = l'API redémarre ou la passerelle ne répond pas. La session est parfaitement
+        // valide ; il n'y a aucune raison de déconnecter. Seuls 401/403 disent réellement
+        // « ce jeton n'est plus accepté ».
+        this._refreshUnavailable.set(res.status === 0 || res.status >= 500);
+        return null;
+      }
 
       const data = (await res.json()) as { accessToken: string; refreshToken: string };
       this.updateToken(data.accessToken, data.refreshToken);
+      this._refreshUnavailable.set(false);
       return data.accessToken;
     } catch (err) {
+      // Réseau coupé, DNS, API injoignable : `apiFetchRaw` jette avant toute réponse.
+      // Même raisonnement — on ne déconnecte pas quelqu'un parce que le wifi a hoqueté.
+      this._refreshUnavailable.set(true);
       swallow('auth:doRefresh', err);
       return null;
     }
