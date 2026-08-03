@@ -381,10 +381,32 @@ import {
             <app-line-bar-chart [data]="lineBarData()" [height]="260" />
           </section>
 
+          <!--
+            ⚠️ CES DEUX GRAPHIQUES PORTENT SUR UN ECHANTILLON, PAS SUR LA PERIODE.
+            Ils se calculent depuis les trajets CHARGES, bornes a 100 par la requete —
+            là où les KPI et le graphique d'activité viennent de l'agrégat serveur, complet.
+
+            Ils annonçaient pourtant « Distribution sur la période » et « 24h × 7j ». Sur
+            30 jours et 2 738 trajets, la fréquentation ne couvrait en réalité qu'environ
+            une journée : elle affichait ZERO trajet le mardi alors que le tableau juste
+            au-dessus en comptait 132 le mardi 15 juillet. Deux chiffres contradictoires
+            dans la même page, et c'est le plus faux des deux qui avait l'air d'un fait.
+
+            Un graphique incomplet qui le DIT reste utile ; un graphique incomplet qui se
+            présente comme exhaustif est pire que pas de graphique du tout.
+
+            ⚠️ Correction de fond à faire : des agrégats serveur dédiés (répartition par
+            tranche de vitesse, et par créneau jour × heure), sur le modèle du résumé
+            journalier. En attendant, l'échantillon est nommé.
+          -->
           <section class="rep-chart-card">
             <header class="rep-chart-head">
               <h2>Vitesses max</h2>
-              <p>Distribution sur la période</p>
+              @if (tripsTruncated()) {
+                <p>Sur les {{ listedTripCount() }} trajets les plus récents — pas toute la période</p>
+              } @else {
+                <p>Distribution sur la période</p>
+              }
             </header>
             <app-histogram-chart [values]="histoValues()" [height]="220" />
           </section>
@@ -392,7 +414,11 @@ import {
           <section class="rep-chart-card">
             <header class="rep-chart-head">
               <h2>Fréquentation</h2>
-              <p>24h × 7j</p>
+              @if (tripsTruncated()) {
+                <p>Sur les {{ listedTripCount() }} trajets les plus récents — pas toute la période</p>
+              } @else {
+                <p>24h × 7j</p>
+              }
             </header>
             <app-heatmap-chart [data]="heatmapData()" />
           </section>
