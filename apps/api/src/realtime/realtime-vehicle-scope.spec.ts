@@ -256,4 +256,53 @@ describe('RealtimeGateway — revalidation du perimetre', () => {
     await t.gw.revalidateConnections();
     expect(client.disconnect).toHaveBeenCalled();
   });
+
+  /**
+   * ⚠️ INCIDENT DE PRODUCTION (2026-08-02) — le garde-fou qui casse celui qu'il complete.
+   *
+   * `scopeKey` faisait `[...accessible]` sans verifier la forme de la valeur. Un cas
+   * imprevu a leve « accessible is not iterable » A CHAQUE TICK, ce qui faisait echouer
+   * TOUTE la revalidation — y compris la deconnexion des comptes desactives, qui
+   * fonctionnait tres bien avant. On a donc REGRESSE une protection existante en en
+   * ajoutant une nouvelle.
+   *
+   * Deux lecons, verrouillees ici : la forme des valeurs n'est jamais supposee, et un
+   * echec sur UN compte n'emporte pas le tick des autres.
+   */
+  it('⚠️ une anomalie sur UN compte n empeche pas de couper les comptes desactives', async () => {
+    const t = harness({ id: 'u1', role: 'FLEET_MANAGER', fleetId: 'f1' }, 'ALL');
+    const sain = connectedClient('s1');
+    await connect(t.gw, sain);
+
+    // Deux comptes connectes : 'u1' (perimetre illisible) et 'u2' (desactive).
+    const desactive = connectedClient('s2');
+    (desactive.data as { userId?: string }).userId = 'u2';
+    (t.gw.server as unknown as { sockets: Map<string, unknown> }).sockets = new Map([
+      [sain.id, sain],
+      [desactive.id, desactive],
+    ]);
+    t.findMany.mockResolvedValue([{ id: 'u1', role: 'FLEET_MANAGER', fleetId: 'f1', permissions: { alerts_view: true } }]);
+    // ⚠️ On force le jet DANS le bloc protege. Rejeter `getAccessibleVehicleIds` ne
+    // suffirait PAS : `resolveAccessibleVehicles` l'avale deja et renvoie `[]` — le test
+    // passerait alors sans jamais exercer l'isolation (verifie par mutation).
+    jest.spyOn(t.gw as unknown as { scopeKey: () => string }, 'scopeKey').mockImplementation(() => {
+      throw new Error('anomalie de calcul');
+    });
+
+    await t.gw.revalidateConnections();
+
+    // 'u2' n'est pas dans les comptes actifs -> il DOIT etre coupe malgre l'anomalie sur 'u1'.
+    expect(desactive.disconnect).toHaveBeenCalled();
+  });
+
+  it('une forme de perimetre inattendue ne fait pas planter le tick', async () => {
+    const t = harness({ id: 'u1', role: 'FLEET_MANAGER', fleetId: 'f1' }, 'ALL');
+    const client = connectedClient('s1');
+    await connect(t.gw, client);
+    t.findMany.mockResolvedValue([{ id: 'u1', role: 'FLEET_MANAGER', fleetId: 'f1', permissions: { alerts_view: true } }]);
+    // Ni 'ALL' ni un tableau : exactement le cas qui a plante en production.
+    t.access.getAccessibleVehicleIds.mockResolvedValue({ inattendu: true } as never);
+
+    await expect(t.gw.revalidateConnections()).resolves.toBeUndefined();
+  });
 });

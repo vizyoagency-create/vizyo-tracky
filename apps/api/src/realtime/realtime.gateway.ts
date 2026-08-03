@@ -294,7 +294,29 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     accessible: string[] | 'ALL',
     canSeeAlerts: boolean,
   ): string {
-    const scope = accessible === 'ALL' ? 'ALL' : [...accessible].sort().join(',');
+    // ⚠️ DEFENSIF, apres un incident en production (2026-08-02) : `[...accessible]` a
+    // leve « accessible is not iterable » a chaque tick, ce qui faisait echouer TOUTE la
+    // revalidation — y compris la deconnexion des comptes desactives, qui fonctionnait
+    // avant. Un garde-fou ajoute ne doit jamais casser celui qu'il complete.
+    //
+    // On ne fait donc plus confiance a la forme de la valeur : tout ce qui n'est ni
+    // `'ALL'` ni un tableau est traite comme un perimetre INCONNU. L'empreinte devient
+    // alors instable a dessein ? Non : on renvoie un marqueur STABLE, sinon on
+    // deconnecterait tout le monde en boucle. Et on trace, pour ne pas remplacer un
+    // plantage par un silence.
+    let scope: string;
+    if (accessible === 'ALL') {
+      scope = 'ALL';
+    } else if (Array.isArray(accessible)) {
+      // TRI obligatoire : l'ordre n'est pas garanti, et une permutation ferait croire a
+      // un changement — donc une deconnexion generale a chaque tick.
+      scope = [...accessible].sort().join(',');
+    } else {
+      this.logger.warn(
+        `[ws] perimetre de forme inattendue (${typeof accessible}) pour ${user.role} — empreinte neutralisee`,
+      );
+      scope = 'INCONNU';
+    }
     return `${user.role}|${user.fleetId ?? '-'}|${canSeeAlerts ? 'A' : '-'}|${scope}`;
   }
 
@@ -335,15 +357,30 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         }
 
         // Le compte est toujours actif — mais son PERIMETRE a-t-il bouge ?
-        const row = byId.get(userId)!;
-        const current = { id: userId, role: String(row.role), fleetId: row.fleetId };
-        const accessible = await this.resolveAccessibleVehicles(current);
-        const perms = row.permissions as { alerts_view?: boolean } | null;
-        const canSeeAlerts =
-          current.role === 'SUPER_ADMIN' || current.role === 'FLEET_ADMIN'
-            ? true
-            : perms?.alerts_view === true;
-        const key = this.scopeKey(current, accessible, canSeeAlerts);
+        //
+        // ⚠️ ISOLE PAR UTILISATEUR. Sans ce try, une seule anomalie sur un seul compte
+        // faisait echouer TOUT le tick — y compris la deconnexion des comptes desactives,
+        // qui fonctionnait avant. C'est exactement ce qui s'est produit en production le
+        // 2026-08-02 : le garde-fou ajoute a casse celui qu'il devait completer.
+        let key: string;
+        try {
+          const row = byId.get(userId)!;
+          const current = { id: userId, role: String(row.role), fleetId: row.fleetId };
+          const accessible = await this.resolveAccessibleVehicles(current);
+          const perms = row.permissions as { alerts_view?: boolean } | null;
+          const canSeeAlerts =
+            current.role === 'SUPER_ADMIN' || current.role === 'FLEET_ADMIN'
+              ? true
+              : perms?.alerts_view === true;
+          key = this.scopeKey(current, accessible, canSeeAlerts);
+        } catch (err) {
+          // On ne coupe PAS sur une erreur de calcul : deconnecter sur un doute
+          // transformerait un incident de lecture en interruption de service.
+          this.logger.warn(
+            `[ws] empreinte de perimetre incalculable pour ${userId.slice(0, 8)} — socket conservee: ${err instanceof Error ? err.message : err}`,
+          );
+          continue;
+        }
 
         for (const socket of userSockets) {
           const previous = (socket.data as { scopeKey?: string }).scopeKey;
