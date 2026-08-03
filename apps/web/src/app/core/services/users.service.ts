@@ -1,3 +1,4 @@
+import { apiFetch, apiFetchRaw } from './api-fetch';
 import { HttpFailure } from './http-failure';
 import { inject, Injectable } from '@angular/core';
 import { AuthService } from './auth.service';
@@ -98,7 +99,7 @@ export class UsersApiService {
     if (includePending) params.set('includePending', 'true');
     const qs = params.toString();
     const url = `/api/users${qs ? '?' + qs : ''}`;
-    const res = await fetch(url, { headers: this.headers });
+    const res = await apiFetchRaw(url, { headers: this.headers });
     // ⚠️ Le statut DOIT voyager avec l'erreur. Sans lui, l'ecran ne peut pas distinguer
     // « session expiree » (401) d'« interdit » (403) ou d'une panne serveur — il affichait
     // donc « Aucun utilisateur dans votre flotte » pour les trois.
@@ -114,52 +115,50 @@ export class UsersApiService {
   }
 
   async create(payload: CreateUserPayload): Promise<TrackyUser> {
-    const res = await fetch('/api/users', {
+    const res = await apiFetchRaw('/api/users', {
       method: 'POST',
       headers: this.headers,
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
       const body = (await res.json().catch(() => ({}))) as Record<string, string>;
-      throw new Error(body['message'] ?? 'Failed to create user');
+      throw new HttpFailure(res.status, body['message'] ?? 'Failed to create user');
     }
     return res.json();
   }
 
   async update(id: string, data: { firstName?: string; lastName?: string; role?: string; isActive?: boolean; permissions?: Record<string, boolean>; fleetId?: string | null }): Promise<TrackyUser> {
-    const res = await fetch(`/api/users/${id}`, {
+    const res = await apiFetchRaw(`/api/users/${id}`, {
       method: 'PATCH',
       headers: this.headers,
       body: JSON.stringify(data),
     });
     if (!res.ok) {
       const body = (await res.json().catch(() => ({}))) as Record<string, string>;
-      throw new Error(body['message'] ?? 'Failed to update user');
+      throw new HttpFailure(res.status, body['message'] ?? 'Failed to update user');
     }
     return res.json();
   }
 
   async remove(id: string): Promise<void> {
-    const res = await fetch(`/api/users/${id}`, {
+    const res = await apiFetchRaw(`/api/users/${id}`, {
       method: 'DELETE',
       headers: this.headers,
     });
-    if (!res.ok && res.status !== 204) throw new Error('Failed to archive user');
+    if (!res.ok && res.status !== 204) throw new HttpFailure(res.status, 'Failed to archive user');
   }
 
   async resetPassword(id: string): Promise<void> {
-    const res = await fetch(`/api/users/${id}/reset-password`, {
+    const res = await apiFetch(`/api/users/${id}/reset-password`, {
       method: 'POST',
       headers: this.headers,
-    });
-    if (!res.ok) throw new Error('Failed to send password reset');
+    }, 'Failed to send password reset');
   }
 
   // ─── /me — Sprint J ──────────────────────────────────────────
 
   async me(): Promise<MeProfile> {
-    const res = await fetch('/api/users/me', { headers: this.headers });
-    if (!res.ok) throw new Error('Failed to load profile');
+    const res = await apiFetch('/api/users/me', { headers: this.headers }, 'Failed to load profile');
     return res.json();
   }
 
@@ -176,24 +175,23 @@ export class UsersApiService {
     phone?: string | null;
     escalationContactUserId?: string | null;
   }): Promise<MeProfile> {
-    const res = await fetch('/api/users/me', {
+    const res = await apiFetch('/api/users/me', {
       method: 'PATCH',
       headers: this.headers,
       body: JSON.stringify(data),
     });
     if (!res.ok) {
       const body = (await res.json().catch(() => ({}))) as Record<string, string>;
-      throw new Error(body['message'] ?? 'Failed to update profile');
+      throw new HttpFailure(res.status, body['message'] ?? 'Failed to update profile');
     }
     return res.json();
   }
 
   async completeOnboarding(): Promise<{ id: string; onboardingCompletedAt: string }> {
-    const res = await fetch('/api/users/me/onboarding-complete', {
+    const res = await apiFetchRaw('/api/users/me/onboarding-complete', {
       method: 'POST',
       headers: this.headers,
-    });
-    if (!res.ok) throw new Error('Failed to mark onboarding complete');
+    }, 'Failed to mark onboarding complete');
     return res.json();
   }
 
@@ -207,7 +205,7 @@ export class UsersApiService {
     /** Scopes d'accès (matrice) configurés dès l'invitation. */
     accessScopes?: { type: 'ALL' | 'GROUP' | 'VEHICLE'; groupId?: string; vehicleId?: string; permissions?: Record<string, boolean> }[];
   }): Promise<InvitationDto> {
-    const res = await fetch('/api/users/invitations', {
+    const res = await apiFetch('/api/users/invitations', {
       method: 'POST',
       headers: this.headers,
       body: JSON.stringify(payload),
@@ -215,33 +213,32 @@ export class UsersApiService {
     if (!res.ok) {
       const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
       const errObj = body['error'] as Record<string, string> | undefined;
-      throw new Error(errObj?.['message'] ?? (body['message'] as string) ?? 'Failed to send invitation');
+      throw new HttpFailure(res.status, errObj?.['message'] ?? (body['message'] as string) ?? 'Failed to send invitation');
     }
     return res.json();
   }
 
   async resendInvitation(id: string): Promise<InvitationDto> {
-    const res = await fetch(`/api/users/invitations/${id}/resend`, {
+    const res = await apiFetchRaw(`/api/users/invitations/${id}/resend`, {
       method: 'POST',
       headers: this.headers,
     });
     if (!res.ok) {
       const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
       const errObj = body['error'] as Record<string, string> | undefined;
-      throw new Error(errObj?.['message'] ?? (body['message'] as string) ?? 'Failed to resend invitation');
+      throw new HttpFailure(res.status, errObj?.['message'] ?? (body['message'] as string) ?? 'Failed to resend invitation');
     }
     return res.json();
   }
 
   async listInvitations(): Promise<InvitationDto[]> {
-    const res = await fetch('/api/users/invitations', { headers: this.headers });
-    if (!res.ok) throw new Error('Failed to load invitations');
+    const res = await apiFetchRaw('/api/users/invitations', { headers: this.headers }, 'Failed to load invitations');
     const body = await res.json() as { items: InvitationDto[] };
     return body.items;
   }
 
   async updateInvitation(id: string, data: { fleetId?: string | null; role?: string; permissions?: Record<string, boolean>; accessScopes?: InvitationAccessScopeDto[] }): Promise<void> {
-    const res = await fetch(`/api/users/invitations/${id}`, {
+    const res = await apiFetch(`/api/users/invitations/${id}`, {
       method: 'PATCH',
       headers: this.headers,
       body: JSON.stringify(data),
@@ -249,16 +246,15 @@ export class UsersApiService {
     if (!res.ok) {
       const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
       const errObj = body['error'] as Record<string, string> | undefined;
-      throw new Error(errObj?.['message'] ?? (body['message'] as string) ?? 'Failed to update invitation');
+      throw new HttpFailure(res.status, errObj?.['message'] ?? (body['message'] as string) ?? 'Failed to update invitation');
     }
   }
 
   async revokeInvitation(id: string): Promise<void> {
-    const res = await fetch(`/api/users/invitations/${id}/revoke`, {
+    const res = await apiFetchRaw(`/api/users/invitations/${id}/revoke`, {
       method: 'POST',
       headers: this.headers,
-    });
-    if (!res.ok) throw new Error('Failed to revoke invitation');
+    }, 'Failed to revoke invitation');
   }
 
   async acceptInvitation(payload: {
@@ -266,7 +262,7 @@ export class UsersApiService {
     password: string;
     displayName: string;
   }): Promise<AcceptInvitationResult> {
-    const res = await fetch('/api/auth/accept-invitation', {
+    const res = await apiFetchRaw('/api/auth/accept-invitation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -274,7 +270,7 @@ export class UsersApiService {
     if (!res.ok) {
       const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
       const errObj = body['error'] as Record<string, string> | undefined;
-      throw new Error(errObj?.['message'] ?? (body['message'] as string) ?? 'Failed to accept invitation');
+      throw new HttpFailure(res.status, errObj?.['message'] ?? (body['message'] as string) ?? 'Failed to accept invitation');
     }
     return res.json();
   }
