@@ -70,8 +70,31 @@ describe('PlaceAnalysisService', () => {
       eurRate: jest.fn().mockReturnValue(0.92),
       // Budget mensuel : 0 = pas de plafond (cas par défaut des tests).
       getBudget: jest.fn().mockResolvedValue(over.budget ?? { monthlyBudgetEur: 0, spentThisMonthEur: 0 }),
+      // ⚠️ La regle du plafond a DEMENAGE dans `AiUsageService` (elle ne gardait qu'un des
+      // huit points d'appel IA). `PlaceAnalysisService` ne fait plus que deleguer. Le mock
+      // la reproduit donc FIDELEMENT a partir du meme fixture `budget` — ecrire `false` en
+      // dur ferait passer les tests de refus sans rien exercer.
+      // ⚠️ Passe par `getBudget` — que les tests PILOTENT (`mockRejectedValue` pour le cas
+      // fail-closed). Un mock qui lirait le fixture en direct ignorerait ce pilotage et
+      // ferait passer le test de refus sans jamais exercer la regle.
+      monthBudgetExhausted: jest.fn(),
     };
     const errorLogger = { recordBackground: jest.fn() };
+
+    // Branche APRES la creation de l'objet (une reference a `aiUsage` dans son propre
+    // initialiseur serait circulaire). Passe par `getBudget`, que les tests PILOTENT.
+    aiUsage.monthBudgetExhausted.mockImplementation(async () => {
+      try {
+        const b = (await aiUsage.getBudget({ isOwner: true })) as {
+          monthlyBudgetEur?: number;
+          spentThisMonthEur?: number;
+        };
+        if (!b?.monthlyBudgetEur || b.monthlyBudgetEur <= 0) return false;
+        return (b.spentThisMonthEur ?? 0) >= b.monthlyBudgetEur;
+      } catch {
+        return true; // fail-closed : devant un doute sur l'argent, on ne depense pas
+      }
+    });
 
     const svc = new PlaceAnalysisService(
       prisma as never, places as never, enrichment as never,

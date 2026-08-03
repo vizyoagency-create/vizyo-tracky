@@ -77,6 +77,38 @@ export interface AiUsageEntry {
 export class AiUsageService {
   private readonly logger = new Logger(AiUsageService.name);
 
+  /**
+   * Le plafond mensuel est-il atteint ?
+   *
+   * ── Pourquoi ici ────────────────────────────────────────────────────────────────
+   * Cette regle vivait dans `PlaceAnalysisService`, un seul des HUIT points d'appel IA.
+   * L'administrateur fixait 10 EUR, voyait la barre rouge et le badge « Depasse » — et
+   * seules les analyses de lieux s'arretaient. Le cron horaire de recits de trajets,
+   * l'agent d'agenda, le rapport d'activite, l'optimiseur et la saisie vocale
+   * continuaient d'appeler le modele.
+   *
+   * Le plafond appartient au budget, donc il vit avec lui. `AiRouterService` — qui se
+   * declare « point d'entree UNIQUE de tous les appels IA » — l'applique desormais pour
+   * tout le monde, et personne n'a plus a y penser.
+   *
+   * ⚠️ FAIL-CLOSED : une lecture en echec repond `true`. Devant un doute sur l'argent,
+   * on ne depense pas. C'est l'inverse de l'anti-spam, dont le pire cas est une
+   * notification de trop.
+   */
+  async monthBudgetExhausted(): Promise<boolean> {
+    try {
+      const budget = await this.getBudget({ isOwner: true });
+      // Budget non defini (0 ou absent) = pas de plafond, pas de blocage.
+      if (!budget.monthlyBudgetEur || budget.monthlyBudgetEur <= 0) return false;
+      return budget.spentThisMonthEur >= budget.monthlyBudgetEur;
+    } catch (err) {
+      this.logger.warn(
+        `[ai] budget illisible — appel IA refuse par prudence: ${err instanceof Error ? err.message : err}`,
+      );
+      return true;
+    }
+  }
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly systemActivity: SystemActivityService,

@@ -135,20 +135,88 @@ describe('NotificationDispatchService — canal SMS (V1.15)', () => {
 
   it('escalation: ne notifie PAS une cible d escalade hors flotte (#14/#17)', async () => {
     // L'admin a un contact d'escalade, mais ce contact a ete reassigne a une AUTRE
-    // flotte : le findFirst scope par fleetId ne le trouve donc pas -> 0 cible.
-    userFindMany.mockResolvedValue([
-      { id: 'admin1', fleetId: 'f1', role: 'FLEET_ADMIN', isActive: true, escalationContactUserId: 'contact-x' },
-    ]);
-    const userFindFirst = jest.fn().mockResolvedValue(null);
-    (dispatch as unknown as { prisma: { user: { findFirst: jest.Mock } } }).prisma.user.findFirst = userFindFirst;
+    // flotte : la requete scopee par fleetId ne le trouve donc pas -> 0 cible.
+    //
+    // ⚠️ La resolution se faisait par un `findFirst` PAR administrateur ; elle est
+    // desormais GROUPEE en une seule requete (le cron d'escalade tourne chaque minute).
+    // L'intention du test est inchangee — le cloisonnement de flotte — seule la forme
+    // de la requete a bouge.
+    userFindMany.mockImplementation(async (args: { where?: Record<string, unknown> }) => {
+      const where = args?.where ?? {};
+      // 2e appel : resolution des cibles. Le contact est hors flotte -> rien.
+      if ((where.id as { in?: string[] } | undefined)?.in) return [];
+      // 1er appel : les membres de la flotte.
+      return [
+        { id: 'admin1', fleetId: 'f1', role: 'FLEET_ADMIN', isActive: true, escalationContactUserId: 'contact-x' },
+      ];
+    });
 
     await dispatch.dispatchEscalation(alert as never);
 
     // La cible d'escalade doit etre cherchee SCOPEE a la flotte de l'alerte.
-    expect(userFindFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ fleetId: 'f1', id: 'contact-x', isActive: true }) }),
+    expect(userFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: { in: ['contact-x'] }, fleetId: 'f1', isActive: true }),
+      }),
     );
     // Cible hors flotte => aucune notification envoyee.
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  /**
+   * ⚠️ LE CHAMP ETAIT ECRIT, STOCKE, AFFICHE — ET RELU PAR PERSONNE D'AUTRE.
+   *
+   * `dispatchEscalation` filtrait `role: FLEET_ADMIN` en dur. Un FLEET_MANAGER qui
+   * choisissait un contact d'escalade obtenait le toast « Contact d'escalade enregistre »,
+   * la valeur partait bien en base... et aucune escalade ne serait JAMAIS partie pour lui.
+   *
+   * Depuis que « qui est prevenu » est un REGLAGE, le role n'est plus le critere : on part
+   * des memes personnes que le dispatch ordinaire — celles qui recoivent les alertes de la
+   * flotte. Escalader depuis quelqu'un qui ne recoit pas l'alerte n'aurait aucun sens :
+   * il n'a rien a ne pas acquitter.
+   */
+  it('⚠️ escalade depuis un FLEET_MANAGER qui a ACTIVE la reception des alertes', async () => {
+    const contact = { id: 'contact-1', fleetId: 'f1', role: 'FLEET_ADMIN', isActive: true, phone: '+33600000009' };
+    userFindMany.mockImplementation(async (args: { where?: Record<string, unknown> }) => {
+      const where = args?.where ?? {};
+      if ((where.id as { in?: string[] } | undefined)?.in) return [contact];
+      return [
+        {
+          id: 'mgr-1',
+          fleetId: 'f1',
+          role: 'FLEET_MANAGER',
+          isActive: true,
+          escalationContactUserId: 'contact-1',
+          notificationPreference: { receivesFleetAlerts: true },
+        },
+      ];
+    });
+
+    await dispatch.dispatchEscalation(alert as never);
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send.mock.calls[0][0]).toBe('+33600000009');
+  });
+
+  it('un membre qui NE RECOIT PAS les alertes n escalade pas', async () => {
+    // Symetrique : le reglage tranche dans les deux sens. Quelqu'un qui ne recoit rien
+    // n'a aucune alerte a laisser sans acquittement.
+    userFindMany.mockImplementation(async (args: { where?: Record<string, unknown> }) => {
+      const where = args?.where ?? {};
+      if ((where.id as { in?: string[] } | undefined)?.in) return [];
+      return [
+        {
+          id: 'mgr-1',
+          fleetId: 'f1',
+          role: 'FLEET_MANAGER',
+          isActive: true,
+          escalationContactUserId: 'contact-1',
+          notificationPreference: { receivesFleetAlerts: false },
+        },
+      ];
+    });
+
+    await dispatch.dispatchEscalation(alert as never);
     expect(send).not.toHaveBeenCalled();
   });
 });
@@ -261,7 +329,13 @@ describe('NotificationDispatchService — aiguillage du push (correctif)', () =>
       const ids = (where.id as { in?: string[] } | undefined)?.in ?? [];
       if (ids.length > 0) {
         // Filtre tenant strict reproduit fidelement : id ∈ liste ET meme flotte.
-        return fleetAdmins.filter((u) => ids.includes(u.id as string) && u.fleetId === where.fleetId);
+        //
+        // ⚠️ Les CIBLES D'ESCALADE passent aussi par ici. La resolution se faisait avant
+        // par un `findFirst` PAR administrateur ; elle est desormais groupee en une seule
+        // requete (le cron d'escalade tourne chaque minute). La cible doit donc etre
+        // joignable depuis ce meme jeu de donnees.
+        const pool = escalationTarget ? [...fleetAdmins, escalationTarget] : fleetAdmins;
+        return pool.filter((u) => ids.includes(u.id as string) && u.fleetId === where.fleetId);
       }
       // Membres de la flotte : aucune preference en base ici, donc le defaut par role
       // s'applique — seuls les FLEET_ADMIN sont retenus, comme avant.
@@ -1043,9 +1117,19 @@ describe('NotificationDispatchService — garde-fous anti-spam et tracage', () =
       ],
     });
     const dispatch = await t.build();
-    (dispatch as unknown as { prisma: { user: { findFirst: jest.Mock } } }).prisma.user.findFirst = jest
-      .fn()
-      .mockResolvedValue({ id: 'esc-1', email: 'contact@f1.test', fleetId: 'f1', role: UserRole.FLEET_MANAGER, isActive: true });
+    // ⚠️ La cible d'escalade est desormais resolue par une requete GROUPEE (`id in [...]`),
+    // plus par un `findFirst` par administrateur — le cron d'escalade tourne chaque minute.
+    (dispatch as unknown as { prisma: { user: { findMany: jest.Mock } } }).prisma.user.findMany = jest.fn(
+      async (args: { where?: Record<string, unknown> }) => {
+        const where = args?.where ?? {};
+        if ((where.id as { in?: string[] } | undefined)?.in) {
+          return [{ id: 'esc-1', email: 'contact@f1.test', fleetId: 'f1', role: UserRole.FLEET_MANAGER, isActive: true }];
+        }
+        return [
+          { id: 'fa-1', email: 'admin@f1.test', fleetId: 'f1', role: UserRole.FLEET_ADMIN, isActive: true, escalationContactUserId: 'esc-1' },
+        ];
+      },
+    );
 
     await dispatch.dispatchEscalation(t.alert as never);
 

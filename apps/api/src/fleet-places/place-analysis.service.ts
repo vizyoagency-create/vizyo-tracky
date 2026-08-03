@@ -124,20 +124,18 @@ export class PlaceAnalysisService {
   }
 
   /**
-   * Le budget IA mensuel est-il consommé ? Budget non défini (0) = pas de plafond. En cas d'erreur
-   * de lecture, on répond **true** (fail-CLOSED) : devant un doute sur l'argent, on ne dépense pas.
+   * Le budget IA mensuel est-il consommé ?
+   *
+   * ⚠️ DELEGUE a `AiUsageService`, qui porte desormais la regle pour TOUS les appelants
+   * (elle est appliquee dans `AiRouterService.completeJson`). Cette methode reste comme
+   * pre-controle : elle evite d'aller interroger OpenStreetMap et de construire les faits
+   * pour un appel qui sera refuse — et elle permet a l'automatisation de le dire.
+   *
+   * On ne garde PAS de copie de la regle : deux definitions du meme plafond finiraient
+   * par diverger, et c'est exactement comme ca qu'un plafond cesse de plafonner.
    */
   async monthBudgetExhausted(): Promise<boolean> {
-    try {
-      const budget = await this.aiUsage.getBudget({ isOwner: true });
-      if (!budget.monthlyBudgetEur || budget.monthlyBudgetEur <= 0) return false;
-      return budget.spentThisMonthEur >= budget.monthlyBudgetEur;
-    } catch (e) {
-      this.errorLogger.recordBackground(e instanceof Error ? e : new Error(String(e)), 'place-analysis', {
-        note: 'budget IA illisible — analyse refusee par prudence',
-      });
-      return true;
-    }
+    return this.aiUsage.monthBudgetExhausted();
   }
 
   /**

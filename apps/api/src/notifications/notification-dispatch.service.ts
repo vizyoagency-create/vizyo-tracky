@@ -285,23 +285,41 @@ export class NotificationDispatchService {
    * intervals (Sprint M cron escalade).
    */
   async dispatchEscalation(alert: AlertWithVehicle): Promise<void> {
-    // Escalade par defaut : tous les FLEET_ADMIN escalent vers leur escalationContactUserId.
-    const fleetAdmins = await this.prisma.user.findMany({
-      where: { fleetId: alert.fleetId, role: UserRole.FLEET_ADMIN, isActive: true },
+    // ⚠️ LE ROLE N'EST PLUS LE CRITERE — il ne l'est plus depuis que « qui est prevenu »
+    // est un REGLAGE (`receivesFleetAlerts`).
+    //
+    // Cette requete filtrait `role: FLEET_ADMIN` en dur : un FLEET_MANAGER qui choisissait
+    // un contact d'escalade obtenait le toast « Contact d'escalade enregistre », la valeur
+    // partait bien en base... et AUCUNE escalade ne serait jamais partie pour lui. Le champ
+    // etait ecrit, stocke, affiche — et relu par personne d'autre que les FLEET_ADMIN.
+    //
+    // On part donc des memes personnes que le dispatch ordinaire : celles qui recoivent les
+    // alertes de la flotte. Escalader depuis quelqu'un qui ne recoit pas l'alerte n'aurait
+    // aucun sens — il n'a rien a ne pas acquitter.
+    const fleetMembers = await this.prisma.user.findMany({
+      where: { fleetId: alert.fleetId, isActive: true },
+      include: { notificationPreference: { select: { receivesFleetAlerts: true } } },
     });
+    const escalating = fleetMembers.filter(
+      (m) =>
+        m.escalationContactUserId &&
+        resolveReceivesFleetAlerts(m.notificationPreference?.receivesFleetAlerts, m.role),
+    );
+
     const escalationTargets = new Map<string, User>();
-    for (const admin of fleetAdmins) {
-      if (!admin.escalationContactUserId) continue;
+    if (escalating.length > 0) {
       // #14/#17 — la cible d'escalade DOIT appartenir a la flotte de l'alerte.
       // Sans ce filtre fleetId, un escalationContactUserId devenu obsolete (contact
       // reassigne a une AUTRE flotte) recevait le contenu de l'alerte (plaque,
       // position...) par email/SMS/WhatsApp -> fuite cross-tenant.
-      const target = await this.prisma.user.findFirst({
-        where: { id: admin.escalationContactUserId, fleetId: alert.fleetId, isActive: true },
+      //
+      // UNE seule requete pour toutes les cibles : la version precedente en faisait une
+      // PAR administrateur, sur un chemin appele chaque minute par le cron d'escalade.
+      const contactIds = [...new Set(escalating.map((m) => m.escalationContactUserId!))];
+      const targets = await this.prisma.user.findMany({
+        where: { id: { in: contactIds }, fleetId: alert.fleetId, isActive: true },
       });
-      if (target) {
-        escalationTargets.set(target.id, target);
-      }
+      for (const target of targets) escalationTargets.set(target.id, target);
     }
 
     // Dispatch sur les channels actifs pour cette alert (memes regles que la
