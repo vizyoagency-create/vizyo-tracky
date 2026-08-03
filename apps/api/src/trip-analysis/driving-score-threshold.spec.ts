@@ -141,6 +141,92 @@ describe('DrivingScoreService — seuil de représentativité', () => {
   });
 });
 
+/**
+ * ── ÉQUILIBRAGE DU CLASSEMENT (moyenne bayésienne) ───────────────────────────────────
+ *
+ * ⚠️ Le seuil de 20 écarte l'immesurable, mais laissait une injustice : un véhicule noté
+ * sur 21 trajets n'a eu que 21 occasions de mal faire, là où un autre en a eu 200. Moins
+ * on roule, moins on risque la faute — et le classement récompensait mécaniquement les
+ * petits rouleurs.
+ *
+ *     score_classement = (n × observé + C × moyenne_flotte) / (n + C)
+ *
+ * Chaque entité part de la moyenne de flotte et gagne le droit de s'en écarter à mesure
+ * qu'elle accumule des trajets.
+ */
+describe('DrivingScoreService — équilibrage par le nombre de trajets', () => {
+  beforeEach(() => {
+    jest.spyOn(Date, 'now').mockReturnValue(NOW);
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('à note ÉGALE, celui qui a le plus de trajets passe devant', async () => {
+    const { svc } = setup([
+      { id: 'v-peu', plate: 'PEU', analyses: 21, realTrips: 21, score: 95 },
+      { id: 'v-beaucoup', plate: 'BEAUCOUP', analyses: 200, realTrips: 200, score: 95 },
+    ]);
+    const res = await svc.scores(USER, 'vehicle', FROM, TO);
+
+    expect(res.rows.map((r) => r.id)).toEqual(['v-beaucoup', 'v-peu']);
+    // ⚠️ La note AFFICHÉE reste la note observée : un conducteur doit reconnaître la
+    // sienne. Seul l'ORDRE utilise le score pondéré.
+    expect(res.rows.map((r) => r.score)).toEqual([95, 95]);
+  });
+
+  it('un PETIT avantage sur peu de trajets ne suffit plus à passer devant', async () => {
+    /**
+     * ⚠️ CE TEST A ÉTÉ ÉCRIT À L'ENVERS LA PREMIÈRE FOIS, et l'erreur mérite d'être notée.
+     *
+     * Il affirmait d'abord que 100/100 sur 21 trajets devait passer DERRIÈRE 96/100 sur
+     * 300. La formule dit l'inverse (98,2 contre 96,0), et elle a raison : au-delà du
+     * seuil de représentativité, quatre points d'écart sont un vrai signal de conduite,
+     * pas un artefact d'échantillon. Corriger la constante pour faire passer ce test
+     * aurait transformé le classement en compteur de kilomètres.
+     *
+     * La propriété réellement attendue est plus fine : un écart MINCE (ici 1 point) ne
+     * survit pas à la pondération, alors qu'il décidait tout auparavant.
+     */
+    const { svc } = setup([
+      { id: 'v-peu', plate: 'PEU', analyses: 21, realTrips: 21, score: 97 },
+      { id: 'v-beaucoup', plate: 'BEAUCOUP', analyses: 300, realTrips: 300, score: 96 },
+    ]);
+    const res = await svc.scores(USER, 'vehicle', FROM, TO);
+
+    // Avant : 97 > 96, le petit échantillon gagnait. Maintenant, son point d'avance est
+    // absorbé par le rappel vers la moyenne.
+    expect(res.rows[0]!.id).toBe('v-beaucoup');
+    expect(res.rows[1]!.id).toBe('v-peu');
+    // …et les notes affichées, elles, n'ont pas bougé.
+    expect(res.rows.map((r) => r.score)).toEqual([96, 97]);
+  });
+
+  it('mais un ÉCART RÉEL de conduite reste décisif — on n’écrase pas le signal', async () => {
+    // ⚠️ Le garde-fou inverse : la pondération ne doit pas transformer le classement en
+    // simple compteur de kilomètres. Un véhicule médiocre sur 300 trajets ne doit PAS
+    // passer devant un très bon sur 60.
+    const { svc } = setup([
+      { id: 'v-bon', plate: 'BON', analyses: 60, realTrips: 60, score: 95 },
+      { id: 'v-mediocre', plate: 'MEDIOCRE', analyses: 300, realTrips: 300, score: 70 },
+    ]);
+    const res = await svc.scores(USER, 'vehicle', FROM, TO);
+
+    expect(res.rows[0]!.id).toBe('v-bon');
+  });
+
+  it('un véhicule SOUS la moyenne avec peu de trajets est remonté, pas enfoncé', async () => {
+    // La pondération joue dans les DEUX sens : elle dit « on ne sait pas encore », pas
+    // « il est mauvais ». Un petit échantillon médiocre est ramené vers la moyenne, donc
+    // il passe devant un gros échantillon franchement pire.
+    const { svc } = setup([
+      { id: 'v-faible-peu', plate: 'FAIBLE', analyses: 21, realTrips: 21, score: 60 },
+      { id: 'v-faible-beaucoup', plate: 'PIRE', analyses: 300, realTrips: 300, score: 55 },
+    ]);
+    const res = await svc.scores(USER, 'vehicle', FROM, TO);
+
+    expect(res.rows[0]!.id).toBe('v-faible-peu');
+  });
+});
+
 describe('DrivingScoreService — taux d’analyse', () => {
   beforeEach(() => {
     jest.spyOn(Date, 'now').mockReturnValue(NOW);
