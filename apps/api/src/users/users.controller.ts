@@ -380,7 +380,27 @@ export class UsersController {
           email: inv.email,
           role: inv.role,
           fleetId: inv.fleetId,
-          status: inv.status,
+          /**
+           * ⚠️ STATUT CALCULÉ À LA LECTURE, et non lu tel quel en base.
+           *
+           * Constat du 2026-08-03 sur cdef31 : quatre invitations créées le 2 juillet,
+           * valables 24 h, portaient encore `PENDING` un MOIS après leur expiration.
+           * Rien ne fait jamais passer une invitation de `PENDING` à `EXPIRED` : ni cron,
+           * ni tâche, ni relecture. Le statut en base est figé à la création.
+           *
+           * L'écran affichait donc « en attente » pour des liens morts depuis des
+           * semaines. Le gestionnaire croyait que ces quatre collègues allaient finir par
+           * se connecter — personne ne relançait, et personne ne comprenait pourquoi ils
+           * n'avaient toujours pas accès.
+           *
+           * Comparer la date ICI plutôt que d'ajouter une tâche de nettoyage : une tâche
+           * qui ne tourne pas laisse le défaut intact, et l'application en a déjà fait
+           * l'expérience le jour même (l'automatisation des trajets était à l'arrêt
+           * depuis cinq jours sans que rien ne le signale).
+           */
+          status: inv.status === 'PENDING' && inv.expiresAt.getTime() < Date.now()
+            ? 'EXPIRED'
+            : inv.status,
           permissions: inv.permissions,
           accessScopes: inv.accessScopes,
           expiresAt: inv.expiresAt.toISOString(),

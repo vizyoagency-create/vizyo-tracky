@@ -39,7 +39,7 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
           <h1 class="u-title">Utilisateurs &amp; rôles</h1>
           <p class="u-sub">
             @if (activeTab() === 'accounts') {
-              {{ visibleTotalCount() }} membre(s){{ includeArchived() ? ' · archives inclus' : ' dans votre flotte' }}
+              {{ visibleTotalCount() }} membre(s){{ includeArchived() ? ' · archives inclus' : ' dans votre flotte' }}@if (visiblePendingCount() > 0) { · {{ visiblePendingCount() }} invitation(s) en attente }@if (visibleExpiredCount() > 0) { · <strong class="u-sub-expired">{{ visibleExpiredCount() }} invitation(s) expirée(s)</strong> }
             } @else if (activeTab() === 'roles') {
               Capacités par défaut de chaque rôle applicatif
             } @else {
@@ -196,7 +196,16 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
                   <span class="u-pill-dot"></span>{{ inv.status === 'PENDING' ? 'Invité' : 'Expiré' }}
                 </span>
               </span>
-              <span class="u-col-scope u-scope u-scope-muted">{{ roleLabel(inv.role) }} · en attente</span>
+              <!--
+                ⚠️ « en attente » était affiché quel que soit le statut — y compris pour
+                un lien mort depuis un mois. Une invitation expirée n'attend rien : elle
+                demande une action (la renvoyer). Le dire change ce que le gestionnaire
+                fait de l'information.
+              -->
+              <span class="u-col-scope u-scope u-scope-muted">
+                {{ roleLabel(inv.role) }} ·
+                {{ inv.status === 'PENDING' ? 'en attente' : 'lien expiré — à renvoyer' }}
+              </span>
               <span class="u-col-last mono u-since">—</span>
               <div class="u-row-menu">
                 @if (perms.can('users_manage')) {
@@ -414,7 +423,28 @@ export class UsersListComponent implements OnInit {
   readonly visiblePendingInvitations = computed(() =>
     this.pendingInvitations().filter((i) => this.fleetFilter.matches(i.fleetId)),
   );
-  readonly visibleTotalCount = computed(() => this.visibleUsers().length + this.visiblePendingInvitations().length);
+  /**
+   * ⚠️ MEMBRES ≠ INVITATIONS. Ce compteur additionnait les deux.
+   *
+   * Constat du 2026-08-03 : cdef31 affichait « 10 membre(s) dans votre flotte » pour SIX
+   * comptes réels et quatre invitations — dont les quatre avaient expiré un mois plus tôt.
+   * Personne, sur cette flotte, n'a jamais eu dix accès.
+   *
+   * Un invité n'est pas un membre : il n'a pas de compte, il ne peut rien voir, et il peut
+   * ne jamais accepter. Les compter ensemble gonfle un chiffre que le gestionnaire lit
+   * comme « qui a accès à mes données ».
+   */
+  readonly visibleTotalCount = computed(() => this.visibleUsers().length);
+
+  /** Invitations en attente RÉELLE (non expirées) — affichées à part du compte des membres. */
+  readonly visiblePendingCount = computed(
+    () => this.visiblePendingInvitations().filter((i) => i.status === 'PENDING').length,
+  );
+
+  /** Invitations dont le lien est MORT : elles demandent une action (renvoyer), pas une attente. */
+  readonly visibleExpiredCount = computed(
+    () => this.visiblePendingInvitations().filter((i) => i.status !== 'PENDING').length,
+  );
 
   // ─── Matrice de permissions (référence rôles) ─────────────────
   protected readonly roleCols: { role: AppRole; short: string }[] = [
