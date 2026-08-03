@@ -1,7 +1,6 @@
-import { apiFetch, apiFetchRaw } from './api-fetch';
-import { HttpFailure } from './http-failure';
+import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { AuthService } from './auth.service';
+import { firstValueFrom } from 'rxjs';
 
 export interface VehicleGroup {
   id: string;
@@ -18,63 +17,74 @@ export interface UserAccess {
   vehicleIds: string[];
 }
 
+/**
+ * ── MIGRÉ VERS `HttpClient` (2026-08-03) ─────────────────────────────────────────────
+ *
+ * ⚠️⚠️ CE FICHIER CACHAIT UN DÉFAUT SÉRIEUX, ET IL EST ANTÉRIEUR À LA MIGRATION.
+ *
+ * Cinq méthodes sur neuf ne vérifiaient PAS `res.ok` : `rename`, `remove`, `addVehicle`,
+ * `removeVehicle` et — la plus grave — `setUserAccess`.
+ *
+ * `setUserAccess` enregistre le PÉRIMÈTRE D'ACCÈS d'un utilisateur : quels véhicules il a
+ * le droit de voir. Un refus de l'API (403, 500, validation) ne levait aucune erreur : la
+ * méthode rendait un succès. L'écran affichait donc « Accès enregistré » alors que rien
+ * ne l'avait été, et l'administrateur repartait convaincu d'avoir restreint quelqu'un.
+ *
+ * Un réglage de sécurité qui échoue en annonçant qu'il a réussi est la pire des trois
+ * situations possibles : pire qu'une erreur affichée, et pire que pas de réglage du tout —
+ * parce qu'on cesse de vérifier ce qu'on croit avoir fait.
+ *
+ * `HttpClient` rend ce défaut IMPOSSIBLE À REPRODUIRE : toute réponse non-2xx devient une
+ * erreur, sans que l'appelant ait à y penser. C'est la vraie raison de cette migration —
+ * pas l'élégance, mais le fait qu'oublier un contrôle ne soit plus une option.
+ *
+ * Les signatures publiques sont inchangées (des `Promise`) : aucun appelant modifié.
+ */
 @Injectable({ providedIn: 'root' })
 export class VehicleGroupsService {
-  private readonly auth = inject(AuthService);
+  private readonly http = inject(HttpClient);
 
-  private get headers(): Record<string, string> {
-    return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.auth.token}` };
+  list(): Promise<VehicleGroup[]> {
+    return firstValueFrom(this.http.get<VehicleGroup[]>('/api/vehicle-groups'));
   }
 
-  async list(): Promise<VehicleGroup[]> {
-    const res = await apiFetch('/api/vehicle-groups', { headers: this.headers }, 'Failed to load groups');
-    return res.json();
-  }
-
-  async create(name: string, fleetId?: string): Promise<VehicleGroup> {
+  create(name: string, fleetId?: string): Promise<VehicleGroup> {
     const body: Record<string, string> = { name };
     if (fleetId) body['fleetId'] = fleetId;
-    const res = await apiFetch('/api/vehicle-groups', {
-      method: 'POST', headers: this.headers, body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const b = (await res.json().catch(() => ({}))) as Record<string, string>;
-      throw new HttpFailure(res.status, b['message'] ?? 'Failed to create group');
-    }
-    return res.json();
+    return firstValueFrom(this.http.post<VehicleGroup>('/api/vehicle-groups', body));
   }
 
   async rename(id: string, name: string): Promise<void> {
-    await apiFetchRaw(`/api/vehicle-groups/${id}`, {
-      method: 'PATCH', headers: this.headers, body: JSON.stringify({ name }),
-    });
+    await firstValueFrom(this.http.patch(`/api/vehicle-groups/${id}`, { name }));
   }
 
   async remove(id: string): Promise<void> {
-    await apiFetchRaw(`/api/vehicle-groups/${id}`, { method: 'DELETE', headers: this.headers });
+    await firstValueFrom(this.http.delete(`/api/vehicle-groups/${id}`));
   }
 
   async addVehicle(groupId: string, vehicleId: string): Promise<void> {
-    await apiFetchRaw(`/api/vehicle-groups/${groupId}/vehicles`, {
-      method: 'POST', headers: this.headers, body: JSON.stringify({ vehicleId }),
-    });
+    await firstValueFrom(
+      this.http.post(`/api/vehicle-groups/${groupId}/vehicles`, { vehicleId }),
+    );
   }
 
   async removeVehicle(groupId: string, vehicleId: string): Promise<void> {
-    await apiFetchRaw(`/api/vehicle-groups/${groupId}/vehicles/${vehicleId}`, {
-      method: 'DELETE', headers: this.headers,
-    });
+    await firstValueFrom(
+      this.http.delete(`/api/vehicle-groups/${groupId}/vehicles/${vehicleId}`),
+    );
   }
 
-  // User access
-  async getUserAccess(userId: string): Promise<UserAccess> {
-    const res = await apiFetchRaw(`/api/users/${userId}/access`, { headers: this.headers }, 'Failed to load access');
-    return res.json();
+  // ─── Périmètre d'accès d'un utilisateur ──────────────────────────────────────────
+
+  getUserAccess(userId: string): Promise<UserAccess> {
+    return firstValueFrom(this.http.get<UserAccess>(`/api/users/${userId}/access`));
   }
 
+  /**
+   * ⚠️ RÉGLAGE DE SÉCURITÉ. Un échec DOIT remonter jusqu'à l'écran : c'est précisément
+   * ce que cette méthode ne faisait pas (cf. l'en-tête du fichier).
+   */
   async setUserAccess(userId: string, access: UserAccess): Promise<void> {
-    await apiFetchRaw(`/api/users/${userId}/access`, {
-      method: 'PUT', headers: this.headers, body: JSON.stringify(access),
-    });
+    await firstValueFrom(this.http.put(`/api/users/${userId}/access`, access));
   }
 }

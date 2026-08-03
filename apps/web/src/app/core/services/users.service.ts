@@ -1,7 +1,6 @@
-import { apiFetch, apiFetchRaw } from './api-fetch';
-import { HttpFailure } from './http-failure';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { AuthService } from './auth.service';
+import { firstValueFrom } from 'rxjs';
 
 export interface TrackyUser {
   id: string;
@@ -79,87 +78,76 @@ export interface AcceptInvitationResult {
   refreshToken: string;
 }
 
+/**
+ * ── MIGRÉ VERS `HttpClient` (2026-08-03) ─────────────────────────────────────────────
+ *
+ * Ce service appelait l'API en `fetch` natif. `fetch` ne traverse AUCUN intercepteur
+ * Angular : ses 14 appels échappaient donc aux deux mécanismes qui protègent tout le
+ * reste de l'application —
+ *
+ *   - l'affichage de la panne et la gestion de la session expirée (un 401 ne
+ *     déconnectait même pas) ;
+ *   - la remontée des pannes réseau au centre d'alerte.
+ *
+ * Chaque méthode devait donc réimplémenter à la main ce que l'intercepteur fait une fois
+ * pour toutes — et le faisait de façon inégale : certaines vérifiaient `res.ok`, d'autres
+ * l'avaient perdu au fil des réécritures et rendaient le corps d'une réponse 500 comme
+ * s'il s'agissait d'un succès.
+ *
+ * Les signatures publiques sont INCHANGÉES (des `Promise`, via `firstValueFrom`) : aucun
+ * appelant n'a été modifié. Seule l'implémentation change.
+ *
+ * ⚠️ Plus aucun en-tête `Authorization` posé à la main : `authInterceptor` s'en charge,
+ * ainsi que du cookie `withCredentials`. Le poser ici en double ne cassait rien, mais
+ * masquait le fait que ces appels ne passaient PAS par l'intercepteur.
+ */
 @Injectable({ providedIn: 'root' })
 export class UsersApiService {
-  private readonly auth = inject(AuthService);
-
-  private get headers(): Record<string, string> {
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${this.auth.token}`,
-    };
-  }
+  private readonly http = inject(HttpClient);
 
   async findAll(
     includeArchived = false,
     includePending = false,
   ): Promise<{ users: TrackyUser[]; pendingInvitations: PendingInvitation[] }> {
-    const params = new URLSearchParams();
-    if (includeArchived) params.set('includeArchived', 'true');
-    if (includePending) params.set('includePending', 'true');
-    const qs = params.toString();
-    const url = `/api/users${qs ? '?' + qs : ''}`;
-    const res = await apiFetchRaw(url, { headers: this.headers });
-    // ⚠️ Le statut DOIT voyager avec l'erreur. Sans lui, l'ecran ne peut pas distinguer
-    // « session expiree » (401) d'« interdit » (403) ou d'une panne serveur — il affichait
-    // donc « Aucun utilisateur dans votre flotte » pour les trois.
-    //
-    // ⚠️ Cet appel utilise `fetch` NATIF, donc il ne traverse PAS les intercepteurs HTTP :
-    // le 401 ne declenche ni deconnexion ni message « Session expiree ». L'appelant doit
-    // s'en charger, faute de quoi l'utilisateur reste devant un ecran vide et muet.
-    if (!res.ok) throw new HttpFailure(res.status, 'Chargement des utilisateurs impossible');
-    const body = await res.json();
-    // Backward compat: without includePending the API returns a plain array
-    if (Array.isArray(body)) return { users: body, pendingInvitations: [] };
-    return body;
+    let params = new HttpParams();
+    if (includeArchived) params = params.set('includeArchived', 'true');
+    if (includePending) params = params.set('includePending', 'true');
+    const body = await firstValueFrom(this.http.get<unknown>('/api/users', { params }));
+    // Compatibilité ascendante : sans `includePending`, l'API rend un tableau simple.
+    if (Array.isArray(body)) return { users: body as TrackyUser[], pendingInvitations: [] };
+    return body as { users: TrackyUser[]; pendingInvitations: PendingInvitation[] };
   }
 
-  async create(payload: CreateUserPayload): Promise<TrackyUser> {
-    const res = await apiFetchRaw('/api/users', {
-      method: 'POST',
-      headers: this.headers,
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const body = (await res.json().catch(() => ({}))) as Record<string, string>;
-      throw new HttpFailure(res.status, body['message'] ?? 'Failed to create user');
-    }
-    return res.json();
+  create(payload: CreateUserPayload): Promise<TrackyUser> {
+    return firstValueFrom(this.http.post<TrackyUser>('/api/users', payload));
   }
 
-  async update(id: string, data: { firstName?: string; lastName?: string; role?: string; isActive?: boolean; permissions?: Record<string, boolean>; fleetId?: string | null }): Promise<TrackyUser> {
-    const res = await apiFetchRaw(`/api/users/${id}`, {
-      method: 'PATCH',
-      headers: this.headers,
-      body: JSON.stringify(data),
-    });
-    if (!res.ok) {
-      const body = (await res.json().catch(() => ({}))) as Record<string, string>;
-      throw new HttpFailure(res.status, body['message'] ?? 'Failed to update user');
-    }
-    return res.json();
+  update(
+    id: string,
+    data: {
+      firstName?: string;
+      lastName?: string;
+      role?: string;
+      isActive?: boolean;
+      permissions?: Record<string, boolean>;
+      fleetId?: string | null;
+    },
+  ): Promise<TrackyUser> {
+    return firstValueFrom(this.http.patch<TrackyUser>(`/api/users/${id}`, data));
   }
 
   async remove(id: string): Promise<void> {
-    const res = await apiFetchRaw(`/api/users/${id}`, {
-      method: 'DELETE',
-      headers: this.headers,
-    });
-    if (!res.ok && res.status !== 204) throw new HttpFailure(res.status, 'Failed to archive user');
+    await firstValueFrom(this.http.delete(`/api/users/${id}`));
   }
 
   async resetPassword(id: string): Promise<void> {
-    const res = await apiFetch(`/api/users/${id}/reset-password`, {
-      method: 'POST',
-      headers: this.headers,
-    }, 'Failed to send password reset');
+    await firstValueFrom(this.http.post(`/api/users/${id}/reset-password`, {}));
   }
 
   // ─── /me — Sprint J ──────────────────────────────────────────
 
-  async me(): Promise<MeProfile> {
-    const res = await apiFetch('/api/users/me', { headers: this.headers }, 'Failed to load profile');
-    return res.json();
+  me(): Promise<MeProfile> {
+    return firstValueFrom(this.http.get<MeProfile>('/api/users/me'));
   }
 
   /**
@@ -169,109 +157,81 @@ export class UsersApiService {
    * chaque minute sans jamais pouvoir agir. Toute la plomberie existait — il ne
    * manquait qu'un champ de formulaire.
    */
-  async updateMe(data: {
+  updateMe(data: {
     firstName?: string;
     lastName?: string;
     phone?: string | null;
     escalationContactUserId?: string | null;
   }): Promise<MeProfile> {
-    const res = await apiFetch('/api/users/me', {
-      method: 'PATCH',
-      headers: this.headers,
-      body: JSON.stringify(data),
-    });
-    if (!res.ok) {
-      const body = (await res.json().catch(() => ({}))) as Record<string, string>;
-      throw new HttpFailure(res.status, body['message'] ?? 'Failed to update profile');
-    }
-    return res.json();
+    return firstValueFrom(this.http.patch<MeProfile>('/api/users/me', data));
   }
 
-  async completeOnboarding(): Promise<{ id: string; onboardingCompletedAt: string }> {
-    const res = await apiFetchRaw('/api/users/me/onboarding-complete', {
-      method: 'POST',
-      headers: this.headers,
-    }, 'Failed to mark onboarding complete');
-    return res.json();
+  completeOnboarding(): Promise<{ id: string; onboardingCompletedAt: string }> {
+    return firstValueFrom(
+      this.http.post<{ id: string; onboardingCompletedAt: string }>(
+        '/api/users/me/onboarding-complete',
+        {},
+      ),
+    );
   }
 
   // ─── /invitations — Sprint J ─────────────────────────────────
 
-  async invite(payload: {
+  invite(payload: {
     email: string;
     role: string;
     fleetId?: string | null;
     permissions?: Record<string, boolean>;
     /** Scopes d'accès (matrice) configurés dès l'invitation. */
-    accessScopes?: { type: 'ALL' | 'GROUP' | 'VEHICLE'; groupId?: string; vehicleId?: string; permissions?: Record<string, boolean> }[];
+    accessScopes?: {
+      type: 'ALL' | 'GROUP' | 'VEHICLE';
+      groupId?: string;
+      vehicleId?: string;
+      permissions?: Record<string, boolean>;
+    }[];
   }): Promise<InvitationDto> {
-    const res = await apiFetch('/api/users/invitations', {
-      method: 'POST',
-      headers: this.headers,
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-      const errObj = body['error'] as Record<string, string> | undefined;
-      throw new HttpFailure(res.status, errObj?.['message'] ?? (body['message'] as string) ?? 'Failed to send invitation');
-    }
-    return res.json();
+    return firstValueFrom(this.http.post<InvitationDto>('/api/users/invitations', payload));
   }
 
-  async resendInvitation(id: string): Promise<InvitationDto> {
-    const res = await apiFetchRaw(`/api/users/invitations/${id}/resend`, {
-      method: 'POST',
-      headers: this.headers,
-    });
-    if (!res.ok) {
-      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-      const errObj = body['error'] as Record<string, string> | undefined;
-      throw new HttpFailure(res.status, errObj?.['message'] ?? (body['message'] as string) ?? 'Failed to resend invitation');
-    }
-    return res.json();
+  resendInvitation(id: string): Promise<InvitationDto> {
+    return firstValueFrom(
+      this.http.post<InvitationDto>(`/api/users/invitations/${id}/resend`, {}),
+    );
   }
 
   async listInvitations(): Promise<InvitationDto[]> {
-    const res = await apiFetchRaw('/api/users/invitations', { headers: this.headers }, 'Failed to load invitations');
-    const body = await res.json() as { items: InvitationDto[] };
+    const body = await firstValueFrom(
+      this.http.get<{ items: InvitationDto[] }>('/api/users/invitations'),
+    );
     return body.items;
   }
 
-  async updateInvitation(id: string, data: { fleetId?: string | null; role?: string; permissions?: Record<string, boolean>; accessScopes?: InvitationAccessScopeDto[] }): Promise<void> {
-    const res = await apiFetch(`/api/users/invitations/${id}`, {
-      method: 'PATCH',
-      headers: this.headers,
-      body: JSON.stringify(data),
-    });
-    if (!res.ok) {
-      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-      const errObj = body['error'] as Record<string, string> | undefined;
-      throw new HttpFailure(res.status, errObj?.['message'] ?? (body['message'] as string) ?? 'Failed to update invitation');
-    }
+  async updateInvitation(
+    id: string,
+    data: {
+      fleetId?: string | null;
+      role?: string;
+      permissions?: Record<string, boolean>;
+      accessScopes?: InvitationAccessScopeDto[];
+    },
+  ): Promise<void> {
+    await firstValueFrom(this.http.patch(`/api/users/invitations/${id}`, data));
   }
 
   async revokeInvitation(id: string): Promise<void> {
-    const res = await apiFetchRaw(`/api/users/invitations/${id}/revoke`, {
-      method: 'POST',
-      headers: this.headers,
-    }, 'Failed to revoke invitation');
+    await firstValueFrom(this.http.post(`/api/users/invitations/${id}/revoke`, {}));
   }
 
-  async acceptInvitation(payload: {
+  acceptInvitation(payload: {
     token: string;
     password: string;
     displayName: string;
   }): Promise<AcceptInvitationResult> {
-    const res = await apiFetchRaw('/api/auth/accept-invitation', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-      const errObj = body['error'] as Record<string, string> | undefined;
-      throw new HttpFailure(res.status, errObj?.['message'] ?? (body['message'] as string) ?? 'Failed to accept invitation');
-    }
-    return res.json();
+    // Route PUBLIQUE (pré-connexion) : aucun token à joindre, l'intercepteur n'ajoutera
+    // rien puisqu'il n'y a pas de session. Elle passe quand même par HttpClient pour
+    // bénéficier de la remontée des pannes réseau au centre d'alerte.
+    return firstValueFrom(
+      this.http.post<AcceptInvitationResult>('/api/auth/accept-invitation', payload),
+    );
   }
 }

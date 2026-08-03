@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
@@ -344,7 +345,10 @@ export class TripAutomationComponent implements OnInit {
   private async loadRuns(): Promise<void> {
     try {
       this.runs.set(await firstValueFrom(this.api.listAutomationRuns(30)));
-    } catch { /* l'historique n'est pas bloquant */ }
+    } catch (err) {
+      // l'historique n'est pas bloquant
+      swallow('trip-automation:loadRuns', err);
+    }
   }
 
   protected toggleRun(id: string): void {

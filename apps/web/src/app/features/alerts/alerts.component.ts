@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -943,7 +944,10 @@ export class AlertsComponent implements OnInit {
       );
       ids.forEach((id) => this.realtime.dismissAlert(id));
       this.toast.success(ids.length > 1 ? `${ids.length} alertes acquittées` : 'Alerte acquittée');
-    } catch { /* handled */ }
+    } catch (err) {
+      // handled
+      swallow('alerts:acknowledgeCluster', err);
+    }
   }
 
   protected readonly vehicleOptions = computed(() =>
@@ -1071,7 +1075,10 @@ export class AlertsComponent implements OnInit {
       );
       this.realtime.dismissAlert(id);
       this.toast.success('Alerte acquittée');
-    } catch { /* handled */ }
+    } catch (err) {
+      // handled
+      swallow('alerts:onAcknowledge', err);
+    }
   }
 
   protected async onAcknowledgeAll(): Promise<void> {
@@ -1081,7 +1088,10 @@ export class AlertsComponent implements OnInit {
       ids.forEach((id) => this.realtime.dismissAlert(id));
       this.toast.success(`${count} alertes acquittées`);
       this.loadAlerts();
-    } catch { /* handled */ }
+    } catch (err) {
+      // handled
+      swallow('alerts:onAcknowledgeAll', err);
+    }
   }
 
   protected loadMore(): void {
@@ -1105,7 +1115,10 @@ export class AlertsComponent implements OnInit {
         this.alerts.set(res.items);
       }
       this.nextCursor.set(res.nextCursor);
-    } catch { /* handled */ } finally {
+    } catch (err) {
+      // handled
+      swallow('alerts:loadAlerts', err);
+    } finally {
       this.loading.set(false);
     }
   }

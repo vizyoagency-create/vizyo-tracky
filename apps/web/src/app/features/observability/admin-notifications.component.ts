@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, computed, inject, type OnDestroy, type OnInit, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
@@ -1457,8 +1458,9 @@ export class AdminNotificationsComponent implements OnInit, OnDestroy {
         return;
       }
       await this.fetchAll();
-    } catch {
-      /* silencieux en auto : une coupure réseau passagère ne doit pas repeindre l'écran en rouge */
+    } catch (err) {
+      // silencieux en auto : une coupure réseau passagère ne doit pas repeindre l'écran en rouge
+      swallow('admin-notifications:refreshLight', err);
     }
   }
 

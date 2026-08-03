@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
@@ -78,8 +79,9 @@ export class SecurityService {
         this.http.get<{ enabled: boolean; dismissed: boolean }>('/api/security/2fa/status'),
       );
       this.twoFactorEnabled.set(!!s?.enabled);
-    } catch {
-      /* silencieux */
+    } catch (err) {
+      // silencieux
+      swallow('security:loadTwoFactorStatus', err);
     }
   }
 
@@ -125,8 +127,9 @@ export class SecurityService {
     if (persist) {
       try {
         await firstValueFrom(this.http.post('/api/security/2fa/dismiss', {}));
-      } catch {
-        /* best-effort */
+      } catch (err) {
+        // best-effort
+        swallow('security:dismissProposal', err);
       }
     }
   }

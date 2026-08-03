@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { DatePipe } from '@angular/common';
 import {
   AfterViewInit,
@@ -163,8 +164,9 @@ export class SecurityAdminComponent implements OnInit, AfterViewInit, OnDestroy 
   async ngOnInit(): Promise<void> {
     try {
       this.users.set(await firstValueFrom(this.api.getUsers()));
-    } catch {
-      /* silencieux */
+    } catch (err) {
+      // silencieux
+      swallow('security-admin:ngOnInit', err);
     } finally {
       this.loading.set(false);
     }
@@ -202,8 +204,9 @@ export class SecurityAdminComponent implements OnInit, AfterViewInit, OnDestroy 
       const loc = await firstValueFrom(this.api.getUserLocations(u.userId));
       this.locations.set(loc);
       this.renderPoints(loc);
-    } catch {
-      /* silencieux */
+    } catch (err) {
+      // silencieux
+      swallow('security-admin:select', err);
     } finally {
       this.locLoading.set(false);
     }

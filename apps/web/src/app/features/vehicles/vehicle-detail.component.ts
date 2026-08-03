@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, OnInit, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
@@ -2410,7 +2411,10 @@ export class VehicleDetailComponent implements OnInit {
       await firstValueFrom(this.alertsApi.acknowledge(id));
       this.alerts.update((list) => list.filter((a) => a.id !== id));
       this.toast.success('Alerte acquittée');
-    } catch { /* handled */ }
+    } catch (err) {
+      // handled
+      swallow('vehicle-detail:acknowledgeAlert', err);
+    }
   }
 
   /**

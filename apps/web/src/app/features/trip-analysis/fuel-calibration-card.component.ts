@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -270,7 +271,10 @@ export class FuelCalibrationCardComponent {
     try {
       await firstValueFrom(this.api.deleteFillUp(id));
       await this.load(this.vehicleId());
-    } catch { /* silent */ }
+    } catch (err) {
+      // silent
+      swallow('fuel-calibration-card:remove', err);
+    }
   }
 
   private async load(vehicleId: string): Promise<void> {

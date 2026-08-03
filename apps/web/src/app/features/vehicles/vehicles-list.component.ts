@@ -1,3 +1,4 @@
+import { swallow } from '../../core/error/swallow';
 import { ChangeDetectionStrategy, Component, computed, inject, OnInit, signal } from '@angular/core';
 import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 import { FormsModule } from '@angular/forms';
@@ -1404,7 +1405,10 @@ export class VehiclesListComponent implements OnInit {
       this.showDeleteVehicle.set(false);
       this.vehicleToDelete.set(null);
       await this.loadVehicles();
-    } catch { /* error */ }
+    } catch (err) {
+      // error
+      swallow('vehicles-list:onDeleteVehicle', err);
+    }
     finally { this.deleting.set(false); }
   }
 

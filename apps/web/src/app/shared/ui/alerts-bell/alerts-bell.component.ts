@@ -1,3 +1,4 @@
+import { swallow } from '../../../core/error/swallow';
 import { Component, HostListener, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { LucideAngularModule, Bell, AlertTriangle, Info, Check } from 'lucide-angular';
@@ -166,7 +167,10 @@ export class AlertsBellComponent {
     try {
       await Promise.all(cluster.items.map((a) => firstValueFrom(this.alertsApi.acknowledge(a.id))));
       cluster.items.forEach((a) => this.realtime.dismissAlert(a.id));
-    } catch { /* toast handled by interceptor */ }
+    } catch (err) {
+      // toast handled by interceptor
+      swallow('alerts-bell:acknowledgeCluster', err);
+    }
   }
 
   @HostListener('document:click', ['$event'])
@@ -179,7 +183,10 @@ export class AlertsBellComponent {
     try {
       await firstValueFrom(this.alertsApi.acknowledge(id));
       this.realtime.dismissAlert(id);
-    } catch { /* toast handled by interceptor */ }
+    } catch (err) {
+      // toast handled by interceptor
+      swallow('alerts-bell:onAcknowledge', err);
+    }
   }
 
   async onAcknowledgeAll(): Promise<void> {
@@ -188,7 +195,10 @@ export class AlertsBellComponent {
       for (const a of this.realtime.alerts()) {
         this.realtime.dismissAlert(a.id);
       }
-    } catch { /* toast handled by interceptor */ }
+    } catch (err) {
+      // toast handled by interceptor
+      swallow('alerts-bell:onAcknowledgeAll', err);
+    }
   }
 
   protected alertPlate(alert: any): string {
