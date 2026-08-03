@@ -10,6 +10,7 @@ import { OwnerVisibilityService } from '../common/owner-visibility.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationCenterController } from './notification-center.controller';
 import { NotificationCenterService } from './notification-center.service';
+import { NotificationDispatchService } from './notification-dispatch.service';
 import { WebPushService } from './web-push.service';
 
 /**
@@ -40,6 +41,8 @@ describe('NotificationCenterService', () => {
   let userCount: jest.Mock;
   let subGroupBy: jest.Mock;
   let fleetFindMany: jest.Mock;
+  let alertFindUnique: jest.Mock;
+  let dispatchAlert: jest.Mock;
   let userIdExclusion: jest.Mock;
   let hiddenIdsFor: jest.Mock;
   let vapidEnabled: boolean;
@@ -82,6 +85,8 @@ describe('NotificationCenterService', () => {
     userCount = jest.fn().mockResolvedValue(0);
     subGroupBy = jest.fn().mockResolvedValue([]);
     fleetFindMany = jest.fn().mockResolvedValue([]);
+    alertFindUnique = jest.fn().mockResolvedValue(null);
+    dispatchAlert = jest.fn().mockResolvedValue({ channels: ['WEB_PUSH'] });
     // Par défaut : viewer NON-owner, donc l'owner 'owner-1' est masqué.
     userIdExclusion = jest.fn().mockResolvedValue({ userId: { notIn: ['owner-1'] } });
     hiddenIdsFor = jest.fn().mockResolvedValue(['owner-1']);
@@ -96,6 +101,7 @@ describe('NotificationCenterService', () => {
       user: { findMany: userFindMany, groupBy: userGroupBy, count: userCount },
       pushSubscription: { groupBy: subGroupBy },
       fleet: { findMany: fleetFindMany },
+      alert: { findUnique: alertFindUnique },
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -112,6 +118,7 @@ describe('NotificationCenterService', () => {
         },
         { provide: ConfigService, useValue: { get: () => rollout } },
         { provide: WebPushService, useValue: { isEnabled: () => vapidEnabled } },
+        { provide: NotificationDispatchService, useValue: { dispatchAlert } },
       ],
     })
       // Les guards ne sont pas instanciés ici : on teste leur DÉCLARATION (métadonnées),
@@ -142,16 +149,45 @@ describe('NotificationCenterService', () => {
       expect(guards).toEqual(expect.arrayContaining([JwtAuthGuard, RolesGuard]));
     });
 
-    it('n’expose que des lectures (aucune route d’écriture sur le contrôleur)', () => {
+    /**
+      * ⚠️ CE TEST INTERDISAIT TOUTE ÉCRITURE. Il a été REMPLACÉ, pas supprimé — la règle
+      * qu'il portait reste juste (une purge ou un acquittement de masse sur un tableau de
+      * plusieurs milliers de lignes serait un incident), mais elle interdisait aussi la
+      * SEULE action dont on a eu besoin : renvoyer à un client une alerte qu'il aurait dû
+      * recevoir, et qu'aucun autre chemin ne permettait d'envoyer.
+      *
+      * La nouvelle version garde plus finement : la liste des routes est verrouillée
+      * NOMMÉMENT, et toute route qui n'est pas un GET doit figurer dans une liste blanche
+      * explicite. Ajouter une purge en POST casse donc toujours ce test.
+      */
+    it('n’expose que des lectures, à l’exception NOMMÉE du rejeu', () => {
       const proto = NotificationCenterController.prototype as unknown as Record<string, unknown>;
       const routes = Object.getOwnPropertyNames(proto).filter(
         (m) => m !== 'constructor' && Reflect.hasMetadata('path', proto[m] as object),
       );
+      /** Les SEULES routes d'écriture tolérées ici. Toute autre doit faire échouer ce test. */
+      const ECRITURES_AUTORISEES = ['replay'];
       for (const route of routes) {
         // 0 = RequestMethod.GET
-        expect(Reflect.getMetadata('method', proto[route] as object)).toBe(0);
+        const method = Reflect.getMetadata('method', proto[route] as object);
+        if (ECRITURES_AUTORISEES.includes(route)) continue;
+        // Si ceci casse : la route ajoutée n'est pas un GET et n'est pas dans la liste
+        // blanche. Le centre de notifications sert à COMPRENDRE — une écriture de masse
+        // ici deviendrait un incident de production.
+        expect({ route, method }).toEqual({ route, method: 0 });
       }
-      expect(routes.sort()).toEqual(['deliveries', 'health', 'summary']);
+      expect(routes.sort()).toEqual(['deliveries', 'health', 'replay', 'summary']);
+    });
+
+    it('le rejeu est bien un POST, et hérite de la garde SUPER_ADMIN du contrôleur', () => {
+      const proto = NotificationCenterController.prototype as unknown as Record<string, unknown>;
+      // 1 = RequestMethod.POST
+      expect(Reflect.getMetadata('method', proto['replay'] as object)).toBe(1);
+      // La garde est posée sur le CONTRÔLEUR : une route ajoutée plus tard en hérite.
+      // C'est la raison pour laquelle on la vérifie ici plutôt que méthode par méthode.
+      expect(Reflect.getMetadata('roles', NotificationCenterController)).toEqual([
+        UserRole.SUPER_ADMIN,
+      ]);
     });
   });
 
@@ -722,6 +758,73 @@ describe('NotificationCenterService', () => {
         expect.objectContaining({ page: undefined, pageSize: undefined }),
         req.user,
       );
+    });
+  });
+
+  // ─── Rejeu d'une alerte ────────────────────────────────────────────────────────────
+  //
+  // Contexte (incident du 2026-08-03) : le gérant d'une flotte n'avait reçu AUCUNE de ses
+  // 28 alertes de vitesse. Une fois la cause corrigée, il restait à lui envoyer celle
+  // qu'il aurait dû recevoir — et rien ne le permettait. Ces tests verrouillent les trois
+  // propriétés qui rendent ce rejeu sûr.
+
+  describe('rejeu d’une alerte', () => {
+    const ALERTE = {
+      id: 'a-1',
+      type: 'OVERSPEED',
+      severity: 'WARNING',
+      vehicleId: 'v-1',
+      vehicle: { plate: 'FG-669-DQ' },
+    };
+
+    it('refuse une alerte inexistante au lieu d’envoyer dans le vide', async () => {
+      alertFindUnique.mockResolvedValue(null);
+      await expect(service.replayAlert('a-inconnue')).rejects.toThrow(/introuvable/i);
+      expect(dispatchAlert).not.toHaveBeenCalled();
+    });
+
+    it('passe par le dispatch — la porte unique — en mode rejeu', async () => {
+      alertFindUnique.mockResolvedValue(ALERTE);
+      await service.replayAlert('a-1');
+      // ⚠️ `replay: true` n'est pas cosmétique : il restreint au push (pas de SMS ni de
+      // WhatsApp refacturés) et contourne le cooldown (sans quoi un rejeu demandé dans le
+      // quart d'heure suivant un envoi serait replié en silence — on annoncerait « parti »
+      // à un opérateur pendant que le client ne reçoit rien).
+      expect(dispatchAlert).toHaveBeenCalledWith(ALERTE, { replay: true });
+    });
+
+    it('rend compte de ce qui s’est VRAIMENT passé, lu dans le journal', async () => {
+      alertFindUnique.mockResolvedValue(ALERTE);
+      deliveryFindMany.mockResolvedValue([
+        delivery({ status: 'SENT', reason: null, deviceCount: 1, sentCount: 1 }),
+        delivery({
+          status: 'SUPPRESSED',
+          reason: 'default_type_muted',
+          deviceCount: 0,
+          sentCount: 0,
+          user: { email: 'muet@vizyo.fr', firstName: null, lastName: null, role: UserRole.FLEET_ADMIN },
+        }),
+      ]);
+      const res = await service.replayAlert('a-1');
+
+      expect(res.plate).toBe('FG-669-DQ');
+      expect(res.destinataires).toHaveLength(2);
+      expect(res.destinataires[0]).toMatchObject({ status: 'SENT', sent: 1, reasonLabel: null });
+      // Le motif est traduit par le MÊME helper que le journal : deux traductions du même
+      // code finiraient par diverger, et l'écran de rejeu dirait autre chose que le journal.
+      expect(res.destinataires[1].status).toBe('SUPPRESSED');
+      expect(res.destinataires[1].reasonLabel).toContain('aucun réglage personnel');
+    });
+
+    it('ne relit QUE les lignes de ce rejeu — un envoi ancien ne doit pas passer pour un succès', async () => {
+      alertFindUnique.mockResolvedValue(ALERTE);
+      await service.replayAlert('a-1');
+      const where = deliveryFindMany.mock.calls[0][0].where;
+      expect(where.alertId).toBe('a-1');
+      // ⚠️ SANS cette borne, un rejeu entièrement retenu afficherait le SENT de l'envoi
+      // d'origine : l'opérateur lirait « c'est parti » pour un envoi qui n'est jamais
+      // parti. C'est exactement le défaut que tout ce module sert à corriger.
+      expect(where.createdAt?.gte).toBeInstanceOf(Date);
     });
   });
 });

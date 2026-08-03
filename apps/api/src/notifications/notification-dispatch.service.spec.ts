@@ -955,12 +955,54 @@ describe('NotificationDispatchService — garde-fous anti-spam et tracage', () =
     expect(t.rows()).toHaveLength(1);
     expect(t.rows()[0]).toMatchObject({
       status: 'SUPPRESSED',
-      reason: 'preference_type_muted',
+      // ⚠️ `default_type_muted`, PAS `preference_type_muted` — et la nuance n'est pas
+      // cosmetique. Cet utilisateur n'a AUCUNE ligne de preference : il n'a jamais ouvert
+      // cet ecran. Le motif d'origine affichait « coupe dans ses reglages », c'est-a-dire
+      // qu'il accusait le client d'un choix qu'il n'avait pas fait — et envoyait chercher
+      // la correction dans un ecran ou il n'y avait rien a corriger.
+      reason: 'default_type_muted',
       alertType: 'POWER_CUT',
     });
     // La ligne porte le contenu qui AURAIT ete pousse : l'ecran d'administration doit
     // pouvoir montrer ce que l'utilisateur n'a pas vu.
     expect(t.rows()[0].title).toContain('Coupure d alimentation');
+  });
+
+  it('MEME type coupe, MAIS choisi par l utilisateur — le motif designe alors SA preference', async () => {
+    // Le pendant du test precedent, et la seule facon de prouver que la distinction est
+    // reelle : meme alerte, meme refus, motif DIFFERENT selon qui a decide.
+    const t = setup({
+      type: 'POWER_CUT',
+      preferences: [
+        { userId: superAdmin.id, pushEnabled: true, minSeverity: 'INFO', mutedTypes: ['POWER_CUT'] },
+      ],
+    });
+    const dispatch = await t.build();
+
+    await dispatch.dispatchAlert(t.alert as never);
+
+    expect(t.sendToUser).not.toHaveBeenCalled();
+    expect(t.rows()[0]).toMatchObject({
+      status: 'SUPPRESSED',
+      reason: 'preference_type_muted',
+    });
+  });
+
+  it('OVERSPEED sans ligne de preference — PART desormais (le defaut ne le coupe plus)', async () => {
+    // ⚠️ LE CAS QUI A MOTIVE TOUT CE LOT (2026-08-03). Le gerant de MH Cars n'a recu
+    // AUCUNE de ses 28 alertes de vitesse du matin, sans avoir rien coupe.
+    //
+    // Le defaut coupait OVERSPEED sur la foi de « 164 alertes par jour ». Le chiffre etait
+    // juste, la conclusion fausse : une alerte n'est pas une notification. Le cooldown de
+    // 15 min par (utilisateur, type, vehicule) ramenait deja ce volume a 1,6 NOTIFICATION
+    // par jour — mesure faite sur 30 jours de production, en regroupant par episodes.
+    const t = setup({ type: 'OVERSPEED', severity: 'WARNING', preferences: [] });
+    const dispatch = await t.build();
+
+    await dispatch.dispatchAlert(t.alert as never);
+
+    expect(t.sendToUser).toHaveBeenCalled();
+    expect(t.rows()[0]).toMatchObject({ status: 'SENT', alertType: 'OVERSPEED' });
   });
 
   it('mutedTypes: [] est un choix EXPLICITE — le defaut ne se re-applique pas par-dessus', async () => {

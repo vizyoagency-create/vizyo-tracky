@@ -156,10 +156,15 @@ describe('NotificationPreferencesService', () => {
         // LOW_BATTERY, que l'utilisateur veut pouvoir tester, est WARNING (4/an).
         // Le seuil seul ne trie donc rien d'utile — cf. le calcul du defaut.
         minSeverity: 'warning',
-        mutedTypes: ['POWER_CUT', 'OVERSPEED'],
-        // Aucune FAMILLE coupée par défaut : le bruit mesuré vient de types précis
-        // (`POWER_CUT`, `OVERSPEED`), pas de familles entières. Couper « Entretien »
-        // d'office priverait d'un signal rare et utile.
+        // ⚠️ OVERSPEED N'EST PLUS COUPE (2026-08-03). Le defaut le coupait sur la foi de
+        // « 164 alertes/jour » — chiffre juste, conclusion fausse : le cooldown de 15 min
+        // ramenait deja cela a 1,6 NOTIFICATION par jour (mesure sur 30 jours de prod).
+        // Le gerant d'une flotte ne recevait donc aucune alerte de vitesse sur ses propres
+        // vehicules, pour un bruit que l'anti-spam absorbait deja.
+        mutedTypes: ['POWER_CUT'],
+        // Aucune FAMILLE coupée par défaut : le bruit mesuré vient de types précis,
+        // pas de familles entières. Couper « Entretien » d'office priverait d'un signal
+        // rare et utile.
         mutedCategories: [],
         isDefault: true,
         eligible: true,
@@ -192,7 +197,9 @@ describe('NotificationPreferencesService', () => {
 
       const second = await service.get('u2', UserRole.SUPER_ADMIN);
       expect(second.mutedTypes).toEqual([...DEFAULT_MUTED_TYPES]);
-      expect(DEFAULT_MUTED_TYPES).toEqual(['POWER_CUT', 'OVERSPEED']);
+      // Valeur EN DUR volontaire : elle fait echouer ce test si quelqu'un modifie le
+      // defaut sans le vouloir. C'est le seul endroit ou la liste est affirmee deux fois.
+      expect(DEFAULT_MUTED_TYPES).toEqual(['POWER_CUT']);
     });
 
     it('LE PIEGE A EVITER : une ligne avec mutedTypes vide = TOUT rallume, defaut NON applique', async () => {
@@ -218,7 +225,10 @@ describe('NotificationPreferencesService', () => {
       expect(pass('GPS_LOST', 'warning')).toBe(true);
 
       expect(pass('POWER_CUT', 'critical')).toBe(false);
-      expect(pass('OVERSPEED', 'warning')).toBe(false);
+      // ⚠️ CE TEST AFFIRMAIT L'INVERSE, et c'est lui qui verrouillait le defaut : le
+      // gerant d'une flotte devait recevoir les exces de vitesse de ses vehicules sans
+      // avoir a decouvrir un ecran de reglages qu'il n'a jamais ouvert.
+      expect(pass('OVERSPEED', 'warning')).toBe(true);
       // Les alertes de conduite (INFO) restent sous le seuil : volume non mesure.
       expect(pass('HARSH_BRAKING', 'info')).toBe(false);
     });
@@ -276,7 +286,7 @@ describe('NotificationPreferencesService', () => {
       expect(args.update).toEqual({ pushEnabled: false });
       // A la creation, les champs non fournis prennent le defaut CALIBRE.
       expect(args.create.minSeverity).toBe(PrismaAlertSeverity.WARNING);
-      expect(args.create.mutedTypes).toEqual(['POWER_CUT', 'OVERSPEED']);
+      expect(args.create.mutedTypes).toEqual(['POWER_CUT']);
     });
 
     it('PREMIERE ECRITURE : ne fournir que le seuil ne RALLUME PAS le bruit coupe par defaut', async () => {
@@ -401,7 +411,8 @@ describe('NotificationPreferencesService', () => {
         service.filterPushRecipients([superAdmin], { type, severity });
 
       await expect(sent('POWER_CUT', PrismaAlertSeverity.CRITICAL)).resolves.toEqual([]);
-      await expect(sent('OVERSPEED', PrismaAlertSeverity.WARNING)).resolves.toEqual([]);
+      // OVERSPEED passe desormais : cf. la mesure par episodes (1,6 notification/jour).
+      await expect(sent('OVERSPEED', PrismaAlertSeverity.WARNING)).resolves.toEqual(['sa1']);
       // Ce qui compte vraiment passe sans qu'aucun reglage n'ait ete touche.
       await expect(sent('SOS', PrismaAlertSeverity.CRITICAL)).resolves.toEqual(['sa1']);
       await expect(sent('LOW_BATTERY', PrismaAlertSeverity.WARNING)).resolves.toEqual(['sa1']);

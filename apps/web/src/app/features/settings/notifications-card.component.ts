@@ -120,7 +120,26 @@ export interface AlertTypeOption {
    * livraison. Raison de plus pour ne rien promettre de plus qu'un ordre de grandeur.
    */
   severity: AlertSeverity;
+  /** Volume d'ALERTES mesuré. C'est ce que la carte AFFICHE à côté du type. */
   frequency: AlertFrequency;
+  /**
+   * Volume de NOTIFICATIONS réellement poussées, quand il a été mesuré séparément.
+   *
+   * ⚠️ POURQUOI CE CHAMP EXISTE (2026-08-03). La prévision sommait `frequency.perDay`,
+   * c'est-à-dire des ALERTES, et annonçait le total comme un nombre de notifications.
+   * L'écart n'est pas marginal : le cooldown replie 15 minutes d'événements identiques
+   * en un seul push, donc 5 401 alertes de vitesse en 30 jours ne valent pas 180
+   * notifications par jour mais **1,6**. Cent fois moins.
+   *
+   * Conséquence concrète tant que ce champ n'existait pas : le gérant d'une flotte qui
+   * rallumait les excès de vitesse lisait « environ 182 notifications par jour » — et
+   * refermait aussitôt. L'écran l'effrayait avec un chiffre que le système n'aurait
+   * jamais produit.
+   *
+   * Absent = on retombe sur `frequency.perDay`. C'est le comportement d'origine, et il
+   * reste juste pour les types rares, où une alerte donne bien une notification.
+   */
+  notificationsPerDay?: number;
   /**
    * Pourquoi ce type est bruyant. Affiche en permanence, allume ou coupe : coupe, il
    * justifie la coupure ; allume, il rappelle ce que l'utilisateur vient de s'infliger.
@@ -182,10 +201,15 @@ export const ALERT_TYPE_GROUPS: readonly AlertTypeGroup[] = [
         type: 'OVERSPEED',
         label: 'Excès de vitesse',
         severity: 'warning',
-        // 4 933 en 30 jours : la deuxième source de bruit, et de loin.
-        frequency: per30Days(4933),
+        // 5 401 ALERTES en 30 jours — mais 48 NOTIFICATIONS (1,6/jour) une fois le
+        // regroupement anti-spam appliqué. Le compteur affiché reste le nombre d'alertes,
+        // c'est ce que la carte mesure partout ; la note ci-dessous fait la conversion.
+        frequency: per30Days(5401),
+        // 48 push réellement partis sur ces 30 jours, une fois le regroupement appliqué.
+        // Mesuré en base, pas estimé : alertes du même véhicule séparées de plus de 15 min.
+        notificationsPerDay: 48 / 30,
         noiseNote:
-          'Une notification toutes les neuf minutes en moyenne. Le suivi des excès reste consultable dans les rapports et le centre d\'alertes, sans faire vibrer le téléphone.',
+          'Le boîtier signale l\'excès toutes les 3 secondes tant qu\'il dure : un seul trajet trop rapide compte des dizaines d\'alertes. Le téléphone, lui, ne vibre qu\'une fois par épisode — environ 2 fois par jour sur le véhicule le plus concerné.',
       },
       // Les trois « brusques » n'ont produit AUCUNE alerte sur la période mesurée : soit
       // les boîtiers ne remontent pas ces trames, soit le seuil ne se déclenche pas. Leur
@@ -361,6 +385,14 @@ export interface DeliveryForecast {
  * réglages laisseraient passer à l'ouverture), pas une livraison promise. C'est le `tone`
  * qui distingue les deux, et la phrase qui le dit.
  */
+/**
+ * Notifications quotidiennes attendues pour un type : la mesure par épisodes quand elle
+ * existe, le volume d'alertes sinon.
+ */
+function notificationsPerDay(t: { notificationsPerDay?: number; frequency: AlertFrequency }): number {
+  return t.notificationsPerDay ?? t.frequency.perDay;
+}
+
 export function buildDeliveryForecast(
   groups: readonly AlertTypeGroup[],
   pref: PushPreferenceCore,
@@ -368,11 +400,13 @@ export function buildDeliveryForecast(
 ): DeliveryForecast {
   const items = buildGroupViews(groups, pref).flatMap((g) => g.items);
   const kept = items.filter((i) => i.willReceive);
-  const perDay = kept.reduce((sum, i) => sum + i.frequency.perDay, 0);
+  // ⚠️ NOTIFICATIONS, pas alertes. Sommer les alertes revenait à ignorer le cooldown et
+  // à annoncer jusqu'à cent fois le volume réel — un chiffre qui pousse à tout couper.
+  const perDay = kept.reduce((sum, i) => sum + notificationsPerDay(i), 0);
 
   const loudest = [...kept]
-    .filter((i) => i.frequency.perDay > 0)
-    .sort((a, b) => b.frequency.perDay - a.frequency.perDay)
+    .filter((i) => notificationsPerDay(i) > 0)
+    .sort((a, b) => notificationsPerDay(b) - notificationsPerDay(a))
     .slice(0, 3)
     .map((i) => i.label);
 

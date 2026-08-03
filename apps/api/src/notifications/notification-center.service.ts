@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma, UserRole } from '@prisma/client';
 import type {
@@ -36,6 +36,7 @@ import type { Env } from '../config/env.validation';
 import { PrismaService } from '../prisma/prisma.service';
 import { isPushRoleEligible } from './notification-preferences.service';
 import { WebPushService } from './web-push.service';
+import { NotificationDispatchService, type AlertWithVehicle } from './notification-dispatch.service';
 
 /**
  * CENTRE DE NOTIFICATIONS — lecture d'administration (SUPER_ADMIN), STRICTEMENT en lecture.
@@ -101,6 +102,7 @@ export class NotificationCenterService {
     private readonly ownerVis: OwnerVisibilityService,
     private readonly config: ConfigService<Env, true>,
     private readonly webPush: WebPushService,
+    private readonly dispatch: NotificationDispatchService,
   ) {}
 
   // ─── Journal des envois ────────────────────────────────────────────────────────────
@@ -765,6 +767,83 @@ export class NotificationCenterService {
       select: { id: true, name: true },
     });
     return new Map(fleets.map((f) => [f.id, f.name]));
+  }
+
+  // ─── Rejeu d'une alerte ────────────────────────────────────────────────────────────
+
+  /**
+   * Renvoie une alerte DÉJÀ EXISTANTE à ses destinataires légitimes.
+   *
+   * ── Pourquoi cette méthode existe (incident du 2026-08-03) ──────────────────────────
+   * Le gérant d'une flotte n'avait reçu aucune de ses 28 alertes de vitesse, à cause d'un
+   * défaut de configuration. Une fois le défaut corrigé, il restait à lui envoyer celle
+   * qu'il aurait dû recevoir — et il n'existait AUCUN moyen de le faire. Le seul endpoint
+   * d'envoi hors flux (`POST /notifications/test`) est verrouillé deux fois sur le compte
+   * appelant, et n'envoie qu'un message générique sans lien avec une alerte.
+   *
+   * Le contournement tentant — réaffecter l'abonnement du client à un super-admin le temps
+   * d'un envoi — est un piège : le plafond de 3 appareils par compte supprime la ligne au
+   * `lastSeenAt` le plus ancien au prochain abonnement, c'est-à-dire potentiellement celle
+   * du client, qui cesserait de recevoir sans le savoir. On répare une notification
+   * manquée en en cassant toutes les suivantes.
+   *
+   * ── Ce que le rejeu NE contourne PAS ────────────────────────────────────────────────
+   * Permissions, périmètre véhicule, préférences, plafond horaire, journalisation : tout
+   * passe par `dispatchAlert`, la porte unique. Le rejeu ne peut donc pas envoyer à
+   * quelqu'un qui n'y a pas droit, ni à quelqu'un qui a coupé ce type — c'est voulu : un
+   * outil d'exploitation qui peut forcer la main de l'utilisateur finit par le faire.
+   *
+   * ⚠️ Le résultat est lu DANS LE JOURNAL, pas déduit de l'appel. C'est la seule façon de
+   * répondre honnêtement à « est-ce parti ? » : si le dispatch retient l'envoi pour une
+   * raison quelconque, l'opérateur voit le motif au lieu d'un « OK » trompeur.
+   */
+  async replayAlert(alertId: string): Promise<{
+    alertId: string;
+    alertType: string;
+    plate: string | null;
+    destinataires: Array<{
+      email: string;
+      status: string;
+      reason: string | null;
+      reasonLabel: string | null;
+      devices: number;
+      sent: number;
+    }>;
+  }> {
+    const alert = await this.prisma.alert.findUnique({
+      where: { id: alertId },
+      include: { vehicle: true },
+    });
+    if (!alert) throw new NotFoundException('Alerte introuvable');
+
+    // Borne de lecture posée AVANT l'envoi : seules les lignes écrites par CE rejeu sont
+    // relues. Sans elle on afficherait les lignes de l'envoi d'origine — donc un rejeu
+    // en échec pourrait se présenter comme un succès, en montrant le SENT d'hier.
+    const depuis = new Date();
+    await this.dispatch.dispatchAlert(alert as AlertWithVehicle, { replay: true });
+
+    const rows = await this.prisma.notificationDelivery.findMany({
+      where: { alertId, createdAt: { gte: depuis } },
+      include: { user: { select: { email: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return {
+      alertId,
+      alertType: alert.type as string,
+      plate: alert.vehicle?.plate ?? null,
+      destinataires: rows.map((r) => ({
+        email: r.user.email,
+        status: r.status,
+        reason: r.reason,
+        // Helper EXISTANT, pas une seconde table : deux traductions du meme motif
+        // divergeraient au premier libelle ajoute, et l'ecran de rejeu dirait autre
+        // chose que le journal pour exactement la meme ligne.
+        reasonLabel: this.labelForReason(r.reason),
+        devices: r.deviceCount,
+        sent: r.sentCount,
+      })),
+    };
   }
 
   /** Valeur courante de PUSH_ROLLOUT, relue à chaque appel (un redémarrage suffit à basculer). */

@@ -165,10 +165,27 @@ interface DeliveryRecord {
  */
 const SMS_THROTTLE_MS = 5 * 60_000;
 
-interface AlertWithVehicle extends Alert {
+/** Alerte enrichie de son vehicule — exportee pour que le rejeu puisse la reconstituer. */
+export interface AlertWithVehicle extends Alert {
   vehicle?: Vehicle | null;
 }
 
+/**
+ * Options de `dispatchAlert`. Vide par defaut : le flux normal ne passe rien, et son
+ * comportement est donc rigoureusement inchange.
+ */
+export interface DispatchOptions {
+  /**
+   * Rejeu manuel d'une alerte deja creee (super-admin), pour renvoyer une notification
+   * qu'un destinataire aurait du recevoir. Restreint au push et contourne le cooldown.
+   */
+  replay?: boolean;
+}
+
+// ⚠️ RIEN ENTRE CE DECORATEUR ET SA CLASSE. Le lien decorateur -> cible est perdu a la
+// compilation : une declaration glissee entre les deux ne provoque aucune erreur, elle
+// deplace silencieusement le decorateur. Un @Interval a deja ete detache de cette facon
+// dans ce depot, et la tache planifiee a cesse de tourner en production sans un bruit.
 @Injectable()
 export class NotificationDispatchService {
   private readonly logger = new Logger(NotificationDispatchService.name);
@@ -189,9 +206,25 @@ export class NotificationDispatchService {
    * via EventEmitter or direct invocation. Errors are swallowed per-channel —
    * one channel failure doesn't abort the others.
    */
-  async dispatchAlert(alert: AlertWithVehicle): Promise<{ channels: AlertChannel[] }> {
+  async dispatchAlert(
+    alert: AlertWithVehicle,
+    opts: DispatchOptions = {},
+  ): Promise<{ channels: AlertChannel[] }> {
     const rules = await this.findMatchingRules(alert);
-    const channels = this.mergeChannels(rules);
+    // ⚠️ REJEU — deux restrictions volontaires, chacune pour une raison differente.
+    //
+    // 1. WEB_PUSH SEUL. Un rejeu ne doit jamais rejouer un SMS ni un WhatsApp : ces
+    //    canaux COUTENT de l'argent et partent chez un client. Renvoyer une notification
+    //    manquee ne justifie pas de refacturer un SMS deja envoye (ou jamais envoye).
+    // 2. COOLDOWN CONTOURNE. Sans cela un rejeu demande dans le quart d'heure suivant un
+    //    envoi serait replie en silence : l'operateur verrait « c'est parti », le client
+    //    ne recevrait rien, et on aurait fabrique le bug qu'on repare.
+    //
+    // Tout le reste — permissions, perimetre vehicule, preferences, plafond horaire,
+    // journalisation — est INCHANGE : le rejeu emprunte la meme porte que le flux normal.
+    // Un chemin d'envoi parallele serait exactement ce que le garde-fou « une seule
+    // porte » interdit, et le premier endroit ou les regles divergeraient en silence.
+    const channels = opts.replay ? (['WEB_PUSH'] as AlertChannel[]) : this.mergeChannels(rules);
 
     // Recipients = tous les FLEET_ADMIN actifs de la fleet (par defaut).
     // Si une regle specifie escalateToUserId, on l'inclut aussi. Depuis le
@@ -227,7 +260,10 @@ export class NotificationDispatchService {
     // lecture groupee. Une evaluation a l'interieur de la boucle serait une requete par
     // destinataire, sur chacune des ~500 alertes quotidiennes.
     const pushPlan = pushChannelActive
-      ? await this.planPush(alert, recipients, preferences, { isEscalation: false })
+      ? await this.planPush(alert, recipients, preferences, {
+          isEscalation: false,
+          bypassCooldown: opts.replay === true,
+        })
       : new Map<string, PushDecision>();
 
     for (const { user: recipient, scope } of recipients) {
@@ -676,9 +712,16 @@ export class NotificationDispatchService {
       return { allowed: false, reason: 'rollout' };
     }
 
-    // Pas de ligne en base = defaut UTILE (mais POWER_CUT/OVERSPEED coupes), jamais le
-    // silence total. Une ligne existante est prise TELLE QUELLE : ses `mutedTypes` sont
-    // un choix explicite, on ne re-empile pas le defaut par-dessus.
+    // Pas de ligne en base = defaut UTILE (POWER_CUT coupe), jamais le silence total.
+    // Une ligne existante est prise TELLE QUELLE : ses `mutedTypes` sont un choix
+    // explicite, on ne re-empile pas le defaut par-dessus.
+    //
+    // ⚠️ `reglePersonnelle` DOIT voyager jusqu'au motif enregistre. Ce booleen existait
+    // deja ici, mais il ne servait qu'a nuancer une ligne de LOG : le motif ecrit en base
+    // disait « coupe dans ses reglages » pour un utilisateur qui n'avait aucun reglage.
+    // Le centre de notifications accusait donc le client d'un choix qu'il n'avait pas
+    // fait — 28 fois de suite, pour le gerant de MH Cars le 2026-08-03.
+    const reglePersonnelle = preferences.has(user.id);
     const pref = preferences.get(user.id) ?? DEFAULT_PUSH_PREFERENCE;
     const severity = this.toClientSeverity(alert.severity as string);
     const type = alert.type as unknown as ClientAlertType;
@@ -694,18 +737,28 @@ export class NotificationDispatchService {
     // seuil — remede sans aucun effet, puisque la famille bloque en amont.
     //
     // Un motif faux est pire qu'un motif absent : il envoie corriger le mauvais reglage.
+    //
+    // ⚠️ ET LE MOTIF DOIT NOMMER LE BON RESPONSABLE. Les deux seuls refus que le DEFAUT
+    // peut produire sont le type coupe et le seuil : `pushEnabled` vaut true par defaut et
+    // `mutedCategories` y est vide, donc ces deux-la sont forcement un choix personnel.
+    // Un motif qui designe le mauvais responsable envoie corriger la ou il n'y a rien.
     const reason: SuppressionReason = !pref.pushEnabled
       ? 'preference_disabled'
       : (pref.mutedCategories ?? []).includes('ALERT')
         ? 'preference_category_muted'
         : pref.mutedTypes.includes(type)
-          ? 'preference_type_muted'
-          : 'preference_severity';
+          ? reglePersonnelle
+            ? 'preference_type_muted'
+            : 'default_type_muted'
+          : reglePersonnelle
+            ? 'preference_severity'
+            : 'default_severity';
+    const origine = reglePersonnelle ? 'preference' : 'defaut systeme';
     const detail =
-      reason === 'preference_severity'
-        ? `severite (${severity} < seuil ${pref.minSeverity})`
-        : reason === 'preference_type_muted'
-          ? `preference (type ${type} coupe${preferences.has(user.id) ? '' : ' par defaut'})`
+      reason === 'preference_severity' || reason === 'default_severity'
+        ? `severite (${severity} < seuil ${pref.minSeverity}, ${origine})`
+        : reason === 'preference_type_muted' || reason === 'default_type_muted'
+          ? `type ${type} coupe (${origine})`
           : reason === 'preference_category_muted'
             ? 'preference (famille « Alertes vehicule » coupee)'
             : 'preference (push desactive)';
@@ -730,7 +783,7 @@ export class NotificationDispatchService {
     alert: AlertWithVehicle,
     recipients: DispatchRecipient[],
     preferences: Map<string, EffectivePushPreference>,
-    opts: { isEscalation: boolean },
+    opts: { isEscalation: boolean; bypassCooldown?: boolean },
   ): Promise<Map<string, PushDecision>> {
     const plan = new Map<string, PushDecision>();
     const eligible: DispatchRecipient[] = [];
@@ -773,7 +826,10 @@ export class NotificationDispatchService {
       category: 'ALERT',
       kind: alert.type as string,
       subjectKey: alert.vehicleId ?? null,
-      bypassCooldown: opts.isEscalation,
+      // Une escalade contourne le cooldown par nature (c'est son role) ; un rejeu le
+      // contourne sur demande explicite. Le PLAFOND horaire, lui, n'est jamais contourne :
+      // c'est le dernier rempart, et un rejeu manuel n'est pas une urgence.
+      bypassCooldown: opts.isEscalation || opts.bypassCooldown === true,
     });
 
     for (const { user, scope } of eligible) {

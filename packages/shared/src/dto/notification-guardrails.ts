@@ -26,19 +26,65 @@
  *    au milieu de 330 fausses alarmes quotidiennes.
  *
  * D'où la stratégie : couper le bruit connu PAR TYPE, et borner le reste PAR DÉBIT.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════
+ * ⚠️⚠️ 3. **UNE ALERTE N'EST PAS UNE NOTIFICATION** — l'enseignement le plus cher, ajouté
+ *    le 2026-08-03 après un incident client.
+ *
+ *    Le tableau ci-dessus compte des ALERTES. Les décisions de coupure par type, elles,
+ *    ont été prises comme s'il comptait des notifications. C'est faux : entre les deux il
+ *    y a {@link PUSH_COOLDOWN_MS}, qui replie 15 minutes d'événements identiques en un
+ *    seul push. Recompté par ÉPISODES, OVERSPEED ne vaut pas 164 notifications par jour
+ *    mais **1,6** — cent fois moins. On avait rendu tout un type muet pour un bruit que
+ *    l'anti-spam absorbait déjà, et un gérant de flotte n'a reçu aucune alerte de vitesse
+ *    sur ses véhicules pendant des semaines.
+ *
+ *    ⚠️ AVANT DE COUPER UN TYPE PAR DÉFAUT : compter les épisodes, jamais les lignes.
+ *    La requête est simple — regrouper les alertes d'un même véhicule séparées de plus de
+ *    15 minutes — et l'écart entre les deux comptages peut être d'un facteur 100.
+ * ══════════════════════════════════════════════════════════════════════════════════════
  */
 
 import type { AlertType } from './alert.dto';
 
 /**
- * Types coupés PAR DÉFAUT — les deux sources de bruit mesurées.
+ * Types coupés PAR DÉFAUT.
  *
  * ⚠️ Ce n'est PAS un jugement sur leur importance : un vrai arrachement de batterie compte.
  * C'est un constat de RAPPORT SIGNAL/BRUIT. L'utilisateur les rallume en un geste depuis
  * ses réglages, et le centre de notifications montre en permanence combien d'événements ont
  * été retenus — donc rien n'est caché, c'est juste silencieux par défaut.
+ *
+ * ══════════════════════════════════════════════════════════════════════════════════════
+ * ⚠️⚠️ OVERSPEED A ÉTÉ RETIRÉ DE CETTE LISTE (2026-08-03) — et le POURQUOI compte, parce
+ * que l'erreur d'origine est facile à refaire.
+ *
+ * Le défaut coupait OVERSPEED sur la foi d'un chiffre : « 164 alertes par jour ». Le chiffre
+ * était juste, la conclusion fausse — **une alerte n'est pas une notification**. Entre les
+ * deux il y a {@link PUSH_COOLDOWN_MS} : 15 minutes par (utilisateur, type, véhicule).
+ *
+ * Mesure sur 30 jours de production, en regroupant les alertes en épisodes séparés de plus
+ * de 15 minutes, c'est-à-dire en comptant les push qui SERAIENT réellement partis :
+ *
+ *     alertes OVERSPEED brutes ................ 5 401   (un seul véhicule, une seule flotte)
+ *     notifications réellement envoyées .......    48   soit 1,6 par jour
+ *     pire journée (15/07 : 1 337 alertes) ....     3 notifications
+ *     maximum absolu observé (20/07) ..........     7 notifications
+ *
+ * Un boîtier Coban émet une trame toutes les 3 secondes ; un véhicule qui roule 9 minutes
+ * au-dessus du seuil produit donc 28 alertes — et UN SEUL push. On avait rendu tout un type
+ * muet pour un bruit que l'anti-spam absorbait déjà.
+ *
+ * Le coût de l'erreur, lui, était réel : le gérant d'une flotte ne recevait AUCUNE alerte de
+ * vitesse sur ses propres véhicules, sans l'avoir demandé et sans le savoir. C'est la
+ * fonction qu'il attend en premier d'un traceur.
+ *
+ * ⚠️ POWER_CUT reste coupé, sur décision explicite : il est réservé au super-admin, et sa
+ * mesure d'origine (330/jour) n'a pas été refaite avec la même méthode. Avant de le retirer
+ * à son tour, REFAIRE LE COMPTAGE PAR ÉPISODES — pas par alertes.
+ * ══════════════════════════════════════════════════════════════════════════════════════
  */
-export const DEFAULT_MUTED_TYPES: readonly AlertType[] = ['POWER_CUT', 'OVERSPEED'];
+export const DEFAULT_MUTED_TYPES: readonly AlertType[] = ['POWER_CUT'];
 
 /**
  * Délai minimal entre deux push de MÊME (utilisateur, type, véhicule).
@@ -102,6 +148,26 @@ export type SuppressionReason =
    */
   | 'out_of_scope'
   | 'preference_severity'
+  /**
+   * Coupé par le DÉFAUT DU SYSTÈME, pas par l'utilisateur : il n'a aucune ligne de
+   * préférences, il n'a jamais ouvert cet écran.
+   *
+   * ⚠️ Pourquoi ce motif existe (incident du 2026-08-03). Le gérant d'une flotte n'a jamais
+   * reçu une seule alerte de vitesse sur ses véhicules. Le centre de notifications affichait
+   * « Ce type est coupé dans ses réglages » — 28 fois. C'est faux : il n'avait pas de
+   * réglages. Le système avait décidé, et le journal le faisait passer pour lui.
+   *
+   * Un motif qui désigne le mauvais responsable ne fait pas que se tromper : il envoie
+   * chercher la correction là où elle n'est pas. On aurait pu passer des heures à regarder
+   * l'écran de réglages d'un client qui n'y avait jamais touché.
+   *
+   * Le code SAVAIT déjà distinguer les deux cas — mais seulement dans une ligne de log,
+   * jamais dans le motif enregistré. L'information existait, elle n'allait pas jusqu'à
+   * l'écran ; c'est exactement la même chose que ne pas l'avoir.
+   */
+  | 'default_type_muted'
+  /** Idem pour le SEUIL : sous le seuil par défaut, sans réglage personnel. */
+  | 'default_severity'
   | 'cooldown'
   | 'hourly_cap'
   | 'no_device';
@@ -115,6 +181,11 @@ export const SUPPRESSION_LABELS: Record<SuppressionReason, string> = {
   no_permission: 'Pas la permission de consulter les alertes',
   out_of_scope: 'Ce véhicule est hors de son périmètre d’accès',
   preference_severity: 'Sous le seuil de sévérité choisi',
+  // ⚠️ Ces deux libellés ne doivent JAMAIS dire « ses réglages » : c'est précisément ce
+  // mensonge qu'ils corrigent. Ils nomment le système comme responsable, et indiquent
+  // l'action utile — ouvrir les réglages une première fois.
+  default_type_muted: 'Coupé par défaut — cet utilisateur n’a aucun réglage personnel',
+  default_severity: 'Sous le seuil par défaut — cet utilisateur n’a aucun réglage personnel',
   cooldown: 'Regroupée — même alerte trop récente',
   hourly_cap: 'Plafond horaire atteint',
   no_device: 'Aucun appareil abonné',

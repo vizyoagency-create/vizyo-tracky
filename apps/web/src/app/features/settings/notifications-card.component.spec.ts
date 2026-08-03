@@ -88,13 +88,41 @@ describe('notifications-card — regroupement des types', () => {
     }
   });
 
-  it('les deux sources de bruit MESUREES sont bien celles coupees par defaut', () => {
-    // Le lien entre le chiffre et la decision doit rester verifiable : si un type
-    // depasse 100/jour sans etre coupe par defaut, c'est que l'un des deux a bouge.
-    const loud = ALERT_TYPE_GROUPS.flatMap((g) => g.types).filter((t) => t.frequency.perDay >= 100);
-    expect(loud.map((t) => t.type).sort()).toEqual([...DEFAULT_MUTED_TYPES].sort());
-    // Et ils expliquent POURQUOI ils sont coupés : une coupure muette serait un silence.
-    for (const t of loud) expect(t.noiseNote).toBeTruthy();
+  /**
+    * ⚠️ CE TEST ENCODAIT LA RÈGLE QUI A PRODUIT LE BUG.
+    *
+    * Il exigeait que tout type dépassant 100 ALERTES par jour soit coupé par défaut. Or
+    * le critère pertinent n'est pas le nombre d'alertes : c'est le nombre de
+    * NOTIFICATIONS, après regroupement anti-spam. Entre les deux il peut y avoir un
+    * facteur 100 — les excès de vitesse valent 180 alertes par jour et 1,6 notification.
+    *
+    * Tant que la règle portait sur les alertes, elle rendait muet un type parfaitement
+    * supportable, et un gérant de flotte n'a reçu aucune alerte de vitesse sur ses
+    * véhicules pendant des semaines. Le test ne se contentait pas de rater le défaut :
+    * il le VERROUILLAIT, et aurait fait échouer la correction.
+    */
+  it('un type n est coupe par defaut que si ses NOTIFICATIONS sont ingerables', () => {
+    const all = ALERT_TYPE_GROUPS.flatMap((g) => g.types);
+    const perDay = (t: (typeof all)[number]) => t.notificationsPerDay ?? t.frequency.perDay;
+
+    // Le critère porte sur les notifications réellement poussées, jamais sur les alertes.
+    const ingerables = all.filter((t) => perDay(t) >= 100);
+    expect(ingerables.map((t) => t.type).sort()).toEqual([...DEFAULT_MUTED_TYPES].sort());
+
+    // Et le sens inverse, qui est celui qui a manqué : aucun type SUPPORTABLE ne doit
+    // rester coupé par défaut. C'est cette assertion-là qui rattrape le défaut d'origine.
+    for (const type of DEFAULT_MUTED_TYPES) {
+      const t = all.find((x) => x.type === type)!;
+      expect(perDay(t))
+        .withContext(
+          `« ${t.label} » est coupé par défaut alors qu'il ne produit que ` +
+            `${perDay(t).toFixed(1)} notification(s) par jour. Un type supportable ne doit ` +
+            `pas être rendu muet : le client ne saura jamais qu'il l'était.`,
+        )
+        .toBeGreaterThanOrEqual(100);
+      // Et il explique POURQUOI il est coupé : une coupure muette serait un silence.
+      expect(t.noiseNote).toBeTruthy();
+    }
   });
 });
 
@@ -117,7 +145,9 @@ describe('notifications-card — fréquences affichées', () => {
 
   it('les deux bruyants sont annoncés en « par jour » — visible avant le clic', () => {
     const all = ALERT_TYPE_GROUPS.flatMap((g) => g.types);
-    expect(frequencyLabel(all.find((t) => t.type === 'OVERSPEED')!.frequency)).toBe('≈ 164 / jour');
+    // 5 401 alertes / 30 j. C'est bien le volume d'ALERTES qui est affiché ici — la
+    // conversion en notifications est portée par la note, pas par ce compteur.
+    expect(frequencyLabel(all.find((t) => t.type === 'OVERSPEED')!.frequency)).toBe('≈ 180 / jour');
     expect(frequencyLabel(all.find((t) => t.type === 'POWER_CUT')!.frequency)).toBe('≈ 330 / jour');
   });
 
@@ -154,7 +184,10 @@ describe('notifications-card — ce qui sera réellement reçu', () => {
     expect(items.find((i) => i.type === 'LOW_BATTERY')!.willReceive).toBeTrue();
     expect(items.find((i) => i.type === 'SOS')!.willReceive).toBeTrue();
     expect(items.find((i) => i.type === 'POWER_CUT')!.willReceive).toBeFalse();
-    expect(items.find((i) => i.type === 'OVERSPEED')!.willReceive).toBeFalse();
+    // ⚠️ CETTE LIGNE AFFIRMAIT L'INVERSE — et c'était le bug vu depuis l'écran : le
+    // gérant d'une flotte n'était pas censé recevoir les excès de vitesse de ses propres
+    // véhicules. C'est pourtant la première chose qu'il attend d'un traceur.
+    expect(items.find((i) => i.type === 'OVERSPEED')!.willReceive).toBeTrue();
   });
 
   it('L AUTRE PIEGE : un type allumé mais sous le seuil est NOMMÉ, pas passé sous silence', () => {
@@ -192,9 +225,11 @@ describe('notifications-card — ce qui sera réellement reçu', () => {
 
   it('un type COUPE n est pas presente comme « retenu par le seuil » (l interrupteur suffit)', () => {
     const items = buildGroupViews(ALERT_TYPE_GROUPS, prefOf()).flatMap((g) => g.items);
-    const overspeed = items.find((i) => i.type === 'OVERSPEED')!;
-    expect(overspeed.enabled).toBeFalse();
-    expect(overspeed.blockedBySeverity).toBeFalse();
+    // POWER_CUT et non OVERSPEED : depuis 2026-08-03 les excès de vitesse ne sont plus
+    // coupés par défaut, ils ne peuvent donc plus servir d'exemple de type coupé.
+    const coupe = items.find((i) => i.type === 'POWER_CUT')!;
+    expect(coupe.enabled).toBeFalse();
+    expect(coupe.blockedBySeverity).toBeFalse();
   });
 
   it('interrupteur maître coupé : aucun type n\'est marqué « retenu par le seuil »', () => {
@@ -214,7 +249,7 @@ describe('notifications-card — ce qui sera réellement reçu', () => {
     const pref = prefOf({ minSeverity: 'info', mutedTypes: [] });
     const f = buildDeliveryForecast(ALERT_TYPE_GROUPS, pref);
 
-    expect(f.perDay).toBeGreaterThan(400); // 330 + 164 + le reste
+    expect(f.perDay).toBeGreaterThan(300); // 330 POWER_CUT + le reste (OVERSPEED ne vaut que 1,6 push/j)
     expect(f.tone).toBe('flood');
     expect(forecastSentence(f)).toContain('par jour');
     expect(f.loudest[0]).toBe('Alimentation coupée');
@@ -269,7 +304,7 @@ describe('notifications-card — ce qui sera réellement reçu', () => {
   it('hors périmètre, même tout rallumé, aucun écrêtage horaire n\'est annoncé', () => {
     const pref = prefOf({ minSeverity: 'info', mutedTypes: [] });
     const f = buildDeliveryForecast(ALERT_TYPE_GROUPS, pref, false);
-    expect(f.perDay).toBeGreaterThan(400); // le filtre laisserait tout passer…
+    expect(f.perDay).toBeGreaterThan(300); // le filtre laisserait tout passer…
     expect(f.hitsHourlyCap).toBeFalse(); // …mais rien n'atteindra jamais le plafond.
     expect(f.tone).toBe('ineligible');
   });
