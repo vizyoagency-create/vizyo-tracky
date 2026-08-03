@@ -384,3 +384,89 @@ describe('UsersController — endpoints d\'acces matrice (PR 2)', () => {
     });
   });
 });
+
+/**
+ * LE COMPTE ORPHELIN — quand la garde cesse de garder.
+ *
+ * ── Le défaut (audit du 2026-08-03) ────────────────────────────────────────────────
+ * L'appartenance des groupes et véhicules était vérifiée par
+ *     `where: { id: { in: ids }, fleetId: targetUserFleetId ?? undefined }`
+ * Or Prisma RETIRE une clause `undefined`. Pour un compte sans société, le `where` se
+ * réduisait donc à `{ id: { in: ids } }` : **tous** les groupes et véhicules de **toutes**
+ * les sociétés passaient le contrôle. Réponse 200, aucun log, aucune alerte.
+ *
+ * La garde cessait d'exister exactement dans le cas où elle compte — un compte dont la
+ * société a été supprimée (`Fleet.onDelete: SetNull`), ou créé sans flotte via le
+ * sélecteur « — Aucune flotte — ».
+ *
+ * ⚠️ Le harnais amorçait TOUJOURS la cible avec un `FLEET_ID` : la branche nulle n'était
+ * jamais exercée. Le correctif serait passé inaperçu dans un sens comme dans l'autre.
+ */
+describe('setAccess — compte SANS societe (fail-closed)', () => {
+  const OTHER_GROUP = '00000000-0000-0000-0000-0000000000c9';
+  const OTHER_VEHICLE = '00000000-0000-0000-0000-0000000000d9';
+
+  function orphanSetup() {
+    // Le compte cible n'a plus de societe.
+    const userFindFirst = jest.fn().mockResolvedValue({ id: USER_ID, fleetId: null });
+    // ⚠️ Le mock reproduit FIDELEMENT le comportement de Prisma : une clause
+    // `fleetId: undefined` est RETIREE, donc tout matche ; une valeur explicite filtre.
+    const byFleet = (rows: { id: string; fleetId: string }[]) =>
+      jest.fn(async (args: { where?: { id?: { in?: string[] }; fleetId?: string } }) => {
+        const ids = args?.where?.id?.in ?? [];
+        const wanted = args?.where?.fleetId;
+        return rows
+          .filter((r) => ids.includes(r.id))
+          .filter((r) => wanted === undefined || r.fleetId === wanted)
+          .map((r) => ({ id: r.id }));
+      });
+    return {
+      userFindFirst,
+      groupFindMany: byFleet([{ id: OTHER_GROUP, fleetId: OTHER_FLEET_ID }]),
+      vehicleFindMany: byFleet([{ id: OTHER_VEHICLE, fleetId: OTHER_FLEET_ID }]),
+    };
+  }
+
+  it('⚠️ REFUSE un groupe d une AUTRE societe', async () => {
+    const prisma = makePrisma(orphanSetup());
+    const controller = makeController(prisma);
+    const dto: SetUserAccessDto = {
+      entries: [{ type: 'GROUP', groupId: OTHER_GROUP } as AccessEntryDto],
+    };
+
+    await expect(
+      controller.setAccess(USER_ID, dto, makeReq(UserRole.SUPER_ADMIN, null)),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('⚠️ REFUSE un vehicule d une AUTRE societe', async () => {
+    const prisma = makePrisma(orphanSetup());
+    const controller = makeController(prisma);
+    const dto: SetUserAccessDto = {
+      entries: [{ type: 'VEHICLE', vehicleId: OTHER_VEHICLE } as AccessEntryDto],
+    };
+
+    await expect(
+      controller.setAccess(USER_ID, dto, makeReq(UserRole.SUPER_ADMIN, null)),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('la clause de societe est bien POSEE, jamais absente', async () => {
+    // Le test qui verrouille la cause racine : c'est l'ABSENCE de clause qui ouvrait
+    // la porte, pas la valeur qu'elle portait.
+    const setup = orphanSetup();
+    const prisma = makePrisma(setup);
+    const controller = makeController(prisma);
+
+    await controller
+      .setAccess(
+        USER_ID,
+        { entries: [{ type: 'GROUP', groupId: OTHER_GROUP } as AccessEntryDto] },
+        makeReq(UserRole.SUPER_ADMIN, null),
+      )
+      .catch(() => undefined);
+
+    const where = setup.groupFindMany.mock.calls[0][0].where as { fleetId?: string };
+    expect(where.fleetId).toBeDefined();
+  });
+});

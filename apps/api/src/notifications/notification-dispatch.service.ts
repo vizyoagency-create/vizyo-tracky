@@ -667,16 +667,30 @@ export class NotificationDispatchService {
 
     if (shouldPushAlert(pref, { type, severity })) return { allowed: true, reason: null };
 
+    // ⚠️ L'ORDRE DOIT SUIVRE CELUI DE `shouldPushAlert`, SINON LE MOTIF MENT.
+    //
+    // `shouldPushAlert` refuse dans cet ordre : interrupteur maitre, puis FAMILLE, puis
+    // type, puis severite. Ce ternaire ignorait la famille : couper « Alertes vehicule »
+    // produisait le motif « sous le seuil de severite ». L'utilisateur lisait donc, au
+    // centre de notifications ET sur son ecran de reglages, qu'il fallait baisser son
+    // seuil — remede sans aucun effet, puisque la famille bloque en amont.
+    //
+    // Un motif faux est pire qu'un motif absent : il envoie corriger le mauvais reglage.
     const reason: SuppressionReason = !pref.pushEnabled
       ? 'preference_disabled'
-      : pref.mutedTypes.includes(type)
-        ? 'preference_type_muted'
-        : 'preference_severity';
-    const detail = reason === 'preference_severity'
-      ? `severite (${severity} < seuil ${pref.minSeverity})`
-      : reason === 'preference_type_muted'
-        ? `preference (type ${type} coupe${preferences.has(user.id) ? '' : ' par defaut'})`
-        : 'preference (push desactive)';
+      : (pref.mutedCategories ?? []).includes('ALERT')
+        ? 'preference_category_muted'
+        : pref.mutedTypes.includes(type)
+          ? 'preference_type_muted'
+          : 'preference_severity';
+    const detail =
+      reason === 'preference_severity'
+        ? `severite (${severity} < seuil ${pref.minSeverity})`
+        : reason === 'preference_type_muted'
+          ? `preference (type ${type} coupe${preferences.has(user.id) ? '' : ' par defaut'})`
+          : reason === 'preference_category_muted'
+            ? 'preference (famille « Alertes vehicule » coupee)'
+            : 'preference (push desactive)';
     this.logger.log(`[push] skip alert=${alert.id} ${who} — raison=${detail}`);
     return { allowed: false, reason };
   }
