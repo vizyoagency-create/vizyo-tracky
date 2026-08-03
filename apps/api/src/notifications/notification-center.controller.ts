@@ -1,4 +1,4 @@
-import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import type {
   NotificationDeliveryPageDto,
@@ -25,10 +25,20 @@ import { NotificationCenterService } from './notification-center.service';
  * RolesGuard + @Roles, appliqués au contrôleur entier — jamais méthode par méthode, parce
  * qu'un endpoint ajouté plus tard hériterait alors d'aucune protection.
  *
- * ── Pourquoi aucune écriture ─────────────────────────────────────────────────────────
- * Pas de purge, pas de rejeu, pas d'acquittement en masse. Cet écran sert à COMPRENDRE ;
- * le jour où il pourra aussi agir, une mauvaise manipulation dans un tableau de plusieurs
- * milliers de lignes deviendra un incident de production.
+ * ── Écriture : une seule, et ciblée ──────────────────────────────────────────────────
+ *   POST /api/admin/notifications/replay/:alertId — renvoie UNE alerte à ses destinataires
+ *
+ * Pas de purge, pas d'acquittement en masse : cet écran sert d'abord à COMPRENDRE, et une
+ * mauvaise manipulation dans un tableau de plusieurs milliers de lignes deviendrait un
+ * incident de production. Le rejeu échappe à cette règle parce qu'il porte sur UNE alerte
+ * désignée par son identifiant, qu'il est idempotent du point de vue des données (il
+ * n'écrit ni ne détruit rien d'existant, il ajoute des lignes de journal), et qu'il
+ * répondait à un besoin sans aucune autre solution : le 2026-08-03, un client n'avait reçu
+ * aucune de ses 28 alertes de vitesse et rien ne permettait de lui renvoyer la moindre.
+ *
+ * ⚠️ Il ne contourne AUCUNE règle de destinataire : ni permission, ni périmètre véhicule,
+ * ni préférence de l'intéressé. Un outil d'exploitation capable de forcer la main de
+ * l'utilisateur finit toujours par le faire.
  *
  * ── Owner plateforme ─────────────────────────────────────────────────────────────────
  * `req.user` est transmis au service, qui masque le compte owner aux autres super-admins
@@ -116,6 +126,20 @@ export class NotificationCenterController {
   @Get('health')
   health(@Req() req: AuthenticatedRequest): Promise<NotificationHealthDto> {
     return this.center.health(req.user);
+  }
+
+  /**
+   * Renvoie une alerte existante à ses destinataires légitimes (push uniquement).
+   *
+   * Répond avec la LISTE DES DESTINATAIRES et, pour chacun, ce qui s'est réellement passé
+   * — relu dans le journal, pas déduit de l'appel. Un rejeu retenu par une préférence ou
+   * un plafond affiche donc son motif, au lieu d'un « OK » qui n'engagerait personne.
+   *
+   * `ParseUUIDPipe` : un identifiant malformé est refusé ici, avant d'atteindre la base.
+   */
+  @Post('replay/:alertId')
+  replay(@Param('alertId', ParseUUIDPipe) alertId: string) {
+    return this.center.replayAlert(alertId);
   }
 
   /** Entier de query string. Une valeur illisible est ignorée : le service applique son défaut. */
