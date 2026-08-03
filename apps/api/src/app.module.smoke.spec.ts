@@ -218,12 +218,37 @@ function safeRequire(file: string): Record<string, unknown> {
  * Ce garde-fou lit les fichiers en TEXTE : c'est la seule façon de voir un décorateur
  * séparé de sa cible, l'information étant perdue à la compilation.
  */
-describe('decorateurs de planification — jamais separes de leur methode', () => {
-  it('aucun @Cron/@Interval/@Timeout n est suivi d autre chose que sa methode', () => {
+
+/**
+ * UNE TÂCHE PLANIFIÉE NE PREND AUCUN ARGUMENT.
+ *
+ * ── L'incident (2026-08-02) ─────────────────────────────────────────────────────────
+ * Une méthode privée s'est glissée ENTRE `@Interval(60_000)` et la méthode qu'il
+ * décorait. L'ordonnanceur a donc appelé ce CALCUL toutes les 60 s — sans arguments —
+ * pendant que la revalidation des connexions ne tournait PLUS DU TOUT.
+ *
+ * Rien ne pouvait le voir : le code compile, la classe se construit, le typage est
+ * correct, et les tests unitaires appellent la méthode directement. Le lien
+ * décorateur → méthode est perdu à la compilation.
+ *
+ * ── Pourquoi CET invariant, et pas « le décorateur touche sa méthode » ──────────────
+ * Ma première version exigeait que la ligne suivante soit la signature. Elle criait
+ * donc à tort sur un commentaire placé entre un décorateur et sa méthode — ce qui est
+ * parfaitement légitime (TypeScript ignore les commentaires) et même souhaitable :
+ * `audio-monitoring.controller.ts:54` documente ainsi une restriction temporaire.
+ * Un garde-fou qui crie à tort finit par être désarmé.
+ *
+ * L'invariant retenu est SÉMANTIQUE : l'ordonnanceur appelle une tâche SANS argument.
+ * Toute méthode planifiée qui en réclame est forcément la mauvaise cible — c'est
+ * exactement ce qui s'est produit (`scopeKey(user, accessible, canSeeAlerts)`).
+ */
+describe('taches planifiees — aucune ne prend d argument', () => {
+  it('chaque @Cron/@Interval/@Timeout decore une methode SANS parametre', () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const fs = require('node:fs') as typeof import('node:fs');
     const SCHEDULER = /^@(Cron|Interval|Timeout)\s*\(/;
-    const METHOD = /^(public |private |protected )?(async )?[A-Za-z_$][\w$]*\s*[(<]/;
+    // Capture le nom et la liste de parametres de la methode decoree.
+    const METHOD = /^(?:public |private |protected )?(?:async )?([A-Za-z_$][\w$]*)\s*\(([^)]*)\)/;
     const offenders: string[] = [];
 
     for (const file of sourceFiles('.ts')) {
@@ -231,13 +256,7 @@ describe('decorateurs de planification — jamais separes de leur methode', () =
       for (let i = 0; i < lines.length; i++) {
         if (!SCHEDULER.test(lines[i]!.trim())) continue;
 
-        // ⚠️ Un décorateur peut s'étendre sur PLUSIEURS lignes :
-        //     @Cron(CronExpression.EVERY_DAY_AT_3AM, {
-        //       name: 'login-events-purge',
-        //     })
-        // Regarder la ligne suivante en aveugle produirait un faux positif sur
-        // chacun d'eux — et un garde-fou qui crie à tort finit par être désarmé.
-        // On suit donc la parenthèse jusqu'à sa fermeture.
+        // Le decorateur peut s'etendre sur plusieurs lignes : on suit la parenthese.
         let depth = 0;
         let k = i;
         do {
@@ -248,12 +267,32 @@ describe('decorateurs de planification — jamais separes de leur methode', () =
           k++;
         } while (depth > 0 && k < lines.length);
 
-        while (k < lines.length && lines[k]!.trim() === '') k++;
-        const next = lines[k]?.trim() ?? '';
-        // Un second décorateur au-dessus de la même méthode est légitime.
-        if (next.startsWith('@')) continue;
-        if (!METHOD.test(next)) {
-          offenders.push(`${file.split(/[\\/]/).pop()}:${i + 1} -> \"${next.slice(0, 60)}\"`);
+        // On saute ce que TypeScript ignore — lignes vides, commentaires — et les
+        // autres decorateurs, pour atteindre la METHODE reellement decoree.
+        while (k < lines.length) {
+          const t = lines[k]!.trim();
+          if (t === '' || t.startsWith('//') || t.startsWith('*') || t.startsWith('/*') || t.startsWith('@')) {
+            k++;
+            continue;
+          }
+          break;
+        }
+
+        const m = METHOD.exec(lines[k]?.trim() ?? '');
+        if (!m) continue; // decorateur de classe, ou forme non reconnue
+        const [, name, params] = m;
+        // ⚠️ L'invariant exact n'est pas « aucun paramètre » mais « APPELABLE SANS
+        // ARGUMENT » : un paramètre à valeur par défaut ou optionnel est légitime, et
+        // sert même à injecter l'horloge dans les tests — voir
+        // `error-rate-watchdog.service.ts` : `check(now = Date.now())`.
+        // C'est la sémantique de `Function.length`, que ce scan textuel reproduit.
+        const required = params!
+          .split(',')
+          .map((p) => p.trim())
+          .filter((p) => p !== '')
+          .filter((p) => !p.includes('=') && !/\?\s*:/.test(p) && !p.startsWith('...'));
+        if (required.length > 0) {
+          offenders.push(`${file.split(/[\\/]/).pop()}:${i + 1} -> ${name}(${required.join(', ').slice(0, 50)})`);
         }
       }
     }
