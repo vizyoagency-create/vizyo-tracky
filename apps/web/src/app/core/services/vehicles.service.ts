@@ -178,6 +178,25 @@ export interface VehicleStatsDto {
   total: number;
   moving: number;
   idle: number;
+  /**
+   * Véhicules dont le boîtier ne répond plus depuis longtemps (dormants).
+   *
+   * ⚠️ CE CHAMP MANQUAIT À CETTE INTERFACE (constat du 2026-08-03), alors que le serveur
+   * le calcule et l'envoie depuis toujours. Il traversait donc le réseau et disparaissait
+   * ici : aucun écran ne pouvait l'afficher sans erreur de compilation.
+   *
+   * C'est la raison — invisible — pour laquelle l'intention du serveur, écrite noir sur
+   * blanc dans son propre code (« Jamais retirés du total — on les nomme, on ne les cache
+   * pas »), n'était appliquée nulle part. Un contrat incomplet ne se signale pas : il
+   * rend simplement une donnée inutilisable, en silence.
+   *
+   * Mesure du jour : MH Cars comptait 2 véhicules sur 7 muets depuis plus de sept jours.
+   * Son tableau de bord affichait « 7 véhicules » et des compteurs totalisant 5.
+   *
+   * ⚠️ `moving` + `idle` + `unreachable` = `total`. C'est une PARTITION : oublier ce
+   * troisième terme fait que les compteurs ne totalisent plus le parc, sans rien dire.
+   */
+  unreachable: number;
   criticalAlerts: number;
   newThisMonth: number;
 }

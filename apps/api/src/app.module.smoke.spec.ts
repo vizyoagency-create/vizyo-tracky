@@ -299,4 +299,68 @@ describe('taches planifiees — aucune ne prend d argument', () => {
 
     expect(offenders).toEqual([]);
   });
+
+  /**
+   * ⚠️ GARDE SUR LES GABARITS ANGULAR — oui, depuis la suite de l'API.
+   *
+   * Elle est ici parce que c'est le seul harnais du dépôt qui tourne en Node avec accès
+   * au disque : les tests web tournent dans un navigateur, où `require.context` ne rend
+   * que des modules COMPILÉS, sans le texte des gabarits. Une première version côté web
+   * a échoué pour cette raison exacte.
+   *
+   * ── Ce qu'elle empêche ───────────────────────────────────────────────────────────
+   *
+   * Un gabarit Angular est un TEMPLATE LITERAL. Un backtick écrit dans un commentaire
+   * HTML y ferme la chaîne — TypeScript ne voit pas un commentaire, il n'a même pas fini
+   * de lire la chaîne. Le message produit ne parle jamais de backtick :
+   *
+   *     NG1002: Incorrect number of arguments to @Component decorator
+   *     + une cascade de TS1005 sur des lignes sans rapport
+   *
+   * Et `tsc` ne compile pas les gabarits : seul `ng build` le voit, après plusieurs
+   * minutes. Cette erreur a cassé le build CINQ fois dans la même journée (2026-08-03),
+   * toujours en citant un identifiant entre backticks dans un commentaire explicatif.
+   */
+  it('aucun backtick dans un commentaire HTML de gabarit Angular', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require('node:fs') as typeof import('node:fs');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const path = require('node:path') as typeof import('node:path');
+
+    const webSrc = path.resolve(__dirname, '..', '..', 'web', 'src');
+    if (!fs.existsSync(webSrc)) {
+      // Dépôt partiel (image API seule) : on ne fait pas échouer pour un dossier absent.
+      return;
+    }
+
+    const fichiers: string[] = [];
+    const walk = (dir: string): void => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, e.name);
+        if (e.isDirectory()) walk(full);
+        else if (e.name.endsWith('.ts') && !e.name.includes('.spec.')) fichiers.push(full);
+      }
+    };
+    walk(webSrc);
+
+    const offenders: string[] = [];
+    for (const file of fichiers) {
+      const src = fs.readFileSync(file, 'utf8');
+      const debut = src.indexOf('template: `');
+      if (debut === -1) continue;
+      // On ne scanne que la zone du gabarit : un backtick dans un commentaire TS normal
+      // (hors littéral) est parfaitement légitime et très courant dans ce dépôt.
+      const zone = src.slice(debut);
+      for (const m of zone.matchAll(/<!--([\s\S]*?)-->/g)) {
+        if ((m[1] ?? '').includes('`')) {
+          const extrait = (m[1] ?? '').trim().split('\n')[0]?.slice(0, 60) ?? '';
+          offenders.push(`${file.split(/[\\/]/).pop()} -> « ${extrait} »`);
+        }
+      }
+    }
+
+    // Si ceci casse : remplacez le backtick par des « guillemets », ou retirez la citation
+    // de code du commentaire. Le gabarit est une chaîne — le backtick la termine.
+    expect(offenders).toEqual([]);
+  });
 });
