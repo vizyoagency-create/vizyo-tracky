@@ -1,3 +1,4 @@
+import { clientIp } from '../common/client-ip';
 import { Controller, Get, Param, Req, Res } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
@@ -41,9 +42,5 @@ export class PartnerInvitationController {
   }
 }
 
-/** IP réelle derrière Traefik. Sans ça, on journaliserait l'adresse du reverse-proxy. */
-function clientIp(req: Request): string | null {
-  const forwarded = req.get('x-forwarded-for');
-  if (forwarded) return forwarded.split(',')[0]!.trim();
-  return req.ip ?? null;
-}
+// Le helper local a été supprimé au profit de `clientIp` (common/client-ip.ts) : il lisait
+// le PREMIER hop de x-forwarded-for, c'est-à-dire une valeur écrite par le client.

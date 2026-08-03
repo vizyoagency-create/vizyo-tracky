@@ -1,3 +1,4 @@
+import { clientIp } from '../common/client-ip';
 import {
   CallHandler,
   ExecutionContext,
@@ -138,11 +139,10 @@ export class ApiTrafficInterceptor implements NestInterceptor {
 
   /** IP réelle derrière Traefik : 1er hop de X-Forwarded-For, puis req.ip / socket. */
   private extractIp(req: TrafficRequest): string | null {
-    const xff = req.headers['x-forwarded-for'];
-    const first =
-      typeof xff === 'string' ? xff.split(',')[0]?.trim() : Array.isArray(xff) ? xff[0] : undefined;
-    return first || req.ip || req.socket?.remoteAddress || null;
-  }
+  // ⚠️ Delegue a `clientIp` : lire le PREMIER hop de x-forwarded-for revenait a
+  // faire confiance a une valeur ecrite par le client (cf. common/client-ip.ts).
+  return clientIp(req);
+}
 
   private header(req: TrafficRequest, name: string): string | null {
     const v = req.headers[name];

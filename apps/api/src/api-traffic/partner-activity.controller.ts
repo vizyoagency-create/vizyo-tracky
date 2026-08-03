@@ -1,3 +1,4 @@
+import { clientIp } from '../common/client-ip';
 import { Controller, HttpCode, HttpStatus, Post, Req } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
@@ -58,11 +59,10 @@ export class PartnerActivityController {
   }
 
   private extractIp(req: Request): string | null {
-    const xff = req.headers['x-forwarded-for'];
-    const first =
-      typeof xff === 'string' ? xff.split(',')[0]?.trim() : Array.isArray(xff) ? xff[0] : undefined;
-    return first || req.ip || req.socket?.remoteAddress || null;
-  }
+  // ⚠️ Delegue a `clientIp` : lire le PREMIER hop de x-forwarded-for revenait a
+  // faire confiance a une valeur ecrite par le client (cf. common/client-ip.ts).
+  return clientIp(req);
+}
 
   private header(req: Request, name: string): string | null {
     const v = req.headers[name];
