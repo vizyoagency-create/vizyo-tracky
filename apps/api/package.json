@@ -93,6 +93,7 @@
     "seed": "ts-node prisma/seed.ts"
   },
   "jest": {
+    "maxWorkers": 6,
     "moduleFileExtensions": [
       "js",
       "json",
