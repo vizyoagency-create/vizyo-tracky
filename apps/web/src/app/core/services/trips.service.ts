@@ -1,6 +1,11 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import type { TripDailySummaryDto, TripDto, TripRecomputeResultDto } from '@vizyo/tracky-shared';
+import type {
+  TripDailySummaryDto,
+  TripDto,
+  TripPeriodChartsDto,
+  TripRecomputeResultDto,
+} from '@vizyo/tracky-shared';
 import { Observable } from 'rxjs';
 
 @Injectable({ providedIn: 'root' })
@@ -17,6 +22,16 @@ export class TripsApiService {
 
   dailySummary(params: Record<string, string>): Observable<TripDailySummaryDto[]> {
     return this.http.get<TripDailySummaryDto[]>('/api/trips/daily-summary', { params });
+  }
+
+  /**
+   * Graphiques « Vitesses max » et « Fréquentation » sur la période ENTIÈRE.
+   *
+   * Distinct de `list()`, qui borne à 100 trajets pour le tableau : ces graphiques
+   * prétendaient couvrir la période alors qu'ils dessinaient cet échantillon.
+   */
+  periodCharts(params: Record<string, string>): Observable<TripPeriodChartsDto> {
+    return this.http.get<TripPeriodChartsDto>('/api/trips/period-charts', { params });
   }
 
   recompute(data: { vehicleId: string; from: string; to: string }): Observable<TripRecomputeResultDto> {

@@ -656,14 +656,25 @@ export class TripsService implements OnModuleInit {
     });
   }
 
-  async dailySummary(
+  /**
+   * Filtre commun à TOUS les agrégats de période (résumé journalier, graphiques).
+   *
+   * ⚠️ EXTRAIT PLUTÔT QUE RECOPIÉ, et c'est le point important : ce bloc porte le
+   * cloisonnement (flotte, périmètre véhicule, mode vie privée). Deux copies auraient
+   * divergé au premier changement de règle, et l'agrégat le moins souvent relu serait
+   * devenu celui qui fuit. Un seul endroit, donc une seule règle.
+   *
+   * Rend `null` quand l'appelant ne peut rien voir (fail-closed) : l'appelant doit alors
+   * répondre vide, JAMAIS interroger la base sans filtre de flotte.
+   */
+  private buildPeriodWhere(
     requestedBy: RequestedBy,
     filters: { vehicleId?: string; vehicleIds?: string; from?: string; to?: string; fleetId?: string },
-  ): Promise<Array<{ date: string; tripCount: number; totalDistanceMeters: number; totalDurationSeconds: number; maxSpeed: number }>> {
+  ): Prisma.TripWhereInput | null {
     // Mode vie privée (RGPD) : exclut les véhicules en mode privé des agrégats.
     const where: Prisma.TripWhereInput = { endedAt: { not: null }, NOT: { vehicle: { privacyModeEnabled: true } } };
     if (requestedBy.role !== UserRole.SUPER_ADMIN) {
-      if (!requestedBy.fleetId) return []; // #31 — fail-closed (cf. list / findOne)
+      if (!requestedBy.fleetId) return null; // #31 — fail-closed (cf. list / findOne)
       where.fleetId = requestedBy.fleetId;
     } else if (filters.fleetId) {
       where.fleetId = filters.fleetId; // filtre société global (super-admin)
@@ -673,6 +684,15 @@ export class TripsService implements OnModuleInit {
     if (vScope !== undefined) where.vehicleId = vScope;
     if (filters.from) where.startedAt = { ...(where.startedAt as any ?? {}), gte: new Date(filters.from) };
     if (filters.to) where.startedAt = { ...(where.startedAt as any ?? {}), lte: new Date(filters.to) };
+    return where;
+  }
+
+  async dailySummary(
+    requestedBy: RequestedBy,
+    filters: { vehicleId?: string; vehicleIds?: string; from?: string; to?: string; fleetId?: string },
+  ): Promise<Array<{ date: string; tripCount: number; totalDistanceMeters: number; totalDurationSeconds: number; maxSpeed: number }>> {
+    const where = this.buildPeriodWhere(requestedBy, filters);
+    if (where === null) return [];
 
     const trips = await this.prisma.trip.findMany({ where, orderBy: { startedAt: 'asc' } });
 
@@ -700,6 +720,81 @@ export class TripsService implements OnModuleInit {
       totalDurationSeconds: e.dur,
       maxSpeed: Math.round(e.maxSpd * 100) / 100,
     }));
+  }
+
+  /**
+   * Données des graphiques « Vitesses max » et « Fréquentation », sur la période ENTIÈRE.
+   *
+   * ══ Pourquoi cet agrégat existe (constat du 2026-08-03) ═══════════════════════════════
+   *
+   * Ces deux graphiques se calculaient côté client depuis la liste AFFICHÉE des trajets,
+   * bornée à 100 par la requête. Sur 30 jours et 2 738 trajets, la fréquentation ne
+   * couvrait donc qu'environ une journée : elle affichait ZÉRO trajet le mardi alors que
+   * le résumé journalier, sur le même écran, en comptait 132 le mardi 15 juillet.
+   *
+   * Deux chiffres contradictoires dans la même page — et le plus faux avait l'air d'un
+   * fait, puisqu'il était dessiné.
+   *
+   * ⚠️ FUSEAU HORAIRE. La heatmap répond à « à quelle heure roule-t-on ? » : la question
+   * n'a de sens qu'en heure LOCALE. Le calcul client utilisait l'heure du navigateur
+   * (Paris) ; le serveur, lui, tourne en UTC. Extraire l'heure sans préciser le fuseau
+   * décalerait toute la grille d'une à deux heures selon la saison — un décalage
+   * parfaitement invisible, puisque le graphique resterait plausible.
+   */
+  async periodCharts(
+    requestedBy: RequestedBy,
+    filters: { vehicleId?: string; vehicleIds?: string; from?: string; to?: string; fleetId?: string },
+  ): Promise<{ speeds: number[]; heatmap: number[][] }> {
+    const empty = { speeds: [], heatmap: TripsService.emptyHeatmap() };
+    const where = this.buildPeriodWhere(requestedBy, filters);
+    if (where === null) return empty;
+
+    // Seules deux colonnes sont lues : sur des dizaines de milliers de trajets, charger
+    // les lignes entières coûterait cher pour rien.
+    const trips = await this.prisma.trip.findMany({
+      where,
+      select: { startedAt: true, maxSpeed: true },
+      orderBy: { startedAt: 'asc' },
+    });
+
+    const heatmap = TripsService.emptyHeatmap();
+    const speeds: number[] = [];
+    for (const t of trips) {
+      speeds.push(Math.max(0, Math.min(TRIP_MAX_PLAUSIBLE_SPEED_KMH, t.maxSpeed)));
+      const { day, hour } = TripsService.parisDayHour(t.startedAt);
+      heatmap[day]![hour]! += 1;
+    }
+    return { speeds, heatmap };
+  }
+
+  /** Grille 7×24 vide — lundi = 0 (convention FR/ISO), comme côté écran. */
+  private static emptyHeatmap(): number[][] {
+    return Array.from({ length: 7 }, () => new Array<number>(24).fill(0));
+  }
+
+  /**
+   * Jour de semaine (lundi = 0) et heure, en **Europe/Paris**.
+   *
+   * ⚠️ Le fuseau est explicite et NON déduit de l'environnement : le serveur tourne en
+   * UTC, et `getDay()` / `getHours()` y renverraient l'heure UTC. En été, un trajet parti
+   * à 01h00 à Paris serait compté à 23h00 la veille — donc le mauvais jour ET la mauvaise
+   * heure, sans que rien ne le signale.
+   */
+  private static parisDayHour(d: Date): { day: number; hour: number } {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/Paris',
+      weekday: 'short',
+      hour: '2-digit',
+      hour12: false,
+    }).formatToParts(d);
+    const wd = parts.find((p) => p.type === 'weekday')?.value ?? 'Mon';
+    const hourRaw = parts.find((p) => p.type === 'hour')?.value ?? '0';
+    const ORDRE = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const day = Math.max(0, ORDRE.indexOf(wd));
+    // `hour12: false` peut rendre « 24 » à minuit selon la plateforme : on le ramène à 0
+    // plutôt que d'écrire hors de la grille (ce qui lèverait, ou pire, serait ignoré).
+    const hour = Number.parseInt(hourRaw, 10) % 24;
+    return { day, hour: Number.isFinite(hour) ? hour : 0 };
   }
 
   async recompute(

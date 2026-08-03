@@ -1,5 +1,6 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
@@ -33,13 +34,49 @@ function installProcessSafetyNet(errorLogger: ErrorLogger, log: Logger): void {
 async function bootstrap() {
   // rawBody: true => req.rawBody dispo pour verifier la signature HMAC du webhook
   // entrant vizyo-texto (X-Vizyo-Signature) sans dependre du re-serialize du JSON.
-  const app = await NestFactory.create(AppModule, { bufferLogs: true, rawBody: true });
+  // Typé `NestExpressApplication` pour accéder à `app.set(...)` — nécessaire au réglage
+  // « trust proxy » ci-dessous. Aucun changement de comportement : c'est du typage.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bufferLogs: true,
+    rawBody: true,
+  });
   const pinoLogger = app.get(Logger);
   app.useLogger(pinoLogger);
 
   // Filet process AVANT tout le reste : capte les rejets/exceptions d'arrière-plan qui
   // n'atteignent pas AllExceptionsFilter, et les rend visibles au centre d'alerte.
   installProcessSafetyNet(app.get(ErrorLogger), pinoLogger);
+
+  // ══ IP RÉELLE DU CLIENT DERRIÈRE TRAEFIK ═════════════════════════════════════════
+  //
+  // ⚠️ CONSTAT DU 2026-08-03. Sans ce réglage, `req.ip` valait l'adresse du conteneur
+  // Traefik. Vérifié dans le journal d'erreurs de production : `::ffff:172.18.0.4` —
+  // une adresse Docker interne, identique pour tous les clients.
+  //
+  // Les journaux applicatifs, eux, montraient les vraies adresses : cinq endroits du
+  // code extraient `x-forwarded-for` à la main. Le défaut était donc invisible là où on
+  // regardait, et bien réel là où personne ne regardait :
+  //
+  //   `ThrottlerGuard` compte par `req.ip`. Toutes les requêtes partageaient donc UN
+  //   SEUL compteur. Les limites anti-force-brute (login, envoi de code…) n'étaient pas
+  //   par client : un attaquant consommait le quota de tout le monde, et un utilisateur
+  //   légitime pouvait se retrouver bloqué par le trafic d'un autre.
+  //
+  // ⚠️⚠️ POURQUOI `1` ET SURTOUT PAS `true`.
+  //
+  // `true` fait confiance à l'en-tête `X-Forwarded-For` ENTIER, y compris à la partie
+  // écrite par le client. Il suffirait alors d'envoyer `X-Forwarded-For: 1.2.3.4`, en
+  // changeant de valeur à chaque requête, pour obtenir un compteur neuf à chaque fois —
+  // c'est-à-dire pour contourner TOUTES les limites de débit. On aurait remplacé un
+  // compteur trop large par une protection nulle, en croyant l'améliorer.
+  //
+  // `1` = un seul intermédiaire de confiance. Express ne remonte alors que d'un cran et
+  // retient l'adresse ajoutée par Traefik, la seule que le client ne peut pas écrire.
+  //
+  // ⚠️ Ce nombre doit rester égal au nombre de proxys RÉELLEMENT devant l'API. Vérifié
+  // ce jour : Traefik seul, pas de Cloudflare (aucun en-tête `CF-Ray` sur les réponses).
+  // Ajouter un CDN devant sans passer ce `1` à `2` ferait compter l'adresse du CDN.
+  app.set('trust proxy', 1);
 
   // V1.10 (Sprint 6) — cookie-parser pour lire les cookies httpOnly tracky_at
   // (access JWT) et tracky_rt (refresh JWT). Migration depuis localStorage cote

@@ -206,7 +206,13 @@ export class HeatmapChartComponent {
   protected readonly ariaLabel = computed(() => {
     let total = 0;
     for (const row of this.data()) for (const c of row) total += c;
-    return `Heatmap fréquentation 24h × 7j : ${total} trajets sur la période, pic ${this.maxCount()} trajets sur une plage horaire.`;
+    // ⚠️ « sur les données affichées », et non « sur la période ». Ce composant ne SAIT
+    // pas quelle période l'appelant couvre : il reçoit une grille déjà calculée. Sur
+    // l'écran Rapports, elle vient d'un échantillon de 100 trajets, et l'ancienne
+    // formulation affirmait donc au lecteur d'écran quelque chose de faux — le titre
+    // visible, lui, avait été corrigé. Un composant ne doit pas parler d'un contexte
+    // qu'il ne connaît pas : c'est à l'appelant de nommer sa période.
+    return `Heatmap fréquentation 24h × 7j : ${total} trajets sur les données affichées, pic ${this.maxCount()} trajets sur une plage horaire.`;
   });
 
   protected ariaLabelCell(day: number, hour: number, count: number): string {
