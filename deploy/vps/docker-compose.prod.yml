@@ -35,7 +35,14 @@ services:
       - vizyo-tracky
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 10s
+      # 30 s et non 10 s (constat VPS-011). Chaque `pg_isready` ne coute pas « une commande » :
+      # il declenche une chaine `runc exec` complete (~5 processus) ET fait forker un backend
+      # PostgreSQL. A 10 s, cette seule sonde produisait 8 640 connexions par jour.
+      #
+      # 30 s reste largement suffisant pour detecter une base tombee : le `start_period` de
+      # 30 s et les 10 tentatives couvrent le demarrage, et rien dans Tracky ne depend d'une
+      # detection en moins d'une demi-minute.
+      interval: 30s
       timeout: 5s
       retries: 10
       start_period: 30s
@@ -51,7 +58,8 @@ services:
       - vizyo-tracky
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
+      # 30 s et non 10 s (constat VPS-011) : meme raisonnement que pour Postgres ci-dessus.
+      interval: 30s
       timeout: 3s
       retries: 5
 

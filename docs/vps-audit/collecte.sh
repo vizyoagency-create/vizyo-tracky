@@ -110,9 +110,43 @@ have docker || { echo "docker absent"; }
 docker system df 2>/dev/null
 sub "Conteneurs par etat"
 docker ps -a --format '{{.State}}' 2>/dev/null | sort | uniq -c
-sub "Conteneurs ARRETES (candidats au nettoyage)"
-docker ps -a --filter "status=exited" --filter "status=dead" \
-  --format '  {{.Names}}\t{{.Status}}\t{{.Image}}' 2>/dev/null
+sub "Conteneurs ARRETES — toujours affiche, meme a zero"
+# ⚠️ CETTE SECTION DOIT PARLER MEME QUAND IL N'Y A RIEN. Une section vide se lit comme
+# « pas regarde » ; un « 0 conteneur arrete » se lit comme « verifie, rien a signaler ».
+#
+# ⚠️ ET SURTOUT : ne pas confondre « encombrant » et « incident ». Un conteneur arrete depuis
+# 50 jours est du menage. Un conteneur mort CETTE NUIT est une panne — et c'est exactement
+# celui qu'un simple comptage noierait au milieu des autres. D'ou le tri par anciennete.
+NB_ARRETES=$(docker ps -aq --filter "status=exited" --filter "status=dead" 2>/dev/null | wc -l)
+echo "  total arretes : $NB_ARRETES"
+if [ "$NB_ARRETES" -eq 0 ]; then
+  echo "  ✅ aucun conteneur arrete"
+else
+  printf "  %-28s %-6s %-8s %s\n" "NOM" "SORTIE" "DEPUIS" "LECTURE"
+  MAINTENANT=$(date +%s)
+  for c in $(docker ps -aq --filter "status=exited" --filter "status=dead" 2>/dev/null); do
+    docker inspect --format '{{.Name}}|{{.State.ExitCode}}|{{.State.FinishedAt}}' "$c" 2>/dev/null
+  done | sed 's|^/||' | while IFS='|' read -r nom code fin; do
+    fin_s=$(date -d "$fin" +%s 2>/dev/null || echo "$MAINTENANT")
+    jours=$(( (MAINTENANT - fin_s) / 86400 ))
+    # Le code de sortie porte l'information : 137 = tue (SIGKILL, souvent la memoire),
+    # 255 = l'application a echoue au demarrage, 0 = arret propre et volontaire.
+    case "$code" in
+      0)   sens="arret propre" ;;
+      137) sens="⚠️ TUE (SIGKILL — memoire ?)" ;;
+      255) sens="⚠️ ERREUR au demarrage" ;;
+      *)   sens="⚠️ code $code" ;;
+    esac
+    if [ "$jours" -le 2 ]; then urgence="🔴 RECENT — a investiguer"
+    elif [ "$jours" -le 7 ]; then urgence="🟠 cette semaine"
+    elif [ "$jours" -ge 30 ]; then urgence="menage (>30 j)"
+    else urgence="" ; fi
+    printf "  %-28s %-6s %-8s %s %s\n" "$nom" "$code" "${jours}j" "$sens" "$urgence"
+  done
+  echo
+  echo "  → arretes depuis > 30 j (candidats au nettoyage) : $(docker ps -aq --filter 'status=exited' --filter 'until=720h' 2>/dev/null | wc -l)"
+  echo "  → arretes depuis < 2 j  (PANNES probables)       : $(docker ps -aq --filter 'status=exited' --filter 'since=48h' 2>/dev/null | wc -l)"
+fi
 sub "Conteneurs actifs : sante, redemarrages, limites"
 # `{{if .State.Health}}` : sans ce garde, un conteneur sans healthcheck fait echouer TOUTE
 # la boucle (« map has no entry for key Health ») et on perd la liste entiere.
@@ -344,5 +378,70 @@ if [ "${DUP:-0}" -gt 0 ]; then
   awk -v d="$DUP" -v m="${MOY:-0}" 'BEGIN {printf "  %-28s %.1f Go  (%d fichiers en trop)\n", "sauvegardes en double", d*m/1073741824, d}'
 fi
 printf '  %-28s %s\n' "journaux systemd" "$(journalctl --disk-usage 2>/dev/null | grep -oE '[0-9.]+[MG]' | head -1)"
+
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+section "11. SAUVEGARDES — chaque application a-t-elle une copie RECENTE ?"
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+# Une sauvegarde qui a cesse de tourner ne previent personne : le fichier de la veille est
+# toujours la, le disque n'a pas bouge, rien ne clignote. On ne le decouvre qu'au moment de
+# restaurer — c'est-a-dire trop tard. D'ou une section qui repond a UNE question par
+# application : « quel age a la derniere copie ? ».
+#
+# ⚠️ Seuil a 30 h et pas 24 h : un decalage de quelques minutes (RandomizedDelaySec) ne doit
+# pas faire crier une sauvegarde parfaitement saine. Au-dela de 30 h, une nuit a bien ete
+# manquee.
+sub "Age de la derniere sauvegarde, par application"
+MAINTENANT=$(date +%s)
+for d in /var/backups/*/; do
+  app=$(basename "$d")
+  case "$app" in vizyo-*|tracky-*|maestroo-*|maalem-*) ;; *) continue ;; esac
+  dernier=$(find "$d" -maxdepth 1 -type f \( -name '*.gz' -o -name '*.gpg' \) -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1)
+  if [ -z "$dernier" ]; then
+    printf '  %-22s AUCUNE SAUVEGARDE\n' "$app"
+    continue
+  fi
+  ts=${dernier%% *}; fic=${dernier#* }
+  age_h=$(( (MAINTENANT - ${ts%.*}) / 3600 ))
+  nb=$(find "$d" -maxdepth 1 -type f \( -name '*.gz' -o -name '*.gpg' \) 2>/dev/null | wc -l)
+  taille=$(du -sh "$d" 2>/dev/null | cut -f1)
+  if [ "$age_h" -gt 30 ]; then verdict="⚠️ PERIMEE (> 30 h)"; else verdict="a jour"; fi
+  printf '  %-22s %3s h  %-20s %2d copies, %s  %s\n' "$app" "$age_h" "$verdict" "$nb" "$taille" "$(basename "$fic")"
+done
+
+# Un `pg_dump` qui rend 0 peut avoir ecrit une archive tronquee (pipe coupe, disque plein en
+# fin d'ecriture). Les scripts qui RELISENT leur archive apres coup le declarent ici : c'est la
+# difference entre « la commande n'a pas proteste » et « la copie est lisible ».
+sub "Etat declare par les scripts (ceux qui relisent leur archive)"
+for f in /var/backups/*/DERNIER-ETAT.json; do
+  [ -f "$f" ] || continue
+  # Lecture sans jq : il n'est pas garanti present, et l'installer pour une section d'audit
+  # serait ajouter une dependance a un script qui doit rester posable partout.
+  val() { grep -o "\"$1\": *\"[^\"]*\"" "$f" | head -1 | sed 's/.*: *"//; s/"$//'; }
+  printf '  %-22s %-8s %s  (%s)\n' \
+    "$(val application)" "$(val statut)" "$(val horodatage)" "$(val detail)"
+done
+[ -n "$(ls /var/backups/*/DERNIER-ETAT.json 2>/dev/null)" ] || \
+  echo "  (aucune : seul Vizyo Verify publie un etat relu pour l'instant)"
+
+# Une sauvegarde de pieces d'identite en clair sur le disque annulerait les protections de
+# l'application qui les a produites (URL signees 120 s, session, journalisation). On verifie
+# donc que ce qui doit etre chiffre l'est — `file` reconnait l'en-tete GPG.
+sub "Donnees sensibles : les archives sont-elles chiffrees ?"
+if [ -d /var/backups/vizyo-verify ]; then
+  clair=$(find /var/backups/vizyo-verify -maxdepth 1 -name '*.gz' ! -name '*.gpg' 2>/dev/null | wc -l)
+  chiffre=$(find /var/backups/vizyo-verify -maxdepth 1 -name '*.gpg' 2>/dev/null | wc -l)
+  printf '  vizyo-verify : %d chiffrees, %d EN CLAIR%s\n' "$chiffre" "$clair" \
+    "$([ "$clair" -gt 0 ] && echo '  ⚠️ des pieces d identite lisibles par quiconque lit le disque')"
+  printf '  droits du dossier : %s (700 attendu)\n' "$(stat -c%a /var/backups/vizyo-verify)"
+fi
+
+# Le point le plus expose, et il ne se corrige pas par du code : tout est sur le meme disque
+# que les donnees. Un incident chez l'hebergeur emporte les deux ensemble.
+sub "Copie hors-site"
+if have rclone && rclone listremotes 2>/dev/null | grep -q .; then
+  rclone listremotes 2>/dev/null | sed 's/^/  remote configure : /'
+else
+  echo "  AUCUNE — toutes les sauvegardes sont sur le disque qu'elles protegent."
+fi
 
 printf '\n\nFIN DE COLLECTE — %s\n' "$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
