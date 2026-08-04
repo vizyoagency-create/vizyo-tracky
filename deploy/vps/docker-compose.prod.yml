@@ -79,6 +79,20 @@ services:
       - "5023:5023"
     volumes:
       - tracky-api-logs:/app/apps/api/logs
+      # Documentation du centre d'alerte, PUBLIEE hors du depot.
+      #
+      # L'image embarque deja `docs/centre-alerte` (cf. Dockerfile.api), mais une image est
+      # figee : le rapport d'audit ecrit chaque nuit n'apparaitrait qu'au prochain rebuild.
+      # Ce montage rend la publication independante du deploiement — deposer les fichiers
+      # dans /opt/tracky-centre-alerte suffit, l'ecran les voit tout de suite.
+      #
+      # Dossier DEDIE, volontairement hors de /opt/vizyo-tracky : y ecrire directement
+      # salirait l'arbre git du VPS et ferait echouer le prochain `git pull`.
+      #
+      # ⚠️ Si ce dossier n'existe pas, Docker le CREE VIDE et masque le contenu de l'image :
+      # l'ecran afficherait une documentation vide sans rien expliquer. Le script de
+      # publication doit donc toujours le creer avant de copier (cf. PROCEDURE-AUDIT.md §11).
+      - /opt/tracky-centre-alerte:/app/docs/centre-alerte:ro
     networks:
       - vizyo-tracky
       - vizyo-auth-network

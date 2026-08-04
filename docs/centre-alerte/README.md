@@ -15,12 +15,24 @@ Dispositif mis en place le **2026-08-03**. Il répond à une question simple :
 
 ## Où ça se lit
 
-**Dans Tracky** : `/admin/alerts` → bouton **Documentation**. Tout ce dossier y est consultable,
-avec le journal des passages en page d'accueil. Servi par `GET /api/admin/alerts/wiki`
-(SUPER_ADMIN), qui parcourt ce dossier sur le disque.
+**Dans Tracky** : `/admin/alerts` → bouton **Documentation**. Tout ce dossier y est consultable.
+L'accueil est un **tableau de bord** : pour chaque famille d'erreur, *quand* elle a été vue,
+*quoi* c'est, et *quoi faire*. Servi par `GET /api/admin/alerts/wiki` (SUPER_ADMIN), qui
+parcourt le dossier sur le disque.
 
-⚠️ L'image Docker de l'API doit embarquer `docs/centre-alerte` — la copie est faite dans
-`deploy/vps/Dockerfile.api`. Sans elle, l'écran affiche « documentation introuvable ».
+### Publier une mise à jour en production
+
+L'API lit `/opt/tracky-centre-alerte` sur le VPS, monté en lecture seule. Publier =
+copier les fichiers, **sans rebuild ni redémarrage** :
+
+```bash
+ssh root@72.62.26.240 "mkdir -p /opt/tracky-centre-alerte" && scp -r docs/centre-alerte/. root@72.62.26.240:/opt/tracky-centre-alerte/
+```
+
+⚠️ L'image Docker embarque aussi une copie (`deploy/vps/Dockerfile.api`), mais elle est
+**figée** : sans la publication ci-dessus, un rapport écrit cette nuit n'apparaîtrait qu'au
+prochain rebuild. Et si le dossier monté n'existe pas, Docker le crée vide et masque le
+contenu de l'image — d'où le `mkdir -p`.
 
 ## Comment ça tourne
 

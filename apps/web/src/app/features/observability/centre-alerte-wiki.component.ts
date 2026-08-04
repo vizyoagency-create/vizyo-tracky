@@ -645,7 +645,15 @@ export class CentreAlerteWikiComponent {
       this.index.set(idx);
       if (!idx.available) {
         this.error.set(
-          "Documentation introuvable côté serveur. En production, vérifier que l'image de l'API embarque bien `docs/centre-alerte`.",
+          "Documentation introuvable côté serveur : le dossier n'existe pas. En production, vérifier le montage /opt/tracky-centre-alerte.",
+        );
+      } else if (idx.documentCount === 0) {
+        // Cas PIÉGEUX : un montage vide masque le contenu de l'image. Sans ce message,
+        // l'écran s'afficherait normalement, simplement sans rien — et on chercherait
+        // le problème du mauvais côté.
+        this.error.set(
+          'Le dossier de documentation existe mais ne contient aucun document. En production, ' +
+            'c’est le symptôme d’un montage /opt/tracky-centre-alerte vide, qui masque le contenu de l’image.',
         );
       }
     } catch {
