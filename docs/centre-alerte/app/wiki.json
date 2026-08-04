@@ -4,15 +4,43 @@
   "title": "Centre d'alerte — documentation & audits",
   "intro": "Tout ce qui a été observé, diagnostiqué et corrigé sur le centre d'alerte. Le référentiel garde la mémoire des erreurs au-delà de la purge de 30 jours ; les rapports gardent la trace de chaque passage.",
   "_comment": "Fichier LU PAR L'APPLICATION (GET /api/admin/alerts/wiki). Les documents sont découverts automatiquement sur le disque : ce manifeste ne fait qu'ajouter titres, ordre et descriptions. Un fichier absent d'ici apparaît quand même — il ne disparaît jamais faute de déclaration. En revanche `fiches` et `passages` sont tenus à la main par l'agent d'audit : l'état d'un défaut et ce qu'il faut en faire ne se devinent pas d'une liste de fichiers.",
-
   "statuts": [
-    { "cle": "NON_CORRIGE", "libelle": "À traiter", "puce": "🔴", "ordre": 1, "aide": "Défaut réel, aucun correctif livré." },
-    { "cle": "CORRECTIF_PROPOSE", "libelle": "Correctif en attente", "puce": "🟠", "ordre": 2, "aide": "Cause connue, correctif écrit, pas encore livré." },
-    { "cle": "TERRAIN", "libelle": "Action terrain", "puce": "🔵", "ordre": 3, "aide": "Vrai signal, mais l'action est matérielle ou métier — pas du code." },
-    { "cle": "CORRIGE", "libelle": "Corrigé", "puce": "🟢", "ordre": 4, "aide": "Correctif livré ET vérifié en production. Une réapparition est une régression." },
-    { "cle": "BRUIT", "libelle": "Bruit accepté", "puce": "⚪", "ordre": 5, "aide": "Pas une faute ; on assume de le voir." }
+    {
+      "cle": "NON_CORRIGE",
+      "libelle": "À traiter",
+      "puce": "🔴",
+      "ordre": 1,
+      "aide": "Défaut réel, aucun correctif livré."
+    },
+    {
+      "cle": "CORRECTIF_PROPOSE",
+      "libelle": "Correctif en attente",
+      "puce": "🟠",
+      "ordre": 2,
+      "aide": "Cause connue, correctif écrit, pas encore livré."
+    },
+    {
+      "cle": "TERRAIN",
+      "libelle": "Action terrain",
+      "puce": "🔵",
+      "ordre": 3,
+      "aide": "Vrai signal, mais l'action est matérielle ou métier — pas du code."
+    },
+    {
+      "cle": "CORRIGE",
+      "libelle": "Corrigé",
+      "puce": "🟢",
+      "ordre": 4,
+      "aide": "Correctif livré ET vérifié en production. Une réapparition est une régression."
+    },
+    {
+      "cle": "BRUIT",
+      "libelle": "Bruit accepté",
+      "puce": "⚪",
+      "ordre": 5,
+      "aide": "Pas une faute ; on assume de le voir."
+    }
   ],
-
   "fiches": [
     {
       "id": "TRK-008",
@@ -25,8 +53,8 @@
       "occurrences": 506,
       "occurrencesLibelle": "506 sur 7 jours · 3564 au total",
       "quoi": "Deux chemins écrivent la cadence cible et un seul est borné : l'auto-alignement inscrit l'intervalle observé brut, jusqu'à 2 s — sous le minimum matériel du Coban (20 s). Le boîtier ne peut alors plus jamais converger.",
-      "quoiFaire": "Séparer la consigne d'exploitation de l'intervalle accepté (`acceptedFixIntervalS`), pour qu'accepter un boîtier veuille dire arrêter de le juger — et non le juger contre une nouvelle cible.",
-      "pourquoiInvisible": "L'auto-alignement remet `fixCommandFailing` à false : l'écran affiche « Trackers FAILING : 0 ». Et les commandes FAILED ne sont dans aucune requête du centre d'alerte.",
+      "quoiFaire": "Séparer la consigne d'exploitation de l'intervalle accepté (acceptedFixIntervalS), pour qu'accepter un boîtier veuille dire arrêter de le juger — et non le juger contre une nouvelle cible.",
+      "pourquoiInvisible": "L'auto-alignement remet fixCommandFailing à false : l'écran affiche « Trackers FAILING : 0 ». Et les commandes FAILED ne sont dans aucune requête du centre d'alerte.",
       "doc": "REFERENCE-ERREURS.md",
       "ancre": "trk-008"
     },
@@ -40,7 +68,7 @@
       "vuDerniere": "2026-08-03",
       "occurrences": 2,
       "occurrencesLibelle": "2 commandes (3 h et 9 h d'ancienneté)",
-      "quoi": "Aucun chemin automatique ne solde une commande `fix_continuous` : le Coban n'acquitte pas, et la seule fermeture automatique n'a lieu qu'à une transition qui peut ne jamais survenir. En prime, la colonne « Raison » affiche le motif d'ENVOI, pas le résultat.",
+      "quoi": "Aucun chemin automatique ne solde une commande fix_continuous : le Coban n'acquitte pas, et la seule fermeture automatique n'a lieu qu'à une transition qui peut ne jamais survenir. En prime, la colonne « Raison » affiche le motif d'ENVOI, pas le résultat.",
       "quoiFaire": "Solder par échéance : toute commande encore SENT au-delà d'un plafond est close en FAILED avec l'intervalle réellement observé. Et afficher un champ qui parle du résultat.",
       "doc": "REFERENCE-ERREURS.md",
       "ancre": "trk-007"
@@ -54,7 +82,7 @@
       "vuPremiere": "2026-07-29",
       "vuDerniere": "2026-08-03",
       "occurrences": 2,
-      "quoi": "Le rafraîchissement proactif est un minuteur gelé quand l'appareil dort, puis tiré AU RÉVEIL — avant que la connectivité soit rétablie. La garde `navigator.onLine` ne filtre rien : elle dit « une interface est active », pas « Internet est joignable ».",
+      "quoi": "Le rafraîchissement proactif est un minuteur gelé quand l'appareil dort, puis tiré AU RÉVEIL — avant que la connectivité soit rétablie. La garde navigator.onLine ne filtre rien : elle dit « une interface est active », pas « Internet est joignable ».",
       "quoiFaire": "Un réessai à 3 s avant de remonter, plus la garde de visibilité que le service temps réel applique déjà correctement — sur le chemin proactif UNIQUEMENT, pour qu'une vraie panne continue de remonter.",
       "doc": "REFERENCE-ERREURS.md",
       "ancre": "trk-002"
@@ -68,8 +96,8 @@
       "vuPremiere": "2026-07-29",
       "vuDerniere": "2026-07-29",
       "occurrences": 1,
-      "quoi": "Le plafond de dépense IA est levé en `ServiceUnavailableException` (503), et le filtre archive tout ce qui est ≥ 500. La gouvernance qui fonctionne produit donc une erreur. La porte voisine « IA désactivée » a le même défaut.",
-      "quoiFaire": "Ajouter une garde `isExpectedRefusal()` dans `all-exceptions.filter.ts`, sur le modèle exact de `isUpstreamThrottle()` — structurelle et non textuelle. La réponse HTTP au client ne change pas.",
+      "quoi": "Le plafond de dépense IA est levé en ServiceUnavailableException (503), et le filtre archive tout ce qui est ≥ 500. La gouvernance qui fonctionne produit donc une erreur. La porte voisine « IA désactivée » a le même défaut.",
+      "quoiFaire": "Ajouter une garde isExpectedRefusal() dans all-exceptions.filter.ts, sur le modèle exact de isUpstreamThrottle() — structurelle et non textuelle. La réponse HTTP au client ne change pas.",
       "doc": "REFERENCE-ERREURS.md",
       "ancre": "trk-004"
     },
@@ -98,7 +126,7 @@
       "vuDerniere": "2026-07-28",
       "occurrences": 1,
       "quoi": "Timeout d'une dépendance tierce. Le message est déjà bon : il nomme la dépendance, la conséquence et ce qui est préservé. C'est le CLASSEMENT qui reste à corriger.",
-      "quoiFaire": "Marquer l'échec `transient` à la levée — journalisé dans le conteneur, non archivé. La vigie de taux d'erreur reste là pour détecter une panne durable.",
+      "quoiFaire": "Marquer l'échec transient à la levée — journalisé dans le conteneur, non archivé. La vigie de taux d'erreur reste là pour détecter une panne durable.",
       "doc": "REFERENCE-ERREURS.md",
       "ancre": "trk-005"
     },
@@ -113,7 +141,7 @@
       "occurrences": 3,
       "occurrencesLibelle": "3 boîtiers sur 6",
       "quoi": "Trois boîtiers en stock, jamais vus et sans véhicule, gonflent d'un tiers le compteur « hors ligne ». Ils ne sont pas tombés : ils ne se sont jamais levés.",
-      "quoiFaire": "Exclure de l'alerte les boîtiers `lastSeenAt IS NULL AND vehicleId IS NULL`, et les présenter comme un état d'inventaire. Garder l'alerte pour un boîtier jamais vu MAIS rattaché à un véhicule — là, c'est une pose ratée.",
+      "quoiFaire": "Exclure de l'alerte les boîtiers lastSeenAt IS NULL AND vehicleId IS NULL, et les présenter comme un état d'inventaire. Garder l'alerte pour un boîtier jamais vu MAIS rattaché à un véhicule — là, c'est une pose ratée.",
       "doc": "REFERENCE-ERREURS.md",
       "ancre": "trk-009"
     },
@@ -125,7 +153,7 @@
       "gravite": 8,
       "vuPremiere": "2026-08-03",
       "vuDerniere": "2026-08-03",
-      "quoi": "`ERROR_LOGS_RETENTION_DAYS` vaut 30 par défaut et n'est pas défini en production : une erreur jamais corrigée disparaît d'elle-même, sans bruit. La consigne « on ne vide pas le centre d'alerte » était donc contournée par le ménage automatique.",
+      "quoi": "ERROR_LOGS_RETENTION_DAYS vaut 30 par défaut et n'est pas défini en production : une erreur jamais corrigée disparaît d'elle-même, sans bruit. La consigne « on ne vide pas le centre d'alerte » était donc contournée par le ménage automatique.",
       "quoiFaire": "Rien d'obligatoire — ce référentiel est la parade, il survit à la purge. Si l'on veut aussi garder les lignes : porter la rétention à 90 jours (12 lignes en 6 jours, aucun enjeu de volume).",
       "doc": "REFERENCE-ERREURS.md",
       "ancre": "trk-010"
@@ -161,7 +189,6 @@
       "ancre": "trk-006"
     }
   ],
-
   "sections": [
     {
       "key": "guide",
@@ -188,7 +215,6 @@
       "description": "Le collecteur SQL et les fichiers techniques."
     }
   ],
-
   "documents": [
     {
       "slug": "README.md",
@@ -226,7 +252,6 @@
       "description": "Audit fondateur fait à la main. Sert d'étalon pour mesurer l'agent automatique."
     }
   ],
-
   "passages": [
     {
       "date": "2026-08-03",
@@ -245,7 +270,12 @@
         "nouvelles": 10,
         "misesAJour": 0
       },
-      "aTraiter": ["TRK-008", "TRK-007", "TRK-002", "TRK-004"],
+      "aTraiter": [
+        "TRK-008",
+        "TRK-007",
+        "TRK-002",
+        "TRK-004"
+      ],
       "note": "Amorçage du référentiel : les 10 fiches TRK-001 à TRK-010 ont été créées lors de ce passage."
     }
   ]

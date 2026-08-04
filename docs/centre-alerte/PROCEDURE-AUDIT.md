@@ -252,6 +252,42 @@ Toute cette documentation est lisible **depuis Tracky** : `/admin/alerts` → bo
 **Documentation**. L'API la sert en lecture (`GET /api/admin/alerts/wiki`, SUPER_ADMIN) en
 parcourant `docs/centre-alerte/` sur le disque.
 
+### 11.a — Pousser les fichiers en production (sinon rien ne bouge)
+
+En production, l'API lit `/opt/tracky-centre-alerte`, **monté en lecture seule** depuis le VPS.
+Un dossier dédié, volontairement **hors de l'arbre git** du serveur : y écrire directement
+salirait le dépôt et ferait échouer le prochain `git pull`.
+
+L'image Docker embarque bien une copie de la documentation, mais une image est **figée** :
+sans cette publication, un rapport écrit cette nuit n'apparaîtrait qu'au prochain rebuild.
+
+Deux commandes, depuis la racine du dépôt :
+
+```bash
+ssh root@72.62.26.240 "mkdir -p /opt/tracky-centre-alerte"
+```
+
+```bash
+scp -r docs/centre-alerte/. root@72.62.26.240:/opt/tracky-centre-alerte/
+```
+
+Puis vérifier que le serveur voit bien le nouveau rapport :
+
+```bash
+ssh root@72.62.26.240 "ls /opt/tracky-centre-alerte/rapports/ && docker exec tracky-api ls /app/docs/centre-alerte/rapports/"
+```
+
+Les deux listes doivent être identiques. Aucun redémarrage n'est nécessaire : le service lit
+le disque à chaque appel.
+
+⚠️ **Le `mkdir -p` n'est pas décoratif.** Si le dossier n'existe pas, Docker le crée VIDE au
+démarrage du conteneur et **masque le contenu de l'image** : l'écran afficherait une
+documentation vide. Le cas est détecté et expliqué à l'écran, mais mieux vaut ne pas le
+provoquer.
+
+⚠️ Cette copie n'efface jamais rien — elle ajoute et remplace. Un document retiré du dépôt
+resterait publié ; c'est volontaire (on ne perd pas un rapport par accident).
+
 ### Ce qui est automatique — et ce qui ne l'est pas
 
 | | |
