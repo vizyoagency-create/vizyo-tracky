@@ -5,6 +5,7 @@ import { RouterLink } from '@angular/router';
 import {
   AlertTriangle,
   ArrowLeft,
+  BookOpen,
   Bug,
   CheckCircle,
   ChevronDown,
@@ -31,11 +32,19 @@ import {
 import { ActivityTrackerService } from '../../core/services/activity-tracker.service';
 import { ErrorTimelineChartComponent } from '../../shared/ui/charts/error-timeline-chart.component';
 import { ToastService } from '../../shared/ui/toast/toast.service';
+import { CentreAlerteWikiComponent } from './centre-alerte-wiki.component';
 
 @Component({
   selector: 'app-admin-alerts',
   standalone: true,
-  imports: [LucideAngularModule, DatePipe, JsonPipe, RouterLink, ErrorTimelineChartComponent],
+  imports: [
+    LucideAngularModule,
+    DatePipe,
+    JsonPipe,
+    RouterLink,
+    ErrorTimelineChartComponent,
+    CentreAlerteWikiComponent,
+  ],
   template: `
     <div class="flex flex-col gap-6">
       <div class="flex items-start justify-between gap-3 flex-wrap">
@@ -51,6 +60,12 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
           </p>
         </div>
         <div class="flex gap-2">
+          <button (click)="wikiOpen.set(true)"
+                  class="px-3 py-2 bg-bg-secondary border border-border-subtle text-fg-secondary rounded-lg text-sm font-medium hover:text-fg-primary cursor-pointer flex items-center gap-2"
+                  title="Referentiel des erreurs, procedure d'audit et rapports quotidiens">
+            <lucide-icon [img]="BookOpen" [size]="14"></lucide-icon>
+            <span class="hidden sm:inline">Documentation</span>
+          </button>
           <button (click)="downloadExport()" [disabled]="exporting()"
                   class="px-3 py-2 bg-bg-secondary border border-border-subtle text-fg-secondary rounded-lg text-sm font-medium hover:text-fg-primary cursor-pointer flex items-center gap-2 disabled:opacity-50"
                   title="Telecharger le rapport d'erreurs (.md) pour debug IA">
@@ -513,6 +528,8 @@ import { ToastService } from '../../shared/ui/toast/toast.service';
         </div>
       }
     </div>
+
+    <app-centre-alerte-wiki [open]="wikiOpen()" (close)="wikiOpen.set(false)" />
   `,
 })
 export class AdminAlertsComponent implements OnInit {
@@ -522,6 +539,7 @@ export class AdminAlertsComponent implements OnInit {
 
   protected readonly AlertTriangle = AlertTriangle;
   protected readonly ArrowLeft = ArrowLeft;
+  protected readonly BookOpen = BookOpen;
   protected readonly Bug = Bug;
   protected readonly CheckCircle = CheckCircle;
   protected readonly Copy = Copy;
@@ -546,6 +564,8 @@ export class AdminAlertsComponent implements OnInit {
   readonly timelineBuckets = signal<ErrorTimelineBucket[]>([]);
   readonly exporting = signal(false);
   readonly lastVisitAt = signal<string | null>(null);
+  /** Wiki `docs/centre-alerte/` : referentiel, procedure d'audit et rapports quotidiens. */
+  readonly wikiOpen = signal(false);
 
   /** Tendance erreurs : delta entre 24h actuelles et 24h precedentes. */
   readonly errorTrend = computed(() => {
