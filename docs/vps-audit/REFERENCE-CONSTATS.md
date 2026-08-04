@@ -216,8 +216,40 @@ premier OOM observé.
 
 ## VPS-006 — 17 conteneurs arrêtés depuis 7 semaines
 
-- **Domaine** : docker · **Gravité** : 3 · **Statut** : `A_TRAITER`
-- **Vu** : 2026-08-04 · **Mesure** : 17 arrêtés / 48 ; ~5,7 Go d'images retenues
+- **Domaine** : docker · **Gravité** : 3 · **Statut** : `APPLIQUE` (2026-08-04, 22 h 40)
+- **Vu** : 2026-08-04 · **Mesure à la découverte** : 17 arrêtés / 48 ; ~5,7 Go d'images retenues
+
+> ### ✅ Corrigé le 2026-08-04 — la preuve
+>
+> | | Avant | Après |
+> |---|---:|---:|
+> | Conteneurs (total / actifs) | 48 / 31 | **31 / 31** |
+> | Images | 36 | **26** |
+> | Disque | 54 Go (57 %) | 49 Go (51 %) |
+> | **Volumes** | **28** | **28 — inchangé** |
+>
+> Les 17 étaient tous arrêtés depuis 52 à 55 jours. Codes de sortie relevés avant suppression :
+> `maalem-api` et `vizyo-leads-api` en **137** (tués), `maalem-lp`, `foodsqan-api` et
+> `foodsqan-website` en **255** (échec au démarrage), les autres en 0 (arrêt propre).
+>
+> ⚠️ **Aucun volume n'a été touché** — `docker container prune` n'y touche jamais. Vérifié
+> nommément : `maalem-postgres-data` (65 Mo), `foodsqan-postgres-data` (71 Mo),
+> `deploy_vizyo-leads-postgres-data` (64 Mo), `tracky-postgres-data` (1,1 Go) et
+> `vizyo-tracky-postgres-data` (110 Mo) sont tous intacts.
+>
+> ### Le collecteur repère désormais TOUJOURS les conteneurs morts
+>
+> La section affichait autrefois une liste — donc **rien** quand il n'y avait rien, ce qui se
+> lit comme « pas regardé ». Elle affiche maintenant un compte dans tous les cas, et surtout
+> elle distingue deux choses que le comptage global confondait :
+>
+> - **l'encombrement** — arrêté depuis plus de 30 jours, c'est du ménage ;
+> - **l'incident** — arrêté depuis moins de 48 h, c'est une panne, et c'est précisément la
+>   ligne qu'une liste de 17 vieux conteneurs aurait noyée.
+>
+> Le **code de sortie** est interprété (`137` = tué, souvent la mémoire ; `255` = échec au
+> démarrage ; `0` = arrêt volontaire) : c'est lui qui dit si un conteneur est mort ou a été
+> arrêté.
 
 **Quoi.** Des piles entières (`foodsqan-*`, `maalem-*` anciens, `vizyo-leads-*`, `nebula`) sont
 arrêtées depuis 7 semaines. Tant que le conteneur existe, son image ne peut pas être libérée —
@@ -303,8 +335,41 @@ d'un coup : le noyau, les 1,1 Go de mémoire résidente de `dockerd`, et le swap
 
 ## VPS-011 — Les healthchecks sont la première charge de fond, et personne ne les voit
 
-- **Domaine** : docker · **Gravité** : 3 · **Statut** : `A_TRAITER`
-- **Vu** : 2026-08-04 · **Mesure** : 88 invocations/min = **126 720/jour** ; 1 398 processus/min créés au total
+- **Domaine** : docker · **Gravité** : 3 · **Statut** : `SURVEILLANCE` (partiellement appliqué le 2026-08-04)
+- **Vu** : 2026-08-04 · **Mesure à la découverte** : 88 invocations/min = **126 720/jour**
+
+> ### ✅ Appliqué le 2026-08-04 sur 5 sondes — et ce que ça a VRAIMENT donné
+>
+> | Pile | Sonde | Avant | Après |
+> |---|---|---:|---:|
+> | Tracky **prod** | `tracky-postgres`, `tracky-redis` | 10 s | **30 s** |
+> | Maalem **dev** | `maalem-dev-postgres`, `maalem-dev-redis` | 10 s | **60 s** |
+> | Maestroo **dev** | `maestroo-dev-postgres` | 10 s | **60 s** |
+>
+> **88 → 65 invocations/min (−26 %)**, soit 126 720 → 93 600 par jour.
+>
+> ### ⚠️ Le gain CPU n'est PAS démontrable, et il faut le dire
+>
+> Taux de création de processus **avant** : 1 527/min. **Après** : 1 512/min. Soit −1 %,
+> très en-dessous de la variance naturelle (±100/min d'une mesure à l'autre).
+>
+> Autrement dit : **la réduction de 26 % des sondes est structurellement prouvée, mais son
+> effet sur le processeur est trop petit pour être mesuré.** Le modèle prédisait ~115 forks/min
+> économisés ; le bruit de fond en fait autant. Ce constat était donc réel mais **surestimé** —
+> il coûtait moins cher que ce que sa taille apparente (126 720/jour) laissait croire.
+>
+> Le vrai bénéfice acquis est ailleurs, et il est certain : **40 320 connexions PostgreSQL en
+> moins par jour**, chacune faisant forker un backend.
+>
+> ### Il reste 5 sondes à 10 s, dans 4 autres dépôts
+>
+> `vizyo-verify-postgres`, `vizyo-manager-postgres`, `texto-postgres`, `capcom6-mysql`,
+> `vizyo-auth-db`. Chacune demande une modification de **son** dépôt puis une recréation de
+> conteneur — dont `vizyo-auth-db`, dont dépend l'authentification de **toutes** les applications.
+>
+> **Recommandation : ne pas le faire pour le gain seul.** Le rendement mesuré ne justifie pas
+> d'aller redéployer quatre projets de production. À faire au fil de l'eau, quand chacun sera
+> touché pour une autre raison.
 
 **Quoi.** Les crons et les timers se déclarent quelque part — on peut les lister. Les
 healthchecks Docker, non : ils sont une propriété du conteneur, et rien ne les agrège. Ils
@@ -342,8 +407,53 @@ c'est là que la détection rapide sert vraiment.
 
 ## VPS-012 — Trois clés GitHub Actions ont un accès root complet
 
-- **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `SURVEILLANCE`
-- **Vu** : 2026-08-04 · **Mesure** : 3 des 4 clés de `/root/.ssh/authorized_keys`
+- **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `APPLIQUE` (2026-08-04, 22 h 15)
+- **Vu** : 2026-08-04 · **Mesure à la découverte** : 3 des 4 clés de `/root/.ssh/authorized_keys`
+
+> ### ✅ Corrigé le 2026-08-04 — la preuve
+>
+> | Clé | Dernier déploiement | Décision |
+> |---|---|---|
+> | `vizyo-vps-hostinger` | — | **inchangée** : c'est la clé humaine d'administration |
+> | `github-actions-deploy-maalem` | **2026-08-03** (active) | **restreinte** |
+> | `github-actions-deploy@foodsqan` | 2026-03-13 (5 mois) | **désactivée** (commentée) |
+> | `github-deploy@foodsqan` | 2026-03-13 (5 mois) | **désactivée** (commentée) |
+>
+> Options posées sur la clé maalem :
+> `no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-user-rc`
+>
+> ### Pourquoi PAS `command="..."`
+>
+> C'est la restriction la plus forte — et elle aurait **cassé les deux CI**. Les deux projets
+> envoient des **scripts shell multi-lignes** (`appleboy/ssh-action` avec `script:` pour maalem,
+> un heredoc `<< 'ENDSSH'` pour foodsqan), pas une commande fixe. Un `command=` les aurait tous
+> remplacés par la commande déclarée.
+>
+> Les options retenues n'entravent **pas** l'exécution de commandes ; elles interdisent
+> d'utiliser la clé comme **tunnel** vers les services internes. C'est le vrai gain : une clé
+> volée ne donne plus accès à Postgres, Redis ou MinIO.
+>
+> ### Comment ça a été prouvé
+>
+> 1. **Avant d'appliquer** : une clé de test jetable, portant exactement les mêmes options, a
+>    exécuté un script heredoc multi-lignes de bout en bout. ✅
+> 2. **Après avoir appliqué** : le workflow `deploy-staging` de maalem a été déclenché sur le
+>    **même commit** (`9630bbb`, donc sans changer ce qui tourne). Résultat :
+>    `✅ Deploy complete` + health check `HTTP 200`. ✅
+> 3. **Confirmation supplémentaire** : le déploiement automatique déclenché par le correctif
+>    VPS-011 sur maalem est également passé. ✅
+>
+> ### ⚠️ Un incident pendant la manipulation, et sa leçon
+>
+> Le script de test a été **interrompu en plein milieu** (une commande `ssh -L` interactive qui
+> ne rendait pas la main). Il a laissé derrière lui la clé de test **sans restriction** dans
+> `authorized_keys`, et sa clé privée dans `/tmp`. Détecté et nettoyé immédiatement (`shred`),
+> aucune connexion externe n'avait utilisé cette clé.
+>
+> **Leçon** : un script qui crée un accès temporaire doit le retirer dans un `trap EXIT`, pas
+> à la dernière ligne. Une interruption ne doit jamais laisser une porte ouverte.
+>
+> **Restauration si besoin** : `cp /root/.ssh/authorized_keys.bak-20260804 /root/.ssh/authorized_keys`
 
 **Quoi.** Sur les 4 clés autorisées, une seule est humaine (`vizyo-vps-hostinger`). Les trois
 autres sont des clés de déploiement CI/CD :
