@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
+import { isExpectedRefusal } from '../common/expected-refusal.exception';
 import { ErrorLogger } from './error-logger.service';
 
 /**
@@ -95,7 +96,17 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const str = (v: unknown, max: number): string | undefined =>
       typeof v === 'string' ? v.slice(0, max) : undefined;
 
-    if ((status >= 500 || !(exception instanceof HttpException)) && !isUpstreamThrottle(exception)) {
+    // TRK-004 — `isExpectedRefusal` écarte les refus DÉLIBÉRÉS (plafond de dépense IA
+    // atteint, assistance IA coupée pour une société). Ce sont des décisions de la
+    // plateforme, pas des pannes : les archiver revenait à signaler comme une faute une
+    // gouvernance qui fonctionne. Même patron que `isUpstreamThrottle` juste au-dessus,
+    // ajouté après les ~100 fausses CRITICAL d'un redéploiement. La réponse HTTP au client
+    // est inchangée : seule la journalisation disparaît.
+    if (
+      (status >= 500 || !(exception instanceof HttpException)) &&
+      !isUpstreamThrottle(exception) &&
+      !isExpectedRefusal(exception)
+    ) {
       // CRITICAL est reserve aux fautes serveur non maitrisees (exception non geree
       // -> 500). Un 5xx leve VOLONTAIREMENT (HttpException) est une condition
       // operationnelle attendue, pas un crash : ex. 503 "tracker hors ligne" sur

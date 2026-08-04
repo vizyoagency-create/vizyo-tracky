@@ -1,5 +1,6 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ServiceUnavailableException } from '@nestjs/common';
 import type { ArgumentsHost } from '@nestjs/common';
+import { ExpectedRefusalException } from '../common/expected-refusal.exception';
 import { AllExceptionsFilter } from './all-exceptions.filter';
 import type { ErrorLogger } from './error-logger.service';
 
@@ -53,5 +54,33 @@ describe('AllExceptionsFilter — tri abandon client vs faute serveur', () => {
     const { host } = makeHost();
     await filter.catch(new BadRequestException('bad'), host); // 400 → non journalisé (<500 + HttpException)
     expect(errorLogger.record).not.toHaveBeenCalled();
+  });
+
+  // --- TRK-004 : un refus DÉLIBÉRÉ n'est pas une panne ----------------------------------
+
+  it('refus délibéré (plafond IA atteint) → NON archivé, mais la réponse HTTP est intacte', async () => {
+    const { host, res } = makeHost();
+    const refus = new ExpectedRefusalException('Le budget IA mensuel est atteint.');
+
+    await filter.catch(refus, host);
+
+    // C'est la gouvernance qui FONCTIONNE : rien à signaler au centre d'alerte.
+    expect(errorLogger.record).not.toHaveBeenCalled();
+    // ⚠️ Et le client doit voir exactement la même chose qu'avant : c'est pour ça que la
+    // classe hérite de `ServiceUnavailableException` au lieu de composer un HttpException nu.
+    expect(res.status).toHaveBeenCalledWith(503);
+    const body = res.json.mock.calls[0][0];
+    expect(body.error.message).toBe('Le budget IA mensuel est atteint.');
+    expect(body.error.code).toBe('Service Unavailable');
+  });
+
+  it('un 503 ORDINAIRE reste archivé (le refus délibéré ne doit pas déteindre)', async () => {
+    const { host } = makeHost();
+
+    await filter.catch(new ServiceUnavailableException('vizyo-texto injoignable'), host);
+
+    // Une dépendance qui tombe est une vraie panne : elle doit continuer de remonter.
+    expect(errorLogger.record).toHaveBeenCalledTimes(1);
+    expect(errorLogger.record.mock.calls[0][3]).toBe('ERROR');
   });
 });

@@ -112,6 +112,45 @@ describe('api-fetch', () => {
       await apiFetch('/api/users', undefined, 'Chargement').catch(() => undefined);
       expect(reported.length).toBe(0);
     });
+
+    // --- TRK-002 : la page cachée ---------------------------------------------------
+
+    it('une page CACHÉE ne remonte pas — le navigateur tue les requêtes en vol', async () => {
+      // Onglet en arrière-plan, appareil en veille, navigation en cours : le navigateur
+      // annule les requêtes. Sur iOS c'est le fameux `TypeError: Load failed`. Ce n'est
+      // pas une panne de plateforme, et personne ne peut le corriger.
+      const spy = spyOnProperty(document, 'visibilityState', 'get').and.returnValue('hidden');
+      try {
+        pending = () => Promise.reject(new TypeError('Load failed'));
+        await apiFetch('/api/users', undefined, 'Chargement').catch(() => undefined);
+        expect(reported.length).toBe(0);
+      } finally {
+        spy.and.callThrough();
+      }
+    });
+
+    it('une page VISIBLE remonte toujours — sinon le module ne sert plus à rien', async () => {
+      // 🔑 Le vrai test du correctif : il devait supprimer le bruit SANS supprimer le signal.
+      pending = () => Promise.reject(new TypeError('Failed to fetch'));
+      await apiFetch('/api/users', undefined, 'Chargement').catch(() => undefined);
+      expect(reported.length).toBe(1);
+    });
+
+    it('apiFetchRaw en mode silencieux ne remonte pas (l’appelant va réessayer)', async () => {
+      pending = () => Promise.reject(new TypeError('Load failed'));
+      await apiFetchRaw('/api/auth/refresh', undefined, 'Rafraichissement de session', {
+        silentNetworkFailure: true,
+      }).catch(() => undefined);
+      expect(reported.length).toBe(0);
+    });
+
+    it('apiFetchRaw sans mode silencieux remonte — c’est le second essai qui parle', async () => {
+      pending = () => Promise.reject(new TypeError('Load failed'));
+      await apiFetchRaw('/api/auth/refresh', undefined, 'Rafraichissement de session').catch(
+        () => undefined,
+      );
+      expect(reported.length).toBe(1);
+    });
   });
 
   describe('apiFetchJson — le message du serveur s’ajoute au statut, il ne le remplace pas', () => {

@@ -330,6 +330,96 @@ describe('TrackerFixModeService — envoi réel (repli SMS + override)', () => {
   });
 });
 
+/**
+ * V1.19 (TRK-007) — une `fix_continuous` n'est jamais acquittée par le boîtier, et la seule
+ * fermeture automatique existante dépendait d'une transition FAILING que la garde « véhicule
+ * garé » peut empêcher à jamais. L'échéance est donc PUREMENT temporelle.
+ */
+describe('TrackerFixModeService.expireStaleFixCommands', () => {
+  const build = () => {
+    const prisma = {
+      trackerCommand: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn().mockResolvedValue({}) },
+    } as any;
+    const svc = new TrackerFixModeService(
+      prisma,
+      {} as any,
+      {} as any,
+      { isEnabled: () => false, send: jest.fn() } as any,
+    );
+    return { svc, prisma };
+  };
+
+  const staleCommand = (over: Record<string, unknown> = {}) => ({
+    id: 'c1',
+    createdAt: new Date(Date.now() - 200 * 60_000), // 200 min
+    tracker: { imei: '864035052915643', currentFixIntervalS: 3600, desiredFixIntervalS: 20 },
+    ...over,
+  });
+
+  it('ne cible QUE les commandes de cadence sans accusé, au-delà de l\'échéance', async () => {
+    const { svc, prisma } = build();
+
+    await svc.expireStaleFixCommands();
+
+    const where = prisma.trackerCommand.findMany.mock.calls[0][0].where;
+    expect(where.templateId).toBe('fix_continuous');
+    expect(where.status).toEqual({ in: ['PENDING', 'SENT'] });
+    expect(where.acknowledgedAt).toBeNull();
+    expect(where.createdAt.lt).toBeInstanceOf(Date);
+    // L'échéance ne dépend d'AUCUN état du boîtier : c'est tout l'intérêt du correctif.
+    expect(Object.keys(where)).toEqual(['templateId', 'status', 'acknowledgedAt', 'createdAt']);
+  });
+
+  it('ferme en FAILED avec la cadence RÉELLEMENT observée', async () => {
+    const { svc, prisma } = build();
+    prisma.trackerCommand.findMany.mockResolvedValue([staleCommand()]);
+
+    await svc.expireStaleFixCommands();
+
+    expect(prisma.trackerCommand.update).toHaveBeenCalledTimes(1);
+    const data = prisma.trackerCommand.update.mock.calls[0][0].data;
+    // FAILED et non CANCELLED : la commande a bien été émise, elle n'a pas abouti.
+    expect(data.status).toBe('FAILED');
+    expect(data.observedResult).toContain('3600s');
+    expect(data.observedResult).toContain('20s');
+    expect(data.observedResult).toContain('200 min');
+  });
+
+  it('dit « inconnue » plutôt que d\'inventer une cadence', async () => {
+    const { svc, prisma } = build();
+    prisma.trackerCommand.findMany.mockResolvedValue([
+      staleCommand({ tracker: { imei: 'x', currentFixIntervalS: null, desiredFixIntervalS: 20 } }),
+    ]);
+
+    await svc.expireStaleFixCommands();
+
+    expect(prisma.trackerCommand.update.mock.calls[0][0].data.observedResult).toContain('inconnue');
+  });
+
+  it('respecte FIX_COMMAND_EXPIRY_MIN', async () => {
+    const previous = process.env.FIX_COMMAND_EXPIRY_MIN;
+    process.env.FIX_COMMAND_EXPIRY_MIN = '120';
+    try {
+      const { svc, prisma } = build();
+      await svc.expireStaleFixCommands();
+      const cutoff: Date = prisma.trackerCommand.findMany.mock.calls[0][0].where.createdAt.lt;
+      const ageMin = (Date.now() - cutoff.getTime()) / 60_000;
+      expect(ageMin).toBeGreaterThan(118);
+      expect(ageMin).toBeLessThan(122);
+    } finally {
+      if (previous === undefined) delete process.env.FIX_COMMAND_EXPIRY_MIN;
+      else process.env.FIX_COMMAND_EXPIRY_MIN = previous;
+    }
+  });
+
+  it('un échec de base ne casse pas le balayage', async () => {
+    const { svc, prisma } = build();
+    prisma.trackerCommand.findMany.mockRejectedValue(new Error('DB down'));
+
+    await expect(svc.expireStaleFixCommands()).resolves.toBeUndefined();
+  });
+});
+
 describe('TrackerFixModeService.reconcile', () => {
   let service: TrackerFixModeService;
   const baseTracker = {
@@ -467,9 +557,18 @@ describe('TrackerFixModeService.reconcile', () => {
     expect(out.autoAlignDesiredS).toBeNull(); // 400s hors plage [1, 300]
   });
 
-  it('auto-aligns desired to a sub-20s observed interval to break permanent FAILING (V1.15)', () => {
+  // --- V1.19 (TRK-008) : la boucle d'auto-alignement -------------------------------------
+  //
+  // Ce bloc REMPLACE le test « auto-aligns desired to a sub-20s observed interval (V1.15) ».
+  // Ce test verrouillait le CONTOURNEMENT : un boîtier rapide était déclaré FAILING, puis on
+  // abaissait la cible sur son intervalle réel pour le sortir de cet état. C'est ce
+  // contournement qui a produit en prod des cibles à 1 s / 2 s / 8 s, sous le minimum matériel,
+  // et 72 commandes en échec par jour pendant des mois. On traite désormais la cause : un
+  // boîtier rapide EN MOUVEMENT n'est plus en échec du tout, donc il n'y a plus rien à aligner.
+
+  it('ne déclare PLUS en échec un boîtier qui émet plus vite que la cible EN MOUVEMENT', () => {
     const prev = new Date('2026-04-26T12:00:00Z');
-    const next = new Date('2026-04-26T12:00:10Z'); // 10s observé, desired 97s (boîtier rapide)
+    const next = new Date('2026-04-26T12:00:10Z'); // 10 s observé pour une cible de 97 s
     const out = service.reconcile(
       {
         ...baseTracker,
@@ -477,12 +576,86 @@ describe('TrackerFixModeService.reconcile', () => {
         currentFixIntervalS: 10,
         lastValidFrameAt: prev,
         lastFixIntervalSyncAt: new Date(prev.getTime() - 10 * 60 * 1000),
-        fixCommandFailureCount: 3, // déjà FAILING
+        fixCommandFailureCount: 3, // déjà FAILING : il doit en sortir
       },
       { deviceTime: next, speedKmh: 40, ignition: true, lat: 48, lng: 2 },
     );
-    expect(out.autoAlignDesiredS).toBe(10); // accepte l'intervalle réel < 20s
-    expect(out.nextFailureCount).toBe(3); // plafonné
+    expect(out.nextFailing).toBe(false);
+    expect(out.nextFailureCount).toBe(0);
+    expect(out.autoAlignDesiredS).toBeNull(); // plus rien à aligner : la cible reste intacte
+    expect(out.nextCurrentFixIntervalS).toBe(10); // la cadence réelle reste visible
+  });
+
+  it('continue de signaler un boîtier trop rapide À L\'ARRÊT (l\'économie de batterie est réelle)', () => {
+    const prev = new Date('2026-04-26T12:00:00Z');
+    const next = new Date('2026-04-26T12:00:30Z'); // 30 s observé pour une cible d'économie de 300 s
+    const out = service.reconcile(
+      {
+        ...baseTracker,
+        desiredFixIntervalS: 300,
+        lastValidFrameAt: prev,
+        lastFixIntervalSyncAt: new Date(prev.getTime() - 10 * 60 * 1000),
+        fixCommandFailureCount: 1,
+      },
+      { deviceTime: next, speedKmh: 0, ignition: false, lat: 48, lng: 2 },
+    );
+    // À l'arrêt la cible vise l'ÉCONOMIE : émettre dix fois trop vite y contrevient vraiment.
+    // Une garde non restreinte au mouvement aurait silencieusement annulé cette économie.
+    expect(out.nextFailureCount).toBe(2);
+  });
+
+  it('une cible héritée sous le minimum matériel ne condamne plus le boîtier', () => {
+    const prev = new Date('2026-04-26T12:00:00Z');
+    const next = new Date('2026-04-26T12:00:20Z'); // le boîtier émet à son minimum : 20 s
+    const out = service.reconcile(
+      {
+        ...baseTracker,
+        desiredFixIntervalS: 8, // valeur absurde laissée par l'ancien auto-alignement
+        lastValidFrameAt: prev,
+        lastFixIntervalSyncAt: new Date(prev.getTime() - 10 * 60 * 1000),
+        fixCommandFailureCount: 2,
+      },
+      { deviceTime: next, speedKmh: 50, ignition: true, lat: 48, lng: 2 },
+    );
+    // La cible effective est clampée à 20 s : le boîtier est donc PILE dessus. C'est le cas
+    // dominant en prod — 295 des 507 échecs portaient « intervalle observé : 20 s ».
+    expect(out.nextFailureCount).toBe(0);
+    expect(out.nextFailing).toBe(false);
+  });
+
+  it('l\'auto-alignement ne peut plus écrire une cible sous le minimum matériel', () => {
+    const prev = new Date('2026-04-26T12:00:00Z');
+    const next = new Date('2026-04-26T12:00:05Z'); // 5 s observé, à l'arrêt, cible 300 s
+    const out = service.reconcile(
+      {
+        ...baseTracker,
+        desiredFixIntervalS: 300,
+        lastValidFrameAt: prev,
+        lastFixIntervalSyncAt: new Date(prev.getTime() - 10 * 60 * 1000),
+        fixCommandFailureCount: 2, // la 3e trame fait basculer en FAILING
+      },
+      { deviceTime: next, speedKmh: 0, ignition: false, lat: 48, lng: 2 },
+    );
+    expect(out.nextFailing).toBe(true);
+    // 5 s est sous le plancher : on refuse d'en faire une cible. C'est la garde qui manquait.
+    expect(out.autoAlignDesiredS).toBeNull();
+  });
+
+  it('l\'auto-alignement reste possible sur un intervalle tenable', () => {
+    const prev = new Date('2026-04-26T12:00:00Z');
+    const next = new Date('2026-04-26T12:04:10Z'); // 250 s observé pour une cible de 30 s
+    const out = service.reconcile(
+      {
+        ...baseTracker,
+        desiredFixIntervalS: 30,
+        lastValidFrameAt: prev,
+        lastFixIntervalSyncAt: new Date(prev.getTime() - 10 * 60 * 1000),
+        fixCommandFailureCount: 2,
+      },
+      { deviceTime: next, speedKmh: 50, ignition: true, lat: 48, lng: 2 },
+    );
+    expect(out.nextFailing).toBe(true);
+    expect(out.autoAlignDesiredS).toBe(250); // dans [20, 300] : on accepte le comportement réel
   });
 
   // V1.18 — Exemption "véhicule garé" : un boîtier qui émet plus lentement que la

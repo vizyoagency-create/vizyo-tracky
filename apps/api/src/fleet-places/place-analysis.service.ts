@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { ExpectedRefusalException } from '../common/expected-refusal.exception';
 import { FleetPlaceKind } from '@prisma/client';
 import { AiAvailabilityService } from '../ai/ai-availability.service';
 import { AiRouter } from '../ai/ai-router.service';
@@ -102,7 +103,9 @@ export class PlaceAnalysisService {
     // ── Porte IA canonique. Refus EXPLICITE (pas de dégradation silencieuse) : l'appelant doit
     // savoir que l'IA est coupée, et l'UI ne doit de toute façon pas proposer le bouton.
     if (!(await this.aiAvail.isEnabledForFleet(place.fleetId, 'placeAnalysis'))) {
-      throw new ServiceUnavailableException(
+      // TRK-004 — refus DÉLIBÉRÉ : la réponse HTTP ne bouge pas, mais on cesse d'archiver
+      // une décision de gouvernance comme si c'était une panne serveur.
+      throw new ExpectedRefusalException(
         "L'assistance IA est désactivée pour cette société (ou l'analyse de lieu est coupée globalement).",
       );
     }
@@ -110,7 +113,9 @@ export class PlaceAnalysisService {
     // ── Budget mensuel global : il doit protéger AUSSI le déclenchement humain, sinon le plafond
     // ne vaut que pour le cron et n'importe quel clic peut le dépasser.
     if (await this.monthBudgetExhausted()) {
-      throw new ServiceUnavailableException(
+      // TRK-004 — le plafond qui TIENT n'est pas une erreur. C'est cette ligne qui produisait
+      // une entrée au centre d'alerte alors que la protection de dépense fonctionnait.
+      throw new ExpectedRefusalException(
         "Le budget IA mensuel est atteint. L'analyse sera de nouveau possible le mois prochain, ou après relèvement du budget.",
       );
     }

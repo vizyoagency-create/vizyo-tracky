@@ -327,7 +327,7 @@ import { CentreAlerteWikiComponent } from './centre-alerte-wiki.component';
                 </div>
                 <div class="text-[10px] font-mono text-fg-tertiary mt-1">{{ c.templateId }}</div>
                 <div class="text-xs text-fg-tertiary mt-1 truncate">
-                  {{ c.diagnosticHint ?? c.outcomeReason ?? '—' }}
+                  {{ c.diagnosticHint ?? (c.outcomeReason ? 'Envoyée sur : ' + c.outcomeReason : '—') }}
                 </div>
                 <div class="flex justify-between items-center mt-2">
                   <span class="text-[10px] text-fg-tertiary">{{ c.createdAt | date: 'dd/MM HH:mm' }}</span>
@@ -362,7 +362,7 @@ import { CentreAlerteWikiComponent } from './centre-alerte-wiki.component';
                     </td>
                     <td class="p-3 text-fg-tertiary text-xs">{{ c.createdAt | date: 'dd/MM HH:mm' }}</td>
                     <td class="p-3 text-fg-tertiary text-xs max-w-[260px] truncate">
-                      {{ c.diagnosticHint ?? c.outcomeReason ?? '—' }}
+                      {{ c.diagnosticHint ?? (c.outcomeReason ? 'Envoyée sur : ' + c.outcomeReason : '—') }}
                     </td>
                     <td class="p-3">
                       <button (click)="ackCommand(c.commandId)"

@@ -24,6 +24,20 @@ const ERROR_WINDOW_MS = 24 * 60 * 60 * 1000; // 24h
 const CRITICAL_WINDOW_MS = 60 * 60 * 1000;   // 1h
 
 /**
+ * TRK-009 — un boîtier JAMAIS vu ne compte comme « hors ligne » que s'il est RATTACHÉ à un
+ * véhicule.
+ *
+ * Sans véhicule et sans la moindre trame, c'est du matériel en stock : il n'est pas tombé,
+ * il ne s'est jamais levé. Trois boîtiers dans ce cas gonflaient d'un tiers le compteur
+ * « hors ligne > 1 h » avec du matériel en parfait état — un compteur qu'on regarde pour
+ * décider d'intervenir.
+ *
+ * ⚠️ Un boîtier jamais vu MAIS rattaché à un véhicule reste signalé : là, c'est une pose qui
+ * a échoué, et c'est un vrai signal.
+ */
+const OFFLINE_NEVER_SEEN_CLAUSE = { lastSeenAt: null, vehicleId: { not: null } } as const;
+
+/**
  * V1.5 (Sprint H3) — Admin alerts center (`/api/admin/alerts`).
  *
  * Aggregates trackers requiring operator attention :
@@ -93,7 +107,7 @@ export class AdminAlertsController {
       this.prisma.tracker.findMany({
         where: {
           status: 'OFFLINE',
-          OR: [{ lastSeenAt: { lt: offlineCutoff } }, { lastSeenAt: null }],
+          OR: [{ lastSeenAt: { lt: offlineCutoff } }, OFFLINE_NEVER_SEEN_CLAUSE],
           ...fleetClause,
         },
         include: { vehicle: { include: { fleet: true } } },
@@ -329,7 +343,7 @@ export class AdminAlertsController {
         include: { vehicle: { include: { fleet: true } } },
       }),
       this.prisma.tracker.findMany({
-        where: { status: 'OFFLINE', OR: [{ lastSeenAt: { lt: offlineCut } }, { lastSeenAt: null }] },
+        where: { status: 'OFFLINE', OR: [{ lastSeenAt: { lt: offlineCut } }, OFFLINE_NEVER_SEEN_CLAUSE] },
         include: { vehicle: true },
         take: 50,
       }),

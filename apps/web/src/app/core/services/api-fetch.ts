@@ -49,6 +49,34 @@ import { HttpFailure } from './http-failure';
 const DEFAULT_MESSAGE = 'Requête impossible';
 
 /**
+ * Faut-il remonter cet échec de transport au centre d'alerte ? (TRK-002)
+ *
+ * Deux situations produisent le même symptôme technique — une requête qui n'aboutit pas —
+ * sans qu'il y ait la moindre panne de plateforme :
+ *
+ *   1. **Le navigateur se sait hors ligne.** C'est le wifi de l'utilisateur qui est tombé.
+ *   2. **La page est cachée.** Onglet en arrière-plan, appareil en veille, navigation en
+ *      cours : le navigateur TUE les requêtes en vol. Sur iOS c'est le fameux
+ *      `TypeError: Load failed`.
+ *
+ * Le cas 2 manquait, et `navigator.onLine` ne le couvre pas : il dit « une interface réseau
+ * est active », pas « Internet est joignable ». Sur un appareil qui vient de se réveiller,
+ * il vaut déjà `true` alors que la route ne l'est pas encore. D'où des lignes ERREUR au
+ * centre d'alerte pour un hoquet que personne ne peut corriger.
+ *
+ * C'est exactement la garde que `realtime.service` applique déjà à ses propres reports.
+ *
+ * ⚠️ Ce qui continue de remonter : une panne réellement VÉCUE, page au premier plan et
+ * navigateur en ligne. C'est la raison d'être de ce module — la supprimer aussi le rendrait
+ * inutile.
+ */
+function shouldReportNetworkFailure(): boolean {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return false;
+  return true;
+}
+
+/**
  * Exécute un `fetch` et transforme tout échec en {@link HttpFailure} portant son statut.
  *
  * @param input  URL ou Request, comme `fetch`.
@@ -72,10 +100,9 @@ export async function apiFetch(
     // cas que PERSONNE d'autre ne peut voir — le serveur n'a rien reçu, donc il n'a rien
     // pu journaliser. Sans cette ligne, l'incident n'existe nulle part.
     //
-    // ⚠️ Le navigateur qui se sait hors ligne est écarté : c'est le wifi de l'utilisateur
-    // qui est tombé, pas la plateforme. Remonter ces cas-là remplirait le centre d'alerte
-    // d'incidents que personne ne peut corriger, et le rendrait inutile pour les vrais.
-    if (typeof navigator === 'undefined' || navigator.onLine !== false) {
+    // Voir `shouldReportNetworkFailure` : on écarte le hors-ligne et la page cachée, qui
+    // rempliraient le centre d'alerte d'incidents que personne ne peut corriger.
+    if (shouldReportNetworkFailure()) {
       reportClientError('api-fetch', new Error(`${label} — API injoignable : ${describe(err)}`));
     }
     throw new HttpFailure(0, label);
@@ -106,11 +133,19 @@ export async function apiFetchRaw(
   input: RequestInfo | URL,
   init?: RequestInit,
   label = DEFAULT_MESSAGE,
+  /**
+   * `silentNetworkFailure` — ne pas remonter un échec de TRANSPORT sur cette tentative.
+   *
+   * Réservé aux appelants qui vont RÉESSAYER : remonter le premier essai puis réussir le
+   * second laisserait une erreur au centre d'alerte pour un incident qui n'a existé pour
+   * personne. Le second essai, lui, doit remonter normalement (TRK-002).
+   */
+  opts?: { silentNetworkFailure?: boolean },
 ): Promise<Response> {
   try {
     return await fetch(input, init);
   } catch (err) {
-    if (typeof navigator === 'undefined' || navigator.onLine !== false) {
+    if (!opts?.silentNetworkFailure && shouldReportNetworkFailure()) {
       reportClientError('api-fetch', new Error(`${label} — API injoignable : ${describe(err)}`));
     }
     throw new HttpFailure(0, label);
@@ -133,7 +168,7 @@ export async function apiFetchJson<T>(
   try {
     res = await fetch(input, init);
   } catch (err) {
-    if (typeof navigator === 'undefined' || navigator.onLine !== false) {
+    if (shouldReportNetworkFailure()) {
       reportClientError('api-fetch', new Error(`${label} — API injoignable : ${describe(err)}`));
     }
     throw new HttpFailure(0, label);

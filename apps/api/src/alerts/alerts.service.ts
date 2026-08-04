@@ -158,6 +158,10 @@ export class AlertsService {
     // `recognized` = zone reconnue (perte récurrente au même endroit) ; `suspect` = zone marquée
     // suspecte (brouilleur ?). Absent = 1re perte / pas de zone → message « panne d'antenne » standard.
     recurrence?: { count: number; recognized: boolean; suspect: boolean },
+    // TRK-011 — la perte dépasse le plafond de silence toléré pour une zone CONFIRMÉE bénigne.
+    // Le message doit alors dire pourquoi il parle malgré la zone : sans ça, l'opérateur irait
+    // reconfirmer un lieu déjà confirmé, et le vrai sujet (la DURÉE) resterait invisible.
+    benignOverride?: { thresholdLabel: string },
   ): Promise<Alert | null> {
     const since = new Date(Date.now() - dedupWindowMs);
     const existing = await this.prisma.alert.findFirst({
@@ -169,7 +173,16 @@ export class AlertsService {
     const baseMsg = `Le boîtier communique toujours (réseau OK) mais n'envoie plus de position GPS depuis ${agoLabel}. Antenne probablement débranchée/masquée ou véhicule sans vue ciel : à vérifier physiquement.`;
     let title = `📡 GPS perdu — ${vehicle.plate}`;
     let message = baseMsg;
-    if (recurrence?.suspect) {
+    if (benignOverride) {
+      // Testé EN PREMIER : une zone confirmée bénigne est aussi « recognized », donc la
+      // branche suivante l'attraperait et conseillerait de confirmer une zone déjà confirmée.
+      title = `📡 GPS perdu ANORMALEMENT LONG — ${vehicle.plate}`;
+      message =
+        `Sans position GPS depuis ${agoLabel}, à un endroit pourtant CONFIRMÉ NORMAL` +
+        (recurrence ? ` (${recurrence.count} épisodes constatés)` : '') +
+        `. La zone explique une perte courte — pas au-delà de ${benignOverride.thresholdLabel}. ` +
+        `Inutile de reconfirmer le lieu : c'est la DURÉE qui est anormale. Antenne à vérifier.`;
+    } else if (recurrence?.suspect) {
       title = `📡 GPS perdu (zone suspecte) — ${vehicle.plate}`;
       message = `Perte de position GPS depuis ${agoLabel} à un endroit SIGNALÉ SUSPECT (brouilleur ?). ${recurrence.count}e perte au même endroit — à surveiller de près.`;
     } else if (recurrence?.recognized) {

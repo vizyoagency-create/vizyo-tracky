@@ -33,13 +33,50 @@ describe('RealtimeIncidentController', () => {
     );
   });
 
-  it('escalade en CRITICAL si le canal n\'a JAMAIS été établi (API/WS injoignable)', async () => {
+  // --- TRK-003 : « jamais établi » seul ne suffit plus à crier au loup -------------------
+  //
+  // Ce test escaladait en CRITICAL sur une occurrence UNIQUE de 50 s. Or sous 2 vCPU l'API
+  // rate un pong et tous les incidents tombent pile à 45 s : un aléa de charge était classé
+  // au niveau maximal. On exige désormais que ça RECOMMENCE — ou que ça DURE.
+
+  it('garde un premier échec d\'établissement ISOLÉ en ERROR', async () => {
     await controller.report(reqFor({ id: 'u1', fleetId: 'f1' }), { downMs: 50_000, everConnected: false });
     expect(errorLogger.record).toHaveBeenCalledWith(
       expect.stringContaining('JAMAIS établi'),
       'realtime-client',
       expect.objectContaining({ everConnected: false }),
+      'ERROR',
+    );
+  });
+
+  it('escalade en CRITICAL quand l\'échec d\'établissement RECOMMENCE', async () => {
+    await controller.report(reqFor({ id: 'u1', fleetId: 'f1' }), { downMs: 50_000, everConnected: false });
+    // Au-delà de la fenêtre de dédup (5 min), mais dans celle de répétition (1 h).
+    jest.advanceTimersByTime(10 * 60_000);
+    await controller.report(reqFor({ id: 'u2', fleetId: 'f1' }), { downMs: 50_000, everConnected: false });
+
+    expect(errorLogger.record).toHaveBeenLastCalledWith(
+      expect.stringContaining('JAMAIS établi'),
+      'realtime-client',
+      expect.objectContaining({ everConnected: false }),
       'CRITICAL',
+    );
+  });
+
+  it('ne considère pas comme répétition un incident vieux de plus d\'une heure', async () => {
+    await controller.report(reqFor({ id: 'u1', fleetId: 'f1' }), { downMs: 50_000, everConnected: false });
+    jest.advanceTimersByTime(90 * 60_000);
+    await controller.report(reqFor({ id: 'u2', fleetId: 'f1' }), { downMs: 50_000, everConnected: false });
+
+    expect(errorLogger.record).toHaveBeenLastCalledWith(
+      expect.anything(), 'realtime-client', expect.anything(), 'ERROR',
+    );
+  });
+
+  it('escalade en CRITICAL sur une coupure LONGUE, même isolée', async () => {
+    await controller.report(reqFor({ id: 'u1', fleetId: 'f1' }), { downMs: 130_000, everConnected: true });
+    expect(errorLogger.record).toHaveBeenCalledWith(
+      expect.anything(), 'realtime-client', expect.anything(), 'CRITICAL',
     );
   });
 

@@ -13,6 +13,18 @@ export function isTransient(error: unknown): boolean {
 }
 
 /**
+ * Pose le marqueur `transient` sur une erreur qu'on lève soi-même.
+ *
+ * Pour les services qui ne disposent pas d'une classe d'erreur dédiée (contrairement à
+ * `AiServiceError`) mais constatent le même genre d'aléa : une dépendance TIERCE qui ne
+ * répond pas. Passe par cette fonction plutôt que d'écrire la propriété à la main, pour que
+ * le contrat n'ait qu'un seul endroit où être lu ET posé.
+ */
+export function asTransient<T extends Error>(error: T): T {
+  return Object.assign(error, { transient: true as const });
+}
+
+/**
  * Marqueur posé sur une erreur DÉJÀ archivée, pour qu'une couche supérieure qui la rattrape ne
  * l'archive pas une SECONDE fois.
  *
