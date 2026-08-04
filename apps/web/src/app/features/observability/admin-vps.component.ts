@@ -1,9 +1,11 @@
-import { DatePipe } from '@angular/common';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import { Component, type OnInit, computed, inject, signal } from '@angular/core';
 import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 import { RouterLink } from '@angular/router';
 import {
+  Activity,
   ArrowLeft,
+  CalendarClock,
   ChevronLeft,
   CircleAlert,
   Cpu,
@@ -14,6 +16,8 @@ import {
   Search,
   Server,
   ShieldAlert,
+  Trash2,
+  TrendingUp,
   Wrench,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
@@ -66,7 +70,7 @@ const STATUT_STYLE: Record<string, string> = {
 @Component({
   selector: 'app-admin-vps',
   standalone: true,
-  imports: [LucideAngularModule, RouterLink, DatePipe],
+  imports: [LucideAngularModule, RouterLink, DatePipe, DecimalPipe],
   template: `
     <div class="page">
       <div class="head">
@@ -112,6 +116,109 @@ const STATUT_STYLE: Record<string, string> = {
               <div class="tiles">
                 @for (c of chiffres(); track c[0]) {
                   <div class="tile"><span class="num">{{ c[1] }}</span><span class="lbl">{{ c[0] }}</span></div>
+                }
+              </div>
+            </div>
+          }
+
+          <!-- ── Prévisions ──────────────────────────────────────────────────────── -->
+          @if (idx.previsions; as p) {
+            <div class="s-card">
+              <div class="card-title">
+                <lucide-icon [img]="TrendingUp" [size]="16" /> Prévisions — saturation du disque
+                <span class="when">seuil d'alerte {{ p.disque.seuilAlertePct }} %</span>
+              </div>
+
+              <div class="jauge" [class.warn]="p.disque.utilisePct >= 75" [class.crit]="p.disque.utilisePct >= p.disque.seuilAlertePct">
+                <div class="barre"><span [style.width.%]="p.disque.utilisePct"></span></div>
+                <div class="jauge-txt">
+                  <b>{{ p.disque.utiliseGo }} Go</b> utilisés sur {{ p.disque.totalGo }} Go
+                  · {{ p.disque.libreGo }} Go libres
+                  <span class="pct">{{ p.disque.utilisePct }} %</span>
+                </div>
+              </div>
+
+              <p class="tendance" [class.ok]="tendance().dispo">{{ tendance().message }}</p>
+
+              <div class="card-title sub-title">
+                <lucide-icon [img]="Trash2" [size]="15" /> Ce que chaque nettoyage rendrait
+              </div>
+              <div class="tbl-wrap">
+                <table class="tbl">
+                  <thead>
+                    <tr><th>Poste</th><th class="n">Gain</th><th>Commande</th><th>Risque</th><th>Contrepartie</th></tr>
+                  </thead>
+                  <tbody>
+                    @for (r of p.recuperable; track r.poste) {
+                      <tr [class.inerte]="r.commande === '— AUCUNE —'">
+                        <td class="fname">
+                          {{ r.poste }}
+                          @if (r.constat) { <span class="ref">{{ r.constat }}</span> }
+                        </td>
+                        <td class="n"><b>{{ r.go }} Go</b></td>
+                        <td><code>{{ r.commande }}</code></td>
+                        <td [class.red]="r.risque.startsWith('ELEVE')">{{ r.risque }}</td>
+                        <td class="small">{{ r.contrepartie }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td><b>Total récupérable sans risque</b></td>
+                      <td class="n"><b class="gain-total">{{ totalRecuperable() }} Go</b></td>
+                      <td colspan="3" class="small">
+                        soit un disque à <b>{{ pctApresNettoyage() }} %</b> au lieu de {{ p.disque.utilisePct }} %
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              <div class="fond">
+                <lucide-icon [img]="Activity" [size]="14" />
+                <span>
+                  <b>Charge de fond permanente</b> — {{ p.chargeDeFond.healthchecksParMinute }} sondes/min
+                  sur {{ p.chargeDeFond.conteneursSondes }} conteneurs
+                  ({{ p.chargeDeFond.healthchecksParJour | number }}/jour), et
+                  {{ p.chargeDeFond.processusParMinute | number }} processus créés par minute au total.
+                  C'est le coût que personne ne planifie.
+                </span>
+              </div>
+            </div>
+          }
+
+          <!-- ── Ordonnancement ──────────────────────────────────────────────────── -->
+          @if (idx.ordonnancement.length) {
+            <div class="s-card">
+              <div class="card-title">
+                <lucide-icon [img]="CalendarClock" [size]="16" /> Ordonnancement — ce qui se déclenche tout seul
+                <span class="when">{{ idx.ordonnancement.length }} opérations</span>
+              </div>
+              <p class="intro-txt">
+                Les trois couches sur la même ligne de temps : <b class="c-vps">VPS</b> (cron et timers
+                de la machine), <b class="c-poste">Poste</b> (agents planifiés) et le permanent.
+                Une collision ne se voit qu'ici — c'est ainsi qu'on a trouvé les deux sauvegardes de 5 h.
+              </p>
+
+              <div class="ordo">
+                @for (o of ordonnancementTrie(); track o.id) {
+                  <article class="op" [class]="'op c-' + o.couche.toLowerCase()">
+                    <div class="heure">
+                      <span class="hl">{{ o.heureLocale }}</span>
+                      @if (o.heureUtc !== '—') { <span class="hu">{{ o.heureUtc }} UTC</span> }
+                    </div>
+                    <div class="corps">
+                      <div class="ligne1">
+                        <span class="couche">{{ o.couche }}</span>
+                        <span class="quoi">{{ o.quoi }}</span>
+                        @if (o.constat) { <span class="ref">{{ o.constat }}</span> }
+                      </div>
+                      <div class="ligne2">
+                        <span>{{ o.cadence }}</span> · <span>durée {{ o.duree }}</span> · <span>{{ o.cout }}</span>
+                      </div>
+                      @if (o.note) { <p class="note">{{ o.note }}</p> }
+                    </div>
+                  </article>
                 }
               </div>
             </div>
@@ -235,6 +342,53 @@ const STATUT_STYLE: Record<string, string> = {
       .tile .num { font-family: var(--font-display); font-size: 23px; font-weight: 700; color: var(--fg-primary); }
       .tile .lbl { font-size: 12px; color: var(--fg-tertiary); }
 
+      /* ── Prévisions ── */
+      .sub-title { margin-top: 20px; font-size: 13.5px; }
+      .jauge { margin-bottom: 10px; }
+      .barre { height: 10px; border-radius: 999px; background: var(--bg-tertiary); overflow: hidden; }
+      .barre span { display: block; height: 100%; border-radius: 999px; background: var(--tracky-light); transition: width .3s; }
+      .jauge.warn .barre span { background: #fbbf24; }
+      .jauge.crit .barre span { background: #f87171; }
+      .jauge-txt { display: flex; align-items: baseline; gap: 8px; margin-top: 7px; font-size: 13px; color: var(--fg-secondary); }
+      .jauge-txt b { color: var(--fg-primary); }
+      .jauge-txt .pct { margin-left: auto; font-family: var(--font-display); font-size: 19px; font-weight: 700; color: var(--fg-primary); }
+      .tendance { font-size: 12.5px; color: var(--fg-tertiary); line-height: 1.5; margin: 0 0 4px; font-style: italic; }
+      .tendance.ok { color: var(--fg-secondary); font-style: normal; }
+      .intro-txt { font-size: 12.5px; color: var(--fg-tertiary); line-height: 1.55; margin: -6px 0 14px; }
+      .ref { display: inline-block; font-family: var(--font-mono, monospace); font-size: 10.5px; padding: 1px 6px; margin-left: 6px; border-radius: 5px; background: var(--bg-secondary); color: var(--fg-tertiary); border: 1px solid var(--border-subtle); }
+      .tbl-wrap { overflow-x: auto; }
+      .tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+      .tbl th { text-align: left; color: var(--fg-tertiary); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; padding: 6px 9px; border-bottom: 1px solid var(--border-subtle); }
+      .tbl th.n, .tbl td.n { text-align: right; white-space: nowrap; }
+      .tbl td { padding: 8px 9px; border-bottom: 1px solid var(--border-subtle); color: var(--fg-secondary); vertical-align: top; }
+      .tbl tfoot td { border-bottom: none; border-top: 1px solid var(--border-subtle); padding-top: 10px; }
+      .tbl tr.inerte { opacity: .55; }
+      .tbl code { font-size: 11.5px; background: var(--bg-tertiary); padding: 2px 6px; border-radius: 5px; white-space: nowrap; }
+      .fname { color: var(--fg-primary); font-weight: 500; }
+      .gain-total { color: var(--tracky-light); font-size: 14px; }
+      .red { color: #f87171; font-weight: 600; }
+      .small { font-size: 11.5px; }
+      .fond { display: flex; align-items: flex-start; gap: 8px; margin-top: 16px; padding: 11px 13px; border-radius: 11px; background: var(--bg-tertiary); font-size: 12.5px; color: var(--fg-secondary); line-height: 1.55; }
+      .fond lucide-icon { color: #fbbf24; flex-shrink: 0; margin-top: 2px; }
+
+      /* ── Ordonnancement ── */
+      .ordo { display: flex; flex-direction: column; gap: 8px; }
+      .op { display: grid; grid-template-columns: 92px 1fr; gap: 12px; padding: 10px 13px; border-radius: 11px; background: var(--bg-tertiary); border-left: 3px solid var(--border-subtle); }
+      .op.c-vps { border-left-color: #0ea5e9; }
+      .op.c-poste { border-left-color: #a78bfa; }
+      .op .heure { display: flex; flex-direction: column; gap: 1px; }
+      .op .hl { font-family: var(--font-display); font-size: 14px; font-weight: 700; color: var(--fg-primary); }
+      .op .hu { font-size: 10.5px; color: var(--fg-tertiary); }
+      .op .ligne1 { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+      .op .couche { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; padding: 1.5px 7px; border-radius: 999px; background: var(--bg-secondary); color: var(--fg-tertiary); border: 1px solid var(--border-subtle); }
+      .op.c-vps .couche { color: #38bdf8; border-color: rgba(14,165,233,.35); }
+      .op.c-poste .couche { color: #a78bfa; border-color: rgba(139,92,246,.35); }
+      .op .quoi { font-size: 13px; color: var(--fg-primary); font-weight: 500; }
+      .op .ligne2 { margin-top: 3px; font-size: 11.5px; color: var(--fg-tertiary); }
+      .op .note { margin: 5px 0 0; font-size: 12px; color: var(--fg-secondary); line-height: 1.5; }
+      .c-vps { color: #38bdf8; }
+      .c-poste { color: #a78bfa; }
+
       .filtres { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 14px; }
       .chip { font-size: 12px; padding: 4px 11px; border-radius: 999px; cursor: pointer; background: var(--bg-tertiary); color: var(--fg-tertiary); border: 1px solid var(--border-subtle); }
       .chip:hover { color: var(--fg-primary); }
@@ -299,8 +453,12 @@ export class AdminVpsComponent implements OnInit {
   private readonly wiki = inject(VpsAuditWikiService);
   private readonly sanitizer = inject(DomSanitizer);
 
+  protected readonly Activity = Activity;
   protected readonly ArrowLeft = ArrowLeft;
+  protected readonly CalendarClock = CalendarClock;
   protected readonly ChevronLeft = ChevronLeft;
+  protected readonly Trash2 = Trash2;
+  protected readonly TrendingUp = TrendingUp;
   protected readonly CircleAlert = CircleAlert;
   protected readonly Cpu = Cpu;
   protected readonly FileText = FileText;
@@ -365,6 +523,76 @@ export class AdminVpsComponent implements OnInit {
   });
 
   protected readonly dernierPassage = computed(() => this.index()?.passages?.[0] ?? null);
+
+  // ── Prévisions ─────────────────────────────────────────────────────────────────────
+
+  /** Total récupérable **sans risque** : la ligne « aucune commande » est exclue à dessein. */
+  protected readonly totalRecuperable = computed(() => {
+    const r = this.index()?.previsions?.recuperable ?? [];
+    return Math.round(r.filter((x) => x.commande !== '— AUCUNE —').reduce((s, x) => s + x.go, 0) * 10) / 10;
+  });
+
+  protected readonly pctApresNettoyage = computed(() => {
+    const d = this.index()?.previsions?.disque;
+    if (!d) return 0;
+    return Math.round(((d.utiliseGo - this.totalRecuperable()) / d.totalGo) * 100);
+  });
+
+  /**
+   * Tendance de remplissage du disque, dérivée de l'historique des passages.
+   *
+   * ⚠️ Il faut **au moins deux passages** pour qu'une pente existe. Tant qu'il n'y en a qu'un,
+   * on le dit franchement plutôt que d'afficher « 0 %/jour » — un zéro inventé se lit comme
+   * « rien ne bouge », ce qui est exactement le contraire de « on ne sait pas encore ».
+   */
+  protected readonly tendance = computed<{ dispo: boolean; message: string }>(() => {
+    const passages = this.index()?.passages ?? [];
+    const seuil = this.index()?.previsions?.disque.seuilAlertePct ?? 90;
+
+    const points = passages
+      .map((p) => ({ date: p.date, pct: p.chiffres?.['disqueUtilisePct'] }))
+      .filter((p): p is { date: string; pct: number } => typeof p.pct === 'number')
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    if (points.length < 2) {
+      return {
+        dispo: false,
+        message:
+          'Tendance indisponible : elle demande au moins deux passages. Elle apparaîtra au prochain audit.',
+      };
+    }
+
+    const premier = points[0];
+    const dernier = points[points.length - 1];
+    const jours = (Date.parse(dernier.date) - Date.parse(premier.date)) / 86_400_000;
+    if (jours <= 0) return { dispo: false, message: 'Tendance indisponible : passages non datés distinctement.' };
+
+    const pente = (dernier.pct - premier.pct) / jours;
+    if (pente <= 0.01) {
+      return {
+        dispo: true,
+        message: `Le disque ne se remplit pas (${pente.toFixed(2)} %/jour sur ${points.length} passages). Aucune saturation en vue.`,
+      };
+    }
+
+    const joursRestants = Math.round((seuil - dernier.pct) / pente);
+    return {
+      dispo: true,
+      message:
+        `Le disque gagne ${pente.toFixed(2)} %/jour sur ${points.length} passages. ` +
+        `À ce rythme, le seuil de ${seuil} % serait atteint dans ${joursRestants} jour${joursRestants > 1 ? 's' : ''}` +
+        ` — et les ${this.totalRecuperable()} Go récupérables repoussent l'échéance d'autant.`,
+    };
+  });
+
+  /** L'ordre de la nuit : les opérations à heure fixe d'abord, le permanent à la fin. */
+  protected readonly ordonnancementTrie = computed(() => {
+    const ops = this.index()?.ordonnancement ?? [];
+    const rang = (h: string) => (/^\d{2}:\d{2}$/.test(h) ? 0 : 1);
+    return [...ops].sort(
+      (a, b) => rang(a.heureLocale) - rang(b.heureLocale) || a.heureLocale.localeCompare(b.heureLocale),
+    );
+  });
 
   protected readonly chiffres = computed<[string, number | string][]>(() => {
     const c = this.dernierPassage()?.chiffres;

@@ -237,6 +237,45 @@ done
 sub "Services en echec"
 systemctl --failed --no-pager 2>/dev/null | head -8 | sed 's/^/  /'
 
+# ── La charge de fond que PERSONNE ne planifie ────────────────────────────────────────────
+# Les crons et les timers se declarent ; les healthchecks, non. Ils sont pourtant la premiere
+# source de creation de processus de la machine : chaque passage lance une chaine `runc exec`
+# complete (runc -> PARENT -> CHILD -> INIT -> la commande), soit ~5 processus, et ceux qui
+# interrogent une base ouvrent EN PLUS un backend PostgreSQL.
+sub "Healthchecks : la charge de fond non planifiee"
+for c in $(docker ps --format '{{.Names}}' 2>/dev/null); do
+  docker inspect --format '{{if .Config.Healthcheck}}{{.Config.Healthcheck.Interval}}|{{$.Name}}{{end}}' "$c" 2>/dev/null
+done | grep . | sed 's|/||' | sort | awk -F'|' '{iv[$1]++} END {for (i in iv) printf "  %3d conteneurs toutes les %s\n", iv[i], i}'
+docker ps --format '{{.Names}}' 2>/dev/null | while read c; do
+  docker inspect --format '{{if .Config.Healthcheck}}{{.Config.Healthcheck.Interval}}{{end}}' "$c" 2>/dev/null
+done | grep . | awk '
+  /^10s$/ {n+=6} /^30s$/ {n+=2} /^1m0s$/ {n+=1} /^5s$/ {n+=12}
+  END {printf "  → %d invocations/min, soit ~%d/jour (chacune ~5 processus via runc)\n", n, n*1440}'
+
+sub "Creations de processus par minute (mesure de 10 s)"
+# Le compteur `processes` de /proc/stat est cumulatif depuis le demarrage : la difference sur
+# une fenetre donne le taux reel, healthchecks compris. A l'arret, c'est eux qui dominent.
+#
+# ⚠️ FENETRE DE 10 s, PAS PLUS : a 20 s, la collecte complete depassait 90 s — le budget que
+# cette meme procedure impose. Un audit qui viole sa propre regle pour mieux mesurer se trompe
+# de priorite (defaut VPS-M05, corrige le 2026-08-04).
+p1=$(awk '/^processes/{print $2}' /proc/stat); sleep 10
+p2=$(awk '/^processes/{print $2}' /proc/stat)
+awk -v d="$((p2-p1))" 'BEGIN {printf "  %d processus en 10 s = %d/min = ~%.1f millions/jour\n", d, d*6, d*6*1440/1000000}'
+
+sub "Crons INTERNES aux conteneurs (verifier que crond ne tourne pas)"
+# ⚠️ PIEGE : toute image Alpine embarque un /etc/crontabs/root avec des `run-parts
+# /etc/periodic/*`. Il ressemble a une tache planifiee cachee, mais `crond` n'est PAS lance
+# dans ces conteneurs et /etc/periodic est vide : c'est inerte. Ne pas le signaler comme un
+# constat sans avoir verifie ces deux points (cf. VPS-M04).
+for c in $(docker ps --format '{{.Names}}' 2>/dev/null | head -6); do
+  # Une seule invocation `docker exec` : deux appels separes coutaient deux chaines runc, et
+  # leurs sorties se melangeaient sur des lignes differentes (illisible).
+  out=$(docker exec "$c" sh -c 'printf "%s/%s" "$(ps ax 2>/dev/null | grep -c "[c]rond")" "$(find /etc/periodic -type f 2>/dev/null | wc -l)"' 2>/dev/null)
+  printf '  %-24s crond_actif/scripts = %s\n' "$c" "${out:-indisponible}"
+done
+echo "  (0/0 attendu partout : le crontab Alpine existe mais rien ne le lit)"
+
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 section "8. JOURNAUX"
 # ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -270,5 +309,40 @@ else
   echo "  !! sysstat absent — AUCUN historique. Sans lui, impossible de distinguer un pic"
   echo "     ponctuel d'une derive de fond.  Installer :  apt install sysstat"
 fi
+
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+section "10. PREVISIONS — ce que chaque nettoyage rendrait"
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+# Le rapport doit pouvoir dire « il reste N jours avant saturation » et « telle commande rend
+# X Go ». La TENDANCE ne se lit pas ici (sysstat ne suit pas le remplissage du disque) : elle se
+# calcule en comparant les `chiffres` des passages precedents dans app/wiki.json. Cette section
+# fournit l'instantane ; le rapport fait la soustraction.
+TOTAL_KB=$(df -k / | awk 'NR==2{print $2}')
+USED_KB=$(df -k / | awk 'NR==2{print $3}')
+FREE_KB=$(df -k / | awk 'NR==2{print $4}')
+awk -v t="$TOTAL_KB" -v u="$USED_KB" -v f="$FREE_KB" 'BEGIN {
+  printf "  disque : %.0f Go utilises / %.0f Go (%.0f%%), %.0f Go libres\n", u/1048576, t/1048576, 100*u/t, f/1048576 }'
+
+echo "  ── recuperable, par poste ──"
+# ⚠️ On passe par `--format` et NON par le tableau texte : « Local Volumes » contient un
+# espace, donc les colonnes se decalent d'un cran sur cette ligne-la et un `$NF` en awk
+# ramenait « (100%) » au lieu de la taille (defaut VPS-M05, corrige le 2026-08-04).
+docker system df --format '{{.Type}}|{{.Reclaimable}}' 2>/dev/null | while IFS='|' read -r type recl; do
+  case "$type" in
+    "Build Cache")   printf '  %-28s %s\n' "cache de build" "$recl" ;;
+    "Images")        printf '  %-28s %s\n' "images non utilisees" "$recl" ;;
+    "Containers")    printf '  %-28s %s\n' "conteneurs arretes" "$recl" ;;
+    "Local Volumes") printf '  %-28s %s  (⚠️ contient des BASES : ne pas purger a l aveugle)\n' "volumes non montes" "$recl" ;;
+  esac
+done
+
+# Les sauvegardes en double sont recuperables SANS perte : il en reste une par jour.
+DUP=$(find /var/backups/vizyo-tracky -name "*.sql.gz" -printf "%f\n" 2>/dev/null \
+      | sed -E 's/.*_([0-9]{8})-.*/\1/' | sort | uniq -c | awk '$1>1 {n+=$1-1} END {print n+0}')
+if [ "${DUP:-0}" -gt 0 ]; then
+  MOY=$(find /var/backups/vizyo-tracky -name "*.sql.gz" -printf "%s\n" 2>/dev/null | awk '{t+=$1;n++} END {if(n) print int(t/n)}')
+  awk -v d="$DUP" -v m="${MOY:-0}" 'BEGIN {printf "  %-28s %.1f Go  (%d fichiers en trop)\n", "sauvegardes en double", d*m/1073741824, d}'
+fi
+printf '  %-28s %s\n' "journaux systemd" "$(journalctl --disk-usage 2>/dev/null | grep -oE '[0-9.]+[MG]' | head -1)"
 
 printf '\n\nFIN DE COLLECTE — %s\n' "$(date -u '+%Y-%m-%d %H:%M:%S UTC')"

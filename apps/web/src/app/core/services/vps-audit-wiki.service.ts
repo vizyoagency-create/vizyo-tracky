@@ -70,6 +70,55 @@ export interface VpsWikiConstat {
   ancre?: string;
 }
 
+/**
+ * Une opération qui se déclenche toute seule. Les trois couches sont mélangées à dessein :
+ * une collision ne se voit qu'en les regardant sur la même ligne de temps.
+ *
+ * `couche` vaut `VPS` (cron/timer sur la machine), `Poste` (agent planifié) ou `App`.
+ */
+export interface VpsWikiOrdonnancement {
+  id: string;
+  couche: string;
+  heureLocale: string;
+  heureUtc: string;
+  cadence: string;
+  quoi: string;
+  duree: string;
+  cout: string;
+  note?: string;
+  /** Renvoie vers la fiche du référentiel quand cette opération pose problème. */
+  constat?: string;
+}
+
+/** Un poste récupérable, avec sa commande et ce qu'elle coûte. */
+export interface VpsWikiRecuperable {
+  poste: string;
+  go: number;
+  commande: string;
+  risque: string;
+  contrepartie: string;
+  constat?: string;
+}
+
+export interface VpsWikiPrevisions {
+  disque: {
+    totalGo: number;
+    utiliseGo: number;
+    libreGo: number;
+    utilisePct: number;
+    seuilAlertePct: number;
+  };
+  recuperable: VpsWikiRecuperable[];
+  chargeDeFond: {
+    processusParMinute: number;
+    processusParJour: number;
+    healthchecksParMinute: number;
+    healthchecksParJour: number;
+    conteneursSondes: number;
+    note?: string;
+  };
+}
+
 export interface VpsWikiIndex {
   available: boolean;
   title: string;
@@ -80,6 +129,8 @@ export interface VpsWikiIndex {
   fiches: VpsWikiConstat[];
   statuts: VpsWikiStatut[];
   passages: VpsWikiPassage[];
+  ordonnancement: VpsWikiOrdonnancement[];
+  previsions: VpsWikiPrevisions | null;
   documentCount: number;
 }
 

@@ -225,7 +225,85 @@ d'un coup : le noyau, les 1,1 Go de mémoire résidente de `dockerd`, et le swap
 
 ---
 
+## VPS-011 — Les healthchecks sont la première charge de fond, et personne ne les voit
+
+- **Domaine** : docker · **Gravité** : 3 · **Statut** : `A_TRAITER`
+- **Vu** : 2026-08-04 · **Mesure** : 88 invocations/min = **126 720/jour** ; 1 398 processus/min créés au total
+
+**Quoi.** Les crons et les timers se déclarent quelque part — on peut les lister. Les
+healthchecks Docker, non : ils sont une propriété du conteneur, et rien ne les agrège. Ils
+constituent pourtant **la première source de création de processus de la machine**.
+
+Le coût réel n'est pas « une commande » : chaque passage déclenche une chaîne `runc exec`
+complète — `runc` → `[0:PARENT]` → `[1:CHILD]` → `[2:INIT]` → la commande — soit **~5
+processus**. Et les 10 sondes de base de données ouvrent **en plus** un backend PostgreSQL à
+chaque fois (visible en `[local] startup` dans la table des processus).
+
+| Cadence | Conteneurs | Invocations/min |
+|---|---:|---:|
+| toutes les 10 s | 10 (7 Postgres, 1 MariaDB, 2 Redis) | 60 |
+| toutes les 30 s | 14 (API et frontaux) | 28 |
+| **total** | **24** | **88** |
+
+**Pourquoi c'était invisible.** Aucune commande ne les liste ensemble. `docker ps` montre
+`(healthy)`, pas la fréquence. Et le coût est diffus : ~11 % de CPU non-inactif cumulé, réparti
+sur toutes les secondes de la journée — jamais un pic, donc jamais une alerte.
+
+**Quoi faire.** Espacer les sondes des piles **de développement** et des bases, où 10 s
+n'apporte rien : une base qui tombe est détectée en 30 s aussi bien qu'en 10 s.
+
+```yaml
+healthcheck:
+  interval: 30s     # au lieu de 10s, sur les stacks -dev et les bases
+```
+
+**Gain** : passer les 10 sondes de 10 s à 30 s retire **40 invocations/min**, soit 57 600
+exécutions par jour et ~200 000 créations de processus quotidiennes en moins.
+**À ne pas faire** : toucher aux sondes de `tracky-api` et `tracky-postgres` en production —
+c'est là que la détection rapide sert vraiment.
+
+---
+
 ## Constats de méthode (sur l'audit lui-même)
+
+### VPS-M04 — Le crontab Alpine des conteneurs est un faux positif
+
+- **Vu** : 2026-08-04 · **Statut** : `ACCEPTE` (documenté pour ne pas le re-signaler)
+
+Un balayage des conteneurs remonte un crontab dans **24 d'entre eux** :
+
+```
+*/15 * * * *  run-parts /etc/periodic/15min
+0    2 * * *  run-parts /etc/periodic/daily
+```
+
+Ça ressemble exactement à ce qu'on cherche — des tâches planifiées cachées. **C'est inerte** :
+toute image Alpine embarque ce fichier, mais `crond` n'est pas lancé dans ces conteneurs
+(`ps | grep crond` = 0) et `/etc/periodic/*` est vide (0 script). Vérifié sur 6 conteneurs.
+
+**Leçon générale** : un fichier de configuration n'est pas une preuve d'exécution. Avant de
+signaler une tâche planifiée, vérifier que **quelque chose la lit**. Le collecteur affiche
+désormais `crond_actif/scripts = 0/0` pour rendre cette vérification visible plutôt que
+d'omettre le sujet.
+
+### VPS-M05 — L'audit a dépassé son propre budget, et deux mesures étaient fausses
+
+- **Vu** : 2026-08-04 · **Statut** : `APPLIQUE` (corrigé le jour même)
+
+L'ajout de la section « charge de fond » a introduit trois défauts d'un coup :
+
+1. **99 secondes de collecte** — au-dessus des 90 s que cette même procédure impose. La cause :
+   une fenêtre de mesure de 20 s pour compter les créations de processus. Ramenée à 10 s
+   (44 s au total). *Un audit qui viole sa propre règle pour mieux mesurer se trompe de priorité.*
+2. **Le tableau « récupérable » était faux** : `docker system df` affiche « Local Volumes », un
+   libellé **contenant un espace**, qui décale les colonnes d'un cran sur cette ligne. Le `$NF`
+   en awk ramenait `(100%)` au lieu de la taille. Corrigé en passant par `--format`.
+3. **Deux `docker exec` successifs par conteneur** pour une seule question : leurs sorties se
+   mélangeaient sur des lignes différentes, et chaque appel coûtait une chaîne `runc` — l'audit
+   ajoutait à la charge qu'il venait de dénoncer. Fusionnés en un seul appel.
+
+**Leçon générale** : une sortie tabulée dont un libellé contient un espace n'est pas
+analysable en positionnel. Quand un outil propose `--format`, l'utiliser.
 
 ### VPS-M01 — Compter les IP sur `from <IP>` mélange succès et échecs
 

@@ -21,9 +21,36 @@ se remplit se voit en semaines. Les mélanger noierait la seconde.
 ## Où ça se lit
 
 **Dans Tracky** : `/admin` → **Audit VPS**. Tout ce dossier y est consultable.
-L'accueil est un **tableau de bord** : pour chaque constat, *quand* il a été vu, *quoi*
-c'est, *quoi faire* et *ce que ça rend*. Servi par `GET /api/admin/vps/wiki` (SUPER_ADMIN),
-qui parcourt le dossier sur le disque.
+Servi par `GET /api/admin/vps/wiki` (SUPER_ADMIN), qui parcourt le dossier sur le disque.
+
+L'écran répond à quatre questions, dans cet ordre :
+
+| Bloc | Ce qu'il montre | D'où viennent les données |
+|---|---|---|
+| **Verdict** | l'état en une phrase | `passages[0].verdict` |
+| **Prévisions** | remplissage du disque, **tendance**, et ce que chaque nettoyage rendrait | `previsions` + calcul de pente sur l'historique des `passages` |
+| **Ordonnancement** | tout ce qui se déclenche seul, **les trois couches sur la même ligne de temps** | `ordonnancement` |
+| **Constats** | pour chacun : *quand*, *quoi*, *quoi faire*, *ce que ça rend* | `fiches` |
+
+> La **tendance** de remplissage demande au moins deux passages. Tant qu'il n'y en a qu'un,
+> l'écran le dit franchement plutôt que d'afficher « 0 %/jour » — un zéro inventé se lit comme
+> « rien ne bouge », l'exact contraire de « on ne sait pas encore ».
+
+### Les trois couches de l'ordonnancement
+
+C'est le seul endroit où l'on voit **ensemble** ce qui se déclenche tout seul :
+
+- **VPS** — crons et timers systemd de la machine ;
+- **Poste** — les agents planifiés (audits) ;
+- **le permanent** — healthchecks, sondes, collecte `sysstat`.
+
+Une collision ne se voit qu'en les regardant sur la même ligne de temps. C'est ainsi qu'ont été
+trouvées les **deux sauvegardes de 5 h** ([VPS-003](./REFERENCE-CONSTATS.md)) : chaque journal
+n'en montrait qu'une.
+
+> ⚠️ La couche **application** (les 32 tâches `@Cron` de l'API) a déjà son écran dédié :
+> `/admin/background-tasks`. Elle n'est pas reprise ici — deux catalogues du même objet
+> divergeraient, et c'est le genre de doublon que cet audit existe pour trouver.
 
 > ⚠️ Cet écran est distinct de `/admin/system`, qui montre l'**instant** (CPU, RAM, charge
 > en direct). Celui-ci montre la **dérive** : ce qui se remplit, ce qui traîne, ce qui expose.

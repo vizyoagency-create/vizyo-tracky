@@ -104,6 +104,10 @@ interface Manifest {
   /** Barème des statuts (libellé, puce, ordre) — décrit dans le manifeste, pas dans le code. */
   statuts?: unknown[];
   passages?: unknown[];
+  /** Ce qui se déclenche tout seul, toutes couches confondues (VPS, poste, application). */
+  ordonnancement?: unknown[];
+  /** Instantané du récupérable + coût de la charge de fond. La tendance se calcule à l'écran. */
+  previsions?: unknown;
 }
 
 export interface WikiIndex {
@@ -115,6 +119,8 @@ export interface WikiIndex {
   fiches: unknown[];
   statuts: unknown[];
   passages: unknown[];
+  ordonnancement: unknown[];
+  previsions: unknown;
   documentCount: number;
 }
 
@@ -350,6 +356,8 @@ export abstract class DocsWikiService {
       fiches: Array.isArray(manifest.fiches) ? manifest.fiches : [],
       statuts: Array.isArray(manifest.statuts) ? manifest.statuts : [],
       passages: Array.isArray(manifest.passages) ? manifest.passages : [],
+      ordonnancement: Array.isArray(manifest.ordonnancement) ? manifest.ordonnancement : [],
+      previsions: manifest.previsions ?? null,
       documentCount: documents.length,
     };
   }
