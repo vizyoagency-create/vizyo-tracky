@@ -94,16 +94,32 @@ GROUP BY 1, 2
 ORDER BY n DESC
 LIMIT 15;
 
+\echo ### SECTION cadence_resume
+-- LE chiffre à comparer d'un passage à l'autre (à reporter dans `chiffres` du manifeste).
+--
+-- Seuil = 20 s = `HARD_CAP_MIN_S`, le minimum OFFICIEL du Coban GPS403D. Ce n'est pas un
+-- seuil de confort : sous cette valeur, la cible est physiquement intenable et le boîtier
+-- ne peut plus JAMAIS converger. Une version antérieure de ce fichier comptait « sous
+-- 10 s », un seuil arbitraire qui sous-estimait le phénomène de moitié.
+SELECT count(*) FILTER (WHERE "desiredFixIntervalS" < 20) AS cible_sous_minimum_materiel,
+       count(*) FILTER (WHERE "desiredFixIntervalS" < 10) AS dont_sous_10s,
+       min("desiredFixIntervalS")                          AS cible_la_plus_basse,
+       count(*)                                            AS trackers_total
+FROM trackers;
+
 \echo ### SECTION cadence_derive
--- Détecte la dérive d'auto-alignement (TRK-008) : une cible que personne n'a
--- demandée. `suspect` = cible physiquement intenable pour un Coban.
+-- Le détail, pour nommer les véhicules concernés.
+--
+-- ⚠️ CES VALEURS BOUGENT EN PERMANENCE : l'auto-alignement réécrit la cible à chaque
+-- épisode, donc la composition de cette liste change d'une heure à l'autre. Un écart entre
+-- deux passages n'est PAS une tendance — voir « Dérive ou fluctuation ? » dans la procédure.
 SELECT t."desiredFixIntervalS" AS cible_s, t."currentFixIntervalS" AS reel_s,
        count(*) AS boitiers,
-       (t."desiredFixIntervalS" < 10) AS cible_suspecte
-FROM trackers t
+       string_agg(coalesce(v.plate, '(sans vehicule)'), ', ') AS vehicules
+FROM trackers t LEFT JOIN vehicles v ON v.id = t."vehicleId"
+WHERE t."desiredFixIntervalS" < 20
 GROUP BY 1, 2
-ORDER BY boitiers DESC
-LIMIT 20;
+ORDER BY cible_s;
 
 \echo ### SECTION gps_sans_fix
 -- Boîtier vivant (trame récente) mais position figée > 1 h → famille TRK-001.
