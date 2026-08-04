@@ -3,6 +3,8 @@ import { APP_FILTER } from '@nestjs/core';
 import { AuthModule } from '../auth/auth.module';
 import { AdminLogsController } from './admin-logs.controller';
 import { AllExceptionsFilter } from './all-exceptions.filter';
+import { CentreAlerteWikiController } from './centre-alerte-wiki.controller';
+import { CentreAlerteWikiService } from './centre-alerte-wiki.service';
 import { CobanWireLogger } from './coban-wire-logger.service';
 import { DependencyHeartbeatService } from './dependency-heartbeat.service';
 import { ScheduledTaskHeartbeatService } from './scheduled-task-heartbeat.service';
@@ -13,10 +15,13 @@ import { LogCleanupService } from './log-cleanup.service';
 @Global()
 @Module({
   imports: [AuthModule],
-  controllers: [AdminLogsController],
+  controllers: [AdminLogsController, CentreAlerteWikiController],
   providers: [
     CobanWireLogger,
     ErrorLogger,
+    // Documentation du centre d'alerte (référentiel, procédure, rapports d'audit) servie à
+    // l'écran admin : on veut ces documents SOUS LES YEUX au moment où l'on regarde une alerte.
+    CentreAlerteWikiService,
     // Vigie de saturation : EmailService vient d'EmailModule (@Global) → pas d'import croisé.
     ErrorRateWatchdogService,
     // Sonde active des dépendances : détecte les pannes SILENCIEUSES (une dépendance morte mais

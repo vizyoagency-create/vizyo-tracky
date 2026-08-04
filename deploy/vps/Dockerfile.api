@@ -32,6 +32,12 @@ COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=builder /app/apps/api/package.json ./apps/api/
 COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
 
+# Documentation du centre d'alerte (referentiel des erreurs, procedure d'audit, rapports).
+# Servie en lecture par CentreAlerteWikiService a l'ecran /admin/alerts. Sans cette copie
+# l'endpoint repondrait `available: false` en prod alors qu'il marche en developpement —
+# le WORKDIR runtime est /app/apps/api, donc `../../docs/centre-alerte` resout ici.
+COPY --from=builder /app/docs/centre-alerte ./docs/centre-alerte
+
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=60s \
   CMD wget -qO- http://localhost:3000/api/health | grep -q '"ok"' || exit 1
 

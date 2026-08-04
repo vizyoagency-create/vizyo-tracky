@@ -1,0 +1,252 @@
+{
+  "version": 2,
+  "updatedAt": "2026-08-03",
+  "title": "Centre d'alerte — documentation & audits",
+  "intro": "Tout ce qui a été observé, diagnostiqué et corrigé sur le centre d'alerte. Le référentiel garde la mémoire des erreurs au-delà de la purge de 30 jours ; les rapports gardent la trace de chaque passage.",
+  "_comment": "Fichier LU PAR L'APPLICATION (GET /api/admin/alerts/wiki). Les documents sont découverts automatiquement sur le disque : ce manifeste ne fait qu'ajouter titres, ordre et descriptions. Un fichier absent d'ici apparaît quand même — il ne disparaît jamais faute de déclaration. En revanche `fiches` et `passages` sont tenus à la main par l'agent d'audit : l'état d'un défaut et ce qu'il faut en faire ne se devinent pas d'une liste de fichiers.",
+
+  "statuts": [
+    { "cle": "NON_CORRIGE", "libelle": "À traiter", "puce": "🔴", "ordre": 1, "aide": "Défaut réel, aucun correctif livré." },
+    { "cle": "CORRECTIF_PROPOSE", "libelle": "Correctif en attente", "puce": "🟠", "ordre": 2, "aide": "Cause connue, correctif écrit, pas encore livré." },
+    { "cle": "TERRAIN", "libelle": "Action terrain", "puce": "🔵", "ordre": 3, "aide": "Vrai signal, mais l'action est matérielle ou métier — pas du code." },
+    { "cle": "CORRIGE", "libelle": "Corrigé", "puce": "🟢", "ordre": 4, "aide": "Correctif livré ET vérifié en production. Une réapparition est une régression." },
+    { "cle": "BRUIT", "libelle": "Bruit accepté", "puce": "⚪", "ordre": 5, "aide": "Pas une faute ; on assume de le voir." }
+  ],
+
+  "fiches": [
+    {
+      "id": "TRK-008",
+      "titre": "Boucle fix_continuous — 72 échecs par jour, invisibles",
+      "source": "commandes",
+      "statut": "NON_CORRIGE",
+      "gravite": 1,
+      "vuPremiere": "2026-08-03",
+      "vuDerniere": "2026-08-03",
+      "occurrences": 506,
+      "occurrencesLibelle": "506 sur 7 jours · 3564 au total",
+      "quoi": "Deux chemins écrivent la cadence cible et un seul est borné : l'auto-alignement inscrit l'intervalle observé brut, jusqu'à 2 s — sous le minimum matériel du Coban (20 s). Le boîtier ne peut alors plus jamais converger.",
+      "quoiFaire": "Séparer la consigne d'exploitation de l'intervalle accepté (`acceptedFixIntervalS`), pour qu'accepter un boîtier veuille dire arrêter de le juger — et non le juger contre une nouvelle cible.",
+      "pourquoiInvisible": "L'auto-alignement remet `fixCommandFailing` à false : l'écran affiche « Trackers FAILING : 0 ». Et les commandes FAILED ne sont dans aucune requête du centre d'alerte.",
+      "doc": "REFERENCE-ERREURS.md",
+      "ancre": "trk-008"
+    },
+    {
+      "id": "TRK-007",
+      "titre": "Commandes fix_continuous bloquées en SENT à vie",
+      "source": "commandes",
+      "statut": "NON_CORRIGE",
+      "gravite": 2,
+      "vuPremiere": "2026-08-03",
+      "vuDerniere": "2026-08-03",
+      "occurrences": 2,
+      "occurrencesLibelle": "2 commandes (3 h et 9 h d'ancienneté)",
+      "quoi": "Aucun chemin automatique ne solde une commande `fix_continuous` : le Coban n'acquitte pas, et la seule fermeture automatique n'a lieu qu'à une transition qui peut ne jamais survenir. En prime, la colonne « Raison » affiche le motif d'ENVOI, pas le résultat.",
+      "quoiFaire": "Solder par échéance : toute commande encore SENT au-delà d'un plafond est close en FAILED avec l'intervalle réellement observé. Et afficher un champ qui parle du résultat.",
+      "doc": "REFERENCE-ERREURS.md",
+      "ancre": "trk-007"
+    },
+    {
+      "id": "TRK-002",
+      "titre": "Rafraîchissement de session — fausse erreur au réveil de l'appareil",
+      "source": "frontend",
+      "statut": "NON_CORRIGE",
+      "gravite": 3,
+      "vuPremiere": "2026-07-29",
+      "vuDerniere": "2026-08-03",
+      "occurrences": 2,
+      "quoi": "Le rafraîchissement proactif est un minuteur gelé quand l'appareil dort, puis tiré AU RÉVEIL — avant que la connectivité soit rétablie. La garde `navigator.onLine` ne filtre rien : elle dit « une interface est active », pas « Internet est joignable ».",
+      "quoiFaire": "Un réessai à 3 s avant de remonter, plus la garde de visibilité que le service temps réel applique déjà correctement — sur le chemin proactif UNIQUEMENT, pour qu'une vraie panne continue de remonter.",
+      "doc": "REFERENCE-ERREURS.md",
+      "ancre": "trk-002"
+    },
+    {
+      "id": "TRK-004",
+      "titre": "Budget IA atteint — un refus délibéré journalisé comme une faute",
+      "source": "http",
+      "statut": "NON_CORRIGE",
+      "gravite": 4,
+      "vuPremiere": "2026-07-29",
+      "vuDerniere": "2026-07-29",
+      "occurrences": 1,
+      "quoi": "Le plafond de dépense IA est levé en `ServiceUnavailableException` (503), et le filtre archive tout ce qui est ≥ 500. La gouvernance qui fonctionne produit donc une erreur. La porte voisine « IA désactivée » a le même défaut.",
+      "quoiFaire": "Ajouter une garde `isExpectedRefusal()` dans `all-exceptions.filter.ts`, sur le modèle exact de `isUpstreamThrottle()` — structurelle et non textuelle. La réponse HTTP au client ne change pas.",
+      "doc": "REFERENCE-ERREURS.md",
+      "ancre": "trk-004"
+    },
+    {
+      "id": "TRK-003",
+      "titre": "Canal temps réel jamais établi — niveau CRITICAL trop systématique",
+      "source": "realtime-client",
+      "statut": "CORRECTIF_PROPOSE",
+      "gravite": 5,
+      "vuPremiere": "2026-07-31",
+      "vuDerniere": "2026-07-31",
+      "occurrences": 1,
+      "quoi": "45 s sans live sur la carte, réellement vécus au premier plan (le client a déjà la bonne garde de visibilité). Probablement la charge du VPS : 45 s est la valeur documentée sous 2 vCPU.",
+      "quoiFaire": "Nuancer le niveau sans supprimer l'alerte : CRITICAL seulement si jamais connecté ET (≥ 120 s ou un second report). ERROR sinon.",
+      "seuilReescalade": "Plus de 3 occurrences sur 24 h = ce n'est plus un aléa, c'est le dimensionnement du VPS.",
+      "doc": "REFERENCE-ERREURS.md",
+      "ancre": "trk-003"
+    },
+    {
+      "id": "TRK-005",
+      "titre": "API publique des prix carburants injoignable",
+      "source": "fuel-station",
+      "statut": "CORRECTIF_PROPOSE",
+      "gravite": 6,
+      "vuPremiere": "2026-07-28",
+      "vuDerniere": "2026-07-28",
+      "occurrences": 1,
+      "quoi": "Timeout d'une dépendance tierce. Le message est déjà bon : il nomme la dépendance, la conséquence et ce qui est préservé. C'est le CLASSEMENT qui reste à corriger.",
+      "quoiFaire": "Marquer l'échec `transient` à la levée — journalisé dans le conteneur, non archivé. La vigie de taux d'erreur reste là pour détecter une panne durable.",
+      "doc": "REFERENCE-ERREURS.md",
+      "ancre": "trk-005"
+    },
+    {
+      "id": "TRK-009",
+      "titre": "Boîtiers « hors ligne » qui n'ont jamais été mis en service",
+      "source": "trackers",
+      "statut": "CORRECTIF_PROPOSE",
+      "gravite": 7,
+      "vuPremiere": "2026-08-03",
+      "vuDerniere": "2026-08-03",
+      "occurrences": 3,
+      "occurrencesLibelle": "3 boîtiers sur 6",
+      "quoi": "Trois boîtiers en stock, jamais vus et sans véhicule, gonflent d'un tiers le compteur « hors ligne ». Ils ne sont pas tombés : ils ne se sont jamais levés.",
+      "quoiFaire": "Exclure de l'alerte les boîtiers `lastSeenAt IS NULL AND vehicleId IS NULL`, et les présenter comme un état d'inventaire. Garder l'alerte pour un boîtier jamais vu MAIS rattaché à un véhicule — là, c'est une pose ratée.",
+      "doc": "REFERENCE-ERREURS.md",
+      "ancre": "trk-009"
+    },
+    {
+      "id": "TRK-010",
+      "titre": "La rétention efface les erreurs non corrigées au bout de 30 jours",
+      "source": "plateforme",
+      "statut": "CORRECTIF_PROPOSE",
+      "gravite": 8,
+      "vuPremiere": "2026-08-03",
+      "vuDerniere": "2026-08-03",
+      "quoi": "`ERROR_LOGS_RETENTION_DAYS` vaut 30 par défaut et n'est pas défini en production : une erreur jamais corrigée disparaît d'elle-même, sans bruit. La consigne « on ne vide pas le centre d'alerte » était donc contournée par le ménage automatique.",
+      "quoiFaire": "Rien d'obligatoire — ce référentiel est la parade, il survit à la purge. Si l'on veut aussi garder les lignes : porter la rétention à 90 jours (12 lignes en 6 jours, aucun enjeu de volume).",
+      "doc": "REFERENCE-ERREURS.md",
+      "ancre": "trk-010"
+    },
+    {
+      "id": "TRK-001",
+      "titre": "GPS perdu — boîtier vivant mais sans position",
+      "source": "gps-integrity",
+      "statut": "TERRAIN",
+      "gravite": 9,
+      "vuPremiere": "2026-07-28",
+      "vuDerniere": "2026-08-03",
+      "occurrences": 5,
+      "occurrencesLibelle": "5 alertes · 3 véhicules",
+      "quoi": "Le boîtier parle mais n'a plus de verrou GPS : la position reste figée. Le détecteur fait son travail et il est déjà bien borné (zone confirmée bénigne = silence, dédup par épisode).",
+      "quoiFaire": "Vérifier l'antenne de FZ-862-VY — épisode EN COURS au dernier audit (~3 h sans fix). KSR370 récidive (3 épisodes en 3 jours) : même contrôle.",
+      "aNePasFaire": "Ne pas silencier ce détecteur : c'est le seul signal qui rende visible une antenne morte. Corriger un message n'est pas affaiblir une garde.",
+      "doc": "REFERENCE-ERREURS.md",
+      "ancre": "trk-001"
+    },
+    {
+      "id": "TRK-006",
+      "titre": "NG02100 sur l'écran Abonnements & tarifs",
+      "source": "frontend",
+      "statut": "CORRIGE",
+      "gravite": 10,
+      "vuPremiere": "2026-07-29",
+      "vuDerniere": "2026-07-30",
+      "occurrences": 2,
+      "quoi": "La locale française n'était pas enregistrée : le pipe de nombre levait une erreur non rattrapée, et l'écran de pilotage commercial cassait à l'affichage — sur le revenu annuel total, en haut de page.",
+      "quoiFaire": "Rien. Correctif livré et vérifié en ligne : les chunks cités dans les piles archivées sont absents du bundle servi. Toute réapparition serait une régression à traiter en priorité.",
+      "doc": "REFERENCE-ERREURS.md",
+      "ancre": "trk-006"
+    }
+  ],
+
+  "sections": [
+    {
+      "key": "guide",
+      "label": "Guide & méthode",
+      "order": 1,
+      "description": "Comment le dispositif fonctionne et comment l'audit procède."
+    },
+    {
+      "key": "reference",
+      "label": "Référentiel des erreurs",
+      "order": 2,
+      "description": "Une fiche par famille d'erreur : cause racine, correctif, statut."
+    },
+    {
+      "key": "rapports",
+      "label": "Rapports d'audit",
+      "order": 3,
+      "description": "Un rapport par passage, du plus récent au plus ancien."
+    },
+    {
+      "key": "outillage",
+      "label": "Outillage",
+      "order": 4,
+      "description": "Le collecteur SQL et les fichiers techniques."
+    }
+  ],
+
+  "documents": [
+    {
+      "slug": "README.md",
+      "title": "Vue d'ensemble",
+      "section": "guide",
+      "order": 1,
+      "description": "Les pièces du dispositif, comment il tourne, et les trois règles."
+    },
+    {
+      "slug": "PROCEDURE-AUDIT.md",
+      "title": "Procédure d'audit",
+      "section": "guide",
+      "order": 2,
+      "description": "La méthode pas à pas : garde-fous, collecte, normalisation, enquête, rapport."
+    },
+    {
+      "slug": "REFERENCE-ERREURS.md",
+      "title": "Référentiel des erreurs",
+      "section": "reference",
+      "order": 1,
+      "description": "Catalogue à signatures normalisées. La mémoire longue du centre d'alerte."
+    },
+    {
+      "slug": "collecte.sql",
+      "title": "Collecteur SQL",
+      "section": "outillage",
+      "order": 1,
+      "description": "Instantané complet de la prod en une passe. Lecture seule."
+    },
+    {
+      "slug": "rapports/2026-08-03-reference-manuelle.md",
+      "title": "2026-08-03 — Référence manuelle (étalon)",
+      "section": "rapports",
+      "order": 1,
+      "description": "Audit fondateur fait à la main. Sert d'étalon pour mesurer l'agent automatique."
+    }
+  ],
+
+  "passages": [
+    {
+      "date": "2026-08-03",
+      "origine": "manuel",
+      "rapport": "rapports/2026-08-03-reference-manuelle.md",
+      "verdict": "12 lignes au centre d'alerte, aucune nouvelle famille de bug applicatif — mais 72 commandes fix_continuous échouent chaque jour sans produire la moindre alerte.",
+      "chiffres": {
+        "erreurs": 12,
+        "critical": 1,
+        "trackersFailing": 0,
+        "trackersHorsLigne": 6,
+        "commandesEnAttente": 2,
+        "echecsCommandesParJour": 72
+      },
+      "fiches": {
+        "nouvelles": 10,
+        "misesAJour": 0
+      },
+      "aTraiter": ["TRK-008", "TRK-007", "TRK-002", "TRK-004"],
+      "note": "Amorçage du référentiel : les 10 fiches TRK-001 à TRK-010 ont été créées lors de ce passage."
+    }
+  ]
+}
