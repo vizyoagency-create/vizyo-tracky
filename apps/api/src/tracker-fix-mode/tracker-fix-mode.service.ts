@@ -277,6 +277,10 @@ export class TrackerFixModeService {
   async expireStaleFixCommands(): Promise<void> {
     if (this.expiring) return;
     this.expiring = true;
+    // ⚠️ AVANT le balayage, volontairement : la boucle ci-dessous sort tôt quand il n'y a
+    // rien à fermer — le cas NORMAL. Placée après, la normalisation n'aurait tourné que les
+    // jours où une commande traînait, c'est-à-dire presque jamais.
+    await this.normalizeDriftedTargets();
     try {
       const cutoff = new Date(Date.now() - this.commandExpiryMs);
       const stale = await this.prisma.trackerCommand.findMany({
@@ -319,6 +323,40 @@ export class TrackerFixModeService {
       this.logger.warn(`Fix-mode: échec du balayage des commandes périmées: ${err}`);
     } finally {
       this.expiring = false;
+    }
+  }
+
+  /**
+   * V1.19 (TRK-008) — remet dans les clous les cibles héritées de l'ancien auto-alignement.
+   *
+   * `reconcile` les CLAMPE déjà à la lecture : elles ne condamnent plus personne. Mais elles
+   * restent écrites en base, où elles s'affichent sur la fiche véhicule — « cadence cible :
+   * 1 s » n'a aucun sens pour un opérateur, et le prochain audit les recompterait comme si
+   * rien n'avait changé. Un chiffre faux qui persiste finit par être cru.
+   *
+   * Écriture idempotente et bornée aux valeurs hors plage : sur un parc sain, ces deux
+   * requêtes ne touchent aucune ligne.
+   */
+  private async normalizeDriftedTargets(): Promise<void> {
+    try {
+      const [tooFast, tooSlow] = await Promise.all([
+        this.prisma.tracker.updateMany({
+          where: { desiredFixIntervalS: { lt: HARD_CAP_MIN_S } },
+          data: { desiredFixIntervalS: HARD_CAP_MIN_S },
+        }),
+        this.prisma.tracker.updateMany({
+          where: { desiredFixIntervalS: { gt: HARD_CAP_S } },
+          data: { desiredFixIntervalS: HARD_CAP_S },
+        }),
+      ]);
+      const total = tooFast.count + tooSlow.count;
+      if (total > 0) {
+        this.logger.log(
+          `Fix-mode: ${total} cible(s) de cadence ramenée(s) dans [${HARD_CAP_MIN_S}, ${HARD_CAP_S}]s (héritage de l'ancien auto-alignement).`,
+        );
+      }
+    } catch (err) {
+      this.logger.warn(`Fix-mode: échec de la normalisation des cibles: ${err}`);
     }
   }
 
