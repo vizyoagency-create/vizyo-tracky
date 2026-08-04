@@ -532,27 +532,15 @@
       "note": "Lecture seule. Budget impose : 90 s max, sinon c'est un defaut a corriger."
     },
     {
-      "id": "backup-cron",
+      "id": "backup-timer",
       "couche": "VPS",
       "heureLocale": "05:00",
       "heureUtc": "03:00",
       "cadence": "quotidien",
-      "quoi": "Sauvegarde PostgreSQL (crontab root)",
-      "duree": "40 à 67 s",
-      "cout": "pg_dump ~130 Mo",
-      "note": "DOUBLON : le meme script est aussi lance par un timer systemd 2 min plus tard.",
-      "constat": "VPS-003"
-    },
-    {
-      "id": "backup-timer",
-      "couche": "VPS",
-      "heureLocale": "05:02",
-      "heureUtc": "03:02",
-      "cadence": "quotidien",
-      "quoi": "Sauvegarde PostgreSQL (timer systemd) — le doublon",
+      "quoi": "Tracky — sauvegarde PostgreSQL (timer systemd)",
       "duree": "20 à 60 s",
-      "cout": "pg_dump ~130 Mo, en concurrence du precedent",
-      "note": "A garder si l'on supprime la ligne cron : il journalise dans journald et survit mieux aux redemarrages.",
+      "cout": "pg_dump ~130 Mo",
+      "note": "Le doublon est levé : la ligne de la crontab de root a été retirée le 2026-08-04 à 18:22 UTC. Un seul déclencheur subsiste, celui-ci — il journalise dans journald et rend compte à l'API. Confirmation définitive au prochain passage : un seul fichier attendu dans /var/backups/vizyo-tracky.",
       "constat": "VPS-003"
     },
     {
@@ -633,6 +621,17 @@
       "duree": "variable",
       "cout": "E/S ponctuelles",
       "note": "Standard Ubuntu."
+    },
+    {
+      "id": "verify-backup",
+      "couche": "VPS",
+      "heureLocale": "05:30",
+      "heureUtc": "03:30",
+      "cadence": "quotidien",
+      "quoi": "Verify — sauvegarde base + images de pièces d'identité (chiffrée)",
+      "duree": "~3 s aujourd'hui",
+      "cout": "pg_dump + tar du volume, chiffrés AES-256",
+      "note": "Créneau choisi APRÈS la sauvegarde de Tracky de 05:00 : deux pg_dump simultanés sur 2 vCPU se gênent. Les deux archives portent le même horodatage et se restaurent en paire — une base sans ses images laisse des dossiers validés sans les preuves qui les justifiaient. Chaque archive est RELUE après écriture ; l'état est dans /var/backups/vizyo-verify/DERNIER-ETAT.json (section 11 du collecteur). Rétention 14 jours : la purge RGPD de l'application est à 90 jours, une archive la repousse d'autant. Aucune copie hors-site à ce jour."
     }
   ],
   "previsions": {
