@@ -444,4 +444,91 @@ else
   echo "  AUCUNE — toutes les sauvegardes sont sur le disque qu'elles protegent."
 fi
 
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+section "11. LEVIERS D'OPTIMISATION — etat de chacun, verdict automatique"
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+# Cette section repond a UNE question : « que reste-t-il a gagner, et est-ce que ca en vaut la
+# peine ? » Chaque levier affiche sa valeur ACTUELLE, la valeur VISEE, et un verdict.
+#
+# ⚠️ Un levier « deja bon » doit s'afficher quand meme, en vert. Sinon on ne peut pas voir
+# qu'un reglage a REGRESSE — et ils regressent : cloud-init reecrit des fichiers, un
+# redeploiement recree un conteneur sans ses limites, un `ALTER SYSTEM` saute a la restauration.
+
+verdict() { # $1=libelle $2=actuel $3=vise $4=ok|ko $5=commentaire
+  case "$4" in
+    ok) printf '  ✅ %-30s %-16s %s\n' "$1" "$2" "$5" ;;
+    *)  printf '  ⚠️  %-30s %-16s → viser %s : %s\n' "$1" "$2" "$3" "$5" ;;
+  esac
+}
+
+sub "Levier 1 — cache de build Docker (le poste qui REVIENT)"
+BC=$(docker system df --format '{{.Type}}|{{.Size}}' 2>/dev/null | awk -F'|' '/Build Cache/{print $2}')
+BC_GO=$(docker system df --format '{{.Type}}|{{.Size}}' 2>/dev/null | awk -F'|' '/Build Cache/{gsub(/GB|MB/,"",$2); if ($2 ~ /^[0-9.]+$/) print int($2)}')
+# ⚠️ Ce n'est PAS un defaut a corriger une fois : il se reconstitue a CHAQUE build (mesure :
+# +14 Go en 4 h pour 3 deploiements). Le seuil se juge donc a l'espace libre, pas au cache seul.
+# Seuil a 10 Go et non 15 : mesure du 2026-08-04, le cache remonte de 0 a 14 Go en 4 h pour
+# 3 deploiements. A 15 on alerterait quand le disque est deja le sujet ; a 10 on a le temps.
+if [ "${BC_GO:-0}" -ge 10 ]; then
+  verdict "cache de build" "$BC" "< 10 Go" ko "docker buildx prune -af --filter until=168h"
+else
+  verdict "cache de build" "$BC" "< 10 Go" ok "sous le seuil"
+fi
+echo "     purge hebdomadaire automatique : $(grep -l 'buildx prune' /etc/cron.d/* 2>/dev/null | head -1 || echo '❌ AUCUNE — le cron ne purge que les images')"
+
+sub "Levier 2 — reglages memoire du noyau"
+SW=$(sysctl -n vm.swappiness 2>/dev/null)
+# 60 = defaut « bureau » : il swappe par anticipation. Sur un serveur qui a de la RAM libre,
+# 10 suffit — on ne swappe qu'en vraie tension, et les processus restent en memoire.
+[ "${SW:-60}" -le 20 ] && verdict "vm.swappiness" "$SW" "10" ok "serveur" \
+  || verdict "vm.swappiness" "$SW" "10" ko "60 = defaut bureau, swappe sans necessite"
+SWU=$(free -m | awk 'NR==3{print $3}')
+[ "${SWU:-0}" -le 200 ] && verdict "swap utilise" "${SWU} Mo" "< 200 Mo" ok "" \
+  || verdict "swap utilise" "${SWU} Mo" "< 200 Mo" ko "residu d'un pic ancien ; un redemarrage le rend"
+
+sub "Levier 3 — limites des conteneurs (confinement des pannes)"
+SANS=0; TOT=0
+for c in $(docker ps -q 2>/dev/null); do
+  TOT=$((TOT+1))
+  [ "$(docker inspect --format '{{.HostConfig.Memory}}' "$c" 2>/dev/null)" = "0" ] && SANS=$((SANS+1))
+done
+[ "$SANS" -eq 0 ] && verdict "conteneurs sans limite" "0 / $TOT" "0" ok "" \
+  || verdict "conteneurs sans limite" "$SANS / $TOT" "0" ko "une fuite peut emporter un voisin (VPS-005)"
+
+sub "Levier 4 — reglages PostgreSQL"
+# ⚠️ UN SEUL `docker exec` par conteneur : chacun coute une chaine `runc` complete. La
+# premiere version en faisait trois, et portait la collecte a 91 s — au-dessus du budget
+# de 90 s que cette procedure impose (meme defaut que VPS-M05, deuxieme recidive).
+for pg in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -E "postgres|postgis" | head -3); do
+  RPC=$(docker exec "$pg" sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SHOW random_page_cost;"' 2>/dev/null | tr -d '')
+  [ -z "$RPC" ] && continue
+  # 4 = valeur pour disque MECANIQUE. Sur SSD, le planificateur surestime le cout des acces
+  # aleatoires et prefere des parcours de table la ou un index serait plus rapide.
+  case "$RPC" in
+    1.1|1|1.0|1.2) verdict "$pg random_page_cost" "$RPC" "1.1" ok "adapte au SSD" ;;
+    *)             verdict "$pg random_page_cost" "$RPC" "1.1" ko "valeur pour disque a plateaux" ;;
+  esac
+done
+
+sub "Levier 5 — Redis borne ?"
+for r in $(docker ps --format '{{.Names}}' 2>/dev/null | grep redis); do
+  MM=$(docker exec "$r" redis-cli CONFIG GET maxmemory 2>/dev/null | tail -1 | tr -d '\r')
+  PO=$(docker exec "$r" redis-cli CONFIG GET maxmemory-policy 2>/dev/null | tail -1 | tr -d '\r')
+  # maxmemory=0 + noeviction = « grandis sans limite, puis refuse les ecritures ». Sur une
+  # machine partagee, c'est le conteneur qui decide quand tout le monde s'arrete.
+  [ "$MM" = "0" ] && verdict "$r maxmemory" "aucune ($PO)" "256mb + allkeys-lru" ko "grandit sans borne" \
+    || verdict "$r maxmemory" "$MM ($PO)" "borne" ok ""
+done
+
+sub "Levier 6 — journaux systeme"
+JD=$(journalctl --disk-usage 2>/dev/null | grep -oE '[0-9.]+[MG]' | head -1)
+verdict "journald" "${JD:-?}" "< 500M" ok "plafond SystemMaxUse=$(grep -oP '^SystemMaxUse=\K.*' /etc/systemd/journald.conf 2>/dev/null || echo 'non defini')"
+
+sub "Levier 7 — noyau a jour ?"
+KR=$(uname -r); KI=$(ls -1 /boot/vmlinuz-* 2>/dev/null | sed 's|.*vmlinuz-||' | sort -V | tail -1)
+[ "$KR" = "$KI" ] && verdict "noyau actif" "$KR" "$KI" ok "a jour" \
+  || verdict "noyau actif" "$KR" "$KI" ko "REDEMARRAGE requis — rend aussi la RAM de dockerd"
+DUP=$(ps -o rss= -p "$(pgrep -o dockerd)" 2>/dev/null | awk '{printf "%d", $1/1024}')
+[ "${DUP:-0}" -le 400 ] && verdict "memoire de dockerd" "${DUP} Mo" "< 400 Mo" ok "" \
+  || verdict "memoire de dockerd" "${DUP} Mo" "< 400 Mo" ko "gonfle avec l'uptime ; un redemarrage le remet a ~150 Mo"
+
 printf '\n\nFIN DE COLLECTE — %s\n' "$(date -u '+%Y-%m-%d %H:%M:%S UTC')"

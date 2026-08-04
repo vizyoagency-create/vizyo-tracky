@@ -47,11 +47,28 @@ services:
       retries: 10
       start_period: 30s
 
+    # ── Limite memoire (constat VPS-005) ──
+    # Aucun conteneur n'en avait. Sans plafond, l'OOM killer du noyau choisit sa victime selon
+    # un score de memoire, PAS selon l'importance metier : une fuite dans un conteneur de
+    # developpement pouvait faire tomber la base de production.
+    #
+    # Les valeurs sont VOLONTAIREMENT GENEREUSES (5 a 15x l'usage observe). Le but est de
+    # confiner une fuite, pas d'optimiser au plus juste : une limite trop basse transforme un
+    # pic normal en redemarrage.
+    deploy:
+      resources:
+        limits:
+          memory: 1536m
+
   redis:
     image: redis:7-alpine
     container_name: tracky-redis
     restart: unless-stopped
-    command: redis-server --appendonly yes
+    # `maxmemory` + `allkeys-lru` (constat VPS-005) : sans borne, Redis grandit jusqu'a ce que
+    # la MACHINE cede, et sa politique `noeviction` par defaut refuse alors les ecritures au
+    # lieu d'oublier les vieilles cles. Autrement dit : c'est le cache qui decide quand tout
+    # le monde s'arrete. 256 Mo est tres large — l'usage observe est de 1,1 Mo.
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
       - tracky-redis-data:/data
     networks:
@@ -62,6 +79,12 @@ services:
       interval: 30s
       timeout: 3s
       retries: 5
+
+    # Limite memoire (VPS-005) — usage observe 1,1 Mo ; le `maxmemory 256mb` interne borne deja les donnees
+    deploy:
+      resources:
+        limits:
+          memory: 384m
 
   api:
     build:
@@ -128,6 +151,12 @@ services:
       # routeur (X-Forwarded-Proto=https non applique -> backend voyait http).
       # On l'attache ici. A verifier au deploiement (pas de Traefik en local).
       - "traefik.http.routers.tracky-api.middlewares=tracky-api-ws"
+
+    # Limite memoire (VPS-005) — usage observe 94 Mo ; Node peut pointer lors des rapports PDF et des appels IA
+    deploy:
+      resources:
+        limits:
+          memory: 1024m
 
   web:
     build:
