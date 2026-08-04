@@ -21,8 +21,27 @@ déjà vu ça ? »* — et de reconnaître une rechute.
 
 ## VPS-001 — Le cache de build Docker n'est jamais purgé
 
-- **Domaine** : disque · **Gravité** : 1 · **Statut** : `A_TRAITER`
-- **Vu** : 2026-08-04 · **Mesure** : 33,59 Go, 250 entrées, **0 active**
+- **Domaine** : disque · **Gravité** : 1 · **Statut** : `APPLIQUE` (2026-08-04, 17 h 40)
+- **Vu** : 2026-08-04 · **Mesure à la découverte** : 33,59 Go, 250 entrées, **0 active**
+
+> ### ✅ Corrigé le 2026-08-04 — la preuve
+>
+> `docker buildx prune -af` exécuté en 3 min 34.
+>
+> | | Avant | Après |
+> |---|---:|---:|
+> | Disque utilisé | 78 Go (**81 %**) | 46 Go (**48 %**) |
+> | Espace libre | 19 Go | **51 Go** |
+> | Cache de build | 35,13 Go / 263 entrées | **0** |
+> | Conteneurs actifs | 31 | **31** |
+>
+> **32 Go rendus, aucune interruption** : 0 anomalie sur 31 conteneurs après la purge, images
+> de production intactes, les trois domaines publics répondent en 200.
+>
+> ⚠️ **Le cache se reconstitue à chaque build.** Il était déjà remonté de 33,6 à 35,1 Go en une
+> journée, à cause des deux déploiements du jour. Ce n'est donc pas une correction définitive :
+> **surveiller à chaque passage**, et repurger quand il repasse au-dessus de ~15 Go. Le seuil
+> se juge à l'espace libre, pas au cache seul.
 
 **Quoi.** Un nettoyage automatique tourne pourtant chaque nuit à 00 h 40
 (`/etc/cron.d/docker-image-prune`) : `docker image prune -af --filter "until=24h"`.

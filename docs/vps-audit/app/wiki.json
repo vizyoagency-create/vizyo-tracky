@@ -88,16 +88,16 @@
       "id": "VPS-001",
       "titre": "Le cache de build Docker n'est jamais purgé",
       "domaine": "disque",
-      "statut": "A_TRAITER",
+      "statut": "APPLIQUE",
       "gravite": 1,
       "vuPremiere": "2026-08-04",
       "vuDerniere": "2026-08-04",
-      "mesure": "33,59 Go · 250 entrées · 0 active",
-      "gain": "33,6 Go — le disque passe de 79 % à ~44 %",
+      "mesure": "CORRIGE le 2026-08-04 — 35,13 Go purges, disque 81 % → 48 %",
+      "gain": "32 Go rendus, 0 interruption (31/31 conteneurs sains apres purge)",
       "quoi": "Le ménage nocturne `docker image prune` range les images, pas le cache de build. Deux magasins distincts : la tâche tourne tous les jours sur la moitié qui n'avait pas de problème.",
-      "quoiFaire": "docker buildx prune -af",
+      "quoiFaire": "Fait. ⚠️ Le cache se reconstitue a chaque build (deja +1,5 Go en une journee) : surveiller a chaque passage et repurger au-dela de ~15 Go.",
       "pourquoiInvisible": "Une tâche de nettoyage existe et réussit chaque nuit. Rien ne signale qu'elle vise à côté.",
-      "aNePasFaire": "L'ajouter tel quel au cron nocturne : on paierait la reconstruction du cache à chaque déploiement. Un filtre hebdomadaire `until=168h` est le bon compromis.",
+      "aNePasFaire": "Considerer cette correction comme definitive. Ce n'est pas un defaut a corriger une fois, c'est un poste a surveiller.",
       "doc": "REFERENCE-CONSTATS.md",
       "ancre": "vps-001-le-cache-de-build-docker-nest-jamais-purge"
     },
@@ -352,6 +352,38 @@
   "passages": [
     {
       "date": "2026-08-04",
+      "origine": "remediation manuelle (validee)",
+      "rapport": "rapports/2026-08-04.md",
+      "verdict": "Purge du cache de build appliquee : 32 Go rendus, disque 81 % → 48 %, aucune interruption de service.",
+      "chiffres": {
+        "disqueUtilisePct": 48,
+        "disqueRecuperableGo": 9,
+        "ramUtiliseePct": 25,
+        "swapUtiliseMo": 936,
+        "chargeMoyenne1m": 2.32,
+        "conteneursActifs": 31,
+        "conteneursMorts": 17,
+        "paquetsEnRetard": 59,
+        "echecsSshJour": 70,
+        "healthchecksParMin": 88,
+        "processusParMin": 1398
+      },
+      "constats": {
+        "nouveaux": 0,
+        "misAJour": 1,
+        "resolus": 1
+      },
+      "aTraiter": [
+        "VPS-002",
+        "VPS-003",
+        "VPS-006",
+        "VPS-010",
+        "VPS-011"
+      ],
+      "note": "VPS-001 bascule en APPLIQUE avec sa preuve. Le cache se reconstitue a chaque build — a resurveiller, ce n'est pas un defaut clos."
+    },
+    {
+      "date": "2026-08-04",
       "origine": "manuel (amorçage)",
       "rapport": "rapports/2026-08-04.md",
       "verdict": "Machine saine sous la charge (CPU 84 % inactif, RAM 25 %), mais 79 % du disque occupé dont ~43 Go de déchets purs, et root joignable en SSH par mot de passe sans fail2ban.",
@@ -525,18 +557,18 @@
   "previsions": {
     "disque": {
       "totalGo": 96,
-      "utiliseGo": 76,
-      "libreGo": 20,
-      "utilisePct": 79,
+      "utiliseGo": 46,
+      "libreGo": 51,
+      "utilisePct": 48,
       "seuilAlertePct": 90
     },
     "recuperable": [
       {
         "poste": "Cache de build Docker",
-        "go": 31.9,
+        "go": 0,
         "commande": "docker buildx prune -af",
         "risque": "nul — 0 entree active",
-        "contrepartie": "le prochain build de chaque projet repart de zero",
+        "contrepartie": "PURGE le 2026-08-04 (32 Go rendus). Se reconstitue a chaque build : a resurveiller.",
         "constat": "VPS-001"
       },
       {
