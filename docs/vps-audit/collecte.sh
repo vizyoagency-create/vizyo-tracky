@@ -78,7 +78,10 @@ df -hT | grep -vE "tmpfs|udev|overlay"
 sub "Inodes"
 df -i | grep -vE "tmpfs|udev|overlay"
 sub "Repartition hors Docker"
-timeout 90 $LOW du -sh --exclude=/var/lib/docker /var/log /opt /root /home /usr /var/backups 2>/dev/null | sort -rh
+# ⚠️ `/usr` est VOLONTAIREMENT exclu : ~2,9 Go de binaires systeme qui ne bougent pas d'un
+# audit a l'autre, pour un parcours couteux. Il n'a jamais ete la cause d'un disque plein.
+# Son retrait a ramene la collecte de 96 s a ~60 s (budget : 90 s).
+timeout 90 $LOW du -sh --exclude=/var/lib/docker /var/log /opt /root /home /var/backups 2>/dev/null | sort -rh
 sub "Detail /var/lib/docker (dossiers legers uniquement)"
 # ⚠️ `rootfs` et `overlay2` sont VOLONTAIREMENT EXCLUS : les parcourir, c'est marcher sur
 # ~12 Go de couches empilees, soit plusieurs minutes d'E/S soutenues pour un chiffre que
@@ -473,7 +476,15 @@ if [ "${BC_GO:-0}" -ge 10 ]; then
 else
   verdict "cache de build" "$BC" "< 10 Go" ok "sous le seuil"
 fi
-echo "     purge hebdomadaire automatique : $(grep -l 'buildx prune' /etc/cron.d/* 2>/dev/null | head -1 || echo '❌ AUCUNE — le cron ne purge que les images')"
+# ⚠️ Chercher un CRON de purge serait chercher la mauvaise garde. La borne est posee dans
+# `/etc/docker/daemon.json` (ramasse-miettes de BuildKit) : un mecanisme PERMANENT, donc sans
+# risque de doublon — contrairement a une tache planifiee (defaut VPS-003).
+GCR=$(docker buildx inspect default 2>/dev/null | grep -c "Reserved Space")
+if [ "${GCR:-0}" -gt 0 ]; then
+  echo "     borne permanente : ✅ ramasse-miettes actif — $(docker buildx inspect default 2>/dev/null | grep 'Reserved Space' | tr -s ' ' | paste -sd' / ')"
+else
+  echo "     borne permanente : ❌ AUCUNE — ni ramasse-miettes dans daemon.json, ni purge planifiee"
+fi
 
 sub "Levier 2 — reglages memoire du noyau"
 SW=$(sysctl -n vm.swappiness 2>/dev/null)
@@ -499,7 +510,8 @@ sub "Levier 4 — reglages PostgreSQL"
 # premiere version en faisait trois, et portait la collecte a 91 s — au-dessus du budget
 # de 90 s que cette procedure impose (meme defaut que VPS-M05, deuxieme recidive).
 for pg in $(docker ps --format '{{.Names}}' 2>/dev/null | grep -E "postgres|postgis" | head -3); do
-  RPC=$(docker exec "$pg" sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SHOW random_page_cost;"' 2>/dev/null | tr -d '')
+  RPC=$(docker exec "$pg" sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "SHOW random_page_cost;"' 2>/dev/null | tr -d '
+')
   [ -z "$RPC" ] && continue
   # 4 = valeur pour disque MECANIQUE. Sur SSD, le planificateur surestime le cout des acces
   # aleatoires et prefere des parcours de table la ou un index serait plus rapide.
