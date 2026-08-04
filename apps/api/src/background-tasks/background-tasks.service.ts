@@ -72,6 +72,12 @@ const CATALOG: CatalogEntry[] = [
     periodic: { everyMs: 30_000, offsetMs: 0 },
   },
   {
+    id: 'fix-command-expiry', label: 'Clôture des commandes de cadence sans réponse', category: 'Sécurité & moteur',
+    kind: 'cron', scheduleHuman: 'toutes les 10 min', criticality: 'moyenne', antiOverlap: true,
+    purpose: 'Ferme les commandes de cadence GPS restées sans effet : le boîtier n\'accuse jamais réception, elles resteraient « en attente » indéfiniment au centre d\'alertes.',
+    periodic: { everyMs: 600_000, offsetMs: 45_000 },
+  },
+  {
     id: 'trips-timeout', label: 'Clôture des trajets en cours', category: 'Sécurité & moteur',
     kind: 'cron', scheduleHuman: 'chaque minute', criticality: 'moyenne', antiOverlap: false,
     purpose: 'Ferme les trajets restés « en cours » alors que le véhicule est à l\'arrêt depuis un moment.',

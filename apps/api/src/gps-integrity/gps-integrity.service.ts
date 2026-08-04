@@ -32,6 +32,15 @@ export class GpsIntegrityService {
   private running = false;
   /** Âge de position au-delà duquel on ALERTE (réglable via env, défaut 2 h). */
   private readonly alertStaleMs: number;
+  /**
+   * Plafond de SILENCE d'une zone confirmée bénigne (env `GPS_DEADZONE_MAX_SILENCE_H`,
+   * défaut 24 h). Au-delà, on alerte malgré la zone : voir TRK-011.
+   *
+   * Calibrage : un stationnement de nuit ordinaire dure ~12 h et doit rester silencieux ;
+   * 24 h laisse passer un week-end court sans crier, tout en bornant une antenne morte.
+   */
+  private readonly benignMaxSilenceMs: number;
+  private readonly benignMaxSilenceLabel: string;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -41,6 +50,11 @@ export class GpsIntegrityService {
   ) {
     const min = Number(process.env.GPS_LOST_ALERT_MIN);
     this.alertStaleMs = (Number.isFinite(min) && min > 0 ? min : 120) * 60_000;
+
+    const maxH = Number(process.env.GPS_DEADZONE_MAX_SILENCE_H);
+    const hours = Number.isFinite(maxH) && maxH > 0 ? maxH : 24;
+    this.benignMaxSilenceMs = hours * 3_600_000;
+    this.benignMaxSilenceLabel = hours >= 24 && hours % 24 === 0 ? `${hours / 24} j` : `${hours} h`;
   }
 
   // Toutes les 5 min, décalé de 15 s pour ne pas percuter les crons alignés sur :00.
@@ -107,7 +121,22 @@ export class GpsIntegrityService {
           // Zone confirmée « normale » par un opérateur (parking souterrain habituel) → on N'ALERTE
           // PLUS : c'est le cœur de la feature (ne plus se déplacer / être re-signalé à chaque fois).
           // La zone reste visible sur la fiche véhicule et la carte l'explique calmement.
-          if (zone && zone.status === GpsDeadZoneStatus.CONFIRMED_BENIGN) {
+          //
+          // ⚠️ MAIS CE SILENCE EST BORNÉ (incident TRK-011, 2026-08-04). La confirmation de
+          // l'opérateur porte sur un LIEU (« ce parking est normal »), pas sur une DURÉE. Sans
+          // borne, une antenne morte sur un véhicule garé dans son parking habituel devenait
+          // strictement indistinguable d'un stationnement ordinaire — et n'était JAMAIS signalée :
+          // ni alerte flotte, ni ligne au centre d'alerte. Constaté sur FS-253-HR, vivant et sans
+          // position depuis 12 h, avec zéro trace nulle part. Le périmètre s'élargissait en plus
+          // d'un véhicule à chaque confirmation d'opérateur.
+          //
+          // Au-delà du plafond, on alerte MALGRÉ la zone — et le message dit pourquoi il parle
+          // quand même, sinon l'opérateur irait reconfirmer une zone déjà confirmée.
+          const benignSilenceExceeded =
+            zone?.status === GpsDeadZoneStatus.CONFIRMED_BENIGN &&
+            (t.lastPositionAt === null || now - t.lastPositionAt.getTime() >= this.benignMaxSilenceMs);
+
+          if (zone && zone.status === GpsDeadZoneStatus.CONFIRMED_BENIGN && !benignSilenceExceeded) {
             suppressed++;
             continue;
           }
@@ -128,18 +157,28 @@ export class GpsIntegrityService {
             agoLabel,
             undefined,
             recurrence,
+            benignSilenceExceeded ? { thresholdLabel: this.benignMaxSilenceLabel } : undefined,
           );
           // Nouvelle alerte (pas un doublon) → on la remonte AUSSI au centre d'alertes admin
           // (ErrorLog) : c'est le canal que le super-admin regarde. Un seul enregistrement par
           // épisode (la dédup de createGpsLostAlert renvoie null si déjà ouverte) → pas de spam.
           // On N'INONDE PAS le centre admin pour une zone récurrente NON suspecte (parking habituel) :
           // l'alerte fleet-admin suffit (avec le « confirmez la zone »).
-          const shouldErrorLog = !recurrence?.recognized || recurrence?.suspect === true;
+          // ⚠️ `benignSilenceExceeded` FORCE la remontée : sans lui, une zone confirmée a
+          // `recognized: true` (elle dépasse le seuil d'occurrences), donc la condition
+          // ci-dessous vaudrait `false` et le dépassement n'aurait produit AUCUNE ligne —
+          // exactement le trou qu'on vient de boucher.
+          const shouldErrorLog =
+            benignSilenceExceeded || !recurrence?.recognized || recurrence?.suspect === true;
           if (created && shouldErrorLog) {
             raised++;
-            const reason = recurrence?.suspect
-              ? `GPS perdu (zone SUSPECTE, ${recurrence.count}e fois) : ${t.vehicle.plate} (${t.imei}) — brouilleur possible, à surveiller.`
-              : `GPS perdu : ${t.vehicle.plate} (${t.imei}) — boîtier vivant mais sans position GPS depuis ${agoLabel}. Antenne à vérifier.`;
+            const reason = benignSilenceExceeded
+              ? `GPS perdu ANORMALEMENT LONG : ${t.vehicle.plate} (${t.imei}) — sans position depuis ${agoLabel}, ` +
+                `à un endroit pourtant confirmé normal (${zone?.occurrences ?? '?'} épisodes). ` +
+                `La zone explique une perte courte, pas au-delà de ${this.benignMaxSilenceLabel} : antenne à vérifier.`
+              : recurrence?.suspect
+                ? `GPS perdu (zone SUSPECTE, ${recurrence.count}e fois) : ${t.vehicle.plate} (${t.imei}) — brouilleur possible, à surveiller.`
+                : `GPS perdu : ${t.vehicle.plate} (${t.imei}) — boîtier vivant mais sans position GPS depuis ${agoLabel}. Antenne à vérifier.`;
             await this.errorLogger
               .record(new Error(reason), 'gps-integrity', {
                 imei: t.imei,
@@ -148,6 +187,7 @@ export class GpsIntegrityService {
                 lastPositionAt: t.lastPositionAt?.toISOString() ?? null,
                 deadZoneId: zone?.id ?? null,
                 deadZoneOccurrences: zone?.occurrences ?? null,
+                benignSilenceExceeded: benignSilenceExceeded || undefined,
               })
               .catch(() => undefined);
           } else if (created) {

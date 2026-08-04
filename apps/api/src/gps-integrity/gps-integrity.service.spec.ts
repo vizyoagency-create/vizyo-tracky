@@ -112,12 +112,99 @@ describe('GpsIntegrityService', () => {
       zone: { id: 'z1', status: 'CONFIRMED_BENIGN', occurrences: 8 },
       isNewEpisode: false,
     });
-    prisma.tracker.findMany.mockResolvedValue([makeTracker()]);
+    // ⚠️ Perte COURTE (3 h) : depuis TRK-011, le silence d'une zone bénigne est borné à 24 h.
+    // Ce test utilisait le défaut de `makeTracker` (29 h) et verrouillait donc, sans le vouloir,
+    // le trou que TRK-011 a bouché. Son intention — « un parking habituel ne réalerte pas » —
+    // reste exacte ; c'est la durée qu'il fallait rendre explicite.
+    prisma.tracker.findMany.mockResolvedValue([
+      makeTracker({ lastPositionAt: new Date(Date.now() - 3 * 3600_000) }),
+    ]);
 
     await svc.tick();
 
     // Parking souterrain habituel confirmé → aucune alerte, aucun ErrorLog.
     expect(alerts.createGpsLostAlert).not.toHaveBeenCalled();
+    expect(errorLogger.record).not.toHaveBeenCalled();
+  });
+
+  // --- TRK-011 : le silence d'une zone bénigne est BORNÉ ---------------------------------
+
+  it('alerte MALGRÉ une zone confirmée bénigne quand la perte dépasse le plafond', async () => {
+    const { svc, prisma, alerts, errorLogger } = build({
+      zone: { id: 'z1', status: 'CONFIRMED_BENIGN', occurrences: 5 },
+      isNewEpisode: false,
+    });
+    // 29 h : au-delà du plafond de 24 h.
+    prisma.tracker.findMany.mockResolvedValue([makeTracker()]);
+    alerts.createGpsLostAlert.mockResolvedValue({ id: 'a1' });
+
+    await svc.tick();
+
+    expect(alerts.createGpsLostAlert).toHaveBeenCalledTimes(1);
+    // Le 6e argument porte le dépassement → l'alerte flotte peut expliquer pourquoi elle parle.
+    expect(alerts.createGpsLostAlert.mock.calls[0][5]).toEqual({ thresholdLabel: '1 j' });
+
+    // 🔑 Le point décisif : une zone confirmée est aussi « recognized », donc sans le forçage
+    // explicite le dépassement n'aurait produit AUCUNE ligne au centre d'alerte.
+    expect(errorLogger.record).toHaveBeenCalledTimes(1);
+    const [err, source, ctx] = errorLogger.record.mock.calls[0];
+    expect(source).toBe('gps-integrity');
+    expect((err as Error).message).toContain('ANORMALEMENT LONG');
+    expect((ctx as Record<string, unknown>).benignSilenceExceeded).toBe(true);
+  });
+
+  it('ne conseille PAS de reconfirmer une zone déjà confirmée', async () => {
+    const { svc, prisma, alerts, errorLogger } = build({
+      zone: { id: 'z1', status: 'CONFIRMED_BENIGN', occurrences: 5 },
+      isNewEpisode: false,
+    });
+    prisma.tracker.findMany.mockResolvedValue([makeTracker()]);
+    alerts.createGpsLostAlert.mockResolvedValue({ id: 'a1' });
+
+    await svc.tick();
+
+    // Envoyer reconfirmer un lieu déjà confirmé ferait chercher au mauvais endroit : le
+    // problème est la DURÉE, pas le lieu.
+    const message = (errorLogger.record.mock.calls[0][0] as Error).message;
+    expect(message).not.toContain('confirmez');
+    expect(message).toContain('antenne');
+  });
+
+  it('respecte GPS_DEADZONE_MAX_SILENCE_H', async () => {
+    const previous = process.env.GPS_DEADZONE_MAX_SILENCE_H;
+    process.env.GPS_DEADZONE_MAX_SILENCE_H = '48';
+    try {
+      const { svc, prisma, alerts } = build({
+        zone: { id: 'z1', status: 'CONFIRMED_BENIGN', occurrences: 5 },
+        isNewEpisode: false,
+      });
+      // 29 h : sous le plafond relevé à 48 h → toujours silencieux.
+      prisma.tracker.findMany.mockResolvedValue([makeTracker()]);
+
+      await svc.tick();
+
+      expect(alerts.createGpsLostAlert).not.toHaveBeenCalled();
+    } finally {
+      if (previous === undefined) delete process.env.GPS_DEADZONE_MAX_SILENCE_H;
+      else process.env.GPS_DEADZONE_MAX_SILENCE_H = previous;
+    }
+  });
+
+  it('ne change RIEN pour une zone récurrente non confirmée (le plafond ne vise que le bénin)', async () => {
+    const { svc, prisma, alerts, errorLogger } = build({
+      zone: { id: 'z1', status: 'RECURRING', occurrences: 8 },
+      isNewEpisode: false,
+    });
+    // 29 h, soit bien au-delà du plafond — mais la zone n'est PAS confirmée bénigne.
+    prisma.tracker.findMany.mockResolvedValue([makeTracker()]);
+    alerts.createGpsLostAlert.mockResolvedValue({ id: 'a1' });
+
+    await svc.tick();
+
+    // Comportement d'avant préservé : alerte flotte, pas d'inondation du centre admin,
+    // et surtout aucun `benignOverride` — le plafond ne doit pas déborder sur ce chemin.
+    expect(alerts.createGpsLostAlert).toHaveBeenCalledTimes(1);
+    expect(alerts.createGpsLostAlert.mock.calls[0][5]).toBeUndefined();
     expect(errorLogger.record).not.toHaveBeenCalled();
   });
 

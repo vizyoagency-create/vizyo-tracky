@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import type { Fleet, Tracker, Vehicle } from '@prisma/client';
 import { TrackerCommandStatus } from '@prisma/client';
 import {
@@ -56,7 +57,14 @@ const HARD_CAP_S = 300;
 // V1.15 — Plancher d'auto-alignement. Quand un boitier emet plus vite que le
 // minimum hardware (observe en prod : 2s, 10s), on accepte quand meme son
 // intervalle reel pour le sortir de la boucle FAILING (cf reconcile()).
-const AUTO_ALIGN_FLOOR_S = 1;
+// V1.19 (TRK-008) — REMONTÉ de 1 s au minimum matériel. Ce plancher avait été abaissé à 1 s
+// (V1.15) pour sortir de FAILING les boîtiers qui émettent PLUS VITE que demandé et ne
+// pouvaient ni converger ni s'aligner. Ce motif a disparu : `reconcile` ne les compte plus en
+// échec du tout (cf. la garde « plus vite que demandé »). Le plancher peut donc redevenir ce
+// qu'il n'aurait jamais dû cesser d'être — une cible que le matériel ne peut pas tenir ne doit
+// pas pouvoir s'écrire. Défense en profondeur : avec la nouvelle garde, l'auto-alignement ne
+// voit de toute façon plus que des intervalles supérieurs à la cible.
+const AUTO_ALIGN_FLOOR_S = HARD_CAP_MIN_S;
 // V1.18 — Au-dela de cette vitesse (km/h) on considere le vehicule en mouvement :
 // un intervalle plus lent que la cible devient alors un vrai echec (le boitier
 // devrait emettre vite). En dessous, contact coupe = veille attendue, pas un echec.
@@ -76,13 +84,24 @@ interface FrameContext {
 @Injectable()
 export class TrackerFixModeService {
   private readonly logger = new Logger(TrackerFixModeService.name);
+  /** Anti-chevauchement du balayage des commandes périmées (TRK-007). */
+  private expiring = false;
+  /**
+   * Échéance d'une `fix_continuous` sans accusé (env `FIX_COMMAND_EXPIRY_MIN`, défaut 30 min).
+   * Bien au-delà de la fenêtre de grâce maximale (2 × 300 s = 10 min) : une commande encore
+   * ouverte passé ce délai n'a plus aucune chance d'être confirmée.
+   */
+  private readonly commandExpiryMs: number;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly registry: SocketRegistryService,
     private readonly wireLogger: CobanWireLogger,
     private readonly sms: SmsGatewayService,
-  ) {}
+  ) {
+    const min = Number(process.env.FIX_COMMAND_EXPIRY_MIN);
+    this.commandExpiryMs = (Number.isFinite(min) && min > 0 ? min : 30) * 60_000;
+  }
 
   /**
    * V1.5 (Sprint I) — fallback SMS quand la socket TCP est indisponible > 5min.
@@ -226,6 +245,83 @@ export class TrackerFixModeService {
    * `desiredFixIntervalS`. Otherwise we increment the failure counter and
    * flag FAILING after 3 misses.
    */
+  /**
+   * V1.19 (TRK-007) — SOLDE LES COMMANDES `fix_continuous` RESTÉES SANS FIN.
+   *
+   * ══ Pourquoi ce balayage existe ═══════════════════════════════════════════════════════
+   *
+   * Une `fix_continuous` n'est jamais acquittée par le boîtier : le Coban n'émet pas d'ACK
+   * fiable. Elle déclare pourtant comment la vérifier — « intervalle observé sur les 3
+   * prochaines trames » — mais rien n'écrivait cette observation dans la commande. La seule
+   * fermeture automatique existante se déclenche à la TRANSITION `fixCommandFailing`
+   * false→true.
+   *
+   * Or cette transition peut ne JAMAIS survenir : la garde « véhicule garé » remet le
+   * compteur d'échecs à zéro à chaque trame lente. Un boîtier immobile qui émet une trame
+   * par heure (heartbeat ACC OFF) ne bascule donc jamais — et sa commande reste `SENT` à
+   * vie. Constaté en prod : 3 commandes ouvertes, la plus ancienne depuis 13 h 40, sur des
+   * boîtiers à 3600 s réels pour une cible de 20 s.
+   *
+   * ══ Pourquoi l'échéance est PUREMENT TEMPORELLE ═══════════════════════════════════════
+   *
+   * La conditionner à un état du boîtier (FAILING, en mouvement, joignable…) la ferait
+   * retomber dans le même piège : c'est précisément la composition de deux gardes justes qui
+   * a laissé la commande ouverte. Une commande sans accusé de réception doit avoir une fin
+   * qui ne dépend que de l'horloge.
+   *
+   * On ferme en `FAILED` — pas en `CANCELLED` : la commande a bien été émise et n'a pas
+   * abouti, l'audit doit le refléter. `observedResult` porte la cadence réellement constatée,
+   * pour que la ligne dise ce qui s'est passé et non ce qu'on espérait.
+   */
+  @Cron('45 */10 * * * *')
+  async expireStaleFixCommands(): Promise<void> {
+    if (this.expiring) return;
+    this.expiring = true;
+    try {
+      const cutoff = new Date(Date.now() - this.commandExpiryMs);
+      const stale = await this.prisma.trackerCommand.findMany({
+        where: {
+          templateId: 'fix_continuous',
+          status: { in: [TrackerCommandStatus.PENDING, TrackerCommandStatus.SENT] },
+          acknowledgedAt: null,
+          createdAt: { lt: cutoff },
+        },
+        select: {
+          id: true,
+          createdAt: true,
+          tracker: { select: { imei: true, currentFixIntervalS: true, desiredFixIntervalS: true } },
+        },
+        take: 200,
+      });
+      if (!stale.length) return;
+
+      for (const c of stale) {
+        const ageMin = Math.round((Date.now() - c.createdAt.getTime()) / 60_000);
+        const reel = c.tracker.currentFixIntervalS;
+        await this.prisma.trackerCommand
+          .update({
+            where: { id: c.id },
+            data: {
+              status: TrackerCommandStatus.FAILED,
+              observedResult:
+                `Sans effet constaté après ${ageMin} min : cadence réelle ` +
+                `${reel != null ? `${reel}s` : 'inconnue'} pour une cible de ` +
+                `${c.tracker.desiredFixIntervalS}s. Le boîtier n'acquitte pas ; commande close par échéance.`,
+            },
+          })
+          .catch(() => undefined);
+      }
+      this.logger.log(
+        `Fix-mode: ${stale.length} commande(s) fix_continuous close(s) par échéance (> ${Math.round(this.commandExpiryMs / 60_000)} min).`,
+      );
+    } catch (err) {
+      // Un balayage qui échoue ne doit pas casser le service ; il repassera dans 10 min.
+      this.logger.warn(`Fix-mode: échec du balayage des commandes périmées: ${err}`);
+    } finally {
+      this.expiring = false;
+    }
+  }
+
   reconcile(
     tracker: Pick<Tracker, 'desiredFixIntervalS' | 'currentFixIntervalS' | 'fixCommandFailureCount' | 'lastValidFrameAt' | 'lastFixIntervalSyncAt'>,
     frame: FrameContext,
@@ -247,7 +343,19 @@ export class TrackerFixModeService {
     }
 
     const observedS = Math.max(1, Math.round((frame.deviceTime.getTime() - prev.getTime()) / 1000));
-    const targetS = tracker.desiredFixIntervalS;
+    // V1.19 (TRK-008) — cible EFFECTIVE, clampée EXACTEMENT comme dans `requestChange`.
+    //
+    // `desiredFixIntervalS` avait deux auteurs et un seul bornait ce qu'il écrivait :
+    // `requestChange` clampait à [20, 300], l'auto-alignement inscrivait l'observé BRUT.
+    // Des cibles à 1 s, 2 s, 8 s se sont ainsi installées en base — sous le minimum matériel
+    // du Coban GPS403D (20 s). Un boîtier émettant à sa cadence normale se retrouvait alors
+    // hors bande en permanence, donc FAILING, donc réaligné plus bas encore : 72 commandes
+    // par jour, 100 % en échec, pendant des mois.
+    //
+    // Clamper ICI neutralise immédiatement les cibles héritées, sans migration de données ni
+    // attente d'un changement d'état. Une cible que le matériel ne peut pas tenir ne doit
+    // servir à condamner personne.
+    const targetS = Math.min(Math.max(HARD_CAP_MIN_S, tracker.desiredFixIntervalS), HARD_CAP_S);
     const lower = targetS * (1 - RECONCILE_TOLERANCE);
     const upper = targetS * (1 + RECONCILE_TOLERANCE);
 
@@ -284,6 +392,31 @@ export class TrackerFixModeService {
     // purge aussi un FAILING deja pose des la trame suivante (auto-guerison).
     const movingNow = frame.ignition === true || frame.speedKmh > PARKED_SPEED_KMH;
     if (observedS > upper && !movingNow) {
+      return {
+        nextCurrentFixIntervalS: observedS,
+        nextFailureCount: 0,
+        nextFailing: false,
+        autoAlignDesiredS: null,
+      };
+    }
+
+    // V1.19 (TRK-008) — ÉMETTRE PLUS VITE QUE DEMANDÉ, EN MOUVEMENT, N'EST PAS UNE FAUTE.
+    //
+    // Symétrique de la garde ci-dessus. En MOUVEMENT, la cible (20 s) vise la PRÉCISION du
+    // suivi : un boîtier qui envoie davantage de positions donne mieux que ce qu'on a demandé,
+    // il ne dégrade rien. Le compter en échec avait deux effets nuisibles — déclencher
+    // l'auto-alignement (qui corrompait la cible) et faire cesser l'envoi de commandes, figeant
+    // le boîtier dans cet état. C'est ce qui avait imposé d'abaisser le plancher
+    // d'auto-alignement à 1 s en V1.15, d'où toute la dérive.
+    //
+    // ⚠️ RESTREINT AU MOUVEMENT, volontairement. À l'ARRÊT, la cible (300 s) vise l'ÉCONOMIE
+    // de batterie et de données : un boîtier qui émet plus vite y contrevient réellement, et
+    // doit continuer d'être signalé. Une garde non restreinte aurait silencieusement annulé
+    // cette économie — ce que trois tests de ce module vérifient depuis l'origine.
+    //
+    // L'information n'est pas perdue : la cadence réelle reste écrite dans
+    // `currentFixIntervalS` et s'affiche sur la fiche. On cesse de la qualifier de panne.
+    if (observedS < lower && movingNow) {
       return {
         nextCurrentFixIntervalS: observedS,
         nextFailureCount: 0,

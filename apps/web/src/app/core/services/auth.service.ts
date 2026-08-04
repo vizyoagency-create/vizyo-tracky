@@ -81,6 +81,12 @@ export class AuthService {
   /** feat/comptes-conducteurs — true si l'utilisateur courant est un conducteur (rôle restreint DRIVER). */
   readonly isDriver = computed(() => this._user()?.role === 'DRIVER');
   private refreshPromise: Promise<string | null> | null = null;
+  /**
+   * Délai avant le second essai du rafraîchissement proactif (TRK-002). Un appareil qui se
+   * réveille rétablit sa route en bien moins que ça ; assez court pour ne pas retarder la
+   * détection d'une vraie panne.
+   */
+  private static readonly PROACTIVE_RETRY_MS = 3_000;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
@@ -179,18 +185,24 @@ export class AuthService {
     }
   }
 
-  /** Tente un refresh du token. Retourne le nouveau accessToken ou null si échec. */
-  async tryRefresh(): Promise<string | null> {
+  /**
+   * Tente un refresh du token. Retourne le nouveau accessToken ou null si échec.
+   *
+   * `silentNetworkFailure` : ne pas remonter un échec de transport au centre d'alerte sur
+   * cette tentative — réservé au premier essai du rafraîchissement PROACTIF, qui réessaie
+   * (TRK-002).
+   */
+  async tryRefresh(opts?: { silentNetworkFailure?: boolean }): Promise<string | null> {
     // Éviter les refreshs en parallèle
     if (this.refreshPromise) return this.refreshPromise;
 
-    this.refreshPromise = this.doRefresh();
+    this.refreshPromise = this.doRefresh(opts?.silentNetworkFailure === true);
     const result = await this.refreshPromise;
     this.refreshPromise = null;
     return result;
   }
 
-  private async doRefresh(): Promise<string | null> {
+  private async doRefresh(silentNetworkFailure = false): Promise<string | null> {
     const rt = this.refreshToken;
     if (!rt) return null;
 
@@ -210,7 +222,7 @@ export class AuthService {
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken: rt }),
-      }, 'Rafraichissement de session');
+      }, 'Rafraichissement de session', { silentNetworkFailure });
 
       if (!res.ok) {
         // ⚠️ UN SERVEUR INJOIGNABLE N'EST PAS UN JETON REFUSÉ.
@@ -291,8 +303,24 @@ export class AuthService {
   }
 
   private async proactiveTick(): Promise<void> {
-    const t = await this.tryRefresh();
-    if (t) {
+    // TRK-002 — CE MINUTEUR EST LA SOURCE DU BRUIT, ET IL FAUT SAVOIR POURQUOI.
+    //
+    // Un `setTimeout` est GELÉ quand l'onglet passe en arrière-plan ou que l'appareil dort,
+    // puis tiré AU RÉVEIL — c'est-à-dire à l'instant précis où la connectivité n'est pas
+    // encore rétablie. Le rafraîchissement part dans le vide et échoue au niveau transport.
+    //
+    // Personne ne perd sa session pour autant (`doRefresh` ne déconnecte pas sur un échec
+    // réseau), mais chaque réveil laissait une ligne ERREUR au centre d'alerte. On laisse
+    // donc sa chance au réseau : premier essai SILENCIEUX, un délai, puis un second essai
+    // qui, lui, remonte normalement. Un vrai serveur injoignable produit toujours sa ligne.
+    let token = await this.tryRefresh({ silentNetworkFailure: true });
+
+    if (!token && this._refreshUnavailable()) {
+      await new Promise((resolve) => setTimeout(resolve, AuthService.PROACTIVE_RETRY_MS));
+      token = await this.tryRefresh();
+    }
+
+    if (token) {
       this.scheduleProactiveRefresh(); // reprogramme sur le nouveau token
     }
     // sinon : on s'arrête ; un 401 ultérieur gèrera la déconnexion via l'interceptor.

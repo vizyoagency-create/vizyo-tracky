@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ErrorLogger } from '../observability/error-logger.service';
+import { asTransient, ErrorLogger } from '../observability/error-logger.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { FuelStopOut, TripStopOut } from './trip-analysis.preprocessor';
 
@@ -98,10 +98,17 @@ export class FuelStationService {
       // (« This operation was aborted ») ne disait pas que c'était un TIMEOUT sur l'API publique
       // des prix carburants, ni que l'analyse du trajet restait valable sans elle.
       const cause = lastError instanceof Error ? lastError.message : String(lastError ?? 'injoignable');
+      // TRK-005 — PASSAGER, donc journalisé sans être archivé. Le message reste inchangé (il
+      // nomme la dépendance, la conséquence et ce qui est préservé) ; c'est le CLASSEMENT qui
+      // était faux : un timeout d'une API publique tierce n'est ni un bug de Tracky, ni une
+      // action à mener. Une panne DURABLE reste détectable — la vigie de taux d'erreur, elle,
+      // ne s'appuie pas sur l'archivage au coup par coup.
       void this.errorLogger.record(
-        new Error(
-          `Passages en station non détectés : API publique des prix carburants injoignable sur ${lookups} arrêt(s) — ` +
-            `aucun plein n'est affirmé sur ce trajet, le reste de l'analyse est conservé. Cause : ${cause}`,
+        asTransient(
+          new Error(
+            `Passages en station non détectés : API publique des prix carburants injoignable sur ${lookups} arrêt(s) — ` +
+              `aucun plein n'est affirmé sur ce trajet, le reste de l'analyse est conservé. Cause : ${cause}`,
+          ),
         ),
         'fuel-station',
         { tripId: ctx.tripId, vehicleId: ctx.vehicleId, stage: 'lookup', stops: lookups, cause },

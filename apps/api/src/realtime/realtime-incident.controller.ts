@@ -23,6 +23,8 @@ import { RealtimeIncidentDto } from './dto/realtime-incident.dto';
 @UseGuards(JwtAuthGuard)
 export class RealtimeIncidentController {
   private static readonly DEDUPE_MS = 5 * 60 * 1000;
+  /** Fenêtre au-delà de laquelle deux reports ne sont plus « le même épisode » (TRK-003). */
+  private static readonly REPEAT_MS = 60 * 60 * 1000;
   private readonly lastByScope = new Map<string, number>();
 
   constructor(private readonly errorLogger: ErrorLogger) {}
@@ -41,6 +43,9 @@ export class RealtimeIncidentController {
     if (now - last < RealtimeIncidentController.DEDUPE_MS) {
       return { recorded: false };
     }
+    // TRK-003 — un second report pour la même flotte dans l'heure : la coupure ne se résorbe
+    // pas toute seule. C'est ce qui distingue un aléa d'une panne (cf. niveau ci-dessous).
+    const repeated = last > 0 && now - last < RealtimeIncidentController.REPEAT_MS;
     this.lastByScope.set(scopeKey, now);
     this.gc(now);
 
@@ -48,11 +53,18 @@ export class RealtimeIncidentController {
     const reason = body.reason ?? 'inconnu';
     const transport = body.transport ?? 'n/a';
     const neverConnected = body.everConnected === false;
-    // Niveau adaptatif (moins « crier au loup ») : JAMAIS connecté OU coupure ≥ 2 min = CRITICAL
-    // (vraie panne, plus de vue live) ; un flap court après connexion = ERROR (visible sans gonfler
-    // le compteur critique). Le détail (reason/transport/flaps) donne la cause racine.
+    // Niveau adaptatif (moins « crier au loup ») : une coupure ≥ 2 min = CRITICAL (vraie panne,
+    // plus de vue live) ; un flap court après connexion = ERROR.
+    //
+    // TRK-003 — `neverConnected` seul ne suffit PLUS à déclencher CRITICAL. Un premier
+    // chargement de page qui met 45 s à établir son WebSocket n'est pas du même ordre qu'une
+    // plateforme injoignable : sous 2 vCPU, l'API rate un pong et tous les incidents tombent
+    // pile à 45 s (cf. `redis-io.adapter`). Une occurrence isolée était donc classée au niveau
+    // maximal pour un aléa de charge. Il faut désormais que ça RECOMMENCE — ou que ça dure.
+    // `everConnected` reste dans le corps du message : l'information n'est pas perdue, seul
+    // le cri baisse.
     const level: 'ERROR' | 'CRITICAL' =
-      neverConnected || (body.downMs ?? 0) >= 120_000 ? 'CRITICAL' : 'ERROR';
+      (body.downMs ?? 0) >= 120_000 || (neverConnected && repeated) ? 'CRITICAL' : 'ERROR';
     const head = neverConnected
       ? `Canal temps réel JAMAIS établi (${downSec}s) — API/WS injoignable`
       : `Connexion temps réel interrompue (${downSec}s sans live)`;
@@ -80,7 +92,9 @@ export class RealtimeIncidentController {
   private gc(now: number): void {
     if (this.lastByScope.size <= 500) return;
     for (const [key, ts] of this.lastByScope) {
-      if (now - ts > RealtimeIncidentController.DEDUPE_MS) this.lastByScope.delete(key);
+      // ⚠️ Purger sur DEDUPE_MS effacerait la mémoire dont dépend `repeated` (TRK-003) : on
+      // garde jusqu'à la plus longue fenêtre réellement consultée.
+      if (now - ts > RealtimeIncidentController.REPEAT_MS) this.lastByScope.delete(key);
     }
   }
 }
