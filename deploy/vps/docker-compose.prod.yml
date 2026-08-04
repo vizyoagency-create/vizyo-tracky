@@ -93,6 +93,13 @@ services:
       # l'ecran afficherait une documentation vide sans rien expliquer. Le script de
       # publication doit donc toujours le creer avant de copier (cf. PROCEDURE-AUDIT.md §11).
       - /opt/tracky-centre-alerte:/app/docs/centre-alerte:ro
+      # Documentation de l'audit VPS, meme raisonnement que ci-dessus : l'agent depose un
+      # rapport chaque nuit, il doit apparaitre sans rebuild ni redemarrage.
+      #
+      # ⚠️ Meme piege : si /opt/tracky-vps-audit n'existe pas, Docker le CREE VIDE et masque
+      # la copie embarquee dans l'image. Le script de publication cree donc le dossier avant
+      # de copier (cf. docs/vps-audit/PROCEDURE-AUDIT.md).
+      - /opt/tracky-vps-audit:/app/docs/vps-audit:ro
     networks:
       - vizyo-tracky
       - vizyo-auth-network

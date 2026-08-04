@@ -289,6 +289,13 @@ export const routes: Routes = [
         data: { title: 'Centre d\'alertes' },
       },
       {
+        path: 'admin/vps',
+        canActivate: [superAdminGuard],
+        loadComponent: () =>
+          import('./features/observability/admin-vps.component').then((m) => m.AdminVpsComponent),
+        data: { title: 'VPS — performances & données' },
+      },
+      {
         path: 'admin/sms',
         canActivate: [superAdminGuard],
         loadComponent: () =>

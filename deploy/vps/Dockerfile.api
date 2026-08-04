@@ -38,6 +38,10 @@ COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
 # le WORKDIR runtime est /app/apps/api, donc `../../docs/centre-alerte` resout ici.
 COPY --from=builder /app/docs/centre-alerte ./docs/centre-alerte
 
+# Documentation de l'audit VPS (constats, procedure, collecteur, rapports quotidiens).
+# Meme raisonnement que ci-dessus, pour l'ecran /admin/vps.
+COPY --from=builder /app/docs/vps-audit ./docs/vps-audit
+
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=60s \
   CMD wget -qO- http://localhost:3000/api/health | grep -q '"ok"' || exit 1
 
