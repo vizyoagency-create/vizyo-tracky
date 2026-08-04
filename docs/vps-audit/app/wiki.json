@@ -250,6 +250,23 @@
       "ancre": "vps-010-noyau-non-redemarre-59-paquets-en-retard"
     },
     {
+      "id": "VPS-011",
+      "titre": "Les healthchecks sont la premiere charge de fond, et personne ne les voit",
+      "domaine": "docker",
+      "statut": "A_TRAITER",
+      "gravite": 3,
+      "vuPremiere": "2026-08-04",
+      "vuDerniere": "2026-08-04",
+      "mesure": "88 invocations/min = 126 720/jour · 1 398 processus/min au total",
+      "gain": "-40 invocations/min (57 600 executions/jour) en passant les bases de 10 s a 30 s",
+      "quoi": "Les crons se declarent quelque part, les healthchecks non : c'est une propriete du conteneur, et rien ne les agrege. Chaque passage lance une chaine runc complete (~5 processus), et les 10 sondes de base ouvrent en plus un backend PostgreSQL.",
+      "quoiFaire": "Passer `interval: 30s` sur les sondes des piles -dev et des bases. Une base qui tombe est detectee en 30 s aussi bien qu'en 10 s.",
+      "pourquoiInvisible": "Aucune commande ne les liste ensemble ; `docker ps` montre (healthy), pas la frequence. Le cout est diffus — reparti sur toutes les secondes, jamais un pic, donc jamais une alerte.",
+      "aNePasFaire": "Toucher aux sondes de tracky-api et tracky-postgres en production : c'est la que la detection rapide sert vraiment.",
+      "doc": "REFERENCE-CONSTATS.md",
+      "ancre": "vps-011-les-healthchecks-sont-la-premiere-charge-de-fond-et-personne-ne-les-voit"
+    },
+    {
       "id": "VPS-M01",
       "titre": "Méthode — compter les IP sur « from » mélange succès et échecs",
       "domaine": "méthode",
@@ -297,6 +314,39 @@
       "aNePasFaire": "Recopier un identifiant à la main dans deux fichiers : ils finissent toujours par diverger. Le dériver, ou le vérifier automatiquement.",
       "doc": "REFERENCE-CONSTATS.md",
       "ancre": "vps-m03-les-ancres-du-manifeste-etaient-toutes-fausses"
+    },
+    {
+      "id": "VPS-M04",
+      "titre": "Methode — le crontab Alpine des conteneurs est un faux positif",
+      "domaine": "methode",
+      "statut": "ACCEPTE",
+      "gravite": 4,
+      "vuPremiere": "2026-08-04",
+      "vuDerniere": "2026-08-04",
+      "mesure": "24 conteneurs concernes · verifie inerte sur 6",
+      "gain": "evite de re-signaler chaque jour une tache qui n existe pas",
+      "quoi": "Un balayage remonte un crontab dans 24 conteneurs (`run-parts /etc/periodic/*`). Ca ressemble exactement a des taches planifiees cachees. C'est inerte : toute image Alpine embarque ce fichier, mais crond n'est pas lance et /etc/periodic est vide.",
+      "quoiFaire": "Rien. Le collecteur affiche desormais `crond_actif/scripts = 0/0` pour rendre la verification visible plutot que d'omettre le sujet.",
+      "pourquoiInvisible": "C'est l'inverse : le probleme est qu'il est TROP visible et faussement alarmant.",
+      "aNePasFaire": "Signaler une tache planifiee sans avoir verifie que quelque chose la lit. Un fichier de configuration n'est pas une preuve d'execution.",
+      "doc": "REFERENCE-CONSTATS.md",
+      "ancre": "vps-m04-le-crontab-alpine-des-conteneurs-est-un-faux-positif"
+    },
+    {
+      "id": "VPS-M05",
+      "titre": "Methode — l'audit a depasse son propre budget, et deux mesures etaient fausses",
+      "domaine": "methode",
+      "statut": "APPLIQUE",
+      "gravite": 4,
+      "vuPremiere": "2026-08-04",
+      "vuDerniere": "2026-08-04",
+      "mesure": "99 s -> 44 s · 3 defauts corriges",
+      "gain": "collecte deux fois plus rapide et deux chiffres redresses",
+      "quoi": "L'ajout de la section « charge de fond » a introduit trois defauts : une fenetre de mesure de 20 s qui portait la collecte a 99 s (au-dessus des 90 s imposees) ; un parsing positionnel de `docker system df` fausse par le libelle « Local Volumes » qui contient un espace ; et deux `docker exec` par conteneur dont les sorties se melangeaient — l'audit ajoutant a la charge qu'il venait de denoncer.",
+      "quoiFaire": "Fait : fenetre ramenee a 10 s, passage par `--format`, appels fusionnes.",
+      "aNePasFaire": "Analyser en positionnel une sortie tabulee dont un libelle contient un espace. Quand un outil propose --format, l'utiliser.",
+      "doc": "REFERENCE-CONSTATS.md",
+      "ancre": "vps-m05-laudit-a-depasse-son-propre-budget-et-deux-mesures-etaient-fausses"
     }
   ],
   "passages": [
@@ -314,10 +364,12 @@
         "conteneursActifs": 31,
         "conteneursMorts": 17,
         "paquetsEnRetard": 59,
-        "echecsSshJour": 70
+        "echecsSshJour": 70,
+        "healthchecksParMin": 88,
+        "processusParMin": 1398
       },
       "constats": {
-        "nouveaux": 13,
+        "nouveaux": 16,
         "misAJour": 0,
         "resolus": 0
       },
@@ -330,5 +382,202 @@
       ],
       "note": "Passage d'amorçage : le référentiel part de zéro. Trois défauts de méthode (VPS-M01 à M03) ont été trouvés et corrigés pendant ce passage — dont 12 liens morts que rien n'aurait signalés."
     }
-  ]
+  ],
+  "ordonnancement": [
+    {
+      "id": "docker-image-prune",
+      "couche": "VPS",
+      "heureLocale": "02:40",
+      "heureUtc": "00:40",
+      "cadence": "quotidien",
+      "quoi": "docker image prune -af --filter \"until=24h\"",
+      "duree": "~5 s",
+      "cout": "faible",
+      "note": "Ne touche PAS au cache de build : c'est un autre magasin. Il tourne consciencieusement sur la moitie qui n'avait pas de probleme.",
+      "constat": "VPS-001"
+    },
+    {
+      "id": "audit-centre-alerte",
+      "couche": "Poste",
+      "heureLocale": "03:09",
+      "heureUtc": "01:09",
+      "cadence": "quotidien",
+      "quoi": "Audit du centre d'alerte Tracky (erreurs applicatives)",
+      "duree": "variable",
+      "cout": "nul pour le VPS (lecture API/DB)",
+      "note": "Planifie cote poste. Ecrit dans docs/centre-alerte/."
+    },
+    {
+      "id": "audit-vps",
+      "couche": "Poste",
+      "heureLocale": "04:21",
+      "heureUtc": "02:21",
+      "cadence": "quotidien",
+      "quoi": "Audit VPS (perf, disque, docker, donnees, securite)",
+      "duree": "44 s",
+      "cout": "charge 0,4 → 1,3 sur 2 coeurs",
+      "note": "Lecture seule. Budget impose : 90 s max, sinon c'est un defaut a corriger."
+    },
+    {
+      "id": "backup-cron",
+      "couche": "VPS",
+      "heureLocale": "05:00",
+      "heureUtc": "03:00",
+      "cadence": "quotidien",
+      "quoi": "Sauvegarde PostgreSQL (crontab root)",
+      "duree": "40 à 67 s",
+      "cout": "pg_dump ~130 Mo",
+      "note": "DOUBLON : le meme script est aussi lance par un timer systemd 2 min plus tard.",
+      "constat": "VPS-003"
+    },
+    {
+      "id": "backup-timer",
+      "couche": "VPS",
+      "heureLocale": "05:02",
+      "heureUtc": "03:02",
+      "cadence": "quotidien",
+      "quoi": "Sauvegarde PostgreSQL (timer systemd) — le doublon",
+      "duree": "20 à 60 s",
+      "cout": "pg_dump ~130 Mo, en concurrence du precedent",
+      "note": "A garder si l'on supprime la ligne cron : il journalise dans journald et survit mieux aux redemarrages.",
+      "constat": "VPS-003"
+    },
+    {
+      "id": "audit-pc",
+      "couche": "Poste",
+      "heureLocale": "05:12",
+      "heureUtc": "03:12",
+      "cadence": "quotidien",
+      "quoi": "Audit des performances du PC (local, sans rapport avec le VPS)",
+      "duree": "variable",
+      "cout": "nul pour le VPS",
+      "note": "Envoie desormais un rapport par e-mail a la fin de chaque passage."
+    },
+    {
+      "id": "apt-daily-upgrade",
+      "couche": "VPS",
+      "heureLocale": "08:33",
+      "heureUtc": "06:33",
+      "cadence": "quotidien",
+      "quoi": "unattended-upgrades (installation des correctifs)",
+      "duree": "variable",
+      "cout": "faible",
+      "note": "Installe bien les paquets, mais le noyau ne devient actif qu'au redemarrage — 28 j d'uptime.",
+      "constat": "VPS-010"
+    },
+    {
+      "id": "logrotate",
+      "couche": "VPS",
+      "heureLocale": "02:00",
+      "heureUtc": "00:00",
+      "cadence": "quotidien",
+      "quoi": "logrotate + dpkg-db-backup",
+      "duree": "~2 s",
+      "cout": "negligeable",
+      "note": "Standard Ubuntu. Fonctionne : /var/log tient en 291 Mo."
+    },
+    {
+      "id": "sysstat-collect",
+      "couche": "VPS",
+      "heureLocale": "toutes les 10 min",
+      "heureUtc": "—",
+      "cadence": "continu",
+      "quoi": "Collecte sysstat (historique CPU/RAM/charge)",
+      "duree": "<1 s",
+      "cout": "negligeable",
+      "note": "C'est LUI qui rend l'historique 7 jours possible. Ne pas desactiver : sans lui, impossible de distinguer un pic d'une derive."
+    },
+    {
+      "id": "healthchecks",
+      "couche": "VPS",
+      "heureLocale": "permanent",
+      "heureUtc": "—",
+      "cadence": "88 invocations/min",
+      "quoi": "Sondes de sante des 24 conteneurs (10 s ou 30 s)",
+      "duree": "permanent",
+      "cout": "126 720 executions/jour, ~5 processus chacune",
+      "note": "La premiere charge de fond de la machine, et la seule que rien n'agrege. Aucune commande ne les liste ensemble.",
+      "constat": "VPS-011"
+    },
+    {
+      "id": "fstrim",
+      "couche": "VPS",
+      "heureLocale": "lundi 03:39",
+      "heureUtc": "lundi 01:39",
+      "cadence": "hebdomadaire",
+      "quoi": "fstrim (liberation des blocs SSD)",
+      "duree": "variable",
+      "cout": "E/S ponctuelles",
+      "note": "Standard Ubuntu, benefique sur SSD."
+    },
+    {
+      "id": "e2scrub",
+      "couche": "VPS",
+      "heureLocale": "dimanche 05:10",
+      "heureUtc": "dimanche 03:10",
+      "cadence": "hebdomadaire",
+      "quoi": "e2scrub_all (verification du systeme de fichiers)",
+      "duree": "variable",
+      "cout": "E/S ponctuelles",
+      "note": "Standard Ubuntu."
+    }
+  ],
+  "previsions": {
+    "disque": {
+      "totalGo": 96,
+      "utiliseGo": 76,
+      "libreGo": 20,
+      "utilisePct": 79,
+      "seuilAlertePct": 90
+    },
+    "recuperable": [
+      {
+        "poste": "Cache de build Docker",
+        "go": 31.9,
+        "commande": "docker buildx prune -af",
+        "risque": "nul — 0 entree active",
+        "contrepartie": "le prochain build de chaque projet repart de zero",
+        "constat": "VPS-001"
+      },
+      {
+        "poste": "Images des conteneurs morts",
+        "go": 5.7,
+        "commande": "docker container prune --filter \"until=720h\"",
+        "risque": "faible — verifier la liste avant",
+        "contrepartie": "aucune si les piles sont bien abandonnees",
+        "constat": "VPS-006"
+      },
+      {
+        "poste": "Sauvegardes en double",
+        "go": 3.4,
+        "commande": "crontab -l | grep -v 'backup-db.sh' | crontab -",
+        "risque": "faible",
+        "contrepartie": "verifier le lendemain que le timer a pris le relais",
+        "constat": "VPS-003"
+      },
+      {
+        "poste": "Journaux systemd",
+        "go": 0.18,
+        "commande": "journalctl --vacuum-time=14d",
+        "risque": "nul",
+        "contrepartie": "perte de l'historique au-dela de 14 jours"
+      },
+      {
+        "poste": "Volumes orphelins",
+        "go": 0.2,
+        "commande": "— AUCUNE —",
+        "risque": "ELEVE : contient une base Postgres de 110 Mo non reconstituable",
+        "contrepartie": "volontairement non pris : le gain ne justifie pas le risque",
+        "constat": "VPS-009"
+      }
+    ],
+    "chargeDeFond": {
+      "processusParMinute": 1398,
+      "processusParJour": 2013120,
+      "healthchecksParMinute": 88,
+      "healthchecksParJour": 126720,
+      "conteneursSondes": 24,
+      "note": "Mesure du 2026-08-04. C'est le cout permanent, hors taches planifiees."
+    }
+  }
 }
