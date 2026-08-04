@@ -64,8 +64,40 @@ bon compromis.
 
 ## VPS-002 — root accessible en SSH par mot de passe, sans ralentisseur
 
-- **Domaine** : sécurité · **Gravité** : 1 · **Statut** : `A_TRAITER`
-- **Vu** : 2026-08-04 · **Mesure** : 175 échecs / 2,5 j, dont **28 sur `root`** ; `fail2ban` absent
+- **Domaine** : sécurité · **Gravité** : 1 · **Statut** : `APPLIQUE` (2026-08-04, 18 h 20)
+- **Vu** : 2026-08-04 · **Mesure à la découverte** : 175 échecs / 2,5 j, dont **28 sur `root`** ; `fail2ban` absent
+
+> ### ✅ Corrigé le 2026-08-04 — la preuve
+>
+> | Vérification | Résultat |
+> |---|---|
+> | Méthodes annoncées par le serveur | **`publickey` seule** (le mot de passe n'est plus proposé) |
+> | Connexion neuve par clé | ✅ réussie, avant *et* après |
+> | `permitrootlogin` | `yes`, **inchangé** — l'accès par clé passe toujours |
+> | Mot de passe root | **conservé** — la console de secours hPanel reste utilisable |
+> | Les 4 clés autorisées | intactes, dont les 3 de déploiement GitHub Actions |
+> | fail2ban | actif, prison `sshd` armée, bannissement **prouvé** sur une IP de test |
+>
+> Appliqué avec un **filet auto-réversible** : la modification s'annulait toute seule au bout
+> de 7 minutes si une connexion neuve ne venait pas la confirmer. Elle a été confirmée.
+>
+> ### ⚠️ Trois pièges rencontrés à l'application — à connaître avant de refaire ça ailleurs
+>
+> **1. Le vrai `PasswordAuthentication yes` n'était pas dans `sshd_config`.**
+> La ligne y est commentée. La valeur venait de `/etc/ssh/sshd_config.d/50-cloud-init.conf`,
+> et un second fichier disait l'inverse (`60-cloudimg-settings.conf` : `no`). **sshd retient la
+> PREMIÈRE valeur lue**, donc `50-` gagnait sur `60-`. Éditer `sshd_config` n'aurait **rien
+> changé** — la config aurait eu l'air corrigée, la porte serait restée ouverte.
+> → Correctif posé dans **`01-hardening.conf`** : `01` est lu avant `50`, donc il gagne. Et
+> comme c'est un fichier distinct, une régénération de `50-cloud-init.conf` par cloud-init
+> (au prochain redémarrage) ne le neutralisera pas.
+>
+> **2. Le service s'appelle `ssh`, pas `sshd`.** `systemctl reload sshd` échoue avec
+> « Unit sshd.service not found », et `sshd -T` continue d'afficher la config *des fichiers* —
+> pas celle du démon en cours. On croit donc avoir appliqué alors que rien n'a bougé.
+>
+> **3. La seule preuve qui vaut vient d'une connexion NEUVE.** `reload` ne coupe pas les
+> sessions établies : la session courante fonctionne même si la configuration est cassée.
 
 **Quoi.** `sshd` accepte `PermitRootLogin yes` **et** `PasswordAuthentication yes`, et `root`
 est le seul compte à avoir un mot de passe défini. Le port 22 est ouvert à Internet
@@ -88,8 +120,26 @@ retrouver enfermé dehors. Et ne jamais recharger `sshd` sans `sshd -t` d'abord.
 
 ## VPS-003 — La sauvegarde tourne deux fois par jour
 
-- **Domaine** : sauvegardes · **Gravité** : 3 · **Statut** : `A_TRAITER`
-- **Vu** : 2026-08-04 (remonte au moins au 2026-07-05) · **Mesure** : 62 fichiers pour 31 jours
+- **Domaine** : sauvegardes · **Gravité** : 3 · **Statut** : `APPLIQUE` (2026-08-04, 18 h 30)
+- **Vu** : 2026-08-04 (remonte au moins au 2026-07-05) · **Mesure à la découverte** : 62 fichiers pour 31 jours
+
+> ### ✅ Corrigé le 2026-08-04 — la preuve
+>
+> Ligne cron retirée (`crontab -l | grep -v 'backup-db.sh' | crontab -`), ancien crontab
+> sauvegardé dans `/root/crontab.bak-20260804`. Le timer systemd est **conservé** : il est
+> resté `enabled`, prochaine exécution le 2026-08-05 à 03:00 UTC.
+>
+> | | Avant | Après |
+> |---|---:|---:|
+> | Déclencheurs du même script | **2** (cron + timer) | **1** (timer) |
+> | Sauvegardes par jour | 2 × ~130 Mo | 1 |
+> | `pg_dump` concurrents à 3 h | oui | non |
+>
+> **Ce correctif en a résolu un second sans qu'on le prévoie** — voir VPS-004.
+>
+> ⚠️ **À vérifier demain matin** : `journalctl -u tracky-backup.service --since yesterday`
+> doit montrer **une** exécution réussie. Si le timer ne prenait pas le relais, il n'y aurait
+> plus **aucune** sauvegarde — c'est le seul vrai risque de ce correctif.
 
 **Quoi.** Le même script `/opt/vizyo-tracky/deploy/vps/backup-db.sh` est déclenché par **deux**
 planificateurs : la crontab de root (`0 3 * * *`) et le timer systemd `tracky-backup.timer`
@@ -109,29 +159,36 @@ journalise proprement et survit mieux aux redémarrages.
 
 ---
 
-## VPS-004 — Le témoin de bonne santé des sauvegardes n'a jamais émis
+## VPS-004 — ~~Le témoin de bonne santé des sauvegardes n'a jamais émis~~ → **DIAGNOSTIC ERRONÉ**
 
-- **Domaine** : sauvegardes · **Gravité** : 2 · **Statut** : `CORRECTIF_PROPOSE`
-- **Vu** : 2026-08-04 · **Mesure** : `WARN: API_URL or INTERNAL_API_SECRET not set` à **chaque** exécution
+- **Domaine** : sauvegardes · **Gravité** : — · **Statut** : `APPLIQUE` (annulé le 2026-08-04)
+- **Vu** : 2026-08-04 · **Invalidé le jour même**
 
-**Quoi.** Le script sait signaler ses succès à l'API (`POST /api/internal/backup-health`), mais
-`API_URL` et `INTERNAL_API_SECRET` ne sont pas définis dans son environnement. L'appel est
-donc systématiquement sauté.
-
-**Pourquoi c'est grave malgré la gravité 2.** La sauvegarde marche — le risque n'est pas la
-perte de données *aujourd'hui*. Le risque est qu'elle s'arrête **demain** sans que rien ne le
-dise : le fichier n'apparaîtrait plus, et personne ne surveille un dossier pour vérifier qu'il
-grossit. C'est une garde écrite et branchée nulle part : elle rassure et ne protège pas.
-
-**Quoi faire.** Ajouter dans `/etc/systemd/system/tracky-backup.service` :
-```ini
-Environment="API_URL=https://<domaine-api>"
-Environment="INTERNAL_API_SECRET=<même valeur que côté API>"
-```
-puis `systemctl daemon-reload`.
-
-**Preuve attendue** : la ligne `WARN` **disparaît** du journal du lendemain. Tant qu'elle est
-là, le correctif n'a pas pris — ne pas se contenter de l'avoir écrit.
+> ### ❌ Ce constat était FAUX. Il est conservé — un diagnostic erroné ne se supprime pas, il s'explique.
+>
+> **Ce que j'avais écrit** : le script sait signaler ses succès à l'API, mais `API_URL` et
+> `INTERNAL_API_SECRET` ne sont pas définis, donc l'appel est systématiquement sauté — et si
+> les sauvegardes s'arrêtaient, rien ne le dirait.
+>
+> **Ce qui était vrai** : `/etc/tracky-backup.env` contenait **déjà** les deux variables,
+> correctement remplies, et le service systemd le charge via `EnvironmentFile`.
+>
+> | Source | Occurrences de `WARN: API_URL... not set` |
+> |---|---:|
+> | Exécutions par **timer** (journald) | **0** |
+> | Exécutions par **cron** (`/var/log/tracky-backup.log`) | **99** |
+>
+> **La cause** : `cron` ne lit pas les `EnvironmentFile` de systemd. Le doublon cron tournait
+> donc sans les variables et écrivait le `WARN` ; le timer, lui, faisait le travail depuis
+> toujours. La table `backup_runs` de l'API le prouve — **7 jours de rapports `OK`** enregistrés.
+>
+> **Pourquoi je me suis trompé** : j'ai lu `/var/log/tracky-backup.log` et conclu sur
+> l'ensemble du dispositif. Ce fichier ne reçoit que la sortie du **cron** (c'est lui qui
+> redirige avec `>>`). La moitié de l'histoire était dans `journald`, et je ne l'ai pas
+> ouverte. Voir **VPS-M07**.
+>
+> **Résolu par ricochet** : la suppression du doublon cron (VPS-003) a fait disparaître le
+> `WARN`, puisqu'il n'y a plus que le timer.
 
 ---
 
@@ -283,6 +340,41 @@ c'est là que la détection rapide sert vraiment.
 
 ---
 
+## VPS-012 — Trois clés GitHub Actions ont un accès root complet
+
+- **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `SURVEILLANCE`
+- **Vu** : 2026-08-04 · **Mesure** : 3 des 4 clés de `/root/.ssh/authorized_keys`
+
+**Quoi.** Sur les 4 clés autorisées, une seule est humaine (`vizyo-vps-hostinger`). Les trois
+autres sont des clés de déploiement CI/CD :
+
+| Clé | Projet |
+|---|---|
+| `github-actions-deploy@foodsqan` | FOODSQAN |
+| `github-deploy@foodsqan` | FOODSQAN |
+| `github-actions-deploy-maalem` | Maalem |
+
+Elles se connectent en **`root`**, sans restriction de commande. Un secret GitHub qui fuite —
+ou un workflow malveillant fusionné sur une branche autorisée — donne donc un accès root
+complet à la machine qui héberge **toute** la production, Tracky compris.
+
+**Pourquoi c'est en surveillance et non à traiter.** Aucune compromission n'est constatée, et
+ces clés sont nécessaires aux déploiements existants. Le durcissement SSH du jour ne les
+affecte pas (elles s'authentifient déjà par clé).
+
+**Quoi faire, le jour où on s'en occupe.** Par ordre de coût croissant :
+1. Restreindre chaque clé à une commande unique dans `authorized_keys`
+   (`command="/opt/<projet>/deploy.sh",no-port-forwarding,no-pty ssh-ed25519 …`) — c'est le
+   correctif à la fois le plus simple et le plus efficace.
+2. Créer un utilisateur non-root par projet, avec un `sudo` limité au script de déploiement.
+3. Vérifier que `foodsqan` a encore besoin de **deux** clés : la pile est arrêtée depuis
+   7 semaines (cf. VPS-006).
+
+**À ne pas faire** : les retirer sans prévenir. Un déploiement CI qui casse en silence se
+découvre au pire moment.
+
+---
+
 ## Constats de méthode (sur l'audit lui-même)
 
 ### VPS-M04 — Le crontab Alpine des conteneurs est un faux positif
@@ -339,6 +431,55 @@ les IP dont des connexions ont réussi, pour qu'on les reconnaisse.
 
 **Leçon générale** : un compteur d'incidents doit prouver qu'il compte des *incidents*. Ici,
 il comptait des *lignes*.
+
+### VPS-M07 — J'ai lu un seul journal et conclu sur l'ensemble
+
+- **Vu** : 2026-08-04 · **Statut** : `APPLIQUE`
+
+VPS-004 annonçait qu'une garde de sécurité n'avait « jamais fonctionné ». Elle fonctionnait
+depuis toujours. J'avais lu `/var/log/tracky-backup.log` — qui ne reçoit que la sortie du
+**cron**, parce que c'est la ligne cron qui redirige avec `>>`. L'autre moitié du dispositif,
+le timer systemd, écrit dans **journald**, et je ne l'ai pas ouverte.
+
+**Ce que ça aurait coûté** : du temps perdu à « réparer » ce qui marchait, et surtout une
+**fausse confiance inversée** — croire cassé un dispositif sain érode la confiance dans tout
+le référentiel.
+
+**Ce qui aurait dû alerter** : le constat VPS-003 disait déjà que **deux** planificateurs
+existaient et que **chacun journalise ailleurs**. J'avais l'information, je ne l'ai pas
+appliquée au constat suivant.
+
+**Leçon générale** : quand un dispositif a plusieurs déclencheurs, il a plusieurs journaux.
+Lire un seul et conclure sur l'ensemble, c'est mesurer une moitié et la présenter comme le
+tout. Chercher la **preuve côté effet** (ici : la table `backup_runs` de l'API) plutôt que
+côté trace — l'effet ne ment pas.
+
+### VPS-M06 — fail2ban tournait, s'annonçait actif, et ne surveillait rien
+
+- **Vu** : 2026-08-04 · **Statut** : `APPLIQUE` (corrigé à la pose)
+
+L'installation de fail2ban a produit **trois** gardes inertes coup sur coup. Le service était
+`active`, la prison `sshd` déclarée « enabled », et rien ne fonctionnait :
+
+1. **`ignoreip` vide dans le démon.** `apt install` démarre le service *pendant* l'installation.
+   Écrire `jail.local` ensuite puis lancer `systemctl enable --now` ne fait **rien** : le
+   service tourne déjà, `--now` ne redémarre pas. Il fallait `restart`.
+   → *L'IP d'administration n'était donc pas protégée du bannissement.*
+2. **`journalmatch` visait `_SYSTEMD_UNIT=sshd.service`** — une unité qui **n'existe pas** sur
+   Ubuntu 24.04 (elle s'appelle `ssh.service`). Preuve : `0` entrée sur `sshd.service`, **109**
+   sur `ssh.service`. La prison lisait un flux vide et affichait fièrement « Total failed: 0 »
+   alors que 175 échecs figuraient dans les journaux.
+3. **Ma propre vérification était fausse** : je cherchais une chaîne `f2b` dans `iptables` et
+   j'en comptais 4 — c'étaient des ponts Docker nommés `br-f2b719d1c13b`. Et fail2ban n'utilise
+   pas iptables ici mais **nftables** (`banaction = nftables` dans `defaults-debian.conf`).
+
+**Ce qui a permis de les trouver** : ne pas croire l'état annoncé. `systemctl is-active` dit
+« active », `fail2ban-client status` dit « enabled » — aucun des deux ne prouve que ça marche.
+La preuve est venue d'un **bannissement réel** d'une IP de test (`203.0.113.99`, plage
+documentation), vérifié dans la table nftables, puis retiré.
+
+**Leçon générale** : un garde-fou se prouve en le **déclenchant**, jamais en lisant son statut.
+Même famille que VPS-004 et que le repli SMS mort de l'incident MSISDN.
 
 ### VPS-M03 — Les ancres du manifeste étaient toutes fausses
 
