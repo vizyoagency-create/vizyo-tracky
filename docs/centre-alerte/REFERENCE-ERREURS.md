@@ -11,7 +11,7 @@
 
 - Procédure d'audit : [`PROCEDURE-AUDIT.md`](./PROCEDURE-AUDIT.md)
 - Rapports quotidiens : [`rapports/`](./rapports/)
-- Dernière mise à jour : **2026-08-03**
+- Dernière mise à jour : **2026-08-04**
 
 ---
 
@@ -40,16 +40,17 @@ n'est pas corrigé *et vérifié*. Le centre d'alerte n'est pas une boîte de r�
 
 | ID | Source | Signature courte | Statut | Vu la 1ʳᵉ fois | Dernière |
 |---|---|---|---|---|---|
-| [TRK-001](#trk-001) | `gps-integrity` | GPS perdu — boîtier vivant sans fix | 🔵 TERRAIN | 2026-07-28 | 2026-08-03 |
+| [TRK-001](#trk-001) | `gps-integrity` | GPS perdu — boîtier vivant sans fix | 🔵 TERRAIN | 2026-07-28 | 2026-08-04 |
 | [TRK-002](#trk-002) | `frontend` | Rafraîchissement de session — API injoignable | 🔴 NON CORRIGÉ | 2026-07-29 | 2026-08-03 |
 | [TRK-003](#trk-003) | `realtime-client` | Canal temps réel JAMAIS établi | 🟠 PROPOSÉ | 2026-07-31 | 2026-07-31 |
 | [TRK-004](#trk-004) | `http` | Budget IA mensuel atteint (503) | 🔴 NON CORRIGÉ | 2026-07-29 | 2026-07-29 |
 | [TRK-005](#trk-005) | `fuel-station` | API prix carburants injoignable | 🟠 PROPOSÉ | 2026-07-28 | 2026-07-28 |
 | [TRK-006](#trk-006) | `frontend` | NG02100 sur `/admin/subscriptions` | 🟢 CORRIGÉ | 2026-07-29 | 2026-07-30 |
-| [TRK-007](#trk-007) | *commandes* | `fix_continuous` bloquée en SENT à vie | 🔴 NON CORRIGÉ | 2026-08-03 | 2026-08-03 |
-| [TRK-008](#trk-008) | *commandes* | Boucle `fix_continuous` — 72 échecs/jour invisibles | 🔴 NON CORRIGÉ | 2026-08-03 | 2026-08-03 |
-| [TRK-009](#trk-009) | *trackers* | Boîtiers « hors ligne » jamais mis en service | 🟠 PROPOSÉ | 2026-08-03 | 2026-08-03 |
-| [TRK-010](#trk-010) | *plateforme* | La rétention efface les erreurs non corrigées | 🟠 PROPOSÉ | 2026-08-03 | 2026-08-03 |
+| [TRK-007](#trk-007) | *commandes* | `fix_continuous` bloquée en SENT à vie | 🔴 NON CORRIGÉ | 2026-08-03 | 2026-08-04 |
+| [TRK-008](#trk-008) | *commandes* | Boucle `fix_continuous` — 72 échecs/jour invisibles | 🔴 NON CORRIGÉ | 2026-08-03 | 2026-08-04 |
+| [TRK-009](#trk-009) | *trackers* | Boîtiers « hors ligne » jamais mis en service | 🟠 PROPOSÉ | 2026-08-03 | 2026-08-04 |
+| [TRK-010](#trk-010) | *plateforme* | La rétention efface les erreurs non corrigées | 🟠 PROPOSÉ | 2026-08-03 | 2026-08-04 |
+| [TRK-011](#trk-011) | `gps-integrity` | Zone bénigne = silence GPS **sans borne de durée** | 🔴 NON CORRIGÉ | 2026-08-04 | 2026-08-04 |
 
 ---
 
@@ -74,6 +75,16 @@ Le détecteur fait exactement son travail, et il est déjà bien borné :
 | `864035054756102` | FZ-862-VY | **En cours** — dernière position 17:34, `lastNoFixAt` 20:25 → ~3 h sans fix |
 | `864035054489449` | HD-779-MA | Reparti (position fraîche) |
 | `864035053277480` | KSR370 | Reparti (position fraîche) — 3 épisodes distincts en 3 jours |
+
+### Mise à jour du 2026-08-04
+`FZ-862-VY` est **toujours sans fix : 7,4 h** (contre ~3 h la veille). L'épisode dure, il n'est
+pas clos.
+
+⚠️ **Et il ne réalertera plus.** Sa zone morte (`879699a3…`, parking souterrain, Toulouse) a été
+**confirmée bénigne le 03/08 à 19:36**, une minute après l'alerte. Le détecteur cesse donc
+d'alerter pour ce véhicule à cet endroit, **quelle que soit la durée de la perte** — voir
+[TRK-011](#trk-011). Le suivi de cette antenne repose désormais sur les rapports d'audit, plus
+sur le centre d'alerte.
 
 ### Action
 **Terrain, pas code.** Antenne GPS à vérifier sur FZ-862-VY ; KSR370 récidive (3 épisodes en
@@ -304,7 +315,7 @@ locale non enregistrée, ou une date non parsable passée à `DatePipe`.
 ## TRK-007
 
 **Signature** — `COMMAND_PENDING | fix_continuous | SENT | acknowledgedAt IS NULL | âge > 10 min`
-**Statut : 🔴 NON CORRIGÉ** · 2 commandes · même boîtier `864035052915643` / EY-613-MF · 2026-08-03
+**Statut : 🔴 NON CORRIGÉ** · **3 commandes · 2 boîtiers** · 2026-08-03 → 2026-08-04
 
 ### Cause racine — aucun chemin automatique ne solde une `fix_continuous`
 La commande déclare pourtant comment elle devrait être confirmée :
@@ -350,12 +361,51 @@ Le Coban n'ACK pas de façon fiable — c'est un fait matériel documenté (Spri
 par chute d'ignition faute d'ACK). Le correctif n'est donc **pas** d'attendre un ACK : c'est de
 donner une échéance à l'attente.
 
+### Mise à jour du 2026-08-04 — le mécanisme, et pourquoi la transition n'arrivera jamais
+
+**Vérification empirique :** les 2 commandes vues la veille sont **toujours `SENT` 24 h plus
+tard** (7 h 40 et 13 h 40 d'ancienneté). Une troisième s'est ajoutée, sur un **second** boîtier.
+
+| Créée le | Boîtier | Plaque | Âge | Motif d'envoi |
+|---|---|---|---|---|
+| 03/08 21:15 | `864035054756763` | **FZ-731-YF** | 3 h 45 | `STOPPED_TO_MOVING` |
+| 03/08 17:20 | `864035052915643` | EY-613-MF | 7 h 40 | `STOPPED_TO_MOVING` |
+| 03/08 11:20 | `864035052915643` | EY-613-MF | 13 h 40 | `STOPPED_INTERVAL_ADJUSTED` |
+
+La fiche disait « si le boîtier ne bascule jamais FAILING ». On sait maintenant **pourquoi** il ne
+bascule pas : la garde « véhicule garé » (V1.18) de `reconcile()` remet le compteur d'échecs à
+**zéro** à chaque trame lente d'un boîtier immobile.
+
+```ts
+const movingNow = frame.ignition === true || frame.speedKmh > PARKED_SPEED_KMH;
+if (observedS > upper && !movingNow) {
+  return { nextCurrentFixIntervalS: observedS, nextFailureCount: 0, nextFailing: false, … };
+}
+```
+
+Or c'est exactement l'état des deux boîtiers concernés :
+
+| Boîtier | Plaque | Cible | Réel | État |
+|---|---|---|---|---|
+| `864035054756763` | FZ-731-YF | 20 s | **3601 s** | ONLINE |
+| `864035052915643` | EY-613-MF | 20 s | **3600 s** | ONLINE |
+
+~1 trame par heure : le heartbeat Coban ACC OFF, comportement matériel normal. La garde V1.18 fait
+donc **correctement** son travail — et, ce faisant, **désarme définitivement le seul chemin
+automatique qui pouvait solder la commande**. Les deux gardes sont justes prises séparément ;
+c'est leur **composition** qui laisse une commande ouverte pour toujours.
+
+**Conséquence pour le correctif :** l'échéance proposée doit être **purement temporelle**. La
+conditionner à un état du boîtier (FAILING, en mouvement, en ligne) la ferait retomber dans le
+même piège. Ne pas non plus « corriger » la garde V1.18 : elle empêche un vrai faux positif
+(3 véhicules garés déclarés FAILING à tort, prod du 2026-06-15).
+
 ---
 
 ## TRK-008
 
 **Signature** — `fix_continuous | FAILED | observedResult = "Tracker FAILING — <N> trames non conformes"` — **en volume**
-**Statut : 🔴 NON CORRIGÉ** · ~72/jour · 506 sur 7 jours · **3564 au total** · découvert 2026-08-03
+**Statut : 🔴 NON CORRIGÉ** · ~72/jour · 507 sur 7 jours · **3564+ au total** · découvert 2026-08-03 · **en extension**
 
 > ### C'est le point le plus important de cet audit, et le centre d'alerte n'en dit rien.
 
@@ -449,6 +499,34 @@ boîtiers qui émettent plus vite que demandé (2 s / 10 s) et restaient `FAILIN
 de converger comme de s'aligner. Le remonter les y renverrait. C'est pourquoi le correctif 1 est
 préférable : il résout les deux situations au lieu de les échanger.
 
+### Mise à jour du 2026-08-04 — la dérive s'étend, et le plancher descend
+
+| | 2026-08-03 | 2026-08-04 |
+|---|---|---|
+| Boîtiers à cible < 10 s | 4 | **10** |
+| Cible la plus basse | 2 s | **1 s** |
+| Échecs / jour | 72 | 72,4 |
+
+| Cible | Réel | Véhicules |
+|---|---|---|
+| **1 s** | 20 s | FR-428-DQ, FM-772-JH |
+| 2 s | 30 s / 8 s | FR-629-AD, FZ-862-VY |
+| 3 s | 20 s / 8 s | GT-493-KS, KSR370 |
+| 4 s | 19 s | *(boîtier sans véhicule)* |
+| 5 s | 20 s | GS-909-NX |
+| 8 s | 19 s / 9 s | GS-187-NY, FS-253-HR |
+
+Le volume d'échecs, lui, est d'une régularité qui confirme le plafond anti-flapping : **36
+boîtiers × exactement 2 commandes/jour, dix jours de suite** (71–74/jour du 25/07 au 03/08).
+
+> L'important n'est pas que le compteur d'échecs stagne — c'est que **le nombre de boîtiers
+> enfermés dans la boucle a plus que doublé en 24 h.** Le défaut ne se stabilise pas, il se
+> propage : chaque nouvel épisode d'auto-alignement fait descendre une cible de plus.
+
+L'apparition de cibles à **1 s** rend le correctif minimal (remonter `AUTO_ALIGN_FLOOR_S`) plus
+tentant à court terme. Il reste déconseillé pour la raison écrite ci-dessous : il renverrait en
+FAILING perpétuel les boîtiers qui émettent plus vite que demandé. Le correctif 1 reste le bon.
+
 ### Vérification après correctif
 `SECTION commandes_sante_7j` doit tomber **bien en dessous de 72 échecs/jour**, et
 `SECTION cadence_derive` ne doit plus afficher aucune ligne `cible_suspecte = t`. Un correctif
@@ -517,8 +595,91 @@ problème de place.
 
 ---
 
+## TRK-011
+
+**Signature** — *(absence d'alerte)* `gps-integrity | AUCUNE LIGNE | perte GPS ≥ <DURÉE> dans une
+zone morte `CONFIRMED_BENIGN``
+**Statut : 🔴 NON CORRIGÉ** · 2 véhicules définitivement muets · découvert 2026-08-04
+
+> ### Ce défaut ne produit rien. C'est précisément le problème.
+
+### Constat
+`FS-253-HR` (`864035054757027`) est **vivant** — `lastSeenAt` et `lastNoFixAt` frais à la minute,
+donc il émet activement des trames sans verrou GPS — et **sans position depuis 11,9 h**
+(dernière position le 03/08 à 13:02). Il n'a produit :
+
+- **aucune ligne `error_logs`** — jamais, sur les 30 jours de rétention ;
+- **aucune alerte véhicule `GPS_LOST`** — aucune sur 10 jours pour cette plaque.
+
+Il est passé sous tous les radars, alors qu'il coche exactement la définition du défaut que
+[TRK-001](#trk-001) détecte pour d'autres véhicules.
+
+### Cause racine
+`gps-integrity.service.ts` interrompt le traitement **avant** toute création d'alerte dès que la
+zone morte est confirmée bénigne :
+
+```ts
+if (zone && zone.status === GpsDeadZoneStatus.CONFIRMED_BENIGN) {
+  suppressed++;
+  continue;              // ← ni alerte flotte, ni ErrorLog
+}
+```
+
+Il n'existe **aucun test sur la durée de la perte**. La confirmation opérateur porte sur un
+**lieu** (« ce parking souterrain est normal »), mais elle est appliquée à un **épisode de durée
+quelconque**.
+
+> **En une phrase :** une antenne morte sur un véhicule garé dans son parking habituel serait
+> strictement indistinguable d'un stationnement normal — et ne serait jamais signalée.
+
+C'est le trou même que ce module a été écrit pour combler. Son en-tête cite l'incident **FS-253**
+et le résume ainsi : « RIEN ne le signalait ». Le véhicule aujourd'hui silencieux est `FS-253-HR`.
+
+### Périmètre — il s'élargit tout seul
+
+| Zone | Véhicule | Statut | Étiquette | Épisodes | Depuis |
+|---|---|---|---|---|---|
+| `79a8d0f2…` | FS-253-HR | `CONFIRMED_BENIGN` | Parking souterrain (Toulouse) | 5 | 2026-07-15 |
+| `879699a3…` | FZ-862-VY | `CONFIRMED_BENIGN` | Parking souterrain (Toulouse) | 1 | **2026-08-03 19:35** |
+
+Le second verrou vient d'être posé : l'alerte de FZ-862-VY a été levée à 19:35:15 et **acquittée
+à 19:36:32** — une minute plus tard, la zone était confirmée bénigne. Ce véhicule était à 7,4 h
+sans fix au moment de la collecte, et **n'alertera plus jamais à cet endroit**.
+
+Le nombre de véhicules muets **augmente d'un à chaque confirmation opérateur**. Or confirmer une
+zone est précisément ce qu'on demande à l'opérateur de faire : le geste vertueux creuse le trou.
+
+### Correctif proposé — borner la suppression, pas la supprimer
+1. **Plafond de silence configurable** `GPS_DEADZONE_MAX_SILENCE_H` (défaut **24 h**). Au-delà,
+   alerter malgré la zone bénigne. Calibrage vérifié sur les données du 2026-08-04 : un
+   stationnement de nuit habituel (11,9 h) reste silencieux ; une perte de 26 h parle.
+2. **Message distinct**, qui dit pourquoi il parle malgré la zone : « perte GPS de 26 h dans une
+   zone pourtant confirmée normale (parking souterrain, 5 épisodes) — durée anormale, antenne à
+   vérifier. » Un message qui ne dirait pas cela enverrait l'opérateur reconfirmer une zone déjà
+   confirmée — et il la reconfirmerait, à raison.
+3. **Dédup par épisode**, comme le reste du module : une ligne par dépassement, pas une par tick
+   de 5 min.
+
+### ⚠️ Pourquoi pas un seuil adaptatif tout de suite
+La donnée n'existe pas. `GpsLossEvent` porte `lostAt` et `detectedAt`, **mais pas de
+`recoveredAt`** : la durée réelle des épisodes passés n'est pas mesurable en l'état. Un seuil
+calculé sur l'historique de la zone (plus fin que 24 h fixes) suppose d'abord d'enregistrer la
+fin d'épisode. Le plafond fixe est le correctif applicable **aujourd'hui**.
+
+### ⚠️ Ne pas retirer la suppression
+C'est le cœur de la fonctionnalité « zones mortes » : ne plus re-signaler un parking habituel, ne
+plus faire déplacer quelqu'un pour rien. *Corriger la borne, pas la garde.*
+
+### Vérification après correctif
+Une perte dépassant le plafond dans une zone bénigne produit une ligne — **et un stationnement de
+nuit ordinaire n'en produit toujours aucune**. Le second point est le vrai test : un correctif qui
+ferait re-crier la zone à chaque perte aurait annulé la fonctionnalité.
+
+---
+
 ## Journal des passages
 
 | Date | Lignes `error_logs` | Signatures connues | Nouvelles | Ajoutées par |
 |---|---|---|---|---|
+| 2026-08-04 | 12 (0 nouvelle) | 10 revues | 1 (TRK-011) | agent d'audit (1er passage automatique) |
 | 2026-08-03 | 12 | — | 10 (amorçage) | audit manuel (session de création) |

@@ -555,6 +555,7 @@ export class CentreAlerteWikiComponent {
       trackersHorsLigne: 'hors ligne',
       commandesEnAttente: 'cmd. en attente',
       echecsCommandesParJour: 'échecs cmd./jour',
+      cadenceSousMinimum: 'cadence sous minimum',
     };
     return Object.entries(chiffres).map(([k, v]) => [labels[k] ?? k, v]);
   }

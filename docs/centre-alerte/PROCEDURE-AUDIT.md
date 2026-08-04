@@ -98,6 +98,35 @@ Avant de qualifier quoi que ce soit, poser ces quatre questions :
 
 ---
 
+## 4 bis. Dérive ou fluctuation ?
+
+Un audit quotidien voit des nombres bouger. Il est tentant d'y lire une tendance — et c'est le
+plus facile des faux diagnostics, parce qu'il *se raconte bien* : « passé de 4 à 10 en 24 h »
+sonne comme une aggravation démontrée. Ça n'en est pas une.
+
+**Avant d'annoncer une évolution, trois questions :**
+
+1. **La grandeur est-elle stable par nature ?** Beaucoup ne le sont pas. La liste des boîtiers
+   à cadence dérivée, par exemple, est **réécrite en continu** par l'auto-alignement : elle
+   change d'une heure à l'autre sans que rien n'empire. *(Mesuré le 2026-08-04 : 10 boîtiers à
+   00:59, 9 à 01:11 — douze minutes plus tard.)*
+2. **Compare-t-on la même définition ?** Un seuil qui change entre deux passages fabrique une
+   variation de toutes pièces. Reprendre le chiffre de `cadence_resume`, pas un comptage refait
+   à la main sur le détail.
+3. **Combien de points ?** Deux mesures ne font pas une tendance. Il en faut **au moins trois**,
+   espacées, sur la même définition.
+
+**Règle :** tant qu'on n'a pas trois points comparables, écrire le **fait mesuré**
+(« 14 boîtiers sous le minimum matériel ce jour ») et non l'**interprétation**
+(« la dérive s'étend »). Le journal des passages accumule ces chiffres précisément pour qu'une
+tendance devienne dicible plus tard — c'est ce qui rend l'audit cumulatif plutôt que quotidien.
+
+⚠️ Ce qui se compte, lui, se compare sans réserve : le **volume d'échecs de commandes** est
+d'une régularité de métronome (72/jour, 36 boîtiers, dix jours de suite). Là, la stabilité EST
+l'information — elle prouve un plafond atteint, pas un hasard.
+
+---
+
 ## 5. Normaliser en signature
 
 Une **signature** identifie un problème, pas une occurrence. Deux lignes qui décrivent le même
