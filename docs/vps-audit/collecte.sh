@@ -102,9 +102,29 @@ for b in /var/backups/vizyo-tracky /opt/backups; do
   [ -d "$b" ] && { timeout 30 $LOW du -sh "$b" 2>/dev/null; printf '  %s fichiers\n' "$(find "$b" -type f 2>/dev/null | wc -l)"; }
 done
 # Deux sauvegardes le MEME jour = deux planificateurs qui font le meme travail (cf. VPS-006).
-sub "Doublons de sauvegarde (2 fichiers le meme jour = anomalie)"
-find /var/backups/vizyo-tracky -name "*.sql.gz" -printf "%f\n" 2>/dev/null \
-  | sed -E 's/.*_([0-9]{8})-.*/\1/' | sort | uniq -c | awk '$1>1 {printf "  %s : %d fichiers\n", $2, $1}' | head
+# ⚠️ CE QUI COMPTE EST LA DATE DU DERNIER DOUBLON, PAS LEUR NOMBRE.
+#
+# Le doublon a ete corrige le 2026-08-04, mais les fichiers deja ecrits restent la jusqu'a
+# expiration de la retention (30 j). Lister « 30 journees en doublon » ferait croire chaque
+# matin que le correctif n'a pas pris — un faux positif quotidien, donc surement ignore au
+# bout de trois jours. On compare donc la date la plus recente a AUJOURD'HUI.
+sub "Doublons de sauvegarde — c'est la DATE du dernier qui compte"
+DUPJ=$(find /var/backups/vizyo-tracky -name "*.sql.gz" -printf "%f\n" 2>/dev/null \
+  | sed -E 's/.*_([0-9]{8})-.*/\1/' | sort | uniq -c | awk '$1>1 {print $2}' | sort)
+if [ -z "$DUPJ" ]; then
+  echo "  ✅ aucune journee en doublon"
+else
+  DERN=$(echo "$DUPJ" | tail -1)
+  NBJ=$(echo "$DUPJ" | wc -l)
+  AUJ=$(date +%Y%m%d)
+  AGE=$(( ( $(date -d "$AUJ" +%s) - $(date -d "$DERN" +%s) ) / 86400 ))
+  echo "  journees concernees : $NBJ — la plus recente : $DERN (il y a $AGE j)"
+  if [ "$AGE" -ge 1 ]; then
+    echo "  ✅ HISTORIQUE — plus aucun doublon depuis $AGE jour(s). Ces fichiers partiront a la retention."
+  else
+    echo "  🔴 DOUBLON ENCORE ACTIF aujourd'hui — deux planificateurs tournent toujours (cf. VPS-003)"
+  fi
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────────────────────
 section "4. DOCKER"
