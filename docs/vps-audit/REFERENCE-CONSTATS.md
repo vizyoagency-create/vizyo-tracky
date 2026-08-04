@@ -194,8 +194,27 @@ journalise proprement et survit mieux aux redémarrages.
 
 ## VPS-005 — Aucune limite mémoire sur aucun conteneur
 
-- **Domaine** : docker · **Gravité** : 2 · **Statut** : `SURVEILLANCE`
-- **Vu** : 2026-08-04 · **Mesure** : 31/31 conteneurs à `memlimit=0`, `cpus=0` ; **0 OOM en 30 j**
+- **Domaine** : docker · **Gravité** : 2 · **Statut** : `SURVEILLANCE` (Tracky traité le 2026-08-04)
+- **Vu** : 2026-08-04 · **Mesure à la découverte** : 31/31 conteneurs à `memlimit=0` ; **0 OOM en 30 j**
+
+> ### ✅ Appliqué sur Tracky le 2026-08-04
+>
+> | Conteneur | Usage observé | Limite posée | Rapport |
+> |---|---:|---:|---:|
+> | `tracky-postgres` | 80 Mo | **1536 Mo** | ×19 |
+> | `tracky-api` | 94 Mo | **1024 Mo** | ×11 |
+> | `tracky-redis` | 1,1 Mo | **384 Mo** | ×350 |
+>
+> Les valeurs sont **volontairement généreuses**. Le but est de **confiner une fuite**, pas
+> d'optimiser au plus juste : une limite serrée transforme un pic normal en redémarrage, et
+> on aurait remplacé un risque théorique par une panne réelle.
+>
+> **Redis est borné en plus par l'intérieur** : `--maxmemory 256mb --maxmemory-policy
+> allkeys-lru`. Sans ça, sa politique `noeviction` refusait les écritures au lieu d'oublier
+> les vieilles clés — c'est le cache qui décidait quand tout le monde s'arrête.
+>
+> **Reste sans limite** : les 28 conteneurs des autres projets. Le vrai gain est déjà pris —
+> la base et l'API de production ne peuvent plus être emportées par un voisin.
 
 **Quoi.** Aucun conteneur n'a de plafond. Si l'un s'emballe, l'`OOM killer` du noyau choisit sa
 victime selon un score de mémoire, pas selon l'importance métier : une fuite dans un conteneur
@@ -265,8 +284,16 @@ sorti en **137** (tué) — s'il doit revivre, le sortir de la liste.
 
 ## VPS-007 — `random_page_cost` réglé pour un disque mécanique
 
-- **Domaine** : données · **Gravité** : 3 · **Statut** : `CORRECTIF_PROPOSE`
-- **Vu** : 2026-08-04 · **Mesure** : `random_page_cost = 4` (défaut historique)
+- **Domaine** : données · **Gravité** : 3 · **Statut** : `APPLIQUE` (2026-08-04)
+- **Vu** : 2026-08-04 · **Mesure à la découverte** : `random_page_cost = 4`
+
+> ### ✅ Corrigé le 2026-08-04 — `4` → `1.1` sur `tracky-postgres`
+>
+> `ALTER SYSTEM SET random_page_cost = 1.1;` puis `pg_reload_conf()`. Écrit dans
+> `postgresql.auto.conf`, donc **persistant** — et le redémarrage de 23 h 32 l'a confirmé.
+>
+> Reste à 4 sur `maalem-dev-postgres` et `maestroo-dev-postgres` : bases de développement,
+> aucun enjeu de plan de requête.
 
 **Quoi.** La valeur `4` dit au planificateur qu'un accès aléatoire coûte 4× un accès
 séquentiel — vrai sur un disque à plateaux, faux sur SSD/NVMe. Conséquence : le planificateur
@@ -316,8 +343,43 @@ cache jetable et une base de données.
 
 ## VPS-010 — Noyau non redémarré, 59 paquets en retard
 
-- **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `A_TRAITER`
-- **Vu** : 2026-08-04 · **Mesure** : tourne sur 6.8.0-**134**, 6.8.0-**136** installé
+- **Domaine** : sécurité · **Gravité** : 2 · **Statut** : `APPLIQUE` (2026-08-04, 23 h 32)
+- **Vu** : 2026-08-04 · **Mesure à la découverte** : tournait sur 6.8.0-**134**, 6.8.0-**136** installé
+
+> ### ✅ Redémarrage effectué le 2026-08-04 — la preuve
+>
+> **Interruption réelle : ~50 secondes.** Fenêtre choisie à 23 h 32, avec **0 boîtier GPS
+> connecté**.
+>
+> | | Avant | Après |
+> |---|---:|---:|
+> | Noyau actif | 6.8.0-134 | **6.8.0-136** |
+> | Redémarrage requis | oui | **non** |
+> | `dockerd` (RSS) | 861 Mo | **131 Mo** |
+> | Swap utilisé | 1,0 Go | **0** |
+> | RAM utilisée | 2,5 Gi | **1,9 Gi** |
+> | Conteneurs | 31 | **31 — aucun manquant** |
+> | En anomalie | 0 | **0** |
+>
+> **~730 Mo de RAM rendus par `dockerd` seul, plus 1 Go de swap libéré.**
+>
+> ### Ce qui a été vérifié AVANT d'appuyer
+>
+> - **Les 31 conteneurs ont une politique `unless-stopped`** — sans ça, certains ne seraient
+>   pas revenus. C'est la vérification qui compte le plus.
+> - Une sauvegarde du matin (127 Mo) en filet.
+> - Un instantané nominatif des 31 conteneurs, pour comparer après.
+> - Chaque réglage devant survivre listé et confirmé présent sur disque.
+>
+> ### Ce qui a survécu (vérifié après)
+>
+> Durcissement SSH (`passwordauthentication no`), fail2ban **avec l'IP d'administration
+> toujours en liste blanche**, `vm.swappiness=10`, `vm.vfs_cache_pressure=50`, timer de
+> sauvegarde, **0 service en échec**.
+>
+> ⚠️ Le point qui aurait pu casser : `cloud-init` peut régénérer `50-cloud-init.conf` au
+> démarrage. Le durcissement tient parce qu'il vit dans **`01-hardening.conf`**, lu **avant**.
+> C'est exactement ce que la fiche VPS-002 avait anticipé — et le redémarrage vient de le prouver.
 
 **Quoi.** `unattended-upgrades` fait son travail — les paquets s'installent. Mais le noyau ne
 devient actif qu'au redémarrage, et la machine a 28 jours d'uptime. `libc6` et `linux-base`

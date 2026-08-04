@@ -196,6 +196,49 @@ un constat déclaré au manifeste mais que personne n'a documenté.
 
 ---
 
+## 6 bis. Les leviers d'optimisation — sept, et une règle
+
+La **section 11** du collecteur affiche sept leviers, chacun avec sa valeur actuelle, la valeur
+visée et un verdict. Ce n'est pas une liste de souhaits : c'est une **grille de relecture** qui
+répond à *« que reste-t-il à gagner, et est-ce que ça en vaut la peine ? »*
+
+| # | Levier | Cible | Pourquoi |
+|---|---|---|---|
+| 1 | Cache de build Docker | < 10 Go | Se reconstitue à **chaque build** : mesuré à +14 Go en 4 h pour 3 déploiements. |
+| 2 | `vm.swappiness` | 10 | 60 est la valeur « bureau » : elle swappe par anticipation alors qu'il reste de la RAM. |
+| 3 | Limites mémoire des conteneurs | 0 sans limite | Sans plafond, l'OOM killer choisit selon un score de mémoire, pas selon l'importance métier. |
+| 4 | `random_page_cost` | 1.1 | À 4 (valeur pour plateaux), le planificateur préfère des parcours de table là où un index irait plus vite. |
+| 5 | Redis borné | `maxmemory` + `allkeys-lru` | Sans borne + `noeviction`, le cache refuse les écritures au lieu d'oublier — c'est lui qui décide quand tout s'arrête. |
+| 6 | Journaux système | < 500 Mo | Piège classique du disque plein. |
+| 7 | Noyau actif = noyau installé | égal | Un noyau installé n'est **pas** un noyau actif. Le redémarrage rend aussi la mémoire de `dockerd`. |
+
+### ⚠️ Un levier « déjà bon » s'affiche quand même, en vert
+
+C'est délibéré. Sans ça, on ne peut pas voir qu'un réglage a **régressé** — et ils régressent :
+`cloud-init` réécrit des fichiers au démarrage, un redéploiement recrée un conteneur sans ses
+limites, un `ALTER SYSTEM` saute à une restauration de sauvegarde.
+
+### La règle qui gouverne tout le reste
+
+> **Un gain non mesurable n'est pas un gain.**
+
+VPS-011 l'a coûté : « 126 720 exécutions par jour » est un chiffre impressionnant, et il a
+conduit à surestimer le constat. Une fois 26 % des sondes supprimées, le taux de création de
+processus est passé de 1 527 à 1 512/min — **sous la variance naturelle**. Le gain existait,
+mais il était trop petit pour être vu.
+
+**En pratique, avant de proposer une optimisation** :
+
+1. **Chiffrer le gain attendu**, pas le volume apparent. « 126 720/jour » ne dit rien ;
+   « 16 % des créations de processus » dit quelque chose.
+2. **Le comparer au bruit de la mesure.** Si le gain est sous la variance, le dire — et
+   proposer quand même *si le coût est nul*, jamais si le coût est une interruption.
+3. **Compter le coût réel**, pas seulement technique : redéployer quatre projets de production
+   pour 1 % de CPU est un mauvais échange, même si le correctif est trivial.
+4. **Préférer ce qui s'autorégule à ce qui se planifie.** Le cache de build est borné par le
+   ramasse-miettes de BuildKit (`daemon.json`), pas par un cron : un mécanisme unique et
+   permanent, donc **aucun risque de doublon** — le défaut VPS-003 que cet audit a lui-même trouvé.
+
 ## 7. Améliorer l'agent (obligatoire à chaque passage)
 
 Le rapport se termine par une section **« Améliorer l'agent »**, en trois parties :

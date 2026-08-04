@@ -160,14 +160,15 @@
       "gravite": 2,
       "vuPremiere": "2026-08-04",
       "vuDerniere": "2026-08-04",
-      "mesure": "31/31 conteneurs sans limite · 0 OOM en 30 j",
-      "gain": "isole les pannes : une fuite ne peut plus emporter un voisin",
+      "mesure": "Tracky traite le 2026-08-04 (postgres 1536, api 1024, redis 384 Mo) ; 28 conteneurs restants sans limite",
+      "gain": "la base et l'API de production ne peuvent plus etre emportees par un voisin",
       "quoi": "Si un conteneur s'emballe, l'OOM killer choisit sa victime selon un score de mémoire, pas selon l'importance métier. Une fuite en développement peut faire tomber tracky-postgres.",
-      "quoiFaire": "deploy.resources.limits.memory service par service, au double de la consommation observée. Borner Redis en même temps (maxmemory + allkeys-lru, aujourd'hui 0 + noeviction).",
+      "quoiFaire": "Fait sur Tracky, avec des valeurs GENEREUSES (11 a 350x l'usage) : le but est de confiner une fuite, pas d'optimiser au plus juste. Redis borne en plus par l'interieur (maxmemory 256mb + allkeys-lru).",
       "pourquoiInvisible": "La mémoire tourne à 25 %, pic à 44 %, aucun OOM en 30 jours. Le risque est réel mais dormant.",
       "seuilReescalade": "Passer en A_TRAITER si la mémoire moyenne dépasse 60 %, ou au premier OOM observé.",
       "doc": "REFERENCE-CONSTATS.md",
-      "ancre": "vps-005-aucune-limite-memoire-sur-aucun-conteneur"
+      "ancre": "vps-005-aucune-limite-memoire-sur-aucun-conteneur",
+      "aNePasFaire": "Serrer les limites au plus juste : on remplacerait un risque theorique par une panne reelle a chaque pic normal."
     },
     {
       "id": "VPS-006",
@@ -189,14 +190,14 @@
       "id": "VPS-007",
       "titre": "random_page_cost réglé pour un disque mécanique",
       "domaine": "données",
-      "statut": "CORRECTIF_PROPOSE",
+      "statut": "APPLIQUE",
       "gravite": 3,
       "vuPremiere": "2026-08-04",
       "vuDerniere": "2026-08-04",
-      "mesure": "random_page_cost = 4 (valeur pour plateaux)",
-      "gain": "de meilleurs plans de requête quand la base grossira",
+      "mesure": "CORRIGE le 2026-08-04 — 4 -> 1.1, persistant (verifie apres redemarrage)",
+      "gain": "le planificateur cesse de surestimer le cout des acces aleatoires sur SSD",
       "quoi": "La valeur 4 dit au planificateur qu'un accès aléatoire coûte 4× un accès séquentiel — vrai sur disque à plateaux, faux sur SSD. Il préfère donc des parcours de table là où un index serait plus rapide.",
-      "quoiFaire": "ALTER SYSTEM SET random_page_cost = 1.1; SELECT pg_reload_conf();",
+      "quoiFaire": "Fait sur tracky-postgres. Les bases de developpement restent a 4 : aucun enjeu de plan de requete.",
       "pourquoiInvisible": "Aucune erreur, aucun ralentissement : la base fait 976 Mo et tient en cache à 98,87 %. L'effet ne se paierait qu'en grossissant.",
       "doc": "REFERENCE-CONSTATS.md",
       "ancre": "vps-007-random_page_cost-regle-pour-un-disque-mecanique"
@@ -237,17 +238,18 @@
       "id": "VPS-010",
       "titre": "Noyau non redémarré, 59 paquets en retard",
       "domaine": "sécurité",
-      "statut": "A_TRAITER",
+      "statut": "APPLIQUE",
       "gravite": 2,
       "vuPremiere": "2026-08-04",
       "vuDerniere": "2026-08-04",
-      "mesure": "tourne sur 6.8.0-134 · 6.8.0-136 installé · 28 j d'uptime",
-      "gain": "correctifs noyau actifs + ~1 Go de RAM rendu par dockerd",
+      "mesure": "REDEMARRE le 2026-08-04 — noyau -136 actif, interruption ~50 s",
+      "gain": "730 Mo rendus par dockerd (861 -> 131) + 1 Go de swap libere + correctifs noyau actifs",
       "quoi": "unattended-upgrades installe bien les paquets, mais le noyau ne devient actif qu'au redémarrage. libc6 et linux-base attendent aussi.",
-      "quoiFaire": "Planifier un redémarrage hors heures de suivi GPS. Il règle trois choses d'un coup : le noyau, les 1,1 Go de dockerd, et le swap résiduel.",
-      "aNePasFaire": "Redémarrer dockerd seul pour récupérer la mémoire : ça coupe tous les conteneurs pour un gain partiel. Autant tout faire d'un coup.",
+      "quoiFaire": "Fait. 31/31 conteneurs revenus, 0 en anomalie, 0 service en echec. Tous les reglages ont survecu.",
+      "aNePasFaire": "Redemarrer sans avoir verifie que TOUS les conteneurs ont une politique `unless-stopped` : ceux qui n'en ont pas ne reviennent pas.",
       "doc": "REFERENCE-CONSTATS.md",
-      "ancre": "vps-010-noyau-non-redemarre-59-paquets-en-retard"
+      "ancre": "vps-010-noyau-non-redemarre-59-paquets-en-retard",
+      "pourquoiInvisible": "unattended-upgrades installe bien les paquets — mais un noyau ne devient actif qu'au redemarrage. Rien ne le rappelle au quotidien."
     },
     {
       "id": "VPS-011",
@@ -402,6 +404,32 @@
     }
   ],
   "passages": [
+    {
+      "date": "2026-08-04",
+      "origine": "optimisation + redemarrage (valide)",
+      "rapport": "rapports/2026-08-04.md",
+      "verdict": "Redemarrage effectue : noyau -136 actif, 730 Mo rendus par dockerd, 1 Go de swap libere. 31/31 conteneurs revenus, 0 anomalie. Tous les constats sont fermes ou sous surveillance — aucun n'est A_TRAITER.",
+      "chiffres": {
+        "disqueUtilisePct": 55,
+        "disqueRecuperableGo": 13,
+        "ramUtiliseePct": 24,
+        "swapUtiliseMo": 0,
+        "chargeMoyenne1m": 1.06,
+        "conteneursActifs": 31,
+        "conteneursMorts": 0,
+        "paquetsEnRetard": 0,
+        "echecsSshJour": 0,
+        "healthchecksParMin": 65,
+        "processusParMin": 1512
+      },
+      "constats": {
+        "nouveaux": 0,
+        "misAJour": 3,
+        "resolus": 3
+      },
+      "aTraiter": [],
+      "note": "VPS-005 (Tracky), VPS-007 et VPS-010 traites. Le ramasse-miettes de BuildKit est desormais actif (daemon.json) : le cache de build se borne tout seul a ~10 Go, sans tache planifiee — donc sans risque de doublon."
+    },
     {
       "date": "2026-08-04",
       "origine": "remediation manuelle (validee) — 3e passe",
@@ -666,9 +694,9 @@
   "previsions": {
     "disque": {
       "totalGo": 96,
-      "utiliseGo": 46,
-      "libreGo": 51,
-      "utilisePct": 48,
+      "utiliseGo": 52,
+      "libreGo": 44,
+      "utilisePct": 55,
       "seuilAlertePct": 90
     },
     "recuperable": [
@@ -707,8 +735,8 @@
     "chargeDeFond": {
       "processusParMinute": 1398,
       "processusParJour": 2013120,
-      "healthchecksParMinute": 88,
-      "healthchecksParJour": 126720,
+      "healthchecksParMinute": 65,
+      "healthchecksParJour": 93600,
       "conteneursSondes": 24,
       "note": "Mesure du 2026-08-04. C'est le cout permanent, hors taches planifiees."
     }
