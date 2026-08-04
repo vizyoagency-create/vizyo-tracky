@@ -339,6 +339,7 @@ describe('TrackerFixModeService.expireStaleFixCommands', () => {
   const build = () => {
     const prisma = {
       trackerCommand: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn().mockResolvedValue({}) },
+      tracker: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
     } as any;
     const svc = new TrackerFixModeService(
       prisma,
@@ -415,6 +416,30 @@ describe('TrackerFixModeService.expireStaleFixCommands', () => {
   it('un échec de base ne casse pas le balayage', async () => {
     const { svc, prisma } = build();
     prisma.trackerCommand.findMany.mockRejectedValue(new Error('DB down'));
+
+    await expect(svc.expireStaleFixCommands()).resolves.toBeUndefined();
+  });
+
+  it('ramène les cibles héritées dans la plage tenable par le matériel', async () => {
+    const { svc, prisma } = build();
+
+    await svc.expireStaleFixCommands();
+
+    // `reconcile` les clampe déjà à la lecture ; on nettoie aussi la valeur STOCKÉE, sinon
+    // « cadence cible : 1 s » resterait affiché sur la fiche et recompté à chaque audit.
+    expect(prisma.tracker.updateMany).toHaveBeenCalledWith({
+      where: { desiredFixIntervalS: { lt: 20 } },
+      data: { desiredFixIntervalS: 20 },
+    });
+    expect(prisma.tracker.updateMany).toHaveBeenCalledWith({
+      where: { desiredFixIntervalS: { gt: 300 } },
+      data: { desiredFixIntervalS: 300 },
+    });
+  });
+
+  it('un échec de normalisation ne casse rien non plus', async () => {
+    const { svc, prisma } = build();
+    prisma.tracker.updateMany.mockRejectedValue(new Error('DB down'));
 
     await expect(svc.expireStaleFixCommands()).resolves.toBeUndefined();
   });

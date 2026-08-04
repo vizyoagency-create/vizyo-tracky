@@ -15,6 +15,51 @@
 
 ---
 
+---
+
+## 🟢 2026-08-04 — les neuf fiches ouvertes ont été corrigées et déployées
+
+Livré en production le 2026-08-04 (PR #86, `f7896d9`, smoke-boot OK, `restarts=0`). Le fil
+commun n'était pas « des bugs » : **le centre d'alerte ne disait pas la vérité — il criait
+pour des non-fautes, et se taisait sur de vraies pannes.**
+
+| Fiche | Ce qui a été livré |
+|---|---|
+| **TRK-011** | Plafond de silence de 24 h sur une zone bénigne. Le forçage est explicite : une zone confirmée est aussi « recognized », donc sans lui le dépassement n'aurait produit **aucune** ligne. |
+| **TRK-008** | Cible clampée **à la lecture** (valeurs héritées neutralisées sans migration) · émettre plus vite **en mouvement** n'est plus une faute · plancher d'auto-alignement remonté · normalisation des cibles stockées. |
+| **TRK-007** | Échéance **purement temporelle** (30 min). La conditionner à un état du boîtier l'aurait fait retomber dans le même piège. |
+| **TRK-004** | `ExpectedRefusalException` — marqueur structurel, jamais textuel. Hérite de `ServiceUnavailableException` pour que la réponse HTTP ne bouge pas d'un octet. |
+| **TRK-005** | Échec de l'API carburants marqué passager. Le message n'a pas bougé : il était déjà bon. |
+| **TRK-003** | CRITICAL exige désormais que ça **dure** (2 min) ou que ça **recommence** (2ᵉ report dans l'heure). |
+| **TRK-002** | Garde de visibilité + réessai silencieux à 3 s, sur le chemin proactif. |
+| **TRK-009** | Boîtiers jamais mis en service exclus. Une pose ratée (jamais vu **mais** rattaché) reste signalée. |
+| **TRK-010** | `ERROR_LOGS_RETENTION_DAYS=90` en production. |
+
+### Vérifié en production, pas seulement en test
+
+- **TRK-007** — le balayage a réellement tourné : *« 3 commande(s) fix_continuous close(s) par
+  échéance »*, avec le texte attendu : « Sans effet constaté après 305 min : cadence réelle
+  3601 s pour une cible de 20 s. »
+- **TRK-008** — `fixCommandFailing` = 0 sur 43 boîtiers, **0 échec** depuis le déploiement.
+- **TRK-009** — le compteur « hors ligne » passe de 7 à 4 ; les 3 boîtiers en stock sont écartés.
+- **TRK-010** — `ERROR_LOGS_RETENTION_DAYS=90` lu dans l'environnement du conteneur.
+- **TRK-011** — le détecteur tourne et **supprime correctement** : FS-253-HR est à 13,3 h,
+  sous le plafond de 24 h. C'est le comportement voulu — un stationnement de nuit reste
+  silencieux. Le déclenchement réel s'observera au franchissement des 24 h.
+
+### ⚠️ Deux tests verrouillaient l'ancien comportement
+
+Recalibrés, pas supprimés — leur intention restait juste :
+
+1. *« SUPPRIME l'alerte en zone confirmée »* utilisait une perte de **29 h** et verrouillait donc,
+   sans le vouloir, le trou de TRK-011. Il teste désormais une perte **courte**.
+2. *« auto-aligns desired to a sub-20s interval (V1.15) »* verrouillait le **contournement** qui a
+   produit toute la dérive. Remplacé par ce qui traite la cause.
+
+> Si rien ne casse en corrigeant un défaut, se méfier : c'est souvent qu'un test protégeait le bug.
+
+---
+
 ## Comment lire une fiche
 
 **Signature** — l'empreinte stable d'une erreur, *après normalisation* (plaques, IMEI, UUID,
