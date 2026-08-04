@@ -2,7 +2,7 @@ import { Component, inject, OnInit, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
   LucideAngularModule, AlertTriangle, Activity, Terminal, MessageSquare,
-  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints, Ear, Mail, CalendarClock, Bot, Globe, BellRing, Plug,
+  Users, Radio, Shield, Zap, ChevronRight, Database, ClipboardList, CreditCard, Cpu, Footprints, Ear, Mail, CalendarClock, Bot, Globe, BellRing, Plug, Server,
 } from 'lucide-angular';
 import { firstValueFrom } from 'rxjs';
 import { AdminFixModeService, type AdminAlertSummary } from '../../core/services/admin-fix-mode.service';
@@ -242,6 +242,22 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
             <div class="body-text">
               <h3>Système VPS</h3>
               <p class="desc">CPU, RAM, charge serveur et taille de la base — en direct + historique (hier / aujourd'hui / 7j / 30j) pour surveiller la charge et anticiper les purges.</p>
+            </div>
+            <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
+          </div>
+        </a>
+
+        <!-- ── AUDIT VPS (wide) ──
+             Complementaire de « Systeme VPS » ci-dessus, et volontairement separe : celui-la
+             montre l'instant (CPU, RAM, charge), celui-ci montre la DERIVE (disque qui se
+             remplit, conteneurs morts, paquets en retard, SSH expose). Deux temporalites. -->
+        <a routerLink="/admin/vps" class="card card-wide" style="--i:8">
+          <span class="accent accent-cyan"></span>
+          <div class="body body-row">
+            <div class="ico ico-cyan"><lucide-icon [img]="Server" [size]="20"></lucide-icon></div>
+            <div class="body-text">
+              <h3>Audit VPS</h3>
+              <p class="desc">Rapports quotidiens de la machine : ce qui sature, ce qui traine et ce qui expose. Constats horodates, gain estime et securite — en lecture seule.</p>
             </div>
             <lucide-icon [img]="ChevronRight" [size]="16" class="chevron"></lucide-icon>
           </div>
@@ -579,6 +595,7 @@ export class AdminHubComponent implements OnInit {
   protected readonly CreditCard = CreditCard;
   protected readonly Plug = Plug;
   protected readonly Cpu = Cpu;
+  protected readonly Server = Server;
   protected readonly Footprints = Footprints;
   protected readonly Ear = Ear;
   protected readonly Mail = Mail;

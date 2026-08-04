@@ -11,17 +11,22 @@ import { ScheduledTaskHeartbeatService } from './scheduled-task-heartbeat.servic
 import { ErrorLogger } from './error-logger.service';
 import { ErrorRateWatchdogService } from './error-rate-watchdog.service';
 import { LogCleanupService } from './log-cleanup.service';
+import { VpsAuditWikiController } from './vps-audit-wiki.controller';
+import { VpsAuditWikiService } from './vps-audit-wiki.service';
 
 @Global()
 @Module({
   imports: [AuthModule],
-  controllers: [AdminLogsController, CentreAlerteWikiController],
+  controllers: [AdminLogsController, CentreAlerteWikiController, VpsAuditWikiController],
   providers: [
     CobanWireLogger,
     ErrorLogger,
     // Documentation du centre d'alerte (référentiel, procédure, rapports d'audit) servie à
     // l'écran admin : on veut ces documents SOUS LES YEUX au moment où l'on regarde une alerte.
     CentreAlerteWikiService,
+    // Documentation de l'audit VPS (constats, procédure, rapports) : même mécanique, autre
+    // objet — ce que la MACHINE subit, là où le centre d'alerte dit ce que l'app casse.
+    VpsAuditWikiService,
     // Vigie de saturation : EmailService vient d'EmailModule (@Global) → pas d'import croisé.
     ErrorRateWatchdogService,
     // Sonde active des dépendances : détecte les pannes SILENCIEUSES (une dépendance morte mais

@@ -1,0 +1,334 @@
+{
+  "title": "Audit VPS — performances, données et sécurité",
+  "intro": "Ce que la machine encaisse : disque, mémoire, conteneurs, données, sécurité. Un passage par jour, en lecture seule — l'agent observe et propose, il ne touche à rien.",
+  "updatedAt": "2026-08-04",
+  "sections": [
+    {
+      "key": "guide",
+      "label": "Référentiel & méthode",
+      "description": "La mémoire longue et la façon de la tenir.",
+      "order": 0
+    },
+    {
+      "key": "rapports",
+      "label": "Rapports de passage",
+      "description": "Un rapport par audit, le plus récent en premier.",
+      "order": 1
+    }
+  ],
+  "documents": [
+    {
+      "slug": "README.md",
+      "title": "Présentation du dispositif",
+      "description": "Les pièces, où ça se lit, comment publier, les quatre règles.",
+      "section": "guide",
+      "order": 0
+    },
+    {
+      "slug": "REFERENCE-CONSTATS.md",
+      "title": "Référentiel des constats",
+      "description": "Une fiche par constat : mesure, cause, correctif, gain, statut.",
+      "section": "guide",
+      "order": 1
+    },
+    {
+      "slug": "PROCEDURE-AUDIT.md",
+      "title": "Procédure d'audit",
+      "description": "Ce que l'audit fait, dans quel ordre, avec les garde-fous.",
+      "section": "guide",
+      "order": 2
+    },
+    {
+      "slug": "collecte.sh",
+      "title": "Le collecteur",
+      "description": "Instantané complet de la machine en une passe, lecture seule.",
+      "section": "guide",
+      "order": 3
+    }
+  ],
+  "statuts": [
+    {
+      "cle": "A_TRAITER",
+      "libelle": "À traiter",
+      "puce": "rose",
+      "ordre": 0,
+      "aide": "Défaut réel, correctif connu, rien n'est fait."
+    },
+    {
+      "cle": "CORRECTIF_PROPOSE",
+      "libelle": "Correctif proposé",
+      "puce": "amber",
+      "ordre": 1,
+      "aide": "Le correctif est écrit et vérifiable, il attend une décision ou une fenêtre."
+    },
+    {
+      "cle": "SURVEILLANCE",
+      "libelle": "Sous surveillance",
+      "puce": "sky",
+      "ordre": 2,
+      "aide": "Réel mais sans effet aujourd'hui. On mesure à chaque passage."
+    },
+    {
+      "cle": "APPLIQUE",
+      "libelle": "Appliqué",
+      "puce": "emerald",
+      "ordre": 3,
+      "aide": "Corrigé et vérifié. La fiche reste, avec la preuve."
+    },
+    {
+      "cle": "ACCEPTE",
+      "libelle": "Accepté",
+      "puce": "slate",
+      "ordre": 4,
+      "aide": "Connu, compris, volontairement non corrigé. La raison est écrite."
+    }
+  ],
+  "fiches": [
+    {
+      "id": "VPS-001",
+      "titre": "Le cache de build Docker n'est jamais purgé",
+      "domaine": "disque",
+      "statut": "A_TRAITER",
+      "gravite": 1,
+      "vuPremiere": "2026-08-04",
+      "vuDerniere": "2026-08-04",
+      "mesure": "33,59 Go · 250 entrées · 0 active",
+      "gain": "33,6 Go — le disque passe de 79 % à ~44 %",
+      "quoi": "Le ménage nocturne `docker image prune` range les images, pas le cache de build. Deux magasins distincts : la tâche tourne tous les jours sur la moitié qui n'avait pas de problème.",
+      "quoiFaire": "docker buildx prune -af",
+      "pourquoiInvisible": "Une tâche de nettoyage existe et réussit chaque nuit. Rien ne signale qu'elle vise à côté.",
+      "aNePasFaire": "L'ajouter tel quel au cron nocturne : on paierait la reconstruction du cache à chaque déploiement. Un filtre hebdomadaire `until=168h` est le bon compromis.",
+      "doc": "REFERENCE-CONSTATS.md",
+      "ancre": "vps-001-le-cache-de-build-docker-nest-jamais-purge"
+    },
+    {
+      "id": "VPS-002",
+      "titre": "root accessible en SSH par mot de passe, sans ralentisseur",
+      "domaine": "sécurité",
+      "statut": "A_TRAITER",
+      "gravite": 1,
+      "vuPremiere": "2026-08-04",
+      "vuDerniere": "2026-08-04",
+      "mesure": "175 échecs / 2,5 j dont 28 sur root · fail2ban absent",
+      "gain": "ferme la voie d'entrée principale de la machine",
+      "quoi": "sshd accepte PermitRootLogin yes ET PasswordAuthentication yes, et root est le seul compte à avoir un mot de passe. Il ne manque que ce mot de passe pour entrer, et rien ne limite les essais.",
+      "quoiFaire": "1) Prouver que la clé marche : ssh -o PasswordAuthentication=no root@… \"echo OK\". 2) Seulement ensuite : PasswordAuthentication no, puis sshd -t && systemctl reload sshd. 3) apt install -y fail2ban.",
+      "pourquoiInvisible": "On se connecte par clé au quotidien ; l'authentification par mot de passe reste ouverte en plus, sans jamais servir.",
+      "aNePasFaire": "Couper les mots de passe avant l'étape 1 — c'est le seul moyen de s'enfermer dehors. Et jamais de reload sshd sans sshd -t d'abord.",
+      "doc": "REFERENCE-CONSTATS.md",
+      "ancre": "vps-002-root-accessible-en-ssh-par-mot-de-passe-sans-ralentisseur"
+    },
+    {
+      "id": "VPS-003",
+      "titre": "La sauvegarde tourne deux fois par jour",
+      "domaine": "sauvegardes",
+      "statut": "A_TRAITER",
+      "gravite": 3,
+      "vuPremiere": "2026-07-05",
+      "vuDerniere": "2026-08-04",
+      "mesure": "62 fichiers pour 31 jours de rétention",
+      "gain": "3,4 Go et un pg_dump concurrent en moins à 3 h",
+      "quoi": "Le même script est déclenché par la crontab de root (03:00) ET par le timer systemd tracky-backup.timer (03:00). Les deux réussissent, à deux minutes d'intervalle.",
+      "quoiFaire": "crontab -l | grep -v 'backup-db.sh' | crontab -  (garder le timer systemd)",
+      "pourquoiInvisible": "Chaque journal ne voit qu'une exécution : le cron écrit dans /var/log/tracky-backup.log, le timer dans journald. Le doublon n'apparaît qu'en listant le dossier de destination.",
+      "aNePasFaire": "Supprimer les deux. Vérifier le lendemain avec journalctl -u tracky-backup.service.",
+      "doc": "REFERENCE-CONSTATS.md",
+      "ancre": "vps-003-la-sauvegarde-tourne-deux-fois-par-jour"
+    },
+    {
+      "id": "VPS-004",
+      "titre": "Le témoin de bonne santé des sauvegardes n'a jamais émis",
+      "domaine": "sauvegardes",
+      "statut": "CORRECTIF_PROPOSE",
+      "gravite": 2,
+      "vuPremiere": "2026-08-04",
+      "vuDerniere": "2026-08-04",
+      "mesure": "WARN à chaque exécution depuis l'origine",
+      "gain": "rend réelle la détection d'un arrêt des sauvegardes",
+      "quoi": "Le script sait signaler ses succès à l'API, mais API_URL et INTERNAL_API_SECRET ne sont pas définis : l'appel est systématiquement sauté. Une garde écrite, branchée nulle part.",
+      "quoiFaire": "Ajouter les deux Environment= dans /etc/systemd/system/tracky-backup.service, puis systemctl daemon-reload. Preuve attendue : la ligne WARN disparaît du journal du lendemain.",
+      "pourquoiInvisible": "La sauvegarde réussit. Le risque n'est pas aujourd'hui, c'est qu'elle s'arrête demain sans que rien ne le dise.",
+      "aNePasFaire": "Se contenter d'avoir écrit le correctif : tant que le WARN est là, il n'a pas pris.",
+      "doc": "REFERENCE-CONSTATS.md",
+      "ancre": "vps-004-le-temoin-de-bonne-sante-des-sauvegardes-na-jamais-emis"
+    },
+    {
+      "id": "VPS-005",
+      "titre": "Aucune limite mémoire sur aucun conteneur",
+      "domaine": "docker",
+      "statut": "SURVEILLANCE",
+      "gravite": 2,
+      "vuPremiere": "2026-08-04",
+      "vuDerniere": "2026-08-04",
+      "mesure": "31/31 conteneurs sans limite · 0 OOM en 30 j",
+      "gain": "isole les pannes : une fuite ne peut plus emporter un voisin",
+      "quoi": "Si un conteneur s'emballe, l'OOM killer choisit sa victime selon un score de mémoire, pas selon l'importance métier. Une fuite en développement peut faire tomber tracky-postgres.",
+      "quoiFaire": "deploy.resources.limits.memory service par service, au double de la consommation observée. Borner Redis en même temps (maxmemory + allkeys-lru, aujourd'hui 0 + noeviction).",
+      "pourquoiInvisible": "La mémoire tourne à 25 %, pic à 44 %, aucun OOM en 30 jours. Le risque est réel mais dormant.",
+      "seuilReescalade": "Passer en A_TRAITER si la mémoire moyenne dépasse 60 %, ou au premier OOM observé.",
+      "doc": "REFERENCE-CONSTATS.md",
+      "ancre": "vps-005-aucune-limite-memoire-sur-aucun-conteneur"
+    },
+    {
+      "id": "VPS-006",
+      "titre": "17 conteneurs arrêtés depuis 7 semaines",
+      "domaine": "docker",
+      "statut": "A_TRAITER",
+      "gravite": 3,
+      "vuPremiere": "2026-08-04",
+      "vuDerniere": "2026-08-04",
+      "mesure": "17 arrêtés / 48 · ~5,7 Go d'images retenues",
+      "gain": "~5,7 Go",
+      "quoi": "Des piles entières (foodsqan, maalem anciens, vizyo-leads, nebula) sont arrêtées depuis 7 semaines. Tant que le conteneur existe, son image ne peut pas être libérée — d'où l'inefficacité du prune nocturne.",
+      "quoiFaire": "docker container prune --filter \"until=720h\"",
+      "aNePasFaire": "Lancer sans lire la liste : maalem-api est sorti en 137 (tué). S'il doit revivre, le sortir de la sélection.",
+      "doc": "REFERENCE-CONSTATS.md",
+      "ancre": "vps-006-17-conteneurs-arretes-depuis-7-semaines"
+    },
+    {
+      "id": "VPS-007",
+      "titre": "random_page_cost réglé pour un disque mécanique",
+      "domaine": "données",
+      "statut": "CORRECTIF_PROPOSE",
+      "gravite": 3,
+      "vuPremiere": "2026-08-04",
+      "vuDerniere": "2026-08-04",
+      "mesure": "random_page_cost = 4 (valeur pour plateaux)",
+      "gain": "de meilleurs plans de requête quand la base grossira",
+      "quoi": "La valeur 4 dit au planificateur qu'un accès aléatoire coûte 4× un accès séquentiel — vrai sur disque à plateaux, faux sur SSD. Il préfère donc des parcours de table là où un index serait plus rapide.",
+      "quoiFaire": "ALTER SYSTEM SET random_page_cost = 1.1; SELECT pg_reload_conf();",
+      "pourquoiInvisible": "Aucune erreur, aucun ralentissement : la base fait 976 Mo et tient en cache à 98,87 %. L'effet ne se paierait qu'en grossissant.",
+      "doc": "REFERENCE-CONSTATS.md",
+      "ancre": "vps-007-random_page_cost-regle-pour-un-disque-mecanique"
+    },
+    {
+      "id": "VPS-008",
+      "titre": "position_sampling_decisions pèse 55 % de positions",
+      "domaine": "données",
+      "statut": "SURVEILLANCE",
+      "gravite": 3,
+      "vuPremiere": "2026-08-04",
+      "vuDerniere": "2026-08-04",
+      "mesure": "208 Mo · 517 097 lignes (positions : 376 Mo)",
+      "gain": "~180 Mo si la table n'a plus de lecteur",
+      "quoi": "Table de diagnostic : elle enregistre pourquoi chaque position a été gardée ou jetée. Très utile pour régler l'échantillonnage, beaucoup moins une fois le réglage stabilisé.",
+      "quoiFaire": "Trancher côté produit : cette table a-t-elle encore un lecteur ? Si non, rétention à 7 jours.",
+      "seuilReescalade": "Si elle dépasse le poids de positions, ou si la base franchit 3 Go.",
+      "doc": "REFERENCE-CONSTATS.md",
+      "ancre": "vps-008-position_sampling_decisions-pese-55-de-positions"
+    },
+    {
+      "id": "VPS-009",
+      "titre": "Volumes Docker orphelins contenant des données",
+      "domaine": "docker",
+      "statut": "ACCEPTE",
+      "gravite": 4,
+      "vuPremiere": "2026-08-04",
+      "vuDerniere": "2026-08-04",
+      "mesure": "5 volumes · 204 Mo dont vizyo-tracky-postgres-data (110 Mo)",
+      "gain": "204 Mo — volontairement non pris",
+      "quoi": "Cinq volumes ne sont montés par aucun conteneur. Le plus gros est une base Postgres Tracky détachée, probablement l'ancêtre de tracky-postgres-data conservé lors d'une migration.",
+      "quoiFaire": "Rien. 204 Mo sur 96 Go contre des données non reconstituables : le gain ne justifie pas le risque. Réexaminer si le disque repasse au-dessus de 80 % après VPS-001 et VPS-006.",
+      "aNePasFaire": "docker volume prune — la commande ne distingue pas un cache jetable d'une base de données.",
+      "doc": "REFERENCE-CONSTATS.md",
+      "ancre": "vps-009-volumes-docker-orphelins-contenant-des-donnees"
+    },
+    {
+      "id": "VPS-010",
+      "titre": "Noyau non redémarré, 59 paquets en retard",
+      "domaine": "sécurité",
+      "statut": "A_TRAITER",
+      "gravite": 2,
+      "vuPremiere": "2026-08-04",
+      "vuDerniere": "2026-08-04",
+      "mesure": "tourne sur 6.8.0-134 · 6.8.0-136 installé · 28 j d'uptime",
+      "gain": "correctifs noyau actifs + ~1 Go de RAM rendu par dockerd",
+      "quoi": "unattended-upgrades installe bien les paquets, mais le noyau ne devient actif qu'au redémarrage. libc6 et linux-base attendent aussi.",
+      "quoiFaire": "Planifier un redémarrage hors heures de suivi GPS. Il règle trois choses d'un coup : le noyau, les 1,1 Go de dockerd, et le swap résiduel.",
+      "aNePasFaire": "Redémarrer dockerd seul pour récupérer la mémoire : ça coupe tous les conteneurs pour un gain partiel. Autant tout faire d'un coup.",
+      "doc": "REFERENCE-CONSTATS.md",
+      "ancre": "vps-010-noyau-non-redemarre-59-paquets-en-retard"
+    },
+    {
+      "id": "VPS-M01",
+      "titre": "Méthode — compter les IP sur « from » mélange succès et échecs",
+      "domaine": "méthode",
+      "statut": "APPLIQUE",
+      "gravite": 4,
+      "vuPremiere": "2026-08-04",
+      "vuDerniere": "2026-08-04",
+      "mesure": "corrigé dans collecte.sh le jour même",
+      "gain": "évite de bannir un accès légitime sur la foi d'un rapport",
+      "quoi": "La première passe a désigné une IP comme « principale attaquante » avec 931 occurrences. Vérification : 485 connexions acceptées, 0 échec — c'est un accès légitime. Le motif capturait toutes les lignes, succès compris.",
+      "quoiFaire": "Fait : filtrer les lignes d'échec avant de compter, et afficher à part les IP dont des connexions ont réussi.",
+      "aNePasFaire": "Croire un compteur d'incidents qui ne prouve pas qu'il compte des incidents. Ici il comptait des lignes.",
+      "doc": "REFERENCE-CONSTATS.md",
+      "ancre": "vps-m01-compter-les-ip-sur-from-ip-melange-succes-et-echecs"
+    },
+    {
+      "id": "VPS-M02",
+      "titre": "Méthode — un timeout qui expire produit du silence, pas une alerte",
+      "domaine": "méthode",
+      "statut": "APPLIQUE",
+      "gravite": 4,
+      "vuPremiere": "2026-08-04",
+      "vuDerniere": "2026-08-04",
+      "mesure": "corrigé dans collecte.sh le jour même",
+      "gain": "une mesure manquante ne se lit plus comme « rien à signaler »",
+      "quoi": "timeout 120 du -sh sur 12 Go de couches Docker dépassait son délai. Résultat : section vide, indiscernable d'un résultat nul.",
+      "quoiFaire": "Fait : délai porté à 300 s et message explicite « mesure ABANDONNÉE » à l'expiration.",
+      "aNePasFaire": "Laisser une commande bornée échouer en silence dans un rapport. Même famille de défaut que VPS-004.",
+      "doc": "REFERENCE-CONSTATS.md",
+      "ancre": "vps-m02-un-timeout-qui-expire-produit-du-silence-pas-une-alerte"
+    },
+    {
+      "id": "VPS-M03",
+      "titre": "Méthode — les ancres du manifeste étaient toutes fausses",
+      "domaine": "méthode",
+      "statut": "APPLIQUE",
+      "gravite": 4,
+      "vuPremiere": "2026-08-04",
+      "vuDerniere": "2026-08-04",
+      "mesure": "12 ancres sur 12 · corrigé le jour même",
+      "gain": "12 liens morts en moins dans le tableau de bord",
+      "quoi": "Le champ 'ancre' de chaque fiche était écrit à la main. Les 12 gardaient les accents (purgé) et un double tiret issu du — du titre, là où slugifyHeading produit purge et un tiret simple.",
+      "quoiFaire": "Fait : les ancres sont dérivées du référentiel par le même algorithme que le rendu. La procédure §6 impose cette vérification avant publication.",
+      "pourquoiInvisible": "Un champ de confort, jamais confronté à sa source. Ni tsc, ni les tests, ni le rendu markdown ne peuvent le voir : c'est une chaîne libre dans un JSON. Et un clic qui ne fait rien ne lève aucune erreur.",
+      "aNePasFaire": "Recopier un identifiant à la main dans deux fichiers : ils finissent toujours par diverger. Le dériver, ou le vérifier automatiquement.",
+      "doc": "REFERENCE-CONSTATS.md",
+      "ancre": "vps-m03-les-ancres-du-manifeste-etaient-toutes-fausses"
+    }
+  ],
+  "passages": [
+    {
+      "date": "2026-08-04",
+      "origine": "manuel (amorçage)",
+      "rapport": "rapports/2026-08-04.md",
+      "verdict": "Machine saine sous la charge (CPU 84 % inactif, RAM 25 %), mais 79 % du disque occupé dont ~43 Go de déchets purs, et root joignable en SSH par mot de passe sans fail2ban.",
+      "chiffres": {
+        "disqueUtilisePct": 79,
+        "disqueRecuperableGo": 43,
+        "ramUtiliseePct": 25,
+        "swapUtiliseMo": 936,
+        "chargeMoyenne1m": 0.78,
+        "conteneursActifs": 31,
+        "conteneursMorts": 17,
+        "paquetsEnRetard": 59,
+        "echecsSshJour": 70
+      },
+      "constats": {
+        "nouveaux": 13,
+        "misAJour": 0,
+        "resolus": 0
+      },
+      "aTraiter": [
+        "VPS-001",
+        "VPS-002",
+        "VPS-003",
+        "VPS-006",
+        "VPS-010"
+      ],
+      "note": "Passage d'amorçage : le référentiel part de zéro. Trois défauts de méthode (VPS-M01 à M03) ont été trouvés et corrigés pendant ce passage — dont 12 liens morts que rien n'aurait signalés."
+    }
+  ]
+}
