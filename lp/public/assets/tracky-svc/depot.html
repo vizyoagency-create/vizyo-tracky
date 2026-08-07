@@ -21,7 +21,11 @@ body{font-family:'Manrope',system-ui,-apple-system,sans-serif;color:#EAEFED;-web
   --accent:#10E0A0;--accent-ink:#04130D;--violet:#B69CFF;
   /* Source unique : la camionnette est hors du flux, son debordement vers le haut
      doit etre connu du centrage de #stage. Deux clamps separes auraient derive. */
-  --truck:clamp(42px,12vmin,104px);--truck-gap:clamp(16px,5.6vmin,48px)}
+  --truck:clamp(26px,12vmin,104px);--truck-gap:clamp(9px,5.6vmin,48px)}
+  /* Planchers BAS a dessein. Sur mobile l'iframe tombe a 318x178 : avec un plancher
+     de 42 px, la camionnette + son ecart occupaient un tiers de la hauteur et elle
+     retouchait l'en-tete. Au-dela de ~220 px de haut, c'est 12vmin qui l'emporte et
+     les planchers ne servent plus a rien. */
 /* padding-top = debordement de la camionnette. Avec justify-content:center, un padding
    haut P decale le bloc de P/2 : le bloc VISUEL (camionnette + rail + libelles) retombe
    alors exactement au centre. Sans lui, seuls rail+libelles etaient centres et la
