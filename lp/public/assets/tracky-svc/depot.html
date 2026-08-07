@@ -18,8 +18,15 @@
 html,body{margin:0;height:100%;background:#080B0A;overflow:hidden}
 body{font-family:'Manrope',system-ui,-apple-system,sans-serif;color:#EAEFED;-webkit-font-smoothing:antialiased;
   --surface2:#161D1B;--surface3:#1D2624;--border2:rgba(255,255,255,.15);--tx2:#9BA5A1;--tx3:#69736E;
-  --accent:#10E0A0;--accent-ink:#04130D;--violet:#B69CFF}
-#stage{position:fixed;inset:0;display:flex;flex-direction:column;justify-content:center;padding:0 7%}
+  --accent:#10E0A0;--accent-ink:#04130D;--violet:#B69CFF;
+  /* Source unique : la camionnette est hors du flux, son debordement vers le haut
+     doit etre connu du centrage de #stage. Deux clamps separes auraient derive. */
+  --truck:clamp(42px,12vmin,104px);--truck-gap:clamp(16px,5.6vmin,48px)}
+/* padding-top = debordement de la camionnette. Avec justify-content:center, un padding
+   haut P decale le bloc de P/2 : le bloc VISUEL (camionnette + rail + libelles) retombe
+   alors exactement au centre. Sans lui, seuls rail+libelles etaient centres et la
+   camionnette debordait vers le haut, laissant 45 % du cadre vide en bas. */
+#stage{position:fixed;inset:0;display:flex;flex-direction:column;justify-content:center;padding:calc(var(--truck) + var(--truck-gap)) 7% 0}
 #grid{position:absolute;inset:0;background-image:radial-gradient(circle at 1px 1px,rgba(255,255,255,.07) 1.4px,transparent 0);background-size:min(9.5vmin,44px) min(9.5vmin,44px)}
 .mono{font-family:'JetBrains Mono',monospace}
 .hdr{position:absolute;left:7%;right:7%;top:7.5%;display:flex;align-items:center;justify-content:space-between;gap:12px}
@@ -30,7 +37,7 @@ body{font-family:'Manrope',system-ui,-apple-system,sans-serif;color:#EAEFED;-web
 .rail{position:relative;height:clamp(5px,1.1vmin,11px);border-radius:4px;background:var(--surface3)}
 .fill{position:absolute;left:0;top:0;height:100%;border-radius:4px;background:var(--accent);width:0;animation:vt-fill 12s cubic-bezier(.65,0,.35,1) infinite}
 .stop{position:absolute;top:50%;width:clamp(16px,4.4vmin,40px);height:clamp(16px,4.4vmin,40px);border-radius:50%;border:clamp(3px,.7vmin,6px) solid #080B0A;transform:translate(-50%,-50%)}
-.truck{position:absolute;bottom:calc(100% + clamp(16px,5.6vmin,48px));display:flex;align-items:center;justify-content:center;width:clamp(42px,12vmin,104px);height:clamp(42px,12vmin,104px);border-radius:clamp(13px,3.8vmin,32px);background:var(--accent);color:var(--accent-ink);box-shadow:0 18px 40px -12px rgba(0,0,0,.7);transform:translateX(-50%);animation:vt-truck 12s cubic-bezier(.65,0,.35,1) infinite}
+.truck{position:absolute;bottom:calc(100% + var(--truck-gap));display:flex;align-items:center;justify-content:center;width:var(--truck);height:var(--truck);border-radius:clamp(13px,3.8vmin,32px);background:var(--accent);color:var(--accent-ink);box-shadow:0 18px 40px -12px rgba(0,0,0,.7);transform:translateX(-50%);animation:vt-truck 12s cubic-bezier(.65,0,.35,1) infinite}
 .truck svg{width:56%;height:56%}
 .labels{display:flex;justify-content:space-between;margin-top:clamp(16px,4.7vmin,42px);font-size:clamp(12px,3.1vmin,30px);font-weight:700;color:var(--tx3)}
 .labels span:nth-child(2){text-align:center}
