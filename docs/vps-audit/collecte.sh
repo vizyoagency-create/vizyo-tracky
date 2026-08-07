@@ -461,10 +461,27 @@ fi
 # Le point le plus expose, et il ne se corrige pas par du code : tout est sur le meme disque
 # que les donnees. Un incident chez l'hebergeur emporte les deux ensemble.
 sub "Copie hors-site"
-if have rclone && rclone listremotes 2>/dev/null | grep -q .; then
-  rclone listremotes 2>/dev/null | sed 's/^/  remote configure : /'
-else
-  echo "  AUCUNE — toutes les sauvegardes sont sur le disque qu'elles protegent."
+# Une copie hors-site qui a cesse de tourner est le pire angle mort : les
+# fichiers sont toujours la sur le VPS, tout parait normal, et on decouvre au
+# moment de restaurer qu'il n'existait qu'un seul exemplaire.
+horsite=0
+for f in /var/backups/*/DERNIERE-COPIE-LOCALE.json; do
+  [ -f "$f" ] || continue
+  horsite=1
+  v() { grep -o "\"$1\": *\"[^\"]*\"" "$f" | head -1 | sed 's/.*: *"//; s/"$//'; }
+  n() { grep -o "\"$1\": *[0-9]*" "$f" | head -1 | grep -o '[0-9]*$'; }
+  age_h=$(( (MAINTENANT - $(date -d "$(v horodatage)" +%s 2>/dev/null || echo "$MAINTENANT")) / 3600 ))
+  if [ "$age_h" -gt 48 ]; then verdict="⚠️ PERIMEE (> 48 h)"; else verdict="a jour"; fi
+  printf '  %-22s %-14s %3s h  %s  (%s copies locales)\n' \
+    "$(v application)" "$(v statut)" "$age_h" "$verdict" "$(n pairesLocales)"
+  printf '    destination : %s\n' "$(v copieHorsSite)"
+done
+if [ "$horsite" -eq 0 ]; then
+  if have rclone && rclone listremotes 2>/dev/null | grep -q .; then
+    rclone listremotes 2>/dev/null | sed 's/^/  remote configure : /'
+  else
+    echo "  AUCUNE — toutes les sauvegardes sont sur le disque qu'elles protegent."
+  fi
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────────────────────

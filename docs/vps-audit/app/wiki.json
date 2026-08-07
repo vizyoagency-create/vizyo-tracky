@@ -689,6 +689,17 @@
       "duree": "~3 s aujourd'hui",
       "cout": "pg_dump + tar du volume, chiffrés AES-256",
       "note": "Créneau choisi APRÈS la sauvegarde de Tracky de 05:00 : deux pg_dump simultanés sur 2 vCPU se gênent. Les deux archives portent le même horodatage et se restaurent en paire — une base sans ses images laisse des dossiers validés sans les preuves qui les justifiaient. Chaque archive est RELUE après écriture ; l'état est dans /var/backups/vizyo-verify/DERNIER-ETAT.json (section 11 du collecteur). Rétention 14 jours : la purge RGPD de l'application est à 90 jours, une archive la repousse d'autant. Aucune copie hors-site à ce jour."
+    },
+    {
+      "id": "verify-copie-horssite",
+      "couche": "Poste",
+      "heureLocale": "06:30",
+      "heureUtc": "04:30",
+      "cadence": "quotidien",
+      "quoi": "Verify — copie hors-site des sauvegardes (VPS → PC, disque D:)",
+      "duree": "~2 s si à jour",
+      "cout": "lecture seule sur le VPS ; réseau uniquement",
+      "note": "C'est le POSTE qui tire, jamais le VPS qui pousse : le serveur ne détient aucun accès au PC, donc un serveur compromis ne peut pas détruire les copies. Chaque paire est revérifiée par son empreinte SHA-256 ; une archive tronquée est supprimée plutôt que gardée. L'état revient sur le VPS dans /var/backups/vizyo-verify/DERNIERE-COPIE-LOCALE.json, lu par la section 11 du collecteur. ⚠️ Piège payé à la pose : une tâche planifiée refuse de démarrer SUR BATTERIE par défaut — elle reste « Queued » indéfiniment, LastTaskResult vaut 0, et rien ne le dit."
     }
   ],
   "previsions": {

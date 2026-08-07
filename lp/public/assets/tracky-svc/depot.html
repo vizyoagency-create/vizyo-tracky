@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Vizyo Tracky — Espace dépôt</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#080B0A;overflow:hidden}
+body{font-family:'Manrope',system-ui,-apple-system,sans-serif;color:#EAEFED;-webkit-font-smoothing:antialiased;
+  --surface2:#161D1B;--surface3:#1D2624;--border2:rgba(255,255,255,.15);--tx2:#9BA5A1;--tx3:#69736E;
+  --accent:#10E0A0;--accent-ink:#04130D;--violet:#B69CFF}
+#stage{position:fixed;inset:0;display:flex;flex-direction:column;justify-content:center;padding:0 7%}
+#grid{position:absolute;inset:0;background-image:radial-gradient(circle at 1px 1px,rgba(255,255,255,.07) 1.4px,transparent 0);background-size:min(9.5vw,44px) min(9.5vw,44px)}
+.mono{font-family:'JetBrains Mono',monospace}
+.hdr{position:absolute;left:7%;right:7%;top:7.5%;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.ref{font-family:'JetBrains Mono',monospace;font-size:clamp(11px,2.8vw,26px);font-weight:600;color:var(--tx2);white-space:nowrap}
+.live{flex:0 1 auto;min-width:0;display:inline-flex;align-items:center;gap:clamp(6px,1.7vw,13px);padding:clamp(6px,1.6vw,14px) clamp(10px,3vw,24px);border-radius:999px;background:var(--surface2);border:1px solid var(--border2);white-space:nowrap}
+.live b{font-size:clamp(11px,2.7vw,24px);font-weight:700;color:var(--tx2);overflow:hidden;text-overflow:ellipsis}
+.dot{width:clamp(7px,1.6vw,14px);height:clamp(7px,1.6vw,14px);border-radius:50%;background:var(--accent);animation:vt-blink 1.6s ease-in-out infinite;flex-shrink:0}
+.rail{position:relative;height:clamp(5px,1.1vw,11px);border-radius:4px;background:var(--surface3)}
+.fill{position:absolute;left:0;top:0;height:100%;border-radius:4px;background:var(--accent);width:0;animation:vt-fill 12s cubic-bezier(.65,0,.35,1) infinite}
+.stop{position:absolute;top:50%;width:clamp(16px,4.4vw,40px);height:clamp(16px,4.4vw,40px);border-radius:50%;border:clamp(3px,.7vw,6px) solid #080B0A;transform:translate(-50%,-50%)}
+.truck{position:absolute;bottom:calc(100% + clamp(16px,5.6vw,48px));display:flex;align-items:center;justify-content:center;width:clamp(42px,12vw,104px);height:clamp(42px,12vw,104px);border-radius:clamp(13px,3.8vw,32px);background:var(--accent);color:var(--accent-ink);box-shadow:0 18px 40px -12px rgba(0,0,0,.7);transform:translateX(-50%);animation:vt-truck 12s cubic-bezier(.65,0,.35,1) infinite}
+.truck svg{width:56%;height:56%}
+.labels{display:flex;justify-content:space-between;margin-top:clamp(16px,4.7vw,42px);font-size:clamp(12px,3.1vw,30px);font-weight:700;color:var(--tx3)}
+.labels span:nth-child(2){text-align:center}
+.labels span:last-child{text-align:right}
+@keyframes vt-truck{0%{left:4%}8%{left:4%}34%{left:50%}42%{left:50%}68%{left:96%}100%{left:96%}}
+@keyframes vt-fill{0%,8%{width:4%}34%{width:50%}68%,100%{width:96%}}
+@keyframes vt-blink{0%,49%{opacity:1}50%,100%{opacity:.26}}
+@keyframes vt-dotA{0%,6%{background:var(--surface3)}10%,100%{background:var(--violet)}}
+@keyframes vt-dotB{0%,32%{background:var(--surface3)}38%,100%{background:var(--accent)}}
+@keyframes vt-dotC{0%,64%{background:var(--surface3)}70%,100%{background:var(--accent)}}
+@media (prefers-reduced-motion:reduce){#stage *{animation:none!important}}
+</style>
+</head>
+<body>
+<div id="grid"></div>
+<div id="stage">
+<div class="hdr">
+<span class="ref" style="flex:0 0 auto">M-2481 · 08:15 → 11:40</span>
+<span class="live"><span class="dot"></span><b>Position live</b></span>
+</div>
+
+<div class="rail">
+<span class="stop" style="left:4%;animation:vt-dotA 12s linear infinite"></span>
+<span class="stop" style="left:50%;animation:vt-dotB 12s linear infinite"></span>
+<span class="stop" style="left:96%;animation:vt-dotC 12s linear infinite"></span>
+<div class="truck"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 16.5V6.5h11v10"/><path d="M13.5 9.5H18l3.5 3.5v3.5h-8"/><circle cx="7" cy="17.5" r="1.9" fill="currentColor" stroke="none"/><circle cx="17" cy="17.5" r="1.9" fill="currentColor" stroke="none"/></svg></div>
+</div>
+
+<div class="labels">
+<span>Mission créée</span>
+<span>En route</span>
+<span>Livré</span>
+</div>
+</div>
+</body>
+</html>
