@@ -568,13 +568,17 @@ première position, retard, clôture sans mouvement) · la synchronisation missi
 - [x] **Effet 2 — l'indisponibilité véhicule**, par `blocksVehicle` et le chemin de lecture existant
 - [x] **Effet 3 — le dépôt est notifié.** Gabarit `mission_assigned`, sujet porteur d'information, nom du transporteur en avant. Une panne d'e-mail n'annule pas la mission
 - [x] **Effet 4 — le conducteur voit sa mission** dans `/driver` avec la mention d'information, `depotWatching` **calculé côté serveur** — une obligation légale ne doit pas dépendre d'un `@if` supprimable
-- [ ] Endpoints liste / modification / annulation (avec motif obligatoire)
+- [x] Endpoint de **liste** avec les 5 compteurs calculés côté serveur
+- [x] Endpoint d'**annulation** avec motif obligatoire, libérant le véhicule
+- [x] **3ᵉ onglet de `/agenda`** : tableau (Réf. · Trajet · Créneau · Véhicule · Dépôt · Statut), filtres Toutes / En cours / Planifiées / Terminées, et les 5 compteurs
+- [x] Les missions apparaissent **dans la grille du mois** sous « Tous » — l'exigence d'A2 § 3.1
+- [ ] Endpoint de modification (`PLANNED` entièrement · `IN_PROGRESS` seuls `endAt`, conducteur, notes)
 - [ ] Modale de création + bloc de conséquence + ligne de périmètre
 - [ ] Modale de conflit niveau 2, avec le prochain créneau libre calculé
-- [ ] 3ᵉ onglet de `/agenda` : colonnes, filtres, 5 compteurs
 - [ ] Déclinaisons iOS et Android
 - [ ] Bandeau « en mission » sur la fiche véhicule
 - [ ] Modèles de tournée — *explicitement non bloquant, livrable après A4 (A2 § 7)*
+- [ ] ⏸️ **Vérification visuelle de l'onglet** — bloquée : le panneau navigateur n'est pas affiché, la page ne compose aucune image
 
 ### Recette A2 — les 12 critères
 
@@ -1226,5 +1230,6 @@ Une ligne par séance : ce qui a été livré, ce qui a été décidé, ce qui b
 |---|---|---|---|
 | 2026-08-09 | — | Analyse du livrable, audit du dépôt, branche `feat/refonte-tracky-v2`, cette roadmap | 3 écarts relevés (maquettes absentes, prémisse Poppins périmée, kit déjà posé). Bloc A d'abord, bloc B à la livraison des `.dc.html`. Point de contrôle à chaque lot. |
 | 2026-08-09 | Étape 0 | `DECISIONS.md` (10 décisions), `TOKENS.md`, `ICONS.md` · violet + bleu créés · `--accent-ink` clair corrigé · 22 fallbacks `Poppins` purgés | **Défaut d'accessibilité corrigé** : encre blanche sur accent en thème clair, 3,43:1 → 5,54:1. **Deux défauts d'outillage relevés** : `pnpm verify` ne se termine pas (`ng test` en watch, P1) et le `launch.json` parent servait un autre projet. Confirmation au pixel en attente : panneau navigateur non affiché. |
-| 2026-08-09 | A2 (2/2) | Effet 3 — gabarit `mission_assigned` + catalogue admin + `escapeHtml` · Effet 4 — `GET /missions/mine` et la mention d'information dans `/driver` | `depotWatching` est **calculé côté serveur** : une obligation légale ne doit pas dépendre d'un `@if` de template. Le sujet de l'e-mail porte l'information (« Livraison prévue jeudi 08:15 → 11:40 »), au nom du transporteur, pas de Tracky. 1783 tests API. |
+| 2026-08-09 | A2 (3/3) | Onglet Missions dans `/agenda` : tableau, filtres, 5 compteurs · endpoints de liste et d'annulation | Le sélecteur de type existant fait office d'onglet — pas de page séparée, décision client. Les compteurs sont **serveur** : filtrée sur « En cours », la page ne contient pas les planifiées, et les recalculer afficherait « 0 planifiées ». « Véhicules indisponibles » compte les véhicules **distincts**. 1794 tests API. Vérification visuelle non faite (panneau navigateur non affiché). |
+| 2026-08-09 | A2 (2/3) | Effet 3 — gabarit `mission_assigned` + catalogue admin + `escapeHtml` · Effet 4 — `GET /missions/mine` et la mention d'information dans `/driver` | `depotWatching` est **calculé côté serveur** : une obligation légale ne doit pas dépendre d'un `@if` de template. Le sujet de l'e-mail porte l'information (« Livraison prévue jeudi 08:15 → 11:40 »), au nom du transporteur, pas de Tracky. 1783 tests API. |
 | 2026-08-09 | A1 | Rôle `DEPOT` + 4 permissions · `DEPOT_DEFAULTS` · modèle `Mission` + migration · `DepotScopeService` / `Guard` / décorateur · module + 3 endpoints · `DepotMissionDto` · isolation socket · gardes web · **12 tests d'isolation verts** | **Faille refermée** : 8 routes de `trip-analysis` servaient scores, carburant et coûts à un dépôt (gardées par `trips_view`, ouverte au rôle), + `/ai/status`. **Trou de conception refermé** : `clampPermissions` bornait au granter, pas à la cible — un `FLEET_ADMIN` pouvait ouvrir la flotte à un dépôt. **D11** : le modèle `Mission` migre en A1, sinon l'isolation ne compile pas. |
