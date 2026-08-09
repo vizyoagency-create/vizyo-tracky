@@ -251,6 +251,83 @@ export class EmailService {
   }
 
   /**
+   * Espace dépôt (2026-08) — l'invitation, version DÉPÔT. Cf. design/A5-COMPTES.md § 6.
+   *
+   * Un dépôt n'est pas un collègue. Il ne connaît ni Tracky, ni le mot « flotte », ni
+   * la personne qui l'invite. Trois différences en découlent :
+   *
+   *  1. **Le sujet nomme le TRANSPORTEUR**, pas Tracky : « MH CARS vous ouvre le suivi
+   *     de ses livraisons ». C'est de son transporteur qu'il attend un e-mail ; un
+   *     objet au nom d'un outil inconnu se lit comme du démarchage.
+   *  2. **Le corps dit ce que le compte permet ET ce qu'il ne permet pas.** Un accès
+   *     qu'on ouvre sans en donner les bornes inquiète autant qu'il rassure.
+   *  3. **La signature est celle du transporteur**, Tracky en pied.
+   *
+   * Règles héritées de la refonte des e-mails : pas de crochets dans le sujet,
+   * preheader renseigné, accents corrects, aucune information portée par une image.
+   */
+  private buildDepotInvitationEmail(opts: {
+    recipientName?: string | null;
+    inviterName: string;
+    fleetName: string;
+    acceptUrl: string;
+    expiresAt: Date;
+  }): { subject: string; html: string; text: string } {
+    const transporteur = this.escapeHtml(opts.fleetName);
+    const subject = `${opts.fleetName} vous ouvre le suivi de ses livraisons`;
+    const expire = formatFleetDateTime(opts.expiresAt);
+
+    const puce = (texte: string, oui: boolean) => `
+      <tr>
+        <td style="padding:5px 0;vertical-align:top;width:22px;font-family:'Manrope',system-ui,sans-serif;font-size:14px;color:${oui ? '#10E0A0' : '#69736E'};">${oui ? '✓' : '·'}</td>
+        <td style="padding:5px 0;font-family:'Manrope',system-ui,sans-serif;font-size:13.5px;line-height:1.55;color:${oui ? '#EAEFED' : '#9BA5A1'};">${texte}</td>
+      </tr>`;
+
+    const html = this.shell({
+      eyebrow: 'Accès',
+      footer: `${transporteur} · SUIVI DE LIVRAISON<br>Propulsé par Vizyo Tracky. Ce lien expire le ${expire}.`,
+      body: `
+        <tr><td style="padding:28px 36px 0;">
+          <!-- Preheader : première ligne lue dans la liste des messages. -->
+          <div style="display:none;max-height:0;overflow:hidden;opacity:0;">Suivez vos livraisons en direct, sans compte à créer côté logistique.</div>
+          <h1 style="margin:0 0 12px;font-family:'Manrope',system-ui,sans-serif;font-size:24px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;color:#EAEFED;">Suivez vos livraisons en direct</h1>
+          <p style="margin:0 0 20px;font-family:'Manrope',system-ui,sans-serif;font-size:15px;line-height:1.65;color:#9BA5A1;">${transporteur} vous ouvre un accès pour suivre les camions engagés sur vos livraisons. Rien à installer, rien à payer.</p>
+          <table role="presentation" width="100%" style="border-collapse:collapse;">
+            ${puce('Voir où en est chaque livraison qui vous est destinée', true)}
+            ${puce('Suivre le camion en direct, pendant le créneau de la mission', true)}
+            ${puce('Partager un lien de suivi temporaire à votre propre client', true)}
+            ${puce('Vous ne voyez pas les autres véhicules de ' + transporteur, false)}
+            ${puce('Vous ne voyez rien en dehors du créneau de vos missions', false)}
+          </table>
+        </td></tr>
+        <tr><td style="padding:24px 36px 0;">
+          <table role="presentation"><tr><td style="border-radius:11px;background:#10E0A0;">
+            <a href="${opts.acceptUrl}" style="display:inline-block;padding:13px 26px;font-family:'Manrope',system-ui,sans-serif;font-size:15px;font-weight:700;color:#04130D;text-decoration:none;">Activer mon accès</a>
+          </td></tr></table>
+          <p style="margin:14px 0 0;font-family:'Manrope',system-ui,sans-serif;font-size:12.5px;line-height:1.6;color:#69736E;">Ou copiez ce lien : <span style="color:#9BA5A1;">${opts.acceptUrl}</span></p>
+        </td></tr>`,
+    });
+
+    const text = [
+      `${opts.fleetName} vous ouvre le suivi de ses livraisons.`,
+      '',
+      'Ce que ce compte permet :',
+      '  - voir où en est chaque livraison qui vous est destinée',
+      '  - suivre le camion en direct, pendant le créneau de la mission',
+      '  - partager un lien de suivi temporaire à votre propre client',
+      '',
+      'Ce qu\'il ne permet pas :',
+      `  - voir les autres véhicules de ${opts.fleetName}`,
+      '  - voir quoi que ce soit en dehors du créneau de vos missions',
+      '',
+      `Activer mon accès : ${opts.acceptUrl}`,
+      `Ce lien expire le ${expire}.`,
+    ].join('\n');
+
+    return { subject, html, text };
+  }
+
+  /**
    * Espace dépôt (2026-08) — une mission vient d'être assignée à un compte dépôt.
    * Cf. design/A2-MISSIONS.md § 3.3.
    *
@@ -341,6 +418,13 @@ export class EmailService {
     acceptUrl: string;
     expiresAt: Date;
   }): { subject: string; html: string; text: string } {
+    // ══ ESPACE DÉPÔT (2026-08) — VERSION DÉPÔT DU MÊME GABARIT ════════════════
+    //
+    // A5 § 6 : « Un dépôt n'est pas un collègue : il ne connaît ni Tracky ni le
+    // vocabulaire de la flotte. » On ADAPTE le gabarit existant, on n'en crée pas
+    // un second — c'est la même consigne que pour le mécanisme d'invitation.
+    if (opts.role === 'DEPOT') return this.buildDepotInvitationEmail(opts);
+
     const greeting = opts.recipientName ? `Bonjour ${opts.recipientName},` : 'Bonjour,';
     const expiresLabel = formatFleetDateTime(opts.expiresAt);
     const subject = `[Vizyo Tracky] Vous etes invite a rejoindre ${opts.fleetName}`;

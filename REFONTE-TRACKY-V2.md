@@ -13,7 +13,7 @@
 | **Étape 0** | Socle : `design/DECISIONS.md`, `TOKENS.md`, `ICONS.md` | tout | 🟡 quasi livré | 27 / 32 |
 | **A1** | Rôle `DEPOT`, permissions, isolation backend | A2 A3 A5 | 🟢 **livré** | 68 / 76 |
 | **A2** | Modèle `Mission`, agenda, indisponibilité véhicule | A3 A4 | 🟢 **livré** | 93 / 103 |
-| **A5** | Invitation, comptes dépôt, matrice | — | 🟡 **verrous + écrans** | 26 / 44 |
+| **A5** | Invitation, comptes dépôt, matrice | — | 🟢 **livré** | 38 / 44 |
 | **A3** | Espace `/depot` : 4 onglets × 3 plateformes | A4 | ⬜ à faire | 0 / 98 |
 | **A4** | Lien public `/s/:token`, expiration, révocation | — | ⬜ à faire | 0 / 98 |
 | **B0′** | Reliquat socle : couleurs en dur, UTC, accents, wizard | Bloc B | ⬜ à faire | 0 / 19 |

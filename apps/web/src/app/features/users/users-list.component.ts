@@ -94,9 +94,19 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
               <div class="m-grid">
                 <span class="m-cap" [title]="p.description">{{ p.label }}</span>
                 @for (r of roleCols; track r.role) {
-                  <span class="m-cell">
-                    @if (isDefaultOn(p.key, r.role)) {
+                  <span class="m-cell" [class.m-cell--fige]="r.role === 'DEPOT'">
+                    @if (r.role === 'DEPOT' && isDefaultOn(p.key, r.role)) {
+                      <!-- ◆ — accordé, MAIS limité à ses propres missions.
+                           Une coche verte identique aux autres rôles produirait
+                           l'inquiétude inverse : le Fleet Admin croirait ouvrir sa
+                           flotte. C'est cette distinction visuelle qui lui permet de
+                           comprendre en trois secondes (A5 § 4). -->
+                      <span class="chk-depot" title="Accordé, mais limité à ses propres missions — non modifiable">◆</span>
+                    } @else if (isDefaultOn(p.key, r.role)) {
                       <span class="chk" title="Activé par défaut"><lucide-icon [img]="CheckIcon" [size]="13"></lucide-icon></span>
+                    } @else if (r.role === 'DEPOT') {
+                      <!-- Le rôle est FERMÉ : la case est grisée, pas « activable ». -->
+                      <span class="chk-fige" title="Le périmètre d'un dépôt est fixé par ses missions">—</span>
                     } @else {
                       <span class="chk-part" title="Désactivé par défaut — activable par utilisateur">○</span>
                     }
@@ -108,7 +118,17 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
           <div class="m-legend">
             <span><span class="chk chk-sm"><lucide-icon [img]="CheckIcon" [size]="11"></lucide-icon></span> Activé par défaut</span>
             <span><span class="chk-part chk-sm">○</span> Désactivé par défaut — activable par utilisateur</span>
+            <span><span class="chk-depot chk-sm">◆</span> Limité à ses propres missions</span>
           </div>
+          <!-- La légende du ◆, en toutes lettres. Sans elle, le marqueur intrigue
+               sans rassurer — et c'est précisément la question que se pose un Fleet
+               Admin avant d'ouvrir un accès à une société extérieure. -->
+          <p class="m-legend-depot">
+            <strong>◆ Limité à ses propres missions</strong> — le dépôt n'a aucun droit
+            d'action : son accès est en lecture seule, borné à la fenêtre horaire de chaque
+            mission. Ses cases ne sont pas modifiables : son périmètre est fixé par les
+            missions que vous lui assignez, pas par cette matrice.
+          </p>
         </div>
       } @else if (loading()) {
         <div class="u-loading"><span class="w-6 h-6 border-2 border-fg-tertiary border-t-tracky-light rounded-full animate-spin"></span></div>
@@ -356,6 +376,22 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
     .chk { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 7px; background: color-mix(in srgb, var(--tracky) 14%, transparent); color: var(--tracky-light) }
     .chk-part { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 7px; background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--warning); font-size: 13px }
     .chk-none { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; color: var(--fg-tertiary); font-weight: 700 }
+    /* ═══ Espace dépôt (2026-08) — le marqueur ◆ et les cases figées ═══════════
+       Violet, DISTINCT de la coche verte. C'est la distinction qui permet à un
+       Fleet Admin de comprendre en trois secondes qu'ouvrir un accès dépôt
+       n'ouvre pas sa flotte (A5 § 4). */
+    .chk-depot { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px;
+                 border-radius: 7px; background: color-mix(in srgb, var(--violet) 16%, transparent);
+                 color: var(--violet); font-size: 12px; font-weight: 700 }
+    .chk-fige { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px;
+                color: var(--fg-tertiary); opacity: .5 }
+    /* La colonne entière est visiblement figée : le rôle est fermé, ses cases ne se
+       cochent pas. Le dire par le style évite qu'on essaie puis qu'on cherche pourquoi. */
+    .m-cell--fige { opacity: .92; cursor: not-allowed }
+    .m-legend-depot { margin: 0; padding: 11px 18px; border-top: 1px solid var(--border-subtle);
+                      background: color-mix(in srgb, var(--violet) 7%, transparent);
+                      font-size: 11.5px; line-height: 1.6; color: var(--fg-secondary) }
+    .m-legend-depot strong { color: var(--violet) }
     .m-legend { display: flex; flex-wrap: wrap; gap: 16px; padding: 12px 18px; border-top: 1px solid var(--border-subtle); background: var(--bg-secondary); font-size: 11.5px; color: var(--fg-tertiary) }
     .m-legend > span { display: inline-flex; align-items: center; gap: 7px }
     .chk-sm { width: 18px; height: 18px }
