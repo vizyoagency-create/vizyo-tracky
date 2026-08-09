@@ -74,6 +74,13 @@ export interface VehiculeDisponibiliteDto {
   available: boolean;
   /** « Déjà en mission M-2482 · 09:00 → 12:20 ». Null si libre. */
   reason: string | null;
+  /**
+   * Le prochain instant où ce véhicule est libre pendant la durée demandée (ISO 8601).
+   * Renseigné UNIQUEMENT quand aucun véhicule n'est disponible — c'est le niveau 2
+   * d'A2 § 4 : proposer une sortie plutôt qu'annoncer un échec. `null` si le véhicule
+   * est libre, ou si rien ne se dégage sous 14 jours.
+   */
+  nextFreeAt: string | null;
 }
 
 /** Les 5 compteurs en tete de l'onglet Missions. */
@@ -326,7 +333,7 @@ export class MissionsService {
     const h = (d: Date) =>
       d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
-    return vehicules.map((v) => {
+    const base = vehicules.map((v) => {
       const occupe = parVehicule.get(v.id);
       return {
         id: v.id,
@@ -338,8 +345,68 @@ export class MissionsService {
         reason: occupe
           ? `Déjà en mission ${occupe.ref} · ${h(occupe.startAt)} → ${h(occupe.endAt)}`
           : null,
+        nextFreeAt: null as string | null,
       };
     });
+
+    // ── NIVEAU 2 (A2 § 4) — aucun vehicule libre ────────────────────────────
+    //
+    // On ne calcule le prochain creneau QUE dans ce cas. Tant qu'il reste un camion
+    // disponible, le gestionnaire en choisit un autre et la question ne se pose pas :
+    // calculer pour rien couterait une requete par vehicule a chaque frappe.
+    //
+    // « Un gestionnaire qui recoit "aucun vehicule disponible" sans alternative
+    //   rouvre le formulaire cinq fois. » On propose une sortie.
+    const aucunLibre = base.length > 0 && base.every((v) => !v.available);
+    if (aucunLibre) {
+      const duree = endAt.getTime() - startAt.getTime();
+      for (const v of base) {
+        const libre = await this.prochainCreneauLibre(v.id, startAt, duree);
+        v.nextFreeAt = libre ? libre.toISOString() : null;
+      }
+    }
+
+    return base;
+  }
+
+  /**
+   * Le prochain instant ou CE vehicule est libre pendant `dureeMs`, a partir de `depuis`.
+   *
+   * On avance de mission en mission : chaque fois que le creneau candidat chevauche une
+   * mission, on le repousse a la fin de celle-ci. La premiere position qui tient est la
+   * bonne — les missions etant triees, on ne revient jamais en arriere.
+   *
+   * Renvoie `null` au-dela de l'horizon : proposer « libre dans 4 mois » n'aide personne,
+   * et laisse croire a un calcul utile.
+   */
+  private async prochainCreneauLibre(
+    vehicleId: string,
+    depuis: Date,
+    dureeMs: number,
+  ): Promise<Date | null> {
+    const HORIZON_MS = 14 * 24 * 3600_000;
+    const limite = depuis.getTime() + HORIZON_MS;
+
+    const missions = await this.prisma.mission.findMany({
+      where: {
+        vehicleId,
+        status: { in: STATUTS_OCCUPANTS },
+        endAt: { gt: depuis },
+        startAt: { lt: new Date(limite) },
+      },
+      select: { startAt: true, endAt: true },
+      orderBy: { startAt: 'asc' },
+    });
+
+    let candidat = depuis.getTime();
+    for (const m of missions) {
+      // Le creneau candidat tient-il AVANT cette mission ?
+      if (candidat + dureeMs <= m.startAt.getTime()) return new Date(candidat);
+      // Sinon il chevauche : on le repousse a la fin de la mission.
+      candidat = Math.max(candidat, m.endAt.getTime());
+      if (candidat > limite) return null;
+    }
+    return candidat <= limite ? new Date(candidat) : null;
   }
 
   /**

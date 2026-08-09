@@ -580,7 +580,9 @@ première position, retard, clôture sans mouvement) · la synchronisation missi
 - [x] **Niveau 1 du conflit** — `GET /missions/vehicle-availability` : les véhicules occupés sont **affichés et grisés avec leur motif**, jamais masqués. La liste se recharge à chaque changement de créneau
 - [x] Le `409` de conflit rendu en clair, avec la mission bloquante et son créneau
 - [ ] Endpoint de modification (`PLANNED` entièrement · `IN_PROGRESS` seuls `endAt`, conducteur, notes)
-- [ ] **Niveau 2 du conflit** — modale « Créneau indisponible » avec le prochain créneau libre calculé et le bouton « Décaler à 12:30 »
+- [x] **Niveau 2 du conflit** — bloc « Créneau indisponible » : les véhicules bloqués avec leur mission, le **prochain créneau libre réellement calculé**, et le bouton « Décaler à HH:MM » qui reporte le créneau en conservant la durée et présélectionne le véhicule
+- [x] Le calcul enjambe plusieurs missions et trouve les **trous entre deux missions** — 6 tests unitaires + vérifié sur base réelle (flotte saturée à 7/7)
+- [x] Horizon de 14 jours : au-delà, on répond « rien ne se dégage » plutôt que de proposer une date dans 4 mois
 - [ ] Déclinaisons iOS et Android
 - [ ] Bandeau « en mission » sur la fiche véhicule
 - [ ] Modèles de tournée — *explicitement non bloquant, livrable après A4 (A2 § 7)*

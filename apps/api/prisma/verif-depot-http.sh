@@ -19,6 +19,12 @@
 #
 #  USAGE   bash prisma/verif-depot-http.sh
 #  Attendu : 31 reussites, 0 echec.
+#
+#  ⚠️ Ne pas lancer PENDANT `pnpm test` : la suite Jest sature le processeur, l'API
+#     repond au-dela du delai, et des echecs FANTOMES apparaissent (constate le
+#     2026-08-09 : 4 faux echecs, puis 31/31 sur trois passages consecutifs a vide).
+#     Le delai est a 25 s pour absorber une machine chargee, pas pour masquer une
+#     lenteur reelle — si l'API met vraiment 25 s, il y a un vrai probleme.
 # ══════════════════════════════════════════════════════════════════════════════
 API=${API_BASE:-http://localhost:3000/api}
 A=$(cat "${TOK_A:-/tmp/tok_a.txt}")
@@ -30,8 +36,8 @@ verif() { # libelle, attendu, obtenu
   else echo " ECHEC $1 — attendu $2, obtenu $3"; ko=$((ko+1)); fi
 }
 
-code() { curl -s -o /dev/null -w "%{http_code}" --max-time 8 -H "Authorization: Bearer $1" "$API$2"; }
-corps() { curl -s --max-time 8 -H "Authorization: Bearer $1" "$API$2"; }
+code() { curl -s -o /dev/null -w "%{http_code}" --max-time 25 -H "Authorization: Bearer $1" "$API$2"; }
+corps() { curl -s --max-time 25 -H "Authorization: Bearer $1" "$API$2"; }
 
 echo "═══ ROUTES DE LA FLOTTE : toutes fermees au depot ═══════════"
 verif "GET /vehicles"                403 "$(code "$A" /vehicles)"

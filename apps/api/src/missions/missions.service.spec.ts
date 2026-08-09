@@ -574,6 +574,87 @@ describe('MissionsService — creation', () => {
     });
   });
 
+  describe('niveau 2 du conflit — le prochain creneau libre', () => {
+    const T = (h: number) => new Date(`2026-08-10T${String(h).padStart(2, '0')}:00:00Z`);
+
+    beforeEach(() => {
+      // Un seul vehicule dans la flotte : garantit le cas « aucun libre ».
+      prisma.vehicle.findMany = jest.fn().mockResolvedValue([
+        { id: 'v-1', plate: 'FR-1', brand: null, model: null },
+      ]);
+    });
+
+    it('ne calcule RIEN tant qu\'un vehicule reste libre', async () => {
+      // Calculer pour rien couterait une requete par vehicule a chaque frappe dans
+      // le formulaire. Tant qu'il reste un camion, la question ne se pose pas.
+      prisma.vehicle.findMany.mockResolvedValue([
+        { id: 'v-1', plate: 'FR-1', brand: null, model: null },
+        { id: 'v-2', plate: 'FR-2', brand: null, model: null },
+      ]);
+      prisma.mission.findMany.mockResolvedValue([
+        { vehicleId: 'v-1', ref: 'M-1', startAt: T(9), endAt: T(12) },
+      ]);
+      const res = await service.disponibiliteVehicules(GESTIONNAIRE, T(8), T(11));
+      expect(res.every((v) => v.nextFreeAt === null)).toBe(true);
+      // Une seule requete missions : celle de l'occupation. Aucune de calcul.
+      expect(prisma.mission.findMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('propose la fin de la mission bloquante quand tout est pris', async () => {
+      prisma.mission.findMany
+        // 1er appel : les missions occupantes sur le creneau demande
+        .mockResolvedValueOnce([{ vehicleId: 'v-1', ref: 'M-1', startAt: T(9), endAt: T(12) }])
+        // 2e appel : le calcul du prochain creneau pour v-1
+        .mockResolvedValueOnce([{ startAt: T(9), endAt: T(12) }]);
+      const res = await service.disponibiliteVehicules(GESTIONNAIRE, T(8), T(11));
+      // Demande 08:00→11:00 (3 h). La mission tient 09:00→12:00 : le creneau candidat
+      // est repousse a 12:00, ou plus rien ne gene.
+      expect(res[0].nextFreeAt).toBe(T(12).toISOString());
+    });
+
+    it('trouve un trou ENTRE deux missions, sans sauter a la fin', async () => {
+      // C'est le cas qui distingue un vrai calcul d'un « endAt de la derniere mission ».
+      prisma.mission.findMany
+        .mockResolvedValueOnce([{ vehicleId: 'v-1', ref: 'M-1', startAt: T(8), endAt: T(10) }])
+        .mockResolvedValueOnce([
+          { startAt: T(8), endAt: T(10) },
+          { startAt: T(15), endAt: T(18) },
+        ]);
+      // Demande 08:00→09:00 (1 h). Apres la 1re mission, 10:00 laisse 5 h avant la 2e.
+      const res = await service.disponibiliteVehicules(GESTIONNAIRE, T(8), T(9));
+      expect(res[0].nextFreeAt).toBe(T(10).toISOString());
+    });
+
+    it('enjambe plusieurs missions collees', async () => {
+      prisma.mission.findMany
+        .mockResolvedValueOnce([{ vehicleId: 'v-1', ref: 'M-1', startAt: T(8), endAt: T(10) }])
+        .mockResolvedValueOnce([
+          { startAt: T(8), endAt: T(10) },
+          { startAt: T(10), endAt: T(13) },
+          { startAt: T(13), endAt: T(16) },
+        ]);
+      const res = await service.disponibiliteVehicules(GESTIONNAIRE, T(8), T(11));
+      expect(res[0].nextFreeAt).toBe(T(16).toISOString());
+    });
+
+    it('rend le creneau demande lui-meme si rien ne gene apres verification', async () => {
+      prisma.mission.findMany
+        .mockResolvedValueOnce([{ vehicleId: 'v-1', ref: 'M-1', startAt: T(20), endAt: T(22) }])
+        .mockResolvedValueOnce([]);
+      const res = await service.disponibiliteVehicules(GESTIONNAIRE, T(8), T(11));
+      expect(res[0].nextFreeAt).toBe(T(8).toISOString());
+    });
+
+    it('renvoie null au-dela de l\'horizon — « libre dans 4 mois » n\'aide personne', async () => {
+      const loin = new Date(T(8).getTime() + 60 * 24 * 3600_000);
+      prisma.mission.findMany
+        .mockResolvedValueOnce([{ vehicleId: 'v-1', ref: 'M-1', startAt: T(8), endAt: loin }])
+        .mockResolvedValueOnce([{ startAt: T(8), endAt: loin }]);
+      const res = await service.disponibiliteVehicules(GESTIONNAIRE, T(8), T(11));
+      expect(res[0].nextFreeAt).toBeNull();
+    });
+  });
+
   describe('le selecteur de depot', () => {
     it('ne liste que les comptes DEPOT actifs de la flotte', async () => {
       prisma.user.findMany = jest.fn().mockResolvedValue([]);

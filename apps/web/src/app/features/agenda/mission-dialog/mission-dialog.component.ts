@@ -37,6 +37,8 @@ interface VehiculeDispo {
   label: string | null;
   available: boolean;
   reason: string | null;
+  /** Prochain instant libre — renseigné uniquement quand toute la flotte est prise. */
+  nextFreeAt: string | null;
 }
 
 interface Depot {
@@ -105,6 +107,47 @@ interface ConflitMission {
               }
             </select>
           </label>
+
+          @if (aucunLibre()) {
+            <!-- ═══ NIVEAU 2 DU CONFLIT (A2 § 4) ═══════════════════════════════
+                 Aucun véhicule n'est libre. On ne se contente PAS d'annoncer un
+                 échec : on liste les véhicules bloqués avec leur mission, et on
+                 propose le prochain créneau réellement calculé.
+
+                 « Un gestionnaire qui reçoit "aucun véhicule disponible" sans
+                   alternative rouvre le formulaire cinq fois. » -->
+            <div class="md-niveau2 md-col2">
+              <p class="md-niveau2-titre">
+                <lucide-icon [img]="AlertTriangle" [size]="15" />
+                Créneau indisponible — toute la flotte est prise
+              </p>
+              <ul class="md-niveau2-liste">
+                @for (v of vehicules(); track v.id) {
+                  <li>
+                    <b>{{ v.plate }}</b>
+                    <span>{{ v.reason }}</span>
+                  </li>
+                }
+              </ul>
+
+              @if (meilleureAlternative(); as alt) {
+                <div class="md-niveau2-sortie">
+                  <p>
+                    <b>{{ alt.plate }}</b> se libère à <b>{{ heureCourte(alt.nextFreeAt!) }}</b>{{ jourSiAutre(alt.nextFreeAt!) }},
+                    pour la même durée.
+                  </p>
+                  <button type="button" class="md-btn md-btn--primaire" (click)="decaler(alt)">
+                    Décaler à {{ heureCourte(alt.nextFreeAt!) }}
+                  </button>
+                </div>
+              } @else {
+                <p class="md-niveau2-rien">
+                  Aucun créneau ne se dégage dans les 14 prochains jours. Essayez une
+                  autre date, ou libérez un véhicule en annulant une mission.
+                </p>
+              }
+            </div>
+          }
 
           <label class="md-champ md-col2">
             <span>Dépôt destinataire <em>facultatif</em></span>
@@ -227,6 +270,29 @@ interface ConflitMission {
     .md-consequence b { color: var(--text-primary); font-family: var(--font-mono); font-size: 12px; }
     .md-consequence em { font-style: normal; font-weight: 600; color: var(--text-primary); }
 
+    /* Niveau 2 du conflit — ambre : c'est une ATTENTE à lever, pas un échec (règle
+       « une couleur = une signification », design/TOKENS.md). */
+    .md-niveau2 { padding: 12px 14px; border-radius: 12px;
+                  background: color-mix(in srgb, var(--warning) 9%, transparent);
+                  border: 1px solid color-mix(in srgb, var(--warning) 28%, transparent); }
+    .md-niveau2-titre { display: flex; align-items: center; gap: 7px; margin: 0 0 9px;
+                        font-size: 13px; font-weight: 700; color: var(--warning); }
+    .md-niveau2-liste { margin: 0 0 11px; padding: 0; list-style: none;
+                        display: flex; flex-direction: column; gap: 5px; }
+    .md-niveau2-liste li { display: flex; gap: 9px; font-size: 12.5px; align-items: baseline; }
+    .md-niveau2-liste b { font-family: var(--font-mono); font-size: 12px;
+                          color: var(--text-primary); flex-shrink: 0; }
+    .md-niveau2-liste span { color: var(--text-tertiary); }
+    .md-niveau2-sortie { display: flex; align-items: center; justify-content: space-between;
+                         gap: 12px; flex-wrap: wrap; padding-top: 10px;
+                         border-top: 1px solid color-mix(in srgb, var(--warning) 22%, transparent); }
+    .md-niveau2-sortie p { margin: 0; font-size: 12.5px; line-height: 1.5;
+                           color: var(--text-secondary); }
+    .md-niveau2-sortie b { color: var(--text-primary); }
+    .md-niveau2-rien { margin: 0; padding-top: 10px; font-size: 12.5px; line-height: 1.55;
+                       color: var(--text-tertiary);
+                       border-top: 1px solid color-mix(in srgb, var(--warning) 22%, transparent); }
+
     .md-erreur { display: flex; align-items: flex-start; gap: 9px; padding: 11px 13px;
                  border-radius: 11px; color: var(--danger);
                  background: color-mix(in srgb, var(--danger) 10%, transparent);
@@ -289,6 +355,21 @@ export class MissionDialogComponent {
     () => !!this.origine().trim() && !!this.destination().trim() && !!this.vehiculeId(),
   );
 
+  /** Niveau 2 du conflit : la flotte entière est prise sur ce créneau. */
+  protected readonly aucunLibre = computed(
+    () => this.vehicules().length > 0 && this.vehicules().every((v) => !v.available),
+  );
+
+  /**
+   * Le véhicule qui se libère LE PLUS TÔT. On n'en propose qu'un : offrir sept
+   * alternatives, c'est redemander de choisir à quelqu'un qui vient d'échouer.
+   */
+  protected readonly meilleureAlternative = computed(() => {
+    const candidats = this.vehicules().filter((v) => v.nextFreeAt);
+    if (candidats.length === 0) return null;
+    return candidats.reduce((a, b) => (a.nextFreeAt! <= b.nextFreeAt! ? a : b));
+  });
+
   constructor() {
     this.chargerDepots();
     this.rechargerDisponibilite();
@@ -303,6 +384,49 @@ export class MissionDialogComponent {
 
   protected heure(iso: string): string {
     return new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  protected heureCourte(iso: string): string {
+    return this.heure(iso);
+  }
+
+  /** « , demain » ou « , le 14 août » — seulement si ce n'est pas le jour demandé. */
+  protected jourSiAutre(iso: string): string {
+    const cible = new Date(iso);
+    const demande = new Date(this.date());
+    if (cible.toDateString() === demande.toDateString()) return '';
+    const lendemain = new Date(demande.getTime() + 86_400_000);
+    if (cible.toDateString() === lendemain.toDateString()) return ', demain';
+    return `, le ${cible.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}`;
+  }
+
+  /**
+   * « Décaler à 12:30 » — reporte le créneau sur le prochain moment libre, EN
+   * CONSERVANT la durée saisie, et présélectionne le véhicule concerné.
+   *
+   * Le gestionnaire n'a rien à ressaisir : c'est la différence entre une sortie et
+   * un simple message d'erreur poli.
+   */
+  protected decaler(alt: VehiculeDispo): void {
+    if (!alt.nextFreeAt) return;
+    const { debut, fin } = this.creneau();
+    if (!debut || !fin) return;
+    const duree = new Date(fin).getTime() - new Date(debut).getTime();
+
+    const nouveauDebut = new Date(alt.nextFreeAt);
+    const nouvelleFin = new Date(nouveauDebut.getTime() + duree);
+    const hhmm = (d: Date) =>
+      `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+
+    this.date.set(
+      `${nouveauDebut.getFullYear()}-${String(nouveauDebut.getMonth() + 1).padStart(2, '0')}-${String(nouveauDebut.getDate()).padStart(2, '0')}`,
+    );
+    this.heureDebut.set(hhmm(nouveauDebut));
+    this.heureFin.set(hhmm(nouvelleFin));
+    this.vehiculeId.set(alt.id);
+    this.conflit.set(null);
+    // Recharge : sur le nouveau créneau, la flotte n'a plus la même tête.
+    this.rechargerDisponibilite();
   }
 
   /**
