@@ -12,7 +12,7 @@
 |---|---|---|:-:|:-:|
 | **Étape 0** | Socle : `design/DECISIONS.md`, `TOKENS.md`, `ICONS.md` | tout | 🟡 quasi livré | 27 / 32 |
 | **A1** | Rôle `DEPOT`, permissions, isolation backend | A2 A3 A5 | 🟢 **livré** | 68 / 76 |
-| **A2** | Modèle `Mission`, agenda, indisponibilité véhicule | A3 A4 | 🟡 **backend + onglet livrés** | 67 / 103 |
+| **A2** | Modèle `Mission`, agenda, indisponibilité véhicule | A3 A4 | 🟡 **quasi livré** | 78 / 103 |
 | **A5** | Invitation, comptes dépôt, matrice | — | ⬜ à faire | 0 / 44 |
 | **A3** | Espace `/depot` : 4 onglets × 3 plateformes | A4 | ⬜ à faire | 0 / 98 |
 | **A4** | Lien public `/s/:token`, expiration, révocation | — | ⬜ à faire | 0 / 98 |
@@ -572,9 +572,11 @@ première position, retard, clôture sans mouvement) · la synchronisation missi
 - [x] Endpoint d'**annulation** avec motif obligatoire, libérant le véhicule
 - [x] **3ᵉ onglet de `/agenda`** : tableau (Réf. · Trajet · Créneau · Véhicule · Dépôt · Statut), filtres Toutes / En cours / Planifiées / Terminées, et les 5 compteurs
 - [x] Les missions apparaissent **dans la grille du mois** sous « Tous » — l'exigence d'A2 § 3.1
+- [x] **Modale de création** — 9 champs, liseré accent sur les heures, **bloc de conséquence** (les 3 effets invisibles écrits avant de valider) et **ligne de périmètre** sous le champ dépôt
+- [x] **Niveau 1 du conflit** — `GET /missions/vehicle-availability` : les véhicules occupés sont **affichés et grisés avec leur motif**, jamais masqués. La liste se recharge à chaque changement de créneau
+- [x] Le `409` de conflit rendu en clair, avec la mission bloquante et son créneau
 - [ ] Endpoint de modification (`PLANNED` entièrement · `IN_PROGRESS` seuls `endAt`, conducteur, notes)
-- [ ] Modale de création + bloc de conséquence + ligne de périmètre
-- [ ] Modale de conflit niveau 2, avec le prochain créneau libre calculé
+- [ ] **Niveau 2 du conflit** — modale « Créneau indisponible » avec le prochain créneau libre calculé et le bouton « Décaler à 12:30 »
 - [ ] Déclinaisons iOS et Android
 - [ ] Bandeau « en mission » sur la fiche véhicule
 - [ ] Modèles de tournée — *explicitement non bloquant, livrable après A4 (A2 § 7)*
