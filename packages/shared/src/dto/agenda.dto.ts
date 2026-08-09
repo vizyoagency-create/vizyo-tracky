@@ -5,7 +5,16 @@
  * créneau) et `metadata` (champs par type sans migration) accueilleront les réservations S8.
  */
 
-export type VehicleEventType = 'MAINTENANCE' | 'INCIDENT' | 'RESERVATION';
+/**
+ * `MISSION` (espace dépôt, 2026-08) — une mission pose un événement d'agenda sur son
+ * créneau. Ce n'est pas un doublon : c'est CE qui rend le véhicule indisponible.
+ *
+ * Le gestionnaire doit voir maintenance, incidents, réservations et missions sur le
+ * MÊME calendrier, sinon il double-réserve (A2 § 3.1). Et comme l'événement porte
+ * `blocksVehicle`, il entre dans le chemin d'indisponibilité EXISTANT — aucun second
+ * mécanisme n'est créé, ce qu'A2 § 3.2 interdit explicitement.
+ */
+export type VehicleEventType = 'MAINTENANCE' | 'INCIDENT' | 'RESERVATION' | 'MISSION';
 export type VehicleEventStatus =
   | 'PLANNED'
   | 'OPEN'

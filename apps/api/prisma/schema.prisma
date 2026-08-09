@@ -763,6 +763,10 @@ enum VehicleEventType {
   MAINTENANCE
   INCIDENT
   RESERVATION // (Sprint 8) STUB — non câblé en S7
+  // Espace dépôt (2026-08) — l'événement d'agenda d'une mission. Porte `blocksVehicle`,
+  // donc entre dans le chemin d'indisponibilité EXISTANT (findImmobilized). Aucun second
+  // mécanisme : deux sources d'indisponibilité, une seule logique de lecture (A2 § 3.2).
+  MISSION
 }
 
 enum VehicleEventStatus {

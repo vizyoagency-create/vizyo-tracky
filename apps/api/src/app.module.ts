@@ -50,6 +50,7 @@ import { EmailAdminModule } from './email/email-admin.module';
 import { InvitationsModule } from './invitations/invitations.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { DepotModule } from './depot/depot.module';
+import { MissionsModule } from './missions/missions.module';
 import { PermissionsModule } from './permissions/permissions.module';
 import { ReportsModule } from './reports/reports.module';
 import { SimsModule } from './sims/sims.module';
@@ -147,6 +148,8 @@ import { UnknownTrackersModule } from './unknown-trackers/unknown-trackers.modul
     // Espace dépôt (2026-08) — périmètre du rôle DEPOT + son garde. @Global comme
     // PermissionsModule : le garde se pose sur des contrôleurs existants.
     DepotModule,
+    // Espace dépôt (2026-08) — les missions, côté transporteur (lot A2).
+    MissionsModule,
     VehicleSchedulesModule,
     BackgroundTasksModule,
     GpsIntegrityModule,

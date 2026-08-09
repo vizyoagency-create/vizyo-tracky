@@ -12,7 +12,7 @@
 |---|---|---|:-:|:-:|
 | **Étape 0** | Socle : `design/DECISIONS.md`, `TOKENS.md`, `ICONS.md` | tout | 🟡 quasi livré | 27 / 32 |
 | **A1** | Rôle `DEPOT`, permissions, isolation backend | A2 A3 A5 | 🟢 **livré** | 68 / 76 |
-| **A2** | Modèle `Mission`, agenda, indisponibilité véhicule | A3 A4 | ⬜ à faire | 0 / 103 |
+| **A2** | Modèle `Mission`, agenda, indisponibilité véhicule | A3 A4 | 🟡 **socle livré** | 41 / 103 |
 | **A5** | Invitation, comptes dépôt, matrice | — | ⬜ à faire | 0 / 44 |
 | **A3** | Espace `/depot` : 4 onglets × 3 plateformes | A4 | ⬜ à faire | 0 / 98 |
 | **A4** | Lien public `/s/:token`, expiration, révocation | — | ⬜ à faire | 0 / 98 |
@@ -384,7 +384,7 @@ et c'est mieux pour de l'isolation : on maîtrise exactement ce que la base « c
 
 - [x] La revue manuelle des contrôleurs (A1.4) est faite et consignée dans `design/DECISIONS.md`
 - [x] Vérification complète : **typecheck 3/3 · smoke 5/5 · 277 partagés · 1727 API · 19 intégration**
-- [ ] **Commit** `feat(depot): role DEPOT, isolation par mission et gardes API`
+- [x] **Commit** `4456763 feat(depot): role DEPOT, isolation par mission et gardes API` — 33 fichiers, +2577/−43
 - [ ] ⏸️ **Point de contrôle client** — les 12 tests montrés verts
 
 ### Ce qui est reporté d'A1, et pourquoi
@@ -401,6 +401,18 @@ et c'est mieux pour de l'isolation : on maîtrise exactement ce que la base « c
 > `design/A2-MISSIONS.md`. La mission est le pivot du bloc A : c'est elle qui ouvre l'accès
 > au dépôt, et sa fenêtre horaire qui le referme. Décision client : **elle vit dans
 > l'agenda**, pas dans une page à part.
+
+> **État au 2026-08-09** — le socle backend est livré et testé (46 tests) : création avec
+> ses deux effets structurants, génération de référence sous verrou, conflit de créneau,
+> les 7 validations, et la bascule automatique des statuts. Restent la notification du
+> dépôt, la mention conducteur, les endpoints de liste/modification/annulation, et tout
+> le frontend. Détail en fin de section.
+>
+> **La décision de conception du lot** : la mission pose un `VehicleEvent` de type
+> `MISSION` avec `blocksVehicle: true`. Elle entre alors dans `findImmobilized`, le
+> chemin d'indisponibilité que les réservations empruntent **déjà**. Aucun second
+> mécanisme n'est écrit — ce qu'A2 § 3.2 interdit en toutes lettres : « deux sources
+> d'indisponibilité, une seule logique de lecture ».
 
 ### A2.1 — Le modèle
 
@@ -542,6 +554,24 @@ et c'est mieux pour de l'isolation : on maîtrise exactement ce que la base « c
 - [ ] Boîtier en panne pendant la mission → `IN_PROGRESS` maintenu, position « indisponible depuis N min »
 - [ ] Mission qui déborde sur le lendemain → autorisée (≤ 24 h), affichée sur les deux jours
 - [ ] Deux dépôts sur une mission → non supporté, un seul `depotUserId`
+
+### Ce qui reste d'A2 — état au 2026-08-09
+
+**Livré et testé** (46 tests) : le modèle et sa migration · `MISSION` dans
+`VehicleEventType` · la création avec l'événement d'agenda et l'indisponibilité ·
+la référence sous `FOR UPDATE` · le conflit `409` avec son détail · les 7 validations ·
+l'avertissement « pas de boîtier » · la bascule automatique des statuts (démarrage sur
+première position, retard, clôture sans mouvement) · la synchronisation mission ↔ agenda.
+
+- [ ] **Effet 3 — le dépôt est notifié.** Gabarit `mission_assigned` + push. Le point d'appel est marqué dans le service
+- [ ] **Effet 4 — le conducteur voit sa mission** dans `/driver`, avec la mention d'information. ⚠️ Obligation de conformité, pas une politesse
+- [ ] Endpoints liste / modification / annulation (avec motif obligatoire)
+- [ ] Modale de création + bloc de conséquence + ligne de périmètre
+- [ ] Modale de conflit niveau 2, avec le prochain créneau libre calculé
+- [ ] 3ᵉ onglet de `/agenda` : colonnes, filtres, 5 compteurs
+- [ ] Déclinaisons iOS et Android
+- [ ] Bandeau « en mission » sur la fiche véhicule
+- [ ] Modèles de tournée — *explicitement non bloquant, livrable après A4 (A2 § 7)*
 
 ### Recette A2 — les 12 critères
 
