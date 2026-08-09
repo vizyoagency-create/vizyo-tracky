@@ -383,6 +383,10 @@ et c'est mieux pour de l'isolation : on maîtrise exactement ce que la base « c
 - [x] Identifiant inconnu et hors périmètre → **même code, même message**
 
 - [x] La revue manuelle des contrôleurs (A1.4) est faite et consignée dans `design/DECISIONS.md`
+- [x] **Vérifié CONTRE LA BASE RÉELLE** (2026-08-09) — `prisma/seed-depot.ts` recrée le cas de référence d'A0 (7 camions, 2 dépôts concurrents, 6 missions couvrant les 4 états de la fenêtre, 1 camion témoin sans mission) :
+  - `prisma/verif-depot.ts` → **17/17** sur le service, avec de vraies lignes
+  - `prisma/verif-depot-http.sh` → **31/31 par HTTP**, à travers le vrai pipeline
+  - Confirmé au passage : `/vehicles`, `/users`, `/trips`, `/alerts`, `/positions`, `/drivers`, `/reports/{stats,pdf,csv}`, `/trip-analysis/*` et `/ai/status` répondent tous `403` à un dépôt authentifié ; aucun champ interdit ne transite ; identifiant inconnu et hors périmètre rendent le même code
 - [x] Vérification complète : **typecheck 3/3 · smoke 5/5 · 277 partagés · 1727 API · 19 intégration**
 - [x] **Commit** `4456763 feat(depot): role DEPOT, isolation par mission et gardes API` — 33 fichiers, +2577/−43
 - [ ] ⏸️ **Point de contrôle client** — les 12 tests montrés verts
