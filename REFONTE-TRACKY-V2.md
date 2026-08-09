@@ -12,7 +12,7 @@
 |---|---|---|:-:|:-:|
 | **Étape 0** | Socle : `design/DECISIONS.md`, `TOKENS.md`, `ICONS.md` | tout | 🟡 quasi livré | 27 / 32 |
 | **A1** | Rôle `DEPOT`, permissions, isolation backend | A2 A3 A5 | 🟢 **livré** | 68 / 76 |
-| **A2** | Modèle `Mission`, agenda, indisponibilité véhicule | A3 A4 | 🟡 **socle livré** | 41 / 103 |
+| **A2** | Modèle `Mission`, agenda, indisponibilité véhicule | A3 A4 | 🟡 **backend livré** | 55 / 103 |
 | **A5** | Invitation, comptes dépôt, matrice | — | ⬜ à faire | 0 / 44 |
 | **A3** | Espace `/depot` : 4 onglets × 3 plateformes | A4 | ⬜ à faire | 0 / 98 |
 | **A4** | Lien public `/s/:token`, expiration, révocation | — | ⬜ à faire | 0 / 98 |
@@ -557,14 +557,17 @@ et c'est mieux pour de l'isolation : on maîtrise exactement ce que la base « c
 
 ### Ce qui reste d'A2 — état au 2026-08-09
 
-**Livré et testé** (46 tests) : le modèle et sa migration · `MISSION` dans
+**Livré et testé** (56 tests) : le modèle et sa migration · `MISSION` dans
 `VehicleEventType` · la création avec l'événement d'agenda et l'indisponibilité ·
 la référence sous `FOR UPDATE` · le conflit `409` avec son détail · les 7 validations ·
 l'avertissement « pas de boîtier » · la bascule automatique des statuts (démarrage sur
-première position, retard, clôture sans mouvement) · la synchronisation mission ↔ agenda.
+première position, retard, clôture sans mouvement) · la synchronisation mission ↔ agenda ·
+**les 4 effets de bord**.
 
-- [ ] **Effet 3 — le dépôt est notifié.** Gabarit `mission_assigned` + push. Le point d'appel est marqué dans le service
-- [ ] **Effet 4 — le conducteur voit sa mission** dans `/driver`, avec la mention d'information. ⚠️ Obligation de conformité, pas une politesse
+- [x] **Effet 1 — l'événement d'agenda** de type `MISSION`, dans la même transaction
+- [x] **Effet 2 — l'indisponibilité véhicule**, par `blocksVehicle` et le chemin de lecture existant
+- [x] **Effet 3 — le dépôt est notifié.** Gabarit `mission_assigned`, sujet porteur d'information, nom du transporteur en avant. Une panne d'e-mail n'annule pas la mission
+- [x] **Effet 4 — le conducteur voit sa mission** dans `/driver` avec la mention d'information, `depotWatching` **calculé côté serveur** — une obligation légale ne doit pas dépendre d'un `@if` supprimable
 - [ ] Endpoints liste / modification / annulation (avec motif obligatoire)
 - [ ] Modale de création + bloc de conséquence + ligne de périmètre
 - [ ] Modale de conflit niveau 2, avec le prochain créneau libre calculé
@@ -1223,4 +1226,5 @@ Une ligne par séance : ce qui a été livré, ce qui a été décidé, ce qui b
 |---|---|---|---|
 | 2026-08-09 | — | Analyse du livrable, audit du dépôt, branche `feat/refonte-tracky-v2`, cette roadmap | 3 écarts relevés (maquettes absentes, prémisse Poppins périmée, kit déjà posé). Bloc A d'abord, bloc B à la livraison des `.dc.html`. Point de contrôle à chaque lot. |
 | 2026-08-09 | Étape 0 | `DECISIONS.md` (10 décisions), `TOKENS.md`, `ICONS.md` · violet + bleu créés · `--accent-ink` clair corrigé · 22 fallbacks `Poppins` purgés | **Défaut d'accessibilité corrigé** : encre blanche sur accent en thème clair, 3,43:1 → 5,54:1. **Deux défauts d'outillage relevés** : `pnpm verify` ne se termine pas (`ng test` en watch, P1) et le `launch.json` parent servait un autre projet. Confirmation au pixel en attente : panneau navigateur non affiché. |
+| 2026-08-09 | A2 (2/2) | Effet 3 — gabarit `mission_assigned` + catalogue admin + `escapeHtml` · Effet 4 — `GET /missions/mine` et la mention d'information dans `/driver` | `depotWatching` est **calculé côté serveur** : une obligation légale ne doit pas dépendre d'un `@if` de template. Le sujet de l'e-mail porte l'information (« Livraison prévue jeudi 08:15 → 11:40 »), au nom du transporteur, pas de Tracky. 1783 tests API. |
 | 2026-08-09 | A1 | Rôle `DEPOT` + 4 permissions · `DEPOT_DEFAULTS` · modèle `Mission` + migration · `DepotScopeService` / `Guard` / décorateur · module + 3 endpoints · `DepotMissionDto` · isolation socket · gardes web · **12 tests d'isolation verts** | **Faille refermée** : 8 routes de `trip-analysis` servaient scores, carburant et coûts à un dépôt (gardées par `trips_view`, ouverte au rôle), + `/ai/status`. **Trou de conception refermé** : `clampPermissions` bornait au granter, pas à la cible — un `FLEET_ADMIN` pouvait ouvrir la flotte à un dépôt. **D11** : le modèle `Mission` migre en A1, sinon l'isolation ne compile pas. |
