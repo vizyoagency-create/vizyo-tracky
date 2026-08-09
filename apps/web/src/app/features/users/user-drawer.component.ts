@@ -1,7 +1,7 @@
 import { Component, effect, HostListener, inject, input, output, signal } from '@angular/core';
 import { ScrollLockService } from '../../core/services/scroll-lock.service';
 import { FormsModule } from '@angular/forms';
-import { LucideAngularModule, X, Save, Map } from 'lucide-angular';
+import { LucideAngularModule, X, Save, Map, Warehouse } from 'lucide-angular';
 import type { TrackyUser } from '../../core/services/users.service';
 import type { FleetSummary } from '../../core/services/fleets.service';
 import type { VehicleGroup } from '../../core/services/vehicle-groups.service';
@@ -169,6 +169,16 @@ export interface UserDrawerResult {
                   class="role-btn" [class.active]="role === 'DRIVER'" [class.viewer]="role === 'DRIVER'">
                   Conducteur
                 </button>
+                <!-- Espace dépôt (2026-08) — proposé à la CRÉATION seulement.
+                     Le changement de rôle depuis ou vers « Dépôt » est interdit dans
+                     les deux sens (A5 § 5) : le proposer en édition afficherait un
+                     bouton que le serveur refuse. -->
+                @if (data()?.mode !== 'edit') {
+                  <button (click)="setRole('DEPOT')"
+                    class="role-btn role-depot" [class.active]="role === 'DEPOT'">
+                    Dépôt
+                  </button>
+                }
                 @if (data()?.isSuperAdmin) {
                   <button (click)="setRole('FLEET_ADMIN')"
                     class="role-btn" [class.active]="role === 'FLEET_ADMIN'" [class.admin-role]="role === 'FLEET_ADMIN'">
@@ -207,6 +217,32 @@ export interface UserDrawerResult {
               </section>
             }
 
+            <!-- ═══ ESPACE DÉPÔT — LES CHAMPS DE PÉRIMÈTRE DISPARAISSENT ═══════
+                 A5 § 2 : « Un DEPOT n'a pas de scope véhicule ni groupe : son
+                 périmètre est calculé depuis les missions. Afficher un sélecteur de
+                 groupes serait un MENSONGE D'INTERFACE — et une invitation à créer
+                 une ligne UserVehicleAccess interdite. »
+
+                 Le serveur refuse déjà (deux verrous posés côté API). Ici on évite
+                 de proposer ce qu'il refusera : un écran qui demande puis échoue est
+                 pire qu'un écran qui n'a jamais demandé. -->
+            @if (role === 'DEPOT') {
+              <section>
+                <h3 class="section-title">Ce que verra ce compte</h3>
+                <p class="depot-perimetre">
+                  <lucide-icon [img]="WarehouseIcon" [size]="15" />
+                  <span>
+                    Ce compte verra <strong>uniquement les missions que vous lui
+                    assignerez</strong>, pendant leur créneau. Aucun accès à votre flotte.
+                  </span>
+                </p>
+                <p class="text-xs text-fg-tertiary mt-2">
+                  Pour lui ouvrir un accès, créez une mission depuis l'agenda et
+                  désignez-le comme dépôt destinataire.
+                </p>
+              </section>
+            } @else {
+
             <!-- Accès & Permissions -->
             <section>
               <h3 class="section-title">Accès & permissions</h3>
@@ -228,6 +264,7 @@ export interface UserDrawerResult {
                 (scopesChange)="scopes.set($event)"
               />
             </section>
+            }
           </div>
 
           <!-- Footer -->
@@ -278,6 +315,22 @@ export interface UserDrawerResult {
     }
     .field-input:focus { border-color: var(--tracky) }
     .field-input::placeholder { color: var(--fg-tertiary) }
+
+    /* Espace dépôt — violet, la couleur du dépôt dans tout le système. */
+    .role-btn.role-depot.active {
+      border-color: var(--violet);
+      background: color-mix(in srgb, var(--violet) 14%, transparent);
+      color: var(--violet);
+    }
+    .depot-perimetre {
+      display: flex; align-items: flex-start; gap: 9px; margin: 0;
+      padding: 11px 13px; border-radius: 12px; font-size: 12.5px; line-height: 1.55;
+      background: color-mix(in srgb, var(--violet) 10%, transparent);
+      border: 1px solid color-mix(in srgb, var(--violet) 26%, transparent);
+      color: var(--violet);
+    }
+    .depot-perimetre lucide-icon { flex-shrink: 0; margin-top: 1px; }
+    .depot-perimetre strong { color: var(--fg-primary); }
 
     .role-btn {
       flex: 1; padding: 10px; border-radius: 12px; font-size: 13px; font-weight: 600; text-align: center;
@@ -348,6 +401,8 @@ export class UserDrawerComponent {
   protected readonly XIcon = X;
   protected readonly SaveIcon = Save;
   protected readonly MapIcon = Map;
+  /** Espace dépôt — `Warehouse`, seul ajout au vocabulaire d'icônes (design/ICONS.md D-I2). */
+  protected readonly WarehouseIcon = Warehouse;
 
   @HostListener('document:keydown.escape')
   onEscape() { if (this.open() && !this.loading()) this.onClose(); }

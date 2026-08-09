@@ -381,6 +381,34 @@ export class MissionsService {
     };
   }
 
+  /**
+   * Le nombre de missions EN COURS par compte depot, pour la colonne « Perimetre »
+   * de la liste des utilisateurs (A5 § 3).
+   *
+   * Un `groupBy` plutot qu'une requete par depot : la liste peut porter dix comptes,
+   * et dix requetes pour dix nombres est exactement le N+1 que ce VPS ne pardonne pas.
+   */
+  async activiteDesDepots(user: AuthUser): Promise<Record<string, number>> {
+    const fleetId = this.fleetDe(user);
+    const maintenant = new Date();
+    const lignes = await this.prisma.mission.groupBy({
+      by: ['depotUserId'],
+      where: {
+        fleetId,
+        depotUserId: { not: null },
+        status: { in: [MissionStatus.IN_PROGRESS, MissionStatus.LATE] },
+        startAt: { lte: maintenant },
+      },
+      _count: { _all: true },
+    });
+
+    const out: Record<string, number> = {};
+    for (const l of lignes) {
+      if (l.depotUserId) out[l.depotUserId] = l._count._all;
+    }
+    return out;
+  }
+
   /** Les comptes DEPOT de la flotte, pour le selecteur de destinataire. */
   async listerDepots(user: AuthUser): Promise<Array<{ id: string; nom: string }>> {
     const fleetId = this.fleetDe(user);

@@ -1,3 +1,4 @@
+import { HttpClient } from '@angular/common/http';
 import { swallow } from '../../core/error/swallow';
 import { httpFailureMessage } from '../../core/services/http-failure';
 import { ChangeDetectionStrategy, Component, HostListener, computed, inject, OnInit, signal } from '@angular/core';
@@ -23,7 +24,7 @@ import { SaFleetBadgeComponent } from '../../shared/ui/super-admin-context/sa-fl
 import { FleetFilterService } from '../../core/services/fleet-filter.service';
 import { DriversListComponent } from '../drivers/drivers-list.component';
 
-type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | 'DRIVER';
+type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | 'DRIVER' | 'DEPOT';
 
 @Component({
   selector: 'app-users-list',
@@ -317,6 +318,9 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
     .u-cell-role { display: flex; align-items: center; gap: 7px; flex-wrap: wrap }
     .u-role-pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 700; background: var(--bg-tertiary); color: var(--fg-secondary) }
     .u-role-pill.admin { background: color-mix(in srgb, var(--tracky) 14%, transparent); color: var(--tracky-light) }
+    /* Espace dépôt (2026-08) — violet : un dépôt n'est pas un membre de la flotte,
+       et la pastille doit le dire d'un coup d'œil dans une liste mêlée. */
+    .u-role-pill.depot { background: color-mix(in srgb, var(--violet) 14%, transparent); color: var(--violet) }
     .u-role-pill.invited { background: color-mix(in srgb, var(--warning) 14%, transparent); color: var(--warning) }
     .u-role-pill.expired { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger) }
     .u-pill-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor }
@@ -365,6 +369,7 @@ type AppRole = 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | '
 })
 export class UsersListComponent implements OnInit {
   private readonly usersService = inject(UsersApiService);
+  private readonly http = inject(HttpClient);
   private readonly audioApi = inject(AudioMonitoringService);
   private readonly toast = inject(ToastService);
 
@@ -388,6 +393,12 @@ export class UsersListComponent implements OnInit {
   }
 
   readonly loading = signal(true);
+  /**
+   * Espace dépôt (2026-08) — missions en cours par compte dépôt, pour la colonne
+   * « Périmètre » (A5 § 3). Chargé à part et sans bloquer : la liste des utilisateurs
+   * ne doit pas dépendre d'une donnée de mission.
+   */
+  protected readonly missionsEnCours = signal<Record<string, number>>({});
   /**
    * Message de PANNE, distinct de l'etat « aucun utilisateur ».
    *
@@ -453,6 +464,8 @@ export class UsersListComponent implements OnInit {
     { role: 'VIEWER', short: 'Lecteur' },
     { role: 'NIGHT_WATCHMAN', short: 'Veilleur' },
     { role: 'DRIVER', short: 'Conducteur' },
+    // Espace dépôt (2026-08) — 6ᵉ colonne, après Conducteur (A5 § 4).
+    { role: 'DEPOT', short: 'Dépôt' },
   ];
   /**
    * TOUTES les capacités, groupées, dérivées de la SOURCE UNIQUE (packages/shared) — plus de liste
@@ -551,12 +564,27 @@ export class UsersListComponent implements OnInit {
     return u.role === 'FLEET_ADMIN' || u.role === 'SUPER_ADMIN' ? 'admin' : u.role === 'FLEET_MANAGER' ? 'manager' : 'viewer';
   }
   protected rolePillClass(role: string): string {
+    // Espace dépôt — violet, la couleur du dépôt dans tout le système (A5 § 3).
+    if (role === 'DEPOT') return 'depot';
     return role === 'FLEET_ADMIN' || role === 'SUPER_ADMIN' ? 'admin' : 'neutral';
   }
   /** Périmètre honnête dérivé du rôle (le détail par groupe/véhicule est dans le drawer Accès). */
   protected perimeterLabel(u: TrackyUser): string {
     if (!u.isActive) return 'Archivé';
     if (u.role === 'SUPER_ADMIN' || u.role === 'FLEET_ADMIN') return 'Toute la flotte';
+    // ═══ ESPACE DÉPÔT — LA COLONNE PORTE L'ACTIVITÉ, PAS UN SCOPE ═══════════
+    //
+    // A5 § 3 : « La colonne Périmètre porte l'activité plutôt qu'un scope — c'est
+    // l'information utile : un dépôt sans mission depuis trois mois est un compte
+    // à fermer. »
+    //
+    // Écrire « Accès personnalisé » pour un dépôt serait faux deux fois : il n'a
+    // aucun scope, et rien n'a été personnalisé.
+    if (u.role === 'DEPOT') {
+      const n = this.missionsEnCours()[u.id];
+      if (n === undefined) return 'Missions…';
+      return n === 0 ? 'Aucune mission' : n === 1 ? '1 mission en cours' : `${n} missions en cours`;
+    }
     return 'Accès personnalisé';
   }
 
@@ -588,6 +616,11 @@ export class UsersListComponent implements OnInit {
       this.activeTab.set('roles');
     }
     await this.loadUsers();
+    // Espace dépôt — l'activité des dépôts, détachée : un échec laisse « Missions… »
+    // et n'empêche pas la liste de s'afficher.
+    void firstValueFrom(this.http.get<Record<string, number>>('/api/missions/depot-activity'))
+      .then((a) => this.missionsEnCours.set(a ?? {}))
+      .catch((err) => swallow('users-list:depotActivity', err));
     if (this.isSuperAdmin()) {
       this.fleets = await firstValueFrom(this.fleetsApi.list()).catch(() => []);
       // FAIL-CLOSED : on construit l'ensemble des flottes éligibles (N1). En cas d'erreur,

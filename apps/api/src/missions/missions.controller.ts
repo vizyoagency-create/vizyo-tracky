@@ -78,6 +78,18 @@ export class MissionsController {
     return this.missions.missionEnCours(req.user, vehicleId);
   }
 
+  /**
+   * Le nombre de missions en cours par compte dépôt. Alimente la colonne
+   * « Périmètre » de `/users`, qui porte **l'activité** et non un scope (A5 § 3).
+   *
+   * Gardée par `missions_view` : c'est de la donnée de mission, pas d'utilisateur.
+   */
+  @Get('depot-activity')
+  @RequirePermissions('missions_view')
+  activiteDesDepots(@Req() req: AuthenticatedRequest) {
+    return this.missions.activiteDesDepots(req.user);
+  }
+
   /** Les comptes dépôt de la flotte — alimente le sélecteur de destinataire. */
   @Get('depots')
   @RequirePermissions('missions_manage')
