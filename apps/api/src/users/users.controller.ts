@@ -19,6 +19,9 @@ import { InvitationsService } from '../invitations/invitations.service';
 import { OwnerVisibilityService } from '../common/owner-visibility.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { clampPartialPermissions, clampPermissions, getDefaultPermissions } from './default-permissions';
+// Espace dépôt (2026-08) — importé directement de la source de vérité, comme le
+// demande l'en-tête de `default-permissions.ts` pour tout nouveau code.
+import { permissionsForTargetRole } from '@vizyo/tracky-shared';
 import { CreateInvitationDto } from './dto/create-invitation.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import {
@@ -306,10 +309,16 @@ export class UsersController {
         // est FLEET_ADMIN/SUPER_ADMIN-only (tous deux ADMIN_DEFAULTS → clamp = no-op), mais
         // ce clamp rend l'invariant robuste si @Roles était un jour élargi (pas de bug
         // silencieux d'escalade). Cf. clampPermissions + permissions.spec.
-        permissions: clampPermissions(
+        // Espace dépôt (2026-08) — `permissionsForTargetRole` remplace `clampPermissions`
+        // seul. Le clamp borne au GRANTER, pas à la CIBLE : un FLEET_ADMIN, qui détient
+        // tout, pouvait donc doter un compte DEPOT de `vehicles_view` et franchir le clamp
+        // sans encombre. Pour un rôle FERMÉ, la demande est désormais ignorée et on écrit
+        // les défauts du rôle. Cf. A5 § 4 : « le périmètre d'un dépôt est fixé par ses
+        // missions ».
+        permissions: permissionsForTargetRole(
+          dto.role,
           getDefaultPermissions(dto.role),
           req.user,
-          getDefaultPermissions(dto.role),
         ) as unknown as Prisma.JsonObject,
         fleetId,
       },
@@ -514,6 +523,29 @@ export class UsersController {
 
     // Si le rôle change, réinitialiser les permissions par défaut du nouveau rôle
     const roleChanged = dto.role !== undefined && dto.role !== user.role;
+
+    // ══ ESPACE DÉPÔT (2026-08) — LE CHANGEMENT DE RÔLE EST INTERDIT DANS LES DEUX SENS
+    //
+    // « Un dépôt ne devient pas gestionnaire, et l'inverse non plus » (A5 § 5).
+    //
+    // Le sens qui compte : passer un dépôt en gestionnaire lui donnerait accès à TOUTE
+    // la flotte d'un clic, depuis un écran qui ne le dit pas. Un fleet-admin qui veut
+    // « donner un peu plus de droits » à un dépôt ouvrirait sa flotte entière sans s'en
+    // apercevoir.
+    //
+    // L'autre sens compte aussi : un gestionnaire basculé en dépôt garderait ses lignes
+    // `UserVehicleAccess`, ce qu'A1 § 7 interdit — et son périmètre deviendrait
+    // incohérent, mi-flotte mi-mission.
+    //
+    // Pour changer de rôle, on supprime le compte et on en crée un autre. C'est plus
+    // lourd, et c'est le but : l'acte doit être délibéré.
+    if (roleChanged && (user.role === UserRole.DEPOT || dto.role === UserRole.DEPOT)) {
+      throw new ForbiddenException(
+        'Le rôle « Dépôt » ne peut être ni attribué ni retiré à un compte existant. '
+          + 'Son périmètre est calculé depuis ses missions : le convertir ouvrirait ou fermerait '
+          + 'un accès sans que l\'écran le dise. Supprimez le compte et créez-en un autre.',
+      );
+    }
 
     // Only SUPER_ADMIN can reassign fleet
     const fleetIdUpdate = dto.fleetId !== undefined && req.user.role === UserRole.SUPER_ADMIN
@@ -744,6 +776,22 @@ export class UsersController {
     const entries: AccessEntryDto[] = dto.entries
       ? dto.entries
       : this.legacyToEntries(dto);
+
+    // ══ ESPACE DÉPÔT (2026-08) — UN DEPOT N'A JAMAIS DE PÉRIMÈTRE VÉHICULE ═════
+    //
+    // Second verrou, après celui de l'acceptation d'invitation. Une ligne créée ici
+    // par erreur (script, import, écran mal gardé) donnerait au dépôt un périmètre
+    // résolu par `PermissionsResolverService`, en contournant entièrement
+    // `DepotScopeService` — l'isolation du bloc A tomberait sans bruit.
+    //
+    // A5 § 4 : « Le périmètre d'un dépôt est fixé par ses missions. »
+    if (user.role === UserRole.DEPOT) {
+      throw new BadRequestException(
+        'Un compte dépôt n\'a pas de périmètre véhicule : il voit les missions que vous lui '
+          + 'assignez, pendant leur créneau, et rien d\'autre. Assignez-lui une mission depuis '
+          + 'l\'agenda pour lui ouvrir un accès.',
+      );
+    }
 
     if (entries.length === 0) {
       throw new BadRequestException(

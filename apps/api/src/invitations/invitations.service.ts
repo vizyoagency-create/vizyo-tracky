@@ -333,19 +333,38 @@ export class InvitationsService {
     // `permissions` (même pour les invitations legacy) — ainsi la matrice « Accès &
     // Permissions » n'est JAMAIS vide après acceptation (fin du « on doit remettre les
     // rôles »). Les valeurs ont déjà été clampées à la création/màj de l'invitation.
-    const scopes: InvitationAccessScope[] =
-      (invitation.accessScopes as unknown as InvitationAccessScope[] | null)?.length
-        ? (invitation.accessScopes as unknown as InvitationAccessScope[])
-        : [{ type: 'ALL', permissions: invitation.permissions as Record<string, boolean> | null }];
-    await this.prisma.userVehicleAccess.createMany({
-      data: scopes.map((s) => ({
-        userId: createdUser.id,
-        accessType: s.type as AccessType,
-        groupId: s.type === 'GROUP' ? s.groupId ?? null : null,
-        vehicleId: s.type === 'VEHICLE' ? s.vehicleId ?? null : null,
-        permissions: (s.permissions ?? null) as unknown as Prisma.InputJsonValue,
-      })),
-    });
+    // ══ ESPACE DÉPÔT (2026-08) — AUCUN SCOPE VÉHICULE POUR UN DEPOT ═══════════
+    //
+    // ⚠️ Sans cette sortie, accepter une invitation de dépôt créait un scope `ALL`
+    // (le repli ci-dessous s'applique à TOUS les rôles) — donc un périmètre de
+    // FLOTTE ENTIÈRE, résolu par `PermissionsResolverService` en contournant
+    // intégralement `DepotScopeService`. L'isolation du bloc A serait tombée à la
+    // première invitation acceptée.
+    //
+    // A1 § 7 : « Un DEPOT n'a JAMAIS de ligne UserVehicleAccess. À faire respecter
+    // par une contrainte applicative, testée. » Son périmètre se calcule depuis ses
+    // missions, et de nulle part ailleurs.
+    if (invitation.role === UserRole.DEPOT) {
+      // On saute UNIQUEMENT la matérialisation des scopes. La suite de l'activation
+      // (session, statut de l'invitation) doit se dérouler normalement.
+      this.logger.log(
+        `Invitation ${invitation.id} acceptée — compte DEPOT ${createdUser.id} : aucun scope véhicule créé (périmètre calculé depuis ses missions)`,
+      );
+    } else {
+      const scopes: InvitationAccessScope[] =
+        (invitation.accessScopes as unknown as InvitationAccessScope[] | null)?.length
+          ? (invitation.accessScopes as unknown as InvitationAccessScope[])
+          : [{ type: 'ALL', permissions: invitation.permissions as Record<string, boolean> | null }];
+      await this.prisma.userVehicleAccess.createMany({
+        data: scopes.map((s) => ({
+          userId: createdUser.id,
+          accessType: s.type as AccessType,
+          groupId: s.type === 'GROUP' ? s.groupId ?? null : null,
+          vehicleId: s.type === 'VEHICLE' ? s.vehicleId ?? null : null,
+          permissions: (s.permissions ?? null) as unknown as Prisma.InputJsonValue,
+        })),
+      });
+    }
 
     // 4c) feat/comptes-conducteurs — un invité « conducteur » devient AUSSI une entité Driver
     // (attribuable aux trajets + visible dans la liste des conducteurs), liée à son compte via

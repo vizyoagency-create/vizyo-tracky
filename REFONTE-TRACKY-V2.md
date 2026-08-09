@@ -13,7 +13,7 @@
 | **Étape 0** | Socle : `design/DECISIONS.md`, `TOKENS.md`, `ICONS.md` | tout | 🟡 quasi livré | 27 / 32 |
 | **A1** | Rôle `DEPOT`, permissions, isolation backend | A2 A3 A5 | 🟢 **livré** | 68 / 76 |
 | **A2** | Modèle `Mission`, agenda, indisponibilité véhicule | A3 A4 | 🟢 **livré** | 93 / 103 |
-| **A5** | Invitation, comptes dépôt, matrice | — | ⬜ à faire | 0 / 44 |
+| **A5** | Invitation, comptes dépôt, matrice | — | 🟡 **verrous livrés** | 12 / 44 |
 | **A3** | Espace `/depot` : 4 onglets × 3 plateformes | A4 | ⬜ à faire | 0 / 98 |
 | **A4** | Lien public `/s/:token`, expiration, révocation | — | ⬜ à faire | 0 / 98 |
 | **B0′** | Reliquat socle : couleurs en dur, UTC, accents, wizard | Bloc B | ⬜ à faire | 0 / 19 |
@@ -624,9 +624,13 @@ première position, retard, clôture sans mouvement) · la synchronisation missi
 
 ### A5.1 — Backend
 
-- [ ] `Invitation` accepte `role: 'DEPOT'` (module `apps/api/src/invitations/` étendu, **pas** un second système)
-- [ ] Refus des scopes véhicule / groupe pour ce rôle, à la création **comme** à la modification
-- [ ] Blocage du changement de rôle **depuis et vers** `DEPOT` — un dépôt ne devient pas gestionnaire, et l'inverse non plus
+- [x] `Invitation` accepte `role: 'DEPOT'` — l'enum Prisma le porte depuis A1, le flux existant s'applique tel quel (**pas** un second système)
+- [x] **Refus des scopes véhicule / groupe**, aux deux endroits qui en créent :
+  - `invitations.service.ts` — ⚠️ **trou refermé** : l'acceptation créait *toujours* au moins un scope `ALL`, y compris pour un dépôt. Il aurait donc reçu un périmètre de **flotte entière**, résolu par `PermissionsResolverService` en contournant `DepotScopeService`. L'isolation du bloc A serait tombée à la première invitation acceptée
+  - `users.controller.ts` — l'éditeur de matrice refuse, avec un message qui explique où se trouve le vrai levier (« assignez-lui une mission »)
+- [x] **Blocage du changement de rôle dans les deux sens** — un dépôt promu gestionnaire ouvrirait toute la flotte d'un clic depuis un écran qui ne le dit pas ; un gestionnaire basculé en dépôt garderait ses lignes `UserVehicleAccess`, interdites par A1 § 7
+- [x] `permissionsForTargetRole` **branché** sur la création de compte — écrit en A1, il n'était encore appelé nulle part
+- [x] Vérifié sur l'API réelle : les deux tentatives sont refusées, et les comptes dépôt portent **0 ligne** `UserVehicleAccess`
 - [ ] Suspension → déconnexion immédiate + révocation en cascade des liens de partage actifs
 - [ ] Réactivation → retrouve ses missions, y compris celles créées pendant la suspension
 - [ ] Suppression → `Mission.depotUserId` à `null`, liens détruits, nombre de missions affectées renvoyé au gestionnaire
