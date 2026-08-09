@@ -28,7 +28,9 @@ export type EmailTemplateId =
   | 'reservation_requested'
   | 'reservation_confirmed'
   | 'ai_invoice_request'
-  | 'partner_consent_invitation';
+  | 'partner_consent_invitation'
+  // Espace dépôt (2026-08) — une mission vient d'être assignée à un compte dépôt.
+  | 'mission_assigned';
 
 /**
  * V1.5 (Sprint J) — Service d'envoi d'emails via Resend.
@@ -229,6 +231,102 @@ export class EmailService {
   </table>
 </body>
 </html>`;
+  }
+
+  /**
+   * Échappe le texte destiné à un corps HTML.
+   *
+   * Introduit avec `mission_assigned` (2026-08) parce que ses champs viennent d'une
+   * SAISIE LIBRE : `originLabel` et `destLabel` sont tapés par un gestionnaire dans la
+   * modale de création. Un libellé contenant `<` ou `&` casserait le rendu de l'e-mail
+   * chez le destinataire — et l'e-mail est la seule chose que le dépôt reçoit avant
+   * d'ouvrir l'application.
+   */
+  private escapeHtml(valeur: string): string {
+    return valeur
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  /**
+   * Espace dépôt (2026-08) — une mission vient d'être assignée à un compte dépôt.
+   * Cf. design/A2-MISSIONS.md § 3.3.
+   *
+   * ⚠️ **LE SUJET PORTE L'INFORMATION.** « Livraison prévue jeudi 08:15 → 11:40 », et
+   * non « Nouvelle mission ». Un dépôt reçoit ces e-mails toute la journée : un sujet
+   * générique l'oblige à ouvrir pour savoir de quoi il s'agit, et il finit par ne plus
+   * les ouvrir du tout.
+   *
+   * Le nom du TRANSPORTEUR est mis en avant, pas Tracky : c'est de lui que le dépôt
+   * attend un e-mail, il ne connaît pas notre marque (A5 § 6, même principe).
+   */
+  buildMissionAssignedEmail(opts: {
+    ref: string;
+    origin: string;
+    destination: string;
+    startAt: Date;
+    endAt: Date;
+    plate: string;
+    carrierName: string;
+    depotUrl: string;
+  }): { subject: string; html: string; text: string } {
+    const jour = new Date(opts.startAt).toLocaleDateString('fr-FR', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+    });
+    const h = (d: Date) =>
+      new Date(d).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    const creneau = `${h(opts.startAt)} → ${h(opts.endAt)}`;
+
+    // Pas de crochets dans le sujet (règle héritée de la refonte des e-mails, B1 § I).
+    const subject = `Livraison prévue ${jour} ${creneau}`;
+
+    const ligne = (libelle: string, valeur: string) => `
+      <tr>
+        <td style="padding:7px 0;font-family:'Manrope',system-ui,sans-serif;font-size:13px;color:#69736E;width:120px;">${libelle}</td>
+        <td style="padding:7px 0;font-family:'Manrope',system-ui,sans-serif;font-size:14px;font-weight:600;color:#EAEFED;">${valeur}</td>
+      </tr>`;
+
+    const html = this.shell({
+      eyebrow: 'Livraison',
+      footer: `${this.escapeHtml(opts.carrierName)} · SUIVI DE LIVRAISON<br>Propulsé par Vizyo Tracky. E-mail automatique, ne pas répondre.`,
+      body: `
+        <tr><td style="padding:28px 36px 0;">
+          <h1 style="margin:0 0 10px;font-family:'Manrope',system-ui,sans-serif;font-size:24px;line-height:1.2;font-weight:800;letter-spacing:-0.02em;color:#EAEFED;">Une livraison vous est assignée</h1>
+          <p style="margin:0 0 20px;font-family:'Manrope',system-ui,sans-serif;font-size:15px;line-height:1.65;color:#9BA5A1;">${this.escapeHtml(opts.carrierName)} vous a assigné la mission <strong style="color:#EAEFED;">${this.escapeHtml(opts.ref)}</strong>. Vous pourrez suivre le camion en direct pendant son créneau.</p>
+          <table role="presentation" width="100%" style="border-collapse:collapse;">
+            ${ligne('Trajet', `${this.escapeHtml(opts.origin)} → ${this.escapeHtml(opts.destination)}`)}
+            ${ligne('Créneau', `${jour}, ${creneau}`)}
+            ${ligne('Camion', this.escapeHtml(opts.plate))}
+          </table>
+        </td></tr>
+        <tr><td style="padding:22px 36px 0;">
+          <table role="presentation"><tr><td style="border-radius:11px;background:#10E0A0;">
+            <a href="${opts.depotUrl}" style="display:inline-block;padding:13px 26px;font-family:'Manrope',system-ui,sans-serif;font-size:15px;font-weight:700;color:#04130D;text-decoration:none;">Suivre la livraison</a>
+          </td></tr></table>
+        </td></tr>
+        <tr><td style="padding:20px 36px 0;">
+          <p style="margin:0;font-family:'Manrope',system-ui,sans-serif;font-size:12.5px;line-height:1.6;color:#69736E;">Le suivi est actif de ${h(opts.startAt)} à ${h(opts.endAt)}. En dehors de ce créneau, la position du camion ne vous est pas communiquée — puis le trajet passe dans votre historique.</p>
+        </td></tr>`,
+    });
+
+    const text = [
+      `Une livraison vous est assignée par ${opts.carrierName}.`,
+      '',
+      `Mission : ${opts.ref}`,
+      `Trajet  : ${opts.origin} → ${opts.destination}`,
+      `Créneau : ${jour}, ${creneau}`,
+      `Camion  : ${opts.plate}`,
+      '',
+      `Suivre la livraison : ${opts.depotUrl}`,
+      '',
+      `Le suivi est actif de ${h(opts.startAt)} à ${h(opts.endAt)} uniquement.`,
+    ].join('\n');
+
+    return { subject, html, text };
   }
 
   /**
@@ -1203,6 +1301,17 @@ ${this.commercialSignatureText()}`;
           role: 'Gestionnaire',
           acceptUrl: `${appBase}/accept-invite?token=apercu`,
           expiresAt: new Date(Date.now() + 7 * 86_400_000),
+        });
+      case 'mission_assigned':
+        return this.buildMissionAssignedEmail({
+          ref: 'M-2481',
+          origin: 'Fenouillet',
+          destination: 'Muret',
+          startAt: new Date(Date.now() + 20 * 3_600_000),
+          endAt: new Date(Date.now() + 23 * 3_600_000),
+          plate: 'FR-482-BX',
+          carrierName: fleetName,
+          depotUrl: `${appBase}/depot`,
         });
       case 'password_reset':
         return this.buildPasswordResetEmail({

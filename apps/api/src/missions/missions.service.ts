@@ -12,7 +12,10 @@ import {
   VehicleEventStatus,
   VehicleEventType,
 } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
 import type { AuthUser } from '../auth/types/auth-user';
+import type { Env } from '../config/env.validation';
+import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -48,6 +51,24 @@ export interface CreerMissionEntree {
   notes?: string | null;
 }
 
+/** Ce qu'un CONDUCTEUR voit de sa propre mission. Aucune donnee du depot. */
+export interface MissionConducteurDto {
+  id: string;
+  ref: string;
+  origin: string;
+  destination: string;
+  startAt: string;
+  endAt: string;
+  status: MissionStatus;
+  plate: string;
+  /**
+   * Un tiers (le depot destinataire) suit-il la position du vehicule pendant cette
+   * mission ? Calcule cote serveur : c'est une obligation d'information, pas un
+   * choix d'affichage.
+   */
+  depotWatching: boolean;
+}
+
 export interface ResultatCreation {
   mission: { id: string; ref: string };
   /** Avertissements NON bloquants — ex. vehicule sans boitier. */
@@ -58,7 +79,11 @@ export interface ResultatCreation {
 export class MissionsService {
   private readonly logger = new Logger(MissionsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly email: EmailService,
+    private readonly config: ConfigService<Env, true>,
+  ) {}
 
   async creer(user: AuthUser, entree: CreerMissionEntree): Promise<ResultatCreation> {
     const fleetId = this.fleetDe(user);
@@ -133,14 +158,135 @@ export class MissionsService {
       return creee;
     });
 
-    // EFFETS 3 et 4 — notification du depot et information du conducteur. Hors
-    // transaction : un e-mail qui echoue ne doit pas annuler la mission.
-    // ⚠️ A CABLER (lot A2, suite) : gabarit `mission_assigned` + mention conducteur.
     this.logger.log(
       `Mission ${mission.ref} creee (vehicule ${vehicule.plate}, depot ${entree.depotUserId ?? 'aucun'})`,
     );
 
+    // EFFET 3 — le depot est notifie. HORS transaction, et volontairement : un e-mail
+    // qui echoue ne doit pas annuler une mission deja ecrite. Le gestionnaire a valide,
+    // le vehicule est bloque, le depot verra la mission en se connectant de toute facon.
+    if (entree.depotUserId) {
+      void this.notifierDepot(entree.depotUserId, {
+        ref: mission.ref,
+        origin: entree.originLabel,
+        destination: entree.destLabel,
+        startAt: start,
+        endAt: end,
+        plate: vehicule.plate,
+      });
+    }
+
     return { mission, avertissements };
+  }
+
+  /**
+   * EFFET 4 — les missions du jour d'un CONDUCTEUR, avec la mention d'information.
+   *
+   * ┌───────────────────────────────────────────────────────────────────────────┐
+   * │ OBLIGATION D'INFORMATION — pas une politesse.                              │
+   * │ Le conducteur doit savoir qu'un tiers voit sa position pendant la mission. │
+   * │ C'est la condition de conformite du dispositif (A2 § 3.4).                 │
+   * └───────────────────────────────────────────────────────────────────────────┘
+   *
+   * `depotWatching` n'est donc PAS un detail d'affichage que le client pourrait
+   * oublier de rendre : il est calcule ici, a cote de la donnee qu'il qualifie, et
+   * vaut `true` des qu'un depot est destinataire. Le laisser au front reviendrait a
+   * faire dependre une obligation legale d'un `@if` qu'on peut supprimer par megarde.
+   */
+  async missionsDuConducteur(user: AuthUser): Promise<MissionConducteurDto[]> {
+    const driver = await this.prisma.driver.findFirst({
+      where: { userId: user.id },
+      select: { id: true },
+    });
+    if (!driver) return [];
+
+    const debutDuJour = new Date();
+    debutDuJour.setHours(0, 0, 0, 0);
+    const finDuJour = new Date(debutDuJour.getTime() + 48 * 3600_000);
+
+    const missions = await this.prisma.mission.findMany({
+      where: {
+        driverId: driver.id,
+        status: { in: STATUTS_OCCUPANTS },
+        startAt: { lt: finDuJour },
+        endAt: { gte: debutDuJour },
+      },
+      select: {
+        id: true,
+        ref: true,
+        originLabel: true,
+        destLabel: true,
+        startAt: true,
+        endAt: true,
+        status: true,
+        depotUserId: true,
+        vehicle: { select: { plate: true } },
+      },
+      orderBy: { startAt: 'asc' },
+    });
+
+    return missions.map((m) => ({
+      id: m.id,
+      ref: m.ref,
+      origin: m.originLabel,
+      destination: m.destLabel,
+      startAt: m.startAt.toISOString(),
+      endAt: m.endAt.toISOString(),
+      status: m.status,
+      plate: m.vehicle.plate,
+      /** Un tiers suit-il la position pendant cette mission ? */
+      depotWatching: m.depotUserId !== null,
+    }));
+  }
+
+  /**
+   * EFFET 3 — l'e-mail au depot destinataire.
+   *
+   * Ne leve jamais : l'appel est en `void` et toute erreur est journalisee. Une panne
+   * du fournisseur d'e-mail ne doit pas faire echouer une creation de mission, ni
+   * laisser croire au gestionnaire que sa saisie a ete perdue.
+   */
+  private async notifierDepot(
+    depotUserId: string,
+    mission: {
+      ref: string;
+      origin: string;
+      destination: string;
+      startAt: Date;
+      endAt: Date;
+      plate: string;
+    },
+  ): Promise<void> {
+    try {
+      const depot = await this.prisma.user.findUnique({
+        where: { id: depotUserId },
+        select: { email: true, fleetId: true, fleet: { select: { name: true } } },
+      });
+      if (!depot?.email) return;
+
+      const base = this.config.get('APP_BASE_URL', { infer: true }) ?? '';
+      const tpl = this.email.buildMissionAssignedEmail({
+        ...mission,
+        // Le nom du TRANSPORTEUR, pas Tracky : c'est de lui que le depot attend un
+        // e-mail (A0 § Marque). Repli neutre plutot qu'une marque qu'il ne connait pas.
+        carrierName: depot.fleet?.name ?? 'Votre transporteur',
+        depotUrl: `${base}/depot`,
+      });
+
+      await this.email.send({
+        to: depot.email,
+        subject: tpl.subject,
+        html: tpl.html,
+        text: tpl.text,
+        template: 'mission_assigned',
+        fleetId: depot.fleetId,
+        context: { missionRef: mission.ref },
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Notification depot echouee pour la mission ${mission.ref} : ${err instanceof Error ? err.message : err}`,
+      );
+    }
   }
 
   /**

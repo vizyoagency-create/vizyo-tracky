@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -37,5 +37,19 @@ export class MissionsController {
   @RequirePermissions('missions_manage')
   creer(@Req() req: AuthenticatedRequest, @Body() dto: CreerMissionEntree) {
     return this.missions.creer(req.user, dto);
+  }
+
+  /**
+   * EFFET 4 — « mes missions », pour le CONDUCTEUR. Alimente `/driver`.
+   *
+   * Gardee par `missions_view`, que le role DRIVER porte par defaut — bornee aux
+   * SIENNES cote service (`where` sur son `driverId`). Chaque mission renvoyee porte
+   * `depotWatching` : le conducteur doit savoir qu'un tiers voit sa position pendant
+   * la mission. Obligation de conformite, pas une politesse (A2 § 3.4).
+   */
+  @Get('mine')
+  @RequirePermissions('missions_view')
+  mesMissions(@Req() req: AuthenticatedRequest) {
+    return this.missions.missionsDuConducteur(req.user);
   }
 }

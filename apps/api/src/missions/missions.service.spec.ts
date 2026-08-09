@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { MissionStatus, UserRole, VehicleEventType } from '@prisma/client';
 import {
@@ -7,6 +8,7 @@ import {
   isImmobilizingEvent,
 } from '@vizyo/tracky-shared';
 import type { AuthUser } from '../auth/types/auth-user';
+import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MissionsService } from './missions.service';
 
@@ -21,13 +23,14 @@ describe('MissionsService — creation', () => {
   let service: MissionsService;
   let prisma: {
     vehicle: { findFirst: jest.Mock };
-    user: { findFirst: jest.Mock };
+    user: { findFirst: jest.Mock; findUnique: jest.Mock };
     driver: { findFirst: jest.Mock };
-    mission: { findFirst: jest.Mock; create: jest.Mock };
+    mission: { findFirst: jest.Mock; create: jest.Mock; findMany: jest.Mock };
     vehicleEvent: { create: jest.Mock };
     $transaction: jest.Mock;
     $queryRaw: jest.Mock;
   };
+  let email: { buildMissionAssignedEmail: jest.Mock; send: jest.Mock };
 
   const GESTIONNAIRE = { id: 'u-1', fleetId: 'f-1', role: UserRole.FLEET_MANAGER } as AuthUser;
 
@@ -48,11 +51,12 @@ describe('MissionsService — creation', () => {
   beforeEach(async () => {
     prisma = {
       vehicle: { findFirst: jest.fn().mockResolvedValue({ id: 'v-1', plate: 'FR-482-BX', tracker: { id: 't-1' } }) },
-      user: { findFirst: jest.fn().mockResolvedValue({ id: 'depot-1' }) },
+      user: { findFirst: jest.fn().mockResolvedValue({ id: 'depot-1' }), findUnique: jest.fn() },
       driver: { findFirst: jest.fn().mockResolvedValue({ id: 'd-1' }) },
       mission: {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 'm-1', ref: 'M-0001' }),
+        findMany: jest.fn().mockResolvedValue([]),
       },
       vehicleEvent: { create: jest.fn().mockResolvedValue({ id: 'ev-1' }) },
       $queryRaw: jest.fn().mockResolvedValue([]),
@@ -61,8 +65,23 @@ describe('MissionsService — creation', () => {
     // La transaction execute le callback avec un client qui porte les memes mocks.
     prisma.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) => cb(prisma));
 
+    email = {
+      buildMissionAssignedEmail: jest.fn().mockReturnValue({ subject: 's', html: 'h', text: 't' }),
+      send: jest.fn().mockResolvedValue({ ok: true }),
+    };
+    prisma.user.findUnique = jest.fn().mockResolvedValue({
+      email: 'depot@exemple.fr',
+      fleetId: 'f-1',
+      fleet: { name: 'MH CARS' },
+    });
+
     const moduleRef = await Test.createTestingModule({
-      providers: [MissionsService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        MissionsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: EmailService, useValue: email },
+        { provide: ConfigService, useValue: { get: () => 'https://app.exemple.fr' } },
+      ],
     }).compile();
     service = moduleRef.get(MissionsService);
   });
@@ -101,6 +120,57 @@ describe('MissionsService — creation', () => {
       await service.creer(GESTIONNAIRE, ENTREE);
       const data = prisma.vehicleEvent.create.mock.calls[0][0].data;
       expect(data.metadata).toEqual({ missionId: 'm-1', missionRef: 'M-0001' });
+    });
+  });
+
+  describe('effet 3 — la notification du depot', () => {
+    /** L'envoi est en `void` : on laisse la micro-tache se vider avant d'observer. */
+    const laisserPartirLEmail = () => new Promise((r) => setImmediate(r));
+
+    it('envoie l\'e-mail quand un depot est designe', async () => {
+      await service.creer(GESTIONNAIRE, { ...ENTREE, depotUserId: 'depot-1' });
+      await laisserPartirLEmail();
+      expect(email.send).toHaveBeenCalledWith(
+        expect.objectContaining({ to: 'depot@exemple.fr', template: 'mission_assigned' }),
+      );
+    });
+
+    it('n\'envoie RIEN pour une mission interne', async () => {
+      await service.creer(GESTIONNAIRE, ENTREE);
+      await laisserPartirLEmail();
+      expect(email.send).not.toHaveBeenCalled();
+    });
+
+    it('nomme le TRANSPORTEUR, pas Tracky', async () => {
+      // Le depot ne connait pas notre marque : c'est de son transporteur qu'il attend
+      // un e-mail (A0 § Marque).
+      await service.creer(GESTIONNAIRE, { ...ENTREE, depotUserId: 'depot-1' });
+      await laisserPartirLEmail();
+      expect(email.buildMissionAssignedEmail.mock.calls[0][0].carrierName).toBe('MH CARS');
+    });
+
+    it('une panne d\'e-mail n\'annule PAS la mission', async () => {
+      // Le gestionnaire a valide, le vehicule est bloque, la mission est ecrite. Faire
+      // echouer la creation parce que Resend est tombe serait lui faire perdre sa saisie
+      // — et le depot verrait la mission en se connectant de toute facon.
+      email.send.mockRejectedValue(new Error('fournisseur indisponible'));
+      await expect(
+        service.creer(GESTIONNAIRE, { ...ENTREE, depotUserId: 'depot-1' }),
+      ).resolves.toMatchObject({ mission: { ref: 'M-0001' } });
+      await laisserPartirLEmail();
+    });
+
+    it('transmet le creneau et la plaque — pas les notes internes', async () => {
+      await service.creer(GESTIONNAIRE, {
+        ...ENTREE,
+        depotUserId: 'depot-1',
+        notes: 'client difficile',
+      });
+      await laisserPartirLEmail();
+      const arg = email.buildMissionAssignedEmail.mock.calls[0][0];
+      expect(arg.plate).toBe('FR-482-BX');
+      expect(arg.ref).toBe('M-0001');
+      expect(JSON.stringify(arg)).not.toContain('client difficile');
     });
   });
 
@@ -314,6 +384,63 @@ describe('MissionsService — creation', () => {
       expect(prisma.vehicleEvent.create.mock.calls[0][0].data.type).not.toBe(
         VehicleEventType.RESERVATION,
       );
+    });
+  });
+
+  describe('effet 4 — l\'obligation d\'information du conducteur', () => {
+    beforeEach(() => {
+      prisma.driver.findFirst.mockResolvedValue({ id: 'd-1' });
+    });
+
+    it('signale qu\'un tiers suit la position quand un depot est destinataire', async () => {
+      prisma.mission.findMany.mockResolvedValue([
+        {
+          id: 'm-1', ref: 'M-0001', originLabel: 'A', destLabel: 'B',
+          startAt: new Date(), endAt: new Date(), status: MissionStatus.IN_PROGRESS,
+          depotUserId: 'depot-1', vehicle: { plate: 'FR-482-BX' },
+        },
+      ]);
+      const res = await service.missionsDuConducteur({ id: 'u-driver' } as AuthUser);
+      expect(res[0].depotWatching).toBe(true);
+    });
+
+    it('ne le signale PAS sur une mission interne', async () => {
+      prisma.mission.findMany.mockResolvedValue([
+        {
+          id: 'm-1', ref: 'M-0001', originLabel: 'A', destLabel: 'B',
+          startAt: new Date(), endAt: new Date(), status: MissionStatus.PLANNED,
+          depotUserId: null, vehicle: { plate: 'FR-482-BX' },
+        },
+      ]);
+      const res = await service.missionsDuConducteur({ id: 'u-driver' } as AuthUser);
+      expect(res[0].depotWatching).toBe(false);
+    });
+
+    it('la mention est calculee COTE SERVEUR, pas laissee au client', async () => {
+      // Une obligation legale ne doit pas dependre d'un `@if` qu'on peut supprimer par
+      // megarde dans un template. Le champ arrive deja decide.
+      prisma.mission.findMany.mockResolvedValue([
+        {
+          id: 'm-1', ref: 'M-0001', originLabel: 'A', destLabel: 'B',
+          startAt: new Date(), endAt: new Date(), status: MissionStatus.IN_PROGRESS,
+          depotUserId: 'depot-1', vehicle: { plate: 'FR-482-BX' },
+        },
+      ]);
+      const res = await service.missionsDuConducteur({ id: 'u-driver' } as AuthUser);
+      expect(res[0]).toHaveProperty('depotWatching');
+      // …et l'identite du depot, elle, ne sort pas : le conducteur n'a pas a la connaitre.
+      expect(res[0]).not.toHaveProperty('depotUserId');
+    });
+
+    it('ne renvoie QUE ses propres missions', async () => {
+      await service.missionsDuConducteur({ id: 'u-driver' } as AuthUser);
+      expect(prisma.mission.findMany.mock.calls[0][0].where.driverId).toBe('d-1');
+    });
+
+    it('renvoie une liste vide si le compte n\'est lie a aucun conducteur', async () => {
+      prisma.driver.findFirst.mockResolvedValue(null);
+      await expect(service.missionsDuConducteur({ id: 'u-x' } as AuthUser)).resolves.toEqual([]);
+      expect(prisma.mission.findMany).not.toHaveBeenCalled();
     });
   });
 
