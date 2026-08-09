@@ -211,8 +211,13 @@ export const routes: Routes = [
         // incidents, réservations, optimisation et copilote IA réunis (ouverts en feuilles depuis
         // le calendrier). Gaté large pour ne pas régresser l'accès des délégués qui n'avaient que
         // reservations_*/ai_optimize ; chaque action interne reste gardée par sa permission.
+        // Espace dépôt (2026-08) — `missions_view` ajoutée à la liste. L'onglet Missions
+        // vit DANS l'agenda (décision client, A2 § intro), mais un FLEET_MANAGER a
+        // `missions_manage: true` et `agenda_view: false` PAR DÉFAUT : sans cette
+        // permission ici, le rôle qui possède les missions ne pouvait pas atteindre son
+        // propre écran. Trouvé en testant l'écran, invisible en test unitaire.
         path: 'agenda',
-        canActivate: [anyPermissionGuard('agenda_view', 'reservations_view', 'reservations_request', 'ai_optimize')],
+        canActivate: [anyPermissionGuard('agenda_view', 'reservations_view', 'reservations_request', 'ai_optimize', 'missions_view')],
         loadComponent: () =>
           import('./features/agenda/agenda.component').then((m) => m.AgendaComponent),
         data: { title: 'Agenda' },

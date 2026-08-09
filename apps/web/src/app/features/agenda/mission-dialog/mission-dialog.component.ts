@@ -338,6 +338,9 @@ export class MissionDialogComponent {
   protected readonly depotId = signal('');
   protected readonly notes = signal('');
 
+  /** Numéro de la dernière requête de disponibilité émise — cf. garde anti-course. */
+  private derniereDemande = 0;
+
   protected readonly vehicules = signal<VehiculeDispo[]>([]);
   protected readonly depots = signal<Depot[]>([]);
   protected readonly envoi = signal(false);
@@ -438,6 +441,22 @@ export class MissionDialogComponent {
   protected rechargerDisponibilite(): void {
     const { debut, fin } = this.creneau();
     if (!debut || !fin) return;
+
+    // ⚠️ GARDE ANTI-COURSE. Chaque frappe sur une heure déclenche une requête. Deux
+    // requêtes lancées coup sur coup peuvent revenir DANS LE DÉSORDRE, et la plus
+    // ancienne écraserait alors la plus récente.
+    //
+    // Ce n'est pas théorique : constaté le 2026-08-09 en testant l'écran. En posant
+    // l'heure de début (21:00) alors que l'heure de fin valait encore 11:00, la modale
+    // a calculé un créneau débordant sur le lendemain — donc une autre disponibilité.
+    // Sa réponse est arrivée APRÈS celle du créneau corrigé et l'a remplacée : la liste
+    // affichait un camion occupé qui était libre.
+    //
+    // Conséquence si on ne corrige pas : un véhicule montré libre alors qu'il est pris
+    // (409 à la validation), ou masqué alors qu'il est disponible. On ne retient donc
+    // que la réponse de la DERNIÈRE requête émise.
+    const demande = ++this.derniereDemande;
+
     this.http
       .get<VehiculeDispo[]>(
         `/api/missions/vehicle-availability?startAt=${encodeURIComponent(debut)}&endAt=${encodeURIComponent(fin)}`,
@@ -445,13 +464,17 @@ export class MissionDialogComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (v) => {
+          if (demande !== this.derniereDemande) return; // réponse périmée : on l'ignore
           this.vehicules.set(v ?? []);
           // Si le véhicule choisi vient de devenir occupé, on le désélectionne : garder
           // une sélection invalide mènerait droit à un 409 à la validation.
           const choisi = (v ?? []).find((x) => x.id === this.vehiculeId());
           if (choisi && !choisi.available) this.vehiculeId.set('');
         },
-        error: (err) => swallow('mission-dialog:disponibilite', err),
+        error: (err) => {
+          if (demande !== this.derniereDemande) return;
+          swallow('mission-dialog:disponibilite', err);
+        },
       });
   }
 
