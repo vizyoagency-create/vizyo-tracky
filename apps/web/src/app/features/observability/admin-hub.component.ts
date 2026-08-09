@@ -391,7 +391,7 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
       gap: 16px; flex-wrap: wrap; margin-bottom: 36px;
     }
     .hub-head h1 {
-      font-family: var(--font-display, Poppins, sans-serif);
+      font-family: var(--font-display);
       font-size: 28px; font-weight: 800; letter-spacing: -.5px;
       color: var(--fg-primary); margin: 0;
     }
@@ -495,7 +495,7 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
     }
 
     .body h3 {
-      font-family: var(--font-display, Poppins, sans-serif);
+      font-family: var(--font-display);
       font-size: 16px; font-weight: 700;
       color: var(--fg-primary); margin: 0;
     }
@@ -560,7 +560,7 @@ import { AdminFixModeService, type AdminAlertSummary } from '../../core/services
       background: rgba(239,68,68,.06);
     }
     .kpi-n {
-      font-family: var(--font-display, Poppins, sans-serif);
+      font-family: var(--font-display);
       font-size: 24px; font-weight: 800; line-height: 1;
       color: var(--fg-primary);
     }

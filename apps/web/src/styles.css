@@ -50,6 +50,11 @@
   --accent-ink: #04130D; /* texte SUR l'accent */
   --danger: #F2706B;
   --warning: #F5B33D;
+  /* Refonte v2 — « une couleur = une signification » (design/TOKENS.md).
+     violet = IA, super-admin, DÉPÔT · bleu = information.
+     Contrastes mesurés sur --surface-secondary (#101514) : 6,77:1 et 8,60:1. */
+  --violet: #A78BFA;
+  --blue: #38BDF8;
   --surface-secondary-rgb: 16, 21, 20;
   /* Skeletons de chargement : base + reflet du balayage. */
   --sk: rgba(255, 255, 255, 0.06);
@@ -66,11 +71,19 @@
   --text-tertiary: #8A938F;
   --border-color: rgba(10, 25, 18, 0.09);
   --border-strong-color: rgba(10, 25, 18, 0.16);
-  --accent-ink: #FFFFFF; /* texte SUR l'accent (light) */
+  /* Refonte v2 — était #FFFFFF, soit 3,43:1 sur l'accent clair #0A9E6C : sous le seuil
+     WCAG de 4,5:1 pour du texte. Règle non négociable de design/B0-SOCLE.md § Écart 2 :
+     « sur un fond accent, l'encre doit être foncée, jamais blanche ». #04130D → 5,54:1.
+     Un seul jeton, 43 usages corrigés (boutons primaires, avatars, pastilles). */
+  --accent-ink: #04130D; /* texte SUR l'accent (light) */
   --color-tracky-light: #0A9E6C; /* accent light */
   --color-tracky: #0A9E6C;
   --danger: #D9544E;
   --warning: #C98708;
+  /* Refonte v2 — pendants clairs de --violet / --blue (design/TOKENS.md).
+     Contrastes mesurés sur --surface-secondary (#FFFFFF) : 5,70:1 et 5,93:1. */
+  --violet: #7C3AED;
+  --blue: #0369A1;
   --surface-secondary-rgb: 255, 255, 255;
   --sk: rgba(10, 25, 18, 0.055);
   --sk-hi: rgba(10, 25, 18, 0.085);

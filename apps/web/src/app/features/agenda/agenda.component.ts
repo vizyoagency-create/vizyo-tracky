@@ -702,7 +702,7 @@ interface GroupOption {
     .ag-stat-body { display: flex; flex-direction: column; min-width: 0; }
     .ag-stat-value {
       font-size: 22px; font-weight: 800; line-height: 1;
-      color: var(--fg-primary); font-family: var(--font-display, Poppins, sans-serif);
+      color: var(--fg-primary); font-family: var(--font-display);
       letter-spacing: -.02em;
     }
     .ag-stat--danger .ag-stat-value { color: var(--danger); }

@@ -420,7 +420,7 @@ interface TaskForm {
     .ed-head { display: flex; gap: 20px; justify-content: space-between; flex-wrap: wrap; padding: 20px; border-radius: 16px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); margin-bottom: 18px }
     .ed-head-main { min-width: 240px; flex: 1 }
     .ed-title-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap }
-    .ed-head h1 { font-family: var(--font-display, Poppins, sans-serif); font-size: 24px; font-weight: 800; color: var(--fg-primary); margin: 0 }
+    .ed-head h1 { font-family: var(--font-display); font-size: 24px; font-weight: 800; color: var(--fg-primary); margin: 0 }
     .ed-addr { font-size: 12px; color: var(--fg-tertiary); margin-top: 4px }
     .ed-desc { font-size: 13px; color: var(--fg-secondary); margin-top: 6px }
     .ed-period { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg-tertiary); margin-top: 8px; font-family: var(--font-mono, monospace) }
@@ -558,7 +558,7 @@ interface TaskForm {
 
     .station-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px }
     .station-date { display: flex; flex-direction: column; gap: 1px; min-width: 0 }
-    .station-d { font-family: var(--font-display, Poppins, sans-serif); font-size: 17px; font-weight: 800; color: var(--fg-primary); line-height: 1.05; letter-spacing: -.01em }
+    .station-d { font-family: var(--font-display); font-size: 17px; font-weight: 800; color: var(--fg-primary); line-height: 1.05; letter-spacing: -.01em }
     .station-d.unsched-d { font-size: 13px; font-weight: 700; color: var(--fg-secondary) }
     .station-wd { font-size: 10px; color: var(--fg-tertiary); text-transform: capitalize }
     .station-n { flex-shrink: 0; font-size: 10px; font-weight: 700; color: var(--fg-tertiary); background: var(--bg-tertiary); padding: 2px 7px; border-radius: 6px; white-space: nowrap }

@@ -210,7 +210,7 @@ import { apiErrorMessage } from '../../core/error/api-error';
     .ta-back:hover { color: var(--fg-secondary); }
     .ta-head { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
     .ta-ico { width: 48px; height: 48px; border-radius: 13px; display: flex; align-items: center; justify-content: center; background: rgba(139,92,246,.12); color: #a78bfa; flex-shrink: 0; }
-    .ta-head h1 { font-family: var(--font-display, Poppins, sans-serif); font-size: 24px; font-weight: 800; letter-spacing: -.4px; color: var(--fg-primary); margin: 0; }
+    .ta-head h1 { font-family: var(--font-display); font-size: 24px; font-weight: 800; letter-spacing: -.4px; color: var(--fg-primary); margin: 0; }
     .ta-head p { color: var(--fg-tertiary); font-size: 13px; margin: 3px 0 0; }
     .ta-state { margin-left: auto; display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; background: var(--bg-tertiary); color: var(--fg-tertiary); border: 1px solid var(--border-subtle); }
     .ta-state.on { background: rgba(16,224,160,.08); color: var(--tracky-light); border-color: rgba(16,224,160,.18); }
@@ -255,7 +255,7 @@ import { apiErrorMessage } from '../../core/error/api-error';
     .ta-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
     @media (max-width: 520px) { .ta-kpis { grid-template-columns: repeat(2, 1fr); } }
     .ta-kpi { display: flex; flex-direction: column; align-items: center; padding: 10px; border-radius: 10px; background: var(--bg-secondary); font-size: 10.5px; text-transform: uppercase; letter-spacing: .4px; color: var(--fg-tertiary); font-weight: 600; }
-    .ta-kpi span { font-family: var(--font-display, Poppins, sans-serif); font-size: 22px; font-weight: 800; color: var(--fg-primary); margin-bottom: 3px; }
+    .ta-kpi span { font-family: var(--font-display); font-size: 22px; font-weight: 800; color: var(--fg-primary); margin-bottom: 3px; }
     .ta-kpi.err span { color: #f87171; }
 
     .ta-loading { display: flex; justify-content: center; padding: 40px; color: var(--fg-tertiary); }

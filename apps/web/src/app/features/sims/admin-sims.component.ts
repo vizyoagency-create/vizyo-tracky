@@ -344,7 +344,7 @@ import {
     .sp-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 22px }
     .sp-back { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--fg-tertiary); text-decoration: none; margin-bottom: 6px }
     .sp-back:hover { color: var(--tracky-light) }
-    .sp-head h1 { font-family: var(--font-display, Poppins, sans-serif); font-size: 24px; font-weight: 800; color: var(--fg-primary); margin: 0 }
+    .sp-head h1 { font-family: var(--font-display); font-size: 24px; font-weight: 800; color: var(--fg-primary); margin: 0 }
     .sp-sub { font-size: 13px; color: var(--fg-tertiary); margin: 4px 0 0 }
     .sp-actions { display: flex; gap: 8px; flex-wrap: wrap }
 
@@ -357,7 +357,7 @@ import {
     .sp-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px }
     @media (max-width: 720px) { .sp-kpis { grid-template-columns: 1fr 1fr } }
     .kpi { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: 12px }
-    .kpi-n { display: block; font-family: var(--font-display, Poppins, sans-serif); font-size: 20px; font-weight: 800; color: var(--fg-primary) }
+    .kpi-n { display: block; font-family: var(--font-display); font-size: 20px; font-weight: 800; color: var(--fg-primary) }
     .kpi-l { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--fg-tertiary) }
     .i-sky { color: #38bdf8 } .i-emerald { color: var(--tracky-light) } .i-amber { color: #fbbf24 } .i-purple { color: #c084fc }
 

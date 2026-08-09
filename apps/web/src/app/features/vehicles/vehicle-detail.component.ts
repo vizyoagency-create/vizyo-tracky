@@ -1108,7 +1108,7 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
       font-size: 16px;
       font-weight: 800;
       color: var(--tracky-light);
-      font-family: var(--font-display, Poppins, sans-serif);
+      font-family: var(--font-display);
       letter-spacing: -.02em;
     }
     .vd-history-speed.zero { color: var(--fg-tertiary); }
@@ -1189,7 +1189,7 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
       font-size: 22px;
       font-weight: 800;
       color: var(--tracky-light);
-      font-family: var(--font-display, Poppins, sans-serif);
+      font-family: var(--font-display);
       letter-spacing: -.02em;
     }
     .vd-trip-distance-unit { font-size: 11px; color: var(--fg-tertiary); font-weight: 600; }
