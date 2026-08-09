@@ -66,6 +66,16 @@ export interface MissionListeDto {
   depotName: string | null;
 }
 
+/** Un vehicule et sa disponibilite sur le creneau demande (A2 § 4, niveau 1). */
+export interface VehiculeDisponibiliteDto {
+  id: string;
+  plate: string;
+  label: string | null;
+  available: boolean;
+  /** « Déjà en mission M-2482 · 09:00 → 12:20 ». Null si libre. */
+  reason: string | null;
+}
+
 /** Les 5 compteurs en tete de l'onglet Missions. */
 export interface CompteursMissions {
   enCours: number;
@@ -259,6 +269,77 @@ export class MissionsService {
     }));
 
     return { missions, compteurs: this.compter(lignes) };
+  }
+
+  /** Les comptes DEPOT de la flotte, pour le selecteur de destinataire. */
+  async listerDepots(user: AuthUser): Promise<Array<{ id: string; nom: string }>> {
+    const fleetId = this.fleetDe(user);
+    const depots = await this.prisma.user.findMany({
+      where: { fleetId, role: UserRole.DEPOT, isActive: true },
+      select: { id: true, firstName: true, lastName: true, email: true },
+      orderBy: { firstName: 'asc' },
+    });
+    return depots.map((d) => ({
+      id: d.id,
+      nom: `${d.firstName ?? ''} ${d.lastName ?? ''}`.trim() || d.email,
+    }));
+  }
+
+  /**
+   * Les vehicules de la flotte sur un creneau, AVEC leur motif d'occupation.
+   *
+   * ┌───────────────────────────────────────────────────────────────────────────┐
+   * │ On renvoie TOUS les vehicules, occupes compris — pas seulement les libres. │
+   * └───────────────────────────────────────────────────────────────────────────┘
+   *
+   * A2 § 4, niveau 1 : « le vehicule apparait GRISE avec son motif : Deja en mission
+   * M-2482 · 09:00 → 12:20 ». Masquer les occupes ferait disparaitre le camion que le
+   * gestionnaire cherchait, sans lui dire pourquoi — et il rouvrirait le formulaire
+   * cinq fois. Le motif transforme une absence inexplicable en information.
+   */
+  async disponibiliteVehicules(
+    user: AuthUser,
+    startAt: Date,
+    endAt: Date,
+  ): Promise<VehiculeDisponibiliteDto[]> {
+    const fleetId = this.fleetDe(user);
+
+    const [vehicules, missionsOccupantes] = await Promise.all([
+      this.prisma.vehicle.findMany({
+        where: { fleetId },
+        select: { id: true, plate: true, brand: true, model: true },
+        orderBy: { plate: 'asc' },
+        take: 2000,
+      }),
+      this.prisma.mission.findMany({
+        where: {
+          fleetId,
+          status: { in: STATUTS_OCCUPANTS },
+          startAt: { lt: endAt },
+          endAt: { gt: startAt },
+        },
+        select: { vehicleId: true, ref: true, startAt: true, endAt: true },
+      }),
+    ]);
+
+    const parVehicule = new Map(missionsOccupantes.map((m) => [m.vehicleId, m]));
+    const h = (d: Date) =>
+      d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+    return vehicules.map((v) => {
+      const occupe = parVehicule.get(v.id);
+      return {
+        id: v.id,
+        plate: v.plate,
+        label: [v.brand, v.model].filter(Boolean).join(' ') || null,
+        available: !occupe,
+        // Le motif est REDIGE cote serveur : il doit etre identique partout, et le
+        // client n'a pas a savoir formater une reference de mission.
+        reason: occupe
+          ? `Déjà en mission ${occupe.ref} · ${h(occupe.startAt)} → ${h(occupe.endAt)}`
+          : null,
+      };
+    });
   }
 
   /**

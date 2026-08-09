@@ -22,8 +22,8 @@ import { MissionsService } from './missions.service';
 describe('MissionsService — creation', () => {
   let service: MissionsService;
   let prisma: {
-    vehicle: { findFirst: jest.Mock };
-    user: { findFirst: jest.Mock; findUnique: jest.Mock };
+    vehicle: { findFirst: jest.Mock; findMany: jest.Mock };
+    user: { findFirst: jest.Mock; findUnique: jest.Mock; findMany: jest.Mock };
     driver: { findFirst: jest.Mock };
     mission: { findFirst: jest.Mock; create: jest.Mock; findMany: jest.Mock; update: jest.Mock };
     vehicleEvent: { create: jest.Mock; updateMany: jest.Mock };
@@ -50,8 +50,15 @@ describe('MissionsService — creation', () => {
 
   beforeEach(async () => {
     prisma = {
-      vehicle: { findFirst: jest.fn().mockResolvedValue({ id: 'v-1', plate: 'FR-482-BX', tracker: { id: 't-1' } }) },
-      user: { findFirst: jest.fn().mockResolvedValue({ id: 'depot-1' }), findUnique: jest.fn() },
+      vehicle: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'v-1', plate: 'FR-482-BX', tracker: { id: 't-1' } }),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      user: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'depot-1' }),
+        findUnique: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
       driver: { findFirst: jest.fn().mockResolvedValue({ id: 'd-1' }) },
       mission: {
         findFirst: jest.fn().mockResolvedValue(null),
@@ -509,6 +516,81 @@ describe('MissionsService — creation', () => {
       const { missions } = await service.lister(GESTIONNAIRE, {});
       expect(missions[0].depotName).toBeNull();
       expect(missions[0].depotId).toBeNull();
+    });
+  });
+
+  describe('la disponibilite affichee dans la modale', () => {
+    beforeEach(() => {
+      prisma.vehicle.findMany = jest.fn().mockResolvedValue([
+        { id: 'v-1', plate: 'FR-1', brand: 'Renault', model: 'D 12 t' },
+        { id: 'v-2', plate: 'FR-2', brand: null, model: null },
+      ]);
+    });
+
+    const creneau = () => [new Date('2026-08-10T08:00:00Z'), new Date('2026-08-10T11:00:00Z')] as const;
+
+    it('renvoie TOUS les vehicules, occupes compris', async () => {
+      // Masquer les occupes ferait disparaitre le camion que le gestionnaire cherchait,
+      // sans lui dire pourquoi — et il rouvrirait le formulaire cinq fois.
+      prisma.mission.findMany.mockResolvedValue([
+        { vehicleId: 'v-1', ref: 'M-2482', startAt: new Date('2026-08-10T09:00:00Z'), endAt: new Date('2026-08-10T12:20:00Z') },
+      ]);
+      const res = await service.disponibiliteVehicules(GESTIONNAIRE, ...creneau());
+      expect(res).toHaveLength(2);
+      expect(res.map((v) => v.plate)).toEqual(['FR-1', 'FR-2']);
+    });
+
+    it('porte le MOTIF d\'occupation, redige cote serveur', async () => {
+      prisma.mission.findMany.mockResolvedValue([
+        { vehicleId: 'v-1', ref: 'M-2482', startAt: new Date('2026-08-10T09:00:00Z'), endAt: new Date('2026-08-10T12:20:00Z') },
+      ]);
+      const res = await service.disponibiliteVehicules(GESTIONNAIRE, ...creneau());
+      const occupe = res.find((v) => v.id === 'v-1')!;
+      expect(occupe.available).toBe(false);
+      expect(occupe.reason).toMatch(/Déjà en mission M-2482/);
+    });
+
+    it('laisse les vehicules libres sans motif', async () => {
+      prisma.mission.findMany.mockResolvedValue([]);
+      const res = await service.disponibiliteVehicules(GESTIONNAIRE, ...creneau());
+      expect(res.every((v) => v.available && v.reason === null)).toBe(true);
+    });
+
+    it('compose le libelle depuis marque + modele', async () => {
+      prisma.mission.findMany.mockResolvedValue([]);
+      const res = await service.disponibiliteVehicules(GESTIONNAIRE, ...creneau());
+      expect(res[0].label).toBe('Renault D 12 t');
+      expect(res[1].label).toBeNull();
+    });
+
+    it('ne considere QUE les missions qui occupent encore', async () => {
+      await service.disponibiliteVehicules(GESTIONNAIRE, ...creneau());
+      const where = prisma.mission.findMany.mock.calls[0][0].where;
+      expect(where.status.in).toEqual([
+        MissionStatus.PLANNED,
+        MissionStatus.IN_PROGRESS,
+        MissionStatus.LATE,
+      ]);
+    });
+  });
+
+  describe('le selecteur de depot', () => {
+    it('ne liste que les comptes DEPOT actifs de la flotte', async () => {
+      prisma.user.findMany = jest.fn().mockResolvedValue([]);
+      await service.listerDepots(GESTIONNAIRE);
+      expect(prisma.user.findMany.mock.calls[0][0].where).toEqual({
+        fleetId: 'f-1',
+        role: UserRole.DEPOT,
+        isActive: true,
+      });
+    });
+
+    it('retombe sur l\'e-mail quand le nom est vide', async () => {
+      prisma.user.findMany = jest.fn().mockResolvedValue([
+        { id: 'd-1', firstName: null, lastName: null, email: 'depot@exemple.fr' },
+      ]);
+      const res = await service.listerDepots(GESTIONNAIRE);
+      expect(res[0].nom).toBe('depot@exemple.fr');
     });
   });
 

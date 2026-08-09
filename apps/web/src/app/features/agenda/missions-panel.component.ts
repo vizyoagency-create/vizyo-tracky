@@ -1,8 +1,9 @@
 import { HttpClient } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { LucideAngularModule, Route, Truck, Warehouse } from 'lucide-angular';
+import { LucideAngularModule, Plus, Route, Truck, Warehouse } from 'lucide-angular';
 import { swallow } from '../../core/error/swallow';
+import { MissionDialogComponent } from './mission-dialog/mission-dialog.component';
 
 /**
  * Espace dépôt (2026-08) — l'onglet Missions de `/agenda`. Cf. design/A2-MISSIONS.md § 6.
@@ -50,7 +51,7 @@ const FILTRES = [
 @Component({
   selector: 'app-missions-panel',
   standalone: true,
-  imports: [LucideAngularModule],
+  imports: [LucideAngularModule, MissionDialogComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <!-- ═══ Les 5 compteurs ═══════════════════════════════════════════════════
@@ -73,12 +74,21 @@ const FILTRES = [
       </div>
     </div>
 
-    <div class="mp-filtres">
-      @for (f of filtres; track f.valeur) {
-        <button type="button" class="mp-filtre" [class.mp-filtre--actif]="filtre() === f.valeur"
-                (click)="changerFiltre(f.valeur)">{{ f.libelle }}</button>
-      }
+    <div class="mp-barre">
+      <div class="mp-filtres">
+        @for (f of filtres; track f.valeur) {
+          <button type="button" class="mp-filtre" [class.mp-filtre--actif]="filtre() === f.valeur"
+                  (click)="changerFiltre(f.valeur)">{{ f.libelle }}</button>
+        }
+      </div>
+      <button type="button" class="mp-creer" (click)="modaleOuverte.set(true)">
+        <lucide-icon [img]="Plus" [size]="15" />Nouvelle mission
+      </button>
     </div>
+
+    @if (modaleOuverte()) {
+      <app-mission-dialog (fermer)="modaleOuverte.set(false)" (creee)="charger()" />
+    }
 
     @if (chargement()) {
       <div class="mp-sk">
@@ -137,7 +147,13 @@ const FILTRES = [
     .mp-kpi-n { font-family: var(--font-display); font-size: 22px; font-weight: 800; color: var(--text-primary); line-height: 1; }
     .mp-kpi-l { font-size: 11.5px; color: var(--text-tertiary); }
 
-    .mp-filtres { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 12px; }
+    .mp-barre { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+                flex-wrap: wrap; margin-bottom: 12px; }
+    .mp-creer { display: inline-flex; align-items: center; gap: 7px; padding: 8px 15px;
+                border-radius: 10px; border: none; font-size: 13px; font-weight: 700;
+                font-family: inherit; cursor: pointer;
+                background: var(--color-tracky-light); color: var(--accent-ink); }
+    .mp-filtres { display: flex; gap: 7px; flex-wrap: wrap; }
     .mp-filtre { padding: 7px 14px; border-radius: 9999px; font-size: 12.5px; font-weight: 600;
                  background: var(--surface-secondary); border: 1px solid var(--border-color);
                  color: var(--text-secondary); cursor: pointer; }
@@ -174,7 +190,9 @@ export class MissionsPanelComponent implements OnInit {
   protected readonly Warehouse = Warehouse;
   protected readonly Truck = Truck;
   protected readonly Route = Route;
+  protected readonly Plus = Plus;
 
+  protected readonly modaleOuverte = signal(false);
   protected readonly chargement = signal(true);
   protected readonly missions = signal<MissionLigne[]>([]);
   protected readonly filtre = signal<string>('');
@@ -196,7 +214,8 @@ export class MissionsPanelComponent implements OnInit {
     this.charger();
   }
 
-  private charger(): void {
+  /** Public : la modale la rappelle après une création réussie. */
+  protected charger(): void {
     this.chargement.set(true);
     const params = this.filtre() ? `?status=${this.filtre()}` : '';
     this.http

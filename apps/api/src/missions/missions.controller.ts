@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { MissionStatus } from '@prisma/client';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
@@ -59,6 +59,33 @@ export class MissionsController {
       from: this.dateValide(from),
       to: this.dateValide(to),
     });
+  }
+
+  /** Les comptes dépôt de la flotte — alimente le sélecteur de destinataire. */
+  @Get('depots')
+  @RequirePermissions('missions_manage')
+  depots(@Req() req: AuthenticatedRequest) {
+    return this.missions.listerDepots(req.user);
+  }
+
+  /**
+   * Les véhicules sur un créneau, AVEC leur motif d'occupation.
+   *
+   * Renvoie les occupés aussi : la modale les affiche grisés avec leur motif plutôt
+   * que de les masquer. Un véhicule qui disparaît sans explication renvoie le
+   * gestionnaire au formulaire cinq fois (A2 § 4, niveau 1).
+   */
+  @Get('vehicle-availability')
+  @RequirePermissions('missions_manage')
+  disponibilite(
+    @Req() req: AuthenticatedRequest,
+    @Query('startAt') startAt: string,
+    @Query('endAt') endAt: string,
+  ) {
+    const debut = this.dateValide(startAt);
+    const fin = this.dateValide(endAt);
+    if (!debut || !fin) throw new BadRequestException('Créneau invalide');
+    return this.missions.disponibiliteVehicules(req.user, debut, fin);
   }
 
   /**
