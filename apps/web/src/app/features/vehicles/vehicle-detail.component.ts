@@ -1,5 +1,5 @@
 import { swallow } from '../../core/error/swallow';
-import { HttpErrorResponse } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, effect, inject, OnInit, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -9,7 +9,22 @@ import {
   AlertTriangle, AlertCircle, Info, Check, Power, Route, BarChart3, BellOff, Map,
   History, Bell, Zap, Clock, ShieldAlert, ShieldCheck, MessageSquare, Pencil, X,
   UserRound, UserPlus, Copy, Play, Layers, Wrench, QrCode, SatelliteDish, ParkingSquare,
+  // Espace dépôt (2026-08) — « un tiers regarde ce camion » sur le bandeau de mission.
+  Eye,
 } from 'lucide-angular';
+
+/** Espace dépôt (2026-08) — la mission en cours affichée en bandeau (A2 § 9). */
+interface MissionEnCours {
+  id: string;
+  ref: string;
+  origin: string;
+  destination: string;
+  startAt: string;
+  endAt: string;
+  status: 'IN_PROGRESS' | 'LATE';
+  depotName: string | null;
+  depotWatching: boolean;
+}
 import type { AlertEvent, DriverDto, TripDto } from '@vizyo/tracky-shared';
 import { isAcceptableLiveFix } from '@vizyo/tracky-shared';
 import { firstValueFrom } from 'rxjs';
@@ -84,6 +99,31 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
       </div>
     } @else if (vehicle(); as v) {
       <div class="vdx-wrap">
+        @if (missionEnCours(); as m) {
+          <!-- Espace dépôt (2026-08) — bandeau « en mission » (A2 § 9).
+               Placé TOUT EN HAUT, avant le hero : un gestionnaire qui ouvre cette
+               fiche pour couper le moteur ou changer un horaire doit savoir qu'un
+               tiers regarde ce camion EN CE MOMENT. Le mettre plus bas reviendrait
+               à le lui apprendre après coup. -->
+          <div class="vdx-mission" [class.vdx-mission--retard]="m.status === 'LATE'">
+            <span class="vdx-mission-ico"><lucide-icon [img]="Route" [size]="17" /></span>
+            <div class="vdx-mission-txt">
+              <p class="vdx-mission-l1">
+                <strong>{{ m.status === 'LATE' ? 'En mission — en retard' : 'En mission' }}</strong>
+                <span class="vdx-mission-ref">{{ m.ref }}</span>
+              </p>
+              <p class="vdx-mission-l2">
+                {{ m.origin }} → {{ m.destination }} · {{ heureMission(m.startAt) }} → {{ heureMission(m.endAt) }}
+              </p>
+              @if (m.depotWatching) {
+                <p class="vdx-mission-depot">
+                  <lucide-icon [img]="Eye" [size]="13" />
+                  {{ m.depotName }} suit la position de ce véhicule jusqu'à {{ heureMission(m.endAt) }}.
+                </p>
+              }
+            </div>
+          </div>
+        }
         <!-- Hero (maquette 06) : nom du véhicule + pastille de statut, plaque/couleur/groupe en sous-ligne -->
         <div class="vdx-hero">
           <div class="vdx-hero-main">
@@ -846,6 +886,30 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
     }
   `,
   styles: [`
+    /* ─── Bandeau « en mission » (espace dépôt, A2 § 9) ──────────────────────
+       Violet : c'est la couleur du DÉPÔT dans tout le système (design/TOKENS.md).
+       Ambre quand la mission est en retard — une attente à lever, pas un échec. */
+    .vdx-mission {
+      display: flex; align-items: flex-start; gap: 11px;
+      padding: 12px 14px; margin-bottom: 14px; border-radius: 14px;
+      background: color-mix(in srgb, var(--violet) 10%, transparent);
+      border: 1px solid color-mix(in srgb, var(--violet) 26%, transparent);
+    }
+    .vdx-mission--retard {
+      background: color-mix(in srgb, var(--warning) 10%, transparent);
+      border-color: color-mix(in srgb, var(--warning) 28%, transparent);
+    }
+    .vdx-mission-ico { color: var(--violet); flex-shrink: 0; margin-top: 1px; }
+    .vdx-mission--retard .vdx-mission-ico { color: var(--warning); }
+    .vdx-mission-txt { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+    .vdx-mission-l1 { margin: 0; display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap;
+                      font-size: 13.5px; color: var(--violet); }
+    .vdx-mission--retard .vdx-mission-l1 { color: var(--warning); }
+    .vdx-mission-ref { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-tertiary); }
+    .vdx-mission-l2 { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--text-secondary); }
+    .vdx-mission-depot { margin: 2px 0 0; display: flex; align-items: center; gap: 6px;
+                         font-size: 12px; line-height: 1.5; color: var(--text-tertiary); }
+
     /* ═══════════════════════════════════════════════════════════════════
        Maquette 06 — Détail véhicule. Intégration DS (mêmes tokens que l'app).
        Préfixe .vdx-* pour la refonte, réutilise les tokens --tracky-light /
@@ -1602,6 +1666,7 @@ export class VehicleDetailComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly vehiclesApi = inject(VehiclesApiService);
+  private readonly http = inject(HttpClient);
   private readonly positionsApi = inject(PositionsApiService);
   private readonly alertsApi = inject(AlertsApiService);
   private readonly engineControlApi = inject(EngineControlService);
@@ -1641,6 +1706,8 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly commands = signal<EngineControlCommandDto[]>([]);
   protected readonly vehicleTrips = signal<TripDto[]>([]);
   protected readonly loading = signal(true);
+  /** Espace dépôt (2026-08) — la mission en cours de ce véhicule, ou null. */
+  protected readonly missionEnCours = signal<MissionEnCours | null>(null);
   // Edition note (un seul trip en edition a la fois — switch reset auto).
   protected readonly editingNoteTripId = signal<string | null>(null);
   protected editingNoteText = '';
@@ -1706,6 +1773,7 @@ export class VehicleDetailComponent implements OnInit {
   protected readonly BellOff = BellOff;
   protected readonly HistoryIcon = History;
   protected readonly Route = Route;
+  protected readonly Eye = Eye;
   protected readonly ZapIcon = Zap;
   protected readonly ShieldAlert = ShieldAlert;
   protected readonly ShieldCheck = ShieldCheck;
@@ -2303,8 +2371,31 @@ export class VehicleDetailComponent implements OnInit {
     await this.loadAll(id);
   }
 
+  /**
+   * Espace dépôt (2026-08) — la mission en cours, pour le bandeau (A2 § 9).
+   *
+   * Chargée à part et sans bloquer : un échec laisse le bandeau absent et la fiche
+   * intacte. Elle ne doit jamais empêcher d'ouvrir un véhicule.
+   */
+  private async chargerMissionEnCours(vehicleId: string): Promise<void> {
+    try {
+      const m = await firstValueFrom(
+        this.http.get<MissionEnCours | null>(`/api/missions/vehicle/${vehicleId}/current`),
+      );
+      this.missionEnCours.set(m ?? null);
+    } catch (err) {
+      swallow('vehicle-detail:missionEnCours', err);
+      this.missionEnCours.set(null);
+    }
+  }
+
+  protected heureMission(iso: string): string {
+    return new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  }
+
   private async loadAll(vehicleId: string): Promise<void> {
     this.loading.set(true);
+    void this.chargerMissionEnCours(vehicleId);
     try {
       const v = await firstValueFrom(this.vehiclesApi.findOne(vehicleId));
       this.vehicle.set(v);

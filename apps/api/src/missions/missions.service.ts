@@ -150,6 +150,20 @@ const LIBELLE_STATUT: Record<MissionStatus, string> = {
   [MissionStatus.CANCELLED]: 'annulée',
 };
 
+/** La mission en cours d'un véhicule — bandeau de la fiche véhicule (A2 § 9). */
+export interface MissionEnCoursDto {
+  id: string;
+  ref: string;
+  origin: string;
+  destination: string;
+  startAt: string;
+  endAt: string;
+  status: MissionStatus;
+  depotName: string | null;
+  /** Un tiers suit-il la position en ce moment ? Le bandeau doit le dire. */
+  depotWatching: boolean;
+}
+
 /** L'effet d'un changement d'heure de fin sur l'accès du dépôt destinataire. */
 export interface ImpactFenetre {
   sens: 'ETENDUE' | 'REDUITE';
@@ -322,6 +336,49 @@ export class MissionsService {
     }));
 
     return { missions, compteurs: this.compter(lignes) };
+  }
+
+  /**
+   * La mission EN COURS de ce vehicule, s'il y en a une. Alimente le bandeau
+   * « en mission » de la fiche vehicule (A2 § 9).
+   *
+   * Pourquoi un bandeau : un gestionnaire qui ouvre une fiche pour couper le moteur
+   * ou changer un horaire doit savoir qu'un tiers regarde ce camion en ce moment.
+   * Sans cette mention, il agit a l'aveugle sur un vehicule sous observation.
+   */
+  async missionEnCours(user: AuthUser, vehicleId: string): Promise<MissionEnCoursDto | null> {
+    const fleetId = this.fleetDe(user);
+    const maintenant = new Date();
+    const m = await this.prisma.mission.findFirst({
+      where: {
+        fleetId,
+        vehicleId,
+        status: { in: [MissionStatus.IN_PROGRESS, MissionStatus.LATE] },
+        startAt: { lte: maintenant },
+      },
+      select: {
+        id: true, ref: true, originLabel: true, destLabel: true,
+        startAt: true, endAt: true, status: true,
+        depotUser: { select: { firstName: true, lastName: true, email: true } },
+      },
+      orderBy: { startAt: 'desc' },
+    });
+    if (!m) return null;
+
+    return {
+      id: m.id,
+      ref: m.ref,
+      origin: m.originLabel,
+      destination: m.destLabel,
+      startAt: m.startAt.toISOString(),
+      endAt: m.endAt.toISOString(),
+      status: m.status,
+      depotName: m.depotUser
+        ? `${m.depotUser.firstName ?? ''} ${m.depotUser.lastName ?? ''}`.trim() || m.depotUser.email
+        : null,
+      /** Un tiers suit-il la position en ce moment ? Le bandeau doit le dire. */
+      depotWatching: m.depotUser !== null,
+    };
   }
 
   /** Les comptes DEPOT de la flotte, pour le selecteur de destinataire. */

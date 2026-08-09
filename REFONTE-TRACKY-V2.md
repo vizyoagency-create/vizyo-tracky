@@ -592,7 +592,7 @@ première position, retard, clôture sans mouvement) · la synchronisation missi
 - [x] Modale → **feuille basse** sur mobile, avec les 3 écarts volontaires **vérifiés à l'écran** : rayon 22/28 px · poignée 36×5 / 32×4 · densité 44/56 px
 - [x] En-tête « Annuler » sur iOS (la croix disparaît), actions en pied sur Android — conforme à M3
 - [x] Contrôlé aux trois largeurs : **aucun débordement horizontal**, aucune cible sous 44 px
-- [ ] Bandeau « en mission » sur la fiche véhicule
+- [x] **Bandeau « en mission » sur la fiche véhicule** — placé tout en haut, avant le hero : un gestionnaire qui ouvre la fiche pour couper le moteur doit savoir qu'un tiers regarde ce camion **avant** d'agir. Violet (couleur du dépôt), ambre si la mission est en retard. Vérifié sur les 3 cas réels : avec dépôt, sans dépôt, sans mission
 - [ ] Modèles de tournée — *explicitement non bloquant, livrable après A4 (A2 § 7)*
 - [ ] ⏸️ **Vérification visuelle de l'onglet** — bloquée : le panneau navigateur n'est pas affiché, la page ne compose aucune image
 

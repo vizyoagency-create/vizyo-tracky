@@ -655,6 +655,51 @@ describe('MissionsService — creation', () => {
     });
   });
 
+  describe('le bandeau « en mission » de la fiche vehicule', () => {
+    const enCours = (over: Record<string, unknown> = {}) => ({
+      id: 'm-1', ref: 'M-0001', originLabel: 'A', destLabel: 'B',
+      startAt: new Date(), endAt: new Date(Date.now() + 3600_000),
+      status: MissionStatus.IN_PROGRESS,
+      depotUser: { firstName: 'Dépôt', lastName: 'Fenouillet', email: 'd@x.fr' },
+      ...over,
+    });
+
+    it('signale qu\'un tiers regarde le camion EN CE MOMENT', async () => {
+      // Un gestionnaire qui ouvre cette fiche pour couper le moteur doit le savoir
+      // AVANT d'agir, pas apres.
+      prisma.mission.findFirst.mockResolvedValue(enCours());
+      const r = await service.missionEnCours(GESTIONNAIRE, 'v-1');
+      expect(r).toMatchObject({ ref: 'M-0001', depotWatching: true, depotName: 'Dépôt Fenouillet' });
+    });
+
+    it('ne signale aucun tiers sur une mission interne', async () => {
+      prisma.mission.findFirst.mockResolvedValue(enCours({ depotUser: null }));
+      const r = await service.missionEnCours(GESTIONNAIRE, 'v-1');
+      expect(r?.depotWatching).toBe(false);
+      expect(r?.depotName).toBeNull();
+    });
+
+    it('ne retient QUE les statuts de suivi actif', async () => {
+      prisma.mission.findFirst.mockResolvedValue(null);
+      await service.missionEnCours(GESTIONNAIRE, 'v-1');
+      const where = prisma.mission.findFirst.mock.calls[0][0].where;
+      expect(where.status.in).toEqual([MissionStatus.IN_PROGRESS, MissionStatus.LATE]);
+      // Une mission planifiee n'a pas commence : afficher « en mission » serait faux.
+      expect(where.status.in).not.toContain(MissionStatus.PLANNED);
+    });
+
+    it('reste borne a la flotte de l\'utilisateur', async () => {
+      prisma.mission.findFirst.mockResolvedValue(null);
+      await service.missionEnCours(GESTIONNAIRE, 'v-1');
+      expect(prisma.mission.findFirst.mock.calls[0][0].where.fleetId).toBe('f-1');
+    });
+
+    it('renvoie null quand le vehicule n\'est pas en mission', async () => {
+      prisma.mission.findFirst.mockResolvedValue(null);
+      await expect(service.missionEnCours(GESTIONNAIRE, 'v-1')).resolves.toBeNull();
+    });
+  });
+
   describe('le selecteur de depot', () => {
     it('ne liste que les comptes DEPOT actifs de la flotte', async () => {
       prisma.user.findMany = jest.fn().mockResolvedValue([]);

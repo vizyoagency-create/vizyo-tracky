@@ -65,6 +65,19 @@ export class MissionsController {
     });
   }
 
+  /**
+   * La mission en cours d'un véhicule, ou `null`. Alimente le bandeau de la fiche
+   * véhicule (A2 § 9).
+   *
+   * ⚠️ Déclarée AVANT toute route à paramètre : Nest résout dans l'ordre, et
+   * `vehicle/:vehicleId` serait sinon capté par un `:id` déclaré plus haut.
+   */
+  @Get('vehicle/:vehicleId/current')
+  @RequirePermissions('missions_view')
+  missionEnCours(@Req() req: AuthenticatedRequest, @Param('vehicleId') vehicleId: string) {
+    return this.missions.missionEnCours(req.user, vehicleId);
+  }
+
   /** Les comptes dépôt de la flotte — alimente le sélecteur de destinataire. */
   @Get('depots')
   @RequirePermissions('missions_manage')
