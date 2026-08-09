@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { MissionStatus } from '@prisma/client';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
@@ -6,7 +6,11 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { DepotScopeGuard } from '../depot/depot-scope.guard';
-import { MissionsService, type CreerMissionEntree } from './missions.service';
+import {
+  MissionsService,
+  type CreerMissionEntree,
+  type ModifierMissionEntree,
+} from './missions.service';
 
 /**
  * Espace depot (2026-08) — creation et gestion des missions, cote TRANSPORTEUR.
@@ -86,6 +90,28 @@ export class MissionsController {
     const fin = this.dateValide(endAt);
     if (!debut || !fin) throw new BadRequestException('Créneau invalide');
     return this.missions.disponibiliteVehicules(req.user, debut, fin);
+  }
+
+  /**
+   * Modifier une mission. Le périmètre dépend du statut (A2 § 6) : une mission
+   * planifiée est entièrement modifiable, une mission en cours ne laisse toucher que
+   * l'heure de fin, le conducteur et les notes, une mission terminée que les notes.
+   *
+   * Un champ interdit est **refusé**, jamais ignoré : l'interface ne doit pas pouvoir
+   * afficher une valeur que le serveur n'a pas écrite.
+   *
+   * Renvoie `impactFenetre` quand l'heure de fin bouge sur une mission qui a un dépôt
+   * destinataire — c'est ce qui permet à l'écran de dire « l'accès du dépôt est étendu
+   * de 40 minutes » plutôt qu'un « enregistré » muet.
+   */
+  @Patch(':id')
+  @RequirePermissions('missions_manage')
+  modifier(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() dto: ModifierMissionEntree,
+  ) {
+    return this.missions.modifier(req.user, id, dto);
   }
 
   /**

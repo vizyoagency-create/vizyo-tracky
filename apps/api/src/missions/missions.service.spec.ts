@@ -675,6 +675,157 @@ describe('MissionsService — creation', () => {
     });
   });
 
+  describe('la modification — trois regimes selon le statut (A2 § 6)', () => {
+    const missionEnBase = (statut: MissionStatus, over: Record<string, unknown> = {}) => ({
+      id: 'm-1',
+      ref: 'M-0001',
+      status: statut,
+      startAt: new Date('2026-08-10T08:00:00Z'),
+      endAt: new Date('2026-08-10T11:00:00Z'),
+      vehicleId: 'v-1',
+      depotUserId: 'depot-1',
+      vehicle: { plate: 'FR-482-BX' },
+      ...over,
+    });
+
+    beforeEach(() => {
+      prisma.mission.update = jest.fn().mockResolvedValue({});
+      prisma.vehicleEvent.updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    });
+
+    it('PLANIFIEE : tout est modifiable', async () => {
+      prisma.mission.findFirst
+        .mockResolvedValueOnce(missionEnBase(MissionStatus.PLANNED))
+        .mockResolvedValueOnce(null); // pas de conflit
+      await expect(
+        service.modifier(GESTIONNAIRE, 'm-1', {
+          originLabel: 'Ailleurs',
+          startAt: '2026-08-10T09:00:00Z',
+          endAt: '2026-08-10T12:00:00Z',
+          notes: 'note',
+        }),
+      ).resolves.toBeDefined();
+      expect(prisma.mission.update).toHaveBeenCalled();
+    });
+
+    it.each([
+      [MissionStatus.IN_PROGRESS, 'vehicleId', 'v-2'],
+      [MissionStatus.IN_PROGRESS, 'startAt', '2026-08-10T09:00:00Z'],
+      [MissionStatus.IN_PROGRESS, 'depotUserId', 'depot-2'],
+      [MissionStatus.LATE, 'originLabel', 'Ailleurs'],
+      [MissionStatus.DONE, 'endAt', '2026-08-10T12:00:00Z'],
+      [MissionStatus.CANCELLED, 'notes', 'trop tard'],
+    ])('%s : le champ %s est REFUSE, pas ignore', async (statut, champ, valeur) => {
+      // Ignorer en silence laisserait l'interface afficher une valeur que le serveur
+      // n'a pas ecrite : le gestionnaire croirait avoir change le vehicule d'une
+      // mission en cours, et decouvrirait le contraire en rouvrant la fiche.
+      prisma.mission.findFirst.mockResolvedValue(missionEnBase(statut));
+      await expect(
+        service.modifier(GESTIONNAIRE, 'm-1', { [champ]: valeur } as never),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.mission.update).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [MissionStatus.IN_PROGRESS, 'endAt'],
+      [MissionStatus.LATE, 'endAt'],
+      [MissionStatus.DONE, 'notes'],
+    ])('%s : le champ %s reste autorise', async (statut, champ) => {
+      prisma.mission.findFirst
+        .mockResolvedValueOnce(missionEnBase(statut))
+        .mockResolvedValueOnce(null);
+      const valeur = champ === 'endAt' ? '2026-08-10T12:00:00Z' : 'une note';
+      await expect(
+        service.modifier(GESTIONNAIRE, 'm-1', { [champ]: valeur } as never),
+      ).resolves.toBeDefined();
+    });
+
+    it('LATE autorise endAt — c\'est le cas le plus frequent d\'un retard', async () => {
+      // Repousser l'heure de fin d'une mission en retard est precisement ce qu'un
+      // gestionnaire fait quand la livraison prend du retard.
+      prisma.mission.findFirst
+        .mockResolvedValueOnce(missionEnBase(MissionStatus.LATE))
+        .mockResolvedValueOnce(null);
+      const r = await service.modifier(GESTIONNAIRE, 'm-1', { endAt: '2026-08-10T13:00:00Z' });
+      expect(r.impactFenetre).toMatchObject({ sens: 'ETENDUE', minutes: 120 });
+    });
+
+    it('decrit l\'impact sur la fenetre du depot — etendue', async () => {
+      prisma.mission.findFirst
+        .mockResolvedValueOnce(missionEnBase(MissionStatus.IN_PROGRESS))
+        .mockResolvedValueOnce(null);
+      const r = await service.modifier(GESTIONNAIRE, 'm-1', { endAt: '2026-08-10T11:40:00Z' });
+      expect(r.impactFenetre).toEqual({
+        sens: 'ETENDUE',
+        minutes: 40,
+        nouvelleFin: '2026-08-10T11:40:00.000Z',
+      });
+    });
+
+    it('decrit l\'impact — reduite', async () => {
+      prisma.mission.findFirst
+        .mockResolvedValueOnce(missionEnBase(MissionStatus.IN_PROGRESS))
+        .mockResolvedValueOnce(null);
+      const r = await service.modifier(GESTIONNAIRE, 'm-1', { endAt: '2026-08-10T10:30:00Z' });
+      expect(r.impactFenetre).toMatchObject({ sens: 'REDUITE', minutes: 30 });
+    });
+
+    it('aucun impact a decrire sur une mission INTERNE', async () => {
+      // Sans depot destinataire, aucun tiers n'est concerne : annoncer un impact
+      // serait inventer une consequence qui n'existe pas.
+      prisma.mission.findFirst
+        .mockResolvedValueOnce(missionEnBase(MissionStatus.IN_PROGRESS, { depotUserId: null }))
+        .mockResolvedValueOnce(null);
+      const r = await service.modifier(GESTIONNAIRE, 'm-1', { endAt: '2026-08-10T12:00:00Z' });
+      expect(r.impactFenetre).toBeNull();
+    });
+
+    it('re-verifie le conflit quand le creneau bouge, EN S\'EXCLUANT elle-meme', async () => {
+      // Sans l'exclusion, toute mission serait en conflit avec elle-meme et aucune
+      // modification d'horaire ne passerait jamais.
+      prisma.mission.findFirst
+        .mockResolvedValueOnce(missionEnBase(MissionStatus.PLANNED))
+        .mockResolvedValueOnce(null);
+      await service.modifier(GESTIONNAIRE, 'm-1', { endAt: '2026-08-10T12:00:00Z' });
+      const whereConflit = prisma.mission.findFirst.mock.calls[1][0].where;
+      expect(whereConflit.id).toEqual({ not: 'm-1' });
+    });
+
+    it('deplace l\'evenement d\'agenda avec le creneau', async () => {
+      // Sans cette mise a jour, le camion resterait immobilise sur l'ANCIEN creneau —
+      // et libre sur le nouveau.
+      prisma.mission.findFirst
+        .mockResolvedValueOnce(missionEnBase(MissionStatus.PLANNED))
+        .mockResolvedValueOnce(null);
+      await service.modifier(GESTIONNAIRE, 'm-1', { endAt: '2026-08-10T12:00:00Z' });
+      expect(prisma.vehicleEvent.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ endAt: new Date('2026-08-10T12:00:00Z') }),
+        }),
+      );
+    });
+
+    it('ne touche PAS l\'agenda quand seules les notes changent', async () => {
+      prisma.mission.findFirst.mockResolvedValueOnce(missionEnBase(MissionStatus.DONE));
+      await service.modifier(GESTIONNAIRE, 'm-1', { notes: 'rien de structurel' });
+      expect(prisma.vehicleEvent.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('une modification vide ne fait rien', async () => {
+      prisma.mission.findFirst.mockResolvedValueOnce(missionEnBase(MissionStatus.PLANNED));
+      const r = await service.modifier(GESTIONNAIRE, 'm-1', {});
+      expect(r.impactFenetre).toBeNull();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('refuse une mission hors flotte', async () => {
+      prisma.mission.findFirst.mockResolvedValue(null);
+      await expect(
+        service.modifier(GESTIONNAIRE, 'm-x', { notes: 'x' }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+  });
+
   describe('l\'annulation', () => {
     beforeEach(() => {
       prisma.mission.findFirst.mockResolvedValue({

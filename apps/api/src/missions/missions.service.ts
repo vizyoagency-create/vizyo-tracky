@@ -111,6 +111,52 @@ export interface MissionConducteurDto {
   depotWatching: boolean;
 }
 
+/** Champs qu'une modification peut porter. */
+export interface ModifierMissionEntree {
+  originLabel?: string;
+  destLabel?: string;
+  startAt?: string;
+  endAt?: string;
+  vehicleId?: string;
+  driverId?: string | null;
+  depotUserId?: string | null;
+  notes?: string | null;
+}
+
+type ChampModifiable = keyof ModifierMissionEntree;
+
+/**
+ * Ce qui est modifiable selon le statut (A2 § 6).
+ *
+ * `LATE` suit `IN_PROGRESS` : la mission court encore, le camion roule, et le
+ * gestionnaire doit pouvoir repousser l'heure de fin — c'est meme le cas le plus
+ * frequent quand une livraison prend du retard.
+ */
+const CHAMPS_MODIFIABLES: Record<MissionStatus, ChampModifiable[]> = {
+  [MissionStatus.PLANNED]: [
+    'originLabel', 'destLabel', 'startAt', 'endAt', 'vehicleId', 'driverId', 'depotUserId', 'notes',
+  ],
+  [MissionStatus.IN_PROGRESS]: ['endAt', 'driverId', 'notes'],
+  [MissionStatus.LATE]: ['endAt', 'driverId', 'notes'],
+  [MissionStatus.DONE]: ['notes'],
+  [MissionStatus.CANCELLED]: [],
+};
+
+const LIBELLE_STATUT: Record<MissionStatus, string> = {
+  [MissionStatus.PLANNED]: 'planifiée',
+  [MissionStatus.IN_PROGRESS]: 'en cours',
+  [MissionStatus.LATE]: 'en retard',
+  [MissionStatus.DONE]: 'terminée',
+  [MissionStatus.CANCELLED]: 'annulée',
+};
+
+/** L'effet d'un changement d'heure de fin sur l'accès du dépôt destinataire. */
+export interface ImpactFenetre {
+  sens: 'ETENDUE' | 'REDUITE';
+  minutes: number;
+  nouvelleFin: string;
+}
+
 export interface ResultatCreation {
   mission: { id: string; ref: string };
   /** Avertissements NON bloquants — ex. vehicule sans boitier. */
@@ -442,6 +488,132 @@ export class MissionsService {
       enRetard,
       vehiculesIndisponibles: vehiculesOccupes.size,
       depotsDestinataires: depots.size,
+    };
+  }
+
+  /**
+   * Modifier une mission. Trois regimes selon le statut (A2 § 6).
+   *
+   *   PLANNED      entierement modifiable
+   *   IN_PROGRESS  seuls endAt, le conducteur et les notes
+   *   LATE         idem IN_PROGRESS — la mission court encore
+   *   DONE         les notes seulement
+   *   CANCELLED    rien
+   *
+   * ⚠️ Un champ interdit est REFUSE, jamais ignore en silence. Ignorer laisserait
+   * l'interface afficher une valeur que le serveur n'a pas ecrite : le gestionnaire
+   * croirait avoir change le vehicule d'une mission en cours, et decouvrirait le
+   * contraire en rouvrant la fiche.
+   */
+  async modifier(
+    user: AuthUser,
+    missionId: string,
+    modifs: ModifierMissionEntree,
+  ): Promise<{ impactFenetre: ImpactFenetre | null }> {
+    const fleetId = this.fleetDe(user);
+    const mission = await this.prisma.mission.findFirst({
+      where: { id: missionId, fleetId },
+      select: {
+        id: true, ref: true, status: true, startAt: true, endAt: true,
+        vehicleId: true, depotUserId: true, vehicle: { select: { plate: true } },
+      },
+    });
+    if (!mission) throw new ForbiddenException('Mission hors de votre flotte');
+
+    const autorises = CHAMPS_MODIFIABLES[mission.status];
+    const demandes = Object.keys(modifs).filter(
+      (k) => modifs[k as keyof ModifierMissionEntree] !== undefined,
+    );
+    const refuses = demandes.filter((c) => !autorises.includes(c as ChampModifiable));
+    if (refuses.length > 0) {
+      throw new BadRequestException(
+        `Sur une mission ${LIBELLE_STATUT[mission.status]}, ces champs ne sont pas modifiables : ${refuses.join(', ')}`,
+      );
+    }
+    if (demandes.length === 0) return { impactFenetre: null };
+
+    // Le creneau bouge : il faut re-verifier le conflit ET synchroniser l'agenda.
+    const nouveauDebut = modifs.startAt ? new Date(modifs.startAt) : mission.startAt;
+    const nouvelleFin = modifs.endAt ? new Date(modifs.endAt) : mission.endAt;
+    const creneauBouge =
+      nouveauDebut.getTime() !== mission.startAt.getTime() ||
+      nouvelleFin.getTime() !== mission.endAt.getTime();
+
+    if (creneauBouge) {
+      this.validerCreneau(nouveauDebut.toISOString(), nouvelleFin.toISOString());
+      await this.refuserSiCreneauOccupe(
+        mission.vehicleId,
+        mission.vehicle.plate,
+        nouveauDebut,
+        nouvelleFin,
+        mission.id, // s'exclure soi-meme, sinon toute mission serait en conflit avec elle-meme
+      );
+    }
+
+    if (modifs.vehicleId && modifs.vehicleId !== mission.vehicleId) {
+      const v = await this.prisma.vehicle.findFirst({
+        where: { id: modifs.vehicleId, fleetId },
+        select: { id: true, plate: true },
+      });
+      if (!v) throw new ForbiddenException('Vehicule hors de votre flotte');
+      await this.refuserSiCreneauOccupe(v.id, v.plate, nouveauDebut, nouvelleFin, mission.id);
+    }
+    if (modifs.depotUserId !== undefined) await this.validerDepot(modifs.depotUserId, fleetId);
+    if (modifs.driverId !== undefined) await this.validerConducteur(modifs.driverId, fleetId);
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.mission.update({
+        where: { id: mission.id },
+        data: {
+          ...(modifs.originLabel !== undefined ? { originLabel: modifs.originLabel } : {}),
+          ...(modifs.destLabel !== undefined ? { destLabel: modifs.destLabel } : {}),
+          ...(modifs.startAt !== undefined ? { startAt: nouveauDebut } : {}),
+          ...(modifs.endAt !== undefined ? { endAt: nouvelleFin } : {}),
+          ...(modifs.vehicleId !== undefined ? { vehicleId: modifs.vehicleId } : {}),
+          ...(modifs.driverId !== undefined ? { driverId: modifs.driverId } : {}),
+          ...(modifs.depotUserId !== undefined ? { depotUserId: modifs.depotUserId } : {}),
+          ...(modifs.notes !== undefined ? { notes: modifs.notes } : {}),
+        },
+      });
+
+      // L'evenement d'agenda suit le creneau ET le vehicule. Sans cette mise a jour,
+      // le camion resterait immobilise sur l'ANCIEN creneau — et libre sur le nouveau.
+      if (creneauBouge || modifs.vehicleId) {
+        await tx.vehicleEvent.updateMany({
+          where: {
+            type: VehicleEventType.MISSION,
+            metadata: { path: ['missionId'], equals: mission.id },
+          },
+          data: {
+            ...(creneauBouge ? { startAt: nouveauDebut, endAt: nouvelleFin } : {}),
+            ...(modifs.vehicleId ? { vehicleId: modifs.vehicleId } : {}),
+          },
+        });
+      }
+    });
+
+    this.logger.log(`Mission ${mission.ref} modifiee par ${user.id} : ${demandes.join(', ')}`);
+    return { impactFenetre: this.decrireImpact(mission, nouvelleFin) };
+  }
+
+  /**
+   * Ce que le changement d'heure de fin fait a l'acces du depot.
+   *
+   * A2 § 6 : « Changer endAt d'une mission en cours ETEND OU REDUIT la fenetre d'acces
+   * du depot — le dire dans la confirmation. » Le serveur decrit donc l'impact, plutot
+   * que de laisser chaque ecran le recalculer et le formuler a sa facon.
+   */
+  private decrireImpact(
+    mission: { depotUserId: string | null; endAt: Date; status: MissionStatus },
+    nouvelleFin: Date,
+  ): ImpactFenetre | null {
+    if (!mission.depotUserId) return null; // mission interne : aucun tiers concerne
+    const ecartMinutes = Math.round((nouvelleFin.getTime() - mission.endAt.getTime()) / 60_000);
+    if (ecartMinutes === 0) return null;
+    return {
+      sens: ecartMinutes > 0 ? 'ETENDUE' : 'REDUITE',
+      minutes: Math.abs(ecartMinutes),
+      nouvelleFin: nouvelleFin.toISOString(),
     };
   }
 

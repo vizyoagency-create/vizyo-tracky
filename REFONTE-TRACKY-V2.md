@@ -12,7 +12,7 @@
 |---|---|---|:-:|:-:|
 | **Étape 0** | Socle : `design/DECISIONS.md`, `TOKENS.md`, `ICONS.md` | tout | 🟡 quasi livré | 27 / 32 |
 | **A1** | Rôle `DEPOT`, permissions, isolation backend | A2 A3 A5 | 🟢 **livré** | 68 / 76 |
-| **A2** | Modèle `Mission`, agenda, indisponibilité véhicule | A3 A4 | 🟡 **quasi livré** | 78 / 103 |
+| **A2** | Modèle `Mission`, agenda, indisponibilité véhicule | A3 A4 | 🟡 **quasi livré** | 88 / 103 |
 | **A5** | Invitation, comptes dépôt, matrice | — | ⬜ à faire | 0 / 44 |
 | **A3** | Espace `/depot` : 4 onglets × 3 plateformes | A4 | ⬜ à faire | 0 / 98 |
 | **A4** | Lien public `/s/:token`, expiration, révocation | — | ⬜ à faire | 0 / 98 |
@@ -579,7 +579,11 @@ première position, retard, clôture sans mouvement) · la synchronisation missi
 - [x] **Modale de création** — 9 champs, liseré accent sur les heures, **bloc de conséquence** (les 3 effets invisibles écrits avant de valider) et **ligne de périmètre** sous le champ dépôt
 - [x] **Niveau 1 du conflit** — `GET /missions/vehicle-availability` : les véhicules occupés sont **affichés et grisés avec leur motif**, jamais masqués. La liste se recharge à chaque changement de créneau
 - [x] Le `409` de conflit rendu en clair, avec la mission bloquante et son créneau
-- [ ] Endpoint de modification (`PLANNED` entièrement · `IN_PROGRESS` seuls `endAt`, conducteur, notes)
+- [x] **Endpoint de modification** — `PATCH /missions/:id`, trois régimes selon le statut (`PLANNED` tout · `IN_PROGRESS`/`LATE` seuls `endAt`, conducteur, notes · `DONE` les notes · `CANCELLED` rien)
+- [x] Un champ interdit est **refusé et nommé**, jamais ignoré en silence — sinon l'interface afficherait une valeur que le serveur n'a pas écrite
+- [x] **`impactFenetre`** renvoyé quand `endAt` bouge sur une mission qui a un dépôt : « ÉTENDUE de 40 minutes ». A2 § 6 exige de le dire dans la confirmation
+- [x] Le conflit est re-vérifié **en s'excluant soi-même**, et l'événement d'agenda suit le créneau et le véhicule
+- [x] Vérifié par HTTP : impact décrit, agenda synchronisé au millième, champ interdit → `400` nommant le champ
 - [x] **Niveau 2 du conflit** — bloc « Créneau indisponible » : les véhicules bloqués avec leur mission, le **prochain créneau libre réellement calculé**, et le bouton « Décaler à HH:MM » qui reporte le créneau en conservant la durée et présélectionne le véhicule
 - [x] Le calcul enjambe plusieurs missions et trouve les **trous entre deux missions** — 6 tests unitaires + vérifié sur base réelle (flotte saturée à 7/7)
 - [x] Horizon de 14 jours : au-delà, on répond « rien ne se dégage » plutôt que de proposer une date dans 4 mois
