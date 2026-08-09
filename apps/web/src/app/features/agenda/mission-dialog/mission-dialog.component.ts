@@ -60,7 +60,15 @@ interface ConflitMission {
   template: `
     <div class="md-backdrop" (click)="fermer.emit()"></div>
     <div class="md-panel" role="dialog" aria-modal="true" aria-labelledby="md-titre">
+      <!-- Poignée de feuille — mobile uniquement. Sa géométrie suit la plateforme
+           (36 × 5 sur iOS, 32 × 4 sur Android) : c'est un des trois écarts que B1
+           déclare volontaires. -->
+      <div class="md-poignee" aria-hidden="true"><span></span></div>
+
       <header class="md-head">
+        <!-- En-tête iOS « Annuler / Terminé » : sur une feuille, le geste attendu est
+             en haut, pas en bas. Sur Android et sur PC, les actions restent en pied. -->
+        <button type="button" class="md-ios-annuler" (click)="fermer.emit()">Annuler</button>
         <h2 id="md-titre"><lucide-icon [img]="Route" [size]="18" />Nouvelle mission</h2>
         <button type="button" class="md-x" (click)="fermer.emit()" aria-label="Fermer">
           <lucide-icon [img]="X" [size]="18" />
@@ -313,7 +321,67 @@ interface ConflitMission {
                         color: var(--accent-ink); font-weight: 700; }
     .md-btn--primaire:disabled { opacity: .5; cursor: not-allowed; }
 
-    @media (max-width: 560px) { .md-grid { grid-template-columns: 1fr; } }
+    /* Poignée et en-tête iOS : absents du rendu PC. */
+    .md-poignee, .md-ios-annuler { display: none; }
+
+    /* ═══ MOBILE : la modale devient une FEUILLE BASSE ═══════════════════════
+       « Modale sur PC, feuille sur mobile » — cinquième règle du kit partagé
+       (B1 § H). Une modale centrée sur 390 px laisse des marges inutiles et se
+       ferme par un geste que personne ne trouve. */
+    @media (max-width: 767px) {
+      .md-grid { grid-template-columns: 1fr; }
+
+      .md-panel {
+        top: auto; left: 0; right: 0; bottom: 0;
+        transform: none;
+        width: 100%;
+        max-width: none;
+        /* Rayon de la plateforme : 22 px sur iOS, 28 px sur Android. */
+        border-radius: var(--feuille-rayon) var(--feuille-rayon) 0 0;
+        max-height: 92vh;
+        /* Le pouce doit atteindre le pied de feuille sans masquer le contenu. */
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+
+      .md-poignee { display: flex; justify-content: center; padding: 9px 0 3px; }
+      .md-poignee span {
+        display: block;
+        width: var(--feuille-poignee-l);
+        height: var(--feuille-poignee-h);
+        border-radius: 9999px;
+        background: var(--border-strong-color);
+      }
+
+      /* Cibles ≥ 44 px : critère de recette 7 de B1. */
+      .md-champ input, .md-champ select, .md-champ textarea { min-height: 44px; font-size: 16px; }
+      .md-btn { min-height: 44px; }
+    }
+
+    /* ─── iOS : en-tête « Annuler / Terminé » ────────────────────────────────
+       Sur une feuille iOS, l'utilisateur cherche l'annulation EN HAUT À GAUCHE.
+       Android garde ses actions en pied, conformément à M3 — c'est le troisième
+       écart volontaire, avec la poignée et le rayon.
+
+       ⚠️ :host-context() est OBLIGATOIRE ici, et non un sélecteur d'ancêtre direct.
+       L'encapsulation émulée d'Angular réécrit body.plat-ios .x en
+       body.plat-ios[_ngcontent-xxx] .x[_ngcontent-xxx] — elle colle l'attribut de
+       scope sur body, qui ne le porte pas. La règle ne peut alors JAMAIS s'appliquer,
+       et elle échoue EN SILENCE : pas d'erreur, pas d'avertissement, juste un style
+       qui n'arrive pas. Constaté le 2026-08-09 en inspectant la règle dans la page. */
+    @media (max-width: 767px) {
+      :host-context(body.plat-ios) .md-head { justify-content: space-between; }
+      :host-context(body.plat-ios) .md-ios-annuler {
+        display: inline-block;
+        background: none; border: 0; padding: 0;
+        font-family: inherit; font-size: 15px; color: var(--color-tracky-light);
+        cursor: pointer;
+      }
+      :host-context(body.plat-ios) .md-head h2 { font-size: 15px; }
+      :host-context(body.plat-ios) .md-x { display: none; }
+      /* Le bouton « Annuler » du pied fait doublon avec l'en-tête iOS. */
+      :host-context(body.plat-ios) .md-pied .md-btn:not(.md-btn--primaire) { display: none; }
+      :host-context(body.plat-ios) .md-pied .md-btn--primaire { flex: 1; }
+    }
   `],
 })
 export class MissionDialogComponent {

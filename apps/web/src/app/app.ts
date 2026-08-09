@@ -9,6 +9,7 @@ import { PwaUpdateService } from './core/services/pwa-update.service';
 import { RealtimeService } from './core/services/realtime.service';
 import { ThemeService } from './core/theme/theme.service';
 import { ToastContainerComponent } from './shared/ui/toast/toast-container.component';
+import { appliquerPlateforme } from './shared/utils/platform';
 import { UpdateRequiredModalComponent } from './shared/ui/update-required-modal/update-required-modal.component';
 
 @Component({
@@ -34,6 +35,11 @@ export class App implements OnInit {
   private readonly activityTracker = inject(ActivityTrackerService);
 
   ngOnInit(): void {
+    // Refonte v2 — pose `plat-ios` / `plat-android` / `plat-bureau` sur <body>. Les
+    // 3 écarts de géométrie (poignée, rayon, densité) sont VOLONTAIRES : les aplatir
+    // donnerait une application étrangère sur les deux plateformes (B1 § système de
+    // référence). Fait en premier : des composants montés plus bas les consomment.
+    appliquerPlateforme();
     // Charger les préférences si déjà authentifié (refresh page)
     const user = this.auth.user();
     if (user?.sub) {

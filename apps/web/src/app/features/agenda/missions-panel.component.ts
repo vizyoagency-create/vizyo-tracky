@@ -99,6 +99,33 @@ const FILTRES = [
         @if (filtre()) { Aucune mission pour ce filtre. } @else { Aucune mission créée pour l'instant. }
       </p>
     } @else {
+      <!-- ═══ MOBILE : des CARTES, pas un tableau ════════════════════════════
+           Un tableau à 6 colonnes sur 390 px impose un défilement horizontal, que
+           B1 (critère 5) et A3 § 3 interdisent tous les deux. La carte porte la
+           même information, empilée, à la densité de la plateforme. -->
+      <ul class="mp-cartes">
+        @for (m of missions(); track m.id) {
+          <li class="mp-carte">
+            <div class="mp-carte-tete">
+              <span class="mp-ref">{{ m.ref }}</span>
+              <span class="vt-status" [class]="classeStatut(m.status)">
+                <span class="vt-status__dot"></span>{{ libelleStatut(m.status) }}
+              </span>
+            </div>
+            <p class="mp-carte-trajet">{{ m.origin }} → {{ m.destination }}</p>
+            <div class="mp-carte-pied">
+              <span class="mp-plate">{{ m.plate }}</span>
+              <span class="mp-carte-creneau">{{ jour(m.startAt) }} · {{ heure(m.startAt) }} → {{ heure(m.endAt) }}</span>
+            </div>
+            @if (m.depotName) {
+              <span class="mp-depot"><lucide-icon [img]="Warehouse" [size]="13" />{{ m.depotName }}</span>
+            } @else {
+              <span class="mp-interne">Mission interne</span>
+            }
+          </li>
+        }
+      </ul>
+
       <div class="mp-table-wrap">
         <table class="mp-table">
           <thead>
@@ -177,6 +204,26 @@ const FILTRES = [
     .mp-creneau span { display: block; font-family: var(--font-mono); font-size: 11.5px; color: var(--text-tertiary); }
     .mp-depot { display: inline-flex; align-items: center; gap: 6px; color: var(--violet); font-weight: 600; font-size: 12.5px; }
     .mp-interne { font-size: 12px; color: var(--text-tertiary); font-style: italic; }
+    /* ─── Cartes mobiles ────────────────────────────────────────────────────
+       Masquées sur large écran ; c'est le tableau qui prend le relais. On ne
+       duplique pas la donnée : le même signal alimente les deux rendus. */
+    .mp-cartes { display: none; }
+    @media (max-width: 767px) {
+      .mp-table-wrap { display: none; }
+      .mp-cartes { display: flex; flex-direction: column; gap: 9px; margin: 0; padding: 0; list-style: none; }
+    }
+    .mp-carte { display: flex; flex-direction: column; gap: 7px; padding: 13px 14px;
+                border-radius: 14px; background: var(--surface-secondary);
+                border: 1px solid var(--border-color);
+                /* Densité de la plateforme : 44 px sur iOS, 56 px sur Android. */
+                min-height: var(--densite-liste); }
+    .mp-carte-tete { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .mp-carte-trajet { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.35;
+                       color: var(--text-primary); }
+    .mp-carte-pied { display: flex; align-items: baseline; justify-content: space-between;
+                     gap: 10px; flex-wrap: wrap; }
+    .mp-carte-creneau { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-tertiary); }
+
     .mp-vide { padding: 40px 0; text-align: center; font-size: 13.5px; color: var(--text-tertiary); }
     .mp-sk { display: flex; flex-direction: column; gap: 8px; }
     .mp-sk-ligne { height: 46px; border-radius: 12px; }

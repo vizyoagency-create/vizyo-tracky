@@ -89,6 +89,37 @@
   --sk-hi: rgba(10, 25, 18, 0.085);
 }
 
+/* ─── Géométrie de plateforme (refonte v2) ──────────────────────────────────
+ *
+ * Les 3 écarts iOS/Android sont VOLONTAIRES, pas des oublis (design/B1-PAGES.md
+ * § « Le système de référence ») :
+ *
+ *              iOS        Android
+ *   poignée    36 × 5     32 × 4
+ *   rayon      22 px      28 px
+ *   densité    44 px      56 px
+ *
+ * « Les aplatir donne une application étrangère sur les deux plateformes. »
+ *
+ * Aucun composant ne teste la plateforme dans son template : il consomme ces
+ * variables et suit. C'est ce qui évite que chaque écran réinvente sa condition —
+ * et se trompe. La classe est posée par `shared/utils/platform.ts`.
+ *
+ * Le repli (hors iOS/Android) prend la géométrie iOS, plus sobre sur un écran large.
+ */
+:root {
+  --feuille-rayon: 22px;
+  --feuille-poignee-l: 36px;
+  --feuille-poignee-h: 5px;
+  --densite-liste: 44px;
+}
+body.plat-android {
+  --feuille-rayon: 28px;
+  --feuille-poignee-l: 32px;
+  --feuille-poignee-h: 4px;
+  --densite-liste: 56px;
+}
+
 /* Aliases — bare names used directly in component styles (without --color- prefix). */
 :root {
   --bg-primary: var(--surface-primary);

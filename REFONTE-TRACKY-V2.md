@@ -12,7 +12,7 @@
 |---|---|---|:-:|:-:|
 | **Étape 0** | Socle : `design/DECISIONS.md`, `TOKENS.md`, `ICONS.md` | tout | 🟡 quasi livré | 27 / 32 |
 | **A1** | Rôle `DEPOT`, permissions, isolation backend | A2 A3 A5 | 🟢 **livré** | 68 / 76 |
-| **A2** | Modèle `Mission`, agenda, indisponibilité véhicule | A3 A4 | 🟡 **quasi livré** | 88 / 103 |
+| **A2** | Modèle `Mission`, agenda, indisponibilité véhicule | A3 A4 | 🟢 **livré** | 93 / 103 |
 | **A5** | Invitation, comptes dépôt, matrice | — | ⬜ à faire | 0 / 44 |
 | **A3** | Espace `/depot` : 4 onglets × 3 plateformes | A4 | ⬜ à faire | 0 / 98 |
 | **A4** | Lien public `/s/:token`, expiration, révocation | — | ⬜ à faire | 0 / 98 |
@@ -587,7 +587,11 @@ première position, retard, clôture sans mouvement) · la synchronisation missi
 - [x] **Niveau 2 du conflit** — bloc « Créneau indisponible » : les véhicules bloqués avec leur mission, le **prochain créneau libre réellement calculé**, et le bouton « Décaler à HH:MM » qui reporte le créneau en conservant la durée et présélectionne le véhicule
 - [x] Le calcul enjambe plusieurs missions et trouve les **trous entre deux missions** — 6 tests unitaires + vérifié sur base réelle (flotte saturée à 7/7)
 - [x] Horizon de 14 jours : au-delà, on répond « rien ne se dégage » plutôt que de proposer une date dans 4 mois
-- [ ] Déclinaisons iOS et Android
+- [x] **Déclinaisons iOS et Android** — socle de plateforme (`shared/utils/platform.ts` + jetons `--feuille-*` / `--densite-liste` dans `styles.css`) : aucun composant ne teste la plateforme dans son template, il consomme les variables. **Réutilisable par tout le bloc B**
+- [x] Liste en **cartes** sous 768 px, tableau au-delà — un tableau à 6 colonnes sur 390 px imposerait un défilement horizontal, interdit par B1 (critère 5) et A3 § 3
+- [x] Modale → **feuille basse** sur mobile, avec les 3 écarts volontaires **vérifiés à l'écran** : rayon 22/28 px · poignée 36×5 / 32×4 · densité 44/56 px
+- [x] En-tête « Annuler » sur iOS (la croix disparaît), actions en pied sur Android — conforme à M3
+- [x] Contrôlé aux trois largeurs : **aucun débordement horizontal**, aucune cible sous 44 px
 - [ ] Bandeau « en mission » sur la fiche véhicule
 - [ ] Modèles de tournée — *explicitement non bloquant, livrable après A4 (A2 § 7)*
 - [ ] ⏸️ **Vérification visuelle de l'onglet** — bloquée : le panneau navigateur n'est pas affiché, la page ne compose aucune image
