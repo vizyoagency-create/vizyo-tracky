@@ -51,6 +51,31 @@ export interface CreerMissionEntree {
   notes?: string | null;
 }
 
+/** Une ligne du tableau des missions, cote transporteur (A2 § 6). */
+export interface MissionListeDto {
+  id: string;
+  ref: string;
+  origin: string;
+  destination: string;
+  startAt: string;
+  endAt: string;
+  status: MissionStatus;
+  plate: string;
+  driverName: string | null;
+  depotId: string | null;
+  depotName: string | null;
+}
+
+/** Les 5 compteurs en tete de l'onglet Missions. */
+export interface CompteursMissions {
+  enCours: number;
+  planifiees: number;
+  enRetard: number;
+  /** Vehicules DISTINCTS immobilises — le lien visible avec l'effet 2. */
+  vehiculesIndisponibles: number;
+  depotsDestinataires: number;
+}
+
 /** Ce qu'un CONDUCTEUR voit de sa propre mission. Aucune donnee du depot. */
 export interface MissionConducteurDto {
   id: string;
@@ -177,6 +202,147 @@ export class MissionsService {
     }
 
     return { mission, avertissements };
+  }
+
+  /**
+   * La liste des missions de la flotte, avec ses 5 compteurs (A2 § 6).
+   *
+   * Les compteurs sont calcules COTE SERVEUR, en une passe sur le meme jeu de lignes :
+   * les recalculer cote client obligerait a servir toutes les missions de la flotte
+   * pour afficher cinq nombres.
+   */
+  async lister(
+    user: AuthUser,
+    filtres: { status?: MissionStatus; depotUserId?: string; from?: Date; to?: Date },
+  ): Promise<{ missions: MissionListeDto[]; compteurs: CompteursMissions }> {
+    const fleetId = this.fleetDe(user);
+
+    const lignes = await this.prisma.mission.findMany({
+      where: {
+        fleetId,
+        ...(filtres.status ? { status: filtres.status } : {}),
+        ...(filtres.depotUserId ? { depotUserId: filtres.depotUserId } : {}),
+        ...(filtres.from ? { startAt: { gte: filtres.from } } : {}),
+        ...(filtres.to ? { endAt: { lte: filtres.to } } : {}),
+      },
+      select: {
+        id: true,
+        ref: true,
+        originLabel: true,
+        destLabel: true,
+        startAt: true,
+        endAt: true,
+        status: true,
+        vehicleId: true,
+        vehicle: { select: { plate: true } },
+        driver: { select: { firstName: true, lastName: true } },
+        depotUser: { select: { id: true, firstName: true, lastName: true, email: true } },
+      },
+      orderBy: [{ startAt: 'desc' }],
+      take: 500,
+    });
+
+    const missions = lignes.map((m) => ({
+      id: m.id,
+      ref: m.ref,
+      origin: m.originLabel,
+      destination: m.destLabel,
+      startAt: m.startAt.toISOString(),
+      endAt: m.endAt.toISOString(),
+      status: m.status,
+      plate: m.vehicle.plate,
+      driverName: m.driver ? `${m.driver.firstName} ${m.driver.lastName}`.trim() : null,
+      depotId: m.depotUser?.id ?? null,
+      depotName: m.depotUser
+        ? `${m.depotUser.firstName ?? ''} ${m.depotUser.lastName ?? ''}`.trim() || m.depotUser.email
+        : null,
+    }));
+
+    return { missions, compteurs: this.compter(lignes) };
+  }
+
+  /**
+   * Les 5 compteurs d'A2 § 6.
+   *
+   * « Vehicules indisponibles » est le lien avec l'effet 2 : il rend VISIBLE le cout
+   * des missions sur la disponibilite de la flotte. Un gestionnaire qui ne voit pas ce
+   * chiffre ne comprend pas pourquoi il ne lui reste plus rien a reserver.
+   *
+   * Il compte les vehicules DISTINCTS, pas les missions : trois missions sur le meme
+   * camion n'immobilisent qu'un camion.
+   */
+  private compter(
+    lignes: Array<{ status: MissionStatus; vehicleId: string; depotUser: { id: string } | null }>,
+  ): CompteursMissions {
+    const vehiculesOccupes = new Set<string>();
+    const depots = new Set<string>();
+    let enCours = 0;
+    let planifiees = 0;
+    let enRetard = 0;
+
+    for (const l of lignes) {
+      if (l.status === MissionStatus.IN_PROGRESS) enCours++;
+      if (l.status === MissionStatus.PLANNED) planifiees++;
+      if (l.status === MissionStatus.LATE) enRetard++;
+      if (STATUTS_OCCUPANTS.includes(l.status)) vehiculesOccupes.add(l.vehicleId);
+      if (l.depotUser) depots.add(l.depotUser.id);
+    }
+
+    return {
+      enCours,
+      planifiees,
+      enRetard,
+      vehiculesIndisponibles: vehiculesOccupes.size,
+      depotsDestinataires: depots.size,
+    };
+  }
+
+  /**
+   * Annuler une mission. Le motif est OBLIGATOIRE (A2 § 6).
+   *
+   * Trois effets : le vehicule est libere, le depot conserve la mission dans son
+   * historique avec la mention « Annulee par le transporteur », et l'evenement
+   * d'agenda passe en CANCELLED — sans quoi le vehicule resterait bloque.
+   */
+  async annuler(user: AuthUser, missionId: string, motif: string): Promise<void> {
+    const fleetId = this.fleetDe(user);
+    const propre = (motif ?? '').trim();
+    if (propre.length < 3) {
+      // Un motif vide rendrait la mention « Annulee par le transporteur » muette pour
+      // le depot, qui rappellerait pour demander pourquoi.
+      throw new BadRequestException("Un motif d'annulation est obligatoire");
+    }
+
+    const mission = await this.prisma.mission.findFirst({
+      where: { id: missionId, fleetId },
+      select: { id: true, ref: true, status: true },
+    });
+    if (!mission) throw new ForbiddenException('Mission hors de votre flotte');
+    if (mission.status === MissionStatus.DONE || mission.status === MissionStatus.CANCELLED) {
+      throw new BadRequestException('Cette mission est deja terminee ou annulee');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.mission.update({
+        where: { id: missionId },
+        data: {
+          status: MissionStatus.CANCELLED,
+          cancelledAt: new Date(),
+          cancelReason: propre,
+        },
+      });
+      // Libere le vehicule : sans cette mise a jour, l'evenement resterait immobilisant
+      // et le camion demeurerait inreservable jusqu'a la fin du creneau annule.
+      await tx.vehicleEvent.updateMany({
+        where: {
+          type: VehicleEventType.MISSION,
+          metadata: { path: ['missionId'], equals: missionId },
+        },
+        data: { status: VehicleEventStatus.CANCELLED },
+      });
+    });
+
+    this.logger.log(`Mission ${mission.ref} annulee par ${user.id} — motif : ${propre}`);
   }
 
   /**

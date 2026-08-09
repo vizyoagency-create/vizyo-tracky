@@ -25,8 +25,8 @@ describe('MissionsService — creation', () => {
     vehicle: { findFirst: jest.Mock };
     user: { findFirst: jest.Mock; findUnique: jest.Mock };
     driver: { findFirst: jest.Mock };
-    mission: { findFirst: jest.Mock; create: jest.Mock; findMany: jest.Mock };
-    vehicleEvent: { create: jest.Mock };
+    mission: { findFirst: jest.Mock; create: jest.Mock; findMany: jest.Mock; update: jest.Mock };
+    vehicleEvent: { create: jest.Mock; updateMany: jest.Mock };
     $transaction: jest.Mock;
     $queryRaw: jest.Mock;
   };
@@ -57,8 +57,12 @@ describe('MissionsService — creation', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 'm-1', ref: 'M-0001' }),
         findMany: jest.fn().mockResolvedValue([]),
+        update: jest.fn().mockResolvedValue({}),
       },
-      vehicleEvent: { create: jest.fn().mockResolvedValue({ id: 'ev-1' }) },
+      vehicleEvent: {
+        create: jest.fn().mockResolvedValue({ id: 'ev-1' }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
       $queryRaw: jest.fn().mockResolvedValue([]),
       $transaction: jest.fn(),
     };
@@ -441,6 +445,116 @@ describe('MissionsService — creation', () => {
       prisma.driver.findFirst.mockResolvedValue(null);
       await expect(service.missionsDuConducteur({ id: 'u-x' } as AuthUser)).resolves.toEqual([]);
       expect(prisma.mission.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('la liste et ses 5 compteurs', () => {
+    const ligne = (over: Record<string, unknown> = {}) => ({
+      id: 'm-1', ref: 'M-0001', originLabel: 'A', destLabel: 'B',
+      startAt: new Date(), endAt: new Date(), status: MissionStatus.IN_PROGRESS,
+      vehicleId: 'v-1', vehicle: { plate: 'FR-1' }, driver: null, depotUser: null,
+      ...over,
+    });
+
+    it('compte les VEHICULES distincts, pas les missions', async () => {
+      // Trois missions sur le meme camion n'immobilisent qu'un camion. Compter les
+      // missions afficherait « 3 vehicules indisponibles » sur une flotte de 7, et le
+      // gestionnaire chercherait longtemps les deux autres.
+      prisma.mission.findMany.mockResolvedValue([
+        ligne({ vehicleId: 'v-1' }),
+        ligne({ id: 'm-2', vehicleId: 'v-1' }),
+        ligne({ id: 'm-3', vehicleId: 'v-2' }),
+      ]);
+      const { compteurs } = await service.lister(GESTIONNAIRE, {});
+      expect(compteurs.vehiculesIndisponibles).toBe(2);
+    });
+
+    it('n\'immobilise PAS sur une mission terminee ou annulee', async () => {
+      prisma.mission.findMany.mockResolvedValue([
+        ligne({ status: MissionStatus.DONE, vehicleId: 'v-1' }),
+        ligne({ id: 'm-2', status: MissionStatus.CANCELLED, vehicleId: 'v-2' }),
+      ]);
+      const { compteurs } = await service.lister(GESTIONNAIRE, {});
+      expect(compteurs.vehiculesIndisponibles).toBe(0);
+    });
+
+    it('compte les depots DISTINCTS', async () => {
+      prisma.mission.findMany.mockResolvedValue([
+        ligne({ depotUser: { id: 'd-1', firstName: 'Depot', lastName: 'A', email: 'a@x.fr' } }),
+        ligne({ id: 'm-2', depotUser: { id: 'd-1', firstName: 'Depot', lastName: 'A', email: 'a@x.fr' } }),
+        ligne({ id: 'm-3', depotUser: { id: 'd-2', firstName: 'Depot', lastName: 'B', email: 'b@x.fr' } }),
+      ]);
+      const { compteurs } = await service.lister(GESTIONNAIRE, {});
+      expect(compteurs.depotsDestinataires).toBe(2);
+    });
+
+    it('ventile en cours / planifiees / en retard', async () => {
+      prisma.mission.findMany.mockResolvedValue([
+        ligne({ status: MissionStatus.IN_PROGRESS }),
+        ligne({ id: 'm-2', status: MissionStatus.PLANNED }),
+        ligne({ id: 'm-3', status: MissionStatus.LATE }),
+        ligne({ id: 'm-4', status: MissionStatus.LATE }),
+      ]);
+      const { compteurs } = await service.lister(GESTIONNAIRE, {});
+      expect(compteurs).toMatchObject({ enCours: 1, planifiees: 1, enRetard: 2 });
+    });
+
+    it('borne toujours a la flotte de l\'utilisateur', async () => {
+      await service.lister(GESTIONNAIRE, {});
+      expect(prisma.mission.findMany.mock.calls[0][0].where.fleetId).toBe('f-1');
+    });
+
+    it('nomme les missions internes plutot que de laisser un vide', async () => {
+      prisma.mission.findMany.mockResolvedValue([ligne({ depotUser: null })]);
+      const { missions } = await service.lister(GESTIONNAIRE, {});
+      expect(missions[0].depotName).toBeNull();
+      expect(missions[0].depotId).toBeNull();
+    });
+  });
+
+  describe('l\'annulation', () => {
+    beforeEach(() => {
+      prisma.mission.findFirst.mockResolvedValue({
+        id: 'm-1', ref: 'M-0001', status: MissionStatus.PLANNED,
+      });
+      prisma.mission.update = jest.fn().mockResolvedValue({});
+      prisma.vehicleEvent.updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    });
+
+    it('exige un motif', async () => {
+      // Sans motif, la mention « Annulee par le transporteur » que lit le depot serait
+      // muette — et il rappellerait pour demander pourquoi.
+      await expect(service.annuler(GESTIONNAIRE, 'm-1', '  ')).rejects.toThrow(/motif/i);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('LIBERE le vehicule en passant l\'evenement d\'agenda en CANCELLED', async () => {
+      // Sans cette mise a jour, l'evenement resterait immobilisant et le camion
+      // demeurerait inreservable jusqu'a la fin du creneau annule.
+      await service.annuler(GESTIONNAIRE, 'm-1', 'client absent');
+      expect(prisma.vehicleEvent.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { status: 'CANCELLED' } }),
+      );
+    });
+
+    it('conserve le motif sur la mission', async () => {
+      await service.annuler(GESTIONNAIRE, 'm-1', 'client absent');
+      expect(prisma.mission.update.mock.calls[0][0].data).toMatchObject({
+        status: MissionStatus.CANCELLED,
+        cancelReason: 'client absent',
+      });
+    });
+
+    it('refuse une mission deja terminee', async () => {
+      prisma.mission.findFirst.mockResolvedValue({ id: 'm-1', ref: 'M', status: MissionStatus.DONE });
+      await expect(service.annuler(GESTIONNAIRE, 'm-1', 'trop tard')).rejects.toThrow(/deja terminee/);
+    });
+
+    it('refuse une mission hors flotte', async () => {
+      prisma.mission.findFirst.mockResolvedValue(null);
+      await expect(service.annuler(GESTIONNAIRE, 'm-x', 'motif')).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
     });
   });
 

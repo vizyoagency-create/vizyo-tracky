@@ -10,6 +10,7 @@ import {
   signal,
 } from '@angular/core';
 import { PlanUpsellComponent } from '../../shared/ui/plan-upsell/plan-upsell.component';
+import { MissionsPanelComponent } from './missions-panel.component';
 import { ScrollLockService } from '../../core/services/scroll-lock.service';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -71,7 +72,7 @@ interface GroupOption {
   selector: 'app-agenda',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, LucideAngularModule, DatePipe, GroupBadgeComponent, AgendaCalendarComponent, ReservationSheetComponent, OptimizationSheetComponent, AgendaAgentSettingsSheetComponent, AgendaAgentProposalsSheetComponent, AiJobPillComponent, VehicleLinkDirective, PlanUpsellComponent],
+  imports: [FormsModule, LucideAngularModule, DatePipe, GroupBadgeComponent, AgendaCalendarComponent, ReservationSheetComponent, OptimizationSheetComponent, AgendaAgentSettingsSheetComponent, AgendaAgentProposalsSheetComponent, AiJobPillComponent, VehicleLinkDirective, PlanUpsellComponent, MissionsPanelComponent],
   template: `
     <div class="flex flex-col gap-5">
       <app-plan-upsell feature="agenda" />
@@ -248,6 +249,16 @@ interface GroupOption {
         </div>
       </div>
 
+      <!-- Espace dépôt (2026-08) — l'onglet Missions. Le sélecteur de type fait office
+           d'onglet : choisir « Mission » ouvre le tableau, ses filtres et ses cinq
+           compteurs, à la place de la grille du mois. Les missions restent visibles
+           dans la grille sous « Tous » — c'est l'exigence d'A2 § 3.1 : le gestionnaire
+           doit les voir sur le MÊME calendrier que la maintenance et les réservations,
+           sinon il double-réserve. -->
+      @if (selectedType() === 'MISSION') {
+        <app-missions-panel />
+      } @else {
+
       <!-- Calendrier -->
       @if (loading()) {
         <div class="flex items-center justify-center h-64 rounded-[--radius-card] bg-bg-secondary border border-border-subtle">
@@ -268,6 +279,8 @@ interface GroupOption {
           <span class="inline-flex items-center gap-1.5"><span style="color:#38BDF8;font-weight:800">●</span>Activité réelle</span>
           <span class="inline-flex items-center gap-1.5"><span style="color:#A78BFA;font-weight:800">~</span>Usage prévu</span>
         </div>
+      }
+
       }
 
       <!-- À venir / en retard -->
@@ -1148,6 +1161,10 @@ export class AgendaComponent implements OnInit {
     { value: 'MAINTENANCE', label: 'Maintenance' },
     { value: 'INCIDENT', label: 'Incident' },
     { value: 'RESERVATION', label: 'Réservation' },
+    // Espace dépôt (2026-08) — les missions apparaissent dans la MÊME grille que la
+    // maintenance, les incidents et les réservations. C'est l'exigence d'A2 § 3.1 :
+    // un gestionnaire qui ne voit pas les missions sur son calendrier double-réserve.
+    { value: 'MISSION', label: 'Mission' },
   ];
 
   private readonly monthFmt = new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric' });

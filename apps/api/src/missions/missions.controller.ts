@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { MissionStatus } from '@prisma/client';
 import { RequirePermissions } from '../auth/decorators/permissions.decorator';
 import type { AuthenticatedRequest } from '../auth/guards/jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -40,6 +41,42 @@ export class MissionsController {
   }
 
   /**
+   * La liste des missions de la flotte + ses 5 compteurs. Alimente l'onglet Missions
+   * de `/agenda`.
+   */
+  @Get()
+  @RequirePermissions('missions_view')
+  lister(
+    @Req() req: AuthenticatedRequest,
+    @Query('status') status?: string,
+    @Query('depotUserId') depotUserId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.missions.lister(req.user, {
+      status: this.statutValide(status),
+      depotUserId: depotUserId || undefined,
+      from: this.dateValide(from),
+      to: this.dateValide(to),
+    });
+  }
+
+  /**
+   * Annuler une mission. Motif OBLIGATOIRE : sans lui, la mention « Annulee par le
+   * transporteur » que lit le depot serait muette, et il rappellerait pour demander
+   * pourquoi — exactement l'appel que la fonctionnalite doit supprimer.
+   */
+  @Post(':id/cancel')
+  @RequirePermissions('missions_manage')
+  annuler(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() dto: { reason?: string },
+  ) {
+    return this.missions.annuler(req.user, id, dto?.reason ?? '');
+  }
+
+  /**
    * EFFET 4 — « mes missions », pour le CONDUCTEUR. Alimente `/driver`.
    *
    * Gardee par `missions_view`, que le role DRIVER porte par defaut — bornee aux
@@ -51,5 +88,19 @@ export class MissionsController {
   @RequirePermissions('missions_view')
   mesMissions(@Req() req: AuthenticatedRequest) {
     return this.missions.missionsDuConducteur(req.user);
+  }
+
+  /** Un statut inconnu est ignore, jamais transforme en erreur : c'est un filtre. */
+  private statutValide(valeur?: string): MissionStatus | undefined {
+    if (!valeur) return undefined;
+    return (Object.values(MissionStatus) as string[]).includes(valeur)
+      ? (valeur as MissionStatus)
+      : undefined;
+  }
+
+  private dateValide(valeur?: string): Date | undefined {
+    if (!valeur) return undefined;
+    const d = new Date(valeur);
+    return Number.isNaN(d.getTime()) ? undefined : d;
   }
 }
