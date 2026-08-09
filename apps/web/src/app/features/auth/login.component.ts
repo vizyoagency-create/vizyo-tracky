@@ -250,13 +250,17 @@ export class LoginComponent implements OnInit {
       // /driver/unlock alors qu'on n'était pas connecté). URL INTERNE uniquement (anti open-redirect).
       const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
       const safeReturn = returnUrl && returnUrl.startsWith('/') && !returnUrl.startsWith('//') ? returnUrl : null;
-      const home = this.auth.isDriver()
-        ? '/driver'
-        : this.auth.isWatchman()
-          ? '/vehicles'
-          : baanool
-            ? '/map'
-            : '/dashboard';
+      // Espace dépôt (2026-08) — un DEPOT arrive sur `/depot`, jamais sur `/dashboard`.
+      // Placé en tête, au même endroit que la redirection du conducteur (A1 § 5).
+      const home = this.auth.isDepot()
+        ? '/depot'
+        : this.auth.isDriver()
+          ? '/driver'
+          : this.auth.isWatchman()
+            ? '/vehicles'
+            : baanool
+              ? '/map'
+              : '/dashboard';
       this.router.navigateByUrl(safeReturn ?? home);
     } catch (err) {
       swallow('login:onSubmit', err);

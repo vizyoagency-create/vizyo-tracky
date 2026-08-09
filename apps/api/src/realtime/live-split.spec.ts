@@ -36,7 +36,7 @@ function makeGateway(user: { id: string; role: string; fleetId: string | null })
     verifyAccessToken: jest.fn().mockReturnValue({ sub: user.id }),
     resolveLocalUser: jest.fn().mockResolvedValue({ email: 'u@x.com', ...user }),
   };
-  const gw = new RealtimeGateway(auth as never, {} as never, { getAccessibleVehicleIds: jest.fn().mockResolvedValue('ALL') } as never);
+  const gw = new RealtimeGateway(auth as never, {} as never, { getAccessibleVehicleIds: jest.fn().mockResolvedValue('ALL') } as never, { activeMissionIds: jest.fn().mockResolvedValue([]) } as never);
   return gw;
 }
 

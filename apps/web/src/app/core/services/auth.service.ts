@@ -80,6 +80,12 @@ export class AuthService {
   readonly isWatchman = computed(() => this._user()?.role === 'NIGHT_WATCHMAN');
   /** feat/comptes-conducteurs — true si l'utilisateur courant est un conducteur (rôle restreint DRIVER). */
   readonly isDriver = computed(() => this._user()?.role === 'DRIVER');
+  /**
+   * Espace dépôt (2026-08) — true si l'utilisateur courant est un compte dépôt.
+   * Rôle LATÉRAL : il ne se compare pas aux autres, il vit dans `/depot` et nulle part
+   * ailleurs. Cosmétique côté client ; le vrai périmètre est garanti serveur (403).
+   */
+  readonly isDepot = computed(() => this._user()?.role === 'DEPOT');
   private refreshPromise: Promise<string | null> | null = null;
   /**
    * Délai avant le second essai du rafraîchissement proactif (TRK-002). Un appareil qui se

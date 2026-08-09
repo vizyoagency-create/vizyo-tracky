@@ -14,6 +14,7 @@ import { WS_EVENTS } from '@vizyo/tracky-shared';
 import type { Alert, Vehicle, Tracker } from '@prisma/client';
 import { Server, Socket } from 'socket.io';
 import { AuthService } from '../auth/auth.service';
+import { DepotScopeService } from '../depot/depot-scope.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 // V1.10 (Sprint 6) — Le Redis adapter est branche au niveau IoAdapter custom
@@ -36,6 +37,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     private readonly auth: AuthService,
     private readonly prisma: PrismaService,
     private readonly vehicleAccess: VehicleAccessService,
+    // Espace dépôt (2026-08) — résout les missions dont le suivi est actif, pour
+    // décider des salons `depot:mission:<id>`. DepotModule est @Global.
+    private readonly depotScope: DepotScopeService,
   ) {}
 
 
@@ -223,6 +227,35 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       // Le veilleur de nuit ne rejoint QUE `ops:fleet:*` : il reçoit la confirmation moteur
       // + le statut tracker, mais AUCUNE position (ni live `pos:*`, ni via les events `fleet:*`).
       const isWatchman = localUser.role === 'NIGHT_WATCHMAN';
+
+      // ══ ESPACE DEPOT (2026-08) — SALONS PAR MISSION, ET RIEN D'AUTRE ══════════
+      //
+      // Un DEPOT ne rejoint QUE `depot:mission:<missionId>`, une par mission dont le
+      // suivi est actif MAINTENANT. Jamais `fleet:*`, `pos:fleet:*`, `ops:fleet:*`
+      // ni `alerts:fleet:*` (A1 § 3, regle 5).
+      //
+      // ⚠️ Cette branche est un ARRET NET, volontairement place avant toute autre
+      // logique. Aujourd'hui un depot serait de toute facon exclu des salons de
+      // flotte : sans ligne `UserVehicleAccess`, `getAccessibleVehicleIds` renvoie
+      // `[]`, donc `restricted` vaut true et il finit dans le registre avec un
+      // ensemble vide. Mais ce serait une isolation ACCIDENTELLE — elle tient a une
+      // propriete d'un autre service, qui n'a jamais eu le depot en tete. Le jour ou
+      // ce service changerait (un defaut « aucune regle = tout voir », par exemple),
+      // le depot entrerait dans les salons de flotte sans qu'aucun test ne s'en
+      // apercoive. On ecrit donc l'exclusion, plutot que d'en heriter.
+      if (localUser.role === 'DEPOT') {
+        const missionIds = await this.depotScope.activeMissionIds(localUser.id);
+        for (const id of missionIds) client.join(`depot:mission:${id}`);
+        // L'empreinte porte les missions : quand l'une se termine ou qu'une autre
+        // demarre, le tick de revalidation coupe la socket et le client se reconnecte
+        // sur les bons salons. C'est ce qui garantit qu'un socket ouvert AVANT `endAt`
+        // ne continue pas de recevoir apres (A1 § 8, test 10).
+        (client.data as { scopeKey?: string }).scopeKey = `DEPOT|${missionIds.sort().join(',')}`;
+        this.logger.debug(
+          `Client ${client.id} (depot ${localUser.email}) — ${missionIds.length} mission(s) suivie(s), aucun salon de flotte`,
+        );
+        return;
+      }
 
       if (localUser.role === 'SUPER_ADMIN') {
         client.join('fleet:*');

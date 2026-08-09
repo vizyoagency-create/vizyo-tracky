@@ -6,6 +6,7 @@ import { roleGuard } from './core/guards/role.guard';
 import { superAdminGuard } from './core/guards/super-admin.guard';
 import { watchmanChildGuard } from './core/guards/watchman.guard';
 import { driverAwayFromDashboardGuard } from './core/guards/driver.guard';
+import { depotChildGuard, depotRoleGuard } from './core/guards/depot.guard';
 
 export const routes: Routes = [
   {
@@ -88,8 +89,19 @@ export const routes: Routes = [
     // renvoyé vers son espace `/driver` (il n'entre jamais dans l'app d'admin).
     canActivate: [authGuard, driverAwayFromDashboardGuard],
     // Sprint 3 — confine le veilleur de nuit à /vehicles* (allowlist default-deny).
-    canActivateChild: [watchmanChildGuard],
+    // Espace dépôt (2026-08) — confine le compte DEPOT à /depot* (+ /account).
+    canActivateChild: [watchmanChildGuard, depotChildGuard],
     children: [
+      {
+        // Espace dépôt (2026-08) — l'espace du donneur d'ordre. Vit DANS le shell :
+        // A1 § 5 lui donne 4 entrées de navigation et la marque du transporteur.
+        // `depotRoleGuard` referme l'entrée : un gestionnaire qui s'y égarerait ne
+        // verrait qu'un espace vide et incompréhensible.
+        path: 'depot',
+        canActivate: [depotRoleGuard],
+        loadChildren: () => import('./features/depot/depot.routes').then((m) => m.DEPOT_ROUTES),
+        data: { title: 'Mes missions' },
+      },
       {
         path: 'dashboard',
         loadComponent: () =>

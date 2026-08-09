@@ -27,7 +27,9 @@ import {
   Moon,
   Sparkles,
   AlarmClock,
-  MapPin, ShieldCheck, Plug } from 'lucide-angular';
+  MapPin, ShieldCheck, Plug,
+  // Espace dépôt (2026-08) — `Route` = la mission (design/ICONS.md, décision D-I3).
+  Route } from 'lucide-angular';
 import { ThemeService } from '../core/theme/theme.service';
 import { AlertsBellComponent } from '../shared/ui/alerts-bell/alerts-bell.component';
 import { FleetSelectorComponent } from '../shared/ui/super-admin-context/fleet-selector.component';
@@ -1041,6 +1043,17 @@ export class DashboardLayoutComponent {
         }
       }
       return [{ section: null, items }];
+    }
+    // Espace dépôt (2026-08) — troisième mode spécial du shell, après le veilleur et
+    // le mode simplifié. Quatre entrées, et rien d'autre : le dépôt n'est pas un
+    // utilisateur de la flotte, c'est un tiers en lecture seule (A1 § 5).
+    //
+    // Les trois entrées à venir (Missions, Historique, Documents) sont livrées par le
+    // lot A3. Les déclarer maintenant pointerait vers des routes inexistantes — un menu
+    // qui promet ce qu'il ne tient pas est précisément le défaut que B1 § J relève sur
+    // le mode simplifié. On les ajoute avec leurs écrans.
+    if (this.auth.isDepot()) {
+      return [{ section: null, items: [{ label: 'Mes missions', route: '/depot', icon: Route }] }];
     }
     // V1.12 — Mode Baanool : menu reduit aux essentiels (un seul groupe, sans
     // en-tête). Pas de dashboard, groupes, geofences, rapports. Groupes =

@@ -15,7 +15,16 @@
  * SUPER_ADMIN et FLEET_ADMIN bypass (tous booleens true).
  */
 
-export type UserRoleSlug = 'SUPER_ADMIN' | 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | 'DRIVER';
+/**
+ * Espace depot (2026-08) — `DEPOT` est un role LATERAL, pas un rang.
+ *
+ * Ne PAS le glisser dans une comparaison de niveau : son perimetre n'est pas un
+ * sous-ensemble de la flotte, c'est un axe different. Un VIEWER voit N vehicules en
+ * permanence ; un DEPOT voit UN vehicule PENDANT une fenetre horaire, parce qu'une
+ * mission l'y autorise, et rien du tout en dehors. Aucune relation d'inclusion ne
+ * relie les deux — cf. design/A1-ROLE-DEPOT.md § 1 et design/DECISIONS.md D3.
+ */
+export type UserRoleSlug = 'SUPER_ADMIN' | 'FLEET_ADMIN' | 'FLEET_MANAGER' | 'VIEWER' | 'NIGHT_WATCHMAN' | 'DRIVER' | 'DEPOT';
 
 export interface UserPermissions {
   vehicles_view: boolean;
@@ -141,6 +150,24 @@ export interface UserPermissions {
    * par defaut ; accordable, jamais implicite.
    */
   integrations_manage: boolean;
+
+  /**
+   * Espace depot (2026-08) — voir les missions dont on est le depot destinataire.
+   * Le perimetre n'est PAS la flotte : il est calcule depuis Mission.depotUserId,
+   * A CHAQUE REQUETE, jamais depuis UserVehicleAccess ni Fleet. OFF par defaut pour
+   * tous les roles sauf DEPOT, VIEWER et DRIVER (cf. design/A1-ROLE-DEPOT.md § 2).
+   */
+  missions_view: boolean;
+  /** Creer / modifier / annuler une mission et designer son depot destinataire. */
+  missions_manage: boolean;
+  /** Generer un lien public temporaire de suivi vers un client final (15 min par defaut). */
+  mission_share: boolean;
+  /**
+   * Voir le nom et le telephone du conducteur d'une mission dont on est destinataire.
+   * Le telephone est masque COTE API (« 06 12 •• •• 47 ») : le numero complet ne quitte
+   * jamais le serveur, et le bouton d'appel passe par un endpoint qui journalise l'acces.
+   */
+  driver_contact_view: boolean;
 }
 
 const VIEWER_DEFAULTS: UserPermissions = {
@@ -183,6 +210,12 @@ const VIEWER_DEFAULTS: UserPermissions = {
   places_manage: false,
   places_analyze: false,
   integrations_manage: false,
+  // Le lecteur voit les missions de la flotte, mais n'en cree aucune, ne partage
+  // rien et n'accede pas aux coordonnees des conducteurs.
+  missions_view: true,
+  missions_manage: false,
+  mission_share: false,
+  driver_contact_view: false,
 };
 
 const FLEET_MANAGER_DEFAULTS: UserPermissions = {
@@ -227,6 +260,12 @@ const FLEET_MANAGER_DEFAULTS: UserPermissions = {
   // …mais PAS l'analyse IA (elle consomme des tokens) : un admin peut l'accorder.
   places_analyze: false,
   integrations_manage: false,
+  // Le gestionnaire est l'exploitant : c'est lui qui cree les missions, designe le
+  // depot destinataire et partage un suivi.
+  missions_view: true,
+  missions_manage: true,
+  mission_share: true,
+  driver_contact_view: true,
 };
 
 const ADMIN_DEFAULTS: UserPermissions = {
@@ -269,6 +308,10 @@ const ADMIN_DEFAULTS: UserPermissions = {
   places_manage: true,
   places_analyze: true,
   integrations_manage: true,
+  missions_view: true,
+  missions_manage: true,
+  mission_share: true,
+  driver_contact_view: true,
 };
 
 /**
@@ -318,6 +361,12 @@ const NIGHT_WATCHMAN_DEFAULTS: UserPermissions = {
   places_manage: false,
   places_analyze: false,
   integrations_manage: false,
+  // Le veilleur reste a zero sur les missions : son metier est nocturne, les missions
+  // sont diurnes, et il travaille sans aucune donnee de conducteur (A1 § 2).
+  missions_view: false,
+  missions_manage: false,
+  mission_share: false,
+  driver_contact_view: false,
 };
 
 /**
@@ -368,6 +417,82 @@ const DRIVER_DEFAULTS: UserPermissions = {
   places_manage: false,
   places_analyze: false,
   integrations_manage: false,
+  // Le conducteur voit LES SIENNES (borne serveur : missions dont il est le driver).
+  // `driver_contact_view` n'a pas de sens pour lui : c'est son propre numero.
+  missions_view: true,
+  missions_manage: false,
+  mission_share: false,
+  driver_contact_view: false,
+};
+
+/**
+ * Espace depot (2026-08) — « depot » : un TIERS EN LECTURE SEULE, dont le perimetre est
+ * borne par la mission. Ce n'est pas un utilisateur de la flotte.
+ *
+ * TOUT est a false sauf quatre lignes. Ces quatre-la ne donnent aucun acces general :
+ * elles ouvrent une porte que `DepotScopeGuard` referme a chaque requete sur le
+ * perimetre reel (Mission.depotUserId + fenetre horaire). Hors perimetre, l'API repond
+ * 403 — jamais 200 avec un tableau vide.
+ *
+ * Ce qui reste explicitement FERME, et pourquoi :
+ *   vehicles_view      — jamais d'acces flotte. La cle du depot est la plaque.
+ *   reports_*          — l'export depot passe par un endpoint dedie (A3 § 8).
+ *   engine_control     — aucune ecriture sur un vehicule, jamais.
+ *   agenda_*, reservations_* — l'agenda est l'outil du transporteur.
+ *
+ * cf. design/A1-ROLE-DEPOT.md § 2.
+ */
+const DEPOT_DEFAULTS: UserPermissions = {
+  // — Les quatre seules capacites ouvertes —
+  /** Ses missions uniquement : `where` Prisma sur depotUserId. */
+  missions_view: true,
+  /** Les trajets rattaches a ses missions uniquement. */
+  trips_view: true,
+  /** Un lien public temporaire, pour ses propres missions uniquement. */
+  mission_share: true,
+  /** Le conducteur de la mission en cours uniquement, telephone masque cote API. */
+  driver_contact_view: true,
+
+  // — Tout le reste est ferme —
+  missions_manage: false,
+  vehicles_view: false,
+  vehicles_create: false,
+  vehicles_edit: false,
+  vehicles_delete: false,
+  engine_control: false,
+  privacy_manage: false,
+  schedules_manage: false,
+  groups_view: false,
+  groups_manage: false,
+  geofences_view: false,
+  geofences_manage: false,
+  alerts_view: false,
+  alerts_acknowledge: false,
+  alerts_configure: false,
+  reports_view: false,
+  reports_export: false,
+  fuel_manage: false,
+  users_view: false,
+  users_manage: false,
+  drivers_view: false,
+  drivers_manage: false,
+  sims_view: false,
+  sims_assign: false,
+  audio_monitoring: false,
+  agenda_view: false,
+  agenda_manage: false,
+  reservations_view: false,
+  reservations_request: false,
+  reservations_manage: false,
+  ai_optimize: false,
+  ai_narrate: false,
+  ai_configure: false,
+  billing_manage: false,
+  qr_manage: false,
+  places_view: false,
+  places_manage: false,
+  places_analyze: false,
+  integrations_manage: false,
 };
 
 export function getDefaultPermissions(role: UserRoleSlug): UserPermissions {
@@ -380,6 +505,8 @@ export function getDefaultPermissions(role: UserRoleSlug): UserPermissions {
       return { ...NIGHT_WATCHMAN_DEFAULTS };
     case 'DRIVER':
       return { ...DRIVER_DEFAULTS };
+    case 'DEPOT':
+      return { ...DEPOT_DEFAULTS };
     case 'FLEET_ADMIN':
     case 'SUPER_ADMIN':
       return { ...ADMIN_DEFAULTS };
@@ -390,6 +517,50 @@ export function getDefaultPermissions(role: UserRoleSlug): UserPermissions {
 }
 
 export const PERMISSION_KEYS = Object.keys(VIEWER_DEFAULTS) as (keyof UserPermissions)[];
+
+/**
+ * Roles FERMES : leur jeu de permissions est fixe par le role lui-meme et ne se
+ * negocie pas — ni en accordant (ils ne delèguent rien), ni en recevant (on ne
+ * peut pas leur ajouter une capacite depuis l'interface ni depuis l'API).
+ *
+ * `DEPOT` est ferme parce que son perimetre n'est pas un jeu de cases a cocher :
+ * il est calcule a chaque requete depuis `Mission.depotUserId` et la fenetre
+ * horaire. Lui accorder `vehicles_view` ne lui ouvrirait pas « la flotte » — ca
+ * produirait un etat incoherent ou l'interface promet un acces que le garde
+ * refuse. Cf. A5 § 4 : « Le perimetre d'un depot est fixe par ses missions. »
+ */
+export const CLOSED_ROLES: readonly UserRoleSlug[] = ['DEPOT'] as const;
+
+export function isClosedRole(role: UserRoleSlug): boolean {
+  return CLOSED_ROLES.includes(role);
+}
+
+/** Un jeu de permissions exhaustif, tout a `false`. */
+function allPermissionsFalse(): UserPermissions {
+  const out = {} as UserPermissions;
+  for (const key of PERMISSION_KEYS) out[key] = false;
+  return out;
+}
+
+/**
+ * Permissions a ecrire pour un utilisateur d'un role CIBLE donne.
+ *
+ * C'est le point d'entree que doivent employer les routes qui creent ou editent un
+ * compte (users.controller, invitations) — `clampPermissions` seul ne suffit pas :
+ * il borne au GRANTER, pas a la CIBLE. Un FLEET_ADMIN (qui detient tout) passant
+ * `{ vehicles_view: true }` sur un compte DEPOT franchirait le clamp sans encombre.
+ *
+ * Pour un role ferme, la demande est ignoree : on ecrit les defauts du role, point.
+ */
+export function permissionsForTargetRole(
+  targetRole: UserRoleSlug,
+  requested: Partial<UserPermissions> | null | undefined,
+  granter: { role: UserRoleSlug; permissions?: Partial<UserPermissions> | null },
+): UserPermissions {
+  const targetDefaults = getDefaultPermissions(targetRole);
+  if (isClosedRole(targetRole)) return targetDefaults;
+  return clampPermissions(requested, granter, targetDefaults);
+}
 
 /**
  * Permissions effectives d'un "granter" (inviteur / editeur) pour borner ce
@@ -403,6 +574,14 @@ export function effectiveGranterPermissions(granter: {
 }): UserPermissions {
   if (granter.role === 'SUPER_ADMIN' || granter.role === 'FLEET_ADMIN') {
     return { ...ADMIN_DEFAULTS };
+  }
+  // Roles FERMES : ils ne delèguent rien, quoi que porte leur set explicite.
+  // Un DEPOT n'invite personne. Le court-circuit est le pendant exact du bypass
+  // admin ci-dessus — sans lui, `effectiveGranterPermissions` renverrait les
+  // defauts du role, dont les 4 capacites ouvertes, et un depot pourrait les
+  // conferer a autrui. Exigence explicite d'A1 § 2.
+  if (isClosedRole(granter.role)) {
+    return allPermissionsFalse();
   }
   const out = getDefaultPermissions(granter.role);
   const explicit = granter.permissions;
@@ -624,6 +803,30 @@ export const PERMISSION_LABELS: Record<keyof UserPermissions, PermissionLabel> =
     description:
       'Connecter la flotte a une application partenaire (Maestroo), choisir les categories de donnees partagees, et couper le partage a tout moment. Acte a consequence : expose des donnees de la flotte a une application tierce. Reserve au fleet-admin par defaut.',
   },
+  missions_view: {
+    group: 'Missions & depots',
+    label: 'Voir les missions',
+    description:
+      'Consulter les missions (trajet planifie avec creneau, vehicule et depot destinataire). Pour un compte DEPOT, limite a SES propres missions et a leur fenetre horaire.',
+  },
+  missions_manage: {
+    group: 'Missions & depots',
+    label: 'Creer / modifier une mission',
+    description:
+      'Creer, modifier et annuler une mission, et designer son depot destinataire. Acte a consequence : ouvre a un tiers la position du vehicule pendant le creneau, et rend le vehicule indisponible a la reservation.',
+  },
+  mission_share: {
+    group: 'Missions & depots',
+    label: 'Partager un suivi (lien 15 min)',
+    description:
+      'Generer un lien public temporaire vers un client final. Le lien n\'affiche que la position et l\'heure d\'arrivee estimee, expire automatiquement et reste revocable.',
+  },
+  driver_contact_view: {
+    group: 'Missions & depots',
+    label: 'Contacter le conducteur d\'une mission',
+    description:
+      'Voir le nom et le telephone du conducteur d\'une mission dont on est destinataire. Le numero est masque cote serveur ; l\'appel passe par un endpoint qui journalise l\'acces.',
+  },
 };
 
 /** Ordre d'affichage canonique des groupes dans l'UI. */
@@ -645,4 +848,7 @@ export const PERMISSION_GROUP_ORDER: readonly string[] = [
   'Intelligence artificielle',
   'Facturation',
   'Integrations',
+  // Espace depot (2026-08) — section en BAS de la matrice, avec sa 6e colonne « Depot »
+  // et son marqueur ◆ (accorde, mais limite a ses propres missions). Cf. A5 § 4.
+  'Missions & depots',
 ] as const;

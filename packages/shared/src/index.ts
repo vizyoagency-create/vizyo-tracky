@@ -33,6 +33,8 @@ export * from './dto/trip-analysis.dto';
 export * from './dto/activity-report.dto';
 export * from './dto/system-activity.dto';
 export * from './dto/api-traffic.dto';
+// Espace dépôt (2026-08) — contrat de ce qu'un compte DEPOT reçoit.
+export * from './dto/mission.dto';
 export * from './events/ws-events';
 export * from './partner';
 export * from './permissions';

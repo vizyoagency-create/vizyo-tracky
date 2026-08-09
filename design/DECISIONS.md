@@ -259,13 +259,130 @@ fichier** (section ci-dessous), module par module, avec son verdict : porte
 Un test vert prouve qu'un chemin est fermé. Il ne prouve rien des chemins qu'on n'a pas
 pensé à tester — d'où l'inventaire.
 
-### Inventaire des contrôleurs (à remplir en A1.4)
+### Inventaire des contrôleurs — revue A1.4, faite le 2026-08-09
 
-*Vide à ce stade. Rempli lors du lot A1, avant sa clôture.*
+**Méthode.** Les 80 contrôleurs de `apps/api/src` ont été dépouillés **route par route**
+(et non fichier par fichier : un contrôleur dont quatre méthodes sur cinq sont gardées
+serait classé « fermé » à tort). Pour chaque route : décorateurs de classe **plus**
+décorateurs de méthode, puis la question « un compte `DEPOT` authentifié franchit-il
+`@Roles`, `@RequirePermissions` et `@RequireVehiclePermission` ? ».
 
-| Module | Atteignable par un `DEPOT` ? | Protection | Vérifié |
-|---|---|---|:-:|
-| *(à compléter — 60 modules)* | | | |
+Le critère d'appartenance au périmètre est **`JwtAuthGuard`**. Une route sans garde de
+session (webhook, page publique à token, `InternalSecretGuard`) est ouverte à tout le
+monde, authentifié ou non : c'est une autre question de sécurité, hors du remit d'A1.
+
+Rappel du piège : `trips_view` est **ouverte** à un dépôt (A1 § 2, pour qu'il voie les
+trajets de ses missions). Toute route gardée par cette seule permission lui est donc
+accessible — c'est là qu'était la fuite.
+
+#### Le résultat
+
+| | Routes |
+|---|:-:|
+| Fermées par `@Roles` ou par une permission hors de `DEPOT_DEFAULTS` | la grande majorité |
+| **Ouvertes et fuyantes → refermées dans ce lot** | **9** |
+| Ouvertes et légitimes (gestion du compte du dépôt lui-même) | 31 |
+
+#### Les 9 routes refermées
+
+| Route | Ce qu'elle servait à un dépôt | Parade |
+|---|---|---|
+| `GET /trip-analysis/scores` | Les scores de conduite de **toute la flotte** | `DepotScopeGuard` |
+| `GET /trip-analysis/scores/:scope/:id` | Le détail d'un score | idem |
+| `GET /trip-analysis/vehicle/:vehicleId` | L'analyse de **n'importe quel** véhicule | idem |
+| `GET /trip-analysis/fuel-report/:vehicleId` | Consommation et **coûts** carburant | idem |
+| `GET /trip-analysis/fuel-calibration/:vehicleId` | La calibration des pleins | idem |
+| `GET /trip-analysis/fuel-fill-ups/:vehicleId` | L'historique des pleins | idem |
+| `GET /trip-analysis/fuel-stations/map` | La carte des stations fréquentées | idem |
+| `GET /trip-analysis/:tripId` | **N'importe quel** trajet de la flotte | idem |
+| `GET /ai/status` | La configuration IA du transporteur | `DepotScopeGuard` |
+
+Les huit premières sont gardées par `@RequirePermissions('trips_view')` **sans `@Roles`**.
+Elles exposent précisément ce que le livrable interdit deux fois : A1 § 4 (« leurs DTO
+exposent des champs qu'un dépôt ne doit pas voir — coûts, scores ») et A3 § 7, règle 2
+(« aucune donnée de coût, de score, de consommation »).
+
+La neuvième n'exigeait rien du tout — « pour TOUT utilisateur authentifié ». Un dépôt n'a
+aucune fonctionnalité IA ; lui servir la configuration de son transporteur tombe sous la
+règle 6 d'A1 § 3 (« pas d'agrégat qui fuit »).
+
+**La parade employée** : ajouter `DepotScopeGuard` au `@UseGuards` du contrôleur. Le garde
+est en **refus par défaut** — sans décorateur `@DepotScope` sur la route, il rend `403` à un
+`DEPOT` et **laisse passer tous les autres rôles sans rien changer**. C'est le correctif le
+plus chirurgical possible : aucune liste de rôles à maintenir, aucun risque de rompre
+l'accès d'un compte à qui `trips_view` aurait été accordée explicitement.
+
+Le dépôt consultera ses trajets par son endpoint dédié `/depot/trips/:id` (lot A3), dont le
+DTO est restreint.
+
+#### Les 31 routes ouvertes, et pourquoi elles le restent
+
+Toutes portent sur **le compte du dépôt lui-même**. Aucune ne lit de donnée de flotte.
+
+| Contrôleur | Routes | Motif |
+|---|:-:|---|
+| `auth` | 1 | `GET /auth/me` — sans elle, impossible de se connecter |
+| `consent` | 3 | Son propre consentement RGPD. Le refuser bloquerait l'application derrière le gate `CONSENT_REQUIRED` |
+| `notifications` | 7 | Ses préférences et ses abonnements push. A2 § 3.3 prévoit qu'il reçoive une notification à chaque mission |
+| `security` | 8 | Sa vérification d'appareil et sa 2FA |
+| `users` | 5 | Son profil (`/users/me*`). `GET /users/me/access` renvoie ses scopes véhicule — vide par invariant, ce qui est précisément ce qu'on veut pouvoir constater |
+| `user-activity` | 2 | Sa propre télémétrie d'usage |
+| `geocode` | 1 | `reverse` — utilitaire d'affichage, nécessaire à sa carte |
+| `realtime` | 1 | `POST /realtime/incident` — remontée d'erreur client, en écriture seule |
+| `reservation-booking` | 3 | `/public/reserve/:token` — borné par le token, pas par le compte |
+
+**Deux observations reportées, hors périmètre d'A1** — consignées pour ne pas les perdre :
+
+- `/public/reserve/:token` porte un `JwtAuthGuard` alors que son nom et son usage la
+  déclarent publique. Elle n'ouvre rien à un dépôt (le token borne tout), mais l'intention
+  et le code se contredisent. À clarifier hors de ce chantier.
+- `/geocode/reverse` est un appel externe facturé, atteignable par tout compte authentifié
+  sans permission ni débit borné. Ce n'est pas une fuite de données ; c'est un coût
+  potentiellement abusable. À traiter séparément.
+
+#### Ce que cette revue ne prouve pas
+
+Elle est **statique** : elle lit les décorateurs, pas le comportement. Elle établit qu'aucune
+route n'est ouverte par oubli. Elle ne prouve pas que les services filtrent correctement une
+fois la route franchie — c'est le rôle des 12 tests d'isolation d'A1 § 8, qui interrogent
+l'API réelle.
+
+Les deux se complètent et ne se remplacent pas : un test vert prouve qu'un chemin est fermé,
+il ne dit rien des chemins auxquels on n'a pas pensé.
+
+---
+
+## D11 — Le modèle `Mission` est créé en A1, pas en A2
+
+**Le problème d'ordonnancement.** `A0` impose A1 avant A2, et fait des 12 tests d'isolation
+la condition de passage. Mais tout A1 § 3 repose sur `Mission` :
+
+```ts
+missionsFor(userId, at?)            // where: { depotUserId }
+canSeeLivePosition(userId, vehicleId) // mission IN_PROGRESS|LATE couvrant l'instant
+canSeeTrip(userId, tripId)            // trajet rattaché à une mission du dépôt
+```
+
+Or `A2` § 9 range la migration `Mission` dans **ses** impacts. En suivant les deux documents
+à la lettre, A1 ne peut ni compiler ni être testé.
+
+**Décision.** La migration Prisma du bloc A — `UserRole.DEPOT`, `Mission`, `MissionStatus`,
+`Trip.missionId` — est portée par **A1**. Le modèle est repris tel quel de `A2` § 1, sans
+rien inventer : il y est spécifié au champ près, index compris.
+
+A2 garde tout le reste, qui est l'essentiel de son travail : le module `missions`, la
+génération de `ref` en transaction, le statut dérivé, les 4 effets de bord, le conflit de
+créneau, l'onglet d'agenda et les modales.
+
+**Pourquoi ce découpage et pas l'inverse.** Un modèle sans service ne fait rien et ne risque
+rien — c'est une table vide. L'inverse, écrire l'isolation contre un modèle qui n'existe pas,
+n'est pas faisable. Et différer les tests d'isolation jusqu'à A2 reviendrait à supprimer la
+condition de passage qu'`A0` § « Le risque principal » justifie en une phrase : « une fuite
+de données entre transporteur et dépôt tue la fonctionnalité et la confiance ».
+
+**Conséquence sur la recette.** Les 12 tests d'A1 s'exécutent sur des missions créées
+directement en base par le harnais de test, sans passer par le module `missions` — qui
+n'existe pas encore. C'est voulu : ils testent l'isolation, pas la création.
 
 ---
 
@@ -283,3 +400,4 @@ pensé à tester — d'où l'inventaire.
 | D8 | 2026-08-09 | Surveillance en heure locale | `B0-SOCLE.md` § défaut 2 |
 | D9 | 2026-08-09 | Assistant de démarrage à 2 étapes — supprimer, pas corriger | `B0-SOCLE.md` § défaut 4 |
 | D10 | 2026-08-09 | Revue manuelle exhaustive des 60 modules API en A1 | `A1-ROLE-DEPOT.md` § 3 |
+| D11 | 2026-08-09 | Le modèle `Mission` migre en A1 — sans lui, l'isolation ne compile pas | Conflit A1 § 3 / A2 § 9 |

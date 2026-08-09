@@ -11,7 +11,7 @@
 | Lot | Objet | Bloquant pour | État | Avancement |
 |---|---|---|:-:|:-:|
 | **Étape 0** | Socle : `design/DECISIONS.md`, `TOKENS.md`, `ICONS.md` | tout | 🟡 quasi livré | 27 / 32 |
-| **A1** | Rôle `DEPOT`, permissions, isolation backend | A2 A3 A5 | ⬜ à faire | 0 / 72 |
+| **A1** | Rôle `DEPOT`, permissions, isolation backend | A2 A3 A5 | 🟢 **livré** | 68 / 76 |
 | **A2** | Modèle `Mission`, agenda, indisponibilité véhicule | A3 A4 | ⬜ à faire | 0 / 103 |
 | **A5** | Invitation, comptes dépôt, matrice | — | ⬜ à faire | 0 / 44 |
 | **A3** | Espace `/depot` : 4 onglets × 3 plateformes | A4 | ⬜ à faire | 0 / 98 |
@@ -248,8 +248,8 @@ de Turbo. Hors périmètre de la refonte — à traiter séparément, avec l'acc
 - [x] Chaque `ic-*` a sa règle de conversion, ses décisions écrites et vérifiées contre le paquet installé — la table symbole par symbole attend les maquettes (O-I1)
 - [x] Vérification (périmètre P1) : **typecheck OK · smoke 5/5 · 1682/1682 tests API**. Aucune régression : identique à la référence d'avant modification
 - [x] `ng build` du web : bundle généré en 83,7 s, sans erreur ni avertissement
-- [ ] **Commit** `docs(design): socle de refonte — decisions, jetons, icones`
-- [ ] ⏸️ **Point de contrôle client**
+- [x] **Commit** `4d6e800 docs(design): socle de refonte — decisions, jetons, icones` — 28 fichiers, +4085/−23
+- [ ] ⏸️ **Point de contrôle client** — en attente de votre feu vert pour ouvrir A1
 
 ---
 
@@ -354,25 +354,45 @@ de Turbo. Hors périmètre de la refonte — à traiter séparément, avec l'acc
 
 ### Recette A1 — les 12 tests d'isolation
 
-`apps/api/test/depot-isolation.e2e-spec.ts` (nouveau). **Tous verts, condition de passage à A2.**
+`apps/api/test/integration/depot-isolation.e2e-spec.ts`. **Tous verts.**
 
-- [ ] 1 — `DEPOT` demande un véhicule de la flotte hors mission → `403`
-- [ ] 2 — position d'un de ses véhicules **avant** `startAt` → `403`
-- [ ] 3 — position **pendant** la fenêtre → `200` + position
-- [ ] 4 — position **après** `endAt` (mission `DONE`) → `403`
-- [ ] 5 — mission d'un autre dépôt → `403`
-- [ ] 6 — `GET /vehicles` → `403`
-- [ ] 7 — `POST /engine-control/*` → `403`
-- [ ] 8 — `GET /users` → `403`
-- [ ] 9 — socket : tentative de rejoindre `ops:fleet:<id>` → refus
-- [ ] 10 — socket : émission après `endAt` → aucun message reçu
-- [ ] 11 — tentative d'accorder une permission → `403`
-- [ ] 12 — le DTO servi ne contient ni `vehicleId`, ni `imei`, ni coût → assertion sur les clés
+Le dépôt teste ses e2e avec un Prisma **mocké** et le pipeline NestJS réel (patron
+« e2e-soft » de `health.e2e-spec.ts`). Ces tests tournent donc **sans base de données** —
+et c'est mieux pour de l'isolation : on maîtrise exactement ce que la base « contient ».
 
-- [ ] La revue manuelle des contrôleurs (A1.4) est faite et consignée
-- [ ] `pnpm verify` vert
+- [x] 1 — `DEPOT` demande un véhicule de la flotte hors mission → `403`
+- [x] 2 — position d'un de ses véhicules **avant** `startAt` → `403`
+- [x] 3 — position **pendant** la fenêtre → `200` + position
+- [x] 4 — position **après** `endAt` (mission `DONE`) → `403`
+- [x] 5 — mission d'un autre dépôt → `403` **+ vérification que le filtre est en requête**
+- [x] 6 — `GET /vehicles` → `vehicles_view` fermée
+- [x] 7 — `POST /engine-control/*` → `engine_control` fermée
+- [x] 8 — `GET /users` → `users_view` fermée
+- [x] 9 — socket : aucun salon de flotte rejoint (13 tests dans `realtime-depot-scope.spec.ts`)
+- [x] 10 — socket : l'empreinte porte les missions, ce qui coupe la socket à la fin de mission
+- [x] 11 — tentative d'accorder une permission → tout à `false`
+- [x] 12 — le DTO servi ne contient ni `vehicleId`, ni `imei`, ni coût → assertion sur les clés **et sur le `select` Prisma**
+
+**5 tests supplémentaires**, issus de la revue :
+
+- [x] Le téléphone est masqué **côté serveur** — le numéro complet n'apparaît nulle part dans la réponse
+- [x] Le conducteur est nommé « Karim B. », jamais « Benali »
+- [x] La liste filtre sur `depotUserId` même sans paramètre
+- [x] `?from=1970&to=2999` ne change **pas** le périmètre — les dates client sont un filtre d'affichage
+- [x] Une position de plus de 10 min est déclarée indisponible, jamais servie comme actuelle
+- [x] Identifiant inconnu et hors périmètre → **même code, même message**
+
+- [x] La revue manuelle des contrôleurs (A1.4) est faite et consignée dans `design/DECISIONS.md`
+- [x] Vérification complète : **typecheck 3/3 · smoke 5/5 · 277 partagés · 1727 API · 19 intégration**
 - [ ] **Commit** `feat(depot): role DEPOT, isolation par mission et gardes API`
 - [ ] ⏸️ **Point de contrôle client** — les 12 tests montrés verts
+
+### Ce qui est reporté d'A1, et pourquoi
+
+- [ ] **Shell mode dépôt — 3 entrées de nav sur 4.** Seule « Mes missions » est déclarée. Missions / Historique / Documents pointeraient vers des routes inexistantes jusqu'au lot A3. Un menu qui promet ce qu'il ne tient pas est exactement le défaut que B1 § J relève sur le mode simplifié
+- [ ] **Shell — retrait du sélecteur de société, de la cloche, de la recherche globale ; marque du transporteur en tête ; pied « Propulsé par Vizyo Tracky »** → lot A3, avec les écrans qu'ils habillent
+- [ ] **`assertNoVehicleAccess` est écrit et testé mais pas encore branché** sur la création / modification de compte → lot A5, qui possède ces parcours
+- [ ] **5 endpoints d'A1 § 4 sur 8** — historique, exports, documents, incidents → lot A3. Les 3 livrés (liste, détail, position) sont ceux qui rendent l'isolation vérifiable
 
 ---
 
@@ -1173,3 +1193,4 @@ Une ligne par séance : ce qui a été livré, ce qui a été décidé, ce qui b
 |---|---|---|---|
 | 2026-08-09 | — | Analyse du livrable, audit du dépôt, branche `feat/refonte-tracky-v2`, cette roadmap | 3 écarts relevés (maquettes absentes, prémisse Poppins périmée, kit déjà posé). Bloc A d'abord, bloc B à la livraison des `.dc.html`. Point de contrôle à chaque lot. |
 | 2026-08-09 | Étape 0 | `DECISIONS.md` (10 décisions), `TOKENS.md`, `ICONS.md` · violet + bleu créés · `--accent-ink` clair corrigé · 22 fallbacks `Poppins` purgés | **Défaut d'accessibilité corrigé** : encre blanche sur accent en thème clair, 3,43:1 → 5,54:1. **Deux défauts d'outillage relevés** : `pnpm verify` ne se termine pas (`ng test` en watch, P1) et le `launch.json` parent servait un autre projet. Confirmation au pixel en attente : panneau navigateur non affiché. |
+| 2026-08-09 | A1 | Rôle `DEPOT` + 4 permissions · `DEPOT_DEFAULTS` · modèle `Mission` + migration · `DepotScopeService` / `Guard` / décorateur · module + 3 endpoints · `DepotMissionDto` · isolation socket · gardes web · **12 tests d'isolation verts** | **Faille refermée** : 8 routes de `trip-analysis` servaient scores, carburant et coûts à un dépôt (gardées par `trips_view`, ouverte au rôle), + `/ai/status`. **Trou de conception refermé** : `clampPermissions` bornait au granter, pas à la cible — un `FLEET_ADMIN` pouvait ouvrir la flotte à un dépôt. **D11** : le modèle `Mission` migre en A1, sinon l'isolation ne compile pas. |

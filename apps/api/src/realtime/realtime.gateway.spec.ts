@@ -20,7 +20,7 @@ describe('RealtimeGateway — revalidation #13', () => {
       // Seul user-active ressort comme isActive=true.
       user: { findMany: jest.fn().mockResolvedValue([{ id: 'user-active' }]) },
     };
-    const gateway = new RealtimeGateway({} as never, prisma as never, { getAccessibleVehicleIds: jest.fn().mockResolvedValue('ALL') } as never);
+    const gateway = new RealtimeGateway({} as never, prisma as never, { getAccessibleVehicleIds: jest.fn().mockResolvedValue('ALL') } as never, { activeMissionIds: jest.fn().mockResolvedValue([]) } as never);
     (gateway as unknown as { server: unknown }).server = {
       sockets: new Map([
         ['s1', sActive],
@@ -44,7 +44,7 @@ describe('RealtimeGateway — revalidation #13', () => {
 
   it('no-op quand aucune socket connectee', async () => {
     const prisma = { user: { findMany: jest.fn() } };
-    const gateway = new RealtimeGateway({} as never, prisma as never, { getAccessibleVehicleIds: jest.fn().mockResolvedValue('ALL') } as never);
+    const gateway = new RealtimeGateway({} as never, prisma as never, { getAccessibleVehicleIds: jest.fn().mockResolvedValue('ALL') } as never, { activeMissionIds: jest.fn().mockResolvedValue([]) } as never);
     (gateway as unknown as { server: unknown }).server = { sockets: new Map() };
     await gateway.revalidateConnections();
     expect(prisma.user.findMany).not.toHaveBeenCalled();
