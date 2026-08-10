@@ -1132,7 +1132,7 @@ Les 4 défauts de code relevés en lisant la source, indépendants de la refonte
 - [x] Vérifié dans le navigateur : « Étape 1 sur 2 » puis « Étape 2 sur 2 », barre à 50 % puis 100 % (`style="width: 50%"` → `width: 100%`)
 
 - [x] Vérification (le périmètre du § 5 — `pnpm verify` ne se termine jamais, cf. piège 1) : typecheck 3/3 · smoke 5/5 · **1889 tests API** (134 suites) · 277 tests partagés · build web vert · isolation base **18/18** · isolation HTTP **65/65** · contraste **46/46 couples ≥ 4,5:1** · littéraux et accents propres
-- [ ] **Commit** `fix(ui): couleurs en dur, surveillance en heure locale, accents, compteurs d'etapes`
+- [x] **Commit** `fix(ui): couleurs en dur, surveillance en heure locale, accents, compteurs d'etapes`
 
 ### B-kit — Le kit partagé (passe de raffinement)
 
