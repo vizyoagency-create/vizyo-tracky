@@ -18,10 +18,10 @@
 | **A4** | Lien public `/s/:token`, expiration, révocation | — | 🟢 **livré** | 97 / 98 |
 | **B0′** | Reliquat socle : couleurs en dur, UTC, accents, wizard | Bloc B | 🟢 **livré** | 27 / 28 |
 | **B-kit** | Kit partagé : 6 états sur 24 composants | pages B | 🟢 **livré** | 26 / 28 |
-| **B-pages** | 29 pages refondues × 3 déclinaisons | — | 🟡 en cours | 9 / 57 |
+| **B-pages** | 29 pages refondues × 3 déclinaisons | — | 🟡 en cours | 13 / 57 |
 | **B-mails** | 19 gabarits d'e-mail | — | ⬜ **débloqué**¹ | 0 / 12 |
 | **PROD** | Push, déploiement, recette production | — | ⬜ à faire | 0 / 28 |
-| | | | **Total** | **482 / 604** |
+| | | | **Total** | **486 / 604** |
 
 ¹ **Débloqué le 2026-08-10** : les 28 planches `.dc.html` sont dans `design/maquettes/`, avec
 leur `support.js` et le dossier `brands/`. Cf. « Écart 1 » ci-dessous. Ordre d'attaque non
@@ -1314,9 +1314,20 @@ composants ne gèrent que « rempli » et « chargement ».
       la phrase ; un lien en ligne n'est pas une cible autonome
 - [x] `/scores` **8 → 0** · `/users` **19 → 0** — sur une liste, la cible par ligne est celle
       qu'on vise le plus souvent et la plus facile à rater : les lignes sont serrées
-- [ ] **Reste** : `/reports` (232 cibles) — le tableau dense y appelle la refonte mobile de
-      `B1` § D (« sparklines + drill-down, jamais de scroll horizontal »), pas un rustinage
-      de cibles. Et `/login`, `/map`, `/agenda` non encore sondées
+- [x] `/agenda` **13 → 0** · `/map` **14 → 0** — sur un calendrier, changer de mois est le
+      geste le plus répété ; sur la carte, c'est l'écran le plus utilisé au doigt de toute
+      l'application
+- [x] `/reports` — **hors carte de chaleur, 64 → 0**, et le débordement horizontal est à 0
+- [x] ⚠️ **Mon diagnostic précédent était faux, la mesure l'a corrigé.** J'avais conclu que
+      les 232 cibles de `/reports` appelaient la refonte de `B1` § D. En réalité **168 des
+      232 sont les cellules de la carte de chaleur** (24 h × 7 j, 10 × 11 px) : ce ne sont
+      pas des commandes, ce sont des données. Les porter à 44 px ferait 7 392 px de large
+      sur un écran de 375 — la carte de chaleur cesserait d'exister. Le critère vise ce
+      qu'on actionne, pas ce qu'on lit
+- [ ] **Le vrai sujet de `/reports` reste donc la CARTE DE CHALEUR** : au doigt, elle
+      demande un drill-down (toucher un jour, puis lire ses heures) plutôt que des cellules
+      qu'aucun pouce ne peut viser. Le tableau, lui, ne déborde pas
+- [ ] `/login` non encore sondée (« Afficher le mot de passe » 26 × 36 relevé au passage)
 
 **Critères de recette, à passer sur chaque page**
 - [ ] Aucun style en ligne recopié d'une maquette

@@ -644,6 +644,14 @@ interface GroupOption {
       (changed)="onAgentProposalsChanged()" />
   `,
   styles: [`
+    /* Cibles tactiles au doigt — critère de recette « iPhone 390 px : cibles ≥ 44 px ».
+       Mesuré à 375 px : navigation de mois, « Aujourd'hui », bascules de vue et menus
+       déroulants étaient tous sous le seuil. Sur un calendrier, changer de mois est le
+       geste le plus répété de la page. */
+    @media (max-width: 768px) {
+      .ag-btn-primary, .ag-btn-soft, .ag-dd-trigger, .ag-icon-btn,
+      .ag-month-btn, .ag-seg-btn, .ag-today-btn { min-width: 44px; min-height: 44px }
+    }
     /* ─── Boutons génériques ─── */
     .ag-btn-primary {
       display: inline-flex; align-items: center; gap: 6px;

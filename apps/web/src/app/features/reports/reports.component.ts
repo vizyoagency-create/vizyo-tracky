@@ -188,7 +188,7 @@ import {
 
         @for (p of periods; track p.label) {
           <button (click)="setPeriod(p.from, p.to); customRangeOpen.set(false)"
-                  class="px-3 py-1.5 text-xs rounded-lg border transition-colors cursor-pointer"
+                  class="rep-periode px-3 py-1.5 text-xs rounded-lg border transition-colors cursor-pointer"
                   [class]="periodFrom === p.from && periodTo === p.to && !isCustomRange()
                     ? 'bg-tracky/20 text-tracky-light border-tracky/30'
                     : 'bg-bg-tertiary text-fg-tertiary border-border-subtle hover:text-fg-secondary'">
@@ -200,7 +200,7 @@ import {
         <div class="rep-custom-wrapper">
           <button type="button"
                   (click)="customRangeOpen.set(!customRangeOpen())"
-                  class="px-3 py-1.5 text-xs rounded-lg border transition-colors cursor-pointer inline-flex items-center gap-1.5"
+                  class="rep-periode px-3 py-1.5 text-xs rounded-lg border transition-colors cursor-pointer inline-flex items-center gap-1.5"
                   [class]="isCustomRange()
                     ? 'bg-tracky/20 text-tracky-light border-tracky/30'
                     : 'bg-bg-tertiary text-fg-tertiary border-border-subtle hover:text-fg-secondary'">
@@ -273,7 +273,7 @@ import {
                 [disabled]="!canPeriodReplay()"
                 [title]="canPeriodReplay() ? 'Replay de tous les trajets de la période'
                                             : 'Sélectionne un véhicule avec des trajets sur la période'"
-                class="px-3 py-1.5 text-xs rounded-lg border border-tracky/30
+                class="rep-periode px-3 py-1.5 text-xs rounded-lg border border-tracky/30
                        bg-tracky/10 text-tracky-light hover:bg-tracky/20
                        transition-colors cursor-pointer disabled:opacity-40
                        inline-flex items-center gap-1.5">
@@ -283,7 +283,7 @@ import {
 
         @if (isAdmin()) {
           <button (click)="onRecompute()" [disabled]="!selectedVehicleId() || recomputing()"
-                  class="px-3 py-1.5 text-xs rounded-lg border border-amber-500/30
+                  class="rep-periode px-3 py-1.5 text-xs rounded-lg border border-amber-500/30
                          bg-amber-500/10 text-amber-400 hover:bg-amber-500/20
                          transition-colors cursor-pointer disabled:opacity-40">
             @if (recomputing()) { Recalcul... } @else { Recalculer }
@@ -645,7 +645,7 @@ import {
                   <td class="p-3 text-center">
                     <div class="flex items-center justify-center gap-1.5">
                       @if (trip.polyline) {
-                        <button (click)="openReplay(trip)" class="text-tracky-light hover:underline cursor-pointer" title="Replay">
+                        <button (click)="openReplay(trip)" class="rep-ligne-action text-tracky-light hover:underline cursor-pointer" title="Replay">
                           <lucide-icon [img]="Play" [size]="16"></lucide-icon>
                         </button>
                       }
@@ -710,6 +710,33 @@ import {
     />
   `,
   styles: [`
+    /* ─── Cibles tactiles — ce que la mesure a corrigé dans mon diagnostic ──────
+     *
+     * La sonde comptait 232 cibles sous 44 px sur cette page, et j'en avais conclu
+     * qu'elle appelait la refonte mobile de B1 § D. La mesure dit autre chose :
+     *
+     *   · 168 de ces 232 sont les CELLULES DE LA CARTE DE CHALEUR (24 h × 7 j, 10 × 11
+     *     px chacune). Ce ne sont pas des commandes, ce sont des données. Les porter à
+     *     44 px ferait 7 392 px de large sur un écran de 375 : la carte de chaleur
+     *     cesserait d'exister. Le critère vise ce qu'on actionne, pas ce qu'on lit.
+     *   · le scroll horizontal, lui, est DÉJÀ à zéro — le critère « jamais de scroll
+     *     horizontal » est tenu.
+     *
+     * Restent 64 vraies commandes, corrigées ici. Le vrai sujet de la refonte n'est
+     * donc pas le tableau, c'est la carte de chaleur : au doigt, elle demande un
+     * drill-down (toucher un jour, puis lire ses heures) plutôt que des cellules
+     * qu'aucun pouce ne peut viser. Cela reste à faire, et c'est écrit comme tel. */
+    @media (max-width: 768px) {
+      .rep-driver, .rep-note, .rep-export-btn, .rep-reset-btn,
+      .rep-dropdown-trigger, .rep-th, .rep-periode { min-height: 44px }
+      /* L'action de fin de ligne est un pictogramme de 16 px : c'est la SURFACE qui
+         doit grandir, pas le dessin. */
+      .rep-ligne-action { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center }
+      /* Les actions en fin de ligne sont des pictogrammes de 16 px : c'est la surface
+         qui doit grandir, pas le dessin. */
+      /* Les raccourcis de période portent une classe stable — les utilitaires
+         Tailwind ne s'attrapent pas depuis une feuille de styles. */
+    }
     /* ─── Sparkline KPI cards ─── */
     .rep-kpi-grid {
       display: grid;

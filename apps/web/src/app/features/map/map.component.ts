@@ -1341,6 +1341,15 @@ const RESYNC_RADIUS_M = 150;
     />
   `,
   styles: [`
+    /* Cibles tactiles au doigt — critère de recette « iPhone 390 px : cibles ≥ 44 px ».
+       Mesuré à 375 px : les pastilles de la feuille (10 par écran), sa croix de
+       fermeture, le compteur d'actifs et les deux boutons flottants. La carte est
+       l'écran le plus utilisé au doigt de toute l'application — c'est le dernier
+       endroit où viser doit demander de la précision. */
+    @media (max-width: 768px) {
+      .tracky-mobile-fab-main, .tracky-mobile-fab-sm,
+      .tracky-sheet-close-btn, .tracky-sheet-pill { min-width: 44px; min-height: 44px }
+    }
     :host {
       display: block;
       position: relative;
@@ -1508,7 +1517,9 @@ const RESYNC_RADIUS_M = 150;
       color: var(--fg-primary);
       cursor: pointer;
       transition: all .2s;
-      min-height: 36px;
+      /* 44 et non 36 : critère de recette « iPhone 390 px : cibles ≥ 44 px ». Cette
+         pastille n'est pas décorative — elle ouvre la feuille des véhicules. */
+      min-height: 44px;
       max-width: calc(100% - 56px);
       overflow: hidden;
       white-space: nowrap;
