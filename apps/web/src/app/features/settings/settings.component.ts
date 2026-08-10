@@ -155,12 +155,13 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
                   <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
                     <div style="flex:1;min-width:0">
                       <div style="font-size:13px;font-weight:600;color:var(--fg-primary);margin-bottom:4px">
-                        Mode interface simplifiee
+                        Mode interface simplifiée
                       </div>
                       <p style="font-size:11px;color:var(--fg-tertiary);margin:0;line-height:1.4">
-                        Connexion directe a la carte, sidebar et bottom-bar masquees,
-                        navigation via le menu burger uniquement. Toutes les pages
-                        restent accessibles.
+                        Connexion directe à la carte, rails de navigation masqués, menu
+                        au bouton. Toutes les pages restent accessibles — le menu les
+                        garde toutes, et « Paramètres » y reste détaché pour revenir en
+                        interface complète.
                       </p>
                     </div>
                     <button

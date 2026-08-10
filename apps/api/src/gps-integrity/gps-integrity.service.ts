@@ -57,6 +57,59 @@ export class GpsIntegrityService {
     this.benignMaxSilenceLabel = hours >= 24 && hours % 24 === 0 ? `${hours / 24} j` : `${hours} h`;
   }
 
+  private static readonly DAY_MS = 24 * 60 * 60 * 1000;
+
+  /**
+   * Espacement des RAPPELS au centre d'alerte pour un épisode qui dure, en fonction de son
+   * âge. L'alerte flotte n'est pas concernée : elle garde sa cadence quotidienne.
+   *
+   * Pourquoi (constat 2026-08-10) : FZ-862-VY, antenne morte depuis le 07/08, écrivait une
+   * ligne d'erreur PAR JOUR — 08/08, 09/08, 10/08 — pour un fait strictement inchangé, avec
+   * la seule durée qui bougeait dans le message. Un état stable qui dure se CONSULTE ; le
+   * re-notifier chaque jour noie les erreurs neuves sous du connu.
+   *
+   * ⚠️ Ce qui n'est PAS fait : le rendre muet. C'est exactement le trou de TRK-011, où une
+   * zone confirmée bénigne éteignait l'alerte SANS BORNE et une antenne morte devenait
+   * indistinguable d'un stationnement. Ici le rappel s'espace, il ne s'arrête jamais — un
+   * épisode d'un an produit encore une ligne par mois.
+   */
+  private static reminderIntervalMs(episodeAgeMs: number): number {
+    const DAY = GpsIntegrityService.DAY_MS;
+    if (episodeAgeMs < 2 * DAY) return DAY; // les deux premiers jours : un rappel quotidien
+    if (episodeAgeMs < 14 * DAY) return 7 * DAY; // puis hebdomadaire
+    return 30 * DAY; // au-delà de deux semaines : mensuel, mais jamais zéro
+  }
+
+  /**
+   * Faut-il réécrire une ligne au centre d'alerte pour cet épisode ?
+   *
+   * Le premier jour, non filtré : la déduplication d'alerte (24 h) suffit, et surtout un
+   * épisode NEUF ne doit jamais être étouffé par la trace d'un épisode précédent.
+   */
+  private async shouldRemindAdmin(
+    imei: string,
+    lastPositionAt: Date | null,
+    now: number,
+  ): Promise<boolean> {
+    if (!lastPositionAt) return true;
+    const age = now - lastPositionAt.getTime();
+    if (age < GpsIntegrityService.DAY_MS) return true;
+
+    const interval = GpsIntegrityService.reminderIntervalMs(age);
+    // Filtré sur le texte « GPS perdu » : la source `gps-integrity` porte aussi les échecs
+    // techniques du détecteur, qui ne doivent pas faire taire un rappel légitime.
+    const recent = await this.prisma.errorLog.findFirst({
+      where: {
+        source: 'gps-integrity',
+        imei,
+        message: { contains: 'GPS perdu' },
+        createdAt: { gte: new Date(now - interval) },
+      },
+      select: { id: true },
+    });
+    return recent === null;
+  }
+
   // Toutes les 5 min, décalé de 15 s pour ne pas percuter les crons alignés sur :00.
   @Cron('15 */5 * * * *')
   async tick(): Promise<void> {
@@ -170,7 +223,13 @@ export class GpsIntegrityService {
           // exactement le trou qu'on vient de boucher.
           const shouldErrorLog =
             benignSilenceExceeded || !recurrence?.recognized || recurrence?.suspect === true;
-          if (created && shouldErrorLog) {
+          // Un épisode qui DURE ne doit pas réécrire une ligne chaque jour indéfiniment
+          // (cf. `shouldRemindAdmin`). L'alerte flotte, elle, garde sa cadence : c'est le
+          // canal de l'exploitant, et l'acquitter la fait taire.
+          const remind = shouldErrorLog
+            ? await this.shouldRemindAdmin(t.imei, t.lastPositionAt, now)
+            : false;
+          if (created && shouldErrorLog && remind) {
             raised++;
             const reason = benignSilenceExceeded
               ? `GPS perdu ANORMALEMENT LONG : ${t.vehicle.plate} (${t.imei}) — sans position depuis ${agoLabel}, ` +

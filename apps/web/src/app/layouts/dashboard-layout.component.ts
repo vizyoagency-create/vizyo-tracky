@@ -64,6 +64,14 @@ interface NavItem {
   label: string;
   route: string;
   icon: typeof LayoutDashboard;
+  /**
+   * Entrée DÉTACHÉE du reste du menu — un filet au-dessus, et une teinte violette.
+   * Réservée à la sortie du mode simplifié : elle ne fait pas partie de la navigation,
+   * elle en est l'issue.
+   */
+  detachee?: boolean;
+  /** Ligne d'explication sous le libellé. Une seule entrée en a besoin aujourd'hui. */
+  sousTitre?: string;
 }
 /** Groupe de navigation : une section (eyebrow) + ses items.
  *  `section: null` = groupe sans en-tête (modes veilleur / baanool). */
@@ -170,10 +178,14 @@ interface NavGroup {
                 <a [routerLink]="item.route" routerLinkActive="active"
                    #rla="routerLinkActive"
                    class="bs-link"
+                   [class.bs-link--detachee]="item.detachee"
                    [attr.aria-current]="rla.isActive ? 'page' : null"
                    (click)="mobileMenuOpen.set(false)">
                   <lucide-icon [img]="item.icon" [size]="20" aria-hidden="true"></lucide-icon>
-                  <span>{{ item.label }}</span>
+                  <span class="bs-link-txt">
+                    {{ item.label }}
+                    @if (item.sousTitre) { <small class="bs-link-sous">{{ item.sousTitre }}</small> }
+                  </span>
                 </a>
               }
             </div>
@@ -838,9 +850,29 @@ interface NavGroup {
       }
       .bs-link:active { transform: scale(.97) }
       .bs-link.active {
-        background: rgba(16,224,160,.1);
-        color: var(--tracky-light);
-        border-color: rgba(16,224,160,.25);
+        background: color-mix(in srgb, var(--color-tracky-light) 10%, transparent);
+        color: var(--texte-succes);
+        border-color: color-mix(in srgb, var(--color-tracky-light) 25%, transparent);
+      }
+      .bs-link-txt { display: flex; flex-direction: column; gap: 1px; min-width: 0 }
+      .bs-link-sous { font-size: 11px; font-weight: 500; opacity: .85 }
+      /* LA SORTIE DU MODE SIMPLIFIÉ — détachée par un filet, en violet.
+         Règle non négociable de B1 § J : sans elle, l'utilisateur est enfermé dans un
+         mode qu'il n'a pas compris, et le réglage qui l'en sort est justement celui
+         qu'il ne trouve plus. Le violet la sépare des pages : ce n'est pas une
+         destination de plus, c'est la porte. */
+      .bs-link--detachee {
+        margin-top: 14px;
+        padding-top: 14px;
+        border-top: 1px solid var(--border-strong);
+        border-radius: 0 0 14px 14px;
+        color: var(--texte-violet);
+      }
+      .bs-link--detachee.active {
+        background: color-mix(in srgb, var(--texte-violet) 12%, transparent);
+        color: var(--texte-violet);
+        border-color: var(--border-strong);
+        border-top-color: var(--border-strong);
       }
       /* Mode sombre : un peu plus de contraste sur les cartes */
       :host-context([data-theme="dark"]) .bs-link {
@@ -1161,21 +1193,45 @@ export class DashboardLayoutComponent {
         },
       ];
     }
-    // V1.12 — Mode Baanool : menu reduit aux essentiels (un seul groupe, sans
-    // en-tête). Pas de dashboard, groupes, geofences, rapports. Groupes =
-    // onglet de Véhicules, Conducteurs = onglet d'Utilisateurs.
+    // ⚠️ MODE SIMPLIFIÉ — LE MENU GARDE TOUT (B1 § J, défaut relevé et corrigé).
+    //
+    // Le réglage promet, mot pour mot : « Toutes les pages restent accessibles. »
+    // Le menu, lui, était réduit à cinq entrées — Tableau de bord, Rapports, Scores et
+    // Agenda disparaissaient. La promesse et le code se contredisaient, et c'est la
+    // promesse qui avait raison : le mode simplifié SIMPLIFIE L'ÉCRAN (connexion directe
+    // à la carte, rails masqués, navigation au menu), il ne retire pas de fonctions.
+    //
+    // Ce qui change ici est donc la FORME, pas le contenu : un seul groupe sans
+    // en-têtes de section, parce que le mode simplifié n'affiche pas d'eyebrows.
     if (this.isBaanoolMode()) {
-      const items: NavItem[] = [
-        ...(this.perms.can('vehicles_view') ? [
-          { label: 'Carte', route: '/map', icon: Map },
-          { label: 'Véhicules', route: '/vehicles', icon: Truck },
-        ] : []),
-        ...(this.perms.can('alerts_view') ? [{ label: 'Alertes', route: '/alerts', icon: Bell }] : []),
-        ...(this.perms.can('users_view') ? [{ label: 'Utilisateurs', route: '/users', icon: Users }] : []),
-        { label: 'Paramètres', route: '/settings', icon: Settings },
-      ];
+      const items: NavItem[] = this.groupesComplets()
+        .flatMap((g) => g.items)
+        // Paramètres est ré-ajouté juste après, détaché : le laisser dans le flot le
+        // noierait au milieu des pages, alors que c'est la seule porte de sortie.
+        .filter((i) => i.route !== '/settings');
+      // RÈGLE NON NÉGOCIABLE (B1 § J) : « Paramètres reste toujours dans le menu,
+      // détaché, en violet, sous-titré Revenir en interface complète. » Sans cette
+      // garantie, l'utilisateur est enfermé dans un mode qu'il n'a pas compris — et
+      // le réglage qui l'en sort est précisément celui qu'il ne trouve plus.
+      items.push({
+        label: 'Paramètres',
+        route: '/settings',
+        icon: Settings,
+        detachee: true,
+        sousTitre: 'Revenir en interface complète',
+      });
       return [{ section: null, items }];
     }
+    return this.groupesComplets();
+  });
+
+  /**
+   * Le menu COMPLET, en sections. Extrait de `navItems` pour que le mode simplifié
+   * puisse le réutiliser tel quel : c'est la seule façon de garantir que sa promesse
+   * — « toutes les pages restent accessibles » — reste vraie quand une page s'ajoute
+   * ici. Une seconde liste, tenue à la main, aurait divergé au premier ajout.
+   */
+  private groupesComplets(): NavGroup[] {
     // Regroupement en sections (eyebrows mono) — refonte DS §3.
     const supervision: NavItem[] = [
       { label: 'Tableau de bord', route: '/dashboard', icon: LayoutDashboard },
@@ -1224,6 +1280,9 @@ export class DashboardLayoutComponent {
       { section: 'Supervision', items: supervision },
       { section: 'Analyse', items: analyse },
       { section: 'Administration', items: administration },
+      // Paramètres vit dans le rail bas en mode complet ; il n'apparaît ici que pour
+      // que le mode simplifié puisse le retrouver et le détacher.
+      { section: null, items: [{ label: 'Paramètres', route: '/settings', icon: Settings }] },
     ] satisfies NavGroup[]).filter((g) => g.items.length > 0);
-  });
+  }
 }

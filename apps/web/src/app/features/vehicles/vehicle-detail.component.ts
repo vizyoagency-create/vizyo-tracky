@@ -81,6 +81,7 @@ import { connectivityMeta } from '../../shared/ui/connectivity-badge/connectivit
 import { InstallReviewBadgeComponent } from '../../shared/ui/install-review-badge/install-review-badge.component';
 import { BrandLogoComponent } from '../../shared/ui/brand-logo/brand-logo.component';
 import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
+import { rangerEnFamilles } from './onglets-familles';
 import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
 
 @Component({
@@ -513,9 +514,34 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
           </div>
         }
 
-        <!-- Onglets (dtab, maquette 06) -->
+        <!-- ONGLETS EN DEUX NIVEAUX (B1 § C) — dix onglets alignés dans une rangée qui
+             défile obligent à chercher : on ne voit jamais l'ensemble, et « Géofences »
+             se trouve après « Maintenance » sans qu'aucune logique ne le dise. Quatre
+             familles rendent la carte lisible d'un coup d'œil. RIEN N'EST SUPPRIMÉ :
+             chaque onglet reste accessible, il est seulement rangé.
+
+             Sous trois onglets visibles — le veilleur de nuit n'en voit que deux — le
+             niveau des familles disparaît : deux boîtes pour deux onglets sont un
+             classement qui ne classe rien. -->
+        @if (famillesVisibles().length > 1) {
+          <div class="vdx-familles" role="tablist" aria-label="Familles d'onglets">
+            @for (f of famillesVisibles(); track f.cle) {
+              <button
+                type="button"
+                role="tab"
+                class="vdx-famille"
+                [class.vdx-famille--active]="familleActive() === f.cle"
+                [attr.aria-selected]="familleActive() === f.cle"
+                (click)="ouvrirFamille(f)">
+                {{ f.libelle }}
+                @if (f.badge > 0) { <span class="vdx-tab-badge">{{ f.badge }}</span> }
+              </button>
+            }
+          </div>
+        }
+
         <div class="vdx-tabs">
-          @for (tab of tabs(); track tab.key) {
+          @for (tab of ongletsDeLaFamille(); track tab.key) {
             <button (click)="activeTab.set(tab.key)" class="vdx-tab" [class.vdx-tab--active]="activeTab() === tab.key">
               <lucide-icon [img]="tab.icon" [size]="15"></lucide-icon>
               <span class="vdx-tab-label">{{ tab.label }}</span>
@@ -973,7 +999,26 @@ import { VehicleQrDialogComponent } from './vehicle-qr-dialog.component';
     .vdx-imei:hover .vd-stat-copy-icon { opacity: 1; color: var(--tracky-light); }
     @keyframes vt-blink { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
 
-    /* ── Onglets (dtab) ── */
+    /* ── Onglets, niveau 1 : les familles ── */
+    .vdx-familles { display: flex; align-items: center; gap: 4px; margin-bottom: 10px; overflow-x: auto; scrollbar-width: none; }
+    .vdx-familles::-webkit-scrollbar { display: none; }
+    .vdx-famille {
+      display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+      padding: 7px 13px; border-radius: 9999px;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-quaternary);
+      font: inherit; font-size: .78rem; font-weight: 700; letter-spacing: .01em;
+      color: var(--fg-tertiary); cursor: pointer;
+      transition: color .15s, background .15s, border-color .15s;
+    }
+    .vdx-famille:hover { color: var(--fg-secondary); }
+    .vdx-famille--active {
+      background: color-mix(in srgb, var(--texte-succes) 13%, transparent);
+      color: var(--texte-succes);
+      border-color: color-mix(in srgb, var(--texte-succes) 30%, transparent);
+    }
+
+    /* ── Onglets, niveau 2 (dtab) ── */
     .vdx-tabs { display: flex; align-items: center; gap: 5px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 13px; overflow-x: auto; scrollbar-width: none; }
     .vdx-tabs::-webkit-scrollbar { display: none; }
     .vdx-tab {
@@ -1894,6 +1939,40 @@ export class VehicleDetailComponent implements OnInit {
       .filter((t) => !t.adminOnly || isAdmin)
       .filter((t) => !t.perm || this.perms.can(t.perm as any));
   });
+
+  /**
+   * Les familles qui ont au moins un onglet visible pour cet utilisateur. Une famille
+   * vide disparaît : proposer « Sécurité » à quelqu'un qui n'a aucune de ses trois
+   * permissions ouvre une boîte vide, ce qui se lit comme une panne.
+   */
+  protected readonly famillesVisibles = computed(() =>
+    rangerEnFamilles(this.tabs(), this.alerts().length),
+  );
+
+  /** La famille qui contient l'onglet ouvert. */
+  protected readonly familleActive = computed(() => {
+    const courant = this.activeTab();
+    return this.famillesVisibles().find((f) => f.onglets.some((t) => t.key === courant))?.cle
+      ?? this.famillesVisibles()[0]?.cle
+      ?? 'suivi';
+  });
+
+  /**
+   * Les onglets du second niveau. Sous deux familles, on retombe sur la rangée plate :
+   * le veilleur de nuit ne voit que Carte et Horaires, et deux boîtes pour deux onglets
+   * sont un classement qui ne classe rien.
+   */
+  protected readonly ongletsDeLaFamille = computed(() => {
+    const familles = this.famillesVisibles();
+    if (familles.length <= 1) return this.tabs();
+    return familles.find((f) => f.cle === this.familleActive())?.onglets ?? this.tabs();
+  });
+
+  /** Ouvrir une famille ouvre son PREMIER onglet — une famille n'a pas de contenu propre. */
+  protected ouvrirFamille(f: { onglets: { key: string }[] }): void {
+    const premier = f.onglets[0];
+    if (premier) this.activeTab.set(premier.key);
+  }
 
   private lastAlertCount = -1;
   private alertRefreshEffect = effect(() => {

@@ -20,6 +20,11 @@ export interface AllowlistSyncResult {
   removed: number;
   unchanged: number;
   skipped: number;
+  /**
+   * Suppressions RETENUES par la garde anti-suppression de masse de la passerelle
+   * (V1.20). Optionnel : une passerelle anterieure au 2026-08-10 ne renvoie pas ce champ.
+   */
+  removalsBlocked?: number;
 }
 
 export interface AllowlistStatus {
@@ -109,16 +114,24 @@ export class AllowlistService {
     this.syncing = true;
     try {
       const result = await this.syncFromTrackers();
-      if (result.added > 0) {
-        // Ces numéros ne pouvaient PAS recevoir de SMS jusqu'ici (403 côté passerelle) : c'est un
-        // trou de couverture réel, pas un simple ajustement de configuration.
-        this.errorLogger.recordBackground(
-          `Allowlist SMS incomplète : ${result.added} numéro(s) manquant(s) rétabli(s) — le repli SMS ` +
-            `(coupe-circuit, notifications) était inopérant pour ces destinataires.`,
-          'sms-allowlist',
-          { trigger: 'reconcile-cron', added: result.added, removed: result.removed },
-        );
-      }
+
+      // ── Preuve d'exécution — inconditionnelle ────────────────────────────────
+      // Jusqu'au 2026-08-10, un passage qui ne changeait rien n'écrivait RIEN. Impossible
+      // donc de distinguer « a tourné, tout allait bien » de « n'a pas tourné » : l'audit
+      // TRK-017 a mis deux passages à trancher cette seule question. Une trace par
+      // exécution, même à zéro, la rend lisible en une requête.
+      // Volontairement au journal système (consultable) et PAS au centre d'alerte : une
+      // exécution normale n'est pas une faute.
+      this.systemActivity.record({
+        category: 'SMS',
+        action: 'allowlist_reconciled',
+        status: 'SUCCESS',
+        actor: 'system',
+        detail: `+${result.added} / -${result.removed} (${result.unchanged} inchangés)`,
+        meta: { ...result, episodeRepairs: this.episodeRepairs },
+      });
+
+      this.reportCoverage(result);
     } catch (err) {
       this.logger.warn(`reconciliation allowlist échouée: ${err instanceof Error ? err.message : err}`);
       this.errorLogger.recordBackground(
@@ -129,6 +142,99 @@ export class AllowlistService {
     } finally {
       this.syncing = false;
     }
+  }
+
+  // ─── État de l'épisode de couverture en cours ──────────────────────────────
+  /** Instant d'ouverture de l'épisode courant (trou de couverture non refermé durablement). */
+  private episodeOpenedAt: number | null = null;
+  /** Nombre de réparations depuis l'ouverture de l'épisode. */
+  private episodeRepairs = 0;
+  /** Dernière remontée au centre d'alerte pour cet épisode. */
+  private lastEpisodeAlertAt = 0;
+  /** Un état qui dure se CONSULTE ; on ne le re-notifie qu'une fois par jour. */
+  private static readonly EPISODE_REMINDER_MS = 24 * 60 * 60 * 1000;
+
+  /**
+   * Décide de ce qui mérite le centre d'alerte, et de ce qui n'y a pas sa place.
+   *
+   * Le défaut d'origine : une ligne d'erreur à CHAQUE réparation. En régime normal ça ne
+   * se voyait pas ; le 2026-08-10, un tiers effaçant l'allowlist plusieurs fois par jour a
+   * produit six lignes identiques en dix-neuf heures — six fois le même fait, aucune
+   * information nouvelle après la première. *Un état qui dure se consulte, il ne se notifie
+   * pas en boucle.*
+   *
+   * ⚠️ Ce qui n'est PAS fait ici, exprès : rien n'est rendu muet. Le premier trou d'un
+   * épisode alerte toujours, immédiatement ; un épisode qui persiste réalerte chaque jour ;
+   * et la fermeture est tracée. On corrige le cri, pas le garde-fou.
+   */
+  private reportCoverage(result: AllowlistSyncResult, now = Date.now()): void {
+    // Une suppression de masse retenue par la passerelle est un fait NEUF et grave : quelque
+    // chose a demandé le retrait d'une large part de la couverture SMS. Toujours remonté.
+    if ((result.removalsBlocked ?? 0) > 0) {
+      this.errorLogger.recordBackground(
+        `Allowlist SMS : ${result.removalsBlocked} suppression(s) retenues par la passerelle — ` +
+          `cette synchronisation aurait retiré le repli SMS à autant de destinataires. ` +
+          `Vérifier le journal des appels de la passerelle avant de débloquer.`,
+        'sms-allowlist',
+        { trigger: 'reconcile-cron', removalsBlocked: result.removalsBlocked },
+      );
+    }
+
+    if (result.added === 0) {
+      // Couverture complète. Si un épisode était ouvert, il se referme : on le trace au
+      // journal système (pas au centre d'alerte — une bonne nouvelle n'est pas une faute).
+      if (this.episodeOpenedAt !== null) {
+        const hours = Math.round((now - this.episodeOpenedAt) / 36e5);
+        this.systemActivity.record({
+          category: 'SMS',
+          action: 'allowlist_episode_closed',
+          status: 'SUCCESS',
+          actor: 'system',
+          detail: `Couverture SMS rétablie durablement après ${this.episodeRepairs} réparation(s) sur ~${hours} h`,
+          meta: { repairs: this.episodeRepairs, hours },
+        });
+        this.episodeOpenedAt = null;
+        this.episodeRepairs = 0;
+        this.lastEpisodeAlertAt = 0;
+      }
+      return;
+    }
+
+    // Des numéros manquaient : ils ne pouvaient PAS recevoir de SMS (403 côté passerelle,
+    // levé avant toute écriture — donc sans laisser la moindre trace ailleurs).
+    this.episodeRepairs += 1;
+    const isNewEpisode = this.episodeOpenedAt === null;
+    if (isNewEpisode) this.episodeOpenedAt = now;
+    const openedAt = this.episodeOpenedAt ?? now;
+
+    const dueForReminder = now - this.lastEpisodeAlertAt >= AllowlistService.EPISODE_REMINDER_MS;
+    if (!isNewEpisode && !dueForReminder) {
+      this.logger.warn(
+        `Allowlist SMS : ${result.added} numéro(s) rétablis (réparation n°${this.episodeRepairs} ` +
+          `de l'épisode en cours) — déjà signalé, pas de nouvelle ligne au centre d'alerte.`,
+      );
+      return;
+    }
+    this.lastEpisodeAlertAt = now;
+
+    const recurrence =
+      this.episodeRepairs > 1
+        ? ` Le trou se ROUVRE : ${this.episodeRepairs} réparations depuis ${new Date(openedAt).toISOString()} — ` +
+          `quelque chose retire ces numéros entre deux réconciliations (journal des appels de la passerelle).`
+        : '';
+
+    this.errorLogger.recordBackground(
+      `Allowlist SMS incomplète : ${result.added} numéro(s) manquant(s) rétabli(s) — le repli SMS ` +
+        `(coupe-circuit, notifications) était inopérant pour ces destinataires.${recurrence}`,
+      'sms-allowlist',
+      {
+        trigger: 'reconcile-cron',
+        added: result.added,
+        removed: result.removed,
+        episodeRepairs: this.episodeRepairs,
+        episodeOpenedAt: new Date(openedAt).toISOString(),
+      },
+    );
   }
 
   private async call<T>(path: string, init?: RequestInit): Promise<T> {

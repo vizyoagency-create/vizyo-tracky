@@ -1,4 +1,4 @@
-import { apiFetch, apiFetchJson, apiFetchRaw } from './api-fetch';
+import { __resetTransportFailureCount, apiFetch, apiFetchJson, apiFetchRaw } from './api-fetch';
 import { HttpFailure } from './http-failure';
 
 /**
@@ -22,6 +22,9 @@ describe('api-fetch', () => {
   beforeEach(() => {
     realFetch = globalThis.fetch;
     reported = [];
+    // Le compteur de confirmation vit au niveau du MODULE : sans cette remise à zéro, les
+    // échecs d'un test feraient parler le suivant dès son premier échec.
+    __resetTransportFailureCount();
     // La remontée passe par `reportClientError`, qui poste sur /api/activity/error.
     // On l'observe par ce POST plutôt qu'en espionnant la fonction : c'est le
     // comportement OBSERVABLE, celui qui remplit réellement le centre d'alerte.
@@ -88,6 +91,9 @@ describe('api-fetch', () => {
   describe('remontée au centre d’alerte', () => {
     it('une API INJOIGNABLE est signalée — c’est le seul cas que personne d’autre ne voit', async () => {
       pending = () => Promise.reject(new TypeError('Failed to fetch'));
+      // Deux échecs : une API réellement tombée les enchaîne instantanément (cf.
+      // « confirmer avant de crier »). Un hoquet isolé, lui, n'en produit qu'un.
+      await apiFetch('/api/users', undefined, 'Chargement des utilisateurs').catch(() => undefined);
       await apiFetch('/api/users', undefined, 'Chargement des utilisateurs').catch(() => undefined);
       expect(reported.length)
         .withContext(
@@ -131,8 +137,11 @@ describe('api-fetch', () => {
 
     it('une page VISIBLE remonte toujours — sinon le module ne sert plus à rien', async () => {
       // 🔑 Le vrai test du correctif : il devait supprimer le bruit SANS supprimer le signal.
+      // Il faut désormais DEUX échecs d'affilée (cf. « confirmer avant de crier »), ce que
+      // toute panne réelle produit en une fraction de seconde.
       pending = () => Promise.reject(new TypeError('Failed to fetch'));
-      await apiFetch('/api/users', undefined, 'Chargement').catch(() => undefined);
+      await apiFetch('/api/users', undefined, 'Chargement visible A').catch(() => undefined);
+      await apiFetch('/api/users', undefined, 'Chargement visible A').catch(() => undefined);
       expect(reported.length).toBe(1);
     });
 
@@ -144,11 +153,53 @@ describe('api-fetch', () => {
       expect(reported.length).toBe(0);
     });
 
-    it('apiFetchRaw sans mode silencieux remonte — c’est le second essai qui parle', async () => {
+    it('le rafraîchissement proactif remonte au SECOND essai — la panne est confirmée', async () => {
+      // La séquence réelle : 1er essai silencieux, puis nouvel essai. Deux échecs
+      // consécutifs = une panne qui dure, pas un hoquet.
       pending = () => Promise.reject(new TypeError('Load failed'));
+      await apiFetchRaw('/api/auth/refresh', undefined, 'Rafraichissement de session', {
+        silentNetworkFailure: true,
+      }).catch(() => undefined);
       await apiFetchRaw('/api/auth/refresh', undefined, 'Rafraichissement de session').catch(
         () => undefined,
       );
+      expect(reported.length).toBe(1);
+    });
+
+    // --- Confirmer avant de crier (2026-08-10) --------------------------------------
+
+    it('un hoquet ISOLÉ ne remonte pas — tunnel, bascule wifi/4G, changement de cellule', async () => {
+      // Le cas observé le 10/08 sur /map depuis un iPhone : un seul échec de transport,
+      // page au premier plan, navigateur en ligne. Une ligne d'erreur pour un incident
+      // qui n'a duré pour personne.
+      pending = () => Promise.reject(new TypeError('Load failed'));
+      await apiFetch('/api/users', undefined, 'Chargement hoquet B').catch(() => undefined);
+      expect(reported.length).toBe(0);
+    });
+
+    it('une requête qui aboutit REMET le compteur à zéro', async () => {
+      // Deux hoquets séparés par un succès ne sont pas une panne : ils ne doivent pas
+      // s'additionner jusqu'à déclencher une fausse alerte.
+      pending = () => Promise.reject(new TypeError('Load failed'));
+      await apiFetch('/api/users', undefined, 'Chargement reset C').catch(() => undefined);
+
+      pending = () => Promise.resolve(new Response('{}', { status: 200 }));
+      await apiFetch('/api/users', undefined, 'Chargement reset C').catch(() => undefined);
+
+      pending = () => Promise.reject(new TypeError('Load failed'));
+      await apiFetch('/api/users', undefined, 'Chargement reset C').catch(() => undefined);
+
+      expect(reported.length).toBe(0);
+    });
+
+    it('une panne qui DURE parle — une fois, pas cinquante', async () => {
+      pending = () => Promise.reject(new TypeError('Failed to fetch'));
+      for (let i = 0; i < 5; i++) {
+        await apiFetch('/api/users', undefined, 'Chargement panne D').catch(() => undefined);
+      }
+      // Le signal n'est pas perdu (la panne est bien remontée dès le 2e échec) et il n'y a
+      // pas d'inondation : `reportClientError` déduplique un message identique sur 15 s.
+      // Les deux gardes se composent — confirmer d'abord, puis ne pas répéter.
       expect(reported.length).toBe(1);
     });
   });
@@ -195,11 +246,16 @@ describe('api-fetch', () => {
       expect(res.status).toBe(409);
     });
 
-    it('jette quand même sur une API injoignable, et la signale', async () => {
+    it('jette quand même sur une API injoignable, et la signale une fois confirmée', async () => {
       pending = () => Promise.reject(new TypeError('Failed to fetch'));
-      await expectAsync(apiFetchRaw('/api/groups', undefined, 'Création')).toBeRejectedWith(
+      // Le rejet est IMMÉDIAT dès le premier échec : l'appelant n'attend pas la
+      // confirmation. Seule la remontée au centre d'alerte attend le second échec.
+      await expectAsync(apiFetchRaw('/api/groups', undefined, 'Création raw E')).toBeRejectedWith(
         jasmine.any(HttpFailure),
       );
+      expect(reported.length).toBe(0);
+
+      await apiFetchRaw('/api/groups', undefined, 'Création raw E').catch(() => undefined);
       expect(reported.length).toBe(1);
     });
   });

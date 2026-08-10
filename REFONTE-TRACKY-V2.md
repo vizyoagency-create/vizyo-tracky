@@ -18,10 +18,10 @@
 | **A4** | Lien public `/s/:token`, expiration, révocation | — | 🟢 **livré** | 97 / 98 |
 | **B0′** | Reliquat socle : couleurs en dur, UTC, accents, wizard | Bloc B | 🟢 **livré** | 27 / 28 |
 | **B-kit** | Kit partagé : 6 états sur 24 composants | pages B | 🟢 **livré** | 26 / 28 |
-| **B-pages** | 29 pages refondues × 3 déclinaisons | — | ⬜ **débloqué**¹ | 0 / 57 |
+| **B-pages** | 29 pages refondues × 3 déclinaisons | — | 🟡 en cours | 4 / 57 |
 | **B-mails** | 19 gabarits d'e-mail | — | ⬜ **débloqué**¹ | 0 / 12 |
 | **PROD** | Push, déploiement, recette production | — | ⬜ à faire | 0 / 28 |
-| | | | **Total** | **473 / 604** |
+| | | | **Total** | **477 / 604** |
 
 ¹ **Débloqué le 2026-08-10** : les 28 planches `.dc.html` sont dans `design/maquettes/`, avec
 leur `support.js` et le dossier `brands/`. Cf. « Écart 1 » ci-dessous. Ordre d'attaque non
@@ -1221,7 +1221,7 @@ composants ne gèrent que « rempli » et « chargement ».
 - [ ] `/dashboard` — 4 tuiles de KPI en tête, widgets en grille
 - [ ] `/map` — pastilles de véhicule redessinées (SVG repris tels quels), calques, feuille de position
 - [ ] `/places` — pendant « liste » de la carte
-- [ ] `/vehicles/:id` — **10 onglets regroupés en 4 familles** : Suivi (Carte, Historique) · Analyse (Rapports, Scores) · Sécurité (Alertes, Surveillance, Géofences) · Exploitation (Maintenance, Horaires, Commandes). **Rien supprimé**
+- [x] `/vehicles/:id` — **10 onglets regroupés en 4 familles** : Suivi · Analyse · Sécurité · Exploitation. **Rien supprimé**, et c'est prouvé : 9 tests vérifient que l'union des familles redonne la liste d'entrée, pour tous les profils de permission. Un onglet non rangé rejoint « Suivi » plutôt que de disparaître — le classement est un confort, l'accès est un dû. Sous deux familles (le veilleur n'a que Carte et Horaires) on retombe sur la rangée plate
 - [ ] `/vehicles` — onglets liste / groupes / capacités / mode privé ; sur mobile cartes + filtres en feuille
 - [ ] `/alerts` — onglets Alertes / Géofences / Réglages
 
@@ -1273,8 +1273,8 @@ composants ne gèrent que « rempli » et « chargement ».
 **J — Interfaces alternatives (2)**
 - [ ] Mode veilleur — 3 permissions, une seule écriture : **redémarrer**. Il ne peut pas couper (rallumer débloque une exception réversible, couper immobilise un bien). Accordéons par groupe, bouton Redémarrer sur la ligne, confirmation en un toucher avec deux garanties : *réversible*, *consigné à votre nom*
 - [ ] Interface simplifiée — carte plein écran, 3 cibles de 88 px en langage courant, 4 règles : jamais plus de 3 boutons · langage courant · les garde-fous restent · la sortie vers l'interface complète toujours visible
-- [ ] ⚠️ **Défaut à corriger** : le réglage promet « toutes les pages restent accessibles » mais `dashboard-layout.component.ts` filtre le menu à 5 entrées — Rapports, Scores, Agenda et le tableau de bord disparaissent. La promesse et le code se contredisent. **Le menu doit tout garder**
-- [ ] **Règle non négociable** : en mode simplifié, Paramètres reste toujours dans le menu, détaché, en violet, sous-titré « Revenir en interface complète ». Sans cette garantie, l'utilisateur est enfermé dans un mode qu'il n'a pas compris
+- [x] ⚠️ **Défaut corrigé** : le réglage promettait « toutes les pages restent accessibles », le menu était réduit à 5 entrées. Le mode simplifié réutilise désormais **la même source** que le menu complet (`groupesComplets()`) — une seconde liste tenue à la main aurait divergé au premier ajout de page. Ce qui change est la FORME (un seul groupe, sans en-têtes), pas le contenu
+- [x] **Règle non négociable appliquée** : Paramètres est détaché par un filet, en violet, sous-titré « Revenir en interface complète ». Le texte du réglage a été réécrit pour dire ce que le menu fait vraiment
 
 **G — Le shell, en dernier (2)**
 - [ ] Shell authentifié — une seule définition de référence, bandeau hors ligne qui **pousse** le contenu, barre de progression 2 px qui **se superpose**, 3 modes spéciaux (veilleur, simplifié, super-admin) *(le mode dépôt est livré en A1)*
