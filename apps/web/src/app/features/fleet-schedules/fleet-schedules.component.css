@@ -215,3 +215,22 @@ a.btn.icon { text-decoration: none; color: var(--fs-text); }
   .bulk-actions { margin-left: 0; width: 100%; }
   .fsched-head { flex-direction: column; }
 }
+
+/* ─── Cibles tactiles au doigt (lot B-pages) ─────────────────────────────────
+ *
+ * Critère de recette « iPhone 390 px : cibles ≥ 44 px ». Mesuré à 375 px :
+ * 31 boutons d'action, les 7 cases de jour et la bascule d'aide étaient sous le
+ * seuil.
+ *
+ * Cocher un jour est le geste central de cette page, et l'erreur ne pardonne
+ * pas : une case ratée pose un horaire de COUPURE MOTEUR sur le mauvais jour.
+ * On ne découvre la faute que le matin où le véhicule ne démarre pas.
+ */
+@media (max-width: 768px) {
+  .btn,
+  .day,
+  .help-toggle {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

@@ -212,6 +212,10 @@ const PERM_GROUPS = PERMISSION_GROUP_ORDER.map((group) => ({
     </div>
   `,
   styles: [`
+    /* Cible tactile au doigt — critère de recette « iPhone 390 px : cibles ≥ 44 px ». */
+    @media (max-width: 768px) {
+      .po-back { min-height: 44px }
+    }
     .po-page { max-width: 1000px }
     .po-header { margin-bottom: 20px }
     .po-header h1 { font-family: var(--font-display, inherit); font-size: 1.72rem; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; color: var(--fg-primary); margin: 8px 0 0 }
