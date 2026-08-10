@@ -1177,7 +1177,10 @@ Les 4 défauts de code relevés en lisant la source, indépendants de la refonte
 - [ ] `connectivity-badge` (9 pages) — les 6 états *(couleurs et distinctions faites au lot B0′)*
 - [x] `confirm-modal` (14 pages) — **conséquences chiffrées obligatoires**, mention *Irréversible*, variante **critique** (liseré rouge, état de l'objet rappelé, plaque à retaper), couleurs en jetons, encre foncée sur l'accent, **feuille sous 640 px** et non boîte centrée
 - [x] `scripts/verif-confirmations.mjs` (`pnpm verif:confirmations`) — refuse un `[danger]` sans `[consequences]`, un `[critique]` sans `[confirmationAttendue]`, un libellé sans verbe. **8 appels complétés** : coupure moteur (fiche et carte), archivage et anonymisation d'un conducteur, suppression d'un planning et d'une ligne, envoi d'une commande, désactivation de l'automatisation horaire
-- [ ] `toast` + `skeleton` (toutes) — les 6 états
+- [x] **`app-zone` — les 6 états, rendus une fois pour toutes.** `chargement` (squelette, jamais un rond) · `rempli` · `vide` (dit ce qui est vide ET quoi faire) · `erreur` (porte toujours un recours) · `partiel` (le contenu RESTE, un bandeau nomme ce qui manque) · `interdit` (nomme la permission, libellé tiré de `PERMISSION_LABELS`)
+- [x] **Au-delà de 8 s, le squelette cède la place à une sortie** — « l'utilisateur doit pouvoir abandonner ». Un squelette qui pulse indéfiniment est un mensonge poli
+- [x] `toast` — **passe en haut sur mobile** : « le bas est occupé par la barre d'onglets ». Le code d'avant restait en bas et remontait de 76 px, redescendait en plein écran, remontait sur modale — trois positions pour une surface, et une collision garantie avec la feuille. Les 4 types passent sur la famille `--texte-*` (`text-red-400`, `text-amber-400`, `text-sky-400` étaient hors système)
+- [x] `skeleton` + `spinner` — primitives déjà propres, désormais consommées par `app-zone` selon la règle « page → squelette, action → rond dans le bouton »
 - [x] `bottom-sheet` (11 pages) — **géométrie de plateforme** (rayon et poignée depuis les jetons d'A3 ; la feuille était figée à 20 px et 44 × 4, ni iOS ni Android), **hauteur annonçable** (les six feuilles de la maquette sont dimensionnées : 44 à 72 %), **variante sans voile** pour les feuilles posées sur la carte
 - [ ] `bottom-sheet` — les 6 états
 - [ ] `trip-note-modal`
@@ -1205,9 +1208,10 @@ Les 4 défauts de code relevés en lisant la source, indépendants de la refonte
 `partiel` · `interdit`. C'est le manque le plus fréquent du code actuel : beaucoup de
 composants ne gèrent que « rempli » et « chargement ».
 
-- [ ] **`interdit` en particulier** : aujourd'hui on masque silencieusement, il faut **nommer la permission manquante**. Un bouton qui disparaît sans explication produit un ticket de support ; un bouton désactivé qui dit « demande la permission *Couper le moteur* » n'en produit aucun
-- [ ] Les 5 règles du kit appliquées : aucune couleur en dur · squelette et non rond · une erreur porte un recours · nommer ce qui est perdu · modale sur PC, feuille sur mobile
-- [ ] Un composant démontre ses 6 états (page de démonstration ou tests visuels)
+- [x] **`interdit` en particulier** : `app-zone` nomme la permission manquante avec le libellé de la source partagée — « Il vous manque **Couper / redémarrer le moteur**. Un administrateur de la flotte peut vous l'accorder. » Une chaîne recopiée dériverait au premier renommage
+- [x] Les 5 règles du kit, portées par le kit lui-même : aucune couleur en dur · squelette et non rond · une erreur porte un recours · nommer ce qui est perdu (`pnpm verif:confirmations`) · modale sur PC, feuille sur mobile
+- [x] Un composant démontre ses 6 états — **8 tests sur `app-zone`**, qui valent mieux qu'une page de démonstration : une page se regarde une fois, un test se relance
+- [x] **P1 CORRIGÉ — `pnpm verify` se termine.** Il pendait indéfiniment (`ng test` sans `--watch=false`, 25 min à CPU nul, 29 Chrome vivants). Et sous ce blocage s'en cachait un second : la suite web ne COMPILAIT plus depuis le lot A2 — `platform.spec.ts` utilisait l'API Jest (`it.each`, `jest.fn()`) dans un runner Jasmine. **311 tests web tournent maintenant**, pour la première fois. `pnpm verify` complet : 40 s
 - [ ] **Commit** `refactor(ui): kit partage — les 6 etats sur les 24 composants`
 
 ### B-pages — Les 29 pages
