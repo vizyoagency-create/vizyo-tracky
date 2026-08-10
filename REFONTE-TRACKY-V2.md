@@ -1302,9 +1302,19 @@ composants ne gèrent que « rempli » et « chargement ».
       privé, Géofences, Règles… Règle globale sous 768 px : elles traversent l'encapsulation
       des composants, et rattrapent aussi celles à venir. Vérifié : 44 px sur les cinq
       onglets de `/vehicles`
-- [ ] **Reste, mesuré page par page** : tableau de bord 5 cibles sous 44 · alertes 19 ·
-      rapports 232 (tableau dense, boutons par ligne). Plus le shell : avatar 40 px, logo
-      36 px, « Personnaliser » 37 px. Et `/login` : « Afficher le mot de passe » 26 × 36
+- [x] **Le shell, corrigé pour les 29 pages d'un coup** : logo 36 → 44, avatar 39 → 44, et
+      la croix du toast, qui faisait **14 px de large** — un toast qu'on n'arrive pas à
+      fermer reste par-dessus ce qu'on essaie de lire
+- [x] **Mesuré avant / après, page par page** : tableau de bord **5 → 0** · alertes
+      **19 → 0** · véhicules **68 → 0** (les quatre actions par ligne faisaient 36 × 36, et
+      « Supprimer » est justement celle qu'on ne veut pas rater en visant « Voir ») ·
+      lieux clés **6 → 3**
+- [ ] **Exception assumée** : les 3 restants de `/places` font 44 en HAUTEUR mais moins en
+      largeur — ce sont des liens de deux mots dans une phrase. Les élargir à 44 casserait
+      la phrase ; un lien en ligne n'est pas une cible autonome
+- [ ] **Reste** : `/reports` (232 cibles) — le tableau dense y appelle la refonte mobile de
+      `B1` § D (« sparklines + drill-down, jamais de scroll horizontal »), pas un rustinage
+      de cibles. Et `/login`, `/map`, `/scores`, `/agenda`, `/users` non encore sondées
 
 **Critères de recette, à passer sur chaque page**
 - [ ] Aucun style en ligne recopié d'une maquette

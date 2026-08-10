@@ -725,6 +725,22 @@ interface AlertCluster {
     .cfg-btn-primary:hover { background: var(--tracky-light) }
     .cfg-btn-primary:disabled { opacity: .5; cursor: not-allowed }
 
+    /* Cibles tactiles au doigt — critère de recette « iPhone 390 px : cibles ≥ 44 px ».
+       Mesuré à 375 px : « Tout acquitter » 36, les filtres 36, « Acquitter (3) » 36,
+       « 3 occurrences » 36. Acquitter une alerte est le geste principal de cette page ;
+       il se faisait sur une cible d'un quart trop petite. */
+    @media (max-width: 768px) {
+      .a-ack-all,
+      .a-filter,
+      .al-ack,
+      .al-expand { min-height: 44px }
+      /* La plaque est un LIEN vers la fiche véhicule, haut de 15 px. On l'agrandit sans
+         la déplacer : le padding négatif garderait la ligne compacte, mais casserait
+         l'alignement du texte — mieux vaut une ligne un peu plus haute qu'un lien qu'on
+         rate une fois sur deux. */
+      .al-plate { display: inline-flex; align-items: center; min-height: 44px }
+    }
+
     @media (max-width: 480px) {
       .a-title { font-size: 20px }
       .a-ack-all { padding: 6px 12px; font-size: 11px }

@@ -105,8 +105,9 @@ type PState = 'idle' | 'busy' | 'granted' | 'denied';
     .pg-h { font-weight: 700; font-size: .96rem; color: var(--fg-primary); }
     .pg-d { font-size: .84rem; line-height: 1.5; color: var(--fg-tertiary); margin-top: 2px; }
     .pg-btn {
+      /* 44 px : c'est une porte bloquante, et le bouton qui la franchit se touche. */
       flex: none; align-self: center; font: inherit; font-weight: 700; font-size: .82rem;
-      padding: 8px 14px; border-radius: 10px; cursor: pointer; white-space: nowrap;
+      min-height: 44px; padding: 8px 14px; border-radius: 10px; cursor: pointer; white-space: nowrap;
       border: 1px solid var(--border-strong); background: transparent; color: var(--fg-primary);
     }
     .pg-btn:disabled { cursor: default; }

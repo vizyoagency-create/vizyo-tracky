@@ -316,17 +316,23 @@ import { SpinnerComponent } from '../../shared/ui/spinner/spinner.component';
     </div>
   `,
   styles: [`
+    /* Cibles tactiles au doigt — critère de recette « iPhone 390 px : cibles ≥ 44 px ».
+       Mesuré à 375 px : « Actualiser » 36 de haut, le lien « carte » 28 de large. */
+    @media (max-width: 768px) {
+      .lk-page button,
+      .lk-page a[href] { min-height: 44px }
+    }
     .lk-page { display: flex; flex-direction: column; gap: 16px; padding: 18px; max-width: 1100px; margin: 0 auto; }
     .lk-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
     .lk-title { margin: 0; font-size: 22px; font-weight: 800; color: var(--fg-primary); }
     .lk-sub { margin: 3px 0 0; font-size: 12.5px; color: var(--fg-tertiary); }
     .lk-refresh { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 10px; border: 1px solid var(--border-strong); background: transparent; color: var(--fg-secondary); font-size: 12px; font-weight: 600; cursor: pointer; }
     .lk-refresh:disabled { opacity: .5; cursor: wait; }
-    .lk-error { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 10px; background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.3); color: var(--danger); font-size: 12.5px; }
+    .lk-error { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 10px; background: color-mix(in srgb, var(--texte-alerte) 12%, transparent); border: 1px solid color-mix(in srgb, var(--texte-alerte) 30%, transparent); color: var(--texte-alerte); font-size: 12.5px; }
     .lk-card { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 14px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); }
     .lk-card-head { display: flex; align-items: center; justify-content: space-between; }
     .lk-card-title { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--fg-tertiary); }
-    .lk-card-title lucide-icon { color: #A78BFA; }
+    .lk-card-title lucide-icon { color: var(--texte-violet); }
     .lk-count { padding: 1px 9px; border-radius: 999px; background: color-mix(in srgb, var(--fg-tertiary) 16%, transparent); color: var(--fg-secondary); font-size: 11px; font-weight: 700; }
     .lk-help { margin: 0; display: flex; align-items: baseline; gap: 5px; font-size: 11.5px; line-height: 1.5; color: var(--fg-tertiary); }
     .lk-help strong { color: var(--fg-secondary); }

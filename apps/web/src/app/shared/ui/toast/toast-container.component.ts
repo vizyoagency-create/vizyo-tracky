@@ -99,6 +99,13 @@ const COLOR_MAP: Record<ToastKind, string> = {
     }
     .animate-slide-in { animation: slideIn 0.3s ease-out; }
 
+    /* Cibles tactiles — critère « iPhone 390 px : cibles ≥ 44 px ». Mesuré : la croix
+       de fermeture faisait 14 px de large, « Tout fermer » 36 de haut. Un toast qu'on
+       n'arrive pas à fermer reste à l'écran par-dessus ce qu'on essaie de lire. */
+    @media (max-width: 768px) {
+      .toast-stack button { min-width: 44px; min-height: 44px }
+    }
+
     .toast-ic--succes { color: var(--texte-succes) }
     .toast-ic--alerte { color: var(--texte-alerte) }
     .toast-ic--attente { color: var(--texte-attente) }

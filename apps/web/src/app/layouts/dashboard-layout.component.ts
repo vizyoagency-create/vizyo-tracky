@@ -907,7 +907,10 @@ interface NavGroup {
          le logo + brand pour rappeler l'identité Vizyo Tracky. */
       .top-title { display: none }
       .top-connected { display: none }
-      .top-bar-brand { display: flex; flex-shrink: 0 }
+      /* Cible tactile — critère de recette « iPhone 390 px : cibles ≥ 44 px ».
+         Mesuré, pas supposé : ces boutons tenaient entre 36 et 42 px. */
+      .top-bar-brand { display: flex; flex-shrink: 0; min-height: 44px; align-items: center }
+      .user-menu-trigger { min-width: 44px; min-height: 44px }
       .top-bar-brand-text { font-size: 13px }
       /* Place réduite sur mobile (sélecteur société SA) : on garde le logo + « Tracky »
          seul, on masque « Vizyo » pour éviter que la barre soit trop tassée. */

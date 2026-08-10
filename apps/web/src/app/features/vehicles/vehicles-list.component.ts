@@ -639,6 +639,17 @@ import {
     .wn-brand { font-size: 12px; color: var(--fg-tertiary); white-space: nowrap;
       overflow: hidden; text-overflow: ellipsis }
     .wn-no-tracker { font-size: 12px; color: var(--fg-tertiary); font-style: italic; flex-shrink: 0 }
+    /* Cibles tactiles au doigt — critère de recette « iPhone 390 px : cibles ≥ 44 px ».
+       Mesuré à 375 px : les quatre actions par ligne (voir, modifier, supprimer, QR)
+       faisaient 36 × 36, et « Supprimer » est justement celle qu'on ne veut pas rater
+       en visant « Voir ». Les trois bascules de vue et « Assigner un boîtier » aussi. */
+    @media (max-width: 768px) {
+      .v-action-btn,
+      .v-assign-btn,
+      .view-btn,
+      .overview-link { min-width: 44px; min-height: 44px }
+    }
+
     @media (max-width: 480px) {
       .wn-row { flex-wrap: wrap }
     }

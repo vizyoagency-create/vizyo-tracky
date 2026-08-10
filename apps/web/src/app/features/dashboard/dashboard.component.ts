@@ -591,6 +591,18 @@ interface WidgetMeta {
     .widget-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px }
     .widget-title { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; color: var(--fg-primary) }
     .widget-action { display: flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 600; color: var(--tracky-light); text-decoration: none }
+
+    /* Cibles tactiles au doigt — critère de recette « iPhone 390 px : cibles ≥ 44 px ».
+       Mesuré à 375 px : « Personnaliser » 37 × 36, les raccourcis 39, les liens de
+       widget 36. Aucun n'est faux à la souris ; tous le sont au pouce. */
+    @media (max-width: 768px) {
+      .dash-customize-btn { min-width: 44px; min-height: 44px }
+      .quick-chip { min-height: 44px }
+      /* Et 44 en LARGEUR : « Tous » ne faisait que 43 px. Le pouce ne lit pas le texte,
+         il vise une surface. */
+      .widget-action { min-height: 44px; min-width: 44px; justify-content: center }
+      .dash-banner-btn { min-height: 44px }
+    }
     .widget-action lucide-icon { transition: transform .2s }
     .widget-action:hover lucide-icon { transform: translateX(2px) }
 
