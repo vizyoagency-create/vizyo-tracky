@@ -1275,6 +1275,8 @@ composants ne gèrent que « rempli » et « chargement ».
 - [ ] Interface simplifiée — carte plein écran, 3 cibles de 88 px en langage courant, 4 règles : jamais plus de 3 boutons · langage courant · les garde-fous restent · la sortie vers l'interface complète toujours visible
 - [x] ⚠️ **Défaut corrigé** : le réglage promettait « toutes les pages restent accessibles », le menu était réduit à 5 entrées. Le mode simplifié réutilise désormais **la même source** que le menu complet (`groupesComplets()`) — une seconde liste tenue à la main aurait divergé au premier ajout de page. Ce qui change est la FORME (un seul groupe, sans en-têtes), pas le contenu
 - [x] **Règle non négociable appliquée** : Paramètres est détaché par un filet, en violet, sous-titré « Revenir en interface complète ». Le texte du réglage a été réécrit pour dire ce que le menu fait vraiment
+- [x] **Défaut trouvé en vérifiant** : les styles du menu en feuille vivaient dans `@media (max-width: 768px)`. Or le mode simplifié navigue au bouton à TOUTE largeur — sur un écran large, le menu s'ouvrait sans aucun style : libellés bruts, sans cartes, et le filet violet de la sortie invisible. Les règles sont sorties du media query
+- [x] **Mesuré dans le navigateur** : 13 entrées au lieu de 5 · Paramètres à `rgb(124,58,237)` = `--texte-violet`, filet 1 px, marge 14 px, sous-titre présent · les 9 onglets de la fiche véhicule tous atteignables via les 4 familles
 
 **G — Le shell, en dernier (2)**
 - [ ] Shell authentifié — une seule définition de référence, bandeau hors ligne qui **pousse** le contenu, barre de progression 2 px qui **se superpose**, 3 modes spéciaux (veilleur, simplifié, super-admin) *(le mode dépôt est livré en A1)*

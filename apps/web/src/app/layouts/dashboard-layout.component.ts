@@ -777,51 +777,16 @@ interface NavGroup {
     /* ════════════════════════════════════════════════════════
        MOBILE (< 768px)
        ════════════════════════════════════════════════════════ */
-    @media (max-width: 768px) {
-      .desktop-sidebar { display: none }
-
-      .bottom-bar {
-        display: flex;
-        position: fixed;
-        bottom: 0; left: 0; right: 0;
-        z-index: 7000;
-        background: var(--bg-secondary);
-        border-top: 1px solid var(--border-subtle);
-        backdrop-filter: blur(12px);
-        padding: 6px 8px;
-        padding-bottom: calc(env(safe-area-inset-bottom) + 6px);
-        gap: 4px;
-      }
-      /* Quand la page est en fullscreen (route data { fullscreen:true }, ex: /map),
-         on cache la barre du bas pour donner toute la place a la carte. */
-      .bottom-bar.bottom-bar--hidden { display: none !important; }
-      .bottom-item {
-        flex: 1;
-        display: flex; flex-direction: column; align-items: center; justify-content: center;
-        gap: 3px;
-        padding: 8px 4px;
-        background: transparent; border: 0;
-        color: var(--fg-tertiary);
-        font-size: 10px; font-weight: 600;
-        text-decoration: none;
-        border-radius: 10px;
-        transition: color .15s, background .15s;
-        min-height: 48px;
-      }
-      .bottom-item:hover { background: var(--bg-tertiary) }
-      .bottom-item.active { color: var(--tracky-light); background: var(--bg-tertiary) }
-      .bottom-item lucide-icon { display: block }
-
-      /* Mobile : touch targets 44x44 minimum (Apple HIG iOS, materiel design Android).
-         Sur l'ancien 36x36 le user reportait "trop petit pour mon doigt" + clics
-         rates 2-3 fois (cible too small, finger covers the icon entirely). */
-      .mobile-burger {
-        display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 10px;
-        background: transparent; border: none; color: var(--fg-secondary); cursor: pointer;
-      }
-      .mobile-burger:hover { background: var(--bg-tertiary) }
-
-      /* Bottom-sheet content (remplace l'ancien drawer lateral) */
+    /* ─── Menu en FEUILLE (bouton de navigation) ────────────────────────────────
+     *
+     * ⚠️ CES RÈGLES ÉTAIENT DANS @media (max-width: 768px), et c'était un défaut.
+     * La feuille n'est pas réservée au mobile : le MODE SIMPLIFIÉ masque les rails
+     * et navigue au bouton, à TOUTE largeur. Sur un écran large, le menu s'ouvrait
+     * donc sans aucun de ses styles — libellés bruts, sans cartes, sans couleurs,
+     * et le filet violet de la sortie invisible.
+     *
+     * Les sortir du media query est sans risque : elles ne visent que des éléments
+     * qui n'existent que dans la feuille, et la feuille n'est rendue que menu ouvert. */
       .bs-header {
         display: flex; align-items: center; gap: 8px;
         padding: 4px 4px 12px;
@@ -878,6 +843,52 @@ interface NavGroup {
       :host-context([data-theme="dark"]) .bs-link {
         background: rgba(255,255,255,.04);
       }
+
+    @media (max-width: 768px) {
+      .desktop-sidebar { display: none }
+
+      .bottom-bar {
+        display: flex;
+        position: fixed;
+        bottom: 0; left: 0; right: 0;
+        z-index: 7000;
+        background: var(--bg-secondary);
+        border-top: 1px solid var(--border-subtle);
+        backdrop-filter: blur(12px);
+        padding: 6px 8px;
+        padding-bottom: calc(env(safe-area-inset-bottom) + 6px);
+        gap: 4px;
+      }
+      /* Quand la page est en fullscreen (route data { fullscreen:true }, ex: /map),
+         on cache la barre du bas pour donner toute la place a la carte. */
+      .bottom-bar.bottom-bar--hidden { display: none !important; }
+      .bottom-item {
+        flex: 1;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 3px;
+        padding: 8px 4px;
+        background: transparent; border: 0;
+        color: var(--fg-tertiary);
+        font-size: 10px; font-weight: 600;
+        text-decoration: none;
+        border-radius: 10px;
+        transition: color .15s, background .15s;
+        min-height: 48px;
+      }
+      .bottom-item:hover { background: var(--bg-tertiary) }
+      .bottom-item.active { color: var(--tracky-light); background: var(--bg-tertiary) }
+      .bottom-item lucide-icon { display: block }
+
+      /* Mobile : touch targets 44x44 minimum (Apple HIG iOS, materiel design Android).
+         Sur l'ancien 36x36 le user reportait "trop petit pour mon doigt" + clics
+         rates 2-3 fois (cible too small, finger covers the icon entirely). */
+      .mobile-burger {
+        display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 10px;
+        background: transparent; border: none; color: var(--fg-secondary); cursor: pointer;
+      }
+      .mobile-burger:hover { background: var(--bg-tertiary) }
+
+      /* Bottom-sheet content (remplace l'ancien drawer lateral) */
 
       /* Mobile : on conserve le padding-top: env(safe-area-inset-top) de la regle de base
          (notch / Dynamic Island en PWA iOS standalone). Utiliser les longhand
@@ -1204,11 +1215,10 @@ export class DashboardLayoutComponent {
     // Ce qui change ici est donc la FORME, pas le contenu : un seul groupe sans
     // en-têtes de section, parce que le mode simplifié n'affiche pas d'eyebrows.
     if (this.isBaanoolMode()) {
-      const items: NavItem[] = this.groupesComplets()
-        .flatMap((g) => g.items)
-        // Paramètres est ré-ajouté juste après, détaché : le laisser dans le flot le
-        // noierait au milieu des pages, alors que c'est la seule porte de sortie.
-        .filter((i) => i.route !== '/settings');
+      // ⚠️ Paramètres n'est PAS dans `groupesComplets()` : en mode complet il vit dans
+      // le rail bas, et l'y ajouter le ferait apparaître deux fois. On le pose ici, et
+      // ici seulement — détaché, parce que c'est la porte de sortie, pas une page.
+      const items: NavItem[] = this.groupesComplets().flatMap((g) => g.items);
       // RÈGLE NON NÉGOCIABLE (B1 § J) : « Paramètres reste toujours dans le menu,
       // détaché, en violet, sous-titré Revenir en interface complète. » Sans cette
       // garantie, l'utilisateur est enfermé dans un mode qu'il n'a pas compris — et
@@ -1280,9 +1290,6 @@ export class DashboardLayoutComponent {
       { section: 'Supervision', items: supervision },
       { section: 'Analyse', items: analyse },
       { section: 'Administration', items: administration },
-      // Paramètres vit dans le rail bas en mode complet ; il n'apparaît ici que pour
-      // que le mode simplifié puisse le retrouver et le détacher.
-      { section: null, items: [{ label: 'Paramètres', route: '/settings', icon: Settings }] },
     ] satisfies NavGroup[]).filter((g) => g.items.length > 0);
   }
 }
