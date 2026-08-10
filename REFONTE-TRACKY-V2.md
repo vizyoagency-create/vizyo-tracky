@@ -102,6 +102,88 @@ véhicule portée par `VehicleEvent.blocksVehicle` + `reservations.service.ts`
 
 ---
 
+## Reprise de session — à lire en premier
+
+> Écrit le 2026-08-09, à la fin de la session qui a livré Étape 0, A1, A2 et A5.
+> **Prochain lot : A3.** Branche `feat/refonte-tracky-v2`, poussée sur `origin`.
+
+### Où en est le travail
+
+| Lot | État |
+|---|---|
+| Étape 0, A1, A2, A5 | 🟢 livrés, vérifiés, poussés (19 commits) |
+| **A3 — l'espace dépôt** | ⬜ **prochain** |
+| A4 — le partage | ⬜ après A3 |
+| Bloc B | 🔴 en attente des 27 `.dc.html` dans `design/maquettes/` |
+
+### Remonter l'environnement (5 minutes)
+
+```bash
+pnpm docker:up
+pnpm --filter @vizyo/tracky-api exec prisma migrate deploy
+pnpm --filter @vizyo/tracky-api exec ts-node prisma/seed.ts
+pnpm --filter @vizyo/tracky-api exec ts-node prisma/seed-depot.ts
+```
+
+`seed-depot.ts` recrée le **cas de référence d'A0** : 7 camions, 2 dépôts
+concurrents, 6 missions couvrant les 4 états de la fenêtre, 1 camion témoin sans
+mission. Idempotent. C'est ce jeu qui rend l'isolation observable — un dépôt qui
+verrait 8 camions, ou 0, se remarque immédiatement.
+
+Serveurs : `preview_start` avec `web-refonte` (port 4205) et `api-refonte` (3000).
+⚠️ Le port 4200 est occupé par un **autre projet** (Maalem) — ne pas s'y fier.
+
+Jetons de test (les variables `VIZYO_AUTH_*` viennent du `.env`) :
+
+```bash
+pnpm --filter @vizyo/tracky-api exec ts-node prisma/gen-test-token.ts seed-depot-a
+```
+
+`seed-depot-a` / `seed-depot-b` = les deux dépôts · `seed-gestionnaire` = un
+FLEET_MANAGER de la flotte de démonstration.
+
+### Vérifier
+
+```bash
+pnpm typecheck && pnpm smoke && pnpm --filter @vizyo/tracky-api test
+bash apps/api/prisma/verif-depot-http.sh    # 31/31 attendu, machine au repos
+pnpm --filter @vizyo/tracky-api exec ts-node prisma/verif-depot.ts   # 17/17
+```
+
+### Les six pièges déjà payés — ne pas les repayer
+
+1. **`pnpm verify` ne se termine jamais** (P1) : `ng test` tourne en watch. Employer
+   le périmètre ci-dessus.
+2. **Le script HTTP produit des échecs fantômes** s'il suit immédiatement Jest — la
+   contention CPU fait expirer les `curl`. Relancer machine au repos.
+3. **Cache de build Angular** : il peut faire **mentir un écran** sans qu'aucun test
+   ne bronche (constaté : la matrice affichait les droits du Lecteur dans la colonne
+   Dépôt). Au moindre écart inexplicable entre le code et l'écran :
+   `rm -rf apps/web/.angular/cache`.
+4. **`:host-context()` est obligatoire** pour cibler `body.plat-*` depuis les styles
+   d'un composant. Un sélecteur d'ancêtre direct est réécrit par l'encapsulation et
+   **échoue en silence**.
+5. **Pas de backtick dans un commentaire** à l'intérieur d'un `template:` ou
+   `styles: [\`…\`]` — il termine le littéral et casse la compilation.
+6. **Le front ne retombe pas sur les défauts de rôle** : il lit
+   `user.permissions?.[perm]`. Un compte avec `permissions: null` se voit tout
+   refuser côté client. Écrire des permissions explicites sur les comptes de test.
+
+### Ce qu'A3 doit réutiliser, pas réinventer
+
+- `DepotScopeService` / `DepotScopeGuard` — le garde est en **refus par défaut** :
+  toute nouvelle route `/depot/*` doit porter `@DepotScope(...)` ou
+  `@DepotScopeBorneParLeService()`, sinon elle rend 403.
+- `DepotService` — le `select` Prisma explicite **est** le contrat de fuite. Ajouter
+  un champ au DTO sans l'ajouter au `select` ne fuite rien ; l'inverse, si.
+- 3 des 8 endpoints d'A1 § 4 existent (liste, détail, position). Restent historique,
+  exports, documents, incidents.
+- Socle de plateforme : `shared/utils/platform.ts` + jetons `--feuille-*` /
+  `--densite-liste`. Ne pas tester la plateforme dans un template.
+- `maskPhone` masque **côté serveur**. Le numéro complet ne doit jamais transiter.
+
+---
+
 ## Les règles permanentes
 
 Elles s'appliquent à **chaque** tâche de ce fichier. Toute revue les vérifie.
