@@ -1169,10 +1169,17 @@ Les 4 défauts de code relevés en lisant la source, indépendants de la refonte
 > Les 23 composants existent déjà (Écart 3). Ce lot les **unifie**, il ne les crée pas.
 > Ordre d'attaque par nombre de pages touchées.
 
-- [ ] `connectivity-badge` (9 pages) — les 6 états
-- [ ] `confirm-modal` (14 pages) — les 6 états
+**Préalable — la palette, tranchée à la mesure** *(fait)*
+- [x] `--surface-quaternary` créé — le `--surface3` des planches, **505 usages dans 27 planches sur 28**. Le point ouvert **O1** de `TOKENS.md` est clos
+- [x] Les écarts planches ↔ application mesurés et consignés : `--accent-ink` (l'application gagne, la planche est à 3,43:1 et contredit la règle non négociable de B0), `--violet`, `--blue`, `--accent2` (différés au lot qui les consomme — les planches sont tenues en sombre, plus lâches en clair)
+- [x] Règle qui s'en dégage pour tout le bloc B : **on reprend la décision de la planche, pas sa valeur, dès que la valeur tombe sous 4,5:1 sur du texte**
+
+- [ ] `connectivity-badge` (9 pages) — les 6 états *(couleurs et distinctions faites au lot B0′)*
+- [x] `confirm-modal` (14 pages) — **conséquences chiffrées obligatoires**, mention *Irréversible*, variante **critique** (liseré rouge, état de l'objet rappelé, plaque à retaper), couleurs en jetons, encre foncée sur l'accent, **feuille sous 640 px** et non boîte centrée
+- [x] `scripts/verif-confirmations.mjs` (`pnpm verif:confirmations`) — refuse un `[danger]` sans `[consequences]`, un `[critique]` sans `[confirmationAttendue]`, un libellé sans verbe. **8 appels complétés** : coupure moteur (fiche et carte), archivage et anonymisation d'un conducteur, suppression d'un planning et d'une ligne, envoi d'une commande, désactivation de l'automatisation horaire
 - [ ] `toast` + `skeleton` (toutes) — les 6 états
-- [ ] `bottom-sheet` (11 pages) — les 6 états
+- [x] `bottom-sheet` (11 pages) — **géométrie de plateforme** (rayon et poignée depuis les jetons d'A3 ; la feuille était figée à 20 px et 44 × 4, ni iOS ni Android), **hauteur annonçable** (les six feuilles de la maquette sont dimensionnées : 44 à 72 %), **variante sans voile** pour les feuilles posées sur la carte
+- [ ] `bottom-sheet` — les 6 états
 - [ ] `trip-note-modal`
 - [ ] `pdf-export-modal`
 - [ ] `update-required-modal`

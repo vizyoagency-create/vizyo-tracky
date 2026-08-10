@@ -1331,6 +1331,7 @@ const RESYNC_RADIUS_M = 150;
       [open]="engineModalOpen() !== null"
       [title]="engineModalOpen() === 'cut' ? 'Couper le moteur ?' : 'Rallumer le moteur ?'"
       [description]="engineModalDescription()"
+      [consequences]="engineModalConsequences()"
       [confirmLabel]="engineModalConfirmLabel()"
       cancelLabel="Annuler"
       [danger]="engineModalOpen() === 'cut'"
@@ -2450,7 +2451,21 @@ export class MapComponent implements AfterViewInit, OnDestroy {
 
   protected readonly engineModalConfirmLabel = computed(() => {
     const action = this.engineModalOpen();
-    return action === 'cut' ? 'Oui, couper le moteur' : 'Oui, rallumer';
+    return action === 'cut' ? 'Couper le moteur' : 'Rallumer le moteur';
+  });
+
+  /**
+   * Ce que la coupure coûte, dit à part du geste — règle du kit. Le cas « mode horaire
+   * actif » est le plus traître : la coupure n'y tient QUE jusqu'à la prochaine bascule,
+   * et croire l'inverse fait rouler un véhicule qu'on pensait immobilisé.
+   */
+  protected readonly engineModalConsequences = computed(() => {
+    if (this.engineModalOpen() !== 'cut') return '';
+    return this.engineModalHasSchedule
+      ? 'Le planning horaire reprend la main à la prochaine bascule : le véhicule redémarrera '
+        + 'sans intervention. Pour une immobilisation qui tient, désactivez d\'abord le mode horaire.'
+      : 'Le véhicule ne redémarrera plus tant que personne ne l\'aura réactivé depuis Tracky. '
+        + 'Le conducteur en cours de trajet est concerné dès la prochaine coupure du contact.';
   });
 
   /** Etat de mouvement par trackerId : extrapolation speed/heading + lissage display. */

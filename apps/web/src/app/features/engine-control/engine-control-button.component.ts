@@ -85,7 +85,8 @@ const CONFIRM_WINDOW_MS = 90_000;
         [open]="isOpen() === 'cut'"
         title="Couper le moteur ?"
         [description]="cutDescription()"
-        confirmLabel="Oui, couper le moteur"
+        [consequences]="cutConsequences()"
+        confirmLabel="Couper le moteur"
         cancelLabel="Annuler"
         [danger]="true"
         [loading]="loading()"
@@ -445,6 +446,24 @@ export class EngineControlButtonComponent implements OnInit {
       `jusqu'à réactivation manuelle.<br><br>` +
       `<span class="text-fg-tertiary text-xs">Cette action sera enregistrée dans l'audit trail.</span>` +
       this.dormantConfirmNotice(),
+  );
+
+  /**
+   * Ce que la coupure coûte, en clair. La description dit le geste ; ceci dit le prix —
+   * un véhicule immobilisé jusqu'à une action HUMAINE, pas jusqu'à la fin d'un délai.
+   * Le kit exige que la conséquence soit nommée à part du reste : c'est elle qu'on lit
+   * quand on hésite.
+   *
+   * Le niveau CRITIQUE de la modale (liseré rouge, état rappelé, plaque à retaper) est
+   * spécifié pour cet écran par `B1-PAGES.md` § F « Coupure moteur ». Il se branche au
+   * lot B-pages : ajouter une saisie à un geste d'urgence est une décision d'écran, pas
+   * une décision de kit.
+   */
+  protected readonly cutConsequences = computed(
+    () =>
+      `Le véhicule ${this.vehiclePlate()} ne redémarrera plus tant que personne ne l'aura `
+      + 'réactivé depuis Tracky. Le conducteur en cours de trajet est concerné dès la '
+      + 'prochaine coupure du contact.',
   );
 
   protected readonly restoreDescription = computed(() => {

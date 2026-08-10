@@ -38,7 +38,7 @@ dans les blocs `styles:` des composants.
 | `--bg2` | `--surface-rail` | *(pas de classe — `var()` directe)* | `#0B0F0E` | `#F2F5F3` |
 | `--surface` | `--surface-secondary` · alias `--bg-secondary` | `bg-bg-secondary` | `#101514` | `#FFFFFF` |
 | `--surface2` | `--surface-tertiary` · alias `--bg-tertiary` | `bg-bg-tertiary` | `#161D1B` | `#F6F9F7` |
-| `--surface3` | *(pas d'équivalent — cf. point ouvert O1)* | — | — | — |
+| `--surface3` | `--surface-quaternary` · alias `--bg-quaternary` | `bg-bg-quaternary` | `#1D2624` | `#EDF2EF` |
 
 `--bg2` est le fond du rail de navigation et de la barre du haut. Le commentaire de
 `styles.css:44` le nomme explicitement « DS bg-2 » : la correspondance est celle voulue à
@@ -246,11 +246,35 @@ Les déclinaisons `-soft` ne sont **pas** déclarées comme jetons : elles suive
 
 ## Points ouverts
 
-**O1 — `--surface3` n'a pas d'équivalent.** Le dépôt s'arrête à trois niveaux de surface
-(`primary`, `secondary`, `tertiary`) plus le rail. Les maquettes en déclarent un quatrième.
-Aucun écran du bloc A n'en a besoin. **Décision différée** : le jeton ne sera créé que si
-une maquette du bloc B prouve son usage — créer un niveau d'élévation que personne n'emploie
-est du bruit. En attendant, `--surface3` se lit comme `--surface-tertiary`.
+**O1 — `--surface3` n'a pas d'équivalent.** ✅ **Tranché au lot B-kit : le jeton est créé.**
+La décision était « on ne le crée que si une maquette du bloc B prouve son usage ». Les
+planches sont arrivées et la preuve est écrasante : **505 usages dans 27 planches sur 28**,
+dont 34 dans `Kit Partage` lui-même. Il porte ce qui se pose SUR une carte — chips,
+squelettes, pastilles de plateforme — là où `--surface-tertiary` ne se détache plus assez.
+Nommé `--surface-quaternary`, alias court `--bg-quaternary`, classe `bg-bg-quaternary`.
+
+---
+
+## Les écarts entre les planches et l'application, mesurés
+
+> Relevés à la réception des maquettes (2026-08-10). Le bloc de jetons est **identique dans
+> les 28 planches** pour le cœur de la palette — fonds, textes, accent, rouge, ambre. Les
+> divergences se concentrent sur quatre jetons, plus des variations d'alpha sans portée
+> (`.13` vs `.14`) et des jetons locaux aux planches de carte (`--shadow`, `--veil`, `--sat`,
+> `--grid`), qui n'ont pas à remonter dans le système.
+
+| Jeton | Planches | Application | Décision |
+|---|---|---|---|
+| `--accent-ink` (clair) | `#FFFFFF` | `#04130D` | **L'application gagne.** La planche donne 3,43:1, sous le seuil — et contredit la règle que `B0-SOCLE.md` déclare lui-même non négociable (« sur un fond accent, l'encre doit être foncée »). Notre valeur : 5,54:1. |
+| `--violet` | `#B69CFF` / `#7A5CE0` | `#A78BFA` / `#7C3AED` | **Différé au lot qui les consomme.** En sombre la planche est meilleure (8,06 contre 6,77) ; en clair elle échoue sur du petit texte (4,05 contre 4,75). |
+| `--blue` | `#6FB4FF` / `#2B7FD4` | `#38BDF8` / `#0369A1` | **Différé.** Équivalents en sombre (8,47 / 8,60) ; en clair la planche tombe à 3,58 sur un lavis, contre 4,98. |
+| `--accent2` | `#0FBE88` / `#0B8F63` | `#047857` | **Différé, et lié à l'encre.** L'application écrit `bg-tracky-dark text-white` : blanc sur `#0FBE88` donne **2,40:1**. La valeur de la planche n'est utilisable qu'avec `--accent-ink` (7,92:1) — c'est une reprise d'écran, pas un changement de jeton. |
+
+**Ce que ces mesures disent.** Les planches sont tenues en thème sombre et plus lâches en
+clair — le même constat qu'à l'étape 0 sur `--accent-ink`, et qu'au lot B0′ sur les couleurs
+de petit texte. La règle qui s'en dégage vaut pour tout le bloc B : **on reprend la décision
+de la planche, pas sa valeur, dès que la valeur tombe sous 4,5:1 sur le texte.** C'est
+exactement ce que fait la famille `--texte-*`.
 
 **O2 — `--danger` et `--warning` en thème clair sont sous 4,5:1.** ✅ **Tranché au lot B0′.**
 Mesurés sur `--surface-secondary` clair : `--danger` `#D9544E` → **3,94:1**, `--warning`
