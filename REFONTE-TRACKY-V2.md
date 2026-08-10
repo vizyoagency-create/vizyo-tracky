@@ -18,10 +18,10 @@
 | **A4** | Lien public `/s/:token`, expiration, révocation | — | 🟢 **livré** | 97 / 98 |
 | **B0′** | Reliquat socle : couleurs en dur, UTC, accents, wizard | Bloc B | 🟢 **livré** | 27 / 28 |
 | **B-kit** | Kit partagé : 6 états sur 24 composants | pages B | 🟢 **livré** | 26 / 28 |
-| **B-pages** | 29 pages refondues × 3 déclinaisons | — | 🟡 en cours | 20 / 57 |
+| **B-pages** | 29 pages refondues × 3 déclinaisons | — | 🟡 en cours | 23 / 57 |
 | **B-mails** | 19 gabarits d'e-mail | — | ⬜ **débloqué**¹ | 0 / 12 |
 | **PROD** | Push, déploiement, recette production | — | ⬜ à faire | 0 / 28 |
-| | | | **Total** | **493 / 604** |
+| | | | **Total** | **496 / 604** |
 
 ¹ **Débloqué le 2026-08-10** : les 28 planches `.dc.html` sont dans `design/maquettes/`, avec
 leur `support.js` et le dossier `brands/`. Cf. « Écart 1 » ci-dessous. Ordre d'attaque non
@@ -1339,7 +1339,14 @@ composants ne gèrent que « rempli » et « chargement ».
 - [x] **Deux écrans partagent les mêmes classes mais pas la même feuille** — l'encapsulation
       Angular les sépare. Corriger `installation-editor` ne corrigeait pas
       `installations-client` ; il a fallu la mesure pour s'en apercevoir
-- [ ] `/login` non encore sondée (« Afficher le mot de passe » 26 × 36 relevé au passage)
+- [x] `/login` **3 → 0** · `/forgot-password` **1 → 0** · `/install` **5 → 1** — les pages hors
+      session sont « quasi exclusivement mobiles, ouvertes depuis un SMS ou un QR »
+      (`B1` § A). Trois commandes ratées sur l'écran où l'on n'est même pas encore entré :
+      l'œil qui montre le mot de passe (26 × 36), la case « Rester connecté », le lien d'oubli
+- [x] **La case à cocher garde 20 px, et c'est voulu** : une case de 44 px est une tache.
+      C'est son ÉTIQUETTE qui devient la cible — mesurée à **44 × 128**, et cliquer
+      « Rester connecté » coche bien la case. La sonde compte l'input isolément : c'est une
+      limite de la sonde, pas un défaut de la page
 - [ ] **Exception, même famille que `/places`** : le dernier lien de `/settings` (« Coûts IA »)
       est en ligne dans une phrase. Un lien dans un texte n'est pas une cible autonome
 

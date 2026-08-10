@@ -16,6 +16,11 @@ import { RouterLink } from '@angular/router';
   standalone: true,
   imports: [FormsModule, RouterLink],
   styles: [`
+    /* Cible tactile — critère « iPhone 390 px : cibles ≥ 44 px ». Le retour vers la
+       connexion est la seule sortie de cet écran. */
+    @media (max-width: 768px) {
+      .fp-retour { min-height: 44px }
+    }
     @keyframes fp-pop { 0% { transform: scale(.7); opacity: 0 } 60% { transform: scale(1.06) } 100% { transform: scale(1); opacity: 1 } }
     .fp-pop { animation: fp-pop .4s cubic-bezier(.16,1,.3,1); }
     @media (prefers-reduced-motion: reduce) { .fp-pop { animation: none } }
@@ -114,7 +119,7 @@ import { RouterLink } from '@angular/router';
           </button>
         </form>
 
-        <a routerLink="/login" class="mt-6 flex items-center justify-center gap-2 text-sm font-semibold text-fg-secondary hover:text-tracky-light transition-colors cursor-pointer">
+        <a routerLink="/login" class="fp-retour mt-6 flex items-center justify-center gap-2 text-sm font-semibold text-fg-secondary hover:text-tracky-light transition-colors cursor-pointer">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
           Retour à la connexion
         </a>

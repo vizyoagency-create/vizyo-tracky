@@ -140,6 +140,12 @@ type DesktopOS = 'windows' | 'mac' | 'linux';
     </div>
   `,
   styles: [`
+    /* Cibles tactiles — critère « iPhone 390 px : cibles ≥ 44 px ». Cette page s'ouvre
+       depuis un QR code, donc TOUJOURS sur un téléphone : c'est le dernier endroit où
+       une commande devrait demander de la précision. */
+    @media (max-width: 768px) {
+      .ip-seg-btn, .ip-theme { min-width: 44px; min-height: 44px }
+    }
     .ip-page { position: relative; min-height: 100svh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 44px max(22px, env(safe-area-inset-left)); background: var(--bg-primary); overflow: hidden; }
     .ip-grid {
       position: absolute; inset: 0; pointer-events: none;

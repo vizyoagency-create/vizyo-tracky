@@ -91,7 +91,7 @@ import { ThemeService } from '../../core/theme/theme.service';
               required
             />
             <button type="button" (click)="showPassword.set(!showPassword())"
-              class="absolute right-3 top-1/2 -translate-y-1/2 text-fg-tertiary
+              class="lg-oeil absolute right-3 top-1/2 -translate-y-1/2 text-fg-tertiary
                      hover:text-fg-secondary transition-colors cursor-pointer
                      p-1 rounded-md"
               [attr.aria-label]="showPassword() ? 'Masquer le mot de passe' : 'Afficher le mot de passe'">
@@ -116,13 +116,13 @@ import { ThemeService } from '../../core/theme/theme.service';
               type="checkbox"
               [(ngModel)]="remember"
               name="remember"
-              class="w-4 h-4 rounded cursor-pointer"
+              class="lg-case w-4 h-4 rounded cursor-pointer"
               style="accent-color: var(--tracky)"
             />
             Rester connecté
           </label>
           <a routerLink="/forgot-password"
-             class="text-[13px] text-tracky-light hover:text-tracky transition-colors cursor-pointer">
+             class="lg-oubli text-[13px] text-tracky-light hover:text-tracky transition-colors cursor-pointer">
             Mot de passe oublie ?
           </a>
         </div>
@@ -190,6 +190,25 @@ import { ThemeService } from '../../core/theme/theme.service';
         </span>
       </div>
   `,
+  styles: [`
+    /* ─── Cibles tactiles — la page la plus ouverte de l'application ────────────
+     *
+     * Critère de recette « iPhone 390 px : cibles ≥ 44 px ». B1 § A rappelle que
+     * les pages hors session sont « quasi exclusivement mobiles, ouvertes depuis un
+     * SMS ou un QR : concevoir mobile d'abord, le PC est un repli ».
+     *
+     * Mesuré à 375 px : l'œil qui montre le mot de passe faisait 26 × 36, la case
+     * « Rester connecté » 16 × 16, le lien d'oubli 36 de haut. Trois commandes ratées
+     * sur l'écran où l'on n'est même pas encore entré. */
+    @media (max-width: 768px) {
+      .lg-oeil { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center }
+      .lg-oubli { min-height: 44px; display: inline-flex; align-items: center }
+      /* La case garde sa taille visuelle — une case à cocher de 44 px est une tache.
+         C'est son ÉTIQUETTE qui devient la cible : elle enveloppe déjà la case. */
+      .lg-case { width: 20px; height: 20px }
+      label:has(.lg-case) { min-height: 44px }
+    }
+  `],
 })
 export class LoginComponent implements OnInit {
   protected email = '';
