@@ -377,6 +377,12 @@ type SettingsTab = 'billing' | 'appearance' | 'notifications' | 'organization';
     </div>
   `,
   styles: [`
+    /* Cibles tactiles au doigt — critère de recette « iPhone 390 px : cibles ≥ 44 px ».
+       Mesuré à 375 px : les quatre onglets de section, le bouton d'offre et les liens
+       d'option étaient sous le seuil. Une page de réglages se parcourt au pouce. */
+    @media (max-width: 768px) {
+      .s-tab, .s-plan-btn, .s-opt-link { min-height: 44px }
+    }
     .settings-page { max-width: 1080px; margin: 0 auto }
     .settings-header { margin-bottom: 18px }
     .settings-title { font-size: 26px; font-weight: 800; color: var(--fg-primary); letter-spacing: -.03em; margin-top: 6px }

@@ -413,6 +413,13 @@ interface TaskForm {
       (confirmed)="deleteTask()" (cancelled)="taskToDelete.set(null)" />
   `,
   styles: [`
+    /* Cibles tactiles au doigt — critère de recette « iPhone 390 px : cibles ≥ 44 px ».
+       Mesuré à 375 px : 54 boutons de réordonnancement et 27 poignées de glisser-déposer.
+       C'est la page où l'on ORGANISE une tournée d'installation, debout, sur le terrain :
+       la précision au pouce y est le premier besoin, pas le dernier. */
+    @media (max-width: 768px) {
+      .ord-btn, .cdk-drag-handle { min-width: 44px; min-height: 44px }
+    }
     :host { display: block }
     .ed { max-width: 1000px }
     .ed-back { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--fg-tertiary); text-decoration: none; margin-bottom: 14px }

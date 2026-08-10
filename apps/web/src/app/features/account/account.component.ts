@@ -343,6 +343,10 @@ type Tab = 'profile' | 'invitations' | 'notifications' | 'security';
     </div>
   `,
   styles: [`
+    /* Cibles tactiles au doigt — critère de recette « iPhone 390 px : cibles ≥ 44 px ». */
+    @media (max-width: 768px) {
+      .tab, .btn-primary, .btn-ghost { min-height: 44px }
+    }
     .page {
       max-width: 980px;
       margin: 0 auto;

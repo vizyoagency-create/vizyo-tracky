@@ -138,6 +138,15 @@ import {
     </div>
   `,
   styles: [`
+    /* Cibles tactiles au doigt — critère de recette « iPhone 390 px : cibles ≥ 44 px ».
+       Mesuré à 375 px : 54 boutons de réordonnancement et 27 poignées de glisser-déposer.
+       C'est la page où l'on ORGANISE une tournée d'installation, debout, sur le terrain :
+       la précision au pouce y est le premier besoin, pas le dernier.
+       (La même correction vit dans installation-editor : les deux écrans partagent les
+       classes mais pas la feuille de styles — l'encapsulation Angular les sépare.) */
+    @media (max-width: 768px) {
+      .ord-btn, .cdk-drag-handle { min-width: 44px; min-height: 44px }
+    }
     :host { display: block }
     .cl { max-width: 980px }
     .cl-head h1 { font-family: var(--font-display); font-size: 1.72rem; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; color: var(--fg-primary); margin: 8px 0 0 }

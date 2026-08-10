@@ -18,10 +18,10 @@
 | **A4** | Lien public `/s/:token`, expiration, révocation | — | 🟢 **livré** | 97 / 98 |
 | **B0′** | Reliquat socle : couleurs en dur, UTC, accents, wizard | Bloc B | 🟢 **livré** | 27 / 28 |
 | **B-kit** | Kit partagé : 6 états sur 24 composants | pages B | 🟢 **livré** | 26 / 28 |
-| **B-pages** | 29 pages refondues × 3 déclinaisons | — | 🟡 en cours | 13 / 57 |
+| **B-pages** | 29 pages refondues × 3 déclinaisons | — | 🟡 en cours | 16 / 57 |
 | **B-mails** | 19 gabarits d'e-mail | — | ⬜ **débloqué**¹ | 0 / 12 |
 | **PROD** | Push, déploiement, recette production | — | ⬜ à faire | 0 / 28 |
-| | | | **Total** | **486 / 604** |
+| | | | **Total** | **489 / 604** |
 
 ¹ **Débloqué le 2026-08-10** : les 28 planches `.dc.html` sont dans `design/maquettes/`, avec
 leur `support.js` et le dossier `brands/`. Cf. « Écart 1 » ci-dessous. Ordre d'attaque non
@@ -1327,7 +1327,15 @@ composants ne gèrent que « rempli » et « chargement ».
 - [ ] **Le vrai sujet de `/reports` reste donc la CARTE DE CHALEUR** : au doigt, elle
       demande un drill-down (toucher un jour, puis lire ses heures) plutôt que des cellules
       qu'aucun pouce ne peut viser. Le tableau, lui, ne déborde pas
+- [x] `/settings` **7 → 1** · `/account` **6 → 0** · `/installations` **81 → 0** (54 boutons de
+      réordonnancement et 27 poignées de glisser-déposer : c'est la page où l'on organise
+      une tournée **debout, sur le terrain**) · `/integrations` déjà à 0
+- [x] **Deux écrans partagent les mêmes classes mais pas la même feuille** — l'encapsulation
+      Angular les sépare. Corriger `installation-editor` ne corrigeait pas
+      `installations-client` ; il a fallu la mesure pour s'en apercevoir
 - [ ] `/login` non encore sondée (« Afficher le mot de passe » 26 × 36 relevé au passage)
+- [ ] **Exception, même famille que `/places`** : le dernier lien de `/settings` (« Coûts IA »)
+      est en ligne dans une phrase. Un lien dans un texte n'est pas une cible autonome
 
 **Critères de recette, à passer sur chaque page**
 - [ ] Aucun style en ligne recopié d'une maquette
